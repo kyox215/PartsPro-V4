@@ -124,7 +124,7 @@ export async function CheckoutPage() {
   ];
 
   return (
-    <main className="min-h-screen text-slate-950">
+    <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
       <StoreHeader />
       <div className="mx-auto grid max-w-[1300px] gap-4 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <form id={checkoutFormId} className="space-y-4">

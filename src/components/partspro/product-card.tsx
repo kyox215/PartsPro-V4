@@ -18,6 +18,12 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import type { PartProduct } from "@/lib/partspro-data";
 import { formatEuro } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
@@ -32,55 +38,69 @@ export function ProductCard({
   product,
   showWholesalePrice = false,
 }: ProductCardProps) {
+  const [previewOpen, setPreviewOpen] = useState(false);
   const stockMeta = getStockMeta(product);
   const canAddToCart =
     product.stock >= Math.max(1, product.moq) && product.status !== "Out of Stock";
   const productPath = `/prodotto/${encodeURIComponent(product.sku)}`;
   const cartPath = `/carrello?sku=${encodeURIComponent(product.sku)}&qty=${product.moq}`;
   const stockDescriptionId = `stock-${product.sku.replace(/[^a-zA-Z0-9]/g, "-")}`;
+  const imageAlt = product.imageAlt ?? product.name;
   const remainingModels = Math.max(product.compatibleWith.length - 2, 0);
 
   return (
-    <Card
-      className={cn(
-        "h-full min-w-0 rounded-lg border-slate-200 bg-white shadow-sm transition sm:shadow-[0_18px_45px_rgba(15,23,42,0.05)] sm:hover:-translate-y-0.5 sm:hover:shadow-[0_22px_50px_rgba(15,23,42,0.08)]",
-        !canAddToCart && "opacity-80"
-      )}
-    >
-      <CardContent className="grid h-full min-w-0 grid-cols-[104px_minmax(0,1fr)] gap-2 p-2 sm:flex sm:flex-col sm:p-3">
-        <Link
-          href={productPath}
-          className="relative block h-28 overflow-hidden rounded-md bg-slate-50 sm:h-auto sm:rounded-lg"
-          aria-label={`Apri ${product.name}`}
-        >
+    <>
+      <Card
+        className={cn(
+          "h-full min-w-0 rounded-lg border-slate-200 bg-white shadow-sm transition sm:shadow-[0_18px_45px_rgba(15,23,42,0.05)] sm:hover:-translate-y-0.5 sm:hover:shadow-[0_22px_50px_rgba(15,23,42,0.08)]",
+          !canAddToCart && "opacity-80"
+        )}
+      >
+        <CardContent className="grid h-full min-w-0 grid-cols-[104px_minmax(0,1fr)] gap-2 p-2 sm:flex sm:flex-col sm:p-3">
           {product.imageUrl ? (
-            <div className="relative h-full rounded-md sm:h-36 sm:rounded-lg">
-              <Image
-                src={product.imageUrl}
-                alt={product.imageAlt ?? product.name}
-                fill
-                sizes="(max-width: 640px) 104px, (max-width: 1280px) 50vw, 25vw"
-                className="object-contain p-2 sm:p-3"
-              />
-            </div>
+            <button
+              type="button"
+              className="relative block h-28 w-full cursor-zoom-in overflow-hidden rounded-md bg-slate-50 text-left outline-none transition hover:bg-slate-100 focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-auto sm:rounded-lg"
+              aria-label={`Apri anteprima immagine ${product.name}`}
+              onClick={() => setPreviewOpen(true)}
+            >
+              <div className="relative h-full rounded-md sm:h-36 sm:rounded-lg">
+                <Image
+                  src={product.imageUrl}
+                  alt={imageAlt}
+                  fill
+                  sizes="(max-width: 640px) 104px, (max-width: 1280px) 180px, 220px"
+                  quality={55}
+                  loading="lazy"
+                  className="object-contain p-1.5 sm:p-2"
+                />
+              </div>
+              <Badge
+                className={cn(
+                  "absolute bottom-1.5 left-1.5 max-w-[calc(100%-0.75rem)] truncate border px-1.5 py-0.5 text-[10px] sm:bottom-2 sm:left-2 sm:max-w-[calc(100%-1rem)]",
+                  stockMeta.className
+                )}
+                title={`${stockMeta.label} · ${product.stock} pz`}
+              >
+                {stockMeta.label}
+              </Badge>
+            </button>
           ) : (
-            <PartVisual variant={product.visual} className="h-full rounded-md sm:h-36 sm:rounded-lg" />
+            <div className="relative block h-28 overflow-hidden rounded-md bg-slate-50 sm:h-auto sm:rounded-lg">
+              <PartVisual variant={product.visual} className="h-full rounded-md sm:h-36 sm:rounded-lg" />
+              <Badge
+                className={cn(
+                  "absolute bottom-1.5 left-1.5 max-w-[calc(100%-0.75rem)] truncate border px-1.5 py-0.5 text-[10px] sm:bottom-2 sm:left-2 sm:max-w-[calc(100%-1rem)]",
+                  stockMeta.className
+                )}
+                title={`${stockMeta.label} · ${product.stock} pz`}
+              >
+                {stockMeta.label}
+              </Badge>
+            </div>
           )}
-          <Badge className={cn("absolute left-1.5 top-1.5 max-w-[calc(100%-0.75rem)] border px-1.5 py-0.5 text-[10px] sm:left-2 sm:top-2 sm:max-w-[calc(100%-1rem)]", gradeClass(product.grade))}>
-            {product.grade}
-          </Badge>
-          <Badge
-            className={cn(
-              "absolute bottom-1.5 left-1.5 max-w-[calc(100%-0.75rem)] truncate border px-1.5 py-0.5 text-[10px] sm:bottom-2 sm:left-2 sm:max-w-[calc(100%-1rem)]",
-              stockMeta.className
-            )}
-            title={`${stockMeta.label} · ${product.stock} pz`}
-          >
-            {stockMeta.label}
-          </Badge>
-        </Link>
 
-        <div className="flex min-w-0 flex-1 flex-col sm:mt-3">
+          <div className="flex min-w-0 flex-1 flex-col sm:mt-3">
           <Link
             href={productPath}
             className="line-clamp-2 min-h-0 break-words text-[13px] font-black leading-4 text-slate-950 hover:text-primary sm:min-h-10 sm:text-sm sm:leading-5"
@@ -185,9 +205,31 @@ export function ProductCard({
               </Button>
             )}
           </div>
-        </div>
-      </CardContent>
-    </Card>
+          </div>
+        </CardContent>
+      </Card>
+      {product.imageUrl && (
+        <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+          <DialogContent className="max-w-[calc(100vw-1.5rem)] gap-3 p-3 sm:max-w-3xl">
+            <DialogHeader className="pr-10">
+              <DialogTitle className="line-clamp-2 text-sm font-black text-slate-950">
+                {product.name}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="relative h-[min(72vh,620px)] min-h-[280px] overflow-hidden rounded-lg bg-slate-50">
+              <Image
+                src={product.imageUrl}
+                alt={imageAlt}
+                fill
+                sizes="(max-width: 640px) 92vw, 760px"
+                quality={88}
+                className="object-contain p-3"
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+    </>
   );
 }
 
@@ -386,22 +428,6 @@ function SummaryLine({
       </span>
     </div>
   );
-}
-
-function gradeClass(grade: PartProduct["grade"]) {
-  if (grade === "A+") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  }
-
-  if (grade === "A") {
-    return "border-cyan-200 bg-cyan-50 text-cyan-700";
-  }
-
-  if (grade === "Refurbished") {
-    return "border-violet-200 bg-violet-50 text-violet-700";
-  }
-
-  return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
 function getStockMeta(product: PartProduct) {

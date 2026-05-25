@@ -41,7 +41,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   }
 
   return (
-    <main className="min-h-screen bg-[#f4f6fa] text-slate-950">
+    <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
       <StoreHeader />
       <div className="mx-auto grid min-h-[calc(100vh-112px)] max-w-[1180px] place-items-center px-4 py-8">
         <Card className="w-full max-w-[440px] border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.06)]">

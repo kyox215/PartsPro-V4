@@ -2,7 +2,7 @@ import { StoreHeader } from "@/components/partspro/store-header";
 
 export default function Loading() {
   return (
-    <main className="min-h-screen bg-[#f4f6fa] text-slate-950">
+    <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
       <StoreHeader />
       <div className="mx-auto max-w-[1500px] px-3 py-4 sm:px-4 sm:py-6">
         <div className="mb-3 h-10 w-36 animate-pulse rounded-lg bg-slate-200" />

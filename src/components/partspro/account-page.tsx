@@ -87,7 +87,7 @@ export function AccountPage({ userEmail }: AccountPageProps) {
   ] as const;
 
   return (
-    <main className="min-h-screen text-slate-950">
+    <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
       <StoreHeader />
       <div className="mx-auto grid max-w-[1400px] gap-4 px-4 py-5 lg:grid-cols-[340px_minmax(0,1fr)]">
         <aside className="space-y-4">

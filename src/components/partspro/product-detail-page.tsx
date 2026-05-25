@@ -32,7 +32,7 @@ export function ProductDetailPage({ product }: ProductDetailPageProps) {
   const canShowBuyerPrice = product.price > 0;
 
   return (
-    <main className="min-h-screen bg-[#f4f6fa] text-slate-950">
+    <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
       <StoreHeader />
       <div className="mx-auto max-w-[1500px] px-3 py-4 sm:px-4 sm:py-6">
         <Button variant="ghost" asChild className="mb-3">

@@ -7,7 +7,6 @@ import { motion } from "framer-motion";
 import {
   ArrowRight,
   BadgeCheck,
-  Bell,
   CheckCircle2,
   ChevronRight,
   ClipboardCheck,
@@ -27,7 +26,6 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
   categories,
@@ -36,11 +34,9 @@ import {
   type PartVisual as PartVisualType,
   formatEuro,
 } from "@/lib/partspro-data";
-import { PartsProLogo } from "./logo";
 import { PartVisual } from "./part-visual";
 import { CatalogBrandTree } from "./catalog-brand-tree";
-import { LanguageSwitcher } from "./language-switcher";
-import { StoreMobileMenu } from "./store-mobile-menu";
+import { StoreHeader } from "./store-header";
 import { useI18n, useT } from "./i18n-provider";
 import { useCart } from "./cart-state";
 import {
@@ -151,7 +147,7 @@ export function HomePage({
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
-      <HomeHeader modelGroups={modelGroups} />
+      <StoreHeader modelGroups={modelGroups} />
       <div className="mx-auto grid w-full max-w-[1500px] min-w-0 grid-cols-[minmax(0,1fr)] gap-3 px-2 py-3 sm:gap-4 sm:px-4 sm:py-4 lg:grid-cols-[230px_minmax(0,1fr)] xl:grid-cols-[230px_minmax(0,1fr)_300px]">
         <CategorySidebar modelGroups={modelGroups} />
         <div className="min-w-0 space-y-5">
@@ -168,111 +164,6 @@ export function HomePage({
         <RightRail />
       </div>
     </main>
-  );
-}
-
-function HomeHeader({ modelGroups }: { modelGroups?: readonly DeviceModelGroup[] }) {
-  const t = useT();
-  const cart = useCart();
-
-  return (
-    <>
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200/80 bg-white/90 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl">
-        <div className="mx-auto flex h-14 w-full max-w-[1500px] min-w-0 items-center gap-2 px-3 sm:h-16 sm:gap-3 sm:px-4">
-          <div className="flex min-w-0 shrink-0 items-center gap-2 lg:w-[230px] lg:gap-3">
-            <StoreMobileMenu modelGroups={modelGroups} />
-            <Link
-              href="/"
-              aria-label={tx(t, "storefront.home.header.logoLabel", "Torna alla home PartsPro")}
-              className="hidden rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:flex"
-            >
-              <PartsProLogo
-                tagline={tx(
-                  t,
-                  "storefront.logo.tagline",
-                  "Ricambi smartphone B2B Italia"
-                )}
-              />
-            </Link>
-            <Link
-              href="/"
-              aria-label={tx(t, "storefront.home.header.logoLabel", "Torna alla home PartsPro")}
-              className="flex min-w-0 shrink-0 items-center gap-1.5 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:hidden"
-            >
-              <PartsProLogo compact />
-              <span className="text-base font-black leading-none tracking-normal text-slate-950">
-                PartsPro
-              </span>
-            </Link>
-          </div>
-
-          <div className="relative hidden min-w-0 flex-1 md:block">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <Input
-              className="h-10 rounded-lg border-primary/30 bg-white pl-9 shadow-[0_0_0_3px_rgba(59,91,255,0.04)]"
-              placeholder={tx(
-                t,
-                "storefront.home.searchPlaceholder",
-                "Cerca prodotto, SKU, brand, modello..."
-              )}
-            />
-          </div>
-
-          <nav className="ml-auto flex shrink-0 items-center gap-1.5">
-            <Button variant="ghost" size="sm" asChild className="hidden md:inline-flex">
-              <Link href="/admin">{tx(t, "nav.admin", "Admin")}</Link>
-            </Button>
-            <Button variant="ghost" size="sm" asChild className="hidden lg:inline-flex">
-              <Link href="/catalogo?minStock=1">
-                <PackageCheck className="size-4" />
-                {tx(t, "storefront.home.header.availableOnly", "Solo disponibili")}
-              </Link>
-            </Button>
-            <LanguageSwitcher compact className="hidden sm:inline-flex" />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              className="relative hidden sm:inline-flex"
-              aria-label={tx(t, "storefront.home.notifications", "Notifiche")}
-            >
-              <Bell className="size-4" />
-              <span className="absolute right-1 top-1 size-2 rounded-full bg-red-500" />
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              asChild
-              className="relative bg-white shadow-sm"
-            >
-              <Link href="/carrello" aria-label={tx(t, "storefront.header.openCart", "Apri carrello")}>
-                <ShoppingCart className="size-4" />
-                <span className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                  {cart.itemCount}
-                </span>
-              </Link>
-            </Button>
-            <Button
-              variant="outline"
-              size="icon"
-              asChild
-              className="bg-white shadow-sm sm:hidden"
-            >
-              <Link
-                href="/account"
-                aria-label={tx(t, "storefront.header.openAccount", "Apri account B2B")}
-              >
-                <User className="size-4" />
-              </Link>
-            </Button>
-            <Button variant="outline" asChild className="hidden h-10 bg-white sm:inline-flex">
-              <Link href="/account">{tx(t, "storefront.common.b2bAccount", "Account B2B")}</Link>
-            </Button>
-          </nav>
-        </div>
-      </header>
-      <div aria-hidden="true" className="h-14 sm:h-16" />
-    </>
   );
 }
 

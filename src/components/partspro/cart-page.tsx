@@ -42,7 +42,7 @@ export function CartPage() {
   }
 
   return (
-    <main className="min-h-screen text-slate-950">
+    <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
       <StoreHeader />
       <div className="mx-auto grid max-w-[1300px] gap-2 px-2 pt-2 pb-[calc(5.25rem_+_env(safe-area-inset-bottom))] sm:gap-4 sm:px-4 sm:pt-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:pb-5">
         <section className="space-y-2 sm:space-y-4">
