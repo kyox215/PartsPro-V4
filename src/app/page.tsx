@@ -36,13 +36,15 @@ export default async function Home() {
   const categoryCounts = Object.fromEntries(
     categories.map((category, index) => [
       category.value,
-      categoryPages[index]?.data.total ?? 0,
+      categoryPages[index]?.warning
+        ? undefined
+        : categoryPages[index]?.data.total ?? 0,
     ])
   );
 
   return (
     <HomePage
-      catalogTotal={catalogTotalPage.data.total}
+      catalogTotal={catalogTotalPage.warning ? undefined : catalogTotalPage.data.total}
       categoryCounts={categoryCounts}
       featuredProducts={catalogPage.data.products.map(toHomeProduct)}
       modelGroups={modelGroups.data}

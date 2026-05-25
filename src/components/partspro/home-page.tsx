@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -20,6 +21,7 @@ import {
   ShieldCheck,
   ShoppingCart,
   Truck,
+  type LucideIcon,
   User,
   Warehouse,
 } from "lucide-react";
@@ -39,10 +41,15 @@ import { PartVisual } from "./part-visual";
 import { CatalogBrandTree } from "./catalog-brand-tree";
 import { LanguageSwitcher } from "./language-switcher";
 import { StoreMobileMenu } from "./store-mobile-menu";
-import { ProductCard } from "./product-card";
-import { useT } from "./i18n-provider";
+import { useI18n, useT } from "./i18n-provider";
 import { useCart } from "./cart-state";
-import { categoryLabel, tx } from "@/i18n/dictionaries/storefront";
+import {
+  categoryLabel,
+  leadTimeLabel,
+  stockStatusLabel,
+  tx,
+  type StorefrontTranslator,
+} from "@/i18n/dictionaries/storefront";
 
 type HomeCategorySummary = {
   count?: number;
@@ -304,9 +311,10 @@ function HeroSection({
   modelGroupCount: number;
 }) {
   const t = useT();
+  const { locale } = useI18n();
   const skuLabel =
     catalogTotal > 0
-      ? new Intl.NumberFormat("it-IT").format(catalogTotal)
+      ? new Intl.NumberFormat(locale).format(catalogTotal)
       : tx(t, "storefront.home.hero.catalogFallback", "Catalogo B2B");
 
   return (
@@ -458,6 +466,7 @@ function WorkflowSection() {
 
 function CategoryShowcase({ categories: items }: { categories: HomeCategorySummary[] }) {
   const t = useT();
+  const { locale } = useI18n();
 
   return (
     <section id="categories" className="space-y-3">
@@ -482,7 +491,12 @@ function CategoryShowcase({ categories: items }: { categories: HomeCategorySumma
               {categoryLabel(t, category.label)}
             </div>
             <div className="mt-1 truncate text-[11px] font-semibold text-slate-500 sm:text-xs">
-              {formatCount(category.count, tx(t, "storefront.home.common.catalog", "Catalogo"))}
+              {formatCount(
+                t,
+                locale,
+                category.count,
+                tx(t, "storefront.home.common.catalog", "Catalogo")
+              )}
             </div>
           </Link>
         ))}
@@ -505,7 +519,7 @@ function ProductPreview({ products }: { products: PartProduct[] }) {
       {products.length > 0 ? (
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-2 2xl:grid-cols-4">
           {products.slice(0, 8).map((product) => (
-            <ProductCard key={product.sku} product={product} />
+            <FeaturedProductCard key={product.sku} product={product} />
           ))}
         </div>
       ) : (
@@ -529,6 +543,7 @@ function BrandModelStrip({
   modelGroups: readonly DeviceModelGroup[];
 }) {
   const t = useT();
+  const { locale } = useI18n();
   const visibleBrands = modelGroups.slice(0, 8);
   const modelTotal = modelGroups.reduce((total, group) => total + group.models.length, 0);
 
@@ -554,7 +569,7 @@ function BrandModelStrip({
       <div className="grid rounded-lg border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.04)] sm:grid-cols-4">
         {[
           [
-            catalogTotal > 0 ? new Intl.NumberFormat("it-IT").format(catalogTotal) : "B2B",
+            catalogTotal > 0 ? new Intl.NumberFormat(locale).format(catalogTotal) : "B2B",
             tx(t, "storefront.home.brands.stats.sku", "SKU catalogo"),
           ],
           [
@@ -574,6 +589,114 @@ function BrandModelStrip({
         ))}
       </div>
     </section>
+  );
+}
+
+function FeaturedProductCard({ product }: { product: PartProduct }) {
+  const t = useT();
+  const { locale } = useI18n();
+  const productPath = `/prodotto/${encodeURIComponent(product.sku)}`;
+  const visibleModels = product.compatibleWith.slice(0, 2);
+  const extraModels = Math.max(product.compatibleWith.length - visibleModels.length, 0);
+  const stockLine = tx(
+    t,
+    "storefront.home.productCard.stockLine",
+    "{status} · {count} pz"
+  )
+    .replace("{status}", stockStatusLabel(t, product.status))
+    .replace("{count}", new Intl.NumberFormat(locale).format(product.stock));
+  const extraModelsLabel = tx(
+    t,
+    "storefront.home.productCard.extraModels",
+    "+{count} modelli"
+  ).replace("{count}", new Intl.NumberFormat(locale).format(extraModels));
+
+  return (
+    <article className="grid h-full min-w-0 grid-cols-[104px_minmax(0,1fr)] gap-3 rounded-lg border border-slate-200 bg-white p-2 shadow-[0_12px_28px_rgba(15,23,42,0.04)] transition hover:border-primary/40 sm:flex sm:flex-col sm:p-3">
+      <Link
+        href={productPath}
+        aria-label={tx(t, "storefront.home.productCard.openAria", "Apri scheda prodotto {name}").replace(
+          "{name}",
+          product.name
+        )}
+        className="relative block h-28 overflow-hidden rounded-md bg-slate-50 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-36 sm:rounded-lg"
+      >
+        {product.imageUrl ? (
+          <Image
+            src={product.imageUrl}
+            alt={product.imageAlt ?? product.name}
+            fill
+            sizes="(max-width: 640px) 104px, (max-width: 1280px) 50vw, 25vw"
+            className="object-contain p-2 sm:p-3"
+          />
+        ) : (
+          <PartVisual variant={product.visual} className="h-full rounded-md sm:rounded-lg" />
+        )}
+        <Badge className="absolute left-1.5 top-1.5 max-w-[calc(100%-0.75rem)] border border-primary/15 bg-white/90 px-1.5 py-0.5 text-[10px] text-primary shadow-sm">
+          {product.grade}
+        </Badge>
+      </Link>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Link
+          href={productPath}
+          className="line-clamp-2 break-words text-[13px] font-black leading-4 text-slate-950 hover:text-primary sm:text-sm sm:leading-5"
+        >
+          {product.name}
+        </Link>
+        <div className="mt-1 truncate font-mono text-[10px] text-slate-500 sm:text-xs">
+          {product.sku}
+        </div>
+
+        <div className="mt-2 grid gap-1.5 text-[11px] font-semibold text-slate-600">
+          <div className="flex min-w-0 items-center gap-1.5 rounded-md border border-emerald-100 bg-emerald-50 px-2 py-1 text-emerald-700">
+            <PackageCheck className="size-3.5 shrink-0" />
+            <span className="truncate">{stockLine}</span>
+          </div>
+          <div className="flex min-w-0 items-center gap-1.5 rounded-md border border-slate-100 bg-slate-50 px-2 py-1">
+            <Truck className="size-3.5 shrink-0 text-primary" />
+            <span className="truncate">{leadTimeLabel(t, product.leadTime)}</span>
+          </div>
+        </div>
+
+        <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
+          {visibleModels.map((model) => (
+            <span
+              key={model}
+              className="max-w-full truncate rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600"
+              title={model}
+            >
+              {model}
+            </span>
+          ))}
+          {extraModels > 0 && (
+            <span className="max-w-full truncate rounded-full bg-primary/8 px-2 py-1 text-[11px] font-bold text-primary">
+              {extraModelsLabel}
+            </span>
+          )}
+        </div>
+
+        <div className="mt-auto flex min-w-0 items-end justify-between gap-2 pt-3">
+          <div className="min-w-0">
+            <div className="truncate text-xs font-bold text-slate-700">
+              {tx(t, "storefront.home.productCard.loginPrice", "Prezzo dopo login")}
+            </div>
+            <div className="truncate text-[11px] text-slate-500">
+              {tx(t, "storefront.home.productCard.priceHint", "MOQ {moq} · listino B2B").replace(
+                "{moq}",
+                String(product.moq)
+              )}
+            </div>
+          </div>
+          <Button size="sm" variant="outline" asChild className="shrink-0 bg-white text-primary">
+            <Link href={productPath}>
+              {tx(t, "storefront.home.productCard.open", "Apri")}
+              <ArrowRight className="size-3.5" />
+            </Link>
+          </Button>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -608,7 +731,12 @@ function RightRail() {
                   <div className="truncate text-xs font-bold">{line.product.name}</div>
                   <div className="mt-1 text-[11px] text-slate-500">{line.sku}</div>
                   <div className="mt-1 flex items-center justify-between text-xs">
-                    <span className="text-emerald-600">{line.quantity} pz</span>
+                    <span className="text-emerald-600">
+                      {tx(t, "storefront.home.rightRail.cart.quantity", "{count} pz").replace(
+                        "{count}",
+                        String(line.quantity)
+                      )}
+                    </span>
                     <span className="font-bold text-primary">{formatEuro(line.lineTotal)}</span>
                   </div>
                 </div>
@@ -634,10 +762,10 @@ function RightRail() {
             <Link href="/carrello">{tx(t, "nav.cart", "Carrello")}</Link>
           </Button>
           {totals.lines.length === 0 ? (
-            <Button disabled>Checkout</Button>
+            <Button disabled>{tx(t, "storefront.common.checkout", "Checkout")}</Button>
           ) : (
             <Button asChild>
-              <Link href="/checkout">Checkout</Link>
+              <Link href="/checkout">{tx(t, "storefront.common.checkout", "Checkout")}</Link>
             </Button>
           )}
         </div>
@@ -684,7 +812,7 @@ function RightRail() {
   );
 }
 
-function InfoRow({ icon: Icon, text }: { icon: typeof CreditCard; text: string }) {
+function InfoRow({ icon: Icon, text }: { icon: LucideIcon; text: string }) {
   return (
     <div className="flex min-w-0 items-center gap-2 rounded-lg bg-slate-50 px-3 py-2">
       <Icon className="size-4 shrink-0 text-primary" />
@@ -724,12 +852,20 @@ function SectionHeader({
   );
 }
 
-function formatCount(count: number | undefined, fallback: string) {
+function formatCount(
+  t: StorefrontTranslator,
+  locale: string,
+  count: number | undefined,
+  fallback: string
+) {
   if (count === undefined) {
     return fallback;
   }
 
-  return `${new Intl.NumberFormat("it-IT").format(count)} SKU`;
+  return tx(t, "storefront.home.common.skuCount", "{count} SKU").replace(
+    "{count}",
+    new Intl.NumberFormat(locale).format(count)
+  );
 }
 
 function fallbackBrands(): DeviceModelGroup[] {
