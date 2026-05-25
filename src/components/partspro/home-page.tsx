@@ -186,7 +186,13 @@ function HomeHeader({ modelGroups }: { modelGroups?: readonly DeviceModelGroup[]
               aria-label={tx(t, "storefront.home.header.logoLabel", "Torna alla home PartsPro")}
               className="hidden rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:flex"
             >
-              <PartsProLogo />
+              <PartsProLogo
+                tagline={tx(
+                  t,
+                  "storefront.logo.tagline",
+                  "Ricambi smartphone B2B Italia"
+                )}
+              />
             </Link>
             <Link
               href="/"

@@ -101,7 +101,13 @@ export function StoreMobileMenu({
       >
         <SheetHeader className="border-b px-4 py-3 pr-12 text-left">
           <div className="min-w-0">
-            <PartsProLogo />
+            <PartsProLogo
+              tagline={tx(
+                t,
+                "storefront.logo.tagline",
+                "Ricambi smartphone B2B Italia"
+              )}
+            />
           </div>
           <SheetTitle className="sr-only">
             {tx(t, "storefront.header.mobileMenuTitle", "Menu PartsPro")}

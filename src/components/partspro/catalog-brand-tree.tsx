@@ -6,6 +6,8 @@ import { ChevronDown } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { deviceModels, type DeviceModelGroup } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
+import { tx } from "@/i18n/dictionaries/storefront";
+import { useT } from "./i18n-provider";
 
 type CatalogBrandTreeVariant = "mobile" | "desktop";
 
@@ -38,6 +40,7 @@ export function CatalogBrandTree({
   showAvailableLink = false,
   variant = "mobile",
 }: CatalogBrandTreeProps) {
+  const t = useT();
   const desktop = variant === "desktop";
   const selectedModelRef = useRef<HTMLElement | null>(null);
   const selectedBrand = selectedCatalog?.brand;
@@ -116,7 +119,7 @@ export function CatalogBrandTree({
           )}
           onClick={handleCatalogRootSelect}
         >
-          Tutto il catalogo
+          {tx(t, "storefront.catalog.allProducts", "Tutto il catalogo")}
         </button>
       ) : (
         <Link
@@ -125,7 +128,7 @@ export function CatalogBrandTree({
           className={catalogLinkClassName}
           onClick={onNavigate}
         >
-          Tutto il catalogo
+          {tx(t, "storefront.catalog.allProducts", "Tutto il catalogo")}
         </Link>
       )}
       {showAvailableLink && (
@@ -140,9 +143,15 @@ export function CatalogBrandTree({
             )}
             onClick={() => handleAvailabilityToggle(!inStockOnly)}
           >
-            <span className="min-w-0 flex-1 truncate">Solo disponibili</span>
+            <span className="min-w-0 flex-1 truncate">
+              {tx(t, "storefront.catalog.availableOnly", "Solo disponibili")}
+            </span>
             <Switch
-              aria-label="Filtra solo prodotti disponibili"
+              aria-label={tx(
+                t,
+                "storefront.catalog.availableOnlyAria",
+                "Filtra solo prodotti disponibili"
+              )}
               checked={inStockOnly}
               onCheckedChange={handleAvailabilityToggle}
               onClick={(event) => event.stopPropagation()}
@@ -156,7 +165,7 @@ export function CatalogBrandTree({
             className={availableLinkClassName}
             onClick={onNavigate}
           >
-            Solo disponibili
+            {tx(t, "storefront.catalog.availableOnly", "Solo disponibili")}
           </Link>
         )
       )}

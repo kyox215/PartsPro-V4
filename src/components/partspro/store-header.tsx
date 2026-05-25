@@ -50,14 +50,20 @@ export function StoreHeader({
 
           <Link
             href="/"
-            aria-label="Torna alla home PartsPro"
+            aria-label={tx(t, "storefront.home.header.logoLabel", "Torna alla home PartsPro")}
             className="hidden shrink-0 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:flex"
           >
-            <PartsProLogo />
+            <PartsProLogo
+              tagline={tx(
+                t,
+                "storefront.logo.tagline",
+                "Ricambi smartphone B2B Italia"
+              )}
+            />
           </Link>
           <Link
             href="/"
-            aria-label="Torna alla home PartsPro"
+            aria-label={tx(t, "storefront.home.header.logoLabel", "Torna alla home PartsPro")}
             className="flex min-w-0 shrink-0 items-center gap-1.5 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:hidden"
           >
             <PartsProLogo compact />
@@ -99,13 +105,13 @@ export function StoreHeader({
                 onClick={() => onCatalogSelect(availabilitySelection)}
               >
                 <PackageCheck className="size-4" />
-                Solo disponibili
+                {tx(t, "storefront.catalog.availableOnly", "Solo disponibili")}
               </Button>
             ) : (
               <Button variant="ghost" asChild>
                 <Link href="/catalogo?minStock=1">
                   <PackageCheck className="size-4" />
-                  Solo disponibili
+                  {tx(t, "storefront.catalog.availableOnly", "Solo disponibili")}
                 </Link>
               </Button>
             )}
