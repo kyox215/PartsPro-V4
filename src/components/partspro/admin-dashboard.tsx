@@ -68,6 +68,7 @@ import {
   User,
   Users,
   Warehouse,
+  type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -158,17 +159,37 @@ import {
   type AdminText,
 } from "@/i18n/dictionaries/admin";
 
+type AdminPanelValue = "overview" | "orders" | "customers" | "catalog" | "timeline";
+
+type AdminNavItem = {
+  labelKey: keyof AdminText["nav"];
+  icon: LucideIcon;
+  panel?: AdminPanelValue;
+};
+
+const adminPanelValues = [
+  "overview",
+  "orders",
+  "customers",
+  "catalog",
+  "timeline",
+] as const satisfies readonly AdminPanelValue[];
+
 const navItems = [
-  { labelKey: "dashboard", icon: Home, active: true },
-  { labelKey: "orders", icon: ClipboardList },
-  { labelKey: "catalog", icon: Package },
+  { labelKey: "dashboard", icon: Home, panel: "overview" },
+  { labelKey: "orders", icon: ClipboardList, panel: "orders" },
+  { labelKey: "catalog", icon: Package, panel: "catalog" },
   { labelKey: "warehouse", icon: Warehouse },
-  { labelKey: "customers", icon: Users },
-  { labelKey: "marketing", icon: Bell },
+  { labelKey: "customers", icon: Users, panel: "customers" },
+  { labelKey: "marketing", icon: Bell, panel: "timeline" },
   { labelKey: "finance", icon: BarChart3 },
   { labelKey: "reports", icon: Boxes },
   { labelKey: "settings", icon: Settings },
-] as const;
+] as const satisfies readonly AdminNavItem[];
+
+function isAdminPanelValue(value: string): value is AdminPanelValue {
+  return adminPanelValues.includes(value as AdminPanelValue);
+}
 
 const lowStockThreshold = 10;
 const productGrades = ["A+", "A", "B", "Refurbished"] as const;
@@ -722,6 +743,8 @@ function readStringList(value: unknown) {
 
 export function AdminDashboard() {
   const text = useAdminText();
+  const [activePanel, setActivePanel] =
+    React.useState<AdminPanelValue>("overview");
   const [products, setProducts] = React.useState<PartProduct[]>([]);
   const [productDataSource, setProductDataSource] =
     React.useState<ProductDataSource>(() => ({
@@ -1213,14 +1236,24 @@ export function AdminDashboard() {
     enableRowSelection: true,
   });
 
+  const handlePanelChange = React.useCallback((value: string) => {
+    if (isAdminPanelValue(value)) {
+      setActivePanel(value);
+    }
+  }, []);
+
   return (
     <main className="h-dvh overflow-y-auto overflow-x-clip text-slate-950">
       <div className="flex min-w-0">
-        <AdminSidebar />
+        <AdminSidebar activePanel={activePanel} onPanelChange={setActivePanel} />
         <section className="w-full min-w-0 flex-1">
-          <AdminTopbar />
+          <AdminTopbar activePanel={activePanel} onPanelChange={setActivePanel} />
           <div className="mx-auto w-full max-w-[1500px] min-w-0 px-3 pb-3 pt-0 sm:px-4 sm:py-4">
-            <Tabs defaultValue="overview" className="flex min-w-0 flex-col gap-3 sm:gap-4">
+            <Tabs
+              value={activePanel}
+              onValueChange={handlePanelChange}
+              className="flex min-w-0 flex-col gap-3 sm:gap-4"
+            >
               <div className="sticky top-16 z-20 order-1 -mx-3 max-w-[calc(100%+1.5rem)] border-b border-slate-200/80 bg-slate-50/95 px-3 py-2 shadow-sm backdrop-blur sm:-mx-4 sm:max-w-[calc(100%+2rem)] sm:px-4 lg:static lg:order-3 lg:mx-0 lg:max-w-full lg:border-0 lg:bg-transparent lg:p-0 lg:shadow-none">
                 <div className="max-w-full overflow-x-auto lg:overflow-visible">
                   <TabsList className="h-9 min-w-max bg-white shadow-sm sm:h-10">
@@ -1308,29 +1341,50 @@ export function AdminDashboard() {
   );
 }
 
-function AdminSidebar() {
+type AdminNavigationProps = {
+  activePanel: AdminPanelValue;
+  onPanelChange: (panel: AdminPanelValue) => void;
+};
+
+function AdminSidebar({ activePanel, onPanelChange }: AdminNavigationProps) {
   const text = useAdminText();
 
   return (
     <aside className="sticky top-0 hidden h-screen w-[250px] shrink-0 border-r border-slate-200 bg-white p-4 lg:block">
       <PartsProLogo />
       <nav className="mt-8 space-y-1">
-        {navItems.map((item) => (
-          <a
-            key={item.labelKey}
-            href="#"
-            className={cn(
-              "flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium text-slate-600 transition hover:bg-primary/8 hover:text-primary",
-              "active" in item && item.active && "bg-primary/10 text-primary"
-            )}
-          >
-            <item.icon className="size-4" />
-            {text.nav[item.labelKey]}
-            {item.labelKey === "catalog" && (
-              <ChevronRight className="ml-auto size-4 opacity-60" />
-            )}
-          </a>
-        ))}
+        {navItems.map((item) => {
+          const panel = "panel" in item ? item.panel : undefined;
+          const isAvailable = Boolean(panel);
+          const isActive = panel === activePanel;
+
+          return (
+            <button
+              key={item.labelKey}
+              type="button"
+              disabled={!isAvailable}
+              aria-current={isActive ? "page" : undefined}
+              onClick={() => {
+                if (panel) {
+                  onPanelChange(panel);
+                }
+              }}
+              className={cn(
+                "flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-medium transition",
+                isActive
+                  ? "bg-primary/10 text-primary"
+                  : "text-slate-600 hover:bg-primary/8 hover:text-primary",
+                !isAvailable && "cursor-default opacity-55 hover:bg-transparent hover:text-slate-600"
+              )}
+            >
+              <item.icon className="size-4" />
+              {text.nav[item.labelKey]}
+              {item.labelKey === "catalog" && (
+                <ChevronRight className="ml-auto size-4 opacity-60" />
+              )}
+            </button>
+          );
+        })}
       </nav>
       <div className="absolute bottom-4 left-4 right-4">
         <Separator className="mb-4" />
@@ -1349,13 +1403,14 @@ function AdminSidebar() {
   );
 }
 
-function AdminTopbar() {
+function AdminTopbar({ activePanel, onPanelChange }: AdminNavigationProps) {
   const text = useAdminText();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/82 backdrop-blur-xl">
       <div className="mx-auto flex h-16 w-full max-w-[1500px] min-w-0 items-center gap-3 px-4">
-        <Sheet>
+        <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
           <SheetTrigger asChild>
             <Button variant="outline" size="icon" className="bg-white lg:hidden">
               <Menu className="size-4" />
@@ -1372,16 +1427,40 @@ function AdminTopbar() {
             </SheetHeader>
             <div className="p-4">
               <LanguageSwitcher scope="admin" className="mb-4" />
-              {navItems.map((item) => (
-                <a
-                  key={item.labelKey}
-                  href="#"
-                  className="flex h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium text-slate-700 hover:bg-primary/8 hover:text-primary"
-                >
-                  <item.icon className="size-4" />
-                  {text.nav[item.labelKey]}
-                </a>
-              ))}
+              {navItems.map((item) => {
+                const panel = "panel" in item ? item.panel : undefined;
+                const isAvailable = Boolean(panel);
+                const isActive = panel === activePanel;
+
+                return (
+                  <button
+                    key={item.labelKey}
+                    type="button"
+                    disabled={!isAvailable}
+                    aria-current={isActive ? "page" : undefined}
+                    onClick={() => {
+                      if (panel) {
+                        onPanelChange(panel);
+                        setIsMobileMenuOpen(false);
+                      }
+                    }}
+                    className={cn(
+                      "flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-medium transition",
+                      isActive
+                        ? "bg-primary/10 text-primary"
+                        : "text-slate-700 hover:bg-primary/8 hover:text-primary",
+                      !isAvailable &&
+                        "cursor-default opacity-55 hover:bg-transparent hover:text-slate-700"
+                    )}
+                  >
+                    <item.icon className="size-4" />
+                    {text.nav[item.labelKey]}
+                    {item.labelKey === "catalog" && (
+                      <ChevronRight className="ml-auto size-4 opacity-60" />
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </SheetContent>
         </Sheet>
