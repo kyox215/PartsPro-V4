@@ -1,0 +1,249 @@
+-- PartsPro Supabase schema documentation.
+-- This file is not applied automatically.
+--
+-- Remote metadata snapshot:
+-- - Project ref inspected read-only: zethhymziiziiwrypsnc
+-- - Snapshot date: 2026-05-24
+-- - Postgres: 17.6
+-- - PostgREST: v14
+--
+-- Pending local migration draft:
+-- - supabase/migrations/20260524133225_harden_partspro_relations.sql
+-- - Status: prepared locally, NOT applied to the remote database.
+--
+-- The remote database already uses the v4 table names below. Older local
+-- draft names such as companies/order_items are intentionally not used here.
+
+-- Core auth/profile model.
+--
+-- public.profiles
+--   id uuid primary key references auth.users(id) on delete cascade
+--   email text
+--   role text default 'customer'
+--     allowed remotely: customer, sales, warehouse, purchasing, admin
+--   created_at timestamptz default now()
+--   updated_at timestamptz default now()
+--
+-- Pending migration additions:
+--   customer_id uuid references public.customers(id) on delete set null not valid
+--   private.current_profile_role()
+--   private.is_staff() for sales, warehouse, purchasing, admin
+--   private.is_admin()
+
+-- Customer/company and B2B application model.
+--
+-- public.customers
+--   id uuid primary key default gen_random_uuid()
+--   user_id uuid references auth.users(id) on delete set null
+--   company_name text
+--   contact_name text
+--   email text
+--   vat_number text
+--   fiscal_code text
+--   sdi text
+--   pec text
+--   phone text
+--   registered_address text
+--   billing_address text
+--   shipping_address text
+--   tier text default 'standard'
+--   price_group_id text references public.price_groups(id)
+--   status text default 'pending'
+--     allowed remotely: active, pending, suspended
+--   monthly_purchase text
+--   orders_count integer default 0
+--   revenue numeric default 0
+--   credit_limit numeric default 0
+--   payment_terms text
+--   profile_completed_at timestamptz
+--   last_order_at timestamptz
+--   created_at timestamptz default now()
+--   updated_at timestamptz default now()
+--
+-- public.b2b_applications
+--   id uuid primary key default gen_random_uuid()
+--   company/contact/fiscal fields mirroring customers
+--   requested_price_group_id text references public.price_groups(id)
+--   status text default 'submitted'
+--     allowed remotely: submitted, approved, rejected
+--   review_note text
+--   accepts_terms boolean default false
+--   accepts_privacy boolean default false
+--   accepts_marketing boolean default false
+--   submitted_at timestamptz default now()
+--   reviewed_at timestamptz
+--
+-- Pending migration additions:
+--   customers_id_user_id_key unique (id, user_id)
+--   customers_user_id_unique_idx when no duplicate user_id rows exist
+--   profiles.customer_id backfill from customers.user_id where possible
+--   orders_customer_user_match_fkey not valid
+--   b2b_applications.approved_customer_id references customers(id) not valid
+--   private.current_customer_id()
+--   private.current_customer_status()
+--   private.can_view_b2b_prices()
+
+-- Catalog and inventory model.
+--
+-- public.products
+--   id uuid primary key default gen_random_uuid()
+--   sku_code text unique
+--   name text
+--   brand text
+--   model text
+--   model_code text
+--   model_codes text[]
+--   category text
+--   quality_grade text
+--   color text
+--   frame text
+--   stock_status text default 'incoming'
+--     allowed remotely: in_stock, low_stock, out_of_stock, incoming
+--   moq integer default 1 check (moq > 0)
+--   cost_price numeric default 0
+--   retail_price numeric default 0
+--   b2b_price numeric default 0
+--   vat_mode text default 'IVA esclusa'
+--   warranty_days integer default 180
+--   weight_gram integer default 0
+--   stock_qty integer default 0
+--   location text
+--   batch_code text
+--   supplier text
+--   is_battery boolean default false
+--   is_dangerous_goods boolean default false
+--   msds_url text
+--   un38_url text
+--   compatibility jsonb default '[]'
+--   compatibility_models text[]
+--   alternative_skus text[]
+--   add_on_skus text[]
+--   highlights text[]
+--   tier_prices jsonb default '[]'
+--   status text default 'active'
+--     allowed remotely: active, draft, hidden, blocked
+--   image_path text
+--   image_alt text
+--   gallery_image_paths text[]
+--   created_at timestamptz default now()
+--   updated_at timestamptz default now()
+--
+-- public.inventory_items
+--   id uuid primary key default gen_random_uuid()
+--   sku_code text references public.products(sku_code)
+--   product_name text
+--   brand/model/quality_grade text
+--   batch_code text
+--   location text
+--   actual_qty integer default 0
+--   locked_qty integer default 0
+--   available_qty integer default 0
+--   incoming_qty integer default 0
+--   qc_qty integer default 0
+--   rma_qty integer default 0
+--   defective_qty integer default 0
+--   supplier text
+--   last_movement_at timestamptz default now()
+--
+-- Pending migration additions:
+--   public.catalog_public_summary security_invoker view without price columns
+--     includes stock_qty/location so checkout can validate availability without
+--     exposing costs or B2B price columns
+--   public.catalog_buyer_prices security_invoker view with guarded B2B prices
+--   private.product_b2b_price(product_id uuid)
+--   private.product_tier_prices(product_id uuid)
+--   direct anon/authenticated SELECT on products narrowed to safe columns only
+
+-- Order model.
+--
+-- public.orders
+--   id uuid primary key default gen_random_uuid()
+--   order_no text unique
+--   customer_id uuid references public.customers(id)
+--   user_id uuid references auth.users(id) on delete set null
+--   customer_name text
+--   customer_tier text default 'standard'
+--   status text default 'submitted'
+--     allowed remotely: submitted, accepted, picking, packed, shipped, completed
+--   payment_status text default 'pending'
+--     allowed remotely: pending, paid, bank_waiting, failed
+--   stock_risk text default 'clear'
+--     allowed remotely: clear, low, split, blocked
+--   total_net numeric default 0
+--   vat numeric default 0
+--   shipping numeric default 0
+--   shipping_method text
+--   fiscal jsonb default '{}'
+--   delivery_address text
+--   customer_note text
+--   staff_note text
+--   created_at timestamptz default now()
+--   updated_at timestamptz default now()
+--
+-- public.order_lines
+--   id uuid primary key default gen_random_uuid()
+--   order_id uuid references public.orders(id) on delete cascade
+--   sku_code text references public.products(sku_code)
+--   product_name text
+--   quality_grade text
+--   quantity integer check (quantity > 0)
+--   unit_price numeric default 0
+--   stock_status text default 'available'
+--   batch_code text
+--   location text
+--
+-- public.order_events
+--   id uuid primary key default gen_random_uuid()
+--   order_id uuid references public.orders(id)
+--   event_type text
+--   from_status text
+--   to_status text
+--   actor_id uuid references auth.users(id)
+--   note text
+--   metadata jsonb default '{}'
+--   created_at timestamptz default now()
+--
+-- Pending migration additions:
+--   partspro_orders_amounts_nonnegative not valid
+--   partspro_order_lines_unit_price_nonnegative not valid
+--   private.create_order_transaction(...) with line/MOQ/stock/shipping checks
+--   public.create_order_transaction(...) RPC wrapper for authenticated users
+--   TODO: add atomic inventory reservation/decrement once warehouse allocation
+--   rules are finalized; current draft rejects out-of-stock and over-stock
+--   orders but does not lock inventory_items.available_qty.
+
+-- RMA model.
+--
+-- public.rma_requests
+--   id uuid primary key default gen_random_uuid()
+--   user_id uuid references auth.users(id) on delete set null
+--   order_no text
+--   sku_code text
+--   order_line_id uuid references public.order_lines(id) on delete set null
+--   quantity integer default 1 check (quantity > 0)
+--   status text default 'submitted'
+--   problem_type text
+--   description text
+--   evidence_urls text[] default '{}'
+--   tested_before_install boolean default false
+--   installed boolean default false
+--   has_physical_damage boolean default false
+--   requested_resolution text default 'replacement'
+--     allowed remotely: replacement, refund, credit_note
+--   created_at timestamptz default now()
+--   updated_at timestamptz default now()
+--
+-- Pending migration additions:
+--   attachments jsonb default '[]'
+--   evidence_urls mirrored into attachments where possible
+--   partspro_rma_status_check not valid
+--   partspro_rma_attachments_array_check not valid
+--   partspro_rma_order_line_required not valid
+--   private.enforce_rma_order_line() trigger
+--   partspro_rma_insert_order_line_guard restrictive insert policy
+
+-- Current RLS posture observed remotely:
+-- - All listed public tables have RLS enabled.
+-- - Existing policies are left in place by the pending migration.
+-- - The pending migration adds only one new restrictive RMA insert policy and
+--   avoids dropping or replacing existing policies.
