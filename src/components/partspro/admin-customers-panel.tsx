@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import {
+  AlertTriangle,
   CheckCircle2,
   CircleDollarSign,
   ClipboardList,
@@ -17,6 +18,7 @@ import {
   UserRound,
   Users,
   WalletCards,
+  XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,15 +48,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  companyProfiles,
   formatEuro,
-  orderSummaries,
   products,
-  rmaRequests,
-  type CompanyProfile,
   type CompanyStatus,
   type OrderStatus,
-  type OrderSummary,
   type PartProduct,
   type RmaStatus,
 } from "@/lib/partspro-data";
@@ -63,6 +60,7 @@ import {
   customerTiers,
   formatTierDiscount,
   getTierRule,
+  normalizeCustomerTier,
   type CustomerTier,
 } from "@/lib/partspro-pricing";
 import { cn } from "@/lib/utils";
@@ -70,8 +68,46 @@ import { cn } from "@/lib/utils";
 type TierFilterValue = "all" | CustomerTier;
 type StatusFilterValue = "all" | CompanyStatus;
 type CustomerLifecycle = "onboarding" | "active" | "vip" | "at_risk";
+type ApiSource = "admin_api" | "supabase" | "empty";
+type NoticeTone = "success" | "info" | "warning" | "error";
+type ApplicationStatus = "submitted" | "pending" | "approved" | "rejected";
 
-type CustomerProfile = CompanyProfile & {
+type CustomerOrder = {
+  id: string;
+  date: string;
+  status: OrderStatus;
+  company: string;
+  total: number;
+  items: number;
+  channel: "Web" | "Admin" | "Account";
+  margin: number;
+  paymentTerms: string;
+  topProduct: string;
+  topSku: string;
+};
+
+type CustomerRma = {
+  id: string;
+  orderId: string;
+  sku: string;
+  productName: string;
+  status: RmaStatus;
+  reason: string;
+  createdAt: string;
+  resolution: string;
+};
+
+type CustomerProfile = {
+  id: string;
+  name: string;
+  partitaIva: string;
+  codiceFiscale: string;
+  pec: string;
+  codiceDestinatario: string;
+  status: CompanyStatus;
+  priceList: CustomerTier;
+  city: string;
+  province: string;
   accountOwner: string;
   contactName: string;
   email: string;
@@ -84,16 +120,46 @@ type CustomerProfile = CompanyProfile & {
   lastContact: string;
   primarySku: string;
   notes: string;
+  orders: CustomerOrder[];
+  rmas: CustomerRma[];
 };
 
-type CustomerOrder = OrderSummary & {
-  channel: "Web" | "Admin" | "Account";
-  margin: number;
-  paymentTerms: string;
-  topProduct: string;
-  topSku: string;
+type B2BApplication = {
+  id: string;
+  companyName: string;
+  partitaIva: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  city: string;
+  province: string;
+  status: ApplicationStatus;
+  requestedTier: CustomerTier;
+  createdAt: string;
+  notes: string;
 };
-type CustomerRma = (typeof rmaRequests)[number];
+
+type ApiCollectionResult<T> = {
+  items: T[];
+  source: ApiSource;
+  total: number;
+  returned: number;
+};
+
+type DataSourceState = {
+  customersSource: ApiSource;
+  applicationsSource: ApiSource;
+  syncedAt: string | null;
+  customersTotal: number;
+  applicationsTotal: number;
+  customerError?: string;
+  applicationError?: string;
+};
+
+type PanelNotice = {
+  tone: NoticeTone;
+  message: string;
+};
 
 const tiers = customerTiers;
 const statusFilters: CompanyStatus[] = [
@@ -113,71 +179,182 @@ const tierBadgeClasses: Record<CustomerTier, string> = {
   Pro: "border-cyan-200 bg-cyan-50 text-cyan-700",
   Partner: "border-emerald-200 bg-emerald-50 text-emerald-700",
 };
-
-const customerMeta: Record<
-  string,
-  Omit<CustomerProfile, keyof CompanyProfile>
-> = {};
-
-const supplementalCustomers: CustomerProfile[] = [];
-
-const customers: CustomerProfile[] = [
-  ...companyProfiles.map((profile) => ({
-    ...profile,
-    ...customerMeta[profile.id],
-  })),
-  ...supplementalCustomers,
+const applicationStatusLabels: Record<ApplicationStatus, string> = {
+  submitted: "Nuova",
+  pending: "In verifica",
+  approved: "Approvata",
+  rejected: "Respinta",
+};
+const fallbackPricingProducts: PartProduct[] = [
+  {
+    sku: "PP-DEMO-SCREEN",
+    slug: "pp-demo-screen",
+    name: "Display OLED compatibile",
+    category: "Screen",
+    brand: "PartsPro",
+    grade: "A",
+    price: 89,
+    retailPrice: 119,
+    stock: 0,
+    status: "In Stock",
+    updatedAt: "Demo",
+    visual: "screen",
+    compatibleWith: ["iPhone"],
+    warehouse: "Milano",
+    moq: 1,
+    vatRate: 22,
+    rmaDays: 12,
+    leadTime: "24/48h",
+    tags: [],
+  },
+  {
+    sku: "PP-DEMO-BATTERY",
+    slug: "pp-demo-battery",
+    name: "Batteria alta capacita",
+    category: "Battery",
+    brand: "PartsPro",
+    grade: "A+",
+    price: 34,
+    retailPrice: 49,
+    stock: 0,
+    status: "In Stock",
+    updatedAt: "Demo",
+    visual: "battery",
+    compatibleWith: ["Samsung"],
+    warehouse: "Roma",
+    moq: 1,
+    vatRate: 22,
+    rmaDays: 12,
+    leadTime: "24/48h",
+    tags: [],
+  },
+  {
+    sku: "PP-DEMO-CAMERA",
+    slug: "pp-demo-camera",
+    name: "Modulo camera posteriore",
+    category: "Camera",
+    brand: "PartsPro",
+    grade: "A",
+    price: 57,
+    retailPrice: 79,
+    stock: 0,
+    status: "In Stock",
+    updatedAt: "Demo",
+    visual: "camera",
+    compatibleWith: ["Xiaomi"],
+    warehouse: "Shenzhen",
+    moq: 1,
+    vatRate: 22,
+    rmaDays: 12,
+    leadTime: "5/7 gg",
+    tags: [],
+  },
 ];
-
-const supplementalOrders: OrderSummary[] = [];
-
-const customerOrders: CustomerOrder[] = [...orderSummaries, ...supplementalOrders].map(
-  (order, index) => {
-    const product = products[index % products.length] ?? products[0];
-
-    return {
-      ...order,
-      channel: index % 3 === 0 ? "Web" : index % 3 === 1 ? "Admin" : "Account",
-      margin: [18, 24, 14, 21, 17, 27, 12, 19][index] ?? 16,
-      paymentTerms:
-        order.status === "pending_payment" ? "Bonifico anticipato" : "30 gg fine mese",
-      topProduct: product.name,
-      topSku: product.sku,
-    };
-  }
-);
-
-const sampleProducts = products.slice(0, 3);
+const pricingProducts = products.length > 0 ? products.slice(0, 3) : fallbackPricingProducts;
 
 export function AdminCustomersPanel() {
+  const [customers, setCustomers] = React.useState<CustomerProfile[]>([]);
+  const [applications, setApplications] = React.useState<B2BApplication[]>([]);
+  const [dataSource, setDataSource] = React.useState<DataSourceState>({
+    customersSource: "empty",
+    applicationsSource: "empty",
+    syncedAt: null,
+    customersTotal: 0,
+    applicationsTotal: 0,
+  });
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [pendingActionKey, setPendingActionKey] = React.useState<string | null>(null);
+  const [notice, setNotice] = React.useState<PanelNotice | null>(null);
   const [query, setQuery] = React.useState("");
   const [tierFilter, setTierFilter] = React.useState<TierFilterValue>("all");
   const [statusFilter, setStatusFilter] =
     React.useState<StatusFilterValue>("all");
-  const [selectedCustomerId, setSelectedCustomerId] = React.useState(
-    customers[0]?.id ?? ""
-  );
-  const [tierByCustomer, setTierByCustomer] = React.useState<
-    Record<string, CustomerTier>
-  >(() =>
-    customers.reduce<Record<string, CustomerTier>>((accumulator, customer) => {
-      accumulator[customer.id] = customer.priceList;
-      return accumulator;
-    }, {})
-  );
+  const [selectedCustomerId, setSelectedCustomerId] = React.useState("");
 
-  const customersWithTier = React.useMemo(
-    () =>
-      customers.map((customer) => ({
-        ...customer,
-        priceList: tierByCustomer[customer.id] ?? customer.priceList,
-      })),
-    [tierByCustomer]
-  );
+  const refreshAdminData = React.useCallback(async (signal?: AbortSignal) => {
+    setIsLoading(true);
+
+    try {
+      const [customersResult, applicationsResult] = await Promise.allSettled([
+        fetchCustomersFromApi(signal),
+        fetchApplicationsFromApi(signal),
+      ]);
+
+      if (signal?.aborted) {
+        return;
+      }
+
+      const nextCustomers =
+        customersResult.status === "fulfilled" ? customersResult.value.items : [];
+      const nextApplications =
+        applicationsResult.status === "fulfilled"
+          ? applicationsResult.value.items
+          : [];
+      const customerError =
+        customersResult.status === "rejected"
+          ? readableError(customersResult.reason)
+          : undefined;
+      const applicationError =
+        applicationsResult.status === "rejected"
+          ? readableError(applicationsResult.reason)
+          : undefined;
+
+      setCustomers(nextCustomers);
+      setApplications(nextApplications);
+      setSelectedCustomerId((current) =>
+        nextCustomers.some((customer) => customer.id === current)
+          ? current
+          : nextCustomers[0]?.id ?? ""
+      );
+      setDataSource({
+        customersSource:
+          customersResult.status === "fulfilled"
+            ? customersResult.value.source
+            : "empty",
+        applicationsSource:
+          applicationsResult.status === "fulfilled"
+            ? applicationsResult.value.source
+            : "empty",
+        syncedAt: formatSyncTime(),
+        customersTotal:
+          customersResult.status === "fulfilled" ? customersResult.value.total : 0,
+        applicationsTotal:
+          applicationsResult.status === "fulfilled"
+            ? applicationsResult.value.total
+            : 0,
+        customerError,
+        applicationError,
+      });
+      setNotice({
+        tone: customerError || applicationError ? "warning" : "success",
+        message:
+          customerError || applicationError
+            ? "Admin clienti sincronizzato parzialmente: verifica gli endpoint evidenziati."
+            : "Clienti e richieste B2B sincronizzati dagli endpoint admin.",
+      });
+    } finally {
+      if (!signal?.aborted) {
+        setIsLoading(false);
+      }
+    }
+  }, []);
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      void refreshAdminData(controller.signal);
+    }, 0);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [refreshAdminData]);
+
   const filteredCustomers = React.useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
 
-    return customersWithTier.filter((customer) => {
+    return customers.filter((customer) => {
       const matchesQuery =
         !normalizedQuery ||
         [
@@ -199,51 +376,44 @@ export function AdminCustomersPanel() {
 
       return matchesQuery && matchesTier && matchesStatus;
     });
-  }, [customersWithTier, query, statusFilter, tierFilter]);
+  }, [customers, query, statusFilter, tierFilter]);
 
   const selectedCustomer =
-    customersWithTier.find((customer) => customer.id === selectedCustomerId) ??
-    customersWithTier[0];
+    customers.find((customer) => customer.id === selectedCustomerId) ??
+    customers[0] ??
+    null;
   const selectedOrders = React.useMemo(
     () =>
-      customerOrders
-        .filter((order) => order.company === selectedCustomer?.name)
-        .sort((a, b) => parseItalianDate(b.date) - parseItalianDate(a.date)),
-    [selectedCustomer?.name]
+      [...(selectedCustomer?.orders ?? [])].sort(
+        (a, b) => parseDateValue(b.date) - parseDateValue(a.date)
+      ),
+    [selectedCustomer?.orders]
   );
-  const selectedOrderIds = React.useMemo(
-    () => new Set(selectedOrders.map((order) => order.id)),
-    [selectedOrders]
-  );
-  const selectedRmas = React.useMemo(
-    () =>
-      rmaRequests.filter((request) => selectedOrderIds.has(request.orderId)),
-    [selectedOrderIds]
-  );
+  const selectedRmas = selectedCustomer?.rmas ?? [];
+  const selectedLastOrder = selectedOrders[0];
   const stats = React.useMemo(() => {
-    const receivables = customersWithTier.reduce(
+    const receivables = customers.reduce(
       (total, customer) => total + customer.receivables,
       0
     );
-    const overdue = customersWithTier.reduce(
-      (total, customer) => total + customer.overdue,
-      0
-    );
+    const overdue = customers.reduce((total, customer) => total + customer.overdue, 0);
     const averageDiscount =
-      customersWithTier.reduce(
-        (total, customer) => total + getTierRule(customer.priceList).discountRate * 100,
-        0
-      ) / customersWithTier.length;
+      customers.length > 0
+        ? customers.reduce(
+            (total, customer) =>
+              total + getTierRule(customer.priceList).discountRate * 100,
+            0
+          ) / customers.length
+        : 0;
 
     return {
-      activeCustomers: customersWithTier.filter(
-        (customer) => customer.status === "approved"
-      ).length,
+      activeCustomers: customers.filter((customer) => customer.status === "approved")
+        .length,
       averageDiscount,
       overdue,
       receivables,
     };
-  }, [customersWithTier]);
+  }, [customers]);
 
   function clearFilters() {
     setQuery("");
@@ -251,49 +421,85 @@ export function AdminCustomersPanel() {
     setStatusFilter("all");
   }
 
-  function updateSelectedTier(tier: CustomerTier) {
-    if (!selectedCustomer) {
+  async function updateSelectedTier(tier: CustomerTier) {
+    if (!selectedCustomer || selectedCustomer.priceList === tier) {
       return;
     }
 
-    setTierByCustomer((current) => ({
-      ...current,
-      [selectedCustomer.id]: tier,
-    }));
+    const actionKey = `customer:${selectedCustomer.id}:priceList`;
+    setPendingActionKey(actionKey);
+
+    try {
+      const result = await patchCustomerInApi(selectedCustomer.id, { priceList: tier });
+      const updatedCustomer =
+        result.customer ??
+        applyCustomerPatch(selectedCustomer, {
+          priceList: tier,
+          creditLimit: getTierRule(tier).creditLimit,
+        });
+
+      setCustomers((current) =>
+        current.map((customer) =>
+          customer.id === selectedCustomer.id ? updatedCustomer : customer
+        )
+      );
+      setNotice({
+        tone: "success",
+        message: `Listino ${tier} salvato tramite /api/admin/customers/${selectedCustomer.id}.`,
+      });
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        message: readableError(error),
+      });
+    } finally {
+      setPendingActionKey(null);
+    }
   }
 
-  if (!selectedCustomer) {
-    return (
-      <section className="min-w-0 space-y-4 overflow-x-hidden text-slate-950">
-        <Card className="border-slate-200 bg-white">
-          <CardContent className="flex flex-col items-start gap-3 p-6">
-            <div className="grid size-12 place-items-center rounded-full bg-slate-100 text-slate-500">
-              <Users className="size-5" />
-            </div>
-            <div>
-              <h2 className="text-xl font-black">Nessun cliente disponibile</h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                Collega o crea clienti B2B in Supabase per popolare gestione clienti,
-                listini, ordini e RMA.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </section>
-    );
+  async function reviewApplication(applicationId: string, status: "approved" | "rejected") {
+    const actionKey = `application:${applicationId}:${status}`;
+    setPendingActionKey(actionKey);
+
+    try {
+      const result = await patchB2BApplicationInApi(applicationId, { status });
+
+      setApplications((current) =>
+        current.map((application) =>
+          application.id === applicationId
+            ? result.application ?? { ...application, status }
+            : application
+        )
+      );
+      setNotice({
+        tone: "success",
+        message: `Richiesta ${applicationId} ${applicationStatusLabels[status].toLowerCase()} tramite /api/admin/b2b-applications.`,
+      });
+      if (status === "approved") {
+        void refreshAdminData();
+      }
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        message: readableError(error),
+      });
+    } finally {
+      setPendingActionKey(null);
+    }
   }
 
-  const selectedTier = selectedCustomer.priceList;
+  const selectedTier = selectedCustomer?.priceList ?? "Standard";
   const selectedTierRule = getTierRule(selectedTier);
   const totalSpend = selectedOrders.reduce((total, order) => total + order.total, 0);
-  const selectedLastOrder = selectedOrders[0];
-  const availableCredit = Math.max(
-    0,
-    selectedCustomer.creditLimit - selectedCustomer.receivables
-  );
+  const availableCredit = selectedCustomer
+    ? Math.max(0, selectedCustomer.creditLimit - selectedCustomer.receivables)
+    : 0;
   const creditUsage =
-    selectedCustomer.creditLimit > 0
-      ? Math.min(100, (selectedCustomer.receivables / selectedCustomer.creditLimit) * 100)
+    selectedCustomer && selectedCustomer.creditLimit > 0
+      ? Math.min(
+          100,
+          (selectedCustomer.receivables / selectedCustomer.creditLimit) * 100
+        )
       : 0;
   const hasFilters =
     Boolean(query.trim()) || tierFilter !== "all" || statusFilter !== "all";
@@ -333,7 +539,7 @@ export function AdminCustomersPanel() {
           <div className="min-w-0">
             <CardTitle>Gestione clienti</CardTitle>
             <CardDescription>
-              Anagrafica B2B, listini, storico ordini e credito commerciale
+              Anagrafica B2B, listini, richieste e credito commerciale
             </CardDescription>
           </div>
           <div className="flex w-full min-w-0 flex-wrap gap-2 lg:w-auto lg:justify-end">
@@ -343,7 +549,7 @@ export function AdminCustomersPanel() {
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 className="h-9 bg-white pl-9"
-                placeholder="Cerca cliente, P.IVA, città"
+                placeholder="Cerca cliente, P.IVA, citta"
               />
             </div>
             <Select
@@ -389,14 +595,64 @@ export function AdminCustomersPanel() {
               <Filter className="size-4" />
               Reset
             </Button>
+            <Button
+              variant="outline"
+              className="bg-white"
+              onClick={() => void refreshAdminData()}
+              disabled={isLoading}
+            >
+              <RefreshCcw className={cn("size-4", isLoading && "animate-spin")} />
+              Aggiorna
+            </Button>
           </div>
         </CardHeader>
-        <CardContent className="min-w-0 p-3 sm:p-6">
+        <CardContent className="min-w-0 space-y-4 p-3 sm:p-6">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+            <Badge className={sourceBadgeClass(dataSource.customersSource)}>
+              Clienti: {sourceLabel(dataSource.customersSource)}
+            </Badge>
+            <Badge className={sourceBadgeClass(dataSource.applicationsSource)}>
+              Richieste: {sourceLabel(dataSource.applicationsSource)}
+            </Badge>
+            <span className="min-w-0 break-words">
+              {dataSource.syncedAt
+                ? `${dataSource.customersTotal} clienti / ${dataSource.applicationsTotal} richieste - ${dataSource.syncedAt}`
+                : "In attesa di sincronizzazione"}
+            </span>
+          </div>
+
+          {notice && (
+            <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} />
+          )}
+
+          {(dataSource.customerError || dataSource.applicationError) && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold leading-6 text-amber-950">
+              {dataSource.customerError && (
+                <div className="min-w-0 break-words">
+                  Clienti: {dataSource.customerError}
+                </div>
+              )}
+              {dataSource.applicationError && (
+                <div className="min-w-0 break-words">
+                  Richieste B2B: {dataSource.applicationError}
+                </div>
+              )}
+            </div>
+          )}
+
+          <ApplicationsQueue
+            applications={applications}
+            pendingActionKey={pendingActionKey}
+            onReviewApplication={reviewApplication}
+          />
+
           <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
             <div className="min-w-0 space-y-3">
               <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="font-semibold text-slate-700">
-                  {filteredCustomers.length} clienti
+                  {isLoading && customers.length === 0
+                    ? "Caricamento clienti"
+                    : `${filteredCustomers.length} clienti`}
                 </span>
                 <span className="text-xs font-medium text-slate-500">
                   {statusFilter === "all"
@@ -408,8 +664,8 @@ export function AdminCustomersPanel() {
               {filteredCustomers.length > 0 ? (
                 <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
                   {filteredCustomers.map((customer) => {
-                    const lastOrder = latestOrderFor(customer.name);
-                    const isSelected = customer.id === selectedCustomer.id;
+                    const lastOrder = customer.orders[0];
+                    const isSelected = customer.id === selectedCustomer?.id;
 
                     return (
                       <button
@@ -446,10 +702,7 @@ export function AdminCustomersPanel() {
                               {companyStatusLabel(customer.status)}
                             </Badge>
                             <Badge
-                              className={cn(
-                                "border",
-                                tierBadgeClass(customer.priceList)
-                              )}
+                              className={cn("border", tierBadgeClass(customer.priceList))}
                             >
                               {customer.priceList}
                             </Badge>
@@ -471,23 +724,10 @@ export function AdminCustomersPanel() {
                             value={lastOrder?.date ?? "Nessuno"}
                           />
                         </div>
-                        <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold text-slate-500 md:hidden">
-                          {customer.overdue > 0 && (
-                            <span className="text-amber-700">
-                              Scaduto {formatEuro(customer.overdue)}
-                            </span>
-                          )}
-                          {customer.receivables > 0 && customer.overdue === 0 && (
-                            <span>Aperto {formatEuro(customer.receivables)}</span>
-                          )}
-                          <span>
-                            Ultimo {lastOrder ? `${lastOrder.date} · ${formatEuro(lastOrder.total)}` : "nessuno"}
-                          </span>
-                        </div>
                         <div className="mt-2 flex min-w-0 items-center justify-between gap-2 text-xs font-semibold text-slate-500">
                           <span className="min-w-0 break-words">
                             {lastOrder
-                              ? `${lastOrder.id} · ${formatEuro(lastOrder.total)}`
+                              ? `${lastOrder.id} - ${formatEuro(lastOrder.total)}`
                               : "Storico ordini vuoto"}
                           </span>
                           <span className="shrink-0 text-slate-400">
@@ -499,247 +739,261 @@ export function AdminCustomersPanel() {
                   })}
                 </div>
               ) : (
-                <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm font-medium text-slate-500">
-                  Nessun cliente corrisponde ai filtri.
-                </div>
+                <EmptyPanel
+                  icon={Users}
+                  title={isLoading ? "Caricamento clienti" : "Nessun cliente"}
+                  message={
+                    isLoading
+                      ? "Sincronizzazione da /api/admin/customers in corso."
+                      : "Nessun cliente disponibile dai filtri o dall'endpoint admin."
+                  }
+                />
               )}
             </div>
 
             <div className="min-w-0 space-y-4">
-              <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 sm:p-4">
-                <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_410px]">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="min-w-0 break-words text-lg font-black leading-tight text-slate-950 sm:text-xl">
-                        {selectedCustomer.name}
-                      </h2>
-                      <Badge
-                        className={cn(
-                          "border",
-                          companyStatusBadgeClass(selectedCustomer.status)
-                        )}
-                      >
-                        {companyStatusLabel(selectedCustomer.status)}
-                      </Badge>
-                      <Badge variant="outline" className="bg-white">
-                        {lifecycleLabels[selectedCustomer.lifecycle]}
-                      </Badge>
+              {selectedCustomer ? (
+                <>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 sm:p-4">
+                    <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_410px]">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h2 className="min-w-0 break-words text-lg font-black leading-tight text-slate-950 sm:text-xl">
+                            {selectedCustomer.name}
+                          </h2>
+                          <Badge
+                            className={cn(
+                              "border",
+                              companyStatusBadgeClass(selectedCustomer.status)
+                            )}
+                          >
+                            {companyStatusLabel(selectedCustomer.status)}
+                          </Badge>
+                          <Badge variant="outline" className="bg-white">
+                            {lifecycleLabels[selectedCustomer.lifecycle]}
+                          </Badge>
+                        </div>
+                        <div className="mt-2 flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-slate-500">
+                          <span className="break-all">{selectedCustomer.partitaIva}</span>
+                          <span className="break-all">{selectedCustomer.pec}</span>
+                          <span className="break-all">
+                            SDI {selectedCustomer.codiceDestinatario}
+                          </span>
+                        </div>
+                        <div className="mt-3 hidden grid-cols-2 gap-2 md:grid lg:grid-cols-4">
+                          <CompactValue
+                            label="Aperto"
+                            value={formatEuro(selectedCustomer.receivables)}
+                          />
+                          <CompactValue
+                            label="Scaduto"
+                            value={formatEuro(selectedCustomer.overdue)}
+                            warning={selectedCustomer.overdue > 0}
+                          />
+                          <CompactValue
+                            label="Ordini"
+                            value={`${selectedOrders.length}`}
+                          />
+                          <CompactValue
+                            label="Ultimo"
+                            value={selectedLastOrder?.date ?? "Nessuno"}
+                          />
+                        </div>
+                      </div>
+                      <div className="grid min-w-0 gap-2 self-start sm:grid-cols-[minmax(0,1fr)_180px]">
+                        <div className="rounded-lg border border-slate-200 bg-white p-3">
+                          <div className="text-xs font-bold uppercase text-slate-400">
+                            Listino corrente
+                          </div>
+                          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+                            <Badge className={cn("border", tierBadgeClass(selectedTier))}>
+                              {selectedTier}
+                            </Badge>
+                            <span className="min-w-0 break-words text-xs font-semibold text-slate-500">
+                              {selectedTierRule.tagLabel} - coeff.{" "}
+                              {tierMultiplier(selectedTier).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                        <Select
+                          value={selectedTier}
+                          onValueChange={(value) =>
+                            void updateSelectedTier(value as CustomerTier)
+                          }
+                          disabled={pendingActionKey?.startsWith(
+                            `customer:${selectedCustomer.id}:`
+                          )}
+                        >
+                          <SelectTrigger className="w-full bg-white">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {tiers.map((tier) => (
+                              <SelectItem key={tier} value={tier}>
+                                {tier} - {getTierRule(tier).tagLabel}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                    <div className="mt-2 flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-slate-500">
-                      <span className="break-all">{selectedCustomer.partitaIva}</span>
-                      <span className="break-all">{selectedCustomer.pec}</span>
-                      <span className="break-all">
-                        SDI {selectedCustomer.codiceDestinatario}
-                      </span>
-                    </div>
-                    <div className="mt-3 hidden grid-cols-2 gap-2 md:grid lg:grid-cols-4">
-                      <CompactValue
-                        label="Aperto"
-                        value={formatEuro(selectedCustomer.receivables)}
+
+                    <Separator className="my-4" />
+
+                    <div className="hidden gap-3 md:grid md:grid-cols-2 xl:grid-cols-4">
+                      <InfoTile
+                        icon={UserRound}
+                        label="Referente"
+                        value={selectedCustomer.contactName}
+                        helper={selectedCustomer.email}
                       />
-                      <CompactValue
-                        label="Scaduto"
-                        value={formatEuro(selectedCustomer.overdue)}
-                        warning={selectedCustomer.overdue > 0}
+                      <InfoTile
+                        icon={ShieldCheck}
+                        label="Account owner"
+                        value={selectedCustomer.accountOwner}
+                        helper={selectedCustomer.lastContact}
                       />
-                      <CompactValue
-                        label="Ordini"
+                      <InfoTile
+                        icon={ClipboardList}
+                        label="Ordini storici"
                         value={`${selectedOrders.length}`}
+                        helper={formatEuro(totalSpend)}
                       />
-                      <CompactValue
-                        label="Ultimo"
-                        value={selectedLastOrder?.date ?? "Nessuno"}
+                      <InfoTile
+                        icon={PackageCheck}
+                        label="SKU ricorrente"
+                        value={selectedCustomer.primarySku}
+                        helper={selectedCustomer.phone}
                       />
                     </div>
                   </div>
-                  <div className="grid min-w-0 gap-2 self-start sm:grid-cols-[minmax(0,1fr)_180px]">
-                    <div className="rounded-lg border border-slate-200 bg-white p-3">
-                      <div className="text-xs font-bold uppercase text-slate-400">
-                        Listino corrente
+
+                  <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4">
+                      <div className="flex items-center gap-2">
+                        <CircleDollarSign className="size-4 text-primary" />
+                        <h3 className="font-black text-slate-900">Credito e incassi</h3>
                       </div>
-                      <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
-                        <Badge className={cn("border", tierBadgeClass(selectedTier))}>
-                          {selectedTier}
-                        </Badge>
-                        <span className="min-w-0 break-words text-xs font-semibold text-slate-500">
-                          {selectedTierRule.tagLabel} · coeff.{" "}
-                          {tierMultiplier(selectedTier).toFixed(2)}
-                        </span>
-                      </div>
-                    </div>
-                    <Select
-                      value={selectedTier}
-                      onValueChange={(value) =>
-                        updateSelectedTier(value as CustomerTier)
-                      }
-                    >
-                      <SelectTrigger className="w-full bg-white">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {tiers.map((tier) => (
-                          <SelectItem key={tier} value={tier}>
-                            {tier} · {getTierRule(tier).tagLabel}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <Separator className="my-4" />
-
-                <div className="mt-4 grid gap-2 md:hidden">
-                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600">
-                    <span className="font-bold text-slate-900">Referente</span>{" "}
-                    {selectedCustomer.contactName} · {selectedCustomer.email}
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600">
-                    <span className="font-bold text-slate-900">Owner</span>{" "}
-                    {selectedCustomer.accountOwner} · ultimo contatto {selectedCustomer.lastContact}
-                  </div>
-                </div>
-
-                <div className="hidden gap-3 md:grid md:grid-cols-2 xl:grid-cols-4">
-                  <InfoTile
-                    icon={UserRound}
-                    label="Referente"
-                    value={selectedCustomer.contactName}
-                    helper={selectedCustomer.email}
-                  />
-                  <InfoTile
-                    icon={ShieldCheck}
-                    label="Account owner"
-                    value={selectedCustomer.accountOwner}
-                    helper={selectedCustomer.lastContact}
-                  />
-                  <InfoTile
-                    icon={ClipboardList}
-                    label="Ordini storici"
-                    value={`${selectedOrders.length}`}
-                    helper={formatEuro(totalSpend)}
-                  />
-                  <InfoTile
-                    icon={PackageCheck}
-                    label="SKU ricorrente"
-                    value={selectedCustomer.primarySku}
-                    helper={selectedCustomer.phone}
-                  />
-                </div>
-              </div>
-
-              <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4">
-                  <div className="flex items-center gap-2">
-                    <CircleDollarSign className="size-4 text-primary" />
-                    <h3 className="font-black text-slate-900">Credito e incassi</h3>
-                  </div>
-                  <div className="mt-4 grid grid-cols-2 gap-3">
-                    <CompactValue
-                      label="Fido"
-                      value={formatEuro(selectedCustomer.creditLimit)}
-                    />
-                    <CompactValue
-                      label="Disponibile"
-                      value={formatEuro(availableCredit)}
-                    />
-                    <CompactValue
-                      label="Aperto"
-                      value={formatEuro(selectedCustomer.receivables)}
-                    />
-                    <CompactValue
-                      label="Scaduto"
-                      value={formatEuro(selectedCustomer.overdue)}
-                      warning={selectedCustomer.overdue > 0}
-                    />
-                  </div>
-                  <div className="mt-4">
-                    <div className="mb-2 flex justify-between text-xs font-bold text-slate-500">
-                      <span>Utilizzo fido</span>
-                      <span>{creditUsage.toFixed(0)}%</span>
-                    </div>
-                    <Progress value={creditUsage} className="h-2" />
-                  </div>
-                  <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-600">
-                    <span className="font-semibold text-slate-800">
-                      Pagamento medio {selectedCustomer.avgPaymentDays} giorni.
-                    </span>{" "}
-                    {selectedCustomer.notes}
-                  </div>
-                </div>
-
-                <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4">
-                  <div className="flex items-center gap-2">
-                    <WalletCards className="size-4 text-primary" />
-                    <h3 className="font-black text-slate-900">Prezzi per listino</h3>
-                  </div>
-                  <div className="mt-3 hidden gap-2 md:grid md:grid-cols-3">
-                    {tiers.map((tier) => (
-                      <TierPriceCard
-                        key={tier}
-                        active={tier === selectedTier}
-                        product={sampleProducts[0] ?? products[0]}
-                        tier={tier}
-                      />
-                    ))}
-                  </div>
-                  <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50 md:hidden">
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-bold text-slate-800 [&::-webkit-details-marker]:hidden">
-                      <span>Esempi prezzo {selectedTier}</span>
-                      <Badge className={cn("border", tierBadgeClass(selectedTier))}>
-                        {formatTierDiscount(selectedTier)}
-                      </Badge>
-                    </summary>
-                    <div className="space-y-2 border-t border-slate-200 p-2">
-                      {sampleProducts.map((product) => (
-                        <PriceExampleCard
-                          key={product.sku}
-                          product={product}
-                          tier={selectedTier}
+                      <div className="mt-4 grid grid-cols-2 gap-3">
+                        <CompactValue
+                          label="Fido"
+                          value={formatEuro(selectedCustomer.creditLimit)}
                         />
-                      ))}
+                        <CompactValue
+                          label="Disponibile"
+                          value={formatEuro(availableCredit)}
+                        />
+                        <CompactValue
+                          label="Aperto"
+                          value={formatEuro(selectedCustomer.receivables)}
+                        />
+                        <CompactValue
+                          label="Scaduto"
+                          value={formatEuro(selectedCustomer.overdue)}
+                          warning={selectedCustomer.overdue > 0}
+                        />
+                      </div>
+                      <div className="mt-4">
+                        <div className="mb-2 flex justify-between text-xs font-bold text-slate-500">
+                          <span>Utilizzo fido</span>
+                          <span>{creditUsage.toFixed(0)}%</span>
+                        </div>
+                        <Progress value={creditUsage} className="h-2" />
+                      </div>
+                      <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-600">
+                        <span className="font-semibold text-slate-800">
+                          Pagamento medio {selectedCustomer.avgPaymentDays} giorni.
+                        </span>{" "}
+                        {selectedCustomer.notes}
+                      </div>
                     </div>
-                  </details>
-                  <div className="mt-4 hidden overflow-hidden rounded-lg border border-slate-200 md:block">
-                    <div className="max-w-full overflow-x-auto">
-                      <Table className="min-w-[560px]">
-                        <TableHeader className="bg-slate-50">
-                          <TableRow>
-                            <TableHead>SKU esempio</TableHead>
-                            <TableHead>Base</TableHead>
-                            <TableHead>{selectedTier}</TableHead>
-                            <TableHead>Sconto</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {sampleProducts.map((product) => (
-                            <TableRow key={product.sku}>
-                              <TableCell>
-                                <div className="font-mono text-xs font-bold text-slate-700">
-                                  {product.sku}
-                                </div>
-                                <div className="mt-1 max-w-[230px] truncate text-xs text-slate-500">
-                                  {product.name}
-                                </div>
-                              </TableCell>
-                              <TableCell>{formatEuro(product.price)}</TableCell>
-                              <TableCell className="font-black text-slate-900">
-                                {formatEuro(priceForTier(product, selectedTier))}
-                              </TableCell>
-                              <TableCell>{formatTierDiscount(selectedTier)}</TableCell>
-                            </TableRow>
+
+                    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4">
+                      <div className="flex items-center gap-2">
+                        <WalletCards className="size-4 text-primary" />
+                        <h3 className="font-black text-slate-900">Prezzi per listino</h3>
+                      </div>
+                      <div className="mt-3 hidden gap-2 md:grid md:grid-cols-3">
+                        {tiers.map((tier) => (
+                          <TierPriceCard
+                            key={tier}
+                            active={tier === selectedTier}
+                            product={pricingProducts[0]}
+                            tier={tier}
+                          />
+                        ))}
+                      </div>
+                      <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50 md:hidden">
+                        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-bold text-slate-800 [&::-webkit-details-marker]:hidden">
+                          <span>Esempi prezzo {selectedTier}</span>
+                          <Badge className={cn("border", tierBadgeClass(selectedTier))}>
+                            {formatTierDiscount(selectedTier)}
+                          </Badge>
+                        </summary>
+                        <div className="space-y-2 border-t border-slate-200 p-2">
+                          {pricingProducts.map((product) => (
+                            <PriceExampleCard
+                              key={product.sku}
+                              product={product}
+                              tier={selectedTier}
+                            />
                           ))}
-                        </TableBody>
-                      </Table>
+                        </div>
+                      </details>
+                      <div className="mt-4 hidden overflow-hidden rounded-lg border border-slate-200 md:block">
+                        <div className="max-w-full overflow-x-auto">
+                          <Table className="min-w-[560px]">
+                            <TableHeader className="bg-slate-50">
+                              <TableRow>
+                                <TableHead>SKU esempio</TableHead>
+                                <TableHead>Base</TableHead>
+                                <TableHead>{selectedTier}</TableHead>
+                                <TableHead>Sconto</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {pricingProducts.map((product) => (
+                                <TableRow key={product.sku}>
+                                  <TableCell>
+                                    <div className="font-mono text-xs font-bold text-slate-700">
+                                      {product.sku}
+                                    </div>
+                                    <div className="mt-1 max-w-[230px] truncate text-xs text-slate-500">
+                                      {product.name}
+                                    </div>
+                                  </TableCell>
+                                  <TableCell>{formatEuro(product.price)}</TableCell>
+                                  <TableCell className="font-black text-slate-900">
+                                    {formatEuro(priceForTier(product, selectedTier))}
+                                  </TableCell>
+                                  <TableCell>
+                                    {formatTierDiscount(selectedTier)}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </div>
 
-              <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
-                <HistoryTable orders={selectedOrders} />
-                <RmaHistory orderCount={selectedOrders.length} rmas={selectedRmas} />
-              </div>
+                  <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
+                    <HistoryTable orders={selectedOrders} />
+                    <RmaHistory orderCount={selectedOrders.length} rmas={selectedRmas} />
+                  </div>
+                </>
+              ) : (
+                <EmptyPanel
+                  icon={Users}
+                  title={isLoading ? "Caricamento dettaglio" : "Nessun dettaglio cliente"}
+                  message={
+                    isLoading
+                      ? "Sincronizzazione da /api/admin/customers in corso."
+                      : "Seleziona un cliente o collega l'endpoint admin customers."
+                  }
+                />
+              )}
             </div>
           </div>
         </CardContent>
@@ -790,6 +1044,183 @@ function MetricCard({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function ApplicationsQueue({
+  applications,
+  pendingActionKey,
+  onReviewApplication,
+}: {
+  applications: B2BApplication[];
+  pendingActionKey: string | null;
+  onReviewApplication: (
+    applicationId: string,
+    status: "approved" | "rejected"
+  ) => void;
+}) {
+  const pendingApplications = applications.filter((application) =>
+    ["submitted", "pending"].includes(application.status)
+  );
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-black text-slate-900">Richieste B2B</h3>
+          <p className="mt-1 text-xs font-medium text-slate-500">
+            {pendingApplications.length} in verifica / {applications.length} totali
+          </p>
+        </div>
+        <Badge variant="outline" className="bg-white">
+          /api/admin/b2b-applications
+        </Badge>
+      </div>
+      {applications.length > 0 ? (
+        <div className="mt-3 grid gap-2 lg:grid-cols-2">
+          {applications.slice(0, 4).map((application) => (
+            <ApplicationCard
+              key={application.id}
+              application={application}
+              pendingActionKey={pendingActionKey}
+              onReviewApplication={onReviewApplication}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm font-medium text-slate-500">
+          Nessuna richiesta B2B restituita dall&apos;endpoint admin.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ApplicationCard({
+  application,
+  pendingActionKey,
+  onReviewApplication,
+}: {
+  application: B2BApplication;
+  pendingActionKey: string | null;
+  onReviewApplication: (
+    applicationId: string,
+    status: "approved" | "rejected"
+  ) => void;
+}) {
+  const isPending = pendingActionKey?.startsWith(`application:${application.id}:`);
+  const canReview = ["submitted", "pending"].includes(application.status);
+
+  return (
+    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="break-words text-sm font-black text-slate-900">
+            {application.companyName}
+          </div>
+          <div className="mt-1 flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-slate-500">
+            <span className="break-all">{application.partitaIva}</span>
+            <span className="break-words">
+              {application.city} ({application.province})
+            </span>
+          </div>
+        </div>
+        <Badge className={cn("border", applicationBadgeClass(application.status))}>
+          {applicationStatusLabels[application.status]}
+        </Badge>
+      </div>
+      <div className="mt-3 grid gap-2 text-xs text-slate-600">
+        <div className="rounded-md bg-slate-50 px-2 py-1.5">
+          <span className="font-bold text-slate-800">Referente</span>{" "}
+          {application.contactName} - {application.email}
+        </div>
+        <div className="rounded-md bg-slate-50 px-2 py-1.5">
+          Listino richiesto{" "}
+          <Badge className={cn("ml-1 border", tierBadgeClass(application.requestedTier))}>
+            {application.requestedTier}
+          </Badge>
+        </div>
+        {application.notes && (
+          <div className="break-words rounded-md bg-slate-50 px-2 py-1.5">
+            {application.notes}
+          </div>
+        )}
+      </div>
+      {canReview && (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            onClick={() => onReviewApplication(application.id, "approved")}
+            disabled={isPending}
+          >
+            <CheckCircle2 className="size-4" />
+            Approva
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-white"
+            onClick={() => onReviewApplication(application.id, "rejected")}
+            disabled={isPending}
+          >
+            <XCircle className="size-4" />
+            Respinta
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function NoticeBanner({
+  notice,
+  onDismiss,
+}: {
+  notice: PanelNotice;
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex min-w-0 items-center gap-3 rounded-lg border px-3 py-2 text-sm font-medium",
+        noticeToneClass(notice.tone)
+      )}
+    >
+      {notice.tone === "success" ? (
+        <CheckCircle2 className="size-4 shrink-0" />
+      ) : (
+        <AlertTriangle className="size-4 shrink-0" />
+      )}
+      <span className="min-w-0 flex-1 break-words">{notice.message}</span>
+      <Button
+        variant="ghost"
+        size="xs"
+        className="text-current hover:bg-white/60"
+        onClick={onDismiss}
+      >
+        OK
+      </Button>
+    </div>
+  );
+}
+
+function EmptyPanel({
+  icon: Icon,
+  message,
+  title,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  message: string;
+  title: string;
+}) {
+  return (
+    <div className="grid min-h-[220px] place-items-center rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+      <div>
+        <Icon className="mx-auto size-8 text-slate-400" />
+        <h3 className="mt-3 text-sm font-black text-slate-900">{title}</h3>
+        <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">{message}</p>
+      </div>
+    </div>
   );
 }
 
@@ -908,7 +1339,7 @@ function TierPriceCard({
         {formatEuro(priceForTier(product, tier))}
       </div>
       <div className="mt-1 text-xs font-semibold text-slate-500">
-        {formatTierDiscount(tier)} · coeff. {tierMultiplier(tier).toFixed(2)}
+        {formatTierDiscount(tier)} - coeff. {tierMultiplier(tier).toFixed(2)}
       </div>
     </div>
   );
@@ -938,7 +1369,7 @@ function PriceExampleCard({
           value={formatEuro(priceForTier(product, tier))}
         />
         <div className="col-span-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
-          {formatTierDiscount(tier)} · coeff. {tierMultiplier(tier).toFixed(2)}
+          {formatTierDiscount(tier)} - coeff. {tierMultiplier(tier).toFixed(2)}
         </div>
       </div>
     </div>
@@ -954,9 +1385,7 @@ function HistoryTable({ orders }: { orders: CustomerOrder[] }) {
       </div>
       <div className="mt-4 space-y-2 md:hidden">
         {orders.length > 0 ? (
-          orders.map((order) => (
-            <OrderHistoryCard key={order.id} order={order} />
-          ))
+          orders.map((order) => <OrderHistoryCard key={order.id} order={order} />)
         ) : (
           <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm font-medium text-slate-500">
             Nessun ordine registrato.
@@ -984,7 +1413,7 @@ function HistoryTable({ orders }: { orders: CustomerOrder[] }) {
                         {order.id}
                       </div>
                       <div className="mt-1 text-xs text-slate-500">
-                        {order.date} · {order.channel} · {order.items} righe
+                        {order.date} - {order.channel} - {order.items} righe
                       </div>
                     </TableCell>
                     <TableCell>
@@ -1037,7 +1466,7 @@ function OrderHistoryCard({ order }: { order: CustomerOrder }) {
             {order.id}
           </div>
           <div className="mt-1 text-xs font-medium text-slate-500">
-            {order.date} · {order.channel} · {order.items} righe
+            {order.date} - {order.channel} - {order.items} righe
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">
@@ -1087,21 +1516,10 @@ function RmaHistory({
           <h3 className="font-black text-slate-900">RMA cliente</h3>
         </div>
         <Badge variant="outline" className="shrink-0 bg-white">
-          {rmas.length} RMA · {rmaRate.toFixed(1)}%
+          {rmas.length} RMA - {rmaRate.toFixed(1)}%
         </Badge>
       </div>
-      <div className="mt-4 space-y-2 md:hidden">
-        {rmas.length > 0 ? (
-          rmas.map((request) => (
-            <RmaHistoryCard key={request.id} request={request} />
-          ))
-        ) : (
-          <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm font-medium text-slate-500">
-            Nessuna pratica RMA collegata agli ordini cliente.
-          </div>
-        )}
-      </div>
-      <div className="mt-4 hidden space-y-3 md:block">
+      <div className="mt-4 space-y-2">
         {rmas.length > 0 ? (
           rmas.map((request) => (
             <div
@@ -1117,9 +1535,7 @@ function RmaHistory({
                     {request.productName}
                   </div>
                 </div>
-                <Badge
-                  className={cn("shrink-0 border", rmaBadgeClass(request.status))}
-                >
+                <Badge className={cn("shrink-0 border", rmaBadgeClass(request.status))}>
                   {rmaStatusLabel(request.status)}
                 </Badge>
               </div>
@@ -1127,7 +1543,7 @@ function RmaHistory({
                 <div className="flex min-w-0 items-center gap-2">
                   <PackageCheck className="size-3.5 shrink-0 text-slate-400" />
                   <span className="min-w-0 break-words">
-                    {request.orderId} · {request.sku} · {request.createdAt}
+                    {request.orderId} - {request.sku} - {request.createdAt}
                   </span>
                 </div>
                 <div className="rounded-md bg-white px-2 py-1.5">
@@ -1149,44 +1565,359 @@ function RmaHistory({
   );
 }
 
-function RmaHistoryCard({ request }: { request: CustomerRma }) {
-  return (
-    <details className="group min-w-0 rounded-lg border border-slate-200 bg-slate-50">
-      <summary className="flex cursor-pointer list-none items-start justify-between gap-3 p-3 [&::-webkit-details-marker]:hidden">
-        <div className="min-w-0">
-          <div className="break-all font-mono text-xs font-bold text-slate-700">
-            {request.id}
-          </div>
-          <div className="mt-1 break-words text-sm font-black leading-tight text-slate-900">
-            {request.productName}
-          </div>
-        </div>
-        <Badge className={cn("shrink-0 border", rmaBadgeClass(request.status))}>
-          {rmaStatusLabel(request.status)}
-        </Badge>
-      </summary>
-      <div className="grid gap-2 border-t border-slate-200 p-3 text-xs text-slate-600">
-        <div className="flex min-w-0 items-center gap-2 rounded-md bg-white px-2 py-1.5">
-          <PackageCheck className="size-3.5 shrink-0 text-slate-400" />
-          <span className="min-w-0 break-words">
-            {request.orderId} · {request.sku} · {request.createdAt}
-          </span>
-        </div>
-        <div className="break-words rounded-md bg-white px-2 py-1.5">
-          {request.reason}
-        </div>
-        <div className="break-words rounded-md bg-white px-2 py-1.5 font-semibold">
-          {request.resolution}
-        </div>
-      </div>
-    </details>
-  );
+async function fetchCustomersFromApi(
+  signal?: AbortSignal
+): Promise<ApiCollectionResult<CustomerProfile>> {
+  const response = await fetch("/api/admin/customers?limit=100&sort=name_asc", {
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Cache-Control": "no-cache",
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`GET /api/admin/customers ha risposto ${response.status}`);
+  }
+
+  const payload = (await response.json()) as unknown;
+  return parseCustomersPayload(payload);
 }
 
-function latestOrderFor(company: string) {
-  return customerOrders
-    .filter((order) => order.company === company)
-    .sort((a, b) => parseItalianDate(b.date) - parseItalianDate(a.date))[0];
+async function fetchApplicationsFromApi(
+  signal?: AbortSignal
+): Promise<ApiCollectionResult<B2BApplication>> {
+  const response = await fetch(
+    "/api/admin/b2b-applications?limit=100&sort=created_desc",
+    {
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Cache-Control": "no-cache",
+      },
+      signal,
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `GET /api/admin/b2b-applications ha risposto ${response.status}`
+    );
+  }
+
+  const payload = (await response.json()) as unknown;
+  return parseApplicationsPayload(payload);
+}
+
+async function patchCustomerInApi(
+  customerId: string,
+  patch: Partial<Pick<CustomerProfile, "priceList" | "status" | "creditLimit">>
+) {
+  const response = await fetch(
+    `/api/admin/customers/${encodeURIComponent(customerId)}`,
+    {
+      body: JSON.stringify(serializePatch(patch)),
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `PATCH /api/admin/customers/${customerId} ha risposto ${response.status}. Modifica non applicata localmente.`
+    );
+  }
+
+  const payload = await readJsonSafely(response);
+  const row = extractObjectPayload(payload, ["data", "customer"]);
+
+  return {
+    customer: row ? normalizeCustomer(row) : null,
+  };
+}
+
+async function patchB2BApplicationInApi(
+  applicationId: string,
+  patch: Pick<B2BApplication, "status">
+) {
+  const response = await fetch(
+    `/api/admin/b2b-applications/${encodeURIComponent(applicationId)}`,
+    {
+      body: JSON.stringify(serializePatch(patch)),
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `PATCH /api/admin/b2b-applications/${applicationId} ha risposto ${response.status}. Revisione non applicata localmente.`
+    );
+  }
+
+  const payload = await readJsonSafely(response);
+  const row = extractObjectPayload(payload, ["data", "application"]);
+
+  return {
+    application: row ? normalizeApplication(row) : null,
+  };
+}
+
+function parseCustomersPayload(
+  payload: unknown
+): ApiCollectionResult<CustomerProfile> {
+  if (!isRecord(payload)) {
+    throw new Error("Risposta /api/admin/customers incompleta");
+  }
+
+  const meta = isRecord(payload.meta) ? payload.meta : {};
+  const rows = readArrayPayload(payload, ["data", "customers"]);
+
+  if (!rows) {
+    throw new Error("Risposta /api/admin/customers incompleta");
+  }
+
+  const items = rows
+    .map((row) => normalizeCustomer(row))
+    .filter((customer): customer is CustomerProfile => customer !== null);
+
+  return {
+    items,
+    source: readSource(meta.source ?? payload.source),
+    total: readNumber(meta.total) ?? items.length,
+    returned: readNumber(meta.returned) ?? items.length,
+  };
+}
+
+function parseApplicationsPayload(
+  payload: unknown
+): ApiCollectionResult<B2BApplication> {
+  if (!isRecord(payload)) {
+    throw new Error("Risposta /api/admin/b2b-applications incompleta");
+  }
+
+  const meta = isRecord(payload.meta) ? payload.meta : {};
+  const rows = readArrayPayload(payload, ["data", "applications"]);
+
+  if (!rows) {
+    throw new Error("Risposta /api/admin/b2b-applications incompleta");
+  }
+
+  const items = rows
+    .map((row) => normalizeApplication(row))
+    .filter((application): application is B2BApplication => application !== null);
+
+  return {
+    items,
+    source: readSource(meta.source ?? payload.source),
+    total: readNumber(meta.total) ?? items.length,
+    returned: readNumber(meta.returned) ?? items.length,
+  };
+}
+
+function normalizeCustomer(row: unknown): CustomerProfile | null {
+  if (!isRecord(row)) {
+    return null;
+  }
+
+  const address = isRecord(row.address) ? row.address : null;
+  const id = readString(readRecordValue(row, ["id", "customerId", "companyId"]));
+  const name = readString(readRecordValue(row, ["name", "companyName", "company_name"]));
+
+  if (!id || !name) {
+    return null;
+  }
+
+  const priceList = normalizeCustomerTier(
+    readString(readRecordValue(row, ["priceList", "price_list", "tier"]))
+  );
+  const orders = (readArrayPayload(row, ["orders", "orderSummaries"]) ?? [])
+    .map((order) => normalizeCustomerOrder(order, name))
+    .filter((order): order is CustomerOrder => order !== null);
+  const rmas = (readArrayPayload(row, ["rmas", "rmaRequests"]) ?? [])
+    .map(normalizeCustomerRma)
+    .filter((rma): rma is CustomerRma => rma !== null);
+  const receivables = readMoney(
+    readRecordValue(row, ["receivables", "openBalance", "open_balance"])
+  );
+  const overdue = readMoney(readRecordValue(row, ["overdue", "overdueBalance"]));
+  const status = normalizeCompanyStatus(readRecordValue(row, ["status"]));
+
+  return {
+    id,
+    name,
+    partitaIva:
+      readString(readRecordValue(row, ["partitaIva", "vatNumber", "vat_number"])) ??
+      "Non disponibile",
+    codiceFiscale:
+      readString(readRecordValue(row, ["codiceFiscale", "taxCode", "tax_code"])) ??
+      "Non disponibile",
+    pec: readString(row.pec) ?? readString(row.email) ?? "Non disponibile",
+    codiceDestinatario:
+      readString(
+        readRecordValue(row, ["codiceDestinatario", "sdi", "recipientCode"])
+      ) ?? "0000000",
+    status,
+    priceList,
+    city:
+      readString(readRecordValue(row, ["city"])) ??
+      readString(readRecordValue(address, ["city"])) ??
+      "Non disponibile",
+    province:
+      readString(readRecordValue(row, ["province"])) ??
+      readString(readRecordValue(address, ["province"])) ??
+      "--",
+    accountOwner:
+      readString(readRecordValue(row, ["accountOwner", "owner"])) ?? "Sales",
+    contactName:
+      readString(readRecordValue(row, ["contactName", "contact_name"])) ??
+      "Referente non disponibile",
+    email: readString(row.email) ?? "Non disponibile",
+    phone: readString(row.phone) ?? "Non disponibile",
+    creditLimit:
+      readMoney(readRecordValue(row, ["creditLimit", "credit_limit"])) ||
+      getTierRule(priceList).creditLimit,
+    receivables,
+    overdue,
+    avgPaymentDays:
+      readNumber(readRecordValue(row, ["avgPaymentDays", "averagePaymentDays"])) ?? 0,
+    lifecycle: normalizeLifecycle(row.lifecycle, status, priceList, overdue),
+    lastContact:
+      readString(readRecordValue(row, ["lastContact", "last_contact"])) ??
+      "Non disponibile",
+    primarySku:
+      readString(readRecordValue(row, ["primarySku", "primary_sku"])) ??
+      orders[0]?.topSku ??
+      "Nessuno",
+    notes:
+      readString(row.notes) ??
+      "Profilo sincronizzato da /api/admin/customers.",
+    orders,
+    rmas,
+  };
+}
+
+function normalizeApplication(row: unknown): B2BApplication | null {
+  if (!isRecord(row)) {
+    return null;
+  }
+
+  const id = readString(readRecordValue(row, ["id", "applicationId"]));
+  const companyName = readString(
+    readRecordValue(row, ["companyName", "company_name", "name"])
+  );
+
+  if (!id || !companyName) {
+    return null;
+  }
+
+  return {
+    id,
+    companyName,
+    partitaIva:
+      readString(readRecordValue(row, ["partitaIva", "vatNumber", "vat_number"])) ??
+      "Non disponibile",
+    contactName:
+      readString(readRecordValue(row, ["contactName", "contact_name"])) ??
+      "Referente non disponibile",
+    email: readString(row.email) ?? "Non disponibile",
+    phone: readString(row.phone) ?? "Non disponibile",
+    city: readString(row.city) ?? "Non disponibile",
+    province: readString(row.province) ?? "--",
+    status: normalizeApplicationStatus(row.status),
+    requestedTier: normalizeCustomerTier(
+      readString(readRecordValue(row, ["requestedTier", "priceList", "tier"]))
+    ),
+    createdAt:
+      readString(readRecordValue(row, ["createdAt", "created_at", "date"])) ??
+      "Data non disponibile",
+    notes: readString(row.notes) ?? "",
+  };
+}
+
+function normalizeCustomerOrder(row: unknown, fallbackCompany: string): CustomerOrder | null {
+  if (!isRecord(row)) {
+    return null;
+  }
+
+  const id = readString(readRecordValue(row, ["id", "orderId", "order_id"]));
+
+  if (!id) {
+    return null;
+  }
+
+  const product = isRecord(row.product) ? row.product : null;
+  const status = normalizeOrderStatus(readRecordValue(row, ["status"]));
+
+  return {
+    id,
+    date:
+      readString(readRecordValue(row, ["date", "createdAt", "created_at"])) ??
+      "Data non disponibile",
+    status,
+    company: readString(row.company) ?? fallbackCompany,
+    total: readMoney(readRecordValue(row, ["total", "totalAmount", "total_amount"])),
+    items: readNumber(readRecordValue(row, ["items", "itemCount"])) ?? 0,
+    channel: normalizeOrderChannel(row.channel),
+    margin: readNumber(row.margin) ?? 0,
+    paymentTerms:
+      readString(readRecordValue(row, ["paymentTerms", "payment_terms"])) ??
+      (status === "pending_payment" ? "Bonifico anticipato" : "Da verificare"),
+    topProduct:
+      readString(readRecordValue(row, ["topProduct", "productName"])) ??
+      readString(readRecordValue(product, ["name"])) ??
+      "Prodotto non disponibile",
+    topSku:
+      readString(readRecordValue(row, ["topSku", "sku"])) ??
+      readString(readRecordValue(product, ["sku"])) ??
+      "SKU",
+  };
+}
+
+function normalizeCustomerRma(row: unknown): CustomerRma | null {
+  if (!isRecord(row)) {
+    return null;
+  }
+
+  const id = readString(row.id);
+
+  if (!id) {
+    return null;
+  }
+
+  return {
+    id,
+    orderId: readString(readRecordValue(row, ["orderId", "order_id"])) ?? "N/D",
+    sku: readString(row.sku) ?? "SKU",
+    productName:
+      readString(readRecordValue(row, ["productName", "product_name"])) ??
+      "Prodotto RMA",
+    status: normalizeRmaStatus(row.status),
+    reason: readString(row.reason) ?? "Motivo non disponibile",
+    createdAt:
+      readString(readRecordValue(row, ["createdAt", "created_at", "date"])) ??
+      "Data non disponibile",
+    resolution: readString(row.resolution) ?? "Da definire",
+  };
+}
+
+function applyCustomerPatch(
+  customer: CustomerProfile,
+  patch: Partial<Pick<CustomerProfile, "priceList" | "status" | "creditLimit">>
+) {
+  return {
+    ...customer,
+    ...patch,
+  };
 }
 
 function priceForTier(product: PartProduct, tier: CustomerTier) {
@@ -1201,10 +1932,17 @@ function tierMultiplier(tier: CustomerTier) {
   return 1 - getTierRule(tier).discountRate;
 }
 
-function parseItalianDate(value: string) {
-  const [day, month, year] = value.split("/").map(Number);
+function parseDateValue(value: string) {
+  const italianDate = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
 
-  return new Date(year, month - 1, day).getTime();
+  if (italianDate) {
+    const [, day, month, year] = italianDate;
+    return new Date(Number(year), Number(month) - 1, Number(day)).getTime();
+  }
+
+  const timestamp = Date.parse(value);
+
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
 function companyStatusLabel(status: CompanyStatus) {
@@ -1232,6 +1970,18 @@ function companyStatusBadgeClass(status: CompanyStatus) {
   }
 
   return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function applicationBadgeClass(status: ApplicationStatus) {
+  if (status === "approved") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (status === "rejected") {
+    return "border-red-200 bg-red-50 text-red-700";
+  }
+
+  return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
 function orderStatusLabel(status: OrderStatus) {
@@ -1291,4 +2041,243 @@ function rmaBadgeClass(status: RmaStatus) {
   }
 
   return "border-primary/20 bg-primary/8 text-primary";
+}
+
+function noticeToneClass(tone: NoticeTone) {
+  if (tone === "error") {
+    return "border-red-200 bg-red-50 text-red-800";
+  }
+
+  if (tone === "warning") {
+    return "border-amber-200 bg-amber-50 text-amber-900";
+  }
+
+  if (tone === "info") {
+    return "border-cyan-200 bg-cyan-50 text-cyan-800";
+  }
+
+  return "border-emerald-200 bg-emerald-50 text-emerald-800";
+}
+
+function sourceLabel(source: ApiSource) {
+  if (source === "admin_api") {
+    return "Admin API";
+  }
+
+  if (source === "supabase") {
+    return "Supabase";
+  }
+
+  return "Vuoto";
+}
+
+function sourceBadgeClass(source: ApiSource) {
+  if (source === "admin_api" || source === "supabase") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  return "border-amber-200 bg-amber-50 text-amber-700";
+}
+
+function normalizeCompanyStatus(value: unknown): CompanyStatus {
+  return ["approved", "pending", "suspended", "rejected"].includes(
+    value as CompanyStatus
+  )
+    ? (value as CompanyStatus)
+    : "pending";
+}
+
+function normalizeOrderStatus(value: unknown): OrderStatus {
+  return [
+    "draft",
+    "pending_payment",
+    "paid",
+    "picking",
+    "shipped",
+    "delivered",
+    "cancelled",
+  ].includes(value as OrderStatus)
+    ? (value as OrderStatus)
+    : "pending_payment";
+}
+
+function normalizeRmaStatus(value: unknown): RmaStatus {
+  return [
+    "requested",
+    "approved",
+    "rejected",
+    "received",
+    "replaced",
+    "refunded",
+  ].includes(value as RmaStatus)
+    ? (value as RmaStatus)
+    : "requested";
+}
+
+function normalizeApplicationStatus(value: unknown): ApplicationStatus {
+  return ["submitted", "pending", "approved", "rejected"].includes(
+    value as ApplicationStatus
+  )
+    ? (value as ApplicationStatus)
+    : "submitted";
+}
+
+function normalizeLifecycle(
+  value: unknown,
+  status: CompanyStatus,
+  tier: CustomerTier,
+  overdue: number
+): CustomerLifecycle {
+  if (["onboarding", "active", "vip", "at_risk"].includes(value as CustomerLifecycle)) {
+    return value as CustomerLifecycle;
+  }
+
+  if (status === "pending") {
+    return "onboarding";
+  }
+
+  if (overdue > 0 || status === "suspended") {
+    return "at_risk";
+  }
+
+  return tier === "Partner" ? "vip" : "active";
+}
+
+function normalizeOrderChannel(value: unknown): CustomerOrder["channel"] {
+  return ["Web", "Admin", "Account"].includes(value as CustomerOrder["channel"])
+    ? (value as CustomerOrder["channel"])
+    : "Web";
+}
+
+function readSource(value: unknown): ApiSource {
+  if (value === "supabase" || value === "admin_api") {
+    return value;
+  }
+
+  return "empty";
+}
+
+function readArrayPayload(
+  record: Record<string, unknown>,
+  keys: string[]
+): unknown[] | null {
+  for (const key of keys) {
+    const value = record[key];
+
+    if (Array.isArray(value)) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function readRecordValue(
+  record: Record<string, unknown> | null | undefined,
+  keys: string[]
+) {
+  if (!record) {
+    return undefined;
+  }
+
+  for (const key of keys) {
+    if (record[key] !== undefined && record[key] !== null) {
+      return record[key];
+    }
+  }
+
+  return undefined;
+}
+
+function readString(value: unknown) {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return null;
+}
+
+function readNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function readMoney(value: unknown) {
+  const direct = readNumber(value);
+
+  if (direct !== null) {
+    return direct;
+  }
+
+  if (!isRecord(value)) {
+    return 0;
+  }
+
+  const amount = readNumber(value.amount);
+
+  if (amount !== null) {
+    return amount;
+  }
+
+  const cents = readNumber(value.cents);
+
+  return cents === null ? 0 : Math.round((cents / 100 + Number.EPSILON) * 100) / 100;
+}
+
+async function readJsonSafely(response: Response) {
+  try {
+    return (await response.json()) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function extractObjectPayload(payload: unknown, keys: string[]) {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  for (const key of keys) {
+    if (isRecord(payload[key])) {
+      return payload[key] as Record<string, unknown>;
+    }
+  }
+
+  return readString(payload.id) ? payload : null;
+}
+
+function serializePatch(patch: Record<string, unknown>) {
+  return Object.fromEntries(
+    Object.entries(patch).filter(([, value]) => value !== undefined)
+  );
+}
+
+function readableError(error: unknown) {
+  return error instanceof Error ? error.message : "Errore sconosciuto";
+}
+
+function formatSyncTime() {
+  return new Intl.DateTimeFormat("it-IT", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "2-digit",
+  }).format(new Date());
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

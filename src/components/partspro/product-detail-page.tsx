@@ -26,10 +26,14 @@ import { StoreHeader } from "./store-header";
 
 type ProductDetailPageProps = {
   product: PartProduct;
+  showWholesalePrice?: boolean;
 };
 
-export function ProductDetailPage({ product }: ProductDetailPageProps) {
-  const canShowBuyerPrice = product.price > 0;
+export function ProductDetailPage({
+  product,
+  showWholesalePrice = false,
+}: ProductDetailPageProps) {
+  const hasBuyerPrice = product.price > 0;
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
@@ -120,11 +124,16 @@ export function ProductDetailPage({ product }: ProductDetailPageProps) {
                 <div className="rounded-lg border border-primary/20 bg-primary/8 p-4 text-sm text-slate-700">
                   <div className="flex items-center gap-2 font-black text-slate-950">
                     <BadgeEuro className="size-4 text-primary" />
-                    Prezzi riservati ai buyer verificati
+                    {showWholesalePrice
+                      ? "Sessione buyer verificata"
+                      : "Prezzi riservati ai buyer verificati"}
                   </div>
                   <p className="mt-2 leading-6">
-                    Accedi con Partita IVA approvata per vedere listino wholesale,
-                    quantità minime, sconti volume e condizioni di pagamento.
+                    {showWholesalePrice && hasBuyerPrice
+                      ? "Prezzo netto, quantità minime e condizioni B2B sono disponibili per questo SKU."
+                      : showWholesalePrice
+                        ? "Account verificato: il listino wholesale per questo SKU deve ancora essere aggiornato."
+                        : "Accedi con Partita IVA approvata per vedere listino wholesale, quantità minime, sconti volume e condizioni di pagamento."}
                   </p>
                 </div>
 
@@ -165,8 +174,20 @@ export function ProductDetailPage({ product }: ProductDetailPageProps) {
                   ))}
                 </div>
 
-                {canShowBuyerPrice ? (
+                {showWholesalePrice && hasBuyerPrice ? (
                   <ProductDetailPurchasePanel product={product} />
+                ) : showWholesalePrice ? (
+                  <Card className="mt-3 border-amber-200 bg-amber-50/60">
+                    <CardContent className="flex flex-col gap-3 p-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="font-black">Prezzo non impostato</div>
+                        <p className="mt-1 leading-6">
+                          Sessione verificata, ma il listino B2B per questo SKU
+                          non è ancora stato aggiornato.
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
                 ) : (
                   <Card className="mt-3 border-primary/20 bg-white">
                     <CardContent className="flex flex-col gap-3 p-4 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between">

@@ -70,7 +70,7 @@ type ViewMode = "orders" | "payments" | "shipping";
 type StatusFilterValue = "all" | OrderStatus;
 type WarehouseName = PartProduct["warehouse"];
 type Carrier = (typeof carriers)[number];
-type OrdersSource = "supabase" | "empty";
+type OrdersSource = "admin_api" | "supabase" | "empty";
 type ApiOrdersSource = OrdersSource;
 type NoticeTone = "success" | "info" | "warning" | "error";
 
@@ -133,20 +133,20 @@ type PanelNotice = {
   message: string;
 };
 
-type OrdersApiOrder = {
-  id: string;
-  date: string;
-  status: OrderStatus;
-  company: string;
-  total: number;
-  items: number;
-};
-
 type OrdersApiResult = {
   orders: AdminOrder[];
   source: ApiOrdersSource;
   total: number;
   returned: number;
+};
+
+type OrderPatchInput = {
+  carrier?: Carrier;
+  fulfillmentStatus?: FulfillmentStatus;
+  paymentStatus?: PaymentStatus;
+  status?: OrderStatus;
+  tracking?: string;
+  warehouse?: WarehouseName;
 };
 
 const carriers = ["DHL Express", "BRT", "GLS", "UPS", "Ritiro in sede"] as const;
@@ -212,8 +212,8 @@ export function AdminOrdersPanel() {
     returned: 0,
   }));
   const [isLoadingOrders, setIsLoadingOrders] = React.useState(false);
-  const [localEditOrderIds, setLocalEditOrderIds] = React.useState<Set<string>>(
-    () => new Set()
+  const [pendingOrderAction, setPendingOrderAction] = React.useState<string | null>(
+    null
   );
   const [query, setQuery] = React.useState("");
   const [statusFilter, setStatusFilter] =
@@ -241,13 +241,12 @@ export function AdminOrdersPanel() {
         total: result.total,
         returned: result.returned,
       });
-      setLocalEditOrderIds(new Set());
       setNotice({
         tone: "success",
         message:
-          result.source === "supabase"
-            ? "Ordini sincronizzati da /api/orders."
-            : "Nessun ordine disponibile da /api/orders.",
+          result.orders.length > 0
+            ? "Ordini sincronizzati da /api/admin/orders."
+            : "Nessun ordine disponibile da /api/admin/orders.",
       });
     } catch (error) {
       if (signal?.aborted) {
@@ -263,10 +262,10 @@ export function AdminOrdersPanel() {
         returned: 0,
         error: error instanceof Error ? error.message : "Errore sconosciuto",
       });
-      setLocalEditOrderIds(new Set());
       setNotice({
         tone: "error",
-        message: "/api/orders non disponibile: nessun ordine locale viene mostrato.",
+        message:
+          "/api/admin/orders non disponibile: nessun ordine viene mostrato.",
       });
     } finally {
       if (!signal?.aborted) {
@@ -340,133 +339,134 @@ export function AdminOrdersPanel() {
     };
   }, [orders]);
 
-  const updateOrder = React.useCallback(
-    (
-      orderId: string,
-      updater: (order: AdminOrder) => AdminOrder,
-      message: string
-    ) => {
-      setOrders((currentOrders) =>
-        currentOrders.map((order) => (order.id === orderId ? updater(order) : order))
-      );
-      setLocalEditOrderIds((current) => new Set(current).add(orderId));
-      setNotice({
-        tone: "warning",
-        message: `${message} Modifica solo locale: non esiste ancora un endpoint admin di persistenza.`,
-      });
+  const patchOrder = React.useCallback(
+    async (orderId: string, patch: OrderPatchInput, successMessage: string) => {
+      const actionKey = `${orderId}:${Object.keys(patch).sort().join(",")}`;
+
+      setPendingOrderAction(actionKey);
+
+      try {
+        const result = await patchOrderInApi(orderId, patch);
+
+        setOrders((currentOrders) =>
+          currentOrders.map((order) =>
+            order.id === orderId
+              ? result.order ?? applyOrderPatch(order, patch, successMessage)
+              : order
+          )
+        );
+        setNotice({
+          tone: "success",
+          message: `${successMessage} Persistito tramite /api/admin/orders/${orderId}.`,
+        });
+      } catch (error) {
+        setNotice({
+          tone: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Aggiornamento ordine non riuscito.",
+        });
+      } finally {
+        setPendingOrderAction(null);
+      }
     },
     []
   );
 
   const handleAdvanceStatus = React.useCallback(
     (orderId: string) => {
-      const currentStatus = orders.find((order) => order.id === orderId)?.status;
-      const nextStatusLabel = currentStatus
-        ? getNextOrderStatus(currentStatus)
-        : null;
+      const order = orders.find((item) => item.id === orderId);
+      const nextStatus = order ? getNextOrderStatus(order.status) : null;
 
-      updateOrder(orderId, (order) => {
-        const nextStatus = getNextOrderStatus(order.status);
+      if (!order || !nextStatus) {
+        return;
+      }
 
-        if (!nextStatus) {
-          return order;
-        }
-
-        const nextFulfillmentStatus = fulfillmentStatusFromOrderStatus(nextStatus);
-        const nextOrder = {
-          ...order,
+      void patchOrder(
+        orderId,
+        {
           status: nextStatus,
-          paymentStatus: paymentStatusFromOrderStatus(nextStatus, order.paymentStatus),
-          fulfillmentStatus: nextFulfillmentStatus,
-          lines: updatePickedLines(order.lines, nextFulfillmentStatus),
-        };
-
-        return {
-          ...nextOrder,
-          activity: prependActivity(
-            nextOrder,
-            `Stato avanzato a ${orderStatusLabels[nextStatus]}`
+          paymentStatus: paymentStatusFromOrderStatus(
+            nextStatus,
+            order.paymentStatus
           ),
-        };
-      }, nextStatusLabel
-        ? `Stato ordine aggiornato nel pannello a ${orderStatusLabels[nextStatusLabel]}.`
-        : "Stato ordine verificato nel pannello.");
+          fulfillmentStatus: fulfillmentStatusFromOrderStatus(nextStatus),
+        },
+        `Stato ordine aggiornato a ${orderStatusLabels[nextStatus]}.`
+      );
     },
-    [orders, updateOrder]
+    [orders, patchOrder]
   );
 
   const handleMarkPaid = React.useCallback(
     (orderId: string) => {
-      updateOrder(orderId, (order) => {
-        const nextStatus =
-          order.status === "draft" || order.status === "pending_payment"
-            ? "paid"
-            : order.status;
-        const nextOrder = {
-          ...order,
-          status: nextStatus,
-          paymentStatus: "paid" as const,
+      const order = orders.find((item) => item.id === orderId);
+
+      if (!order) {
+        return;
+      }
+
+      void patchOrder(
+        orderId,
+        {
+          status:
+            order.status === "draft" || order.status === "pending_payment"
+              ? "paid"
+              : order.status,
+          paymentStatus: "paid",
           fulfillmentStatus:
             order.fulfillmentStatus === "queued"
               ? "allocated"
               : order.fulfillmentStatus,
-        };
-
-        return {
-          ...nextOrder,
-          activity: prependActivity(nextOrder, "Pagamento registrato"),
-        };
-      }, "Pagamento segnato come incassato nel pannello.");
+        },
+        "Pagamento segnato come incassato."
+      );
     },
-    [updateOrder]
+    [orders, patchOrder]
   );
 
   const handleAssignWarehouse = React.useCallback(
     (orderId: string, warehouse: WarehouseName) => {
-      updateOrder(orderId, (order) => {
-        const nextOrder = {
-          ...order,
+      const order = orders.find((item) => item.id === orderId);
+
+      if (!order) {
+        return;
+      }
+
+      void patchOrder(
+        orderId,
+        {
           warehouse,
           fulfillmentStatus:
             order.fulfillmentStatus === "queued"
               ? "allocated"
               : order.fulfillmentStatus,
-          lines: order.lines.map((line) => ({ ...line, warehouse })),
-        };
-
-        return {
-          ...nextOrder,
-          activity: prependActivity(nextOrder, `Magazzino assegnato: ${warehouse}`),
-        };
-      }, `Magazzino aggiornato a ${warehouse}.`);
+        },
+        `Magazzino aggiornato a ${warehouse}.`
+      );
     },
-    [updateOrder]
+    [orders, patchOrder]
   );
 
   const handleAssignCarrier = React.useCallback(
     (orderId: string, carrier: Carrier) => {
-      updateOrder(orderId, (order) => {
-        const nextOrder = { ...order, carrier };
-
-        return {
-          ...nextOrder,
-          activity: prependActivity(nextOrder, `Corriere assegnato: ${carrier}`),
-        };
-      }, `Corriere aggiornato a ${carrier}.`);
+      void patchOrder(orderId, { carrier }, `Corriere aggiornato a ${carrier}.`);
     },
-    [updateOrder]
+    [patchOrder]
   );
 
   const handleUpdateTracking = React.useCallback(
     (orderId: string, tracking: string) => {
-      setOrders((currentOrders) =>
-        currentOrders.map((order) =>
-          order.id === orderId ? { ...order, tracking } : order
-        )
+      void patchOrder(
+        orderId,
+        { tracking },
+        tracking.trim()
+          ? `Tracking aggiornato a ${tracking.trim()}.`
+          : "Tracking rimosso."
       );
-      setLocalEditOrderIds((current) => new Set(current).add(orderId));
     },
-    []
+    [patchOrder]
   );
 
   const handleExportOrders = React.useCallback(() => {
@@ -490,8 +490,6 @@ export function AdminOrdersPanel() {
   }, []);
 
   const hasFilters = query.trim().length > 0 || statusFilter !== "all";
-  const localEditCount = localEditOrderIds.size;
-
   return (
     <section className="w-full min-w-0 space-y-4 text-slate-950">
       <div className="hidden gap-3 md:grid md:grid-cols-2 xl:grid-cols-4">
@@ -629,13 +627,9 @@ export function AdminOrdersPanel() {
               </Button>
             </div>
           )}
-          {(localEditCount > 0 || dataSource.error) && (
+          {dataSource.error && (
             <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold leading-6 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
-              <div className="min-w-0 break-words">
-                {localEditCount > 0
-                  ? `${localEditCount} ordine/i con modifiche locali non persistite.`
-                  : dataSource.error}
-              </div>
+              <div className="min-w-0 break-words">{dataSource.error}</div>
               <Button
                 variant="outline"
                 size="xs"
@@ -644,7 +638,7 @@ export function AdminOrdersPanel() {
                 disabled={isLoadingOrders}
               >
                 <RefreshCw className="size-3" />
-                Ricarica /api/orders
+                Ricarica /api/admin/orders
               </Button>
             </div>
           )}
@@ -660,7 +654,7 @@ export function AdminOrdersPanel() {
             <div className="hidden min-w-0 md:block">
               <OrderDetailsPanel
                 order={selectedOrder}
-                hasLocalEdits={selectedOrder ? localEditOrderIds.has(selectedOrder.id) : false}
+                pendingActionKey={pendingOrderAction}
                 onAdvanceStatus={handleAdvanceStatus}
                 onMarkPaid={handleMarkPaid}
                 onAssignWarehouse={handleAssignWarehouse}
@@ -683,7 +677,7 @@ export function AdminOrdersPanel() {
                 </DialogHeader>
                 <OrderDetailsPanel
                   order={selectedOrder}
-                  hasLocalEdits={localEditOrderIds.has(selectedOrder.id)}
+                  pendingActionKey={pendingOrderAction}
                   onAdvanceStatus={handleAdvanceStatus}
                   onMarkPaid={handleMarkPaid}
                   onAssignWarehouse={handleAssignWarehouse}
@@ -964,7 +958,7 @@ function getMobileSummaryFacts(order: AdminOrder, viewMode: ViewMode) {
 
 function OrderDetailsPanel({
   order,
-  hasLocalEdits,
+  pendingActionKey,
   onAdvanceStatus,
   onMarkPaid,
   onAssignWarehouse,
@@ -972,7 +966,7 @@ function OrderDetailsPanel({
   onUpdateTracking,
 }: {
   order: AdminOrder | null;
-  hasLocalEdits: boolean;
+  pendingActionKey: string | null;
   onAdvanceStatus: (orderId: string) => void;
   onMarkPaid: (orderId: string) => void;
   onAssignWarehouse: (orderId: string, warehouse: WarehouseName) => void;
@@ -997,6 +991,7 @@ function OrderDetailsPanel({
 
   const nextStatus = getNextOrderStatus(order.status);
   const pickedItems = order.lines.reduce((total, line) => total + line.picked, 0);
+  const isMutating = pendingActionKey?.startsWith(`${order.id}:`) ?? false;
 
   return (
     <div className="min-w-0 space-y-4 rounded-lg border border-slate-200 bg-slate-50/40 p-3 sm:p-4">
@@ -1012,9 +1007,9 @@ function OrderDetailsPanel({
             <Badge className={priorityBadgeClass(order.priority)}>
               {priorityLabels[order.priority]}
             </Badge>
-            {hasLocalEdits && (
-              <Badge className="border-amber-200 bg-amber-50 text-amber-700">
-                Solo locale
+            {isMutating && (
+              <Badge className="border-cyan-200 bg-cyan-50 text-cyan-700">
+                Salvataggio
               </Badge>
             )}
           </div>
@@ -1027,12 +1022,15 @@ function OrderDetailsPanel({
             variant="outline"
             className="bg-white"
             onClick={() => onMarkPaid(order.id)}
-            disabled={order.paymentStatus === "paid"}
+            disabled={order.paymentStatus === "paid" || isMutating}
           >
             <CreditCard className="size-4" />
             Segna pagato
           </Button>
-          <Button onClick={() => onAdvanceStatus(order.id)} disabled={!nextStatus}>
+          <Button
+            onClick={() => onAdvanceStatus(order.id)}
+            disabled={!nextStatus || isMutating}
+          >
             <ArrowRight className="size-4" />
             {nextStatus ? orderStatusLabels[nextStatus] : "Completato"}
           </Button>
@@ -1084,6 +1082,7 @@ function OrderDetailsPanel({
             onValueChange={(value) =>
               onAssignWarehouse(order.id, value as WarehouseName)
             }
+            disabled={isMutating}
           >
             <SelectTrigger className="w-full bg-white">
               <SelectValue />
@@ -1101,6 +1100,7 @@ function OrderDetailsPanel({
           <Select
             value={order.carrier}
             onValueChange={(value) => onAssignCarrier(order.id, value as Carrier)}
+            disabled={isMutating}
           >
             <SelectTrigger className="w-full bg-white">
               <SelectValue />
@@ -1115,11 +1115,12 @@ function OrderDetailsPanel({
           </Select>
         </Field>
         <Field label="Tracking">
-          <Input
-            value={order.tracking}
-            onChange={(event) => onUpdateTracking(order.id, event.target.value)}
-            className="bg-white"
-            placeholder="Tracking"
+          <TrackingEditor
+            key={`${order.id}:${order.tracking}`}
+            isMutating={isMutating}
+            orderId={order.id}
+            tracking={order.tracking}
+            onUpdateTracking={onUpdateTracking}
           />
         </Field>
       </div>
@@ -1165,6 +1166,42 @@ function OrderDetailsPanel({
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function TrackingEditor({
+  isMutating,
+  orderId,
+  tracking,
+  onUpdateTracking,
+}: {
+  isMutating: boolean;
+  orderId: string;
+  tracking: string;
+  onUpdateTracking: (orderId: string, tracking: string) => void;
+}) {
+  const [trackingDraft, setTrackingDraft] = React.useState(tracking);
+  const trackingChanged = trackingDraft !== tracking;
+
+  return (
+    <div className="flex min-w-0 gap-2">
+      <Input
+        value={trackingDraft}
+        onChange={(event) => setTrackingDraft(event.target.value)}
+        className="min-w-0 bg-white"
+        placeholder="Tracking"
+        disabled={isMutating}
+      />
+      <Button
+        type="button"
+        variant="outline"
+        className="shrink-0 bg-white"
+        onClick={() => onUpdateTracking(orderId, trackingDraft)}
+        disabled={!trackingChanged || isMutating}
+      >
+        Salva
+      </Button>
     </div>
   );
 }
@@ -1335,7 +1372,7 @@ function EmptyState() {
 }
 
 async function fetchOrdersFromApi(signal?: AbortSignal): Promise<OrdersApiResult> {
-  const response = await fetch("/api/orders?limit=50&sort=date_desc", {
+  const response = await fetch("/api/admin/orders?limit=50&sort=date_desc", {
     cache: "no-store",
     headers: {
       Accept: "application/json",
@@ -1345,7 +1382,7 @@ async function fetchOrdersFromApi(signal?: AbortSignal): Promise<OrdersApiResult
   });
 
   if (!response.ok) {
-    throw new Error(`GET /api/orders ha risposto ${response.status}`);
+    throw new Error(`GET /api/admin/orders ha risposto ${response.status}`);
   }
 
   const payload = (await response.json()) as unknown;
@@ -1353,93 +1390,182 @@ async function fetchOrdersFromApi(signal?: AbortSignal): Promise<OrdersApiResult
 }
 
 function parseOrdersApiPayload(payload: unknown): OrdersApiResult {
-  if (!isRecord(payload) || !Array.isArray(payload.data)) {
-    throw new Error("Risposta /api/orders incompleta");
+  if (!isRecord(payload)) {
+    throw new Error("Risposta /api/admin/orders incompleta");
   }
 
   const meta = isRecord(payload.meta) ? payload.meta : {};
-  const source = readSource(meta.source);
-  const summaries = payload.data
-    .map((row) => normalizeOrdersApiOrder(row))
-    .filter((order): order is OrdersApiOrder => order !== null);
+  const source = readSource(meta.source ?? payload.source);
+  const rows = readArrayPayload(payload, ["data", "orders"]);
+
+  if (!rows) {
+    throw new Error("Risposta /api/admin/orders incompleta");
+  }
+
+  const orders = rows
+    .map((row, index) => normalizeAdminOrder(row, index, source))
+    .filter((order): order is AdminOrder => order !== null);
 
   return {
-    orders: buildOrdersFromApiSummaries(summaries, source),
+    orders,
     source,
-    total: readNumber(meta.total) ?? summaries.length,
-    returned: readNumber(meta.returned) ?? summaries.length,
+    total: readNumber(meta.total) ?? orders.length,
+    returned: readNumber(meta.returned) ?? orders.length,
   };
 }
 
-function normalizeOrdersApiOrder(row: unknown): OrdersApiOrder | null {
+async function patchOrderInApi(orderId: string, patch: OrderPatchInput) {
+  const response = await fetch(`/api/admin/orders/${encodeURIComponent(orderId)}`, {
+    body: JSON.stringify(serializeOrderPatch(patch)),
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    method: "PATCH",
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `PATCH /api/admin/orders/${orderId} ha risposto ${response.status}. Modifica non applicata localmente.`
+    );
+  }
+
+  const payload = await readJsonSafely(response);
+  const meta = isRecord(payload) && isRecord(payload.meta) ? payload.meta : {};
+  const source = readSource(meta.source ?? (isRecord(payload) ? payload.source : null));
+  const row = extractOrderPayload(payload);
+
+  return {
+    order: row ? normalizeAdminOrder(row, 0, source) : null,
+    source,
+  };
+}
+
+function normalizeAdminOrder(
+  row: unknown,
+  index: number,
+  source: ApiOrdersSource
+): AdminOrder | null {
   if (!isRecord(row)) {
     return null;
   }
 
-  const id = readString(row.id);
-  const date = readString(row.date);
-  const company = readString(row.company);
+  const companyRecord = isRecord(row.company) ? row.company : null;
+  const customerRecord = isRecord(row.customer)
+    ? row.customer
+    : isRecord(row.companySnapshot)
+      ? row.companySnapshot
+      : companyRecord;
+  const shippingRecord = isRecord(row.shipping) ? row.shipping : null;
+  const totalsRecord = isRecord(row.totals) ? row.totals : null;
+  const id = readString(
+    readRecordValue(row, ["id", "orderId", "order_id", "number"])
+  );
+  const date =
+    readString(
+      readRecordValue(row, ["date", "createdAt", "created_at", "orderedAt"])
+    ) ?? "Data non disponibile";
+  const company =
+    readString(row.company) ??
+    readString(readRecordValue(customerRecord, ["name", "companyName"])) ??
+    "Cliente non disponibile";
 
-  if (!id || !date || !company) {
+  if (!id) {
     return null;
   }
+
+  const status = normalizeOrderStatusValue(
+    readRecordValue(row, ["status", "orderStatus", "order_status"])
+  );
+  const paymentStatus = normalizePaymentStatusValue(
+    readRecordValue(row, ["paymentStatus", "payment_status"]),
+    status
+  );
+  const fulfillmentStatus = normalizeFulfillmentStatusValue(
+    readRecordValue(row, ["fulfillmentStatus", "fulfillment_status"]),
+    status
+  );
+  const rawLines = readArrayPayload(row, ["lines", "orderLines", "items"]) ?? [];
+  const lines = rawLines
+    .map((line) => normalizeOrderLine(line, fulfillmentStatus))
+    .filter((line): line is OrderLine => line !== null);
+  const itemCount =
+    readNumber(readRecordValue(row, ["items", "itemCount", "items_count"])) ??
+    lines.reduce((total, line) => total + line.quantity, 0);
+  const total = readMoney(
+    readRecordValue(row, ["total", "totalAmount", "total_amount", "grandTotal"]) ??
+      readRecordValue(totalsRecord, ["total", "gross", "grandTotal", "grand_total"])
+  );
+  const summaryLines =
+    lines.length > 0
+      ? lines
+      : buildSummaryOrderLines(
+          { id, date, company, status, total, items: itemCount },
+          fulfillmentStatus
+        );
+  const warehouse = normalizeWarehouseValue(
+    readRecordValue(row, ["warehouse"]) ??
+      readRecordValue(shippingRecord, ["warehouse"]) ??
+      summaryLines[0]?.warehouse
+  );
+  const customer = normalizeCustomerSnapshot(customerRecord, company);
 
   return {
     id,
     date,
     company,
-    status: normalizeOrderStatusValue(row.status),
-    total: readMoney(row.total),
-    items: readNumber(row.items) ?? 0,
-  };
-}
-
-function buildOrdersFromApiSummaries(
-  summaries: OrdersApiOrder[],
-  source: ApiOrdersSource
-) {
-  return summaries.map((summary, index) => buildSummaryOrder(summary, index, source));
-}
-
-function buildSummaryOrder(
-  summary: OrdersApiOrder,
-  index: number,
-  source: ApiOrdersSource
-): AdminOrder {
-  const customer = resolveCustomer(summary.company);
-  const fulfillmentStatus = fulfillmentStatusFromOrderStatus(summary.status);
-  const lines = buildSummaryOrderLines(summary, fulfillmentStatus);
-  const warehouse = lines[0]?.warehouse ?? "Milano";
-
-  return {
-    ...summary,
-    paymentStatus: paymentStatusFromOrderStatus(summary.status),
+    status,
+    total,
+    items: itemCount,
+    paymentStatus,
     fulfillmentStatus,
-    priority: priorityForOrder(summary.status, index),
+    priority: normalizePriorityValue(row.priority, status, index),
     customer,
-    paymentMethod: "Da /api/orders",
-    paymentDue: paymentStatusFromOrderStatus(summary.status) === "paid" ? "Pagato" : "Da verificare",
+    paymentMethod:
+      readString(readRecordValue(row, ["paymentMethod", "payment_method"])) ??
+      "Da /api/admin/orders",
+    paymentDue:
+      readString(readRecordValue(row, ["paymentDue", "payment_due", "dueDate"])) ??
+      (paymentStatus === "paid" ? "Pagato" : "Da verificare"),
     warehouse,
-    carrier: "GLS",
-    service: "Da pianificare",
-    tracking: "",
-    eta: "Da pianificare",
-    shippingAddress: customer.city ? `${customer.city}, Italia` : "Non disponibile da /api/orders",
-    owner: "Operations",
+    carrier: normalizeCarrierValue(
+      readRecordValue(row, ["carrier"]) ?? readRecordValue(shippingRecord, ["carrier"])
+    ),
+    service:
+      readString(readRecordValue(row, ["service"])) ??
+      readString(readRecordValue(shippingRecord, ["service"])) ??
+      "Da pianificare",
+    tracking:
+      readString(readRecordValue(row, ["tracking", "trackingCode"])) ??
+      readString(readRecordValue(shippingRecord, ["tracking", "trackingCode"])) ??
+      "",
+    eta:
+      readString(readRecordValue(row, ["eta", "estimatedDelivery"])) ??
+      readString(readRecordValue(shippingRecord, ["eta", "estimatedDelivery"])) ??
+      "Da pianificare",
+    shippingAddress:
+      readString(readRecordValue(row, ["shippingAddress"])) ??
+      readString(readRecordValue(shippingRecord, ["address", "shippingAddress"])) ??
+      (customer.city ? `${customer.city}, Italia` : "Non disponibile"),
+    owner: readString(readRecordValue(row, ["owner", "accountOwner"])) ?? "Operations",
     notes:
-      source === "supabase"
-        ? "Riepilogo reale importato da /api/orders. L'endpoint non espone ancora righe complete, pagamento e logistica persistibili."
-        : "Nessun dettaglio operativo persistito disponibile da /api/orders.",
-    lines,
-    activity: [
-      `${summary.date} - Ordine importato da /api/orders (${sourceLabel(source)})`,
-      "Dettaglio operativo completato con campi non persistiti nel pannello admin.",
-    ],
+      readString(row.notes) ??
+      `Ordine importato da /api/admin/orders (${sourceLabel(source)}).`,
+    lines: summaryLines,
+    activity: normalizeActivity(row.activity, date, source),
   };
 }
 
 function buildSummaryOrderLines(
-  summary: OrdersApiOrder,
+  summary: {
+    company: string;
+    date: string;
+    id: string;
+    items: number;
+    status: OrderStatus;
+    total: number;
+  },
   fulfillmentStatus: FulfillmentStatus
 ): OrderLine[] {
   if (summary.items <= 0) {
@@ -1456,7 +1582,7 @@ function buildSummaryOrderLines(
   return [
     {
       sku: `${summary.id}-SUMMARY`,
-      name: "Dettaglio righe non esposto da /api/orders",
+      name: "Dettaglio righe non esposto da /api/admin/orders",
       category: "Riepilogo API",
       quantity: summary.items,
       picked,
@@ -1466,16 +1592,212 @@ function buildSummaryOrderLines(
   ];
 }
 
-function resolveCustomer(company: string): CustomerSnapshot {
+function normalizeOrderLine(
+  row: unknown,
+  fulfillmentStatus: FulfillmentStatus
+): OrderLine | null {
+  if (!isRecord(row)) {
+    return null;
+  }
+
+  const product = isRecord(row.product) ? row.product : null;
+  const sku =
+    readString(readRecordValue(row, ["sku", "productSku", "product_sku"])) ??
+    readString(readRecordValue(product, ["sku"]));
+  const quantity =
+    readNumber(readRecordValue(row, ["quantity", "qty"])) ??
+    readNumber(readRecordValue(row, ["items"])) ??
+    0;
+
+  if (!sku || quantity <= 0) {
+    return null;
+  }
+
+  const lineTotal = readMoney(
+    readRecordValue(row, ["lineTotal", "line_total", "total"])
+  );
+  const unitPrice =
+    readMoney(readRecordValue(row, ["unitPrice", "unit_price", "price"])) ||
+    (lineTotal > 0 ? roundMoney(lineTotal / quantity) : 0);
+  const picked =
+    readNumber(readRecordValue(row, ["picked", "pickedQuantity", "picked_quantity"])) ??
+    (fulfillmentStatus === "shipped" || fulfillmentStatus === "delivered"
+      ? quantity
+      : 0);
+
   return {
-    name: company,
-    partitaIva: "Non disponibile",
-    pec: "Non disponibile",
-    status: "approved",
-    priceList: "Standard",
-    city: "Non disponibile",
-    province: "--",
+    sku,
+    name:
+      readString(readRecordValue(row, ["name", "productName", "product_name"])) ??
+      readString(readRecordValue(product, ["name"])) ??
+      "Prodotto ordine",
+    category:
+      readString(row.category) ??
+      readString(readRecordValue(product, ["category"])) ??
+      "Ricambio",
+    quantity,
+    picked,
+    unitPrice,
+    warehouse: normalizeWarehouseValue(row.warehouse),
   };
+}
+
+function normalizeCustomerSnapshot(
+  row: Record<string, unknown> | null,
+  fallbackName: string
+): CustomerSnapshot {
+  const address = isRecord(row?.address) ? row?.address : null;
+
+  return {
+    name:
+      readString(readRecordValue(row, ["name", "companyName", "company_name"])) ??
+      fallbackName,
+    partitaIva:
+      readString(readRecordValue(row, ["partitaIva", "vatNumber", "vat_number"])) ??
+      "Non disponibile",
+    pec: readString(readRecordValue(row, ["pec"])) ?? "Non disponibile",
+    status: normalizeCompanyStatusValue(readRecordValue(row, ["status"])),
+    priceList: normalizePriceListValue(
+      readRecordValue(row, ["priceList", "price_list", "tier"])
+    ),
+    city:
+      readString(readRecordValue(row, ["city"])) ??
+      readString(readRecordValue(address, ["city"])) ??
+      "Non disponibile",
+    province:
+      readString(readRecordValue(row, ["province"])) ??
+      readString(readRecordValue(address, ["province"])) ??
+      "--",
+  };
+}
+
+function applyOrderPatch(
+  order: AdminOrder,
+  patch: OrderPatchInput,
+  activityMessage: string
+) {
+  const status = patch.status ?? order.status;
+  const fulfillmentStatus =
+    patch.fulfillmentStatus ??
+    (patch.status
+      ? fulfillmentStatusFromOrderStatus(status)
+      : order.fulfillmentStatus);
+  const paymentStatus =
+    patch.paymentStatus ??
+    (patch.status
+      ? paymentStatusFromOrderStatus(status, order.paymentStatus)
+      : order.paymentStatus);
+  const warehouse = patch.warehouse ?? order.warehouse;
+  const linesWithWarehouse = patch.warehouse
+    ? order.lines.map((line) => ({ ...line, warehouse }))
+    : order.lines;
+
+  const nextOrder = {
+    ...order,
+    ...patch,
+    status,
+    paymentStatus,
+    fulfillmentStatus,
+    warehouse,
+    lines: updatePickedLines(linesWithWarehouse, fulfillmentStatus),
+  };
+
+  return {
+    ...nextOrder,
+    activity: prependActivity(nextOrder, activityMessage.replace(/\.$/, "")),
+  };
+}
+
+function normalizeActivity(
+  value: unknown,
+  fallbackDate: string,
+  source: ApiOrdersSource
+) {
+  if (Array.isArray(value)) {
+    const activity = value
+      .map((item) => readString(item))
+      .filter((item): item is string => item !== null);
+
+    if (activity.length > 0) {
+      return activity.slice(0, 5);
+    }
+  }
+
+  return [
+    `${fallbackDate} - Ordine importato da /api/admin/orders (${sourceLabel(source)})`,
+  ];
+}
+
+function normalizePaymentStatusValue(
+  value: unknown,
+  status: OrderStatus
+): PaymentStatus {
+  return ["unpaid", "authorized", "paid", "refunded"].includes(
+    value as PaymentStatus
+  )
+    ? (value as PaymentStatus)
+    : paymentStatusFromOrderStatus(status);
+}
+
+function normalizeFulfillmentStatusValue(
+  value: unknown,
+  status: OrderStatus
+): FulfillmentStatus {
+  return [
+    "queued",
+    "allocated",
+    "picking",
+    "packed",
+    "shipped",
+    "delivered",
+    "blocked",
+  ].includes(value as FulfillmentStatus)
+    ? (value as FulfillmentStatus)
+    : fulfillmentStatusFromOrderStatus(status);
+}
+
+function normalizePriorityValue(
+  value: unknown,
+  status: OrderStatus,
+  index: number
+): Priority {
+  return ["standard", "high", "urgent"].includes(value as Priority)
+    ? (value as Priority)
+    : priorityForOrder(status, index);
+}
+
+function normalizeCompanyStatusValue(value: unknown): CompanyStatus {
+  return ["approved", "pending", "suspended", "rejected"].includes(
+    value as CompanyStatus
+  )
+    ? (value as CompanyStatus)
+    : "approved";
+}
+
+function normalizePriceListValue(value: unknown): CustomerSnapshot["priceList"] {
+  return ["Standard", "Pro", "Partner"].includes(
+    value as CustomerSnapshot["priceList"]
+  )
+    ? (value as CustomerSnapshot["priceList"])
+    : "Standard";
+}
+
+function normalizeWarehouseValue(value: unknown): WarehouseName {
+  const warehouse = readString(value);
+  const match = warehouses.find(
+    (item) => item.toLowerCase() === warehouse?.toLowerCase()
+  );
+
+  return match ?? "Milano";
+}
+
+function normalizeCarrierValue(value: unknown): Carrier {
+  const carrier = readString(value);
+  const match = carriers.find(
+    (item) => item.toLowerCase() === carrier?.toLowerCase()
+  );
+
+  return match ?? "GLS";
 }
 
 function priorityForOrder(status: OrderStatus, index: number): Priority {
@@ -1593,6 +1915,10 @@ function formatSyncTime() {
 }
 
 function sourceLabel(source: OrdersSource) {
+  if (source === "admin_api") {
+    return "Admin API";
+  }
+
   if (source === "supabase") {
     return "Supabase";
   }
@@ -1601,13 +1927,49 @@ function sourceLabel(source: OrdersSource) {
 }
 
 function readSource(value: unknown): ApiOrdersSource {
-  return value === "supabase" ? "supabase" : "empty";
+  if (value === "supabase" || value === "admin_api") {
+    return value;
+  }
+
+  return "empty";
 }
 
 function normalizeOrderStatusValue(value: unknown): OrderStatus {
   return orderStatuses.includes(value as OrderStatus)
     ? (value as OrderStatus)
     : "pending_payment";
+}
+
+function readArrayPayload(
+  record: Record<string, unknown>,
+  keys: string[]
+): unknown[] | null {
+  for (const key of keys) {
+    const value = record[key];
+
+    if (Array.isArray(value)) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function readRecordValue(
+  record: Record<string, unknown> | null | undefined,
+  keys: string[]
+) {
+  if (!record) {
+    return undefined;
+  }
+
+  for (const key of keys) {
+    if (record[key] !== undefined && record[key] !== null) {
+      return record[key];
+    }
+  }
+
+  return undefined;
 }
 
 function readString(value: unknown) {
@@ -1620,6 +1982,40 @@ function readString(value: unknown) {
   }
 
   return null;
+}
+
+async function readJsonSafely(response: Response) {
+  try {
+    return (await response.json()) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function extractOrderPayload(payload: unknown) {
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  if (isRecord(payload.data)) {
+    return payload.data;
+  }
+
+  if (Array.isArray(payload.data) && isRecord(payload.data[0])) {
+    return payload.data[0];
+  }
+
+  if (isRecord(payload.order)) {
+    return payload.order;
+  }
+
+  return readString(payload.id) ? payload : null;
+}
+
+function serializeOrderPatch(patch: OrderPatchInput) {
+  return Object.fromEntries(
+    Object.entries(patch).filter(([, value]) => value !== undefined)
+  );
 }
 
 function readNumber(value: unknown) {
@@ -1748,7 +2144,7 @@ function noticeToneClass(tone: NoticeTone) {
 }
 
 function sourceBadgeClass(source: OrdersSource) {
-  if (source === "supabase") {
+  if (source === "admin_api" || source === "supabase") {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
 

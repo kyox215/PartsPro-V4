@@ -49,12 +49,14 @@ type CatalogPageProps = {
   filteredTotal?: number;
   initialModelGroups?: DeviceModelGroup[];
   initialProducts?: PartProduct[];
+  showWholesalePrice?: boolean;
 };
 
 export function CatalogPage({
   filteredTotal,
   initialModelGroups,
   initialProducts = localProducts,
+  showWholesalePrice = false,
 }: CatalogPageProps) {
   const searchParams = useSearchParams();
 
@@ -66,6 +68,7 @@ export function CatalogPage({
       initialModelGroups={initialModelGroups}
       initialProducts={initialProducts}
       initialSearchTerm={getModelSearchFromParams(searchParams)}
+      showWholesalePrice={showWholesalePrice}
     />
   );
 }
@@ -77,6 +80,7 @@ function CatalogPageContent({
   initialModelGroups,
   initialProducts,
   initialSearchTerm,
+  showWholesalePrice,
 }: {
   filteredTotal: number;
   initialFilters: CatalogFiltersState;
@@ -84,6 +88,7 @@ function CatalogPageContent({
   initialModelGroups?: DeviceModelGroup[];
   initialProducts: PartProduct[];
   initialSearchTerm: string;
+  showWholesalePrice: boolean;
 }) {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
   const [filters, setFilters] = useState<CatalogFiltersState>(initialFilters);
@@ -207,7 +212,11 @@ function CatalogPageContent({
             <div className="space-y-4">
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                 {products.map((product) => (
-                  <ProductCard key={product.sku} product={product} />
+                  <ProductCard
+                    key={product.sku}
+                    product={product}
+                    showWholesalePrice={showWholesalePrice}
+                  />
                 ))}
               </div>
               {hiddenProductCount > 0 && (

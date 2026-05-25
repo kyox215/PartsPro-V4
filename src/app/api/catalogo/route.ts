@@ -7,6 +7,7 @@ import {
 } from "@/lib/partspro-api";
 import { pageCatalogProducts } from "@/lib/partspro-repository";
 import { type PartProduct } from "@/lib/partspro-data";
+import { canViewWholesalePrices } from "@/lib/partspro-price-access";
 
 const catalogQuerySchema = z
   .object({
@@ -25,6 +26,7 @@ const catalogQuerySchema = z
   .strict();
 
 const allowedQueryKeys = new Set(Object.keys(catalogQuerySchema.shape));
+export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
@@ -42,10 +44,15 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const repositoryResult = await pageCatalogProducts(result.data);
+    const showWholesalePrice = await canViewWholesalePrices();
+    const repositoryResult = await pageCatalogProducts(result.data, {
+      includeBuyerPrices: showWholesalePrice,
+    });
 
     return NextResponse.json({
-      data: repositoryResult.data.products.map(toCatalogProduct),
+      data: repositoryResult.data.products.map((product) =>
+        toCatalogProduct(product, showWholesalePrice)
+      ),
       meta: {
         source: repositoryResult.source,
         total: repositoryResult.data.total,
@@ -53,7 +60,9 @@ export async function GET(request: NextRequest) {
         offset: result.data.offset,
         returned: repositoryResult.data.products.length,
         currency: "EUR",
-        priceVisibility: "hidden_until_approved_b2b_login",
+        priceVisibility: showWholesalePrice
+          ? "visible_authenticated"
+          : "hidden_until_b2b_login",
         vatMode: "net_prices_plus_iva",
       },
     });
@@ -62,7 +71,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function toCatalogProduct(product: PartProduct) {
+function toCatalogProduct(product: PartProduct, showWholesalePrice: boolean) {
   return {
     sku: product.sku,
     slug: product.slug,
@@ -70,8 +79,8 @@ function toCatalogProduct(product: PartProduct) {
     category: product.category,
     brand: product.brand,
     grade: product.grade,
-    price: 0,
-    retailPrice: 0,
+    price: showWholesalePrice ? product.price : 0,
+    retailPrice: showWholesalePrice ? product.retailPrice : 0,
     stock: product.stock,
     status: product.status,
     visual: product.visual,
@@ -87,8 +96,8 @@ function toCatalogProduct(product: PartProduct) {
     imageAlt: product.imageAlt,
     galleryImageUrls: product.galleryImageUrls,
     priceGate: {
-      visible: false,
-      reason: "approved_b2b_login_required",
+      visible: showWholesalePrice,
+      reason: showWholesalePrice ? "authenticated" : "b2b_login_required",
       vatMode: "net_prices_plus_iva",
     },
   };

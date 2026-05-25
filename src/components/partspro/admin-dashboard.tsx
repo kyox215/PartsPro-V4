@@ -59,6 +59,7 @@ import {
   MoreHorizontal,
   Package,
   Plus,
+  RefreshCw,
   Search,
   Settings,
   ShoppingCart,
@@ -139,7 +140,6 @@ import {
   dashboardStats,
   inventoryMix,
   monthlyOrders,
-  products as initialProducts,
   salesTrend,
   type PartProduct,
   type StockStatus,
@@ -174,12 +174,38 @@ const lowStockThreshold = 10;
 const productGrades = ["A+", "A", "B", "Refurbished"] as const;
 const warehouses = ["Milano", "Roma", "Shenzhen"] as const;
 const stockStatuses = ["In Stock", "Low Stock", "Out of Stock"] as const;
+const productVisuals = [
+  "screen",
+  "battery",
+  "cover",
+  "port",
+  "camera",
+  "flex",
+  "speaker",
+  "frame",
+] as const;
+const adminProductsEndpoint = "/api/admin/products";
 
 type StatusFilterValue = "all" | StockStatus;
 type StockFilterValue = "all" | "available" | "under-10" | "empty";
+type ProductSource = "supabase" | "api" | "empty";
 type ProductNotice = {
-  tone: "success" | "info";
+  tone: "success" | "info" | "warning" | "error";
   message: string;
+};
+type ProductDataSource = {
+  source: ProductSource;
+  label: string;
+  syncedAt: string | null;
+  total: number;
+  returned: number;
+  error?: string;
+};
+type ProductsApiResult = {
+  products: PartProduct[];
+  source: ProductSource;
+  total: number;
+  returned: number;
 };
 
 function createProductSchema(text: AdminText) {
@@ -376,7 +402,7 @@ function downloadProductsCsv(products: PartProduct[], scope: "selected" | "view"
   const anchor = document.createElement("a");
 
   anchor.href = url;
-  anchor.download = `partspro-catalogo-${scope}-${new Date()
+  anchor.download = `partspro-prodotti-${scope}-${new Date()
     .toISOString()
     .slice(0, 10)}.csv`;
   document.body.append(anchor);
@@ -385,9 +411,328 @@ function downloadProductsCsv(products: PartProduct[], scope: "selected" | "view"
   URL.revokeObjectURL(url);
 }
 
+async function fetchAdminProducts(signal?: AbortSignal): Promise<ProductsApiResult> {
+  const response = await fetch(`${adminProductsEndpoint}?limit=100&sort=updated_desc`, {
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Cache-Control": "no-cache",
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(`GET ${adminProductsEndpoint} responded ${response.status}`);
+  }
+
+  const payload = (await response.json()) as unknown;
+
+  return parseProductsApiPayload(payload);
+}
+
+async function saveAdminProduct(
+  product: PartProduct,
+  mode: "create" | "update",
+  originalSku?: string
+) {
+  const response = await fetch(adminProductsEndpoint, {
+    method: mode === "create" ? "POST" : "PATCH",
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Cache-Control": "no-cache",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(
+      mode === "create"
+        ? { product }
+        : { product, sku: originalSku ?? product.sku }
+    ),
+  });
+
+  if (!response.ok) {
+    throw new Error(`${mode === "create" ? "POST" : "PATCH"} ${adminProductsEndpoint} responded ${response.status}`);
+  }
+
+  const payload = await readJsonResponse(response);
+
+  return readSavedProduct(payload, product);
+}
+
+async function deleteAdminProducts(skus: string[]) {
+  const response = await fetch(adminProductsEndpoint, {
+    method: "DELETE",
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Cache-Control": "no-cache",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ skus }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`DELETE ${adminProductsEndpoint} responded ${response.status}`);
+  }
+}
+
+async function readJsonResponse(response: Response) {
+  const body = await response.text();
+
+  if (!body.trim()) {
+    return null;
+  }
+
+  return JSON.parse(body) as unknown;
+}
+
+function parseProductsApiPayload(payload: unknown): ProductsApiResult {
+  const rows = readProductsRows(payload);
+  const products = rows
+    .map((row) => normalizeProductApiRow(row))
+    .filter((product): product is PartProduct => product !== null);
+  const meta = readProductsMeta(payload);
+  const source = readProductsSource(readString(meta.source), products.length);
+
+  return {
+    products,
+    source,
+    total: readNumber(meta.total) ?? products.length,
+    returned: readNumber(meta.returned) ?? products.length,
+  };
+}
+
+function readSavedProduct(payload: unknown, fallback: PartProduct) {
+  const candidates = readSavedProductCandidates(payload);
+
+  for (const candidate of candidates) {
+    const product = normalizeProductApiRow(candidate);
+
+    if (product) {
+      return product;
+    }
+  }
+
+  return fallback;
+}
+
+function readSavedProductCandidates(payload: unknown) {
+  if (!isRecord(payload)) {
+    return [];
+  }
+
+  const candidates: unknown[] = [payload.data, payload.product, payload];
+
+  if (Array.isArray(payload.data)) {
+    candidates.unshift(payload.data[0]);
+  }
+
+  if (isRecord(payload.data)) {
+    candidates.unshift(payload.data.product);
+  }
+
+  return candidates;
+}
+
+function readProductsRows(payload: unknown) {
+  if (!isRecord(payload)) {
+    return [];
+  }
+
+  if (Array.isArray(payload.data)) {
+    return payload.data;
+  }
+
+  if (isRecord(payload.data) && Array.isArray(payload.data.products)) {
+    return payload.data.products;
+  }
+
+  if (Array.isArray(payload.products)) {
+    return payload.products;
+  }
+
+  return [];
+}
+
+function readProductsMeta(payload: unknown) {
+  if (!isRecord(payload)) {
+    return {};
+  }
+
+  if (isRecord(payload.meta)) {
+    return payload.meta;
+  }
+
+  if (isRecord(payload.data) && isRecord(payload.data.meta)) {
+    return payload.data.meta;
+  }
+
+  return {};
+}
+
+function normalizeProductApiRow(row: unknown): PartProduct | null {
+  if (!isRecord(row)) {
+    return null;
+  }
+
+  const sku = readString(row.sku);
+  const name = readString(row.name);
+
+  if (!sku || !name) {
+    return null;
+  }
+
+  const category = readString(row.category) ?? "Schermi";
+  const stock = readNumber(row.stock) ?? 0;
+  const price =
+    readNumber(row.price) ??
+    readCents(row.priceCents) ??
+    readCents(row.price_cents) ??
+    0;
+  const retailPrice =
+    readNumber(row.retailPrice) ??
+    readNumber(row.retail_price) ??
+    readCents(row.retailPriceCents) ??
+    readCents(row.retail_price_cents) ??
+    Number((price * 1.35).toFixed(2));
+  const categoryVisual = categories.find((item) => item.label === category)?.visual;
+
+  return {
+    sku,
+    slug: readString(row.slug) ?? slugify(sku),
+    name,
+    category,
+    brand: readString(row.brand) ?? "OEM",
+    grade: normalizeProductGrade(row.grade),
+    price,
+    retailPrice,
+    stock,
+    status: normalizeStockStatus(row.status) ?? stockStatusFromStock(stock),
+    updatedAt: readString(row.updatedAt) ?? readString(row.updated_at) ?? formatTimestamp(),
+    visual: normalizeProductVisual(row.visual) ?? categoryVisual ?? "screen",
+    compatibleWith:
+      readStringList(row.compatibleWith) ??
+      readStringList(row.compatible_with) ??
+      [],
+    warehouse: normalizeWarehouse(row.warehouse),
+    moq: readNumber(row.moq) ?? 1,
+    vatRate: readNumber(row.vatRate) ?? readNumber(row.vat_rate) ?? 22,
+    rmaDays: readNumber(row.rmaDays) ?? readNumber(row.rma_days) ?? 30,
+    leadTime:
+      readString(row.leadTime) ?? readString(row.lead_time) ?? "24/48h Italia",
+    tags: readStringList(row.tags) ?? [],
+    imageUrl: readString(row.imageUrl) ?? readString(row.image_url),
+    imageAlt: readString(row.imageAlt) ?? readString(row.image_alt),
+    galleryImageUrls:
+      readStringList(row.galleryImageUrls) ?? readStringList(row.gallery_image_urls),
+  };
+}
+
+function normalizeProductGrade(value: unknown): PartProduct["grade"] {
+  const grade = readString(value);
+
+  return productGrades.find((item) => item === grade) ?? "A+";
+}
+
+function normalizeStockStatus(value: unknown): StockStatus | null {
+  const status = readString(value);
+
+  return stockStatuses.find((item) => item === status) ?? null;
+}
+
+function normalizeWarehouse(value: unknown): PartProduct["warehouse"] {
+  const warehouse = readString(value);
+
+  return warehouses.find((item) => item === warehouse) ?? "Milano";
+}
+
+function normalizeProductVisual(value: unknown): PartProduct["visual"] | null {
+  const visual = readString(value);
+
+  return productVisuals.find((item) => item === visual) ?? null;
+}
+
+function readProductsSource(value: string | undefined, productCount: number): ProductSource {
+  if (value === "supabase") {
+    return "supabase";
+  }
+
+  if (value === "empty" || productCount === 0) {
+    return "empty";
+  }
+
+  return "api";
+}
+
+function productSourceLabel(source: ProductSource, text: AdminText) {
+  if (source === "supabase") {
+    return text.catalog.apiSourceSupabase;
+  }
+
+  if (source === "api") {
+    return text.catalog.apiSourceApi;
+  }
+
+  return text.catalog.apiSourceEmpty;
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Unknown error";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function readNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = Number(value.replace(",", "."));
+
+    return Number.isFinite(normalized) ? normalized : undefined;
+  }
+
+  return undefined;
+}
+
+function readCents(value: unknown) {
+  const cents = readNumber(value);
+
+  return cents === undefined ? undefined : Number((cents / 100).toFixed(2));
+}
+
+function readStringList(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.map((item) => readString(item)).filter((item): item is string => Boolean(item));
+  }
+
+  if (typeof value === "string") {
+    return splitList(value);
+  }
+
+  return undefined;
+}
+
 export function AdminDashboard() {
   const text = useAdminText();
-  const [products, setProducts] = React.useState<PartProduct[]>(initialProducts);
+  const [products, setProducts] = React.useState<PartProduct[]>([]);
+  const [productDataSource, setProductDataSource] =
+    React.useState<ProductDataSource>(() => ({
+      source: "empty",
+      label: text.catalog.apiSourceEmpty,
+      syncedAt: null,
+      total: 0,
+      returned: 0,
+    }));
+  const [isLoadingProducts, setIsLoadingProducts] = React.useState(false);
+  const [isMutatingProducts, setIsMutatingProducts] = React.useState(false);
   const [globalFilter, setGlobalFilter] = React.useState("");
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({});
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -396,6 +741,72 @@ export function AdminDashboard() {
   const [notice, setNotice] = React.useState<ProductNotice | null>(null);
   const [viewProduct, setViewProduct] = React.useState<PartProduct | null>(null);
   const [editProduct, setEditProduct] = React.useState<PartProduct | null>(null);
+
+  const refreshProducts = React.useCallback(
+    async (signal?: AbortSignal) => {
+      setIsLoadingProducts(true);
+
+      try {
+        const result = await fetchAdminProducts(signal);
+
+        if (signal?.aborted) {
+          return;
+        }
+
+        setProducts(result.products);
+        setProductDataSource({
+          source: result.source,
+          label: productSourceLabel(result.source, text),
+          syncedAt: formatTimestamp(),
+          total: result.total,
+          returned: result.returned,
+        });
+        setRowSelection({});
+        setNotice({
+          tone: result.products.length ? "success" : "info",
+          message: result.products.length
+            ? text.catalog.syncSuccess
+            : text.catalog.syncEmpty,
+        });
+      } catch (error) {
+        if (signal?.aborted) {
+          return;
+        }
+
+        setProducts([]);
+        setProductDataSource({
+          source: "empty",
+          label: text.catalog.apiSourceEmpty,
+          syncedAt: formatTimestamp(),
+          total: 0,
+          returned: 0,
+          error: getErrorMessage(error),
+        });
+        setRowSelection({});
+        setNotice({
+          tone: "error",
+          message: text.catalog.syncError,
+        });
+      } finally {
+        if (!signal?.aborted) {
+          setIsLoadingProducts(false);
+        }
+      }
+    },
+    [text]
+  );
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      void refreshProducts(controller.signal);
+    }, 0);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [refreshProducts]);
 
   const filteredProducts = React.useMemo(
     () =>
@@ -416,82 +827,162 @@ export function AdminDashboard() {
   );
 
   const handleCreateProduct = React.useCallback(
-    (values: ProductFormValues) => {
+    async (values: ProductFormValues) => {
       const sku = ensureUniqueSku(values.sku, products);
       const product = productFromForm({ ...values, sku });
 
-      setProducts([product, ...products]);
-      setRowSelection({});
-      setNotice({
-        tone: "success",
-        message: formatAdminMessage(text.catalog.createdNotice, { sku }),
-      });
+      setIsMutatingProducts(true);
+
+      try {
+        const savedProduct = await saveAdminProduct(product, "create");
+
+        setProducts((currentProducts) => [
+          savedProduct,
+          ...currentProducts.filter((item) => item.sku !== savedProduct.sku),
+        ]);
+        setProductDataSource((currentSource) => ({
+          ...currentSource,
+          source: currentSource.source === "empty" ? "api" : currentSource.source,
+          label:
+            currentSource.source === "empty"
+              ? productSourceLabel("api", text)
+              : currentSource.label,
+          returned: currentSource.returned + 1,
+          total: currentSource.total + 1,
+          syncedAt: formatTimestamp(),
+        }));
+        setRowSelection({});
+        setNotice({
+          tone: "success",
+          message: formatAdminMessage(text.catalog.createdNotice, {
+            sku: savedProduct.sku,
+          }),
+        });
+
+        return true;
+      } catch {
+        setNotice({
+          tone: "error",
+          message: text.catalog.saveError,
+        });
+
+        return false;
+      } finally {
+        setIsMutatingProducts(false);
+      }
     },
     [products, text]
   );
 
   const handleUpdateProduct = React.useCallback(
-    (originalSku: string, values: ProductFormValues) => {
+    async (originalSku: string, values: ProductFormValues) => {
       const currentProduct = products.find((product) => product.sku === originalSku);
 
       if (!currentProduct) {
-        return;
+        return false;
       }
 
       const sku = ensureUniqueSku(values.sku, products, originalSku);
       const updatedProduct = productFromForm({ ...values, sku }, currentProduct);
 
-      setProducts(
-        products.map((product) =>
-          product.sku === originalSku ? updatedProduct : product
-        )
-      );
-      setRowSelection({});
-      setEditProduct(null);
-      setNotice({
-        tone: "success",
-        message: formatAdminMessage(text.catalog.updatedNotice, { sku }),
-      });
+      setIsMutatingProducts(true);
+
+      try {
+        const savedProduct = await saveAdminProduct(
+          updatedProduct,
+          "update",
+          originalSku
+        );
+
+        setProducts((currentProducts) =>
+          currentProducts.map((product) =>
+            product.sku === originalSku ? savedProduct : product
+          )
+        );
+        setProductDataSource((currentSource) => ({
+          ...currentSource,
+          syncedAt: formatTimestamp(),
+        }));
+        setRowSelection({});
+        setEditProduct(null);
+        setNotice({
+          tone: "success",
+          message: formatAdminMessage(text.catalog.updatedNotice, {
+            sku: savedProduct.sku,
+          }),
+        });
+
+        return true;
+      } catch {
+        setNotice({
+          tone: "error",
+          message: text.catalog.saveError,
+        });
+
+        return false;
+      } finally {
+        setIsMutatingProducts(false);
+      }
     },
     [products, text]
   );
 
   const handleDeleteProducts = React.useCallback(
-    (skus: string[]) => {
+    async (skus: string[]) => {
       const skuSet = new Set(skus);
-      const nextProducts = products.filter((product) => !skuSet.has(product.sku));
-      const deletedCount = products.length - nextProducts.length;
+      const deletedCount = products.filter((product) => skuSet.has(product.sku)).length;
 
       if (deletedCount === 0) {
         return;
       }
 
-      setProducts(nextProducts);
-      setRowSelection({});
+      setIsMutatingProducts(true);
 
-      if (viewProduct && skuSet.has(viewProduct.sku)) {
-        setViewProduct(null);
+      try {
+        await deleteAdminProducts(skus);
+
+        setProducts((currentProducts) =>
+          currentProducts.filter((product) => !skuSet.has(product.sku))
+        );
+        setProductDataSource((currentSource) => ({
+          ...currentSource,
+          returned: Math.max(0, currentSource.returned - deletedCount),
+          total: Math.max(0, currentSource.total - deletedCount),
+          syncedAt: formatTimestamp(),
+        }));
+        setRowSelection({});
+
+        if (viewProduct && skuSet.has(viewProduct.sku)) {
+          setViewProduct(null);
+        }
+
+        if (editProduct && skuSet.has(editProduct.sku)) {
+          setEditProduct(null);
+        }
+
+        setNotice({
+          tone: "info",
+          message:
+            deletedCount === 1
+              ? text.catalog.deletedOneNotice
+              : formatAdminMessage(text.catalog.deletedManyNotice, {
+                  count: deletedCount,
+                }),
+        });
+      } catch {
+        setNotice({
+          tone: "error",
+          message: text.catalog.deleteError,
+        });
+      } finally {
+        setIsMutatingProducts(false);
       }
-
-      if (editProduct && skuSet.has(editProduct.sku)) {
-        setEditProduct(null);
-      }
-
-      setNotice({
-        tone: "info",
-        message:
-          deletedCount === 1
-            ? text.catalog.deletedOneNotice
-            : formatAdminMessage(text.catalog.deletedManyNotice, {
-                count: deletedCount,
-              }),
-      });
     },
     [editProduct, products, text, viewProduct]
   );
 
   const handleDuplicateProduct = React.useCallback(
-    (product: PartProduct) => {
+    async (product: PartProduct) => {
       const sku = ensureUniqueSku(`${product.sku}-COPY`, products);
       const duplicatedProduct: PartProduct = {
         ...product,
@@ -502,12 +993,38 @@ export function AdminDashboard() {
         tags: Array.from(new Set([...product.tags, text.catalog.duplicatedSuffix])),
       };
 
-      setProducts([duplicatedProduct, ...products]);
-      setRowSelection({});
-      setNotice({
-        tone: "success",
-        message: formatAdminMessage(text.catalog.duplicatedNotice, { sku }),
-      });
+      setIsMutatingProducts(true);
+
+      try {
+        const savedProduct = await saveAdminProduct(duplicatedProduct, "create");
+
+        setProducts((currentProducts) => [savedProduct, ...currentProducts]);
+        setProductDataSource((currentSource) => ({
+          ...currentSource,
+          source: currentSource.source === "empty" ? "api" : currentSource.source,
+          label:
+            currentSource.source === "empty"
+              ? productSourceLabel("api", text)
+              : currentSource.label,
+          returned: currentSource.returned + 1,
+          total: currentSource.total + 1,
+          syncedAt: formatTimestamp(),
+        }));
+        setRowSelection({});
+        setNotice({
+          tone: "success",
+          message: formatAdminMessage(text.catalog.duplicatedNotice, {
+            sku: savedProduct.sku,
+          }),
+        });
+      } catch {
+        setNotice({
+          tone: "error",
+          message: text.catalog.saveError,
+        });
+      } finally {
+        setIsMutatingProducts(false);
+      }
     },
     [products, text]
   );
@@ -651,14 +1168,18 @@ export function AdminDashboard() {
                   <Edit className="size-4" />
                   {text.common.edit}
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleDuplicateProduct(product)}>
+                <DropdownMenuItem
+                  disabled={isMutatingProducts}
+                  onClick={() => void handleDuplicateProduct(product)}
+                >
                   <Copy className="size-4" />
                   {text.common.duplicate}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   className="text-red-600 focus:text-red-600"
-                  onClick={() => handleDeleteProducts([product.sku])}
+                  disabled={isMutatingProducts}
+                  onClick={() => void handleDeleteProducts([product.sku])}
                 >
                   <Trash2 className="size-4" />
                   {text.common.delete}
@@ -670,7 +1191,7 @@ export function AdminDashboard() {
         enableSorting: false,
       },
     ],
-    [handleDeleteProducts, handleDuplicateProduct, text]
+    [handleDeleteProducts, handleDuplicateProduct, isMutatingProducts, text]
   );
 
   const table = useReactTable({
@@ -736,6 +1257,9 @@ export function AdminDashboard() {
               <TabsContent value="catalog" className="order-4 mt-0 min-w-0">
                 <ProductsPanel
                   table={table}
+                  dataSource={productDataSource}
+                  isLoadingProducts={isLoadingProducts}
+                  isMutatingProducts={isMutatingProducts}
                   globalFilter={globalFilter}
                   setGlobalFilter={setGlobalFilter}
                   statusFilter={statusFilter}
@@ -750,6 +1274,7 @@ export function AdminDashboard() {
                   onDuplicateProduct={handleDuplicateProduct}
                   onDeleteProducts={handleDeleteProducts}
                   onExportProducts={handleExportProducts}
+                  onRefreshProducts={() => void refreshProducts()}
                 />
               </TabsContent>
               <TabsContent value="timeline" className="order-4 mt-0 min-w-0">
@@ -758,7 +1283,7 @@ export function AdminDashboard() {
               <TabsContent value="overview" className="order-4 mt-0 min-w-0 space-y-4">
                 <StatsGrid />
                 <ChartsPanel />
-                <LowerPanels />
+                <LowerPanels products={products} />
               </TabsContent>
             </Tabs>
           </div>
@@ -814,8 +1339,8 @@ function AdminSidebar() {
             <User className="size-4" />
           </div>
           <div className="min-w-0">
-            <div className="truncate text-sm font-bold">Admin</div>
-            <div className="text-xs text-slate-500">Amministratore</div>
+            <div className="truncate text-sm font-bold">{text.topbar.adminName}</div>
+            <div className="text-xs text-slate-500">{text.topbar.adminRole}</div>
           </div>
           <ChevronDown className="ml-auto size-4 text-slate-400" />
         </div>
@@ -842,7 +1367,7 @@ function AdminTopbar() {
                 <PartsProLogo />
               </SheetTitle>
               <SheetDescription className="sr-only">
-                Navigazione mobile del pannello operativo PartsPro.
+                {text.topbar.mobileNavigationDescription}
               </SheetDescription>
             </SheetHeader>
             <div className="p-4">
@@ -862,15 +1387,15 @@ function AdminTopbar() {
         </Sheet>
 
         <div className="min-w-0 flex-1 sm:flex-none">
-          <div className="truncate text-lg font-black">Pannello operativo</div>
+          <div className="truncate text-lg font-black">{text.topbar.title}</div>
           <div className="truncate text-xs text-slate-500">
-            Ordini, stock, catalogo e clienti in una sola vista
+            {text.topbar.subtitle}
           </div>
         </div>
 
         <div className="relative ml-auto hidden w-full max-w-md md:block">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-          <Input className="h-10 bg-white pl-9" placeholder="Cerca ordini, SKU, clienti..." />
+          <Input className="h-10 bg-white pl-9" placeholder={text.topbar.searchPlaceholder} />
         </div>
 
         <LanguageSwitcher scope="admin" compact className="hidden sm:inline-flex" />
@@ -882,7 +1407,7 @@ function AdminTopbar() {
           <span className="absolute right-1 top-1 size-2 rounded-full bg-red-500" />
         </Button>
         <Button variant="outline" asChild className="hidden bg-white sm:inline-flex">
-          <Link href="/">Home</Link>
+          <Link href="/">{text.topbar.home}</Link>
         </Button>
       </div>
     </header>
@@ -1132,6 +1657,9 @@ function SortableHeader<TData, TValue>({
 
 type ProductsPanelProps = {
   table: TanStackTable<PartProduct>;
+  dataSource: ProductDataSource;
+  isLoadingProducts: boolean;
+  isMutatingProducts: boolean;
   globalFilter: string;
   setGlobalFilter: (value: string) => void;
   statusFilter: StatusFilterValue;
@@ -1140,16 +1668,20 @@ type ProductsPanelProps = {
   setStockFilter: (value: StockFilterValue) => void;
   notice: ProductNotice | null;
   setNotice: (notice: ProductNotice | null) => void;
-  onCreateProduct: (values: ProductFormValues) => void;
+  onCreateProduct: (values: ProductFormValues) => Promise<boolean>;
   onViewProduct: (product: PartProduct) => void;
   onEditProduct: (product: PartProduct) => void;
-  onDuplicateProduct: (product: PartProduct) => void;
-  onDeleteProducts: (skus: string[]) => void;
+  onDuplicateProduct: (product: PartProduct) => Promise<void>;
+  onDeleteProducts: (skus: string[]) => Promise<void>;
   onExportProducts: (products: PartProduct[], scope: "selected" | "view") => void;
+  onRefreshProducts: () => void;
 };
 
 function ProductsPanel({
   table,
+  dataSource,
+  isLoadingProducts,
+  isMutatingProducts,
   globalFilter,
   setGlobalFilter,
   statusFilter,
@@ -1164,7 +1696,9 @@ function ProductsPanel({
   onDuplicateProduct,
   onDeleteProducts,
   onExportProducts,
+  onRefreshProducts,
 }: ProductsPanelProps) {
+  const text = useAdminText();
   const selectedProducts = table
     .getFilteredSelectedRowModel()
     .rows.map((row) => row.original);
@@ -1189,10 +1723,28 @@ function ProductsPanel({
     <Card className="border-slate-200 bg-white py-2 shadow-[0_18px_45px_rgba(15,23,42,0.05)] sm:py-4">
       <CardHeader className="gap-2 px-3 sm:gap-3 sm:px-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <CardTitle className="text-base sm:text-lg">Catalogo operativo</CardTitle>
+          <CardTitle className="text-base sm:text-lg">
+            {text.catalog.catalogTitle}
+          </CardTitle>
           <CardDescription className="hidden sm:block">
-            Tabella stock con ricerca, paginazione e selezione multipla
+            {text.catalog.catalogDescription}
           </CardDescription>
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+            <Badge className={sourceBadgeClass(dataSource.source)}>
+              {formatAdminMessage(text.catalog.sourceBadge, {
+                source: dataSource.label,
+              })}
+            </Badge>
+            <span>
+              {dataSource.syncedAt
+                ? formatAdminMessage(text.catalog.sourceStats, {
+                    returned: dataSource.returned,
+                    total: dataSource.total,
+                    time: dataSource.syncedAt,
+                  })
+                : text.catalog.sourcePending}
+            </span>
+          </div>
         </div>
         <div className="grid w-full min-w-0 grid-cols-2 gap-2 lg:flex lg:w-auto lg:flex-wrap lg:justify-end">
           <div className="relative col-span-2 w-full lg:w-[240px]">
@@ -1201,7 +1753,7 @@ function ProductsPanel({
               value={globalFilter ?? ""}
               onChange={(event) => updateGlobalFilter(event.target.value)}
               className="h-9 w-full bg-white pl-9"
-              placeholder="Cerca SKU / prodotto / brand"
+              placeholder={text.catalog.searchPlaceholder}
             />
           </div>
           <Select
@@ -1215,10 +1767,10 @@ function ProductsPanel({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tutti gli stati</SelectItem>
+              <SelectItem value="all">{text.catalog.allStatuses}</SelectItem>
               {stockStatuses.map((status) => (
                 <SelectItem key={status} value={status}>
-                  {status}
+                  {text.enums.stockStatus[status]}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -1234,10 +1786,10 @@ function ProductsPanel({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Tutto stock</SelectItem>
-              <SelectItem value="available">Disponibili</SelectItem>
-              <SelectItem value="under-10">Sotto 10</SelectItem>
-              <SelectItem value="empty">Esauriti</SelectItem>
+              <SelectItem value="all">{text.catalog.allStock}</SelectItem>
+              <SelectItem value="available">{text.catalog.available}</SelectItem>
+              <SelectItem value="under-10">{text.catalog.under10}</SelectItem>
+              <SelectItem value="empty">{text.catalog.outOfStock}</SelectItem>
             </SelectContent>
           </Select>
           <Button
@@ -1249,7 +1801,7 @@ function ProductsPanel({
             }}
           >
             <Boxes className="size-4" />
-            Stock basso
+            {text.catalog.lowStock}
           </Button>
           <Button
             variant="outline"
@@ -1258,7 +1810,16 @@ function ProductsPanel({
             disabled={!hasFilters}
           >
             <Filter className="size-4" />
-            Reset
+            {text.common.reset}
+          </Button>
+          <Button
+            variant="outline"
+            className="bg-white"
+            onClick={onRefreshProducts}
+            disabled={isLoadingProducts}
+          >
+            <RefreshCw className={cn("size-4", isLoadingProducts && "animate-spin")} />
+            {text.catalog.syncProducts}
           </Button>
           <Button
             variant="outline"
@@ -1267,9 +1828,12 @@ function ProductsPanel({
             disabled={currentProducts.length === 0}
           >
             <Download className="size-4" />
-            Esporta vista
+            {text.common.exportView}
           </Button>
-          <AddProductDialog onCreateProduct={onCreateProduct} />
+          <AddProductDialog
+            disabled={isMutatingProducts}
+            onCreateProduct={onCreateProduct}
+          />
         </div>
       </CardHeader>
       <CardContent className="min-w-0 px-3 sm:px-4">
@@ -1277,9 +1841,7 @@ function ProductsPanel({
           <div
             className={cn(
               "mb-3 flex items-center gap-3 rounded-lg border px-3 py-2 text-sm font-medium",
-              notice.tone === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                : "border-sky-200 bg-sky-50 text-sky-800"
+              noticeClassName(notice.tone)
             )}
           >
             <CheckCircle2 className="size-4 shrink-0" />
@@ -1290,14 +1852,22 @@ function ProductsPanel({
               className="text-current hover:bg-white/60"
               onClick={() => setNotice(null)}
             >
-              OK
+              {text.common.ok}
             </Button>
+          </div>
+        )}
+        {isLoadingProducts && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">
+            <RefreshCw className="size-4 animate-spin" />
+            {text.catalog.loadingProducts}
           </div>
         )}
         {selectedProducts.length > 0 && (
           <div className="mb-3 flex flex-col gap-2 rounded-lg border border-primary/20 bg-primary/5 p-2.5 text-sm sm:flex-row sm:items-center sm:justify-between sm:p-3">
             <div className="font-semibold text-slate-800">
-              {selectedProducts.length} selezionati
+              {formatAdminMessage(text.catalog.selectedCount, {
+                count: selectedProducts.length,
+              })}
             </div>
             <div className="flex flex-wrap gap-2">
               <Button
@@ -1307,24 +1877,25 @@ function ProductsPanel({
                 onClick={() => onExportProducts(selectedProducts, "selected")}
               >
                 <Download className="size-4" />
-                Esporta selezione
+                {text.common.exportSelection}
               </Button>
               <Button
                 size="sm"
                 variant="destructive"
+                disabled={isMutatingProducts}
                 onClick={() =>
-                  onDeleteProducts(selectedProducts.map((product) => product.sku))
+                  void onDeleteProducts(selectedProducts.map((product) => product.sku))
                 }
               >
                 <Trash2 className="size-4" />
-                Elimina
+                {text.common.delete}
               </Button>
               <Button
                 size="sm"
                 variant="ghost"
                 onClick={() => table.resetRowSelection()}
               >
-                Deseleziona
+                {text.common.deselect}
               </Button>
             </div>
           </div>
@@ -1338,11 +1909,13 @@ function ProductsPanel({
                   (table.getIsSomePageRowsSelected() && "indeterminate")
                 }
                 onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-                aria-label="Seleziona articoli in pagina"
+                aria-label={text.catalog.selectPageAria}
               />
-              <span>Seleziona pagina</span>
+              <span>{text.catalog.selectPage}</span>
             </label>
-            <span className="shrink-0 font-medium">{pageRows.length} in pagina</span>
+            <span className="shrink-0 font-medium">
+              {pageRows.length} {text.common.inPage}
+            </span>
           </div>
         )}
         <div className="grid gap-2 lg:hidden">
@@ -1355,11 +1928,17 @@ function ProductsPanel({
                 onEditProduct={onEditProduct}
                 onDuplicateProduct={onDuplicateProduct}
                 onDeleteProducts={onDeleteProducts}
+                isMutatingProducts={isMutatingProducts}
               />
             ))
           ) : (
             <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-8 text-center text-sm font-medium text-slate-500">
-              Nessun articolo corrispondente
+              <div>{isLoadingProducts ? text.catalog.loadingProducts : text.catalog.empty}</div>
+              {!isLoadingProducts && dataSource.source === "empty" && (
+                <div className="mt-1 text-xs font-normal">
+                  {text.catalog.emptyDescription}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1393,7 +1972,14 @@ function ProductsPanel({
                 ) : (
                   <TableRow>
                     <TableCell colSpan={table.getAllColumns().length} className="h-32 text-center">
-                      Nessun articolo corrispondente
+                      <div className="font-medium">
+                        {isLoadingProducts ? text.catalog.loadingProducts : text.catalog.empty}
+                      </div>
+                      {!isLoadingProducts && dataSource.source === "empty" && (
+                        <div className="mt-1 text-xs text-slate-500">
+                          {text.catalog.emptyDescription}
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 )}
@@ -1403,8 +1989,11 @@ function ProductsPanel({
         </div>
         <div className="mt-3 flex flex-col gap-3 sm:mt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <div className="hidden text-sm text-slate-500 sm:block">
-            Vista {table.getRowModel().rows.length} di {currentProducts.length} articoli
-            {" · "}Selezionati {selectedProducts.length}
+            {formatAdminMessage(text.catalog.viewCount, {
+              shown: table.getRowModel().rows.length,
+              total: currentProducts.length,
+              selected: selectedProducts.length,
+            })}
           </div>
           <div className="flex max-w-full flex-wrap items-center gap-2">
             <Button
@@ -1449,7 +2038,7 @@ function ProductsPanel({
               <SelectContent>
                 {[5, 10, 20, 50].map((pageSize) => (
                   <SelectItem key={pageSize} value={`${pageSize}`}>
-                    {pageSize} / pag.
+                    {formatAdminMessage(text.common.pageSize, { count: pageSize })}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -1463,17 +2052,20 @@ function ProductsPanel({
 
 function ProductMobileCard({
   row,
+  isMutatingProducts,
   onViewProduct,
   onEditProduct,
   onDuplicateProduct,
   onDeleteProducts,
 }: {
   row: Row<PartProduct>;
+  isMutatingProducts: boolean;
   onViewProduct: (product: PartProduct) => void;
   onEditProduct: (product: PartProduct) => void;
-  onDuplicateProduct: (product: PartProduct) => void;
-  onDeleteProducts: (skus: string[]) => void;
+  onDuplicateProduct: (product: PartProduct) => Promise<void>;
+  onDeleteProducts: (skus: string[]) => Promise<void>;
 }) {
+  const text = useAdminText();
   const product = row.original;
 
   return (
@@ -1487,7 +2079,7 @@ function ProductMobileCard({
         <Checkbox
           checked={row.getIsSelected()}
           onCheckedChange={(value) => row.toggleSelected(!!value)}
-          aria-label={`Seleziona ${product.sku}`}
+          aria-label={`${text.catalog.selectItem} ${product.sku}`}
           className="mt-0.5"
         />
         <button
@@ -1503,7 +2095,7 @@ function ProductMobileCard({
           </div>
         </button>
         <Badge className={cn("shrink-0", statusBadgeClass(product.status))}>
-          {product.status}
+          {text.enums.stockStatus[product.status]}
         </Badge>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -1514,36 +2106,41 @@ function ProductMobileCard({
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => onViewProduct(product)}>
               <Eye className="size-4" />
-              Dettagli
+              {text.common.details}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onEditProduct(product)}>
               <Edit className="size-4" />
-              Modifica
+              {text.common.edit}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => onDuplicateProduct(product)}>
+            <DropdownMenuItem
+              disabled={isMutatingProducts}
+              onClick={() => void onDuplicateProduct(product)}
+            >
               <Copy className="size-4" />
-              Duplica
+              {text.common.duplicate}
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-red-600 focus:text-red-600"
-              onClick={() => onDeleteProducts([product.sku])}
+              disabled={isMutatingProducts}
+              onClick={() => void onDeleteProducts([product.sku])}
             >
               <Trash2 className="size-4" />
-              Elimina
+              {text.common.delete}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
       <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs font-semibold text-slate-600">
         <span>
-          Stock{" "}
+          {text.common.stock}{" "}
           <span className={cn("font-black text-slate-950", product.stock === 0 && "text-red-500")}>
             {product.stock}
           </span>
         </span>
         <span>
-          Prezzo <span className="font-black text-slate-950">€{product.price.toFixed(2)}</span>
+          {text.common.price}{" "}
+          <span className="font-black text-slate-950">€{product.price.toFixed(2)}</span>
         </span>
         <span className="text-slate-400">{product.warehouse}</span>
       </div>
@@ -1552,9 +2149,11 @@ function ProductMobileCard({
 }
 
 function AddProductDialog({
+  disabled = false,
   onCreateProduct,
 }: {
-  onCreateProduct: (values: ProductFormValues) => void;
+  disabled?: boolean;
+  onCreateProduct: (values: ProductFormValues) => Promise<boolean>;
 }) {
   const [open, setOpen] = React.useState(false);
   const text = useAdminText();
@@ -1564,34 +2163,41 @@ function AddProductDialog({
     defaultValues: defaultProductFormValues,
   });
 
-  function onSubmit(values: ProductFormValues) {
-    onCreateProduct(values);
-    form.reset(defaultProductFormValues);
-    setOpen(false);
+  async function onSubmit(values: ProductFormValues) {
+    const created = await onCreateProduct(values);
+
+    if (created) {
+      form.reset(defaultProductFormValues);
+      setOpen(false);
+    }
   }
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>
+        <Button disabled={disabled}>
           <Plus className="size-4" />
-          Nuovo articolo
+          {text.catalog.form.newItem}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-[680px]">
         <DialogHeader>
-          <DialogTitle>Nuovo articolo</DialogTitle>
+          <DialogTitle>{text.catalog.form.newItem}</DialogTitle>
           <DialogDescription>
-            Aggiungi un ricambio al catalogo con SKU, qualità, prezzo netto e stock.
+            {text.catalog.form.addDescription}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <ProductFormFields form={form} />
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              Annulla
+              {text.common.cancel}
             </Button>
-            <Button type="submit">Salva articolo</Button>
+            <Button type="submit" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting
+                ? text.catalog.savingProduct
+                : text.common.saveItem}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -1600,16 +2206,21 @@ function AddProductDialog({
 }
 
 function ProductFormFields({ form }: { form: ProductFormApi }) {
+  const text = useAdminText();
+
   return (
     <div className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Nome prodotto" error={form.formState.errors.name?.message}>
-          <Input placeholder="Es. Display OLED iPhone 13 Pro" {...form.register("name")} />
+        <Field label={text.catalog.form.name} error={form.formState.errors.name?.message}>
+          <Input
+            placeholder={text.catalog.form.namePlaceholder}
+            {...form.register("name")}
+          />
         </Field>
-        <Field label="SKU" error={form.formState.errors.sku?.message}>
-          <Input placeholder="Es. SKU-REALE-001" {...form.register("sku")} />
+        <Field label={text.common.sku} error={form.formState.errors.sku?.message}>
+          <Input placeholder={text.catalog.form.skuPlaceholder} {...form.register("sku")} />
         </Field>
-        <Field label="Categoria" error={form.formState.errors.category?.message}>
+        <Field label={text.catalog.form.category} error={form.formState.errors.category?.message}>
           <Select
             value={form.watch("category")}
             onValueChange={(value) =>
@@ -1631,10 +2242,10 @@ function ProductFormFields({ form }: { form: ProductFormApi }) {
             </SelectContent>
           </Select>
         </Field>
-        <Field label="Brand" error={form.formState.errors.brand?.message}>
-          <Input placeholder="OEM / Apple / Samsung" {...form.register("brand")} />
+        <Field label={text.common.brand} error={form.formState.errors.brand?.message}>
+          <Input placeholder={text.catalog.form.brandPlaceholder} {...form.register("brand")} />
         </Field>
-        <Field label="Qualità" error={form.formState.errors.grade?.message}>
+        <Field label={text.common.quality} error={form.formState.errors.grade?.message}>
           <Select
             value={form.watch("grade")}
             onValueChange={(value) =>
@@ -1656,7 +2267,7 @@ function ProductFormFields({ form }: { form: ProductFormApi }) {
             </SelectContent>
           </Select>
         </Field>
-        <Field label="Magazzino" error={form.formState.errors.warehouse?.message}>
+        <Field label={text.common.warehouse} error={form.formState.errors.warehouse?.message}>
           <Select
             value={form.watch("warehouse")}
             onValueChange={(value) =>
@@ -1679,34 +2290,34 @@ function ProductFormFields({ form }: { form: ProductFormApi }) {
           </Select>
         </Field>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Prezzo" error={form.formState.errors.price?.message}>
+          <Field label={text.common.price} error={form.formState.errors.price?.message}>
             <Input type="number" step="0.01" {...form.register("price")} />
           </Field>
-          <Field label="Stock" error={form.formState.errors.stock?.message}>
+          <Field label={text.common.stock} error={form.formState.errors.stock?.message}>
             <Input type="number" {...form.register("stock")} />
           </Field>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="MOQ" error={form.formState.errors.moq?.message}>
+          <Field label={text.common.moq} error={form.formState.errors.moq?.message}>
             <Input type="number" {...form.register("moq")} />
           </Field>
-          <Field label="Lead time" error={form.formState.errors.leadTime?.message}>
-            <Input placeholder="24/48h Italia" {...form.register("leadTime")} />
+          <Field label={text.common.leadTime} error={form.formState.errors.leadTime?.message}>
+            <Input placeholder={text.catalog.form.leadTimePlaceholder} {...form.register("leadTime")} />
           </Field>
         </div>
       </div>
       <Field
-        label="Compatibilità"
+        label={text.catalog.form.compatibility}
         error={form.formState.errors.compatibleWith?.message}
       >
         <Textarea
-          placeholder="iPhone 13 Pro, iPhone 13 Pro Max"
+          placeholder={text.catalog.form.compatibilityPlaceholder}
           className="min-h-20"
           {...form.register("compatibleWith")}
         />
       </Field>
-      <Field label="Tag" error={form.formState.errors.tags?.message}>
-        <Input placeholder="OLED, True Tone, Wholesale" {...form.register("tags")} />
+      <Field label={text.common.tag} error={form.formState.errors.tags?.message}>
+        <Input placeholder={text.catalog.form.tagsPlaceholder} {...form.register("tags")} />
       </Field>
     </div>
   );
@@ -1723,6 +2334,8 @@ function ProductDetailsDialog({
   onOpenChange: (open: boolean) => void;
   onEdit: (product: PartProduct) => void;
 }) {
+  const text = useAdminText();
+
   if (!product) {
     return null;
   }
@@ -1737,30 +2350,36 @@ function ProductDetailsDialog({
         <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)]">
           <PartVisual variant={product.visual} className="h-44 w-full rounded-lg" />
           <div className="grid gap-3 sm:grid-cols-2">
-            <DetailItem label="Categoria" value={product.category} />
-            <DetailItem label="Brand" value={product.brand} />
+            <DetailItem label={text.common.category} value={product.category} />
+            <DetailItem label={text.common.brand} value={product.brand} />
             <DetailItem
-              label="Qualità"
-              value={<Badge className={gradeBadgeClass(product.grade)}>{product.grade}</Badge>}
-            />
-            <DetailItem
-              label="Stato"
+              label={text.common.quality}
               value={
-                <Badge className={statusBadgeClass(product.status)}>{product.status}</Badge>
+                <Badge className={gradeBadgeClass(product.grade)}>
+                  {text.enums.productGrade[product.grade]}
+                </Badge>
               }
             />
-            <DetailItem label="Stock" value={product.stock} />
-            <DetailItem label="Prezzo netto" value={`€${product.price.toFixed(2)}`} />
-            <DetailItem label="Magazzino" value={product.warehouse} />
-            <DetailItem label="MOQ" value={product.moq} />
-            <DetailItem label="Lead time" value={product.leadTime} />
-            <DetailItem label="Aggiornato" value={product.updatedAt} />
+            <DetailItem
+              label={text.common.status}
+              value={
+                <Badge className={statusBadgeClass(product.status)}>
+                  {text.enums.stockStatus[product.status]}
+                </Badge>
+              }
+            />
+            <DetailItem label={text.common.stock} value={product.stock} />
+            <DetailItem label={text.catalog.priceNet} value={`€${product.price.toFixed(2)}`} />
+            <DetailItem label={text.common.warehouse} value={product.warehouse} />
+            <DetailItem label={text.common.moq} value={product.moq} />
+            <DetailItem label={text.common.leadTime} value={product.leadTime} />
+            <DetailItem label={text.common.updated} value={product.updatedAt} />
           </div>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="rounded-lg border border-slate-200 p-3">
             <div className="text-xs font-semibold uppercase text-slate-500">
-              Compatibilità
+              {text.common.compatibility}
             </div>
             <div className="mt-2 flex flex-wrap gap-2">
               {product.compatibleWith.map((item) => (
@@ -1771,7 +2390,9 @@ function ProductDetailsDialog({
             </div>
           </div>
           <div className="rounded-lg border border-slate-200 p-3">
-            <div className="text-xs font-semibold uppercase text-slate-500">Tag</div>
+            <div className="text-xs font-semibold uppercase text-slate-500">
+              {text.common.tag}
+            </div>
             <div className="mt-2 flex flex-wrap gap-2">
               {product.tags.map((tag) => (
                 <Badge key={tag} variant="outline" className="bg-white">
@@ -1783,11 +2404,11 @@ function ProductDetailsDialog({
         </div>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Chiudi
+            {text.common.close}
           </Button>
           <Button type="button" onClick={() => onEdit(product)}>
             <Edit className="size-4" />
-            Modifica
+            {text.common.edit}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1804,7 +2425,7 @@ function EditProductDialog({
   product: PartProduct | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSave: (sku: string, values: ProductFormValues) => void;
+  onSave: (sku: string, values: ProductFormValues) => Promise<boolean>;
 }) {
   const text = useAdminText();
   const productSchema = React.useMemo(() => createProductSchema(text), [text]);
@@ -1826,24 +2447,32 @@ function EditProductDialog({
 
   const editingProduct = product;
 
-  function onSubmit(values: ProductFormValues) {
-    onSave(editingProduct.sku, values);
+  async function onSubmit(values: ProductFormValues) {
+    const saved = await onSave(editingProduct.sku, values);
+
+    if (saved) {
+      onOpenChange(false);
+    }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[calc(100vh-2rem)] overflow-y-auto sm:max-w-[680px]">
         <DialogHeader>
-          <DialogTitle>Modifica articolo</DialogTitle>
+          <DialogTitle>{text.catalog.form.titleEdit}</DialogTitle>
           <DialogDescription>{editingProduct.sku}</DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <ProductFormFields form={form} />
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Annulla
+              {text.common.cancel}
             </Button>
-            <Button type="submit">Salva modifiche</Button>
+            <Button type="submit" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting
+                ? text.catalog.savingProduct
+                : text.common.saveChanges}
+            </Button>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -1884,7 +2513,10 @@ function Field({
   );
 }
 
-function LowerPanels() {
+function LowerPanels({ products }: { products: PartProduct[] }) {
+  const text = useAdminText();
+  const alertProducts = products.filter((product) => product.stock <= 18);
+
   return (
     <section className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)_minmax(0,0.8fr)]">
       <Card className="border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
@@ -1964,13 +2596,12 @@ function LowerPanels() {
 
       <Card className="border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
         <CardHeader>
-          <CardTitle>Alert magazzino</CardTitle>
-          <CardDescription>Priorità da gestire oggi</CardDescription>
+          <CardTitle>{text.catalog.lower.alertsTitle}</CardTitle>
+          <CardDescription>{text.catalog.lower.alertsDescription}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {initialProducts
-            .filter((product) => product.stock <= 18)
-            .map((product) => (
+          {alertProducts.length ? (
+            alertProducts.map((product) => (
               <div
                 key={product.sku}
                 className="flex items-center gap-3 rounded-lg border border-slate-100 p-3"
@@ -1983,7 +2614,11 @@ function LowerPanels() {
                 />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-bold">{product.sku}</div>
-                  <div className="text-xs text-slate-500">Stock: {product.stock}</div>
+                  <div className="text-xs text-slate-500">
+                    {formatAdminMessage(text.catalog.lower.stockLabel, {
+                      count: product.stock,
+                    })}
+                  </div>
                 </div>
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -1991,10 +2626,15 @@ function LowerPanels() {
                       <HelpCircle className="size-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent>Vedi fornitore e suggerimento di acquisto</TooltipContent>
+                  <TooltipContent>{text.catalog.noSupplierTooltip}</TooltipContent>
                 </Tooltip>
               </div>
-            ))}
+            ))
+          ) : (
+            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-6 text-center text-sm font-medium text-slate-500">
+              {text.catalog.empty}
+            </div>
+          )}
         </CardContent>
       </Card>
     </section>
@@ -2011,6 +2651,34 @@ function statusBadgeClass(status: StockStatus) {
   }
 
   return "border-red-200 bg-red-50 text-red-700";
+}
+
+function sourceBadgeClass(source: ProductSource) {
+  if (source === "supabase") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (source === "api") {
+    return "border-sky-200 bg-sky-50 text-sky-700";
+  }
+
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
+function noticeClassName(tone: ProductNotice["tone"]) {
+  if (tone === "success") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  }
+
+  if (tone === "warning") {
+    return "border-amber-200 bg-amber-50 text-amber-800";
+  }
+
+  if (tone === "error") {
+    return "border-red-200 bg-red-50 text-red-800";
+  }
+
+  return "border-sky-200 bg-sky-50 text-sky-800";
 }
 
 function gradeBadgeClass(grade: PartProduct["grade"]) {

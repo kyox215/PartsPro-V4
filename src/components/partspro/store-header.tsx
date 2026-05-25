@@ -1,14 +1,23 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import {
-  PackageCheck,
-  PackageSearch,
+  ChevronDown,
+  LayoutDashboard,
   Search,
   ShoppingCart,
   User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import type { DeviceModelGroup } from "@/lib/partspro-data";
 import type { CatalogSelection } from "./catalog-brand-tree";
@@ -25,6 +34,12 @@ type StoreHeaderProps = {
   selectedCatalog?: CatalogSelection;
 };
 
+type AccountAccessState = {
+  status: "loading" | "ready" | "error";
+  canOpenAdmin: boolean;
+  role: string | null;
+};
+
 export function StoreHeader({
   modelGroups,
   onCatalogSelect,
@@ -32,11 +47,54 @@ export function StoreHeader({
 }: StoreHeaderProps) {
   const t = useT();
   const cart = useCart();
-  const availabilitySelection = {
-    brand: selectedCatalog?.brand,
-    inStockOnly: selectedCatalog?.inStockOnly ? undefined : true,
-    model: selectedCatalog?.model,
-  };
+  const [accountAccess, setAccountAccess] = useState<AccountAccessState>({
+    status: "loading",
+    canOpenAdmin: false,
+    role: null,
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAccountAccess() {
+      try {
+        const response = await fetch("/api/me", {
+          cache: "no-store",
+          credentials: "same-origin",
+        });
+
+        if (!response.ok) {
+          throw new Error("Unable to read account access");
+        }
+
+        const data = (await response.json()) as {
+          admin?: { allowed?: boolean; role?: string | null };
+        };
+
+        if (!cancelled) {
+          setAccountAccess({
+            status: "ready",
+            canOpenAdmin: Boolean(data.admin?.allowed),
+            role: data.admin?.role ?? null,
+          });
+        }
+      } catch {
+        if (!cancelled) {
+          setAccountAccess({
+            status: "error",
+            canOpenAdmin: false,
+            role: null,
+          });
+        }
+      }
+    }
+
+    void loadAccountAccess();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <>
@@ -80,47 +138,18 @@ export function StoreHeader({
             />
           </div>
 
-          <nav className="ml-auto hidden items-center gap-1 lg:flex">
-            {onCatalogSelect ? (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => onCatalogSelect({})}
-              >
-                <PackageSearch className="size-4" />
-                {tx(t, "nav.catalog", "Catalogo")}
-              </Button>
-            ) : (
-              <Button variant="ghost" asChild>
-                <Link href="/catalogo">
-                  <PackageSearch className="size-4" />
-                  {tx(t, "nav.catalog", "Catalogo")}
-                </Link>
-              </Button>
-            )}
-            {onCatalogSelect ? (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => onCatalogSelect(availabilitySelection)}
-              >
-                <PackageCheck className="size-4" />
-                {tx(t, "storefront.catalog.availableOnly", "Solo disponibili")}
-              </Button>
-            ) : (
-              <Button variant="ghost" asChild>
-                <Link href="/catalogo?minStock=1">
-                  <PackageCheck className="size-4" />
-                  {tx(t, "storefront.catalog.availableOnly", "Solo disponibili")}
-                </Link>
-              </Button>
-            )}
-            <Button variant="ghost" asChild>
-              <Link href="/account">{tx(t, "nav.account", "Account")}</Link>
-            </Button>
-          </nav>
-
           <LanguageSwitcher compact className="hidden md:inline-flex" />
+
+          <nav className="hidden items-center gap-1 lg:flex">
+            <AccountDropdown
+              access={accountAccess}
+              label={tx(t, "nav.account", "Account")}
+              menuLabel={tx(t, "storefront.account.menuLabel", "Area account")}
+              accountLabel={tx(t, "storefront.account.openAccount", "Account B2B")}
+              adminLabel={tx(t, "storefront.account.openAdmin", "Pannello admin")}
+              staffLabel={tx(t, "storefront.account.staffRole", "Accesso staff")}
+            />
+          </nav>
 
           <Button
             variant="outline"
@@ -136,22 +165,85 @@ export function StoreHeader({
               </span>
             </Link>
           </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            asChild
-            className="bg-white shadow-sm lg:hidden"
-          >
-            <Link
-              href="/account"
-              aria-label={tx(t, "storefront.header.openAccount", "Apri account B2B")}
-            >
-              <User className="size-4" />
-            </Link>
-          </Button>
+          <AccountDropdown
+            access={accountAccess}
+            accountLabel={tx(t, "storefront.account.openAccount", "Account B2B")}
+            adminLabel={tx(t, "storefront.account.openAdmin", "Pannello admin")}
+            compact
+            label={tx(t, "storefront.header.openAccount", "Apri account B2B")}
+            menuLabel={tx(t, "storefront.account.menuLabel", "Area account")}
+            staffLabel={tx(t, "storefront.account.staffRole", "Accesso staff")}
+          />
         </div>
       </header>
       <div aria-hidden="true" className="h-14 sm:h-16" />
     </>
+  );
+}
+
+type AccountDropdownProps = {
+  access: AccountAccessState;
+  accountLabel: string;
+  adminLabel: string;
+  compact?: boolean;
+  label: string;
+  menuLabel: string;
+  staffLabel: string;
+};
+
+function AccountDropdown({
+  access,
+  accountLabel,
+  adminLabel,
+  compact = false,
+  label,
+  menuLabel,
+  staffLabel,
+}: AccountDropdownProps) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant={compact ? "outline" : "ghost"}
+          size={compact ? "icon" : "default"}
+          aria-label={label}
+          className={
+            compact
+              ? "bg-white shadow-sm lg:hidden"
+              : "shrink-0"
+          }
+        >
+          <User className="size-4" />
+          {!compact && <span>{label}</span>}
+          {!compact && <ChevronDown className="size-4 text-slate-400" />}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel className="flex flex-col gap-0.5">
+          <span>{menuLabel}</span>
+          {access.canOpenAdmin && access.role ? (
+            <span className="text-[11px] font-medium text-primary">
+              {staffLabel}: {access.role}
+            </span>
+          ) : null}
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild className="h-9 cursor-pointer">
+          <Link href="/account">
+            <User className="size-4" />
+            {accountLabel}
+          </Link>
+        </DropdownMenuItem>
+        {access.canOpenAdmin ? (
+          <DropdownMenuItem asChild className="h-9 cursor-pointer">
+            <Link href="/admin">
+              <LayoutDashboard className="size-4" />
+              {adminLabel}
+            </Link>
+          </DropdownMenuItem>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
