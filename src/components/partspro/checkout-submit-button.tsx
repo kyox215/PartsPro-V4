@@ -93,6 +93,8 @@ export function CheckoutSubmitButton({
     const deliveryMethod = readDeliveryMethod(formData);
     const deliveryWindow = readOptionalText(formData, "deliveryWindow");
     const purchaseOrderNumber = readOptionalText(formData, "purchaseOrderNumber");
+    const deliveryAddress = readDeliveryAddress(formData);
+    const companySnapshot = readCompanySnapshot(formData, deliveryAddress);
     const notes = buildOrderNotes(
       readOptionalText(formData, "notes"),
       deliveryMethod,
@@ -110,6 +112,10 @@ export function CheckoutSubmitButton({
           companyId: "cmp-001",
           paymentMethod,
           purchaseOrderNumber,
+          deliveryAddress,
+          fiscal: {
+            companySnapshot,
+          },
           notes,
           items,
         })),
@@ -275,6 +281,34 @@ function readOptionalText(formData: FormData, key: string) {
 
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function readRequiredText(formData: FormData, key: string) {
+  return readOptionalText(formData, key) ?? "";
+}
+
+function readDeliveryAddress(formData: FormData) {
+  return {
+    street: readRequiredText(formData, "shippingStreet"),
+    zip: readRequiredText(formData, "shippingZip"),
+    city: readRequiredText(formData, "shippingCity"),
+    province: readRequiredText(formData, "shippingProvince"),
+    country: "IT",
+  };
+}
+
+function readCompanySnapshot(
+  formData: FormData,
+  deliveryAddress: ReturnType<typeof readDeliveryAddress>
+) {
+  return {
+    name: readRequiredText(formData, "companyName"),
+    partitaIva: readRequiredText(formData, "partitaIva"),
+    codiceFiscale: readRequiredText(formData, "codiceFiscale"),
+    pec: readRequiredText(formData, "pec"),
+    codiceDestinatario: readRequiredText(formData, "codiceDestinatario"),
+    address: deliveryAddress,
+  };
 }
 
 function removeEmptyValues<T extends Record<string, unknown>>(payload: T) {

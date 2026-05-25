@@ -1,15 +1,17 @@
 -- PartsPro Supabase schema documentation.
 -- This file is not applied automatically.
 --
--- Remote metadata snapshot:
--- - Project ref inspected read-only: zethhymziiziiwrypsnc
--- - Snapshot date: 2026-05-24
+-- Local target project:
+-- - Linked project ref: yiuxrjqexlfjtxxrkqvi
+-- - Snapshot date: 2026-05-25
 -- - Postgres: 17.6
 -- - PostgREST: v14
 --
--- Pending local migration draft:
+-- Local migrations applied to linked remote on 2026-05-25:
+-- - supabase/migrations/20260524090000_baseline_empty_public_schema.sql
 -- - supabase/migrations/20260524133225_harden_partspro_relations.sql
--- - Status: prepared locally, NOT applied to the remote database.
+-- - supabase/migrations/20260525111327_allow_customer_owned_rma_order_lines.sql
+-- - Status: applied to yiuxrjqexlfjtxxrkqvi.
 --
 -- The remote database already uses the v4 table names below. Older local
 -- draft names such as companies/order_items are intentionally not used here.

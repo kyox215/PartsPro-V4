@@ -10,13 +10,18 @@ import {
 
 const createRmaSchema = z
   .object({
-    orderId: z.string().trim().min(1).max(80),
+    orderId: z.string().trim().min(1).max(80).optional(),
+    orderLineId: z.string().trim().min(1).max(80).optional(),
     sku: z.string().trim().min(3).max(64).regex(/^[A-Za-z0-9_+.-]+$/),
     quantity: z.coerce.number().int().min(1).max(999),
     reason: z.string().trim().min(5).max(120),
     description: z.string().trim().min(10).max(1000),
   })
-  .strict();
+  .strict()
+  .refine((value) => value.orderLineId || value.orderId, {
+    message: "Either orderLineId or orderId is required.",
+    path: ["orderLineId"],
+  });
 
 export async function GET() {
   try {

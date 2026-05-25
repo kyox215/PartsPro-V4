@@ -78,10 +78,31 @@ export type PreparedOrderTotals = {
   totalCents: number;
 };
 
+export type DeliveryAddressSnapshot = {
+  street: string;
+  zip: string;
+  city: string;
+  province: string;
+  country: string;
+};
+
+export type FiscalSnapshot = {
+  companySnapshot: {
+    name: string;
+    partitaIva: string;
+    codiceFiscale: string;
+    pec: string;
+    codiceDestinatario: string;
+    address?: DeliveryAddressSnapshot;
+  };
+};
+
 export type SaveOrderInput = {
   company: CompanyProfile;
   paymentMethod: "bank_transfer" | "card" | "agreed_terms";
   purchaseOrderNumber?: string;
+  deliveryAddress: DeliveryAddressSnapshot;
+  fiscal: FiscalSnapshot;
   notes?: string;
   lines: PreparedOrderLine[];
   totals: PreparedOrderTotals;
@@ -94,7 +115,8 @@ export type SavedOrder = {
 };
 
 export type SaveRmaInput = {
-  orderId: string;
+  orderId?: string;
+  orderLineId?: string;
   sku: string;
   quantity: number;
   reason: string;
@@ -120,14 +142,16 @@ export type B2BApplicationInput = {
 
 export type B2BApplication = B2BApplicationInput & {
   id: string;
-  status: "pending";
+  status: "submitted";
   createdAt: string;
 };
 
 export async function listCatalogProducts(): Promise<RepositoryResult<RepositoryPartProduct[]>> {
   const supabaseResult = await withSupabase(readCatalogProducts);
+  const publicSupabaseResult = supabaseResult ?? (await readPublicCatalogProducts());
+
   return (
-    supabaseResult ??
+    publicSupabaseResult ??
     mockResult(
       mockProducts,
       isSupabaseConfigured()
@@ -135,6 +159,20 @@ export async function listCatalogProducts(): Promise<RepositoryResult<Repository
         : undefined
     )
   );
+}
+
+async function readPublicCatalogProducts(): Promise<RepositoryResult<RepositoryPartProduct[]> | null> {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
+  try {
+    const client = await createClient();
+    const data = await readCatalogProducts({ client, userId: "" });
+    return data === null ? null : { data, source: "supabase" };
+  } catch {
+    return null;
+  }
 }
 
 export async function listCompanies(): Promise<RepositoryResult<CompanyProfile[]>> {
@@ -284,6 +322,12 @@ async function requireSupabaseContext(): Promise<SupabaseContext> {
 }
 
 async function readCatalogProducts(context: SupabaseContext) {
+  const catalogViewRows = await readCatalogProductViews(context.client);
+
+  if (catalogViewRows) {
+    return catalogViewRows.map(mapProductRow).filter(isDefined);
+  }
+
   const productRows =
     (await readRows(
       context.client,
@@ -293,12 +337,6 @@ async function readCatalogProducts(context: SupabaseContext) {
 
   if (productRows) {
     return productRows.map(mapProductRow).filter(isDefined);
-  }
-
-  const catalogViewRows = await readCatalogProductViews(context.client);
-
-  if (catalogViewRows) {
-    return catalogViewRows.map(mapProductRow).filter(isDefined);
   }
 
   const inventoryRows = await readRows(context.client, "inventory_items");
@@ -419,7 +457,7 @@ async function createRemoteOrderTransaction(
       quantity: line.quantity,
     })),
     p_customer_id: customerId,
-    p_delivery_address: "",
+    p_delivery_address: formatDeliveryAddress(input.deliveryAddress),
     p_customer_note: input.notes ?? "",
     p_shipping_method: "GLS/BRT 24-48h",
     p_shipping: centsToNumber(input.totals.shippingCents),
@@ -434,10 +472,14 @@ async function createRemoteOrderTransaction(
       },
       company_snapshot: {
         id: input.company.id,
-        name: input.company.name,
-        partita_iva: input.company.partitaIva,
-        codice_fiscale: input.company.codiceFiscale,
+        name: input.fiscal.companySnapshot.name,
+        partita_iva: input.fiscal.companySnapshot.partitaIva,
+        codice_fiscale: input.fiscal.companySnapshot.codiceFiscale,
+        pec: input.fiscal.companySnapshot.pec,
+        codice_destinatario: input.fiscal.companySnapshot.codiceDestinatario,
         price_list: input.company.priceList,
+        address: input.fiscal.companySnapshot.address ?? input.deliveryAddress,
+        delivery_address: input.deliveryAddress,
       },
     },
     p_vat_rate: dominantVatRate(input.lines),
@@ -488,23 +530,37 @@ async function createRemoteOrderTransaction(
 }
 
 async function insertRmaRequest(context: SupabaseContext, input: SaveRmaInput): Promise<RmaRequest | null> {
-  const companyId = await readOrderCompanyId(context.client, input.orderId);
+  const companyId = input.orderId ? await readOrderCompanyId(context.client, input.orderId) : null;
   const now = new Date().toISOString();
   const payloads = [
-    {
-      user_id: context.userId,
-      order_no: input.orderId,
-      sku_code: input.sku,
-      status: "submitted",
-      problem_type: input.reason,
-      description: input.description,
-      evidence_urls: [],
-      quantity: input.quantity,
-      tested_before_install: false,
-      installed: false,
-      has_physical_damage: false,
-      requested_resolution: "replacement",
-    },
+    input.orderLineId
+      ? {
+          user_id: context.userId,
+          order_line_id: input.orderLineId,
+          sku_code: input.sku,
+          quantity: input.quantity,
+          status: "submitted",
+          problem_type: input.reason,
+          description: input.description,
+          attachments: [],
+        }
+      : null,
+    input.orderId
+      ? {
+          user_id: context.userId,
+          order_no: input.orderId,
+          sku_code: input.sku,
+          status: "submitted",
+          problem_type: input.reason,
+          description: input.description,
+          evidence_urls: [],
+          quantity: input.quantity,
+          tested_before_install: false,
+          installed: false,
+          has_physical_damage: false,
+          requested_resolution: "replacement",
+        }
+      : null,
     companyId
       ? {
           order_id: input.orderId,
@@ -526,14 +582,16 @@ async function insertRmaRequest(context: SupabaseContext, input: SaveRmaInput): 
           description: input.description,
         }
       : null,
-    {
-      order_id: input.orderId,
-      sku: input.sku,
-      status: "requested",
-      quantity: input.quantity,
-      reason: input.reason,
-      description: input.description,
-    },
+    input.orderId
+      ? {
+          order_id: input.orderId,
+          sku: input.sku,
+          status: "requested",
+          quantity: input.quantity,
+          reason: input.reason,
+          description: input.description,
+        }
+      : null,
   ].filter(isDefined);
 
   for (const payload of payloads) {
@@ -542,7 +600,11 @@ async function insertRmaRequest(context: SupabaseContext, input: SaveRmaInput): 
     if (row) {
       return {
         id: pickString(row, ["id", "rma_id", "request_id"]) ?? `RMA-${Date.now()}`,
-        orderId: pickString(row, ["order_id", "orderId", "order_no"]) ?? input.orderId,
+        orderId:
+          pickString(row, ["order_id", "orderId", "order_no"]) ??
+          input.orderId ??
+          input.orderLineId ??
+          "ORD-ND",
         sku: pickString(row, ["sku", "sku_code", "sku_snapshot"]) ?? input.sku,
         productName: input.productName ?? pickString(row, ["product_name", "name"]) ?? input.sku,
         status: normalizeRmaStatus(pickString(row, ["status"]) ?? "requested"),
@@ -597,7 +659,7 @@ async function insertB2BApplication(
     address: input.address ?? null,
     website: input.website ?? null,
     notes: input.notes ?? null,
-    status: "pending",
+    status: "submitted",
   };
   const camelPayload = {
     companyName: input.companyName,
@@ -613,18 +675,18 @@ async function insertB2BApplication(
     address: input.address ?? null,
     website: input.website ?? null,
     notes: input.notes ?? null,
-    status: "pending",
+    status: "submitted",
   };
 
   for (const payload of [remotePayload, snakePayload, camelPayload]) {
-    const row = await insertRow(client, "b2b_applications", payload);
+    const inserted = await insertRowWithoutReturning(client, "b2b_applications", payload);
 
-    if (row) {
+    if (inserted) {
       return {
         ...input,
-        id: pickString(row, ["id", "application_id"]) ?? `B2B-${Date.now()}`,
-        status: "pending",
-        createdAt: pickString(row, ["submitted_at", "created_at", "createdAt"]) ?? now,
+        id: `B2B-${Date.now()}`,
+        status: "submitted",
+        createdAt: now,
       };
     }
   }
@@ -697,6 +759,19 @@ async function insertRow(
     return row;
   } catch {
     return null;
+  }
+}
+
+async function insertRowWithoutReturning(
+  client: SupabaseServerClient,
+  table: string,
+  payload: Record<string, unknown>
+) {
+  try {
+    const { error } = await client.from(table).insert(payload);
+    return !error;
+  } catch {
+    return false;
   }
 }
 
@@ -817,14 +892,16 @@ function mapOrderSummaryRow(
 
 function mapRmaRow(row: DbRow, linesById: Map<string, DbRow>): RmaRequest | null {
   const id = pickString(row, ["id", "rma_id", "request_id"]);
-  const orderId = pickString(row, ["order_id", "orderId", "order_no"]);
+  const lineId = pickString(row, ["order_line_id", "order_item_id", "line_id"]);
+  const line = lineId ? linesById.get(lineId) : undefined;
+  const orderId =
+    pickString(row, ["order_id", "orderId", "order_no"]) ??
+    (line ? pickString(line, ["order_id", "orderId"]) : null);
 
   if (!id || !orderId) {
     return null;
   }
 
-  const lineId = pickString(row, ["order_line_id", "order_item_id", "line_id"]);
-  const line = lineId ? linesById.get(lineId) : undefined;
   const sku =
     pickString(row, ["sku", "sku_code", "sku_snapshot"]) ??
     (line ? pickString(line, ["sku", "sku_code", "sku_snapshot"]) : null);
@@ -1248,7 +1325,7 @@ function mockSavedOrder(input: SaveOrderInput): SavedOrder {
 function mockSavedRma(input: SaveRmaInput): RmaRequest {
   return {
     id: "RMA-2026-DEMO",
-    orderId: input.orderId,
+    orderId: input.orderId ?? input.orderLineId ?? "ORD-DEMO",
     sku: input.sku,
     productName: input.productName ?? input.sku,
     status: "requested",
@@ -1262,7 +1339,7 @@ function mockB2BApplication(input: B2BApplicationInput): B2BApplication {
   return {
     ...input,
     id: "B2B-2026-DEMO",
-    status: "pending",
+    status: "submitted",
     createdAt: new Date().toISOString(),
   };
 }
@@ -1285,6 +1362,17 @@ function nextDemoOrderSequence() {
 
 function parseUuid(value: string) {
   return uuidPattern.test(value) ? value : null;
+}
+
+function formatDeliveryAddress(address: DeliveryAddressSnapshot) {
+  return [
+    address.street,
+    [address.zip, address.city].filter(Boolean).join(" "),
+    address.province,
+    address.country,
+  ]
+    .filter(Boolean)
+    .join(", ");
 }
 
 function dominantVatRate(lines: PreparedOrderLine[]) {

@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { brands, categories, deviceModels, products } from "@/lib/partspro-data";
+import { brands, categories, deviceModels, products as fallbackProducts } from "@/lib/partspro-data";
 import type { PartProduct } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
 import { ProductCard } from "./product-card";
@@ -86,24 +86,38 @@ function getModelSearchFromParams(searchParams: CatalogSearchParams) {
   return searchParams.get("model") ?? "";
 }
 
-export function CatalogPage() {
+type CatalogPageProps = {
+  catalogSource?: "supabase" | "mock";
+  initialProducts?: PartProduct[];
+};
+
+export function CatalogPage({
+  catalogSource = "mock",
+  initialProducts = fallbackProducts,
+}: CatalogPageProps) {
   const searchParams = useSearchParams();
   const searchParamsKey = searchParams.toString();
 
   return (
     <CatalogPageContent
       key={searchParamsKey}
+      catalogSource={catalogSource}
       initialFilters={getFiltersFromParams(searchParams)}
+      initialProducts={initialProducts}
       initialSearchTerm={getModelSearchFromParams(searchParams)}
     />
   );
 }
 
 function CatalogPageContent({
+  catalogSource,
   initialFilters,
+  initialProducts,
   initialSearchTerm,
 }: {
+  catalogSource: "supabase" | "mock";
   initialFilters: CatalogFiltersState;
+  initialProducts: PartProduct[];
   initialSearchTerm: string;
 }) {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
@@ -112,7 +126,7 @@ function CatalogPageContent({
 
   const filteredProducts = useMemo(() => {
     const query = normalize(searchTerm);
-    const byFilter = products.filter((product) => {
+    const byFilter = initialProducts.filter((product) => {
       const searchableText = normalize(
         [
           product.sku,
@@ -138,7 +152,7 @@ function CatalogPageContent({
     });
 
     return sortProducts(byFilter, sortKey);
-  }, [filters, searchTerm, sortKey]);
+  }, [filters, initialProducts, searchTerm, sortKey]);
 
   const activeCount = useMemo(
     () =>
@@ -249,8 +263,12 @@ function CatalogPageContent({
               {[
                 {
                   icon: PackageCheck,
-                  label: `${filteredProducts.length} di ${products.length} SKU`,
-                  text: activeCount > 0 ? "Filtri attivi" : "Listino demo pronto",
+                  label: `${filteredProducts.length} di ${initialProducts.length} SKU`,
+                  text: activeCount > 0
+                    ? "Filtri attivi"
+                    : catalogSource === "supabase"
+                      ? "Listino Supabase attivo"
+                      : "Listino demo pronto",
                 },
                 {
                   icon: Truck,
@@ -646,7 +664,9 @@ function Chip({ label, onRemove }: { label: string; onRemove: () => void }) {
 }
 
 function sortProducts(items: PartProduct[], sortKey: SortKey) {
-  const originalIndex = new Map(products.map((product, index) => [product.sku, index]));
+  const originalIndex = new Map(
+    fallbackProducts.map((product, index) => [product.sku, index])
+  );
 
   return [...items].sort((a, b) => {
     if (sortKey === "stock") {

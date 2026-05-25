@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   BadgeEuro,
@@ -19,21 +18,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { getProductBySkuOrSlug } from "@/lib/partspro-data";
+import type { PartProduct } from "@/lib/partspro-data";
 import { PartVisual } from "./part-visual";
 import { ProductDetailPurchasePanel } from "./product-card";
 import { StoreHeader } from "./store-header";
 
 type ProductDetailPageProps = {
-  slug: string;
+  product: PartProduct;
 };
 
-export function ProductDetailPage({ slug }: ProductDetailPageProps) {
-  const product = getProductBySkuOrSlug(slug);
-
-  if (!product) {
-    notFound();
-  }
+export function ProductDetailPage({ product }: ProductDetailPageProps) {
+  const canShowBuyerPrice = product.price > 0;
 
   return (
     <main className="min-h-screen bg-[#f4f6fa] text-slate-950">
@@ -156,7 +151,24 @@ export function ProductDetailPage({ slug }: ProductDetailPageProps) {
                   ))}
                 </div>
 
-                <ProductDetailPurchasePanel product={product} />
+                {canShowBuyerPrice ? (
+                  <ProductDetailPurchasePanel product={product} />
+                ) : (
+                  <Card className="mt-3 border-primary/20 bg-white">
+                    <CardContent className="flex flex-col gap-3 p-4 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="font-black text-slate-950">Prezzo protetto</div>
+                        <p className="mt-1 leading-6">
+                          Accedi con un cliente B2B approvato per sbloccare
+                          prezzo netto, preventivo e invio al carrello.
+                        </p>
+                      </div>
+                      <Button asChild className="shrink-0">
+                        <Link href="/login?next=/catalogo">Accedi</Link>
+                      </Button>
+                    </CardContent>
+                  </Card>
+                )}
               </CardContent>
             </Card>
 

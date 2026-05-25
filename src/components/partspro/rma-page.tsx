@@ -38,10 +38,29 @@ const rmaReasons = [
   "Danno da trasporto",
 ];
 
-const orderOptions = ["ORD-2026-0566", "ORD-2026-0567", "ORD-2026-0565"];
+const orderOptions = [
+  {
+    orderId: "ORD-2026-0566",
+    orderLineId: "11111111-1111-4111-8111-111111111111",
+    sku: "IP13P-OLED-A+",
+  },
+  {
+    orderId: "ORD-2026-0567",
+    orderLineId: "11111111-1111-4111-8111-111111111113",
+    sku: "USB-C-DOCK",
+  },
+  {
+    orderId: "ORD-2026-0567",
+    orderLineId: "11111111-1111-4111-8111-111111111114",
+    sku: "PXR-LCD",
+  },
+] as const;
+
+const initialOrderOption = orderOptions[0];
 
 type RmaFormState = {
   orderId: string;
+  orderLineId: string;
   sku: string;
   quantity: string;
   reason: string;
@@ -67,8 +86,9 @@ type SubmitState =
 
 export function RmaPage() {
   const [form, setForm] = React.useState<RmaFormState>({
-    orderId: "ORD-2026-0566",
-    sku: "IP12-LCD-INC",
+    orderId: initialOrderOption.orderId,
+    orderLineId: initialOrderOption.orderLineId,
+    sku: initialOrderOption.sku,
     quantity: "1",
     reason: rmaReasons[0],
     description: "",
@@ -88,6 +108,28 @@ export function RmaPage() {
     value: RmaFormState[Key]
   ) {
     setForm((current) => ({ ...current, [key]: value }));
+    if (submitState.status === "error" || submitState.status === "success") {
+      setSubmitState({
+        status: "idle",
+        message: "Modifiche locali pronte. Invia di nuovo per creare una nuova RMA.",
+      });
+    }
+  }
+
+  function updateOrder(value: string) {
+    const selected = orderOptions.find((option) => option.orderLineId === value);
+
+    if (!selected) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      orderId: selected.orderId,
+      orderLineId: selected.orderLineId,
+      sku: selected.sku,
+    }));
+
     if (submitState.status === "error" || submitState.status === "success") {
       setSubmitState({
         status: "idle",
@@ -119,6 +161,7 @@ export function RmaPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           orderId: form.orderId,
+          ...(form.orderLineId ? { orderLineId: form.orderLineId } : {}),
           sku: form.sku.trim().toUpperCase(),
           quantity,
           reason: form.reason,
@@ -180,16 +223,16 @@ export function RmaPage() {
               <CardContent className="grid gap-4 sm:grid-cols-2">
                 <Field label="Ordine" htmlFor="rma-order">
                   <Select
-                    value={form.orderId}
-                    onValueChange={(value) => updateField("orderId", value)}
+                    value={form.orderLineId}
+                    onValueChange={updateOrder}
                   >
                     <SelectTrigger id="rma-order" className="bg-white">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {orderOptions.map((orderId) => (
-                        <SelectItem key={orderId} value={orderId}>
-                          {orderId}
+                      {orderOptions.map((option) => (
+                        <SelectItem key={option.orderLineId} value={option.orderLineId}>
+                          {option.orderId} · {option.sku}
                         </SelectItem>
                       ))}
                     </SelectContent>

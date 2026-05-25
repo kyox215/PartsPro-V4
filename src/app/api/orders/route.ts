@@ -45,12 +45,41 @@ const orderItemSchema = z
   })
   .strict();
 
+const deliveryAddressSchema = z
+  .object({
+    street: z.string().trim().min(1).max(160),
+    zip: z.string().trim().min(3).max(16),
+    city: z.string().trim().min(1).max(80),
+    province: z.string().trim().min(1).max(8),
+    country: z.string().trim().min(2).max(2).default("IT"),
+  })
+  .strict();
+
+const companySnapshotSchema = z
+  .object({
+    name: z.string().trim().min(1).max(160),
+    partitaIva: z.string().trim().min(5).max(32),
+    codiceFiscale: z.string().trim().min(5).max(32),
+    pec: z.string().trim().email().max(160),
+    codiceDestinatario: z.string().trim().min(6).max(16),
+    address: deliveryAddressSchema.optional(),
+  })
+  .strict();
+
+const fiscalSchema = z
+  .object({
+    companySnapshot: companySnapshotSchema,
+  })
+  .strict();
+
 const createOrderSchema = z
   .object({
     companyId: z.string().trim().min(1).max(40).regex(/^[A-Za-z0-9_-]+$/),
     paymentMethod: z.enum(["bank_transfer", "card", "agreed_terms"]),
     notes: z.string().trim().max(500).optional(),
     purchaseOrderNumber: z.string().trim().min(1).max(64).optional(),
+    deliveryAddress: deliveryAddressSchema,
+    fiscal: fiscalSchema,
     items: z.array(orderItemSchema).min(1).max(100),
   })
   .strict();
@@ -175,6 +204,8 @@ export async function POST(request: NextRequest) {
       company,
       paymentMethod: result.data.paymentMethod,
       purchaseOrderNumber: result.data.purchaseOrderNumber,
+      deliveryAddress: result.data.deliveryAddress,
+      fiscal: result.data.fiscal,
       notes: result.data.notes,
       lines: orderBuild.lines,
       totals,
