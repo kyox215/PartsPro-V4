@@ -5,7 +5,7 @@ import {
   formatZodIssues,
   readQueryParams,
 } from "@/lib/partspro-api";
-import { listCatalogProducts } from "@/lib/partspro-repository";
+import { pageCatalogProducts } from "@/lib/partspro-repository";
 import { type PartProduct } from "@/lib/partspro-data";
 
 const catalogQuerySchema = z
@@ -26,8 +26,6 @@ const catalogQuerySchema = z
 
 const allowedQueryKeys = new Set(Object.keys(catalogQuerySchema.shape));
 
-type CatalogQuery = z.infer<typeof catalogQuerySchema>;
-
 export async function GET(request: NextRequest) {
   try {
     const parsedParams = readQueryParams(request.nextUrl.searchParams, allowedQueryKeys);
@@ -44,19 +42,16 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const repositoryResult = await listCatalogProducts();
-    const filtered = filterProducts(repositoryResult.data, result.data);
-    const sorted = sortProducts(filtered, result.data.sort);
-    const page = sorted.slice(result.data.offset, result.data.offset + result.data.limit);
+    const repositoryResult = await pageCatalogProducts(result.data);
 
     return NextResponse.json({
-      data: page.map(toCatalogProduct),
+      data: repositoryResult.data.products.map(toCatalogProduct),
       meta: {
         source: repositoryResult.source,
-        total: filtered.length,
+        total: repositoryResult.data.total,
         limit: result.data.limit,
         offset: result.data.offset,
-        returned: page.length,
+        returned: repositoryResult.data.products.length,
         currency: "EUR",
         priceVisibility: "hidden_until_approved_b2b_login",
         vatMode: "net_prices_plus_iva",
@@ -67,54 +62,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function filterProducts(items: PartProduct[], query: CatalogQuery) {
-  const normalizedSearch = query.q?.toLowerCase();
-  const normalizedModel = query.model?.toLowerCase();
-
-  return items.filter((product) => {
-    const matchesBrand = query.brand ? product.brand === query.brand : true;
-    const matchesCategory = query.category ? product.category === query.category : true;
-    const matchesWarehouse = query.warehouse ? product.warehouse === query.warehouse : true;
-    const matchesStatus = query.status ? product.status === query.status : true;
-    const matchesGrade = query.grade ? product.grade === query.grade : true;
-    const matchesMinStock = query.minStock === undefined ? true : product.stock >= query.minStock;
-    const matchesModel = normalizedModel
-      ? product.compatibleWith.some((model) => model.toLowerCase().includes(normalizedModel))
-      : true;
-    const matchesSearch = normalizedSearch
-      ? [product.name, product.sku, product.brand, product.category, product.grade, ...product.tags]
-          .join(" ")
-          .toLowerCase()
-          .includes(normalizedSearch)
-      : true;
-
-    return (
-      matchesBrand &&
-      matchesCategory &&
-      matchesWarehouse &&
-      matchesStatus &&
-      matchesGrade &&
-      matchesMinStock &&
-      matchesModel &&
-      matchesSearch
-    );
-  });
-}
-
-function sortProducts(items: PartProduct[], sort: CatalogQuery["sort"]) {
-  return [...items].sort((a, b) => {
-    switch (sort) {
-      case "stock_desc":
-        return b.stock - a.stock;
-      case "updated_desc":
-        return b.updatedAt.localeCompare(a.updatedAt);
-      case "name":
-      default:
-        return a.name.localeCompare(b.name, "it");
-    }
-  });
-}
-
 function toCatalogProduct(product: PartProduct) {
   return {
     sku: product.sku,
@@ -123,15 +70,22 @@ function toCatalogProduct(product: PartProduct) {
     category: product.category,
     brand: product.brand,
     grade: product.grade,
+    price: 0,
+    retailPrice: 0,
     stock: product.stock,
     status: product.status,
+    visual: product.visual,
     warehouse: product.warehouse,
     moq: product.moq,
+    vatRate: product.vatRate,
     rmaDays: product.rmaDays,
     leadTime: product.leadTime,
     updatedAt: product.updatedAt,
     compatibleWith: product.compatibleWith,
     tags: product.tags,
+    imageUrl: product.imageUrl,
+    imageAlt: product.imageAlt,
+    galleryImageUrls: product.galleryImageUrls,
     priceGate: {
       visible: false,
       reason: "approved_b2b_login_required",

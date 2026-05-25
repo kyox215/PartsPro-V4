@@ -11,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { DeviceModelGroup } from "@/lib/partspro-data";
+import type { CatalogSelection } from "./catalog-brand-tree";
 import { PartsProLogo } from "./logo";
 import { LanguageSwitcher } from "./language-switcher";
 import { StoreMobileMenu } from "./store-mobile-menu";
@@ -20,17 +21,32 @@ import { tx } from "@/i18n/dictionaries/storefront";
 
 type StoreHeaderProps = {
   modelGroups?: readonly DeviceModelGroup[];
+  onCatalogSelect?: (selection: CatalogSelection) => void;
+  selectedCatalog?: CatalogSelection;
 };
 
-export function StoreHeader({ modelGroups }: StoreHeaderProps) {
+export function StoreHeader({
+  modelGroups,
+  onCatalogSelect,
+  selectedCatalog,
+}: StoreHeaderProps) {
   const t = useT();
   const cart = useCart();
+  const availabilitySelection = {
+    brand: selectedCatalog?.brand,
+    inStockOnly: selectedCatalog?.inStockOnly ? undefined : true,
+    model: selectedCatalog?.model,
+  };
 
   return (
     <>
       <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200/80 bg-white/90 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl">
         <div className="mx-auto flex h-14 w-full max-w-[1500px] items-center gap-2 px-3 sm:h-16 sm:gap-3 sm:px-4">
-          <StoreMobileMenu modelGroups={modelGroups} />
+          <StoreMobileMenu
+            modelGroups={modelGroups}
+            onCatalogSelect={onCatalogSelect}
+            selectedCatalog={selectedCatalog}
+          />
 
           <Link
             href="/"
@@ -59,18 +75,40 @@ export function StoreHeader({ modelGroups }: StoreHeaderProps) {
           </div>
 
           <nav className="ml-auto hidden items-center gap-1 lg:flex">
-            <Button variant="ghost" asChild>
-              <Link href="/catalogo">
+            {onCatalogSelect ? (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => onCatalogSelect({})}
+              >
                 <PackageSearch className="size-4" />
                 {tx(t, "nav.catalog", "Catalogo")}
-              </Link>
-            </Button>
-            <Button variant="ghost" asChild>
-              <Link href="/catalogo?minStock=1">
+              </Button>
+            ) : (
+              <Button variant="ghost" asChild>
+                <Link href="/catalogo">
+                  <PackageSearch className="size-4" />
+                  {tx(t, "nav.catalog", "Catalogo")}
+                </Link>
+              </Button>
+            )}
+            {onCatalogSelect ? (
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => onCatalogSelect(availabilitySelection)}
+              >
                 <PackageCheck className="size-4" />
                 Solo disponibili
-              </Link>
-            </Button>
+              </Button>
+            ) : (
+              <Button variant="ghost" asChild>
+                <Link href="/catalogo?minStock=1">
+                  <PackageCheck className="size-4" />
+                  Solo disponibili
+                </Link>
+              </Button>
+            )}
             <Button variant="ghost" asChild>
               <Link href="/account">{tx(t, "nav.account", "Account")}</Link>
             </Button>

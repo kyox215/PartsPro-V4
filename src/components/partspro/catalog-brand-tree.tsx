@@ -1,12 +1,19 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
 import { deviceModels, type DeviceModelGroup } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
 
 type CatalogBrandTreeVariant = "mobile" | "desktop";
+
+export type CatalogSelection = {
+  brand?: string;
+  inStockOnly?: boolean;
+  model?: string;
+};
 
 type CatalogBrandTreeProps = {
   expandedBrand: string | null;
@@ -14,6 +21,8 @@ type CatalogBrandTreeProps = {
   modelGroups?: readonly DeviceModelGroup[];
   onExpandedBrandChange: (brand: string | null) => void;
   onNavigate?: () => void;
+  onSelectCatalog?: (selection: CatalogSelection) => void;
+  selectedCatalog?: CatalogSelection;
   showAvailableLink?: boolean;
   variant?: CatalogBrandTreeVariant;
 };
@@ -24,14 +33,69 @@ export function CatalogBrandTree({
   modelGroups,
   onExpandedBrandChange,
   onNavigate,
+  onSelectCatalog,
+  selectedCatalog,
   showAvailableLink = false,
   variant = "mobile",
 }: CatalogBrandTreeProps) {
   const desktop = variant === "desktop";
+  const selectedModelRef = useRef<HTMLElement | null>(null);
+  const selectedBrand = selectedCatalog?.brand;
+  const selectedModel = selectedCatalog?.model;
+  const inStockOnly = Boolean(selectedCatalog?.inStockOnly);
+  const selectionKnown = Boolean(selectedCatalog);
   const groups = useMemo(
     () => mergeModelGroups(deviceModels, modelGroups ?? []),
     [modelGroups]
   );
+  const catalogLinkClassName = cn(
+    "flex w-full items-center rounded-md text-left font-black text-primary transition hover:bg-primary/8",
+    desktop ? "h-10 bg-primary/8 px-3 text-sm" : "h-8 px-2 text-xs"
+  );
+  const availableLinkClassName = cn(
+    "flex w-full items-center rounded-md text-left font-black text-emerald-700 transition hover:bg-emerald-50",
+    desktop ? "h-10 px-3 text-sm" : "h-8 px-2 text-xs"
+  );
+
+  function handleSelect(selection: CatalogSelection) {
+    onSelectCatalog?.(selection);
+    onNavigate?.();
+  }
+
+  function handleCatalogRootSelect() {
+    handleSelect({ inStockOnly: inStockOnly || undefined });
+  }
+
+  function handleAvailabilityToggle(checked: boolean) {
+    handleSelect({
+      brand: selectedBrand,
+      inStockOnly: checked || undefined,
+      model: selectedModel,
+    });
+  }
+
+  function handleModelSelect(brand: string, model: string) {
+    handleSelect({
+      brand,
+      inStockOnly: inStockOnly || undefined,
+      model,
+    });
+  }
+
+  useEffect(() => {
+    if (!selectedModel || !selectedBrand || expandedBrand !== selectedBrand) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      selectedModelRef.current?.scrollIntoView({
+        block: "center",
+        inline: "nearest",
+      });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [expandedBrand, selectedBrand, selectedModel]);
 
   return (
     <div
@@ -39,31 +103,67 @@ export function CatalogBrandTree({
         desktop ? "space-y-2" : "space-y-2 rounded-lg bg-white px-2 py-2 shadow-sm"
       )}
     >
-      <Link
-        href="/catalogo"
-        className={cn(
-          "flex items-center rounded-md font-black text-primary transition hover:bg-primary/8",
-          desktop ? "h-10 bg-primary/8 px-3 text-sm" : "h-8 px-2 text-xs"
-        )}
-        onClick={onNavigate}
-      >
-        Tutto il catalogo
-      </Link>
-      {showAvailableLink && (
-        <Link
-          href="/catalogo?minStock=1"
+      {onSelectCatalog ? (
+        <button
+          type="button"
           className={cn(
-            "flex items-center rounded-md font-black text-emerald-700 transition hover:bg-emerald-50",
-            desktop ? "h-10 px-3 text-sm" : "h-8 px-2 text-xs"
+            catalogLinkClassName,
+            selectionKnown &&
+              !selectedBrand &&
+              !selectedModel &&
+              !inStockOnly &&
+              "bg-primary text-white shadow-sm hover:bg-primary"
           )}
+          onClick={handleCatalogRootSelect}
+        >
+          Tutto il catalogo
+        </button>
+      ) : (
+        <Link
+          href="/catalogo"
+          prefetch={false}
+          className={catalogLinkClassName}
           onClick={onNavigate}
         >
-          Solo disponibili
+          Tutto il catalogo
         </Link>
+      )}
+      {showAvailableLink && (
+        onSelectCatalog ? (
+          <div
+            className={cn(
+              "flex w-full cursor-pointer items-center justify-between gap-3 rounded-md border text-left font-black transition",
+              desktop ? "min-h-10 px-3 text-sm" : "min-h-9 px-2 text-xs",
+              inStockOnly
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-slate-100 bg-white text-emerald-700 hover:bg-emerald-50"
+            )}
+            onClick={() => handleAvailabilityToggle(!inStockOnly)}
+          >
+            <span className="min-w-0 flex-1 truncate">Solo disponibili</span>
+            <Switch
+              aria-label="Filtra solo prodotti disponibili"
+              checked={inStockOnly}
+              onCheckedChange={handleAvailabilityToggle}
+              onClick={(event) => event.stopPropagation()}
+              size={desktop ? "default" : "sm"}
+            />
+          </div>
+        ) : (
+          <Link
+            href="/catalogo?minStock=1"
+            prefetch={false}
+            className={availableLinkClassName}
+            onClick={onNavigate}
+          >
+            Solo disponibili
+          </Link>
+        )
       )}
       <div className={desktop ? "space-y-1.5" : "space-y-1"}>
         {groups.map((entry) => {
           const brandOpen = expandedBrand === entry.brand;
+          const brandSelected = isSameCatalogValue(selectedBrand, entry.brand);
           const brandPanelId = catalogBrandPanelId(idPrefix, entry.brand);
 
           return (
@@ -78,7 +178,8 @@ export function CatalogBrandTree({
                 type="button"
                 className={cn(
                   "flex w-full items-center gap-2 rounded-md text-left font-black text-slate-900 transition hover:bg-slate-50 hover:text-primary",
-                  desktop ? "h-10 px-3 text-sm" : "h-9 px-2 text-xs"
+                  desktop ? "h-10 px-3 text-sm" : "h-9 px-2 text-xs",
+                  brandSelected && "text-primary"
                 )}
                 aria-expanded={brandOpen}
                 aria-controls={brandPanelId}
@@ -105,33 +206,51 @@ export function CatalogBrandTree({
                   id={brandPanelId}
                   className={cn(
                     "border-t border-slate-100",
-                    desktop ? "space-y-2 p-2" : "p-2"
+                    "p-2"
                   )}
                 >
-                  <Link
-                    href={catalogQueryHref({ brand: entry.brand })}
-                    className={cn(
-                      "flex items-center rounded-md bg-primary/8 font-black text-primary hover:bg-primary/12",
-                      desktop ? "h-9 px-2.5 text-xs" : "mb-2 h-8 px-2 text-[11px]"
-                    )}
-                    onClick={onNavigate}
-                  >
-                    Tutti i modelli {entry.brand}
-                  </Link>
-                  <div className={desktop ? "grid gap-1" : "flex flex-wrap gap-1"}>
-                    {entry.models.map((model) => (
-                      <Link
-                        key={model}
-                        href={catalogQueryHref({ brand: entry.brand, model })}
-                        className={cn(
-                          "rounded-md bg-slate-50 font-semibold leading-4 text-slate-600 hover:bg-primary/8 hover:text-primary",
-                          desktop ? "px-2.5 py-2 text-xs" : "px-2 py-1 text-[11px]"
-                        )}
-                        onClick={onNavigate}
-                      >
-                        {model}
-                      </Link>
-                    ))}
+                  <div className={desktop ? "grid gap-1" : "grid grid-cols-2 gap-1"}>
+                    {entry.models.map((model) => {
+                      const modelSelected =
+                        brandSelected && isSameCatalogValue(selectedModel, model);
+                      const modelClassName = cn(
+                        "min-w-0 rounded-md bg-slate-50 text-left font-semibold leading-4 text-slate-600 transition hover:bg-primary/8 hover:text-primary",
+                        desktop ? "px-2.5 py-2 text-xs" : "h-9 px-2 py-2 text-[11px]",
+                        modelSelected &&
+                          "bg-primary text-white shadow-sm hover:bg-primary hover:text-white"
+                      );
+                      const selectedRef = modelSelected
+                        ? (node: HTMLElement | null) => {
+                            selectedModelRef.current = node;
+                          }
+                        : undefined;
+
+                      return onSelectCatalog ? (
+                        <button
+                          key={model}
+                          ref={selectedRef}
+                          type="button"
+                          aria-pressed={modelSelected}
+                          className={modelClassName}
+                          onClick={() => handleModelSelect(entry.brand, model)}
+                          title={model}
+                        >
+                          <span className="block truncate">{model}</span>
+                        </button>
+                      ) : (
+                        <Link
+                          key={model}
+                          ref={selectedRef}
+                          href={catalogQueryHref({ brand: entry.brand, model })}
+                          prefetch={false}
+                          className={modelClassName}
+                          onClick={onNavigate}
+                          title={model}
+                        >
+                          <span className="block truncate">{model}</span>
+                        </Link>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -167,6 +286,17 @@ function catalogQueryHref({
 
 function catalogBrandPanelId(prefix: string, brand: string) {
   return `${prefix}-brand-${brand.toLowerCase().replace(/\s+/g, "-")}`;
+}
+
+function isSameCatalogValue(left?: string, right?: string) {
+  if (!left || !right) {
+    return false;
+  }
+
+  return left.trim().localeCompare(right.trim(), "it", {
+    numeric: true,
+    sensitivity: "base",
+  }) === 0;
 }
 
 function mergeModelGroups(

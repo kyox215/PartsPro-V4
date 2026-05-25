@@ -6,8 +6,10 @@ import {
   formatPartsProDateTime,
 } from "@/lib/partspro-api";
 import {
+  deviceModels,
   type CompanyProfile,
   type CompanyStatus,
+  type DeviceModelGroup,
   type OrderStatus,
   type OrderSummary,
   type PartProduct,
@@ -68,6 +70,25 @@ export type PreparedOrderTotals = {
   shippingCents: number;
   vatCents: number;
   totalCents: number;
+};
+
+export type CatalogProductQueryInput = {
+  brand?: string;
+  category?: string;
+  grade?: ProductGrade;
+  limit: number;
+  minStock?: number;
+  model?: string;
+  offset: number;
+  q?: string;
+  sort: "name" | "stock_desc" | "updated_desc";
+  status?: StockStatus;
+  warehouse?: PartProduct["warehouse"];
+};
+
+export type CatalogProductPage = {
+  products: RepositoryPartProduct[];
+  total: number;
 };
 
 export type DeliveryAddressSnapshot = {
@@ -153,6 +174,81 @@ export async function listCatalogProducts(): Promise<RepositoryResult<Repository
   );
 }
 
+export async function getCatalogProductBySkuOrSlug(
+  value: string
+): Promise<RepositoryResult<RepositoryPartProduct | null>> {
+  const lookup = value.trim();
+
+  if (!lookup) {
+    return emptyResult(null, "Product identifier is empty.");
+  }
+
+  const supabaseResult = await withSupabaseResult((context) =>
+    readCatalogProductBySkuOrSlug(context.client, lookup)
+  );
+  const publicSupabaseResult =
+    supabaseResult?.data === undefined || supabaseResult.data === null
+      ? await readPublicCatalogProduct(lookup)
+      : null;
+  const directResult = supabaseResult?.data ? supabaseResult : publicSupabaseResult;
+
+  if (directResult?.data) {
+    return directResult;
+  }
+
+  if (shouldFallbackToCatalogSlugLookup(lookup)) {
+    const catalog = await listCatalogProducts();
+    const legacyProduct =
+      catalog.data.find((item) => item.sku === lookup.toUpperCase() || item.slug === lookup) ??
+      null;
+
+    return { ...catalog, data: legacyProduct };
+  }
+
+  return (
+    supabaseResult ??
+    publicSupabaseResult ??
+    emptyResult(
+      null,
+      isSupabaseConfigured()
+        ? "Supabase product could not be read; no local catalog is available."
+        : "Supabase is not configured; no local catalog is available."
+    )
+  );
+}
+
+export async function pageCatalogProducts(
+  query: CatalogProductQueryInput
+): Promise<RepositoryResult<CatalogProductPage>> {
+  const supabaseResult = await readPublicCatalogProductPage(query);
+
+  return (
+    supabaseResult ??
+    emptyResult(
+      { products: [], total: 0 },
+      isSupabaseConfigured()
+        ? "Supabase catalog could not be read; no local catalog is available."
+        : "Supabase is not configured; no local catalog is available."
+    )
+  );
+}
+
+export async function listCatalogModelGroups(): Promise<
+  RepositoryResult<DeviceModelGroup[]>
+> {
+  const supabaseResult = await readPublicCatalogModelGroups();
+
+  return (
+    supabaseResult ??
+    emptyResult(
+      deviceModels,
+      isSupabaseConfigured()
+        ? "Supabase catalog models could not be read; using local catalog model fallback."
+        : "Supabase is not configured; using local catalog model fallback."
+    )
+  );
+}
+
 async function readPublicCatalogProducts(): Promise<RepositoryResult<RepositoryPartProduct[]> | null> {
   if (!isSupabaseConfigured()) {
     return null;
@@ -162,6 +258,84 @@ async function readPublicCatalogProducts(): Promise<RepositoryResult<RepositoryP
     const client = await createClient();
     const data = await readCatalogProducts({ client, userId: "" });
     return data === null ? null : { data, source: "supabase" };
+  } catch {
+    return null;
+  }
+}
+
+async function readPublicCatalogProductPage(
+  query: CatalogProductQueryInput
+): Promise<RepositoryResult<CatalogProductPage> | null> {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
+  try {
+    const client = await createClient();
+    const page =
+      (await readCatalogProductPageFromTable(
+        client,
+        "catalog_public_summary",
+        "*",
+        query
+      )) ??
+      (await readCatalogProductPageFromTable(
+        client,
+        "products",
+        "id, sku_code, name, brand, model, model_code, model_codes, category, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at, image_path, image_alt, gallery_image_paths",
+        query
+      ));
+
+    return page ? { data: page, source: "supabase" } : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readPublicCatalogModelGroups(): Promise<
+  RepositoryResult<DeviceModelGroup[]> | null
+> {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
+  try {
+    const client = await createClient();
+    const rows =
+      (await readRows(
+        client,
+        "catalog_public_summary",
+        "brand, compatibility_models"
+      )) ??
+      (await readRows(
+        client,
+        "products",
+        "brand, model, model_code, model_codes, compatibility_models, status"
+      ));
+
+    if (!rows) {
+      return null;
+    }
+
+    const groups = buildDeviceModelGroupsFromRows(rows);
+
+    return groups.length > 0 ? { data: groups, source: "supabase" } : null;
+  } catch {
+    return null;
+  }
+}
+
+async function readPublicCatalogProduct(
+  value: string
+): Promise<RepositoryResult<RepositoryPartProduct | null> | null> {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
+  try {
+    const client = await createClient();
+    const data = await readCatalogProductBySkuOrSlug(client, value);
+    return { data, source: "supabase" };
   } catch {
     return null;
   }
@@ -286,6 +460,22 @@ async function withSupabase<T>(
   }
 }
 
+async function withSupabaseResult<T>(
+  reader: (context: SupabaseContext) => Promise<T>
+): Promise<RepositoryResult<T> | null> {
+  const context = await getSupabaseContext();
+
+  if (!context) {
+    return null;
+  }
+
+  try {
+    return { data: await reader(context), source: "supabase" };
+  } catch {
+    return null;
+  }
+}
+
 async function getSupabaseContext(): Promise<SupabaseContext | null> {
   if (!isSupabaseConfigured()) {
     return null;
@@ -349,6 +539,111 @@ async function readCatalogProducts(context: SupabaseContext) {
   return null;
 }
 
+async function readCatalogProductBySkuOrSlug(
+  client: SupabaseServerClient,
+  value: string
+): Promise<RepositoryPartProduct | null> {
+  const viewProduct = await readCatalogProductFromViews(client, value);
+
+  if (viewProduct) {
+    return viewProduct;
+  }
+
+  const productRows = await readMatchingRows(
+    client,
+    "products",
+    "id, sku_code, name, brand, model, model_code, model_codes, category, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at, image_path, image_alt, gallery_image_paths",
+    "sku_code",
+    catalogLookupCandidates(value),
+    1
+  );
+  const productRow = productRows?.[0];
+
+  return productRow ? mapProductRow(productRow) : null;
+}
+
+async function readCatalogProductPageFromTable(
+  client: SupabaseServerClient,
+  table: "catalog_public_summary" | "products",
+  select: string,
+  query: CatalogProductQueryInput
+): Promise<CatalogProductPage | null> {
+  const from = Math.max(query.offset, 0);
+  const to = from + Math.max(query.limit, 1) - 1;
+
+  try {
+    let request = client.from(table).select(select, { count: "exact" });
+
+    if (table === "products") {
+      request = request.eq("status", "active");
+    }
+
+    if (query.brand) {
+      request = request.eq("brand", query.brand);
+    }
+
+    if (query.category) {
+      request = request.eq("category", query.category);
+    }
+
+    if (query.grade) {
+      request = request.eq("quality_grade", query.grade);
+    }
+
+    if (query.minStock !== undefined) {
+      request = request.gte("stock_qty", query.minStock);
+    }
+
+    if (query.model) {
+      request = request.contains("compatibility_models", [query.model]);
+    }
+
+    if (query.q) {
+      const search = sanitizePostgrestSearchTerm(query.q);
+      request = request.or(
+        `name.ilike.%${search}%,sku_code.ilike.%${search}%,brand.ilike.%${search}%,category.ilike.%${search}%`
+      );
+    }
+
+    if (query.status) {
+      request = request.eq("stock_status", stockStatusToDbValue(query.status));
+    }
+
+    if (query.warehouse) {
+      request = request.eq("location", query.warehouse);
+    }
+
+    switch (query.sort) {
+      case "stock_desc":
+        request = request.order("stock_qty", { ascending: false });
+        break;
+      case "updated_desc":
+        request = request.order("updated_at", { ascending: false });
+        break;
+      case "name":
+      default:
+        request = request.order("name", { ascending: true });
+        break;
+    }
+
+    const { data, error, count } = await request.range(from, to);
+    const rows = Array.isArray(data)
+      ? (data as unknown[]).filter(isDbRow)
+      : null;
+
+    if (error || !rows) {
+      return null;
+    }
+
+    return {
+      products: rows.map(mapProductRow).filter(isDefined),
+      total: count ?? rows.length,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function readCatalogProductViews(client: SupabaseServerClient) {
   const summaryRows = await readRows(client, "catalog_public_summary");
 
@@ -382,6 +677,45 @@ async function readCatalogProductViews(client: SupabaseServerClient) {
 
     return prices ? { ...row, ...prices } : row;
   });
+}
+
+async function readCatalogProductFromViews(
+  client: SupabaseServerClient,
+  value: string
+): Promise<RepositoryPartProduct | null> {
+  const summaryRows = await readMatchingRows(
+    client,
+    "catalog_public_summary",
+    "*",
+    "sku_code",
+    catalogLookupCandidates(value),
+    1
+  );
+  const summaryRow = summaryRows?.[0];
+
+  if (!summaryRow) {
+    return null;
+  }
+
+  const id = pickString(summaryRow, ["id"]);
+  const sku = pickString(summaryRow, ["sku_code", "sku"]);
+  const priceRows =
+    (id
+      ? await readMatchingRows(client, "catalog_buyer_prices", "*", "id", [id], 1)
+      : null) ??
+    (sku
+      ? await readMatchingRows(
+          client,
+          "catalog_buyer_prices",
+          "*",
+          "sku_code",
+          catalogLookupCandidates(sku),
+          1
+        )
+      : null);
+  const priceRow = priceRows?.[0];
+
+  return mapProductRow(priceRow ? { ...summaryRow, ...priceRow } : summaryRow);
 }
 
 async function readCompanies(context: SupabaseContext) {
@@ -731,6 +1065,41 @@ async function readRows(
   }
 }
 
+async function readMatchingRows(
+  client: SupabaseServerClient,
+  table: string,
+  select: string,
+  column: string,
+  values: string[],
+  limit = 1
+): Promise<DbRow[] | null> {
+  const candidates = [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  try {
+    const { data, error } = await client
+      .from(table)
+      .select(select)
+      .in(column, candidates)
+      .limit(limit);
+
+    const rows = Array.isArray(data)
+      ? (data as unknown[]).filter(isDbRow)
+      : null;
+
+    if (error || !rows) {
+      return null;
+    }
+
+    return rows;
+  } catch {
+    return null;
+  }
+}
+
 async function readOrderCompanyId(client: SupabaseServerClient, orderId: string) {
   const order = await readSingleRow(client, "orders", "id", orderId);
 
@@ -989,6 +1358,60 @@ function readCompatibility(row: DbRow) {
   }
 
   return [...new Set(direct)];
+}
+
+function buildDeviceModelGroupsFromRows(rows: DbRow[]): DeviceModelGroup[] {
+  const groups = new Map<string, Set<string>>();
+
+  for (const row of rows) {
+    const status = pickString(row, ["status"]);
+
+    if (status && status.toLowerCase() !== "active") {
+      continue;
+    }
+
+    const brand = pickString(row, ["brand"]);
+
+    if (!brand) {
+      continue;
+    }
+
+    const models = groups.get(brand) ?? new Set<string>();
+
+    for (const model of readCompatibility(row)) {
+      const normalizedModel = model.trim();
+
+      if (normalizedModel) {
+        models.add(normalizedModel);
+      }
+    }
+
+    groups.set(brand, models);
+  }
+
+  const preferredBrandOrder = deviceModels.map((group) => group.brand);
+
+  return Array.from(groups.entries())
+    .map(([brand, models]) => ({
+      brand,
+      models: Array.from(models).sort(compareDeviceModelNames),
+    }))
+    .filter((group) => group.models.length > 0)
+    .sort((left, right) => {
+      const leftIndex = preferredBrandOrder.indexOf(left.brand);
+      const rightIndex = preferredBrandOrder.indexOf(right.brand);
+
+      if (leftIndex !== -1 || rightIndex !== -1) {
+        return (leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex) -
+          (rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex);
+      }
+
+      return left.brand.localeCompare(right.brand, "it", { numeric: true });
+    });
+}
+
+function compareDeviceModelNames(left: string, right: string) {
+  return left.localeCompare(right, "it", { numeric: true, sensitivity: "base" });
 }
 
 function readWarehouse(row: DbRow) {
@@ -1349,6 +1772,29 @@ function normalizePriceList(value: string | null): "Standard" | "Pro" | "Partner
 
 function emptyResult<T>(data: T, warning?: string): RepositoryResult<T> {
   return warning ? { data, source: "empty", warning } : { data, source: "empty" };
+}
+
+function catalogLookupCandidates(value: string) {
+  return [value, value.toUpperCase()];
+}
+
+function shouldFallbackToCatalogSlugLookup(value: string) {
+  return value !== value.toUpperCase();
+}
+
+function stockStatusToDbValue(status: StockStatus) {
+  switch (status) {
+    case "In Stock":
+      return "in_stock";
+    case "Low Stock":
+      return "low_stock";
+    case "Out of Stock":
+      return "out_of_stock";
+  }
+}
+
+function sanitizePostgrestSearchTerm(value: string) {
+  return value.replace(/[%*,()]/g, " ").trim();
 }
 
 function parseUuid(value: string) {

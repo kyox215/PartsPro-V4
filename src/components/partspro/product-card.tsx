@@ -35,7 +35,7 @@ export function ProductCard({
   const stockMeta = getStockMeta(product);
   const canAddToCart =
     product.stock >= Math.max(1, product.moq) && product.status !== "Out of Stock";
-  const productPath = `/prodotto/${product.slug}`;
+  const productPath = `/prodotto/${encodeURIComponent(product.sku)}`;
   const cartPath = `/carrello?sku=${encodeURIComponent(product.sku)}&qty=${product.moq}`;
   const stockDescriptionId = `stock-${product.sku.replace(/[^a-zA-Z0-9]/g, "-")}`;
   const remainingModels = Math.max(product.compatibleWith.length - 2, 0);
@@ -43,52 +43,61 @@ export function ProductCard({
   return (
     <Card
       className={cn(
-        "h-full min-w-0 rounded-lg border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)] transition hover:-translate-y-0.5 hover:shadow-[0_22px_50px_rgba(15,23,42,0.08)]",
+        "h-full min-w-0 rounded-lg border-slate-200 bg-white shadow-sm transition sm:shadow-[0_18px_45px_rgba(15,23,42,0.05)] sm:hover:-translate-y-0.5 sm:hover:shadow-[0_22px_50px_rgba(15,23,42,0.08)]",
         !canAddToCart && "opacity-80"
       )}
     >
-      <CardContent className="flex h-full min-w-0 flex-col p-3">
+      <CardContent className="grid h-full min-w-0 grid-cols-[104px_minmax(0,1fr)] gap-2 p-2 sm:flex sm:flex-col sm:p-3">
         <Link
           href={productPath}
-          className="relative block overflow-hidden rounded-lg bg-slate-50"
+          className="relative block h-28 overflow-hidden rounded-md bg-slate-50 sm:h-auto sm:rounded-lg"
           aria-label={`Apri ${product.name}`}
         >
           {product.imageUrl ? (
-            <div className="relative h-36 rounded-lg">
+            <div className="relative h-full rounded-md sm:h-36 sm:rounded-lg">
               <Image
                 src={product.imageUrl}
                 alt={product.imageAlt ?? product.name}
                 fill
-                sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 25vw"
-                className="object-contain p-3"
+                sizes="(max-width: 640px) 104px, (max-width: 1280px) 50vw, 25vw"
+                className="object-contain p-2 sm:p-3"
               />
             </div>
           ) : (
-            <PartVisual variant={product.visual} className="h-36 rounded-lg" />
+            <PartVisual variant={product.visual} className="h-full rounded-md sm:h-36 sm:rounded-lg" />
           )}
-          <Badge className={cn("absolute left-2 top-2 max-w-[calc(100%-1rem)] border", gradeClass(product.grade))}>
+          <Badge className={cn("absolute left-1.5 top-1.5 max-w-[calc(100%-0.75rem)] border px-1.5 py-0.5 text-[10px] sm:left-2 sm:top-2 sm:max-w-[calc(100%-1rem)]", gradeClass(product.grade))}>
             {product.grade}
           </Badge>
-          <Badge className="absolute bottom-2 left-2 max-w-[calc(100%-1rem)] border border-emerald-200 bg-emerald-50 text-emerald-700">
-            {product.warehouse}
+          <Badge
+            className={cn(
+              "absolute bottom-1.5 left-1.5 max-w-[calc(100%-0.75rem)] truncate border px-1.5 py-0.5 text-[10px] sm:bottom-2 sm:left-2 sm:max-w-[calc(100%-1rem)]",
+              stockMeta.className
+            )}
+            title={`${stockMeta.label} · ${product.stock} pz`}
+          >
+            {stockMeta.label}
           </Badge>
         </Link>
 
-        <div className="mt-3 flex min-w-0 flex-1 flex-col">
+        <div className="flex min-w-0 flex-1 flex-col sm:mt-3">
           <Link
             href={productPath}
-            className="line-clamp-2 min-h-10 break-words text-sm font-black leading-5 text-slate-950 hover:text-primary"
+            className="line-clamp-2 min-h-0 break-words text-[13px] font-black leading-4 text-slate-950 hover:text-primary sm:min-h-10 sm:text-sm sm:leading-5"
           >
             {product.name}
           </Link>
-          <div className="mt-1 min-w-0 truncate font-mono text-xs text-slate-500" title={product.sku}>
+          <div className="mt-0.5 min-w-0 truncate font-mono text-[10px] text-slate-500 sm:mt-1 sm:text-xs" title={product.sku}>
             {product.sku}
           </div>
-          <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
-            {product.compatibleWith.slice(0, 2).map((model) => (
+          <div className="mt-1 flex min-w-0 flex-wrap gap-1 sm:mt-2 sm:gap-1.5">
+            {product.compatibleWith.slice(0, 2).map((model, index) => (
               <span
                 key={model}
-                className="max-w-full truncate rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600"
+                className={cn(
+                  "max-w-full truncate rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 sm:px-2 sm:py-1 sm:text-[11px]",
+                  index > 0 && "hidden sm:inline-flex"
+                )}
                 title={model}
               >
                 {model}
@@ -96,7 +105,7 @@ export function ProductCard({
             ))}
             {remainingModels > 0 && (
               <span
-                className="max-w-full truncate rounded-full bg-primary/8 px-2 py-1 text-[11px] font-bold text-primary"
+                className="hidden max-w-full truncate rounded-full bg-primary/8 px-2 py-1 text-[11px] font-bold text-primary sm:inline-flex"
                 title={`${remainingModels} modelli compatibili aggiuntivi`}
               >
                 +{remainingModels} modelli
@@ -104,43 +113,43 @@ export function ProductCard({
             )}
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] font-semibold text-slate-600">
+          <div className="mt-1.5 grid grid-cols-2 gap-1 text-[10px] font-semibold text-slate-600 sm:mt-3 sm:gap-2 sm:text-[11px]">
             <div
               id={stockDescriptionId}
               className={cn(
-                "flex min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1.5",
+                "flex min-w-0 items-center gap-1 rounded-md border px-1.5 py-1 sm:gap-1.5 sm:rounded-lg sm:px-2 sm:py-1.5",
                 stockMeta.className
               )}
             >
-              <PackageCheck className="size-3.5 shrink-0" />
+              <PackageCheck className="size-3 shrink-0 sm:size-3.5" />
               <span className="truncate">
                 {stockMeta.label} · {product.stock} pz
               </span>
             </div>
-            <div className="flex min-w-0 items-center gap-1.5 rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5">
-              <Boxes className="size-3.5 shrink-0 text-primary" />
+            <div className="flex min-w-0 items-center gap-1 rounded-md border border-slate-100 bg-slate-50 px-1.5 py-1 sm:gap-1.5 sm:rounded-lg sm:px-2 sm:py-1.5">
+              <Boxes className="size-3 shrink-0 text-primary sm:size-3.5" />
               <span className="truncate">MOQ {product.moq}</span>
             </div>
-            <div className="col-span-2 flex min-w-0 items-center gap-1.5 rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5">
+            <div className="col-span-2 hidden min-w-0 items-center gap-1.5 rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5 sm:flex">
               <Clock className="size-3.5 shrink-0 text-primary" />
               <span className="truncate">{product.leadTime}</span>
             </div>
           </div>
 
-          <div className="mt-auto flex items-end justify-between gap-2 pt-4">
+          <div className="mt-auto flex items-center justify-between gap-1 pt-1.5 sm:items-end sm:gap-2 sm:pt-4">
             <div className="min-w-0">
               {showWholesalePrice ? (
                 <>
-                  <div className="text-lg font-black">{formatEuro(product.price)}</div>
-                  <div className="truncate text-xs text-slate-500">IVA escl. · MOQ {product.moq}</div>
+                  <div className="text-sm font-black sm:text-lg">{formatEuro(product.price)}</div>
+                  <div className="truncate text-[10px] text-slate-500 sm:text-xs">IVA escl. · MOQ {product.moq}</div>
                 </>
               ) : (
                 <>
-                  <div className="flex min-w-0 items-center gap-1 text-sm font-bold leading-tight text-slate-700">
-                    <Lock className="size-3.5 shrink-0" />
+                  <div className="flex min-w-0 items-center gap-1 text-xs font-bold leading-tight text-slate-700 sm:text-sm">
+                    <Lock className="size-3 shrink-0 sm:size-3.5" />
                     Accedi per prezzo
                   </div>
-                  <div className="truncate text-xs text-slate-500">
+                  <div className="hidden truncate text-xs text-slate-500 sm:block">
                     MOQ {product.moq} · Listino da approvare
                   </div>
                 </>
@@ -151,28 +160,28 @@ export function ProductCard({
                 size="sm"
                 variant="outline"
                 asChild
-                className="min-w-[104px] shrink-0 bg-white text-primary"
+                className="size-8 min-w-0 shrink-0 bg-white px-0 text-primary sm:size-auto sm:min-w-[104px] sm:px-3"
               >
                 <Link
                   href={cartPath}
                   aria-describedby={stockDescriptionId}
                   aria-label={`Aggiungi ${product.name} al carrello. MOQ ${product.moq}, stock ${product.stock} pezzi.`}
                 >
-                  <ShoppingCart className="size-4" />
-                  Aggiungi
+                  <ShoppingCart className="size-3.5 sm:size-4" />
+                  <span className="sr-only sm:not-sr-only">Aggiungi</span>
                 </Link>
               </Button>
             ) : (
               <Button
                 size="sm"
                 variant="outline"
-                className="min-w-[104px] shrink-0 bg-slate-50 text-slate-500"
+                className="size-8 min-w-0 shrink-0 bg-slate-50 px-0 text-slate-500 sm:size-auto sm:min-w-[104px] sm:px-3"
                 disabled
                 aria-describedby={stockDescriptionId}
                 aria-label={`${product.name} non disponibile per il carrello`}
               >
-                <ShoppingCart className="size-4" />
-                Esaurito
+                <ShoppingCart className="size-3.5 sm:size-4" />
+                <span className="sr-only sm:not-sr-only">Esaurito</span>
               </Button>
             )}
           </div>

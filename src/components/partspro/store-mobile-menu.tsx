@@ -17,7 +17,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { DeviceModelGroup } from "@/lib/partspro-data";
 import { tx } from "@/i18n/dictionaries/storefront";
-import { CatalogBrandTree } from "./catalog-brand-tree";
+import { CatalogBrandTree, type CatalogSelection } from "./catalog-brand-tree";
 import { LanguageSwitcher } from "./language-switcher";
 import { PartsProLogo } from "./logo";
 import { useT } from "./i18n-provider";
@@ -30,35 +30,54 @@ const storeMobileNavItems = [
 type StoreMobileMenuProps = {
   className?: string;
   modelGroups?: readonly DeviceModelGroup[];
+  onCatalogSelect?: (selection: CatalogSelection) => void;
+  selectedCatalog?: CatalogSelection;
 };
 
-export function StoreMobileMenu({ className, modelGroups }: StoreMobileMenuProps) {
+export function StoreMobileMenu({
+  className,
+  modelGroups,
+  onCatalogSelect,
+  selectedCatalog,
+}: StoreMobileMenuProps) {
   const t = useT();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(() => pathname.startsWith("/catalogo"));
-  const [expandedBrand, setExpandedBrand] = useState<string | null>(null);
+  const [expandedBrandOverride, setExpandedBrandOverride] = useState<
+    string | null | undefined
+  >(undefined);
   const catalogActive = pathname === "/catalogo" || pathname.startsWith("/catalogo/");
+  const selectedBrand = selectedCatalog?.brand ?? null;
+  const expandedBrand =
+    expandedBrandOverride === undefined ? selectedBrand : expandedBrandOverride;
 
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen);
 
+    if (nextOpen && catalogActive) {
+      setCatalogOpen(true);
+      setExpandedBrandOverride(undefined);
+    }
+
     if (!nextOpen) {
-      setExpandedBrand(null);
+      setExpandedBrandOverride(undefined);
     }
   }
 
   function closeMenu() {
     setOpen(false);
-    setExpandedBrand(null);
+    setExpandedBrandOverride(undefined);
+  }
+
+  function handleCatalogSelect(selection: CatalogSelection) {
+    setExpandedBrandOverride(undefined);
+    onCatalogSelect?.(selection);
   }
 
   function toggleCatalog() {
+    setExpandedBrandOverride(undefined);
     setCatalogOpen((current) => {
-      if (current) {
-        setExpandedBrand(null);
-      }
-
       return !current;
     });
   }
@@ -162,8 +181,10 @@ export function StoreMobileMenu({ className, modelGroups }: StoreMobileMenuProps
                     expandedBrand={expandedBrand}
                     idPrefix="store-mobile-catalog"
                     modelGroups={modelGroups}
-                    onExpandedBrandChange={setExpandedBrand}
-                    onNavigate={closeMenu}
+                    onExpandedBrandChange={setExpandedBrandOverride}
+                    onNavigate={onCatalogSelect ? undefined : closeMenu}
+                    onSelectCatalog={onCatalogSelect ? handleCatalogSelect : undefined}
+                    selectedCatalog={selectedCatalog}
                     showAvailableLink
                   />
                 </div>

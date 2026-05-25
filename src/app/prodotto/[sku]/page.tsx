@@ -1,5 +1,5 @@
 import { ProductDetailPage } from "@/components/partspro/product-detail-page";
-import { listCatalogProducts } from "@/lib/partspro-repository";
+import { getCatalogProductBySkuOrSlug } from "@/lib/partspro-repository";
 import { notFound } from "next/navigation";
 
 export default async function Page({
@@ -9,10 +9,7 @@ export default async function Page({
 }) {
   const { sku } = await params;
   const decodedSku = decodeURIComponent(sku);
-  const catalog = await listCatalogProducts();
-  const product = catalog.data.find(
-    (item) => item.sku === decodedSku || item.slug === decodedSku
-  );
+  const product = (await getCatalogProductBySkuOrSlug(decodedSku)).data;
 
   if (!product) {
     notFound();
