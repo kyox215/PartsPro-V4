@@ -24,8 +24,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { brands, categories, deviceModels, products as localProducts } from "@/lib/partspro-data";
-import type { PartProduct } from "@/lib/partspro-data";
+import {
+  brands,
+  categories,
+  deviceModels,
+  products as localProducts,
+} from "@/lib/partspro-data";
+import type { DeviceModelGroup, PartProduct } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
 import { ProductCard } from "./product-card";
 import { StoreHeader } from "./store-header";
@@ -140,6 +145,7 @@ function CatalogPageContent({
   const [inStockOnly, setInStockOnly] = useState(initialInStockOnly);
   const [sortKey, setSortKey] = useState<SortKey>("recommended");
   const filterOptions = useMemo(() => buildFilterOptions(initialProducts), [initialProducts]);
+  const modelGroups = useMemo(() => buildModelGroups(initialProducts), [initialProducts]);
 
   const filteredProducts = useMemo(() => {
     const query = normalize(searchTerm);
@@ -213,7 +219,7 @@ function CatalogPageContent({
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
-      <StoreHeader />
+      <StoreHeader modelGroups={modelGroups} />
       <div className="mx-auto grid max-w-[1500px] gap-5 px-3 py-4 sm:px-4 sm:py-6 lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="hidden lg:block">
           <CatalogFilters
@@ -765,6 +771,37 @@ function buildFilterOptions(items: PartProduct[]): CatalogFilterOptions {
     grades: mergeOptions(gradeOptions, items.map((item) => item.grade)) as PartProduct["grade"][],
     warehouses: mergeOptions(warehouseOptions, items.map((item) => item.warehouse)) as PartProduct["warehouse"][],
   };
+}
+
+function buildModelGroups(items: PartProduct[]): DeviceModelGroup[] {
+  const groups = new Map<string, Set<string>>();
+
+  for (const item of items) {
+    const brand = item.brand.trim();
+
+    if (!brand) {
+      continue;
+    }
+
+    const models = groups.get(brand) ?? new Set<string>();
+
+    for (const model of item.compatibleWith) {
+      const normalizedModel = model.trim();
+
+      if (normalizedModel) {
+        models.add(normalizedModel);
+      }
+    }
+
+    groups.set(brand, models);
+  }
+
+  return Array.from(groups.entries()).map(([brand, models]) => ({
+    brand,
+    models: Array.from(models).sort((left, right) =>
+      left.localeCompare(right, "it", { numeric: true, sensitivity: "base" })
+    ),
+  }));
 }
 
 function mergeOptions(base: readonly string[], extra: string[]) {

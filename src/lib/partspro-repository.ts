@@ -699,15 +699,30 @@ async function readRows(
   client: SupabaseServerClient,
   table: string,
   select = "*",
-  limit = 500
+  limit = 5000
 ): Promise<DbRow[] | null> {
+  const pageSize = 1000;
+  const rows: DbRow[] = [];
+
   try {
-    const { data, error } = await client.from(table).select(select).limit(limit);
+    while (rows.length < limit) {
+      const from = rows.length;
+      const to = Math.min(from + pageSize, limit) - 1;
+      const { data, error } = await client.from(table).select(select).range(from, to);
 
-    const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
+      const pageRows = Array.isArray(data)
+        ? (data as unknown[]).filter(isDbRow)
+        : null;
 
-    if (error || !rows) {
-      return null;
+      if (error || !pageRows) {
+        return null;
+      }
+
+      rows.push(...pageRows);
+
+      if (pageRows.length < to - from + 1) {
+        break;
+      }
     }
 
     return rows;

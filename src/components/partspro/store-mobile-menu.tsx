@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, Grid3X3, Home, Menu, Search, User } from "lucide-react";
@@ -15,7 +15,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { deviceModels } from "@/lib/partspro-data";
+import { deviceModels, type DeviceModelGroup } from "@/lib/partspro-data";
 import { tx } from "@/i18n/dictionaries/storefront";
 import { LanguageSwitcher } from "./language-switcher";
 import { PartsProLogo } from "./logo";
@@ -28,18 +28,28 @@ const storeMobileNavItems = [
 
 type StoreMobileMenuProps = {
   className?: string;
+  modelGroups?: readonly DeviceModelGroup[];
 };
 
-export function StoreMobileMenu({ className }: StoreMobileMenuProps) {
+export function StoreMobileMenu({ className, modelGroups }: StoreMobileMenuProps) {
   const t = useT();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(() => pathname.startsWith("/catalogo"));
   const [expandedBrand, setExpandedBrand] = useState<string | null>(null);
+  const catalogModelGroups = useMemo(
+    () => mergeModelGroups(deviceModels, modelGroups ?? []),
+    [modelGroups]
+  );
   const catalogActive = pathname === "/catalogo" || pathname.startsWith("/catalogo/");
 
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen);
+
+    if (nextOpen) {
+      setExpandedBrand(getCurrentBrandParam());
+      return;
+    }
 
     if (!nextOpen) {
       setExpandedBrand(null);
@@ -171,7 +181,7 @@ export function StoreMobileMenu({ className }: StoreMobileMenuProps) {
                     Solo disponibili
                   </Link>
                   <div className="space-y-1">
-                    {deviceModels.map((entry) => {
+                    {catalogModelGroups.map((entry) => {
                       const brandOpen = expandedBrand === entry.brand;
                       const brandPanelId = catalogBrandPanelId(entry.brand);
 
@@ -280,4 +290,62 @@ function catalogQueryHref({
 
 function catalogBrandPanelId(brand: string) {
   return `store-mobile-catalog-brand-${brand.toLowerCase().replace(/\s+/g, "-")}`;
+}
+
+function getCurrentBrandParam() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return new URLSearchParams(window.location.search).get("brand");
+}
+
+function mergeModelGroups(
+  fallbackGroups: readonly DeviceModelGroup[],
+  dynamicGroups: readonly DeviceModelGroup[]
+) {
+  const groups = new Map<string, Set<string>>();
+
+  for (const group of [...fallbackGroups, ...dynamicGroups]) {
+    const brand = group.brand.trim();
+
+    if (!brand) {
+      continue;
+    }
+
+    const models = groups.get(brand) ?? new Set<string>();
+
+    for (const model of group.models) {
+      const normalizedModel = model.trim();
+
+      if (normalizedModel) {
+        models.add(normalizedModel);
+      }
+    }
+
+    groups.set(brand, models);
+  }
+
+  const preferredBrandOrder = fallbackGroups.map((group) => group.brand);
+
+  return Array.from(groups.entries())
+    .map(([brand, models]) => ({
+      brand,
+      models: Array.from(models).sort(compareModelNames),
+    }))
+    .sort((left, right) => {
+      const leftIndex = preferredBrandOrder.indexOf(left.brand);
+      const rightIndex = preferredBrandOrder.indexOf(right.brand);
+
+      if (leftIndex !== -1 || rightIndex !== -1) {
+        return (leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex) -
+          (rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex);
+      }
+
+      return left.brand.localeCompare(right.brand, "it", { numeric: true });
+    });
+}
+
+function compareModelNames(left: string, right: string) {
+  return left.localeCompare(right, "it", { numeric: true, sensitivity: "base" });
 }
