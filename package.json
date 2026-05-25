@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "import:mobilax:iphone": "node scripts/import-mobilax-iphone-catalog.mjs",
     "start": "next start",
     "lint": "eslint"
   },

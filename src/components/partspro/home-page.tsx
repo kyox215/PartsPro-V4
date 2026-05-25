@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -11,11 +10,11 @@ import {
   Cable,
   ChevronRight,
   CreditCard,
-  ExternalLink,
   Grid3X3,
   Lock,
   MessageCircle,
   Package,
+  PackageCheck,
   Search,
   ShieldCheck,
   ShoppingCart,
@@ -40,7 +39,6 @@ import {
   categories,
   products,
   brands,
-  mobilaxAppleParts,
   type PartProduct,
   formatEuro,
 } from "@/lib/partspro-data";
@@ -117,7 +115,6 @@ export function HomePage() {
         <div className="min-w-0 space-y-2 sm:space-y-4">
           <HeroSection />
           <TrustBar />
-          <ApplePartsShowcase />
           <CategoryShowcase
             selectedCategory={selectedCategory}
             onSelectCategory={setSelectedCategory}
@@ -235,6 +232,12 @@ function HomeHeader({
           <nav className="ml-auto flex shrink-0 items-center gap-1.5">
             <Button variant="ghost" size="sm" asChild className="hidden md:inline-flex">
               <Link href="/admin">{tx(t, "nav.admin", "Admin")}</Link>
+            </Button>
+            <Button variant="ghost" size="sm" asChild className="hidden lg:inline-flex">
+              <Link href="/catalogo?minStock=1">
+                <PackageCheck className="size-4" />
+                Solo disponibili
+              </Link>
             </Button>
             <LanguageSwitcher compact className="hidden sm:inline-flex" />
             <Button
@@ -414,91 +417,6 @@ function HeroSection() {
         </motion.div>
       </div>
     </motion.section>
-  );
-}
-
-function ApplePartsShowcase() {
-  return (
-    <section className="space-y-3">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-xs font-bold uppercase tracking-normal text-primary">
-            Fonte catalogo Mobilax
-          </div>
-          <h2 className="mt-1 text-lg font-black sm:text-xl">
-            Ricambi Apple reali
-          </h2>
-          <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500 sm:text-sm">
-            Immagini, modelli e ricambi ricavati da schede prodotto pubbliche Mobilax.
-          </p>
-        </div>
-        <Button variant="outline" size="sm" className="bg-white" asChild>
-          <a href="https://www.mobilax.com/" target="_blank" rel="noreferrer">
-            Mobilax
-            <ExternalLink className="size-3.5" />
-          </a>
-        </Button>
-      </div>
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
-        {mobilaxAppleParts.map((part) => (
-          <Card
-            key={part.id}
-            className="overflow-hidden border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)] transition hover:border-primary/40"
-          >
-            <CardContent className="p-0">
-              <a
-                href={part.sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="block min-w-0 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
-              >
-                <div className="relative h-40 overflow-hidden bg-slate-50 sm:h-44">
-                  <Image
-                    src={part.imageUrl}
-                    alt={`${part.part} ${part.model}`}
-                    fill
-                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1536px) 33vw, 16vw"
-                    className="object-contain p-4"
-                    unoptimized
-                  />
-                  <Badge className="absolute left-3 top-3 border border-slate-200 bg-white text-slate-700 shadow-sm">
-                    Apple
-                  </Badge>
-                </div>
-                <div className="space-y-3 p-3">
-                  <div className="flex min-w-0 items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-bold uppercase tracking-normal text-slate-400">
-                        Modello
-                      </div>
-                      <div className="truncate text-sm font-black text-slate-950">
-                        {part.model}
-                      </div>
-                    </div>
-                    <ExternalLink className="mt-1 size-4 shrink-0 text-slate-400" />
-                  </div>
-                  <div>
-                    <div className="text-[11px] font-bold uppercase tracking-normal text-slate-400">
-                      Ricambio
-                    </div>
-                    <div className="line-clamp-2 min-h-10 text-sm font-bold leading-5 text-slate-800">
-                      {part.part}
-                    </div>
-                  </div>
-                  <div className="line-clamp-2 min-h-8 text-xs leading-4 text-slate-500">
-                    {part.title}
-                  </div>
-                  <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-3 text-[11px] font-bold text-slate-500">
-                    <span className="min-w-0 truncate">Rif. {part.reference}</span>
-                    <span className="shrink-0 text-primary">{part.sourceName}</span>
-                  </div>
-                </div>
-              </a>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-    </section>
   );
 }
 

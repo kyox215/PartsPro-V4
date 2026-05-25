@@ -69,6 +69,14 @@ const gradeOptions: PartProduct["grade"][] = ["A+", "A", "B", "Refurbished"];
 const warehouseOptions: PartProduct["warehouse"][] = ["Milano", "Roma", "Shenzhen"];
 const modelSuggestions = deviceModels.flatMap((entry) => entry.models).slice(0, 10);
 
+type CatalogFilterOptions = {
+  brands: string[];
+  categories: string[];
+  statuses: PartProduct["status"][];
+  grades: PartProduct["grade"][];
+  warehouses: PartProduct["warehouse"][];
+};
+
 type CatalogSearchParams = {
   get: (name: string) => string | null;
 };
@@ -78,12 +86,16 @@ function getFiltersFromParams(searchParams: CatalogSearchParams): CatalogFilters
 
   return {
     ...emptyFilters,
-    brand: brand && brands.includes(brand) ? [brand] : [],
+    brand: brand ? [brand] : [],
   };
 }
 
 function getModelSearchFromParams(searchParams: CatalogSearchParams) {
   return searchParams.get("model") ?? "";
+}
+
+function getInStockOnlyFromParams(searchParams: CatalogSearchParams) {
+  return Number(searchParams.get("minStock") ?? "0") > 0;
 }
 
 type CatalogPageProps = {
@@ -103,6 +115,7 @@ export function CatalogPage({
       key={searchParamsKey}
       catalogSource={catalogSource}
       initialFilters={getFiltersFromParams(searchParams)}
+      initialInStockOnly={getInStockOnlyFromParams(searchParams)}
       initialProducts={initialProducts}
       initialSearchTerm={getModelSearchFromParams(searchParams)}
     />
@@ -112,17 +125,21 @@ export function CatalogPage({
 function CatalogPageContent({
   catalogSource,
   initialFilters,
+  initialInStockOnly,
   initialProducts,
   initialSearchTerm,
 }: {
   catalogSource: "supabase" | "empty";
   initialFilters: CatalogFiltersState;
+  initialInStockOnly: boolean;
   initialProducts: PartProduct[];
   initialSearchTerm: string;
 }) {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
   const [filters, setFilters] = useState<CatalogFiltersState>(initialFilters);
+  const [inStockOnly, setInStockOnly] = useState(initialInStockOnly);
   const [sortKey, setSortKey] = useState<SortKey>("recommended");
+  const filterOptions = useMemo(() => buildFilterOptions(initialProducts), [initialProducts]);
 
   const filteredProducts = useMemo(() => {
     const query = normalize(searchTerm);
@@ -142,6 +159,10 @@ function CatalogPageContent({
         return false;
       }
 
+      if (inStockOnly && product.stock <= 0) {
+        return false;
+      }
+
       return (Object.keys(filters) as FilterKey[]).every((key) => {
         if (filters[key].length === 0) {
           return true;
@@ -152,14 +173,15 @@ function CatalogPageContent({
     });
 
     return sortProducts(byFilter, sortKey);
-  }, [filters, initialProducts, searchTerm, sortKey]);
+  }, [filters, inStockOnly, initialProducts, searchTerm, sortKey]);
 
   const activeCount = useMemo(
     () =>
-      searchTerm.trim().length > 0
-        ? 1 + countActiveFilters(filters) + (sortKey === "recommended" ? 0 : 1)
-        : countActiveFilters(filters) + (sortKey === "recommended" ? 0 : 1),
-    [filters, searchTerm, sortKey]
+      (searchTerm.trim().length > 0 ? 1 : 0) +
+      countActiveFilters(filters) +
+      (inStockOnly ? 1 : 0) +
+      (sortKey === "recommended" ? 0 : 1),
+    [filters, inStockOnly, searchTerm, sortKey]
   );
 
   function toggleFilter(key: FilterKey, value: string) {
@@ -185,6 +207,7 @@ function CatalogPageContent({
   function clearAll() {
     setSearchTerm("");
     setFilters(emptyFilters);
+    setInStockOnly(false);
     setSortKey("recommended");
   }
 
@@ -195,9 +218,13 @@ function CatalogPageContent({
         <aside className="hidden lg:block">
           <CatalogFilters
             filters={filters}
+            inStockOnly={inStockOnly}
             onClearGroup={clearGroup}
+            onClearInStockOnly={() => setInStockOnly(false)}
             onModelSearch={setSearchTerm}
             onToggleFilter={toggleFilter}
+            onToggleInStockOnly={() => setInStockOnly((current) => !current)}
+            options={filterOptions}
             searchTerm={searchTerm}
           />
         </aside>
@@ -233,9 +260,13 @@ function CatalogPageContent({
                       <CatalogFilters
                         compact
                         filters={filters}
+                        inStockOnly={inStockOnly}
                         onClearGroup={clearGroup}
+                        onClearInStockOnly={() => setInStockOnly(false)}
                         onModelSearch={setSearchTerm}
                         onToggleFilter={toggleFilter}
+                        onToggleInStockOnly={() => setInStockOnly((current) => !current)}
+                        options={filterOptions}
                         searchTerm={searchTerm}
                       />
                     </div>
@@ -361,9 +392,11 @@ function CatalogPageContent({
               filters={filters}
               onClearAll={clearAll}
               onClearFilter={clearFilter}
+              onClearInStockOnly={() => setInStockOnly(false)}
               onClearSearch={() => setSearchTerm("")}
               onClearSort={() => setSortKey("recommended")}
               searchTerm={searchTerm}
+              inStockOnly={inStockOnly}
               sortKey={sortKey}
             />
           </div>
@@ -399,16 +432,24 @@ function CatalogPageContent({
 function CatalogFilters({
   compact = false,
   filters,
+  inStockOnly,
   onClearGroup,
+  onClearInStockOnly,
   onModelSearch,
   onToggleFilter,
+  onToggleInStockOnly,
+  options,
   searchTerm,
 }: {
   compact?: boolean;
   filters: CatalogFiltersState;
+  inStockOnly: boolean;
   onClearGroup: (key: FilterKey) => void;
+  onClearInStockOnly: () => void;
   onModelSearch: (value: string) => void;
   onToggleFilter: (key: FilterKey, value: string) => void;
+  onToggleInStockOnly: () => void;
+  options: CatalogFilterOptions;
   searchTerm: string;
 }) {
   return (
@@ -425,7 +466,7 @@ function CatalogFilters({
         </div>
         <FilterGroup
           filterKey="brand"
-          items={brands}
+          items={options.brands}
           onClearGroup={onClearGroup}
           onToggle={onToggleFilter}
           selected={filters.brand}
@@ -433,7 +474,7 @@ function CatalogFilters({
         />
         <FilterGroup
           filterKey="category"
-          items={categories.map((item) => item.label)}
+          items={options.categories}
           onClearGroup={onClearGroup}
           onToggle={onToggleFilter}
           selected={filters.category}
@@ -442,15 +483,29 @@ function CatalogFilters({
         <FilterGroup
           filterKey="status"
           formatLabel={(item) => statusLabels[item as PartProduct["status"]]}
-          items={statusOptions}
+          items={options.statuses}
           onClearGroup={onClearGroup}
           onToggle={onToggleFilter}
           selected={filters.status}
           title="Disponibilita"
         />
+        <button
+          type="button"
+          aria-pressed={inStockOnly}
+          onClick={onToggleInStockOnly}
+          className={cn(
+            "flex min-h-10 w-full items-center justify-center gap-2 rounded-full border px-3 py-2 text-sm font-black transition",
+            inStockOnly
+              ? "border-primary/40 bg-primary/8 text-primary shadow-sm"
+              : "border-slate-200 bg-white text-slate-700 hover:border-primary/40 hover:bg-primary/8 hover:text-primary"
+          )}
+        >
+          <PackageCheck className="size-4" />
+          Solo disponibili
+        </button>
         <FilterGroup
           filterKey="grade"
-          items={gradeOptions}
+          items={options.grades}
           onClearGroup={onClearGroup}
           onToggle={onToggleFilter}
           selected={filters.grade}
@@ -458,7 +513,7 @@ function CatalogFilters({
         />
         <FilterGroup
           filterKey="warehouse"
-          items={warehouseOptions}
+          items={options.warehouses}
           onClearGroup={onClearGroup}
           onToggle={onToggleFilter}
           selected={filters.warehouse}
@@ -476,9 +531,10 @@ function CatalogFilters({
             variant="outline"
             onClick={() => {
               (Object.keys(emptyFilters) as FilterKey[]).forEach((key) => onClearGroup(key));
+              onClearInStockOnly();
               onModelSearch("");
             }}
-            disabled={countActiveFilters(filters) === 0 && !searchTerm}
+            disabled={countActiveFilters(filters) === 0 && !searchTerm && !inStockOnly}
           >
             <RotateCcw className="size-4" />
             Cancella filtri
@@ -586,23 +642,27 @@ function ModelSuggestionGroup({
 
 function ActiveChips({
   filters,
+  inStockOnly,
   onClearAll,
   onClearFilter,
+  onClearInStockOnly,
   onClearSearch,
   onClearSort,
   searchTerm,
   sortKey,
 }: {
   filters: CatalogFiltersState;
+  inStockOnly: boolean;
   onClearAll: () => void;
   onClearFilter: (key: FilterKey, value: string) => void;
+  onClearInStockOnly: () => void;
   onClearSearch: () => void;
   onClearSort: () => void;
   searchTerm: string;
   sortKey: SortKey;
 }) {
   const hasChips =
-    Boolean(searchTerm.trim()) || countActiveFilters(filters) > 0 || sortKey !== "recommended";
+    Boolean(searchTerm.trim()) || countActiveFilters(filters) > 0 || inStockOnly || sortKey !== "recommended";
 
   if (!hasChips) {
     return (
@@ -632,6 +692,9 @@ function ActiveChips({
             onRemove={() => onClearFilter(key, value)}
           />
         ))
+      )}
+      {inStockOnly && (
+        <Chip label="Solo disponibili" onRemove={onClearInStockOnly} />
       )}
       {sortKey !== "recommended" && (
         <Chip label={`Ordine: ${sortLabels[sortKey]}`} onRemove={onClearSort} />
@@ -689,6 +752,25 @@ function sortProducts(items: PartProduct[], sortKey: SortKey) {
       (originalIndex.get(a.sku) ?? 0) - (originalIndex.get(b.sku) ?? 0)
     );
   });
+}
+
+function buildFilterOptions(items: PartProduct[]): CatalogFilterOptions {
+  return {
+    brands: mergeOptions(brands, items.map((item) => item.brand)),
+    categories: mergeOptions(
+      categories.map((item) => item.label),
+      items.map((item) => item.category)
+    ),
+    statuses: mergeOptions(statusOptions, items.map((item) => item.status)) as PartProduct["status"][],
+    grades: mergeOptions(gradeOptions, items.map((item) => item.grade)) as PartProduct["grade"][],
+    warehouses: mergeOptions(warehouseOptions, items.map((item) => item.warehouse)) as PartProduct["warehouse"][],
+  };
+}
+
+function mergeOptions(base: readonly string[], extra: string[]) {
+  return Array.from(
+    new Set([...base, ...extra.filter((item) => item.trim().length > 0)])
+  ).sort((a, b) => a.localeCompare(b, "it"));
 }
 
 function countActiveFilters(filters: CatalogFiltersState) {

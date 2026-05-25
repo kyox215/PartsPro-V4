@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -49,10 +50,22 @@ export function ProductCard({
       <CardContent className="flex h-full min-w-0 flex-col p-3">
         <Link
           href={productPath}
-          className="relative block overflow-hidden rounded-lg"
+          className="relative block overflow-hidden rounded-lg bg-slate-50"
           aria-label={`Apri ${product.name}`}
         >
-          <PartVisual variant={product.visual} className="h-36 rounded-lg" />
+          {product.imageUrl ? (
+            <div className="relative h-36 rounded-lg">
+              <Image
+                src={product.imageUrl}
+                alt={product.imageAlt ?? product.name}
+                fill
+                sizes="(max-width: 640px) 100vw, (max-width: 1280px) 50vw, 25vw"
+                className="object-contain p-3"
+              />
+            </div>
+          ) : (
+            <PartVisual variant={product.visual} className="h-36 rounded-lg" />
+          )}
           <Badge className={cn("absolute left-2 top-2 max-w-[calc(100%-1rem)] border", gradeClass(product.grade))}>
             {product.grade}
           </Badge>

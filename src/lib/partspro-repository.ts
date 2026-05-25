@@ -28,6 +28,7 @@ type SupabaseContext = {
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const productImagesBucket = "product-images";
 
 export type RepositorySource = "supabase" | "empty";
 
@@ -798,6 +799,13 @@ function mapProductRow(row: DbRow): RepositoryPartProduct | null {
   const price = pickNumber(row, ["price", "b2b_price", "wholesale_price", "net_price", "unit_price"]) ?? 0;
   const retailPrice = pickNumber(row, ["retail_price", "retailPrice", "msrp", "list_price"]) ?? price;
   const remoteId = pickString(row, ["id", "product_id", "uuid"]);
+  const imagePath = pickString(row, ["image_url", "imageUrl", "image_path", "imagePath"]);
+  const galleryImagePaths = readStringArray(row, ["gallery_image_urls", "galleryImageUrls", "gallery_image_paths", "galleryImagePaths"]);
+  const imageUrl = resolveProductImageUrl(imagePath);
+  const imageAlt = pickString(row, ["image_alt", "imageAlt"]);
+  const galleryImageUrls = galleryImagePaths
+    .map(resolveProductImageUrl)
+    .filter(isDefined);
 
   return {
     sku: sku.toUpperCase(),
@@ -822,6 +830,9 @@ function mapProductRow(row: DbRow): RepositoryPartProduct | null {
     rmaDays: pickNumber(row, ["rma_days", "rmaDays", "warranty_days", "return_days"]) ?? 30,
     leadTime: pickString(row, ["lead_time", "leadTime", "delivery_time"]) ?? "24/48h Italia",
     tags: readStringArray(row, ["tags", "labels", "highlights"]),
+    ...(imageUrl ? { imageUrl } : {}),
+    ...(imageAlt ? { imageAlt } : {}),
+    ...(galleryImageUrls.length > 0 ? { galleryImageUrls } : {}),
     ...(remoteId ? { remoteId } : {}),
   };
 }
@@ -1072,6 +1083,32 @@ function readStringArray(row: DbRow, keys: string[]) {
   }
 
   return values;
+}
+
+function resolveProductImageUrl(value: string | null | undefined) {
+  const normalized = value?.trim();
+
+  if (!normalized) {
+    return null;
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, "");
+
+  if (!supabaseUrl) {
+    return null;
+  }
+
+  const publicPrefix = `${supabaseUrl}/storage/v1/object/public/${productImagesBucket}/`;
+
+  if (normalized.startsWith(publicPrefix)) {
+    return normalized;
+  }
+
+  if (/^https?:\/\//i.test(normalized)) {
+    return null;
+  }
+
+  return `${publicPrefix}${normalized.replace(/^\/+/, "")}`;
 }
 
 function getObject(row: DbRow, key: string): DbRow | null {

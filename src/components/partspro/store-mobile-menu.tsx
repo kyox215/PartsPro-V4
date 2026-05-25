@@ -163,6 +163,13 @@ export function StoreMobileMenu({ className }: StoreMobileMenuProps) {
                   >
                     Tutto il catalogo
                   </Link>
+                  <Link
+                    href="/catalogo?minStock=1"
+                    className="flex h-8 items-center rounded-md px-2 text-xs font-black text-emerald-700 hover:bg-emerald-50"
+                    onClick={closeMenu}
+                  >
+                    Solo disponibili
+                  </Link>
                   <div className="space-y-1">
                     {deviceModels.map((entry) => {
                       const brandOpen = expandedBrand === entry.brand;

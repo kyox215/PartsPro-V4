@@ -47,17 +47,9 @@ export type PartProduct = {
   rmaDays: number;
   leadTime: string;
   tags: string[];
-};
-
-export type SourcedApplePart = {
-  id: string;
-  model: string;
-  part: string;
-  title: string;
-  reference: string;
-  imageUrl: string;
-  sourceUrl: string;
-  sourceName: string;
+  imageUrl?: string;
+  imageAlt?: string;
+  galleryImageUrls?: string[];
 };
 
 export type CompanyProfile = {
@@ -114,79 +106,6 @@ export const categories = [
 ];
 
 export const products: PartProduct[] = [];
-
-export const mobilaxAppleParts: SourcedApplePart[] = [
-  {
-    id: "mobilax-ip13p-display-661-21993",
-    model: "iPhone 13 Pro",
-    part: "Display Touchscreen",
-    title: "Original Display Touchscreen Apple iPhone 13 Pro 661-21993 (Service Pack) Universal Black",
-    reference: "3000000208380",
-    imageUrl:
-      "https://apiv2.mobilax.fr/v1.0/assets/images/products/id-image/51052?size=bg",
-    sourceUrl:
-      "https://www.mobilax.com/original-screen-touch-apple-iphone-13-pro-661-21993-black",
-    sourceName: "Mobilax",
-  },
-  {
-    id: "mobilax-ip13-battery-661-21991",
-    model: "iPhone 13",
-    part: "Original Battery",
-    title: "Original Battery Apple iPhone 13 661-21991 (Service Pack)",
-    reference: "3000000410875",
-    imageUrl:
-      "https://apiv2.mobilax.fr/v1.0/assets/images/products/id-image/87622?size=bg",
-    sourceUrl: "https://www.mobilax.com/original-battery-apple-iphone-13-661-21991",
-    sourceName: "Mobilax",
-  },
-  {
-    id: "mobilax-ip15pm-back-cover",
-    model: "iPhone 15 Pro Max",
-    part: "Back Cover",
-    title: "Premium Back Cover Apple iPhone 15 Pro Max (Without Part) Black Titanium",
-    reference: "3000000288559",
-    imageUrl:
-      "https://apiv2.mobilax.fr/v1.0/assets/images/products/id-image/55323?size=bg",
-    sourceUrl:
-      "https://www.mobilax.com/back-cover-premium-apple-iphone-15-pro-max-titanium-black",
-    sourceName: "Mobilax",
-  },
-  {
-    id: "mobilax-ip14p-fpc-connector",
-    model: "iPhone 14 Pro / 14 Pro Max",
-    part: "LCD FPC Connector",
-    title: "FPC Connector Apple iPhone 14 Pro & 14 Pro Max LCD Screen and Digitizer 50 Pins",
-    reference: "3000000356210",
-    imageUrl:
-      "https://apiv2.mobilax.fr/v1.0/assets/images/products/id-image/73700?size=bg",
-    sourceUrl:
-      "https://www.mobilax.com/fpc-connector-apple-iphone-14-pro-iphone-14-pro-max-ecran-lcd-et-numeriseur-50-pins",
-    sourceName: "Mobilax",
-  },
-  {
-    id: "mobilax-ip13pm-soft-oled",
-    model: "iPhone 13 Pro Max",
-    part: "Soft OLED Display",
-    title: "Soft Oled Display Touchscreen Diagnostic Apple iPhone 13 Pro Max (120Hz) Black",
-    reference: "3000000396193",
-    imageUrl:
-      "https://apiv2.mobilax.fr/v1.0/assets/images/products/id-image/92447?size=bg",
-    sourceUrl:
-      "https://www.mobilax.com/soft-oled-display-touchscreen-diagnostic-apple-iphone-13-pro-max-120hz-black",
-    sourceName: "Mobilax",
-  },
-  {
-    id: "mobilax-ip15-dock-connector",
-    model: "iPhone 15",
-    part: "Dock Connector",
-    title: "Original Pulled Dock Connector Apple iPhone 15 Black",
-    reference: "3000000255940",
-    imageUrl:
-      "https://apiv2.mobilax.fr/v1.0/assets/images/products/id-image/82710?size=bg",
-    sourceUrl: "https://www.mobilax.com/dock-connector-apple-iphone-15-black",
-    sourceName: "Mobilax",
-  },
-];
 
 export const companyProfiles: CompanyProfile[] = [];
 

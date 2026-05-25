@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  PackageCheck,
   PackageSearch,
   Search,
   ShoppingCart,
@@ -57,6 +58,12 @@ export function StoreHeader() {
               <Link href="/catalogo">
                 <PackageSearch className="size-4" />
                 {tx(t, "nav.catalog", "Catalogo")}
+              </Link>
+            </Button>
+            <Button variant="ghost" asChild>
+              <Link href="/catalogo?minStock=1">
+                <PackageCheck className="size-4" />
+                Solo disponibili
               </Link>
             </Button>
             <Button variant="ghost" asChild>
