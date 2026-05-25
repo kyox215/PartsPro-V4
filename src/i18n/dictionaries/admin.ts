@@ -81,8 +81,6 @@ export const adminDictionaries = {
         catalog: "目录",
         timeline: "时间线",
       },
-      demoNotice:
-        "演示模式：配置 Supabase Auth 和员工角色后即可启用后台完整保护。",
       enums: {
         companyStatus: {
           approved: "已批准",
@@ -206,7 +204,7 @@ export const adminDictionaries = {
         },
         form: {
           addDescription:
-            "向演示目录添加配件，包含 SKU、品质、净价和库存。",
+            "向目录添加配件，包含 SKU、品质、净价和库存。",
           brandPlaceholder: "OEM / Apple / Samsung",
           category: "分类",
           compatibility: "兼容性",
@@ -215,7 +213,7 @@ export const adminDictionaries = {
           name: "产品名称",
           namePlaceholder: "例如 iPhone 13 Pro OLED 屏幕",
           newItem: "新建商品",
-          skuPlaceholder: "例如 IP13P-OLED-A+",
+          skuPlaceholder: "例如 SKU-REALE-001",
           tagsPlaceholder: "OLED, True Tone, Wholesale",
           titleEdit: "编辑商品",
         },
@@ -294,7 +292,7 @@ export const adminDictionaries = {
           shipping: "发货",
         },
         metrics: {
-          totalOrders: "演示订单",
+          totalOrders: "订单",
           inView: "当前视图 {count}",
           pendingPayments: "未收款",
           pendingPaymentsDetail: "需跟进付款",
@@ -345,24 +343,10 @@ export const adminDictionaries = {
         activity: {
           advancedTo: "状态推进到 {status}",
           carrierAssigned: "承运商已分配：{carrier}",
-          imported: "订单已导入演示面板",
+          imported: "订单已导入面板",
           initialAllocation: "初始分配到 {warehouse}",
           paid: "付款已登记",
           warehouseAssigned: "仓库已分配：{warehouse}",
-        },
-        demo: {
-          card: "B2B 卡",
-          cashOnDelivery: "银行转账 30 天",
-          customerPec: "amministrazione@cliente-demo.pec.it",
-          deliveredEta: "派送中",
-          financeDesk: "财务台",
-          operations: "运营",
-          paid: "已付款",
-          planEta: "待排期",
-          standardItaly: "意大利标准",
-          express24: "24 小时快递",
-          notesDefault: "关闭包裹前请检查序列号并做好防震包装。",
-          notesOnboarding: "客户正在入驻：放行拣货前请核验付款。",
         },
       },
       customers: {
@@ -372,7 +356,7 @@ export const adminDictionaries = {
         currentTier: "当前价目表",
         description: "B2B 档案、价目表、订单历史和商业信用",
         empty: "没有客户匹配当前筛选。",
-        examplesPrice: "{tier} 价格示例",
+        examplesPrice: "{tier} 价格",
         historyEmpty: "没有已登记订单。",
         historyTitle: "订单历史",
         lastContact: "最近联系",
@@ -412,22 +396,12 @@ export const adminDictionaries = {
           usage: "授信使用率",
         },
         table: {
-          exampleSku: "示例 SKU",
+          exampleSku: "SKU",
           order: "订单",
           payment: "付款",
           primarySku: "主要 SKU",
           status: "状态",
           total: "总计",
-        },
-        demo: {
-          customerNotes: {
-            "cmp-001": "Apple 屏幕和 Samsung 电池周转量高的客户。",
-            "cmp-002": "档案正在审核，完整授信前需检查资料。",
-            "cmp-003": "老合作伙伴，常购经济款配件和实验室补货订单。",
-            "cmp-004": "行政逾期回款前暂停订单。",
-          },
-          paymentAdvance: "预付银行转账",
-          paymentEndOfMonth: "月底后 30 天",
         },
       },
       activity: {
@@ -466,21 +440,16 @@ export const adminDictionaries = {
           title: "管理备注",
         },
         defaults: {
-          orderTitle: "ORD-2026-0567 进入拣货",
-          orderDescription:
-            "RiparaMi S.r.l. 的订单已从已付款移动到仓库准备。",
-          tierTitle: "RiparaMi S.r.l. 升级为 Partner",
-          tierDescription:
-            "季度采购量核验后，价目表已从 Pro 更新为 Partner。",
-          rmaTitle: "RMA-2026-014 为 iPhone 13 Pro OLED 屏幕创建",
-          rmaDescription:
-            "MobileCare Firenze 因测试中发现触控缺陷创建了换货申请。",
-          stockTitle: "米兰仓 IP13P-OLED-A+ 库存已更新",
-          stockDescription:
-            "入库质检后登记库存入库：可用数量 +18 件。",
-          paymentTitle: "ORD-2026-0565 已登记付款",
-          paymentDescription:
-            "TechFix Roma 的银行转账已对账，订单释放到下一批次。",
+          orderTitle: "订单状态已更新",
+          orderDescription: "订单已移动到新的运营状态。",
+          tierTitle: "客户价目表已更新",
+          tierDescription: "客户价目表已根据业务规则调整。",
+          rmaTitle: "RMA 已创建",
+          rmaDescription: "客户已提交换货或退货申请。",
+          stockTitle: "库存已更新",
+          stockDescription: "库存数量已完成登记。",
+          paymentTitle: "付款已登记",
+          paymentDescription: "订单付款状态已完成对账。",
         },
       },
     },
@@ -568,8 +537,6 @@ export const adminDictionaries = {
         catalog: "Catalogo",
         timeline: "Timeline",
       },
-      demoNotice:
-        "Modalita demo: configura Supabase Auth e ruoli staff per attivare la protezione completa del pannello.",
       enums: {
         companyStatus: {
           approved: "Approvato",
@@ -693,7 +660,7 @@ export const adminDictionaries = {
         },
         form: {
           addDescription:
-            "Aggiungi un ricambio al catalogo demo con SKU, qualita, prezzo netto e stock.",
+            "Aggiungi un ricambio al catalogo con SKU, qualita, prezzo netto e stock.",
           brandPlaceholder: "OEM / Apple / Samsung",
           category: "Categoria",
           compatibility: "Compatibilita",
@@ -702,7 +669,7 @@ export const adminDictionaries = {
           name: "Nome prodotto",
           namePlaceholder: "Es. Display OLED iPhone 13 Pro",
           newItem: "Nuovo articolo",
-          skuPlaceholder: "Es. IP13P-OLED-A+",
+          skuPlaceholder: "Es. SKU-REALE-001",
           tagsPlaceholder: "OLED, True Tone, Wholesale",
           titleEdit: "Modifica articolo",
         },
@@ -784,7 +751,7 @@ export const adminDictionaries = {
           shipping: "Spedizioni",
         },
         metrics: {
-          totalOrders: "Ordini demo",
+          totalOrders: "Ordini",
           inView: "{count} nella vista",
           pendingPayments: "Incassi aperti",
           pendingPaymentsDetail: "Pagamenti da seguire",
@@ -835,26 +802,10 @@ export const adminDictionaries = {
         activity: {
           advancedTo: "Stato avanzato a {status}",
           carrierAssigned: "Corriere assegnato: {carrier}",
-          imported: "Ordine importato nel pannello demo",
+          imported: "Ordine importato nel pannello",
           initialAllocation: "Allocazione iniziale su {warehouse}",
           paid: "Pagamento registrato",
           warehouseAssigned: "Magazzino assegnato: {warehouse}",
-        },
-        demo: {
-          card: "Carta B2B",
-          cashOnDelivery: "Bonifico 30 giorni",
-          customerPec: "amministrazione@cliente-demo.pec.it",
-          deliveredEta: "In consegna",
-          financeDesk: "Finance desk",
-          operations: "Operations",
-          paid: "Pagato",
-          planEta: "Da pianificare",
-          standardItaly: "Standard Italia",
-          express24: "Express 24h",
-          notesDefault:
-            "Controllare seriali e imballo antiurto prima della chiusura collo.",
-          notesOnboarding:
-            "Cliente in onboarding: verificare pagamento prima del rilascio picking.",
         },
       },
       customers: {
@@ -904,24 +855,12 @@ export const adminDictionaries = {
           usage: "Utilizzo fido",
         },
         table: {
-          exampleSku: "SKU esempio",
+          exampleSku: "SKU",
           order: "Ordine",
           payment: "Pagamento",
           primarySku: "SKU principale",
           status: "Stato",
           total: "Totale",
-        },
-        demo: {
-          customerNotes: {
-            "cmp-001": "Cliente ad alta rotazione su display Apple e batterie Samsung.",
-            "cmp-002":
-              "Profilo in verifica, richiede controllo documentale prima del fido pieno.",
-            "cmp-003":
-              "Partner storico su ricambi economy e ordini ricorrenti da laboratorio.",
-            "cmp-004": "Ordini sospesi fino al rientro dello scaduto amministrativo.",
-          },
-          paymentAdvance: "Bonifico anticipato",
-          paymentEndOfMonth: "30 gg fine mese",
         },
       },
       activity: {
@@ -960,21 +899,21 @@ export const adminDictionaries = {
           title: "Nota amministrativa",
         },
         defaults: {
-          orderTitle: "ORD-2026-0567 passato in picking",
+          orderTitle: "Stato ordine aggiornato",
           orderDescription:
-            "L'ordine di RiparaMi S.r.l. e stato spostato da pagato a preparazione magazzino.",
-          tierTitle: "RiparaMi S.r.l. promosso a Partner",
+            "L'ordine e stato spostato al nuovo stato operativo.",
+          tierTitle: "Listino cliente aggiornato",
           tierDescription:
-            "Listino aggiornato da Pro a Partner dopo verifica del volume acquisti trimestrale.",
-          rmaTitle: "RMA-2026-014 aperta per Display OLED iPhone 13 Pro",
+            "Il listino cliente e stato adeguato alle regole commerciali.",
+          rmaTitle: "RMA aperta",
           rmaDescription:
-            "Richiesta di sostituzione creata da MobileCare Firenze per difetto touch rilevato in collaudo.",
-          stockTitle: "Stock Milano aggiornato per IP13P-OLED-A+",
+            "Il cliente ha inviato una richiesta di reso o sostituzione.",
+          stockTitle: "Stock aggiornato",
           stockDescription:
-            "Carico inventario registrato: +18 pezzi disponibili dopo controllo qualita in ingresso.",
-          paymentTitle: "Pagamento registrato su ORD-2026-0565",
+            "La quantita inventario e stata registrata.",
+          paymentTitle: "Pagamento registrato",
           paymentDescription:
-            "Bonifico di TechFix Roma riconciliato e ordine liberato per il prossimo batch.",
+            "Lo stato pagamento dell'ordine e stato riconciliato.",
         },
       },
     },

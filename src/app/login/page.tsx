@@ -126,7 +126,7 @@ function LoginRuntimeNotice({ configured }: { configured: boolean }) {
     <div className="mb-4 flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
       <Database className="mt-0.5 size-5 shrink-0 text-amber-600" />
       <div className="min-w-0">
-        <div className="font-black">Modalita demo</div>
+        <div className="font-black">Configurazione Supabase mancante</div>
         <p className="mt-1 leading-6">
           Supabase e collegato al progetto, ma manca ancora
           `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in `.env.local`.

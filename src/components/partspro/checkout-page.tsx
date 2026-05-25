@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   ClipboardCheck,
   CreditCard,
-  Database,
   FileText,
   LogIn,
   MapPin,
@@ -18,7 +17,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { companyProfiles } from "@/lib/partspro-data";
+import { type CompanyProfile } from "@/lib/partspro-data";
+import { listCompanies } from "@/lib/partspro-repository";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 import { CheckoutSubmitButton } from "./checkout-submit-button";
@@ -28,12 +28,6 @@ import { StoreHeader } from "./store-header";
 const checkoutFormId = "partspro-checkout-form";
 
 type CheckoutRuntime =
-  | {
-      mode: "demo";
-      canSubmit: true;
-      title: string;
-      description: string;
-    }
   | {
       mode: "ready";
       canSubmit: true;
@@ -90,26 +84,30 @@ const deliveryOptions = [
 
 export async function CheckoutPage() {
   const runtime = await getCheckoutRuntime();
-  const company = companyProfiles[0];
+  const company = runtime.mode === "ready" ? await getCheckoutCompany() : null;
+  const companyDisabledReason =
+    runtime.mode === "ready" && !company
+      ? "Checkout disabilitato: collega un profilo azienda B2B approvato all'utente Supabase."
+      : undefined;
   const fieldGroups = [
     {
       title: "Dati azienda",
       icon: Building2,
       fields: [
-        { label: "Ragione sociale", name: "companyName", value: company.name },
-        { label: "Partita IVA", name: "partitaIva", value: company.partitaIva },
-        { label: "Codice fiscale", name: "codiceFiscale", value: company.codiceFiscale },
+        { label: "Ragione sociale", name: "companyName", value: company?.name ?? "" },
+        { label: "Partita IVA", name: "partitaIva", value: company?.partitaIva ?? "" },
+        { label: "Codice fiscale", name: "codiceFiscale", value: company?.codiceFiscale ?? "" },
       ],
     },
     {
       title: "Fatturazione elettronica",
       icon: FileText,
       fields: [
-        { label: "PEC", name: "pec", value: company.pec },
+        { label: "PEC", name: "pec", value: company?.pec ?? "" },
         {
           label: "Codice destinatario",
           name: "codiceDestinatario",
-          value: company.codiceDestinatario,
+          value: company?.codiceDestinatario ?? "",
         },
       ],
     },
@@ -117,10 +115,10 @@ export async function CheckoutPage() {
       title: "Indirizzo spedizione",
       icon: MapPin,
       fields: [
-        { label: "Via", name: "shippingStreet", value: "Via Torino 24" },
-        { label: "CAP", name: "shippingZip", value: "20123" },
-        { label: "Comune", name: "shippingCity", value: company.city },
-        { label: "Provincia", name: "shippingProvince", value: company.province },
+        { label: "Via", name: "shippingStreet", value: "" },
+        { label: "CAP", name: "shippingZip", value: "" },
+        { label: "Comune", name: "shippingCity", value: company?.city ?? "" },
+        { label: "Provincia", name: "shippingProvince", value: company?.province ?? "" },
       ],
     },
   ];
@@ -254,7 +252,6 @@ export async function CheckoutPage() {
                 <Input
                   id="purchaseOrderNumber"
                   name="purchaseOrderNumber"
-                  defaultValue="PO-DEMO-2026-0524"
                   maxLength={64}
                   placeholder="Es. PO-2026-0524"
                 />
@@ -298,23 +295,15 @@ export async function CheckoutPage() {
         <div className="space-y-4">
           <OrderSummaryCard showCheckoutAction={false} consumeUrlIntent />
           <RuntimeStatusCard runtime={runtime} />
-          <Card className="border-emerald-200 bg-emerald-50">
-            <CardContent className="flex gap-3 p-4 text-sm text-emerald-900">
-              <ShieldCheck className="mt-0.5 size-5 shrink-0 text-emerald-600" />
-              <div className="min-w-0">
-                <div className="font-black">Cliente B2B approvato</div>
-                <p className="mt-1 leading-6">
-                  Il profilo azienda demo è approvato, quindi /api/orders accetta
-                  l&apos;ordine e restituisce numero, stato e totali.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
+          <CompanyStatusCard company={company} />
           <CheckoutSubmitButton
+            companyId={company?.id}
             formId={checkoutFormId}
-            disabled={!runtime.canSubmit}
-            disabledReason={!runtime.canSubmit ? runtime.disabledReason : undefined}
-            runtimeMode={runtime.canSubmit ? runtime.mode : "disabled"}
+            disabled={!runtime.canSubmit || !company}
+            disabledReason={
+              !runtime.canSubmit ? runtime.disabledReason : companyDisabledReason
+            }
+            runtimeMode={runtime.canSubmit && company ? "ready" : "disabled"}
           />
         </div>
       </div>
@@ -325,11 +314,12 @@ export async function CheckoutPage() {
 async function getCheckoutRuntime(): Promise<CheckoutRuntime> {
   if (!isSupabaseConfigured()) {
     return {
-      mode: "demo",
-      canSubmit: true,
-      title: "Modalità demo API",
+      mode: "error",
+      canSubmit: false,
+      title: "Checkout disabilitato",
       description:
-        "Supabase non ha ancora la publishable key. Puoi testare /api/orders con dati demo locali e righe lette dal carrello del browser.",
+        "Supabase non è configurato. Aggiungi le variabili Supabase prima di accettare ordini reali.",
+      disabledReason: "Checkout disabilitato: configurazione Supabase mancante.",
     };
   }
 
@@ -370,19 +360,21 @@ async function getCheckoutRuntime(): Promise<CheckoutRuntime> {
   }
 }
 
+async function getCheckoutCompany(): Promise<CompanyProfile | null> {
+  const companies = await listCompanies();
+
+  return (
+    companies.data.find((company) => company.status === "approved") ??
+    companies.data[0] ??
+    null
+  );
+}
+
 function RuntimeBadge({ runtime }: { runtime: CheckoutRuntime }) {
   if (runtime.mode === "ready") {
     return (
       <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
         Supabase attivo
-      </Badge>
-    );
-  }
-
-  if (runtime.mode === "demo") {
-    return (
-      <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
-        Demo API
       </Badge>
     );
   }
@@ -413,20 +405,15 @@ function ConfirmLine({ id, label }: { id: string; label: string }) {
 }
 
 function RuntimeStatusCard({ runtime }: { runtime: CheckoutRuntime }) {
-  const Icon =
-    runtime.mode === "ready" ? CheckCircle2 : runtime.mode === "demo" ? Database : AlertTriangle;
+  const Icon = runtime.mode === "ready" ? CheckCircle2 : AlertTriangle;
   const className =
     runtime.mode === "ready"
       ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-      : runtime.mode === "demo"
-        ? "border-amber-200 bg-amber-50 text-amber-950"
-        : "border-red-200 bg-red-50 text-red-800";
+      : "border-red-200 bg-red-50 text-red-800";
   const iconClassName =
     runtime.mode === "ready"
       ? "text-emerald-600"
-      : runtime.mode === "demo"
-        ? "text-amber-600"
-        : "text-red-600";
+      : "text-red-600";
 
   return (
     <Card className={className}>
@@ -446,6 +433,39 @@ function RuntimeStatusCard({ runtime }: { runtime: CheckoutRuntime }) {
               </Link>
             </Button>
           )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function CompanyStatusCard({ company }: { company: CompanyProfile | null }) {
+  if (!company) {
+    return (
+      <Card className="border-amber-200 bg-amber-50">
+        <CardContent className="flex gap-3 p-4 text-sm text-amber-950">
+          <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />
+          <div className="min-w-0">
+            <div className="font-black">Profilo azienda mancante</div>
+            <p className="mt-1 leading-6">
+              Nessun cliente B2B approvato è collegato alla sessione corrente.
+              Crea o approva il profilo in Supabase prima del checkout.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="border-emerald-200 bg-emerald-50">
+      <CardContent className="flex gap-3 p-4 text-sm text-emerald-900">
+        <ShieldCheck className="mt-0.5 size-5 shrink-0 text-emerald-600" />
+        <div className="min-w-0">
+          <div className="font-black">Cliente B2B collegato</div>
+          <p className="mt-1 leading-6">
+            {company.name} verrà usato come profilo fiscale per /api/orders.
+          </p>
         </div>
       </CardContent>
     </Card>

@@ -385,7 +385,7 @@ function downloadProductsCsv(products: PartProduct[], scope: "selected" | "view"
   URL.revokeObjectURL(url);
 }
 
-export function AdminDashboard({ demoMode = false }: { demoMode?: boolean }) {
+export function AdminDashboard() {
   const text = useAdminText();
   const [products, setProducts] = React.useState<PartProduct[]>(initialProducts);
   const [globalFilter, setGlobalFilter] = React.useState("");
@@ -727,14 +727,8 @@ export function AdminDashboard({ demoMode = false }: { demoMode?: boolean }) {
                 </div>
               </div>
 
-              {demoMode && (
-                <div className="order-2 max-w-full overflow-hidden break-words rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-900 sm:px-4 sm:py-3 sm:text-sm sm:leading-6 lg:order-1">
-                  {text.demoNotice}
-                </div>
-              )}
-
               <TabsContent value="orders" className="order-4 mt-0 min-w-0">
-                <AdminOrdersPanel demoMode={demoMode} />
+                <AdminOrdersPanel />
               </TabsContent>
               <TabsContent value="customers" className="order-4 mt-0 min-w-0">
                 <AdminCustomersPanel />
@@ -1588,7 +1582,7 @@ function AddProductDialog({
         <DialogHeader>
           <DialogTitle>Nuovo articolo</DialogTitle>
           <DialogDescription>
-            Aggiungi un ricambio al catalogo demo con SKU, qualità, prezzo netto e stock.
+            Aggiungi un ricambio al catalogo con SKU, qualità, prezzo netto e stock.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
@@ -1613,7 +1607,7 @@ function ProductFormFields({ form }: { form: ProductFormApi }) {
           <Input placeholder="Es. Display OLED iPhone 13 Pro" {...form.register("name")} />
         </Field>
         <Field label="SKU" error={form.formState.errors.sku?.message}>
-          <Input placeholder="Es. IP13P-OLED-A+" {...form.register("sku")} />
+          <Input placeholder="Es. SKU-REALE-001" {...form.register("sku")} />
         </Field>
         <Field label="Categoria" error={form.formState.errors.category?.message}>
           <Select

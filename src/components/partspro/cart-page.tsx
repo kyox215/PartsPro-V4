@@ -8,7 +8,6 @@ import {
   ChevronUp,
   Minus,
   Plus,
-  RotateCcw,
   ShoppingBag,
   Trash2,
 } from "lucide-react";
@@ -18,8 +17,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { formatEuro } from "@/lib/partspro-data";
 import {
-  areCartItemsEqual,
-  getDemoCartItems,
   type CartLine,
   type CartTotals,
   useCart,
@@ -31,7 +28,6 @@ export function CartPage() {
   const cart = useCart({ consumeUrlIntent: true });
   const totals = cart.totals;
   const isEmpty = cart.isHydrated && totals.lines.length === 0;
-  const isDemoCart = areCartItemsEqual(cart.items, getDemoCartItems());
 
   function changeQuantity(sku: string, direction: -1 | 1) {
     const line = totals.lines.find((item) => item.sku === sku);
@@ -59,17 +55,6 @@ export function CartPage() {
                 Conferma prodotti e quantità
               </h1>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="bg-white"
-              onClick={cart.loadDemoCart}
-              disabled={!cart.isHydrated || isDemoCart}
-            >
-              <RotateCcw className="size-4" />
-              Carica demo
-            </Button>
           </div>
 
           <Card className="hidden border-emerald-200 bg-emerald-50 lg:block">
@@ -108,15 +93,10 @@ export function CartPage() {
                 <div>
                   <div className="text-lg font-black">Carrello vuoto</div>
                   <p className="mt-1 text-sm leading-6 text-slate-500">
-                    Aggiungi prodotti dal catalogo o carica il set demo per
-                    provare il flusso checkout.
+                    Aggiungi prodotti dal catalogo per preparare il checkout.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button type="button" onClick={cart.loadDemoCart}>
-                    <RotateCcw className="size-4" />
-                    Carica demo
-                  </Button>
                   <Button variant="outline" asChild className="bg-white">
                     <Link href="/catalogo">Vai al catalogo</Link>
                   </Button>

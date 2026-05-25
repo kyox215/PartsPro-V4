@@ -28,10 +28,10 @@ Italy-focused B2B smartphone spare-parts storefront and operations dashboard.
 
 ## API Routes
 
-- `GET /api/catalogo` Supabase-aware catalog API with strict query validation, pagination and sorting. It falls back to local demo data when Supabase is not configured or no session is available.
+- `GET /api/catalogo` Supabase-aware catalog API with strict query validation, pagination and sorting. If Supabase is unavailable, it returns an empty result instead of local sample data.
 - `GET/POST /api/orders` Supabase-aware order API with company, SKU, MOQ and stock validation. Order totals are always recalculated server-side, and unknown client money fields are rejected.
-- `GET/POST /api/rma` Supabase-aware RMA listing and creation API with Zod validation and local demo fallback.
-- `POST /api/b2b-applications` B2B onboarding application endpoint. It can write to the remote `b2b_applications` table when Supabase is configured, otherwise it returns a demo application response.
+- `GET/POST /api/rma` Supabase-aware RMA listing and creation API with Zod validation. Writes require a configured Supabase session.
+- `POST /api/b2b-applications` B2B onboarding application endpoint. It writes to the remote `b2b_applications` table and fails closed when Supabase is not configured.
 
 ## Supabase
 

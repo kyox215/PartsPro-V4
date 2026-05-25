@@ -49,10 +49,7 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
-  companyProfiles,
   formatEuro,
-  orderSummaries,
-  products,
   type CompanyStatus,
   type OrderStatus,
   type PartProduct,
@@ -73,8 +70,8 @@ type ViewMode = "orders" | "payments" | "shipping";
 type StatusFilterValue = "all" | OrderStatus;
 type WarehouseName = PartProduct["warehouse"];
 type Carrier = (typeof carriers)[number];
-type OrdersSource = "supabase" | "mock" | "demo_fallback";
-type ApiOrdersSource = Exclude<OrdersSource, "demo_fallback">;
+type OrdersSource = "supabase" | "empty";
+type ApiOrdersSource = OrdersSource;
 type NoticeTone = "success" | "info" | "warning" | "error";
 
 type CustomerSnapshot = {
@@ -205,14 +202,14 @@ const priorityLabels: Record<Priority, string> = {
   urgent: "Urgente",
 };
 
-export function AdminOrdersPanel({ demoMode = false }: { demoMode?: boolean }) {
-  const [orders, setOrders] = React.useState<AdminOrder[]>(() => buildDemoOrders());
+export function AdminOrdersPanel() {
+  const [orders, setOrders] = React.useState<AdminOrder[]>([]);
   const [dataSource, setDataSource] = React.useState<OrdersDataSource>(() => ({
-    source: "demo_fallback",
-    label: "Demo locale",
+    source: "empty",
+    label: "Nessun dato locale",
     syncedAt: null,
-    total: orderSummaries.length,
-    returned: orderSummaries.length,
+    total: 0,
+    returned: 0,
   }));
   const [isLoadingOrders, setIsLoadingOrders] = React.useState(false);
   const [localEditOrderIds, setLocalEditOrderIds] = React.useState<Set<string>>(
@@ -250,28 +247,26 @@ export function AdminOrdersPanel({ demoMode = false }: { demoMode?: boolean }) {
         message:
           result.source === "supabase"
             ? "Ordini sincronizzati da /api/orders."
-            : "Ordini sincronizzati da /api/orders in modalità mock.",
+            : "Nessun ordine disponibile da /api/orders.",
       });
     } catch (error) {
       if (signal?.aborted) {
         return;
       }
 
-      const fallbackOrders = buildDemoOrders();
-
-      setOrders(fallbackOrders);
+      setOrders([]);
       setDataSource({
-        source: "demo_fallback",
-        label: "Demo locale",
+        source: "empty",
+        label: "Nessun dato locale",
         syncedAt: formatSyncTime(),
-        total: fallbackOrders.length,
-        returned: fallbackOrders.length,
+        total: 0,
+        returned: 0,
         error: error instanceof Error ? error.message : "Errore sconosciuto",
       });
       setLocalEditOrderIds(new Set());
       setNotice({
         tone: "error",
-        message: "/api/orders non disponibile: sto mostrando il fallback demo locale.",
+        message: "/api/orders non disponibile: nessun ordine locale viene mostrato.",
       });
     } finally {
       if (!signal?.aborted) {
@@ -544,11 +539,6 @@ export function AdminOrdersPanel({ demoMode = false }: { demoMode?: boolean }) {
                   ? `${dataSource.returned}/${dataSource.total} ordini · ${dataSource.syncedAt}`
                   : "In attesa di sincronizzazione"}
               </span>
-              {demoMode && (
-                <Badge className="border-amber-200 bg-amber-50 text-amber-700">
-                  Admin demo
-                </Badge>
-              )}
               <Button
                 variant="outline"
                 size="xs"
@@ -1408,27 +1398,7 @@ function buildOrdersFromApiSummaries(
   summaries: OrdersApiOrder[],
   source: ApiOrdersSource
 ) {
-  const demoOrders = buildDemoOrders();
-  const demoById = new Map(demoOrders.map((order) => [order.id, order]));
-
-  return summaries.map((summary, index) => {
-    const demoOrder = demoById.get(summary.id);
-
-    if (source === "mock" && demoOrder) {
-      return {
-        ...demoOrder,
-        ...summary,
-        paymentStatus: paymentStatusFromOrderStatus(summary.status),
-        fulfillmentStatus: fulfillmentStatusFromOrderStatus(summary.status),
-        activity: [
-          `${summary.date} - Ordine letto da /api/orders (mock)`,
-          ...demoOrder.activity.slice(1),
-        ],
-      };
-    }
-
-    return buildSummaryOrder(summary, index, source);
-  });
+  return summaries.map((summary, index) => buildSummaryOrder(summary, index, source));
 }
 
 function buildSummaryOrder(
@@ -1436,7 +1406,7 @@ function buildSummaryOrder(
   index: number,
   source: ApiOrdersSource
 ): AdminOrder {
-  const customer = resolveCustomer(summary.company, index);
+  const customer = resolveCustomer(summary.company);
   const fulfillmentStatus = fulfillmentStatusFromOrderStatus(summary.status);
   const lines = buildSummaryOrderLines(summary, fulfillmentStatus);
   const warehouse = lines[0]?.warehouse ?? "Milano";
@@ -1459,7 +1429,7 @@ function buildSummaryOrder(
     notes:
       source === "supabase"
         ? "Riepilogo reale importato da /api/orders. L'endpoint non espone ancora righe complete, pagamento e logistica persistibili."
-        : "Riepilogo mock importato da /api/orders.",
+        : "Nessun dettaglio operativo persistito disponibile da /api/orders.",
     lines,
     activity: [
       `${summary.date} - Ordine importato da /api/orders (${sourceLabel(source)})`,
@@ -1496,98 +1466,15 @@ function buildSummaryOrderLines(
   ];
 }
 
-function buildDemoOrders(): AdminOrder[] {
-  return orderSummaries.map((summary, index) => {
-    const lines = buildOrderLines(index);
-    const warehouse = lines[0]?.warehouse ?? "Milano";
-    const status = summary.status;
-
-    return {
-      ...summary,
-      paymentStatus: paymentStatusFromOrderStatus(status),
-      fulfillmentStatus: fulfillmentStatusFromOrderStatus(status),
-      priority: priorityForOrder(status, index),
-      customer: resolveCustomer(summary.company, index),
-      paymentMethod: index === 2 ? "Bonifico 30 giorni" : "Carta B2B",
-      paymentDue: index === 0 ? "24/05/2026" : index === 1 ? "Pagato" : "26/05/2026",
-      warehouse,
-      carrier: index === 0 ? "BRT" : index === 1 ? "DHL Express" : "GLS",
-      service: index === 1 ? "Express 24h" : "Standard Italia",
-      tracking: index === 0 ? "BRT-0567-IT" : index === 1 ? "DHL-0566-FI" : "",
-      eta: index === 0 ? "25/05/2026" : index === 1 ? "In consegna" : "Da pianificare",
-      shippingAddress:
-        index === 1
-          ? "Via dei Serragli 18, 50124 Firenze"
-          : `${resolveCustomer(summary.company, index).city}, Italia`,
-      owner: index === 2 ? "Finance desk" : "Operations",
-      notes:
-        index === 2
-          ? "Cliente in onboarding: verificare pagamento prima del rilascio picking."
-          : "Controllare seriali e imballo antiurto prima della chiusura collo.",
-      lines,
-      activity: [
-        `${summary.date} - Ordine importato nel pannello demo`,
-        `${summary.date} - Allocazione iniziale su ${warehouse}`,
-      ],
-    };
-  });
-}
-
-function buildOrderLines(orderIndex: number): OrderLine[] {
-  const productGroups = [
-    [
-      { product: products[0], quantity: 2 },
-      { product: products[1], quantity: 3 },
-      { product: products[3], quantity: 4 },
-    ],
-    [
-      { product: products[2], quantity: 1 },
-      { product: products[4], quantity: 1 },
-      { product: products[7], quantity: 1 },
-    ],
-    [
-      { product: products[1], quantity: 2 },
-      { product: products[5], quantity: 1 },
-      { product: products[6], quantity: 1 },
-    ],
-  ];
-
-  const group = productGroups[orderIndex] ?? productGroups[0];
-
-  return group.map(({ product, quantity }) => ({
-    sku: product.sku,
-    name: product.name,
-    category: product.category,
-    quantity,
-    picked: orderIndex === 1 ? quantity : orderIndex === 0 ? Math.floor(quantity / 2) : 0,
-    unitPrice: product.price,
-    warehouse: product.warehouse,
-  }));
-}
-
-function resolveCustomer(company: string, index: number): CustomerSnapshot {
-  const profile = companyProfiles.find((entry) => entry.name === company);
-
-  if (profile) {
-    return {
-      name: profile.name,
-      partitaIva: profile.partitaIva,
-      pec: profile.pec,
-      status: profile.status,
-      priceList: profile.priceList,
-      city: profile.city,
-      province: profile.province,
-    };
-  }
-
+function resolveCustomer(company: string): CustomerSnapshot {
   return {
     name: company,
-    partitaIva: `ITDEMO${String(index + 1).padStart(8, "0")}`,
-    pec: "amministrazione@cliente-demo.pec.it",
+    partitaIva: "Non disponibile",
+    pec: "Non disponibile",
     status: "approved",
-    priceList: "Partner",
-    city: "Firenze",
-    province: "FI",
+    priceList: "Standard",
+    city: "Non disponibile",
+    province: "--",
   };
 }
 
@@ -1710,15 +1597,11 @@ function sourceLabel(source: OrdersSource) {
     return "Supabase";
   }
 
-  if (source === "mock") {
-    return "Mock API";
-  }
-
-  return "Demo locale";
+  return "Nessun dato locale";
 }
 
 function readSource(value: unknown): ApiOrdersSource {
-  return value === "supabase" ? "supabase" : "mock";
+  return value === "supabase" ? "supabase" : "empty";
 }
 
 function normalizeOrderStatusValue(value: unknown): OrderStatus {
@@ -1867,10 +1750,6 @@ function noticeToneClass(tone: NoticeTone) {
 function sourceBadgeClass(source: OrdersSource) {
   if (source === "supabase") {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  }
-
-  if (source === "mock") {
-    return "border-cyan-200 bg-cyan-50 text-cyan-700";
   }
 
   return "border-amber-200 bg-amber-50 text-amber-700";

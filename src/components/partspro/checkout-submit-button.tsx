@@ -35,16 +35,18 @@ type SubmitState =
 
 type CheckoutSubmitButtonProps = {
   formId: string;
+  companyId?: string;
   disabled?: boolean;
   disabledReason?: string;
-  runtimeMode?: "demo" | "ready" | "disabled";
+  runtimeMode?: "ready" | "disabled";
 };
 
 export function CheckoutSubmitButton({
+  companyId,
   formId,
   disabled = false,
   disabledReason,
-  runtimeMode = disabled ? "disabled" : "demo",
+  runtimeMode = disabled ? "disabled" : "ready",
 }: CheckoutSubmitButtonProps) {
   const cart = useCart();
   const cartDisabledReason = getCartDisabledReason(cart.isHydrated, cart.items.length);
@@ -89,6 +91,7 @@ export function CheckoutSubmitButton({
     }
 
     const formData = new FormData(form);
+    const selectedCompanyId = companyId?.trim();
     const paymentMethod = readPaymentMethod(formData);
     const deliveryMethod = readDeliveryMethod(formData);
     const deliveryWindow = readOptionalText(formData, "deliveryWindow");
@@ -102,6 +105,14 @@ export function CheckoutSubmitButton({
     );
     const items = cart.items;
 
+    if (!selectedCompanyId) {
+      setState({
+        status: "error",
+        message: "Profilo azienda non disponibile: collega un cliente B2B approvato prima di confermare l'ordine.",
+      });
+      return;
+    }
+
     setState({ status: "loading", message: "Creazione ordine in corso..." });
 
     try {
@@ -109,7 +120,7 @@ export function CheckoutSubmitButton({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(removeEmptyValues({
-          companyId: "cmp-001",
+          companyId: selectedCompanyId,
           paymentMethod,
           purchaseOrderNumber,
           deliveryAddress,
@@ -343,7 +354,7 @@ function idleMessage(
     return disabledReason ?? "Checkout disabilitato in questo momento.";
   }
 
-  return "Modalità demo: invia a /api/orders le righe salvate nel carrello.";
+  return "Checkout pronto: invia a /api/orders le righe salvate nel carrello.";
 }
 
 function buttonLabel(
@@ -373,7 +384,7 @@ function buttonLabel(
     return "Carrello vuoto";
   }
 
-  return runtimeMode === "demo" ? "Conferma ordine demo" : "Conferma ordine";
+  return "Conferma ordine";
 }
 
 function getCartDisabledReason(isHydrated: boolean, itemCount: number) {

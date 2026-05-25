@@ -764,10 +764,10 @@ function BrandStrip() {
       </div>
       <div className="grid rounded-lg border border-slate-200 bg-white p-4 shadow-[0_18px_45px_rgba(15,23,42,0.04)] sm:grid-cols-4">
         {[
-          ["10,000+", "SKU pronti"],
-          ["500+", "clienti B2B"],
+          [String(products.length), "SKU pronti"],
+          ["0", "clienti B2B"],
           ["24/48h", "Italia"],
-          ["99.8%", "ordini tracciati"],
+          ["0", "ordini tracciati"],
         ].map(([value, label]) => (
           <div key={label} className="p-3 text-center">
             <div className="text-2xl font-black text-primary">{value}</div>
@@ -834,23 +834,8 @@ function RightRail() {
 
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
         <h2 className="mb-4 font-black">Notifiche</h2>
-        <div className="space-y-3">
-          {[
-            ["Nuovo ordine", "Cliente ha ordinato IP13P-OLED-A+", "2 min fa", "bg-blue-50 text-blue-600"],
-            ["Pagamento ricevuto", "Ordine ORD-2024-0566 pagato", "15 min fa", "bg-emerald-50 text-emerald-600"],
-            ["Alert stock", "Display iPhone 12 LCD sotto soglia", "1 ora fa", "bg-amber-50 text-amber-600"],
-          ].map(([title, body, time, tone]) => (
-            <div key={title} className="flex gap-3 rounded-lg border border-slate-100 p-3">
-              <div className={cn("grid size-8 shrink-0 place-items-center rounded-lg", tone)}>
-                <Bell className="size-4" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-xs font-bold">{title}</div>
-                <div className="mt-1 truncate text-xs text-slate-500">{body}</div>
-                <div className="mt-1 text-[11px] text-slate-400">{time}</div>
-              </div>
-            </div>
-          ))}
+        <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm font-semibold leading-5 text-slate-500">
+          Nessuna notifica disponibile.
         </div>
       </section>
 
@@ -861,8 +846,8 @@ function RightRail() {
             <User className="size-4" />
           </div>
           <div>
-            <div className="text-sm font-bold">John Smith</div>
-            <div className="text-xs text-slate-500">john.smith@example.com</div>
+            <div className="text-sm font-bold">Account B2B</div>
+            <div className="text-xs text-slate-500">Accedi con Supabase</div>
           </div>
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2">

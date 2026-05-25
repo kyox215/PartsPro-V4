@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   Building2,
   CheckCircle2,
-  Database,
   FileText,
   Filter,
   Package,
@@ -28,7 +27,6 @@ import { signOut } from "@/app/login/actions";
 import { StoreHeader } from "./store-header";
 
 type AccountPageProps = {
-  demoMode?: boolean;
   userEmail?: string;
 };
 
@@ -72,9 +70,9 @@ const orderFilters: Array<{
   },
 ];
 
-export function AccountPage({ demoMode = false, userEmail }: AccountPageProps) {
+export function AccountPage({ userEmail }: AccountPageProps) {
   const [activeFilter, setActiveFilter] = React.useState<OrderFilterId>("all");
-  const company = companyProfiles[0];
+  const company = companyProfiles[0] ?? null;
   const selectedFilter =
     orderFilters.find((filter) => filter.id === activeFilter) ?? orderFilters[0];
   const filteredOrders = orderSummaries.filter(selectedFilter.predicate);
@@ -85,7 +83,7 @@ export function AccountPage({ demoMode = false, userEmail }: AccountPageProps) {
       Package,
     ],
     ["Spedizioni", String(orderSummaries.filter((order) => order.status === "shipped").length), Truck],
-    ["RMA attivi", "1", RotateCcw],
+    ["RMA attivi", String(rmaRequests.length), RotateCcw],
   ] as const;
 
   return (
@@ -93,34 +91,48 @@ export function AccountPage({ demoMode = false, userEmail }: AccountPageProps) {
       <StoreHeader />
       <div className="mx-auto grid max-w-[1400px] gap-4 px-4 py-5 lg:grid-cols-[340px_minmax(0,1fr)]">
         <aside className="space-y-4">
-          <AccountRuntimeCard demoMode={demoMode} userEmail={userEmail} />
+          <AccountRuntimeCard userEmail={userEmail} />
           <Card className="border-slate-200 bg-white">
             <CardContent className="p-5">
-              <div className="flex items-start gap-3">
-                <div className="grid size-12 place-items-center rounded-full bg-primary/10 text-primary">
-                  <Building2 className="size-5" />
-                </div>
-                <div className="min-w-0">
-                  <h1 className="truncate text-xl font-black">{company.name}</h1>
-                  <div className="mt-1 text-sm text-slate-500">
-                    {company.city} · {company.province}
+              {company ? (
+                <>
+                  <div className="flex items-start gap-3">
+                    <div className="grid size-12 place-items-center rounded-full bg-primary/10 text-primary">
+                      <Building2 className="size-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <h1 className="truncate text-xl font-black">{company.name}</h1>
+                      <div className="mt-1 text-sm text-slate-500">
+                        {company.city} · {company.province}
+                      </div>
+                      <Badge className="mt-3 border border-emerald-200 bg-emerald-50 text-emerald-700">
+                        <CheckCircle2 className="size-3" />
+                        Cliente approvato
+                      </Badge>
+                    </div>
                   </div>
-                  <Badge className="mt-3 border border-emerald-200 bg-emerald-50 text-emerald-700">
-                    <CheckCircle2 className="size-3" />
-                    Cliente approvato
-                  </Badge>
-                  <Badge className="mt-2 border border-amber-200 bg-amber-50 text-amber-700">
-                    Profilo demo
-                  </Badge>
+                  <Separator className="my-4" />
+                  <Info label="Partita IVA" value={company.partitaIva} />
+                  <Info label="Codice fiscale" value={company.codiceFiscale} />
+                  <Info label="PEC" value={company.pec} />
+                  <Info label="Codice destinatario" value={company.codiceDestinatario} />
+                  <Info label="Listino" value={company.priceList} />
+                  {userEmail && <Info label="Utente" value={userEmail} />}
+                </>
+              ) : (
+                <div className="flex items-start gap-3">
+                  <div className="grid size-12 place-items-center rounded-full bg-amber-100 text-amber-700">
+                    <Building2 className="size-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <h1 className="text-xl font-black">Nessun profilo azienda</h1>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      Crea o collega un cliente B2B in Supabase per mostrare dati account reali.
+                    </p>
+                    {userEmail && <Info label="Utente" value={userEmail} />}
+                  </div>
                 </div>
-              </div>
-              <Separator className="my-4" />
-              <Info label="Partita IVA" value={company.partitaIva} />
-              <Info label="Codice fiscale" value={company.codiceFiscale} />
-              <Info label="PEC" value={company.pec} />
-              <Info label="Codice destinatario" value={company.codiceDestinatario} />
-              <Info label="Listino" value={company.priceList} />
-              {userEmail && <Info label="Utente" value={userEmail} />}
+              )}
             </CardContent>
           </Card>
           <Card className="border-slate-200 bg-white">
@@ -134,18 +146,11 @@ export function AccountPage({ demoMode = false, userEmail }: AccountPageProps) {
               <Button variant="outline" className="bg-white" asChild>
                 <Link href="/rma">Apri richiesta RMA</Link>
               </Button>
-              {demoMode && (
-                <Button variant="outline" className="bg-white" asChild>
-                  <Link href="/login?next=/account">Verifica login Supabase</Link>
+              <form action={signOut}>
+                <Button variant="outline" className="w-full bg-white" type="submit">
+                  Esci
                 </Button>
-              )}
-              {!demoMode && (
-                <form action={signOut}>
-                  <Button variant="outline" className="w-full bg-white" type="submit">
-                    Esci
-                  </Button>
-                </form>
-              )}
+              </form>
             </CardContent>
           </Card>
         </aside>
@@ -173,9 +178,6 @@ export function AccountPage({ demoMode = false, userEmail }: AccountPageProps) {
                 <CardTitle className="flex flex-wrap items-center gap-2">
                   <Filter className="size-5 text-primary" />
                   Ordini recenti
-                  <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
-                    Dati demo API
-                  </Badge>
                 </CardTitle>
                 <div className="text-right text-xs font-semibold text-slate-500">
                   {filteredOrders.length} di {orderSummaries.length} ordini
@@ -209,7 +211,7 @@ export function AccountPage({ demoMode = false, userEmail }: AccountPageProps) {
               {filteredOrders.length === 0 && (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">
                   Nessun ordine in questa vista. Cambia filtro per vedere gli
-                  altri stati demo.
+                  altri stati.
                 </div>
               )}
 
@@ -236,9 +238,9 @@ export function AccountPage({ demoMode = false, userEmail }: AccountPageProps) {
                       size="sm"
                       className="mt-0 bg-white sm:mt-2"
                       disabled
-                      title="Dettaglio ordine non collegato in questa demo"
+                      title="Dettaglio ordine non disponibile"
                     >
-                      Dettagli demo
+                      Dettagli
                     </Button>
                   </div>
                 </div>
@@ -254,6 +256,11 @@ export function AccountPage({ demoMode = false, userEmail }: AccountPageProps) {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              {rmaRequests.length === 0 && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">
+                  Nessuna richiesta RMA collegata a questo account.
+                </div>
+              )}
               {rmaRequests.map((request) => (
                 <div
                   key={request.id}
@@ -295,21 +302,9 @@ export function AccountPage({ demoMode = false, userEmail }: AccountPageProps) {
               </CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-2">
-              {["Fattura ORD-2026-0566", "DDT spedizione Milano", "Nota RMA IP12-LCD-INC"].map(
-                (item) => (
-                  <button
-                    key={item}
-                    className="rounded-lg border border-slate-200 bg-white p-4 text-left text-sm font-bold opacity-70"
-                    disabled
-                    title="Download PDF non disponibile nella demo"
-                  >
-                    {item}
-                    <div className="mt-1 text-xs font-normal text-slate-500">
-                      Download PDF demo non disponibile
-                    </div>
-                  </button>
-                )
-              )}
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600 sm:col-span-2">
+                Nessun documento disponibile.
+              </div>
             </CardContent>
           </Card>
         </section>
@@ -319,29 +314,10 @@ export function AccountPage({ demoMode = false, userEmail }: AccountPageProps) {
 }
 
 function AccountRuntimeCard({
-  demoMode,
   userEmail,
 }: {
-  demoMode: boolean;
   userEmail?: string;
 }) {
-  if (demoMode) {
-    return (
-      <Card className="border-amber-200 bg-amber-50">
-        <CardContent className="flex gap-3 p-4 text-sm text-amber-950">
-          <Database className="mt-0.5 size-5 shrink-0 text-amber-600" />
-          <div className="min-w-0">
-            <div className="font-black">Modalità demo</div>
-            <p className="mt-1 leading-6">
-              Aggiungi la publishable key Supabase per richiedere il login reale.
-              Profilo, ordini e documenti sono dati di esempio.
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
     <Card className="border-emerald-200 bg-emerald-50">
       <CardContent className="flex gap-3 p-4 text-sm text-emerald-900">
@@ -349,8 +325,7 @@ function AccountRuntimeCard({
         <div className="min-w-0">
           <div className="font-black">Sessione Supabase attiva</div>
           <p className="mt-1 leading-6">
-            Accesso verificato. I dati business mostrati sotto restano demo
-            finché non viene collegata la tabella account.
+            Accesso verificato. I dati business vengono letti dal backend collegato.
           </p>
           {userEmail && <div className="mt-2 break-words text-xs font-bold">{userEmail}</div>}
         </div>

@@ -7,7 +7,7 @@ export default async function Page() {
   const configured = isSupabaseConfigured();
 
   if (!configured) {
-    return <AccountPage demoMode />;
+    redirect("/login?next=/account&error=config");
   }
 
   const supabase = await createClient();

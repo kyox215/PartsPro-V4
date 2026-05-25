@@ -6,10 +6,6 @@ import {
   formatPartsProDateTime,
 } from "@/lib/partspro-api";
 import {
-  companyProfiles as mockCompanies,
-  orderSummaries as mockOrders,
-  products as mockProducts,
-  rmaRequests as mockRmaRequests,
   type CompanyProfile,
   type CompanyStatus,
   type OrderStatus,
@@ -33,12 +29,7 @@ type SupabaseContext = {
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-type PartsProDemoGlobal = typeof globalThis & {
-  __partsproDemoOrderSummaries?: OrderSummary[];
-  __partsproDemoOrderSequence?: number;
-};
-
-export type RepositorySource = "supabase" | "mock";
+export type RepositorySource = "supabase" | "empty";
 
 export class RepositoryWriteError extends Error {
   constructor(
@@ -152,11 +143,11 @@ export async function listCatalogProducts(): Promise<RepositoryResult<Repository
 
   return (
     publicSupabaseResult ??
-    mockResult(
-      mockProducts,
+    emptyResult(
+      [],
       isSupabaseConfigured()
-        ? "Supabase catalog could not be read; returned local fixture products instead."
-        : undefined
+        ? "Supabase catalog could not be read; no local catalog is available."
+        : "Supabase is not configured; no local catalog is available."
     )
   );
 }
@@ -179,11 +170,11 @@ export async function listCompanies(): Promise<RepositoryResult<CompanyProfile[]
   const supabaseResult = await withSupabase(readCompanies);
   return (
     supabaseResult ??
-    mockResult(
-      mockCompanies,
+    emptyResult(
+      [],
       isSupabaseConfigured()
-        ? "Supabase companies could not be read; returned local fixture companies instead."
-        : undefined
+        ? "Supabase companies could not be read; no local companies are available."
+        : "Supabase is not configured; no local companies are available."
     )
   );
 }
@@ -192,20 +183,21 @@ export async function listOrderSummaries(): Promise<RepositoryResult<OrderSummar
   const supabaseResult = await withSupabase(readOrderSummaries);
   return (
     supabaseResult ??
-    mockResult(
-      mockOrderSummaries(),
+    emptyResult(
+      [],
       isSupabaseConfigured()
-        ? "Supabase orders could not be read; returned local fixture orders instead."
-        : "Supabase is not configured; returned fixture orders plus process-memory demo orders."
+        ? "Supabase orders could not be read; no local orders are available."
+        : "Supabase is not configured; no local orders are available."
     )
   );
 }
 
 export async function saveOrder(input: SaveOrderInput): Promise<RepositoryResult<SavedOrder>> {
   if (!isSupabaseConfigured()) {
-    return mockResult(
-      mockSavedOrder(input),
-      "Supabase is not configured; order is stored only in this server process."
+    throw new RepositoryWriteError(
+      503,
+      "SUPABASE_NOT_CONFIGURED",
+      "Supabase must be configured before B2B orders can be created."
     );
   }
 
@@ -225,12 +217,16 @@ export async function saveOrder(input: SaveOrderInput): Promise<RepositoryResult
 
 export async function listRmaRequests(): Promise<RepositoryResult<RmaRequest[]>> {
   const supabaseResult = await withSupabase(readRmaRequests);
-  return supabaseResult ?? mockResult(mockRmaRequests);
+  return supabaseResult ?? emptyResult([], "No local RMA requests are available.");
 }
 
 export async function saveRmaRequest(input: SaveRmaInput): Promise<RepositoryResult<RmaRequest>> {
   if (!isSupabaseConfigured()) {
-    return mockResult(mockSavedRma(input));
+    throw new RepositoryWriteError(
+      503,
+      "SUPABASE_NOT_CONFIGURED",
+      "Supabase must be configured before RMA requests can be created."
+    );
   }
 
   const context = await requireSupabaseContext();
@@ -251,7 +247,11 @@ export async function saveB2BApplication(
   input: B2BApplicationInput
 ): Promise<RepositoryResult<B2BApplication>> {
   if (!isSupabaseConfigured()) {
-    return mockResult(mockB2BApplication(input));
+    throw new RepositoryWriteError(
+      503,
+      "SUPABASE_NOT_CONFIGURED",
+      "Supabase must be configured before B2B applications can be created."
+    );
   }
 
   const client = await createClient();
@@ -1295,69 +1295,8 @@ function normalizePriceList(value: string | null): "Standard" | "Pro" | "Partner
   return "Standard";
 }
 
-function mockOrderSummaries() {
-  return [...demoOrderStore(), ...mockOrders];
-}
-
-function mockSavedOrder(input: SaveOrderInput): SavedOrder {
-  const createdAt = new Date().toISOString();
-  const id = `ORD-DEMO-${createdAt.replace(/\D/g, "").slice(0, 14)}-${String(
-    nextDemoOrderSequence()
-  ).padStart(3, "0")}`;
-  const order: SavedOrder = {
-    id,
-    status: "pending_payment",
-    createdAt,
-  };
-
-  demoOrderStore().unshift({
-    id,
-    date: formatItalianDate(createdAt),
-    status: order.status,
-    company: input.company.name,
-    total: centsToNumber(input.totals.totalCents),
-    items: input.lines.reduce((total, line) => total + line.quantity, 0),
-  });
-
-  return order;
-}
-
-function mockSavedRma(input: SaveRmaInput): RmaRequest {
-  return {
-    id: "RMA-2026-DEMO",
-    orderId: input.orderId ?? input.orderLineId ?? "ORD-DEMO",
-    sku: input.sku,
-    productName: input.productName ?? input.sku,
-    status: "requested",
-    reason: input.reason,
-    createdAt: formatItalianDate(new Date().toISOString()),
-    resolution: "In attesa di verifica laboratorio",
-  };
-}
-
-function mockB2BApplication(input: B2BApplicationInput): B2BApplication {
-  return {
-    ...input,
-    id: "B2B-2026-DEMO",
-    status: "submitted",
-    createdAt: new Date().toISOString(),
-  };
-}
-
-function mockResult<T>(data: T, warning?: string): RepositoryResult<T> {
-  return warning ? { data, source: "mock", warning } : { data, source: "mock" };
-}
-
-function demoOrderStore() {
-  const store = globalThis as PartsProDemoGlobal;
-  store.__partsproDemoOrderSummaries ??= [];
-  return store.__partsproDemoOrderSummaries;
-}
-
-function nextDemoOrderSequence() {
-  const store = globalThis as PartsProDemoGlobal;
-  store.__partsproDemoOrderSequence = (store.__partsproDemoOrderSequence ?? 0) + 1;
-  return store.__partsproDemoOrderSequence;
+function emptyResult<T>(data: T, warning?: string): RepositoryResult<T> {
+  return warning ? { data, source: "empty", warning } : { data, source: "empty" };
 }
 
 function parseUuid(value: string) {

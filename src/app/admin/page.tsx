@@ -9,5 +9,5 @@ export default async function AdminPage() {
     redirect("/login?next=/admin");
   }
 
-  return <AdminDashboard demoMode={!authState.configured} />;
+  return <AdminDashboard />;
 }

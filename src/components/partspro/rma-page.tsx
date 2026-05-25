@@ -38,26 +38,6 @@ const rmaReasons = [
   "Danno da trasporto",
 ];
 
-const orderOptions = [
-  {
-    orderId: "ORD-2026-0566",
-    orderLineId: "11111111-1111-4111-8111-111111111111",
-    sku: "IP13P-OLED-A+",
-  },
-  {
-    orderId: "ORD-2026-0567",
-    orderLineId: "11111111-1111-4111-8111-111111111113",
-    sku: "USB-C-DOCK",
-  },
-  {
-    orderId: "ORD-2026-0567",
-    orderLineId: "11111111-1111-4111-8111-111111111114",
-    sku: "PXR-LCD",
-  },
-] as const;
-
-const initialOrderOption = orderOptions[0];
-
 type RmaFormState = {
   orderId: string;
   orderLineId: string;
@@ -86,9 +66,9 @@ type SubmitState =
 
 export function RmaPage() {
   const [form, setForm] = React.useState<RmaFormState>({
-    orderId: initialOrderOption.orderId,
-    orderLineId: initialOrderOption.orderLineId,
-    sku: initialOrderOption.sku,
+    orderId: "",
+    orderLineId: "",
+    sku: "",
     quantity: "1",
     reason: rmaReasons[0],
     description: "",
@@ -108,28 +88,6 @@ export function RmaPage() {
     value: RmaFormState[Key]
   ) {
     setForm((current) => ({ ...current, [key]: value }));
-    if (submitState.status === "error" || submitState.status === "success") {
-      setSubmitState({
-        status: "idle",
-        message: "Modifiche locali pronte. Invia di nuovo per creare una nuova RMA.",
-      });
-    }
-  }
-
-  function updateOrder(value: string) {
-    const selected = orderOptions.find((option) => option.orderLineId === value);
-
-    if (!selected) {
-      return;
-    }
-
-    setForm((current) => ({
-      ...current,
-      orderId: selected.orderId,
-      orderLineId: selected.orderLineId,
-      sku: selected.sku,
-    }));
-
     if (submitState.status === "error" || submitState.status === "success") {
       setSubmitState({
         status: "idle",
@@ -222,21 +180,23 @@ export function RmaPage() {
               </CardHeader>
               <CardContent className="grid gap-4 sm:grid-cols-2">
                 <Field label="Ordine" htmlFor="rma-order">
-                  <Select
+                  <Input
+                    id="rma-order"
+                    value={form.orderId}
+                    onChange={(event) => updateField("orderId", event.target.value)}
+                    required
+                    maxLength={80}
+                    placeholder="Numero ordine reale"
+                  />
+                </Field>
+                <Field label="Riga ordine" htmlFor="rma-order-line">
+                  <Input
+                    id="rma-order-line"
                     value={form.orderLineId}
-                    onValueChange={updateOrder}
-                  >
-                    <SelectTrigger id="rma-order" className="bg-white">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {orderOptions.map((option) => (
-                        <SelectItem key={option.orderLineId} value={option.orderLineId}>
-                          {option.orderId} · {option.sku}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    onChange={(event) => updateField("orderLineId", event.target.value)}
+                    maxLength={80}
+                    placeholder="ID riga ordine, se disponibile"
+                  />
                 </Field>
                 <Field label="SKU" htmlFor="rma-sku">
                   <Input
@@ -297,7 +257,7 @@ export function RmaPage() {
                     <Upload className="size-5 text-primary" />
                     Carica foto o video del difetto
                     <span className="text-xs font-normal text-slate-500">
-                      JPG, PNG o MP4 fino a 20MB. I file restano locali nella demo.
+                      JPG, PNG o MP4 fino a 20MB. I file restano come anteprima locale.
                     </span>
                   </Label>
                   <input
@@ -336,6 +296,11 @@ export function RmaPage() {
               <CardTitle>Richieste recenti</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              {visibleRequests.length === 0 && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">
+                  Nessuna richiesta RMA registrata.
+                </div>
+              )}
               {visibleRequests.map((request) => (
                 <div
                   key={request.id}

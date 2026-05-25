@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import {
-  cartItems,
   products,
   type PartProduct,
 } from "@/lib/partspro-data";
@@ -78,10 +77,6 @@ export function useCart({ consumeUrlIntent = false }: UseCartOptions = {}) {
     setItems([]);
   }, [setItems]);
 
-  const loadDemoCart = React.useCallback(() => {
-    setItems(getDemoCartItems());
-  }, [setItems]);
-
   const totals = React.useMemo(() => calculateCartTotalsFromItems(items), [items]);
   const itemCount = React.useMemo(
     () => items.reduce((total, item) => total + item.quantity, 0),
@@ -95,7 +90,6 @@ export function useCart({ consumeUrlIntent = false }: UseCartOptions = {}) {
     itemCount,
     items,
     lines: totals.lines,
-    loadDemoCart,
     removeItem,
     totals,
     updateQuantity,
@@ -109,10 +103,6 @@ export function addCartItem(sku: string, quantity = 1) {
 
   const nextItems = mergeCartItems(readStoredCartItems(), { sku, quantity });
   writeStoredCartItems(nextItems);
-}
-
-export function getDemoCartItems() {
-  return normalizeCartItems(cartItems);
 }
 
 export function calculateCartTotalsFromItems(items: CartItem[]): CartTotals {
@@ -148,21 +138,6 @@ export function calculateCartTotalsFromItems(items: CartItem[]): CartTotals {
     vat: centsToEuro(vatCents),
     total: centsToEuro(subtotalCents + shippingCents + vatCents),
   };
-}
-
-export function areCartItemsEqual(left: CartItem[], right: CartItem[]) {
-  const normalizedLeft = normalizeCartItems(left);
-  const normalizedRight = normalizeCartItems(right);
-
-  if (normalizedLeft.length !== normalizedRight.length) {
-    return false;
-  }
-
-  return normalizedLeft.every((item, index) => {
-    const other = normalizedRight[index];
-
-    return other?.sku === item.sku && other.quantity === item.quantity;
-  });
 }
 
 function readStoredCartItems() {

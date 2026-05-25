@@ -117,87 +117,9 @@ const tierBadgeClasses: Record<CustomerTier, string> = {
 const customerMeta: Record<
   string,
   Omit<CustomerProfile, keyof CompanyProfile>
-> = {
-  "cmp-001": {
-    accountOwner: "Laura Bianchi",
-    contactName: "Marco Conti",
-    email: "ordini@riparami.it",
-    phone: "+39 02 8124 9001",
-    creditLimit: 8500,
-    receivables: 2160.4,
-    overdue: 0,
-    avgPaymentDays: 18,
-    lifecycle: "vip",
-    lastContact: "24/05/2026",
-    primarySku: "IP13P-OLED-A+",
-    notes: "Cliente ad alta rotazione su display Apple e batterie Samsung.",
-  },
-  "cmp-002": {
-    accountOwner: "Giulia Esposito",
-    contactName: "Francesca Ricci",
-    email: "acquisti@techfixroma.it",
-    phone: "+39 06 4455 1802",
-    creditLimit: 2400,
-    receivables: 620.8,
-    overdue: 180,
-    avgPaymentDays: 31,
-    lifecycle: "onboarding",
-    lastContact: "22/05/2026",
-    primarySku: "USB-C-DOCK",
-    notes: "Profilo in verifica, richiede controllo documentale prima del fido pieno.",
-  },
-};
+> = {};
 
-const supplementalCustomers: CustomerProfile[] = [
-  {
-    id: "cmp-003",
-    name: "MobileCare Firenze",
-    partitaIva: "IT11223344556",
-    codiceFiscale: "11223344556",
-    pec: "mobilecarefirenze@pec.it",
-    codiceDestinatario: "KRRH6B9",
-    status: "approved",
-    priceList: "Partner",
-    city: "Firenze",
-    province: "FI",
-    accountOwner: "Andrea Villa",
-    contactName: "Elena Martini",
-    email: "backoffice@mobilecarefi.it",
-    phone: "+39 055 2190 734",
-    creditLimit: 12000,
-    receivables: 3480.5,
-    overdue: 410,
-    avgPaymentDays: 24,
-    lifecycle: "active",
-    lastContact: "23/05/2026",
-    primarySku: "IP12-LCD-INC",
-    notes: "Partner storico su ricambi economy e ordini ricorrenti da laboratorio.",
-  },
-  {
-    id: "cmp-004",
-    name: "NordLab Torino",
-    partitaIva: "IT66778899001",
-    codiceFiscale: "66778899001",
-    pec: "nordlabtorino@pec.it",
-    codiceDestinatario: "A4707H7",
-    status: "suspended",
-    priceList: "Standard",
-    city: "Torino",
-    province: "TO",
-    accountOwner: "Laura Bianchi",
-    contactName: "Paolo Serra",
-    email: "amministrazione@nordlabto.it",
-    phone: "+39 011 8842 009",
-    creditLimit: 1800,
-    receivables: 1420,
-    overdue: 760,
-    avgPaymentDays: 44,
-    lifecycle: "at_risk",
-    lastContact: "17/05/2026",
-    primarySku: "PXR-LCD",
-    notes: "Ordini sospesi fino al rientro dello scaduto amministrativo.",
-  },
-];
+const supplementalCustomers: CustomerProfile[] = [];
 
 const customers: CustomerProfile[] = [
   ...companyProfiles.map((profile) => ({
@@ -207,50 +129,9 @@ const customers: CustomerProfile[] = [
   ...supplementalCustomers,
 ];
 
-const supplementalOrders: OrderSummary[] = [
-  {
-    id: "ORD-2026-0558",
-    date: "18/05/2026",
-    status: "delivered",
-    company: "RiparaMi S.r.l.",
-    total: 246.8,
-    items: 6,
-  },
-  {
-    id: "ORD-2026-0549",
-    date: "14/05/2026",
-    status: "paid",
-    company: "RiparaMi S.r.l.",
-    total: 512.4,
-    items: 14,
-  },
-  {
-    id: "ORD-2026-0528",
-    date: "09/05/2026",
-    status: "delivered",
-    company: "TechFix Roma",
-    total: 168.9,
-    items: 5,
-  },
-  {
-    id: "ORD-2026-0516",
-    date: "04/05/2026",
-    status: "delivered",
-    company: "MobileCare Firenze",
-    total: 334.2,
-    items: 8,
-  },
-  {
-    id: "ORD-2026-0497",
-    date: "28/04/2026",
-    status: "cancelled",
-    company: "NordLab Torino",
-    total: 91.7,
-    items: 2,
-  },
-];
+const supplementalOrders: OrderSummary[] = [];
 
-const demoOrders: CustomerOrder[] = [...orderSummaries, ...supplementalOrders].map(
+const customerOrders: CustomerOrder[] = [...orderSummaries, ...supplementalOrders].map(
   (order, index) => {
     const product = products[index % products.length] ?? products[0];
 
@@ -259,7 +140,7 @@ const demoOrders: CustomerOrder[] = [...orderSummaries, ...supplementalOrders].m
       channel: index % 3 === 0 ? "Web" : index % 3 === 1 ? "Admin" : "Account",
       margin: [18, 24, 14, 21, 17, 27, 12, 19][index] ?? 16,
       paymentTerms:
-        order.company === "TechFix Roma" ? "Bonifico anticipato" : "30 gg fine mese",
+        order.status === "pending_payment" ? "Bonifico anticipato" : "30 gg fine mese",
       topProduct: product.name,
       topSku: product.sku,
     };
@@ -325,7 +206,7 @@ export function AdminCustomersPanel() {
     customersWithTier[0];
   const selectedOrders = React.useMemo(
     () =>
-      demoOrders
+      customerOrders
         .filter((order) => order.company === selectedCustomer?.name)
         .sort((a, b) => parseItalianDate(b.date) - parseItalianDate(a.date)),
     [selectedCustomer?.name]
@@ -382,7 +263,24 @@ export function AdminCustomersPanel() {
   }
 
   if (!selectedCustomer) {
-    return null;
+    return (
+      <section className="min-w-0 space-y-4 overflow-x-hidden text-slate-950">
+        <Card className="border-slate-200 bg-white">
+          <CardContent className="flex flex-col items-start gap-3 p-6">
+            <div className="grid size-12 place-items-center rounded-full bg-slate-100 text-slate-500">
+              <Users className="size-5" />
+            </div>
+            <div>
+              <h2 className="text-xl font-black">Nessun cliente disponibile</h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                Collega o crea clienti B2B in Supabase per popolare gestione clienti,
+                listini, ordini e RMA.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+    );
   }
 
   const selectedTier = selectedCustomer.priceList;
@@ -1286,7 +1184,7 @@ function RmaHistoryCard({ request }: { request: CustomerRma }) {
 }
 
 function latestOrderFor(company: string) {
-  return demoOrders
+  return customerOrders
     .filter((order) => order.company === company)
     .sort((a, b) => parseItalianDate(b.date) - parseItalianDate(a.date))[0];
 }

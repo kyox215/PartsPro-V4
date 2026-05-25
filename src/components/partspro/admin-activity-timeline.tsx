@@ -120,78 +120,7 @@ const activityTypeConfig = {
   }
 >;
 
-export const defaultAdminActivities: AdminActivity[] = [
-  {
-    id: "act-order-0567",
-    type: "order-status",
-    title: "ORD-2026-0567 passato in picking",
-    description:
-      "L'ordine di RiparaMi S.r.l. e stato spostato da pagato a preparazione magazzino.",
-    actor: "Sofia Rizzo",
-    subject: "ORD-2026-0567",
-    createdAt: "2026-05-24T09:42:00+02:00",
-    important: true,
-    metadata: {
-      from: "paid",
-      to: "picking",
-    },
-  },
-  {
-    id: "act-tier-riparami",
-    type: "customer-tier",
-    title: "RiparaMi S.r.l. promosso a Partner",
-    description:
-      "Listino aggiornato da Pro a Partner dopo verifica del volume acquisti trimestrale.",
-    actor: "Marco Bianchi",
-    subject: "RiparaMi S.r.l.",
-    createdAt: "2026-05-23T17:15:00+02:00",
-    important: true,
-    metadata: {
-      from: "Pro",
-      to: "Partner",
-    },
-  },
-  {
-    id: "act-rma-014",
-    type: "rma-created",
-    title: "RMA-2026-014 aperta per Display OLED iPhone 13 Pro",
-    description:
-      "Richiesta di sostituzione creata da MobileCare Firenze per difetto touch rilevato in collaudo.",
-    actor: "Giulia Neri",
-    subject: "RMA-2026-014",
-    createdAt: "2026-05-23T12:06:00+02:00",
-    metadata: {
-      sku: "IP13P-OLED-A+",
-    },
-  },
-  {
-    id: "act-stock-ip13",
-    type: "inventory-update",
-    title: "Stock Milano aggiornato per IP13P-OLED-A+",
-    description:
-      "Carico inventario registrato: +18 pezzi disponibili dopo controllo qualita in ingresso.",
-    actor: "Luca Ferri",
-    subject: "IP13P-OLED-A+",
-    createdAt: "2026-05-22T16:28:00+02:00",
-    metadata: {
-      delta: "+18",
-      warehouse: "Milano",
-    },
-  },
-  {
-    id: "act-payment-0565",
-    type: "payment-posted",
-    title: "Pagamento registrato su ORD-2026-0565",
-    description:
-      "Bonifico di TechFix Roma riconciliato e ordine liberato per il prossimo batch.",
-    actor: "Elena Costa",
-    subject: "ORD-2026-0565",
-    createdAt: "2026-05-22T10:51:00+02:00",
-    metadata: {
-      amount: "82,96 EUR",
-    },
-  },
-];
+export const defaultAdminActivities: AdminActivity[] = [];
 
 export function AdminActivityTimeline({
   className,

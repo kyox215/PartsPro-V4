@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { brands, categories, deviceModels, products as fallbackProducts } from "@/lib/partspro-data";
+import { brands, categories, deviceModels, products as localProducts } from "@/lib/partspro-data";
 import type { PartProduct } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
 import { ProductCard } from "./product-card";
@@ -87,13 +87,13 @@ function getModelSearchFromParams(searchParams: CatalogSearchParams) {
 }
 
 type CatalogPageProps = {
-  catalogSource?: "supabase" | "mock";
+  catalogSource?: "supabase" | "empty";
   initialProducts?: PartProduct[];
 };
 
 export function CatalogPage({
-  catalogSource = "mock",
-  initialProducts = fallbackProducts,
+  catalogSource = "empty",
+  initialProducts = localProducts,
 }: CatalogPageProps) {
   const searchParams = useSearchParams();
   const searchParamsKey = searchParams.toString();
@@ -115,7 +115,7 @@ function CatalogPageContent({
   initialProducts,
   initialSearchTerm,
 }: {
-  catalogSource: "supabase" | "mock";
+  catalogSource: "supabase" | "empty";
   initialFilters: CatalogFiltersState;
   initialProducts: PartProduct[];
   initialSearchTerm: string;
@@ -268,7 +268,7 @@ function CatalogPageContent({
                     ? "Filtri attivi"
                     : catalogSource === "supabase"
                       ? "Listino Supabase attivo"
-                      : "Listino demo pronto",
+                      : "Catalogo non disponibile",
                 },
                 {
                   icon: Truck,
@@ -665,7 +665,7 @@ function Chip({ label, onRemove }: { label: string; onRemove: () => void }) {
 
 function sortProducts(items: PartProduct[], sortKey: SortKey) {
   const originalIndex = new Map(
-    fallbackProducts.map((product, index) => [product.sku, index])
+    localProducts.map((product, index) => [product.sku, index])
   );
 
   return [...items].sort((a, b) => {

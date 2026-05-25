@@ -103,186 +103,17 @@ export const deviceModels = [
 ];
 
 export const categories = [
-  { label: "Schermi", value: "Screen", visual: "screen" as const, count: 168 },
-  { label: "Batterie", value: "Battery", visual: "battery" as const, count: 96 },
-  { label: "Back Cover", value: "Back Cover", visual: "cover" as const, count: 74 },
-  { label: "Connettori", value: "Port", visual: "port" as const, count: 45 },
-  { label: "Fotocamere", value: "Camera", visual: "camera" as const, count: 58 },
-  { label: "Flat Cable", value: "Flex Cable", visual: "flex" as const, count: 121 },
-  { label: "Speaker", value: "Speaker", visual: "speaker" as const, count: 64 },
-  { label: "Frame", value: "Middle Frame", visual: "frame" as const, count: 37 },
+  { label: "Schermi", value: "Screen", visual: "screen" as const, count: 0 },
+  { label: "Batterie", value: "Battery", visual: "battery" as const, count: 0 },
+  { label: "Back Cover", value: "Back Cover", visual: "cover" as const, count: 0 },
+  { label: "Connettori", value: "Port", visual: "port" as const, count: 0 },
+  { label: "Fotocamere", value: "Camera", visual: "camera" as const, count: 0 },
+  { label: "Flat Cable", value: "Flex Cable", visual: "flex" as const, count: 0 },
+  { label: "Speaker", value: "Speaker", visual: "speaker" as const, count: 0 },
+  { label: "Frame", value: "Middle Frame", visual: "frame" as const, count: 0 },
 ];
 
-export const products: PartProduct[] = [
-  {
-    sku: "IP13P-OLED-A+",
-    slug: "iphone-13-pro-oled-a-plus",
-    name: "Display OLED iPhone 13 Pro",
-    category: "Schermi",
-    brand: "Apple",
-    grade: "A+",
-    price: 45.9,
-    retailPrice: 62.9,
-    stock: 25,
-    status: "In Stock",
-    updatedAt: "2026-05-18 10:30",
-    visual: "screen",
-    compatibleWith: ["iPhone 13 Pro"],
-    warehouse: "Milano",
-    moq: 1,
-    vatRate: 22,
-    rmaDays: 30,
-    leadTime: "24/48h Italia",
-    tags: ["OLED", "True Tone", "Wholesale"],
-  },
-  {
-    sku: "SAM-S21-BAT",
-    slug: "samsung-s21-battery-oem",
-    name: "Batteria Samsung Galaxy S21",
-    category: "Batterie",
-    brand: "Samsung",
-    grade: "A",
-    price: 28.5,
-    retailPrice: 39.9,
-    stock: 18,
-    status: "Low Stock",
-    updatedAt: "2026-05-18 09:20",
-    visual: "battery",
-    compatibleWith: ["Galaxy S21"],
-    warehouse: "Milano",
-    moq: 2,
-    vatRate: 22,
-    rmaDays: 30,
-    leadTime: "24/48h Italia",
-    tags: ["OEM", "Alta capacità"],
-  },
-  {
-    sku: "IP12-LCD-INC",
-    slug: "iphone-12-lcd-compatible",
-    name: "Display LCD compatibile iPhone 12",
-    category: "Schermi",
-    brand: "Apple",
-    grade: "B",
-    price: 26,
-    retailPrice: 34.9,
-    stock: 0,
-    status: "Out of Stock",
-    updatedAt: "2026-05-18 08:15",
-    visual: "screen",
-    compatibleWith: ["iPhone 12", "iPhone 12 Pro"],
-    warehouse: "Roma",
-    moq: 1,
-    vatRate: 22,
-    rmaDays: 14,
-    leadTime: "Riassortimento 5 giorni",
-    tags: ["Compatibile", "Economy"],
-  },
-  {
-    sku: "USB-C-DOCK",
-    slug: "usb-c-charging-dock-board",
-    name: "Scheda connettore USB-C",
-    category: "Connettori",
-    brand: "Xiaomi",
-    grade: "A+",
-    price: 4.8,
-    retailPrice: 8.9,
-    stock: 50,
-    status: "In Stock",
-    updatedAt: "2026-05-17 16:45",
-    visual: "port",
-    compatibleWith: ["Redmi Note 12", "Poco F5"],
-    warehouse: "Milano",
-    moq: 5,
-    vatRate: 22,
-    rmaDays: 30,
-    leadTime: "24/48h Italia",
-    tags: ["USB-C", "Fast moving"],
-  },
-  {
-    sku: "IP11-CAM",
-    slug: "iphone-11-camera-module",
-    name: "Modulo fotocamera iPhone 11",
-    category: "Fotocamere",
-    brand: "Apple",
-    grade: "A",
-    price: 19,
-    retailPrice: 29,
-    stock: 12,
-    status: "In Stock",
-    updatedAt: "2026-05-17 14:30",
-    visual: "camera",
-    compatibleWith: ["iPhone 11"],
-    warehouse: "Roma",
-    moq: 1,
-    vatRate: 22,
-    rmaDays: 30,
-    leadTime: "48h Italia",
-    tags: ["OEM pull", "Testato"],
-  },
-  {
-    sku: "PXR-LCD",
-    slug: "pixel-8-lcd-refurbished",
-    name: "Display Pixel 8 ricondizionato",
-    category: "Schermi",
-    brand: "Google",
-    grade: "Refurbished",
-    price: 31.2,
-    retailPrice: 44.9,
-    stock: 3,
-    status: "Low Stock",
-    updatedAt: "2026-05-16 18:10",
-    visual: "screen",
-    compatibleWith: ["Pixel 8"],
-    warehouse: "Milano",
-    moq: 1,
-    vatRate: 22,
-    rmaDays: 14,
-    leadTime: "24/48h Italia",
-    tags: ["Ricondizionato", "QC passato"],
-  },
-  {
-    sku: "HON90-FLEX",
-    slug: "honor-90-main-flex-cable",
-    name: "Flat cable principale Honor 90",
-    category: "Flat Cable",
-    brand: "Honor",
-    grade: "A",
-    price: 7.4,
-    retailPrice: 12.5,
-    stock: 36,
-    status: "In Stock",
-    updatedAt: "2026-05-16 12:20",
-    visual: "flex",
-    compatibleWith: ["Honor 90"],
-    warehouse: "Milano",
-    moq: 3,
-    vatRate: 22,
-    rmaDays: 30,
-    leadTime: "24/48h Italia",
-    tags: ["Compatibile", "Alta rotazione"],
-  },
-  {
-    sku: "OPPO-X5-COVER",
-    slug: "oppo-find-x5-back-cover",
-    name: "Back cover Oppo Find X5",
-    category: "Back Cover",
-    brand: "Oppo",
-    grade: "A+",
-    price: 12.9,
-    retailPrice: 21.5,
-    stock: 22,
-    status: "In Stock",
-    updatedAt: "2026-05-15 11:05",
-    visual: "cover",
-    compatibleWith: ["Find X5"],
-    warehouse: "Roma",
-    moq: 2,
-    vatRate: 22,
-    rmaDays: 30,
-    leadTime: "48h Italia",
-    tags: ["Nero", "Vetro"],
-  },
-];
+export const products: PartProduct[] = [];
 
 export const mobilaxAppleParts: SourcedApplePart[] = [
   {
@@ -357,115 +188,44 @@ export const mobilaxAppleParts: SourcedApplePart[] = [
   },
 ];
 
-export const companyProfiles: CompanyProfile[] = [
-  {
-    id: "cmp-001",
-    name: "RiparaMi S.r.l.",
-    partitaIva: "IT12345678901",
-    codiceFiscale: "12345678901",
-    pec: "amministrazione@riparami.pec.it",
-    codiceDestinatario: "M5UXCR1",
-    status: "approved",
-    priceList: "Pro",
-    city: "Milano",
-    province: "MI",
-  },
-  {
-    id: "cmp-002",
-    name: "TechFix Roma",
-    partitaIva: "IT09876543210",
-    codiceFiscale: "09876543210",
-    pec: "techfixroma@pec.it",
-    codiceDestinatario: "0000000",
-    status: "pending",
-    priceList: "Standard",
-    city: "Roma",
-    province: "RM",
-  },
-];
+export const companyProfiles: CompanyProfile[] = [];
 
-export const orderSummaries: OrderSummary[] = [
-  {
-    id: "ORD-2026-0567",
-    date: "24/05/2026",
-    status: "picking",
-    company: "RiparaMi S.r.l.",
-    total: 284.62,
-    items: 9,
-  },
-  {
-    id: "ORD-2026-0566",
-    date: "23/05/2026",
-    status: "shipped",
-    company: "MobileCare Firenze",
-    total: 117.3,
-    items: 3,
-  },
-  {
-    id: "ORD-2026-0565",
-    date: "22/05/2026",
-    status: "pending_payment",
-    company: "TechFix Roma",
-    total: 82.96,
-    items: 4,
-  },
-];
+export const orderSummaries: OrderSummary[] = [];
 
-export const rmaRequests: RmaRequest[] = [
-  {
-    id: "RMA-2026-014",
-    orderId: "ORD-2026-0566",
-    sku: "IP12-LCD-INC",
-    productName: "Display LCD compatibile iPhone 12",
-    status: "requested",
-    reason: "Touch non risponde dopo installazione",
-    createdAt: "24/05/2026",
-    resolution: "In attesa di verifica laboratorio",
-  },
-  {
-    id: "RMA-2026-011",
-    orderId: "ORD-2026-0558",
-    sku: "SAM-S21-BAT",
-    productName: "Batteria Samsung Galaxy S21",
-    status: "replaced",
-    reason: "Capacità sotto soglia test",
-    createdAt: "18/05/2026",
-    resolution: "Sostituzione spedita",
-  },
-];
+export const rmaRequests: RmaRequest[] = [];
 
-export const dashboardStats = [
-  { label: "Ordini oggi", value: "128", delta: "+12.5%", tone: "blue" },
-  { label: "Fatturato", value: "€12,450", delta: "+8.21%", tone: "green" },
-  { label: "Clienti B2B", value: "856", delta: "+15.2%", tone: "violet" },
-  { label: "SKU attivi", value: "3,251", delta: "+5.7%", tone: "cyan" },
-];
+export type DashboardStat = {
+  label: string;
+  value: string;
+  delta: string;
+  tone: "blue" | "green" | "violet" | "cyan";
+};
 
-export const salesTrend = [
-  { day: "18/05", sales: 1800, orders: 72 },
-  { day: "19/05", sales: 2650, orders: 96 },
-  { day: "20/05", sales: 3020, orders: 104 },
-  { day: "21/05", sales: 2760, orders: 92 },
-  { day: "22/05", sales: 4120, orders: 138 },
-  { day: "23/05", sales: 3290, orders: 116 },
-  { day: "24/05", sales: 4680, orders: 154 },
-];
+export type SalesTrendPoint = {
+  day: string;
+  sales: number;
+  orders: number;
+};
 
-export const monthlyOrders = [
-  { month: "Gen", paid: 2400, pending: 980 },
-  { month: "Feb", paid: 1800, pending: 760 },
-  { month: "Mar", paid: 3200, pending: 1210 },
-  { month: "Apr", paid: 2600, pending: 840 },
-  { month: "Mag", paid: 3650, pending: 1020 },
-  { month: "Giu", paid: 2860, pending: 720 },
-  { month: "Lug", paid: 1980, pending: 540 },
-];
+export type MonthlyOrderPoint = {
+  month: string;
+  paid: number;
+  pending: number;
+};
 
-export const inventoryMix = [
-  { name: "In Stock", value: 1931, fill: "#38bdf8" },
-  { name: "Low Stock", value: 511, fill: "#f59e0b" },
-  { name: "Out of Stock", value: 398, fill: "#ef4444" },
-];
+export type InventoryMixItem = {
+  name: StockStatus;
+  value: number;
+  fill: string;
+};
+
+export const dashboardStats: DashboardStat[] = [];
+
+export const salesTrend: SalesTrendPoint[] = [];
+
+export const monthlyOrders: MonthlyOrderPoint[] = [];
+
+export const inventoryMix: InventoryMixItem[] = [];
 
 export const brands = [
   "Apple",
@@ -478,11 +238,7 @@ export const brands = [
   "OnePlus",
 ];
 
-export const cartItems = [
-  { sku: "IP13P-OLED-A+", quantity: 2 },
-  { sku: "SAM-S21-BAT", quantity: 3 },
-  { sku: "USB-C-DOCK", quantity: 8 },
-];
+export const cartItems: Array<{ sku: string; quantity: number }> = [];
 
 export function getProductBySkuOrSlug(value: string) {
   return products.find((product) => product.sku === value || product.slug === value);

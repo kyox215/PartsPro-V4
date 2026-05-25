@@ -104,8 +104,6 @@ const ordersQueryKeys = new Set(Object.keys(ordersQuerySchema.shape));
 type RequestedOrderItem = z.infer<typeof orderItemSchema>;
 type OrdersQuery = z.infer<typeof ordersQuerySchema>;
 type OrderLine = PreparedOrderLine;
-type RepositorySource = "supabase" | "mock";
-
 export async function GET(request: NextRequest) {
   try {
     const authState = await getAdminAuthState();
@@ -176,7 +174,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const [companies, catalog] = await Promise.all([listCompanies(), listCatalogProducts()]);
-    const companyResolution = resolveCompany(companies.data, companies.source, result.data.companyId);
+    const companyResolution = resolveCompany(companies.data, result.data.companyId);
     const company = companyResolution.company;
 
     if (!company) {
@@ -234,7 +232,7 @@ export async function POST(request: NextRequest) {
           source: saved.source,
           catalogSource: catalog.source,
           companiesSource: companies.source,
-          persistence: saved.source === "supabase" ? "supabase_rpc" : "process_memory_demo",
+          persistence: "supabase_rpc",
           ...warningsMeta(
             companies.warning,
             catalog.warning,
@@ -350,23 +348,12 @@ function buildOrder(requestedItems: RequestedOrderItem[], catalog: PartProduct[]
 
 function resolveCompany(
   companies: CompanyProfile[],
-  source: RepositorySource,
   requestedCompanyId: string
 ): { company: CompanyProfile | null; warning?: string } {
   const exact = companies.find((profile) => profile.id === requestedCompanyId);
 
   if (exact) {
     return { company: exact };
-  }
-
-  const approved = companies.filter((profile) => profile.status === "approved");
-
-  if (source === "supabase" && requestedCompanyId.startsWith("cmp-") && approved.length === 1) {
-    return {
-      company: approved[0],
-      warning:
-        "Checkout used a demo company id; the API matched it to the current Supabase company profile.",
-    };
   }
 
   return { company: null };

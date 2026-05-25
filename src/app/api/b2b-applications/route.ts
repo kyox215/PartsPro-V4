@@ -46,7 +46,7 @@ export async function GET() {
   return NextResponse.json({
     data: [],
     meta: {
-      source: "mock",
+      source: "empty",
       total: 0,
     },
   });
