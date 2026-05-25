@@ -4,10 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
-  Battery,
   Bell,
-  Camera,
-  Cable,
   ChevronRight,
   CreditCard,
   Grid3X3,
@@ -18,10 +15,8 @@ import {
   Search,
   ShieldCheck,
   ShoppingCart,
-  Smartphone,
   Truck,
   User,
-  Wrench,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,6 +40,7 @@ import {
 import { cn } from "@/lib/utils";
 import { PartsProLogo } from "./logo";
 import { PartVisual } from "./part-visual";
+import { CatalogBrandTree } from "./catalog-brand-tree";
 import { LanguageSwitcher } from "./language-switcher";
 import { StoreMobileMenu } from "./store-mobile-menu";
 import { useT } from "./i18n-provider";
@@ -54,7 +50,6 @@ import {
   tx,
 } from "@/i18n/dictionaries/storefront";
 
-const categoryIcons = [Smartphone, Battery, Package, Cable, Camera, Wrench];
 const ALL_CATEGORIES = "all";
 
 type HomeCategorySelection = typeof ALL_CATEGORIES | string;
@@ -108,10 +103,7 @@ export function HomePage() {
         onSelectCategory={setSelectedCategory}
       />
       <div className="mx-auto grid w-full max-w-[1500px] min-w-0 grid-cols-[minmax(0,1fr)] gap-2 px-2 py-2 sm:gap-4 sm:px-4 sm:py-4 lg:grid-cols-[230px_minmax(0,1fr)] xl:grid-cols-[230px_minmax(0,1fr)_300px]">
-        <CategorySidebar
-          selectedCategory={selectedCategory}
-          onSelectCategory={setSelectedCategory}
-        />
+        <CategorySidebar />
         <div className="min-w-0 space-y-2 sm:space-y-4">
           <HeroSection />
           <TrustBar />
@@ -287,63 +279,30 @@ function HomeHeader({
   );
 }
 
-function CategorySidebar({
-  selectedCategory,
-  onSelectCategory,
-}: {
-  selectedCategory: HomeCategorySelection;
-  onSelectCategory: (category: HomeCategorySelection) => void;
-}) {
-  const t = useT();
+function CategorySidebar() {
+  const [expandedBrand, setExpandedBrand] = useState<string | null>(null);
 
   return (
     <aside className="hidden lg:block">
-      <div className="sticky top-20 rounded-lg border border-slate-200 bg-white p-2 shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
-        <div className="mb-2 flex items-center justify-between px-3 py-2">
-          <span className="text-sm font-bold">
-            {tx(t, "storefront.common.categories", "Categorie")}
-          </span>
-          <ChevronRight className="size-4 text-slate-400" />
-        </div>
-        <div className="space-y-1">
-          <button
-            type="button"
-            className={cn(
-              "flex h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-slate-700 transition hover:bg-primary hover:text-white",
-              selectedCategory === ALL_CATEGORIES &&
-                "bg-primary text-white shadow-lg shadow-primary/20"
-            )}
-            aria-pressed={selectedCategory === ALL_CATEGORIES}
-            onClick={() => onSelectCategory(ALL_CATEGORIES)}
-          >
+      <div className="sticky top-20 rounded-lg border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
+        <div className="mb-3 flex items-center justify-between gap-3 px-1">
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-black">Catalogo rapido</h2>
+            <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">
+              Brand e modelli
+            </p>
+          </div>
+          <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/8 text-primary">
             <Grid3X3 className="size-4" />
-            <span className="min-w-0 flex-1 truncate">Tutti</span>
-            <ChevronRight className="size-3.5 opacity-65" />
-          </button>
-          {categories.map((category, index) => {
-            const Icon = categoryIcons[index % categoryIcons.length];
-            const selected = selectedCategory === category.label;
-
-            return (
-              <button
-                key={category.value}
-                type="button"
-                className={cn(
-                  "flex h-10 w-full items-center gap-2 rounded-lg px-3 text-left text-sm text-slate-700 transition hover:bg-primary hover:text-white",
-                  selected && "bg-primary text-white shadow-lg shadow-primary/20"
-                )}
-                aria-pressed={selected}
-                onClick={() => onSelectCategory(category.label)}
-              >
-                <Icon className="size-4" />
-                <span className="min-w-0 flex-1 truncate">
-                  {categoryLabel(t, category.label)}
-                </span>
-                <ChevronRight className="size-3.5 opacity-65" />
-              </button>
-            );
-          })}
+          </div>
         </div>
+        <CatalogBrandTree
+          expandedBrand={expandedBrand}
+          idPrefix="home-desktop-catalog"
+          onExpandedBrandChange={setExpandedBrand}
+          showAvailableLink
+          variant="desktop"
+        />
       </div>
     </aside>
   );

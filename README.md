@@ -71,3 +71,19 @@ NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
 ```
 
 The Supabase helpers are in `src/lib/supabase`.
+
+## Google Login
+
+Google OAuth uses Supabase Auth with the SSR PKCE callback at
+`/auth/callback`. Enable the Google provider in the Supabase dashboard, add the
+Google Client ID and Client Secret there, and allow this redirect URL:
+
+```bash
+https://parts-pro-v4.vercel.app/auth/callback
+```
+
+For local development, also allow:
+
+```bash
+http://localhost:3000/auth/callback
+```

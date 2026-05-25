@@ -4,8 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LoginSubmitButton } from "@/components/partspro/login-client";
+import { GoogleLoginButton, LoginSubmitButton } from "@/components/partspro/login-client";
 import { StoreHeader } from "@/components/partspro/store-header";
+import { cleanAuthRedirect } from "@/lib/partspro-auth-redirect";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 import { signInWithPassword } from "./actions";
@@ -18,13 +19,15 @@ const errorMessages: Record<string, string> = {
   config: "Manca la publishable key Supabase in .env.local.",
   invalid: "Email o password non validi.",
   missing: "Inserisci email e password.",
+  oauth: "Accesso Google non riuscito. Verifica la configurazione OAuth in Supabase.",
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
   const configured = isSupabaseConfigured();
-  const next = getParam(params.next) ?? "/account";
+  const next = cleanAuthRedirect(getParam(params.next), "/account");
   const error = getParam(params.error);
+  const googleLoginUrl = `/auth/google?${new URLSearchParams({ next }).toString()}`;
 
   if (configured) {
     const supabase = await createClient();
@@ -33,7 +36,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     } = await supabase.auth.getUser();
 
     if (user) {
-      redirect(cleanNext(next));
+      redirect(next);
     }
   }
 
@@ -56,8 +59,16 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                 <span>{errorMessages[error] ?? "Accesso non riuscito."}</span>
               </div>
             )}
+            <div className="mb-4">
+              <GoogleLoginButton href={googleLoginUrl} disabled={!configured} />
+            </div>
+            <div className="mb-4 flex items-center gap-3 text-xs font-semibold uppercase tracking-normal text-slate-400">
+              <div className="h-px flex-1 bg-slate-200" />
+              <span>oppure</span>
+              <div className="h-px flex-1 bg-slate-200" />
+            </div>
             <form action={signInWithPassword} className="space-y-4">
-              <input type="hidden" name="next" value={cleanNext(next)} />
+              <input type="hidden" name="next" value={next} />
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -96,14 +107,6 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
 
 function getParam(value: string | string[] | undefined) {
   return Array.isArray(value) ? value[0] : value;
-}
-
-function cleanNext(value: string) {
-  if (!value.startsWith("/") || value.startsWith("//")) {
-    return "/account";
-  }
-
-  return value;
 }
 
 function LoginRuntimeNotice({ configured }: { configured: boolean }) {

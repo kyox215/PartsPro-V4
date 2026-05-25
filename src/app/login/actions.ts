@@ -3,9 +3,10 @@
 import { redirect } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
+import { cleanAuthRedirect, loginUrl } from "@/lib/partspro-auth-redirect";
 
 export async function signInWithPassword(formData: FormData) {
-  const next = cleanNext(formData.get("next"));
+  const next = cleanAuthRedirect(formData.get("next"));
   const email = String(formData.get("email") ?? "").trim();
   const password = String(formData.get("password") ?? "");
 
@@ -34,20 +35,4 @@ export async function signOut() {
   }
 
   redirect("/login");
-}
-
-function cleanNext(value: FormDataEntryValue | string | null) {
-  const next = typeof value === "string" ? value : "/account";
-
-  if (!next.startsWith("/") || next.startsWith("//")) {
-    return "/account";
-  }
-
-  return next;
-}
-
-function loginUrl(next: string, error: string) {
-  const params = new URLSearchParams({ next, error });
-
-  return `/login?${params.toString()}`;
 }

@@ -11,16 +11,50 @@ const MOBILAX_IMAGE_BASE_URL =
   "https://apiv2.mobilax.fr/v1.0/assets/images/products/id-image";
 const PROJECT_REF_PATH = "supabase/.temp/project-ref";
 const PRODUCT_IMAGES_BUCKET = "product-images";
-const STORAGE_PREFIX = "products/mobilax/apple";
-const SERIES_PATHS = [
-  "/spare-parts/mobile-phone/apple/series-17-16-15",
-  "/spare-parts/mobile-phone/apple/series-14-13",
-  "/spare-parts/mobile-phone/apple/series-12-11-x",
-  "/spare-parts/mobile-phone/apple/series-se",
-  "/spare-parts/mobile-phone/apple/series-8-7-6-5-4",
-];
+const BRAND_CONFIGS = {
+  apple: {
+    brandLabel: "Apple",
+    importLabel: "iPhone",
+    pathSlug: "apple",
+    storageFolder: "apple",
+    seriesPaths: [
+      "/spare-parts/mobile-phone/apple/series-17-16-15",
+      "/spare-parts/mobile-phone/apple/series-14-13",
+      "/spare-parts/mobile-phone/apple/series-12-11-x",
+      "/spare-parts/mobile-phone/apple/series-se",
+      "/spare-parts/mobile-phone/apple/series-8-7-6-5-4",
+    ],
+    modelFromUrl: appleModelFromUrl,
+    extractModels: extractAppleModels,
+    excludeModelPath: (path) => path.includes("ipod"),
+  },
+  samsung: {
+    brandLabel: "Samsung",
+    importLabel: "Samsung Galaxy",
+    pathSlug: "samsung",
+    storageFolder: "samsung",
+    seriesPaths: [
+      "/spare-parts/mobile-phone/samsung/galaxy-s",
+      "/spare-parts/mobile-phone/samsung/galaxy-a",
+      "/spare-parts/mobile-phone/samsung/galaxy-z",
+      "/spare-parts/mobile-phone/samsung/galaxy-note",
+      "/spare-parts/mobile-phone/samsung/galaxy-m",
+      "/spare-parts/mobile-phone/samsung/galaxy-j",
+      "/spare-parts/mobile-phone/samsung/galaxy-xcover",
+      "/spare-parts/mobile-phone/samsung/galaxy-other",
+    ],
+    modelFromUrl: samsungModelFromUrl,
+    extractModels: extractSamsungModels,
+    excludeModelPath: (path) => /galaxy-(?:watch|tab)/i.test(path),
+  },
+};
 
 const args = parseArgs(process.argv.slice(2));
+const brandConfig = BRAND_CONFIGS[args.brand];
+if (!brandConfig) {
+  throw new Error(`Unsupported brand: ${args.brand}. Use one of: ${Object.keys(BRAND_CONFIGS).join(", ")}.`);
+}
+const STORAGE_PREFIX = `products/mobilax/${brandConfig.storageFolder}`;
 loadEnv(".env.local");
 loadEnv(".env");
 
@@ -52,15 +86,16 @@ const report = {
   imageUploads: 0,
   imageFailures: 0,
   dbBatches: 0,
+  skippedModelPages: 0,
 };
 
 try {
-  console.log(`Mobilax iPhone import started at ${runStartedAt}`);
+  console.log(`Mobilax ${brandConfig.importLabel} import started at ${runStartedAt}`);
   console.log(args.dryRun ? "Mode: dry-run" : "Mode: import");
 
   const modelUrls = await discoverModelUrls();
   report.modelPages = modelUrls.length;
-  console.log(`Discovered ${modelUrls.length} iPhone model pages.`);
+  console.log(`Discovered ${modelUrls.length} ${brandConfig.importLabel} model pages.`);
 
   const products = await scrapeProducts(modelUrls);
   report.uniqueProducts = products.length;
@@ -94,6 +129,7 @@ try {
 
 function parseArgs(values) {
   const parsed = {
+    brand: "apple",
     dryRun: false,
     skipImages: false,
     skipDb: false,
@@ -109,6 +145,9 @@ function parseArgs(values) {
 
     if (value === "--dry-run") {
       parsed.dryRun = true;
+    } else if (value === "--brand" && next) {
+      parsed.brand = next.toLowerCase();
+      index += 1;
     } else if (value === "--skip-images") {
       parsed.skipImages = true;
     } else if (value === "--skip-db") {
@@ -154,7 +193,7 @@ function loadEnv(path) {
 async function discoverModelUrls() {
   const urls = new Set();
 
-  for (const seriesPath of SERIES_PATHS) {
+  for (const seriesPath of brandConfig.seriesPaths) {
     const html = await fetchText(new URL(seriesPath, MOBILAX_BASE_URL).href);
     const decoded = decodeNextFlight(html);
     collectModelUrls(html, urls);
@@ -167,13 +206,17 @@ async function discoverModelUrls() {
 }
 
 function collectModelUrls(value, urls) {
-  const linkPattern =
-    /\/spare-parts\/mobile-phone\/apple\/(series-[^/"'<\\?\s]+)\/(iphone[^"'<\\?\s]*)/gi;
+  const seriesSlugs = brandConfig.seriesPaths.map((path) => path.split("/").pop()).filter(Boolean);
+  const seriesPattern = seriesSlugs.map(escapeRegex).join("|");
+  const linkPattern = new RegExp(
+    `(?:/|\\\\b)spare-parts/mobile-phone/${escapeRegex(brandConfig.pathSlug)}/(${seriesPattern})/([^"'<>\\\\?\\\\s]+)`,
+    "gi"
+  );
 
   for (const match of value.matchAll(linkPattern)) {
-    const path = `/spare-parts/mobile-phone/apple/${match[1]}/${match[2]}`;
+    const path = `/spare-parts/mobile-phone/${brandConfig.pathSlug}/${match[1]}/${match[2]}`;
 
-    if (!path.includes("ipod")) {
+    if (!brandConfig.excludeModelPath(path)) {
       urls.add(path);
     }
   }
@@ -184,16 +227,31 @@ async function scrapeProducts(modelUrls) {
 
   for (const [index, modelUrl] of modelUrls.entries()) {
     const model = modelFromUrl(modelUrl);
-    const firstPayload = await scrapeProductPage(modelUrl, model);
+    let firstPayload;
+
+    try {
+      firstPayload = await scrapeProductPage(modelUrl, model);
+    } catch (error) {
+      report.skippedModelPages += 1;
+      console.warn(`[${index + 1}/${modelUrls.length}] skipped ${model}: ${error.message}`);
+      await delay(args.pageDelayMs);
+      continue;
+    }
+
     mergeProducts(bySku, firstPayload.products);
     report.listPages += 1;
 
     const totalPage = firstPayload.totalPage || 1;
 
     for (let page = 2; page <= totalPage; page += 1) {
-      const payload = await scrapeProductPage(`${modelUrl}?page=${page}`, model);
-      mergeProducts(bySku, payload.products);
-      report.listPages += 1;
+      try {
+        const payload = await scrapeProductPage(`${modelUrl}?page=${page}`, model);
+        mergeProducts(bySku, payload.products);
+        report.listPages += 1;
+      } catch (error) {
+        console.warn(`[${index + 1}/${modelUrls.length}] skipped ${model} page ${page}: ${error.message}`);
+      }
+
       await delay(args.pageDelayMs);
     }
 
@@ -300,13 +358,13 @@ function normalizeMobilaxProduct(product, model) {
     return null;
   }
 
-  const compatibilityModels = uniqueStrings([model, ...extractIphoneModels(name)]);
+  const compatibilityModels = uniqueStrings([model, ...brandConfig.extractModels(name)]);
   const imageId = product.image_principal_id ? String(product.image_principal_id) : "";
 
   return {
     sku_code,
     name,
-    brand: "Apple",
+    brand: brandConfig.brandLabel,
     model,
     category: normalizeCategory(String(product.category_name ?? name)),
     quality_grade: "A",
@@ -320,7 +378,7 @@ function normalizeMobilaxProduct(product, model) {
     weight_gram: 0,
     stock_qty: 0,
     location: "Milano",
-    batch_code: `MOBILAX-${runStartedAt.slice(0, 10)}`,
+    batch_code: `MOBILAX-${brandConfig.storageFolder.toUpperCase()}-${runStartedAt.slice(0, 10)}`,
     supplier: "Mobilax",
     is_battery: /battery|batteria/i.test(name),
     is_dangerous_goods: /battery|batteria/i.test(name),
@@ -762,9 +820,9 @@ where not exists (
 function validationSql() {
   return `
 select
-  count(*) filter (where supplier = 'Mobilax' and brand = 'Apple') as mobilax_products,
-  count(*) filter (where supplier = 'Mobilax' and brand = 'Apple' and stock_qty = 0 and stock_status = 'out_of_stock' and status = 'active') as zero_active_out_of_stock,
-  count(*) filter (where supplier = 'Mobilax' and brand = 'Apple' and image_path like '${STORAGE_PREFIX}/%') as own_storage_images
+  count(*) filter (where supplier = 'Mobilax' and brand = '${sqlString(brandConfig.brandLabel)}') as mobilax_products,
+  count(*) filter (where supplier = 'Mobilax' and brand = '${sqlString(brandConfig.brandLabel)}' and stock_qty = 0 and stock_status = 'out_of_stock' and status = 'active') as zero_active_out_of_stock,
+  count(*) filter (where supplier = 'Mobilax' and brand = '${sqlString(brandConfig.brandLabel)}' and image_path like '${STORAGE_PREFIX}/%') as own_storage_images
 from public.products;
 
 select
@@ -787,21 +845,39 @@ async function runSql(sql, label) {
   writeFileSync(file, sql);
   console.log(`Running SQL: ${label}`);
 
-  try {
-    const output = execFileSync(
-      "supabase",
-      ["db", "query", "--linked", "--file", file, "--output", "json"],
-      { encoding: "utf8", maxBuffer: 1024 * 1024 * 64 }
-    );
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const output = execFileSync(
+        "supabase",
+        ["db", "query", "--linked", "--file", file, "--output", "json"],
+        { encoding: "utf8", maxBuffer: 1024 * 1024 * 64 }
+      );
 
-    if (output.trim()) {
-      console.log(output.trim());
+      if (output.trim()) {
+        console.log(output.trim());
+      }
+
+      return;
+    } catch (error) {
+      const stderr = error.stderr?.toString().trim();
+      const stdout = error.stdout?.toString().trim();
+      const message = stderr || stdout || error.message;
+
+      if (attempt < 3 && isTransientSqlError(message)) {
+        console.warn(`SQL retry ${attempt + 1}/3 for ${label}: ${message}`);
+        await delay(1500 * attempt);
+        continue;
+      }
+
+      throw new Error(`SQL failed for ${label}: ${message}`);
     }
-  } catch (error) {
-    const stderr = error.stderr?.toString().trim();
-    const stdout = error.stdout?.toString().trim();
-    throw new Error(`SQL failed for ${label}: ${stderr || stdout || error.message}`);
   }
+}
+
+function isTransientSqlError(value) {
+  return /connection reset|timeout|temporarily unavailable|econnreset|network|socket|fetch failed/i.test(
+    value
+  );
 }
 
 async function fetchText(url) {
@@ -809,7 +885,7 @@ async function fetchText(url) {
   return response.text();
 }
 
-async function fetchWithRetry(url, attempts = 3) {
+async function fetchWithRetry(url, attempts = 5) {
   let lastError;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -882,6 +958,10 @@ function normalizeCategory(value) {
 }
 
 function modelFromUrl(path) {
+  return brandConfig.modelFromUrl(path);
+}
+
+function appleModelFromUrl(path) {
   const slug = path.split("/").pop() ?? "";
   const tokens = slug.split("-").filter(Boolean);
 
@@ -905,13 +985,32 @@ function modelFromUrl(path) {
   return `iPhone ${parts.join(" ")}`.replace(/\bPro Max\b/i, "Pro Max");
 }
 
-function extractIphoneModels(value) {
+function samsungModelFromUrl(path) {
+  const slug = path.split("/").pop() ?? "";
+  const tokens = slug.split("-").filter(Boolean).map(formatSamsungToken);
+
+  return tokens.join(" ").replace(/^Galaxy\s+/i, "Galaxy ").trim();
+}
+
+function extractAppleModels(value) {
   const models = [];
   const pattern =
     /iPhone\s+(?:SE(?:\s+\d+(?:st|nd|rd|e|er)\s+Gen)?|Air|XS\s+Max|XS|XR|X|\d{1,2}[a-z]?(?:\s+(?:Pro\s+Max|Pro|Plus|Mini|Max))?)/gi;
 
   for (const match of value.matchAll(pattern)) {
     models.push(normalizeModelName(match[0]));
+  }
+
+  return models;
+}
+
+function extractSamsungModels(value) {
+  const models = [];
+  const pattern =
+    /(?:Samsung\s+)?Galaxy\s+(?:S\d{1,2}(?:\s+(?:Ultra|Plus|Edge|FE|Lite|Mini))?(?:\s+(?:4G|5G))?(?:\s+[A-Z]\d{3,4}[A-Z]?)?|A\d{1,2}(?:s)?(?:\s+(?:4G|5G))?(?:\s+[A-Z]\d{3,4}[A-Z]?)?|Z\s+(?:Fold|Flip)\d*(?:\s+[A-Z]\d{3,4}[A-Z]?)?|Note\d{1,2}(?:\s+(?:Ultra|Plus|Lite))?(?:\s+(?:4G|5G))?(?:\s+[A-Z]\d{3,4}[A-Z]?)?|M\d{1,2}(?:s)?(?:\s+(?:4G|5G))?(?:\s+[A-Z]\d{3,4}[A-Z]?)?|J\d{1,2}(?:\s+[A-Z]\d{3,4}[A-Z]?)?|XCover\s*\d*(?:\s+Pro)?(?:\s+[A-Z]\d{3,4}[A-Z]?)?)/gi;
+
+  for (const match of value.matchAll(pattern)) {
+    models.push(normalizeSamsungModelName(match[0]));
   }
 
   return models;
@@ -929,12 +1028,57 @@ function normalizeModelName(value) {
     .trim();
 }
 
+function normalizeSamsungModelName(value) {
+  return value
+    .replace(/\bSamsung\s+/i, "")
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map(formatSamsungToken)
+    .join(" ")
+    .replace(/^Galaxy\s+/i, "Galaxy ")
+    .trim();
+}
+
+function formatSamsungToken(token) {
+  const normalized = token.trim();
+  const lower = normalized.toLowerCase();
+
+  if (!normalized) return "";
+  if (lower === "galaxy") return "Galaxy";
+  if (lower === "ultra") return "Ultra";
+  if (lower === "plus") return "Plus";
+  if (lower === "edge") return "Edge";
+  if (lower === "lite") return "Lite";
+  if (lower === "mini") return "Mini";
+  if (lower === "fold") return "Fold";
+  if (lower === "flip") return "Flip";
+  if (lower === "note") return "Note";
+  if (lower === "xcover") return "XCover";
+  if (lower === "pro") return "Pro";
+  if (lower === "fe") return "FE";
+  if (/^\d+g$/i.test(normalized)) return normalized.toUpperCase();
+  if (/^note\d+[a-z]?$/i.test(normalized)) {
+    return normalized.replace(/^note/i, "Note").toUpperCase().replace(/^NOTE/, "Note");
+  }
+  if (/^[a-z]+\d+[a-z]?$/i.test(normalized)) return normalized.toUpperCase();
+
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
 function sortModelUrls(a, b) {
   return modelFromUrl(a).localeCompare(modelFromUrl(b), "en", { numeric: true });
 }
 
 function uniqueStrings(values) {
   return [...new Set(values.map((value) => String(value).trim()).filter(Boolean))];
+}
+
+function escapeRegex(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function sqlString(value) {
+  return String(value).replace(/'/g, "''");
 }
 
 function normalizeImageContentType(value) {

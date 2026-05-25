@@ -699,7 +699,7 @@ async function readRows(
   client: SupabaseServerClient,
   table: string,
   select = "*",
-  limit = 5000
+  limit = 20000
 ): Promise<DbRow[] | null> {
   const pageSize = 1000;
   const rows: DbRow[] = [];

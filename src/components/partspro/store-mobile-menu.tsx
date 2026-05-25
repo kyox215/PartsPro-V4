@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, Grid3X3, Home, Menu, Search, User } from "lucide-react";
@@ -15,8 +15,9 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import { deviceModels, type DeviceModelGroup } from "@/lib/partspro-data";
+import type { DeviceModelGroup } from "@/lib/partspro-data";
 import { tx } from "@/i18n/dictionaries/storefront";
+import { CatalogBrandTree } from "./catalog-brand-tree";
 import { LanguageSwitcher } from "./language-switcher";
 import { PartsProLogo } from "./logo";
 import { useT } from "./i18n-provider";
@@ -37,19 +38,10 @@ export function StoreMobileMenu({ className, modelGroups }: StoreMobileMenuProps
   const [open, setOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(() => pathname.startsWith("/catalogo"));
   const [expandedBrand, setExpandedBrand] = useState<string | null>(null);
-  const catalogModelGroups = useMemo(
-    () => mergeModelGroups(deviceModels, modelGroups ?? []),
-    [modelGroups]
-  );
   const catalogActive = pathname === "/catalogo" || pathname.startsWith("/catalogo/");
 
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen);
-
-    if (nextOpen) {
-      setExpandedBrand(getCurrentBrandParam());
-      return;
-    }
 
     if (!nextOpen) {
       setExpandedBrand(null);
@@ -164,75 +156,16 @@ export function StoreMobileMenu({ className, modelGroups }: StoreMobileMenuProps
               {catalogOpen && (
                 <div
                   id="store-mobile-catalog-tree"
-                  className="space-y-2 rounded-lg bg-white px-2 py-2 shadow-sm"
+                  className="rounded-lg bg-white shadow-sm"
                 >
-                  <Link
-                    href="/catalogo"
-                    className="flex h-8 items-center rounded-md px-2 text-xs font-black text-primary hover:bg-primary/8"
-                    onClick={closeMenu}
-                  >
-                    Tutto il catalogo
-                  </Link>
-                  <Link
-                    href="/catalogo?minStock=1"
-                    className="flex h-8 items-center rounded-md px-2 text-xs font-black text-emerald-700 hover:bg-emerald-50"
-                    onClick={closeMenu}
-                  >
-                    Solo disponibili
-                  </Link>
-                  <div className="space-y-1">
-                    {catalogModelGroups.map((entry) => {
-                      const brandOpen = expandedBrand === entry.brand;
-                      const brandPanelId = catalogBrandPanelId(entry.brand);
-
-                      return (
-                        <div key={entry.brand} className="rounded-md border border-slate-100">
-                          <button
-                            type="button"
-                            className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-xs font-black text-slate-900 transition hover:bg-slate-50 hover:text-primary"
-                            aria-expanded={brandOpen}
-                            aria-controls={brandPanelId}
-                            onClick={() =>
-                              setExpandedBrand((current) =>
-                                current === entry.brand ? null : entry.brand
-                              )
-                            }
-                          >
-                            <span className="min-w-0 flex-1">{entry.brand}</span>
-                            <ChevronDown
-                              className={cn(
-                                "size-3.5 text-slate-400 transition",
-                                brandOpen && "rotate-180 text-primary"
-                              )}
-                            />
-                          </button>
-                          {brandOpen && (
-                            <div id={brandPanelId} className="border-t border-slate-100 p-2">
-                              <Link
-                                href={catalogQueryHref({ brand: entry.brand })}
-                                className="mb-2 flex h-8 items-center rounded-md bg-primary/8 px-2 text-[11px] font-black text-primary hover:bg-primary/12"
-                                onClick={closeMenu}
-                              >
-                                Tutti i modelli {entry.brand}
-                              </Link>
-                              <div className="flex flex-wrap gap-1">
-                                {entry.models.map((model) => (
-                                  <Link
-                                    key={model}
-                                    href={catalogQueryHref({ brand: entry.brand, model })}
-                                    className="rounded-md bg-slate-50 px-2 py-1 text-[11px] font-semibold leading-4 text-slate-600 hover:bg-primary/8 hover:text-primary"
-                                    onClick={closeMenu}
-                                  >
-                                    {model}
-                                  </Link>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <CatalogBrandTree
+                    expandedBrand={expandedBrand}
+                    idPrefix="store-mobile-catalog"
+                    modelGroups={modelGroups}
+                    onExpandedBrandChange={setExpandedBrand}
+                    onNavigate={closeMenu}
+                    showAvailableLink
+                  />
                 </div>
               )}
               {storeMobileNavItems.slice(1).map((item) => {
@@ -264,88 +197,4 @@ export function StoreMobileMenu({ className, modelGroups }: StoreMobileMenuProps
       </SheetContent>
     </Sheet>
   );
-}
-
-function catalogQueryHref({
-  brand,
-  model,
-}: {
-  brand?: string;
-  model?: string;
-}) {
-  const params = new URLSearchParams();
-
-  if (brand) {
-    params.set("brand", brand);
-  }
-
-  if (model) {
-    params.set("model", model);
-  }
-
-  const query = params.toString();
-
-  return query ? `/catalogo?${query}` : "/catalogo";
-}
-
-function catalogBrandPanelId(brand: string) {
-  return `store-mobile-catalog-brand-${brand.toLowerCase().replace(/\s+/g, "-")}`;
-}
-
-function getCurrentBrandParam() {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return new URLSearchParams(window.location.search).get("brand");
-}
-
-function mergeModelGroups(
-  fallbackGroups: readonly DeviceModelGroup[],
-  dynamicGroups: readonly DeviceModelGroup[]
-) {
-  const groups = new Map<string, Set<string>>();
-
-  for (const group of [...fallbackGroups, ...dynamicGroups]) {
-    const brand = group.brand.trim();
-
-    if (!brand) {
-      continue;
-    }
-
-    const models = groups.get(brand) ?? new Set<string>();
-
-    for (const model of group.models) {
-      const normalizedModel = model.trim();
-
-      if (normalizedModel) {
-        models.add(normalizedModel);
-      }
-    }
-
-    groups.set(brand, models);
-  }
-
-  const preferredBrandOrder = fallbackGroups.map((group) => group.brand);
-
-  return Array.from(groups.entries())
-    .map(([brand, models]) => ({
-      brand,
-      models: Array.from(models).sort(compareModelNames),
-    }))
-    .sort((left, right) => {
-      const leftIndex = preferredBrandOrder.indexOf(left.brand);
-      const rightIndex = preferredBrandOrder.indexOf(right.brand);
-
-      if (leftIndex !== -1 || rightIndex !== -1) {
-        return (leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex) -
-          (rightIndex === -1 ? Number.MAX_SAFE_INTEGER : rightIndex);
-      }
-
-      return left.brand.localeCompare(right.brand, "it", { numeric: true });
-    });
-}
-
-function compareModelNames(left: string, right: string) {
-  return left.localeCompare(right, "it", { numeric: true, sensitivity: "base" });
 }

@@ -6,6 +6,7 @@ import {
   ArrowDownUp,
   CheckCircle2,
   ChevronDown,
+  Grid3X3,
   RotateCcw,
   PackageCheck,
   Search,
@@ -32,6 +33,7 @@ import {
 } from "@/lib/partspro-data";
 import type { DeviceModelGroup, PartProduct } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
+import { CatalogBrandTree } from "./catalog-brand-tree";
 import { ProductCard } from "./product-card";
 import { StoreHeader } from "./store-header";
 
@@ -144,6 +146,7 @@ function CatalogPageContent({
   const [filters, setFilters] = useState<CatalogFiltersState>(initialFilters);
   const [inStockOnly, setInStockOnly] = useState(initialInStockOnly);
   const [sortKey, setSortKey] = useState<SortKey>("recommended");
+  const [expandedBrand, setExpandedBrand] = useState<string | null>(null);
   const filterOptions = useMemo(() => buildFilterOptions(initialProducts), [initialProducts]);
   const modelGroups = useMemo(() => buildModelGroups(initialProducts), [initialProducts]);
 
@@ -222,16 +225,10 @@ function CatalogPageContent({
       <StoreHeader modelGroups={modelGroups} />
       <div className="mx-auto grid max-w-[1500px] gap-5 px-3 py-4 sm:px-4 sm:py-6 lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="hidden lg:block">
-          <CatalogFilters
-            filters={filters}
-            inStockOnly={inStockOnly}
-            onClearGroup={clearGroup}
-            onClearInStockOnly={() => setInStockOnly(false)}
-            onModelSearch={setSearchTerm}
-            onToggleFilter={toggleFilter}
-            onToggleInStockOnly={() => setInStockOnly((current) => !current)}
-            options={filterOptions}
-            searchTerm={searchTerm}
+          <CatalogNavigationSidebar
+            expandedBrand={expandedBrand}
+            modelGroups={modelGroups}
+            onExpandedBrandChange={setExpandedBrand}
           />
         </aside>
 
@@ -251,7 +248,7 @@ function CatalogPageContent({
                 </p>
               </div>
               <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-                <details className="group lg:hidden">
+                <details className="group">
                   <summary className="flex h-10 cursor-pointer list-none items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
                     <span className="inline-flex items-center gap-2">
                       <SlidersHorizontal className="size-4" />
@@ -548,6 +545,40 @@ function CatalogFilters({
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function CatalogNavigationSidebar({
+  expandedBrand,
+  modelGroups,
+  onExpandedBrandChange,
+}: {
+  expandedBrand: string | null;
+  modelGroups: readonly DeviceModelGroup[];
+  onExpandedBrandChange: (brand: string | null) => void;
+}) {
+  return (
+    <div className="sticky top-20 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
+      <div className="mb-3 flex items-center justify-between gap-3 px-1">
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-black">Catalogo rapido</h2>
+          <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">
+            Brand e modelli
+          </p>
+        </div>
+        <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/8 text-primary">
+          <Grid3X3 className="size-4" />
+        </div>
+      </div>
+      <CatalogBrandTree
+        expandedBrand={expandedBrand}
+        idPrefix="catalog-desktop-catalog"
+        modelGroups={modelGroups}
+        onExpandedBrandChange={onExpandedBrandChange}
+        showAvailableLink
+        variant="desktop"
+      />
+    </div>
   );
 }
 

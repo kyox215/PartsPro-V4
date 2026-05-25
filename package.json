@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "import:mobilax:iphone": "node scripts/import-mobilax-iphone-catalog.mjs",
+    "import:mobilax:iphone": "node scripts/import-mobilax-iphone-catalog.mjs --brand apple",
+    "import:mobilax:samsung": "node scripts/import-mobilax-iphone-catalog.mjs --brand samsung",
     "start": "next start",
     "lint": "eslint"
   },
