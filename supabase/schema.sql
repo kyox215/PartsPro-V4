@@ -11,6 +11,7 @@
 -- - supabase/migrations/20260524090000_baseline_empty_public_schema.sql
 -- - supabase/migrations/20260524133225_harden_partspro_relations.sql
 -- - supabase/migrations/20260525111327_allow_customer_owned_rma_order_lines.sql
+-- - supabase/migrations/20260525112440_remove_demo_seed_data.sql
 -- - Status: applied to yiuxrjqexlfjtxxrkqvi.
 --
 -- The remote database already uses the v4 table names below. Older local

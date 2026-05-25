@@ -4,17 +4,12 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 const STAFF_ROLES = new Set(["sales", "warehouse", "purchasing", "admin"]);
 
 type AdminAuthState =
-  | { configured: false; allowed: true; reason: "demo_missing_env" }
   | { configured: false; allowed: false; reason: "missing_env" }
   | { configured: true; allowed: true; reason: "staff"; role: string }
   | { configured: true; allowed: false; reason: "missing_session" | "not_staff"; role?: string };
 
 export async function getAdminAuthState(): Promise<AdminAuthState> {
   if (!isSupabaseConfigured()) {
-    if (isDemoAuthEnabled()) {
-      return { configured: false, allowed: true, reason: "demo_missing_env" };
-    }
-
     return { configured: false, allowed: false, reason: "missing_env" };
   }
 
@@ -51,11 +46,4 @@ async function readStaffRole(
   }
 
   return typeof data?.role === "string" ? data.role : null;
-}
-
-function isDemoAuthEnabled() {
-  return (
-    process.env.PARTSPRO_ENABLE_DEMO_AUTH === "true" &&
-    process.env.NODE_ENV !== "production"
-  );
 }
