@@ -127,7 +127,7 @@ export function AccountPage({ userEmail }: AccountPageProps) {
                   <div className="min-w-0">
                     <h1 className="text-xl font-black">Nessun profilo azienda</h1>
                     <p className="mt-2 text-sm leading-6 text-slate-500">
-                      Crea o collega un cliente B2B in Supabase per mostrare dati account reali.
+                      Crea o collega un cliente in Supabase per mostrare dati account reali.
                     </p>
                     {userEmail && <Info label="Utente" value={userEmail} />}
                   </div>

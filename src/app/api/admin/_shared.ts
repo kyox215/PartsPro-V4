@@ -1,9 +1,12 @@
 import { z } from "zod";
 import { apiError, formatZodIssues, readQueryParams } from "@/lib/partspro-api";
-import { getAdminAuthState } from "@/lib/partspro-admin-auth";
+import {
+  getAdminAuthState,
+  hasAdminPermission,
+} from "@/lib/partspro-admin-auth";
 import { RepositoryWriteError } from "@/lib/partspro-repository";
 
-export async function requireAdminApi() {
+export async function requireAdminApi(permission?: string) {
   const authState = await getAdminAuthState();
 
   if (!authState.allowed) {
@@ -15,6 +18,16 @@ export async function requireAdminApi() {
         "Only staff users can access this admin API.",
         { reason: authState.reason }
       ),
+    };
+  }
+
+  if (permission && !hasAdminPermission(authState, permission)) {
+    return {
+      ok: false as const,
+      response: apiError(403, "ADMIN_PERMISSION_DENIED", "Missing admin permission.", {
+        permission,
+        role: authState.role,
+      }),
     };
   }
 

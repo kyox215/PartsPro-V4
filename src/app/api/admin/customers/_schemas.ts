@@ -28,7 +28,13 @@ export const customerPatchSchema = z
     shippingAddress: z.string().trim().max(240).optional(),
     status: z.enum(["active", "pending", "suspended", "approved", "rejected"]).optional(),
     tier: z.string().trim().min(1).max(40).optional(),
-    priceList: z.enum(["Standard", "Pro", "Partner"]).optional(),
+    priceList: z
+      .enum(["bronze", "silver", "gold", "emerald", "diamond", "master", "king"])
+      .optional(),
+    customerType: z.enum(["retail", "wholesale"]).optional(),
+    assignmentStatus: z
+      .enum(["needs_review", "assigned", "converted_to_employee", "archived"])
+      .optional(),
     priceGroupId: z.string().trim().uuid().nullable().optional(),
     monthlyPurchase: z.string().trim().max(80).optional(),
     creditLimit: z.coerce.number().min(0).max(1000000).optional(),

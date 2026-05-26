@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 type ApplicationParams = { params: Promise<{ applicationId: string }> };
 
 export async function PATCH(request: NextRequest, { params }: ApplicationParams) {
-  const admin = await requireAdminApi();
+  const admin = await requireAdminApi("customers.classify");
 
   if (!admin.ok) {
     return admin.response;
@@ -49,6 +49,8 @@ export async function PATCH(request: NextRequest, { params }: ApplicationParams)
       application: dto.application,
       customer: dto.customer,
       meta: {
+        deprecated: true,
+        replacement: "/api/admin/accounts",
         source: result.source,
         workflow:
           parsed.data.status === "approved"

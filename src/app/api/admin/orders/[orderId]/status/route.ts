@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 type OrderStatusParams = { params: Promise<{ orderId: string }> };
 
 export async function PATCH(request: NextRequest, { params }: OrderStatusParams) {
-  const admin = await requireAdminApi();
+  const admin = await requireAdminApi("orders.manage");
 
   if (!admin.ok) {
     return admin.response;

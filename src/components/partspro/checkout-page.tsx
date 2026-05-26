@@ -17,10 +17,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { getCurrentAccountContext } from "@/lib/partspro-account-context";
 import { type CompanyProfile } from "@/lib/partspro-data";
 import { listCompanies } from "@/lib/partspro-repository";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { createClient } from "@/lib/supabase/server";
 import { CheckoutSubmitButton } from "./checkout-submit-button";
 import { OrderSummaryCard } from "./cart-page";
 import { StoreHeader } from "./store-header";
@@ -33,14 +33,17 @@ type CheckoutRuntime =
       canSubmit: true;
       title: string;
       description: string;
+      customerId: string;
       userEmail: string;
     }
   | {
-      mode: "needs-login" | "error";
+      mode: "needs-login" | "needs-profile" | "error";
       canSubmit: false;
       title: string;
       description: string;
       disabledReason: string;
+      customerId?: string;
+      userEmail?: string;
     };
 
 const paymentOptions = [
@@ -77,17 +80,20 @@ const deliveryOptions = [
   {
     value: "pickup_milano",
     label: "Ritiro sede Milano",
-    description: "Preparazione banco e ritiro da parte del cliente B2B.",
+    description: "Preparazione banco e ritiro da parte del cliente.",
     detail: "Disponibile su appuntamento",
   },
 ] as const;
 
 export async function CheckoutPage() {
   const runtime = await getCheckoutRuntime();
-  const company = runtime.mode === "ready" ? await getCheckoutCompany() : null;
+  const company =
+    runtime.mode === "ready" || runtime.mode === "needs-profile"
+      ? await getCheckoutCompany(runtime.customerId)
+      : null;
   const companyDisabledReason =
     runtime.mode === "ready" && !company
-      ? "Checkout disabilitato: collega un profilo azienda B2B approvato all'utente Supabase."
+      ? "Checkout disabilitato: collega un profilo cliente all'utente Supabase."
       : undefined;
   const fieldGroups = [
     {
@@ -131,7 +137,7 @@ export async function CheckoutPage() {
           <div>
             <div className="mb-3 flex flex-wrap gap-2">
               <Badge className="border border-primary/20 bg-primary/8 text-primary">
-                Checkout B2B
+                Checkout clienti
               </Badge>
               <RuntimeBadge runtime={runtime} />
             </div>
@@ -324,26 +330,43 @@ async function getCheckoutRuntime(): Promise<CheckoutRuntime> {
   }
 
   try {
-    const supabase = await createClient();
     const {
-      data: { user },
-    } = await supabase.auth.getUser();
+      authenticated,
+      canCheckout,
+      customer,
+      email,
+    } = await getCurrentAccountContext({ ensure: true });
 
-    if (!user) {
+    if (!authenticated) {
       return {
         mode: "needs-login",
         canSubmit: false,
         title: "Checkout disabilitato",
         description:
-          "Supabase è configurato: accedi con un account B2B per associare il checkout alla sessione.",
+          "Supabase è configurato: accedi per associare il checkout alla sessione.",
         disabledReason: "Checkout disabilitato: effettua il login prima di confermare l'ordine.",
+      };
+    }
+
+    if (!canCheckout) {
+      return {
+        mode: "needs-profile",
+        canSubmit: false,
+        customerId: customer?.id,
+        userEmail: email ?? "utente Supabase",
+        title: "Dati cliente da completare",
+        description:
+          "Puoi vedere i prezzi e preparare il carrello, ma prima dell'ordine devi completare dati fiscali, contatto e indirizzi richiesti dal tipo cliente.",
+        disabledReason:
+          "Checkout disabilitato: completa dati fiscali, contatto e indirizzi nel profilo cliente.",
       };
     }
 
     return {
       mode: "ready",
       canSubmit: true,
-      userEmail: user.email ?? "utente Supabase",
+      customerId: customer?.id ?? "",
+      userEmail: email ?? "utente Supabase",
       title: "Checkout pronto",
       description:
         "Sessione Supabase attiva. L'ordine viene inviato all'API esistente /api/orders.",
@@ -360,10 +383,14 @@ async function getCheckoutRuntime(): Promise<CheckoutRuntime> {
   }
 }
 
-async function getCheckoutCompany(): Promise<CompanyProfile | null> {
+async function getCheckoutCompany(customerId?: string): Promise<CompanyProfile | null> {
   const companies = await listCompanies();
+  const assignedCompany = customerId
+    ? companies.data.find((company) => company.id === customerId)
+    : null;
 
   return (
+    assignedCompany ??
     companies.data.find((company) => company.status === "approved") ??
     companies.data[0] ??
     null
@@ -422,7 +449,7 @@ function RuntimeStatusCard({ runtime }: { runtime: CheckoutRuntime }) {
         <div className="min-w-0">
           <div className="font-black">{runtime.title}</div>
           <p className="mt-1 leading-6">{runtime.description}</p>
-          {runtime.mode === "ready" && (
+          {(runtime.mode === "ready" || runtime.mode === "needs-profile") && runtime.userEmail && (
             <div className="mt-2 break-words text-xs font-bold">{runtime.userEmail}</div>
           )}
           {runtime.mode === "needs-login" && (
@@ -446,10 +473,10 @@ function CompanyStatusCard({ company }: { company: CompanyProfile | null }) {
         <CardContent className="flex gap-3 p-4 text-sm text-amber-950">
           <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />
           <div className="min-w-0">
-            <div className="font-black">Profilo azienda mancante</div>
+            <div className="font-black">Profilo cliente mancante</div>
             <p className="mt-1 leading-6">
-              Nessun cliente B2B approvato è collegato alla sessione corrente.
-              Crea o approva il profilo in Supabase prima del checkout.
+              Nessun cliente è collegato alla sessione corrente. Crea o completa il
+              profilo in gestione clienti prima del checkout.
             </p>
           </div>
         </CardContent>
@@ -462,7 +489,7 @@ function CompanyStatusCard({ company }: { company: CompanyProfile | null }) {
       <CardContent className="flex gap-3 p-4 text-sm text-emerald-900">
         <ShieldCheck className="mt-0.5 size-5 shrink-0 text-emerald-600" />
         <div className="min-w-0">
-          <div className="font-black">Cliente B2B collegato</div>
+          <div className="font-black">Cliente collegato</div>
           <p className="mt-1 leading-6">
             {company.name} verrà usato come profilo fiscale per /api/orders.
           </p>

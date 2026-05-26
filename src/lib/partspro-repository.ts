@@ -6,9 +6,17 @@ import {
   formatPartsProDateTime,
 } from "@/lib/partspro-api";
 import {
+  catalogSkuLookupCandidates,
+  sanitizeSupplierText,
+  toPublicSku,
+} from "@/lib/partspro-sku";
+import {
   deviceModels,
   type CompanyProfile,
   type CompanyStatus,
+  type CustomerAssignmentStatus,
+  type CustomerLevel,
+  type CustomerType,
   type DeviceModelGroup,
   type OrderStatus,
   type OrderSummary,
@@ -19,6 +27,7 @@ import {
   type RmaStatus,
   type StockStatus,
 } from "@/lib/partspro-data";
+import { normalizeCustomerTier } from "@/lib/partspro-pricing";
 
 type DbRow = Record<string, unknown>;
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -27,14 +36,21 @@ type SupabaseContext = {
   client: SupabaseServerClient;
   userId: string;
 };
+type ProductPayloadOptions = {
+  includeSku?: boolean;
+  includeStatus?: boolean;
+  includeStock?: boolean;
+};
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const productImagesBucket = "product-images";
-const adminProductSelect =
-  "id, sku_code, name, brand, model, model_code, model_codes, category, quality_grade, stock_status, moq, cost_price, retail_price, b2b_price, vat_mode, warranty_days, weight_gram, stock_qty, location, batch_code, supplier, compatibility_models, highlights, status, updated_at, image_path, image_alt, gallery_image_paths, created_at";
+const catalogPublicCardSelect =
+  "id, sku_code, name, brand, model, model_code, model_codes, category, quality_grade, stock_status, moq, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, updated_at, image_path, image_alt";
+const catalogProductCardSelect =
+  "id, sku_code, name, brand, model, model_code, model_codes, category, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at, image_path, image_alt";
 const adminCustomerSelect =
-  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, registered_address, billing_address, shipping_address, tier, price_group_id, status, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
+  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, registered_address, billing_address, shipping_address, tier, price_group_id, status, customer_type, assignment_status, level, lifetime_spend_net, assigned_by, assigned_at, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
 const adminB2BApplicationSelect =
   "id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, registered_address, shipping_address, monthly_purchase, requested_price_group_id, status, review_note, approved_customer_id, submitted_at, reviewed_at";
 
@@ -58,6 +74,17 @@ export type RepositoryResult<T> = {
   warning?: string;
 };
 
+const catalogModelGroupsCacheTtlMs = 10 * 60 * 1000;
+const catalogModelGroupsWarningCacheTtlMs = 15 * 1000;
+let catalogModelGroupsCache:
+  | {
+      expiresAt: number;
+      result: RepositoryResult<DeviceModelGroup[]>;
+    }
+  | null = null;
+let catalogModelGroupsRequest: Promise<RepositoryResult<DeviceModelGroup[]>> | null =
+  null;
+
 export type RepositoryPartProduct = PartProduct & {
   remoteId?: string;
 };
@@ -77,11 +104,16 @@ export type AdminPaymentStatus = "pending" | "paid" | "bank_waiting" | "failed";
 
 export type AdminProduct = RepositoryPartProduct & {
   id: string;
+  sourceSku?: string;
   catalogStatus: AdminCatalogStatus;
   stockStatus: StockStatus;
   stockQty: number;
+  availableQty: number;
+  lockedQty: number;
+  actualQty: number;
   b2bPrice: number;
   costPrice: number;
+  margin: number;
   vatMode: string;
   warrantyDays: number;
   weightGram: number;
@@ -101,6 +133,7 @@ export type AdminProductQueryInput = {
   catalogStatus?: AdminCatalogStatus;
   grade?: ProductGrade;
   limit: number;
+  model?: string;
   offset: number;
   q?: string;
   sort: "name" | "stock_desc" | "updated_desc" | "created_desc";
@@ -143,20 +176,59 @@ export type AdminProductWriteInput = {
 };
 
 export type AdminProductPatchInput = Partial<
-  Omit<AdminProductWriteInput, "sku">
+  Omit<AdminProductWriteInput, "sku" | "stock" | "stockStatus" | "catalogStatus">
 > & {
-  sku?: string;
+  reason?: string;
+};
+
+export type AdminProductActionInput = {
+  reason?: string;
+  sku: string;
+};
+
+export type AdminProductStockAdjustmentInput = {
+  action: "receive" | "cycle_count" | "release" | "scrap" | "rma_return";
+  batchCode?: string;
+  quantity: number;
+  reason: string;
+  sku: string;
+  supplier?: string;
+  warehouse?: PartProduct["warehouse"];
+};
+
+export type AdminProductImagesInput = {
+  galleryImagePaths: string[];
+  imageAlt?: string;
+  imagePath?: string;
+  reason?: string;
+  sku: string;
+};
+
+export type AdminAuditEvent = {
+  id: string;
+  action: string;
+  actorEmail: string | null;
+  actorRole: string | null;
+  reason: string | null;
+  requestMetadata: unknown;
+  createdAt: string;
 };
 
 export type AdminCustomer = CompanyProfile & {
   customerStatus: AdminCustomerStatus;
+  customerType: CustomerType;
+  assignmentStatus: CustomerAssignmentStatus;
   contactName: string;
   email: string;
   phone: string;
   registeredAddress: string;
   billingAddress: string;
   shippingAddress: string;
-  tier: string;
+  tier: CustomerLevel;
+  level: CustomerLevel;
+  lifetimeSpendNet: number;
+  assignedBy: string | null;
+  assignedAt: string | null;
   priceGroupId: string | null;
   monthlyPurchase: string;
   ordersCount: number;
@@ -196,7 +268,9 @@ export type AdminCustomerPatchInput = {
   billingAddress?: string;
   shippingAddress?: string;
   status?: AdminCustomerStatus;
-  tier?: string;
+  tier?: CustomerLevel | string;
+  customerType?: CustomerType;
+  assignmentStatus?: CustomerAssignmentStatus;
   priceGroupId?: string | null;
   monthlyPurchase?: string;
   creditLimit?: number;
@@ -256,6 +330,8 @@ export type AdminOrderLine = {
   id: string;
   sku: string;
   productName: string;
+  productImageUrl?: string;
+  productImageAlt?: string;
   qualityGrade: string;
   quantity: number;
   unitPrice: number;
@@ -276,6 +352,9 @@ export type AdminOrderEvent = {
   note: string;
   metadata: unknown;
   actorId: string | null;
+  actorEmail: string | null;
+  actorName: string | null;
+  actorRole: string | null;
   createdAt: string;
 };
 
@@ -334,6 +413,12 @@ export type AdminOrderStatusTransitionInput = {
   metadata?: Record<string, unknown>;
 };
 
+export type AdminOrderStatusRollbackInput = {
+  orderId: string;
+  note?: string;
+  metadata?: Record<string, unknown>;
+};
+
 export type AdminOrderStatusTransitionResult = {
   order: AdminOrder;
   transition: unknown;
@@ -345,7 +430,6 @@ export type AdminOrderOperationsPatchInput = {
   note?: string;
   paymentStatus?: AdminPaymentStatus | "unpaid" | "authorized" | "refunded";
   tracking?: string;
-  warehouse?: PartProduct["warehouse"];
 };
 
 export type AdminOrderOperationsPatchResult = {
@@ -370,6 +454,7 @@ export type PreparedOrderTotals = {
 
 export type CatalogProductQueryInput = {
   brand?: string;
+  catalogStatus?: AdminCatalogStatus;
   category?: string;
   grade?: ProductGrade;
   limit: number;
@@ -377,7 +462,7 @@ export type CatalogProductQueryInput = {
   model?: string;
   offset: number;
   q?: string;
-  sort: "name" | "stock_desc" | "updated_desc";
+  sort: "name" | "stock_desc" | "updated_desc" | "created_desc";
   status?: StockStatus;
   warehouse?: PartProduct["warehouse"];
 };
@@ -389,6 +474,19 @@ export type CatalogProductPage = {
 
 type CatalogProductPageOptions = {
   includeBuyerPrices?: boolean;
+  scope?: "public" | "admin";
+};
+
+type ProductQueryRequest = {
+  contains(column: string, value: unknown[]): ProductQueryRequest;
+  eq(column: string, value: unknown): ProductQueryRequest;
+  gte(column: string, value: unknown): ProductQueryRequest;
+  or(filters: string): ProductQueryRequest;
+  order(column: string, options: { ascending: boolean }): ProductQueryRequest;
+  range(
+    from: number,
+    to: number
+  ): PromiseLike<{ count: number | null; data: unknown; error: unknown }>;
 };
 
 export type DeliveryAddressSnapshot = {
@@ -537,6 +635,54 @@ export async function pageCatalogProducts(
 export async function listCatalogModelGroups(): Promise<
   RepositoryResult<DeviceModelGroup[]>
 > {
+  const now = Date.now();
+
+  if (catalogModelGroupsCache && catalogModelGroupsCache.expiresAt > now) {
+    return catalogModelGroupsCache.result;
+  }
+
+  if (catalogModelGroupsRequest) {
+    return catalogModelGroupsRequest;
+  }
+
+  catalogModelGroupsRequest = readCatalogModelGroupsUncached().then((result) => {
+    const ttl =
+      result.source === "supabase" && !result.warning
+        ? catalogModelGroupsCacheTtlMs
+        : catalogModelGroupsWarningCacheTtlMs;
+
+    catalogModelGroupsCache = {
+      expiresAt: Date.now() + ttl,
+      result,
+    };
+    catalogModelGroupsRequest = null;
+
+    return result;
+  });
+
+  return catalogModelGroupsRequest;
+}
+
+export async function listAdminCatalogModelGroups(): Promise<
+  RepositoryResult<DeviceModelGroup[]>
+> {
+  const context = await requireSupabaseContext();
+  const groups = await readCatalogModelGroupsFromProducts(context.client, "admin");
+
+  if (!groups) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_CATALOG_MODEL_GROUPS_UNAVAILABLE",
+      "Admin catalog model groups could not be read from Supabase."
+    );
+  }
+
+  return { data: groups, source: "supabase" };
+}
+
+async function readCatalogModelGroupsUncached(): Promise<
+  RepositoryResult<DeviceModelGroup[]>
+> {
   const supabaseResult = await readPublicCatalogModelGroups();
 
   return (
@@ -578,16 +724,16 @@ async function readPublicCatalogProductPage(
       (await readCatalogProductPageFromTable(
         client,
         "catalog_public_summary",
-        "*",
+        catalogPublicCardSelect,
         query,
-        options
+        { ...options, scope: "public" }
       )) ??
       (await readCatalogProductPageFromTable(
         client,
         "products",
-        "id, sku_code, name, brand, model, model_code, model_codes, category, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at, image_path, image_alt, gallery_image_paths",
+        catalogProductCardSelect,
         query,
-        options
+        { ...options, scope: "public" }
       ));
 
     return page ? { data: page, source: "supabase" } : null;
@@ -605,28 +751,58 @@ async function readPublicCatalogModelGroups(): Promise<
 
   try {
     const client = await createClient();
-    const rows =
-      (await readRows(
-        client,
-        "catalog_public_summary",
-        "brand, compatibility_models"
-      )) ??
-      (await readRows(
-        client,
-        "products",
-        "brand, model, model_code, model_codes, compatibility_models, status"
-      ));
+    const productGroups = await readCatalogModelGroupsFromProducts(client, "public");
 
-    if (!rows) {
+    if (productGroups) {
+      return { data: productGroups, source: "supabase" };
+    }
+
+    const modelOptionRows = await readRows(
+      client,
+      "catalog_model_options",
+      "brand, model",
+      5000
+    );
+
+    if (!modelOptionRows) {
       return null;
     }
 
-    const groups = buildDeviceModelGroupsFromRows(rows);
-
-    return groups.length > 0 ? { data: groups, source: "supabase" } : null;
+    return {
+      data: buildDeviceModelGroupsFromRows(modelOptionRows, { scope: "admin" }),
+      source: "supabase",
+    };
   } catch {
     return null;
   }
+}
+
+async function readCatalogModelGroupsFromProducts(
+  client: SupabaseServerClient,
+  scope: "public" | "admin"
+): Promise<DeviceModelGroup[] | null> {
+  const viewRows =
+    scope === "public"
+      ? await readRows(
+          client,
+          "catalog_public_summary",
+          "brand, compatibility_models"
+        )
+      : null;
+  const productRows =
+    viewRows ??
+    (await readRows(
+      client,
+      "products",
+      "brand, model, model_code, model_codes, compatibility_models, status",
+      5000
+    ));
+
+  if (!productRows) {
+    return null;
+  }
+
+  return buildDeviceModelGroupsFromRows(productRows, { scope });
 }
 
 async function readPublicCatalogProduct(
@@ -689,29 +865,15 @@ export async function createAdminProduct(
 ): Promise<RepositoryResult<AdminProduct>> {
   const context = await requireSupabaseContext();
   const sku = normalizeSku(input.sku);
-  const existing = await readAdminProduct(context.client, sku);
-
-  if (existing) {
-    throw new RepositoryWriteError(
-      409,
-      "ADMIN_PRODUCT_SKU_EXISTS",
-      "A product with this SKU already exists.",
-      { sku }
-    );
-  }
-
-  const payload = buildProductPayload({ ...input, sku }, false);
-  const row = await insertRow(context.client, "products", payload);
-
-  if (!row) {
-    throw new RepositoryWriteError(
-      502,
-      "ADMIN_PRODUCT_CREATE_FAILED",
-      "Supabase could not create the product."
-    );
-  }
-
-  await syncProductInventoryItem(context.client, row, payload);
+  const payload = buildProductPayload(
+    { ...input, sku, catalogStatus: "draft" as AdminCatalogStatus },
+    false,
+    { includeStatus: true, includeStock: true, includeSku: true }
+  );
+  const row = await rpcProductRow(context.client, "admin_create_product_draft", {
+    p_product: payload,
+    p_reason: "Created as draft from admin product API.",
+  });
 
   const product = mapAdminProductRow(row);
 
@@ -742,30 +904,26 @@ export async function updateAdminProduct(
     );
   }
 
-  const payload = buildProductPayload(input, true);
+  const payload = buildProductPayload(input, true, {
+    includeSku: false,
+    includeStatus: false,
+    includeStock: false,
+  });
 
   if (Object.keys(payload).length === 0) {
-    return { data: current, source: "supabase" };
-  }
-
-  const row = await updateSingleRow(
-    context.client,
-    "products",
-    "sku_code",
-    current.sku,
-    payload,
-    adminProductSelect
-  );
-
-  if (!row) {
     throw new RepositoryWriteError(
-      502,
-      "ADMIN_PRODUCT_UPDATE_FAILED",
-      "Supabase could not update the product."
+      400,
+      "ADMIN_PRODUCT_PATCH_EMPTY",
+      "Product update payload does not contain any writable fields.",
+      { sku }
     );
   }
 
-  await syncProductInventoryItem(context.client, row, payload);
+  const row = await rpcProductRow(context.client, "admin_update_product", {
+    p_sku_code: current.sourceSku ?? current.sku,
+    p_product: payload,
+    p_reason: input.reason ?? "Updated from admin product API.",
+  });
 
   const product = mapAdminProductRow(row);
 
@@ -781,12 +939,149 @@ export async function updateAdminProduct(
 }
 
 export async function hideAdminProduct(
-  sku: string
+  sku: string,
+  reason = "Hidden from admin product API."
 ): Promise<RepositoryResult<AdminProduct>> {
-  return updateAdminProduct(sku, {
-    catalogStatus: "hidden",
-    stockStatus: "Out of Stock",
+  return runAdminProductAction("admin_hide_product", sku, reason);
+}
+
+export async function publishAdminProduct(
+  sku: string,
+  reason = "Published from admin product API."
+): Promise<RepositoryResult<AdminProduct>> {
+  return runAdminProductAction("admin_publish_product", sku, reason);
+}
+
+export async function blockAdminProduct(
+  sku: string,
+  reason = "Blocked from admin product API."
+): Promise<RepositoryResult<AdminProduct>> {
+  return runAdminProductAction("admin_block_product", sku, reason);
+}
+
+export async function restoreAdminProductDraft(
+  sku: string,
+  reason = "Restored to draft from admin product API."
+): Promise<RepositoryResult<AdminProduct>> {
+  return runAdminProductAction("admin_restore_product_draft", sku, reason);
+}
+
+export async function adjustAdminProductStock(
+  input: AdminProductStockAdjustmentInput
+): Promise<RepositoryResult<AdminProduct>> {
+  const context = await requireSupabaseContext();
+  const sourceSku = await resolveAdminProductRpcSku(context.client, input.sku);
+  const row = await rpcProductRow(context.client, "admin_adjust_product_stock", {
+    p_action: input.action,
+    p_batch_code: input.batchCode ?? null,
+    p_location: input.warehouse ?? null,
+    p_quantity: input.quantity,
+    p_reason: input.reason,
+    p_sku_code: sourceSku,
+    p_supplier: input.supplier ?? null,
   });
+  const product = mapAdminProductRow(row);
+
+  if (!product) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_PRODUCT_RESULT_INVALID",
+      "Supabase returned an invalid product row."
+    );
+  }
+
+  return { data: product, source: "supabase" };
+}
+
+export async function setAdminProductImages(
+  input: AdminProductImagesInput
+): Promise<RepositoryResult<AdminProduct>> {
+  const context = await requireSupabaseContext();
+  const sourceSku = await resolveAdminProductRpcSku(context.client, input.sku);
+  const row = await rpcProductRow(context.client, "admin_set_product_images", {
+    p_gallery_image_paths: input.galleryImagePaths,
+    p_image_alt: input.imageAlt ?? null,
+    p_image_path: input.imagePath ?? null,
+    p_reason: input.reason ?? "Updated product images from admin product API.",
+    p_sku_code: sourceSku,
+  });
+  const product = mapAdminProductRow(row);
+
+  if (!product) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_PRODUCT_RESULT_INVALID",
+      "Supabase returned an invalid product row."
+    );
+  }
+
+  return { data: product, source: "supabase" };
+}
+
+export async function listAdminProductAuditEvents(
+  sku: string,
+  limit = 50
+): Promise<RepositoryResult<AdminAuditEvent[]>> {
+  const context = await requireSupabaseContext();
+  const normalizedSku = normalizeSku(sku);
+
+  try {
+    const { data, error } = await context.client
+      .from("admin_audit_events")
+      .select("id, action, actor_email, actor_role, reason, request_metadata, created_at")
+      .eq("entity_type", "product")
+      .eq("sku_code", normalizedSku)
+      .order("created_at", { ascending: false })
+      .limit(Math.max(1, Math.min(limit, 100)));
+
+    if (error || !Array.isArray(data)) {
+      throw new RepositoryWriteError(
+        502,
+        "ADMIN_PRODUCT_AUDIT_UNAVAILABLE",
+        "Product audit events could not be read from Supabase.",
+        error ? supabaseErrorDetails(error) : undefined
+      );
+    }
+
+    return {
+      data: (data as unknown[]).filter(isDbRow).map(mapAdminAuditEvent),
+      source: "supabase",
+    };
+  } catch (error) {
+    if (error instanceof RepositoryWriteError) {
+      throw error;
+    }
+
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_PRODUCT_AUDIT_UNAVAILABLE",
+      "Product audit events could not be read from Supabase."
+    );
+  }
+}
+
+async function runAdminProductAction(
+  rpcName: string,
+  sku: string,
+  reason: string
+): Promise<RepositoryResult<AdminProduct>> {
+  const context = await requireSupabaseContext();
+  const sourceSku = await resolveAdminProductRpcSku(context.client, sku);
+  const row = await rpcProductRow(context.client, rpcName, {
+    p_reason: reason,
+    p_sku_code: sourceSku,
+  });
+  const product = mapAdminProductRow(row);
+
+  if (!product) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_PRODUCT_RESULT_INVALID",
+      "Supabase returned an invalid product row."
+    );
+  }
+
+  return { data: product, source: "supabase" };
 }
 
 export async function listAdminCustomers(
@@ -998,6 +1293,56 @@ export async function transitionAdminOrderStatus(
   };
 }
 
+export async function rollbackAdminOrderStatus(
+  input: AdminOrderStatusRollbackInput
+): Promise<RepositoryResult<AdminOrderStatusTransitionResult>> {
+  const context = await requireSupabaseContext();
+  const orderRow = await readOrderByIdOrNumber(context.client, input.orderId);
+  const orderId = pickString(orderRow, ["id"]);
+
+  if (!orderId) {
+    throw new RepositoryWriteError(
+      404,
+      "ADMIN_ORDER_NOT_FOUND",
+      "Order was not found.",
+      { orderId: input.orderId }
+    );
+  }
+
+  const { data, error } = await context.client.rpc("admin_rollback_order_status", {
+    p_order_id: orderId,
+    p_note: input.note ?? "",
+    p_metadata: input.metadata ?? {},
+  });
+
+  if (error) {
+    throw new RepositoryWriteError(
+      409,
+      "ADMIN_ORDER_STATUS_ROLLBACK_FAILED",
+      "Supabase rejected the order status rollback.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const order = await readAdminOrderDetail(context.client, orderId);
+
+  if (!order) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_ORDER_RESULT_INVALID",
+      "Supabase returned an invalid order after the status rollback."
+    );
+  }
+
+  return {
+    data: {
+      order,
+      transition: data,
+    },
+    source: "supabase",
+  };
+}
+
 export async function updateAdminOrderOperations(
   input: AdminOrderOperationsPatchInput
 ): Promise<RepositoryResult<AdminOrderOperationsPatchResult>> {
@@ -1044,26 +1389,7 @@ export async function updateAdminOrderOperations(
     }
   }
 
-  if (input.warehouse) {
-    const updatedLines = await updateRowsByColumn(
-      context.client,
-      "order_lines",
-      "order_id",
-      orderId,
-      { location: input.warehouse }
-    );
-
-    if (!updatedLines) {
-      throw new RepositoryWriteError(
-        409,
-        "ADMIN_ORDER_WAREHOUSE_UPDATE_FAILED",
-        "Supabase could not update order line warehouse.",
-        { orderId, warehouse: input.warehouse }
-      );
-    }
-  }
-
-  if (Object.keys(orderPayload).length > 0 || input.warehouse) {
+  if (Object.keys(orderPayload).length > 0) {
     await insertRowWithoutReturning(context.client, "order_events", {
       order_id: orderId,
       event_type: "operations_updated",
@@ -1073,7 +1399,6 @@ export async function updateAdminOrderOperations(
         carrier: input.carrier ?? null,
         payment_status: input.paymentStatus ?? null,
         tracking: input.tracking ?? null,
-        warehouse: input.warehouse ?? null,
       },
     });
   }
@@ -1286,6 +1611,10 @@ async function readCatalogProductBySkuOrSlug(
   );
   const productRow = productRows?.[0];
 
+  if (productRow && pickString(productRow, ["status"]) !== "active") {
+    return null;
+  }
+
   return productRow ? mapProductRow(productRow) : null;
 }
 
@@ -1300,59 +1629,12 @@ async function readCatalogProductPageFromTable(
   const to = from + Math.max(query.limit, 1) - 1;
 
   try {
-    let request = client.from(table).select(select, { count: "exact" });
-
-    if (table === "products") {
-      request = request.eq("status", "active");
-    }
-
-    if (query.brand) {
-      request = request.eq("brand", query.brand);
-    }
-
-    if (query.category) {
-      request = request.eq("category", query.category);
-    }
-
-    if (query.grade) {
-      request = request.eq("quality_grade", query.grade);
-    }
-
-    if (query.minStock !== undefined) {
-      request = request.gte("stock_qty", query.minStock);
-    }
-
-    if (query.model) {
-      request = request.contains("compatibility_models", [query.model]);
-    }
-
-    if (query.q) {
-      const search = sanitizePostgrestSearchTerm(query.q);
-      request = request.or(
-        `name.ilike.%${search}%,sku_code.ilike.%${search}%,brand.ilike.%${search}%,category.ilike.%${search}%`
-      );
-    }
-
-    if (query.status) {
-      request = request.eq("stock_status", stockStatusToDbValue(query.status));
-    }
-
-    if (query.warehouse) {
-      request = request.eq("location", query.warehouse);
-    }
-
-    switch (query.sort) {
-      case "stock_desc":
-        request = request.order("stock_qty", { ascending: false });
-        break;
-      case "updated_desc":
-        request = request.order("updated_at", { ascending: false });
-        break;
-      case "name":
-      default:
-        request = request.order("name", { ascending: true });
-        break;
-    }
+    const request = applyCatalogProductQuery(
+      client.from(table).select(select, { count: "exact" }) as unknown as ProductQueryRequest,
+      table,
+      query,
+      options.scope ?? "public"
+    );
 
     const { data, error, count } = await request.range(from, to);
     const rows = Array.isArray(data)
@@ -1374,6 +1656,72 @@ async function readCatalogProductPageFromTable(
     };
   } catch {
     return null;
+  }
+}
+
+function applyCatalogProductQuery(
+  initialRequest: ProductQueryRequest,
+  table: "catalog_public_summary" | "products",
+  query: CatalogProductQueryInput,
+  scope: "public" | "admin"
+) {
+  let request = initialRequest;
+
+  if (table === "products") {
+    if (scope === "public") {
+      request = request.eq("status", "active");
+    } else if (query.catalogStatus) {
+      request = request.eq("status", query.catalogStatus);
+    }
+  }
+
+  if (query.brand) {
+    request = request.eq("brand", query.brand);
+  }
+
+  if (query.category) {
+    request = request.eq("category", query.category);
+  }
+
+  if (query.grade) {
+    request = request.eq("quality_grade", query.grade);
+  }
+
+  if (query.minStock !== undefined) {
+    request = request.gte("stock_qty", query.minStock);
+  }
+
+  if (query.model) {
+    request = request.contains("compatibility_models", [query.model]);
+  }
+
+  if (query.q) {
+    const search = sanitizePostgrestSearchTerm(query.q);
+    request = request.or(
+      `name.ilike.%${search}%,sku_code.ilike.%${search}%,brand.ilike.%${search}%,category.ilike.%${search}%`
+    );
+  }
+
+  if (query.status) {
+    request = request.eq("stock_status", stockStatusToDbValue(query.status));
+  }
+
+  if (query.warehouse) {
+    request = request.eq("location", query.warehouse);
+  }
+
+  switch (query.sort) {
+    case "stock_desc":
+      return request.order("stock_qty", { ascending: false });
+    case "updated_desc":
+      return request.order("updated_at", { ascending: false });
+    case "created_desc":
+      return table === "products"
+        ? request.order("created_at", { ascending: false })
+        : request.order("updated_at", { ascending: false });
+    case "name":
+    default:
+      return request.order("name", { ascending: true });
   }
 }
 
@@ -1537,92 +1885,79 @@ async function readAdminProductPage(
   client: SupabaseServerClient,
   query: AdminProductQueryInput
 ): Promise<AdminProductPage | null> {
-  const from = Math.max(query.offset, 0);
-  const to = from + Math.max(query.limit, 1) - 1;
+  const { data, error } = await client.rpc("admin_list_products", {
+    p_brand: query.brand ?? null,
+    p_catalog_status: query.catalogStatus ?? null,
+    p_category: query.category ?? null,
+    p_grade: query.grade ?? null,
+    p_limit: query.limit,
+    p_model: query.model ?? null,
+    p_offset: query.offset,
+    p_q: query.q ?? null,
+    p_sort: query.sort,
+    p_stock_status: query.stockStatus ? stockStatusToDbValue(query.stockStatus) : null,
+    p_warehouse: query.warehouse ?? null,
+  });
 
-  try {
-    let request = client.from("products").select(adminProductSelect, { count: "exact" });
-
-    if (query.brand) {
-      request = request.eq("brand", query.brand);
-    }
-
-    if (query.category) {
-      request = request.eq("category", query.category);
-    }
-
-    if (query.catalogStatus) {
-      request = request.eq("status", query.catalogStatus);
-    }
-
-    if (query.grade) {
-      request = request.eq("quality_grade", query.grade);
-    }
-
-    if (query.q) {
-      const search = sanitizePostgrestSearchTerm(query.q);
-      request = request.or(
-        `name.ilike.%${search}%,sku_code.ilike.%${search}%,brand.ilike.%${search}%,category.ilike.%${search}%`
-      );
-    }
-
-    if (query.stockStatus) {
-      request = request.eq("stock_status", stockStatusToDbValue(query.stockStatus));
-    }
-
-    if (query.warehouse) {
-      request = request.eq("location", query.warehouse);
-    }
-
-    switch (query.sort) {
-      case "stock_desc":
-        request = request.order("stock_qty", { ascending: false });
-        break;
-      case "updated_desc":
-        request = request.order("updated_at", { ascending: false });
-        break;
-      case "created_desc":
-        request = request.order("created_at", { ascending: false });
-        break;
-      case "name":
-      default:
-        request = request.order("name", { ascending: true });
-        break;
-    }
-
-    const { data, error, count } = await request.range(from, to);
-    const rows = Array.isArray(data)
-      ? (data as unknown[]).filter(isDbRow)
-      : null;
-
-    if (error || !rows) {
-      return null;
-    }
-
-    return {
-      products: rows.map(mapAdminProductRow).filter(isDefined),
-      total: count ?? rows.length,
-    };
-  } catch {
-    return null;
+  if (error) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_PRODUCTS_READ_UNAVAILABLE",
+      "Admin product data could not be read from Supabase.",
+      supabaseErrorDetails(error)
+    );
   }
+
+  return parseAdminProductPageRpcPayload(data);
 }
 
 async function readAdminProduct(
   client: SupabaseServerClient,
   sku: string
 ): Promise<AdminProduct | null> {
-  const rows = await readMatchingRows(
-    client,
-    "products",
-    adminProductSelect,
-    "sku_code",
-    catalogLookupCandidates(sku),
-    1
-  );
-  const row = rows?.[0];
+  for (const candidate of catalogLookupCandidates(sku)) {
+    const { data, error } = await client.rpc("admin_get_product", {
+      p_sku_code: candidate.trim().toUpperCase(),
+    });
 
-  return row ? mapAdminProductRow(row) : null;
+    if (error) {
+      throw new RepositoryWriteError(
+        502,
+        "ADMIN_PRODUCT_READ_UNAVAILABLE",
+        "Admin product data could not be read from Supabase.",
+        supabaseErrorDetails(error)
+      );
+    }
+
+    const product = isDbRow(data) ? mapAdminProductRow(data) : null;
+
+    if (product) {
+      return product;
+    }
+  }
+
+  return null;
+}
+
+async function resolveAdminProductRpcSku(
+  client: SupabaseServerClient,
+  sku: string
+) {
+  const product = await readAdminProduct(client, sku);
+  return product?.sourceSku ?? normalizeSku(sku);
+}
+
+function parseAdminProductPageRpcPayload(data: unknown): AdminProductPage | null {
+  if (!isDbRow(data) || !Array.isArray(data.products)) {
+    return null;
+  }
+
+  const rows = data.products.filter(isDbRow);
+
+  return {
+    products: rows.map(mapAdminProductRow).filter(isDefined),
+    total: pickNumber(data, ["total"]) ?? rows.length,
+  };
 }
 
 async function readAdminCustomerPage(
@@ -1964,6 +2299,17 @@ async function readAdminOrderDetail(
     }),
     readOrderCustomerRow(client, orderRow),
   ]);
+  const actorRows = await readOrderEventActorRows(client, eventRows ?? []);
+  const actorsById = new Map<string, DbRow>();
+
+  for (const actor of actorRows ?? []) {
+    const actorId = pickString(actor, ["id", "user_id"]);
+    if (actorId) {
+      actorsById.set(actorId, actor);
+    }
+  }
+  const productRows = await readProductRowsForOrderLines(client, lineRows ?? []);
+  const productsBySku = mapProductRowsBySku(productRows ?? []);
   const lineCounts = countLinesByOrder(lineRows ?? []);
   const customersById = new Map<string, DbRow>();
   const customerId = pickString(customerRow, ["id"]);
@@ -1981,8 +2327,12 @@ async function readAdminOrderDetail(
   return {
     ...order,
     lineCount: lineRows?.length ?? order.lineCount,
-    lines: (lineRows ?? []).map(mapAdminOrderLineRow).filter(isDefined),
-    events: (eventRows ?? []).map(mapAdminOrderEventRow).filter(isDefined),
+    lines: (lineRows ?? [])
+      .map((line) => mapAdminOrderLineRow(line, productsBySku))
+      .filter(isDefined),
+    events: (eventRows ?? [])
+      .map((row) => mapAdminOrderEventRow(row, actorsById))
+      .filter(isDefined),
   };
 }
 
@@ -2058,6 +2408,7 @@ async function createRemoteOrderTransaction(
     p_lines: input.lines.map((line) => ({
       sku_code: line.product.sku,
       quantity: line.quantity,
+      unit_net: centsToNumber(line.unitNetCents),
     })),
     p_customer_id: customerId,
     p_delivery_address: formatDeliveryAddress(input.deliveryAddress),
@@ -2427,6 +2778,50 @@ async function readOrderLineRowsForOrderIds(
   }
 }
 
+async function readProductRowsForOrderLines(
+  client: SupabaseServerClient,
+  lineRows: DbRow[]
+) {
+  const skuCandidates = uniqueDefinedStrings(
+    lineRows.flatMap((line) => {
+      const rawSku = pickString(line, ["sku_code", "sku"]);
+
+      if (!rawSku) {
+        return [];
+      }
+
+      const publicSku = toPublicSku(rawSku);
+      return [rawSku, publicSku, ...catalogLookupCandidates(publicSku)];
+    })
+  );
+
+  return readMatchingRows(
+    client,
+    "products",
+    "sku_code, name, image_path, image_alt, gallery_image_paths",
+    "sku_code",
+    skuCandidates,
+    Math.max(skuCandidates.length, 1)
+  );
+}
+
+function mapProductRowsBySku(productRows: DbRow[]) {
+  const productsBySku = new Map<string, DbRow>();
+
+  for (const product of productRows) {
+    const rawSku = pickString(product, ["sku_code", "sku"]);
+
+    if (!rawSku) {
+      continue;
+    }
+
+    productsBySku.set(rawSku.toUpperCase(), product);
+    productsBySku.set(toPublicSku(rawSku).toUpperCase(), product);
+  }
+
+  return productsBySku;
+}
+
 async function readCustomerRowsForOrders(
   client: SupabaseServerClient,
   orderRows: DbRow[]
@@ -2466,6 +2861,28 @@ async function readOrderCustomerRow(
   return customerId
     ? readSingleRow(client, "customers", "id", customerId, adminCustomerSelect)
     : null;
+}
+
+async function readOrderEventActorRows(
+  client: SupabaseServerClient,
+  eventRows: DbRow[]
+) {
+  const actorIds = uniqueDefinedStrings(
+    eventRows.map((row) => pickString(row, ["actor_id", "actorId"]))
+  );
+
+  if (actorIds.length === 0) {
+    return [];
+  }
+
+  return readMatchingRows(
+    client,
+    "profiles",
+    "id, email, role",
+    "id",
+    actorIds,
+    actorIds.length
+  );
 }
 
 async function readOrderByIdOrNumber(
@@ -2509,21 +2926,6 @@ async function updateSingleRow(
     return row;
   } catch {
     return null;
-  }
-}
-
-async function updateRowsByColumn(
-  client: SupabaseServerClient,
-  table: string,
-  column: string,
-  value: string,
-  payload: Record<string, unknown>
-) {
-  try {
-    const { error } = await client.from(table).update(payload).eq(column, value);
-    return !error;
-  } catch {
-    return false;
   }
 }
 
@@ -2588,13 +2990,62 @@ async function insertRowWithoutReturning(
   }
 }
 
+async function rpcProductRow(
+  client: SupabaseServerClient,
+  rpcName: string,
+  args: Record<string, unknown>
+): Promise<DbRow> {
+  const { data, error } = await client.rpc(rpcName, args);
+
+  if (error) {
+    throw new RepositoryWriteError(
+      409,
+      "ADMIN_PRODUCT_RPC_FAILED",
+      "Supabase rejected the product admin operation.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const row = extractRpcRow(data);
+
+  if (!row) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_PRODUCT_RPC_RESULT_INVALID",
+      "Supabase did not return a product row."
+    );
+  }
+
+  return row;
+}
+
+function extractRpcRow(data: unknown): DbRow | null {
+  if (isDbRow(data)) {
+    return data;
+  }
+
+  if (Array.isArray(data)) {
+    return data.find(isDbRow) ?? null;
+  }
+
+  return null;
+}
+
 function buildProductPayload(
   input: AdminProductWriteInput | AdminProductPatchInput,
-  partial: boolean
+  partial: boolean,
+  options: ProductPayloadOptions = {}
 ) {
+  const includeSku = options.includeSku ?? true;
+  const includeStatus = options.includeStatus ?? true;
+  const includeStock = options.includeStock ?? true;
   const payload: Record<string, unknown> = {};
 
-  assignDefined(payload, "sku_code", input.sku ? normalizeSku(input.sku) : undefined);
+  assignDefined(
+    payload,
+    "sku_code",
+    includeSku && "sku" in input && input.sku ? normalizeSku(input.sku) : undefined
+  );
   assignDefined(payload, "name", trimOptional(input.name));
   assignDefined(payload, "category", trimOptional(input.category));
   assignDefined(payload, "brand", trimOptional(input.brand));
@@ -2602,18 +3053,34 @@ function buildProductPayload(
   assignDefined(payload, "b2b_price", input.price);
   assignDefined(payload, "retail_price", input.retailPrice ?? (partial ? undefined : input.price));
   assignDefined(payload, "cost_price", input.costPrice ?? (partial ? undefined : 0));
-  assignDefined(payload, "stock_qty", input.stock);
+  assignDefined(
+    payload,
+    "stock_qty",
+    includeStock && "stock" in input ? input.stock : undefined
+  );
   assignDefined(payload, "moq", input.moq);
   assignDefined(payload, "location", input.warehouse);
-  assignDefined(payload, "compatibility_models", input.compatibleWith);
-  assignDefined(payload, "highlights", input.tags);
-  assignDefined(payload, "status", input.catalogStatus);
+  assignDefined(
+    payload,
+    "compatibility_models",
+    input.compatibleWith ? sanitizeSupplierStringArray(input.compatibleWith) : undefined
+  );
+  assignDefined(
+    payload,
+    "highlights",
+    input.tags ? sanitizeSupplierStringArray(input.tags) : undefined
+  );
+  assignDefined(
+    payload,
+    "status",
+    includeStatus && "catalogStatus" in input ? input.catalogStatus : undefined
+  );
   assignDefined(
     payload,
     "stock_status",
-    input.stockStatus
+    includeStock && "stockStatus" in input && input.stockStatus
       ? stockStatusToDbValue(input.stockStatus)
-      : input.stock === undefined
+      : !includeStock || !("stock" in input) || input.stock === undefined
         ? undefined
         : stockQtyToDbStatus(input.stock)
   );
@@ -2621,10 +3088,14 @@ function buildProductPayload(
   assignDefined(payload, "warranty_days", input.rmaDays ?? (partial ? undefined : 180));
   assignDefined(payload, "weight_gram", input.weightGram ?? (partial ? undefined : 0));
   assignDefined(payload, "model", trimOptional(input.model));
-  assignDefined(payload, "model_code", trimOptional(input.modelCode));
-  assignDefined(payload, "model_codes", input.modelCodes);
-  assignDefined(payload, "batch_code", trimOptional(input.batchCode));
-  assignDefined(payload, "supplier", trimOptional(input.supplier));
+  assignDefined(payload, "model_code", sanitizeOptionalSupplierText(input.modelCode));
+  assignDefined(
+    payload,
+    "model_codes",
+    input.modelCodes ? sanitizeSupplierStringArray(input.modelCodes) : undefined
+  );
+  assignDefined(payload, "batch_code", sanitizeOptionalSupplierText(input.batchCode));
+  assignDefined(payload, "supplier", sanitizeOptionalSupplierText(input.supplier));
   assignDefined(payload, "image_path", trimOptional(input.imagePath));
   assignDefined(payload, "image_alt", trimOptional(input.imageAlt));
   assignDefined(payload, "gallery_image_paths", input.galleryImagePaths);
@@ -2647,7 +3118,10 @@ function buildCustomerPayload(input: AdminCustomerPatchInput) {
   assignDefined(payload, "billing_address", trimOptional(input.billingAddress));
   assignDefined(payload, "shipping_address", trimOptional(input.shippingAddress));
   assignDefined(payload, "status", input.status);
-  assignDefined(payload, "tier", input.tier);
+  assignDefined(payload, "tier", input.tier ? normalizeCustomerTier(input.tier) : undefined);
+  assignDefined(payload, "level", input.tier ? normalizeCustomerTier(input.tier) : undefined);
+  assignDefined(payload, "customer_type", input.customerType);
+  assignDefined(payload, "assignment_status", input.assignmentStatus);
   assignDefined(payload, "price_group_id", input.priceGroupId);
   assignDefined(payload, "monthly_purchase", trimOptional(input.monthlyPurchase));
   assignDefined(payload, "credit_limit", input.creditLimit);
@@ -2675,7 +3149,11 @@ function customerPayloadFromB2BApplication(
     registered_address: registeredAddress,
     billing_address: registeredAddress,
     shipping_address: shippingAddress,
-    tier: input.tier ?? "standard",
+    tier: normalizeCustomerTier(input.tier),
+    customer_type: "wholesale",
+    assignment_status: "assigned",
+    level: normalizeCustomerTier(input.tier),
+    lifetime_spend_net: 0,
     price_group_id:
       input.priceGroupId === undefined
         ? pickString(row, ["requested_price_group_id"])
@@ -2688,61 +3166,11 @@ function customerPayloadFromB2BApplication(
   };
 }
 
-async function syncProductInventoryItem(
-  client: SupabaseServerClient,
-  productRow: DbRow,
-  productPayload: Record<string, unknown>
-) {
-  if (!Object.prototype.hasOwnProperty.call(productPayload, "stock_qty")) {
-    return;
-  }
-
-  const sku = pickString(productRow, ["sku_code", "sku"]);
-  const productName = pickString(productRow, ["name", "product_name"]);
-  const stockQty = pickNumber(productRow, ["stock_qty"]);
-
-  if (!sku || !productName || stockQty === null) {
-    return;
-  }
-
-  const inventoryRows = await readMatchingRows(
-    client,
-    "inventory_items",
-    "id, locked_qty",
-    "sku_code",
-    [sku],
-    1
-  );
-  const existing = inventoryRows?.[0];
-  const lockedQty = existing ? pickNumber(existing, ["locked_qty"]) ?? 0 : 0;
-  const inventoryPayload = {
-    sku_code: sku,
-    product_name: productName,
-    brand: pickString(productRow, ["brand"]) ?? null,
-    model: pickString(productRow, ["model"]) ?? null,
-    quality_grade: pickString(productRow, ["quality_grade"]) ?? null,
-    batch_code: pickString(productRow, ["batch_code"]) ?? null,
-    location: pickString(productRow, ["location"]) ?? null,
-    actual_qty: stockQty + lockedQty,
-    available_qty: stockQty,
-    supplier: pickString(productRow, ["supplier"]) ?? null,
-    last_movement_at: new Date().toISOString(),
-  };
-  const existingId = pickString(existing, ["id"]);
-
-  if (existingId) {
-    await updateSingleRow(client, "inventory_items", "id", existingId, inventoryPayload);
-    return;
-  }
-
-  await insertRow(client, "inventory_items", {
-    ...inventoryPayload,
-    locked_qty: 0,
-  });
-}
-
 function mapProductRow(row: DbRow): RepositoryPartProduct | null {
-  const sku = pickString(row, ["sku", "sku_code", "code", "product_sku", "part_number"]) ?? pickString(row, ["id"]);
+  const rawSku =
+    pickString(row, ["sku", "sku_code", "code", "product_sku", "part_number"]) ??
+    pickString(row, ["id"]);
+  const sku = rawSku ? toPublicSku(rawSku) : null;
   const name = pickString(row, ["name", "title", "product_name", "description"]) ?? sku;
 
   if (!sku || !name) {
@@ -2794,7 +3222,7 @@ function mapProductRow(row: DbRow): RepositoryPartProduct | null {
     vatRate,
     rmaDays: pickNumber(row, ["rma_days", "rmaDays", "warranty_days", "return_days"]) ?? 30,
     leadTime: pickString(row, ["lead_time", "leadTime", "delivery_time"]) ?? "24/48h Italia",
-    tags: readStringArray(row, ["tags", "labels", "highlights"]),
+    tags: sanitizeSupplierStringArray(readStringArray(row, ["tags", "labels", "highlights"])),
     ...(imageUrl ? { imageUrl } : {}),
     ...(imageAlt ? { imageAlt } : {}),
     ...(galleryImageUrls.length > 0 ? { galleryImageUrls } : {}),
@@ -2805,6 +3233,7 @@ function mapProductRow(row: DbRow): RepositoryPartProduct | null {
 function mapAdminProductRow(row: DbRow): AdminProduct | null {
   const product = mapProductRow(row);
   const id = pickString(row, ["id", "product_id", "uuid"]);
+  const sourceSku = pickString(row, ["sku_code", "sku"]);
 
   if (!product || !id) {
     return null;
@@ -2812,27 +3241,50 @@ function mapAdminProductRow(row: DbRow): AdminProduct | null {
 
   const stockQty = pickNumber(row, ["stock_qty", "stock", "available_qty"]) ?? product.stock;
   const stockStatus = normalizeStockStatus(pickString(row, ["stock_status"]), stockQty);
+  const availableQty = pickNumber(row, ["available_qty"]) ?? stockQty;
+  const lockedQty = pickNumber(row, ["locked_qty"]) ?? 0;
+  const actualQty = pickNumber(row, ["actual_qty"]) ?? availableQty + lockedQty;
+  const b2bPrice = pickNumber(row, ["b2b_price", "price"]) ?? product.price;
+  const costPrice = pickNumber(row, ["cost_price"]) ?? 0;
+  const margin = b2bPrice > 0 ? roundMoney(((b2bPrice - costPrice) / b2bPrice) * 100) : 0;
 
   return {
     ...product,
     id,
+    sourceSku: sourceSku ? sourceSku.toUpperCase() : undefined,
     status: stockStatus,
     catalogStatus: normalizeCatalogStatus(pickString(row, ["status"])),
     stockStatus,
     stockQty,
-    b2bPrice: pickNumber(row, ["b2b_price", "price"]) ?? product.price,
-    costPrice: pickNumber(row, ["cost_price"]) ?? 0,
+    availableQty,
+    lockedQty,
+    actualQty,
+    b2bPrice,
+    costPrice,
+    margin,
     retailPrice: pickNumber(row, ["retail_price", "retailPrice"]) ?? product.retailPrice,
     vatMode: pickString(row, ["vat_mode"]) ?? "IVA esclusa",
     warrantyDays: pickNumber(row, ["warranty_days"]) ?? product.rmaDays,
     weightGram: pickNumber(row, ["weight_gram"]) ?? 0,
     model: pickString(row, ["model"]) ?? undefined,
-    modelCode: pickString(row, ["model_code"]) ?? undefined,
-    modelCodes: readStringArray(row, ["model_codes"]),
-    batchCode: pickString(row, ["batch_code"]) ?? undefined,
-    supplier: pickString(row, ["supplier"]) ?? undefined,
+    modelCode: sanitizeOptionalSupplierText(pickString(row, ["model_code"])),
+    modelCodes: sanitizeSupplierStringArray(readStringArray(row, ["model_codes"])),
+    batchCode: sanitizeOptionalSupplierText(pickString(row, ["batch_code"])),
+    supplier: sanitizeOptionalSupplierText(pickString(row, ["supplier"])),
     imagePath: pickString(row, ["image_path"]) ?? undefined,
     galleryImagePaths: readStringArray(row, ["gallery_image_paths"]),
+    createdAt: formatPartsProDateTime(pickString(row, ["created_at", "createdAt"])),
+  };
+}
+
+function mapAdminAuditEvent(row: DbRow): AdminAuditEvent {
+  return {
+    id: pickString(row, ["id"]) ?? "",
+    action: pickString(row, ["action"]) ?? "product.audit",
+    actorEmail: pickString(row, ["actor_email", "actorEmail"]),
+    actorRole: pickString(row, ["actor_role", "actorRole"]),
+    reason: pickString(row, ["reason"]),
+    requestMetadata: row.request_metadata ?? row.requestMetadata ?? {},
     createdAt: formatPartsProDateTime(pickString(row, ["created_at", "createdAt"])),
   };
 }
@@ -2855,9 +3307,14 @@ function mapCompanyRow(row: DbRow): CompanyProfile | null {
     pec: pickString(row, ["pec", "certified_email"]) ?? "",
     codiceDestinatario: pickString(row, ["codice_destinatario", "codiceDestinatario", "sdi_code"]) ?? "",
     status: normalizeCompanyStatus(pickString(row, ["status"])),
-    priceList: normalizePriceList(pickString(row, ["price_list", "priceList", "tier"])),
+    priceList: normalizePriceList(pickString(row, ["level", "price_list", "priceList", "tier"])),
     city: pickString(row, ["city"]) ?? pickString(billingAddress, ["city"]) ?? "",
     province: pickString(row, ["province"]) ?? pickString(billingAddress, ["province"]) ?? "",
+    customerType: normalizeCustomerType(pickString(row, ["customer_type"])),
+    assignmentStatus: normalizeCustomerAssignmentStatus(pickString(row, ["assignment_status"])),
+    level: normalizePriceList(pickString(row, ["level", "tier"])),
+    lifetimeSpendNet: pickNumber(row, ["lifetime_spend_net"]) ?? 0,
+    profileCompletedAt: pickString(row, ["profile_completed_at"]),
   };
 }
 
@@ -2871,13 +3328,19 @@ function mapAdminCustomerRow(row: DbRow): AdminCustomer | null {
   return {
     ...profile,
     customerStatus: normalizeAdminCustomerStatus(pickString(row, ["status"])),
+    customerType: normalizeCustomerType(pickString(row, ["customer_type"])),
+    assignmentStatus: normalizeCustomerAssignmentStatus(pickString(row, ["assignment_status"])),
     contactName: pickString(row, ["contact_name"]) ?? "",
     email: pickString(row, ["email"]) ?? "",
     phone: pickString(row, ["phone"]) ?? "",
     registeredAddress: pickString(row, ["registered_address"]) ?? "",
     billingAddress: pickString(row, ["billing_address"]) ?? "",
     shippingAddress: pickString(row, ["shipping_address"]) ?? "",
-    tier: pickString(row, ["tier"]) ?? "standard",
+    tier: normalizePriceList(pickString(row, ["level", "tier"])),
+    level: normalizePriceList(pickString(row, ["level", "tier"])),
+    lifetimeSpendNet: pickNumber(row, ["lifetime_spend_net"]) ?? 0,
+    assignedBy: pickString(row, ["assigned_by"]),
+    assignedAt: pickString(row, ["assigned_at"]),
     priceGroupId: pickString(row, ["price_group_id"]),
     monthlyPurchase: pickString(row, ["monthly_purchase"]) ?? "",
     ordersCount: pickNumber(row, ["orders_count"]) ?? 0,
@@ -3019,9 +3482,13 @@ function mapAdminOrderRow(
   };
 }
 
-function mapAdminOrderLineRow(row: DbRow): AdminOrderLine | null {
+function mapAdminOrderLineRow(
+  row: DbRow,
+  productsBySku: Map<string, DbRow> = new Map()
+): AdminOrderLine | null {
   const id = pickString(row, ["id"]);
-  const sku = pickString(row, ["sku_code", "sku"]);
+  const rawSku = pickString(row, ["sku_code", "sku"]);
+  const sku = rawSku ? toPublicSku(rawSku) : null;
 
   if (!id || !sku) {
     return null;
@@ -3029,11 +3496,23 @@ function mapAdminOrderLineRow(row: DbRow): AdminOrderLine | null {
 
   const quantity = pickNumber(row, ["quantity"]) ?? 0;
   const unitPrice = pickNumber(row, ["unit_price"]) ?? 0;
+  const productRow =
+    (rawSku ? productsBySku.get(rawSku.toUpperCase()) : undefined) ??
+    productsBySku.get(sku.toUpperCase());
+  const productName = pickString(row, ["product_name", "name"]) ?? sku;
+  const imagePath = pickOrderLineImagePath(row) ?? pickOrderLineImagePath(productRow);
+  const productImageUrl = resolveProductImageUrl(imagePath);
+  const productImageAlt =
+    pickString(row, ["image_alt", "imageAlt"]) ??
+    pickString(productRow, ["image_alt", "imageAlt"]) ??
+    productName;
 
   return {
     id,
     sku,
-    productName: pickString(row, ["product_name", "name"]) ?? sku,
+    productName,
+    ...(productImageUrl ? { productImageUrl } : {}),
+    ...(productImageAlt ? { productImageAlt } : {}),
     qualityGrade: pickString(row, ["quality_grade"]) ?? "",
     quantity,
     unitPrice,
@@ -3041,18 +3520,43 @@ function mapAdminOrderLineRow(row: DbRow): AdminOrderLine | null {
     stockStatus: pickString(row, ["stock_status"]) ?? "available",
     reservedQty: pickNumber(row, ["reserved_qty"]) ?? 0,
     fulfilledQty: pickNumber(row, ["fulfilled_qty"]) ?? 0,
-    batchCode: pickString(row, ["batch_code"]),
+    batchCode: sanitizeSupplierText(pickString(row, ["batch_code"])) || null,
     location: pickString(row, ["location"]),
     reservationAllocations: readJsonArray(row, "reservation_allocations"),
   };
 }
 
-function mapAdminOrderEventRow(row: DbRow): AdminOrderEvent | null {
+function pickOrderLineImagePath(row: DbRow | null | undefined) {
+  if (!row) {
+    return null;
+  }
+
+  return (
+    pickString(row, ["image_path", "imagePath", "imageUrl", "image_url"]) ??
+    readStringArray(row, [
+      "gallery_image_paths",
+      "galleryImagePaths",
+      "gallery_image_urls",
+      "galleryImageUrls",
+    ])[0] ??
+    null
+  );
+}
+
+function mapAdminOrderEventRow(
+  row: DbRow,
+  actorsById: Map<string, DbRow> = new Map()
+): AdminOrderEvent | null {
   const id = pickString(row, ["id"]);
 
   if (!id) {
     return null;
   }
+
+  const actorId = pickString(row, ["actor_id"]);
+  const actor = actorId ? actorsById.get(actorId) : undefined;
+  const actorEmail = pickString(row, ["actor_email", "actorEmail"]) ?? pickString(actor, ["email"]);
+  const actorRole = pickString(row, ["actor_role", "actorRole"]) ?? pickString(actor, ["role"]);
 
   return {
     id,
@@ -3061,7 +3565,10 @@ function mapAdminOrderEventRow(row: DbRow): AdminOrderEvent | null {
     toStatus: normalizeAdminOrderDbStatus(pickString(row, ["to_status"])),
     note: pickString(row, ["note"]) ?? "",
     metadata: row.metadata ?? {},
-    actorId: pickString(row, ["actor_id"]),
+    actorId,
+    actorEmail,
+    actorName: pickString(row, ["actor_name", "actorName"]) ?? actorEmail,
+    actorRole,
     createdAt: pickString(row, ["created_at"]) ?? "",
   };
 }
@@ -3085,7 +3592,7 @@ function mapRmaRow(row: DbRow, linesById: Map<string, DbRow>): RmaRequest | null
   return {
     id,
     orderId,
-    sku: sku ?? "SKU-ND",
+    sku: sku ? toPublicSku(sku) : "SKU-ND",
     productName:
       pickString(row, ["product_name", "name"]) ??
       (line ? pickString(line, ["product_name", "name_snapshot", "name"]) : null) ??
@@ -3138,16 +3645,20 @@ function readCompatibility(row: DbRow) {
     }
   }
 
-  return [...new Set(direct)];
+  return [...new Set(sanitizeSupplierStringArray(direct))];
 }
 
-function buildDeviceModelGroupsFromRows(rows: DbRow[]): DeviceModelGroup[] {
+function buildDeviceModelGroupsFromRows(
+  rows: DbRow[],
+  options: { scope?: "public" | "admin" } = {}
+): DeviceModelGroup[] {
   const groups = new Map<string, Set<string>>();
+  const scope = options.scope ?? "public";
 
   for (const row of rows) {
     const status = pickString(row, ["status"]);
 
-    if (status && status.toLowerCase() !== "active") {
+    if (scope === "public" && status && status.toLowerCase() !== "active") {
       continue;
     }
 
@@ -3325,7 +3836,18 @@ function trimOptional(value: string | undefined) {
 }
 
 function normalizeSku(value: string) {
-  return value.trim().toUpperCase();
+  return toPublicSku(value);
+}
+
+function sanitizeOptionalSupplierText(value: string | null | undefined) {
+  const sanitized = sanitizeSupplierText(value);
+  return sanitized || undefined;
+}
+
+function sanitizeSupplierStringArray(values: string[]) {
+  return values
+    .map((value) => sanitizeSupplierText(value))
+    .filter(Boolean);
 }
 
 function resolveProductImageUrl(value: string | null | undefined) {
@@ -3488,17 +4010,8 @@ function normalizeCategory(value: string) {
   return value;
 }
 
-function normalizeWarehouse(value: string | null): "Milano" | "Roma" | "Shenzhen" {
-  const normalized = value?.toLowerCase() ?? "";
-
-  if (normalized.includes("roma") || normalized.includes("rome")) {
-    return "Roma";
-  }
-
-  if (normalized.includes("shenzhen") || normalized.includes("china")) {
-    return "Shenzhen";
-  }
-
+function normalizeWarehouse(value: string | null): PartProduct["warehouse"] {
+  void value;
   return "Milano";
 }
 
@@ -3645,18 +4158,25 @@ function normalizeRmaStatus(value: string | null): RmaStatus {
   return "requested";
 }
 
-function normalizePriceList(value: string | null): "Standard" | "Pro" | "Partner" {
-  const normalized = value?.toLowerCase();
+function normalizePriceList(value: string | null): CustomerLevel {
+  return normalizeCustomerTier(value);
+}
 
-  if (normalized === "gold" || normalized === "partner") {
-    return "Partner";
+function normalizeCustomerType(value: string | null): CustomerType {
+  return value === "wholesale" ? "wholesale" : "retail";
+}
+
+function normalizeCustomerAssignmentStatus(value: string | null): CustomerAssignmentStatus {
+  if (
+    value === "assigned" ||
+    value === "converted_to_employee" ||
+    value === "archived" ||
+    value === "needs_review"
+  ) {
+    return value;
   }
 
-  if (normalized === "silver" || normalized === "pro") {
-    return "Pro";
-  }
-
-  return "Standard";
+  return "needs_review";
 }
 
 function emptyResult<T>(data: T, warning?: string): RepositoryResult<T> {
@@ -3664,7 +4184,7 @@ function emptyResult<T>(data: T, warning?: string): RepositoryResult<T> {
 }
 
 function catalogLookupCandidates(value: string) {
-  return [value, value.toUpperCase()];
+  return catalogSkuLookupCandidates(value);
 }
 
 function shouldFallbackToCatalogSlugLookup(value: string) {

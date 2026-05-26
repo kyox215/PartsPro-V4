@@ -5,9 +5,13 @@ import {
   pageCatalogProducts,
 } from "@/lib/partspro-repository";
 import type { PartProduct } from "@/lib/partspro-data";
-import { canViewWholesalePrices } from "@/lib/partspro-price-access";
+import {
+  applyAccountPriceToProduct,
+  getCurrentAccountContext,
+  type AccountContext,
+} from "@/lib/partspro-account-context";
 
-const initialCatalogLimit = 48;
+const initialCatalogLimit = 24;
 export const dynamic = "force-dynamic";
 
 type CatalogPageSearchParams = Promise<
@@ -21,7 +25,7 @@ export default async function Page({
 }) {
   const resolvedSearchParams = await searchParams;
   const query = readCatalogQuery(resolvedSearchParams);
-  const showWholesalePrice = await canViewWholesalePrices();
+  const account = await getCurrentAccountContext({ ensure: true });
   const [catalogPage, modelGroups] = await Promise.all([
     pageCatalogProducts(
       {
@@ -31,7 +35,7 @@ export default async function Page({
         sort: "stock_desc",
       },
       {
-        includeBuyerPrices: showWholesalePrice,
+        includeBuyerPrices: account.canViewPrices,
       }
     ),
     listCatalogModelGroups(),
@@ -43,9 +47,9 @@ export default async function Page({
         filteredTotal={catalogPage.data.total}
         initialModelGroups={modelGroups.data}
         initialProducts={catalogPage.data.products.map((product) =>
-          toCatalogCardProduct(product, showWholesalePrice)
+          toCatalogCardProduct(product, account)
         )}
-        showWholesalePrice={showWholesalePrice}
+        showWholesalePrice={account.canViewPrices}
       />
     </Suspense>
   );
@@ -65,15 +69,7 @@ function readSingleParam(value: string | string[] | undefined) {
 
 function toCatalogCardProduct(
   product: PartProduct,
-  showWholesalePrice: boolean
+  account: AccountContext
 ): PartProduct {
-  if (showWholesalePrice) {
-    return product;
-  }
-
-  return {
-    ...product,
-    price: 0,
-    retailPrice: 0,
-  };
+  return applyAccountPriceToProduct(product, account);
 }

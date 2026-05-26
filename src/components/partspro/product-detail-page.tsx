@@ -13,7 +13,6 @@ import {
   ShieldCheck,
   Truck,
   type LucideIcon,
-  Warehouse,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -95,9 +94,6 @@ export function ProductDetailPage({
                   <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
                     {product.status}
                   </Badge>
-                  <Badge className="border border-primary/20 bg-primary/8 text-primary">
-                    {product.warehouse}
-                  </Badge>
                   <Badge variant="outline">{product.grade}</Badge>
                 </div>
                 <h1 className="mt-4 break-words text-2xl font-black tracking-normal sm:text-3xl md:text-5xl">
@@ -125,15 +121,15 @@ export function ProductDetailPage({
                   <div className="flex items-center gap-2 font-black text-slate-950">
                     <BadgeEuro className="size-4 text-primary" />
                     {showWholesalePrice
-                      ? "Sessione buyer verificata"
-                      : "Prezzi riservati ai buyer verificati"}
+                      ? "Sessione cliente verificata"
+                      : "Prezzi riservati agli account verificati"}
                   </div>
                   <p className="mt-2 leading-6">
                     {showWholesalePrice && hasBuyerPrice
-                      ? "Prezzo netto, quantità minime e condizioni B2B sono disponibili per questo SKU."
+                      ? "Prezzo netto, quantità minime e condizioni cliente sono disponibili per questo SKU."
                       : showWholesalePrice
-                        ? "Account verificato: il listino wholesale per questo SKU deve ancora essere aggiornato."
-                        : "Accedi con Partita IVA approvata per vedere listino wholesale, quantità minime, sconti volume e condizioni di pagamento."}
+                        ? "Account verificato: il prezzo per questo SKU deve ancora essere aggiornato."
+                        : "Accedi per vedere prezzo, quantità minime, sconti livello e condizioni di pagamento."}
                   </p>
                 </div>
 
@@ -182,8 +178,8 @@ export function ProductDetailPage({
                       <div className="min-w-0">
                         <div className="font-black">Prezzo non impostato</div>
                         <p className="mt-1 leading-6">
-                          Sessione verificata, ma il listino B2B per questo SKU
-                          non è ancora stato aggiornato.
+                          Sessione verificata, ma il prezzo per questo SKU non è
+                          ancora stato aggiornato.
                         </p>
                       </div>
                     </CardContent>
@@ -194,8 +190,8 @@ export function ProductDetailPage({
                       <div className="min-w-0">
                         <div className="font-black text-slate-950">Prezzo protetto</div>
                         <p className="mt-1 leading-6">
-                          Accedi con un cliente B2B approvato per sbloccare
-                          prezzo netto, preventivo e invio al carrello.
+                          Accedi con un account cliente per sbloccare prezzo
+                          netto, preventivo e invio al carrello.
                         </p>
                       </div>
                       <Button asChild className="shrink-0">
@@ -212,7 +208,7 @@ export function ProductDetailPage({
                 { icon: Truck, label: product.leadTime, text: "Consegna tracciata in Italia" },
                 { icon: ShieldCheck, label: `${product.rmaDays} giorni RMA`, text: "Reso gestito da account" },
                 { icon: PackageCheck, label: `${product.stock} pezzi`, text: product.status },
-                { icon: FileText, label: "Fattura B2B", text: "PEC / Codice Destinatario" },
+                { icon: FileText, label: "Fattura", text: "PEC / Codice Destinatario" },
               ].map((item) => (
                 <Card key={item.label} className="rounded-lg border-slate-200 bg-white">
                   <CardContent className="flex items-center gap-3 p-4">
@@ -240,29 +236,23 @@ export function ProductDetailPage({
               <Spec label="Categoria" value={product.category} />
               <Spec label="Qualità" value={product.grade} />
               <Spec label="Aliquota IVA" value={`${product.vatRate}%`} />
-              <Spec label="Magazzino" value={product.warehouse} />
               <Spec label="Ultimo aggiornamento" value={product.updatedAt} />
             </CardContent>
           </Card>
           <Card className="rounded-lg border-slate-200 bg-white">
             <CardHeader>
-              <CardTitle>Condizioni B2B</CardTitle>
+              <CardTitle>Condizioni cliente</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <InfoRow
                 icon={Landmark}
                 label="Partita IVA"
-                value="Prezzo riservato ad aziende verificate"
+                value="Prezzo riservato ad account verificati"
               />
               <InfoRow
                 icon={FileText}
                 label="Fattura elettronica"
                 value="PEC o Codice Destinatario in checkout"
-              />
-              <InfoRow
-                icon={Warehouse}
-                label="Allocazione stock"
-                value={`${product.warehouse} · priorità ordini pagati`}
               />
               <InfoRow
                 icon={ShieldCheck}

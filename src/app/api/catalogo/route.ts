@@ -7,7 +7,12 @@ import {
 } from "@/lib/partspro-api";
 import { pageCatalogProducts } from "@/lib/partspro-repository";
 import { type PartProduct } from "@/lib/partspro-data";
-import { canViewWholesalePrices } from "@/lib/partspro-price-access";
+import {
+  applyAccountPriceToProduct,
+  getCurrentAccountContext,
+  priceVisibilityReason,
+  type AccountContext,
+} from "@/lib/partspro-account-context";
 
 const catalogQuerySchema = z
   .object({
@@ -15,7 +20,6 @@ const catalogQuerySchema = z
     category: z.string().trim().min(1).max(40).optional(),
     q: z.string().trim().min(2).max(80).optional(),
     model: z.string().trim().min(2).max(80).optional(),
-    warehouse: z.enum(["Milano", "Roma", "Shenzhen"]).optional(),
     status: z.enum(["In Stock", "Low Stock", "Out of Stock"]).optional(),
     grade: z.enum(["A+", "A", "B", "Refurbished"]).optional(),
     minStock: z.coerce.number().int().min(0).max(10000).optional(),
@@ -44,14 +48,15 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const showWholesalePrice = await canViewWholesalePrices();
+    const account = await getCurrentAccountContext({ ensure: true });
+    const showPrice = account.canViewPrices;
     const repositoryResult = await pageCatalogProducts(result.data, {
-      includeBuyerPrices: showWholesalePrice,
+      includeBuyerPrices: showPrice,
     });
 
     return NextResponse.json({
       data: repositoryResult.data.products.map((product) =>
-        toCatalogProduct(product, showWholesalePrice)
+        toCatalogProduct(product, account)
       ),
       meta: {
         source: repositoryResult.source,
@@ -60,9 +65,7 @@ export async function GET(request: NextRequest) {
         offset: result.data.offset,
         returned: repositoryResult.data.products.length,
         currency: "EUR",
-        priceVisibility: showWholesalePrice
-          ? "visible_authenticated"
-          : "hidden_until_b2b_login",
+        priceVisibility: showPrice ? "visible_authenticated" : "hidden_until_login",
         vatMode: "net_prices_plus_iva",
       },
     });
@@ -71,33 +74,35 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function toCatalogProduct(product: PartProduct, showWholesalePrice: boolean) {
+function toCatalogProduct(product: PartProduct, account: AccountContext) {
+  const pricedProduct = applyAccountPriceToProduct(product, account);
+
   return {
-    sku: product.sku,
-    slug: product.slug,
-    name: product.name,
-    category: product.category,
-    brand: product.brand,
-    grade: product.grade,
-    price: showWholesalePrice ? product.price : 0,
-    retailPrice: showWholesalePrice ? product.retailPrice : 0,
-    stock: product.stock,
-    status: product.status,
-    visual: product.visual,
-    warehouse: product.warehouse,
-    moq: product.moq,
-    vatRate: product.vatRate,
-    rmaDays: product.rmaDays,
-    leadTime: product.leadTime,
-    updatedAt: product.updatedAt,
-    compatibleWith: product.compatibleWith,
-    tags: product.tags,
-    imageUrl: product.imageUrl,
-    imageAlt: product.imageAlt,
-    galleryImageUrls: product.galleryImageUrls,
+    sku: pricedProduct.sku,
+    slug: pricedProduct.slug,
+    name: pricedProduct.name,
+    category: pricedProduct.category,
+    brand: pricedProduct.brand,
+    grade: pricedProduct.grade,
+    price: pricedProduct.price,
+    retailPrice: account.canViewPrices ? pricedProduct.retailPrice : 0,
+    stock: pricedProduct.stock,
+    status: pricedProduct.status,
+    visual: pricedProduct.visual,
+    warehouse: pricedProduct.warehouse,
+    moq: pricedProduct.moq,
+    vatRate: pricedProduct.vatRate,
+    rmaDays: pricedProduct.rmaDays,
+    leadTime: pricedProduct.leadTime,
+    updatedAt: pricedProduct.updatedAt,
+    compatibleWith: pricedProduct.compatibleWith,
+    tags: pricedProduct.tags,
+    imageUrl: pricedProduct.imageUrl,
+    imageAlt: pricedProduct.imageAlt,
+    galleryImageUrls: pricedProduct.galleryImageUrls,
     priceGate: {
-      visible: showWholesalePrice,
-      reason: showWholesalePrice ? "authenticated" : "b2b_login_required",
+      visible: account.canViewPrices,
+      reason: priceVisibilityReason(account),
       vatMode: "net_prices_plus_iva",
     },
   };

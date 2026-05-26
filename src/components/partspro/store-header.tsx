@@ -31,6 +31,7 @@ import { tx } from "@/i18n/dictionaries/storefront";
 type StoreHeaderProps = {
   modelGroups?: readonly DeviceModelGroup[];
   onCatalogSelect?: (selection: CatalogSelection) => void;
+  prefetchCatalogLinks?: boolean;
   selectedCatalog?: CatalogSelection;
 };
 
@@ -43,6 +44,7 @@ type AccountAccessState = {
 export function StoreHeader({
   modelGroups,
   onCatalogSelect,
+  prefetchCatalogLinks = false,
   selectedCatalog,
 }: StoreHeaderProps) {
   const t = useT();
@@ -103,6 +105,7 @@ export function StoreHeader({
           <StoreMobileMenu
             modelGroups={modelGroups}
             onCatalogSelect={onCatalogSelect}
+            prefetchCatalogLinks={prefetchCatalogLinks}
             selectedCatalog={selectedCatalog}
           />
 
@@ -115,7 +118,7 @@ export function StoreHeader({
               tagline={tx(
                 t,
                 "storefront.logo.tagline",
-                "Ricambi smartphone B2B Italia"
+                "Ricambi smartphone Italia"
               )}
             />
           </Link>
@@ -145,7 +148,7 @@ export function StoreHeader({
               access={accountAccess}
               label={tx(t, "nav.account", "Account")}
               menuLabel={tx(t, "storefront.account.menuLabel", "Area account")}
-              accountLabel={tx(t, "storefront.account.openAccount", "Account B2B")}
+              accountLabel={tx(t, "storefront.account.openAccount", "Account cliente")}
               adminLabel={tx(t, "storefront.account.openAdmin", "Pannello admin")}
               staffLabel={tx(t, "storefront.account.staffRole", "Accesso staff")}
             />
@@ -167,10 +170,10 @@ export function StoreHeader({
           </Button>
           <AccountDropdown
             access={accountAccess}
-            accountLabel={tx(t, "storefront.account.openAccount", "Account B2B")}
+            accountLabel={tx(t, "storefront.account.openAccount", "Account cliente")}
             adminLabel={tx(t, "storefront.account.openAdmin", "Pannello admin")}
             compact
-            label={tx(t, "storefront.header.openAccount", "Apri account B2B")}
+            label={tx(t, "storefront.header.openAccount", "Apri account")}
             menuLabel={tx(t, "storefront.account.menuLabel", "Area account")}
             staffLabel={tx(t, "storefront.account.staffRole", "Accesso staff")}
           />

@@ -32,14 +32,16 @@ import {
   type DeviceModelGroup,
   type PartProduct,
   type PartVisual as PartVisualType,
-  formatEuro,
 } from "@/lib/partspro-data";
+import { formatMoney } from "@/i18n/format";
+import { translateText } from "@/i18n/dictionaries/auto-translate";
 import { PartVisual } from "./part-visual";
 import { CatalogBrandTree } from "./catalog-brand-tree";
 import { StoreHeader } from "./store-header";
 import { useI18n, useT } from "./i18n-provider";
 import { useCart } from "./cart-state";
 import {
+  brandLabel,
   categoryLabel,
   leadTimeLabel,
   stockStatusLabel,
@@ -147,7 +149,7 @@ export function HomePage({
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
-      <StoreHeader modelGroups={modelGroups} />
+      <StoreHeader modelGroups={modelGroups} prefetchCatalogLinks />
       <div className="mx-auto grid w-full max-w-[1500px] min-w-0 grid-cols-[minmax(0,1fr)] gap-3 px-2 py-3 sm:gap-4 sm:px-4 sm:py-4 lg:grid-cols-[230px_minmax(0,1fr)] xl:grid-cols-[230px_minmax(0,1fr)_300px]">
         <CategorySidebar modelGroups={modelGroups} />
         <div className="min-w-0 space-y-5">
@@ -192,6 +194,7 @@ function CategorySidebar({ modelGroups }: { modelGroups?: readonly DeviceModelGr
           idPrefix="home-desktop-catalog"
           modelGroups={modelGroups}
           onExpandedBrandChange={setExpandedBrand}
+          prefetchCatalogLinks
           showAvailableLink
           variant="desktop"
         />
@@ -457,9 +460,10 @@ function BrandModelStrip({
           <Link
             key={group.brand}
             href={`/catalogo?brand=${encodeURIComponent(group.brand)}`}
+            title={brandLabel(t, group.brand) === group.brand ? undefined : group.brand}
             className="grid h-16 min-w-0 place-items-center rounded-lg border border-slate-200 bg-white px-3 text-center text-sm font-black shadow-[0_12px_28px_rgba(15,23,42,0.04)] transition hover:border-primary/40 hover:text-primary"
           >
-            <span className="max-w-full truncate">{group.brand}</span>
+            <span className="max-w-full truncate">{brandLabel(t, group.brand)}</span>
           </Link>
         ))}
       </div>
@@ -493,6 +497,8 @@ function FeaturedProductCard({ product }: { product: PartProduct }) {
   const t = useT();
   const { locale } = useI18n();
   const productPath = `/prodotto/${encodeURIComponent(product.sku)}`;
+  const productName = translateText(product.name, locale);
+  const productImageAlt = translateText(product.imageAlt ?? product.name, locale);
   const visibleModels = product.compatibleWith.slice(0, 2);
   const extraModels = Math.max(product.compatibleWith.length - visibleModels.length, 0);
   const stockLine = tx(
@@ -514,14 +520,14 @@ function FeaturedProductCard({ product }: { product: PartProduct }) {
         href={productPath}
         aria-label={tx(t, "storefront.home.productCard.openAria", "Apri scheda prodotto {name}").replace(
           "{name}",
-          product.name
+          productName
         )}
         className="relative block h-28 overflow-hidden rounded-md bg-slate-50 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-36 sm:rounded-lg"
       >
         {product.imageUrl ? (
           <Image
             src={product.imageUrl}
-            alt={product.imageAlt ?? product.name}
+            alt={productImageAlt}
             fill
             sizes="(max-width: 640px) 104px, (max-width: 1280px) 50vw, 25vw"
             className="object-contain p-2 sm:p-3"
@@ -539,7 +545,7 @@ function FeaturedProductCard({ product }: { product: PartProduct }) {
           href={productPath}
           className="line-clamp-2 break-words text-[13px] font-black leading-4 text-slate-950 hover:text-primary sm:text-sm sm:leading-5"
         >
-          {product.name}
+          {productName}
         </Link>
         <div className="mt-1 truncate font-mono text-[10px] text-slate-500 sm:text-xs">
           {product.sku}
@@ -599,6 +605,7 @@ function FeaturedProductCard({ product }: { product: PartProduct }) {
 
 function RightRail() {
   const t = useT();
+  const { locale } = useI18n();
   const cart = useCart();
   const totals = cart.totals;
   const visibleLines = totals.lines.slice(0, 3);
@@ -621,24 +628,30 @@ function RightRail() {
         </div>
         {visibleLines.length > 0 ? (
           <div className="space-y-3">
-            {visibleLines.map((line) => (
-              <div key={line.sku} className="flex gap-3">
-                <PartVisual variant={line.product.visual} className="size-12 shrink-0 rounded-md" />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-xs font-bold">{line.product.name}</div>
-                  <div className="mt-1 text-[11px] text-slate-500">{line.sku}</div>
-                  <div className="mt-1 flex items-center justify-between text-xs">
-                    <span className="text-emerald-600">
-                      {tx(t, "storefront.home.rightRail.cart.quantity", "{count} pz").replace(
-                        "{count}",
-                        String(line.quantity)
-                      )}
-                    </span>
-                    <span className="font-bold text-primary">{formatEuro(line.lineTotal)}</span>
+            {visibleLines.map((line) => {
+              const productName = translateText(line.product.name, locale);
+
+              return (
+                <div key={line.sku} className="flex gap-3">
+                  <PartVisual variant={line.product.visual} className="size-12 shrink-0 rounded-md" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-xs font-bold">{productName}</div>
+                    <div className="mt-1 text-[11px] text-slate-500">{line.sku}</div>
+                    <div className="mt-1 flex items-center justify-between text-xs">
+                      <span className="text-emerald-600">
+                        {tx(t, "storefront.home.rightRail.cart.quantity", "{count} pz").replace(
+                          "{count}",
+                          String(line.quantity)
+                        )}
+                      </span>
+                      <span className="font-bold text-primary">
+                        {formatMoney(line.lineTotal, locale)}
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm font-semibold leading-5 text-slate-500">
@@ -652,7 +665,7 @@ function RightRail() {
         <Separator className="my-4" />
         <div className="mb-4 flex items-center justify-between text-sm font-bold">
           <span>{tx(t, "storefront.home.rightRail.cart.subtotal", "Subtotale")}</span>
-          <span>{formatEuro(totals.subtotal)}</span>
+          <span>{formatMoney(totals.subtotal, locale)}</span>
         </div>
         <div className="grid grid-cols-2 gap-2">
           <Button variant="outline" asChild>

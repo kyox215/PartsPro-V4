@@ -47,7 +47,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <Card className="w-full max-w-[440px] border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
           <CardHeader>
             <Badge className="mb-2 w-fit border border-primary/20 bg-primary/8 text-primary">
-              Accesso B2B
+              Accesso clienti
             </Badge>
             <CardTitle className="text-2xl font-black">Login PartsPro</CardTitle>
           </CardHeader>

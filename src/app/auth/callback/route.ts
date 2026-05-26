@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { AUTH_NEXT_COOKIE } from "@/lib/partspro-auth-cookies";
 import { cleanAuthRedirect, loginUrl, requestOrigin } from "@/lib/partspro-auth-redirect";
+import { ensureCurrentUserAccount } from "@/lib/partspro-account-context";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 
@@ -24,6 +25,7 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
+      await ensureCurrentUserAccount();
       return redirectAndClearNext(`${origin}${next}`);
     }
   }

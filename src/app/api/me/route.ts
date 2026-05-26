@@ -1,17 +1,34 @@
 import { NextResponse } from "next/server";
 import { getAdminAuthState } from "@/lib/partspro-admin-auth";
+import { getCurrentAccountContext } from "@/lib/partspro-account-context";
+import { visiblePanelsForPermissions } from "@/lib/partspro-permissions";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const adminAuth = await getAdminAuthState();
+  const [account, adminAuth] = await Promise.all([
+    getCurrentAccountContext({ ensure: true }),
+    getAdminAuthState(),
+  ]);
   const role = "role" in adminAuth ? adminAuth.role ?? null : null;
+  const permissions = adminAuth.allowed ? adminAuth.permissions : account.permissions;
+  const visiblePanels = adminAuth.allowed
+    ? visiblePanelsForPermissions(permissions)
+    : account.visiblePanels;
 
   return NextResponse.json({
-    authenticated: adminAuth.configured && adminAuth.reason !== "missing_session",
+    authenticated: account.authenticated,
+    accountType: account.accountType,
+    customer: account.customer,
+    roleTemplate: account.roleTemplate,
+    permissions,
+    visiblePanels,
+    canViewPrices: account.canViewPrices,
+    canCheckout: account.canCheckout,
     admin: {
       allowed: adminAuth.allowed,
       role: adminAuth.allowed ? role : null,
+      reason: adminAuth.reason,
     },
   });
 }

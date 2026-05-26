@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
 import {
   getAdminOrder,
+  rollbackAdminOrderStatus,
   transitionAdminOrderStatus,
   updateAdminOrderOperations,
 } from "@/lib/partspro-repository";
@@ -14,7 +15,7 @@ export const dynamic = "force-dynamic";
 type OrderParams = { params: Promise<{ orderId: string }> };
 
 export async function GET(_request: NextRequest, { params }: OrderParams) {
-  const admin = await requireAdminApi();
+  const admin = await requireAdminApi("orders.read");
 
   if (!admin.ok) {
     return admin.response;
@@ -45,7 +46,7 @@ export async function GET(_request: NextRequest, { params }: OrderParams) {
 }
 
 export async function PATCH(request: NextRequest, { params }: OrderParams) {
-  const admin = await requireAdminApi();
+  const admin = await requireAdminApi("orders.manage");
 
   if (!admin.ok) {
     return admin.response;
@@ -68,8 +69,48 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
   const { orderId } = await params;
   const decodedOrderId = decodeURIComponent(orderId);
 
+  if (parsed.data.rollback && (parsed.data.status || hasOperationsPatch(parsed.data))) {
+    return apiError(
+      400,
+      "ADMIN_ORDER_ROLLBACK_PAYLOAD_INVALID",
+      "Rollback must be submitted as a standalone order status action.",
+      { orderId }
+    );
+  }
+
   try {
-    const transitionResult = parsed.data.status
+    if (!parsed.data.rollback && parsed.data.status === "shipped") {
+      const currentOrder = (await getAdminOrder(decodedOrderId)).data;
+
+      if (!currentOrder) {
+        return apiError(404, "ADMIN_ORDER_NOT_FOUND", "Order was not found.", {
+          orderId,
+        });
+      }
+
+      const carrier = parsed.data.carrier ?? currentOrder.carrier;
+      const tracking = parsed.data.tracking ?? currentOrder.trackingCode;
+
+      if (!hasShipmentInfo(carrier, tracking)) {
+        return apiError(
+          400,
+          "ADMIN_ORDER_LOGISTICS_REQUIRED",
+          "Carrier and tracking are required before an order can be shipped.",
+          { orderId }
+        );
+      }
+    }
+
+    const rollbackResult = parsed.data.rollback
+      ? await rollbackAdminOrderStatus({
+          orderId: decodedOrderId,
+          note: parsed.data.note ?? "Admin order status rollback",
+          metadata: {
+            rollback: true,
+          },
+        })
+      : null;
+    const transitionResult = !parsed.data.rollback && parsed.data.status
       ? await transitionAdminOrderStatus({
           orderId: decodedOrderId,
           status: parsed.data.status,
@@ -79,22 +120,21 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
             fulfillmentStatus: parsed.data.fulfillmentStatus ?? null,
             paymentStatus: parsed.data.paymentStatus ?? null,
             tracking: parsed.data.tracking ?? null,
-            warehouse: parsed.data.warehouse ?? null,
           },
         })
       : null;
-    const operationsResult = hasOperationsPatch(parsed.data)
+    const operationsResult = !parsed.data.rollback && hasOperationsPatch(parsed.data)
       ? await updateAdminOrderOperations({
           orderId: decodedOrderId,
           carrier: parsed.data.carrier,
           note: parsed.data.note,
           paymentStatus: parsed.data.paymentStatus,
           tracking: parsed.data.tracking,
-          warehouse: parsed.data.warehouse,
         })
       : null;
     const result =
       operationsResult ??
+      rollbackResult ??
       transitionResult ?? {
         data: {
           order: (await getAdminOrder(decodedOrderId)).data,
@@ -115,7 +155,6 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
       data: toAdminOrderDto(order, {
         ...(parsed.data.carrier ? { carrier: parsed.data.carrier } : {}),
         ...(parsed.data.tracking !== undefined ? { tracking: parsed.data.tracking } : {}),
-        ...(parsed.data.warehouse ? { warehouse: parsed.data.warehouse } : {}),
         ...(parsed.data.paymentStatus
           ? { paymentStatus: toUiPaymentStatus(parsed.data.paymentStatus) }
           : {}),
@@ -125,7 +164,10 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
       }),
       meta: {
         source: result.source,
-        transition: transitionResult?.data.transition ?? null,
+        transition:
+          rollbackResult?.data.transition ??
+          transitionResult?.data.transition ??
+          null,
       },
     });
   } catch (error) {
@@ -145,12 +187,14 @@ function hasOperationsPatch(patch: {
   carrier?: string;
   paymentStatus?: string;
   tracking?: string;
-  warehouse?: string;
 }) {
   return (
     patch.carrier !== undefined ||
     patch.paymentStatus !== undefined ||
-    patch.tracking !== undefined ||
-    patch.warehouse !== undefined
+    patch.tracking !== undefined
   );
+}
+
+function hasShipmentInfo(carrier: string | undefined, tracking: string | undefined) {
+  return Boolean(carrier?.trim() && tracking?.trim());
 }

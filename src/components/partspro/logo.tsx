@@ -10,7 +10,7 @@ type LogoProps = {
 export function PartsProLogo({
   compact = false,
   className,
-  tagline = "Ricambi smartphone B2B Italia",
+  tagline = "Ricambi smartphone Italia",
 }: LogoProps) {
   return (
     <div className={cn("flex items-center gap-2.5", className)}>

@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 type ProductParams = { params: Promise<{ sku: string }> };
 
 export async function GET(_request: NextRequest, { params }: ProductParams) {
-  const admin = await requireAdminApi();
+  const admin = await requireAdminApi("product.read_admin");
 
   if (!admin.ok) {
     return admin.response;
@@ -57,12 +57,16 @@ export async function PATCH(request: NextRequest, { params }: ProductParams) {
     return apiError(400, "INVALID_JSON", "Request body must be valid JSON.");
   }
 
-  const parsed = productPatchSchema.safeParse(body.data);
+  const parsed = productPatchSchema.safeParse(readProductPayload(body.data));
 
   if (!parsed.success) {
     return apiError(400, "INVALID_ADMIN_PRODUCT_PAYLOAD", "Product payload is invalid.", {
       issues: formatZodIssues(parsed.error),
     });
+  }
+
+  if (!hasWritableProductPatch(parsed.data)) {
+    return apiError(400, "ADMIN_PRODUCT_PATCH_EMPTY", "Product update payload is empty.");
   }
 
   const { sku } = await params;
@@ -87,7 +91,7 @@ export async function PATCH(request: NextRequest, { params }: ProductParams) {
 }
 
 export async function DELETE(_request: NextRequest, { params }: ProductParams) {
-  const admin = await requireAdminApi();
+  const admin = await requireAdminApi("product.hide");
 
   if (!admin.ok) {
     return admin.response;
@@ -96,7 +100,10 @@ export async function DELETE(_request: NextRequest, { params }: ProductParams) {
   const { sku } = await params;
 
   try {
-    const result = await hideAdminProduct(decodeURIComponent(sku));
+    const result = await hideAdminProduct(
+      decodeURIComponent(sku),
+      "Hidden from admin product detail API."
+    );
 
     return NextResponse.json({
       data: toAdminProductDto(result.data),
@@ -114,4 +121,20 @@ export async function DELETE(_request: NextRequest, { params }: ProductParams) {
       "Product could not be hidden at this time."
     );
   }
+}
+
+function readProductPayload(payload: unknown) {
+  if (isRecord(payload) && isRecord(payload.product)) {
+    return payload.product;
+  }
+
+  return payload;
+}
+
+function hasWritableProductPatch(payload: Record<string, unknown>) {
+  return Object.keys(payload).some((key) => key !== "reason");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

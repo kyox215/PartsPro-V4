@@ -7,6 +7,7 @@ import {
   RepositoryWriteError,
   saveRmaRequest,
 } from "@/lib/partspro-repository";
+import { toPublicSku } from "@/lib/partspro-sku";
 
 const createRmaSchema = z
   .object({
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const catalog = await listCatalogProducts();
-    const sku = result.data.sku.toUpperCase();
+    const sku = toPublicSku(result.data.sku);
     const product = catalog.data.find((item) => item.sku === sku);
     const saved = await saveRmaRequest({
       ...result.data,

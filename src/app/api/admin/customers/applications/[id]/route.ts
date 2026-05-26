@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 type ApplicationParams = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: NextRequest, { params }: ApplicationParams) {
-  const admin = await requireAdminApi();
+  const admin = await requireAdminApi("customers.classify");
 
   if (!admin.ok) {
     return admin.response;
@@ -47,6 +47,8 @@ export async function PATCH(request: NextRequest, { params }: ApplicationParams)
         customer: result.data.customer ? toAdminCustomerDto(result.data.customer) : null,
       },
       meta: {
+        deprecated: true,
+        replacement: "/api/admin/accounts",
         source: result.source,
         convertedToActiveCustomer:
           parsed.data.decision === "approve" && result.data.customer !== null,

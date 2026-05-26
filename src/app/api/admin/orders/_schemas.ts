@@ -33,15 +33,7 @@ export const orderQuerySchema = z
 
 export const orderPatchSchema = z
   .object({
-    status: z
-      .enum([
-        ...adminOrderDbStatuses,
-        "draft",
-        "pending_payment",
-        "paid",
-        "delivered",
-      ] as const)
-      .optional(),
+    status: z.enum(adminOrderDbStatuses).optional(),
     paymentStatus: z
       .enum(["unpaid", "authorized", "paid", "refunded", ...adminPaymentStatuses] as const)
       .optional(),
@@ -50,20 +42,14 @@ export const orderPatchSchema = z
       .optional(),
     carrier: z.string().trim().min(1).max(80).optional(),
     tracking: z.string().trim().max(120).optional(),
-    warehouse: z.enum(["Milano", "Roma", "Shenzhen"]).optional(),
     note: z.string().trim().max(500).optional(),
+    rollback: z.boolean().optional(),
   })
-  .passthrough();
+  .strict();
 
 export const orderStatusPatchSchema = z
   .object({
-    status: z.enum([
-      ...adminOrderDbStatuses,
-      "draft",
-      "pending_payment",
-      "paid",
-      "delivered",
-    ] as const),
+    status: z.enum(adminOrderDbStatuses),
     note: z.string().trim().max(1000).optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
   })

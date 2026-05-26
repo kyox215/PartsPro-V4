@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 type CustomerParams = { params: Promise<{ id: string }> };
 
 export async function GET(_request: NextRequest, { params }: CustomerParams) {
-  const admin = await requireAdminApi();
+  const admin = await requireAdminApi("customers.read");
 
   if (!admin.ok) {
     return admin.response;
@@ -41,7 +41,7 @@ export async function GET(_request: NextRequest, { params }: CustomerParams) {
 }
 
 export async function PATCH(request: NextRequest, { params }: CustomerParams) {
-  const admin = await requireAdminApi();
+  const admin = await requireAdminApi("customers.manage");
 
   if (!admin.ok) {
     return admin.response;

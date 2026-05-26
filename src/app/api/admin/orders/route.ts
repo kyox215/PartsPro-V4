@@ -9,7 +9,7 @@ import { orderQuerySchema } from "./_schemas";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const admin = await requireAdminApi();
+  const admin = await requireAdminApi("orders.read");
 
   if (!admin.ok) {
     return admin.response;

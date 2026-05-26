@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 import { cleanAuthRedirect, loginUrl } from "@/lib/partspro-auth-redirect";
+import { ensureCurrentUserAccount } from "@/lib/partspro-account-context";
 
 export async function signInWithPassword(formData: FormData) {
   const next = cleanAuthRedirect(formData.get("next"));
@@ -25,6 +26,7 @@ export async function signInWithPassword(formData: FormData) {
     redirect(loginUrl(next, "invalid"));
   }
 
+  await ensureCurrentUserAccount();
   redirect(next);
 }
 

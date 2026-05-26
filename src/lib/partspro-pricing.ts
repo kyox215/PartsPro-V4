@@ -1,6 +1,6 @@
-import type { CompanyProfile } from "@/lib/partspro-data";
+import type { CompanyProfile, CustomerLevel } from "@/lib/partspro-data";
 
-export type CustomerTier = CompanyProfile["priceList"];
+export type CustomerTier = CustomerLevel;
 
 export type CustomerTierRule = {
   tier: CustomerTier;
@@ -10,6 +10,8 @@ export type CustomerTierRule = {
   freeShippingThreshold: number;
   label: string;
   tagLabel: string;
+  minSpend: number;
+  maxSpend: number | null;
 };
 
 export type TierPriceBreakdown = {
@@ -20,35 +22,93 @@ export type TierPriceBreakdown = {
   finalPrice: number;
 };
 
-export const customerTiers = ["Standard", "Pro", "Partner"] as const satisfies readonly CustomerTier[];
+export const customerTiers = [
+  "bronze",
+  "silver",
+  "gold",
+  "emerald",
+  "diamond",
+  "master",
+  "king",
+] as const satisfies readonly CustomerTier[];
 
 export const customerTierRules = {
-  Standard: {
-    tier: "Standard",
+  bronze: {
+    tier: "bronze",
     discountRate: 0,
     paymentTerms: "Pagamento anticipato",
     creditLimit: 0,
     freeShippingThreshold: 250,
-    label: "Standard",
-    tagLabel: "Listino Standard",
+    label: "Bronzo",
+    tagLabel: "Livello Bronzo",
+    minSpend: 0,
+    maxSpend: 999.99,
   },
-  Pro: {
-    tier: "Pro",
-    discountRate: 0.08,
+  silver: {
+    tier: "silver",
+    discountRate: 0.02,
     paymentTerms: "30 giorni data fattura",
-    creditLimit: 2500,
+    creditLimit: 1000,
     freeShippingThreshold: 150,
-    label: "Pro",
-    tagLabel: "Listino Pro",
+    label: "Argento",
+    tagLabel: "Livello Argento",
+    minSpend: 1000,
+    maxSpend: 10799.99,
   },
-  Partner: {
-    tier: "Partner",
-    discountRate: 0.15,
+  gold: {
+    tier: "gold",
+    discountRate: 0.04,
     paymentTerms: "45 giorni data fattura",
+    creditLimit: 2500,
+    freeShippingThreshold: 0,
+    label: "Oro",
+    tagLabel: "Livello Oro",
+    minSpend: 10800,
+    maxSpend: 20599.99,
+  },
+  emerald: {
+    tier: "emerald",
+    discountRate: 0.06,
+    paymentTerms: "45 giorni data fattura",
+    creditLimit: 5000,
+    freeShippingThreshold: 0,
+    label: "Smeraldo",
+    tagLabel: "Livello Smeraldo",
+    minSpend: 20600,
+    maxSpend: 30399.99,
+  },
+  diamond: {
+    tier: "diamond",
+    discountRate: 0.08,
+    paymentTerms: "60 giorni data fattura",
     creditLimit: 7500,
     freeShippingThreshold: 0,
-    label: "Partner",
-    tagLabel: "Partner premium",
+    label: "Diamante",
+    tagLabel: "Livello Diamante",
+    minSpend: 30400,
+    maxSpend: 40199.99,
+  },
+  master: {
+    tier: "master",
+    discountRate: 0.1,
+    paymentTerms: "60 giorni data fattura",
+    creditLimit: 10000,
+    freeShippingThreshold: 0,
+    label: "Maestro",
+    tagLabel: "Livello Maestro",
+    minSpend: 40200,
+    maxSpend: 49999.99,
+  },
+  king: {
+    tier: "king",
+    discountRate: 0.12,
+    paymentTerms: "60 giorni data fattura",
+    creditLimit: 15000,
+    freeShippingThreshold: 0,
+    label: "Re",
+    tagLabel: "Livello Re",
+    minSpend: 50000,
+    maxSpend: null,
   },
 } as const satisfies Record<CustomerTier, CustomerTierRule>;
 
@@ -59,7 +119,29 @@ export function isCustomerTier(value: string): value is CustomerTier {
 export function normalizeCustomerTier(
   tier: CompanyProfile["priceList"] | string | null | undefined
 ): CustomerTier {
-  return typeof tier === "string" && isCustomerTier(tier) ? tier : "Standard";
+  if (typeof tier !== "string") {
+    return "bronze";
+  }
+
+  const normalized = tier.trim().toLowerCase();
+
+  if (isCustomerTier(normalized)) {
+    return normalized;
+  }
+
+  if (normalized === "standard") {
+    return "bronze";
+  }
+
+  if (normalized === "pro") {
+    return "silver";
+  }
+
+  if (normalized === "partner") {
+    return "gold";
+  }
+
+  return "bronze";
 }
 
 export function getTierRule(tier: CompanyProfile["priceList"]): CustomerTierRule {
@@ -74,6 +156,16 @@ export function calculateTierPrice(
   const { discountRate } = getTierRule(tier);
 
   return roundCurrency(price * (1 - discountRate));
+}
+
+export function levelForLifetimeSpend(spend: number): CustomerTier {
+  if (spend >= 50000) return "king";
+  if (spend >= 40200) return "master";
+  if (spend >= 30400) return "diamond";
+  if (spend >= 20600) return "emerald";
+  if (spend >= 10800) return "gold";
+  if (spend >= 1000) return "silver";
+  return "bronze";
 }
 
 export function getTierPriceBreakdown(

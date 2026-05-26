@@ -5,6 +5,7 @@ import {
   products,
   type PartProduct,
 } from "@/lib/partspro-data";
+import { toPublicSku } from "@/lib/partspro-sku";
 
 export type CartItem = {
   sku: string;
@@ -336,7 +337,7 @@ function normalizeQuantity(value: unknown) {
 }
 
 function normalizeSku(value: string) {
-  return value.trim().toUpperCase();
+  return toPublicSku(value);
 }
 
 function getProductBySku(sku: string) {

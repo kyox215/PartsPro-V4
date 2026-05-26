@@ -176,7 +176,7 @@ export function ProductCard({
                       Accedi per prezzo
                     </div>
                     <div className="hidden truncate text-xs text-slate-500 sm:block">
-                      MOQ {product.moq} · Listino da approvare
+                      MOQ {product.moq} · Login richiesto
                     </div>
                   </>
                 )}
@@ -483,11 +483,11 @@ function getPurchaseValidationMessage({
   }
 
   if (isAboveStock) {
-    return `Quantita oltre stock: disponibili ${product.stock} pezzi in ${product.warehouse}.`;
+    return `Quantita oltre stock: disponibili ${product.stock} pezzi.`;
   }
 
   if (canOrder) {
-    return `${safeQuantity} pezzi pronti per il carrello da ${product.warehouse}.`;
+    return `${safeQuantity} pezzi pronti per il carrello.`;
   }
 
   return "Controlla quantita, MOQ e disponibilita prima di procedere.";

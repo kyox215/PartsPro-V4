@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Grid3X3, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { CatalogBrandTree, type CatalogSelection } from "./catalog-brand-tree";
 import { ProductCard } from "./product-card";
 import { StoreHeader } from "./store-header";
 
-type FilterKey = "brand" | "category" | "status" | "grade" | "warehouse";
+type FilterKey = "brand" | "category" | "status" | "grade";
 
 type CatalogFiltersState = Record<FilterKey, string[]>;
 
@@ -20,9 +20,8 @@ const emptyFilters: CatalogFiltersState = {
   category: [],
   status: [],
   grade: [],
-  warehouse: [],
 };
-const visibleProductsIncrement = 48;
+const visibleProductsIncrement = 24;
 
 type CatalogSearchParams = {
   get: (name: string) => string | null;
@@ -101,6 +100,25 @@ function CatalogPageContent({
   const [expandedBrand, setExpandedBrand] = useState<string | null>(
     () => initialFilters.brand[0] ?? null
   );
+  const catalogPageCacheRef = useRef(
+    new Map<string, { products: PartProduct[]; total: number }>([
+      [
+        buildCatalogApiPath(
+          {
+            brand: initialFilters.brand[0],
+            inStockOnly: initialInStockOnly || undefined,
+            model: initialSearchTerm || undefined,
+          },
+          0
+        ),
+        {
+          products: initialProducts,
+          total: initialFilteredTotal,
+        },
+      ],
+    ])
+  );
+  const catalogRequestRef = useRef<AbortController | null>(null);
   const modelGroups = useMemo(
     () => initialModelGroups ?? buildModelGroups(initialProducts),
     [initialModelGroups, initialProducts]
@@ -116,10 +134,35 @@ function CatalogPageContent({
   );
   const loadCatalogSelection = useCallback(
     async (selection: CatalogSelection, offset = 0) => {
+      const apiPath = buildCatalogApiPath(selection, offset);
+      const cachedPage = catalogPageCacheRef.current.get(apiPath);
+      const tracksLatestRequest = offset === 0;
+
+      if (tracksLatestRequest) {
+        catalogRequestRef.current?.abort();
+      }
+
       setCatalogLoadState(offset > 0 ? "loading-more" : "loading");
 
+      if (cachedPage) {
+        setFilteredTotal(cachedPage.total);
+        setProducts((currentProducts) =>
+          offset > 0 ? [...currentProducts, ...cachedPage.products] : cachedPage.products
+        );
+        setCatalogLoadState("idle");
+        return;
+      }
+
+      const controller = new AbortController();
+
+      if (tracksLatestRequest) {
+        catalogRequestRef.current = controller;
+      }
+
       try {
-        const response = await fetch(buildCatalogApiPath(selection, offset));
+        const response = await fetch(apiPath, {
+          signal: controller.signal,
+        });
 
         if (!response.ok) {
           return;
@@ -130,13 +173,28 @@ function CatalogPageContent({
           meta?: { total?: number };
         };
         const nextProducts = payload.data ?? [];
+        const nextTotal = payload.meta?.total ?? nextProducts.length;
 
-        setFilteredTotal(payload.meta?.total ?? nextProducts.length);
+        rememberCatalogPage(catalogPageCacheRef.current, apiPath, {
+          products: nextProducts,
+          total: nextTotal,
+        });
+
+        setFilteredTotal(nextTotal);
         setProducts((currentProducts) =>
           offset > 0 ? [...currentProducts, ...nextProducts] : nextProducts
         );
+      } catch (error) {
+        if (error instanceof Error && error.name === "AbortError") {
+          return;
+        }
       } finally {
-        setCatalogLoadState("idle");
+        if (!tracksLatestRequest || catalogRequestRef.current === controller) {
+          if (tracksLatestRequest) {
+            catalogRequestRef.current = null;
+          }
+          setCatalogLoadState("idle");
+        }
       }
     },
     []
@@ -373,4 +431,22 @@ function buildCatalogApiPath(selection: CatalogSelection, offset = 0) {
   params.set("sort", "stock_desc");
 
   return `/api/catalogo?${params.toString()}`;
+}
+
+function rememberCatalogPage(
+  cache: Map<string, { products: PartProduct[]; total: number }>,
+  key: string,
+  page: { products: PartProduct[]; total: number }
+) {
+  cache.set(key, page);
+
+  if (cache.size <= 20) {
+    return;
+  }
+
+  const firstKey = cache.keys().next().value;
+
+  if (firstKey) {
+    cache.delete(firstKey);
+  }
 }

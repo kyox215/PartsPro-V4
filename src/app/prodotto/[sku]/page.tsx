@@ -1,6 +1,10 @@
 import { ProductDetailPage } from "@/components/partspro/product-detail-page";
 import type { PartProduct } from "@/lib/partspro-data";
-import { canViewWholesalePrices } from "@/lib/partspro-price-access";
+import {
+  applyAccountPriceToProduct,
+  getCurrentAccountContext,
+  type AccountContext,
+} from "@/lib/partspro-account-context";
 import { getCatalogProductBySkuOrSlug } from "@/lib/partspro-repository";
 import { notFound } from "next/navigation";
 
@@ -13,9 +17,9 @@ export default async function Page({
 }) {
   const { sku } = await params;
   const decodedSku = decodeURIComponent(sku);
-  const [productResult, showWholesalePrice] = await Promise.all([
+  const account = await getCurrentAccountContext({ ensure: true });
+  const [productResult] = await Promise.all([
     getCatalogProductBySkuOrSlug(decodedSku),
-    canViewWholesalePrices(),
   ]);
   const product = productResult.data;
 
@@ -25,23 +29,15 @@ export default async function Page({
 
   return (
     <ProductDetailPage
-      product={toProductDetailProduct(product, showWholesalePrice)}
-      showWholesalePrice={showWholesalePrice}
+      product={toProductDetailProduct(product, account)}
+      showWholesalePrice={account.canViewPrices}
     />
   );
 }
 
 function toProductDetailProduct(
   product: PartProduct,
-  showWholesalePrice: boolean
+  account: AccountContext
 ): PartProduct {
-  if (showWholesalePrice) {
-    return product;
-  }
-
-  return {
-    ...product,
-    price: 0,
-    retailPrice: 0,
-  };
+  return applyAccountPriceToProduct(product, account);
 }

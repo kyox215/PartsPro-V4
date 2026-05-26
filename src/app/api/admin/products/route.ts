@@ -5,15 +5,21 @@ import {
   hideAdminProduct,
   listAdminProducts,
   updateAdminProduct,
+  type AdminProductQueryInput,
 } from "@/lib/partspro-repository";
 import { parseAdminQuery, repositoryErrorResponse, requireAdminApi } from "../_shared";
 import { toAdminProductDto } from "./_dto";
-import { productPatchSchema, productQuerySchema, productWriteSchema } from "./_schemas";
+import {
+  productPatchSchema,
+  productQuerySchema,
+  productWriteSchema,
+  type ProductQueryPayload,
+} from "./_schemas";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const admin = await requireAdminApi();
+  const admin = await requireAdminApi("product.read_admin");
 
   if (!admin.ok) {
     return admin.response;
@@ -25,16 +31,22 @@ export async function GET(request: NextRequest) {
     return query.response;
   }
 
+  const resolvedQuery = resolveProductQuery(query.data);
+
+  if (!resolvedQuery.ok) {
+    return resolvedQuery.response;
+  }
+
   try {
-    const result = await listAdminProducts(query.data);
+    const result = await listAdminProducts(resolvedQuery.data);
 
     return NextResponse.json({
       data: result.data.products.map(toAdminProductDto),
       meta: {
         source: result.source,
         total: result.data.total,
-        limit: query.data.limit,
-        offset: query.data.offset,
+        limit: resolvedQuery.data.limit,
+        offset: resolvedQuery.data.offset,
         returned: result.data.products.length,
         storefrontLinkage: "products -> catalog_public_summary/catalog_buyer_prices",
       },
@@ -49,7 +61,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const admin = await requireAdminApi();
+  const admin = await requireAdminApi("product.create_draft");
 
   if (!admin.ok) {
     return admin.response;
@@ -71,15 +83,19 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const result = await createAdminProduct(parsed.data);
+    const result = await createAdminProduct({
+      ...parsed.data,
+      catalogStatus: "draft",
+    });
 
     return NextResponse.json(
       {
         data: toAdminProductDto(result.data),
         meta: {
           source: result.source,
-          storefrontVisible: result.data.catalogStatus === "active",
+          storefrontVisible: false,
           storefrontLinkage: "products -> catalog_public_summary/catalog_buyer_prices",
+          workflow: "draft_created_requires_publish_action",
         },
       },
       { status: 201 }
@@ -121,6 +137,10 @@ export async function PATCH(request: NextRequest) {
     });
   }
 
+  if (!hasWritableProductPatch(parsed.data)) {
+    return apiError(400, "ADMIN_PRODUCT_PATCH_EMPTY", "Product update payload is empty.");
+  }
+
   try {
     const result = await updateAdminProduct(sku, parsed.data);
 
@@ -142,7 +162,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const admin = await requireAdminApi();
+  const admin = await requireAdminApi("product.hide");
 
   if (!admin.ok) {
     return admin.response;
@@ -164,7 +184,7 @@ export async function DELETE(request: NextRequest) {
     const products = [];
 
     for (const sku of skus) {
-      const result = await hideAdminProduct(sku);
+      const result = await hideAdminProduct(sku, "Hidden through bulk admin products API.");
       products.push(toAdminProductDto(result.data));
     }
 
@@ -185,6 +205,36 @@ export async function DELETE(request: NextRequest) {
       "Products could not be hidden at this time."
     );
   }
+}
+
+function resolveProductQuery(
+  query: ProductQueryPayload
+):
+  | { ok: true; data: AdminProductQueryInput }
+  | { ok: false; response: ReturnType<typeof apiError> } {
+  if (query.status && query.catalogStatus && query.status !== query.catalogStatus) {
+    return {
+      ok: false,
+      response: apiError(400, "INVALID_QUERY", "Product status filters conflict.", {
+        status: query.status,
+        catalogStatus: query.catalogStatus,
+      }),
+    };
+  }
+
+  const { status, ...rest } = query;
+
+  return {
+    ok: true,
+    data: {
+      ...rest,
+      catalogStatus: query.catalogStatus ?? status,
+    },
+  };
+}
+
+function hasWritableProductPatch(payload: Record<string, unknown>) {
+  return Object.keys(payload).some((key) => key !== "reason");
 }
 
 function readProductPayload(payload: unknown) {

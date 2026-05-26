@@ -26,6 +26,20 @@ export type RmaStatus =
   | "received"
   | "replaced"
   | "refunded";
+export type CustomerType = "retail" | "wholesale";
+export type CustomerAssignmentStatus =
+  | "needs_review"
+  | "assigned"
+  | "converted_to_employee"
+  | "archived";
+export type CustomerLevel =
+  | "bronze"
+  | "silver"
+  | "gold"
+  | "emerald"
+  | "diamond"
+  | "master"
+  | "king";
 
 export type PartProduct = {
   sku: string;
@@ -41,7 +55,7 @@ export type PartProduct = {
   updatedAt: string;
   visual: PartVisual;
   compatibleWith: string[];
-  warehouse: "Milano" | "Roma" | "Shenzhen";
+  warehouse: "Milano";
   moq: number;
   vatRate: number;
   rmaDays: number;
@@ -65,7 +79,12 @@ export type CompanyProfile = {
   pec: string;
   codiceDestinatario: string;
   status: CompanyStatus;
-  priceList: "Standard" | "Pro" | "Partner";
+  priceList: CustomerLevel;
+  customerType?: CustomerType;
+  assignmentStatus?: CustomerAssignmentStatus;
+  level?: CustomerLevel;
+  lifetimeSpendNet?: number;
+  profileCompletedAt?: string | null;
   city: string;
   province: string;
 };

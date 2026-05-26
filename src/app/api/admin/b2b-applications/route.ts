@@ -10,7 +10,7 @@ import { b2bApplicationQuerySchema } from "./_schemas";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const admin = await requireAdminApi();
+  const admin = await requireAdminApi("customers.read");
 
   if (!admin.ok) {
     return admin.response;
@@ -34,6 +34,8 @@ export async function GET(request: NextRequest) {
         limit: query.data.limit,
         offset: query.data.offset,
         returned: result.data.applications.length,
+        deprecated: true,
+        replacement: "/api/admin/accounts",
         workflow: "submitted application -> approved customer",
       },
     });

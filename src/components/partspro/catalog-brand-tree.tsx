@@ -6,7 +6,7 @@ import { ChevronDown } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { deviceModels, type DeviceModelGroup } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
-import { tx } from "@/i18n/dictionaries/storefront";
+import { brandLabel, tx } from "@/i18n/dictionaries/storefront";
 import { useT } from "./i18n-provider";
 
 type CatalogBrandTreeVariant = "mobile" | "desktop";
@@ -24,6 +24,7 @@ type CatalogBrandTreeProps = {
   onExpandedBrandChange: (brand: string | null) => void;
   onNavigate?: () => void;
   onSelectCatalog?: (selection: CatalogSelection) => void;
+  prefetchCatalogLinks?: boolean;
   selectedCatalog?: CatalogSelection;
   showAvailableLink?: boolean;
   variant?: CatalogBrandTreeVariant;
@@ -36,6 +37,7 @@ export function CatalogBrandTree({
   onExpandedBrandChange,
   onNavigate,
   onSelectCatalog,
+  prefetchCatalogLinks = false,
   selectedCatalog,
   showAvailableLink = false,
   variant = "mobile",
@@ -48,7 +50,7 @@ export function CatalogBrandTree({
   const inStockOnly = Boolean(selectedCatalog?.inStockOnly);
   const selectionKnown = Boolean(selectedCatalog);
   const groups = useMemo(
-    () => mergeModelGroups(deviceModels, modelGroups ?? []),
+    () => canonicalModelGroups(modelGroups ?? deviceModels),
     [modelGroups]
   );
   const catalogLinkClassName = cn(
@@ -124,7 +126,7 @@ export function CatalogBrandTree({
       ) : (
         <Link
           href="/catalogo"
-          prefetch={false}
+          prefetch={prefetchCatalogLinks ? null : false}
           className={catalogLinkClassName}
           onClick={onNavigate}
         >
@@ -161,7 +163,7 @@ export function CatalogBrandTree({
         ) : (
           <Link
             href="/catalogo?minStock=1"
-            prefetch={false}
+            prefetch={prefetchCatalogLinks ? null : false}
             className={availableLinkClassName}
             onClick={onNavigate}
           >
@@ -172,6 +174,7 @@ export function CatalogBrandTree({
       <div className={desktop ? "space-y-1.5" : "space-y-1"}>
         {groups.map((entry) => {
           const brandOpen = expandedBrand === entry.brand;
+          const localizedBrand = brandLabel(t, entry.brand);
           const brandSelected = isSameCatalogValue(selectedBrand, entry.brand);
           const brandPanelId = catalogBrandPanelId(idPrefix, entry.brand);
 
@@ -195,8 +198,9 @@ export function CatalogBrandTree({
                 onClick={() =>
                   onExpandedBrandChange(brandOpen ? null : entry.brand)
                 }
+                title={localizedBrand === entry.brand ? undefined : entry.brand}
               >
-                <span className="min-w-0 flex-1 truncate">{entry.brand}</span>
+                <span className="min-w-0 flex-1 truncate">{localizedBrand}</span>
                 {desktop && (
                   <span className="text-[11px] font-semibold text-slate-400">
                     {entry.models.length}
@@ -251,7 +255,7 @@ export function CatalogBrandTree({
                           key={model}
                           ref={selectedRef}
                           href={catalogQueryHref({ brand: entry.brand, model })}
-                          prefetch={false}
+                          prefetch={prefetchCatalogLinks ? null : false}
                           className={modelClassName}
                           onClick={onNavigate}
                           title={model}
@@ -308,13 +312,10 @@ function isSameCatalogValue(left?: string, right?: string) {
   }) === 0;
 }
 
-function mergeModelGroups(
-  fallbackGroups: readonly DeviceModelGroup[],
-  dynamicGroups: readonly DeviceModelGroup[]
-) {
+function canonicalModelGroups(sourceGroups: readonly DeviceModelGroup[]) {
   const groups = new Map<string, Set<string>>();
 
-  for (const group of [...fallbackGroups, ...dynamicGroups]) {
+  for (const group of sourceGroups) {
     const brand = group.brand.trim();
 
     if (!brand) {
@@ -334,7 +335,7 @@ function mergeModelGroups(
     groups.set(brand, models);
   }
 
-  const preferredBrandOrder = fallbackGroups.map((group) => group.brand);
+  const preferredBrandOrder = sourceGroups.map((group) => group.brand);
 
   return Array.from(groups.entries())
     .map(([brand, models]) => ({

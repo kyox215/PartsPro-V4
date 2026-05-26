@@ -54,7 +54,7 @@ const brandConfig = BRAND_CONFIGS[args.brand];
 if (!brandConfig) {
   throw new Error(`Unsupported brand: ${args.brand}. Use one of: ${Object.keys(BRAND_CONFIGS).join(", ")}.`);
 }
-const STORAGE_PREFIX = `products/mobilax/${brandConfig.storageFolder}`;
+const STORAGE_PREFIX = `products/imported/${brandConfig.storageFolder}`;
 loadEnv(".env.local");
 loadEnv(".env");
 
@@ -351,7 +351,7 @@ function findBalancedEnd(value, start, open, close) {
 function normalizeMobilaxProduct(product, model) {
   const reference = String(product.ean13 ?? "").trim();
   const sourceId = String(product.id ?? "").trim();
-  const sku_code = `MOBILAX-${reference || sourceId}`;
+  const sku_code = reference || sourceId;
   const name = String(product.name ?? product.title_name ?? product.short_name ?? "").trim();
 
   if (!name || (!reference && !sourceId)) {
@@ -378,14 +378,14 @@ function normalizeMobilaxProduct(product, model) {
     weight_gram: 0,
     stock_qty: 0,
     location: "Milano",
-    batch_code: `MOBILAX-${brandConfig.storageFolder.toUpperCase()}-${runStartedAt.slice(0, 10)}`,
-    supplier: "Mobilax",
+    batch_code: `${brandConfig.storageFolder.toUpperCase()}-${runStartedAt.slice(0, 10)}`,
+    supplier: "External Supplier",
     is_battery: /battery|batteria/i.test(name),
     is_dangerous_goods: /battery|batteria/i.test(name),
     compatibility_models: compatibilityModels,
     alternative_skus: [],
     add_on_skus: [],
-    highlights: ["Mobilax import", "Stock 0"],
+    highlights: ["Import catalogo", "Stock 0"],
     status: "active",
     image_path: null,
     image_alt: name,
@@ -820,13 +820,13 @@ where not exists (
 function validationSql() {
   return `
 select
-  count(*) filter (where supplier = 'Mobilax' and brand = '${sqlString(brandConfig.brandLabel)}') as mobilax_products,
-  count(*) filter (where supplier = 'Mobilax' and brand = '${sqlString(brandConfig.brandLabel)}' and stock_qty = 0 and stock_status = 'out_of_stock' and status = 'active') as zero_active_out_of_stock,
-  count(*) filter (where supplier = 'Mobilax' and brand = '${sqlString(brandConfig.brandLabel)}' and image_path like '${STORAGE_PREFIX}/%') as own_storage_images
+  count(*) filter (where supplier = 'External Supplier' and brand = '${sqlString(brandConfig.brandLabel)}') as imported_products,
+  count(*) filter (where supplier = 'External Supplier' and brand = '${sqlString(brandConfig.brandLabel)}' and stock_qty = 0 and stock_status = 'out_of_stock' and status = 'active') as zero_active_out_of_stock,
+  count(*) filter (where supplier = 'External Supplier' and brand = '${sqlString(brandConfig.brandLabel)}' and image_path like '${STORAGE_PREFIX}/%') as own_storage_images
 from public.products;
 
 select
-  count(*) as mobilax_inventory_rows,
+  count(*) as imported_inventory_rows,
   count(*) filter (
     where actual_qty = 0
       and available_qty = 0
@@ -836,7 +836,7 @@ select
       and defective_qty = 0
   ) as zero_quantity_rows
 from public.inventory_items
-where supplier = 'Mobilax';
+where supplier = 'External Supplier';
 `;
 }
 

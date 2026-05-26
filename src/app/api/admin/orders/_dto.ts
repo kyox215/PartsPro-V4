@@ -1,6 +1,15 @@
 import { type AdminOrder } from "@/lib/partspro-repository";
+import { sanitizeSupplierText, toPublicSku } from "@/lib/partspro-sku";
 
 export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unknown> = {}) {
+  const fiscal = isRecord(order.fiscal) ? order.fiscal : null;
+  const companySnapshotValue = readRecordValue(fiscal, [
+    "company_snapshot",
+    "companySnapshot",
+  ]);
+  const companySnapshot = isRecord(companySnapshotValue) ? companySnapshotValue : null;
+  const operationHistory = toOrderOperationHistory(order);
+
   return {
     id: order.orderNo,
     orderId: order.id,
@@ -9,7 +18,8 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
     date: order.createdAt,
     createdAt: order.createdAt,
     updatedAt: order.updatedAt,
-    status: order.uiStatus,
+    status: order.status,
+    uiStatus: order.uiStatus,
     orderStatus: order.status,
     paymentStatus: toUiPaymentStatus(order.paymentStatus),
     fulfillmentStatus: toUiFulfillmentStatus(order.status),
@@ -21,6 +31,14 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
       companyName: order.customer.name,
       tier: order.customer.tier,
       status: order.customer.status,
+      partitaIva: readStringValue(
+        readRecordValue(companySnapshot, ["partita_iva", "partitaIva", "vat_number"])
+      ),
+      vatNumber: readStringValue(
+        readRecordValue(companySnapshot, ["partita_iva", "partitaIva", "vat_number"])
+      ),
+      pec: readStringValue(readRecordValue(companySnapshot, ["pec"])),
+      address: readStringValue(readRecordValue(companySnapshot, ["address"])),
     },
     total: order.total,
     totalNet: order.totalNet,
@@ -39,10 +57,12 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
     notes: order.staffNote || order.customerNote,
     lines: (order.lines ?? []).map((line) => ({
       id: line.id,
-      sku: line.sku,
+      sku: toPublicSku(line.sku),
       name: line.productName,
       productName: line.productName,
-      category: line.qualityGrade || "Ricambio",
+      imageUrl: line.productImageUrl,
+      imageAlt: line.productImageAlt,
+      category: sanitizeSupplierText(line.qualityGrade) || "Ricambio",
       quantity: line.quantity,
       picked: line.fulfilledQty || line.reservedQty,
       unitPrice: line.unitPrice,
@@ -51,22 +71,96 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
       stockStatus: line.stockStatus,
       reservedQty: line.reservedQty,
       fulfilledQty: line.fulfilledQty,
-      batchCode: line.batchCode,
+      batchCode: sanitizeSupplierText(line.batchCode),
     })),
-    activity: (order.events ?? []).map((event) =>
+    activity: operationHistory.map((event) =>
       [
         event.createdAt,
         event.eventType,
         event.fromStatus && event.toStatus
           ? `${event.fromStatus} -> ${event.toStatus}`
           : null,
-        event.note,
+        event.actor.label,
+        sanitizeSupplierText(event.note),
       ]
         .filter(Boolean)
         .join(" - ")
     ),
+    operationHistory,
     ...overlay,
   };
+}
+
+function toOrderOperationHistory(order: AdminOrder) {
+  return [...(order.events ?? [])]
+    .sort((left, right) => timestampOf(left.createdAt) - timestampOf(right.createdAt))
+    .map((event) => {
+      const actorLabel =
+        sanitizeSupplierText(event.actorName) ||
+        event.actorEmail ||
+        event.actorRole ||
+        event.actorId ||
+        "System";
+
+      return {
+        id: event.id,
+        eventType: event.eventType,
+        action: event.eventType,
+        fromStatus: event.fromStatus,
+        toStatus: event.toStatus,
+        note: sanitizeSupplierText(event.note),
+        metadata: event.metadata,
+        actor: {
+          id: event.actorId,
+          email: event.actorEmail,
+          name: sanitizeSupplierText(event.actorName),
+          role: event.actorRole,
+          label: actorLabel,
+        },
+        createdAt: event.createdAt,
+      };
+    });
+}
+
+function timestampOf(value: string) {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function readRecordValue(record: Record<string, unknown> | null, keys: string[]) {
+  if (!record) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const value = record[key];
+
+    if (isRecord(value)) {
+      return value;
+    }
+
+    if (value !== undefined && value !== null && value !== "") {
+      return value;
+    }
+  }
+
+  return null;
+}
+
+function readStringValue(value: unknown) {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function toUiPaymentStatus(status: AdminOrder["paymentStatus"]) {
@@ -107,15 +201,6 @@ function primaryWarehouse(order: AdminOrder) {
 }
 
 function normalizeWarehouse(value: string | null | undefined) {
-  const normalized = value?.toLowerCase() ?? "";
-
-  if (normalized.includes("roma") || normalized.includes("rome")) {
-    return "Roma";
-  }
-
-  if (normalized.includes("shenzhen") || normalized.includes("china")) {
-    return "Shenzhen";
-  }
-
+  void value;
   return "Milano";
 }

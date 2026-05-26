@@ -37,7 +37,9 @@ export function toAdminCustomerPatch(input: {
   shippingAddress?: string;
   status?: "active" | "pending" | "suspended" | "approved" | "rejected";
   tier?: string;
-  priceList?: "Standard" | "Pro" | "Partner";
+  priceList?: "bronze" | "silver" | "gold" | "emerald" | "diamond" | "master" | "king";
+  customerType?: "retail" | "wholesale";
+  assignmentStatus?: "needs_review" | "assigned" | "converted_to_employee" | "archived";
   priceGroupId?: string | null;
   monthlyPurchase?: string;
   creditLimit?: number;
@@ -57,6 +59,8 @@ export function toAdminCustomerPatch(input: {
     shippingAddress: input.shippingAddress,
     status: toAdminCustomerStatus(input.status),
     tier: input.tier ?? input.priceList,
+    customerType: input.customerType,
+    assignmentStatus: input.assignmentStatus,
     priceGroupId: input.priceGroupId,
     monthlyPurchase: input.monthlyPurchase,
     creditLimit: input.creditLimit,
@@ -78,8 +82,14 @@ export function toAdminCustomerDto(customer: AdminCustomer) {
     sdi: customer.codiceDestinatario,
     status: customer.status,
     customerStatus: customer.customerStatus,
+    customerType: customer.customerType,
+    assignmentStatus: customer.assignmentStatus,
     priceList: customer.priceList,
     tier: customer.tier,
+    level: customer.level,
+    lifetimeSpendNet: customer.lifetimeSpendNet,
+    assignedBy: customer.assignedBy,
+    assignedAt: customer.assignedAt,
     priceGroupId: customer.priceGroupId,
     city: customer.city,
     province: customer.province,

@@ -18,7 +18,6 @@ import {
   UserRound,
   Users,
   WalletCards,
-  XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -67,10 +66,10 @@ import { cn } from "@/lib/utils";
 
 type TierFilterValue = "all" | CustomerTier;
 type StatusFilterValue = "all" | CompanyStatus;
+type CustomerSegment = "needs_review" | "retail" | "wholesale" | "employee";
 type CustomerLifecycle = "onboarding" | "active" | "vip" | "at_risk";
 type ApiSource = "admin_api" | "supabase" | "empty";
 type NoticeTone = "success" | "info" | "warning" | "error";
-type ApplicationStatus = "submitted" | "pending" | "approved" | "rejected";
 
 type CustomerOrder = {
   id: string;
@@ -99,6 +98,11 @@ type CustomerRma = {
 
 type CustomerProfile = {
   id: string;
+  userId: string;
+  accountType: "customer" | "employee";
+  assignmentStatus: "needs_review" | "assigned" | "converted_to_employee" | "archived";
+  customerType: "retail" | "wholesale";
+  roleTemplate: string | null;
   name: string;
   partitaIva: string;
   codiceFiscale: string;
@@ -106,6 +110,7 @@ type CustomerProfile = {
   codiceDestinatario: string;
   status: CompanyStatus;
   priceList: CustomerTier;
+  lifetimeSpendNet: number;
   city: string;
   province: string;
   accountOwner: string;
@@ -122,21 +127,6 @@ type CustomerProfile = {
   notes: string;
   orders: CustomerOrder[];
   rmas: CustomerRma[];
-};
-
-type B2BApplication = {
-  id: string;
-  companyName: string;
-  partitaIva: string;
-  contactName: string;
-  email: string;
-  phone: string;
-  city: string;
-  province: string;
-  status: ApplicationStatus;
-  requestedTier: CustomerTier;
-  createdAt: string;
-  notes: string;
 };
 
 type ApiCollectionResult<T> = {
@@ -175,15 +165,13 @@ const lifecycleLabels: Record<CustomerLifecycle, string> = {
   at_risk: "Da seguire",
 };
 const tierBadgeClasses: Record<CustomerTier, string> = {
-  Standard: "border-slate-200 bg-slate-50 text-slate-700",
-  Pro: "border-cyan-200 bg-cyan-50 text-cyan-700",
-  Partner: "border-emerald-200 bg-emerald-50 text-emerald-700",
-};
-const applicationStatusLabels: Record<ApplicationStatus, string> = {
-  submitted: "Nuova",
-  pending: "In verifica",
-  approved: "Approvata",
-  rejected: "Respinta",
+  bronze: "border-slate-200 bg-slate-50 text-slate-700",
+  silver: "border-zinc-200 bg-zinc-50 text-zinc-700",
+  gold: "border-amber-200 bg-amber-50 text-amber-700",
+  emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  diamond: "border-cyan-200 bg-cyan-50 text-cyan-700",
+  master: "border-violet-200 bg-violet-50 text-violet-700",
+  king: "border-rose-200 bg-rose-50 text-rose-700",
 };
 const fallbackPricingProducts: PartProduct[] = [
   {
@@ -221,7 +209,7 @@ const fallbackPricingProducts: PartProduct[] = [
     updatedAt: "Demo",
     visual: "battery",
     compatibleWith: ["Samsung"],
-    warehouse: "Roma",
+    warehouse: "Milano",
     moq: 1,
     vatRate: 22,
     rmaDays: 12,
@@ -242,7 +230,7 @@ const fallbackPricingProducts: PartProduct[] = [
     updatedAt: "Demo",
     visual: "camera",
     compatibleWith: ["Xiaomi"],
-    warehouse: "Shenzhen",
+    warehouse: "Milano",
     moq: 1,
     vatRate: 22,
     rmaDays: 12,
@@ -251,10 +239,26 @@ const fallbackPricingProducts: PartProduct[] = [
   },
 ];
 const pricingProducts = products.length > 0 ? products.slice(0, 3) : fallbackPricingProducts;
+const customerSegments: Array<{ label: string; value: CustomerSegment }> = [
+  { label: "Da assegnare", value: "needs_review" },
+  { label: "Retail", value: "retail" },
+  { label: "Wholesale", value: "wholesale" },
+  { label: "Staff", value: "employee" },
+];
+const roleTemplateOptions = [
+  "sales",
+  "sales_support",
+  "catalog_manager",
+  "pricing_manager",
+  "inventory_manager",
+  "warehouse",
+  "purchasing",
+  "auditor",
+  "admin",
+] as const;
 
 export function AdminCustomersPanel() {
   const [customers, setCustomers] = React.useState<CustomerProfile[]>([]);
-  const [applications, setApplications] = React.useState<B2BApplication[]>([]);
   const [dataSource, setDataSource] = React.useState<DataSourceState>({
     customersSource: "empty",
     applicationsSource: "empty",
@@ -266,6 +270,7 @@ export function AdminCustomersPanel() {
   const [pendingActionKey, setPendingActionKey] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<PanelNotice | null>(null);
   const [query, setQuery] = React.useState("");
+  const [segment, setSegment] = React.useState<CustomerSegment>("needs_review");
   const [tierFilter, setTierFilter] = React.useState<TierFilterValue>("all");
   const [statusFilter, setStatusFilter] =
     React.useState<StatusFilterValue>("all");
@@ -275,63 +280,48 @@ export function AdminCustomersPanel() {
     setIsLoading(true);
 
     try {
-      const [customersResult, applicationsResult] = await Promise.allSettled([
-        fetchCustomersFromApi(signal),
-        fetchApplicationsFromApi(signal),
-      ]);
+      const customersResult = await fetchCustomersFromApi(signal);
 
       if (signal?.aborted) {
         return;
       }
 
-      const nextCustomers =
-        customersResult.status === "fulfilled" ? customersResult.value.items : [];
-      const nextApplications =
-        applicationsResult.status === "fulfilled"
-          ? applicationsResult.value.items
-          : [];
-      const customerError =
-        customersResult.status === "rejected"
-          ? readableError(customersResult.reason)
-          : undefined;
-      const applicationError =
-        applicationsResult.status === "rejected"
-          ? readableError(applicationsResult.reason)
-          : undefined;
+      const nextCustomers = customersResult.items;
 
       setCustomers(nextCustomers);
-      setApplications(nextApplications);
       setSelectedCustomerId((current) =>
         nextCustomers.some((customer) => customer.id === current)
           ? current
           : nextCustomers[0]?.id ?? ""
       );
       setDataSource({
-        customersSource:
-          customersResult.status === "fulfilled"
-            ? customersResult.value.source
-            : "empty",
-        applicationsSource:
-          applicationsResult.status === "fulfilled"
-            ? applicationsResult.value.source
-            : "empty",
+        customersSource: customersResult.source,
+        applicationsSource: "empty",
         syncedAt: formatSyncTime(),
-        customersTotal:
-          customersResult.status === "fulfilled" ? customersResult.value.total : 0,
-        applicationsTotal:
-          applicationsResult.status === "fulfilled"
-            ? applicationsResult.value.total
-            : 0,
-        customerError,
-        applicationError,
+        customersTotal: customersResult.total,
+        applicationsTotal: 0,
       });
       setNotice({
-        tone: customerError || applicationError ? "warning" : "success",
-        message:
-          customerError || applicationError
-            ? "Admin clienti sincronizzato parzialmente: verifica gli endpoint evidenziati."
-            : "Clienti e richieste B2B sincronizzati dagli endpoint admin.",
+        tone: "success",
+        message: "Account, clienti e staff sincronizzati da /api/admin/accounts.",
       });
+    } catch (error) {
+      if (!signal?.aborted) {
+        const customerError = readableError(error);
+        setCustomers([]);
+        setDataSource({
+          customersSource: "empty",
+          applicationsSource: "empty",
+          syncedAt: formatSyncTime(),
+          customersTotal: 0,
+          applicationsTotal: 0,
+          customerError,
+        });
+        setNotice({
+          tone: "error",
+          message: customerError,
+        });
+      }
     } finally {
       if (!signal?.aborted) {
         setIsLoading(false);
@@ -373,10 +363,11 @@ export function AdminCustomersPanel() {
         tierFilter === "all" || customer.priceList === tierFilter;
       const matchesStatus =
         statusFilter === "all" || customer.status === statusFilter;
+      const matchesSegment = customerMatchesSegment(customer, segment);
 
-      return matchesQuery && matchesTier && matchesStatus;
+      return matchesQuery && matchesTier && matchesStatus && matchesSegment;
     });
-  }, [customers, query, statusFilter, tierFilter]);
+  }, [customers, query, segment, statusFilter, tierFilter]);
 
   const selectedCustomer =
     customers.find((customer) => customer.id === selectedCustomerId) ??
@@ -457,27 +448,31 @@ export function AdminCustomersPanel() {
     }
   }
 
-  async function reviewApplication(applicationId: string, status: "approved" | "rejected") {
-    const actionKey = `application:${applicationId}:${status}`;
+  async function updateSelectedAccount(
+    patch: {
+      accountType: "customer" | "employee";
+      assignmentStatus?: "assigned" | "needs_review";
+      customerType?: "retail" | "wholesale";
+      roleTemplate?: (typeof roleTemplateOptions)[number];
+    }
+  ) {
+    if (!selectedCustomer) {
+      return;
+    }
+
+    const actionKey = `account:${selectedCustomer.userId}`;
     setPendingActionKey(actionKey);
 
     try {
-      const result = await patchB2BApplicationInApi(applicationId, { status });
-
-      setApplications((current) =>
-        current.map((application) =>
-          application.id === applicationId
-            ? result.application ?? { ...application, status }
-            : application
-        )
-      );
+      await patchAccountInApi({
+        userId: selectedCustomer.userId,
+        ...patch,
+      });
       setNotice({
         tone: "success",
-        message: `Richiesta ${applicationId} ${applicationStatusLabels[status].toLowerCase()} tramite /api/admin/b2b-applications.`,
+        message: "Account aggiornato tramite /api/admin/accounts.",
       });
-      if (status === "approved") {
-        void refreshAdminData();
-      }
+      await refreshAdminData();
     } catch (error) {
       setNotice({
         tone: "error",
@@ -488,7 +483,7 @@ export function AdminCustomersPanel() {
     }
   }
 
-  const selectedTier = selectedCustomer?.priceList ?? "Standard";
+  const selectedTier = selectedCustomer?.priceList ?? "bronze";
   const selectedTierRule = getTierRule(selectedTier);
   const totalSpend = selectedOrders.reduce((total, order) => total + order.total, 0);
   const availableCredit = selectedCustomer
@@ -503,6 +498,19 @@ export function AdminCustomersPanel() {
       : 0;
   const hasFilters =
     Boolean(query.trim()) || tierFilter !== "all" || statusFilter !== "all";
+  const segmentCounts = React.useMemo(
+    () =>
+      customerSegments.reduce<Record<CustomerSegment, number>>(
+        (counts, item) => ({
+          ...counts,
+          [item.value]: customers.filter((customer) =>
+            customerMatchesSegment(customer, item.value)
+          ).length,
+        }),
+        { employee: 0, needs_review: 0, retail: 0, wholesale: 0 }
+      ),
+    [customers]
+  );
 
   return (
     <section className="min-w-0 space-y-4 overflow-x-hidden text-slate-950">
@@ -539,7 +547,7 @@ export function AdminCustomersPanel() {
           <div className="min-w-0">
             <CardTitle>Gestione clienti</CardTitle>
             <CardDescription>
-              Anagrafica B2B, listini, richieste e credito commerciale
+              Account, clienti retail/wholesale, staff e listini in un unico pannello
             </CardDescription>
           </div>
           <div className="flex w-full min-w-0 flex-wrap gap-2 lg:w-auto lg:justify-end">
@@ -609,14 +617,11 @@ export function AdminCustomersPanel() {
         <CardContent className="min-w-0 space-y-4 p-3 sm:p-6">
           <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
             <Badge className={sourceBadgeClass(dataSource.customersSource)}>
-              Clienti: {sourceLabel(dataSource.customersSource)}
-            </Badge>
-            <Badge className={sourceBadgeClass(dataSource.applicationsSource)}>
-              Richieste: {sourceLabel(dataSource.applicationsSource)}
+              Account: {sourceLabel(dataSource.customersSource)}
             </Badge>
             <span className="min-w-0 break-words">
               {dataSource.syncedAt
-                ? `${dataSource.customersTotal} clienti / ${dataSource.applicationsTotal} richieste - ${dataSource.syncedAt}`
+                ? `${dataSource.customersTotal} account - ${dataSource.syncedAt}`
                 : "In attesa di sincronizzazione"}
             </span>
           </div>
@@ -625,26 +630,34 @@ export function AdminCustomersPanel() {
             <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} />
           )}
 
-          {(dataSource.customerError || dataSource.applicationError) && (
+          {dataSource.customerError && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold leading-6 text-amber-950">
-              {dataSource.customerError && (
-                <div className="min-w-0 break-words">
-                  Clienti: {dataSource.customerError}
-                </div>
-              )}
-              {dataSource.applicationError && (
-                <div className="min-w-0 break-words">
-                  Richieste B2B: {dataSource.applicationError}
-                </div>
-              )}
+              <div className="min-w-0 break-words">
+                Account: {dataSource.customerError}
+              </div>
             </div>
           )}
 
-          <ApplicationsQueue
-            applications={applications}
-            pendingActionKey={pendingActionKey}
-            onReviewApplication={reviewApplication}
-          />
+          <div className="grid gap-2 sm:grid-cols-4">
+            {customerSegments.map((item) => (
+              <button
+                key={item.value}
+                type="button"
+                className={cn(
+                  "rounded-lg border px-3 py-2 text-left text-sm font-black transition",
+                  segment === item.value
+                    ? "border-primary/30 bg-primary/8 text-primary"
+                    : "border-slate-200 bg-white text-slate-600 hover:border-primary/30"
+                )}
+                onClick={() => setSegment(item.value)}
+              >
+                <span className="block">{item.label}</span>
+                <span className="mt-1 block text-xs text-slate-400">
+                  {segmentCounts[item.value]} account
+                </span>
+              </button>
+            ))}
+          </div>
 
           <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
             <div className="min-w-0 space-y-3">
@@ -705,6 +718,11 @@ export function AdminCustomersPanel() {
                               className={cn("border", tierBadgeClass(customer.priceList))}
                             >
                               {customer.priceList}
+                            </Badge>
+                            <Badge variant="outline" className="bg-white">
+                              {customer.accountType === "employee"
+                                ? customer.roleTemplate ?? "staff"
+                                : customer.customerType}
                             </Badge>
                           </div>
                         </div>
@@ -772,6 +790,11 @@ export function AdminCustomersPanel() {
                           <Badge variant="outline" className="bg-white">
                             {lifecycleLabels[selectedCustomer.lifecycle]}
                           </Badge>
+                          <Badge variant="outline" className="bg-white">
+                            {selectedCustomer.accountType === "employee"
+                              ? selectedCustomer.roleTemplate ?? "staff"
+                              : selectedCustomer.customerType}
+                          </Badge>
                         </div>
                         <div className="mt-2 flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-slate-500">
                           <span className="break-all">{selectedCustomer.partitaIva}</span>
@@ -836,6 +859,76 @@ export function AdminCustomersPanel() {
                           </SelectContent>
                         </Select>
                       </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant={selectedCustomer.customerType === "retail" ? "default" : "outline"}
+                        className={selectedCustomer.customerType === "retail" ? "" : "bg-white"}
+                        disabled={pendingActionKey?.startsWith("account:")}
+                        onClick={() =>
+                          void updateSelectedAccount({
+                            accountType: "customer",
+                            assignmentStatus: "assigned",
+                            customerType: "retail",
+                          })
+                        }
+                      >
+                        Retail
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={selectedCustomer.customerType === "wholesale" ? "default" : "outline"}
+                        className={selectedCustomer.customerType === "wholesale" ? "" : "bg-white"}
+                        disabled={pendingActionKey?.startsWith("account:")}
+                        onClick={() =>
+                          void updateSelectedAccount({
+                            accountType: "customer",
+                            assignmentStatus: "assigned",
+                            customerType: "wholesale",
+                          })
+                        }
+                      >
+                        Wholesale
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={selectedCustomer.accountType === "employee" ? "default" : "outline"}
+                        className={selectedCustomer.accountType === "employee" ? "" : "bg-white"}
+                        disabled={pendingActionKey?.startsWith("account:")}
+                        onClick={() =>
+                          void updateSelectedAccount({
+                            accountType: "employee",
+                            roleTemplate: normalizeRoleTemplate(selectedCustomer.roleTemplate),
+                          })
+                        }
+                      >
+                        Staff
+                      </Button>
+                      {selectedCustomer.accountType === "employee" && (
+                        <Select
+                          value={selectedCustomer.roleTemplate ?? "sales_support"}
+                          onValueChange={(value) =>
+                            void updateSelectedAccount({
+                              accountType: "employee",
+                              roleTemplate: value as (typeof roleTemplateOptions)[number],
+                            })
+                          }
+                          disabled={pendingActionKey?.startsWith("account:")}
+                        >
+                          <SelectTrigger size="sm" className="w-full bg-white sm:w-52">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {roleTemplateOptions.map((roleTemplate) => (
+                              <SelectItem key={roleTemplate} value={roleTemplate}>
+                                {roleTemplate}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
                     </div>
 
                     <Separator className="my-4" />
@@ -1044,131 +1137,6 @@ function MetricCard({
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-function ApplicationsQueue({
-  applications,
-  pendingActionKey,
-  onReviewApplication,
-}: {
-  applications: B2BApplication[];
-  pendingActionKey: string | null;
-  onReviewApplication: (
-    applicationId: string,
-    status: "approved" | "rejected"
-  ) => void;
-}) {
-  const pendingApplications = applications.filter((application) =>
-    ["submitted", "pending"].includes(application.status)
-  );
-
-  return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h3 className="text-sm font-black text-slate-900">Richieste B2B</h3>
-          <p className="mt-1 text-xs font-medium text-slate-500">
-            {pendingApplications.length} in verifica / {applications.length} totali
-          </p>
-        </div>
-        <Badge variant="outline" className="bg-white">
-          /api/admin/b2b-applications
-        </Badge>
-      </div>
-      {applications.length > 0 ? (
-        <div className="mt-3 grid gap-2 lg:grid-cols-2">
-          {applications.slice(0, 4).map((application) => (
-            <ApplicationCard
-              key={application.id}
-              application={application}
-              pendingActionKey={pendingActionKey}
-              onReviewApplication={onReviewApplication}
-            />
-          ))}
-        </div>
-      ) : (
-        <div className="mt-3 rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm font-medium text-slate-500">
-          Nessuna richiesta B2B restituita dall&apos;endpoint admin.
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ApplicationCard({
-  application,
-  pendingActionKey,
-  onReviewApplication,
-}: {
-  application: B2BApplication;
-  pendingActionKey: string | null;
-  onReviewApplication: (
-    applicationId: string,
-    status: "approved" | "rejected"
-  ) => void;
-}) {
-  const isPending = pendingActionKey?.startsWith(`application:${application.id}:`);
-  const canReview = ["submitted", "pending"].includes(application.status);
-
-  return (
-    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
-      <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="break-words text-sm font-black text-slate-900">
-            {application.companyName}
-          </div>
-          <div className="mt-1 flex min-w-0 flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-slate-500">
-            <span className="break-all">{application.partitaIva}</span>
-            <span className="break-words">
-              {application.city} ({application.province})
-            </span>
-          </div>
-        </div>
-        <Badge className={cn("border", applicationBadgeClass(application.status))}>
-          {applicationStatusLabels[application.status]}
-        </Badge>
-      </div>
-      <div className="mt-3 grid gap-2 text-xs text-slate-600">
-        <div className="rounded-md bg-slate-50 px-2 py-1.5">
-          <span className="font-bold text-slate-800">Referente</span>{" "}
-          {application.contactName} - {application.email}
-        </div>
-        <div className="rounded-md bg-slate-50 px-2 py-1.5">
-          Listino richiesto{" "}
-          <Badge className={cn("ml-1 border", tierBadgeClass(application.requestedTier))}>
-            {application.requestedTier}
-          </Badge>
-        </div>
-        {application.notes && (
-          <div className="break-words rounded-md bg-slate-50 px-2 py-1.5">
-            {application.notes}
-          </div>
-        )}
-      </div>
-      {canReview && (
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            onClick={() => onReviewApplication(application.id, "approved")}
-            disabled={isPending}
-          >
-            <CheckCircle2 className="size-4" />
-            Approva
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="bg-white"
-            onClick={() => onReviewApplication(application.id, "rejected")}
-            disabled={isPending}
-          >
-            <XCircle className="size-4" />
-            Respinta
-          </Button>
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -1568,7 +1536,7 @@ function RmaHistory({
 async function fetchCustomersFromApi(
   signal?: AbortSignal
 ): Promise<ApiCollectionResult<CustomerProfile>> {
-  const response = await fetch("/api/admin/customers?limit=100&sort=name_asc", {
+  const response = await fetch("/api/admin/accounts?limit=100", {
     cache: "no-store",
     headers: {
       Accept: "application/json",
@@ -1578,36 +1546,11 @@ async function fetchCustomersFromApi(
   });
 
   if (!response.ok) {
-    throw new Error(`GET /api/admin/customers ha risposto ${response.status}`);
+    throw new Error(`GET /api/admin/accounts ha risposto ${response.status}`);
   }
 
   const payload = (await response.json()) as unknown;
   return parseCustomersPayload(payload);
-}
-
-async function fetchApplicationsFromApi(
-  signal?: AbortSignal
-): Promise<ApiCollectionResult<B2BApplication>> {
-  const response = await fetch(
-    "/api/admin/b2b-applications?limit=100&sort=created_desc",
-    {
-      cache: "no-store",
-      headers: {
-        Accept: "application/json",
-        "Cache-Control": "no-cache",
-      },
-      signal,
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(
-      `GET /api/admin/b2b-applications ha risposto ${response.status}`
-    );
-  }
-
-  const payload = (await response.json()) as unknown;
-  return parseApplicationsPayload(payload);
 }
 
 async function patchCustomerInApi(
@@ -1641,49 +1584,44 @@ async function patchCustomerInApi(
   };
 }
 
-async function patchB2BApplicationInApi(
-  applicationId: string,
-  patch: Pick<B2BApplication, "status">
-) {
-  const response = await fetch(
-    `/api/admin/b2b-applications/${encodeURIComponent(applicationId)}`,
-    {
-      body: JSON.stringify(serializePatch(patch)),
-      cache: "no-store",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      method: "PATCH",
-    }
-  );
+async function patchAccountInApi(patch: {
+  accountType: "customer" | "employee";
+  assignmentStatus?: "assigned" | "needs_review";
+  customerType?: "retail" | "wholesale";
+  roleTemplate?: (typeof roleTemplateOptions)[number];
+  userId: string;
+}) {
+  const response = await fetch("/api/admin/accounts", {
+    body: JSON.stringify(patch),
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    method: "PATCH",
+  });
 
   if (!response.ok) {
     throw new Error(
-      `PATCH /api/admin/b2b-applications/${applicationId} ha risposto ${response.status}. Revisione non applicata localmente.`
+      `PATCH /api/admin/accounts ha risposto ${response.status}. Classificazione non applicata localmente.`
     );
   }
 
-  const payload = await readJsonSafely(response);
-  const row = extractObjectPayload(payload, ["data", "application"]);
-
-  return {
-    application: row ? normalizeApplication(row) : null,
-  };
+  return readJsonSafely(response);
 }
 
 function parseCustomersPayload(
   payload: unknown
 ): ApiCollectionResult<CustomerProfile> {
   if (!isRecord(payload)) {
-    throw new Error("Risposta /api/admin/customers incompleta");
+    throw new Error("Risposta /api/admin/accounts incompleta");
   }
 
   const meta = isRecord(payload.meta) ? payload.meta : {};
   const rows = readArrayPayload(payload, ["data", "customers"]);
 
   if (!rows) {
-    throw new Error("Risposta /api/admin/customers incompleta");
+    throw new Error("Risposta /api/admin/accounts incompleta");
   }
 
   const items = rows
@@ -1698,47 +1636,32 @@ function parseCustomersPayload(
   };
 }
 
-function parseApplicationsPayload(
-  payload: unknown
-): ApiCollectionResult<B2BApplication> {
-  if (!isRecord(payload)) {
-    throw new Error("Risposta /api/admin/b2b-applications incompleta");
-  }
-
-  const meta = isRecord(payload.meta) ? payload.meta : {};
-  const rows = readArrayPayload(payload, ["data", "applications"]);
-
-  if (!rows) {
-    throw new Error("Risposta /api/admin/b2b-applications incompleta");
-  }
-
-  const items = rows
-    .map((row) => normalizeApplication(row))
-    .filter((application): application is B2BApplication => application !== null);
-
-  return {
-    items,
-    source: readSource(meta.source ?? payload.source),
-    total: readNumber(meta.total) ?? items.length,
-    returned: readNumber(meta.returned) ?? items.length,
-  };
-}
-
 function normalizeCustomer(row: unknown): CustomerProfile | null {
   if (!isRecord(row)) {
     return null;
   }
 
-  const address = isRecord(row.address) ? row.address : null;
-  const id = readString(readRecordValue(row, ["id", "customerId", "companyId"]));
-  const name = readString(readRecordValue(row, ["name", "companyName", "company_name"]));
+  const nestedCustomer = isRecord(row.customer) ? row.customer : null;
+  const source = nestedCustomer ?? row;
+  const address = isRecord(source.address) ? source.address : null;
+  const accountType =
+    readString(readRecordValue(row, ["accountType", "account_type"])) === "employee"
+      ? "employee"
+      : "customer";
+  const id =
+    readString(readRecordValue(source, ["id", "customerId", "companyId"])) ??
+    readString(readRecordValue(row, ["userId", "user_id", "id"]));
+  const name =
+    readString(readRecordValue(source, ["name", "companyName", "company_name"])) ??
+    readString(readRecordValue(row, ["displayName", "display_name", "email"])) ??
+    "Account PartsPro";
 
   if (!id || !name) {
     return null;
   }
 
   const priceList = normalizeCustomerTier(
-    readString(readRecordValue(row, ["priceList", "price_list", "tier"]))
+    readString(readRecordValue(source, ["level", "priceList", "price_list", "tier"]))
   );
   const orders = (readArrayPayload(row, ["orders", "orderSummaries"]) ?? [])
     .map((order) => normalizeCustomerOrder(order, name))
@@ -1747,44 +1670,61 @@ function normalizeCustomer(row: unknown): CustomerProfile | null {
     .map(normalizeCustomerRma)
     .filter((rma): rma is CustomerRma => rma !== null);
   const receivables = readMoney(
-    readRecordValue(row, ["receivables", "openBalance", "open_balance"])
+    readRecordValue(source, ["receivables", "openBalance", "open_balance"])
   );
-  const overdue = readMoney(readRecordValue(row, ["overdue", "overdueBalance"]));
-  const status = normalizeCompanyStatus(readRecordValue(row, ["status"]));
+  const overdue = readMoney(readRecordValue(source, ["overdue", "overdueBalance"]));
+  const status =
+    accountType === "employee"
+      ? "approved"
+      : normalizeCompanyStatus(readRecordValue(source, ["status"]));
+  const customerType =
+    readString(readRecordValue(source, ["customerType", "customer_type"])) === "wholesale"
+      ? "wholesale"
+      : "retail";
+  const assignmentStatus = normalizeAssignmentStatus(
+    readString(readRecordValue(source, ["assignmentStatus", "assignment_status"]))
+  );
 
   return {
     id,
+    userId: readString(readRecordValue(row, ["userId", "user_id", "id"])) ?? id,
+    accountType,
+    assignmentStatus,
+    customerType,
+    roleTemplate: readString(readRecordValue(row, ["roleTemplate", "role_template"])),
     name,
     partitaIva:
-      readString(readRecordValue(row, ["partitaIva", "vatNumber", "vat_number"])) ??
+      readString(readRecordValue(source, ["partitaIva", "vatNumber", "vat_number"])) ??
       "Non disponibile",
     codiceFiscale:
-      readString(readRecordValue(row, ["codiceFiscale", "taxCode", "tax_code"])) ??
+      readString(readRecordValue(source, ["codiceFiscale", "taxCode", "tax_code"])) ??
       "Non disponibile",
-    pec: readString(row.pec) ?? readString(row.email) ?? "Non disponibile",
+    pec: readString(source.pec) ?? readString(row.email) ?? "Non disponibile",
     codiceDestinatario:
       readString(
-        readRecordValue(row, ["codiceDestinatario", "sdi", "recipientCode"])
+        readRecordValue(source, ["codiceDestinatario", "sdi", "recipientCode"])
       ) ?? "0000000",
     status,
     priceList,
+    lifetimeSpendNet:
+      readNumber(readRecordValue(source, ["lifetimeSpendNet", "lifetime_spend_net"])) ?? 0,
     city:
-      readString(readRecordValue(row, ["city"])) ??
+      readString(readRecordValue(source, ["city"])) ??
       readString(readRecordValue(address, ["city"])) ??
       "Non disponibile",
     province:
-      readString(readRecordValue(row, ["province"])) ??
+      readString(readRecordValue(source, ["province"])) ??
       readString(readRecordValue(address, ["province"])) ??
       "--",
     accountOwner:
       readString(readRecordValue(row, ["accountOwner", "owner"])) ?? "Sales",
     contactName:
-      readString(readRecordValue(row, ["contactName", "contact_name"])) ??
+      readString(readRecordValue(source, ["contactName", "contact_name"])) ??
       "Referente non disponibile",
-    email: readString(row.email) ?? "Non disponibile",
-    phone: readString(row.phone) ?? "Non disponibile",
+    email: readString(source.email) ?? readString(row.email) ?? "Non disponibile",
+    phone: readString(source.phone) ?? "Non disponibile",
     creditLimit:
-      readMoney(readRecordValue(row, ["creditLimit", "credit_limit"])) ||
+      readMoney(readRecordValue(source, ["creditLimit", "credit_limit"])) ||
       getTierRule(priceList).creditLimit,
     receivables,
     overdue,
@@ -1800,47 +1740,9 @@ function normalizeCustomer(row: unknown): CustomerProfile | null {
       "Nessuno",
     notes:
       readString(row.notes) ??
-      "Profilo sincronizzato da /api/admin/customers.",
+      "Profilo sincronizzato da /api/admin/accounts.",
     orders,
     rmas,
-  };
-}
-
-function normalizeApplication(row: unknown): B2BApplication | null {
-  if (!isRecord(row)) {
-    return null;
-  }
-
-  const id = readString(readRecordValue(row, ["id", "applicationId"]));
-  const companyName = readString(
-    readRecordValue(row, ["companyName", "company_name", "name"])
-  );
-
-  if (!id || !companyName) {
-    return null;
-  }
-
-  return {
-    id,
-    companyName,
-    partitaIva:
-      readString(readRecordValue(row, ["partitaIva", "vatNumber", "vat_number"])) ??
-      "Non disponibile",
-    contactName:
-      readString(readRecordValue(row, ["contactName", "contact_name"])) ??
-      "Referente non disponibile",
-    email: readString(row.email) ?? "Non disponibile",
-    phone: readString(row.phone) ?? "Non disponibile",
-    city: readString(row.city) ?? "Non disponibile",
-    province: readString(row.province) ?? "--",
-    status: normalizeApplicationStatus(row.status),
-    requestedTier: normalizeCustomerTier(
-      readString(readRecordValue(row, ["requestedTier", "priceList", "tier"]))
-    ),
-    createdAt:
-      readString(readRecordValue(row, ["createdAt", "created_at", "date"])) ??
-      "Data non disponibile",
-    notes: readString(row.notes) ?? "",
   };
 }
 
@@ -1972,18 +1874,6 @@ function companyStatusBadgeClass(status: CompanyStatus) {
   return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
-function applicationBadgeClass(status: ApplicationStatus) {
-  if (status === "approved") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  }
-
-  if (status === "rejected") {
-    return "border-red-200 bg-red-50 text-red-700";
-  }
-
-  return "border-amber-200 bg-amber-50 text-amber-700";
-}
-
 function orderStatusLabel(status: OrderStatus) {
   const labels: Record<OrderStatus, string> = {
     cancelled: "Annullato",
@@ -2080,11 +1970,54 @@ function sourceBadgeClass(source: ApiSource) {
 }
 
 function normalizeCompanyStatus(value: unknown): CompanyStatus {
+  if (value === "active") {
+    return "approved";
+  }
+
   return ["approved", "pending", "suspended", "rejected"].includes(
     value as CompanyStatus
   )
     ? (value as CompanyStatus)
     : "pending";
+}
+
+function normalizeAssignmentStatus(value: string | null): CustomerProfile["assignmentStatus"] {
+  if (
+    value === "assigned" ||
+    value === "converted_to_employee" ||
+    value === "archived" ||
+    value === "needs_review"
+  ) {
+    return value;
+  }
+
+  return "needs_review";
+}
+
+function normalizeRoleTemplate(value: string | null): (typeof roleTemplateOptions)[number] {
+  return roleTemplateOptions.includes(value as (typeof roleTemplateOptions)[number])
+    ? (value as (typeof roleTemplateOptions)[number])
+    : "sales_support";
+}
+
+function customerMatchesSegment(customer: CustomerProfile, value: CustomerSegment) {
+  if (value === "employee") {
+    return customer.accountType === "employee";
+  }
+
+  if (customer.accountType === "employee") {
+    return false;
+  }
+
+  if (value === "needs_review") {
+    return customer.assignmentStatus === "needs_review";
+  }
+
+  return (
+    customer.assignmentStatus !== "converted_to_employee" &&
+    customer.assignmentStatus !== "archived" &&
+    customer.customerType === value
+  );
 }
 
 function normalizeOrderStatus(value: unknown): OrderStatus {
@@ -2114,14 +2047,6 @@ function normalizeRmaStatus(value: unknown): RmaStatus {
     : "requested";
 }
 
-function normalizeApplicationStatus(value: unknown): ApplicationStatus {
-  return ["submitted", "pending", "approved", "rejected"].includes(
-    value as ApplicationStatus
-  )
-    ? (value as ApplicationStatus)
-    : "submitted";
-}
-
 function normalizeLifecycle(
   value: unknown,
   status: CompanyStatus,
@@ -2140,7 +2065,9 @@ function normalizeLifecycle(
     return "at_risk";
   }
 
-  return tier === "Partner" ? "vip" : "active";
+  return ["gold", "emerald", "diamond", "master", "king"].includes(tier)
+    ? "vip"
+    : "active";
 }
 
 function normalizeOrderChannel(value: unknown): CustomerOrder["channel"] {

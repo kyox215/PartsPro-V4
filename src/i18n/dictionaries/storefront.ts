@@ -34,6 +34,17 @@ const categoryKeys: Record<string, string> = {
   Speaker: "speakers",
 };
 
+const brandKeys: Record<string, string> = {
+  Apple: "apple",
+  Google: "google",
+  Honor: "honor",
+  Huawei: "huawei",
+  OnePlus: "onePlus",
+  Oppo: "oppo",
+  Samsung: "samsung",
+  Xiaomi: "xiaomi",
+};
+
 const stockStatusKeys: Record<string, string> = {
   "In Stock": "inStock",
   "Low Stock": "lowStock",
@@ -86,6 +97,12 @@ export function categoryLabel(t: StorefrontTranslator, value: string) {
   return key ? tx(t, `storefront.data.categories.${key}`, value) : value;
 }
 
+export function brandLabel(t: StorefrontTranslator, value: string) {
+  const key = brandKeys[value];
+
+  return key ? tx(t, `storefront.data.brands.${key}`, value) : value;
+}
+
 export function stockStatusLabel(t: StorefrontTranslator, value: string) {
   const key = stockStatusKeys[value];
 
@@ -123,6 +140,14 @@ export function rmaResolutionLabel(t: StorefrontTranslator, value: string) {
 }
 
 export const storefrontItIT = {
+  "storefront.data.brands.apple": "Apple",
+  "storefront.data.brands.google": "Google",
+  "storefront.data.brands.honor": "Honor",
+  "storefront.data.brands.huawei": "Huawei",
+  "storefront.data.brands.onePlus": "OnePlus",
+  "storefront.data.brands.oppo": "Oppo",
+  "storefront.data.brands.samsung": "Samsung",
+  "storefront.data.brands.xiaomi": "Xiaomi",
   "storefront.data.categories.backCover": "Back Cover",
   "storefront.data.categories.batteries": "Batterie",
   "storefront.data.categories.cameras": "Fotocamere",
@@ -258,6 +283,14 @@ export const storefrontItIT = {
 };
 
 export const storefrontZhCN = {
+  "storefront.data.brands.apple": "苹果",
+  "storefront.data.brands.google": "谷歌",
+  "storefront.data.brands.honor": "荣耀",
+  "storefront.data.brands.huawei": "华为",
+  "storefront.data.brands.onePlus": "一加",
+  "storefront.data.brands.oppo": "OPPO",
+  "storefront.data.brands.samsung": "三星",
+  "storefront.data.brands.xiaomi": "小米",
   "storefront.data.categories.backCover": "后盖",
   "storefront.data.categories.batteries": "电池",
   "storefront.data.categories.cameras": "摄像头",
@@ -333,7 +366,7 @@ export const storefrontZhCN = {
   "storefront.home.hero.stats.delivery": "意大利物流",
   "storefront.home.hero.stats.sku": "目录 SKU",
   "storefront.home.hero.title": "面向维修店和经销商的手机配件供货",
-  "storefront.home.hero.visualText": "SKU、库存、MOQ 和兼容性信息都围绕高频补货采购设计。",
+  "storefront.home.hero.visualText": "SKU、库存、起订量和兼容性信息都围绕高频补货采购设计。",
   "storefront.home.hero.visualTitle": "可操作目录，不是静态展示页",
   "storefront.home.notifications": "通知",
   "storefront.home.mobileMenuDescription": "移动菜单包含首页、目录和账户。",
@@ -342,7 +375,7 @@ export const storefrontZhCN = {
   "storefront.home.productCard.loginPrice": "登录后查看价格",
   "storefront.home.productCard.open": "查看",
   "storefront.home.productCard.openAria": "打开商品详情 {name}",
-  "storefront.home.productCard.priceHint": "MOQ {moq} · B2B 价目表",
+  "storefront.home.productCard.priceHint": "起订量 {moq} · B2B 价目表",
   "storefront.home.productCard.stockLine": "{status} · {count} 件",
   "storefront.home.products.action": "当前有货",
   "storefront.home.products.empty":
@@ -382,7 +415,7 @@ export const storefrontZhCN = {
   "storefront.home.workflow.catalog.text": "按品牌、机型、分类和真实库存筛选。",
   "storefront.home.workflow.catalog.title": "找到配件",
   "storefront.home.workflow.eyebrow": "B2B 流程",
-  "storefront.home.workflow.order.text": "加入 MOQ，确认 IVA 与配送，然后提交订单。",
+  "storefront.home.workflow.order.text": "设置起订量，确认增值税与配送，然后提交订单。",
   "storefront.home.workflow.order.title": "准备订单",
   "storefront.home.workflow.title": "从搜索到售后，减少手动沟通",
 };

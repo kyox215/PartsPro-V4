@@ -49,7 +49,7 @@ export function CartPage() {
           <div className="flex flex-wrap items-start justify-between gap-2 sm:gap-3">
             <div className="min-w-0">
               <Badge className="mb-2 hidden border border-primary/20 bg-primary/8 text-primary lg:inline-flex">
-                Carrello B2B
+                Carrello clienti
               </Badge>
               <h1 className="text-xl font-black tracking-normal sm:text-3xl md:text-4xl">
                 Conferma prodotti e quantità
@@ -183,9 +183,6 @@ function CartLineMobileRow({ line, onChangeQuantity, onRemove }: CartLineViewPro
           <Badge variant="outline" className="h-5 px-1.5 text-[10px] leading-none">
             {line.product.grade}
           </Badge>
-          <Badge className="h-5 border border-emerald-200 bg-emerald-50 px-1.5 text-[10px] leading-none text-emerald-700">
-            {line.product.warehouse}
-          </Badge>
         </div>
       </div>
       <div className="grid min-w-[92px] justify-items-end gap-1 text-right">
@@ -256,9 +253,6 @@ function CartLineDesktopCard({ line, onChangeQuantity, onRemove }: CartLineViewP
           <div className="mt-1 font-mono text-xs text-slate-500">{line.sku}</div>
           <div className="mt-2 flex flex-wrap gap-2">
             <Badge variant="outline">{line.product.grade}</Badge>
-            <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
-              {line.product.warehouse}
-            </Badge>
           </div>
         </div>
         <div className="block text-right">

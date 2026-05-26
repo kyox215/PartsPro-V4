@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import {
   AlertTriangle,
   ArrowRight,
@@ -120,8 +121,11 @@ type CustomerSnapshot = {
 };
 
 type OrderLine = {
+  id: string;
   sku: string;
   name: string;
+  imageUrl?: string;
+  imageAlt?: string;
   category: string;
   quantity: number;
   picked: number;
@@ -1835,20 +1839,23 @@ function OrderLines({
     <div className="min-w-0">
       <div className="space-y-1 md:hidden">
         {lines.map((line) => (
-          <div key={line.sku} className="rounded-md border border-slate-200 p-1.5">
-            <div className="min-w-0">
-              <div className="break-words text-[13px] font-bold leading-tight text-slate-900 sm:text-sm">
-                {line.name}
+          <div key={line.id} className="rounded-md border border-slate-200 bg-white p-1.5">
+            <div className="grid min-w-0 grid-cols-[58px_minmax(0,1fr)] gap-2">
+              <OrderLineImage line={line} />
+              <div className="min-w-0">
+                <div className="break-words text-[13px] font-bold leading-tight text-slate-900 sm:text-sm">
+                  {line.name}
+                </div>
+                <div className="mt-0.5 truncate font-mono text-[11px] text-slate-500 sm:text-xs">
+                  {line.sku}
+                </div>
+                <div className="mt-1.5 grid grid-cols-4 gap-1 text-xs max-[360px]:grid-cols-2">
+                  <MobileFact label={text.orders.lines.quantity} value={`${line.quantity}`} />
+                  <MobileFact label={text.orders.lines.reserved} value={`${line.reservedQty}`} />
+                  <MobileFact label={text.orders.lines.fulfilled} value={`${line.fulfilledQty}`} />
+                  <MobileFact label={text.common.price} value={formatEuro(line.unitPrice)} />
+                </div>
               </div>
-              <div className="mt-0.5 font-mono text-[11px] text-slate-500 sm:text-xs">
-                {line.sku}
-              </div>
-            </div>
-            <div className="mt-1.5 grid grid-cols-4 gap-1 text-xs max-[360px]:grid-cols-2">
-              <MobileFact label={text.orders.lines.quantity} value={`${line.quantity}`} />
-              <MobileFact label={text.orders.lines.reserved} value={`${line.reservedQty}`} />
-              <MobileFact label={text.orders.lines.fulfilled} value={`${line.fulfilledQty}`} />
-              <MobileFact label={text.common.price} value={formatEuro(line.unitPrice)} />
             </div>
           </div>
         ))}
@@ -1867,9 +1874,12 @@ function OrderLines({
           </TableHeader>
           <TableBody className="[&_td]:px-2 [&_td]:py-1.5">
             {lines.map((line) => (
-              <TableRow key={line.sku}>
+              <TableRow key={line.id}>
                 <TableCell className="font-mono text-xs font-semibold text-slate-600">
-                  {line.sku}
+                  <div className="flex min-w-0 items-center gap-2">
+                    <OrderLineImage line={line} className="size-9" />
+                    <span className="min-w-0 truncate">{line.sku}</span>
+                  </div>
                 </TableCell>
                 <TableCell>
                   <div className="max-w-[260px] truncate text-xs font-bold text-slate-900">
@@ -1896,6 +1906,40 @@ function OrderLines({
           </TableBody>
         </Table>
       </div>
+    </div>
+  );
+}
+
+function OrderLineImage({
+  className,
+  line,
+}: {
+  className?: string;
+  line: OrderLine;
+}) {
+  const imageAlt = line.imageAlt || line.name;
+
+  return (
+    <div
+      className={cn(
+        "relative grid size-[58px] shrink-0 place-items-center overflow-hidden rounded-md border border-slate-200 bg-slate-50",
+        className
+      )}
+    >
+      {line.imageUrl ? (
+        <Image
+          src={line.imageUrl}
+          alt={imageAlt}
+          fill
+          sizes="58px"
+          quality={55}
+          loading="lazy"
+          decoding="async"
+          className="object-contain p-1"
+        />
+      ) : (
+        <PackageCheck className="size-5 text-slate-300" />
+      )}
     </div>
   );
 }
@@ -2630,7 +2674,7 @@ function normalizeAdminOrder(
   );
   const rawLines = readArrayPayload(row, ["lines", "orderLines", "items"]) ?? [];
   const lines = rawLines
-    .map((line) => normalizeOrderLine(line, fulfillmentStatus))
+    .map((line, index) => normalizeOrderLine(line, fulfillmentStatus, index))
     .filter((line): line is OrderLine => line !== null);
   const itemCount =
     readNumber(readRecordValue(row, ["items", "itemCount", "items_count"])) ??
@@ -2701,7 +2745,8 @@ function normalizeAdminOrder(
 
 function normalizeOrderLine(
   row: unknown,
-  fulfillmentStatus: FulfillmentStatus
+  fulfillmentStatus: FulfillmentStatus,
+  index: number
 ): OrderLine | null {
   if (!isRecord(row)) {
     return null;
@@ -2747,11 +2792,20 @@ function normalizeOrderLine(
     reservedQty;
 
   return {
+    id: readString(readRecordValue(row, ["id", "lineId", "line_id", "orderLineId", "order_line_id"])) ?? `${sku}:${index}`,
     sku,
     name:
       readString(readRecordValue(row, ["name", "productName", "product_name"])) ??
       readString(readRecordValue(product, ["name"])) ??
       "Prodotto ordine",
+    imageUrl:
+      readString(readRecordValue(row, ["imageUrl", "image_url", "productImageUrl", "product_image_url"])) ??
+      readString(readRecordValue(product, ["imageUrl", "image_url", "productImageUrl", "product_image_url"])) ??
+      undefined,
+    imageAlt:
+      readString(readRecordValue(row, ["imageAlt", "image_alt", "productImageAlt", "product_image_alt"])) ??
+      readString(readRecordValue(product, ["imageAlt", "image_alt", "productImageAlt", "product_image_alt"])) ??
+      undefined,
     category:
       sanitizeSupplierText(
         readString(row.category) ??

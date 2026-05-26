@@ -31,6 +31,7 @@ type StoreMobileMenuProps = {
   className?: string;
   modelGroups?: readonly DeviceModelGroup[];
   onCatalogSelect?: (selection: CatalogSelection) => void;
+  prefetchCatalogLinks?: boolean;
   selectedCatalog?: CatalogSelection;
 };
 
@@ -38,6 +39,7 @@ export function StoreMobileMenu({
   className,
   modelGroups,
   onCatalogSelect,
+  prefetchCatalogLinks = false,
   selectedCatalog,
 }: StoreMobileMenuProps) {
   const t = useT();
@@ -105,7 +107,7 @@ export function StoreMobileMenu({
               tagline={tx(
                 t,
                 "storefront.logo.tagline",
-                "Ricambi smartphone B2B Italia"
+                "Ricambi smartphone Italia"
               )}
             />
           </div>
@@ -190,6 +192,7 @@ export function StoreMobileMenu({
                     onExpandedBrandChange={setExpandedBrandOverride}
                     onNavigate={onCatalogSelect ? undefined : closeMenu}
                     onSelectCatalog={onCatalogSelect ? handleCatalogSelect : undefined}
+                    prefetchCatalogLinks={prefetchCatalogLinks}
                     selectedCatalog={selectedCatalog}
                     showAvailableLink
                   />

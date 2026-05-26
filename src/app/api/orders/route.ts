@@ -12,7 +12,7 @@ import {
   readQueryParams,
   toCents,
 } from "@/lib/partspro-api";
-import { getAdminAuthState } from "@/lib/partspro-admin-auth";
+import { getAdminAuthState, hasAdminPermission } from "@/lib/partspro-admin-auth";
 import {
   listCatalogProducts,
   listCompanies,
@@ -27,6 +27,11 @@ import {
   type OrderSummary,
   type PartProduct,
 } from "@/lib/partspro-data";
+import {
+  applyAccountPriceToProduct,
+  getCurrentAccountContext,
+} from "@/lib/partspro-account-context";
+import { toPublicSku } from "@/lib/partspro-sku";
 
 const orderStatuses = [
   "draft",
@@ -112,8 +117,15 @@ export async function GET(request: NextRequest) {
       return apiError(
         authState.reason === "missing_session" ? 401 : 403,
         "ADMIN_ORDERS_FORBIDDEN",
-        "Only staff users can list B2B orders."
+        "Only staff users can list customer orders."
       );
+    }
+
+    if (!hasAdminPermission(authState, "orders.read")) {
+      return apiError(403, "ADMIN_PERMISSION_DENIED", "Missing admin permission.", {
+        permission: "orders.read",
+        role: authState.role,
+      });
     }
 
     const parsedParams = readQueryParams(request.nextUrl.searchParams, ordersQueryKeys);
@@ -173,6 +185,25 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const account = await getCurrentAccountContext({ ensure: true });
+
+    if (!account.authenticated) {
+      return apiError(401, "LOGIN_REQUIRED", "Login is required before placing an order.");
+    }
+
+    if (!account.canCheckout) {
+      return apiError(
+        422,
+        "CUSTOMER_PROFILE_INCOMPLETE",
+        "Complete the required customer, tax, billing and shipping profile before checkout.",
+        {
+          accountType: account.accountType,
+          customerId: account.customer?.id ?? null,
+          customerType: account.customer?.customerType ?? null,
+        }
+      );
+    }
+
     const [companies, catalog] = await Promise.all([listCompanies(), listCatalogProducts()]);
     const companyResolution = resolveCompany(companies.data, result.data.companyId);
     const company = companyResolution.company;
@@ -181,15 +212,25 @@ export async function POST(request: NextRequest) {
       return apiError(404, "COMPANY_NOT_FOUND", "Company profile was not found.");
     }
 
+    if (account.customer?.id && company.id !== account.customer.id) {
+      return apiError(403, "COMPANY_FORBIDDEN", "Orders can only be placed for the current customer profile.", {
+        companyId: company.id,
+        customerId: account.customer.id,
+      });
+    }
+
     if (company.status !== "approved") {
-      return apiError(403, "COMPANY_NOT_APPROVED", "Company must be approved before placing B2B orders.", {
+      return apiError(403, "COMPANY_NOT_APPROVED", "Customer profile must be active before placing orders.", {
         companyId: company.id,
         status: company.status,
       });
     }
 
     const requestedItems = result.data.items;
-    const orderBuild = buildOrder(requestedItems, catalog.data);
+    const pricedCatalog = catalog.data.map((product) =>
+      applyAccountPriceToProduct(product, account)
+    );
+    const orderBuild = buildOrder(requestedItems, pricedCatalog);
 
     if (orderBuild.issues.length > 0) {
       return apiError(422, "ORDER_ITEMS_INVALID", "One or more order items cannot be accepted.", {
@@ -309,7 +350,7 @@ function buildOrder(requestedItems: RequestedOrderItem[], catalog: PartProduct[]
   const lines: OrderLine[] = [];
 
   for (const item of requestedItems) {
-    const sku = item.sku.toUpperCase();
+    const sku = toPublicSku(item.sku);
 
     if (seen.has(sku)) {
       issues.push({ sku, message: "Duplicate SKU in order payload." });

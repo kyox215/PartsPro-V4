@@ -108,7 +108,7 @@ export function CheckoutSubmitButton({
     if (!selectedCompanyId) {
       setState({
         status: "error",
-        message: "Profilo azienda non disponibile: collega un cliente B2B approvato prima di confermare l'ordine.",
+        message: "Profilo cliente non disponibile: collega o completa il cliente prima di confermare l'ordine.",
       });
       return;
     }
