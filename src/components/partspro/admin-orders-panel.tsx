@@ -1781,17 +1781,6 @@ function OrderActionBar({
           {text.orders.logisticsRequired}
         </div>
       )}
-      {transition && (
-        <div className="text-[10px] font-semibold text-slate-400 sm:text-xs">
-          {labels.status[order.status]} {"->"} {labels.status[transition.status]}
-        </div>
-      )}
-      {rollback && (
-        <div className="text-[10px] font-semibold text-slate-400 sm:text-xs">
-          {text.orders.rollbackStatus}: {labels.status[order.status]} {"->"}{" "}
-          {labels.status[rollback.status]}
-        </div>
-      )}
     </div>
   );
 }
