@@ -1563,6 +1563,8 @@ function OrderDetailsPanel({
         <StatusStepper labels={labels} status={order.status} />
       </div>
 
+      <OrderNoteBanner note={order.notes} text={text} />
+
       <div className="grid gap-1 sm:gap-2 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
         <div className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5 sm:p-2.5">
           <div className="mb-1 flex items-center gap-2 sm:mb-2">
@@ -1587,13 +1589,6 @@ function OrderDetailsPanel({
             </div>
           </div>
           <div className="rounded-md border border-slate-200 bg-white p-1.5 sm:p-2.5">
-            <div className="mb-1 text-sm font-bold text-slate-900 sm:mb-2">
-              {text.orders.details.notesAudit}
-            </div>
-            <div className="rounded-md bg-slate-50 px-1.5 py-1 text-xs font-medium leading-5 text-slate-600 sm:px-2.5 sm:py-2">
-              <span className="font-bold text-slate-400">{text.orders.details.orderNote}</span>
-              <span className="ml-2">{order.notes || text.common.none}</span>
-            </div>
             <OrderOperationHistory
               events={order.operationHistory}
               fallbackActivity={order.activity}
@@ -1905,6 +1900,43 @@ function OrderLines({
   );
 }
 
+function OrderNoteBanner({ note, text }: { note: string; text: AdminText }) {
+  const displayNote = note.trim() || text.common.none;
+
+  return (
+    <div
+      className={cn(
+        "min-w-0 rounded-md border px-2 py-1.5 shadow-[0_1px_0_rgba(15,23,42,0.04)] sm:px-3 sm:py-2",
+        note.trim()
+          ? "border-amber-200 bg-amber-50 text-amber-950"
+          : "border-slate-200 bg-white text-slate-500"
+      )}
+    >
+      <div className="flex min-w-0 items-start gap-2">
+        <Info
+          className={cn(
+            "mt-0.5 size-4 shrink-0",
+            note.trim() ? "text-amber-600" : "text-slate-400"
+          )}
+        />
+        <div className="min-w-0 flex-1">
+          <div
+            className={cn(
+              "text-[11px] font-black leading-none sm:text-xs",
+              note.trim() ? "text-amber-700" : "text-slate-400"
+            )}
+          >
+            {text.orders.details.orderNote}
+          </div>
+          <div className="mt-1 break-words font-mono text-[13px] font-black leading-snug sm:text-sm">
+            {displayNote}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function printOrderPackingSlip(
   order: AdminOrder,
   labels: OrderLabels,
@@ -2210,7 +2242,7 @@ function OrderOperationHistory({
   text: AdminText;
 }) {
   return (
-    <div className="mt-3 min-w-0">
+    <div className="min-w-0">
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
         <div className="text-xs font-black uppercase text-slate-400">
           {text.orders.details.operationHistory}
