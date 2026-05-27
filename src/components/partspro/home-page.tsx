@@ -33,6 +33,7 @@ import {
   type PartProduct,
   type PartVisual as PartVisualType,
 } from "@/lib/partspro-data";
+import { getProductImageCandidates } from "@/lib/partspro-product-images";
 import { formatMoney } from "@/i18n/format";
 import { translateText } from "@/i18n/dictionaries/auto-translate";
 import { PartVisual } from "./part-visual";
@@ -499,6 +500,9 @@ function FeaturedProductCard({ product }: { product: PartProduct }) {
   const productPath = `/prodotto/${encodeURIComponent(product.sku)}`;
   const productName = translateText(product.name, locale);
   const productImageAlt = translateText(product.imageAlt ?? product.name, locale);
+  const imageCandidates = useMemo(() => getProductImageCandidates(product), [product]);
+  const [failedImageUrls, setFailedImageUrls] = useState<string[]>([]);
+  const imageUrl = imageCandidates.find((candidate) => !failedImageUrls.includes(candidate));
   const visibleModels = product.compatibleWith.slice(0, 2);
   const extraModels = Math.max(product.compatibleWith.length - visibleModels.length, 0);
   const stockLine = tx(
@@ -514,6 +518,12 @@ function FeaturedProductCard({ product }: { product: PartProduct }) {
     "+{count} modelli"
   ).replace("{count}", new Intl.NumberFormat(locale).format(extraModels));
 
+  function markImageFailed(failedUrl: string) {
+    setFailedImageUrls((current) =>
+      current.includes(failedUrl) ? current : [...current, failedUrl]
+    );
+  }
+
   return (
     <article className="grid h-full min-w-0 grid-cols-[104px_minmax(0,1fr)] gap-3 rounded-lg border border-slate-200 bg-white p-2 shadow-[0_12px_28px_rgba(15,23,42,0.04)] transition hover:border-primary/40 sm:flex sm:flex-col sm:p-3">
       <Link
@@ -524,12 +534,14 @@ function FeaturedProductCard({ product }: { product: PartProduct }) {
         )}
         className="relative block h-28 overflow-hidden rounded-md bg-slate-50 outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-36 sm:rounded-lg"
       >
-        {product.imageUrl ? (
+        {imageUrl ? (
           <Image
-            src={product.imageUrl}
+            src={imageUrl}
             alt={productImageAlt}
             fill
             sizes="(max-width: 640px) 104px, (max-width: 1280px) 50vw, 25vw"
+            unoptimized
+            onError={() => markImageFailed(imageUrl)}
             className="object-contain p-2 sm:p-3"
           />
         ) : (

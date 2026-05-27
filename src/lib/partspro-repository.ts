@@ -10,6 +10,7 @@ import {
   sanitizeSupplierText,
   toPublicSku,
 } from "@/lib/partspro-sku";
+import { resolveProductImageUrl } from "@/lib/partspro-product-images";
 import {
   deviceModels,
   type CompanyProfile,
@@ -44,7 +45,6 @@ type ProductPayloadOptions = {
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const productImagesBucket = "product-images";
 const catalogPublicCardSelect =
   "id, sku_code, name, brand, model, model_code, model_codes, category, quality_grade, stock_status, moq, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, updated_at, image_path, image_alt";
 const catalogProductCardSelect =
@@ -4561,32 +4561,6 @@ function sanitizeSupplierStringArray(values: string[]) {
   return values
     .map((value) => sanitizeSupplierText(value))
     .filter(Boolean);
-}
-
-function resolveProductImageUrl(value: string | null | undefined) {
-  const normalized = value?.trim();
-
-  if (!normalized) {
-    return null;
-  }
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, "");
-
-  if (!supabaseUrl) {
-    return null;
-  }
-
-  const publicPrefix = `${supabaseUrl}/storage/v1/object/public/${productImagesBucket}/`;
-
-  if (normalized.startsWith(publicPrefix)) {
-    return normalized;
-  }
-
-  if (/^https?:\/\//i.test(normalized)) {
-    return null;
-  }
-
-  return `${publicPrefix}${normalized.replace(/^\/+/, "")}`;
 }
 
 function getObject(row: DbRow, key: string): DbRow | null {

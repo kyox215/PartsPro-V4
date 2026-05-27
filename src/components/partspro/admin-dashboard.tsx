@@ -156,7 +156,7 @@ export function AdminDashboard() {
   );
 
   return (
-    <main className="h-dvh overflow-y-auto overflow-x-clip text-slate-950">
+    <main className="h-dvh overflow-y-auto overflow-x-clip bg-slate-50 text-slate-950">
       <div className="flex min-w-0">
         <AdminSidebar
           activePanel={activePanel}
@@ -169,7 +169,7 @@ export function AdminDashboard() {
             onPanelChange={setActivePanel}
             visiblePanels={visiblePanelSet}
           />
-          <div className="mx-auto w-full max-w-[1500px] min-w-0 px-3 pb-3 pt-0 sm:px-4 sm:py-4">
+          <div className="mx-auto w-full max-w-[1500px] min-w-0 px-3 pb-3 pt-2 sm:px-4 sm:py-4">
             <Tabs
               value={activePanel}
               onValueChange={handlePanelChange}
@@ -289,8 +289,8 @@ function AdminTopbar({
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
 
   return (
-    <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/82 backdrop-blur-xl">
-      <div className="mx-auto flex h-16 w-full max-w-[1500px] min-w-0 items-center gap-3 px-4">
+    <header className="sticky top-0 z-30 border-b border-slate-200 bg-slate-50/95 backdrop-blur-xl">
+      <div className="mx-auto flex h-14 w-full max-w-[1500px] min-w-0 items-center gap-3 px-3 sm:h-16 sm:px-4">
         <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
           <SheetTrigger asChild>
             <Button variant="outline" size="icon" className="bg-white lg:hidden">
@@ -307,15 +307,17 @@ function AdminTopbar({
               </SheetDescription>
             </SheetHeader>
             <div className="p-4">
-              <LanguageSwitcher scope="admin" className="mb-4" />
-              <Link
-                href="/"
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="mb-2 flex h-11 w-full items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 text-left text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-primary/8 hover:text-primary"
-              >
-                <Home className="size-4" />
-                {text.topbar.home}
-              </Link>
+              <div className="mb-3 flex min-w-0 items-center gap-2">
+                <Link
+                  href="/"
+                  onClick={() => setIsMobileMenuOpen(false)}
+                  className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-left text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-primary/8 hover:text-primary"
+                >
+                  <Home className="size-4 shrink-0" />
+                  <span className="truncate">{text.topbar.home}</span>
+                </Link>
+                <LanguageSwitcher scope="admin" compact className="h-10 shadow-sm" />
+              </div>
               {navItems.map((item) => {
                 const panel = "panel" in item ? item.panel : undefined;
                 const isAvailable = Boolean(panel && visiblePanels.has(panel));

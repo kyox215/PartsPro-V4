@@ -3,7 +3,6 @@
 import * as React from "react";
 import Image from "next/image";
 import {
-  Archive,
   Building2,
   CheckCircle2,
   ChevronLeft,
@@ -18,11 +17,13 @@ import {
   SlidersHorizontal,
   Store,
   Users,
+  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -267,6 +268,10 @@ type CustomerTermsDraft = {
   tier: CustomerTier;
 };
 
+type CustomerClassificationDraft = {
+  customerType: CustomerType;
+};
+
 type CustomerEditState =
   | {
       customer: AdminCustomer;
@@ -277,6 +282,11 @@ type CustomerEditState =
       customer: AdminCustomer;
       draft: CustomerTermsDraft;
       kind: "terms";
+    }
+  | {
+      customer: AdminCustomer;
+      draft: CustomerClassificationDraft;
+      kind: "classification";
     };
 
 const pageSize = 25;
@@ -517,11 +527,17 @@ export function AdminCustomersPanel() {
             draft: profileDraftFromCustomer(customer),
             kind,
           }
-        : {
-            customer,
-            draft: termsDraftFromCustomer(customer),
-            kind,
-          }
+        : kind === "classification"
+          ? {
+              customer,
+              draft: classificationDraftFromCustomer(customer),
+              kind,
+            }
+          : {
+              customer,
+              draft: termsDraftFromCustomer(customer),
+              kind,
+            }
     );
     setEditReason("");
   }
@@ -538,6 +554,14 @@ export function AdminCustomersPanel() {
     setEditState((current) =>
       current?.kind === "terms"
         ? { ...current, draft: { ...current.draft, [field]: value } }
+        : current
+    );
+  }
+
+  function updateClassificationDraft(field: keyof CustomerClassificationDraft, value: string) {
+    setEditState((current) =>
+      current?.kind === "classification"
+        ? { ...current, draft: { ...current.draft, [field]: value as CustomerType } }
         : current
     );
   }
@@ -596,10 +620,14 @@ export function AdminCustomersPanel() {
     setEditSubmitting(true);
 
     try {
+      const endpoint =
+        editState.kind === "profile"
+          ? "profile"
+          : editState.kind === "terms"
+            ? "commercial-terms"
+            : "classification";
       const response = await fetchJson<CustomerMutationResponse>(
-        `/api/admin/customers/${editState.customer.id}/${
-          editState.kind === "profile" ? "profile" : "commercial-terms"
-        }`,
+        `/api/admin/customers/${editState.customer.id}/${endpoint}`,
         {
           body: JSON.stringify(payloadResult.payload),
           headers: { "Content-Type": "application/json" },
@@ -617,7 +645,12 @@ export function AdminCustomersPanel() {
       );
       setNotice({
         tone: "success",
-        message: editState.kind === "profile" ? copy.profileSaved : copy.termsSaved,
+        message:
+          editState.kind === "profile"
+            ? copy.profileSaved
+            : editState.kind === "terms"
+              ? copy.termsSaved
+              : copy.classificationSaved,
       });
       setEditState(null);
       setEditReason("");
@@ -870,16 +903,16 @@ export function AdminCustomersPanel() {
                       <TableCell className="px-2 py-1.5 sm:px-2">
                         <div
                           className={cn(
-                            "sm:hidden rounded-md border border-slate-200 bg-white px-2 py-1.5 shadow-[0_6px_16px_rgba(15,23,42,0.03)] transition-colors group-hover:border-primary/30",
+                            "sm:hidden rounded-md border border-slate-200 bg-white px-2.5 py-2 shadow-[0_8px_20px_rgba(15,23,42,0.035)] transition-colors group-hover:border-primary/30",
                             activeId === customer.id && "border-primary/35 bg-primary/5"
                           )}
                         >
                           <div className="flex min-w-0 items-center justify-between gap-2">
                             <div className="min-w-0">
-                              <div className="truncate text-[13px] font-semibold leading-4 text-slate-950">
+                              <div className="truncate text-sm font-bold leading-5 text-slate-950">
                                 {customer.companyName}
                               </div>
-                              <div className="mt-0.5 truncate text-[11px] font-medium leading-3 text-slate-500">
+                              <div className="mt-0.5 truncate text-[11px] font-medium leading-4 text-slate-500">
                                 {customer.email || customer.vatNumber || copy.noData}
                               </div>
                             </div>
@@ -893,14 +926,32 @@ export function AdminCustomersPanel() {
                               <ChevronRight className="size-3.5 text-slate-400" />
                             </div>
                           </div>
-                          <div className="mt-1.5 flex min-w-0 items-center gap-1 overflow-hidden rounded bg-slate-50 px-1.5 py-1 text-[11px] font-semibold leading-3 text-slate-600">
-                            <span className="shrink-0 text-primary">{tierLabel(customer.tier, copy)}</span>
-                            <span className="text-slate-300">/</span>
-                            <span className="shrink-0">{customer.ordersCount} {text.customers.labels.orderCount}</span>
-                            <span className="text-slate-300">/</span>
-                            <span className="min-w-0 truncate">{formatEuro(customer.revenue)}</span>
-                            <span className="text-slate-300">/</span>
-                            <span className="shrink-0">{formatDate(customer.lastContact) ?? copy.noData}</span>
+                          <div className="mt-2 grid grid-cols-4 gap-1">
+                            <CustomerMobileFact
+                              label={copy.customerLevel}
+                              value={tierLabel(customer.tier, copy)}
+                              emphasis
+                            />
+                            <CustomerMobileFact
+                              label={text.customers.labels.orderCount}
+                              value={customer.ordersCount}
+                            />
+                            <CustomerMobileFact
+                              label={text.customers.labels.spent}
+                              value={formatEuro(customer.revenue)}
+                            />
+                            <CustomerMobileFact
+                              label={text.customers.labels.last}
+                              value={formatDate(customer.lastContact) ?? copy.noData}
+                            />
+                          </div>
+                          <div className="mt-1.5 grid grid-cols-2 gap-1 text-[10px] font-semibold leading-3 text-slate-500">
+                            <div className="min-w-0 truncate rounded bg-slate-50 px-1.5 py-1">
+                              {text.customers.labels.reference}: {customer.contactName || copy.noData}
+                            </div>
+                            <div className="min-w-0 truncate rounded bg-slate-50 px-1.5 py-1">
+                              {copy.fieldLabels.vat}: {customer.vatNumber || customer.partitaIva || copy.noData}
+                            </div>
                           </div>
                         </div>
                         <div className="hidden min-w-0 max-w-[360px] sm:block">
@@ -973,13 +1024,25 @@ export function AdminCustomersPanel() {
 
       <Dialog open={mobileDetailOpen} onOpenChange={setMobileDetailOpen}>
         <DialogContent
-          className="grid max-h-[calc(100dvh-0.5rem)] w-[calc(100vw-0.5rem)] max-w-[calc(100vw-0.5rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-md bg-white p-0 pt-5 sm:max-w-lg lg:hidden"
+          showCloseButton={false}
+          className="grid max-h-[calc(100dvh-0.5rem)] w-[calc(100vw-0.5rem)] max-w-[calc(100vw-0.5rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg bg-white p-0 sm:max-w-lg lg:hidden"
           style={{ height: "min(760px, calc(100dvh - 0.5rem))" }}
           onClick={(event) => event.stopPropagation()}
           onInteractOutside={(event) => event.preventDefault()}
           onPointerDown={(event) => event.stopPropagation()}
           onPointerDownOutside={(event) => event.preventDefault()}
         >
+          <DialogClose asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="absolute right-2 top-2 z-20 size-7 rounded-md bg-white/90 text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-white"
+            >
+              <X className="size-4" />
+              <span className="sr-only">Close</span>
+            </Button>
+          </DialogClose>
           <DialogHeader className="sr-only">
             <DialogTitle>
               {detail?.companyName ?? copy.detailsEmpty}
@@ -988,11 +1051,12 @@ export function AdminCustomersPanel() {
               {detail?.email || detail?.vatNumber || text.customers.description}
             </DialogDescription>
           </DialogHeader>
-          <div className="min-h-0 overflow-y-auto bg-white p-1">
+          <div className="min-h-0 overflow-y-auto bg-white">
             <CustomerDetail
               copy={copy}
               customer={detail}
               detailLoading={detailLoading}
+              embedded
               onAction={openSingleAction}
               onEdit={openCustomerEdit}
               onOpenOrder={openCustomerOrderDetail}
@@ -1040,6 +1104,7 @@ export function AdminCustomersPanel() {
           setEditState(null);
           setEditReason("");
         }}
+        onClassificationChange={updateClassificationDraft}
         onProfileChange={updateProfileDraft}
         onReasonChange={setEditReason}
         onSubmit={submitCustomerEdit}
@@ -1065,6 +1130,7 @@ function CustomerDetail({
   copy,
   customer,
   detailLoading,
+  embedded = false,
   onAction,
   onEdit,
   onOpenOrder,
@@ -1074,6 +1140,7 @@ function CustomerDetail({
   copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
   customer: AdminCustomer | null;
   detailLoading: boolean;
+  embedded?: boolean;
   onAction: (action: Omit<PendingAction, "ids">, id: string) => void;
   onEdit: (kind: CustomerEditState["kind"], customer: AdminCustomer) => void;
   onOpenOrder: (order: CustomerOrderSummary) => void;
@@ -1088,7 +1155,12 @@ function CustomerDetail({
 
   if (detailLoading) {
     return (
-      <aside className="min-h-full rounded-md border border-slate-200 bg-white p-1.5 lg:sticky lg:top-3 lg:min-h-0 lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto lg:rounded-lg lg:p-3 lg:shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
+      <aside
+        className={cn(
+          "min-h-full bg-white p-1.5 lg:sticky lg:top-3 lg:min-h-0 lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto lg:p-3 lg:shadow-[0_16px_40px_rgba(15,23,42,0.05)]",
+          embedded ? "rounded-none border-0" : "rounded-md border border-slate-200 lg:rounded-lg"
+        )}
+      >
         <div className="space-y-1.5 lg:space-y-2">
           <div className="h-6 animate-pulse rounded-md bg-muted lg:h-7" />
           <div className="h-16 animate-pulse rounded-md bg-muted lg:h-20" />
@@ -1100,85 +1172,117 @@ function CustomerDetail({
 
   if (!customer) {
     return (
-      <aside className="grid min-h-full place-items-center rounded-md border border-slate-200 bg-white p-2 text-center text-xs text-muted-foreground lg:sticky lg:top-3 lg:min-h-64 lg:rounded-lg lg:p-4 lg:text-sm lg:shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
+      <aside
+        className={cn(
+          "grid min-h-full place-items-center bg-white p-2 text-center text-xs text-muted-foreground lg:sticky lg:top-3 lg:min-h-64 lg:p-4 lg:text-sm lg:shadow-[0_16px_40px_rgba(15,23,42,0.05)]",
+          embedded ? "rounded-none border-0" : "rounded-md border border-slate-200 lg:rounded-lg"
+        )}
+      >
         {copy.detailsEmpty}
       </aside>
     );
   }
 
+  const customerStatusChoices: CustomerStatus[] = ["active", "pending", "suspended"];
+  const assignmentStatusChoices: AssignmentStatus[] = [
+    "needs_review",
+    "assigned",
+    "converted_to_employee",
+    "archived",
+  ];
+  const statusCopy = (status: CustomerStatus) =>
+    statusLabel(status, copy, suspended, text.customers.labels.active);
+  const assignmentCopy = (status: AssignmentStatus) => assignmentStatusLabel(status, copy);
+
+  function handleStatusChange(nextStatus: string) {
+    if (!customer || nextStatus === customer.customerStatus) {
+      return;
+    }
+
+    const status = nextStatus as CustomerStatus;
+    const label = statusCopy(status);
+
+    onAction(
+      {
+        endpoint: "classification",
+        payload: { status },
+        summary: label,
+        title: `${copy.status}: ${label}`,
+      },
+      customer.id
+    );
+  }
+
+  function handleAssignmentChange(nextAssignment: string) {
+    if (!customer || nextAssignment === customer.assignmentStatus) {
+      return;
+    }
+
+    const assignmentStatus = nextAssignment as AssignmentStatus;
+    const label = assignmentCopy(assignmentStatus);
+
+    onAction(
+      {
+        endpoint: "classification",
+        payload:
+          assignmentStatus === "archived"
+            ? { assignmentStatus, status: "suspended" }
+            : { assignmentStatus },
+        summary: label,
+        title: `${copy.fieldLabels.assignment}: ${label}`,
+      },
+      customer.id
+    );
+  }
+
+  const sortedOrders = [...(customer.orders ?? [])].sort(compareCreatedAtDesc);
+  const sortedRmas = [...(customer.rmas ?? [])].sort(compareCreatedAtDesc);
+
   return (
-    <aside className="min-h-full min-w-0 overflow-hidden rounded-md border border-slate-200 bg-white text-slate-950 lg:sticky lg:top-3 lg:min-h-0 lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto lg:rounded-lg lg:shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
+    <aside
+      className={cn(
+        "min-h-full min-w-0 overflow-hidden bg-white text-slate-950 lg:sticky lg:top-3 lg:min-h-0 lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto lg:shadow-[0_16px_40px_rgba(15,23,42,0.05)]",
+        embedded ? "rounded-none border-0" : "rounded-md border border-slate-200 lg:rounded-lg"
+      )}
+    >
       <div className="border-b border-slate-200 px-2 py-1.5 lg:p-3">
-        <div className="flex items-start justify-between gap-2 pr-7 lg:gap-3 lg:pr-0">
+        <div className="flex items-start justify-between gap-2 pr-8 lg:gap-3 lg:pr-0">
           <div className="min-w-0">
-            <h3 className="truncate text-[15px] font-semibold leading-5 lg:text-base">{customer.companyName}</h3>
+            <div className="flex min-w-0 items-center gap-1.5">
+              <h3 className="min-w-0 truncate text-[15px] font-semibold leading-5 lg:text-base">{customer.companyName}</h3>
+              <div className="shrink-0 lg:hidden">
+                <StatusBadge
+                  active={text.customers.labels.active}
+                  status={customer.customerStatus}
+                  copy={copy}
+                  suspended={suspended}
+                />
+              </div>
+            </div>
             <p className="truncate text-[11px] leading-4 text-muted-foreground lg:text-xs">{customer.email || customer.vatNumber || copy.noData}</p>
           </div>
-          <StatusBadge
-            active={text.customers.labels.active}
-            status={customer.customerStatus}
-            copy={copy}
-            suspended={suspended}
-          />
+          <div className="hidden shrink-0 lg:block">
+            <StatusBadge
+              active={text.customers.labels.active}
+              status={customer.customerStatus}
+              copy={copy}
+              suspended={suspended}
+            />
+          </div>
         </div>
-        <div className="mt-1.5 flex flex-wrap gap-1 lg:mt-2 lg:gap-1.5">
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 min-w-0 px-2 text-[11px] lg:h-8 lg:text-xs"
-            onClick={() =>
-              onAction(
-                {
-                  endpoint: "classification",
-                  payload: { status: "active" },
-                  summary: "active",
-                  title: statusLabel("active", copy, suspended, text.customers.labels.active),
-                },
-                customer.id
-              )
-            }
-          >
-            <CheckCircle2 />
-            {statusLabel("active", copy, suspended, text.customers.labels.active)}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 min-w-0 px-2 text-[11px] lg:h-8 lg:text-xs"
-            onClick={() =>
-              onAction(
-                {
-                  endpoint: "classification",
-                  payload: { status: "suspended" },
-                  summary: suspended,
-                  title: suspended,
-                },
-                customer.id
-              )
-            }
-          >
-            <ShieldAlert />
-            {suspended}
-          </Button>
-          <Button
-            size="sm"
-            variant="destructive"
-            className="h-7 min-w-0 px-2 text-[11px] lg:h-8 lg:text-xs"
-            onClick={() =>
-              onAction(
-                {
-                  endpoint: "classification",
-                  payload: { assignmentStatus: "archived", status: "suspended" },
-                  summary: copy.archive,
-                  title: copy.archive,
-                },
-                customer.id
-              )
-            }
-          >
-            <Archive />
-            {copy.archive}
-          </Button>
+        <div className="mt-1.5 grid grid-cols-2 gap-1 lg:mt-2 lg:gap-1.5">
+          <StatusChangeSelect
+            label={copy.status}
+            options={customerStatusChoices.map((status) => [status, statusCopy(status)] as const)}
+            value={customer.customerStatus}
+            onValueChange={handleStatusChange}
+          />
+          <StatusChangeSelect
+            label={copy.fieldLabels.assignment}
+            options={assignmentStatusChoices.map((status) => [status, assignmentCopy(status)] as const)}
+            value={customer.assignmentStatus}
+            onValueChange={handleAssignmentChange}
+          />
         </div>
       </div>
 
@@ -1206,13 +1310,23 @@ function CustomerDetail({
           </div>
           <DetailGrid
             items={[
-              [copy.customerLevel, tierLabel(customer.tier, copy)],
+              {
+                actionLabel: copy.editTerms,
+                label: copy.customerLevel,
+                onClick: () => onEdit("terms", customer),
+                value: tierLabel(customer.tier, copy),
+              },
               [text.customers.labels.reference, customer.contactName || copy.noData],
               [copy.fieldLabels.email, customer.email || copy.noData],
               [copy.fieldLabels.phone, customer.phone || copy.noData],
               [copy.fieldLabels.vat, customer.vatNumber || customer.partitaIva || copy.noData],
               [text.customers.sdi, customer.sdi || customer.codiceDestinatario || copy.noData],
-              [copy.customerType, customerTypeLabel(customer.customerType, copy)],
+              {
+                actionLabel: copy.customerType,
+                label: copy.customerType,
+                onClick: () => onEdit("classification", customer),
+                value: customerTypeLabel(customer.customerType, copy),
+              },
               [copy.status, statusLabel(customer.customerStatus, copy, suspended, text.customers.labels.active)],
               [copy.fieldLabels.assignment, assignmentStatusLabel(customer.assignmentStatus, copy)],
               [copy.fieldLabels.created, formatDate(customer.createdAt) ?? copy.noData],
@@ -1274,26 +1388,34 @@ function CustomerDetail({
         <TabsContent value="orders" className="mt-2 space-y-2 lg:mt-3 lg:space-y-4">
           <section>
             <h4 className="mb-1.5 text-xs font-semibold lg:mb-2 lg:text-sm">{text.customers.historyTitle}</h4>
-            {(customer.orders ?? []).length === 0 ? (
+            {sortedOrders.length === 0 ? (
               <EmptyState label={text.customers.historyEmpty} />
             ) : (
               <div className="space-y-1.5 lg:space-y-2">
-                {(customer.orders ?? []).map((order) => (
+                {sortedOrders.map((order) => (
                   <button
                     key={order.id}
                     type="button"
-                    className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md border border-slate-200 bg-white px-1.5 py-1.5 text-left text-xs transition hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 lg:p-2 lg:text-sm"
+                    className="grid w-full grid-cols-[4.25rem_minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md border border-slate-200 bg-white px-1.5 py-1.5 text-left text-xs transition hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 lg:grid-cols-[5rem_minmax(0,1fr)_auto_auto] lg:p-2 lg:text-sm"
                     onClick={() => onOpenOrder(order)}
                   >
-                    <div>
-                      <div className="font-medium">{order.orderNo}</div>
-                      <div className="text-[11px] text-muted-foreground lg:text-xs">
-                        {orderStatusLabel(order.status, text)} · {formatDate(order.createdAt) ?? copy.noData}
+                    <div className="min-w-0 rounded bg-slate-50 px-1.5 py-1 text-center">
+                      <div className="truncate font-mono text-[12px] font-bold leading-4 text-slate-950 lg:text-sm">
+                        {formatDate(order.createdAt) ?? copy.noData}
+                      </div>
+                      <div className="truncate text-[10px] font-medium leading-3 text-muted-foreground lg:text-[11px]">
+                        {orderStatusLabel(order.status, text)}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div>{formatEuro(order.total)}</div>
-                      <div className="text-[11px] text-muted-foreground lg:text-xs">{order.lineCount}</div>
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold leading-4">{order.orderNo}</div>
+                      <div className="mt-0.5 truncate text-[11px] text-muted-foreground lg:text-xs">
+                        {orderStatusLabel(order.status, text)}
+                      </div>
+                    </div>
+                    <div className="text-right font-semibold">
+                      <div className="whitespace-nowrap">{formatEuro(order.total)}</div>
+                      <div className="text-[11px] font-medium text-muted-foreground lg:text-xs">{order.lineCount}</div>
                     </div>
                     <ChevronRight className="size-3.5 text-slate-400" />
                   </button>
@@ -1303,15 +1425,25 @@ function CustomerDetail({
           </section>
           <section>
             <h4 className="mb-1.5 text-xs font-semibold lg:mb-2 lg:text-sm">{text.customers.rmaTitle}</h4>
-            {(customer.rmas ?? []).length === 0 ? (
+            {sortedRmas.length === 0 ? (
               <EmptyState label={text.customers.noRma} />
             ) : (
               <div className="space-y-1.5 lg:space-y-2">
-                {(customer.rmas ?? []).map((rma) => (
-                  <div key={rma.id} className="rounded-md border border-slate-200 bg-white px-1.5 py-1.5 text-xs lg:p-2 lg:text-sm">
-                    <div className="font-medium">{rma.sku}</div>
-                    <div className="text-[11px] text-muted-foreground lg:text-xs">
-                      {rma.orderNo || copy.noData} · {rmaStatusLabel(rma.status, text)} · {rma.quantity}
+                {sortedRmas.map((rma) => (
+                  <div key={rma.id} className="grid grid-cols-[4.25rem_minmax(0,1fr)] gap-2 rounded-md border border-slate-200 bg-white px-1.5 py-1.5 text-xs lg:grid-cols-[5rem_minmax(0,1fr)] lg:p-2 lg:text-sm">
+                    <div className="rounded bg-slate-50 px-1.5 py-1 text-center">
+                      <div className="truncate font-mono text-[12px] font-bold leading-4 text-slate-950 lg:text-sm">
+                        {formatDate(rma.createdAt) ?? copy.noData}
+                      </div>
+                      <div className="truncate text-[10px] font-medium leading-3 text-muted-foreground lg:text-[11px]">
+                        {rmaStatusLabel(rma.status, text)}
+                      </div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold">{rma.sku}</div>
+                      <div className="truncate text-[11px] text-muted-foreground lg:text-xs">
+                        {rma.orderNo || copy.noData} · {rma.quantity}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1687,6 +1819,7 @@ function CustomerEditDialog({
   copy,
   editState,
   onClose,
+  onClassificationChange,
   onProfileChange,
   onReasonChange,
   onSubmit,
@@ -1698,6 +1831,7 @@ function CustomerEditDialog({
   copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
   editState: CustomerEditState | null;
   onClose: () => void;
+  onClassificationChange: (field: keyof CustomerClassificationDraft, value: string) => void;
   onProfileChange: (field: keyof CustomerProfileDraft, value: string) => void;
   onReasonChange: (value: string) => void;
   onSubmit: () => void;
@@ -1711,12 +1845,16 @@ function CustomerEditDialog({
       ? copy.editProfile
       : editState?.kind === "terms"
         ? copy.editTerms
-        : copy.confirm;
+        : editState?.kind === "classification"
+          ? copy.customerType
+          : copy.confirm;
   const saveLabel =
     editState?.kind === "profile"
       ? copy.saveProfile
       : editState?.kind === "terms"
         ? copy.saveTerms
+        : editState?.kind === "classification"
+          ? copy.saveClassification
         : copy.submit;
   const canSubmit =
     Boolean(editState) &&
@@ -1870,6 +2008,25 @@ function CustomerEditDialog({
           </div>
         ) : null}
 
+        {editState?.kind === "classification" ? (
+          <div className="grid gap-2">
+            <EditField label={copy.customerType}>
+              <Select
+                value={editState.draft.customerType}
+                onValueChange={(value) => onClassificationChange("customerType", value)}
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="retail">{customerTypeLabel("retail", copy)}</SelectItem>
+                  <SelectItem value="wholesale">{customerTypeLabel("wholesale", copy)}</SelectItem>
+                </SelectContent>
+              </Select>
+            </EditField>
+          </div>
+        ) : null}
+
         <div className="space-y-2">
           <Label htmlFor="customer-edit-reason">{copy.reason}</Label>
           <Textarea
@@ -1933,6 +2090,30 @@ function Kpi({
   );
 }
 
+function CustomerMobileFact({
+  emphasis = false,
+  label,
+  value,
+}: {
+  emphasis?: boolean;
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div className="min-h-[40px] min-w-0 rounded bg-slate-50 px-1.5 py-1">
+      <div className="truncate text-[10px] font-semibold leading-3 text-slate-400">{label}</div>
+      <div
+        className={cn(
+          "mt-0.5 truncate text-[12px] font-black leading-4 text-slate-800",
+          emphasis && "text-primary"
+        )}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 function FilterSelect({
   ariaLabel,
   onValueChange,
@@ -1957,6 +2138,38 @@ function FilterSelect({
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+function StatusChangeSelect({
+  label,
+  onValueChange,
+  options,
+  value,
+}: {
+  label: string;
+  onValueChange: (value: string) => void;
+  options: readonly (readonly [string, string])[];
+  value: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50/70 p-1">
+      <div className="truncate px-0.5 text-[10px] font-semibold leading-3 text-muted-foreground lg:text-[11px]">
+        {label}
+      </div>
+      <select
+        aria-label={label}
+        className="mt-1 h-7 w-full rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold outline-none transition focus:border-primary/50 focus:ring-2 focus:ring-primary/20 lg:h-8 lg:text-xs"
+        value={value}
+        onChange={(event) => onValueChange(event.target.value)}
+      >
+        {options.map(([optionValue, optionLabel]) => (
+          <option key={optionValue} value={optionValue}>
+            {optionLabel}
+          </option>
+        ))}
+      </select>
+    </div>
   );
 }
 
@@ -1997,16 +2210,55 @@ function AmountTile({
   );
 }
 
-function DetailGrid({ items }: { items: [string, React.ReactNode][] }) {
+type DetailGridItem =
+  | [string, React.ReactNode]
+  | {
+      actionLabel?: string;
+      label: string;
+      onClick?: () => void;
+      value: React.ReactNode;
+    };
+
+function DetailGrid({ items }: { items: DetailGridItem[] }) {
   return (
-    <dl className="grid grid-cols-2 gap-1 text-xs lg:gap-1.5 lg:text-sm">
-      {items.map(([label, value]) => (
-        <div key={label} className="min-w-0 rounded-md border border-slate-200 bg-white px-1.5 py-1.5">
-          <dt className="truncate text-[11px] leading-3 text-muted-foreground lg:text-xs">{label}</dt>
-          <dd className="mt-0.5 break-words text-[13px] font-semibold leading-4 lg:text-sm lg:leading-5">{value}</dd>
-        </div>
-      ))}
-    </dl>
+    <div className="grid grid-cols-2 gap-1 text-xs lg:gap-1.5 lg:text-sm">
+      {items.map((item) => {
+        const normalized = Array.isArray(item)
+          ? { label: item[0], value: item[1] }
+          : item;
+        const content = (
+          <>
+            <div className="flex min-w-0 items-center justify-between gap-1 text-[11px] leading-3 text-muted-foreground lg:text-xs">
+              <span className="min-w-0 truncate">{normalized.label}</span>
+              {normalized.onClick ? (
+                <Pencil className="size-3 shrink-0 text-primary/70" />
+              ) : null}
+            </div>
+            <div className="mt-0.5 break-words text-[13px] font-semibold leading-4 lg:text-sm lg:leading-5">{normalized.value}</div>
+          </>
+        );
+
+        if (normalized.onClick) {
+          return (
+            <button
+              key={normalized.label}
+              type="button"
+              aria-label={normalized.actionLabel ?? normalized.label}
+              className="min-w-0 rounded-md border border-primary/25 bg-primary/5 px-1.5 py-1.5 text-left transition hover:border-primary/50 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              onClick={normalized.onClick}
+            >
+              {content}
+            </button>
+          );
+        }
+
+        return (
+          <div key={normalized.label} className="min-w-0 rounded-md border border-slate-200 bg-white px-1.5 py-1.5">
+            {content}
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -2049,6 +2301,12 @@ function termsDraftFromCustomer(customer: AdminCustomer): CustomerTermsDraft {
   };
 }
 
+function classificationDraftFromCustomer(customer: AdminCustomer): CustomerClassificationDraft {
+  return {
+    customerType: customer.customerType,
+  };
+}
+
 function buildCustomerEditPayload(
   editState: CustomerEditState,
   reason: string,
@@ -2070,6 +2328,16 @@ function buildCustomerEditPayload(
         sdi: nullableDraftText(editState.draft.sdi),
         shippingAddress: nullableDraftText(editState.draft.shippingAddress),
         vatNumber: nullableDraftText(editState.draft.vatNumber),
+      },
+    };
+  }
+
+  if (editState.kind === "classification") {
+    return {
+      ok: true,
+      payload: {
+        customerType: editState.draft.customerType,
+        reason,
       },
     };
   }
@@ -2107,6 +2375,15 @@ function parseDraftMoney(value: string) {
 
   const parsed = Number(normalized);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function compareCreatedAtDesc<T extends { createdAt: string }>(first: T, second: T) {
+  return timestampForSort(second.createdAt) - timestampForSort(first.createdAt);
+}
+
+function timestampForSort(value: string) {
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? 0 : timestamp;
 }
 
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {

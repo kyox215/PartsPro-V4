@@ -398,7 +398,6 @@ export function AdminOrdersPanel() {
       try {
         const result = await fetchOrdersFromApi({
           signal,
-          status: statusFilter === "all" ? undefined : statusFilter,
         });
 
         if (signal?.aborted) {
@@ -445,7 +444,7 @@ export function AdminOrdersPanel() {
         }
       }
     },
-    [statusFilter, text]
+    [text]
   );
 
   React.useEffect(() => {
@@ -958,7 +957,7 @@ function OrderWorkflowStrip({
       <div
         role="toolbar"
         aria-label={text.orders.workflow.title}
-        className="flex min-w-0 gap-1.5 overflow-x-auto pb-0.5"
+        className="flex min-w-0 gap-1.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         {items.map((item) => {
           const isActive = item.key === activeKey;
@@ -1301,13 +1300,16 @@ function MobileOrderCard({
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2">
         <div className="min-w-0">
           <div
-            className="truncate font-mono text-[13px] font-black leading-4 text-slate-900"
+            className="truncate text-[13px] font-black leading-4 text-slate-900"
+            title={order.company}
+          >
+            {order.company}
+          </div>
+          <div
+            className="mt-0.5 truncate font-mono text-[11px] font-semibold leading-3 text-slate-500"
             title={order.id}
           >
             {shortOrderId(order.id)}
-          </div>
-          <div className="mt-0.5 truncate text-[11px] font-semibold leading-3 text-slate-500">
-            {order.company}
           </div>
         </div>
         <div className="shrink-0 text-right">

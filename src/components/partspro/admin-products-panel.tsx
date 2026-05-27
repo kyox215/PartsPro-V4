@@ -343,6 +343,11 @@ const panelText = {
     block: "阻塞",
     hide: "隐藏",
     stockAdjust: "库存动作",
+    quickActions: "快捷操作",
+    copySku: "复制 SKU",
+    copied: "已复制",
+    imagePreview: "图片预览",
+    imageCount: "{count} 张图片",
     viewCatalog: "前台列表查看",
     previewStorefront: "前台商品页预览",
     publishForStorefront: "发布后前台可见",
@@ -354,7 +359,6 @@ const panelText = {
     tabInventory: "库存",
     tabMedia: "媒体",
     tabCompatibility: "适配型号",
-    tabPreview: "前台预览",
     tabAudit: "审计记录",
     sectionBase: "基础信息",
     sectionPrice: "价格",
@@ -486,6 +490,11 @@ const panelText = {
     block: "Blocca",
     hide: "Nascondi",
     stockAdjust: "Movimento stock",
+    quickActions: "Azioni rapide",
+    copySku: "Copia SKU",
+    copied: "Copiato",
+    imagePreview: "Anteprima immagine",
+    imageCount: "{count} immagini",
     viewCatalog: "Vista catalogo",
     previewStorefront: "Anteprima prodotto",
     publishForStorefront: "Visibile dopo pubblicazione",
@@ -497,7 +506,6 @@ const panelText = {
     tabInventory: "Stock",
     tabMedia: "Media",
     tabCompatibility: "Compatibilita",
-    tabPreview: "Anteprima",
     tabAudit: "Audit",
     sectionBase: "Base",
     sectionPrice: "Prezzi",
@@ -582,6 +590,7 @@ export function AdminProductsPanel() {
   const [isLoadingModelGroups, setIsLoadingModelGroups] = React.useState(true);
   const [drawerMode, setDrawerMode] = React.useState<ProductDrawerMode | null>(null);
   const [drawerProduct, setDrawerProduct] = React.useState<AdminProductRow | null>(null);
+  const [drawerInlineEditSku, setDrawerInlineEditSku] = React.useState<string | null>(null);
   const [stockAdjustProduct, setStockAdjustProduct] =
     React.useState<AdminProductRow | null>(null);
 
@@ -839,31 +848,40 @@ export function AdminProductsPanel() {
   }
 
   function openDrawer(mode: ProductDrawerMode, product: AdminProductRow | null = null) {
+    if (mode === "edit" && product) {
+      setDrawerMode("view");
+      setDrawerProduct(product);
+      setDrawerInlineEditSku(product.sku);
+      return;
+    }
+
     setDrawerMode(mode);
     setDrawerProduct(product);
+    setDrawerInlineEditSku(null);
   }
 
   function closeDrawer() {
     setDrawerMode(null);
     setDrawerProduct(null);
+    setDrawerInlineEditSku(null);
   }
 
   return (
-    <section className="min-w-0 space-y-3 sm:space-y-4">
+    <section className="min-w-0 space-y-2 sm:space-y-4">
       <ProductMetricGrid metrics={metrics} text={text} />
 
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
-        <div className="flex flex-col gap-3 border-b border-slate-200 px-3 py-3 sm:px-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.04)] sm:rounded-lg sm:shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
+        <div className="flex flex-col gap-2 border-b border-slate-200 px-2.5 py-2 sm:gap-3 sm:px-4 sm:py-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-base font-bold tracking-normal text-slate-950">
                 {text.title}
               </h1>
-              <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+              <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600 sm:px-2 sm:py-1">
                 {dataSource.returned}/{dataSource.total}
               </span>
             </div>
-            <div className="mt-1 text-xs font-medium text-slate-500">
+            <div className="mt-0.5 truncate text-[11px] font-medium leading-4 text-slate-500 sm:mt-1 sm:text-xs">
               {dataSource.syncedAt
                 ? formatAdminMessage(text.sourceStats, {
                     returned: dataSource.returned,
@@ -873,35 +891,35 @@ export function AdminProductsPanel() {
                 : text.sourcePending}
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="grid min-w-0 grid-cols-3 gap-1.5 sm:flex sm:flex-wrap sm:gap-2">
             <Button
               variant="outline"
-              size="sm"
-              className="bg-white"
+              size="xs"
+              className="h-8 min-w-0 bg-white px-2 sm:h-9 sm:px-3"
               onClick={() => void refreshProducts()}
               disabled={isLoading}
             >
               <RefreshCw className={cn("size-4", isLoading && "animate-spin")} />
-              {text.sync}
+              <span className="min-w-0 truncate">{text.sync}</span>
             </Button>
             <Button
               variant="outline"
-              size="sm"
-              className="bg-white"
+              size="xs"
+              className="h-8 min-w-0 bg-white px-2 sm:h-9 sm:px-3"
               onClick={() => downloadProductsCsv(products, "view")}
               disabled={products.length === 0}
             >
               <Download className="size-4" />
-              {text.exportView}
+              <span className="min-w-0 truncate">{text.exportView}</span>
             </Button>
-            <Button size="sm" onClick={() => openDrawer("create")}>
+            <Button size="xs" className="h-8 min-w-0 px-2 sm:h-9 sm:px-3" onClick={() => openDrawer("create")}>
               <Plus className="size-4" />
-              {text.create}
+              <span className="min-w-0 truncate">{text.create}</span>
             </Button>
           </div>
         </div>
 
-        <div className="border-b border-slate-200 bg-slate-50/70 px-3 py-3 sm:px-4">
+        <div className="border-b border-slate-200 bg-slate-50/70 px-2.5 py-2 sm:px-4 sm:py-3">
           <ProductCascadeMenu
             filters={filters}
             modelGroups={modelGroups}
@@ -1014,14 +1032,16 @@ export function AdminProductsPanel() {
         isMutating={isMutating}
         text={text}
         adminText={adminText}
+        initialEditSku={drawerInlineEditSku}
+        onInitialEditHandled={() => setDrawerInlineEditSku(null)}
         onClose={closeDrawer}
         onCreate={handleCreateProduct}
         onSave={handleUpdateProduct}
         onSaved={(product) => {
           setDrawerProduct(product);
           setDrawerMode("view");
+          setDrawerInlineEditSku(null);
         }}
-        onEdit={(product) => openDrawer("edit", product)}
         onStockAdjust={setStockAdjustProduct}
         onMediaSaved={handleMediaSaved}
       />
@@ -1056,17 +1076,17 @@ function ProductMetricGrid({
   ] as const;
 
   return (
-    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+    <div className="grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-4 xl:grid-cols-8">
       {cards.map(({ label, value, icon: Icon, tone }) => (
         <div
           key={label}
-          className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-[0_12px_30px_rgba(15,23,42,0.04)]"
+          className="min-h-[58px] min-w-0 rounded-md border border-slate-200 bg-white px-2 py-1.5 shadow-[0_8px_20px_rgba(15,23,42,0.035)] sm:min-h-[68px] sm:rounded-lg sm:px-3 sm:py-2 sm:shadow-[0_12px_30px_rgba(15,23,42,0.04)]"
         >
-          <div className="flex items-center justify-between gap-2">
-            <div className="truncate text-xs font-semibold text-slate-500">{label}</div>
-            <Icon className={cn("size-4 shrink-0", metricIconClass(tone))} />
+          <div className="flex items-start justify-between gap-1.5">
+            <div className="min-w-0 truncate text-[11px] font-semibold leading-4 text-slate-500 sm:text-xs">{label}</div>
+            <Icon className={cn("mt-0.5 size-3.5 shrink-0 sm:size-4", metricIconClass(tone))} />
           </div>
-          <div className="mt-1 text-xl font-black text-slate-950">{value}</div>
+          <div className="mt-0.5 truncate text-lg font-black leading-6 text-slate-950 sm:mt-1 sm:text-xl">{value}</div>
         </div>
       ))}
     </div>
@@ -1622,45 +1642,57 @@ function ProductMobileCard({
   return (
     <div
       className={cn(
-        "rounded-lg border border-slate-200 bg-white p-3 shadow-[0_8px_22px_rgba(15,23,42,0.04)]",
+        "min-h-[124px] rounded-md border border-slate-200 bg-white p-2 shadow-[0_8px_22px_rgba(15,23,42,0.035)]",
         selected && "border-primary/40 bg-primary/5"
       )}
     >
-      <div className="flex items-start gap-2">
-        <Checkbox
-          checked={selected}
-          onCheckedChange={(value) => onSelect(value === true)}
-          aria-label={`Select ${product.sku}`}
-          className="mt-1"
-        />
+      <div className="grid min-w-0 grid-cols-[64px_minmax(0,1fr)_auto] gap-2">
+        <div className="relative">
+          <ProductImageThumb product={product} className="size-16" sizes="64px" />
+          <div className="absolute left-1 top-1 rounded bg-white/90 shadow-sm">
+            <Checkbox
+              checked={selected}
+              onCheckedChange={(value) => onSelect(value === true)}
+              aria-label={`Select ${product.sku}`}
+              className="size-4 border-slate-300"
+            />
+          </div>
+        </div>
+
         <button
           type="button"
-          className="min-w-0 flex-1 text-left"
+          className="grid min-w-0 content-start text-left"
           onClick={() => onView(product)}
         >
-          <div className="break-words text-sm font-bold leading-snug text-slate-950">
+          <div className="line-clamp-2 min-h-9 text-[13px] font-black leading-[18px] text-slate-950">
             {product.name}
           </div>
-          <div className="mt-0.5 break-all font-mono text-[11px] font-semibold text-slate-500">
+          <div className="mt-0.5 truncate font-mono text-[11px] font-semibold leading-4 text-slate-500">
             {product.sku}
           </div>
+          <div className="mt-0.5 truncate text-[10px] font-semibold leading-3 text-slate-400">
+            {product.category} · {product.model || product.compatibleWith[0] || text.none}
+          </div>
         </button>
-        <Badge className={catalogStatusBadgeClass(product.catalogStatus)}>
-          {adminText.enums.catalogStatus[product.catalogStatus]}
-        </Badge>
-        <ProductActionsMenu
-          product={product}
-          isMutating={isMutating}
-          text={text}
-          onView={onView}
-          onEdit={onEdit}
-          onDuplicate={onDuplicate}
-          onAction={onAction}
-          onHide={onHide}
-          onStockAdjust={onStockAdjust}
-        />
+
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <Badge className={cn(catalogStatusBadgeClass(product.catalogStatus), "h-5 px-1.5 text-[10px]")}>
+            {adminText.enums.catalogStatus[product.catalogStatus]}
+          </Badge>
+          <ProductActionsMenu
+            product={product}
+            isMutating={isMutating}
+            text={text}
+            onView={onView}
+            onEdit={onEdit}
+            onDuplicate={onDuplicate}
+            onAction={onAction}
+            onHide={onHide}
+            onStockAdjust={onStockAdjust}
+          />
+        </div>
       </div>
-      <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+      <div className="mt-2 grid grid-cols-3 gap-1.5 text-xs">
         <MetricPill label={text.brand} value={product.brand} />
         <MetricPill label={text.stock} value={product.availableQty ?? product.stock} />
         <MetricPill label={text.netPrice} value={formatEuro(product.price)} />
@@ -1748,18 +1780,132 @@ function ProductImageThumb({
   );
 }
 
+function ProductDetailImageGallery({
+  product,
+  text,
+  sizes,
+}: {
+  product: AdminProductRow;
+  text: typeof panelText.zh | typeof panelText.it;
+  sizes: string;
+}) {
+  const candidates = React.useMemo(() => getProductImageCandidates(product), [product]);
+  const assetUrls = React.useMemo(() => getProductImageAssetCandidates(product), [product]);
+  const [selectedUrl, setSelectedUrl] = React.useState("");
+  const [failedImageState, setFailedImageState] = React.useState<{
+    sku: string;
+    urls: string[];
+  }>({ sku: product.sku, urls: [] });
+  const failedUrls = failedImageState.sku === product.sku ? failedImageState.urls : [];
+  const imageUrls = candidates.filter((candidate) => !failedUrls.includes(candidate));
+  const thumbnailUrls = assetUrls.filter((candidate) => !failedUrls.includes(candidate));
+  const activeUrl = selectedUrl && imageUrls.includes(selectedUrl) ? selectedUrl : imageUrls[0];
+  const imageAlt = product.imageAlt || product.name;
+
+  React.useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setSelectedUrl("");
+      setFailedImageState({ sku: product.sku, urls: [] });
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [product.sku]);
+
+  function markFailed(url: string) {
+    setFailedImageState((current) => {
+      const urls = current.sku === product.sku ? current.urls : [];
+
+      if (urls.includes(url)) {
+        return current.sku === product.sku ? current : { sku: product.sku, urls };
+      }
+
+      return { sku: product.sku, urls: [...urls, url] };
+    });
+  }
+
+  return (
+    <div className="min-w-0">
+      <div className="relative aspect-square overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+        {activeUrl ? (
+          <Image
+            src={activeUrl}
+            alt={imageAlt}
+            fill
+            sizes={sizes}
+            quality={85}
+            loading="lazy"
+            decoding="async"
+            unoptimized
+            className="object-contain p-2"
+            onError={() => markFailed(activeUrl)}
+          />
+        ) : (
+          <ProductVisual
+            variant={product.visual}
+            className="size-full rounded-none border-0"
+          />
+        )}
+        {assetUrls.length > 1 && (
+          <div className="absolute bottom-2 left-2 rounded bg-white/95 px-2 py-0.5 text-[10px] font-bold text-slate-600 shadow-sm">
+            {formatAdminMessage(text.imageCount, { count: String(assetUrls.length) })}
+          </div>
+        )}
+      </div>
+      {thumbnailUrls.length > 1 && (
+        <div className="mt-2 grid grid-cols-4 gap-1.5">
+          {thumbnailUrls.slice(0, 8).map((url, index) => (
+            <button
+              key={`${url}-${index}`}
+              type="button"
+              aria-label={`${text.imagePreview} ${index + 1}`}
+              className={cn(
+                "relative aspect-square overflow-hidden rounded-md border bg-white",
+                activeUrl === url ? "border-primary ring-2 ring-primary/20" : "border-slate-200"
+              )}
+              onClick={() => setSelectedUrl(url)}
+            >
+              <Image
+                src={url}
+                alt={imageAlt}
+                fill
+                sizes="48px"
+                quality={60}
+                loading="lazy"
+                decoding="async"
+                unoptimized
+                className="object-contain p-1"
+                onError={() => markFailed(url)}
+              />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function getProductImageCandidates(product: AdminProductRow) {
+  const assetUrls = getProductImageAssetCandidates(product);
+  const fallbackUrls = [
+    getExternalProductImageFallbackUrl(product.imageUrl),
+    getExternalProductImageFallbackUrl(product.imagePath),
+    ...(product.galleryImageUrls ?? []).map(getExternalProductImageFallbackUrl),
+    ...(product.galleryImagePaths ?? []).map(getExternalProductImageFallbackUrl),
+  ];
+
+  return Array.from(
+    new Set([...assetUrls, ...fallbackUrls].map((candidate) => candidate?.trim()).filter(isNonEmptyString))
+  );
+}
+
+function getProductImageAssetCandidates(product: AdminProductRow) {
   const imagePathUrl = resolveAdminProductImageUrl(product.imagePath);
   const galleryPathUrls = (product.galleryImagePaths ?? []).map(resolveAdminProductImageUrl);
   const candidates = [
     product.imageUrl,
     imagePathUrl,
-    getExternalProductImageFallbackUrl(product.imageUrl),
-    getExternalProductImageFallbackUrl(product.imagePath),
     ...(product.galleryImageUrls ?? []),
-    ...(product.galleryImageUrls ?? []).map(getExternalProductImageFallbackUrl),
     ...galleryPathUrls,
-    ...(product.galleryImagePaths ?? []).map(getExternalProductImageFallbackUrl),
   ];
 
   return Array.from(
@@ -2063,11 +2209,12 @@ function ProductDrawer({
   isMutating,
   text,
   adminText,
+  initialEditSku,
+  onInitialEditHandled,
   onClose,
   onCreate,
   onSave,
   onSaved,
-  onEdit,
   onStockAdjust,
   onMediaSaved,
 }: {
@@ -2076,11 +2223,12 @@ function ProductDrawer({
   isMutating: boolean;
   text: typeof panelText.zh | typeof panelText.it;
   adminText: ReturnType<typeof getAdminDictionary>["admin"];
+  initialEditSku: string | null;
+  onInitialEditHandled: () => void;
   onClose: () => void;
   onCreate: (values: ProductFormValues) => Promise<AdminProductRow | null>;
   onSave: (sku: string, values: ProductFormValues) => Promise<AdminProductRow | null>;
   onSaved: (product: AdminProductRow) => void;
-  onEdit: (product: AdminProductRow) => void;
   onStockAdjust: (product: AdminProductRow) => void;
   onMediaSaved: (product: AdminProductRow) => void;
 }) {
@@ -2096,21 +2244,26 @@ function ProductDrawer({
     <Sheet open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <SheetContent
         side="right"
-        className="w-full gap-0 overflow-y-auto p-0 sm:max-w-none md:w-[760px] lg:w-[860px]"
+        className="w-screen max-w-none gap-0 overflow-hidden p-0"
+        style={{ width: "min(960px, 100vw)", maxWidth: "min(960px, 100vw)" }}
       >
-        <SheetHeader className="border-b border-slate-200 p-4 pr-12">
+        <SheetHeader className="border-b border-slate-200 bg-white p-4 pr-12">
           <SheetTitle className="text-lg font-bold">{title}</SheetTitle>
           <SheetDescription className="break-all">
             {mode === "create" ? text.subtitle : product?.sku ?? ""}
           </SheetDescription>
         </SheetHeader>
-        <div className="min-h-0 flex-1 p-4">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-3 lg:p-4">
           {mode === "view" && product ? (
             <ProductDetails
               product={product}
+              isMutating={isMutating}
               text={text}
               adminText={adminText}
-              onEdit={() => onEdit(product)}
+              initialEditSku={initialEditSku}
+              onInitialEditHandled={onInitialEditHandled}
+              onSave={onSave}
+              onSaved={onSaved}
               onStockAdjust={() => onStockAdjust(product)}
               onMediaSaved={onMediaSaved}
             />
@@ -2128,7 +2281,7 @@ function ProductDrawer({
             />
           ) : null}
         </div>
-        <SheetFooter className="border-t border-slate-200 bg-slate-50 p-3 sm:flex-row sm:justify-end">
+        <SheetFooter className="border-t border-slate-200 bg-white p-3 sm:flex-row sm:justify-end">
           <Button variant="outline" className="bg-white" onClick={onClose}>
             {text.close}
           </Button>
@@ -2140,109 +2293,467 @@ function ProductDrawer({
 
 function ProductDetails({
   product,
+  isMutating,
   text,
   adminText,
-  onEdit,
+  initialEditSku,
+  onInitialEditHandled,
+  onSave,
+  onSaved,
   onStockAdjust,
   onMediaSaved,
 }: {
   product: AdminProductRow;
+  isMutating: boolean;
   text: typeof panelText.zh | typeof panelText.it;
   adminText: ReturnType<typeof getAdminDictionary>["admin"];
-  onEdit: () => void;
+  initialEditSku: string | null;
+  onInitialEditHandled: () => void;
+  onSave: (sku: string, values: ProductFormValues) => Promise<AdminProductRow | null>;
+  onSaved: (product: AdminProductRow) => void;
   onStockAdjust: () => void;
   onMediaSaved: (product: AdminProductRow) => void;
 }) {
+  const [copiedSku, setCopiedSku] = React.useState<string | null>(null);
+  const [editingSku, setEditingSku] = React.useState<string | null>(null);
+  const [editorState, setEditorState] = React.useState<{
+    sku: string;
+    values: ProductFormValues;
+    errors: Record<string, string>;
+    isSubmitting: boolean;
+  } | null>(null);
+  const [activeTabState, setActiveTabState] = React.useState({
+    sku: product.sku,
+    value: "base",
+  });
+  const isSkuCopied = copiedSku === product.sku;
+  const isEditing = editorState?.sku === product.sku || editingSku === product.sku || initialEditSku === product.sku;
+  const activeTab = activeTabState.sku === product.sku ? activeTabState.value : "base";
+  const editValues = editorState?.sku === product.sku ? editorState.values : productFormDefaults(product);
+  const editErrors = editorState?.sku === product.sku ? editorState.errors : {};
+  const isSubmittingEdit = editorState?.sku === product.sku ? editorState.isSubmitting : false;
+  const displayName = isEditing ? editValues.name || product.name : product.name;
+  const displayCategory = isEditing ? editValues.category || product.category : product.category;
+  const displayBrand = isEditing ? editValues.brand || product.brand : product.brand;
+  const displayModel = isEditing ? editValues.model || product.model : product.model;
+  const displayPrice = isEditing ? (parseNumber(editValues.price) ?? product.price) : product.price;
+
+  React.useEffect(() => {
+    if (!copiedSku) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setCopiedSku(null), 1600);
+    return () => window.clearTimeout(timeoutId);
+  }, [copiedSku]);
+
+  async function copySku() {
+    try {
+      await navigator.clipboard.writeText(product.sku);
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = product.sku;
+      textarea.setAttribute("readonly", "");
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.append(textarea);
+      textarea.select();
+
+      try {
+        document.execCommand("copy");
+      } finally {
+        textarea.remove();
+      }
+    }
+
+    setCopiedSku(product.sku);
+  }
+
+  function setEditValue<K extends keyof ProductFormValues>(key: K, value: ProductFormValues[K]) {
+    setEditorState((current) => {
+      const nextState =
+        current?.sku === product.sku
+          ? current
+          : {
+              sku: product.sku,
+              values: productFormDefaults(product),
+              errors: {},
+              isSubmitting: false,
+            };
+      const nextErrors = { ...nextState.errors };
+      delete nextErrors[key];
+
+      return {
+        ...nextState,
+        values: { ...nextState.values, [key]: value },
+        errors: nextErrors,
+      };
+    });
+  }
+
+  function startInlineEdit(tabValue = "base") {
+    setActiveTabState({ sku: product.sku, value: tabValue });
+    setEditorState({
+      sku: product.sku,
+      values: productFormDefaults(product),
+      errors: {},
+      isSubmitting: false,
+    });
+    setEditingSku(product.sku);
+    onInitialEditHandled();
+  }
+
+  function stopInlineEdit() {
+    setEditingSku(null);
+    setEditorState(null);
+    onInitialEditHandled();
+  }
+
+  function setActiveTab(value: string) {
+    setActiveTabState({ sku: product.sku, value });
+  }
+
+  async function saveInlineEdit() {
+    const nextErrors = validateProductForm(editValues, true, text);
+
+    if (Object.keys(nextErrors).length > 0) {
+      setEditorState((current) => ({
+        sku: product.sku,
+        values: current?.sku === product.sku ? current.values : editValues,
+        errors: nextErrors,
+        isSubmitting: false,
+      }));
+      return;
+    }
+
+    setEditorState((current) => ({
+      sku: product.sku,
+      values: current?.sku === product.sku ? current.values : editValues,
+      errors: {},
+      isSubmitting: true,
+    }));
+
+    const saved = await onSave(product.sku, editValues);
+
+    if (saved) {
+      onSaved(saved);
+      stopInlineEdit();
+      return;
+    }
+
+    setEditorState((current) => (
+      current?.sku === product.sku ? { ...current, isSubmitting: false } : current
+    ));
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-center gap-3">
-          <ProductImageThumb product={product} className="size-14" sizes="56px" />
+    <div className="space-y-3">
+      <section className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="grid grid-cols-[112px_minmax(0,1fr)] gap-3 lg:grid-cols-[220px_minmax(0,1fr)_172px]">
+          <ProductDetailImageGallery
+            product={product}
+            text={text}
+            sizes="(min-width: 1024px) 220px, 112px"
+          />
           <div className="min-w-0">
-            <div className="break-words text-base font-black text-slate-950">
-              {product.name}
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1.5">
               <Badge className={catalogStatusBadgeClass(product.catalogStatus)}>
                 {adminText.enums.catalogStatus[product.catalogStatus]}
               </Badge>
               <Badge className={stockStatusBadgeClass(product.status)}>
                 {adminText.enums.stockStatus[product.status]}
               </Badge>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-[11px] font-bold text-slate-500">
+                {product.sku}
+              </span>
+            </div>
+            <h3 className="mt-2 break-words text-base font-black leading-snug text-slate-950 lg:text-xl">
+              {displayName}
+            </h3>
+            <div className="mt-2 text-xs font-semibold text-slate-500">
+              {displayCategory} · {displayBrand}
+              {displayModel ? ` · ${displayModel}` : ""}
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+              <ProductHeroMetric label={text.netPrice} value={formatEuro(displayPrice)} />
+              <ProductHeroMetric label={text.availableStock} value={product.availableQty ?? product.stock} />
+              <ProductHeroMetric label={text.actualStock} value={product.actualQty ?? product.stock} />
+              <ProductHeroMetric label={text.margin} value={`${(product.margin ?? 0).toFixed(1)}%`} />
             </div>
           </div>
+          <div className="col-span-2 grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-2 sm:grid-cols-2 lg:col-span-1 lg:grid-cols-1 lg:content-start">
+            <div className="col-span-2 text-[11px] font-bold text-slate-500 lg:col-span-1">
+              {text.quickActions}
+            </div>
+            <Button variant="outline" size="sm" className="bg-white lg:w-full" onClick={onStockAdjust}>
+              <SlidersHorizontal className="size-4" />
+              {text.stockAdjust}
+            </Button>
+            <Button size="sm" className="lg:w-full" onClick={() => startInlineEdit("base")}>
+              <Edit className="size-4" />
+              {text.edit}
+            </Button>
+            <Button variant="outline" size="sm" className="bg-white lg:w-full" onClick={() => void copySku()}>
+              {isSkuCopied ? <CheckCircle2 className="size-4" /> : <Copy className="size-4" />}
+              {isSkuCopied ? text.copied : text.copySku}
+            </Button>
+            <Button variant="outline" size="sm" className="bg-white lg:w-full" asChild>
+              <Link href={product.catalogUrl ?? "/catalogo"}>
+                <ExternalLink className="size-4" />
+                {text.viewCatalog}
+              </Link>
+            </Button>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" className="bg-white" onClick={onStockAdjust}>
-            <SlidersHorizontal className="size-4" />
-            {text.stockAdjust}
-          </Button>
-          <Button onClick={onEdit}>
-            <Edit className="size-4" />
-            {text.edit}
-          </Button>
-        </div>
-      </div>
+      </section>
 
-      <Tabs defaultValue="base" className="space-y-4">
-        <div className="max-w-full overflow-x-auto">
-          <TabsList variant="line" className="min-w-max">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
+        <div className="max-w-full overflow-x-auto rounded-lg border border-slate-200 bg-white p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <TabsList variant="line" className="grid min-w-[660px] grid-cols-6 bg-transparent">
             <TabsTrigger value="base">{text.tabBase}</TabsTrigger>
             <TabsTrigger value="price">{text.tabPrice}</TabsTrigger>
             <TabsTrigger value="inventory">{text.tabInventory}</TabsTrigger>
             <TabsTrigger value="media">{text.tabMedia}</TabsTrigger>
             <TabsTrigger value="compatibility">{text.tabCompatibility}</TabsTrigger>
-            <TabsTrigger value="preview">{text.tabPreview}</TabsTrigger>
             <TabsTrigger value="audit">{text.tabAudit}</TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="base" className="mt-0">
-          <InfoGrid>
-            <DetailItem label={text.name} value={product.name} />
-            <DetailItem label={text.sku} value={<span className="font-mono">{product.sku}</span>} />
-            <DetailItem label={text.category} value={product.category} />
-            <DetailItem label={text.brand} value={product.brand} />
-            <DetailItem label={text.quality} value={product.grade} />
-            <DetailItem label={text.moq} value={product.moq} />
-            <DetailItem label={text.leadTime} value={product.leadTime} />
-            <DetailItem label={text.model} value={product.model ?? text.none} />
-            <DetailItem label={text.modelCode} value={product.modelCode ?? text.none} />
-            <DetailItem label={text.batchCode} value={product.batchCode ?? text.none} />
-            <DetailItem label={text.supplier} value={product.supplier ?? text.none} />
-          </InfoGrid>
+          <div className="space-y-2">
+            <DetailPanelToolbar title={isEditing ? text.drawerEditTitle : text.sectionBase}>
+              {isEditing ? (
+                <>
+                  <Button variant="outline" size="xs" className="bg-white" onClick={stopInlineEdit}>
+                    {text.cancel}
+                  </Button>
+                  <Button size="xs" onClick={() => void saveInlineEdit()} disabled={isSubmittingEdit || isMutating}>
+                    {isSubmittingEdit || isMutating ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="size-3.5" />
+                    )}
+                    {isSubmittingEdit || isMutating ? text.saving : text.save}
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" size="xs" className="bg-white" onClick={() => startInlineEdit("base")}>
+                  <Edit className="size-3.5" />
+                  {text.edit}
+                </Button>
+              )}
+            </DetailPanelToolbar>
+            {isEditing ? (
+              <InfoGrid>
+                <EditableDetailItem className="lg:col-span-2" label={text.name} error={editErrors.name}>
+                  <Input value={editValues.name} onChange={(event) => setEditValue("name", event.target.value)} />
+                </EditableDetailItem>
+                <EditableDetailItem label={text.sku} error={editErrors.sku}>
+                  <Input value={editValues.sku} readOnly className="bg-slate-50 font-mono text-slate-500" />
+                </EditableDetailItem>
+                <EditableDetailItem label={text.category} error={editErrors.category}>
+                  <Select value={editValues.category} onValueChange={(value) => setEditValue("category", value)}>
+                    <SelectTrigger className="bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((category) => (
+                        <SelectItem key={category.label} value={category.label}>
+                          {category.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </EditableDetailItem>
+                <EditableDetailItem label={text.brand} error={editErrors.brand}>
+                  <Input value={editValues.brand} onChange={(event) => setEditValue("brand", event.target.value)} />
+                </EditableDetailItem>
+                <EditableDetailItem label={text.quality}>
+                  <Select value={editValues.grade} onValueChange={(value) => setEditValue("grade", value as ProductGrade)}>
+                    <SelectTrigger className="bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {productGrades.map((grade) => (
+                        <SelectItem key={grade} value={grade}>
+                          {grade}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </EditableDetailItem>
+                <EditableDetailItem label={text.moq} error={editErrors.moq}>
+                  <Input value={editValues.moq} type="number" min={1} onChange={(event) => setEditValue("moq", event.target.value)} />
+                </EditableDetailItem>
+                <EditableDetailItem label={text.leadTime} error={editErrors.leadTime}>
+                  <Input value={editValues.leadTime} onChange={(event) => setEditValue("leadTime", event.target.value)} />
+                </EditableDetailItem>
+                <EditableDetailItem label={text.model}>
+                  <Input value={editValues.model} onChange={(event) => setEditValue("model", event.target.value)} />
+                </EditableDetailItem>
+                <EditableDetailItem label={text.modelCode}>
+                  <Input value={editValues.modelCode} onChange={(event) => setEditValue("modelCode", event.target.value)} />
+                </EditableDetailItem>
+                <EditableDetailItem label={text.batchCode}>
+                  <Input value={editValues.batchCode} onChange={(event) => setEditValue("batchCode", event.target.value)} />
+                </EditableDetailItem>
+                <EditableDetailItem className="lg:col-span-2" label={text.supplier}>
+                  <Input value={editValues.supplier} onChange={(event) => setEditValue("supplier", event.target.value)} />
+                </EditableDetailItem>
+              </InfoGrid>
+            ) : (
+              <InfoGrid>
+                <DetailItem className="lg:col-span-2" label={text.name} value={product.name} />
+                <DetailItem label={text.sku} value={<span className="font-mono">{product.sku}</span>} />
+                <DetailItem label={text.category} value={product.category} />
+                <DetailItem label={text.brand} value={product.brand} />
+                <DetailItem label={text.quality} value={product.grade} />
+                <DetailItem label={text.moq} value={product.moq} />
+                <DetailItem label={text.leadTime} value={product.leadTime} />
+                <DetailItem label={text.model} value={product.model ?? text.none} />
+                <DetailItem label={text.modelCode} value={product.modelCode ?? text.none} />
+                <DetailItem label={text.batchCode} value={product.batchCode ?? text.none} />
+                <DetailItem className="lg:col-span-2" label={text.supplier} value={product.supplier ?? text.none} />
+              </InfoGrid>
+            )}
+          </div>
         </TabsContent>
         <TabsContent value="price" className="mt-0">
-          <InfoGrid>
-            <DetailItem label={text.netPrice} value={formatEuro(product.price)} />
-            <DetailItem label={text.retailPrice} value={formatEuro(product.retailPrice)} />
-            <DetailItem label={text.costPrice} value={formatEuro(product.costPrice ?? 0)} />
-            <DetailItem label={text.margin} value={`${(product.margin ?? 0).toFixed(2)}%`} />
-          </InfoGrid>
+          <div className="space-y-2">
+            <DetailPanelToolbar title={text.sectionPrice}>
+              {isEditing ? (
+                <>
+                  <Button variant="outline" size="xs" className="bg-white" onClick={stopInlineEdit}>
+                    {text.cancel}
+                  </Button>
+                  <Button size="xs" onClick={() => void saveInlineEdit()} disabled={isSubmittingEdit || isMutating}>
+                    {isSubmittingEdit || isMutating ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="size-3.5" />
+                    )}
+                    {isSubmittingEdit || isMutating ? text.saving : text.save}
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" size="xs" className="bg-white" onClick={() => startInlineEdit("price")}>
+                  <Edit className="size-3.5" />
+                  {text.edit}
+                </Button>
+              )}
+            </DetailPanelToolbar>
+            {isEditing ? (
+              <InfoGrid>
+                <EditableDetailItem label={text.netPrice} error={editErrors.price}>
+                  <Input
+                    value={editValues.price}
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    onChange={(event) => setEditValue("price", event.target.value)}
+                  />
+                </EditableDetailItem>
+                <EditableDetailItem label={text.retailPrice}>
+                  <Input
+                    value={editValues.retailPrice}
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    onChange={(event) => setEditValue("retailPrice", event.target.value)}
+                  />
+                </EditableDetailItem>
+                <EditableDetailItem label={text.costPrice}>
+                  <Input
+                    value={editValues.costPrice}
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    onChange={(event) => setEditValue("costPrice", event.target.value)}
+                  />
+                </EditableDetailItem>
+                <DetailItem label={text.margin} value={`${(product.margin ?? 0).toFixed(2)}%`} />
+              </InfoGrid>
+            ) : (
+              <InfoGrid>
+                <DetailItem label={text.netPrice} value={formatEuro(product.price)} />
+                <DetailItem label={text.retailPrice} value={formatEuro(product.retailPrice)} />
+                <DetailItem label={text.costPrice} value={formatEuro(product.costPrice ?? 0)} />
+                <DetailItem label={text.margin} value={`${(product.margin ?? 0).toFixed(2)}%`} />
+              </InfoGrid>
+            )}
+          </div>
         </TabsContent>
         <TabsContent value="inventory" className="mt-0">
-          <InfoGrid>
-            <DetailItem label={text.stock} value={<Badge className={stockStatusBadgeClass(product.status)}>{adminText.enums.stockStatus[product.status]}</Badge>} />
-            <DetailItem label={text.availableStock} value={product.availableQty ?? product.stock} />
-            <DetailItem label={text.lockedStock} value={product.lockedQty ?? 0} />
-            <DetailItem label={text.actualStock} value={product.actualQty ?? product.stock} />
-            <DetailItem label={text.stockAdjust} value={text.stockReadonly} />
-          </InfoGrid>
+          <div className="space-y-2">
+            <DetailPanelToolbar title={text.sectionInventory}>
+              <Button variant="outline" size="xs" className="bg-white" onClick={onStockAdjust}>
+                <SlidersHorizontal className="size-3.5" />
+                {text.stockAdjust}
+              </Button>
+            </DetailPanelToolbar>
+            <InfoGrid>
+              <DetailItem label={text.stock} value={<Badge className={stockStatusBadgeClass(product.status)}>{adminText.enums.stockStatus[product.status]}</Badge>} />
+              <DetailItem label={text.availableStock} value={product.availableQty ?? product.stock} />
+              <DetailItem label={text.lockedStock} value={product.lockedQty ?? 0} />
+              <DetailItem label={text.actualStock} value={product.actualQty ?? product.stock} />
+              <DetailItem className="lg:col-span-2" label={text.stockAdjust} value={text.stockReadonly} />
+            </InfoGrid>
+          </div>
         </TabsContent>
         <TabsContent value="media" className="mt-0">
           <ProductMediaManager product={product} text={text} onSaved={onMediaSaved} />
         </TabsContent>
         <TabsContent value="compatibility" className="mt-0">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <TokenPanel
-              title={text.compatibility}
-              empty={text.none}
-              items={product.compatibleWith}
-            />
-            <TokenPanel title={text.tags} empty={text.none} items={product.tags} />
+          <div className="space-y-2">
+            <DetailPanelToolbar title={text.sectionCatalog}>
+              {isEditing ? (
+                <>
+                  <Button variant="outline" size="xs" className="bg-white" onClick={stopInlineEdit}>
+                    {text.cancel}
+                  </Button>
+                  <Button size="xs" onClick={() => void saveInlineEdit()} disabled={isSubmittingEdit || isMutating}>
+                    {isSubmittingEdit || isMutating ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="size-3.5" />
+                    )}
+                    {isSubmittingEdit || isMutating ? text.saving : text.save}
+                  </Button>
+                </>
+              ) : (
+                <Button variant="outline" size="xs" className="bg-white" onClick={() => startInlineEdit("compatibility")}>
+                  <Edit className="size-3.5" />
+                  {text.edit}
+                </Button>
+              )}
+            </DetailPanelToolbar>
+            {isEditing ? (
+              <div className="grid gap-2 sm:grid-cols-2">
+                <EditableDetailItem label={text.compatibility} error={editErrors.compatibleWith}>
+                  <Textarea
+                    value={editValues.compatibleWith}
+                    className="min-h-24"
+                    onChange={(event) => setEditValue("compatibleWith", event.target.value)}
+                  />
+                </EditableDetailItem>
+                <EditableDetailItem label={text.tags}>
+                  <Textarea
+                    value={editValues.tags}
+                    className="min-h-24"
+                    onChange={(event) => setEditValue("tags", event.target.value)}
+                  />
+                </EditableDetailItem>
+              </div>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2">
+                <TokenPanel
+                  title={text.compatibility}
+                  empty={text.none}
+                  items={product.compatibleWith}
+                />
+                <TokenPanel title={text.tags} empty={text.none} items={product.tags} />
+              </div>
+            )}
           </div>
-        </TabsContent>
-        <TabsContent value="preview" className="mt-0">
-          <StorefrontPreviewPanel product={product} text={text} />
         </TabsContent>
         <TabsContent value="audit" className="mt-0">
           <ProductAuditPanel sku={product.sku} text={text} />
@@ -2260,6 +2771,7 @@ function ProductEditorForm({
   onCreate,
   onSave,
   onSaved,
+  onCancel,
   onStockAdjust,
 }: {
   mode: ProductDrawerMode;
@@ -2269,6 +2781,7 @@ function ProductEditorForm({
   onCreate: (values: ProductFormValues) => Promise<AdminProductRow | null>;
   onSave: (sku: string, values: ProductFormValues) => Promise<AdminProductRow | null>;
   onSaved: (product: AdminProductRow) => void;
+  onCancel?: () => void;
   onStockAdjust: (product: AdminProductRow) => void;
 }) {
   const isEdit = mode === "edit";
@@ -2449,6 +2962,11 @@ function ProductEditorForm({
       </FormSection>
 
       <div className="flex flex-wrap justify-end gap-2">
+        {onCancel && (
+          <Button type="button" variant="outline" className="bg-white" onClick={onCancel}>
+            {text.cancel}
+          </Button>
+        )}
         <Button type="submit" disabled={isSubmitting || isMutating}>
           {isSubmitting || isMutating ? (
             <Loader2 className="size-4 animate-spin" />
@@ -2471,47 +2989,17 @@ function ProductMediaManager({
   text: typeof panelText.zh | typeof panelText.it;
   onSaved: (product: AdminProductRow) => void;
 }) {
-  const [imagePath, setImagePath] = React.useState(product.imagePath ?? "");
-  const [imageAlt, setImageAlt] = React.useState(product.imageAlt ?? "");
-  const [galleryText, setGalleryText] = React.useState(
-    (product.galleryImagePaths ?? []).join("\n")
-  );
   const [file, setFile] = React.useState<File | null>(null);
-  const [setPrimary, setSetPrimary] = React.useState(true);
-  const [reason, setReason] = React.useState("");
   const [isSaving, setIsSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const timeoutId = window.setTimeout(() => {
-      setImagePath(product.imagePath ?? "");
-      setImageAlt(product.imageAlt ?? "");
-      setGalleryText((product.galleryImagePaths ?? []).join("\n"));
       setFile(null);
-      setReason("");
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
   }, [product]);
-
-  async function saveMedia() {
-    setIsSaving(true);
-    setError(null);
-
-    try {
-      const saved = await saveAdminProductImages(product.sku, {
-        imagePath,
-        imageAlt,
-        galleryImagePaths: splitLines(galleryText),
-        reason,
-      });
-      onSaved(saved);
-    } catch {
-      setError(text.mediaError);
-    } finally {
-      setIsSaving(false);
-    }
-  }
 
   async function uploadMedia() {
     if (!file) {
@@ -2524,9 +3012,9 @@ function ProductMediaManager({
     try {
       const saved = await uploadAdminProductImage(product.sku, {
         file,
-        imageAlt,
-        reason,
-        setPrimary,
+        imageAlt: product.imageAlt ?? product.name,
+        reason: `Uploaded product image for ${product.sku}.`,
+        setPrimary: true,
       });
       onSaved(saved);
       setFile(null);
@@ -2538,119 +3026,32 @@ function ProductMediaManager({
   }
 
   return (
-    <div className="space-y-4">
-      <InfoGrid>
-        <DetailItem label={text.imagePath} value={product.imagePath ?? product.imageUrl ?? text.none} />
-        <DetailItem label={text.imageAlt} value={product.imageAlt ?? text.none} />
-        <DetailItem label={text.gallery} value={(product.galleryImageUrls?.length ?? product.galleryImagePaths?.length ?? 0).toString()} />
-      </InfoGrid>
-      <div className="rounded-lg border border-slate-200 p-3">
-        <div className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-900">
-          <ImageIcon className="size-4" />
-          {text.sectionMedia}
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={text.imagePath}>
-            <Input value={imagePath} onChange={(event) => setImagePath(event.target.value)} />
-          </Field>
-          <Field label={text.imageAlt}>
-            <Input value={imageAlt} onChange={(event) => setImageAlt(event.target.value)} />
-          </Field>
-          <Field label={text.gallery}>
-            <Textarea
-              value={galleryText}
-              className="min-h-28"
-              onChange={(event) => setGalleryText(event.target.value)}
-            />
-          </Field>
-          <Field label={text.reason}>
-            <Textarea
-              value={reason}
-              className="min-h-28"
-              onChange={(event) => setReason(event.target.value)}
-            />
-          </Field>
-        </div>
-        {error && <div className="mt-3 text-sm font-semibold text-red-600">{error}</div>}
-        <div className="mt-3 flex flex-wrap justify-end gap-2">
-          <Button type="button" onClick={() => void saveMedia()} disabled={isSaving}>
-            {isSaving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-            {text.save}
-          </Button>
-        </div>
-      </div>
-      <div className="rounded-lg border border-slate-200 p-3">
-        <div className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-900">
-          <Upload className="size-4" />
-          {text.uploadImage}
-        </div>
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-          <Field label={text.uploadImage}>
-            <Input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
-          </Field>
-          <label className="flex h-9 items-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-semibold">
-            <Checkbox checked={setPrimary} onCheckedChange={(value) => setSetPrimary(value === true)} />
-            {text.setPrimary}
-          </label>
-        </div>
-        <div className="mt-3 flex justify-end">
-          <Button type="button" onClick={() => void uploadMedia()} disabled={!file || isSaving}>
-            {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
-            {text.uploadImage}
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StorefrontPreviewPanel({
-  product,
-  text,
-}: {
-  product: AdminProductRow;
-  text: typeof panelText.zh | typeof panelText.it;
-}) {
-  const storefrontUrl = product.storefrontVisible ? product.storefrontUrl : null;
-
-  return (
     <div className="space-y-3">
-      <div className="rounded-lg border border-slate-200 p-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="text-sm font-bold text-slate-950">{text.viewCatalog}</div>
-            <div className="mt-1 break-all text-xs font-medium text-slate-500">
-              {product.catalogUrl ?? "/catalogo"}
-            </div>
+      <div className="grid gap-3 rounded-lg border border-slate-200 bg-white p-3 lg:grid-cols-[240px_minmax(0,1fr)]">
+        <ProductDetailImageGallery
+          product={product}
+          text={text}
+          sizes="(min-width: 1024px) 240px, 160px"
+        />
+        <div className="grid content-start gap-3 rounded-md border border-slate-200 bg-slate-50 p-3">
+          <div className="flex items-center gap-2 text-sm font-bold text-slate-900">
+            <Upload className="size-4 text-primary" />
+            {text.uploadImage}
           </div>
-          <Button variant="outline" className="bg-white" asChild>
-            <Link href={product.catalogUrl ?? "/catalogo"}>
-              <ExternalLink className="size-4" />
-              {text.open}
-            </Link>
-          </Button>
-        </div>
-      </div>
-      <div className="rounded-lg border border-slate-200 p-3">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <div className="text-sm font-bold text-slate-950">{text.previewStorefront}</div>
-            <div className="mt-1 break-all text-xs font-medium text-slate-500">
-              {storefrontUrl ?? text.publishForStorefront}
-            </div>
-          </div>
-          {storefrontUrl ? (
-            <Button asChild>
-              <Link href={storefrontUrl}>
-                <ExternalLink className="size-4" />
-                {text.open}
-              </Link>
+          <Field label={text.uploadImage}>
+            <Input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+            />
+          </Field>
+          {error && <div className="text-sm font-semibold text-red-600">{error}</div>}
+          <div className="flex justify-end">
+            <Button type="button" onClick={() => void uploadMedia()} disabled={!file || isSaving}>
+              {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
+              {text.uploadImage}
             </Button>
-          ) : (
-            <Badge className="border-amber-200 bg-amber-50 text-amber-700">
-              {text.publishForStorefront}
-            </Badge>
-          )}
+          </div>
         </div>
       </div>
     </div>
@@ -2890,11 +3291,82 @@ function Field({
   );
 }
 
-function InfoGrid({ children }: { children: React.ReactNode }) {
-  return <div className="grid gap-3 sm:grid-cols-2">{children}</div>;
+function DetailPanelToolbar({
+  title,
+  children,
+}: {
+  title: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-h-8 items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-1.5">
+      <div className="truncate text-sm font-black text-slate-950">{title}</div>
+      {children && <div className="flex shrink-0 items-center gap-1.5">{children}</div>}
+    </div>
+  );
+}
+
+function InfoGrid({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("grid gap-2 sm:grid-cols-2 lg:grid-cols-4", className)}>
+      {children}
+    </div>
+  );
 }
 
 function DetailItem({
+  label,
+  value,
+  className,
+  valueClassName,
+}: {
+  label: string;
+  value: React.ReactNode;
+  className?: string;
+  valueClassName?: string;
+}) {
+  return (
+    <div className={cn("min-h-[72px] rounded-md border border-slate-200 bg-white p-2.5", className)}>
+      <div className="text-[11px] font-semibold leading-4 text-slate-500">{label}</div>
+      <div className={cn("mt-1 break-words text-[13px] font-bold leading-snug text-slate-950", valueClassName)}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function EditableDetailItem({
+  label,
+  error,
+  children,
+  className,
+}: {
+  label: string;
+  error?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "min-h-[72px] rounded-md border border-primary/25 bg-primary/5 p-2.5",
+        className
+      )}
+    >
+      <div className="text-[11px] font-semibold leading-4 text-primary">{label}</div>
+      <div className="mt-1">{children}</div>
+      {error && <p className="mt-1 text-xs font-semibold text-red-600">{error}</p>}
+    </div>
+  );
+}
+
+function ProductHeroMetric({
   label,
   value,
 }: {
@@ -2902,9 +3374,9 @@ function DetailItem({
   value: React.ReactNode;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 p-3">
-      <div className="text-xs font-semibold uppercase text-slate-500">{label}</div>
-      <div className="mt-2 break-words text-sm font-bold text-slate-900">{value}</div>
+    <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5">
+      <div className="truncate text-[10px] font-semibold leading-3 text-slate-500">{label}</div>
+      <div className="mt-1 truncate text-sm font-black leading-4 text-slate-950">{value}</div>
     </div>
   );
 }
@@ -2944,9 +3416,9 @@ function MetricPill({
   value: React.ReactNode;
 }) {
   return (
-    <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1">
-      <div className="text-[10px] font-semibold uppercase text-slate-400">{label}</div>
-      <div className="mt-0.5 truncate text-xs font-black text-slate-900">{value}</div>
+    <div className="min-h-[38px] rounded-md border border-slate-200 bg-slate-50 px-1.5 py-1">
+      <div className="truncate text-[10px] font-semibold leading-3 text-slate-400">{label}</div>
+      <div className="mt-0.5 truncate text-[12px] font-black leading-4 text-slate-900">{value}</div>
     </div>
   );
 }
@@ -3124,33 +3596,6 @@ async function saveAdminProductStockAdjustment(
 
   if (!response.ok) {
     throw new Error(`POST stock adjustment responded ${response.status}`);
-  }
-
-  return readSavedProduct(await readJsonResponse(response));
-}
-
-async function saveAdminProductImages(
-  sku: string,
-  payload: {
-    imagePath: string;
-    imageAlt: string;
-    galleryImagePaths: string[];
-    reason?: string;
-  }
-) {
-  const response = await fetch(`${adminProductsEndpoint}/${encodeURIComponent(sku)}/images`, {
-    method: "PATCH",
-    cache: "no-store",
-    headers: {
-      Accept: "application/json",
-      "Cache-Control": "no-cache",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    throw new Error(`PATCH images responded ${response.status}`);
   }
 
   return readSavedProduct(await readJsonResponse(response));
@@ -3726,13 +4171,6 @@ function csvEscape(value: string | number) {
 function splitList(value?: string) {
   return (value ?? "")
     .split(/[,\n]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function splitLines(value?: string) {
-  return (value ?? "")
-    .split("\n")
     .map((item) => item.trim())
     .filter(Boolean);
 }

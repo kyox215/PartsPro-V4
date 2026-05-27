@@ -360,45 +360,47 @@ function OverviewHeader({
     : copy.syncing;
 
   return (
-    <section className="flex min-w-0 flex-col gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 shadow-[0_12px_30px_rgba(15,23,42,0.04)] md:flex-row md:items-center md:justify-between">
-      <div className="min-w-0">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <h1 className="text-base font-black leading-none text-slate-950 sm:text-lg">
-            {copy.sections.operations}
-          </h1>
-          <Badge variant="outline" className="h-5 rounded-md border-slate-200 bg-slate-50 text-[10px]">
-            {syncedAt}
-          </Badge>
-        </div>
-        <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-medium text-slate-500">
-          <span>
+    <section className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <h1 className="truncate text-base font-black leading-5 text-slate-950 sm:text-lg">
+              {copy.sections.operations}
+            </h1>
+            <Badge variant="outline" className="h-5 rounded-md border-slate-200 bg-slate-50 px-1.5 text-[10px]">
+              {syncedAt}
+            </Badge>
+          </div>
+          <div className="mt-1 grid grid-cols-2 gap-1 text-[11px] font-semibold text-slate-500 sm:flex sm:flex-wrap sm:gap-x-3 sm:gap-y-1">
+            <span className="min-w-0 truncate rounded bg-slate-50 px-1.5 py-0.5 sm:bg-transparent sm:px-0 sm:py-0">
             {formatAdminMessage(copy.ordersSource, {
               returned: snapshot.ordersReturned,
               total: snapshot.orderTotal,
             })}
-          </span>
-          <span>
+            </span>
+            <span className="min-w-0 truncate rounded bg-slate-50 px-1.5 py-0.5 sm:bg-transparent sm:px-0 sm:py-0">
             {formatAdminMessage(copy.productsSource, {
               returned: snapshot.productsReturned,
               total: snapshot.productTotal,
             })}
-          </span>
-          <span>
-            {copy.source}: {sourceLabel(snapshot.orderSource)} / {sourceLabel(snapshot.productSource)}
-          </span>
+            </span>
+            <span className="col-span-2 min-w-0 truncate rounded bg-slate-50 px-1.5 py-0.5 sm:col-span-1 sm:bg-transparent sm:px-0 sm:py-0">
+              {copy.source}: {sourceLabel(snapshot.orderSource)} / {sourceLabel(snapshot.productSource)}
+            </span>
+          </div>
         </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-7 shrink-0 gap-1 rounded-md bg-white px-2 text-[11px] sm:h-8 sm:gap-1.5 sm:px-2.5 sm:text-xs"
+          disabled={snapshot.isLoading}
+          onClick={onRefresh}
+        >
+          <RefreshCw className={cn("size-3.5", snapshot.isLoading && "animate-spin")} />
+          <span>{snapshot.isLoading ? copy.syncing : copy.refresh}</span>
+        </Button>
       </div>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-8 shrink-0 gap-1.5 rounded-md bg-white px-2.5 text-xs"
-        disabled={snapshot.isLoading}
-        onClick={onRefresh}
-      >
-        <RefreshCw className={cn("size-3.5", snapshot.isLoading && "animate-spin")} />
-        {snapshot.isLoading ? copy.syncing : copy.refresh}
-      </Button>
     </section>
   );
 }

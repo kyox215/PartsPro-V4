@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dialog";
 import type { PartProduct } from "@/lib/partspro-data";
 import { formatEuro } from "@/lib/partspro-data";
+import { getProductImageCandidates } from "@/lib/partspro-product-images";
 import { cn } from "@/lib/utils";
 import { PartVisual } from "./part-visual";
 
@@ -48,6 +49,15 @@ export function ProductCard({
   const imageAlt = product.imageAlt ?? product.name;
   const hasWholesalePrice = product.price > 0;
   const remainingModels = Math.max(product.compatibleWith.length - 2, 0);
+  const imageCandidates = useMemo(() => getProductImageCandidates(product), [product]);
+  const [failedImageUrls, setFailedImageUrls] = useState<string[]>([]);
+  const imageUrl = imageCandidates.find((candidate) => !failedImageUrls.includes(candidate));
+
+  function markImageFailed(failedUrl: string) {
+    setFailedImageUrls((current) =>
+      current.includes(failedUrl) ? current : [...current, failedUrl]
+    );
+  }
 
   return (
     <>
@@ -58,7 +68,7 @@ export function ProductCard({
         )}
       >
         <CardContent className="grid h-full min-w-0 grid-cols-[104px_minmax(0,1fr)] gap-2 p-2 sm:flex sm:flex-col sm:p-3">
-          {product.imageUrl ? (
+          {imageUrl ? (
             <button
               type="button"
               className="relative block h-28 w-full cursor-zoom-in overflow-hidden rounded-md bg-slate-50 text-left outline-none transition hover:bg-slate-100 focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-auto sm:rounded-lg"
@@ -68,13 +78,15 @@ export function ProductCard({
             >
               <div className="relative h-full rounded-md sm:h-36 sm:rounded-lg">
                 <Image
-                  src={product.imageUrl}
+                  src={imageUrl}
                   alt={imageAlt}
                   fill
                   sizes="(max-width: 640px) 104px, (max-width: 1280px) 180px, 220px"
                   quality={55}
                   loading="lazy"
                   decoding="async"
+                  unoptimized
+                  onError={() => markImageFailed(imageUrl)}
                   className="object-contain p-1.5 sm:p-2"
                 />
               </div>
@@ -214,7 +226,7 @@ export function ProductCard({
           </div>
         </CardContent>
       </Card>
-      {product.imageUrl && (
+      {imageUrl && (
         <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
           <DialogContent className="max-w-[calc(100vw-1.5rem)] gap-3 p-3 sm:max-w-3xl">
             <DialogHeader className="pr-10">
@@ -224,11 +236,13 @@ export function ProductCard({
             </DialogHeader>
             <div className="relative h-[min(72vh,620px)] min-h-[280px] overflow-hidden rounded-lg bg-slate-50">
               <Image
-                src={product.imageUrl}
+                src={imageUrl}
                 alt={imageAlt}
                 fill
                 sizes="(max-width: 640px) 92vw, 760px"
                 quality={88}
+                unoptimized
+                onError={() => markImageFailed(imageUrl)}
                 className="object-contain p-3"
               />
             </div>

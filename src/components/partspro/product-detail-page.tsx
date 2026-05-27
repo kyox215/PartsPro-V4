@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Image from "next/image";
 import {
   ArrowLeft,
   BadgeEuro,
@@ -19,9 +18,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import type { PartProduct } from "@/lib/partspro-data";
-import { PartVisual } from "./part-visual";
 import { ProductDetailPurchasePanel } from "./product-card";
 import { StoreHeader } from "./store-header";
+import { StorefrontProductImage } from "./storefront-product-image";
 
 type ProductDetailPageProps = {
   product: PartProduct;
@@ -48,23 +47,14 @@ export function ProductDetailPage({
         <div className="grid gap-4 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
           <Card className="rounded-lg border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)] lg:sticky lg:top-32 lg:self-start">
             <CardContent className="p-3 sm:p-4">
-              {product.imageUrl ? (
-                <div className="relative min-h-[260px] overflow-hidden rounded-lg bg-slate-50 sm:min-h-[360px] lg:min-h-[460px]">
-                  <Image
-                    src={product.imageUrl}
-                    alt={product.imageAlt ?? product.name}
-                    fill
-                    sizes="(max-width: 1024px) 100vw, 42vw"
-                    className="object-contain p-5"
-                    priority
-                  />
-                </div>
-              ) : (
-                <PartVisual
-                  variant={product.visual}
-                  className="min-h-[260px] rounded-lg sm:min-h-[360px] lg:min-h-[460px]"
-                />
-              )}
+              <StorefrontProductImage
+                product={product}
+                sizes="(max-width: 1024px) 100vw, 42vw"
+                quality={88}
+                priority
+                className="min-h-[260px] rounded-lg bg-slate-50 sm:min-h-[360px] lg:min-h-[460px]"
+                imageClassName="object-contain p-5"
+              />
               <div className="mt-3 grid gap-2 sm:grid-cols-3">
                 {[
                   { label: "Lotto", value: "Tracciato" },
