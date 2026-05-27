@@ -11,6 +11,7 @@ const MOBILAX_IMAGE_BASE_URL =
   "https://apiv2.mobilax.fr/v1.0/assets/images/products/id-image";
 const PROJECT_REF_PATH = "supabase/.temp/project-ref";
 const PRODUCT_IMAGES_BUCKET = "product-images";
+const NON_PHONE_MODEL_PATTERN = /(?:watch|tablet|tab|pad|buds|band|tv|router|laptop|scooter)/i;
 const BRAND_CONFIGS = {
   apple: {
     brandLabel: "Apple",
@@ -47,6 +48,116 @@ const BRAND_CONFIGS = {
     extractModels: extractSamsungModels,
     excludeModelPath: (path) => /galaxy-(?:watch|tab)/i.test(path),
   },
+  xiaomi: {
+    brandLabel: "Xiaomi",
+    importLabel: "Xiaomi",
+    pathSlug: "xiaomi",
+    storageFolder: "xiaomi",
+    seriesPaths: [
+      "/spare-parts/mobile-phone/xiaomi/mi-mix-max-series",
+      "/spare-parts/mobile-phone/xiaomi/mi-series",
+      "/spare-parts/mobile-phone/xiaomi/poco-shark-series",
+      "/spare-parts/mobile-phone/xiaomi/redmi-note-series",
+      "/spare-parts/mobile-phone/xiaomi/redmi-series",
+      "/spare-parts/mobile-phone/xiaomi/xiaomi-series",
+    ],
+    modelFromUrl: genericModelFromUrl,
+    extractModels: extractGenericBrandModels,
+    modelAliases: ["Xiaomi", "Redmi", "Poco", "Pocophone", "Black Shark"],
+    excludeModelPath: genericNonPhoneModelPath,
+  },
+  honor: {
+    brandLabel: "Honor",
+    importLabel: "Honor",
+    pathSlug: "honor",
+    storageFolder: "honor",
+    seriesPaths: [
+      "/spare-parts/mobile-phone/honor/series-10-20-50",
+      "/spare-parts/mobile-phone/honor/series-5-6-7-8-9",
+      "/spare-parts/mobile-phone/honor/series-70-90-200-300-400-600",
+      "/spare-parts/mobile-phone/honor/series-magic-play-view",
+      "/spare-parts/mobile-phone/honor/series-play",
+      "/spare-parts/mobile-phone/honor/series-x",
+    ],
+    modelFromUrl: genericModelFromUrl,
+    extractModels: extractGenericBrandModels,
+    modelAliases: ["Honor"],
+    excludeModelPath: genericNonPhoneModelPath,
+  },
+  oppo: {
+    brandLabel: "OPPO",
+    importLabel: "OPPO",
+    pathSlug: "oppo",
+    storageFolder: "oppo",
+    seriesPaths: [
+      "/spare-parts/mobile-phone/oppo/a",
+      "/spare-parts/mobile-phone/oppo/f",
+      "/spare-parts/mobile-phone/oppo/find",
+      "/spare-parts/mobile-phone/oppo/reno",
+      "/spare-parts/mobile-phone/oppo/rx",
+    ],
+    modelFromUrl: genericModelFromUrl,
+    extractModels: extractGenericBrandModels,
+    modelAliases: ["OPPO", "Oppo"],
+    excludeModelPath: genericNonPhoneModelPath,
+  },
+  realme: {
+    brandLabel: "Realme",
+    importLabel: "Realme",
+    pathSlug: "realme",
+    storageFolder: "realme",
+    seriesPaths: [
+      "/spare-parts/mobile-phone/realme/series-11-12-14-16",
+      "/spare-parts/mobile-phone/realme/series-5-6-7",
+      "/spare-parts/mobile-phone/realme/series-8-9-10",
+      "/spare-parts/mobile-phone/realme/series-c-gt-x-p",
+      "/spare-parts/mobile-phone/realme/series-narzo-note",
+    ],
+    modelFromUrl: genericModelFromUrl,
+    extractModels: extractGenericBrandModels,
+    modelAliases: ["Realme", "Narzo"],
+    excludeModelPath: genericNonPhoneModelPath,
+  },
+  motorola: {
+    brandLabel: "Motorola",
+    importLabel: "Motorola",
+    pathSlug: "motorola",
+    storageFolder: "motorola",
+    seriesPaths: [
+      "/spare-parts/mobile-phone/motorola/edge",
+      "/spare-parts/mobile-phone/motorola/moto-e",
+      "/spare-parts/mobile-phone/motorola/moto-g",
+      "/spare-parts/mobile-phone/motorola/moto-x-z",
+      "/spare-parts/mobile-phone/motorola/razr",
+      "/spare-parts/mobile-phone/motorola/series-one-c-defy",
+    ],
+    modelFromUrl: genericModelFromUrl,
+    extractModels: extractGenericBrandModels,
+    modelAliases: ["Motorola", "Moto", "Razr", "Edge", "Defy"],
+    excludeModelPath: genericNonPhoneModelPath,
+  },
+  vivo: {
+    brandLabel: "Vivo",
+    importLabel: "Vivo",
+    pathSlug: "vivo",
+    storageFolder: "vivo",
+    seriesPaths: ["/spare-parts/mobile-phone/vivo/vivo"],
+    modelFromUrl: genericModelFromUrl,
+    extractModels: extractGenericBrandModels,
+    modelAliases: ["Vivo"],
+    excludeModelPath: genericNonPhoneModelPath,
+  },
+  tcl: {
+    brandLabel: "TCL",
+    importLabel: "TCL",
+    pathSlug: "tcl",
+    storageFolder: "tcl",
+    seriesPaths: ["/spare-parts/mobile-phone/tcl/tcl"],
+    modelFromUrl: genericModelFromUrl,
+    extractModels: extractGenericBrandModels,
+    modelAliases: ["TCL", "Tcl"],
+    excludeModelPath: genericNonPhoneModelPath,
+  },
 };
 
 const args = parseArgs(process.argv.slice(2));
@@ -73,11 +184,13 @@ if (!projectRef && !args.dryRun) {
 }
 
 let supabaseStorageClient;
+let canonicalModelNames = new Set();
 
 const runStartedAt = new Date().toISOString();
 const tempDir = mkdtempSync(join(tmpdir(), "partspro-mobilax-"));
 const report = {
   modelPages: 0,
+  skippedSeriesPages: 0,
   listPages: 0,
   scrapedProducts: 0,
   uniqueProducts: 0,
@@ -95,6 +208,7 @@ try {
 
   const modelUrls = await discoverModelUrls();
   report.modelPages = modelUrls.length;
+  canonicalModelNames = new Set(modelUrls.map(modelFromUrl));
   console.log(`Discovered ${modelUrls.length} ${brandConfig.importLabel} model pages.`);
 
   const products = await scrapeProducts(modelUrls);
@@ -194,10 +308,16 @@ async function discoverModelUrls() {
   const urls = new Set();
 
   for (const seriesPath of brandConfig.seriesPaths) {
-    const html = await fetchText(new URL(seriesPath, MOBILAX_BASE_URL).href);
-    const decoded = decodeNextFlight(html);
-    collectModelUrls(html, urls);
-    collectModelUrls(decoded, urls);
+    try {
+      const html = await fetchText(new URL(seriesPath, MOBILAX_BASE_URL).href);
+      const decoded = decodeNextFlight(html);
+      collectModelUrls(html, urls);
+      collectModelUrls(decoded, urls);
+    } catch (error) {
+      report.skippedSeriesPages += 1;
+      console.warn(`Skipped series ${seriesPath}: ${error.message}`);
+    }
+
     await delay(args.pageDelayMs);
   }
 
@@ -358,7 +478,9 @@ function normalizeMobilaxProduct(product, model) {
     return null;
   }
 
-  const compatibilityModels = uniqueStrings([model, ...brandConfig.extractModels(name)]);
+  const compatibilityModels = uniqueStrings([model, ...brandConfig.extractModels(name)]).filter(
+    isKnownModelName
+  );
   const imageId = product.image_principal_id ? String(product.image_principal_id) : "";
 
   return {
@@ -382,6 +504,7 @@ function normalizeMobilaxProduct(product, model) {
     supplier: "External Supplier",
     is_battery: /battery|batteria/i.test(name),
     is_dangerous_goods: /battery|batteria/i.test(name),
+    model_codes: [],
     compatibility_models: compatibilityModels,
     alternative_skus: [],
     add_on_skus: [],
@@ -573,6 +696,7 @@ function upsertSql(products) {
     supplier: product.supplier,
     is_battery: product.is_battery,
     is_dangerous_goods: product.is_dangerous_goods,
+    model_codes: product.model_codes,
     compatibility_models: product.compatibility_models,
     alternative_skus: product.alternative_skus,
     add_on_skus: product.add_on_skus,
@@ -593,6 +717,7 @@ with raw_payload as (
     name text,
     brand text,
     model text,
+    model_codes jsonb,
     category text,
     quality_grade text,
     stock_status text,
@@ -625,6 +750,7 @@ payload as (
     name,
     brand,
     model,
+    array(select distinct value from jsonb_array_elements_text(coalesce(model_codes, '[]'::jsonb))) as model_codes,
     category,
     quality_grade,
     stock_status,
@@ -689,7 +815,7 @@ upserted_products as (
     name,
     brand,
     model,
-    compatibility_models,
+    model_codes,
     category,
     quality_grade,
     stock_status,
@@ -828,15 +954,17 @@ from public.products;
 select
   count(*) as imported_inventory_rows,
   count(*) filter (
-    where actual_qty = 0
-      and available_qty = 0
-      and incoming_qty = 0
-      and qc_qty = 0
-      and rma_qty = 0
-      and defective_qty = 0
+    where item.actual_qty = 0
+      and item.available_qty = 0
+      and item.incoming_qty = 0
+      and item.qc_qty = 0
+      and item.rma_qty = 0
+      and item.defective_qty = 0
   ) as zero_quantity_rows
-from public.inventory_items
-where supplier = 'External Supplier';
+from public.inventory_items as item
+join public.products as product on product.sku_code = item.sku_code
+where product.supplier = 'External Supplier'
+  and product.brand = '${sqlString(brandConfig.brandLabel)}';
 `;
 }
 
@@ -992,6 +1120,11 @@ function samsungModelFromUrl(path) {
   return tokens.join(" ").replace(/^Galaxy\s+/i, "Galaxy ").trim();
 }
 
+function genericModelFromUrl(path) {
+  const slug = path.split("/").pop() ?? "";
+  return formatGenericModelSlug(slug);
+}
+
 function extractAppleModels(value) {
   const models = [];
   const pattern =
@@ -1014,6 +1147,53 @@ function extractSamsungModels(value) {
   }
 
   return models;
+}
+
+function extractGenericBrandModels(value) {
+  if (canonicalModelNames.size > 0) {
+    return extractKnownModelNames(value);
+  }
+
+  const models = [];
+  const aliases = brandConfig.modelAliases ?? [brandConfig.brandLabel];
+  const aliasPattern = aliases.map(escapeRegex).join("|");
+  const stopWords =
+    "black|white|blue|green|gold|silver|grey|gray|purple|pink|red|orange|yellow|midnight|glowing|dazzling|mint|peach|graphite|phantom|aurora|crystal|starry|lunar|arctic|emerald|battery|back|cover|display|touchscreen|camera|dock|connector|flex|speaker|earpiece|lens|sim|tray|reader|frame|housing|chassis|original|premium|oem|refurb|pulled";
+  const pattern = new RegExp(
+    `\\b(?:${aliasPattern})\\s+([A-Za-z0-9][A-Za-z0-9+()./-]*(?:\\s+[A-Za-z0-9][A-Za-z0-9+()./-]*){0,7})`,
+    "gi"
+  );
+
+  for (const match of value.matchAll(pattern)) {
+    const raw = match[1]
+      .split(new RegExp(`\\s+(?:${stopWords})\\b`, "i"))[0]
+      .replace(/[(),]+$/g, "")
+      .trim();
+
+    if (raw) {
+      models.push(formatGenericModelName(raw));
+    }
+  }
+
+  return models;
+}
+
+function extractKnownModelNames(value) {
+  const matches = [];
+  const candidates = [...canonicalModelNames].sort((left, right) => right.length - left.length);
+
+  for (const model of candidates) {
+    const pattern = new RegExp(
+      `(^|[^A-Za-z0-9])${modelNamePattern(model)}(?=$|[^A-Za-z0-9])`,
+      "i"
+    );
+
+    if (pattern.test(value)) {
+      matches.push(model);
+    }
+  }
+
+  return matches;
 }
 
 function normalizeModelName(value) {
@@ -1065,6 +1245,48 @@ function formatSamsungToken(token) {
   return normalized.charAt(0).toUpperCase() + normalized.slice(1);
 }
 
+function formatGenericModelSlug(value) {
+  return formatGenericModelName(value.replace(/-/g, " "));
+}
+
+function formatGenericModelName(value) {
+  return value
+    .replace(/[()]/g, " ")
+    .replace(/\s*\/\s*/g, "/")
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map(formatGenericToken)
+    .join(" ")
+    .replace(/\bNxtpaper\b/g, "NXTPAPER")
+    .replace(/\bRazr\b/g, "Razr")
+    .replace(/\bMoto\b/g, "Moto")
+    .trim();
+}
+
+function formatGenericToken(token) {
+  const normalized = token.trim();
+  const lower = normalized.toLowerCase();
+
+  if (!normalized) return "";
+  if (/^\d+g$/i.test(normalized)) return normalized.toUpperCase();
+  if (/^\d+[a-z]+$/i.test(normalized)) return normalized.toUpperCase();
+  if (/^(?:gt|ne|nfc|nx|rx)$/i.test(normalized)) return normalized.toUpperCase();
+  if (/^pro\+$/i.test(normalized)) return "Pro+";
+  if (/^reno\d*/i.test(normalized)) return normalized.replace(/^reno/i, "Reno");
+  if (/^[a-z]{1,5}\d+[a-z0-9]*$/i.test(normalized)) return normalized.toUpperCase();
+  if (/^[a-z]+\d+[a-z0-9]*\/[a-z0-9/]+$/i.test(normalized)) return normalized.toUpperCase();
+  if (/^(?:pro|max|plus|mini|lite|ultra|neo|note|smart|power|play|view|magic|edge|razr|defy|fusion|nord|se|fe)$/i.test(normalized)) {
+    if (lower === "se" || lower === "fe") return normalized.toUpperCase();
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+  }
+  if (/^(?:oppo|tcl)$/i.test(normalized)) return normalized.toUpperCase();
+  if (/^(?:xiaomi|redmi|poco|pocophone|honor|realme|motorola|moto|vivo)$/i.test(normalized)) {
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1).toLowerCase();
+  }
+
+  return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+}
+
 function sortModelUrls(a, b) {
   return modelFromUrl(a).localeCompare(modelFromUrl(b), "en", { numeric: true });
 }
@@ -1073,8 +1295,20 @@ function uniqueStrings(values) {
   return [...new Set(values.map((value) => String(value).trim()).filter(Boolean))];
 }
 
+function isKnownModelName(value) {
+  return canonicalModelNames.size === 0 || canonicalModelNames.has(value);
+}
+
+function modelNamePattern(value) {
+  return escapeRegex(value).replace(/\s+/g, "[\\s/-]+");
+}
+
 function escapeRegex(value) {
   return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function genericNonPhoneModelPath(path) {
+  return NON_PHONE_MODEL_PATTERN.test(path);
 }
 
 function sqlString(value) {

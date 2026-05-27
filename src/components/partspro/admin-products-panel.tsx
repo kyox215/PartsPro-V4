@@ -923,7 +923,6 @@ export function AdminProductsPanel() {
           <ProductCascadeMenu
             filters={filters}
             modelGroups={modelGroups}
-            products={products}
             isLoadingModelGroups={isLoadingModelGroups}
             text={text}
             onChange={updateFilters}
@@ -1225,21 +1224,19 @@ function ProductFilters({
 function ProductCascadeMenu({
   filters,
   modelGroups,
-  products,
   isLoadingModelGroups,
   text,
   onChange,
 }: {
   filters: ProductListFilters;
   modelGroups: DeviceModelGroup[];
-  products: AdminProductRow[];
   isLoadingModelGroups: boolean;
   text: typeof panelText.zh | typeof panelText.it;
   onChange: (patch: Partial<ProductListFilters>) => void;
 }) {
   const groups = React.useMemo(
-    () => buildCascadeModelGroups(modelGroups, products),
-    [modelGroups, products]
+    () => buildCascadeModelGroups(modelGroups),
+    [modelGroups]
   );
   const selectedBrand = filters.brand === "all" ? "" : filters.brand;
   const selectedModel = filters.model === "all" ? "" : filters.model;
@@ -4087,10 +4084,7 @@ function ensureUniqueSku(sku: string, products: AdminProductRow[]) {
   return nextSku;
 }
 
-function buildCascadeModelGroups(
-  modelGroups: DeviceModelGroup[],
-  products: AdminProductRow[]
-) {
+function buildCascadeModelGroups(modelGroups: DeviceModelGroup[]) {
   const groups = new Map<string, Set<string>>();
 
   for (const group of modelGroups) {
@@ -4098,14 +4092,6 @@ function buildCascadeModelGroups(
 
     group.models.forEach((model) => models.add(model));
     groups.set(group.brand, models);
-  }
-
-  for (const product of products) {
-    const models = groups.get(product.brand) ?? new Set<string>();
-    const productModels = [product.model, ...product.compatibleWith].filter(isDefined);
-
-    productModels.forEach((model) => models.add(model));
-    groups.set(product.brand, models);
   }
 
   return Array.from(groups.entries())

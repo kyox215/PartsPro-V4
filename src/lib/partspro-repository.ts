@@ -86,6 +86,7 @@ export type RepositoryResult<T> = {
 
 const catalogModelGroupsCacheTtlMs = 10 * 60 * 1000;
 const catalogModelGroupsWarningCacheTtlMs = 15 * 1000;
+const catalogModelGroupsRowLimit = 100000;
 let catalogModelGroupsCache:
   | {
       expiresAt: number;
@@ -892,7 +893,7 @@ async function readPublicCatalogModelGroups(): Promise<
     }
 
     return {
-      data: buildDeviceModelGroupsFromRows(modelOptionRows, { scope: "admin" }),
+      data: buildDeviceModelGroupsFromPrimaryRows(modelOptionRows, { scope: "admin" }),
       source: "supabase",
     };
   } catch {
@@ -904,28 +905,26 @@ async function readCatalogModelGroupsFromProducts(
   client: SupabaseServerClient,
   scope: "public" | "admin"
 ): Promise<DeviceModelGroup[] | null> {
-  const viewRows =
+  const productRows =
     scope === "public"
       ? await readRows(
           client,
           "catalog_public_summary",
-          "brand, compatibility_models"
+          "brand, model",
+          catalogModelGroupsRowLimit
         )
-      : null;
-  const productRows =
-    viewRows ??
-    (await readRows(
-      client,
-      "products",
-      "brand, model, model_code, model_codes, compatibility_models, status",
-      5000
-    ));
+      : await readRows(
+          client,
+          "products",
+          "brand, model, status",
+          catalogModelGroupsRowLimit
+        );
 
   if (!productRows) {
     return null;
   }
 
-  return buildDeviceModelGroupsFromRows(productRows, { scope });
+  return buildDeviceModelGroupsFromPrimaryRows(productRows, { scope });
 }
 
 async function readPublicCatalogProduct(
@@ -4349,7 +4348,7 @@ function readCompatibility(row: DbRow) {
   return [...new Set(sanitizeSupplierStringArray(direct))];
 }
 
-function buildDeviceModelGroupsFromRows(
+function buildDeviceModelGroupsFromPrimaryRows(
   rows: DbRow[],
   options: { scope?: "public" | "admin" } = {}
 ): DeviceModelGroup[] {
@@ -4364,24 +4363,27 @@ function buildDeviceModelGroupsFromRows(
     }
 
     const brand = pickString(row, ["brand"]);
+    const model = pickString(row, ["model"]);
 
-    if (!brand) {
+    if (!brand || !model) {
+      continue;
+    }
+
+    const normalizedModels = sanitizeSupplierStringArray([model]);
+
+    if (normalizedModels.length === 0) {
       continue;
     }
 
     const models = groups.get(brand) ?? new Set<string>();
-
-    for (const model of readCompatibility(row)) {
-      const normalizedModel = model.trim();
-
-      if (normalizedModel) {
-        models.add(normalizedModel);
-      }
-    }
-
+    normalizedModels.forEach((normalizedModel) => models.add(normalizedModel));
     groups.set(brand, models);
   }
 
+  return sortDeviceModelGroups(groups);
+}
+
+function sortDeviceModelGroups(groups: Map<string, Set<string>>): DeviceModelGroup[] {
   const preferredBrandOrder = deviceModels.map((group) => group.brand);
 
   return Array.from(groups.entries())

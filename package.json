@@ -7,6 +7,13 @@
     "build": "next build",
     "import:mobilax:iphone": "node scripts/import-mobilax-iphone-catalog.mjs --brand apple",
     "import:mobilax:samsung": "node scripts/import-mobilax-iphone-catalog.mjs --brand samsung",
+    "import:mobilax:xiaomi": "node scripts/import-mobilax-iphone-catalog.mjs --brand xiaomi",
+    "import:mobilax:honor": "node scripts/import-mobilax-iphone-catalog.mjs --brand honor",
+    "import:mobilax:oppo": "node scripts/import-mobilax-iphone-catalog.mjs --brand oppo",
+    "import:mobilax:realme": "node scripts/import-mobilax-iphone-catalog.mjs --brand realme",
+    "import:mobilax:motorola": "node scripts/import-mobilax-iphone-catalog.mjs --brand motorola",
+    "import:mobilax:vivo": "node scripts/import-mobilax-iphone-catalog.mjs --brand vivo",
+    "import:mobilax:tcl": "node scripts/import-mobilax-iphone-catalog.mjs --brand tcl",
     "start": "next start",
     "lint": "eslint"
   },
