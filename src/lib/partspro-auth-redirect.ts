@@ -1,5 +1,5 @@
 const DEFAULT_LOGIN_REDIRECT = "/account";
-const CUSTOMER_POST_LOGIN_REDIRECT = "/";
+const CUSTOMER_POST_LOGIN_REDIRECT = "/account";
 const STAFF_POST_LOGIN_REDIRECT = "/admin";
 
 type HeaderReader = {
@@ -23,11 +23,15 @@ export function cleanAuthRedirect(
   return next;
 }
 
-export function loginUrl(next: string, error?: string) {
+export function loginUrl(next: string, error?: string, notice?: string) {
   const params = new URLSearchParams({ next: cleanAuthRedirect(next) });
 
   if (error) {
     params.set("error", error);
+  }
+
+  if (notice) {
+    params.set("notice", notice);
   }
 
   return `/login?${params.toString()}`;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, Grid3X3, Home, Menu, Search, User } from "lucide-react";
@@ -27,7 +27,7 @@ const storeMobileNavItems = [
   { labelKey: "nav.account", labelFallback: "Account", href: "/account", icon: User },
 ];
 
-type StoreMobileMenuProps = {
+export type StoreMobileMenuProps = {
   className?: string;
   modelGroups?: readonly DeviceModelGroup[];
   onCatalogSelect?: (selection: CatalogSelection) => void;
@@ -46,6 +46,7 @@ export function StoreMobileMenu({
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(() => pathname.startsWith("/catalogo"));
+  const catalogSearchValue = selectedCatalog?.searchQuery ?? selectedCatalog?.model ?? "";
   const [expandedBrandOverride, setExpandedBrandOverride] = useState<
     string | null | undefined
   >(undefined);
@@ -75,6 +76,25 @@ export function StoreMobileMenu({
   function handleCatalogSelect(selection: CatalogSelection) {
     setExpandedBrandOverride(undefined);
     onCatalogSelect?.(selection);
+  }
+
+  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const formData = new FormData(event.currentTarget);
+    const query = String(formData.get("catalogSearch") ?? "").trim();
+
+    if (!query) {
+      return;
+    }
+
+    if (onCatalogSelect) {
+      onCatalogSelect({ searchQuery: query });
+      closeMenu();
+      return;
+    }
+
+    window.location.assign(`/catalogo?q=${encodeURIComponent(query)}`);
   }
 
   function toggleCatalog() {
@@ -127,13 +147,16 @@ export function StoreMobileMenu({
         </SheetHeader>
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <div className="border-b border-slate-100 px-3 py-3">
-            <div className="relative">
+            <form className="relative" onSubmit={handleSearchSubmit}>
               <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
               <Input
+                key={catalogSearchValue}
                 className="h-9 rounded-lg border-slate-200 bg-slate-50 pl-8 text-sm shadow-none focus-visible:bg-white"
+                defaultValue={catalogSearchValue}
+                name="catalogSearch"
                 placeholder={tx(t, "storefront.home.mobileSearch", "Cerca SKU / prodotto")}
               />
-            </div>
+            </form>
           </div>
           <nav
             aria-label={tx(t, "storefront.header.mobileMenuTitle", "Menu PartsPro")}

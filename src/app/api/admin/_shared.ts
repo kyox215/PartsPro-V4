@@ -79,3 +79,15 @@ export function repositoryErrorResponse(
 
   return apiError(500, fallbackCode, fallbackMessage);
 }
+
+export function basicCustomerManagementDisabledResponse(feature: string) {
+  return apiError(
+    410,
+    "CUSTOMER_BASIC_LEGACY_FEATURE_DISABLED",
+    "This legacy customer-management workflow is disabled in the basic customer management version.",
+    {
+      feature,
+      mode: "basic_customer_management",
+    }
+  );
+}

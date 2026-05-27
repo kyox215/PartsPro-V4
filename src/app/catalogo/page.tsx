@@ -10,6 +10,7 @@ import {
   getCurrentAccountContext,
   type AccountContext,
 } from "@/lib/partspro-account-context";
+import { toStoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 
 const initialCatalogLimit = 24;
 export const dynamic = "force-dynamic";
@@ -25,7 +26,9 @@ export default async function Page({
 }) {
   const resolvedSearchParams = await searchParams;
   const query = readCatalogQuery(resolvedSearchParams);
-  const account = await getCurrentAccountContext({ ensure: true });
+  const accountPromise = getCurrentAccountContext();
+  const modelGroupsPromise = listCatalogModelGroups();
+  const account = await accountPromise;
   const [catalogPage, modelGroups] = await Promise.all([
     pageCatalogProducts(
       {
@@ -38,13 +41,14 @@ export default async function Page({
         includeBuyerPrices: account.canViewPrices,
       }
     ),
-    listCatalogModelGroups(),
+    modelGroupsPromise,
   ]);
 
   return (
     <Suspense fallback={null}>
       <CatalogPage
         filteredTotal={catalogPage.data.total}
+        initialAccountAccess={toStoreHeaderAccountAccess(account)}
         initialModelGroups={modelGroups.data}
         initialProducts={catalogPage.data.products.map((product) =>
           toCatalogCardProduct(product, account)
@@ -58,8 +62,11 @@ export default async function Page({
 function readCatalogQuery(params: Awaited<CatalogPageSearchParams>) {
   return {
     brand: readSingleParam(params.brand),
+    category: readSingleParam(params.category),
     minStock: Number(readSingleParam(params.minStock) ?? "0") > 0 ? 1 : undefined,
     model: readSingleParam(params.model),
+    modelSeries: readSingleParam(params.modelSeries),
+    q: readSingleParam(params.q),
   };
 }
 

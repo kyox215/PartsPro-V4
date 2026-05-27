@@ -20,6 +20,7 @@ const catalogQuerySchema = z
     category: z.string().trim().min(1).max(40).optional(),
     q: z.string().trim().min(2).max(80).optional(),
     model: z.string().trim().min(2).max(80).optional(),
+    modelSeries: z.string().trim().min(1).max(80).optional(),
     status: z.enum(["In Stock", "Low Stock", "Out of Stock"]).optional(),
     grade: z.enum(["A+", "A", "B", "Refurbished"]).optional(),
     minStock: z.coerce.number().int().min(0).max(10000).optional(),
@@ -48,7 +49,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const account = await getCurrentAccountContext({ ensure: true });
+    const account = await getCurrentAccountContext();
     const showPrice = account.canViewPrices;
     const repositoryResult = await pageCatalogProducts(result.data, {
       includeBuyerPrices: showPrice,

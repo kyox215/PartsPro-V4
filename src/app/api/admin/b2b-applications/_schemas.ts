@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { customerTierSchema } from "../customers/_schemas";
 
 export const b2bApplicationIdParamSchema = z
   .object({
@@ -26,7 +25,6 @@ export const b2bApplicationPatchSchema = z
     priceGroupId: z.string().trim().min(1).max(120).nullable().optional(),
     reason: z.string().trim().min(3).max(1000),
     status: z.enum(["approved", "rejected"]).optional(),
-    tier: customerTierSchema.optional(),
   })
   .strict()
   .refine((value) => Boolean(value.decision ?? value.status), {

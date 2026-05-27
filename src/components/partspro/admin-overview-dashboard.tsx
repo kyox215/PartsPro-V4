@@ -722,7 +722,6 @@ function InventoryAlertImage({ alert }: { alert: HotStockAlert }) {
           quality={72}
           loading="lazy"
           decoding="async"
-          unoptimized
           className="object-contain p-1"
           onError={() =>
             setFailedImageState((current) => {

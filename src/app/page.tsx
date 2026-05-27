@@ -1,52 +1,34 @@
 import { HomePage } from "@/components/partspro/home-page";
 import {
+  getCatalogCategoryCounts,
   listCatalogModelGroups,
   pageCatalogProducts,
 } from "@/lib/partspro-repository";
-import { categories, type PartProduct } from "@/lib/partspro-data";
+import { type PartProduct } from "@/lib/partspro-data";
+import { getCurrentAccountContext } from "@/lib/partspro-account-context";
+import { toStoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 
 const featuredProductLimit = 8;
 
 export default async function Home() {
-  const [modelGroups, catalogPage, catalogTotalPage, categoryPages] =
-    await Promise.all([
-      listCatalogModelGroups(),
-      pageCatalogProducts({
-        limit: featuredProductLimit,
-        minStock: 1,
-        offset: 0,
-        sort: "stock_desc",
-      }),
-      pageCatalogProducts({
-        limit: 1,
-        offset: 0,
-        sort: "stock_desc",
-      }),
-      Promise.all(
-        categories.map((category) =>
-          pageCatalogProducts({
-            category: category.value,
-            limit: 1,
-            offset: 0,
-            sort: "stock_desc",
-          })
-        )
-      ),
-    ]);
-  const categoryCounts = Object.fromEntries(
-    categories.map((category, index) => [
-      category.value,
-      categoryPages[index]?.warning
-        ? undefined
-        : categoryPages[index]?.data.total ?? 0,
-    ])
-  );
+  const [account, modelGroups, catalogPage, catalogSummary] = await Promise.all([
+    getCurrentAccountContext(),
+    listCatalogModelGroups(),
+    pageCatalogProducts({
+      limit: featuredProductLimit,
+      minStock: 1,
+      offset: 0,
+      sort: "stock_desc",
+    }),
+    getCatalogCategoryCounts(),
+  ]);
 
   return (
     <HomePage
-      catalogTotal={catalogTotalPage.warning ? undefined : catalogTotalPage.data.total}
-      categoryCounts={categoryCounts}
+      catalogTotal={catalogSummary.warning ? undefined : catalogSummary.data.total}
+      categoryCounts={catalogSummary.data.categoryCounts}
       featuredProducts={catalogPage.data.products.map(toHomeProduct)}
+      initialAccountAccess={toStoreHeaderAccountAccess(account)}
       modelGroups={modelGroups.data}
     />
   );

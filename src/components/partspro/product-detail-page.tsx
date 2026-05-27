@@ -18,24 +18,41 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import type { PartProduct } from "@/lib/partspro-data";
-import { ProductDetailPurchasePanel } from "./product-card";
+import { inferDeviceModelSeries } from "@/lib/partspro-device-series";
+import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
+import { CustomerActivityTracker } from "./customer-activity-tracker";
+import { ProductDetailPurchasePanelSlot } from "./product-detail-purchase-panel-slot";
 import { StoreHeader } from "./store-header";
 import { StorefrontProductImage } from "./storefront-product-image";
 
 type ProductDetailPageProps = {
+  initialAccountAccess?: StoreHeaderAccountAccess;
   product: PartProduct;
   showWholesalePrice?: boolean;
 };
 
 export function ProductDetailPage({
+  initialAccountAccess,
   product,
   showWholesalePrice = false,
 }: ProductDetailPageProps) {
   const hasBuyerPrice = product.price > 0;
+  const primaryModel = product.compatibleWith[0] ?? null;
+  const modelSeries = inferDeviceModelSeries(product.brand, primaryModel);
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
-      <StoreHeader />
+      <CustomerActivityTracker
+        brand={product.brand}
+        enabled={Boolean(initialAccountAccess?.authenticated)}
+        eventType="product_view"
+        metadata={{ category: product.category }}
+        model={primaryModel}
+        modelSeries={modelSeries}
+        productName={product.name}
+        skuCode={product.sku}
+      />
+      <StoreHeader initialAccountAccess={initialAccountAccess} />
       <div className="mx-auto max-w-[1500px] px-3 py-4 sm:px-4 sm:py-6">
         <Button variant="ghost" asChild className="mb-3">
           <Link href="/catalogo">
@@ -161,7 +178,7 @@ export function ProductDetailPage({
                 </div>
 
                 {showWholesalePrice && hasBuyerPrice ? (
-                  <ProductDetailPurchasePanel product={product} />
+                  <ProductDetailPurchasePanelSlot product={product} />
                 ) : showWholesalePrice ? (
                   <Card className="mt-3 border-amber-200 bg-amber-50/60">
                     <CardContent className="flex flex-col gap-3 p-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">

@@ -74,6 +74,7 @@ const BRAND_CONFIGS = {
     seriesLabels: {
       "mi-mix-max-series": "Mi Mix / Max",
       "mi-series": "Mi",
+      "poco-shark-series": "Poco/Shark",
       "redmi-note-series": "Redmi Note",
       "redmi-series": "Redmi",
       "xiaomi-series": "Xiaomi",
@@ -97,11 +98,13 @@ const BRAND_CONFIGS = {
       "/spare-parts/mobile-phone/honor/series-x",
     ],
     seriesLabels: {
-      "series-10-20-50": "Honor Number",
-      "series-5-6-7-8-9": "Honor Number",
-      "series-70-90-200-300-400-600": "Honor Number",
-      "series-play": "Honor Play",
-      "series-x": "Honor X",
+      "series-10-20-50": "Series 10/20/50",
+      "series-5-6-7-8-9": "Series 5/6/7/8/9",
+      "series-70-90-200-300-400": "Series 70/90/200/300/400",
+      "series-70-90-200-300-400-600": "Series 70/90/200/300/400",
+      "series-magic-play-view": "Series Magic / Play / View",
+      "series-play": "Series Play",
+      "series-x": "Series X",
     },
     modelFromUrl: genericModelFromUrl,
     extractModels: extractGenericBrandModels,
@@ -145,9 +148,12 @@ const BRAND_CONFIGS = {
       "/spare-parts/mobile-phone/realme/series-narzo-note",
     ],
     seriesLabels: {
-      "series-11-12-14-16": "Realme Number",
-      "series-5-6-7": "Realme Number",
-      "series-8-9-10": "Realme Number",
+      "series-11-12-14": "Series 11/12/14/16",
+      "series-11-12-14-16": "Series 11/12/14/16",
+      "series-5-6-7": "Series 5/6/7",
+      "series-8-9-10": "Series 8/9/10",
+      "series-c-gt-x-p": "Series C/GT/X/P",
+      "series-narzo-note": "Series narzo / Note",
     },
     modelFromUrl: genericModelFromUrl,
     extractModels: extractGenericBrandModels,
@@ -173,7 +179,7 @@ const BRAND_CONFIGS = {
       "moto-g": "Moto G",
       "moto-x-z": "Moto X/Z",
       razr: "Razr",
-      "series-one-c-defy": "One/C/Defy",
+      "series-one-c-defy": "Series One/C/Defy",
     },
     modelFromUrl: genericModelFromUrl,
     extractModels: extractGenericBrandModels,
@@ -1204,68 +1210,73 @@ function inferDeviceSeries(brand, model) {
   }
 
   if (brandKey === "samsung") {
-    if (/\bgalaxy\s+z\b/i.test(value)) return "Galaxy Z";
+    if (/\bgalaxy\s+(?:z|fold)\b/i.test(value)) return "Galaxy Z";
     if (/\bgalaxy\s+note\b/i.test(value)) return "Galaxy Note";
-    if (/\bgalaxy\s+xcover\b/i.test(value)) return "Galaxy XCover";
+    if (/\bgalaxy\s+xcover\b/i.test(value)) return "Galaxy Xcover";
     const match = value.match(/\bgalaxy\s+([samj])\s*\d/i);
     return match ? `Galaxy ${match[1].toUpperCase()}` : "Galaxy Other";
   }
 
   if (brandKey === "xiaomi") {
+    if (/^mix\b/i.test(value)) return "Mi Mix / Max";
     if (/^redmi\s+note\b/i.test(value)) return "Redmi Note";
     if (/^redmi\b/i.test(value)) return "Redmi";
-    if (/^(poco|pocophone)\b/i.test(value)) return "POCO";
-    if (/^black\s+shark\b/i.test(value)) return "Black Shark";
+    if (/^(poco|pocophone)\b/i.test(value) || /^black\s+shark\b/i.test(value)) return "Poco/Shark";
     if (/^mi\s+(mix|max)\b/i.test(value)) return "Mi Mix / Max";
     if (/^mi\b/i.test(value)) return "Mi";
     return "Xiaomi";
   }
 
   if (brandKey === "honor") {
-    if (/\bmagic\b/i.test(value)) return "Honor Magic";
-    if (/\bplay\b/i.test(value)) return "Honor Play";
-    if (/\bview\b/i.test(value)) return "Honor View";
-    if (/\bx\s*\d/i.test(value)) return "Honor X";
-    return /\d/.test(value) ? "Honor Number" : "Honor Other";
+    if (matchesNumberSeries(value, /^(?:honor\s+)?/i, ["5", "6", "7", "8", "9"])) return "Series 5/6/7/8/9";
+    if (matchesNumberSeries(value, /^(?:honor\s+)?/i, ["10", "20", "50"])) return "Series 10/20/50";
+    if (matchesNumberSeries(value, /^(?:honor\s+)?/i, ["70", "90", "200", "300", "400", "600"])) return "Series 70/90/200/300/400";
+    if (/\b(magic|view)\b/i.test(value) || /^(?:honor\s+)?play$/i.test(value)) return "Series Magic / Play / View";
+    if (/\bplay\b/i.test(value)) return "Series Play";
+    if (/\bx\s*\d/i.test(value)) return "Series X";
+    return "Honor Other";
   }
 
   if (brandKey === "oppo") {
     if (/\bfind\b/i.test(value)) return "Find";
-    if (/\breno\b/i.test(value)) return "Reno";
+    if (/\breno(?:\b|\s*\d)/i.test(value)) return "Reno";
     const match = value.match(/\b(a|f|rx)\s*\d/i);
     return match ? match[1].toUpperCase() : "OPPO Other";
   }
 
   if (brandKey === "realme") {
-    if (/\bnarzo\b/i.test(value)) return "Narzo";
-    if (/\bnote\b/i.test(value)) return "Note";
-    if (/\bgt\b/i.test(value)) return "GT";
-    const match = value.match(/\b(c|x|p)\s*\d/i);
-    if (match) return match[1].toUpperCase();
-    return /\d/.test(value) ? "Realme Number" : "Realme Other";
+    if (matchesNumberSeries(value, /^(?:realme\s+)?/i, ["5", "6", "7"])) return "Series 5/6/7";
+    if (matchesNumberSeries(value, /^(?:realme\s+)?/i, ["8", "9", "10"])) return "Series 8/9/10";
+    if (matchesNumberSeries(value, /^(?:realme\s+)?/i, ["11", "12", "14", "16"])) return "Series 11/12/14/16";
+    if (/\b(narzo|note)\b/i.test(value)) return "Series narzo / Note";
+    if (/\b(?:c\s*\d|gt(?:\s*\d|\b)|x\s*\d|p\s*\d)/i.test(value)) return "Series C/GT/X/P";
+    return "Realme Other";
   }
 
   if (brandKey === "motorola") {
     if (/\bedge\b/i.test(value)) return "Edge";
     if (/\brazr\b/i.test(value)) return "Razr";
-    if (/\bmoto\s+g\b/i.test(value)) return "Moto G";
-    if (/\bmoto\s+e\b/i.test(value)) return "Moto E";
-    if (/\bmoto\s+[xz]\b/i.test(value)) return "Moto X/Z";
-    if (/\b(one|defy|moto\s+c)\b/i.test(value)) return "One/C/Defy";
+    if (/\bmoto\s+g(?:\b|\d)/i.test(value) || /^g\s*\d/i.test(value)) return "Moto G";
+    if (/\bmoto\s+e(?:\b|\d)/i.test(value) || /^e\s*\d/i.test(value)) return "Moto E";
+    if (/\bmoto\s+[xz](?:\b|\d)/i.test(value) || /^[xz]\s*\d/i.test(value)) return "Moto X/Z";
+    if (/\b(one|defy|thinkphone|moto\s+c(?:\b|\d))\b/i.test(value) || /^c\s*\d/i.test(value)) return "Series One/C/Defy";
     return "Motorola Other";
   }
 
   if (brandKey === "vivo") {
-    if (/\biqoo\b/i.test(value)) return "iQOO";
-    const match = value.match(/\b([vxyts])\s*\d/i);
-    return match ? `Vivo ${match[1].toUpperCase()}` : "Vivo";
+    return "Vivo";
   }
 
   if (brandKey === "tcl") {
-    return /\bnxtpaper\b/i.test(value) ? "TCL NXTPAPER" : "TCL";
+    return "TCL";
   }
 
   return `${brand.charAt(0).toUpperCase()}${brand.slice(1).toLowerCase()} Other`;
+}
+
+function matchesNumberSeries(model, brandPrefix, prefixes) {
+  const value = model.replace(brandPrefix, "");
+  return prefixes.some((prefix) => new RegExp(`^${prefix}(?:\\b|[a-z])`, "i").test(value));
 }
 
 function appleModelFromUrl(path) {

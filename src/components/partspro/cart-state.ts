@@ -123,6 +123,18 @@ export function addCartItem(sku: string, quantity = 1) {
   writeStoredCartItems(nextItems, products);
 }
 
+export function clearStoredCart() {
+  if (!isBrowser()) {
+    return;
+  }
+
+  window.localStorage.removeItem(CART_STORAGE_KEY);
+  cartSnapshotRaw = "";
+  cartSnapshotCatalogKey = "";
+  cartSnapshotItems = EMPTY_CART_ITEMS;
+  window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+}
+
 export function calculateCartTotalsFromItems(
   items: CartItem[],
   catalog: readonly PartProduct[] = products

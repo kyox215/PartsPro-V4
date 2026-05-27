@@ -1,65 +1,90 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import {
-  ChevronDown,
-  LayoutDashboard,
-  LogOut,
+  Menu,
   Search,
   ShoppingCart,
   User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import type { DeviceModelGroup } from "@/lib/partspro-data";
+import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
+import { cn } from "@/lib/utils";
 import type { CatalogSelection } from "./catalog-brand-tree";
 import { PartsProLogo } from "./logo";
 import { LanguageSwitcher } from "./language-switcher";
-import { StoreMobileMenu } from "./store-mobile-menu";
-import { useCart } from "./cart-state";
+import type { StoreAccountDropdownProps } from "./store-account-dropdown";
+import type { StoreCartButtonProps } from "./store-cart-button";
+import type { StoreMobileMenuProps } from "./store-mobile-menu";
 import { useT } from "./i18n-provider";
 import { tx } from "@/i18n/dictionaries/storefront";
-import { signOut } from "@/app/login/actions";
 
 type StoreHeaderProps = {
+  initialAccountAccess?: StoreHeaderAccountAccess;
   modelGroups?: readonly DeviceModelGroup[];
   onCatalogSelect?: (selection: CatalogSelection) => void;
   prefetchCatalogLinks?: boolean;
   selectedCatalog?: CatalogSelection;
 };
 
-type AccountAccessState = {
-  status: "loading" | "ready" | "error";
-  canOpenAdmin: boolean;
-  authenticated: boolean;
-  role: string | null;
+type AccountAccessState = StoreHeaderAccountAccess;
+
+const loadingAccountAccess: AccountAccessState = {
+  authenticated: false,
+  canOpenAdmin: false,
+  role: null,
+  status: "loading",
 };
 
+const StoreAccountDropdown = dynamic<StoreAccountDropdownProps>(
+  () =>
+    import("./store-account-dropdown").then(
+      (module) => module.StoreAccountDropdown
+    ),
+  {
+    loading: () => <AccountDropdownFallback />,
+    ssr: false,
+  }
+);
+
+const StoreMobileMenu = dynamic<StoreMobileMenuProps>(
+  () => import("./store-mobile-menu").then((module) => module.StoreMobileMenu),
+  {
+    loading: () => <StoreMobileMenuFallback />,
+    ssr: false,
+  }
+);
+
+const StoreCartButton = dynamic<StoreCartButtonProps>(
+  () => import("./store-cart-button").then((module) => module.StoreCartButton),
+  {
+    loading: () => <StoreCartButtonFallback />,
+    ssr: false,
+  }
+);
+
 export function StoreHeader({
+  initialAccountAccess,
   modelGroups,
   onCatalogSelect,
   prefetchCatalogLinks = false,
   selectedCatalog,
 }: StoreHeaderProps) {
   const t = useT();
-  const cart = useCart();
-  const [accountAccess, setAccountAccess] = useState<AccountAccessState>({
-    status: "loading",
-    canOpenAdmin: false,
-    authenticated: false,
-    role: null,
-  });
+  const [accountAccess, setAccountAccess] = useState<AccountAccessState>(
+    () => initialAccountAccess ?? loadingAccountAccess
+  );
+  const catalogSearchValue = selectedCatalog?.searchQuery ?? selectedCatalog?.model ?? "";
 
   useEffect(() => {
+    if (initialAccountAccess) {
+      return;
+    }
+
     let cancelled = false;
 
     async function loadAccountAccess() {
@@ -103,7 +128,25 @@ export function StoreHeader({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [initialAccountAccess]);
+
+  function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    const formData = new FormData(event.currentTarget);
+    const query = String(formData.get("catalogSearch") ?? "").trim();
+
+    if (!query) {
+      return;
+    }
+
+    if (onCatalogSelect) {
+      onCatalogSelect({ searchQuery: query });
+      return;
+    }
+
+    window.location.assign(`/catalogo?q=${encodeURIComponent(query)}`);
+  }
 
   return (
     <>
@@ -140,44 +183,39 @@ export function StoreHeader({
             </span>
           </Link>
 
-          <div className="relative ml-auto hidden min-w-0 flex-1 md:block lg:max-w-xl xl:max-w-2xl">
+          <form
+            className="relative ml-auto hidden min-w-0 flex-1 md:block lg:max-w-xl xl:max-w-2xl"
+            onSubmit={handleSearchSubmit}
+          >
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             <Input
+              key={catalogSearchValue}
               className="h-10 rounded-full border-primary/25 bg-white pl-9 shadow-[0_0_0_3px_rgba(59,91,255,0.03)]"
+              defaultValue={catalogSearchValue}
+              name="catalogSearch"
               placeholder={tx(t, "storefront.header.searchFull", "Cerca SKU, brand, modello...")}
             />
-          </div>
+          </form>
 
           <LanguageSwitcher compact className="hidden md:inline-flex" />
 
           <nav className="hidden items-center gap-1 lg:flex">
-            <AccountDropdown
+            <StoreAccountDropdown
               access={accountAccess}
               label={tx(t, "nav.account", "Account")}
               menuLabel={tx(t, "storefront.account.menuLabel", "Area account")}
               accountLabel={tx(t, "storefront.account.openAccount", "Account cliente")}
               adminLabel={tx(t, "storefront.account.openAdmin", "Pannello admin")}
               logoutLabel={tx(t, "storefront.account.signOut", "Esci")}
-              onSignOut={cart.clearCart}
               staffLabel={tx(t, "storefront.account.staffRole", "Accesso staff")}
             />
           </nav>
 
-          <Button
-            variant="outline"
-            size="icon"
-            asChild
-            className="relative ml-auto bg-white shadow-sm sm:ml-0 sm:w-auto sm:px-2.5"
-          >
-            <Link href="/carrello" aria-label={tx(t, "storefront.header.openCart", "Apri carrello")}>
-              <ShoppingCart className="size-4" />
-              <span className="hidden sm:inline">{tx(t, "nav.cart", "Carrello")}</span>
-              <span className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-                {cart.itemCount}
-              </span>
-            </Link>
-          </Button>
-          <AccountDropdown
+          <StoreCartButton
+            ariaLabel={tx(t, "storefront.header.openCart", "Apri carrello")}
+            label={tx(t, "nav.cart", "Carrello")}
+          />
+          <StoreAccountDropdown
             access={accountAccess}
             accountLabel={tx(t, "storefront.account.openAccount", "Account cliente")}
             adminLabel={tx(t, "storefront.account.openAdmin", "Pannello admin")}
@@ -185,7 +223,6 @@ export function StoreHeader({
             label={tx(t, "storefront.header.openAccount", "Apri account")}
             logoutLabel={tx(t, "storefront.account.signOut", "Esci")}
             menuLabel={tx(t, "storefront.account.menuLabel", "Area account")}
-            onSignOut={cart.clearCart}
             staffLabel={tx(t, "storefront.account.staffRole", "Accesso staff")}
           />
         </div>
@@ -195,86 +232,51 @@ export function StoreHeader({
   );
 }
 
-type AccountDropdownProps = {
-  access: AccountAccessState;
-  accountLabel: string;
-  adminLabel: string;
-  compact?: boolean;
-  label: string;
-  logoutLabel: string;
-  menuLabel: string;
-  onSignOut?: () => void;
-  staffLabel: string;
-};
-
-function AccountDropdown({
-  access,
-  accountLabel,
-  adminLabel,
-  compact = false,
-  label,
-  logoutLabel,
-  menuLabel,
-  onSignOut,
-  staffLabel,
-}: AccountDropdownProps) {
+function StoreCartButtonFallback() {
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant={compact ? "outline" : "ghost"}
-          size={compact ? "icon" : "default"}
-          aria-label={label}
-          className={
-            compact
-              ? "bg-white shadow-sm lg:hidden"
-              : "shrink-0"
-          }
-        >
-          <User className="size-4" />
-          {!compact && <span>{label}</span>}
-          {!compact && <ChevronDown className="size-4 text-slate-400" />}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel className="flex flex-col gap-0.5">
-          <span>{menuLabel}</span>
-          {access.canOpenAdmin && access.role ? (
-            <span className="text-[11px] font-medium text-primary">
-              {staffLabel}: {access.role}
-            </span>
-          ) : null}
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem asChild className="h-9 cursor-pointer">
-          <Link href="/account">
-            <User className="size-4" />
-            {accountLabel}
-          </Link>
-        </DropdownMenuItem>
-        {access.canOpenAdmin ? (
-          <DropdownMenuItem asChild className="h-9 cursor-pointer">
-            <Link href="/admin">
-              <LayoutDashboard className="size-4" />
-              {adminLabel}
-            </Link>
-          </DropdownMenuItem>
-        ) : null}
-        {access.authenticated ? (
-          <>
-            <DropdownMenuSeparator />
-            <form action={signOut} onSubmit={onSignOut}>
-              <DropdownMenuItem asChild className="h-9 w-full cursor-pointer">
-                <button type="submit">
-                  <LogOut className="size-4" />
-                  {logoutLabel}
-                </button>
-              </DropdownMenuItem>
-            </form>
-          </>
-        ) : null}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <Button
+      variant="outline"
+      size="icon"
+      asChild
+      className="relative ml-auto bg-white shadow-sm sm:ml-0 sm:w-auto sm:px-2.5"
+    >
+      <Link href="/carrello" aria-label="Apri carrello">
+        <ShoppingCart className="size-4" />
+        <span className="hidden sm:inline">Carrello</span>
+        <span className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+          0
+        </span>
+      </Link>
+    </Button>
+  );
+}
+
+function StoreMobileMenuFallback({ className }: { className?: string }) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon-sm"
+      className={cn("bg-white shadow-sm lg:hidden", className)}
+      aria-label="Apri menu"
+      disabled
+    >
+      <Menu className="size-4" />
+    </Button>
+  );
+}
+
+function AccountDropdownFallback() {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="icon"
+      aria-label="Account"
+      className="bg-white shadow-sm lg:hidden"
+      disabled
+    >
+      <User className="size-4" />
+    </Button>
   );
 }

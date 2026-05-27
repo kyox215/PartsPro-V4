@@ -29,7 +29,6 @@ export function toAdminB2BApplicationReview(
     status?: "approved" | "rejected";
     note?: string;
     reason: string;
-    tier?: string;
     priceGroupId?: string | null;
     creditLimit?: number;
     paymentTerms?: string | null;
@@ -43,7 +42,6 @@ export function toAdminB2BApplicationReview(
     decision,
     note: input.note,
     reason: input.reason,
-    tier: input.tier,
     priceGroupId: input.priceGroupId,
     creditLimit: input.creditLimit,
     paymentTerms: input.paymentTerms ?? undefined,

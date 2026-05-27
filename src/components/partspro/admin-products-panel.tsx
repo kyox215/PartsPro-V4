@@ -1838,7 +1838,6 @@ function ProductImageThumb({
           quality={75}
           loading="lazy"
           decoding="async"
-          unoptimized
           className="object-contain p-1"
           onError={() =>
             setFailedImageState((current) => {
@@ -1917,7 +1916,6 @@ function ProductDetailImageGallery({
             quality={85}
             loading="lazy"
             decoding="async"
-            unoptimized
             className="object-contain p-2"
             onError={() => markFailed(activeUrl)}
           />
@@ -1954,7 +1952,6 @@ function ProductDetailImageGallery({
                 quality={60}
                 loading="lazy"
                 decoding="async"
-                unoptimized
                 className="object-contain p-1"
                 onError={() => markFailed(url)}
               />

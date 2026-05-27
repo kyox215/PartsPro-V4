@@ -8,6 +8,8 @@ export const adminPanelPermissions = {
   timeline: "panel.customers",
 } as const;
 
+export const CUSTOMER_MANAGE_LEVEL_PERMISSION = "customers.manage_level";
+
 export const adminPermissions = [
   "panel.orders",
   "panel.customers",
@@ -17,6 +19,7 @@ export const adminPermissions = [
   "customers.read",
   "customers.manage",
   "customers.classify",
+  CUSTOMER_MANAGE_LEVEL_PERMISSION,
   "customers.manage_terms",
   "employees.read",
   "employees.manage_permissions",
@@ -111,6 +114,7 @@ export const roleTemplatePermissions: Record<string, Set<string>> = {
     "customers.read",
     "customers.manage",
     "customers.classify",
+    CUSTOMER_MANAGE_LEVEL_PERMISSION,
     "customers.manage_terms",
     "employees.read",
   ]),
@@ -141,6 +145,10 @@ export function visiblePanelsForPermissions(permissions: Iterable<string>) {
   const permissionSet = new Set(permissions);
 
   return Object.entries(adminPanelPermissions)
-    .filter(([, permission]) => permissionSet.has(permission))
+    .filter(
+      ([panel, permission]) =>
+        permissionSet.has(permission) ||
+        (panel === "settings" && permissionSet.has("employees.manage_permissions"))
+    )
     .map(([panel]) => panel);
 }

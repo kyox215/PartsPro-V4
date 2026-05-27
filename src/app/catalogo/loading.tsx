@@ -1,9 +1,10 @@
 import { StoreHeader } from "@/components/partspro/store-header";
+import { anonymousStoreHeaderAccess } from "@/lib/partspro-header-access";
 
 export default function Loading() {
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
-      <StoreHeader />
+      <StoreHeader initialAccountAccess={anonymousStoreHeaderAccess} />
       <div className="mx-auto grid max-w-[1500px] gap-5 px-3 py-4 sm:px-4 sm:py-6 lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="hidden lg:block">
           <div className="sticky top-20 space-y-3 rounded-lg border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.05)]">

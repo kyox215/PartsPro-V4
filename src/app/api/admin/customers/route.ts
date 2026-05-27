@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
         limit: query.data.limit,
         offset: query.data.offset,
         returned: result.data.customers.length,
-        workflow: "customers + memberships + orders + audit",
+        workflow: "customers + orders + recent activity",
       },
     });
   } catch (error) {

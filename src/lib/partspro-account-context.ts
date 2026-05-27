@@ -1,7 +1,8 @@
 import { calculateTierPrice, normalizeCustomerTier } from "@/lib/partspro-pricing";
 import { visiblePanelsForPermissions } from "@/lib/partspro-permissions";
-import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { getSupabaseEnv, isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
 import type {
   CustomerAssignmentStatus,
   CustomerLevel,
@@ -58,6 +59,10 @@ export async function ensureCurrentUserAccount() {
     return null;
   }
 
+  if (!(await hasSupabaseSessionCookie())) {
+    return null;
+  }
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -75,6 +80,10 @@ export async function ensureCurrentUserAccount() {
 
 export async function getCurrentAccountContext(options: { ensure?: boolean } = {}) {
   if (!isSupabaseConfigured()) {
+    return anonymousAccountContext;
+  }
+
+  if (!(await hasSupabaseSessionCookie())) {
     return anonymousAccountContext;
   }
 
@@ -124,6 +133,17 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
     userId: user.id,
     visiblePanels: visiblePanelsForPermissions(permissions),
   } satisfies AccountContext;
+}
+
+async function hasSupabaseSessionCookie() {
+  const cookieStore = await cookies();
+  const { url } = getSupabaseEnv();
+  const projectRef = new URL(url).hostname.split(".")[0];
+  const authCookiePrefix = `sb-${projectRef}-auth-token`;
+
+  return cookieStore
+    .getAll()
+    .some((cookie) => cookie.name.startsWith(authCookiePrefix));
 }
 
 export function isCustomerProfileComplete(row: DbRow | null | undefined) {

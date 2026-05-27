@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   AlertTriangle,
   CheckCircle2,
+  KeyRound,
   RefreshCcw,
   Search,
   ShieldCheck,
@@ -26,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CUSTOMER_MANAGE_LEVEL_PERMISSION } from "@/lib/partspro-permissions";
 import { cn } from "@/lib/utils";
 
 type PermissionEffect = "grant" | "deny" | "inherit";
@@ -76,6 +78,7 @@ export function AdminPermissionsPanel() {
   const [overrides, setOverrides] = React.useState<PermissionOverride[]>([]);
   const [selectedUserId, setSelectedUserId] = React.useState("");
   const [query, setQuery] = React.useState("");
+  const [permissionQuery, setPermissionQuery] = React.useState("");
   const [isLoading, setIsLoading] = React.useState(false);
   const [pendingKey, setPendingKey] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<Notice | null>(null);
@@ -172,6 +175,21 @@ export function AdminPermissionsPanel() {
     return map;
   }, [overrides, selectedEmployee?.userId]);
   const permissionGroups = React.useMemo(() => groupPermissions(permissions), [permissions]);
+  const filteredPermissionGroups = React.useMemo(
+    () => filterPermissionGroups(permissionGroups, permissionQuery),
+    [permissionGroups, permissionQuery]
+  );
+  const customerLevelPermission = permissions.find(
+    (permission) => permission.id === CUSTOMER_MANAGE_LEVEL_PERMISSION
+  );
+  const customerLevelRoleAllows = Boolean(
+    selectedRole?.permissions.includes(CUSTOMER_MANAGE_LEVEL_PERMISSION)
+  );
+  const customerLevelOverride =
+    selectedOverrideMap.get(CUSTOMER_MANAGE_LEVEL_PERMISSION) ?? "inherit";
+  const customerLevelAllowed =
+    customerLevelOverride === "grant" ||
+    (customerLevelOverride === "inherit" && customerLevelRoleAllows);
 
   async function updateRoleTemplate(roleTemplate: string) {
     if (!selectedEmployee || selectedEmployee.roleTemplate === roleTemplate) {
@@ -354,72 +372,142 @@ export function AdminPermissionsPanel() {
             )}
 
             {selectedEmployee ? (
-              permissionGroups.map(([groupName, items]) => (
-                <div key={groupName} className="min-w-0 rounded-lg border border-slate-200">
-                  <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-black uppercase text-slate-600">
-                    {groupName}
-                  </div>
-                  <div className="divide-y divide-slate-100">
-                    {items.map((permission) => {
-                      const roleAllows = Boolean(
-                        selectedRole?.permissions.includes(permission.id)
-                      );
-                      const overrideEffect =
-                        selectedOverrideMap.get(permission.id) ?? "inherit";
-                      const effectiveAllowed =
-                        overrideEffect === "grant" ||
-                        (overrideEffect === "inherit" && roleAllows);
-
-                      return (
-                        <div
-                          key={permission.id}
-                          className="grid min-w-0 gap-3 px-3 py-3 lg:grid-cols-[minmax(0,1fr)_300px]"
-                        >
-                          <div className="min-w-0">
-                            <div className="flex min-w-0 flex-wrap items-center gap-2">
-                              <span className="break-words text-sm font-black text-slate-900">
-                                {permission.label}
-                              </span>
-                              <Badge
-                                className={cn(
-                                  "border",
-                                  effectiveAllowed
-                                    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                                    : "border-slate-200 bg-slate-50 text-slate-600"
-                                )}
-                              >
-                                {effectiveAllowed ? "允许" : "关闭"}
-                              </Badge>
-                            </div>
-                            <div className="mt-1 break-words font-mono text-xs text-slate-400">
-                              {permission.id}
-                            </div>
-                            {permission.description && (
-                              <p className="mt-1 text-xs leading-5 text-slate-500">
-                                {permission.description}
-                              </p>
+              <>
+                {customerLevelPermission && (
+                  <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 flex-wrap items-center gap-2">
+                          <KeyRound className="size-4 text-primary" />
+                          <span className="break-words text-sm font-black text-slate-950">
+                            {customerLevelPermission.label}
+                          </span>
+                          <Badge
+                            className={cn(
+                              "border",
+                              customerLevelAllowed
+                                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                : "border-slate-200 bg-white text-slate-600"
                             )}
-                          </div>
-                          <div className="grid grid-cols-3 gap-2 self-center">
-                            {(["inherit", "grant", "deny"] as const).map((effect) => (
-                              <Button
-                                key={effect}
-                                size="sm"
-                                variant={overrideEffect === effect ? "default" : "outline"}
-                                className={overrideEffect === effect ? "" : "bg-white"}
-                                disabled={pendingKey === `permission:${permission.id}`}
-                                onClick={() => void updateOverride(permission.id, effect)}
-                              >
-                                {effectLabel(effect)}
-                              </Button>
-                            ))}
-                          </div>
+                          >
+                            {customerLevelAllowed ? "当前允许" : "当前关闭"}
+                          </Badge>
                         </div>
-                      );
-                    })}
+                        <div className="mt-1 break-words font-mono text-xs text-slate-500">
+                          {CUSTOMER_MANAGE_LEVEL_PERMISSION}
+                        </div>
+                        {customerLevelPermission.description && (
+                          <p className="mt-1 text-xs leading-5 text-slate-600">
+                            {customerLevelPermission.description}
+                          </p>
+                        )}
+                      </div>
+                      <div className="grid shrink-0 grid-cols-3 gap-2 lg:w-[300px]">
+                        {(["inherit", "grant", "deny"] as const).map((effect) => (
+                          <Button
+                            key={effect}
+                            size="sm"
+                            variant={customerLevelOverride === effect ? "default" : "outline"}
+                            className={customerLevelOverride === effect ? "" : "bg-white"}
+                            disabled={
+                              pendingKey ===
+                              `permission:${CUSTOMER_MANAGE_LEVEL_PERMISSION}`
+                            }
+                            onClick={() =>
+                              void updateOverride(CUSTOMER_MANAGE_LEVEL_PERMISSION, effect)
+                            }
+                          >
+                            {effectLabel(effect)}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
+                )}
+
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    value={permissionQuery}
+                    onChange={(event) => setPermissionQuery(event.target.value)}
+                    className="bg-white pl-9"
+                    placeholder="搜索权限名称或 ID"
+                  />
                 </div>
-              ))
+
+                {filteredPermissionGroups.length > 0 ? (
+                  filteredPermissionGroups.map(([groupName, items]) => (
+                    <div key={groupName} className="min-w-0 rounded-lg border border-slate-200">
+                      <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-black text-slate-600">
+                        {groupLabel(groupName)}
+                      </div>
+                      <div className="divide-y divide-slate-100">
+                        {items.map((permission) => {
+                          const roleAllows = Boolean(
+                            selectedRole?.permissions.includes(permission.id)
+                          );
+                          const overrideEffect =
+                            selectedOverrideMap.get(permission.id) ?? "inherit";
+                          const effectiveAllowed =
+                            overrideEffect === "grant" ||
+                            (overrideEffect === "inherit" && roleAllows);
+
+                          return (
+                            <div
+                              key={permission.id}
+                              className="grid min-w-0 gap-3 px-3 py-3 lg:grid-cols-[minmax(0,1fr)_300px]"
+                            >
+                              <div className="min-w-0">
+                                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                  <span className="break-words text-sm font-black text-slate-900">
+                                    {permission.label}
+                                  </span>
+                                  <Badge
+                                    className={cn(
+                                      "border",
+                                      effectiveAllowed
+                                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                        : "border-slate-200 bg-slate-50 text-slate-600"
+                                    )}
+                                  >
+                                    {effectiveAllowed ? "允许" : "关闭"}
+                                  </Badge>
+                                </div>
+                                <div className="mt-1 break-words font-mono text-xs text-slate-400">
+                                  {permission.id}
+                                </div>
+                                {permission.description && (
+                                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                                    {permission.description}
+                                  </p>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-3 gap-2 self-center">
+                                {(["inherit", "grant", "deny"] as const).map((effect) => (
+                                  <Button
+                                    key={effect}
+                                    size="sm"
+                                    variant={overrideEffect === effect ? "default" : "outline"}
+                                    className={overrideEffect === effect ? "" : "bg-white"}
+                                    disabled={pendingKey === `permission:${permission.id}`}
+                                    onClick={() => void updateOverride(permission.id, effect)}
+                                  >
+                                    {effectLabel(effect)}
+                                  </Button>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
+                    没有匹配的权限。
+                  </div>
+                )}
+              </>
             ) : (
               <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
                 选择员工后显示权限矩阵。
@@ -518,6 +606,52 @@ function groupPermissions(permissions: AdminPermission[]) {
   return [...groups.entries()];
 }
 
+function filterPermissionGroups(
+  groups: Array<[string, AdminPermission[]]>,
+  query: string
+) {
+  const value = query.trim().toLowerCase();
+
+  if (!value) {
+    return groups;
+  }
+
+  return groups
+    .map(
+      ([groupName, items]) =>
+        [
+          groupName,
+          items.filter((permission) =>
+            [
+              permission.id,
+              permission.label,
+              permission.description,
+              permission.groupName,
+              groupLabel(permission.groupName),
+            ]
+              .join(" ")
+              .toLowerCase()
+              .includes(value)
+          ),
+        ] as [string, AdminPermission[]]
+    )
+    .filter(([, items]) => items.length > 0);
+}
+
+function groupLabel(groupName: string) {
+  const labels: Record<string, string> = {
+    customers: "客户权限",
+    employees: "员工权限",
+    inventory: "库存权限",
+    orders: "订单权限",
+    other: "其他权限",
+    panel: "后台面板",
+    products: "商品权限",
+  };
+
+  return labels[groupName] ?? groupName;
+}
+
 function NoticeBanner({
   notice,
   onDismiss,
@@ -579,13 +713,25 @@ function normalizePermission(value: unknown): AdminPermission | null {
     return null;
   }
 
+  const display = permissionDisplayOverrides[id];
+
   return {
-    description: readString(value.description),
+    description: display?.description ?? readString(value.description),
     groupName: readString(value.groupName) ?? "other",
     id,
-    label: readString(value.label) ?? id,
+    label: display?.label ?? readString(value.label) ?? id,
   };
 }
+
+const permissionDisplayOverrides: Record<
+  string,
+  { description?: string; label?: string }
+> = {
+  [CUSTOMER_MANAGE_LEVEL_PERMISSION]: {
+    description: "允许员工在客户管理中修改客户等级，不包含商业条款或授信设置。",
+    label: "修改客户等级",
+  },
+};
 
 function normalizeRoleTemplate(value: unknown): RoleTemplate | null {
   if (!isRecord(value)) {

@@ -10,7 +10,7 @@ import { cleanAuthRedirect, postLoginRedirect } from "@/lib/partspro-auth-redire
 import { getAdminAuthState } from "@/lib/partspro-admin-auth";
 import { getCurrentAccountContext } from "@/lib/partspro-account-context";
 import { isSupabaseConfigured, isWeChatLoginEnabled } from "@/lib/supabase/env";
-import { signInWithPassword } from "./actions";
+import { signInWithPassword, signUpWithPassword } from "./actions";
 
 type LoginPageProps = {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
@@ -18,9 +18,16 @@ type LoginPageProps = {
 
 const errorMessages: Record<string, string> = {
   config: "Manca la publishable key Supabase in .env.local.",
+  exists: "Questo indirizzo email risulta gia registrato. Prova ad accedere.",
   invalid: "Email o password non validi.",
   missing: "Inserisci email e password.",
   oauth: "Accesso OAuth non riuscito. Verifica la configurazione dei provider in Supabase.",
+  signup: "Registrazione non riuscita. Verifica email e password.",
+  weak: "La password deve contenere almeno 8 caratteri.",
+};
+
+const noticeMessages: Record<string, string> = {
+  confirm: "Account creato. Controlla la tua email per confermare l'accesso.",
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
@@ -28,6 +35,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const configured = isSupabaseConfigured();
   const next = cleanAuthRedirect(getParam(params.next), "/account");
   const error = getParam(params.error);
+  const notice = getParam(params.notice);
   const weChatLoginEnabled = isWeChatLoginEnabled();
   const googleLoginUrl = `/auth/google?${new URLSearchParams({ next }).toString()}`;
   const weChatLoginUrl = weChatLoginEnabled
@@ -64,6 +72,12 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               <div className="mb-4 flex gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold leading-6 text-red-700">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                 <span>{errorMessages[error] ?? "Accesso non riuscito."}</span>
+              </div>
+            )}
+            {notice && (
+              <div className="mb-4 flex gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold leading-6 text-emerald-800">
+                <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+                <span>{noticeMessages[notice] ?? "Operazione completata."}</span>
               </div>
             )}
             <div className="mb-4 space-y-2">
@@ -108,6 +122,53 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                 </p>
               )}
             </form>
+            <div className="mt-5 border-t border-slate-200 pt-4">
+              <div className="mb-3">
+                <div className="text-sm font-black text-slate-950">Nuovo cliente</div>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Crea un account cliente base. Dopo la conferma, il profilo appare in gestione clienti.
+                </p>
+              </div>
+              <form action={signUpWithPassword} className="space-y-3">
+                <input type="hidden" name="next" value={next} />
+                <div className="space-y-2">
+                  <Label htmlFor="display-name">Nome</Label>
+                  <Input
+                    id="display-name"
+                    name="displayName"
+                    autoComplete="name"
+                    placeholder="Nome cliente"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signup-email">Email</Label>
+                  <Input
+                    id="signup-email"
+                    name="signupEmail"
+                    type="email"
+                    autoComplete="email"
+                    placeholder="buyer@azienda.it"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="signup-password">Password</Label>
+                  <Input
+                    id="signup-password"
+                    name="signupPassword"
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={8}
+                    required
+                  />
+                </div>
+                <LoginSubmitButton
+                  disabled={!configured}
+                  label="Crea account"
+                  pendingLabel="Creazione account..."
+                />
+              </form>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -128,7 +189,7 @@ function LoginRuntimeNotice({ configured }: { configured: boolean }) {
           <div className="font-black">Login Supabase attivo</div>
           <p className="mt-1 leading-6">
             Le credenziali vengono verificate con Supabase Auth. Dopo il login
-            i clienti tornano alla home, lo staff apre il pannello admin.
+            i clienti aprono l&apos;area account, lo staff apre il pannello admin.
           </p>
         </div>
       </div>

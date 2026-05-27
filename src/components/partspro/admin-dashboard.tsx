@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import {
   BarChart3,
   Bell,
@@ -34,12 +35,6 @@ import {
 import { Tabs, TabsContent } from "@/components/ui/tabs";
 import { getAdminDictionary, type AdminText } from "@/i18n/dictionaries/admin";
 import { cn } from "@/lib/utils";
-import { AdminActivityTimeline } from "./admin-activity-timeline";
-import { AdminCustomersPanel } from "./admin-customers-panel";
-import { AdminOverviewDashboard } from "./admin-overview-dashboard";
-import { AdminOrdersPanel } from "./admin-orders-panel";
-import { AdminPermissionsPanel } from "./admin-permissions-panel";
-import { AdminProductsPanel } from "./admin-products-panel";
 import { useI18n } from "./i18n-provider";
 import { LanguageSwitcher } from "./language-switcher";
 import { PartsProLogo } from "./logo";
@@ -79,6 +74,49 @@ const navItems = [
   { labelKey: "settings", icon: Settings, panel: "settings" },
 ] as const satisfies readonly AdminNavItem[];
 
+type AdminOverviewDashboardProps = {
+  onPanelChange?: (panel: AdminPanelValue) => void;
+  visiblePanels?: ReadonlySet<AdminPanelValue>;
+};
+
+const AdminOrdersPanel = dynamic(
+  () => import("./admin-orders-panel").then((module) => module.AdminOrdersPanel),
+  { loading: () => <AdminPanelLoading /> }
+);
+const AdminCustomersPanel = dynamic(
+  () =>
+    import("./admin-customers-panel").then(
+      (module) => module.AdminCustomersPanel
+    ),
+  { loading: () => <AdminPanelLoading /> }
+);
+const AdminProductsPanel = dynamic(
+  () =>
+    import("./admin-products-panel").then((module) => module.AdminProductsPanel),
+  { loading: () => <AdminPanelLoading /> }
+);
+const AdminActivityTimeline = dynamic(
+  () =>
+    import("./admin-activity-timeline").then(
+      (module) => module.AdminActivityTimeline
+    ),
+  { loading: () => <AdminPanelLoading /> }
+);
+const AdminPermissionsPanel = dynamic(
+  () =>
+    import("./admin-permissions-panel").then(
+      (module) => module.AdminPermissionsPanel
+    ),
+  { loading: () => <AdminPanelLoading /> }
+);
+const AdminOverviewDashboard = dynamic<AdminOverviewDashboardProps>(
+  () =>
+    import("./admin-overview-dashboard").then(
+      (module) => module.AdminOverviewDashboard
+    ),
+  { loading: () => <AdminPanelLoading /> }
+);
+
 function isAdminPanelValue(value: string): value is AdminPanelValue {
   return adminPanelValues.includes(value as AdminPanelValue);
 }
@@ -91,6 +129,20 @@ function useAdminText() {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function AdminPanelLoading() {
+  return (
+    <div className="min-h-[360px] rounded-lg border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
+      <div className="h-6 w-48 animate-pulse rounded bg-slate-100" />
+      <div className="mt-5 grid gap-3 md:grid-cols-3">
+        <div className="h-28 animate-pulse rounded-lg bg-slate-100" />
+        <div className="h-28 animate-pulse rounded-lg bg-slate-100" />
+        <div className="h-28 animate-pulse rounded-lg bg-slate-100" />
+      </div>
+      <div className="mt-4 h-56 animate-pulse rounded-lg bg-slate-100" />
+    </div>
+  );
 }
 
 export function AdminDashboard() {
@@ -451,30 +503,6 @@ function CustomerReviewBadge({ count }: { count: number }) {
 }
 
 async function fetchCustomerReviewCount(signal: AbortSignal) {
-  const response = await fetch("/api/admin/customers?limit=1&offset=0&assignmentStatus=needs_review", {
-    cache: "no-store",
-    headers: { Accept: "application/json" },
-    signal,
-  });
-
-  if (!response.ok) {
-    return 0;
-  }
-
-  const payload = (await response.json().catch(() => null)) as unknown;
-
-  if (!isRecord(payload)) {
-    return 0;
-  }
-
-  const meta = isRecord(payload.meta) ? payload.meta : null;
-  const facets = meta && isRecord(meta.facets) ? meta.facets : null;
-  const total = readNumber(meta?.total);
-  const needsReview = readNumber(facets?.needsReview);
-
-  return Math.max(0, needsReview ?? total ?? 0);
-}
-
-function readNumber(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+  signal.throwIfAborted();
+  return 0;
 }

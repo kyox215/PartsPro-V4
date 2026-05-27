@@ -3,14 +3,13 @@ import {
   type AdminCustomer,
   type AdminCustomerClassificationInput,
   type AdminCustomerDetail,
+  type AdminCustomerLevelInput,
   type AdminCustomerPatchInput,
   type AdminCustomerProfileInput,
   type AdminCustomerQueryInput,
-  type AdminCustomerTermsInput,
 } from "@/lib/partspro-repository";
 
 type CustomerQueryDto = {
-  assignmentStatus?: "needs_review" | "assigned" | "converted_to_employee" | "archived";
   createdFrom?: string;
   createdTo?: string;
   cursor?: string;
@@ -18,17 +17,14 @@ type CustomerQueryDto = {
   hasOrders?: boolean;
   limit: number;
   offset: number;
-  priceGroupId?: string;
-  profileComplete?: boolean;
   q?: string;
   sort: "created_desc" | "name" | "name_asc" | "revenue_desc" | "last_order_desc";
-  status?: "active" | "pending" | "suspended";
+  status?: "active" | "suspended";
   tier?: string;
 };
 
 export function toAdminCustomerQuery(input: CustomerQueryDto): AdminCustomerQueryInput {
   return {
-    assignmentStatus: input.assignmentStatus,
     createdFrom: input.createdFrom,
     createdTo: input.createdTo,
     cursor: input.cursor,
@@ -36,8 +32,6 @@ export function toAdminCustomerQuery(input: CustomerQueryDto): AdminCustomerQuer
     hasOrders: input.hasOrders,
     limit: input.limit,
     offset: input.offset,
-    priceGroupId: input.priceGroupId,
-    profileComplete: input.profileComplete,
     q: input.q,
     sort: input.sort === "name_asc" ? "name" : input.sort,
     status: input.status,
@@ -59,7 +53,7 @@ export function toAdminCustomerClassificationPatch(
   return input;
 }
 
-export function toAdminCustomerTermsPatch(input: AdminCustomerTermsInput): AdminCustomerTermsInput {
+export function toAdminCustomerLevelPatch(input: AdminCustomerLevelInput): AdminCustomerLevelInput {
   return input;
 }
 
@@ -111,6 +105,7 @@ export function toAdminCustomerDto(customer: AdminCustomer | AdminCustomerDetail
     notes: null,
     memberships: detail.memberships ?? [],
     orders: detail.orders ?? [],
+    recentActivity: detail.recentActivity ?? [],
     rmas: detail.rmas ?? [],
     auditEvents: detail.auditEvents ?? [],
     createdAt: customer.createdAt,

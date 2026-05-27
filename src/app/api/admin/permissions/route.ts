@@ -37,7 +37,7 @@ const permissionPatchSchema = z
 type DbRow = Record<string, unknown>;
 
 export async function GET() {
-  const admin = await requireAdminApi("employees.read");
+  const admin = await requireAdminApi("employees.manage_permissions");
 
   if (!admin.ok) {
     return admin.response;

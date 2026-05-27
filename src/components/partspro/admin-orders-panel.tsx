@@ -2470,7 +2470,6 @@ function OrderLineImage({
           quality={55}
           loading="lazy"
           decoding="async"
-          unoptimized
           className="object-contain p-0.5"
           onError={handleImageError}
         />

@@ -12,6 +12,7 @@ import {
 } from "@/lib/partspro-sku";
 import { resolveProductImageUrl } from "@/lib/partspro-product-images";
 import {
+  categories,
   deviceModels,
   type CompanyProfile,
   type CompanyStatus,
@@ -30,6 +31,7 @@ import {
   type StockStatus,
 } from "@/lib/partspro-data";
 import {
+  deviceModelSeriesFilterValues,
   inferDeviceModelSeries,
   normalizeDeviceModelSeries,
 } from "@/lib/partspro-device-series";
@@ -68,6 +70,8 @@ const adminProfileSelect =
   "id, email, display_name, avatar_url, account_type, role, role_template, customer_id, created_at, updated_at";
 const adminAuditSelect =
   "id, action, actor_email, actor_role, entity_type, entity_id, before_data, after_data, reason, request_metadata, result, created_at";
+const customerActivitySelect =
+  "id, user_id, customer_id, event_type, sku_code, product_name, brand, model, model_series, search_query, metadata, created_at";
 
 export type RepositorySource = "supabase" | "empty";
 
@@ -92,6 +96,9 @@ export type RepositoryResult<T> = {
 const catalogModelGroupsCacheTtlMs = 10 * 60 * 1000;
 const catalogModelGroupsWarningCacheTtlMs = 15 * 1000;
 const catalogModelGroupsRowLimit = 100000;
+const catalogCategoryCountsCacheTtlMs = 60 * 1000;
+const catalogCategoryCountsWarningCacheTtlMs = 15 * 1000;
+const customerActivityDedupeWindowMs = 5 * 60 * 1000;
 let catalogModelGroupsCache:
   | {
       expiresAt: number;
@@ -101,12 +108,27 @@ let catalogModelGroupsCache:
 let catalogModelGroupsRequest: Promise<RepositoryResult<DeviceModelGroup[]>> | null =
   null;
 
+export type CatalogCategoryCountSummary = {
+  categoryCounts: Record<string, number | undefined>;
+  total: number;
+};
+
+let catalogCategoryCountsCache:
+  | {
+      expiresAt: number;
+      result: RepositoryResult<CatalogCategoryCountSummary>;
+    }
+  | null = null;
+let catalogCategoryCountsRequest:
+  | Promise<RepositoryResult<CatalogCategoryCountSummary>>
+  | null = null;
+
 export type RepositoryPartProduct = PartProduct & {
   remoteId?: string;
 };
 
 export type AdminCatalogStatus = "active" | "draft" | "hidden" | "blocked";
-export type AdminCustomerStatus = "active" | "pending" | "suspended";
+export type AdminCustomerStatus = "active" | "suspended";
 export type AdminB2BApplicationStatus = "submitted" | "approved" | "rejected";
 export type AdminOrderDbStatus =
   | "submitted"
@@ -279,6 +301,28 @@ export type AdminCustomerRmaSummary = {
   updatedAt: string;
 };
 
+export type CustomerActivityEventType =
+  | "product_view"
+  | "model_view"
+  | "catalog_search"
+  | "catalog_filter"
+  | "order_detail_view";
+
+export type CustomerActivity = {
+  id: string;
+  userId: string | null;
+  customerId: string;
+  eventType: CustomerActivityEventType;
+  skuCode: string | null;
+  productName: string | null;
+  brand: string | null;
+  model: string | null;
+  modelSeries: string | null;
+  searchQuery: string | null;
+  metadata: unknown;
+  createdAt: string;
+};
+
 export type AdminCustomer = CompanyProfile & {
   customerStatus: AdminCustomerStatus;
   customerType: CustomerType;
@@ -346,6 +390,7 @@ export type AdminCustomerDetail = AdminCustomer & {
   auditEvents: AdminCustomerAuditEvent[];
   memberships: AdminCustomerMembership[];
   orders: AdminCustomerOrderSummary[];
+  recentActivity: CustomerActivity[];
   rmas: AdminCustomerRmaSummary[];
 };
 
@@ -403,7 +448,22 @@ export type AdminCustomerTermsInput = {
   paymentTerms?: string | null;
   priceGroupId?: string | null;
   reason: string;
-  tier?: CustomerLevel | string;
+};
+
+export type AdminCustomerLevelInput = {
+  level: CustomerLevel | string;
+  reason: string;
+};
+
+export type CustomerActivityInput = {
+  brand?: string | null;
+  eventType: CustomerActivityEventType;
+  metadata?: Record<string, unknown>;
+  model?: string | null;
+  modelSeries?: string | null;
+  productName?: string | null;
+  searchQuery?: string | null;
+  skuCode?: string | null;
 };
 
 export type AdminB2BApplication = {
@@ -445,7 +505,6 @@ export type AdminB2BApplicationReviewInput = {
   decision: "approve" | "reject";
   note?: string;
   reason?: string;
-  tier?: string;
   priceGroupId?: string | null;
   creditLimit?: number;
   paymentTerms?: string;
@@ -613,6 +672,7 @@ type ProductQueryRequest = {
   contains(column: string, value: unknown[]): ProductQueryRequest;
   eq(column: string, value: unknown): ProductQueryRequest;
   gte(column: string, value: unknown): ProductQueryRequest;
+  in(column: string, values: unknown[]): ProductQueryRequest;
   or(filters: string): ProductQueryRequest;
   order(column: string, options: { ascending: boolean }): ProductQueryRequest;
   range(
@@ -795,6 +855,37 @@ export async function listCatalogModelGroups(): Promise<
   return catalogModelGroupsRequest;
 }
 
+export async function getCatalogCategoryCounts(): Promise<
+  RepositoryResult<CatalogCategoryCountSummary>
+> {
+  const now = Date.now();
+
+  if (catalogCategoryCountsCache && catalogCategoryCountsCache.expiresAt > now) {
+    return catalogCategoryCountsCache.result;
+  }
+
+  if (catalogCategoryCountsRequest) {
+    return catalogCategoryCountsRequest;
+  }
+
+  catalogCategoryCountsRequest = readCatalogCategoryCountsUncached().then((result) => {
+    const ttl =
+      result.source === "supabase" && !result.warning
+        ? catalogCategoryCountsCacheTtlMs
+        : catalogCategoryCountsWarningCacheTtlMs;
+
+    catalogCategoryCountsCache = {
+      expiresAt: Date.now() + ttl,
+      result,
+    };
+    catalogCategoryCountsRequest = null;
+
+    return result;
+  });
+
+  return catalogCategoryCountsRequest;
+}
+
 export async function listAdminCatalogModelGroups(): Promise<
   RepositoryResult<DeviceModelGroup[]>
 > {
@@ -826,6 +917,110 @@ async function readCatalogModelGroupsUncached(): Promise<
         : "Supabase is not configured; using local catalog model fallback."
     )
   );
+}
+
+async function readCatalogCategoryCountsUncached(): Promise<
+  RepositoryResult<CatalogCategoryCountSummary>
+> {
+  const supabaseResult = await readPublicCatalogCategoryCounts();
+
+  if (supabaseResult) {
+    return supabaseResult;
+  }
+
+  const [catalogTotalPage, categoryPages] = await Promise.all([
+    pageCatalogProducts({
+      limit: 1,
+      offset: 0,
+      sort: "stock_desc",
+    }),
+    Promise.all(
+      categories.map((category) =>
+        pageCatalogProducts({
+          category: category.value,
+          limit: 1,
+          offset: 0,
+          sort: "stock_desc",
+        })
+      )
+    ),
+  ]);
+  const categoryCounts = Object.fromEntries(
+    categories.map((category, index) => [
+      category.value,
+      categoryPages[index]?.warning
+        ? undefined
+        : categoryPages[index]?.data.total ?? 0,
+    ])
+  );
+  const data = {
+    categoryCounts,
+    total: catalogTotalPage.warning ? 0 : catalogTotalPage.data.total,
+  };
+  const usedSupabaseFallback =
+    catalogTotalPage.source === "supabase" &&
+    categoryPages.every((page) => page.source === "supabase");
+
+  return usedSupabaseFallback
+    ? {
+        data,
+        source: "supabase",
+        warning:
+          "Supabase catalog category count view could not be read; using product page fallback.",
+      }
+    : emptyResult(
+        data,
+        isSupabaseConfigured()
+          ? "Supabase catalog category counts could not be read."
+          : "Supabase is not configured; no local catalog category counts are available."
+      );
+}
+
+async function readPublicCatalogCategoryCounts(): Promise<
+  RepositoryResult<CatalogCategoryCountSummary> | null
+> {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
+  try {
+    const client = await createClient();
+    const rows = await readRows(
+      client,
+      "catalog_category_counts",
+      "category, product_count",
+      1000
+    );
+
+    if (!rows) {
+      return null;
+    }
+
+    const categoryCounts: Record<string, number> = {};
+    let total = 0;
+
+    for (const row of rows) {
+      const category = pickString(row, ["category"]);
+      const count = Math.max(0, Math.trunc(pickNumber(row, ["product_count"]) ?? 0));
+
+      if (!category) {
+        continue;
+      }
+
+      categoryCounts[category] = count;
+      total += count;
+    }
+
+    return {
+      data: {
+        categoryCounts,
+        total,
+      },
+      source: "supabase",
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function readPublicCatalogProducts(): Promise<RepositoryResult<RepositoryPartProduct[]> | null> {
@@ -883,27 +1078,27 @@ async function readPublicCatalogModelGroups(): Promise<
 
   try {
     const client = await createClient();
+    const modelOptionRows = await readRows(
+      client,
+      "catalog_model_options",
+      "brand, model, model_series",
+      catalogModelGroupsRowLimit
+    );
+
+    if (modelOptionRows?.length) {
+      return {
+        data: buildDeviceModelGroupsFromPrimaryRows(modelOptionRows, { scope: "public" }),
+        source: "supabase",
+      };
+    }
+
     const productGroups = await readCatalogModelGroupsFromProducts(client, "public");
 
     if (productGroups) {
       return { data: productGroups, source: "supabase" };
     }
 
-    const modelOptionRows = await readRows(
-      client,
-      "catalog_model_options",
-      "brand, model, model_series",
-      5000
-    );
-
-    if (!modelOptionRows) {
-      return null;
-    }
-
-    return {
-      data: buildDeviceModelGroupsFromPrimaryRows(modelOptionRows, { scope: "admin" }),
-      source: "supabase",
-    };
+    return null;
   } catch {
     return null;
   }
@@ -1302,7 +1497,6 @@ export async function updateAdminCustomer(
   }
 
   if (
-    input.tier !== undefined ||
     input.priceGroupId !== undefined ||
     input.monthlyPurchase !== undefined ||
     input.creditLimit !== undefined ||
@@ -1314,7 +1508,13 @@ export async function updateAdminCustomer(
       paymentTerms: input.paymentTerms,
       priceGroupId: input.priceGroupId,
       reason,
-      tier: input.tier,
+    });
+  }
+
+  if (input.tier !== undefined) {
+    result = await updateAdminCustomerLevel(id, {
+      level: input.tier,
+      reason,
     });
   }
 
@@ -1381,6 +1581,69 @@ export async function updateAdminCustomerTerms(
   return { data: requireAdminCustomerRow(row), source: "supabase" };
 }
 
+export async function updateAdminCustomerLevel(
+  id: string,
+  input: AdminCustomerLevelInput
+): Promise<RepositoryResult<AdminCustomer>> {
+  const context = await requireSupabaseContext();
+  const row = await rpcRow(context.client, "admin_update_customer_level", {
+    p_customer_id: id,
+    p_level: normalizeCustomerTier(input.level),
+    p_reason: input.reason,
+  }, "ADMIN_CUSTOMER_LEVEL_UPDATE_FAILED");
+
+  return { data: requireAdminCustomerRow(row), source: "supabase" };
+}
+
+export async function recordCustomerActivity(
+  input: CustomerActivityInput
+): Promise<RepositoryResult<CustomerActivity>> {
+  const context = await requireSupabaseContext();
+  const customerId = await readCurrentCustomerId(context.client, context.userId);
+
+  if (!customerId) {
+    throw new RepositoryWriteError(
+      403,
+      "CUSTOMER_ACTIVITY_CUSTOMER_REQUIRED",
+      "The current user is not linked to a customer."
+    );
+  }
+
+  const payload = buildCustomerActivityPayload(input, context.userId, customerId);
+  const recentActivity = await readMatchingRecentCustomerActivity(context.client, payload);
+
+  if (recentActivity) {
+    return { data: recentActivity, source: "supabase" };
+  }
+
+  const { data, error } = await context.client
+    .from("customer_activity_events")
+    .insert(payload)
+    .select(customerActivitySelect)
+    .single();
+
+  if (error) {
+    throw new RepositoryWriteError(
+      supabaseRpcStatus(error),
+      "CUSTOMER_ACTIVITY_RECORD_FAILED",
+      "Customer activity could not be recorded.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const activity = isDbRow(data) ? mapCustomerActivityRow(data) : null;
+
+  if (!activity) {
+    throw new RepositoryWriteError(
+      502,
+      "CUSTOMER_ACTIVITY_RECORD_FAILED_RESULT_INVALID",
+      "Supabase returned an invalid customer activity row."
+    );
+  }
+
+  return { data: activity, source: "supabase" };
+}
+
 export async function listAdminB2BApplications(
   query: AdminB2BApplicationQueryInput
 ): Promise<RepositoryResult<AdminB2BApplicationPage>> {
@@ -1442,6 +1705,37 @@ export async function getAdminOrder(
 ): Promise<RepositoryResult<AdminOrder | null>> {
   const context = await requireSupabaseContext();
   const order = await readAdminOrderDetail(context.client, orderId);
+
+  return { data: order, source: "supabase" };
+}
+
+export async function getCurrentCustomerOrder(
+  orderId: string
+): Promise<RepositoryResult<AdminOrder | null>> {
+  const context = await requireSupabaseContext();
+  const customerId = await readCurrentCustomerId(context.client, context.userId);
+
+  if (!customerId) {
+    throw new RepositoryWriteError(
+      403,
+      "CUSTOMER_ORDER_CUSTOMER_REQUIRED",
+      "The current user is not linked to a customer."
+    );
+  }
+
+  const order = await readAdminOrderDetail(context.client, orderId);
+
+  if (!order) {
+    return { data: null, source: "supabase" };
+  }
+
+  if (order.customer.id !== customerId) {
+    throw new RepositoryWriteError(
+      404,
+      "CUSTOMER_ORDER_NOT_FOUND",
+      "Order was not found."
+    );
+  }
 
   return { data: order, source: "supabase" };
 }
@@ -1846,7 +2140,7 @@ async function readCatalogProductPageFromTable(
 
   try {
     const request = applyCatalogProductQuery(
-      client.from(table).select(select, { count: "exact" }) as unknown as ProductQueryRequest,
+      client.from(table).select(select, { count: "planned" }) as unknown as ProductQueryRequest,
       table,
       query,
       options.scope ?? "public"
@@ -1912,7 +2206,11 @@ function applyCatalogProductQuery(
   }
 
   if (query.modelSeries) {
-    request = request.eq("model_series", query.modelSeries);
+    const seriesFilters = deviceModelSeriesFilterValues(query.brand, query.modelSeries);
+    request =
+      seriesFilters.length > 1
+        ? request.in("model_series", seriesFilters)
+        : request.eq("model_series", seriesFilters[0] ?? query.modelSeries);
   }
 
   if (query.q) {
@@ -2353,10 +2651,11 @@ async function readAdminCustomerDetail(
     return null;
   }
 
-  const [memberships, orders, auditEvents] = await Promise.all([
+  const [memberships, orders, auditEvents, recentActivity] = await Promise.all([
     readAdminCustomerMemberships(client, id),
     readAdminCustomerOrders(client, id),
     readAdminCustomerAuditEvents(client, id),
+    readCustomerRecentActivity(client, id),
   ]);
   const rmas = await readAdminCustomerRmas(client, orders);
 
@@ -2365,6 +2664,7 @@ async function readAdminCustomerDetail(
     auditEvents,
     memberships,
     orders,
+    recentActivity,
     rmas,
   };
 }
@@ -2577,6 +2877,115 @@ async function readAdminCustomerAuditEvents(
   } catch {
     return [];
   }
+}
+
+async function readCurrentCustomerId(
+  client: SupabaseServerClient,
+  userId: string
+): Promise<string | null> {
+  try {
+    const { data: profile } = await client
+      .from("profiles")
+      .select("account_type, customer_id")
+      .eq("id", userId)
+      .maybeSingle();
+    const profileCustomerId = isDbRow(profile) ? pickString(profile, ["customer_id"]) : null;
+    const profileAccountType = isDbRow(profile) ? pickString(profile, ["account_type"]) : null;
+
+    if (profileAccountType === "employee") {
+      return null;
+    }
+
+    if (profileCustomerId) {
+      return profileCustomerId;
+    }
+
+    const { data: customer } = await client
+      .from("customers")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const ownedCustomerId = isDbRow(customer) ? pickString(customer, ["id"]) : null;
+
+    if (ownedCustomerId) {
+      return ownedCustomerId;
+    }
+
+    const { data: memberships } = await client
+      .from("customer_memberships")
+      .select("customer_id")
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .limit(1);
+    const membershipRows = Array.isArray(memberships)
+      ? (memberships as unknown[]).filter(isDbRow)
+      : [];
+
+    return pickString(membershipRows[0], ["customer_id"]);
+  } catch {
+    return null;
+  }
+}
+
+async function readCustomerRecentActivity(
+  client: SupabaseServerClient,
+  customerId: string
+): Promise<CustomerActivity[]> {
+  try {
+    const { data, error } = await client
+      .from("customer_activity_events")
+      .select(customerActivitySelect)
+      .eq("customer_id", customerId)
+      .order("created_at", { ascending: false })
+      .limit(30);
+    const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
+
+    if (error || !rows) {
+      return [];
+    }
+
+    return rows.map(mapCustomerActivityRow).filter(isDefined);
+  } catch {
+    return [];
+  }
+}
+
+async function readMatchingRecentCustomerActivity(
+  client: SupabaseServerClient,
+  payload: Record<string, unknown>
+): Promise<CustomerActivity | null> {
+  const cutoff = new Date(Date.now() - customerActivityDedupeWindowMs).toISOString();
+  let request = client
+    .from("customer_activity_events")
+    .select(customerActivitySelect)
+    .eq("customer_id", String(payload.customer_id))
+    .eq("user_id", String(payload.user_id))
+    .eq("event_type", String(payload.event_type))
+    .gte("created_at", cutoff)
+    .order("created_at", { ascending: false })
+    .limit(1);
+
+  for (const column of [
+    "sku_code",
+    "product_name",
+    "brand",
+    "model",
+    "model_series",
+    "search_query",
+  ]) {
+    const value = payload[column];
+    const text = typeof value === "string" ? value.trim() : "";
+    request = text ? request.eq(column, text) : request.is(column, null);
+  }
+
+  const { data, error } = await request;
+  const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : [];
+
+  if (error || rows.length === 0) {
+    return null;
+  }
+
+  return mapCustomerActivityRow(rows[0]);
 }
 
 async function readAdminB2BApplicationPage(
@@ -3724,7 +4133,6 @@ function buildCustomerClassificationPayload(input: AdminCustomerClassificationIn
 function buildCustomerTermsPayload(input: AdminCustomerTermsInput) {
   const payload: Record<string, unknown> = {};
 
-  assignDefined(payload, "tier", input.tier ? normalizeCustomerTier(input.tier) : undefined);
   assignStringValue(payload, "price_group_id", input.priceGroupId);
   assignStringValue(payload, "monthly_purchase", input.monthlyPurchase);
   assignDefined(payload, "credit_limit", input.creditLimit);
@@ -3733,10 +4141,40 @@ function buildCustomerTermsPayload(input: AdminCustomerTermsInput) {
   return payload;
 }
 
+function buildCustomerActivityPayload(
+  input: CustomerActivityInput,
+  userId: string,
+  customerId: string
+) {
+  const payload: Record<string, unknown> = {
+    customer_id: customerId,
+    event_type: input.eventType,
+    metadata: input.metadata ?? {},
+    user_id: userId,
+  };
+
+  assignCustomerActivityText(payload, "sku_code", input.skuCode);
+  assignCustomerActivityText(payload, "product_name", input.productName);
+  assignCustomerActivityText(payload, "brand", input.brand);
+  assignCustomerActivityText(payload, "model", input.model);
+  assignCustomerActivityText(payload, "model_series", input.modelSeries);
+  assignCustomerActivityText(payload, "search_query", input.searchQuery);
+
+  return payload;
+}
+
+function assignCustomerActivityText(
+  payload: Record<string, unknown>,
+  key: string,
+  value: string | null | undefined
+) {
+  const text = value?.trim() ?? "";
+  payload[key] = text.length > 0 ? text : null;
+}
+
 function buildB2BReviewTermsPayload(input: AdminB2BApplicationReviewInput) {
   const payload: Record<string, unknown> = {};
 
-  assignDefined(payload, "tier", input.tier ? normalizeCustomerTier(input.tier) : undefined);
   assignStringValue(payload, "price_group_id", input.priceGroupId);
   assignDefined(payload, "credit_limit", input.creditLimit);
   assignStringValue(payload, "payment_terms", input.paymentTerms);
@@ -3879,6 +4317,31 @@ function mapAdminCustomerAuditEvent(row: DbRow): AdminCustomerAuditEvent {
     entityId: pickString(row, ["entity_id", "entityId"]),
     entityType: pickString(row, ["entity_type", "entityType"]) ?? "customer",
     result: pickString(row, ["result"]) ?? "ok",
+  };
+}
+
+function mapCustomerActivityRow(row: DbRow): CustomerActivity | null {
+  const id = pickString(row, ["id"]);
+  const customerId = pickString(row, ["customer_id"]);
+  const eventType = normalizeCustomerActivityEventType(pickString(row, ["event_type"]));
+
+  if (!id || !customerId || !eventType) {
+    return null;
+  }
+
+  return {
+    id,
+    userId: pickString(row, ["user_id"]),
+    customerId,
+    eventType,
+    skuCode: pickString(row, ["sku_code"]),
+    productName: pickString(row, ["product_name"]),
+    brand: pickString(row, ["brand"]),
+    model: pickString(row, ["model"]),
+    modelSeries: pickString(row, ["model_series"]),
+    searchQuery: pickString(row, ["search_query"]),
+    metadata: row.metadata ?? {},
+    createdAt: pickString(row, ["created_at"]) ?? "",
   };
 }
 
@@ -4793,11 +5256,11 @@ function normalizeCompanyStatus(value: string | null): CompanyStatus {
 }
 
 function normalizeAdminCustomerStatus(value: string | null): AdminCustomerStatus {
-  if (value === "active" || value === "pending" || value === "suspended") {
-    return value;
+  if (value === "suspended") {
+    return "suspended";
   }
 
-  return "pending";
+  return "active";
 }
 
 function normalizeCatalogStatus(value: string | null): AdminCatalogStatus {
@@ -4942,6 +5405,20 @@ function normalizeCustomerAssignmentStatus(value: string | null): CustomerAssign
   }
 
   return "needs_review";
+}
+
+function normalizeCustomerActivityEventType(value: string | null): CustomerActivityEventType | null {
+  if (
+    value === "product_view" ||
+    value === "model_view" ||
+    value === "catalog_search" ||
+    value === "catalog_filter" ||
+    value === "order_detail_view"
+  ) {
+    return value;
+  }
+
+  return null;
 }
 
 function emptyResult<T>(data: T, warning?: string): RepositoryResult<T> {

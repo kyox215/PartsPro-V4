@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   FileText,
   Filter,
+  Loader2,
   Package,
   RotateCcw,
   Truck,
@@ -14,6 +15,13 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import {
   formatEuro,
@@ -31,6 +39,40 @@ type AccountPageProps = {
   orderSummaries?: OrderSummary[];
   rmaRequests?: RmaRequest[];
   userEmail?: string;
+};
+
+type AccountOrderDetailLine = {
+  id: string;
+  lineTotal: number;
+  name?: string;
+  productName?: string;
+  quantity: number;
+  sku: string;
+  unitPrice: number;
+};
+
+type AccountOrderDetailEvent = {
+  action?: string;
+  createdAt: string;
+  eventType?: string;
+  id: string;
+  note?: string;
+};
+
+type AccountOrderDetail = {
+  createdAt: string;
+  id: string;
+  items: number;
+  lines?: AccountOrderDetailLine[];
+  number: string;
+  operationHistory?: AccountOrderDetailEvent[];
+  paymentStatus: string;
+  status: string;
+  total: number;
+};
+
+type AccountOrderDetailResponse = {
+  data: AccountOrderDetail;
 };
 
 type OrderFilterId = "all" | "open" | "pending_payment" | "shipped" | "delivered";
@@ -81,6 +123,10 @@ export function AccountPage({
 }: AccountPageProps) {
   const cart = useCart();
   const [activeFilter, setActiveFilter] = React.useState<OrderFilterId>("all");
+  const [orderDetail, setOrderDetail] = React.useState<AccountOrderDetail | null>(null);
+  const [orderDetailError, setOrderDetailError] = React.useState<string | null>(null);
+  const [orderDetailLoading, setOrderDetailLoading] = React.useState(false);
+  const [orderDetailOpen, setOrderDetailOpen] = React.useState(false);
   const selectedFilter =
     orderFilters.find((filter) => filter.id === activeFilter) ?? orderFilters[0];
   const filteredOrders = orderSummaries.filter(selectedFilter.predicate);
@@ -93,6 +139,27 @@ export function AccountPage({
     ["Spedizioni", String(orderSummaries.filter((order) => order.status === "shipped").length), Truck],
     ["RMA attivi", String(rmaRequests.length), RotateCcw],
   ] as const;
+
+  async function openOrderDetail(order: OrderSummary) {
+    setOrderDetailOpen(true);
+    setOrderDetail(null);
+    setOrderDetailError(null);
+    setOrderDetailLoading(true);
+
+    try {
+      const payload = await fetchJson<AccountOrderDetailResponse>(
+        `/api/account/orders/${encodeURIComponent(order.id)}`
+      );
+
+      setOrderDetail(payload.data);
+    } catch (error) {
+      setOrderDetailError(
+        error instanceof Error ? error.message : "Dettaglio ordine non disponibile."
+      );
+    } finally {
+      setOrderDetailLoading(false);
+    }
+  }
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
@@ -242,11 +309,11 @@ export function AccountPage({
                   <div className="flex items-center justify-between gap-3 sm:block sm:text-right">
                     <div className="text-lg font-black">{formatEuro(order.total)}</div>
                     <Button
+                      type="button"
                       variant="outline"
                       size="sm"
                       className="mt-0 bg-white sm:mt-2"
-                      disabled
-                      title="Dettaglio ordine non disponibile"
+                      onClick={() => void openOrderDetail(order)}
                     >
                       Dettagli
                     </Button>
@@ -255,6 +322,24 @@ export function AccountPage({
               ))}
             </CardContent>
           </Card>
+
+          <Dialog open={orderDetailOpen} onOpenChange={setOrderDetailOpen}>
+            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+              <DialogHeader>
+                <DialogTitle>
+                  {orderDetail?.number ?? orderDetail?.id ?? "Dettaglio ordine"}
+                </DialogTitle>
+                <DialogDescription>
+                  {orderDetail?.createdAt ?? "Riepilogo righe, stato e attivita ordine."}
+                </DialogDescription>
+              </DialogHeader>
+              <AccountOrderDetailPanel
+                detail={orderDetail}
+                error={orderDetailError}
+                loading={orderDetailLoading}
+              />
+            </DialogContent>
+          </Dialog>
 
           <Card className="border-slate-200 bg-white">
             <CardHeader>
@@ -318,6 +403,116 @@ export function AccountPage({
         </section>
       </div>
     </main>
+  );
+}
+
+function AccountOrderDetailPanel({
+  detail,
+  error,
+  loading,
+}: {
+  detail: AccountOrderDetail | null;
+  error: string | null;
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="flex min-h-40 items-center justify-center gap-2 text-sm font-semibold text-slate-500">
+        <Loader2 className="size-4 animate-spin" />
+        Caricamento dettaglio ordine...
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
+        {error}
+      </div>
+    );
+  }
+
+  if (!detail) {
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">
+        Nessun dettaglio ordine disponibile.
+      </div>
+    );
+  }
+
+  const lines = detail.lines ?? [];
+  const events = detail.operationHistory ?? [];
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-2 sm:grid-cols-3">
+        <DetailTile label="Stato" value={orderStatusLabel(detail.status)} />
+        <DetailTile label="Pagamento" value={paymentStatusLabel(detail.paymentStatus)} />
+        <DetailTile label="Totale" value={formatEuro(detail.total)} />
+      </div>
+
+      <section className="rounded-lg border border-slate-200">
+        <div className="border-b border-slate-100 px-3 py-2 text-sm font-black">
+          Righe ordine
+        </div>
+        {lines.length === 0 ? (
+          <div className="p-3 text-sm font-semibold text-slate-500">
+            Nessuna riga disponibile.
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {lines.map((line) => (
+              <div key={line.id} className="grid gap-2 px-3 py-2 text-sm sm:grid-cols-[minmax(0,1fr)_auto]">
+                <div className="min-w-0">
+                  <div className="truncate font-black">{line.productName ?? line.name ?? line.sku}</div>
+                  <div className="mt-1 font-mono text-xs text-slate-500">{line.sku}</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-black">{formatEuro(line.lineTotal)}</div>
+                  <div className="text-xs font-semibold text-slate-500">
+                    {line.quantity} x {formatEuro(line.unitPrice)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="rounded-lg border border-slate-200">
+        <div className="border-b border-slate-100 px-3 py-2 text-sm font-black">
+          Attivita ordine
+        </div>
+        {events.length === 0 ? (
+          <div className="p-3 text-sm font-semibold text-slate-500">
+            Nessuna attivita registrata.
+          </div>
+        ) : (
+          <ol className="divide-y divide-slate-100">
+            {events.map((event) => (
+              <li key={event.id} className="px-3 py-2 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-black">{event.action ?? event.eventType ?? "Evento"}</span>
+                  <span className="text-xs text-slate-500">{event.createdAt}</span>
+                </div>
+                {event.note ? (
+                  <p className="mt-1 text-xs font-semibold text-slate-500">{event.note}</p>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function DetailTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+      <div className="text-xs font-bold uppercase text-slate-400">{label}</div>
+      <div className="mt-1 truncate text-sm font-black text-slate-800">{value}</div>
+    </div>
   );
 }
 
@@ -388,6 +583,18 @@ function orderStatusLabel(status: string) {
   return labels[status] ?? status;
 }
 
+function paymentStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    bank_waiting: "Attesa banca",
+    failed: "Fallito",
+    paid: "Pagato",
+    pending: "Da pagare",
+    waiting_bank: "Attesa banca",
+  };
+
+  return labels[status] ?? status;
+}
+
 function rmaBadgeClass(status: string) {
   if (status === "replaced" || status === "refunded") {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
@@ -411,4 +618,24 @@ function rmaStatusLabel(status: string) {
   };
 
   return labels[status] ?? status;
+}
+
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, init);
+  const payload = (await response.json().catch(() => null)) as unknown;
+
+  if (!response.ok) {
+    throw new Error(readErrorMessage(payload) ?? `${response.status}`);
+  }
+
+  return payload as T;
+}
+
+function readErrorMessage(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const error = (payload as { error?: { message?: unknown } }).error;
+  return typeof error?.message === "string" ? error.message : null;
 }

@@ -55,8 +55,8 @@ export function StorefrontProductImage({
         fill
         sizes={sizes}
         quality={quality}
-        priority={priority}
-        unoptimized
+        fetchPriority={priority ? "high" : undefined}
+        loading={priority ? "eager" : "lazy"}
         onError={() => markImageFailed(imageUrl)}
         className={imageClassName}
       />

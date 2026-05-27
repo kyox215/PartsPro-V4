@@ -1,9 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import {
-  adminPermissions,
-  permissionsForRoleTemplate,
-} from "@/lib/partspro-permissions";
+import { adminPermissions } from "@/lib/partspro-permissions";
 
 const STAFF_ROLES = new Set([
   "sales",
@@ -33,7 +30,12 @@ type AdminAuthState =
       reason: "admin_email" | "staff";
       role: string;
     }
-  | { configured: true; allowed: false; reason: "missing_session" | "not_staff"; role?: string };
+  | {
+      configured: true;
+      allowed: false;
+      reason: "missing_session" | "not_staff" | "permission_unavailable";
+      role?: string;
+    };
 
 export async function getAdminAuthState(): Promise<AdminAuthState> {
   if (!isSupabaseConfigured()) {
@@ -61,16 +63,23 @@ export async function getAdminAuthState(): Promise<AdminAuthState> {
 
   const profile = await readStaffProfile(supabase, user.id);
   const role = profile?.role;
-  const roleTemplate = profile?.roleTemplate ?? role;
 
   if (role && (STAFF_ROLES.has(role) || profile?.accountType === "employee")) {
     const remotePermissions = await readEffectivePermissions(supabase);
-    const localPermissions = permissionsForRole(roleTemplate ?? null);
+
+    if (!remotePermissions.ok) {
+      return {
+        configured: true,
+        allowed: false,
+        reason: "permission_unavailable",
+        role,
+      };
+    }
 
     return {
       configured: true,
       allowed: true,
-      permissions: remotePermissions.length > 0 ? remotePermissions : [...localPermissions],
+      permissions: remotePermissions.permissions,
       reason: "staff",
       role,
     };
@@ -150,18 +159,17 @@ async function readStaffProfile(
   };
 }
 
-function permissionsForRole(role: string | null) {
-  return permissionsForRoleTemplate(role);
-}
-
 async function readEffectivePermissions(
   supabase: Awaited<ReturnType<typeof createClient>>
 ) {
   const { data, error } = await supabase.rpc("partspro_my_permissions");
 
   if (error || !Array.isArray(data)) {
-    return [];
+    return { ok: false as const, permissions: [] };
   }
 
-  return data.filter((permission): permission is string => typeof permission === "string");
+  return {
+    ok: true as const,
+    permissions: data.filter((permission): permission is string => typeof permission === "string"),
+  };
 }
