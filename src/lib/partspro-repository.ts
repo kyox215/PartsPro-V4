@@ -19,6 +19,7 @@ import {
   type CustomerLevel,
   type CustomerType,
   type DeviceModelGroup,
+  type DeviceModelSeriesGroup,
   type OrderStatus,
   type OrderSummary,
   type PartProduct,
@@ -28,6 +29,10 @@ import {
   type RmaStatus,
   type StockStatus,
 } from "@/lib/partspro-data";
+import {
+  inferDeviceModelSeries,
+  normalizeDeviceModelSeries,
+} from "@/lib/partspro-device-series";
 import { normalizeCustomerTier } from "@/lib/partspro-pricing";
 
 type DbRow = Record<string, unknown>;
@@ -46,9 +51,9 @@ type ProductPayloadOptions = {
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const catalogPublicCardSelect =
-  "id, sku_code, name, brand, model, model_code, model_codes, category, quality_grade, stock_status, moq, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, updated_at, image_path, image_alt";
+  "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, quality_grade, stock_status, moq, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, updated_at, image_path, image_alt";
 const catalogProductCardSelect =
-  "id, sku_code, name, brand, model, model_code, model_codes, category, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at, image_path, image_alt";
+  "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at, image_path, image_alt";
 const adminCustomerSelect =
   "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, registered_address, billing_address, shipping_address, tier, price_group_id, status, customer_type, assignment_status, level, lifetime_spend_net, assigned_by, assigned_at, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
 const adminCustomerCompatSelect =
@@ -129,6 +134,7 @@ export type AdminProduct = RepositoryPartProduct & {
   warrantyDays: number;
   weightGram: number;
   model?: string;
+  modelSeries?: string;
   modelCode?: string;
   modelCodes: string[];
   batchCode?: string;
@@ -145,6 +151,7 @@ export type AdminProductQueryInput = {
   grade?: ProductGrade;
   limit: number;
   model?: string;
+  modelSeries?: string;
   offset: number;
   q?: string;
   sort: "name" | "stock_desc" | "updated_desc" | "created_desc";
@@ -177,6 +184,7 @@ export type AdminProductWriteInput = {
   rmaDays?: number;
   weightGram?: number;
   model?: string;
+  modelSeries?: string;
   modelCode?: string;
   modelCodes?: string[];
   batchCode?: string;
@@ -584,6 +592,7 @@ export type CatalogProductQueryInput = {
   limit: number;
   minStock?: number;
   model?: string;
+  modelSeries?: string;
   offset: number;
   q?: string;
   sort: "name" | "stock_desc" | "updated_desc" | "created_desc";
@@ -884,7 +893,7 @@ async function readPublicCatalogModelGroups(): Promise<
     const modelOptionRows = await readRows(
       client,
       "catalog_model_options",
-      "brand, model",
+      "brand, model, model_series",
       5000
     );
 
@@ -910,13 +919,13 @@ async function readCatalogModelGroupsFromProducts(
       ? await readRows(
           client,
           "catalog_public_summary",
-          "brand, model",
+          "brand, model, model_series, compatibility_models",
           catalogModelGroupsRowLimit
         )
       : await readRows(
           client,
           "products",
-          "brand, model, status",
+          "brand, model, model_series, compatibility_models, status",
           catalogModelGroupsRowLimit
         );
 
@@ -1783,7 +1792,7 @@ async function readCatalogProducts(context: SupabaseContext) {
     (await readRows(
       context.client,
       "products",
-      "id, sku_code, name, brand, model, model_code, model_codes, category, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at"
+      "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at"
     )) ?? (await readRows(context.client, "products"));
 
   if (productRows) {
@@ -1812,7 +1821,7 @@ async function readCatalogProductBySkuOrSlug(
   const productRows = await readMatchingRows(
     client,
     "products",
-    "id, sku_code, name, brand, model, model_code, model_codes, category, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at, image_path, image_alt, gallery_image_paths",
+    "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at, image_path, image_alt, gallery_image_paths",
     "sku_code",
     catalogLookupCandidates(value),
     1
@@ -1901,6 +1910,10 @@ function applyCatalogProductQuery(
 
   if (query.model) {
     request = request.contains("compatibility_models", [query.model]);
+  }
+
+  if (query.modelSeries) {
+    request = request.eq("model_series", query.modelSeries);
   }
 
   if (query.q) {
@@ -2100,6 +2113,7 @@ async function readAdminProductPage(
     p_grade: query.grade ?? null,
     p_limit: query.limit,
     p_model: query.model ?? null,
+    p_model_series: query.modelSeries ?? null,
     p_offset: query.offset,
     p_q: query.q ?? null,
     p_sort: query.sort,
@@ -3662,6 +3676,15 @@ function buildProductPayload(
   assignDefined(payload, "warranty_days", input.rmaDays ?? (partial ? undefined : 180));
   assignDefined(payload, "weight_gram", input.weightGram ?? (partial ? undefined : 0));
   assignDefined(payload, "model", trimOptional(input.model));
+  assignDefined(
+    payload,
+    "model_series",
+    input.modelSeries !== undefined
+      ? trimOptional(input.modelSeries)
+      : input.brand !== undefined || input.model !== undefined
+        ? normalizeDeviceModelSeries(input.brand, undefined, input.model) ?? undefined
+        : undefined
+  );
   assignDefined(payload, "model_code", sanitizeOptionalSupplierText(input.modelCode));
   assignDefined(
     payload,
@@ -3832,6 +3855,12 @@ function mapAdminProductRow(row: DbRow): AdminProduct | null {
     warrantyDays: pickNumber(row, ["warranty_days"]) ?? product.rmaDays,
     weightGram: pickNumber(row, ["weight_gram"]) ?? 0,
     model: pickString(row, ["model"]) ?? undefined,
+    modelSeries:
+      normalizeDeviceModelSeries(
+        product.brand,
+        pickString(row, ["model_series", "modelSeries"]),
+        pickString(row, ["model"])
+      ) ?? undefined,
     modelCode: sanitizeOptionalSupplierText(pickString(row, ["model_code"])),
     modelCodes: sanitizeSupplierStringArray(readStringArray(row, ["model_codes"])),
     batchCode: sanitizeOptionalSupplierText(pickString(row, ["batch_code"])),
@@ -4352,7 +4381,13 @@ function buildDeviceModelGroupsFromPrimaryRows(
   rows: DbRow[],
   options: { scope?: "public" | "admin" } = {}
 ): DeviceModelGroup[] {
-  const groups = new Map<string, Set<string>>();
+  const groups = new Map<
+    string,
+    {
+      models: Set<string>;
+      series: Map<string, Set<string>>;
+    }
+  >();
   const scope = options.scope ?? "public";
 
   for (const row of rows) {
@@ -4364,32 +4399,69 @@ function buildDeviceModelGroupsFromPrimaryRows(
 
     const brand = pickString(row, ["brand"]);
     const model = pickString(row, ["model"]);
+    const compatibilityModels = readStringArray(row, ["compatibility_models", "compatibilityModels"]);
 
-    if (!brand || !model) {
+    if (!brand || (!model && compatibilityModels.length === 0)) {
       continue;
     }
 
-    const normalizedModels = sanitizeSupplierStringArray([model]);
+    const directSeries = normalizeDeviceModelSeries(
+      brand,
+      pickString(row, ["model_series", "modelSeries"]),
+      model
+    );
+    const modelEntries = [
+      ...(model ? [{ model, series: directSeries }] : []),
+      ...compatibilityModels.map((compatibilityModel) => ({
+        model: compatibilityModel,
+        series: inferDeviceModelSeries(brand, compatibilityModel),
+      })),
+    ];
 
-    if (normalizedModels.length === 0) {
-      continue;
+    for (const entry of modelEntries) {
+      const normalizedModels = sanitizeSupplierStringArray([entry.model]);
+
+      for (const normalizedModel of normalizedModels) {
+        addDeviceModelGroupOption(groups, brand, normalizedModel, entry.series);
+      }
     }
-
-    const models = groups.get(brand) ?? new Set<string>();
-    normalizedModels.forEach((normalizedModel) => models.add(normalizedModel));
-    groups.set(brand, models);
   }
 
   return sortDeviceModelGroups(groups);
 }
 
-function sortDeviceModelGroups(groups: Map<string, Set<string>>): DeviceModelGroup[] {
+function addDeviceModelGroupOption(
+  groups: Map<string, { models: Set<string>; series: Map<string, Set<string>> }>,
+  brand: string,
+  model: string,
+  series: string | null
+) {
+  const group = groups.get(brand) ?? {
+    models: new Set<string>(),
+    series: new Map<string, Set<string>>(),
+  };
+
+  group.models.add(model);
+
+  if (series) {
+    const seriesModels = group.series.get(series) ?? new Set<string>();
+    seriesModels.add(model);
+    group.series.set(series, seriesModels);
+  }
+
+  groups.set(brand, group);
+}
+
+function sortDeviceModelGroups(
+  groups: Map<string, { models: Set<string>; series: Map<string, Set<string>> }>
+): DeviceModelGroup[] {
   const preferredBrandOrder = deviceModels.map((group) => group.brand);
 
   return Array.from(groups.entries())
-    .map(([brand, models]) => ({
+    .map(([brand, group]) => ({
       brand,
-      models: Array.from(models).sort(compareDeviceModelNames),
+      models: Array.from(group.models).sort(compareDeviceModelNames),
+      series: sortDeviceModelSeriesGroups(group.series),
     }))
     .filter((group) => group.models.length > 0)
     .sort((left, right) => {
@@ -4403,6 +4475,20 @@ function sortDeviceModelGroups(groups: Map<string, Set<string>>): DeviceModelGro
 
       return left.brand.localeCompare(right.brand, "it", { numeric: true });
     });
+}
+
+function sortDeviceModelSeriesGroups(
+  series: Map<string, Set<string>>
+): DeviceModelSeriesGroup[] | undefined {
+  const groups = Array.from(series.entries())
+    .map(([seriesName, models]) => ({
+      series: seriesName,
+      models: Array.from(models).sort(compareDeviceModelNames),
+    }))
+    .filter((group) => group.models.length > 0)
+    .sort((left, right) => left.series.localeCompare(right.series, "it", { numeric: true }));
+
+  return groups.length > 0 ? groups : undefined;
 }
 
 function compareDeviceModelNames(left: string, right: string) {

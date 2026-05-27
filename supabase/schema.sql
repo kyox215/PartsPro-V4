@@ -129,6 +129,7 @@
 --   name text
 --   brand text
 --   model text
+--   model_series text
 --   model_code text
 --   model_codes text[]
 --   category text

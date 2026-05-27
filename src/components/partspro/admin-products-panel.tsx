@@ -138,6 +138,7 @@ type FilterValue<T extends string> = "all" | T;
 type ProductListFilters = {
   q: string;
   brand: string;
+  modelSeries: string;
   model: string;
   catalogStatus: FilterValue<CatalogStatus>;
   stockStatus: FilterValue<StockStatus>;
@@ -159,6 +160,7 @@ type AdminProductRow = PartProduct & {
   lockedQty?: number;
   margin?: number;
   model?: string | null;
+  modelSeries?: string | null;
   modelCode?: string | null;
   modelCodes?: string[];
   stockQty?: number;
@@ -258,6 +260,7 @@ type ProductAuditEvent = {
 const defaultFilters: ProductListFilters = {
   q: "",
   brand: "all",
+  modelSeries: "all",
   model: "all",
   catalogStatus: "all",
   stockStatus: "all",
@@ -291,11 +294,14 @@ const panelText = {
     searchPlaceholder: "搜索 SKU / 商品 / 品牌 / 型号",
     accessoryRoot: "手机配件",
     cascadeBrand: "品牌",
+    cascadeSeries: "系列",
     cascadeModel: "型号",
     pickBrand: "选择品牌",
+    pickSeries: "选择系列",
     pickModel: "选择型号",
     noCascadeOptions: "暂无选项",
     allBrands: "全部品牌",
+    allSeries: "全部系列",
     allModels: "全部型号",
     allCatalogStatuses: "全部发布状态",
     allStockStatuses: "全部库存状态",
@@ -383,6 +389,7 @@ const panelText = {
     leadTime: "交期",
     compatibility: "适配型号",
     tags: "标签",
+    modelSeries: "系列",
     model: "主型号",
     modelCode: "型号代码",
     batchCode: "批次",
@@ -438,11 +445,14 @@ const panelText = {
     searchPlaceholder: "Cerca SKU / prodotto / brand / modello",
     accessoryRoot: "Ricambi smartphone",
     cascadeBrand: "Brand",
+    cascadeSeries: "Serie",
     cascadeModel: "Modello",
     pickBrand: "Seleziona brand",
+    pickSeries: "Seleziona serie",
     pickModel: "Seleziona modello",
     noCascadeOptions: "Nessuna opzione",
     allBrands: "Tutti i brand",
+    allSeries: "Tutte le serie",
     allModels: "Tutti i modelli",
     allCatalogStatuses: "Tutti stati catalogo",
     allStockStatuses: "Tutti stati stock",
@@ -530,6 +540,7 @@ const panelText = {
     leadTime: "Lead time",
     compatibility: "Modelli compatibili",
     tags: "Tag",
+    modelSeries: "Serie",
     model: "Modello principale",
     modelCode: "Codice modello",
     batchCode: "Lotto",
@@ -684,10 +695,15 @@ export function AdminProductsPanel() {
     [dataSource.total, products]
   );
   const selectedBrandGroup = modelGroups.find((group) => group.brand === filters.brand);
+  const seriesOptions = selectedBrandGroup?.series ?? [];
+  const selectedSeriesGroup =
+    filters.modelSeries === "all"
+      ? null
+      : seriesOptions.find((group) => group.series === filters.modelSeries) ?? null;
   const modelOptions =
     filters.brand === "all"
       ? Array.from(new Set(modelGroups.flatMap((group) => group.models))).sort(compareModelNames)
-      : selectedBrandGroup?.models ?? [];
+      : selectedSeriesGroup?.models ?? selectedBrandGroup?.models ?? [];
   const pageCount = Math.max(1, Math.ceil(dataSource.total / filters.pageSize));
 
   function updateFilters(patch: Partial<ProductListFilters>) {
@@ -930,6 +946,7 @@ export function AdminProductsPanel() {
           <ProductFilters
             filters={filters}
             modelGroups={modelGroups}
+            seriesOptions={seriesOptions}
             modelOptions={modelOptions}
             isLoadingModelGroups={isLoadingModelGroups}
             text={text}
@@ -1095,6 +1112,7 @@ function ProductMetricGrid({
 function ProductFilters({
   filters,
   modelGroups,
+  seriesOptions,
   modelOptions,
   isLoadingModelGroups,
   text,
@@ -1103,6 +1121,7 @@ function ProductFilters({
 }: {
   filters: ProductListFilters;
   modelGroups: DeviceModelGroup[];
+  seriesOptions: NonNullable<DeviceModelGroup["series"]>;
   modelOptions: string[];
   isLoadingModelGroups: boolean;
   text: typeof panelText.zh | typeof panelText.it;
@@ -1119,7 +1138,7 @@ function ProductFilters({
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-2 lg:grid-cols-[minmax(240px,1fr)_180px_200px_180px]">
+      <div className="grid gap-2 lg:grid-cols-[minmax(240px,1fr)_160px_180px_200px_180px]">
         <div className="relative min-w-0">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
           <Input
@@ -1131,7 +1150,7 @@ function ProductFilters({
         </div>
         <Select
           value={filters.brand}
-          onValueChange={(value) => onChange({ brand: value, model: "all" })}
+          onValueChange={(value) => onChange({ brand: value, modelSeries: "all", model: "all" })}
         >
           <SelectTrigger size="sm" className="w-full bg-white">
             <SelectValue />
@@ -1141,6 +1160,23 @@ function ProductFilters({
             {modelGroups.map((group) => (
               <SelectItem key={group.brand} value={group.brand}>
                 {group.brand}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select
+          value={filters.modelSeries}
+          onValueChange={(value) => onChange({ modelSeries: value, model: "all" })}
+          disabled={filters.brand === "all" || isLoadingModelGroups || seriesOptions.length === 0}
+        >
+          <SelectTrigger size="sm" className="w-full bg-white">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{text.allSeries}</SelectItem>
+            {seriesOptions.map((group) => (
+              <SelectItem key={group.series} value={group.series}>
+                {group.series}
               </SelectItem>
             ))}
           </SelectContent>
@@ -1239,13 +1275,20 @@ function ProductCascadeMenu({
     [modelGroups]
   );
   const selectedBrand = filters.brand === "all" ? "" : filters.brand;
+  const selectedSeries = filters.modelSeries === "all" ? "" : filters.modelSeries;
   const selectedModel = filters.model === "all" ? "" : filters.model;
   const selectedGroup = selectedBrand
     ? groups.find((group) => group.brand === selectedBrand)
     : null;
+  const selectedSeriesGroup =
+    selectedGroup && selectedSeries
+      ? selectedGroup.series?.find((group) => group.series === selectedSeries) ?? null
+      : null;
+  const seriesGroups = selectedGroup?.series ?? [];
+  const modelList = selectedSeriesGroup?.models ?? (seriesGroups.length === 0 ? selectedGroup?.models ?? [] : []);
 
   return (
-    <div className="mb-3 grid gap-2 lg:grid-cols-[minmax(150px,0.9fr)_minmax(180px,1fr)_minmax(240px,1.1fr)]">
+    <div className="mb-3 grid gap-2 lg:grid-cols-[minmax(130px,0.8fr)_minmax(150px,0.95fr)_minmax(180px,1fr)_minmax(220px,1.15fr)]">
       <CascadeColumn
         title="1"
         label={text.accessoryRoot}
@@ -1254,7 +1297,7 @@ function ProductCascadeMenu({
         <button
           type="button"
           className="flex min-h-10 w-full items-center justify-between gap-2 rounded-md border border-primary/25 bg-primary/10 px-3 py-2 text-left text-sm font-bold text-primary"
-          onClick={() => onChange({ q: "", brand: "all", model: "all" })}
+          onClick={() => onChange({ q: "", brand: "all", modelSeries: "all", model: "all" })}
         >
           <span className="truncate">{text.accessoryRoot}</span>
           <ChevronRight className="size-4 shrink-0" />
@@ -1272,8 +1315,8 @@ function ProductCascadeMenu({
               key={group.brand}
               selected={group.brand === selectedBrand}
               label={group.brand}
-              meta={`${group.models.length}`}
-              onClick={() => onChange({ q: "", brand: group.brand, model: "all" })}
+              meta={`${group.series?.length || group.models.length}`}
+              onClick={() => onChange({ q: "", brand: group.brand, modelSeries: "all", model: "all" })}
             />
           ))}
         </CascadeScrollArea>
@@ -1281,12 +1324,38 @@ function ProductCascadeMenu({
 
       <CascadeColumn
         title="3"
+        label={text.cascadeSeries}
+        icon={Boxes}
+      >
+        {selectedGroup ? (
+          seriesGroups.length > 0 ? (
+            <CascadeScrollArea empty={text.noCascadeOptions}>
+              {seriesGroups.map((group) => (
+                <CascadeOption
+                  key={group.series}
+                  selected={group.series === selectedSeries}
+                  label={group.series}
+                  meta={`${group.models.length}`}
+                  onClick={() => onChange({ q: "", modelSeries: group.series, model: "all" })}
+                />
+              ))}
+            </CascadeScrollArea>
+          ) : (
+            <CascadePlaceholder>{text.noCascadeOptions}</CascadePlaceholder>
+          )
+        ) : (
+          <CascadePlaceholder>{text.pickBrand}</CascadePlaceholder>
+        )}
+      </CascadeColumn>
+
+      <CascadeColumn
+        title="4"
         label={text.cascadeModel}
         icon={Smartphone}
       >
-        {selectedGroup ? (
+        {modelList.length > 0 ? (
           <CascadeScrollArea empty={text.noCascadeOptions}>
-            {selectedGroup.models.map((model) => (
+            {modelList.map((model) => (
               <CascadeOption
                 key={model}
                 selected={model === selectedModel}
@@ -1295,9 +1364,11 @@ function ProductCascadeMenu({
               />
             ))}
           </CascadeScrollArea>
-      ) : (
-        <CascadePlaceholder>{text.pickBrand}</CascadePlaceholder>
-      )}
+        ) : (
+          <CascadePlaceholder>
+            {selectedGroup && seriesGroups.length > 0 ? text.pickSeries : text.pickBrand}
+          </CascadePlaceholder>
+        )}
       </CascadeColumn>
     </div>
   );
@@ -1668,7 +1739,7 @@ function ProductMobileCard({
             {product.sku}
           </div>
           <div className="mt-0.5 truncate text-[10px] font-semibold leading-3 text-slate-400">
-            {product.category} · {product.model || product.compatibleWith[0] || text.none}
+            {product.category} · {[product.modelSeries, product.model || product.compatibleWith[0] || text.none].filter(Boolean).join(" / ")}
           </div>
         </button>
 
@@ -1952,6 +2023,11 @@ function ProductBrandModel({ product }: { product: AdminProductRow }) {
   return (
     <div className="space-y-1">
       <div className="text-sm font-bold text-slate-900">{product.brand}</div>
+      {product.modelSeries && (
+        <div className="max-w-[220px] truncate text-[11px] font-bold text-slate-400">
+          {product.modelSeries}
+        </div>
+      )}
       <div className="max-w-[220px] truncate text-xs font-medium text-slate-500">
         {firstModel}
       </div>
@@ -2606,6 +2682,7 @@ function ProductDetails({
                 <DetailItem label={text.quality} value={product.grade} />
                 <DetailItem label={text.moq} value={product.moq} />
                 <DetailItem label={text.leadTime} value={product.leadTime} />
+                <DetailItem label={text.modelSeries} value={product.modelSeries ?? text.none} />
                 <DetailItem label={text.model} value={product.model ?? text.none} />
                 <DetailItem label={text.modelCode} value={product.modelCode ?? text.none} />
                 <DetailItem label={text.batchCode} value={product.batchCode ?? text.none} />
@@ -3439,6 +3516,10 @@ async function fetchAdminProducts(
     params.set("brand", filters.brand);
   }
 
+  if (filters.modelSeries !== "all") {
+    params.set("modelSeries", filters.modelSeries);
+  }
+
   if (filters.model !== "all") {
     params.set("model", filters.model);
   }
@@ -3802,6 +3883,7 @@ function normalizeProductApiRow(row: unknown): AdminProductRow | null {
     lockedQty: readNumber(row.lockedQty) ?? readNumber(row.locked_qty),
     margin: readNumber(row.margin),
     model: readString(row.model),
+    modelSeries: readString(row.modelSeries) ?? readString(row.model_series),
     modelCode: sanitizeSupplierText(readString(row.modelCode) ?? readString(row.model_code)),
     modelCodes:
       (readStringArray(row.modelCodes) ?? readStringArray(row.model_codes) ?? [])
@@ -3821,12 +3903,30 @@ function normalizeDeviceModelGroup(row: unknown): DeviceModelGroup | null {
 
   const brand = readString(row.brand);
   const models = readStringArray(row.models);
+  const series = Array.isArray(row.series)
+    ? row.series.map(normalizeDeviceModelSeriesGroup).filter(isDefined)
+    : undefined;
 
   if (!brand || !models?.length) {
     return null;
   }
 
-  return { brand, models };
+  return { brand, models, ...(series?.length ? { series } : {}) };
+}
+
+function normalizeDeviceModelSeriesGroup(row: unknown) {
+  if (!isRecord(row)) {
+    return null;
+  }
+
+  const series = readString(row.series);
+  const models = readStringArray(row.models);
+
+  if (!series || !models?.length) {
+    return null;
+  }
+
+  return { series, models };
 }
 
 function normalizeProductAuditEvent(row: unknown): ProductAuditEvent | null {
@@ -4085,19 +4185,39 @@ function ensureUniqueSku(sku: string, products: AdminProductRow[]) {
 }
 
 function buildCascadeModelGroups(modelGroups: DeviceModelGroup[]) {
-  const groups = new Map<string, Set<string>>();
+  const groups = new Map<string, { models: Set<string>; series: Map<string, Set<string>> }>();
 
   for (const group of modelGroups) {
-    const models = groups.get(group.brand) ?? new Set<string>();
+    const existing = groups.get(group.brand) ?? {
+      models: new Set<string>(),
+      series: new Map<string, Set<string>>(),
+    };
 
-    group.models.forEach((model) => models.add(model));
-    groups.set(group.brand, models);
+    group.models.forEach((model) => existing.models.add(model));
+
+    for (const seriesGroup of group.series ?? []) {
+      const models = existing.series.get(seriesGroup.series) ?? new Set<string>();
+      seriesGroup.models.forEach((model) => {
+        models.add(model);
+        existing.models.add(model);
+      });
+      existing.series.set(seriesGroup.series, models);
+    }
+
+    groups.set(group.brand, existing);
   }
 
   return Array.from(groups.entries())
-    .map(([brand, models]) => ({
+    .map(([brand, group]) => ({
       brand,
-      models: Array.from(models).sort(compareModelNames),
+      models: Array.from(group.models).sort(compareModelNames),
+      series: Array.from(group.series.entries())
+        .map(([series, models]) => ({
+          series,
+          models: Array.from(models).sort(compareModelNames),
+        }))
+        .filter((item) => item.models.length > 0)
+        .sort((left, right) => left.series.localeCompare(right.series, undefined, { numeric: true })),
     }))
     .filter((group) => group.models.length > 0)
     .sort((left, right) => left.brand.localeCompare(right.brand, undefined, { numeric: true }));

@@ -66,9 +66,15 @@ export type PartProduct = {
   galleryImageUrls?: string[];
 };
 
+export type DeviceModelSeriesGroup = {
+  series: string;
+  models: string[];
+};
+
 export type DeviceModelGroup = {
   brand: string;
   models: string[];
+  series?: DeviceModelSeriesGroup[];
 };
 
 export type CompanyProfile = {

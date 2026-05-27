@@ -44,6 +44,16 @@ const BRAND_CONFIGS = {
       "/spare-parts/mobile-phone/samsung/galaxy-xcover",
       "/spare-parts/mobile-phone/samsung/galaxy-other",
     ],
+    seriesLabels: {
+      "galaxy-a": "Galaxy A",
+      "galaxy-j": "Galaxy J",
+      "galaxy-m": "Galaxy M",
+      "galaxy-note": "Galaxy Note",
+      "galaxy-other": "Galaxy Other",
+      "galaxy-s": "Galaxy S",
+      "galaxy-xcover": "Galaxy XCover",
+      "galaxy-z": "Galaxy Z",
+    },
     modelFromUrl: samsungModelFromUrl,
     extractModels: extractSamsungModels,
     excludeModelPath: (path) => /galaxy-(?:watch|tab)/i.test(path),
@@ -61,6 +71,14 @@ const BRAND_CONFIGS = {
       "/spare-parts/mobile-phone/xiaomi/redmi-series",
       "/spare-parts/mobile-phone/xiaomi/xiaomi-series",
     ],
+    seriesLabels: {
+      "mi-mix-max-series": "Mi Mix / Max",
+      "mi-series": "Mi",
+      "poco-shark-series": "POCO",
+      "redmi-note-series": "Redmi Note",
+      "redmi-series": "Redmi",
+      "xiaomi-series": "Xiaomi",
+    },
     modelFromUrl: genericModelFromUrl,
     extractModels: extractGenericBrandModels,
     modelAliases: ["Xiaomi", "Redmi", "Poco", "Pocophone", "Black Shark"],
@@ -79,6 +97,13 @@ const BRAND_CONFIGS = {
       "/spare-parts/mobile-phone/honor/series-play",
       "/spare-parts/mobile-phone/honor/series-x",
     ],
+    seriesLabels: {
+      "series-10-20-50": "Honor Number",
+      "series-5-6-7-8-9": "Honor Number",
+      "series-70-90-200-300-400-600": "Honor Number",
+      "series-play": "Honor Play",
+      "series-x": "Honor X",
+    },
     modelFromUrl: genericModelFromUrl,
     extractModels: extractGenericBrandModels,
     modelAliases: ["Honor"],
@@ -96,6 +121,13 @@ const BRAND_CONFIGS = {
       "/spare-parts/mobile-phone/oppo/reno",
       "/spare-parts/mobile-phone/oppo/rx",
     ],
+    seriesLabels: {
+      a: "A",
+      f: "F",
+      find: "Find",
+      reno: "Reno",
+      rx: "RX",
+    },
     modelFromUrl: genericModelFromUrl,
     extractModels: extractGenericBrandModels,
     modelAliases: ["OPPO", "Oppo"],
@@ -113,6 +145,11 @@ const BRAND_CONFIGS = {
       "/spare-parts/mobile-phone/realme/series-c-gt-x-p",
       "/spare-parts/mobile-phone/realme/series-narzo-note",
     ],
+    seriesLabels: {
+      "series-11-12-14-16": "Realme Number",
+      "series-5-6-7": "Realme Number",
+      "series-8-9-10": "Realme Number",
+    },
     modelFromUrl: genericModelFromUrl,
     extractModels: extractGenericBrandModels,
     modelAliases: ["Realme", "Narzo"],
@@ -131,6 +168,14 @@ const BRAND_CONFIGS = {
       "/spare-parts/mobile-phone/motorola/razr",
       "/spare-parts/mobile-phone/motorola/series-one-c-defy",
     ],
+    seriesLabels: {
+      edge: "Edge",
+      "moto-e": "Moto E",
+      "moto-g": "Moto G",
+      "moto-x-z": "Moto X/Z",
+      razr: "Razr",
+      "series-one-c-defy": "One/C/Defy",
+    },
     modelFromUrl: genericModelFromUrl,
     extractModels: extractGenericBrandModels,
     modelAliases: ["Motorola", "Moto", "Razr", "Edge", "Defy"],
@@ -388,9 +433,10 @@ async function scrapeProducts(modelUrls) {
 async function scrapeProductPage(path, model) {
   const html = await fetchText(new URL(path, MOBILAX_BASE_URL).href);
   const payload = parseMainProductPayload(html);
+  const modelSeries = modelSeriesFromUrl(path, model);
   const products = (payload.products ?? [])
     .filter((product) => product?.id_mobilax_brand === 4)
-    .map((product) => normalizeMobilaxProduct(product, model))
+    .map((product) => normalizeMobilaxProduct(product, model, modelSeries))
     .filter(Boolean);
 
   report.scrapedProducts += products.length;
@@ -468,7 +514,7 @@ function findBalancedEnd(value, start, open, close) {
   return -1;
 }
 
-function normalizeMobilaxProduct(product, model) {
+function normalizeMobilaxProduct(product, model, modelSeries) {
   const reference = String(product.ean13 ?? "").trim();
   const sourceId = String(product.id ?? "").trim();
   const sku_code = reference || sourceId;
@@ -488,6 +534,7 @@ function normalizeMobilaxProduct(product, model) {
     name,
     brand: brandConfig.brandLabel,
     model,
+    model_series: modelSeries,
     category: normalizeCategory(String(product.category_name ?? name)),
     quality_grade: "A",
     stock_status: "out_of_stock",
@@ -680,6 +727,7 @@ function upsertSql(products) {
     name: product.name,
     brand: product.brand,
     model: product.model,
+    model_series: product.model_series,
     category: product.category,
     quality_grade: product.quality_grade,
     stock_status: product.stock_status,
@@ -717,6 +765,7 @@ with raw_payload as (
     name text,
     brand text,
     model text,
+    model_series text,
     model_codes jsonb,
     category text,
     quality_grade text,
@@ -750,6 +799,7 @@ payload as (
     name,
     brand,
     model,
+    nullif(btrim(model_series), '') as model_series,
     array(select distinct value from jsonb_array_elements_text(coalesce(model_codes, '[]'::jsonb))) as model_codes,
     category,
     quality_grade,
@@ -783,6 +833,7 @@ upserted_products as (
     name,
     brand,
     model,
+    model_series,
     model_codes,
     category,
     quality_grade,
@@ -815,6 +866,7 @@ upserted_products as (
     name,
     brand,
     model,
+    model_series,
     model_codes,
     category,
     quality_grade,
@@ -847,6 +899,7 @@ upserted_products as (
     name = excluded.name,
     brand = excluded.brand,
     model = excluded.model,
+    model_series = excluded.model_series,
     model_codes = excluded.model_codes,
     category = excluded.category,
     quality_grade = excluded.quality_grade,
@@ -1087,6 +1140,95 @@ function normalizeCategory(value) {
 
 function modelFromUrl(path) {
   return brandConfig.modelFromUrl(path);
+}
+
+function modelSeriesFromUrl(path, model) {
+  if (args.brand === "apple") {
+    return null;
+  }
+
+  const segments = path.split("/").filter(Boolean);
+  const seriesSlug = segments[segments.length - 2] ?? "";
+  const configuredLabel = brandConfig.seriesLabels?.[seriesSlug];
+
+  if (configuredLabel) {
+    return configuredLabel;
+  }
+
+  return inferDeviceSeries(brandConfig.brandLabel, model);
+}
+
+function inferDeviceSeries(brand, model) {
+  const brandKey = String(brand ?? "").trim().toLowerCase();
+  const value = String(model ?? "").replace(/\s+/g, " ").trim();
+
+  if (!brandKey || !value || brandKey === "apple") {
+    return null;
+  }
+
+  if (brandKey === "samsung") {
+    if (/\bgalaxy\s+z\b/i.test(value)) return "Galaxy Z";
+    if (/\bgalaxy\s+note\b/i.test(value)) return "Galaxy Note";
+    if (/\bgalaxy\s+xcover\b/i.test(value)) return "Galaxy XCover";
+    const match = value.match(/\bgalaxy\s+([samj])\s*\d/i);
+    return match ? `Galaxy ${match[1].toUpperCase()}` : "Galaxy Other";
+  }
+
+  if (brandKey === "xiaomi") {
+    if (/^redmi\s+note\b/i.test(value)) return "Redmi Note";
+    if (/^redmi\b/i.test(value)) return "Redmi";
+    if (/^(poco|pocophone)\b/i.test(value)) return "POCO";
+    if (/^black\s+shark\b/i.test(value)) return "Black Shark";
+    if (/^mi\s+(mix|max)\b/i.test(value)) return "Mi Mix / Max";
+    if (/^mi\b/i.test(value)) return "Mi";
+    return "Xiaomi";
+  }
+
+  if (brandKey === "honor") {
+    if (/\bmagic\b/i.test(value)) return "Honor Magic";
+    if (/\bplay\b/i.test(value)) return "Honor Play";
+    if (/\bview\b/i.test(value)) return "Honor View";
+    if (/\bx\s*\d/i.test(value)) return "Honor X";
+    return /\d/.test(value) ? "Honor Number" : "Honor Other";
+  }
+
+  if (brandKey === "oppo") {
+    if (/\bfind\b/i.test(value)) return "Find";
+    if (/\breno\b/i.test(value)) return "Reno";
+    const match = value.match(/\b(a|f|rx)\s*\d/i);
+    return match ? match[1].toUpperCase() : "OPPO Other";
+  }
+
+  if (brandKey === "realme") {
+    if (/\bnarzo\b/i.test(value)) return "Narzo";
+    if (/\bnote\b/i.test(value)) return "Note";
+    if (/\bgt\b/i.test(value)) return "GT";
+    const match = value.match(/\b(c|x|p)\s*\d/i);
+    if (match) return match[1].toUpperCase();
+    return /\d/.test(value) ? "Realme Number" : "Realme Other";
+  }
+
+  if (brandKey === "motorola") {
+    if (/\bedge\b/i.test(value)) return "Edge";
+    if (/\brazr\b/i.test(value)) return "Razr";
+    if (/\bmoto\s+g\b/i.test(value)) return "Moto G";
+    if (/\bmoto\s+e\b/i.test(value)) return "Moto E";
+    if (/\bmoto\s+[xz]\b/i.test(value)) return "Moto X/Z";
+    if (/\b(one|defy|moto\s+c)\b/i.test(value)) return "One/C/Defy";
+    return "Motorola Other";
+  }
+
+  if (brandKey === "vivo") {
+    if (/\biqoo\b/i.test(value)) return "iQOO";
+    const match = value.match(/\b([vxyts])\s*\d/i);
+    return match ? `Vivo ${match[1].toUpperCase()}` : "Vivo";
+  }
+
+  if (brandKey === "tcl") {
+    return /\bnxtpaper\b/i.test(value) ? "TCL NXTPAPER" : "TCL";
+  }
+
+  return `${brand.charAt(0).toUpperCase()}${brand.slice(1).toLowerCase()} Other`;
 }
 
 function appleModelFromUrl(path) {

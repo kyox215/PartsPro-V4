@@ -18,6 +18,7 @@ export const productQuerySchema = z
     brand: z.string().trim().min(1).max(80).optional(),
     category: z.string().trim().min(1).max(80).optional(),
     model: z.string().trim().min(2).max(120).optional(),
+    modelSeries: z.string().trim().min(1).max(120).optional(),
     q: z.string().trim().min(2).max(80).optional(),
     stockStatus: stockStatusSchema.optional(),
     status: catalogStatusSchema.optional(),

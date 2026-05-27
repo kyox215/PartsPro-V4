@@ -36,6 +36,7 @@ export function toAdminProductDto(product: AdminProduct) {
     leadTime: product.leadTime,
     weightGram: product.weightGram,
     model: product.model ?? null,
+    modelSeries: product.modelSeries ?? null,
     modelCode: product.modelCode ?? null,
     modelCodes: product.modelCodes,
     batchCode: sanitizeNullableSupplierText(product.batchCode),
