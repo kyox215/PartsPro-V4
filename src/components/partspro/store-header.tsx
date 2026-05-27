@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ChevronDown,
   LayoutDashboard,
+  LogOut,
   Search,
   ShoppingCart,
   User,
@@ -27,6 +28,7 @@ import { StoreMobileMenu } from "./store-mobile-menu";
 import { useCart } from "./cart-state";
 import { useT } from "./i18n-provider";
 import { tx } from "@/i18n/dictionaries/storefront";
+import { signOut } from "@/app/login/actions";
 
 type StoreHeaderProps = {
   modelGroups?: readonly DeviceModelGroup[];
@@ -38,6 +40,7 @@ type StoreHeaderProps = {
 type AccountAccessState = {
   status: "loading" | "ready" | "error";
   canOpenAdmin: boolean;
+  authenticated: boolean;
   role: string | null;
 };
 
@@ -52,6 +55,7 @@ export function StoreHeader({
   const [accountAccess, setAccountAccess] = useState<AccountAccessState>({
     status: "loading",
     canOpenAdmin: false,
+    authenticated: false,
     role: null,
   });
 
@@ -70,6 +74,7 @@ export function StoreHeader({
         }
 
         const data = (await response.json()) as {
+          authenticated?: boolean;
           admin?: { allowed?: boolean; role?: string | null };
         };
 
@@ -77,6 +82,7 @@ export function StoreHeader({
           setAccountAccess({
             status: "ready",
             canOpenAdmin: Boolean(data.admin?.allowed),
+            authenticated: Boolean(data.authenticated),
             role: data.admin?.role ?? null,
           });
         }
@@ -85,6 +91,7 @@ export function StoreHeader({
           setAccountAccess({
             status: "error",
             canOpenAdmin: false,
+            authenticated: false,
             role: null,
           });
         }
@@ -150,6 +157,8 @@ export function StoreHeader({
               menuLabel={tx(t, "storefront.account.menuLabel", "Area account")}
               accountLabel={tx(t, "storefront.account.openAccount", "Account cliente")}
               adminLabel={tx(t, "storefront.account.openAdmin", "Pannello admin")}
+              logoutLabel={tx(t, "storefront.account.signOut", "Esci")}
+              onSignOut={cart.clearCart}
               staffLabel={tx(t, "storefront.account.staffRole", "Accesso staff")}
             />
           </nav>
@@ -174,7 +183,9 @@ export function StoreHeader({
             adminLabel={tx(t, "storefront.account.openAdmin", "Pannello admin")}
             compact
             label={tx(t, "storefront.header.openAccount", "Apri account")}
+            logoutLabel={tx(t, "storefront.account.signOut", "Esci")}
             menuLabel={tx(t, "storefront.account.menuLabel", "Area account")}
+            onSignOut={cart.clearCart}
             staffLabel={tx(t, "storefront.account.staffRole", "Accesso staff")}
           />
         </div>
@@ -190,7 +201,9 @@ type AccountDropdownProps = {
   adminLabel: string;
   compact?: boolean;
   label: string;
+  logoutLabel: string;
   menuLabel: string;
+  onSignOut?: () => void;
   staffLabel: string;
 };
 
@@ -200,7 +213,9 @@ function AccountDropdown({
   adminLabel,
   compact = false,
   label,
+  logoutLabel,
   menuLabel,
+  onSignOut,
   staffLabel,
 }: AccountDropdownProps) {
   return (
@@ -245,6 +260,19 @@ function AccountDropdown({
               {adminLabel}
             </Link>
           </DropdownMenuItem>
+        ) : null}
+        {access.authenticated ? (
+          <>
+            <DropdownMenuSeparator />
+            <form action={signOut} onSubmit={onSignOut}>
+              <DropdownMenuItem asChild className="h-9 w-full cursor-pointer">
+                <button type="submit">
+                  <LogOut className="size-4" />
+                  {logoutLabel}
+                </button>
+              </DropdownMenuItem>
+            </form>
+          </>
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>

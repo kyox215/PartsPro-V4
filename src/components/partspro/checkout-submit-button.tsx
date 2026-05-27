@@ -151,7 +151,6 @@ export function CheckoutSubmitButton({
         message: `Ordine ${payload.data.id} creato correttamente.`,
         order: payload.data,
       });
-      cart.clearCart();
     } catch (error) {
       setState({
         status: "error",

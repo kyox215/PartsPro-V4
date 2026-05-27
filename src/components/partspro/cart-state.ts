@@ -29,17 +29,31 @@ type UseCartOptions = {
   consumeUrlIntent?: boolean;
 };
 
+type CartCatalogProviderProps = {
+  children: React.ReactNode;
+  products: readonly PartProduct[];
+};
+
 const CART_STORAGE_KEY = "partspro.cart.v1";
 const CART_CHANGED_EVENT = "partspro-cart-changed";
 const EMPTY_CART_ITEMS: CartItem[] = [];
+const CartCatalogContext = React.createContext<readonly PartProduct[]>(products);
 
 let cartSnapshotRaw = "";
+let cartSnapshotCatalogKey = "";
 let cartSnapshotItems: CartItem[] = EMPTY_CART_ITEMS;
 
+export function CartCatalogProvider({ children, products }: CartCatalogProviderProps) {
+  const catalog = React.useMemo(() => products.map(normalizeCatalogProduct), [products]);
+
+  return React.createElement(CartCatalogContext.Provider, { value: catalog }, children);
+}
+
 export function useCart({ consumeUrlIntent = false }: UseCartOptions = {}) {
+  const catalog = React.useContext(CartCatalogContext);
   const items = React.useSyncExternalStore(
     subscribeToCart,
-    readStoredCartItems,
+    () => readStoredCartItems(catalog),
     getServerCartSnapshot
   );
   const isHydrated = React.useSyncExternalStore(
@@ -49,36 +63,39 @@ export function useCart({ consumeUrlIntent = false }: UseCartOptions = {}) {
   );
 
   React.useEffect(() => {
-    const intent = consumeUrlIntent ? consumeCartIntentFromUrl() : null;
+    const intent = consumeUrlIntent ? consumeCartIntentFromUrl(catalog) : null;
 
     if (intent) {
-      const nextItems = mergeCartItems(readStoredCartItems(), intent);
-      writeStoredCartItems(nextItems);
+      const nextItems = mergeCartItems(readStoredCartItems(catalog), intent, catalog);
+      writeStoredCartItems(nextItems, catalog);
     }
-  }, [consumeUrlIntent]);
+  }, [catalog, consumeUrlIntent]);
 
   const setItems = React.useCallback((nextItems: CartItem[]) => {
-    const normalizedItems = normalizeCartItems(nextItems);
-    writeStoredCartItems(normalizedItems);
-  }, []);
+    const normalizedItems = normalizeCartItems(nextItems, catalog);
+    writeStoredCartItems(normalizedItems, catalog);
+  }, [catalog]);
 
   const addItem = React.useCallback((sku: string, quantity = 1) => {
-    setItems(mergeCartItems(readStoredCartItems(), { sku, quantity }));
-  }, [setItems]);
+    setItems(mergeCartItems(readStoredCartItems(catalog), { sku, quantity }, catalog));
+  }, [catalog, setItems]);
 
   const updateQuantity = React.useCallback((sku: string, quantity: number) => {
-    setItems(updateCartItemQuantity(readStoredCartItems(), sku, quantity));
-  }, [setItems]);
+    setItems(updateCartItemQuantity(readStoredCartItems(catalog), sku, quantity, catalog));
+  }, [catalog, setItems]);
 
   const removeItem = React.useCallback((sku: string) => {
-    setItems(removeCartItem(readStoredCartItems(), sku));
-  }, [setItems]);
+    setItems(removeCartItem(readStoredCartItems(catalog), sku, catalog));
+  }, [catalog, setItems]);
 
   const clearCart = React.useCallback(() => {
     setItems([]);
   }, [setItems]);
 
-  const totals = React.useMemo(() => calculateCartTotalsFromItems(items), [items]);
+  const totals = React.useMemo(
+    () => calculateCartTotalsFromItems(items, catalog),
+    [catalog, items]
+  );
   const itemCount = React.useMemo(
     () => items.reduce((total, item) => total + item.quantity, 0),
     [items]
@@ -102,13 +119,16 @@ export function addCartItem(sku: string, quantity = 1) {
     return;
   }
 
-  const nextItems = mergeCartItems(readStoredCartItems(), { sku, quantity });
-  writeStoredCartItems(nextItems);
+  const nextItems = mergeCartItems(readStoredCartItems(products), { sku, quantity }, products);
+  writeStoredCartItems(nextItems, products);
 }
 
-export function calculateCartTotalsFromItems(items: CartItem[]): CartTotals {
-  const lines = normalizeCartItems(items).flatMap((item) => {
-    const product = getProductBySku(item.sku);
+export function calculateCartTotalsFromItems(
+  items: CartItem[],
+  catalog: readonly PartProduct[] = products
+): CartTotals {
+  const lines = normalizeCartItems(items, catalog).flatMap((item) => {
+    const product = getProductBySku(item.sku, catalog);
 
     if (!product) {
       return [];
@@ -141,46 +161,52 @@ export function calculateCartTotalsFromItems(items: CartItem[]): CartTotals {
   };
 }
 
-function readStoredCartItems() {
+function readStoredCartItems(catalog: readonly PartProduct[]) {
   if (!isBrowser()) {
     return EMPTY_CART_ITEMS;
   }
 
   const rawCart = window.localStorage.getItem(CART_STORAGE_KEY) ?? "";
+  const catalogKey = cartCatalogKey(catalog);
 
-  if (rawCart === cartSnapshotRaw) {
+  if (rawCart === cartSnapshotRaw && catalogKey === cartSnapshotCatalogKey) {
     return cartSnapshotItems;
   }
 
   try {
-    const normalizedItems = normalizeCartItems(JSON.parse(rawCart || "[]"));
+    const normalizedItems = normalizeCartItems(JSON.parse(rawCart || "[]"), catalog);
     cartSnapshotRaw = rawCart;
+    cartSnapshotCatalogKey = catalogKey;
     cartSnapshotItems = normalizedItems.length > 0 ? normalizedItems : EMPTY_CART_ITEMS;
 
     return cartSnapshotItems;
   } catch {
     cartSnapshotRaw = rawCart;
+    cartSnapshotCatalogKey = catalogKey;
     cartSnapshotItems = EMPTY_CART_ITEMS;
 
     return cartSnapshotItems;
   }
 }
 
-function writeStoredCartItems(items: CartItem[]) {
+function writeStoredCartItems(items: CartItem[], catalog: readonly PartProduct[]) {
   if (!isBrowser()) {
     return;
   }
 
-  const normalizedItems = normalizeCartItems(items);
+  const normalizedItems = normalizeCartItems(items, catalog);
+  const catalogKey = cartCatalogKey(catalog);
 
   if (normalizedItems.length === 0) {
     window.localStorage.removeItem(CART_STORAGE_KEY);
     cartSnapshotRaw = "";
+    cartSnapshotCatalogKey = catalogKey;
     cartSnapshotItems = EMPTY_CART_ITEMS;
   } else {
     const serializedItems = JSON.stringify(normalizedItems);
     window.localStorage.setItem(CART_STORAGE_KEY, serializedItems);
     cartSnapshotRaw = serializedItems;
+    cartSnapshotCatalogKey = catalogKey;
     cartSnapshotItems = normalizedItems;
   }
 
@@ -217,9 +243,13 @@ function getServerHydrationSnapshot() {
   return false;
 }
 
-function normalizeCartItems(value: unknown): CartItem[] {
+function normalizeCartItems(
+  value: unknown,
+  catalog: readonly PartProduct[] = products
+): CartItem[] {
   const rawItems = Array.isArray(value) ? value : [];
   const quantities = new Map<string, number>();
+  const hasCatalog = catalog.length > 0;
 
   for (const item of rawItems) {
     if (!isCartItemLike(item)) {
@@ -227,10 +257,14 @@ function normalizeCartItems(value: unknown): CartItem[] {
     }
 
     const sku = normalizeSku(item.sku);
-    const product = getProductBySku(sku);
+    const product = getProductBySku(sku, catalog);
     const quantity = normalizeQuantity(item.quantity);
 
-    if (!product || quantity === null || !isOrderableProduct(product)) {
+    if (quantity === null) {
+      continue;
+    }
+
+    if (hasCatalog && (!product || !isOrderableProduct(product))) {
       continue;
     }
 
@@ -239,10 +273,10 @@ function normalizeCartItems(value: unknown): CartItem[] {
 
   return Array.from(quantities.entries())
     .map(([sku, quantity]) => {
-      const product = getProductBySku(sku);
+      const product = getProductBySku(sku, catalog);
 
       if (!product) {
-        return null;
+        return hasCatalog ? null : { sku, quantity };
       }
 
       const clampedQuantity = clampQuantity(product, quantity);
@@ -253,11 +287,20 @@ function normalizeCartItems(value: unknown): CartItem[] {
     .sort((left, right) => left.sku.localeCompare(right.sku));
 }
 
-function mergeCartItems(items: CartItem[], item: CartItem) {
-  return normalizeCartItems([...items, item]);
+function mergeCartItems(
+  items: CartItem[],
+  item: CartItem,
+  catalog: readonly PartProduct[]
+) {
+  return normalizeCartItems([...items, item], catalog);
 }
 
-function updateCartItemQuantity(items: CartItem[], sku: string, quantity: number) {
+function updateCartItemQuantity(
+  items: CartItem[],
+  sku: string,
+  quantity: number,
+  catalog: readonly PartProduct[]
+) {
   const normalizedSku = normalizeSku(sku);
   const hasItem = items.some((item) => normalizeSku(item.sku) === normalizedSku);
   const nextItems = hasItem
@@ -266,16 +309,23 @@ function updateCartItemQuantity(items: CartItem[], sku: string, quantity: number
       )
     : [...items, { sku: normalizedSku, quantity }];
 
-  return normalizeCartItems(nextItems);
+  return normalizeCartItems(nextItems, catalog);
 }
 
-function removeCartItem(items: CartItem[], sku: string) {
+function removeCartItem(
+  items: CartItem[],
+  sku: string,
+  catalog: readonly PartProduct[]
+) {
   const normalizedSku = normalizeSku(sku);
 
-  return normalizeCartItems(items.filter((item) => normalizeSku(item.sku) !== normalizedSku));
+  return normalizeCartItems(
+    items.filter((item) => normalizeSku(item.sku) !== normalizedSku),
+    catalog
+  );
 }
 
-function consumeCartIntentFromUrl() {
+function consumeCartIntentFromUrl(catalog: readonly PartProduct[]) {
   if (!isBrowser()) {
     return null;
   }
@@ -288,7 +338,7 @@ function consumeCartIntentFromUrl() {
   }
 
   const quantity = normalizeQuantity(url.searchParams.get("qty") ?? 1) ?? 1;
-  const [intent] = normalizeCartItems([{ sku, quantity }]);
+  const [intent] = normalizeCartItems([{ sku, quantity }], catalog);
 
   url.searchParams.delete("sku");
   url.searchParams.delete("qty");
@@ -340,10 +390,25 @@ function normalizeSku(value: string) {
   return toPublicSku(value);
 }
 
-function getProductBySku(sku: string) {
+function getProductBySku(sku: string, catalog: readonly PartProduct[]) {
   const normalizedSku = normalizeSku(sku);
 
-  return products.find((product) => product.sku === normalizedSku);
+  return catalog.find((product) => normalizeSku(product.sku) === normalizedSku);
+}
+
+function normalizeCatalogProduct(product: PartProduct): PartProduct {
+  return {
+    ...product,
+    sku: normalizeSku(product.sku),
+  };
+}
+
+function cartCatalogKey(catalog: readonly PartProduct[]) {
+  return catalog
+    .map((product) => (
+      `${normalizeSku(product.sku)}:${product.stock}:${product.moq}:${product.status}`
+    ))
+    .join("|");
 }
 
 function toCents(value: number) {

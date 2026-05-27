@@ -38,7 +38,7 @@ export async function signInWithPassword(formData: FormData) {
 export async function signOut() {
   if (isSupabaseConfigured()) {
     const supabase = await createClient();
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
   }
 
   redirect("/login");

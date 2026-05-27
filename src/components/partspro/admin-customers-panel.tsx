@@ -16,6 +16,7 @@ import {
   ShieldAlert,
   SlidersHorizontal,
   Store,
+  UserCog,
   Users,
   X,
 } from "lucide-react";
@@ -58,6 +59,16 @@ type CustomerStatus = "active" | "pending" | "suspended";
 type CustomerType = "retail" | "wholesale";
 type AssignmentStatus = "needs_review" | "assigned" | "converted_to_employee" | "archived";
 type CustomerTier = "bronze" | "silver" | "gold" | "emerald" | "diamond" | "master" | "king";
+type EmployeeRoleTemplate =
+  | "admin"
+  | "auditor"
+  | "catalog_manager"
+  | "inventory_manager"
+  | "pricing_manager"
+  | "purchasing"
+  | "sales"
+  | "sales_support"
+  | "warehouse";
 
 type CustomerMembership = {
   accountType: "customer" | "employee";
@@ -289,9 +300,27 @@ type CustomerEditState =
       kind: "classification";
     };
 
+type EmployeePromotionState = {
+  customer: AdminCustomer;
+  membership: CustomerMembership;
+  reason: string;
+  roleTemplate: EmployeeRoleTemplate;
+};
+
 const pageSize = 25;
 const allValue = "all";
 const tiers: CustomerTier[] = ["bronze", "silver", "gold", "emerald", "diamond", "master", "king"];
+const employeeRoleTemplates: EmployeeRoleTemplate[] = [
+  "sales_support",
+  "sales",
+  "warehouse",
+  "inventory_manager",
+  "catalog_manager",
+  "pricing_manager",
+  "purchasing",
+  "auditor",
+  "admin",
+];
 const emptyFacets: CustomerFacets = {
   active: 0,
   creditRisk: 0,
@@ -332,6 +361,8 @@ export function AdminCustomersPanel() {
   const [editState, setEditState] = React.useState<CustomerEditState | null>(null);
   const [editReason, setEditReason] = React.useState("");
   const [editSubmitting, setEditSubmitting] = React.useState(false);
+  const [promotionState, setPromotionState] = React.useState<EmployeePromotionState | null>(null);
+  const [promotionSubmitting, setPromotionSubmitting] = React.useState(false);
   const [orderDetailOpen, setOrderDetailOpen] = React.useState(false);
   const [orderDetail, setOrderDetail] = React.useState<CustomerOrderDetail | null>(null);
   const [orderDetailLoading, setOrderDetailLoading] = React.useState(false);
@@ -414,6 +445,7 @@ export function AdminCustomersPanel() {
 
         setCustomers(payload.data);
         setFacets(payload.meta.facets ?? emptyFacets);
+        emitCustomerReviewCount(payload.meta.facets?.needsReview ?? 0);
         setTotal(payload.meta.total);
         if (payload.data.length === 0) {
           setDetail(null);
@@ -542,6 +574,15 @@ export function AdminCustomersPanel() {
     setEditReason("");
   }
 
+  function openEmployeePromotion(customer: AdminCustomer, membership: CustomerMembership) {
+    setPromotionState({
+      customer,
+      membership,
+      reason: "",
+      roleTemplate: "sales_support",
+    });
+  }
+
   function updateProfileDraft(field: keyof CustomerProfileDraft, value: string) {
     setEditState((current) =>
       current?.kind === "profile"
@@ -662,6 +703,46 @@ export function AdminCustomersPanel() {
       });
     } finally {
       setEditSubmitting(false);
+    }
+  }
+
+  async function submitEmployeePromotion() {
+    if (!promotionState || promotionState.reason.trim().length < 3) {
+      return;
+    }
+
+    setPromotionSubmitting(true);
+
+    try {
+      await fetchJson(
+        `/api/admin/customers/${promotionState.customer.id}/members/${promotionState.membership.userId}/promote`,
+        {
+          body: JSON.stringify({
+            reason: promotionState.reason.trim(),
+            roleTemplate: promotionState.roleTemplate,
+          }),
+          cache: "no-store",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/json",
+          },
+          method: "PATCH",
+        }
+      );
+
+      setNotice({
+        tone: "success",
+        message: copy.employeePromotionSaved,
+      });
+      setPromotionState(null);
+      setRefreshKey((value) => value + 1);
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        message: error instanceof Error ? error.message : copy.error,
+      });
+    } finally {
+      setPromotionSubmitting(false);
     }
   }
 
@@ -1016,6 +1097,7 @@ export function AdminCustomersPanel() {
             onAction={openSingleAction}
             onEdit={openCustomerEdit}
             onOpenOrder={openCustomerOrderDetail}
+            onPromoteMember={openEmployeePromotion}
             suspended={text.enums.companyStatus.suspended}
             text={text}
           />
@@ -1060,6 +1142,7 @@ export function AdminCustomersPanel() {
               onAction={openSingleAction}
               onEdit={openCustomerEdit}
               onOpenOrder={openCustomerOrderDetail}
+              onPromoteMember={openEmployeePromotion}
               suspended={text.enums.companyStatus.suspended}
               text={text}
             />
@@ -1113,6 +1196,21 @@ export function AdminCustomersPanel() {
         submitting={editSubmitting}
         text={text}
       />
+      <EmployeePromotionDialog
+        copy={copy}
+        onClose={() => setPromotionState(null)}
+        onReasonChange={(reason) =>
+          setPromotionState((current) => (current ? { ...current, reason } : current))
+        }
+        onRoleTemplateChange={(roleTemplate) =>
+          setPromotionState((current) =>
+            current ? { ...current, roleTemplate: roleTemplate as EmployeeRoleTemplate } : current
+          )
+        }
+        onSubmit={submitEmployeePromotion}
+        promotionState={promotionState}
+        submitting={promotionSubmitting}
+      />
       <CustomerOrderDetailDialog
         copy={copy}
         error={orderDetailError}
@@ -1134,6 +1232,7 @@ function CustomerDetail({
   onAction,
   onEdit,
   onOpenOrder,
+  onPromoteMember,
   suspended,
   text,
 }: {
@@ -1144,6 +1243,7 @@ function CustomerDetail({
   onAction: (action: Omit<PendingAction, "ids">, id: string) => void;
   onEdit: (kind: CustomerEditState["kind"], customer: AdminCustomer) => void;
   onOpenOrder: (order: CustomerOrderSummary) => void;
+  onPromoteMember: (customer: AdminCustomer, membership: CustomerMembership) => void;
   suspended: string;
   text: ReturnType<typeof getAdminDictionary>["admin"];
 }) {
@@ -1370,6 +1470,20 @@ function CustomerDetail({
                     <span className="text-slate-300">/</span>
                     <span className="truncate">{accountTypeLabel(membership.accountType, copy)}</span>
                   </div>
+                  {membership.accountType === "customer" && membership.status !== "disabled" ? (
+                    <div className="mt-1.5 flex justify-end">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-[11px] lg:h-8 lg:text-xs"
+                        onClick={() => onPromoteMember(customer, membership)}
+                      >
+                        <UserCog />
+                        {copy.promoteToEmployee}
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -1380,7 +1494,6 @@ function CustomerDetail({
           <CustomerAmountBreakdown
             copy={copy}
             customer={customer}
-            onEditTerms={() => onEdit("terms", customer)}
             text={text}
           />
         </TabsContent>
@@ -1480,12 +1593,10 @@ function CustomerDetail({
 function CustomerAmountBreakdown({
   copy,
   customer,
-  onEditTerms,
   text,
 }: {
   copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
   customer: AdminCustomer;
-  onEditTerms: () => void;
   text: ReturnType<typeof getAdminDictionary>["admin"];
 }) {
   const summary = buildCustomerAmountSummary(customer);
@@ -1577,27 +1688,88 @@ function CustomerAmountBreakdown({
           </div>
         )}
       </section>
-
-      <section className="rounded-md border border-slate-200 bg-white p-2">
-        <div className="mb-1.5 flex items-center justify-between gap-2">
-          <h4 className="text-xs font-semibold">{copy.termsConfig}</h4>
-          <Button size="sm" variant="outline" className="h-7 px-2 text-[11px] lg:h-8 lg:text-xs" onClick={onEditTerms}>
-            <Pencil />
-            {copy.editTerms}
-          </Button>
-        </div>
-        <DetailGrid
-          items={[
-            [copy.priceGroupId, priceGroupLabel(customer.priceGroupId, copy) || copy.noData],
-            [text.customers.labels.paymentTerms, valueLabel(customer.paymentTerms, copy) || copy.noData],
-            [copy.monthlyPurchase, customer.monthlyPurchase || copy.noData],
-            [copy.fieldLabels.avgPaymentDays, customer.avgPaymentDays === null ? copy.noData : String(customer.avgPaymentDays)],
-            [text.customers.labels.primarySku, customer.primarySku || copy.noData],
-            [copy.customerLevel, tierLabel(customer.tier, copy)],
-          ]}
-        />
-      </section>
     </div>
+  );
+}
+
+function EmployeePromotionDialog({
+  copy,
+  onClose,
+  onReasonChange,
+  onRoleTemplateChange,
+  onSubmit,
+  promotionState,
+  submitting,
+}: {
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
+  onClose: () => void;
+  onReasonChange: (reason: string) => void;
+  onRoleTemplateChange: (roleTemplate: string) => void;
+  onSubmit: () => void;
+  promotionState: EmployeePromotionState | null;
+  submitting: boolean;
+}) {
+  const memberName =
+    promotionState?.membership.displayName ??
+    promotionState?.membership.email ??
+    promotionState?.membership.userId ??
+    copy.noData;
+
+  return (
+    <Dialog open={Boolean(promotionState)} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{copy.employeePromotionTitle}</DialogTitle>
+          <DialogDescription>
+            {memberName} · {promotionState?.customer.companyName ?? copy.noData}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <EditField label={copy.employeeRoleTemplate}>
+            <Select
+              value={promotionState?.roleTemplate ?? "sales_support"}
+              onValueChange={onRoleTemplateChange}
+            >
+              <SelectTrigger className="h-8">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {employeeRoleTemplates.map((roleTemplate) => (
+                  <SelectItem key={roleTemplate} value={roleTemplate}>
+                    {roleTemplateLabel(roleTemplate, copy)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </EditField>
+
+          <div className="space-y-2">
+            <Label htmlFor="employee-promotion-reason">{copy.reason}</Label>
+            <Textarea
+              id="employee-promotion-reason"
+              value={promotionState?.reason ?? ""}
+              onChange={(event) => onReasonChange(event.target.value)}
+              placeholder={copy.reasonPlaceholder}
+              rows={4}
+            />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={submitting}>
+            {copy.cancel}
+          </Button>
+          <Button
+            onClick={onSubmit}
+            disabled={!promotionState || promotionState.reason.trim().length < 3 || submitting}
+          >
+            {submitting ? <Loader2 className="animate-spin" /> : <UserCog />}
+            {copy.promoteToEmployee}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -2406,6 +2578,14 @@ function readErrorMessage(payload: unknown) {
   return typeof error?.message === "string" ? error.message : null;
 }
 
+function emitCustomerReviewCount(count: number) {
+  window.dispatchEvent(
+    new CustomEvent("partspro:customer-review-count", {
+      detail: { count },
+    })
+  );
+}
+
 function statusLabel(
   status: CustomerStatus,
   copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"],
@@ -2458,6 +2638,13 @@ function accountTypeLabel(
   return (copy.accountTypeLabels as Record<string, string>)[value] ?? value;
 }
 
+function roleTemplateLabel(
+  value: EmployeeRoleTemplate | string,
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"]
+) {
+  return (copy.roleTemplateLabels as Record<string, string>)[value] ?? value;
+}
+
 function orderStatusLabel(
   value: string | null | undefined,
   text: ReturnType<typeof getAdminDictionary>["admin"]
@@ -2495,20 +2682,6 @@ function valueLabel(
   }
 
   return (copy.valueLabels as Record<string, string>)[trimmed] ?? trimmed;
-}
-
-function priceGroupLabel(
-  value: string | null | undefined,
-  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"]
-) {
-  const trimmed = value?.trim();
-
-  if (!trimmed) {
-    return "";
-  }
-
-  const tier = trimmed.toLowerCase();
-  return isCustomerTier(tier) ? tierLabel(tier, copy) : valueLabel(trimmed, copy);
 }
 
 function statusBadgeClass(status: CustomerStatus) {

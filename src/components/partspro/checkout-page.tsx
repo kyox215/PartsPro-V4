@@ -17,10 +17,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { getCurrentAccountContext } from "@/lib/partspro-account-context";
+import {
+  applyAccountPriceToProduct,
+  getCurrentAccountContext,
+} from "@/lib/partspro-account-context";
 import { type CompanyProfile } from "@/lib/partspro-data";
-import { listCompanies } from "@/lib/partspro-repository";
+import { listCatalogProducts, listCompanies } from "@/lib/partspro-repository";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { CartCatalogProvider } from "./cart-state";
 import { CheckoutSubmitButton } from "./checkout-submit-button";
 import { OrderSummaryCard } from "./cart-page";
 import { StoreHeader } from "./store-header";
@@ -86,7 +90,14 @@ const deliveryOptions = [
 ] as const;
 
 export async function CheckoutPage() {
-  const runtime = await getCheckoutRuntime();
+  const [runtime, accountForCatalog, catalog] = await Promise.all([
+    getCheckoutRuntime(),
+    getCurrentAccountContext({ ensure: true }),
+    listCatalogProducts(),
+  ]);
+  const catalogProducts = catalog.data.map((product) =>
+    applyAccountPriceToProduct(product, accountForCatalog)
+  );
   const company =
     runtime.mode === "ready" || runtime.mode === "needs-profile"
       ? await getCheckoutCompany(runtime.customerId)
@@ -130,10 +141,11 @@ export async function CheckoutPage() {
   ];
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
-      <StoreHeader />
-      <div className="mx-auto grid max-w-[1300px] gap-4 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_360px]">
-        <form id={checkoutFormId} className="space-y-4">
+    <CartCatalogProvider products={catalogProducts}>
+      <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
+        <StoreHeader />
+        <div className="mx-auto grid max-w-[1300px] gap-4 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <form id={checkoutFormId} className="space-y-4">
           <div>
             <div className="mb-3 flex flex-wrap gap-2">
               <Badge className="border border-primary/20 bg-primary/8 text-primary">
@@ -311,9 +323,10 @@ export async function CheckoutPage() {
             }
             runtimeMode={runtime.canSubmit && company ? "ready" : "disabled"}
           />
+          </div>
         </div>
-      </div>
-    </main>
+      </main>
+    </CartCatalogProvider>
   );
 }
 

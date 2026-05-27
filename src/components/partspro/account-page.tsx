@@ -16,17 +16,20 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
-  companyProfiles,
   formatEuro,
-  orderSummaries,
-  rmaRequests,
+  type CompanyProfile,
   type OrderSummary,
+  type RmaRequest,
 } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/app/login/actions";
+import { useCart } from "./cart-state";
 import { StoreHeader } from "./store-header";
 
 type AccountPageProps = {
+  company?: CompanyProfile | null;
+  orderSummaries?: OrderSummary[];
+  rmaRequests?: RmaRequest[];
   userEmail?: string;
 };
 
@@ -70,9 +73,14 @@ const orderFilters: Array<{
   },
 ];
 
-export function AccountPage({ userEmail }: AccountPageProps) {
+export function AccountPage({
+  company = null,
+  orderSummaries = [],
+  rmaRequests = [],
+  userEmail,
+}: AccountPageProps) {
+  const cart = useCart();
   const [activeFilter, setActiveFilter] = React.useState<OrderFilterId>("all");
-  const company = companyProfiles[0] ?? null;
   const selectedFilter =
     orderFilters.find((filter) => filter.id === activeFilter) ?? orderFilters[0];
   const filteredOrders = orderSummaries.filter(selectedFilter.predicate);
@@ -107,7 +115,7 @@ export function AccountPage({ userEmail }: AccountPageProps) {
                       </div>
                       <Badge className="mt-3 border border-emerald-200 bg-emerald-50 text-emerald-700">
                         <CheckCircle2 className="size-3" />
-                        Cliente approvato
+                        {companyStatusLabel(company.status)}
                       </Badge>
                     </div>
                   </div>
@@ -146,7 +154,7 @@ export function AccountPage({ userEmail }: AccountPageProps) {
               <Button variant="outline" className="bg-white" asChild>
                 <Link href="/rma">Apri richiesta RMA</Link>
               </Button>
-              <form action={signOut}>
+              <form action={signOut} onSubmit={cart.clearCart}>
                 <Button variant="outline" className="w-full bg-white" type="submit">
                   Esci
                 </Button>
@@ -341,6 +349,17 @@ function Info({ label, value }: { label: string; value: string }) {
       <div className="mt-1 break-words text-sm font-semibold text-slate-700">{value}</div>
     </div>
   );
+}
+
+function companyStatusLabel(status: CompanyProfile["status"]) {
+  const labels: Record<CompanyProfile["status"], string> = {
+    approved: "Cliente approvato",
+    pending: "Profilo in revisione",
+    rejected: "Profilo respinto",
+    suspended: "Cliente sospeso",
+  };
+
+  return labels[status] ?? status;
 }
 
 function orderBadgeClass(status: string) {

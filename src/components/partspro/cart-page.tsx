@@ -15,8 +15,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { formatEuro } from "@/lib/partspro-data";
+import { formatEuro, type PartProduct } from "@/lib/partspro-data";
 import {
+  CartCatalogProvider,
   type CartLine,
   type CartTotals,
   useCart,
@@ -24,7 +25,19 @@ import {
 import { PartVisual } from "./part-visual";
 import { StoreHeader } from "./store-header";
 
-export function CartPage() {
+type CartPageProps = {
+  catalogProducts?: readonly PartProduct[];
+};
+
+export function CartPage({ catalogProducts = [] }: CartPageProps) {
+  return (
+    <CartCatalogProvider products={catalogProducts}>
+      <CartPageContent />
+    </CartCatalogProvider>
+  );
+}
+
+function CartPageContent() {
   const cart = useCart({ consumeUrlIntent: true });
   const totals = cart.totals;
   const isEmpty = cart.isHydrated && totals.lines.length === 0;

@@ -98,6 +98,7 @@ export function AdminDashboard() {
     React.useState<AdminPanelValue>("overview");
   const [visiblePanels, setVisiblePanels] =
     React.useState<AdminPanelValue[] | null>(null);
+  const [customerReviewCount, setCustomerReviewCount] = React.useState(0);
   const visiblePanelSet = React.useMemo(
     () => new Set<AdminPanelValue>(visiblePanels ?? [...adminPanelValues]),
     [visiblePanels]
@@ -137,6 +138,36 @@ export function AdminDashboard() {
   }, []);
 
   React.useEffect(() => {
+    const handleCustomerReviewCount = (event: Event) => {
+      const detail = (event as CustomEvent<{ count?: unknown }>).detail;
+
+      if (typeof detail?.count === "number") {
+        setCustomerReviewCount(Math.max(0, detail.count));
+      }
+    };
+
+    window.addEventListener("partspro:customer-review-count", handleCustomerReviewCount);
+
+    return () => {
+      window.removeEventListener("partspro:customer-review-count", handleCustomerReviewCount);
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!visiblePanelSet.has("customers")) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    void fetchCustomerReviewCount(controller.signal)
+      .then(setCustomerReviewCount)
+      .catch(() => undefined);
+
+    return () => controller.abort();
+  }, [visiblePanelSet]);
+
+  React.useEffect(() => {
     if (!visiblePanelSet.has(activePanel)) {
       const timeoutId = window.setTimeout(() => {
         setActivePanel(visiblePanels?.[0] ?? "overview");
@@ -160,12 +191,14 @@ export function AdminDashboard() {
       <div className="flex min-w-0">
         <AdminSidebar
           activePanel={activePanel}
+          customerReviewCount={customerReviewCount}
           onPanelChange={setActivePanel}
           visiblePanels={visiblePanelSet}
         />
         <section className="w-full min-w-0 flex-1">
           <AdminTopbar
             activePanel={activePanel}
+            customerReviewCount={customerReviewCount}
             onPanelChange={setActivePanel}
             visiblePanels={visiblePanelSet}
           />
@@ -206,12 +239,14 @@ export function AdminDashboard() {
 
 type AdminNavigationProps = {
   activePanel: AdminPanelValue;
+  customerReviewCount: number;
   onPanelChange: (panel: AdminPanelValue) => void;
   visiblePanels: ReadonlySet<AdminPanelValue>;
 };
 
 function AdminSidebar({
   activePanel,
+  customerReviewCount,
   onPanelChange,
   visiblePanels,
 }: AdminNavigationProps) {
@@ -251,9 +286,12 @@ function AdminSidebar({
               )}
             >
               <item.icon className="size-4" />
-              {text.nav[item.labelKey]}
+              <span className="min-w-0 flex-1 truncate">{text.nav[item.labelKey]}</span>
+              {item.labelKey === "customers" ? (
+                <CustomerReviewBadge count={customerReviewCount} />
+              ) : null}
               {item.labelKey === "catalog" && (
-                <ChevronRight className="ml-auto size-4 opacity-60" />
+                <ChevronRight className="size-4 opacity-60" />
               )}
             </button>
           );
@@ -282,6 +320,7 @@ function AdminSidebar({
 
 function AdminTopbar({
   activePanel,
+  customerReviewCount,
   onPanelChange,
   visiblePanels,
 }: AdminNavigationProps) {
@@ -349,9 +388,12 @@ function AdminTopbar({
                     )}
                   >
                     <item.icon className="size-4" />
-                    {text.nav[item.labelKey]}
+                    <span className="min-w-0 flex-1 truncate">{text.nav[item.labelKey]}</span>
+                    {item.labelKey === "customers" ? (
+                      <CustomerReviewBadge count={customerReviewCount} />
+                    ) : null}
                     {item.labelKey === "catalog" && (
-                      <ChevronRight className="ml-auto size-4 opacity-60" />
+                      <ChevronRight className="size-4 opacity-60" />
                     )}
                   </button>
                 );
@@ -390,4 +432,49 @@ function AdminTopbar({
       </div>
     </header>
   );
+}
+
+function CustomerReviewBadge({ count }: { count: number }) {
+  if (count <= 0) {
+    return null;
+  }
+
+  return (
+    <span
+      className="ml-auto inline-flex h-5 min-w-5 items-center justify-center gap-1 rounded-full bg-red-500 px-1.5 text-[10px] font-black leading-none text-white shadow-sm ring-2 ring-white"
+      aria-label={`待审核客户 ${count}`}
+    >
+      <span className="size-1.5 rounded-full bg-white" />
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
+async function fetchCustomerReviewCount(signal: AbortSignal) {
+  const response = await fetch("/api/admin/customers?limit=1&offset=0&assignmentStatus=needs_review", {
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+    signal,
+  });
+
+  if (!response.ok) {
+    return 0;
+  }
+
+  const payload = (await response.json().catch(() => null)) as unknown;
+
+  if (!isRecord(payload)) {
+    return 0;
+  }
+
+  const meta = isRecord(payload.meta) ? payload.meta : null;
+  const facets = meta && isRecord(meta.facets) ? meta.facets : null;
+  const total = readNumber(meta?.total);
+  const needsReview = readNumber(facets?.needsReview);
+
+  return Math.max(0, needsReview ?? total ?? 0);
+}
+
+function readNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
