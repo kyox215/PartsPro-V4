@@ -17,6 +17,7 @@ export const adminPermissions = [
   "customers.read",
   "customers.manage",
   "customers.classify",
+  "customers.manage_terms",
   "employees.read",
   "employees.manage_permissions",
   "orders.read",
@@ -110,6 +111,7 @@ export const roleTemplatePermissions: Record<string, Set<string>> = {
     "customers.read",
     "customers.manage",
     "customers.classify",
+    "customers.manage_terms",
     "employees.read",
   ]),
   sales_support: new Set([

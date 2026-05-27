@@ -18,9 +18,9 @@ const accountQuerySchema = z
 
 const accountPatchSchema = z
   .object({
-    userId: z.string().trim().uuid(),
     accountType: z.enum(["customer", "employee"]),
     customerType: z.enum(["retail", "wholesale"]).optional(),
+    reason: z.string().trim().min(3).max(1000),
     roleTemplate: z
       .enum([
         "admin",
@@ -38,8 +38,13 @@ const accountPatchSchema = z
     assignmentStatus: z
       .enum(["needs_review", "assigned", "converted_to_employee", "archived"])
       .optional(),
+    userId: z.string().trim().uuid(),
   })
-  .strict();
+  .strict()
+  .refine((value) => value.accountType === "employee" || value.roleTemplate === undefined, {
+    message: "roleTemplate can only be set for employee accounts",
+    path: ["roleTemplate"],
+  });
 
 const accountQueryKeys = new Set(Object.keys(accountQuerySchema.shape));
 const profileSelect =
@@ -56,9 +61,8 @@ export async function GET(request: NextRequest) {
     return query.response;
   }
 
-  const admin = await requireAdminApi(
-    query.data.accountType === "employee" ? "employees.read" : "customers.read"
-  );
+  const accountType = query.data.accountType ?? "customer";
+  const admin = await requireAdminApi(accountType === "employee" ? "employees.read" : "customers.read");
 
   if (!admin.ok) {
     return admin.response;
@@ -73,9 +77,7 @@ export async function GET(request: NextRequest) {
       .from("profiles")
       .select(profileSelect, { count: "exact" });
 
-    if (query.data.accountType) {
-      profileRequest = profileRequest.eq("account_type", query.data.accountType);
-    }
+    profileRequest = profileRequest.eq("account_type", accountType);
 
     if (query.data.q) {
       const search = query.data.q.replace(/[%(),]/g, " ").trim();
@@ -150,11 +152,11 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase.rpc("admin_update_account", {
+    const { data, error } = await supabase.rpc("admin_update_account_type", {
       p_account_type: parsed.data.accountType,
       p_assignment_status: parsed.data.assignmentStatus ?? null,
       p_customer_type: parsed.data.customerType ?? null,
-      p_role_template: parsed.data.roleTemplate ?? null,
+      p_reason: parsed.data.reason,
       p_user_id: parsed.data.userId,
     });
 
@@ -164,11 +166,29 @@ export async function PATCH(request: NextRequest) {
       });
     }
 
+    let roleData: unknown = null;
+
+    if (parsed.data.accountType === "employee" && parsed.data.roleTemplate) {
+      const roleResult = await supabase.rpc("admin_update_employee_role", {
+        p_reason: parsed.data.reason,
+        p_role_template: parsed.data.roleTemplate,
+        p_user_id: parsed.data.userId,
+      });
+
+      if (roleResult.error) {
+        return apiError(502, "ADMIN_EMPLOYEE_ROLE_UPDATE_FAILED", "Employee role could not be updated.", {
+          message: roleResult.error.message,
+        });
+      }
+
+      roleData = roleResult.data;
+    }
+
     return NextResponse.json({
-      data,
+      data: roleData ?? data,
       meta: {
         source: "supabase_rpc",
-        rpc: "admin_update_account",
+        rpc: roleData ? "admin_update_employee_role" : "admin_update_account_type",
       },
     });
   } catch {

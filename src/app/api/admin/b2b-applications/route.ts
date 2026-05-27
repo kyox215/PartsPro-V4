@@ -34,8 +34,6 @@ export async function GET(request: NextRequest) {
         limit: query.data.limit,
         offset: query.data.offset,
         returned: result.data.applications.length,
-        deprecated: true,
-        replacement: "/api/admin/accounts",
         workflow: "submitted application -> approved customer",
       },
     });

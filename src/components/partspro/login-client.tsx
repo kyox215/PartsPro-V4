@@ -1,7 +1,7 @@
 "use client";
 
 import { useFormStatus } from "react-dom";
-import { Loader2, LogIn } from "lucide-react";
+import { Loader2, LogIn, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 type LoginSubmitButtonProps = {
@@ -11,6 +11,8 @@ type LoginSubmitButtonProps = {
 type GoogleLoginButtonProps = LoginSubmitButtonProps & {
   href: string;
 };
+
+type WeChatLoginButtonProps = GoogleLoginButtonProps;
 
 export function LoginSubmitButton({ disabled = false }: LoginSubmitButtonProps) {
   const { pending } = useFormStatus();
@@ -30,6 +32,38 @@ export function GoogleLoginButton({ disabled = false, href }: GoogleLoginButtonP
         G
       </span>
       Continua con Google
+    </>
+  );
+
+  if (disabled) {
+    return (
+      <Button
+        className="h-11 w-full border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
+        type="button"
+        variant="outline"
+        disabled
+      >
+        {content}
+      </Button>
+    );
+  }
+
+  return (
+    <Button
+      className="h-11 w-full border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
+      asChild
+      variant="outline"
+    >
+      <a href={href}>{content}</a>
+    </Button>
+  );
+}
+
+export function WeChatLoginButton({ disabled = false, href }: WeChatLoginButtonProps) {
+  const content = (
+    <>
+      <MessageCircle className="size-5 text-[#07c160]" />
+      Continua con WeChat
     </>
   );
 

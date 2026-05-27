@@ -1,7 +1,13 @@
 const DEFAULT_LOGIN_REDIRECT = "/account";
+const CUSTOMER_POST_LOGIN_REDIRECT = "/";
+const STAFF_POST_LOGIN_REDIRECT = "/admin";
 
 type HeaderReader = {
   get(name: string): string | null;
+};
+
+type PostLoginAccountState = {
+  adminAllowed?: boolean;
 };
 
 export function cleanAuthRedirect(
@@ -25,6 +31,24 @@ export function loginUrl(next: string, error?: string) {
   }
 
   return `/login?${params.toString()}`;
+}
+
+export function postLoginRedirect(next: string, account: PostLoginAccountState) {
+  if (account.adminAllowed) {
+    return STAFF_POST_LOGIN_REDIRECT;
+  }
+
+  const cleanedNext = cleanAuthRedirect(next, CUSTOMER_POST_LOGIN_REDIRECT);
+
+  if (cleanedNext === DEFAULT_LOGIN_REDIRECT || cleanedNext === "/login") {
+    return CUSTOMER_POST_LOGIN_REDIRECT;
+  }
+
+  if (cleanedNext === STAFF_POST_LOGIN_REDIRECT || cleanedNext.startsWith(`${STAFF_POST_LOGIN_REDIRECT}/`)) {
+    return CUSTOMER_POST_LOGIN_REDIRECT;
+  }
+
+  return cleanedNext;
 }
 
 export function requestOrigin(headers: HeaderReader, fallbackOrigin = "http://localhost:3000") {

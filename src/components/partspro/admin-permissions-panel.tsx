@@ -182,6 +182,7 @@ export function AdminPermissionsPanel() {
 
     try {
       await patchPermissions({
+        reason: `Role template changed to ${roleTemplate}.`,
         roleTemplate,
         userId: selectedEmployee.userId,
       });
@@ -216,6 +217,7 @@ export function AdminPermissionsPanel() {
     try {
       const result = await patchPermissions({
         overrides: [{ effect, permissionId }],
+        reason: `Permission override ${permissionId} set to ${effect}.`,
         userId: selectedEmployee.userId,
       });
       setOverrides((current) => [
@@ -478,6 +480,7 @@ async function fetchEmployees(signal?: AbortSignal): Promise<EmployeeAccount[]> 
 
 async function patchPermissions(input: {
   overrides?: Array<{ effect: PermissionEffect; permissionId: string }>;
+  reason: string;
   roleTemplate?: string;
   userId: string;
 }) {

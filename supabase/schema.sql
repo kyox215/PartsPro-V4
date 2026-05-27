@@ -3,16 +3,25 @@
 --
 -- Local target project:
 -- - Linked project ref: yiuxrjqexlfjtxxrkqvi
--- - Snapshot date: 2026-05-25
+-- - Snapshot date: 2026-05-26
 -- - Postgres: 17.6
 -- - PostgREST: v14
 --
--- Local migrations applied to linked remote on 2026-05-25:
+-- Local migrations represented by this schema snapshot:
 -- - supabase/migrations/20260524090000_baseline_empty_public_schema.sql
 -- - supabase/migrations/20260524133225_harden_partspro_relations.sql
 -- - supabase/migrations/20260525111327_allow_customer_owned_rma_order_lines.sql
 -- - supabase/migrations/20260525112440_remove_demo_seed_data.sql
--- - Status: applied to yiuxrjqexlfjtxxrkqvi.
+-- - supabase/migrations/20260525122150_create_product_images_bucket.sql
+-- - supabase/migrations/20260525210756_admin_inventory_order_rpc.sql
+-- - supabase/migrations/20260525223237_optimize_catalog_model_navigation.sql
+-- - supabase/migrations/20260525233226_admin_product_management.sql
+-- - supabase/migrations/20260526075122_unified_accounts_customer_permissions.sql
+-- - supabase/migrations/20260526093219_admin_product_read_rpc.sql
+-- - supabase/migrations/20260526103515_scrub_supplier_sku_prefixes.sql
+-- - supabase/migrations/20260526110944_admin_order_status_rollback_history.sql
+-- - supabase/migrations/20260526153200_customer_management_redesign.sql
+-- - Status: local migration state; apply to yiuxrjqexlfjtxxrkqvi before relying on remote.
 --
 -- The remote database already uses the v4 table names below. Older local
 -- draft names such as companies/order_items are intentionally not used here.
@@ -53,6 +62,10 @@
 --   price_group_id text references public.price_groups(id)
 --   status text default 'pending'
 --     allowed remotely: active, pending, suspended
+--   customer_type text default 'retail'
+--     allowed remotely: retail, wholesale
+--   assignment_status text default 'needs_review'
+--     allowed remotely: needs_review, assigned, converted_to_employee, archived
 --   monthly_purchase text
 --   orders_count integer default 0
 --   revenue numeric default 0
@@ -75,16 +88,38 @@
 --   accepts_marketing boolean default false
 --   submitted_at timestamptz default now()
 --   reviewed_at timestamptz
+--   approved_customer_id uuid references public.customers(id) on delete set null not valid
 --
--- Pending migration additions:
+-- public.customer_memberships
+--   customer_id uuid references public.customers(id) on delete cascade
+--   user_id uuid references auth.users(id) on delete cascade
+--   member_role text default 'owner'
+--     allowed remotely: owner, buyer, finance, support
+--   status text default 'active'
+--     allowed remotely: active, invited, disabled
+--   created_at timestamptz default now()
+--   updated_at timestamptz default now()
+--   primary key (customer_id, user_id)
+--   indexes: user_id/status, customer_id/status
+--
+-- Relationship/security additions:
 --   customers_id_user_id_key unique (id, user_id)
 --   customers_user_id_unique_idx when no duplicate user_id rows exist
 --   profiles.customer_id backfill from customers.user_id where possible
 --   orders_customer_user_match_fkey not valid
---   b2b_applications.approved_customer_id references customers(id) not valid
---   private.current_customer_id()
+--   private.current_customer_id() prefers profiles.customer_id, then active
+--     customer_memberships, then legacy customers.user_id
 --   private.current_customer_status()
---   private.can_view_b2b_prices()
+--   private.can_view_b2b_prices() requires active wholesale customer or staff
+--   customer write RPCs:
+--     admin_update_customer_profile(uuid, jsonb, text)
+--     admin_update_customer_classification(uuid, jsonb, text)
+--     admin_update_customer_terms(uuid, jsonb, text)
+--     admin_review_b2b_application(uuid, text, jsonb, text)
+--     admin_update_account_type(uuid, text, text, text, text)
+--     admin_update_employee_role(uuid, text, text)
+--     admin_update_permission_overrides(uuid, text, jsonb, text)
+--   all admin write RPCs require reason text and write admin_audit_events
 
 -- Catalog and inventory model.
 --
@@ -247,6 +282,12 @@
 
 -- Current RLS posture observed remotely:
 -- - All listed public tables have RLS enabled.
--- - Existing policies are left in place by the pending migration.
--- - The pending migration adds only one new restrictive RMA insert policy and
---   avoids dropping or replacing existing policies.
+-- - Customer read/write paths are permission-scoped:
+--   customers.read, customers.manage, customers.classify,
+--   customers.manage_terms, employees.read, employees.manage_permissions.
+-- - Customer self-service access resolves through profiles.customer_id,
+--   customer_memberships, then legacy customers.user_id.
+-- - Sensitive customer/account/B2B/permission writes go through RPC wrappers
+--   and write admin_audit_events with actor, before/after, reason, metadata.
+-- - Product permission compatibility keeps both products.* and product.*
+--   aliases available for older admin RPCs.

@@ -26,12 +26,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       data: result.data.customers.map(toAdminCustomerDto),
       meta: {
+        facets: result.data.facets,
         source: result.source,
+        nextCursor: result.data.nextCursor,
         total: result.data.total,
         limit: query.data.limit,
         offset: query.data.offset,
         returned: result.data.customers.length,
-        workflow: "b2b_applications -> customers -> orders",
+        workflow: "customers + memberships + orders + audit",
       },
     });
   } catch (error) {

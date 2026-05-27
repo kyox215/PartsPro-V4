@@ -13,6 +13,11 @@ const nextConfig: NextConfig = {
         hostname: supabaseImageHostname,
         pathname: "/storage/v1/object/public/product-images/**",
       },
+      {
+        protocol: "https",
+        hostname: "apiv2.mobilax.fr",
+        pathname: "/v1.0/assets/images/products/id-image/**",
+      },
     ],
   },
   turbopack: {

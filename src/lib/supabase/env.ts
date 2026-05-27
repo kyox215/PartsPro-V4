@@ -17,3 +17,7 @@ export function isSupabaseConfigured() {
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
   );
 }
+
+export function isWeChatLoginEnabled() {
+  return process.env.PARTSPRO_ENABLE_WECHAT_LOGIN === "true";
+}

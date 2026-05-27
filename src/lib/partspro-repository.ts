@@ -51,8 +51,18 @@ const catalogProductCardSelect =
   "id, sku_code, name, brand, model, model_code, model_codes, category, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at, image_path, image_alt";
 const adminCustomerSelect =
   "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, registered_address, billing_address, shipping_address, tier, price_group_id, status, customer_type, assignment_status, level, lifetime_spend_net, assigned_by, assigned_at, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
+const adminCustomerCompatSelect =
+  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, registered_address, billing_address, shipping_address, tier, price_group_id, status, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
+const adminCustomerMinimalSelect =
+  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, registered_address, billing_address, shipping_address, tier, price_group_id, status, created_at, updated_at";
 const adminB2BApplicationSelect =
   "id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, registered_address, shipping_address, monthly_purchase, requested_price_group_id, status, review_note, approved_customer_id, submitted_at, reviewed_at";
+const adminCustomerMembershipSelect =
+  "customer_id, user_id, member_role, status, created_at, updated_at";
+const adminProfileSelect =
+  "id, email, display_name, avatar_url, account_type, role, role_template, customer_id, created_at, updated_at";
+const adminAuditSelect =
+  "id, action, actor_email, actor_role, entity_type, entity_id, before_data, after_data, reason, request_metadata, result, created_at";
 
 export type RepositorySource = "supabase" | "empty";
 
@@ -214,6 +224,53 @@ export type AdminAuditEvent = {
   createdAt: string;
 };
 
+export type AdminCustomerAuditEvent = AdminAuditEvent & {
+  entityId: string | null;
+  entityType: string;
+  result: string;
+};
+
+export type AdminCustomerMembership = {
+  customerId: string;
+  userId: string;
+  email: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+  accountType: "customer" | "employee";
+  role: string | null;
+  roleTemplate: string | null;
+  memberRole: "owner" | "buyer" | "finance" | "support";
+  status: "active" | "invited" | "disabled";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminCustomerOrderSummary = {
+  id: string;
+  orderNo: string;
+  status: AdminOrderDbStatus;
+  paymentStatus: AdminPaymentStatus;
+  totalNet: number;
+  vat: number;
+  shipping: number;
+  total: number;
+  lineCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminCustomerRmaSummary = {
+  id: string;
+  orderNo: string;
+  sku: string;
+  productName: string;
+  status: RmaStatus;
+  quantity: number;
+  requestedResolution: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AdminCustomer = CompanyProfile & {
   customerStatus: AdminCustomerStatus;
   customerType: CustomerType;
@@ -239,11 +296,23 @@ export type AdminCustomer = CompanyProfile & {
   lastOrderAt: string | null;
   createdAt: string;
   updatedAt: string;
+  receivables: number;
+  overdue: number;
+  avgPaymentDays: number | null;
+  primarySku: string | null;
 };
 
 export type AdminCustomerQueryInput = {
+  assignmentStatus?: CustomerAssignmentStatus;
+  createdFrom?: string;
+  createdTo?: string;
+  customerType?: CustomerType;
+  cursor?: string;
+  hasOrders?: boolean;
   limit: number;
   offset: number;
+  priceGroupId?: string;
+  profileComplete?: boolean;
   q?: string;
   sort: "created_desc" | "name" | "revenue_desc" | "last_order_desc";
   status?: AdminCustomerStatus;
@@ -252,29 +321,81 @@ export type AdminCustomerQueryInput = {
 
 export type AdminCustomerPage = {
   customers: AdminCustomer[];
+  facets: {
+    active: number;
+    pending: number;
+    suspended: number;
+    retail: number;
+    wholesale: number;
+    needsReview: number;
+    creditRisk: number;
+  };
+  nextCursor: string | null;
   total: number;
+};
+
+export type AdminCustomerDetail = AdminCustomer & {
+  auditEvents: AdminCustomerAuditEvent[];
+  memberships: AdminCustomerMembership[];
+  orders: AdminCustomerOrderSummary[];
+  rmas: AdminCustomerRmaSummary[];
 };
 
 export type AdminCustomerPatchInput = {
   companyName?: string;
-  contactName?: string;
-  email?: string;
-  phone?: string;
-  vatNumber?: string;
-  fiscalCode?: string;
-  sdi?: string;
-  pec?: string;
-  registeredAddress?: string;
-  billingAddress?: string;
-  shippingAddress?: string;
+  contactName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  vatNumber?: string | null;
+  fiscalCode?: string | null;
+  sdi?: string | null;
+  pec?: string | null;
+  registeredAddress?: string | null;
+  billingAddress?: string | null;
+  shippingAddress?: string | null;
   status?: AdminCustomerStatus;
   tier?: CustomerLevel | string;
   customerType?: CustomerType;
   assignmentStatus?: CustomerAssignmentStatus;
   priceGroupId?: string | null;
-  monthlyPurchase?: string;
+  monthlyPurchase?: string | null;
   creditLimit?: number;
-  paymentTerms?: string;
+  paymentTerms?: string | null;
+  reason?: string;
+};
+
+export type AdminCustomerProfileInput = {
+  billingAddress?: string | null;
+  companyName?: string;
+  contactName?: string | null;
+  email?: string | null;
+  fiscalCode?: string | null;
+  pec?: string | null;
+  phone?: string | null;
+  registeredAddress?: string | null;
+  shippingAddress?: string | null;
+  sdi?: string | null;
+  vatNumber?: string | null;
+  reason: string;
+};
+
+export type AdminCustomerClassificationInput = {
+  assignmentStatus?: CustomerAssignmentStatus;
+  customerType?: CustomerType;
+  memberRole?: AdminCustomerMembership["memberRole"];
+  memberStatus?: AdminCustomerMembership["status"];
+  memberUserId?: string;
+  reason: string;
+  status?: AdminCustomerStatus;
+};
+
+export type AdminCustomerTermsInput = {
+  creditLimit?: number;
+  monthlyPurchase?: string | null;
+  paymentTerms?: string | null;
+  priceGroupId?: string | null;
+  reason: string;
+  tier?: CustomerLevel | string;
 };
 
 export type AdminB2BApplication = {
@@ -315,6 +436,7 @@ export type AdminB2BApplicationReviewInput = {
   id: string;
   decision: "approve" | "reject";
   note?: string;
+  reason?: string;
   tier?: string;
   priceGroupId?: string | null;
   creditLimit?: number;
@@ -429,6 +551,7 @@ export type AdminOrderOperationsPatchInput = {
   carrier?: string;
   note?: string;
   paymentStatus?: AdminPaymentStatus | "unpaid" | "authorized" | "refunded";
+  staffNote?: string;
   tracking?: string;
 };
 
@@ -1105,7 +1228,7 @@ export async function getAdminCustomer(
   id: string
 ): Promise<RepositoryResult<AdminCustomer | null>> {
   const context = await requireSupabaseContext();
-  const row = await readSingleRow(context.client, "customers", "id", id, adminCustomerSelect);
+  const row = await readAdminCustomerById(context.client, id);
 
   return {
     data: row ? mapAdminCustomerRow(row) : null,
@@ -1113,38 +1236,88 @@ export async function getAdminCustomer(
   };
 }
 
+export async function getAdminCustomerDetail(
+  id: string
+): Promise<RepositoryResult<AdminCustomerDetail | null>> {
+  const context = await requireSupabaseContext();
+  const customer = await readAdminCustomerDetail(context.client, id);
+
+  return { data: customer, source: "supabase" };
+}
+
 export async function updateAdminCustomer(
   id: string,
   input: AdminCustomerPatchInput
 ): Promise<RepositoryResult<AdminCustomer>> {
-  const context = await requireSupabaseContext();
-  const payload = buildCustomerPayload(input);
+  const reason = input.reason ?? "Updated from legacy admin customer API.";
+  let result: RepositoryResult<AdminCustomer> | null = null;
 
-  if (Object.keys(payload).length === 0) {
-    const current = await getAdminCustomer(id);
-
-    if (!current.data) {
-      throw new RepositoryWriteError(
-        404,
-        "ADMIN_CUSTOMER_NOT_FOUND",
-        "Customer was not found.",
-        { id }
-      );
-    }
-
-    return { data: current.data, source: current.source };
+  if (
+    input.companyName !== undefined ||
+    input.contactName !== undefined ||
+    input.email !== undefined ||
+    input.phone !== undefined ||
+    input.vatNumber !== undefined ||
+    input.fiscalCode !== undefined ||
+    input.sdi !== undefined ||
+    input.pec !== undefined ||
+    input.registeredAddress !== undefined ||
+    input.billingAddress !== undefined ||
+    input.shippingAddress !== undefined
+  ) {
+    result = await updateAdminCustomerProfile(id, {
+      billingAddress: input.billingAddress,
+      companyName: input.companyName,
+      contactName: input.contactName,
+      email: input.email,
+      fiscalCode: input.fiscalCode,
+      pec: input.pec,
+      phone: input.phone,
+      reason,
+      registeredAddress: input.registeredAddress,
+      sdi: input.sdi,
+      shippingAddress: input.shippingAddress,
+      vatNumber: input.vatNumber,
+    });
   }
 
-  const row = await updateSingleRow(
-    context.client,
-    "customers",
-    "id",
-    id,
-    payload,
-    adminCustomerSelect
-  );
+  if (
+    input.status !== undefined ||
+    input.customerType !== undefined ||
+    input.assignmentStatus !== undefined
+  ) {
+    result = await updateAdminCustomerClassification(id, {
+      assignmentStatus: input.assignmentStatus,
+      customerType: input.customerType,
+      reason,
+      status: input.status,
+    });
+  }
 
-  if (!row) {
+  if (
+    input.tier !== undefined ||
+    input.priceGroupId !== undefined ||
+    input.monthlyPurchase !== undefined ||
+    input.creditLimit !== undefined ||
+    input.paymentTerms !== undefined
+  ) {
+    result = await updateAdminCustomerTerms(id, {
+      creditLimit: input.creditLimit,
+      monthlyPurchase: input.monthlyPurchase,
+      paymentTerms: input.paymentTerms,
+      priceGroupId: input.priceGroupId,
+      reason,
+      tier: input.tier,
+    });
+  }
+
+  if (result) {
+    return result;
+  }
+
+  const current = await getAdminCustomer(id);
+
+  if (!current.data) {
     throw new RepositoryWriteError(
       404,
       "ADMIN_CUSTOMER_NOT_FOUND",
@@ -1153,17 +1326,52 @@ export async function updateAdminCustomer(
     );
   }
 
-  const customer = mapAdminCustomerRow(row);
+  return { data: current.data, source: current.source };
+}
 
-  if (!customer) {
-    throw new RepositoryWriteError(
-      502,
-      "ADMIN_CUSTOMER_RESULT_INVALID",
-      "Supabase returned an invalid customer row."
-    );
-  }
+export async function updateAdminCustomerProfile(
+  id: string,
+  input: AdminCustomerProfileInput
+): Promise<RepositoryResult<AdminCustomer>> {
+  const context = await requireSupabaseContext();
+  const payload = buildCustomerProfilePayload(input);
+  const row = await rpcRow(context.client, "admin_update_customer_profile", {
+    p_customer: payload,
+    p_customer_id: id,
+    p_reason: input.reason,
+  }, "ADMIN_CUSTOMER_PROFILE_UPDATE_FAILED");
 
-  return { data: customer, source: "supabase" };
+  return { data: requireAdminCustomerRow(row), source: "supabase" };
+}
+
+export async function updateAdminCustomerClassification(
+  id: string,
+  input: AdminCustomerClassificationInput
+): Promise<RepositoryResult<AdminCustomer>> {
+  const context = await requireSupabaseContext();
+  const payload = buildCustomerClassificationPayload(input);
+  const row = await rpcRow(context.client, "admin_update_customer_classification", {
+    p_customer: payload,
+    p_customer_id: id,
+    p_reason: input.reason,
+  }, "ADMIN_CUSTOMER_CLASSIFICATION_UPDATE_FAILED");
+
+  return { data: requireAdminCustomerRow(row), source: "supabase" };
+}
+
+export async function updateAdminCustomerTerms(
+  id: string,
+  input: AdminCustomerTermsInput
+): Promise<RepositoryResult<AdminCustomer>> {
+  const context = await requireSupabaseContext();
+  const payload = buildCustomerTermsPayload(input);
+  const row = await rpcRow(context.client, "admin_update_customer_terms", {
+    p_customer_id: id,
+    p_reason: input.reason,
+    p_terms: payload,
+  }, "ADMIN_CUSTOMER_TERMS_UPDATE_FAILED");
+
+  return { data: requireAdminCustomerRow(row), source: "supabase" };
 }
 
 export async function listAdminB2BApplications(
@@ -1365,8 +1573,8 @@ export async function updateAdminOrderOperations(
   assignDefined(orderPayload, "tracking_code", input.tracking);
   assignDefined(orderPayload, "payment_status", normalizeAdminPaymentStatusForWrite(input.paymentStatus));
 
-  if (input.note) {
-    assignDefined(orderPayload, "staff_note", input.note);
+  if (input.staffNote !== undefined) {
+    orderPayload.staff_note = input.staffNote.trim();
   }
 
   if (Object.keys(orderPayload).length > 0) {
@@ -1394,10 +1602,11 @@ export async function updateAdminOrderOperations(
       order_id: orderId,
       event_type: "operations_updated",
       actor_id: context.userId,
-      note: input.note ?? "Admin operations fields updated",
+      note: input.note ?? (input.staffNote !== undefined ? "Staff note updated" : "Admin operations fields updated"),
       metadata: {
         carrier: input.carrier ?? null,
         payment_status: input.paymentStatus ?? null,
+        staff_note_updated: input.staffNote !== undefined,
         tracking: input.tracking ?? null,
       },
     });
@@ -1964,61 +2173,397 @@ async function readAdminCustomerPage(
   client: SupabaseServerClient,
   query: AdminCustomerQueryInput
 ): Promise<AdminCustomerPage | null> {
-  const from = Math.max(query.offset, 0);
+  const cursorOffset = query.cursor ? Number.parseInt(query.cursor, 10) : NaN;
+  const from = Number.isFinite(cursorOffset) ? Math.max(cursorOffset, 0) : Math.max(query.offset, 0);
   const to = from + Math.max(query.limit, 1) - 1;
 
+  for (const profile of adminCustomerReadProfiles) {
+    try {
+      return await readAdminCustomerPageWithProfile(client, query, from, to, profile);
+    } catch (error) {
+      if (!isRecoverableCustomerSchemaError(error)) {
+        return null;
+      }
+    }
+  }
+
+  return null;
+}
+
+type AdminCustomerReadMode = "full" | "compat" | "minimal";
+
+type AdminCustomerReadProfile = {
+  mode: AdminCustomerReadMode;
+  select: string;
+};
+
+const adminCustomerReadProfiles: AdminCustomerReadProfile[] = [
+  { mode: "full", select: adminCustomerSelect },
+  { mode: "compat", select: adminCustomerCompatSelect },
+  { mode: "minimal", select: adminCustomerMinimalSelect },
+];
+
+async function readAdminCustomerPageWithProfile(
+  client: SupabaseServerClient,
+  query: AdminCustomerQueryInput,
+  from: number,
+  to: number,
+  profile: AdminCustomerReadProfile
+): Promise<AdminCustomerPage> {
+  let request = client.from("customers").select(profile.select, { count: "exact" });
+
+  if (query.status) {
+    request = request.eq("status", query.status);
+  }
+
+  if (query.tier) {
+    request = request.eq("tier", query.tier);
+  }
+
+  if (query.customerType && profile.mode === "full") {
+    request = request.eq("customer_type", query.customerType);
+  }
+
+  if (query.assignmentStatus && profile.mode === "full") {
+    request = request.eq("assignment_status", query.assignmentStatus);
+  }
+
+  if (query.priceGroupId) {
+    request = request.eq("price_group_id", query.priceGroupId);
+  }
+
+  if (query.profileComplete !== undefined && profile.mode !== "minimal") {
+    request = query.profileComplete
+      ? request.not("profile_completed_at", "is", null)
+      : request.is("profile_completed_at", null);
+  }
+
+  if (query.createdFrom) {
+    request = request.gte("created_at", `${query.createdFrom}T00:00:00.000Z`);
+  }
+
+  if (query.createdTo) {
+    request = request.lte("created_at", `${query.createdTo}T23:59:59.999Z`);
+  }
+
+  if (query.hasOrders !== undefined && profile.mode !== "minimal") {
+    request = query.hasOrders ? request.gt("orders_count", 0) : request.eq("orders_count", 0);
+  }
+
+  if (query.q) {
+    const search = sanitizePostgrestSearchTerm(query.q);
+    request = request.or(
+      `company_name.ilike.%${search}%,contact_name.ilike.%${search}%,email.ilike.%${search}%,vat_number.ilike.%${search}%`
+    );
+  }
+
+  switch (query.sort) {
+    case "name":
+      request = request.order("company_name", { ascending: true });
+      break;
+    case "revenue_desc":
+      request =
+        profile.mode === "minimal"
+          ? request.order("created_at", { ascending: false })
+          : request.order("revenue", { ascending: false });
+      break;
+    case "last_order_desc":
+      request =
+        profile.mode === "minimal"
+          ? request.order("created_at", { ascending: false })
+          : request.order("last_order_at", {
+              ascending: false,
+              nullsFirst: false,
+            });
+      break;
+    case "created_desc":
+    default:
+      request = request.order("created_at", { ascending: false });
+      break;
+  }
+
+  const { data, error, count } = await request.range(from, to);
+  const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
+
+  if (error) {
+    throw error;
+  }
+
+  if (!rows) {
+    throw new Error("Supabase returned an invalid customer list.");
+  }
+
+  const total = count ?? rows.length;
+
+  return {
+    customers: rows.map(mapAdminCustomerRow).filter(isDefined),
+    facets: await readAdminCustomerFacets(client, profile.mode),
+    nextCursor: to + 1 < total ? String(to + 1) : null,
+    total,
+  };
+}
+
+async function readAdminCustomerById(
+  client: SupabaseServerClient,
+  id: string
+): Promise<DbRow | null> {
+  for (const profile of adminCustomerReadProfiles) {
+    try {
+      const { data, error } = await client
+        .from("customers")
+        .select(profile.select)
+        .eq("id", id)
+        .maybeSingle();
+
+      if (error) {
+        throw error;
+      }
+
+      return isDbRow(data) ? data : null;
+    } catch (error) {
+      if (!isRecoverableCustomerSchemaError(error)) {
+        return null;
+      }
+    }
+  }
+
+  return null;
+}
+
+async function readAdminCustomerDetail(
+  client: SupabaseServerClient,
+  id: string
+): Promise<AdminCustomerDetail | null> {
+  const row = await readAdminCustomerById(client, id);
+  const customer = row ? mapAdminCustomerRow(row) : null;
+
+  if (!customer) {
+    return null;
+  }
+
+  const [memberships, orders, auditEvents] = await Promise.all([
+    readAdminCustomerMemberships(client, id),
+    readAdminCustomerOrders(client, id),
+    readAdminCustomerAuditEvents(client, id),
+  ]);
+  const rmas = await readAdminCustomerRmas(client, orders);
+
+  return {
+    ...customer,
+    auditEvents,
+    memberships,
+    orders,
+    rmas,
+  };
+}
+
+async function readAdminCustomerFacets(
+  client: SupabaseServerClient,
+  mode: AdminCustomerReadMode = "full"
+): Promise<AdminCustomerPage["facets"]> {
+  const empty = {
+    active: 0,
+    pending: 0,
+    suspended: 0,
+    retail: 0,
+    wholesale: 0,
+    needsReview: 0,
+    creditRisk: 0,
+  };
+  const rows = await readAdminCustomerFacetRows(client, mode);
+
+  if (!rows) {
+    return empty;
+  }
+
+  const facets: AdminCustomerPage["facets"] = { ...empty };
+
+  for (const row of rows) {
+    const status = normalizeAdminCustomerStatus(pickString(row, ["status"]));
+    const customerType = normalizeCustomerType(pickString(row, ["customer_type"]));
+    const assignmentStatus = normalizeCustomerAssignmentStatus(pickString(row, ["assignment_status"]));
+    const creditLimit = pickNumber(row, ["credit_limit"]) ?? 0;
+    const revenue = pickNumber(row, ["revenue", "lifetime_spend_net"]) ?? 0;
+
+    facets[status] += 1;
+    facets[customerType] += 1;
+
+    if (assignmentStatus === "needs_review") {
+      facets.needsReview += 1;
+    }
+
+    if (creditLimit > 0 && revenue >= creditLimit) {
+      facets.creditRisk += 1;
+    }
+  }
+
+  return facets;
+}
+
+async function readAdminCustomerFacetRows(
+  client: SupabaseServerClient,
+  mode: AdminCustomerReadMode
+) {
+  const profiles =
+    mode === "full"
+      ? adminCustomerFacetProfiles
+      : mode === "compat"
+        ? adminCustomerFacetProfiles.slice(1)
+        : adminCustomerFacetProfiles.slice(2);
+
+  for (const profile of profiles) {
+    try {
+      return await readRowsStrict(client, "customers", profile.select, 20000);
+    } catch (error) {
+      if (!isRecoverableCustomerSchemaError(error)) {
+        return null;
+      }
+    }
+  }
+
+  return null;
+}
+
+const adminCustomerFacetProfiles: AdminCustomerReadProfile[] = [
+  {
+    mode: "full",
+    select: "status, customer_type, assignment_status, credit_limit, revenue",
+  },
+  {
+    mode: "compat",
+    select: "status, credit_limit, revenue",
+  },
+  {
+    mode: "minimal",
+    select: "status",
+  },
+];
+
+async function readAdminCustomerMemberships(
+  client: SupabaseServerClient,
+  customerId: string
+): Promise<AdminCustomerMembership[]> {
+  const membershipRows = await readRowsByColumn(
+    client,
+    "customer_memberships",
+    adminCustomerMembershipSelect,
+    "customer_id",
+    customerId,
+    { orderColumn: "created_at", ascending: true }
+  );
+
+  if (!membershipRows) {
+    return [];
+  }
+
+  const userIds = uniqueDefinedStrings(membershipRows.map((row) => pickString(row, ["user_id"])));
+  const profileRows = await readMatchingRows(
+    client,
+    "profiles",
+    adminProfileSelect,
+    "id",
+    userIds,
+    userIds.length
+  );
+  const profilesById = new Map(
+    (profileRows ?? []).map((row) => [pickString(row, ["id"]) ?? "", row])
+  );
+
+  return membershipRows
+    .map((row) => mapAdminCustomerMembershipRow(row, profilesById))
+    .filter(isDefined);
+}
+
+async function readAdminCustomerOrders(
+  client: SupabaseServerClient,
+  customerId: string
+): Promise<AdminCustomerOrderSummary[]> {
   try {
-    let request = client.from("customers").select(adminCustomerSelect, { count: "exact" });
-
-    if (query.status) {
-      request = request.eq("status", query.status);
-    }
-
-    if (query.tier) {
-      request = request.eq("tier", query.tier);
-    }
-
-    if (query.q) {
-      const search = sanitizePostgrestSearchTerm(query.q);
-      request = request.or(
-        `company_name.ilike.%${search}%,contact_name.ilike.%${search}%,email.ilike.%${search}%,vat_number.ilike.%${search}%`
-      );
-    }
-
-    switch (query.sort) {
-      case "name":
-        request = request.order("company_name", { ascending: true });
-        break;
-      case "revenue_desc":
-        request = request.order("revenue", { ascending: false });
-        break;
-      case "last_order_desc":
-        request = request.order("last_order_at", {
-          ascending: false,
-          nullsFirst: false,
-        });
-        break;
-      case "created_desc":
-      default:
-        request = request.order("created_at", { ascending: false });
-        break;
-    }
-
-    const { data, error, count } = await request.range(from, to);
-    const rows = Array.isArray(data)
-      ? (data as unknown[]).filter(isDbRow)
-      : null;
+    const { data, error } = await client
+      .from("orders")
+      .select("*")
+      .eq("customer_id", customerId)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
 
     if (error || !rows) {
-      return null;
+      return [];
     }
 
-    return {
-      customers: rows.map(mapAdminCustomerRow).filter(isDefined),
-      total: count ?? rows.length,
-    };
+    const orderIds = rows.map((row) => pickString(row, ["id"])).filter(isDefined);
+    const lineRows = await readOrderLineRowsForOrderIds(client, orderIds);
+    const lineCounts = countLinesByOrder(lineRows ?? []);
+
+    return rows
+      .map((row) => mapAdminCustomerOrderSummaryRow(row, lineCounts))
+      .filter(isDefined);
   } catch {
-    return null;
+    return [];
+  }
+}
+
+async function readAdminCustomerRmas(
+  client: SupabaseServerClient,
+  orders: AdminCustomerOrderSummary[]
+): Promise<AdminCustomerRmaSummary[]> {
+  const orderIds = orders.map((order) => order.id);
+
+  if (orderIds.length === 0) {
+    return [];
+  }
+
+  const lineRows = await readOrderLineRowsForOrderIds(client, orderIds);
+
+  if (!lineRows || lineRows.length === 0) {
+    return [];
+  }
+
+  const lineIds = uniqueDefinedStrings(lineRows.map((row) => pickString(row, ["id"])));
+  const linesById = new Map(lineRows.map((row) => [pickString(row, ["id"]) ?? "", row]));
+  const ordersById = new Map(orders.map((order) => [order.id, order]));
+
+  try {
+    const { data, error } = await client
+      .from("rma_requests")
+      .select("*")
+      .in("order_line_id", lineIds)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
+
+    if (error || !rows) {
+      return [];
+    }
+
+    return rows
+      .map((row) => mapAdminCustomerRmaSummaryRow(row, linesById, ordersById))
+      .filter(isDefined);
+  } catch {
+    return [];
+  }
+}
+
+async function readAdminCustomerAuditEvents(
+  client: SupabaseServerClient,
+  customerId: string
+): Promise<AdminCustomerAuditEvent[]> {
+  try {
+    const { data, error } = await client
+      .from("admin_audit_events")
+      .select(adminAuditSelect)
+      .eq("entity_id", customerId)
+      .order("created_at", { ascending: false })
+      .limit(30);
+    const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
+
+    if (error || !rows) {
+      return [];
+    }
+
+    return rows.map(mapAdminCustomerAuditEvent);
+  } catch {
+    return [];
   }
 }
 
@@ -2071,120 +2616,31 @@ async function reviewB2BApplication(
   client: SupabaseServerClient,
   input: AdminB2BApplicationReviewInput
 ): Promise<AdminB2BApplicationReviewResult> {
-  const applicationRow = await readSingleRow(
+  const result = await rpcObject(
     client,
-    "b2b_applications",
-    "id",
-    input.id,
-    adminB2BApplicationSelect
-  );
-  const application = applicationRow ? mapAdminB2BApplicationRow(applicationRow) : null;
-
-  if (!application || !applicationRow) {
-    throw new RepositoryWriteError(
-      404,
-      "ADMIN_B2B_APPLICATION_NOT_FOUND",
-      "B2B application was not found.",
-      { id: input.id }
-    );
-  }
-
-  if (input.decision === "reject") {
-    const rejectedRow = await updateSingleRow(
-      client,
-      "b2b_applications",
-      "id",
-      input.id,
-      {
-        status: "rejected",
-        review_note: input.note ?? "",
-        reviewed_at: new Date().toISOString(),
-      },
-      adminB2BApplicationSelect
-    );
-    const rejected = rejectedRow ? mapAdminB2BApplicationRow(rejectedRow) : null;
-
-    if (!rejected) {
-      throw new RepositoryWriteError(
-        502,
-        "ADMIN_B2B_APPLICATION_REVIEW_FAILED",
-        "Supabase could not reject the B2B application."
-      );
-    }
-
-    return { application: rejected, customer: null };
-  }
-
-  const customer = await upsertCustomerFromB2BApplication(client, applicationRow, input);
-  const approvedRow = await updateSingleRow(
-    client,
-    "b2b_applications",
-    "id",
-    input.id,
+    "admin_review_b2b_application",
     {
-      status: "approved",
-      review_note: input.note ?? "",
-      approved_customer_id: customer.id,
-      reviewed_at: new Date().toISOString(),
+      p_application_id: input.id,
+      p_decision: input.decision,
+      p_reason: input.reason ?? input.note ?? "",
+      p_terms: buildB2BReviewTermsPayload(input),
     },
-    adminB2BApplicationSelect
+    "ADMIN_B2B_APPLICATION_REVIEW_FAILED"
   );
-  const approved = approvedRow ? mapAdminB2BApplicationRow(approvedRow) : null;
+  const applicationRow = getObject(result, "application");
+  const customerRow = getObject(result, "customer");
+  const application = applicationRow ? mapAdminB2BApplicationRow(applicationRow) : null;
+  const customer = customerRow ? mapAdminCustomerRow(customerRow) : null;
 
-  if (!approved) {
+  if (!application) {
     throw new RepositoryWriteError(
       502,
-      "ADMIN_B2B_APPLICATION_REVIEW_FAILED",
-      "Supabase could not approve the B2B application."
+      "ADMIN_B2B_APPLICATION_REVIEW_RESULT_INVALID",
+      "Supabase did not return a reviewed B2B application."
     );
   }
 
-  return { application: approved, customer };
-}
-
-async function upsertCustomerFromB2BApplication(
-  client: SupabaseServerClient,
-  applicationRow: DbRow,
-  input: AdminB2BApplicationReviewInput
-): Promise<AdminCustomer> {
-  const approvedCustomerId = pickString(applicationRow, ["approved_customer_id"]);
-  const vatNumber = pickString(applicationRow, ["vat_number"]) ?? "";
-  const existingByApprovedId = approvedCustomerId
-    ? await readSingleRow(client, "customers", "id", approvedCustomerId, adminCustomerSelect)
-    : null;
-  const existingByVat = !existingByApprovedId && vatNumber
-    ? (await readMatchingRows(
-        client,
-        "customers",
-        adminCustomerSelect,
-        "vat_number",
-        [vatNumber],
-        1
-      ))?.[0] ?? null
-    : null;
-  const existing = existingByApprovedId ?? existingByVat;
-  const payload = customerPayloadFromB2BApplication(applicationRow, input);
-  const row = existing
-    ? await updateSingleRow(
-        client,
-        "customers",
-        "id",
-        pickString(existing, ["id"]) ?? "",
-        payload,
-        adminCustomerSelect
-      )
-    : await insertRow(client, "customers", payload);
-  const customer = row ? mapAdminCustomerRow(row) : null;
-
-  if (!customer) {
-    throw new RepositoryWriteError(
-      502,
-      "ADMIN_CUSTOMER_CREATE_FAILED",
-      "Supabase could not convert the B2B application into an active customer."
-    );
-  }
-
-  return customer;
+  return { application, customer };
 }
 
 async function readAdminOrderPage(
@@ -2684,6 +3140,41 @@ async function readRows(
   }
 }
 
+async function readRowsStrict(
+  client: SupabaseServerClient,
+  table: string,
+  select = "*",
+  limit = 20000
+): Promise<DbRow[]> {
+  const pageSize = 1000;
+  const rows: DbRow[] = [];
+
+  while (rows.length < limit) {
+    const from = rows.length;
+    const to = Math.min(from + pageSize, limit) - 1;
+    const { data, error } = await client.from(table).select(select).range(from, to);
+    const pageRows = Array.isArray(data)
+      ? (data as unknown[]).filter(isDbRow)
+      : null;
+
+    if (error) {
+      throw error;
+    }
+
+    if (!pageRows) {
+      throw new Error(`Supabase returned invalid rows for ${table}.`);
+    }
+
+    rows.push(...pageRows);
+
+    if (pageRows.length < to - from + 1) {
+      break;
+    }
+  }
+
+  return rows;
+}
+
 async function readMatchingRows(
   client: SupabaseServerClient,
   table: string,
@@ -2834,23 +3325,29 @@ async function readCustomerRowsForOrders(
     return [];
   }
 
-  try {
-    const { data, error } = await client
-      .from("customers")
-      .select(adminCustomerSelect)
-      .in("id", customerIds);
-    const rows = Array.isArray(data)
-      ? (data as unknown[]).filter(isDbRow)
-      : null;
+  for (const profile of adminCustomerReadProfiles) {
+    try {
+      const { data, error } = await client
+        .from("customers")
+        .select(profile.select)
+        .in("id", customerIds);
+      const rows = Array.isArray(data)
+        ? (data as unknown[]).filter(isDbRow)
+        : null;
 
-    if (error || !rows) {
-      return null;
+      if (error) {
+        throw error;
+      }
+
+      return rows;
+    } catch (error) {
+      if (!isRecoverableCustomerSchemaError(error)) {
+        return null;
+      }
     }
-
-    return rows;
-  } catch {
-    return null;
   }
+
+  return null;
 }
 
 async function readOrderCustomerRow(
@@ -2858,9 +3355,7 @@ async function readOrderCustomerRow(
   orderRow: DbRow
 ) {
   const customerId = pickString(orderRow, ["customer_id", "company_id"]);
-  return customerId
-    ? readSingleRow(client, "customers", "id", customerId, adminCustomerSelect)
-    : null;
+  return customerId ? readAdminCustomerById(client, customerId) : null;
 }
 
 async function readOrderEventActorRows(
@@ -3019,6 +3514,64 @@ async function rpcProductRow(
   return row;
 }
 
+async function rpcRow(
+  client: SupabaseServerClient,
+  rpcName: string,
+  args: Record<string, unknown>,
+  errorCode: string
+): Promise<DbRow> {
+  const { data, error } = await client.rpc(rpcName, args);
+
+  if (error) {
+    throw new RepositoryWriteError(
+      supabaseRpcStatus(error),
+      errorCode,
+      "Supabase rejected the admin operation.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const row = extractRpcRow(data);
+
+  if (!row) {
+    throw new RepositoryWriteError(
+      502,
+      `${errorCode}_RESULT_INVALID`,
+      "Supabase did not return a valid row."
+    );
+  }
+
+  return row;
+}
+
+async function rpcObject(
+  client: SupabaseServerClient,
+  rpcName: string,
+  args: Record<string, unknown>,
+  errorCode: string
+): Promise<DbRow> {
+  const { data, error } = await client.rpc(rpcName, args);
+
+  if (error) {
+    throw new RepositoryWriteError(
+      supabaseRpcStatus(error),
+      errorCode,
+      "Supabase rejected the admin operation.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  if (!isDbRow(data)) {
+    throw new RepositoryWriteError(
+      502,
+      `${errorCode}_RESULT_INVALID`,
+      "Supabase did not return a valid result object."
+    );
+  }
+
+  return data;
+}
+
 function extractRpcRow(data: unknown): DbRow | null {
   if (isDbRow(data)) {
     return data;
@@ -3029,6 +3582,28 @@ function extractRpcRow(data: unknown): DbRow | null {
   }
 
   return null;
+}
+
+function supabaseRpcStatus(error: unknown) {
+  const code = isDbRow(error) ? pickString(error, ["code"]) : null;
+
+  if (code === "42501") {
+    return 403;
+  }
+
+  if (code === "23503") {
+    return 404;
+  }
+
+  if (code === "23514" || code === "22023" || code === "22P02") {
+    return 400;
+  }
+
+  if (code === "23505") {
+    return 409;
+  }
+
+  return 502;
 }
 
 function buildProductPayload(
@@ -3103,67 +3678,58 @@ function buildProductPayload(
   return payload;
 }
 
-function buildCustomerPayload(input: AdminCustomerPatchInput) {
+function buildCustomerProfilePayload(input: AdminCustomerProfileInput) {
   const payload: Record<string, unknown> = {};
 
-  assignDefined(payload, "company_name", trimOptional(input.companyName));
-  assignDefined(payload, "contact_name", trimOptional(input.contactName));
-  assignDefined(payload, "email", trimOptional(input.email));
-  assignDefined(payload, "phone", trimOptional(input.phone));
-  assignDefined(payload, "vat_number", trimOptional(input.vatNumber));
-  assignDefined(payload, "fiscal_code", trimOptional(input.fiscalCode));
-  assignDefined(payload, "sdi", trimOptional(input.sdi));
-  assignDefined(payload, "pec", trimOptional(input.pec));
-  assignDefined(payload, "registered_address", trimOptional(input.registeredAddress));
-  assignDefined(payload, "billing_address", trimOptional(input.billingAddress));
-  assignDefined(payload, "shipping_address", trimOptional(input.shippingAddress));
-  assignDefined(payload, "status", input.status);
-  assignDefined(payload, "tier", input.tier ? normalizeCustomerTier(input.tier) : undefined);
-  assignDefined(payload, "level", input.tier ? normalizeCustomerTier(input.tier) : undefined);
-  assignDefined(payload, "customer_type", input.customerType);
-  assignDefined(payload, "assignment_status", input.assignmentStatus);
-  assignDefined(payload, "price_group_id", input.priceGroupId);
-  assignDefined(payload, "monthly_purchase", trimOptional(input.monthlyPurchase));
-  assignDefined(payload, "credit_limit", input.creditLimit);
-  assignDefined(payload, "payment_terms", trimOptional(input.paymentTerms));
+  assignStringValue(payload, "company_name", input.companyName);
+  assignStringValue(payload, "contact_name", input.contactName);
+  assignStringValue(payload, "email", input.email);
+  assignStringValue(payload, "phone", input.phone);
+  assignStringValue(payload, "vat_number", input.vatNumber);
+  assignStringValue(payload, "fiscal_code", input.fiscalCode);
+  assignStringValue(payload, "sdi", input.sdi);
+  assignStringValue(payload, "pec", input.pec);
+  assignStringValue(payload, "registered_address", input.registeredAddress);
+  assignStringValue(payload, "billing_address", input.billingAddress);
+  assignStringValue(payload, "shipping_address", input.shippingAddress);
 
   return payload;
 }
 
-function customerPayloadFromB2BApplication(
-  row: DbRow,
-  input: AdminB2BApplicationReviewInput
-) {
-  const registeredAddress = pickString(row, ["registered_address"]) ?? "";
-  const shippingAddress = pickString(row, ["shipping_address"]) ?? registeredAddress;
+function buildCustomerClassificationPayload(input: AdminCustomerClassificationInput) {
+  const payload: Record<string, unknown> = {};
 
-  return {
-    company_name: pickString(row, ["company_name"]) ?? "Cliente B2B",
-    contact_name: pickString(row, ["contact_name"]) ?? "",
-    email: pickString(row, ["email"]) ?? "",
-    phone: pickString(row, ["phone", "whatsapp"]) ?? "",
-    vat_number: pickString(row, ["vat_number"]) ?? "",
-    fiscal_code: pickString(row, ["fiscal_code"]) ?? "",
-    sdi: pickString(row, ["sdi"]) ?? "",
-    pec: pickString(row, ["pec"]) ?? "",
-    registered_address: registeredAddress,
-    billing_address: registeredAddress,
-    shipping_address: shippingAddress,
-    tier: normalizeCustomerTier(input.tier),
-    customer_type: "wholesale",
-    assignment_status: "assigned",
-    level: normalizeCustomerTier(input.tier),
-    lifetime_spend_net: 0,
-    price_group_id:
-      input.priceGroupId === undefined
-        ? pickString(row, ["requested_price_group_id"])
-        : input.priceGroupId,
-    status: "active",
-    monthly_purchase: pickString(row, ["monthly_purchase"]) ?? "",
-    credit_limit: input.creditLimit ?? 0,
-    payment_terms: input.paymentTerms ?? "Bonifico anticipato",
-    profile_completed_at: new Date().toISOString(),
-  };
+  assignDefined(payload, "status", input.status);
+  assignDefined(payload, "customer_type", input.customerType);
+  assignDefined(payload, "assignment_status", input.assignmentStatus);
+  assignDefined(payload, "member_user_id", input.memberUserId);
+  assignDefined(payload, "member_role", input.memberRole);
+  assignDefined(payload, "member_status", input.memberStatus);
+
+  return payload;
+}
+
+function buildCustomerTermsPayload(input: AdminCustomerTermsInput) {
+  const payload: Record<string, unknown> = {};
+
+  assignDefined(payload, "tier", input.tier ? normalizeCustomerTier(input.tier) : undefined);
+  assignStringValue(payload, "price_group_id", input.priceGroupId);
+  assignStringValue(payload, "monthly_purchase", input.monthlyPurchase);
+  assignDefined(payload, "credit_limit", input.creditLimit);
+  assignStringValue(payload, "payment_terms", input.paymentTerms);
+
+  return payload;
+}
+
+function buildB2BReviewTermsPayload(input: AdminB2BApplicationReviewInput) {
+  const payload: Record<string, unknown> = {};
+
+  assignDefined(payload, "tier", input.tier ? normalizeCustomerTier(input.tier) : undefined);
+  assignStringValue(payload, "price_group_id", input.priceGroupId);
+  assignDefined(payload, "credit_limit", input.creditLimit);
+  assignStringValue(payload, "payment_terms", input.paymentTerms);
+
+  return payload;
 }
 
 function mapProductRow(row: DbRow): RepositoryPartProduct | null {
@@ -3289,6 +3855,56 @@ function mapAdminAuditEvent(row: DbRow): AdminAuditEvent {
   };
 }
 
+function mapAdminCustomerAuditEvent(row: DbRow): AdminCustomerAuditEvent {
+  return {
+    ...mapAdminAuditEvent(row),
+    entityId: pickString(row, ["entity_id", "entityId"]),
+    entityType: pickString(row, ["entity_type", "entityType"]) ?? "customer",
+    result: pickString(row, ["result"]) ?? "ok",
+  };
+}
+
+function mapAdminCustomerMembershipRow(
+  row: DbRow,
+  profilesById: Map<string, DbRow>
+): AdminCustomerMembership | null {
+  const customerId = pickString(row, ["customer_id"]);
+  const userId = pickString(row, ["user_id"]);
+
+  if (!customerId || !userId) {
+    return null;
+  }
+
+  const profile = profilesById.get(userId);
+  const accountType = pickString(profile, ["account_type"]);
+  const memberRole = pickString(row, ["member_role"]);
+  const status = pickString(row, ["status"]);
+
+  return {
+    customerId,
+    userId,
+    email: pickString(profile, ["email"]),
+    displayName: pickString(profile, ["display_name"]),
+    avatarUrl: pickString(profile, ["avatar_url"]),
+    accountType: accountType === "employee" ? "employee" : "customer",
+    role: pickString(profile, ["role"]),
+    roleTemplate: pickString(profile, ["role_template"]),
+    memberRole:
+      memberRole === "buyer" ||
+      memberRole === "finance" ||
+      memberRole === "support" ||
+      memberRole === "owner"
+        ? memberRole
+        : "owner",
+    status:
+      status === "invited" || status === "disabled" || status === "active"
+        ? status
+        : "active",
+    createdAt: pickString(row, ["created_at"]) ?? "",
+    updatedAt: pickString(row, ["updated_at"]) ?? "",
+  };
+}
+
 function mapCompanyRow(row: DbRow): CompanyProfile | null {
   const id = pickString(row, ["id", "company_id", "customer_id", "uuid"]);
   const name = pickString(row, ["name", "company_name", "business_name", "ragione_sociale"]);
@@ -3349,6 +3965,91 @@ function mapAdminCustomerRow(row: DbRow): AdminCustomer | null {
     paymentTerms: pickString(row, ["payment_terms"]) ?? "",
     profileCompletedAt: pickString(row, ["profile_completed_at"]),
     lastOrderAt: pickString(row, ["last_order_at"]),
+    createdAt: pickString(row, ["created_at"]) ?? "",
+    updatedAt: pickString(row, ["updated_at"]) ?? "",
+    receivables: pickNumber(row, ["receivables", "accounts_receivable"]) ?? 0,
+    overdue: pickNumber(row, ["overdue", "overdue_amount"]) ?? 0,
+    avgPaymentDays: pickNumber(row, ["avg_payment_days", "average_payment_days"]),
+    primarySku: pickString(row, ["primary_sku", "top_sku"]),
+  };
+}
+
+function requireAdminCustomerRow(row: DbRow): AdminCustomer {
+  const customer = mapAdminCustomerRow(row);
+
+  if (!customer) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_CUSTOMER_RESULT_INVALID",
+      "Supabase returned an invalid customer row."
+    );
+  }
+
+  return customer;
+}
+
+function mapAdminCustomerOrderSummaryRow(
+  row: DbRow,
+  lineCounts: Map<string, number>
+): AdminCustomerOrderSummary | null {
+  const id = pickString(row, ["id"]);
+  const orderNo = pickString(row, ["order_no", "order_number", "reference"]) ?? id;
+
+  if (!id || !orderNo) {
+    return null;
+  }
+
+  const totalNet = pickNumber(row, ["total_net"]) ?? 0;
+  const vat = pickNumber(row, ["vat"]) ?? 0;
+  const shipping = pickNumber(row, ["shipping"]) ?? 0;
+
+  return {
+    id,
+    orderNo,
+    status: normalizeAdminOrderDbStatus(pickString(row, ["status"])) ?? "submitted",
+    paymentStatus: normalizePaymentStatus(pickString(row, ["payment_status"])),
+    totalNet,
+    vat,
+    shipping,
+    total:
+      pickNumber(row, ["total", "grand_total", "amount_total", "total_amount"]) ??
+      roundMoney(totalNet + vat + shipping),
+    lineCount: lineCounts.get(id) ?? pickNumber(row, ["line_count", "items_count"]) ?? 0,
+    createdAt: pickString(row, ["created_at"]) ?? "",
+    updatedAt: pickString(row, ["updated_at"]) ?? "",
+  };
+}
+
+function mapAdminCustomerRmaSummaryRow(
+  row: DbRow,
+  linesById: Map<string, DbRow>,
+  ordersById: Map<string, AdminCustomerOrderSummary>
+): AdminCustomerRmaSummary | null {
+  const id = pickString(row, ["id"]);
+  const lineId = pickString(row, ["order_line_id", "order_item_id", "line_id"]);
+  const line = lineId ? linesById.get(lineId) : undefined;
+  const orderId = pickString(line, ["order_id"]);
+  const order = orderId ? ordersById.get(orderId) : undefined;
+
+  if (!id) {
+    return null;
+  }
+
+  return {
+    id,
+    orderNo: pickString(row, ["order_no"]) ?? order?.orderNo ?? "",
+    sku: toPublicSku(
+      pickString(row, ["sku_code", "sku", "sku_snapshot"]) ??
+        pickString(line, ["sku_code", "sku", "sku_snapshot"]) ??
+        "SKU-ND"
+    ),
+    productName:
+      pickString(row, ["product_name", "name"]) ??
+      pickString(line, ["product_name", "name_snapshot", "name"]) ??
+      "Ricambio",
+    status: normalizeRmaStatus(pickString(row, ["status"])),
+    quantity: pickNumber(row, ["quantity"]) ?? 1,
+    requestedResolution: pickString(row, ["requested_resolution"]) ?? "",
     createdAt: pickString(row, ["created_at"]) ?? "",
     updatedAt: pickString(row, ["updated_at"]) ?? "",
   };
@@ -3830,6 +4531,18 @@ function assignDefined(
   }
 }
 
+function assignStringValue(
+  payload: Record<string, unknown>,
+  key: string,
+  value: string | null | undefined
+) {
+  if (value === undefined) {
+    return;
+  }
+
+  payload[key] = value === null ? null : value.trim();
+}
+
 function trimOptional(value: string | undefined) {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
@@ -4274,6 +4987,27 @@ function slugify(value: string) {
     .replace(/^-+|-+$/g, "");
 
   return slug.length > 0 ? slug : null;
+}
+
+function isRecoverableCustomerSchemaError(error: unknown) {
+  const errorRow = isDbRow(error) ? error : null;
+  const parts = [
+    error instanceof Error ? error.message : null,
+    pickString(errorRow, ["code"]),
+    pickString(errorRow, ["message"]),
+    pickString(errorRow, ["details"]),
+    pickString(errorRow, ["hint"]),
+  ].filter(isDefined);
+  const text = parts.join(" ").toLowerCase();
+
+  return (
+    text.includes("pgrst204") ||
+    text.includes("42703") ||
+    text.includes("schema cache") ||
+    text.includes("column") ||
+    text.includes("does not exist") ||
+    text.includes("could not find")
+  );
 }
 
 function isDbRow(value: unknown): value is DbRow {

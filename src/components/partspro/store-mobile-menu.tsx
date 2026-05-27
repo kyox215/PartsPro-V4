@@ -100,6 +100,9 @@ export function StoreMobileMenu({
       <SheetContent
         side="left"
         className="flex h-dvh w-[min(86vw,320px)] max-w-[320px] gap-0 overflow-hidden border-r bg-white p-0 text-slate-950"
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+        }}
       >
         <SheetHeader className="border-b px-4 py-3 pr-12 text-left">
           <div className="min-w-0">

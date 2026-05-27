@@ -1,35 +1,36 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import {
-  AlertTriangle,
+  Archive,
+  Building2,
   CheckCircle2,
-  CircleDollarSign,
-  ClipboardList,
-  CreditCard,
-  Filter,
-  History,
-  MapPin,
-  PackageCheck,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+  Package,
+  Pencil,
   RefreshCcw,
+  Save,
   Search,
-  ShieldCheck,
-  TrendingUp,
-  UserRound,
+  ShieldAlert,
+  SlidersHorizontal,
+  Store,
   Users,
-  WalletCards,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -37,7 +38,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import {
   Table,
   TableBody,
@@ -46,2165 +46,2358 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  formatEuro,
-  products,
-  type CompanyStatus,
-  type OrderStatus,
-  type PartProduct,
-  type RmaStatus,
-} from "@/lib/partspro-data";
-import {
-  calculateTierPrice,
-  customerTiers,
-  formatTierDiscount,
-  getTierRule,
-  normalizeCustomerTier,
-  type CustomerTier,
-} from "@/lib/partspro-pricing";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
+import { getAdminDictionary } from "@/i18n/dictionaries/admin";
+import { formatEuro } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
+import { useI18n } from "./i18n-provider";
 
-type TierFilterValue = "all" | CustomerTier;
-type StatusFilterValue = "all" | CompanyStatus;
-type CustomerSegment = "needs_review" | "retail" | "wholesale" | "employee";
-type CustomerLifecycle = "onboarding" | "active" | "vip" | "at_risk";
-type ApiSource = "admin_api" | "supabase" | "empty";
-type NoticeTone = "success" | "info" | "warning" | "error";
+type CustomerStatus = "active" | "pending" | "suspended";
+type CustomerType = "retail" | "wholesale";
+type AssignmentStatus = "needs_review" | "assigned" | "converted_to_employee" | "archived";
+type CustomerTier = "bronze" | "silver" | "gold" | "emerald" | "diamond" | "master" | "king";
 
-type CustomerOrder = {
-  id: string;
-  date: string;
-  status: OrderStatus;
-  company: string;
-  total: number;
-  items: number;
-  channel: "Web" | "Admin" | "Account";
-  margin: number;
-  paymentTerms: string;
-  topProduct: string;
-  topSku: string;
-};
-
-type CustomerRma = {
-  id: string;
-  orderId: string;
-  sku: string;
-  productName: string;
-  status: RmaStatus;
-  reason: string;
-  createdAt: string;
-  resolution: string;
-};
-
-type CustomerProfile = {
-  id: string;
-  userId: string;
+type CustomerMembership = {
   accountType: "customer" | "employee";
-  assignmentStatus: "needs_review" | "assigned" | "converted_to_employee" | "archived";
-  customerType: "retail" | "wholesale";
+  avatarUrl: string | null;
+  displayName: string | null;
+  email: string | null;
+  memberRole: "owner" | "buyer" | "finance" | "support";
+  role: string | null;
   roleTemplate: string | null;
-  name: string;
-  partitaIva: string;
-  codiceFiscale: string;
-  pec: string;
-  codiceDestinatario: string;
-  status: CompanyStatus;
-  priceList: CustomerTier;
-  lifetimeSpendNet: number;
-  city: string;
-  province: string;
-  accountOwner: string;
-  contactName: string;
-  email: string;
-  phone: string;
-  creditLimit: number;
-  receivables: number;
-  overdue: number;
-  avgPaymentDays: number;
-  lifecycle: CustomerLifecycle;
-  lastContact: string;
-  primarySku: string;
-  notes: string;
-  orders: CustomerOrder[];
-  rmas: CustomerRma[];
+  status: "active" | "invited" | "disabled";
+  userId: string;
 };
 
-type ApiCollectionResult<T> = {
-  items: T[];
-  source: ApiSource;
+type CustomerOrderSummary = {
+  createdAt: string;
+  id: string;
+  lineCount: number;
+  orderNo: string;
+  paymentStatus: string;
+  status: string;
+  shipping?: number;
+  totalNet?: number;
   total: number;
-  returned: number;
+  vat?: number;
 };
 
-type DataSourceState = {
-  customersSource: ApiSource;
-  applicationsSource: ApiSource;
-  syncedAt: string | null;
-  customersTotal: number;
-  applicationsTotal: number;
-  customerError?: string;
-  applicationError?: string;
+type CustomerOrderDetailLine = {
+  category?: string;
+  fulfilledQty?: number;
+  id: string;
+  imageAlt?: string;
+  imageUrl?: string;
+  lineTotal: number;
+  name?: string;
+  productName?: string;
+  quantity: number;
+  reservedQty?: number;
+  sku: string;
+  unitPrice: number;
 };
 
-type PanelNotice = {
-  tone: NoticeTone;
+type CustomerOrderDetailEvent = {
+  action?: string;
+  createdAt: string;
+  eventType?: string;
+  id: string;
+  note?: string;
+};
+
+type CustomerOrderDetail = {
+  carrier?: string;
+  company?: string;
+  createdAt: string;
+  customerNote?: string;
+  date?: string;
+  eta?: string;
+  fulfillmentStatus?: string;
+  id: string;
+  items: number;
+  lines: CustomerOrderDetailLine[];
+  number?: string;
+  operationHistory?: CustomerOrderDetailEvent[];
+  orderId?: string;
+  paymentDue?: string;
+  paymentMethod?: string;
+  paymentStatus: string;
+  service?: string;
+  shipping?: number;
+  shippingAddress?: string;
+  staffNote?: string;
+  status: string;
+  total: number;
+  totalNet?: number;
+  tracking?: string;
+  vat?: number;
+};
+
+type CustomerRmaSummary = {
+  createdAt: string;
+  id: string;
+  orderNo: string;
+  productName: string;
+  quantity: number;
+  requestedResolution: string;
+  sku: string;
+  status: string;
+};
+
+type CustomerAuditEvent = {
+  action: string;
+  actorEmail: string | null;
+  actorRole: string | null;
+  createdAt: string;
+  id: string;
+  reason: string | null;
+  result: string;
+};
+
+type AdminCustomer = {
+  accountOwner: string | null;
+  assignedAt: string | null;
+  assignmentStatus: AssignmentStatus;
+  auditEvents?: CustomerAuditEvent[];
+  avgPaymentDays: number | null;
+  billingAddress: string;
+  city: string;
+  codiceDestinatario: string;
+  codiceFiscale: string;
+  companyName: string;
+  contactName: string;
+  createdAt: string;
+  creditLimit: number;
+  customerStatus: CustomerStatus;
+  customerType: CustomerType;
+  email: string;
+  id: string;
+  lastContact: string | null;
+  memberships?: CustomerMembership[];
+  monthlyPurchase: string;
+  name: string;
+  orders?: CustomerOrderSummary[];
+  ordersCount: number;
+  overdue: number;
+  partitaIva: string;
+  paymentTerms: string;
+  pec: string;
+  phone: string;
+  priceGroupId: string | null;
+  primarySku: string | null;
+  receivables: number;
+  registeredAddress: string;
+  revenue: number;
+  rmas?: CustomerRmaSummary[];
+  shippingAddress: string;
+  sdi: string;
+  status: CustomerStatus;
+  tier: CustomerTier;
+  updatedAt: string;
+  vatNumber: string;
+};
+
+type CustomerFacets = {
+  active: number;
+  creditRisk: number;
+  needsReview: number;
+  pending: number;
+  retail: number;
+  suspended: number;
+  wholesale: number;
+};
+
+type CustomerListResponse = {
+  data: AdminCustomer[];
+  meta: {
+    facets?: CustomerFacets;
+    limit: number;
+    nextCursor: string | null;
+    offset: number;
+    returned: number;
+    total: number;
+  };
+};
+
+type CustomerDetailResponse = {
+  data: AdminCustomer;
+};
+
+type OrderDetailResponse = {
+  data: CustomerOrderDetail;
+};
+
+type CustomerMutationResponse = {
+  data: AdminCustomer;
+};
+
+type Notice = {
+  tone: "success" | "info" | "warning" | "error";
   message: string;
 };
 
-const tiers = customerTiers;
-const statusFilters: CompanyStatus[] = [
-  "approved",
-  "pending",
-  "suspended",
-  "rejected",
-];
-const lifecycleLabels: Record<CustomerLifecycle, string> = {
-  onboarding: "Onboarding",
-  active: "Attivo",
-  vip: "VIP",
-  at_risk: "Da seguire",
+type PendingAction = {
+  endpoint: "classification" | "commercial-terms";
+  ids: string[];
+  payload: Record<string, unknown>;
+  summary: string;
+  title: string;
 };
-const tierBadgeClasses: Record<CustomerTier, string> = {
-  bronze: "border-slate-200 bg-slate-50 text-slate-700",
-  silver: "border-zinc-200 bg-zinc-50 text-zinc-700",
-  gold: "border-amber-200 bg-amber-50 text-amber-700",
-  emerald: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  diamond: "border-cyan-200 bg-cyan-50 text-cyan-700",
-  master: "border-violet-200 bg-violet-50 text-violet-700",
-  king: "border-rose-200 bg-rose-50 text-rose-700",
+
+type CustomerProfileDraft = {
+  billingAddress: string;
+  companyName: string;
+  contactName: string;
+  email: string;
+  fiscalCode: string;
+  pec: string;
+  phone: string;
+  registeredAddress: string;
+  sdi: string;
+  shippingAddress: string;
+  vatNumber: string;
 };
-const fallbackPricingProducts: PartProduct[] = [
-  {
-    sku: "PP-DEMO-SCREEN",
-    slug: "pp-demo-screen",
-    name: "Display OLED compatibile",
-    category: "Screen",
-    brand: "PartsPro",
-    grade: "A",
-    price: 89,
-    retailPrice: 119,
-    stock: 0,
-    status: "In Stock",
-    updatedAt: "Demo",
-    visual: "screen",
-    compatibleWith: ["iPhone"],
-    warehouse: "Milano",
-    moq: 1,
-    vatRate: 22,
-    rmaDays: 12,
-    leadTime: "24/48h",
-    tags: [],
-  },
-  {
-    sku: "PP-DEMO-BATTERY",
-    slug: "pp-demo-battery",
-    name: "Batteria alta capacita",
-    category: "Battery",
-    brand: "PartsPro",
-    grade: "A+",
-    price: 34,
-    retailPrice: 49,
-    stock: 0,
-    status: "In Stock",
-    updatedAt: "Demo",
-    visual: "battery",
-    compatibleWith: ["Samsung"],
-    warehouse: "Milano",
-    moq: 1,
-    vatRate: 22,
-    rmaDays: 12,
-    leadTime: "24/48h",
-    tags: [],
-  },
-  {
-    sku: "PP-DEMO-CAMERA",
-    slug: "pp-demo-camera",
-    name: "Modulo camera posteriore",
-    category: "Camera",
-    brand: "PartsPro",
-    grade: "A",
-    price: 57,
-    retailPrice: 79,
-    stock: 0,
-    status: "In Stock",
-    updatedAt: "Demo",
-    visual: "camera",
-    compatibleWith: ["Xiaomi"],
-    warehouse: "Milano",
-    moq: 1,
-    vatRate: 22,
-    rmaDays: 12,
-    leadTime: "5/7 gg",
-    tags: [],
-  },
-];
-const pricingProducts = products.length > 0 ? products.slice(0, 3) : fallbackPricingProducts;
-const customerSegments: Array<{ label: string; value: CustomerSegment }> = [
-  { label: "Da assegnare", value: "needs_review" },
-  { label: "Retail", value: "retail" },
-  { label: "Wholesale", value: "wholesale" },
-  { label: "Staff", value: "employee" },
-];
-const roleTemplateOptions = [
-  "sales",
-  "sales_support",
-  "catalog_manager",
-  "pricing_manager",
-  "inventory_manager",
-  "warehouse",
-  "purchasing",
-  "auditor",
-  "admin",
-] as const;
+
+type CustomerTermsDraft = {
+  creditLimit: string;
+  monthlyPurchase: string;
+  paymentTerms: string;
+  priceGroupId: string;
+  tier: CustomerTier;
+};
+
+type CustomerEditState =
+  | {
+      customer: AdminCustomer;
+      draft: CustomerProfileDraft;
+      kind: "profile";
+    }
+  | {
+      customer: AdminCustomer;
+      draft: CustomerTermsDraft;
+      kind: "terms";
+    };
+
+const pageSize = 25;
+const allValue = "all";
+const tiers: CustomerTier[] = ["bronze", "silver", "gold", "emerald", "diamond", "master", "king"];
+const emptyFacets: CustomerFacets = {
+  active: 0,
+  creditRisk: 0,
+  needsReview: 0,
+  pending: 0,
+  retail: 0,
+  suspended: 0,
+  wholesale: 0,
+};
 
 export function AdminCustomersPanel() {
-  const [customers, setCustomers] = React.useState<CustomerProfile[]>([]);
-  const [dataSource, setDataSource] = React.useState<DataSourceState>({
-    customersSource: "empty",
-    applicationsSource: "empty",
-    syncedAt: null,
-    customersTotal: 0,
-    applicationsTotal: 0,
-  });
-  const [isLoading, setIsLoading] = React.useState(false);
-  const [pendingActionKey, setPendingActionKey] = React.useState<string | null>(null);
-  const [notice, setNotice] = React.useState<PanelNotice | null>(null);
+  const { locale } = useI18n();
+  const text = getAdminDictionary(locale).admin;
+  const copy = text.customers.workbench;
+  const [customers, setCustomers] = React.useState<AdminCustomer[]>([]);
+  const [detail, setDetail] = React.useState<AdminCustomer | null>(null);
+  const [facets, setFacets] = React.useState<CustomerFacets>(emptyFacets);
+  const [total, setTotal] = React.useState(0);
+  const [page, setPage] = React.useState(0);
   const [query, setQuery] = React.useState("");
-  const [segment, setSegment] = React.useState<CustomerSegment>("needs_review");
-  const [tierFilter, setTierFilter] = React.useState<TierFilterValue>("all");
-  const [statusFilter, setStatusFilter] =
-    React.useState<StatusFilterValue>("all");
-  const [selectedCustomerId, setSelectedCustomerId] = React.useState("");
+  const [status, setStatus] = React.useState<CustomerStatus | typeof allValue>(allValue);
+  const [customerType, setCustomerType] = React.useState<CustomerType | typeof allValue>(allValue);
+  const [assignmentStatus, setAssignmentStatus] = React.useState<AssignmentStatus | typeof allValue>(
+    allValue
+  );
+  const [tier, setTier] = React.useState<CustomerTier | typeof allValue>(allValue);
+  const [sort, setSort] = React.useState("created_desc");
+  const [activeId, setActiveId] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [detailLoading, setDetailLoading] = React.useState(false);
+  const [mobileDetailOpen, setMobileDetailOpen] = React.useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false);
+  const [notice, setNotice] = React.useState<Notice | null>(null);
+  const [refreshKey, setRefreshKey] = React.useState(0);
+  const [pendingAction, setPendingAction] = React.useState<PendingAction | null>(null);
+  const [reason, setReason] = React.useState("");
+  const [submitting, setSubmitting] = React.useState(false);
+  const [editState, setEditState] = React.useState<CustomerEditState | null>(null);
+  const [editReason, setEditReason] = React.useState("");
+  const [editSubmitting, setEditSubmitting] = React.useState(false);
+  const [orderDetailOpen, setOrderDetailOpen] = React.useState(false);
+  const [orderDetail, setOrderDetail] = React.useState<CustomerOrderDetail | null>(null);
+  const [orderDetailLoading, setOrderDetailLoading] = React.useState(false);
+  const [orderDetailError, setOrderDetailError] = React.useState<string | null>(null);
 
-  const refreshAdminData = React.useCallback(async (signal?: AbortSignal) => {
-    setIsLoading(true);
-
-    try {
-      const customersResult = await fetchCustomersFromApi(signal);
-
-      if (signal?.aborted) {
-        return;
-      }
-
-      const nextCustomers = customersResult.items;
-
-      setCustomers(nextCustomers);
-      setSelectedCustomerId((current) =>
-        nextCustomers.some((customer) => customer.id === current)
-          ? current
-          : nextCustomers[0]?.id ?? ""
-      );
-      setDataSource({
-        customersSource: customersResult.source,
-        applicationsSource: "empty",
-        syncedAt: formatSyncTime(),
-        customersTotal: customersResult.total,
-        applicationsTotal: 0,
-      });
-      setNotice({
-        tone: "success",
-        message: "Account, clienti e staff sincronizzati da /api/admin/accounts.",
-      });
-    } catch (error) {
-      if (!signal?.aborted) {
-        const customerError = readableError(error);
-        setCustomers([]);
-        setDataSource({
-          customersSource: "empty",
-          applicationsSource: "empty",
-          syncedAt: formatSyncTime(),
-          customersTotal: 0,
-          applicationsTotal: 0,
-          customerError,
-        });
-        setNotice({
-          tone: "error",
-          message: customerError,
-        });
-      }
-    } finally {
-      if (!signal?.aborted) {
-        setIsLoading(false);
-      }
-    }
-  }, []);
+  const offset = page * pageSize;
+  const activeFilterCount = [
+    status !== allValue,
+    customerType !== allValue,
+    assignmentStatus !== allValue,
+    tier !== allValue,
+  ].filter(Boolean).length;
+  const statusOptions = [
+    [allValue, copy.allStatuses],
+    ["active", statusLabel("active", copy, text.enums.companyStatus.suspended, text.customers.labels.active)],
+    ["pending", copy.pendingReview],
+    ["suspended", text.enums.companyStatus.suspended],
+  ] as const;
+  const customerTypeOptions = [
+    [allValue, copy.allCustomerTypes],
+    ["retail", customerTypeLabel("retail", copy)],
+    ["wholesale", customerTypeLabel("wholesale", copy)],
+  ] as const;
+  const assignmentOptions = [
+    [allValue, copy.allAssignments],
+    ["needs_review", assignmentStatusLabel("needs_review", copy)],
+    ["assigned", assignmentStatusLabel("assigned", copy)],
+    ["converted_to_employee", assignmentStatusLabel("converted_to_employee", copy)],
+    ["archived", assignmentStatusLabel("archived", copy)],
+  ] as const;
+  const tierOptions = [
+    [allValue, copy.allTiers],
+    ...tiers.map((value) => [value, tierLabel(value, copy)] as const),
+  ] as const;
+  const sortOptions = [
+    ["created_desc", copy.sortCreated],
+    ["name_asc", copy.sortName],
+    ["revenue_desc", copy.sortRevenue],
+    ["last_order_desc", copy.sortLastOrder],
+  ] as const;
 
   React.useEffect(() => {
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => {
-      void refreshAdminData(controller.signal);
-    }, 0);
 
-    return () => {
-      controller.abort();
-      window.clearTimeout(timeoutId);
-    };
-  }, [refreshAdminData]);
+    async function loadCustomers() {
+      setLoading(true);
+      setNotice(null);
 
-  const filteredCustomers = React.useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
+      try {
+        const params = new URLSearchParams({
+          limit: String(pageSize),
+          offset: String(offset),
+          sort,
+        });
 
-    return customers.filter((customer) => {
-      const matchesQuery =
-        !normalizedQuery ||
-        [
-          customer.name,
-          customer.partitaIva,
-          customer.city,
-          customer.province,
-          customer.contactName,
-          customer.email,
-          customer.primarySku,
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(normalizedQuery);
-      const matchesTier =
-        tierFilter === "all" || customer.priceList === tierFilter;
-      const matchesStatus =
-        statusFilter === "all" || customer.status === statusFilter;
-      const matchesSegment = customerMatchesSegment(customer, segment);
+        if (query.trim().length >= 2) {
+          params.set("q", query.trim());
+        }
 
-      return matchesQuery && matchesTier && matchesStatus && matchesSegment;
-    });
-  }, [customers, query, segment, statusFilter, tierFilter]);
+        if (status !== allValue) {
+          params.set("status", status);
+        }
 
-  const selectedCustomer =
-    customers.find((customer) => customer.id === selectedCustomerId) ??
-    customers[0] ??
-    null;
-  const selectedOrders = React.useMemo(
-    () =>
-      [...(selectedCustomer?.orders ?? [])].sort(
-        (a, b) => parseDateValue(b.date) - parseDateValue(a.date)
-      ),
-    [selectedCustomer?.orders]
-  );
-  const selectedRmas = selectedCustomer?.rmas ?? [];
-  const selectedLastOrder = selectedOrders[0];
-  const stats = React.useMemo(() => {
-    const receivables = customers.reduce(
-      (total, customer) => total + customer.receivables,
-      0
-    );
-    const overdue = customers.reduce((total, customer) => total + customer.overdue, 0);
-    const averageDiscount =
-      customers.length > 0
-        ? customers.reduce(
-            (total, customer) =>
-              total + getTierRule(customer.priceList).discountRate * 100,
-            0
-          ) / customers.length
-        : 0;
+        if (customerType !== allValue) {
+          params.set("customerType", customerType);
+        }
 
-    return {
-      activeCustomers: customers.filter((customer) => customer.status === "approved")
-        .length,
-      averageDiscount,
-      overdue,
-      receivables,
-    };
-  }, [customers]);
+        if (assignmentStatus !== allValue) {
+          params.set("assignmentStatus", assignmentStatus);
+        }
 
-  function clearFilters() {
-    setQuery("");
-    setTierFilter("all");
-    setStatusFilter("all");
-  }
+        if (tier !== allValue) {
+          params.set("tier", tier);
+        }
 
-  async function updateSelectedTier(tier: CustomerTier) {
-    if (!selectedCustomer || selectedCustomer.priceList === tier) {
+        const payload = await fetchJson<CustomerListResponse>(
+          `/api/admin/customers?${params.toString()}`,
+          { signal: controller.signal }
+        );
+
+        setCustomers(payload.data);
+        setFacets(payload.meta.facets ?? emptyFacets);
+        setTotal(payload.meta.total);
+        if (payload.data.length === 0) {
+          setDetail(null);
+        }
+        setActiveId((current) =>
+          current && payload.data.some((customer) => customer.id === current)
+            ? current
+            : payload.data[0]?.id ?? null
+        );
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setCustomers([]);
+          setNotice({ tone: "error", message: error instanceof Error ? error.message : copy.error });
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadCustomers();
+
+    return () => controller.abort();
+  }, [assignmentStatus, copy.error, customerType, offset, query, refreshKey, sort, status, tier]);
+
+  React.useEffect(() => {
+    if (!activeId) {
       return;
     }
 
-    const actionKey = `customer:${selectedCustomer.id}:priceList`;
-    setPendingActionKey(actionKey);
+    const controller = new AbortController();
+
+    async function loadDetail() {
+      setDetailLoading(true);
+
+      try {
+        const payload = await fetchJson<CustomerDetailResponse>(`/api/admin/customers/${activeId}`, {
+          signal: controller.signal,
+        });
+        setDetail(payload.data);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setNotice({ tone: "error", message: error instanceof Error ? error.message : copy.error });
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setDetailLoading(false);
+        }
+      }
+    }
+
+    loadDetail();
+
+    return () => controller.abort();
+  }, [activeId, copy.error, refreshKey]);
+
+  function resetPage() {
+    setPage(0);
+  }
+
+  function openCustomerDetail(customerId: string) {
+    setActiveId(customerId);
+
+    if (window.matchMedia("(max-width: 1023px)").matches) {
+      setMobileDetailOpen(true);
+    }
+  }
+
+  function openSingleAction(action: Omit<PendingAction, "ids">, id: string) {
+    setPendingAction({ ...action, ids: [id] });
+    setReason("");
+  }
+
+  async function openCustomerOrderDetail(order: CustomerOrderSummary) {
+    setOrderDetailOpen(true);
+    setOrderDetail(null);
+    setOrderDetailError(null);
+    setOrderDetailLoading(true);
 
     try {
-      const result = await patchCustomerInApi(selectedCustomer.id, { priceList: tier });
-      const updatedCustomer =
-        result.customer ??
-        applyCustomerPatch(selectedCustomer, {
-          priceList: tier,
-          creditLimit: getTierRule(tier).creditLimit,
-        });
+      const payload = await fetchJson<OrderDetailResponse>(
+        `/api/admin/orders/${encodeURIComponent(order.id)}`
+      );
+      setOrderDetail(payload.data);
+    } catch (error) {
+      setOrderDetailError(error instanceof Error ? error.message : text.orders.detailError);
+      setOrderDetail({
+        carrier: "",
+        company: detail?.companyName,
+        createdAt: order.createdAt,
+        fulfillmentStatus: order.status,
+        id: order.orderNo,
+        items: order.lineCount,
+        lines: [],
+        number: order.orderNo,
+        paymentStatus: order.paymentStatus,
+        status: order.status,
+        total: order.total,
+      });
+    } finally {
+      setOrderDetailLoading(false);
+    }
+  }
+
+  function openCustomerEdit(kind: CustomerEditState["kind"], customer: AdminCustomer) {
+    setEditState(
+      kind === "profile"
+        ? {
+            customer,
+            draft: profileDraftFromCustomer(customer),
+            kind,
+          }
+        : {
+            customer,
+            draft: termsDraftFromCustomer(customer),
+            kind,
+          }
+    );
+    setEditReason("");
+  }
+
+  function updateProfileDraft(field: keyof CustomerProfileDraft, value: string) {
+    setEditState((current) =>
+      current?.kind === "profile"
+        ? { ...current, draft: { ...current.draft, [field]: value } }
+        : current
+    );
+  }
+
+  function updateTermsDraft(field: keyof CustomerTermsDraft, value: string) {
+    setEditState((current) =>
+      current?.kind === "terms"
+        ? { ...current, draft: { ...current.draft, [field]: value } }
+        : current
+    );
+  }
+
+  async function submitAction() {
+    if (!pendingAction || reason.trim().length < 3) {
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      await Promise.all(
+        pendingAction.ids.map((id) =>
+          fetchJson(`/api/admin/customers/${id}/${pendingAction.endpoint}`, {
+            body: JSON.stringify({ ...pendingAction.payload, reason: reason.trim() }),
+            headers: { "Content-Type": "application/json" },
+            method: "PATCH",
+          })
+        )
+      );
+
+      setNotice({
+        tone: "success",
+        message: `${pendingAction.title}: ${pendingAction.ids.length}`,
+      });
+      setPendingAction(null);
+      setReason("");
+      setRefreshKey((value) => value + 1);
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        message: error instanceof Error ? error.message : copy.error,
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitCustomerEdit() {
+    if (!editState || editReason.trim().length < 3) {
+      return;
+    }
+
+    const payloadResult = buildCustomerEditPayload(
+      editState,
+      editReason.trim(),
+      copy.invalidCreditLimit
+    );
+
+    if (!payloadResult.ok) {
+      setNotice({ tone: "error", message: payloadResult.message });
+      return;
+    }
+
+    setEditSubmitting(true);
+
+    try {
+      const response = await fetchJson<CustomerMutationResponse>(
+        `/api/admin/customers/${editState.customer.id}/${
+          editState.kind === "profile" ? "profile" : "commercial-terms"
+        }`,
+        {
+          body: JSON.stringify(payloadResult.payload),
+          headers: { "Content-Type": "application/json" },
+          method: "PATCH",
+        }
+      );
 
       setCustomers((current) =>
         current.map((customer) =>
-          customer.id === selectedCustomer.id ? updatedCustomer : customer
+          customer.id === response.data.id ? { ...customer, ...response.data } : customer
         )
+      );
+      setDetail((current) =>
+        current?.id === response.data.id ? { ...current, ...response.data } : current
       );
       setNotice({
         tone: "success",
-        message: `Listino ${tier} salvato tramite /api/admin/customers/${selectedCustomer.id}.`,
+        message: editState.kind === "profile" ? copy.profileSaved : copy.termsSaved,
       });
+      setEditState(null);
+      setEditReason("");
+      setRefreshKey((value) => value + 1);
     } catch (error) {
       setNotice({
         tone: "error",
-        message: readableError(error),
+        message: error instanceof Error ? error.message : copy.error,
       });
     } finally {
-      setPendingActionKey(null);
+      setEditSubmitting(false);
     }
   }
-
-  async function updateSelectedAccount(
-    patch: {
-      accountType: "customer" | "employee";
-      assignmentStatus?: "assigned" | "needs_review";
-      customerType?: "retail" | "wholesale";
-      roleTemplate?: (typeof roleTemplateOptions)[number];
-    }
-  ) {
-    if (!selectedCustomer) {
-      return;
-    }
-
-    const actionKey = `account:${selectedCustomer.userId}`;
-    setPendingActionKey(actionKey);
-
-    try {
-      await patchAccountInApi({
-        userId: selectedCustomer.userId,
-        ...patch,
-      });
-      setNotice({
-        tone: "success",
-        message: "Account aggiornato tramite /api/admin/accounts.",
-      });
-      await refreshAdminData();
-    } catch (error) {
-      setNotice({
-        tone: "error",
-        message: readableError(error),
-      });
-    } finally {
-      setPendingActionKey(null);
-    }
-  }
-
-  const selectedTier = selectedCustomer?.priceList ?? "bronze";
-  const selectedTierRule = getTierRule(selectedTier);
-  const totalSpend = selectedOrders.reduce((total, order) => total + order.total, 0);
-  const availableCredit = selectedCustomer
-    ? Math.max(0, selectedCustomer.creditLimit - selectedCustomer.receivables)
-    : 0;
-  const creditUsage =
-    selectedCustomer && selectedCustomer.creditLimit > 0
-      ? Math.min(
-          100,
-          (selectedCustomer.receivables / selectedCustomer.creditLimit) * 100
-        )
-      : 0;
-  const hasFilters =
-    Boolean(query.trim()) || tierFilter !== "all" || statusFilter !== "all";
-  const segmentCounts = React.useMemo(
-    () =>
-      customerSegments.reduce<Record<CustomerSegment, number>>(
-        (counts, item) => ({
-          ...counts,
-          [item.value]: customers.filter((customer) =>
-            customerMatchesSegment(customer, item.value)
-          ).length,
-        }),
-        { employee: 0, needs_review: 0, retail: 0, wholesale: 0 }
-      ),
-    [customers]
-  );
 
   return (
-    <section className="min-w-0 space-y-4 overflow-x-hidden text-slate-950">
-      <div className="hidden gap-3 md:grid md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          icon={Users}
-          label="Clienti attivi"
-          value={`${stats.activeCustomers}/${customers.length}`}
-          helper="Profili approvati"
-        />
-        <MetricCard
-          icon={WalletCards}
-          label="Crediti aperti"
-          value={formatEuro(stats.receivables)}
-          helper="Esposizione totale"
-        />
-        <MetricCard
-          icon={CreditCard}
-          label="Scaduto"
-          value={formatEuro(stats.overdue)}
-          helper="Da sollecitare"
-          warning={stats.overdue > 0}
-        />
-        <MetricCard
-          icon={TrendingUp}
-          label="Sconto medio"
-          value={`${stats.averageDiscount.toFixed(1)}%`}
-          helper="Da listini cliente"
-        />
-      </div>
+    <section className="min-w-0 space-y-3 text-slate-950" aria-labelledby="customers-workbench-title">
+      {notice ? (
+        <div
+          className={cn(
+            "rounded-md border px-3 py-1.5 text-xs leading-5",
+            notice.tone === "error"
+              ? "border-destructive/30 bg-destructive/10 text-destructive"
+              : "border-border bg-muted/50 text-foreground"
+          )}
+          role={notice.tone === "error" ? "alert" : "status"}
+        >
+          {notice.message}
+        </div>
+      ) : null}
 
-      <Card className="border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
-        <CardHeader className="gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0">
-            <CardTitle>Gestione clienti</CardTitle>
-            <CardDescription>
-              Account, clienti retail/wholesale, staff e listini in un unico pannello
-            </CardDescription>
-          </div>
-          <div className="flex w-full min-w-0 flex-wrap gap-2 lg:w-auto lg:justify-end">
-            <div className="relative w-full sm:w-[280px]">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                className="h-9 bg-white pl-9"
-                placeholder="Cerca cliente, P.IVA, citta"
-              />
+      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(360px,400px)] 2xl:grid-cols-[minmax(0,1fr)_420px]">
+        <div className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
+          <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 sm:px-4 sm:py-3">
+            <div className="min-w-0">
+              <h2 id="customers-workbench-title" className="truncate text-lg font-semibold tracking-normal sm:text-xl">
+                {copy.title}
+              </h2>
+              <p className="mt-0.5 line-clamp-1 max-w-3xl text-xs text-muted-foreground">
+                {text.customers.description}
+              </p>
             </div>
-            <Select
-              value={tierFilter}
-              onValueChange={(value) => setTierFilter(value as TierFilterValue)}
-            >
-              <SelectTrigger size="sm" className="w-full bg-white sm:w-36">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tutti listini</SelectItem>
-                {tiers.map((tier) => (
-                  <SelectItem key={tier} value={tier}>
-                    {tier}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={statusFilter}
-              onValueChange={(value) =>
-                setStatusFilter(value as StatusFilterValue)
-              }
-            >
-              <SelectTrigger size="sm" className="w-full bg-white sm:w-36">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tutti stati</SelectItem>
-                {statusFilters.map((status) => (
-                  <SelectItem key={status} value={status}>
-                    {companyStatusLabel(status)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
             <Button
               variant="outline"
-              className="bg-white"
-              disabled={!hasFilters}
-              onClick={clearFilters}
+              size="sm"
+              className="h-7 shrink-0 px-2 text-xs sm:h-8 sm:px-2.5"
+              onClick={() => setRefreshKey((value) => value + 1)}
             >
-              <Filter className="size-4" />
-              Reset
-            </Button>
-            <Button
-              variant="outline"
-              className="bg-white"
-              onClick={() => void refreshAdminData()}
-              disabled={isLoading}
-            >
-              <RefreshCcw className={cn("size-4", isLoading && "animate-spin")} />
-              Aggiorna
+              <RefreshCcw />
+              {copy.refresh}
             </Button>
           </div>
-        </CardHeader>
-        <CardContent className="min-w-0 space-y-4 p-3 sm:p-6">
-          <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
-            <Badge className={sourceBadgeClass(dataSource.customersSource)}>
-              Account: {sourceLabel(dataSource.customersSource)}
-            </Badge>
-            <span className="min-w-0 break-words">
-              {dataSource.syncedAt
-                ? `${dataSource.customersTotal} account - ${dataSource.syncedAt}`
-                : "In attesa di sincronizzazione"}
-            </span>
+
+          <div className="grid grid-cols-4 gap-1 border-b border-slate-200 bg-slate-50/70 px-2 py-1.5 sm:gap-1.5 sm:px-4 sm:py-2">
+            <Kpi icon={ShieldAlert} label={copy.pendingReview} value={facets.needsReview} />
+            <Kpi icon={CheckCircle2} label={copy.activeCustomers} value={facets.active} />
+            <Kpi icon={Store} label={copy.wholesaleCustomers} value={facets.wholesale} />
+            <Kpi icon={Building2} label={copy.creditRisk} value={facets.creditRisk} />
           </div>
 
-          {notice && (
-            <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} />
-          )}
-
-          {dataSource.customerError && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold leading-6 text-amber-950">
-              <div className="min-w-0 break-words">
-                Account: {dataSource.customerError}
-              </div>
-            </div>
-          )}
-
-          <div className="grid gap-2 sm:grid-cols-4">
-            {customerSegments.map((item) => (
-              <button
-                key={item.value}
-                type="button"
-                className={cn(
-                  "rounded-lg border px-3 py-2 text-left text-sm font-black transition",
-                  segment === item.value
-                    ? "border-primary/30 bg-primary/8 text-primary"
-                    : "border-slate-200 bg-white text-slate-600 hover:border-primary/30"
-                )}
-                onClick={() => setSegment(item.value)}
-              >
-                <span className="block">{item.label}</span>
-                <span className="mt-1 block text-xs text-slate-400">
-                  {segmentCounts[item.value]} account
-                </span>
-              </button>
-            ))}
-          </div>
-
-          <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-            <div className="min-w-0 space-y-3">
-              <div className="flex items-center justify-between gap-3 text-sm">
-                <span className="font-semibold text-slate-700">
-                  {isLoading && customers.length === 0
-                    ? "Caricamento clienti"
-                    : `${filteredCustomers.length} clienti`}
-                </span>
-                <span className="text-xs font-medium text-slate-500">
-                  {statusFilter === "all"
-                    ? "Tutti gli stati"
-                    : companyStatusLabel(statusFilter)}
-                </span>
-              </div>
-
-              {filteredCustomers.length > 0 ? (
-                <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-1">
-                  {filteredCustomers.map((customer) => {
-                    const lastOrder = customer.orders[0];
-                    const isSelected = customer.id === selectedCustomer?.id;
-
-                    return (
-                      <button
-                        key={customer.id}
-                        type="button"
-                        className={cn(
-                          "w-full min-w-0 rounded-lg border bg-white p-2.5 text-left transition hover:border-primary/40 hover:bg-primary/4 sm:p-3",
-                          isSelected
-                            ? "border-primary/30 bg-primary/6 shadow-[0_12px_30px_rgba(59,91,255,0.09)]"
-                            : "border-slate-200"
-                        )}
-                        aria-pressed={isSelected}
-                        onClick={() => setSelectedCustomerId(customer.id)}
-                      >
-                        <div className="flex min-w-0 items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-black text-slate-900">
-                              {customer.name}
-                            </div>
-                            <div className="mt-1 flex min-w-0 items-center gap-1 text-xs text-slate-500">
-                              <MapPin className="size-3.5 shrink-0" />
-                              <span className="truncate">
-                                {customer.city} ({customer.province})
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex shrink-0 flex-col items-end gap-1">
-                            <Badge
-                              className={cn(
-                                "border",
-                                companyStatusBadgeClass(customer.status)
-                              )}
-                            >
-                              {companyStatusLabel(customer.status)}
-                            </Badge>
-                            <Badge
-                              className={cn("border", tierBadgeClass(customer.priceList))}
-                            >
-                              {customer.priceList}
-                            </Badge>
-                            <Badge variant="outline" className="bg-white">
-                              {customer.accountType === "employee"
-                                ? customer.roleTemplate ?? "staff"
-                                : customer.customerType}
-                            </Badge>
-                          </div>
-                        </div>
-
-                        <div className="mt-2 hidden grid-cols-3 gap-1.5 md:grid">
-                          <CustomerListValue
-                            label="Aperto"
-                            value={formatEuro(customer.receivables)}
-                          />
-                          <CustomerListValue
-                            label="Scaduto"
-                            value={formatEuro(customer.overdue)}
-                            warning={customer.overdue > 0}
-                          />
-                          <CustomerListValue
-                            label="Ultimo"
-                            value={lastOrder?.date ?? "Nessuno"}
-                          />
-                        </div>
-                        <div className="mt-2 flex min-w-0 items-center justify-between gap-2 text-xs font-semibold text-slate-500">
-                          <span className="min-w-0 break-words">
-                            {lastOrder
-                              ? `${lastOrder.id} - ${formatEuro(lastOrder.total)}`
-                              : "Storico ordini vuoto"}
-                          </span>
-                          <span className="shrink-0 text-slate-400">
-                            {lifecycleLabels[customer.lifecycle]}
-                          </span>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <EmptyPanel
-                  icon={Users}
-                  title={isLoading ? "Caricamento clienti" : "Nessun cliente"}
-                  message={
-                    isLoading
-                      ? "Sincronizzazione da /api/admin/customers in corso."
-                      : "Nessun cliente disponibile dai filtri o dall'endpoint admin."
-                  }
+          <div className="min-w-0 bg-white">
+            <div className="grid gap-1.5 border-b border-slate-200 bg-white px-2 py-1.5 sm:px-4 sm:py-2 lg:grid-cols-[minmax(220px,1fr)_minmax(0,1.4fr)] lg:items-center">
+              <div className="relative min-w-0 flex-1">
+                <Label htmlFor="customer-search" className="sr-only">
+                  {copy.search}
+                </Label>
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground sm:left-3 sm:size-4" />
+                <Input
+                  id="customer-search"
+                  value={query}
+                  onChange={(event) => {
+                    setQuery(event.target.value);
+                    resetPage();
+                  }}
+                  placeholder={copy.searchPlaceholder}
+                  className="h-7 pl-7 text-[11px] sm:h-8 sm:pl-8 sm:text-sm"
                 />
-              )}
+              </div>
+
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-1.5 sm:hidden">
+                <Button
+                  type="button"
+                  variant={mobileFiltersOpen || activeFilterCount > 0 ? "default" : "outline"}
+                  size="sm"
+                  className="h-7 justify-start gap-1.5 px-2 text-[11px]"
+                  onClick={() => setMobileFiltersOpen((open) => !open)}
+                >
+                  <SlidersHorizontal className="size-3.5" />
+                  <span className="min-w-0 truncate">{copy.filters}</span>
+                  {activeFilterCount > 0 ? (
+                    <Badge className="ml-auto h-4 min-w-4 justify-center px-1 text-[10px]" variant="secondary">
+                      {activeFilterCount}
+                    </Badge>
+                  ) : null}
+                </Button>
+                <FilterSelect
+                  ariaLabel={copy.sort}
+                  value={sort}
+                  onValueChange={(value) => {
+                    setSort(value);
+                    resetPage();
+                  }}
+                  options={sortOptions}
+                />
+              </div>
+
+              {mobileFiltersOpen ? (
+                <div className="grid grid-cols-2 gap-1.5 sm:hidden">
+                  <FilterSelect
+                    ariaLabel={copy.status}
+                    value={status}
+                    onValueChange={(value) => {
+                      setStatus(value as CustomerStatus | typeof allValue);
+                      resetPage();
+                    }}
+                    options={statusOptions}
+                  />
+                  <FilterSelect
+                    ariaLabel={copy.customerType}
+                    value={customerType}
+                    onValueChange={(value) => {
+                      setCustomerType(value as CustomerType | typeof allValue);
+                      resetPage();
+                    }}
+                    options={customerTypeOptions}
+                  />
+                  <FilterSelect
+                    ariaLabel={copy.filters}
+                    value={assignmentStatus}
+                    onValueChange={(value) => {
+                      setAssignmentStatus(value as AssignmentStatus | typeof allValue);
+                      resetPage();
+                    }}
+                    options={assignmentOptions}
+                  />
+                  <FilterSelect
+                    ariaLabel={text.customers.currentTier}
+                    value={tier}
+                    onValueChange={(value) => {
+                      setTier(value as CustomerTier | typeof allValue);
+                      resetPage();
+                    }}
+                    options={tierOptions}
+                  />
+                </div>
+              ) : null}
+
+              <div className="hidden gap-1.5 sm:grid sm:grid-cols-3 xl:grid-cols-5">
+                <FilterSelect
+                  ariaLabel={copy.status}
+                  value={status}
+                  onValueChange={(value) => {
+                    setStatus(value as CustomerStatus | typeof allValue);
+                    resetPage();
+                  }}
+                  options={statusOptions}
+                />
+                <FilterSelect
+                  ariaLabel={copy.customerType}
+                  value={customerType}
+                  onValueChange={(value) => {
+                    setCustomerType(value as CustomerType | typeof allValue);
+                    resetPage();
+                  }}
+                  options={customerTypeOptions}
+                />
+                <FilterSelect
+                  ariaLabel={copy.filters}
+                  value={assignmentStatus}
+                  onValueChange={(value) => {
+                    setAssignmentStatus(value as AssignmentStatus | typeof allValue);
+                    resetPage();
+                  }}
+                  options={assignmentOptions}
+                />
+                <FilterSelect
+                  ariaLabel={text.customers.currentTier}
+                  value={tier}
+                  onValueChange={(value) => {
+                    setTier(value as CustomerTier | typeof allValue);
+                    resetPage();
+                  }}
+                  options={tierOptions}
+                />
+                <FilterSelect
+                  ariaLabel={copy.sort}
+                  value={sort}
+                  onValueChange={(value) => {
+                    setSort(value);
+                    resetPage();
+                  }}
+                  options={sortOptions}
+                />
+              </div>
             </div>
 
-            <div className="min-w-0 space-y-4">
-              {selectedCustomer ? (
-                <>
-                  <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 sm:p-4">
-                    <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_410px]">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h2 className="min-w-0 break-words text-lg font-black leading-tight text-slate-950 sm:text-xl">
-                            {selectedCustomer.name}
-                          </h2>
-                          <Badge
-                            className={cn(
-                              "border",
-                              companyStatusBadgeClass(selectedCustomer.status)
-                            )}
-                          >
-                            {companyStatusLabel(selectedCustomer.status)}
-                          </Badge>
-                          <Badge variant="outline" className="bg-white">
-                            {lifecycleLabels[selectedCustomer.lifecycle]}
-                          </Badge>
-                          <Badge variant="outline" className="bg-white">
-                            {selectedCustomer.accountType === "employee"
-                              ? selectedCustomer.roleTemplate ?? "staff"
-                              : selectedCustomer.customerType}
-                          </Badge>
-                        </div>
-                        <div className="mt-2 flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-xs font-medium text-slate-500">
-                          <span className="break-all">{selectedCustomer.partitaIva}</span>
-                          <span className="break-all">{selectedCustomer.pec}</span>
-                          <span className="break-all">
-                            SDI {selectedCustomer.codiceDestinatario}
-                          </span>
-                        </div>
-                        <div className="mt-3 hidden grid-cols-2 gap-2 md:grid lg:grid-cols-4">
-                          <CompactValue
-                            label="Aperto"
-                            value={formatEuro(selectedCustomer.receivables)}
-                          />
-                          <CompactValue
-                            label="Scaduto"
-                            value={formatEuro(selectedCustomer.overdue)}
-                            warning={selectedCustomer.overdue > 0}
-                          />
-                          <CompactValue
-                            label="Ordini"
-                            value={`${selectedOrders.length}`}
-                          />
-                          <CompactValue
-                            label="Ultimo"
-                            value={selectedLastOrder?.date ?? "Nessuno"}
-                          />
-                        </div>
+            <div className="min-h-0 min-w-0 bg-white sm:min-h-[320px]">
+              <Table className="text-xs sm:text-sm">
+              <caption className="sr-only">{copy.title}</caption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col" className="min-w-[180px] px-3 sm:px-2">{text.customers.title}</TableHead>
+                  <TableHead scope="col" className="hidden px-2 sm:table-cell">{copy.status}</TableHead>
+                  <TableHead scope="col" className="hidden px-2 md:table-cell">{text.customers.currentTier}</TableHead>
+                  <TableHead scope="col" className="hidden px-2 text-right sm:table-cell">{text.customers.labels.orderCount}</TableHead>
+                  <TableHead scope="col" className="hidden px-2 text-right lg:table-cell">{text.customers.labels.spent}</TableHead>
+                  <TableHead scope="col" className="hidden px-2 text-right xl:table-cell">{text.customers.labels.last}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  Array.from({ length: 8 }).map((_, index) => (
+                    <TableRow key={index}>
+                      <TableCell colSpan={6} className="p-2">
+                        <div className="h-9 animate-pulse rounded-md bg-muted" />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : customers.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-32 text-center text-sm text-muted-foreground">
+                      <div className="space-y-2">
+                        <p>{copy.empty}</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setQuery("");
+                            setStatus(allValue);
+                            setCustomerType(allValue);
+                            setAssignmentStatus(allValue);
+                            setTier(allValue);
+                            resetPage();
+                          }}
+                        >
+                          {copy.clearFilters}
+                        </Button>
                       </div>
-                      <div className="grid min-w-0 gap-2 self-start sm:grid-cols-[minmax(0,1fr)_180px]">
-                        <div className="rounded-lg border border-slate-200 bg-white p-3">
-                          <div className="text-xs font-bold uppercase text-slate-400">
-                            Listino corrente
-                          </div>
-                          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
-                            <Badge className={cn("border", tierBadgeClass(selectedTier))}>
-                              {selectedTier}
-                            </Badge>
-                            <span className="min-w-0 break-words text-xs font-semibold text-slate-500">
-                              {selectedTierRule.tagLabel} - coeff.{" "}
-                              {tierMultiplier(selectedTier).toFixed(2)}
-                            </span>
-                          </div>
-                        </div>
-                        <Select
-                          value={selectedTier}
-                          onValueChange={(value) =>
-                            void updateSelectedTier(value as CustomerTier)
-                          }
-                          disabled={pendingActionKey?.startsWith(
-                            `customer:${selectedCustomer.id}:`
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  customers.map((customer) => (
+                    <TableRow
+                      key={customer.id}
+                      className={cn(
+                        "group cursor-pointer transition-colors hover:bg-slate-50",
+                        activeId === customer.id && "bg-primary/5 sm:bg-muted/60"
+                      )}
+                      onClick={() => openCustomerDetail(customer.id)}
+                    >
+                      <TableCell className="px-2 py-1.5 sm:px-2">
+                        <div
+                          className={cn(
+                            "sm:hidden rounded-md border border-slate-200 bg-white px-2 py-1.5 shadow-[0_6px_16px_rgba(15,23,42,0.03)] transition-colors group-hover:border-primary/30",
+                            activeId === customer.id && "border-primary/35 bg-primary/5"
                           )}
                         >
-                          <SelectTrigger className="w-full bg-white">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {tiers.map((tier) => (
-                              <SelectItem key={tier} value={tier}>
-                                {tier} - {getTierRule(tier).tagLabel}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant={selectedCustomer.customerType === "retail" ? "default" : "outline"}
-                        className={selectedCustomer.customerType === "retail" ? "" : "bg-white"}
-                        disabled={pendingActionKey?.startsWith("account:")}
-                        onClick={() =>
-                          void updateSelectedAccount({
-                            accountType: "customer",
-                            assignmentStatus: "assigned",
-                            customerType: "retail",
-                          })
-                        }
-                      >
-                        Retail
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={selectedCustomer.customerType === "wholesale" ? "default" : "outline"}
-                        className={selectedCustomer.customerType === "wholesale" ? "" : "bg-white"}
-                        disabled={pendingActionKey?.startsWith("account:")}
-                        onClick={() =>
-                          void updateSelectedAccount({
-                            accountType: "customer",
-                            assignmentStatus: "assigned",
-                            customerType: "wholesale",
-                          })
-                        }
-                      >
-                        Wholesale
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant={selectedCustomer.accountType === "employee" ? "default" : "outline"}
-                        className={selectedCustomer.accountType === "employee" ? "" : "bg-white"}
-                        disabled={pendingActionKey?.startsWith("account:")}
-                        onClick={() =>
-                          void updateSelectedAccount({
-                            accountType: "employee",
-                            roleTemplate: normalizeRoleTemplate(selectedCustomer.roleTemplate),
-                          })
-                        }
-                      >
-                        Staff
-                      </Button>
-                      {selectedCustomer.accountType === "employee" && (
-                        <Select
-                          value={selectedCustomer.roleTemplate ?? "sales_support"}
-                          onValueChange={(value) =>
-                            void updateSelectedAccount({
-                              accountType: "employee",
-                              roleTemplate: value as (typeof roleTemplateOptions)[number],
-                            })
-                          }
-                          disabled={pendingActionKey?.startsWith("account:")}
-                        >
-                          <SelectTrigger size="sm" className="w-full bg-white sm:w-52">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {roleTemplateOptions.map((roleTemplate) => (
-                              <SelectItem key={roleTemplate} value={roleTemplate}>
-                                {roleTemplate}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      )}
-                    </div>
-
-                    <Separator className="my-4" />
-
-                    <div className="hidden gap-3 md:grid md:grid-cols-2 xl:grid-cols-4">
-                      <InfoTile
-                        icon={UserRound}
-                        label="Referente"
-                        value={selectedCustomer.contactName}
-                        helper={selectedCustomer.email}
-                      />
-                      <InfoTile
-                        icon={ShieldCheck}
-                        label="Account owner"
-                        value={selectedCustomer.accountOwner}
-                        helper={selectedCustomer.lastContact}
-                      />
-                      <InfoTile
-                        icon={ClipboardList}
-                        label="Ordini storici"
-                        value={`${selectedOrders.length}`}
-                        helper={formatEuro(totalSpend)}
-                      />
-                      <InfoTile
-                        icon={PackageCheck}
-                        label="SKU ricorrente"
-                        value={selectedCustomer.primarySku}
-                        helper={selectedCustomer.phone}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4">
-                      <div className="flex items-center gap-2">
-                        <CircleDollarSign className="size-4 text-primary" />
-                        <h3 className="font-black text-slate-900">Credito e incassi</h3>
-                      </div>
-                      <div className="mt-4 grid grid-cols-2 gap-3">
-                        <CompactValue
-                          label="Fido"
-                          value={formatEuro(selectedCustomer.creditLimit)}
-                        />
-                        <CompactValue
-                          label="Disponibile"
-                          value={formatEuro(availableCredit)}
-                        />
-                        <CompactValue
-                          label="Aperto"
-                          value={formatEuro(selectedCustomer.receivables)}
-                        />
-                        <CompactValue
-                          label="Scaduto"
-                          value={formatEuro(selectedCustomer.overdue)}
-                          warning={selectedCustomer.overdue > 0}
-                        />
-                      </div>
-                      <div className="mt-4">
-                        <div className="mb-2 flex justify-between text-xs font-bold text-slate-500">
-                          <span>Utilizzo fido</span>
-                          <span>{creditUsage.toFixed(0)}%</span>
+                          <div className="flex min-w-0 items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="truncate text-[13px] font-semibold leading-4 text-slate-950">
+                                {customer.companyName}
+                              </div>
+                              <div className="mt-0.5 truncate text-[11px] font-medium leading-3 text-slate-500">
+                                {customer.email || customer.vatNumber || copy.noData}
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <StatusBadge
+                                active={text.customers.labels.active}
+                                status={customer.customerStatus}
+                                copy={copy}
+                                suspended={text.enums.companyStatus.suspended}
+                              />
+                              <ChevronRight className="size-3.5 text-slate-400" />
+                            </div>
+                          </div>
+                          <div className="mt-1.5 flex min-w-0 items-center gap-1 overflow-hidden rounded bg-slate-50 px-1.5 py-1 text-[11px] font-semibold leading-3 text-slate-600">
+                            <span className="shrink-0 text-primary">{tierLabel(customer.tier, copy)}</span>
+                            <span className="text-slate-300">/</span>
+                            <span className="shrink-0">{customer.ordersCount} {text.customers.labels.orderCount}</span>
+                            <span className="text-slate-300">/</span>
+                            <span className="min-w-0 truncate">{formatEuro(customer.revenue)}</span>
+                            <span className="text-slate-300">/</span>
+                            <span className="shrink-0">{formatDate(customer.lastContact) ?? copy.noData}</span>
+                          </div>
                         </div>
-                        <Progress value={creditUsage} className="h-2" />
-                      </div>
-                      <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-600">
-                        <span className="font-semibold text-slate-800">
-                          Pagamento medio {selectedCustomer.avgPaymentDays} giorni.
-                        </span>{" "}
-                        {selectedCustomer.notes}
-                      </div>
-                    </div>
-
-                    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4">
-                      <div className="flex items-center gap-2">
-                        <WalletCards className="size-4 text-primary" />
-                        <h3 className="font-black text-slate-900">Prezzi per listino</h3>
-                      </div>
-                      <div className="mt-3 hidden gap-2 md:grid md:grid-cols-3">
-                        {tiers.map((tier) => (
-                          <TierPriceCard
-                            key={tier}
-                            active={tier === selectedTier}
-                            product={pricingProducts[0]}
-                            tier={tier}
-                          />
-                        ))}
-                      </div>
-                      <details className="mt-3 rounded-lg border border-slate-200 bg-slate-50 md:hidden">
-                        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-bold text-slate-800 [&::-webkit-details-marker]:hidden">
-                          <span>Esempi prezzo {selectedTier}</span>
-                          <Badge className={cn("border", tierBadgeClass(selectedTier))}>
-                            {formatTierDiscount(selectedTier)}
-                          </Badge>
-                        </summary>
-                        <div className="space-y-2 border-t border-slate-200 p-2">
-                          {pricingProducts.map((product) => (
-                            <PriceExampleCard
-                              key={product.sku}
-                              product={product}
-                              tier={selectedTier}
-                            />
-                          ))}
+                        <div className="hidden min-w-0 max-w-[360px] sm:block">
+                          <div className="truncate font-medium">{customer.companyName}</div>
+                          <div className="truncate text-xs text-muted-foreground">
+                            {customer.email || customer.vatNumber || copy.noData}
+                          </div>
                         </div>
-                      </details>
-                      <div className="mt-4 hidden overflow-hidden rounded-lg border border-slate-200 md:block">
-                        <div className="max-w-full overflow-x-auto">
-                          <Table className="min-w-[560px]">
-                            <TableHeader className="bg-slate-50">
-                              <TableRow>
-                                <TableHead>SKU esempio</TableHead>
-                                <TableHead>Base</TableHead>
-                                <TableHead>{selectedTier}</TableHead>
-                                <TableHead>Sconto</TableHead>
-                              </TableRow>
-                            </TableHeader>
-                            <TableBody>
-                              {pricingProducts.map((product) => (
-                                <TableRow key={product.sku}>
-                                  <TableCell>
-                                    <div className="font-mono text-xs font-bold text-slate-700">
-                                      {product.sku}
-                                    </div>
-                                    <div className="mt-1 max-w-[230px] truncate text-xs text-slate-500">
-                                      {product.name}
-                                    </div>
-                                  </TableCell>
-                                  <TableCell>{formatEuro(product.price)}</TableCell>
-                                  <TableCell className="font-black text-slate-900">
-                                    {formatEuro(priceForTier(product, selectedTier))}
-                                  </TableCell>
-                                  <TableCell>
-                                    {formatTierDiscount(selectedTier)}
-                                  </TableCell>
-                                </TableRow>
-                              ))}
-                            </TableBody>
-                          </Table>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                      </TableCell>
+                      <TableCell className="hidden px-2 py-2 sm:table-cell">
+                        <StatusBadge
+                          active={text.customers.labels.active}
+                          status={customer.customerStatus}
+                          copy={copy}
+                          suspended={text.enums.companyStatus.suspended}
+                        />
+                      </TableCell>
+                      <TableCell className="hidden px-2 py-2 md:table-cell">{tierLabel(customer.tier, copy)}</TableCell>
+                      <TableCell className="hidden px-2 py-2 text-right sm:table-cell">{customer.ordersCount}</TableCell>
+                      <TableCell className="hidden px-2 py-2 text-right lg:table-cell">{formatEuro(customer.revenue)}</TableCell>
+                      <TableCell className="hidden px-2 py-2 text-right xl:table-cell">{formatDate(customer.lastContact) ?? copy.noData}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+              </Table>
 
-                  <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.85fr)]">
-                    <HistoryTable orders={selectedOrders} />
-                    <RmaHistory orderCount={selectedOrders.length} rmas={selectedRmas} />
-                  </div>
-                </>
-              ) : (
-                <EmptyPanel
-                  icon={Users}
-                  title={isLoading ? "Caricamento dettaglio" : "Nessun dettaglio cliente"}
-                  message={
-                    isLoading
-                      ? "Sincronizzazione da /api/admin/customers in corso."
-                      : "Seleziona un cliente o collega l'endpoint admin customers."
-                  }
-                />
-              )}
+            <div className="flex items-center justify-between border-t p-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-2 text-xs"
+                onClick={() => setPage((value) => Math.max(value - 1, 0))}
+                disabled={page === 0 || loading}
+              >
+                <ChevronLeft />
+                {copy.previousPage}
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                {offset + 1}-{Math.min(offset + customers.length, total)} / {total}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 px-2 text-xs"
+                onClick={() => setPage((value) => value + 1)}
+                disabled={offset + customers.length >= total || loading}
+              >
+                {copy.nextPage}
+                <ChevronRight />
+              </Button>
+            </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+
+        <div className="hidden min-w-0 lg:block">
+          <CustomerDetail
+            copy={copy}
+            customer={detail}
+            detailLoading={detailLoading}
+            onAction={openSingleAction}
+            onEdit={openCustomerEdit}
+            onOpenOrder={openCustomerOrderDetail}
+            suspended={text.enums.companyStatus.suspended}
+            text={text}
+          />
+        </div>
+      </div>
+
+      <Dialog open={mobileDetailOpen} onOpenChange={setMobileDetailOpen}>
+        <DialogContent
+          className="grid max-h-[calc(100dvh-0.5rem)] w-[calc(100vw-0.5rem)] max-w-[calc(100vw-0.5rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-md bg-white p-0 pt-5 sm:max-w-lg lg:hidden"
+          style={{ height: "min(760px, calc(100dvh - 0.5rem))" }}
+          onClick={(event) => event.stopPropagation()}
+          onInteractOutside={(event) => event.preventDefault()}
+          onPointerDown={(event) => event.stopPropagation()}
+          onPointerDownOutside={(event) => event.preventDefault()}
+        >
+          <DialogHeader className="sr-only">
+            <DialogTitle>
+              {detail?.companyName ?? copy.detailsEmpty}
+            </DialogTitle>
+            <DialogDescription>
+              {detail?.email || detail?.vatNumber || text.customers.description}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 overflow-y-auto bg-white p-1">
+            <CustomerDetail
+              copy={copy}
+              customer={detail}
+              detailLoading={detailLoading}
+              onAction={openSingleAction}
+              onEdit={openCustomerEdit}
+              onOpenOrder={openCustomerOrderDetail}
+              suspended={text.enums.companyStatus.suspended}
+              text={text}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(pendingAction)} onOpenChange={(open) => !open && setPendingAction(null)}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{pendingAction?.title ?? copy.confirm}</DialogTitle>
+            <DialogDescription>
+              {pendingAction?.summary} · {pendingAction?.ids.length ?? 0}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="customer-action-reason">{copy.reason}</Label>
+            <Textarea
+              id="customer-action-reason"
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder={copy.reasonPlaceholder}
+              rows={4}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingAction(null)} disabled={submitting}>
+              {copy.cancel}
+            </Button>
+            <Button onClick={submitAction} disabled={reason.trim().length < 3 || submitting}>
+              {submitting ? <Loader2 className="animate-spin" /> : null}
+              {copy.submit}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <CustomerEditDialog
+        copy={copy}
+        editState={editState}
+        onClose={() => {
+          setEditState(null);
+          setEditReason("");
+        }}
+        onProfileChange={updateProfileDraft}
+        onReasonChange={setEditReason}
+        onSubmit={submitCustomerEdit}
+        onTermsChange={updateTermsDraft}
+        reason={editReason}
+        submitting={editSubmitting}
+        text={text}
+      />
+      <CustomerOrderDetailDialog
+        copy={copy}
+        error={orderDetailError}
+        loading={orderDetailLoading}
+        onOpenChange={setOrderDetailOpen}
+        open={orderDetailOpen}
+        order={orderDetail}
+        text={text}
+      />
     </section>
   );
 }
 
-function MetricCard({
-  helper,
-  icon: Icon,
-  label,
-  value,
-  warning = false,
+function CustomerDetail({
+  copy,
+  customer,
+  detailLoading,
+  onAction,
+  onEdit,
+  onOpenOrder,
+  suspended,
+  text,
 }: {
-  helper: string;
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-  warning?: boolean;
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
+  customer: AdminCustomer | null;
+  detailLoading: boolean;
+  onAction: (action: Omit<PendingAction, "ids">, id: string) => void;
+  onEdit: (kind: CustomerEditState["kind"], customer: AdminCustomer) => void;
+  onOpenOrder: (order: CustomerOrderSummary) => void;
+  suspended: string;
+  text: ReturnType<typeof getAdminDictionary>["admin"];
 }) {
+  const [tabState, setTabState] = React.useState<{ customerId: string | null; value: string }>({
+    customerId: null,
+    value: "profile",
+  });
+  const activeTab = tabState.customerId === customer?.id ? tabState.value : "profile";
+
+  if (detailLoading) {
+    return (
+      <aside className="min-h-full rounded-md border border-slate-200 bg-white p-1.5 lg:sticky lg:top-3 lg:min-h-0 lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto lg:rounded-lg lg:p-3 lg:shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
+        <div className="space-y-1.5 lg:space-y-2">
+          <div className="h-6 animate-pulse rounded-md bg-muted lg:h-7" />
+          <div className="h-16 animate-pulse rounded-md bg-muted lg:h-20" />
+          <div className="h-28 animate-pulse rounded-md bg-muted lg:h-36" />
+        </div>
+      </aside>
+    );
+  }
+
+  if (!customer) {
+    return (
+      <aside className="grid min-h-full place-items-center rounded-md border border-slate-200 bg-white p-2 text-center text-xs text-muted-foreground lg:sticky lg:top-3 lg:min-h-64 lg:rounded-lg lg:p-4 lg:text-sm lg:shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
+        {copy.detailsEmpty}
+      </aside>
+    );
+  }
+
   return (
-    <Card className="border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
-      <CardContent className="p-4 sm:p-5">
-        <div className="flex min-w-0 items-start justify-between gap-3">
+    <aside className="min-h-full min-w-0 overflow-hidden rounded-md border border-slate-200 bg-white text-slate-950 lg:sticky lg:top-3 lg:min-h-0 lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto lg:rounded-lg lg:shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
+      <div className="border-b border-slate-200 px-2 py-1.5 lg:p-3">
+        <div className="flex items-start justify-between gap-2 pr-7 lg:gap-3 lg:pr-0">
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium text-slate-500">{label}</p>
-            <div
-              className={cn(
-                "mt-2 break-words text-xl font-black leading-tight sm:text-3xl",
-                warning && "text-amber-600"
-              )}
-            >
-              {value}
+            <h3 className="truncate text-[15px] font-semibold leading-5 lg:text-base">{customer.companyName}</h3>
+            <p className="truncate text-[11px] leading-4 text-muted-foreground lg:text-xs">{customer.email || customer.vatNumber || copy.noData}</p>
+          </div>
+          <StatusBadge
+            active={text.customers.labels.active}
+            status={customer.customerStatus}
+            copy={copy}
+            suspended={suspended}
+          />
+        </div>
+        <div className="mt-1.5 flex flex-wrap gap-1 lg:mt-2 lg:gap-1.5">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 min-w-0 px-2 text-[11px] lg:h-8 lg:text-xs"
+            onClick={() =>
+              onAction(
+                {
+                  endpoint: "classification",
+                  payload: { status: "active" },
+                  summary: "active",
+                  title: statusLabel("active", copy, suspended, text.customers.labels.active),
+                },
+                customer.id
+              )
+            }
+          >
+            <CheckCircle2 />
+            {statusLabel("active", copy, suspended, text.customers.labels.active)}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 min-w-0 px-2 text-[11px] lg:h-8 lg:text-xs"
+            onClick={() =>
+              onAction(
+                {
+                  endpoint: "classification",
+                  payload: { status: "suspended" },
+                  summary: suspended,
+                  title: suspended,
+                },
+                customer.id
+              )
+            }
+          >
+            <ShieldAlert />
+            {suspended}
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            className="h-7 min-w-0 px-2 text-[11px] lg:h-8 lg:text-xs"
+            onClick={() =>
+              onAction(
+                {
+                  endpoint: "classification",
+                  payload: { assignmentStatus: "archived", status: "suspended" },
+                  summary: copy.archive,
+                  title: copy.archive,
+                },
+                customer.id
+              )
+            }
+          >
+            <Archive />
+            {copy.archive}
+          </Button>
+        </div>
+      </div>
+
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => setTabState({ customerId: customer.id, value })}
+        className="p-2 lg:p-3"
+      >
+        <div className="-mx-2 overflow-x-auto px-2 lg:-mx-3 lg:px-3">
+          <TabsList className="inline-flex h-7 w-max min-w-full justify-start rounded-md bg-slate-100 p-0.5 lg:h-8">
+            <TabsTrigger className="h-6 px-2 text-[11px] lg:h-7 lg:text-xs" value="profile">{copy.profile}</TabsTrigger>
+            <TabsTrigger className="h-6 px-2 text-[11px] lg:h-7 lg:text-xs" value="contacts">{copy.contacts}</TabsTrigger>
+            <TabsTrigger className="h-6 px-2 text-[11px] lg:h-7 lg:text-xs" value="terms">{copy.commercialTerms}</TabsTrigger>
+            <TabsTrigger className="h-6 px-2 text-[11px] lg:h-7 lg:text-xs" value="orders">{copy.ordersRmas}</TabsTrigger>
+            <TabsTrigger className="h-6 px-2 text-[11px] lg:h-7 lg:text-xs" value="audit">{copy.activity}</TabsTrigger>
+          </TabsList>
+        </div>
+
+        <TabsContent value="profile" className="mt-2 space-y-1.5 lg:mt-3 lg:space-y-2">
+          <div className="flex justify-end">
+            <Button size="sm" variant="outline" className="h-7 px-2 text-[11px] lg:h-8 lg:text-xs" onClick={() => onEdit("profile", customer)}>
+              <Pencil />
+              {copy.editProfile}
+            </Button>
+          </div>
+          <DetailGrid
+            items={[
+              [copy.customerLevel, tierLabel(customer.tier, copy)],
+              [text.customers.labels.reference, customer.contactName || copy.noData],
+              [copy.fieldLabels.email, customer.email || copy.noData],
+              [copy.fieldLabels.phone, customer.phone || copy.noData],
+              [copy.fieldLabels.vat, customer.vatNumber || customer.partitaIva || copy.noData],
+              [text.customers.sdi, customer.sdi || customer.codiceDestinatario || copy.noData],
+              [copy.customerType, customerTypeLabel(customer.customerType, copy)],
+              [copy.status, statusLabel(customer.customerStatus, copy, suspended, text.customers.labels.active)],
+              [copy.fieldLabels.assignment, assignmentStatusLabel(customer.assignmentStatus, copy)],
+              [copy.fieldLabels.created, formatDate(customer.createdAt) ?? copy.noData],
+            ]}
+          />
+          <AddressBlock label={copy.registeredAddress} value={customer.registeredAddress} fallback={copy.noData} />
+          <AddressBlock label={copy.billingAddress} value={customer.billingAddress} fallback={copy.noData} />
+          <AddressBlock label={copy.shippingAddress} value={customer.shippingAddress} fallback={copy.noData} />
+        </TabsContent>
+
+        <TabsContent value="contacts" className="mt-2 space-y-1.5 lg:mt-3 lg:space-y-2">
+          {(customer.memberships ?? []).length === 0 ? (
+            <div className="rounded-md border border-dashed border-slate-200 bg-slate-50/70 px-2 py-2 text-xs lg:p-3">
+              <div className="flex items-start gap-2">
+                <div className="grid size-7 shrink-0 place-items-center rounded-md bg-white text-slate-500 shadow-sm">
+                  <Users className="size-3.5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="font-semibold text-slate-900">{copy.accountMembersEmptyTitle}</div>
+                  <p className="mt-0.5 leading-4 text-muted-foreground">{copy.accountMembersEmptyDescription}</p>
+                </div>
+              </div>
             </div>
-            <p className="mt-2 truncate text-xs font-semibold text-slate-500">
-              {helper}
+          ) : (
+            <div className="space-y-1.5 lg:space-y-2">
+              {(customer.memberships ?? []).map((membership) => (
+                <div key={membership.userId} className="rounded-md border border-slate-200 bg-white px-1.5 py-1.5 text-xs lg:p-2 lg:text-sm">
+                  <div className="flex min-w-0 items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold">{membership.displayName || membership.email || membership.userId}</div>
+                      <div className="mt-0.5 truncate text-[11px] text-muted-foreground lg:mt-1 lg:text-xs">
+                        {membership.email || copy.noData}
+                      </div>
+                    </div>
+                    <Badge className="shrink-0 text-[10px]" variant="outline">
+                      {memberStatusLabel(membership.status, copy)}
+                    </Badge>
+                  </div>
+                  <div className="mt-1 flex min-w-0 items-center gap-1 overflow-hidden rounded bg-slate-50 px-1.5 py-1 text-[11px] font-medium text-slate-600">
+                    <span className="truncate">{memberRoleLabel(membership.memberRole, copy)}</span>
+                    <span className="text-slate-300">/</span>
+                    <span className="truncate">{accountTypeLabel(membership.accountType, copy)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="terms" className="mt-2 space-y-1.5 lg:mt-3 lg:space-y-3">
+          <CustomerAmountBreakdown
+            copy={copy}
+            customer={customer}
+            onEditTerms={() => onEdit("terms", customer)}
+            text={text}
+          />
+        </TabsContent>
+
+        <TabsContent value="orders" className="mt-2 space-y-2 lg:mt-3 lg:space-y-4">
+          <section>
+            <h4 className="mb-1.5 text-xs font-semibold lg:mb-2 lg:text-sm">{text.customers.historyTitle}</h4>
+            {(customer.orders ?? []).length === 0 ? (
+              <EmptyState label={text.customers.historyEmpty} />
+            ) : (
+              <div className="space-y-1.5 lg:space-y-2">
+                {(customer.orders ?? []).map((order) => (
+                  <button
+                    key={order.id}
+                    type="button"
+                    className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md border border-slate-200 bg-white px-1.5 py-1.5 text-left text-xs transition hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 lg:p-2 lg:text-sm"
+                    onClick={() => onOpenOrder(order)}
+                  >
+                    <div>
+                      <div className="font-medium">{order.orderNo}</div>
+                      <div className="text-[11px] text-muted-foreground lg:text-xs">
+                        {orderStatusLabel(order.status, text)} · {formatDate(order.createdAt) ?? copy.noData}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div>{formatEuro(order.total)}</div>
+                      <div className="text-[11px] text-muted-foreground lg:text-xs">{order.lineCount}</div>
+                    </div>
+                    <ChevronRight className="size-3.5 text-slate-400" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+          <section>
+            <h4 className="mb-1.5 text-xs font-semibold lg:mb-2 lg:text-sm">{text.customers.rmaTitle}</h4>
+            {(customer.rmas ?? []).length === 0 ? (
+              <EmptyState label={text.customers.noRma} />
+            ) : (
+              <div className="space-y-1.5 lg:space-y-2">
+                {(customer.rmas ?? []).map((rma) => (
+                  <div key={rma.id} className="rounded-md border border-slate-200 bg-white px-1.5 py-1.5 text-xs lg:p-2 lg:text-sm">
+                    <div className="font-medium">{rma.sku}</div>
+                    <div className="text-[11px] text-muted-foreground lg:text-xs">
+                      {rma.orderNo || copy.noData} · {rmaStatusLabel(rma.status, text)} · {rma.quantity}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        </TabsContent>
+
+        <TabsContent value="audit" className="mt-2 lg:mt-3">
+          {(customer.auditEvents ?? []).length === 0 ? (
+            <EmptyState label={copy.auditEmpty} />
+          ) : (
+            <ol className="space-y-1.5 lg:space-y-2">
+              {(customer.auditEvents ?? []).map((event) => (
+                <li key={event.id} className="rounded-md border border-slate-200 bg-white px-1.5 py-1.5 text-xs lg:p-2 lg:text-sm">
+                  <div className="flex items-center justify-between gap-2 lg:gap-3">
+                    <span className="font-medium">{event.action}</span>
+                    <span className="text-[11px] text-muted-foreground lg:text-xs">{formatDate(event.createdAt)}</span>
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground lg:mt-1 lg:text-xs">
+                    {event.actorEmail || event.actorRole || copy.noData}
+                  </div>
+                  {event.reason ? <p className="mt-1.5 text-[11px] lg:mt-2 lg:text-xs">{event.reason}</p> : null}
+                </li>
+              ))}
+            </ol>
+          )}
+        </TabsContent>
+      </Tabs>
+    </aside>
+  );
+}
+
+function CustomerAmountBreakdown({
+  copy,
+  customer,
+  onEditTerms,
+  text,
+}: {
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
+  customer: AdminCustomer;
+  onEditTerms: () => void;
+  text: ReturnType<typeof getAdminDictionary>["admin"];
+}) {
+  const summary = buildCustomerAmountSummary(customer);
+
+  return (
+    <div className="space-y-1.5 lg:space-y-3">
+      <section className="rounded-md border border-slate-200 bg-white px-2 py-2">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <h4 className="text-sm font-semibold leading-5">{copy.amountBreakdown}</h4>
+            <p className="truncate text-[11px] text-muted-foreground lg:text-xs">
+              {copy.amountBreakdownHelper}
             </p>
           </div>
+          <Badge className={cn("shrink-0 border text-[11px]", creditUsageBadgeClass(summary.usagePercent))} variant="outline">
+            {copy.creditUsage}: {formatPercent(summary.usagePercent)}
+          </Badge>
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-1">
+          <AmountTile label={copy.totalSpend} value={formatEuro(summary.totalSpend)} emphasis />
+          <AmountTile
+            label={copy.availableCredit}
+            value={formatEuro(summary.availableCredit)}
+            tone={summary.availableCredit <= 0 && summary.creditLimit > 0 ? "danger" : "success"}
+          />
+          <AmountTile label={copy.creditUsed} value={formatEuro(summary.creditUsed)} />
+          <AmountTile label={text.customers.labels.creditLimit} value={formatEuro(summary.creditLimit)} />
+        </div>
+        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
           <div
             className={cn(
-              "hidden size-11 shrink-0 place-items-center rounded-full sm:grid",
-              warning ? "bg-amber-50 text-amber-600" : "bg-primary/10 text-primary"
+              "h-full rounded-full",
+              summary.usagePercent >= 90
+                ? "bg-red-500"
+                : summary.usagePercent >= 70
+                  ? "bg-amber-500"
+                  : "bg-emerald-500"
             )}
-          >
-            <Icon className="size-5" />
-          </div>
+            style={{ width: `${Math.min(summary.usagePercent, 100)}%` }}
+          />
         </div>
-      </CardContent>
-    </Card>
-  );
-}
+      </section>
 
-function NoticeBanner({
-  notice,
-  onDismiss,
-}: {
-  notice: PanelNotice;
-  onDismiss: () => void;
-}) {
-  return (
-    <div
-      className={cn(
-        "flex min-w-0 items-center gap-3 rounded-lg border px-3 py-2 text-sm font-medium",
-        noticeToneClass(notice.tone)
-      )}
-    >
-      {notice.tone === "success" ? (
-        <CheckCircle2 className="size-4 shrink-0" />
-      ) : (
-        <AlertTriangle className="size-4 shrink-0" />
-      )}
-      <span className="min-w-0 flex-1 break-words">{notice.message}</span>
-      <Button
-        variant="ghost"
-        size="xs"
-        className="text-current hover:bg-white/60"
-        onClick={onDismiss}
-      >
-        OK
-      </Button>
-    </div>
-  );
-}
-
-function EmptyPanel({
-  icon: Icon,
-  message,
-  title,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  message: string;
-  title: string;
-}) {
-  return (
-    <div className="grid min-h-[220px] place-items-center rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-      <div>
-        <Icon className="mx-auto size-8 text-slate-400" />
-        <h3 className="mt-3 text-sm font-black text-slate-900">{title}</h3>
-        <p className="mt-1 max-w-md text-sm leading-6 text-slate-500">{message}</p>
-      </div>
-    </div>
-  );
-}
-
-function InfoTile({
-  helper,
-  icon: Icon,
-  label,
-  value,
-}: {
-  helper: string;
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
-      <div className="flex min-w-0 items-start gap-3">
-        <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-          <Icon className="size-4" />
-        </div>
-        <div className="min-w-0">
-          <div className="text-xs font-bold uppercase text-slate-400">{label}</div>
-          <div className="mt-1 truncate text-sm font-black text-slate-900">
-            {value}
-          </div>
-          <div className="mt-1 truncate text-xs font-medium text-slate-500">
-            {helper}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function CustomerListValue({
-  label,
-  value,
-  warning = false,
-}: {
-  label: string;
-  value: string;
-  warning?: boolean;
-}) {
-  return (
-    <div
-      className={cn(
-        "min-w-0 rounded-md bg-slate-50 px-2 py-1.5",
-        warning && "bg-amber-50"
-      )}
-    >
-      <div className="truncate text-[10px] font-bold uppercase leading-none text-slate-400">
-        {label}
-      </div>
-      <div
-        className={cn(
-          "mt-1 break-words text-[11px] font-black leading-tight text-slate-900",
-          warning && "text-amber-700"
-        )}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function CompactValue({
-  label,
-  value,
-  warning = false,
-}: {
-  label: string;
-  value: string;
-  warning?: boolean;
-}) {
-  return (
-    <div className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2">
-      <div className="truncate text-xs font-bold uppercase text-slate-400">
-        {label}
-      </div>
-      <div
-        className={cn(
-          "mt-1 break-words text-sm font-black leading-tight text-slate-900",
-          warning && "text-amber-600"
-        )}
-      >
-        {value}
-      </div>
-    </div>
-  );
-}
-
-function TierPriceCard({
-  active,
-  product,
-  tier,
-}: {
-  active: boolean;
-  product: PartProduct;
-  tier: CustomerTier;
-}) {
-  return (
-    <div
-      className={cn(
-        "min-w-0 rounded-lg border p-3",
-        active ? "border-primary/30 bg-primary/6" : "border-slate-200 bg-slate-50"
-      )}
-    >
-      <div className="flex items-center justify-between gap-2">
-        <Badge className={cn("border", tierBadgeClass(tier))}>{tier}</Badge>
-        {active && <CheckCircle2 className="size-4 shrink-0 text-primary" />}
-      </div>
-      <div className="mt-3 truncate font-mono text-xs font-bold text-slate-500">
-        {product.sku}
-      </div>
-      <div className="mt-1 text-lg font-black text-slate-950">
-        {formatEuro(priceForTier(product, tier))}
-      </div>
-      <div className="mt-1 text-xs font-semibold text-slate-500">
-        {formatTierDiscount(tier)} - coeff. {tierMultiplier(tier).toFixed(2)}
-      </div>
-    </div>
-  );
-}
-
-function PriceExampleCard({
-  product,
-  tier,
-}: {
-  product: PartProduct;
-  tier: CustomerTier;
-}) {
-  return (
-    <div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3">
-      <div className="min-w-0">
-        <div className="break-all font-mono text-xs font-bold text-slate-700">
-          {product.sku}
-        </div>
-        <div className="mt-1 break-words text-xs font-medium leading-5 text-slate-500">
-          {product.name}
-        </div>
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <CompactValue label="Base" value={formatEuro(product.price)} />
-        <CompactValue
-          label={tier}
-          value={formatEuro(priceForTier(product, tier))}
+      <div className="grid grid-cols-2 gap-1">
+        <AmountTile label={text.customers.metrics.receivables} value={formatEuro(summary.receivables)} />
+        <AmountTile
+          label={text.customers.metrics.overdue}
+          value={formatEuro(summary.overdue)}
+          tone={summary.overdue > 0 ? "danger" : "default"}
         />
-        <div className="col-span-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
-          {formatTierDiscount(tier)} - coeff. {tierMultiplier(tier).toFixed(2)}
-        </div>
+        <AmountTile label={copy.paidOrdersAmount} value={formatEuro(summary.paidOrdersAmount)} tone="success" />
+        <AmountTile
+          label={copy.unpaidOrdersAmount}
+          value={formatEuro(summary.unpaidOrdersAmount)}
+          tone={summary.unpaidOrdersAmount > 0 ? "warning" : "default"}
+        />
+        <AmountTile label={copy.recentOrdersAmount} value={formatEuro(summary.recentOrdersAmount)} />
+        <AmountTile label={copy.averageOrderValue} value={formatEuro(summary.averageOrderValue)} />
       </div>
-    </div>
-  );
-}
 
-function HistoryTable({ orders }: { orders: CustomerOrder[] }) {
-  return (
-    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4">
-      <div className="flex items-center gap-2">
-        <History className="size-4 text-primary" />
-        <h3 className="font-black text-slate-900">Storico ordini</h3>
-      </div>
-      <div className="mt-4 space-y-2 md:hidden">
-        {orders.length > 0 ? (
-          orders.map((order) => <OrderHistoryCard key={order.id} order={order} />)
+      <section className="rounded-md border border-slate-200 bg-white">
+        <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-2 py-1.5">
+          <h4 className="text-xs font-semibold">{copy.recentOrderAmounts}</h4>
+          <span className="text-[11px] text-muted-foreground">
+            {summary.ordersCount} {text.customers.labels.orderCount}
+          </span>
+        </div>
+        {summary.recentOrders.length === 0 ? (
+          <EmptyState label={text.customers.historyEmpty} />
         ) : (
-          <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm font-medium text-slate-500">
-            Nessun ordine registrato.
-          </div>
-        )}
-      </div>
-      <div className="mt-4 hidden overflow-hidden rounded-lg border border-slate-200 md:block">
-        <div className="max-w-full overflow-x-auto">
-          <Table className="min-w-[720px]">
-            <TableHeader className="bg-slate-50">
-              <TableRow>
-                <TableHead>Ordine</TableHead>
-                <TableHead>Stato</TableHead>
-                <TableHead>SKU principale</TableHead>
-                <TableHead>Pagamento</TableHead>
-                <TableHead className="text-right">Totale</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {orders.length > 0 ? (
-                orders.map((order) => (
-                  <TableRow key={order.id}>
-                    <TableCell>
-                      <div className="font-mono text-xs font-bold text-slate-700">
-                        {order.id}
-                      </div>
-                      <div className="mt-1 text-xs text-slate-500">
-                        {order.date} - {order.channel} - {order.items} righe
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={cn("border", orderBadgeClass(order.status))}>
-                        {orderStatusLabel(order.status)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <div className="font-mono text-xs font-bold text-slate-700">
-                        {order.topSku}
-                      </div>
-                      <div className="mt-1 max-w-[220px] truncate text-xs text-slate-500">
-                        {order.topProduct}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm font-semibold text-slate-700">
-                        {order.paymentTerms}
-                      </div>
-                      <div className="mt-1 text-xs text-slate-500">
-                        Margine {order.margin}%
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right font-black">
-                      {formatEuro(order.total)}
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={5} className="h-28 text-center text-slate-500">
-                    Nessun ordine registrato.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function OrderHistoryCard({ order }: { order: CustomerOrder }) {
-  return (
-    <details className="group min-w-0 rounded-lg border border-slate-200 bg-slate-50">
-      <summary className="flex cursor-pointer list-none items-start justify-between gap-3 p-3 [&::-webkit-details-marker]:hidden">
-        <div className="min-w-0">
-          <div className="break-all font-mono text-xs font-bold text-slate-700">
-            {order.id}
-          </div>
-          <div className="mt-1 text-xs font-medium text-slate-500">
-            {order.date} - {order.channel} - {order.items} righe
-          </div>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <Badge className={cn("border", orderBadgeClass(order.status))}>
-            {orderStatusLabel(order.status)}
-          </Badge>
-          <div className="whitespace-nowrap text-sm font-black text-slate-950">
-            {formatEuro(order.total)}
-          </div>
-        </div>
-      </summary>
-      <div className="grid gap-2 border-t border-slate-200 p-3 text-xs text-slate-600">
-        <div className="rounded-md bg-white px-2 py-1.5">
-          <span className="font-bold text-slate-800">SKU</span>{" "}
-          <span className="break-all font-mono font-bold">{order.topSku}</span>
-        </div>
-        <div className="break-words rounded-md bg-white px-2 py-1.5">
-          {order.topProduct}
-        </div>
-        <div className="grid grid-cols-2 gap-2">
-          <div className="rounded-md bg-white px-2 py-1.5 font-semibold">
-            {order.paymentTerms}
-          </div>
-          <div className="rounded-md bg-white px-2 py-1.5 font-semibold">
-            Margine {order.margin}%
-          </div>
-        </div>
-      </div>
-    </details>
-  );
-}
-
-function RmaHistory({
-  orderCount,
-  rmas,
-}: {
-  orderCount: number;
-  rmas: CustomerRma[];
-}) {
-  const rmaRate = orderCount > 0 ? (rmas.length / orderCount) * 100 : 0;
-
-  return (
-    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-4">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <RefreshCcw className="size-4 shrink-0 text-primary" />
-          <h3 className="font-black text-slate-900">RMA cliente</h3>
-        </div>
-        <Badge variant="outline" className="shrink-0 bg-white">
-          {rmas.length} RMA - {rmaRate.toFixed(1)}%
-        </Badge>
-      </div>
-      <div className="mt-4 space-y-2">
-        {rmas.length > 0 ? (
-          rmas.map((request) => (
-            <div
-              key={request.id}
-              className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-3"
-            >
-              <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="divide-y divide-slate-100">
+            {summary.recentOrders.map((order) => (
+              <div key={order.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 px-2 py-1.5 text-xs">
                 <div className="min-w-0">
-                  <div className="font-mono text-xs font-bold text-slate-700">
-                    {request.id}
+                  <div className="truncate font-semibold">{order.orderNo}</div>
+                  <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <Badge
+                      className={cn("h-4 shrink-0 px-1 text-[10px]", paymentStatusBadgeClass(order.paymentStatus))}
+                      variant="outline"
+                    >
+                      {paymentStatusLabel(order.paymentStatus, copy)}
+                    </Badge>
+                    <span className="truncate">{formatDate(order.createdAt) ?? copy.noData}</span>
                   </div>
-                  <div className="mt-1 break-words text-sm font-black leading-tight text-slate-900">
-                    {request.productName}
-                  </div>
                 </div>
-                <Badge className={cn("shrink-0 border", rmaBadgeClass(request.status))}>
-                  {rmaStatusLabel(request.status)}
-                </Badge>
+                <div className="text-right font-semibold">{formatEuro(order.total)}</div>
               </div>
-              <div className="mt-3 grid gap-2 text-xs text-slate-600">
-                <div className="flex min-w-0 items-center gap-2">
-                  <PackageCheck className="size-3.5 shrink-0 text-slate-400" />
-                  <span className="min-w-0 break-words">
-                    {request.orderId} - {request.sku} - {request.createdAt}
-                  </span>
-                </div>
-                <div className="rounded-md bg-white px-2 py-1.5">
-                  {request.reason}
-                </div>
-                <div className="rounded-md bg-white px-2 py-1.5 font-semibold">
-                  {request.resolution}
-                </div>
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm font-medium text-slate-500">
-            Nessuna pratica RMA collegata agli ordini cliente.
+            ))}
           </div>
         )}
-      </div>
+      </section>
+
+      <section className="rounded-md border border-slate-200 bg-white p-2">
+        <div className="mb-1.5 flex items-center justify-between gap-2">
+          <h4 className="text-xs font-semibold">{copy.termsConfig}</h4>
+          <Button size="sm" variant="outline" className="h-7 px-2 text-[11px] lg:h-8 lg:text-xs" onClick={onEditTerms}>
+            <Pencil />
+            {copy.editTerms}
+          </Button>
+        </div>
+        <DetailGrid
+          items={[
+            [copy.priceGroupId, priceGroupLabel(customer.priceGroupId, copy) || copy.noData],
+            [text.customers.labels.paymentTerms, valueLabel(customer.paymentTerms, copy) || copy.noData],
+            [copy.monthlyPurchase, customer.monthlyPurchase || copy.noData],
+            [copy.fieldLabels.avgPaymentDays, customer.avgPaymentDays === null ? copy.noData : String(customer.avgPaymentDays)],
+            [text.customers.labels.primarySku, customer.primarySku || copy.noData],
+            [copy.customerLevel, tierLabel(customer.tier, copy)],
+          ]}
+        />
+      </section>
     </div>
   );
 }
 
-async function fetchCustomersFromApi(
-  signal?: AbortSignal
-): Promise<ApiCollectionResult<CustomerProfile>> {
-  const response = await fetch("/api/admin/accounts?limit=100", {
-    cache: "no-store",
-    headers: {
-      Accept: "application/json",
-      "Cache-Control": "no-cache",
-    },
-    signal,
-  });
-
-  if (!response.ok) {
-    throw new Error(`GET /api/admin/accounts ha risposto ${response.status}`);
-  }
-
-  const payload = (await response.json()) as unknown;
-  return parseCustomersPayload(payload);
-}
-
-async function patchCustomerInApi(
-  customerId: string,
-  patch: Partial<Pick<CustomerProfile, "priceList" | "status" | "creditLimit">>
-) {
-  const response = await fetch(
-    `/api/admin/customers/${encodeURIComponent(customerId)}`,
-    {
-      body: JSON.stringify(serializePatch(patch)),
-      cache: "no-store",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/json",
-      },
-      method: "PATCH",
-    }
-  );
-
-  if (!response.ok) {
-    throw new Error(
-      `PATCH /api/admin/customers/${customerId} ha risposto ${response.status}. Modifica non applicata localmente.`
-    );
-  }
-
-  const payload = await readJsonSafely(response);
-  const row = extractObjectPayload(payload, ["data", "customer"]);
-
-  return {
-    customer: row ? normalizeCustomer(row) : null,
-  };
-}
-
-async function patchAccountInApi(patch: {
-  accountType: "customer" | "employee";
-  assignmentStatus?: "assigned" | "needs_review";
-  customerType?: "retail" | "wholesale";
-  roleTemplate?: (typeof roleTemplateOptions)[number];
-  userId: string;
+function CustomerOrderDetailDialog({
+  copy,
+  error,
+  loading,
+  onOpenChange,
+  open,
+  order,
+  text,
+}: {
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
+  error: string | null;
+  loading: boolean;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  order: CustomerOrderDetail | null;
+  text: ReturnType<typeof getAdminDictionary>["admin"];
 }) {
-  const response = await fetch("/api/admin/accounts", {
-    body: JSON.stringify(patch),
-    cache: "no-store",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    method: "PATCH",
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `PATCH /api/admin/accounts ha risposto ${response.status}. Classificazione non applicata localmente.`
-    );
-  }
-
-  return readJsonSafely(response);
-}
-
-function parseCustomersPayload(
-  payload: unknown
-): ApiCollectionResult<CustomerProfile> {
-  if (!isRecord(payload)) {
-    throw new Error("Risposta /api/admin/accounts incompleta");
-  }
-
-  const meta = isRecord(payload.meta) ? payload.meta : {};
-  const rows = readArrayPayload(payload, ["data", "customers"]);
-
-  if (!rows) {
-    throw new Error("Risposta /api/admin/accounts incompleta");
-  }
-
-  const items = rows
-    .map((row) => normalizeCustomer(row))
-    .filter((customer): customer is CustomerProfile => customer !== null);
-
-  return {
-    items,
-    source: readSource(meta.source ?? payload.source),
-    total: readNumber(meta.total) ?? items.length,
-    returned: readNumber(meta.returned) ?? items.length,
-  };
-}
-
-function normalizeCustomer(row: unknown): CustomerProfile | null {
-  if (!isRecord(row)) {
-    return null;
-  }
-
-  const nestedCustomer = isRecord(row.customer) ? row.customer : null;
-  const source = nestedCustomer ?? row;
-  const address = isRecord(source.address) ? source.address : null;
-  const accountType =
-    readString(readRecordValue(row, ["accountType", "account_type"])) === "employee"
-      ? "employee"
-      : "customer";
-  const id =
-    readString(readRecordValue(source, ["id", "customerId", "companyId"])) ??
-    readString(readRecordValue(row, ["userId", "user_id", "id"]));
-  const name =
-    readString(readRecordValue(source, ["name", "companyName", "company_name"])) ??
-    readString(readRecordValue(row, ["displayName", "display_name", "email"])) ??
-    "Account PartsPro";
-
-  if (!id || !name) {
-    return null;
-  }
-
-  const priceList = normalizeCustomerTier(
-    readString(readRecordValue(source, ["level", "priceList", "price_list", "tier"]))
-  );
-  const orders = (readArrayPayload(row, ["orders", "orderSummaries"]) ?? [])
-    .map((order) => normalizeCustomerOrder(order, name))
-    .filter((order): order is CustomerOrder => order !== null);
-  const rmas = (readArrayPayload(row, ["rmas", "rmaRequests"]) ?? [])
-    .map(normalizeCustomerRma)
-    .filter((rma): rma is CustomerRma => rma !== null);
-  const receivables = readMoney(
-    readRecordValue(source, ["receivables", "openBalance", "open_balance"])
-  );
-  const overdue = readMoney(readRecordValue(source, ["overdue", "overdueBalance"]));
-  const status =
-    accountType === "employee"
-      ? "approved"
-      : normalizeCompanyStatus(readRecordValue(source, ["status"]));
-  const customerType =
-    readString(readRecordValue(source, ["customerType", "customer_type"])) === "wholesale"
-      ? "wholesale"
-      : "retail";
-  const assignmentStatus = normalizeAssignmentStatus(
-    readString(readRecordValue(source, ["assignmentStatus", "assignment_status"]))
-  );
-
-  return {
-    id,
-    userId: readString(readRecordValue(row, ["userId", "user_id", "id"])) ?? id,
-    accountType,
-    assignmentStatus,
-    customerType,
-    roleTemplate: readString(readRecordValue(row, ["roleTemplate", "role_template"])),
-    name,
-    partitaIva:
-      readString(readRecordValue(source, ["partitaIva", "vatNumber", "vat_number"])) ??
-      "Non disponibile",
-    codiceFiscale:
-      readString(readRecordValue(source, ["codiceFiscale", "taxCode", "tax_code"])) ??
-      "Non disponibile",
-    pec: readString(source.pec) ?? readString(row.email) ?? "Non disponibile",
-    codiceDestinatario:
-      readString(
-        readRecordValue(source, ["codiceDestinatario", "sdi", "recipientCode"])
-      ) ?? "0000000",
-    status,
-    priceList,
-    lifetimeSpendNet:
-      readNumber(readRecordValue(source, ["lifetimeSpendNet", "lifetime_spend_net"])) ?? 0,
-    city:
-      readString(readRecordValue(source, ["city"])) ??
-      readString(readRecordValue(address, ["city"])) ??
-      "Non disponibile",
-    province:
-      readString(readRecordValue(source, ["province"])) ??
-      readString(readRecordValue(address, ["province"])) ??
-      "--",
-    accountOwner:
-      readString(readRecordValue(row, ["accountOwner", "owner"])) ?? "Sales",
-    contactName:
-      readString(readRecordValue(source, ["contactName", "contact_name"])) ??
-      "Referente non disponibile",
-    email: readString(source.email) ?? readString(row.email) ?? "Non disponibile",
-    phone: readString(source.phone) ?? "Non disponibile",
-    creditLimit:
-      readMoney(readRecordValue(source, ["creditLimit", "credit_limit"])) ||
-      getTierRule(priceList).creditLimit,
-    receivables,
-    overdue,
-    avgPaymentDays:
-      readNumber(readRecordValue(row, ["avgPaymentDays", "averagePaymentDays"])) ?? 0,
-    lifecycle: normalizeLifecycle(row.lifecycle, status, priceList, overdue),
-    lastContact:
-      readString(readRecordValue(row, ["lastContact", "last_contact"])) ??
-      "Non disponibile",
-    primarySku:
-      readString(readRecordValue(row, ["primarySku", "primary_sku"])) ??
-      orders[0]?.topSku ??
-      "Nessuno",
-    notes:
-      readString(row.notes) ??
-      "Profilo sincronizzato da /api/admin/accounts.",
-    orders,
-    rmas,
-  };
-}
-
-function normalizeCustomerOrder(row: unknown, fallbackCompany: string): CustomerOrder | null {
-  if (!isRecord(row)) {
-    return null;
-  }
-
-  const id = readString(readRecordValue(row, ["id", "orderId", "order_id"]));
-
-  if (!id) {
-    return null;
-  }
-
-  const product = isRecord(row.product) ? row.product : null;
-  const status = normalizeOrderStatus(readRecordValue(row, ["status"]));
-
-  return {
-    id,
-    date:
-      readString(readRecordValue(row, ["date", "createdAt", "created_at"])) ??
-      "Data non disponibile",
-    status,
-    company: readString(row.company) ?? fallbackCompany,
-    total: readMoney(readRecordValue(row, ["total", "totalAmount", "total_amount"])),
-    items: readNumber(readRecordValue(row, ["items", "itemCount"])) ?? 0,
-    channel: normalizeOrderChannel(row.channel),
-    margin: readNumber(row.margin) ?? 0,
-    paymentTerms:
-      readString(readRecordValue(row, ["paymentTerms", "payment_terms"])) ??
-      (status === "pending_payment" ? "Bonifico anticipato" : "Da verificare"),
-    topProduct:
-      readString(readRecordValue(row, ["topProduct", "productName"])) ??
-      readString(readRecordValue(product, ["name"])) ??
-      "Prodotto non disponibile",
-    topSku:
-      readString(readRecordValue(row, ["topSku", "sku"])) ??
-      readString(readRecordValue(product, ["sku"])) ??
-      "SKU",
-  };
-}
-
-function normalizeCustomerRma(row: unknown): CustomerRma | null {
-  if (!isRecord(row)) {
-    return null;
-  }
-
-  const id = readString(row.id);
-
-  if (!id) {
-    return null;
-  }
-
-  return {
-    id,
-    orderId: readString(readRecordValue(row, ["orderId", "order_id"])) ?? "N/D",
-    sku: readString(row.sku) ?? "SKU",
-    productName:
-      readString(readRecordValue(row, ["productName", "product_name"])) ??
-      "Prodotto RMA",
-    status: normalizeRmaStatus(row.status),
-    reason: readString(row.reason) ?? "Motivo non disponibile",
-    createdAt:
-      readString(readRecordValue(row, ["createdAt", "created_at", "date"])) ??
-      "Data non disponibile",
-    resolution: readString(row.resolution) ?? "Da definire",
-  };
-}
-
-function applyCustomerPatch(
-  customer: CustomerProfile,
-  patch: Partial<Pick<CustomerProfile, "priceList" | "status" | "creditLimit">>
-) {
-  return {
-    ...customer,
-    ...patch,
-  };
-}
-
-function priceForTier(product: PartProduct, tier: CustomerTier) {
-  return calculateTierPrice(product.price, tier);
-}
-
-function tierBadgeClass(tier: CustomerTier) {
-  return tierBadgeClasses[tier];
-}
-
-function tierMultiplier(tier: CustomerTier) {
-  return 1 - getTierRule(tier).discountRate;
-}
-
-function parseDateValue(value: string) {
-  const italianDate = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-
-  if (italianDate) {
-    const [, day, month, year] = italianDate;
-    return new Date(Number(year), Number(month) - 1, Number(day)).getTime();
-  }
-
-  const timestamp = Date.parse(value);
-
-  return Number.isFinite(timestamp) ? timestamp : 0;
-}
-
-function companyStatusLabel(status: CompanyStatus) {
-  const labels: Record<CompanyStatus, string> = {
-    approved: "Approvato",
-    pending: "In verifica",
-    rejected: "Respinto",
-    suspended: "Sospeso",
-  };
-
-  return labels[status];
-}
-
-function companyStatusBadgeClass(status: CompanyStatus) {
-  if (status === "approved") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  }
-
-  if (status === "pending") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
-  }
-
-  if (status === "suspended") {
-    return "border-red-200 bg-red-50 text-red-700";
-  }
-
-  return "border-slate-200 bg-slate-50 text-slate-700";
-}
-
-function orderStatusLabel(status: OrderStatus) {
-  const labels: Record<OrderStatus, string> = {
-    cancelled: "Annullato",
-    delivered: "Consegnato",
-    draft: "Bozza",
-    paid: "Pagato",
-    pending_payment: "Da pagare",
-    picking: "Picking",
-    shipped: "Spedito",
-  };
-
-  return labels[status];
-}
-
-function orderBadgeClass(status: OrderStatus) {
-  if (status === "delivered" || status === "shipped" || status === "paid") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  }
-
-  if (status === "pending_payment" || status === "picking") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
-  }
-
-  if (status === "cancelled") {
-    return "border-red-200 bg-red-50 text-red-700";
-  }
-
-  return "border-primary/20 bg-primary/8 text-primary";
-}
-
-function rmaStatusLabel(status: RmaStatus) {
-  const labels: Record<RmaStatus, string> = {
-    approved: "Approvata",
-    received: "Ricevuta",
-    refunded: "Rimborsata",
-    rejected: "Respinta",
-    replaced: "Sostituita",
-    requested: "Richiesta",
-  };
-
-  return labels[status];
-}
-
-function rmaBadgeClass(status: RmaStatus) {
-  if (status === "replaced" || status === "refunded") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  }
-
-  if (status === "rejected") {
-    return "border-red-200 bg-red-50 text-red-700";
-  }
-
-  if (status === "received" || status === "approved") {
-    return "border-cyan-200 bg-cyan-50 text-cyan-700";
-  }
-
-  return "border-primary/20 bg-primary/8 text-primary";
-}
-
-function noticeToneClass(tone: NoticeTone) {
-  if (tone === "error") {
-    return "border-red-200 bg-red-50 text-red-800";
-  }
-
-  if (tone === "warning") {
-    return "border-amber-200 bg-amber-50 text-amber-900";
-  }
-
-  if (tone === "info") {
-    return "border-cyan-200 bg-cyan-50 text-cyan-800";
-  }
-
-  return "border-emerald-200 bg-emerald-50 text-emerald-800";
-}
-
-function sourceLabel(source: ApiSource) {
-  if (source === "admin_api") {
-    return "Admin API";
-  }
-
-  if (source === "supabase") {
-    return "Supabase";
-  }
-
-  return "Vuoto";
-}
-
-function sourceBadgeClass(source: ApiSource) {
-  if (source === "admin_api" || source === "supabase") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  }
-
-  return "border-amber-200 bg-amber-50 text-amber-700";
-}
-
-function normalizeCompanyStatus(value: unknown): CompanyStatus {
-  if (value === "active") {
-    return "approved";
-  }
-
-  return ["approved", "pending", "suspended", "rejected"].includes(
-    value as CompanyStatus
-  )
-    ? (value as CompanyStatus)
-    : "pending";
-}
-
-function normalizeAssignmentStatus(value: string | null): CustomerProfile["assignmentStatus"] {
-  if (
-    value === "assigned" ||
-    value === "converted_to_employee" ||
-    value === "archived" ||
-    value === "needs_review"
-  ) {
-    return value;
-  }
-
-  return "needs_review";
-}
-
-function normalizeRoleTemplate(value: string | null): (typeof roleTemplateOptions)[number] {
-  return roleTemplateOptions.includes(value as (typeof roleTemplateOptions)[number])
-    ? (value as (typeof roleTemplateOptions)[number])
-    : "sales_support";
-}
-
-function customerMatchesSegment(customer: CustomerProfile, value: CustomerSegment) {
-  if (value === "employee") {
-    return customer.accountType === "employee";
-  }
-
-  if (customer.accountType === "employee") {
-    return false;
-  }
-
-  if (value === "needs_review") {
-    return customer.assignmentStatus === "needs_review";
-  }
+  const orderNo = order?.number || order?.id || copy.noData;
 
   return (
-    customer.assignmentStatus !== "converted_to_employee" &&
-    customer.assignmentStatus !== "archived" &&
-    customer.customerType === value
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="grid max-h-[calc(100dvh-0.75rem)] w-[calc(100vw-0.75rem)] max-w-[calc(100vw-0.75rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-md bg-white p-0 sm:max-w-2xl">
+        <DialogHeader className="border-b border-slate-200 px-3 py-2 text-left">
+          <DialogTitle className="truncate text-base font-bold">
+            {text.orders.table.order} {orderNo}
+          </DialogTitle>
+          <DialogDescription className="truncate text-xs">
+            {text.orders.detailDialogDescription}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="min-h-0 overflow-y-auto bg-slate-50/60 p-2">
+          {loading && !order ? (
+            <div className="space-y-1.5">
+              <div className="h-20 animate-pulse rounded-md bg-white" />
+              <div className="h-28 animate-pulse rounded-md bg-white" />
+              <div className="h-40 animate-pulse rounded-md bg-white" />
+            </div>
+          ) : null}
+
+          {error ? (
+            <div className="mb-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-medium text-amber-800">
+              {text.orders.detailError}: {error}
+            </div>
+          ) : null}
+
+          {order ? (
+            <div className="space-y-2">
+              <section className="rounded-md border border-slate-200 bg-white p-2">
+                <div className="flex min-w-0 items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-bold text-slate-950">{orderNo}</div>
+                    <div className="mt-0.5 truncate text-[11px] text-muted-foreground">
+                      {order.company || copy.noData} · {formatDate(order.createdAt || order.date) ?? copy.noData}
+                    </div>
+                  </div>
+                  {loading ? (
+                    <Badge className="border-cyan-200 bg-cyan-50 text-cyan-700" variant="outline">
+                      <Loader2 className="size-3 animate-spin" />
+                      {text.orders.detailLoading}
+                    </Badge>
+                  ) : null}
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-1">
+                  <AmountTile label={text.orders.details.orderTotal} value={formatEuro(order.total)} emphasis />
+                  <AmountTile label={text.common.payment} value={paymentStatusLabel(order.paymentStatus, copy)} />
+                  <AmountTile
+                    label={text.orders.details.fulfillment}
+                    value={orderStatusLabel(order.fulfillmentStatus || order.status, text)}
+                  />
+                  <AmountTile label={text.customers.labels.orderCount} value={`${order.items}`} />
+                </div>
+              </section>
+
+              <section className="rounded-md border border-slate-200 bg-white p-2">
+                <h4 className="mb-1.5 text-xs font-semibold">{text.orders.details.logistics}</h4>
+                <DetailGrid
+                  items={[
+                    [text.common.carrier, order.carrier || text.common.none],
+                    [copy.fieldLabels.tracking, order.tracking || text.common.none],
+                    [text.common.service, valueLabel(order.service, copy) || copy.noData],
+                    [text.common.eta, valueLabel(order.eta, copy) || copy.noData],
+                  ]}
+                />
+                {order.shippingAddress ? (
+                  <AddressBlock
+                    fallback={copy.noData}
+                    label={text.orders.details.deliveryAddress}
+                    value={order.shippingAddress}
+                  />
+                ) : null}
+              </section>
+
+              <section className="rounded-md border border-slate-200 bg-white p-2">
+                <div className="mb-1.5 flex items-center justify-between gap-2">
+                  <h4 className="text-xs font-semibold">{text.orders.details.orderLines}</h4>
+                  <span className="text-[11px] text-muted-foreground">{order.lines.length}</span>
+                </div>
+                {order.lines.length === 0 ? (
+                  <EmptyState label={copy.noData} />
+                ) : (
+                  <div className="space-y-1.5">
+                    {order.lines.map((line) => (
+                      <div
+                        key={line.id}
+                        className="grid grid-cols-[44px_minmax(0,1fr)_auto] gap-2 rounded-md border border-slate-200 px-2 py-1.5 text-xs sm:grid-cols-[48px_minmax(0,1fr)_auto]"
+                      >
+                        <OrderLineThumb line={line} />
+                        <div className="min-w-0">
+                          <div className="line-clamp-2 font-semibold leading-4">
+                            {line.productName || line.name || line.sku}
+                          </div>
+                          <div className="mt-0.5 truncate text-[11px] font-mono text-muted-foreground">
+                            {line.sku}
+                          </div>
+                          <div className="mt-1 flex min-w-0 items-center gap-1 overflow-hidden rounded bg-slate-50 px-1.5 py-1 text-[11px] text-slate-600">
+                            <span>{text.orders.print.quantity}: {line.quantity}</span>
+                            <span className="text-slate-300">/</span>
+                            <span>{text.orders.details.fulfillment}: {line.fulfilledQty ?? 0}</span>
+                            <span className="text-slate-300">/</span>
+                            <span>{text.common.price}: {formatEuro(line.unitPrice)}</span>
+                          </div>
+                        </div>
+                        <div className="text-right font-semibold">{formatEuro(line.lineTotal)}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              {order.customerNote || order.staffNote ? (
+                <section className="rounded-md border border-slate-200 bg-white p-2">
+                  <h4 className="mb-1.5 text-xs font-semibold">{text.orders.details.orderNote}</h4>
+                  <div className="space-y-1.5">
+                    {order.customerNote ? (
+                      <AddressBlock
+                        fallback={copy.noData}
+                        label={text.orders.details.customerNote}
+                        value={order.customerNote}
+                      />
+                    ) : null}
+                    {order.staffNote ? (
+                      <AddressBlock
+                        fallback={copy.noData}
+                        label={text.orders.details.staffNote}
+                        value={order.staffNote}
+                      />
+                    ) : null}
+                  </div>
+                </section>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
-function normalizeOrderStatus(value: unknown): OrderStatus {
-  return [
-    "draft",
-    "pending_payment",
-    "paid",
-    "picking",
-    "shipped",
-    "delivered",
-    "cancelled",
-  ].includes(value as OrderStatus)
-    ? (value as OrderStatus)
-    : "pending_payment";
+function OrderLineThumb({ line }: { line: CustomerOrderDetailLine }) {
+  const fallbackImageUrl = React.useMemo(
+    () => getExternalOrderLineImageFallbackUrl(line.imageUrl),
+    [line.imageUrl]
+  );
+  const [failedImageUrls, setFailedImageUrls] = React.useState<string[]>([]);
+  const primaryImageUrl = line.imageUrl?.trim() ?? "";
+  const imageUrl =
+    primaryImageUrl && !failedImageUrls.includes(primaryImageUrl)
+      ? primaryImageUrl
+      : fallbackImageUrl && !failedImageUrls.includes(fallbackImageUrl)
+        ? fallbackImageUrl
+        : "";
+  const label = line.imageAlt || line.productName || line.name || line.sku;
+  const handleImageError = React.useCallback(() => {
+    setFailedImageUrls((currentUrls) => {
+      if (!imageUrl || currentUrls.includes(imageUrl)) {
+        return currentUrls;
+      }
+
+      return [...currentUrls, imageUrl];
+    });
+  }, [imageUrl]);
+
+  return (
+    <div className="relative grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-md border border-slate-200 bg-slate-50 sm:h-12 sm:w-12">
+      {imageUrl ? (
+        <Image
+          alt={label}
+          className="object-contain p-1"
+          fill
+          sizes="48px"
+          src={imageUrl}
+          unoptimized
+          onError={handleImageError}
+        />
+      ) : (
+        <Package className="size-4 text-slate-400" />
+      )}
+    </div>
+  );
 }
 
-function normalizeRmaStatus(value: unknown): RmaStatus {
-  return [
-    "requested",
-    "approved",
-    "rejected",
-    "received",
-    "replaced",
-    "refunded",
-  ].includes(value as RmaStatus)
-    ? (value as RmaStatus)
-    : "requested";
+function getExternalOrderLineImageFallbackUrl(imageUrl: string | undefined) {
+  if (!imageUrl) {
+    return "";
+  }
+
+  const imageId = imageUrl.match(/-(\d+)\.(?:png|jpe?g|webp|gif)(?:$|\?)/i)?.[1];
+
+  return imageId
+    ? `https://apiv2.mobilax.fr/v1.0/assets/images/products/id-image/${imageId}?size=bg`
+    : "";
 }
 
-function normalizeLifecycle(
-  value: unknown,
-  status: CompanyStatus,
-  tier: CustomerTier,
-  overdue: number
-): CustomerLifecycle {
-  if (["onboarding", "active", "vip", "at_risk"].includes(value as CustomerLifecycle)) {
-    return value as CustomerLifecycle;
-  }
+function CustomerEditDialog({
+  copy,
+  editState,
+  onClose,
+  onProfileChange,
+  onReasonChange,
+  onSubmit,
+  onTermsChange,
+  reason,
+  submitting,
+  text,
+}: {
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
+  editState: CustomerEditState | null;
+  onClose: () => void;
+  onProfileChange: (field: keyof CustomerProfileDraft, value: string) => void;
+  onReasonChange: (value: string) => void;
+  onSubmit: () => void;
+  onTermsChange: (field: keyof CustomerTermsDraft, value: string) => void;
+  reason: string;
+  submitting: boolean;
+  text: ReturnType<typeof getAdminDictionary>["admin"];
+}) {
+  const title =
+    editState?.kind === "profile"
+      ? copy.editProfile
+      : editState?.kind === "terms"
+        ? copy.editTerms
+        : copy.confirm;
+  const saveLabel =
+    editState?.kind === "profile"
+      ? copy.saveProfile
+      : editState?.kind === "terms"
+        ? copy.saveTerms
+        : copy.submit;
+  const canSubmit =
+    Boolean(editState) &&
+    reason.trim().length >= 3 &&
+    (editState?.kind !== "profile" || editState.draft.companyName.trim().length >= 2);
 
-  if (status === "pending") {
-    return "onboarding";
-  }
+  return (
+    <Dialog open={Boolean(editState)} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>
+            {editState?.customer.companyName ?? copy.noData}
+          </DialogDescription>
+        </DialogHeader>
 
-  if (overdue > 0 || status === "suspended") {
-    return "at_risk";
-  }
+        {editState?.kind === "profile" ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            <EditField label={copy.companyName}>
+              <Input
+                className="h-8"
+                value={editState.draft.companyName}
+                onChange={(event) => onProfileChange("companyName", event.target.value)}
+              />
+            </EditField>
+            <EditField label={copy.contactName}>
+              <Input
+                className="h-8"
+                value={editState.draft.contactName}
+                onChange={(event) => onProfileChange("contactName", event.target.value)}
+              />
+            </EditField>
+            <EditField label={copy.fieldLabels.email}>
+              <Input
+                className="h-8"
+                value={editState.draft.email}
+                onChange={(event) => onProfileChange("email", event.target.value)}
+              />
+            </EditField>
+            <EditField label={copy.phone}>
+              <Input
+                className="h-8"
+                value={editState.draft.phone}
+                onChange={(event) => onProfileChange("phone", event.target.value)}
+              />
+            </EditField>
+            <EditField label={copy.fieldLabels.vat}>
+              <Input
+                className="h-8"
+                value={editState.draft.vatNumber}
+                onChange={(event) => onProfileChange("vatNumber", event.target.value)}
+              />
+            </EditField>
+            <EditField label={copy.fiscalCode}>
+              <Input
+                className="h-8"
+                value={editState.draft.fiscalCode}
+                onChange={(event) => onProfileChange("fiscalCode", event.target.value)}
+              />
+            </EditField>
+            <EditField label={text.customers.sdi}>
+              <Input
+                className="h-8"
+                value={editState.draft.sdi}
+                onChange={(event) => onProfileChange("sdi", event.target.value)}
+              />
+            </EditField>
+            <EditField label={copy.fieldLabels.pec}>
+              <Input
+                className="h-8"
+                value={editState.draft.pec}
+                onChange={(event) => onProfileChange("pec", event.target.value)}
+              />
+            </EditField>
+            <EditField className="sm:col-span-2" label={copy.registeredAddress}>
+              <Textarea
+                value={editState.draft.registeredAddress}
+                onChange={(event) => onProfileChange("registeredAddress", event.target.value)}
+                className="min-h-16"
+                rows={2}
+              />
+            </EditField>
+            <EditField label={copy.billingAddress}>
+              <Textarea
+                value={editState.draft.billingAddress}
+                onChange={(event) => onProfileChange("billingAddress", event.target.value)}
+                className="min-h-16"
+                rows={2}
+              />
+            </EditField>
+            <EditField label={copy.shippingAddress}>
+              <Textarea
+                value={editState.draft.shippingAddress}
+                onChange={(event) => onProfileChange("shippingAddress", event.target.value)}
+                className="min-h-16"
+                rows={2}
+              />
+            </EditField>
+          </div>
+        ) : null}
 
-  return ["gold", "emerald", "diamond", "master", "king"].includes(tier)
-    ? "vip"
-    : "active";
+        {editState?.kind === "terms" ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            <EditField label={text.customers.currentTier}>
+              <Select
+                value={editState.draft.tier}
+                onValueChange={(value) => onTermsChange("tier", value)}
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {tiers.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {tierLabel(value, copy)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </EditField>
+            <EditField label={copy.priceGroupId}>
+              <Input
+                className="h-8"
+                value={editState.draft.priceGroupId}
+                onChange={(event) => onTermsChange("priceGroupId", event.target.value)}
+              />
+            </EditField>
+            <EditField label={text.customers.labels.creditLimit}>
+              <Input
+                className="h-8"
+                inputMode="decimal"
+                value={editState.draft.creditLimit}
+                onChange={(event) => onTermsChange("creditLimit", event.target.value)}
+              />
+            </EditField>
+            <EditField label={copy.monthlyPurchase}>
+              <Input
+                className="h-8"
+                value={editState.draft.monthlyPurchase}
+                onChange={(event) => onTermsChange("monthlyPurchase", event.target.value)}
+              />
+            </EditField>
+            <EditField className="sm:col-span-2" label={text.customers.labels.paymentTerms}>
+              <Textarea
+                value={editState.draft.paymentTerms}
+                onChange={(event) => onTermsChange("paymentTerms", event.target.value)}
+                className="min-h-16"
+                rows={2}
+              />
+            </EditField>
+          </div>
+        ) : null}
+
+        <div className="space-y-2">
+          <Label htmlFor="customer-edit-reason">{copy.reason}</Label>
+          <Textarea
+            id="customer-edit-reason"
+            value={reason}
+            onChange={(event) => onReasonChange(event.target.value)}
+            placeholder={copy.reasonPlaceholder}
+            className="min-h-20"
+            rows={3}
+          />
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={submitting}>
+            {copy.cancel}
+          </Button>
+          <Button onClick={onSubmit} disabled={!canSubmit || submitting}>
+            {submitting ? <Loader2 className="animate-spin" /> : <Save />}
+            {saveLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
-function normalizeOrderChannel(value: unknown): CustomerOrder["channel"] {
-  return ["Web", "Admin", "Account"].includes(value as CustomerOrder["channel"])
-    ? (value as CustomerOrder["channel"])
-    : "Web";
+function EditField({
+  children,
+  className,
+  label,
+}: {
+  children: React.ReactNode;
+  className?: string;
+  label: string;
+}) {
+  return (
+    <div className={cn("space-y-1.5", className)}>
+      <Label className="text-xs text-muted-foreground">{label}</Label>
+      {children}
+    </div>
+  );
 }
 
-function readSource(value: unknown): ApiSource {
-  if (value === "supabase" || value === "admin_api") {
-    return value;
-  }
-
-  return "empty";
+function Kpi({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: number;
+}) {
+  return (
+    <div className="min-w-0 rounded-md border border-slate-200 bg-white px-1.5 py-1.5 shadow-[0_8px_20px_rgba(15,23,42,0.03)] sm:p-2">
+      <div className="flex items-center justify-between gap-1 sm:gap-2">
+        <span className="min-w-0 truncate text-[10px] leading-3 text-muted-foreground sm:text-xs">{label}</span>
+        <Icon className="hidden size-3 shrink-0 text-muted-foreground sm:block sm:size-3.5" />
+      </div>
+      <div className="mt-0.5 text-base font-semibold leading-none sm:mt-1 sm:text-lg">{value}</div>
+    </div>
+  );
 }
 
-function readArrayPayload(
-  record: Record<string, unknown>,
-  keys: string[]
-): unknown[] | null {
-  for (const key of keys) {
-    const value = record[key];
-
-    if (Array.isArray(value)) {
-      return value;
-    }
-  }
-
-  return null;
+function FilterSelect({
+  ariaLabel,
+  onValueChange,
+  options,
+  value,
+}: {
+  ariaLabel: string;
+  onValueChange: (value: string) => void;
+  options: readonly (readonly [string, string])[];
+  value: string;
+}) {
+  return (
+    <Select value={value} onValueChange={onValueChange}>
+      <SelectTrigger size="sm" className="h-7 w-full px-2 text-[11px] sm:h-8 sm:text-xs" aria-label={ariaLabel}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map(([optionValue, label]) => (
+          <SelectItem key={optionValue} value={optionValue}>
+            {label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
 }
 
-function readRecordValue(
-  record: Record<string, unknown> | null | undefined,
-  keys: string[]
-) {
-  if (!record) {
-    return undefined;
-  }
-
-  for (const key of keys) {
-    if (record[key] !== undefined && record[key] !== null) {
-      return record[key];
-    }
-  }
-
-  return undefined;
+function StatusBadge({
+  active,
+  copy,
+  status,
+  suspended,
+}: {
+  active: string;
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
+  status: CustomerStatus;
+  suspended: string;
+}) {
+  return (
+    <Badge className={statusBadgeClass(status)} variant="outline">
+      {statusLabel(status, copy, suspended, active)}
+    </Badge>
+  );
 }
 
-function readString(value: unknown) {
-  if (typeof value === "string" && value.trim().length > 0) {
-    return value.trim();
-  }
-
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return String(value);
-  }
-
-  return null;
+function AmountTile({
+  emphasis,
+  label,
+  tone = "default",
+  value,
+}: {
+  emphasis?: boolean;
+  label: string;
+  tone?: "default" | "danger" | "success" | "warning";
+  value: React.ReactNode;
+}) {
+  return (
+    <div className={cn("min-w-0 rounded-md border px-1.5 py-1.5", amountTileClass(tone, emphasis))}>
+      <div className="truncate text-[11px] leading-3 text-muted-foreground lg:text-xs">{label}</div>
+      <div className="mt-0.5 truncate text-[13px] font-semibold leading-4 lg:text-sm lg:leading-5">{value}</div>
+    </div>
+  );
 }
 
-function readNumber(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === "string" && value.trim().length > 0) {
-    const parsed = Number(value);
-
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  return null;
+function DetailGrid({ items }: { items: [string, React.ReactNode][] }) {
+  return (
+    <dl className="grid grid-cols-2 gap-1 text-xs lg:gap-1.5 lg:text-sm">
+      {items.map(([label, value]) => (
+        <div key={label} className="min-w-0 rounded-md border border-slate-200 bg-white px-1.5 py-1.5">
+          <dt className="truncate text-[11px] leading-3 text-muted-foreground lg:text-xs">{label}</dt>
+          <dd className="mt-0.5 break-words text-[13px] font-semibold leading-4 lg:text-sm lg:leading-5">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
 }
 
-function readMoney(value: unknown) {
-  const direct = readNumber(value);
+function AddressBlock({ fallback, label, value }: { fallback: string; label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-white px-1.5 py-1.5 text-xs lg:p-2 lg:text-sm">
+      <div className="text-[11px] leading-3 text-muted-foreground lg:text-xs">{label}</div>
+      <div className="mt-0.5 break-words text-[13px] font-medium leading-4 lg:text-sm lg:leading-5">{value || fallback}</div>
+    </div>
+  );
+}
 
-  if (direct !== null) {
-    return direct;
+function EmptyState({ label }: { label: string }) {
+  return <div className="rounded-md border border-dashed border-slate-200 px-2 py-2 text-xs text-muted-foreground lg:p-3 lg:text-sm">{label}</div>;
+}
+
+function profileDraftFromCustomer(customer: AdminCustomer): CustomerProfileDraft {
+  return {
+    billingAddress: customer.billingAddress ?? "",
+    companyName: customer.companyName ?? "",
+    contactName: customer.contactName ?? "",
+    email: customer.email ?? "",
+    fiscalCode: customer.codiceFiscale ?? "",
+    pec: customer.pec ?? "",
+    phone: customer.phone ?? "",
+    registeredAddress: customer.registeredAddress ?? "",
+    sdi: customer.sdi || customer.codiceDestinatario || "",
+    shippingAddress: customer.shippingAddress ?? "",
+    vatNumber: customer.vatNumber || customer.partitaIva || "",
+  };
+}
+
+function termsDraftFromCustomer(customer: AdminCustomer): CustomerTermsDraft {
+  return {
+    creditLimit: String(customer.creditLimit ?? 0),
+    monthlyPurchase: customer.monthlyPurchase ?? "",
+    paymentTerms: customer.paymentTerms ?? "",
+    priceGroupId: customer.priceGroupId ?? "",
+    tier: customer.tier,
+  };
+}
+
+function buildCustomerEditPayload(
+  editState: CustomerEditState,
+  reason: string,
+  invalidCreditLimit: string
+): { ok: true; payload: Record<string, unknown> } | { ok: false; message: string } {
+  if (editState.kind === "profile") {
+    return {
+      ok: true,
+      payload: {
+        billingAddress: nullableDraftText(editState.draft.billingAddress),
+        companyName: editState.draft.companyName.trim(),
+        contactName: nullableDraftText(editState.draft.contactName),
+        email: nullableDraftText(editState.draft.email),
+        fiscalCode: nullableDraftText(editState.draft.fiscalCode),
+        pec: nullableDraftText(editState.draft.pec),
+        phone: nullableDraftText(editState.draft.phone),
+        reason,
+        registeredAddress: nullableDraftText(editState.draft.registeredAddress),
+        sdi: nullableDraftText(editState.draft.sdi),
+        shippingAddress: nullableDraftText(editState.draft.shippingAddress),
+        vatNumber: nullableDraftText(editState.draft.vatNumber),
+      },
+    };
   }
 
-  if (!isRecord(value)) {
+  const creditLimit = parseDraftMoney(editState.draft.creditLimit);
+
+  if (creditLimit === null) {
+    return { ok: false, message: invalidCreditLimit };
+  }
+
+  return {
+    ok: true,
+    payload: {
+      creditLimit,
+      monthlyPurchase: nullableDraftText(editState.draft.monthlyPurchase),
+      paymentTerms: nullableDraftText(editState.draft.paymentTerms),
+      priceGroupId: nullableDraftText(editState.draft.priceGroupId),
+      reason,
+      tier: editState.draft.tier,
+    },
+  };
+}
+
+function nullableDraftText(value: string) {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function parseDraftMoney(value: string) {
+  const normalized = value.trim().replace(",", ".");
+
+  if (normalized.length === 0) {
     return 0;
   }
 
-  const amount = readNumber(value.amount);
-
-  if (amount !== null) {
-    return amount;
-  }
-
-  const cents = readNumber(value.cents);
-
-  return cents === null ? 0 : Math.round((cents / 100 + Number.EPSILON) * 100) / 100;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
 }
 
-async function readJsonSafely(response: Response) {
-  try {
-    return (await response.json()) as unknown;
-  } catch {
-    return null;
+async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, init);
+  const payload = (await response.json().catch(() => null)) as unknown;
+
+  if (!response.ok) {
+    throw new Error(readErrorMessage(payload) ?? `${response.status}`);
   }
+
+  return payload as T;
 }
 
-function extractObjectPayload(payload: unknown, keys: string[]) {
-  if (!isRecord(payload)) {
+function readErrorMessage(payload: unknown) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return null;
   }
 
-  for (const key of keys) {
-    if (isRecord(payload[key])) {
-      return payload[key] as Record<string, unknown>;
-    }
-  }
-
-  return readString(payload.id) ? payload : null;
+  const error = (payload as { error?: { message?: unknown } }).error;
+  return typeof error?.message === "string" ? error.message : null;
 }
 
-function serializePatch(patch: Record<string, unknown>) {
-  return Object.fromEntries(
-    Object.entries(patch).filter(([, value]) => value !== undefined)
+function statusLabel(
+  status: CustomerStatus,
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"],
+  suspended: string,
+  active: string
+) {
+  if (status === "active") {
+    return active;
+  }
+
+  if (status === "suspended") {
+    return suspended;
+  }
+
+  return copy.pendingReview;
+}
+
+function customerTypeLabel(
+  value: CustomerType | string,
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"]
+) {
+  return (copy.customerTypeLabels as Record<string, string>)[value] ?? value;
+}
+
+function assignmentStatusLabel(
+  value: AssignmentStatus | string,
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"]
+) {
+  return (copy.assignmentLabels as Record<string, string>)[value] ?? value;
+}
+
+function memberRoleLabel(
+  value: CustomerMembership["memberRole"] | string,
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"]
+) {
+  return (copy.memberRoleLabels as Record<string, string>)[value] ?? value;
+}
+
+function memberStatusLabel(
+  value: CustomerMembership["status"] | string,
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"]
+) {
+  return (copy.memberStatusLabels as Record<string, string>)[value] ?? value;
+}
+
+function accountTypeLabel(
+  value: CustomerMembership["accountType"] | string,
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"]
+) {
+  return (copy.accountTypeLabels as Record<string, string>)[value] ?? value;
+}
+
+function orderStatusLabel(
+  value: string | null | undefined,
+  text: ReturnType<typeof getAdminDictionary>["admin"]
+) {
+  if (!value) {
+    return "";
+  }
+
+  const adminOrderStatus = text.enums.adminOrderStatus as Record<string, string>;
+  const orderStatus = text.enums.orderStatus as Record<string, string>;
+  const fulfillmentStatus = text.enums.fulfillmentStatus as Record<string, string>;
+
+  return adminOrderStatus[value] ?? orderStatus[value] ?? fulfillmentStatus[value] ?? value;
+}
+
+function rmaStatusLabel(
+  value: string | null | undefined,
+  text: ReturnType<typeof getAdminDictionary>["admin"]
+) {
+  if (!value) {
+    return "";
+  }
+
+  return (text.enums.rmaStatus as Record<string, string>)[value] ?? value;
+}
+
+function valueLabel(
+  value: string | null | undefined,
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"]
+) {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  return (copy.valueLabels as Record<string, string>)[trimmed] ?? trimmed;
+}
+
+function priceGroupLabel(
+  value: string | null | undefined,
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"]
+) {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return "";
+  }
+
+  const tier = trimmed.toLowerCase();
+  return isCustomerTier(tier) ? tierLabel(tier, copy) : valueLabel(trimmed, copy);
+}
+
+function statusBadgeClass(status: CustomerStatus) {
+  if (status === "active") {
+    return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700";
+  }
+
+  if (status === "suspended") {
+    return "border-destructive/30 bg-destructive/10 text-destructive";
+  }
+
+  return "border-amber-500/30 bg-amber-500/10 text-amber-700";
+}
+
+function amountTileClass(tone: "default" | "danger" | "success" | "warning", emphasis?: boolean) {
+  if (tone === "danger") {
+    return "border-red-200 bg-red-50/70 text-red-900";
+  }
+
+  if (tone === "success") {
+    return "border-emerald-200 bg-emerald-50/70 text-emerald-900";
+  }
+
+  if (tone === "warning") {
+    return "border-amber-200 bg-amber-50/70 text-amber-900";
+  }
+
+  return emphasis
+    ? "border-blue-200 bg-blue-50/70 text-blue-950"
+    : "border-slate-200 bg-white text-slate-950";
+}
+
+function buildCustomerAmountSummary(customer: AdminCustomer) {
+  const recentOrders = customer.orders ?? [];
+  const recentOrdersAmount = roundMoney(
+    recentOrders.reduce((total, order) => total + safeMoney(order.total), 0)
   );
+  const paidOrdersAmount = roundMoney(
+    recentOrders
+      .filter((order) => order.paymentStatus === "paid")
+      .reduce((total, order) => total + safeMoney(order.total), 0)
+  );
+  const unpaidOrdersAmount = roundMoney(Math.max(recentOrdersAmount - paidOrdersAmount, 0));
+  const receivables = Math.max(safeMoney(customer.receivables), unpaidOrdersAmount);
+  const overdue = safeMoney(customer.overdue);
+  const creditLimit = safeMoney(customer.creditLimit);
+  const creditUsed = Math.max(receivables, overdue);
+  const availableCredit = Math.max(creditLimit - creditUsed, 0);
+  const totalSpend = safeMoney(customer.revenue);
+  const averageOrderValue =
+    customer.ordersCount > 0
+      ? roundMoney(totalSpend / customer.ordersCount)
+      : recentOrders.length > 0
+        ? roundMoney(recentOrdersAmount / recentOrders.length)
+        : 0;
+  const usagePercent =
+    creditLimit > 0 ? Math.min(Math.round((creditUsed / creditLimit) * 1000) / 10, 999) : 0;
+
+  return {
+    availableCredit,
+    averageOrderValue,
+    creditLimit,
+    creditUsed,
+    ordersCount: customer.ordersCount,
+    overdue,
+    paidOrdersAmount,
+    recentOrders: recentOrders.slice(0, 5),
+    recentOrdersAmount,
+    receivables,
+    totalSpend,
+    unpaidOrdersAmount,
+    usagePercent,
+  };
 }
 
-function readableError(error: unknown) {
-  return error instanceof Error ? error.message : "Errore sconosciuto";
+function creditUsageBadgeClass(usagePercent: number) {
+  if (usagePercent >= 90) {
+    return "border-red-200 bg-red-50 text-red-700";
+  }
+
+  if (usagePercent >= 70) {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  return "border-emerald-200 bg-emerald-50 text-emerald-700";
 }
 
-function formatSyncTime() {
+function paymentStatusBadgeClass(status: string) {
+  if (status === "paid") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (status === "failed") {
+    return "border-red-200 bg-red-50 text-red-700";
+  }
+
+  if (status === "bank_waiting") {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
+function paymentStatusLabel(
+  status: string,
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"]
+) {
+  if (status === "paid") {
+    return copy.paymentPaid;
+  }
+
+  if (status === "bank_waiting") {
+    return copy.paymentWaiting;
+  }
+
+  if (status === "failed") {
+    return copy.paymentFailed;
+  }
+
+  return copy.paymentPending;
+}
+
+function formatPercent(value: number) {
+  return `${new Intl.NumberFormat("it-IT", {
+    maximumFractionDigits: value % 1 === 0 ? 0 : 1,
+    minimumFractionDigits: 0,
+  }).format(value)}%`;
+}
+
+function safeMoney(value: number | null | undefined) {
+  return Number.isFinite(value) ? Number(value) : 0;
+}
+
+function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function tierLabel(
+  value: CustomerTier | string,
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"]
+) {
+  if (isCustomerTier(value)) {
+    return copy.tierLabels[value];
+  }
+
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function isCustomerTier(value: string): value is CustomerTier {
+  return tiers.includes(value as CustomerTier);
+}
+
+function formatDate(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
   return new Intl.DateTimeFormat("it-IT", {
     day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
     month: "2-digit",
-  }).format(new Date());
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+    year: "2-digit",
+  }).format(date);
 }

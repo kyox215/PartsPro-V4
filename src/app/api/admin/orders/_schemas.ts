@@ -43,6 +43,7 @@ export const orderPatchSchema = z
     carrier: z.string().trim().min(1).max(80).optional(),
     tracking: z.string().trim().max(120).optional(),
     note: z.string().trim().max(500).optional(),
+    staffNote: z.string().trim().max(1000).optional(),
     rollback: z.boolean().optional(),
   })
   .strict();

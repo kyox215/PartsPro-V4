@@ -3,8 +3,9 @@
 import { redirect } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
-import { cleanAuthRedirect, loginUrl } from "@/lib/partspro-auth-redirect";
+import { cleanAuthRedirect, loginUrl, postLoginRedirect } from "@/lib/partspro-auth-redirect";
 import { ensureCurrentUserAccount } from "@/lib/partspro-account-context";
+import { getAdminAuthState } from "@/lib/partspro-admin-auth";
 
 export async function signInWithPassword(formData: FormData) {
   const next = cleanAuthRedirect(formData.get("next"));
@@ -27,7 +28,11 @@ export async function signInWithPassword(formData: FormData) {
   }
 
   await ensureCurrentUserAccount();
-  redirect(next);
+  const adminAuth = await getAdminAuthState();
+
+  redirect(postLoginRedirect(next, {
+    adminAllowed: adminAuth.allowed,
+  }));
 }
 
 export async function signOut() {

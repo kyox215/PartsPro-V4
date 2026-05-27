@@ -4,11 +4,12 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { GoogleLoginButton, LoginSubmitButton } from "@/components/partspro/login-client";
+import { GoogleLoginButton, LoginSubmitButton, WeChatLoginButton } from "@/components/partspro/login-client";
 import { StoreHeader } from "@/components/partspro/store-header";
-import { cleanAuthRedirect } from "@/lib/partspro-auth-redirect";
-import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { createClient } from "@/lib/supabase/server";
+import { cleanAuthRedirect, postLoginRedirect } from "@/lib/partspro-auth-redirect";
+import { getAdminAuthState } from "@/lib/partspro-admin-auth";
+import { getCurrentAccountContext } from "@/lib/partspro-account-context";
+import { isSupabaseConfigured, isWeChatLoginEnabled } from "@/lib/supabase/env";
 import { signInWithPassword } from "./actions";
 
 type LoginPageProps = {
@@ -19,7 +20,7 @@ const errorMessages: Record<string, string> = {
   config: "Manca la publishable key Supabase in .env.local.",
   invalid: "Email o password non validi.",
   missing: "Inserisci email e password.",
-  oauth: "Accesso Google non riuscito. Verifica la configurazione OAuth in Supabase.",
+  oauth: "Accesso OAuth non riuscito. Verifica la configurazione dei provider in Supabase.",
 };
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
@@ -27,16 +28,22 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const configured = isSupabaseConfigured();
   const next = cleanAuthRedirect(getParam(params.next), "/account");
   const error = getParam(params.error);
+  const weChatLoginEnabled = isWeChatLoginEnabled();
   const googleLoginUrl = `/auth/google?${new URLSearchParams({ next }).toString()}`;
+  const weChatLoginUrl = weChatLoginEnabled
+    ? `/auth/wechat?${new URLSearchParams({ next }).toString()}`
+    : null;
 
   if (configured) {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const [account, adminAuth] = await Promise.all([
+      getCurrentAccountContext({ ensure: true }),
+      getAdminAuthState(),
+    ]);
 
-    if (user) {
-      redirect(next);
+    if (account.authenticated) {
+      redirect(postLoginRedirect(next, {
+        adminAllowed: adminAuth.allowed,
+      }));
     }
   }
 
@@ -59,8 +66,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                 <span>{errorMessages[error] ?? "Accesso non riuscito."}</span>
               </div>
             )}
-            <div className="mb-4">
+            <div className="mb-4 space-y-2">
               <GoogleLoginButton href={googleLoginUrl} disabled={!configured} />
+              {weChatLoginUrl && (
+                <WeChatLoginButton href={weChatLoginUrl} disabled={!configured} />
+              )}
             </div>
             <div className="mb-4 flex items-center gap-3 text-xs font-semibold uppercase tracking-normal text-slate-400">
               <div className="h-px flex-1 bg-slate-200" />
@@ -118,7 +128,7 @@ function LoginRuntimeNotice({ configured }: { configured: boolean }) {
           <div className="font-black">Login Supabase attivo</div>
           <p className="mt-1 leading-6">
             Le credenziali vengono verificate con Supabase Auth. Dopo il login
-            torni automaticamente all&apos;area richiesta.
+            i clienti tornano alla home, lo staff apre il pannello admin.
           </p>
         </div>
       </div>

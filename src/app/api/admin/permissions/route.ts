@@ -28,6 +28,7 @@ const permissionOverrideSchema = z
 const permissionPatchSchema = z
   .object({
     overrides: z.array(permissionOverrideSchema).max(200).optional(),
+    reason: z.string().trim().min(3).max(1000),
     roleTemplate: z.enum(roleTemplates).optional(),
     userId: z.string().trim().uuid(),
   })
@@ -121,57 +122,17 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const supabase = await createClient();
+    const rpcResult = await supabase.rpc("admin_update_permission_overrides", {
+      p_overrides: parsed.data.overrides ?? [],
+      p_reason: parsed.data.reason,
+      p_role_template: parsed.data.roleTemplate ?? null,
+      p_user_id: parsed.data.userId,
+    });
 
-    if (parsed.data.roleTemplate) {
-      const { error } = await supabase.rpc("admin_update_account", {
-        p_account_type: "employee",
-        p_assignment_status: null,
-        p_customer_type: null,
-        p_role_template: parsed.data.roleTemplate,
-        p_user_id: parsed.data.userId,
+    if (rpcResult.error) {
+      return apiError(502, "ADMIN_PERMISSION_UPDATE_FAILED", "Permissions could not be updated.", {
+        message: rpcResult.error.message,
       });
-
-      if (error) {
-        return apiError(502, "ADMIN_ROLE_TEMPLATE_UPDATE_FAILED", "Role template could not be updated.", {
-          message: error.message,
-        });
-      }
-    }
-
-    for (const override of parsed.data.overrides ?? []) {
-      if (override.effect === "inherit") {
-        const { error } = await supabase
-          .from("admin_user_permission_overrides")
-          .delete()
-          .eq("user_id", parsed.data.userId)
-          .eq("permission_id", override.permissionId);
-
-        if (error) {
-          return apiError(502, "ADMIN_PERMISSION_OVERRIDE_DELETE_FAILED", "Permission override could not be cleared.", {
-            message: error.message,
-            permissionId: override.permissionId,
-          });
-        }
-
-        continue;
-      }
-
-      const { error } = await supabase.from("admin_user_permission_overrides").upsert(
-        {
-          effect: override.effect,
-          permission_id: override.permissionId,
-          updated_at: new Date().toISOString(),
-          user_id: parsed.data.userId,
-        },
-        { onConflict: "user_id,permission_id" }
-      );
-
-      if (error) {
-        return apiError(502, "ADMIN_PERMISSION_OVERRIDE_UPDATE_FAILED", "Permission override could not be updated.", {
-          message: error.message,
-          permissionId: override.permissionId,
-        });
-      }
     }
 
     const { data, error } = await supabase

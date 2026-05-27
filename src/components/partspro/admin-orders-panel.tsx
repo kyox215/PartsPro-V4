@@ -8,10 +8,14 @@ import {
   BadgeCheck,
   CheckCircle2,
   ClipboardList,
+  Copy,
   CreditCard,
+  Clock3,
+  ExternalLink,
   Info,
   Loader2,
   PackageCheck,
+  Pencil,
   Printer,
   RefreshCw,
   RotateCcw,
@@ -35,15 +39,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -130,6 +125,7 @@ type OrderLine = {
   quantity: number;
   picked: number;
   unitPrice: number;
+  lineTotal: number;
   warehouse: WarehouseName;
   stockStatus: string;
   reservedQty: number;
@@ -181,10 +177,32 @@ type AdminOrder = {
   eta: string;
   shippingAddress: string;
   owner: string;
+  customerNote: string;
+  staffNote: string;
   notes: string;
   lines: OrderLine[];
   activity: string[];
   operationHistory: OrderActivityEvent[];
+};
+
+type TrackingTimelineTone = "done" | "current" | "info";
+
+type TrackingTimelineEvent = {
+  id: string;
+  title: string;
+  description: string;
+  createdAt: string;
+  source: string;
+  tone: TrackingTimelineTone;
+};
+
+type OrderTrackingDetail = {
+  carrier: string;
+  tracking: string;
+  status: string;
+  refreshedAt: string;
+  trackingUrl: string | null;
+  events: TrackingTimelineEvent[];
 };
 
 type OrdersDataSource = {
@@ -201,6 +219,11 @@ type PanelNotice = {
   message: string;
 };
 
+type AdminSessionState = {
+  allowed: boolean;
+  role: string | null;
+};
+
 type OrdersApiResult = {
   orders: AdminOrder[];
   source: ApiOrdersSource;
@@ -212,6 +235,7 @@ type OrderPatchInput = {
   carrier?: string;
   paymentStatus?: PaymentStatus;
   rollback?: boolean;
+  staffNote?: string;
   status?: OrderDbStatus;
   tracking?: string;
   note?: string;
@@ -285,7 +309,38 @@ export function AdminOrdersPanel() {
   const [selectedOrderId, setSelectedOrderId] = React.useState("");
   const [mobileDetailsOpen, setMobileDetailsOpen] = React.useState(false);
   const [notice, setNotice] = React.useState<PanelNotice | null>(null);
+  const [adminSession, setAdminSession] = React.useState<AdminSessionState>({
+    allowed: false,
+    role: null,
+  });
   const [page, setPage] = React.useState(1);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    void fetch("/api/me", {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload: unknown) => {
+        if (cancelled || !isRecord(payload)) {
+          return;
+        }
+
+        const admin = isRecord(payload.admin) ? payload.admin : null;
+
+        setAdminSession({
+          allowed: Boolean(admin?.allowed),
+          role: readString(admin?.role),
+        });
+      })
+      .catch(() => undefined);
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const upsertOrder = React.useCallback((order: AdminOrder) => {
     setOrders((currentOrders) => {
@@ -638,30 +693,18 @@ export function AdminOrdersPanel() {
     [labels, patchOrder, text]
   );
 
-  const handleAssignCarrier = React.useCallback(
-    (order: AdminOrder, carrier: Carrier) => {
-      if (carrier === unassignedCarrier) {
-        return;
-      }
-
+  const handleUpdateStaffNote = React.useCallback(
+    (order: AdminOrder, staffNote: string) => {
       void patchOrder(
         order,
-        { carrier, note: `${text.common.carrier}: ${carrier}` },
-        text.orders.shipmentSaved
+        {
+          note: text.orders.activity.staffNoteUpdated,
+          staffNote: staffNote.trim(),
+        },
+        text.orders.notices.staffNote
       );
     },
-    [patchOrder, text.common.carrier, text.orders.shipmentSaved]
-  );
-
-  const handleUpdateTracking = React.useCallback(
-    (order: AdminOrder, tracking: string) => {
-      void patchOrder(
-        order,
-        { note: `Tracking: ${tracking.trim() || "-"}`, tracking: tracking.trim() },
-        text.orders.shipmentSaved
-      );
-    },
-    [patchOrder, text.orders.shipmentSaved]
+    [patchOrder, text.orders.activity.staffNoteUpdated, text.orders.notices.staffNote]
   );
 
   const handlePrintOrder = React.useCallback(
@@ -851,7 +894,7 @@ export function AdminOrdersPanel() {
             onOpenChange={setMobileDetailsOpen}
           >
             {selectedOrder && (
-              <DialogContent className="grid max-h-[calc(100dvh-0.5rem)] w-[calc(100vw-0.5rem)] max-w-[calc(100vw-0.5rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg bg-white p-0 pt-7 sm:max-h-[calc(100dvh-1rem)] sm:w-[calc(100vw-1rem)] sm:max-w-[calc(100vw-1rem)] sm:pt-10 xl:max-w-[1180px]">
+              <DialogContent className="grid max-h-[calc(100dvh-0.5rem)] w-[calc(100vw-0.5rem)] max-w-[calc(100vw-0.5rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg bg-white p-0 pt-7 sm:max-h-[calc(100dvh-1rem)] sm:w-[calc(100vw-1rem)] sm:max-w-[calc(100vw-1rem)] sm:pt-10 xl:max-w-[1280px] 2xl:max-w-[1360px]">
                 <DialogHeader className="border-b border-slate-200 px-2.5 pb-1.5 pr-12 sm:px-4 sm:pb-2.5">
                   <DialogTitle className="break-words text-sm font-black leading-tight text-slate-950 sm:text-base">
                     {formatAdminMessage(text.orders.detailDialogTitle, {
@@ -864,17 +907,17 @@ export function AdminOrdersPanel() {
                 </DialogHeader>
                 <div className="min-h-0 overflow-y-auto overscroll-contain">
                   <OrderDetailsPanel
+                    adminSession={adminSession}
                     labels={labels}
                     loading={loadingDetailId === selectedOrder.id}
                     order={selectedOrder}
                     pendingActionKey={pendingOrderAction}
-                  text={text}
-                  onAssignCarrier={handleAssignCarrier}
-                  onCancelOrder={handleCancelOrder}
-                  onPrintOrder={handlePrintOrder}
-                  onRollback={handleRollbackOrder}
-                  onTransition={handleTransition}
-                  onUpdateTracking={handleUpdateTracking}
+                    text={text}
+                    onCancelOrder={handleCancelOrder}
+                    onPrintOrder={handlePrintOrder}
+                    onRollback={handleRollbackOrder}
+                    onTransition={handleTransition}
+                    onUpdateStaffNote={handleUpdateStaffNote}
                   />
                 </div>
               </DialogContent>
@@ -1034,8 +1077,6 @@ function OrdersList({
       <div className="space-y-2 md:hidden">
         {orders.length > 0 ? (
           orders.map((order) => {
-            const summaryFacts = getMobileSummaryFacts(order, viewMode, labels, text);
-
             return (
               <button
                 key={order.id}
@@ -1051,10 +1092,7 @@ function OrdersList({
                 )}
                 onClick={() => onOpenMobileDetails(order.id)}
               >
-                <OrderListHeader labels={labels} order={order} />
-                <div className="mt-2 min-w-0 break-words text-xs font-semibold leading-5 text-slate-500">
-                  {summaryFacts.map((fact) => `${fact.label}: ${fact.value}`).join(" · ")}
-                </div>
+                <MobileOrderCard labels={labels} order={order} text={text} viewMode={viewMode} />
               </button>
             );
           })
@@ -1245,36 +1283,46 @@ function OrdersList({
   );
 }
 
-function OrderListHeader({
+function MobileOrderCard({
   labels,
   order,
+  text,
+  viewMode,
 }: {
   labels: OrderLabels;
   order: AdminOrder;
+  text: AdminText;
+  viewMode: ViewMode;
 }) {
+  const summaryFacts = getMobileSummaryFacts(order, viewMode, labels, text);
+
   return (
-    <>
-      <div className="flex min-w-0 items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
+    <div className="min-w-0">
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2">
+        <div className="min-w-0">
           <div
-            className="break-words font-mono text-[13px] font-black leading-tight text-slate-900"
+            className="truncate font-mono text-[13px] font-black leading-4 text-slate-900"
             title={order.id}
           >
             {shortOrderId(order.id)}
           </div>
-          <div className="mt-0.5 break-words text-xs leading-snug text-slate-600">
+          <div className="mt-0.5 truncate text-[11px] font-semibold leading-3 text-slate-500">
             {order.company}
           </div>
         </div>
-        <div className="shrink-0 whitespace-nowrap text-right text-sm font-black leading-tight text-slate-950">
-          {formatEuro(order.total)}
+        <div className="shrink-0 text-right">
+          <div className="text-sm font-black leading-4 text-slate-950">{formatEuro(order.total)}</div>
+          <div className="mt-0.5 text-[10px] font-semibold leading-3 text-slate-400">
+            {order.items} {text.common.product}
+          </div>
         </div>
       </div>
-      <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
+
+      <div className="mt-1.5 flex min-w-0 items-center gap-1 overflow-hidden">
         <Badge
           className={cn(
             orderStatusBadgeClass(order.status),
-            "h-auto min-h-5 whitespace-normal text-[11px] leading-tight"
+            "h-5 shrink-0 rounded px-1.5 text-[11px] leading-none"
           )}
         >
           {labels.status[order.status]}
@@ -1282,13 +1330,82 @@ function OrderListHeader({
         <Badge
           className={cn(
             priorityBadgeClass(order.priority),
-            "h-auto min-h-5 whitespace-normal text-[11px] leading-tight"
+            "h-5 shrink-0 rounded px-1.5 text-[11px] leading-none"
           )}
         >
           {labels.priority[order.priority]}
         </Badge>
+        <span className="min-w-0 truncate rounded bg-slate-50 px-1.5 py-1 text-[11px] font-semibold leading-3 text-slate-500">
+          {labels.payment[order.paymentStatus]} · {labels.fulfillment[order.fulfillmentStatus]}
+        </span>
       </div>
-    </>
+
+      <div className="mt-1.5 grid min-w-0 grid-cols-2 gap-1">
+        {summaryFacts.map((fact) => (
+          <div key={fact.label} className="min-w-0 rounded bg-slate-50 px-1.5 py-1">
+            <div className="truncate text-[10px] font-semibold leading-3 text-slate-400">
+              {fact.label}
+            </div>
+            <div className="mt-0.5 truncate text-[11px] font-bold leading-3 text-slate-700">
+              {fact.value}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <MobileOrderProgress labels={labels} status={order.status} />
+    </div>
+  );
+}
+
+function MobileOrderProgress({
+  labels,
+  status,
+}: {
+  labels: OrderLabels;
+  status: OrderDbStatus;
+}) {
+  const steps = statusFlow.slice(1);
+  const currentIndex = statusFlow.indexOf(status);
+  const cancelled = status === "cancelled";
+  const progressValue = cancelled ? 0 : Math.max(0, Math.min(currentIndex, steps.length));
+
+  return (
+    <div className="mt-1.5 min-w-0" aria-label={`${labels.status[status]} ${progressValue}/5`}>
+      <div className="mb-1 flex min-w-0 items-center justify-between gap-2">
+        <span className="truncate text-[10px] font-semibold leading-3 text-slate-400">
+          {labels.status[status]}
+        </span>
+        <span
+          className={cn(
+            "shrink-0 font-mono text-[10px] font-black leading-3 text-slate-400",
+            !cancelled && "text-primary"
+          )}
+        >
+          {progressValue}/5
+        </span>
+      </div>
+      <div className="grid grid-cols-5 gap-1">
+        {steps.map((step, index) => {
+          const stepIndex = index + 1;
+          const done = !cancelled && currentIndex >= stepIndex;
+          const current = !cancelled && currentIndex === stepIndex;
+
+          return (
+            <span
+              key={step}
+              className={cn(
+                "h-1.5 rounded-full bg-slate-100",
+                done && "bg-primary",
+                current && "ring-2 ring-primary/15",
+                cancelled && "bg-red-100"
+              )}
+              title={labels.status[step]}
+            />
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -1387,31 +1504,77 @@ function OrderProgressInline({
 }
 
 function OrderDetailsPanel({
+  adminSession,
   labels,
   loading,
   order,
   pendingActionKey,
   text,
-  onAssignCarrier,
   onCancelOrder,
   onPrintOrder,
   onRollback,
   onTransition,
-  onUpdateTracking,
+  onUpdateStaffNote,
 }: {
+  adminSession: AdminSessionState;
   labels: OrderLabels;
   loading: boolean;
   order: AdminOrder | null;
   pendingActionKey: string | null;
   text: AdminText;
-  onAssignCarrier: (order: AdminOrder, carrier: Carrier) => void;
   onCancelOrder: (order: AdminOrder) => void;
   onPrintOrder: (order: AdminOrder) => void;
   onRollback: (order: AdminOrder) => void;
   onTransition: (order: AdminOrder, status: OrderDbStatus, successMessage: string) => void;
-  onUpdateTracking: (order: AdminOrder, tracking: string) => void;
+  onUpdateStaffNote: (order: AdminOrder, staffNote: string) => void;
 }) {
-  if (!order) {
+  const [trackingDetailsState, setTrackingDetailsState] = React.useState(() => ({
+    open: false,
+    refreshedAt: new Date().toISOString(),
+    resetKey: "",
+  }));
+  const trackingResetKey = order
+    ? `${order.id}:${order.carrier}:${order.tracking}`
+    : "";
+  const trackingDetailsOpen =
+    trackingDetailsState.open && trackingDetailsState.resetKey === trackingResetKey;
+  const trackingDetail = React.useMemo(
+    () =>
+      order
+        ? buildOrderTrackingDetail(order, text, trackingDetailsState.refreshedAt)
+        : null,
+    [order, text, trackingDetailsState.refreshedAt]
+  );
+
+  const handleToggleTrackingDetails = React.useCallback(() => {
+    setTrackingDetailsState((current) => {
+      if (!trackingResetKey) {
+        return current;
+      }
+
+      const isOpen = current.open && current.resetKey === trackingResetKey;
+
+      return {
+        open: !isOpen,
+        refreshedAt: new Date().toISOString(),
+        resetKey: trackingResetKey,
+      };
+    });
+  }, [trackingResetKey]);
+
+  const handleRefreshTrackingDetails = React.useCallback(() => {
+    if (!trackingResetKey) {
+      return;
+    }
+
+    setTrackingDetailsState({
+      open: true,
+      refreshedAt: new Date().toISOString(),
+      resetKey: trackingResetKey,
+    });
+  }, [trackingResetKey]);
+
+  if (!order || !trackingDetail) {
     return (
       <div className="grid min-h-[360px] place-items-center rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center">
         <div>
@@ -1430,18 +1593,25 @@ function OrderDetailsPanel({
   const pickedItems = order.lines.reduce((total, line) => total + line.picked, 0);
   const isMutating = pendingActionKey?.startsWith(`${order.id}:`) ?? false;
   const isReadOnly = order.status === "completed" || order.status === "cancelled";
+  const canEditStaffNote = adminSession.allowed;
 
   return (
-    <div className="min-w-0 space-y-1.5 bg-slate-50/40 p-1.5 sm:space-y-3 sm:p-3">
-      <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
+    <div className="min-w-0 space-y-1.5 bg-slate-50/40 p-1.5 sm:space-y-2 sm:p-2">
+      <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
             <h3
-              className="hidden break-words text-base font-black leading-tight text-slate-950 sm:block"
+              className="hidden break-words text-[15px] font-black leading-tight text-slate-950 sm:block"
               title={order.id}
             >
               {shortOrderId(order.id)}
             </h3>
+            <CopyValueButton
+              className="hidden sm:inline-flex"
+              label={text.orders.table.order}
+              text={text}
+              value={order.id}
+            />
             <Badge className={orderStatusBadgeClass(order.status)}>
               {labels.status[order.status]}
             </Badge>
@@ -1461,7 +1631,7 @@ function OrderDetailsPanel({
               </Badge>
             )}
           </div>
-          <p className="mt-0.5 truncate text-xs leading-snug text-slate-500 sm:mt-1 sm:break-words sm:text-sm">
+          <p className="mt-0.5 truncate text-xs leading-snug text-slate-500 sm:break-words sm:text-[13px]">
             {order.company} - {order.customer.city} ({order.customer.province})
           </p>
         </div>
@@ -1484,115 +1654,89 @@ function OrderDetailsPanel({
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-1 rounded-md border border-slate-200 bg-white p-1 text-[11px] font-medium text-slate-600 sm:p-2.5 sm:text-xs md:hidden">
-        <div className="min-w-0 rounded bg-slate-50 px-1.5 py-1">
-          <div className="text-[10px] font-bold leading-none text-slate-400">
-            {text.common.payment}
+      <div className="grid min-w-0 gap-1 sm:gap-1.5 xl:grid-cols-[minmax(0,1fr)_minmax(330px,360px)] 2xl:grid-cols-[minmax(0,1fr)_minmax(350px,380px)]">
+        <div className="min-w-0 space-y-1.5">
+          <div className="grid grid-cols-2 gap-1 rounded-md border border-slate-200 bg-white p-1 text-[11px] font-medium text-slate-600 sm:p-2.5 sm:text-xs md:hidden">
+            <div className="min-w-0 rounded bg-slate-50 px-1.5 py-1">
+              <div className="text-[10px] font-bold leading-none text-slate-400">
+                {text.common.payment}
+              </div>
+              <div className="mt-0.5 truncate font-bold leading-tight text-slate-900">
+                {labels.payment[order.paymentStatus]} · {order.paymentDue}
+              </div>
+            </div>
+            <div className="min-w-0 rounded bg-slate-50 px-1.5 py-1">
+              <div className="text-[10px] font-bold leading-none text-slate-400">
+                {text.common.fulfillment}
+              </div>
+              <div className="mt-0.5 truncate font-bold leading-tight text-slate-900">
+                {labels.fulfillment[order.fulfillmentStatus]} · {pickedItems}/{order.items}
+              </div>
+            </div>
           </div>
-          <div className="mt-0.5 truncate font-bold leading-tight text-slate-900">
-            {labels.payment[order.paymentStatus]} · {order.paymentDue}
-          </div>
-        </div>
-        <div className="min-w-0 rounded bg-slate-50 px-1.5 py-1">
-          <div className="text-[10px] font-bold leading-none text-slate-400">
-            {text.common.fulfillment}
-          </div>
-          <div className="mt-0.5 truncate font-bold leading-tight text-slate-900">
-            {labels.fulfillment[order.fulfillmentStatus]} · {pickedItems}/{order.items}
-          </div>
-        </div>
-      </div>
 
-      <div className="hidden gap-2 md:grid md:grid-cols-2 xl:grid-cols-4">
-        <DetailFact
-          label={text.orders.details.orderTotal}
-          value={formatEuro(order.total)}
-          helper={formatAdminMessage(text.orders.details.piecesOrdered, {
-            count: order.items,
-          })}
-        />
-        <DetailFact
-          label={text.common.payment}
-          value={labels.payment[order.paymentStatus]}
-          helper={`${order.paymentMethod} - ${order.paymentDue}`}
-        />
-        <DetailFact
-          label={text.orders.details.fulfillment}
-          value={labels.fulfillment[order.fulfillmentStatus]}
-          helper={formatAdminMessage(text.orders.details.piecesPicked, {
-            picked: pickedItems,
-            items: order.items,
-          })}
-        />
-        <DetailFact
-          label={text.orders.details.customer}
-          value={order.customer.priceList}
-          helper={order.customer.partitaIva}
-        />
-      </div>
+          <div className="hidden gap-1.5 md:grid md:grid-cols-2 xl:grid-cols-4">
+            <DetailFact
+              label={text.orders.details.orderTotal}
+              value={formatEuro(order.total)}
+              helper={formatAdminMessage(text.orders.details.piecesOrdered, {
+                count: order.items,
+              })}
+            />
+            <DetailFact
+              label={text.common.payment}
+              value={labels.payment[order.paymentStatus]}
+              helper={`${order.paymentMethod} - ${order.paymentDue}`}
+            />
+            <DetailFact
+              label={text.orders.details.fulfillment}
+              value={labels.fulfillment[order.fulfillmentStatus]}
+              helper={formatAdminMessage(text.orders.details.piecesPicked, {
+                picked: pickedItems,
+                items: order.items,
+              })}
+            />
+            <DetailFact
+              label={text.orders.details.customer}
+              value={order.customer.priceList}
+              helper={order.customer.partitaIva}
+            />
+          </div>
 
-      <div className="grid gap-1 sm:gap-2 md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <Field label={text.common.carrier}>
-          <Select
-            value={order.carrier}
-            onValueChange={(value) => onAssignCarrier(order, value as Carrier)}
-            disabled={isMutating || isReadOnly}
-          >
-            <SelectTrigger className="h-8 w-full rounded-md bg-white text-sm sm:h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={unassignedCarrier}>{text.common.none}</SelectItem>
-              {carrierOptions.map((carrier) => (
-                <SelectItem key={carrier} value={carrier}>
-                  {carrier}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </Field>
-        <Field label="Tracking">
-          <TrackingEditor
-            key={`${order.id}:${order.tracking}`}
-            isMutating={isMutating || isReadOnly}
+          <div className="hidden md:block">
+            <StatusStepper labels={labels} status={order.status} />
+          </div>
+
+          <OrderLogisticsCard
             order={order}
-            tracking={order.tracking}
             text={text}
-            onUpdateTracking={onUpdateTracking}
+            trackingDetail={trackingDetail}
+            trackingDetailsOpen={trackingDetailsOpen}
+            onRefreshTrackingDetails={handleRefreshTrackingDetails}
+            onToggleTrackingDetails={handleToggleTrackingDetails}
           />
-        </Field>
-      </div>
 
-      <div className="hidden md:block">
-        <StatusStepper labels={labels} status={order.status} />
-      </div>
+          <OrderNotesBanner
+            canEditStaffNote={canEditStaffNote}
+            isMutating={isMutating}
+            order={order}
+            text={text}
+            onUpdateStaffNote={onUpdateStaffNote}
+          />
 
-      <OrderNoteBanner note={order.notes} text={text} />
-
-      <div className="grid gap-1 sm:gap-2 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-        <div className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5 sm:p-2.5">
-          <div className="mb-1 flex items-center gap-2 sm:mb-2">
-            <PackageCheck className="size-4 text-primary" />
-            <div className="text-sm font-bold text-slate-900">
-              {text.orders.details.orderLines}
+          <div className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5">
+            <div className="mb-1 flex items-center gap-2 sm:mb-2">
+              <PackageCheck className="size-4 text-primary" />
+              <div className="text-sm font-bold text-slate-900">
+                {text.orders.details.orderLines}
+              </div>
             </div>
+            <OrderLines lines={order.lines} text={text} />
           </div>
-          <OrderLines lines={order.lines} text={text} />
         </div>
-        <div className="min-w-0 space-y-1 sm:space-y-2">
-          <div className="rounded-md border border-slate-200 bg-white p-1.5 sm:p-2.5">
-            <div className="mb-1 flex items-center gap-2 text-sm font-bold text-slate-900 sm:mb-2">
-              <Truck className="size-4 text-primary" />
-              {text.orders.details.logistics}
-            </div>
-            <div className="space-y-1 text-xs text-slate-600 sm:space-y-2 sm:text-sm">
-              <InfoRow label={text.common.service} value={order.service} />
-              <InfoRow label={text.common.eta} value={order.eta} />
-              <InfoRow label={text.orders.details.deliveryAddress} value={order.shippingAddress} />
-              <InfoRow label={text.common.owner} value={order.owner} />
-            </div>
-          </div>
-          <div className="rounded-md border border-slate-200 bg-white p-1.5 sm:p-2.5">
+
+        <div className="grid min-w-0 gap-1 sm:gap-1.5 xl:self-start">
+          <div className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5 sm:p-2">
             <OrderOperationHistory
               events={order.operationHistory}
               fallbackActivity={order.activity}
@@ -1611,6 +1755,192 @@ function canShipOrder(order: AdminOrder) {
     order.status === "packed" &&
     order.carrier !== unassignedCarrier &&
     order.tracking.trim().length > 0
+  );
+}
+
+function hasCarrier(order: AdminOrder) {
+  return order.carrier !== unassignedCarrier;
+}
+
+function hasTracking(order: AdminOrder) {
+  return order.tracking.trim().length > 0;
+}
+
+function buildOrderTrackingDetail(
+  order: AdminOrder,
+  text: AdminText,
+  refreshedAt: string
+): OrderTrackingDetail {
+  const tracking = order.tracking.trim();
+  const trackingUrl = buildCarrierTrackingUrl(order.carrier, tracking);
+
+  return {
+    carrier: carrierLabel(order.carrier, text),
+    tracking: tracking || text.common.none,
+    status: trackingUrl
+      ? text.orders.tracking.carrierRealtime
+      : text.orders.tracking.noCarrierPortal,
+    refreshedAt,
+    trackingUrl,
+    events: [],
+  };
+}
+
+function buildCarrierTrackingUrl(carrier: Carrier, tracking: string) {
+  const normalizedCarrier = carrier.toLowerCase();
+  const encodedTracking = encodeURIComponent(tracking.trim());
+
+  if (!encodedTracking || carrier === unassignedCarrier || normalizedCarrier.includes("ritiro")) {
+    return null;
+  }
+
+  if (normalizedCarrier.includes("brt")) {
+    return `https://vas.brt.it/vas/sped_numspe_par.htm?lang=it&sped_numsped=${encodedTracking}`;
+  }
+
+  if (normalizedCarrier.includes("gls")) {
+    return `https://gls-group.com/IT/it/servizi-online/ricerca-spedizioni/?match=${encodedTracking}`;
+  }
+
+  if (normalizedCarrier.includes("ups")) {
+    return `https://www.ups.com/track?loc=it_IT&tracknum=${encodedTracking}`;
+  }
+
+  if (normalizedCarrier.includes("dhl")) {
+    return `https://www.dhl.com/it-it/home/tracking/tracking-parcel.html?tracking-id=${encodedTracking}`;
+  }
+
+  return `https://t.17track.net/it#nums=${encodedTracking}`;
+}
+
+function CopyValueButton({
+  className,
+  label,
+  text,
+  value,
+}: {
+  className?: string;
+  label: string;
+  text: AdminText;
+  value: string;
+}) {
+  const [copied, setCopied] = React.useState(false);
+
+  const handleCopy = React.useCallback(async () => {
+    if (!value) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  }, [value]);
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-xs"
+      className={cn("size-6 rounded-md text-slate-500 hover:text-slate-900", className)}
+      aria-label={`${text.common.copy} ${label}`}
+      title={copied ? text.common.copied : `${text.common.copy} ${label}`}
+      onClick={handleCopy}
+    >
+      {copied ? <CheckCircle2 className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
+    </Button>
+  );
+}
+
+function ShipmentReadiness({
+  onToggleTrackingDetails,
+  order,
+  text,
+  trackingDetailsOpen,
+}: {
+  onToggleTrackingDetails?: () => void;
+  order: AdminOrder;
+  text: AdminText;
+  trackingDetailsOpen?: boolean;
+}) {
+  const checks = [
+    {
+      label: text.common.carrier,
+      ok: hasCarrier(order),
+      value: carrierLabel(order.carrier, text),
+    },
+    {
+      label: text.orders.print.tracking,
+      ok: hasTracking(order),
+      value: order.tracking.trim() || text.common.none,
+      action: hasTracking(order) ? onToggleTrackingDetails : undefined,
+    },
+    {
+      label: text.orders.details.orderLines,
+      ok: order.lines.length > 0,
+      value: String(order.lines.length),
+    },
+  ];
+
+  return (
+    <div className="mt-1.5 rounded-md border border-slate-100 bg-slate-50 px-1.5 py-1">
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <span className="text-[10px] font-black uppercase leading-none text-slate-400">
+          {text.orders.details.shipmentCheck}
+        </span>
+        <span className="font-mono text-[10px] font-black text-slate-500">
+          {checks.filter((check) => check.ok).length}/{checks.length}
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-1">
+        {checks.map((check) => {
+          const content = (
+            <>
+              <div className="flex min-w-0 items-center gap-1">
+                {check.ok ? (
+                  <CheckCircle2 className="size-3 shrink-0" />
+                ) : (
+                  <XCircle className="size-3 shrink-0" />
+                )}
+                <span className="truncate text-[10px] font-black leading-none">
+                  {check.label}
+                </span>
+              </div>
+              <div className="mt-0.5 truncate text-[10px] font-semibold text-slate-500">
+                {check.value}
+              </div>
+            </>
+          );
+          const className = cn(
+            "min-w-0 rounded border bg-white px-1.5 py-1",
+            check.ok
+              ? "border-emerald-100 text-emerald-700"
+              : "border-amber-100 text-amber-700",
+            check.action &&
+              "text-left transition hover:border-primary/30 hover:bg-primary/5",
+            check.action && trackingDetailsOpen && "border-primary/30 bg-primary/5"
+          );
+
+          return check.action ? (
+            <button
+              key={check.label}
+              type="button"
+              className={className}
+              onClick={check.action}
+            >
+              {content}
+            </button>
+          ) : (
+            <div key={check.label} className={className}>
+              {content}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -1717,10 +2047,10 @@ function OrderActionBar({
   ].filter(Boolean).length;
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:items-end sm:gap-2">
+    <div className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:items-end">
       <div
         className={cn(
-          "grid w-full min-w-0 gap-1 sm:flex sm:w-auto sm:flex-wrap sm:justify-end sm:gap-2",
+          "grid w-full min-w-0 gap-1 sm:flex sm:w-auto sm:flex-wrap sm:justify-end",
           actionCount === 1
             ? "grid-cols-1"
             : actionCount === 2
@@ -1733,7 +2063,7 @@ function OrderActionBar({
         <Button
           variant="outline"
           size="sm"
-          className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-slate-700 hover:text-slate-900 sm:h-10 sm:px-3 sm:text-sm"
+          className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-slate-700 hover:text-slate-900 sm:h-8 sm:px-2 sm:text-xs"
           onClick={() => onPrintOrder(order)}
         >
           <Printer className="size-4" />
@@ -1743,7 +2073,7 @@ function OrderActionBar({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-red-600 hover:text-red-600 sm:h-10 sm:px-3 sm:text-sm"
+            className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-red-600 hover:text-red-600 sm:h-8 sm:px-2 sm:text-xs"
             onClick={() => onCancelOrder(order)}
             disabled={isMutating}
           >
@@ -1755,7 +2085,7 @@ function OrderActionBar({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-slate-700 hover:text-slate-900 sm:h-10 sm:px-3 sm:text-sm"
+            className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-slate-700 hover:text-slate-900 sm:h-8 sm:px-2 sm:text-xs"
             onClick={() => onRollback(order)}
             disabled={isMutating}
           >
@@ -1766,7 +2096,7 @@ function OrderActionBar({
         {transition && (
           <Button
             size="sm"
-            className="h-7 min-w-0 rounded-md px-1.5 text-[11px] sm:h-10 sm:px-3 sm:text-sm"
+            className="h-7 min-w-0 rounded-md px-1.5 text-[11px] sm:h-8 sm:px-2 sm:text-xs"
             onClick={() => onTransition(order, transition.status, transition.notice)}
             disabled={isMutating || (transition.status === "shipped" && !canShip)}
           >
@@ -1776,7 +2106,7 @@ function OrderActionBar({
         )}
       </div>
       {order.status === "packed" && !canShip && (
-        <div className="max-w-none text-[11px] font-semibold leading-4 text-amber-700 sm:max-w-[280px] sm:text-xs sm:leading-5">
+        <div className="max-w-none text-[11px] font-semibold leading-4 text-amber-700 sm:max-w-[280px]">
           {text.orders.logisticsRequired}
         </div>
       )}
@@ -1784,42 +2114,212 @@ function OrderActionBar({
   );
 }
 
-function TrackingEditor({
-  isMutating,
-  order,
-  tracking,
+function TrackingDetailsPanel({
+  detail,
   text,
-  onUpdateTracking,
+  onRefresh,
 }: {
-  isMutating: boolean;
-  order: AdminOrder;
-  tracking: string;
+  detail: OrderTrackingDetail;
   text: AdminText;
-  onUpdateTracking: (order: AdminOrder, tracking: string) => void;
+  onRefresh: () => void;
 }) {
-  const [trackingDraft, setTrackingDraft] = React.useState(tracking);
-  const trackingChanged = trackingDraft !== tracking;
-
   return (
-    <div className="flex min-w-0 gap-1 sm:gap-2">
-      <Input
-        value={trackingDraft}
-        onChange={(event) => setTrackingDraft(event.target.value)}
-        className="h-8 min-w-0 rounded-md bg-white px-2 text-sm sm:h-9 sm:px-3"
-        placeholder="Tracking"
-        disabled={isMutating}
-      />
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="h-8 w-8 shrink-0 rounded-md bg-white px-0 text-xs sm:h-9 sm:w-auto sm:px-3"
-        onClick={() => onUpdateTracking(order, trackingDraft)}
-        disabled={!trackingChanged || isMutating}
+    <section className="min-w-0 rounded-md border border-cyan-200 bg-cyan-50/40 p-1.5 shadow-[0_1px_0_rgba(15,23,42,0.04)] sm:p-2">
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <Truck className="size-4 shrink-0 text-cyan-700" />
+            <h4 className="truncate text-sm font-black leading-tight text-slate-950">
+              {text.orders.tracking.title}
+            </h4>
+            <Badge className="h-5 border-cyan-200 bg-white text-[10px] text-cyan-700">
+              {detail.status}
+            </Badge>
+          </div>
+          <p className="mt-0.5 line-clamp-2 text-[11px] font-medium leading-snug text-slate-500">
+            {text.orders.tracking.description}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          className="h-7 shrink-0 bg-white px-2"
+          onClick={onRefresh}
+        >
+          <RefreshCw className="size-3" />
+          {text.orders.tracking.refresh}
+        </Button>
+      </div>
+
+      <div className="mt-1.5 grid min-w-0 grid-cols-2 gap-1 md:grid-cols-4">
+        <TrackingFact label={text.common.carrier} value={detail.carrier} />
+        <TrackingFact
+          label={text.orders.tracking.number}
+          value={detail.tracking}
+          mono
+        />
+        <TrackingFact label={text.orders.tracking.liveSource} value={detail.status} />
+        <TrackingFact
+          label={text.orders.tracking.refreshedAt}
+          value={formatDisplayDate(detail.refreshedAt)}
+        />
+      </div>
+
+      <div className="mt-1.5 flex min-w-0 flex-col gap-1.5 rounded-md border border-cyan-100 bg-white/75 p-1.5 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0 text-[11px] font-semibold leading-snug text-slate-500">
+          {detail.trackingUrl
+            ? text.orders.tracking.externalHint
+            : text.orders.tracking.noCarrierPortal}
+        </div>
+        {detail.trackingUrl && (
+          <Button
+            asChild
+            variant="outline"
+            size="xs"
+            className="h-7 w-full bg-white px-2 sm:w-auto"
+          >
+            <a href={detail.trackingUrl} target="_blank" rel="noreferrer">
+              <ExternalLink className="size-3" />
+              {text.orders.tracking.carrierPortal}
+            </a>
+          </Button>
+        )}
+      </div>
+
+      <div className="mt-1.5 rounded-md border border-cyan-100 bg-white">
+        <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-2 py-1.5">
+          <div className="text-[11px] font-black uppercase leading-none text-slate-400">
+            {text.orders.tracking.timeline}
+          </div>
+          <Badge variant="outline" className="h-5 bg-white px-1.5 text-[10px]">
+            {detail.events.length}
+          </Badge>
+        </div>
+        {detail.events.length > 0 ? (
+          <div className="max-h-52 space-y-1 overflow-y-auto p-1.5">
+            {detail.events.map((event) => (
+              <TrackingTimelineItem key={event.id} event={event} />
+            ))}
+          </div>
+        ) : (
+          <div className="p-2 text-xs font-medium text-slate-500">
+            {text.orders.tracking.noEvents}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function TrackingFact({
+  label,
+  mono,
+  value,
+}: {
+  label: string;
+  mono?: boolean;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0 rounded border border-cyan-100 bg-white px-1.5 py-1">
+      <div className="truncate text-[10px] font-black leading-none text-slate-400">
+        {label}
+      </div>
+      <div
+        className={cn(
+          "mt-0.5 truncate text-[12px] font-black leading-snug text-slate-950",
+          mono && "font-mono"
+        )}
+        title={value}
       >
-        <Save className="size-3.5" />
-        <span className="sr-only sm:not-sr-only sm:inline">{text.common.saveChanges}</span>
-      </Button>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function TrackingTimelineItem({ event }: { event: TrackingTimelineEvent }) {
+  return (
+    <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-2 rounded-md border border-slate-100 bg-white px-2 py-1.5">
+      <span
+        className={cn(
+          "mt-0.5 size-2 rounded-full",
+          event.tone === "current"
+            ? "bg-primary ring-4 ring-primary/10"
+            : event.tone === "info"
+              ? "bg-cyan-500 ring-4 ring-cyan-100"
+              : "bg-emerald-500 ring-4 ring-emerald-100"
+        )}
+      />
+      <div className="min-w-0">
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="truncate text-xs font-black leading-tight text-slate-900">
+              {event.title}
+            </div>
+            <div className="mt-0.5 break-words text-[11px] font-medium leading-snug text-slate-500">
+              {event.description}
+            </div>
+          </div>
+          <time className="shrink-0 text-right text-[10px] font-semibold leading-tight text-slate-400">
+            {formatDisplayDate(event.createdAt)}
+          </time>
+        </div>
+        <div className="mt-1 inline-flex items-center gap-1 rounded bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+          <Clock3 className="size-3" />
+          {event.source}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrderLogisticsCard({
+  order,
+  text,
+  trackingDetail,
+  trackingDetailsOpen,
+  onRefreshTrackingDetails,
+  onToggleTrackingDetails,
+}: {
+  order: AdminOrder;
+  text: AdminText;
+  trackingDetail: OrderTrackingDetail;
+  trackingDetailsOpen: boolean;
+  onRefreshTrackingDetails: () => void;
+  onToggleTrackingDetails: () => void;
+}) {
+  return (
+    <div className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5 sm:p-2">
+      <div className="mb-1 flex items-center gap-2 text-sm font-bold text-slate-900 sm:mb-2">
+        <Truck className="size-4 text-primary" />
+        {text.orders.details.logistics}
+      </div>
+      <div className="grid gap-1 text-xs text-slate-600 sm:grid-cols-2 sm:text-sm xl:grid-cols-4">
+        <InfoRow label={text.common.service} value={order.service} />
+        <InfoRow label={text.common.eta} value={order.eta} />
+        <InfoRow label={text.common.owner} value={order.owner} />
+        <InfoRow
+          label={text.orders.details.deliveryAddress}
+          value={order.shippingAddress}
+        />
+      </div>
+      <ShipmentReadiness
+        order={order}
+        text={text}
+        trackingDetailsOpen={trackingDetailsOpen}
+        onToggleTrackingDetails={onToggleTrackingDetails}
+      />
+      {trackingDetailsOpen && (
+        <div className="mt-1.5">
+          <TrackingDetailsPanel
+            detail={trackingDetail}
+            text={text}
+            onRefresh={onRefreshTrackingDetails}
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -1840,7 +2340,7 @@ function OrderLines({
       <div className="space-y-1 md:hidden">
         {lines.map((line) => (
           <div key={line.id} className="rounded-md border border-slate-200 bg-white p-1.5">
-            <div className="grid min-w-0 grid-cols-[58px_minmax(0,1fr)] gap-2">
+            <div className="grid min-w-0 grid-cols-[72px_minmax(0,1fr)] gap-2">
               <OrderLineImage line={line} />
               <div className="min-w-0">
                 <div className="break-words text-[13px] font-bold leading-tight text-slate-900 sm:text-sm">
@@ -1849,58 +2349,69 @@ function OrderLines({
                 <div className="mt-0.5 truncate font-mono text-[11px] text-slate-500 sm:text-xs">
                   {line.sku}
                 </div>
+                <div className="mt-1 truncate text-[11px] font-semibold text-slate-500">
+                  {line.category} · {line.batchCode || text.common.none}
+                </div>
                 <div className="mt-1.5 grid grid-cols-4 gap-1 text-xs max-[360px]:grid-cols-2">
                   <MobileFact label={text.orders.lines.quantity} value={`${line.quantity}`} />
                   <MobileFact label={text.orders.lines.reserved} value={`${line.reservedQty}`} />
                   <MobileFact label={text.orders.lines.fulfilled} value={`${line.fulfilledQty}`} />
-                  <MobileFact label={text.common.price} value={formatEuro(line.unitPrice)} />
+                  <MobileFact label={text.common.total} value={formatEuro(line.lineTotal)} />
                 </div>
               </div>
             </div>
           </div>
         ))}
       </div>
-      <div className="hidden overflow-hidden rounded-md border border-slate-200 md:block">
-        <Table className="min-w-[720px] text-xs">
-          <TableHeader className="bg-slate-50 [&_th]:h-8 [&_th]:px-2 [&_th]:text-xs">
+      <div className="hidden min-w-0 overflow-hidden rounded-md border border-slate-200 md:block">
+        <Table className="w-full table-fixed text-xs">
+          <TableHeader className="bg-slate-50 [&_th]:h-8 [&_th]:px-1.5 [&_th]:text-xs">
             <TableRow>
-              <TableHead>{text.common.sku}</TableHead>
-              <TableHead>{text.common.product}</TableHead>
-              <TableHead>{text.orders.lines.quantity}</TableHead>
-              <TableHead>{text.orders.lines.reserved}</TableHead>
-              <TableHead>{text.orders.lines.fulfilled}</TableHead>
-              <TableHead>{text.common.price}</TableHead>
+              <TableHead className="w-[188px]">{text.common.sku}</TableHead>
+              <TableHead className="min-w-0">{text.common.product}</TableHead>
+              <TableHead className="w-[48px] text-center">{text.orders.lines.quantity}</TableHead>
+              <TableHead className="w-[64px] text-center">{text.orders.lines.reserved}</TableHead>
+              <TableHead className="w-[64px] text-center">{text.orders.lines.fulfilled}</TableHead>
+              <TableHead className="w-[82px] text-right">{text.common.price}</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody className="[&_td]:px-2 [&_td]:py-1.5">
+          <TableBody className="[&_td]:px-1.5 [&_td]:py-1.5">
             {lines.map((line) => (
               <TableRow key={line.id}>
-                <TableCell className="font-mono text-xs font-semibold text-slate-600">
+                <TableCell className="align-top font-mono text-xs font-semibold text-slate-600">
                   <div className="flex min-w-0 items-center gap-2">
-                    <OrderLineImage line={line} className="size-9" />
-                    <span className="min-w-0 truncate">{line.sku}</span>
+                    <OrderLineImage line={line} className="size-14" />
+                    <span className="min-w-0 break-all leading-tight">{line.sku}</span>
                   </div>
                 </TableCell>
-                <TableCell>
-                  <div className="max-w-[260px] truncate text-xs font-bold text-slate-900">
+                <TableCell className="max-w-0 overflow-hidden align-top">
+                  <div
+                    className="min-w-0 truncate text-xs font-bold leading-tight text-slate-900"
+                    title={line.name}
+                  >
                     {line.name}
                   </div>
-                  <div className="text-[11px] text-slate-500">
+                  <div
+                    className="mt-0.5 min-w-0 truncate text-[11px] leading-tight text-slate-500"
+                    title={`${line.category} · ${line.batchCode || text.common.none}`}
+                  >
                     {line.category} · {line.batchCode || text.common.none}
                   </div>
                 </TableCell>
-                <TableCell>{line.quantity}</TableCell>
-                <TableCell>
+                <TableCell className="align-top text-center font-semibold">{line.quantity}</TableCell>
+                <TableCell className="align-top text-center">
                   <Badge className={reservationBadgeClass(line)}>
                     {line.reservedQty}/{line.quantity}
                   </Badge>
                 </TableCell>
-                <TableCell>
+                <TableCell className="align-top text-center">
                   <Badge className={fulfilledBadgeClass(line)}>
                     {line.fulfilledQty}/{line.quantity}
                   </Badge>
                 </TableCell>
-                <TableCell>{formatEuro(line.unitPrice)}</TableCell>
+                <TableCell className="whitespace-nowrap align-top text-right font-semibold">
+                  {formatEuro(line.unitPrice)}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -1918,40 +2429,98 @@ function OrderLineImage({
   line: OrderLine;
 }) {
   const imageAlt = line.imageAlt || line.name;
+  const fallbackImageUrl = React.useMemo(
+    () => getExternalOrderLineImageFallbackUrl(line.imageUrl),
+    [line.imageUrl]
+  );
+  const [failedImageUrls, setFailedImageUrls] = React.useState<string[]>([]);
+  const primaryImageUrl = line.imageUrl ?? "";
+  const imageUrl =
+    primaryImageUrl && !failedImageUrls.includes(primaryImageUrl)
+      ? primaryImageUrl
+      : fallbackImageUrl && !failedImageUrls.includes(fallbackImageUrl)
+        ? fallbackImageUrl
+        : "";
+
+  const handleImageError = React.useCallback(() => {
+    setFailedImageUrls((currentUrls) => {
+      if (!imageUrl || currentUrls.includes(imageUrl)) {
+        return currentUrls;
+      }
+
+      return [...currentUrls, imageUrl];
+    });
+  }, [imageUrl]);
 
   return (
     <div
       className={cn(
-        "relative grid size-[58px] shrink-0 place-items-center overflow-hidden rounded-md border border-slate-200 bg-slate-50",
+        "relative grid size-[72px] shrink-0 place-items-center overflow-hidden rounded-md border border-slate-200 bg-white",
         className
       )}
     >
-      {line.imageUrl ? (
+      {imageUrl ? (
         <Image
-          src={line.imageUrl}
+          src={imageUrl}
           alt={imageAlt}
           fill
-          sizes="58px"
+          sizes="(min-width: 768px) 64px, 72px"
           quality={55}
           loading="lazy"
           decoding="async"
-          className="object-contain p-1"
+          unoptimized
+          className="object-contain p-0.5"
+          onError={handleImageError}
         />
       ) : (
-        <PackageCheck className="size-5 text-slate-300" />
+        <PackageCheck className="size-6 text-slate-300" />
       )}
     </div>
   );
 }
 
-function OrderNoteBanner({ note, text }: { note: string; text: AdminText }) {
-  const displayNote = note.trim() || text.common.none;
+function getExternalOrderLineImageFallbackUrl(imageUrl: string | undefined) {
+  if (!imageUrl) {
+    return "";
+  }
+
+  const imageId = imageUrl.match(/-(\d+)\.(?:png|jpe?g|webp|gif)(?:$|\?)/i)?.[1];
+
+  return imageId
+    ? `https://apiv2.mobilax.fr/v1.0/assets/images/products/id-image/${imageId}?size=bg`
+    : "";
+}
+
+function getOrderLinePrintImageUrl(line: OrderLine) {
+  return getExternalOrderLineImageFallbackUrl(line.imageUrl) || line.imageUrl || "";
+}
+
+function OrderNotesBanner({
+  canEditStaffNote,
+  isMutating,
+  order,
+  text,
+  onUpdateStaffNote,
+}: {
+  canEditStaffNote: boolean;
+  isMutating: boolean;
+  order: AdminOrder;
+  text: AdminText;
+  onUpdateStaffNote: (order: AdminOrder, staffNote: string) => void;
+}) {
+  const customerNote =
+    order.customerNote.trim() ||
+    (!order.staffNote.trim() && !isGeneratedLogisticsNote(order.notes, order, text)
+      ? order.notes.trim()
+      : "");
+  const staffNote = getDisplayStaffNote(order, text);
+  const hasAnyNote = Boolean(customerNote || staffNote);
 
   return (
     <div
       className={cn(
-        "min-w-0 rounded-md border px-2 py-1.5 shadow-[0_1px_0_rgba(15,23,42,0.04)] sm:px-3 sm:py-2",
-        note.trim()
+        "min-w-0 rounded-md border px-2 py-1.5 shadow-[0_1px_0_rgba(15,23,42,0.04)] sm:px-2.5",
+        hasAnyNote
           ? "border-amber-200 bg-amber-50 text-amber-950"
           : "border-slate-200 bg-white text-slate-500"
       )}
@@ -1960,25 +2529,187 @@ function OrderNoteBanner({ note, text }: { note: string; text: AdminText }) {
         <Info
           className={cn(
             "mt-0.5 size-4 shrink-0",
-            note.trim() ? "text-amber-600" : "text-slate-400"
+            hasAnyNote ? "text-amber-600" : "text-slate-400"
           )}
         />
         <div className="min-w-0 flex-1">
           <div
             className={cn(
-              "text-[11px] font-black leading-none sm:text-xs",
-              note.trim() ? "text-amber-700" : "text-slate-400"
+              "text-[11px] font-black leading-none",
+              hasAnyNote ? "text-amber-700" : "text-slate-400"
             )}
           >
             {text.orders.details.orderNote}
           </div>
-          <div className="mt-1 break-words font-mono text-[13px] font-black leading-snug sm:text-sm">
-            {displayNote}
+          <div className="mt-1 grid min-w-0 gap-1 sm:grid-cols-2">
+            <NoteValue
+              label={text.orders.details.customerNote}
+              value={customerNote || text.common.none}
+            />
+            {canEditStaffNote ? (
+              <StaffNoteEditor
+                key={`${order.id}:${staffNote}`}
+                isMutating={isMutating}
+                order={order}
+                staffNote={staffNote}
+                text={text}
+                onUpdateStaffNote={onUpdateStaffNote}
+              />
+            ) : (
+              <NoteValue
+                label={text.orders.details.staffNote}
+                value={staffNote || text.common.none}
+              />
+            )}
           </div>
         </div>
       </div>
     </div>
   );
+}
+
+function StaffNoteEditor({
+  isMutating,
+  order,
+  staffNote,
+  text,
+  onUpdateStaffNote,
+}: {
+  isMutating: boolean;
+  order: AdminOrder;
+  staffNote: string;
+  text: AdminText;
+  onUpdateStaffNote: (order: AdminOrder, staffNote: string) => void;
+}) {
+  const [draft, setDraft] = React.useState(staffNote);
+  const [isEditing, setIsEditing] = React.useState(false);
+  const normalizedDraft = draft.trim();
+  const hasChanges = normalizedDraft !== staffNote.trim();
+
+  if (!isEditing) {
+    return (
+      <div className="min-w-0 rounded bg-white/75 px-1.5 py-1">
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-[10px] font-black leading-none text-amber-700/80">
+            {text.orders.details.staffNote}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={isMutating}
+            className="h-6 shrink-0 gap-1 rounded px-1.5 text-[10px] font-bold"
+            onClick={() => setIsEditing(true)}
+          >
+            <Pencil className="size-3" />
+            {text.common.edit}
+          </Button>
+        </div>
+        <div className="mt-0.5 break-words font-mono text-[12px] font-black leading-snug text-slate-950">
+          {staffNote || text.common.none}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-w-0 rounded bg-white/75 px-1.5 py-1">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[10px] font-black leading-none text-amber-700/80">
+          {text.orders.details.staffNote}
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            disabled={isMutating}
+            className="h-6 rounded px-1.5 text-[10px] font-bold text-slate-500"
+            onClick={() => {
+              setDraft(staffNote);
+              setIsEditing(false);
+            }}
+          >
+            <XCircle className="size-3" />
+            {text.common.cancel}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={!hasChanges || isMutating}
+            className="h-6 gap-1 rounded px-1.5 text-[10px] font-bold"
+            onClick={() => {
+              onUpdateStaffNote(order, draft);
+              setIsEditing(false);
+            }}
+          >
+            {isMutating ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <Save className="size-3" />
+            )}
+            {text.common.saveChanges}
+          </Button>
+        </div>
+      </div>
+      <textarea
+        value={draft}
+        maxLength={1000}
+        rows={2}
+        disabled={isMutating}
+        placeholder={text.common.none}
+        onChange={(event) => setDraft(event.target.value)}
+        className="mt-1 min-h-12 w-full resize-y rounded border border-amber-200/80 bg-white px-2 py-1 font-mono text-[12px] font-bold leading-snug text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-amber-400 focus:ring-2 focus:ring-amber-200 disabled:cursor-not-allowed disabled:opacity-70"
+      />
+    </div>
+  );
+}
+
+function NoteValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded bg-white/65 px-1.5 py-1">
+      <div className="text-[10px] font-black leading-none text-amber-700/80">
+        {label}
+      </div>
+      <div className="mt-0.5 break-words font-mono text-[12px] font-black leading-snug text-slate-950">
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function getDisplayStaffNote(order: AdminOrder, text: AdminText) {
+  const staffNote = order.staffNote.trim();
+
+  return isGeneratedLogisticsNote(staffNote, order, text) ? "" : staffNote;
+}
+
+function isGeneratedLogisticsNote(note: string, order: AdminOrder, text: AdminText) {
+  const normalized = note.trim().toLowerCase();
+
+  if (!normalized) {
+    return false;
+  }
+
+  const carrierPrefixes = [
+    `${text.common.carrier}:`,
+    "carrier:",
+    "corriere:",
+    "运输公司:",
+  ].map((prefix) => prefix.toLowerCase());
+
+  if (carrierPrefixes.some((prefix) => normalized.startsWith(prefix))) {
+    return true;
+  }
+
+  if (normalized.startsWith("tracking:")) {
+    return true;
+  }
+
+  const carrier = carrierLabel(order.carrier, text).toLowerCase();
+
+  return Boolean(carrier && normalized === carrier);
 }
 
 function printOrderPackingSlip(
@@ -2001,9 +2732,30 @@ function printOrderPackingSlip(
   printWindow.document.write(buildOrderPackingSlipHtml(order, labels, text));
   printWindow.document.close();
   printWindow.focus();
-  window.setTimeout(() => {
+  void waitForPrintAssets(printWindow).then(() => {
     printWindow.print();
-  }, 250);
+  });
+}
+
+function waitForPrintAssets(printWindow: Window) {
+  const images = Array.from(printWindow.document.images);
+  const imagePromises = images.map(
+    (image) =>
+      new Promise<void>((resolve) => {
+        if (image.complete) {
+          resolve();
+          return;
+        }
+
+        image.onload = () => resolve();
+        image.onerror = () => resolve();
+      })
+  );
+  const timeout = new Promise<void>((resolve) => {
+    window.setTimeout(resolve, 1400);
+  });
+
+  return Promise.race([Promise.all(imagePromises).then(() => undefined), timeout]);
 }
 
 function buildOrderPackingSlipHtml(
@@ -2020,11 +2772,21 @@ function buildOrderPackingSlipHtml(
     0
   );
   const rows = order.lines
-    .map(
-      (line, index) => `
+    .map((line, index) => {
+      const imageUrl = getOrderLinePrintImageUrl(line);
+      const imageAlt = line.imageAlt || line.name;
+
+      return `
         <tr>
           <td class="check"><span></span></td>
           <td class="index">${index + 1}</td>
+          <td class="photo">
+            ${
+              imageUrl
+                ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(imageAlt)}" />`
+                : `<span>${escapeHtml(printText.productImage)}</span>`
+            }
+          </td>
           <td class="sku">${escapeHtml(line.sku)}</td>
           <td>
             <div class="product">${escapeHtml(line.name)}</div>
@@ -2033,9 +2795,10 @@ function buildOrderPackingSlipHtml(
             }</div>
           </td>
           <td class="qty">${line.quantity}</td>
+          <td class="actual"><span></span></td>
         </tr>
-      `
-    )
+      `;
+    })
     .join("");
   const metaRows = [
     [text.orders.table.order, shortOrderId(order.id)],
@@ -2155,7 +2918,8 @@ function buildOrderPackingSlipHtml(
       vertical-align: top;
     }
     tr:last-child td { border-bottom: 0; }
-    .check { width: 32px; text-align: center; }
+    tr { break-inside: avoid; }
+    .check { width: 28px; text-align: center; }
     .check span {
       display: inline-block;
       width: 14px;
@@ -2163,9 +2927,41 @@ function buildOrderPackingSlipHtml(
       border: 2px solid #0f172a;
       border-radius: 3px;
     }
-    .index { width: 32px; color: #64748b; font-weight: 800; text-align: center; }
-    .sku { width: 120px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+    .index { width: 28px; color: #64748b; font-weight: 800; text-align: center; }
+    .photo { width: 58px; text-align: center; }
+    .photo img {
+      display: block;
+      width: 46px;
+      height: 46px;
+      margin: 0 auto;
+      object-fit: contain;
+      border: 1px solid #dbe3ef;
+      border-radius: 5px;
+      background: #fff;
+    }
+    .photo span {
+      display: grid;
+      width: 46px;
+      height: 46px;
+      margin: 0 auto;
+      place-items: center;
+      border: 1px dashed #cbd5e1;
+      border-radius: 5px;
+      color: #94a3b8;
+      font-size: 9px;
+      font-weight: 800;
+    }
+    .sku { width: 112px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
     .qty { width: 58px; text-align: center; font-size: 15px; font-weight: 900; }
+    .actual { width: 76px; text-align: center; }
+    .actual span {
+      display: inline-block;
+      width: 46px;
+      height: 24px;
+      border: 2px solid #0f172a;
+      border-radius: 5px;
+      background: #fff;
+    }
     .product { font-size: 12px; font-weight: 800; }
     .sub { margin-top: 2px; color: #64748b; font-size: 10px; }
     .signatures {
@@ -2234,9 +3030,11 @@ function buildOrderPackingSlipHtml(
         <tr>
           <th class="check"></th>
           <th class="index">#</th>
+          <th class="photo">${escapeHtml(printText.productImage)}</th>
           <th class="sku">${escapeHtml(printText.sku)}</th>
           <th>${escapeHtml(printText.product)}</th>
-          <th class="qty">${escapeHtml(printText.quantity)}</th>
+          <th class="qty">${escapeHtml(printText.requestedQuantity)}</th>
+          <th class="actual">${escapeHtml(printText.actualQuantity)}</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -2287,8 +3085,8 @@ function OrderOperationHistory({
 }) {
   return (
     <div className="min-w-0">
-      <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
-        <div className="text-xs font-black uppercase text-slate-400">
+      <div className="mb-1 flex min-w-0 items-center justify-between gap-2">
+        <div className="text-[11px] font-black uppercase text-slate-400">
           {text.orders.details.operationHistory}
         </div>
         <Badge variant="outline" className="h-5 bg-white px-1.5 text-[10px]">
@@ -2296,11 +3094,11 @@ function OrderOperationHistory({
         </Badge>
       </div>
       {events.length > 0 ? (
-        <div className="max-h-[190px] space-y-1.5 overflow-y-auto pr-1 sm:max-h-[260px] sm:space-y-2">
+        <div className="max-h-[180px] space-y-1 overflow-y-auto pr-1 sm:max-h-[240px] xl:max-h-[340px]">
           {events.map((event) => (
             <div
               key={event.id}
-              className="relative min-w-0 rounded-md border border-slate-200 bg-white px-2 py-1.5 sm:px-2.5 sm:py-2"
+              className="relative min-w-0 rounded-md border border-slate-200 bg-white px-2 py-1.5"
             >
               <div className="flex min-w-0 items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -2323,7 +3121,7 @@ function OrderOperationHistory({
                   {formatDisplayDate(event.createdAt)}
                 </time>
               </div>
-              <div className="mt-2 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+              <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-500">
                 <span className="text-slate-400">{text.activity.actor}</span>
                 <span className="min-w-0 break-words text-slate-800">
                   {event.actor.label || text.orders.activity.systemActor}
@@ -2372,12 +3170,12 @@ function StatusStepper({
   return (
     <div
       className={cn(
-        "rounded-md border bg-white px-3 py-2",
+        "rounded-md border bg-white px-2 py-1.5",
         cancelled ? "border-red-100 bg-red-50/40" : "border-slate-200"
       )}
       aria-label={`${labels.status[status]} ${progressValue}/5`}
     >
-      <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+      <div className="mb-1 flex min-w-0 items-center justify-between gap-2">
         <Badge
           className={cn(
             orderStatusBadgeClass(status),
@@ -2406,7 +3204,7 @@ function StatusStepper({
               {index > 0 && (
                 <span
                   className={cn(
-                    "absolute left-[-50%] top-2.5 h-0.5 w-full rounded-full bg-slate-200",
+                    "absolute left-[-50%] top-2 h-0.5 w-full rounded-full bg-slate-200",
                     done && "bg-primary",
                     cancelled && "bg-red-100"
                   )}
@@ -2414,7 +3212,7 @@ function StatusStepper({
               )}
               <span
                 className={cn(
-                  "relative z-10 mx-auto grid size-5 place-items-center rounded-full border text-[10px] font-black leading-none",
+                  "relative z-10 mx-auto grid size-4 place-items-center rounded-full border text-[9px] font-black leading-none",
                   done
                     ? "border-primary bg-primary text-white"
                     : "border-slate-200 bg-white text-slate-400",
@@ -2426,7 +3224,7 @@ function StatusStepper({
               </span>
               <span
                 className={cn(
-                  "mt-1 block truncate text-[10px] font-semibold leading-tight text-slate-400",
+                  "mt-0.5 block truncate text-[10px] font-semibold leading-tight text-slate-400",
                   done && "text-primary",
                   current && "text-slate-900",
                   cancelled && "text-red-300"
@@ -2449,17 +3247,19 @@ function DetailFact({
 }: {
   label: string;
   value: string;
-  helper: string;
+  helper?: string;
 }) {
   return (
-    <div className="min-w-0 rounded-md border border-slate-200 bg-white p-2.5">
-      <div className="truncate text-xs font-semibold uppercase text-slate-500">
+    <div className="min-w-0 rounded-md border border-slate-200 bg-white p-2">
+      <div className="truncate text-[11px] font-semibold uppercase leading-none text-slate-500">
         {label}
       </div>
-      <div className="mt-1 break-words text-sm font-black text-slate-900">
+      <div className="mt-1 break-words text-[13px] font-black leading-tight text-slate-900">
         {value}
       </div>
-      <div className="mt-0.5 break-words text-[11px] text-slate-500">{helper}</div>
+      {helper ? (
+        <div className="mt-0.5 break-words text-[10px] leading-tight text-slate-500">{helper}</div>
+      ) : null}
     </div>
   );
 }
@@ -2479,24 +3279,9 @@ function MobileFact({ label, value }: { label: string; value: string }) {
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid min-w-0 grid-cols-[70px_minmax(0,1fr)] gap-1 sm:grid-cols-[92px_minmax(0,1fr)] sm:gap-2">
-      <span className="text-[11px] font-semibold uppercase text-slate-400 sm:text-xs">{label}</span>
-      <span className="min-w-0 break-words font-medium text-slate-700">{value}</span>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="grid min-w-0 grid-cols-[58px_minmax(0,1fr)] items-center gap-1 sm:block sm:space-y-1.5">
-      <Label className="text-[11px] font-bold leading-none text-slate-600 sm:text-xs">{label}</Label>
-      {children}
+    <div className="grid min-w-0 grid-cols-[70px_minmax(0,1fr)] gap-1">
+      <span className="text-[11px] font-semibold uppercase text-slate-400">{label}</span>
+      <span className="min-w-0 break-words text-[12px] font-medium leading-snug text-slate-700">{value}</span>
     </div>
   );
 }
@@ -2691,6 +3476,12 @@ function normalizeAdminOrder(
   const operationHistory = normalizeOperationHistory(
     readArrayPayload(row, ["operationHistory", "operation_history", "events"])
   );
+  const customerNote =
+    readString(readRecordValue(row, ["customerNote", "customer_note"])) ?? "";
+  const staffNote =
+    readString(readRecordValue(row, ["staffNote", "staff_note", "internalNote", "internal_note"])) ??
+    "";
+  const legacyNote = readString(row.notes) ?? "";
 
   return {
     id,
@@ -2734,8 +3525,12 @@ function normalizeAdminOrder(
       readString(readRecordValue(shippingRecord, ["address", "shippingAddress", "deliveryAddress", "delivery_address"])) ??
       (customer.city ? `${customer.city}, Italia` : "Non disponibile"),
     owner: readString(readRecordValue(row, ["owner", "accountOwner"])) ?? "Operations",
+    customerNote,
+    staffNote,
     notes:
-      readString(row.notes) ??
+      legacyNote ||
+      staffNote ||
+      customerNote ||
       `Ordine importato da /api/admin/orders (${sourceLabel(source)})`,
     lines,
     activity: normalizeActivity(row.activity, date, source, operationHistory),
@@ -2772,6 +3567,8 @@ function normalizeOrderLine(
   const unitPrice =
     readMoney(readRecordValue(row, ["unitPrice", "unit_price", "price"])) ||
     (lineTotal > 0 ? roundMoney(lineTotal / quantity) : 0);
+  const normalizedLineTotal =
+    lineTotal > 0 ? lineTotal : roundMoney(unitPrice * quantity);
   const fulfilledQty =
     readNumber(readRecordValue(row, ["fulfilledQty", "fulfilled_qty"])) ??
     (fulfillmentStatus === "shipped" || fulfillmentStatus === "delivered"
@@ -2822,6 +3619,7 @@ function normalizeOrderLine(
       readString(readRecordValue(row, ["batchCode", "batch_code"]))
     ),
     unitPrice,
+    lineTotal: normalizedLineTotal,
     warehouse: normalizeWarehouseValue(
       readRecordValue(row, ["warehouse", "location"])
     ),
@@ -2895,7 +3693,7 @@ function normalizeOperationHistory(value: unknown): OrderActivityEvent[] {
     .sort((left, right) => {
       const leftTime = Date.parse(left.createdAt);
       const rightTime = Date.parse(right.createdAt);
-      return (Number.isFinite(leftTime) ? leftTime : 0) - (Number.isFinite(rightTime) ? rightTime : 0);
+      return (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0);
     });
 }
 

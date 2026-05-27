@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { AUTH_NEXT_COOKIE } from "@/lib/partspro-auth-cookies";
-import { cleanAuthRedirect, loginUrl, requestOrigin } from "@/lib/partspro-auth-redirect";
+import { cleanAuthRedirect, loginUrl, postLoginRedirect, requestOrigin } from "@/lib/partspro-auth-redirect";
 import { ensureCurrentUserAccount } from "@/lib/partspro-account-context";
+import { getAdminAuthState } from "@/lib/partspro-admin-auth";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 
@@ -26,7 +27,12 @@ export async function GET(request: Request) {
 
     if (!error) {
       await ensureCurrentUserAccount();
-      return redirectAndClearNext(`${origin}${next}`);
+      const adminAuth = await getAdminAuthState();
+      const redirectPath = postLoginRedirect(next, {
+        adminAllowed: adminAuth.allowed,
+      });
+
+      return redirectAndClearNext(`${origin}${redirectPath}`);
     }
   }
 

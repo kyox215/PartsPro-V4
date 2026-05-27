@@ -87,3 +87,36 @@ For local development, also allow:
 ```bash
 http://localhost:3000/auth/callback
 ```
+
+## WeChat Login
+
+WeChat login uses a Supabase Custom OAuth provider named `custom:wechat`. The
+app starts the flow at `/auth/wechat` and reuses the SSR PKCE callback at
+`/auth/callback`.
+
+The login entry is hidden by default. Enable it only when the provider is ready:
+
+```bash
+PARTSPRO_ENABLE_WECHAT_LOGIN=true
+```
+
+In Supabase Auth Providers, create a Custom OAuth provider with:
+
+```bash
+Identifier: custom:wechat
+Scopes: snsapi_login
+Authorization URL: https://open.weixin.qq.com/connect/qrconnect
+Token URL: https://api.weixin.qq.com/sns/oauth2/access_token
+UserInfo URL: https://api.weixin.qq.com/sns/userinfo
+Email optional: enabled
+```
+
+Add the WeChat Open Platform app ID and secret as the provider Client ID and
+Client Secret. Copy the provider Callback URL shown by Supabase into the WeChat
+Open Platform website application settings. Also keep the app callback URL
+allowed in Supabase:
+
+```bash
+https://parts-pro-v4.vercel.app/auth/callback
+http://localhost:3000/auth/callback
+```

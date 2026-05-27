@@ -6,7 +6,7 @@ import {
   toAdminB2BApplicationReview,
   toAdminB2BReviewDto,
 } from "../_dto";
-import { b2bApplicationPatchSchema } from "../_schemas";
+import { b2bApplicationIdParamSchema, b2bApplicationPatchSchema } from "../_schemas";
 
 export const dynamic = "force-dynamic";
 
@@ -36,24 +36,30 @@ export async function PATCH(request: NextRequest, { params }: ApplicationParams)
     );
   }
 
-  const { applicationId } = await params;
+  const paramResult = b2bApplicationIdParamSchema.safeParse(await params);
+
+  if (!paramResult.success) {
+    return apiError(400, "INVALID_ADMIN_B2B_APPLICATION_ID", "B2B application id must be a UUID.", {
+      issues: formatZodIssues(paramResult.error),
+    });
+  }
 
   try {
     const result = await reviewAdminB2BApplication(
-      toAdminB2BApplicationReview(decodeURIComponent(applicationId), parsed.data)
+      toAdminB2BApplicationReview(paramResult.data.applicationId, parsed.data)
     );
     const dto = toAdminB2BReviewDto(result.data);
+    const decision =
+      parsed.data.decision ?? (parsed.data.status === "approved" ? "approve" : "reject");
 
     return NextResponse.json({
       data: dto.application,
       application: dto.application,
       customer: dto.customer,
       meta: {
-        deprecated: true,
-        replacement: "/api/admin/accounts",
         source: result.source,
         workflow:
-          parsed.data.status === "approved"
+          decision === "approve"
             ? "b2b_applications approved -> customers active"
             : "b2b_applications rejected",
       },

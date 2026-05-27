@@ -11,37 +11,42 @@ export function toAdminB2BApplicationQuery(input: {
   offset: number;
   q?: string;
   sort: "submitted_desc" | "submitted_asc" | "created_desc";
-  status?: "submitted" | "pending" | "approved" | "rejected";
+  status?: "submitted" | "approved" | "rejected";
 }): AdminB2BApplicationQueryInput {
   return {
     limit: input.limit,
     offset: input.offset,
     q: input.q,
     sort: input.sort === "submitted_asc" ? "submitted_asc" : "submitted_desc",
-    status: input.status === "pending" ? "submitted" : input.status,
+    status: input.status,
   };
 }
 
 export function toAdminB2BApplicationReview(
   id: string,
   input: {
-    status: "approved" | "rejected";
+    decision?: "approve" | "reject";
+    status?: "approved" | "rejected";
     note?: string;
+    reason: string;
     tier?: string;
-    priceList?: "Standard" | "Pro" | "Partner";
     priceGroupId?: string | null;
     creditLimit?: number;
-    paymentTerms?: string;
+    paymentTerms?: string | null;
   }
 ): AdminB2BApplicationReviewInput {
+  const decision =
+    input.decision ?? (input.status === "approved" ? "approve" : "reject");
+
   return {
     id,
-    decision: input.status === "approved" ? "approve" : "reject",
+    decision,
     note: input.note,
-    tier: input.tier ?? input.priceList,
+    reason: input.reason,
+    tier: input.tier,
     priceGroupId: input.priceGroupId,
     creditLimit: input.creditLimit,
-    paymentTerms: input.paymentTerms,
+    paymentTerms: input.paymentTerms ?? undefined,
   };
 }
 
@@ -64,7 +69,6 @@ export function toAdminB2BApplicationDto(application: AdminB2BApplication) {
     submittedAt: application.submittedAt,
     reviewedAt: application.reviewedAt,
     approvedCustomerId: application.approvedCustomerId,
-    notes: application.reviewNote,
     reviewNote: application.reviewNote,
   };
 }

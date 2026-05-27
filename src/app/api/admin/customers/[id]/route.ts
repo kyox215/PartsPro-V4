@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
-import { getAdminCustomer, updateAdminCustomer } from "@/lib/partspro-repository";
+import { getAdminCustomerDetail, updateAdminCustomer } from "@/lib/partspro-repository";
 import { repositoryErrorResponse, requireAdminApi } from "../../_shared";
-import { toAdminCustomerDto, toAdminCustomerPatch } from "../_dto";
-import { customerPatchSchema } from "../_schemas";
+import { toAdminCustomerDetailDto, toAdminCustomerDto, toAdminCustomerPatch } from "../_dto";
+import { customerIdParamSchema, customerPatchSchema } from "../_schemas";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +16,18 @@ export async function GET(_request: NextRequest, { params }: CustomerParams) {
     return admin.response;
   }
 
-  const { id } = await params;
+  const paramResult = customerIdParamSchema.safeParse(await params);
+
+  if (!paramResult.success) {
+    return apiError(400, "INVALID_ADMIN_CUSTOMER_ID", "Customer id must be a UUID.", {
+      issues: formatZodIssues(paramResult.error),
+    });
+  }
+
+  const { id } = paramResult.data;
 
   try {
-    const result = await getAdminCustomer(id);
+    const result = await getAdminCustomerDetail(id);
 
     if (!result.data) {
       return apiError(404, "ADMIN_CUSTOMER_NOT_FOUND", "Customer was not found.", {
@@ -28,7 +36,7 @@ export async function GET(_request: NextRequest, { params }: CustomerParams) {
     }
 
     return NextResponse.json({
-      data: toAdminCustomerDto(result.data),
+      data: toAdminCustomerDetailDto(result.data),
       meta: { source: result.source },
     });
   } catch (error) {
@@ -41,7 +49,7 @@ export async function GET(_request: NextRequest, { params }: CustomerParams) {
 }
 
 export async function PATCH(request: NextRequest, { params }: CustomerParams) {
-  const admin = await requireAdminApi("customers.manage");
+  const admin = await requireAdminApi();
 
   if (!admin.ok) {
     return admin.response;
@@ -61,7 +69,15 @@ export async function PATCH(request: NextRequest, { params }: CustomerParams) {
     });
   }
 
-  const { id } = await params;
+  const paramResult = customerIdParamSchema.safeParse(await params);
+
+  if (!paramResult.success) {
+    return apiError(400, "INVALID_ADMIN_CUSTOMER_ID", "Customer id must be a UUID.", {
+      issues: formatZodIssues(paramResult.error),
+    });
+  }
+
+  const { id } = paramResult.data;
 
   try {
     const result = await updateAdminCustomer(id, toAdminCustomerPatch(parsed.data));

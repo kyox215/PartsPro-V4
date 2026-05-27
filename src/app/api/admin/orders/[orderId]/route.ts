@@ -129,6 +129,7 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
           carrier: parsed.data.carrier,
           note: parsed.data.note,
           paymentStatus: parsed.data.paymentStatus,
+          staffNote: parsed.data.staffNote,
           tracking: parsed.data.tracking,
         })
       : null;
@@ -158,6 +159,7 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
         ...(parsed.data.paymentStatus
           ? { paymentStatus: toUiPaymentStatus(parsed.data.paymentStatus) }
           : {}),
+        ...(parsed.data.staffNote !== undefined ? { staffNote: parsed.data.staffNote } : {}),
         ...(parsed.data.fulfillmentStatus
           ? { fulfillmentStatus: parsed.data.fulfillmentStatus }
           : {}),
@@ -186,11 +188,13 @@ function toUiPaymentStatus(status: string) {
 function hasOperationsPatch(patch: {
   carrier?: string;
   paymentStatus?: string;
+  staffNote?: string;
   tracking?: string;
 }) {
   return (
     patch.carrier !== undefined ||
     patch.paymentStatus !== undefined ||
+    patch.staffNote !== undefined ||
     patch.tracking !== undefined
   );
 }

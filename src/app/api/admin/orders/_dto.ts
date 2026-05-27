@@ -54,6 +54,8 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
     eta: order.status === "shipped" || order.status === "completed" ? "In transito" : "Da pianificare",
     shippingAddress: order.deliveryAddress,
     owner: "Operations",
+    customerNote: order.customerNote,
+    staffNote: order.staffNote,
     notes: order.staffNote || order.customerNote,
     lines: (order.lines ?? []).map((line) => ({
       id: line.id,
@@ -93,7 +95,7 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
 
 function toOrderOperationHistory(order: AdminOrder) {
   return [...(order.events ?? [])]
-    .sort((left, right) => timestampOf(left.createdAt) - timestampOf(right.createdAt))
+    .sort((left, right) => timestampOf(right.createdAt) - timestampOf(left.createdAt))
     .map((event) => {
       const actorLabel =
         sanitizeSupplierText(event.actorName) ||

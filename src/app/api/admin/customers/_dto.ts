@@ -1,74 +1,71 @@
 import {
   type AdminB2BApplication,
   type AdminCustomer,
+  type AdminCustomerClassificationInput,
+  type AdminCustomerDetail,
   type AdminCustomerPatchInput,
+  type AdminCustomerProfileInput,
   type AdminCustomerQueryInput,
+  type AdminCustomerTermsInput,
 } from "@/lib/partspro-repository";
 
-export function toAdminCustomerQuery(input: {
+type CustomerQueryDto = {
+  assignmentStatus?: "needs_review" | "assigned" | "converted_to_employee" | "archived";
+  createdFrom?: string;
+  createdTo?: string;
+  cursor?: string;
+  customerType?: "retail" | "wholesale";
+  hasOrders?: boolean;
   limit: number;
   offset: number;
+  priceGroupId?: string;
+  profileComplete?: boolean;
   q?: string;
   sort: "created_desc" | "name" | "name_asc" | "revenue_desc" | "last_order_desc";
-  status?: "active" | "pending" | "suspended" | "approved" | "rejected";
+  status?: "active" | "pending" | "suspended";
   tier?: string;
-}): AdminCustomerQueryInput {
+};
+
+export function toAdminCustomerQuery(input: CustomerQueryDto): AdminCustomerQueryInput {
   return {
+    assignmentStatus: input.assignmentStatus,
+    createdFrom: input.createdFrom,
+    createdTo: input.createdTo,
+    cursor: input.cursor,
+    customerType: input.customerType,
+    hasOrders: input.hasOrders,
     limit: input.limit,
     offset: input.offset,
+    priceGroupId: input.priceGroupId,
+    profileComplete: input.profileComplete,
     q: input.q,
     sort: input.sort === "name_asc" ? "name" : input.sort,
-    status: toAdminCustomerStatus(input.status),
+    status: input.status,
     tier: input.tier,
   };
 }
 
-export function toAdminCustomerPatch(input: {
-  companyName?: string;
-  contactName?: string;
-  email?: string;
-  phone?: string;
-  vatNumber?: string;
-  fiscalCode?: string;
-  sdi?: string;
-  pec?: string;
-  registeredAddress?: string;
-  billingAddress?: string;
-  shippingAddress?: string;
-  status?: "active" | "pending" | "suspended" | "approved" | "rejected";
-  tier?: string;
-  priceList?: "bronze" | "silver" | "gold" | "emerald" | "diamond" | "master" | "king";
-  customerType?: "retail" | "wholesale";
-  assignmentStatus?: "needs_review" | "assigned" | "converted_to_employee" | "archived";
-  priceGroupId?: string | null;
-  monthlyPurchase?: string;
-  creditLimit?: number;
-  paymentTerms?: string;
-}): AdminCustomerPatchInput {
-  return {
-    companyName: input.companyName,
-    contactName: input.contactName,
-    email: input.email,
-    phone: input.phone,
-    vatNumber: input.vatNumber,
-    fiscalCode: input.fiscalCode,
-    sdi: input.sdi,
-    pec: input.pec,
-    registeredAddress: input.registeredAddress,
-    billingAddress: input.billingAddress,
-    shippingAddress: input.shippingAddress,
-    status: toAdminCustomerStatus(input.status),
-    tier: input.tier ?? input.priceList,
-    customerType: input.customerType,
-    assignmentStatus: input.assignmentStatus,
-    priceGroupId: input.priceGroupId,
-    monthlyPurchase: input.monthlyPurchase,
-    creditLimit: input.creditLimit,
-    paymentTerms: input.paymentTerms,
-  };
+export function toAdminCustomerPatch(input: AdminCustomerPatchInput): AdminCustomerPatchInput {
+  return input;
 }
 
-export function toAdminCustomerDto(customer: AdminCustomer) {
+export function toAdminCustomerProfilePatch(input: AdminCustomerProfileInput): AdminCustomerProfileInput {
+  return input;
+}
+
+export function toAdminCustomerClassificationPatch(
+  input: AdminCustomerClassificationInput
+): AdminCustomerClassificationInput {
+  return input;
+}
+
+export function toAdminCustomerTermsPatch(input: AdminCustomerTermsInput): AdminCustomerTermsInput {
+  return input;
+}
+
+export function toAdminCustomerDto(customer: AdminCustomer | AdminCustomerDetail) {
+  const detail = customer as Partial<AdminCustomerDetail>;
+
   return {
     id: customer.id,
     name: customer.name,
@@ -80,7 +77,7 @@ export function toAdminCustomerDto(customer: AdminCustomer) {
     pec: customer.pec,
     codiceDestinatario: customer.codiceDestinatario,
     sdi: customer.codiceDestinatario,
-    status: customer.status,
+    status: customer.customerStatus,
     customerStatus: customer.customerStatus,
     customerType: customer.customerType,
     assignmentStatus: customer.assignmentStatus,
@@ -102,20 +99,27 @@ export function toAdminCustomerDto(customer: AdminCustomer) {
     creditLimit: customer.creditLimit,
     paymentTerms: customer.paymentTerms,
     monthlyPurchase: customer.monthlyPurchase,
-    receivables: 0,
-    overdue: 0,
+    receivables: customer.receivables,
+    overdue: customer.overdue,
     ordersCount: customer.ordersCount,
     revenue: customer.revenue,
-    avgPaymentDays: 0,
-    accountOwner: "Sales",
+    avgPaymentDays: customer.avgPaymentDays,
+    accountOwner: detail.memberships?.find((membership) => membership.memberRole === "owner")
+      ?.displayName ?? null,
     lastContact: customer.lastOrderAt ?? customer.updatedAt,
-    primarySku: "",
-    notes: "Profilo sincronizzato da /api/admin/customers.",
-    orders: [],
-    rmas: [],
+    primarySku: customer.primarySku,
+    notes: null,
+    memberships: detail.memberships ?? [],
+    orders: detail.orders ?? [],
+    rmas: detail.rmas ?? [],
+    auditEvents: detail.auditEvents ?? [],
     createdAt: customer.createdAt,
     updatedAt: customer.updatedAt,
   };
+}
+
+export function toAdminCustomerDetailDto(customer: AdminCustomerDetail) {
+  return toAdminCustomerDto(customer);
 }
 
 export function toAdminB2BApplicationDto(application: AdminB2BApplication) {
@@ -139,18 +143,4 @@ export function toAdminB2BApplicationDto(application: AdminB2BApplication) {
     submittedAt: application.submittedAt,
     reviewedAt: application.reviewedAt,
   };
-}
-
-function toAdminCustomerStatus(
-  value: "active" | "pending" | "suspended" | "approved" | "rejected" | undefined
-) {
-  if (value === "approved") {
-    return "active";
-  }
-
-  if (value === "rejected") {
-    return "suspended";
-  }
-
-  return value;
 }

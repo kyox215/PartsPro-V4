@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -27,6 +28,7 @@ import {
   RotateCcw,
   Search,
   SlidersHorizontal,
+  Smartphone,
   Tag,
   Upload,
   Warehouse,
@@ -101,6 +103,7 @@ import { useI18n } from "./i18n-provider";
 import { PartVisual as ProductVisual } from "./part-visual";
 
 const adminProductsEndpoint = "/api/admin/products";
+const productImagesBucket = "product-images";
 const lowStockThreshold = 10;
 const productGrades = ["A+", "A", "B", "Refurbished"] as const;
 const defaultWarehouse: PartProduct["warehouse"] = "Milano";
@@ -286,6 +289,12 @@ const panelText = {
     missingImage: "缺主图",
     missingPrice: "缺价格",
     searchPlaceholder: "搜索 SKU / 商品 / 品牌 / 型号",
+    accessoryRoot: "手机配件",
+    cascadeBrand: "品牌",
+    cascadeModel: "型号",
+    pickBrand: "选择品牌",
+    pickModel: "选择型号",
+    noCascadeOptions: "暂无选项",
     allBrands: "全部品牌",
     allModels: "全部型号",
     allCatalogStatuses: "全部发布状态",
@@ -423,6 +432,12 @@ const panelText = {
     missingImage: "Senza immagine",
     missingPrice: "Senza prezzo",
     searchPlaceholder: "Cerca SKU / prodotto / brand / modello",
+    accessoryRoot: "Ricambi smartphone",
+    cascadeBrand: "Brand",
+    cascadeModel: "Modello",
+    pickBrand: "Seleziona brand",
+    pickModel: "Seleziona modello",
+    noCascadeOptions: "Nessuna opzione",
     allBrands: "Tutti i brand",
     allModels: "Tutti i modelli",
     allCatalogStatuses: "Tutti stati catalogo",
@@ -887,6 +902,14 @@ export function AdminProductsPanel() {
         </div>
 
         <div className="border-b border-slate-200 bg-slate-50/70 px-3 py-3 sm:px-4">
+          <ProductCascadeMenu
+            filters={filters}
+            modelGroups={modelGroups}
+            products={products}
+            isLoadingModelGroups={isLoadingModelGroups}
+            text={text}
+            onChange={updateFilters}
+          />
           <ProductFilters
             filters={filters}
             modelGroups={modelGroups}
@@ -1179,6 +1202,174 @@ function ProductFilters({
   );
 }
 
+function ProductCascadeMenu({
+  filters,
+  modelGroups,
+  products,
+  isLoadingModelGroups,
+  text,
+  onChange,
+}: {
+  filters: ProductListFilters;
+  modelGroups: DeviceModelGroup[];
+  products: AdminProductRow[];
+  isLoadingModelGroups: boolean;
+  text: typeof panelText.zh | typeof panelText.it;
+  onChange: (patch: Partial<ProductListFilters>) => void;
+}) {
+  const groups = React.useMemo(
+    () => buildCascadeModelGroups(modelGroups, products),
+    [modelGroups, products]
+  );
+  const selectedBrand = filters.brand === "all" ? "" : filters.brand;
+  const selectedModel = filters.model === "all" ? "" : filters.model;
+  const selectedGroup = selectedBrand
+    ? groups.find((group) => group.brand === selectedBrand)
+    : null;
+
+  return (
+    <div className="mb-3 grid gap-2 lg:grid-cols-[minmax(150px,0.9fr)_minmax(180px,1fr)_minmax(240px,1.1fr)]">
+      <CascadeColumn
+        title="1"
+        label={text.accessoryRoot}
+        icon={Package}
+      >
+        <button
+          type="button"
+          className="flex min-h-10 w-full items-center justify-between gap-2 rounded-md border border-primary/25 bg-primary/10 px-3 py-2 text-left text-sm font-bold text-primary"
+          onClick={() => onChange({ q: "", brand: "all", model: "all" })}
+        >
+          <span className="truncate">{text.accessoryRoot}</span>
+          <ChevronRight className="size-4 shrink-0" />
+        </button>
+      </CascadeColumn>
+
+      <CascadeColumn
+        title="2"
+        label={text.cascadeBrand}
+        icon={Tag}
+      >
+        <CascadeScrollArea empty={isLoadingModelGroups ? text.loading : text.noCascadeOptions}>
+          {groups.map((group) => (
+            <CascadeOption
+              key={group.brand}
+              selected={group.brand === selectedBrand}
+              label={group.brand}
+              meta={`${group.models.length}`}
+              onClick={() => onChange({ q: "", brand: group.brand, model: "all" })}
+            />
+          ))}
+        </CascadeScrollArea>
+      </CascadeColumn>
+
+      <CascadeColumn
+        title="3"
+        label={text.cascadeModel}
+        icon={Smartphone}
+      >
+        {selectedGroup ? (
+          <CascadeScrollArea empty={text.noCascadeOptions}>
+            {selectedGroup.models.map((model) => (
+              <CascadeOption
+                key={model}
+                selected={model === selectedModel}
+                label={model}
+                onClick={() => onChange({ q: "", model })}
+              />
+            ))}
+          </CascadeScrollArea>
+      ) : (
+        <CascadePlaceholder>{text.pickBrand}</CascadePlaceholder>
+      )}
+      </CascadeColumn>
+    </div>
+  );
+}
+
+function CascadeColumn({
+  title,
+  label,
+  icon: Icon,
+  meta,
+  children,
+}: {
+  title: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  meta?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-2 shadow-[0_8px_20px_rgba(15,23,42,0.03)]">
+      <div className="mb-2 flex min-h-6 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="grid size-5 shrink-0 place-items-center rounded-md bg-slate-100 text-[11px] font-black text-slate-600">
+            {title}
+          </span>
+          <Icon className="size-4 shrink-0 text-slate-500" />
+          <span className="truncate text-xs font-bold text-slate-700">{label}</span>
+        </div>
+        {meta && <span className="shrink-0 text-[11px] font-semibold text-slate-400">{meta}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function CascadeScrollArea({
+  empty,
+  children,
+}: {
+  empty: string;
+  children: React.ReactNode;
+}) {
+  const items = React.Children.toArray(children).filter(Boolean);
+
+  if (items.length === 0) {
+    return <CascadePlaceholder>{empty}</CascadePlaceholder>;
+  }
+
+  return <div className="grid max-h-48 gap-1 overflow-y-auto pr-1">{items}</div>;
+}
+
+function CascadeOption({
+  selected,
+  label,
+  meta,
+  onClick,
+}: {
+  selected: boolean;
+  label: string;
+  meta?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "flex min-h-9 w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-100",
+        selected && "bg-slate-900 text-white hover:bg-slate-900"
+      )}
+      onClick={onClick}
+    >
+      <span className="min-w-0 truncate">{label}</span>
+      {meta && (
+        <span className={cn("shrink-0 text-[11px] font-bold text-slate-400", selected && "text-white/70")}>
+          {meta}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function CascadePlaceholder({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="grid min-h-24 place-items-center rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs font-semibold text-slate-400">
+      {children}
+    </div>
+  );
+}
+
 function CatalogStatusSelect({
   value,
   text,
@@ -1314,7 +1505,7 @@ function ProductTable({
       </div>
       <div className="hidden lg:block">
         <div className="max-w-full overflow-x-auto">
-          <Table className="min-w-[1180px]">
+          <Table className="min-w-[1080px]">
             <TableHeader className="bg-slate-50">
               <TableRow>
                 <TableHead className="w-10">
@@ -1329,7 +1520,6 @@ function ProductTable({
                 <TableHead>{text.tableCatalog}</TableHead>
                 <TableHead>{text.tableStock}</TableHead>
                 <TableHead>{text.tablePrice}</TableHead>
-                <TableHead>{text.tableMedia}</TableHead>
                 <TableHead>{text.tableUpdated}</TableHead>
                 <TableHead className="text-right">{text.tableActions}</TableHead>
               </TableRow>
@@ -1368,9 +1558,6 @@ function ProductTable({
                       <ProductPriceSummary product={product} text={text} />
                     </TableCell>
                     <TableCell>
-                      <ProductMediaSummary product={product} text={text} />
-                    </TableCell>
-                    <TableCell>
                       <span className="whitespace-nowrap text-xs font-medium text-slate-500">
                         {product.updatedAt}
                       </span>
@@ -1392,7 +1579,7 @@ function ProductTable({
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={9}>
+                  <TableCell colSpan={8}>
                     <ProductEmptyState isLoading={isLoading} text={text} />
                   </TableCell>
                 </TableRow>
@@ -1485,10 +1672,7 @@ function ProductMobileCard({
 function ProductIdentity({ product }: { product: AdminProductRow }) {
   return (
     <div className="flex min-w-[280px] items-center gap-3">
-      <ProductVisual
-        variant={product.visual}
-        className="size-11 shrink-0 rounded-md"
-      />
+      <ProductImageThumb product={product} className="size-11" sizes="44px" />
       <div className="min-w-0">
         <div className="line-clamp-2 text-sm font-bold leading-snug text-slate-950">
           {product.name}
@@ -1504,6 +1688,119 @@ function ProductIdentity({ product }: { product: AdminProductRow }) {
       </div>
     </div>
   );
+}
+
+function ProductImageThumb({
+  product,
+  className,
+  sizes,
+}: {
+  product: AdminProductRow;
+  className?: string;
+  sizes: string;
+}) {
+  const candidates = React.useMemo(() => getProductImageCandidates(product), [product]);
+  const [failedImageState, setFailedImageState] = React.useState<{
+    sku: string;
+    urls: string[];
+  }>({ sku: product.sku, urls: [] });
+  const failedUrls = failedImageState.sku === product.sku ? failedImageState.urls : [];
+  const imageUrl = candidates.find((candidate) => !failedUrls.includes(candidate));
+  const imageAlt = product.imageAlt || product.name;
+
+  return (
+    <div
+      className={cn(
+        "relative grid shrink-0 place-items-center overflow-hidden rounded-md border border-slate-200 bg-white",
+        className
+      )}
+    >
+      {imageUrl ? (
+        <Image
+          src={imageUrl}
+          alt={imageAlt}
+          fill
+          sizes={sizes}
+          quality={75}
+          loading="lazy"
+          decoding="async"
+          unoptimized
+          className="object-contain p-1"
+          onError={() =>
+            setFailedImageState((current) => {
+              const urls = current.sku === product.sku ? current.urls : [];
+
+              if (urls.includes(imageUrl)) {
+                return current.sku === product.sku ? current : { sku: product.sku, urls };
+              }
+
+              return { sku: product.sku, urls: [...urls, imageUrl] };
+            })
+          }
+        />
+      ) : (
+        <ProductVisual
+          variant={product.visual}
+          className="size-full rounded-none border-0"
+        />
+      )}
+    </div>
+  );
+}
+
+function getProductImageCandidates(product: AdminProductRow) {
+  const imagePathUrl = resolveAdminProductImageUrl(product.imagePath);
+  const galleryPathUrls = (product.galleryImagePaths ?? []).map(resolveAdminProductImageUrl);
+  const candidates = [
+    product.imageUrl,
+    imagePathUrl,
+    getExternalProductImageFallbackUrl(product.imageUrl),
+    getExternalProductImageFallbackUrl(product.imagePath),
+    ...(product.galleryImageUrls ?? []),
+    ...(product.galleryImageUrls ?? []).map(getExternalProductImageFallbackUrl),
+    ...galleryPathUrls,
+    ...(product.galleryImagePaths ?? []).map(getExternalProductImageFallbackUrl),
+  ];
+
+  return Array.from(
+    new Set(candidates.map((candidate) => candidate?.trim()).filter(isNonEmptyString))
+  );
+}
+
+function isNonEmptyString(value: string | undefined): value is string {
+  return Boolean(value && value.length > 0);
+}
+
+function resolveAdminProductImageUrl(value: string | null | undefined) {
+  const normalized = value?.trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(normalized)) {
+    return normalized;
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, "");
+
+  return supabaseUrl
+    ? `${supabaseUrl}/storage/v1/object/public/${productImagesBucket}/${normalized.replace(/^\/+/, "")}`
+    : "";
+}
+
+function getExternalProductImageFallbackUrl(value: string | null | undefined) {
+  const normalized = value?.trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  const imageId = normalized.match(/-(\d+)\.(?:png|jpe?g|webp|gif)(?:$|\?)/i)?.[1];
+
+  return imageId
+    ? `https://apiv2.mobilax.fr/v1.0/assets/images/products/id-image/${imageId}?size=bg`
+    : "";
 }
 
 function ProductBrandModel({ product }: { product: AdminProductRow }) {
@@ -1560,26 +1857,6 @@ function ProductPriceSummary({
       <div className="text-[11px] text-slate-400">
         {text.costPrice} {formatEuro(product.costPrice ?? 0)}
       </div>
-    </div>
-  );
-}
-
-function ProductMediaSummary({
-  product,
-  text,
-}: {
-  product: AdminProductRow;
-  text: typeof panelText.zh | typeof panelText.it;
-}) {
-  const hasImage = Boolean(product.imagePath || product.imageUrl);
-  const galleryCount = product.galleryImageUrls?.length ?? product.galleryImagePaths?.length ?? 0;
-
-  return (
-    <div className="space-y-1">
-      <Badge className={hasImage ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700"}>
-        {hasImage ? text.sectionMedia : text.missingImage}
-      </Badge>
-      <div className="text-xs font-semibold text-slate-500">{galleryCount} gallery</div>
     </div>
   );
 }
@@ -1880,7 +2157,7 @@ function ProductDetails({
     <div className="space-y-4">
       <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
-          <ProductVisual variant={product.visual} className="size-14 rounded-md" />
+          <ProductImageThumb product={product} className="size-14" sizes="56px" />
           <div className="min-w-0">
             <div className="break-words text-base font-black text-slate-950">
               {product.name}
@@ -3363,6 +3640,36 @@ function ensureUniqueSku(sku: string, products: AdminProductRow[]) {
   }
 
   return nextSku;
+}
+
+function buildCascadeModelGroups(
+  modelGroups: DeviceModelGroup[],
+  products: AdminProductRow[]
+) {
+  const groups = new Map<string, Set<string>>();
+
+  for (const group of modelGroups) {
+    const models = groups.get(group.brand) ?? new Set<string>();
+
+    group.models.forEach((model) => models.add(model));
+    groups.set(group.brand, models);
+  }
+
+  for (const product of products) {
+    const models = groups.get(product.brand) ?? new Set<string>();
+    const productModels = [product.model, ...product.compatibleWith].filter(isDefined);
+
+    productModels.forEach((model) => models.add(model));
+    groups.set(product.brand, models);
+  }
+
+  return Array.from(groups.entries())
+    .map(([brand, models]) => ({
+      brand,
+      models: Array.from(models).sort(compareModelNames),
+    }))
+    .filter((group) => group.models.length > 0)
+    .sort((left, right) => left.brand.localeCompare(right.brand, undefined, { numeric: true }));
 }
 
 function downloadProductsCsv(products: AdminProductRow[], scope: "selected" | "view") {
