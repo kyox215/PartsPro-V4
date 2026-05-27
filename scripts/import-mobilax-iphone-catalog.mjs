@@ -74,7 +74,6 @@ const BRAND_CONFIGS = {
     seriesLabels: {
       "mi-mix-max-series": "Mi Mix / Max",
       "mi-series": "Mi",
-      "poco-shark-series": "POCO",
       "redmi-note-series": "Redmi Note",
       "redmi-series": "Redmi",
       "xiaomi-series": "Xiaomi",
@@ -296,6 +295,7 @@ function parseArgs(values) {
     limitProducts: 0,
     pageDelayMs: 180,
     imageConcurrency: 4,
+    seriesSlugs: [],
   };
 
   for (let index = 0; index < values.length; index += 1) {
@@ -306,6 +306,14 @@ function parseArgs(values) {
       parsed.dryRun = true;
     } else if (value === "--brand" && next) {
       parsed.brand = next.toLowerCase();
+      index += 1;
+    } else if ((value === "--series" || value === "--series-slug") && next) {
+      parsed.seriesSlugs.push(
+        ...next
+          .split(",")
+          .map((slug) => slug.trim().toLowerCase())
+          .filter(Boolean)
+      );
       index += 1;
     } else if (value === "--skip-images") {
       parsed.skipImages = true;
@@ -331,6 +339,31 @@ function parseArgs(values) {
   return parsed;
 }
 
+function selectedSeriesPaths() {
+  if (args.seriesSlugs.length === 0) {
+    return brandConfig.seriesPaths;
+  }
+
+  const available = new Map(
+    brandConfig.seriesPaths.map((path) => [path.split("/").pop()?.toLowerCase(), path])
+  );
+  const paths = [];
+
+  for (const slug of args.seriesSlugs) {
+    const path = available.get(slug);
+
+    if (!path) {
+      throw new Error(
+        `Unsupported series for ${args.brand}: ${slug}. Use one of: ${[...available.keys()].join(", ")}.`
+      );
+    }
+
+    paths.push(path);
+  }
+
+  return uniqueStrings(paths);
+}
+
 function loadEnv(path) {
   if (!existsSync(path)) {
     return;
@@ -352,7 +385,7 @@ function loadEnv(path) {
 async function discoverModelUrls() {
   const urls = new Set();
 
-  for (const seriesPath of brandConfig.seriesPaths) {
+  for (const seriesPath of selectedSeriesPaths()) {
     try {
       const html = await fetchText(new URL(seriesPath, MOBILAX_BASE_URL).href);
       const decoded = decodeNextFlight(html);
@@ -371,14 +404,18 @@ async function discoverModelUrls() {
 }
 
 function collectModelUrls(value, urls) {
-  const seriesSlugs = brandConfig.seriesPaths.map((path) => path.split("/").pop()).filter(Boolean);
+  const seriesSlugs = selectedSeriesPaths().map((path) => path.split("/").pop()).filter(Boolean);
   const seriesPattern = seriesSlugs.map(escapeRegex).join("|");
   const linkPattern = new RegExp(
-    `(?:/|\\\\b)spare-parts/mobile-phone/${escapeRegex(brandConfig.pathSlug)}/(${seriesPattern})/([^"'<>\\\\?\\\\s]+)`,
+    `\\/?spare-parts/mobile-phone/${escapeRegex(brandConfig.pathSlug)}/(${seriesPattern})/([^"'<>\\\\?\\s/]+)`,
     "gi"
   );
 
   for (const match of value.matchAll(linkPattern)) {
+    if (match[2].length < 4) {
+      continue;
+    }
+
     const path = `/spare-parts/mobile-phone/${brandConfig.pathSlug}/${match[1]}/${match[2]}`;
 
     if (!brandConfig.excludeModelPath(path)) {

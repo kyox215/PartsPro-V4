@@ -1285,7 +1285,7 @@ function ProductCascadeMenu({
       ? selectedGroup.series?.find((group) => group.series === selectedSeries) ?? null
       : null;
   const seriesGroups = selectedGroup?.series ?? [];
-  const modelList = selectedSeriesGroup?.models ?? (seriesGroups.length === 0 ? selectedGroup?.models ?? [] : []);
+  const modelList = selectedSeriesGroup?.models ?? selectedGroup?.models ?? [];
 
   return (
     <div className="mb-3 grid gap-2 lg:grid-cols-[minmax(130px,0.8fr)_minmax(150px,0.95fr)_minmax(180px,1fr)_minmax(220px,1.15fr)]">
@@ -1330,6 +1330,13 @@ function ProductCascadeMenu({
         {selectedGroup ? (
           seriesGroups.length > 0 ? (
             <CascadeScrollArea empty={text.noCascadeOptions}>
+              <CascadeOption
+                key="all-series"
+                selected={!selectedSeries}
+                label={text.allSeries}
+                meta={`${selectedGroup.models.length}`}
+                onClick={() => onChange({ q: "", modelSeries: "all", model: "all" })}
+              />
               {seriesGroups.map((group) => (
                 <CascadeOption
                   key={group.series}
@@ -1355,6 +1362,13 @@ function ProductCascadeMenu({
       >
         {modelList.length > 0 ? (
           <CascadeScrollArea empty={text.noCascadeOptions}>
+            <CascadeOption
+              key="all-models"
+              selected={!selectedModel}
+              label={text.allModels}
+              meta={`${modelList.length}`}
+              onClick={() => onChange({ q: "", model: "all" })}
+            />
             {modelList.map((model) => (
               <CascadeOption
                 key={model}

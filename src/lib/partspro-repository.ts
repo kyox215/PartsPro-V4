@@ -184,7 +184,6 @@ export type AdminProductWriteInput = {
   rmaDays?: number;
   weightGram?: number;
   model?: string;
-  modelSeries?: string;
   modelCode?: string;
   modelCodes?: string[];
   batchCode?: string;
@@ -3676,15 +3675,6 @@ function buildProductPayload(
   assignDefined(payload, "warranty_days", input.rmaDays ?? (partial ? undefined : 180));
   assignDefined(payload, "weight_gram", input.weightGram ?? (partial ? undefined : 0));
   assignDefined(payload, "model", trimOptional(input.model));
-  assignDefined(
-    payload,
-    "model_series",
-    input.modelSeries !== undefined
-      ? trimOptional(input.modelSeries)
-      : input.brand !== undefined || input.model !== undefined
-        ? normalizeDeviceModelSeries(input.brand, undefined, input.model) ?? undefined
-        : undefined
-  );
   assignDefined(payload, "model_code", sanitizeOptionalSupplierText(input.modelCode));
   assignDefined(
     payload,
