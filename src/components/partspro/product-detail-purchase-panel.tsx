@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   BadgeEuro,
+  CheckCircle2 as CheckIcon,
   CheckCircle2,
   Minus,
   Plus,
@@ -14,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import type { PartProduct } from "@/lib/partspro-data";
 import { formatEuro } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
+import { addCartItem } from "./cart-state";
 
 type ProductDetailPurchasePanelProps = {
   product: PartProduct;
@@ -22,6 +24,7 @@ type ProductDetailPurchasePanelProps = {
 export function ProductDetailPurchasePanel({
   product,
 }: ProductDetailPurchasePanelProps) {
+  const router = useRouter();
   const minimumQuantity = Math.max(product.moq, 1);
   const stockAvailable = product.stock > 0 && product.status !== "Out of Stock";
   const initialQuantity = stockAvailable
@@ -37,8 +40,6 @@ export function ProductDetailPurchasePanel({
   const total = subtotal + vat;
   const validationId = `purchase-state-${product.sku.replace(/[^a-zA-Z0-9]/g, "-")}`;
   const quantityId = `quantity-${product.sku.replace(/[^a-zA-Z0-9]/g, "-")}`;
-  const cartPath = `/carrello?sku=${encodeURIComponent(product.sku)}&qty=${safeQuantity}`;
-  const checkoutPath = `/checkout?sku=${encodeURIComponent(product.sku)}&qty=${safeQuantity}`;
   const validationMessage = getPurchaseValidationMessage({
     canOrder,
     isAboveStock,
@@ -48,6 +49,16 @@ export function ProductDetailPurchasePanel({
     safeQuantity,
     stockAvailable,
   });
+  const [addFeedbackVisible, setAddFeedbackVisible] = useState(false);
+  const addFeedbackTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (addFeedbackTimerRef.current) {
+        window.clearTimeout(addFeedbackTimerRef.current);
+      }
+    };
+  }, []);
 
   function updateQuantity(value: number) {
     if (!Number.isFinite(value)) {
@@ -56,6 +67,36 @@ export function ProductDetailPurchasePanel({
     }
 
     setQuantity(Math.max(1, Math.trunc(value)));
+  }
+
+  function addCurrentQuantityToCart() {
+    addCartItem(product.sku, safeQuantity, [product]);
+    setAddFeedbackVisible(true);
+
+    if (addFeedbackTimerRef.current) {
+      window.clearTimeout(addFeedbackTimerRef.current);
+    }
+
+    addFeedbackTimerRef.current = window.setTimeout(() => {
+      setAddFeedbackVisible(false);
+    }, 1400);
+  }
+
+  function handleAddToCart() {
+    if (!canOrder) {
+      return;
+    }
+
+    addCurrentQuantityToCart();
+  }
+
+  function handleOrderNow() {
+    if (!canOrder) {
+      return;
+    }
+
+    addCurrentQuantityToCart();
+    router.push("/checkout");
   }
 
   return (
@@ -147,14 +188,21 @@ export function ProductDetailPurchasePanel({
 
       <div className="mt-4 flex flex-col gap-2 sm:flex-row">
         {canOrder ? (
-          <Button asChild className="h-11 flex-1">
-            <Link
-              href={cartPath}
-              aria-label={`Aggiungi ${safeQuantity} pezzi di ${product.name} al carrello`}
-            >
+          <Button
+            type="button"
+            className={cn(
+              "h-11 flex-1",
+              addFeedbackVisible && "bg-emerald-600 text-white hover:bg-emerald-600"
+            )}
+            onClick={handleAddToCart}
+            aria-label={`Aggiungi ${safeQuantity} pezzi di ${product.name} al carrello`}
+          >
+            {addFeedbackVisible ? (
+              <CheckIcon className="size-4" />
+            ) : (
               <ShoppingCart className="size-4" />
-              Aggiungi al carrello
-            </Link>
+            )}
+            {addFeedbackVisible ? "Aggiunto" : "Aggiungi al carrello"}
           </Button>
         ) : (
           <Button className="h-11 flex-1" disabled aria-describedby={validationId}>
@@ -163,13 +211,14 @@ export function ProductDetailPurchasePanel({
           </Button>
         )}
         {canOrder ? (
-          <Button variant="outline" asChild className="h-11 flex-1 bg-white">
-            <Link
-              href={checkoutPath}
-              aria-label={`Ordina ora ${safeQuantity} pezzi di ${product.name}`}
-            >
-              Ordina ora
-            </Link>
+          <Button
+            type="button"
+            variant="outline"
+            className="h-11 flex-1 bg-white"
+            onClick={handleOrderNow}
+            aria-label={`Ordina ora ${safeQuantity} pezzi di ${product.name}`}
+          >
+            Ordina ora
           </Button>
         ) : (
           <Button

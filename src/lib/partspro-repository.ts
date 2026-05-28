@@ -72,6 +72,8 @@ const adminAuditSelect =
   "id, action, actor_email, actor_role, entity_type, entity_id, before_data, after_data, reason, request_metadata, result, created_at";
 const customerActivitySelect =
   "id, user_id, customer_id, event_type, sku_code, product_name, brand, model, model_series, search_query, metadata, created_at";
+const customerCartSelect =
+  "id, user_id, customer_id, sku_code, quantity, created_at, updated_at";
 
 export type RepositorySource = "supabase" | "empty";
 
@@ -99,6 +101,8 @@ const catalogModelGroupsRowLimit = 100000;
 const catalogCategoryCountsCacheTtlMs = 60 * 1000;
 const catalogCategoryCountsWarningCacheTtlMs = 15 * 1000;
 const customerActivityDedupeWindowMs = 5 * 60 * 1000;
+const maxCustomerCartItems = 100;
+const maxCustomerCartQuantity = 999;
 let catalogModelGroupsCache:
   | {
       expiresAt: number;
@@ -128,7 +132,7 @@ export type RepositoryPartProduct = PartProduct & {
 };
 
 export type AdminCatalogStatus = "active" | "draft" | "hidden" | "blocked";
-export type AdminCustomerStatus = "active" | "suspended";
+export type AdminCustomerStatus = "pending" | "active" | "suspended";
 export type AdminB2BApplicationStatus = "submitted" | "approved" | "rejected";
 export type AdminOrderDbStatus =
   | "submitted"
@@ -139,6 +143,51 @@ export type AdminOrderDbStatus =
   | "completed"
   | "cancelled";
 export type AdminPaymentStatus = "pending" | "paid" | "bank_waiting" | "failed";
+
+export type AccountCustomerProfile = {
+  assignmentStatus: CustomerAssignmentStatus;
+  billingAddress: string;
+  companyName: string;
+  contactName: string;
+  customerType: CustomerType;
+  email: string;
+  fiscalCode: string;
+  id: string;
+  level: CustomerLevel;
+  pec: string;
+  phone: string;
+  profileCompletedAt: string | null;
+  sdi: string;
+  shippingAddress: string;
+  status: string;
+  vatNumber: string;
+};
+
+export type AccountCustomerProfileInput = {
+  billingAddress?: string;
+  companyName?: string;
+  contactName?: string;
+  email?: string;
+  fiscalCode?: string;
+  pec?: string;
+  phone?: string;
+  sdi?: string;
+  shippingAddress?: string;
+  vatNumber?: string;
+};
+
+export type CustomerCartItem = {
+  createdAt: string;
+  customerId: string | null;
+  quantity: number;
+  sku: string;
+  updatedAt: string;
+};
+
+export type CustomerCartWriteItem = {
+  quantity: number;
+  sku: string;
+};
 
 export type AdminProduct = RepositoryPartProduct & {
   id: string;
@@ -761,6 +810,32 @@ export async function listCatalogProducts(): Promise<RepositoryResult<Repository
   );
 }
 
+export async function listCatalogProductsBySkus(
+  skus: string[],
+  options: Pick<CatalogProductPageOptions, "includeBuyerPrices"> = {}
+): Promise<RepositoryResult<RepositoryPartProduct[]>> {
+  const normalizedSkus = uniqueDefinedStrings(skus.map((sku) => toPublicSku(sku)));
+
+  if (normalizedSkus.length === 0) {
+    return emptyResult([]);
+  }
+
+  const supabaseResult = await readPublicCatalogProductsBySkus(
+    normalizedSkus,
+    options
+  );
+
+  return (
+    supabaseResult ??
+    emptyResult(
+      [],
+      isSupabaseConfigured()
+        ? "Supabase catalog could not be read; no matching catalog items are available."
+        : "Supabase is not configured; no matching catalog items are available."
+    )
+  );
+}
+
 export async function getCatalogProductBySkuOrSlug(
   value: string
 ): Promise<RepositoryResult<RepositoryPartProduct | null>> {
@@ -1029,6 +1104,24 @@ async function readPublicCatalogProducts(): Promise<RepositoryResult<RepositoryP
     const client = await createClient();
     const data = await readCatalogProducts({ client, userId: "" });
     return data === null ? null : { data, source: "supabase" };
+  } catch {
+    return null;
+  }
+}
+
+async function readPublicCatalogProductsBySkus(
+  skus: string[],
+  options: Pick<CatalogProductPageOptions, "includeBuyerPrices"> = {}
+): Promise<RepositoryResult<RepositoryPartProduct[]> | null> {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
+  try {
+    const client = await createClient();
+    const products = await readCatalogProductsBySkus(client, skus, options);
+
+    return products === null ? null : { data: products, source: "supabase" };
   } catch {
     return null;
   }
@@ -1678,6 +1771,242 @@ export async function listOrderSummaries(): Promise<RepositoryResult<OrderSummar
   );
 }
 
+export async function getCurrentCustomerProfile(): Promise<
+  RepositoryResult<AccountCustomerProfile | null>
+> {
+  const supabaseResult = await withSupabase(async (context) => {
+    return (await readCurrentCustomerProfile(context))?.profile ?? null;
+  });
+
+  return (
+    supabaseResult ??
+    emptyResult(
+      null,
+      isSupabaseConfigured()
+        ? "Supabase customer profile could not be read."
+        : "Supabase is not configured; no customer profile is available."
+    )
+  );
+}
+
+export async function readCurrentCustomerCart(): Promise<
+  RepositoryResult<CustomerCartItem[]>
+> {
+  const context = await requireSupabaseContext();
+  const rows = await readCurrentCustomerCartRows(context);
+
+  if (!rows) {
+    throw new RepositoryWriteError(
+      502,
+      "CUSTOMER_CART_READ_FAILED",
+      "Customer cart could not be read from Supabase."
+    );
+  }
+
+  return {
+    data: rows.map(mapCustomerCartItemRow).filter(isDefined),
+    source: "supabase",
+  };
+}
+
+export async function replaceCurrentCustomerCart(
+  items: CustomerCartWriteItem[]
+): Promise<RepositoryResult<CustomerCartItem[]>> {
+  const context = await requireSupabaseContext();
+  const normalizedItems = normalizeCustomerCartWriteItems(items);
+  const existingRows = await readCurrentCustomerCartRows(context);
+
+  if (!existingRows) {
+    throw new RepositoryWriteError(
+      502,
+      "CUSTOMER_CART_READ_FAILED",
+      "Customer cart could not be read before replacement."
+    );
+  }
+
+  const nextSkus = new Set(normalizedItems.map((item) => item.sku));
+  const staleSkus = existingRows
+    .map((row) => pickString(row, ["sku_code"]))
+    .filter(isDefined)
+    .filter((sku) => !nextSkus.has(toPublicSku(sku)));
+  const customerId = await readCurrentCustomerId(context.client, context.userId);
+
+  try {
+    if (normalizedItems.length > 0) {
+      const payloads = normalizedItems.map((item) => ({
+        customer_id: customerId,
+        quantity: item.quantity,
+        sku_code: item.sku,
+        user_id: context.userId,
+      }));
+      const { error } = await context.client
+        .from("customer_cart_items")
+        .upsert(payloads, { onConflict: "user_id,sku_code" });
+
+      if (error) {
+        throw new RepositoryWriteError(
+          supabaseRpcStatus(error),
+          "CUSTOMER_CART_REPLACE_FAILED",
+          "Customer cart could not be saved to Supabase.",
+          supabaseErrorDetails(error)
+        );
+      }
+    }
+
+    if (staleSkus.length > 0) {
+      const { error } = await context.client
+        .from("customer_cart_items")
+        .delete()
+        .eq("user_id", context.userId)
+        .in("sku_code", staleSkus);
+
+      if (error) {
+        throw new RepositoryWriteError(
+          supabaseRpcStatus(error),
+          "CUSTOMER_CART_REPLACE_FAILED",
+          "Stale customer cart items could not be removed from Supabase.",
+          supabaseErrorDetails(error)
+        );
+      }
+    }
+  } catch (error) {
+    if (error instanceof RepositoryWriteError) {
+      throw error;
+    }
+
+    throw new RepositoryWriteError(
+      502,
+      "CUSTOMER_CART_REPLACE_FAILED",
+      "Customer cart could not be saved to Supabase."
+    );
+  }
+
+  return readCurrentCustomerCart();
+}
+
+export async function clearCurrentCustomerCart(): Promise<
+  RepositoryResult<CustomerCartItem[]>
+> {
+  const context = await requireSupabaseContext();
+
+  try {
+    const { error } = await context.client
+      .from("customer_cart_items")
+      .delete()
+      .eq("user_id", context.userId);
+
+    if (error) {
+      throw new RepositoryWriteError(
+        supabaseRpcStatus(error),
+        "CUSTOMER_CART_CLEAR_FAILED",
+        "Customer cart could not be cleared in Supabase.",
+        supabaseErrorDetails(error)
+      );
+    }
+  } catch (error) {
+    if (error instanceof RepositoryWriteError) {
+      throw error;
+    }
+
+    throw new RepositoryWriteError(
+      502,
+      "CUSTOMER_CART_CLEAR_FAILED",
+      "Customer cart could not be cleared in Supabase."
+    );
+  }
+
+  return { data: [], source: "supabase" };
+}
+
+export async function updateCurrentCustomerProfile(
+  input: AccountCustomerProfileInput
+): Promise<RepositoryResult<AccountCustomerProfile>> {
+  const context = await requireSupabaseContext();
+  const customerId = await readCurrentCustomerId(context.client, context.userId);
+
+  if (!customerId) {
+    throw new RepositoryWriteError(
+      403,
+      "CUSTOMER_PROFILE_CUSTOMER_REQUIRED",
+      "The current user is not linked to a customer."
+    );
+  }
+
+  const payload = buildAccountCustomerProfilePayload(input);
+  const currentProfile = await readCurrentCustomerProfile(context);
+  const nextProfileComplete = isAccountCustomerProfilePayloadComplete({
+    ...(currentProfile?.raw ?? {}),
+    ...payload,
+  });
+
+  payload.profile_completed_at = nextProfileComplete ? new Date().toISOString() : null;
+
+  const { data, error } = await context.client
+    .from("customers")
+    .update(payload)
+    .eq("id", customerId)
+    .select(adminCustomerSelect)
+    .single();
+
+  if (error || !isDbRow(data)) {
+    throw new RepositoryWriteError(
+      502,
+      "CUSTOMER_PROFILE_UPDATE_FAILED",
+      "Customer profile could not be updated.",
+      error ? supabaseErrorDetails(error) : undefined
+    );
+  }
+
+  const profile = mapAccountCustomerProfileRow(data);
+
+  if (!profile) {
+    throw new RepositoryWriteError(
+      502,
+      "CUSTOMER_PROFILE_UPDATE_RESULT_INVALID",
+      "Supabase returned an invalid customer profile."
+    );
+  }
+
+  return { data: profile, source: "supabase" };
+}
+
+export async function listCurrentCustomerCompanies(): Promise<
+  RepositoryResult<CompanyProfile[]>
+> {
+  const supabaseResult = await withSupabase(async (context) => {
+    const profile = await readCurrentCustomerProfile(context);
+    const company = profile?.raw ? mapCompanyRow(profile.raw) : null;
+
+    return company ? [company] : [];
+  });
+
+  return (
+    supabaseResult ??
+    emptyResult(
+      [],
+      isSupabaseConfigured()
+        ? "Supabase customer company could not be read."
+        : "Supabase is not configured; no customer company is available."
+    )
+  );
+}
+
+export async function listCurrentCustomerOrderSummaries(): Promise<
+  RepositoryResult<OrderSummary[]>
+> {
+  const supabaseResult = await withSupabase(readCurrentCustomerOrderSummaries);
+
+  return (
+    supabaseResult ??
+    emptyResult(
+      [],
+      isSupabaseConfigured()
+        ? "Supabase customer orders could not be read."
+        : "Supabase is not configured; no customer orders are available."
+    )
+  );
+}
+
 export async function listAdminOrders(
   query: AdminOrderQueryInput
 ): Promise<RepositoryResult<AdminOrderPage>> {
@@ -1952,6 +2281,22 @@ export async function listRmaRequests(): Promise<RepositoryResult<RmaRequest[]>>
   return supabaseResult ?? emptyResult([], "No local RMA requests are available.");
 }
 
+export async function listCurrentCustomerRmaRequests(): Promise<
+  RepositoryResult<RmaRequest[]>
+> {
+  const supabaseResult = await withSupabase(readCurrentCustomerRmaRequests);
+
+  return (
+    supabaseResult ??
+    emptyResult(
+      [],
+      isSupabaseConfigured()
+        ? "Supabase customer RMA requests could not be read."
+        : "Supabase is not configured; no customer RMA requests are available."
+    )
+  );
+}
+
 export async function saveRmaRequest(input: SaveRmaInput): Promise<RepositoryResult<RmaRequest>> {
   if (!isSupabaseConfigured()) {
     throw new RepositoryWriteError(
@@ -2094,6 +2439,62 @@ async function readCatalogProducts(context: SupabaseContext) {
   }
 
   return null;
+}
+
+async function readCatalogProductsBySkus(
+  client: SupabaseServerClient,
+  skus: string[],
+  options: Pick<CatalogProductPageOptions, "includeBuyerPrices"> = {}
+) {
+  const normalizedSkus = uniqueDefinedStrings(skus.map((sku) => toPublicSku(sku)));
+  const lookupCandidates = uniqueDefinedStrings(
+    normalizedSkus.flatMap((sku) => catalogLookupCandidates(sku))
+  );
+
+  if (lookupCandidates.length === 0) {
+    return [];
+  }
+
+  const summaryRows = await readMatchingRows(
+    client,
+    "catalog_public_summary",
+    catalogPublicCardSelect,
+    "sku_code",
+    lookupCandidates,
+    lookupCandidates.length
+  );
+
+  if (summaryRows) {
+    const pricedRows = options.includeBuyerPrices
+      ? await mergeCatalogBuyerPriceRows(client, summaryRows)
+      : summaryRows;
+
+    return orderProductsByRequestedSkus(
+      pricedRows.map(mapProductRow).filter(isDefined),
+      normalizedSkus
+    );
+  }
+
+  const productRows = await readMatchingRows(
+    client,
+    "products",
+    catalogProductCardSelect,
+    "sku_code",
+    lookupCandidates,
+    lookupCandidates.length
+  );
+
+  if (!productRows) {
+    return null;
+  }
+
+  return orderProductsByRequestedSkus(
+    productRows
+      .filter((row) => pickString(row, ["status"]) === "active")
+      .map(mapProductRow)
+      .filter(isDefined),
+    normalizedSkus
+  );
 }
 
 async function readCatalogProductBySkuOrSlug(
@@ -2318,6 +2719,21 @@ async function readCatalogBuyerPriceRowsForProducts(
 
 function uniqueDefinedStrings(values: Array<string | null | undefined>) {
   return Array.from(new Set(values.filter(Boolean) as string[]));
+}
+
+function orderProductsByRequestedSkus(
+  products: RepositoryPartProduct[],
+  requestedSkus: string[]
+) {
+  const productsBySku = new Map(
+    products.map((product) => [toPublicSku(product.sku), product])
+  );
+
+  return requestedSkus.flatMap((sku) => {
+    const product = productsBySku.get(toPublicSku(sku));
+
+    return product ? [product] : [];
+  });
 }
 
 async function readCatalogProductViews(client: SupabaseServerClient) {
@@ -2874,6 +3290,29 @@ async function readAdminCustomerAuditEvents(
   }
 }
 
+async function readCurrentCustomerCartRows(
+  context: SupabaseContext
+): Promise<DbRow[] | null> {
+  try {
+    const { data, error } = await context.client
+      .from("customer_cart_items")
+      .select(customerCartSelect)
+      .eq("user_id", context.userId)
+      .order("created_at", { ascending: true });
+    const rows = Array.isArray(data)
+      ? (data as unknown[]).filter(isDbRow)
+      : null;
+
+    if (error || !rows) {
+      return null;
+    }
+
+    return rows;
+  } catch {
+    return null;
+  }
+}
+
 async function readCurrentCustomerId(
   client: SupabaseServerClient,
   userId: string
@@ -3218,6 +3657,79 @@ async function readCompanies(context: SupabaseContext) {
   return companyRows.map(mapCompanyRow).filter(isDefined);
 }
 
+async function readCurrentCustomerProfile(
+  context: SupabaseContext
+): Promise<{ profile: AccountCustomerProfile; raw: DbRow } | null> {
+  const customerId = await readCurrentCustomerId(context.client, context.userId);
+
+  if (!customerId) {
+    return null;
+  }
+
+  const row = await readSingleRow(
+    context.client,
+    "customers",
+    "id",
+    customerId,
+    adminCustomerSelect
+  );
+  const profile = row ? mapAccountCustomerProfileRow(row) : null;
+
+  return row && profile ? { profile, raw: row } : null;
+}
+
+async function readCustomerOrderRows(
+  client: SupabaseServerClient,
+  customerId: string,
+  limit = 200
+) {
+  try {
+    const { data, error } = await client
+      .from("orders")
+      .select("*")
+      .eq("customer_id", customerId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
+
+    if (error || !rows) {
+      return null;
+    }
+
+    return rows;
+  } catch {
+    return null;
+  }
+}
+
+async function readCurrentCustomerOrderSummaries(
+  context: SupabaseContext
+): Promise<OrderSummary[] | null> {
+  const customerProfile = await readCurrentCustomerProfile(context);
+  const customerId = pickString(customerProfile?.raw, ["id"]);
+
+  if (!customerId) {
+    return [];
+  }
+
+  const orderRows = await readCustomerOrderRows(context.client, customerId);
+
+  if (!orderRows) {
+    return null;
+  }
+
+  const orderIds = uniqueDefinedStrings(orderRows.map((row) => pickString(row, ["id"])));
+  const lineRows = await readOrderLineRowsForOrderIds(context.client, orderIds);
+  const lineCounts = countLinesByOrder(lineRows ?? []);
+  const companyNames = new Map<string, string>([
+    [customerId, customerProfile?.profile.companyName ?? "Cliente PartsPro"],
+  ]);
+
+  return orderRows
+    .map((row) => mapOrderSummaryRow(row, companyNames, lineCounts))
+    .filter(isDefined);
+}
+
 async function readOrderSummaries(context: SupabaseContext) {
   const orderRows = await readRows(context.client, "orders");
 
@@ -3236,6 +3748,80 @@ async function readOrderSummaries(context: SupabaseContext) {
   const lineCounts = countLinesByOrder(orderLineRows ?? []);
 
   return orderRows.map((row) => mapOrderSummaryRow(row, companyNames, lineCounts)).filter(isDefined);
+}
+
+async function readCurrentCustomerRmaRequests(
+  context: SupabaseContext
+): Promise<RmaRequest[] | null> {
+  const customerId = await readCurrentCustomerId(context.client, context.userId);
+
+  if (!customerId) {
+    return [];
+  }
+
+  const orderRows = await readCustomerOrderRows(context.client, customerId);
+
+  if (!orderRows) {
+    return null;
+  }
+
+  const orderIds = uniqueDefinedStrings(orderRows.map((row) => pickString(row, ["id"])));
+  const orderNos = uniqueDefinedStrings(orderRows.map((row) => pickString(row, ["order_no"])));
+  const lineRows = await readOrderLineRowsForOrderIds(context.client, orderIds);
+  const orderIdSet = new Set(orderIds);
+  const orderNoSet = new Set(orderNos);
+  const linesById = new Map<string, DbRow>();
+
+  for (const line of lineRows ?? []) {
+    const id = pickString(line, ["id", "line_id", "order_item_id"]);
+    if (id) {
+      linesById.set(id, line);
+    }
+  }
+
+  const lineIds = [...linesById.keys()];
+  const lineIdSet = new Set(lineIds);
+  const rmaRowsById = new Map<string, DbRow>();
+
+  for (const row of await readRmaRowsByColumn(context.client, "user_id", context.userId)) {
+    const rowOrderNo = pickString(row, ["order_no", "order_id"]);
+    const rowLineId = pickString(row, ["order_line_id"]);
+
+    if (
+      (!rowOrderNo || (!orderNoSet.has(rowOrderNo) && !orderIdSet.has(rowOrderNo))) &&
+      (!rowLineId || !lineIdSet.has(rowLineId))
+    ) {
+      continue;
+    }
+
+    const id = pickString(row, ["id"]);
+    if (id) {
+      rmaRowsById.set(id, row);
+    }
+  }
+
+  for (const row of await readRmaRowsForValues(context.client, "order_no", orderNos)) {
+    const id = pickString(row, ["id"]);
+    if (id) {
+      rmaRowsById.set(id, row);
+    }
+  }
+
+  for (const row of await readRmaRowsForValues(context.client, "order_id", orderIds)) {
+    const id = pickString(row, ["id"]);
+    if (id) {
+      rmaRowsById.set(id, row);
+    }
+  }
+
+  for (const row of await readRmaRowsForValues(context.client, "order_line_id", lineIds)) {
+    const id = pickString(row, ["id"]);
+    if (id) {
+      rmaRowsById.set(id, row);
+    }
+  }
+
+  return [...rmaRowsById.values()].map((row) => mapRmaRow(row, linesById)).filter(isDefined);
 }
 
 async function readRmaRequests(context: SupabaseContext) {
@@ -3655,6 +4241,42 @@ async function readRowsByColumn(
     return rows;
   } catch {
     return null;
+  }
+}
+
+async function readRmaRowsByColumn(
+  client: SupabaseServerClient,
+  column: string,
+  value: string
+) {
+  return readRmaRowsForValues(client, column, [value]);
+}
+
+async function readRmaRowsForValues(
+  client: SupabaseServerClient,
+  column: string,
+  values: string[]
+) {
+  const candidates = uniqueDefinedStrings(values);
+
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  try {
+    const { data, error } = await client
+      .from("rma_requests")
+      .select("*")
+      .in(column, candidates);
+    const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
+
+    if (error || !rows) {
+      return [];
+    }
+
+    return rows;
+  } catch {
+    return [];
   }
 }
 
@@ -4111,6 +4733,39 @@ function buildCustomerProfilePayload(input: AdminCustomerProfileInput) {
   return payload;
 }
 
+function buildAccountCustomerProfilePayload(input: AccountCustomerProfileInput) {
+  const payload: Record<string, unknown> = {};
+
+  assignStringValue(payload, "company_name", input.companyName);
+  assignStringValue(payload, "contact_name", input.contactName);
+  assignStringValue(payload, "email", input.email);
+  assignStringValue(payload, "phone", input.phone);
+  assignStringValue(payload, "vat_number", input.vatNumber);
+  assignStringValue(payload, "fiscal_code", input.fiscalCode);
+  assignStringValue(payload, "sdi", input.sdi);
+  assignStringValue(payload, "pec", input.pec);
+  assignStringValue(payload, "billing_address", input.billingAddress);
+  assignStringValue(payload, "shipping_address", input.shippingAddress);
+
+  return payload;
+}
+
+function isAccountCustomerProfilePayloadComplete(row: DbRow) {
+  const requiredText = [
+    pickString(row, ["company_name"]),
+    pickString(row, ["contact_name"]),
+    pickString(row, ["email"]),
+    pickString(row, ["phone"]),
+    pickString(row, ["billing_address"]),
+    pickString(row, ["shipping_address"]),
+  ];
+  const hasTaxId = Boolean(
+    pickString(row, ["vat_number"]) || pickString(row, ["fiscal_code"])
+  );
+
+  return requiredText.every(Boolean) && hasTaxId;
+}
+
 function buildCustomerClassificationPayload(input: AdminCustomerClassificationInput) {
   const payload: Record<string, unknown> = {};
 
@@ -4339,6 +4994,23 @@ function mapCustomerActivityRow(row: DbRow): CustomerActivity | null {
   };
 }
 
+function mapCustomerCartItemRow(row: DbRow): CustomerCartItem | null {
+  const rawSku = pickString(row, ["sku_code", "sku"]);
+  const quantity = pickNumber(row, ["quantity"]);
+
+  if (!rawSku || !quantity || quantity < 1) {
+    return null;
+  }
+
+  return {
+    createdAt: pickString(row, ["created_at"]) ?? "",
+    customerId: pickString(row, ["customer_id"]),
+    quantity: Math.trunc(quantity),
+    sku: toPublicSku(rawSku),
+    updatedAt: pickString(row, ["updated_at"]) ?? "",
+  };
+}
+
 function mapAdminCustomerMembershipRow(
   row: DbRow,
   profilesById: Map<string, DbRow>
@@ -4406,6 +5078,33 @@ function mapCompanyRow(row: DbRow): CompanyProfile | null {
     level: normalizePriceList(pickString(row, ["level", "tier"])),
     lifetimeSpendNet: pickNumber(row, ["lifetime_spend_net"]) ?? 0,
     profileCompletedAt: pickString(row, ["profile_completed_at"]),
+  };
+}
+
+function mapAccountCustomerProfileRow(row: DbRow): AccountCustomerProfile | null {
+  const id = pickString(row, ["id"]);
+
+  if (!id) {
+    return null;
+  }
+
+  return {
+    assignmentStatus: normalizeCustomerAssignmentStatus(pickString(row, ["assignment_status"])),
+    billingAddress: pickString(row, ["billing_address"]) ?? "",
+    companyName: pickString(row, ["company_name"]) ?? "",
+    contactName: pickString(row, ["contact_name"]) ?? "",
+    customerType: normalizeCustomerType(pickString(row, ["customer_type"])),
+    email: pickString(row, ["email"]) ?? "",
+    fiscalCode: pickString(row, ["fiscal_code"]) ?? "",
+    id,
+    level: normalizeCustomerTier(pickString(row, ["level", "tier"])),
+    pec: pickString(row, ["pec"]) ?? "",
+    phone: pickString(row, ["phone"]) ?? "",
+    profileCompletedAt: pickString(row, ["profile_completed_at"]),
+    sdi: pickString(row, ["sdi"]) ?? "",
+    shippingAddress: pickString(row, ["shipping_address"]) ?? "",
+    status: pickString(row, ["status"]) ?? "active",
+    vatNumber: pickString(row, ["vat_number"]) ?? "",
   };
 }
 
@@ -5086,6 +5785,60 @@ function normalizeSku(value: string) {
   return toPublicSku(value);
 }
 
+function normalizeCustomerCartWriteItems(items: CustomerCartWriteItem[]) {
+  if (items.length > maxCustomerCartItems) {
+    throw new RepositoryWriteError(
+      400,
+      "CUSTOMER_CART_TOO_LARGE",
+      "Customer cart contains too many items.",
+      { max: maxCustomerCartItems }
+    );
+  }
+
+  const seen = new Set<string>();
+  const normalized: CustomerCartWriteItem[] = [];
+
+  for (const item of items) {
+    const sku = normalizeSku(item.sku);
+
+    if (!/^[A-Z0-9_+.-]{3,64}$/.test(sku)) {
+      throw new RepositoryWriteError(
+        400,
+        "CUSTOMER_CART_ITEM_INVALID",
+        "Customer cart contains an invalid SKU.",
+        { sku }
+      );
+    }
+
+    if (
+      !Number.isInteger(item.quantity) ||
+      item.quantity < 1 ||
+      item.quantity > maxCustomerCartQuantity
+    ) {
+      throw new RepositoryWriteError(
+        400,
+        "CUSTOMER_CART_ITEM_INVALID",
+        "Customer cart contains an invalid quantity.",
+        { max: maxCustomerCartQuantity, sku }
+      );
+    }
+
+    if (seen.has(sku)) {
+      throw new RepositoryWriteError(
+        400,
+        "CUSTOMER_CART_DUPLICATE_SKU",
+        "Customer cart cannot contain duplicate SKUs.",
+        { sku }
+      );
+    }
+
+    seen.add(sku);
+    normalized.push({ quantity: item.quantity, sku });
+  }
+
+  return normalized;
+}
+
 function sanitizeOptionalSupplierText(value: string | null | undefined) {
   const sanitized = sanitizeSupplierText(value);
   return sanitized || undefined;
@@ -5249,6 +6002,10 @@ function normalizeCompanyStatus(value: string | null): CompanyStatus {
 }
 
 function normalizeAdminCustomerStatus(value: string | null): AdminCustomerStatus {
+  if (value === "pending") {
+    return "pending";
+  }
+
   if (value === "suspended") {
     return "suspended";
   }

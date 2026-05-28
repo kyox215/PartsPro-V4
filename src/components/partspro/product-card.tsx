@@ -1,11 +1,12 @@
 "use client";
 
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import {
   Boxes,
+  CheckCircle2,
   Clock,
   Lock,
   PackageCheck,
@@ -14,11 +15,19 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  stockStatusLabel,
+  tx,
+  txFormat,
+  type StorefrontTranslator,
+} from "@/i18n/dictionaries/storefront";
 import type { PartProduct } from "@/lib/partspro-data";
 import { formatEuro } from "@/lib/partspro-data";
 import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
 import { getProductImageCandidates } from "@/lib/partspro-product-images";
 import { cn } from "@/lib/utils";
+import { addCartItem } from "./cart-state";
+import { useT } from "./i18n-provider";
 import { PartVisual } from "./part-visual";
 
 type ProductCardProps = {
@@ -42,12 +51,12 @@ export const ProductCard = memo(function ProductCard({
   product,
   showWholesalePrice = false,
 }: ProductCardProps) {
+  const t = useT();
   const [previewOpen, setPreviewOpen] = useState(false);
-  const stockMeta = getStockMeta(product);
+  const stockMeta = getStockMeta(product, t);
   const canAddToCart =
     product.stock >= Math.max(1, product.moq) && product.status !== "Out of Stock";
   const productPath = `/prodotto/${encodeURIComponent(product.sku)}`;
-  const cartPath = `/carrello?sku=${encodeURIComponent(product.sku)}&qty=${product.moq}`;
   const stockDescriptionId = `stock-${product.sku.replace(/[^a-zA-Z0-9]/g, "-")}`;
   const imageAlt = product.imageAlt ?? product.name;
   const hasWholesalePrice = product.price > 0;
@@ -55,12 +64,37 @@ export const ProductCard = memo(function ProductCard({
   const imageCandidates = useMemo(() => getProductImageCandidates(product), [product]);
   const [failedImageUrls, setFailedImageUrls] = useState<string[]>([]);
   const imageUrl = imageCandidates.find((candidate) => !failedImageUrls.includes(candidate));
-  const hiddenPriceCopy = productPriceGateCopy(priceGateReason, product.moq);
+  const hiddenPriceCopy = productPriceGateCopy(t, priceGateReason, product.moq);
+  const isReviewPriceVisible =
+    showWholesalePrice && priceGateReason === "customer_needs_assignment";
+  const [addFeedbackVisible, setAddFeedbackVisible] = useState(false);
+  const addFeedbackTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (addFeedbackTimerRef.current) {
+        window.clearTimeout(addFeedbackTimerRef.current);
+      }
+    };
+  }, []);
 
   function markImageFailed(failedUrl: string) {
     setFailedImageUrls((current) =>
       current.includes(failedUrl) ? current : [...current, failedUrl]
     );
+  }
+
+  function handleAddToCart() {
+    addCartItem(product.sku, Math.max(1, product.moq), [product]);
+    setAddFeedbackVisible(true);
+
+    if (addFeedbackTimerRef.current) {
+      window.clearTimeout(addFeedbackTimerRef.current);
+    }
+
+    addFeedbackTimerRef.current = window.setTimeout(() => {
+      setAddFeedbackVisible(false);
+    }, 1400);
   }
 
   return (
@@ -76,7 +110,12 @@ export const ProductCard = memo(function ProductCard({
             <button
               type="button"
               className="relative block h-28 w-full cursor-zoom-in overflow-hidden rounded-md bg-slate-50 text-left outline-none transition hover:bg-slate-100 focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-auto sm:rounded-lg"
-              aria-label={`Apri anteprima immagine ${product.name}`}
+              aria-label={txFormat(
+                t,
+                "storefront.product.card.previewImageAria",
+                "Apri anteprima immagine {name}",
+                { name: product.name }
+              )}
               aria-haspopup="dialog"
               onClick={() => setPreviewOpen(true)}
             >
@@ -99,7 +138,12 @@ export const ProductCard = memo(function ProductCard({
                   "absolute bottom-1.5 left-1.5 max-w-[calc(100%-0.75rem)] truncate border px-1.5 py-0.5 text-[10px] sm:bottom-2 sm:left-2 sm:max-w-[calc(100%-1rem)]",
                   stockMeta.className
                 )}
-                title={`${stockMeta.label} · ${product.stock} pz`}
+                title={txFormat(
+                  t,
+                  "storefront.product.card.stockLine",
+                  "{status} · {count} pz",
+                  { status: stockMeta.label, count: product.stock }
+                )}
               >
                 {stockMeta.label}
               </Badge>
@@ -112,7 +156,12 @@ export const ProductCard = memo(function ProductCard({
                   "absolute bottom-1.5 left-1.5 max-w-[calc(100%-0.75rem)] truncate border px-1.5 py-0.5 text-[10px] sm:bottom-2 sm:left-2 sm:max-w-[calc(100%-1rem)]",
                   stockMeta.className
                 )}
-                title={`${stockMeta.label} · ${product.stock} pz`}
+                title={txFormat(
+                  t,
+                  "storefront.product.card.stockLine",
+                  "{status} · {count} pz",
+                  { status: stockMeta.label, count: product.stock }
+                )}
               >
                 {stockMeta.label}
               </Badge>
@@ -142,9 +191,19 @@ export const ProductCard = memo(function ProductCard({
               {remainingModels > 0 && (
                 <span
                   className="hidden max-w-full truncate rounded-full bg-primary/8 px-2 py-1 text-[11px] font-bold text-primary sm:inline-flex"
-                  title={`${remainingModels} modelli compatibili aggiuntivi`}
+                  title={txFormat(
+                    t,
+                    "storefront.product.card.extraModelsTitle",
+                    "{count} modelli compatibili aggiuntivi",
+                    { count: remainingModels }
+                  )}
                 >
-                  +{remainingModels} modelli
+                  {txFormat(
+                    t,
+                    "storefront.home.productCard.extraModels",
+                    "+{count} modelli",
+                    { count: remainingModels }
+                  )}
                 </span>
               )}
             </div>
@@ -156,10 +215,15 @@ export const ProductCard = memo(function ProductCard({
                   "flex min-w-0 items-center gap-1 rounded-md border px-1.5 py-1 sm:gap-1.5 sm:rounded-lg sm:px-2 sm:py-1.5",
                   stockMeta.className
                 )}
-              >
-                <PackageCheck className="size-3 shrink-0 sm:size-3.5" />
+                >
+                  <PackageCheck className="size-3 shrink-0 sm:size-3.5" />
                 <span className="truncate">
-                  {stockMeta.label} · {product.stock} pz
+                  {txFormat(
+                    t,
+                    "storefront.product.card.stockLine",
+                    "{status} · {count} pz",
+                    { status: stockMeta.label, count: product.stock }
+                  )}
                 </span>
               </div>
               <div className="flex min-w-0 items-center gap-1 rounded-md border border-slate-100 bg-slate-50 px-1.5 py-1 sm:gap-1.5 sm:rounded-lg sm:px-2 sm:py-1.5">
@@ -176,13 +240,49 @@ export const ProductCard = memo(function ProductCard({
               <div className="min-w-0">
                 {showWholesalePrice ? (
                   <>
-                    <div className="text-sm font-black sm:text-lg">
-                      {hasWholesalePrice ? formatEuro(product.price) : "Prezzo non impostato"}
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <div className="truncate text-sm font-black sm:text-lg">
+                        {hasWholesalePrice
+                          ? formatEuro(product.price)
+                          : tx(
+                            t,
+                            "storefront.product.card.priceUnset",
+                            "Prezzo non impostato"
+                          )}
+                      </div>
+                      {isReviewPriceVisible ? (
+                        <Badge
+                          className="shrink-0 border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-black text-amber-800"
+                          title={tx(
+                            t,
+                            "storefront.product.card.reviewBadgeTitle",
+                            "Account in revisione"
+                          )}
+                        >
+                          {tx(t, "storefront.home.productCard.pendingPrice", "In revisione")}
+                        </Badge>
+                      ) : null}
                     </div>
                     <div className="truncate text-[10px] text-slate-500 sm:text-xs">
-                      {hasWholesalePrice
-                        ? `IVA escl. · MOQ ${product.moq}`
-                        : "Listino da aggiornare"}
+                      {isReviewPriceVisible
+                        ? txFormat(
+                          t,
+                          "storefront.home.productCard.pendingHint",
+                          "In revisione · MOQ {moq}",
+                          { moq: product.moq }
+                        )
+                        : hasWholesalePrice
+                        ? txFormat(
+                          t,
+                          "storefront.product.card.visiblePriceHint",
+                          "IVA escl. · MOQ {moq}",
+                          { moq: product.moq }
+                        )
+                        : tx(
+                          t,
+                          "storefront.product.card.priceNeedsUpdate",
+                          "Listino da aggiornare"
+                        )}
                     </div>
                   </>
                 ) : (
@@ -199,19 +299,32 @@ export const ProductCard = memo(function ProductCard({
               </div>
               {canAddToCart ? (
                 <Button
+                  type="button"
                   size="sm"
                   variant="outline"
-                  asChild
-                  className="size-8 min-w-0 shrink-0 bg-white px-0 text-primary sm:size-auto sm:min-w-[104px] sm:px-3"
+                  className={cn(
+                    "size-8 min-w-0 shrink-0 bg-white px-0 text-primary sm:size-auto sm:min-w-[104px] sm:px-3",
+                    addFeedbackVisible && "border-emerald-200 bg-emerald-50 text-emerald-700"
+                  )}
+                  onClick={handleAddToCart}
+                  aria-describedby={stockDescriptionId}
+                  aria-label={txFormat(
+                    t,
+                    "storefront.product.card.addAria",
+                    "Aggiungi {name} al carrello. MOQ {moq}, stock {stock} pezzi.",
+                    { name: product.name, moq: product.moq, stock: product.stock }
+                  )}
                 >
-                  <Link
-                    href={cartPath}
-                    aria-describedby={stockDescriptionId}
-                    aria-label={`Aggiungi ${product.name} al carrello. MOQ ${product.moq}, stock ${product.stock} pezzi.`}
-                  >
+                  {addFeedbackVisible ? (
+                    <CheckCircle2 className="size-3.5 sm:size-4" />
+                  ) : (
                     <ShoppingCart className="size-3.5 sm:size-4" />
-                    <span className="sr-only sm:not-sr-only">Aggiungi</span>
-                  </Link>
+                  )}
+                  <span className="sr-only sm:not-sr-only">
+                    {addFeedbackVisible
+                      ? tx(t, "storefront.product.card.added", "Aggiunto")
+                      : tx(t, "storefront.product.card.add", "Aggiungi")}
+                  </span>
                 </Button>
               ) : (
                 <Button
@@ -220,10 +333,17 @@ export const ProductCard = memo(function ProductCard({
                   className="size-8 min-w-0 shrink-0 bg-slate-50 px-0 text-slate-500 sm:size-auto sm:min-w-[104px] sm:px-3"
                   disabled
                   aria-describedby={stockDescriptionId}
-                  aria-label={`${product.name} non disponibile per il carrello`}
+                  aria-label={txFormat(
+                    t,
+                    "storefront.product.card.unavailableAria",
+                    "{name} non disponibile per il carrello",
+                    { name: product.name }
+                  )}
                 >
                   <ShoppingCart className="size-3.5 sm:size-4" />
-                  <span className="sr-only sm:not-sr-only">Esaurito</span>
+                  <span className="sr-only sm:not-sr-only">
+                    {tx(t, "storefront.product.card.unavailable", "Esaurito")}
+                  </span>
                 </Button>
               )}
             </div>
@@ -244,58 +364,103 @@ export const ProductCard = memo(function ProductCard({
   );
 });
 
-function getStockMeta(product: PartProduct) {
+function getStockMeta(product: PartProduct, t: StorefrontTranslator) {
   if (product.status === "In Stock" && product.stock > 0) {
     return {
-      label: "Disponibile",
+      label: stockStatusLabel(t, product.status),
       className: "border-emerald-100 bg-emerald-50 text-emerald-700",
     };
   }
 
   if (product.status === "Low Stock" && product.stock > 0) {
     return {
-      label: "Scorta bassa",
+      label: stockStatusLabel(t, product.status),
       className: "border-amber-100 bg-amber-50 text-amber-800",
     };
   }
 
   return {
-    label: "Esaurito",
+    label: stockStatusLabel(t, "Out of Stock"),
     className: "border-slate-200 bg-slate-100 text-slate-500",
   };
 }
 
-function productPriceGateCopy(reason: PriceVisibilityReason, moq: number) {
+function productPriceGateCopy(
+  t: StorefrontTranslator,
+  reason: PriceVisibilityReason,
+  moq: number
+) {
   if (reason === "customer_needs_assignment") {
     return {
-      label: "Account in revisione",
-      hint: `MOQ ${moq} · verifica listino`,
+      label: tx(
+        t,
+        "storefront.product.card.accountReviewLabel",
+        "Account in revisione"
+      ),
+      hint: txFormat(
+        t,
+        "storefront.product.card.accountReviewHint",
+        "MOQ {moq} · verifica listino",
+        { moq }
+      ),
     };
   }
 
   if (reason === "wholesale_required") {
     return {
-      label: "Listino B2B da abilitare",
-      hint: `MOQ ${moq} · richiedi wholesale`,
+      label: tx(
+        t,
+        "storefront.product.card.wholesaleLabel",
+        "Listino da abilitare"
+      ),
+      hint: txFormat(
+        t,
+        "storefront.product.card.wholesaleHint",
+        "MOQ {moq} · verifica cliente",
+        { moq }
+      ),
     };
   }
 
   if (reason === "account_sync_failed" || reason === "customer_profile_required") {
     return {
-      label: "Profilo in preparazione",
-      hint: `MOQ ${moq} · riprova tra poco`,
+      label: tx(
+        t,
+        "storefront.product.card.profileLabel",
+        "Profilo in preparazione"
+      ),
+      hint: txFormat(
+        t,
+        "storefront.product.card.profileHint",
+        "MOQ {moq} · riprova tra poco",
+        { moq }
+      ),
     };
   }
 
   if (reason === "customer_suspended") {
     return {
-      label: "Account sospeso",
-      hint: `MOQ ${moq} · contatta supporto`,
+      label: tx(
+        t,
+        "storefront.product.card.suspendedLabel",
+        "Account sospeso"
+      ),
+      hint: txFormat(
+        t,
+        "storefront.product.card.suspendedHint",
+        "MOQ {moq} · contatta supporto",
+        { moq }
+      ),
     };
   }
 
   return {
-    label: "Accedi per prezzo",
-    hint: `MOQ ${moq} · Login richiesto`,
+    label: tx(t, "storefront.product.card.loginLabel", "Accedi per prezzo"),
+    hint: txFormat(
+      t,
+      "storefront.product.card.loginHint",
+      "MOQ {moq} · login richiesto",
+      { moq }
+    ),
   };
 }

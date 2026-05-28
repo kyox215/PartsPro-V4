@@ -1,9 +1,18 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle2, Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  orderStatusLabel,
+  tx,
+  txFormat,
+  type StorefrontTranslator,
+} from "@/i18n/dictionaries/storefront";
 import { useCart } from "./cart-state";
+import { useI18n, useT } from "./i18n-provider";
 
 type MoneyDto = {
   amount: string;
@@ -48,8 +57,15 @@ export function CheckoutSubmitButton({
   disabledReason,
   runtimeMode = disabled ? "disabled" : "ready",
 }: CheckoutSubmitButtonProps) {
-  const cart = useCart();
-  const cartDisabledReason = getCartDisabledReason(cart.isHydrated, cart.items.length);
+  const t = useT();
+  const router = useRouter();
+  const cart = useCart({ preserveUnknown: true });
+  const cartDisabledReason = getCartDisabledReason(
+    t,
+    cart.isHydrated,
+    cart.items.length,
+    cart.lines.length
+  );
   const effectiveDisabled = disabled || Boolean(cartDisabledReason);
   const [state, setState] = React.useState<SubmitState>({
     status: "idle",
@@ -57,7 +73,7 @@ export function CheckoutSubmitButton({
   });
   const currentMessage =
     state.status === "idle"
-      ? idleMessage(runtimeMode, disabledReason ?? cartDisabledReason)
+      ? idleMessage(t, runtimeMode, disabledReason ?? cartDisabledReason)
       : state.message;
 
   async function submitOrder() {
@@ -67,7 +83,7 @@ export function CheckoutSubmitButton({
         message:
           disabledReason ??
           cartDisabledReason ??
-          "Checkout disabilitato in questo momento.",
+          tx(t, "storefront.checkout.submit.defaultDisabled", "Checkout disabilitato in questo momento."),
       });
       return;
     }
@@ -77,7 +93,7 @@ export function CheckoutSubmitButton({
     if (!(form instanceof HTMLFormElement)) {
       setState({
         status: "error",
-        message: "Modulo checkout non trovato. Ricarica la pagina e riprova.",
+        message: tx(t, "storefront.checkout.submit.formMissing", "Modulo checkout non trovato. Ricarica la pagina e riprova."),
       });
       return;
     }
@@ -85,7 +101,7 @@ export function CheckoutSubmitButton({
     if (!form.reportValidity()) {
       setState({
         status: "error",
-        message: "Completa i campi obbligatori e le conferme prima di inviare l'ordine.",
+        message: tx(t, "storefront.checkout.submit.invalidForm", "Completa i campi obbligatori e le conferme prima di inviare l'ordine."),
       });
       return;
     }
@@ -108,12 +124,15 @@ export function CheckoutSubmitButton({
     if (!selectedCompanyId) {
       setState({
         status: "error",
-        message: "Profilo cliente non disponibile: collega o completa il cliente prima di confermare l'ordine.",
+        message: tx(t, "storefront.checkout.submit.missingCustomer", "Profilo cliente non disponibile: collega o completa il cliente prima di confermare l'ordine."),
       });
       return;
     }
 
-    setState({ status: "loading", message: "Creazione ordine in corso..." });
+    setState({
+      status: "loading",
+      message: tx(t, "storefront.checkout.submit.sending", "Creazione ordine in corso..."),
+    });
 
     try {
       const response = await fetch("/api/orders", {
@@ -138,23 +157,24 @@ export function CheckoutSubmitButton({
       } | null;
 
       if (!response.ok) {
-        throw new Error(payload?.error?.message ?? "Ordine non accettato dal gestionale.");
+        throw new Error(payload?.error?.message ?? tx(t, "storefront.checkout.submit.orderRejected", "Ordine non accettato dal gestionale."));
       }
 
       if (!payload?.data?.id || !payload.data.totals?.total) {
-        throw new Error("Risposta ordine incompleta. Controlla l'API /api/orders.");
+        throw new Error(tx(t, "storefront.checkout.submit.orderIncomplete", "Risposta ordine incompleta. Controlla l'API /api/orders."));
       }
 
       cart.clearCart();
+      router.refresh();
       setState({
         status: "success",
-        message: `Ordine ${payload.data.id} creato correttamente.`,
+        message: txFormat(t, "storefront.checkout.submit.orderAccepted", "Ordine {id} creato correttamente.", { id: payload.data.id }),
         order: payload.data,
       });
     } catch (error) {
       setState({
         status: "error",
-        message: error instanceof Error ? error.message : "Errore durante l'invio.",
+        message: error instanceof Error ? error.message : tx(t, "storefront.checkout.submit.sendError", "Errore durante l'invio."),
       });
     }
   }
@@ -170,7 +190,7 @@ export function CheckoutSubmitButton({
         {state.status === "loading" && <Loader2 className="size-4 animate-spin" />}
         {state.status === "success" && <CheckCircle2 className="size-4" />}
         {state.status === "idle" && <Send className="size-4" />}
-        {buttonLabel(state.status, runtimeMode, effectiveDisabled, cart.isHydrated, cart.items.length)}
+        {buttonLabel(t, state.status, runtimeMode, effectiveDisabled, cart.isHydrated, cart.items.length)}
       </Button>
       {state.status !== "success" && effectiveDisabled && (disabledReason || cartDisabledReason) && (
         <StatusMessage tone="warning" message={disabledReason ?? cartDisabledReason ?? ""} />
@@ -185,6 +205,8 @@ export function CheckoutSubmitButton({
 }
 
 function OrderSuccess({ order, message }: { order: OrderResult; message: string }) {
+  const t = useT();
+  const { locale } = useI18n();
   const totalQuantity = order.lines.reduce((total, line) => total + line.quantity, 0);
 
   return (
@@ -195,19 +217,45 @@ function OrderSuccess({ order, message }: { order: OrderResult; message: string 
           <div className="font-black">{message}</div>
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold text-emerald-800">
             <span className="font-mono">{order.id}</span>
-            <span>{statusLabel(order.status)}</span>
-            <span>{totalQuantity} pezzi</span>
+            <span>{orderStatusLabel(t, order.status)}</span>
+            <span>
+              {txFormat(t, "storefront.cart.itemCountMany", "{count} pezzi", {
+                count: totalQuantity,
+              })}
+            </span>
           </div>
         </div>
       </div>
       <div className="mt-4 space-y-2 rounded-lg border border-emerald-200 bg-white/70 p-3">
-        <ResultLine label="Subtotale" value={formatMoney(order.totals.subtotal)} />
         <ResultLine
-          label="Spedizione"
-          value={order.totals.shipping.cents === 0 ? "Gratis" : formatMoney(order.totals.shipping)}
+          label={tx(t, "storefront.common.subtotal", "Subtotale")}
+          value={formatMoney(order.totals.subtotal, locale)}
         />
-        <ResultLine label="IVA" value={formatMoney(order.totals.vat)} />
-        <ResultLine label="Totale ordine" value={formatMoney(order.totals.total)} strong />
+        <ResultLine
+          label={tx(t, "storefront.common.shipping", "Spedizione")}
+          value={
+            order.totals.shipping.cents === 0
+              ? tx(t, "storefront.common.free", "Gratis")
+              : formatMoney(order.totals.shipping, locale)
+          }
+        />
+        <ResultLine
+          label={tx(t, "storefront.common.vat", "IVA")}
+          value={formatMoney(order.totals.vat, locale)}
+        />
+        <ResultLine
+          label={tx(t, "storefront.checkout.success.total", "Totale ordine")}
+          value={formatMoney(order.totals.total, locale)}
+          strong
+        />
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        <Button asChild className="bg-emerald-700 hover:bg-emerald-700">
+          <Link href="/account">{tx(t, "storefront.checkout.success.openOrders", "Vai agli ordini")}</Link>
+        </Button>
+        <Button asChild variant="outline" className="border-emerald-200 bg-white/70 text-emerald-800">
+          <Link href="/catalogo">{tx(t, "storefront.common.continueShopping", "Continua acquisti")}</Link>
+        </Button>
       </div>
     </div>
   );
@@ -342,21 +390,23 @@ function buildOrderNotes(
 }
 
 function idleMessage(
+  t: StorefrontTranslator,
   runtimeMode: CheckoutSubmitButtonProps["runtimeMode"],
   disabledReason?: string
 ) {
   if (runtimeMode === "ready") {
-    return "Checkout pronto: conferma l'ordine tramite /api/orders.";
+    return tx(t, "storefront.checkout.submit.idleReady", "Checkout pronto: conferma l'ordine tramite /api/orders.");
   }
 
   if (runtimeMode === "disabled") {
-    return disabledReason ?? "Checkout disabilitato in questo momento.";
+    return disabledReason ?? tx(t, "storefront.checkout.submit.idleDisabled", "Checkout disabilitato in questo momento.");
   }
 
-  return "Checkout pronto: invia a /api/orders le righe salvate nel carrello.";
+  return tx(t, "storefront.checkout.submit.idleReadyFallback", "Checkout pronto: invia a /api/orders le righe salvate nel carrello.");
 }
 
 function buttonLabel(
+  t: StorefrontTranslator,
   status: SubmitState["status"],
   runtimeMode: string,
   disabled: boolean,
@@ -364,56 +414,51 @@ function buttonLabel(
   itemCount: number
 ) {
   if (status === "success") {
-    return "Ordine inviato";
+    return tx(t, "storefront.checkout.submit.button.success", "Ordine inviato");
   }
 
   if (status === "loading") {
-    return "Invio ordine...";
+    return tx(t, "storefront.checkout.submit.button.loading", "Invio ordine...");
   }
 
   if (disabled || runtimeMode === "disabled") {
-    return "Checkout disabilitato";
+    return tx(t, "storefront.checkout.submit.button.disabled", "Checkout disabilitato");
   }
 
   if (!isCartHydrated) {
-    return "Caricamento carrello";
+    return tx(t, "storefront.checkout.submit.button.loadingCart", "Caricamento carrello");
   }
 
   if (itemCount === 0) {
-    return "Carrello vuoto";
+    return tx(t, "storefront.checkout.submit.button.cartEmpty", "Carrello vuoto");
   }
 
-  return "Conferma ordine";
+  return tx(t, "storefront.checkout.submit.button.idle", "Conferma ordine");
 }
 
-function getCartDisabledReason(isHydrated: boolean, itemCount: number) {
+function getCartDisabledReason(
+  t: StorefrontTranslator,
+  isHydrated: boolean,
+  itemCount: number,
+  lineCount: number
+) {
   if (!isHydrated) {
-    return "Caricamento carrello salvato nel browser...";
+    return tx(t, "storefront.checkout.submit.cartLoadingReason", "Caricamento carrello salvato nel browser...");
   }
 
   if (itemCount === 0) {
-    return "Il carrello è vuoto: aggiungi almeno un prodotto prima di confermare l'ordine.";
+    return tx(t, "storefront.checkout.submit.cartEmptyReason", "Il carrello è vuoto: aggiungi almeno un prodotto prima di confermare l'ordine.");
+  }
+
+  if (lineCount !== itemCount) {
+    return tx(t, "storefront.checkout.submit.unresolvedItemsReason", "Alcuni articoli del carrello non sono più disponibili: torna al carrello e rimuovili prima di confermare l'ordine.");
   }
 
   return undefined;
 }
 
-function statusLabel(status: string) {
-  const labels: Record<string, string> = {
-    draft: "Bozza",
-    pending_payment: "In attesa pagamento",
-    paid: "Pagato",
-    picking: "In preparazione",
-    shipped: "Spedito",
-    delivered: "Consegnato",
-    cancelled: "Annullato",
-  };
-
-  return labels[status] ?? status;
-}
-
-function formatMoney(value: MoneyDto) {
-  return new Intl.NumberFormat("it-IT", {
+function formatMoney(value: MoneyDto, locale: string) {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: value.currency,
   }).format(Number(value.amount));

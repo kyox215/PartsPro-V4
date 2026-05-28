@@ -14,6 +14,7 @@ import {
 } from "@/lib/partspro-api";
 import { getAdminAuthState, hasAdminPermission } from "@/lib/partspro-admin-auth";
 import {
+  clearCurrentCustomerCart,
   listCatalogProducts,
   listCompanies,
   listOrderSummaries,
@@ -249,6 +250,16 @@ export async function POST(request: NextRequest) {
       lines: orderBuild.lines,
       totals,
     });
+    let cartClearWarning: string | undefined;
+
+    try {
+      await clearCurrentCustomerCart();
+    } catch (error) {
+      cartClearWarning =
+        error instanceof RepositoryWriteError
+          ? error.message
+          : "Customer cart could not be cleared after order creation.";
+    }
 
     return NextResponse.json(
       {
@@ -274,11 +285,13 @@ export async function POST(request: NextRequest) {
           catalogSource: catalog.source,
           companiesSource: companies.source,
           persistence: "supabase_rpc",
+          remoteCart: cartClearWarning ? "clear_failed" : "cleared",
           ...warningsMeta(
             companies.warning,
             catalog.warning,
             companyResolution.warning,
-            saved.warning
+            saved.warning,
+            cartClearWarning
           ),
         },
       },
@@ -359,7 +372,7 @@ function buildOrder(requestedItems: RequestedOrderItem[], catalog: PartProduct[]
 
     seen.add(sku);
 
-    const product = catalog.find((entry) => entry.sku === sku);
+    const product = catalog.find((entry) => toPublicSku(entry.sku) === sku);
 
     if (!product) {
       issues.push({ sku, message: "SKU is not available in the catalog." });

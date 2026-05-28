@@ -14,33 +14,147 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { formatEuro, type PartProduct } from "@/lib/partspro-data";
+import { tx, txFormat } from "@/i18n/dictionaries/storefront";
+import { formatMoney } from "@/i18n/format";
+import { type PartProduct } from "@/lib/partspro-data";
 import {
   CartCatalogProvider,
   type CartLine,
   type CartTotals,
   useCart,
 } from "./cart-state";
-import { PartVisual } from "./part-visual";
+import { useI18n, useT } from "./i18n-provider";
+import { StorefrontProductImage } from "./storefront-product-image";
 import { StoreHeader } from "./store-header";
 
 type CartPageProps = {
   catalogProducts?: readonly PartProduct[];
 };
 
+type CartPageContentProps = {
+  catalogProducts: readonly PartProduct[];
+  onCatalogProductsLoaded: (products: readonly PartProduct[]) => void;
+};
+
+type CartCatalogApiResponse = {
+  data?: PartProduct[];
+};
+
+type CartCatalogLoadState = "idle" | "loading" | "ready" | "error";
+
 export function CartPage({ catalogProducts = [] }: CartPageProps) {
+  const [resolvedCatalogProducts, setResolvedCatalogProducts] = React.useState<PartProduct[]>(
+    () => [...catalogProducts]
+  );
+  const handleCatalogProductsLoaded = React.useCallback(
+    (products: readonly PartProduct[]) => {
+      setResolvedCatalogProducts((current) =>
+        mergeCatalogProducts(current, products)
+      );
+    },
+    []
+  );
+
   return (
-    <CartCatalogProvider products={catalogProducts}>
-      <CartPageContent />
+    <CartCatalogProvider products={resolvedCatalogProducts}>
+      <CartPageContent
+        catalogProducts={resolvedCatalogProducts}
+        onCatalogProductsLoaded={handleCatalogProductsLoaded}
+      />
     </CartCatalogProvider>
   );
 }
 
-function CartPageContent() {
-  const cart = useCart({ consumeUrlIntent: true });
+function CartPageContent({
+  catalogProducts,
+  onCatalogProductsLoaded,
+}: CartPageContentProps) {
+  const t = useT();
+  const cart = useCart({ consumeUrlIntent: true, preserveUnknown: true });
+  const [catalogLoadState, setCatalogLoadState] =
+    React.useState<CartCatalogLoadState>("idle");
+  const requestedCatalogSkus = React.useRef(new Set<string>());
+  const catalogSkuSet = React.useMemo(
+    () => new Set(catalogProducts.map((product) => product.sku)),
+    [catalogProducts]
+  );
   const totals = cart.totals;
-  const isEmpty = cart.isHydrated && totals.lines.length === 0;
+  const isCatalogLoading =
+    cart.isHydrated && catalogLoadState === "loading" && cart.items.length > 0;
+  const isEmpty = cart.isHydrated && cart.items.length === 0;
+  const unresolvedSkus = React.useMemo(() => {
+    const resolvedSkus = new Set(totals.lines.map((line) => line.sku));
+
+    return cart.items
+      .map((item) => item.sku)
+      .filter((sku) => !resolvedSkus.has(sku));
+  }, [cart.items, totals.lines]);
+  const hasUnresolvedItems =
+    cart.isHydrated &&
+    cart.items.length > 0 &&
+    unresolvedSkus.length > 0 &&
+    !isCatalogLoading;
+  const checkoutDisabled =
+    !cart.isHydrated ||
+    isCatalogLoading ||
+    totals.lines.length === 0 ||
+    unresolvedSkus.length > 0;
+
+  React.useEffect(() => {
+    if (!cart.isHydrated || cart.items.length === 0) {
+      return;
+    }
+
+    const missingSkus = cart.items
+      .map((item) => item.sku)
+      .filter(
+        (sku) => !catalogSkuSet.has(sku) && !requestedCatalogSkus.current.has(sku)
+      );
+
+    if (missingSkus.length === 0) {
+      setCatalogLoadState("ready");
+      return;
+    }
+
+    const controller = new AbortController();
+
+    missingSkus.forEach((sku) => requestedCatalogSkus.current.add(sku));
+    setCatalogLoadState("loading");
+
+    async function loadCartCatalogProducts() {
+      try {
+        const response = await fetch(
+          `/api/cart/catalog?skus=${encodeURIComponent(missingSkus.join(","))}`,
+          {
+            cache: "no-store",
+            credentials: "same-origin",
+            signal: controller.signal,
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error("Unable to load cart catalog products");
+        }
+
+        const payload = (await response.json()) as CartCatalogApiResponse;
+        onCatalogProductsLoaded(Array.isArray(payload.data) ? payload.data : []);
+        setCatalogLoadState("ready");
+      } catch {
+        if (!controller.signal.aborted) {
+          missingSkus.forEach((sku) => requestedCatalogSkus.current.delete(sku));
+          setCatalogLoadState("error");
+        }
+      }
+    }
+
+    void loadCartCatalogProducts();
+
+    return () => {
+      controller.abort();
+    };
+  }, [cart.isHydrated, cart.items, catalogSkuSet, onCatalogProductsLoaded]);
 
   function changeQuantity(sku: string, direction: -1 | 1) {
     const line = totals.lines.find((item) => item.sku === sku);
@@ -50,8 +164,26 @@ function CartPageContent() {
     }
   }
 
+  function setQuantity(sku: string, quantity: number) {
+    cart.updateQuantity(sku, quantity);
+  }
+
   function removeLine(sku: string) {
     cart.removeItem(sku);
+  }
+
+  function removeUnresolvedLines() {
+    unresolvedSkus.forEach((sku) => cart.removeItem(sku));
+  }
+
+  function clearCart() {
+    if (
+      window.confirm(
+        tx(t, "storefront.cart.clearConfirm", "Svuotare tutti gli articoli dal carrello?")
+      )
+    ) {
+      cart.clearCart();
+    }
   }
 
   return (
@@ -62,26 +194,37 @@ function CartPageContent() {
           <div className="flex flex-wrap items-start justify-between gap-2 sm:gap-3">
             <div className="min-w-0">
               <Badge className="mb-2 hidden border border-primary/20 bg-primary/8 text-primary lg:inline-flex">
-                Carrello clienti
+                {tx(t, "storefront.cart.badge", "Carrello clienti")}
               </Badge>
               <h1 className="text-xl font-black tracking-normal sm:text-3xl md:text-4xl">
-                Conferma prodotti e quantità
+                {tx(t, "storefront.cart.title", "Conferma prodotti e quantità")}
               </h1>
             </div>
+            {totals.lines.length > 0 && (
+              <Button
+                type="button"
+                variant="outline"
+                className="bg-white text-red-600 hover:text-red-700"
+                onClick={clearCart}
+              >
+                <Trash2 className="size-4" />
+                {tx(t, "storefront.cart.clear", "Svuota carrello")}
+              </Button>
+            )}
           </div>
 
           <Card className="hidden border-emerald-200 bg-emerald-50 lg:block">
             <CardContent className="flex gap-2 p-3 text-xs text-emerald-950 sm:gap-3 sm:p-4 sm:text-sm">
               <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 sm:size-5" />
               <div className="min-w-0">
-                <div className="font-black">Carrello locale pronto per checkout</div>
+                <div className="font-black">
+                  {tx(t, "storefront.cart.localReadyTitle", "Carrello locale pronto per checkout")}
+                </div>
                 <p className="mt-1 leading-5 sm:hidden">
-                  Le modifiche salvano gli articoli nel browser.
+                  {tx(t, "storefront.cart.localReadyShort", "Le modifiche salvano gli articoli nel browser.")}
                 </p>
                 <p className="mt-1 hidden leading-6 sm:block">
-                  Quantità e rimozioni aggiornano la selezione salvata nel
-                  browser e saranno usate dal payload checkout. Il salvataggio
-                  backend avviene solo alla conferma ordine.
+                  {tx(t, "storefront.cart.localReadyDescription", "Quantità e rimozioni aggiornano la selezione salvata nel browser e saranno usate dal payload checkout. Il salvataggio backend avviene solo alla conferma ordine.")}
                 </p>
               </div>
             </CardContent>
@@ -91,9 +234,26 @@ function CartPageContent() {
             <Card className="border-slate-200 bg-white">
               <CardContent className="flex flex-col items-start gap-3 p-4 sm:p-5">
                 <div>
-                  <div className="text-lg font-black">Caricamento carrello</div>
+                  <div className="text-lg font-black">
+                    {tx(t, "storefront.cart.loadingTitle", "Caricamento carrello")}
+                  </div>
                   <p className="mt-1 text-sm leading-6 text-slate-500">
-                    Lettura della selezione salvata in questo browser.
+                    {tx(t, "storefront.cart.loadingDescription", "Lettura della selezione salvata in questo browser.")}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {isCatalogLoading && (
+            <Card className="border-slate-200 bg-white">
+              <CardContent className="flex flex-col items-start gap-3 p-4 sm:p-5">
+                <div>
+                  <div className="text-lg font-black">
+                    {tx(t, "storefront.cart.loadingProductsTitle", "Caricamento prodotti")}
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    {tx(t, "storefront.cart.loadingProductsDescription", "Recupero disponibilità, MOQ e prezzi per gli articoli salvati.")}
                   </p>
                 </div>
               </CardContent>
@@ -104,16 +264,57 @@ function CartPageContent() {
             <Card className="border-slate-200 bg-white">
               <CardContent className="flex flex-col items-start gap-3 p-4 sm:p-5">
                 <div>
-                  <div className="text-lg font-black">Carrello vuoto</div>
+                  <div className="text-lg font-black">
+                    {tx(t, "storefront.cart.emptyTitle", "Carrello vuoto")}
+                  </div>
                   <p className="mt-1 text-sm leading-6 text-slate-500">
-                    Aggiungi prodotti dal catalogo per preparare il checkout.
+                    {tx(t, "storefront.cart.emptyDescription", "Aggiungi prodotti dal catalogo per preparare il checkout.")}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" asChild className="bg-white">
-                    <Link href="/catalogo">Vai al catalogo</Link>
+                    <Link href="/catalogo">{tx(t, "storefront.cart.goToCatalog", "Vai al catalogo")}</Link>
                   </Button>
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {hasUnresolvedItems && (
+            <Card className="border-amber-200 bg-amber-50">
+              <CardContent className="flex flex-col items-start gap-3 p-4 text-amber-950 sm:p-5">
+                <div>
+                  <div className="text-lg font-black">
+                    {tx(t, "storefront.cart.unresolvedTitle", "Prodotti del carrello non disponibili")}
+                  </div>
+                  <p className="mt-1 text-sm leading-6">
+                    {tx(t, "storefront.cart.unresolvedDescription", "Aggiorna il catalogo o aggiungi nuovamente gli articoli disponibili.")}
+                    {" "}
+                    {unresolvedSkus.join(", ")}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="outline" asChild className="bg-white">
+                    <Link href="/catalogo">{tx(t, "storefront.cart.goToCatalog", "Vai al catalogo")}</Link>
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="bg-white text-red-600 hover:text-red-700"
+                    onClick={removeUnresolvedLines}
+                  >
+                    <Trash2 className="size-4" />
+                    {tx(t, "storefront.cart.removeUnavailable", "Rimuovi non disponibili")}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {catalogLoadState === "error" && !hasUnresolvedItems && (
+            <Card className="border-amber-200 bg-amber-50">
+              <CardContent className="p-4 text-sm font-semibold leading-6 text-amber-950 sm:p-5">
+                {tx(t, "storefront.cart.detailsError", "Alcuni dettagli del carrello non sono stati aggiornati. Ricarica la pagina se i totali non corrispondono.")}
               </CardContent>
             </Card>
           )}
@@ -127,6 +328,7 @@ function CartPageContent() {
                     line={line}
                     onChangeQuantity={changeQuantity}
                     onRemove={removeLine}
+                    onSetQuantity={setQuantity}
                   />
                 ))}
               </div>
@@ -137,6 +339,7 @@ function CartPageContent() {
                     line={line}
                     onChangeQuantity={changeQuantity}
                     onRemove={removeLine}
+                    onSetQuantity={setQuantity}
                   />
                 ))}
               </div>
@@ -147,12 +350,16 @@ function CartPageContent() {
         <div className="hidden lg:block">
           <OrderSummaryCard
             totals={totals}
-            checkoutDisabled={!cart.isHydrated || isEmpty}
-            summaryNote="Totali aggiornati dalla selezione salvata nel browser. Il checkout invierà queste righe all'endpoint /api/orders."
+            checkoutDisabled={checkoutDisabled}
+            summaryNote={tx(t, "storefront.cart.summaryNoteSynced", "Totali aggiornati dalla selezione salvata nel browser. Il checkout invierà queste righe all'endpoint /api/orders.")}
           />
         </div>
       </div>
-      <MobileCartCheckoutBar totals={totals} checkoutDisabled={!cart.isHydrated || isEmpty} />
+      <MobileCartCheckoutBar
+        totals={totals}
+        checkoutDisabled={checkoutDisabled}
+        onClear={clearCart}
+      />
     </main>
   );
 }
@@ -168,6 +375,7 @@ type OrderSummaryCardProps = {
 
 type MobileCartCheckoutBarProps = {
   checkoutDisabled: boolean;
+  onClear: () => void;
   totals: CartTotals;
 };
 
@@ -175,16 +383,31 @@ type CartLineViewProps = {
   line: CartLine;
   onChangeQuantity: (sku: string, direction: -1 | 1) => void;
   onRemove: (sku: string) => void;
+  onSetQuantity: (sku: string, quantity: number) => void;
 };
 
-function CartLineMobileRow({ line, onChangeQuantity, onRemove }: CartLineViewProps) {
+function CartLineMobileRow({
+  line,
+  onChangeQuantity,
+  onRemove,
+  onSetQuantity,
+}: CartLineViewProps) {
+  const t = useT();
+  const { locale } = useI18n();
   const minimumQuantity = Math.max(1, line.product.moq);
   const canDecrease = line.quantity > minimumQuantity;
   const canIncrease = line.quantity < line.product.stock;
 
   return (
     <div className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-start gap-2 border-b border-slate-100 px-2.5 py-2 last:border-b-0">
-      <PartVisual variant={line.product.visual} className="size-10 rounded-md" />
+      <StorefrontProductImage
+        product={line.product}
+        sizes="40px"
+        quality={55}
+        className="size-10 rounded-md border border-slate-100 bg-slate-50"
+        fallbackClassName="shrink-0"
+        imageClassName="object-contain p-1"
+      />
       <div className="min-w-0 pt-0.5">
         <div className="line-clamp-2 break-words text-[13px] font-black leading-4">
           {line.product.name}
@@ -201,10 +424,12 @@ function CartLineMobileRow({ line, onChangeQuantity, onRemove }: CartLineViewPro
       <div className="grid min-w-[92px] justify-items-end gap-1 text-right">
         <div>
           <div className="whitespace-nowrap text-[13px] font-black leading-4">
-            {formatEuro(line.lineTotal)}
+            {formatMoney(line.lineTotal, locale)}
           </div>
           <div className="whitespace-nowrap text-[10px] leading-3 text-slate-500">
-            {formatEuro(line.product.price)} cad.
+            {txFormat(t, "storefront.cart.priceEach", "{price} cad.", {
+              price: formatMoney(line.product.price, locale),
+            })}
           </div>
         </div>
         <div className="inline-flex h-7 items-center rounded-md border bg-white">
@@ -215,14 +440,23 @@ function CartLineMobileRow({ line, onChangeQuantity, onRemove }: CartLineViewPro
             className="size-7 rounded-md"
             disabled={!canDecrease}
             onClick={() => onChangeQuantity(line.sku, -1)}
-            aria-label={`Riduci quantità per ${line.sku}`}
-            title={canDecrease ? "Riduci quantità" : `Quantità minima MOQ ${minimumQuantity}`}
+            aria-label={txFormat(t, "storefront.cart.decreaseAria", "Riduci quantità per {sku}", { sku: line.sku })}
+            title={
+              canDecrease
+                ? tx(t, "storefront.cart.decreaseTitle", "Riduci quantità")
+                : txFormat(t, "storefront.cart.minimumTitle", "Quantità minima MOQ {minimum}", { minimum: minimumQuantity })
+            }
           >
             <Minus className="size-3.5" />
           </Button>
-          <span className="w-6 text-center text-xs font-black" aria-live="polite">
-            {line.quantity}
-          </span>
+          <QuantityInput
+            max={line.product.stock}
+            min={minimumQuantity}
+            quantity={line.quantity}
+            sku={line.sku}
+            compact
+            onSetQuantity={onSetQuantity}
+          />
           <Button
             type="button"
             variant="ghost"
@@ -230,8 +464,12 @@ function CartLineMobileRow({ line, onChangeQuantity, onRemove }: CartLineViewPro
             className="size-7 rounded-md"
             disabled={!canIncrease}
             onClick={() => onChangeQuantity(line.sku, 1)}
-            aria-label={`Aumenta quantità per ${line.sku}`}
-            title={canIncrease ? "Aumenta quantità" : "Stock disponibile esaurito"}
+            aria-label={txFormat(t, "storefront.cart.increaseAria", "Aumenta quantità per {sku}", { sku: line.sku })}
+            title={
+              canIncrease
+                ? tx(t, "storefront.cart.increaseTitle", "Aumenta quantità")
+                : tx(t, "storefront.cart.stockLimitTitle", "Stock disponibile esaurito")
+            }
           >
             <Plus className="size-3.5" />
           </Button>
@@ -241,8 +479,8 @@ function CartLineMobileRow({ line, onChangeQuantity, onRemove }: CartLineViewPro
           variant="ghost"
           size="icon-xs"
           className="size-6 rounded-md text-red-500"
-          aria-label={`Rimuovi riga ${line.sku}`}
-          title="Rimuovi questa riga dal carrello"
+          aria-label={txFormat(t, "storefront.cart.removeLineAria", "Rimuovi riga {sku}", { sku: line.sku })}
+          title={tx(t, "storefront.cart.removeLineTitle", "Rimuovi questa riga dal carrello")}
           onClick={() => onRemove(line.sku)}
         >
           <Trash2 className="size-3.5" />
@@ -252,7 +490,14 @@ function CartLineMobileRow({ line, onChangeQuantity, onRemove }: CartLineViewPro
   );
 }
 
-function CartLineDesktopCard({ line, onChangeQuantity, onRemove }: CartLineViewProps) {
+function CartLineDesktopCard({
+  line,
+  onChangeQuantity,
+  onRemove,
+  onSetQuantity,
+}: CartLineViewProps) {
+  const t = useT();
+  const { locale } = useI18n();
   const minimumQuantity = Math.max(1, line.product.moq);
   const canDecrease = line.quantity > minimumQuantity;
   const canIncrease = line.quantity < line.product.stock;
@@ -260,7 +505,14 @@ function CartLineDesktopCard({ line, onChangeQuantity, onRemove }: CartLineViewP
   return (
     <Card className="border-slate-200 bg-white">
       <CardContent className="grid grid-cols-[92px_minmax(0,1fr)_auto] items-center gap-4 p-4">
-        <PartVisual variant={line.product.visual} className="size-24 rounded-lg" />
+        <StorefrontProductImage
+          product={line.product}
+          sizes="96px"
+          quality={55}
+          className="size-24 rounded-lg border border-slate-100 bg-slate-50"
+          fallbackClassName="shrink-0"
+          imageClassName="object-contain p-2"
+        />
         <div className="min-w-0">
           <div className="text-lg font-black">{line.product.name}</div>
           <div className="mt-1 font-mono text-xs text-slate-500">{line.sku}</div>
@@ -271,10 +523,12 @@ function CartLineDesktopCard({ line, onChangeQuantity, onRemove }: CartLineViewP
         <div className="block text-right">
           <div>
             <div className="whitespace-nowrap text-lg font-black">
-              {formatEuro(line.lineTotal)}
+              {formatMoney(line.lineTotal, locale)}
             </div>
             <div className="whitespace-nowrap text-xs text-slate-500">
-              {formatEuro(line.product.price)} cad.
+              {txFormat(t, "storefront.cart.priceEach", "{price} cad.", {
+                price: formatMoney(line.product.price, locale),
+              })}
             </div>
           </div>
           <div className="mt-3 inline-flex items-center rounded-lg border bg-white">
@@ -284,22 +538,34 @@ function CartLineDesktopCard({ line, onChangeQuantity, onRemove }: CartLineViewP
               size="icon-sm"
               disabled={!canDecrease}
               onClick={() => onChangeQuantity(line.sku, -1)}
-              aria-label={`Riduci quantità per ${line.sku}`}
-              title={canDecrease ? "Riduci quantità" : `Quantità minima MOQ ${minimumQuantity}`}
+              aria-label={txFormat(t, "storefront.cart.decreaseAria", "Riduci quantità per {sku}", { sku: line.sku })}
+              title={
+                canDecrease
+                  ? tx(t, "storefront.cart.decreaseTitle", "Riduci quantità")
+                  : txFormat(t, "storefront.cart.minimumTitle", "Quantità minima MOQ {minimum}", { minimum: minimumQuantity })
+              }
             >
               <Minus className="size-4" />
             </Button>
-            <span className="w-10 text-center text-sm font-black" aria-live="polite">
-              {line.quantity}
-            </span>
+            <QuantityInput
+              max={line.product.stock}
+              min={minimumQuantity}
+              quantity={line.quantity}
+              sku={line.sku}
+              onSetQuantity={onSetQuantity}
+            />
             <Button
               type="button"
               variant="ghost"
               size="icon-sm"
               disabled={!canIncrease}
               onClick={() => onChangeQuantity(line.sku, 1)}
-              aria-label={`Aumenta quantità per ${line.sku}`}
-              title={canIncrease ? "Aumenta quantità" : "Stock disponibile esaurito"}
+              aria-label={txFormat(t, "storefront.cart.increaseAria", "Aumenta quantità per {sku}", { sku: line.sku })}
+              title={
+                canIncrease
+                  ? tx(t, "storefront.cart.increaseTitle", "Aumenta quantità")
+                  : tx(t, "storefront.cart.stockLimitTitle", "Stock disponibile esaurito")
+              }
             >
               <Plus className="size-4" />
             </Button>
@@ -309,8 +575,8 @@ function CartLineDesktopCard({ line, onChangeQuantity, onRemove }: CartLineViewP
             variant="ghost"
             size="icon-sm"
             className="mt-2 text-red-500"
-            aria-label={`Rimuovi riga ${line.sku}`}
-            title="Rimuovi questa riga dal carrello"
+            aria-label={txFormat(t, "storefront.cart.removeLineAria", "Rimuovi riga {sku}", { sku: line.sku })}
+            title={tx(t, "storefront.cart.removeLineTitle", "Rimuovi questa riga dal carrello")}
             onClick={() => onRemove(line.sku)}
           >
             <Trash2 className="size-4" />
@@ -321,11 +587,71 @@ function CartLineDesktopCard({ line, onChangeQuantity, onRemove }: CartLineViewP
   );
 }
 
-function MobileCartCheckoutBar({ checkoutDisabled, totals }: MobileCartCheckoutBarProps) {
+function QuantityInput({
+  compact = false,
+  max,
+  min,
+  onSetQuantity,
+  quantity,
+  sku,
+}: {
+  compact?: boolean;
+  max: number;
+  min: number;
+  onSetQuantity: (sku: string, quantity: number) => void;
+  quantity: number;
+  sku: string;
+}) {
+  const t = useT();
+
+  function handleChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const nextQuantity = Number(event.currentTarget.value);
+
+    if (Number.isFinite(nextQuantity)) {
+      onSetQuantity(sku, nextQuantity);
+    }
+  }
+
+  return (
+    <Input
+      aria-label={txFormat(t, "storefront.cart.quantityAria", "Quantità per {sku}", { sku })}
+      className={
+        compact
+          ? "h-6 w-9 border-0 bg-transparent px-0 text-center text-xs font-black shadow-none focus-visible:ring-0"
+          : "h-8 w-12 border-0 bg-transparent px-0 text-center text-sm font-black shadow-none focus-visible:ring-0"
+      }
+      inputMode="numeric"
+      max={max}
+      min={min}
+      step={1}
+      type="number"
+      value={quantity}
+      onChange={handleChange}
+    />
+  );
+}
+
+function MobileCartCheckoutBar({
+  checkoutDisabled,
+  onClear,
+  totals,
+}: MobileCartCheckoutBarProps) {
+  const t = useT();
+  const { locale } = useI18n();
   const [expanded, setExpanded] = React.useState(false);
   const itemCount = totals.lines.reduce((total, line) => total + line.quantity, 0);
-  const lineLabel = totals.lines.length === 1 ? "1 riga" : `${totals.lines.length} righe`;
-  const itemLabel = itemCount === 1 ? "1 pezzo" : `${itemCount} pezzi`;
+  const lineLabel =
+    totals.lines.length === 1
+      ? tx(t, "storefront.cart.lineCountOne", "1 riga")
+      : txFormat(t, "storefront.cart.lineCountMany", "{count} righe", {
+          count: totals.lines.length,
+        });
+  const itemLabel =
+    itemCount === 1
+      ? tx(t, "storefront.cart.itemCountOne", "1 pezzo")
+      : txFormat(t, "storefront.cart.itemCountMany", "{count} pezzi", {
+          count: itemCount,
+        });
   const summaryId = React.useId();
 
   return (
@@ -333,28 +659,53 @@ function MobileCartCheckoutBar({ checkoutDisabled, totals }: MobileCartCheckoutB
       {expanded && (
         <div id={summaryId} className="border-b border-slate-200 px-3 py-2">
           <div className="space-y-1.5">
-            <CompactSummaryLine label="Subtotale" value={formatEuro(totals.subtotal)} />
             <CompactSummaryLine
-              label="Spedizione"
-              value={totals.shipping === 0 ? "Gratis" : formatEuro(totals.shipping)}
+              label={tx(t, "storefront.common.subtotal", "Subtotale")}
+              value={formatMoney(totals.subtotal, locale)}
             />
-            <CompactSummaryLine label="IVA 22%" value={formatEuro(totals.vat)} />
-            <CompactSummaryLine label="Totale" value={formatEuro(totals.total)} strong />
+            <CompactSummaryLine
+              label={tx(t, "storefront.common.shipping", "Spedizione")}
+              value={
+                totals.shipping === 0
+                  ? tx(t, "storefront.common.free", "Gratis")
+                  : formatMoney(totals.shipping, locale)
+              }
+            />
+            <CompactSummaryLine
+              label={`${tx(t, "storefront.common.vat", "IVA")} 22%`}
+              value={formatMoney(totals.vat, locale)}
+            />
+            <CompactSummaryLine
+              label={tx(t, "storefront.common.total", "Totale")}
+              value={formatMoney(totals.total, locale)}
+              strong
+            />
           </div>
           <div className="mt-2 grid grid-cols-2 gap-2">
             <Button variant="outline" asChild className="h-9 bg-white text-xs">
-              <Link href="/catalogo">Continua</Link>
+              <Link href="/catalogo">{tx(t, "storefront.cart.continueShort", "Continua")}</Link>
             </Button>
             {checkoutDisabled ? (
               <Button className="h-9 text-xs" disabled>
-                Checkout
+                {tx(t, "storefront.common.checkout", "Checkout")}
               </Button>
             ) : (
               <Button asChild className="h-9 text-xs">
-                <Link href="/checkout">Checkout</Link>
+                <Link href="/checkout">{tx(t, "storefront.common.checkout", "Checkout")}</Link>
               </Button>
             )}
           </div>
+          {totals.lines.length > 0 && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="mt-2 h-8 w-full text-xs text-red-600 hover:text-red-700"
+              onClick={onClear}
+            >
+              <Trash2 className="size-3.5" />
+              {tx(t, "storefront.cart.clear", "Svuota carrello")}
+            </Button>
+          )}
         </div>
       )}
       <div className="mx-auto flex max-w-[1300px] items-center justify-between gap-2 px-3 pt-2 pb-[calc(0.625rem_+_env(safe-area-inset-bottom))]">
@@ -369,7 +720,7 @@ function MobileCartCheckoutBar({ checkoutDisabled, totals }: MobileCartCheckoutB
             {lineLabel} · {itemLabel}
           </div>
           <div className="flex min-w-0 items-center gap-1 text-lg font-black" aria-live="polite">
-            <span className="truncate">{formatEuro(totals.total)}</span>
+            <span className="truncate">{formatMoney(totals.total, locale)}</span>
             {expanded ? (
               <ChevronDown className="size-4 shrink-0 text-slate-500" />
             ) : (
@@ -380,11 +731,11 @@ function MobileCartCheckoutBar({ checkoutDisabled, totals }: MobileCartCheckoutB
         {!expanded && (
           checkoutDisabled ? (
             <Button className="h-10 min-w-[128px] px-3" disabled>
-              Checkout
+              {tx(t, "storefront.common.checkout", "Checkout")}
             </Button>
           ) : (
             <Button asChild className="h-10 min-w-[128px] px-3">
-              <Link href="/checkout">Checkout</Link>
+              <Link href="/checkout">{tx(t, "storefront.common.checkout", "Checkout")}</Link>
             </Button>
           )
         )}
@@ -414,14 +765,21 @@ function CompactSummaryLine({
 
 export function OrderSummaryCard({
   showCheckoutAction = true,
-  checkoutLabel = "Procedi al checkout",
+  checkoutLabel,
   checkoutDisabled = false,
   consumeUrlIntent = false,
-  summaryNote = "Totali calcolati dalla selezione salvata nel browser. Il checkout invia questi articoli all'endpoint esistente /api/orders.",
+  summaryNote,
   totals,
 }: OrderSummaryCardProps) {
-  const cart = useCart({ consumeUrlIntent });
+  const t = useT();
+  const { locale } = useI18n();
+  const cart = useCart({ consumeUrlIntent, preserveUnknown: true });
   const previewTotals = totals ?? cart.totals;
+  const effectiveCheckoutLabel =
+    checkoutLabel ?? tx(t, "storefront.cart.checkoutLabel", "Procedi al checkout");
+  const effectiveSummaryNote =
+    summaryNote ??
+    tx(t, "storefront.cart.summaryNote", "Totali calcolati dalla selezione salvata nel browser. Il checkout invia questi articoli all'endpoint esistente /api/orders.");
   const effectiveCheckoutDisabled =
     checkoutDisabled || (!totals && (!cart.isHydrated || previewTotals.lines.length === 0));
 
@@ -430,35 +788,41 @@ export function OrderSummaryCard({
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ShoppingBag className="size-5 text-primary" />
-          Riepilogo ordine
+          {tx(t, "storefront.cart.summaryTitle", "Riepilogo ordine")}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <Line label="Righe" value={String(previewTotals.lines.length)} />
-        <Line label="Subtotale" value={formatEuro(previewTotals.subtotal)} />
+        <Line label={tx(t, "storefront.cart.rows", "Righe")} value={String(previewTotals.lines.length)} />
+        <Line label={tx(t, "storefront.common.subtotal", "Subtotale")} value={formatMoney(previewTotals.subtotal, locale)} />
         <Line
-          label="Spedizione"
-          value={previewTotals.shipping === 0 ? "Gratis" : formatEuro(previewTotals.shipping)}
+          label={tx(t, "storefront.common.shipping", "Spedizione")}
+          value={
+            previewTotals.shipping === 0
+              ? tx(t, "storefront.common.free", "Gratis")
+              : formatMoney(previewTotals.shipping, locale)
+          }
         />
-        <Line label="IVA 22%" value={formatEuro(previewTotals.vat)} />
+        <Line label={`${tx(t, "storefront.common.vat", "IVA")} 22%`} value={formatMoney(previewTotals.vat, locale)} />
         <Separator />
-        <Line label="Totale" value={formatEuro(previewTotals.total)} strong />
+        <Line label={tx(t, "storefront.common.total", "Totale")} value={formatMoney(previewTotals.total, locale)} strong />
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
-          {!totals && !cart.isHydrated ? "Caricamento carrello salvato nel browser..." : summaryNote}
+          {!totals && !cart.isHydrated
+            ? tx(t, "storefront.cart.summaryLoading", "Caricamento carrello salvato nel browser...")
+            : effectiveSummaryNote}
         </div>
         {showCheckoutAction && (
           effectiveCheckoutDisabled ? (
             <Button className="mt-1 h-11 w-full" disabled>
-              {checkoutLabel}
+              {effectiveCheckoutLabel}
             </Button>
           ) : (
             <Button asChild className="mt-1 h-11 w-full">
-              <Link href="/checkout">{checkoutLabel}</Link>
+              <Link href="/checkout">{effectiveCheckoutLabel}</Link>
             </Button>
           )
         )}
         <Button variant="outline" asChild className="w-full bg-white">
-          <Link href="/catalogo">Continua acquisti</Link>
+          <Link href="/catalogo">{tx(t, "storefront.common.continueShopping", "Continua acquisti")}</Link>
         </Button>
       </CardContent>
     </Card>
@@ -474,4 +838,23 @@ function Line({ label, value, strong = false }: { label: string; value: string; 
       </span>
     </div>
   );
+}
+
+function mergeCatalogProducts(
+  currentProducts: PartProduct[],
+  incomingProducts: readonly PartProduct[]
+) {
+  if (incomingProducts.length === 0) {
+    return currentProducts;
+  }
+
+  const productsBySku = new Map(
+    currentProducts.map((product) => [product.sku, product])
+  );
+
+  for (const product of incomingProducts) {
+    productsBySku.set(product.sku, product);
+  }
+
+  return Array.from(productsBySku.values());
 }

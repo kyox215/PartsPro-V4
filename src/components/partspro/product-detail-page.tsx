@@ -17,6 +17,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import {
+  brandLabel,
+  categoryLabel,
+  leadTimeLabel,
+  stockStatusLabel,
+  tx,
+  type StorefrontTranslator,
+} from "@/i18n/dictionaries/storefront";
+import { getDictionary, translate } from "@/i18n/get-dictionary";
+import { getRequestI18n } from "@/i18n/request";
 import type { PartProduct } from "@/lib/partspro-data";
 import { inferDeviceModelSeries } from "@/lib/partspro-device-series";
 import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
@@ -33,16 +43,25 @@ type ProductDetailPageProps = {
   showWholesalePrice?: boolean;
 };
 
-export function ProductDetailPage({
+export async function ProductDetailPage({
   initialAccountAccess,
   priceGateReason = "login_required",
   product,
   showWholesalePrice = false,
 }: ProductDetailPageProps) {
+  const { locale } = await getRequestI18n();
+  const dictionary = getDictionary(locale);
+  const t: StorefrontTranslator = (key) => translate(dictionary, key);
   const hasBuyerPrice = product.price > 0;
-  const hiddenPriceCopy = productDetailPriceGateCopy(priceGateReason);
+  const hiddenPriceCopy = productDetailPriceGateCopy(t, priceGateReason);
+  const isReviewPriceVisible =
+    showWholesalePrice && priceGateReason === "customer_needs_assignment";
   const primaryModel = product.compatibleWith[0] ?? null;
   const modelSeries = inferDeviceModelSeries(product.brand, primaryModel);
+  const localizedBrand = brandLabel(t, product.brand);
+  const localizedCategory = categoryLabel(t, product.category);
+  const localizedLeadTime = leadTimeLabel(t, product.leadTime);
+  const localizedStockStatus = stockStatusLabel(t, product.status);
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
@@ -61,7 +80,7 @@ export function ProductDetailPage({
         <Button variant="ghost" asChild className="mb-3">
           <Link href="/catalogo">
             <ArrowLeft className="size-4" />
-            Torna al catalogo
+            {tx(t, "storefront.product.backToCatalog", "Torna al catalogo")}
           </Link>
         </Button>
 
@@ -78,9 +97,22 @@ export function ProductDetailPage({
               />
               <div className="mt-3 grid gap-2 sm:grid-cols-3">
                 {[
-                  { label: "Lotto", value: "Tracciato" },
-                  { label: "QC", value: "Test pre-spedizione" },
-                  { label: "Packing", value: "Antistatico" },
+                  {
+                    label: tx(t, "storefront.product.detail.lot", "Lotto"),
+                    value: tx(t, "storefront.product.detail.lotTracked", "Tracciato"),
+                  },
+                  {
+                    label: tx(t, "storefront.product.detail.qc", "QC"),
+                    value: tx(t, "storefront.product.detail.qcText", "Test pre-spedizione"),
+                  },
+                  {
+                    label: tx(t, "storefront.product.detail.packing", "Packing"),
+                    value: tx(
+                      t,
+                      "storefront.product.detail.packingAntiStatic",
+                      "Antistatico"
+                    ),
+                  },
                 ].map((item) => (
                   <div
                     key={item.label}
@@ -103,7 +135,7 @@ export function ProductDetailPage({
               <CardContent className="p-4 md:p-6">
                 <div className="flex flex-wrap gap-2">
                   <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
-                    {product.status}
+                    {localizedStockStatus}
                   </Badge>
                   <Badge variant="outline">{product.grade}</Badge>
                 </div>
@@ -131,13 +163,31 @@ export function ProductDetailPage({
                 <div className="rounded-lg border border-primary/20 bg-primary/8 p-4 text-sm text-slate-700">
                   <div className="flex items-center gap-2 font-black text-slate-950">
                     <BadgeEuro className="size-4 text-primary" />
-                    {showWholesalePrice ? "Sessione cliente verificata" : hiddenPriceCopy.title}
+                    {showWholesalePrice
+                      ? isReviewPriceVisible
+                        ? hiddenPriceCopy.title
+                        : tx(
+                          t,
+                          "storefront.product.detail.sessionCustomerVerified",
+                          "Sessione cliente verificata"
+                        )
+                      : hiddenPriceCopy.title}
                   </div>
                   <p className="mt-2 leading-6">
-                    {showWholesalePrice && hasBuyerPrice
-                      ? "Prezzo netto, quantità minime e condizioni cliente sono disponibili per questo SKU."
+                    {isReviewPriceVisible && hasBuyerPrice
+                      ? hiddenPriceCopy.description
+                      : showWholesalePrice && hasBuyerPrice
+                        ? tx(
+                          t,
+                          "storefront.product.detail.sessionPriceReady",
+                          "Prezzo netto, quantità minime e condizioni cliente sono disponibili per questo SKU."
+                        )
                       : showWholesalePrice
-                        ? "Account verificato: il prezzo per questo SKU deve ancora essere aggiornato."
+                        ? tx(
+                          t,
+                          "storefront.product.detail.sessionPricePending",
+                          "Account verificato: il prezzo per questo SKU deve ancora essere aggiornato."
+                        )
                         : hiddenPriceCopy.description}
                   </p>
                 </div>
@@ -148,19 +198,27 @@ export function ProductDetailPage({
                       icon: PackageCheck,
                       label: "Stock",
                       value: `${product.stock} pezzi`,
-                      text: product.status,
+                      text: localizedStockStatus,
                     },
                     {
                       icon: Boxes,
                       label: "MOQ",
                       value: `${product.moq} pz`,
-                      text: "Ordine minimo",
+                      text: tx(
+                        t,
+                        "storefront.product.detail.minimumOrder",
+                        "Ordine minimo"
+                      ),
                     },
                     {
                       icon: Clock,
                       label: "Lead time",
-                      value: product.leadTime,
-                      text: "Stima logistica",
+                      value: localizedLeadTime,
+                      text: tx(
+                        t,
+                        "storefront.product.detail.logisticsEstimate",
+                        "Stima logistica"
+                      ),
                     },
                   ].map((item) => (
                     <div
@@ -185,10 +243,19 @@ export function ProductDetailPage({
                   <Card className="mt-3 border-amber-200 bg-amber-50/60">
                     <CardContent className="flex flex-col gap-3 p-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
-                        <div className="font-black">Prezzo non impostato</div>
+                        <div className="font-black">
+                          {tx(
+                            t,
+                            "storefront.product.detail.noPriceTitle",
+                            "Prezzo non impostato"
+                          )}
+                        </div>
                         <p className="mt-1 leading-6">
-                          Sessione verificata, ma il prezzo per questo SKU non è
-                          ancora stato aggiornato.
+                          {tx(
+                            t,
+                            "storefront.product.detail.noPriceDescription",
+                            "Sessione verificata, ma il prezzo per questo SKU non è ancora stato aggiornato."
+                          )}
                         </p>
                       </div>
                     </CardContent>
@@ -213,10 +280,26 @@ export function ProductDetailPage({
 
             <div className="grid gap-3 sm:grid-cols-2">
               {[
-                { icon: Truck, label: product.leadTime, text: "Consegna tracciata in Italia" },
+                {
+                  icon: Truck,
+                  label: localizedLeadTime,
+                  text: tx(
+                    t,
+                    "storefront.product.detail.trackedDelivery",
+                    "Consegna tracciata in Italia"
+                  ),
+                },
                 { icon: ShieldCheck, label: `${product.rmaDays} giorni RMA`, text: "Reso gestito da account" },
-                { icon: PackageCheck, label: `${product.stock} pezzi`, text: product.status },
-                { icon: FileText, label: "Fattura", text: "PEC / Codice Destinatario" },
+                { icon: PackageCheck, label: `${product.stock} pezzi`, text: localizedStockStatus },
+                {
+                  icon: FileText,
+                  label: tx(t, "storefront.product.detail.invoice", "Fattura"),
+                  text: tx(
+                    t,
+                    "storefront.product.detail.invoiceText",
+                    "PEC / Codice Destinatario"
+                  ),
+                },
               ].map((item) => (
                 <Card key={item.label} className="rounded-lg border-slate-200 bg-white">
                   <CardContent className="flex items-center gap-3 p-4">
@@ -240,8 +323,8 @@ export function ProductDetailPage({
               <CardTitle>Dettagli tecnici</CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 text-sm text-slate-600 sm:grid-cols-2 lg:grid-cols-3">
-              <Spec label="Brand" value={product.brand} />
-              <Spec label="Categoria" value={product.category} />
+              <Spec label="Brand" value={localizedBrand} />
+              <Spec label="Categoria" value={localizedCategory} />
               <Spec label="Qualità" value={product.grade} />
               <Spec label="Aliquota IVA" value={`${product.vatRate}%`} />
               <Spec label="Ultimo aggiornamento" value={product.updatedAt} />
@@ -249,7 +332,13 @@ export function ProductDetailPage({
           </Card>
           <Card className="rounded-lg border-slate-200 bg-white">
             <CardHeader>
-              <CardTitle>Condizioni cliente</CardTitle>
+              <CardTitle>
+                {tx(
+                  t,
+                  "storefront.product.detail.customerConditions",
+                  "Condizioni cliente"
+                )}
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <InfoRow
@@ -307,43 +396,96 @@ export function ProductDetailPage({
   );
 }
 
-function productDetailPriceGateCopy(reason: PriceVisibilityReason) {
+function productDetailPriceGateCopy(
+  t: StorefrontTranslator,
+  reason: PriceVisibilityReason
+) {
   if (reason === "customer_needs_assignment") {
     return {
       actionHref: "/account",
-      actionLabel: "Apri account",
-      cardDescription:
-        "Il tuo account è attivo, ma il listino B2B deve ancora essere verificato dal team PartsPro.",
-      cardTitle: "Account in revisione",
-      description:
-        "Accesso rilevato: il listino sarà visibile dopo la verifica del profilo cliente.",
-      title: "Listino in verifica",
+      actionLabel: tx(
+        t,
+        "storefront.product.detail.priceGate.review.actionLabel",
+        "Apri account"
+      ),
+      cardDescription: tx(
+        t,
+        "storefront.product.detail.priceGate.review.cardDescription",
+        "Il tuo account è attivo e può vedere i prezzi. Il team PartsPro completerà la verifica del profilo cliente."
+      ),
+      cardTitle: tx(
+        t,
+        "storefront.product.detail.priceGate.review.cardTitle",
+        "In revisione"
+      ),
+      description: tx(
+        t,
+        "storefront.product.detail.priceGate.review.description",
+        "Account in revisione: il prezzo resta visibile mentre PartsPro completa la verifica del profilo cliente."
+      ),
+      title: tx(t, "storefront.product.detail.priceGate.review.title", "In revisione"),
     };
   }
 
   if (reason === "wholesale_required") {
     return {
       actionHref: "/account",
-      actionLabel: "Apri account",
-      cardDescription:
-        "Questo account non è ancora abilitato al listino wholesale. Richiedi o completa l'abilitazione B2B.",
-      cardTitle: "Listino B2B da abilitare",
-      description:
-        "Accesso rilevato: per questo SKU serve un profilo wholesale abilitato.",
-      title: "Prezzi riservati al listino B2B",
+      actionLabel: tx(
+        t,
+        "storefront.product.detail.priceGate.wholesale.actionLabel",
+        "Apri account"
+      ),
+      cardDescription: tx(
+        t,
+        "storefront.product.detail.priceGate.wholesale.cardDescription",
+        "Questo account non è ancora abilitato al listino cliente. Completa la verifica del profilo."
+      ),
+      cardTitle: tx(
+        t,
+        "storefront.product.detail.priceGate.wholesale.cardTitle",
+        "Listino da abilitare"
+      ),
+      description: tx(
+        t,
+        "storefront.product.detail.priceGate.wholesale.description",
+        "Accesso rilevato: per questo SKU serve un profilo cliente abilitato."
+      ),
+      title: tx(
+        t,
+        "storefront.product.detail.priceGate.wholesale.title",
+        "Prezzi riservati ai clienti abilitati"
+      ),
     };
   }
 
   if (reason === "account_sync_failed" || reason === "customer_profile_required") {
     return {
       actionHref: "/account",
-      actionLabel: "Apri account",
-      cardDescription:
-        "La sessione è valida, ma il profilo cliente PartsPro non è ancora collegato correttamente.",
-      cardTitle: "Profilo in preparazione",
-      description:
-        "Accesso rilevato: stiamo preparando il profilo cliente necessario per mostrare il listino.",
-      title: "Profilo cliente richiesto",
+      actionLabel: tx(
+        t,
+        "storefront.product.detail.priceGate.profile.actionLabel",
+        "Apri account"
+      ),
+      cardDescription: tx(
+        t,
+        "storefront.product.detail.priceGate.profile.cardDescription",
+        "La sessione è valida, ma il profilo cliente PartsPro non è ancora collegato correttamente."
+      ),
+      cardTitle: tx(
+        t,
+        "storefront.product.detail.priceGate.profile.cardTitle",
+        "Profilo in preparazione"
+      ),
+      description: tx(
+        t,
+        "storefront.product.detail.priceGate.profile.description",
+        "Accesso rilevato: stiamo preparando il profilo cliente necessario per mostrare il listino."
+      ),
+      title: tx(
+        t,
+        "storefront.product.detail.priceGate.profile.title",
+        "Profilo cliente richiesto"
+      ),
     };
   }
 
@@ -351,24 +493,56 @@ function productDetailPriceGateCopy(reason: PriceVisibilityReason) {
     return {
       actionHref: null,
       actionLabel: null,
-      cardDescription:
-        "Il listino è temporaneamente bloccato per questo account. Contatta il team PartsPro.",
-      cardTitle: "Account sospeso",
-      description:
-        "Accesso rilevato, ma il listino non è disponibile per account sospesi.",
-      title: "Listino sospeso",
+      cardDescription: tx(
+        t,
+        "storefront.product.detail.priceGate.suspended.cardDescription",
+        "Il listino è temporaneamente bloccato per questo account. Contatta il team PartsPro."
+      ),
+      cardTitle: tx(
+        t,
+        "storefront.product.detail.priceGate.suspended.cardTitle",
+        "Account sospeso"
+      ),
+      description: tx(
+        t,
+        "storefront.product.detail.priceGate.suspended.description",
+        "Accesso rilevato, ma il listino non è disponibile per account sospesi."
+      ),
+      title: tx(
+        t,
+        "storefront.product.detail.priceGate.suspended.title",
+        "Listino sospeso"
+      ),
     };
   }
 
   return {
     actionHref: "/login?next=/catalogo",
-    actionLabel: "Accedi",
-    cardDescription:
-      "Accedi con un account cliente per sbloccare prezzo netto, preventivo e invio al carrello.",
-    cardTitle: "Prezzo protetto",
-    description:
-      "Accedi per vedere prezzo, quantità minime, sconti livello e condizioni di pagamento.",
-    title: "Prezzi riservati agli account verificati",
+    actionLabel: tx(
+      t,
+      "storefront.product.detail.priceGate.login.actionLabel",
+      "Accedi"
+    ),
+    cardDescription: tx(
+      t,
+      "storefront.product.detail.priceGate.login.cardDescription",
+      "Accedi con un account cliente per sbloccare prezzo netto, preventivo e invio al carrello."
+    ),
+    cardTitle: tx(
+      t,
+      "storefront.product.detail.priceGate.login.cardTitle",
+      "Prezzo protetto"
+    ),
+    description: tx(
+      t,
+      "storefront.product.detail.priceGate.login.description",
+      "Accedi per vedere prezzo, quantità minime, sconti livello e condizioni di pagamento."
+    ),
+    title: tx(
+      t,
+      "storefront.product.detail.priceGate.login.title",
+      "Prezzi riservati agli account verificati"
+    ),
   };
 }
 

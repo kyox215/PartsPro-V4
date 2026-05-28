@@ -27,6 +27,11 @@ export type CartTotals = {
 
 type UseCartOptions = {
   consumeUrlIntent?: boolean;
+  preserveUnknown?: boolean;
+};
+
+type NormalizeCartOptions = {
+  preserveUnknown?: boolean;
 };
 
 type CartCatalogProviderProps = {
@@ -41,6 +46,7 @@ const CartCatalogContext = React.createContext<readonly PartProduct[]>(products)
 
 let cartSnapshotRaw = "";
 let cartSnapshotCatalogKey = "";
+let cartSnapshotPreserveUnknown = false;
 let cartSnapshotItems: CartItem[] = EMPTY_CART_ITEMS;
 
 export function CartCatalogProvider({ children, products }: CartCatalogProviderProps) {
@@ -49,11 +55,18 @@ export function CartCatalogProvider({ children, products }: CartCatalogProviderP
   return React.createElement(CartCatalogContext.Provider, { value: catalog }, children);
 }
 
-export function useCart({ consumeUrlIntent = false }: UseCartOptions = {}) {
+export function useCart({
+  consumeUrlIntent = false,
+  preserveUnknown = false,
+}: UseCartOptions = {}) {
   const catalog = React.useContext(CartCatalogContext);
+  const normalizeOptions = React.useMemo(
+    () => ({ preserveUnknown }),
+    [preserveUnknown]
+  );
   const items = React.useSyncExternalStore(
     subscribeToCart,
-    () => readStoredCartItems(catalog),
+    () => readStoredCartItems(catalog, normalizeOptions),
     getServerCartSnapshot
   );
   const isHydrated = React.useSyncExternalStore(
@@ -66,27 +79,54 @@ export function useCart({ consumeUrlIntent = false }: UseCartOptions = {}) {
     const intent = consumeUrlIntent ? consumeCartIntentFromUrl(catalog) : null;
 
     if (intent) {
-      const nextItems = mergeCartItems(readStoredCartItems(catalog), intent, catalog);
-      writeStoredCartItems(nextItems, catalog);
+      const nextItems = mergeCartItems(
+        readStoredCartItems(catalog, normalizeOptions),
+        intent,
+        catalog,
+        normalizeOptions
+      );
+      writeStoredCartItems(nextItems, catalog, normalizeOptions);
     }
-  }, [catalog, consumeUrlIntent]);
+  }, [catalog, consumeUrlIntent, normalizeOptions]);
 
   const setItems = React.useCallback((nextItems: CartItem[]) => {
-    const normalizedItems = normalizeCartItems(nextItems, catalog);
-    writeStoredCartItems(normalizedItems, catalog);
-  }, [catalog]);
+    const normalizedItems = normalizeCartItems(nextItems, catalog, normalizeOptions);
+    writeStoredCartItems(normalizedItems, catalog, normalizeOptions);
+  }, [catalog, normalizeOptions]);
 
   const addItem = React.useCallback((sku: string, quantity = 1) => {
-    setItems(mergeCartItems(readStoredCartItems(catalog), { sku, quantity }, catalog));
-  }, [catalog, setItems]);
+    setItems(
+      mergeCartItems(
+        readStoredCartItems(catalog, normalizeOptions),
+        { sku, quantity },
+        catalog,
+        normalizeOptions
+      )
+    );
+  }, [catalog, normalizeOptions, setItems]);
 
   const updateQuantity = React.useCallback((sku: string, quantity: number) => {
-    setItems(updateCartItemQuantity(readStoredCartItems(catalog), sku, quantity, catalog));
-  }, [catalog, setItems]);
+    setItems(
+      updateCartItemQuantity(
+        readStoredCartItems(catalog, normalizeOptions),
+        sku,
+        quantity,
+        catalog,
+        normalizeOptions
+      )
+    );
+  }, [catalog, normalizeOptions, setItems]);
 
   const removeItem = React.useCallback((sku: string) => {
-    setItems(removeCartItem(readStoredCartItems(catalog), sku, catalog));
-  }, [catalog, setItems]);
+    setItems(
+      removeCartItem(
+        readStoredCartItems(catalog, normalizeOptions),
+        sku,
+        catalog,
+        normalizeOptions
+      )
+    );
+  }, [catalog, normalizeOptions, setItems]);
 
   const clearCart = React.useCallback(() => {
     setItems([]);
@@ -114,13 +154,23 @@ export function useCart({ consumeUrlIntent = false }: UseCartOptions = {}) {
   };
 }
 
-export function addCartItem(sku: string, quantity = 1) {
+export function addCartItem(
+  sku: string,
+  quantity = 1,
+  catalog: readonly PartProduct[] = products
+) {
   if (!isBrowser()) {
     return;
   }
 
-  const nextItems = mergeCartItems(readStoredCartItems(products), { sku, quantity }, products);
-  writeStoredCartItems(nextItems, products);
+  const options = { preserveUnknown: true };
+  const nextItems = mergeCartItems(
+    readStoredCartItems(catalog, options),
+    { sku, quantity },
+    catalog,
+    options
+  );
+  writeStoredCartItems(nextItems, catalog, options);
 }
 
 export function clearStoredCart() {
@@ -131,8 +181,67 @@ export function clearStoredCart() {
   window.localStorage.removeItem(CART_STORAGE_KEY);
   cartSnapshotRaw = "";
   cartSnapshotCatalogKey = "";
+  cartSnapshotPreserveUnknown = false;
   cartSnapshotItems = EMPTY_CART_ITEMS;
   window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+}
+
+export function useStoredCartItems({ preserveUnknown = true }: NormalizeCartOptions = {}) {
+  const normalizeOptions = React.useMemo(
+    () => ({ preserveUnknown }),
+    [preserveUnknown]
+  );
+
+  return React.useSyncExternalStore(
+    subscribeToCart,
+    () => readStoredCartItems([], normalizeOptions),
+    getServerCartSnapshot
+  );
+}
+
+export function readClientStoredCartItems(
+  options: NormalizeCartOptions = { preserveUnknown: true }
+) {
+  return readStoredCartItems([], options);
+}
+
+export function replaceStoredCartItems(
+  items: CartItem[],
+  options: NormalizeCartOptions = { preserveUnknown: true }
+) {
+  writeStoredCartItems(items, [], options);
+}
+
+export function mergeCartItemCollections(
+  leftItems: readonly CartItem[],
+  rightItems: readonly CartItem[]
+) {
+  const quantities = new Map<string, number>();
+
+  for (const item of [...leftItems, ...rightItems]) {
+    const normalized = normalizeCartItems([item], [], { preserveUnknown: true })[0];
+
+    if (!normalized) {
+      continue;
+    }
+
+    quantities.set(
+      normalized.sku,
+      Math.max(quantities.get(normalized.sku) ?? 0, normalized.quantity)
+    );
+  }
+
+  return normalizeCartItems(
+    Array.from(quantities.entries()).map(([sku, quantity]) => ({ sku, quantity })),
+    [],
+    { preserveUnknown: true }
+  );
+}
+
+export function serializeCartItems(items: readonly CartItem[]) {
+  return JSON.stringify(
+    normalizeCartItems([...items], [], { preserveUnknown: true })
+  );
 }
 
 export function calculateCartTotalsFromItems(
@@ -173,52 +282,73 @@ export function calculateCartTotalsFromItems(
   };
 }
 
-function readStoredCartItems(catalog: readonly PartProduct[]) {
+function readStoredCartItems(
+  catalog: readonly PartProduct[],
+  options: NormalizeCartOptions = {}
+) {
   if (!isBrowser()) {
     return EMPTY_CART_ITEMS;
   }
 
   const rawCart = window.localStorage.getItem(CART_STORAGE_KEY) ?? "";
   const catalogKey = cartCatalogKey(catalog);
+  const preserveUnknown = Boolean(options.preserveUnknown);
 
-  if (rawCart === cartSnapshotRaw && catalogKey === cartSnapshotCatalogKey) {
+  if (
+    rawCart === cartSnapshotRaw &&
+    catalogKey === cartSnapshotCatalogKey &&
+    preserveUnknown === cartSnapshotPreserveUnknown
+  ) {
     return cartSnapshotItems;
   }
 
   try {
-    const normalizedItems = normalizeCartItems(JSON.parse(rawCart || "[]"), catalog);
+    const normalizedItems = normalizeCartItems(
+      JSON.parse(rawCart || "[]"),
+      catalog,
+      options
+    );
     cartSnapshotRaw = rawCart;
     cartSnapshotCatalogKey = catalogKey;
+    cartSnapshotPreserveUnknown = preserveUnknown;
     cartSnapshotItems = normalizedItems.length > 0 ? normalizedItems : EMPTY_CART_ITEMS;
 
     return cartSnapshotItems;
   } catch {
     cartSnapshotRaw = rawCart;
     cartSnapshotCatalogKey = catalogKey;
+    cartSnapshotPreserveUnknown = preserveUnknown;
     cartSnapshotItems = EMPTY_CART_ITEMS;
 
     return cartSnapshotItems;
   }
 }
 
-function writeStoredCartItems(items: CartItem[], catalog: readonly PartProduct[]) {
+function writeStoredCartItems(
+  items: CartItem[],
+  catalog: readonly PartProduct[],
+  options: NormalizeCartOptions = {}
+) {
   if (!isBrowser()) {
     return;
   }
 
-  const normalizedItems = normalizeCartItems(items, catalog);
+  const normalizedItems = normalizeCartItems(items, catalog, options);
   const catalogKey = cartCatalogKey(catalog);
+  const preserveUnknown = Boolean(options.preserveUnknown);
 
   if (normalizedItems.length === 0) {
     window.localStorage.removeItem(CART_STORAGE_KEY);
     cartSnapshotRaw = "";
     cartSnapshotCatalogKey = catalogKey;
+    cartSnapshotPreserveUnknown = preserveUnknown;
     cartSnapshotItems = EMPTY_CART_ITEMS;
   } else {
     const serializedItems = JSON.stringify(normalizedItems);
     window.localStorage.setItem(CART_STORAGE_KEY, serializedItems);
     cartSnapshotRaw = serializedItems;
     cartSnapshotCatalogKey = catalogKey;
+    cartSnapshotPreserveUnknown = preserveUnknown;
     cartSnapshotItems = normalizedItems;
   }
 
@@ -257,11 +387,13 @@ function getServerHydrationSnapshot() {
 
 function normalizeCartItems(
   value: unknown,
-  catalog: readonly PartProduct[] = products
+  catalog: readonly PartProduct[] = products,
+  options: NormalizeCartOptions = {}
 ): CartItem[] {
   const rawItems = Array.isArray(value) ? value : [];
   const quantities = new Map<string, number>();
   const hasCatalog = catalog.length > 0;
+  const preserveUnknown = Boolean(options.preserveUnknown);
 
   for (const item of rawItems) {
     if (!isCartItemLike(item)) {
@@ -276,7 +408,11 @@ function normalizeCartItems(
       continue;
     }
 
-    if (hasCatalog && (!product || !isOrderableProduct(product))) {
+    if (hasCatalog && product && !isOrderableProduct(product)) {
+      continue;
+    }
+
+    if (hasCatalog && !product && !preserveUnknown) {
       continue;
     }
 
@@ -288,7 +424,7 @@ function normalizeCartItems(
       const product = getProductBySku(sku, catalog);
 
       if (!product) {
-        return hasCatalog ? null : { sku, quantity };
+        return hasCatalog && !preserveUnknown ? null : { sku, quantity };
       }
 
       const clampedQuantity = clampQuantity(product, quantity);
@@ -302,16 +438,18 @@ function normalizeCartItems(
 function mergeCartItems(
   items: CartItem[],
   item: CartItem,
-  catalog: readonly PartProduct[]
+  catalog: readonly PartProduct[],
+  options: NormalizeCartOptions = {}
 ) {
-  return normalizeCartItems([...items, item], catalog);
+  return normalizeCartItems([...items, item], catalog, options);
 }
 
 function updateCartItemQuantity(
   items: CartItem[],
   sku: string,
   quantity: number,
-  catalog: readonly PartProduct[]
+  catalog: readonly PartProduct[],
+  options: NormalizeCartOptions = {}
 ) {
   const normalizedSku = normalizeSku(sku);
   const hasItem = items.some((item) => normalizeSku(item.sku) === normalizedSku);
@@ -321,19 +459,21 @@ function updateCartItemQuantity(
       )
     : [...items, { sku: normalizedSku, quantity }];
 
-  return normalizeCartItems(nextItems, catalog);
+  return normalizeCartItems(nextItems, catalog, options);
 }
 
 function removeCartItem(
   items: CartItem[],
   sku: string,
-  catalog: readonly PartProduct[]
+  catalog: readonly PartProduct[],
+  options: NormalizeCartOptions = {}
 ) {
   const normalizedSku = normalizeSku(sku);
 
   return normalizeCartItems(
     items.filter((item) => normalizeSku(item.sku) !== normalizedSku),
-    catalog
+    catalog,
+    options
   );
 }
 

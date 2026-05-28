@@ -17,6 +17,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { tx, txFormat, type StorefrontTranslator } from "@/i18n/dictionaries/storefront";
+import { getDictionary, translate } from "@/i18n/get-dictionary";
+import { getRequestI18n } from "@/i18n/request";
 import {
   applyAccountPriceToProduct,
   getCurrentAccountContext,
@@ -50,48 +53,14 @@ type CheckoutRuntime =
       userEmail?: string;
     };
 
-const paymentOptions = [
-  {
-    value: "bank_transfer",
-    label: "Bonifico bancario",
-    description: "Crea ordine in attesa di pagamento.",
-  },
-  {
-    value: "card",
-    label: "Carta aziendale",
-    description: "Metodo registrato nel gestionale.",
-  },
-  {
-    value: "agreed_terms",
-    label: "Pagamento concordato",
-    description: "Solo per clienti con termini approvati.",
-  },
-] as const;
-
-const deliveryOptions = [
-  {
-    value: "express_24_48",
-    label: "Corriere espresso 24/48h",
-    description: "GLS/BRT con tracking e consegna in Italia lavorativa.",
-    detail: "Gratis sopra 250 EUR imponibile",
-  },
-  {
-    value: "insured_express",
-    label: "Espresso assicurato",
-    description: "Copertura merce per display e ricambi ad alto valore.",
-    detail: "Priorità magazzino Milano",
-  },
-  {
-    value: "pickup_milano",
-    label: "Ritiro sede Milano",
-    description: "Preparazione banco e ritiro da parte del cliente.",
-    detail: "Disponibile su appuntamento",
-  },
-] as const;
-
 export async function CheckoutPage() {
+  const { locale } = await getRequestI18n();
+  const dictionary = getDictionary(locale);
+  const t: StorefrontTranslator = (key) => translate(dictionary, key);
+  const paymentOptions = getPaymentOptions(t);
+  const deliveryOptions = getDeliveryOptions(t);
   const [runtime, accountForCatalog, catalog] = await Promise.all([
-    getCheckoutRuntime(),
+    getCheckoutRuntime(t),
     getCurrentAccountContext({ ensure: true }),
     listCatalogProducts(),
   ]);
@@ -104,38 +73,38 @@ export async function CheckoutPage() {
       : null;
   const companyDisabledReason =
     runtime.mode === "ready" && !company
-      ? "Checkout disabilitato: collega un profilo cliente all'utente Supabase."
+      ? tx(t, "storefront.checkout.disabledCompanyReason", "Checkout disabilitato: collega un profilo cliente all'utente Supabase.")
       : undefined;
   const fieldGroups = [
     {
-      title: "Dati azienda",
+      title: tx(t, "storefront.checkout.group.company", "Dati azienda"),
       icon: Building2,
       fields: [
-        { label: "Ragione sociale", name: "companyName", value: company?.name ?? "" },
-        { label: "Partita IVA", name: "partitaIva", value: company?.partitaIva ?? "" },
-        { label: "Codice fiscale", name: "codiceFiscale", value: company?.codiceFiscale ?? "" },
+        { label: tx(t, "storefront.checkout.field.companyName", "Ragione sociale"), name: "companyName", value: company?.name ?? "" },
+        { label: tx(t, "storefront.checkout.field.partitaIva", "Partita IVA"), name: "partitaIva", value: company?.partitaIva ?? "" },
+        { label: tx(t, "storefront.checkout.field.codiceFiscale", "Codice fiscale"), name: "codiceFiscale", value: company?.codiceFiscale ?? "" },
       ],
     },
     {
-      title: "Fatturazione elettronica",
+      title: tx(t, "storefront.checkout.group.invoice", "Fatturazione elettronica"),
       icon: FileText,
       fields: [
-        { label: "PEC", name: "pec", value: company?.pec ?? "" },
+        { label: tx(t, "storefront.checkout.field.pec", "PEC"), name: "pec", value: company?.pec ?? "" },
         {
-          label: "Codice destinatario",
+          label: tx(t, "storefront.checkout.field.codiceDestinatario", "Codice destinatario"),
           name: "codiceDestinatario",
           value: company?.codiceDestinatario ?? "",
         },
       ],
     },
     {
-      title: "Indirizzo spedizione",
+      title: tx(t, "storefront.checkout.group.shippingAddress", "Indirizzo spedizione"),
       icon: MapPin,
       fields: [
-        { label: "Via", name: "shippingStreet", value: "" },
-        { label: "CAP", name: "shippingZip", value: "" },
-        { label: "Comune", name: "shippingCity", value: company?.city ?? "" },
-        { label: "Provincia", name: "shippingProvince", value: company?.province ?? "" },
+        { label: tx(t, "storefront.checkout.field.shippingStreet", "Via"), name: "shippingStreet", value: "" },
+        { label: tx(t, "storefront.checkout.field.shippingZip", "CAP"), name: "shippingZip", value: "" },
+        { label: tx(t, "storefront.checkout.field.shippingCity", "Comune"), name: "shippingCity", value: company?.city ?? "" },
+        { label: tx(t, "storefront.checkout.field.shippingProvince", "Provincia"), name: "shippingProvince", value: company?.province ?? "" },
       ],
     },
   ];
@@ -149,17 +118,15 @@ export async function CheckoutPage() {
           <div>
             <div className="mb-3 flex flex-wrap gap-2">
               <Badge className="border border-primary/20 bg-primary/8 text-primary">
-                Checkout clienti
+                {tx(t, "storefront.checkout.badge", "Checkout clienti")}
               </Badge>
-              <RuntimeBadge runtime={runtime} />
+              <RuntimeBadge runtime={runtime} t={t} />
             </div>
             <h1 className="text-3xl font-black tracking-normal md:text-4xl">
-              Conferma ordine e dati fiscali
+              {tx(t, "storefront.checkout.title", "Conferma ordine e dati fiscali")}
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-              I dati vengono preparati come snapshot ordine per fattura,
-              spedizione e gestione RMA. L&apos;invio usa l&apos;endpoint
-              esistente /api/orders con le righe salvate nel carrello locale.
+              {tx(t, "storefront.checkout.description", "I dati vengono preparati come snapshot ordine per fattura, spedizione e gestione RMA. L'invio usa l'endpoint esistente /api/orders con le righe salvate nel carrello locale.")}
             </p>
           </div>
 
@@ -192,7 +159,7 @@ export async function CheckoutPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Truck className="size-5 text-primary" />
-                Consegna
+                {tx(t, "storefront.checkout.group.delivery", "Consegna")}
               </CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-3">
@@ -223,13 +190,13 @@ export async function CheckoutPage() {
                 </label>
               ))}
               <div className="space-y-2 sm:col-span-3">
-                <Label htmlFor="deliveryWindow">Fascia consegna preferita</Label>
+                <Label htmlFor="deliveryWindow">{tx(t, "storefront.checkout.field.deliveryWindow", "Fascia consegna preferita")}</Label>
                 <Input
                   id="deliveryWindow"
                   name="deliveryWindow"
                   defaultValue="Mattina, 09:00-13:00"
                   maxLength={80}
-                  placeholder="Es. mattina, pomeriggio, ritiro su appuntamento"
+                  placeholder={tx(t, "storefront.checkout.field.deliveryWindowPlaceholder", "Es. mattina, pomeriggio, ritiro su appuntamento")}
                 />
               </div>
             </CardContent>
@@ -239,7 +206,7 @@ export async function CheckoutPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <CreditCard className="size-5 text-primary" />
-                Pagamento
+                {tx(t, "storefront.checkout.group.payment", "Pagamento")}
               </CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3 sm:grid-cols-3">
@@ -266,21 +233,21 @@ export async function CheckoutPage() {
                 </label>
               ))}
               <div className="space-y-2 sm:col-span-3">
-                <Label htmlFor="purchaseOrderNumber">Riferimento interno / PO</Label>
+                <Label htmlFor="purchaseOrderNumber">{tx(t, "storefront.checkout.field.purchaseOrderNumber", "Riferimento interno / PO")}</Label>
                 <Input
                   id="purchaseOrderNumber"
                   name="purchaseOrderNumber"
                   maxLength={64}
-                  placeholder="Es. PO-2026-0524"
+                  placeholder={tx(t, "storefront.checkout.field.purchaseOrderPlaceholder", "Es. PO-2026-0524")}
                 />
               </div>
               <div className="space-y-2 sm:col-span-3">
-                <Label htmlFor="notes">Note ordine</Label>
+                <Label htmlFor="notes">{tx(t, "storefront.checkout.field.notes", "Note ordine")}</Label>
                 <Textarea
                   id="notes"
                   name="notes"
                   maxLength={500}
-                  placeholder="Es. consegna solo mattina, riferimento interno..."
+                  placeholder={tx(t, "storefront.checkout.field.notesPlaceholder", "Es. consegna solo mattina, riferimento interno...")}
                 />
               </div>
             </CardContent>
@@ -290,21 +257,21 @@ export async function CheckoutPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <ClipboardCheck className="size-5 text-primary" />
-                Conferme prima dell&apos;invio
+                {tx(t, "storefront.checkout.confirmTitle", "Conferme prima dell'invio")}
               </CardTitle>
             </CardHeader>
             <CardContent className="grid gap-3">
               <ConfirmLine
                 id="invoiceConfirmed"
-                label="Confermo che Partita IVA, codice fiscale, PEC e codice destinatario sono corretti per la fattura elettronica."
+                label={tx(t, "storefront.checkout.confirm.invoice", "Confermo che Partita IVA, codice fiscale, PEC e codice destinatario sono corretti per la fattura elettronica.")}
               />
               <ConfirmLine
                 id="addressConfirmed"
-                label="Confermo che l'indirizzo di spedizione e la fascia consegna sono aggiornati."
+                label={tx(t, "storefront.checkout.confirm.address", "Confermo che l'indirizzo di spedizione e la fascia consegna sono aggiornati.")}
               />
               <ConfirmLine
                 id="stockPolicyConfirmed"
-                label="Accetto che disponibilità, MOQ e tempi di evasione seguano lo stato magazzino mostrato nel checkout."
+                label={tx(t, "storefront.checkout.confirm.stockPolicy", "Accetto che disponibilità, MOQ e tempi di evasione seguano lo stato magazzino mostrato nel checkout.")}
               />
             </CardContent>
           </Card>
@@ -312,8 +279,8 @@ export async function CheckoutPage() {
 
         <div className="space-y-4">
           <OrderSummaryCard showCheckoutAction={false} consumeUrlIntent />
-          <RuntimeStatusCard runtime={runtime} />
-          <CompanyStatusCard company={company} />
+          <RuntimeStatusCard runtime={runtime} t={t} />
+          <CompanyStatusCard company={company} t={t} />
           <CheckoutSubmitButton
             companyId={company?.id}
             formId={checkoutFormId}
@@ -330,15 +297,57 @@ export async function CheckoutPage() {
   );
 }
 
-async function getCheckoutRuntime(): Promise<CheckoutRuntime> {
+function getPaymentOptions(t: StorefrontTranslator) {
+  return [
+    {
+      value: "bank_transfer",
+      label: tx(t, "storefront.checkout.option.bankTransfer.label", "Bonifico bancario"),
+      description: tx(t, "storefront.checkout.option.bankTransfer.description", "Crea ordine in attesa di pagamento."),
+    },
+    {
+      value: "card",
+      label: tx(t, "storefront.checkout.option.card.label", "Carta aziendale"),
+      description: tx(t, "storefront.checkout.option.card.description", "Metodo registrato nel gestionale."),
+    },
+    {
+      value: "agreed_terms",
+      label: tx(t, "storefront.checkout.option.agreedTerms.label", "Pagamento concordato"),
+      description: tx(t, "storefront.checkout.option.agreedTerms.description", "Solo per clienti con termini approvati."),
+    },
+  ] as const;
+}
+
+function getDeliveryOptions(t: StorefrontTranslator) {
+  return [
+    {
+      value: "express_24_48",
+      label: tx(t, "storefront.checkout.option.express.label", "Corriere espresso 24/48h"),
+      description: tx(t, "storefront.checkout.option.express.description", "GLS/BRT con tracking e consegna in Italia lavorativa."),
+      detail: tx(t, "storefront.checkout.option.express.detail", "Gratis sopra 250 EUR imponibile"),
+    },
+    {
+      value: "insured_express",
+      label: tx(t, "storefront.checkout.option.insured.label", "Espresso assicurato"),
+      description: tx(t, "storefront.checkout.option.insured.description", "Copertura merce per display e ricambi ad alto valore."),
+      detail: tx(t, "storefront.checkout.option.insured.detail", "Priorità magazzino Milano"),
+    },
+    {
+      value: "pickup_milano",
+      label: tx(t, "storefront.checkout.option.pickup.label", "Ritiro sede Milano"),
+      description: tx(t, "storefront.checkout.option.pickup.description", "Preparazione banco e ritiro da parte del cliente."),
+      detail: tx(t, "storefront.checkout.option.pickup.detail", "Disponibile su appuntamento"),
+    },
+  ] as const;
+}
+
+async function getCheckoutRuntime(t: StorefrontTranslator): Promise<CheckoutRuntime> {
   if (!isSupabaseConfigured()) {
     return {
       mode: "error",
       canSubmit: false,
-      title: "Checkout disabilitato",
-      description:
-        "Supabase non è configurato. Aggiungi le variabili Supabase prima di accettare ordini reali.",
-      disabledReason: "Checkout disabilitato: configurazione Supabase mancante.",
+      title: tx(t, "storefront.checkout.runtime.disabled", "Checkout disabilitato"),
+      description: tx(t, "storefront.checkout.runtime.missingSupabaseDescription", "Supabase non è configurato. Aggiungi le variabili Supabase prima di accettare ordini reali."),
+      disabledReason: tx(t, "storefront.checkout.runtime.missingSupabaseReason", "Checkout disabilitato: configurazione Supabase mancante."),
     };
   }
 
@@ -354,10 +363,9 @@ async function getCheckoutRuntime(): Promise<CheckoutRuntime> {
       return {
         mode: "needs-login",
         canSubmit: false,
-        title: "Checkout disabilitato",
-        description:
-          "Supabase è configurato: accedi per associare il checkout alla sessione.",
-        disabledReason: "Checkout disabilitato: effettua il login prima di confermare l'ordine.",
+        title: tx(t, "storefront.checkout.runtime.disabled", "Checkout disabilitato"),
+        description: tx(t, "storefront.checkout.runtime.loginDescription", "Supabase è configurato: accedi per associare il checkout alla sessione."),
+        disabledReason: tx(t, "storefront.checkout.runtime.loginReason", "Checkout disabilitato: effettua il login prima di confermare l'ordine."),
       };
     }
 
@@ -367,11 +375,9 @@ async function getCheckoutRuntime(): Promise<CheckoutRuntime> {
         canSubmit: false,
         customerId: customer?.id,
         userEmail: email ?? "utente Supabase",
-        title: "Dati cliente da completare",
-        description:
-          "Puoi vedere i prezzi e preparare il carrello, ma prima dell'ordine devi completare dati fiscali, contatto e indirizzi richiesti dal tipo cliente.",
-        disabledReason:
-          "Checkout disabilitato: completa dati fiscali, contatto e indirizzi nel profilo cliente.",
+        title: tx(t, "storefront.checkout.runtime.needsProfileTitle", "Dati cliente da completare"),
+        description: tx(t, "storefront.checkout.runtime.needsProfileDescription", "Puoi vedere i prezzi e preparare il carrello, ma prima dell'ordine devi completare dati fiscali, contatto e indirizzi richiesti dal tipo cliente."),
+        disabledReason: tx(t, "storefront.checkout.runtime.needsProfileReason", "Checkout disabilitato: completa dati fiscali, contatto e indirizzi nel profilo cliente."),
       };
     }
 
@@ -380,18 +386,16 @@ async function getCheckoutRuntime(): Promise<CheckoutRuntime> {
       canSubmit: true,
       customerId: customer?.id ?? "",
       userEmail: email ?? "utente Supabase",
-      title: "Checkout pronto",
-      description:
-        "Sessione Supabase attiva. L'ordine viene inviato all'API esistente /api/orders.",
+      title: tx(t, "storefront.checkout.runtime.readyTitle", "Checkout pronto"),
+      description: tx(t, "storefront.checkout.runtime.readyDescription", "Sessione Supabase attiva. L'ordine viene inviato all'API esistente /api/orders."),
     };
   } catch {
     return {
       mode: "error",
       canSubmit: false,
-      title: "Checkout disabilitato",
-      description:
-        "La configurazione risulta presente, ma non è stato possibile leggere la sessione Supabase.",
-      disabledReason: "Checkout disabilitato: sessione Supabase non verificata. Riprova dopo il login o controlla .env.local.",
+      title: tx(t, "storefront.checkout.runtime.disabled", "Checkout disabilitato"),
+      description: tx(t, "storefront.checkout.runtime.sessionErrorDescription", "La configurazione risulta presente, ma non è stato possibile leggere la sessione Supabase."),
+      disabledReason: tx(t, "storefront.checkout.runtime.sessionErrorReason", "Checkout disabilitato: sessione Supabase non verificata. Riprova dopo il login o controlla .env.local."),
     };
   }
 }
@@ -410,18 +414,24 @@ async function getCheckoutCompany(customerId?: string): Promise<CompanyProfile |
   );
 }
 
-function RuntimeBadge({ runtime }: { runtime: CheckoutRuntime }) {
+function RuntimeBadge({
+  runtime,
+  t,
+}: {
+  runtime: CheckoutRuntime;
+  t: StorefrontTranslator;
+}) {
   if (runtime.mode === "ready") {
     return (
       <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
-        Supabase attivo
+        {tx(t, "storefront.checkout.runtime.readyBadge", "Supabase attivo")}
       </Badge>
     );
   }
 
   return (
     <Badge className="border border-red-200 bg-red-50 text-red-700">
-      Disabilitato
+      {tx(t, "storefront.checkout.runtime.disabled", "Disabilitato")}
     </Badge>
   );
 }
@@ -444,7 +454,13 @@ function ConfirmLine({ id, label }: { id: string; label: string }) {
   );
 }
 
-function RuntimeStatusCard({ runtime }: { runtime: CheckoutRuntime }) {
+function RuntimeStatusCard({
+  runtime,
+  t,
+}: {
+  runtime: CheckoutRuntime;
+  t: StorefrontTranslator;
+}) {
   const Icon = runtime.mode === "ready" ? CheckCircle2 : AlertTriangle;
   const className =
     runtime.mode === "ready"
@@ -469,7 +485,7 @@ function RuntimeStatusCard({ runtime }: { runtime: CheckoutRuntime }) {
             <Button asChild size="sm" className="mt-3">
               <Link href="/login?next=/checkout">
                 <LogIn className="size-4" />
-                Accedi
+                {tx(t, "storefront.login.action", "Accedi")}
               </Link>
             </Button>
           )}
@@ -479,17 +495,24 @@ function RuntimeStatusCard({ runtime }: { runtime: CheckoutRuntime }) {
   );
 }
 
-function CompanyStatusCard({ company }: { company: CompanyProfile | null }) {
+function CompanyStatusCard({
+  company,
+  t,
+}: {
+  company: CompanyProfile | null;
+  t: StorefrontTranslator;
+}) {
   if (!company) {
     return (
       <Card className="border-amber-200 bg-amber-50">
         <CardContent className="flex gap-3 p-4 text-sm text-amber-950">
           <AlertTriangle className="mt-0.5 size-5 shrink-0 text-amber-600" />
           <div className="min-w-0">
-            <div className="font-black">Profilo cliente mancante</div>
+            <div className="font-black">
+              {tx(t, "storefront.checkout.companyMissingTitle", "Profilo cliente mancante")}
+            </div>
             <p className="mt-1 leading-6">
-              Nessun cliente è collegato alla sessione corrente. Crea o completa il
-              profilo in gestione clienti prima del checkout.
+              {tx(t, "storefront.checkout.companyMissingDescription", "Nessun cliente è collegato alla sessione corrente. Crea o completa il profilo in gestione clienti prima del checkout.")}
             </p>
           </div>
         </CardContent>
@@ -502,9 +525,11 @@ function CompanyStatusCard({ company }: { company: CompanyProfile | null }) {
       <CardContent className="flex gap-3 p-4 text-sm text-emerald-900">
         <ShieldCheck className="mt-0.5 size-5 shrink-0 text-emerald-600" />
         <div className="min-w-0">
-          <div className="font-black">Cliente collegato</div>
+          <div className="font-black">
+            {tx(t, "storefront.checkout.companyLinkedTitle", "Cliente collegato")}
+          </div>
           <p className="mt-1 leading-6">
-            {company.name} verrà usato come profilo fiscale per /api/orders.
+            {txFormat(t, "storefront.checkout.companyLinkedDescription", "{name} verrà usato come profilo fiscale per /api/orders.", { name: company.name })}
           </p>
         </div>
       </CardContent>
