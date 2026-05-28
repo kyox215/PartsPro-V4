@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
-import { adminPermissions } from "@/lib/partspro-permissions";
 
 const STAFF_ROLES = new Set([
   "sales",
@@ -13,7 +12,6 @@ const STAFF_ROLES = new Set([
   "sales_support",
   "auditor",
 ]);
-const ADMIN_PERMISSIONS = new Set(adminPermissions);
 const ADMIN_EMAILS = new Set(
   (process.env.PARTSPRO_ADMIN_EMAILS ?? "kyox120@gmail.com")
     .split(",")
@@ -51,18 +49,29 @@ export async function getAdminAuthState(): Promise<AdminAuthState> {
     return { configured: true, allowed: false, reason: "missing_session" };
   }
 
+  const profile = await readStaffProfile(supabase, user.id);
+  const role = profile?.role;
+
   if (isAdminEmail(user.email)) {
+    const remotePermissions = await readEffectivePermissions(supabase);
+
+    if (!remotePermissions.ok || remotePermissions.permissions.length === 0) {
+      return {
+        configured: true,
+        allowed: false,
+        reason: "permission_unavailable",
+        role: role ?? "admin",
+      };
+    }
+
     return {
       configured: true,
       allowed: true,
-      permissions: [...ADMIN_PERMISSIONS],
+      permissions: remotePermissions.permissions,
       reason: "admin_email",
-      role: "admin",
+      role: role ?? "admin",
     };
   }
-
-  const profile = await readStaffProfile(supabase, user.id);
-  const role = profile?.role;
 
   if (role && (STAFF_ROLES.has(role) || profile?.accountType === "employee")) {
     const remotePermissions = await readEffectivePermissions(supabase);

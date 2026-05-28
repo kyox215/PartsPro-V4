@@ -5,39 +5,48 @@ import {
   pageCatalogProducts,
 } from "@/lib/partspro-repository";
 import { type PartProduct } from "@/lib/partspro-data";
-import { getCurrentAccountContext } from "@/lib/partspro-account-context";
+import {
+  applyAccountPriceToProduct,
+  getCurrentAccountContext,
+  priceVisibilityReason,
+  type AccountContext,
+} from "@/lib/partspro-account-context";
 import { toStoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 
 const featuredProductLimit = 8;
 
 export default async function Home() {
-  const [account, modelGroups, catalogPage, catalogSummary] = await Promise.all([
-    getCurrentAccountContext(),
+  const [account, modelGroups, catalogSummary] = await Promise.all([
+    getCurrentAccountContext({ ensure: true }),
     listCatalogModelGroups(),
-    pageCatalogProducts({
+    getCatalogCategoryCounts(),
+  ]);
+  const catalogPage = await pageCatalogProducts(
+    {
       limit: featuredProductLimit,
       minStock: 1,
       offset: 0,
       sort: "stock_desc",
-    }),
-    getCatalogCategoryCounts(),
-  ]);
+    },
+    {
+      includeBuyerPrices: account.canViewPrices,
+    }
+  );
 
   return (
     <HomePage
       catalogTotal={catalogSummary.warning ? undefined : catalogSummary.data.total}
       categoryCounts={catalogSummary.data.categoryCounts}
-      featuredProducts={catalogPage.data.products.map(toHomeProduct)}
+      featuredProducts={catalogPage.data.products.map((product) =>
+        toHomeProduct(product, account)
+      )}
       initialAccountAccess={toStoreHeaderAccountAccess(account)}
       modelGroups={modelGroups.data}
+      priceGateReason={priceVisibilityReason(account)}
     />
   );
 }
 
-function toHomeProduct(product: PartProduct): PartProduct {
-  return {
-    ...product,
-    price: 0,
-    retailPrice: 0,
-  };
+function toHomeProduct(product: PartProduct, account: AccountContext): PartProduct {
+  return applyAccountPriceToProduct(product, account);
 }

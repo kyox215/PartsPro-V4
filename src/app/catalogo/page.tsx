@@ -8,6 +8,7 @@ import type { PartProduct } from "@/lib/partspro-data";
 import {
   applyAccountPriceToProduct,
   getCurrentAccountContext,
+  priceVisibilityReason,
   type AccountContext,
 } from "@/lib/partspro-account-context";
 import { toStoreHeaderAccountAccess } from "@/lib/partspro-header-access";
@@ -26,7 +27,7 @@ export default async function Page({
 }) {
   const resolvedSearchParams = await searchParams;
   const query = readCatalogQuery(resolvedSearchParams);
-  const accountPromise = getCurrentAccountContext();
+  const accountPromise = getCurrentAccountContext({ ensure: true });
   const modelGroupsPromise = listCatalogModelGroups();
   const account = await accountPromise;
   const [catalogPage, modelGroups] = await Promise.all([
@@ -53,6 +54,7 @@ export default async function Page({
         initialProducts={catalogPage.data.products.map((product) =>
           toCatalogCardProduct(product, account)
         )}
+        priceGateReason={priceVisibilityReason(account)}
         showWholesalePrice={account.canViewPrices}
       />
     </Suspense>

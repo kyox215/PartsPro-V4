@@ -16,11 +16,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import type { PartProduct } from "@/lib/partspro-data";
 import { formatEuro } from "@/lib/partspro-data";
+import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
 import { getProductImageCandidates } from "@/lib/partspro-product-images";
 import { cn } from "@/lib/utils";
 import { PartVisual } from "./part-visual";
 
 type ProductCardProps = {
+  priceGateReason?: PriceVisibilityReason;
   priorityImage?: boolean;
   product: PartProduct;
   showWholesalePrice?: boolean;
@@ -35,6 +37,7 @@ const ProductImagePreviewDialog = dynamic(
 );
 
 export const ProductCard = memo(function ProductCard({
+  priceGateReason = "login_required",
   priorityImage = false,
   product,
   showWholesalePrice = false,
@@ -52,6 +55,7 @@ export const ProductCard = memo(function ProductCard({
   const imageCandidates = useMemo(() => getProductImageCandidates(product), [product]);
   const [failedImageUrls, setFailedImageUrls] = useState<string[]>([]);
   const imageUrl = imageCandidates.find((candidate) => !failedImageUrls.includes(candidate));
+  const hiddenPriceCopy = productPriceGateCopy(priceGateReason, product.moq);
 
   function markImageFailed(failedUrl: string) {
     setFailedImageUrls((current) =>
@@ -185,10 +189,10 @@ export const ProductCard = memo(function ProductCard({
                   <>
                     <div className="flex min-w-0 items-center gap-1 text-xs font-bold leading-tight text-slate-700 sm:text-sm">
                       <Lock className="size-3 shrink-0 sm:size-3.5" />
-                      Accedi per prezzo
+                      {hiddenPriceCopy.label}
                     </div>
                     <div className="hidden truncate text-xs text-slate-500 sm:block">
-                      MOQ {product.moq} · Login richiesto
+                      {hiddenPriceCopy.hint}
                     </div>
                   </>
                 )}
@@ -258,5 +262,40 @@ function getStockMeta(product: PartProduct) {
   return {
     label: "Esaurito",
     className: "border-slate-200 bg-slate-100 text-slate-500",
+  };
+}
+
+function productPriceGateCopy(reason: PriceVisibilityReason, moq: number) {
+  if (reason === "customer_needs_assignment") {
+    return {
+      label: "Account in revisione",
+      hint: `MOQ ${moq} · verifica listino`,
+    };
+  }
+
+  if (reason === "wholesale_required") {
+    return {
+      label: "Listino B2B da abilitare",
+      hint: `MOQ ${moq} · richiedi wholesale`,
+    };
+  }
+
+  if (reason === "account_sync_failed" || reason === "customer_profile_required") {
+    return {
+      label: "Profilo in preparazione",
+      hint: `MOQ ${moq} · riprova tra poco`,
+    };
+  }
+
+  if (reason === "customer_suspended") {
+    return {
+      label: "Account sospeso",
+      hint: `MOQ ${moq} · contatta supporto`,
+    };
+  }
+
+  return {
+    label: "Accedi per prezzo",
+    hint: `MOQ ${moq} · Login richiesto`,
   };
 }

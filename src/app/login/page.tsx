@@ -18,6 +18,7 @@ type LoginPageProps = {
 
 const errorMessages: Record<string, string> = {
   config: "Manca la publishable key Supabase in .env.local.",
+  account: "Accesso riuscito, ma la sincronizzazione dell'account PartsPro non e riuscita. Riprova o contatta l'assistenza.",
   exists: "Questo indirizzo email risulta gia registrato. Prova ad accedere.",
   invalid: "Email o password non validi.",
   missing: "Inserisci email e password.",
@@ -41,19 +42,23 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const weChatLoginUrl = weChatLoginEnabled
     ? `/auth/wechat?${new URLSearchParams({ next }).toString()}`
     : null;
+  let accountSyncFailed = false;
 
-  if (configured) {
+  if (configured && !error) {
     const [account, adminAuth] = await Promise.all([
       getCurrentAccountContext({ ensure: true }),
       getAdminAuthState(),
     ]);
 
-    if (account.authenticated) {
+    if (account.authenticated && !account.accountSyncError) {
       redirect(postLoginRedirect(next, {
         adminAllowed: adminAuth.allowed,
       }));
     }
+
+    accountSyncFailed = Boolean(account.authenticated && account.accountSyncError);
   }
+  const effectiveError = error ?? (accountSyncFailed ? "account" : undefined);
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
@@ -68,10 +73,10 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </CardHeader>
           <CardContent>
             <LoginRuntimeNotice configured={configured} />
-            {error && (
+            {effectiveError && (
               <div className="mb-4 flex gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold leading-6 text-red-700">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                <span>{errorMessages[error] ?? "Accesso non riuscito."}</span>
+                <span>{errorMessages[effectiveError] ?? "Accesso non riuscito."}</span>
               </div>
             )}
             {notice && (

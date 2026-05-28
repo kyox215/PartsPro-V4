@@ -3,6 +3,7 @@ import type { PartProduct } from "@/lib/partspro-data";
 import {
   applyAccountPriceToProduct,
   getCurrentAccountContext,
+  priceVisibilityReason,
   type AccountContext,
 } from "@/lib/partspro-account-context";
 import { toStoreHeaderAccountAccess } from "@/lib/partspro-header-access";
@@ -19,7 +20,7 @@ export default async function Page({
   const { sku } = await params;
   const decodedSku = decodeURIComponent(sku);
   const [account, productResult] = await Promise.all([
-    getCurrentAccountContext(),
+    getCurrentAccountContext({ ensure: true }),
     getCatalogProductBySkuOrSlug(decodedSku),
   ]);
   const product = productResult.data;
@@ -31,6 +32,7 @@ export default async function Page({
   return (
     <ProductDetailPage
       initialAccountAccess={toStoreHeaderAccountAccess(account)}
+      priceGateReason={priceVisibilityReason(account)}
       product={toProductDetailProduct(product, account)}
       showWholesalePrice={account.canViewPrices}
     />

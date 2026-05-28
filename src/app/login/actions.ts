@@ -28,7 +28,13 @@ export async function signInWithPassword(formData: FormData) {
     redirect(loginUrl(next, "invalid"));
   }
 
-  await ensureCurrentUserAccount();
+  const accountSynced = await syncCurrentUserAccount();
+
+  if (!accountSynced) {
+    await supabase.auth.signOut({ scope: "local" });
+    redirect(loginUrl(next, "account"));
+  }
+
   const adminAuth = await getAdminAuthState();
 
   redirect(postLoginRedirect(next, {
@@ -72,7 +78,13 @@ export async function signUpWithPassword(formData: FormData) {
   }
 
   if (data.session) {
-    await ensureCurrentUserAccount();
+    const accountSynced = await syncCurrentUserAccount();
+
+    if (!accountSynced) {
+      await supabase.auth.signOut({ scope: "local" });
+      redirect(loginUrl(next, "account"));
+    }
+
     const adminAuth = await getAdminAuthState();
 
     redirect(postLoginRedirect(next, {
@@ -90,4 +102,29 @@ export async function signOut() {
   }
 
   redirect("/login");
+}
+
+async function syncCurrentUserAccount() {
+  try {
+    return isSuccessfulAccountSync(await ensureCurrentUserAccount());
+  } catch (error) {
+    console.error("Failed to sync current user account during password auth", error);
+    return false;
+  }
+}
+
+function isSuccessfulAccountSync(result: unknown) {
+  if (!result) {
+    return false;
+  }
+
+  if (typeof result === "object") {
+    const maybeFailure = result as { error?: unknown; ok?: unknown; success?: unknown };
+
+    if (maybeFailure.error || maybeFailure.ok === false || maybeFailure.success === false) {
+      return false;
+    }
+  }
+
+  return true;
 }

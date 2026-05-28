@@ -49,8 +49,9 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const account = await getCurrentAccountContext();
+    const account = await getCurrentAccountContext({ ensure: true });
     const showPrice = account.canViewPrices;
+    const visibilityReason = priceVisibilityReason(account);
     const repositoryResult = await pageCatalogProducts(result.data, {
       includeBuyerPrices: showPrice,
     });
@@ -66,7 +67,7 @@ export async function GET(request: NextRequest) {
         offset: result.data.offset,
         returned: repositoryResult.data.products.length,
         currency: "EUR",
-        priceVisibility: showPrice ? "visible_authenticated" : "hidden_until_login",
+        priceVisibility: showPrice ? "visible_authenticated" : visibilityReason,
         vatMode: "net_prices_plus_iva",
       },
     });

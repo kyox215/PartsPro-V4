@@ -47,7 +47,6 @@ export const customerProfilePatchSchema = z
     pec: z.string().trim().email().max(160).nullable().optional(),
     phone: z.string().trim().max(60).nullable().optional(),
     reason: z.string().trim().min(3).max(1000),
-    registeredAddress: nullableTextSchema.optional(),
     shippingAddress: nullableTextSchema.optional(),
     sdi: z.string().trim().max(20).nullable().optional(),
     vatNumber: z.string().trim().max(40).nullable().optional(),

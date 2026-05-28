@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { products as localProducts } from "@/lib/partspro-data";
 import type { DeviceModelGroup, PartProduct } from "@/lib/partspro-data";
 import { inferDeviceModelSeries } from "@/lib/partspro-device-series";
+import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import { CatalogBrandTree, type CatalogSelection } from "./catalog-brand-tree";
 import { ProductCard } from "./product-card";
@@ -61,6 +62,7 @@ type CatalogPageProps = {
   initialAccountAccess?: StoreHeaderAccountAccess;
   initialModelGroups?: DeviceModelGroup[];
   initialProducts?: PartProduct[];
+  priceGateReason?: PriceVisibilityReason;
   showWholesalePrice?: boolean;
 };
 
@@ -69,6 +71,7 @@ export function CatalogPage({
   initialAccountAccess,
   initialModelGroups,
   initialProducts = localProducts,
+  priceGateReason = "login_required",
   showWholesalePrice = false,
 }: CatalogPageProps) {
   const searchParams = useSearchParams();
@@ -84,6 +87,7 @@ export function CatalogPage({
       initialModelSeries={getModelSeriesFromParams(searchParams)}
       initialSearchQuery={getSearchQueryFromParams(searchParams)}
       initialSearchTerm={getModelSearchFromParams(searchParams)}
+      priceGateReason={priceGateReason}
       showWholesalePrice={showWholesalePrice}
     />
   );
@@ -99,6 +103,7 @@ function CatalogPageContent({
   initialModelSeries,
   initialSearchQuery,
   initialSearchTerm,
+  priceGateReason,
   showWholesalePrice,
 }: {
   filteredTotal: number;
@@ -110,6 +115,7 @@ function CatalogPageContent({
   initialModelSeries: string;
   initialSearchQuery: string;
   initialSearchTerm: string;
+  priceGateReason: PriceVisibilityReason;
   showWholesalePrice: boolean;
 }) {
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
@@ -303,10 +309,10 @@ function CatalogPageContent({
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
-          <StoreHeader
-            initialAccountAccess={initialAccountAccess}
-            modelGroups={modelGroups}
-            onCatalogSelect={selectCatalog}
+      <StoreHeader
+        initialAccountAccess={initialAccountAccess}
+        modelGroups={modelGroups}
+        onCatalogSelect={selectCatalog}
         selectedCatalog={selectedCatalog}
       />
       <div className="mx-auto grid max-w-[1500px] gap-5 px-3 py-4 sm:px-4 sm:py-6 lg:grid-cols-[300px_minmax(0,1fr)]">
@@ -327,6 +333,7 @@ function CatalogPageContent({
                 {products.map((product, index) => (
                   <ProductCard
                     key={product.sku}
+                    priceGateReason={priceGateReason}
                     priorityImage={index === 0}
                     product={product}
                     showWholesalePrice={showWholesalePrice}

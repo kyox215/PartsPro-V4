@@ -26,7 +26,13 @@ export async function GET(request: Request) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
-      await ensureCurrentUserAccount();
+      const accountSynced = await syncCurrentUserAccount();
+
+      if (!accountSynced) {
+        await supabase.auth.signOut({ scope: "local" });
+        return redirectAndClearNext(`${origin}${loginUrl(next, "account")}`);
+      }
+
       const adminAuth = await getAdminAuthState();
       const redirectPath = postLoginRedirect(next, {
         adminAllowed: adminAuth.allowed,
@@ -47,4 +53,29 @@ function redirectAndClearNext(url: string) {
   });
 
   return response;
+}
+
+async function syncCurrentUserAccount() {
+  try {
+    return isSuccessfulAccountSync(await ensureCurrentUserAccount());
+  } catch (error) {
+    console.error("Failed to sync current user account during OAuth callback", error);
+    return false;
+  }
+}
+
+function isSuccessfulAccountSync(result: unknown) {
+  if (!result) {
+    return false;
+  }
+
+  if (typeof result === "object") {
+    const maybeFailure = result as { error?: unknown; ok?: unknown; success?: unknown };
+
+    if (maybeFailure.error || maybeFailure.ok === false || maybeFailure.success === false) {
+      return false;
+    }
+  }
+
+  return true;
 }

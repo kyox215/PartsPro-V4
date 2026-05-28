@@ -14,6 +14,15 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 type DbRow = Record<string, unknown>;
 
 export type AccountType = "customer" | "employee";
+export type PriceVisibilityReason =
+  | "account_sync_failed"
+  | "customer"
+  | "customer_needs_assignment"
+  | "customer_profile_required"
+  | "customer_suspended"
+  | "employee"
+  | "login_required"
+  | "wholesale_required";
 
 export type AccountCustomerContext = {
   assignmentStatus: CustomerAssignmentStatus;
@@ -28,6 +37,7 @@ export type AccountCustomerContext = {
 
 export type AccountContext = {
   accountType: AccountType | null;
+  accountSyncError: string | null;
   authenticated: boolean;
   canCheckout: boolean;
   canViewPrices: boolean;
@@ -42,6 +52,7 @@ export type AccountContext = {
 
 export const anonymousAccountContext: AccountContext = {
   accountType: null,
+  accountSyncError: null,
   authenticated: false,
   canCheckout: false,
   canViewPrices: false,
@@ -73,7 +84,7 @@ export async function ensureCurrentUserAccount() {
     return null;
   }
 
-  await supabase.rpc("ensure_current_user_account");
+  await ensureAccountRecord(supabase);
 
   return user;
 }
@@ -97,8 +108,15 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
     return anonymousAccountContext;
   }
 
+  let accountSyncError: string | null = null;
+
   if (options.ensure) {
-    await supabase.rpc("ensure_current_user_account");
+    try {
+      await ensureAccountRecord(supabase);
+    } catch (syncError) {
+      accountSyncError = syncError instanceof Error ? syncError.message : "Account sync failed.";
+      console.error("PartsPro account sync failed", syncError);
+    }
   }
 
   const [profile, permissions] = await Promise.all([
@@ -112,9 +130,15 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
   const accountType = normalizeAccountType(readString(profile?.account_type));
   const customerContext = customer ? toCustomerContext(customer) : null;
   const isEmployee = accountType === "employee";
-  const canViewPrices = Boolean(user && (isEmployee || customerContext));
+  const canViewPrices = Boolean(
+    isEmployee ||
+      (customerContext &&
+        customerContext.status === "active" &&
+        customerContext.customerType === "wholesale")
+  );
   const canCheckout = Boolean(
     accountType === "customer" &&
+      !accountSyncError &&
       customerContext &&
       customerContext.status === "active" &&
       isCustomerProfileComplete(customer)
@@ -122,6 +146,7 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
 
   return {
     accountType,
+    accountSyncError,
     authenticated: true,
     canCheckout,
     canViewPrices,
@@ -172,7 +197,6 @@ export function isCustomerProfileComplete(row: DbRow | null | undefined) {
     readString(row.company_name) &&
       readString(row.vat_number) &&
       readString(row.fiscal_code) &&
-      readString(row.registered_address) &&
       (readString(row.pec) || readString(row.sdi))
   );
 }
@@ -206,15 +230,59 @@ export function priceVisibilityReason(account: AccountContext) {
     return "login_required";
   }
 
+  if (account.canViewPrices) {
+    return account.accountType === "employee" ? "employee" : "customer";
+  }
+
+  if (account.accountSyncError) {
+    return "account_sync_failed";
+  }
+
+  if (!account.customer) {
+    return "customer_profile_required";
+  }
+
+  if (account.customer.status === "suspended") {
+    return "customer_suspended";
+  }
+
+  if (account.customer.assignmentStatus === "needs_review") {
+    return "customer_needs_assignment";
+  }
+
+  if (account.customer.customerType !== "wholesale") {
+    return "wholesale_required";
+  }
+
   if (account.accountType === "employee") {
     return "employee";
   }
 
-  if (account.customer?.assignmentStatus === "needs_review") {
-    return "customer_needs_assignment";
+  return "customer_needs_assignment";
+}
+
+export class AccountSyncError extends Error {
+  constructor(
+    message: string,
+    public readonly details?: unknown
+  ) {
+    super(message);
+    this.name = "AccountSyncError";
+  }
+}
+
+async function ensureAccountRecord(client: SupabaseServerClient) {
+  const { data, error } = await client.rpc("ensure_current_user_account");
+
+  if (error) {
+    throw new AccountSyncError(error.message, {
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    });
   }
 
-  return "customer";
+  return data;
 }
 
 async function readProfile(client: SupabaseServerClient, userId: string) {
@@ -241,7 +309,7 @@ async function readCustomer(client: SupabaseServerClient, customerId: string) {
   const { data, error } = await client
     .from("customers")
     .select(
-      "id, company_name, status, customer_type, assignment_status, level, lifetime_spend_net, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, registered_address, billing_address, shipping_address"
+      "id, company_name, status, customer_type, assignment_status, level, lifetime_spend_net, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address"
     )
     .eq("id", customerId)
     .maybeSingle();
@@ -253,7 +321,7 @@ async function readCustomerByUserId(client: SupabaseServerClient, userId: string
   const { data, error } = await client
     .from("customers")
     .select(
-      "id, company_name, status, customer_type, assignment_status, level, lifetime_spend_net, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, registered_address, billing_address, shipping_address"
+      "id, company_name, status, customer_type, assignment_status, level, lifetime_spend_net, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address"
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })

@@ -50,7 +50,7 @@ const accountQueryKeys = new Set(Object.keys(accountQuerySchema.shape));
 const profileSelect =
   "id, email, role, account_type, auth_provider, display_name, avatar_url, role_template, customer_id, created_at, updated_at";
 const customerSelect =
-  "id, user_id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, registered_address, billing_address, shipping_address, status, customer_type, assignment_status, level, lifetime_spend_net, profile_completed_at, created_at, updated_at";
+  "id, user_id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address, status, customer_type, assignment_status, level, lifetime_spend_net, profile_completed_at, created_at, updated_at";
 
 type DbRow = Record<string, unknown>;
 
@@ -266,6 +266,7 @@ function toAccountDto(profile: DbRow, customers: Map<string, DbRow>) {
   const customer = customerId
     ? customers.get(customerId) ?? customers.get(profileId) ?? null
     : customers.get(profileId) ?? null;
+  const linkedCustomerId = customer ? readString(customer.id) : null;
 
   return {
     userId: profileId,
@@ -276,7 +277,8 @@ function toAccountDto(profile: DbRow, customers: Map<string, DbRow>) {
     accountType: readString(profile.account_type) ?? "customer",
     role: readString(profile.role) ?? "customer",
     roleTemplate: readString(profile.role_template),
-    customerId,
+    customerId: customerId ?? linkedCustomerId,
+    customerState: customer ? "linked" : "profiles_only",
     customer: customer ? toCustomerDto(customer) : null,
     createdAt: readString(profile.created_at),
     updatedAt: readString(profile.updated_at),
@@ -295,7 +297,6 @@ function toCustomerDto(row: DbRow) {
     fiscalCode: readString(row.fiscal_code),
     sdi: readString(row.sdi),
     pec: readString(row.pec),
-    registeredAddress: readString(row.registered_address),
     billingAddress: readString(row.billing_address),
     shippingAddress: readString(row.shipping_address),
     status: readString(row.status) ?? "pending",

@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import type { PartProduct } from "@/lib/partspro-data";
 import { inferDeviceModelSeries } from "@/lib/partspro-device-series";
+import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import { CustomerActivityTracker } from "./customer-activity-tracker";
 import { ProductDetailPurchasePanelSlot } from "./product-detail-purchase-panel-slot";
@@ -27,16 +28,19 @@ import { StorefrontProductImage } from "./storefront-product-image";
 
 type ProductDetailPageProps = {
   initialAccountAccess?: StoreHeaderAccountAccess;
+  priceGateReason?: PriceVisibilityReason;
   product: PartProduct;
   showWholesalePrice?: boolean;
 };
 
 export function ProductDetailPage({
   initialAccountAccess,
+  priceGateReason = "login_required",
   product,
   showWholesalePrice = false,
 }: ProductDetailPageProps) {
   const hasBuyerPrice = product.price > 0;
+  const hiddenPriceCopy = productDetailPriceGateCopy(priceGateReason);
   const primaryModel = product.compatibleWith[0] ?? null;
   const modelSeries = inferDeviceModelSeries(product.brand, primaryModel);
 
@@ -127,16 +131,14 @@ export function ProductDetailPage({
                 <div className="rounded-lg border border-primary/20 bg-primary/8 p-4 text-sm text-slate-700">
                   <div className="flex items-center gap-2 font-black text-slate-950">
                     <BadgeEuro className="size-4 text-primary" />
-                    {showWholesalePrice
-                      ? "Sessione cliente verificata"
-                      : "Prezzi riservati agli account verificati"}
+                    {showWholesalePrice ? "Sessione cliente verificata" : hiddenPriceCopy.title}
                   </div>
                   <p className="mt-2 leading-6">
                     {showWholesalePrice && hasBuyerPrice
                       ? "Prezzo netto, quantità minime e condizioni cliente sono disponibili per questo SKU."
                       : showWholesalePrice
                         ? "Account verificato: il prezzo per questo SKU deve ancora essere aggiornato."
-                        : "Accedi per vedere prezzo, quantità minime, sconti livello e condizioni di pagamento."}
+                        : hiddenPriceCopy.description}
                   </p>
                 </div>
 
@@ -195,15 +197,14 @@ export function ProductDetailPage({
                   <Card className="mt-3 border-primary/20 bg-white">
                     <CardContent className="flex flex-col gap-3 p-4 text-sm text-slate-700 sm:flex-row sm:items-center sm:justify-between">
                       <div className="min-w-0">
-                        <div className="font-black text-slate-950">Prezzo protetto</div>
-                        <p className="mt-1 leading-6">
-                          Accedi con un account cliente per sbloccare prezzo
-                          netto, preventivo e invio al carrello.
-                        </p>
+                        <div className="font-black text-slate-950">{hiddenPriceCopy.cardTitle}</div>
+                        <p className="mt-1 leading-6">{hiddenPriceCopy.cardDescription}</p>
                       </div>
-                      <Button asChild className="shrink-0">
-                        <Link href="/login?next=/catalogo">Accedi</Link>
-                      </Button>
+                      {hiddenPriceCopy.actionHref ? (
+                        <Button asChild className="shrink-0">
+                          <Link href={hiddenPriceCopy.actionHref}>{hiddenPriceCopy.actionLabel}</Link>
+                        </Button>
+                      ) : null}
                     </CardContent>
                   </Card>
                 )}
@@ -304,6 +305,71 @@ export function ProductDetailPage({
       </div>
     </main>
   );
+}
+
+function productDetailPriceGateCopy(reason: PriceVisibilityReason) {
+  if (reason === "customer_needs_assignment") {
+    return {
+      actionHref: "/account",
+      actionLabel: "Apri account",
+      cardDescription:
+        "Il tuo account è attivo, ma il listino B2B deve ancora essere verificato dal team PartsPro.",
+      cardTitle: "Account in revisione",
+      description:
+        "Accesso rilevato: il listino sarà visibile dopo la verifica del profilo cliente.",
+      title: "Listino in verifica",
+    };
+  }
+
+  if (reason === "wholesale_required") {
+    return {
+      actionHref: "/account",
+      actionLabel: "Apri account",
+      cardDescription:
+        "Questo account non è ancora abilitato al listino wholesale. Richiedi o completa l'abilitazione B2B.",
+      cardTitle: "Listino B2B da abilitare",
+      description:
+        "Accesso rilevato: per questo SKU serve un profilo wholesale abilitato.",
+      title: "Prezzi riservati al listino B2B",
+    };
+  }
+
+  if (reason === "account_sync_failed" || reason === "customer_profile_required") {
+    return {
+      actionHref: "/account",
+      actionLabel: "Apri account",
+      cardDescription:
+        "La sessione è valida, ma il profilo cliente PartsPro non è ancora collegato correttamente.",
+      cardTitle: "Profilo in preparazione",
+      description:
+        "Accesso rilevato: stiamo preparando il profilo cliente necessario per mostrare il listino.",
+      title: "Profilo cliente richiesto",
+    };
+  }
+
+  if (reason === "customer_suspended") {
+    return {
+      actionHref: null,
+      actionLabel: null,
+      cardDescription:
+        "Il listino è temporaneamente bloccato per questo account. Contatta il team PartsPro.",
+      cardTitle: "Account sospeso",
+      description:
+        "Accesso rilevato, ma il listino non è disponibile per account sospesi.",
+      title: "Listino sospeso",
+    };
+  }
+
+  return {
+    actionHref: "/login?next=/catalogo",
+    actionLabel: "Accedi",
+    cardDescription:
+      "Accedi con un account cliente per sbloccare prezzo netto, preventivo e invio al carrello.",
+    cardTitle: "Prezzo protetto",
+    description:
+      "Accedi per vedere prezzo, quantità minime, sconti livello e condizioni di pagamento.",
+    title: "Prezzi riservati agli account verificati",
+  };
 }
 
 function Spec({ label, value }: { label: string; value: string }) {

@@ -57,11 +57,11 @@ const catalogPublicCardSelect =
 const catalogProductCardSelect =
   "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at, image_path, image_alt";
 const adminCustomerSelect =
-  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, registered_address, billing_address, shipping_address, tier, price_group_id, status, customer_type, assignment_status, level, lifetime_spend_net, assigned_by, assigned_at, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
+  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, customer_type, assignment_status, level, lifetime_spend_net, assigned_by, assigned_at, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
 const adminCustomerCompatSelect =
-  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, registered_address, billing_address, shipping_address, tier, price_group_id, status, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
+  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
 const adminCustomerMinimalSelect =
-  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, registered_address, billing_address, shipping_address, tier, price_group_id, status, created_at, updated_at";
+  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, created_at, updated_at";
 const adminB2BApplicationSelect =
   "id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, registered_address, shipping_address, monthly_purchase, requested_price_group_id, status, review_note, approved_customer_id, submitted_at, reviewed_at";
 const adminCustomerMembershipSelect =
@@ -330,7 +330,6 @@ export type AdminCustomer = CompanyProfile & {
   contactName: string;
   email: string;
   phone: string;
-  registeredAddress: string;
   billingAddress: string;
   shippingAddress: string;
   tier: CustomerLevel;
@@ -403,7 +402,6 @@ export type AdminCustomerPatchInput = {
   fiscalCode?: string | null;
   sdi?: string | null;
   pec?: string | null;
-  registeredAddress?: string | null;
   billingAddress?: string | null;
   shippingAddress?: string | null;
   status?: AdminCustomerStatus;
@@ -425,7 +423,6 @@ export type AdminCustomerProfileInput = {
   fiscalCode?: string | null;
   pec?: string | null;
   phone?: string | null;
-  registeredAddress?: string | null;
   shippingAddress?: string | null;
   sdi?: string | null;
   vatNumber?: string | null;
@@ -1463,7 +1460,6 @@ export async function updateAdminCustomer(
     input.fiscalCode !== undefined ||
     input.sdi !== undefined ||
     input.pec !== undefined ||
-    input.registeredAddress !== undefined ||
     input.billingAddress !== undefined ||
     input.shippingAddress !== undefined
   ) {
@@ -1476,7 +1472,6 @@ export async function updateAdminCustomer(
       pec: input.pec,
       phone: input.phone,
       reason,
-      registeredAddress: input.registeredAddress,
       sdi: input.sdi,
       shippingAddress: input.shippingAddress,
       vatNumber: input.vatNumber,
@@ -4110,7 +4105,6 @@ function buildCustomerProfilePayload(input: AdminCustomerProfileInput) {
   assignStringValue(payload, "fiscal_code", input.fiscalCode);
   assignStringValue(payload, "sdi", input.sdi);
   assignStringValue(payload, "pec", input.pec);
-  assignStringValue(payload, "registered_address", input.registeredAddress);
   assignStringValue(payload, "billing_address", input.billingAddress);
   assignStringValue(payload, "shipping_address", input.shippingAddress);
 
@@ -4430,7 +4424,6 @@ function mapAdminCustomerRow(row: DbRow): AdminCustomer | null {
     contactName: pickString(row, ["contact_name"]) ?? "",
     email: pickString(row, ["email"]) ?? "",
     phone: pickString(row, ["phone"]) ?? "",
-    registeredAddress: pickString(row, ["registered_address"]) ?? "",
     billingAddress: pickString(row, ["billing_address"]) ?? "",
     shippingAddress: pickString(row, ["shipping_address"]) ?? "",
     tier: normalizePriceList(pickString(row, ["level", "tier"])),

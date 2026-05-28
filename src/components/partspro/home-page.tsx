@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   categories,
+  formatEuro,
   type DeviceModelGroup,
   type PartProduct,
   type PartVisual as PartVisualType,
@@ -43,6 +44,7 @@ import {
   tx,
   type StorefrontTranslator,
 } from "@/i18n/dictionaries/storefront";
+import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
 
 type HomeCategorySummary = {
   count?: number;
@@ -57,6 +59,7 @@ type HomePageProps = {
   featuredProducts?: PartProduct[];
   initialAccountAccess?: StoreHeaderAccountAccess;
   modelGroups?: readonly DeviceModelGroup[];
+  priceGateReason?: PriceVisibilityReason;
 };
 
 const trustItems = [
@@ -142,6 +145,7 @@ export function HomePage({
   featuredProducts = [],
   initialAccountAccess,
   modelGroups = [],
+  priceGateReason = "login_required",
 }: HomePageProps) {
   const categorySummaries = useMemo(
     () =>
@@ -169,7 +173,7 @@ export function HomePage({
           <TrustBar />
           <WorkflowSection />
           <CategoryShowcase categories={categorySummaries} />
-          <ProductPreview products={featuredProducts} />
+          <ProductPreview priceGateReason={priceGateReason} products={featuredProducts} />
           <BrandModelStrip catalogTotal={catalogTotal} modelGroups={modelGroups} />
         </div>
         <HomeRightRail />
@@ -409,7 +413,13 @@ function CategoryShowcase({ categories: items }: { categories: HomeCategorySumma
   );
 }
 
-function ProductPreview({ products }: { products: PartProduct[] }) {
+function ProductPreview({
+  priceGateReason,
+  products,
+}: {
+  priceGateReason: PriceVisibilityReason;
+  products: PartProduct[];
+}) {
   const t = useT();
 
   return (
@@ -423,7 +433,11 @@ function ProductPreview({ products }: { products: PartProduct[] }) {
       {products.length > 0 ? (
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-2 2xl:grid-cols-4">
           {products.slice(0, 8).map((product) => (
-            <FeaturedProductCard key={product.sku} product={product} />
+            <FeaturedProductCard
+              key={product.sku}
+              priceGateReason={priceGateReason}
+              product={product}
+            />
           ))}
         </div>
       ) : (
@@ -497,7 +511,13 @@ function BrandModelStrip({
   );
 }
 
-function FeaturedProductCard({ product }: { product: PartProduct }) {
+function FeaturedProductCard({
+  priceGateReason,
+  product,
+}: {
+  priceGateReason: PriceVisibilityReason;
+  product: PartProduct;
+}) {
   const t = useT();
   const { locale } = useI18n();
   const productPath = `/prodotto/${encodeURIComponent(product.sku)}`;
@@ -508,6 +528,8 @@ function FeaturedProductCard({ product }: { product: PartProduct }) {
   const imageUrl = imageCandidates.find((candidate) => !failedImageUrls.includes(candidate));
   const visibleModels = product.compatibleWith.slice(0, 2);
   const extraModels = Math.max(product.compatibleWith.length - visibleModels.length, 0);
+  const hasBuyerPrice = product.price > 0;
+  const priceGateCopy = homePriceGateCopy(t, priceGateReason, product.moq);
   const stockLine = tx(
     t,
     "storefront.home.productCard.stockLine",
@@ -596,13 +618,17 @@ function FeaturedProductCard({ product }: { product: PartProduct }) {
         <div className="mt-auto flex min-w-0 items-end justify-between gap-2 pt-3">
           <div className="min-w-0">
             <div className="truncate text-xs font-bold text-slate-700">
-              {tx(t, "storefront.home.productCard.loginPrice", "Prezzo dopo login")}
+              {hasBuyerPrice
+                ? formatEuro(product.price)
+                : priceGateCopy.label}
             </div>
             <div className="truncate text-[11px] text-slate-500">
-              {tx(t, "storefront.home.productCard.priceHint", "MOQ {moq} · listino B2B").replace(
-                "{moq}",
-                String(product.moq)
-              )}
+              {hasBuyerPrice
+                ? tx(t, "storefront.home.productCard.priceVisibleHint", "IVA escl. · MOQ {moq}").replace(
+                    "{moq}",
+                    String(product.moq)
+                  )
+                : priceGateCopy.hint}
             </div>
           </div>
           <Button size="sm" variant="outline" asChild className="shrink-0 bg-white text-primary">
@@ -615,6 +641,62 @@ function FeaturedProductCard({ product }: { product: PartProduct }) {
       </div>
     </article>
   );
+}
+
+function homePriceGateCopy(
+  t: StorefrontTranslator,
+  reason: PriceVisibilityReason,
+  moq: number
+) {
+  const moqLabel = String(moq);
+
+  if (reason === "customer_needs_assignment") {
+    return {
+      label: tx(t, "storefront.home.productCard.pendingPrice", "Account in revisione"),
+      hint: tx(t, "storefront.home.productCard.pendingHint", "MOQ {moq} · verifica listino").replace(
+        "{moq}",
+        moqLabel
+      ),
+    };
+  }
+
+  if (reason === "wholesale_required") {
+    return {
+      label: tx(t, "storefront.home.productCard.wholesalePrice", "Listino B2B da abilitare"),
+      hint: tx(t, "storefront.home.productCard.wholesaleHint", "MOQ {moq} · richiedi wholesale").replace(
+        "{moq}",
+        moqLabel
+      ),
+    };
+  }
+
+  if (reason === "account_sync_failed" || reason === "customer_profile_required") {
+    return {
+      label: tx(t, "storefront.home.productCard.profilePrice", "Profilo in preparazione"),
+      hint: tx(t, "storefront.home.productCard.profileHint", "MOQ {moq} · riprova tra poco").replace(
+        "{moq}",
+        moqLabel
+      ),
+    };
+  }
+
+  if (reason === "customer_suspended") {
+    return {
+      label: tx(t, "storefront.home.productCard.suspendedPrice", "Account sospeso"),
+      hint: tx(t, "storefront.home.productCard.suspendedHint", "MOQ {moq} · contatta supporto").replace(
+        "{moq}",
+        moqLabel
+      ),
+    };
+  }
+
+  return {
+    label: tx(t, "storefront.home.productCard.loginPrice", "Prezzo dopo login"),
+    hint: tx(t, "storefront.home.productCard.priceHint", "MOQ {moq} · listino B2B").replace(
+      "{moq}",
+      moqLabel
+    ),
+  };
 }
 
 function SectionHeader({

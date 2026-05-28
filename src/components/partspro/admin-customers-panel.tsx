@@ -3,10 +3,16 @@
 import * as React from "react";
 import Image from "next/image";
 import {
+  BadgeCheck,
+  BriefcaseBusiness,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Eye,
+  ExternalLink,
+  ListFilter,
   Loader2,
+  MoreVertical,
   Package,
   Pencil,
   RefreshCcw,
@@ -15,13 +21,13 @@ import {
   ShieldAlert,
   SlidersHorizontal,
   Store,
+  Users,
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -47,6 +53,13 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { getAdminDictionary } from "@/i18n/dictionaries/admin";
 import { formatEuro } from "@/lib/partspro-data";
 import { CUSTOMER_MANAGE_LEVEL_PERMISSION } from "@/lib/partspro-permissions";
@@ -192,7 +205,6 @@ type AdminCustomer = {
   primarySku: string | null;
   recentActivity?: CustomerRecentActivity[];
   receivables: number;
-  registeredAddress: string;
   revenue: number;
   shippingAddress: string;
   sdi: string;
@@ -261,7 +273,6 @@ type CustomerProfileDraft = {
   fiscalCode: string;
   pec: string;
   phone: string;
-  registeredAddress: string;
   sdi: string;
   shippingAddress: string;
   vatNumber: string;
@@ -292,7 +303,7 @@ type CustomerEditState =
       kind: "classification";
     };
 
-const pageSize = 25;
+const pageSize = 8;
 const allValue = "all";
 const tiers: CustomerTier[] = ["bronze", "silver", "gold", "emerald", "diamond", "master", "king"];
 const emptyFacets: CustomerFacets = {
@@ -321,11 +332,11 @@ export function AdminCustomersPanel() {
   const [status, setStatus] = React.useState<CustomerStatus | typeof allValue>(allValue);
   const [customerType, setCustomerType] = React.useState<CustomerType | typeof allValue>(allValue);
   const [tier, setTier] = React.useState<CustomerTier | typeof allValue>(allValue);
-  const [sort, setSort] = React.useState("created_desc");
+  const [sort, setSort] = React.useState("last_order_desc");
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [detailLoading, setDetailLoading] = React.useState(false);
-  const [mobileDetailOpen, setMobileDetailOpen] = React.useState(false);
+  const [detailSheetOpen, setDetailSheetOpen] = React.useState(false);
   const [mobileFiltersOpen, setMobileFiltersOpen] = React.useState(false);
   const [notice, setNotice] = React.useState<Notice | null>(null);
   const [refreshKey, setRefreshKey] = React.useState(0);
@@ -435,6 +446,7 @@ export function AdminCustomersPanel() {
         setTotal(payload.meta.total);
         if (payload.data.length === 0) {
           setDetail(null);
+          setDetailSheetOpen(false);
         }
         setActiveId((current) =>
           current && payload.data.some((customer) => customer.id === current)
@@ -495,10 +507,7 @@ export function AdminCustomersPanel() {
 
   function openCustomerDetail(customerId: string) {
     setActiveId(customerId);
-
-    if (window.matchMedia("(max-width: 1023px)").matches) {
-      setMobileDetailOpen(true);
-    }
+    setDetailSheetOpen(true);
   }
 
   function openSingleAction(action: Omit<PendingAction, "ids">, id: string) {
@@ -516,10 +525,10 @@ export function AdminCustomersPanel() {
       const payload = await fetchJson<OrderDetailResponse>(
         `/api/admin/orders/${encodeURIComponent(order.id)}`
       );
-      setOrderDetail(payload.data);
+      setOrderDetail(normalizeCustomerOrderLogistics(payload.data));
     } catch (error) {
       setOrderDetailError(error instanceof Error ? error.message : text.orders.detailError);
-      setOrderDetail({
+      setOrderDetail(normalizeCustomerOrderLogistics({
         carrier: "",
         company: detail?.companyName,
         createdAt: order.createdAt,
@@ -531,7 +540,7 @@ export function AdminCustomersPanel() {
         paymentStatus: order.paymentStatus,
         status: order.status,
         total: order.total,
-      });
+      }));
     } finally {
       setOrderDetailLoading(false);
     }
@@ -682,331 +691,327 @@ export function AdminCustomersPanel() {
     }
   }
 
+  const shownStart = total === 0 ? 0 : offset + 1;
+  const shownEnd = Math.min(offset + customers.length, total);
+
   return (
     <section className="min-w-0 space-y-3 text-slate-950" aria-labelledby="customers-workbench-title">
+      <div className="flex flex-col gap-2 border-b border-slate-200 pb-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h2 id="customers-workbench-title" className="text-xl font-black tracking-normal text-slate-950 sm:text-2xl">
+            {copy.title}
+          </h2>
+          <p className="mt-0.5 line-clamp-1 max-w-3xl text-xs leading-5 text-slate-500 sm:text-sm">
+            {text.customers.description}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 shrink-0 rounded-md bg-white px-2.5 text-xs font-bold shadow-sm"
+          onClick={() => setRefreshKey((value) => value + 1)}
+        >
+          <RefreshCcw className="size-3.5" />
+          {copy.refresh}
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+        <Kpi icon={Users} label={copy.activeCustomers} tone="blue" value={facets.active} />
+        <Kpi icon={BriefcaseBusiness} label={copy.retailCustomers} tone="green" value={facets.retail} />
+        <Kpi icon={Store} label={copy.wholesaleCustomers} tone="purple" value={facets.wholesale} />
+        <Kpi icon={ShieldAlert} label={text.enums.companyStatus.suspended} tone="red" value={facets.suspended} />
+      </div>
+
       {notice ? (
         <div
           className={cn(
-            "rounded-md border px-3 py-1.5 text-xs leading-5",
+            "flex min-w-0 items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm font-semibold leading-5",
             notice.tone === "error"
               ? "border-destructive/30 bg-destructive/10 text-destructive"
-              : "border-border bg-muted/50 text-foreground"
+              : "border-emerald-200 bg-emerald-50 text-emerald-800"
           )}
           role={notice.tone === "error" ? "alert" : "status"}
         >
-          {notice.message}
+          <span className="flex min-w-0 items-start gap-2">
+            {notice.tone === "error" ? (
+              <ShieldAlert className="mt-0.5 size-4 shrink-0" />
+            ) : (
+              <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
+            )}
+            <span className="min-w-0 break-words">{notice.message}</span>
+          </span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="size-7 shrink-0"
+            onClick={() => setNotice(null)}
+          >
+            <span className="sr-only">{copy.close}</span>
+            <X className="size-4" />
+          </Button>
         </div>
       ) : null}
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(360px,400px)] 2xl:grid-cols-[minmax(0,1fr)_420px]">
-        <div className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
-          <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-2 sm:px-4 sm:py-3">
-            <div className="min-w-0">
-              <h2 id="customers-workbench-title" className="truncate text-lg font-semibold tracking-normal sm:text-xl">
-                {copy.title}
-              </h2>
-              <p className="mt-0.5 line-clamp-1 max-w-3xl text-xs text-muted-foreground">
-                {text.customers.description}
-              </p>
+      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_14px_36px_rgba(15,23,42,0.04)]">
+        <div className="grid grid-cols-[minmax(0,1fr)_40px] gap-2 border-b border-slate-200 p-2.5 xl:grid-cols-[minmax(260px,1fr)_auto] xl:items-center">
+          <div className="relative min-w-0">
+            <Label htmlFor="customer-search" className="sr-only">
+              {copy.search}
+            </Label>
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              id="customer-search"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                resetPage();
+              }}
+              placeholder={copy.searchPlaceholder}
+              className="h-9 rounded-md border-slate-200 bg-white pl-9 text-sm shadow-none"
+            />
+          </div>
+
+          <div className="flex justify-end sm:grid sm:grid-cols-[repeat(4,minmax(108px,128px))] sm:gap-2 xl:grid-cols-[112px_112px_112px_124px] xl:justify-end">
+            <div className="hidden sm:block">
+              <FilterSelect
+                ariaLabel={copy.status}
+                value={status}
+                onValueChange={(value) => {
+                  setStatus(value as CustomerStatus | typeof allValue);
+                  resetPage();
+                }}
+                options={statusOptions}
+              />
+            </div>
+            <div className="hidden sm:block">
+              <FilterSelect
+                ariaLabel={copy.customerType}
+                value={customerType}
+                onValueChange={(value) => {
+                  setCustomerType(value as CustomerType | typeof allValue);
+                  resetPage();
+                }}
+                options={customerTypeOptions}
+              />
+            </div>
+            <div className="hidden sm:block">
+              <FilterSelect
+                ariaLabel={text.customers.currentTier}
+                value={tier}
+                onValueChange={(value) => {
+                  setTier(value as CustomerTier | typeof allValue);
+                  resetPage();
+                }}
+                options={tierOptions}
+              />
+            </div>
+            <div className="hidden sm:block">
+              <FilterSelect
+                ariaLabel={copy.sort}
+                value={sort}
+                onValueChange={(value) => {
+                  setSort(value);
+                  resetPage();
+                }}
+                options={sortOptions}
+              />
             </div>
             <Button
-              variant="outline"
-              size="sm"
-              className="h-7 shrink-0 px-2 text-xs sm:h-8 sm:px-2.5"
-              onClick={() => setRefreshKey((value) => value + 1)}
+              type="button"
+              variant={mobileFiltersOpen || activeFilterCount > 0 ? "default" : "outline"}
+              size="icon"
+              className="size-9 rounded-md sm:hidden"
+              onClick={() => setMobileFiltersOpen((open) => !open)}
+              aria-label={copy.filters}
             >
-              <RefreshCcw />
-              {copy.refresh}
+              <SlidersHorizontal className="size-4" />
             </Button>
           </div>
 
-          <div className="grid grid-cols-4 gap-1 border-b border-slate-200 bg-slate-50/70 px-2 py-1.5 sm:gap-1.5 sm:px-4 sm:py-2">
-            <Kpi icon={CheckCircle2} label={copy.activeCustomers} value={facets.active} />
-            <Kpi icon={Store} label={copy.retailCustomers} value={facets.retail} />
-            <Kpi icon={Store} label={copy.wholesaleCustomers} value={facets.wholesale} />
-            <Kpi icon={ShieldAlert} label={text.enums.companyStatus.suspended} value={facets.suspended} />
-          </div>
-
-          <div className="min-w-0 bg-white">
-            <div className="grid gap-1.5 border-b border-slate-200 bg-white px-2 py-1.5 sm:px-4 sm:py-2 lg:grid-cols-[minmax(220px,1fr)_minmax(0,1.4fr)] lg:items-center">
-              <div className="relative min-w-0 flex-1">
-                <Label htmlFor="customer-search" className="sr-only">
-                  {copy.search}
-                </Label>
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-muted-foreground sm:left-3 sm:size-4" />
-                <Input
-                  id="customer-search"
-                  value={query}
-                  onChange={(event) => {
-                    setQuery(event.target.value);
-                    resetPage();
-                  }}
-                  placeholder={copy.searchPlaceholder}
-                  className="h-7 pl-7 text-[11px] sm:h-8 sm:pl-8 sm:text-sm"
-                />
-              </div>
-
-              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-1.5 sm:hidden">
-                <Button
-                  type="button"
-                  variant={mobileFiltersOpen || activeFilterCount > 0 ? "default" : "outline"}
-                  size="sm"
-                  className="h-7 justify-start gap-1.5 px-2 text-[11px]"
-                  onClick={() => setMobileFiltersOpen((open) => !open)}
-                >
-                  <SlidersHorizontal className="size-3.5" />
-                  <span className="min-w-0 truncate">{copy.filters}</span>
-                  {activeFilterCount > 0 ? (
-                    <Badge className="ml-auto h-4 min-w-4 justify-center px-1 text-[10px]" variant="secondary">
-                      {activeFilterCount}
-                    </Badge>
-                  ) : null}
-                </Button>
-                <FilterSelect
-                  ariaLabel={copy.sort}
-                  value={sort}
-                  onValueChange={(value) => {
-                    setSort(value);
-                    resetPage();
-                  }}
-                  options={sortOptions}
-                />
-              </div>
-
-              {mobileFiltersOpen ? (
-                <div className="grid grid-cols-2 gap-1.5 sm:hidden">
-                  <FilterSelect
-                    ariaLabel={copy.status}
-                    value={status}
-                    onValueChange={(value) => {
-                      setStatus(value as CustomerStatus | typeof allValue);
-                      resetPage();
-                    }}
-                    options={statusOptions}
-                  />
-                  <FilterSelect
-                    ariaLabel={copy.customerType}
-                    value={customerType}
-                    onValueChange={(value) => {
-                      setCustomerType(value as CustomerType | typeof allValue);
-                      resetPage();
-                    }}
-                    options={customerTypeOptions}
-                  />
-                  <FilterSelect
-                    ariaLabel={text.customers.currentTier}
-                    value={tier}
-                    onValueChange={(value) => {
-                      setTier(value as CustomerTier | typeof allValue);
-                      resetPage();
-                    }}
-                    options={tierOptions}
-                  />
-                </div>
-              ) : null}
-
-              <div className="hidden gap-1.5 sm:grid sm:grid-cols-3 xl:grid-cols-4">
-                <FilterSelect
-                  ariaLabel={copy.status}
-                  value={status}
-                  onValueChange={(value) => {
-                    setStatus(value as CustomerStatus | typeof allValue);
-                    resetPage();
-                  }}
-                  options={statusOptions}
-                />
-                <FilterSelect
-                  ariaLabel={copy.customerType}
-                  value={customerType}
-                  onValueChange={(value) => {
-                    setCustomerType(value as CustomerType | typeof allValue);
-                    resetPage();
-                  }}
-                  options={customerTypeOptions}
-                />
-                <FilterSelect
-                  ariaLabel={text.customers.currentTier}
-                  value={tier}
-                  onValueChange={(value) => {
-                    setTier(value as CustomerTier | typeof allValue);
-                    resetPage();
-                  }}
-                  options={tierOptions}
-                />
-                <FilterSelect
-                  ariaLabel={copy.sort}
-                  value={sort}
-                  onValueChange={(value) => {
-                    setSort(value);
-                    resetPage();
-                  }}
-                  options={sortOptions}
-                />
-              </div>
+          {mobileFiltersOpen ? (
+            <div className="col-span-2 grid grid-cols-2 gap-2 sm:hidden">
+              <FilterSelect
+                ariaLabel={copy.status}
+                value={status}
+                onValueChange={(value) => {
+                  setStatus(value as CustomerStatus | typeof allValue);
+                  resetPage();
+                }}
+                options={statusOptions}
+              />
+              <FilterSelect
+                ariaLabel={copy.customerType}
+                value={customerType}
+                onValueChange={(value) => {
+                  setCustomerType(value as CustomerType | typeof allValue);
+                  resetPage();
+                }}
+                options={customerTypeOptions}
+              />
+              <FilterSelect
+                ariaLabel={text.customers.currentTier}
+                value={tier}
+                onValueChange={(value) => {
+                  setTier(value as CustomerTier | typeof allValue);
+                  resetPage();
+                }}
+                options={tierOptions}
+              />
+              <FilterSelect
+                ariaLabel={copy.sort}
+                value={sort}
+                onValueChange={(value) => {
+                  setSort(value);
+                  resetPage();
+                }}
+                options={sortOptions}
+              />
             </div>
-
-            <div className="min-h-0 min-w-0 bg-white sm:min-h-[320px]">
-              <Table className="text-xs sm:text-sm">
-              <caption className="sr-only">{copy.title}</caption>
-              <TableHeader>
-                <TableRow>
-                  <TableHead scope="col" className="min-w-[180px] px-3 sm:px-2">{text.customers.title}</TableHead>
-                  <TableHead scope="col" className="hidden px-2 sm:table-cell">{copy.status}</TableHead>
-                  <TableHead scope="col" className="hidden px-2 md:table-cell">{text.customers.currentTier}</TableHead>
-                  <TableHead scope="col" className="hidden px-2 text-right sm:table-cell">{text.customers.labels.orderCount}</TableHead>
-                  <TableHead scope="col" className="hidden px-2 text-right lg:table-cell">{text.customers.labels.spent}</TableHead>
-                  <TableHead scope="col" className="hidden px-2 text-right xl:table-cell">{text.customers.labels.last}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {loading ? (
-                  Array.from({ length: 8 }).map((_, index) => (
-                    <TableRow key={index}>
-                      <TableCell colSpan={6} className="p-2">
-                        <div className="h-9 animate-pulse rounded-md bg-muted" />
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : customers.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="h-32 text-center text-sm text-muted-foreground">
-                      <div className="space-y-2">
-                        <p>{copy.empty}</p>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            setQuery("");
-                            setStatus(allValue);
-                            setCustomerType(allValue);
-                            setTier(allValue);
-                            resetPage();
-                          }}
-                        >
-                          {copy.clearFilters}
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  customers.map((customer) => (
-                    <TableRow
-                      key={customer.id}
-                      className={cn(
-                        "group cursor-pointer transition-colors hover:bg-slate-50",
-                        activeId === customer.id && "bg-primary/5 sm:bg-muted/60"
-                      )}
-                      onClick={() => openCustomerDetail(customer.id)}
-                    >
-                      <TableCell className="px-2 py-1.5 sm:px-2">
-                        <div
-                          className={cn(
-                            "sm:hidden rounded-md border border-slate-200 bg-white px-2.5 py-2 shadow-[0_8px_20px_rgba(15,23,42,0.035)] transition-colors group-hover:border-primary/30",
-                            activeId === customer.id && "border-primary/35 bg-primary/5"
-                          )}
-                        >
-                          <div className="flex min-w-0 items-center justify-between gap-2">
-                            <div className="min-w-0">
-                              <div className="truncate text-sm font-bold leading-5 text-slate-950">
-                                {customer.companyName}
-                              </div>
-                              <div className="mt-0.5 truncate text-[11px] font-medium leading-4 text-slate-500">
-                                {customer.email || customer.vatNumber || copy.noData}
-                              </div>
-                            </div>
-                            <div className="flex shrink-0 items-center gap-1">
-                              <StatusBadge
-                                active={text.customers.labels.active}
-                                status={customer.customerStatus}
-                                copy={copy}
-                                suspended={text.enums.companyStatus.suspended}
-                              />
-                              <ChevronRight className="size-3.5 text-slate-400" />
-                            </div>
-                          </div>
-                          <div className="mt-2 grid grid-cols-4 gap-1">
-                            <CustomerMobileFact
-                              label={copy.customerLevel}
-                              value={tierLabel(customer.tier, copy)}
-                              emphasis
-                            />
-                            <CustomerMobileFact
-                              label={text.customers.labels.orderCount}
-                              value={customer.ordersCount}
-                            />
-                            <CustomerMobileFact
-                              label={text.customers.labels.spent}
-                              value={formatEuro(customer.revenue)}
-                            />
-                            <CustomerMobileFact
-                              label={text.customers.labels.last}
-                              value={formatDate(customer.lastContact) ?? copy.noData}
-                            />
-                          </div>
-                          <div className="mt-1.5 grid grid-cols-2 gap-1 text-[10px] font-semibold leading-3 text-slate-500">
-                            <div className="min-w-0 truncate rounded bg-slate-50 px-1.5 py-1">
-                              {text.customers.labels.reference}: {customer.contactName || copy.noData}
-                            </div>
-                            <div className="min-w-0 truncate rounded bg-slate-50 px-1.5 py-1">
-                              {copy.fieldLabels.vat}: {customer.vatNumber || customer.partitaIva || copy.noData}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="hidden min-w-0 max-w-[360px] sm:block">
-                          <div className="truncate font-medium">{customer.companyName}</div>
-                          <div className="truncate text-xs text-muted-foreground">
-                            {customer.email || customer.vatNumber || copy.noData}
-                          </div>
-                        </div>
-                      </TableCell>
-                      <TableCell className="hidden px-2 py-2 sm:table-cell">
-                        <StatusBadge
-                          active={text.customers.labels.active}
-                          status={customer.customerStatus}
-                          copy={copy}
-                          suspended={text.enums.companyStatus.suspended}
-                        />
-                      </TableCell>
-                      <TableCell className="hidden px-2 py-2 md:table-cell">{tierLabel(customer.tier, copy)}</TableCell>
-                      <TableCell className="hidden px-2 py-2 text-right sm:table-cell">{customer.ordersCount}</TableCell>
-                      <TableCell className="hidden px-2 py-2 text-right lg:table-cell">{formatEuro(customer.revenue)}</TableCell>
-                      <TableCell className="hidden px-2 py-2 text-right xl:table-cell">{formatDate(customer.lastContact) ?? copy.noData}</TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-              </Table>
-
-            <div className="flex items-center justify-between border-t p-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-2 text-xs"
-                onClick={() => setPage((value) => Math.max(value - 1, 0))}
-                disabled={page === 0 || loading}
-              >
-                <ChevronLeft />
-                {copy.previousPage}
-              </Button>
-              <span className="text-xs text-muted-foreground">
-                {offset + 1}-{Math.min(offset + customers.length, total)} / {total}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 px-2 text-xs"
-                onClick={() => setPage((value) => value + 1)}
-                disabled={offset + customers.length >= total || loading}
-              >
-                {copy.nextPage}
-                <ChevronRight />
-              </Button>
-            </div>
-            </div>
-          </div>
+          ) : null}
         </div>
 
-        <div className="hidden min-w-0 lg:block">
+        <div className="hidden min-w-0 overflow-x-auto md:block">
+          <Table className="min-w-[860px] table-fixed text-xs">
+            <caption className="sr-only">{copy.title}</caption>
+            <colgroup>
+              <col className="w-[280px]" />
+              <col className="w-[86px]" />
+              <col className="w-[104px]" />
+              <col className="w-[96px]" />
+              <col className="w-[68px]" />
+              <col className="w-[112px]" />
+              <col className="w-[126px]" />
+              <col className="w-[44px]" />
+            </colgroup>
+            <TableHeader>
+              <TableRow className="bg-slate-50/80">
+                <TableHead scope="col" className="px-3 py-2">{text.customers.title}</TableHead>
+                <TableHead scope="col" className="px-2 py-2">{copy.status}</TableHead>
+                <TableHead scope="col" className="px-2 py-2">{copy.customerType}</TableHead>
+                <TableHead scope="col" className="px-2 py-2">{text.customers.currentTier}</TableHead>
+                <TableHead scope="col" className="px-2 py-2 text-right">{text.customers.labels.orderCount}</TableHead>
+                <TableHead scope="col" className="px-2 py-2 text-right">{text.customers.labels.spent}</TableHead>
+                <TableHead scope="col" className="px-2 py-2 text-right">{copy.recentActivity}</TableHead>
+                <TableHead scope="col" className="px-2 py-2 text-right">{text.common.actions}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {loading ? (
+                Array.from({ length: pageSize }).map((_, index) => (
+                  <TableRow key={index}>
+                    <TableCell colSpan={8} className="p-3">
+                      <div className="h-11 animate-pulse rounded-md bg-slate-100" />
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : customers.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="h-44 text-center text-sm text-muted-foreground">
+                    <div className="space-y-3">
+                      <p>{copy.empty}</p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setQuery("");
+                          setStatus(allValue);
+                          setCustomerType(allValue);
+                          setTier(allValue);
+                          resetPage();
+                        }}
+                      >
+                        {copy.clearFilters}
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                customers.map((customer) => (
+                  <CustomerDesktopRow
+                    key={customer.id}
+                    active={activeId === customer.id}
+                    copy={copy}
+                    customer={customer}
+                    onOpen={openCustomerDetail}
+                    suspended={text.enums.companyStatus.suspended}
+                    text={text}
+                  />
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+
+        <div className="space-y-2 p-2.5 md:hidden">
+          <div className="hidden text-xs font-medium text-slate-500 sm:block">
+            {shownStart}-{shownEnd} / {total}
+          </div>
+          {loading ? (
+            Array.from({ length: 4 }).map((_, index) => (
+              <div key={index} className="h-36 animate-pulse rounded-lg bg-slate-100" />
+            ))
+          ) : customers.length === 0 ? (
+            <EmptyState label={copy.empty} />
+          ) : (
+            customers.map((customer) => (
+              <CustomerMobileCard
+                key={customer.id}
+                active={detailSheetOpen && activeId === customer.id}
+                copy={copy}
+                customer={customer}
+                onOpen={openCustomerDetail}
+                suspended={text.enums.companyStatus.suspended}
+                text={text}
+              />
+            ))
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2 border-t border-slate-200 p-2.5 sm:flex-row sm:items-center sm:justify-between">
+          <span className="text-xs text-muted-foreground">
+            {shownStart}-{shownEnd} / {total}
+          </span>
+          <div className="flex items-center justify-between gap-2 sm:justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-md px-2 text-xs"
+              onClick={() => setPage((value) => Math.max(value - 1, 0))}
+              disabled={page === 0 || loading}
+            >
+              <ChevronLeft className="size-4" />
+              {copy.previousPage}
+            </Button>
+            <Badge variant="outline" className="h-8 rounded-md px-3 text-xs">
+              {page + 1}
+            </Badge>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-md px-2 text-xs"
+              onClick={() => setPage((value) => value + 1)}
+              disabled={offset + customers.length >= total || loading}
+            >
+              {copy.nextPage}
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <Sheet open={detailSheetOpen} onOpenChange={setDetailSheetOpen}>
+        <SheetContent
+          side="right"
+          className="!w-full !max-w-none gap-0 overflow-hidden p-0 sm:!w-[560px] sm:!max-w-[560px] xl:!w-[620px] xl:!max-w-[620px]"
+        >
+          <SheetHeader className="sr-only">
+            <SheetTitle>{detail?.companyName ?? copy.detailsEmpty}</SheetTitle>
+            <SheetDescription>
+              {detail?.email || detail?.vatNumber || text.customers.description}
+            </SheetDescription>
+          </SheetHeader>
           <CustomerDetail
             canManageCustomerLevel={canManageCustomerLevel}
             copy={copy}
@@ -1018,54 +1023,8 @@ export function AdminCustomersPanel() {
             suspended={text.enums.companyStatus.suspended}
             text={text}
           />
-        </div>
-      </div>
-
-      <Dialog open={mobileDetailOpen} onOpenChange={setMobileDetailOpen}>
-        <DialogContent
-          showCloseButton={false}
-          className="grid max-h-[calc(100dvh-0.5rem)] w-[calc(100vw-0.5rem)] max-w-[calc(100vw-0.5rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg bg-white p-0 sm:max-w-lg lg:hidden"
-          style={{ height: "min(760px, calc(100dvh - 0.5rem))" }}
-          onClick={(event) => event.stopPropagation()}
-          onInteractOutside={(event) => event.preventDefault()}
-          onPointerDown={(event) => event.stopPropagation()}
-          onPointerDownOutside={(event) => event.preventDefault()}
-        >
-          <DialogClose asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="absolute right-2 top-2 z-20 size-7 rounded-md bg-white/90 text-slate-700 shadow-sm ring-1 ring-slate-200 hover:bg-white"
-            >
-              <X className="size-4" />
-              <span className="sr-only">Close</span>
-            </Button>
-          </DialogClose>
-          <DialogHeader className="sr-only">
-            <DialogTitle>
-              {detail?.companyName ?? copy.detailsEmpty}
-            </DialogTitle>
-            <DialogDescription>
-              {detail?.email || detail?.vatNumber || text.customers.description}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="min-h-0 overflow-y-auto bg-white">
-            <CustomerDetail
-              canManageCustomerLevel={canManageCustomerLevel}
-              copy={copy}
-              customer={detail}
-              detailLoading={detailLoading}
-              embedded
-              onAction={openSingleAction}
-              onEdit={openCustomerEdit}
-              onOpenOrder={openCustomerOrderDetail}
-              suspended={text.enums.companyStatus.suspended}
-              text={text}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
+        </SheetContent>
+      </Sheet>
 
       <Dialog open={Boolean(pendingAction)} onOpenChange={(open) => !open && setPendingAction(null)}>
         <DialogContent className="sm:max-w-lg">
@@ -1127,12 +1086,149 @@ export function AdminCustomersPanel() {
   );
 }
 
+function CustomerDesktopRow({
+  active,
+  copy,
+  customer,
+  onOpen,
+  suspended,
+  text,
+}: {
+  active: boolean;
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
+  customer: AdminCustomer;
+  onOpen: (customerId: string) => void;
+  suspended: string;
+  text: ReturnType<typeof getAdminDictionary>["admin"];
+}) {
+  return (
+    <TableRow
+      className={cn(
+        "group cursor-pointer border-b border-slate-100 transition-colors hover:bg-blue-50/40",
+        active && "bg-blue-50/70 ring-1 ring-inset ring-blue-200"
+      )}
+      onClick={() => onOpen(customer.id)}
+    >
+      <TableCell className="px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <CustomerAvatar customer={customer} />
+          <div className="min-w-0">
+            <div className="truncate font-bold text-slate-950">{customer.companyName}</div>
+            <div className="mt-0.5 truncate text-xs text-slate-500">
+              {[customer.email, customer.phone].filter(Boolean).join(" · ") || customer.vatNumber || copy.noData}
+            </div>
+          </div>
+        </div>
+      </TableCell>
+      <TableCell className="px-2 py-2">
+        <StatusBadge
+          active={text.customers.labels.active}
+          status={customer.customerStatus}
+          copy={copy}
+          suspended={suspended}
+        />
+      </TableCell>
+      <TableCell className="px-2 py-2">
+        <Badge className={customerTypeBadgeClass(customer.customerType)} variant="outline">
+          {customerTypeLabel(customer.customerType, copy)}
+        </Badge>
+      </TableCell>
+      <TableCell className="px-2 py-2">
+        <Badge className={tierBadgeClass(customer.tier)} variant="outline">
+          {tierLabel(customer.tier, copy)}
+        </Badge>
+      </TableCell>
+      <TableCell className="px-2 py-2 text-right font-semibold tabular-nums">{customer.ordersCount}</TableCell>
+      <TableCell className="whitespace-nowrap px-2 py-2 text-right font-semibold tabular-nums">{formatEuro(customer.revenue)}</TableCell>
+      <TableCell className="whitespace-nowrap px-2 py-2 text-right text-xs tabular-nums text-slate-500">
+        {formatDateTime(customer.lastContact) ?? formatDate(customer.updatedAt) ?? copy.noData}
+      </TableCell>
+      <TableCell className="px-2 py-2 text-right">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="size-7 rounded-md"
+          onClick={(event) => {
+            event.stopPropagation();
+            onOpen(customer.id);
+          }}
+          aria-label={text.common.open}
+        >
+          <MoreVertical className="size-4" />
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function CustomerMobileCard({
+  active,
+  copy,
+  customer,
+  onOpen,
+  suspended,
+  text,
+}: {
+  active: boolean;
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
+  customer: AdminCustomer;
+  onOpen: (customerId: string) => void;
+  suspended: string;
+  text: ReturnType<typeof getAdminDictionary>["admin"];
+}) {
+  return (
+    <button
+      type="button"
+      className={cn(
+        "w-full rounded-md border border-slate-200 bg-white p-2.5 text-left shadow-[0_8px_20px_rgba(15,23,42,0.035)] transition hover:border-blue-300 hover:bg-blue-50/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300",
+        active && "border-blue-300 bg-blue-50/50"
+      )}
+      onClick={() => onOpen(customer.id)}
+    >
+      <div className="flex min-w-0 items-start gap-2.5">
+        <CustomerAvatar customer={customer} />
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-start justify-between gap-2">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-black text-slate-950">{customer.companyName}</div>
+              <div className="mt-0.5 truncate text-xs text-slate-500">{customer.email || copy.noData}</div>
+            </div>
+            <MoreVertical className="size-4 shrink-0 text-slate-400" />
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <StatusBadge
+              active={text.customers.labels.active}
+              status={customer.customerStatus}
+              copy={copy}
+              suspended={suspended}
+            />
+            <Badge className={customerTypeBadgeClass(customer.customerType)} variant="outline">
+              {customerTypeLabel(customer.customerType, copy)}
+            </Badge>
+            <Badge className={tierBadgeClass(customer.tier)} variant="outline">
+              {tierLabel(customer.tier, copy)}
+            </Badge>
+          </div>
+          <div className="mt-2 grid grid-cols-3 gap-1.5">
+            <CustomerMobileFact label={text.customers.labels.orderCount} value={customer.ordersCount} />
+            <CustomerMobileFact label={text.customers.labels.spent} value={formatEuro(customer.revenue)} emphasis />
+            <CustomerMobileFact
+              label={text.customers.labels.last}
+              value={formatDate(customer.lastContact) ?? formatDate(customer.updatedAt) ?? copy.noData}
+            />
+          </div>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 function CustomerDetail({
   canManageCustomerLevel,
   copy,
   customer,
   detailLoading,
-  embedded = false,
   onAction,
   onEdit,
   onOpenOrder,
@@ -1143,7 +1239,6 @@ function CustomerDetail({
   copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
   customer: AdminCustomer | null;
   detailLoading: boolean;
-  embedded?: boolean;
   onAction: (action: Omit<PendingAction, "ids">, id: string) => void;
   onEdit: (kind: CustomerEditState["kind"], customer: AdminCustomer) => void;
   onOpenOrder: (order: CustomerOrderSummary) => void;
@@ -1154,35 +1249,59 @@ function CustomerDetail({
     customerId: null,
     value: "profile",
   });
+  const [orderFilterState, setOrderFilterState] = React.useState<{
+    customerId: string | null;
+    query: string;
+    status: string;
+  }>({
+    customerId: null,
+    query: "",
+    status: allValue,
+  });
   const activeTab = tabState.customerId === customer?.id ? tabState.value : "profile";
+  const orderFilterCustomerId = customer?.id ?? null;
+  const orderQuery =
+    orderFilterState.customerId === orderFilterCustomerId ? orderFilterState.query : "";
+  const orderStatusFilter =
+    orderFilterState.customerId === orderFilterCustomerId ? orderFilterState.status : allValue;
+
+  function updateOrderQuery(query: string) {
+    setOrderFilterState({
+      customerId: orderFilterCustomerId,
+      query,
+      status: orderStatusFilter,
+    });
+  }
+
+  function updateOrderStatusFilter(status: string) {
+    setOrderFilterState({
+      customerId: orderFilterCustomerId,
+      query: orderQuery,
+      status,
+    });
+  }
 
   if (detailLoading) {
     return (
-      <aside
-        className={cn(
-          "min-h-full bg-white p-1.5 lg:sticky lg:top-3 lg:min-h-0 lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto lg:p-3 lg:shadow-[0_16px_40px_rgba(15,23,42,0.05)]",
-          embedded ? "rounded-none border-0" : "rounded-md border border-slate-200 lg:rounded-lg"
-        )}
-      >
-        <div className="space-y-1.5 lg:space-y-2">
-          <div className="h-6 animate-pulse rounded-md bg-muted lg:h-7" />
-          <div className="h-16 animate-pulse rounded-md bg-muted lg:h-20" />
-          <div className="h-28 animate-pulse rounded-md bg-muted lg:h-36" />
+      <div className="h-full min-h-0 bg-white p-5">
+        <div className="space-y-3">
+          <div className="h-16 animate-pulse rounded-lg bg-slate-100" />
+          <div className="grid grid-cols-3 gap-2">
+            <div className="h-16 animate-pulse rounded-lg bg-slate-100" />
+            <div className="h-16 animate-pulse rounded-lg bg-slate-100" />
+            <div className="h-16 animate-pulse rounded-lg bg-slate-100" />
+          </div>
+          <div className="h-72 animate-pulse rounded-lg bg-slate-100" />
         </div>
-      </aside>
+      </div>
     );
   }
 
   if (!customer) {
     return (
-      <aside
-        className={cn(
-          "grid min-h-full place-items-center bg-white p-2 text-center text-xs text-muted-foreground lg:sticky lg:top-3 lg:min-h-64 lg:p-4 lg:text-sm lg:shadow-[0_16px_40px_rgba(15,23,42,0.05)]",
-          embedded ? "rounded-none border-0" : "rounded-md border border-slate-200 lg:rounded-lg"
-        )}
-      >
+      <div className="grid h-full min-h-0 place-items-center bg-white p-6 text-center text-sm text-muted-foreground">
         {copy.detailsEmpty}
-      </aside>
+      </div>
     );
   }
 
@@ -1210,159 +1329,201 @@ function CustomerDetail({
   }
 
   const sortedOrders = [...(customer.orders ?? [])].sort(compareCreatedAtDesc);
+  const orderStatusOptions: readonly (readonly [string, string])[] = [
+    [allValue, copy.allStatuses],
+    ...Array.from(new Set(sortedOrders.map((order) => order.status).filter(Boolean))).map(
+      (value) => [value, orderStatusLabel(value, text)] as const
+    ),
+  ];
+  const filteredOrders = sortedOrders.filter((order) => {
+    const query = orderQuery.trim().toLowerCase();
+    const matchesStatus = orderStatusFilter === allValue || order.status === orderStatusFilter;
+
+    if (!matchesStatus) {
+      return false;
+    }
+
+    if (!query) {
+      return true;
+    }
+
+    return [order.orderNo, order.status, order.paymentStatus]
+      .some((value) => value.toLowerCase().includes(query));
+  });
   const sortedActivity = [...(customer.recentActivity ?? [])].sort(compareCreatedAtDesc);
 
   return (
-    <aside
-      className={cn(
-        "min-h-full min-w-0 overflow-hidden bg-white text-slate-950 lg:sticky lg:top-3 lg:min-h-0 lg:max-h-[calc(100vh-96px)] lg:overflow-y-auto lg:shadow-[0_16px_40px_rgba(15,23,42,0.05)]",
-        embedded ? "rounded-none border-0" : "rounded-md border border-slate-200 lg:rounded-lg"
-      )}
-    >
-      <div className="border-b border-slate-200 px-2 py-1.5 lg:p-3">
-        <div className="flex items-start justify-between gap-2 pr-8 lg:gap-3 lg:pr-0">
+    <div className="flex h-full min-h-0 flex-col bg-white text-slate-950">
+      <header className="border-b border-slate-200 px-3 py-3 sm:px-4">
+        <div className="flex items-start gap-2.5 pr-9 sm:gap-3">
+          <CustomerAvatar customer={customer} size="lg" />
           <div className="min-w-0">
-            <div className="flex min-w-0 items-center gap-1.5">
-              <h3 className="min-w-0 truncate text-[15px] font-semibold leading-5 lg:text-base">{customer.companyName}</h3>
-              <div className="shrink-0 lg:hidden">
-                <StatusBadge
-                  active={text.customers.labels.active}
-                  status={customer.customerStatus}
-                  copy={copy}
-                  suspended={suspended}
-                />
-              </div>
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <h3 className="line-clamp-2 min-w-0 text-base font-black leading-5 text-slate-950 [overflow-wrap:anywhere] sm:text-lg sm:leading-6">
+                {customer.companyName}
+              </h3>
+              <StatusBadge
+                active={text.customers.labels.active}
+                status={customer.customerStatus}
+                copy={copy}
+                suspended={suspended}
+              />
             </div>
-            <p className="truncate text-[11px] leading-4 text-muted-foreground lg:text-xs">{customer.email || customer.vatNumber || copy.noData}</p>
-          </div>
-          <div className="hidden shrink-0 lg:block">
-            <StatusBadge
-              active={text.customers.labels.active}
-              status={customer.customerStatus}
-              copy={copy}
-              suspended={suspended}
-            />
+            <p className="mt-1 break-words text-xs leading-4 text-slate-500 sm:text-sm sm:leading-5">
+              {[customer.email, customer.phone].filter(Boolean).join(" · ") || customer.vatNumber || copy.noData}
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge className={customerTypeBadgeClass(customer.customerType)} variant="outline">
+                {customerTypeLabel(customer.customerType, copy)}
+              </Badge>
+              <Badge className={tierBadgeClass(customer.tier)} variant="outline">
+                {tierLabel(customer.tier, copy)}
+              </Badge>
+              <Badge className="border-slate-200 bg-slate-50 text-slate-600" variant="outline">
+                {formatDate(customer.createdAt) ?? copy.noData}
+              </Badge>
+            </div>
           </div>
         </div>
-        <div className="mt-1.5 grid grid-cols-1 gap-1 lg:mt-2 lg:gap-1.5">
-          <StatusChangeSelect
-            label={copy.status}
-            options={customerStatusChoices.map((status) => [status, statusCopy(status)] as const)}
-            value={customer.customerStatus}
-            onValueChange={handleStatusChange}
-          />
+        <div className="mt-3 grid grid-cols-3 divide-x divide-slate-200 rounded-md border border-slate-200 bg-white">
+          <SheetMetric label={text.customers.labels.orderCount} value={customer.ordersCount} />
+          <SheetMetric label={copy.totalSpend} value={formatEuro(customer.revenue)} />
+          <SheetMetric label={copy.customerLevel} value={tierLabel(customer.tier, copy)} />
         </div>
-      </div>
+      </header>
 
       <Tabs
         value={activeTab}
         onValueChange={(value) => setTabState({ customerId: customer.id, value })}
-        className="p-2 lg:p-3"
+        className="flex min-h-0 flex-1 flex-col"
       >
-        <div className="-mx-2 overflow-x-auto px-2 lg:-mx-3 lg:px-3">
-          <TabsList className="inline-flex h-7 w-max min-w-full justify-start rounded-md bg-slate-100 p-0.5 lg:h-8">
-            <TabsTrigger className="h-6 px-2 text-[11px] lg:h-7 lg:text-xs" value="profile">{copy.profile}</TabsTrigger>
-            <TabsTrigger className="h-6 px-2 text-[11px] lg:h-7 lg:text-xs" value="orders">{copy.orders}</TabsTrigger>
-            <TabsTrigger className="h-6 px-2 text-[11px] lg:h-7 lg:text-xs" value="audit">{copy.recentActivity}</TabsTrigger>
-          </TabsList>
-        </div>
+        <TabsList className="grid h-9 rounded-none border-b border-slate-200 bg-white p-0 text-xs font-bold [grid-template-columns:repeat(3,minmax(0,1fr))]">
+          <TabsTrigger className="h-9 min-w-0 truncate rounded-none border-b-2 border-transparent px-1 data-[state=active]:border-blue-600 data-[state=active]:bg-white data-[state=active]:text-blue-600" value="profile">{copy.profile}</TabsTrigger>
+          <TabsTrigger className="h-9 min-w-0 truncate rounded-none border-b-2 border-transparent px-1 data-[state=active]:border-blue-600 data-[state=active]:bg-white data-[state=active]:text-blue-600" value="orders">{copy.orders}</TabsTrigger>
+          <TabsTrigger className="h-9 min-w-0 truncate rounded-none border-b-2 border-transparent px-1 data-[state=active]:border-blue-600 data-[state=active]:bg-white data-[state=active]:text-blue-600" value="audit">{copy.recentActivity}</TabsTrigger>
+        </TabsList>
 
-        <TabsContent value="profile" className="mt-2 space-y-1.5 lg:mt-3 lg:space-y-2">
-          <div className="flex justify-end">
-            <Button size="sm" variant="outline" className="h-7 px-2 text-[11px] lg:h-8 lg:text-xs" onClick={() => onEdit("profile", customer)}>
-              <Pencil />
-              {copy.editProfile}
-            </Button>
+        <TabsContent value="profile" className="mt-0 min-h-0 flex-1 overflow-y-auto p-3">
+          <div className="space-y-2.5">
+            <DetailSectionCard
+              title={copy.customerLevel}
+              actionLabel={canManageCustomerLevel ? copy.editLevel : undefined}
+              onAction={canManageCustomerLevel ? () => onEdit("level", customer) : undefined}
+            >
+              <div className="space-y-2.5">
+                <CustomerTierRoadmap currentTier={customer.tier} copy={copy} />
+                {!canManageCustomerLevel ? (
+                  <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold leading-5 text-blue-800">
+                    {copy.levelReadonly}
+                  </div>
+                ) : null}
+              </div>
+            </DetailSectionCard>
+
+            <DetailSectionCard title={copy.profile} actionLabel={text.common.edit} onAction={() => onEdit("profile", customer)}>
+              <DetailGrid
+                items={[
+                  [copy.companyName, customer.companyName || copy.noData],
+                  [copy.fieldLabels.phone, customer.phone || copy.noData],
+                  [copy.fieldLabels.email, customer.email || copy.noData],
+                  [text.customers.labels.reference, customer.contactName || copy.noData],
+                  [copy.fieldLabels.vat, customer.vatNumber || customer.partitaIva || copy.noData],
+                  [copy.fiscalCode, customer.codiceFiscale || copy.noData],
+                ]}
+              />
+            </DetailSectionCard>
+
+            <DetailSectionCard title={text.common.address} actionLabel={text.common.edit} onAction={() => onEdit("profile", customer)}>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <AddressBlock label={copy.billingAddress} value={customer.billingAddress} fallback={copy.noData} />
+                <AddressBlock label={copy.shippingAddress} value={customer.shippingAddress} fallback={copy.noData} />
+              </div>
+            </DetailSectionCard>
+
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              <DetailSectionCard title={copy.customerType} actionLabel={text.common.edit} onAction={() => onEdit("classification", customer)}>
+                <Badge className={customerTypeBadgeClass(customer.customerType)} variant="outline">
+                  {customerTypeLabel(customer.customerType, copy)}
+                </Badge>
+              </DetailSectionCard>
+              <DetailSectionCard title={copy.status}>
+                <StatusChangeSelect
+                  label={copy.status}
+                  options={customerStatusChoices.map((status) => [status, statusCopy(status)] as const)}
+                  value={customer.customerStatus}
+                  onValueChange={handleStatusChange}
+                />
+              </DetailSectionCard>
+            </div>
           </div>
-          <DetailGrid
-            items={[
-              canManageCustomerLevel
-                ? {
-                    actionLabel: copy.editLevel,
-                    label: copy.customerLevel,
-                    onClick: () => onEdit("level", customer),
-                    value: tierLabel(customer.tier, copy),
-                  }
-                : ([copy.customerLevel, tierLabel(customer.tier, copy)] as [string, React.ReactNode]),
-              [text.customers.labels.reference, customer.contactName || copy.noData],
-              [copy.fieldLabels.email, customer.email || copy.noData],
-              [copy.fieldLabels.phone, customer.phone || copy.noData],
-              {
-                actionLabel: copy.customerType,
-                label: copy.customerType,
-                onClick: () => onEdit("classification", customer),
-                value: customerTypeLabel(customer.customerType, copy),
-              },
-              [copy.status, statusLabel(customer.customerStatus, copy, suspended, text.customers.labels.active)],
-              [copy.fieldLabels.created, formatDate(customer.createdAt) ?? copy.noData],
-            ]}
-          />
-          <AddressBlock label={copy.registeredAddress} value={customer.registeredAddress} fallback={copy.noData} />
-          <AddressBlock label={copy.billingAddress} value={customer.billingAddress} fallback={copy.noData} />
-          <AddressBlock label={copy.shippingAddress} value={customer.shippingAddress} fallback={copy.noData} />
         </TabsContent>
 
-        <TabsContent value="orders" className="mt-2 space-y-2 lg:mt-3 lg:space-y-4">
-          <section>
-            <h4 className="mb-1.5 text-xs font-semibold lg:mb-2 lg:text-sm">{text.customers.historyTitle}</h4>
-            {sortedOrders.length === 0 ? (
+        <TabsContent value="orders" className="mt-0 min-h-0 flex-1 overflow-y-auto p-3">
+          <div className="space-y-2.5">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+              <div className="relative min-w-0">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={orderQuery}
+                  onChange={(event) => updateOrderQuery(event.target.value)}
+                  placeholder={text.orders.searchPlaceholder}
+                  className="h-9 rounded-md pl-9 text-sm"
+                />
+              </div>
+              <div className="min-w-[132px]">
+                <FilterSelect
+                  ariaLabel={copy.filters}
+                  value={orderStatusFilter}
+                  onValueChange={updateOrderStatusFilter}
+                  options={orderStatusOptions}
+                />
+              </div>
+            </div>
+            {filteredOrders.length === 0 ? (
               <EmptyState label={text.customers.historyEmpty} />
             ) : (
-              <div className="space-y-1.5 lg:space-y-2">
-                {sortedOrders.map((order) => (
+              <div className="overflow-hidden rounded-lg border border-slate-200">
+                {filteredOrders.map((order) => (
                   <button
                     key={order.id}
                     type="button"
-                    className="grid w-full grid-cols-[4.25rem_minmax(0,1fr)_auto_auto] items-center gap-2 rounded-md border border-slate-200 bg-white px-1.5 py-1.5 text-left text-xs transition hover:border-primary/40 hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/35 lg:grid-cols-[5rem_minmax(0,1fr)_auto_auto] lg:p-2 lg:text-sm"
+                    className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-slate-100 bg-white px-2.5 py-2 text-left text-sm transition last:border-b-0 hover:bg-blue-50/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
                     onClick={() => onOpenOrder(order)}
                   >
-                    <div className="min-w-0 rounded bg-slate-50 px-1.5 py-1 text-center">
-                      <div className="truncate font-mono text-[12px] font-bold leading-4 text-slate-950 lg:text-sm">
-                        {formatDate(order.createdAt) ?? copy.noData}
-                      </div>
-                      <div className="truncate text-[10px] font-medium leading-3 text-muted-foreground lg:text-[11px]">
-                        {orderStatusLabel(order.status, text)}
-                      </div>
-                    </div>
                     <div className="min-w-0">
-                      <div className="truncate font-semibold leading-4">{order.orderNo}</div>
-                      <div className="mt-0.5 truncate text-[11px] text-muted-foreground lg:text-xs">
-                        {orderStatusLabel(order.status, text)}
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <span className="truncate font-bold text-blue-700">{order.orderNo}</span>
+                        <Badge variant="outline" className={customerOrderStatusBadgeClass(order.status)}>
+                          {orderStatusLabel(order.status, text)}
+                        </Badge>
+                      </div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        {formatDate(order.createdAt) ?? copy.noData} · {paymentStatusLabel(order.paymentStatus, copy)}
                       </div>
                     </div>
-                    <div className="text-right font-semibold">
-                      <div className="whitespace-nowrap">{formatEuro(order.total)}</div>
-                      <div className="text-[11px] font-medium text-muted-foreground lg:text-xs">{order.lineCount}</div>
+                    <div className="flex items-center gap-2 text-right">
+                      <div>
+                        <div className="font-bold text-slate-950">{formatEuro(order.total)}</div>
+                        <div className="text-xs text-slate-500">{order.lineCount}</div>
+                      </div>
+                      <ChevronRight className="size-4 text-slate-400" />
                     </div>
-                    <ChevronRight className="size-3.5 text-slate-400" />
                   </button>
                 ))}
               </div>
             )}
-          </section>
+          </div>
         </TabsContent>
 
-        <TabsContent value="audit" className="mt-2 lg:mt-3">
+        <TabsContent value="audit" className="mt-0 min-h-0 flex-1 overflow-y-auto p-3">
           {sortedActivity.length === 0 ? (
             <EmptyState label={copy.recentActivityEmpty} />
           ) : (
-            <ol className="space-y-1.5 lg:space-y-2">
-              {sortedActivity.map((event) => (
-                <li key={event.id} className="rounded-md border border-slate-200 bg-white px-1.5 py-1.5 text-xs lg:p-2 lg:text-sm">
-                  <div className="flex items-center justify-between gap-2 lg:gap-3">
-                    <span className="font-medium">{customerActivityLabel(event, copy)}</span>
-                    <span className="text-[11px] text-muted-foreground lg:text-xs">{formatDate(event.createdAt)}</span>
-                  </div>
-                  <div className="mt-0.5 break-words text-[11px] text-muted-foreground lg:mt-1 lg:text-xs">
-                    {customerActivityDescription(event, copy)}
-                  </div>
-                </li>
-              ))}
-            </ol>
+            <CustomerActivityTimeline activities={sortedActivity} copy={copy} />
           )}
         </TabsContent>
       </Tabs>
-    </aside>
+    </div>
   );
 }
 
@@ -1388,11 +1549,12 @@ function CustomerOrderDetailDialog({
     () => [...(order?.operationHistory ?? [])].sort(compareCreatedAtDesc),
     [order?.operationHistory]
   );
+  const logistics = order ? customerOrderLogistics(order, copy, text) : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="grid max-h-[calc(100dvh-0.75rem)] w-[calc(100vw-0.75rem)] max-w-[calc(100vw-0.75rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-md bg-white p-0 sm:max-w-2xl">
-        <DialogHeader className="border-b border-slate-200 px-3 py-2 text-left">
+        <DialogHeader className="border-b border-slate-200 px-3 py-2 pr-10 text-left">
           <DialogTitle className="truncate text-base font-bold">
             {text.orders.table.order} {orderNo}
           </DialogTitle>
@@ -1439,19 +1601,39 @@ function CustomerOrderDetailDialog({
                   <AmountTile
                     label={text.orders.details.fulfillment}
                     value={orderStatusLabel(order.fulfillmentStatus || order.status, text)}
+                    tone={customerOrderStatusTone(order.fulfillmentStatus || order.status)}
                   />
                   <AmountTile label={text.customers.labels.orderCount} value={`${order.items}`} />
                 </div>
               </section>
 
               <section className="rounded-md border border-slate-200 bg-white p-2">
-                <h4 className="mb-1.5 text-xs font-semibold">{text.orders.details.logistics}</h4>
+                <div className="mb-1.5 flex min-w-0 items-center justify-between gap-2">
+                  <h4 className="text-xs font-semibold">{text.orders.details.logistics}</h4>
+                  {logistics?.status ? (
+                    <Badge
+                      className={customerOrderStatusBadgeClass(order.fulfillmentStatus || order.status)}
+                      variant="outline"
+                    >
+                      {logistics.status}
+                    </Badge>
+                  ) : null}
+                </div>
                 <DetailGrid
                   items={[
-                    [text.common.carrier, order.carrier || text.common.none],
-                    [copy.fieldLabels.tracking, order.tracking || text.common.none],
-                    [text.common.service, valueLabel(order.service, copy) || copy.noData],
-                    [text.common.eta, valueLabel(order.eta, copy) || copy.noData],
+                    [text.common.carrier, logistics?.carrier || text.common.none],
+                    {
+                      label: copy.fieldLabels.tracking,
+                      value: logistics ? (
+                        <CustomerTrackingValue
+                          fallback={text.common.none}
+                          tracking={logistics.tracking}
+                          trackingUrl={logistics.trackingUrl}
+                        />
+                      ) : (
+                        text.common.none
+                      ),
+                    },
                   ]}
                 />
                 {order.shippingAddress ? (
@@ -1485,15 +1667,13 @@ function CustomerOrderDetailDialog({
                           <div className="mt-0.5 truncate text-[11px] font-mono text-muted-foreground">
                             {line.sku}
                           </div>
-                          <div className="mt-1 flex min-w-0 items-center gap-1 overflow-hidden rounded bg-slate-50 px-1.5 py-1 text-[11px] text-slate-600">
-                            <span>{text.orders.print.quantity}: {line.quantity}</span>
-                            <span className="text-slate-300">/</span>
-                            <span>{text.orders.details.fulfillment}: {line.fulfilledQty ?? 0}</span>
-                            <span className="text-slate-300">/</span>
-                            <span>{text.common.price}: {formatEuro(line.unitPrice)}</span>
+                          <div className="mt-1 flex flex-wrap gap-1 text-[11px] text-slate-600">
+                            <span className="rounded bg-slate-50 px-1.5 py-0.5">{text.orders.print.quantity}: {line.quantity}</span>
+                            <span className="rounded bg-slate-50 px-1.5 py-0.5">{text.orders.details.fulfillment}: {line.fulfilledQty ?? 0}</span>
+                            <span className="rounded bg-slate-50 px-1.5 py-0.5">{text.common.price}: {formatEuro(line.unitPrice)}</span>
                           </div>
                         </div>
-                        <div className="text-right font-semibold">{formatEuro(line.lineTotal)}</div>
+                        <div className="w-20 whitespace-nowrap text-right font-semibold tabular-nums">{formatEuro(line.lineTotal)}</div>
                       </div>
                     ))}
                   </div>
@@ -1743,14 +1923,6 @@ function CustomerEditDialog({
                 onChange={(event) => onProfileChange("pec", event.target.value)}
               />
             </EditField>
-            <EditField className="sm:col-span-2" label={copy.registeredAddress}>
-              <Textarea
-                value={editState.draft.registeredAddress}
-                onChange={(event) => onProfileChange("registeredAddress", event.target.value)}
-                className="min-h-16"
-                rows={2}
-              />
-            </EditField>
             <EditField label={copy.billingAddress}>
               <Textarea
                 value={editState.draft.billingAddress}
@@ -1860,22 +2032,255 @@ function EditField({
   );
 }
 
+function CustomerAvatar({
+  customer,
+  size = "default",
+}: {
+  customer: Pick<AdminCustomer, "companyName" | "email">;
+  size?: "default" | "lg";
+}) {
+  return (
+    <div
+      className={cn(
+        "grid shrink-0 place-items-center rounded-full bg-blue-600 font-black text-white shadow-[0_10px_22px_rgba(37,99,235,0.24)]",
+        size === "lg" ? "size-12 text-lg sm:size-14 sm:text-xl" : "size-9 text-xs sm:size-10 sm:text-sm"
+      )}
+      aria-hidden="true"
+    >
+      {customerInitials(customer)}
+    </div>
+  );
+}
+
+function SheetMetric({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="min-w-0 px-1.5 py-2 text-center">
+      <div className="truncate text-[11px] font-medium leading-3 text-slate-500">{label}</div>
+      <div className="mt-1 truncate text-base font-black leading-5 text-slate-950 sm:text-lg">{value}</div>
+    </div>
+  );
+}
+
+function CustomerTierRoadmap({
+  copy,
+  currentTier,
+}: {
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
+  currentTier: CustomerTier;
+}) {
+  const currentIndex = Math.max(tiers.indexOf(currentTier), 0);
+
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50/70 px-2.5 py-2.5">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <Badge className={cn("h-6 bg-white px-2 text-xs font-black", tierBadgeClass(currentTier))} variant="outline">
+          {tierLabel(currentTier, copy)}
+        </Badge>
+        <span className="shrink-0 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-black text-blue-700">
+          {currentIndex + 1}/{tiers.length}
+        </span>
+      </div>
+
+      <div className="relative pt-0.5" aria-label={copy.customerLevel}>
+        <div
+          className="absolute left-3 right-3 top-3 grid grid-cols-6 gap-1"
+          aria-hidden="true"
+        >
+          {tiers.slice(0, -1).map((tier, index) => (
+            <span
+              key={tier}
+              className={cn(
+                "h-1 rounded-full transition-colors",
+                index < currentIndex ? "bg-blue-600" : "bg-slate-200"
+              )}
+            />
+          ))}
+        </div>
+
+        <ol className="relative grid grid-cols-7 gap-1">
+          {tiers.map((tier, index) => {
+            const isComplete = index < currentIndex;
+            const isCurrent = index === currentIndex;
+
+            return (
+              <li key={tier} className="min-w-0 text-center" aria-current={isCurrent ? "step" : undefined}>
+                <div
+                  className={cn(
+                    "mx-auto grid size-6 place-items-center rounded-full border text-[10px] font-black leading-none shadow-sm transition-colors",
+                    isCurrent
+                      ? "border-blue-600 bg-white text-blue-700 ring-4 ring-blue-100"
+                      : isComplete
+                        ? "border-blue-600 bg-blue-600 text-white"
+                        : "border-slate-200 bg-white text-slate-400"
+                  )}
+                >
+                  {index + 1}
+                </div>
+                <div
+                  className={cn(
+                    "mt-1 truncate text-[10px] font-black leading-3",
+                    isCurrent ? "text-blue-700" : isComplete ? "text-slate-700" : "text-slate-400"
+                  )}
+                >
+                  {tierLabel(tier, copy)}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      </div>
+    </div>
+  );
+}
+
+function DetailSectionCard({
+  actionLabel,
+  children,
+  onAction,
+  title,
+}: {
+  actionLabel?: string;
+  children: React.ReactNode;
+  onAction?: () => void;
+  title: string;
+}) {
+  return (
+    <section className="rounded-md border border-slate-200 bg-white p-3 shadow-[0_8px_20px_rgba(15,23,42,0.03)]">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h4 className="min-w-0 truncate text-sm font-black text-slate-950">{title}</h4>
+        {onAction && actionLabel ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-7 shrink-0 rounded-md px-2 text-xs font-bold"
+            onClick={onAction}
+          >
+            <Pencil className="size-3.5" />
+            {actionLabel}
+          </Button>
+        ) : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function CustomerActivityTimeline({
+  activities,
+  copy,
+}: {
+  activities: CustomerRecentActivity[];
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
+}) {
+  return (
+    <ol className="relative space-y-0 before:absolute before:bottom-5 before:left-4 before:top-4 before:w-px before:bg-slate-200 sm:before:left-5">
+      {activities.map((event) => {
+        const visual = activityVisual(event);
+        const Icon = visual.icon;
+
+        return (
+          <li key={event.id} className="relative grid grid-cols-[32px_minmax(0,1fr)] gap-2.5 pb-4 last:pb-0 sm:grid-cols-[40px_minmax(0,1fr)] sm:gap-3">
+            <div
+              className={cn(
+                "relative z-10 grid size-8 place-items-center rounded-full border bg-white shadow-sm sm:size-10",
+                visual.className
+              )}
+              aria-hidden="true"
+            >
+              <Icon className="size-3.5 sm:size-4" />
+            </div>
+            <div className="min-w-0 border-b border-slate-100 pb-3 last:border-b-0">
+              <div className="min-w-0 sm:flex sm:items-start sm:justify-between sm:gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-black text-slate-950">
+                    {customerActivityLabel(event, copy)}
+                  </div>
+                  <div className="mt-0.5 break-words text-xs leading-5 text-slate-500 sm:text-sm">
+                    {customerActivityDescription(event, copy)}
+                  </div>
+                </div>
+                <span className="mt-0.5 block text-[11px] font-medium text-slate-500 sm:mt-0 sm:shrink-0 sm:whitespace-nowrap sm:text-xs">
+                  {formatDateTime(event.createdAt) ?? copy.noData}
+                </span>
+              </div>
+              <ActivityMetadata event={event} />
+            </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function ActivityMetadata({ event }: { event: CustomerRecentActivity }) {
+  const eventType = event.eventType || event.event_type || "";
+  const metadata = event.metadata ?? {};
+  const sku =
+    event.skuCode ||
+    event.sku_code ||
+    (typeof metadata.sku === "string" ? metadata.sku : "") ||
+    (typeof metadata.skuCode === "string" ? metadata.skuCode : "");
+  const brand = event.brand || (typeof metadata.brand === "string" ? metadata.brand : "");
+  const model =
+    event.model ||
+    event.modelSeries ||
+    event.model_series ||
+    (typeof metadata.model === "string" ? metadata.model : "");
+  const query =
+    event.searchQuery ||
+    event.search_query ||
+    (typeof metadata.query === "string" ? metadata.query : "") ||
+    (typeof metadata.searchQuery === "string" ? metadata.searchQuery : "");
+  const orderNo =
+    typeof metadata.orderNo === "string"
+      ? metadata.orderNo
+      : typeof metadata.order_no === "string"
+        ? metadata.order_no
+        : "";
+  const parts = [
+    sku ? `SKU: ${sku}` : null,
+    brand ? `Brand: ${brand}` : null,
+    model ? `Model: ${model}` : null,
+    query ? `Keywords: ${query}` : null,
+    orderNo ? `Order: ${orderNo}` : null,
+  ].filter((value): value is string => Boolean(value));
+
+  if (parts.length === 0 || eventType === "catalog_filter") {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-xs leading-4 text-slate-500">
+      {parts.map((part) => (
+        <span key={part}>{part}</span>
+      ))}
+    </div>
+  );
+}
+
 function Kpi({
   icon: Icon,
   label,
+  tone,
   value,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
+  tone: "blue" | "green" | "purple" | "red";
   value: number;
 }) {
   return (
-    <div className="min-w-0 rounded-md border border-slate-200 bg-white px-1.5 py-1.5 shadow-[0_8px_20px_rgba(15,23,42,0.03)] sm:p-2">
-      <div className="flex items-center justify-between gap-1 sm:gap-2">
-        <span className="min-w-0 truncate text-[10px] leading-3 text-muted-foreground sm:text-xs">{label}</span>
-        <Icon className="hidden size-3 shrink-0 text-muted-foreground sm:block sm:size-3.5" />
+    <div className="min-w-0 rounded-md border border-slate-200 bg-white p-2.5 shadow-[0_10px_26px_rgba(15,23,42,0.035)]">
+      <div className="flex min-w-0 items-center gap-2.5">
+        <div className={cn("grid size-9 shrink-0 place-items-center rounded-full text-white shadow-sm", kpiToneClass(tone))}>
+          <Icon className="size-4" />
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-xl font-black leading-6 text-slate-950">{value}</div>
+          <div className="mt-0.5 truncate text-xs font-medium leading-4 text-slate-500">{label}</div>
+        </div>
       </div>
-      <div className="mt-0.5 text-base font-semibold leading-none sm:mt-1 sm:text-lg">{value}</div>
     </div>
   );
 }
@@ -1890,11 +2295,11 @@ function CustomerMobileFact({
   value: React.ReactNode;
 }) {
   return (
-    <div className="min-h-[40px] min-w-0 rounded bg-slate-50 px-1.5 py-1">
+    <div className="min-h-[38px] min-w-0 rounded bg-slate-50 px-1.5 py-1">
       <div className="truncate text-[10px] font-semibold leading-3 text-slate-400">{label}</div>
       <div
         className={cn(
-          "mt-0.5 truncate text-[12px] font-black leading-4 text-slate-800",
+          "mt-0.5 truncate text-[11px] font-black leading-4 text-slate-800",
           emphasis && "text-primary"
         )}
       >
@@ -1917,7 +2322,7 @@ function FilterSelect({
 }) {
   return (
     <Select value={value} onValueChange={onValueChange}>
-      <SelectTrigger size="sm" className="h-7 w-full px-2 text-[11px] sm:h-8 sm:text-xs" aria-label={ariaLabel}>
+      <SelectTrigger size="sm" className="h-9 w-full rounded-md px-2 text-xs" aria-label={ariaLabel}>
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -1989,7 +2394,7 @@ function AmountTile({
 }: {
   emphasis?: boolean;
   label: string;
-  tone?: "default" | "danger" | "success" | "warning";
+  tone?: "default" | "danger" | "success" | "warning" | "info";
   value: React.ReactNode;
 }) {
   return (
@@ -1997,6 +2402,37 @@ function AmountTile({
       <div className="truncate text-[11px] leading-3 text-muted-foreground lg:text-xs">{label}</div>
       <div className="mt-0.5 truncate text-[13px] font-semibold leading-4 lg:text-sm lg:leading-5">{value}</div>
     </div>
+  );
+}
+
+function CustomerTrackingValue({
+  fallback,
+  tracking,
+  trackingUrl,
+}: {
+  fallback: string;
+  tracking: string;
+  trackingUrl: string | null;
+}) {
+  if (!tracking) {
+    return fallback;
+  }
+
+  if (!trackingUrl) {
+    return <span className="font-black text-slate-900">{tracking}</span>;
+  }
+
+  return (
+    <a
+      href={trackingUrl}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex min-w-0 items-center gap-1 font-black text-blue-700 underline-offset-2 hover:underline"
+      aria-label={tracking}
+    >
+      <span className="min-w-0 truncate">{tracking}</span>
+      <ExternalLink className="size-3 shrink-0" aria-hidden="true" />
+    </a>
   );
 }
 
@@ -2011,7 +2447,7 @@ type DetailGridItem =
 
 function DetailGrid({ items }: { items: DetailGridItem[] }) {
   return (
-    <div className="grid grid-cols-2 gap-1 text-xs lg:gap-1.5 lg:text-sm">
+    <div className="grid grid-cols-[repeat(auto-fit,minmax(132px,1fr))] gap-1 text-xs sm:gap-1.5 sm:text-sm">
       {items.map((item) => {
         const normalized = Array.isArray(item)
           ? { label: item[0], value: item[1] }
@@ -2024,7 +2460,7 @@ function DetailGrid({ items }: { items: DetailGridItem[] }) {
                 <Pencil className="size-3 shrink-0 text-primary/70" />
               ) : null}
             </div>
-            <div className="mt-0.5 break-words text-[13px] font-semibold leading-4 lg:text-sm lg:leading-5">{normalized.value}</div>
+            <div className="mt-0.5 break-words text-[13px] font-semibold leading-4 [overflow-wrap:anywhere] lg:text-sm lg:leading-5">{normalized.value}</div>
           </>
         );
 
@@ -2056,7 +2492,7 @@ function AddressBlock({ fallback, label, value }: { fallback: string; label: str
   return (
     <div className="rounded-md border border-slate-200 bg-white px-1.5 py-1.5 text-xs lg:p-2 lg:text-sm">
       <div className="text-[11px] leading-3 text-muted-foreground lg:text-xs">{label}</div>
-      <div className="mt-0.5 break-words text-[13px] font-medium leading-4 lg:text-sm lg:leading-5">{value || fallback}</div>
+      <div className="mt-0.5 break-words text-[13px] font-medium leading-4 [overflow-wrap:anywhere] lg:text-sm lg:leading-5">{value || fallback}</div>
     </div>
   );
 }
@@ -2074,7 +2510,6 @@ function profileDraftFromCustomer(customer: AdminCustomer): CustomerProfileDraft
     fiscalCode: customer.codiceFiscale ?? "",
     pec: customer.pec ?? "",
     phone: customer.phone ?? "",
-    registeredAddress: customer.registeredAddress ?? "",
     sdi: customer.sdi || customer.codiceDestinatario || "",
     shippingAddress: customer.shippingAddress ?? "",
     vatNumber: customer.vatNumber || customer.partitaIva || "",
@@ -2109,7 +2544,6 @@ function buildCustomerEditPayload(
         pec: nullableDraftText(editState.draft.pec),
         phone: nullableDraftText(editState.draft.phone),
         reason,
-        registeredAddress: nullableDraftText(editState.draft.registeredAddress),
         sdi: nullableDraftText(editState.draft.sdi),
         shippingAddress: nullableDraftText(editState.draft.shippingAddress),
         vatNumber: nullableDraftText(editState.draft.vatNumber),
@@ -2260,6 +2694,156 @@ function orderStatusLabel(
   return adminOrderStatus[value] ?? orderStatus[value] ?? fulfillmentStatus[value] ?? value;
 }
 
+function normalizeCustomerOrderLogistics(order: CustomerOrderDetail): CustomerOrderDetail {
+  const parsed = parseCarrierTrackingFromService(order.service);
+  const carrier = cleanLogisticsText(order.carrier) || parsed.carrier;
+  const tracking = cleanLogisticsText(order.tracking) || parsed.tracking;
+
+  return {
+    ...order,
+    carrier,
+    tracking,
+  };
+}
+
+function customerOrderLogistics(
+  order: CustomerOrderDetail,
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"],
+  text: ReturnType<typeof getAdminDictionary>["admin"]
+) {
+  const normalizedOrder = normalizeCustomerOrderLogistics(order);
+  const carrier = cleanLogisticsText(normalizedOrder.carrier);
+  const tracking = cleanLogisticsText(normalizedOrder.tracking);
+  const status =
+    valueLabel(order.eta, copy) ||
+    orderStatusLabel(order.fulfillmentStatus || order.status, text);
+
+  return {
+    carrier,
+    status,
+    tracking,
+    trackingUrl: buildCustomerCarrierTrackingUrl(carrier, tracking),
+  };
+}
+
+function parseCarrierTrackingFromService(service: string | null | undefined) {
+  const normalized = cleanLogisticsText(service);
+
+  if (!normalized) {
+    return { carrier: "", tracking: "" };
+  }
+
+  const match = normalized.match(/^(.+?)\s*(?:\/|\||·)\s*([A-Z0-9][A-Z0-9-]{4,})$/i);
+
+  if (!match) {
+    return { carrier: "", tracking: "" };
+  }
+
+  const carrier = cleanLogisticsText(match[1]);
+  const tracking = cleanLogisticsText(match[2]);
+
+  if (!carrier || !isTrackingCandidate(tracking)) {
+    return { carrier: "", tracking: "" };
+  }
+
+  return { carrier, tracking };
+}
+
+function isTrackingCandidate(value: string) {
+  return /^[A-Z0-9][A-Z0-9-]{4,}$/i.test(value) && /\d/.test(value);
+}
+
+function cleanLogisticsText(value: string | null | undefined) {
+  const normalized = value?.trim() ?? "";
+
+  if (!normalized || /^(none|n\/a|null|undefined|无|暂无数据)$/i.test(normalized)) {
+    return "";
+  }
+
+  return normalized;
+}
+
+function buildCustomerCarrierTrackingUrl(carrier: string, tracking: string) {
+  const normalizedCarrier = carrier.toLowerCase();
+  const encodedTracking = encodeURIComponent(tracking.trim());
+
+  if (!encodedTracking || normalizedCarrier.includes("ritiro")) {
+    return null;
+  }
+
+  if (normalizedCarrier.includes("brt")) {
+    return `https://vas.brt.it/vas/sped_numspe_par.htm?lang=it&sped_numsped=${encodedTracking}`;
+  }
+
+  if (normalizedCarrier.includes("gls")) {
+    return `https://gls-group.com/IT/it/servizi-online/ricerca-spedizioni/?match=${encodedTracking}`;
+  }
+
+  if (normalizedCarrier.includes("ups")) {
+    return `https://www.ups.com/track?loc=it_IT&tracknum=${encodedTracking}`;
+  }
+
+  if (normalizedCarrier.includes("dhl")) {
+    return `https://www.dhl.com/it-it/home/tracking/tracking-parcel.html?tracking-id=${encodedTracking}`;
+  }
+
+  return `https://t.17track.net/it#nums=${encodedTracking}`;
+}
+
+function customerOrderStatusBadgeClass(status: string | null | undefined) {
+  const normalized = (status ?? "").toLowerCase();
+
+  if (normalized === "cancelled" || normalized === "canceled" || normalized === "failed") {
+    return "border-red-200 bg-red-50 text-red-700";
+  }
+
+  if (normalized === "submitted" || normalized === "draft" || normalized === "pending") {
+    return "border-blue-200 bg-blue-50 text-blue-700";
+  }
+
+  if (normalized === "completed" || normalized === "delivered") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (normalized === "accepted" || normalized === "paid") {
+    return "border-teal-200 bg-teal-50 text-teal-700";
+  }
+
+  if (normalized === "picking" || normalized === "packed") {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  if (normalized === "shipped") {
+    return "border-cyan-200 bg-cyan-50 text-cyan-700";
+  }
+
+  return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function customerOrderStatusTone(
+  status: string | null | undefined
+): "default" | "danger" | "success" | "warning" | "info" {
+  const normalized = (status ?? "").toLowerCase();
+
+  if (normalized === "cancelled" || normalized === "canceled" || normalized === "failed") {
+    return "danger";
+  }
+
+  if (normalized === "completed" || normalized === "delivered" || normalized === "accepted") {
+    return "success";
+  }
+
+  if (normalized === "picking" || normalized === "packed") {
+    return "warning";
+  }
+
+  if (normalized === "submitted" || normalized === "draft" || normalized === "pending" || normalized === "shipped") {
+    return "info";
+  }
+
+  return "default";
+}
+
 function orderOperationActionLabel(
   event: CustomerOrderDetailEvent,
   text: ReturnType<typeof getAdminDictionary>["admin"]
@@ -2317,6 +2901,106 @@ function valueLabel(
   return (copy.valueLabels as Record<string, string>)[trimmed] ?? trimmed;
 }
 
+function customerInitials(customer: Pick<AdminCustomer, "companyName" | "email">) {
+  const source = customer.companyName || customer.email || "?";
+  const parts = source
+    .replace(/[^\p{L}\p{N}@._ -]/gu, " ")
+    .split(/[\s@._-]+/)
+    .filter(Boolean);
+  const initials = `${parts[0]?.[0] ?? "?"}${parts[1]?.[0] ?? ""}`;
+
+  return initials.toUpperCase().slice(0, 2);
+}
+
+function kpiToneClass(tone: "blue" | "green" | "purple" | "red") {
+  if (tone === "green") {
+    return "bg-emerald-600";
+  }
+
+  if (tone === "purple") {
+    return "bg-violet-600";
+  }
+
+  if (tone === "red") {
+    return "bg-red-600";
+  }
+
+  return "bg-blue-600";
+}
+
+function customerTypeBadgeClass(value: CustomerType) {
+  if (value === "wholesale") {
+    return "border-blue-200 bg-blue-50 text-blue-700";
+  }
+
+  return "border-emerald-200 bg-emerald-50 text-emerald-700";
+}
+
+function tierBadgeClass(value: CustomerTier | string) {
+  if (value === "bronze") {
+    return "border-orange-200 bg-orange-50 text-orange-700";
+  }
+
+  if (value === "silver") {
+    return "border-slate-200 bg-slate-50 text-slate-700";
+  }
+
+  if (value === "gold") {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  if (value === "emerald") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (value === "diamond") {
+    return "border-cyan-200 bg-cyan-50 text-cyan-700";
+  }
+
+  if (value === "master") {
+    return "border-violet-200 bg-violet-50 text-violet-700";
+  }
+
+  if (value === "king") {
+    return "border-rose-200 bg-rose-50 text-rose-700";
+  }
+
+  return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function activityVisual(event: CustomerRecentActivity): {
+  className: string;
+  icon: React.ComponentType<{ className?: string }>;
+} {
+  const eventType = event.eventType || event.event_type || "";
+
+  if (eventType === "product_view") {
+    return { className: "border-blue-100 bg-blue-50 text-blue-600", icon: Eye };
+  }
+
+  if (eventType === "model_view") {
+    return { className: "border-emerald-100 bg-emerald-50 text-emerald-600", icon: Package };
+  }
+
+  if (eventType === "catalog_search") {
+    return { className: "border-violet-100 bg-violet-50 text-violet-600", icon: Search };
+  }
+
+  if (eventType === "catalog_filter") {
+    return { className: "border-amber-100 bg-amber-50 text-amber-600", icon: ListFilter };
+  }
+
+  if (eventType === "order_detail_view") {
+    return { className: "border-orange-100 bg-orange-50 text-orange-600", icon: BriefcaseBusiness };
+  }
+
+  if (eventType === "account_created" || eventType === "profile_updated") {
+    return { className: "border-emerald-100 bg-emerald-50 text-emerald-600", icon: BadgeCheck };
+  }
+
+  return { className: "border-slate-200 bg-slate-50 text-slate-500", icon: BadgeCheck };
+}
+
 function statusBadgeClass(status: CustomerStatus) {
   if (status === "active") {
     return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700";
@@ -2329,9 +3013,16 @@ function statusBadgeClass(status: CustomerStatus) {
   return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700";
 }
 
-function amountTileClass(tone: "default" | "danger" | "success" | "warning", emphasis?: boolean) {
+function amountTileClass(
+  tone: "default" | "danger" | "success" | "warning" | "info",
+  emphasis?: boolean
+) {
   if (tone === "danger") {
     return "border-red-200 bg-red-50/70 text-red-900";
+  }
+
+  if (tone === "info") {
+    return "border-blue-200 bg-blue-50/70 text-blue-950";
   }
 
   if (tone === "success") {

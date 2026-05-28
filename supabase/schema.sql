@@ -3,7 +3,7 @@
 --
 -- Local target project:
 -- - Linked project ref: yiuxrjqexlfjtxxrkqvi
--- - Snapshot date: 2026-05-27
+-- - Snapshot date: 2026-05-28
 -- - Postgres: 17.6
 -- - PostgREST: v14
 --
@@ -27,6 +27,8 @@
 -- - supabase/migrations/20260527195421_fix_realme_gt_neo_series_group.sql
 -- - supabase/migrations/20260527201635_align_remaining_mobilax_series_edges.sql
 -- - supabase/migrations/20260527202111_align_mobilax_directory_granularity.sql
+-- - supabase/migrations/20260528110726_remove_registered_address_from_customer_management.sql
+-- - supabase/migrations/20260528143000_restore_admin_email_db_permissions.sql
 -- - Status: local migration state; apply to yiuxrjqexlfjtxxrkqvi before relying on remote.
 --
 -- The remote database already uses the v4 table names below. Older local
@@ -45,6 +47,8 @@
 -- Pending migration additions:
 --   customer_id uuid references public.customers(id) on delete set null not valid
 --   private.current_profile_role()
+--     default bootstrap admin email kyox120@gmail.com is treated as admin
+--     for DB permission/RLS consistency with PARTSPRO_ADMIN_EMAILS
 --   private.is_staff() for sales, warehouse, purchasing, admin
 --   private.is_admin()
 
@@ -61,7 +65,7 @@
 --   sdi text
 --   pec text
 --   phone text
---   registered_address text
+--   registered_address text (legacy/deprecated; customer management ignores it)
 --   billing_address text
 --   shipping_address text
 --   tier text default 'standard'
@@ -126,6 +130,8 @@
 --     admin_update_employee_role(uuid, text, text)
 --     admin_update_permission_overrides(uuid, text, jsonb, text)
 --   all admin write RPCs require reason text and write admin_audit_events
+--   customer profile edits and checkout completeness use billing/shipping
+--     addresses only; registered_address is not accepted by active profile RPCs
 
 -- Catalog and inventory model.
 --
