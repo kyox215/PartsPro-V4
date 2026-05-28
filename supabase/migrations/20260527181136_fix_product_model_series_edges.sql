@@ -347,4 +347,4 @@ grant execute on function public.admin_list_products(
   text,
   text,
   text
-) to authenticated;
+) to authenticated;;

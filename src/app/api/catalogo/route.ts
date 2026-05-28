@@ -67,7 +67,10 @@ export async function GET(request: NextRequest) {
         offset: result.data.offset,
         returned: repositoryResult.data.products.length,
         currency: "EUR",
-        priceVisibility: showPrice ? "visible_authenticated" : visibilityReason,
+        priceVisibility:
+          showPrice && visibilityReason !== "customer_needs_assignment"
+            ? "visible_authenticated"
+            : visibilityReason,
         vatMode: "net_prices_plus_iva",
       },
     });

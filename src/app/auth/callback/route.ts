@@ -2,7 +2,10 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { AUTH_NEXT_COOKIE } from "@/lib/partspro-auth-cookies";
 import { cleanAuthRedirect, loginUrl, postLoginRedirect, requestOrigin } from "@/lib/partspro-auth-redirect";
-import { ensureCurrentUserAccount } from "@/lib/partspro-account-context";
+import {
+  ensureCurrentUserAccount,
+  getCurrentAccountContext,
+} from "@/lib/partspro-account-context";
 import { getAdminAuthState } from "@/lib/partspro-admin-auth";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
@@ -33,9 +36,14 @@ export async function GET(request: Request) {
         return redirectAndClearNext(`${origin}${loginUrl(next, "account")}`);
       }
 
-      const adminAuth = await getAdminAuthState();
+      const [account, adminAuth] = await Promise.all([
+        getCurrentAccountContext(),
+        getAdminAuthState(),
+      ]);
       const redirectPath = postLoginRedirect(next, {
         adminAllowed: adminAuth.allowed,
+        profileComplete:
+          account.accountType !== "customer" || Boolean(account.customer?.profileCompletedAt),
       });
 
       return redirectAndClearNext(`${origin}${redirectPath}`);

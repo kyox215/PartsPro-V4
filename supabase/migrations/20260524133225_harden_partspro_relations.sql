@@ -13,19 +13,14 @@
 --   or blocking legacy rows during the draft apply.
 
 create extension if not exists "pgcrypto";
-
 create schema if not exists private;
-
 revoke all on schema private from public;
 grant usage on schema private to authenticated;
-
 -- Profiles and customer/company relationship.
 alter table public.profiles
   add column if not exists customer_id uuid;
-
 alter table public.b2b_applications
   add column if not exists approved_customer_id uuid;
-
 do $$
 begin
   if not exists (
@@ -80,7 +75,6 @@ begin
       not valid;
   end if;
 end $$;
-
 with one_customer_per_user as (
   select
     user_id,
@@ -94,14 +88,11 @@ set customer_id = c.customer_id
 from one_customer_per_user as c
 where p.id = c.user_id
   and p.customer_id is null;
-
 create index if not exists profiles_customer_id_idx
   on public.profiles (customer_id);
-
 create index if not exists customers_user_id_idx
   on public.customers (user_id)
   where user_id is not null;
-
 do $$
 begin
   if to_regclass('public.customers_user_id_unique_idx') is null then
@@ -120,19 +111,14 @@ begin
     end if;
   end if;
 end $$;
-
 create index if not exists b2b_applications_approved_customer_id_idx
   on public.b2b_applications (approved_customer_id);
-
 comment on column public.profiles.role is
   'customer is the buyer role; sales, warehouse, purchasing, and admin are staff roles.';
-
 comment on column public.profiles.customer_id is
   'Optional direct link from an auth profile to the B2B customer/company row. Backfilled from customers.user_id when possible.';
-
 comment on column public.b2b_applications.approved_customer_id is
   'Set when a reviewed B2B application is converted into a customers company row.';
-
 create or replace function private.current_profile_role()
 returns text
 language sql
@@ -145,7 +131,6 @@ as $$
   where p.id = (select auth.uid())
   limit 1
 $$;
-
 create or replace function private.is_staff()
 returns boolean
 language sql
@@ -158,7 +143,6 @@ as $$
     false
   )
 $$;
-
 create or replace function private.is_admin()
 returns boolean
 language sql
@@ -168,7 +152,6 @@ set search_path = public, pg_temp
 as $$
   select coalesce((select private.current_profile_role()) = 'admin', false)
 $$;
-
 create or replace function private.current_customer_id()
 returns uuid
 language sql
@@ -193,7 +176,6 @@ as $$
     )
   )
 $$;
-
 create or replace function private.current_customer_status()
 returns text
 language sql
@@ -206,7 +188,6 @@ as $$
   where c.id = (select private.current_customer_id())
   limit 1
 $$;
-
 create or replace function private.can_view_b2b_prices()
 returns boolean
 language sql
@@ -217,14 +198,12 @@ as $$
   select coalesce((select private.is_staff()), false)
     or coalesce((select private.current_customer_status()) = 'active', false)
 $$;
-
 grant execute on function private.current_profile_role() to authenticated;
 grant execute on function private.is_staff() to authenticated;
 grant execute on function private.is_admin() to authenticated;
 grant execute on function private.current_customer_id() to authenticated;
 grant execute on function private.current_customer_status() to authenticated;
 grant execute on function private.can_view_b2b_prices() to authenticated;
-
 -- Catalog public summary and buyer price visibility.
 create or replace function private.product_b2b_price(_product_id uuid)
 returns numeric
@@ -244,7 +223,6 @@ as $$
     else null::numeric
   end
 $$;
-
 create or replace function private.product_tier_prices(_product_id uuid)
 returns jsonb
 language sql
@@ -263,10 +241,8 @@ as $$
     else '[]'::jsonb
   end
 $$;
-
 grant execute on function private.product_b2b_price(uuid) to authenticated;
 grant execute on function private.product_tier_prices(uuid) to authenticated;
-
 create or replace view public.catalog_public_summary
 with (security_invoker = on)
 as
@@ -304,7 +280,6 @@ select
   p.updated_at
 from public.products as p
 where p.status = 'active';
-
 create or replace view public.catalog_buyer_prices
 with (security_invoker = on)
 as
@@ -319,15 +294,12 @@ select
 from public.products as p
 where p.status = 'active'
    or (select private.is_staff());
-
 grant select on public.catalog_public_summary to anon, authenticated;
 grant select on public.catalog_buyer_prices to authenticated;
-
 -- Narrow direct product table reads so public clients cannot fetch B2B price
 -- columns directly. Apply after clients move catalog reads to the views above.
 revoke select on public.products from anon;
 revoke select on public.products from authenticated;
-
 grant select (
   id,
   sku_code,
@@ -363,7 +335,6 @@ grant select (
   image_alt,
   gallery_image_paths
 ) on public.products to anon, authenticated;
-
 -- Order integrity and atomic order creation RPC.
 do $$
 begin
@@ -391,7 +362,6 @@ begin
       not valid;
   end if;
 end $$;
-
 create or replace function private.create_order_transaction(
   p_lines jsonb,
   p_customer_id uuid default null,
@@ -604,7 +574,6 @@ begin
   return v_order_id;
 end;
 $$;
-
 create or replace function public.create_order_transaction(
   p_lines jsonb,
   p_customer_id uuid default null,
@@ -631,21 +600,17 @@ as $$
     p_vat_rate
   )
 $$;
-
 revoke execute on function public.create_order_transaction(jsonb, uuid, text, text, text, numeric, jsonb, numeric)
   from public, anon;
 grant execute on function public.create_order_transaction(jsonb, uuid, text, text, text, numeric, jsonb, numeric)
   to authenticated;
 grant execute on function private.create_order_transaction(jsonb, uuid, text, text, text, numeric, jsonb, numeric)
   to authenticated;
-
 comment on function public.create_order_transaction(jsonb, uuid, text, text, text, numeric, jsonb, numeric) is
   'Authenticated RPC wrapper for atomic order header, lines, shipping, totals, stock risk, and order event creation.';
-
 -- RMA order-line linkage, quantities, attachments, and status.
 alter table public.rma_requests
   add column if not exists attachments jsonb not null default '[]'::jsonb;
-
 update public.rma_requests
 set attachments = coalesce((
   select jsonb_agg(jsonb_build_object('url', evidence_url))
@@ -653,7 +618,6 @@ set attachments = coalesce((
 ), '[]'::jsonb)
 where attachments = '[]'::jsonb
   and coalesce(array_length(evidence_urls, 1), 0) > 0;
-
 do $$
 begin
   if not exists (
@@ -703,13 +667,10 @@ begin
       not valid;
   end if;
 end $$;
-
 create index if not exists rma_requests_order_line_status_idx
   on public.rma_requests (order_line_id, status);
-
 create index if not exists rma_requests_user_created_idx
   on public.rma_requests (user_id, created_at desc);
-
 create or replace function private.enforce_rma_order_line()
 returns trigger
 language plpgsql
@@ -800,7 +761,6 @@ begin
   return new;
 end;
 $$;
-
 do $$
 begin
   if not exists (
@@ -816,7 +776,6 @@ begin
       execute function private.enforce_rma_order_line();
   end if;
 end $$;
-
 do $$
 begin
   if not exists (
@@ -849,8 +808,6 @@ begin
     );
   end if;
 end $$;
-
 grant execute on function private.enforce_rma_order_line() to authenticated;
-
 comment on column public.rma_requests.attachments is
   'Structured RMA attachment metadata. Existing evidence_urls are preserved and mirrored here when possible.';

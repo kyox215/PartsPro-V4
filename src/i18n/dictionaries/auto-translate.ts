@@ -24,7 +24,7 @@ export const zhExactText: Record<string, string> = {
   "Pannello operativo": "运营后台",
   "Ordini, stock, catalogo e clienti in una sola vista":
     "订单、库存、目录和客户集中管理",
-  "Account B2B": "B2B 账户",
+  "Account B2B": "个人中心",
   "Login PartsPro": "PartsPro 登录",
   "Accesso B2B": "B2B 登录",
   Email: "邮箱",
@@ -134,7 +134,7 @@ export const zhReplacements: Array<[string, string]> = [
   ["Cerca evento, SKU, cliente...", "搜索事件、SKU、客户..."],
   ["Cerca SKU / prodotto / brand", "搜索 SKU / 产品 / 品牌"],
   ["Apri carrello", "打开购物车"],
-  ["Apri account B2B", "打开 B2B 账户"],
+  ["Apri account B2B", "打开个人中心"],
   ["Apri menu", "打开菜单"],
   ["Menu PartsPro", "PartsPro 菜单"],
   ["Navigazione principale", "主导航"],

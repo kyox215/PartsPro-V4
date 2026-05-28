@@ -13,7 +13,7 @@ const dictionary = {
   "nav.home": "首页",
   "nav.catalog": "目录",
   "nav.cart": "购物车",
-  "nav.account": "账户",
+  "nav.account": "个人中心",
   "nav.admin": "后台",
   "nav.orders": "订单",
   "nav.customers": "客户",

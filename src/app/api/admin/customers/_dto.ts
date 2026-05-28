@@ -19,7 +19,7 @@ type CustomerQueryDto = {
   offset: number;
   q?: string;
   sort: "created_desc" | "name" | "name_asc" | "revenue_desc" | "last_order_desc";
-  status?: "active" | "suspended";
+  status?: "pending" | "active" | "suspended";
   tier?: string;
 };
 

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "import:mobilax:iphone": "node scripts/import-mobilax-iphone-catalog.mjs --brand apple",
     "import:mobilax:samsung": "node scripts/import-mobilax-iphone-catalog.mjs --brand samsung",
     "import:mobilax:xiaomi": "node scripts/import-mobilax-iphone-catalog.mjs --brand xiaomi",

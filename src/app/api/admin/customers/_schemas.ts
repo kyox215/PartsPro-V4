@@ -32,7 +32,7 @@ export const customerQuerySchema = z
     sort: z
       .enum(["created_desc", "name", "name_asc", "revenue_desc", "last_order_desc"])
       .default("created_desc"),
-    status: z.enum(["active", "suspended"]).optional(),
+    status: z.enum(["pending", "active", "suspended"]).optional(),
     tier: customerTierSchema.optional(),
   })
   .strict();
@@ -57,7 +57,7 @@ export const customerClassificationPatchSchema = z
   .object({
     customerType: z.enum(["retail", "wholesale"]).optional(),
     reason: z.string().trim().min(3).max(1000),
-    status: z.enum(["active", "suspended"]).optional(),
+    status: z.enum(["pending", "active", "suspended"]).optional(),
   })
   .strict();
 

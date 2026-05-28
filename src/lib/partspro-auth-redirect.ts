@@ -8,6 +8,7 @@ type HeaderReader = {
 
 type PostLoginAccountState = {
   adminAllowed?: boolean;
+  profileComplete?: boolean;
 };
 
 export function cleanAuthRedirect(
@@ -38,6 +39,10 @@ export function loginUrl(next: string, error?: string, notice?: string) {
 }
 
 export function postLoginRedirect(next: string, account: PostLoginAccountState) {
+  if (account.profileComplete === false) {
+    return `${CUSTOMER_POST_LOGIN_REDIRECT}?setup=1`;
+  }
+
   if (account.adminAllowed) {
     return STAFF_POST_LOGIN_REDIRECT;
   }

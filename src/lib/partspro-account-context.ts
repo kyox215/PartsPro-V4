@@ -132,9 +132,7 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
   const isEmployee = accountType === "employee";
   const canViewPrices = Boolean(
     isEmployee ||
-      (customerContext &&
-        customerContext.status === "active" &&
-        customerContext.customerType === "wholesale")
+      (customerContext && customerContext.status === "active")
   );
   const canCheckout = Boolean(
     accountType === "customer" &&
@@ -230,8 +228,8 @@ export function priceVisibilityReason(account: AccountContext) {
     return "login_required";
   }
 
-  if (account.canViewPrices) {
-    return account.accountType === "employee" ? "employee" : "customer";
+  if (account.accountType === "employee") {
+    return "employee";
   }
 
   if (account.accountSyncError) {
@@ -250,12 +248,12 @@ export function priceVisibilityReason(account: AccountContext) {
     return "customer_needs_assignment";
   }
 
-  if (account.customer.customerType !== "wholesale") {
-    return "wholesale_required";
+  if (account.canViewPrices) {
+    return "customer";
   }
 
-  if (account.accountType === "employee") {
-    return "employee";
+  if (account.customer.customerType !== "wholesale") {
+    return "wholesale_required";
   }
 
   return "customer_needs_assignment";

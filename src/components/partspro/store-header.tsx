@@ -204,7 +204,7 @@ export function StoreHeader({
               access={accountAccess}
               label={tx(t, "nav.account", "Account")}
               menuLabel={tx(t, "storefront.account.menuLabel", "Area account")}
-              accountLabel={tx(t, "storefront.account.openAccount", "Account cliente")}
+              accountLabel={tx(t, "storefront.account.openAccount", "Centro personale")}
               adminLabel={tx(t, "storefront.account.openAdmin", "Pannello admin")}
               logoutLabel={tx(t, "storefront.account.signOut", "Esci")}
               staffLabel={tx(t, "storefront.account.staffRole", "Accesso staff")}
@@ -217,10 +217,10 @@ export function StoreHeader({
           />
           <StoreAccountDropdown
             access={accountAccess}
-            accountLabel={tx(t, "storefront.account.openAccount", "Account cliente")}
+            accountLabel={tx(t, "storefront.account.openAccount", "Centro personale")}
             adminLabel={tx(t, "storefront.account.openAdmin", "Pannello admin")}
             compact
-            label={tx(t, "storefront.header.openAccount", "Apri account")}
+            label={tx(t, "storefront.header.openAccount", "Apri centro personale")}
             logoutLabel={tx(t, "storefront.account.signOut", "Esci")}
             menuLabel={tx(t, "storefront.account.menuLabel", "Area account")}
             staffLabel={tx(t, "storefront.account.staffRole", "Accesso staff")}

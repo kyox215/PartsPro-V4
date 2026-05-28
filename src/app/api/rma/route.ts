@@ -3,7 +3,7 @@ import { z } from "zod";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
 import {
   listCatalogProducts,
-  listRmaRequests,
+  listCurrentCustomerRmaRequests,
   RepositoryWriteError,
   saveRmaRequest,
 } from "@/lib/partspro-repository";
@@ -26,7 +26,7 @@ const createRmaSchema = z
 
 export async function GET() {
   try {
-    const repositoryResult = await listRmaRequests();
+    const repositoryResult = await listCurrentCustomerRmaRequests();
 
     return NextResponse.json({
       data: repositoryResult.data,

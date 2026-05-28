@@ -100,9 +100,7 @@ begin
   return new;
 end;
 $$;
-
 drop policy if exists "partspro_rma_self_submit" on public.rma_requests;
-
 create policy "partspro_rma_self_submit"
 on public.rma_requests
 for insert
@@ -125,9 +123,7 @@ with check (
     )
   )
 );
-
 drop policy if exists "partspro_rma_insert_order_line_guard" on public.rma_requests;
-
 create policy "partspro_rma_insert_order_line_guard"
 on public.rma_requests
 as restrictive

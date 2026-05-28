@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Il tuo codice PartsPro</title>
+  </head>
+  <body style="margin:0;background:#f4f6fa;font-family:Arial,sans-serif;color:#0f172a;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f6fa;padding:24px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px;background:#ffffff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+            <tr>
+              <td style="padding:28px 28px 10px;">
+                <div style="font-size:13px;font-weight:700;text-transform:uppercase;color:#2563eb;">PartsPro</div>
+                <h1 style="margin:10px 0 0;font-size:24px;line-height:32px;">Completa la registrazione</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 28px 28px;">
+                <p style="margin:14px 0 18px;font-size:15px;line-height:24px;color:#475569;">
+                  Inserisci questo codice nella pagina di registrazione per verificare la tua email.
+                </p>
+                <div style="margin:0 0 18px;padding:18px;border-radius:8px;background:#eff6ff;text-align:center;font-size:32px;line-height:40px;font-weight:800;letter-spacing:6px;color:#1d4ed8;">
+                  {{ .Token }}
+                </div>
+                <p style="margin:0;font-size:13px;line-height:21px;color:#64748b;">
+                  Il codice scade automaticamente. Se non hai richiesto tu questo account, ignora questa email.
+                </p>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>

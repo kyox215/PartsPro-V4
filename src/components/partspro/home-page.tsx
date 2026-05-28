@@ -111,7 +111,7 @@ const workflowItems = [
   {
     icon: BadgeCheck,
     titleKey: "storefront.home.workflow.account.title",
-    titleFallback: "Verifica il profilo B2B",
+    titleFallback: "Verifica il profilo cliente",
     textKey: "storefront.home.workflow.account.text",
     textFallback: "Accedi o richiedi approvazione per vedere prezzi e condizioni.",
   },
@@ -530,6 +530,8 @@ function FeaturedProductCard({
   const extraModels = Math.max(product.compatibleWith.length - visibleModels.length, 0);
   const hasBuyerPrice = product.price > 0;
   const priceGateCopy = homePriceGateCopy(t, priceGateReason, product.moq);
+  const isReviewPriceVisible =
+    hasBuyerPrice && priceGateReason === "customer_needs_assignment";
   const stockLine = tx(
     t,
     "storefront.home.productCard.stockLine",
@@ -617,18 +619,27 @@ function FeaturedProductCard({
 
         <div className="mt-auto flex min-w-0 items-end justify-between gap-2 pt-3">
           <div className="min-w-0">
-            <div className="truncate text-xs font-bold text-slate-700">
-              {hasBuyerPrice
-                ? formatEuro(product.price)
-                : priceGateCopy.label}
+            <div className="flex min-w-0 items-center gap-1.5">
+              <div className="truncate text-xs font-bold text-slate-700">
+                {hasBuyerPrice
+                  ? formatEuro(product.price)
+                  : priceGateCopy.label}
+              </div>
+              {isReviewPriceVisible ? (
+                <Badge className="shrink-0 border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-black text-amber-800">
+                  {priceGateCopy.label}
+                </Badge>
+              ) : null}
             </div>
             <div className="truncate text-[11px] text-slate-500">
-              {hasBuyerPrice
-                ? tx(t, "storefront.home.productCard.priceVisibleHint", "IVA escl. · MOQ {moq}").replace(
+              {isReviewPriceVisible
+                ? priceGateCopy.hint
+                : hasBuyerPrice
+                  ? tx(t, "storefront.home.productCard.priceVisibleHint", "IVA escl. · MOQ {moq}").replace(
                     "{moq}",
                     String(product.moq)
                   )
-                : priceGateCopy.hint}
+                  : priceGateCopy.hint}
             </div>
           </div>
           <Button size="sm" variant="outline" asChild className="shrink-0 bg-white text-primary">
@@ -652,8 +663,8 @@ function homePriceGateCopy(
 
   if (reason === "customer_needs_assignment") {
     return {
-      label: tx(t, "storefront.home.productCard.pendingPrice", "Account in revisione"),
-      hint: tx(t, "storefront.home.productCard.pendingHint", "MOQ {moq} · verifica listino").replace(
+      label: tx(t, "storefront.home.productCard.pendingPrice", "审核"),
+      hint: tx(t, "storefront.home.productCard.pendingHint", "审核中 · MOQ {moq}").replace(
         "{moq}",
         moqLabel
       ),
@@ -662,8 +673,8 @@ function homePriceGateCopy(
 
   if (reason === "wholesale_required") {
     return {
-      label: tx(t, "storefront.home.productCard.wholesalePrice", "Listino B2B da abilitare"),
-      hint: tx(t, "storefront.home.productCard.wholesaleHint", "MOQ {moq} · richiedi wholesale").replace(
+      label: tx(t, "storefront.home.productCard.wholesalePrice", "Listino da abilitare"),
+      hint: tx(t, "storefront.home.productCard.wholesaleHint", "MOQ {moq} · verifica cliente").replace(
         "{moq}",
         moqLabel
       ),
@@ -692,7 +703,7 @@ function homePriceGateCopy(
 
   return {
     label: tx(t, "storefront.home.productCard.loginPrice", "Prezzo dopo login"),
-    hint: tx(t, "storefront.home.productCard.priceHint", "MOQ {moq} · listino B2B").replace(
+    hint: tx(t, "storefront.home.productCard.priceHint", "MOQ {moq} · login richiesto").replace(
       "{moq}",
       moqLabel
     ),

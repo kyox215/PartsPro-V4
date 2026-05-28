@@ -1,15 +1,25 @@
 import { AccountPage } from "@/components/partspro/account-page";
 import { getCurrentAccountContext } from "@/lib/partspro-account-context";
 import {
-  listCompanies,
-  listOrderSummaries,
-  listRmaRequests,
+  getCurrentCustomerProfile,
+  listCurrentCustomerCompanies,
+  listCurrentCustomerOrderSummaries,
+  listCurrentCustomerRmaRequests,
 } from "@/lib/partspro-repository";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 
-export default async function Page() {
+type AccountPageSearchParams = Promise<
+  Record<string, string | string[] | undefined>
+>;
+
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: AccountPageSearchParams;
+}) {
+  const params = await searchParams;
   const configured = isSupabaseConfigured();
 
   if (!configured) {
@@ -27,16 +37,18 @@ export default async function Page() {
 
   const account = await getCurrentAccountContext({ ensure: true });
   const shouldReadCustomerData = account.accountType === "customer";
-  const [companies, orders, rmas] = shouldReadCustomerData
+  const [companies, orders, rmas, customerProfile] = shouldReadCustomerData
     ? await Promise.all([
-        listCompanies(),
-        listOrderSummaries(),
-        listRmaRequests(),
+        listCurrentCustomerCompanies(),
+        listCurrentCustomerOrderSummaries(),
+        listCurrentCustomerRmaRequests(),
+        getCurrentCustomerProfile(),
       ])
     : [
-        { data: [] },
-        { data: [] },
-        { data: [] },
+        { data: [], warning: undefined },
+        { data: [], warning: undefined },
+        { data: [], warning: undefined },
+        { data: null, warning: undefined },
       ];
   const company =
     account.customer?.id
@@ -46,9 +58,16 @@ export default async function Page() {
   return (
     <AccountPage
       company={company}
+      customerProfile={customerProfile.data}
+      dataWarning={orders.warning ?? rmas.warning ?? companies.warning}
+      forceSetup={readSingleParam(params.setup) === "1"}
       orderSummaries={orders.data}
       rmaRequests={rmas.data}
       userEmail={account.email ?? user.email ?? undefined}
     />
   );
+}
+
+function readSingleParam(value: string | string[] | undefined) {
+  return Array.isArray(value) ? value[0] : value;
 }

@@ -19,10 +19,14 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
 import {
   formatEuro,
   type CompanyProfile,
@@ -31,11 +35,15 @@ import {
 } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/app/login/actions";
+import type { AccountCustomerProfile } from "@/lib/partspro-repository";
 import { useCart } from "./cart-state";
 import { StoreHeader } from "./store-header";
 
 type AccountPageProps = {
   company?: CompanyProfile | null;
+  customerProfile?: AccountCustomerProfile | null;
+  dataWarning?: string;
+  forceSetup?: boolean;
   orderSummaries?: OrderSummary[];
   rmaRequests?: RmaRequest[];
   userEmail?: string;
@@ -69,10 +77,24 @@ type AccountOrderDetail = {
   paymentStatus: string;
   status: string;
   total: number;
+  uiStatus?: string;
 };
 
 type AccountOrderDetailResponse = {
   data: AccountOrderDetail;
+};
+
+type AccountProfilePayload = {
+  billingAddress: string;
+  companyName: string;
+  contactName: string;
+  email: string;
+  fiscalCode: string;
+  pec: string;
+  phone: string;
+  sdi: string;
+  shippingAddress: string;
+  vatNumber: string;
 };
 
 type OrderFilterId = "all" | "open" | "pending_payment" | "shipped" | "delivered";
@@ -117,6 +139,9 @@ const orderFilters: Array<{
 
 export function AccountPage({
   company = null,
+  customerProfile = null,
+  dataWarning,
+  forceSetup = false,
   orderSummaries = [],
   rmaRequests = [],
   userEmail,
@@ -127,9 +152,19 @@ export function AccountPage({
   const [orderDetailError, setOrderDetailError] = React.useState<string | null>(null);
   const [orderDetailLoading, setOrderDetailLoading] = React.useState(false);
   const [orderDetailOpen, setOrderDetailOpen] = React.useState(false);
+  const [savedProfile, setSavedProfile] = React.useState<AccountCustomerProfile | null>(null);
+  const profile =
+    savedProfile && (!customerProfile || savedProfile.id === customerProfile.id)
+      ? savedProfile
+      : customerProfile;
+  const [profileDialogOpen, setProfileDialogOpen] = React.useState(() =>
+    Boolean(customerProfile && (forceSetup || !customerProfile.profileCompletedAt))
+  );
+
   const selectedFilter =
     orderFilters.find((filter) => filter.id === activeFilter) ?? orderFilters[0];
   const filteredOrders = orderSummaries.filter(selectedFilter.predicate);
+  const shouldShowProfileNotice = Boolean(profile && !profile.profileCompletedAt);
   const metrics = [
     [
       "Ordini aperti",
@@ -221,6 +256,16 @@ export function AccountPage({
               <Button variant="outline" className="bg-white" asChild>
                 <Link href="/rma">Apri richiesta RMA</Link>
               </Button>
+              {profile ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="bg-white"
+                  onClick={() => setProfileDialogOpen(true)}
+                >
+                  Dati centro personale
+                </Button>
+              ) : null}
               <form action={signOut} onSubmit={cart.clearCart}>
                 <Button variant="outline" className="w-full bg-white" type="submit">
                   Esci
@@ -231,6 +276,20 @@ export function AccountPage({
         </aside>
 
         <section className="space-y-4">
+          {shouldShowProfileNotice && profile ? (
+            <AccountProfileNotice
+              forceSetup={forceSetup}
+              profile={profile}
+              onOpen={() => setProfileDialogOpen(true)}
+            />
+          ) : null}
+
+          {dataWarning ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-900">
+              {dataWarning}
+            </div>
+          ) : null}
+
           <div className="grid gap-3 sm:grid-cols-3">
             {metrics.map(([label, value, Icon]) => (
               <Card key={label as string} className="border-slate-200 bg-white">
@@ -341,6 +400,16 @@ export function AccountPage({
             </DialogContent>
           </Dialog>
 
+          {profile ? (
+            <AccountProfileDialog
+              open={profileDialogOpen}
+              profile={profile}
+              userEmail={userEmail}
+              onOpenChange={setProfileDialogOpen}
+              onSaved={setSavedProfile}
+            />
+          ) : null}
+
           <Card className="border-slate-200 bg-white">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -446,7 +515,7 @@ function AccountOrderDetailPanel({
   return (
     <div className="space-y-4">
       <div className="grid gap-2 sm:grid-cols-3">
-        <DetailTile label="Stato" value={orderStatusLabel(detail.status)} />
+        <DetailTile label="Stato" value={orderStatusLabel(detail.uiStatus ?? detail.status)} />
         <DetailTile label="Pagamento" value={paymentStatusLabel(detail.paymentStatus)} />
         <DetailTile label="Totale" value={formatEuro(detail.total)} />
       </div>
@@ -537,6 +606,353 @@ function AccountRuntimeCard({
   );
 }
 
+function AccountProfileNotice({
+  forceSetup,
+  onOpen,
+  profile,
+}: {
+  forceSetup: boolean;
+  onOpen: () => void;
+  profile: AccountCustomerProfile;
+}) {
+  const missingFields = [
+    profile.companyName ? null : "azienda",
+    profile.contactName ? null : "referente",
+    profile.email ? null : "email",
+    profile.phone ? null : "telefono",
+    profile.billingAddress ? null : "fatturazione",
+    profile.shippingAddress ? null : "spedizione",
+    profile.vatNumber || profile.fiscalCode ? null : "P.IVA o codice fiscale",
+  ].filter(Boolean);
+  const isPending = profile.status === "pending";
+
+  return (
+    <Card className="border-amber-200 bg-amber-50">
+      <CardContent className="flex flex-col gap-3 p-4 text-sm text-amber-950 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <div className="font-black">
+            {forceSetup ? "Completa i dati account" : "Profilo cliente in revisione"}
+          </div>
+          <p className="mt-1 leading-6">
+            {isPending
+              ? "Il tuo account e registrato. Completa i dati: lo staff potra chiudere la revisione senza bloccare la navigazione."
+              : "Completa l'anagrafica cliente per sbloccare checkout, documenti e gestione ordini."}
+          </p>
+          {missingFields.length > 0 ? (
+            <div className="mt-2 text-xs font-bold">
+              Da completare: {missingFields.join(", ")}
+            </div>
+          ) : null}
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          className="shrink-0 border-amber-300 bg-white"
+          onClick={onOpen}
+        >
+          Rivedi dati
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
+function AccountProfileDialog({
+  onOpenChange,
+  onSaved,
+  open,
+  profile,
+  userEmail,
+}: {
+  onOpenChange: (open: boolean) => void;
+  onSaved: (profile: AccountCustomerProfile) => void;
+  open: boolean;
+  profile: AccountCustomerProfile;
+  userEmail?: string;
+}) {
+  const [form, setForm] = React.useState<AccountProfilePayload>(() =>
+    accountProfileToForm(profile, userEmail)
+  );
+  const [error, setError] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
+  const wasOpenRef = React.useRef(open);
+
+  React.useEffect(() => {
+    if (open && !wasOpenRef.current) {
+      setForm(accountProfileToForm(profile, userEmail));
+      setError(null);
+    }
+
+    wasOpenRef.current = open;
+  }, [open, profile, userEmail]);
+
+  function updateField(field: keyof AccountProfilePayload, value: string) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function submitProfile(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setSaving(true);
+
+    try {
+      const payload = await fetchJson<{ data: AccountCustomerProfile }>("/api/account/profile", {
+        body: JSON.stringify(form),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      });
+
+      onSaved(payload.data);
+      onOpenChange(false);
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Non e stato possibile salvare il profilo."
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50">
+      <button
+        type="button"
+        aria-label="Chiudi"
+        className="absolute inset-0 bg-black/10 backdrop-blur-xs"
+        onClick={() => onOpenChange(false)}
+      />
+      <div
+        aria-labelledby="account-profile-title"
+        aria-modal="true"
+        className="fixed left-1/2 top-1/2 grid max-h-[90vh] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 gap-4 overflow-y-auto rounded-xl bg-white p-4 text-sm text-slate-950 shadow-2xl ring-1 ring-slate-200"
+        role="dialog"
+      >
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="absolute right-2 top-2"
+          aria-label="Chiudi"
+          onClick={() => onOpenChange(false)}
+        >
+          x
+        </Button>
+        <div className="flex flex-col gap-2 pr-10">
+          <h2 id="account-profile-title" className="text-base font-black">
+            Completa il centro personale
+          </h2>
+          <p className="text-sm text-slate-500">
+            Questi dati collegano account, ordini, fatturazione e spedizioni.
+          </p>
+        </div>
+        <form className="space-y-4" onSubmit={submitProfile}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ProfileInput
+              field="companyName"
+              label="Nome cliente"
+              required
+              value={form.companyName}
+              onChange={updateField}
+            />
+            <ProfileInput
+              field="contactName"
+              label="Referente"
+              required
+              value={form.contactName}
+              onChange={updateField}
+            />
+            <ProfileInput
+              field="email"
+              label="Email"
+              disabled
+              required
+              type="email"
+              value={form.email}
+              onChange={updateField}
+            />
+            <ProfileInput
+              field="phone"
+              label="Telefono"
+              required
+              value={form.phone}
+              onChange={updateField}
+            />
+            <ProfileInput
+              field="vatNumber"
+              label="Partita IVA"
+              value={form.vatNumber}
+              onChange={updateField}
+            />
+            <ProfileInput
+              field="fiscalCode"
+              label="Codice fiscale"
+              value={form.fiscalCode}
+              onChange={updateField}
+            />
+            <ProfileInput
+              field="pec"
+              label="PEC"
+              type="email"
+              value={form.pec}
+              onChange={updateField}
+            />
+            <ProfileInput
+              field="sdi"
+              label="Codice SDI"
+              value={form.sdi}
+              onChange={updateField}
+            />
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <ProfileTextarea
+              field="billingAddress"
+              label="Indirizzo fatturazione"
+              required
+              value={form.billingAddress}
+              onChange={updateField}
+            />
+            <ProfileTextarea
+              field="shippingAddress"
+              label="Indirizzo spedizione"
+              required
+              value={form.shippingAddress}
+              onChange={updateField}
+            />
+          </div>
+
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs font-semibold leading-5 text-blue-800">
+            Serve almeno una Partita IVA o un codice fiscale. Dopo il salvataggio il
+            profilo rimane in revisione finche un amministratore non assegna tipo e
+            livello cliente.
+          </div>
+
+          {error ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
+              {error}
+            </div>
+          ) : null}
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="bg-white"
+              disabled={saving}
+              onClick={() => onOpenChange(false)}
+            >
+              Annulla
+            </Button>
+            <Button type="submit" disabled={saving}>
+              {saving ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" />
+                  Salvataggio
+                </>
+              ) : (
+                "Salva profilo"
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function ProfileInput({
+  field,
+  disabled,
+  label,
+  onChange,
+  required,
+  type = "text",
+  value,
+}: {
+  disabled?: boolean;
+  field: keyof AccountProfilePayload;
+  label: string;
+  onChange: (field: keyof AccountProfilePayload, value: string) => void;
+  required?: boolean;
+  type?: React.HTMLInputTypeAttribute;
+  value: string;
+}) {
+  const id = `account-profile-${field}`;
+
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="text-xs font-black text-slate-500">
+        {label}
+        {required ? " *" : null}
+      </Label>
+      <Input
+        disabled={disabled}
+        id={id}
+        required={required}
+        type={type}
+        value={value}
+        onChange={(event) => onChange(field, event.currentTarget.value)}
+      />
+    </div>
+  );
+}
+
+function ProfileTextarea({
+  field,
+  label,
+  onChange,
+  required,
+  value,
+}: {
+  field: keyof AccountProfilePayload;
+  label: string;
+  onChange: (field: keyof AccountProfilePayload, value: string) => void;
+  required?: boolean;
+  value: string;
+}) {
+  const id = `account-profile-${field}`;
+
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="text-xs font-black text-slate-500">
+        {label}
+        {required ? " *" : null}
+      </Label>
+      <Textarea
+        id={id}
+        className="min-h-24 resize-y"
+        required={required}
+        value={value}
+        onChange={(event) => onChange(field, event.currentTarget.value)}
+      />
+    </div>
+  );
+}
+
+function accountProfileToForm(
+  profile: AccountCustomerProfile,
+  userEmail?: string
+): AccountProfilePayload {
+  return {
+    billingAddress: profile.billingAddress,
+    companyName: profile.companyName,
+    contactName: profile.contactName,
+    email: userEmail || profile.email || "",
+    fiscalCode: profile.fiscalCode,
+    pec: profile.pec,
+    phone: profile.phone,
+    sdi: profile.sdi,
+    shippingAddress: profile.shippingAddress,
+    vatNumber: profile.vatNumber,
+  };
+}
+
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div className="mb-3">
@@ -558,8 +974,12 @@ function companyStatusLabel(status: CompanyProfile["status"]) {
 }
 
 function orderBadgeClass(status: string) {
-  if (status === "shipped" || status === "delivered") {
+  if (status === "shipped" || status === "delivered" || status === "completed") {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (status === "cancelled") {
+    return "border-red-200 bg-red-50 text-red-700";
   }
 
   if (status === "pending_payment") {
@@ -574,8 +994,12 @@ function orderStatusLabel(status: string) {
     draft: "Bozza",
     pending_payment: "Da pagare",
     paid: "Pagato",
+    submitted: "Da pagare",
+    accepted: "Accettato",
     picking: "In preparazione",
+    packed: "Imballato",
     shipped: "Spedito",
+    completed: "Consegnato",
     delivered: "Consegnato",
     cancelled: "Annullato",
   };

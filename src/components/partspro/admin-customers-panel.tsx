@@ -8,6 +8,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
+  Clock,
   Eye,
   ExternalLink,
   ListFilter,
@@ -66,7 +67,7 @@ import { CUSTOMER_MANAGE_LEVEL_PERMISSION } from "@/lib/partspro-permissions";
 import { cn } from "@/lib/utils";
 import { useI18n } from "./i18n-provider";
 
-type CustomerStatus = "active" | "suspended";
+type CustomerStatus = "pending" | "active" | "suspended";
 type CustomerType = "retail" | "wholesale";
 type AssignmentStatus = "needs_review" | "assigned" | "converted_to_employee" | "archived";
 type CustomerTier = "bronze" | "silver" | "gold" | "emerald" | "diamond" | "master" | "king";
@@ -360,6 +361,7 @@ export function AdminCustomersPanel() {
   ].filter(Boolean).length;
   const statusOptions = [
     [allValue, copy.allStatuses],
+    ["pending", copy.pendingReview],
     ["active", statusLabel("active", copy, text.enums.companyStatus.suspended, text.customers.labels.active)],
     ["suspended", text.enums.companyStatus.suspended],
   ] as const;
@@ -716,8 +718,9 @@ export function AdminCustomersPanel() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2 xl:grid-cols-5">
         <Kpi icon={Users} label={copy.activeCustomers} tone="blue" value={facets.active} />
+        <Kpi icon={Clock} label={copy.pendingReview} tone="amber" value={facets.pending} />
         <Kpi icon={BriefcaseBusiness} label={copy.retailCustomers} tone="green" value={facets.retail} />
         <Kpi icon={Store} label={copy.wholesaleCustomers} tone="purple" value={facets.wholesale} />
         <Kpi icon={ShieldAlert} label={text.enums.companyStatus.suspended} tone="red" value={facets.suspended} />
@@ -1305,7 +1308,7 @@ function CustomerDetail({
     );
   }
 
-  const customerStatusChoices: CustomerStatus[] = ["active", "suspended"];
+  const customerStatusChoices: CustomerStatus[] = ["pending", "active", "suspended"];
   const statusCopy = (status: CustomerStatus) =>
     statusLabel(status, copy, suspended, text.customers.labels.active);
 
@@ -2267,7 +2270,7 @@ function Kpi({
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
-  tone: "blue" | "green" | "purple" | "red";
+  tone: "amber" | "blue" | "green" | "purple" | "red";
   value: number;
 }) {
   return (
@@ -2610,6 +2613,10 @@ function statusLabel(
   suspended: string,
   active: string
 ) {
+  if (status === "pending") {
+    return copy.pendingReview;
+  }
+
   if (status === "active") {
     return active;
   }
@@ -2912,7 +2919,11 @@ function customerInitials(customer: Pick<AdminCustomer, "companyName" | "email">
   return initials.toUpperCase().slice(0, 2);
 }
 
-function kpiToneClass(tone: "blue" | "green" | "purple" | "red") {
+function kpiToneClass(tone: "amber" | "blue" | "green" | "purple" | "red") {
+  if (tone === "amber") {
+    return "bg-amber-500";
+  }
+
   if (tone === "green") {
     return "bg-emerald-600";
   }
@@ -3002,6 +3013,10 @@ function activityVisual(event: CustomerRecentActivity): {
 }
 
 function statusBadgeClass(status: CustomerStatus) {
+  if (status === "pending") {
+    return "border-amber-300 bg-amber-50 text-amber-800";
+  }
+
   if (status === "active") {
     return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700";
   }

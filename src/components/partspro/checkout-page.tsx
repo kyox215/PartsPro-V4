@@ -25,7 +25,7 @@ import {
   getCurrentAccountContext,
 } from "@/lib/partspro-account-context";
 import { type CompanyProfile } from "@/lib/partspro-data";
-import { listCatalogProducts, listCompanies } from "@/lib/partspro-repository";
+import { listCatalogProducts, listCurrentCustomerCompanies } from "@/lib/partspro-repository";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { CartCatalogProvider } from "./cart-state";
 import { CheckoutSubmitButton } from "./checkout-submit-button";
@@ -401,17 +401,12 @@ async function getCheckoutRuntime(t: StorefrontTranslator): Promise<CheckoutRunt
 }
 
 async function getCheckoutCompany(customerId?: string): Promise<CompanyProfile | null> {
-  const companies = await listCompanies();
+  const companies = await listCurrentCustomerCompanies();
   const assignedCompany = customerId
     ? companies.data.find((company) => company.id === customerId)
     : null;
 
-  return (
-    assignedCompany ??
-    companies.data.find((company) => company.status === "approved") ??
-    companies.data[0] ??
-    null
-  );
+  return assignedCompany ?? null;
 }
 
 function RuntimeBadge({

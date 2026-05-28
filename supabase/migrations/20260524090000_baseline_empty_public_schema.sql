@@ -3,12 +3,9 @@
 -- reordered before the hardening migration so a blank linked project can boot.
 
 create extension if not exists "pgcrypto";
-
 create schema if not exists private;
-
 revoke all on schema private from public;
 grant usage on schema private to authenticated;
-
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
@@ -18,7 +15,6 @@ begin
   return new;
 end;
 $$;
-
 create table if not exists public.price_groups (
   id text primary key,
   name text not null,
@@ -27,7 +23,6 @@ create table if not exists public.price_groups (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.customers (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users(id) on delete set null,
@@ -56,7 +51,6 @@ create table if not exists public.customers (
   updated_at timestamptz not null default now(),
   constraint customers_id_user_id_key unique (id, user_id)
 );
-
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   customer_id uuid constraint profiles_customer_id_fkey references public.customers(id) on delete set null,
@@ -65,7 +59,6 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.products (
   id uuid primary key default gen_random_uuid(),
   sku_code text not null unique,
@@ -107,7 +100,6 @@ create table if not exists public.products (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 create table if not exists public.inventory_items (
   id uuid primary key default gen_random_uuid(),
   sku_code text not null references public.products(sku_code) on update cascade on delete cascade,
@@ -127,7 +119,6 @@ create table if not exists public.inventory_items (
   supplier text,
   last_movement_at timestamptz not null default now()
 );
-
 create table if not exists public.orders (
   id uuid primary key default gen_random_uuid(),
   order_no text not null unique,
@@ -150,7 +141,6 @@ create table if not exists public.orders (
   updated_at timestamptz not null default now(),
   constraint partspro_orders_amounts_nonnegative check (total_net >= 0 and vat >= 0 and shipping >= 0)
 );
-
 create table if not exists public.order_lines (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references public.orders(id) on delete cascade,
@@ -164,7 +154,6 @@ create table if not exists public.order_lines (
   location text,
   constraint partspro_order_lines_unit_price_nonnegative check (unit_price >= 0)
 );
-
 create table if not exists public.order_events (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references public.orders(id) on delete cascade,
@@ -176,7 +165,6 @@ create table if not exists public.order_events (
   metadata jsonb not null default '{}'::jsonb check (jsonb_typeof(metadata) = 'object'),
   created_at timestamptz not null default now()
 );
-
 create table if not exists public.rma_requests (
   id uuid primary key default gen_random_uuid(),
   user_id uuid references auth.users(id) on delete set null,
@@ -198,7 +186,6 @@ create table if not exists public.rma_requests (
   constraint partspro_rma_status_check check (status in ('submitted', 'under_review', 'approved', 'rejected', 'received', 'replacement_sent', 'refunded', 'closed')),
   constraint partspro_rma_attachments_array_check check (jsonb_typeof(attachments) = 'array')
 );
-
 create table if not exists public.b2b_applications (
   id uuid primary key default gen_random_uuid(),
   company_name text not null,
@@ -228,7 +215,6 @@ create table if not exists public.b2b_applications (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
-
 do $$
 begin
   if not exists (
@@ -243,7 +229,6 @@ begin
       references public.customers(id, user_id);
   end if;
 end $$;
-
 create index if not exists profiles_customer_id_idx on public.profiles(customer_id);
 create index if not exists customers_user_id_idx on public.customers(user_id) where user_id is not null;
 create unique index if not exists customers_user_id_unique_idx on public.customers(user_id) where user_id is not null;
@@ -260,7 +245,6 @@ create index if not exists rma_requests_order_line_status_idx on public.rma_requ
 create index if not exists rma_requests_user_created_idx on public.rma_requests(user_id, created_at desc);
 create index if not exists b2b_applications_status_submitted_idx on public.b2b_applications(status, submitted_at desc);
 create index if not exists b2b_applications_approved_customer_id_idx on public.b2b_applications(approved_customer_id);
-
 do $$
 begin
   if not exists (select 1 from pg_trigger where tgname = 'price_groups_set_updated_at') then
@@ -305,7 +289,6 @@ begin
       for each row execute function public.set_updated_at();
   end if;
 end $$;
-
 create or replace function private.current_profile_role()
 returns text
 language sql
@@ -318,7 +301,6 @@ as $$
   where p.id = (select auth.uid())
   limit 1
 $$;
-
 create or replace function private.is_staff()
 returns boolean
 language sql
@@ -331,7 +313,6 @@ as $$
     false
   )
 $$;
-
 create or replace function private.is_admin()
 returns boolean
 language sql
@@ -341,7 +322,6 @@ set search_path = public, pg_temp
 as $$
   select coalesce((select private.current_profile_role()) = 'admin', false)
 $$;
-
 create or replace function private.current_customer_id()
 returns uuid
 language sql
@@ -366,7 +346,6 @@ as $$
     )
   )
 $$;
-
 create or replace function private.current_customer_status()
 returns text
 language sql
@@ -379,7 +358,6 @@ as $$
   where c.id = (select private.current_customer_id())
   limit 1
 $$;
-
 create or replace function private.can_view_b2b_prices()
 returns boolean
 language sql
@@ -390,7 +368,6 @@ as $$
   select coalesce((select private.is_staff()), false)
     or coalesce((select private.current_customer_status()) = 'active', false)
 $$;
-
 create or replace function private.handle_new_user()
 returns trigger
 language plpgsql
@@ -407,7 +384,6 @@ begin
   return new;
 end;
 $$;
-
 do $$
 begin
   if not exists (
@@ -421,14 +397,12 @@ begin
       for each row execute function private.handle_new_user();
   end if;
 end $$;
-
 grant execute on function private.current_profile_role() to authenticated;
 grant execute on function private.is_staff() to authenticated;
 grant execute on function private.is_admin() to authenticated;
 grant execute on function private.current_customer_id() to authenticated;
 grant execute on function private.current_customer_status() to authenticated;
 grant execute on function private.can_view_b2b_prices() to authenticated;
-
 alter table public.price_groups enable row level security;
 alter table public.customers enable row level security;
 alter table public.profiles enable row level security;
@@ -439,9 +413,7 @@ alter table public.order_lines enable row level security;
 alter table public.order_events enable row level security;
 alter table public.rma_requests enable row level security;
 alter table public.b2b_applications enable row level security;
-
 grant usage on schema public to anon, authenticated;
-
 grant select on public.price_groups to authenticated;
 grant select (
   id,
@@ -487,7 +459,6 @@ grant select, insert on public.order_events to authenticated;
 grant select, insert, update on public.rma_requests to authenticated;
 grant insert on public.b2b_applications to anon, authenticated;
 grant select, update on public.b2b_applications to authenticated;
-
 do $$
 begin
   if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = 'price_groups' and policyname = 'partspro_price_groups_staff_read') then

@@ -98,7 +98,7 @@ export function HomeRightRail() {
 
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
         <h2 className="mb-3 font-black">
-          {tx(t, "storefront.home.rightRail.account.title", "Area buyer")}
+          {tx(t, "storefront.home.rightRail.account.title", "Centro personale")}
         </h2>
         <div className="flex items-center gap-3 rounded-lg bg-slate-50 p-3">
           <div className="grid size-10 place-items-center rounded-full bg-primary/10 text-primary">
@@ -106,10 +106,10 @@ export function HomeRightRail() {
           </div>
           <div className="min-w-0">
             <div className="truncate text-sm font-bold">
-              {tx(t, "storefront.common.b2bAccount", "Account B2B")}
+              {tx(t, "storefront.common.b2bAccount", "Centro personale")}
             </div>
             <div className="truncate text-xs text-slate-500">
-              {tx(t, "storefront.home.rightRail.account.subtitle", "Prezzi, ordini e RMA")}
+              {tx(t, "storefront.home.rightRail.account.subtitle", "Profilo, ordini e RMA")}
             </div>
           </div>
         </div>

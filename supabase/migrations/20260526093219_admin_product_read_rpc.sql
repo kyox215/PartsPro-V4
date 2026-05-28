@@ -312,11 +312,29 @@ create or replace function public.admin_list_products(
   p_sort text default 'updated_desc'
 )
 returns jsonb
-language sql
+language plpgsql
 security invoker
 set search_path = public, pg_temp
 as $$
-  select private.admin_list_products(
+begin
+  if to_regprocedure('private.admin_list_products(integer,integer,text,text,text,text,text,text,text,text,text,text)') is not null then
+    return private.admin_list_products(
+      p_limit,
+      p_offset,
+      p_q,
+      p_brand,
+      p_model,
+      null::text,
+      p_category,
+      p_catalog_status,
+      p_stock_status,
+      p_warehouse,
+      p_grade,
+      p_sort
+    );
+  end if;
+
+  return private.admin_list_products(
     p_limit,
     p_offset,
     p_q,
@@ -328,7 +346,8 @@ as $$
     p_warehouse,
     p_grade,
     p_sort
-  )
+  );
+end;
 $$;
 
 create or replace function public.admin_get_product(p_sku_code text)

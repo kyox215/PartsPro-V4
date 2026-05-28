@@ -8,6 +8,9 @@ export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   const origin = requestOrigin(request.headers, requestUrl.origin);
   const next = cleanAuthRedirect(requestUrl.searchParams.get("next"), "/account");
+  const prompt = requestUrl.searchParams.get("prompt") === "select_account"
+    ? "select_account"
+    : undefined;
 
   if (!isSupabaseConfigured()) {
     return NextResponse.redirect(`${origin}${loginUrl(next, "config")}`);
@@ -19,6 +22,7 @@ export async function GET(request: Request) {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
+      queryParams: prompt ? { prompt } : undefined,
       redirectTo: callbackUrl.toString(),
     },
   });
