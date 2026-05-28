@@ -377,7 +377,7 @@ const panelText = {
     brand: "品牌",
     quality: "品质",
     warehouse: "仓库",
-    netPrice: "B2B 净价",
+    netPrice: "批发价",
     retailPrice: "零售价",
     costPrice: "成本价",
     margin: "毛利",

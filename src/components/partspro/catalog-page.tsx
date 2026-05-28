@@ -308,7 +308,7 @@ function CatalogPageContent({
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
+    <main className="min-h-screen overflow-x-clip bg-[#f4f6fa] text-slate-950">
       <StoreHeader
         initialAccountAccess={initialAccountAccess}
         modelGroups={modelGroups}

@@ -8,6 +8,7 @@ import {
 import {
   applyAccountPriceToProduct,
   getCurrentAccountContext,
+  hasOrderableEffectivePrice,
   priceVisibilityReason,
   type AccountContext,
 } from "@/lib/partspro-account-context";
@@ -68,15 +69,16 @@ export async function GET(request: NextRequest) {
       includeBuyerPrices: account.canViewPrices,
     });
     const visibilityReason = priceVisibilityReason(account);
+    const cartProducts = repositoryResult.data
+      .map((product) => toCartCatalogProduct(product, account))
+      .filter((product) => product.priceGate.orderable);
 
     return NextResponse.json({
-      data: repositoryResult.data.map((product) =>
-        toCartCatalogProduct(product, account)
-      ),
+      data: cartProducts,
       meta: {
         source: repositoryResult.source,
         requested: skus.length,
-        returned: repositoryResult.data.length,
+        returned: cartProducts.length,
         currency: "EUR",
         priceVisibility:
           account.canViewPrices && visibilityReason !== "customer_needs_assignment"
@@ -110,6 +112,10 @@ function toCartCatalogProduct(
   account: AccountContext
 ) {
   const pricedProduct = applyAccountPriceToProduct(product, account);
+  const hasEffectivePrice = hasOrderableEffectivePrice(pricedProduct);
+  const hasSellableStock =
+    pricedProduct.status !== "Out of Stock" &&
+    pricedProduct.stock >= Math.max(1, pricedProduct.moq);
 
   return {
     sku: pricedProduct.sku,
@@ -135,6 +141,11 @@ function toCartCatalogProduct(
     imageAlt: pricedProduct.imageAlt,
     galleryImageUrls: pricedProduct.galleryImageUrls,
     priceGate: {
+      orderable: Boolean(
+        account.canViewPrices &&
+          hasEffectivePrice &&
+          hasSellableStock
+      ),
       visible: account.canViewPrices,
       reason: priceVisibilityReason(account),
       vatMode: "net_prices_plus_iva",

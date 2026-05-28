@@ -53,6 +53,8 @@ export async function ProductDetailPage({
   const dictionary = getDictionary(locale);
   const t: StorefrontTranslator = (key) => translate(dictionary, key);
   const hasBuyerPrice = product.price > 0;
+  const canPurchaseProduct =
+    showWholesalePrice && priceGateReason === "customer" && hasBuyerPrice;
   const hiddenPriceCopy = productDetailPriceGateCopy(t, priceGateReason);
   const isReviewPriceVisible =
     showWholesalePrice && priceGateReason === "customer_needs_assignment";
@@ -237,8 +239,29 @@ export async function ProductDetailPage({
                   ))}
                 </div>
 
-                {showWholesalePrice && hasBuyerPrice ? (
+                {canPurchaseProduct ? (
                   <ProductDetailPurchasePanelSlot product={product} />
+                ) : showWholesalePrice && hasBuyerPrice ? (
+                  <Card className="mt-3 border-amber-200 bg-amber-50/60">
+                    <CardContent className="flex flex-col gap-3 p-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="font-black">
+                          {tx(
+                            t,
+                            "storefront.product.detail.priceVisibleOrderLockedTitle",
+                            "Listino non abilitato all'ordine"
+                          )}
+                        </div>
+                        <p className="mt-1 leading-6">
+                          {tx(
+                            t,
+                            "storefront.product.detail.priceVisibleOrderLockedDescription",
+                            "Il prezzo è disponibile per consultazione, ma checkout e carrello richiedono un cliente wholesale assegnato."
+                          )}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
                 ) : showWholesalePrice ? (
                   <Card className="mt-3 border-amber-200 bg-amber-50/60">
                     <CardContent className="flex flex-col gap-3 p-4 text-sm text-amber-900 sm:flex-row sm:items-center sm:justify-between">

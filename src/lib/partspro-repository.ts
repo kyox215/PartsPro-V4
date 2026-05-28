@@ -679,6 +679,7 @@ export type PreparedOrderLine = {
   lineNetCents: number;
   vatCents: number;
   lineGrossCents: number;
+  priceVersion?: string;
 };
 
 export type PreparedOrderTotals = {
@@ -3867,6 +3868,7 @@ async function createRemoteOrderTransaction(
       sku_code: line.product.sku,
       quantity: line.quantity,
       unit_net: centsToNumber(line.unitNetCents),
+      price_version: line.priceVersion ?? line.product.priceVersion ?? null,
     })),
     p_customer_id: customerId,
     p_delivery_address: formatDeliveryAddress(input.deliveryAddress),
@@ -4854,8 +4856,28 @@ function mapProductRow(row: DbRow): RepositoryPartProduct | null {
     pickNumber(row, ["stock", "stock_qty", "stock_quantity", "available_qty", "available_quantity", "quantity"]) ??
     sumStock(row);
   const vatRate = pickNumber(row, ["vat_rate", "vatRate", "vat", "tax_rate"]) ?? 22;
-  const price = pickNumber(row, ["price", "b2b_price", "wholesale_price", "net_price", "unit_price"]) ?? 0;
+  const effectivePrice = pickNumber(row, ["effective_unit_price", "effectiveUnitPrice", "price"]);
+  const price =
+    effectivePrice ??
+    pickNumber(row, ["b2b_price", "b2bPrice", "wholesale_price", "net_price", "unit_price"]) ??
+    0;
   const retailPrice = pickNumber(row, ["retail_price", "retailPrice", "msrp", "list_price"]) ?? price;
+  const priceVersion = pickString(row, ["price_version", "priceVersion"]);
+  const priceResolved =
+    effectivePrice !== null ||
+    Boolean(priceVersion || pickString(row, ["price_source", "priceSource"]));
+  const basePrice = pickNumber(row, ["base_unit_price", "basePrice"]);
+  const customerLevel = pickString(row, ["customer_level", "customerLevel"]);
+  const discountPercent = pickNumber(row, ["discount_percent", "discountPercent"]);
+  const levelDiscountPercent = pickNumber(row, ["level_discount_percent", "levelDiscountPercent"]);
+  const marginPercent = pickNumber(row, ["margin_percent", "marginPercent"]);
+  const priceGroupDiscountPercent = pickNumber(row, [
+    "price_group_discount_percent",
+    "priceGroupDiscountPercent",
+  ]);
+  const priceGroupId = pickString(row, ["price_group_id", "priceGroupId"]);
+  const priceResolvedAt = pickString(row, ["price_resolved_at", "priceResolvedAt"]);
+  const priceSource = pickString(row, ["price_source", "priceSource"]);
   const remoteId = pickString(row, ["id", "product_id", "uuid"]);
   const imagePath = pickString(row, ["image_url", "imageUrl", "image_path", "imagePath"]);
   const galleryImagePaths = readStringArray(row, ["gallery_image_urls", "galleryImageUrls", "gallery_image_paths", "galleryImagePaths"]);
@@ -4892,6 +4914,17 @@ function mapProductRow(row: DbRow): RepositoryPartProduct | null {
     ...(imageAlt ? { imageAlt } : {}),
     ...(galleryImageUrls.length > 0 ? { galleryImageUrls } : {}),
     ...(remoteId ? { remoteId } : {}),
+    ...(basePrice !== null ? { basePrice } : {}),
+    ...(customerLevel ? { customerLevel } : {}),
+    ...(discountPercent !== null ? { discountPercent } : {}),
+    ...(levelDiscountPercent !== null ? { levelDiscountPercent } : {}),
+    ...(marginPercent !== null ? { marginPercent } : {}),
+    ...(priceGroupDiscountPercent !== null ? { priceGroupDiscountPercent } : {}),
+    ...(priceGroupId ? { priceGroupId } : {}),
+    ...(priceResolved ? { priceResolved: true } : {}),
+    ...(priceResolvedAt ? { priceResolvedAt } : {}),
+    ...(priceSource ? { priceSource } : {}),
+    ...(priceVersion ? { priceVersion } : {}),
   };
 }
 

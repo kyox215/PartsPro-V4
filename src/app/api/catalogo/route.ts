@@ -10,6 +10,7 @@ import { type PartProduct } from "@/lib/partspro-data";
 import {
   applyAccountPriceToProduct,
   getCurrentAccountContext,
+  hasOrderableEffectivePrice,
   priceVisibilityReason,
   type AccountContext,
 } from "@/lib/partspro-account-context";
@@ -81,6 +82,7 @@ export async function GET(request: NextRequest) {
 
 function toCatalogProduct(product: PartProduct, account: AccountContext) {
   const pricedProduct = applyAccountPriceToProduct(product, account);
+  const hasEffectivePrice = hasOrderableEffectivePrice(pricedProduct);
 
   return {
     sku: pricedProduct.sku,
@@ -106,6 +108,7 @@ function toCatalogProduct(product: PartProduct, account: AccountContext) {
     imageAlt: pricedProduct.imageAlt,
     galleryImageUrls: pricedProduct.galleryImageUrls,
     priceGate: {
+      orderable: Boolean(account.canViewPrices && hasEffectivePrice),
       visible: account.canViewPrices,
       reason: priceVisibilityReason(account),
       vatMode: "net_prices_plus_iva",

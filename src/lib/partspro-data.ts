@@ -64,6 +64,17 @@ export type PartProduct = {
   imageUrl?: string;
   imageAlt?: string;
   galleryImageUrls?: string[];
+  basePrice?: number;
+  customerLevel?: CustomerLevel | string;
+  discountPercent?: number;
+  levelDiscountPercent?: number;
+  marginPercent?: number;
+  priceGroupDiscountPercent?: number;
+  priceGroupId?: string | null;
+  priceResolved?: boolean;
+  priceResolvedAt?: string;
+  priceSource?: string;
+  priceVersion?: string;
 };
 
 export type DeviceModelSeriesGroup = {

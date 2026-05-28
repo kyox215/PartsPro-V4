@@ -57,17 +57,24 @@ export const ProductCard = memo(function ProductCard({
   const t = useT();
   const [previewOpen, setPreviewOpen] = useState(false);
   const stockMeta = getStockMeta(product, t);
-  const canAddToCart =
+  const hasEffectivePrice = product.price > 0;
+  const hasOpenPrice = showWholesalePrice && priceGateReason === "customer";
+  const hasSellableStock =
     product.stock >= Math.max(1, product.moq) && product.status !== "Out of Stock";
+  const canAddToCart = hasOpenPrice && hasEffectivePrice && hasSellableStock;
   const productPath = `/prodotto/${encodeURIComponent(product.sku)}`;
   const stockDescriptionId = `stock-${product.sku.replace(/[^a-zA-Z0-9]/g, "-")}`;
   const imageAlt = product.imageAlt ?? product.name;
-  const hasWholesalePrice = product.price > 0;
   const remainingModels = Math.max(product.compatibleWith.length - 2, 0);
   const imageCandidates = useMemo(() => getProductImageCandidates(product), [product]);
   const [failedImageUrls, setFailedImageUrls] = useState<string[]>([]);
   const imageUrl = imageCandidates.find((candidate) => !failedImageUrls.includes(candidate));
   const hiddenPriceCopy = productPriceGateCopy(t, priceGateReason, product.moq);
+  const disabledCartCopy = productCartDisabledCopy(t, {
+    hasEffectivePrice,
+    hasOpenPrice,
+    hasSellableStock,
+  });
   const isReviewPriceVisible =
     showWholesalePrice && priceGateReason === "customer_needs_assignment";
   const [addFeedbackState, setAddFeedbackState] = useState<AddFeedbackState>("idle");
@@ -88,6 +95,10 @@ export const ProductCard = memo(function ProductCard({
   }
 
   function handleAddToCart() {
+    if (!canAddToCart) {
+      return;
+    }
+
     const didAdd = safeAddCartItem(product.sku, Math.max(1, product.moq), [product]);
     setAddFeedbackState(didAdd ? "success" : "error");
 
@@ -245,7 +256,7 @@ export const ProductCard = memo(function ProductCard({
                   <>
                     <div className="flex min-w-0 items-center gap-1.5">
                       <div className="truncate text-sm font-black sm:text-lg">
-                        {hasWholesalePrice
+                        {hasEffectivePrice
                           ? formatEuro(product.price)
                           : tx(
                             t,
@@ -274,7 +285,7 @@ export const ProductCard = memo(function ProductCard({
                           "In revisione · MOQ {moq}",
                           { moq: product.moq }
                         )
-                        : hasWholesalePrice
+                        : hasEffectivePrice
                         ? txFormat(
                           t,
                           "storefront.product.card.visiblePriceHint",
@@ -352,7 +363,7 @@ export const ProductCard = memo(function ProductCard({
                 >
                   <ShoppingCart className="size-3.5 sm:size-4" />
                   <span className="sr-only sm:not-sr-only">
-                    {tx(t, "storefront.product.card.unavailable", "Esaurito")}
+                    {disabledCartCopy.label}
                   </span>
                 </Button>
               )}
@@ -406,6 +417,37 @@ function getStockMeta(product: PartProduct, t: StorefrontTranslator) {
   return {
     label: stockStatusLabel(t, "Out of Stock"),
     className: "border-slate-200 bg-slate-100 text-slate-500",
+  };
+}
+
+function productCartDisabledCopy(
+  t: StorefrontTranslator,
+  state: {
+    hasEffectivePrice: boolean;
+    hasOpenPrice: boolean;
+    hasSellableStock: boolean;
+  }
+) {
+  if (!state.hasSellableStock) {
+    return {
+      label: tx(t, "storefront.product.card.unavailable", "Esaurito"),
+    };
+  }
+
+  if (!state.hasOpenPrice) {
+    return {
+      label: tx(t, "storefront.product.card.priceLocked", "Listino"),
+    };
+  }
+
+  if (!state.hasEffectivePrice) {
+    return {
+      label: tx(t, "storefront.product.card.priceMissing", "Prezzo"),
+    };
+  }
+
+  return {
+    label: tx(t, "storefront.product.card.unavailable", "Esaurito"),
   };
 }
 

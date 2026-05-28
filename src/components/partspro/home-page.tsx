@@ -157,7 +157,7 @@ export function HomePage({
   );
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
+    <main className="min-h-screen overflow-x-clip bg-[#f4f6fa] text-slate-950">
       <StoreHeader
         initialAccountAccess={initialAccountAccess}
         modelGroups={modelGroups}
@@ -188,7 +188,7 @@ function CategorySidebar({ modelGroups }: { modelGroups?: readonly DeviceModelGr
 
   return (
     <aside className="hidden lg:block">
-      <div className="sticky top-20 rounded-lg border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
+      <div className="sticky top-20 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
         <div className="mb-3 flex items-center justify-between gap-3 px-1">
           <div className="min-w-0">
             <h2 className="truncate text-sm font-black">

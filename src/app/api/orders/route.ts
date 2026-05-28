@@ -15,11 +15,13 @@ import {
 import { getAdminAuthState, hasAdminPermission } from "@/lib/partspro-admin-auth";
 import {
   clearCurrentCustomerCart,
+  getCurrentCustomerProfile,
   listCatalogProducts,
   listCompanies,
   listOrderSummaries,
   RepositoryWriteError,
   saveOrder,
+  type AccountCustomerProfile,
   type PreparedOrderLine,
   type PreparedOrderTotals,
 } from "@/lib/partspro-repository";
@@ -31,6 +33,7 @@ import {
 import {
   applyAccountPriceToProduct,
   getCurrentAccountContext,
+  hasOrderableEffectivePrice,
 } from "@/lib/partspro-account-context";
 import { toPublicSku } from "@/lib/partspro-sku";
 
@@ -61,23 +64,6 @@ const deliveryAddressSchema = z
   })
   .strict();
 
-const companySnapshotSchema = z
-  .object({
-    name: z.string().trim().min(1).max(160),
-    partitaIva: z.string().trim().min(5).max(32),
-    codiceFiscale: z.string().trim().min(5).max(32),
-    pec: z.string().trim().email().max(160),
-    codiceDestinatario: z.string().trim().min(6).max(16),
-    address: deliveryAddressSchema.optional(),
-  })
-  .strict();
-
-const fiscalSchema = z
-  .object({
-    companySnapshot: companySnapshotSchema,
-  })
-  .strict();
-
 const createOrderSchema = z
   .object({
     companyId: z.string().trim().min(1).max(40).regex(/^[A-Za-z0-9_-]+$/),
@@ -85,7 +71,7 @@ const createOrderSchema = z
     notes: z.string().trim().max(500).optional(),
     purchaseOrderNumber: z.string().trim().min(1).max(64).optional(),
     deliveryAddress: deliveryAddressSchema,
-    fiscal: fiscalSchema,
+    fiscal: z.unknown().optional(),
     items: z.array(orderItemSchema).min(1).max(100),
   })
   .strict();
@@ -108,6 +94,7 @@ const ordersQuerySchema = z
 const ordersQueryKeys = new Set(Object.keys(ordersQuerySchema.shape));
 
 type RequestedOrderItem = z.infer<typeof orderItemSchema>;
+type DeliveryAddress = z.infer<typeof deliveryAddressSchema>;
 type OrdersQuery = z.infer<typeof ordersQuerySchema>;
 type OrderLine = PreparedOrderLine;
 export async function GET(request: NextRequest) {
@@ -192,6 +179,19 @@ export async function POST(request: NextRequest) {
       return apiError(401, "LOGIN_REQUIRED", "Login is required before placing an order.");
     }
 
+    if (account.customer?.status === "active" && !account.canViewPrices) {
+      return apiError(
+        422,
+        "PRICE_ACCESS_REQUIRED",
+        "Customer price list must be enabled before checkout.",
+        {
+          assignmentStatus: account.customer.assignmentStatus,
+          customerId: account.customer.id,
+          customerType: account.customer.customerType,
+        }
+      );
+    }
+
     if (!account.canCheckout) {
       return apiError(
         422,
@@ -205,7 +205,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const [companies, catalog] = await Promise.all([listCompanies(), listCatalogProducts()]);
+    const [companies, catalog, customerProfile] = await Promise.all([
+      listCompanies(),
+      listCatalogProducts(),
+      getCurrentCustomerProfile(),
+    ]);
     const companyResolution = resolveCompany(companies.data, result.data.companyId);
     const company = companyResolution.company;
 
@@ -240,12 +244,17 @@ export async function POST(request: NextRequest) {
     }
 
     const totals = calculateTotals(orderBuild.lines);
+    const fiscal = buildServerFiscalSnapshot(
+      company,
+      customerProfile.data,
+      result.data.deliveryAddress
+    );
     const saved = await saveOrder({
       company,
       paymentMethod: result.data.paymentMethod,
       purchaseOrderNumber: result.data.purchaseOrderNumber,
       deliveryAddress: result.data.deliveryAddress,
-      fiscal: result.data.fiscal,
+      fiscal,
       notes: result.data.notes,
       lines: orderBuild.lines,
       totals,
@@ -289,6 +298,7 @@ export async function POST(request: NextRequest) {
           ...warningsMeta(
             companies.warning,
             catalog.warning,
+            customerProfile.warning,
             companyResolution.warning,
             saved.warning,
             cartClearWarning
@@ -299,11 +309,92 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     if (error instanceof RepositoryWriteError) {
-      return apiError(error.status, error.code, error.message, error.details);
+      return orderRepositoryError(error);
     }
 
     return apiError(500, "ORDER_CREATE_FAILED", "Order could not be created at this time.");
   }
+}
+
+function buildServerFiscalSnapshot(
+  company: CompanyProfile,
+  profile: AccountCustomerProfile | null,
+  deliveryAddress: DeliveryAddress
+) {
+  return {
+    companySnapshot: {
+      name: profile?.companyName || company.name,
+      partitaIva: profile?.vatNumber || company.partitaIva,
+      codiceFiscale: profile?.fiscalCode || company.codiceFiscale,
+      pec: profile?.pec || company.pec,
+      codiceDestinatario: profile?.sdi || company.codiceDestinatario,
+      address: deliveryAddress,
+    },
+  };
+}
+
+function orderRepositoryError(error: RepositoryWriteError) {
+  if (error.code !== "ORDER_RPC_FAILED") {
+    return apiError(error.status, error.code, error.message, error.details);
+  }
+
+  const details = isRecord(error.details) ? error.details : {};
+  const sqlState = readString(details.code);
+  const rpcMessage = readString(details.message) ?? error.message;
+  const normalizedMessage = rpcMessage.toLowerCase();
+
+  if (sqlState === "40001" || normalizedMessage.includes("price changed")) {
+    return apiError(
+      409,
+      "ORDER_PRICE_CHANGED",
+      "Some prices changed before the order was confirmed. Refresh checkout and try again.",
+      error.details
+    );
+  }
+
+  if (
+    sqlState === "23514" ||
+    normalizedMessage.includes("stock") ||
+    normalizedMessage.includes("moq") ||
+    normalizedMessage.includes("quantity")
+  ) {
+    return apiError(
+      422,
+      "ORDER_STOCK_INVALID",
+      "One or more items no longer match stock, quantity or MOQ rules.",
+      error.details
+    );
+  }
+
+  if (sqlState === "23503" || normalizedMessage.includes("unknown sku")) {
+    return apiError(
+      422,
+      "ORDER_SKU_UNAVAILABLE",
+      "One or more items are no longer available.",
+      error.details
+    );
+  }
+
+  if (sqlState === "42501" || normalizedMessage.includes("customer")) {
+    return apiError(
+      422,
+      "ORDER_CUSTOMER_NOT_READY",
+      "Customer profile or account permissions changed before checkout.",
+      error.details
+    );
+  }
+
+  return apiError(error.status, error.code, error.message, error.details);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
 }
 
 function filterOrders(items: OrderSummary[], query: OrdersQuery) {
@@ -389,6 +480,11 @@ function buildOrder(requestedItems: RequestedOrderItem[], catalog: PartProduct[]
       continue;
     }
 
+    if (!hasOrderableEffectivePrice(product)) {
+      issues.push({ sku, message: "Effective price is not available for this SKU." });
+      continue;
+    }
+
     if (item.quantity > product.stock) {
       issues.push({ sku, message: `Only ${product.stock} units are currently available.` });
       continue;
@@ -418,7 +514,7 @@ function buildOrderLine(product: PartProduct, quantity: number) {
   const lineNetCents = unitNetCents * quantity;
   const vatCents = Math.round((lineNetCents * product.vatRate) / 100);
 
-  return {
+  const line = {
     product,
     quantity,
     unitNetCents,
@@ -426,6 +522,8 @@ function buildOrderLine(product: PartProduct, quantity: number) {
     vatCents,
     lineGrossCents: lineNetCents + vatCents,
   };
+
+  return product.priceVersion ? { ...line, priceVersion: product.priceVersion } : line;
 }
 
 function toOrderLineDto(line: OrderLine) {

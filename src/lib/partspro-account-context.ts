@@ -132,13 +132,18 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
   const isEmployee = accountType === "employee";
   const canViewPrices = Boolean(
     isEmployee ||
-      (customerContext && customerContext.status === "active")
+      (customerContext &&
+        customerContext.status === "active" &&
+        customerContext.customerType === "wholesale" &&
+        customerContext.assignmentStatus === "assigned")
   );
   const canCheckout = Boolean(
     accountType === "customer" &&
       !accountSyncError &&
       customerContext &&
       customerContext.status === "active" &&
+      customerContext.customerType === "wholesale" &&
+      customerContext.assignmentStatus === "assigned" &&
       isCustomerProfileComplete(customer)
   );
 
@@ -211,7 +216,14 @@ export function applyAccountPriceToProduct(
     };
   }
 
-  const customerType = account.customer?.customerType ?? "retail";
+  if (product.priceResolved || product.priceVersion) {
+    return product;
+  }
+
+  const customerType =
+    account.accountType === "employee"
+      ? "wholesale"
+      : account.customer?.customerType ?? "retail";
   const level = account.customer?.level ?? "bronze";
   const basePrice = customerType === "wholesale" ? product.price : product.retailPrice;
   const finalPrice = calculateTierPrice(basePrice, level);
@@ -221,6 +233,10 @@ export function applyAccountPriceToProduct(
     price: finalPrice,
     retailPrice: product.retailPrice,
   };
+}
+
+export function hasOrderableEffectivePrice(product: Pick<PartProduct, "price">) {
+  return Number.isFinite(product.price) && product.price > 0;
 }
 
 export function priceVisibilityReason(account: AccountContext) {

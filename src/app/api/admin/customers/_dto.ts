@@ -7,6 +7,7 @@ import {
   type AdminCustomerPatchInput,
   type AdminCustomerProfileInput,
   type AdminCustomerQueryInput,
+  type AdminCustomerTermsInput,
 } from "@/lib/partspro-repository";
 
 type CustomerQueryDto = {
@@ -50,6 +51,10 @@ export function toAdminCustomerProfilePatch(input: AdminCustomerProfileInput): A
 export function toAdminCustomerClassificationPatch(
   input: AdminCustomerClassificationInput
 ): AdminCustomerClassificationInput {
+  return input;
+}
+
+export function toAdminCustomerTermsPatch(input: AdminCustomerTermsInput): AdminCustomerTermsInput {
   return input;
 }
 

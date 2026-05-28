@@ -61,6 +61,16 @@ export const customerClassificationPatchSchema = z
   })
   .strict();
 
+export const customerCommercialTermsPatchSchema = z
+  .object({
+    creditLimit: z.number().finite().min(0).max(999999999).optional(),
+    monthlyPurchase: nullableTextSchema.optional(),
+    paymentTerms: nullableTextSchema.optional(),
+    priceGroupId: z.string().trim().max(80).nullable().optional(),
+    reason: z.string().trim().min(3).max(1000),
+  })
+  .strict();
+
 export const customerLevelPatchSchema = z
   .object({
     level: customerTierSchema,

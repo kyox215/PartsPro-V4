@@ -283,6 +283,13 @@ type CustomerLevelDraft = {
   tier: CustomerTier;
 };
 
+type CustomerTermsDraft = {
+  creditLimit: string;
+  monthlyPurchase: string;
+  paymentTerms: string;
+  priceGroupId: string;
+};
+
 type CustomerClassificationDraft = {
   customerType: CustomerType;
 };
@@ -300,12 +307,18 @@ type CustomerEditState =
     }
   | {
       customer: AdminCustomer;
+      draft: CustomerTermsDraft;
+      kind: "terms";
+    }
+  | {
+      customer: AdminCustomer;
       draft: CustomerClassificationDraft;
       kind: "classification";
     };
 
 const pageSize = 8;
 const allValue = "all";
+const customerManageTermsPermission = "customers.manage_terms";
 const tiers: CustomerTier[] = ["bronze", "silver", "gold", "emerald", "diamond", "master", "king"];
 const emptyFacets: CustomerFacets = {
   active: 0,
@@ -354,6 +367,7 @@ export function AdminCustomersPanel() {
 
   const offset = page * pageSize;
   const canManageCustomerLevel = currentPermissions.has(CUSTOMER_MANAGE_LEVEL_PERMISSION);
+  const canManageCustomerTerms = currentPermissions.has(customerManageTermsPermission);
   const activeFilterCount = [
     status !== allValue,
     customerType !== allValue,
@@ -562,11 +576,17 @@ export function AdminCustomersPanel() {
                 draft: classificationDraftFromCustomer(customer),
                 kind,
               }
-            : {
-                customer,
-                draft: levelDraftFromCustomer(customer),
-                kind,
-              }
+            : kind === "terms"
+              ? {
+                  customer,
+                  draft: termsDraftFromCustomer(customer),
+                  kind,
+                }
+              : {
+                  customer,
+                  draft: levelDraftFromCustomer(customer),
+                  kind,
+                }
     );
     setEditReason("");
   }
@@ -583,6 +603,14 @@ export function AdminCustomersPanel() {
     setEditState((current) =>
       current?.kind === "level"
         ? { ...current, draft: { ...current.draft, [field]: value as CustomerTier } }
+        : current
+    );
+  }
+
+  function updateTermsDraft(field: keyof CustomerTermsDraft, value: string) {
+    setEditState((current) =>
+      current?.kind === "terms"
+        ? { ...current, draft: { ...current.draft, [field]: value } }
         : current
     );
   }
@@ -637,7 +665,8 @@ export function AdminCustomersPanel() {
 
     const payloadResult = buildCustomerEditPayload(
       editState,
-      editReason.trim()
+      editReason.trim(),
+      copy.invalidCreditLimit
     );
 
     if (!payloadResult.ok) {
@@ -653,7 +682,9 @@ export function AdminCustomersPanel() {
           ? "profile"
           : editState.kind === "level"
             ? "level"
-            : "classification";
+            : editState.kind === "terms"
+              ? "commercial-terms"
+              : "classification";
       const response = await fetchJson<CustomerMutationResponse>(
         `/api/admin/customers/${editState.customer.id}/${endpoint}`,
         {
@@ -678,7 +709,9 @@ export function AdminCustomersPanel() {
             ? copy.profileSaved
             : editState.kind === "level"
               ? copy.levelSaved
-              : copy.classificationSaved,
+              : editState.kind === "terms"
+                ? copy.termsSaved
+                : copy.classificationSaved,
       });
       setEditState(null);
       setEditReason("");
@@ -1017,6 +1050,7 @@ export function AdminCustomersPanel() {
           </SheetHeader>
           <CustomerDetail
             canManageCustomerLevel={canManageCustomerLevel}
+            canManageCustomerTerms={canManageCustomerTerms}
             copy={copy}
             customer={detail}
             detailLoading={detailLoading}
@@ -1061,6 +1095,7 @@ export function AdminCustomersPanel() {
 
       <CustomerEditDialog
         canManageCustomerLevel={canManageCustomerLevel}
+        canManageCustomerTerms={canManageCustomerTerms}
         copy={copy}
         editState={editState}
         onClose={() => {
@@ -1070,6 +1105,7 @@ export function AdminCustomersPanel() {
         onClassificationChange={updateClassificationDraft}
         onLevelChange={updateLevelDraft}
         onProfileChange={updateProfileDraft}
+        onTermsChange={updateTermsDraft}
         onReasonChange={setEditReason}
         onSubmit={submitCustomerEdit}
         reason={editReason}
@@ -1229,6 +1265,7 @@ function CustomerMobileCard({
 
 function CustomerDetail({
   canManageCustomerLevel,
+  canManageCustomerTerms,
   copy,
   customer,
   detailLoading,
@@ -1239,6 +1276,7 @@ function CustomerDetail({
   text,
 }: {
   canManageCustomerLevel: boolean;
+  canManageCustomerTerms: boolean;
   copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
   customer: AdminCustomer | null;
   detailLoading: boolean;
@@ -1421,6 +1459,21 @@ function CustomerDetail({
                   </div>
                 ) : null}
               </div>
+            </DetailSectionCard>
+
+            <DetailSectionCard
+              title={copy.commercialTerms}
+              actionLabel={canManageCustomerTerms ? copy.editTerms : undefined}
+              onAction={canManageCustomerTerms ? () => onEdit("terms", customer) : undefined}
+            >
+              <DetailGrid
+                items={[
+                  [copy.priceGroupId, customer.priceGroupId || copy.noData],
+                  [text.customers.labels.creditLimit, formatEuro(customer.creditLimit)],
+                  [text.customers.labels.paymentTerms, customer.paymentTerms || copy.noData],
+                  [copy.monthlyPurchase, customer.monthlyPurchase || copy.noData],
+                ]}
+              />
             </DetailSectionCard>
 
             <DetailSectionCard title={copy.profile} actionLabel={text.common.edit} onAction={() => onEdit("profile", customer)}>
@@ -1811,12 +1864,14 @@ function getExternalOrderLineImageFallbackUrl(imageUrl: string | undefined) {
 
 function CustomerEditDialog({
   canManageCustomerLevel,
+  canManageCustomerTerms,
   copy,
   editState,
   onClose,
   onClassificationChange,
   onLevelChange,
   onProfileChange,
+  onTermsChange,
   onReasonChange,
   onSubmit,
   reason,
@@ -1824,12 +1879,14 @@ function CustomerEditDialog({
   text,
 }: {
   canManageCustomerLevel: boolean;
+  canManageCustomerTerms: boolean;
   copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
   editState: CustomerEditState | null;
   onClose: () => void;
   onClassificationChange: (field: keyof CustomerClassificationDraft, value: string) => void;
   onLevelChange: (field: keyof CustomerLevelDraft, value: string) => void;
   onProfileChange: (field: keyof CustomerProfileDraft, value: string) => void;
+  onTermsChange: (field: keyof CustomerTermsDraft, value: string) => void;
   onReasonChange: (value: string) => void;
   onSubmit: () => void;
   reason: string;
@@ -1841,6 +1898,8 @@ function CustomerEditDialog({
       ? copy.editProfile
       : editState?.kind === "level"
         ? copy.editLevel
+        : editState?.kind === "terms"
+          ? copy.editTerms
         : editState?.kind === "classification"
           ? copy.customerType
           : copy.confirm;
@@ -1849,13 +1908,20 @@ function CustomerEditDialog({
       ? copy.saveProfile
       : editState?.kind === "level"
         ? copy.saveLevel
+        : editState?.kind === "terms"
+          ? copy.saveTerms
         : editState?.kind === "classification"
           ? copy.saveClassification
         : copy.submit;
+  const hasValidTermsDraft =
+    editState?.kind === "terms"
+      ? canManageCustomerTerms && isValidCreditLimitDraft(editState.draft.creditLimit)
+      : true;
   const canSubmit =
     Boolean(editState) &&
     reason.trim().length >= 3 &&
     (editState?.kind !== "level" || canManageCustomerLevel) &&
+    hasValidTermsDraft &&
     (editState?.kind !== "profile" || editState.draft.companyName.trim().length >= 2);
 
   return (
@@ -1969,6 +2035,47 @@ function CustomerEditDialog({
                   ))}
                 </SelectContent>
               </Select>
+            </EditField>
+          </div>
+        ) : null}
+
+        {editState?.kind === "terms" ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            <EditField label={copy.priceGroupId}>
+              <Input
+                className="h-8"
+                value={editState.draft.priceGroupId}
+                onChange={(event) => onTermsChange("priceGroupId", event.target.value)}
+                disabled={!canManageCustomerTerms}
+              />
+            </EditField>
+            <EditField label={text.customers.labels.creditLimit}>
+              <Input
+                className="h-8"
+                inputMode="decimal"
+                min="0"
+                step="0.01"
+                type="number"
+                value={editState.draft.creditLimit}
+                onChange={(event) => onTermsChange("creditLimit", event.target.value)}
+                disabled={!canManageCustomerTerms}
+              />
+            </EditField>
+            <EditField label={text.customers.labels.paymentTerms}>
+              <Input
+                className="h-8"
+                value={editState.draft.paymentTerms}
+                onChange={(event) => onTermsChange("paymentTerms", event.target.value)}
+                disabled={!canManageCustomerTerms}
+              />
+            </EditField>
+            <EditField label={copy.monthlyPurchase}>
+              <Input
+                className="h-8"
+                value={editState.draft.monthlyPurchase}
+                onChange={(event) => onTermsChange("monthlyPurchase", event.target.value)}
+                disabled={!canManageCustomerTerms}
+              />
             </EditField>
           </div>
         ) : null}
@@ -2525,6 +2632,15 @@ function levelDraftFromCustomer(customer: AdminCustomer): CustomerLevelDraft {
   };
 }
 
+function termsDraftFromCustomer(customer: AdminCustomer): CustomerTermsDraft {
+  return {
+    creditLimit: Number.isFinite(customer.creditLimit) ? String(customer.creditLimit) : "0",
+    monthlyPurchase: customer.monthlyPurchase ?? "",
+    paymentTerms: customer.paymentTerms ?? "",
+    priceGroupId: customer.priceGroupId ?? "",
+  };
+}
+
 function classificationDraftFromCustomer(customer: AdminCustomer): CustomerClassificationDraft {
   return {
     customerType: customer.customerType,
@@ -2533,7 +2649,8 @@ function classificationDraftFromCustomer(customer: AdminCustomer): CustomerClass
 
 function buildCustomerEditPayload(
   editState: CustomerEditState,
-  reason: string
+  reason: string,
+  invalidCreditLimitMessage: string
 ): { ok: true; payload: Record<string, unknown> } | { ok: false; message: string } {
   if (editState.kind === "profile") {
     return {
@@ -2564,6 +2681,25 @@ function buildCustomerEditPayload(
     };
   }
 
+  if (editState.kind === "terms") {
+    const creditLimit = normalizeCreditLimitDraft(editState.draft.creditLimit);
+
+    if (creditLimit === null) {
+      return { ok: false, message: invalidCreditLimitMessage };
+    }
+
+    return {
+      ok: true,
+      payload: {
+        creditLimit,
+        monthlyPurchase: nullableDraftText(editState.draft.monthlyPurchase),
+        paymentTerms: nullableDraftText(editState.draft.paymentTerms),
+        priceGroupId: nullableDraftText(editState.draft.priceGroupId),
+        reason,
+      },
+    };
+  }
+
   return {
     ok: true,
     payload: {
@@ -2576,6 +2712,19 @@ function buildCustomerEditPayload(
 function nullableDraftText(value: string) {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+function isValidCreditLimitDraft(value: string) {
+  return normalizeCreditLimitDraft(value) !== null;
+}
+
+function normalizeCreditLimitDraft(value: string) {
+  const trimmed = value.trim().replace(",", ".");
+  const amount = Number(trimmed);
+
+  return trimmed.length > 0 && Number.isFinite(amount) && amount >= 0 && amount <= 999999999
+    ? amount
+    : null;
 }
 
 function compareCreatedAtDesc<T extends { createdAt: string }>(first: T, second: T) {
