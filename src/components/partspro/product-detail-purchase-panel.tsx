@@ -12,18 +12,23 @@ import {
   ShoppingCart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { tx, txFormat } from "@/i18n/dictionaries/storefront";
 import type { PartProduct } from "@/lib/partspro-data";
 import { formatEuro } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
 import { addCartItem } from "./cart-state";
+import { useT } from "./i18n-provider";
 
 type ProductDetailPurchasePanelProps = {
   product: PartProduct;
 };
 
+type AddFeedbackState = "idle" | "success" | "error";
+
 export function ProductDetailPurchasePanel({
   product,
 }: ProductDetailPurchasePanelProps) {
+  const t = useT();
   const router = useRouter();
   const minimumQuantity = Math.max(product.moq, 1);
   const stockAvailable = product.stock > 0 && product.status !== "Out of Stock";
@@ -49,7 +54,7 @@ export function ProductDetailPurchasePanel({
     safeQuantity,
     stockAvailable,
   });
-  const [addFeedbackVisible, setAddFeedbackVisible] = useState(false);
+  const [addFeedbackState, setAddFeedbackState] = useState<AddFeedbackState>("idle");
   const addFeedbackTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -70,16 +75,18 @@ export function ProductDetailPurchasePanel({
   }
 
   function addCurrentQuantityToCart() {
-    addCartItem(product.sku, safeQuantity, [product]);
-    setAddFeedbackVisible(true);
+    const didAdd = safeAddCartItem(product.sku, safeQuantity, [product]);
+    setAddFeedbackState(didAdd ? "success" : "error");
 
     if (addFeedbackTimerRef.current) {
       window.clearTimeout(addFeedbackTimerRef.current);
     }
 
     addFeedbackTimerRef.current = window.setTimeout(() => {
-      setAddFeedbackVisible(false);
+      setAddFeedbackState("idle");
     }, 1400);
+
+    return didAdd;
   }
 
   function handleAddToCart() {
@@ -95,8 +102,9 @@ export function ProductDetailPurchasePanel({
       return;
     }
 
-    addCurrentQuantityToCart();
-    router.push("/checkout");
+    if (addCurrentQuantityToCart()) {
+      router.push("/checkout");
+    }
   }
 
   return (
@@ -191,48 +199,89 @@ export function ProductDetailPurchasePanel({
           <Button
             type="button"
             className={cn(
-              "h-11 flex-1",
-              addFeedbackVisible && "bg-emerald-600 text-white hover:bg-emerald-600"
+              "h-11 min-w-0 flex-1",
+              addFeedbackState === "success" &&
+                "bg-emerald-600 text-white hover:bg-emerald-600",
+              addFeedbackState === "error" &&
+                "bg-red-600 text-white hover:bg-red-600"
             )}
             onClick={handleAddToCart}
-            aria-label={`Aggiungi ${safeQuantity} pezzi di ${product.name} al carrello`}
+            aria-label={txFormat(
+              t,
+              "storefront.product.purchase.addAria",
+              "Aggiungi {quantity} pezzi di {name} al carrello",
+              { quantity: safeQuantity, name: product.name }
+            )}
           >
-            {addFeedbackVisible ? (
+            {addFeedbackState === "success" ? (
               <CheckIcon className="size-4" />
+            ) : addFeedbackState === "error" ? (
+              <AlertTriangle className="size-4" />
             ) : (
               <ShoppingCart className="size-4" />
             )}
-            {addFeedbackVisible ? "Aggiunto" : "Aggiungi al carrello"}
+            <span className="min-w-0 truncate" aria-live="polite">
+              {addFeedbackState === "success"
+                ? tx(t, "storefront.product.purchase.added", "Aggiunto")
+                : addFeedbackState === "error"
+                ? tx(t, "storefront.product.purchase.addFailed", "Riprova")
+                : tx(t, "storefront.product.purchase.add", "Aggiungi al carrello")}
+            </span>
           </Button>
         ) : (
-          <Button className="h-11 flex-1" disabled aria-describedby={validationId}>
+          <Button className="h-11 min-w-0 flex-1" disabled aria-describedby={validationId}>
             <ShoppingCart className="size-4" />
-            Aggiungi al carrello
+            <span className="min-w-0 truncate">
+              {tx(t, "storefront.product.purchase.add", "Aggiungi al carrello")}
+            </span>
           </Button>
         )}
         {canOrder ? (
           <Button
             type="button"
             variant="outline"
-            className="h-11 flex-1 bg-white"
+            className="h-11 min-w-0 flex-1 bg-white"
             onClick={handleOrderNow}
-            aria-label={`Ordina ora ${safeQuantity} pezzi di ${product.name}`}
+            aria-label={txFormat(
+              t,
+              "storefront.product.purchase.orderNowAria",
+              "Ordina ora {quantity} pezzi di {name}",
+              { quantity: safeQuantity, name: product.name }
+            )}
           >
-            Ordina ora
+            <span className="min-w-0 truncate">
+              {tx(t, "storefront.product.purchase.orderNow", "Ordina ora")}
+            </span>
           </Button>
         ) : (
           <Button
             variant="outline"
-            className="h-11 flex-1 bg-white"
+            className="h-11 min-w-0 flex-1 bg-white"
             disabled
             aria-describedby={validationId}
           >
-            Ordina ora
+            <span className="min-w-0 truncate">
+              {tx(t, "storefront.product.purchase.orderNow", "Ordina ora")}
+            </span>
           </Button>
         )}
       </div>
     </div>
   );
+}
+
+function safeAddCartItem(
+  sku: string,
+  quantity: number,
+  catalog: readonly PartProduct[]
+) {
+  try {
+    const result = addCartItem(sku, quantity, catalog) as boolean | void;
+
+    return result !== false;
+  } catch {
+    return false;
+  }
 }
 
 function SummaryLine({

@@ -44,10 +44,7 @@ const CART_CHANGED_EVENT = "partspro-cart-changed";
 const EMPTY_CART_ITEMS: CartItem[] = [];
 const CartCatalogContext = React.createContext<readonly PartProduct[]>(products);
 
-let cartSnapshotRaw = "";
-let cartSnapshotCatalogKey = "";
-let cartSnapshotPreserveUnknown = false;
-let cartSnapshotItems: CartItem[] = EMPTY_CART_ITEMS;
+const cartSnapshotCache = new Map<string, CartItem[]>();
 
 export function CartCatalogProvider({ children, products }: CartCatalogProviderProps) {
   const catalog = React.useMemo(() => products.map(normalizeCatalogProduct), [products]);
@@ -91,11 +88,11 @@ export function useCart({
 
   const setItems = React.useCallback((nextItems: CartItem[]) => {
     const normalizedItems = normalizeCartItems(nextItems, catalog, normalizeOptions);
-    writeStoredCartItems(normalizedItems, catalog, normalizeOptions);
+    return writeStoredCartItems(normalizedItems, catalog, normalizeOptions);
   }, [catalog, normalizeOptions]);
 
   const addItem = React.useCallback((sku: string, quantity = 1) => {
-    setItems(
+    return setItems(
       mergeCartItems(
         readStoredCartItems(catalog, normalizeOptions),
         { sku, quantity },
@@ -106,7 +103,7 @@ export function useCart({
   }, [catalog, normalizeOptions, setItems]);
 
   const updateQuantity = React.useCallback((sku: string, quantity: number) => {
-    setItems(
+    return setItems(
       updateCartItemQuantity(
         readStoredCartItems(catalog, normalizeOptions),
         sku,
@@ -118,7 +115,7 @@ export function useCart({
   }, [catalog, normalizeOptions, setItems]);
 
   const removeItem = React.useCallback((sku: string) => {
-    setItems(
+    return setItems(
       removeCartItem(
         readStoredCartItems(catalog, normalizeOptions),
         sku,
@@ -129,7 +126,7 @@ export function useCart({
   }, [catalog, normalizeOptions, setItems]);
 
   const clearCart = React.useCallback(() => {
-    setItems([]);
+    return setItems([]);
   }, [setItems]);
 
   const totals = React.useMemo(
@@ -160,30 +157,39 @@ export function addCartItem(
   catalog: readonly PartProduct[] = products
 ) {
   if (!isBrowser()) {
-    return;
+    return false;
   }
 
-  const options = { preserveUnknown: true };
-  const nextItems = mergeCartItems(
-    readStoredCartItems(catalog, options),
-    { sku, quantity },
-    catalog,
-    options
-  );
-  writeStoredCartItems(nextItems, catalog, options);
+  try {
+    const options = { preserveUnknown: true };
+    const nextItems = mergeCartItems(
+      readStoredCartItems(catalog, options),
+      { sku, quantity },
+      catalog,
+      options
+    );
+
+    return writeStoredCartItems(nextItems, catalog, options);
+  } catch {
+    return false;
+  }
 }
 
 export function clearStoredCart() {
   if (!isBrowser()) {
-    return;
+    return false;
   }
 
-  window.localStorage.removeItem(CART_STORAGE_KEY);
-  cartSnapshotRaw = "";
-  cartSnapshotCatalogKey = "";
-  cartSnapshotPreserveUnknown = false;
-  cartSnapshotItems = EMPTY_CART_ITEMS;
-  window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+  try {
+    window.localStorage.removeItem(CART_STORAGE_KEY);
+    resetCartSnapshotCache("", "", true, EMPTY_CART_ITEMS);
+    resetCartSnapshotCache("", "", false, EMPTY_CART_ITEMS, { preserveExisting: true });
+    window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function useStoredCartItems({ preserveUnknown = true }: NormalizeCartOptions = {}) {
@@ -209,7 +215,7 @@ export function replaceStoredCartItems(
   items: CartItem[],
   options: NormalizeCartOptions = { preserveUnknown: true }
 ) {
-  writeStoredCartItems(items, [], options);
+  return writeStoredCartItems(items, [], options);
 }
 
 export function mergeCartItemCollections(
@@ -290,16 +296,14 @@ function readStoredCartItems(
     return EMPTY_CART_ITEMS;
   }
 
-  const rawCart = window.localStorage.getItem(CART_STORAGE_KEY) ?? "";
+  const rawCart = readStoredCartRaw();
   const catalogKey = cartCatalogKey(catalog);
   const preserveUnknown = Boolean(options.preserveUnknown);
+  const cacheKey = cartSnapshotCacheKey(rawCart, catalogKey, preserveUnknown);
+  const cachedSnapshot = cartSnapshotCache.get(cacheKey);
 
-  if (
-    rawCart === cartSnapshotRaw &&
-    catalogKey === cartSnapshotCatalogKey &&
-    preserveUnknown === cartSnapshotPreserveUnknown
-  ) {
-    return cartSnapshotItems;
+  if (cachedSnapshot) {
+    return cachedSnapshot;
   }
 
   try {
@@ -308,19 +312,14 @@ function readStoredCartItems(
       catalog,
       options
     );
-    cartSnapshotRaw = rawCart;
-    cartSnapshotCatalogKey = catalogKey;
-    cartSnapshotPreserveUnknown = preserveUnknown;
-    cartSnapshotItems = normalizedItems.length > 0 ? normalizedItems : EMPTY_CART_ITEMS;
+    const snapshotItems = normalizedItems.length > 0 ? normalizedItems : EMPTY_CART_ITEMS;
+    cartSnapshotCache.set(cacheKey, snapshotItems);
 
-    return cartSnapshotItems;
+    return snapshotItems;
   } catch {
-    cartSnapshotRaw = rawCart;
-    cartSnapshotCatalogKey = catalogKey;
-    cartSnapshotPreserveUnknown = preserveUnknown;
-    cartSnapshotItems = EMPTY_CART_ITEMS;
+    cartSnapshotCache.set(cacheKey, EMPTY_CART_ITEMS);
 
-    return cartSnapshotItems;
+    return EMPTY_CART_ITEMS;
   }
 }
 
@@ -330,29 +329,62 @@ function writeStoredCartItems(
   options: NormalizeCartOptions = {}
 ) {
   if (!isBrowser()) {
-    return;
+    return false;
   }
 
   const normalizedItems = normalizeCartItems(items, catalog, options);
   const catalogKey = cartCatalogKey(catalog);
   const preserveUnknown = Boolean(options.preserveUnknown);
 
-  if (normalizedItems.length === 0) {
-    window.localStorage.removeItem(CART_STORAGE_KEY);
-    cartSnapshotRaw = "";
-    cartSnapshotCatalogKey = catalogKey;
-    cartSnapshotPreserveUnknown = preserveUnknown;
-    cartSnapshotItems = EMPTY_CART_ITEMS;
-  } else {
-    const serializedItems = JSON.stringify(normalizedItems);
-    window.localStorage.setItem(CART_STORAGE_KEY, serializedItems);
-    cartSnapshotRaw = serializedItems;
-    cartSnapshotCatalogKey = catalogKey;
-    cartSnapshotPreserveUnknown = preserveUnknown;
-    cartSnapshotItems = normalizedItems;
+  try {
+    if (normalizedItems.length === 0) {
+      window.localStorage.removeItem(CART_STORAGE_KEY);
+      resetCartSnapshotCache("", catalogKey, preserveUnknown, EMPTY_CART_ITEMS);
+    } else {
+      const serializedItems = JSON.stringify(normalizedItems);
+      window.localStorage.setItem(CART_STORAGE_KEY, serializedItems);
+      resetCartSnapshotCache(serializedItems, catalogKey, preserveUnknown, normalizedItems);
+    }
+
+    window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function readStoredCartRaw() {
+  try {
+    return window.localStorage.getItem(CART_STORAGE_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function resetCartSnapshotCache(
+  rawCart: string,
+  catalogKey: string,
+  preserveUnknown: boolean,
+  items: CartItem[],
+  options: { preserveExisting?: boolean } = {}
+) {
+  if (!options.preserveExisting) {
+    cartSnapshotCache.clear();
   }
 
-  window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+  cartSnapshotCache.set(
+    cartSnapshotCacheKey(rawCart, catalogKey, preserveUnknown),
+    items.length > 0 ? items : EMPTY_CART_ITEMS
+  );
+}
+
+function cartSnapshotCacheKey(
+  rawCart: string,
+  catalogKey: string,
+  preserveUnknown: boolean
+) {
+  return JSON.stringify([rawCart, catalogKey, preserveUnknown]);
 }
 
 function subscribeToCart(onStoreChange: () => void) {

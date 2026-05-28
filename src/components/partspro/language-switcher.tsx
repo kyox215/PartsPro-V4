@@ -13,11 +13,6 @@ import {
 } from "@/i18n/config";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { useI18n } from "./i18n-provider";
 
 type LanguageSwitcherProps = {
@@ -44,9 +39,12 @@ export function LanguageSwitcher({
 
     setPendingLocale(nextLocale);
     startTransition(async () => {
-      await setLocale(nextLocale, activeScope);
-      router.refresh();
-      setPendingLocale(null);
+      try {
+        await setLocale(nextLocale, activeScope);
+        router.refresh();
+      } finally {
+        setPendingLocale(null);
+      }
     });
   }
 
@@ -65,30 +63,27 @@ export function LanguageSwitcher({
       {locales.map((item) => {
         const active = item === locale;
         const loading = pendingLocale === item;
+        const label = `${active ? t("language.current") : t("language.switchTo")}: ${
+          localeLabels[item]
+        }`;
         return (
-          <Tooltip key={item}>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant={active ? "default" : "ghost"}
-                size="sm"
-                className={cn(
-                  "h-8 min-w-8 rounded-full px-2 text-xs font-black",
-                  compact && "h-7 min-w-7 px-1.5"
-                )}
-                aria-pressed={active}
-                aria-label={`${t("language.switchTo")}: ${localeLabels[item]}`}
-                disabled={isPending}
-                onClick={() => handleLocaleChange(item)}
-              >
-                {loading ? "..." : localeShortLabels[item]}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {active ? t("language.current") : t("language.switchTo")}:{" "}
-              {localeLabels[item]}
-            </TooltipContent>
-          </Tooltip>
+          <Button
+            key={item}
+            type="button"
+            variant={active ? "default" : "ghost"}
+            size="sm"
+            className={cn(
+              "h-8 min-w-8 rounded-full px-2 text-xs font-black",
+              compact && "h-7 min-w-7 px-1.5"
+            )}
+            aria-pressed={active}
+            aria-label={label}
+            disabled={isPending}
+            title={label}
+            onClick={() => handleLocaleChange(item)}
+          >
+            {loading ? "..." : localeShortLabels[item]}
+          </Button>
         );
       })}
     </div>

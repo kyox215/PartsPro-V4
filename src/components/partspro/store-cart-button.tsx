@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useCart } from "./cart-state";
+import { useStoredCartItems } from "./cart-state";
 
 export type StoreCartButtonProps = {
   ariaLabel: string;
@@ -11,20 +11,25 @@ export type StoreCartButtonProps = {
 };
 
 export function StoreCartButton({ ariaLabel, label }: StoreCartButtonProps) {
-  const cart = useCart();
+  const items = useStoredCartItems({ preserveUnknown: true });
+  const itemCount = items.reduce((total, item) => total + item.quantity, 0);
+  const badgeLabel = itemCount > 99 ? "99+" : String(itemCount);
 
   return (
     <Button
       variant="outline"
       size="icon"
       asChild
-      className="relative ml-auto bg-white shadow-sm sm:ml-0 sm:w-auto sm:px-2.5"
+      className="relative ml-auto min-w-10 bg-white shadow-sm sm:ml-0 sm:w-auto sm:max-w-36 sm:px-2.5"
     >
       <Link href="/carrello" aria-label={ariaLabel}>
         <ShoppingCart className="size-4" />
-        <span className="hidden sm:inline">{label}</span>
-        <span className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-          {cart.itemCount}
+        <span className="hidden min-w-0 max-w-24 truncate sm:inline-block">{label}</span>
+        <span
+          className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white"
+          aria-live="polite"
+        >
+          {badgeLabel}
         </span>
       </Link>
     </Button>

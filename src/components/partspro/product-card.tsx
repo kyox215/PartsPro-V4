@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import {
+  AlertTriangle,
   Boxes,
   CheckCircle2,
   Clock,
@@ -37,6 +38,8 @@ type ProductCardProps = {
   showWholesalePrice?: boolean;
 };
 
+type AddFeedbackState = "idle" | "success" | "error";
+
 const ProductImagePreviewDialog = dynamic(
   () =>
     import("./product-image-preview-dialog").then(
@@ -67,7 +70,7 @@ export const ProductCard = memo(function ProductCard({
   const hiddenPriceCopy = productPriceGateCopy(t, priceGateReason, product.moq);
   const isReviewPriceVisible =
     showWholesalePrice && priceGateReason === "customer_needs_assignment";
-  const [addFeedbackVisible, setAddFeedbackVisible] = useState(false);
+  const [addFeedbackState, setAddFeedbackState] = useState<AddFeedbackState>("idle");
   const addFeedbackTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -85,15 +88,15 @@ export const ProductCard = memo(function ProductCard({
   }
 
   function handleAddToCart() {
-    addCartItem(product.sku, Math.max(1, product.moq), [product]);
-    setAddFeedbackVisible(true);
+    const didAdd = safeAddCartItem(product.sku, Math.max(1, product.moq), [product]);
+    setAddFeedbackState(didAdd ? "success" : "error");
 
     if (addFeedbackTimerRef.current) {
       window.clearTimeout(addFeedbackTimerRef.current);
     }
 
     addFeedbackTimerRef.current = window.setTimeout(() => {
-      setAddFeedbackVisible(false);
+      setAddFeedbackState("idle");
     }, 1400);
   }
 
@@ -304,7 +307,10 @@ export const ProductCard = memo(function ProductCard({
                   variant="outline"
                   className={cn(
                     "size-8 min-w-0 shrink-0 bg-white px-0 text-primary sm:size-auto sm:min-w-[104px] sm:px-3",
-                    addFeedbackVisible && "border-emerald-200 bg-emerald-50 text-emerald-700"
+                    addFeedbackState === "success" &&
+                      "border-emerald-200 bg-emerald-50 text-emerald-700",
+                    addFeedbackState === "error" &&
+                      "border-red-200 bg-red-50 text-red-700"
                   )}
                   onClick={handleAddToCart}
                   aria-describedby={stockDescriptionId}
@@ -315,14 +321,18 @@ export const ProductCard = memo(function ProductCard({
                     { name: product.name, moq: product.moq, stock: product.stock }
                   )}
                 >
-                  {addFeedbackVisible ? (
+                  {addFeedbackState === "success" ? (
                     <CheckCircle2 className="size-3.5 sm:size-4" />
+                  ) : addFeedbackState === "error" ? (
+                    <AlertTriangle className="size-3.5 sm:size-4" />
                   ) : (
                     <ShoppingCart className="size-3.5 sm:size-4" />
                   )}
-                  <span className="sr-only sm:not-sr-only">
-                    {addFeedbackVisible
+                  <span className="sr-only min-w-0 truncate sm:not-sr-only" aria-live="polite">
+                    {addFeedbackState === "success"
                       ? tx(t, "storefront.product.card.added", "Aggiunto")
+                      : addFeedbackState === "error"
+                      ? tx(t, "storefront.product.card.addFailed", "Riprova")
                       : tx(t, "storefront.product.card.add", "Aggiungi")}
                   </span>
                 </Button>
@@ -363,6 +373,20 @@ export const ProductCard = memo(function ProductCard({
     </>
   );
 });
+
+function safeAddCartItem(
+  sku: string,
+  quantity: number,
+  catalog: readonly PartProduct[]
+) {
+  try {
+    const result = addCartItem(sku, quantity, catalog) as boolean | void;
+
+    return result !== false;
+  } catch {
+    return false;
+  }
+}
 
 function getStockMeta(product: PartProduct, t: StorefrontTranslator) {
   if (product.status === "In Stock" && product.stock > 0) {

@@ -17,6 +17,7 @@ type CartApiPayload = {
 };
 
 const syncDebounceMs = 500;
+type RemoteCartWriteResult = "synced" | "local";
 
 export function CartSyncBridge() {
   const { scope } = useI18n();
@@ -33,6 +34,14 @@ export function CartSyncBridge() {
 
     const controller = new AbortController();
 
+    function enterLocalMode() {
+      lastSyncedSnapshotRef.current = serializeCartItems(
+        readClientStoredCartItems({ preserveUnknown: true })
+      );
+      setSyncEnabled(false);
+      setRemoteLoaded(true);
+    }
+
     async function loadRemoteCart() {
       try {
         const response = await fetch("/api/cart", {
@@ -42,6 +51,7 @@ export function CartSyncBridge() {
         });
 
         if (response.status === 401 || response.status === 404) {
+          enterLocalMode();
           return;
         }
 
@@ -51,22 +61,39 @@ export function CartSyncBridge() {
 
         const payload = (await response.json()) as CartApiPayload;
         const remoteItems = readCartItemsFromPayload(payload);
+        const localStoredItems = readClientStoredCartItems({ preserveUnknown: true });
         const mergedItems = mergeCartItemCollections(
-          readClientStoredCartItems({ preserveUnknown: true }),
+          localStoredItems,
           remoteItems
         );
+        const localSnapshot = serializeCartItems(localStoredItems);
+        const remoteSnapshot = serializeCartItems(remoteItems);
+        const mergedSnapshot = serializeCartItems(mergedItems);
 
-        applyingRemoteRef.current = true;
-        replaceStoredCartItems(mergedItems, { preserveUnknown: true });
-        lastSyncedSnapshotRef.current = serializeCartItems(mergedItems);
+        if (localSnapshot !== mergedSnapshot) {
+          applyingRemoteRef.current = true;
+
+          if (!replaceStoredCartItems(mergedItems, { preserveUnknown: true })) {
+            applyingRemoteRef.current = false;
+            enterLocalMode();
+            return;
+          }
+
+          queueMicrotask(() => {
+            applyingRemoteRef.current = false;
+          });
+        }
+
+        lastSyncedSnapshotRef.current = mergedSnapshot;
         setSyncEnabled(true);
         setRemoteLoaded(true);
-        queueMicrotask(() => {
-          applyingRemoteRef.current = false;
-        });
 
-        if (serializeCartItems(remoteItems) !== lastSyncedSnapshotRef.current) {
-          await writeRemoteCart(mergedItems, controller.signal);
+        if (remoteSnapshot !== mergedSnapshot) {
+          const result = await writeRemoteCart(mergedItems, controller.signal);
+
+          if (result === "local") {
+            enterLocalMode();
+          }
         }
       } catch {
         if (!controller.signal.aborted) {
@@ -84,7 +111,12 @@ export function CartSyncBridge() {
   }, [scope]);
 
   React.useEffect(() => {
-    if (!syncEnabled || !remoteLoaded || applyingRemoteRef.current) {
+    if (
+      scope !== "storefront" ||
+      !syncEnabled ||
+      !remoteLoaded ||
+      applyingRemoteRef.current
+    ) {
       return;
     }
 
@@ -97,7 +129,12 @@ export function CartSyncBridge() {
     const controller = new AbortController();
     const timeout = window.setTimeout(() => {
       writeRemoteCart(localItems, controller.signal)
-        .then(() => {
+        .then((result) => {
+          if (result === "local") {
+            setSyncEnabled(false);
+            return;
+          }
+
           lastSyncedSnapshotRef.current = snapshot;
         })
         .catch(() => {
@@ -111,7 +148,7 @@ export function CartSyncBridge() {
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [localItems, remoteLoaded, syncEnabled]);
+  }, [localItems, remoteLoaded, scope, syncEnabled]);
 
   return null;
 }
@@ -128,7 +165,10 @@ function readCartItemsFromPayload(payload: CartApiPayload) {
   return [];
 }
 
-async function writeRemoteCart(items: readonly CartItem[], signal: AbortSignal) {
+async function writeRemoteCart(
+  items: readonly CartItem[],
+  signal: AbortSignal
+): Promise<RemoteCartWriteResult> {
   const normalizedItems = mergeCartItemCollections(items, []);
   const response = await fetch("/api/cart", {
     method: normalizedItems.length > 0 ? "PUT" : "DELETE",
@@ -146,10 +186,12 @@ async function writeRemoteCart(items: readonly CartItem[], signal: AbortSignal) 
   });
 
   if (response.status === 401 || response.status === 404) {
-    return;
+    return "local";
   }
 
   if (!response.ok) {
     throw new Error("Unable to sync remote cart");
   }
+
+  return "synced";
 }

@@ -384,6 +384,7 @@ export const storefrontItIT = {
   "storefront.product.card.addAria":
     "Aggiungi {name} al carrello. MOQ {moq}, stock {stock} pezzi.",
   "storefront.product.card.added": "Aggiunto",
+  "storefront.product.card.addFailed": "Riprova",
   "storefront.product.card.extraModelsTitle":
     "{count} modelli compatibili aggiuntivi",
   "storefront.product.card.loginHint": "MOQ {moq} · login richiesto",
@@ -408,6 +409,14 @@ export const storefrontItIT = {
   "storefront.product.detail.invoiceText": "PEC / Codice Destinatario",
   "storefront.product.detail.lot": "Lotto",
   "storefront.product.detail.lotTracked": "Tracciato",
+  "storefront.product.purchase.add": "Aggiungi al carrello",
+  "storefront.product.purchase.addAria":
+    "Aggiungi {quantity} pezzi di {name} al carrello",
+  "storefront.product.purchase.added": "Aggiunto",
+  "storefront.product.purchase.addFailed": "Riprova",
+  "storefront.product.purchase.orderNow": "Ordina ora",
+  "storefront.product.purchase.orderNowAria":
+    "Ordina ora {quantity} pezzi di {name}",
   "storefront.product.detail.minimumOrder": "Ordine minimo",
   "storefront.product.detail.noPriceDescription":
     "Sessione verificata, ma il prezzo per questo SKU non è ancora stato aggiornato.",
@@ -780,6 +789,7 @@ export const storefrontZhCN = {
   "storefront.product.card.addAria":
     "将 {name} 加入购物车。起订量 {moq}，库存 {stock} 件。",
   "storefront.product.card.added": "已添加",
+  "storefront.product.card.addFailed": "重试",
   "storefront.product.card.extraModelsTitle": "另有 {count} 个兼容机型",
   "storefront.product.card.loginHint": "起订量 {moq} · 需要登录",
   "storefront.product.card.loginLabel": "登录查看价格",
@@ -802,6 +812,12 @@ export const storefrontZhCN = {
   "storefront.product.detail.invoiceText": "PEC / 收件代码",
   "storefront.product.detail.lot": "批次",
   "storefront.product.detail.lotTracked": "可追踪",
+  "storefront.product.purchase.add": "添加到购物车",
+  "storefront.product.purchase.addAria": "将 {quantity} 件 {name} 加入购物车",
+  "storefront.product.purchase.added": "已添加",
+  "storefront.product.purchase.addFailed": "重试",
+  "storefront.product.purchase.orderNow": "立即下单",
+  "storefront.product.purchase.orderNowAria": "立即下单 {quantity} 件 {name}",
   "storefront.product.detail.minimumOrder": "最低起订量",
   "storefront.product.detail.noPriceDescription":
     "会话已验证，但此 SKU 的价格尚未更新。",
