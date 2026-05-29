@@ -17,9 +17,16 @@ const ProductDetailPurchasePanel = dynamic(
 );
 
 export function ProductDetailPurchasePanelSlot({
+  isAuthenticated = false,
   product,
 }: {
+  isAuthenticated?: boolean;
   product: PartProduct;
 }) {
-  return <ProductDetailPurchasePanel product={product} />;
+  return (
+    <ProductDetailPurchasePanel
+      isAuthenticated={isAuthenticated}
+      product={product}
+    />
+  );
 }

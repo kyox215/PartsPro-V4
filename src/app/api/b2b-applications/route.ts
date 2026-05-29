@@ -39,6 +39,8 @@ const b2bApplicationSchema = z
     address: optionalTrimmedString(160),
     website: z.string().trim().url().max(200).optional(),
     notes: optionalTrimmedString(1000),
+    acceptsTerms: z.literal(true),
+    acceptsPrivacy: z.literal(true),
   })
   .strict();
 
@@ -68,7 +70,13 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const saved = await saveB2BApplication(result.data);
+    const { acceptsPrivacy, acceptsTerms, ...applicationInput } = result.data;
+
+    if (!acceptsPrivacy || !acceptsTerms) {
+      return apiError(400, "CONSENT_REQUIRED", "Application consent is required.");
+    }
+
+    const saved = await saveB2BApplication(applicationInput);
 
     return NextResponse.json(
       {

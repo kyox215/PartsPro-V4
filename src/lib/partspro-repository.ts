@@ -74,6 +74,8 @@ const customerActivitySelect =
   "id, user_id, customer_id, event_type, sku_code, product_name, brand, model, model_series, search_query, metadata, created_at";
 const customerCartSelect =
   "id, user_id, customer_id, sku_code, quantity, created_at, updated_at";
+const productRestockRequestSelect =
+  "id, user_id, customer_id, sku_code, product_name, status, metadata, notified_at, cancelled_at, created_at, updated_at";
 
 export type RepositorySource = "supabase" | "empty";
 
@@ -189,9 +191,38 @@ export type CustomerCartWriteItem = {
   sku: string;
 };
 
+export type ProductRestockRequestStatus = "active" | "notified" | "cancelled";
+
+export type ProductRestockRequest = {
+  cancelledAt: string | null;
+  createdAt: string;
+  customerId: string | null;
+  id: string;
+  metadata: unknown;
+  notifiedAt: string | null;
+  productName: string;
+  sku: string;
+  status: ProductRestockRequestStatus;
+  updatedAt: string;
+  userId: string;
+};
+
+export type ProductRestockRequestQueryInput = {
+  limit: number;
+  offset: number;
+  sku?: string;
+  status?: ProductRestockRequestStatus;
+};
+
+export type ProductRestockRequestPage = {
+  requests: ProductRestockRequest[];
+  total: number;
+};
+
 export type AdminProduct = RepositoryPartProduct & {
   id: string;
   sourceSku?: string;
+  activeRestockRequestCount: number;
   catalogStatus: AdminCatalogStatus;
   stockStatus: StockStatus;
   stockQty: number;
@@ -593,6 +624,24 @@ export type AdminOrderEvent = {
   createdAt: string;
 };
 
+type AdminOrderReservationSnapshot = {
+  fulfilledQty: number;
+  reservedQty: number;
+};
+
+export type AdminOrderReservationIssue = {
+  fulfilledQty: number;
+  inventoryAvailableQty: number;
+  neededQty: number;
+  orderLineId: string;
+  productStatus: string | null;
+  productStockQty: number;
+  quantity: number;
+  reason: string;
+  reservedQty: number;
+  sku: string;
+};
+
 export type AdminOrder = {
   id: string;
   orderNo: string;
@@ -618,6 +667,12 @@ export type AdminOrder = {
     status: AdminCustomerStatus | null;
   };
   lineCount: number;
+  reservedQty: number;
+  fulfilledQty: number;
+  lockedSince: string | null;
+  reservationAgeHours: number | null;
+  reservationOverdue: boolean;
+  reservationWarning: boolean;
   lines?: AdminOrderLine[];
   events?: AdminOrderEvent[];
   createdAt: string;
@@ -651,6 +706,12 @@ export type AdminOrderStatusTransitionInput = {
 export type AdminOrderStatusRollbackInput = {
   orderId: string;
   note?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type AdminOrderForceCancelInput = {
+  orderId: string;
+  note: string;
   metadata?: Record<string, unknown>;
 };
 
@@ -711,6 +772,7 @@ export type CatalogProductPage = {
 };
 
 type CatalogProductPageOptions = {
+  buyerCustomerId?: string;
   includeBuyerPrices?: boolean;
   scope?: "public" | "admin";
 };
@@ -813,7 +875,7 @@ export async function listCatalogProducts(): Promise<RepositoryResult<Repository
 
 export async function listCatalogProductsBySkus(
   skus: string[],
-  options: Pick<CatalogProductPageOptions, "includeBuyerPrices"> = {}
+  options: Pick<CatalogProductPageOptions, "buyerCustomerId" | "includeBuyerPrices"> = {}
 ): Promise<RepositoryResult<RepositoryPartProduct[]>> {
   const normalizedSkus = uniqueDefinedStrings(skus.map((sku) => toPublicSku(sku)));
 
@@ -1112,7 +1174,7 @@ async function readPublicCatalogProducts(): Promise<RepositoryResult<RepositoryP
 
 async function readPublicCatalogProductsBySkus(
   skus: string[],
-  options: Pick<CatalogProductPageOptions, "includeBuyerPrices"> = {}
+  options: Pick<CatalogProductPageOptions, "buyerCustomerId" | "includeBuyerPrices"> = {}
 ): Promise<RepositoryResult<RepositoryPartProduct[]> | null> {
   if (!isSupabaseConfigured()) {
     return null;
@@ -1264,7 +1326,10 @@ export async function listAdminProducts(
     );
   }
 
-  return { data: page, source: "supabase" };
+  return {
+    data: await attachActiveRestockCounts(context.client, page),
+    source: "supabase",
+  };
 }
 
 export async function getAdminProduct(
@@ -1273,7 +1338,19 @@ export async function getAdminProduct(
   const context = await requireSupabaseContext();
   const product = await readAdminProduct(context.client, sku);
 
-  return { data: product, source: "supabase" };
+  if (!product) {
+    return { data: null, source: "supabase" };
+  }
+
+  const counts = await readActiveRestockRequestCounts(context.client, [product.sku]);
+
+  return {
+    data: {
+      ...product,
+      activeRestockRequestCount: counts.get(product.sku) ?? 0,
+    },
+    source: "supabase",
+  };
 }
 
 export async function createAdminProduct(
@@ -1790,6 +1867,22 @@ export async function getCurrentCustomerProfile(): Promise<
   );
 }
 
+export async function getCustomerProfileById(
+  customerId: string
+): Promise<RepositoryResult<AccountCustomerProfile | null>> {
+  const context = await requireSupabaseContext();
+  const row = await readSingleRow(
+    context.client,
+    "customers",
+    "id",
+    customerId,
+    adminCustomerSelect
+  );
+  const profile = row ? mapAccountCustomerProfileRow(row) : null;
+
+  return { data: profile, source: "supabase" };
+}
+
 export async function readCurrentCustomerCart(): Promise<
   RepositoryResult<CustomerCartItem[]>
 > {
@@ -1917,6 +2010,202 @@ export async function clearCurrentCustomerCart(): Promise<
   }
 
   return { data: [], source: "supabase" };
+}
+
+export async function listCurrentProductRestockRequests(): Promise<
+  RepositoryResult<ProductRestockRequest[]>
+> {
+  const context = await requireSupabaseContext();
+  const { data, error } = await context.client
+    .from("product_restock_requests")
+    .select(productRestockRequestSelect)
+    .eq("user_id", context.userId)
+    .eq("status", "active")
+    .order("created_at", { ascending: false });
+
+  if (error || !Array.isArray(data)) {
+    throw new RepositoryWriteError(
+      supabaseRpcStatus(error),
+      "RESTOCK_REQUESTS_READ_FAILED",
+      "Restock reminders could not be read from Supabase.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  return {
+    data: data.filter(isDbRow).map(mapProductRestockRequestRow).filter(isDefined),
+    source: "supabase",
+  };
+}
+
+export async function saveProductRestockRequest(
+  sku: string
+): Promise<RepositoryResult<ProductRestockRequest>> {
+  const context = await requireSupabaseContext();
+  const normalizedSku = normalizeSku(sku);
+  const existing = await readActiveProductRestockRequest(
+    context.client,
+    context.userId,
+    normalizedSku
+  );
+
+  if (existing) {
+    return { data: existing, source: "supabase" };
+  }
+
+  const products = await readCatalogProductsBySkus(context.client, [normalizedSku]);
+  const product = products?.find((item) => normalizeSku(item.sku) === normalizedSku);
+
+  if (!product) {
+    throw new RepositoryWriteError(
+      404,
+      "RESTOCK_PRODUCT_NOT_FOUND",
+      "This SKU is not available in the public catalog.",
+      { sku: normalizedSku }
+    );
+  }
+
+  if (!isRestockEligibleProduct(product)) {
+    throw new RepositoryWriteError(
+      409,
+      "RESTOCK_PRODUCT_AVAILABLE",
+      "This SKU is currently purchasable and does not need a restock reminder.",
+      { sku: normalizedSku, stock: product.stock, status: product.status }
+    );
+  }
+
+  const customerId = await readCurrentCustomerId(context.client, context.userId);
+
+  if (!customerId) {
+    throw new RepositoryWriteError(
+      403,
+      "RESTOCK_CUSTOMER_REQUIRED",
+      "A linked customer profile is required to create restock reminders."
+    );
+  }
+
+  const { data, error } = await context.client
+    .from("product_restock_requests")
+    .insert({
+      customer_id: customerId,
+      product_name: product.name,
+      sku_code: normalizedSku,
+      status: "active",
+      user_id: context.userId,
+    })
+    .select(productRestockRequestSelect)
+    .single();
+
+  if (error) {
+    const duplicate = await readActiveProductRestockRequest(
+      context.client,
+      context.userId,
+      normalizedSku
+    );
+
+    if (duplicate) {
+      return { data: duplicate, source: "supabase" };
+    }
+
+    throw new RepositoryWriteError(
+      supabaseRpcStatus(error),
+      "RESTOCK_REQUEST_CREATE_FAILED",
+      "Restock reminder could not be saved to Supabase.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const request = isDbRow(data) ? mapProductRestockRequestRow(data) : null;
+
+  if (!request) {
+    throw new RepositoryWriteError(
+      502,
+      "RESTOCK_REQUEST_RESULT_INVALID",
+      "Supabase returned an invalid restock reminder row."
+    );
+  }
+
+  return { data: request, source: "supabase" };
+}
+
+export async function listAdminProductRestockRequests(
+  query: ProductRestockRequestQueryInput
+): Promise<RepositoryResult<ProductRestockRequestPage>> {
+  const context = await requireSupabaseContext();
+  const from = Math.max(0, query.offset);
+  const to = from + Math.max(1, query.limit) - 1;
+  let request = context.client
+    .from("product_restock_requests")
+    .select(productRestockRequestSelect, { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  if (query.status) {
+    request = request.eq("status", query.status);
+  }
+
+  if (query.sku) {
+    request = request.eq("sku_code", normalizeSku(query.sku));
+  }
+
+  const { data, error, count } = await request;
+
+  if (error || !Array.isArray(data)) {
+    throw new RepositoryWriteError(
+      supabaseRpcStatus(error),
+      "ADMIN_RESTOCK_REQUESTS_READ_FAILED",
+      "Admin restock reminders could not be read from Supabase.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const rows = data.filter(isDbRow);
+
+  return {
+    data: {
+      requests: rows.map(mapProductRestockRequestRow).filter(isDefined),
+      total: count ?? rows.length,
+    },
+    source: "supabase",
+  };
+}
+
+export async function updateAdminProductRestockRequestStatus(
+  id: string,
+  status: Exclude<ProductRestockRequestStatus, "active">
+): Promise<RepositoryResult<ProductRestockRequest>> {
+  const context = await requireSupabaseContext();
+  const timestampColumn = status === "notified" ? "notified_at" : "cancelled_at";
+  const { data, error } = await context.client
+    .from("product_restock_requests")
+    .update({
+      [timestampColumn]: new Date().toISOString(),
+      status,
+    })
+    .eq("id", id)
+    .select(productRestockRequestSelect)
+    .single();
+
+  if (error) {
+    throw new RepositoryWriteError(
+      supabaseRpcStatus(error),
+      "ADMIN_RESTOCK_REQUEST_UPDATE_FAILED",
+      "Restock reminder status could not be updated.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const request = isDbRow(data) ? mapProductRestockRequestRow(data) : null;
+
+  if (!request) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_RESTOCK_REQUEST_RESULT_INVALID",
+      "Supabase returned an invalid restock reminder row."
+    );
+  }
+
+  return { data: request, source: "supabase" };
 }
 
 export async function updateCurrentCustomerProfile(
@@ -2104,7 +2393,7 @@ export async function transitionAdminOrderStatus(
       409,
       "ADMIN_ORDER_STATUS_TRANSITION_FAILED",
       "Supabase rejected the order status transition.",
-      supabaseErrorDetails(error)
+      adminOrderTransitionErrorDetails(error)
     );
   }
 
@@ -2115,6 +2404,66 @@ export async function transitionAdminOrderStatus(
       502,
       "ADMIN_ORDER_RESULT_INVALID",
       "Supabase returned an invalid order after the status transition."
+    );
+  }
+
+  return {
+    data: {
+      order,
+      transition: data,
+    },
+    source: "supabase",
+  };
+}
+
+export async function forceCancelAdminShippedOrder(
+  input: AdminOrderForceCancelInput
+): Promise<RepositoryResult<AdminOrderStatusTransitionResult>> {
+  const context = await requireSupabaseContext();
+  const orderRow = await readOrderByIdOrNumber(context.client, input.orderId);
+  const orderId = pickString(orderRow, ["id"]);
+  const note = input.note.trim();
+
+  if (!orderId) {
+    throw new RepositoryWriteError(
+      404,
+      "ADMIN_ORDER_NOT_FOUND",
+      "Order was not found.",
+      { orderId: input.orderId }
+    );
+  }
+
+  if (!note) {
+    throw new RepositoryWriteError(
+      400,
+      "ADMIN_ORDER_FORCE_CANCEL_REASON_REQUIRED",
+      "A reason is required before a shipped order can be force-cancelled.",
+      { orderId }
+    );
+  }
+
+  const { data, error } = await context.client.rpc("admin_force_cancel_shipped_order", {
+    p_order_id: orderId,
+    p_reason: note,
+    p_metadata: input.metadata ?? {},
+  });
+
+  if (error) {
+    throw new RepositoryWriteError(
+      409,
+      "ADMIN_ORDER_FORCE_CANCEL_FAILED",
+      "Supabase rejected the shipped order force cancellation.",
+      adminOrderTransitionErrorDetails(error)
+    );
+  }
+
+  const order = await readAdminOrderDetail(context.client, orderId);
+
+  if (!order) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_ORDER_RESULT_INVALID",
+      "Supabase returned an invalid order after the force cancellation."
     );
   }
 
@@ -2445,7 +2794,7 @@ async function readCatalogProducts(context: SupabaseContext) {
 async function readCatalogProductsBySkus(
   client: SupabaseServerClient,
   skus: string[],
-  options: Pick<CatalogProductPageOptions, "includeBuyerPrices"> = {}
+  options: Pick<CatalogProductPageOptions, "buyerCustomerId" | "includeBuyerPrices"> = {}
 ) {
   const normalizedSkus = uniqueDefinedStrings(skus.map((sku) => toPublicSku(sku)));
   const lookupCandidates = uniqueDefinedStrings(
@@ -2467,7 +2816,7 @@ async function readCatalogProductsBySkus(
 
   if (summaryRows) {
     const pricedRows = options.includeBuyerPrices
-      ? await mergeCatalogBuyerPriceRows(client, summaryRows)
+      ? await mergeCatalogBuyerPriceRows(client, summaryRows, options.buyerCustomerId)
       : summaryRows;
 
     return orderProductsByRequestedSkus(
@@ -2554,7 +2903,7 @@ async function readCatalogProductPageFromTable(
 
     const pricedRows =
       options.includeBuyerPrices && table === "catalog_public_summary"
-        ? await mergeCatalogBuyerPriceRows(client, rows)
+        ? await mergeCatalogBuyerPriceRows(client, rows, options.buyerCustomerId)
         : rows;
 
     return {
@@ -2642,9 +2991,12 @@ function applyCatalogProductQuery(
 
 async function mergeCatalogBuyerPriceRows(
   client: SupabaseServerClient,
-  rows: DbRow[]
+  rows: DbRow[],
+  buyerCustomerId?: string
 ) {
-  const priceRows = await readCatalogBuyerPriceRowsForProducts(client, rows);
+  const priceRows = buyerCustomerId
+    ? await readCatalogBuyerPriceRowsForProductsAndCustomer(client, rows, buyerCustomerId)
+    : await readCatalogBuyerPriceRowsForProducts(client, rows);
 
   if (priceRows.length === 0) {
     return rows;
@@ -2716,6 +3068,35 @@ async function readCatalogBuyerPriceRowsForProducts(
   }
 
   return priceRows;
+}
+
+async function readCatalogBuyerPriceRowsForProductsAndCustomer(
+  client: SupabaseServerClient,
+  productRows: DbRow[],
+  buyerCustomerId: string
+) {
+  const skus = uniqueDefinedStrings(
+    productRows.map((row) => pickString(row, ["sku_code", "sku"]))
+  );
+
+  if (skus.length === 0) {
+    return [];
+  }
+
+  try {
+    const { data, error } = await client.rpc("resolve_customer_catalog_prices", {
+      p_customer_id: buyerCustomerId,
+      p_sku_codes: skus,
+    });
+
+    if (!error && Array.isArray(data)) {
+      return data.filter(isDbRow);
+    }
+  } catch {
+    return [];
+  }
+
+  return [];
 }
 
 function uniqueDefinedStrings(values: Array<string | null | undefined>) {
@@ -2889,6 +3270,62 @@ function parseAdminProductPageRpcPayload(data: unknown): AdminProductPage | null
     products: rows.map(mapAdminProductRow).filter(isDefined),
     total: pickNumber(data, ["total"]) ?? rows.length,
   };
+}
+
+async function attachActiveRestockCounts(
+  client: SupabaseServerClient,
+  page: AdminProductPage
+): Promise<AdminProductPage> {
+  if (page.products.length === 0) {
+    return page;
+  }
+
+  const counts = await readActiveRestockRequestCounts(
+    client,
+    page.products.map((product) => product.sku)
+  );
+
+  return {
+    ...page,
+    products: page.products.map((product) => ({
+      ...product,
+      activeRestockRequestCount: counts.get(product.sku) ?? 0,
+    })),
+  };
+}
+
+async function readActiveRestockRequestCounts(
+  client: SupabaseServerClient,
+  skus: string[]
+) {
+  const normalizedSkus = uniqueDefinedStrings(skus.map((sku) => normalizeSku(sku)));
+  const counts = new Map<string, number>();
+
+  if (normalizedSkus.length === 0) {
+    return counts;
+  }
+
+  const { data, error } = await client
+    .from("product_restock_requests")
+    .select("sku_code")
+    .eq("status", "active")
+    .in("sku_code", normalizedSkus)
+    .limit(10000);
+
+  if (error || !Array.isArray(data)) {
+    return counts;
+  }
+
+  for (const row of data.filter(isDbRow)) {
+    const sku = pickString(row, ["sku_code"]);
+
+    if (sku) {
+      const normalizedSku = normalizeSku(sku);
+      counts.set(normalizedSku, (counts.get(normalizedSku) ?? 0) + 1);
+    }
+  }
+
+  return counts;
 }
 
 async function readAdminCustomerPage(
@@ -3314,6 +3751,26 @@ async function readCurrentCustomerCartRows(
   }
 }
 
+async function readActiveProductRestockRequest(
+  client: SupabaseServerClient,
+  userId: string,
+  sku: string
+): Promise<ProductRestockRequest | null> {
+  const { data, error } = await client
+    .from("product_restock_requests")
+    .select(productRestockRequestSelect)
+    .eq("user_id", userId)
+    .eq("sku_code", normalizeSku(sku))
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (error || !isDbRow(data)) {
+    return null;
+  }
+
+  return mapProductRestockRequestRow(data);
+}
+
 async function readCurrentCustomerId(
   client: SupabaseServerClient,
   userId: string
@@ -3567,6 +4024,7 @@ async function readAdminOrderPage(
       readCustomerRowsForOrders(client, rows),
     ]);
     const lineCounts = countLinesByOrder(lineRows ?? []);
+    const reservationSnapshots = aggregateOrderLineReservations(lineRows ?? []);
     const customersById = new Map<string, DbRow>();
 
     for (const row of customerRows ?? []) {
@@ -3578,7 +4036,7 @@ async function readAdminOrderPage(
 
     return {
       orders: rows
-        .map((row) => mapAdminOrderRow(row, customersById, lineCounts))
+        .map((row) => mapAdminOrderRow(row, customersById, lineCounts, reservationSnapshots))
         .filter(isDefined),
       total: count ?? rows.length,
     };
@@ -3623,6 +4081,7 @@ async function readAdminOrderDetail(
   const productRows = await readProductRowsForOrderLines(client, lineRows ?? []);
   const productsBySku = mapProductRowsBySku(productRows ?? []);
   const lineCounts = countLinesByOrder(lineRows ?? []);
+  const reservationSnapshots = aggregateOrderLineReservations(lineRows ?? []);
   const customersById = new Map<string, DbRow>();
   const customerId = pickString(customerRow, ["id"]);
 
@@ -3630,7 +4089,7 @@ async function readAdminOrderDetail(
     customersById.set(customerId, customerRow);
   }
 
-  const order = mapAdminOrderRow(orderRow, customersById, lineCounts);
+  const order = mapAdminOrderRow(orderRow, customersById, lineCounts, reservationSnapshots);
 
   if (!order) {
     return null;
@@ -4037,6 +4496,10 @@ async function insertB2BApplication(
   input: B2BApplicationInput
 ): Promise<B2BApplication | null> {
   const now = new Date().toISOString();
+  const normalizedAddress = [input.address, input.city, input.province]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(", ");
   const remotePayload = {
     company_name: input.companyName,
     contact_name: input.contactName,
@@ -4048,8 +4511,8 @@ async function insertB2BApplication(
     sdi: input.codiceDestinatario ?? "",
     pec: input.pec ?? "",
     company_type: "repair_shop",
-    registered_address: input.address ?? [input.city, input.province].filter(Boolean).join(" "),
-    shipping_address: input.address ?? [input.city, input.province].filter(Boolean).join(" "),
+    registered_address: normalizedAddress,
+    shipping_address: normalizedAddress,
     monthly_purchase: "",
     interested_categories: [],
     payment_needs: [],
@@ -4950,6 +5413,12 @@ function mapAdminProductRow(row: DbRow): AdminProduct | null {
     ...product,
     id,
     sourceSku: sourceSku ? sourceSku.toUpperCase() : undefined,
+    activeRestockRequestCount:
+      pickNumber(row, [
+        "active_restock_request_count",
+        "activeRestockRequestCount",
+        "restock_request_count",
+      ]) ?? 0,
     status: stockStatus,
     catalogStatus: normalizeCatalogStatus(pickString(row, ["status"])),
     stockStatus,
@@ -5041,6 +5510,32 @@ function mapCustomerCartItemRow(row: DbRow): CustomerCartItem | null {
     quantity: Math.trunc(quantity),
     sku: toPublicSku(rawSku),
     updatedAt: pickString(row, ["updated_at"]) ?? "",
+  };
+}
+
+function mapProductRestockRequestRow(row: DbRow): ProductRestockRequest | null {
+  const id = pickString(row, ["id"]);
+  const userId = pickString(row, ["user_id"]);
+  const rawSku = pickString(row, ["sku_code", "sku"]);
+  const productName = pickString(row, ["product_name", "productName"]);
+  const status = normalizeProductRestockRequestStatus(pickString(row, ["status"]));
+
+  if (!id || !userId || !rawSku || !productName || !status) {
+    return null;
+  }
+
+  return {
+    cancelledAt: pickString(row, ["cancelled_at", "cancelledAt"]),
+    createdAt: formatPartsProDateTime(pickString(row, ["created_at", "createdAt"])),
+    customerId: pickString(row, ["customer_id", "customerId"]),
+    id,
+    metadata: row.metadata ?? {},
+    notifiedAt: pickString(row, ["notified_at", "notifiedAt"]),
+    productName,
+    sku: toPublicSku(rawSku),
+    status,
+    updatedAt: formatPartsProDateTime(pickString(row, ["updated_at", "updatedAt"])),
+    userId,
   };
 }
 
@@ -5333,7 +5828,8 @@ function mapOrderSummaryRow(
 function mapAdminOrderRow(
   row: DbRow,
   customersById: Map<string, DbRow>,
-  lineCounts: Map<string, number>
+  lineCounts: Map<string, number>,
+  reservationSnapshots: Map<string, AdminOrderReservationSnapshot> = new Map()
 ): AdminOrder | null {
   const id = pickString(row, ["id"]);
   const orderNo = pickString(row, ["order_no", "order_number", "reference"]) ?? id;
@@ -5348,6 +5844,24 @@ function mapAdminOrderRow(
   const vat = pickNumber(row, ["vat"]) ?? 0;
   const shipping = pickNumber(row, ["shipping"]) ?? 0;
   const status = normalizeAdminOrderDbStatus(pickString(row, ["status"])) ?? "submitted";
+  const createdAt = pickString(row, ["created_at"]) ?? "";
+  const updatedAt = pickString(row, ["updated_at"]) ?? "";
+  const reservationSnapshot = reservationSnapshots.get(id);
+  const reservedQty = reservationSnapshot?.reservedQty ?? 0;
+  const fulfilledQty = reservationSnapshot?.fulfilledQty ?? 0;
+  const lockedSince =
+    reservedQty > 0 && isOpenReservedOrderStatus(status)
+      ? createdAt || null
+      : null;
+  const reservationAgeHours = lockedSince ? hoursSinceIso(lockedSince) : null;
+  const reservationOverdue =
+    reservationAgeHours !== null &&
+    reservationAgeHours >= 14 * 24 &&
+    isOpenReservedOrderStatus(status);
+  const reservationWarning =
+    reservationAgeHours !== null &&
+    reservationAgeHours >= 72 &&
+    isOpenReservedOrderStatus(status);
 
   return {
     id,
@@ -5384,8 +5898,14 @@ function mapAdminOrderRow(
       (orderNo ? lineCounts.get(orderNo) : undefined) ??
       pickNumber(row, ["line_count", "items_count"]) ??
       0,
-    createdAt: pickString(row, ["created_at"]) ?? "",
-    updatedAt: pickString(row, ["updated_at"]) ?? "",
+    reservedQty,
+    fulfilledQty,
+    lockedSince,
+    reservationAgeHours,
+    reservationOverdue,
+    reservationWarning,
+    createdAt,
+    updatedAt,
   };
 }
 
@@ -5522,6 +6042,50 @@ function countLinesByOrder(rows: DbRow[]) {
   }
 
   return counts;
+}
+
+function aggregateOrderLineReservations(rows: DbRow[]) {
+  const snapshots = new Map<string, AdminOrderReservationSnapshot>();
+
+  for (const row of rows) {
+    const orderId = pickString(row, ["order_id", "orderId"]);
+
+    if (!orderId) {
+      continue;
+    }
+
+    const current = snapshots.get(orderId) ?? {
+      fulfilledQty: 0,
+      reservedQty: 0,
+    };
+
+    snapshots.set(orderId, {
+      fulfilledQty: current.fulfilledQty + (pickNumber(row, ["fulfilled_qty"]) ?? 0),
+      reservedQty: current.reservedQty + (pickNumber(row, ["reserved_qty"]) ?? 0),
+    });
+  }
+
+  return snapshots;
+}
+
+function isOpenReservedOrderStatus(status: AdminOrderDbStatus) {
+  return (
+    status === "submitted" ||
+    status === "accepted" ||
+    status === "picking" ||
+    status === "packed" ||
+    status === "shipped"
+  );
+}
+
+function hoursSinceIso(value: string) {
+  const timestamp = Date.parse(value);
+
+  if (!Number.isFinite(timestamp)) {
+    return null;
+  }
+
+  return Math.max(0, Math.floor((Date.now() - timestamp) / 3_600_000));
 }
 
 function readCompatibility(row: DbRow) {
@@ -5872,6 +6436,26 @@ function normalizeCustomerCartWriteItems(items: CustomerCartWriteItem[]) {
   return normalized;
 }
 
+function isRestockEligibleProduct(product: PartProduct) {
+  const minimumQuantity = Math.max(1, product.moq);
+
+  return (
+    product.status === "Out of Stock" ||
+    product.stock <= 0 ||
+    product.stock < minimumQuantity
+  );
+}
+
+function normalizeProductRestockRequestStatus(
+  value: string | null
+): ProductRestockRequestStatus | null {
+  if (value === "active" || value === "notified" || value === "cancelled") {
+    return value;
+  }
+
+  return null;
+}
+
 function sanitizeOptionalSupplierText(value: string | null | undefined) {
   const sanitized = sanitizeSupplierText(value);
   return sanitized || undefined;
@@ -6122,29 +6706,27 @@ function normalizeOrderStatus(value: string | null): OrderStatus {
   if (
     value === "draft" ||
     value === "pending_payment" ||
-    value === "paid" ||
+    value === "submitted" ||
+    value === "accepted" ||
     value === "picking" ||
+    value === "packed" ||
     value === "shipped" ||
-    value === "delivered" ||
+    value === "completed" ||
     value === "cancelled"
   ) {
     return value;
   }
 
-  if (value === "submitted" || value === "bank_waiting") {
+  if (value === "bank_waiting") {
     return "pending_payment";
   }
 
-  if (value === "accepted") {
-    return "paid";
+  if (value === "paid") {
+    return "accepted";
   }
 
-  if (value === "packed") {
-    return "picking";
-  }
-
-  if (value === "completed") {
-    return "delivered";
+  if (value === "delivered") {
+    return "completed";
   }
 
   return "pending_payment";
@@ -6288,6 +6870,71 @@ function supabaseErrorDetails(error: unknown) {
   };
 
   return Object.fromEntries(Object.entries(details).filter(([, value]) => value !== null));
+}
+
+function adminOrderTransitionErrorDetails(error: unknown) {
+  const details = supabaseErrorDetails(error);
+
+  if (!isDbRow(details)) {
+    return details;
+  }
+
+  const reservationIssues = parseReservationIssues(details.details);
+
+  if (reservationIssues.length === 0) {
+    return details;
+  }
+
+  return {
+    ...details,
+    reservationIssues,
+  };
+}
+
+function parseReservationIssues(value: unknown): AdminOrderReservationIssue[] {
+  const payload = typeof value === "string" ? parseJson(value) : value;
+
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+
+  return payload
+    .map((item) => {
+      if (!isDbRow(item)) {
+        return null;
+      }
+
+      const orderLineId = pickString(item, ["order_line_id", "orderLineId"]);
+      const sku = pickString(item, ["sku_code", "sku"]);
+      const reason = pickString(item, ["reason"]);
+
+      if (!orderLineId || !sku || !reason) {
+        return null;
+      }
+
+      return {
+        fulfilledQty: pickNumber(item, ["fulfilled_qty", "fulfilledQty"]) ?? 0,
+        inventoryAvailableQty:
+          pickNumber(item, ["inventory_available_qty", "inventoryAvailableQty"]) ?? 0,
+        neededQty: pickNumber(item, ["needed_qty", "neededQty"]) ?? 0,
+        orderLineId,
+        productStatus: pickString(item, ["product_status", "productStatus"]),
+        productStockQty: pickNumber(item, ["product_stock_qty", "productStockQty"]) ?? 0,
+        quantity: pickNumber(item, ["quantity"]) ?? 0,
+        reason,
+        reservedQty: pickNumber(item, ["reserved_qty", "reservedQty"]) ?? 0,
+        sku: toPublicSku(sku),
+      };
+    })
+    .filter(isDefined);
+}
+
+function parseJson(value: string) {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
 }
 
 function slugify(value: string) {

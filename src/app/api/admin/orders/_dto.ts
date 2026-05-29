@@ -45,6 +45,12 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
     vat: order.vat,
     shipping: order.shipping,
     items: order.lineCount,
+    reservedQty: order.reservedQty,
+    fulfilledQty: order.fulfilledQty,
+    lockedSince: order.lockedSince,
+    reservationAgeHours: order.reservationAgeHours,
+    reservationOverdue: order.reservationOverdue,
+    reservationWarning: order.reservationWarning,
     paymentMethod: order.paymentStatus === "paid" ? "Incassato" : "Da incassare",
     paymentDue: order.paymentStatus === "paid" ? "Pagato" : "Da verificare",
     warehouse: primaryWarehouse(order),
@@ -170,8 +176,12 @@ function toUiPaymentStatus(status: AdminOrder["paymentStatus"]) {
     return "paid";
   }
 
+  if (status === "bank_waiting") {
+    return "authorized";
+  }
+
   if (status === "failed") {
-    return "unpaid";
+    return "refunded";
   }
 
   return "unpaid";

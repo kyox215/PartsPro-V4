@@ -7,6 +7,7 @@ import {
 } from "@/lib/partspro-api";
 import {
   applyAccountPriceToProduct,
+  canDelegateCheckout,
   getCurrentAccountContext,
   hasOrderableEffectivePrice,
   priceVisibilityReason,
@@ -21,6 +22,7 @@ import { toPublicSku } from "@/lib/partspro-sku";
 const maxCartCatalogSkus = 50;
 const cartCatalogQuerySchema = z
   .object({
+    companyId: z.string().trim().uuid().optional(),
     skus: z.string().trim().min(1).max(4096),
   })
   .strict();
@@ -65,13 +67,49 @@ export async function GET(request: NextRequest) {
     }
 
     const account = await getCurrentAccountContext({ ensure: true });
+    const delegatedCheckout = canDelegateCheckout(account);
+    const requestedCompanyId = result.data.companyId;
+    const buyerCustomerId =
+      requestedCompanyId && requestedCompanyId !== account.customer?.id
+        ? requestedCompanyId
+        : requestedCompanyId ?? undefined;
+    const canResolveTargetPrices =
+      account.canViewPrices ||
+      Boolean(buyerCustomerId && delegatedCheckout);
+
+    if (requestedCompanyId && requestedCompanyId !== account.customer?.id && !delegatedCheckout) {
+      return apiError(403, "COMPANY_FORBIDDEN", "This customer cannot be used for cart pricing.");
+    }
+
     const repositoryResult = await listCatalogProductsBySkus(skus, {
-      includeBuyerPrices: account.canViewPrices,
+      buyerCustomerId,
+      includeBuyerPrices: canResolveTargetPrices,
     });
     const visibilityReason = priceVisibilityReason(account);
-    const cartProducts = repositoryResult.data
-      .map((product) => toCartCatalogProduct(product, account))
-      .filter((product) => product.priceGate.orderable);
+    const requestedCartProducts = repositoryResult.data.map((product) =>
+        toCartCatalogProduct(product, account, {
+          orderable:
+            account.canCheckout ||
+            account.accountType === "employee" ||
+            Boolean(buyerCustomerId && delegatedCheckout),
+          visible: canResolveTargetPrices,
+        })
+    );
+    const foundSkus = new Set(requestedCartProducts.map((product) => product.sku));
+    const cartProducts = requestedCartProducts.filter(
+      (product) => product.priceGate.orderable
+    );
+    const rejectedProducts = [
+      ...requestedCartProducts
+        .filter((product) => !product.priceGate.orderable)
+        .map(toCartCatalogRejection),
+      ...skus
+        .filter((sku) => !foundSkus.has(sku))
+        .map((sku) => ({
+          sku,
+          reason: "not_found",
+        })),
+    ];
 
     return NextResponse.json({
       data: cartProducts,
@@ -79,9 +117,10 @@ export async function GET(request: NextRequest) {
         source: repositoryResult.source,
         requested: skus.length,
         returned: cartProducts.length,
+        rejected: rejectedProducts,
         currency: "EUR",
         priceVisibility:
-          account.canViewPrices && visibilityReason !== "customer_needs_assignment"
+          canResolveTargetPrices && visibilityReason !== "customer_needs_assignment"
             ? "visible_authenticated"
             : visibilityReason,
         vatMode: "net_prices_plus_iva",
@@ -94,6 +133,25 @@ export async function GET(request: NextRequest) {
       "Cart catalog data is temporarily unavailable."
     );
   }
+}
+
+function toCartCatalogRejection(
+  product: ReturnType<typeof toCartCatalogProduct>
+) {
+  return {
+    sku: product.sku,
+    brand: product.brand,
+    category: product.category,
+    grade: product.grade,
+    imageAlt: product.imageAlt,
+    imageUrl: product.imageUrl,
+    name: product.name,
+    reason: product.priceGate.reason,
+    stock: product.stock,
+    status: product.status,
+    moq: product.moq,
+    visual: product.visual,
+  };
 }
 
 function readSkuList(value: string) {
@@ -109,13 +167,20 @@ function readSkuList(value: string) {
 
 function toCartCatalogProduct(
   product: RepositoryPartProduct,
-  account: AccountContext
+  account: AccountContext,
+  priceAccess: { orderable: boolean; visible: boolean }
 ) {
-  const pricedProduct = applyAccountPriceToProduct(product, account);
+  const pricedProduct = product.priceResolved || product.priceVersion
+    ? product
+    : applyAccountPriceToProduct(product, account);
   const hasEffectivePrice = hasOrderableEffectivePrice(pricedProduct);
   const hasSellableStock =
     pricedProduct.status !== "Out of Stock" &&
     pricedProduct.stock >= Math.max(1, pricedProduct.moq);
+  const blockReason = cartCatalogBlockReason(account, priceAccess, {
+    hasEffectivePrice,
+    hasSellableStock,
+  });
 
   return {
     sku: pricedProduct.sku,
@@ -125,7 +190,7 @@ function toCartCatalogProduct(
     brand: pricedProduct.brand,
     grade: pricedProduct.grade,
     price: pricedProduct.price,
-    retailPrice: account.canViewPrices ? pricedProduct.retailPrice : 0,
+    retailPrice: priceAccess.visible ? pricedProduct.retailPrice : 0,
     stock: pricedProduct.stock,
     status: pricedProduct.status,
     visual: pricedProduct.visual,
@@ -143,12 +208,51 @@ function toCartCatalogProduct(
     priceGate: {
       orderable: Boolean(
         account.canViewPrices &&
+          priceAccess.orderable &&
           hasEffectivePrice &&
           hasSellableStock
       ),
-      visible: account.canViewPrices,
-      reason: priceVisibilityReason(account),
+      visible: priceAccess.visible,
+      reason: blockReason,
       vatMode: "net_prices_plus_iva",
     },
+    ...productPriceFields(pricedProduct, priceAccess.visible),
+  };
+}
+
+function cartCatalogBlockReason(
+  account: AccountContext,
+  priceAccess: { orderable: boolean; visible: boolean },
+  state: { hasEffectivePrice: boolean; hasSellableStock: boolean }
+) {
+  if (!state.hasSellableStock) {
+    return "unavailable";
+  }
+
+  if (!account.canViewPrices || !priceAccess.visible) {
+    return priceVisibilityReason(account);
+  }
+
+  if (!state.hasEffectivePrice) {
+    return "price_unavailable";
+  }
+
+  if (!priceAccess.orderable) {
+    return priceVisibilityReason(account);
+  }
+
+  return priceVisibilityReason(account);
+}
+
+function productPriceFields(product: RepositoryPartProduct, visible: boolean) {
+  return {
+    basePrice: visible ? product.basePrice ?? null : null,
+    customerLevel: visible ? product.customerLevel ?? null : null,
+    discountPercent: visible ? product.discountPercent ?? null : null,
+    levelDiscountPercent: visible ? product.levelDiscountPercent ?? null : null,
+    priceGroupDiscountPercent: visible ? product.priceGroupDiscountPercent ?? null : null,
+    priceResolved: Boolean(visible && product.priceResolved),
+    priceSource: visible ? product.priceSource ?? null : null,
+    priceVersion: visible ? product.priceVersion ?? null : null,
   };
 }

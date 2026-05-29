@@ -55,11 +55,19 @@ export function getProductImageCandidates(source: ProductImageSource) {
     ...(source.galleryImagePaths ?? []),
   ];
   const candidates = rawValues.flatMap((value) => {
+    const normalizedValue = value?.trim() ?? "";
     const resolved = resolveProductImageUrl(value);
     const externalFallback = getExternalProductImageFallbackUrl(value);
     const resolvedExternalFallback = getExternalProductImageFallbackUrl(resolved);
+    const preferredExternalFallback = externalFallback ?? resolvedExternalFallback;
+    const preferExternalFallback =
+      Boolean(preferredExternalFallback) &&
+      (/\/imported\//i.test(normalizedValue) ||
+        /mobilax-[^-]+-\d+\./i.test(normalizedValue));
 
-    return [resolved, externalFallback, resolvedExternalFallback];
+    return preferExternalFallback
+      ? [preferredExternalFallback, resolved, externalFallback, resolvedExternalFallback]
+      : [resolved, externalFallback, resolvedExternalFallback];
   });
 
   return Array.from(

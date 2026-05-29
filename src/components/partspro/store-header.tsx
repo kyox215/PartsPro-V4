@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 import {
   Menu,
   Search,
@@ -75,6 +76,7 @@ export function StoreHeader({
   selectedCatalog,
 }: StoreHeaderProps) {
   const t = useT();
+  const router = useRouter();
   const [accountAccess, setAccountAccess] = useState<AccountAccessState>(
     () => initialAccountAccess ?? loadingAccountAccess
   );
@@ -145,7 +147,7 @@ export function StoreHeader({
       return;
     }
 
-    window.location.assign(`/catalogo?q=${encodeURIComponent(query)}`);
+    router.push(`/catalogo?${new URLSearchParams({ q: query }).toString()}`);
   }
 
   return (
@@ -190,11 +192,19 @@ export function StoreHeader({
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             <Input
               key={catalogSearchValue}
-              className="h-10 rounded-full border-primary/25 bg-white pl-9 shadow-[0_0_0_3px_rgba(59,91,255,0.03)]"
+              className="h-10 rounded-full border-primary/25 bg-white pl-9 pr-12 shadow-[0_0_0_3px_rgba(59,91,255,0.03)]"
               defaultValue={catalogSearchValue}
               name="catalogSearch"
               placeholder={tx(t, "storefront.header.searchFull", "Cerca SKU, brand, modello...")}
             />
+            <Button
+              type="submit"
+              size="icon-sm"
+              className="absolute right-0.5 top-1/2 size-9 -translate-y-1/2 rounded-full"
+              aria-label={tx(t, "storefront.header.searchSubmit", "Cerca")}
+            >
+              <Search className="size-4" />
+            </Button>
           </form>
 
           <LanguageSwitcher compact className="hidden md:inline-flex" />

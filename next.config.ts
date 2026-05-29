@@ -6,7 +6,7 @@ const supabaseImageHostname = new URL(
 
 const nextConfig: NextConfig = {
   images: {
-    qualities: [55, 75, 88],
+    qualities: [55, 72, 75, 88],
     remotePatterns: [
       {
         protocol: "https",

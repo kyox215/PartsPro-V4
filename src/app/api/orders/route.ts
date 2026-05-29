@@ -15,8 +15,9 @@ import {
 import { getAdminAuthState, hasAdminPermission } from "@/lib/partspro-admin-auth";
 import {
   clearCurrentCustomerCart,
+  getCustomerProfileById,
   getCurrentCustomerProfile,
-  listCatalogProducts,
+  listCatalogProductsBySkus,
   listCompanies,
   listOrderSummaries,
   RepositoryWriteError,
@@ -32,6 +33,7 @@ import {
 } from "@/lib/partspro-data";
 import {
   applyAccountPriceToProduct,
+  canDelegateCheckout,
   getCurrentAccountContext,
   hasOrderableEffectivePrice,
 } from "@/lib/partspro-account-context";
@@ -40,9 +42,13 @@ import { toPublicSku } from "@/lib/partspro-sku";
 const orderStatuses = [
   "draft",
   "pending_payment",
+  "submitted",
+  "accepted",
   "paid",
   "picking",
+  "packed",
   "shipped",
+  "completed",
   "delivered",
   "cancelled",
 ] as const;
@@ -174,12 +180,13 @@ export async function POST(request: NextRequest) {
 
   try {
     const account = await getCurrentAccountContext({ ensure: true });
+    const delegatedCheckout = canDelegateCheckout(account);
 
     if (!account.authenticated) {
       return apiError(401, "LOGIN_REQUIRED", "Login is required before placing an order.");
     }
 
-    if (account.customer?.status === "active" && !account.canViewPrices) {
+    if (!delegatedCheckout && account.customer?.status === "active" && !account.canViewPrices) {
       return apiError(
         422,
         "PRICE_ACCESS_REQUIRED",
@@ -192,7 +199,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!account.canCheckout) {
+    if (!delegatedCheckout && !account.canCheckout) {
       return apiError(
         422,
         "CUSTOMER_PROFILE_INCOMPLETE",
@@ -205,10 +212,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const [companies, catalog, customerProfile] = await Promise.all([
+    const requestedItems = result.data.items;
+    const requestedSkus = requestedItems.map((item) => item.sku);
+    const [companies, customerProfile] = await Promise.all([
       listCompanies(),
-      listCatalogProducts(),
-      getCurrentCustomerProfile(),
+      delegatedCheckout
+        ? getCustomerProfileById(result.data.companyId)
+        : getCurrentCustomerProfile(),
     ]);
     const companyResolution = resolveCompany(companies.data, result.data.companyId);
     const company = companyResolution.company;
@@ -217,11 +227,15 @@ export async function POST(request: NextRequest) {
       return apiError(404, "COMPANY_NOT_FOUND", "Company profile was not found.");
     }
 
-    if (account.customer?.id && company.id !== account.customer.id) {
+    if (!delegatedCheckout && account.customer?.id && company.id !== account.customer.id) {
       return apiError(403, "COMPANY_FORBIDDEN", "Orders can only be placed for the current customer profile.", {
         companyId: company.id,
         customerId: account.customer.id,
       });
+    }
+
+    if (delegatedCheckout && !customerProfile.data) {
+      return apiError(404, "COMPANY_NOT_FOUND", "Selected customer profile was not found.");
     }
 
     if (company.status !== "approved") {
@@ -231,9 +245,31 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const requestedItems = result.data.items;
+    const targetCanCheckout = delegatedCheckout
+      ? isDelegatedCompanyOrderable(company, customerProfile.data)
+      : account.canCheckout;
+
+    if (!targetCanCheckout) {
+      return apiError(
+        422,
+        "CUSTOMER_PROFILE_INCOMPLETE",
+        "Complete the required customer, tax, billing and shipping profile before checkout.",
+        {
+          assignmentStatus: company.assignmentStatus ?? null,
+          companyId: company.id,
+          customerType: company.customerType ?? null,
+        }
+      );
+    }
+
+    const catalog = await listCatalogProductsBySkus(requestedSkus, {
+      buyerCustomerId: delegatedCheckout ? company.id : undefined,
+      includeBuyerPrices: account.canViewPrices || delegatedCheckout,
+    });
     const pricedCatalog = catalog.data.map((product) =>
-      applyAccountPriceToProduct(product, account)
+      product.priceResolved || product.priceVersion
+        ? product
+        : applyAccountPriceToProduct(product, account)
     );
     const orderBuild = buildOrder(requestedItems, pricedCatalog);
 
@@ -262,7 +298,9 @@ export async function POST(request: NextRequest) {
     let cartClearWarning: string | undefined;
 
     try {
-      await clearCurrentCustomerCart();
+      if (account.accountType === "customer") {
+        await clearCurrentCustomerCart();
+      }
     } catch (error) {
       cartClearWarning =
         error instanceof RepositoryWriteError
@@ -294,7 +332,12 @@ export async function POST(request: NextRequest) {
           catalogSource: catalog.source,
           companiesSource: companies.source,
           persistence: "supabase_rpc",
-          remoteCart: cartClearWarning ? "clear_failed" : "cleared",
+          remoteCart:
+            account.accountType === "customer"
+              ? cartClearWarning
+                ? "clear_failed"
+                : "cleared"
+              : "not_applicable",
           ...warningsMeta(
             companies.warning,
             catalog.warning,
@@ -331,6 +374,44 @@ function buildServerFiscalSnapshot(
       address: deliveryAddress,
     },
   };
+}
+
+function isDelegatedCompanyOrderable(
+  company: CompanyProfile,
+  profile: AccountCustomerProfile | null
+) {
+  return Boolean(
+    company.status === "approved" &&
+      company.customerType === "wholesale" &&
+      company.assignmentStatus === "assigned" &&
+      profile &&
+      isCheckoutProfileComplete(profile)
+  );
+}
+
+function isCheckoutProfileComplete(profile: AccountCustomerProfile) {
+  const sharedComplete = Boolean(
+    profile.companyName &&
+      profile.contactName &&
+      profile.email &&
+      profile.phone &&
+      profile.billingAddress &&
+      profile.shippingAddress
+  );
+
+  if (!sharedComplete) {
+    return false;
+  }
+
+  if (profile.customerType === "retail") {
+    return Boolean(profile.fiscalCode || profile.vatNumber);
+  }
+
+  return Boolean(
+    profile.vatNumber &&
+      profile.fiscalCode &&
+      (profile.pec || profile.sdi)
+  );
 }
 
 function orderRepositoryError(error: RepositoryWriteError) {

@@ -302,7 +302,11 @@ function CatalogPageContent({
     setFilters(nextFilters);
     setInStockOnly(Boolean(selection.inStockOnly));
     setExpandedBrand(selection.brand ?? null);
-    window.history.pushState(null, "", buildCatalogSelectionPath(selection));
+    const nextPath = buildCatalogSelectionPath(selection);
+
+    if (nextPath !== `${window.location.pathname}${window.location.search}`) {
+      window.history.pushState(null, "", nextPath);
+    }
     void recordCatalogActivity(selection, initialAccountAccess);
     void loadCatalogSelection(selection);
   }
@@ -315,7 +319,7 @@ function CatalogPageContent({
         onCatalogSelect={selectCatalog}
         selectedCatalog={selectedCatalog}
       />
-      <div className="mx-auto grid max-w-[1500px] gap-5 px-3 py-4 sm:px-4 sm:py-6 lg:grid-cols-[300px_minmax(0,1fr)]">
+      <div className="mx-auto grid max-w-[1500px] gap-4 px-3 py-3 sm:px-4 sm:py-4 lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="hidden lg:block">
           <CatalogNavigationSidebar
             expandedBrand={expandedBrand}
@@ -326,10 +330,10 @@ function CatalogPageContent({
           />
         </aside>
 
-        <section className="min-w-0 space-y-4">
+        <section className="min-w-0 space-y-3">
           {products.length > 0 ? (
-            <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            <div className="space-y-3">
+              <div className="partspro-catalog-grid">
                 {products.map((product, index) => (
                   <ProductCard
                     key={product.sku}

@@ -14,9 +14,13 @@ export type CompanyStatus = "pending" | "approved" | "rejected" | "suspended";
 export type OrderStatus =
   | "draft"
   | "pending_payment"
+  | "submitted"
+  | "accepted"
   | "paid"
   | "picking"
+  | "packed"
   | "shipped"
+  | "completed"
   | "delivered"
   | "cancelled";
 export type RmaStatus =

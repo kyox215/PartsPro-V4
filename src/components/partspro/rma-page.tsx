@@ -27,7 +27,17 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { rmaRequests } from "@/lib/partspro-data";
+import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import { cn } from "@/lib/utils";
+import {
+  rmaReasonLabel,
+  rmaResolutionLabel,
+  rmaStatusLabel,
+  tx,
+  txFormat,
+  type StorefrontTranslator,
+} from "@/i18n/dictionaries/storefront";
+import { useT } from "./i18n-provider";
 import { StoreHeader } from "./store-header";
 
 const rmaReasons = [
@@ -64,7 +74,12 @@ type SubmitState =
   | { status: "success"; message: string; request: RmaResult }
   | { status: "error"; message: string };
 
-export function RmaPage() {
+export function RmaPage({
+  initialAccountAccess,
+}: {
+  initialAccountAccess?: StoreHeaderAccountAccess;
+}) {
+  const t = useT();
   const [form, setForm] = React.useState<RmaFormState>({
     orderId: "",
     orderLineId: "",
@@ -76,7 +91,11 @@ export function RmaPage() {
   const [evidenceCount, setEvidenceCount] = React.useState(0);
   const [submitState, setSubmitState] = React.useState<SubmitState>({
     status: "idle",
-    message: "Compila i dati e invia la richiesta al flusso RMA.",
+    message: tx(
+      t,
+      "storefront.rma.submit.idle",
+      "Compila i dati e invia la richiesta al flusso RMA."
+    ),
   });
   const visibleRequests =
     submitState.status === "success"
@@ -91,7 +110,11 @@ export function RmaPage() {
     if (submitState.status === "error" || submitState.status === "success") {
       setSubmitState({
         status: "idle",
-        message: "Modifiche locali pronte. Invia di nuovo per creare una nuova RMA.",
+        message: tx(
+          t,
+          "storefront.rma.submit.changed",
+          "Modifiche locali pronte. Invia di nuovo per creare una nuova RMA."
+        ),
       });
     }
   }
@@ -103,14 +126,22 @@ export function RmaPage() {
     if (!Number.isInteger(quantity) || quantity < 1) {
       setSubmitState({
         status: "error",
-        message: "Inserisci una quantità valida, almeno 1 pezzo.",
+        message: tx(
+          t,
+          "storefront.rma.submit.invalidQuantity",
+          "Inserisci una quantità valida, almeno 1 pezzo."
+        ),
       });
       return;
     }
 
     setSubmitState({
       status: "loading",
-      message: "Invio richiesta RMA in corso...",
+      message: tx(
+        t,
+        "storefront.rma.submit.loading",
+        "Invio richiesta RMA in corso..."
+      ),
     });
 
     try {
@@ -141,32 +172,46 @@ export function RmaPage() {
 
       setSubmitState({
         status: "success",
-        message: `Richiesta ${payload.data.id} registrata correttamente.`,
+        message: txFormat(
+          t,
+          "storefront.rma.submit.success",
+          "Richiesta {id} registrata correttamente.",
+          { id: payload.data.id }
+        ),
         request: payload.data,
       });
     } catch (error) {
       setSubmitState({
         status: "error",
-        message: error instanceof Error ? error.message : "Errore durante l'invio RMA.",
+        message: error instanceof Error
+          ? error.message
+          : tx(t, "storefront.rma.submit.error", "Errore durante l'invio RMA."),
       });
     }
   }
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
-      <StoreHeader />
+      <StoreHeader initialAccountAccess={initialAccountAccess} />
       <div className="mx-auto grid max-w-[1400px] gap-4 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_420px]">
         <section className="space-y-4">
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
             <Badge className="mb-3 border border-primary/20 bg-primary/8 text-primary">
-              RMA tracciabile
+              {tx(t, "storefront.rma.badge", "RMA tracciabile")}
             </Badge>
             <h1 className="text-3xl font-black tracking-normal md:text-4xl">
-              Apri una richiesta di reso o sostituzione
+              {tx(
+                t,
+                "storefront.rma.title",
+                "Apri una richiesta di reso o sostituzione"
+              )}
             </h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-              Collega la richiesta a un ordine, descrivi il difetto e prepara foto
-              o video per velocizzare la verifica del laboratorio.
+              {tx(
+                t,
+                "storefront.rma.description",
+                "Collega la richiesta a un ordine, descrivi il difetto e prepara foto o video per velocizzare la verifica del laboratorio."
+              )}
             </p>
           </div>
 
@@ -175,27 +220,39 @@ export function RmaPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <RotateCcw className="size-5 text-primary" />
-                  Nuova richiesta RMA
+                  {tx(t, "storefront.rma.form.title", "Nuova richiesta RMA")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="grid gap-4 sm:grid-cols-2">
-                <Field label="Ordine" htmlFor="rma-order">
+                <Field label={tx(t, "storefront.rma.form.order", "Ordine")} htmlFor="rma-order">
                   <Input
                     id="rma-order"
                     value={form.orderId}
                     onChange={(event) => updateField("orderId", event.target.value)}
                     required
                     maxLength={80}
-                    placeholder="Numero ordine reale"
+                    placeholder={tx(
+                      t,
+                      "storefront.rma.form.orderPlaceholder",
+                      "Numero ordine reale"
+                    )}
                   />
                 </Field>
-                <Field label="Riga ordine" htmlFor="rma-order-line">
+                <Field
+                  label={tx(t, "storefront.rma.form.orderLine", "Riga ordine")}
+                  htmlFor="rma-order-line"
+                >
                   <Input
                     id="rma-order-line"
                     value={form.orderLineId}
                     onChange={(event) => updateField("orderLineId", event.target.value)}
                     maxLength={80}
-                    placeholder="ID riga ordine, se disponibile"
+                    required
+                    placeholder={tx(
+                      t,
+                      "storefront.rma.form.orderLinePlaceholder",
+                      "ID riga ordine dallo storico ordini"
+                    )}
                   />
                 </Field>
                 <Field label="SKU" htmlFor="rma-sku">
@@ -208,7 +265,7 @@ export function RmaPage() {
                     maxLength={64}
                   />
                 </Field>
-                <Field label="Motivo RMA" htmlFor="rma-reason">
+                <Field label={tx(t, "storefront.rma.form.reason", "Motivo RMA")} htmlFor="rma-reason">
                   <Select
                     value={form.reason}
                     onValueChange={(value) => updateField("reason", value)}
@@ -219,13 +276,13 @@ export function RmaPage() {
                     <SelectContent>
                       {rmaReasons.map((reason) => (
                         <SelectItem key={reason} value={reason}>
-                          {reason}
+                          {rmaReasonLabel(t, reason)}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field label="Quantità" htmlFor="rma-quantity">
+                <Field label={tx(t, "storefront.rma.form.quantity", "Quantità")} htmlFor="rma-quantity">
                   <Input
                     id="rma-quantity"
                     type="number"
@@ -237,7 +294,9 @@ export function RmaPage() {
                   />
                 </Field>
                 <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="rma-description">Descrizione problema</Label>
+                  <Label htmlFor="rma-description">
+                    {tx(t, "storefront.rma.form.description", "Descrizione problema")}
+                  </Label>
                   <Textarea
                     id="rma-description"
                     className="min-h-28"
@@ -246,7 +305,11 @@ export function RmaPage() {
                     minLength={10}
                     maxLength={1000}
                     required
-                    placeholder="Indica test effettuati, sintomi, modello dispositivo e condizioni del ricambio..."
+                    placeholder={tx(
+                      t,
+                      "storefront.rma.form.descriptionPlaceholder",
+                      "Indica test effettuati, sintomi, modello dispositivo e condizioni del ricambio..."
+                    )}
                   />
                 </div>
                 <div className="space-y-2 sm:col-span-2">
@@ -255,9 +318,13 @@ export function RmaPage() {
                     className="flex min-h-32 cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-sm font-semibold text-slate-600 transition hover:border-primary/40 hover:bg-primary/8"
                   >
                     <Upload className="size-5 text-primary" />
-                    Carica foto o video del difetto
+                    {tx(t, "storefront.rma.form.evidence", "Carica foto o video del difetto")}
                     <span className="text-xs font-normal text-slate-500">
-                      JPG, PNG o MP4 fino a 20MB. I file restano come anteprima locale.
+                      {tx(
+                        t,
+                        "storefront.rma.form.evidenceHint",
+                        "JPG, PNG o MP4 fino a 20MB. I file restano come anteprima locale."
+                      )}
                     </span>
                   </Label>
                   <input
@@ -270,8 +337,17 @@ export function RmaPage() {
                   />
                   <div className="text-xs font-semibold text-slate-500" aria-live="polite">
                     {evidenceCount > 0
-                      ? `${evidenceCount} file selezionati solo come anteprima locale.`
-                      : "Nessun file selezionato. L'API riceve solo i dati RMA."}
+                      ? txFormat(
+                        t,
+                        "storefront.rma.form.evidenceSelected",
+                        "{count} file selezionati solo come anteprima locale.",
+                        { count: evidenceCount }
+                      )
+                      : tx(
+                        t,
+                        "storefront.rma.form.evidenceEmpty",
+                        "Nessun file selezionato. L'API riceve solo i dati RMA."
+                      )}
                   </div>
                 </div>
                 <Button
@@ -284,21 +360,23 @@ export function RmaPage() {
                   ) : (
                     <Send className="size-4" />
                   )}
-                  {submitState.status === "loading" ? "Invio RMA..." : "Invia richiesta RMA"}
+                  {submitState.status === "loading"
+                    ? tx(t, "storefront.rma.submit.buttonLoading", "Invio RMA...")
+                    : tx(t, "storefront.rma.submit.button", "Invia richiesta RMA")}
                 </Button>
-                <RmaSubmitStatus state={submitState} />
+                <RmaSubmitStatus state={submitState} t={t} />
               </CardContent>
             </form>
           </Card>
 
           <Card className="border-slate-200 bg-white">
             <CardHeader>
-              <CardTitle>Richieste recenti</CardTitle>
+              <CardTitle>{tx(t, "storefront.rma.recent.title", "Richieste recenti")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {visibleRequests.length === 0 && (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">
-                  Nessuna richiesta RMA registrata.
+                  {tx(t, "storefront.rma.recent.empty", "Nessuna richiesta RMA registrata.")}
                 </div>
               )}
               {visibleRequests.map((request) => (
@@ -310,7 +388,7 @@ export function RmaPage() {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-sm font-black">{request.id}</span>
                       <Badge className={cn("border", rmaBadgeClass(request.status))}>
-                        {rmaStatusLabel(request.status)}
+                        {rmaStatusLabel(t, request.status)}
                       </Badge>
                     </div>
                     <div className="mt-2 text-sm font-bold">{request.productName}</div>
@@ -318,11 +396,11 @@ export function RmaPage() {
                       {request.orderId} · {request.sku} · {request.createdAt}
                     </div>
                     <div className="mt-2 break-words text-sm text-slate-600">
-                      {request.reason}
+                      {rmaReasonLabel(t, request.reason)}
                     </div>
                   </div>
                   <div className="rounded-lg bg-slate-50 p-3 text-sm font-semibold text-slate-600 md:max-w-[220px]">
-                    {request.resolution}
+                    {rmaResolutionLabel(t, request.resolution)}
                   </div>
                 </div>
               ))}
@@ -333,24 +411,36 @@ export function RmaPage() {
         <aside className="space-y-4">
           <Card className="border-slate-200 bg-white lg:sticky lg:top-32">
             <CardHeader>
-              <CardTitle>Regole RMA</CardTitle>
+              <CardTitle>{tx(t, "storefront.rma.rules.title", "Regole RMA")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {[
                 {
                   icon: ClipboardCheck,
-                  title: "Collega sempre l'ordine",
-                  body: "Le richieste senza numero ordine non possono essere validate automaticamente.",
+                  title: tx(t, "storefront.rma.rules.order.title", "Collega sempre l'ordine"),
+                  body: tx(
+                    t,
+                    "storefront.rma.rules.order.body",
+                    "Le richieste senza numero ordine non possono essere validate automaticamente."
+                  ),
                 },
                 {
                   icon: Camera,
-                  title: "Foto prima del reso",
-                  body: "Carica immagini del difetto e del sigillo qualità prima della spedizione.",
+                  title: tx(t, "storefront.rma.rules.photo.title", "Foto prima del reso"),
+                  body: tx(
+                    t,
+                    "storefront.rma.rules.photo.body",
+                    "Carica immagini del difetto e del sigillo qualità prima della spedizione."
+                  ),
                 },
                 {
                   icon: PackageSearch,
-                  title: "Verifica laboratorio",
-                  body: "Il team controlla il ricambio e aggiorna lo stato nella tua area account.",
+                  title: tx(t, "storefront.rma.rules.lab.title", "Verifica laboratorio"),
+                  body: tx(
+                    t,
+                    "storefront.rma.rules.lab.body",
+                    "Il team controlla il ricambio e aggiorna lo stato nella tua area account."
+                  ),
                 },
               ].map((item) => (
                 <div key={item.title} className="flex gap-3">
@@ -366,17 +456,20 @@ export function RmaPage() {
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                 <div className="flex items-center gap-2 font-black">
                   <AlertTriangle className="size-4" />
-                  Nota
+                  {tx(t, "storefront.rma.rules.noteTitle", "Nota")}
                 </div>
                 <p className="mt-1 leading-6">
-                  I danni da installazione o liquidi possono essere esclusi dalla
-                  sostituzione automatica.
+                  {tx(
+                    t,
+                    "storefront.rma.rules.noteBody",
+                    "I danni da installazione o liquidi possono essere esclusi dalla sostituzione automatica."
+                  )}
                 </p>
               </div>
               <Button asChild variant="outline" className="w-full bg-white">
                 <Link href="/account">
                   <CheckCircle2 className="size-4" />
-                  Torna all&apos;account
+                  {tx(t, "storefront.rma.backToAccount", "Torna all'account")}
                 </Link>
               </Button>
             </CardContent>
@@ -404,7 +497,13 @@ function Field({
   );
 }
 
-function RmaSubmitStatus({ state }: { state: SubmitState }) {
+function RmaSubmitStatus({
+  state,
+  t,
+}: {
+  state: SubmitState;
+  t: StorefrontTranslator;
+}) {
   const toneClass =
     state.status === "success"
       ? "border-emerald-200 bg-emerald-50 text-emerald-900"
@@ -426,9 +525,20 @@ function RmaSubmitStatus({ state }: { state: SubmitState }) {
           <div className="font-black">{state.message}</div>
           {state.status === "success" && (
             <div className="mt-2 grid gap-2 rounded-lg border border-emerald-200 bg-white/70 p-3 text-xs font-semibold text-emerald-900 sm:grid-cols-2">
-              <ResultInfo label="Numero RMA" value={state.request.id} mono />
-              <ResultInfo label="Stato" value={rmaStatusLabel(state.request.status)} />
-              <ResultInfo label="Ordine" value={state.request.orderId} mono />
+              <ResultInfo
+                label={tx(t, "storefront.rma.result.number", "Numero RMA")}
+                value={state.request.id}
+                mono
+              />
+              <ResultInfo
+                label={tx(t, "storefront.rma.result.status", "Stato")}
+                value={rmaStatusLabel(t, state.request.status)}
+              />
+              <ResultInfo
+                label={tx(t, "storefront.rma.result.order", "Ordine")}
+                value={state.request.orderId}
+                mono
+              />
               <ResultInfo label="SKU" value={state.request.sku} mono />
             </div>
           )}
@@ -465,17 +575,4 @@ function rmaBadgeClass(status: string) {
   }
 
   return "border-primary/20 bg-primary/8 text-primary";
-}
-
-function rmaStatusLabel(status: string) {
-  const labels: Record<string, string> = {
-    requested: "Richiesta",
-    approved: "Approvata",
-    rejected: "Respinta",
-    received: "Ricevuta",
-    replaced: "Sostituita",
-    refunded: "Rimborsata",
-  };
-
-  return labels[status] ?? status;
 }

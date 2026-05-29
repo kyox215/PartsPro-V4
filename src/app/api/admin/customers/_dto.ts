@@ -11,6 +11,7 @@ import {
 } from "@/lib/partspro-repository";
 
 type CustomerQueryDto = {
+  assignmentStatus?: "needs_review" | "assigned" | "converted_to_employee" | "archived";
   createdFrom?: string;
   createdTo?: string;
   cursor?: string;
@@ -28,6 +29,7 @@ export function toAdminCustomerQuery(input: CustomerQueryDto): AdminCustomerQuer
   return {
     createdFrom: input.createdFrom,
     createdTo: input.createdTo,
+    assignmentStatus: input.assignmentStatus,
     cursor: input.cursor,
     customerType: input.customerType,
     hasOrders: input.hasOrders,

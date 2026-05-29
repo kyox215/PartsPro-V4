@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ChevronDown, Grid3X3, Home, Menu, Search, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,6 +44,7 @@ export function StoreMobileMenu({
 }: StoreMobileMenuProps) {
   const t = useT();
   const pathname = usePathname();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [catalogOpen, setCatalogOpen] = useState(() => pathname.startsWith("/catalogo"));
   const catalogSearchValue = selectedCatalog?.searchQuery ?? selectedCatalog?.model ?? "";
@@ -94,7 +95,8 @@ export function StoreMobileMenu({
       return;
     }
 
-    window.location.assign(`/catalogo?q=${encodeURIComponent(query)}`);
+    router.push(`/catalogo?${new URLSearchParams({ q: query }).toString()}`);
+    closeMenu();
   }
 
   function toggleCatalog() {
@@ -151,11 +153,19 @@ export function StoreMobileMenu({
               <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
               <Input
                 key={catalogSearchValue}
-                className="h-9 rounded-lg border-slate-200 bg-slate-50 pl-8 text-sm shadow-none focus-visible:bg-white"
+                className="h-9 rounded-lg border-slate-200 bg-slate-50 pl-8 pr-10 text-sm shadow-none focus-visible:bg-white"
                 defaultValue={catalogSearchValue}
                 name="catalogSearch"
                 placeholder={tx(t, "storefront.home.mobileSearch", "Cerca SKU / prodotto")}
               />
+              <Button
+                type="submit"
+                size="icon-xs"
+                className="absolute right-1 top-1/2 size-7 -translate-y-1/2 rounded-md"
+                aria-label={tx(t, "storefront.header.searchSubmit", "Cerca")}
+              >
+                <Search className="size-3.5" />
+              </Button>
             </form>
           </div>
           <nav

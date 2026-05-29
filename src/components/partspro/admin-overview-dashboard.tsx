@@ -46,7 +46,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatAdminMessage, getAdminDictionary } from "@/i18n/dictionaries/admin";
+import {
+  adminSourceLabel,
+  formatAdminMessage,
+  getAdminDictionary,
+  type AdminText,
+} from "@/i18n/dictionaries/admin";
 import { formatEuro, type StockStatus } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
 import { useI18n } from "./i18n-provider";
@@ -228,13 +233,6 @@ const fulfillmentQueueStatuses = new Set<OrderStatus>([
   "packed",
   "shipped",
 ]);
-const paidOrderStatuses = new Set<OrderStatus>([
-  "accepted",
-  "picking",
-  "packed",
-  "shipped",
-  "completed",
-]);
 const cardClass =
   "min-w-0 rounded-lg border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.045)]";
 
@@ -306,6 +304,7 @@ export function AdminOverviewDashboard({
         locale={locale}
         onRefresh={refresh}
         snapshot={snapshot}
+        text={text}
       />
 
       {snapshot.error ? (
@@ -347,11 +346,13 @@ function OverviewHeader({
   locale,
   onRefresh,
   snapshot,
+  text,
 }: {
   copy: ReturnType<typeof getAdminDictionary>["admin"]["dashboard"]["overview"];
   locale: string;
   onRefresh: () => void;
   snapshot: DashboardSnapshot;
+  text: AdminText;
 }) {
   const syncedAt = snapshot.syncedAt
     ? formatAdminMessage(copy.updated, {
@@ -385,7 +386,7 @@ function OverviewHeader({
             })}
             </span>
             <span className="col-span-2 min-w-0 truncate rounded bg-slate-50 px-1.5 py-0.5 sm:col-span-1 sm:bg-transparent sm:px-0 sm:py-0">
-              {copy.source}: {sourceLabel(snapshot.orderSource)} / {sourceLabel(snapshot.productSource)}
+              {copy.source}: {sourceLabel(text, snapshot.orderSource)} / {sourceLabel(text, snapshot.productSource)}
             </span>
           </div>
         </div>
@@ -1571,7 +1572,7 @@ function stockRisk(
 }
 
 function isPaidOrder(order: DashboardOrder) {
-  return order.paymentStatus === "paid" || paidOrderStatuses.has(order.status);
+  return order.paymentStatus === "paid";
 }
 
 function isDashboardRange(value: string): value is DashboardRange {
@@ -1607,7 +1608,8 @@ function normalizePaymentStatus(value: unknown, status: OrderStatus): PaymentSta
     return "refunded";
   }
 
-  return paidOrderStatuses.has(status) ? "paid" : "unpaid";
+  void status;
+  return "unpaid";
 }
 
 function normalizeStockStatus(value: unknown): StockStatus | null {
@@ -1775,16 +1777,8 @@ function readErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Unknown dashboard error.";
 }
 
-function sourceLabel(source: string) {
-  if (source === "supabase") {
-    return "Supabase";
-  }
-
-  if (source === "admin_api" || source === "api") {
-    return "Admin API";
-  }
-
-  return "Empty";
+function sourceLabel(text: AdminText, source: string) {
+  return adminSourceLabel(text, source, source);
 }
 
 function formatCount(value: number, locale: string) {

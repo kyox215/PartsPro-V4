@@ -3,6 +3,7 @@ import { getDictionary, translate } from "@/i18n/get-dictionary";
 import { getRequestI18n } from "@/i18n/request";
 import {
   applyAccountPriceToProduct,
+  canDelegateCheckout,
   getCurrentAccountContext,
   type AccountContext,
 } from "@/lib/partspro-account-context";
@@ -10,6 +11,7 @@ import { type CompanyProfile, type PartProduct } from "@/lib/partspro-data";
 import {
   getCurrentCustomerProfile,
   listCatalogProducts,
+  listCompanies,
   listCurrentCustomerCompanies,
 } from "@/lib/partspro-repository";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -23,13 +25,16 @@ export async function CheckoutPage() {
   const dictionary = getDictionary(locale);
   const t: StorefrontTranslator = (key) => translate(dictionary, key);
   const account = await getCurrentAccountContext({ ensure: true });
-  const runtime = getCheckoutRuntime(t, account);
+  const delegatedCheckout = canDelegateCheckout(account);
+  const runtime = getCheckoutRuntime(t, account, delegatedCheckout);
   const [companies, catalog, customerProfile] = await Promise.all([
-    listCurrentCustomerCompanies(),
+    delegatedCheckout ? listCompanies() : listCurrentCustomerCompanies(),
     listCatalogProducts(),
     getCurrentCustomerProfile(),
   ]);
-  const company = resolveCheckoutCompany(account, companies.data);
+  const company = delegatedCheckout
+    ? null
+    : resolveCheckoutCompany(account, companies.data);
   const catalogProducts = catalog.data
     .map((product) => applyAccountPriceToProduct(product, account))
     .filter(isCheckoutOrderableProduct);
@@ -38,7 +43,9 @@ export async function CheckoutPage() {
     <CheckoutClient
       catalogProducts={catalogProducts}
       company={company}
+      companies={delegatedCheckout ? companies.data : []}
       customerProfile={customerProfile.data}
+      delegatedCheckout={delegatedCheckout}
       runtime={runtime}
     />
   );
@@ -46,7 +53,8 @@ export async function CheckoutPage() {
 
 function getCheckoutRuntime(
   t: StorefrontTranslator,
-  account: AccountContext
+  account: AccountContext,
+  delegatedCheckout: boolean
 ): CheckoutRuntimeView {
   if (!isSupabaseConfigured()) {
     return {
@@ -73,19 +81,19 @@ function getCheckoutRuntime(
       mode: "needs-profile",
       canSubmit: false,
       title: tx(t, "storefront.checkout.runtime.priceAccessTitle", "Listino da abilitare"),
-      description: tx(t, "storefront.checkout.runtime.priceAccessDescription", "Il checkout richiede un cliente wholesale assegnato e un prezzo effettivo valido per ogni SKU."),
+      description: tx(t, "storefront.checkout.runtime.priceAccessDescription", "Il checkout richiede un cliente professionale abilitato e un prezzo effettivo valido per ogni SKU."),
       disabledReason: tx(t, "storefront.checkout.runtime.priceAccessReason", "Checkout disabilitato: il listino cliente non e ancora abilitato."),
       userEmail: account.email ?? undefined,
     };
   }
 
-  if (!account.canCheckout) {
+  if (!account.canCheckout && !delegatedCheckout) {
     return {
       mode: "needs-profile",
       canSubmit: false,
       title: tx(t, "storefront.checkout.runtime.needsProfileTitle", "Dati cliente da completare"),
       description: tx(t, "storefront.checkout.runtime.needsProfileDescription", "Completa dati fiscali, contatto, fatturazione e spedizione prima di confermare l'ordine."),
-      disabledReason: tx(t, "storefront.checkout.runtime.needsProfileReason", "Checkout disabilitato: completa dati cliente e assegnazione wholesale."),
+      disabledReason: tx(t, "storefront.checkout.runtime.needsProfileReason", "Checkout disabilitato: completa dati cliente e abilitazione professionale."),
       userEmail: account.email ?? undefined,
     };
   }
@@ -94,7 +102,9 @@ function getCheckoutRuntime(
     mode: "ready",
     canSubmit: true,
     title: tx(t, "storefront.checkout.runtime.readyTitle", "Checkout pronto"),
-    description: tx(t, "storefront.checkout.runtime.readyDescription", "Account verificato. L'ordine verra inviato al gestionale dopo il controllo finale."),
+    description: delegatedCheckout
+      ? tx(t, "storefront.checkout.runtime.delegatedReadyDescription", "Seleziona un cliente: prezzi e ordine useranno il profilo cliente scelto.")
+      : tx(t, "storefront.checkout.runtime.readyDescription", "Account verificato. L'ordine verra inviato al gestionale dopo il controllo finale."),
     userEmail: account.email ?? undefined,
   };
 }

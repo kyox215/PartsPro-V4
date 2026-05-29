@@ -12,6 +12,7 @@ type LoginSubmitButtonProps = {
 
 type GoogleLoginButtonProps = LoginSubmitButtonProps & {
   href: string;
+  label?: string;
 };
 
 type WeChatLoginButtonProps = GoogleLoginButtonProps;
@@ -31,13 +32,17 @@ export function LoginSubmitButton({
   );
 }
 
-export function GoogleLoginButton({ disabled = false, href }: GoogleLoginButtonProps) {
+export function GoogleLoginButton({
+  disabled = false,
+  href,
+  label = "Continua con Google",
+}: GoogleLoginButtonProps) {
   const content = (
     <>
       <span className="grid size-5 place-items-center rounded-full text-sm font-black text-[#4285f4]">
         G
       </span>
-      Continua con Google
+      {label}
     </>
   );
 
@@ -65,11 +70,15 @@ export function GoogleLoginButton({ disabled = false, href }: GoogleLoginButtonP
   );
 }
 
-export function WeChatLoginButton({ disabled = false, href }: WeChatLoginButtonProps) {
+export function WeChatLoginButton({
+  disabled = false,
+  href,
+  label = "Continua con WeChat",
+}: WeChatLoginButtonProps) {
   const content = (
     <>
       <MessageCircle className="size-5 text-[#07c160]" />
-      Continua con WeChat
+      {label}
     </>
   );
 

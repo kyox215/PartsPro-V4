@@ -21,6 +21,9 @@ export const customerIdParamSchema = z
 
 export const customerQuerySchema = z
   .object({
+    assignmentStatus: z
+      .enum(["needs_review", "assigned", "converted_to_employee", "archived"])
+      .optional(),
     createdFrom: dateSchema.optional(),
     createdTo: dateSchema.optional(),
     cursor: z.string().trim().regex(/^\d+$/).optional(),
@@ -55,6 +58,9 @@ export const customerProfilePatchSchema = z
 
 export const customerClassificationPatchSchema = z
   .object({
+    assignmentStatus: z
+      .enum(["needs_review", "assigned", "converted_to_employee", "archived"])
+      .optional(),
     customerType: z.enum(["retail", "wholesale"]).optional(),
     reason: z.string().trim().min(3).max(1000),
     status: z.enum(["pending", "active", "suspended"]).optional(),

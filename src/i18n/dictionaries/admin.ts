@@ -126,9 +126,13 @@ export const adminDictionaries = {
         orderStatus: {
           draft: "草稿",
           pending_payment: "待付款",
+          submitted: "新订单",
+          accepted: "已接单",
           paid: "已付款",
           picking: "拣货中",
+          packed: "已打包",
           shipped: "已发货",
+          completed: "已完成",
           delivered: "已送达",
           cancelled: "已取消",
         },
@@ -182,6 +186,127 @@ export const adminDictionaries = {
           draft: "草稿",
           hidden: "已隐藏",
           blocked: "已阻塞",
+        },
+      },
+      lookups: {
+        notSet: "未设置",
+        roleTemplateLabels: {
+          admin: "管理员",
+          auditor: "审计员",
+          catalog_manager: "商品管理员",
+          inventory_manager: "库存管理员",
+          pricing_manager: "价格管理员",
+          purchasing: "采购",
+          sales: "销售",
+          sales_support: "销售支持",
+          warehouse: "仓库",
+        },
+        roleTemplateDescriptions: {
+          admin: "拥有全部后台面板和操作权限。",
+          auditor: "只读查看后台数据和审计记录。",
+          catalog_manager: "管理商品资料、图片和发布状态。",
+          inventory_manager: "管理库存数量和库存动作。",
+          pricing_manager: "管理商品价格、成本和毛利。",
+          purchasing: "支持商品建档、采购和库存协同。",
+          sales: "处理客户和订单，不包含设置权限。",
+          sales_support: "查看客户、商品和订单信息。",
+          warehouse: "处理仓库、锁货和库存动作。",
+        },
+        permissionGroupLabels: {
+          customers: "客户权限",
+          employees: "员工权限",
+          inventory: "库存权限",
+          orders: "订单权限",
+          other: "其他权限",
+          panel: "后台面板",
+          products: "商品权限",
+        },
+        permissionLabels: {
+          "panel.orders": "订单面板",
+          "panel.customers": "客户面板",
+          "panel.catalog": "商品面板",
+          "panel.inventory": "库存面板",
+          "panel.settings": "设置面板",
+          "customers.read": "查看客户",
+          "customers.manage": "编辑客户档案",
+          "customers.classify": "调整客户类型",
+          "customers.manage_level": "修改客户等级",
+          "customers.manage_terms": "管理商业条款",
+          "employees.read": "查看员工",
+          "employees.manage_permissions": "管理员工权限",
+          "orders.read": "查看订单",
+          "orders.manage": "管理订单",
+          "products.read_admin": "查看后台商品",
+          "products.manage": "管理商品内容",
+          "products.pricing": "管理价格",
+          "inventory.manage": "管理库存",
+          "product.read_admin": "查看后台商品",
+          "product.create_draft": "新建商品草稿",
+          "product.edit_content": "编辑商品内容",
+          "product.edit_price": "编辑商品价格",
+          "product.edit_cost": "编辑商品成本",
+          "product.adjust_stock": "调整商品库存",
+          "product.publish": "发布商品",
+          "product.hide": "隐藏商品",
+          "product.block": "阻塞商品",
+          "product.restore_draft": "恢复商品草稿",
+          "product.image_manage": "管理商品图片",
+        },
+        permissionDescriptions: {
+          "panel.orders": "可以打开后台订单面板。",
+          "panel.customers": "可以打开客户管理面板。",
+          "panel.catalog": "可以打开后台商品面板。",
+          "panel.inventory": "可以打开库存运营面板。",
+          "panel.settings": "可以打开设置和权限面板。",
+          "customers.read": "可以查看客户和账号资料。",
+          "customers.manage": "可以编辑客户档案。",
+          "customers.classify": "可以分配零售、批发、客户或员工类型。",
+          "customers.manage_level": "可以单独修改客户等级，不包含商业条款。",
+          "customers.manage_terms": "可以编辑授信、付款条件和客户等级。",
+          "employees.read": "可以查看员工账号。",
+          "employees.manage_permissions": "可以分配员工角色模板和单项权限覆盖。",
+          "orders.read": "可以查看后台订单。",
+          "orders.manage": "可以更新订单运营字段和状态。",
+          "products.read_admin": "可以查看后台商品数据。",
+          "products.manage": "可以创建和编辑商品内容。",
+          "products.pricing": "可以编辑零售价、批发价和成本价。",
+          "inventory.manage": "可以调整库存和库存动作。",
+          "product.read_admin": "兼容权限：查看后台商品数据。",
+          "product.create_draft": "兼容权限：创建商品草稿。",
+          "product.edit_content": "兼容权限：编辑商品内容。",
+          "product.edit_price": "兼容权限：编辑商品价格。",
+          "product.edit_cost": "兼容权限：编辑商品成本。",
+          "product.adjust_stock": "兼容权限：调整商品库存。",
+          "product.publish": "兼容权限：发布商品。",
+          "product.hide": "兼容权限：隐藏商品。",
+          "product.block": "兼容权限：阻塞商品。",
+          "product.restore_draft": "兼容权限：恢复商品草稿。",
+          "product.image_manage": "兼容权限：管理商品图片。",
+        },
+        sourceLabels: {
+          admin_api: "后台 API",
+          api: "后台 API",
+          empty: "空状态",
+          supabase: "Supabase",
+        },
+        valueLabels: {
+          "Admin API": "后台 API",
+          API: "后台 API",
+          Empty: "空状态",
+          "Da incassare": "待收款",
+          "Da /api/admin/orders": "来自 /api/admin/orders",
+          "Da pianificare": "待安排",
+          "Da verificare": "待核查",
+          "In transito": "运输中",
+          Incassato: "已收款",
+          Pagato: "已付款",
+          Operations: "运营",
+          System: "系统",
+          Ricambio: "配件",
+          "Prodotto ordine": "订单商品",
+          Cliente: "客户",
+          "Non disponibile": "暂无数据",
+          "Nessun dato locale": "暂无本地数据",
         },
       },
       schema: {
@@ -427,7 +552,11 @@ export const adminDictionaries = {
         cancelledNotice: "订单 {id} 已取消。",
         completeOrder: "完成订单",
         completedNotice: "订单 {id} 已完成。",
-        confirmAndAccept: "确认收款并接单",
+        confirmAndAccept: "确认接单",
+        forceCancelOrder: "强制取消",
+        forceCancelPrompt: "请输入强制取消原因。发货后强制取消不会释放为可售库存，会保留为售后/质检占用。",
+        forceCancelReasonRequired: "强制取消发货订单必须填写原因。",
+        forceCancelledNotice: "订单 {id} 已强制取消，库存保持不可售。",
         dateFrom: "开始日期",
         dateTo: "结束日期",
         detailLoading: "正在加载订单详情...",
@@ -507,6 +636,19 @@ export const adminDictionaries = {
           },
         },
         readOnly: "订单已归档，只读",
+        reservation: {
+          age: "已锁定 {hours} 小时",
+          completed: "完成时已消耗锁定库存",
+          consumedValue: "已完成 {count}",
+          held: "强制取消后保留为售后/质检占用，不回到可售库存",
+          heldValue: "占用 {count}",
+          none: "无锁货",
+          noneHelper: "购物车不锁货；订单创建后才锁定",
+          overdue: "锁货已超过 14 天（{hours} 小时），仅提示风险，不阻止继续流转",
+          overdueValue: "超期锁货 {count}",
+          reservedValue: "锁货 {count}",
+          warning: "已锁定 {hours} 小时，线下收款未完成请跟进",
+        },
         rollbackNotice: "订单 {id} 已从 {from} 回滚到 {to}。",
         rollbackStatus: "回滚状态",
         searchPlaceholder: "搜索订单、客户、SKU",
@@ -523,6 +665,7 @@ export const adminDictionaries = {
           shipping: "发货",
         },
         workflow: {
+          agedReservations: "超期锁货",
           all: "全部订单",
           openPayments: "未收款",
           stockRisk: "库存风险",
@@ -568,6 +711,7 @@ export const adminDictionaries = {
           orderTotal: "订单总额",
           piecesOrdered: "{count} 件已下单",
           piecesPicked: "{picked}/{items} 件已拣货",
+          reservation: "锁货",
           shipmentCheck: "发货检查",
           staffNote: "员工备注",
           notesAudit: "备注和审计",
@@ -582,6 +726,7 @@ export const adminDictionaries = {
           fulfilled: "已履约",
         },
         notices: {
+          accepted: "订单 {id} 已接单。",
           advanced: "订单状态已在本地面板更新。",
           carrier: "所选订单的运输公司已更新。",
           paid: "付款已标记为已收款。",
@@ -671,6 +816,7 @@ export const adminDictionaries = {
           apply: "应用",
           archive: "归档",
           auditEmpty: "暂无审计记录。",
+          managementAudit: "管理审计",
           bulkArchive: "批量归档",
           bulkClassifyRetail: "批量设为零售",
           bulkClassifyWholesale: "批量设为批发",
@@ -1010,9 +1156,13 @@ export const adminDictionaries = {
         orderStatus: {
           draft: "Bozza",
           pending_payment: "Attesa pagamento",
+          submitted: "Nuovo ordine",
+          accepted: "Accettato",
           paid: "Pagato",
           picking: "Picking",
+          packed: "Imballato",
           shipped: "Spedito",
+          completed: "Completato",
           delivered: "Consegnato",
           cancelled: "Annullato",
         },
@@ -1066,6 +1216,127 @@ export const adminDictionaries = {
           draft: "Bozza",
           hidden: "Nascosto",
           blocked: "Bloccato",
+        },
+      },
+      lookups: {
+        notSet: "Non impostato",
+        roleTemplateLabels: {
+          admin: "Amministratore",
+          auditor: "Auditor",
+          catalog_manager: "Responsabile catalogo",
+          inventory_manager: "Responsabile inventario",
+          pricing_manager: "Responsabile prezzi",
+          purchasing: "Acquisti",
+          sales: "Vendite",
+          sales_support: "Supporto vendite",
+          warehouse: "Magazzino",
+        },
+        roleTemplateDescriptions: {
+          admin: "Accesso completo a pannelli e operazioni admin.",
+          auditor: "Accesso amministrativo in sola lettura.",
+          catalog_manager: "Gestisce contenuti catalogo, immagini e pubblicazione.",
+          inventory_manager: "Gestisce quantita e movimenti di inventario.",
+          pricing_manager: "Gestisce prezzi, costi e margini prodotto.",
+          purchasing: "Supporta catalogo, acquisti e stock.",
+          sales: "Gestisce clienti e ordini senza accesso alle impostazioni.",
+          sales_support: "Consulta clienti, prodotti e ordini.",
+          warehouse: "Gestisce magazzino, riserve e movimenti stock.",
+        },
+        permissionGroupLabels: {
+          customers: "Permessi clienti",
+          employees: "Permessi staff",
+          inventory: "Permessi inventario",
+          orders: "Permessi ordini",
+          other: "Altri permessi",
+          panel: "Pannelli admin",
+          products: "Permessi prodotti",
+        },
+        permissionLabels: {
+          "panel.orders": "Pannello ordini",
+          "panel.customers": "Pannello clienti",
+          "panel.catalog": "Pannello catalogo",
+          "panel.inventory": "Pannello inventario",
+          "panel.settings": "Pannello impostazioni",
+          "customers.read": "Leggi clienti",
+          "customers.manage": "Modifica anagrafiche clienti",
+          "customers.classify": "Classifica clienti",
+          "customers.manage_level": "Modifica livello cliente",
+          "customers.manage_terms": "Gestisci termini commerciali",
+          "employees.read": "Leggi staff",
+          "employees.manage_permissions": "Gestisci permessi staff",
+          "orders.read": "Leggi ordini",
+          "orders.manage": "Gestisci ordini",
+          "products.read_admin": "Leggi prodotti admin",
+          "products.manage": "Gestisci contenuti prodotto",
+          "products.pricing": "Gestisci prezzi",
+          "inventory.manage": "Gestisci inventario",
+          "product.read_admin": "Leggi prodotti admin",
+          "product.create_draft": "Crea bozza prodotto",
+          "product.edit_content": "Modifica contenuto prodotto",
+          "product.edit_price": "Modifica prezzi prodotto",
+          "product.edit_cost": "Modifica costi prodotto",
+          "product.adjust_stock": "Rettifica stock prodotto",
+          "product.publish": "Pubblica prodotto",
+          "product.hide": "Nascondi prodotto",
+          "product.block": "Blocca prodotto",
+          "product.restore_draft": "Ripristina bozza prodotto",
+          "product.image_manage": "Gestisci immagini prodotto",
+        },
+        permissionDescriptions: {
+          "panel.orders": "Consente di aprire il pannello ordini admin.",
+          "panel.customers": "Consente di aprire la gestione clienti.",
+          "panel.catalog": "Consente di aprire il catalogo admin.",
+          "panel.inventory": "Consente di aprire le operazioni inventario.",
+          "panel.settings": "Consente di aprire impostazioni e permessi.",
+          "customers.read": "Consente di leggere clienti e account.",
+          "customers.manage": "Consente di modificare anagrafiche clienti.",
+          "customers.classify": "Consente di assegnare tipo cliente o staff.",
+          "customers.manage_level": "Consente di modificare solo il livello cliente.",
+          "customers.manage_terms": "Consente di modificare credito, pagamento e livello.",
+          "employees.read": "Consente di leggere account staff.",
+          "employees.manage_permissions": "Consente di assegnare ruoli e override permessi.",
+          "orders.read": "Consente di leggere ordini admin.",
+          "orders.manage": "Consente di aggiornare operazioni e stati ordine.",
+          "products.read_admin": "Consente di leggere dati catalogo admin.",
+          "products.manage": "Consente di creare e modificare contenuti prodotto.",
+          "products.pricing": "Consente di modificare prezzi e costi.",
+          "inventory.manage": "Consente di rettificare inventario e stock.",
+          "product.read_admin": "Permesso compatibile: lettura catalogo admin.",
+          "product.create_draft": "Permesso compatibile: creazione bozze prodotto.",
+          "product.edit_content": "Permesso compatibile: modifica contenuti prodotto.",
+          "product.edit_price": "Permesso compatibile: modifica prezzi prodotto.",
+          "product.edit_cost": "Permesso compatibile: modifica costi prodotto.",
+          "product.adjust_stock": "Permesso compatibile: rettifica stock prodotto.",
+          "product.publish": "Permesso compatibile: pubblicazione prodotto.",
+          "product.hide": "Permesso compatibile: nascondi prodotto.",
+          "product.block": "Permesso compatibile: blocca prodotto.",
+          "product.restore_draft": "Permesso compatibile: ripristina bozza.",
+          "product.image_manage": "Permesso compatibile: gestione immagini prodotto.",
+        },
+        sourceLabels: {
+          admin_api: "API admin",
+          api: "API",
+          empty: "Vuoto",
+          supabase: "Supabase",
+        },
+        valueLabels: {
+          "Admin API": "API admin",
+          API: "API",
+          Empty: "Vuoto",
+          "Da incassare": "Da incassare",
+          "Da /api/admin/orders": "Da /api/admin/orders",
+          "Da pianificare": "Da pianificare",
+          "Da verificare": "Da verificare",
+          "In transito": "In transito",
+          Incassato: "Incassato",
+          Pagato: "Pagato",
+          Operations: "Operazioni",
+          System: "Sistema",
+          Ricambio: "Ricambio",
+          "Prodotto ordine": "Prodotto ordine",
+          Cliente: "Cliente",
+          "Non disponibile": "Non disponibile",
+          "Nessun dato locale": "Nessun dato locale",
         },
       },
       schema: {
@@ -1314,7 +1585,11 @@ export const adminDictionaries = {
         cancelledNotice: "Ordine {id} annullato.",
         completeOrder: "Completa ordine",
         completedNotice: "Ordine {id} completato.",
-        confirmAndAccept: "Conferma incasso e accetta",
+        confirmAndAccept: "Accetta ordine",
+        forceCancelOrder: "Annulla forzato",
+        forceCancelPrompt: "Inserisci il motivo dell'annullamento forzato. Dopo la spedizione lo stock resta non vendibile per RMA o controllo qualita.",
+        forceCancelReasonRequired: "Serve un motivo per annullare forzatamente un ordine spedito.",
+        forceCancelledNotice: "Ordine {id} annullato forzatamente; stock mantenuto non vendibile.",
         dateFrom: "Da data",
         dateTo: "A data",
         detailLoading: "Caricamento dettaglio ordine...",
@@ -1402,6 +1677,19 @@ export const adminDictionaries = {
           },
         },
         readOnly: "Ordine archiviato in sola lettura",
+        reservation: {
+          age: "Riservato da {hours} ore",
+          completed: "Stock riservato consumato al completamento",
+          consumedValue: "Completato {count}",
+          held: "Dopo annullamento forzato resta occupato per RMA o controllo qualita",
+          heldValue: "Occupato {count}",
+          none: "Non riservato",
+          noneHelper: "Il carrello non blocca stock; la riserva nasce alla creazione ordine",
+          overdue: "Riserva oltre 14 giorni ({hours} ore): solo avviso, il flusso resta disponibile",
+          overdueValue: "Riserva scaduta {count}",
+          reservedValue: "Riserva {count}",
+          warning: "Riservato da {hours} ore: incasso offline da seguire",
+        },
         rollbackNotice: "Ordine {id} riportato da {from} a {to}.",
         rollbackStatus: "Ripristina stato",
         searchPlaceholder: "Cerca ordine, cliente, SKU",
@@ -1418,6 +1706,7 @@ export const adminDictionaries = {
           shipping: "Spedizioni",
         },
         workflow: {
+          agedReservations: "Riserve scadute",
           all: "Tutti ordini",
           openPayments: "Da incassare",
           stockRisk: "Rischio stock",
@@ -1463,6 +1752,7 @@ export const adminDictionaries = {
           orderTotal: "Totale ordine",
           piecesOrdered: "{count} pezzi ordinati",
           piecesPicked: "{picked}/{items} pezzi prelevati",
+          reservation: "Riserva",
           shipmentCheck: "Controllo spedizione",
           staffNote: "Nota staff",
           notesAudit: "Note e audit",
@@ -1477,6 +1767,7 @@ export const adminDictionaries = {
           fulfilled: "Evasi",
         },
         notices: {
+          accepted: "Ordine {id} accettato.",
           advanced: "Stato ordine aggiornato nel pannello locale.",
           carrier: "Corriere aggiornato per l'ordine selezionato.",
           paid: "Pagamento segnato come incassato.",
@@ -1566,6 +1857,7 @@ export const adminDictionaries = {
           apply: "Applica",
           archive: "Archivia",
           auditEmpty: "Nessuna attivita audit.",
+          managementAudit: "Audit gestione",
           bulkArchive: "Archivia selezionati",
           bulkClassifyRetail: "Imposta retail",
           bulkClassifyWholesale: "Imposta wholesale",
@@ -1799,6 +2091,66 @@ export function normalizeAdminLocale(locale?: string): AdminLocale {
   return locale?.toLowerCase().startsWith("it") ? "it" : "zh";
 }
 
+export function adminRoleTemplateLabel(
+  text: AdminText,
+  value: string | null | undefined,
+  fallback?: string | null
+) {
+  if (!value) {
+    return fallback ?? text.lookups.notSet;
+  }
+
+  return lookupText(text.lookups.roleTemplateLabels, value, fallback);
+}
+
+export function adminRoleTemplateDescription(
+  text: AdminText,
+  value: string | null | undefined,
+  fallback?: string | null
+) {
+  return lookupNullableText(text.lookups.roleTemplateDescriptions, value, fallback);
+}
+
+export function adminPermissionLabel(
+  text: AdminText,
+  value: string | null | undefined,
+  fallback?: string | null
+) {
+  return lookupText(text.lookups.permissionLabels, value, fallback);
+}
+
+export function adminPermissionDescription(
+  text: AdminText,
+  value: string | null | undefined,
+  fallback?: string | null
+) {
+  return lookupNullableText(text.lookups.permissionDescriptions, value, fallback);
+}
+
+export function adminPermissionGroupLabel(
+  text: AdminText,
+  value: string | null | undefined,
+  fallback?: string | null
+) {
+  return lookupText(text.lookups.permissionGroupLabels, value, fallback);
+}
+
+export function adminSourceLabel(
+  text: AdminText,
+  value: string | null | undefined,
+  fallback?: string | null
+) {
+  return lookupText(text.lookups.sourceLabels, value, fallback);
+}
+
+export function adminValueLabel(
+  text: AdminText,
+  value: string | null | undefined,
+  fallback?: string | null
+) {
+  return lookupText(text.lookups.valueLabels, value, fallback);
+}
+
 export function formatAdminMessage(
   template: string,
   values: Record<string, string | number>
@@ -1807,4 +2159,32 @@ export function formatAdminMessage(
     (message, [key, value]) => message.replaceAll(`{${key}}`, String(value)),
     template
   );
+}
+
+function lookupText(
+  values: Readonly<Record<string, string>>,
+  value: string | null | undefined,
+  fallback?: string | null
+) {
+  const key = typeof value === "string" ? value.trim() : "";
+
+  if (!key) {
+    return fallback ?? "";
+  }
+
+  return values[key] ?? fallback ?? key;
+}
+
+function lookupNullableText(
+  values: Readonly<Record<string, string>>,
+  value: string | null | undefined,
+  fallback?: string | null
+) {
+  const key = typeof value === "string" ? value.trim() : "";
+
+  if (!key) {
+    return fallback ?? null;
+  }
+
+  return values[key] ?? fallback ?? null;
 }

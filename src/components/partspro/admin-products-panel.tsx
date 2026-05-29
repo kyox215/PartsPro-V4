@@ -6,6 +6,7 @@ import Link from "next/link";
 import {
   AlertTriangle,
   Ban,
+  Bell,
   Boxes,
   CheckCircle2,
   ChevronLeft,
@@ -95,8 +96,10 @@ import {
 } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
 import {
+  adminSourceLabel,
   formatAdminMessage,
   getAdminDictionary,
+  type AdminText,
 } from "@/i18n/dictionaries/admin";
 import { sanitizeSupplierText, toPublicSku } from "@/lib/partspro-sku";
 import { useI18n } from "./i18n-provider";
@@ -149,6 +152,7 @@ type ProductListFilters = {
 };
 
 type AdminProductRow = PartProduct & {
+  activeRestockRequestCount?: number;
   actualQty?: number;
   availableQty?: number;
   batchCode?: string | null;
@@ -181,6 +185,19 @@ type ProductDataSource = {
 type ProductNotice = {
   tone: "success" | "info" | "warning" | "error";
   message: string;
+};
+
+type AdminRestockRequestStatus = "active" | "notified" | "cancelled";
+
+type AdminRestockRequest = {
+  createdAt: string;
+  customerId: string | null;
+  id: string;
+  productName: string;
+  sku: string;
+  status: AdminRestockRequestStatus;
+  updatedAt: string;
+  userId: string | null;
 };
 
 type ProductsApiResult = {
@@ -289,6 +306,16 @@ const panelText = {
     hidden: "隐藏",
     blocked: "阻塞",
     lowStock: "低库存",
+    restockRequests: "补货提醒",
+    restockOnly: "仅看提醒",
+    restockManage: "处理提醒",
+    restockActiveCount: "{count} 个提醒",
+    restockEmpty: "暂无待处理补货提醒。",
+    restockDialogDescription: "客户提交的 active 补货提醒；处理后可标记为已通知或取消。",
+    restockMarkNotified: "已通知",
+    restockCancel: "取消提醒",
+    restockUpdateSuccess: "补货提醒已更新。",
+    restockUpdateError: "补货提醒更新失败。",
     missingImage: "缺主图",
     missingPrice: "缺价格",
     searchPlaceholder: "搜索 SKU / 商品 / 品牌 / 型号",
@@ -440,6 +467,17 @@ const panelText = {
     hidden: "Nascosti",
     blocked: "Bloccati",
     lowStock: "Stock basso",
+    restockRequests: "Avvisi stock",
+    restockOnly: "Solo avvisi",
+    restockManage: "Gestisci avvisi",
+    restockActiveCount: "{count} avvisi",
+    restockEmpty: "Nessun avviso di riassortimento attivo.",
+    restockDialogDescription:
+      "Avvisi active salvati dai clienti; dopo la gestione puoi marcarli notificati o annullati.",
+    restockMarkNotified: "Notificato",
+    restockCancel: "Annulla avviso",
+    restockUpdateSuccess: "Avviso di riassortimento aggiornato.",
+    restockUpdateError: "Aggiornamento avviso non riuscito.",
     missingImage: "Senza immagine",
     missingPrice: "Senza prezzo",
     searchPlaceholder: "Cerca SKU / prodotto / brand / modello",
@@ -591,7 +629,7 @@ export function AdminProductsPanel() {
   const [products, setProducts] = React.useState<AdminProductRow[]>([]);
   const [dataSource, setDataSource] = React.useState<ProductDataSource>(() => ({
     ...emptyProductSource,
-    label: productSourceLabel("empty", text),
+    label: productSourceLabel("empty", adminText),
   }));
   const [modelGroups, setModelGroups] = React.useState<DeviceModelGroup[]>([]);
   const [selectedSkus, setSelectedSkus] = React.useState<Set<string>>(() => new Set());
@@ -599,6 +637,8 @@ export function AdminProductsPanel() {
   const [isLoading, setIsLoading] = React.useState(false);
   const [isMutating, setIsMutating] = React.useState(false);
   const [isLoadingModelGroups, setIsLoadingModelGroups] = React.useState(true);
+  const [showRestockOnly, setShowRestockOnly] = React.useState(false);
+  const [isRestockDialogOpen, setIsRestockDialogOpen] = React.useState(false);
   const [drawerMode, setDrawerMode] = React.useState<ProductDrawerMode | null>(null);
   const [drawerProduct, setDrawerProduct] = React.useState<AdminProductRow | null>(null);
   const [drawerInlineEditSku, setDrawerInlineEditSku] = React.useState<string | null>(null);
@@ -619,7 +659,7 @@ export function AdminProductsPanel() {
         setProducts(result.products);
         setDataSource({
           source: result.source,
-          label: productSourceLabel(result.source, text),
+          label: productSourceLabel(result.source, adminText),
           syncedAt: formatTimestamp(),
           total: result.total,
           returned: result.returned,
@@ -634,7 +674,7 @@ export function AdminProductsPanel() {
         setProducts([]);
         setDataSource({
           source: "empty",
-          label: productSourceLabel("empty", text),
+          label: productSourceLabel("empty", adminText),
           syncedAt: formatTimestamp(),
           total: 0,
           returned: 0,
@@ -648,7 +688,7 @@ export function AdminProductsPanel() {
         }
       }
     },
-    [filters, text]
+    [adminText, filters, text]
   );
 
   React.useEffect(() => {
@@ -689,6 +729,13 @@ export function AdminProductsPanel() {
   const selectedProducts = React.useMemo(
     () => products.filter((product) => selectedSkus.has(product.sku)),
     [products, selectedSkus]
+  );
+  const visibleProducts = React.useMemo(
+    () =>
+      showRestockOnly
+        ? products.filter((product) => (product.activeRestockRequestCount ?? 0) > 0)
+        : products,
+    [products, showRestockOnly]
   );
   const metrics = React.useMemo(
     () => buildProductMetrics(products, dataSource.total),
@@ -739,7 +786,7 @@ export function AdminProductsPanel() {
         ...current,
         source: current.source === "empty" ? "api" : current.source,
         label:
-          current.source === "empty" ? productSourceLabel("api", text) : current.label,
+          current.source === "empty" ? productSourceLabel("api", adminText) : current.label,
         total: current.total + 1,
         returned: current.returned + 1,
       }));
@@ -919,6 +966,28 @@ export function AdminProductsPanel() {
               <span className="min-w-0 truncate">{text.sync}</span>
             </Button>
             <Button
+              variant={showRestockOnly ? "default" : "outline"}
+              size="xs"
+              className="h-8 min-w-0 px-2 sm:h-9 sm:px-3"
+              onClick={() => setShowRestockOnly((current) => !current)}
+            >
+              <Bell className="size-4" />
+              <span className="min-w-0 truncate">{text.restockOnly}</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="xs"
+              className="h-8 min-w-0 bg-white px-2 sm:h-9 sm:px-3"
+              onClick={() => setIsRestockDialogOpen(true)}
+            >
+              <Bell className="size-4" />
+              <span className="min-w-0 truncate">
+                {formatAdminMessage(text.restockActiveCount, {
+                  count: metrics.restockRequests,
+                })}
+              </span>
+            </Button>
+            <Button
               variant="outline"
               size="xs"
               className="h-8 min-w-0 bg-white px-2 sm:h-9 sm:px-3"
@@ -950,6 +1019,7 @@ export function AdminProductsPanel() {
             modelOptions={modelOptions}
             isLoadingModelGroups={isLoadingModelGroups}
             text={text}
+            adminText={adminText}
             onChange={updateFilters}
             onReset={() => setFilters(defaultFilters)}
           />
@@ -1017,7 +1087,7 @@ export function AdminProductsPanel() {
         )}
 
         <ProductTable
-          products={products}
+          products={visibleProducts}
           selectedSkus={selectedSkus}
           isLoading={isLoading}
           isMutating={isMutating}
@@ -1037,7 +1107,7 @@ export function AdminProductsPanel() {
         filters={filters}
         pageCount={pageCount}
         total={dataSource.total}
-        returned={products.length}
+        returned={visibleProducts.length}
         text={text}
         onChange={updateFilters}
       />
@@ -1062,6 +1132,28 @@ export function AdminProductsPanel() {
         onMediaSaved={handleMediaSaved}
       />
 
+      <ProductRestockRequestsDialog
+        open={isRestockDialogOpen}
+        text={text}
+        onHandled={(sku) => {
+          setProducts((current) =>
+            current.map((product) =>
+              product.sku === sku
+                ? {
+                    ...product,
+                    activeRestockRequestCount: Math.max(
+                      0,
+                      (product.activeRestockRequestCount ?? 0) - 1
+                    ),
+                  }
+                : product
+            )
+          );
+        }}
+        onNotice={setNotice}
+        onOpenChange={setIsRestockDialogOpen}
+      />
+
       <StockAdjustmentDialog
         product={stockAdjustProduct}
         open={Boolean(stockAdjustProduct)}
@@ -1070,6 +1162,150 @@ export function AdminProductsPanel() {
         onSave={handleStockAdjustment}
       />
     </section>
+  );
+}
+
+function ProductRestockRequestsDialog({
+  open,
+  text,
+  onHandled,
+  onNotice,
+  onOpenChange,
+}: {
+  open: boolean;
+  text: typeof panelText.zh | typeof panelText.it;
+  onHandled: (sku: string) => void;
+  onNotice: (notice: ProductNotice) => void;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [requests, setRequests] = React.useState<AdminRestockRequest[]>([]);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [updatingId, setUpdatingId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const loadingTimer = window.setTimeout(() => {
+      if (!controller.signal.aborted) {
+        setIsLoading(true);
+      }
+    }, 0);
+    fetchAdminRestockRequests(controller.signal)
+      .then((items) => {
+        if (!controller.signal.aborted) {
+          setRequests(items);
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setRequests([]);
+          onNotice({ tone: "error", message: text.syncError });
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(loadingTimer);
+    };
+  }, [onNotice, open, text.syncError]);
+
+  async function markRequest(
+    request: AdminRestockRequest,
+    status: Exclude<AdminRestockRequestStatus, "active">
+  ) {
+    setUpdatingId(request.id);
+
+    try {
+      await updateAdminRestockRequestStatus(request.id, status);
+      setRequests((current) => current.filter((item) => item.id !== request.id));
+      onHandled(request.sku);
+      onNotice({ tone: "success", message: text.restockUpdateSuccess });
+    } catch {
+      onNotice({ tone: "error", message: text.restockUpdateError });
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>{text.restockRequests}</DialogTitle>
+          <DialogDescription>{text.restockDialogDescription}</DialogDescription>
+        </DialogHeader>
+
+        <div className="max-h-[56vh] space-y-2 overflow-y-auto pr-1">
+          {isLoading ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
+              {text.loading}
+            </div>
+          ) : requests.length > 0 ? (
+            requests.map((request) => (
+              <div
+                key={request.id}
+                className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto]"
+              >
+                <div className="min-w-0">
+                  <div className="line-clamp-2 text-sm font-black text-slate-950">
+                    {request.productName}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+                    <span className="font-mono">{request.sku}</span>
+                    <span>{request.createdAt}</span>
+                    {request.customerId ? <span>{request.customerId}</span> : null}
+                  </div>
+                </div>
+                <div className="flex min-w-0 items-center gap-2">
+                  <Button
+                    size="xs"
+                    className="bg-emerald-600 text-white hover:bg-emerald-600"
+                    disabled={Boolean(updatingId)}
+                    onClick={() => void markRequest(request, "notified")}
+                  >
+                    {updatingId === request.id ? (
+                      <Loader2 className="size-3 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="size-3" />
+                    )}
+                    {text.restockMarkNotified}
+                  </Button>
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    className="bg-white text-slate-600"
+                    disabled={Boolean(updatingId)}
+                    onClick={() => void markRequest(request, "cancelled")}
+                  >
+                    <XCircle className="size-3" />
+                    {text.restockCancel}
+                  </Button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
+              {text.restockEmpty}
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            {text.close}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1087,12 +1323,13 @@ function ProductMetricGrid({
     { label: text.hidden, value: metrics.hidden, icon: EyeOff, tone: "slate" },
     { label: text.blocked, value: metrics.blocked, icon: Ban, tone: "red" },
     { label: text.lowStock, value: metrics.lowStock, icon: Boxes, tone: "orange" },
+    { label: text.restockRequests, value: metrics.restockRequests, icon: Bell, tone: "amber" },
     { label: text.missingImage, value: metrics.missingImage, icon: ImageIcon, tone: "cyan" },
     { label: text.missingPrice, value: metrics.missingPrice, icon: Euro, tone: "violet" },
   ] as const;
 
   return (
-    <div className="grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-4 xl:grid-cols-8">
+    <div className="grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-5 xl:grid-cols-9">
       {cards.map(({ label, value, icon: Icon, tone }) => (
         <div
           key={label}
@@ -1116,6 +1353,7 @@ function ProductFilters({
   modelOptions,
   isLoadingModelGroups,
   text,
+  adminText,
   onChange,
   onReset,
 }: {
@@ -1125,6 +1363,7 @@ function ProductFilters({
   modelOptions: string[];
   isLoadingModelGroups: boolean;
   text: typeof panelText.zh | typeof panelText.it;
+  adminText: ReturnType<typeof getAdminDictionary>["admin"];
   onChange: (patch: Partial<ProductListFilters>) => void;
   onReset: () => void;
 }) {
@@ -1223,7 +1462,7 @@ function ProductFilters({
             <SelectItem value="all">{text.allGrades}</SelectItem>
             {productGrades.map((grade) => (
               <SelectItem key={grade} value={grade}>
-                {grade}
+                {adminText.enums.productGrade[grade]}
               </SelectItem>
             ))}
           </SelectContent>
@@ -1654,7 +1893,11 @@ function ProductTable({
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <ProductStockSummary product={product} adminText={adminText} />
+                      <ProductStockSummary
+                        product={product}
+                        adminText={adminText}
+                        text={text}
+                      />
                     </TableCell>
                     <TableCell>
                       <ProductPriceSummary product={product} text={text} />
@@ -1774,9 +2017,10 @@ function ProductMobileCard({
           />
         </div>
       </div>
-      <div className="mt-2 grid grid-cols-3 gap-1.5 text-xs">
+      <div className="mt-2 grid grid-cols-4 gap-1.5 text-xs">
         <MetricPill label={text.brand} value={product.brand} />
         <MetricPill label={text.stock} value={product.availableQty ?? product.stock} />
+        <MetricPill label={text.restockRequests} value={product.activeRestockRequestCount ?? 0} />
         <MetricPill label={text.netPrice} value={formatEuro(product.price)} />
       </div>
     </div>
@@ -2052,10 +2296,14 @@ function ProductBrandModel({ product }: { product: AdminProductRow }) {
 function ProductStockSummary({
   product,
   adminText,
+  text,
 }: {
   product: AdminProductRow;
   adminText: ReturnType<typeof getAdminDictionary>["admin"];
+  text: typeof panelText.zh | typeof panelText.it;
 }) {
+  const restockCount = product.activeRestockRequestCount ?? 0;
+
   return (
     <div className="space-y-1">
       <Badge className={stockStatusBadgeClass(product.status)}>
@@ -2067,6 +2315,12 @@ function ProductStockSummary({
       <div className="text-[11px] text-slate-400">
         locked {product.lockedQty ?? 0}
       </div>
+      {restockCount > 0 ? (
+        <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-bold text-amber-700">
+          <Bell className="size-3" />
+          {formatAdminMessage(text.restockActiveCount, { count: restockCount })}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -2358,6 +2612,7 @@ function ProductDrawer({
               product={product}
               isMutating={isMutating}
               text={text}
+              adminText={adminText}
               onCreate={onCreate}
               onSave={onSave}
               onSaved={onSaved}
@@ -2558,11 +2813,12 @@ function ProductDetails({
               {displayCategory} · {displayBrand}
               {displayModel ? ` · ${displayModel}` : ""}
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+            <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-5">
               <ProductHeroMetric label={text.netPrice} value={formatEuro(displayPrice)} />
               <ProductHeroMetric label={text.availableStock} value={product.availableQty ?? product.stock} />
               <ProductHeroMetric label={text.actualStock} value={product.actualQty ?? product.stock} />
               <ProductHeroMetric label={text.margin} value={`${(product.margin ?? 0).toFixed(1)}%`} />
+              <ProductHeroMetric label={text.restockRequests} value={product.activeRestockRequestCount ?? 0} />
             </div>
           </div>
           <div className="col-span-2 grid gap-2 rounded-md border border-slate-200 bg-slate-50 p-2 sm:grid-cols-2 lg:col-span-1 lg:grid-cols-1 lg:content-start">
@@ -2659,7 +2915,7 @@ function ProductDetails({
                     <SelectContent>
                       {productGrades.map((grade) => (
                         <SelectItem key={grade} value={grade}>
-                          {grade}
+                          {adminText.enums.productGrade[grade]}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -2690,7 +2946,7 @@ function ProductDetails({
                 <DetailItem label={text.sku} value={<span className="font-mono">{product.sku}</span>} />
                 <DetailItem label={text.category} value={product.category} />
                 <DetailItem label={text.brand} value={product.brand} />
-                <DetailItem label={text.quality} value={product.grade} />
+                <DetailItem label={text.quality} value={adminText.enums.productGrade[product.grade]} />
                 <DetailItem label={text.moq} value={product.moq} />
                 <DetailItem label={text.leadTime} value={product.leadTime} />
                 <DetailItem label={text.modelSeries} value={product.modelSeries ?? text.none} />
@@ -2853,6 +3109,7 @@ function ProductEditorForm({
   product,
   isMutating,
   text,
+  adminText,
   onCreate,
   onSave,
   onSaved,
@@ -2863,6 +3120,7 @@ function ProductEditorForm({
   product: AdminProductRow | null;
   isMutating: boolean;
   text: typeof panelText.zh | typeof panelText.it;
+  adminText: ReturnType<typeof getAdminDictionary>["admin"];
   onCreate: (values: ProductFormValues) => Promise<AdminProductRow | null>;
   onSave: (sku: string, values: ProductFormValues) => Promise<AdminProductRow | null>;
   onSaved: (product: AdminProductRow) => void;
@@ -2947,7 +3205,7 @@ function ProductEditorForm({
               <SelectContent>
                 {productGrades.map((grade) => (
                   <SelectItem key={grade} value={grade}>
-                    {grade}
+                    {adminText.enums.productGrade[grade]}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -3565,6 +3823,58 @@ async function fetchAdminProducts(
   return parseProductsApiPayload(await readJsonResponse(response));
 }
 
+async function fetchAdminRestockRequests(
+  signal?: AbortSignal
+): Promise<AdminRestockRequest[]> {
+  const params = new URLSearchParams({
+    limit: "100",
+    offset: "0",
+    status: "active",
+  });
+  const response = await fetch(`/api/admin/restock-requests?${params.toString()}`, {
+    cache: "no-store",
+    headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readApiErrorMessage(
+        response,
+        `GET /api/admin/restock-requests responded ${response.status}`
+      )
+    );
+  }
+
+  return readRestockRequestRows(await readJsonResponse(response));
+}
+
+async function updateAdminRestockRequestStatus(
+  id: string,
+  status: Exclude<AdminRestockRequestStatus, "active">
+) {
+  const response = await fetch(`/api/admin/restock-requests/${encodeURIComponent(id)}`, {
+    body: JSON.stringify({ status }),
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    method: "PATCH",
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readApiErrorMessage(
+        response,
+        `PATCH /api/admin/restock-requests/${id} responded ${response.status}`
+      )
+    );
+  }
+
+  return parseRestockRequestRow(readPayloadDataObject(await readJsonResponse(response)));
+}
+
 async function fetchAdminProductModelGroups(
   signal?: AbortSignal
 ): Promise<ProductModelGroupsResult> {
@@ -3803,6 +4113,18 @@ function readProductsRows(payload: unknown) {
   return [];
 }
 
+function readRestockRequestRows(payload: unknown) {
+  if (!isRecord(payload) || !Array.isArray(payload.data)) {
+    return [];
+  }
+
+  return payload.data.map(parseRestockRequestRow).filter(isDefined);
+}
+
+function readPayloadDataObject(payload: unknown) {
+  return isRecord(payload) && isRecord(payload.data) ? payload.data : {};
+}
+
 function readProductsMeta(payload: unknown) {
   if (!isRecord(payload)) {
     return {};
@@ -3904,7 +4226,46 @@ function normalizeProductApiRow(row: unknown): AdminProductRow | null {
     storefrontUrl: readString(row.storefrontUrl) ?? readString(row.storefront_url),
     storefrontVisible: readBoolean(row.storefrontVisible) ?? readBoolean(row.storefront_visible) ?? false,
     supplier: sanitizeSupplierText(readString(row.supplier)),
+    activeRestockRequestCount:
+      readNumber(row.activeRestockRequestCount) ??
+      readNumber(row.active_restock_request_count) ??
+      readNumber(row.restockRequestCount) ??
+      0,
   };
+}
+
+function parseRestockRequestRow(row: unknown): AdminRestockRequest | null {
+  if (!isRecord(row)) {
+    return null;
+  }
+
+  const id = readString(row.id);
+  const sku = readString(row.sku) ?? readString(row.sku_code);
+  const productName = readString(row.productName) ?? readString(row.product_name) ?? sku;
+  const status = normalizeRestockRequestStatus(readString(row.status));
+
+  if (!id || !sku || !productName || !status) {
+    return null;
+  }
+
+  return {
+    createdAt: readString(row.createdAt) ?? readString(row.created_at) ?? "",
+    customerId: readString(row.customerId) ?? readString(row.customer_id) ?? null,
+    id,
+    productName,
+    sku: toPublicSku(sku),
+    status,
+    updatedAt: readString(row.updatedAt) ?? readString(row.updated_at) ?? "",
+    userId: readString(row.userId) ?? readString(row.user_id) ?? null,
+  };
+}
+
+function normalizeRestockRequestStatus(
+  value: string | null | undefined
+): AdminRestockRequestStatus | null {
+  return value === "active" || value === "notified" || value === "cancelled"
+    ? value
+    : null;
 }
 
 function normalizeDeviceModelGroup(row: unknown): DeviceModelGroup | null {
@@ -4089,6 +4450,8 @@ function buildProductMetrics(products: AdminProductRow[], total: number) {
         metrics.missingPrice += 1;
       }
 
+      metrics.restockRequests += product.activeRestockRequestCount ?? 0;
+
       return metrics;
     },
     {
@@ -4098,6 +4461,7 @@ function buildProductMetrics(products: AdminProductRow[], total: number) {
       hidden: 0,
       blocked: 0,
       lowStock: 0,
+      restockRequests: 0,
       missingImage: 0,
       missingPrice: 0,
     }
@@ -4151,17 +4515,9 @@ function readProductsSource(value: string | undefined, productCount: number): Pr
 
 function productSourceLabel(
   source: ProductSource,
-  text: typeof panelText.zh | typeof panelText.it
+  adminText: AdminText
 ) {
-  if (source === "supabase") {
-    return "Supabase";
-  }
-
-  if (source === "api") {
-    return "API";
-  }
-
-  return text.sourcePending;
+  return adminSourceLabel(adminText, source, source);
 }
 
 function paginationButtonIndexes(pageCount: number, pageIndex: number) {

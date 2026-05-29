@@ -1,9 +1,9 @@
 import { storefrontItIT } from "./storefront";
 
 const dictionary = {
-  "metadata.title": "PartsPro | Ricambi smartphone B2B in Italia",
+  "metadata.title": "PartsPro | Ricambi smartphone per clienti professionali in Italia",
   "metadata.description":
-    "Piattaforma PartsPro per catalogo B2B, ordini, RMA e gestione ricambi smartphone.",
+    "Piattaforma PartsPro per catalogo professionale, ordini, RMA e gestione ricambi smartphone.",
   "language.label": "Lingua",
   "language.switchTo": "Cambia lingua",
   "language.current": "Lingua corrente",

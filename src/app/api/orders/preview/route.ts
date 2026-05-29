@@ -10,12 +10,14 @@ import {
 } from "@/lib/partspro-api";
 import {
   applyAccountPriceToProduct,
+  canDelegateCheckout,
   getCurrentAccountContext,
   hasOrderableEffectivePrice,
 } from "@/lib/partspro-account-context";
 import {
+  getCustomerProfileById,
   getCurrentCustomerProfile,
-  listCatalogProducts,
+  listCatalogProductsBySkus,
   listCompanies,
 } from "@/lib/partspro-repository";
 import { type CompanyProfile, type PartProduct } from "@/lib/partspro-data";
@@ -64,12 +66,13 @@ export async function POST(request: Request) {
 
   try {
     const account = await getCurrentAccountContext({ ensure: true });
+    const delegatedCheckout = canDelegateCheckout(account);
 
     if (!account.authenticated) {
       return apiError(401, "LOGIN_REQUIRED", "Login is required before checkout preview.");
     }
 
-    if (account.customer?.status === "active" && !account.canViewPrices) {
+    if (!delegatedCheckout && account.customer?.status === "active" && !account.canViewPrices) {
       return apiError(
         422,
         "PRICE_ACCESS_REQUIRED",
@@ -82,7 +85,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!account.customer?.id) {
+    if (!delegatedCheckout && !account.customer?.id) {
       return apiError(
         422,
         "CUSTOMER_PROFILE_INCOMPLETE",
@@ -95,10 +98,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const [companies, catalog, customerProfile] = await Promise.all([
+    const requestedSkus = result.data.items.map((item) => item.sku);
+    const [companies, customerProfile] = await Promise.all([
       listCompanies(),
-      listCatalogProducts(),
-      getCurrentCustomerProfile(),
+      delegatedCheckout
+        ? getCustomerProfileById(result.data.companyId)
+        : getCurrentCustomerProfile(),
     ]);
     const company = resolveCompany(companies.data, result.data.companyId);
 
@@ -106,26 +111,39 @@ export async function POST(request: Request) {
       return apiError(404, "COMPANY_NOT_FOUND", "Company profile was not found.");
     }
 
-    if (account.customer?.id && company.id !== account.customer.id) {
+    if (!delegatedCheckout && account.customer?.id && company.id !== account.customer.id) {
       return apiError(403, "COMPANY_FORBIDDEN", "Orders can only be placed for the current customer profile.", {
         companyId: company.id,
         customerId: account.customer.id,
       });
     }
 
+    if (delegatedCheckout && !customerProfile.data) {
+      return apiError(404, "COMPANY_NOT_FOUND", "Selected customer profile was not found.");
+    }
+
+    const catalog = await listCatalogProductsBySkus(requestedSkus, {
+      buyerCustomerId: delegatedCheckout ? company.id : undefined,
+      includeBuyerPrices: account.canViewPrices || delegatedCheckout,
+    });
     const pricedCatalog = catalog.data.map((product) =>
-      applyAccountPriceToProduct(product, account)
+      product.priceResolved || product.priceVersion
+        ? product
+        : applyAccountPriceToProduct(product, account)
     );
     const orderBuild = buildPreviewOrder(result.data.items, pricedCatalog);
     const totals = calculateTotals(orderBuild.lines);
-    const profileIssues = account.canCheckout
+    const targetCanCheckout = delegatedCheckout
+      ? isDelegatedCompanyOrderable(company, customerProfile.data)
+      : account.canCheckout;
+    const profileIssues = targetCanCheckout
       ? []
       : profileReadinessIssues(customerProfile.data);
 
     return NextResponse.json({
       data: {
         canSubmit:
-          account.canCheckout &&
+          targetCanCheckout &&
           company.status === "approved" &&
           orderBuild.issues.length === 0,
         company: {
@@ -285,6 +303,19 @@ function profileReadinessIssues(profile: Awaited<ReturnType<typeof getCurrentCus
         message: `Customer profile is missing: ${missing.join(", ")}.`,
       }]
     : [];
+}
+
+function isDelegatedCompanyOrderable(
+  company: CompanyProfile,
+  profile: Awaited<ReturnType<typeof getCurrentCustomerProfile>>["data"]
+) {
+  return Boolean(
+    company.status === "approved" &&
+      company.customerType === "wholesale" &&
+      company.assignmentStatus === "assigned" &&
+      profile &&
+      profileReadinessIssues(profile).length === 0
+  );
 }
 
 function warningsMeta(...warnings: Array<string | undefined>) {

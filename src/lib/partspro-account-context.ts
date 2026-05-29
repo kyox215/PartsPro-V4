@@ -1,4 +1,9 @@
-import { calculateTierPrice, normalizeCustomerTier } from "@/lib/partspro-pricing";
+import { isBootstrapAdminEmail } from "@/lib/partspro-admin-auth";
+import {
+  calculateTierPrice,
+  getTierRule,
+  normalizeCustomerTier,
+} from "@/lib/partspro-pricing";
 import { visiblePanelsForPermissions } from "@/lib/partspro-permissions";
 import { getSupabaseEnv, isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
@@ -127,15 +132,18 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
   const customer = customerId
     ? await readCustomer(supabase, customerId)
     : await readCustomerByUserId(supabase, user.id);
-  const accountType = normalizeAccountType(readString(profile?.account_type));
+  const email = user.email ?? readString(profile?.email);
+  const accountType = isBootstrapAdminEmail(email)
+    ? "employee"
+    : normalizeAccountType(readString(profile?.account_type));
   const customerContext = customer ? toCustomerContext(customer) : null;
   const isEmployee = accountType === "employee";
   const canViewPrices = Boolean(
     isEmployee ||
       (customerContext &&
         customerContext.status === "active" &&
-        customerContext.customerType === "wholesale" &&
-        customerContext.assignmentStatus === "assigned")
+        (customerContext.assignmentStatus === "assigned" ||
+          customerContext.assignmentStatus === "needs_review"))
   );
   const canCheckout = Boolean(
     accountType === "customer" &&
@@ -153,8 +161,8 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
     authenticated: true,
     canCheckout,
     canViewPrices,
-    customer: customerContext,
-    email: user.email ?? readString(profile?.email),
+    customer: isEmployee ? null : customerContext,
+    email,
     permissions,
     role: readString(profile?.role),
     roleTemplate: readString(profile?.role_template),
@@ -227,10 +235,17 @@ export function applyAccountPriceToProduct(
   const level = account.customer?.level ?? "bronze";
   const basePrice = customerType === "wholesale" ? product.price : product.retailPrice;
   const finalPrice = calculateTierPrice(basePrice, level);
+  const levelDiscountPercent = getTierRule(level).discountRate * 100;
 
   return {
     ...product,
+    basePrice,
+    customerLevel: level,
+    discountPercent: levelDiscountPercent,
+    levelDiscountPercent,
     price: finalPrice,
+    priceSource: levelDiscountPercent > 0 ? "local_customer_level" : "local_base_price",
+    priceResolved: true,
     retailPrice: product.retailPrice,
   };
 }
@@ -264,15 +279,45 @@ export function priceVisibilityReason(account: AccountContext) {
     return "customer_needs_assignment";
   }
 
-  if (account.canViewPrices) {
-    return "customer";
-  }
-
   if (account.customer.customerType !== "wholesale") {
     return "wholesale_required";
   }
 
+  if (account.canViewPrices) {
+    return "customer";
+  }
+
   return "customer_needs_assignment";
+}
+
+export function canDelegateCheckout(account: AccountContext) {
+  if (account.accountType !== "employee") {
+    return false;
+  }
+
+  return (
+    hasAccountPermission(account, "orders.manage") &&
+    hasAccountPermission(account, "customers.read")
+  );
+}
+
+export function hasAccountPermission(account: AccountContext, permission: string) {
+  if (account.permissions.includes(permission)) {
+    return true;
+  }
+
+  return accountPermissionAliases(permission).some((alias) =>
+    account.permissions.includes(alias)
+  );
+}
+
+function accountPermissionAliases(permission: string) {
+  switch (permission) {
+    case "customers.read":
+      return ["customers.view", "customers.manage"];
+    default:
+      return [];
+  }
 }
 
 export class AccountSyncError extends Error {

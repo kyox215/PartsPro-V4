@@ -58,6 +58,15 @@ export async function PATCH(request: NextRequest, { params }: AccountParams) {
     return admin.response;
   }
 
+  if (admin.authState.userId === paramResult.data.userId) {
+    return apiError(
+      403,
+      "ADMIN_SELF_ACCOUNT_DOWNGRADE_DENIED",
+      "Current admin account cannot change its own account type.",
+      { userId: paramResult.data.userId }
+    );
+  }
+
   try {
     const supabase = await createClient();
     const { data, error } = await supabase.rpc("admin_update_account_type", {

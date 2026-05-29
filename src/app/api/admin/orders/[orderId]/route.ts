@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
 import {
+  forceCancelAdminShippedOrder,
   getAdminOrder,
   rollbackAdminOrderStatus,
   transitionAdminOrderStatus,
@@ -78,8 +79,42 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
     );
   }
 
+  if (parsed.data.forceCancel) {
+    if (
+      parsed.data.rollback ||
+      parsed.data.status !== "cancelled" ||
+      parsed.data.fulfillmentStatus ||
+      hasOperationsPatch(parsed.data)
+    ) {
+      return apiError(
+        400,
+        "ADMIN_ORDER_FORCE_CANCEL_PAYLOAD_INVALID",
+        "Shipped order force cancellation must be submitted as a standalone cancellation with a reason.",
+        { orderId }
+      );
+    }
+
+    if (!parsed.data.note?.trim()) {
+      return apiError(
+        400,
+        "ADMIN_ORDER_FORCE_CANCEL_REASON_REQUIRED",
+        "A reason is required before a shipped order can be force-cancelled.",
+        { orderId }
+      );
+    }
+
+    if (admin.authState.role !== "admin") {
+      return apiError(
+        403,
+        "ADMIN_ORDER_FORCE_CANCEL_ADMIN_REQUIRED",
+        "Only administrators can force-cancel shipped orders.",
+        { orderId, role: admin.authState.role }
+      );
+    }
+  }
+
   try {
-    if (!parsed.data.rollback && parsed.data.status === "shipped") {
+    if (!parsed.data.rollback && !parsed.data.forceCancel && parsed.data.status === "shipped") {
       const currentOrder = (await getAdminOrder(decodedOrderId)).data;
 
       if (!currentOrder) {
@@ -101,7 +136,31 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
       }
     }
 
-    const rollbackResult = parsed.data.rollback
+    const forceCancelResult = parsed.data.forceCancel
+      ? await forceCancelAdminShippedOrder({
+          orderId: decodedOrderId,
+          note: parsed.data.note ?? "",
+          metadata: {
+            forceCancel: true,
+            source: "admin_order_patch",
+          },
+        })
+      : null;
+    const preTransitionOperationsResult =
+      !forceCancelResult &&
+      !parsed.data.rollback &&
+      parsed.data.status === "shipped" &&
+      hasOperationsPatch(parsed.data)
+        ? await updateAdminOrderOperations({
+            orderId: decodedOrderId,
+            carrier: parsed.data.carrier,
+            note: parsed.data.note,
+            paymentStatus: parsed.data.paymentStatus,
+            staffNote: parsed.data.staffNote,
+            tracking: parsed.data.tracking,
+          })
+        : null;
+    const rollbackResult = !forceCancelResult && parsed.data.rollback
       ? await rollbackAdminOrderStatus({
           orderId: decodedOrderId,
           note: parsed.data.note ?? "Admin order status rollback",
@@ -110,7 +169,7 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
           },
         })
       : null;
-    const transitionResult = !parsed.data.rollback && parsed.data.status
+    const transitionResult = !forceCancelResult && !parsed.data.rollback && parsed.data.status
       ? await transitionAdminOrderStatus({
           orderId: decodedOrderId,
           status: parsed.data.status,
@@ -123,20 +182,26 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
           },
         })
       : null;
-    const operationsResult = !parsed.data.rollback && hasOperationsPatch(parsed.data)
-      ? await updateAdminOrderOperations({
-          orderId: decodedOrderId,
-          carrier: parsed.data.carrier,
-          note: parsed.data.note,
-          paymentStatus: parsed.data.paymentStatus,
-          staffNote: parsed.data.staffNote,
-          tracking: parsed.data.tracking,
-        })
-      : null;
+    const operationsResult =
+      !forceCancelResult &&
+      !preTransitionOperationsResult &&
+      !parsed.data.rollback &&
+      hasOperationsPatch(parsed.data)
+        ? await updateAdminOrderOperations({
+            orderId: decodedOrderId,
+            carrier: parsed.data.carrier,
+            note: parsed.data.note,
+            paymentStatus: parsed.data.paymentStatus,
+            staffNote: parsed.data.staffNote,
+            tracking: parsed.data.tracking,
+          })
+        : null;
     const result =
       operationsResult ??
+      forceCancelResult ??
       rollbackResult ??
-      transitionResult ?? {
+      transitionResult ??
+      preTransitionOperationsResult ?? {
         data: {
           order: (await getAdminOrder(decodedOrderId)).data,
           transition: null,
@@ -168,6 +233,7 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
         source: result.source,
         transition:
           rollbackResult?.data.transition ??
+          forceCancelResult?.data.transition ??
           transitionResult?.data.transition ??
           null,
       },
@@ -182,7 +248,19 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
 }
 
 function toUiPaymentStatus(status: string) {
-  return status === "paid" ? "paid" : "unpaid";
+  if (status === "paid") {
+    return "paid";
+  }
+
+  if (status === "authorized" || status === "bank_waiting") {
+    return "authorized";
+  }
+
+  if (status === "refunded" || status === "failed") {
+    return "refunded";
+  }
+
+  return "unpaid";
 }
 
 function hasOperationsPatch(patch: {

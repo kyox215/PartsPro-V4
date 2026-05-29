@@ -9,6 +9,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { GoogleLoginButton, LoginSubmitButton, WeChatLoginButton } from "@/components/partspro/login-client";
 import { StoreHeader } from "@/components/partspro/store-header";
+import { tx, type StorefrontTranslator } from "@/i18n/dictionaries/storefront";
+import { getDictionary, translate } from "@/i18n/get-dictionary";
+import { getRequestI18n } from "@/i18n/request";
 import { cleanAuthRedirect, postLoginRedirect } from "@/lib/partspro-auth-redirect";
 import { getAdminAuthState } from "@/lib/partspro-admin-auth";
 import { getCurrentAccountContext } from "@/lib/partspro-account-context";
@@ -54,6 +57,9 @@ const noticeMessages: Record<string, string> = {
 
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
+  const { locale } = await getRequestI18n();
+  const dictionary = getDictionary(locale);
+  const t: StorefrontTranslator = (key) => translate(dictionary, key);
   const configured = isSupabaseConfigured();
   const next = cleanAuthRedirect(getParam(params.next), "/account");
   const error = getParam(params.error);
@@ -96,12 +102,14 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <Card className="w-full max-w-[440px] border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.06)]">
           <CardHeader>
             <Badge className="mb-2 w-fit border border-primary/20 bg-primary/8 text-primary">
-              Accesso clienti
+              {tx(t, "storefront.login.badge", "Accesso clienti")}
             </Badge>
-            <CardTitle className="text-2xl font-black">Login PartsPro</CardTitle>
+            <CardTitle className="text-2xl font-black">
+              {tx(t, "storefront.login.title", "Login PartsPro")}
+            </CardTitle>
           </CardHeader>
           <CardContent>
-            <LoginRuntimeNotice configured={configured} />
+            <LoginRuntimeNotice configured={configured} t={t} />
             {effectiveError && (
               <div className="mb-4 flex gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold leading-6 text-red-700">
                 <AlertTriangle className="mt-0.5 size-4 shrink-0" />
@@ -120,6 +128,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                 googleLoginUrl={googleLoginUrl}
                 next={next}
                 pendingEmail={pendingSignupEmail}
+                t={t}
                 weChatLoginUrl={weChatLoginUrl}
               />
             ) : (
@@ -127,6 +136,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
                 configured={configured}
                 googleLoginUrl={googleLoginUrl}
                 next={next}
+                t={t}
                 weChatLoginUrl={weChatLoginUrl}
               />
             )}
@@ -145,30 +155,40 @@ function PasswordAuthPanel({
   configured,
   googleLoginUrl,
   next,
+  t,
   weChatLoginUrl,
 }: {
   configured: boolean;
   googleLoginUrl: string;
   next: string;
+  t: StorefrontTranslator;
   weChatLoginUrl: string | null;
 }) {
   return (
     <>
       <div className="mb-4 space-y-2">
-        <GoogleLoginButton href={googleLoginUrl} disabled={!configured} />
+        <GoogleLoginButton
+          href={googleLoginUrl}
+          disabled={!configured}
+          label={tx(t, "storefront.login.google", "Continua con Google")}
+        />
         {weChatLoginUrl && (
-          <WeChatLoginButton href={weChatLoginUrl} disabled={!configured} />
+          <WeChatLoginButton
+            href={weChatLoginUrl}
+            disabled={!configured}
+            label={tx(t, "storefront.login.wechat", "Continua con WeChat")}
+          />
         )}
       </div>
       <div className="mb-4 flex items-center gap-3 text-xs font-semibold uppercase tracking-normal text-slate-400">
         <div className="h-px flex-1 bg-slate-200" />
-        <span>oppure</span>
+        <span>{tx(t, "storefront.login.divider", "oppure")}</span>
         <div className="h-px flex-1 bg-slate-200" />
       </div>
       <form action={signInWithPassword} className="space-y-4">
         <input type="hidden" name="next" value={next} />
         <div className="space-y-2">
-          <Label htmlFor="email">Email</Label>
+          <Label htmlFor="email">{tx(t, "storefront.login.email", "Email")}</Label>
           <Input
             id="email"
             name="email"
@@ -179,7 +199,7 @@ function PasswordAuthPanel({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="password">Password</Label>
+          <Label htmlFor="password">{tx(t, "storefront.login.password", "Password")}</Label>
           <Input
             id="password"
             name="password"
@@ -188,34 +208,58 @@ function PasswordAuthPanel({
             required
           />
         </div>
-        <LoginSubmitButton disabled={!configured} />
+        <LoginSubmitButton
+          disabled={!configured}
+          label={tx(t, "storefront.product.detail.priceGate.login.actionLabel", "Accedi")}
+          pendingLabel={tx(t, "storefront.login.signingIn", "Accesso in corso...")}
+        />
         {!configured && (
           <p className="text-xs font-semibold leading-5 text-slate-500">
-            Il pulsante resta disattivato per evitare un login fittizio:
-            completa la publishable key e ricarica la pagina.
+            {tx(
+              t,
+              "storefront.login.disabledConfig",
+              "Il pulsante resta disattivato finché la publishable key Supabase non è configurata."
+            )}
           </p>
         )}
       </form>
       <div className="mt-5 border-t border-slate-200 pt-4">
         <div className="mb-3">
-          <div className="text-sm font-black text-slate-950">Nuovo cliente</div>
+          <div className="text-sm font-black text-slate-950">
+            {tx(t, "storefront.login.newCustomer.title", "Nuovo cliente")}
+          </div>
           <p className="mt-1 text-xs leading-5 text-slate-500">
-            Crea un account cliente base. Dopo il codice email, il profilo appare in gestione clienti.
+            {tx(
+              t,
+              "storefront.login.newCustomer.description",
+              "Crea un account cliente base oppure richiedi l'accesso come cliente professionale."
+            )}
           </p>
+          <Button asChild variant="link" className="mt-1 h-auto px-0 text-xs">
+            <Link href="/professionale">
+              {tx(
+                t,
+                "storefront.login.newCustomer.professional",
+                "Richiedi accesso professionale"
+              )}
+            </Link>
+          </Button>
         </div>
         <form action={signUpWithPassword} className="space-y-3">
           <input type="hidden" name="next" value={next} />
           <div className="space-y-2">
-            <Label htmlFor="display-name">Nome</Label>
+            <Label htmlFor="display-name">
+              {tx(t, "storefront.login.displayName", "Nome")}
+            </Label>
             <Input
               id="display-name"
               name="displayName"
               autoComplete="name"
-              placeholder="Nome cliente"
+              placeholder={tx(t, "storefront.login.displayNamePlaceholder", "Nome cliente")}
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="signup-email">Email</Label>
+            <Label htmlFor="signup-email">{tx(t, "storefront.login.email", "Email")}</Label>
             <Input
               id="signup-email"
               name="signupEmail"
@@ -226,7 +270,9 @@ function PasswordAuthPanel({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="signup-password">Password</Label>
+            <Label htmlFor="signup-password">
+              {tx(t, "storefront.login.password", "Password")}
+            </Label>
             <Input
               id="signup-password"
               name="signupPassword"
@@ -238,8 +284,8 @@ function PasswordAuthPanel({
           </div>
           <LoginSubmitButton
             disabled={!configured}
-            label="Crea account"
-            pendingLabel="Creazione account..."
+            label={tx(t, "storefront.login.createAccount", "Crea account")}
+            pendingLabel={tx(t, "storefront.login.creatingAccount", "Creazione account...")}
           />
         </form>
       </div>
@@ -252,12 +298,14 @@ function SignupVerificationPanel({
   googleLoginUrl,
   next,
   pendingEmail,
+  t,
   weChatLoginUrl,
 }: {
   configured: boolean;
   googleLoginUrl: string;
   next: string;
   pendingEmail: string;
+  t: StorefrontTranslator;
   weChatLoginUrl: string | null;
 }) {
   return (
@@ -265,16 +313,22 @@ function SignupVerificationPanel({
       <div className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
         <MailCheck className="mt-0.5 size-5 shrink-0 text-primary" />
         <div className="min-w-0">
-          <div className="font-black text-slate-950">Verifica email</div>
+          <div className="font-black text-slate-950">
+            {tx(t, "storefront.login.verify.title", "Verifica email")}
+          </div>
           <p className="mt-1 leading-6">
-            Inserisci il codice numerico a 6 cifre inviato alla tua email.
+            {tx(
+              t,
+              "storefront.login.verify.body",
+              "Inserisci il codice numerico a 6 cifre inviato alla tua email."
+            )}
           </p>
         </div>
       </div>
       <form action={verifySignupCode} className="space-y-3">
         <input type="hidden" name="next" value={next} />
         <div className="space-y-2">
-          <Label htmlFor="verification-email">Email</Label>
+          <Label htmlFor="verification-email">{tx(t, "storefront.login.email", "Email")}</Label>
           <Input
             id="verification-email"
             name="verificationEmail"
@@ -286,7 +340,9 @@ function SignupVerificationPanel({
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="verification-code">Codice</Label>
+          <Label htmlFor="verification-code">
+            {tx(t, "storefront.login.verify.code", "Codice")}
+          </Label>
           <Input
             id="verification-code"
             name="verificationCode"
@@ -301,14 +357,16 @@ function SignupVerificationPanel({
         </div>
         <LoginSubmitButton
           disabled={!configured}
-          label="Verifica e accedi"
-          pendingLabel="Verifica codice..."
+          label={tx(t, "storefront.login.verify.submit", "Verifica e accedi")}
+          pendingLabel={tx(t, "storefront.login.verify.submitPending", "Verifica codice...")}
         />
       </form>
       <form action={resendSignupCode} className="space-y-3 rounded-lg border border-slate-200 p-3">
         <input type="hidden" name="next" value={next} />
         <div className="space-y-2">
-          <Label htmlFor="resend-email">Invia di nuovo a</Label>
+          <Label htmlFor="resend-email">
+            {tx(t, "storefront.login.verify.resendTo", "Invia di nuovo a")}
+          </Label>
           <Input
             id="resend-email"
             name="verificationEmail"
@@ -321,18 +379,28 @@ function SignupVerificationPanel({
         </div>
         <LoginSubmitButton
           disabled={!configured}
-          label="Invia nuovo codice"
-          pendingLabel="Invio codice..."
+          label={tx(t, "storefront.login.verify.resend", "Invia nuovo codice")}
+          pendingLabel={tx(t, "storefront.login.verify.resendPending", "Invio codice...")}
         />
       </form>
       <div className="border-t border-slate-200 pt-4">
         <Button asChild variant="outline" className="h-11 w-full border-slate-200 bg-white">
-          <Link href={passwordLoginHref(next)}>Accedi con password</Link>
+          <Link href={passwordLoginHref(next)}>
+            {tx(t, "storefront.login.passwordLogin", "Accedi con password")}
+          </Link>
         </Button>
         <div className="mt-3 space-y-2">
-          <GoogleLoginButton href={googleLoginUrl} disabled={!configured} />
+          <GoogleLoginButton
+            href={googleLoginUrl}
+            disabled={!configured}
+            label={tx(t, "storefront.login.google", "Continua con Google")}
+          />
           {weChatLoginUrl && (
-            <WeChatLoginButton href={weChatLoginUrl} disabled={!configured} />
+            <WeChatLoginButton
+              href={weChatLoginUrl}
+              disabled={!configured}
+              label={tx(t, "storefront.login.wechat", "Continua con WeChat")}
+            />
           )}
         </div>
       </div>
@@ -344,16 +412,27 @@ function passwordLoginHref(next: string) {
   return `/login?${new URLSearchParams({ next }).toString()}`;
 }
 
-function LoginRuntimeNotice({ configured }: { configured: boolean }) {
+function LoginRuntimeNotice({
+  configured,
+  t,
+}: {
+  configured: boolean;
+  t: StorefrontTranslator;
+}) {
   if (configured) {
     return (
       <div className="mb-4 flex gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
         <CheckCircle2 className="mt-0.5 size-5 shrink-0 text-emerald-600" />
         <div className="min-w-0">
-          <div className="font-black">Login Supabase attivo</div>
+          <div className="font-black">
+            {tx(t, "storefront.login.runtime.readyTitle", "Login Supabase attivo")}
+          </div>
           <p className="mt-1 leading-6">
-            Le credenziali vengono verificate con Supabase Auth. Dopo il login
-            i clienti aprono l&apos;area account, lo staff apre il pannello admin.
+            {tx(
+              t,
+              "storefront.login.runtime.readyBody",
+              "Le credenziali vengono verificate con Supabase Auth. Dopo il login i clienti aprono l'area account, lo staff apre il pannello admin."
+            )}
           </p>
         </div>
       </div>
@@ -364,10 +443,15 @@ function LoginRuntimeNotice({ configured }: { configured: boolean }) {
     <div className="mb-4 flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
       <Database className="mt-0.5 size-5 shrink-0 text-amber-600" />
       <div className="min-w-0">
-        <div className="font-black">Configurazione Supabase mancante</div>
+        <div className="font-black">
+          {tx(t, "storefront.login.runtime.missingTitle", "Configurazione Supabase mancante")}
+        </div>
         <p className="mt-1 leading-6">
-          Supabase e collegato al progetto, ma manca ancora
-          `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in `.env.local`.
+          {tx(
+            t,
+            "storefront.login.runtime.missingBody",
+            "Supabase è collegato al progetto, ma manca ancora NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY in .env.local."
+          )}
         </p>
       </div>
     </div>

@@ -4,6 +4,15 @@ import { apiError, formatZodIssues, readJsonBody, readQueryParams } from "@/lib/
 import { hasAdminPermission } from "@/lib/partspro-admin-auth";
 import { requireAdminApi } from "../_shared";
 import { createClient } from "@/lib/supabase/server";
+import {
+  isRow,
+  profileSelect,
+  readAdminAccountDetail,
+  readCustomersForProfiles,
+  readString,
+  roleTemplates,
+  toAccountDto,
+} from "./_account-data";
 
 export const dynamic = "force-dynamic";
 
@@ -22,17 +31,7 @@ const accountPatchSchema = z
     customerType: z.enum(["retail", "wholesale"]).optional(),
     reason: z.string().trim().min(3).max(1000),
     roleTemplate: z
-      .enum([
-        "admin",
-        "auditor",
-        "catalog_manager",
-        "inventory_manager",
-        "pricing_manager",
-        "purchasing",
-        "sales",
-        "sales_support",
-        "warehouse",
-      ])
+      .enum(roleTemplates)
       .nullable()
       .optional(),
     assignmentStatus: z
@@ -47,12 +46,6 @@ const accountPatchSchema = z
   });
 
 const accountQueryKeys = new Set(Object.keys(accountQuerySchema.shape));
-const profileSelect =
-  "id, email, role, account_type, auth_provider, display_name, avatar_url, role_template, customer_id, created_at, updated_at";
-const customerSelect =
-  "id, user_id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address, status, customer_type, assignment_status, level, lifetime_spend_net, profile_completed_at, created_at, updated_at";
-
-type DbRow = Record<string, unknown>;
 
 export async function GET(request: NextRequest) {
   const query = parseAccountQuery(request);
@@ -150,9 +143,21 @@ export async function PATCH(request: NextRequest) {
     });
   }
 
+  if (
+    admin.authState.userId === parsed.data.userId &&
+    (parsed.data.accountType !== "employee" || parsed.data.roleTemplate)
+  ) {
+    return apiError(
+      403,
+      "ADMIN_SELF_ACCOUNT_DOWNGRADE_DENIED",
+      "Current admin account cannot change its own account type or role.",
+      { userId: parsed.data.userId }
+    );
+  }
+
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase.rpc("admin_update_account_type", {
+    const { error } = await supabase.rpc("admin_update_account_type", {
       p_account_type: parsed.data.accountType,
       p_assignment_status: parsed.data.assignmentStatus ?? null,
       p_customer_type: parsed.data.customerType ?? null,
@@ -184,8 +189,16 @@ export async function PATCH(request: NextRequest) {
       roleData = roleResult.data;
     }
 
+    const detail = await readAdminAccountDetail(supabase, parsed.data.userId);
+
+    if (!detail) {
+      return apiError(404, "ADMIN_ACCOUNT_NOT_FOUND", "Account was updated but could not be reloaded.", {
+        userId: parsed.data.userId,
+      });
+    }
+
     return NextResponse.json({
-      data: roleData ?? data,
+      data: detail,
       meta: {
         source: "supabase_rpc",
         rpc: roleData ? "admin_update_employee_role" : "admin_update_account_type",
@@ -220,117 +233,6 @@ function parseAccountQuery(request: NextRequest) {
   return { ok: true as const, data: result.data };
 }
 
-async function readCustomersForProfiles(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  customerIds: string[],
-  userIds: string[]
-) {
-  const customers = new Map<string, DbRow>();
-
-  if (customerIds.length > 0) {
-    const { data } = await supabase
-      .from("customers")
-      .select(customerSelect)
-      .in("id", customerIds);
-
-    for (const row of Array.isArray(data) ? data.filter(isRow) : []) {
-      const id = readString(row.id);
-
-      if (id) {
-        customers.set(id, row);
-      }
-    }
-  }
-
-  if (userIds.length > 0) {
-    const { data } = await supabase
-      .from("customers")
-      .select(customerSelect)
-      .in("user_id", userIds);
-
-    for (const row of Array.isArray(data) ? data.filter(isRow) : []) {
-      const userId = readString(row.user_id);
-
-      if (userId && !customers.has(userId)) {
-        customers.set(userId, row);
-      }
-    }
-  }
-
-  return customers;
-}
-
-function toAccountDto(profile: DbRow, customers: Map<string, DbRow>) {
-  const profileId = readString(profile.id) ?? "";
-  const customerId = readString(profile.customer_id);
-  const customer = customerId
-    ? customers.get(customerId) ?? customers.get(profileId) ?? null
-    : customers.get(profileId) ?? null;
-  const linkedCustomerId = customer ? readString(customer.id) : null;
-
-  return {
-    userId: profileId,
-    email: readString(profile.email),
-    displayName: readString(profile.display_name),
-    avatarUrl: readString(profile.avatar_url),
-    authProvider: readString(profile.auth_provider) ?? "password",
-    accountType: readString(profile.account_type) ?? "customer",
-    role: readString(profile.role) ?? "customer",
-    roleTemplate: readString(profile.role_template),
-    customerId: customerId ?? linkedCustomerId,
-    customerState: customer ? "linked" : "profiles_only",
-    customer: customer ? toCustomerDto(customer) : null,
-    createdAt: readString(profile.created_at),
-    updatedAt: readString(profile.updated_at),
-  };
-}
-
-function toCustomerDto(row: DbRow) {
-  return {
-    id: readString(row.id),
-    userId: readString(row.user_id),
-    name: readString(row.company_name),
-    contactName: readString(row.contact_name),
-    email: readString(row.email),
-    phone: readString(row.phone),
-    vatNumber: readString(row.vat_number),
-    fiscalCode: readString(row.fiscal_code),
-    sdi: readString(row.sdi),
-    pec: readString(row.pec),
-    billingAddress: readString(row.billing_address),
-    shippingAddress: readString(row.shipping_address),
-    status: readString(row.status) ?? "pending",
-    customerType: readString(row.customer_type) ?? "retail",
-    assignmentStatus: readString(row.assignment_status) ?? "needs_review",
-    level: readString(row.level) ?? "bronze",
-    lifetimeSpendNet: readNumber(row.lifetime_spend_net) ?? 0,
-    profileCompletedAt: readString(row.profile_completed_at),
-    createdAt: readString(row.created_at),
-    updatedAt: readString(row.updated_at),
-  };
-}
-
-function isRow(value: unknown): value is DbRow {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function isString(value: unknown): value is string {
   return typeof value === "string" && value.length > 0;
-}
-
-function readString(value: unknown) {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
-}
-
-function readNumber(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === "string" && value.trim().length > 0) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  return null;
 }

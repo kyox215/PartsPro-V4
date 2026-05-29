@@ -35,6 +35,7 @@ const permissionPatchSchema = z
   .strict();
 
 type DbRow = Record<string, unknown>;
+const selfProtectionPermissions = new Set(["employees.manage_permissions", "panel.settings"]);
 
 export async function GET() {
   const admin = await requireAdminApi("employees.manage_permissions");
@@ -120,6 +121,18 @@ export async function PATCH(request: NextRequest) {
     });
   }
 
+  if (
+    admin.authState.userId === parsed.data.userId &&
+    wouldRemoveOwnAdminAccess(parsed.data)
+  ) {
+    return apiError(
+      403,
+      "ADMIN_SELF_PERMISSION_DOWNGRADE_DENIED",
+      "Current admin account cannot remove its own settings or permission-management access.",
+      { userId: parsed.data.userId }
+    );
+  }
+
   try {
     const supabase = await createClient();
     const rpcResult = await supabase.rpc("admin_update_permission_overrides", {
@@ -163,6 +176,20 @@ export async function PATCH(request: NextRequest) {
 
 function readRows(value: unknown): DbRow[] {
   return Array.isArray(value) ? value.filter(isRow) : [];
+}
+
+function wouldRemoveOwnAdminAccess(input: z.infer<typeof permissionPatchSchema>) {
+  if (input.roleTemplate && input.roleTemplate !== "admin") {
+    return true;
+  }
+
+  return Boolean(
+    input.overrides?.some(
+      (override) =>
+        selfProtectionPermissions.has(override.permissionId) &&
+        override.effect !== "grant"
+    )
+  );
 }
 
 function toPermissionDto(row: DbRow) {

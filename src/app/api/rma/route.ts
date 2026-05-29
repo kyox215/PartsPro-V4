@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
+import { getCurrentAccountContext } from "@/lib/partspro-account-context";
 import {
   listCatalogProducts,
   listCurrentCustomerRmaRequests,
@@ -12,20 +13,22 @@ import { toPublicSku } from "@/lib/partspro-sku";
 const createRmaSchema = z
   .object({
     orderId: z.string().trim().min(1).max(80).optional(),
-    orderLineId: z.string().trim().min(1).max(80).optional(),
+    orderLineId: z.string().trim().min(1).max(80),
     sku: z.string().trim().min(3).max(64).regex(/^[A-Za-z0-9_+.-]+$/),
     quantity: z.coerce.number().int().min(1).max(999),
     reason: z.string().trim().min(5).max(120),
     description: z.string().trim().min(10).max(1000),
   })
-  .strict()
-  .refine((value) => value.orderLineId || value.orderId, {
-    message: "Either orderLineId or orderId is required.",
-    path: ["orderLineId"],
-  });
+  .strict();
 
 export async function GET() {
   try {
+    const account = await getCurrentAccountContext({ ensure: true });
+
+    if (!account.authenticated) {
+      return apiError(401, "LOGIN_REQUIRED", "Login is required to read RMA requests.");
+    }
+
     const repositoryResult = await listCurrentCustomerRmaRequests();
 
     return NextResponse.json({
@@ -57,6 +60,12 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const account = await getCurrentAccountContext({ ensure: true });
+
+    if (!account.authenticated) {
+      return apiError(401, "LOGIN_REQUIRED", "Login is required to create an RMA request.");
+    }
+
     const catalog = await listCatalogProducts();
     const sku = toPublicSku(result.data.sku);
     const product = catalog.data.find((item) => item.sku === sku);

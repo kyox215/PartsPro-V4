@@ -175,6 +175,44 @@ export function addCartItem(
   }
 }
 
+export function setCartItemQuantity(
+  sku: string,
+  quantity: number,
+  catalog: readonly PartProduct[] = products
+) {
+  if (!isBrowser()) {
+    return false;
+  }
+
+  try {
+    const options = { preserveUnknown: true };
+    const currentItems = readStoredCartItems(catalog, options);
+
+    if (quantity < 1) {
+      return writeStoredCartItems(
+        removeCartItem(currentItems, sku, catalog, options),
+        catalog,
+        options
+      );
+    }
+
+    return writeStoredCartItems(
+      updateCartItemQuantity(currentItems, sku, quantity, catalog, options),
+      catalog,
+      options
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function removeCartItemBySku(
+  sku: string,
+  catalog: readonly PartProduct[] = products
+) {
+  return setCartItemQuantity(sku, 0, catalog);
+}
+
 export function clearStoredCart() {
   if (!isBrowser()) {
     return false;
@@ -257,7 +295,7 @@ export function calculateCartTotalsFromItems(
   const lines = normalizeCartItems(items, catalog).flatMap((item) => {
     const product = getProductBySku(item.sku, catalog);
 
-    if (!product) {
+    if (!product || !isOrderableCartLine(product, item.quantity)) {
       return [];
     }
 
@@ -440,10 +478,6 @@ function normalizeCartItems(
       continue;
     }
 
-    if (hasCatalog && product && !isOrderableProduct(product)) {
-      continue;
-    }
-
     if (hasCatalog && !product && !preserveUnknown) {
       continue;
     }
@@ -459,9 +493,7 @@ function normalizeCartItems(
         return hasCatalog && !preserveUnknown ? null : { sku, quantity };
       }
 
-      const clampedQuantity = clampQuantity(product, quantity);
-
-      return clampedQuantity > 0 ? { sku, quantity: clampedQuantity } : null;
+      return { sku, quantity };
     })
     .filter((item): item is CartItem => Boolean(item))
     .sort((left, right) => left.sku.localeCompare(right.sku));
@@ -545,19 +577,16 @@ function isCartItemLike(item: unknown): item is CartItem {
   );
 }
 
-function isOrderableProduct(product: PartProduct) {
-  return product.status !== "Out of Stock" && product.stock >= Math.max(1, product.moq);
-}
-
-function clampQuantity(product: PartProduct, quantity: number) {
+function isOrderableCartLine(product: PartProduct, quantity: number) {
   const minimumQuantity = Math.max(1, product.moq);
-  const maximumQuantity = Math.max(0, product.stock);
 
-  if (maximumQuantity < minimumQuantity) {
-    return 0;
-  }
-
-  return Math.min(maximumQuantity, Math.max(minimumQuantity, Math.trunc(quantity)));
+  return (
+    product.price > 0 &&
+    product.status !== "Out of Stock" &&
+    product.stock >= minimumQuantity &&
+    quantity >= minimumQuantity &&
+    quantity <= product.stock
+  );
 }
 
 function normalizeQuantity(value: unknown) {

@@ -27,8 +27,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  adminPermissionDescription,
+  adminPermissionGroupLabel,
+  adminPermissionLabel,
+  adminRoleTemplateDescription,
+  adminRoleTemplateLabel,
+  getAdminDictionary,
+  type AdminText,
+} from "@/i18n/dictionaries/admin";
 import { CUSTOMER_MANAGE_LEVEL_PERMISSION } from "@/lib/partspro-permissions";
 import { cn } from "@/lib/utils";
+import { useI18n } from "./i18n-provider";
 
 type PermissionEffect = "grant" | "deny" | "inherit";
 
@@ -71,7 +81,9 @@ type Notice = {
   tone: "success" | "warning" | "error";
 };
 
-export function AdminPermissionsPanel() {
+export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean }) {
+  const { locale } = useI18n();
+  const text = getAdminDictionary(locale).admin;
   const [employees, setEmployees] = React.useState<EmployeeAccount[]>([]);
   const [permissions, setPermissions] = React.useState<AdminPermission[]>([]);
   const [roleTemplates, setRoleTemplates] = React.useState<RoleTemplate[]>([]);
@@ -147,21 +159,48 @@ export function AdminPermissionsPanel() {
         employee.email,
         employee.displayName,
         employee.roleTemplate,
+        adminRoleTemplateLabel(text, employee.roleTemplate, ""),
         employee.userId,
       ]
         .join(" ")
         .toLowerCase()
         .includes(value)
     );
-  }, [employees, query]);
+  }, [employees, query, text]);
+  const localizedRoleTemplates = React.useMemo(
+    () =>
+      roleTemplates.map((roleTemplate) => ({
+        ...roleTemplate,
+        description: adminRoleTemplateDescription(
+          text,
+          roleTemplate.id,
+          roleTemplate.description
+        ),
+        label: adminRoleTemplateLabel(text, roleTemplate.id, roleTemplate.label),
+      })),
+    [roleTemplates, text]
+  );
+  const localizedPermissions = React.useMemo(
+    () =>
+      permissions.map((permission) => ({
+        ...permission,
+        description: adminPermissionDescription(
+          text,
+          permission.id,
+          permission.description
+        ),
+        label: adminPermissionLabel(text, permission.id, permission.label),
+      })),
+    [permissions, text]
+  );
   const selectedEmployee =
     employees.find((employee) => employee.userId === selectedUserId) ??
     filteredEmployees[0] ??
     null;
   const selectedRole =
-    roleTemplates.find((roleTemplate) => roleTemplate.id === selectedEmployee?.roleTemplate) ??
-    roleTemplates.find((roleTemplate) => roleTemplate.id === "sales_support") ??
-    roleTemplates[0] ??
+    localizedRoleTemplates.find((roleTemplate) => roleTemplate.id === selectedEmployee?.roleTemplate) ??
+    localizedRoleTemplates.find((roleTemplate) => roleTemplate.id === "sales_support") ??
+    localizedRoleTemplates[0] ??
     null;
   const selectedOverrideMap = React.useMemo(() => {
     const map = new Map<string, PermissionOverride["effect"]>();
@@ -174,12 +213,15 @@ export function AdminPermissionsPanel() {
 
     return map;
   }, [overrides, selectedEmployee?.userId]);
-  const permissionGroups = React.useMemo(() => groupPermissions(permissions), [permissions]);
-  const filteredPermissionGroups = React.useMemo(
-    () => filterPermissionGroups(permissionGroups, permissionQuery),
-    [permissionGroups, permissionQuery]
+  const permissionGroups = React.useMemo(
+    () => groupPermissions(localizedPermissions),
+    [localizedPermissions]
   );
-  const customerLevelPermission = permissions.find(
+  const filteredPermissionGroups = React.useMemo(
+    () => filterPermissionGroups(permissionGroups, permissionQuery, text),
+    [permissionGroups, permissionQuery, text]
+  );
+  const customerLevelPermission = localizedPermissions.find(
     (permission) => permission.id === CUSTOMER_MANAGE_LEVEL_PERMISSION
   );
   const customerLevelRoleAllows = Boolean(
@@ -258,7 +300,12 @@ export function AdminPermissionsPanel() {
 
   return (
     <section className="min-w-0 space-y-4 text-slate-950">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div
+        className={cn(
+          "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
+          embedded && "sr-only"
+        )}
+      >
         <div className="min-w-0">
           <h2 className="text-2xl font-black tracking-normal">权限设置</h2>
           <p className="mt-1 text-sm leading-6 text-slate-500">
@@ -318,7 +365,7 @@ export function AdminPermissionsPanel() {
                       {employee.email ?? employee.userId}
                     </div>
                     <Badge variant="outline" className="mt-2 bg-white">
-                      {employee.roleTemplate ?? "未设置"}
+                      {adminRoleTemplateLabel(text, employee.roleTemplate)}
                     </Badge>
                   </button>
                 ))
@@ -354,7 +401,7 @@ export function AdminPermissionsPanel() {
                   <SelectValue placeholder="选择角色模板" />
                 </SelectTrigger>
                 <SelectContent>
-                  {roleTemplates.map((roleTemplate) => (
+                  {localizedRoleTemplates.map((roleTemplate) => (
                     <SelectItem key={roleTemplate.id} value={roleTemplate.id}>
                       {roleTemplate.label}
                     </SelectItem>
@@ -439,7 +486,7 @@ export function AdminPermissionsPanel() {
                   filteredPermissionGroups.map(([groupName, items]) => (
                     <div key={groupName} className="min-w-0 rounded-lg border border-slate-200">
                       <div className="border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm font-black text-slate-600">
-                        {groupLabel(groupName)}
+                        {groupLabel(text, groupName)}
                       </div>
                       <div className="divide-y divide-slate-100">
                         {items.map((permission) => {
@@ -608,7 +655,8 @@ function groupPermissions(permissions: AdminPermission[]) {
 
 function filterPermissionGroups(
   groups: Array<[string, AdminPermission[]]>,
-  query: string
+  query: string,
+  text: AdminText
 ) {
   const value = query.trim().toLowerCase();
 
@@ -627,7 +675,7 @@ function filterPermissionGroups(
               permission.label,
               permission.description,
               permission.groupName,
-              groupLabel(permission.groupName),
+              groupLabel(text, permission.groupName),
             ]
               .join(" ")
               .toLowerCase()
@@ -638,18 +686,8 @@ function filterPermissionGroups(
     .filter(([, items]) => items.length > 0);
 }
 
-function groupLabel(groupName: string) {
-  const labels: Record<string, string> = {
-    customers: "客户权限",
-    employees: "员工权限",
-    inventory: "库存权限",
-    orders: "订单权限",
-    other: "其他权限",
-    panel: "后台面板",
-    products: "商品权限",
-  };
-
-  return labels[groupName] ?? groupName;
+function groupLabel(text: AdminText, groupName: string) {
+  return adminPermissionGroupLabel(text, groupName, groupName);
 }
 
 function NoticeBanner({
@@ -713,25 +751,13 @@ function normalizePermission(value: unknown): AdminPermission | null {
     return null;
   }
 
-  const display = permissionDisplayOverrides[id];
-
   return {
-    description: display?.description ?? readString(value.description),
+    description: readString(value.description),
     groupName: readString(value.groupName) ?? "other",
     id,
-    label: display?.label ?? readString(value.label) ?? id,
+    label: readString(value.label) ?? id,
   };
 }
-
-const permissionDisplayOverrides: Record<
-  string,
-  { description?: string; label?: string }
-> = {
-  [CUSTOMER_MANAGE_LEVEL_PERMISSION]: {
-    description: "允许员工在客户管理中修改客户等级，不包含商业条款或授信设置。",
-    label: "修改客户等级",
-  },
-};
 
 function normalizeRoleTemplate(value: unknown): RoleTemplate | null {
   if (!isRecord(value)) {

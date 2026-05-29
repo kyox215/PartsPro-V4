@@ -26,6 +26,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   orderStatusLabel,
@@ -36,6 +43,7 @@ import {
 import { formatMoney } from "@/i18n/format";
 import { type CompanyProfile, type PartProduct } from "@/lib/partspro-data";
 import { type AccountCustomerProfile } from "@/lib/partspro-repository";
+import { publicStockLevelMeta } from "@/lib/partspro-stock-availability";
 import { cn } from "@/lib/utils";
 import {
   CartCatalogProvider,
@@ -60,8 +68,10 @@ export type CheckoutRuntimeView = {
 
 type CheckoutClientProps = {
   catalogProducts: readonly PartProduct[];
+  companies?: readonly CompanyProfile[];
   company: CompanyProfile | null;
   customerProfile: AccountCustomerProfile | null;
+  delegatedCheckout?: boolean;
   runtime: CheckoutRuntimeView;
 };
 
@@ -128,25 +138,76 @@ const fixedShippingMethod = "GLS/BRT 24-48h";
 const idlePreviewState: PreviewState = { status: "idle", issues: [] };
 
 export function CheckoutClient(props: CheckoutClientProps) {
+  const initialScope = props.company?.id ?? "";
+  const [catalogState, setCatalogState] = React.useState<{
+    products: readonly PartProduct[];
+    scope: string;
+  }>(() => ({
+    products: props.catalogProducts,
+    scope: initialScope,
+  }));
+  const handleCatalogScopeChange = React.useCallback(
+    (scope: string) => {
+      setCatalogState((current) =>
+        current.scope === scope
+          ? current
+          : {
+              products: scope === initialScope ? props.catalogProducts : [],
+              scope,
+            }
+      );
+    },
+    [initialScope, props.catalogProducts]
+  );
+  const handleCatalogProductsLoaded = React.useCallback(
+    (products: readonly PartProduct[]) => {
+      setCatalogState((current) => ({
+        ...current,
+        products: mergeCatalogProducts(current.products, products),
+      }));
+    },
+    []
+  );
+
   return (
-    <CartCatalogProvider products={props.catalogProducts}>
+    <CartCatalogProvider products={catalogState.products}>
       <StoreHeader />
-      <CheckoutClientContent {...props} />
+      <CheckoutClientContent
+        {...props}
+        catalogProducts={catalogState.products}
+        onCatalogProductsLoaded={handleCatalogProductsLoaded}
+        onCatalogScopeChange={handleCatalogScopeChange}
+      />
     </CartCatalogProvider>
   );
 }
 
 function CheckoutClientContent({
+  catalogProducts,
+  companies = [],
   company,
   customerProfile,
+  delegatedCheckout = false,
+  onCatalogProductsLoaded,
+  onCatalogScopeChange,
   runtime,
-}: CheckoutClientProps) {
+}: CheckoutClientProps & {
+  onCatalogProductsLoaded: (products: readonly PartProduct[]) => void;
+  onCatalogScopeChange: (scope: string) => void;
+}) {
   const t = useT();
   const router = useRouter();
+  const [selectedCompanyId, setSelectedCompanyId] = React.useState(company?.id ?? "");
+  const selectedCompany =
+    delegatedCheckout
+      ? companies.find((item) => item.id === selectedCompanyId) ?? null
+      : company;
   const cart = useCart({ preserveUnknown: true });
   const [form, setForm] = React.useState<CheckoutFormState>(() =>
-    initialFormState(customerProfile, company)
+    initialFormState(customerProfile, selectedCompany)
   );
+  const [catalogLoadState, setCatalogLoadState] = React.useState<"idle" | "loading" | "ready" | "error">("idle");
+  const requestedCatalogKeys = React.useRef(new Set<string>());
   const [confirmations, setConfirmations] = React.useState({
     fiscal: false,
     address: false,
@@ -162,8 +223,14 @@ function CheckoutClientContent({
     () => serializeCartItems(cart.items),
     [cart.items]
   );
+  const catalogSkuSet = React.useMemo(
+    () => new Set(catalogProducts.map((product) => product.sku)),
+    [catalogProducts]
+  );
+  const selectedCatalogScope = selectedCompany?.id ?? "";
+  const isCatalogLoading = catalogLoadState === "loading";
   const shouldLoadPreview =
-    cart.isHydrated && cart.items.length > 0 && Boolean(company?.id);
+    cart.isHydrated && cart.items.length > 0 && Boolean(selectedCompany?.id);
   const previewForUi = shouldLoadPreview ? preview : idlePreviewState;
   const unresolvedSkus = React.useMemo(() => {
     const resolvedSkus = new Set(cart.lines.map((line) => line.sku));
@@ -179,8 +246,10 @@ function CheckoutClientContent({
   const formErrors = validateForm(t, form, confirmations);
   const blockers = buildCheckoutBlockers({
     cart,
-    company,
+    company: selectedCompany,
+    delegatedCheckout,
     formErrors,
+    isCatalogLoading,
     lineIssues,
     preview: previewForUi,
     runtime,
@@ -193,6 +262,85 @@ function CheckoutClientContent({
     blockers.length === 0 &&
     submitState.status !== "loading" &&
     submitState.status !== "success";
+
+  function handleSelectedCompanyIdChange(value: string) {
+    const nextCompany = companies.find((item) => item.id === value) ?? null;
+
+    setSelectedCompanyId(value);
+    setForm(initialFormState(null, nextCompany));
+    setPreview(idlePreviewState);
+    setSubmitState({ status: "idle" });
+    setCatalogLoadState("idle");
+  }
+
+  React.useEffect(() => {
+    onCatalogScopeChange(selectedCatalogScope);
+    requestedCatalogKeys.current.clear();
+  }, [onCatalogScopeChange, selectedCatalogScope]);
+
+  React.useEffect(() => {
+    if (!cart.isHydrated || cart.items.length === 0 || !selectedCompany?.id) {
+      return;
+    }
+
+    const missingSkus = cart.items
+      .map((item) => item.sku)
+      .filter((sku) => !catalogSkuSet.has(sku));
+    const requestKey = `${selectedCompany.id}:${missingSkus.join(",")}`;
+
+    if (missingSkus.length === 0) {
+      return;
+    }
+
+    if (requestedCatalogKeys.current.has(requestKey)) {
+      return;
+    }
+
+    const controller = new AbortController();
+    requestedCatalogKeys.current.add(requestKey);
+
+    async function loadCartCatalogProducts() {
+      setCatalogLoadState("loading");
+
+      try {
+        const params = new URLSearchParams({
+          companyId: selectedCompany?.id ?? "",
+          skus: missingSkus.join(","),
+        });
+        const response = await fetch(`/api/cart/catalog?${params.toString()}`, {
+          cache: "no-store",
+          credentials: "same-origin",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error("Unable to load cart catalog products");
+        }
+
+        const payload = (await response.json()) as { data?: PartProduct[] };
+        onCatalogProductsLoaded(Array.isArray(payload.data) ? payload.data : []);
+        setCatalogLoadState("ready");
+      } catch {
+        if (!controller.signal.aborted) {
+          requestedCatalogKeys.current.delete(requestKey);
+          setCatalogLoadState("error");
+        }
+      }
+    }
+
+    void loadCartCatalogProducts();
+
+    return () => {
+      controller.abort();
+    };
+  }, [
+    cart.isHydrated,
+    cart.items,
+    cartSignature,
+    catalogSkuSet,
+    onCatalogProductsLoaded,
+    selectedCompany?.id,
+  ]);
 
   React.useEffect(() => {
     if (!shouldLoadPreview) {
@@ -209,7 +357,7 @@ function CheckoutClientContent({
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            companyId: company?.id,
+            companyId: selectedCompany?.id,
             items: cart.items,
           }),
           cache: "no-store",
@@ -250,7 +398,7 @@ function CheckoutClientContent({
     return () => {
       controller.abort();
     };
-  }, [cart.items, cartSignature, company?.id, shouldLoadPreview, t]);
+  }, [cart.items, cartSignature, selectedCompany?.id, shouldLoadPreview, t]);
 
   async function submitOrder() {
     setSubmitAttempted(true);
@@ -283,7 +431,7 @@ function CheckoutClientContent({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          companyId: company?.id,
+          companyId: selectedCompany?.id,
           paymentMethod: form.paymentMethod,
           purchaseOrderNumber: optionalText(form.purchaseOrderNumber),
           deliveryAddress: {
@@ -334,14 +482,21 @@ function CheckoutClientContent({
     <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
       <div className="mx-auto grid max-w-[1300px] gap-3 px-2 pt-3 pb-[calc(5.75rem_+_env(safe-area-inset-bottom))] sm:gap-4 sm:px-4 sm:pt-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:pb-8">
         <section className="space-y-3 sm:space-y-4">
-          <CheckoutHeader runtime={runtime} company={company} />
+          <CheckoutHeader runtime={runtime} company={selectedCompany} />
+          {delegatedCheckout ? (
+            <DelegatedCustomerSelector
+              companies={companies}
+              selectedCompanyId={selectedCompanyId}
+              onSelectedCompanyIdChange={handleSelectedCompanyIdChange}
+            />
+          ) : null}
           <GlobalBlockers blockers={blockers} />
           <OrderLinesReview
             lineIssues={lineIssues}
             lines={cart.lines}
             unresolvedSkus={unresolvedSkus}
           />
-          <CompanyReview company={company} profile={customerProfile} runtime={runtime} />
+          <CompanyReview company={selectedCompany} profile={customerProfile} runtime={runtime} />
           <DeliverySection
             form={form}
             errors={formErrors}
@@ -484,6 +639,57 @@ function BlockerAlert({ blocker }: { blocker: Blocker }) {
   );
 }
 
+function DelegatedCustomerSelector({
+  companies,
+  onSelectedCompanyIdChange,
+  selectedCompanyId,
+}: {
+  companies: readonly CompanyProfile[];
+  onSelectedCompanyIdChange: (value: string) => void;
+  selectedCompanyId: string;
+}) {
+  const t = useT();
+  const selectedCompany = companies.find((company) => company.id === selectedCompanyId);
+
+  return (
+    <Card className="border-blue-200 bg-blue-50/70">
+      <CardContent className="grid gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(260px,420px)] sm:items-center">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-black text-blue-950">
+            <ShieldCheck className="size-4 text-blue-700" />
+            {tx(t, "storefront.checkout.delegated.title", "Ordine per conto cliente")}
+          </div>
+          <p className="mt-1 text-xs font-semibold leading-5 text-blue-800">
+            {tx(t, "storefront.checkout.delegated.description", "Scegli il cliente: prezzi, controlli e ordine useranno il suo livello e profilo.")}
+          </p>
+        </div>
+        <div className="min-w-0">
+          <Label htmlFor="delegated-customer" className="sr-only">
+            {tx(t, "storefront.checkout.delegated.select", "Seleziona cliente")}
+          </Label>
+          <Select value={selectedCompanyId} onValueChange={onSelectedCompanyIdChange}>
+            <SelectTrigger id="delegated-customer" className="h-10 bg-white">
+              <SelectValue placeholder={tx(t, "storefront.checkout.delegated.placeholder", "Seleziona cliente")} />
+            </SelectTrigger>
+            <SelectContent>
+              {companies.map((company) => (
+                <SelectItem key={company.id} value={company.id}>
+                  {company.name} · {company.customerType ?? "retail"} · {company.assignmentStatus ?? "needs_review"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {selectedCompany ? (
+            <div className="mt-1 truncate text-xs font-semibold text-blue-800">
+              {selectedCompany.priceList} · {selectedCompany.status}
+            </div>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function OrderLinesReview({
   lineIssues,
   lines,
@@ -551,6 +757,7 @@ function OrderLinesReview({
 function OrderLineRow({ issues, line }: { issues: PreviewIssue[]; line: CartLine }) {
   const t = useT();
   const { locale } = useI18n();
+  const stockMeta = publicStockLevelMeta(t, line.product);
 
   return (
     <div className="grid grid-cols-[56px_minmax(0,1fr)] gap-3 rounded-lg border border-slate-200 p-3 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center">
@@ -570,8 +777,8 @@ function OrderLineRow({ issues, line }: { issues: PreviewIssue[]; line: CartLine
           <Badge variant="outline">
             {txFormat(t, "storefront.checkout.moq", "MOQ {count}", { count: line.product.moq })}
           </Badge>
-          <Badge variant="outline">
-            {txFormat(t, "storefront.checkout.stock", "Stock {count}", { count: line.product.stock })}
+          <Badge className={stockMeta.className}>
+            {stockMeta.label}
           </Badge>
         </div>
         {issues.length > 0 && (
@@ -1164,7 +1371,9 @@ function CompactSummaryLine({
 function buildCheckoutBlockers({
   cart,
   company,
+  delegatedCheckout,
   formErrors,
+  isCatalogLoading,
   lineIssues,
   preview,
   runtime,
@@ -1174,7 +1383,9 @@ function buildCheckoutBlockers({
 }: {
   cart: ReturnType<typeof useCart>;
   company: CompanyProfile | null;
+  delegatedCheckout: boolean;
   formErrors: Record<string, string>;
+  isCatalogLoading: boolean;
   lineIssues: PreviewIssue[];
   preview: PreviewState;
   runtime: CheckoutRuntimeView;
@@ -1204,8 +1415,12 @@ function buildCheckoutBlockers({
 
   if (!company) {
     blockers.push({
-      message: tx(t, "storefront.checkout.companyMissingDescription", "Nessun cliente e collegato alla sessione corrente."),
-      title: tx(t, "storefront.checkout.companyMissingTitle", "Profilo cliente mancante"),
+      message: delegatedCheckout
+        ? tx(t, "storefront.checkout.delegated.missingDescription", "Seleziona il cliente per calcolare il suo listino e creare l'ordine.")
+        : tx(t, "storefront.checkout.companyMissingDescription", "Nessun cliente e collegato alla sessione corrente."),
+      title: delegatedCheckout
+        ? tx(t, "storefront.checkout.delegated.missingTitle", "Cliente da selezionare")
+        : tx(t, "storefront.checkout.companyMissingTitle", "Profilo cliente mancante"),
       tone: "warning",
     });
   }
@@ -1230,9 +1445,11 @@ function buildCheckoutBlockers({
     blockers.push({
       actionHref: "/carrello",
       actionLabel: tx(t, "storefront.checkout.fixCart", "Torna al carrello per correggere"),
-      message: `${tx(t, "storefront.checkout.unresolvedItems", "Alcune righe non sono piu disponibili.")} ${unresolvedSkus.join(", ")}`,
+      message: isCatalogLoading
+        ? tx(t, "storefront.checkout.loadingTargetPrices", "Caricamento prezzi cliente per le righe del carrello.")
+        : `${tx(t, "storefront.checkout.unresolvedItems", "Alcune righe non sono piu disponibili.")} ${unresolvedSkus.join(", ")}`,
       title: tx(t, "storefront.cart.unresolvedTitle", "Prodotti del carrello non disponibili"),
-      tone: "warning",
+      tone: isCatalogLoading ? "neutral" : "warning",
     });
   }
 
@@ -1358,6 +1575,23 @@ function buildOrderNotes(customerNotes: string, deliveryWindow: string) {
 function optionalText(value: string) {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function mergeCatalogProducts(
+  currentProducts: readonly PartProduct[],
+  incomingProducts: readonly PartProduct[]
+) {
+  const productsBySku = new Map<string, PartProduct>();
+
+  for (const product of currentProducts) {
+    productsBySku.set(product.sku, product);
+  }
+
+  for (const product of incomingProducts) {
+    productsBySku.set(product.sku, product);
+  }
+
+  return Array.from(productsBySku.values());
 }
 
 function submitButtonLabel(

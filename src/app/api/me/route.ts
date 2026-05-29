@@ -20,6 +20,7 @@ export async function GET() {
     authenticated: account.authenticated,
     accountType: account.accountType,
     customer: account.customer,
+    userId: account.userId,
     roleTemplate: account.roleTemplate,
     permissions,
     visiblePanels,

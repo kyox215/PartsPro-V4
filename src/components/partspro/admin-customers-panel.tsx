@@ -151,9 +151,26 @@ type CustomerAuditEvent = {
   actorEmail: string | null;
   actorRole: string | null;
   createdAt: string;
+  entityId?: string | null;
+  entityType?: string | null;
   id: string;
   reason: string | null;
   result: string;
+};
+
+type CustomerMembership = {
+  accountType: "customer" | "employee" | string;
+  avatarUrl: string | null;
+  createdAt: string;
+  customerId: string;
+  displayName: string | null;
+  email: string | null;
+  memberRole: "owner" | "buyer" | "finance" | "support" | string;
+  role: string | null;
+  roleTemplate: string | null;
+  status: "active" | "invited" | "disabled" | string;
+  updatedAt: string;
+  userId: string;
 };
 
 type CustomerRecentActivity = {
@@ -194,6 +211,7 @@ type AdminCustomer = {
   id: string;
   lastContact: string | null;
   monthlyPurchase: string;
+  memberships?: CustomerMembership[];
   name: string;
   orders?: CustomerOrderSummary[];
   ordersCount: number;
@@ -291,6 +309,7 @@ type CustomerTermsDraft = {
 };
 
 type CustomerClassificationDraft = {
+  assignmentStatus: AssignmentStatus;
   customerType: CustomerType;
 };
 
@@ -618,7 +637,16 @@ export function AdminCustomersPanel() {
   function updateClassificationDraft(field: keyof CustomerClassificationDraft, value: string) {
     setEditState((current) =>
       current?.kind === "classification"
-        ? { ...current, draft: { ...current.draft, [field]: value as CustomerType } }
+        ? {
+            ...current,
+            draft: {
+              ...current.draft,
+              [field]:
+                field === "assignmentStatus"
+                  ? (value as AssignmentStatus)
+                  : (value as CustomerType),
+            },
+          }
         : current
     );
   }
@@ -753,7 +781,7 @@ export function AdminCustomersPanel() {
 
       <div className="grid grid-cols-2 gap-2 xl:grid-cols-5">
         <Kpi icon={Users} label={copy.activeCustomers} tone="blue" value={facets.active} />
-        <Kpi icon={Clock} label={copy.pendingReview} tone="amber" value={facets.pending} />
+        <Kpi icon={Clock} label={copy.pendingReview} tone="amber" value={facets.needsReview} />
         <Kpi icon={BriefcaseBusiness} label={copy.retailCustomers} tone="green" value={facets.retail} />
         <Kpi icon={Store} label={copy.wholesaleCustomers} tone="purple" value={facets.wholesale} />
         <Kpi icon={ShieldAlert} label={text.enums.companyStatus.suspended} tone="red" value={facets.suspended} />
@@ -1357,11 +1385,15 @@ function CustomerDetail({
 
     const status = nextStatus as CustomerStatus;
     const label = statusCopy(status);
+    const payload =
+      status === "active"
+        ? { assignmentStatus: "assigned", customerType: "wholesale", status }
+        : { status };
 
     onAction(
       {
         endpoint: "classification",
-        payload: { status },
+        payload,
         summary: label,
         title: `${copy.status}: ${label}`,
       },
@@ -1370,6 +1402,8 @@ function CustomerDetail({
   }
 
   const sortedOrders = [...(customer.orders ?? [])].sort(compareCreatedAtDesc);
+  const sortedMemberships = [...(customer.memberships ?? [])].sort(compareCreatedAtDesc);
+  const sortedAdminAudit = [...(customer.auditEvents ?? [])].sort(compareCreatedAtDesc);
   const orderStatusOptions: readonly (readonly [string, string])[] = [
     [allValue, copy.allStatuses],
     ...Array.from(new Set(sortedOrders.map((order) => order.status).filter(Boolean))).map(
@@ -1438,10 +1472,12 @@ function CustomerDetail({
         onValueChange={(value) => setTabState({ customerId: customer.id, value })}
         className="flex min-h-0 flex-1 flex-col"
       >
-        <TabsList className="grid h-9 rounded-none border-b border-slate-200 bg-white p-0 text-xs font-bold [grid-template-columns:repeat(3,minmax(0,1fr))]">
+        <TabsList className="grid h-9 rounded-none border-b border-slate-200 bg-white p-0 text-xs font-bold [grid-template-columns:repeat(5,minmax(0,1fr))]">
           <TabsTrigger className="h-9 min-w-0 truncate rounded-none border-b-2 border-transparent px-1 data-[state=active]:border-blue-600 data-[state=active]:bg-white data-[state=active]:text-blue-600" value="profile">{copy.profile}</TabsTrigger>
           <TabsTrigger className="h-9 min-w-0 truncate rounded-none border-b-2 border-transparent px-1 data-[state=active]:border-blue-600 data-[state=active]:bg-white data-[state=active]:text-blue-600" value="orders">{copy.orders}</TabsTrigger>
-          <TabsTrigger className="h-9 min-w-0 truncate rounded-none border-b-2 border-transparent px-1 data-[state=active]:border-blue-600 data-[state=active]:bg-white data-[state=active]:text-blue-600" value="audit">{copy.recentActivity}</TabsTrigger>
+          <TabsTrigger className="h-9 min-w-0 truncate rounded-none border-b-2 border-transparent px-1 data-[state=active]:border-blue-600 data-[state=active]:bg-white data-[state=active]:text-blue-600" value="members">{copy.contacts}</TabsTrigger>
+          <TabsTrigger className="h-9 min-w-0 truncate rounded-none border-b-2 border-transparent px-1 data-[state=active]:border-blue-600 data-[state=active]:bg-white data-[state=active]:text-blue-600" value="adminAudit">{copy.managementAudit}</TabsTrigger>
+          <TabsTrigger className="h-9 min-w-0 truncate rounded-none border-b-2 border-transparent px-1 data-[state=active]:border-blue-600 data-[state=active]:bg-white data-[state=active]:text-blue-600" value="activity">{copy.recentActivity}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile" className="mt-0 min-h-0 flex-1 overflow-y-auto p-3">
@@ -1498,9 +1534,14 @@ function CustomerDetail({
 
             <div className="grid gap-2.5 sm:grid-cols-2">
               <DetailSectionCard title={copy.customerType} actionLabel={text.common.edit} onAction={() => onEdit("classification", customer)}>
-                <Badge className={customerTypeBadgeClass(customer.customerType)} variant="outline">
-                  {customerTypeLabel(customer.customerType, copy)}
-                </Badge>
+                <div className="flex flex-wrap gap-1.5">
+                  <Badge className={customerTypeBadgeClass(customer.customerType)} variant="outline">
+                    {customerTypeLabel(customer.customerType, copy)}
+                  </Badge>
+                  <Badge className={assignmentStatusBadgeClass(customer.assignmentStatus)} variant="outline">
+                    {assignmentStatusLabel(customer.assignmentStatus, copy)}
+                  </Badge>
+                </div>
               </DetailSectionCard>
               <DetailSectionCard title={copy.status}>
                 <StatusChangeSelect
@@ -1571,7 +1612,26 @@ function CustomerDetail({
           </div>
         </TabsContent>
 
-        <TabsContent value="audit" className="mt-0 min-h-0 flex-1 overflow-y-auto p-3">
+        <TabsContent value="members" className="mt-0 min-h-0 flex-1 overflow-y-auto p-3">
+          {sortedMemberships.length === 0 ? (
+            <div className="space-y-1.5">
+              <EmptyState label={copy.accountMembersEmptyTitle} />
+              <p className="text-xs leading-5 text-slate-500">{copy.accountMembersEmptyDescription}</p>
+            </div>
+          ) : (
+            <CustomerMembershipList memberships={sortedMemberships} copy={copy} />
+          )}
+        </TabsContent>
+
+        <TabsContent value="adminAudit" className="mt-0 min-h-0 flex-1 overflow-y-auto p-3">
+          {sortedAdminAudit.length === 0 ? (
+            <EmptyState label={copy.auditEmpty} />
+          ) : (
+            <CustomerAdminAuditTimeline events={sortedAdminAudit} copy={copy} />
+          )}
+        </TabsContent>
+
+        <TabsContent value="activity" className="mt-0 min-h-0 flex-1 overflow-y-auto p-3">
           {sortedActivity.length === 0 ? (
             <EmptyState label={copy.recentActivityEmpty} />
           ) : (
@@ -2096,6 +2156,23 @@ function CustomerEditDialog({
                 </SelectContent>
               </Select>
             </EditField>
+            <EditField label={copy.fieldLabels.assignment}>
+              <Select
+                value={editState.draft.assignmentStatus}
+                onValueChange={(value) => onClassificationChange("assignmentStatus", value)}
+              >
+                <SelectTrigger className="h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {assignmentStatuses.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {assignmentStatusLabel(value, copy)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </EditField>
           </div>
         ) : null}
 
@@ -2273,6 +2350,120 @@ function DetailSectionCard({
       </div>
       {children}
     </section>
+  );
+}
+
+function CustomerMembershipList({
+  copy,
+  memberships,
+}: {
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
+  memberships: CustomerMembership[];
+}) {
+  return (
+    <div className="space-y-2">
+      {memberships.map((membership) => {
+        const display = membership.displayName || membership.email || membership.userId;
+
+        return (
+          <div
+            key={`${membership.customerId}:${membership.userId}`}
+            className="rounded-md border border-slate-200 bg-white p-3 text-sm shadow-[0_8px_20px_rgba(15,23,42,0.03)]"
+          >
+            <div className="flex min-w-0 items-start gap-2.5">
+              <div
+                className={cn(
+                  "grid size-9 shrink-0 place-items-center rounded-full text-xs font-black text-white",
+                  membership.accountType === "employee" ? "bg-indigo-600" : "bg-blue-600"
+                )}
+                aria-hidden="true"
+              >
+                {initialsFromText(display)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                  <span className="min-w-0 break-words font-black text-slate-950">
+                    {display}
+                  </span>
+                  <Badge className={membershipAccountTypeBadgeClass(membership.accountType)} variant="outline">
+                    {customerAccountTypeLabel(membership.accountType, copy)}
+                  </Badge>
+                  <Badge className={membershipStatusBadgeClass(membership.status)} variant="outline">
+                    {customerMemberStatusLabel(membership.status, copy)}
+                  </Badge>
+                </div>
+                <div className="mt-1 break-words text-xs leading-5 text-slate-500">
+                  {membership.email || membership.userId}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <Badge className="border-slate-200 bg-slate-50 text-slate-600" variant="outline">
+                    {customerMemberRoleLabel(membership.memberRole, copy)}
+                  </Badge>
+                  {membership.accountType === "employee" ? (
+                    <Badge className="border-indigo-200 bg-indigo-50 text-indigo-700" variant="outline">
+                      {customerRoleTemplateLabel(membership.roleTemplate || membership.role, copy)}
+                    </Badge>
+                  ) : null}
+                  <Badge className="border-slate-200 bg-slate-50 text-slate-500" variant="outline">
+                    {formatDate(membership.createdAt) ?? copy.noData}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function CustomerAdminAuditTimeline({
+  copy,
+  events,
+}: {
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
+  events: CustomerAuditEvent[];
+}) {
+  return (
+    <ol className="relative space-y-0 before:absolute before:bottom-5 before:left-4 before:top-4 before:w-px before:bg-slate-200 sm:before:left-5">
+      {events.map((event) => (
+        <li key={event.id} className="relative grid grid-cols-[32px_minmax(0,1fr)] gap-2.5 pb-4 last:pb-0 sm:grid-cols-[40px_minmax(0,1fr)] sm:gap-3">
+          <div
+            className="relative z-10 grid size-8 place-items-center rounded-full border border-blue-200 bg-blue-50 text-blue-700 shadow-sm sm:size-10"
+            aria-hidden="true"
+          >
+            <ShieldAlert className="size-3.5 sm:size-4" />
+          </div>
+          <div className="min-w-0 border-b border-slate-100 pb-3 last:border-b-0">
+            <div className="min-w-0 sm:flex sm:items-start sm:justify-between sm:gap-3">
+              <div className="min-w-0">
+                <div className="break-words text-sm font-black text-slate-950">
+                  {customerAdminAuditLabel(event.action)}
+                </div>
+                <div className="mt-0.5 break-words text-xs leading-5 text-slate-500 sm:text-sm">
+                  {[event.actorEmail, event.actorRole, event.entityType]
+                    .filter(Boolean)
+                    .join(" · ") || copy.noData}
+                </div>
+              </div>
+              <span className="mt-0.5 block text-[11px] font-medium text-slate-500 sm:mt-0 sm:shrink-0 sm:whitespace-nowrap sm:text-xs">
+                {formatDateTime(event.createdAt) ?? copy.noData}
+              </span>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <Badge className="border-slate-200 bg-slate-50 text-slate-600" variant="outline">
+                {event.result || "ok"}
+              </Badge>
+              {event.reason ? (
+                <span className="min-w-0 break-words text-xs leading-5 text-slate-600">
+                  {event.reason}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -2643,6 +2834,7 @@ function termsDraftFromCustomer(customer: AdminCustomer): CustomerTermsDraft {
 
 function classificationDraftFromCustomer(customer: AdminCustomer): CustomerClassificationDraft {
   return {
+    assignmentStatus: customer.assignmentStatus,
     customerType: customer.customerType,
   };
 }
@@ -2675,6 +2867,7 @@ function buildCustomerEditPayload(
     return {
       ok: true,
       payload: {
+        assignmentStatus: editState.draft.assignmentStatus,
         customerType: editState.draft.customerType,
         reason,
       },
@@ -2782,6 +2975,62 @@ function customerTypeLabel(
   copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"]
 ) {
   return (copy.customerTypeLabels as Record<string, string>)[value] ?? value;
+}
+
+const assignmentStatuses: AssignmentStatus[] = [
+  "needs_review",
+  "assigned",
+  "converted_to_employee",
+  "archived",
+];
+
+function assignmentStatusLabel(
+  value: AssignmentStatus | string,
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"]
+) {
+  return (copy.assignmentLabels as Record<string, string>)[value] ?? value;
+}
+
+function customerAccountTypeLabel(
+  value: string,
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"]
+) {
+  return (copy.accountTypeLabels as Record<string, string>)[value] ?? value;
+}
+
+function customerMemberRoleLabel(
+  value: string,
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"]
+) {
+  return (copy.memberRoleLabels as Record<string, string>)[value] ?? value;
+}
+
+function customerMemberStatusLabel(
+  value: string,
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"]
+) {
+  return (copy.memberStatusLabels as Record<string, string>)[value] ?? value;
+}
+
+function customerRoleTemplateLabel(
+  value: string | null | undefined,
+  copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"]
+) {
+  return value ? (copy.roleTemplateLabels as Record<string, string>)[value] ?? value : copy.noData;
+}
+
+function customerAdminAuditLabel(value: string) {
+  const labels: Record<string, string> = {
+    "account.role_update": "员工角色更新",
+    "account.type_update": "账号类型更新",
+    "customer.classification_update": "客户分类更新",
+    "customer.level_update": "客户等级更新",
+    "customer.profile_update": "客户档案更新",
+    "customer.terms_update": "商业条款更新",
+    "permissions.update": "权限覆盖更新",
+  };
+
+  return labels[value] ?? value;
 }
 
 function customerActivityLabel(
@@ -3096,6 +3345,40 @@ function customerTypeBadgeClass(value: CustomerType) {
   return "border-emerald-200 bg-emerald-50 text-emerald-700";
 }
 
+function assignmentStatusBadgeClass(value: AssignmentStatus) {
+  if (value === "assigned") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (value === "needs_review") {
+    return "border-amber-200 bg-amber-50 text-amber-800";
+  }
+
+  if (value === "converted_to_employee") {
+    return "border-blue-200 bg-blue-50 text-blue-700";
+  }
+
+  return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
+function membershipAccountTypeBadgeClass(value: string) {
+  return value === "employee"
+    ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+    : "border-blue-200 bg-blue-50 text-blue-700";
+}
+
+function membershipStatusBadgeClass(value: string) {
+  if (value === "disabled") {
+    return "border-slate-200 bg-slate-50 text-slate-500";
+  }
+
+  if (value === "invited") {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  return "border-emerald-200 bg-emerald-50 text-emerald-700";
+}
+
 function tierBadgeClass(value: CustomerTier | string) {
   if (value === "bronze") {
     return "border-orange-200 bg-orange-50 text-orange-700";
@@ -3126,6 +3409,10 @@ function tierBadgeClass(value: CustomerTier | string) {
   }
 
   return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function initialsFromText(value: string | null | undefined) {
+  return (value || "A").slice(0, 2).toUpperCase();
 }
 
 function activityVisual(event: CustomerRecentActivity): {

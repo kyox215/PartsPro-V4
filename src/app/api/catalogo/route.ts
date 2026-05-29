@@ -108,10 +108,27 @@ function toCatalogProduct(product: PartProduct, account: AccountContext) {
     imageAlt: pricedProduct.imageAlt,
     galleryImageUrls: pricedProduct.galleryImageUrls,
     priceGate: {
-      orderable: Boolean(account.canViewPrices && hasEffectivePrice),
+      orderable: Boolean(
+        (account.canCheckout || account.accountType === "employee") &&
+          hasEffectivePrice
+      ),
       visible: account.canViewPrices,
       reason: priceVisibilityReason(account),
       vatMode: "net_prices_plus_iva",
     },
+    ...productPriceFields(pricedProduct, account.canViewPrices),
+  };
+}
+
+function productPriceFields(product: PartProduct, visible: boolean) {
+  return {
+    basePrice: visible ? product.basePrice ?? null : null,
+    customerLevel: visible ? product.customerLevel ?? null : null,
+    discountPercent: visible ? product.discountPercent ?? null : null,
+    levelDiscountPercent: visible ? product.levelDiscountPercent ?? null : null,
+    priceGroupDiscountPercent: visible ? product.priceGroupDiscountPercent ?? null : null,
+    priceResolved: Boolean(visible && product.priceResolved),
+    priceSource: visible ? product.priceSource ?? null : null,
+    priceVersion: visible ? product.priceVersion ?? null : null,
   };
 }

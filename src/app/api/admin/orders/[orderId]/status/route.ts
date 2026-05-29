@@ -45,7 +45,9 @@ export async function PATCH(request: NextRequest, { params }: OrderStatusParams)
       },
       meta: {
         source: result.source,
-        inventoryLifecycle: "reserved_on_create_or_accept, released_on_cancel, consumed_on_ship",
+        inventoryLifecycle:
+          "reserved_on_order_create, released_on_pre_ship_cancel, consumed_on_completed",
+        paymentLifecycle: "explicit_payment_status_updates_only",
       },
     });
   } catch (error) {

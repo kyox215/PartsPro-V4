@@ -23,10 +23,12 @@ type AdminAuthState =
   | { configured: false; allowed: false; reason: "missing_env" }
   | {
       configured: true;
+      email: string | null;
       allowed: true;
       permissions: string[];
       reason: "admin_email" | "staff";
       role: string;
+      userId: string;
     }
   | {
       configured: true;
@@ -52,7 +54,7 @@ export async function getAdminAuthState(): Promise<AdminAuthState> {
   const profile = await readStaffProfile(supabase, user.id);
   const role = profile?.role;
 
-  if (isAdminEmail(user.email)) {
+  if (isBootstrapAdminEmail(user.email)) {
     const remotePermissions = await readEffectivePermissions(supabase);
 
     if (!remotePermissions.ok || remotePermissions.permissions.length === 0) {
@@ -66,10 +68,12 @@ export async function getAdminAuthState(): Promise<AdminAuthState> {
 
     return {
       configured: true,
+      email: user.email ?? null,
       allowed: true,
       permissions: remotePermissions.permissions,
       reason: "admin_email",
       role: role ?? "admin",
+      userId: user.id,
     };
   }
 
@@ -87,14 +91,20 @@ export async function getAdminAuthState(): Promise<AdminAuthState> {
 
     return {
       configured: true,
+      email: user.email ?? null,
       allowed: true,
       permissions: remotePermissions.permissions,
       reason: "staff",
       role,
+      userId: user.id,
     };
   }
 
   return { configured: true, allowed: false, reason: "not_staff", role: role ?? undefined };
+}
+
+export function isBootstrapAdminEmail(email: string | null | undefined) {
+  return Boolean(email && ADMIN_EMAILS.has(normalizeEmail(email)));
 }
 
 export function hasAdminPermission(
@@ -114,11 +124,7 @@ export function hasAdminPermission(
   return permissionAliases(permission).some((alias) => permissions.has(alias));
 }
 
-function isAdminEmail(email: string | undefined) {
-  return Boolean(email && ADMIN_EMAILS.has(normalizeEmail(email)));
-}
-
-function normalizeEmail(email: string | undefined) {
+function normalizeEmail(email: string | null | undefined) {
   return email?.trim().toLowerCase() ?? "";
 }
 

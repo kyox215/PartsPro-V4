@@ -35,9 +35,13 @@ export function orderStatusLabel(status: OrderStatus, locale: Locale) {
     return {
       draft: "草稿",
       pending_payment: "待付款",
+      submitted: "新订单",
+      accepted: "已接单",
       paid: "已付款",
       picking: "拣货中",
+      packed: "已打包",
       shipped: "已发货",
+      completed: "已完成",
       delivered: "已送达",
       cancelled: "已取消",
     }[status];
@@ -46,9 +50,13 @@ export function orderStatusLabel(status: OrderStatus, locale: Locale) {
   return {
     draft: "Bozza",
     pending_payment: "In attesa pagamento",
+    submitted: "Nuovo ordine",
+    accepted: "Accettato",
     paid: "Pagato",
     picking: "Preparazione",
+    packed: "Imballato",
     shipped: "Spedito",
+    completed: "Completato",
     delivered: "Consegnato",
     cancelled: "Annullato",
   }[status];

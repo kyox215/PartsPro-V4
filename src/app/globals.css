@@ -146,3 +146,34 @@
   background: rgba(59, 91, 255, 0.18);
   color: #0f1a2f;
 }
+
+@layer components {
+  .partspro-catalog-grid {
+    display: grid;
+    gap: 0.625rem;
+  }
+
+  @media (min-width: 640px) {
+    .partspro-catalog-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .partspro-catalog-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .partspro-catalog-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 1400px) {
+    .partspro-catalog-grid {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+  }
+}

@@ -15,7 +15,6 @@ import {
   Package,
   Search,
   Settings,
-  ShoppingCart,
   User,
   Users,
   Warehouse,
@@ -102,10 +101,10 @@ const AdminActivityTimeline = dynamic(
     ),
   { loading: () => <AdminPanelLoading /> }
 );
-const AdminPermissionsPanel = dynamic(
+const AdminSettingsPanel = dynamic(
   () =>
-    import("./admin-permissions-panel").then(
-      (module) => module.AdminPermissionsPanel
+    import("./admin-settings-panel").then(
+      (module) => module.AdminSettingsPanel
     ),
   { loading: () => <AdminPanelLoading /> }
 );
@@ -273,7 +272,7 @@ export function AdminDashboard() {
                 <AdminActivityTimeline />
               </TabsContent>
               <TabsContent value="settings" className="order-4 mt-0 min-w-0">
-                <AdminPermissionsPanel />
+                <AdminSettingsPanel />
               </TabsContent>
               <TabsContent value="overview" className="order-4 mt-0 min-w-0">
                 <AdminOverviewDashboard
@@ -470,14 +469,6 @@ function AdminTopbar({
         </div>
 
         <LanguageSwitcher scope="admin" compact className="hidden sm:inline-flex" />
-        <Button
-          variant="outline"
-          size="icon"
-          className="relative hidden shrink-0 bg-white sm:inline-flex"
-        >
-          <ShoppingCart className="size-4" />
-          <span className="absolute right-1 top-1 size-2 rounded-full bg-red-500" />
-        </Button>
         <Button variant="outline" asChild className="hidden bg-white sm:inline-flex">
           <Link href="/">{text.topbar.home}</Link>
         </Button>

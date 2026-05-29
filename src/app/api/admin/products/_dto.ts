@@ -24,6 +24,7 @@ export function toAdminProductDto(product: AdminProduct) {
     availableQty: product.availableQty,
     lockedQty: product.lockedQty,
     actualQty: product.actualQty,
+    activeRestockRequestCount: product.activeRestockRequestCount,
     stockStatus: product.stockStatus,
     catalogStatus: product.catalogStatus,
     visual: product.visual,

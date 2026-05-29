@@ -56,6 +56,9 @@ import {
 } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
 import {
+  adminRoleTemplateLabel,
+  adminSourceLabel,
+  adminValueLabel,
   formatAdminMessage,
   getAdminDictionary,
   type AdminText,
@@ -86,6 +89,7 @@ type ViewMode = "orders" | "payments" | "shipping";
 type StatusFilterValue = "all" | OrderDbStatus;
 type PaymentFilterValue = "all" | "open" | "paid";
 type StockRiskFilterValue = "all" | "risk" | StockRisk;
+type ReservationFilterValue = "all" | "overdue";
 type WarehouseName = PartProduct["warehouse"];
 type OrdersSource = "admin_api" | "supabase" | "empty";
 type ApiOrdersSource = OrdersSource;
@@ -98,7 +102,8 @@ type WorkflowKey =
   | "packed"
   | "shipped"
   | "openPayments"
-  | "stockRisk";
+  | "stockRisk"
+  | "agedReservations";
 
 const unassignedCarrier = "unassigned" as const;
 const carrierOptions = ["DHL Express", "BRT", "GLS", "UPS", "Ritiro in sede"] as const;
@@ -180,6 +185,12 @@ type AdminOrder = {
   customerNote: string;
   staffNote: string;
   notes: string;
+  reservedQty: number;
+  fulfilledQty: number;
+  lockedSince: string | null;
+  reservationAgeHours: number | null;
+  reservationOverdue: boolean;
+  reservationWarning: boolean;
   lines: OrderLine[];
   activity: string[];
   operationHistory: OrderActivityEvent[];
@@ -233,6 +244,7 @@ type OrdersApiResult = {
 
 type OrderPatchInput = {
   carrier?: string;
+  forceCancel?: boolean;
   paymentStatus?: PaymentStatus;
   rollback?: boolean;
   staffNote?: string;
@@ -305,6 +317,8 @@ export function AdminOrdersPanel() {
     React.useState<PaymentFilterValue>("all");
   const [stockRiskFilter, setStockRiskFilter] =
     React.useState<StockRiskFilterValue>("all");
+  const [reservationFilter, setReservationFilter] =
+    React.useState<ReservationFilterValue>("all");
   const [viewMode, setViewMode] = React.useState<ViewMode>("orders");
   const [selectedOrderId, setSelectedOrderId] = React.useState("");
   const [mobileDetailsOpen, setMobileDetailsOpen] = React.useState(false);
@@ -489,16 +503,20 @@ export function AdminOrdersPanel() {
           (stockRiskFilter === "risk" &&
             (order.stockRisk === "low" || order.stockRisk === "blocked")) ||
           order.stockRisk === stockRiskFilter;
+        const matchesReservation =
+          reservationFilter === "all" ||
+          (reservationFilter === "overdue" && order.reservationOverdue);
         const matchesView = orderMatchesView(order, viewMode);
 
         return (
           matchesStatus &&
           matchesPayment &&
           matchesStockRisk &&
+          matchesReservation &&
           matchesView
         );
       }),
-    [orders, paymentFilter, statusFilter, stockRiskFilter, viewMode]
+    [orders, paymentFilter, reservationFilter, statusFilter, stockRiskFilter, viewMode]
   );
   const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -550,6 +568,7 @@ export function AdminOrdersPanel() {
       stockRisk: orders.filter(
         (order) => order.stockRisk === "low" || order.stockRisk === "blocked"
       ).length,
+      agedReservations: orders.filter((order) => order.reservationOverdue).length,
     }),
     [orders]
   );
@@ -560,6 +579,10 @@ export function AdminOrdersPanel() {
 
     if (stockRiskFilter === "risk") {
       return "stockRisk";
+    }
+
+    if (reservationFilter === "overdue") {
+      return "agedReservations";
     }
 
     if (
@@ -573,7 +596,7 @@ export function AdminOrdersPanel() {
     }
 
     return "all";
-  }, [paymentFilter, statusFilter, stockRiskFilter, viewMode]);
+  }, [paymentFilter, reservationFilter, statusFilter, stockRiskFilter, viewMode]);
   const handleWorkflowSelect = React.useCallback((key: WorkflowKey) => {
     setPage(1);
 
@@ -581,6 +604,7 @@ export function AdminOrdersPanel() {
       setStatusFilter("all");
       setPaymentFilter("all");
       setStockRiskFilter("all");
+      setReservationFilter("all");
       setViewMode("orders");
       return;
     }
@@ -589,6 +613,7 @@ export function AdminOrdersPanel() {
       setStatusFilter("all");
       setPaymentFilter("open");
       setStockRiskFilter("all");
+      setReservationFilter("all");
       setViewMode("payments");
       return;
     }
@@ -597,13 +622,24 @@ export function AdminOrdersPanel() {
       setStatusFilter("all");
       setPaymentFilter("all");
       setStockRiskFilter("risk");
+      setReservationFilter("all");
       setViewMode("orders");
       return;
     }
 
-    setStatusFilter(key);
+    if (key === "agedReservations") {
+      setStatusFilter("all");
+      setPaymentFilter("all");
+      setStockRiskFilter("all");
+      setReservationFilter("overdue");
+      setViewMode("orders");
+      return;
+    }
+
+    setStatusFilter(key as StatusFilterValue);
     setPaymentFilter("all");
     setStockRiskFilter("all");
+    setReservationFilter("all");
     setViewMode(key === "shipped" ? "shipping" : "orders");
   }, []);
 
@@ -670,6 +706,36 @@ export function AdminOrdersPanel() {
       );
     },
     [patchOrder, text.orders.cancelOrder, text.orders.cancelledNotice]
+  );
+
+  const handleForceCancelOrder = React.useCallback(
+    (order: AdminOrder) => {
+      const reason = window.prompt(text.orders.forceCancelPrompt)?.trim();
+
+      if (!reason) {
+        setNotice({
+          tone: "warning",
+          message: text.orders.forceCancelReasonRequired,
+        });
+        return;
+      }
+
+      void patchOrder(
+        order,
+        {
+          forceCancel: true,
+          note: reason,
+          status: "cancelled",
+        },
+        formatAdminMessage(text.orders.forceCancelledNotice, { id: order.id })
+      );
+    },
+    [
+      patchOrder,
+      text.orders.forceCancelPrompt,
+      text.orders.forceCancelReasonRequired,
+      text.orders.forceCancelledNotice,
+    ]
   );
 
   const handleRollbackOrder = React.useCallback(
@@ -913,6 +979,7 @@ export function AdminOrdersPanel() {
                     pendingActionKey={pendingOrderAction}
                     text={text}
                     onCancelOrder={handleCancelOrder}
+                    onForceCancelOrder={handleForceCancelOrder}
                     onPrintOrder={handlePrintOrder}
                     onRollback={handleRollbackOrder}
                     onTransition={handleTransition}
@@ -950,6 +1017,7 @@ function OrderWorkflowStrip({
     { key: "shipped", label: labels.status.shipped },
     { key: "openPayments", label: text.orders.workflow.openPayments },
     { key: "stockRisk", label: text.orders.workflow.stockRisk },
+    { key: "agedReservations", label: text.orders.workflow.agedReservations },
   ];
 
   return (
@@ -1166,20 +1234,23 @@ function OrdersList({
                       <Badge className={stockRiskBadgeClass(order.stockRisk)}>
                         {labels.stockRisk[order.stockRisk]}
                       </Badge>
+                      <ReservationBadge order={order} text={text} />
                     </div>
                     <OrderProgressInline labels={labels} status={order.status} />
                   </TableCell>
                   {viewMode === "shipping" ? (
                     <>
                       <TableCell>
-                        <div className="text-xs font-semibold">{order.service}</div>
-                        <div className="text-[11px] text-slate-500">{order.eta}</div>
+                        <div className="text-xs font-semibold">{orderValueLabel(text, order.service)}</div>
+                        <div className="text-[11px] text-slate-500">{orderValueLabel(text, order.eta)}</div>
                       </TableCell>
                       <TableCell>
                         <div className="text-xs font-semibold">
                           {carrierLabel(order.carrier, text)}
                         </div>
-                        <div className="text-[11px] text-slate-500">{order.tracking || order.eta}</div>
+                        <div className="text-[11px] text-slate-500">
+                          {order.tracking || orderValueLabel(text, order.eta)}
+                        </div>
                       </TableCell>
                     </>
                   ) : viewMode === "payments" ? (
@@ -1190,9 +1261,9 @@ function OrdersList({
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="text-xs font-semibold">{order.paymentDue}</div>
+                        <div className="text-xs font-semibold">{orderValueLabel(text, order.paymentDue)}</div>
                         <div className="text-[11px] text-slate-500">
-                          {order.paymentMethod}
+                          {orderValueLabel(text, order.paymentMethod)}
                         </div>
                       </TableCell>
                     </>
@@ -1340,6 +1411,7 @@ function MobileOrderCard({
         <span className="min-w-0 truncate rounded bg-slate-50 px-1.5 py-1 text-[11px] font-semibold leading-3 text-slate-500">
           {labels.payment[order.paymentStatus]} · {labels.fulfillment[order.fulfillmentStatus]}
         </span>
+        <ReservationBadge compact order={order} text={text} />
       </div>
 
       <div className="mt-1.5 grid min-w-0 grid-cols-2 gap-1">
@@ -1419,10 +1491,12 @@ function getMobileSummaryFacts(
 ) {
   if (viewMode === "shipping") {
     return [
-      { label: text.common.service, value: order.service },
+      { label: text.common.service, value: orderValueLabel(text, order.service) },
       {
         label: text.orders.summary.carrier,
-        value: `${carrierLabel(order.carrier, text)} / ${order.tracking || order.eta}`,
+        value: `${carrierLabel(order.carrier, text)} / ${
+          order.tracking || orderValueLabel(text, order.eta)
+        }`,
       },
     ];
   }
@@ -1430,7 +1504,7 @@ function getMobileSummaryFacts(
   if (viewMode === "payments") {
     return [
       { label: text.orders.summary.payment, value: labels.payment[order.paymentStatus] },
-      { label: text.orders.summary.due, value: order.paymentDue },
+      { label: text.orders.summary.due, value: orderValueLabel(text, order.paymentDue) },
     ];
   }
 
@@ -1513,6 +1587,7 @@ function OrderDetailsPanel({
   pendingActionKey,
   text,
   onCancelOrder,
+  onForceCancelOrder,
   onPrintOrder,
   onRollback,
   onTransition,
@@ -1525,6 +1600,7 @@ function OrderDetailsPanel({
   pendingActionKey: string | null;
   text: AdminText;
   onCancelOrder: (order: AdminOrder) => void;
+  onForceCancelOrder: (order: AdminOrder) => void;
   onPrintOrder: (order: AdminOrder) => void;
   onRollback: (order: AdminOrder) => void;
   onTransition: (order: AdminOrder, status: OrderDbStatus, successMessage: string) => void;
@@ -1620,6 +1696,7 @@ function OrderDetailsPanel({
             <Badge className={stockRiskBadgeClass(order.stockRisk)}>
               {labels.stockRisk[order.stockRisk]}
             </Badge>
+            <ReservationBadge order={order} text={text} />
             {loading && (
               <Badge className="border-cyan-200 bg-cyan-50 text-cyan-700">
                 <Loader2 className="size-3 animate-spin" />
@@ -1642,7 +1719,9 @@ function OrderDetailsPanel({
           order={order}
           text={text}
           isMutating={isMutating}
+          canForceCancel={adminSession.role === "admin" && order.status === "shipped"}
           onCancelOrder={onCancelOrder}
+          onForceCancelOrder={onForceCancelOrder}
           onPrintOrder={onPrintOrder}
           onRollback={onRollback}
           onTransition={onTransition}
@@ -1664,7 +1743,7 @@ function OrderDetailsPanel({
                 {text.common.payment}
               </div>
               <div className="mt-0.5 truncate font-bold leading-tight text-slate-900">
-                {labels.payment[order.paymentStatus]} · {order.paymentDue}
+                {labels.payment[order.paymentStatus]} · {orderValueLabel(text, order.paymentDue)}
               </div>
             </div>
             <div className="min-w-0 rounded bg-slate-50 px-1.5 py-1">
@@ -1677,7 +1756,7 @@ function OrderDetailsPanel({
             </div>
           </div>
 
-          <div className="hidden gap-1.5 md:grid md:grid-cols-2 xl:grid-cols-4">
+          <div className="hidden gap-1.5 md:grid md:grid-cols-2 xl:grid-cols-5">
             <DetailFact
               label={text.orders.details.orderTotal}
               value={formatEuro(order.total)}
@@ -1688,7 +1767,10 @@ function OrderDetailsPanel({
             <DetailFact
               label={text.common.payment}
               value={labels.payment[order.paymentStatus]}
-              helper={`${order.paymentMethod} - ${order.paymentDue}`}
+              helper={`${orderValueLabel(text, order.paymentMethod)} - ${orderValueLabel(
+                text,
+                order.paymentDue
+              )}`}
             />
             <DetailFact
               label={text.orders.details.fulfillment}
@@ -1697,6 +1779,11 @@ function OrderDetailsPanel({
                 picked: pickedItems,
                 items: order.items,
               })}
+            />
+            <DetailFact
+              label={text.orders.details.reservation}
+              value={reservationValue(order, text)}
+              helper={reservationHelper(order, text)}
             />
             <DetailFact
               label={text.orders.details.customer}
@@ -1951,7 +2038,7 @@ function getOrderTransition(order: AdminOrder, text: AdminText) {
     return {
       label: text.orders.confirmAndAccept,
       status: "accepted" as const,
-      notice: formatAdminMessage(text.orders.notices.paid, { id: order.id }),
+      notice: formatAdminMessage(text.orders.notices.accepted, { id: order.id }),
     };
   }
 
@@ -2024,7 +2111,9 @@ function OrderActionBar({
   order,
   text,
   isMutating,
+  canForceCancel,
   onCancelOrder,
+  onForceCancelOrder,
   onPrintOrder,
   onRollback,
   onTransition,
@@ -2033,7 +2122,9 @@ function OrderActionBar({
   order: AdminOrder;
   text: AdminText;
   isMutating: boolean;
+  canForceCancel: boolean;
   onCancelOrder: (order: AdminOrder) => void;
+  onForceCancelOrder: (order: AdminOrder) => void;
   onPrintOrder: (order: AdminOrder) => void;
   onRollback: (order: AdminOrder) => void;
   onTransition: (order: AdminOrder, status: OrderDbStatus, successMessage: string) => void;
@@ -2044,6 +2135,7 @@ function OrderActionBar({
   const actionCount = [
     true,
     cancellableStatuses.has(order.status),
+    canForceCancel,
     Boolean(rollback),
     Boolean(transition),
   ].filter(Boolean).length;
@@ -2081,6 +2173,18 @@ function OrderActionBar({
           >
             <XCircle className="size-4" />
             <span className="min-w-0 truncate">{text.orders.cancelOrder}</span>
+          </Button>
+        )}
+        {canForceCancel && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-red-700 hover:text-red-700 sm:h-8 sm:px-2 sm:text-xs"
+            onClick={() => onForceCancelOrder(order)}
+            disabled={isMutating}
+          >
+            <XCircle className="size-4" />
+            <span className="min-w-0 truncate">{text.orders.forceCancelOrder}</span>
           </Button>
         )}
         {rollback && (
@@ -2299,9 +2403,9 @@ function OrderLogisticsCard({
         {text.orders.details.logistics}
       </div>
       <div className="grid gap-1 text-xs text-slate-600 sm:grid-cols-2 sm:text-sm xl:grid-cols-4">
-        <InfoRow label={text.common.service} value={order.service} />
-        <InfoRow label={text.common.eta} value={order.eta} />
-        <InfoRow label={text.common.owner} value={order.owner} />
+        <InfoRow label={text.common.service} value={orderValueLabel(text, order.service)} />
+        <InfoRow label={text.common.eta} value={orderValueLabel(text, order.eta)} />
+        <InfoRow label={text.common.owner} value={orderValueLabel(text, order.owner)} />
         <InfoRow
           label={text.orders.details.deliveryAddress}
           value={order.shippingAddress}
@@ -2352,7 +2456,7 @@ function OrderLines({
                   {line.sku}
                 </div>
                 <div className="mt-1 truncate text-[11px] font-semibold text-slate-500">
-                  {line.category} · {line.batchCode || text.common.none}
+                  {orderValueLabel(text, line.category)} · {line.batchCode || text.common.none}
                 </div>
                 <div className="mt-1.5 grid grid-cols-4 gap-1 text-xs max-[360px]:grid-cols-2">
                   <MobileFact label={text.orders.lines.quantity} value={`${line.quantity}`} />
@@ -2395,9 +2499,9 @@ function OrderLines({
                   </div>
                   <div
                     className="mt-0.5 min-w-0 truncate text-[11px] leading-tight text-slate-500"
-                    title={`${line.category} · ${line.batchCode || text.common.none}`}
+                    title={`${orderValueLabel(text, line.category)} · ${line.batchCode || text.common.none}`}
                   >
-                    {line.category} · {line.batchCode || text.common.none}
+                    {orderValueLabel(text, line.category)} · {line.batchCode || text.common.none}
                   </div>
                 </TableCell>
                 <TableCell className="align-top text-center font-semibold">{line.quantity}</TableCell>
@@ -2791,7 +2895,7 @@ function buildOrderPackingSlipHtml(
           <td class="sku">${escapeHtml(line.sku)}</td>
           <td>
             <div class="product">${escapeHtml(line.name)}</div>
-            <div class="sub">${escapeHtml(line.category)}${
+            <div class="sub">${escapeHtml(orderValueLabel(text, line.category))}${
               line.batchCode ? ` · ${escapeHtml(line.batchCode)}` : ""
             }</div>
           </td>
@@ -3125,11 +3229,15 @@ function OrderOperationHistory({
               <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-500">
                 <span className="text-slate-400">{text.activity.actor}</span>
                 <span className="min-w-0 break-words text-slate-800">
-                  {event.actor.label || text.orders.activity.systemActor}
+                  {orderValueLabel(
+                    text,
+                    event.actor.label,
+                    text.orders.activity.systemActor
+                  )}
                 </span>
                 {event.actor.role && (
                   <span className="rounded bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-500">
-                    {event.actor.role}
+                    {adminRoleTemplateLabel(text, event.actor.role, event.actor.role)}
                   </span>
                 )}
               </div>
@@ -3143,7 +3251,7 @@ function OrderOperationHistory({
               key={activity}
               className="rounded-lg bg-slate-50 px-3 py-2 text-xs font-medium text-slate-600"
             >
-              {activity}
+              {orderActivityLineLabel(text, activity)}
             </div>
           ))}
         </div>
@@ -3263,6 +3371,101 @@ function DetailFact({
       ) : null}
     </div>
   );
+}
+
+function ReservationBadge({
+  compact = false,
+  order,
+  text,
+}: {
+  compact?: boolean;
+  order: AdminOrder;
+  text: AdminText;
+}) {
+  const hasReservation = order.reservedQty > 0 && isOpenReservedOrderStatus(order.status);
+  const hasUnavailableReservation =
+    order.reservedQty > 0 && order.status === "cancelled";
+  const consumed = order.fulfilledQty > 0 && order.status === "completed";
+  const className = cn(
+    compact
+      ? "h-5 shrink-0 rounded px-1.5 text-[11px] leading-none"
+      : "border px-1.5 py-0.5 text-[11px]",
+    order.reservationOverdue
+      ? "border-red-200 bg-red-50 text-red-700"
+      : hasUnavailableReservation
+        ? "border-violet-200 bg-violet-50 text-violet-700"
+        : order.reservationWarning
+      ? "border-amber-200 bg-amber-50 text-amber-800"
+      : hasReservation
+        ? "border-sky-200 bg-sky-50 text-sky-700"
+        : consumed
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+          : "border-slate-200 bg-slate-50 text-slate-600"
+  );
+
+  return (
+    <Badge className={className} title={reservationHelper(order, text)}>
+      {reservationValue(order, text)}
+    </Badge>
+  );
+}
+
+function reservationValue(order: AdminOrder, text: AdminText) {
+  if (order.reservationOverdue && order.reservedQty > 0) {
+    return formatAdminMessage(text.orders.reservation.overdueValue, {
+      count: order.reservedQty,
+    });
+  }
+
+  if (order.reservedQty > 0 && isOpenReservedOrderStatus(order.status)) {
+    return formatAdminMessage(text.orders.reservation.reservedValue, {
+      count: order.reservedQty,
+    });
+  }
+
+  if (order.reservedQty > 0 && order.status === "cancelled") {
+    return formatAdminMessage(text.orders.reservation.heldValue, {
+      count: order.reservedQty,
+    });
+  }
+
+  if (order.fulfilledQty > 0 && order.status === "completed") {
+    return formatAdminMessage(text.orders.reservation.consumedValue, {
+      count: order.fulfilledQty,
+    });
+  }
+
+  return text.orders.reservation.none;
+}
+
+function reservationHelper(order: AdminOrder, text: AdminText) {
+  if (order.reservationOverdue && order.reservationAgeHours !== null) {
+    return formatAdminMessage(text.orders.reservation.overdue, {
+      hours: order.reservationAgeHours,
+    });
+  }
+
+  if (order.reservationWarning && order.reservationAgeHours !== null) {
+    return formatAdminMessage(text.orders.reservation.warning, {
+      hours: order.reservationAgeHours,
+    });
+  }
+
+  if (order.reservedQty > 0 && order.reservationAgeHours !== null) {
+    return formatAdminMessage(text.orders.reservation.age, {
+      hours: order.reservationAgeHours,
+    });
+  }
+
+  if (order.fulfilledQty > 0 && order.status === "completed") {
+    return text.orders.reservation.completed;
+  }
+
+  if (order.reservedQty > 0 && order.status === "cancelled") {
+    return text.orders.reservation.held;
+  }
+
+  return text.orders.reservation.noneHelper;
 }
 
 function MobileFact({ label, value }: { label: string; value: string }) {
@@ -3396,8 +3599,12 @@ async function patchOrderInApi(orderId: string, patch: OrderPatchInput) {
   });
 
   if (!response.ok) {
+    const payload = await readJsonSafely(response);
+    const message = readApiErrorMessage(payload);
+
     throw new Error(
-      `PATCH /api/admin/orders/${orderId} returned ${response.status}. Local order state was not changed.`
+      message ??
+        `PATCH /api/admin/orders/${orderId} returned ${response.status}. Local order state was not changed.`
     );
   }
 
@@ -3451,8 +3658,7 @@ function normalizeAdminOrder(
     readRecordValue(row, ["status", "orderStatus", "order_status", "dbStatus"])
   );
   const paymentStatus = normalizePaymentStatusValue(
-    readRecordValue(row, ["paymentStatus", "payment_status"]),
-    status
+    readRecordValue(row, ["paymentStatus", "payment_status"])
   );
   const fulfillmentStatus = normalizeFulfillmentStatusValue(
     readRecordValue(row, ["fulfillmentStatus", "fulfillment_status"]),
@@ -3462,6 +3668,30 @@ function normalizeAdminOrder(
   const lines = rawLines
     .map((line, index) => normalizeOrderLine(line, fulfillmentStatus, index))
     .filter((line): line is OrderLine => line !== null);
+  const lineReservedQty = lines.reduce((total, line) => total + line.reservedQty, 0);
+  const lineFulfilledQty = lines.reduce((total, line) => total + line.fulfilledQty, 0);
+  const reservedQty =
+    readNumber(readRecordValue(row, ["reservedQty", "reserved_qty"])) ??
+    lineReservedQty;
+  const fulfilledQty =
+    readNumber(readRecordValue(row, ["fulfilledQty", "fulfilled_qty"])) ??
+    lineFulfilledQty;
+  const lockedSince =
+    readString(readRecordValue(row, ["lockedSince", "locked_since"])) ??
+    (reservedQty > 0 && isOpenReservedOrderStatus(status) ? createdAt : null);
+  const reservationAgeHours =
+    readNumber(readRecordValue(row, ["reservationAgeHours", "reservation_age_hours"])) ??
+    (lockedSince ? hoursSinceIso(lockedSince) : null);
+  const reservationWarning =
+    readBoolean(readRecordValue(row, ["reservationWarning", "reservation_warning"])) ||
+    (reservationAgeHours !== null &&
+      reservationAgeHours >= 72 &&
+      isOpenReservedOrderStatus(status));
+  const reservationOverdue =
+    readBoolean(readRecordValue(row, ["reservationOverdue", "reservation_overdue"])) ||
+    (reservationAgeHours !== null &&
+      reservationAgeHours >= 14 * 24 &&
+      isOpenReservedOrderStatus(status));
   const itemCount =
     readNumber(readRecordValue(row, ["items", "itemCount", "items_count"])) ??
     lines.reduce((total, line) => total + line.quantity, 0);
@@ -3533,6 +3763,12 @@ function normalizeAdminOrder(
       staffNote ||
       customerNote ||
       `Ordine importato da /api/admin/orders (${sourceLabel(source)})`,
+    reservedQty,
+    fulfilledQty,
+    lockedSince,
+    reservationAgeHours,
+    reservationOverdue,
+    reservationWarning,
     lines,
     activity: normalizeActivity(row.activity, date, source, operationHistory),
     operationHistory,
@@ -3572,7 +3808,7 @@ function normalizeOrderLine(
     lineTotal > 0 ? lineTotal : roundMoney(unitPrice * quantity);
   const fulfilledQty =
     readNumber(readRecordValue(row, ["fulfilledQty", "fulfilled_qty"])) ??
-    (fulfillmentStatus === "shipped" || fulfillmentStatus === "delivered"
+    (fulfillmentStatus === "delivered"
       ? quantity
       : 0);
   const reservedQty =
@@ -3581,7 +3817,8 @@ function normalizeOrderLine(
       ? 0
       : fulfillmentStatus === "allocated" ||
           fulfillmentStatus === "picking" ||
-          fulfillmentStatus === "packed"
+          fulfillmentStatus === "packed" ||
+          fulfillmentStatus === "shipped"
         ? quantity
         : 0);
   const picked =
@@ -3814,24 +4051,17 @@ function shortOrderId(id: string) {
   return id.length > 12 ? `#${id.slice(-10)}` : id;
 }
 
-function normalizePaymentStatusValue(
-  value: unknown,
-  status: OrderDbStatus
-): PaymentStatus {
+function normalizePaymentStatusValue(value: unknown): PaymentStatus {
   if (value === "paid") {
     return "paid";
   }
 
-  if (value === "authorized") {
+  if (value === "authorized" || value === "bank_waiting") {
     return "authorized";
   }
 
   if (value === "refunded" || value === "failed") {
     return "refunded";
-  }
-
-  if (["accepted", "picking", "packed", "shipped", "completed"].includes(status)) {
-    return "paid";
   }
 
   return "unpaid";
@@ -4026,7 +4256,19 @@ function carrierLabel(carrier: Carrier, text: AdminText) {
   return carrier === unassignedCarrier ? text.common.none : carrier;
 }
 
+function orderValueLabel(
+  text: AdminText,
+  value: string | null | undefined,
+  fallback?: string | null
+) {
+  return adminValueLabel(text, value, fallback ?? value ?? "");
+}
+
 function sourceLabel(source: OrdersSource, text?: AdminText) {
+  if (text) {
+    return adminSourceLabel(text, source, source);
+  }
+
   if (source === "admin_api") {
     return "Admin API";
   }
@@ -4035,7 +4277,7 @@ function sourceLabel(source: OrdersSource, text?: AdminText) {
     return "Supabase";
   }
 
-  return text?.catalog.apiSourceEmpty ?? "Nessun dato locale";
+  return "Nessun dato locale";
 }
 
 function readSource(value: unknown): ApiOrdersSource {
@@ -4098,6 +4340,97 @@ async function readJsonSafely(response: Response) {
   }
 }
 
+function readApiErrorMessage(payload: unknown) {
+  if (!isRecord(payload) || !isRecord(payload.error)) {
+    return null;
+  }
+
+  const message = readString(payload.error.message);
+  const details = isRecord(payload.error.details) ? payload.error.details : null;
+  const reservationIssues = normalizeReservationIssues(
+    details
+      ? readRecordValue(details, ["reservationIssues", "reservation_issues", "details"])
+      : null
+  );
+  const reservationMessage =
+    reservationIssues.length > 0
+      ? `库存无法锁定：${reservationIssues
+          .map((issue) => {
+            const availability =
+              issue.inventoryAvailableQty > 0
+                ? issue.inventoryAvailableQty
+                : issue.productStockQty;
+
+            return `${issue.sku} ${reservationIssueLabel(issue.reason)}，需 ${issue.neededQty}，可用 ${availability}`;
+          })
+          .join("；")}`
+      : null;
+
+  return [message, reservationMessage].filter(Boolean).join(" ") || null;
+}
+
+function normalizeReservationIssues(value: unknown) {
+  const payload =
+    typeof value === "string" && value.trim().startsWith("[")
+      ? parseJsonPayload(value)
+      : value;
+
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+
+  return payload
+    .map((item) => {
+      if (!isRecord(item)) {
+        return null;
+      }
+
+      const sku = readString(readRecordValue(item, ["sku", "sku_code"])) ?? "SKU";
+      const reason = readString(item.reason) ?? "unknown";
+
+      return {
+        inventoryAvailableQty:
+          readNumber(readRecordValue(item, ["inventoryAvailableQty", "inventory_available_qty"])) ??
+          0,
+        neededQty: readNumber(readRecordValue(item, ["neededQty", "needed_qty"])) ?? 0,
+        productStockQty:
+          readNumber(readRecordValue(item, ["productStockQty", "product_stock_qty"])) ?? 0,
+        reason,
+        sku,
+      };
+    })
+    .filter(Boolean) as Array<{
+    inventoryAvailableQty: number;
+    neededQty: number;
+    productStockQty: number;
+    reason: string;
+    sku: string;
+  }>;
+}
+
+function reservationIssueLabel(reason: string) {
+  switch (reason) {
+    case "missing_product":
+      return "商品不存在";
+    case "inactive_product":
+      return "商品未启用";
+    case "insufficient_inventory_ledger":
+      return "库存台账不足";
+    case "insufficient_product_stock":
+      return "可售库存不足";
+    default:
+      return "库存不足";
+  }
+}
+
+function parseJsonPayload(value: string) {
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 function extractOrderPayload(payload: unknown) {
   if (!isRecord(payload)) {
     return null;
@@ -4136,6 +4469,46 @@ function readNumber(value: unknown) {
   }
 
   return null;
+}
+
+function readBoolean(value: unknown) {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+
+    if (normalized === "true" || normalized === "1") {
+      return true;
+    }
+
+    if (normalized === "false" || normalized === "0") {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+function isOpenReservedOrderStatus(status: OrderDbStatus) {
+  return (
+    status === "submitted" ||
+    status === "accepted" ||
+    status === "picking" ||
+    status === "packed" ||
+    status === "shipped"
+  );
+}
+
+function hoursSinceIso(value: string) {
+  const timestamp = Date.parse(value);
+
+  if (!Number.isFinite(timestamp)) {
+    return null;
+  }
+
+  return Math.max(0, Math.floor((Date.now() - timestamp) / 3_600_000));
 }
 
 function readMoney(value: unknown) {
@@ -4239,6 +4612,14 @@ function activityEventLabel(eventType: string, text: AdminText) {
   }
 
   return eventType.replaceAll("_", " ");
+}
+
+function orderActivityLineLabel(text: AdminText, value: string) {
+  return value
+    .replace("Ordine importato da /api/admin/orders", text.orders.activity.imported)
+    .replace("Admin API", adminSourceLabel(text, "admin_api", "Admin API"))
+    .replace("Supabase", adminSourceLabel(text, "supabase", "Supabase"))
+    .replace("Nessun dato locale", adminSourceLabel(text, "empty", "Nessun dato locale"));
 }
 
 function activityBadgeClass(eventType: string) {

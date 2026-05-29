@@ -30,6 +30,10 @@ import {
   type PartVisual as PartVisualType,
 } from "@/lib/partspro-data";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
+import {
+  formatPercentBadge,
+  getProductPriceDisplay,
+} from "@/lib/partspro-price-display";
 import { getProductImageCandidates } from "@/lib/partspro-product-images";
 import { translateText } from "@/i18n/dictionaries/auto-translate";
 import { PartVisual } from "./part-visual";
@@ -40,11 +44,12 @@ import {
   brandLabel,
   categoryLabel,
   leadTimeLabel,
-  stockStatusLabel,
   tx,
   type StorefrontTranslator,
 } from "@/i18n/dictionaries/storefront";
 import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
+import { publicStockLevelMeta } from "@/lib/partspro-stock-availability";
+import { cn } from "@/lib/utils";
 
 type HomeCategorySummary = {
   count?: number;
@@ -87,7 +92,7 @@ const trustItems = [
   {
     icon: FileText,
     titleKey: "storefront.home.trust.invoice.title",
-    titleFallback: "Fattura B2B",
+    titleFallback: "Fattura aziendale",
     valueKey: "storefront.home.trust.invoice.value",
     valueFallback: "PEC, Codice SDI e dati aziendali",
   },
@@ -228,14 +233,14 @@ function HeroSection({
   const skuLabel =
     catalogTotal > 0
       ? new Intl.NumberFormat(locale).format(catalogTotal)
-      : tx(t, "storefront.home.hero.catalogFallback", "Catalogo B2B");
+      : tx(t, "storefront.home.hero.catalogFallback", "Catalogo professionale");
 
   return (
     <section className="relative max-w-full overflow-hidden rounded-lg border border-slate-200 bg-white px-3 py-4 shadow-[0_18px_45px_rgba(15,23,42,0.05)] sm:px-6 sm:py-7 md:px-9">
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(260px,0.9fr)] lg:items-center">
         <div className="relative z-10 min-w-0">
           <Badge className="mb-3 border border-primary/15 bg-primary/8 text-primary shadow-sm">
-            {tx(t, "storefront.home.hero.badge", "Forniture B2B Italia")}
+            {tx(t, "storefront.home.hero.badge", "Forniture professionali Italia")}
           </Badge>
           <h1 className="max-w-3xl break-words text-[30px] font-black leading-[1.03] tracking-normal text-slate-950 sm:text-5xl">
             {tx(t, "storefront.home.hero.title", "Ricambi smartphone per laboratori e rivenditori")}
@@ -244,7 +249,7 @@ function HeroSection({
             {tx(
               t,
               "storefront.home.hero.description",
-              "PartsPro unisce catalogo B2B, disponibilità locale, prezzi riservati, fatturazione elettronica e RMA tracciabile in un unico flusso per il mercato italiano."
+              "PartsPro unisce catalogo professionale, disponibilità locale, prezzi riservati, fatturazione elettronica e RMA tracciabile in un unico flusso per il mercato italiano."
             )}
           </p>
           <div className="mt-5 grid gap-2 sm:flex sm:flex-wrap">
@@ -255,8 +260,8 @@ function HeroSection({
               </Link>
             </Button>
             <Button variant="outline" asChild className="h-11 bg-white px-5">
-              <Link href="/login?next=/account">
-                {tx(t, "storefront.home.hero.loginForPrices", "Accedi ai prezzi")}
+              <Link href="/professionale">
+                {tx(t, "storefront.home.hero.loginForPrices", "Richiedi accesso professionale")}
               </Link>
             </Button>
           </div>
@@ -344,7 +349,7 @@ function WorkflowSection() {
       <SectionHeader
         actionHref="/account"
         actionLabel={tx(t, "storefront.home.workflow.action", "Apri account")}
-        eyebrow={tx(t, "storefront.home.workflow.eyebrow", "Flusso B2B")}
+        eyebrow={tx(t, "storefront.home.workflow.eyebrow", "Flusso clienti professionali")}
         title={tx(t, "storefront.home.workflow.title", "Dalla ricerca al post-vendita senza passaggi manuali")}
       />
       <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
@@ -488,7 +493,7 @@ function BrandModelStrip({
       <div className="grid rounded-lg border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.04)] sm:grid-cols-4">
         {[
           [
-            catalogTotal > 0 ? new Intl.NumberFormat(locale).format(catalogTotal) : "B2B",
+            catalogTotal > 0 ? new Intl.NumberFormat(locale).format(catalogTotal) : "Pro",
             tx(t, "storefront.home.brands.stats.sku", "SKU catalogo"),
           ],
           [
@@ -529,16 +534,11 @@ function FeaturedProductCard({
   const visibleModels = product.compatibleWith.slice(0, 2);
   const extraModels = Math.max(product.compatibleWith.length - visibleModels.length, 0);
   const hasBuyerPrice = product.price > 0;
+  const priceDisplay = getProductPriceDisplay(product);
   const priceGateCopy = homePriceGateCopy(t, priceGateReason, product.moq);
   const isReviewPriceVisible =
     hasBuyerPrice && priceGateReason === "customer_needs_assignment";
-  const stockLine = tx(
-    t,
-    "storefront.home.productCard.stockLine",
-    "{status} · {count} pz"
-  )
-    .replace("{status}", stockStatusLabel(t, product.status))
-    .replace("{count}", new Intl.NumberFormat(locale).format(product.stock));
+  const stockMeta = publicStockLevelMeta(t, product);
   const extraModelsLabel = tx(
     t,
     "storefront.home.productCard.extraModels",
@@ -590,9 +590,14 @@ function FeaturedProductCard({
         </div>
 
         <div className="mt-2 grid gap-1.5 text-[11px] font-semibold text-slate-600">
-          <div className="flex min-w-0 items-center gap-1.5 rounded-md border border-emerald-100 bg-emerald-50 px-2 py-1 text-emerald-700">
+          <div
+            className={cn(
+              "flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-1",
+              stockMeta.className
+            )}
+          >
             <PackageCheck className="size-3.5 shrink-0" />
-            <span className="truncate">{stockLine}</span>
+            <span className="truncate">{stockMeta.label}</span>
           </div>
           <div className="flex min-w-0 items-center gap-1.5 rounded-md border border-slate-100 bg-slate-50 px-2 py-1">
             <Truck className="size-3.5 shrink-0 text-primary" />
@@ -625,12 +630,22 @@ function FeaturedProductCard({
                   ? formatEuro(product.price)
                   : priceGateCopy.label}
               </div>
+              {priceDisplay.hasDiscount ? (
+                <Badge className="shrink-0 border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-black text-emerald-700">
+                  {formatPercentBadge(priceDisplay.discountPercent)}
+                </Badge>
+              ) : null}
               {isReviewPriceVisible ? (
                 <Badge className="shrink-0 border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-black text-amber-800">
                   {priceGateCopy.label}
                 </Badge>
               ) : null}
             </div>
+            {priceDisplay.hasDiscount && priceDisplay.basePrice ? (
+              <div className="truncate text-[10px] font-semibold text-slate-400 line-through">
+                {tx(t, "storefront.home.productCard.basePrice", "Prezzo base")} {formatEuro(priceDisplay.basePrice)}
+              </div>
+            ) : null}
             <div className="truncate text-[11px] text-slate-500">
               {isReviewPriceVisible
                 ? priceGateCopy.hint
@@ -663,8 +678,8 @@ function homePriceGateCopy(
 
   if (reason === "customer_needs_assignment") {
     return {
-      label: tx(t, "storefront.home.productCard.pendingPrice", "审核"),
-      hint: tx(t, "storefront.home.productCard.pendingHint", "审核中 · MOQ {moq}").replace(
+      label: tx(t, "storefront.home.productCard.pendingPrice", "In revisione"),
+      hint: tx(t, "storefront.home.productCard.pendingHint", "In revisione · MOQ {moq}").replace(
         "{moq}",
         moqLabel
       ),

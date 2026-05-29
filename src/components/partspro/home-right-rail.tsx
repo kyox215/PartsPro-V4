@@ -125,7 +125,7 @@ export function HomeRightRail() {
 
       <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
         <h2 className="mb-3 font-black">
-          {tx(t, "storefront.home.rightRail.invoice.title", "Documenti B2B")}
+          {tx(t, "storefront.home.rightRail.invoice.title", "Documenti professionali")}
         </h2>
         <div className="space-y-2 text-sm font-semibold text-slate-600">
           <InfoRow icon={CreditCard} text={tx(t, "storefront.home.rightRail.invoice.payment", "Prezzi netti dopo approvazione")} />

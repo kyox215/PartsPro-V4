@@ -62,6 +62,15 @@ export async function PATCH(request: NextRequest, { params }: AccountParams) {
     });
   }
 
+  if (admin.authState.userId === paramResult.data.userId) {
+    return apiError(
+      403,
+      "ADMIN_SELF_ROLE_DOWNGRADE_DENIED",
+      "Current admin account cannot change its own employee role.",
+      { userId: paramResult.data.userId }
+    );
+  }
+
   try {
     const supabase = await createClient();
     const { data, error } = await supabase.rpc("admin_update_employee_role", {

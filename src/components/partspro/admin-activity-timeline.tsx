@@ -32,7 +32,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { formatAdminMessage, getAdminDictionary } from "@/i18n/dictionaries/admin";
 import { cn } from "@/lib/utils";
+import { useI18n } from "./i18n-provider";
 
 export type AdminActivityType =
   | "order-status"
@@ -62,53 +64,48 @@ export type AdminActivityTimelineProps = {
 };
 
 type ActivityFilterValue = "all" | AdminActivityType;
+type ActivityCopy = ReturnType<typeof getAdminDictionary>["admin"]["activity"];
 
-const activityTypeOptions = [
-  { value: "all", label: "Tutti i tipi" },
-  { value: "order-status", label: "Stato ordine" },
-  { value: "customer-tier", label: "Listino cliente" },
-  { value: "rma-created", label: "RMA" },
-  { value: "inventory-update", label: "Magazzino" },
-  { value: "payment-posted", label: "Pagamento" },
-  { value: "note", label: "Note interne" },
-] as const satisfies readonly { value: ActivityFilterValue; label: string }[];
+const activityTypeValues = [
+  "all",
+  "order-status",
+  "customer-tier",
+  "rma-created",
+  "inventory-update",
+  "payment-posted",
+  "note",
+] as const satisfies readonly ActivityFilterValue[];
 
 const activityTypeConfig = {
   "order-status": {
     badgeClass: "border-sky-200 bg-sky-50 text-sky-700",
     icon: ClipboardCheck,
     iconClass: "bg-sky-50 text-sky-600 ring-sky-100",
-    label: "Stato ordine",
   },
   "customer-tier": {
     badgeClass: "border-violet-200 bg-violet-50 text-violet-700",
     icon: UserCog,
     iconClass: "bg-violet-50 text-violet-600 ring-violet-100",
-    label: "Listino cliente",
   },
   "rma-created": {
     badgeClass: "border-amber-200 bg-amber-50 text-amber-700",
     icon: RotateCcw,
     iconClass: "bg-amber-50 text-amber-600 ring-amber-100",
-    label: "RMA",
   },
   "inventory-update": {
     badgeClass: "border-emerald-200 bg-emerald-50 text-emerald-700",
     icon: Boxes,
     iconClass: "bg-emerald-50 text-emerald-600 ring-emerald-100",
-    label: "Magazzino",
   },
   "payment-posted": {
     badgeClass: "border-cyan-200 bg-cyan-50 text-cyan-700",
     icon: BadgeEuro,
     iconClass: "bg-cyan-50 text-cyan-600 ring-cyan-100",
-    label: "Pagamento",
   },
   note: {
     badgeClass: "border-slate-200 bg-slate-50 text-slate-700",
     icon: MessageSquarePlus,
     iconClass: "bg-slate-50 text-slate-600 ring-slate-100",
-    label: "Nota",
   },
 } as const satisfies Record<
   AdminActivityType,
@@ -116,7 +113,6 @@ const activityTypeConfig = {
     badgeClass: string;
     icon: React.ComponentType<{ className?: string }>;
     iconClass: string;
-    label: string;
   }
 >;
 
@@ -124,10 +120,12 @@ export const defaultAdminActivities: AdminActivity[] = [];
 
 export function AdminActivityTimeline({
   className,
-  description = "Cronologia operativa con filtri, ricerca e note locali.",
+  description,
   initialActivities = defaultAdminActivities,
-  title = "Timeline attivita admin",
+  title,
 }: AdminActivityTimelineProps) {
+  const { locale } = useI18n();
+  const copy = getAdminDictionary(locale).admin.activity;
   const [activities, setActivities] = React.useState<AdminActivity[]>(() =>
     sortActivities(initialActivities)
   );
@@ -138,6 +136,16 @@ export function AdminActivityTimeline({
   const [noteImportant, setNoteImportant] = React.useState(false);
   const [isNoteComposerOpen, setIsNoteComposerOpen] = React.useState(false);
   const noteComposerId = React.useId();
+  const activityTypeOptions = React.useMemo(
+    () =>
+      activityTypeValues.map((value) => ({
+        value,
+        label: copy.typeOptions[value],
+      })),
+    [copy]
+  );
+  const resolvedTitle = title ?? copy.defaultTitle;
+  const resolvedDescription = description ?? copy.defaultDescription;
 
   const filteredActivities = React.useMemo(
     () =>
@@ -145,11 +153,12 @@ export function AdminActivityTimeline({
         const matchesType = typeFilter === "all" || activity.type === typeFilter;
         const matchesImportance = !showImportantOnly || activity.important;
         const matchesSearch =
-          query.trim().length === 0 || getActivitySearchText(activity).includes(query.trim().toLowerCase());
+          query.trim().length === 0 ||
+          getActivitySearchText(activity, copy).includes(query.trim().toLowerCase());
 
         return matchesType && matchesImportance && matchesSearch;
       }),
-    [activities, query, showImportantOnly, typeFilter]
+    [activities, copy, query, showImportantOnly, typeFilter]
   );
 
   const importantCount = activities.filter((activity) => activity.important).length;
@@ -171,7 +180,7 @@ export function AdminActivityTimeline({
       return;
     }
 
-    const noteActivity = createNoteActivity(trimmedNote, noteImportant);
+    const noteActivity = createNoteActivity(trimmedNote, noteImportant, copy);
 
     setActivities((currentActivities) =>
       sortActivities([noteActivity, ...currentActivities])
@@ -190,8 +199,8 @@ export function AdminActivityTimeline({
     >
       <CardHeader className="gap-3 p-3 sm:gap-4 sm:p-6 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0">
-          <CardTitle>{title}</CardTitle>
-          <CardDescription className="hidden sm:block">{description}</CardDescription>
+          <CardTitle>{resolvedTitle}</CardTitle>
+          <CardDescription className="hidden sm:block">{resolvedDescription}</CardDescription>
         </div>
 
         <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row xl:w-auto xl:justify-end">
@@ -201,7 +210,7 @@ export function AdminActivityTimeline({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               className="h-9 bg-white pl-9"
-              placeholder="Cerca evento, SKU, cliente..."
+              placeholder={copy.searchPlaceholder}
             />
           </div>
           <Select
@@ -226,7 +235,7 @@ export function AdminActivityTimeline({
             onClick={() => setShowImportantOnly((value) => !value)}
           >
             <Flag className="size-4" />
-            Importanti
+            {copy.importantOnly}
           </Button>
         </div>
       </CardHeader>
@@ -234,13 +243,21 @@ export function AdminActivityTimeline({
       <CardContent className="space-y-3 p-3 pt-0 sm:space-y-4 sm:p-6 sm:pt-0">
         <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
           <span className="sm:hidden">
-            {filteredActivities.length} eventi · {importantCount} importanti
+            {formatAdminMessage(copy.showCountMobile, {
+              important: importantCount,
+              shown: filteredActivities.length,
+            })}
           </span>
           <span className="hidden sm:inline">
-            Vista {filteredActivities.length} di {activities.length} eventi
+            {formatAdminMessage(copy.showCount, {
+              shown: filteredActivities.length,
+              total: activities.length,
+            })}
           </span>
           <span className="hidden text-slate-300 sm:inline">/</span>
-          <span className="hidden sm:inline">{importantCount} marcati importanti</span>
+          <span className="hidden sm:inline">
+            {formatAdminMessage(copy.importantCount, { count: importantCount })}
+          </span>
         </div>
 
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-4">
@@ -250,12 +267,14 @@ export function AdminActivityTimeline({
                 <ActivityItem
                   key={activity.id}
                   activity={activity}
+                  copy={copy}
+                  locale={locale}
                   onToggleImportant={toggleImportant}
                 />
               ))
             ) : (
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-center text-sm text-slate-500 sm:p-6">
-                Nessun evento corrisponde ai filtri correnti.
+                {copy.noEvents}
               </div>
             )}
           </div>
@@ -263,9 +282,9 @@ export function AdminActivityTimeline({
           <aside className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-2.5 lg:p-3">
             <div className="flex items-start justify-between gap-3">
               <div className="hidden min-w-0 lg:block">
-                <div className="text-sm font-bold text-slate-900">Nota locale</div>
+                <div className="text-sm font-bold text-slate-900">{copy.localNoteTitle}</div>
                 <div className="mt-1 text-xs text-slate-500">
-                  Aggiunta in questa sessione, senza persistenza remota.
+                  {copy.localNoteDescription}
                 </div>
               </div>
               <div className="flex w-full shrink-0 items-center gap-2 lg:w-auto">
@@ -274,7 +293,7 @@ export function AdminActivityTimeline({
                   variant={noteImportant ? "default" : "outline"}
                   size="icon-sm"
                   className={cn("hidden lg:inline-flex", noteImportant ? "" : "bg-white")}
-                  aria-label="Marca la nota come importante"
+                  aria-label={copy.markNoteImportant}
                   aria-pressed={noteImportant}
                   onClick={() => setNoteImportant((value) => !value)}
                 >
@@ -296,7 +315,7 @@ export function AdminActivityTimeline({
                       isNoteComposerOpen && "rotate-180"
                     )}
                   />
-                  {isNoteComposerOpen ? "Chiudi nota" : "+ Nota"}
+                  {isNoteComposerOpen ? copy.closeNote : copy.openNote}
                 </Button>
               </div>
             </div>
@@ -307,14 +326,14 @@ export function AdminActivityTimeline({
             >
               <div className="mb-3 flex items-center justify-between gap-3 lg:hidden">
                 <span className="text-xs font-medium text-slate-600">
-                  Marca importante
+                  {copy.markNoteImportant}
                 </span>
                 <Button
                   type="button"
                   variant={noteImportant ? "default" : "outline"}
                   size="icon-sm"
                   className={noteImportant ? "" : "bg-white"}
-                  aria-label="Marca la nota come importante"
+                  aria-label={copy.markNoteImportant}
                   aria-pressed={noteImportant}
                   onClick={() => setNoteImportant((value) => !value)}
                 >
@@ -326,12 +345,12 @@ export function AdminActivityTimeline({
                 value={noteText}
                 onChange={(event) => setNoteText(event.target.value)}
                 className="min-h-24 bg-white lg:min-h-28"
-                placeholder="Scrivi una nota per il team operativo..."
+                placeholder={copy.note.placeholder}
               />
 
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <span className="text-xs text-slate-500">
-                  {noteText.trim().length} caratteri
+                  {formatAdminMessage(copy.chars, { count: noteText.trim().length })}
                 </span>
                 <Button
                   type="button"
@@ -340,7 +359,7 @@ export function AdminActivityTimeline({
                   disabled={!noteText.trim()}
                 >
                   <MessageSquarePlus className="size-4" />
-                  Aggiungi nota
+                  {copy.addNote}
                 </Button>
               </div>
             </div>
@@ -353,9 +372,13 @@ export function AdminActivityTimeline({
 
 function ActivityItem({
   activity,
+  copy,
+  locale,
   onToggleImportant,
 }: {
   activity: AdminActivity;
+  copy: ActivityCopy;
+  locale: string;
   onToggleImportant: (activityId: string) => void;
 }) {
   const config = activityTypeConfig[activity.type];
@@ -384,16 +407,16 @@ function ActivityItem({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
             <Badge variant="outline" className={config.badgeClass}>
-              {config.label}
+              {copy.typeOptions[activity.type]}
             </Badge>
             {activity.important && (
               <Badge variant="outline" className="hidden border-primary/30 bg-white text-primary sm:inline-flex">
                 <Star className="size-3" />
-                Importante
+                {copy.importantBadge}
               </Badge>
             )}
             <span className="text-xs font-medium text-slate-500">
-              {formatActivityDate(activity.createdAt)}
+              {formatActivityDate(activity.createdAt, locale)}
             </span>
           </div>
 
@@ -409,7 +432,7 @@ function ActivityItem({
 
           <details className="group mt-3 border-t border-slate-100 pt-2">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-md py-1 text-xs font-semibold text-slate-600 outline-none transition hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden">
-              <span>Dettagli</span>
+              <span>{copy.details}</span>
               <ChevronDown className="size-4 shrink-0 transition-transform group-open:rotate-180" />
             </summary>
 
@@ -420,7 +443,7 @@ function ActivityItem({
 
               <div className="flex min-w-0 flex-wrap gap-1.5 text-xs text-slate-500">
                 <span className="min-w-0 max-w-full break-words rounded-md bg-slate-100 px-2 py-1 font-medium leading-5">
-                  Attore: {activity.actor}
+                  {copy.actor}: {activity.actor}
                 </span>
                 {metadataEntries.map(([key, value]) => (
                   <span
@@ -442,8 +465,8 @@ function ActivityItem({
           className="shrink-0"
           aria-label={
             activity.important
-              ? "Rimuovi marcatore importante"
-              : "Marca evento come importante"
+              ? copy.removeImportant
+              : copy.markImportant
           }
           aria-pressed={Boolean(activity.important)}
           onClick={() => onToggleImportant(activity.id)}
@@ -459,16 +482,20 @@ function ActivityItem({
   );
 }
 
-function createNoteActivity(noteText: string, important: boolean): AdminActivity {
+function createNoteActivity(
+  noteText: string,
+  important: boolean,
+  copy: ActivityCopy
+): AdminActivity {
   const createdAt = new Date().toISOString();
 
   return {
     id: `note-${Date.now()}`,
     type: "note",
-    title: "Nota amministrativa",
+    title: copy.note.title,
     description: noteText,
     actor: "Admin",
-    subject: "Timeline",
+    subject: copy.note.subject,
     createdAt,
     important,
   };
@@ -487,7 +514,7 @@ function getActivityMetadataEntries(
   );
 }
 
-function getActivitySearchText(activity: AdminActivity): string {
+function getActivitySearchText(activity: AdminActivity, copy: ActivityCopy): string {
   const metadataText = activity.metadata
     ? Object.entries(activity.metadata)
         .map(([key, value]) => `${key} ${value ?? ""}`)
@@ -499,7 +526,7 @@ function getActivitySearchText(activity: AdminActivity): string {
     activity.description,
     activity.actor,
     activity.subject,
-    activityTypeConfig[activity.type].label,
+    copy.typeOptions[activity.type],
     metadataText,
   ]
     .join(" ")
@@ -513,8 +540,8 @@ function sortActivities(activities: AdminActivity[]): AdminActivity[] {
   );
 }
 
-function formatActivityDate(value: string): string {
-  return new Intl.DateTimeFormat("it-IT", {
+function formatActivityDate(value: string, locale: string): string {
+  return new Intl.DateTimeFormat(locale, {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",

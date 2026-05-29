@@ -44,6 +44,7 @@ export const orderPatchSchema = z
     tracking: z.string().trim().max(120).optional(),
     note: z.string().trim().max(500).optional(),
     staffNote: z.string().trim().max(1000).optional(),
+    forceCancel: z.boolean().optional(),
     rollback: z.boolean().optional(),
   })
   .strict();
