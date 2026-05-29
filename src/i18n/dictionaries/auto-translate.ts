@@ -109,7 +109,7 @@ export const zhExactText: Record<string, string> = {
   "Aggiungi al carrello": "加入购物车",
   "Accedi per prezzo": "登录查看价格",
   "Prezzi riservati ai buyer verificati": "价格仅对已验证采购商开放",
-  "IVA escl.": "不含增值税",
+  "IVA inclusa": "含增值税",
   "Listino da approvare": "价目表待审核",
   "Continua acquisti": "继续采购",
   "Vai al checkout": "去结账",

@@ -790,13 +790,15 @@ type ProductQueryRequest = {
   ): PromiseLike<{ count: number | null; data: unknown; error: unknown }>;
 };
 
-export type DeliveryAddressSnapshot = {
-  street: string;
-  zip: string;
-  city: string;
-  province: string;
-  country: string;
-};
+export type DeliveryAddressSnapshot =
+  | string
+  | {
+      street: string;
+      zip: string;
+      city: string;
+      province: string;
+      country: string;
+    };
 
 export type FiscalSnapshot = {
   companySnapshot: {
@@ -806,12 +808,13 @@ export type FiscalSnapshot = {
     pec: string;
     codiceDestinatario: string;
     address?: DeliveryAddressSnapshot;
+    deliveryAddress?: DeliveryAddressSnapshot;
   };
 };
 
 export type SaveOrderInput = {
   company: CompanyProfile;
-  paymentMethod: "bank_transfer" | "card" | "agreed_terms";
+  paymentMethod: "bank_transfer" | "cash" | "agreed_terms";
   purchaseOrderNumber?: string;
   deliveryAddress: DeliveryAddressSnapshot;
   fiscal: FiscalSnapshot;
@@ -822,6 +825,7 @@ export type SaveOrderInput = {
 
 export type SavedOrder = {
   id: string;
+  orderNo?: string;
   status: OrderStatus;
   createdAt: string;
 };
@@ -4371,7 +4375,6 @@ async function createRemoteOrderTransaction(
     p_shipping: centsToNumber(input.totals.shippingCents),
     p_fiscal: {
       payment_method: input.paymentMethod,
-      purchase_order_number: input.purchaseOrderNumber ?? null,
       totals: {
         subtotal: centsToNumber(input.totals.subtotalCents),
         shipping: centsToNumber(input.totals.shippingCents),
@@ -4387,10 +4390,10 @@ async function createRemoteOrderTransaction(
         codice_destinatario: input.fiscal.companySnapshot.codiceDestinatario,
         price_list: input.company.priceList,
         address: input.fiscal.companySnapshot.address ?? input.deliveryAddress,
-        delivery_address: input.deliveryAddress,
+        delivery_address: input.fiscal.companySnapshot.deliveryAddress ?? input.deliveryAddress,
       },
     },
-    p_vat_rate: dominantVatRate(input.lines),
+    p_vat_rate: 0,
   };
 
   try {
@@ -4417,9 +4420,11 @@ async function createRemoteOrderTransaction(
 
     const row = await readSingleRow(context.client, "orders", "id", orderId);
     const createdAt = pickString(row, ["created_at", "createdAt"]) ?? new Date().toISOString();
+    const orderNo = pickString(row, ["order_no", "order_number", "reference"]) ?? orderId;
 
     return {
-      id: pickString(row, ["order_no", "order_number", "reference"]) ?? orderId,
+      id: orderNo,
+      orderNo,
       status: normalizeOrderStatus(pickString(row, ["status", "payment_status"])),
       createdAt,
     };
@@ -5197,7 +5202,7 @@ function buildProductPayload(
         ? undefined
         : stockQtyToDbStatus(input.stock)
   );
-  assignDefined(payload, "vat_mode", input.vatMode ?? (partial ? undefined : "IVA esclusa"));
+  assignDefined(payload, "vat_mode", input.vatMode ?? (partial ? undefined : "IVA inclusa"));
   assignDefined(payload, "warranty_days", input.rmaDays ?? (partial ? undefined : 180));
   assignDefined(payload, "weight_gram", input.weightGram ?? (partial ? undefined : 0));
   assignDefined(payload, "model", trimOptional(input.model));
@@ -5465,7 +5470,7 @@ function mapAdminProductRow(row: DbRow): AdminProduct | null {
     costPrice,
     margin,
     retailPrice: pickNumber(row, ["retail_price", "retailPrice"]) ?? product.retailPrice,
-    vatMode: pickString(row, ["vat_mode"]) ?? "IVA esclusa",
+    vatMode: pickString(row, ["vat_mode"]) ?? "IVA inclusa",
     warrantyDays: pickNumber(row, ["warranty_days"]) ?? product.rmaDays,
     weightGram: pickNumber(row, ["weight_gram"]) ?? 0,
     model: pickString(row, ["model"]) ?? undefined,
@@ -5624,6 +5629,7 @@ function mapCompanyRow(row: DbRow): CompanyProfile | null {
   }
 
   const billingAddress = getObject(row, "billing_address") ?? getObject(row, "billingAddress");
+  const shippingAddress = getObject(row, "shipping_address") ?? getObject(row, "shippingAddress");
 
   return {
     id,
@@ -5634,8 +5640,13 @@ function mapCompanyRow(row: DbRow): CompanyProfile | null {
     codiceDestinatario: pickString(row, ["codice_destinatario", "codiceDestinatario", "sdi_code"]) ?? "",
     status: normalizeCompanyStatus(pickString(row, ["status"])),
     priceList: normalizePriceList(pickString(row, ["level", "price_list", "priceList", "tier"])),
+    billingAddress: pickString(row, ["billing_address", "billingAddress"]) ?? formatAddressObject(billingAddress),
     city: pickString(row, ["city"]) ?? pickString(billingAddress, ["city"]) ?? "",
+    contactName: pickString(row, ["contact_name", "contactName"]) ?? "",
+    email: pickString(row, ["email"]) ?? "",
+    phone: pickString(row, ["phone"]) ?? "",
     province: pickString(row, ["province"]) ?? pickString(billingAddress, ["province"]) ?? "",
+    shippingAddress: pickString(row, ["shipping_address", "shippingAddress"]) ?? formatAddressObject(shippingAddress),
     customerType: normalizeCustomerType(pickString(row, ["customer_type"])),
     assignmentStatus: normalizeCustomerAssignmentStatus(pickString(row, ["assignment_status"])),
     level: normalizePriceList(pickString(row, ["level", "tier"])),
@@ -6507,6 +6518,21 @@ function getObject(row: DbRow, key: string): DbRow | null {
   return isDbRow(value) ? value : null;
 }
 
+function formatAddressObject(row: DbRow | null) {
+  if (!row) {
+    return "";
+  }
+
+  return [
+    pickString(row, ["street", "address", "line1"]),
+    [pickString(row, ["zip", "postal_code", "cap"]), pickString(row, ["city"])].filter(Boolean).join(" "),
+    pickString(row, ["province", "state"]),
+    pickString(row, ["country"]),
+  ]
+    .filter(Boolean)
+    .join(", ");
+}
+
 function getArray(row: DbRow, key: string) {
   const value = row[key];
   return Array.isArray(value) ? value : [];
@@ -6865,6 +6891,10 @@ function parseUuid(value: string) {
 }
 
 function formatDeliveryAddress(address: DeliveryAddressSnapshot) {
+  if (typeof address === "string") {
+    return address.trim();
+  }
+
   return [
     address.street,
     [address.zip, address.city].filter(Boolean).join(" "),
@@ -6873,11 +6903,6 @@ function formatDeliveryAddress(address: DeliveryAddressSnapshot) {
   ]
     .filter(Boolean)
     .join(", ");
-}
-
-function dominantVatRate(lines: PreparedOrderLine[]) {
-  const rates = [...new Set(lines.map((line) => line.product.vatRate))];
-  return rates.length === 1 ? rates[0] : 22;
 }
 
 function extractOrderId(value: unknown) {

@@ -256,8 +256,8 @@ export const storefrontItIT = {
   "storefront.cart.increaseTitle": "Aumenta quantità",
   "storefront.cart.itemCountMany": "{count} pezzi",
   "storefront.cart.itemCountOne": "1 pezzo",
-  "storefront.cart.lineCountMany": "{count} righe",
-  "storefront.cart.lineCountOne": "1 riga",
+  "storefront.cart.lineCountMany": "{count} articoli",
+  "storefront.cart.lineCountOne": "1 articolo",
   "storefront.cart.loadingDescription":
     "Lettura della selezione salvata in questo browser.",
   "storefront.cart.loadingProductsDescription":
@@ -301,7 +301,7 @@ export const storefrontItIT = {
   "storefront.cart.rejectedUnavailableDescription":
     "L'articolo non e acquistabile in questo momento per disponibilita o MOQ.",
   "storefront.cart.rejectedUnavailableLabel": "Non acquistabile",
-  "storefront.cart.rows": "Righe",
+  "storefront.cart.rows": "Articoli",
   "storefront.cart.stockBadge": "Stock {stock}",
   "storefront.cart.summaryLoading": "Caricamento carrello salvato nel browser...",
   "storefront.cart.summaryNote":
@@ -335,6 +335,8 @@ export const storefrontItIT = {
   "storefront.checkout.companyMissingDescription":
     "Nessun cliente è collegato alla sessione corrente. Crea o completa il profilo in gestione clienti prima del checkout.",
   "storefront.checkout.companyMissingTitle": "Profilo cliente mancante",
+  "storefront.checkout.confirm.single":
+    "Confermo dati fiscali, indirizzo di spedizione, prezzi IVA inclusa, disponibilita e MOQ mostrati nel checkout.",
   "storefront.checkout.confirm.address":
     "Confermo che l'indirizzo di spedizione e la fascia consegna sono aggiornati.",
   "storefront.checkout.confirm.invoice":
@@ -343,7 +345,7 @@ export const storefrontItIT = {
     "Accetto che disponibilità, MOQ e tempi di evasione seguano lo stato magazzino mostrato nel checkout.",
   "storefront.checkout.confirmTitle": "Conferme prima dell'invio",
   "storefront.checkout.description":
-    "I dati vengono preparati come snapshot ordine per fattura, spedizione e gestione RMA. L'invio usa l'endpoint esistente /api/orders con le righe salvate nel carrello locale.",
+    "Controlla cliente, articoli, spedizione e pagamento prima dell'invio.",
   "storefront.checkout.disabledCompanyReason":
     "Checkout disabilitato: collega un profilo cliente all'utente Supabase.",
   "storefront.checkout.accountVerified": "Account verificato",
@@ -355,6 +357,14 @@ export const storefrontItIT = {
   "storefront.checkout.customerNotReady": "Cliente non pronto per l'ordine",
   "storefront.checkout.customerNotReadyDescription":
     "Il cliente selezionato non soddisfa i requisiti ordine. Controlla stato, tipo, assegnazione e dati profilo.",
+  "storefront.checkout.customerBlocker.assignment":
+    "Il cliente deve essere assegnato a un listino prima dell'ordine.",
+  "storefront.checkout.customerBlocker.profile":
+    "Completa questi dati cliente prima dell'ordine: {fields}.",
+  "storefront.checkout.customerBlocker.status":
+    "Il cliente deve essere attivo prima di creare ordini.",
+  "storefront.checkout.customerBlocker.type":
+    "Il cliente deve essere wholesale per l'ordine assistito.",
   "storefront.checkout.customerContextPendingDescription":
     "Seleziona o completa il cliente per calcolare prezzo, scorte e MOQ prima dell'invio. SKU: {skus}.",
   "storefront.checkout.customerContextPendingTitle": "Cliente da completare",
@@ -366,8 +376,10 @@ export const storefrontItIT = {
   "storefront.checkout.delegated.placeholder": "Seleziona cliente",
   "storefront.checkout.delegated.select": "Seleziona cliente",
   "storefront.checkout.delegated.title": "Ordine per conto cliente",
+  "storefront.checkout.deliveryAddressMissing":
+    "Completa l'indirizzo di spedizione nel profilo cliente.",
   "storefront.checkout.fixCart": "Torna al carrello per correggere",
-  "storefront.checkout.formInvalid": "Completa indirizzo e conferme prima di inviare l'ordine.",
+  "storefront.checkout.formInvalid": "Completa indirizzo cliente e conferma finale prima di inviare l'ordine.",
   "storefront.checkout.formInvalidTitle": "Dati checkout incompleti",
   "storefront.checkout.itemPendingAccount":
     "Accedi o collega un cliente per calcolare prezzo, scorte e MOQ.",
@@ -377,7 +389,8 @@ export const storefrontItIT = {
     "Seleziona o completa il cliente per calcolare prezzo, scorte e MOQ.",
   "storefront.checkout.itemUnavailable":
     "Questa riga non e piu disponibile per il checkout.",
-  "storefront.checkout.itemsNeedReview": "Righe da rivedere",
+  "storefront.checkout.itemsNeedReview": "Articoli da rivedere",
+  "storefront.checkout.itemColumn.product": "Prodotto",
   "storefront.checkout.issue.duplicate": "SKU duplicato nel carrello.",
   "storefront.checkout.issue.moq": "Quantità inferiore al MOQ {moq}.",
   "storefront.checkout.issue.outOfStock": "Prodotto attualmente esaurito.",
@@ -388,9 +401,9 @@ export const storefrontItIT = {
   "storefront.checkout.issue.profileMissing": "Profilo cliente non disponibile.",
   "storefront.checkout.issue.stockLimit": "Disponibili solo {stock} pezzi.",
   "storefront.checkout.issue.unavailable": "SKU non disponibile nel catalogo.",
-  "storefront.checkout.loadingItemsTitle": "Caricamento righe ordine",
+  "storefront.checkout.loadingItemsTitle": "Caricamento articoli ordine",
   "storefront.checkout.loadingTargetPrices":
-    "Caricamento prezzi cliente per le righe del carrello.",
+    "Caricamento prezzi cliente per gli articoli del carrello.",
   "storefront.checkout.preview.errorTitle": "Controllo ordine non riuscito",
   "storefront.checkout.preview.loading": "Controllo prezzi, scorte e MOQ in corso.",
   "storefront.checkout.shippingFixed":
@@ -401,12 +414,12 @@ export const storefrontItIT = {
   "storefront.checkout.required": "Campo obbligatorio.",
   "storefront.checkout.savedShippingAddress": "Indirizzo spedizione salvato",
   "storefront.checkout.section.customer": "Cliente e fatturazione",
-  "storefront.checkout.section.items": "Righe ordine",
+  "storefront.checkout.section.items": "Dettaglio articoli",
   "storefront.checkout.summary.needsCustomer":
     "Seleziona il cliente per calcolare prezzi, scorte e MOQ.",
   "storefront.checkout.summary.note":
-    "Totali stimati dai prezzi cliente correnti. Il gestionale conferma prezzi, scorte e riserve al momento dell'invio.",
-  "storefront.checkout.unresolvedItems": "Alcune righe non sono piu disponibili.",
+    "Prezzi IVA inclusa; viene aggiunta solo la spedizione.",
+  "storefront.checkout.unresolvedItems": "Alcuni articoli non sono piu disponibili.",
   "storefront.checkout.field.codiceDestinatario": "Codice destinatario",
   "storefront.checkout.field.codiceFiscale": "Codice fiscale",
   "storefront.checkout.field.companyName": "Ragione sociale",
@@ -436,9 +449,12 @@ export const storefrontItIT = {
   "storefront.checkout.option.bankTransfer.description":
     "Crea ordine in attesa di pagamento.",
   "storefront.checkout.option.bankTransfer.label": "Bonifico bancario",
-  "storefront.checkout.option.card.description": "Metodo registrato nel gestionale.",
-  "storefront.checkout.option.card.label": "Carta aziendale",
-  "storefront.checkout.option.express.detail": "Gratis sopra 250 EUR imponibile",
+  "storefront.checkout.option.cash.description":
+    "Ordine in attesa di incasso in sede.",
+  "storefront.checkout.option.cash.label": "Contanti",
+  "storefront.checkout.option.card.description": "Metodo non più usato nel checkout.",
+  "storefront.checkout.option.card.label": "Metodo legacy",
+  "storefront.checkout.option.express.detail": "Gratis sopra 250 EUR prodotti IVA inclusa",
   "storefront.checkout.option.express.description":
     "GLS/BRT con tracking e consegna in Italia lavorativa.",
   "storefront.checkout.option.express.label": "Corriere espresso 24/48h",
@@ -510,6 +526,7 @@ export const storefrontItIT = {
     "Alcuni articoli del carrello non sono più disponibili: torna al carrello e rimuovili prima di confermare l'ordine.",
   "storefront.checkout.success.openOrders": "Vai agli ordini",
   "storefront.checkout.success.total": "Totale ordine",
+  "storefront.checkout.unitPriceTaxIncluded": "Prezzo IVA incl.",
   "storefront.checkout.title": "Conferma ordine e dati fiscali",
   "storefront.customer.assignment.archived": "Archiviato",
   "storefront.customer.assignment.assigned": "Assegnato",
@@ -556,7 +573,7 @@ export const storefrontItIT = {
   "storefront.product.card.unavailable": "Esaurito",
   "storefront.product.card.unavailableAria":
     "{name} non disponibile per il carrello",
-  "storefront.product.card.visiblePriceHint": "IVA escl. · MOQ {moq}",
+  "storefront.product.card.visiblePriceHint": "IVA inclusa · MOQ {moq}",
   "storefront.product.card.wholesaleHint": "MOQ {moq} · verifica cliente",
   "storefront.product.card.wholesaleLabel": "Listino da abilitare",
   "storefront.product.detail.customerConditions": "Condizioni cliente",
@@ -701,7 +718,7 @@ export const storefrontItIT = {
   "storefront.home.productCard.pendingHint": "In revisione · MOQ {moq}",
   "storefront.home.productCard.pendingPrice": "In revisione",
   "storefront.home.productCard.priceHint": "MOQ {moq} · login richiesto",
-  "storefront.home.productCard.priceVisibleHint": "IVA escl. · MOQ {moq}",
+  "storefront.home.productCard.priceVisibleHint": "IVA inclusa · MOQ {moq}",
   "storefront.home.productCard.profileHint": "MOQ {moq} · riprova tra poco",
   "storefront.home.productCard.profilePrice": "Profilo in preparazione",
   "storefront.home.productCard.stockLine": "{level}",
@@ -990,8 +1007,8 @@ export const storefrontZhCN = {
   "storefront.cart.increaseTitle": "增加数量",
   "storefront.cart.itemCountMany": "{count} 件",
   "storefront.cart.itemCountOne": "1 件",
-  "storefront.cart.lineCountMany": "{count} 行",
-  "storefront.cart.lineCountOne": "1 行",
+  "storefront.cart.lineCountMany": "{count} 个商品项",
+  "storefront.cart.lineCountOne": "1 个商品项",
   "storefront.cart.loadingDescription": "正在读取此浏览器中保存的商品选择。",
   "storefront.cart.loadingProductsDescription":
     "正在获取已保存商品的可用库存、起订量和价格。",
@@ -1034,13 +1051,13 @@ export const storefrontZhCN = {
   "storefront.cart.rejectedUnavailableDescription":
     "该商品当前因库存或起订量限制无法购买。",
   "storefront.cart.rejectedUnavailableLabel": "当前不可购买",
-  "storefront.cart.rows": "行数",
+  "storefront.cart.rows": "商品项",
   "storefront.cart.stockBadge": "库存 {stock}",
   "storefront.cart.summaryLoading": "正在加载浏览器中保存的购物车...",
   "storefront.cart.summaryNote":
     "购物车不会锁定库存；库存和数量只会在确认下单时重新检查并锁定。",
   "storefront.cart.summaryNoteBlocked":
-    "购物车不会锁定库存。部分商品需要登录、恢复库存或手动调整数量后才能结账；合计金额只包含当前可购买的商品行。",
+    "购物车不会锁定库存。部分商品需要登录、恢复库存或手动调整数量后才能结账；合计金额只包含当前可购买的商品项。",
   "storefront.cart.summaryNoteReviewCheckout":
     "可以先进入结账页查看和处理原因；提交订单前仍会校验登录、客户资料、价格、库存和 MOQ。",
   "storefront.cart.summaryNoteSynced":
@@ -1067,6 +1084,8 @@ export const storefrontZhCN = {
   "storefront.checkout.companyMissingDescription":
     "当前会话没有关联客户。请先在客户管理中创建或补全客户资料，再进行结账。",
   "storefront.checkout.companyMissingTitle": "缺少客户资料",
+  "storefront.checkout.confirm.single":
+    "我确认税务资料、客户账号配送地址、含税价格、库存和 MOQ 均已核对。",
   "storefront.checkout.confirm.address": "我确认配送地址和首选配送时段已更新。",
   "storefront.checkout.confirm.invoice":
     "我确认增值税号、税号、PEC 和收件代码可用于电子发票。",
@@ -1074,7 +1093,7 @@ export const storefrontZhCN = {
     "我接受库存、起订量和发货时间以结账页显示的仓库状态为准。",
   "storefront.checkout.confirmTitle": "提交前确认",
   "storefront.checkout.description":
-    "这些资料会作为订单快照，用于发票、配送和 RMA 管理。提交会使用现有 /api/orders 接口，并发送本地购物车中保存的行。",
+    "提交前核对客户、商品、配送和付款。",
   "storefront.checkout.disabledCompanyReason":
     "结账已禁用：请将 Supabase 用户关联到客户资料。",
   "storefront.checkout.accountVerified": "账户已验证",
@@ -1085,6 +1104,14 @@ export const storefrontZhCN = {
   "storefront.checkout.customerNotReady": "客户暂不能下单",
   "storefront.checkout.customerNotReadyDescription":
     "所选客户当前不满足下单条件，请检查客户状态、类型、归属和资料完整度。",
+  "storefront.checkout.customerBlocker.assignment":
+    "该客户必须先分配到价目表后才能下单。",
+  "storefront.checkout.customerBlocker.profile":
+    "请先补全这些客户资料：{fields}。",
+  "storefront.checkout.customerBlocker.status":
+    "该客户必须处于活跃/已批准状态后才能下单。",
+  "storefront.checkout.customerBlocker.type":
+    "代客户下单只支持已启用的批发客户。",
   "storefront.checkout.customerContextPendingDescription":
     "请先选择或完善客户资料，再计算商品价格、库存和 MOQ 后提交。SKU：{skus}。",
   "storefront.checkout.customerContextPendingTitle": "客户资料待完善",
@@ -1096,15 +1123,17 @@ export const storefrontZhCN = {
   "storefront.checkout.delegated.placeholder": "选择客户",
   "storefront.checkout.delegated.select": "选择客户",
   "storefront.checkout.delegated.title": "代客户下单",
+  "storefront.checkout.deliveryAddressMissing": "请先在客户资料中补全配送地址。",
   "storefront.checkout.fixCart": "返回购物车修正",
-  "storefront.checkout.formInvalid": "请补全配送地址并勾选确认项后再提交订单。",
+  "storefront.checkout.formInvalid": "请补全客户配送地址并勾选最终确认后再提交订单。",
   "storefront.checkout.formInvalidTitle": "结账资料不完整",
   "storefront.checkout.itemPendingAccount": "登录或关联客户后计算价格、库存和 MOQ。",
   "storefront.checkout.itemPendingCustomer": "选择客户后计算价格、库存和 MOQ。",
   "storefront.checkout.itemPendingCustomerContext":
     "选择或完善客户资料后再计算价格、库存和 MOQ。",
-  "storefront.checkout.itemUnavailable": "该商品行当前无法用于结账。",
-  "storefront.checkout.itemsNeedReview": "商品行需要处理",
+  "storefront.checkout.itemUnavailable": "该商品项当前无法用于结账。",
+  "storefront.checkout.itemsNeedReview": "商品项需要处理",
+  "storefront.checkout.itemColumn.product": "商品",
   "storefront.checkout.issue.duplicate": "购物车中有重复 SKU。",
   "storefront.checkout.issue.moq": "数量低于起订量 {moq}。",
   "storefront.checkout.issue.outOfStock": "商品当前缺货。",
@@ -1113,7 +1142,7 @@ export const storefrontZhCN = {
   "storefront.checkout.issue.profileMissing": "客户资料不可用。",
   "storefront.checkout.issue.stockLimit": "当前仅有 {stock} 件可售。",
   "storefront.checkout.issue.unavailable": "该 SKU 当前不在可售目录中。",
-  "storefront.checkout.loadingItemsTitle": "正在加载订单行",
+  "storefront.checkout.loadingItemsTitle": "正在加载商品明细",
   "storefront.checkout.loadingTargetPrices": "正在加载购物车商品的客户价格。",
   "storefront.checkout.preview.errorTitle": "订单校验失败",
   "storefront.checkout.preview.loading": "正在校验价格、库存和 MOQ。",
@@ -1125,11 +1154,11 @@ export const storefrontZhCN = {
   "storefront.checkout.required": "必填字段。",
   "storefront.checkout.savedShippingAddress": "已保存配送地址",
   "storefront.checkout.section.customer": "客户与开票",
-  "storefront.checkout.section.items": "订单行",
+  "storefront.checkout.section.items": "商品明细",
   "storefront.checkout.summary.needsCustomer": "选择客户后计算客户价、库存和 MOQ。",
   "storefront.checkout.summary.note":
-    "合计基于当前客户价格估算；提交时后台会再次确认价格、库存和锁货。",
-  "storefront.checkout.unresolvedItems": "部分商品行当前不可用。",
+    "价格已含税，仅另计运费。",
+  "storefront.checkout.unresolvedItems": "部分商品项当前不可用。",
   "storefront.checkout.field.codiceDestinatario": "收件代码",
   "storefront.checkout.field.codiceFiscale": "税号",
   "storefront.checkout.field.companyName": "公司名称",
@@ -1157,9 +1186,11 @@ export const storefrontZhCN = {
   "storefront.checkout.option.agreedTerms.label": "约定付款",
   "storefront.checkout.option.bankTransfer.description": "创建待付款订单。",
   "storefront.checkout.option.bankTransfer.label": "银行转账",
-  "storefront.checkout.option.card.description": "后台中已登记的付款方式。",
-  "storefront.checkout.option.card.label": "公司卡",
-  "storefront.checkout.option.express.detail": "未税金额超过 250 EUR 免运费",
+  "storefront.checkout.option.cash.description": "创建待收款订单，后台收款后再标记已支付。",
+  "storefront.checkout.option.cash.label": "现金支付",
+  "storefront.checkout.option.card.description": "结账页已不再使用该付款方式。",
+  "storefront.checkout.option.card.label": "旧付款方式",
+  "storefront.checkout.option.express.detail": "含税商品金额超过 250 EUR 免运费",
   "storefront.checkout.option.express.description":
     "GLS/BRT，可追踪，意大利工作日配送。",
   "storefront.checkout.option.express.label": "24/48 小时快递",
@@ -1225,6 +1256,7 @@ export const storefrontZhCN = {
     "购物车中有商品当前不可用：请返回购物车移除后再确认订单。",
   "storefront.checkout.success.openOrders": "查看订单",
   "storefront.checkout.success.total": "订单总计",
+  "storefront.checkout.unitPriceTaxIncluded": "含税单价",
   "storefront.checkout.title": "确认订单与税务资料",
   "storefront.customer.assignment.archived": "已归档",
   "storefront.customer.assignment.assigned": "已分配",
@@ -1269,7 +1301,7 @@ export const storefrontZhCN = {
   "storefront.product.card.suspendedLabel": "账户已暂停",
   "storefront.product.card.unavailable": "缺货",
   "storefront.product.card.unavailableAria": "{name} 当前不能加入购物车",
-  "storefront.product.card.visiblePriceHint": "未税价 · 起订量 {moq}",
+  "storefront.product.card.visiblePriceHint": "含税价 · 起订量 {moq}",
   "storefront.product.card.wholesaleHint": "起订量 {moq} · 客户资料审核",
   "storefront.product.card.wholesaleLabel": "价目表待启用",
   "storefront.product.detail.customerConditions": "客户条件",
@@ -1406,7 +1438,7 @@ export const storefrontZhCN = {
   "storefront.home.productCard.pendingHint": "审核中 · 起订量 {moq}",
   "storefront.home.productCard.pendingPrice": "审核",
   "storefront.home.productCard.priceHint": "起订量 {moq} · 需要登录",
-  "storefront.home.productCard.priceVisibleHint": "未税价 · 起订量 {moq}",
+  "storefront.home.productCard.priceVisibleHint": "含税价 · 起订量 {moq}",
   "storefront.home.productCard.profileHint": "起订量 {moq} · 请稍后重试",
   "storefront.home.productCard.profilePrice": "资料准备中",
   "storefront.home.productCard.stockLine": "{level}",

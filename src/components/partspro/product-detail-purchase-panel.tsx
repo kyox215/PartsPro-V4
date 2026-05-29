@@ -59,8 +59,7 @@ export function ProductDetailPurchasePanel({
     product.stock < minimumQuantity;
   const showQuoteSummary = canOrder && product.price > 0;
   const subtotal = product.price * activeQuantity;
-  const vat = subtotal * (product.vatRate / 100);
-  const total = subtotal + vat;
+  const total = subtotal;
   const validationId = `purchase-state-${product.sku.replace(/[^a-zA-Z0-9]/g, "-")}`;
   const quantityId = `quantity-${product.sku.replace(/[^a-zA-Z0-9]/g, "-")}`;
   const validationMessage = getPurchaseValidationMessage({
@@ -218,10 +217,9 @@ export function ProductDetailPurchasePanel({
                 Riepilogo preventivo
               </div>
               <div className="mt-2 space-y-1.5 text-xs">
-                <SummaryLine label="Prezzo netto" value={`${formatEuro(product.price)} cad.`} />
+                <SummaryLine label="Prezzo IVA inclusa" value={`${formatEuro(product.price)} cad.`} />
                 <SummaryLine label="Quantita" value={`${activeQuantity} pz`} />
-                <SummaryLine label="Subtotale IVA escl." value={formatEuro(subtotal)} />
-                <SummaryLine label={`IVA ${product.vatRate}%`} value={formatEuro(vat)} />
+                <SummaryLine label="Subtotale prodotti" value={formatEuro(subtotal)} />
                 <div className="border-t border-slate-100 pt-2">
                   <SummaryLine label="Totale stimato" value={formatEuro(total)} strong />
                 </div>

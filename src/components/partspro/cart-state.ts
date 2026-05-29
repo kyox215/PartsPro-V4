@@ -317,19 +317,13 @@ export function calculateCartTotalsFromItems(
     0
   );
   const shippingCents = subtotalCents === 0 || subtotalCents > 25000 ? 0 : 1290;
-  const itemVatCents = lines.reduce((total, line) => {
-    const lineNetCents = toCents(line.product.price) * line.quantity;
-
-    return total + Math.round((lineNetCents * line.product.vatRate) / 100);
-  }, 0);
-  const vatCents = itemVatCents + Math.round((shippingCents * 22) / 100);
 
   return {
     lines,
     subtotal: centsToEuro(subtotalCents),
     shipping: centsToEuro(shippingCents),
-    vat: centsToEuro(vatCents),
-    total: centsToEuro(subtotalCents + shippingCents + vatCents),
+    vat: 0,
+    total: centsToEuro(subtotalCents + shippingCents),
   };
 }
 

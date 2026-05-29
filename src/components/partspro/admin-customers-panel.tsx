@@ -1442,6 +1442,9 @@ function CustomerDetail({
       .some((value) => value.toLowerCase().includes(query));
   });
   const sortedActivity = [...(customer.recentActivity ?? [])].sort(compareCreatedAtDesc);
+  const assistedOrderBlocker = canAssistCustomerOrder
+    ? getAssistedOrderBlocker(customer, copy.assistedOrderUnavailable)
+    : null;
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white text-slate-950">
@@ -1475,12 +1478,24 @@ function CustomerDetail({
               </Badge>
             </div>
             {canAssistCustomerOrder ? (
-              <Button asChild size="sm" className="mt-3 h-8 rounded-md px-2.5 text-xs">
-                <Link href={hrefWithAssistedCompanyId("/catalogo", customer.id)}>
+              assistedOrderBlocker ? (
+                <Button
+                  size="sm"
+                  className="mt-3 h-8 rounded-md px-2.5 text-xs"
+                  disabled
+                  title={assistedOrderBlocker}
+                >
                   <ShoppingCart className="size-3.5" />
                   {copy.assistedOrder}
-                </Link>
-              </Button>
+                </Button>
+              ) : (
+                <Button asChild size="sm" className="mt-3 h-8 rounded-md px-2.5 text-xs">
+                  <Link href={hrefWithAssistedCompanyId("/catalogo", customer.id)}>
+                    <ShoppingCart className="size-3.5" />
+                    {copy.assistedOrder}
+                  </Link>
+                </Button>
+              )
             ) : null}
           </div>
         </div>
@@ -3013,6 +3028,27 @@ function assignmentStatusLabel(
   copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"]
 ) {
   return (copy.assignmentLabels as Record<string, string>)[value] ?? value;
+}
+
+function getAssistedOrderBlocker(customer: AdminCustomer, fallback: string) {
+  const profileComplete = Boolean(
+    customer.companyName &&
+      customer.contactName &&
+      customer.email &&
+      customer.phone &&
+      customer.billingAddress &&
+      customer.shippingAddress &&
+      customer.vatNumber &&
+      customer.codiceFiscale &&
+      (customer.pec || customer.sdi || customer.codiceDestinatario)
+  );
+
+  return customer.customerStatus === "active" &&
+    customer.customerType === "wholesale" &&
+    customer.assignmentStatus === "assigned" &&
+    profileComplete
+    ? null
+    : fallback;
 }
 
 function customerAccountTypeLabel(

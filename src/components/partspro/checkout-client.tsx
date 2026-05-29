@@ -87,12 +87,7 @@ type CheckoutClientProps = {
 type CheckoutFormState = {
   deliveryWindow: string;
   notes: string;
-  paymentMethod: "bank_transfer" | "card" | "agreed_terms";
-  purchaseOrderNumber: string;
-  shippingCity: string;
-  shippingProvince: string;
-  shippingStreet: string;
-  shippingZip: string;
+  paymentMethod: "bank_transfer" | "cash" | "agreed_terms";
 };
 
 type SubmitState =
@@ -109,6 +104,7 @@ type MoneyDto = {
 
 type OrderResult = {
   id: string;
+  orderNo?: string;
   status: string;
   totals: {
     subtotal: MoneyDto;
@@ -236,18 +232,24 @@ function CheckoutClientContent({
     delegatedCheckout
       ? companies.find((item) => item.id === selectedCompanyId) ?? null
       : company;
+  const selectedCustomerProfile = delegatedCheckout
+    ? customerProfileFromCompany(selectedCompany)
+    : customerProfile;
+  const selectedShippingAddress = selectedCustomerProfile?.shippingAddress.trim() ?? "";
+  const targetCustomerBlocker = customerOrderBlocker(
+    t,
+    selectedCompany,
+    selectedCustomerProfile,
+    delegatedCheckout
+  );
   const cart = useCart({ preserveUnknown: true });
   const [form, setForm] = React.useState<CheckoutFormState>(() =>
-    initialFormState(customerProfile, selectedCompany)
+    initialFormState()
   );
   const [catalogLoadState, setCatalogLoadState] = React.useState<"idle" | "loading" | "ready" | "error">("idle");
   const [catalogRejections, setCatalogRejections] = React.useState<Record<string, CartCatalogRejection>>({});
   const requestedCatalogKeys = React.useRef(new Set<string>());
-  const [confirmations, setConfirmations] = React.useState({
-    fiscal: false,
-    address: false,
-    stock: false,
-  });
+  const [confirmed, setConfirmed] = React.useState(false);
   const [submitAttempted, setSubmitAttempted] = React.useState(false);
   const [submitState, setSubmitState] = React.useState<SubmitState>({ status: "idle" });
   const [preview, setPreview] = React.useState<PreviewState>({
@@ -267,13 +269,13 @@ function CheckoutClientContent({
     [catalogRejections]
   );
   const selectedCatalogScope = selectedCompany?.id ?? "";
-  const canResolveCartCatalog = Boolean(selectedCompany?.id);
+  const canResolveCartCatalog = Boolean(selectedCompany?.id && !targetCustomerBlocker);
   const needsCustomerSelection = delegatedCheckout && !selectedCompany;
   const basePendingItemsReason: PendingItemsReason | null =
     needsCustomerSelection
       ? "customer"
       : cart.isHydrated && cart.items.length > 0 && !canResolveCartCatalog
-        ? "account"
+        ? "customer-context"
         : null;
   const customerContextPendingSkuSet = React.useMemo(() => {
     const blockedSkus = new Set<string>();
@@ -301,9 +303,9 @@ function CheckoutClientContent({
   const loginHref = loginHrefForNext(checkoutHref);
   const summaryNote = needsCustomerSelection
     ? tx(t, "storefront.checkout.summary.needsCustomer", "选择客户后计算客户价、库存和 MOQ。")
-    : tx(t, "storefront.checkout.summary.note", "Totali stimati dai prezzi cliente correnti. Il gestionale conferma prezzi, scorte e riserve al momento dell'invio.");
+    : tx(t, "storefront.checkout.summary.note", "Prezzi IVA inclusa; viene aggiunta solo la spedizione.");
   const shouldLoadPreview =
-    cart.isHydrated && cart.items.length > 0 && Boolean(selectedCompany?.id);
+    cart.isHydrated && cart.items.length > 0 && Boolean(selectedCompany?.id) && !targetCustomerBlocker;
   const previewForUi = shouldLoadPreview ? preview : idlePreviewState;
   const unresolvedSkus = React.useMemo(() => {
     const resolvedSkus = new Set(cart.lines.map((line) => line.sku));
@@ -335,7 +337,7 @@ function CheckoutClientContent({
     () => previewForUi.issues.filter((issue) => issue.sku === "customer"),
     [previewForUi.issues]
   );
-  const formErrors = validateForm(t, form, confirmations);
+  const formErrors = validateForm(t, confirmed, selectedShippingAddress);
   const blockers = buildCheckoutBlockers({
     cartHref,
     catalogHref,
@@ -354,6 +356,7 @@ function CheckoutClientContent({
     preview: previewForUi,
     runtime,
     submitAttempted,
+    targetCustomerBlocker,
     unresolvedSkus: reviewUnresolvedSkus,
     t,
   });
@@ -367,7 +370,8 @@ function CheckoutClientContent({
     const nextCompany = companies.find((item) => item.id === value) ?? null;
 
     setSelectedCompanyId(value);
-    setForm(initialFormState(null, nextCompany));
+    setForm(initialFormState());
+    setConfirmed(false);
     setPreview(idlePreviewState);
     setSubmitState({ status: "idle" });
     setCatalogLoadState("idle");
@@ -386,7 +390,7 @@ function CheckoutClientContent({
   }, [checkoutContextCompanyId]);
 
   React.useEffect(() => {
-    if (!cart.isHydrated || cart.items.length === 0 || !selectedCompany?.id) {
+    if (!cart.isHydrated || cart.items.length === 0 || !selectedCompany?.id || targetCustomerBlocker) {
       return;
     }
 
@@ -479,6 +483,7 @@ function CheckoutClientContent({
     catalogSkuSet,
     onCatalogProductsLoaded,
     selectedCompany?.id,
+    targetCustomerBlocker,
   ]);
 
   React.useEffect(() => {
@@ -584,14 +589,7 @@ function CheckoutClientContent({
         body: JSON.stringify({
           companyId: selectedCompany?.id,
           paymentMethod: form.paymentMethod,
-          purchaseOrderNumber: optionalText(form.purchaseOrderNumber),
-          deliveryAddress: {
-            street: form.shippingStreet.trim(),
-            zip: form.shippingZip.trim(),
-            city: form.shippingCity.trim(),
-            province: form.shippingProvince.trim(),
-            country: "IT",
-          },
+          deliveryAddress: selectedShippingAddress,
           notes: buildOrderNotes(form.notes, form.deliveryWindow),
           items: cart.items,
         }),
@@ -609,10 +607,12 @@ function CheckoutClientContent({
         throw new Error(tx(t, "storefront.checkout.submit.orderIncomplete", "Risposta ordine incompleta."));
       }
 
+      const orderReference = payload.data.orderNo ?? payload.data.id;
+
       setSubmitState({
         status: "success",
         message: txFormat(t, "storefront.checkout.submit.orderAccepted", "Ordine {id} creato correttamente.", {
-          id: payload.data.id,
+          id: orderReference,
         }),
         order: payload.data,
       });
@@ -640,8 +640,8 @@ function CheckoutClientContent({
         initialAccountAccess={initialAccountAccess}
       />
       <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
-        <div className="mx-auto grid max-w-[1300px] gap-3 px-2 pt-3 pb-[calc(5.75rem_+_env(safe-area-inset-bottom))] sm:gap-4 sm:px-4 sm:pt-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:pb-8">
-          <section className="space-y-3 sm:space-y-4">
+        <div className="mx-auto grid max-w-[1460px] gap-3 px-2 pt-2 pb-[calc(5.75rem_+_env(safe-area-inset-bottom))] sm:px-4 sm:pt-3 lg:grid-cols-[minmax(0,1fr)_330px] lg:pb-6">
+          <section className="space-y-2.5">
           <CheckoutHeader cartHref={cartHref} runtime={runtime} company={selectedCompany} />
           {delegatedCheckout ? (
             <DelegatedCustomerSelector
@@ -663,39 +663,43 @@ function CheckoutClientContent({
           />
           <CompanyReview
             company={selectedCompany}
-            delegatedCheckout={delegatedCheckout}
-            profile={customerProfile}
+            profile={selectedCustomerProfile}
             runtime={runtime}
           />
           <DeliverySection
             form={form}
             errors={formErrors}
+            shippingAddress={selectedShippingAddress}
             submitAttempted={submitAttempted}
             onChange={setForm}
           />
           <PaymentSection form={form} onChange={setForm} />
           <ConfirmationSection
-            confirmations={confirmations}
+            confirmed={confirmed}
             errors={formErrors}
             submitAttempted={submitAttempted}
-            onChange={setConfirmations}
+            onChange={setConfirmed}
           />
         </section>
 
-        <aside className="hidden space-y-3 lg:block">
-          <OrderSummaryCard
-            totals={cart.totals}
-            continueHref={catalogHref}
-            lineCount={cart.items.length}
-            showCheckoutAction={false}
-            summaryNote={summaryNote}
-          />
-          <CheckoutSubmitPanel
-            canSubmit={canSubmit}
-            disabledReason={disabledReason}
-            onSubmit={submitOrder}
-            state={submitState}
-          />
+        <aside className="hidden lg:block">
+          <div className="space-y-2.5 lg:sticky lg:top-28">
+            <OrderSummaryCard
+              totals={cart.totals}
+              continueHref={catalogHref}
+              lineCount={cart.items.length}
+              showContinueAction={false}
+              showCheckoutAction={false}
+              sticky={false}
+              summaryNote={summaryNote}
+            />
+            <CheckoutSubmitPanel
+              canSubmit={canSubmit}
+              disabledReason={disabledReason}
+              onSubmit={submitOrder}
+              state={submitState}
+            />
+          </div>
         </aside>
       </div>
 
@@ -724,16 +728,15 @@ function CheckoutHeader({
   const t = useT();
 
   return (
-      <div className="space-y-3">
-        <Button asChild variant="outline" size="sm" className="bg-white">
-        <Link href={cartHref}>
-          <ArrowLeft className="size-4" />
-          {tx(t, "storefront.checkout.backToCart", "Torna al carrello")}
-        </Link>
-      </Button>
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+      <div className="flex min-w-0 items-start gap-3">
+        <Button asChild variant="outline" size="icon" className="size-9 shrink-0 bg-white" title={tx(t, "storefront.checkout.backToCart", "Torna al carrello")}>
+          <Link href={cartHref} aria-label={tx(t, "storefront.checkout.backToCart", "Torna al carrello")}>
+            <ArrowLeft className="size-4" />
+          </Link>
+        </Button>
         <div className="min-w-0">
-          <div className="mb-2 flex flex-wrap gap-2">
+          <div className="mb-1.5 flex flex-wrap gap-1.5">
             <Badge className="border border-primary/20 bg-primary/8 text-primary">
               {tx(t, "storefront.checkout.badge", "Checkout clienti")}
             </Badge>
@@ -745,11 +748,11 @@ function CheckoutHeader({
               />
             )}
           </div>
-          <h1 className="text-2xl font-black tracking-normal sm:text-3xl md:text-4xl">
+          <h1 className="text-xl font-black tracking-normal sm:text-2xl">
             {tx(t, "storefront.checkout.title", "Conferma ordine e dati fiscali")}
           </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            {tx(t, "storefront.checkout.description", "Rivedi righe, cliente, spedizione e conferme. L'ordine viene inviato al gestionale solo dopo il controllo finale.")}
+          <p className="mt-1 max-w-full break-words text-xs font-semibold leading-5 text-slate-500">
+            {tx(t, "storefront.checkout.description", "Controlla cliente, articoli, spedizione e pagamento prima dell'invio.")}
           </p>
         </div>
       </div>
@@ -803,7 +806,7 @@ function BlockerAlert({ blocker }: { blocker: Blocker }) {
         <Icon className={cn("mt-0.5 size-5 shrink-0", blocker.tone === "neutral" && "animate-spin")} />
         <div className="min-w-0">
           <div className="font-black">{blocker.title}</div>
-          <p className="mt-1 leading-6">{blocker.message}</p>
+          <p className="mt-1 break-words leading-6">{blocker.message}</p>
         </div>
       </div>
       {blocker.actionHref && blocker.actionLabel && (
@@ -828,7 +831,7 @@ function DelegatedCustomerSelector({
   const selectedCompany = companies.find((company) => company.id === selectedCompanyId);
 
   return (
-    <Card className="border-blue-200 bg-blue-50/70">
+    <Card size="sm" className="rounded-lg border-blue-200 bg-blue-50/70">
       <CardContent className="grid gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(260px,420px)] sm:items-center">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-sm font-black text-blue-950">
@@ -899,14 +902,14 @@ function OrderLinesReview({
   }, [lineIssues]);
 
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card size="sm" className="rounded-lg border-slate-200 bg-white">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ShoppingBag className="size-5 text-primary" />
-          {tx(t, "storefront.checkout.section.items", "Righe ordine")}
+          {tx(t, "storefront.checkout.section.items", "Dettaglio articoli")}
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-2.5">
         {lines.length === 0 && unresolvedSkus.length === 0 && pendingCustomerItems.length === 0 && (
           <p className="text-sm font-semibold leading-6 text-slate-500">
             {tx(t, "storefront.cart.emptyDescription", "Aggiungi prodotti dal catalogo per preparare il checkout.")}
@@ -934,7 +937,16 @@ function OrderLinesReview({
         )}
         {catalogResolutionPending && (
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-semibold leading-6 text-slate-600">
-            {tx(t, "storefront.checkout.loadingTargetPrices", "Caricamento prezzi cliente per le righe del carrello.")}
+            {tx(t, "storefront.checkout.loadingTargetPrices", "Caricamento prezzi cliente per gli articoli del carrello.")}
+          </div>
+        )}
+        {lines.length > 0 && (
+          <div className="hidden grid-cols-[56px_minmax(220px,1fr)_70px_110px_110px] gap-3 rounded-md bg-slate-50 px-3 py-2 text-[11px] font-black uppercase tracking-normal text-slate-500 sm:grid">
+            <span />
+            <span>{tx(t, "storefront.checkout.itemColumn.product", "Prodotto")}</span>
+            <span className="text-right">{tx(t, "storefront.checkout.quantity", "Quantita")}</span>
+            <span className="text-right">{tx(t, "storefront.checkout.unitPriceTaxIncluded", "Prezzo IVA incl.")}</span>
+            <span className="text-right">{tx(t, "storefront.common.total", "Totale")}</span>
           </div>
         )}
         {lines.map((line) => (
@@ -973,19 +985,19 @@ function OrderLineRow({ issues, line }: { issues: PreviewIssue[]; line: CartLine
   const stockMeta = publicStockLevelMeta(t, line.product);
 
   return (
-    <div className="grid grid-cols-[56px_minmax(0,1fr)] gap-3 rounded-lg border border-slate-200 p-3 sm:grid-cols-[72px_minmax(0,1fr)_auto] sm:items-center">
+    <div className="grid grid-cols-[52px_minmax(0,1fr)] gap-2.5 rounded-lg border border-slate-200 p-2.5 sm:grid-cols-[56px_minmax(220px,1fr)_70px_110px_110px] sm:items-center">
       <StorefrontProductImage
         product={line.product}
-        sizes="72px"
+        sizes="56px"
         quality={55}
-        className="size-14 rounded-md border border-slate-100 bg-slate-50 sm:size-[72px]"
+        className="size-12 rounded-md border border-slate-100 bg-slate-50 sm:size-14"
         fallbackClassName="shrink-0"
         imageClassName="object-contain p-1.5"
       />
       <div className="min-w-0">
-        <div className="line-clamp-2 font-black leading-5">{line.product.name}</div>
+        <div className="line-clamp-1 font-black leading-5">{line.product.name}</div>
         <div className="mt-1 font-mono text-xs text-slate-500">{line.sku}</div>
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
           <Badge variant="outline">{line.product.grade}</Badge>
           <Badge variant="outline">
             {txFormat(t, "storefront.checkout.moq", "MOQ {count}", { count: line.product.moq })}
@@ -1004,15 +1016,26 @@ function OrderLineRow({ issues, line }: { issues: PreviewIssue[]; line: CartLine
           </div>
         )}
       </div>
-      <div className="col-span-2 grid grid-cols-2 gap-2 text-sm sm:col-span-1 sm:block sm:text-right">
+      <div className="col-span-2 text-sm sm:col-span-1 sm:text-right">
         <div>
-          <div className="text-xs font-semibold text-slate-500">
+          <div className="text-[11px] font-semibold text-slate-500 sm:hidden">
             {tx(t, "storefront.checkout.quantity", "Quantita")}
           </div>
           <div className="font-black">{line.quantity}</div>
         </div>
+      </div>
+      <div className="hidden text-right text-sm sm:block">
+        <div className="font-black">{formatMoney(line.product.price, locale)}</div>
+      </div>
+      <div className="col-span-2 grid grid-cols-2 gap-2 text-sm sm:col-span-1 sm:block sm:text-right">
+        <div className="sm:hidden">
+          <div className="text-[11px] font-semibold text-slate-500">
+            {tx(t, "storefront.checkout.unitPriceTaxIncluded", "Prezzo IVA incl.")}
+          </div>
+          <div className="font-black">{formatMoney(line.product.price, locale)}</div>
+        </div>
         <div>
-          <div className="text-xs font-semibold text-slate-500">
+          <div className="text-[11px] font-semibold text-slate-500 sm:hidden">
             {tx(t, "storefront.common.total", "Totale")}
           </div>
           <div className="font-black">{formatMoney(line.lineTotal, locale)}</div>
@@ -1024,21 +1047,18 @@ function OrderLineRow({ issues, line }: { issues: PreviewIssue[]; line: CartLine
 
 function CompanyReview({
   company,
-  delegatedCheckout,
   profile,
   runtime,
 }: {
   company: CompanyProfile | null;
-  delegatedCheckout: boolean;
   profile: AccountCustomerProfile | null;
   runtime: CheckoutRuntimeView;
 }) {
   const t = useT();
-  const missing =
-    delegatedCheckout && company ? [] : missingProfileLabels(t, profile);
+  const missing = missingProfileLabels(t, profile);
 
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card size="sm" className="rounded-lg border-slate-200 bg-white">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Building2 className="size-5 text-primary" />
@@ -1064,6 +1084,8 @@ function CompanyReview({
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
           <ReadonlyInfo icon={Building2} label={tx(t, "storefront.checkout.field.companyName", "Ragione sociale")} value={profile?.companyName || company?.name} />
+          <ReadonlyInfo icon={FileText} label={tx(t, "storefront.account.field.contactName", "Referente")} value={profile?.contactName} />
+          <ReadonlyInfo icon={FileText} label={tx(t, "storefront.professional.field.email", "Email")} value={profile?.email} />
           <ReadonlyInfo icon={FileText} label={tx(t, "storefront.checkout.field.partitaIva", "Partita IVA")} value={profile?.vatNumber || company?.partitaIva} />
           <ReadonlyInfo icon={FileText} label={tx(t, "storefront.checkout.field.codiceFiscale", "Codice fiscale")} value={profile?.fiscalCode || company?.codiceFiscale} />
           <ReadonlyInfo icon={FileText} label="PEC / SDI" value={[profile?.pec || company?.pec, profile?.sdi || company?.codiceDestinatario].filter(Boolean).join(" / ")} />
@@ -1116,25 +1138,27 @@ function DeliverySection({
   errors,
   form,
   onChange,
+  shippingAddress,
   submitAttempted,
 }: {
   errors: Record<string, string>;
   form: CheckoutFormState;
   onChange: React.Dispatch<React.SetStateAction<CheckoutFormState>>;
+  shippingAddress: string;
   submitAttempted: boolean;
 }) {
   const t = useT();
 
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card size="sm" className="rounded-lg border-slate-200 bg-white">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Truck className="size-5 text-primary" />
           {tx(t, "storefront.checkout.group.delivery", "Consegna")}
         </CardTitle>
       </CardHeader>
-      <CardContent className="grid gap-4 sm:grid-cols-2">
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 sm:col-span-2">
+      <CardContent className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(220px,300px)]">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
           <div className="flex items-center gap-2 text-sm font-black">
             <Truck className="size-4 text-primary" />
             {fixedShippingMethod}
@@ -1143,34 +1167,29 @@ function DeliverySection({
             {tx(t, "storefront.checkout.shippingFixed", "Metodo logistico gestito dal magazzino PartsPro. Puoi indicare fascia oraria o note di consegna.")}
           </p>
         </div>
-        <TextField
-          error={submitAttempted ? errors.shippingStreet : undefined}
-          id="shippingStreet"
-          label={tx(t, "storefront.checkout.field.shippingStreet", "Via")}
-          value={form.shippingStreet}
-          onChange={(value) => onChange((current) => ({ ...current, shippingStreet: value }))}
-        />
-        <TextField
-          error={submitAttempted ? errors.shippingZip : undefined}
-          id="shippingZip"
-          label={tx(t, "storefront.checkout.field.shippingZip", "CAP")}
-          value={form.shippingZip}
-          onChange={(value) => onChange((current) => ({ ...current, shippingZip: value }))}
-        />
-        <TextField
-          error={submitAttempted ? errors.shippingCity : undefined}
-          id="shippingCity"
-          label={tx(t, "storefront.checkout.field.shippingCity", "Comune")}
-          value={form.shippingCity}
-          onChange={(value) => onChange((current) => ({ ...current, shippingCity: value }))}
-        />
-        <TextField
-          error={submitAttempted ? errors.shippingProvince : undefined}
-          id="shippingProvince"
-          label={tx(t, "storefront.checkout.field.shippingProvince", "Provincia")}
-          value={form.shippingProvince}
-          onChange={(value) => onChange((current) => ({ ...current, shippingProvince: value }))}
-        />
+        <div
+          className={cn(
+            "rounded-lg border p-3 text-sm",
+            shippingAddress
+              ? "border-emerald-200 bg-emerald-50 text-emerald-950"
+              : "border-amber-200 bg-amber-50 text-amber-950"
+          )}
+        >
+          <div className="flex items-start gap-2">
+            <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
+            <div className="min-w-0">
+              <div className="font-black">
+                {tx(t, "storefront.checkout.savedShippingAddress", "Indirizzo spedizione salvato")}
+              </div>
+              <p className="mt-1 break-words text-xs font-semibold leading-5">
+                {shippingAddress || tx(t, "storefront.checkout.deliveryAddressMissing", "Completa l'indirizzo di spedizione nel profilo cliente.")}
+              </p>
+              {submitAttempted && errors.deliveryAddress ? (
+                <div className="mt-1 text-xs font-bold text-red-600">{errors.deliveryAddress}</div>
+              ) : null}
+            </div>
+          </div>
+        </div>
         <TextField
           id="deliveryWindow"
           label={tx(t, "storefront.checkout.field.deliveryWindow", "Fascia consegna preferita")}
@@ -1227,9 +1246,9 @@ function PaymentSection({
       description: tx(t, "storefront.checkout.option.bankTransfer.description", "Crea ordine in attesa di pagamento."),
     },
     {
-      value: "card" as const,
-      label: tx(t, "storefront.checkout.option.card.label", "Carta aziendale"),
-      description: tx(t, "storefront.checkout.option.card.description", "Metodo registrato nel gestionale."),
+      value: "cash" as const,
+      label: tx(t, "storefront.checkout.option.cash.label", "Contanti"),
+      description: tx(t, "storefront.checkout.option.cash.description", "Ordine in attesa di incasso in sede."),
     },
     {
       value: "agreed_terms" as const,
@@ -1239,7 +1258,7 @@ function PaymentSection({
   ];
 
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card size="sm" className="rounded-lg border-slate-200 bg-white">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <CreditCard className="size-5 text-primary" />
@@ -1277,18 +1296,13 @@ function PaymentSection({
             </label>
           ))}
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <TextField
-            id="purchaseOrderNumber"
-            label={tx(t, "storefront.checkout.field.purchaseOrderNumber", "Riferimento interno / PO")}
-            value={form.purchaseOrderNumber}
-            onChange={(value) => onChange((current) => ({ ...current, purchaseOrderNumber: value }))}
-          />
-          <div className="space-y-2 sm:col-span-2">
+        <div className="grid gap-3">
+          <div className="space-y-2">
             <Label htmlFor="notes">{tx(t, "storefront.checkout.field.notes", "Note ordine")}</Label>
             <Textarea
               id="notes"
               value={form.notes}
+              className="min-h-20"
               maxLength={500}
               onChange={(event) =>
                 onChange((current) => ({ ...current, notes: event.currentTarget.value }))
@@ -1302,47 +1316,33 @@ function PaymentSection({
 }
 
 function ConfirmationSection({
-  confirmations,
+  confirmed,
   errors,
   onChange,
   submitAttempted,
 }: {
-  confirmations: { fiscal: boolean; address: boolean; stock: boolean };
+  confirmed: boolean;
   errors: Record<string, string>;
-  onChange: React.Dispatch<React.SetStateAction<{ fiscal: boolean; address: boolean; stock: boolean }>>;
+  onChange: React.Dispatch<React.SetStateAction<boolean>>;
   submitAttempted: boolean;
 }) {
   const t = useT();
 
   return (
-    <Card className="border-slate-200 bg-white">
+    <Card size="sm" className="rounded-lg border-slate-200 bg-white">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ClipboardCheck className="size-5 text-primary" />
           {tx(t, "storefront.checkout.confirmTitle", "Conferme prima dell'invio")}
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent>
         <ConfirmLine
-          checked={confirmations.fiscal}
-          error={submitAttempted ? errors.confirmFiscal : undefined}
-          id="confirmFiscal"
-          label={tx(t, "storefront.checkout.confirm.invoice", "Confermo che i dati fiscali mostrati sono corretti per la fattura.")}
-          onChange={(checked) => onChange((current) => ({ ...current, fiscal: checked }))}
-        />
-        <ConfirmLine
-          checked={confirmations.address}
-          error={submitAttempted ? errors.confirmAddress : undefined}
-          id="confirmAddress"
-          label={tx(t, "storefront.checkout.confirm.address", "Confermo che indirizzo e note di consegna sono aggiornati.")}
-          onChange={(checked) => onChange((current) => ({ ...current, address: checked }))}
-        />
-        <ConfirmLine
-          checked={confirmations.stock}
-          error={submitAttempted ? errors.confirmStock : undefined}
-          id="confirmStock"
-          label={tx(t, "storefront.checkout.confirm.stockPolicy", "Accetto che disponibilita, MOQ e prezzi vengano confermati dal gestionale al momento dell'invio.")}
-          onChange={(checked) => onChange((current) => ({ ...current, stock: checked }))}
+          checked={confirmed}
+          error={submitAttempted ? errors.confirmed : undefined}
+          id="confirmCheckout"
+          label={tx(t, "storefront.checkout.confirm.single", "Confermo dati fiscali, indirizzo di spedizione, prezzi IVA inclusa, disponibilita e MOQ mostrati nel checkout.")}
+          onChange={onChange}
         />
       </CardContent>
     </Card>
@@ -1448,7 +1448,7 @@ function StatusMessage({
       ) : (
         <AlertTriangle className="mt-0.5 size-4 shrink-0" />
       )}
-      <span>{message}</span>
+      <span className="min-w-0 break-words">{message}</span>
     </div>
   );
 }
@@ -1457,6 +1457,7 @@ function OrderSuccess({ message, order }: { message: string; order: OrderResult 
   const t = useT();
   const { locale } = useI18n();
   const totalQuantity = order.lines.reduce((total, line) => total + line.quantity, 0);
+  const orderReference = order.orderNo ?? order.id;
 
   return (
     <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
@@ -1465,7 +1466,7 @@ function OrderSuccess({ message, order }: { message: string; order: OrderResult 
         <div className="min-w-0">
           <div className="font-black">{message}</div>
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold text-emerald-800">
-            <span className="font-mono">{order.id}</span>
+            <span className="font-mono">{orderReference}</span>
             <span>{orderStatusLabel(t, order.status)}</span>
             <span>
               {txFormat(t, "storefront.cart.itemCountMany", "{count} pezzi", {
@@ -1521,13 +1522,12 @@ function CheckoutMobileBar({
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 shadow-[0_-18px_40px_rgba(15,23,42,0.12)] backdrop-blur lg:hidden">
       {expanded && (
         <div id={summaryId} className="space-y-2 border-b border-slate-200 px-3 py-2">
-          <CompactSummaryLine label={tx(t, "storefront.cart.rows", "Righe")} value={String(lineCount)} />
+          <CompactSummaryLine label={tx(t, "storefront.cart.rows", "Articoli")} value={String(lineCount)} />
           <CompactSummaryLine label={tx(t, "storefront.common.subtotal", "Subtotale")} value={formatMoney(totals.subtotal, locale)} />
           <CompactSummaryLine
             label={tx(t, "storefront.common.shipping", "Spedizione")}
             value={totals.shipping === 0 ? tx(t, "storefront.common.free", "Gratis") : formatMoney(totals.shipping, locale)}
           />
-          <CompactSummaryLine label={`${tx(t, "storefront.common.vat", "IVA")} 22%`} value={formatMoney(totals.vat, locale)} />
           {disabledReason && (
             <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-900">
               {disabledReason}
@@ -1608,6 +1608,7 @@ function buildCheckoutBlockers({
   preview,
   runtime,
   submitAttempted,
+  targetCustomerBlocker,
   unresolvedSkus,
   t,
 }: {
@@ -1628,6 +1629,7 @@ function buildCheckoutBlockers({
   preview: PreviewState;
   runtime: CheckoutRuntimeView;
   submitAttempted: boolean;
+  targetCustomerBlocker: Blocker | null;
   unresolvedSkus: string[];
   t: StorefrontTranslator;
 }) {
@@ -1663,6 +1665,10 @@ function buildCheckoutBlockers({
     });
   }
 
+  if (targetCustomerBlocker) {
+    blockers.push(targetCustomerBlocker);
+  }
+
   if (!cart.isHydrated) {
     blockers.push({
       message: tx(t, "storefront.checkout.submit.cartLoadingReason", "Caricamento carrello salvato nel browser..."),
@@ -1690,16 +1696,16 @@ function buildCheckoutBlockers({
       actionHref: cartHref,
       actionLabel: tx(t, "storefront.checkout.fixCart", "Torna al carrello per correggere"),
       message: isCatalogLoading
-        ? tx(t, "storefront.checkout.loadingTargetPrices", "Caricamento prezzi cliente per le righe del carrello.")
+        ? tx(t, "storefront.checkout.loadingTargetPrices", "Caricamento prezzi cliente per gli articoli del carrello.")
         : `${tx(t, "storefront.checkout.unresolvedItems", "Alcune righe non sono piu disponibili.")} ${unresolvedSkus.join(", ")}`,
       title: isCatalogLoading
-        ? tx(t, "storefront.checkout.loadingItemsTitle", "Caricamento righe ordine")
+        ? tx(t, "storefront.checkout.loadingItemsTitle", "Caricamento articoli ordine")
         : tx(t, "storefront.cart.unresolvedTitle", "Prodotti del carrello non disponibili"),
       tone: isCatalogLoading ? "neutral" : "warning",
     });
   }
 
-  if (pendingItemsReason === "customer-context" && pendingCustomerItems.length > 0) {
+  if (!targetCustomerBlocker && pendingItemsReason === "customer-context" && pendingCustomerItems.length > 0) {
     blockers.push({
       message: txFormat(
         t,
@@ -1747,7 +1753,7 @@ function buildCheckoutBlockers({
       actionHref: cartHref,
       actionLabel: tx(t, "storefront.checkout.fixCart", "Torna al carrello per correggere"),
       message: lineIssues.map((issue) => `${issue.sku}: ${formatPreviewIssue(t, issue)}`).join(" "),
-      title: tx(t, "storefront.checkout.itemsNeedReview", "Righe da rivedere"),
+      title: tx(t, "storefront.checkout.itemsNeedReview", "Articoli da rivedere"),
       tone: "warning",
     });
   }
@@ -1778,57 +1784,110 @@ function isCustomerContextCatalogRejection(reason?: string) {
 
 function validateForm(
   t: StorefrontTranslator,
-  form: CheckoutFormState,
-  confirmations: { fiscal: boolean; address: boolean; stock: boolean }
+  confirmed: boolean,
+  shippingAddress: string
 ) {
   const required = tx(t, "storefront.checkout.required", "Campo obbligatorio.");
   const errors: Record<string, string> = {};
 
-  if (!form.shippingStreet.trim()) {
-    errors.shippingStreet = required;
+  if (!shippingAddress.trim()) {
+    errors.deliveryAddress = required;
   }
 
-  if (!form.shippingZip.trim()) {
-    errors.shippingZip = required;
-  }
-
-  if (!form.shippingCity.trim()) {
-    errors.shippingCity = required;
-  }
-
-  if (!form.shippingProvince.trim()) {
-    errors.shippingProvince = required;
-  }
-
-  if (!confirmations.fiscal) {
-    errors.confirmFiscal = required;
-  }
-
-  if (!confirmations.address) {
-    errors.confirmAddress = required;
-  }
-
-  if (!confirmations.stock) {
-    errors.confirmStock = required;
+  if (!confirmed) {
+    errors.confirmed = required;
   }
 
   return errors;
 }
 
-function initialFormState(
-  profile: AccountCustomerProfile | null,
-  company: CompanyProfile | null
-): CheckoutFormState {
+function initialFormState(): CheckoutFormState {
   return {
     deliveryWindow: "",
     notes: "",
     paymentMethod: "bank_transfer",
-    purchaseOrderNumber: "",
-    shippingCity: company?.city ?? "",
-    shippingProvince: company?.province ?? "",
-    shippingStreet: profile?.shippingAddress ?? "",
-    shippingZip: "",
   };
+}
+
+function customerProfileFromCompany(company: CompanyProfile | null): AccountCustomerProfile | null {
+  if (!company) {
+    return null;
+  }
+
+  return {
+    assignmentStatus: company.assignmentStatus ?? "needs_review",
+    billingAddress: company.billingAddress ?? "",
+    companyName: company.name,
+    contactName: company.contactName ?? "",
+    customerType: company.customerType ?? "retail",
+    email: company.email ?? "",
+    fiscalCode: company.codiceFiscale ?? "",
+    id: company.id,
+    level: company.level ?? company.priceList,
+    pec: company.pec ?? "",
+    phone: company.phone ?? "",
+    profileCompletedAt: company.profileCompletedAt ?? null,
+    sdi: company.codiceDestinatario ?? "",
+    shippingAddress: company.shippingAddress ?? "",
+    status: company.status === "approved" ? "active" : company.status,
+    vatNumber: company.partitaIva ?? "",
+  };
+}
+
+function customerOrderBlocker(
+  t: StorefrontTranslator,
+  company: CompanyProfile | null,
+  profile: AccountCustomerProfile | null,
+  delegatedCheckout: boolean
+): Blocker | null {
+  if (!company) {
+    return null;
+  }
+
+  const title = tx(t, "storefront.checkout.customerNotReady", "Cliente non pronto per l'ordine");
+
+  if (company.status !== "approved") {
+    return {
+      title,
+      message: tx(t, "storefront.checkout.customerBlocker.status", "Il cliente deve essere attivo prima di creare ordini."),
+      tone: "warning",
+    };
+  }
+
+  if (company.customerType !== "wholesale") {
+    return {
+      title,
+      message: tx(t, "storefront.checkout.customerBlocker.type", "Il cliente deve essere wholesale per l'ordine assistito."),
+      tone: "warning",
+    };
+  }
+
+  if (company.assignmentStatus !== "assigned") {
+    return {
+      title,
+      message: tx(t, "storefront.checkout.customerBlocker.assignment", "Il cliente deve essere assegnato a un listino prima dell'ordine."),
+      tone: "warning",
+    };
+  }
+
+  const missing = missingProfileLabels(t, profile);
+
+  if (missing.length > 0) {
+    return {
+      actionHref: delegatedCheckout ? undefined : "/account?setup=1",
+      actionLabel: delegatedCheckout ? undefined : tx(t, "storefront.checkout.completeProfile", "Completa profilo"),
+      title,
+      message: txFormat(
+        t,
+        "storefront.checkout.customerBlocker.profile",
+        "Completa questi dati cliente prima dell'ordine: {fields}.",
+        { fields: missing.join(tx(t, "storefront.common.listSeparator", ", ")) }
+      ),
+      tone: "warning",
+    };
+  }
+
+  return null;
 }
 
 function missingProfileLabels(t: StorefrontTranslator, profile: AccountCustomerProfile | null) {
@@ -1836,16 +1895,28 @@ function missingProfileLabels(t: StorefrontTranslator, profile: AccountCustomerP
     return [tx(t, "storefront.checkout.profileMissingAll", "Profilo cliente")];
   }
 
-  return [
+  const shared = [
     profile.companyName ? null : tx(t, "storefront.checkout.field.companyName", "Ragione sociale"),
     profile.contactName ? null : tx(t, "storefront.account.field.contactName", "Referente"),
+    profile.email ? null : tx(t, "storefront.professional.field.email", "Email"),
     profile.phone ? null : tx(t, "storefront.account.field.phone", "Telefono"),
     profile.billingAddress ? null : tx(t, "storefront.checkout.billingAddress", "Indirizzo fatturazione"),
     profile.shippingAddress ? null : tx(t, "storefront.checkout.savedShippingAddress", "Indirizzo spedizione salvato"),
-    profile.vatNumber ? null : tx(t, "storefront.checkout.field.partitaIva", "Partita IVA"),
-    profile.fiscalCode ? null : tx(t, "storefront.checkout.field.codiceFiscale", "Codice fiscale"),
-    profile.pec || profile.sdi ? null : "PEC / SDI",
-  ].filter((label): label is string => Boolean(label));
+  ];
+  const fiscal =
+    profile.customerType === "retail"
+      ? [
+          profile.fiscalCode || profile.vatNumber
+            ? null
+            : tx(t, "storefront.checkout.field.codiceFiscale", "Codice fiscale"),
+        ]
+      : [
+          profile.vatNumber ? null : tx(t, "storefront.checkout.field.partitaIva", "Partita IVA"),
+          profile.fiscalCode ? null : tx(t, "storefront.checkout.field.codiceFiscale", "Codice fiscale"),
+          profile.pec || profile.sdi ? null : "PEC / SDI",
+        ];
+
+  return [...shared, ...fiscal].filter((label): label is string => Boolean(label));
 }
 
 function formatPreviewIssue(t: StorefrontTranslator, issue: PreviewIssue) {
@@ -1880,7 +1951,7 @@ function formatPreviewIssue(t: StorefrontTranslator, issue: PreviewIssue) {
     case "unavailable":
       return tx(t, "storefront.checkout.issue.unavailable", "SKU non disponibile nel catalogo.");
     default:
-      return issue.message || tx(t, "storefront.checkout.itemsNeedReview", "Righe da rivedere");
+      return issue.message || tx(t, "storefront.checkout.itemsNeedReview", "Articoli da rivedere");
   }
 }
 
@@ -1892,6 +1963,8 @@ function profileIssueFieldLabel(t: StorefrontTranslator, field: string) {
       return tx(t, "storefront.checkout.field.companyName", "Ragione sociale");
     case "contact":
       return tx(t, "storefront.account.field.contactName", "Referente");
+    case "email":
+      return tx(t, "storefront.professional.field.email", "Email");
     case "electronic_invoice":
       return tx(t, "storefront.checkout.field.electronicInvoice", "PEC / SDI");
     case "fiscal_code":

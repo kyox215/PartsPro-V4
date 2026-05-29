@@ -316,7 +316,7 @@ export const ProductCard = memo(function ProductCard({
                         ? txFormat(
                           t,
                           "storefront.product.card.visiblePriceHint",
-                          "IVA escl. · MOQ {moq}",
+                          "IVA inclusa · MOQ {moq}",
                           { moq: product.moq }
                         )
                         : tx(

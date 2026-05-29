@@ -650,7 +650,7 @@ function FeaturedProductCard({
               {isReviewPriceVisible
                 ? priceGateCopy.hint
                 : hasBuyerPrice
-                  ? tx(t, "storefront.home.productCard.priceVisibleHint", "IVA escl. · MOQ {moq}").replace(
+                  ? tx(t, "storefront.home.productCard.priceVisibleHint", "IVA inclusa · MOQ {moq}").replace(
                     "{moq}",
                     String(product.moq)
                   )

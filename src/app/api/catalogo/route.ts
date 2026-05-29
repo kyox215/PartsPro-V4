@@ -86,7 +86,7 @@ export async function GET(request: NextRequest) {
           showPrice && visibilityReason !== "customer_needs_assignment"
             ? "visible_authenticated"
             : visibilityReason,
-        vatMode: "net_prices_plus_iva",
+        vatMode: "tax_included_shipping_only",
       },
     });
   } catch {
@@ -128,7 +128,7 @@ function toCatalogProduct(product: PartProduct, account: AccountContext) {
       ),
       visible: account.canViewPrices,
       reason: priceVisibilityReason(account),
-      vatMode: "net_prices_plus_iva",
+      vatMode: "tax_included_shipping_only",
     },
     ...productPriceFields(pricedProduct, account.canViewPrices),
   };

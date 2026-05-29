@@ -1519,10 +1519,6 @@ function MobileCartCheckoutBar({
               }
             />
             <CompactSummaryLine
-              label={`${tx(t, "storefront.common.vat", "IVA")} 22%`}
-              value={formatMoney(totals.vat, locale)}
-            />
-            <CompactSummaryLine
               label={tx(t, "storefront.common.total", "Totale")}
               value={formatMoney(totals.total, locale)}
               strong

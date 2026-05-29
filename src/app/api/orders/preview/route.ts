@@ -131,6 +131,37 @@ export async function POST(request: Request) {
       return apiError(404, "COMPANY_NOT_FOUND", "Selected customer profile was not found.");
     }
 
+    const targetCanCheckout = delegatedCheckout
+      ? isDelegatedCompanyOrderable(company, customerProfile.data)
+      : account.canCheckout;
+    const customerIssues = targetCanCheckout && company.status === "approved"
+      ? []
+      : customerReadinessIssues(company, customerProfile.data);
+
+    if (!targetCanCheckout || company.status !== "approved") {
+      return NextResponse.json({
+        data: {
+          canSubmit: false,
+          company: {
+            id: company.id,
+            name: company.name,
+            status: company.status,
+          },
+          issues: customerIssues,
+          lines: [],
+          totals: totalsDto(calculateTotals([])),
+        },
+        meta: {
+          source: "checkout_preview",
+          companiesSource: companies.source,
+          profileSource: customerProfile.source,
+          currency: "EUR",
+          vatMode: "tax_included_shipping_only",
+          ...warningsMeta(companies.warning, customerProfile.warning),
+        },
+      });
+    }
+
     const catalog = await listCatalogProductsBySkus(requestedSkus, {
       buyerCustomerId: delegatedCheckout ? company.id : undefined,
       includeBuyerPrices: account.canViewPrices || delegatedCheckout,
@@ -142,12 +173,6 @@ export async function POST(request: Request) {
     );
     const orderBuild = buildPreviewOrder(result.data.items, pricedCatalog);
     const totals = calculateTotals(orderBuild.lines);
-    const targetCanCheckout = delegatedCheckout
-      ? isDelegatedCompanyOrderable(company, customerProfile.data)
-      : account.canCheckout;
-    const profileIssues = targetCanCheckout
-      ? []
-      : profileReadinessIssues(customerProfile.data);
 
     return NextResponse.json({
       data: {
@@ -160,7 +185,7 @@ export async function POST(request: Request) {
           name: company.name,
           status: company.status,
         },
-        issues: [...profileIssues, ...orderBuild.issues],
+        issues: orderBuild.issues,
         lines: orderBuild.lines.map(toPreviewLineDto),
         totals: totalsDto(totals),
       },
@@ -170,7 +195,7 @@ export async function POST(request: Request) {
         companiesSource: companies.source,
         profileSource: customerProfile.source,
         currency: "EUR",
-        vatMode: "net_prices_plus_iva",
+        vatMode: "tax_included_shipping_only",
         ...warningsMeta(companies.warning, catalog.warning, customerProfile.warning),
       },
     });
@@ -243,30 +268,26 @@ function buildPreviewOrder(requestedItems: RequestedPreviewItem[], catalog: Part
 function buildPreviewLine(product: PartProduct, quantity: number): PreviewLine {
   const unitNetCents = toCents(product.price);
   const lineNetCents = unitNetCents * quantity;
-  const vatCents = Math.round((lineNetCents * product.vatRate) / 100);
 
   return {
     product,
     quantity,
     unitNetCents,
     lineNetCents,
-    vatCents,
-    lineGrossCents: lineNetCents + vatCents,
+    vatCents: 0,
+    lineGrossCents: lineNetCents,
   };
 }
 
 function calculateTotals(lines: PreviewLine[]) {
   const subtotalCents = lines.reduce((total, line) => total + line.lineNetCents, 0);
   const shippingCents = subtotalCents > 25000 ? 0 : subtotalCents > 0 ? 1290 : 0;
-  const itemsVatCents = lines.reduce((total, line) => total + line.vatCents, 0);
-  const shippingVatCents = Math.round((shippingCents * 22) / 100);
-  const vatCents = itemsVatCents + shippingVatCents;
-  const totalCents = subtotalCents + shippingCents + vatCents;
+  const totalCents = subtotalCents + shippingCents;
 
   return {
     subtotalCents,
     shippingCents,
-    vatCents,
+    vatCents: 0,
     totalCents,
   };
 }
@@ -294,12 +315,45 @@ function totalsDto(totals: ReturnType<typeof calculateTotals>) {
     vat: money(totals.vatCents),
     total: money(totals.totalCents),
     freeShippingThreshold: money(25000),
-    vatMode: "net_prices_plus_iva",
+    vatMode: "tax_included_shipping_only",
   };
 }
 
 function resolveCompany(companies: CompanyProfile[], companyId: string) {
   return companies.find((company) => company.id === companyId) ?? null;
+}
+
+function customerReadinessIssues(
+  company: CompanyProfile,
+  profile: Awaited<ReturnType<typeof getCurrentCustomerProfile>>["data"]
+) {
+  const issues: PreviewIssue[] = [];
+
+  if (company.status !== "approved") {
+    issues.push({
+      sku: "customer",
+      code: "customer_not_orderable",
+      message: "Customer must be active before checkout.",
+    });
+  }
+
+  if (company.customerType !== "wholesale") {
+    issues.push({
+      sku: "customer",
+      code: "customer_not_orderable",
+      message: "Delegated checkout requires a wholesale customer.",
+    });
+  }
+
+  if (company.assignmentStatus !== "assigned") {
+    issues.push({
+      sku: "customer",
+      code: "customer_not_orderable",
+      message: "Customer must be assigned before checkout.",
+    });
+  }
+
+  return [...issues, ...profileReadinessIssues(profile)];
 }
 
 function profileReadinessIssues(profile: Awaited<ReturnType<typeof getCurrentCustomerProfile>>["data"]) {
@@ -310,12 +364,14 @@ function profileReadinessIssues(profile: Awaited<ReturnType<typeof getCurrentCus
   const missing = [
     profile.companyName ? null : "company",
     profile.contactName ? null : "contact",
+    profile.email ? null : "email",
     profile.phone ? null : "phone",
     profile.billingAddress ? null : "billing_address",
     profile.shippingAddress ? null : "shipping_address",
-    profile.vatNumber ? null : "vat_number",
-    profile.fiscalCode ? null : "fiscal_code",
-    profile.pec || profile.sdi ? null : "electronic_invoice",
+    profile.customerType === "retail" && !(profile.fiscalCode || profile.vatNumber) ? "fiscal_code" : null,
+    profile.customerType === "wholesale" && !profile.vatNumber ? "vat_number" : null,
+    profile.customerType === "wholesale" && !profile.fiscalCode ? "fiscal_code" : null,
+    profile.customerType === "wholesale" && !(profile.pec || profile.sdi) ? "electronic_invoice" : null,
   ].filter((item): item is string => Boolean(item));
 
   return missing.length > 0

@@ -60,7 +60,7 @@ const orderItemSchema = z
   })
   .strict();
 
-const deliveryAddressSchema = z
+const deliveryAddressObjectSchema = z
   .object({
     street: z.string().trim().min(1).max(160),
     zip: z.string().trim().min(3).max(16),
@@ -70,10 +70,15 @@ const deliveryAddressSchema = z
   })
   .strict();
 
+const deliveryAddressSchema = z.union([
+  z.string().trim().min(1).max(500),
+  deliveryAddressObjectSchema,
+]);
+
 const createOrderSchema = z
   .object({
     companyId: z.string().trim().min(1).max(40).regex(/^[A-Za-z0-9_-]+$/),
-    paymentMethod: z.enum(["bank_transfer", "card", "agreed_terms"]),
+    paymentMethod: z.enum(["bank_transfer", "cash", "agreed_terms"]),
     notes: z.string().trim().max(500).optional(),
     purchaseOrderNumber: z.string().trim().min(1).max(64).optional(),
     deliveryAddress: deliveryAddressSchema,
@@ -100,7 +105,7 @@ const ordersQuerySchema = z
 const ordersQueryKeys = new Set(Object.keys(ordersQuerySchema.shape));
 
 type RequestedOrderItem = z.infer<typeof orderItemSchema>;
-type DeliveryAddress = z.infer<typeof deliveryAddressSchema>;
+type DeliveryAddressInput = z.infer<typeof deliveryAddressSchema>;
 type OrdersQuery = z.infer<typeof ordersQuerySchema>;
 type OrderLine = PreparedOrderLine;
 export async function GET(request: NextRequest) {
@@ -214,6 +219,7 @@ export async function POST(request: NextRequest) {
 
     const requestedItems = result.data.items;
     const requestedSkus = requestedItems.map((item) => item.sku);
+    const deliveryAddress = normalizeDeliveryAddress(result.data.deliveryAddress);
     const [companies, customerProfile] = await Promise.all([
       listCompanies(),
       delegatedCheckout
@@ -283,13 +289,12 @@ export async function POST(request: NextRequest) {
     const fiscal = buildServerFiscalSnapshot(
       company,
       customerProfile.data,
-      result.data.deliveryAddress
+      deliveryAddress
     );
     const saved = await saveOrder({
       company,
       paymentMethod: result.data.paymentMethod,
-      purchaseOrderNumber: result.data.purchaseOrderNumber,
-      deliveryAddress: result.data.deliveryAddress,
+      deliveryAddress,
       fiscal,
       notes: result.data.notes,
       lines: orderBuild.lines,
@@ -312,6 +317,7 @@ export async function POST(request: NextRequest) {
       {
         data: {
           id: saved.data.id,
+          orderNo: saved.data.orderNo ?? saved.data.id,
           status: saved.data.status,
           createdAt: saved.data.createdAt,
           company: {
@@ -322,7 +328,6 @@ export async function POST(request: NextRequest) {
             priceList: company.priceList,
           },
           paymentMethod: result.data.paymentMethod,
-          purchaseOrderNumber: result.data.purchaseOrderNumber ?? null,
           notes: result.data.notes ?? null,
           lines: orderBuild.lines.map(toOrderLineDto),
           totals: totalsDto(totals),
@@ -362,7 +367,7 @@ export async function POST(request: NextRequest) {
 function buildServerFiscalSnapshot(
   company: CompanyProfile,
   profile: AccountCustomerProfile | null,
-  deliveryAddress: DeliveryAddress
+  deliveryAddress: string
 ) {
   return {
     companySnapshot: {
@@ -371,9 +376,25 @@ function buildServerFiscalSnapshot(
       codiceFiscale: profile?.fiscalCode || company.codiceFiscale,
       pec: profile?.pec || company.pec,
       codiceDestinatario: profile?.sdi || company.codiceDestinatario,
-      address: deliveryAddress,
+      address: profile?.billingAddress || company.billingAddress || deliveryAddress,
+      deliveryAddress,
     },
   };
+}
+
+function normalizeDeliveryAddress(input: DeliveryAddressInput) {
+  if (typeof input === "string") {
+    return input.trim();
+  }
+
+  return [
+    input.street,
+    [input.zip, input.city].filter(Boolean).join(" "),
+    input.province,
+    input.country,
+  ]
+    .filter(Boolean)
+    .join(", ");
 }
 
 function isDelegatedCompanyOrderable(
@@ -593,15 +614,14 @@ function resolveCompany(
 function buildOrderLine(product: PartProduct, quantity: number) {
   const unitNetCents = toCents(product.price);
   const lineNetCents = unitNetCents * quantity;
-  const vatCents = Math.round((lineNetCents * product.vatRate) / 100);
 
   const line = {
     product,
     quantity,
     unitNetCents,
     lineNetCents,
-    vatCents,
-    lineGrossCents: lineNetCents + vatCents,
+    vatCents: 0,
+    lineGrossCents: lineNetCents,
   };
 
   return product.priceVersion ? { ...line, priceVersion: product.priceVersion } : line;
@@ -629,15 +649,12 @@ function toOrderLineDto(line: OrderLine) {
 function calculateTotals(lines: OrderLine[]): PreparedOrderTotals {
   const subtotalCents = lines.reduce((total, line) => total + line.lineNetCents, 0);
   const shippingCents = subtotalCents > 25000 ? 0 : 1290;
-  const itemsVatCents = lines.reduce((total, line) => total + line.vatCents, 0);
-  const shippingVatCents = Math.round((shippingCents * 22) / 100);
-  const vatCents = itemsVatCents + shippingVatCents;
-  const totalCents = subtotalCents + shippingCents + vatCents;
+  const totalCents = subtotalCents + shippingCents;
 
   return {
     subtotalCents,
     shippingCents,
-    vatCents,
+    vatCents: 0,
     totalCents,
   };
 }
@@ -649,7 +666,7 @@ function totalsDto(totals: PreparedOrderTotals) {
     vat: money(totals.vatCents),
     total: money(totals.totalCents),
     freeShippingThreshold: money(25000),
-    vatMode: "net_prices_plus_iva",
+    vatMode: "tax_included_shipping_only",
   };
 }
 

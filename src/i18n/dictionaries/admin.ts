@@ -328,6 +328,9 @@ export const adminDictionaries = {
           "Admin API": "后台 API",
           API: "后台 API",
           Empty: "空状态",
+          agreed_terms: "约定付款",
+          bank_transfer: "银行转账",
+          cash: "现金支付",
           "Da incassare": "待收款",
           "Da /api/admin/orders": "来自 /api/admin/orders",
           "Da pianificare": "待安排",
@@ -855,6 +858,8 @@ export const adminDictionaries = {
         workbench: {
           activeCustomers: "活跃客户",
           assistedOrder: "代客户下单",
+          assistedOrderUnavailable:
+            "暂不能代客下单：客户必须为活跃批发客户、已归属且资料完整。",
           accountMembersEmptyDescription: "客户主账号或员工成员绑定后，会在这里显示采购、财务和售后联系人。",
           accountMembersEmptyTitle: "暂无账号成员",
           activity: "活动审计",
@@ -1409,6 +1414,9 @@ export const adminDictionaries = {
           "Admin API": "API admin",
           API: "API",
           Empty: "Vuoto",
+          agreed_terms: "Pagamento concordato",
+          bank_transfer: "Bonifico bancario",
+          cash: "Contanti",
           "Da incassare": "Da incassare",
           "Da /api/admin/orders": "Da /api/admin/orders",
           "Da pianificare": "Da pianificare",
@@ -1947,6 +1955,8 @@ export const adminDictionaries = {
         workbench: {
           activeCustomers: "Clienti attivi",
           assistedOrder: "Ordine per cliente",
+          assistedOrderUnavailable:
+            "Ordine assistito non disponibile: serve un cliente wholesale attivo, assegnato e con profilo completo.",
           accountMembersEmptyDescription: "Quando il cliente collega utenti, qui vedrai acquisti, finanza e supporto.",
           accountMembersEmptyTitle: "Nessun membro account",
           activity: "Audit attivita",

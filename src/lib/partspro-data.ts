@@ -106,8 +106,13 @@ export type CompanyProfile = {
   level?: CustomerLevel;
   lifetimeSpendNet?: number;
   profileCompletedAt?: string | null;
+  billingAddress?: string;
   city: string;
+  contactName?: string;
+  email?: string;
+  phone?: string;
   province: string;
+  shippingAddress?: string;
 };
 
 export type OrderSummary = {
@@ -281,14 +286,13 @@ export function calculateCartTotals() {
   const lines = getCartLines();
   const subtotal = roundMoney(lines.reduce((total, line) => total + line.lineTotal, 0));
   const shipping = subtotal > 250 ? 0 : 12.9;
-  const vat = roundMoney((subtotal + shipping) * 0.22);
 
   return {
     lines,
     subtotal,
     shipping,
-    vat,
-    total: roundMoney(subtotal + shipping + vat),
+    vat: 0,
+    total: roundMoney(subtotal + shipping),
   };
 }
 

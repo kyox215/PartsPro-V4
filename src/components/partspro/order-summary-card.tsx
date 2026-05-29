@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { tx } from "@/i18n/dictionaries/storefront";
 import { formatMoney } from "@/i18n/format";
+import { cn } from "@/lib/utils";
 import { type CartTotals, useCart } from "./cart-state";
 import { useI18n, useT } from "./i18n-provider";
 
@@ -19,6 +20,8 @@ type OrderSummaryCardProps = {
   consumeUrlIntent?: boolean;
   continueHref?: string;
   lineCount?: number;
+  showContinueAction?: boolean;
+  sticky?: boolean;
   summaryNote?: string;
   totals?: CartTotals;
 };
@@ -64,6 +67,8 @@ function OrderSummaryCardView({
   continueHref = "/catalogo",
   isHydrated,
   lineCount,
+  showContinueAction = true,
+  sticky = true,
   summaryNote,
   totals,
 }: Omit<OrderSummaryCardProps, "consumeUrlIntent"> & {
@@ -84,7 +89,10 @@ function OrderSummaryCardView({
   return (
     <Card
       size={compact ? "sm" : "default"}
-      className="h-fit border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)] lg:sticky lg:top-28"
+      className={cn(
+        "h-fit border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)]",
+        sticky && "lg:sticky lg:top-28"
+      )}
     >
       <CardHeader className={compact ? "px-3" : undefined}>
         <CardTitle className={compact ? "flex items-center gap-2 text-base" : "flex items-center gap-2"}>
@@ -93,7 +101,7 @@ function OrderSummaryCardView({
         </CardTitle>
       </CardHeader>
       <CardContent className={compact ? "space-y-2 px-3" : "space-y-3"}>
-        <Line compact={compact} label={tx(t, "storefront.cart.rows", "Righe")} value={String(effectiveLineCount)} />
+        <Line compact={compact} label={tx(t, "storefront.cart.rows", "Articoli")} value={String(effectiveLineCount)} />
         <Line compact={compact} label={tx(t, "storefront.common.subtotal", "Subtotale")} value={formatMoney(totals.subtotal, locale)} />
         <Line
           compact={compact}
@@ -104,7 +112,6 @@ function OrderSummaryCardView({
               : formatMoney(totals.shipping, locale)
           }
         />
-        <Line compact={compact} label={`${tx(t, "storefront.common.vat", "IVA")} 22%`} value={formatMoney(totals.vat, locale)} />
         <Separator />
         <Line compact={compact} label={tx(t, "storefront.common.total", "Totale")} value={formatMoney(totals.total, locale)} strong />
         <div className={compact ? "rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] font-semibold leading-4 text-amber-900" : "rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900"}>
@@ -112,20 +119,26 @@ function OrderSummaryCardView({
             ? tx(t, "storefront.cart.summaryLoading", "Caricamento carrello salvato nel browser...")
             : effectiveSummaryNote}
         </div>
-        {showCheckoutAction && (
-          effectiveCheckoutDisabled ? (
-            <Button className={compact ? "mt-1 h-10 w-full" : "mt-1 h-11 w-full"} disabled>
-              {effectiveCheckoutLabel}
-            </Button>
-          ) : (
-            <Button asChild className={compact ? "mt-1 h-10 w-full" : "mt-1 h-11 w-full"}>
-              <Link href={checkoutHref}>{effectiveCheckoutLabel}</Link>
-            </Button>
-          )
+        {(showCheckoutAction || showContinueAction) && (
+          <div className="grid gap-2">
+            {showCheckoutAction && (
+              effectiveCheckoutDisabled ? (
+                <Button className={compact ? "min-h-10 w-full whitespace-normal leading-5" : "min-h-11 w-full whitespace-normal leading-5"} disabled>
+                  {effectiveCheckoutLabel}
+                </Button>
+              ) : (
+                <Button asChild className={compact ? "min-h-10 w-full whitespace-normal leading-5" : "min-h-11 w-full whitespace-normal leading-5"}>
+                  <Link href={checkoutHref}>{effectiveCheckoutLabel}</Link>
+                </Button>
+              )
+            )}
+            {showContinueAction && (
+              <Button variant="outline" asChild className={compact ? "min-h-9 w-full whitespace-normal bg-white leading-5" : "min-h-10 w-full whitespace-normal bg-white leading-5"}>
+                <Link href={continueHref}>{tx(t, "storefront.common.continueShopping", "Continua acquisti")}</Link>
+              </Button>
+            )}
+          </div>
         )}
-        <Button variant="outline" asChild className={compact ? "h-9 w-full bg-white" : "w-full bg-white"}>
-          <Link href={continueHref}>{tx(t, "storefront.common.continueShopping", "Continua acquisti")}</Link>
-        </Button>
       </CardContent>
     </Card>
   );

@@ -22,6 +22,7 @@ type MoneyDto = {
 
 type OrderResult = {
   id: string;
+  orderNo?: string;
   status: string;
   totals: {
     subtotal: MoneyDto;
@@ -166,9 +167,11 @@ export function CheckoutSubmitButton({
 
       cart.clearCart();
       router.refresh();
+      const orderReference = payload.data.orderNo ?? payload.data.id;
+
       setState({
         status: "success",
-        message: txFormat(t, "storefront.checkout.submit.orderAccepted", "Ordine {id} creato correttamente.", { id: payload.data.id }),
+        message: txFormat(t, "storefront.checkout.submit.orderAccepted", "Ordine {id} creato correttamente.", { id: orderReference }),
         order: payload.data,
       });
     } catch (error) {
@@ -208,6 +211,7 @@ function OrderSuccess({ order, message }: { order: OrderResult; message: string 
   const t = useT();
   const { locale } = useI18n();
   const totalQuantity = order.lines.reduce((total, line) => total + line.quantity, 0);
+  const orderReference = order.orderNo ?? order.id;
 
   return (
     <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
@@ -216,7 +220,7 @@ function OrderSuccess({ order, message }: { order: OrderResult; message: string 
         <div className="min-w-0">
           <div className="font-black">{message}</div>
           <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold text-emerald-800">
-            <span className="font-mono">{order.id}</span>
+            <span className="font-mono">{orderReference}</span>
             <span>{orderStatusLabel(t, order.status)}</span>
             <span>
               {txFormat(t, "storefront.cart.itemCountMany", "{count} pezzi", {
@@ -238,10 +242,6 @@ function OrderSuccess({ order, message }: { order: OrderResult; message: string 
               ? tx(t, "storefront.common.free", "Gratis")
               : formatMoney(order.totals.shipping, locale)
           }
-        />
-        <ResultLine
-          label={tx(t, "storefront.common.vat", "IVA")}
-          value={formatMoney(order.totals.vat, locale)}
         />
         <ResultLine
           label={tx(t, "storefront.checkout.success.total", "Totale ordine")}
@@ -305,7 +305,7 @@ function ResultLine({
 function readPaymentMethod(formData: FormData) {
   const value = formData.get("paymentMethod");
 
-  if (value === "card" || value === "agreed_terms") {
+  if (value === "cash" || value === "agreed_terms") {
     return value;
   }
 
