@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   BadgeCheck,
   BriefcaseBusiness,
@@ -22,6 +23,7 @@ import {
   ShieldAlert,
   SlidersHorizontal,
   Store,
+  ShoppingCart,
   Users,
   X,
 } from "lucide-react";
@@ -62,6 +64,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { getAdminDictionary } from "@/i18n/dictionaries/admin";
+import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
 import { formatEuro } from "@/lib/partspro-data";
 import { CUSTOMER_MANAGE_LEVEL_PERMISSION } from "@/lib/partspro-permissions";
 import { cn } from "@/lib/utils";
@@ -349,6 +352,14 @@ const emptyFacets: CustomerFacets = {
   wholesale: 0,
 };
 
+function hasCustomerReadPermission(permissions: ReadonlySet<string>) {
+  return (
+    permissions.has("customers.read") ||
+    permissions.has("customers.view") ||
+    permissions.has("customers.manage")
+  );
+}
+
 export function AdminCustomersPanel() {
   const { locale } = useI18n();
   const text = getAdminDictionary(locale).admin;
@@ -387,6 +398,8 @@ export function AdminCustomersPanel() {
   const offset = page * pageSize;
   const canManageCustomerLevel = currentPermissions.has(CUSTOMER_MANAGE_LEVEL_PERMISSION);
   const canManageCustomerTerms = currentPermissions.has(customerManageTermsPermission);
+  const canAssistCustomerOrder =
+    currentPermissions.has("orders.manage") && hasCustomerReadPermission(currentPermissions);
   const activeFilterCount = [
     status !== allValue,
     customerType !== allValue,
@@ -1077,6 +1090,7 @@ export function AdminCustomersPanel() {
             </SheetDescription>
           </SheetHeader>
           <CustomerDetail
+            canAssistCustomerOrder={canAssistCustomerOrder}
             canManageCustomerLevel={canManageCustomerLevel}
             canManageCustomerTerms={canManageCustomerTerms}
             copy={copy}
@@ -1292,6 +1306,7 @@ function CustomerMobileCard({
 }
 
 function CustomerDetail({
+  canAssistCustomerOrder,
   canManageCustomerLevel,
   canManageCustomerTerms,
   copy,
@@ -1303,6 +1318,7 @@ function CustomerDetail({
   suspended,
   text,
 }: {
+  canAssistCustomerOrder: boolean;
   canManageCustomerLevel: boolean;
   canManageCustomerTerms: boolean;
   copy: ReturnType<typeof getAdminDictionary>["admin"]["customers"]["workbench"];
@@ -1458,6 +1474,14 @@ function CustomerDetail({
                 {formatDate(customer.createdAt) ?? copy.noData}
               </Badge>
             </div>
+            {canAssistCustomerOrder ? (
+              <Button asChild size="sm" className="mt-3 h-8 rounded-md px-2.5 text-xs">
+                <Link href={hrefWithAssistedCompanyId("/catalogo", customer.id)}>
+                  <ShoppingCart className="size-3.5" />
+                  {copy.assistedOrder}
+                </Link>
+              </Button>
+            ) : null}
           </div>
         </div>
         <div className="mt-3 grid grid-cols-3 divide-x divide-slate-200 rounded-md border border-slate-200 bg-white">

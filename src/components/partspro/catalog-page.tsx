@@ -7,12 +7,18 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { products as localProducts } from "@/lib/partspro-data";
 import type { DeviceModelGroup, PartProduct } from "@/lib/partspro-data";
+import {
+  hrefWithAssistedCompanyId,
+  rememberAssistedCompanyId,
+} from "@/lib/partspro-assisted-order";
+import { tx } from "@/i18n/dictionaries/storefront";
 import { inferDeviceModelSeries } from "@/lib/partspro-device-series";
 import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import { CatalogBrandTree, type CatalogSelection } from "./catalog-brand-tree";
 import { ProductCard } from "./product-card";
 import { StoreHeader } from "./store-header";
+import { useT } from "./i18n-provider";
 
 type FilterKey = "brand" | "category" | "status" | "grade";
 
@@ -58,6 +64,8 @@ function getInStockOnlyFromParams(searchParams: CatalogSearchParams) {
 }
 
 type CatalogPageProps = {
+  assistedCompanyId?: string | null;
+  assistedCompanyName?: string | null;
   filteredTotal?: number;
   initialAccountAccess?: StoreHeaderAccountAccess;
   initialModelGroups?: DeviceModelGroup[];
@@ -67,6 +75,8 @@ type CatalogPageProps = {
 };
 
 export function CatalogPage({
+  assistedCompanyId = null,
+  assistedCompanyName = null,
   filteredTotal,
   initialAccountAccess,
   initialModelGroups,
@@ -79,6 +89,8 @@ export function CatalogPage({
   return (
     <CatalogPageContent
       filteredTotal={filteredTotal ?? initialProducts.length}
+      assistedCompanyId={assistedCompanyId}
+      assistedCompanyName={assistedCompanyName}
       initialAccountAccess={initialAccountAccess}
       initialFilters={getFiltersFromParams(searchParams)}
       initialInStockOnly={getInStockOnlyFromParams(searchParams)}
@@ -95,6 +107,8 @@ export function CatalogPage({
 
 function CatalogPageContent({
   filteredTotal: initialFilteredTotal,
+  assistedCompanyId,
+  assistedCompanyName,
   initialAccountAccess,
   initialFilters,
   initialInStockOnly,
@@ -107,6 +121,8 @@ function CatalogPageContent({
   showWholesalePrice,
 }: {
   filteredTotal: number;
+  assistedCompanyId: string | null;
+  assistedCompanyName: string | null;
   initialAccountAccess?: StoreHeaderAccountAccess;
   initialFilters: CatalogFiltersState;
   initialInStockOnly: boolean;
@@ -118,6 +134,7 @@ function CatalogPageContent({
   priceGateReason: PriceVisibilityReason;
   showWholesalePrice: boolean;
 }) {
+  const t = useT();
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [modelSeries, setModelSeries] = useState(initialModelSeries);
@@ -143,7 +160,8 @@ function CatalogPageContent({
             modelSeries: initialModelSeries || undefined,
             searchQuery: initialSearchQuery || undefined,
           },
-          0
+          0,
+          assistedCompanyId
         ),
         {
           products: initialProducts,
@@ -180,7 +198,7 @@ function CatalogPageContent({
   });
   const loadCatalogSelection = useCallback(
     async (selection: CatalogSelection, offset = 0) => {
-      const apiPath = buildCatalogApiPath(selection, offset);
+      const apiPath = buildCatalogApiPath(selection, offset, assistedCompanyId);
       const cachedPage = catalogPageCacheRef.current.get(apiPath);
       const tracksLatestRequest = offset === 0;
 
@@ -243,12 +261,16 @@ function CatalogPageContent({
         }
       }
     },
-    []
+    [assistedCompanyId]
   );
 
   useEffect(() => {
     void recordCatalogActivity(initialActivitySelectionRef.current, initialAccountAccess);
   }, [initialAccountAccess]);
+
+  useEffect(() => {
+    rememberAssistedCompanyId(assistedCompanyId);
+  }, [assistedCompanyId]);
 
   useEffect(() => {
     function syncCatalogStateFromLocation() {
@@ -302,7 +324,7 @@ function CatalogPageContent({
     setFilters(nextFilters);
     setInStockOnly(Boolean(selection.inStockOnly));
     setExpandedBrand(selection.brand ?? null);
-    const nextPath = buildCatalogSelectionPath(selection);
+    const nextPath = buildCatalogSelectionPath(selection, assistedCompanyId);
 
     if (nextPath !== `${window.location.pathname}${window.location.search}`) {
       window.history.pushState(null, "", nextPath);
@@ -314,6 +336,7 @@ function CatalogPageContent({
   return (
     <main className="min-h-screen overflow-x-clip bg-[#f4f6fa] text-slate-950">
       <StoreHeader
+        assistedCompanyId={assistedCompanyId}
         initialAccountAccess={initialAccountAccess}
         modelGroups={modelGroups}
         onCatalogSelect={selectCatalog}
@@ -322,6 +345,7 @@ function CatalogPageContent({
       <div className="mx-auto grid max-w-[1500px] gap-4 px-3 py-3 sm:px-4 sm:py-4 lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="hidden lg:block">
           <CatalogNavigationSidebar
+            assistedCompanyId={assistedCompanyId}
             expandedBrand={expandedBrand}
             modelGroups={modelGroups}
             onExpandedBrandChange={setExpandedBrand}
@@ -331,11 +355,19 @@ function CatalogPageContent({
         </aside>
 
         <section className="min-w-0 space-y-3">
+          {assistedCompanyId ? (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900">
+              {assistedCompanyName
+                ? `${tx(t, "storefront.assistedOrder.catalogBanner", "Ordine per cliente")}: ${assistedCompanyName}`
+                : tx(t, "storefront.assistedOrder.catalogBannerGeneric", "Ordine per cliente: prezzi del cliente selezionato")}
+            </div>
+          ) : null}
           {products.length > 0 ? (
             <div className="space-y-3">
               <div className="partspro-catalog-grid">
                 {products.map((product, index) => (
                   <ProductCard
+                    assistedCompanyId={assistedCompanyId}
                     key={product.sku}
                     priceGateReason={priceGateReason}
                     priorityImage={index === 0}
@@ -388,12 +420,14 @@ function CatalogPageContent({
 }
 
 function CatalogNavigationSidebar({
+  assistedCompanyId,
   expandedBrand,
   modelGroups,
   onExpandedBrandChange,
   onSelectCatalog,
   selectedCatalog,
 }: {
+  assistedCompanyId: string | null;
   expandedBrand: string | null;
   modelGroups: readonly DeviceModelGroup[];
   onExpandedBrandChange: (brand: string | null) => void;
@@ -414,6 +448,7 @@ function CatalogNavigationSidebar({
         </div>
       </div>
       <CatalogBrandTree
+        assistedCompanyId={assistedCompanyId}
         expandedBrand={expandedBrand}
         idPrefix="catalog-desktop-catalog"
         modelGroups={modelGroups}
@@ -480,7 +515,10 @@ function buildModelGroups(items: PartProduct[]): DeviceModelGroup[] {
   }));
 }
 
-function buildCatalogSelectionPath(selection: CatalogSelection) {
+function buildCatalogSelectionPath(
+  selection: CatalogSelection,
+  assistedCompanyId?: string | null
+) {
   const params = new URLSearchParams();
 
   if (selection.brand) {
@@ -507,9 +545,10 @@ function buildCatalogSelectionPath(selection: CatalogSelection) {
     params.set("minStock", "1");
   }
 
-  const query = params.toString();
-
-  return query ? `/catalogo?${query}` : "/catalogo";
+  return hrefWithAssistedCompanyId(
+    `/catalogo${params.toString() ? `?${params.toString()}` : ""}`,
+    assistedCompanyId
+  );
 }
 
 async function recordCatalogActivity(
@@ -598,7 +637,11 @@ function catalogFilterSummary(selection: CatalogSelection) {
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-function buildCatalogApiPath(selection: CatalogSelection, offset = 0) {
+function buildCatalogApiPath(
+  selection: CatalogSelection,
+  offset = 0,
+  assistedCompanyId?: string | null
+) {
   const params = new URLSearchParams();
 
   if (selection.brand) {
@@ -629,7 +672,10 @@ function buildCatalogApiPath(selection: CatalogSelection, offset = 0) {
   params.set("offset", String(offset));
   params.set("sort", "stock_desc");
 
-  return `/api/catalogo?${params.toString()}`;
+  return hrefWithAssistedCompanyId(
+    `/api/catalogo?${params.toString()}`,
+    assistedCompanyId
+  );
 }
 
 function compareModelNames(left: string, right: string) {

@@ -10,6 +10,7 @@ import {
   type DeviceModelSeriesGroup,
 } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
+import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
 import { brandLabel, tx } from "@/i18n/dictionaries/storefront";
 import { useT } from "./i18n-provider";
 
@@ -25,6 +26,7 @@ export type CatalogSelection = {
 };
 
 type CatalogBrandTreeProps = {
+  assistedCompanyId?: string | null;
   expandedBrand: string | null;
   idPrefix: string;
   modelGroups?: readonly DeviceModelGroup[];
@@ -38,6 +40,7 @@ type CatalogBrandTreeProps = {
 };
 
 export function CatalogBrandTree({
+  assistedCompanyId,
   expandedBrand,
   idPrefix,
   modelGroups,
@@ -160,7 +163,7 @@ export function CatalogBrandTree({
       <Link
         key={itemKey}
         id={elementId}
-        href={catalogQueryHref(selection)}
+        href={catalogQueryHref(selection, assistedCompanyId)}
         prefetch={prefetchCatalogLinks ? null : false}
         className={className}
         onClick={onNavigate}
@@ -209,7 +212,7 @@ export function CatalogBrandTree({
         </button>
       ) : (
         <Link
-          href="/catalogo"
+          href={hrefWithAssistedCompanyId("/catalogo", assistedCompanyId)}
           prefetch={prefetchCatalogLinks ? null : false}
           className={catalogLinkClassName}
           onClick={onNavigate}
@@ -246,7 +249,7 @@ export function CatalogBrandTree({
           </div>
         ) : (
           <Link
-            href="/catalogo?minStock=1"
+            href={hrefWithAssistedCompanyId("/catalogo?minStock=1", assistedCompanyId)}
             prefetch={prefetchCatalogLinks ? null : false}
             className={availableLinkClassName}
             onClick={onNavigate}
@@ -431,19 +434,22 @@ export function CatalogBrandTree({
   );
 }
 
-function catalogQueryHref({
-  brand,
-  category,
-  inStockOnly,
-  model,
-  modelSeries,
-}: {
+function catalogQueryHref(
+  {
+    brand,
+    category,
+    inStockOnly,
+    model,
+    modelSeries,
+  }: {
   brand?: string;
   category?: string;
   inStockOnly?: boolean;
   model?: string;
   modelSeries?: string;
-}) {
+  },
+  assistedCompanyId?: string | null
+) {
   const params = new URLSearchParams();
 
   if (category) {
@@ -468,7 +474,10 @@ function catalogQueryHref({
 
   const query = params.toString();
 
-  return query ? `/catalogo?${query}` : "/catalogo";
+  return hrefWithAssistedCompanyId(
+    query ? `/catalogo?${query}` : "/catalogo",
+    assistedCompanyId
+  );
 }
 
 function catalogBrandPanelId(prefix: string, brand: string) {

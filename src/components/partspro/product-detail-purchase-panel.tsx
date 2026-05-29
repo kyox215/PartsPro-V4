@@ -26,6 +26,7 @@ import {
 import { ProductRestockReminderButton } from "./product-restock-reminder-button";
 
 type ProductDetailPurchasePanelProps = {
+  checkoutHref?: string;
   isAuthenticated?: boolean;
   product: PartProduct;
 };
@@ -33,6 +34,7 @@ type ProductDetailPurchasePanelProps = {
 type AddFeedbackState = "idle" | "success" | "error";
 
 export function ProductDetailPurchasePanel({
+  checkoutHref = "/checkout",
   isAuthenticated = false,
   product,
 }: ProductDetailPurchasePanelProps) {
@@ -119,7 +121,7 @@ export function ProductDetailPurchasePanel({
     }
 
     if (addCurrentQuantityToCart()) {
-      router.push("/checkout");
+      router.push(checkoutHref);
     }
   }
 
@@ -324,7 +326,7 @@ export function ProductDetailPurchasePanel({
               className="h-10 min-w-0 flex-1 bg-white"
               asChild
             >
-              <Link href="/checkout">
+              <Link href={checkoutHref}>
                 <span className="min-w-0 truncate">
                   {tx(t, "storefront.product.purchase.goCheckout", "Vai al checkout")}
                 </span>

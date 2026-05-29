@@ -21,6 +21,7 @@ import {
 import { getDictionary, translate } from "@/i18n/get-dictionary";
 import { getRequestI18n } from "@/i18n/request";
 import { formatEuro, type PartProduct } from "@/lib/partspro-data";
+import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
 import { inferDeviceModelSeries } from "@/lib/partspro-device-series";
 import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
@@ -35,6 +36,7 @@ import { StoreHeader } from "./store-header";
 import { StorefrontProductImage } from "./storefront-product-image";
 
 type ProductDetailPageProps = {
+  assistedCompanyId?: string | null;
   initialAccountAccess?: StoreHeaderAccountAccess;
   priceGateReason?: PriceVisibilityReason;
   product: PartProduct;
@@ -42,6 +44,7 @@ type ProductDetailPageProps = {
 };
 
 export async function ProductDetailPage({
+  assistedCompanyId = null,
   initialAccountAccess,
   priceGateReason = "login_required",
   product,
@@ -85,10 +88,13 @@ export async function ProductDetailPage({
         productName={product.name}
         skuCode={product.sku}
       />
-      <StoreHeader initialAccountAccess={initialAccountAccess} />
+      <StoreHeader
+        assistedCompanyId={assistedCompanyId}
+        initialAccountAccess={initialAccountAccess}
+      />
       <div className="mx-auto max-w-[1500px] px-3 py-3 sm:px-4 sm:py-4">
         <Button variant="ghost" size="sm" asChild className="mb-2 h-8 px-2">
-          <Link href="/catalogo">
+          <Link href={hrefWithAssistedCompanyId("/catalogo", assistedCompanyId)}>
             <ArrowLeft className="size-4" />
             {tx(t, "storefront.product.backToCatalog", "Torna al catalogo")}
           </Link>
@@ -274,6 +280,7 @@ export async function ProductDetailPage({
 
                 {shouldShowPurchasePanel ? (
                   <ProductDetailPurchasePanelSlot
+                    checkoutHref={hrefWithAssistedCompanyId("/checkout", assistedCompanyId)}
                     isAuthenticated={Boolean(initialAccountAccess?.authenticated)}
                     product={product}
                   />

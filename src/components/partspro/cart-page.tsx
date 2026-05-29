@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   ChevronDown,
@@ -18,6 +19,11 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { type StorefrontTranslator, tx, txFormat } from "@/i18n/dictionaries/storefront";
 import { formatMoney } from "@/i18n/format";
+import {
+  hrefWithAssistedCompanyId,
+  readAssistedCompanyIdFromSearchParams,
+  rememberAssistedCompanyId,
+} from "@/lib/partspro-assisted-order";
 import { type PartProduct } from "@/lib/partspro-data";
 import {
   formatPercentBadge,
@@ -41,6 +47,7 @@ type CartPageProps = {
 };
 
 type CartPageContentProps = {
+  assistedCompanyId: string | null;
   catalogProducts: readonly PartProduct[];
   onCatalogProductsLoaded: (products: readonly PartProduct[]) => void;
 };
@@ -99,22 +106,41 @@ type RejectedCartLineViewProps = {
 };
 
 export function CartPage({ catalogProducts = [] }: CartPageProps) {
-  const [resolvedCatalogProducts, setResolvedCatalogProducts] = React.useState<PartProduct[]>(
-    () => filterOrderableCatalogProducts(catalogProducts)
+  const searchParams = useSearchParams();
+  const assistedCompanyId = readAssistedCompanyIdFromSearchParams(searchParams);
+
+  return (
+    <CartPageScoped
+      key={assistedCompanyId ?? "default"}
+      assistedCompanyId={assistedCompanyId}
+      catalogProducts={catalogProducts}
+    />
   );
+}
+
+function CartPageScoped({
+  assistedCompanyId,
+  catalogProducts,
+}: {
+  assistedCompanyId: string | null;
+  catalogProducts: readonly PartProduct[];
+}) {
+  const [catalogState, setCatalogState] = React.useState<PartProduct[]>(() =>
+    filterOrderableCatalogProducts(catalogProducts)
+  );
+
   const handleCatalogProductsLoaded = React.useCallback(
     (products: readonly PartProduct[]) => {
-      setResolvedCatalogProducts((current) =>
-        mergeCatalogProducts(current, products)
-      );
+      setCatalogState((current) => mergeCatalogProducts(current, products));
     },
     []
   );
 
   return (
-    <CartCatalogProvider products={resolvedCatalogProducts}>
+    <CartCatalogProvider products={catalogState}>
       <CartPageContent
-        catalogProducts={resolvedCatalogProducts}
+        assistedCompanyId={assistedCompanyId}
+        catalogProducts={catalogState}
         onCatalogProductsLoaded={handleCatalogProductsLoaded}
       />
     </CartCatalogProvider>
@@ -122,6 +148,7 @@ export function CartPage({ catalogProducts = [] }: CartPageProps) {
 }
 
 function CartPageContent({
+  assistedCompanyId,
   catalogProducts,
   onCatalogProductsLoaded,
 }: CartPageContentProps) {
@@ -133,6 +160,8 @@ function CartPageContent({
     Record<string, CartCatalogRejectedItem>
   >({});
   const requestedCatalogSkus = React.useRef(new Set<string>());
+  const checkoutHref = hrefWithAssistedCompanyId("/checkout", assistedCompanyId);
+  const catalogHref = hrefWithAssistedCompanyId("/catalogo", assistedCompanyId);
   const catalogSkuSet = React.useMemo(
     () => new Set(catalogProducts.map((product) => product.sku)),
     [catalogProducts]
@@ -220,11 +249,16 @@ function CartPageContent({
     !isCatalogLoading &&
     totals.lines.length > 0 &&
     unresolvedSkus.length === 0;
+  const canNavigateToCheckout = cart.isHydrated && cart.items.length > 0;
+  const hasCheckoutBlockers =
+    canNavigateToCheckout &&
+    (isCatalogLoading || totals.lines.length === 0 || unresolvedSkus.length > 0);
   const checkoutDisabled =
-    !cart.isHydrated ||
-    isCatalogLoading ||
-    totals.lines.length === 0 ||
-    unresolvedSkus.length > 0;
+    !canNavigateToCheckout;
+
+  React.useEffect(() => {
+    rememberAssistedCompanyId(assistedCompanyId);
+  }, [assistedCompanyId]);
 
   React.useEffect(() => {
     if (!cart.isHydrated || cart.items.length === 0) {
@@ -253,14 +287,17 @@ function CartPageContent({
 
     async function loadCartCatalogProducts() {
       try {
-        const response = await fetch(
-          `/api/cart/catalog?skus=${encodeURIComponent(missingSkus.join(","))}`,
-          {
-            cache: "no-store",
-            credentials: "same-origin",
-            signal: controller.signal,
-          }
-        );
+        const params = new URLSearchParams({ skus: missingSkus.join(",") });
+
+        if (assistedCompanyId) {
+          params.set("companyId", assistedCompanyId);
+        }
+
+        const response = await fetch(`/api/cart/catalog?${params.toString()}`, {
+          cache: "no-store",
+          credentials: "same-origin",
+          signal: controller.signal,
+        });
 
         if (!response.ok) {
           throw new Error("Unable to load cart catalog products");
@@ -298,7 +335,14 @@ function CartPageContent({
       controller.abort();
       missingSkus.forEach((sku) => inFlightSkus.delete(sku));
     };
-  }, [cart.isHydrated, cart.items, catalogRejections, catalogSkuSet, onCatalogProductsLoaded]);
+  }, [
+    assistedCompanyId,
+    cart.isHydrated,
+    cart.items,
+    catalogRejections,
+    catalogSkuSet,
+    onCatalogProductsLoaded,
+  ]);
 
   function changeQuantity(sku: string, direction: -1 | 1) {
     const line = totals.lines.find((item) => item.sku === sku);
@@ -362,7 +406,7 @@ function CartPageContent({
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
-      <StoreHeader />
+      <StoreHeader assistedCompanyId={assistedCompanyId} />
       <div className="mx-auto grid max-w-[1360px] gap-2 px-2 pt-2 pb-[calc(5.25rem_+_env(safe-area-inset-bottom))] sm:gap-4 sm:px-4 sm:pt-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-3 lg:pt-3 lg:pb-4">
         <section className="space-y-2 sm:space-y-4 lg:space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-2 sm:gap-3 lg:items-center">
@@ -449,7 +493,7 @@ function CartPageContent({
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button variant="outline" asChild className="bg-white">
-                    <Link href="/catalogo">{tx(t, "storefront.cart.goToCatalog", "Vai al catalogo")}</Link>
+                    <Link href={catalogHref}>{tx(t, "storefront.cart.goToCatalog", "Vai al catalogo")}</Link>
                   </Button>
                 </div>
               </CardContent>
@@ -491,7 +535,7 @@ function CartPageContent({
                     </>
                   ) : (
                     <Button variant="outline" asChild className="h-8 bg-white">
-                      <Link href="/catalogo">{tx(t, "storefront.cart.goToCatalog", "Vai al catalogo")}</Link>
+                      <Link href={catalogHref}>{tx(t, "storefront.cart.goToCatalog", "Vai al catalogo")}</Link>
                     </Button>
                   )}
                   <Button
@@ -570,11 +614,13 @@ function CartPageContent({
           <OrderSummaryCard
             totals={totals}
             checkoutDisabled={checkoutDisabled}
+            checkoutHref={checkoutHref}
             compact
+            continueHref={catalogHref}
             lineCount={cart.items.length}
             summaryNote={
-              hasUnresolvedItems
-                ? tx(t, "storefront.cart.summaryNoteBlocked", "Il carrello non blocca stock. Alcune righe richiedono login, disponibilità o correzione quantità; i totali includono solo righe acquistabili.")
+              hasCheckoutBlockers
+                ? tx(t, "storefront.cart.summaryNoteReviewCheckout", "Puoi aprire il checkout per vedere cosa manca. Login, cliente, prezzi, stock e MOQ verranno comunque verificati prima dell'invio.")
                 : tx(t, "storefront.cart.summaryNoteSynced", "Il carrello non blocca stock: l'ordine riserverà gli articoli solo dopo la conferma.")
             }
           />
@@ -582,8 +628,10 @@ function CartPageContent({
       </div>
       <MobileCartCheckoutBar
         totals={totals}
+        catalogHref={catalogHref}
         checkoutDisabled={checkoutDisabled}
-        hasBlockedItems={hasUnresolvedItems}
+        checkoutHref={checkoutHref}
+        hasBlockedItems={hasCheckoutBlockers}
         itemCount={displayItemCount}
         lineCount={displayRows.length}
         onClear={clearCart}
@@ -888,7 +936,9 @@ function removeRejection(
 }
 
 type MobileCartCheckoutBarProps = {
+  catalogHref: string;
   checkoutDisabled: boolean;
+  checkoutHref: string;
   hasBlockedItems: boolean;
   itemCount: number;
   lineCount: number;
@@ -1405,7 +1455,9 @@ function QuantityInput({
 }
 
 function MobileCartCheckoutBar({
+  catalogHref,
   checkoutDisabled,
+  checkoutHref,
   hasBlockedItems,
   itemCount,
   lineCount,
@@ -1458,12 +1510,12 @@ function MobileCartCheckoutBar({
           </div>
           {hasBlockedItems && (
             <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] font-semibold leading-4 text-amber-900">
-              {tx(t, "storefront.cart.summaryNoteBlocked", "Il carrello non blocca stock. Alcune righe richiedono login, disponibilità o correzione quantità; i totali includono solo righe acquistabili.")}
+              {tx(t, "storefront.cart.summaryNoteReviewCheckout", "Puoi aprire il checkout per vedere cosa manca. Login, cliente, prezzi, stock e MOQ verranno comunque verificati prima dell'invio.")}
             </div>
           )}
           <div className="mt-2 grid grid-cols-2 gap-2">
             <Button variant="outline" asChild className="h-9 bg-white text-xs">
-              <Link href="/catalogo">{tx(t, "storefront.cart.continueShort", "Continua")}</Link>
+              <Link href={catalogHref}>{tx(t, "storefront.cart.continueShort", "Continua")}</Link>
             </Button>
             {checkoutDisabled ? (
               <Button className="h-9 text-xs" disabled>
@@ -1471,7 +1523,7 @@ function MobileCartCheckoutBar({
               </Button>
             ) : (
               <Button asChild className="h-9 text-xs">
-                <Link href="/checkout">{tx(t, "storefront.common.checkout", "Checkout")}</Link>
+                <Link href={checkoutHref}>{tx(t, "storefront.common.checkout", "Checkout")}</Link>
               </Button>
             )}
           </div>
@@ -1515,7 +1567,7 @@ function MobileCartCheckoutBar({
             </Button>
           ) : (
             <Button asChild className="h-10 min-w-[128px] px-3">
-              <Link href="/checkout">{tx(t, "storefront.common.checkout", "Checkout")}</Link>
+              <Link href={checkoutHref}>{tx(t, "storefront.common.checkout", "Checkout")}</Link>
             </Button>
           )
         )}

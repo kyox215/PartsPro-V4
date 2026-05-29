@@ -14,8 +14,10 @@ type OrderSummaryCardProps = {
   showCheckoutAction?: boolean;
   checkoutLabel?: string;
   checkoutDisabled?: boolean;
+  checkoutHref?: string;
   compact?: boolean;
   consumeUrlIntent?: boolean;
+  continueHref?: string;
   lineCount?: number;
   summaryNote?: string;
   totals?: CartTotals;
@@ -25,8 +27,10 @@ export function OrderSummaryCard({
   showCheckoutAction = true,
   checkoutLabel,
   checkoutDisabled = false,
+  checkoutHref = "/checkout",
   compact = false,
   consumeUrlIntent = false,
+  continueHref = "/catalogo",
   lineCount,
   summaryNote,
   totals,
@@ -82,12 +86,12 @@ export function OrderSummaryCard({
             </Button>
           ) : (
             <Button asChild className={compact ? "mt-1 h-10 w-full" : "mt-1 h-11 w-full"}>
-              <Link href="/checkout">{effectiveCheckoutLabel}</Link>
+              <Link href={checkoutHref}>{effectiveCheckoutLabel}</Link>
             </Button>
           )
         )}
         <Button variant="outline" asChild className={compact ? "h-9 w-full bg-white" : "w-full bg-white"}>
-          <Link href="/catalogo">{tx(t, "storefront.common.continueShopping", "Continua acquisti")}</Link>
+          <Link href={continueHref}>{tx(t, "storefront.common.continueShopping", "Continua acquisti")}</Link>
         </Button>
       </CardContent>
     </Card>

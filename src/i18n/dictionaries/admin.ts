@@ -806,6 +806,7 @@ export const adminDictionaries = {
         },
         workbench: {
           activeCustomers: "活跃客户",
+          assistedOrder: "代客户下单",
           accountMembersEmptyDescription: "客户主账号或员工成员绑定后，会在这里显示采购、财务和售后联系人。",
           accountMembersEmptyTitle: "暂无账号成员",
           activity: "活动审计",
@@ -1847,6 +1848,7 @@ export const adminDictionaries = {
         },
         workbench: {
           activeCustomers: "Clienti attivi",
+          assistedOrder: "Ordine per cliente",
           accountMembersEmptyDescription: "Quando il cliente collega utenti, qui vedrai acquisti, finanza e supporto.",
           accountMembersEmptyTitle: "Nessun membro account",
           activity: "Audit attivita",

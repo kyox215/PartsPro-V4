@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { DeviceModelGroup } from "@/lib/partspro-data";
+import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import { cn } from "@/lib/utils";
 import type { CatalogSelection } from "./catalog-brand-tree";
@@ -25,6 +26,7 @@ import { useT } from "./i18n-provider";
 import { tx } from "@/i18n/dictionaries/storefront";
 
 type StoreHeaderProps = {
+  assistedCompanyId?: string | null;
   initialAccountAccess?: StoreHeaderAccountAccess;
   modelGroups?: readonly DeviceModelGroup[];
   onCatalogSelect?: (selection: CatalogSelection) => void;
@@ -69,6 +71,7 @@ const StoreCartButton = dynamic<StoreCartButtonProps>(
 );
 
 export function StoreHeader({
+  assistedCompanyId,
   initialAccountAccess,
   modelGroups,
   onCatalogSelect,
@@ -147,7 +150,12 @@ export function StoreHeader({
       return;
     }
 
-    router.push(`/catalogo?${new URLSearchParams({ q: query }).toString()}`);
+    router.push(
+      hrefWithAssistedCompanyId(
+        `/catalogo?${new URLSearchParams({ q: query }).toString()}`,
+        assistedCompanyId
+      )
+    );
   }
 
   return (
@@ -155,6 +163,7 @@ export function StoreHeader({
       <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200/80 bg-white/90 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl">
         <div className="mx-auto flex h-14 w-full max-w-[1500px] items-center gap-2 px-3 sm:h-16 sm:gap-3 sm:px-4">
           <StoreMobileMenu
+            assistedCompanyId={assistedCompanyId}
             modelGroups={modelGroups}
             onCatalogSelect={onCatalogSelect}
             prefetchCatalogLinks={prefetchCatalogLinks}
@@ -223,6 +232,7 @@ export function StoreHeader({
 
           <StoreCartButton
             ariaLabel={tx(t, "storefront.header.openCart", "Apri carrello")}
+            href={hrefWithAssistedCompanyId("/carrello", assistedCompanyId)}
             label={tx(t, "nav.cart", "Carrello")}
           />
           <StoreAccountDropdown

@@ -20,7 +20,11 @@ import {
   type CheckoutRuntimeView,
 } from "./checkout-client";
 
-export async function CheckoutPage() {
+export async function CheckoutPage({
+  requestedCompanyId = null,
+}: {
+  requestedCompanyId?: string | null;
+} = {}) {
   const { locale } = await getRequestI18n();
   const dictionary = getDictionary(locale);
   const t: StorefrontTranslator = (key) => translate(dictionary, key);
@@ -46,6 +50,7 @@ export async function CheckoutPage() {
       companies={delegatedCheckout ? companies.data : []}
       customerProfile={customerProfile.data}
       delegatedCheckout={delegatedCheckout}
+      initialSelectedCompanyId={delegatedCheckout ? requestedCompanyId : null}
       runtime={runtime}
     />
   );

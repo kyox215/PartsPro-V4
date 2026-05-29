@@ -41,6 +41,12 @@ import {
   type StorefrontTranslator,
 } from "@/i18n/dictionaries/storefront";
 import { formatMoney } from "@/i18n/format";
+import {
+  clearAssistedCompanyId,
+  hrefWithAssistedCompanyId,
+  rememberAssistedCompanyId,
+  replaceCurrentUrlAssistedCompanyId,
+} from "@/lib/partspro-assisted-order";
 import { type CompanyProfile, type PartProduct } from "@/lib/partspro-data";
 import { type AccountCustomerProfile } from "@/lib/partspro-repository";
 import { publicStockLevelMeta } from "@/lib/partspro-stock-availability";
@@ -72,6 +78,7 @@ type CheckoutClientProps = {
   company: CompanyProfile | null;
   customerProfile: AccountCustomerProfile | null;
   delegatedCheckout?: boolean;
+  initialSelectedCompanyId?: string | null;
   runtime: CheckoutRuntimeView;
 };
 
@@ -121,10 +128,10 @@ type PreviewIssue = {
 };
 
 type PreviewState =
-  | { status: "idle"; issues: PreviewIssue[] }
-  | { status: "loading"; issues: PreviewIssue[] }
-  | { status: "ready"; issues: PreviewIssue[] }
-  | { status: "error"; issues: PreviewIssue[]; message: string };
+  | { status: "idle"; canSubmit?: boolean; issues: PreviewIssue[] }
+  | { status: "loading"; canSubmit?: boolean; issues: PreviewIssue[] }
+  | { status: "ready"; canSubmit?: boolean; issues: PreviewIssue[] }
+  | { status: "error"; canSubmit?: boolean; issues: PreviewIssue[]; message: string };
 
 type Blocker = {
   actionHref?: string;
@@ -138,12 +145,13 @@ const fixedShippingMethod = "GLS/BRT 24-48h";
 const idlePreviewState: PreviewState = { status: "idle", issues: [] };
 
 export function CheckoutClient(props: CheckoutClientProps) {
-  const initialScope = props.company?.id ?? "";
+  const initialScope =
+    props.delegatedCheckout ? "" : props.company?.id ?? "";
   const [catalogState, setCatalogState] = React.useState<{
     products: readonly PartProduct[];
     scope: string;
   }>(() => ({
-    products: props.catalogProducts,
+    products: props.delegatedCheckout ? [] : props.catalogProducts,
     scope: initialScope,
   }));
   const handleCatalogScopeChange = React.useCallback(
@@ -152,12 +160,15 @@ export function CheckoutClient(props: CheckoutClientProps) {
         current.scope === scope
           ? current
           : {
-              products: scope === initialScope ? props.catalogProducts : [],
+              products:
+                !props.delegatedCheckout && scope === initialScope
+                  ? props.catalogProducts
+                  : [],
               scope,
             }
       );
     },
-    [initialScope, props.catalogProducts]
+    [initialScope, props.catalogProducts, props.delegatedCheckout]
   );
   const handleCatalogProductsLoaded = React.useCallback(
     (products: readonly PartProduct[]) => {
@@ -171,7 +182,6 @@ export function CheckoutClient(props: CheckoutClientProps) {
 
   return (
     <CartCatalogProvider products={catalogState.products}>
-      <StoreHeader />
       <CheckoutClientContent
         {...props}
         catalogProducts={catalogState.products}
@@ -188,6 +198,7 @@ function CheckoutClientContent({
   company,
   customerProfile,
   delegatedCheckout = false,
+  initialSelectedCompanyId = null,
   onCatalogProductsLoaded,
   onCatalogScopeChange,
   runtime,
@@ -197,7 +208,15 @@ function CheckoutClientContent({
 }) {
   const t = useT();
   const router = useRouter();
-  const [selectedCompanyId, setSelectedCompanyId] = React.useState(company?.id ?? "");
+  const initialDelegatedCompanyId =
+    delegatedCheckout &&
+    initialSelectedCompanyId &&
+    companies.some((item) => item.id === initialSelectedCompanyId)
+      ? initialSelectedCompanyId
+      : "";
+  const [selectedCompanyId, setSelectedCompanyId] = React.useState(
+    delegatedCheckout ? initialDelegatedCompanyId : company?.id ?? ""
+  );
   const selectedCompany =
     delegatedCheckout
       ? companies.find((item) => item.id === selectedCompanyId) ?? null
@@ -228,7 +247,14 @@ function CheckoutClientContent({
     [catalogProducts]
   );
   const selectedCatalogScope = selectedCompany?.id ?? "";
-  const isCatalogLoading = catalogLoadState === "loading";
+  const needsCustomerSelection = delegatedCheckout && !selectedCompany;
+  const pendingCustomerItems = needsCustomerSelection ? cart.items : [];
+  const checkoutContextCompanyId = selectedCompany?.id ?? initialDelegatedCompanyId;
+  const cartHref = hrefWithAssistedCompanyId("/carrello", checkoutContextCompanyId);
+  const catalogHref = hrefWithAssistedCompanyId("/catalogo", checkoutContextCompanyId);
+  const summaryNote = needsCustomerSelection
+    ? tx(t, "storefront.checkout.summary.needsCustomer", "选择客户后计算客户价、库存和 MOQ。")
+    : tx(t, "storefront.checkout.summary.note", "Totali stimati dai prezzi cliente correnti. Il gestionale conferma prezzi, scorte e riserve al momento dell'invio.");
   const shouldLoadPreview =
     cart.isHydrated && cart.items.length > 0 && Boolean(selectedCompany?.id);
   const previewForUi = shouldLoadPreview ? preview : idlePreviewState;
@@ -239,22 +265,38 @@ function CheckoutClientContent({
       .map((item) => item.sku)
       .filter((sku) => !resolvedSkus.has(sku));
   }, [cart.items, cart.lines]);
+  const reviewUnresolvedSkus = needsCustomerSelection ? [] : unresolvedSkus;
+  const catalogResolutionPending =
+    !needsCustomerSelection &&
+    cart.isHydrated &&
+    cart.items.length > 0 &&
+    unresolvedSkus.length > 0 &&
+    (catalogLoadState === "idle" || catalogLoadState === "loading");
   const lineIssues = React.useMemo(
     () => previewForUi.issues.filter((issue) => issue.sku !== "customer"),
     [previewForUi.issues]
   );
+  const customerIssues = React.useMemo(
+    () => previewForUi.issues.filter((issue) => issue.sku === "customer"),
+    [previewForUi.issues]
+  );
   const formErrors = validateForm(t, form, confirmations);
   const blockers = buildCheckoutBlockers({
+    cartHref,
+    catalogHref,
+    catalogLoadState,
     cart,
     company: selectedCompany,
+    customerIssues,
     delegatedCheckout,
     formErrors,
-    isCatalogLoading,
+    isCatalogLoading: catalogResolutionPending,
     lineIssues,
+    needsCustomerSelection,
     preview: previewForUi,
     runtime,
     submitAttempted,
-    unresolvedSkus,
+    unresolvedSkus: reviewUnresolvedSkus,
     t,
   });
   const disabledReason = blockers[0]?.message;
@@ -271,12 +313,18 @@ function CheckoutClientContent({
     setPreview(idlePreviewState);
     setSubmitState({ status: "idle" });
     setCatalogLoadState("idle");
+    rememberAssistedCompanyId(nextCompany?.id ?? null);
+    replaceCurrentUrlAssistedCompanyId(nextCompany?.id ?? null);
   }
 
   React.useEffect(() => {
     onCatalogScopeChange(selectedCatalogScope);
     requestedCatalogKeys.current.clear();
   }, [onCatalogScopeChange, selectedCatalogScope]);
+
+  React.useEffect(() => {
+    rememberAssistedCompanyId(checkoutContextCompanyId || null);
+  }, [checkoutContextCompanyId]);
 
   React.useEffect(() => {
     if (!cart.isHydrated || cart.items.length === 0 || !selectedCompany?.id) {
@@ -302,7 +350,7 @@ function CheckoutClientContent({
     async function loadCartCatalogProducts() {
       setCatalogLoadState("loading");
 
-      try {
+  try {
         const params = new URLSearchParams({
           companyId: selectedCompany?.id ?? "",
           skus: missingSkus.join(","),
@@ -365,7 +413,7 @@ function CheckoutClientContent({
           signal: controller.signal,
         });
         const payload = (await response.json().catch(() => null)) as {
-          data?: { issues?: PreviewIssue[] };
+          data?: { canSubmit?: boolean; issues?: PreviewIssue[] };
           error?: { code?: string; message?: string };
         } | null;
 
@@ -376,6 +424,7 @@ function CheckoutClientContent({
         if (!controller.signal.aborted) {
           setPreview({
             status: "ready",
+            canSubmit: Boolean(payload?.data?.canSubmit),
             issues: Array.isArray(payload?.data?.issues) ? payload.data.issues : [],
           });
         }
@@ -459,6 +508,8 @@ function CheckoutClientContent({
       }
 
       cart.clearCart();
+      clearAssistedCompanyId();
+      replaceCurrentUrlAssistedCompanyId(null);
       router.refresh();
       setSubmitState({
         status: "success",
@@ -479,10 +530,12 @@ function CheckoutClientContent({
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
-      <div className="mx-auto grid max-w-[1300px] gap-3 px-2 pt-3 pb-[calc(5.75rem_+_env(safe-area-inset-bottom))] sm:gap-4 sm:px-4 sm:pt-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:pb-8">
-        <section className="space-y-3 sm:space-y-4">
-          <CheckoutHeader runtime={runtime} company={selectedCompany} />
+    <>
+      <StoreHeader assistedCompanyId={checkoutContextCompanyId || null} />
+      <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
+        <div className="mx-auto grid max-w-[1300px] gap-3 px-2 pt-3 pb-[calc(5.75rem_+_env(safe-area-inset-bottom))] sm:gap-4 sm:px-4 sm:pt-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:pb-8">
+          <section className="space-y-3 sm:space-y-4">
+          <CheckoutHeader cartHref={cartHref} runtime={runtime} company={selectedCompany} />
           {delegatedCheckout ? (
             <DelegatedCustomerSelector
               companies={companies}
@@ -492,11 +545,20 @@ function CheckoutClientContent({
           ) : null}
           <GlobalBlockers blockers={blockers} />
           <OrderLinesReview
+            cartHref={cartHref}
+            catalogLoadState={catalogLoadState}
+            catalogResolutionPending={catalogResolutionPending}
             lineIssues={lineIssues}
             lines={cart.lines}
-            unresolvedSkus={unresolvedSkus}
+            pendingCustomerItems={pendingCustomerItems}
+            unresolvedSkus={reviewUnresolvedSkus}
           />
-          <CompanyReview company={selectedCompany} profile={customerProfile} runtime={runtime} />
+          <CompanyReview
+            company={selectedCompany}
+            delegatedCheckout={delegatedCheckout}
+            profile={customerProfile}
+            runtime={runtime}
+          />
           <DeliverySection
             form={form}
             errors={formErrors}
@@ -515,8 +577,9 @@ function CheckoutClientContent({
         <aside className="hidden space-y-3 lg:block">
           <OrderSummaryCard
             totals={cart.totals}
+            lineCount={cart.items.length}
             showCheckoutAction={false}
-            summaryNote={tx(t, "storefront.checkout.summary.note", "Totali stimati dai prezzi cliente correnti. Il gestionale conferma prezzi, scorte e riserve al momento dell'invio.")}
+            summaryNote={summaryNote}
           />
           <CheckoutSubmitPanel
             canSubmit={canSubmit}
@@ -533,24 +596,28 @@ function CheckoutClientContent({
         onSubmit={submitOrder}
         state={submitState}
         totals={cart.totals}
+        lineCount={cart.items.length}
       />
-    </main>
+      </main>
+    </>
   );
 }
 
 function CheckoutHeader({
+  cartHref,
   company,
   runtime,
 }: {
+  cartHref: string;
   company: CompanyProfile | null;
   runtime: CheckoutRuntimeView;
 }) {
   const t = useT();
 
   return (
-    <div className="space-y-3">
-      <Button asChild variant="outline" size="sm" className="bg-white">
-        <Link href="/carrello">
+      <div className="space-y-3">
+        <Button asChild variant="outline" size="sm" className="bg-white">
+        <Link href={cartHref}>
           <ArrowLeft className="size-4" />
           {tx(t, "storefront.checkout.backToCart", "Torna al carrello")}
         </Link>
@@ -691,12 +758,20 @@ function DelegatedCustomerSelector({
 }
 
 function OrderLinesReview({
+  cartHref,
+  catalogLoadState,
+  catalogResolutionPending,
   lineIssues,
   lines,
+  pendingCustomerItems,
   unresolvedSkus,
 }: {
+  cartHref: string;
+  catalogLoadState: "idle" | "loading" | "ready" | "error";
+  catalogResolutionPending: boolean;
   lineIssues: PreviewIssue[];
   lines: CartLine[];
+  pendingCustomerItems: Array<{ quantity: number; sku: string }>;
   unresolvedSkus: string[];
 }) {
   const t = useT();
@@ -721,10 +796,33 @@ function OrderLinesReview({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {lines.length === 0 && unresolvedSkus.length === 0 && (
+        {lines.length === 0 && unresolvedSkus.length === 0 && pendingCustomerItems.length === 0 && (
           <p className="text-sm font-semibold leading-6 text-slate-500">
             {tx(t, "storefront.cart.emptyDescription", "Aggiungi prodotti dal catalogo per preparare il checkout.")}
           </p>
+        )}
+        {pendingCustomerItems.map((item) => (
+          <div key={item.sku} className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950">
+            <div className="flex min-w-0 items-center justify-between gap-3">
+              <div className="min-w-0 font-mono font-black">{item.sku}</div>
+              <Badge variant="outline" className="shrink-0 border-blue-200 bg-white text-blue-800">
+                x{item.quantity}
+              </Badge>
+            </div>
+            <p className="mt-1 font-semibold leading-6">
+              {tx(t, "storefront.checkout.itemPendingCustomer", "选择客户后计算价格、库存和 MOQ。")}
+            </p>
+          </div>
+        ))}
+        {catalogLoadState === "error" && unresolvedSkus.length > 0 && (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold leading-6 text-red-800">
+            {tx(t, "storefront.checkout.catalogLoadError", "客户价目表加载失败，请刷新后重试。")}
+          </div>
+        )}
+        {catalogResolutionPending && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-semibold leading-6 text-slate-600">
+            {tx(t, "storefront.checkout.loadingTargetPrices", "Caricamento prezzi cliente per le righe del carrello.")}
+          </div>
         )}
         {lines.map((line) => (
           <OrderLineRow
@@ -733,7 +831,7 @@ function OrderLinesReview({
             line={line}
           />
         ))}
-        {unresolvedSkus.map((sku) => (
+        {!catalogResolutionPending && catalogLoadState !== "error" && unresolvedSkus.map((sku) => (
           <div key={sku} className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
             <div className="font-mono font-black">{sku}</div>
             <p className="mt-1 font-semibold leading-6">
@@ -741,9 +839,11 @@ function OrderLinesReview({
             </p>
           </div>
         ))}
-        {(lineIssues.length > 0 || unresolvedSkus.length > 0) && (
+        {(lineIssues.length > 0 || unresolvedSkus.length > 0) &&
+          pendingCustomerItems.length === 0 &&
+          catalogLoadState !== "error" && (
           <Button asChild variant="outline" className="bg-white">
-            <Link href="/carrello">
+            <Link href={cartHref}>
               <RefreshCcw className="size-4" />
               {tx(t, "storefront.checkout.fixCart", "Torna al carrello per correggere")}
             </Link>
@@ -811,15 +911,18 @@ function OrderLineRow({ issues, line }: { issues: PreviewIssue[]; line: CartLine
 
 function CompanyReview({
   company,
+  delegatedCheckout,
   profile,
   runtime,
 }: {
   company: CompanyProfile | null;
+  delegatedCheckout: boolean;
   profile: AccountCustomerProfile | null;
   runtime: CheckoutRuntimeView;
 }) {
   const t = useT();
-  const missing = missingProfileLabels(t, profile);
+  const missing =
+    delegatedCheckout && company ? [] : missingProfileLabels(t, profile);
 
   return (
     <Card className="border-slate-200 bg-white">
@@ -1186,18 +1289,20 @@ function CheckoutSubmitPanel({
     <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
       <Button
         type="button"
-        className="h-11 w-full"
+        className="h-11 w-full min-w-0 gap-2"
         disabled={!canSubmit || state.status === "loading" || state.status === "success"}
         onClick={onSubmit}
       >
         {state.status === "loading" ? (
-          <Loader2 className="size-4 animate-spin" />
+          <Loader2 className="size-4 shrink-0 animate-spin" />
         ) : state.status === "success" ? (
-          <CheckCircle2 className="size-4" />
+          <CheckCircle2 className="size-4 shrink-0" />
         ) : (
-          <Send className="size-4" />
+          <Send className="size-4 shrink-0" />
         )}
-        {submitButtonLabel(t, state, canSubmit)}
+        <span className="min-w-0 truncate">
+          {submitButtonLabel(t, state, canSubmit)}
+        </span>
       </Button>
       {!canSubmit && disabledReason && state.status !== "success" && (
         <StatusMessage tone="warning" message={disabledReason} />
@@ -1278,12 +1383,14 @@ function OrderSuccess({ message, order }: { message: string; order: OrderResult 
 function CheckoutMobileBar({
   canSubmit,
   disabledReason,
+  lineCount,
   onSubmit,
   state,
   totals,
 }: {
   canSubmit: boolean;
   disabledReason?: string;
+  lineCount: number;
   onSubmit: () => void;
   state: SubmitState;
   totals: CartTotals;
@@ -1301,7 +1408,7 @@ function CheckoutMobileBar({
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 shadow-[0_-18px_40px_rgba(15,23,42,0.12)] backdrop-blur lg:hidden">
       {expanded && (
         <div id={summaryId} className="space-y-2 border-b border-slate-200 px-3 py-2">
-          <CompactSummaryLine label={tx(t, "storefront.cart.rows", "Righe")} value={String(totals.lines.length)} />
+          <CompactSummaryLine label={tx(t, "storefront.cart.rows", "Righe")} value={String(lineCount)} />
           <CompactSummaryLine label={tx(t, "storefront.common.subtotal", "Subtotale")} value={formatMoney(totals.subtotal, locale)} />
           <CompactSummaryLine
             label={tx(t, "storefront.common.shipping", "Spedizione")}
@@ -1337,16 +1444,18 @@ function CheckoutMobileBar({
         </button>
         <Button
           type="button"
-          className="h-10 min-w-[138px] px-3"
+          className="h-10 min-w-[138px] max-w-[48vw] gap-2 px-3"
           disabled={!canSubmit || state.status === "loading"}
           onClick={onSubmit}
         >
           {state.status === "loading" ? (
-            <Loader2 className="size-4 animate-spin" />
+            <Loader2 className="size-4 shrink-0 animate-spin" />
           ) : (
-            <Send className="size-4" />
+            <Send className="size-4 shrink-0" />
           )}
-          {submitButtonLabel(t, state, canSubmit)}
+          <span className="min-w-0 truncate">
+            {submitButtonLabel(t, state, canSubmit)}
+          </span>
         </Button>
       </div>
     </div>
@@ -1370,11 +1479,16 @@ function CompactSummaryLine({
 
 function buildCheckoutBlockers({
   cart,
+  cartHref,
+  catalogHref,
+  catalogLoadState,
   company,
+  customerIssues,
   delegatedCheckout,
   formErrors,
   isCatalogLoading,
   lineIssues,
+  needsCustomerSelection,
   preview,
   runtime,
   submitAttempted,
@@ -1382,11 +1496,16 @@ function buildCheckoutBlockers({
   t,
 }: {
   cart: ReturnType<typeof useCart>;
+  cartHref: string;
+  catalogHref: string;
+  catalogLoadState: "idle" | "loading" | "ready" | "error";
   company: CompanyProfile | null;
+  customerIssues: PreviewIssue[];
   delegatedCheckout: boolean;
   formErrors: Record<string, string>;
   isCatalogLoading: boolean;
   lineIssues: PreviewIssue[];
+  needsCustomerSelection: boolean;
   preview: PreviewState;
   runtime: CheckoutRuntimeView;
   submitAttempted: boolean;
@@ -1433,7 +1552,7 @@ function buildCheckoutBlockers({
     });
   } else if (cart.items.length === 0) {
     blockers.push({
-      actionHref: "/catalogo",
+      actionHref: catalogHref,
       actionLabel: tx(t, "storefront.cart.goToCatalog", "Vai al catalogo"),
       message: tx(t, "storefront.checkout.submit.cartEmptyReason", "Il carrello e vuoto: aggiungi almeno un prodotto prima di confermare l'ordine."),
       title: tx(t, "storefront.cart.emptyTitle", "Carrello vuoto"),
@@ -1441,9 +1560,15 @@ function buildCheckoutBlockers({
     });
   }
 
-  if (unresolvedSkus.length > 0) {
+  if (catalogLoadState === "error" && unresolvedSkus.length > 0) {
     blockers.push({
-      actionHref: "/carrello",
+      message: tx(t, "storefront.checkout.catalogLoadError", "客户价目表加载失败，请刷新后重试。"),
+      title: tx(t, "storefront.checkout.preview.errorTitle", "Controllo ordine non riuscito"),
+      tone: "error",
+    });
+  } else if (!needsCustomerSelection && unresolvedSkus.length > 0) {
+    blockers.push({
+      actionHref: cartHref,
       actionLabel: tx(t, "storefront.checkout.fixCart", "Torna al carrello per correggere"),
       message: isCatalogLoading
         ? tx(t, "storefront.checkout.loadingTargetPrices", "Caricamento prezzi cliente per le righe del carrello.")
@@ -1469,9 +1594,23 @@ function buildCheckoutBlockers({
     });
   }
 
+  if (customerIssues.length > 0) {
+    blockers.push({
+      message: customerIssues.map((issue) => issue.message).join(" "),
+      title: tx(t, "storefront.checkout.customerNotReady", "客户暂不能下单"),
+      tone: "warning",
+    });
+  } else if (preview.status === "ready" && preview.canSubmit === false && cart.items.length > 0) {
+    blockers.push({
+      message: tx(t, "storefront.checkout.customerNotReadyDescription", "所选客户当前不满足下单条件，请检查客户状态、类型、归属和资料完整度。"),
+      title: tx(t, "storefront.checkout.customerNotReady", "客户暂不能下单"),
+      tone: "warning",
+    });
+  }
+
   if (lineIssues.length > 0) {
     blockers.push({
-      actionHref: "/carrello",
+      actionHref: cartHref,
       actionLabel: tx(t, "storefront.checkout.fixCart", "Torna al carrello per correggere"),
       message: lineIssues.map((issue) => `${issue.sku}: ${issue.message}`).join(" "),
       title: tx(t, "storefront.checkout.itemsNeedReview", "Righe da rivedere"),
@@ -1608,7 +1747,7 @@ function submitButtonLabel(
   }
 
   if (!canSubmit) {
-    return tx(t, "storefront.checkout.submit.button.disabled", "Checkout disabilitato");
+    return tx(t, "storefront.checkout.submit.button.blocked", "无法提交");
   }
 
   return tx(t, "storefront.checkout.submit.button.idle", "Conferma ordine");

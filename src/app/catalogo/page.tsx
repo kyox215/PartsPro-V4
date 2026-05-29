@@ -1,17 +1,20 @@
 import { Suspense } from "react";
 import { CatalogPage } from "@/components/partspro/catalog-page";
 import {
+  getCustomerProfileById,
   listCatalogModelGroups,
   pageCatalogProducts,
 } from "@/lib/partspro-repository";
 import type { PartProduct } from "@/lib/partspro-data";
 import {
   applyAccountPriceToProduct,
+  canDelegateCheckout,
   getCurrentAccountContext,
   priceVisibilityReason,
   type AccountContext,
 } from "@/lib/partspro-account-context";
 import { toStoreHeaderAccountAccess } from "@/lib/partspro-header-access";
+import { readAssistedCompanyIdFromRecord } from "@/lib/partspro-assisted-order";
 
 const initialCatalogLimit = 24;
 export const dynamic = "force-dynamic";
@@ -30,7 +33,10 @@ export default async function Page({
   const accountPromise = getCurrentAccountContext({ ensure: true });
   const modelGroupsPromise = listCatalogModelGroups();
   const account = await accountPromise;
-  const [catalogPage, modelGroups] = await Promise.all([
+  const requestedCompanyId = readAssistedCompanyIdFromRecord(resolvedSearchParams);
+  const assistedCompanyId =
+    requestedCompanyId && canDelegateCheckout(account) ? requestedCompanyId : null;
+  const [catalogPage, modelGroups, assistedCustomer] = await Promise.all([
     pageCatalogProducts(
       {
         ...query,
@@ -39,15 +45,22 @@ export default async function Page({
         sort: "stock_desc",
       },
       {
-        includeBuyerPrices: account.canViewPrices,
+        buyerCustomerId: assistedCompanyId ?? undefined,
+        includeBuyerPrices: account.canViewPrices || Boolean(assistedCompanyId),
       }
     ),
     modelGroupsPromise,
+    assistedCompanyId
+      ? getCustomerProfileById(assistedCompanyId).catch(() => null)
+      : Promise.resolve(null),
   ]);
+  const assistedProfile = assistedCustomer?.data ?? null;
 
   return (
     <Suspense fallback={null}>
       <CatalogPage
+        assistedCompanyId={assistedCompanyId}
+        assistedCompanyName={assistedProfile?.companyName ?? null}
         filteredTotal={catalogPage.data.total}
         initialAccountAccess={toStoreHeaderAccountAccess(account)}
         initialModelGroups={modelGroups.data}

@@ -23,6 +23,7 @@ import {
 } from "@/i18n/dictionaries/storefront";
 import type { PartProduct } from "@/lib/partspro-data";
 import { formatEuro } from "@/lib/partspro-data";
+import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
 import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
 import {
   formatPercentBadge,
@@ -41,6 +42,7 @@ import {
 import { ProductRestockReminderButton } from "./product-restock-reminder-button";
 
 type ProductCardProps = {
+  assistedCompanyId?: string | null;
   priceGateReason?: PriceVisibilityReason;
   priorityImage?: boolean;
   product: PartProduct;
@@ -58,6 +60,7 @@ const ProductImagePreviewDialog = dynamic(
 );
 
 export const ProductCard = memo(function ProductCard({
+  assistedCompanyId,
   priceGateReason = "login_required",
   priorityImage = false,
   product,
@@ -78,7 +81,10 @@ export const ProductCard = memo(function ProductCard({
     product.stock <= 0 ||
     product.stock < Math.max(1, product.moq);
   const canAddToCart = hasOpenPrice && hasEffectivePrice && hasSellableStock;
-  const productPath = `/prodotto/${encodeURIComponent(product.sku)}`;
+  const productPath = hrefWithAssistedCompanyId(
+    `/prodotto/${encodeURIComponent(product.sku)}`,
+    assistedCompanyId
+  );
   const stockDescriptionId = `stock-${product.sku.replace(/[^a-zA-Z0-9]/g, "-")}`;
   const imageAlt = product.imageAlt ?? product.name;
   const remainingModels = Math.max(product.compatibleWith.length - 2, 0);

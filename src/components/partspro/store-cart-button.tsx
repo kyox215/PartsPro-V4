@@ -7,10 +7,11 @@ import { useStoredCartItems } from "./cart-state";
 
 export type StoreCartButtonProps = {
   ariaLabel: string;
+  href?: string;
   label: string;
 };
 
-export function StoreCartButton({ ariaLabel, label }: StoreCartButtonProps) {
+export function StoreCartButton({ ariaLabel, href = "/carrello", label }: StoreCartButtonProps) {
   const items = useStoredCartItems({ preserveUnknown: true });
   const itemCount = items.reduce((total, item) => total + item.quantity, 0);
   const badgeLabel = itemCount > 99 ? "99+" : String(itemCount);
@@ -22,7 +23,7 @@ export function StoreCartButton({ ariaLabel, label }: StoreCartButtonProps) {
       asChild
       className="relative ml-auto min-w-10 bg-white shadow-sm sm:ml-0 sm:w-auto sm:max-w-36 sm:px-2.5"
     >
-      <Link href="/carrello" aria-label={ariaLabel}>
+      <Link href={href} aria-label={ariaLabel}>
         <ShoppingCart className="size-4" />
         <span className="hidden min-w-0 max-w-24 truncate sm:inline-block">{label}</span>
         <span

@@ -17,14 +17,17 @@ const ProductDetailPurchasePanel = dynamic(
 );
 
 export function ProductDetailPurchasePanelSlot({
+  checkoutHref,
   isAuthenticated = false,
   product,
 }: {
+  checkoutHref?: string;
   isAuthenticated?: boolean;
   product: PartProduct;
 }) {
   return (
     <ProductDetailPurchasePanel
+      checkoutHref={checkoutHref}
       isAuthenticated={isAuthenticated}
       product={product}
     />

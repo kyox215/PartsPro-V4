@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import type { DeviceModelGroup } from "@/lib/partspro-data";
+import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
 import { tx } from "@/i18n/dictionaries/storefront";
 import { CatalogBrandTree, type CatalogSelection } from "./catalog-brand-tree";
 import { LanguageSwitcher } from "./language-switcher";
@@ -28,6 +29,7 @@ const storeMobileNavItems = [
 ];
 
 export type StoreMobileMenuProps = {
+  assistedCompanyId?: string | null;
   className?: string;
   modelGroups?: readonly DeviceModelGroup[];
   onCatalogSelect?: (selection: CatalogSelection) => void;
@@ -36,6 +38,7 @@ export type StoreMobileMenuProps = {
 };
 
 export function StoreMobileMenu({
+  assistedCompanyId,
   className,
   modelGroups,
   onCatalogSelect,
@@ -95,7 +98,12 @@ export function StoreMobileMenu({
       return;
     }
 
-    router.push(`/catalogo?${new URLSearchParams({ q: query }).toString()}`);
+    router.push(
+      hrefWithAssistedCompanyId(
+        `/catalogo?${new URLSearchParams({ q: query }).toString()}`,
+        assistedCompanyId
+      )
+    );
     closeMenu();
   }
 
@@ -221,8 +229,9 @@ export function StoreMobileMenu({
                   id="store-mobile-catalog-tree"
                   className="rounded-lg bg-white shadow-sm"
                 >
-                  <CatalogBrandTree
-                    expandedBrand={expandedBrand}
+                <CatalogBrandTree
+                  assistedCompanyId={assistedCompanyId}
+                  expandedBrand={expandedBrand}
                     idPrefix="store-mobile-catalog"
                     modelGroups={modelGroups}
                     onExpandedBrandChange={setExpandedBrandOverride}

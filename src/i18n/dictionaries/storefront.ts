@@ -300,10 +300,15 @@ export const storefrontItIT = {
     "Il carrello non blocca stock: disponibilita e quantita vengono riservate solo alla conferma ordine.",
   "storefront.cart.summaryNoteBlocked":
     "Il carrello non blocca stock. Alcune righe richiedono login, disponibilita o correzione quantita; i totali includono solo righe acquistabili.",
+  "storefront.cart.summaryNoteReviewCheckout":
+    "Puoi aprire il checkout per vedere cosa manca. Login, cliente, prezzi, stock e MOQ verranno comunque verificati prima dell'invio.",
   "storefront.cart.summaryNoteSynced":
     "Il carrello non blocca stock: l'ordine riservera gli articoli solo dopo la conferma.",
   "storefront.cart.summaryTitle": "Riepilogo ordine",
   "storefront.cart.title": "Conferma prodotti e quantità",
+  "storefront.assistedOrder.catalogBanner": "Ordine per cliente",
+  "storefront.assistedOrder.catalogBannerGeneric":
+    "Ordine per cliente: prezzi del cliente selezionato",
   "storefront.cart.decreaseAria": "Riduci quantità per {sku}",
   "storefront.cart.decreaseTitle": "Riduci quantità",
   "storefront.cart.stockLimitTitle": "Stock disponibile esaurito",
@@ -333,6 +338,47 @@ export const storefrontItIT = {
     "I dati vengono preparati come snapshot ordine per fattura, spedizione e gestione RMA. L'invio usa l'endpoint esistente /api/orders con le righe salvate nel carrello locale.",
   "storefront.checkout.disabledCompanyReason":
     "Checkout disabilitato: collega un profilo cliente all'utente Supabase.",
+  "storefront.checkout.accountVerified": "Account verificato",
+  "storefront.checkout.backToCart": "Torna al carrello",
+  "storefront.checkout.billingAddress": "Indirizzo fatturazione",
+  "storefront.checkout.catalogLoadError":
+    "Impossibile caricare il listino cliente. Aggiorna la pagina e riprova.",
+  "storefront.checkout.completeProfile": "Completa profilo",
+  "storefront.checkout.customerNotReady": "Cliente non pronto per l'ordine",
+  "storefront.checkout.customerNotReadyDescription":
+    "Il cliente selezionato non soddisfa i requisiti ordine. Controlla stato, tipo, assegnazione e dati profilo.",
+  "storefront.checkout.delegated.description":
+    "Scegli il cliente: prezzi, controlli e ordine useranno il suo livello e profilo.",
+  "storefront.checkout.delegated.missingDescription":
+    "Seleziona il cliente per calcolare il suo listino e creare l'ordine.",
+  "storefront.checkout.delegated.missingTitle": "Cliente da selezionare",
+  "storefront.checkout.delegated.placeholder": "Seleziona cliente",
+  "storefront.checkout.delegated.select": "Seleziona cliente",
+  "storefront.checkout.delegated.title": "Ordine per conto cliente",
+  "storefront.checkout.fixCart": "Torna al carrello per correggere",
+  "storefront.checkout.formInvalid": "Completa indirizzo e conferme prima di inviare l'ordine.",
+  "storefront.checkout.formInvalidTitle": "Dati checkout incompleti",
+  "storefront.checkout.itemPendingCustomer":
+    "Seleziona il cliente per calcolare prezzo, scorte e MOQ.",
+  "storefront.checkout.itemUnavailable":
+    "Questa riga non e piu disponibile per il checkout.",
+  "storefront.checkout.itemsNeedReview": "Righe da rivedere",
+  "storefront.checkout.loadingTargetPrices":
+    "Caricamento prezzi cliente per le righe del carrello.",
+  "storefront.checkout.preview.errorTitle": "Controllo ordine non riuscito",
+  "storefront.checkout.preview.loading": "Controllo prezzi, scorte e MOQ in corso.",
+  "storefront.checkout.preview.title": "Controllo ordine",
+  "storefront.checkout.profileMissing": "Dati cliente da completare",
+  "storefront.checkout.profileMissingAll": "Profilo cliente",
+  "storefront.checkout.required": "Campo obbligatorio.",
+  "storefront.checkout.savedShippingAddress": "Indirizzo spedizione salvato",
+  "storefront.checkout.section.customer": "Cliente e fatturazione",
+  "storefront.checkout.section.items": "Righe ordine",
+  "storefront.checkout.summary.needsCustomer":
+    "Seleziona il cliente per calcolare prezzi, scorte e MOQ.",
+  "storefront.checkout.summary.note":
+    "Totali stimati dai prezzi cliente correnti. Il gestionale conferma prezzi, scorte e riserve al momento dell'invio.",
+  "storefront.checkout.unresolvedItems": "Alcune righe non sono piu disponibili.",
   "storefront.checkout.field.codiceDestinatario": "Codice destinatario",
   "storefront.checkout.field.codiceFiscale": "Codice fiscale",
   "storefront.checkout.field.companyName": "Ragione sociale",
@@ -407,6 +453,7 @@ export const storefrontItIT = {
   "storefront.checkout.submit.button.idle": "Conferma ordine",
   "storefront.checkout.submit.button.loading": "Invio ordine...",
   "storefront.checkout.submit.button.loadingCart": "Caricamento carrello",
+  "storefront.checkout.submit.button.blocked": "Non inviabile",
   "storefront.checkout.submit.button.success": "Ordine inviato",
   "storefront.checkout.submit.cartEmptyReason":
     "Il carrello è vuoto: aggiungi almeno un prodotto prima di confermare l'ordine.",
@@ -938,10 +985,15 @@ export const storefrontZhCN = {
     "购物车不会锁定库存；库存和数量只会在确认下单时重新检查并锁定。",
   "storefront.cart.summaryNoteBlocked":
     "购物车不会锁定库存。部分商品需要登录、恢复库存或手动调整数量后才能结账；合计金额只包含当前可购买的商品行。",
+  "storefront.cart.summaryNoteReviewCheckout":
+    "可以先进入结账页查看和处理原因；提交订单前仍会校验登录、客户资料、价格、库存和 MOQ。",
   "storefront.cart.summaryNoteSynced":
     "购物车不会锁定库存；确认下单成功后才会锁定商品。",
   "storefront.cart.summaryTitle": "订单摘要",
   "storefront.cart.title": "确认商品与数量",
+  "storefront.assistedOrder.catalogBanner": "代客户下单",
+  "storefront.assistedOrder.catalogBannerGeneric":
+    "代客户下单：已按所选客户价格显示",
   "storefront.cart.decreaseAria": "减少 {sku} 的数量",
   "storefront.cart.decreaseTitle": "减少数量",
   "storefront.cart.stockLimitTitle": "已达到可用库存上限",
@@ -969,6 +1021,42 @@ export const storefrontZhCN = {
     "这些资料会作为订单快照，用于发票、配送和 RMA 管理。提交会使用现有 /api/orders endpoint，并发送本地购物车中保存的行。",
   "storefront.checkout.disabledCompanyReason":
     "结账已禁用：请将 Supabase 用户关联到客户资料。",
+  "storefront.checkout.accountVerified": "账户已验证",
+  "storefront.checkout.backToCart": "返回购物车",
+  "storefront.checkout.billingAddress": "账单地址",
+  "storefront.checkout.catalogLoadError": "客户价目表加载失败，请刷新后重试。",
+  "storefront.checkout.completeProfile": "补全资料",
+  "storefront.checkout.customerNotReady": "客户暂不能下单",
+  "storefront.checkout.customerNotReadyDescription":
+    "所选客户当前不满足下单条件，请检查客户状态、类型、归属和资料完整度。",
+  "storefront.checkout.delegated.description":
+    "选择客户后，价格、校验和订单都会使用该客户的等级和资料。",
+  "storefront.checkout.delegated.missingDescription":
+    "请选择客户，以计算客户价并创建订单。",
+  "storefront.checkout.delegated.missingTitle": "请选择客户",
+  "storefront.checkout.delegated.placeholder": "选择客户",
+  "storefront.checkout.delegated.select": "选择客户",
+  "storefront.checkout.delegated.title": "代客户下单",
+  "storefront.checkout.fixCart": "返回购物车修正",
+  "storefront.checkout.formInvalid": "请补全配送地址并勾选确认项后再提交订单。",
+  "storefront.checkout.formInvalidTitle": "结账资料不完整",
+  "storefront.checkout.itemPendingCustomer": "选择客户后计算价格、库存和 MOQ。",
+  "storefront.checkout.itemUnavailable": "该商品行当前无法用于结账。",
+  "storefront.checkout.itemsNeedReview": "商品行需要处理",
+  "storefront.checkout.loadingTargetPrices": "正在加载购物车商品的客户价格。",
+  "storefront.checkout.preview.errorTitle": "订单校验失败",
+  "storefront.checkout.preview.loading": "正在校验价格、库存和 MOQ。",
+  "storefront.checkout.preview.title": "订单校验",
+  "storefront.checkout.profileMissing": "客户资料待补全",
+  "storefront.checkout.profileMissingAll": "客户资料",
+  "storefront.checkout.required": "必填字段。",
+  "storefront.checkout.savedShippingAddress": "已保存配送地址",
+  "storefront.checkout.section.customer": "客户与开票",
+  "storefront.checkout.section.items": "订单行",
+  "storefront.checkout.summary.needsCustomer": "选择客户后计算客户价、库存和 MOQ。",
+  "storefront.checkout.summary.note":
+    "合计基于当前客户价格估算；提交时后台会再次确认价格、库存和锁货。",
+  "storefront.checkout.unresolvedItems": "部分商品行当前不可用。",
   "storefront.checkout.field.codiceDestinatario": "收件代码",
   "storefront.checkout.field.codiceFiscale": "税号",
   "storefront.checkout.field.companyName": "公司名称",
@@ -1039,6 +1127,7 @@ export const storefrontZhCN = {
   "storefront.checkout.submit.button.idle": "确认订单",
   "storefront.checkout.submit.button.loading": "正在提交订单...",
   "storefront.checkout.submit.button.loadingCart": "正在加载购物车",
+  "storefront.checkout.submit.button.blocked": "无法提交",
   "storefront.checkout.submit.button.success": "订单已提交",
   "storefront.checkout.submit.cartEmptyReason":
     "购物车为空：请至少添加一个商品后再确认订单。",

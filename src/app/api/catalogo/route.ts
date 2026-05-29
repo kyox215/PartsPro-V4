@@ -9,6 +9,7 @@ import { pageCatalogProducts } from "@/lib/partspro-repository";
 import { type PartProduct } from "@/lib/partspro-data";
 import {
   applyAccountPriceToProduct,
+  canDelegateCheckout,
   getCurrentAccountContext,
   hasOrderableEffectivePrice,
   priceVisibilityReason,
@@ -28,6 +29,7 @@ const catalogQuerySchema = z
     sort: z.enum(["name", "stock_desc", "updated_desc"]).default("name"),
     limit: z.coerce.number().int().min(1).max(50).default(24),
     offset: z.coerce.number().int().min(0).max(1000).default(0),
+    companyId: z.string().trim().uuid().optional(),
   })
   .strict();
 
@@ -51,9 +53,20 @@ export async function GET(request: NextRequest) {
     }
 
     const account = await getCurrentAccountContext({ ensure: true });
-    const showPrice = account.canViewPrices;
+    const { companyId, ...catalogQuery } = result.data;
+    const delegatedCheckout = canDelegateCheckout(account);
+
+    if (companyId && !delegatedCheckout) {
+      return apiError(403, "ASSISTED_ORDER_FORBIDDEN", "Only authorized staff can price catalog products for another customer.", {
+        companyId,
+      });
+    }
+
+    const buyerCustomerId = delegatedCheckout ? companyId : undefined;
+    const showPrice = account.canViewPrices || Boolean(buyerCustomerId);
     const visibilityReason = priceVisibilityReason(account);
-    const repositoryResult = await pageCatalogProducts(result.data, {
+    const repositoryResult = await pageCatalogProducts(catalogQuery, {
+      buyerCustomerId,
       includeBuyerPrices: showPrice,
     });
 
@@ -67,6 +80,7 @@ export async function GET(request: NextRequest) {
         limit: result.data.limit,
         offset: result.data.offset,
         returned: repositoryResult.data.products.length,
+        assistedOrderCustomerId: buyerCustomerId ?? null,
         currency: "EUR",
         priceVisibility:
           showPrice && visibilityReason !== "customer_needs_assignment"
