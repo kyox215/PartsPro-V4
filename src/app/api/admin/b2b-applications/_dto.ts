@@ -4,7 +4,6 @@ import {
   type AdminB2BApplicationReviewInput,
   type AdminCustomer,
 } from "@/lib/partspro-repository";
-import { toAdminCustomerDto } from "../customers/_dto";
 
 export function toAdminB2BApplicationQuery(input: {
   limit: number;
@@ -78,6 +77,23 @@ export function toAdminB2BReviewDto(input: {
   return {
     application: toAdminB2BApplicationDto(input.application),
     customer: input.customer ? toAdminCustomerDto(input.customer) : null,
+  };
+}
+
+function toAdminCustomerDto(customer: AdminCustomer) {
+  return {
+    id: customer.id,
+    name: customer.name,
+    companyName: customer.name,
+    partitaIva: customer.partitaIva,
+    vatNumber: customer.partitaIva,
+    fiscalCode: customer.codiceFiscale,
+    status: customer.customerStatus,
+    customerType: customer.customerType,
+    assignmentStatus: customer.assignmentStatus,
+    tier: customer.tier,
+    level: customer.level,
+    priceList: customer.priceList,
   };
 }
 

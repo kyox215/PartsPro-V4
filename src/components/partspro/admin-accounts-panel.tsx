@@ -2,17 +2,22 @@
 
 import * as React from "react";
 import {
+  Activity,
   AlertTriangle,
   ArrowLeftRight,
   BadgeCheck,
   BriefcaseBusiness,
   ChevronLeft,
   ChevronRight,
+  CircleDollarSign,
+  Clock3,
   KeyRound,
   Loader2,
   RefreshCcw,
   Search,
   ShieldCheck,
+  ShoppingBag,
+  Star,
   UserCog,
   UsersRound,
 } from "lucide-react";
@@ -50,20 +55,41 @@ import {
   getAdminDictionary,
   type AdminText,
 } from "@/i18n/dictionaries/admin";
+import { formatEuro } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
 import { useI18n } from "./i18n-provider";
 
 type AccountType = "customer" | "employee";
 type ConversionKind = "role" | "to_customer" | "to_employee";
+type CustomerActionKind = "customer_level" | "customer_status";
+type CustomerLevel = "bronze" | "silver" | "gold" | "emerald" | "diamond" | "master" | "king";
+type CustomerStatus = "pending" | "active" | "suspended";
 
 type AccountCustomer = {
   assignmentStatus: string;
   customerType: string;
   id: string | null;
+  lastOrderAt: string | null;
   level: string;
+  lifetimeSpendNet: number;
   name: string | null;
+  ordersCount: number;
+  recentActivity: AccountCustomerActivity[];
+  revenue: number;
   status: string;
   updatedAt: string | null;
+};
+
+type AccountCustomerActivity = {
+  brand: string | null;
+  createdAt: string | null;
+  eventType: string;
+  id: string;
+  model: string | null;
+  modelSeries: string | null;
+  productName: string | null;
+  searchQuery: string | null;
+  skuCode: string | null;
 };
 
 type Account = {
@@ -133,7 +159,30 @@ type ConversionState = {
   roleTemplate: string;
 };
 
+type CustomerActionState = {
+  account: Account;
+  kind: CustomerActionKind;
+  level: CustomerLevel;
+  reason: string;
+  status: CustomerStatus;
+};
+
+type CurrentUser = {
+  permissions: string[];
+  userId: string | null;
+};
+
 const pageSize = 12;
+const customerLevels = [
+  "bronze",
+  "silver",
+  "gold",
+  "emerald",
+  "diamond",
+  "master",
+  "king",
+] as const satisfies readonly CustomerLevel[];
+const customerStatuses = ["pending", "active", "suspended"] as const satisfies readonly CustomerStatus[];
 
 function useAdminText() {
   const { locale } = useI18n();
@@ -148,6 +197,7 @@ export function AdminAccountsPanel() {
   const [detailOpen, setDetailOpen] = React.useState(false);
   const [roleTemplates, setRoleTemplates] = React.useState<RoleTemplate[]>([]);
   const [currentUserId, setCurrentUserId] = React.useState<string | null>(null);
+  const [currentPermissions, setCurrentPermissions] = React.useState<string[]>([]);
   const [query, setQuery] = React.useState("");
   const [appliedQuery, setAppliedQuery] = React.useState("");
   const [page, setPage] = React.useState(0);
@@ -157,7 +207,14 @@ export function AdminAccountsPanel() {
   const [submitting, setSubmitting] = React.useState(false);
   const [notice, setNotice] = React.useState<Notice | null>(null);
   const [conversion, setConversion] = React.useState<ConversionState | null>(null);
+  const [customerAction, setCustomerAction] = React.useState<CustomerActionState | null>(null);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const currentPermissionSet = React.useMemo(
+    () => new Set(currentPermissions),
+    [currentPermissions]
+  );
+  const canManageCustomerLevel = currentPermissionSet.has("customers.manage_level");
+  const canManageCustomerStatus = currentPermissionSet.has("customers.classify");
 
   const refreshAccounts = React.useCallback(
     async (signal?: AbortSignal) => {
@@ -203,7 +260,8 @@ export function AdminAccountsPanel() {
     void Promise.all([fetchCurrentUser(controller.signal), fetchRoleTemplates(controller.signal)])
       .then(([me, templates]) => {
         if (!controller.signal.aborted) {
-          setCurrentUserId(me);
+          setCurrentUserId(me.userId);
+          setCurrentPermissions(me.permissions);
           setRoleTemplates(templates);
         }
       })
@@ -247,6 +305,22 @@ export function AdminAccountsPanel() {
     });
   }
 
+  function openCustomerAction(kind: CustomerActionKind, account: Account) {
+    const customer = account.customer;
+
+    if (!customer) {
+      return;
+    }
+
+    setCustomerAction({
+      account,
+      kind,
+      level: normalizeCustomerLevel(customer.level),
+      reason: "",
+      status: normalizeCustomerStatus(customer.status),
+    });
+  }
+
   async function submitConversion() {
     if (!conversion || conversion.reason.trim().length < 3) {
       return;
@@ -269,6 +343,44 @@ export function AdminAccountsPanel() {
       setConversion(null);
       await refreshAccounts();
       await loadDetail(conversion.account.userId);
+    } catch (error) {
+      setNotice({ message: readableError(error), tone: "error" });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitCustomerAction() {
+    if (!customerAction || customerAction.reason.trim().length < 3) {
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      const nextDetail =
+        customerAction.kind === "customer_level"
+          ? await patchCustomerLevel(
+              customerAction.account.userId,
+              customerAction.level,
+              customerAction.reason
+            )
+          : await patchCustomerStatus(
+              customerAction.account.userId,
+              customerAction.status,
+              customerAction.reason
+            );
+
+      setNotice({
+        message:
+          customerAction.kind === "customer_level"
+            ? "客户等级已保存。"
+            : "客户状态已保存。",
+        tone: "success",
+      });
+      setCustomerAction(null);
+      setDetail(nextDetail);
+      await refreshAccounts();
     } catch (error) {
       setNotice({ message: readableError(error), tone: "error" });
     } finally {
@@ -388,10 +500,13 @@ export function AdminAccountsPanel() {
 
           <div className="hidden min-w-0 xl:block">
             <AccountDetailPane
+              canManageCustomerLevel={canManageCustomerLevel}
+              canManageCustomerStatus={canManageCustomerStatus}
               currentUserId={currentUserId}
               detail={detail}
               loading={detailLoading}
               onAction={openConversion}
+              onCustomerAction={openCustomerAction}
             />
           </div>
         </div>
@@ -408,10 +523,13 @@ export function AdminAccountsPanel() {
           </SheetHeader>
           <div className="p-3">
             <AccountDetailPane
+              canManageCustomerLevel={canManageCustomerLevel}
+              canManageCustomerStatus={canManageCustomerStatus}
               currentUserId={currentUserId}
               detail={detail}
               loading={detailLoading}
               onAction={openConversion}
+              onCustomerAction={openCustomerAction}
             />
           </div>
         </SheetContent>
@@ -423,6 +541,13 @@ export function AdminAccountsPanel() {
         onClose={() => setConversion(null)}
         onSubmit={submitConversion}
         roleTemplates={roleTemplates}
+        submitting={submitting}
+      />
+      <CustomerAccountActionDialog
+        action={customerAction}
+        onChange={setCustomerAction}
+        onClose={() => setCustomerAction(null)}
+        onSubmit={submitCustomerAction}
         submitting={submitting}
       />
     </section>
@@ -492,15 +617,21 @@ function AccountListItem({
 }
 
 function AccountDetailPane({
+  canManageCustomerLevel,
+  canManageCustomerStatus,
   currentUserId,
   detail,
   loading,
   onAction,
+  onCustomerAction,
 }: {
+  canManageCustomerLevel: boolean;
+  canManageCustomerStatus: boolean;
   currentUserId: string | null;
   detail: AccountDetail | null;
   loading: boolean;
   onAction: (kind: ConversionKind, account: Account) => void;
+  onCustomerAction: (kind: CustomerActionKind, account: Account) => void;
 }) {
   const text = useAdminText();
 
@@ -578,6 +709,36 @@ function AccountDetailPane({
         <InfoTile icon={KeyRound} label="有效权限" value={detail.permissions.length} />
       </div>
 
+      {account.accountType === "customer" && detail.customer ? (
+        <div className="grid gap-2 sm:grid-cols-5">
+          <InfoTile
+            icon={BadgeCheck}
+            label="活跃状态"
+            value={customerStatusLabel(detail.customer.status)}
+          />
+          <InfoTile
+            icon={Star}
+            label="客户等级"
+            value={customerLevelLabel(detail.customer.level)}
+          />
+          <InfoTile
+            icon={ShoppingBag}
+            label="订单数量"
+            value={detail.customer.ordersCount}
+          />
+          <InfoTile
+            icon={CircleDollarSign}
+            label="消费金额"
+            value={formatEuro(detail.customer.revenue)}
+          />
+          <InfoTile
+            icon={Clock3}
+            label="最近订单"
+            value={formatDate(detail.customer.lastOrderAt) ?? "暂无"}
+          />
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap gap-2">
         {account.accountType === "customer" ? (
           <Button
@@ -622,13 +783,40 @@ function AccountDetailPane({
 
       <DetailSection title="客户资料">
         {detail.customer ? (
-          <div className="grid gap-2 sm:grid-cols-2">
-            <DetailLine label="公司/名称" value={detail.customer.name ?? "暂无"} />
-            <DetailLine label="状态" value={customerStatusLabel(detail.customer.status)} />
-            <DetailLine label="客户类型" value={customerTypeLabel(detail.customer.customerType)} />
-            <DetailLine label="归属状态" value={assignmentStatusLabel(detail.customer.assignmentStatus)} />
-            <DetailLine label="客户等级" value={detail.customer.level} />
-            <DetailLine label="更新时间" value={formatDateTime(detail.customer.updatedAt) ?? "暂无"} />
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="bg-white"
+                disabled={!canManageCustomerLevel}
+                onClick={() => onCustomerAction("customer_level", account)}
+              >
+                <Star className="size-4" />
+                修改等级
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="bg-white"
+                disabled={!canManageCustomerStatus}
+                onClick={() => onCustomerAction("customer_status", account)}
+              >
+                <BadgeCheck className="size-4" />
+                修改状态
+              </Button>
+              {!canManageCustomerLevel || !canManageCustomerStatus ? (
+                <span className="text-xs font-semibold leading-8 text-slate-500">
+                  缺少权限的操作会被锁定。
+                </span>
+              ) : null}
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <DetailLine label="公司/名称" value={detail.customer.name ?? "暂无"} />
+              <DetailLine label="活跃状态" value={customerStatusLabel(detail.customer.status)} />
+              <DetailLine label="客户等级" value={customerLevelLabel(detail.customer.level)} />
+              <DetailLine label="更新时间" value={formatDateTime(detail.customer.updatedAt) ?? "暂无"} />
+            </div>
           </div>
         ) : (
           <EmptyText text="此账号尚未绑定客户资料。" />
@@ -688,10 +876,17 @@ function AccountDetailPane({
         )}
       </DetailSection>
 
-      <DetailSection title="管理审计">
-        {detail.auditEvents.length > 0 ? (
-          <ol className="space-y-2">
-            {detail.auditEvents.map((event) => (
+      <DetailSection title="最近操作">
+        {detail.auditEvents.length > 0 || (detail.customer?.recentActivity.length ?? 0) > 0 ? (
+          <div className="grid gap-3 xl:grid-cols-2">
+            <div className="min-w-0">
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-black text-slate-500">
+                <ShieldCheck className="size-3.5" />
+                后台审计
+              </div>
+              {detail.auditEvents.length > 0 ? (
+                <ol className="space-y-2">
+                  {detail.auditEvents.slice(0, 8).map((event) => (
               <li key={event.id} className="rounded-md border border-slate-200 bg-white p-2 text-sm">
                 <div className="flex min-w-0 items-start justify-between gap-2">
                   <div className="min-w-0">
@@ -720,10 +915,44 @@ function AccountDetailPane({
                   </span>
                 </div>
               </li>
-            ))}
-          </ol>
+                  ))}
+                </ol>
+              ) : (
+                <EmptyText text="暂无后台审计记录。" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-black text-slate-500">
+                <Activity className="size-3.5" />
+                客户活动
+              </div>
+              {detail.customer?.recentActivity.length ? (
+                <ol className="space-y-2">
+                  {detail.customer.recentActivity.slice(0, 8).map((event) => (
+                    <li key={event.id} className="rounded-md border border-slate-200 bg-white p-2 text-sm">
+                      <div className="flex min-w-0 items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="break-words font-black text-slate-900">
+                            {customerActivityLabel(event)}
+                          </div>
+                          <div className="mt-1 break-words text-xs leading-5 text-slate-500">
+                            {customerActivitySubject(event)}
+                          </div>
+                        </div>
+                        <span className="shrink-0 text-xs font-medium text-slate-500">
+                          {formatDateTime(event.createdAt) ?? "暂无"}
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <EmptyText text="暂无客户活动记录。" />
+              )}
+            </div>
+          </div>
         ) : (
-          <EmptyText text="暂无管理审计记录。" />
+          <EmptyText text="暂无最近操作记录。" />
         )}
       </DetailSection>
     </div>
@@ -754,7 +983,7 @@ function AccountActionDialog({
         : "调整员工角色";
   const description =
     conversion?.kind === "to_customer"
-      ? "员工会恢复为客户账号，默认零售客户且进入待审核状态。"
+      ? "员工会恢复为客户账号并进入待处理状态；正式激活时会自动应用批发客户规则。"
       : conversion?.kind === "to_employee"
         ? "客户账号会转为员工，原客户资料会暂停并标记为已转员工。"
         : "角色模板会决定员工默认后台权限。";
@@ -827,7 +1056,112 @@ function AccountActionDialog({
   );
 }
 
-async function fetchCurrentUser(signal?: AbortSignal) {
+function CustomerAccountActionDialog({
+  action,
+  onChange,
+  onClose,
+  onSubmit,
+  submitting,
+}: {
+  action: CustomerActionState | null;
+  onChange: (action: CustomerActionState | null) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+  submitting: boolean;
+}) {
+  const title = action?.kind === "customer_level" ? "修改客户等级" : "修改活跃状态";
+  const description =
+    action?.kind === "customer_level"
+      ? "客户等级会影响前台客户价和代客下单价格。"
+      : "激活客户会自动保持 assigned + wholesale，以保证前台价格和 checkout 可用。";
+  const canSubmit = Boolean(action && action.reason.trim().length >= 3);
+
+  return (
+    <Dialog open={Boolean(action)} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        {action ? (
+          <div className="space-y-3">
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+              <div className="font-black text-slate-900">
+                {action.account.customer?.name ?? action.account.displayName ?? action.account.email ?? action.account.userId}
+              </div>
+              <div className="mt-1 break-words text-xs text-slate-500">
+                {action.account.email ?? action.account.userId}
+              </div>
+            </div>
+            {action.kind === "customer_level" ? (
+              <div className="space-y-1.5">
+                <Label>客户等级</Label>
+                <Select
+                  value={action.level}
+                  onValueChange={(value) =>
+                    onChange({ ...action, level: normalizeCustomerLevel(value) })
+                  }
+                >
+                  <SelectTrigger className="bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customerLevels.map((level) => (
+                      <SelectItem key={level} value={level}>
+                        {customerLevelLabel(level)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label>活跃状态</Label>
+                <Select
+                  value={action.status}
+                  onValueChange={(value) =>
+                    onChange({ ...action, status: normalizeCustomerStatus(value) })
+                  }
+                >
+                  <SelectTrigger className="bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customerStatuses.map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {customerStatusLabel(status)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label>变更原因</Label>
+              <Textarea
+                value={action.reason}
+                onChange={(event) => onChange({ ...action, reason: event.target.value })}
+                placeholder="说明业务原因，便于审计追踪"
+                rows={4}
+              />
+            </div>
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={submitting}>
+            取消
+          </Button>
+          <Button onClick={onSubmit} disabled={!canSubmit || submitting}>
+            {submitting ? <Loader2 className="size-4 animate-spin" /> : <BadgeCheck className="size-4" />}
+            保存
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+async function fetchCurrentUser(signal?: AbortSignal): Promise<CurrentUser> {
   const response = await fetch("/api/me", {
     cache: "no-store",
     headers: { Accept: "application/json" },
@@ -835,7 +1169,12 @@ async function fetchCurrentUser(signal?: AbortSignal) {
   });
   const payload = (await response.json()) as unknown;
 
-  return isRecord(payload) ? readString(payload.userId) : null;
+  return {
+    permissions: isRecord(payload)
+      ? readArray(payload.permissions).map(readString).filter(isDefined)
+      : [],
+    userId: isRecord(payload) ? readString(payload.userId) : null,
+  };
 }
 
 async function fetchRoleTemplates(signal?: AbortSignal): Promise<RoleTemplate[]> {
@@ -961,6 +1300,61 @@ async function patchAccountRole(userId: string, roleTemplate: string, reason: st
   }
 }
 
+async function patchCustomerLevel(
+  userId: string,
+  level: CustomerLevel,
+  reason: string
+): Promise<AccountDetail> {
+  const response = await fetch(`/api/admin/accounts/${encodeURIComponent(userId)}/customer-level`, {
+    body: JSON.stringify({ level, reason }),
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    method: "PATCH",
+  });
+
+  if (!response.ok) {
+    throw new Error(`PATCH /api/admin/accounts/${userId}/customer-level 返回 ${response.status}`);
+  }
+
+  return accountDetailFromResponse(await response.json(), "客户等级更新返回格式不完整");
+}
+
+async function patchCustomerStatus(
+  userId: string,
+  status: CustomerStatus,
+  reason: string
+): Promise<AccountDetail> {
+  const response = await fetch(`/api/admin/accounts/${encodeURIComponent(userId)}/customer-status`, {
+    body: JSON.stringify({ reason, status }),
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    method: "PATCH",
+  });
+
+  if (!response.ok) {
+    throw new Error(`PATCH /api/admin/accounts/${userId}/customer-status 返回 ${response.status}`);
+  }
+
+  return accountDetailFromResponse(await response.json(), "客户状态更新返回格式不完整");
+}
+
+function accountDetailFromResponse(payload: unknown, message: string): AccountDetail {
+  const data = isRecord(payload) && isRecord(payload.data) ? payload.data : null;
+  const detail = normalizeAccountDetail(data);
+
+  if (!detail) {
+    throw new Error(message);
+  }
+
+  return detail;
+}
+
 function AccountAvatar({
   account,
   size = "default",
@@ -1040,8 +1434,11 @@ function CustomerAssignmentBadges({ customer }: { customer: AccountCustomer | nu
       <Badge className={customerStatusBadgeClass(customer.status)} variant="outline">
         {customerStatusLabel(customer.status)}
       </Badge>
-      <Badge className={assignmentStatusBadgeClass(customer.assignmentStatus)} variant="outline">
-        {assignmentStatusLabel(customer.assignmentStatus)}
+      <Badge className="border-violet-200 bg-violet-50 text-violet-700" variant="outline">
+        {customerLevelLabel(customer.level)}
+      </Badge>
+      <Badge className="border-slate-200 bg-slate-50 text-slate-500" variant="outline">
+        {customer.ordersCount} 单
       </Badge>
     </>
   );
@@ -1154,7 +1551,36 @@ function normalizeCustomer(value: unknown): AccountCustomer | null {
     customerType: readString(value.customerType) ?? "retail",
     assignmentStatus: readString(value.assignmentStatus) ?? "needs_review",
     level: readString(value.level) ?? "bronze",
+    lifetimeSpendNet: readNumber(value.lifetimeSpendNet) ?? 0,
+    ordersCount: readNumber(value.ordersCount) ?? 0,
+    revenue: readNumber(value.revenue) ?? readNumber(value.lifetimeSpendNet) ?? 0,
+    lastOrderAt: readString(value.lastOrderAt),
+    recentActivity: readArray(value.recentActivity).map(normalizeCustomerActivity).filter(isDefined),
     updatedAt: readString(value.updatedAt),
+  };
+}
+
+function normalizeCustomerActivity(value: unknown): AccountCustomerActivity | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const id = readString(value.id);
+
+  if (!id) {
+    return null;
+  }
+
+  return {
+    id,
+    eventType: readString(value.eventType) ?? "activity",
+    skuCode: readString(value.skuCode),
+    productName: readString(value.productName),
+    brand: readString(value.brand),
+    model: readString(value.model),
+    modelSeries: readString(value.modelSeries),
+    searchQuery: readString(value.searchQuery),
+    createdAt: readString(value.createdAt),
   };
 }
 
@@ -1242,24 +1668,54 @@ function customerStatusLabel(value: string) {
   return "待处理";
 }
 
-function customerTypeLabel(value: string) {
-  return value === "wholesale" ? "批发客户" : "零售客户";
+function customerLevelLabel(value: string) {
+  const labels: Record<string, string> = {
+    bronze: "Bronze",
+    diamond: "Diamond",
+    emerald: "Emerald",
+    gold: "Gold",
+    king: "King",
+    master: "Master",
+    silver: "Silver",
+  };
+
+  return labels[value] ?? value;
 }
 
-function assignmentStatusLabel(value: string) {
-  if (value === "assigned") {
-    return "已分配";
-  }
+function normalizeCustomerLevel(value: string): CustomerLevel {
+  return customerLevels.includes(value as CustomerLevel)
+    ? (value as CustomerLevel)
+    : "bronze";
+}
 
-  if (value === "converted_to_employee") {
-    return "已转员工";
-  }
+function normalizeCustomerStatus(value: string): CustomerStatus {
+  return customerStatuses.includes(value as CustomerStatus)
+    ? (value as CustomerStatus)
+    : "pending";
+}
 
-  if (value === "archived") {
-    return "已归档";
-  }
+function customerActivityLabel(event: AccountCustomerActivity) {
+  const labels: Record<string, string> = {
+    catalog_filter: "筛选目录",
+    catalog_search: "搜索目录",
+    model_view: "查看机型",
+    order_detail_view: "查看订单",
+    product_view: "查看商品",
+  };
 
-  return "待审核";
+  return labels[event.eventType] ?? event.eventType;
+}
+
+function customerActivitySubject(event: AccountCustomerActivity) {
+  return [
+    event.searchQuery ? `搜索：${event.searchQuery}` : null,
+    event.productName,
+    event.skuCode,
+    event.brand,
+    event.modelSeries ?? event.model,
+  ]
+    .filter(Boolean)
+    .join(" · ") || "客户前台操作";
 }
 
 function memberRoleLabel(value: string) {
@@ -1320,22 +1776,6 @@ function customerStatusBadgeClass(value: string) {
 
   if (value === "suspended") {
     return "border-red-200 bg-red-50 text-red-700";
-  }
-
-  return "border-amber-200 bg-amber-50 text-amber-700";
-}
-
-function assignmentStatusBadgeClass(value: string) {
-  if (value === "assigned") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  }
-
-  if (value === "converted_to_employee") {
-    return "border-indigo-200 bg-indigo-50 text-indigo-700";
-  }
-
-  if (value === "archived") {
-    return "border-slate-200 bg-slate-50 text-slate-500";
   }
 
   return "border-amber-200 bg-amber-50 text-amber-700";

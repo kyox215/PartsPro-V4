@@ -26,7 +26,6 @@ import {
   ShieldAlert,
   ShoppingCart,
   Truck,
-  Users,
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -59,7 +58,6 @@ import { useI18n } from "./i18n-provider";
 type AdminOverviewPanelValue =
   | "overview"
   | "orders"
-  | "customers"
   | "catalog"
   | "timeline"
   | "settings";
@@ -896,7 +894,6 @@ function CatalogOpsCard({
     { icon: ClipboardList, label: copy.actions.openOrders, panel: "orders" },
     { icon: Package, label: copy.actions.openCatalog, panel: "catalog" },
     { icon: BarChart3, label: copy.actions.openTimeline, panel: "timeline" },
-    { icon: Users, label: copy.actions.openCustomers, panel: "customers" },
   ] as const;
 
   return (

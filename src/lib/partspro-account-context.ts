@@ -313,8 +313,6 @@ export function hasAccountPermission(account: AccountContext, permission: string
 
 function accountPermissionAliases(permission: string) {
   switch (permission) {
-    case "customers.read":
-      return ["customers.view", "customers.manage"];
     default:
       return [];
   }

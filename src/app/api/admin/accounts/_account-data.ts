@@ -15,7 +15,9 @@ export const roleTemplates = [
 export const profileSelect =
   "id, email, role, account_type, auth_provider, display_name, avatar_url, role_template, customer_id, created_at, updated_at";
 export const customerSelect =
-  "id, user_id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address, status, customer_type, assignment_status, level, lifetime_spend_net, profile_completed_at, created_at, updated_at";
+  "id, user_id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address, status, customer_type, assignment_status, level, lifetime_spend_net, orders_count, revenue, last_order_at, profile_completed_at, created_at, updated_at";
+const customerActivitySelect =
+  "id, user_id, customer_id, event_type, sku_code, product_name, brand, model, model_series, search_query, metadata, created_at";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 type DbRow = Record<string, unknown>;
@@ -45,18 +47,37 @@ export type AdminAccountCustomerDto = {
   email: string | null;
   fiscalCode: string | null;
   id: string | null;
+  lastOrderAt: string | null;
   level: string;
   lifetimeSpendNet: number;
   name: string | null;
+  ordersCount: number;
   pec: string | null;
   phone: string | null;
   profileCompletedAt: string | null;
+  recentActivity: AdminAccountCustomerActivityDto[];
+  revenue: number;
   sdi: string | null;
   shippingAddress: string | null;
   status: string;
   updatedAt: string | null;
   userId: string | null;
   vatNumber: string | null;
+};
+
+export type AdminAccountCustomerActivityDto = {
+  brand: string | null;
+  createdAt: string | null;
+  customerId: string;
+  eventType: string;
+  id: string;
+  metadata: unknown;
+  model: string | null;
+  modelSeries: string | null;
+  productName: string | null;
+  searchQuery: string | null;
+  skuCode: string | null;
+  userId: string | null;
 };
 
 export type AdminAccountMembershipDto = {
@@ -173,11 +194,20 @@ export async function readAdminAccountDetail(
     readAccountPermissions(supabase, account),
     readAccountAuditEvents(supabase, account),
   ]);
+  const recentActivity = account.customer?.id
+    ? await readCustomerRecentActivity(supabase, account.customer.id)
+    : [];
+  const customer = account.customer
+    ? { ...account.customer, recentActivity }
+    : null;
 
   return {
-    account,
+    account: {
+      ...account,
+      customer,
+    },
     auditEvents,
-    customer: account.customer,
+    customer,
     memberships,
     permissions,
   };
@@ -238,6 +268,10 @@ function toCustomerDto(row: DbRow): AdminAccountCustomerDto {
     assignmentStatus: readString(row.assignment_status) ?? "needs_review",
     level: readString(row.level) ?? "bronze",
     lifetimeSpendNet: readNumber(row.lifetime_spend_net) ?? 0,
+    ordersCount: readNumber(row.orders_count) ?? 0,
+    revenue: readNumber(row.revenue) ?? readNumber(row.lifetime_spend_net) ?? 0,
+    lastOrderAt: readString(row.last_order_at),
+    recentActivity: [],
     profileCompletedAt: readString(row.profile_completed_at),
     createdAt: readString(row.created_at),
     updatedAt: readString(row.updated_at),
@@ -411,6 +445,37 @@ async function readAccountAuditEvents(
     entityType: readString(row.entity_type),
     reason: readString(row.reason),
     result: readString(row.result) ?? "ok",
+    createdAt: readString(row.created_at),
+  }));
+}
+
+async function readCustomerRecentActivity(
+  supabase: SupabaseServerClient,
+  customerId: string
+): Promise<AdminAccountCustomerActivityDto[]> {
+  const { data, error } = await supabase
+    .from("customer_activity_events")
+    .select(customerActivitySelect)
+    .eq("customer_id", customerId)
+    .order("created_at", { ascending: false })
+    .limit(30);
+
+  if (error || !Array.isArray(data)) {
+    return [];
+  }
+
+  return data.filter(isRow).map((row) => ({
+    id: readString(row.id) ?? "",
+    userId: readString(row.user_id),
+    customerId: readString(row.customer_id) ?? customerId,
+    eventType: readString(row.event_type) ?? "activity",
+    skuCode: readString(row.sku_code),
+    productName: readString(row.product_name),
+    brand: readString(row.brand),
+    model: readString(row.model),
+    modelSeries: readString(row.model_series),
+    searchQuery: readString(row.search_query),
+    metadata: row.metadata ?? {},
     createdAt: readString(row.created_at),
   }));
 }

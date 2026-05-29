@@ -1,26 +1,22 @@
 export const adminPanelPermissions = {
   catalog: "panel.catalog",
-  customers: "panel.customers",
   inventory: "panel.inventory",
   orders: "panel.orders",
   overview: "panel.orders",
   settings: "panel.settings",
-  timeline: "panel.customers",
+  timeline: "panel.orders",
 } as const;
 
 export const CUSTOMER_MANAGE_LEVEL_PERMISSION = "customers.manage_level";
 
 export const adminPermissions = [
   "panel.orders",
-  "panel.customers",
   "panel.catalog",
   "panel.inventory",
   "panel.settings",
   "customers.read",
-  "customers.manage",
   "customers.classify",
   CUSTOMER_MANAGE_LEVEL_PERMISSION,
-  "customers.manage_terms",
   "employees.read",
   "employees.manage_permissions",
   "orders.read",
@@ -62,7 +58,6 @@ export const roleTemplatePermissions: Record<string, Set<string>> = {
   admin: adminPermissionSet,
   auditor: new Set([
     "panel.orders",
-    "panel.customers",
     "panel.catalog",
     "orders.read",
     "customers.read",
@@ -108,19 +103,15 @@ export const roleTemplatePermissions: Record<string, Set<string>> = {
   ]),
   sales: new Set([
     "panel.orders",
-    "panel.customers",
     "orders.read",
     "orders.manage",
     "customers.read",
-    "customers.manage",
     "customers.classify",
     CUSTOMER_MANAGE_LEVEL_PERMISSION,
-    "customers.manage_terms",
     "employees.read",
   ]),
   sales_support: new Set([
     "panel.orders",
-    "panel.customers",
     "panel.catalog",
     "orders.read",
     "customers.read",
@@ -148,7 +139,11 @@ export function visiblePanelsForPermissions(permissions: Iterable<string>) {
     .filter(
       ([panel, permission]) =>
         permissionSet.has(permission) ||
-        (panel === "settings" && permissionSet.has("employees.manage_permissions"))
+        (panel === "settings" &&
+          (permissionSet.has("employees.manage_permissions") ||
+            permissionSet.has("customers.read") ||
+            permissionSet.has("customers.classify") ||
+            permissionSet.has(CUSTOMER_MANAGE_LEVEL_PERMISSION)))
     )
     .map(([panel]) => panel);
 }

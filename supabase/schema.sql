@@ -301,8 +301,8 @@
 -- Current RLS posture observed remotely:
 -- - All listed public tables have RLS enabled.
 -- - Customer read/write paths are permission-scoped:
---   customers.read, customers.manage, customers.classify,
---   customers.manage_terms, employees.read, employees.manage_permissions.
+--   customers.read, customers.classify, customers.manage_level,
+--   employees.read, employees.manage_permissions.
 -- - Customer self-service access resolves through profiles.customer_id,
 --   customer_memberships, then legacy customers.user_id.
 -- - Sensitive customer/account/B2B/permission writes go through RPC wrappers

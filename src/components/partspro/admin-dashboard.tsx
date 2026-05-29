@@ -16,7 +16,6 @@ import {
   Search,
   Settings,
   User,
-  Users,
   Warehouse,
   type LucideIcon,
 } from "lucide-react";
@@ -41,7 +40,6 @@ import { PartsProLogo } from "./logo";
 type AdminPanelValue =
   | "overview"
   | "orders"
-  | "customers"
   | "catalog"
   | "timeline"
   | "settings";
@@ -55,7 +53,6 @@ type AdminNavItem = {
 const adminPanelValues = [
   "overview",
   "orders",
-  "customers",
   "catalog",
   "timeline",
   "settings",
@@ -66,7 +63,6 @@ const navItems = [
   { labelKey: "orders", icon: ClipboardList, panel: "orders" },
   { labelKey: "catalog", icon: Package, panel: "catalog" },
   { labelKey: "warehouse", icon: Warehouse },
-  { labelKey: "customers", icon: Users, panel: "customers" },
   { labelKey: "marketing", icon: Bell, panel: "timeline" },
   { labelKey: "finance", icon: BarChart3 },
   { labelKey: "reports", icon: Boxes },
@@ -80,13 +76,6 @@ type AdminOverviewDashboardProps = {
 
 const AdminOrdersPanel = dynamic(
   () => import("./admin-orders-panel").then((module) => module.AdminOrdersPanel),
-  { loading: () => <AdminPanelLoading /> }
-);
-const AdminCustomersPanel = dynamic(
-  () =>
-    import("./admin-customers-panel").then(
-      (module) => module.AdminCustomersPanel
-    ),
   { loading: () => <AdminPanelLoading /> }
 );
 const AdminProductsPanel = dynamic(
@@ -149,7 +138,6 @@ export function AdminDashboard() {
     React.useState<AdminPanelValue>("overview");
   const [visiblePanels, setVisiblePanels] =
     React.useState<AdminPanelValue[] | null>(null);
-  const [customerReviewCount, setCustomerReviewCount] = React.useState(0);
   const visiblePanelSet = React.useMemo(
     () => new Set<AdminPanelValue>(visiblePanels ?? [...adminPanelValues]),
     [visiblePanels]
@@ -189,36 +177,6 @@ export function AdminDashboard() {
   }, []);
 
   React.useEffect(() => {
-    const handleCustomerReviewCount = (event: Event) => {
-      const detail = (event as CustomEvent<{ count?: unknown }>).detail;
-
-      if (typeof detail?.count === "number") {
-        setCustomerReviewCount(Math.max(0, detail.count));
-      }
-    };
-
-    window.addEventListener("partspro:customer-review-count", handleCustomerReviewCount);
-
-    return () => {
-      window.removeEventListener("partspro:customer-review-count", handleCustomerReviewCount);
-    };
-  }, []);
-
-  React.useEffect(() => {
-    if (!visiblePanelSet.has("customers")) {
-      return;
-    }
-
-    const controller = new AbortController();
-
-    void fetchCustomerReviewCount(controller.signal)
-      .then(setCustomerReviewCount)
-      .catch(() => undefined);
-
-    return () => controller.abort();
-  }, [visiblePanelSet]);
-
-  React.useEffect(() => {
     if (!visiblePanelSet.has(activePanel)) {
       const timeoutId = window.setTimeout(() => {
         setActivePanel(visiblePanels?.[0] ?? "overview");
@@ -242,14 +200,12 @@ export function AdminDashboard() {
       <div className="flex min-w-0">
         <AdminSidebar
           activePanel={activePanel}
-          customerReviewCount={customerReviewCount}
           onPanelChange={setActivePanel}
           visiblePanels={visiblePanelSet}
         />
         <section className="w-full min-w-0 flex-1">
           <AdminTopbar
             activePanel={activePanel}
-            customerReviewCount={customerReviewCount}
             onPanelChange={setActivePanel}
             visiblePanels={visiblePanelSet}
           />
@@ -261,9 +217,6 @@ export function AdminDashboard() {
             >
               <TabsContent value="orders" className="order-4 mt-0 min-w-0">
                 <AdminOrdersPanel />
-              </TabsContent>
-              <TabsContent value="customers" className="order-4 mt-0 min-w-0">
-                <AdminCustomersPanel />
               </TabsContent>
               <TabsContent value="catalog" className="order-4 mt-0 min-w-0">
                 <AdminProductsPanel />
@@ -290,14 +243,12 @@ export function AdminDashboard() {
 
 type AdminNavigationProps = {
   activePanel: AdminPanelValue;
-  customerReviewCount: number;
   onPanelChange: (panel: AdminPanelValue) => void;
   visiblePanels: ReadonlySet<AdminPanelValue>;
 };
 
 function AdminSidebar({
   activePanel,
-  customerReviewCount,
   onPanelChange,
   visiblePanels,
 }: AdminNavigationProps) {
@@ -338,9 +289,6 @@ function AdminSidebar({
             >
               <item.icon className="size-4" />
               <span className="min-w-0 flex-1 truncate">{text.nav[item.labelKey]}</span>
-              {item.labelKey === "customers" ? (
-                <CustomerReviewBadge count={customerReviewCount} />
-              ) : null}
               {item.labelKey === "catalog" && (
                 <ChevronRight className="size-4 opacity-60" />
               )}
@@ -371,7 +319,6 @@ function AdminSidebar({
 
 function AdminTopbar({
   activePanel,
-  customerReviewCount,
   onPanelChange,
   visiblePanels,
 }: AdminNavigationProps) {
@@ -446,9 +393,6 @@ function AdminTopbar({
                   >
                     <item.icon className="size-4" />
                     <span className="min-w-0 flex-1 truncate">{text.nav[item.labelKey]}</span>
-                    {item.labelKey === "customers" ? (
-                      <CustomerReviewBadge count={customerReviewCount} />
-                    ) : null}
                     {item.labelKey === "catalog" && (
                       <ChevronRight className="size-4 opacity-60" />
                     )}
@@ -481,25 +425,4 @@ function AdminTopbar({
       </div>
     </header>
   );
-}
-
-function CustomerReviewBadge({ count }: { count: number }) {
-  if (count <= 0) {
-    return null;
-  }
-
-  return (
-    <span
-      className="ml-auto inline-flex h-5 min-w-5 items-center justify-center gap-1 rounded-full bg-red-500 px-1.5 text-[10px] font-black leading-none text-white shadow-sm ring-2 ring-white"
-      aria-label={`待审核客户 ${count}`}
-    >
-      <span className="size-1.5 rounded-full bg-white" />
-      {count > 99 ? "99+" : count}
-    </span>
-  );
-}
-
-async function fetchCustomerReviewCount(signal: AbortSignal) {
-  signal.throwIfAborted();
-  return 0;
 }
