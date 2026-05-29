@@ -2024,6 +2024,13 @@ export async function listCurrentProductRestockRequests(): Promise<
     .order("created_at", { ascending: false });
 
   if (error || !Array.isArray(data)) {
+    if (isRecoverableRestockSchemaError(error)) {
+      return emptyResult(
+        [],
+        "product_restock_requests is not available in the Supabase Data API schema cache."
+      );
+    }
+
     throw new RepositoryWriteError(
       supabaseRpcStatus(error),
       "RESTOCK_REQUESTS_READ_FAILED",
@@ -2107,6 +2114,15 @@ export async function saveProductRestockRequest(
       return { data: duplicate, source: "supabase" };
     }
 
+    if (isRecoverableRestockSchemaError(error)) {
+      throw new RepositoryWriteError(
+        503,
+        "RESTOCK_REQUESTS_SCHEMA_UNAVAILABLE",
+        "Restock reminders are not available until the Supabase schema is repaired.",
+        supabaseErrorDetails(error)
+      );
+    }
+
     throw new RepositoryWriteError(
       supabaseRpcStatus(error),
       "RESTOCK_REQUEST_CREATE_FAILED",
@@ -2151,6 +2167,16 @@ export async function listAdminProductRestockRequests(
   const { data, error, count } = await request;
 
   if (error || !Array.isArray(data)) {
+    if (isRecoverableRestockSchemaError(error)) {
+      return emptyResult(
+        {
+          requests: [],
+          total: 0,
+        },
+        "product_restock_requests is not available in the Supabase Data API schema cache."
+      );
+    }
+
     throw new RepositoryWriteError(
       supabaseRpcStatus(error),
       "ADMIN_RESTOCK_REQUESTS_READ_FAILED",
@@ -2187,6 +2213,15 @@ export async function updateAdminProductRestockRequestStatus(
     .single();
 
   if (error) {
+    if (isRecoverableRestockSchemaError(error)) {
+      throw new RepositoryWriteError(
+        503,
+        "RESTOCK_REQUESTS_SCHEMA_UNAVAILABLE",
+        "Restock reminder status cannot be updated until the Supabase schema is repaired.",
+        supabaseErrorDetails(error)
+      );
+    }
+
     throw new RepositoryWriteError(
       supabaseRpcStatus(error),
       "ADMIN_RESTOCK_REQUEST_UPDATE_FAILED",
@@ -6966,6 +7001,25 @@ function isRecoverableCustomerSchemaError(error: unknown) {
     text.includes("column") ||
     text.includes("does not exist") ||
     text.includes("could not find")
+  );
+}
+
+function isRecoverableRestockSchemaError(error: unknown) {
+  const errorRow = isDbRow(error) ? error : null;
+  const parts = [
+    error instanceof Error ? error.message : null,
+    pickString(errorRow, ["code"]),
+    pickString(errorRow, ["message"]),
+    pickString(errorRow, ["details"]),
+    pickString(errorRow, ["hint"]),
+  ].filter(isDefined);
+  const text = parts.join(" ").toLowerCase();
+
+  return (
+    text.includes("pgrst205") ||
+    (text.includes("schema cache") && text.includes("product_restock_requests")) ||
+    text.includes("could not find the table 'public.product_restock_requests'") ||
+    text.includes("relation \"public.product_restock_requests\" does not exist")
   );
 }
 

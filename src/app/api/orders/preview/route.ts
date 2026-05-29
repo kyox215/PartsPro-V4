@@ -38,6 +38,15 @@ const previewOrderSchema = z
   .strict();
 
 type RequestedPreviewItem = z.infer<typeof previewItemSchema>;
+type PreviewIssue = {
+  code: string;
+  message: string;
+  missingFields?: string[];
+  moq?: number;
+  sku: string;
+  stock?: number;
+};
+
 type PreviewLine = {
   product: PartProduct;
   quantity: number;
@@ -172,8 +181,11 @@ export async function POST(request: Request) {
 
 function buildPreviewOrder(requestedItems: RequestedPreviewItem[], catalog: PartProduct[]) {
   const seen = new Set<string>();
-  const issues: Array<{ sku: string; code: string; message: string }> = [];
+  const issues: PreviewIssue[] = [];
   const lines: PreviewLine[] = [];
+  const catalogBySku = new Map(
+    catalog.map((entry) => [toPublicSku(entry.sku), entry])
+  );
 
   for (const item of requestedItems) {
     const sku = toPublicSku(item.sku);
@@ -185,7 +197,7 @@ function buildPreviewOrder(requestedItems: RequestedPreviewItem[], catalog: Part
 
     seen.add(sku);
 
-    const product = catalog.find((entry) => toPublicSku(entry.sku) === sku);
+    const product = catalogBySku.get(sku);
 
     if (!product) {
       issues.push({ sku, code: "unavailable", message: "SKU is not available in the catalog." });
@@ -193,7 +205,12 @@ function buildPreviewOrder(requestedItems: RequestedPreviewItem[], catalog: Part
     }
 
     if (item.quantity < product.moq) {
-      issues.push({ sku, code: "moq", message: `Quantity must be at least the MOQ (${product.moq}).` });
+      issues.push({
+        sku,
+        code: "moq",
+        message: `Quantity must be at least the MOQ (${product.moq}).`,
+        moq: product.moq,
+      });
       continue;
     }
 
@@ -208,7 +225,12 @@ function buildPreviewOrder(requestedItems: RequestedPreviewItem[], catalog: Part
     }
 
     if (item.quantity > product.stock) {
-      issues.push({ sku, code: "stock_limit", message: `Only ${product.stock} units are currently available.` });
+      issues.push({
+        sku,
+        code: "stock_limit",
+        message: `Only ${product.stock} units are currently available.`,
+        stock: product.stock,
+      });
       continue;
     }
 
@@ -300,6 +322,7 @@ function profileReadinessIssues(profile: Awaited<ReturnType<typeof getCurrentCus
     ? [{
         sku: "customer",
         code: "profile_incomplete",
+        missingFields: missing,
         message: `Customer profile is missing: ${missing.join(", ")}.`,
       }]
     : [];

@@ -383,7 +383,13 @@ function AdminTopbar({
       <div className="mx-auto flex h-14 w-full max-w-[1500px] min-w-0 items-center gap-3 px-3 sm:h-16 sm:px-4">
         <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
           <SheetTrigger asChild>
-            <Button variant="outline" size="icon" className="bg-white lg:hidden">
+            <Button
+              variant="outline"
+              size="icon"
+              className="bg-white lg:hidden"
+              aria-label={text.topbar.mobileNavigationLabel}
+              title={text.topbar.mobileNavigationLabel}
+            >
               <Menu className="size-4" />
             </Button>
           </SheetTrigger>

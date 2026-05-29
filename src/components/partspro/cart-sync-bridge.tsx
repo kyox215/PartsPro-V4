@@ -14,6 +14,7 @@ import { useI18n } from "./i18n-provider";
 type CartApiPayload = {
   data?: CartItem[] | { items?: CartItem[] };
   error?: { code?: string; message?: string };
+  meta?: { persistence?: string; reason?: string };
 };
 
 const syncDebounceMs = 500;
@@ -60,6 +61,12 @@ export function CartSyncBridge() {
         }
 
         const payload = (await response.json()) as CartApiPayload;
+
+        if (payload.meta?.persistence === "local_cart") {
+          enterLocalMode();
+          return;
+        }
+
         const remoteItems = readCartItemsFromPayload(payload);
         const localStoredItems = readClientStoredCartItems({ preserveUnknown: true });
         const mergedItems = mergeCartItemCollections(

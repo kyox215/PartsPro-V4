@@ -17,6 +17,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
+  leadTimeLabel,
   tx,
   txFormat,
   type StorefrontTranslator,
@@ -262,7 +263,7 @@ export const ProductCard = memo(function ProductCard({
               </div>
               <div className="col-span-2 hidden min-w-0 items-center gap-1 rounded-md border border-slate-100 bg-slate-50 px-1.5 py-1 sm:flex">
                 <Clock className="size-3 shrink-0 text-primary" />
-                <span className="truncate">{product.leadTime}</span>
+                <span className="truncate">{leadTimeLabel(t, product.leadTime)}</span>
               </div>
             </div>
 

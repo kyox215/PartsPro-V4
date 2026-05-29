@@ -11,7 +11,7 @@ import {
   hrefWithAssistedCompanyId,
   rememberAssistedCompanyId,
 } from "@/lib/partspro-assisted-order";
-import { tx } from "@/i18n/dictionaries/storefront";
+import { tx, txFormat } from "@/i18n/dictionaries/storefront";
 import { inferDeviceModelSeries } from "@/lib/partspro-device-series";
 import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
@@ -388,11 +388,13 @@ function CatalogPageContent({
                     }}
                   >
                     {catalogLoadState === "loading-more"
-                      ? "Caricamento..."
-                      : `Carica altri ${Math.min(
-                          hiddenProductCount,
-                          visibleProductsIncrement
-                        )} SKU`}
+                      ? tx(t, "storefront.catalog.loadingMore", "Caricamento...")
+                      : txFormat(t, "storefront.catalog.loadMore", "Carica altri {count} SKU", {
+                          count: Math.min(
+                            hiddenProductCount,
+                            visibleProductsIncrement
+                          ),
+                        })}
                   </Button>
                 </div>
               )}
@@ -401,14 +403,16 @@ function CatalogPageContent({
             <Card className="rounded-lg border-slate-200 bg-white">
               <CardContent className="flex flex-col items-start gap-3 p-6 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
-                  <div className="text-lg font-black">Nessun ricambio trovato</div>
+                  <div className="text-lg font-black">
+                    {tx(t, "storefront.catalog.emptyTitle", "Nessun ricambio trovato")}
+                  </div>
                   <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
-                    Modifica ricerca o filtri rapidi per tornare al listino disponibile.
+                    {tx(t, "storefront.catalog.emptyDescription", "Modifica ricerca o filtri rapidi per tornare al listino disponibile.")}
                   </p>
                 </div>
                 <Button className="w-full rounded-full sm:w-auto" onClick={clearAll}>
                   <RotateCcw className="size-4" />
-                  Cancella filtri
+                  {tx(t, "storefront.catalog.clearFilters", "Cancella filtri")}
                 </Button>
               </CardContent>
             </Card>
@@ -434,13 +438,17 @@ function CatalogNavigationSidebar({
   onSelectCatalog: (selection: CatalogSelection) => void;
   selectedCatalog: CatalogSelection;
 }) {
+  const t = useT();
+
   return (
     <div className="sticky top-20 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
       <div className="mb-3 flex items-center justify-between gap-3 px-1">
         <div className="min-w-0">
-          <h2 className="truncate text-sm font-black">Catalogo rapido</h2>
+          <h2 className="truncate text-sm font-black">
+            {tx(t, "storefront.home.sidebar.title", "Catalogo rapido")}
+          </h2>
           <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">
-            Brand e modelli
+            {tx(t, "storefront.home.sidebar.subtitle", "Brand e modelli")}
           </p>
         </div>
         <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/8 text-primary">

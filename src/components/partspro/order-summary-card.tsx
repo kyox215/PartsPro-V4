@@ -77,9 +77,9 @@ function OrderSummaryCardView({
   const effectiveSummaryNote =
     summaryNote ??
     tx(t, "storefront.cart.summaryNote", "Il carrello non blocca stock: disponibilita e quantita vengono riservate solo alla conferma ordine.");
-  const effectiveCheckoutDisabled =
-    checkoutDisabled || (!isHydrated || totals.lines.length === 0);
   const effectiveLineCount = lineCount ?? totals.lines.length;
+  const effectiveCheckoutDisabled =
+    checkoutDisabled || !isHydrated || effectiveLineCount === 0;
 
   return (
     <Card

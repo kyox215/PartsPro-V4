@@ -26,6 +26,7 @@ export async function GET() {
         activeSkus: result.data.map((item) => item.sku),
         source: result.source,
         total: result.data.length,
+        ...(result.warning ? { warning: result.warning } : {}),
       },
     });
   } catch (error) {

@@ -162,6 +162,7 @@ function CartPageContent({
   const requestedCatalogSkus = React.useRef(new Set<string>());
   const checkoutHref = hrefWithAssistedCompanyId("/checkout", assistedCompanyId);
   const catalogHref = hrefWithAssistedCompanyId("/catalogo", assistedCompanyId);
+  const loginHref = loginHrefForNext(hrefWithAssistedCompanyId("/carrello", assistedCompanyId));
   const catalogSkuSet = React.useMemo(
     () => new Set(catalogProducts.map((product) => product.sku)),
     [catalogProducts]
@@ -534,7 +535,7 @@ function CartPageContent({
                   {hasLoginRequiredUnresolved ? (
                     <>
                       <Button asChild className="h-8">
-                        <Link href="/login?next=/carrello">
+                        <Link href={loginHref}>
                           <LogIn className="size-4" />
                           {tx(t, "storefront.cart.loginForPrices", "Accedi")}
                         </Link>
@@ -1201,6 +1202,9 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
         />
         <div className="min-w-0">
           <div className="line-clamp-1 text-base font-black leading-5">{line.product.name}</div>
+          <div className="mt-0.5 truncate font-mono text-[11px] font-semibold leading-4 text-slate-500">
+            {txFormat(t, "storefront.cart.skuLabel", "SKU {sku}", { sku: line.sku })}
+          </div>
           <div className="mt-1.5 flex flex-wrap gap-1">
             <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
               {line.product.grade}
@@ -1327,6 +1331,9 @@ const RejectedCartLineDesktopCard = React.memo(function RejectedCartLineDesktopC
         />
         <div className="min-w-0">
           <div className="line-clamp-1 text-base font-black leading-5">{product.name}</div>
+          <div className="mt-0.5 truncate font-mono text-[11px] font-semibold leading-4 text-slate-500">
+            {txFormat(t, "storefront.cart.skuLabel", "SKU {sku}", { sku: item.sku })}
+          </div>
           <div className="mt-1.5 flex flex-wrap gap-1">
             <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
               {product.grade}
@@ -1638,4 +1645,8 @@ function filterOrderableCatalogProducts(products: readonly PartProduct[]) {
       product.stock >= Math.max(1, product.moq)
     );
   });
+}
+
+function loginHrefForNext(nextHref: string) {
+  return `/login?${new URLSearchParams({ next: nextHref }).toString()}`;
 }

@@ -126,8 +126,18 @@ type OrderResult = {
 type PreviewIssue = {
   code?: string;
   message: string;
+  missingFields?: string[];
+  moq?: number;
+  sku: string;
+  stock?: number;
+};
+
+type CartCatalogRejection = {
+  reason?: string;
   sku: string;
 };
+
+type PendingItemsReason = "account" | "customer" | "customer-context";
 
 type PreviewState =
   | { status: "idle"; canSubmit?: boolean; issues: PreviewIssue[] }
@@ -231,6 +241,7 @@ function CheckoutClientContent({
     initialFormState(customerProfile, selectedCompany)
   );
   const [catalogLoadState, setCatalogLoadState] = React.useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [catalogRejections, setCatalogRejections] = React.useState<Record<string, CartCatalogRejection>>({});
   const requestedCatalogKeys = React.useRef(new Set<string>());
   const [confirmations, setConfirmations] = React.useState({
     fiscal: false,
@@ -251,12 +262,43 @@ function CheckoutClientContent({
     () => new Set(catalogProducts.map((product) => product.sku)),
     [catalogProducts]
   );
+  const catalogRejectionBySku = React.useMemo(
+    () => new Map(Object.values(catalogRejections).map((rejection) => [rejection.sku, rejection])),
+    [catalogRejections]
+  );
   const selectedCatalogScope = selectedCompany?.id ?? "";
+  const canResolveCartCatalog = Boolean(selectedCompany?.id);
   const needsCustomerSelection = delegatedCheckout && !selectedCompany;
-  const pendingCustomerItems = needsCustomerSelection ? cart.items : [];
-  const checkoutContextCompanyId = selectedCompany?.id ?? initialDelegatedCompanyId;
+  const basePendingItemsReason: PendingItemsReason | null =
+    needsCustomerSelection
+      ? "customer"
+      : cart.isHydrated && cart.items.length > 0 && !canResolveCartCatalog
+        ? "account"
+        : null;
+  const customerContextPendingSkuSet = React.useMemo(() => {
+    const blockedSkus = new Set<string>();
+
+    for (const item of cart.items) {
+      if (isCustomerContextCatalogRejection(catalogRejectionBySku.get(item.sku)?.reason)) {
+        blockedSkus.add(item.sku);
+      }
+    }
+
+    return blockedSkus;
+  }, [cart.items, catalogRejectionBySku]);
+  const pendingItemsReason: PendingItemsReason | null =
+    basePendingItemsReason ??
+    (customerContextPendingSkuSet.size > 0 ? "customer-context" : null);
+  const pendingCustomerItems = basePendingItemsReason
+    ? cart.items
+    : cart.items.filter((item) => customerContextPendingSkuSet.has(item.sku));
+  const checkoutContextCompanyId = delegatedCheckout
+    ? selectedCompany?.id ?? initialDelegatedCompanyId
+    : null;
+  const checkoutHref = hrefWithAssistedCompanyId("/checkout", checkoutContextCompanyId);
   const cartHref = hrefWithAssistedCompanyId("/carrello", checkoutContextCompanyId);
   const catalogHref = hrefWithAssistedCompanyId("/catalogo", checkoutContextCompanyId);
+  const loginHref = loginHrefForNext(checkoutHref);
   const summaryNote = needsCustomerSelection
     ? tx(t, "storefront.checkout.summary.needsCustomer", "选择客户后计算客户价、库存和 MOQ。")
     : tx(t, "storefront.checkout.summary.note", "Totali stimati dai prezzi cliente correnti. Il gestionale conferma prezzi, scorte e riserve al momento dell'invio.");
@@ -268,14 +310,22 @@ function CheckoutClientContent({
 
     return cart.items
       .map((item) => item.sku)
-      .filter((sku) => !resolvedSkus.has(sku));
-  }, [cart.items, cart.lines]);
-  const reviewUnresolvedSkus = needsCustomerSelection ? [] : unresolvedSkus;
+      .filter((sku) => !resolvedSkus.has(sku) && !customerContextPendingSkuSet.has(sku));
+  }, [cart.items, cart.lines, customerContextPendingSkuSet]);
+  const unresolvedCatalogSkus = React.useMemo(
+    () =>
+      cart.items
+        .map((item) => item.sku)
+        .filter((sku) => !catalogSkuSet.has(sku) && !catalogRejectionBySku.has(sku)),
+    [cart.items, catalogRejectionBySku, catalogSkuSet]
+  );
+  const reviewUnresolvedSkus =
+    needsCustomerSelection || !canResolveCartCatalog ? [] : unresolvedSkus;
   const catalogResolutionPending =
-    !needsCustomerSelection &&
+    canResolveCartCatalog &&
     cart.isHydrated &&
     cart.items.length > 0 &&
-    unresolvedSkus.length > 0 &&
+    unresolvedCatalogSkus.length > 0 &&
     (catalogLoadState === "idle" || catalogLoadState === "loading");
   const lineIssues = React.useMemo(
     () => previewForUi.issues.filter((issue) => issue.sku !== "customer"),
@@ -297,7 +347,10 @@ function CheckoutClientContent({
     formErrors,
     isCatalogLoading: catalogResolutionPending,
     lineIssues,
+    loginHref,
     needsCustomerSelection,
+    pendingCustomerItems,
+    pendingItemsReason,
     preview: previewForUi,
     runtime,
     submitAttempted,
@@ -318,6 +371,7 @@ function CheckoutClientContent({
     setPreview(idlePreviewState);
     setSubmitState({ status: "idle" });
     setCatalogLoadState("idle");
+    setCatalogRejections({});
     rememberAssistedCompanyId(nextCompany?.id ?? null);
     replaceCurrentUrlAssistedCompanyId(nextCompany?.id ?? null);
   }
@@ -338,19 +392,22 @@ function CheckoutClientContent({
 
     const missingSkus = cart.items
       .map((item) => item.sku)
-      .filter((sku) => !catalogSkuSet.has(sku));
+      .filter((sku) => !catalogSkuSet.has(sku) && !catalogRejectionBySku.has(sku));
     const requestKey = `${selectedCompany.id}:${missingSkus.join(",")}`;
 
     if (missingSkus.length === 0) {
       return;
     }
 
-    if (requestedCatalogKeys.current.has(requestKey)) {
+    const requestedKeys = requestedCatalogKeys.current;
+
+    if (requestedKeys.has(requestKey)) {
       return;
     }
 
     const controller = new AbortController();
-    requestedCatalogKeys.current.add(requestKey);
+    let completed = false;
+    requestedKeys.add(requestKey);
 
     async function loadCartCatalogProducts() {
       setCatalogLoadState("loading");
@@ -370,12 +427,37 @@ function CheckoutClientContent({
           throw new Error("Unable to load cart catalog products");
         }
 
-        const payload = (await response.json()) as { data?: PartProduct[] };
-        onCatalogProductsLoaded(Array.isArray(payload.data) ? payload.data : []);
+        const payload = (await response.json()) as {
+          data?: PartProduct[];
+          meta?: { rejected?: CartCatalogRejection[] };
+        };
+        const products = Array.isArray(payload.data) ? payload.data : [];
+        const rejections = Array.isArray(payload.meta?.rejected)
+          ? payload.meta.rejected.filter((rejection) => rejection?.sku)
+          : [];
+
+        completed = true;
+        onCatalogProductsLoaded(products);
+        setCatalogRejections((current) => {
+          const next = { ...current };
+
+          for (const sku of missingSkus) {
+            delete next[sku];
+          }
+
+          for (const rejection of rejections) {
+            next[rejection.sku] = {
+              reason: rejection.reason,
+              sku: rejection.sku,
+            };
+          }
+
+          return next;
+        });
         setCatalogLoadState("ready");
       } catch {
         if (!controller.signal.aborted) {
-          requestedCatalogKeys.current.delete(requestKey);
+          requestedKeys.delete(requestKey);
           setCatalogLoadState("error");
         }
       }
@@ -385,11 +467,15 @@ function CheckoutClientContent({
 
     return () => {
       controller.abort();
+      if (!completed) {
+        requestedKeys.delete(requestKey);
+      }
     };
   }, [
     cart.isHydrated,
     cart.items,
     cartSignature,
+    catalogRejectionBySku,
     catalogSkuSet,
     onCatalogProductsLoaded,
     selectedCompany?.id,
@@ -572,6 +658,7 @@ function CheckoutClientContent({
             lineIssues={lineIssues}
             lines={cart.lines}
             pendingCustomerItems={pendingCustomerItems}
+            pendingItemsReason={pendingItemsReason}
             unresolvedSkus={reviewUnresolvedSkus}
           />
           <CompanyReview
@@ -598,6 +685,7 @@ function CheckoutClientContent({
         <aside className="hidden space-y-3 lg:block">
           <OrderSummaryCard
             totals={cart.totals}
+            continueHref={catalogHref}
             lineCount={cart.items.length}
             showCheckoutAction={false}
             summaryNote={summaryNote}
@@ -762,14 +850,14 @@ function DelegatedCustomerSelector({
             <SelectContent>
               {companies.map((company) => (
                 <SelectItem key={company.id} value={company.id}>
-                  {company.name} · {company.customerType ?? "retail"} · {company.assignmentStatus ?? "needs_review"}
+                  {company.name} · {customerTypeLabel(t, company.customerType)} · {assignmentStatusLabel(t, company.assignmentStatus)}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
           {selectedCompany ? (
             <div className="mt-1 truncate text-xs font-semibold text-blue-800">
-              {selectedCompany.priceList} · {selectedCompany.status}
+              {customerLevelLabel(t, selectedCompany.priceList)} · {companyStatusLabel(t, selectedCompany.status)}
             </div>
           ) : null}
         </div>
@@ -785,6 +873,7 @@ function OrderLinesReview({
   lineIssues,
   lines,
   pendingCustomerItems,
+  pendingItemsReason,
   unresolvedSkus,
 }: {
   cartHref: string;
@@ -793,6 +882,7 @@ function OrderLinesReview({
   lineIssues: PreviewIssue[];
   lines: CartLine[];
   pendingCustomerItems: Array<{ quantity: number; sku: string }>;
+  pendingItemsReason: PendingItemsReason | null;
   unresolvedSkus: string[];
 }) {
   const t = useT();
@@ -831,7 +921,9 @@ function OrderLinesReview({
               </Badge>
             </div>
             <p className="mt-1 font-semibold leading-6">
-              {tx(t, "storefront.checkout.itemPendingCustomer", "选择客户后计算价格、库存和 MOQ。")}
+              {pendingItemsReason === "account"
+                ? tx(t, "storefront.checkout.itemPendingAccount", "Accedi o collega un cliente per calcolare prezzo, scorte e MOQ.")
+                : tx(t, "storefront.checkout.itemPendingCustomerContext", "选择或完善客户资料后再计算价格、库存和 MOQ。")}
             </p>
           </div>
         ))}
@@ -906,7 +998,7 @@ function OrderLineRow({ issues, line }: { issues: PreviewIssue[]; line: CartLine
           <div className="mt-2 space-y-1">
             {issues.map((issue) => (
               <div key={`${issue.code}-${issue.message}`} className="text-xs font-bold leading-5 text-red-700">
-                {issue.message}
+                {formatPreviewIssue(t, issue)}
               </div>
             ))}
           </div>
@@ -1509,7 +1601,10 @@ function buildCheckoutBlockers({
   formErrors,
   isCatalogLoading,
   lineIssues,
+  loginHref,
   needsCustomerSelection,
+  pendingCustomerItems,
+  pendingItemsReason,
   preview,
   runtime,
   submitAttempted,
@@ -1526,7 +1621,10 @@ function buildCheckoutBlockers({
   formErrors: Record<string, string>;
   isCatalogLoading: boolean;
   lineIssues: PreviewIssue[];
+  loginHref: string;
   needsCustomerSelection: boolean;
+  pendingCustomerItems: Array<{ quantity: number; sku: string }>;
+  pendingItemsReason: PendingItemsReason | null;
   preview: PreviewState;
   runtime: CheckoutRuntimeView;
   submitAttempted: boolean;
@@ -1537,7 +1635,7 @@ function buildCheckoutBlockers({
 
   if (runtime.mode === "needs-login") {
     blockers.push({
-      actionHref: "/login?next=/checkout",
+      actionHref: loginHref,
       actionLabel: tx(t, "storefront.login.action", "Accedi"),
       message: runtime.disabledReason ?? runtime.description,
       title: runtime.title,
@@ -1594,8 +1692,23 @@ function buildCheckoutBlockers({
       message: isCatalogLoading
         ? tx(t, "storefront.checkout.loadingTargetPrices", "Caricamento prezzi cliente per le righe del carrello.")
         : `${tx(t, "storefront.checkout.unresolvedItems", "Alcune righe non sono piu disponibili.")} ${unresolvedSkus.join(", ")}`,
-      title: tx(t, "storefront.cart.unresolvedTitle", "Prodotti del carrello non disponibili"),
+      title: isCatalogLoading
+        ? tx(t, "storefront.checkout.loadingItemsTitle", "Caricamento righe ordine")
+        : tx(t, "storefront.cart.unresolvedTitle", "Prodotti del carrello non disponibili"),
       tone: isCatalogLoading ? "neutral" : "warning",
+    });
+  }
+
+  if (pendingItemsReason === "customer-context" && pendingCustomerItems.length > 0) {
+    blockers.push({
+      message: txFormat(
+        t,
+        "storefront.checkout.customerContextPendingDescription",
+        "Seleziona o completa il cliente per calcolare prezzo, scorte e MOQ prima dell'invio. SKU: {skus}.",
+        { skus: pendingCustomerItems.map((item) => item.sku).join(", ") }
+      ),
+      title: tx(t, "storefront.checkout.customerContextPendingTitle", "Cliente da completare"),
+      tone: "warning",
     });
   }
 
@@ -1617,7 +1730,7 @@ function buildCheckoutBlockers({
 
   if (customerIssues.length > 0) {
     blockers.push({
-      message: customerIssues.map((issue) => issue.message).join(" "),
+      message: customerIssues.map((issue) => formatPreviewIssue(t, issue)).join(" "),
       title: tx(t, "storefront.checkout.customerNotReady", "客户暂不能下单"),
       tone: "warning",
     });
@@ -1633,7 +1746,7 @@ function buildCheckoutBlockers({
     blockers.push({
       actionHref: cartHref,
       actionLabel: tx(t, "storefront.checkout.fixCart", "Torna al carrello per correggere"),
-      message: lineIssues.map((issue) => `${issue.sku}: ${issue.message}`).join(" "),
+      message: lineIssues.map((issue) => `${issue.sku}: ${formatPreviewIssue(t, issue)}`).join(" "),
       title: tx(t, "storefront.checkout.itemsNeedReview", "Righe da rivedere"),
       tone: "warning",
     });
@@ -1648,6 +1761,19 @@ function buildCheckoutBlockers({
   }
 
   return blockers;
+}
+
+function isCustomerContextCatalogRejection(reason?: string) {
+  return (
+    reason === "account_sync_failed" ||
+    reason === "customer" ||
+    reason === "customer_needs_assignment" ||
+    reason === "customer_profile_required" ||
+    reason === "customer_suspended" ||
+    reason === "employee" ||
+    reason === "login_required" ||
+    reason === "wholesale_required"
+  );
 }
 
 function validateForm(
@@ -1722,6 +1848,108 @@ function missingProfileLabels(t: StorefrontTranslator, profile: AccountCustomerP
   ].filter((label): label is string => Boolean(label));
 }
 
+function formatPreviewIssue(t: StorefrontTranslator, issue: PreviewIssue) {
+  switch (issue.code) {
+    case "duplicate":
+      return tx(t, "storefront.checkout.issue.duplicate", "SKU duplicato nel carrello.");
+    case "moq":
+      return txFormat(t, "storefront.checkout.issue.moq", "Quantità inferiore al MOQ {moq}.", {
+        moq: issue.moq ?? "-",
+      });
+    case "out_of_stock":
+      return tx(t, "storefront.checkout.issue.outOfStock", "Prodotto attualmente esaurito.");
+    case "price_missing":
+      return tx(t, "storefront.checkout.issue.priceMissing", "Prezzo effettivo non disponibile per questo SKU.");
+    case "profile_incomplete": {
+      const labels = (issue.missingFields ?? [])
+        .map((field) => profileIssueFieldLabel(t, field))
+        .filter(Boolean);
+
+      return labels.length > 0
+        ? txFormat(t, "storefront.checkout.issue.profileIncomplete", "Profilo cliente incompleto: {fields}.", {
+            fields: labels.join(tx(t, "storefront.common.listSeparator", ", ")),
+          })
+        : tx(t, "storefront.checkout.customerNotReadyDescription", "Il cliente selezionato non soddisfa i requisiti ordine. Controlla stato, tipo, assegnazione e dati profilo.");
+    }
+    case "profile_missing":
+      return tx(t, "storefront.checkout.issue.profileMissing", "Profilo cliente non disponibile.");
+    case "stock_limit":
+      return txFormat(t, "storefront.checkout.issue.stockLimit", "Disponibili solo {stock} pezzi.", {
+        stock: issue.stock ?? "-",
+      });
+    case "unavailable":
+      return tx(t, "storefront.checkout.issue.unavailable", "SKU non disponibile nel catalogo.");
+    default:
+      return issue.message || tx(t, "storefront.checkout.itemsNeedReview", "Righe da rivedere");
+  }
+}
+
+function profileIssueFieldLabel(t: StorefrontTranslator, field: string) {
+  switch (field) {
+    case "billing_address":
+      return tx(t, "storefront.checkout.billingAddress", "Indirizzo fatturazione");
+    case "company":
+      return tx(t, "storefront.checkout.field.companyName", "Ragione sociale");
+    case "contact":
+      return tx(t, "storefront.account.field.contactName", "Referente");
+    case "electronic_invoice":
+      return tx(t, "storefront.checkout.field.electronicInvoice", "PEC / SDI");
+    case "fiscal_code":
+      return tx(t, "storefront.checkout.field.codiceFiscale", "Codice fiscale");
+    case "phone":
+      return tx(t, "storefront.account.field.phone", "Telefono");
+    case "shipping_address":
+      return tx(t, "storefront.checkout.savedShippingAddress", "Indirizzo spedizione salvato");
+    case "vat_number":
+      return tx(t, "storefront.checkout.field.partitaIva", "Partita IVA");
+    default:
+      return field;
+  }
+}
+
+function customerTypeLabel(t: StorefrontTranslator, value: CompanyProfile["customerType"] | undefined) {
+  if (value === "wholesale") {
+    return tx(t, "storefront.customer.type.wholesale", "Wholesale");
+  }
+
+  return tx(t, "storefront.customer.type.retail", "Retail");
+}
+
+function assignmentStatusLabel(
+  t: StorefrontTranslator,
+  value: CompanyProfile["assignmentStatus"] | undefined
+) {
+  switch (value) {
+    case "assigned":
+      return tx(t, "storefront.customer.assignment.assigned", "Assegnato");
+    case "archived":
+      return tx(t, "storefront.customer.assignment.archived", "Archiviato");
+    case "converted_to_employee":
+      return tx(t, "storefront.customer.assignment.convertedToEmployee", "Convertito in staff");
+    case "needs_review":
+    default:
+      return tx(t, "storefront.customer.assignment.needsReview", "Da revisionare");
+  }
+}
+
+function companyStatusLabel(t: StorefrontTranslator, value: CompanyProfile["status"]) {
+  switch (value) {
+    case "approved":
+      return tx(t, "storefront.customer.status.approved", "Approvato");
+    case "rejected":
+      return tx(t, "storefront.customer.status.rejected", "Respinto");
+    case "suspended":
+      return tx(t, "storefront.customer.status.suspended", "Sospeso");
+    case "pending":
+    default:
+      return tx(t, "storefront.customer.status.pending", "In attesa");
+  }
+}
+
+function customerLevelLabel(t: StorefrontTranslator, value: CompanyProfile["priceList"]) {
+  return tx(t, `storefront.customer.level.${value}`, value);
+}
+
 function buildOrderNotes(customerNotes: string, deliveryWindow: string) {
   const details = [
     `Consegna: ${fixedShippingMethod}`,
@@ -1735,6 +1963,10 @@ function buildOrderNotes(customerNotes: string, deliveryWindow: string) {
 function optionalText(value: string) {
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function loginHrefForNext(nextHref: string) {
+  return `/login?${new URLSearchParams({ next: nextHref }).toString()}`;
 }
 
 function mergeCatalogProducts(

@@ -59,6 +59,7 @@ export async function GET(request: NextRequest) {
         limit: parsed.data.limit,
         offset: parsed.data.offset,
         returned: result.data.requests.length,
+        ...(result.warning ? { warning: result.warning } : {}),
       },
     });
   } catch (error) {

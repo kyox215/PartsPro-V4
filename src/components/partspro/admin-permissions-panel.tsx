@@ -33,6 +33,7 @@ import {
   adminPermissionLabel,
   adminRoleTemplateDescription,
   adminRoleTemplateLabel,
+  formatAdminMessage,
   getAdminDictionary,
   type AdminText,
 } from "@/i18n/dictionaries/admin";
@@ -84,6 +85,7 @@ type Notice = {
 export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean }) {
   const { locale } = useI18n();
   const text = getAdminDictionary(locale).admin;
+  const copy = text.permissions;
   const [employees, setEmployees] = React.useState<EmployeeAccount[]>([]);
   const [permissions, setPermissions] = React.useState<AdminPermission[]>([]);
   const [roleTemplates, setRoleTemplates] = React.useState<RoleTemplate[]>([]);
@@ -100,8 +102,8 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
 
     try {
       const [permissionsResult, employeesResult] = await Promise.all([
-        fetchPermissions(signal),
-        fetchEmployees(signal),
+        fetchPermissions(copy, signal),
+        fetchEmployees(copy, signal),
       ]);
 
       if (signal?.aborted) {
@@ -118,13 +120,13 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
           : employeesResult[0]?.userId ?? ""
       );
       setNotice({
-        message: "权限配置已从 Supabase 同步。",
+        message: copy.syncSuccess,
         tone: "success",
       });
     } catch (error) {
       if (!signal?.aborted) {
         setNotice({
-          message: readableError(error),
+          message: readableError(error, copy),
           tone: "error",
         });
       }
@@ -133,7 +135,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
         setIsLoading(false);
       }
     }
-  }, []);
+  }, [copy]);
 
   React.useEffect(() => {
     const controller = new AbortController();
@@ -241,11 +243,14 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
     setPendingKey(`role:${selectedEmployee.userId}`);
 
     try {
-      await patchPermissions({
-        reason: `Role template changed to ${roleTemplate}.`,
-        roleTemplate,
-        userId: selectedEmployee.userId,
-      });
+      await patchPermissions(
+        {
+          reason: `Role template changed to ${roleTemplate}.`,
+          roleTemplate,
+          userId: selectedEmployee.userId,
+        },
+        copy
+      );
       setEmployees((current) =>
         current.map((employee) =>
           employee.userId === selectedEmployee.userId
@@ -254,12 +259,12 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
         )
       );
       setNotice({
-        message: "角色模板已保存。",
+        message: copy.roleSaved,
         tone: "success",
       });
     } catch (error) {
       setNotice({
-        message: readableError(error),
+        message: readableError(error, copy),
         tone: "error",
       });
     } finally {
@@ -275,22 +280,25 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
     setPendingKey(`permission:${permissionId}`);
 
     try {
-      const result = await patchPermissions({
-        overrides: [{ effect, permissionId }],
-        reason: `Permission override ${permissionId} set to ${effect}.`,
-        userId: selectedEmployee.userId,
-      });
+      const result = await patchPermissions(
+        {
+          overrides: [{ effect, permissionId }],
+          reason: `Permission override ${permissionId} set to ${effect}.`,
+          userId: selectedEmployee.userId,
+        },
+        copy
+      );
       setOverrides((current) => [
         ...current.filter((override) => override.userId !== selectedEmployee.userId),
         ...result.overrides,
       ]);
       setNotice({
-        message: "单项权限覆盖已保存。",
+        message: copy.updateSaved,
         tone: "success",
       });
     } catch (error) {
       setNotice({
-        message: readableError(error),
+        message: readableError(error, copy),
         tone: "error",
       });
     } finally {
@@ -307,9 +315,9 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
         )}
       >
         <div className="min-w-0">
-          <h2 className="text-2xl font-black tracking-normal">权限设置</h2>
+          <h2 className="text-2xl font-black tracking-normal">{copy.title}</h2>
           <p className="mt-1 text-sm leading-6 text-slate-500">
-            员工后台功能由角色模板决定，再用单项覆盖做例外控制。
+            {copy.description}
           </p>
         </div>
         <Button
@@ -319,20 +327,20 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
           onClick={() => void refreshData()}
         >
           <RefreshCcw className={cn("size-4", isLoading && "animate-spin")} />
-          同步
+          {copy.sync}
         </Button>
       </div>
 
-      {notice && <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} />}
+      {notice && <NoticeBanner copy={copy} notice={notice} onDismiss={() => setNotice(null)} />}
 
       <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
         <Card className="border-slate-200 bg-white">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <UserCog className="size-5 text-primary" />
-              员工
+              {copy.employees}
             </CardTitle>
-            <CardDescription>仅显示客户管理中标记为 staff 的账号。</CardDescription>
+            <CardDescription>{copy.employeeListDescription}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="relative">
@@ -341,7 +349,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
                 className="bg-white pl-9"
-                placeholder="搜索邮箱、姓名或角色"
+                placeholder={copy.employeeSearchPlaceholder}
               />
             </div>
             <div className="grid max-h-[560px] gap-2 overflow-y-auto pr-1">
@@ -356,10 +364,13 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                         ? "border-primary/30 bg-primary/8"
                         : "border-slate-200 bg-white hover:border-primary/30"
                     )}
+                    aria-label={formatAdminMessage(copy.employeeSelectAria, {
+                      name: employee.displayName ?? employee.email ?? employee.userId,
+                    })}
                     onClick={() => setSelectedUserId(employee.userId)}
                   >
                     <div className="truncate text-sm font-black">
-                      {employee.displayName ?? employee.email ?? "Staff"}
+                      {employee.displayName ?? employee.email ?? copy.employees}
                     </div>
                     <div className="mt-1 truncate text-xs font-medium text-slate-500">
                       {employee.email ?? employee.userId}
@@ -371,7 +382,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                 ))
               ) : (
                 <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-                  暂无员工账号。
+                  {copy.employeeEmpty}
                 </div>
               )}
             </div>
@@ -383,12 +394,12 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
             <div className="min-w-0">
               <CardTitle className="flex items-center gap-2">
                 <ShieldCheck className="size-5 text-primary" />
-                权限矩阵
+                {copy.title}
               </CardTitle>
               <CardDescription>
                 {selectedEmployee
                   ? selectedEmployee.email ?? selectedEmployee.userId
-                  : "选择一个员工后编辑权限。"}
+                  : copy.userRequired}
               </CardDescription>
             </div>
             {selectedEmployee && (
@@ -397,8 +408,8 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                 onValueChange={(value) => void updateRoleTemplate(value)}
                 disabled={pendingKey?.startsWith("role:")}
               >
-                <SelectTrigger className="w-full bg-white lg:w-64">
-                  <SelectValue placeholder="选择角色模板" />
+                <SelectTrigger className="w-full bg-white lg:w-64" aria-label={copy.roleSelectLabel}>
+                  <SelectValue placeholder={copy.roleSelectPlaceholder} />
                 </SelectTrigger>
                 <SelectContent>
                   {localizedRoleTemplates.map((roleTemplate) => (
@@ -437,7 +448,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                                 : "border-slate-200 bg-white text-slate-600"
                             )}
                           >
-                            {customerLevelAllowed ? "当前允许" : "当前关闭"}
+                            {customerLevelAllowed ? copy.customerLevelOpen : copy.customerLevelClosed}
                           </Badge>
                         </div>
                         <div className="mt-1 break-words font-mono text-xs text-slate-500">
@@ -464,7 +475,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                               void updateOverride(CUSTOMER_MANAGE_LEVEL_PERMISSION, effect)
                             }
                           >
-                            {effectLabel(effect)}
+                            {effectLabel(effect, copy)}
                           </Button>
                         ))}
                       </div>
@@ -478,7 +489,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                     value={permissionQuery}
                     onChange={(event) => setPermissionQuery(event.target.value)}
                     className="bg-white pl-9"
-                    placeholder="搜索权限名称或 ID"
+                    placeholder={copy.matrixSearchPlaceholder}
                   />
                 </div>
 
@@ -517,7 +528,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                                         : "border-slate-200 bg-slate-50 text-slate-600"
                                     )}
                                   >
-                                    {effectiveAllowed ? "允许" : "关闭"}
+                                    {effectiveAllowed ? copy.permissionOpen : copy.permissionClosed}
                                   </Badge>
                                 </div>
                                 <div className="mt-1 break-words font-mono text-xs text-slate-400">
@@ -539,7 +550,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                                     disabled={pendingKey === `permission:${permission.id}`}
                                     onClick={() => void updateOverride(permission.id, effect)}
                                   >
-                                    {effectLabel(effect)}
+                                    {effectLabel(effect, copy)}
                                   </Button>
                                 ))}
                               </div>
@@ -551,13 +562,13 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                   ))
                 ) : (
                   <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
-                    没有匹配的权限。
+                    {copy.noPermissionMatches}
                   </div>
                 )}
               </>
             ) : (
               <div className="rounded-lg border border-dashed border-slate-300 p-8 text-center text-sm text-slate-500">
-                选择员工后显示权限矩阵。
+                {copy.matrixEmpty}
               </div>
             )}
           </CardContent>
@@ -567,7 +578,10 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
   );
 }
 
-async function fetchPermissions(signal?: AbortSignal): Promise<PermissionsPayload> {
+async function fetchPermissions(
+  copy: AdminText["permissions"],
+  signal?: AbortSignal
+): Promise<PermissionsPayload> {
   const response = await fetch("/api/admin/permissions", {
     cache: "no-store",
     headers: { Accept: "application/json" },
@@ -575,13 +589,15 @@ async function fetchPermissions(signal?: AbortSignal): Promise<PermissionsPayloa
   });
 
   if (!response.ok) {
-    throw new Error(`GET /api/admin/permissions 返回 ${response.status}`);
+    throw new Error(
+      formatAdminMessage(copy.permissionsRequestFailed, { status: response.status })
+    );
   }
 
   const payload = (await response.json()) as unknown;
 
   if (!isRecord(payload) || !isRecord(payload.data)) {
-    throw new Error("/api/admin/permissions 返回格式不完整");
+    throw new Error(copy.permissionsIncomplete);
   }
 
   return {
@@ -593,7 +609,10 @@ async function fetchPermissions(signal?: AbortSignal): Promise<PermissionsPayloa
   };
 }
 
-async function fetchEmployees(signal?: AbortSignal): Promise<EmployeeAccount[]> {
+async function fetchEmployees(
+  copy: AdminText["permissions"],
+  signal?: AbortSignal
+): Promise<EmployeeAccount[]> {
   const response = await fetch("/api/admin/accounts?accountType=employee&limit=100", {
     cache: "no-store",
     headers: { Accept: "application/json" },
@@ -601,24 +620,29 @@ async function fetchEmployees(signal?: AbortSignal): Promise<EmployeeAccount[]> 
   });
 
   if (!response.ok) {
-    throw new Error(`GET /api/admin/accounts 返回 ${response.status}`);
+    throw new Error(
+      formatAdminMessage(copy.accountsRequestFailed, { status: response.status })
+    );
   }
 
   const payload = (await response.json()) as unknown;
 
   if (!isRecord(payload)) {
-    throw new Error("/api/admin/accounts 返回格式不完整");
+    throw new Error(copy.accountsIncomplete);
   }
 
   return readArray(payload.data).map(normalizeEmployee).filter(isDefined);
 }
 
-async function patchPermissions(input: {
-  overrides?: Array<{ effect: PermissionEffect; permissionId: string }>;
-  reason: string;
-  roleTemplate?: string;
-  userId: string;
-}) {
+async function patchPermissions(
+  input: {
+    overrides?: Array<{ effect: PermissionEffect; permissionId: string }>;
+    reason: string;
+    roleTemplate?: string;
+    userId: string;
+  },
+  copy: AdminText["permissions"]
+) {
   const response = await fetch("/api/admin/permissions", {
     body: JSON.stringify(input),
     cache: "no-store",
@@ -630,7 +654,9 @@ async function patchPermissions(input: {
   });
 
   if (!response.ok) {
-    throw new Error(`PATCH /api/admin/permissions 返回 ${response.status}`);
+    throw new Error(
+      formatAdminMessage(copy.patchRequestFailed, { status: response.status })
+    );
   }
 
   const payload = (await response.json()) as unknown;
@@ -691,9 +717,11 @@ function groupLabel(text: AdminText, groupName: string) {
 }
 
 function NoticeBanner({
+  copy,
   notice,
   onDismiss,
 }: {
+  copy: AdminText["permissions"];
   notice: Notice;
   onDismiss: () => void;
 }) {
@@ -722,22 +750,22 @@ function NoticeBanner({
         className="text-current hover:bg-white/60"
         onClick={onDismiss}
       >
-        OK
+        {copy.closeNotice}
       </Button>
     </div>
   );
 }
 
-function effectLabel(effect: PermissionEffect) {
+function effectLabel(effect: PermissionEffect, copy: AdminText["permissions"]) {
   if (effect === "grant") {
-    return "允许";
+    return copy.effectGrant;
   }
 
   if (effect === "deny") {
-    return "拒绝";
+    return copy.effectDeny;
   }
 
-  return "继承";
+  return copy.effectInherit;
 }
 
 function normalizePermission(value: unknown): AdminPermission | null {
@@ -819,8 +847,8 @@ function normalizeEmployee(value: unknown): EmployeeAccount | null {
   };
 }
 
-function readableError(error: unknown) {
-  return error instanceof Error ? error.message : "操作失败，请稍后重试。";
+function readableError(error: unknown, copy: AdminText["permissions"]) {
+  return error instanceof Error ? error.message : copy.operationFailed;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

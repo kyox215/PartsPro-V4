@@ -368,9 +368,14 @@ const panelText = {
     tableUpdated: "更新",
     tableActions: "操作",
     pageInfo: "第 {page} / {pages} 页",
+    pageSizeLabel: "每页商品数",
+    pageSizeOption: "{count} / 页",
+    previousPage: "上一页",
+    nextPage: "下一页",
     details: "商品详情",
     edit: "编辑商品",
     duplicate: "复制为草稿",
+    moreActions: "更多商品操作",
     publish: "发布",
     restore: "恢复草稿",
     block: "阻塞",
@@ -530,9 +535,14 @@ const panelText = {
     tableUpdated: "Aggiornato",
     tableActions: "Azioni",
     pageInfo: "Pagina {page} / {pages}",
+    pageSizeLabel: "Prodotti per pagina",
+    pageSizeOption: "{count} / pag.",
+    previousPage: "Pagina precedente",
+    nextPage: "Pagina successiva",
     details: "Dettagli",
     edit: "Modifica",
     duplicate: "Duplica bozza",
+    moreActions: "Altre azioni prodotto",
     publish: "Pubblica",
     restore: "Ripristina bozza",
     block: "Blocca",
@@ -2313,7 +2323,9 @@ function ProductStockSummary({
         {product.availableQty ?? product.stock} / {product.actualQty ?? product.stock}
       </div>
       <div className="text-[11px] text-slate-400">
-        locked {product.lockedQty ?? 0}
+        {formatAdminMessage(adminText.catalog.lockedStock, {
+          count: product.lockedQty ?? 0,
+        })}
       </div>
       {restockCount > 0 ? (
         <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-bold text-amber-700">
@@ -2371,7 +2383,13 @@ function ProductActionsMenu({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon-sm" className="bg-white/60">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="bg-white/60"
+          aria-label={`${text.moreActions}: ${product.sku}`}
+          title={`${text.moreActions}: ${product.sku}`}
+        >
           <MoreHorizontal className="size-4" />
         </Button>
       </DropdownMenuTrigger>
@@ -2496,6 +2514,8 @@ function ProductPagination({
           variant="outline"
           size="icon-sm"
           className="bg-white"
+          aria-label={text.previousPage}
+          title={text.previousPage}
           disabled={filters.page <= 0}
           onClick={() => onChange({ page: Math.max(0, filters.page - 1) })}
         >
@@ -2516,6 +2536,8 @@ function ProductPagination({
           variant="outline"
           size="icon-sm"
           className="bg-white"
+          aria-label={text.nextPage}
+          title={text.nextPage}
           disabled={filters.page >= pageCount - 1}
           onClick={() => onChange({ page: Math.min(pageCount - 1, filters.page + 1) })}
         >
@@ -2525,13 +2547,13 @@ function ProductPagination({
           value={String(filters.pageSize)}
           onValueChange={(value) => onChange({ pageSize: Number(value), page: 0 })}
         >
-          <SelectTrigger className="w-28 bg-white">
+          <SelectTrigger className="w-28 bg-white" aria-label={text.pageSizeLabel}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             {[10, 20, 50, 100].map((pageSize) => (
               <SelectItem key={pageSize} value={String(pageSize)}>
-                {pageSize} / 页
+                {formatAdminMessage(text.pageSizeOption, { count: pageSize })}
               </SelectItem>
             ))}
           </SelectContent>

@@ -49,6 +49,15 @@ export async function GET() {
       },
     });
   } catch (error) {
+    if (
+      error instanceof RepositoryWriteError &&
+      (error.status === 401 || error.status === 404)
+    ) {
+      return localCartFallbackResponse(
+        error.status === 401 ? "login_required" : "customer_required"
+      );
+    }
+
     return cartRouteError(error, "CUSTOMER_CART_UNAVAILABLE");
   }
 }
@@ -142,6 +151,18 @@ function cartRouteError(error: unknown, fallbackCode: string) {
   }
 
   return apiError(500, fallbackCode, "Customer cart is temporarily unavailable.");
+}
+
+function localCartFallbackResponse(reason: "customer_required" | "login_required") {
+  return NextResponse.json({
+    data: {
+      items: [],
+    },
+    meta: {
+      persistence: "local_cart",
+      reason,
+    },
+  });
 }
 
 function toCartItemDto(item: {

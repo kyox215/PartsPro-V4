@@ -474,7 +474,10 @@ function SalesTrendCard({
             }
           }}
         >
-          <SelectTrigger className="h-8 w-[92px] rounded-md bg-white text-xs">
+          <SelectTrigger
+            className="h-8 w-[92px] rounded-md bg-white text-xs"
+            aria-label={copy.sections.salesTrend}
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -926,7 +929,7 @@ function CatalogOpsCard({
               value={String(model.catalogHealth.missingPrice)}
             />
             <DenseFact
-              label="Media"
+              label={text.common.media}
               value={String(model.catalogHealth.missingImage)}
             />
           </div>

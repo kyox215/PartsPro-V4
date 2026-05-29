@@ -652,7 +652,7 @@ export function AdminOrdersPanel() {
       setPendingOrderAction(actionKey);
 
       try {
-        const result = await patchOrderInApi(order.id, patch);
+        const result = await patchOrderInApi(order.id, patch, text);
 
         if (result.order) {
           upsertOrder(result.order);
@@ -677,7 +677,7 @@ export function AdminOrdersPanel() {
         setPendingOrderAction(null);
       }
     },
-    [text.orders.notices.persisted, text.orders.notices.rejected, upsertOrder]
+    [text, upsertOrder]
   );
 
   const handleTransition = React.useCallback(
@@ -3587,9 +3587,22 @@ function parseOrdersApiPayload(payload: unknown): OrdersApiResult {
   };
 }
 
-async function patchOrderInApi(orderId: string, patch: OrderPatchInput) {
-  const response = await fetch(`/api/admin/orders/${encodeURIComponent(orderId)}`, {
-    body: JSON.stringify(serializeOrderPatch(patch)),
+async function patchOrderInApi(
+  orderId: string,
+  patch: OrderPatchInput,
+  text: AdminText
+) {
+  const encodedOrderId = encodeURIComponent(orderId);
+  const useStatusEndpoint = isPlainStatusTransitionPatch(patch);
+  const path = useStatusEndpoint
+    ? `/api/admin/orders/${encodedOrderId}/status`
+    : `/api/admin/orders/${encodedOrderId}`;
+  const response = await fetch(path, {
+    body: JSON.stringify(
+      useStatusEndpoint
+        ? serializeOrderStatusPatch(patch)
+        : serializeOrderPatch(patch)
+    ),
     cache: "no-store",
     headers: {
       Accept: "application/json",
@@ -3600,11 +3613,15 @@ async function patchOrderInApi(orderId: string, patch: OrderPatchInput) {
 
   if (!response.ok) {
     const payload = await readJsonSafely(response);
-    const message = readApiErrorMessage(payload);
+    const message = readApiErrorMessage(payload, text);
 
     throw new Error(
       message ??
-        `PATCH /api/admin/orders/${orderId} returned ${response.status}. Local order state was not changed.`
+        formatAdminMessage(text.orders.notices.requestFailed, {
+          method: "PATCH",
+          path,
+          status: response.status,
+        })
     );
   }
 
@@ -4340,12 +4357,14 @@ async function readJsonSafely(response: Response) {
   }
 }
 
-function readApiErrorMessage(payload: unknown) {
+function readApiErrorMessage(payload: unknown, text: AdminText) {
   if (!isRecord(payload) || !isRecord(payload.error)) {
     return null;
   }
 
-  const message = readString(payload.error.message);
+  const errorCode = readString(payload.error.code);
+  const message =
+    adminOrderErrorMessage(errorCode, text) ?? readString(payload.error.message);
   const details = isRecord(payload.error.details) ? payload.error.details : null;
   const reservationIssues = normalizeReservationIssues(
     details
@@ -4354,19 +4373,41 @@ function readApiErrorMessage(payload: unknown) {
   );
   const reservationMessage =
     reservationIssues.length > 0
-      ? `库存无法锁定：${reservationIssues
+      ? formatAdminMessage(text.orders.notices.stockReservationFailed, {
+          items: reservationIssues
           .map((issue) => {
             const availability =
               issue.inventoryAvailableQty > 0
                 ? issue.inventoryAvailableQty
                 : issue.productStockQty;
 
-            return `${issue.sku} ${reservationIssueLabel(issue.reason)}，需 ${issue.neededQty}，可用 ${availability}`;
+            return formatAdminMessage(text.orders.notices.stockReservationIssue, {
+              available: availability,
+              needed: issue.neededQty,
+              reason: reservationIssueLabel(issue.reason, text),
+              sku: issue.sku,
+            });
           })
-          .join("；")}`
+          .join(text.orders.notices.issueSeparator),
+        })
       : null;
 
   return [message, reservationMessage].filter(Boolean).join(" ") || null;
+}
+
+function adminOrderErrorMessage(code: string | null, text: AdminText) {
+  switch (code) {
+    case "ADMIN_ORDER_STATUS_TRANSITION_FAILED":
+      return text.orders.notices.transitionRejected;
+    case "ADMIN_ORDER_LOGISTICS_REQUIRED":
+      return text.orders.logisticsRequired;
+    case "ADMIN_ORDER_FORCE_CANCEL_REASON_REQUIRED":
+      return text.orders.forceCancelReasonRequired;
+    case "ADMIN_ORDER_FORCE_CANCEL_ADMIN_REQUIRED":
+      return text.orders.notices.adminOnlyForceCancel;
+    default:
+      return null;
+  }
 }
 
 function normalizeReservationIssues(value: unknown) {
@@ -4408,18 +4449,18 @@ function normalizeReservationIssues(value: unknown) {
   }>;
 }
 
-function reservationIssueLabel(reason: string) {
+function reservationIssueLabel(reason: string, text: AdminText) {
   switch (reason) {
     case "missing_product":
-      return "商品不存在";
+      return text.orders.reservationIssueReasons.missingProduct;
     case "inactive_product":
-      return "商品未启用";
+      return text.orders.reservationIssueReasons.inactiveProduct;
     case "insufficient_inventory_ledger":
-      return "库存台账不足";
+      return text.orders.reservationIssueReasons.inventoryLedger;
     case "insufficient_product_stock":
-      return "可售库存不足";
+      return text.orders.reservationIssueReasons.productStock;
     default:
-      return "库存不足";
+      return text.orders.reservationIssueReasons.default;
   }
 }
 
@@ -4437,6 +4478,10 @@ function extractOrderPayload(payload: unknown) {
   }
 
   if (isRecord(payload.data)) {
+    if (isRecord(payload.data.order)) {
+      return payload.data.order;
+    }
+
     return payload.data;
   }
 
@@ -4454,6 +4499,28 @@ function extractOrderPayload(payload: unknown) {
 function serializeOrderPatch(patch: OrderPatchInput) {
   return Object.fromEntries(
     Object.entries(patch).filter(([, value]) => value !== undefined)
+  );
+}
+
+function serializeOrderStatusPatch(patch: OrderPatchInput) {
+  return Object.fromEntries(
+    Object.entries({
+      note: patch.note,
+      status: patch.status,
+    }).filter(([, value]) => value !== undefined)
+  );
+}
+
+function isPlainStatusTransitionPatch(patch: OrderPatchInput) {
+  return (
+    patch.status !== undefined &&
+    patch.status !== "cancelled" &&
+    patch.carrier === undefined &&
+    patch.forceCancel === undefined &&
+    patch.paymentStatus === undefined &&
+    patch.rollback === undefined &&
+    patch.staffNote === undefined &&
+    patch.tracking === undefined
   );
 }
 

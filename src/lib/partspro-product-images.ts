@@ -17,6 +17,12 @@ export function resolveProductImageUrl(value: string | null | undefined) {
     return null;
   }
 
+  const importedFallbackUrl = getImportedProductImageFallbackUrl(normalized);
+
+  if (importedFallbackUrl) {
+    return importedFallbackUrl;
+  }
+
   if (/^https?:\/\//i.test(normalized)) {
     return normalized;
   }
@@ -47,6 +53,21 @@ export function getExternalProductImageFallbackUrl(
   return imageId ? `${mobilaxImageBaseUrl}/${imageId}?size=bg` : null;
 }
 
+function getImportedProductImageFallbackUrl(value: string) {
+  const fallbackUrl = getExternalProductImageFallbackUrl(value);
+
+  if (
+    fallbackUrl &&
+    (/\/imported\//i.test(value) ||
+      /\/mobilax\//i.test(value) ||
+      /mobilax-[^-]+-\d+\./i.test(value))
+  ) {
+    return fallbackUrl;
+  }
+
+  return null;
+}
+
 export function getProductImageCandidates(source: ProductImageSource) {
   const rawValues = [
     source.imageUrl,
@@ -63,6 +84,7 @@ export function getProductImageCandidates(source: ProductImageSource) {
     const preferExternalFallback =
       Boolean(preferredExternalFallback) &&
       (/\/imported\//i.test(normalizedValue) ||
+        /\/mobilax\//i.test(normalizedValue) ||
         /mobilax-[^-]+-\d+\./i.test(normalizedValue));
 
     return preferExternalFallback

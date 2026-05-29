@@ -207,7 +207,7 @@ function toCartCatalogProduct(
     galleryImageUrls: pricedProduct.galleryImageUrls,
     priceGate: {
       orderable: Boolean(
-        account.canViewPrices &&
+        priceAccess.visible &&
           priceAccess.orderable &&
           hasEffectivePrice &&
           hasSellableStock
@@ -229,7 +229,7 @@ function cartCatalogBlockReason(
     return "unavailable";
   }
 
-  if (!account.canViewPrices || !priceAccess.visible) {
+  if (!priceAccess.visible) {
     return priceVisibilityReason(account);
   }
 

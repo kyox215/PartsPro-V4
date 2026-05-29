@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import {
   Menu,
   Search,
-  ShoppingCart,
   User,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -20,7 +19,7 @@ import type { CatalogSelection } from "./catalog-brand-tree";
 import { PartsProLogo } from "./logo";
 import { LanguageSwitcher } from "./language-switcher";
 import type { StoreAccountDropdownProps } from "./store-account-dropdown";
-import type { StoreCartButtonProps } from "./store-cart-button";
+import { StoreCartButton } from "./store-cart-button";
 import type { StoreMobileMenuProps } from "./store-mobile-menu";
 import { useT } from "./i18n-provider";
 import { tx } from "@/i18n/dictionaries/storefront";
@@ -58,14 +57,6 @@ const StoreMobileMenu = dynamic<StoreMobileMenuProps>(
   () => import("./store-mobile-menu").then((module) => module.StoreMobileMenu),
   {
     loading: () => <StoreMobileMenuFallback />,
-    ssr: false,
-  }
-);
-
-const StoreCartButton = dynamic<StoreCartButtonProps>(
-  () => import("./store-cart-button").then((module) => module.StoreCartButton),
-  {
-    loading: () => <StoreCartButtonFallback />,
     ssr: false,
   }
 );
@@ -249,25 +240,6 @@ export function StoreHeader({
       </header>
       <div aria-hidden="true" className="h-14 sm:h-16" />
     </>
-  );
-}
-
-function StoreCartButtonFallback() {
-  return (
-    <Button
-      variant="outline"
-      size="icon"
-      asChild
-      className="relative ml-auto bg-white shadow-sm sm:ml-0 sm:w-auto sm:px-2.5"
-    >
-      <Link href="/carrello" aria-label="Apri carrello">
-        <ShoppingCart className="size-4" />
-        <span className="hidden sm:inline">Carrello</span>
-        <span className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-red-500 text-[10px] font-bold text-white">
-          0
-        </span>
-      </Link>
-    </Button>
   );
 }
 
