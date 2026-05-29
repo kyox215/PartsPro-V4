@@ -175,6 +175,10 @@ function CartPageContent({
     () => new Map(totals.lines.map((line) => [line.sku, line])),
     [totals.lines]
   );
+  const cartItemBySku = React.useMemo(
+    () => new Map(cart.items.map((item) => [item.sku, item])),
+    [cart.items]
+  );
   const isCatalogLoading =
     cart.isHydrated && catalogLoadState === "loading" && cart.items.length > 0;
   const isEmpty = cart.isHydrated && cart.items.length === 0;
@@ -344,65 +348,74 @@ function CartPageContent({
     onCatalogProductsLoaded,
   ]);
 
-  function changeQuantity(sku: string, direction: -1 | 1) {
-    const line = totals.lines.find((item) => item.sku === sku);
+  const {
+    clearCart: clearCartItems,
+    removeItem,
+    setItems,
+    updateQuantity,
+  } = cart;
+
+  const changeQuantity = React.useCallback((sku: string, direction: -1 | 1) => {
+    const line = cartLineBySku.get(sku);
 
     if (line) {
-      cart.updateQuantity(sku, line.quantity + direction);
+      updateQuantity(sku, line.quantity + direction);
     }
-  }
+  }, [cartLineBySku, updateQuantity]);
 
-  function setQuantity(sku: string, quantity: number) {
-    cart.updateQuantity(sku, quantity);
-  }
+  const setQuantity = React.useCallback((sku: string, quantity: number) => {
+    updateQuantity(sku, quantity);
+  }, [updateQuantity]);
 
-  function changeRejectedQuantity(
-    sku: string,
-    direction: -1 | 1,
-    item: CartCatalogRejectedItem
-  ) {
-    const currentQuantity =
-      cart.items.find((cartItem) => cartItem.sku === sku)?.quantity ?? 1;
-
-    setRejectedQuantity(sku, currentQuantity + direction, item);
-  }
-
-  function setRejectedQuantity(
+  const setRejectedQuantity = React.useCallback((
     sku: string,
     quantity: number,
     item: CartCatalogRejectedItem
-  ) {
+  ) => {
     void item;
     const normalizedQuantity = normalizeRejectedCartQuantity(quantity);
 
-    cart.updateQuantity(sku, normalizedQuantity);
-  }
+    updateQuantity(sku, normalizedQuantity);
+  }, [updateQuantity]);
 
-  function removeLine(sku: string) {
-    cart.removeItem(sku);
+  const changeRejectedQuantity = React.useCallback((
+    sku: string,
+    direction: -1 | 1,
+    item: CartCatalogRejectedItem
+  ) => {
+    const currentQuantity =
+      cartItemBySku.get(sku)?.quantity ?? 1;
+
+    setRejectedQuantity(sku, currentQuantity + direction, item);
+  }, [cartItemBySku, setRejectedQuantity]);
+
+  const removeLine = React.useCallback((sku: string) => {
+    removeItem(sku);
     setCatalogRejections((current) => removeRejection(current, sku));
-  }
+  }, [removeItem]);
 
-  function removeUnresolvedLines() {
-    unresolvedSkus.forEach((sku) => cart.removeItem(sku));
+  const removeUnresolvedLines = React.useCallback(() => {
+    const unresolvedSkuSet = new Set(unresolvedSkus);
+
+    setItems(cart.items.filter((item) => !unresolvedSkuSet.has(item.sku)));
     setCatalogRejections((current) =>
       unresolvedSkus.reduce(
         (next, sku) => removeRejection(next, sku),
         current
       )
     );
-  }
+  }, [cart.items, setItems, unresolvedSkus]);
 
-  function clearCart() {
+  const clearCart = React.useCallback(() => {
     if (
       window.confirm(
         tx(t, "storefront.cart.clearConfirm", "Svuotare tutti gli articoli dal carrello?")
       )
     ) {
-      cart.clearCart();
+      clearCartItems();
       setCatalogRejections({});
     }
-  }
+  }, [clearCartItems, t]);
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
@@ -953,7 +966,7 @@ type CartLineViewProps = {
   onSetQuantity: (sku: string, quantity: number) => void;
 };
 
-function RejectedCartLineMobileRow({
+const RejectedCartLineMobileRow = React.memo(function RejectedCartLineMobileRow({
   item,
   onChangeQuantity,
   onRemove,
@@ -1049,9 +1062,9 @@ function RejectedCartLineMobileRow({
       </div>
     </div>
   );
-}
+});
 
-function CartLineMobileRow({
+const CartLineMobileRow = React.memo(function CartLineMobileRow({
   line,
   onChangeQuantity,
   onRemove,
@@ -1159,9 +1172,9 @@ function CartLineMobileRow({
       </div>
     </div>
   );
-}
+});
 
-function CartLineDesktopCard({
+const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
   line,
   onChangeQuantity,
   onRemove,
@@ -1283,9 +1296,9 @@ function CartLineDesktopCard({
       </CardContent>
     </Card>
   );
-}
+});
 
-function RejectedCartLineDesktopCard({
+const RejectedCartLineDesktopCard = React.memo(function RejectedCartLineDesktopCard({
   item,
   onChangeQuantity,
   onRemove,
@@ -1405,7 +1418,7 @@ function RejectedCartLineDesktopCard({
       </CardContent>
     </Card>
   );
-}
+});
 
 function QuantityInput({
   compact = false,

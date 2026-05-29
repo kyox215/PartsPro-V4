@@ -24,29 +24,62 @@ type OrderSummaryCardProps = {
 };
 
 export function OrderSummaryCard({
+  totals,
+  ...props
+}: OrderSummaryCardProps) {
+  if (totals) {
+    return (
+      <OrderSummaryCardView
+        {...props}
+        isHydrated
+        totals={totals}
+      />
+    );
+  }
+
+  return <ConnectedOrderSummaryCard {...props} />;
+}
+
+function ConnectedOrderSummaryCard({
+  consumeUrlIntent = false,
+  ...props
+}: Omit<OrderSummaryCardProps, "totals">) {
+  const cart = useCart({ consumeUrlIntent, preserveUnknown: true });
+
+  return (
+    <OrderSummaryCardView
+      {...props}
+      isHydrated={cart.isHydrated}
+      totals={cart.totals}
+    />
+  );
+}
+
+function OrderSummaryCardView({
   showCheckoutAction = true,
   checkoutLabel,
   checkoutDisabled = false,
   checkoutHref = "/checkout",
   compact = false,
-  consumeUrlIntent = false,
   continueHref = "/catalogo",
+  isHydrated,
   lineCount,
   summaryNote,
   totals,
-}: OrderSummaryCardProps) {
+}: Omit<OrderSummaryCardProps, "consumeUrlIntent"> & {
+  isHydrated: boolean;
+  totals: CartTotals;
+}) {
   const t = useT();
   const { locale } = useI18n();
-  const cart = useCart({ consumeUrlIntent, preserveUnknown: true });
-  const previewTotals = totals ?? cart.totals;
   const effectiveCheckoutLabel =
     checkoutLabel ?? tx(t, "storefront.cart.checkoutLabel", "Procedi al checkout");
   const effectiveSummaryNote =
     summaryNote ??
     tx(t, "storefront.cart.summaryNote", "Il carrello non blocca stock: disponibilita e quantita vengono riservate solo alla conferma ordine.");
   const effectiveCheckoutDisabled =
-    checkoutDisabled || (!totals && (!cart.isHydrated || previewTotals.lines.length === 0));
-  const effectiveLineCount = lineCount ?? previewTotals.lines.length;
+    checkoutDisabled || (!isHydrated || totals.lines.length === 0);
+  const effectiveLineCount = lineCount ?? totals.lines.length;
 
   return (
     <Card
@@ -61,21 +94,21 @@ export function OrderSummaryCard({
       </CardHeader>
       <CardContent className={compact ? "space-y-2 px-3" : "space-y-3"}>
         <Line compact={compact} label={tx(t, "storefront.cart.rows", "Righe")} value={String(effectiveLineCount)} />
-        <Line compact={compact} label={tx(t, "storefront.common.subtotal", "Subtotale")} value={formatMoney(previewTotals.subtotal, locale)} />
+        <Line compact={compact} label={tx(t, "storefront.common.subtotal", "Subtotale")} value={formatMoney(totals.subtotal, locale)} />
         <Line
           compact={compact}
           label={tx(t, "storefront.common.shipping", "Spedizione")}
           value={
-            previewTotals.shipping === 0
+            totals.shipping === 0
               ? tx(t, "storefront.common.free", "Gratis")
-              : formatMoney(previewTotals.shipping, locale)
+              : formatMoney(totals.shipping, locale)
           }
         />
-        <Line compact={compact} label={`${tx(t, "storefront.common.vat", "IVA")} 22%`} value={formatMoney(previewTotals.vat, locale)} />
+        <Line compact={compact} label={`${tx(t, "storefront.common.vat", "IVA")} 22%`} value={formatMoney(totals.vat, locale)} />
         <Separator />
-        <Line compact={compact} label={tx(t, "storefront.common.total", "Totale")} value={formatMoney(previewTotals.total, locale)} strong />
+        <Line compact={compact} label={tx(t, "storefront.common.total", "Totale")} value={formatMoney(totals.total, locale)} strong />
         <div className={compact ? "rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] font-semibold leading-4 text-amber-900" : "rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900"}>
-          {!totals && !cart.isHydrated
+          {!isHydrated
             ? tx(t, "storefront.cart.summaryLoading", "Caricamento carrello salvato nel browser...")
             : effectiveSummaryNote}
         </div>

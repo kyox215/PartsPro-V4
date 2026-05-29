@@ -34,6 +34,11 @@ type NormalizeCartOptions = {
   preserveUnknown?: boolean;
 };
 
+type CatalogLookup = {
+  hasCatalog: boolean;
+  productsBySku: Map<string, PartProduct>;
+};
+
 type CartCatalogProviderProps = {
   children: React.ReactNode;
   products: readonly PartProduct[];
@@ -146,6 +151,7 @@ export function useCart({
     items,
     lines: totals.lines,
     removeItem,
+    setItems,
     totals,
     updateQuantity,
   };
@@ -292,8 +298,9 @@ export function calculateCartTotalsFromItems(
   items: CartItem[],
   catalog: readonly PartProduct[] = products
 ): CartTotals {
-  const lines = normalizeCartItems(items, catalog).flatMap((item) => {
-    const product = getProductBySku(item.sku, catalog);
+  const lookup = createCatalogLookup(catalog);
+  const lines = normalizeCartItemsWithLookup(items, lookup).flatMap((item) => {
+    const product = getProductFromLookup(item.sku, lookup);
 
     if (!product || !isOrderableCartLine(product, item.quantity)) {
       return [];
@@ -460,9 +467,16 @@ function normalizeCartItems(
   catalog: readonly PartProduct[] = products,
   options: NormalizeCartOptions = {}
 ): CartItem[] {
+  return normalizeCartItemsWithLookup(value, createCatalogLookup(catalog), options);
+}
+
+function normalizeCartItemsWithLookup(
+  value: unknown,
+  lookup: CatalogLookup,
+  options: NormalizeCartOptions = {}
+): CartItem[] {
   const rawItems = Array.isArray(value) ? value : [];
   const quantities = new Map<string, number>();
-  const hasCatalog = catalog.length > 0;
   const preserveUnknown = Boolean(options.preserveUnknown);
 
   for (const item of rawItems) {
@@ -471,14 +485,14 @@ function normalizeCartItems(
     }
 
     const sku = normalizeSku(item.sku);
-    const product = getProductBySku(sku, catalog);
+    const product = getProductFromLookup(sku, lookup);
     const quantity = normalizeQuantity(item.quantity);
 
     if (quantity === null) {
       continue;
     }
 
-    if (hasCatalog && !product && !preserveUnknown) {
+    if (lookup.hasCatalog && !product && !preserveUnknown) {
       continue;
     }
 
@@ -487,10 +501,10 @@ function normalizeCartItems(
 
   return Array.from(quantities.entries())
     .map(([sku, quantity]) => {
-      const product = getProductBySku(sku, catalog);
+      const product = getProductFromLookup(sku, lookup);
 
       if (!product) {
-        return hasCatalog && !preserveUnknown ? null : { sku, quantity };
+        return lookup.hasCatalog && !preserveUnknown ? null : { sku, quantity };
       }
 
       return { sku, quantity };
@@ -603,17 +617,24 @@ function normalizeSku(value: string) {
   return toPublicSku(value);
 }
 
-function getProductBySku(sku: string, catalog: readonly PartProduct[]) {
-  const normalizedSku = normalizeSku(sku);
-
-  return catalog.find((product) => normalizeSku(product.sku) === normalizedSku);
-}
-
 function normalizeCatalogProduct(product: PartProduct): PartProduct {
   return {
     ...product,
     sku: normalizeSku(product.sku),
   };
+}
+
+function createCatalogLookup(catalog: readonly PartProduct[]): CatalogLookup {
+  return {
+    hasCatalog: catalog.length > 0,
+    productsBySku: new Map(
+      catalog.map((product) => [normalizeSku(product.sku), product])
+    ),
+  };
+}
+
+function getProductFromLookup(sku: string, lookup: CatalogLookup) {
+  return lookup.productsBySku.get(normalizeSku(sku));
 }
 
 function cartCatalogKey(catalog: readonly PartProduct[]) {

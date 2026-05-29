@@ -2,15 +2,14 @@ import { tx, type StorefrontTranslator } from "@/i18n/dictionaries/storefront";
 import { getDictionary, translate } from "@/i18n/get-dictionary";
 import { getRequestI18n } from "@/i18n/request";
 import {
-  applyAccountPriceToProduct,
   canDelegateCheckout,
   getCurrentAccountContext,
   type AccountContext,
 } from "@/lib/partspro-account-context";
-import { type CompanyProfile, type PartProduct } from "@/lib/partspro-data";
+import { type CompanyProfile } from "@/lib/partspro-data";
+import { toStoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import {
   getCurrentCustomerProfile,
-  listCatalogProducts,
   listCompanies,
   listCurrentCustomerCompanies,
 } from "@/lib/partspro-repository";
@@ -31,26 +30,23 @@ export async function CheckoutPage({
   const account = await getCurrentAccountContext({ ensure: true });
   const delegatedCheckout = canDelegateCheckout(account);
   const runtime = getCheckoutRuntime(t, account, delegatedCheckout);
-  const [companies, catalog, customerProfile] = await Promise.all([
+  const [companies, customerProfile] = await Promise.all([
     delegatedCheckout ? listCompanies() : listCurrentCustomerCompanies(),
-    listCatalogProducts(),
     getCurrentCustomerProfile(),
   ]);
   const company = delegatedCheckout
     ? null
     : resolveCheckoutCompany(account, companies.data);
-  const catalogProducts = catalog.data
-    .map((product) => applyAccountPriceToProduct(product, account))
-    .filter(isCheckoutOrderableProduct);
 
   return (
     <CheckoutClient
-      catalogProducts={catalogProducts}
+      catalogProducts={[]}
       company={company}
       companies={delegatedCheckout ? companies.data : []}
       customerProfile={customerProfile.data}
       delegatedCheckout={delegatedCheckout}
       initialSelectedCompanyId={delegatedCheckout ? requestedCompanyId : null}
+      initialAccountAccess={toStoreHeaderAccountAccess(account)}
       runtime={runtime}
     />
   );
@@ -123,12 +119,4 @@ function resolveCheckoutCompany(
   }
 
   return companies.find((company) => company.id === account.customer?.id) ?? null;
-}
-
-function isCheckoutOrderableProduct(product: PartProduct) {
-  return (
-    product.price > 0 &&
-    product.status !== "Out of Stock" &&
-    product.stock >= Math.max(1, product.moq)
-  );
 }

@@ -48,6 +48,7 @@ import {
   replaceCurrentUrlAssistedCompanyId,
 } from "@/lib/partspro-assisted-order";
 import { type CompanyProfile, type PartProduct } from "@/lib/partspro-data";
+import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import { type AccountCustomerProfile } from "@/lib/partspro-repository";
 import { publicStockLevelMeta } from "@/lib/partspro-stock-availability";
 import { cn } from "@/lib/utils";
@@ -78,6 +79,7 @@ type CheckoutClientProps = {
   company: CompanyProfile | null;
   customerProfile: AccountCustomerProfile | null;
   delegatedCheckout?: boolean;
+  initialAccountAccess?: StoreHeaderAccountAccess;
   initialSelectedCompanyId?: string | null;
   runtime: CheckoutRuntimeView;
 };
@@ -143,6 +145,7 @@ type Blocker = {
 
 const fixedShippingMethod = "GLS/BRT 24-48h";
 const idlePreviewState: PreviewState = { status: "idle", issues: [] };
+const previewDebounceMs = 180;
 
 export function CheckoutClient(props: CheckoutClientProps) {
   const initialScope =
@@ -198,6 +201,7 @@ function CheckoutClientContent({
   company,
   customerProfile,
   delegatedCheckout = false,
+  initialAccountAccess,
   initialSelectedCompanyId = null,
   onCatalogProductsLoaded,
   onCatalogScopeChange,
@@ -208,6 +212,7 @@ function CheckoutClientContent({
 }) {
   const t = useT();
   const router = useRouter();
+  const [, startTransition] = React.useTransition();
   const initialDelegatedCompanyId =
     delegatedCheckout &&
     initialSelectedCompanyId &&
@@ -350,7 +355,7 @@ function CheckoutClientContent({
     async function loadCartCatalogProducts() {
       setCatalogLoadState("loading");
 
-  try {
+      try {
         const params = new URLSearchParams({
           companyId: selectedCompany?.id ?? "",
           skus: missingSkus.join(","),
@@ -396,17 +401,25 @@ function CheckoutClientContent({
     }
 
     const controller = new AbortController();
+    const previewCompanyId = selectedCompany?.id;
+    const previewItems = cart.items;
 
     async function loadPreview() {
-      setPreview({ status: "loading", issues: [] });
+      setPreview((current) => ({
+        status: "loading",
+        canSubmit: current.canSubmit,
+        issues: current.status === "ready" || current.status === "loading"
+          ? current.issues
+          : [],
+      }));
 
       try {
         const response = await fetch("/api/orders/preview", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            companyId: selectedCompany?.id,
-            items: cart.items,
+            companyId: previewCompanyId,
+            items: previewItems,
           }),
           cache: "no-store",
           credentials: "same-origin",
@@ -442,9 +455,12 @@ function CheckoutClientContent({
       }
     }
 
-    void loadPreview();
+    const timeout = window.setTimeout(() => {
+      void loadPreview();
+    }, previewDebounceMs);
 
     return () => {
+      window.clearTimeout(timeout);
       controller.abort();
     };
   }, [cart.items, cartSignature, selectedCompany?.id, shouldLoadPreview, t]);
@@ -507,16 +523,18 @@ function CheckoutClientContent({
         throw new Error(tx(t, "storefront.checkout.submit.orderIncomplete", "Risposta ordine incompleta."));
       }
 
-      cart.clearCart();
-      clearAssistedCompanyId();
-      replaceCurrentUrlAssistedCompanyId(null);
-      router.refresh();
       setSubmitState({
         status: "success",
         message: txFormat(t, "storefront.checkout.submit.orderAccepted", "Ordine {id} creato correttamente.", {
           id: payload.data.id,
         }),
         order: payload.data,
+      });
+      cart.clearCart();
+      clearAssistedCompanyId();
+      replaceCurrentUrlAssistedCompanyId(null);
+      startTransition(() => {
+        router.refresh();
       });
     } catch (error) {
       setSubmitState({
@@ -531,7 +549,10 @@ function CheckoutClientContent({
 
   return (
     <>
-      <StoreHeader assistedCompanyId={checkoutContextCompanyId || null} />
+      <StoreHeader
+        assistedCompanyId={checkoutContextCompanyId || null}
+        initialAccountAccess={initialAccountAccess}
+      />
       <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
         <div className="mx-auto grid max-w-[1300px] gap-3 px-2 pt-3 pb-[calc(5.75rem_+_env(safe-area-inset-bottom))] sm:gap-4 sm:px-4 sm:pt-5 lg:grid-cols-[minmax(0,1fr)_360px] lg:pb-8">
           <section className="space-y-3 sm:space-y-4">
