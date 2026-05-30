@@ -152,6 +152,7 @@ type Blocker = {
 const fixedShippingMethod = "GLS/BRT 24-48h";
 const idlePreviewState: PreviewState = { status: "idle", issues: [] };
 const previewDebounceMs = 180;
+const orderSubmitTimeoutMs = 25_000;
 
 export function CheckoutClient(props: CheckoutClientProps) {
   const initialScope =
@@ -582,10 +583,16 @@ function CheckoutClientContent({
       message: tx(t, "storefront.checkout.submit.sending", "Creazione ordine in corso..."),
     });
 
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      controller.abort();
+    }, orderSubmitTimeoutMs);
+
     try {
       const response = await fetch("/api/orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           companyId: selectedCompany?.id,
           paymentMethod: form.paymentMethod,
@@ -623,13 +630,21 @@ function CheckoutClientContent({
         router.refresh();
       });
     } catch (error) {
+      const timeoutMessage =
+        isAbortError(error)
+          ? tx(t, "storefront.checkout.submit.timeout", "Invio ordine scaduto. Controlla la connessione e riprova.")
+          : null;
+
       setSubmitState({
         status: "error",
         message:
-          error instanceof Error
+          timeoutMessage ??
+          (error instanceof Error
             ? error.message
-            : tx(t, "storefront.checkout.submit.sendError", "Errore durante l'invio."),
+            : tx(t, "storefront.checkout.submit.sendError", "Errore durante l'invio.")),
       });
+    } finally {
+      window.clearTimeout(timeoutId);
     }
   }
 
@@ -2102,6 +2117,12 @@ function friendlyCheckoutError(
     default:
       return message ?? tx(t, "storefront.checkout.submit.sendError", "Errore durante l'invio.");
   }
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException
+    ? error.name === "AbortError"
+    : error instanceof Error && error.name === "AbortError";
 }
 
 function formatMoneyDto(value: MoneyDto, locale: string) {

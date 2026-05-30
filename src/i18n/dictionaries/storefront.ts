@@ -522,8 +522,19 @@ export const storefrontItIT = {
   "storefront.checkout.submit.orderRejected": "Ordine non accettato dal gestionale.",
   "storefront.checkout.submit.sendError": "Errore durante l'invio.",
   "storefront.checkout.submit.sending": "Creazione ordine in corso...",
+  "storefront.checkout.submit.timeout":
+    "Invio ordine scaduto. Controlla la connessione e riprova.",
   "storefront.checkout.submit.unresolvedItemsReason":
     "Alcuni articoli del carrello non sono più disponibili: torna al carrello e rimuovili prima di confermare l'ordine.",
+  "storefront.checkout.error.customerNotReady":
+    "Il profilo cliente deve essere completato prima dell'ordine.",
+  "storefront.checkout.error.loginRequired": "Accedi prima di confermare l'ordine.",
+  "storefront.checkout.error.priceAccess": "Il listino cliente non è ancora abilitato.",
+  "storefront.checkout.error.priceChanged":
+    "Alcuni prezzi sono cambiati. Aggiorna il checkout e riprova.",
+  "storefront.checkout.error.skuUnavailable": "Uno o più articoli non sono più disponibili.",
+  "storefront.checkout.error.stockInvalid":
+    "Una o più righe non rispettano scorte, quantità o MOQ.",
   "storefront.checkout.success.openOrders": "Vai agli ordini",
   "storefront.checkout.success.total": "Totale ordine",
   "storefront.checkout.unitPriceTaxIncluded": "Prezzo IVA incl.",
@@ -1252,8 +1263,15 @@ export const storefrontZhCN = {
   "storefront.checkout.submit.orderRejected": "后台未接受该订单。",
   "storefront.checkout.submit.sendError": "提交时发生错误。",
   "storefront.checkout.submit.sending": "正在创建订单...",
+  "storefront.checkout.submit.timeout": "订单提交超时。请检查网络后重试。",
   "storefront.checkout.submit.unresolvedItemsReason":
     "购物车中有商品当前不可用：请返回购物车移除后再确认订单。",
+  "storefront.checkout.error.customerNotReady": "客户资料需要补全后才能下单。",
+  "storefront.checkout.error.loginRequired": "请先登录再确认订单。",
+  "storefront.checkout.error.priceAccess": "客户价目表尚未启用。",
+  "storefront.checkout.error.priceChanged": "部分价格已变化。请刷新结账页后重试。",
+  "storefront.checkout.error.skuUnavailable": "一个或多个商品当前不可用。",
+  "storefront.checkout.error.stockInvalid": "一个或多个商品不满足库存、数量或 MOQ 规则。",
   "storefront.checkout.success.openOrders": "查看订单",
   "storefront.checkout.success.total": "订单总计",
   "storefront.checkout.unitPriceTaxIncluded": "含税单价",

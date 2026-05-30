@@ -108,6 +108,9 @@ type RequestedOrderItem = z.infer<typeof orderItemSchema>;
 type DeliveryAddressInput = z.infer<typeof deliveryAddressSchema>;
 type OrdersQuery = z.infer<typeof ordersQuerySchema>;
 type OrderLine = PreparedOrderLine;
+
+export const maxDuration = 30;
+
 export async function GET(request: NextRequest) {
   try {
     const authState = await getAdminAuthState();
@@ -357,8 +360,19 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     if (error instanceof RepositoryWriteError) {
+      console.error("[orders:create] repository write failed", {
+        code: error.code,
+        details: error.details,
+        message: error.message,
+        status: error.status,
+      });
+
       return orderRepositoryError(error);
     }
+
+    console.error("[orders:create] unexpected failure", {
+      message: error instanceof Error ? error.message : String(error),
+    });
 
     return apiError(500, "ORDER_CREATE_FAILED", "Order could not be created at this time.");
   }
