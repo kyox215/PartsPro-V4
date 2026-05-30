@@ -24,6 +24,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -253,6 +261,7 @@ function CheckoutClientContent({
   const [confirmed, setConfirmed] = React.useState(false);
   const [submitAttempted, setSubmitAttempted] = React.useState(false);
   const [submitState, setSubmitState] = React.useState<SubmitState>({ status: "idle" });
+  const [successDialogOpen, setSuccessDialogOpen] = React.useState(false);
   const [preview, setPreview] = React.useState<PreviewState>({
     status: "idle",
     issues: [],
@@ -375,6 +384,7 @@ function CheckoutClientContent({
     setConfirmed(false);
     setPreview(idlePreviewState);
     setSubmitState({ status: "idle" });
+    setSuccessDialogOpen(false);
     setCatalogLoadState("idle");
     setCatalogRejections({});
     rememberAssistedCompanyId(nextCompany?.id ?? null);
@@ -623,6 +633,7 @@ function CheckoutClientContent({
         }),
         order: payload.data,
       });
+      setSuccessDialogOpen(true);
       cart.clearCart();
       clearAssistedCompanyId();
       replaceCurrentUrlAssistedCompanyId(null);
@@ -725,6 +736,11 @@ function CheckoutClientContent({
         state={submitState}
         totals={cart.totals}
         lineCount={cart.items.length}
+      />
+      <CheckoutSuccessDialog
+        open={successDialogOpen}
+        state={submitState}
+        onOpenChange={setSuccessDialogOpen}
       />
       </main>
     </>
@@ -1505,6 +1521,96 @@ function OrderSuccess({ message, order }: { message: string; order: OrderResult 
           <Link href="/catalogo">{tx(t, "storefront.common.continueShopping", "Continua acquisti")}</Link>
         </Button>
       </div>
+    </div>
+  );
+}
+
+function CheckoutSuccessDialog({
+  onOpenChange,
+  open,
+  state,
+}: {
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  state: SubmitState;
+}) {
+  const t = useT();
+  const { locale } = useI18n();
+
+  if (state.status !== "success") {
+    return null;
+  }
+
+  const order = state.order;
+  const totalQuantity = order.lines.reduce((total, line) => total + line.quantity, 0);
+  const orderReference = order.orderNo ?? order.id;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-[calc(100vw-1.5rem)] gap-0 overflow-hidden p-0 sm:max-w-md">
+        <div className="bg-emerald-50 px-4 pt-5 pb-4 text-emerald-950 sm:px-5">
+          <DialogHeader className="pr-9">
+            <div className="mb-1 flex size-11 items-center justify-center rounded-full bg-emerald-600 text-white">
+              <CheckCircle2 className="size-6" />
+            </div>
+            <DialogTitle className="text-xl font-black leading-tight text-emerald-950">
+              {tx(t, "storefront.checkout.success.dialogTitle", "Ordine creato correttamente")}
+            </DialogTitle>
+            <DialogDescription className="text-sm font-semibold leading-6 text-emerald-800">
+              {tx(t, "storefront.checkout.success.dialogDescription", "Abbiamo registrato l'ordine. Puoi seguirlo dal tuo account.")}
+            </DialogDescription>
+          </DialogHeader>
+        </div>
+
+        <div className="space-y-3 bg-white px-4 py-4 sm:px-5">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="text-xs font-bold uppercase tracking-normal text-slate-500">
+              {tx(t, "storefront.checkout.success.orderNumber", "Numero ordine")}
+            </div>
+            <div className="mt-1 break-all font-mono text-base font-black text-slate-950">
+              {orderReference}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 text-sm">
+            <SuccessMetric
+              label={tx(t, "storefront.common.status", "Stato")}
+              value={orderStatusLabel(t, order.status)}
+            />
+            <SuccessMetric
+              label={tx(t, "storefront.cart.rows", "Articoli")}
+              value={String(totalQuantity)}
+            />
+            <SuccessMetric
+              label={tx(t, "storefront.common.total", "Totale")}
+              value={formatMoneyDto(order.totals.total, locale)}
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-2 bg-slate-50 p-3 sm:grid-cols-3">
+          <DialogClose asChild>
+            <Button variant="outline" className="sm:order-first">
+              {tx(t, "storefront.common.close", "Chiudi")}
+            </Button>
+          </DialogClose>
+          <Button asChild variant="outline" className="sm:col-span-1">
+            <Link href="/catalogo">{tx(t, "storefront.common.continueShopping", "Continua acquisti")}</Link>
+          </Button>
+          <Button asChild className="bg-emerald-700 hover:bg-emerald-700 sm:col-span-1">
+            <Link href="/account">{tx(t, "storefront.checkout.success.openOrders", "Vai agli ordini")}</Link>
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SuccessMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
+      <div className="truncate text-[11px] font-bold uppercase tracking-normal text-slate-500">{label}</div>
+      <div className="mt-1 truncate text-sm font-black text-slate-950">{value}</div>
     </div>
   );
 }
