@@ -703,7 +703,10 @@ export const adminDictionaries = {
         workflow: {
           agedReservations: "超期锁货",
           all: "全部订单",
+          archive: "归档状态",
+          followUps: "待办提醒",
           openPayments: "未收款",
+          stages: "处理阶段",
           stockRisk: "库存风险",
           title: "处理队列",
         },
@@ -1791,7 +1794,10 @@ export const adminDictionaries = {
         workflow: {
           agedReservations: "Riserve scadute",
           all: "Tutti ordini",
+          archive: "Archivio",
+          followUps: "Da seguire",
           openPayments: "Da incassare",
+          stages: "Fasi operative",
           stockRisk: "Rischio stock",
           title: "Code operative",
         },

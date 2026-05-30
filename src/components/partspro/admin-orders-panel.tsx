@@ -101,6 +101,8 @@ type WorkflowKey =
   | "picking"
   | "packed"
   | "shipped"
+  | "completed"
+  | "cancelled"
   | "openPayments"
   | "stockRisk"
   | "agedReservations";
@@ -563,6 +565,8 @@ export function AdminOrdersPanel() {
       picking: orders.filter((order) => order.status === "picking").length,
       packed: orders.filter((order) => order.status === "packed").length,
       shipped: orders.filter((order) => order.status === "shipped").length,
+      completed: orders.filter((order) => order.status === "completed").length,
+      cancelled: orders.filter((order) => order.status === "cancelled").length,
       openPayments: orders.filter(
         (order) => order.paymentStatus !== "paid" && order.status !== "cancelled"
       ).length,
@@ -586,13 +590,7 @@ export function AdminOrdersPanel() {
       return "agedReservations";
     }
 
-    if (
-      statusFilter === "submitted" ||
-      statusFilter === "accepted" ||
-      statusFilter === "picking" ||
-      statusFilter === "packed" ||
-      statusFilter === "shipped"
-    ) {
+    if (statusFilter !== "all") {
       return statusFilter;
     }
 
@@ -1009,53 +1007,107 @@ function OrderWorkflowStrip({
   text: AdminText;
   onSelect: (key: WorkflowKey) => void;
 }) {
-  const items: Array<{ key: WorkflowKey; label: string }> = [
-    { key: "all", label: text.orders.workflow.all },
-    { key: "submitted", label: labels.status.submitted },
-    { key: "accepted", label: labels.status.accepted },
-    { key: "picking", label: labels.status.picking },
-    { key: "packed", label: labels.status.packed },
-    { key: "shipped", label: labels.status.shipped },
-    { key: "openPayments", label: text.orders.workflow.openPayments },
-    { key: "stockRisk", label: text.orders.workflow.stockRisk },
-    { key: "agedReservations", label: text.orders.workflow.agedReservations },
+  const groups: Array<{
+    key: string;
+    title: string;
+    items: Array<{ key: WorkflowKey; label: string; tone?: "archive" | "attention" }>;
+  }> = [
+    {
+      key: "stages",
+      title: text.orders.workflow.stages,
+      items: [
+        { key: "all", label: text.orders.workflow.all },
+        { key: "submitted", label: labels.status.submitted },
+        { key: "accepted", label: labels.status.accepted },
+        { key: "picking", label: labels.status.picking },
+        { key: "packed", label: labels.status.packed },
+        { key: "shipped", label: labels.status.shipped },
+      ],
+    },
+    {
+      key: "archive",
+      title: text.orders.workflow.archive,
+      items: [
+        { key: "completed", label: labels.status.completed, tone: "archive" },
+        { key: "cancelled", label: labels.status.cancelled, tone: "archive" },
+      ],
+    },
+    {
+      key: "followUps",
+      title: text.orders.workflow.followUps,
+      items: [
+        { key: "openPayments", label: text.orders.workflow.openPayments, tone: "attention" },
+        { key: "stockRisk", label: text.orders.workflow.stockRisk, tone: "attention" },
+        {
+          key: "agedReservations",
+          label: text.orders.workflow.agedReservations,
+          tone: "attention",
+        },
+      ],
+    },
   ];
 
   return (
-    <div className="min-w-0">
-      <div
-        role="toolbar"
-        aria-label={text.orders.workflow.title}
-        className="flex min-w-0 gap-1.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-        {items.map((item) => {
-          const isActive = item.key === activeKey;
+    <div
+      role="toolbar"
+      aria-label={text.orders.workflow.title}
+      className="grid min-w-0 gap-2 xl:grid-cols-[minmax(0,1fr)_auto]"
+    >
+      {groups.map((group) => (
+        <div
+          key={group.key}
+          className={cn(
+            "min-w-0 rounded-md border border-slate-200/80 bg-slate-50/60 px-2 py-1.5",
+            group.key === "followUps" && "xl:col-span-2"
+          )}
+        >
+          <div className="mb-1 truncate text-[10px] font-black leading-tight text-slate-500">
+            {group.title}
+          </div>
+          <div
+            role="group"
+            aria-label={group.title}
+            className="flex min-w-0 gap-1.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            {group.items.map((item) => {
+              const isActive = item.key === activeKey;
 
-          return (
-            <Button
-              key={item.key}
-              type="button"
-              variant={isActive ? "default" : "outline"}
-              size="xs"
-              className={cn(
-                "h-8 gap-1.5 rounded-md px-2.5",
-                !isActive && "bg-white text-slate-600"
-              )}
-              onClick={() => onSelect(item.key)}
-            >
-              <span>{item.label}</span>
-              <span
-                className={cn(
-                  "rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-black leading-none text-slate-600",
-                  isActive && "bg-white/20 text-white"
-                )}
-              >
-                {counts[item.key]}
-              </span>
-            </Button>
-          );
-        })}
-      </div>
+              return (
+                <Button
+                  key={item.key}
+                  type="button"
+                  variant={isActive ? "default" : "outline"}
+                  size="xs"
+                  className={cn(
+                    "h-8 min-w-fit gap-1.5 rounded-md px-2.5",
+                    !isActive && "bg-white text-slate-600",
+                    !isActive &&
+                      item.tone === "archive" &&
+                      "border-slate-200 bg-white text-slate-500",
+                    !isActive &&
+                      item.tone === "attention" &&
+                      "border-amber-200 bg-amber-50/70 text-amber-900 hover:bg-amber-100"
+                  )}
+                  onClick={() => onSelect(item.key)}
+                >
+                  <span>{item.label}</span>
+                  <span
+                    className={cn(
+                      "rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-black leading-none text-slate-600",
+                      item.tone === "attention" &&
+                        !isActive &&
+                        "bg-amber-100 text-amber-900",
+                      isActive && "bg-white/20 text-white"
+                    )}
+                  >
+                    {counts[item.key]}
+                  </span>
+                </Button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
