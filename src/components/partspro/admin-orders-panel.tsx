@@ -365,7 +365,7 @@ export function AdminOrdersPanel() {
           )
         : [order, ...currentOrders];
 
-      return nextOrders;
+      return sortOrdersForOperationsQueue(nextOrders);
     });
     setDetailsById((currentDetails) => ({
       ...currentDetails,
@@ -413,12 +413,13 @@ export function AdminOrdersPanel() {
         const result = await fetchOrdersFromApi({
           signal,
         });
+        const sortedOrders = sortOrdersForOperationsQueue(result.orders);
 
         if (signal?.aborted) {
           return;
         }
 
-        setOrders(result.orders);
+        setOrders(sortedOrders);
         setDataSource({
           source: result.source,
           label: sourceLabel(result.source, text),
@@ -427,9 +428,9 @@ export function AdminOrdersPanel() {
           returned: result.returned,
         });
         setSelectedOrderId((currentId) =>
-          currentId && result.orders.some((order) => order.id === currentId)
+          currentId && sortedOrders.some((order) => order.id === currentId)
             ? currentId
-            : result.orders[0]?.id ?? ""
+            : sortedOrders[0]?.id ?? ""
         );
         setNotice(null);
       } catch (error) {
@@ -3508,7 +3509,7 @@ async function fetchOrdersFromApi({
   const params = new URLSearchParams({
     limit: "100",
     offset: "0",
-    sort: "date_desc",
+    sort: "operations_queue",
   });
 
   if (status) {
@@ -4195,6 +4196,47 @@ function normalizeStockRiskValue(value: unknown): StockRisk {
   }
 
   return "unknown";
+}
+
+function sortOrdersForOperationsQueue(orders: AdminOrder[]): AdminOrder[] {
+  return [...orders].sort(compareOrdersForOperationsQueue);
+}
+
+function compareOrdersForOperationsQueue(left: AdminOrder, right: AdminOrder) {
+  const bucketDelta =
+    orderQueueBucket(left.status) - orderQueueBucket(right.status);
+
+  if (bucketDelta !== 0) {
+    return bucketDelta;
+  }
+
+  const timeDelta = orderTimestamp(right.createdAt) - orderTimestamp(left.createdAt);
+
+  if (timeDelta !== 0) {
+    return timeDelta;
+  }
+
+  const statusDelta = orderStatusRank(left.status) - orderStatusRank(right.status);
+
+  if (statusDelta !== 0) {
+    return statusDelta;
+  }
+
+  return right.id.localeCompare(left.id, undefined, { numeric: true });
+}
+
+function orderQueueBucket(status: OrderDbStatus) {
+  return status === "completed" || status === "cancelled" ? 1 : 0;
+}
+
+function orderStatusRank(status: OrderDbStatus) {
+  const index = statusFlow.indexOf(status);
+  return index >= 0 ? index : statusFlow.length;
+}
+
+function orderTimestamp(value: string) {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
 function priorityForOrder(status: OrderDbStatus, index: number): Priority {

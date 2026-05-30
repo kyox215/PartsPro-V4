@@ -24,7 +24,9 @@ export const orderQuerySchema = z
     dateTo: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     paymentStatus: z.enum(adminPaymentStatuses).optional(),
     q: z.string().trim().min(2).max(100).optional(),
-    sort: z.enum(["date_desc", "date_asc", "total_desc", "total_asc"]).default("date_desc"),
+    sort: z
+      .enum(["operations_queue", "date_desc", "date_asc", "total_desc", "total_asc"])
+      .default("operations_queue"),
     status: z.enum(adminOrderDbStatuses).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
     offset: z.coerce.number().int().min(0).max(5000).default(0),

@@ -687,7 +687,7 @@ export type AdminOrderQueryInput = {
   offset: number;
   paymentStatus?: AdminPaymentStatus;
   q?: string;
-  sort: "date_desc" | "date_asc" | "total_desc" | "total_asc";
+  sort: "operations_queue" | "date_desc" | "date_asc" | "total_desc" | "total_asc";
   status?: AdminOrderDbStatus;
 };
 
@@ -4033,6 +4033,13 @@ async function readAdminOrderPage(
     }
 
     switch (query.sort) {
+      case "operations_queue":
+        request = request
+          .order("admin_queue_bucket", { ascending: true })
+          .order("created_at", { ascending: false })
+          .order("admin_status_rank", { ascending: true })
+          .order("order_no", { ascending: false, nullsFirst: false });
+        break;
       case "date_asc":
         request = request.order("created_at", { ascending: true });
         break;
