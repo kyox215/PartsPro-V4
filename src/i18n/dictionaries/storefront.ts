@@ -278,6 +278,7 @@ export const storefrontItIT = {
   "storefront.cart.removeLineTitle": "Rimuovi questa riga dal carrello",
   "storefront.cart.removeUnavailable": "Rimuovi non disponibili",
   "storefront.cart.skuLabel": "SKU {sku}",
+  "storefront.cart.snapshotRefreshing": "Aggiornamento",
   "storefront.cart.rejectedGenericDescription":
     "Questa riga resta salvata, ma deve essere risolta prima del checkout.",
   "storefront.cart.rejectedGenericLabel": "Da verificare",
@@ -1045,6 +1046,7 @@ export const storefrontZhCN = {
   "storefront.cart.removeLineTitle": "从购物车移除此行",
   "storefront.cart.removeUnavailable": "移除不可用商品",
   "storefront.cart.skuLabel": "SKU {sku}",
+  "storefront.cart.snapshotRefreshing": "更新中",
   "storefront.cart.rejectedGenericDescription":
     "该商品行仍保存在购物车中，但需要处理后才能结账。",
   "storefront.cart.rejectedGenericLabel": "待确认",

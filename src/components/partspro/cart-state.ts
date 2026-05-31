@@ -8,8 +8,31 @@ import {
 import { toPublicSku } from "@/lib/partspro-sku";
 
 export type CartItem = {
+  snapshot?: CartItemSnapshot;
   sku: string;
   quantity: number;
+};
+
+export type CartItemSnapshot = {
+  basePrice?: number;
+  brand: string;
+  category: string;
+  discountPercent?: number;
+  grade: PartProduct["grade"];
+  imageAlt?: string;
+  imageUrl?: string;
+  levelDiscountPercent?: number;
+  marginPercent?: number;
+  moq: number;
+  name: string;
+  price: number;
+  priceGroupDiscountPercent?: number;
+  retailPrice: number;
+  sku: string;
+  status: PartProduct["status"];
+  stock: number;
+  updatedAt: string;
+  visual: PartProduct["visual"];
 };
 
 export type CartLine = CartItem & {
@@ -262,11 +285,27 @@ export function replaceStoredCartItems(
   return writeStoredCartItems(items, [], options);
 }
 
+export function refreshStoredCartItemSnapshots(catalog: readonly PartProduct[]) {
+  if (!isBrowser() || catalog.length === 0) {
+    return false;
+  }
+
+  const options = { preserveUnknown: true };
+  const currentItems = readStoredCartItems([], options);
+  const refreshedItems = normalizeCartItems(currentItems, catalog, options);
+
+  if (JSON.stringify(currentItems) === JSON.stringify(refreshedItems)) {
+    return true;
+  }
+
+  return writeStoredCartItems(refreshedItems, catalog, options);
+}
+
 export function mergeCartItemCollections(
   leftItems: readonly CartItem[],
   rightItems: readonly CartItem[]
 ) {
-  const quantities = new Map<string, number>();
+  const mergedItems = new Map<string, CartItem>();
 
   for (const item of [...leftItems, ...rightItems]) {
     const normalized = normalizeCartItems([item], [], { preserveUnknown: true })[0];
@@ -275,22 +314,29 @@ export function mergeCartItemCollections(
       continue;
     }
 
-    quantities.set(
-      normalized.sku,
-      Math.max(quantities.get(normalized.sku) ?? 0, normalized.quantity)
-    );
+    const current = mergedItems.get(normalized.sku);
+
+    mergedItems.set(normalized.sku, {
+      sku: normalized.sku,
+      quantity: Math.max(current?.quantity ?? 0, normalized.quantity),
+      snapshot: normalized.snapshot ?? current?.snapshot,
+    });
   }
 
   return normalizeCartItems(
-    Array.from(quantities.entries()).map(([sku, quantity]) => ({ sku, quantity })),
+    Array.from(mergedItems.values()),
     [],
     { preserveUnknown: true }
   );
 }
 
 export function serializeCartItems(items: readonly CartItem[]) {
-  return JSON.stringify(
-    normalizeCartItems([...items], [], { preserveUnknown: true })
+  return JSON.stringify(cartItemsForApi(items));
+}
+
+export function cartItemsForApi(items: readonly CartItem[]) {
+  return normalizeCartItems([...items], [], { preserveUnknown: true }).map(
+    ({ quantity, sku }) => ({ quantity, sku })
   );
 }
 
@@ -470,7 +516,7 @@ function normalizeCartItemsWithLookup(
   options: NormalizeCartOptions = {}
 ): CartItem[] {
   const rawItems = Array.isArray(value) ? value : [];
-  const quantities = new Map<string, number>();
+  const normalizedBySku = new Map<string, CartItem>();
   const preserveUnknown = Boolean(options.preserveUnknown);
 
   for (const item of rawItems) {
@@ -490,18 +536,31 @@ function normalizeCartItemsWithLookup(
       continue;
     }
 
-    quantities.set(sku, (quantities.get(sku) ?? 0) + quantity);
+    const existing = normalizedBySku.get(sku);
+    const snapshot =
+      product !== undefined
+        ? cartItemSnapshotFromProduct(product)
+        : normalizeCartItemSnapshot(item.snapshot, sku);
+
+    normalizedBySku.set(sku, {
+      sku,
+      quantity: (existing?.quantity ?? 0) + quantity,
+      snapshot: snapshot ?? existing?.snapshot,
+    });
   }
 
-  return Array.from(quantities.entries())
-    .map(([sku, quantity]) => {
-      const product = getProductFromLookup(sku, lookup);
+  return Array.from(normalizedBySku.values())
+    .map((item) => {
+      const product = getProductFromLookup(item.sku, lookup);
 
       if (!product) {
-        return lookup.hasCatalog && !preserveUnknown ? null : { sku, quantity };
+        return lookup.hasCatalog && !preserveUnknown ? null : item;
       }
 
-      return { sku, quantity };
+      return {
+        ...item,
+        snapshot: cartItemSnapshotFromProduct(product),
+      };
     })
     .filter((item): item is CartItem => Boolean(item))
     .sort((left, right) => left.sku.localeCompare(right.sku));
@@ -524,12 +583,21 @@ function updateCartItemQuantity(
   options: NormalizeCartOptions = {}
 ) {
   const normalizedSku = normalizeSku(sku);
+  const lookup = createCatalogLookup(catalog);
+  const product = getProductFromLookup(normalizedSku, lookup);
+  const snapshot = product ? cartItemSnapshotFromProduct(product) : undefined;
   const hasItem = items.some((item) => normalizeSku(item.sku) === normalizedSku);
   const nextItems = hasItem
     ? items.map((item) =>
-        normalizeSku(item.sku) === normalizedSku ? { sku: normalizedSku, quantity } : item
+        normalizeSku(item.sku) === normalizedSku
+          ? {
+              sku: normalizedSku,
+              quantity,
+              snapshot: snapshot ?? item.snapshot,
+            }
+          : item
       )
-    : [...items, { sku: normalizedSku, quantity }];
+    : [...items, { sku: normalizedSku, quantity, snapshot }];
 
   return normalizeCartItems(nextItems, catalog, options);
 }
@@ -575,6 +643,67 @@ function consumeCartIntentFromUrl(catalog: readonly PartProduct[]) {
   return intent ?? null;
 }
 
+function cartItemSnapshotFromProduct(product: PartProduct): CartItemSnapshot {
+  return omitUndefined({
+    basePrice: product.basePrice,
+    brand: product.brand,
+    category: product.category,
+    discountPercent: product.discountPercent,
+    grade: product.grade,
+    imageAlt: product.imageAlt,
+    imageUrl: product.imageUrl,
+    levelDiscountPercent: product.levelDiscountPercent,
+    marginPercent: product.marginPercent,
+    moq: Math.max(1, product.moq),
+    name: product.name,
+    price: product.price,
+    priceGroupDiscountPercent: product.priceGroupDiscountPercent,
+    retailPrice: product.retailPrice,
+    sku: normalizeSku(product.sku),
+    status: product.status,
+    stock: Math.max(0, product.stock),
+    updatedAt: product.updatedAt,
+    visual: product.visual,
+  });
+}
+
+function normalizeCartItemSnapshot(
+  value: unknown,
+  sku: string
+): CartItemSnapshot | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const name = readString(value.name);
+
+  if (!name) {
+    return undefined;
+  }
+
+  return omitUndefined({
+    basePrice: readOptionalNumber(value.basePrice),
+    brand: readString(value.brand) ?? "",
+    category: readString(value.category) ?? "",
+    discountPercent: readOptionalNumber(value.discountPercent),
+    grade: normalizeProductGrade(value.grade),
+    imageAlt: readString(value.imageAlt),
+    imageUrl: readString(value.imageUrl),
+    levelDiscountPercent: readOptionalNumber(value.levelDiscountPercent),
+    marginPercent: readOptionalNumber(value.marginPercent),
+    moq: Math.max(1, readOptionalNumber(value.moq) ?? 1),
+    name,
+    price: Math.max(0, readOptionalNumber(value.price) ?? 0),
+    priceGroupDiscountPercent: readOptionalNumber(value.priceGroupDiscountPercent),
+    retailPrice: Math.max(0, readOptionalNumber(value.retailPrice) ?? 0),
+    sku: normalizeSku(readString(value.sku) ?? sku),
+    status: normalizeStockStatus(value.status),
+    stock: Math.max(0, readOptionalNumber(value.stock) ?? 0),
+    updatedAt: readString(value.updatedAt) ?? "",
+    visual: normalizePartVisual(value.visual),
+  });
+}
+
 function isCartItemLike(item: unknown): item is CartItem {
   return (
     typeof item === "object" &&
@@ -583,6 +712,56 @@ function isCartItemLike(item: unknown): item is CartItem {
     "quantity" in item &&
     typeof (item as CartItem).sku === "string"
   );
+}
+
+function normalizeProductGrade(value: unknown): PartProduct["grade"] {
+  return value === "A+" ||
+    value === "A" ||
+    value === "B" ||
+    value === "Refurbished"
+    ? value
+    : "A";
+}
+
+function normalizeStockStatus(value: unknown): PartProduct["status"] {
+  return value === "In Stock" || value === "Low Stock" || value === "Out of Stock"
+    ? value
+    : "In Stock";
+}
+
+function normalizePartVisual(value: unknown): PartProduct["visual"] {
+  return value === "screen" ||
+    value === "battery" ||
+    value === "cover" ||
+    value === "port" ||
+    value === "camera" ||
+    value === "flex" ||
+    value === "speaker" ||
+    value === "frame"
+    ? value
+    : "screen";
+}
+
+function readString(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function readOptionalNumber(value: unknown) {
+  const number = Number(value);
+
+  return Number.isFinite(number) ? number : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function omitUndefined<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entry]) => entry !== undefined)
+  ) as T;
 }
 
 function isOrderableCartLine(product: PartProduct, quantity: number) {

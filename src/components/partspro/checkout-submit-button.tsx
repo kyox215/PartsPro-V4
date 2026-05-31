@@ -11,7 +11,7 @@ import {
   txFormat,
   type StorefrontTranslator,
 } from "@/i18n/dictionaries/storefront";
-import { useCart } from "./cart-state";
+import { cartItemsForApi, useCart } from "./cart-state";
 import { useI18n, useT } from "./i18n-provider";
 
 type MoneyDto = {
@@ -120,7 +120,7 @@ export function CheckoutSubmitButton({
       deliveryMethod,
       deliveryWindow
     );
-    const items = cart.items;
+    const items = cartItemsForApi(cart.items);
 
     if (!selectedCompanyId) {
       setState({

@@ -62,6 +62,7 @@ import { publicStockLevelMeta } from "@/lib/partspro-stock-availability";
 import { cn } from "@/lib/utils";
 import {
   CartCatalogProvider,
+  cartItemsForApi,
   serializeCartItems,
   type CartLine,
   type CartTotals,
@@ -504,7 +505,7 @@ function CheckoutClientContent({
 
     const controller = new AbortController();
     const previewCompanyId = selectedCompany?.id;
-    const previewItems = cart.items;
+    const previewItems = cartItemsForApi(cart.items);
 
     async function loadPreview() {
       setPreview((current) => ({
@@ -608,7 +609,7 @@ function CheckoutClientContent({
           paymentMethod: form.paymentMethod,
           deliveryAddress: selectedShippingAddress,
           notes: buildOrderNotes(form.notes, form.deliveryWindow),
-          items: cart.items,
+          items: cartItemsForApi(cart.items),
         }),
       });
       const payload = (await response.json().catch(() => null)) as {

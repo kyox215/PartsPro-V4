@@ -33,6 +33,8 @@ import { publicStockLevelMeta } from "@/lib/partspro-stock-availability";
 import { cn } from "@/lib/utils";
 import {
   CartCatalogProvider,
+  refreshStoredCartItemSnapshots,
+  type CartItemSnapshot,
   type CartLine,
   type CartTotals,
   useCart,
@@ -83,6 +85,17 @@ type CartDisplayRow =
       sku: string;
     }
   | {
+      kind: "loading";
+      quantity: number;
+      sku: string;
+    }
+  | {
+      kind: "snapshot";
+      quantity: number;
+      sku: string;
+      snapshot: CartItemSnapshot;
+    }
+  | {
       item: CartCatalogRejectedItem;
       kind: "rejected";
       quantity: number;
@@ -103,6 +116,17 @@ type RejectedCartLineViewProps = {
     item: CartCatalogRejectedItem
   ) => void;
   quantity: number;
+};
+
+type LoadingCartLineViewProps = {
+  quantity: number;
+  sku: string;
+};
+
+type SnapshotCartLineViewProps = {
+  quantity: number;
+  sku: string;
+  snapshot: CartItemSnapshot;
 };
 
 export function CartPage({ catalogProducts = [] }: CartPageProps) {
@@ -180,8 +204,30 @@ function CartPageContent({
     () => new Map(cart.items.map((item) => [item.sku, item])),
     [cart.items]
   );
-  const isCatalogLoading =
-    cart.isHydrated && catalogLoadState === "loading" && cart.items.length > 0;
+  const hasPendingCatalogResolution = React.useMemo(
+    () =>
+      cart.isHydrated &&
+      catalogLoadState !== "ready" &&
+      catalogLoadState !== "error" &&
+      cart.items.some(
+        (item) =>
+          !cartLineBySku.has(item.sku) &&
+          !catalogProductBySku.has(item.sku) &&
+          !catalogRejections[item.sku]
+      ),
+    [
+      cart.isHydrated,
+      cart.items,
+      cartLineBySku,
+      catalogLoadState,
+      catalogProductBySku,
+      catalogRejections,
+    ]
+  );
+  const isCatalogResolving =
+    cart.isHydrated &&
+    cart.items.length > 0 &&
+    (catalogLoadState === "loading" || hasPendingCatalogResolution);
   const isEmpty = cart.isHydrated && cart.items.length === 0;
   const unresolvedSkus = React.useMemo(() => {
     const resolvedSkus = new Set(totals.lines.map((line) => line.sku));
@@ -194,7 +240,7 @@ function CartPageContent({
     cart.isHydrated &&
     cart.items.length > 0 &&
     unresolvedSkus.length > 0 &&
-    !isCatalogLoading;
+    !isCatalogResolving;
   const unresolvedItems = React.useMemo(
     () =>
       cart.items.flatMap((item) => {
@@ -230,6 +276,33 @@ function CartPageContent({
           };
         }
 
+        if (
+          isCatalogResolving &&
+          item.snapshot &&
+          !catalogProductBySku.has(item.sku) &&
+          !catalogRejections[item.sku]
+        ) {
+          return {
+            kind: "snapshot",
+            quantity: item.quantity,
+            sku: item.sku,
+            snapshot: item.snapshot,
+          };
+        }
+
+        if (
+          catalogLoadState !== "ready" &&
+          catalogLoadState !== "error" &&
+          !catalogProductBySku.has(item.sku) &&
+          !catalogRejections[item.sku]
+        ) {
+          return {
+            kind: "loading",
+            quantity: item.quantity,
+            sku: item.sku,
+          };
+        }
+
         return {
           item: cartRejectionForItem(
             item.sku,
@@ -243,7 +316,14 @@ function CartPageContent({
           sku: item.sku,
         };
       }),
-    [cart.items, cartLineBySku, catalogLoadState, catalogProductBySku, catalogRejections]
+    [
+      cart.items,
+      cartLineBySku,
+      catalogLoadState,
+      catalogProductBySku,
+      catalogRejections,
+      isCatalogResolving,
+    ]
   );
   const displayItemCount = React.useMemo(
     () => cart.items.reduce((total, item) => total + item.quantity, 0),
@@ -251,19 +331,27 @@ function CartPageContent({
   );
   const readyForCheckout =
     cart.isHydrated &&
-    !isCatalogLoading &&
+    !isCatalogResolving &&
     totals.lines.length > 0 &&
     unresolvedSkus.length === 0;
   const canNavigateToCheckout = cart.isHydrated && cart.items.length > 0;
   const hasCheckoutBlockers =
     canNavigateToCheckout &&
-    (isCatalogLoading || totals.lines.length === 0 || unresolvedSkus.length > 0);
+    (isCatalogResolving || totals.lines.length === 0 || unresolvedSkus.length > 0);
   const checkoutDisabled =
-    !canNavigateToCheckout;
+    !canNavigateToCheckout || isCatalogResolving;
 
   React.useEffect(() => {
     rememberAssistedCompanyId(assistedCompanyId);
   }, [assistedCompanyId]);
+
+  React.useEffect(() => {
+    if (!cart.isHydrated || catalogProducts.length === 0) {
+      return;
+    }
+
+    refreshStoredCartItemSnapshots(catalogProducts);
+  }, [cart.isHydrated, catalogProducts]);
 
   React.useEffect(() => {
     if (!cart.isHydrated || cart.items.length === 0) {
@@ -479,19 +567,10 @@ function CartPageContent({
             </Card>
           )}
 
-          {isCatalogLoading && (
-            <Card className="border-slate-200 bg-white">
-              <CardContent className="flex flex-col items-start gap-3 p-4 sm:p-5">
-                <div>
-                  <div className="text-lg font-black">
-                    {tx(t, "storefront.cart.loadingProductsTitle", "Caricamento prodotti")}
-                  </div>
-                  <p className="mt-1 text-sm leading-6 text-slate-500">
-                    {tx(t, "storefront.cart.loadingProductsDescription", "Recupero disponibilità, MOQ e prezzi per gli articoli salvati.")}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
+          {isCatalogResolving && (
+            <p className="sr-only" role="status">
+              {tx(t, "storefront.cart.loadingProductsTitle", "Caricamento prodotti")}
+            </p>
           )}
 
           {isEmpty && (
@@ -586,6 +665,19 @@ function CartPageContent({
                       onRemove={removeLine}
                       onSetQuantity={setQuantity}
                     />
+                  ) : row.kind === "snapshot" ? (
+                    <CartLineMobileSnapshotRow
+                      key={row.sku}
+                      quantity={row.quantity}
+                      sku={row.sku}
+                      snapshot={row.snapshot}
+                    />
+                  ) : row.kind === "loading" ? (
+                    <CartLineMobileLoadingRow
+                      key={row.sku}
+                      quantity={row.quantity}
+                      sku={row.sku}
+                    />
                   ) : (
                     <RejectedCartLineMobileRow
                       key={row.sku}
@@ -608,6 +700,19 @@ function CartPageContent({
                       onRemove={removeLine}
                       onSetQuantity={setQuantity}
                     />
+                  ) : row.kind === "snapshot" ? (
+                    <CartLineDesktopSnapshotCard
+                      key={row.sku}
+                      quantity={row.quantity}
+                      sku={row.sku}
+                      snapshot={row.snapshot}
+                    />
+                  ) : row.kind === "loading" ? (
+                    <CartLineDesktopLoadingCard
+                      key={row.sku}
+                      quantity={row.quantity}
+                      sku={row.sku}
+                    />
                   ) : (
                     <RejectedCartLineDesktopCard
                       key={row.sku}
@@ -625,31 +730,37 @@ function CartPageContent({
         </section>
 
         <div className="hidden lg:block">
-          <OrderSummaryCard
-            totals={totals}
-            checkoutDisabled={checkoutDisabled}
-            checkoutHref={checkoutHref}
-            compact
-            continueHref={catalogHref}
-            lineCount={cart.items.length}
-            summaryNote={
-              hasCheckoutBlockers
-                ? tx(t, "storefront.cart.summaryNoteReviewCheckout", "Puoi aprire il checkout per vedere cosa manca. Login, cliente, prezzi, stock e MOQ verranno comunque verificati prima dell'invio.")
-                : tx(t, "storefront.cart.summaryNoteSynced", "Il carrello non blocca stock: l'ordine riserverà gli articoli solo dopo la conferma.")
-            }
-          />
+          {isCatalogResolving ? (
+            <CartSummaryLoadingCard lineCount={cart.items.length} />
+          ) : (
+            <OrderSummaryCard
+              totals={totals}
+              checkoutDisabled={checkoutDisabled}
+              checkoutHref={checkoutHref}
+              compact
+              continueHref={catalogHref}
+              lineCount={cart.items.length}
+              summaryNote={
+                hasCheckoutBlockers
+                  ? tx(t, "storefront.cart.summaryNoteReviewCheckout", "Puoi aprire il checkout per vedere cosa manca. Login, cliente, prezzi, stock e MOQ verranno comunque verificati prima dell'invio.")
+                  : tx(t, "storefront.cart.summaryNoteSynced", "Il carrello non blocca stock: l'ordine riserverà gli articoli solo dopo la conferma.")
+              }
+            />
+          )}
         </div>
       </div>
-      <MobileCartCheckoutBar
-        totals={totals}
-        catalogHref={catalogHref}
-        checkoutDisabled={checkoutDisabled}
-        checkoutHref={checkoutHref}
-        hasBlockedItems={hasCheckoutBlockers}
-        itemCount={displayItemCount}
-        lineCount={displayRows.length}
-        onClear={clearCart}
-      />
+      {!isCatalogResolving && (
+        <MobileCartCheckoutBar
+          totals={totals}
+          catalogHref={catalogHref}
+          checkoutDisabled={checkoutDisabled}
+          checkoutHref={checkoutHref}
+          hasBlockedItems={hasCheckoutBlockers}
+          itemCount={displayItemCount}
+          lineCount={displayRows.length}
+          onClear={clearCart}
+        />
+      )}
     </main>
   );
 }
@@ -851,6 +962,40 @@ function rejectedCartProduct(
   };
 }
 
+function cartSnapshotProduct(
+  snapshot: CartItemSnapshot,
+  fallbackSku: string
+): PartProduct {
+  return {
+    basePrice: snapshot.basePrice,
+    brand: snapshot.brand,
+    category: snapshot.category,
+    compatibleWith: [],
+    discountPercent: snapshot.discountPercent,
+    grade: snapshot.grade,
+    imageAlt: snapshot.imageAlt,
+    imageUrl: snapshot.imageUrl,
+    leadTime: "",
+    levelDiscountPercent: snapshot.levelDiscountPercent,
+    marginPercent: snapshot.marginPercent,
+    moq: Math.max(1, snapshot.moq),
+    name: snapshot.name,
+    price: Math.max(0, snapshot.price),
+    priceGroupDiscountPercent: snapshot.priceGroupDiscountPercent,
+    retailPrice: Math.max(0, snapshot.retailPrice),
+    rmaDays: 0,
+    sku: snapshot.sku || fallbackSku,
+    slug: snapshot.sku || fallbackSku,
+    status: snapshot.status,
+    stock: Math.max(0, snapshot.stock),
+    tags: [],
+    updatedAt: snapshot.updatedAt,
+    vatRate: 22,
+    visual: snapshot.visual,
+    warehouse: "Milano",
+  };
+}
+
 function rejectedQuantityState(
   quantity: number,
   item: CartCatalogRejectedItem
@@ -966,6 +1111,91 @@ type CartLineViewProps = {
   onRemove: (sku: string) => void;
   onSetQuantity: (sku: string, quantity: number) => void;
 };
+
+const CartLineMobileSnapshotRow = React.memo(function CartLineMobileSnapshotRow({
+  quantity,
+  sku,
+  snapshot,
+}: SnapshotCartLineViewProps) {
+  const t = useT();
+  const { locale } = useI18n();
+  const product = cartSnapshotProduct(snapshot, sku);
+  const lineTotal = product.price * quantity;
+
+  return (
+    <div className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-start gap-2 border-b border-slate-100 bg-white px-2.5 py-2 last:border-b-0">
+      <StorefrontProductImage
+        product={product}
+        sizes="40px"
+        quality={55}
+        className="size-10 rounded-md border border-slate-100 bg-slate-50"
+        fallbackClassName="shrink-0"
+        imageClassName="object-contain p-1"
+      />
+      <div className="min-w-0 pt-0.5">
+        <div className="line-clamp-2 break-words text-[13px] font-black leading-4">
+          {product.name}
+        </div>
+        <div className="mt-0.5 truncate font-mono text-[10px] leading-3 text-slate-500">
+          {sku}
+        </div>
+        <div className="mt-1 flex min-w-0 items-center gap-1">
+          <Badge variant="outline" className="h-5 px-1.5 text-[10px] leading-none">
+            {product.grade}
+          </Badge>
+          <Badge className="h-5 border border-sky-200 bg-sky-50 px-1.5 text-[10px] leading-none text-sky-700">
+            {tx(t, "storefront.cart.snapshotRefreshing", "Aggiornamento")}
+          </Badge>
+        </div>
+      </div>
+      <div className="grid min-w-[92px] justify-items-end gap-1 text-right">
+        <div>
+          <div className="whitespace-nowrap text-[13px] font-black leading-4">
+            {formatMoney(lineTotal, locale)}
+          </div>
+          <div className="whitespace-nowrap text-[10px] leading-3 text-slate-500">
+            {txFormat(t, "storefront.cart.priceEach", "{price} cad.", {
+              price: formatMoney(product.price, locale),
+            })}
+          </div>
+        </div>
+        <div className="rounded-md border border-slate-100 bg-slate-50 px-2 py-1 text-xs font-black text-slate-500">
+          x{quantity}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const CartLineMobileLoadingRow = React.memo(function CartLineMobileLoadingRow({
+  quantity,
+  sku,
+}: LoadingCartLineViewProps) {
+  return (
+    <div
+      className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-start gap-2 border-b border-slate-100 bg-white px-2.5 py-2 last:border-b-0"
+      aria-label={`Loading ${sku}`}
+    >
+      <div className="size-10 animate-pulse rounded-md border border-slate-100 bg-slate-100" />
+      <div className="min-w-0 pt-0.5">
+        <div className="h-4 w-4/5 animate-pulse rounded bg-slate-100" />
+        <div className="mt-1 h-3 w-28 animate-pulse rounded bg-slate-100" />
+        <div className="mt-1.5 flex min-w-0 items-center gap-1">
+          <div className="h-5 w-8 animate-pulse rounded-full bg-slate-100" />
+          <div className="h-5 w-20 animate-pulse rounded-full bg-slate-100" />
+        </div>
+      </div>
+      <div className="grid min-w-[92px] justify-items-end gap-1">
+        <div className="inline-flex h-7 items-center rounded-md border border-slate-100 bg-slate-50 px-2">
+          <div className="h-3 w-14 animate-pulse rounded bg-slate-200" />
+        </div>
+        <div className="h-3 w-12 rounded bg-transparent text-right text-[10px] font-bold leading-3 text-slate-300">
+          x{quantity}
+        </div>
+      </div>
+    </div>
+  );
+});
 
 const RejectedCartLineMobileRow = React.memo(function RejectedCartLineMobileRow({
   item,
@@ -1302,6 +1532,105 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
   );
 });
 
+const CartLineDesktopSnapshotCard = React.memo(function CartLineDesktopSnapshotCard({
+  quantity,
+  sku,
+  snapshot,
+}: SnapshotCartLineViewProps) {
+  const t = useT();
+  const { locale } = useI18n();
+  const product = cartSnapshotProduct(snapshot, sku);
+  const priceDisplay = getProductPriceDisplay(product);
+  const lineTotal = product.price * quantity;
+
+  return (
+    <Card size="sm" className="rounded-lg border-slate-200 bg-white">
+      <CardContent className="grid grid-cols-[64px_minmax(0,1fr)_190px] items-center gap-3 p-2.5">
+        <StorefrontProductImage
+          product={product}
+          sizes="64px"
+          quality={55}
+          className="size-16 rounded-md border border-slate-100 bg-slate-50"
+          fallbackClassName="shrink-0"
+          imageClassName="object-contain p-1.5"
+        />
+        <div className="min-w-0">
+          <div className="line-clamp-1 text-base font-black leading-5">{product.name}</div>
+          <div className="mt-0.5 truncate font-mono text-[11px] font-semibold leading-4 text-slate-500">
+            {txFormat(t, "storefront.cart.skuLabel", "SKU {sku}", { sku })}
+          </div>
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
+              {product.grade}
+            </Badge>
+            <Badge className="h-5 border border-sky-200 bg-sky-50 px-1.5 text-[11px] text-sky-700">
+              {tx(t, "storefront.cart.snapshotRefreshing", "Aggiornamento")}
+            </Badge>
+            {(product.brand || product.category) && (
+              <Badge variant="outline" className="h-5 max-w-[160px] px-1.5 text-[11px]">
+                <span className="truncate">{product.brand} · {product.category}</span>
+              </Badge>
+            )}
+          </div>
+        </div>
+        <div className="block text-right">
+          <div className="whitespace-nowrap text-lg font-black leading-5">
+            {formatMoney(lineTotal, locale)}
+          </div>
+          <div className="mt-0.5 whitespace-nowrap text-xs leading-4 text-slate-500">
+            {txFormat(t, "storefront.cart.priceEach", "{price} cad.", {
+              price: formatMoney(product.price, locale),
+            })}
+          </div>
+          {priceDisplay.hasDiscount && priceDisplay.basePrice ? (
+            <div className="whitespace-nowrap text-xs leading-4 text-slate-400 line-through">
+              {formatMoney(priceDisplay.basePrice, locale)} cad.
+            </div>
+          ) : null}
+          <div className="mt-2 inline-flex h-7 items-center rounded-md border border-slate-100 bg-slate-50 px-3 text-xs font-black text-slate-500">
+            x{quantity}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+});
+
+const CartLineDesktopLoadingCard = React.memo(function CartLineDesktopLoadingCard({
+  quantity,
+  sku,
+}: LoadingCartLineViewProps) {
+  return (
+    <Card
+      size="sm"
+      className="rounded-lg border-slate-200 bg-white"
+      aria-label={`Loading ${sku}`}
+    >
+      <CardContent className="grid grid-cols-[64px_minmax(0,1fr)_190px] items-center gap-3 p-2.5">
+        <div className="size-16 animate-pulse rounded-md border border-slate-100 bg-slate-100" />
+        <div className="min-w-0">
+          <div className="h-5 w-2/3 animate-pulse rounded bg-slate-100" />
+          <div className="mt-1.5 h-4 w-32 animate-pulse rounded bg-slate-100" />
+          <div className="mt-2 flex flex-wrap gap-1">
+            <div className="h-5 w-10 animate-pulse rounded-full bg-slate-100" />
+            <div className="h-5 w-24 animate-pulse rounded-full bg-slate-100" />
+            <div className="h-5 w-20 animate-pulse rounded-full bg-slate-100" />
+          </div>
+        </div>
+        <div className="grid justify-items-end gap-2">
+          <div className="h-5 w-24 animate-pulse rounded bg-slate-100" />
+          <div className="inline-flex h-7 items-center rounded-md border border-slate-100 bg-slate-50 px-3">
+            <div className="h-3 w-20 animate-pulse rounded bg-slate-200" />
+          </div>
+          <div className="h-3 w-12 rounded bg-transparent text-right text-[10px] font-bold leading-3 text-slate-300">
+            x{quantity}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+});
+
 const RejectedCartLineDesktopCard = React.memo(function RejectedCartLineDesktopCard({
   item,
   onChangeQuantity,
@@ -1471,6 +1800,42 @@ function QuantityInput({
       value={quantity}
       onChange={handleChange}
     />
+  );
+}
+
+function CartSummaryLoadingCard({ lineCount }: { lineCount: number }) {
+  const t = useT();
+
+  return (
+    <Card
+      size="sm"
+      className="h-fit border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)] lg:sticky lg:top-28"
+    >
+      <CardContent className="space-y-3 px-3 py-3">
+        <div className="flex items-center gap-2">
+          <div className="size-4 animate-pulse rounded bg-primary/20" />
+          <div className="h-4 w-32 animate-pulse rounded bg-slate-100" />
+        </div>
+        <div className="space-y-2">
+          <CompactSummaryLine
+            label={tx(t, "storefront.cart.rows", "Articoli")}
+            value={String(lineCount)}
+          />
+          {[0, 1, 2].map((index) => (
+            <div key={index} className="flex items-center justify-between gap-3">
+              <div className="h-3 w-20 animate-pulse rounded bg-slate-100" />
+              <div className="h-4 w-16 animate-pulse rounded bg-slate-100" />
+            </div>
+          ))}
+        </div>
+        <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
+          <div className="h-3 w-full animate-pulse rounded bg-slate-100" />
+          <div className="mt-1.5 h-3 w-2/3 animate-pulse rounded bg-slate-100" />
+        </div>
+        <div className="h-10 animate-pulse rounded-md bg-primary/20" />
+        <div className="h-9 animate-pulse rounded-md bg-slate-100" />
+      </CardContent>
+    </Card>
   );
 }
 

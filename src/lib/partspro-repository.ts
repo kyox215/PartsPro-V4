@@ -1979,6 +1979,8 @@ export async function replaceCurrentCustomerCart(
     );
   }
 
+  await touchCurrentCustomerCartSyncState(context, customerId);
+
   return readCurrentCustomerCart();
 }
 
@@ -1986,6 +1988,7 @@ export async function clearCurrentCustomerCart(): Promise<
   RepositoryResult<CustomerCartItem[]>
 > {
   const context = await requireSupabaseContext();
+  const customerId = await readCurrentCustomerId(context.client, context.userId);
 
   try {
     const { error } = await context.client
@@ -2013,7 +2016,37 @@ export async function clearCurrentCustomerCart(): Promise<
     );
   }
 
+  await touchCurrentCustomerCartSyncState(context, customerId);
+
   return { data: [], source: "supabase" };
+}
+
+async function touchCurrentCustomerCartSyncState(
+  context: SupabaseContext,
+  customerId: string | null
+) {
+  try {
+    const now = new Date();
+    const { error } = await context.client
+      .from("customer_cart_sync_state")
+      .upsert(
+        {
+          cart_version: now.getTime(),
+          customer_id: customerId,
+          updated_at: now.toISOString(),
+          user_id: context.userId,
+        },
+        { onConflict: "user_id" }
+      );
+
+    if (error) {
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function listCurrentProductRestockRequests(): Promise<

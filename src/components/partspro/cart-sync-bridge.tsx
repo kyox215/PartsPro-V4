@@ -1,8 +1,11 @@
 "use client";
 
 import * as React from "react";
+import { createClient } from "@/lib/supabase/client";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { CartItem } from "./cart-state";
 import {
+  cartItemsForApi,
   mergeCartItemCollections,
   readClientStoredCartItems,
   replaceStoredCartItems,
@@ -18,7 +21,11 @@ type CartApiPayload = {
 };
 
 const syncDebounceMs = 500;
+const realtimeRefreshDebounceMs = 250;
 type RemoteCartWriteResult = "synced" | "local";
+type RemoteCartLoadResult =
+  | { status: "remote"; items: CartItem[] }
+  | { status: "local" };
 
 export function CartSyncBridge() {
   const { scope } = useI18n();
@@ -34,40 +41,152 @@ export function CartSyncBridge() {
     }
 
     const controller = new AbortController();
+    let disposed = false;
+    let refreshTimeout: number | null = null;
+    let removeRealtimeChannel: (() => void) | null = null;
 
     function enterLocalMode() {
+      removeRealtimeChannel?.();
+      removeRealtimeChannel = null;
+      if (refreshTimeout !== null) {
+        window.clearTimeout(refreshTimeout);
+        refreshTimeout = null;
+      }
+
       lastSyncedSnapshotRef.current = serializeCartItems(
         readClientStoredCartItems({ preserveUnknown: true })
       );
-      setSyncEnabled(false);
-      setRemoteLoaded(true);
+      if (!disposed) {
+        setSyncEnabled(false);
+        setRemoteLoaded(true);
+      }
     }
 
-    async function loadRemoteCart() {
+    function applyRemoteCartItems(remoteItems: CartItem[]) {
+      const localStoredItems = readClientStoredCartItems({ preserveUnknown: true });
+      const nextItems = preserveLocalSnapshots(remoteItems, localStoredItems);
+      const localSnapshot = serializeCartItems(localStoredItems);
+      const remoteSnapshot = serializeCartItems(nextItems);
+
+      lastSyncedSnapshotRef.current = remoteSnapshot;
+
+      if (localSnapshot === remoteSnapshot) {
+        return true;
+      }
+
+      applyingRemoteRef.current = true;
+
+      if (!replaceStoredCartItems(nextItems, { preserveUnknown: true })) {
+        applyingRemoteRef.current = false;
+        enterLocalMode();
+        return false;
+      }
+
+      queueMicrotask(() => {
+        applyingRemoteRef.current = false;
+      });
+
+      return true;
+    }
+
+    async function refreshRemoteCart() {
       try {
-        const response = await fetch("/api/cart", {
-          cache: "no-store",
-          credentials: "same-origin",
-          signal: controller.signal,
-        });
+        const result = await readRemoteCart(controller.signal);
 
-        if (response.status === 401 || response.status === 404) {
+        if (disposed || controller.signal.aborted) {
+          return;
+        }
+
+        if (result.status === "local") {
           enterLocalMode();
           return;
         }
 
-        if (!response.ok) {
-          throw new Error("Unable to load remote cart");
+        applyRemoteCartItems(result.items);
+      } catch {
+        if (!controller.signal.aborted) {
+          setSyncEnabled(false);
+        }
+      }
+    }
+
+    function scheduleRemoteRefresh() {
+      if (disposed) {
+        return;
+      }
+
+      if (refreshTimeout !== null) {
+        window.clearTimeout(refreshTimeout);
+      }
+
+      refreshTimeout = window.setTimeout(() => {
+        refreshTimeout = null;
+        void refreshRemoteCart();
+      }, realtimeRefreshDebounceMs);
+    }
+
+    function subscribeToRemoteCart(userId: string) {
+      if (!isSupabaseConfigured()) {
+        return;
+      }
+
+      const supabase = createClient();
+      const channel = supabase
+        .channel(`partspro-cart-sync:${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "*",
+            filter: `user_id=eq.${userId}`,
+            schema: "public",
+            table: "customer_cart_sync_state",
+          },
+          scheduleRemoteRefresh
+        )
+        .subscribe();
+
+      removeRealtimeChannel = () => {
+        void supabase.removeChannel(channel);
+      };
+    }
+
+    async function loadInitialRemoteCart() {
+      if (!isSupabaseConfigured()) {
+        enterLocalMode();
+        return;
+      }
+
+      let userId: string | undefined;
+
+      try {
+        const supabase = createClient();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        userId = user?.id;
+      } catch {
+        enterLocalMode();
+        return;
+      }
+
+      if (!userId) {
+        enterLocalMode();
+        return;
+      }
+
+      try {
+        const result = await readRemoteCart(controller.signal);
+
+        if (disposed || controller.signal.aborted) {
+          return;
         }
 
-        const payload = (await response.json()) as CartApiPayload;
-
-        if (payload.meta?.persistence === "local_cart") {
+        if (result.status === "local") {
           enterLocalMode();
           return;
         }
 
-        const remoteItems = readCartItemsFromPayload(payload);
+        const remoteItems = result.items;
         const localStoredItems = readClientStoredCartItems({ preserveUnknown: true });
         const mergedItems = mergeCartItemCollections(
           localStoredItems,
@@ -92,8 +211,11 @@ export function CartSyncBridge() {
         }
 
         lastSyncedSnapshotRef.current = mergedSnapshot;
-        setSyncEnabled(true);
-        setRemoteLoaded(true);
+        if (!disposed) {
+          setSyncEnabled(true);
+          setRemoteLoaded(true);
+          subscribeToRemoteCart(userId);
+        }
 
         if (remoteSnapshot !== mergedSnapshot) {
           const result = await writeRemoteCart(mergedItems, controller.signal);
@@ -104,15 +226,19 @@ export function CartSyncBridge() {
         }
       } catch {
         if (!controller.signal.aborted) {
-          setSyncEnabled(false);
-          setRemoteLoaded(true);
+          enterLocalMode();
         }
       }
     }
 
-    void loadRemoteCart();
+    void loadInitialRemoteCart();
 
     return () => {
+      disposed = true;
+      if (refreshTimeout !== null) {
+        window.clearTimeout(refreshTimeout);
+      }
+      removeRealtimeChannel?.();
       controller.abort();
     };
   }, [scope]);
@@ -172,11 +298,56 @@ function readCartItemsFromPayload(payload: CartApiPayload) {
   return [];
 }
 
+async function readRemoteCart(signal: AbortSignal): Promise<RemoteCartLoadResult> {
+  const response = await fetch("/api/cart", {
+    cache: "no-store",
+    credentials: "same-origin",
+    signal,
+  });
+
+  if (response.status === 401 || response.status === 404) {
+    return { status: "local" };
+  }
+
+  if (!response.ok) {
+    throw new Error("Unable to load remote cart");
+  }
+
+  const payload = (await response.json()) as CartApiPayload;
+
+  if (payload.meta?.persistence === "local_cart") {
+    return { status: "local" };
+  }
+
+  return {
+    items: readCartItemsFromPayload(payload),
+    status: "remote",
+  };
+}
+
+function preserveLocalSnapshots(
+  authoritativeItems: readonly CartItem[],
+  cachedItems: readonly CartItem[]
+) {
+  const snapshotsBySku = new Map<string, CartItem["snapshot"]>();
+
+  for (const item of cachedItems) {
+    if (item.snapshot) {
+      snapshotsBySku.set(item.sku, item.snapshot);
+    }
+  }
+
+  return authoritativeItems.map((item) => ({
+    ...item,
+    snapshot: item.snapshot ?? snapshotsBySku.get(item.sku),
+  }));
+}
+
 async function writeRemoteCart(
   items: readonly CartItem[],
   signal: AbortSignal
 ): Promise<RemoteCartWriteResult> {
-  const normalizedItems = mergeCartItemCollections(items, []);
+  const normalizedItems = cartItemsForApi(mergeCartItemCollections(items, []));
   const response = await fetch("/api/cart", {
     method: normalizedItems.length > 0 ? "PUT" : "DELETE",
     headers:
