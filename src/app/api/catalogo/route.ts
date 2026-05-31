@@ -55,14 +55,21 @@ export async function GET(request: NextRequest) {
     const account = await getCurrentAccountContext({ ensure: true });
     const { companyId, ...catalogQuery } = result.data;
     const delegatedCheckout = canDelegateCheckout(account);
+    const employeeSelfCustomerId =
+      account.accountType === "employee" ? account.employeeSelfCustomer?.id : undefined;
 
-    if (companyId && !delegatedCheckout) {
+    if (companyId && companyId !== employeeSelfCustomerId && !delegatedCheckout) {
       return apiError(403, "ASSISTED_ORDER_FORBIDDEN", "Only authorized staff can price catalog products for another customer.", {
         companyId,
       });
     }
 
-    const buyerCustomerId = delegatedCheckout ? companyId : undefined;
+    const buyerCustomerId =
+      delegatedCheckout && companyId
+        ? companyId
+        : account.accountType === "employee"
+          ? employeeSelfCustomerId
+          : undefined;
     const showPrice = account.canViewPrices || Boolean(buyerCustomerId);
     const visibilityReason = priceVisibilityReason(account);
     const repositoryResult = await pageCatalogProducts(catalogQuery, {

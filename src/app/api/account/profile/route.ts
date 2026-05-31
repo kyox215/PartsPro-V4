@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
+import { getCurrentAccountContext } from "@/lib/partspro-account-context";
 import {
   getCurrentCustomerProfile,
+  getCurrentEmployeeSelfProfile,
   RepositoryWriteError,
   updateCurrentCustomerProfile,
 } from "@/lib/partspro-repository";
@@ -33,7 +35,11 @@ const profileSchema = z
 
 export async function GET() {
   try {
-    const profile = await getCurrentCustomerProfile();
+    const account = await getCurrentAccountContext({ ensure: true });
+    const profile =
+      account.accountType === "employee"
+        ? await getCurrentEmployeeSelfProfile()
+        : await getCurrentCustomerProfile();
 
     return NextResponse.json({
       data: profile.data,

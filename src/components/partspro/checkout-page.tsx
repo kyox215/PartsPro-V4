@@ -10,6 +10,8 @@ import { type CompanyProfile } from "@/lib/partspro-data";
 import { toStoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import {
   getCurrentCustomerProfile,
+  getCurrentEmployeeSelfCompany,
+  getCurrentEmployeeSelfProfile,
   listCompanies,
   listCurrentCustomerCompanies,
 } from "@/lib/partspro-repository";
@@ -30,20 +32,29 @@ export async function CheckoutPage({
   const account = await getCurrentAccountContext({ ensure: true });
   const delegatedCheckout = canDelegateCheckout(account);
   const runtime = getCheckoutRuntime(t, account, delegatedCheckout);
-  const [companies, customerProfile] = await Promise.all([
-    delegatedCheckout ? listCompanies() : listCurrentCustomerCompanies(),
-    getCurrentCustomerProfile(),
+  const isEmployee = account.accountType === "employee";
+  const [companies, customerProfile, employeeSelfCompany, employeeSelfProfile] = await Promise.all([
+    delegatedCheckout ? listCompanies() : isEmployee ? { data: [], warning: undefined } : listCurrentCustomerCompanies(),
+    isEmployee ? { data: null, warning: undefined } : getCurrentCustomerProfile(),
+    isEmployee ? getCurrentEmployeeSelfCompany() : { data: null, warning: undefined },
+    isEmployee ? getCurrentEmployeeSelfProfile() : { data: null, warning: undefined },
   ]);
-  const company = delegatedCheckout
-    ? null
-    : resolveCheckoutCompany(account, companies.data);
+  const company = isEmployee
+    ? employeeSelfCompany.data
+    : delegatedCheckout
+      ? null
+      : resolveCheckoutCompany(account, companies.data);
+  const activeCustomerProfile = isEmployee ? employeeSelfProfile.data : customerProfile.data;
+  const delegatedCompanies = delegatedCheckout
+    ? companies.data.filter((item) => item.profileKind !== "employee_self")
+    : [];
 
   return (
     <CheckoutClient
       catalogProducts={[]}
       company={company}
-      companies={delegatedCheckout ? companies.data : []}
-      customerProfile={customerProfile.data}
+      companies={delegatedCompanies}
+      customerProfile={activeCustomerProfile}
       delegatedCheckout={delegatedCheckout}
       initialSelectedCompanyId={delegatedCheckout ? requestedCompanyId : null}
       initialAccountAccess={toStoreHeaderAccountAccess(account)}
@@ -88,6 +99,17 @@ function getCheckoutRuntime(
     };
   }
 
+  if (account.accountType === "employee" && !account.canEmployeeSelfCheckout && !delegatedCheckout) {
+    return {
+      mode: "needs-profile",
+      canSubmit: false,
+      title: tx(t, "storefront.checkout.runtime.employeeSelfProfileTitle", "员工自购资料待补全"),
+      description: tx(t, "storefront.checkout.runtime.employeeSelfProfileDescription", "补全员工自购资料后，可使用自己的税务和配送资料下单。"),
+      disabledReason: tx(t, "storefront.checkout.runtime.employeeSelfProfileReason", "结账已禁用：请先补全员工自购资料。"),
+      userEmail: account.email ?? undefined,
+    };
+  }
+
   if (!account.canCheckout && !delegatedCheckout) {
     return {
       mode: "needs-profile",
@@ -101,7 +123,9 @@ function getCheckoutRuntime(
 
   return {
     mode: "ready",
-    canSubmit: true,
+    canSubmit: account.accountType === "employee"
+      ? account.canEmployeeSelfCheckout || delegatedCheckout
+      : true,
     title: tx(t, "storefront.checkout.runtime.readyTitle", "Checkout pronto"),
     description: delegatedCheckout
       ? tx(t, "storefront.checkout.runtime.delegatedReadyDescription", "Seleziona un cliente: prezzi e ordine useranno il profilo cliente scelto.")

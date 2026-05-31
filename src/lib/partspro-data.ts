@@ -36,6 +36,10 @@ export type CustomerAssignmentStatus =
   | "assigned"
   | "converted_to_employee"
   | "archived";
+export type CustomerProfileKind =
+  | "customer"
+  | "employee_self"
+  | "archived_customer";
 export type CustomerLevel =
   | "bronze"
   | "silver"
@@ -103,6 +107,7 @@ export type CompanyProfile = {
   priceList: CustomerLevel;
   customerType?: CustomerType;
   assignmentStatus?: CustomerAssignmentStatus;
+  profileKind?: CustomerProfileKind;
   level?: CustomerLevel;
   lifetimeSpendNet?: number;
   profileCompletedAt?: string | null;

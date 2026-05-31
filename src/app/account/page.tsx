@@ -2,6 +2,7 @@ import { AccountPage } from "@/components/partspro/account-page";
 import { getCurrentAccountContext } from "@/lib/partspro-account-context";
 import {
   getCurrentCustomerProfile,
+  getCurrentEmployeeSelfProfile,
   listCurrentCustomerCompanies,
   listCurrentCustomerOrderSummaries,
   listCurrentCustomerRmaRequests,
@@ -37,6 +38,7 @@ export default async function Page({
 
   const account = await getCurrentAccountContext({ ensure: true });
   const shouldReadCustomerData = account.accountType === "customer";
+  const shouldReadEmployeeSelfData = account.accountType === "employee";
   const [companies, orders, rmas, customerProfile] = shouldReadCustomerData
     ? await Promise.all([
         listCurrentCustomerCompanies(),
@@ -44,6 +46,13 @@ export default async function Page({
         listCurrentCustomerRmaRequests(),
         getCurrentCustomerProfile(),
       ])
+    : shouldReadEmployeeSelfData
+      ? await Promise.all([
+          { data: [], warning: undefined },
+          { data: [], warning: undefined },
+          { data: [], warning: undefined },
+          getCurrentEmployeeSelfProfile(),
+        ])
     : [
         { data: [], warning: undefined },
         { data: [], warning: undefined },
@@ -58,6 +67,7 @@ export default async function Page({
   return (
     <AccountPage
       company={company}
+      accountType={account.accountType}
       customerProfile={customerProfile.data}
       dataWarning={orders.warning ?? rmas.warning ?? companies.warning}
       forceSetup={readSingleParam(params.setup) === "1"}

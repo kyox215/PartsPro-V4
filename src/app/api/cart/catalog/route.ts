@@ -22,6 +22,7 @@ import { toPublicSku } from "@/lib/partspro-sku";
 const maxCartCatalogSkus = 50;
 const cartCatalogQuerySchema = z
   .object({
+    checkoutMode: z.enum(["customer_self", "employee_self", "delegated_customer"]).optional(),
     companyId: z.string().trim().uuid().optional(),
     skus: z.string().trim().min(1).max(4096),
   })
@@ -69,17 +70,24 @@ export async function GET(request: NextRequest) {
     const account = await getCurrentAccountContext({ ensure: true });
     const delegatedCheckout = canDelegateCheckout(account);
     const requestedCompanyId = result.data.companyId;
+    const checkoutMode = resolveCheckoutMode(
+      account,
+      result.data.checkoutMode,
+      requestedCompanyId ?? null,
+      delegatedCheckout
+    );
+
+    if (checkoutMode === "forbidden") {
+      return apiError(403, "COMPANY_FORBIDDEN", "This customer cannot be used for cart pricing.");
+    }
+
     const buyerCustomerId =
       requestedCompanyId && requestedCompanyId !== account.customer?.id
         ? requestedCompanyId
         : requestedCompanyId ?? undefined;
     const canResolveTargetPrices =
       account.canViewPrices ||
-      Boolean(buyerCustomerId && delegatedCheckout);
-
-    if (requestedCompanyId && requestedCompanyId !== account.customer?.id && !delegatedCheckout) {
-      return apiError(403, "COMPANY_FORBIDDEN", "This customer cannot be used for cart pricing.");
-    }
+      Boolean(buyerCustomerId && (delegatedCheckout || checkoutMode === "employee_self"));
 
     const repositoryResult = await listCatalogProductsBySkus(skus, {
       buyerCustomerId,
@@ -90,6 +98,7 @@ export async function GET(request: NextRequest) {
         toCartCatalogProduct(product, account, {
           orderable:
             account.canCheckout ||
+            account.canEmployeeSelfCheckout ||
             account.accountType === "employee" ||
             Boolean(buyerCustomerId && delegatedCheckout),
           visible: canResolveTargetPrices,
@@ -163,6 +172,47 @@ function readSkuList(value: string) {
         .filter((sku) => /^[A-Z0-9_+.-]{3,64}$/.test(sku))
     )
   );
+}
+
+function resolveCheckoutMode(
+  account: AccountContext,
+  requestedMode: "customer_self" | "employee_self" | "delegated_customer" | undefined,
+  companyId: string | null,
+  delegatedCheckout: boolean
+) {
+  if (!companyId) {
+    return account.accountType === "employee" ? "employee_self" : "customer_self";
+  }
+
+  if (account.accountType === "customer") {
+    return companyId === account.customer?.id &&
+      (!requestedMode || requestedMode === "customer_self")
+      ? "customer_self"
+      : "forbidden";
+  }
+
+  if (account.accountType !== "employee") {
+    return "forbidden";
+  }
+
+  const employeeSelfId = account.employeeSelfCustomer?.id;
+  const inferredMode =
+    requestedMode ??
+    (employeeSelfId && companyId === employeeSelfId
+      ? "employee_self"
+      : "delegated_customer");
+
+  if (inferredMode === "employee_self") {
+    return employeeSelfId && companyId === employeeSelfId
+      ? "employee_self"
+      : "forbidden";
+  }
+
+  if (inferredMode === "delegated_customer") {
+    return delegatedCheckout ? "delegated_customer" : "forbidden";
+  }
+
+  return "forbidden";
 }
 
 function toCartCatalogProduct(

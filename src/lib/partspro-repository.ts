@@ -18,6 +18,7 @@ import {
   type CompanyStatus,
   type CustomerAssignmentStatus,
   type CustomerLevel,
+  type CustomerProfileKind,
   type CustomerType,
   type DeviceModelGroup,
   type DeviceModelSeriesGroup,
@@ -57,11 +58,11 @@ const catalogPublicCardSelect =
 const catalogProductCardSelect =
   "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at, image_path, image_alt";
 const adminCustomerSelect =
-  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, customer_type, assignment_status, level, lifetime_spend_net, assigned_by, assigned_at, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
+  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, customer_type, assignment_status, profile_kind, level, lifetime_spend_net, assigned_by, assigned_at, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
 const adminCustomerCompatSelect =
-  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
+  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, profile_kind, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
 const adminCustomerMinimalSelect =
-  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, created_at, updated_at";
+  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, profile_kind, created_at, updated_at";
 const adminB2BApplicationSelect =
   "id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, registered_address, shipping_address, monthly_purchase, requested_price_group_id, status, review_note, approved_customer_id, submitted_at, reviewed_at";
 const adminCustomerMembershipSelect =
@@ -158,6 +159,7 @@ export type AccountCustomerProfile = {
   level: CustomerLevel;
   pec: string;
   phone: string;
+  profileKind: CustomerProfileKind;
   profileCompletedAt: string | null;
   sdi: string;
   shippingAddress: string;
@@ -1871,6 +1873,45 @@ export async function getCurrentCustomerProfile(): Promise<
   );
 }
 
+export async function getCurrentEmployeeSelfProfile(): Promise<
+  RepositoryResult<AccountCustomerProfile | null>
+> {
+  const supabaseResult = await withSupabase(async (context) => {
+    await ensureEmployeeSelfCustomer(context.client);
+    return (await readCurrentEmployeeSelfProfile(context))?.profile ?? null;
+  });
+
+  return (
+    supabaseResult ??
+    emptyResult(
+      null,
+      isSupabaseConfigured()
+        ? "Supabase employee self profile could not be read."
+        : "Supabase is not configured; no employee self profile is available."
+    )
+  );
+}
+
+export async function getCurrentEmployeeSelfCompany(): Promise<
+  RepositoryResult<CompanyProfile | null>
+> {
+  const supabaseResult = await withSupabase(async (context) => {
+    await ensureEmployeeSelfCustomer(context.client);
+    const profile = await readCurrentEmployeeSelfProfile(context);
+    return profile?.raw ? mapCompanyRow(profile.raw) : null;
+  });
+
+  return (
+    supabaseResult ??
+    emptyResult(
+      null,
+      isSupabaseConfigured()
+        ? "Supabase employee self company could not be read."
+        : "Supabase is not configured; no employee self company is available."
+    )
+  );
+}
+
 export async function getCustomerProfileById(
   customerId: string
 ): Promise<RepositoryResult<AccountCustomerProfile | null>> {
@@ -2284,7 +2325,14 @@ export async function updateCurrentCustomerProfile(
   input: AccountCustomerProfileInput
 ): Promise<RepositoryResult<AccountCustomerProfile>> {
   const context = await requireSupabaseContext();
-  const customerId = await readCurrentCustomerId(context.client, context.userId);
+  let currentProfile = await readCurrentCustomerProfile(context);
+  let customerId = pickString(currentProfile?.raw, ["id"]);
+
+  if (!customerId) {
+    await ensureEmployeeSelfCustomer(context.client);
+    currentProfile = await readCurrentEmployeeSelfProfile(context);
+    customerId = pickString(currentProfile?.raw, ["id"]);
+  }
 
   if (!customerId) {
     throw new RepositoryWriteError(
@@ -2295,7 +2343,6 @@ export async function updateCurrentCustomerProfile(
   }
 
   const payload = buildAccountCustomerProfilePayload(input);
-  const currentProfile = await readCurrentCustomerProfile(context);
   const nextProfileComplete = isAccountCustomerProfilePayloadComplete({
     ...(currentProfile?.raw ?? {}),
     ...payload,
@@ -3891,6 +3938,63 @@ async function readCurrentCustomerId(
   }
 }
 
+async function readCurrentEmployeeSelfCustomerId(
+  client: SupabaseServerClient,
+  userId: string
+): Promise<string | null> {
+  try {
+    const { data: profile } = await client
+      .from("profiles")
+      .select("account_type, customer_id")
+      .eq("id", userId)
+      .maybeSingle();
+    const profileRow = isDbRow(profile) ? profile : null;
+
+    if (pickString(profileRow, ["account_type"]) !== "employee") {
+      return null;
+    }
+
+    const profileCustomerId = pickString(profileRow, ["customer_id"]);
+
+    if (profileCustomerId) {
+      const row = await readSingleRow(
+        client,
+        "customers",
+        "id",
+        profileCustomerId,
+        adminCustomerSelect
+      );
+
+      if (row && normalizeCustomerProfileKind(pickString(row, ["profile_kind"])) === "employee_self") {
+        return profileCustomerId;
+      }
+    }
+
+    const { data: customer } = await client
+      .from("customers")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("profile_kind", "employee_self")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    return isDbRow(customer) ? pickString(customer, ["id"]) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function ensureEmployeeSelfCustomer(client: SupabaseServerClient) {
+  try {
+    const { error } = await client.rpc("ensure_employee_self_customer");
+
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
 async function readCustomerRecentActivity(
   client: SupabaseServerClient,
   customerId: string
@@ -4200,6 +4304,30 @@ async function readCurrentCustomerProfile(
   context: SupabaseContext
 ): Promise<{ profile: AccountCustomerProfile; raw: DbRow } | null> {
   const customerId = await readCurrentCustomerId(context.client, context.userId);
+
+  if (!customerId) {
+    return null;
+  }
+
+  const row = await readSingleRow(
+    context.client,
+    "customers",
+    "id",
+    customerId,
+    adminCustomerSelect
+  );
+  const profile = row ? mapAccountCustomerProfileRow(row) : null;
+
+  return row && profile ? { profile, raw: row } : null;
+}
+
+async function readCurrentEmployeeSelfProfile(
+  context: SupabaseContext
+): Promise<{ profile: AccountCustomerProfile; raw: DbRow } | null> {
+  const customerId = await readCurrentEmployeeSelfCustomerId(
+    context.client,
+    context.userId
+  );
 
   if (!customerId) {
     return null;
@@ -5689,6 +5817,7 @@ function mapCompanyRow(row: DbRow): CompanyProfile | null {
     shippingAddress: pickString(row, ["shipping_address", "shippingAddress"]) ?? formatAddressObject(shippingAddress),
     customerType: normalizeCustomerType(pickString(row, ["customer_type"])),
     assignmentStatus: normalizeCustomerAssignmentStatus(pickString(row, ["assignment_status"])),
+    profileKind: normalizeCustomerProfileKind(pickString(row, ["profile_kind", "profileKind"])),
     level: normalizePriceList(pickString(row, ["level", "tier"])),
     lifetimeSpendNet: pickNumber(row, ["lifetime_spend_net"]) ?? 0,
     profileCompletedAt: pickString(row, ["profile_completed_at"]),
@@ -5714,6 +5843,7 @@ function mapAccountCustomerProfileRow(row: DbRow): AccountCustomerProfile | null
     level: normalizeCustomerTier(pickString(row, ["level", "tier"])),
     pec: pickString(row, ["pec"]) ?? "",
     phone: pickString(row, ["phone"]) ?? "",
+    profileKind: normalizeCustomerProfileKind(pickString(row, ["profile_kind"])),
     profileCompletedAt: pickString(row, ["profile_completed_at"]),
     sdi: pickString(row, ["sdi"]) ?? "",
     shippingAddress: pickString(row, ["shipping_address"]) ?? "",
@@ -6858,6 +6988,14 @@ function normalizePriceList(value: string | null): CustomerLevel {
 
 function normalizeCustomerType(value: string | null): CustomerType {
   return value === "wholesale" ? "wholesale" : "retail";
+}
+
+function normalizeCustomerProfileKind(value: string | null): CustomerProfileKind {
+  if (value === "employee_self" || value === "archived_customer") {
+    return value;
+  }
+
+  return "customer";
 }
 
 function normalizeCustomerAssignmentStatus(value: string | null): CustomerAssignmentStatus {

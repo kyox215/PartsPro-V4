@@ -17,8 +17,11 @@ import {
   clearCurrentCustomerCart,
   getCustomerProfileById,
   getCurrentCustomerProfile,
+  getCurrentEmployeeSelfCompany,
+  getCurrentEmployeeSelfProfile,
   listCatalogProductsBySkus,
   listCompanies,
+  listCurrentCustomerCompanies,
   listOrderSummaries,
   RepositoryWriteError,
   saveOrder,
@@ -78,6 +81,7 @@ const deliveryAddressSchema = z.union([
 const createOrderSchema = z
   .object({
     companyId: z.string().trim().min(1).max(40).regex(/^[A-Za-z0-9_-]+$/),
+    checkoutMode: z.enum(["customer_self", "employee_self", "delegated_customer"]).optional(),
     paymentMethod: z.enum(["bank_transfer", "cash", "agreed_terms"]),
     notes: z.string().trim().max(500).optional(),
     purchaseOrderNumber: z.string().trim().min(1).max(64).optional(),
@@ -108,6 +112,7 @@ type RequestedOrderItem = z.infer<typeof orderItemSchema>;
 type DeliveryAddressInput = z.infer<typeof deliveryAddressSchema>;
 type OrdersQuery = z.infer<typeof ordersQuerySchema>;
 type OrderLine = PreparedOrderLine;
+type CheckoutMode = "customer_self" | "employee_self" | "delegated_customer";
 
 export const maxDuration = 30;
 
@@ -189,12 +194,22 @@ export async function POST(request: NextRequest) {
   try {
     const account = await getCurrentAccountContext({ ensure: true });
     const delegatedCheckout = canDelegateCheckout(account);
+    const checkoutMode = resolveCheckoutMode(
+      account,
+      result.data.checkoutMode,
+      result.data.companyId,
+      delegatedCheckout
+    );
 
     if (!account.authenticated) {
       return apiError(401, "LOGIN_REQUIRED", "Login is required before placing an order.");
     }
 
-    if (!delegatedCheckout && account.customer?.status === "active" && !account.canViewPrices) {
+    if (checkoutMode === "forbidden") {
+      return apiError(403, "CHECKOUT_MODE_FORBIDDEN", "This checkout mode is not available for the current account.");
+    }
+
+    if (checkoutMode === "customer_self" && account.customer?.status === "active" && !account.canViewPrices) {
       return apiError(
         422,
         "PRICE_ACCESS_REQUIRED",
@@ -207,7 +222,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!delegatedCheckout && !account.canCheckout) {
+    if (checkoutMode === "customer_self" && !account.canCheckout) {
       return apiError(
         422,
         "CUSTOMER_PROFILE_INCOMPLETE",
@@ -224,10 +239,16 @@ export async function POST(request: NextRequest) {
     const requestedSkus = requestedItems.map((item) => item.sku);
     const deliveryAddress = normalizeDeliveryAddress(result.data.deliveryAddress);
     const [companies, customerProfile] = await Promise.all([
-      listCompanies(),
-      delegatedCheckout
+      checkoutMode === "delegated_customer"
+        ? listCompanies()
+        : checkoutMode === "employee_self"
+          ? getCurrentEmployeeSelfCompany().then(singleCompanyResult)
+          : listCurrentCustomerCompanies(),
+      checkoutMode === "delegated_customer"
         ? getCustomerProfileById(result.data.companyId)
-        : getCurrentCustomerProfile(),
+        : checkoutMode === "employee_self"
+          ? getCurrentEmployeeSelfProfile()
+          : getCurrentCustomerProfile(),
     ]);
     const companyResolution = resolveCompany(companies.data, result.data.companyId);
     const company = companyResolution.company;
@@ -236,14 +257,14 @@ export async function POST(request: NextRequest) {
       return apiError(404, "COMPANY_NOT_FOUND", "Company profile was not found.");
     }
 
-    if (!delegatedCheckout && account.customer?.id && company.id !== account.customer.id) {
+    if (checkoutMode === "customer_self" && account.customer?.id && company.id !== account.customer.id) {
       return apiError(403, "COMPANY_FORBIDDEN", "Orders can only be placed for the current customer profile.", {
         companyId: company.id,
         customerId: account.customer.id,
       });
     }
 
-    if (delegatedCheckout && !customerProfile.data) {
+    if ((checkoutMode === "delegated_customer" || checkoutMode === "employee_self") && !customerProfile.data) {
       return apiError(404, "COMPANY_NOT_FOUND", "Selected customer profile was not found.");
     }
 
@@ -254,9 +275,12 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const targetCanCheckout = delegatedCheckout
-      ? isDelegatedCompanyOrderable(company, customerProfile.data)
-      : account.canCheckout;
+    const targetCanCheckout =
+      checkoutMode === "delegated_customer"
+        ? company.profileKind !== "employee_self" && isDelegatedCompanyOrderable(company, customerProfile.data)
+        : checkoutMode === "employee_self"
+          ? account.canEmployeeSelfCheckout && isDelegatedCompanyOrderable(company, customerProfile.data)
+          : account.canCheckout;
 
     if (!targetCanCheckout) {
       return apiError(
@@ -272,8 +296,8 @@ export async function POST(request: NextRequest) {
     }
 
     const catalog = await listCatalogProductsBySkus(requestedSkus, {
-      buyerCustomerId: delegatedCheckout ? company.id : undefined,
-      includeBuyerPrices: account.canViewPrices || delegatedCheckout,
+      buyerCustomerId: checkoutMode === "customer_self" ? undefined : company.id,
+      includeBuyerPrices: account.canViewPrices || checkoutMode !== "customer_self",
     });
     const pricedCatalog = catalog.data.map((product) =>
       product.priceResolved || product.priceVersion
@@ -306,9 +330,7 @@ export async function POST(request: NextRequest) {
     let cartClearWarning: string | undefined;
 
     try {
-      if (account.accountType === "customer") {
-        await clearCurrentCustomerCart();
-      }
+      await clearCurrentCustomerCart();
     } catch (error) {
       cartClearWarning =
         error instanceof RepositoryWriteError
@@ -422,6 +444,51 @@ function isDelegatedCompanyOrderable(
       profile &&
       isCheckoutProfileComplete(profile)
   );
+}
+
+function singleCompanyResult(
+  result: Awaited<ReturnType<typeof getCurrentEmployeeSelfCompany>>
+): Awaited<ReturnType<typeof listCurrentCustomerCompanies>> {
+  return {
+    ...result,
+    data: result.data ? [result.data] : [],
+  };
+}
+
+function resolveCheckoutMode(
+  account: Awaited<ReturnType<typeof getCurrentAccountContext>>,
+  requestedMode: CheckoutMode | undefined,
+  companyId: string,
+  delegatedCheckout: boolean
+): CheckoutMode | "forbidden" {
+  if (account.accountType === "customer") {
+    return requestedMode && requestedMode !== "customer_self"
+      ? "forbidden"
+      : "customer_self";
+  }
+
+  if (account.accountType !== "employee") {
+    return "forbidden";
+  }
+
+  const employeeSelfId = account.employeeSelfCustomer?.id;
+  const inferredMode =
+    requestedMode ??
+    (employeeSelfId && companyId === employeeSelfId
+      ? "employee_self"
+      : "delegated_customer");
+
+  if (inferredMode === "employee_self") {
+    return employeeSelfId && companyId === employeeSelfId
+      ? "employee_self"
+      : "forbidden";
+  }
+
+  if (inferredMode === "delegated_customer") {
+    return delegatedCheckout ? "delegated_customer" : "forbidden";
+  }
+
+  return "forbidden";
 }
 
 function isCheckoutProfileComplete(profile: AccountCustomerProfile) {

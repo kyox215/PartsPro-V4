@@ -11,6 +11,7 @@ import { cookies } from "next/headers";
 import type {
   CustomerAssignmentStatus,
   CustomerLevel,
+  CustomerProfileKind,
   CustomerType,
   PartProduct,
 } from "@/lib/partspro-data";
@@ -36,6 +37,7 @@ export type AccountCustomerContext = {
   level: CustomerLevel;
   lifetimeSpendNet: number;
   name: string;
+  profileKind: CustomerProfileKind;
   profileCompletedAt: string | null;
   status: string;
 };
@@ -45,8 +47,10 @@ export type AccountContext = {
   accountSyncError: string | null;
   authenticated: boolean;
   canCheckout: boolean;
+  canEmployeeSelfCheckout: boolean;
   canViewPrices: boolean;
   customer: AccountCustomerContext | null;
+  employeeSelfCustomer: AccountCustomerContext | null;
   email: string | null;
   permissions: string[];
   role: string | null;
@@ -60,8 +64,10 @@ export const anonymousAccountContext: AccountContext = {
   accountSyncError: null,
   authenticated: false,
   canCheckout: false,
+  canEmployeeSelfCheckout: false,
   canViewPrices: false,
   customer: null,
+  employeeSelfCustomer: null,
   email: null,
   permissions: [],
   role: null,
@@ -136,8 +142,21 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
   const accountType = isBootstrapAdminEmail(email)
     ? "employee"
     : normalizeAccountType(readString(profile?.account_type));
-  const customerContext = customer ? toCustomerContext(customer) : null;
   const isEmployee = accountType === "employee";
+  let employeeSelfCustomerRow: DbRow | null = null;
+
+  if (isEmployee) {
+    if (options.ensure) {
+      await ensureEmployeeSelfCustomer(supabase);
+    }
+
+    employeeSelfCustomerRow = await readEmployeeSelfCustomerByUserId(supabase, user.id);
+  }
+
+  const customerContext = !isEmployee && customer ? toCustomerContext(customer) : null;
+  const employeeSelfCustomer = employeeSelfCustomerRow
+    ? toCustomerContext(employeeSelfCustomerRow)
+    : null;
   const canViewPrices = Boolean(
     isEmployee ||
       (customerContext &&
@@ -154,14 +173,25 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
       customerContext.assignmentStatus === "assigned" &&
       isCustomerProfileComplete(customer)
   );
+  const canEmployeeSelfCheckout = Boolean(
+    isEmployee &&
+      !accountSyncError &&
+      employeeSelfCustomerRow &&
+      employeeSelfCustomer?.status === "active" &&
+      employeeSelfCustomer.customerType === "wholesale" &&
+      employeeSelfCustomer.assignmentStatus === "assigned" &&
+      isCustomerProfileComplete(employeeSelfCustomerRow)
+  );
 
   return {
     accountType,
     accountSyncError,
     authenticated: true,
     canCheckout,
+    canEmployeeSelfCheckout,
     canViewPrices,
-    customer: isEmployee ? null : customerContext,
+    customer: customerContext,
+    employeeSelfCustomer,
     email,
     permissions,
     role: readString(profile?.role),
@@ -232,7 +262,10 @@ export function applyAccountPriceToProduct(
     account.accountType === "employee"
       ? "wholesale"
       : account.customer?.customerType ?? "retail";
-  const level = account.customer?.level ?? "bronze";
+  const level =
+    account.accountType === "employee"
+      ? account.employeeSelfCustomer?.level ?? "bronze"
+      : account.customer?.level ?? "bronze";
   const basePrice = customerType === "wholesale" ? product.price : product.retailPrice;
   const finalPrice = calculateTierPrice(basePrice, level);
   const levelDiscountPercent = getTierRule(level).discountRate * 100;
@@ -366,7 +399,7 @@ async function readCustomer(client: SupabaseServerClient, customerId: string) {
   const { data, error } = await client
     .from("customers")
     .select(
-      "id, company_name, status, customer_type, assignment_status, level, lifetime_spend_net, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address"
+      "id, company_name, status, customer_type, assignment_status, profile_kind, level, lifetime_spend_net, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address"
     )
     .eq("id", customerId)
     .maybeSingle();
@@ -378,7 +411,7 @@ async function readCustomerByUserId(client: SupabaseServerClient, userId: string
   const { data, error } = await client
     .from("customers")
     .select(
-      "id, company_name, status, customer_type, assignment_status, level, lifetime_spend_net, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address"
+      "id, company_name, status, customer_type, assignment_status, profile_kind, level, lifetime_spend_net, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address"
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
@@ -386,6 +419,34 @@ async function readCustomerByUserId(client: SupabaseServerClient, userId: string
     .maybeSingle();
 
   return error ? null : asRow(data);
+}
+
+async function readEmployeeSelfCustomerByUserId(
+  client: SupabaseServerClient,
+  userId: string
+) {
+  const { data, error } = await client
+    .from("customers")
+    .select(
+      "id, company_name, status, customer_type, assignment_status, profile_kind, level, lifetime_spend_net, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address"
+    )
+    .eq("user_id", userId)
+    .eq("profile_kind", "employee_self")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return error ? null : asRow(data);
+}
+
+async function ensureEmployeeSelfCustomer(client: SupabaseServerClient) {
+  try {
+    const { error } = await client.rpc("ensure_employee_self_customer");
+
+    return !error;
+  } catch {
+    return false;
+  }
 }
 
 function toCustomerContext(row: DbRow): AccountCustomerContext {
@@ -398,6 +459,7 @@ function toCustomerContext(row: DbRow): AccountCustomerContext {
     level,
     lifetimeSpendNet: readNumber(row.lifetime_spend_net) ?? 0,
     name: readString(row.company_name) ?? "Cliente PartsPro",
+    profileKind: normalizeCustomerProfileKind(readString(row.profile_kind)),
     profileCompletedAt: readString(row.profile_completed_at),
     status: readString(row.status) ?? "pending",
   };
@@ -409,6 +471,14 @@ function normalizeAccountType(value: string | null): AccountType {
 
 function normalizeCustomerType(value: string | null): CustomerType {
   return value === "wholesale" ? "wholesale" : "retail";
+}
+
+function normalizeCustomerProfileKind(value: string | null): CustomerProfileKind {
+  if (value === "employee_self" || value === "archived_customer") {
+    return value;
+  }
+
+  return "customer";
 }
 
 function normalizeAssignmentStatus(value: string | null): CustomerAssignmentStatus {

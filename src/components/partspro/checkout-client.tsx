@@ -82,6 +82,8 @@ export type CheckoutRuntimeView = {
   userEmail?: string;
 };
 
+type CheckoutMode = "customer_self" | "employee_self" | "delegated_customer";
+
 type CheckoutClientProps = {
   catalogProducts: readonly PartProduct[];
   companies?: readonly CompanyProfile[];
@@ -235,22 +237,36 @@ function CheckoutClientContent({
     companies.some((item) => item.id === initialSelectedCompanyId)
       ? initialSelectedCompanyId
       : "";
+  const hasEmployeeSelfProfile = company?.profileKind === "employee_self";
+  const initialCheckoutMode: CheckoutMode =
+    delegatedCheckout && initialDelegatedCompanyId
+      ? "delegated_customer"
+      : hasEmployeeSelfProfile
+        ? "employee_self"
+        : delegatedCheckout
+          ? "delegated_customer"
+          : "customer_self";
+  const [checkoutMode, setCheckoutMode] =
+    React.useState<CheckoutMode>(initialCheckoutMode);
+  const isDelegatedMode = checkoutMode === "delegated_customer";
   const [selectedCompanyId, setSelectedCompanyId] = React.useState(
-    delegatedCheckout ? initialDelegatedCompanyId : company?.id ?? ""
+    isDelegatedMode ? initialDelegatedCompanyId : ""
   );
   const selectedCompany =
-    delegatedCheckout
+    isDelegatedMode
       ? companies.find((item) => item.id === selectedCompanyId) ?? null
       : company;
   const selectedCustomerProfile = delegatedCheckout
-    ? customerProfileFromCompany(selectedCompany)
+    ? isDelegatedMode
+      ? customerProfileFromCompany(selectedCompany)
+      : customerProfile
     : customerProfile;
   const selectedShippingAddress = selectedCustomerProfile?.shippingAddress.trim() ?? "";
   const targetCustomerBlocker = customerOrderBlocker(
     t,
     selectedCompany,
     selectedCustomerProfile,
-    delegatedCheckout
+    isDelegatedMode
   );
   const cart = useCart({ preserveUnknown: true });
   const [form, setForm] = React.useState<CheckoutFormState>(() =>
@@ -281,7 +297,7 @@ function CheckoutClientContent({
   );
   const selectedCatalogScope = selectedCompany?.id ?? "";
   const canResolveCartCatalog = Boolean(selectedCompany?.id && !targetCustomerBlocker);
-  const needsCustomerSelection = delegatedCheckout && !selectedCompany;
+  const needsCustomerSelection = isDelegatedMode && !selectedCompany;
   const basePendingItemsReason: PendingItemsReason | null =
     needsCustomerSelection
       ? "customer"
@@ -305,7 +321,7 @@ function CheckoutClientContent({
   const pendingCustomerItems = basePendingItemsReason
     ? cart.items
     : cart.items.filter((item) => customerContextPendingSkuSet.has(item.sku));
-  const checkoutContextCompanyId = delegatedCheckout
+  const checkoutContextCompanyId = isDelegatedMode
     ? selectedCompany?.id ?? initialDelegatedCompanyId
     : null;
   const checkoutHref = hrefWithAssistedCompanyId("/checkout", checkoutContextCompanyId);
@@ -356,7 +372,7 @@ function CheckoutClientContent({
     cart,
     company: selectedCompany,
     customerIssues,
-    delegatedCheckout,
+    delegatedCheckout: isDelegatedMode,
     formErrors,
     isCatalogLoading: catalogResolutionPending,
     lineIssues,
@@ -390,6 +406,29 @@ function CheckoutClientContent({
     setCatalogRejections({});
     rememberAssistedCompanyId(nextCompany?.id ?? null);
     replaceCurrentUrlAssistedCompanyId(nextCompany?.id ?? null);
+  }
+
+  function handleCheckoutModeChange(value: CheckoutMode) {
+    setCheckoutMode(value);
+    setForm(initialFormState());
+    setConfirmed(false);
+    setPreview(idlePreviewState);
+    setSubmitState({ status: "idle" });
+    setSuccessDialogOpen(false);
+    setCatalogLoadState("idle");
+    setCatalogRejections({});
+
+    if (value !== "delegated_customer") {
+      setSelectedCompanyId("");
+      rememberAssistedCompanyId(null);
+      replaceCurrentUrlAssistedCompanyId(null);
+      return;
+    }
+
+    const nextCompanyId = selectedCompanyId || companies[0]?.id || "";
+    setSelectedCompanyId(nextCompanyId);
+    rememberAssistedCompanyId(nextCompanyId || null);
+    replaceCurrentUrlAssistedCompanyId(nextCompanyId || null);
   }
 
   React.useEffect(() => {
@@ -431,6 +470,7 @@ function CheckoutClientContent({
       try {
         const params = new URLSearchParams({
           companyId: selectedCompany?.id ?? "",
+          checkoutMode,
           skus: missingSkus.join(","),
         });
         const response = await fetch(`/api/cart/catalog?${params.toString()}`, {
@@ -495,6 +535,7 @@ function CheckoutClientContent({
     catalogSkuSet,
     onCatalogProductsLoaded,
     selectedCompany?.id,
+    checkoutMode,
     targetCustomerBlocker,
   ]);
 
@@ -522,6 +563,7 @@ function CheckoutClientContent({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             companyId: previewCompanyId,
+            checkoutMode,
             items: previewItems,
           }),
           cache: "no-store",
@@ -566,7 +608,7 @@ function CheckoutClientContent({
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [cart.items, cartSignature, selectedCompany?.id, shouldLoadPreview, t]);
+  }, [cart.items, cartSignature, checkoutMode, selectedCompany?.id, shouldLoadPreview, t]);
 
   async function submitOrder() {
     setSubmitAttempted(true);
@@ -606,6 +648,7 @@ function CheckoutClientContent({
         signal: controller.signal,
         body: JSON.stringify({
           companyId: selectedCompany?.id,
+          checkoutMode,
           paymentMethod: form.paymentMethod,
           deliveryAddress: selectedShippingAddress,
           notes: buildOrderNotes(form.notes, form.deliveryWindow),
@@ -670,7 +713,13 @@ function CheckoutClientContent({
         <div className="mx-auto grid max-w-[1460px] gap-3 px-2 pt-2 pb-[calc(5.75rem_+_env(safe-area-inset-bottom))] sm:px-4 sm:pt-3 lg:grid-cols-[minmax(0,1fr)_330px] lg:pb-6">
           <section className="space-y-2.5">
           <CheckoutHeader cartHref={cartHref} runtime={runtime} company={selectedCompany} />
-          {delegatedCheckout ? (
+          {hasEmployeeSelfProfile && delegatedCheckout ? (
+            <CheckoutModeSelector
+              mode={checkoutMode}
+              onModeChange={handleCheckoutModeChange}
+            />
+          ) : null}
+          {isDelegatedMode ? (
             <DelegatedCustomerSelector
               companies={companies}
               selectedCompanyId={selectedCompanyId}
@@ -847,6 +896,61 @@ function BlockerAlert({ blocker }: { blocker: Blocker }) {
         </Button>
       )}
     </div>
+  );
+}
+
+function CheckoutModeSelector({
+  mode,
+  onModeChange,
+}: {
+  mode: CheckoutMode;
+  onModeChange: (mode: CheckoutMode) => void;
+}) {
+  const t = useT();
+  const options: Array<{
+    description: string;
+    label: string;
+    value: CheckoutMode;
+  }> = [
+    {
+      value: "employee_self",
+      label: tx(t, "storefront.checkout.mode.employeeSelf", "员工自购"),
+      description: tx(t, "storefront.checkout.mode.employeeSelfDescription", "使用员工自己的税务和配送资料。"),
+    },
+    {
+      value: "delegated_customer",
+      label: tx(t, "storefront.checkout.mode.delegated", "代客户下单"),
+      description: tx(t, "storefront.checkout.mode.delegatedDescription", "选择客户，并使用客户等级、资料和价格。"),
+    },
+  ];
+
+  return (
+    <Card size="sm" className="rounded-lg border-slate-200 bg-white">
+      <CardContent className="grid gap-2 p-2 sm:grid-cols-2">
+        {options.map((option) => {
+          const selected = option.value === mode;
+
+          return (
+            <button
+              key={option.value}
+              type="button"
+              className={cn(
+                "rounded-lg border px-3 py-2 text-left transition",
+                selected
+                  ? "border-primary bg-primary/8 text-primary"
+                  : "border-slate-200 bg-white text-slate-700 hover:border-primary/30"
+              )}
+              onClick={() => onModeChange(option.value)}
+            >
+              <div className="text-sm font-black">{option.label}</div>
+              <div className="mt-0.5 text-xs font-semibold leading-5 text-slate-500">
+                {option.description}
+              </div>
+            </button>
+          );
+        })}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1948,6 +2052,7 @@ function customerProfileFromCompany(company: CompanyProfile | null): AccountCust
     level: company.level ?? company.priceList,
     pec: company.pec ?? "",
     phone: company.phone ?? "",
+    profileKind: company.profileKind ?? "customer",
     profileCompletedAt: company.profileCompletedAt ?? null,
     sdi: company.codiceDestinatario ?? "",
     shippingAddress: company.shippingAddress ?? "",
