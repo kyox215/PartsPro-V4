@@ -116,7 +116,7 @@ function OrderSummaryCardView({
         <Line compact={compact} label={tx(t, "storefront.common.total", "Totale")} value={formatMoney(totals.total, locale)} strong />
         <div className={compact ? "rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] font-semibold leading-4 text-amber-900" : "rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900"}>
           {!isHydrated
-            ? tx(t, "storefront.cart.summaryLoading", "Caricamento carrello salvato nel browser...")
+            ? tx(t, "storefront.cart.summaryLoading", "Caricamento carrello del tuo account...")
             : effectiveSummaryNote}
         </div>
         {(showCheckoutAction || showContinueAction) && (

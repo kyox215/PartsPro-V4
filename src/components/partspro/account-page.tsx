@@ -44,7 +44,6 @@ import {
 import { cn } from "@/lib/utils";
 import { signOut } from "@/app/login/actions";
 import type { AccountCustomerProfile } from "@/lib/partspro-repository";
-import { useCart } from "./cart-state";
 import { StoreHeader } from "./store-header";
 
 type AccountPageProps = {
@@ -156,7 +155,6 @@ export function AccountPage({
   rmaRequests = [],
   userEmail,
 }: AccountPageProps) {
-  const cart = useCart();
   const [activeFilter, setActiveFilter] = React.useState<OrderFilterId>("all");
   const [orderDetail, setOrderDetail] = React.useState<AccountOrderDetail | null>(null);
   const [orderDetailError, setOrderDetailError] = React.useState<string | null>(null);
@@ -296,7 +294,7 @@ export function AccountPage({
                   {isEmployeeAccount ? "编辑自购资料" : "编辑资料"}
                 </Button>
               ) : null}
-              <form action={signOut} className="min-w-0" onSubmit={cart.clearCart}>
+              <form action={signOut} className="min-w-0">
                 <Button size="sm" variant="outline" className="w-full bg-white" type="submit">
                   <LogOut className="size-4" />
                   退出

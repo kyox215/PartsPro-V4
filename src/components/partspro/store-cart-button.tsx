@@ -26,12 +26,14 @@ export function StoreCartButton({ ariaLabel, href = "/carrello", label }: StoreC
       <Link href={href} aria-label={ariaLabel}>
         <ShoppingCart className="size-4" />
         <span className="hidden min-w-0 max-w-24 truncate sm:inline-block">{label}</span>
-        <span
-          className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white"
-          aria-live="polite"
-        >
-          {badgeLabel}
-        </span>
+        {itemCount > 0 ? (
+          <span
+            className="absolute -right-1 -top-1 grid h-4 min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white"
+            aria-live="polite"
+          >
+            {badgeLabel}
+          </span>
+        ) : null}
       </Link>
     </Button>
   );

@@ -25,6 +25,7 @@ import {
   rememberAssistedCompanyId,
 } from "@/lib/partspro-assisted-order";
 import { type PartProduct } from "@/lib/partspro-data";
+import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import {
   formatPercentBadge,
   getProductPriceDisplay,
@@ -46,11 +47,13 @@ import { StoreHeader } from "./store-header";
 
 type CartPageProps = {
   catalogProducts?: readonly PartProduct[];
+  initialAccountAccess?: StoreHeaderAccountAccess;
 };
 
 type CartPageContentProps = {
   assistedCompanyId: string | null;
   catalogProducts: readonly PartProduct[];
+  initialAccountAccess?: StoreHeaderAccountAccess;
   onCatalogProductsLoaded: (products: readonly PartProduct[]) => void;
 };
 
@@ -129,7 +132,10 @@ type SnapshotCartLineViewProps = {
   snapshot: CartItemSnapshot;
 };
 
-export function CartPage({ catalogProducts = [] }: CartPageProps) {
+export function CartPage({
+  catalogProducts = [],
+  initialAccountAccess,
+}: CartPageProps) {
   const searchParams = useSearchParams();
   const assistedCompanyId = readAssistedCompanyIdFromSearchParams(searchParams);
 
@@ -138,6 +144,7 @@ export function CartPage({ catalogProducts = [] }: CartPageProps) {
       key={assistedCompanyId ?? "default"}
       assistedCompanyId={assistedCompanyId}
       catalogProducts={catalogProducts}
+      initialAccountAccess={initialAccountAccess}
     />
   );
 }
@@ -145,9 +152,11 @@ export function CartPage({ catalogProducts = [] }: CartPageProps) {
 function CartPageScoped({
   assistedCompanyId,
   catalogProducts,
+  initialAccountAccess,
 }: {
   assistedCompanyId: string | null;
   catalogProducts: readonly PartProduct[];
+  initialAccountAccess?: StoreHeaderAccountAccess;
 }) {
   const [catalogState, setCatalogState] = React.useState<PartProduct[]>(() =>
     filterOrderableCatalogProducts(catalogProducts)
@@ -165,6 +174,7 @@ function CartPageScoped({
       <CartPageContent
         assistedCompanyId={assistedCompanyId}
         catalogProducts={catalogState}
+        initialAccountAccess={initialAccountAccess}
         onCatalogProductsLoaded={handleCatalogProductsLoaded}
       />
     </CartCatalogProvider>
@@ -174,10 +184,15 @@ function CartPageScoped({
 function CartPageContent({
   assistedCompanyId,
   catalogProducts,
+  initialAccountAccess,
   onCatalogProductsLoaded,
 }: CartPageContentProps) {
   const t = useT();
-  const cart = useCart({ consumeUrlIntent: true, preserveUnknown: true });
+  const isLoginRequired = initialAccountAccess?.authenticated === false;
+  const cart = useCart({
+    consumeUrlIntent: !isLoginRequired,
+    preserveUnknown: true,
+  });
   const [catalogLoadState, setCatalogLoadState] =
     React.useState<CartCatalogLoadState>("idle");
   const [catalogRejections, setCatalogRejections] = React.useState<
@@ -228,7 +243,7 @@ function CartPageContent({
     cart.isHydrated &&
     cart.items.length > 0 &&
     (catalogLoadState === "loading" || hasPendingCatalogResolution);
-  const isEmpty = cart.isHydrated && cart.items.length === 0;
+  const isEmpty = !isLoginRequired && cart.isHydrated && cart.items.length === 0;
   const unresolvedSkus = React.useMemo(() => {
     const resolvedSkus = new Set(totals.lines.map((line) => line.sku));
 
@@ -330,11 +345,13 @@ function CartPageContent({
     [cart.items]
   );
   const readyForCheckout =
+    !isLoginRequired &&
     cart.isHydrated &&
     !isCatalogResolving &&
     totals.lines.length > 0 &&
     unresolvedSkus.length === 0;
-  const canNavigateToCheckout = cart.isHydrated && cart.items.length > 0;
+  const canNavigateToCheckout =
+    !isLoginRequired && cart.isHydrated && cart.items.length > 0;
   const hasCheckoutBlockers =
     canNavigateToCheckout &&
     (isCatalogResolving || totals.lines.length === 0 || unresolvedSkus.length > 0);
@@ -508,7 +525,10 @@ function CartPageContent({
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
-      <StoreHeader assistedCompanyId={assistedCompanyId} />
+      <StoreHeader
+        assistedCompanyId={assistedCompanyId}
+        initialAccountAccess={initialAccountAccess}
+      />
       <div className="mx-auto grid max-w-[1360px] gap-2 px-2 pt-2 pb-[calc(5.25rem_+_env(safe-area-inset-bottom))] sm:gap-4 sm:px-4 sm:pt-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-3 lg:pt-3 lg:pb-4">
         <section className="space-y-2 sm:space-y-4 lg:space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-2 sm:gap-3 lg:items-center">
@@ -539,20 +559,20 @@ function CartPageContent({
                 <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 sm:size-5" />
                 <div className="min-w-0">
                   <div className="font-black">
-                    {tx(t, "storefront.cart.localReadyTitle", "Carrello locale pronto per checkout")}
+                    {tx(t, "storefront.cart.localReadyTitle", "Carrello account pronto per checkout")}
                   </div>
                   <p className="mt-1 leading-5 sm:hidden">
-                    {tx(t, "storefront.cart.localReadyShort", "Le modifiche salvano gli articoli nel browser.")}
+                    {tx(t, "storefront.cart.localReadyShort", "Le modifiche sono sincronizzate con il tuo account.")}
                   </p>
                   <p className="mt-1 hidden leading-6 sm:block">
-                    {tx(t, "storefront.cart.localReadyDescription", "Il carrello non blocca lo stock: disponibilità e quantità vengono ricontrollate al momento dell'ordine, quando gli articoli vengono riservati.")}
+                    {tx(t, "storefront.cart.localReadyDescription", "Il carrello è legato al tuo account: disponibilità e quantità vengono ricontrollate al momento dell'ordine.")}
                   </p>
                 </div>
               </CardContent>
             </Card>
           )}
 
-          {!cart.isHydrated && (
+          {!isLoginRequired && !cart.isHydrated && (
             <Card className="border-slate-200 bg-white">
               <CardContent className="flex flex-col items-start gap-3 p-4 sm:p-5">
                 <div>
@@ -560,9 +580,30 @@ function CartPageContent({
                     {tx(t, "storefront.cart.loadingTitle", "Caricamento carrello")}
                   </div>
                   <p className="mt-1 text-sm leading-6 text-slate-500">
-                    {tx(t, "storefront.cart.loadingDescription", "Lettura della selezione salvata in questo browser.")}
+                    {tx(t, "storefront.cart.loadingDescription", "Sincronizzazione del carrello del tuo account.")}
                   </p>
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {isLoginRequired && (
+            <Card className="border-amber-200 bg-amber-50">
+              <CardContent className="flex flex-col items-start gap-3 p-4 text-amber-950 sm:p-5">
+                <div>
+                  <div className="text-lg font-black">
+                    {tx(t, "storefront.cart.loginRequiredTitle", "Accedi per usare il carrello")}
+                  </div>
+                  <p className="mt-1 text-sm leading-6">
+                    {tx(t, "storefront.cart.loginRequiredDescription", "Il carrello è disponibile solo per account verificati. Accedi per vedere i tuoi articoli sincronizzati.")}
+                  </p>
+                </div>
+                <Button asChild>
+                  <Link href={loginHref}>
+                    <LogIn className="size-4" />
+                    {tx(t, "storefront.cart.loginForPrices", "Accedi")}
+                  </Link>
+                </Button>
               </CardContent>
             </Card>
           )}
@@ -730,7 +771,7 @@ function CartPageContent({
         </section>
 
         <div className="hidden lg:block">
-          {isCatalogResolving ? (
+          {isLoginRequired ? null : isCatalogResolving ? (
             <CartSummaryLoadingCard lineCount={cart.items.length} />
           ) : (
             <OrderSummaryCard
@@ -749,7 +790,7 @@ function CartPageContent({
           )}
         </div>
       </div>
-      {!isCatalogResolving && (
+      {!isCatalogResolving && !isLoginRequired && (
         <MobileCartCheckoutBar
           totals={totals}
           catalogHref={catalogHref}

@@ -261,15 +261,18 @@ export const storefrontItIT = {
   "storefront.cart.lineCountMany": "{count} articoli",
   "storefront.cart.lineCountOne": "1 articolo",
   "storefront.cart.loadingDescription":
-    "Lettura della selezione salvata in questo browser.",
+    "Lettura del carrello sincronizzato con il tuo account.",
   "storefront.cart.loadingProductsDescription":
     "Recupero disponibilità, MOQ e prezzi per gli articoli salvati.",
   "storefront.cart.loadingProductsTitle": "Caricamento prodotti",
   "storefront.cart.loadingTitle": "Caricamento carrello",
   "storefront.cart.localReadyDescription":
-    "Il carrello non blocca lo stock: disponibilità e quantità vengono ricontrollate al momento dell'ordine, quando gli articoli vengono riservati.",
-  "storefront.cart.localReadyShort": "Le modifiche salvano gli articoli nel browser.",
-  "storefront.cart.localReadyTitle": "Carrello locale pronto per checkout",
+    "Il carrello e legato al tuo account: disponibilita e quantita vengono ricontrollate al momento dell'ordine.",
+  "storefront.cart.localReadyShort": "Le modifiche sono sincronizzate con il tuo account.",
+  "storefront.cart.localReadyTitle": "Carrello account pronto per checkout",
+  "storefront.cart.loginRequiredTitle": "Accedi per usare il carrello",
+  "storefront.cart.loginRequiredDescription":
+    "Il carrello e disponibile solo dopo il login. Accedi per vedere e modificare gli articoli del tuo account.",
   "storefront.cart.minimumTitle": "Quantità minima MOQ {minimum}",
   "storefront.cart.moqBadge": "MOQ {moq}",
   "storefront.cart.priceEach": "{price} cad.",
@@ -306,7 +309,7 @@ export const storefrontItIT = {
   "storefront.cart.rejectedUnavailableLabel": "Non acquistabile",
   "storefront.cart.rows": "Articoli",
   "storefront.cart.stockBadge": "Stock {stock}",
-  "storefront.cart.summaryLoading": "Caricamento carrello salvato nel browser...",
+  "storefront.cart.summaryLoading": "Caricamento carrello del tuo account...",
   "storefront.cart.summaryNote":
     "Il carrello non blocca stock: disponibilita e quantita vengono riservate solo alla conferma ordine.",
   "storefront.cart.summaryNoteBlocked":
@@ -325,7 +328,7 @@ export const storefrontItIT = {
   "storefront.cart.stockLimitTitle": "Stock disponibile esaurito",
   "storefront.cart.loginForPrices": "Accedi",
   "storefront.cart.priceLoginDescription":
-    "Questi SKU sono salvati nel browser, ma il carrello può prezzarli solo dopo il login o l'abilitazione come cliente professionale.",
+    "Accedi o richiedi accesso professionale per aggiungere articoli al carrello e vedere i prezzi.",
   "storefront.cart.priceLoginTitle": "Accedi per vedere prezzi professionali",
   "storefront.cart.requestProfessionalAccess": "Richiedi accesso",
   "storefront.cart.unresolvedDescription":
@@ -506,7 +509,7 @@ export const storefrontItIT = {
   "storefront.checkout.submit.cartEmptyReason":
     "Il carrello è vuoto: aggiungi almeno un prodotto prima di confermare l'ordine.",
   "storefront.checkout.submit.cartLoadingReason":
-    "Caricamento carrello salvato nel browser...",
+    "Caricamento carrello del tuo account...",
   "storefront.checkout.submit.defaultDisabled": "Checkout disabilitato in questo momento.",
   "storefront.checkout.submit.formMissing":
     "Modulo checkout non trovato. Ricarica la pagina e riprova.",
@@ -611,6 +614,9 @@ export const storefrontItIT = {
   "storefront.product.purchase.orderNowAria":
     "Ordina ora {quantity} pezzi di {name}",
   "storefront.product.purchase.unavailableTitle": "Acquisto non disponibile",
+  "storefront.product.card.loginToAdd": "Accedi",
+  "storefront.product.card.loginToAddAria":
+    "Accedi per aggiungere {name} al carrello.",
   "storefront.product.restock.aria": "Avvisami quando {name} torna disponibile",
   "storefront.product.restock.detailDescription":
     "Questo SKU non e acquistabile ora per stock o MOQ. Salva un avviso quando il riassortimento sara disponibile.",
@@ -1029,15 +1035,18 @@ export const storefrontZhCN = {
   "storefront.cart.itemCountOne": "1 件",
   "storefront.cart.lineCountMany": "{count} 个商品项",
   "storefront.cart.lineCountOne": "1 个商品项",
-  "storefront.cart.loadingDescription": "正在读取此浏览器中保存的商品选择。",
+  "storefront.cart.loadingDescription": "正在读取当前账号的购物车。",
   "storefront.cart.loadingProductsDescription":
     "正在获取已保存商品的可用库存、起订量和价格。",
   "storefront.cart.loadingProductsTitle": "正在加载商品",
   "storefront.cart.loadingTitle": "正在加载购物车",
   "storefront.cart.localReadyDescription":
-    "购物车不会锁定库存；确认下单时会重新检查库存和数量，并在订单创建成功后才锁定商品。",
-  "storefront.cart.localReadyShort": "修改会保存在当前浏览器中。",
-  "storefront.cart.localReadyTitle": "本地购物车已可用于结账",
+    "购物车绑定当前登录账号；确认下单时会重新检查库存和数量。",
+  "storefront.cart.localReadyShort": "修改会同步到当前账号。",
+  "storefront.cart.localReadyTitle": "账号购物车已可用于结账",
+  "storefront.cart.loginRequiredTitle": "登录后使用购物车",
+  "storefront.cart.loginRequiredDescription":
+    "购物车只对登录账号开放。请先登录，再查看、添加或结算当前账号的商品。",
   "storefront.cart.minimumTitle": "最低起订量 MOQ {minimum}",
   "storefront.cart.moqBadge": "MOQ {moq}",
   "storefront.cart.priceEach": "{price} / 件",
@@ -1074,7 +1083,7 @@ export const storefrontZhCN = {
   "storefront.cart.rejectedUnavailableLabel": "当前不可购买",
   "storefront.cart.rows": "商品项",
   "storefront.cart.stockBadge": "库存 {stock}",
-  "storefront.cart.summaryLoading": "正在加载浏览器中保存的购物车...",
+  "storefront.cart.summaryLoading": "正在加载当前账号的购物车...",
   "storefront.cart.summaryNote":
     "购物车不会锁定库存；库存和数量只会在确认下单时重新检查并锁定。",
   "storefront.cart.summaryNoteBlocked":
@@ -1093,7 +1102,7 @@ export const storefrontZhCN = {
   "storefront.cart.stockLimitTitle": "已达到可用库存上限",
   "storefront.cart.loginForPrices": "登录",
   "storefront.cart.priceLoginDescription":
-    "这些 SKU 已保存在当前浏览器中，但购物车需要在登录或启用专业客户后才能读取对应价格。",
+    "请先登录或申请专业客户权限，再添加商品并查看对应价格。",
   "storefront.cart.priceLoginTitle": "登录后查看专业客户价格",
   "storefront.cart.requestProfessionalAccess": "申请权限",
   "storefront.cart.unresolvedDescription": "请刷新目录，或重新添加当前可用商品。",
@@ -1257,7 +1266,7 @@ export const storefrontZhCN = {
   "storefront.checkout.submit.button.success": "订单已提交",
   "storefront.checkout.submit.cartEmptyReason":
     "购物车为空：请至少添加一个商品后再确认订单。",
-  "storefront.checkout.submit.cartLoadingReason": "正在加载浏览器中保存的购物车...",
+  "storefront.checkout.submit.cartLoadingReason": "正在加载当前账号的购物车...",
   "storefront.checkout.submit.defaultDisabled": "当前无法结账。",
   "storefront.checkout.submit.formMissing": "未找到结账表单。请刷新页面后重试。",
   "storefront.checkout.submit.idleDisabled": "当前无法结账。",
@@ -1350,6 +1359,8 @@ export const storefrontZhCN = {
   "storefront.product.purchase.orderNow": "立即下单",
   "storefront.product.purchase.orderNowAria": "立即下单 {quantity} 件 {name}",
   "storefront.product.purchase.unavailableTitle": "暂不可购买",
+  "storefront.product.card.loginToAdd": "登录",
+  "storefront.product.card.loginToAddAria": "登录后将 {name} 加入购物车。",
   "storefront.product.restock.aria": "{name} 补货后提醒我",
   "storefront.product.restock.detailDescription":
     "该 SKU 当前因库存或起订量不足暂不可买。保存提醒后，补货可用时再处理。",

@@ -18,7 +18,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
-import { clearStoredCart } from "./cart-state";
 
 export type StoreAccountDropdownProps = {
   access: StoreHeaderAccountAccess;
@@ -44,7 +43,6 @@ export function StoreAccountDropdown({
   staffLabel,
 }: StoreAccountDropdownProps) {
   function handleSignOut() {
-    clearStoredCart();
     onSignOut?.();
   }
 

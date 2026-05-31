@@ -68,11 +68,13 @@ type CartCatalogProviderProps = {
 };
 
 const CART_STORAGE_KEY = "partspro.cart.v1";
+const CART_STORAGE_OWNER_PREFIX = `${CART_STORAGE_KEY}:user:`;
 const CART_CHANGED_EVENT = "partspro-cart-changed";
 const EMPTY_CART_ITEMS: CartItem[] = [];
 const CartCatalogContext = React.createContext<readonly PartProduct[]>(products);
 
 const cartSnapshotCache = new Map<string, CartItem[]>();
+let activeCartStorageOwner: string | null = null;
 
 export function CartCatalogProvider({ children, products }: CartCatalogProviderProps) {
   const catalog = React.useMemo(() => products.map(normalizeCatalogProduct), [products]);
@@ -248,6 +250,12 @@ export function clearStoredCart() {
   }
 
   try {
+    const storageKey = currentCartStorageKey();
+
+    if (storageKey) {
+      window.localStorage.removeItem(storageKey);
+    }
+
     window.localStorage.removeItem(CART_STORAGE_KEY);
     resetCartSnapshotCache("", "", true, EMPTY_CART_ITEMS);
     resetCartSnapshotCache("", "", false, EMPTY_CART_ITEMS, { preserveExisting: true });
@@ -257,6 +265,24 @@ export function clearStoredCart() {
   } catch {
     return false;
   }
+}
+
+export function setCartStorageOwner(userId: string | null) {
+  if (!isBrowser()) {
+    return false;
+  }
+
+  const nextOwner = normalizeCartStorageOwner(userId);
+
+  if (activeCartStorageOwner === nextOwner) {
+    return true;
+  }
+
+  activeCartStorageOwner = nextOwner;
+  cartSnapshotCache.clear();
+  window.dispatchEvent(new Event(CART_CHANGED_EVENT));
+
+  return true;
 }
 
 export function useStoredCartItems({ preserveUnknown = true }: NormalizeCartOptions = {}) {
@@ -420,14 +446,19 @@ function writeStoredCartItems(
   const normalizedItems = normalizeCartItems(items, catalog, options);
   const catalogKey = cartCatalogKey(catalog);
   const preserveUnknown = Boolean(options.preserveUnknown);
+  const storageKey = currentCartStorageKey();
+
+  if (!storageKey) {
+    return false;
+  }
 
   try {
     if (normalizedItems.length === 0) {
-      window.localStorage.removeItem(CART_STORAGE_KEY);
+      window.localStorage.removeItem(storageKey);
       resetCartSnapshotCache("", catalogKey, preserveUnknown, EMPTY_CART_ITEMS);
     } else {
       const serializedItems = JSON.stringify(normalizedItems);
-      window.localStorage.setItem(CART_STORAGE_KEY, serializedItems);
+      window.localStorage.setItem(storageKey, serializedItems);
       resetCartSnapshotCache(serializedItems, catalogKey, preserveUnknown, normalizedItems);
     }
 
@@ -440,8 +471,14 @@ function writeStoredCartItems(
 }
 
 function readStoredCartRaw() {
+  const storageKey = currentCartStorageKey();
+
+  if (!storageKey) {
+    return "";
+  }
+
   try {
-    return window.localStorage.getItem(CART_STORAGE_KEY) ?? "";
+    return window.localStorage.getItem(storageKey) ?? "";
   } catch {
     return "";
   }
@@ -484,6 +521,18 @@ function subscribeToCart(onStoreChange: () => void) {
     window.removeEventListener("storage", onStoreChange);
     window.removeEventListener(CART_CHANGED_EVENT, onStoreChange);
   };
+}
+
+function currentCartStorageKey() {
+  return activeCartStorageOwner
+    ? `${CART_STORAGE_OWNER_PREFIX}${activeCartStorageOwner}`
+    : null;
+}
+
+function normalizeCartStorageOwner(userId: string | null) {
+  const trimmed = userId?.trim();
+
+  return trimmed ? trimmed : null;
 }
 
 function getServerCartSnapshot() {

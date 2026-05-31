@@ -53,8 +53,12 @@ export async function GET() {
       error instanceof RepositoryWriteError &&
       (error.status === 401 || error.status === 404)
     ) {
-      return localCartFallbackResponse(
-        error.status === 401 ? "login_required" : "customer_required"
+      return apiError(
+        error.status,
+        error.status === 401 ? "LOGIN_REQUIRED" : "CUSTOMER_REQUIRED",
+        error.status === 401
+          ? "Login is required before using the remote cart."
+          : "A customer account is required before using the remote cart."
       );
     }
 
@@ -151,18 +155,6 @@ function cartRouteError(error: unknown, fallbackCode: string) {
   }
 
   return apiError(500, fallbackCode, "Customer cart is temporarily unavailable.");
-}
-
-function localCartFallbackResponse(reason: "customer_required" | "login_required") {
-  return NextResponse.json({
-    data: {
-      items: [],
-    },
-    meta: {
-      persistence: "local_cart",
-      reason,
-    },
-  });
 }
 
 function toCartItemDto(item: {

@@ -10,6 +10,7 @@ import {
   readClientStoredCartItems,
   replaceStoredCartItems,
   serializeCartItems,
+  setCartStorageOwner,
   useStoredCartItems,
 } from "./cart-state";
 import { useI18n } from "./i18n-provider";
@@ -53,9 +54,8 @@ export function CartSyncBridge() {
         refreshTimeout = null;
       }
 
-      lastSyncedSnapshotRef.current = serializeCartItems(
-        readClientStoredCartItems({ preserveUnknown: true })
-      );
+      setCartStorageOwner(null);
+      lastSyncedSnapshotRef.current = serializeCartItems([]);
       if (!disposed) {
         setSyncEnabled(false);
         setRemoteLoaded(true);
@@ -174,6 +174,8 @@ export function CartSyncBridge() {
         return;
       }
 
+      setCartStorageOwner(userId);
+
       try {
         const result = await readRemoteCart(controller.signal);
 
@@ -186,43 +188,14 @@ export function CartSyncBridge() {
           return;
         }
 
-        const remoteItems = result.items;
-        const localStoredItems = readClientStoredCartItems({ preserveUnknown: true });
-        const mergedItems = mergeCartItemCollections(
-          localStoredItems,
-          remoteItems
-        );
-        const localSnapshot = serializeCartItems(localStoredItems);
-        const remoteSnapshot = serializeCartItems(remoteItems);
-        const mergedSnapshot = serializeCartItems(mergedItems);
-
-        if (localSnapshot !== mergedSnapshot) {
-          applyingRemoteRef.current = true;
-
-          if (!replaceStoredCartItems(mergedItems, { preserveUnknown: true })) {
-            applyingRemoteRef.current = false;
-            enterLocalMode();
-            return;
-          }
-
-          queueMicrotask(() => {
-            applyingRemoteRef.current = false;
-          });
+        if (!applyRemoteCartItems(result.items)) {
+          return;
         }
 
-        lastSyncedSnapshotRef.current = mergedSnapshot;
         if (!disposed) {
           setSyncEnabled(true);
           setRemoteLoaded(true);
           subscribeToRemoteCart(userId);
-        }
-
-        if (remoteSnapshot !== mergedSnapshot) {
-          const result = await writeRemoteCart(mergedItems, controller.signal);
-
-          if (result === "local") {
-            enterLocalMode();
-          }
         }
       } catch {
         if (!controller.signal.aborted) {

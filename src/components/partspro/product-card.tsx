@@ -9,6 +9,7 @@ import {
   Boxes,
   CheckCircle2,
   Clock,
+  LogIn,
   Lock,
   PackageCheck,
   ShoppingCart,
@@ -82,10 +83,12 @@ export const ProductCard = memo(function ProductCard({
     product.stock <= 0 ||
     product.stock < Math.max(1, product.moq);
   const canAddToCart = hasOpenPrice && hasEffectivePrice && hasSellableStock;
+  const isLoginRequired = priceGateReason === "login_required";
   const productPath = hrefWithAssistedCompanyId(
     `/prodotto/${encodeURIComponent(product.sku)}`,
     assistedCompanyId
   );
+  const loginHref = `/login?${new URLSearchParams({ next: productPath }).toString()}`;
   const stockDescriptionId = `stock-${product.sku.replace(/[^a-zA-Z0-9]/g, "-")}`;
   const imageAlt = product.imageAlt ?? product.name;
   const remainingModels = Math.max(product.compatibleWith.length - 2, 0);
@@ -372,6 +375,29 @@ export const ProductCard = memo(function ProductCard({
                       ? tx(t, "storefront.product.card.addFailed", "Riprova")
                       : tx(t, "storefront.product.card.add", "Aggiungi")}
                   </span>
+                </Button>
+              ) : isLoginRequired && hasSellableStock ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="size-8 min-w-0 shrink-0 bg-white px-0 text-primary sm:size-auto sm:min-w-[96px] sm:px-2"
+                  asChild
+                  aria-describedby={stockDescriptionId}
+                >
+                  <Link
+                    href={loginHref}
+                    aria-label={txFormat(
+                      t,
+                      "storefront.product.card.loginToAddAria",
+                      "Accedi per aggiungere {name} al carrello.",
+                      { name: product.name }
+                    )}
+                  >
+                    <LogIn className="size-3.5 sm:size-4" />
+                    <span className="sr-only min-w-0 truncate sm:not-sr-only">
+                      {tx(t, "storefront.product.card.loginToAdd", "Accedi")}
+                    </span>
+                  </Link>
                 </Button>
               ) : canRequestRestock ? (
                 <ProductRestockReminderButton

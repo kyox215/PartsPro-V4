@@ -443,7 +443,7 @@ function getCartDisabledReason(
   lineCount: number
 ) {
   if (!isHydrated) {
-    return tx(t, "storefront.checkout.submit.cartLoadingReason", "Caricamento carrello salvato nel browser...");
+    return tx(t, "storefront.checkout.submit.cartLoadingReason", "Caricamento carrello del tuo account...");
   }
 
   if (itemCount === 0) {

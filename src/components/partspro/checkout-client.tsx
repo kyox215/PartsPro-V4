@@ -1897,7 +1897,7 @@ function buildCheckoutBlockers({
 
   if (!cart.isHydrated) {
     blockers.push({
-      message: tx(t, "storefront.checkout.submit.cartLoadingReason", "Caricamento carrello salvato nel browser..."),
+      message: tx(t, "storefront.checkout.submit.cartLoadingReason", "Caricamento carrello del tuo account..."),
       title: tx(t, "storefront.cart.loadingTitle", "Caricamento carrello"),
       tone: "neutral",
     });
