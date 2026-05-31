@@ -60,6 +60,7 @@ type AdminOverviewPanelValue =
   | "orders"
   | "catalog"
   | "timeline"
+  | "accounts"
   | "settings";
 
 type AdminOverviewDashboardProps = {

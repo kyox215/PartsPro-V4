@@ -198,6 +198,7 @@ export function AdminAccountsPanel() {
   const [roleTemplates, setRoleTemplates] = React.useState<RoleTemplate[]>([]);
   const [currentUserId, setCurrentUserId] = React.useState<string | null>(null);
   const [currentPermissions, setCurrentPermissions] = React.useState<string[]>([]);
+  const [permissionsLoaded, setPermissionsLoaded] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [appliedQuery, setAppliedQuery] = React.useState("");
   const [page, setPage] = React.useState(0);
@@ -215,9 +216,27 @@ export function AdminAccountsPanel() {
   );
   const canManageCustomerLevel = currentPermissionSet.has("customers.manage_level");
   const canManageCustomerStatus = currentPermissionSet.has("customers.classify");
+  const canReadCustomerAccounts = currentPermissionSet.has("customers.read");
+  const canReadEmployeeAccounts =
+    currentPermissionSet.has("employees.read") ||
+    currentPermissionSet.has("employees.manage_permissions");
+  const canManageEmployeeAccounts = currentPermissionSet.has(
+    "employees.manage_permissions"
+  );
+  const canReadSelectedAccountType =
+    accountType === "employee" ? canReadEmployeeAccounts : canReadCustomerAccounts;
+  const visibleAccountTabCount =
+    (canReadCustomerAccounts ? 1 : 0) + (canReadEmployeeAccounts ? 1 : 0);
 
   const refreshAccounts = React.useCallback(
     async (signal?: AbortSignal) => {
+      if (!permissionsLoaded || !canReadSelectedAccountType) {
+        setAccounts([]);
+        setTotal(0);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
 
       try {
@@ -239,7 +258,7 @@ export function AdminAccountsPanel() {
         }
       }
     },
-    [accountType, appliedQuery, page]
+    [accountType, appliedQuery, canReadSelectedAccountType, page, permissionsLoaded]
   );
 
   React.useEffect(() => {
@@ -257,18 +276,61 @@ export function AdminAccountsPanel() {
   React.useEffect(() => {
     const controller = new AbortController();
 
-    void Promise.all([fetchCurrentUser(controller.signal), fetchRoleTemplates(controller.signal)])
-      .then(([me, templates]) => {
+    void fetchCurrentUser(controller.signal)
+      .then(async (me) => {
+        const canReadEmployees =
+          me.permissions.includes("employees.read") ||
+          me.permissions.includes("employees.manage_permissions");
+        const templates = canReadEmployees
+          ? await fetchRoleTemplates(controller.signal)
+          : [];
+
         if (!controller.signal.aborted) {
           setCurrentUserId(me.userId);
           setCurrentPermissions(me.permissions);
           setRoleTemplates(templates);
+          setPermissionsLoaded(true);
         }
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setPermissionsLoaded(true);
+        }
+      });
 
     return () => controller.abort();
   }, []);
+
+  React.useEffect(() => {
+    if (!permissionsLoaded || canReadSelectedAccountType) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const nextType = canReadCustomerAccounts
+        ? "customer"
+        : canReadEmployeeAccounts
+          ? "employee"
+          : null;
+
+      if (nextType && nextType !== accountType) {
+        setAccountType(nextType);
+      }
+
+      setPage(0);
+      setDetail(null);
+      setAccounts([]);
+      setTotal(0);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    accountType,
+    canReadCustomerAccounts,
+    canReadEmployeeAccounts,
+    canReadSelectedAccountType,
+    permissionsLoaded,
+  ]);
 
   function applySearch() {
     const value = query.trim();
@@ -400,7 +462,7 @@ export function AdminAccountsPanel() {
         <Button
           variant="outline"
           className="bg-white"
-          disabled={loading}
+          disabled={loading || !permissionsLoaded || !canReadSelectedAccountType}
           onClick={() => void refreshAccounts()}
         >
           <RefreshCcw className={cn("size-4", loading && "animate-spin")} />
@@ -413,23 +475,43 @@ export function AdminAccountsPanel() {
       <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
         <div className="grid gap-3 xl:grid-cols-[360px_minmax(0,1fr)]">
           <div className="min-w-0 space-y-3">
-            <Tabs
-              value={accountType}
-              onValueChange={(value) => {
-                setAccountType(value === "employee" ? "employee" : "customer");
-                setPage(0);
-                setDetail(null);
-              }}
-            >
-              <TabsList className="grid h-9 grid-cols-2 rounded-md bg-slate-100 p-1">
-                <TabsTrigger value="customer" className="h-7 rounded text-xs font-bold">
-                  客户账号
-                </TabsTrigger>
-                <TabsTrigger value="employee" className="h-7 rounded text-xs font-bold">
-                  员工账号
-                </TabsTrigger>
-              </TabsList>
-            </Tabs>
+            {permissionsLoaded && visibleAccountTabCount > 0 ? (
+              <Tabs
+                value={accountType}
+                onValueChange={(value) => {
+                  const nextType = value === "employee" ? "employee" : "customer";
+
+                  if (
+                    (nextType === "employee" && !canReadEmployeeAccounts) ||
+                    (nextType === "customer" && !canReadCustomerAccounts)
+                  ) {
+                    return;
+                  }
+
+                  setAccountType(nextType);
+                  setPage(0);
+                  setDetail(null);
+                }}
+              >
+                <TabsList
+                  className={cn(
+                    "grid h-9 rounded-md bg-slate-100 p-1",
+                    visibleAccountTabCount > 1 ? "grid-cols-2" : "grid-cols-1"
+                  )}
+                >
+                  {canReadCustomerAccounts ? (
+                    <TabsTrigger value="customer" className="h-7 rounded text-xs font-bold">
+                      客户账号
+                    </TabsTrigger>
+                  ) : null}
+                  {canReadEmployeeAccounts ? (
+                    <TabsTrigger value="employee" className="h-7 rounded text-xs font-bold">
+                      员工账号
+                    </TabsTrigger>
+                  ) : null}
+                </TabsList>
+              </Tabs>
+            ) : null}
 
             <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
               <div className="relative min-w-0">
@@ -442,18 +524,28 @@ export function AdminAccountsPanel() {
                       applySearch();
                     }
                   }}
+                  disabled={!permissionsLoaded || !canReadSelectedAccountType}
                   className="h-9 bg-white pl-9"
                   placeholder="搜索邮箱、姓名或角色"
                 />
               </div>
-              <Button size="sm" className="h-9" onClick={applySearch}>
+              <Button
+                size="sm"
+                className="h-9"
+                disabled={!permissionsLoaded || !canReadSelectedAccountType}
+                onClick={applySearch}
+              >
                 搜索
               </Button>
             </div>
 
             <div className="max-h-[640px] space-y-2 overflow-y-auto pr-1">
-              {loading ? (
+              {!permissionsLoaded || loading ? (
                 <AccountListSkeleton />
+              ) : !canReadSelectedAccountType ? (
+                <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+                  当前账号没有读取{accountType === "employee" ? "员工" : "客户"}账号的权限。
+                </div>
               ) : accounts.length > 0 ? (
                 accounts.map((account) => (
                   <AccountListItem
@@ -476,7 +568,7 @@ export function AdminAccountsPanel() {
                 variant="outline"
                 size="sm"
                 className="bg-white"
-                disabled={loading || page <= 0}
+                disabled={loading || !canReadSelectedAccountType || page <= 0}
                 onClick={() => setPage((current) => Math.max(0, current - 1))}
               >
                 <ChevronLeft className="size-4" />
@@ -489,7 +581,7 @@ export function AdminAccountsPanel() {
                 variant="outline"
                 size="sm"
                 className="bg-white"
-                disabled={loading || page + 1 >= totalPages}
+                disabled={loading || !canReadSelectedAccountType || page + 1 >= totalPages}
                 onClick={() => setPage((current) => current + 1)}
               >
                 下一页
@@ -502,6 +594,7 @@ export function AdminAccountsPanel() {
             <AccountDetailPane
               canManageCustomerLevel={canManageCustomerLevel}
               canManageCustomerStatus={canManageCustomerStatus}
+              canManageEmployeeAccounts={canManageEmployeeAccounts}
               currentUserId={currentUserId}
               detail={detail}
               loading={detailLoading}
@@ -525,6 +618,7 @@ export function AdminAccountsPanel() {
             <AccountDetailPane
               canManageCustomerLevel={canManageCustomerLevel}
               canManageCustomerStatus={canManageCustomerStatus}
+              canManageEmployeeAccounts={canManageEmployeeAccounts}
               currentUserId={currentUserId}
               detail={detail}
               loading={detailLoading}
@@ -619,6 +713,7 @@ function AccountListItem({
 function AccountDetailPane({
   canManageCustomerLevel,
   canManageCustomerStatus,
+  canManageEmployeeAccounts,
   currentUserId,
   detail,
   loading,
@@ -627,6 +722,7 @@ function AccountDetailPane({
 }: {
   canManageCustomerLevel: boolean;
   canManageCustomerStatus: boolean;
+  canManageEmployeeAccounts: boolean;
   currentUserId: string | null;
   detail: AccountDetail | null;
   loading: boolean;
@@ -740,7 +836,7 @@ function AccountDetailPane({
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        {account.accountType === "customer" ? (
+        {account.accountType === "customer" && canManageEmployeeAccounts ? (
           <Button
             size="sm"
             disabled={isSelf}
@@ -749,7 +845,7 @@ function AccountDetailPane({
             <ArrowLeftRight className="size-4" />
             转为员工
           </Button>
-        ) : (
+        ) : account.accountType === "employee" && canManageEmployeeAccounts ? (
           <>
             <Button
               size="sm"
@@ -772,8 +868,12 @@ function AccountDetailPane({
               转为客户
             </Button>
           </>
-        )}
-        {isSelf ? (
+        ) : account.accountType === "employee" ? (
+          <span className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-500">
+            员工账号为只读
+          </span>
+        ) : null}
+        {isSelf && canManageEmployeeAccounts ? (
           <span className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-800">
             <AlertTriangle className="size-3.5" />
             当前账号禁止自我降级
@@ -823,7 +923,9 @@ function AccountDetailPane({
         )}
       </DetailSection>
 
-      <DetailSection title="账号成员">
+      <DetailSection
+        title={account.accountType === "employee" ? "历史客户成员关系" : "账号成员"}
+      >
         {detail.memberships.length > 0 ? (
           <div className="space-y-2">
             {detail.memberships.map((membership) => (
@@ -847,6 +949,9 @@ function AccountDetailPane({
                   <span>成员角色：{memberRoleLabel(membership.memberRole)}</span>
                   {membership.roleTemplate ? (
                     <span>员工角色：{roleTemplateLabel(text, membership.roleTemplate)}</span>
+                  ) : null}
+                  {membership.status === "disabled" ? (
+                    <span>旧客户成员关系已停用，不代表员工登录被禁用</span>
                   ) : null}
                 </div>
               </div>
@@ -1731,7 +1836,7 @@ function memberRoleLabel(value: string) {
 
 function memberStatusLabel(value: string) {
   if (value === "disabled") {
-    return "已禁用";
+    return "已停用成员关系";
   }
 
   if (value === "invited") {

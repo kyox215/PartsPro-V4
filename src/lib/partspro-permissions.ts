@@ -1,4 +1,5 @@
 export const adminPanelPermissions = {
+  accounts: "panel.accounts",
   catalog: "panel.catalog",
   inventory: "panel.inventory",
   orders: "panel.orders",
@@ -11,6 +12,7 @@ export const CUSTOMER_MANAGE_LEVEL_PERMISSION = "customers.manage_level";
 
 export const adminPermissions = [
   "panel.orders",
+  "panel.accounts",
   "panel.catalog",
   "panel.inventory",
   "panel.settings",
@@ -61,7 +63,6 @@ export const roleTemplatePermissions: Record<string, Set<string>> = {
     "panel.catalog",
     "orders.read",
     "customers.read",
-    "employees.read",
     "products.read_admin",
     "product.read_admin",
   ]),
@@ -108,14 +109,12 @@ export const roleTemplatePermissions: Record<string, Set<string>> = {
     "customers.read",
     "customers.classify",
     CUSTOMER_MANAGE_LEVEL_PERMISSION,
-    "employees.read",
   ]),
   sales_support: new Set([
     "panel.orders",
     "panel.catalog",
     "orders.read",
     "customers.read",
-    "employees.read",
     "products.read_admin",
     "product.read_admin",
   ]),
@@ -134,16 +133,33 @@ export function permissionsForRoleTemplate(role: string | null | undefined) {
 
 export function visiblePanelsForPermissions(permissions: Iterable<string>) {
   const permissionSet = new Set(permissions);
+  const panels = new Set<string>();
 
-  return Object.entries(adminPanelPermissions)
-    .filter(
-      ([panel, permission]) =>
-        permissionSet.has(permission) ||
-        (panel === "settings" &&
-          (permissionSet.has("employees.manage_permissions") ||
-            permissionSet.has("customers.read") ||
-            permissionSet.has("customers.classify") ||
-            permissionSet.has(CUSTOMER_MANAGE_LEVEL_PERMISSION)))
-    )
-    .map(([panel]) => panel);
+  for (const [panel, permission] of Object.entries(adminPanelPermissions)) {
+    if (panel === "accounts" || panel === "settings") {
+      continue;
+    }
+
+    if (permissionSet.has(permission)) {
+      panels.add(panel);
+    }
+  }
+
+  if (
+    permissionSet.has("panel.accounts") ||
+    permissionSet.has("customers.read") ||
+    permissionSet.has("employees.read") ||
+    permissionSet.has("employees.manage_permissions")
+  ) {
+    panels.add("accounts");
+  }
+
+  if (
+    permissionSet.has("panel.settings") ||
+    permissionSet.has("employees.manage_permissions")
+  ) {
+    panels.add("settings");
+  }
+
+  return [...panels];
 }

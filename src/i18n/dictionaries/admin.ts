@@ -68,6 +68,7 @@ export const adminDictionaries = {
         dashboard: "仪表盘",
         orders: "订单",
         catalog: "商品",
+        accounts: "账号管理",
         warehouse: "仓库",
         marketing: "营销",
         finance: "财务",
@@ -89,6 +90,7 @@ export const adminDictionaries = {
         orders: "订单",
         catalog: "商品",
         timeline: "时间线",
+        accounts: "账号管理",
         settings: "设置",
       },
       permissions: {
@@ -256,6 +258,7 @@ export const adminDictionaries = {
         },
         permissionLabels: {
           "panel.orders": "订单面板",
+          "panel.accounts": "账号管理面板",
           "panel.catalog": "商品面板",
           "panel.inventory": "库存面板",
           "panel.settings": "设置面板",
@@ -284,6 +287,7 @@ export const adminDictionaries = {
         },
         permissionDescriptions: {
           "panel.orders": "可以打开后台订单面板。",
+          "panel.accounts": "可以打开统一账号管理面板。",
           "panel.catalog": "可以打开后台商品面板。",
           "panel.inventory": "可以打开库存运营面板。",
           "panel.settings": "可以打开设置和权限面板。",
@@ -1145,6 +1149,7 @@ export const adminDictionaries = {
         dashboard: "Dashboard",
         orders: "Ordini",
         catalog: "Prodotti",
+        accounts: "Gestione account",
         warehouse: "Magazzino",
         marketing: "Marketing",
         finance: "Finanza",
@@ -1167,6 +1172,7 @@ export const adminDictionaries = {
         orders: "Ordini",
         catalog: "Prodotti",
         timeline: "Timeline",
+        accounts: "Gestione account",
         settings: "Impostazioni",
       },
       permissions: {
@@ -1336,6 +1342,7 @@ export const adminDictionaries = {
         },
         permissionLabels: {
           "panel.orders": "Pannello ordini",
+          "panel.accounts": "Pannello account",
           "panel.catalog": "Pannello catalogo",
           "panel.inventory": "Pannello inventario",
           "panel.settings": "Pannello impostazioni",
@@ -1364,6 +1371,7 @@ export const adminDictionaries = {
         },
         permissionDescriptions: {
           "panel.orders": "Consente di aprire il pannello ordini admin.",
+          "panel.accounts": "Consente di aprire la gestione account unificata.",
           "panel.catalog": "Consente di aprire il catalogo admin.",
           "panel.inventory": "Consente di aprire le operazioni inventario.",
           "panel.settings": "Consente di aprire impostazioni e permessi.",

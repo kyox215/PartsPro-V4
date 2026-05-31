@@ -16,6 +16,7 @@ import {
   Search,
   Settings,
   User,
+  UsersRound,
   Warehouse,
   type LucideIcon,
 } from "lucide-react";
@@ -42,6 +43,7 @@ type AdminPanelValue =
   | "orders"
   | "catalog"
   | "timeline"
+  | "accounts"
   | "settings";
 
 type AdminNavItem = {
@@ -55,6 +57,7 @@ const adminPanelValues = [
   "orders",
   "catalog",
   "timeline",
+  "accounts",
   "settings",
 ] as const satisfies readonly AdminPanelValue[];
 
@@ -62,6 +65,7 @@ const navItems = [
   { labelKey: "dashboard", icon: Home, panel: "overview" },
   { labelKey: "orders", icon: ClipboardList, panel: "orders" },
   { labelKey: "catalog", icon: Package, panel: "catalog" },
+  { labelKey: "accounts", icon: UsersRound, panel: "accounts" },
   { labelKey: "warehouse", icon: Warehouse },
   { labelKey: "marketing", icon: Bell, panel: "timeline" },
   { labelKey: "finance", icon: BarChart3 },
@@ -94,6 +98,13 @@ const AdminSettingsPanel = dynamic(
   () =>
     import("./admin-settings-panel").then(
       (module) => module.AdminSettingsPanel
+    ),
+  { loading: () => <AdminPanelLoading /> }
+);
+const AdminAccountsPanel = dynamic(
+  () =>
+    import("./admin-accounts-panel").then(
+      (module) => module.AdminAccountsPanel
     ),
   { loading: () => <AdminPanelLoading /> }
 );
@@ -223,6 +234,9 @@ export function AdminDashboard() {
               </TabsContent>
               <TabsContent value="timeline" className="order-4 mt-0 min-w-0">
                 <AdminActivityTimeline />
+              </TabsContent>
+              <TabsContent value="accounts" className="order-4 mt-0 min-w-0">
+                <AdminAccountsPanel />
               </TabsContent>
               <TabsContent value="settings" className="order-4 mt-0 min-w-0">
                 <AdminSettingsPanel />
