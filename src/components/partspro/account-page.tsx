@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -59,6 +60,8 @@ type AccountPageProps = {
 };
 
 type AccountOrderDetailLine = {
+  imageAlt?: string;
+  imageUrl?: string;
   id: string;
   lineTotal: number;
   name?: string;
@@ -507,7 +510,9 @@ export function AccountPage({
                 {orderDetail?.number ?? orderDetail?.id ?? "订单详情"}
               </DialogTitle>
               <DialogDescription>
-                {orderDetail?.createdAt ?? "订单行、状态和操作记录摘要。"}
+                {orderDetail?.createdAt
+                  ? formatAccountOrderDateTime(orderDetail.createdAt)
+                  : "订单行、状态和操作记录摘要。"}
               </DialogDescription>
             </DialogHeader>
             <AccountOrderDetailPanel
@@ -586,15 +591,27 @@ function AccountOrderDetailPanel({
         ) : (
           <div className="divide-y divide-slate-100">
             {lines.map((line) => (
-              <div key={line.id} className="grid gap-2 px-3 py-2 text-sm sm:grid-cols-[minmax(0,1fr)_auto]">
-                <div className="min-w-0">
-                  <div className="truncate font-black">{line.productName ?? line.name ?? line.sku}</div>
-                  <div className="mt-1 font-mono text-xs text-slate-500">{line.sku}</div>
+              <div
+                key={line.id}
+                className="grid grid-cols-[56px_minmax(0,1fr)] gap-2.5 px-3 py-2.5 text-sm sm:grid-cols-[64px_minmax(0,1fr)_auto] sm:items-center"
+              >
+                <AccountOrderLineImage line={line} />
+                <div className="min-w-0 self-center">
+                  <div className="line-clamp-2 break-words font-black leading-5">
+                    {line.productName ?? line.name ?? line.sku}
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-slate-500">
+                    <span className="font-mono">{line.sku}</span>
+                    <span>{line.quantity} × {formatEuro(line.unitPrice)}</span>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <div className="font-black">{formatEuro(line.lineTotal)}</div>
-                  <div className="text-xs font-semibold text-slate-500">
-                    {line.quantity} × {formatEuro(line.unitPrice)}
+                <div className="col-start-2 flex items-center justify-between gap-2 text-right sm:col-start-auto sm:block">
+                  <span className="text-xs font-bold text-slate-400 sm:hidden">小计</span>
+                  <div>
+                    <div className="font-black">{formatEuro(line.lineTotal)}</div>
+                    <div className="hidden text-xs font-semibold text-slate-500 sm:block">
+                      {line.quantity} × {formatEuro(line.unitPrice)}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -615,18 +632,68 @@ function AccountOrderDetailPanel({
           <ol className="divide-y divide-slate-100">
             {events.map((event) => (
               <li key={event.id} className="px-3 py-2 text-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="font-black">{event.action ?? event.eventType ?? "事件"}</span>
-                  <span className="text-xs text-slate-500">{event.createdAt}</span>
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                  <span className="font-black">{orderEventLabel(event)}</span>
+                  <span className="text-xs font-semibold text-slate-500">
+                    {formatAccountOrderDateTime(event.createdAt)}
+                  </span>
                 </div>
                 {event.note ? (
-                  <p className="mt-1 text-xs font-semibold text-slate-500">{event.note}</p>
+                  <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+                    {formatOrderEventNote(event.note)}
+                  </p>
                 ) : null}
               </li>
             ))}
           </ol>
         )}
       </section>
+    </div>
+  );
+}
+
+function AccountOrderLineImage({ line }: { line: AccountOrderDetailLine }) {
+  const imageAlt = line.imageAlt || line.productName || line.name || line.sku;
+  const fallbackImageUrl = React.useMemo(
+    () => getExternalOrderLineImageFallbackUrl(line.imageUrl),
+    [line.imageUrl]
+  );
+  const [failedImageUrls, setFailedImageUrls] = React.useState<string[]>([]);
+  const primaryImageUrl = line.imageUrl ?? "";
+  const imageUrl =
+    primaryImageUrl && !failedImageUrls.includes(primaryImageUrl)
+      ? primaryImageUrl
+      : fallbackImageUrl && !failedImageUrls.includes(fallbackImageUrl)
+        ? fallbackImageUrl
+        : "";
+
+  const handleImageError = React.useCallback(() => {
+    setFailedImageUrls((currentUrls) => {
+      if (!imageUrl || currentUrls.includes(imageUrl)) {
+        return currentUrls;
+      }
+
+      return [...currentUrls, imageUrl];
+    });
+  }, [imageUrl]);
+
+  return (
+    <div className="relative grid size-14 shrink-0 place-items-center overflow-hidden rounded-md border border-slate-200 bg-white sm:size-16">
+      {imageUrl ? (
+        <Image
+          src={imageUrl}
+          alt={imageAlt}
+          fill
+          sizes="(min-width: 640px) 64px, 56px"
+          quality={55}
+          loading="lazy"
+          decoding="async"
+          className="object-contain p-1"
+          onError={handleImageError}
+        />
+      ) : (
+        <Package className="size-5 text-slate-300" />
+      )}
     </div>
   );
 }
@@ -1147,14 +1214,78 @@ function isTerminalOrderStatus(status: string) {
 
 function paymentStatusLabel(status: string) {
   const labels: Record<string, string> = {
+    authorized: "已授权",
     bank_waiting: "等待银行",
     failed: "失败",
     paid: "已付款",
     pending: "待付款",
+    refunded: "已退款",
+    unpaid: "待收款",
     waiting_bank: "等待银行",
   };
 
   return labels[status] ?? status;
+}
+
+function orderEventLabel(event: AccountOrderDetailEvent) {
+  const value = event.action || event.eventType || "";
+  const labels: Record<string, string> = {
+    inventory_reserved: "库存已锁定",
+    inventory_released: "库存已释放",
+    order_cancelled: "订单已取消",
+    order_completed: "订单已完成",
+    order_created: "订单已创建",
+    order_submitted: "订单已提交",
+    operations_updated: "订单状态已更新",
+    payment_updated: "付款状态已更新",
+    rma_created: "RMA 已创建",
+    shipment_updated: "配送状态已更新",
+    status_updated: "订单状态已更新",
+  };
+
+  return labels[value] ?? "订单动态";
+}
+
+function formatAccountOrderDateTime(value: string) {
+  const timestamp = Date.parse(value);
+
+  if (!Number.isFinite(timestamp)) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("zh-CN", {
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date(timestamp));
+}
+
+function formatOrderEventNote(note: string) {
+  return note
+    .replace(/\bConsegna:\s*/gi, "配送：")
+    .replace(/\bDelivery:\s*/gi, "配送：")
+    .replace(/\bFascia:\s*/gi, "配送时段：")
+    .replace(/\bNote:\s*/gi, "备注：")
+    .replace(/\border_created\b/g, "订单已创建")
+    .replace(/\boperations_updated\b/g, "订单状态已更新")
+    .replace(/\bunpaid\b/g, "待收款")
+    .replace(/\bauthorized\b/g, "已授权")
+    .replace(/\brefunded\b/g, "已退款");
+}
+
+function getExternalOrderLineImageFallbackUrl(imageUrl: string | undefined) {
+  if (!imageUrl) {
+    return "";
+  }
+
+  const imageId = imageUrl.match(/-(\d+)\.(?:png|jpe?g|webp|gif)(?:$|\?)/i)?.[1];
+
+  return imageId
+    ? `https://apiv2.mobilax.fr/v1.0/assets/images/products/id-image/${imageId}?size=bg`
+    : "";
 }
 
 function rmaBadgeClass(status: string) {
