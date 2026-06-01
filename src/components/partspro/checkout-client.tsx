@@ -2081,7 +2081,7 @@ function customerOrderBlocker(
     };
   }
 
-  if (company.customerType !== "wholesale") {
+  if (delegatedCheckout && company.customerType !== "wholesale") {
     return {
       title,
       message: tx(t, "storefront.checkout.customerBlocker.type", "Il cliente deve essere wholesale per l'ordine assistito."),

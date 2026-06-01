@@ -92,9 +92,9 @@ function getCheckoutRuntime(
     return {
       mode: "needs-profile",
       canSubmit: false,
-      title: tx(t, "storefront.checkout.runtime.priceAccessTitle", "Listino da abilitare"),
-      description: tx(t, "storefront.checkout.runtime.priceAccessDescription", "Il checkout richiede un cliente professionale abilitato e un prezzo effettivo valido per ogni SKU."),
-      disabledReason: tx(t, "storefront.checkout.runtime.priceAccessReason", "Checkout disabilitato: il listino cliente non e ancora abilitato."),
+      title: tx(t, "storefront.checkout.runtime.priceAccessTitle", "Dati cliente da completare"),
+      description: tx(t, "storefront.checkout.runtime.priceAccessDescription", "Completa il profilo cliente per vedere il prezzo retail e confermare l'ordine. Il prezzo wholesale resta riservato agli account approvati."),
+      disabledReason: tx(t, "storefront.checkout.runtime.priceAccessReason", "Checkout disabilitato: completa il profilo cliente prima di ordinare."),
       userEmail: account.email ?? undefined,
     };
   }
@@ -116,7 +116,7 @@ function getCheckoutRuntime(
       canSubmit: false,
       title: tx(t, "storefront.checkout.runtime.needsProfileTitle", "Dati cliente da completare"),
       description: tx(t, "storefront.checkout.runtime.needsProfileDescription", "Completa dati fiscali, contatto, fatturazione e spedizione prima di confermare l'ordine."),
-      disabledReason: tx(t, "storefront.checkout.runtime.needsProfileReason", "Checkout disabilitato: completa dati cliente e abilitazione professionale."),
+      disabledReason: tx(t, "storefront.checkout.runtime.needsProfileReason", "Checkout disabilitato: completa i dati cliente prima di ordinare."),
       userEmail: account.email ?? undefined,
     };
   }

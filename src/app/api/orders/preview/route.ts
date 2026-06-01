@@ -161,7 +161,11 @@ export async function POST(request: Request) {
           : account.canCheckout;
     const customerIssues = targetCanCheckout && company.status === "approved"
       ? []
-      : customerReadinessIssues(company, customerProfile.data);
+      : customerReadinessIssues(
+          company,
+          customerProfile.data,
+          checkoutMode !== "customer_self"
+        );
 
     if (!targetCanCheckout || company.status !== "approved") {
       return NextResponse.json({
@@ -395,7 +399,8 @@ function resolveCheckoutMode(
 
 function customerReadinessIssues(
   company: CompanyProfile,
-  profile: Awaited<ReturnType<typeof getCurrentCustomerProfile>>["data"]
+  profile: Awaited<ReturnType<typeof getCurrentCustomerProfile>>["data"],
+  requiresWholesale: boolean
 ) {
   const issues: PreviewIssue[] = [];
 
@@ -407,7 +412,7 @@ function customerReadinessIssues(
     });
   }
 
-  if (company.customerType !== "wholesale") {
+  if (requiresWholesale && company.customerType !== "wholesale") {
     issues.push({
       sku: "customer",
       code: "customer_not_orderable",

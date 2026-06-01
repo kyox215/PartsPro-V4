@@ -806,11 +806,16 @@ function AccountDetailPane({
       </div>
 
       {account.accountType === "customer" && detail.customer ? (
-        <div className="grid gap-2 sm:grid-cols-5">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
           <InfoTile
             icon={BadgeCheck}
             label="活跃状态"
             value={customerStatusLabel(detail.customer.status)}
+          />
+          <InfoTile
+            icon={BriefcaseBusiness}
+            label="价格类型"
+            value={customerTypeLabel(detail.customer.customerType)}
           />
           <InfoTile
             icon={Star}
@@ -914,6 +919,7 @@ function AccountDetailPane({
             <div className="grid gap-2 sm:grid-cols-2">
               <DetailLine label="公司/名称" value={detail.customer.name ?? "暂无"} />
               <DetailLine label="活跃状态" value={customerStatusLabel(detail.customer.status)} />
+              <DetailLine label="价格类型" value={customerTypeLabel(detail.customer.customerType)} />
               <DetailLine label="客户等级" value={customerLevelLabel(detail.customer.level)} />
               <DetailLine label="更新时间" value={formatDateTime(detail.customer.updatedAt) ?? "暂无"} />
             </div>
@@ -1539,6 +1545,9 @@ function CustomerAssignmentBadges({ customer }: { customer: AccountCustomer | nu
       <Badge className={customerStatusBadgeClass(customer.status)} variant="outline">
         {customerStatusLabel(customer.status)}
       </Badge>
+      <Badge className="border-sky-200 bg-sky-50 text-sky-700" variant="outline">
+        {customerTypeLabel(customer.customerType)}
+      </Badge>
       <Badge className="border-violet-200 bg-violet-50 text-violet-700" variant="outline">
         {customerLevelLabel(customer.level)}
       </Badge>
@@ -1771,6 +1780,10 @@ function customerStatusLabel(value: string) {
   }
 
   return "待处理";
+}
+
+function customerTypeLabel(value: string) {
+  return value === "wholesale" ? "批发客户" : "零售价客户";
 }
 
 function customerLevelLabel(value: string) {

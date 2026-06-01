@@ -2329,41 +2329,14 @@ export async function updateCurrentCustomerProfile(
   input: AccountCustomerProfileInput
 ): Promise<RepositoryResult<AccountCustomerProfile>> {
   const context = await requireSupabaseContext();
-  let currentProfile = await readCurrentCustomerProfile(context);
-  let customerId = pickString(currentProfile?.raw, ["id"]);
-
-  if (!customerId) {
-    await ensureEmployeeSelfCustomer(context.client);
-    currentProfile = await readCurrentEmployeeSelfProfile(context);
-    customerId = pickString(currentProfile?.raw, ["id"]);
-  }
-
-  if (!customerId) {
-    throw new RepositoryWriteError(
-      403,
-      "CUSTOMER_PROFILE_CUSTOMER_REQUIRED",
-      "The current user is not linked to a customer."
-    );
-  }
-
   const payload = buildAccountCustomerProfilePayload(input);
-  const nextProfileComplete = isAccountCustomerProfilePayloadComplete({
-    ...(currentProfile?.raw ?? {}),
-    ...payload,
+  const { data, error } = await context.client.rpc("update_current_customer_profile", {
+    p_profile: payload,
   });
-
-  payload.profile_completed_at = nextProfileComplete ? new Date().toISOString() : null;
-
-  const { data, error } = await context.client
-    .from("customers")
-    .update(payload)
-    .eq("id", customerId)
-    .select(adminCustomerSelect)
-    .single();
 
   if (error || !isDbRow(data)) {
     throw new RepositoryWriteError(
-      502,
+      error ? supabaseRpcStatus(error) : 502,
       "CUSTOMER_PROFILE_UPDATE_FAILED",
       "Customer profile could not be updated.",
       error ? supabaseErrorDetails(error) : undefined
@@ -5469,22 +5442,6 @@ function buildAccountCustomerProfilePayload(input: AccountCustomerProfileInput) 
   assignStringValue(payload, "shipping_address", input.shippingAddress);
 
   return payload;
-}
-
-function isAccountCustomerProfilePayloadComplete(row: DbRow) {
-  const requiredText = [
-    pickString(row, ["company_name"]),
-    pickString(row, ["contact_name"]),
-    pickString(row, ["email"]),
-    pickString(row, ["phone"]),
-    pickString(row, ["billing_address"]),
-    pickString(row, ["shipping_address"]),
-  ];
-  const hasTaxId = Boolean(
-    pickString(row, ["vat_number"]) || pickString(row, ["fiscal_code"])
-  );
-
-  return requiredText.every(Boolean) && hasTaxId;
 }
 
 function buildCustomerClassificationPayload(input: AdminCustomerClassificationInput) {

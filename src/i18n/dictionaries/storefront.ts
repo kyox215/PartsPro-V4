@@ -504,10 +504,10 @@ export const storefrontItIT = {
     "Checkout disabilitato: completa dati fiscali, contatto e indirizzi nel profilo cliente.",
   "storefront.checkout.runtime.needsProfileTitle": "Dati cliente da completare",
   "storefront.checkout.runtime.priceAccessDescription":
-    "Il checkout richiede un cliente professionale abilitato e un prezzo effettivo valido per ogni SKU.",
+    "Completa il profilo cliente per vedere il prezzo retail e confermare l'ordine. Il prezzo wholesale resta riservato agli account approvati.",
   "storefront.checkout.runtime.priceAccessReason":
-    "Checkout disabilitato: il listino cliente non è ancora abilitato.",
-  "storefront.checkout.runtime.priceAccessTitle": "Listino da abilitare",
+    "Checkout disabilitato: completa il profilo cliente prima di ordinare.",
+  "storefront.checkout.runtime.priceAccessTitle": "Dati cliente da completare",
   "storefront.checkout.runtime.readyBadge": "Supabase attivo",
   "storefront.checkout.runtime.readyDescription":
     "Sessione Supabase attiva. L'ordine viene inviato all'API esistente /api/orders.",
@@ -1280,9 +1280,9 @@ export const storefrontZhCN = {
     "结账已禁用：请在客户资料中补全税务、联系人和地址信息。",
   "storefront.checkout.runtime.needsProfileTitle": "客户资料待补全",
   "storefront.checkout.runtime.priceAccessDescription":
-    "结账需要已启用的专业客户资料，并且每个 SKU 都需要有效价格。",
-  "storefront.checkout.runtime.priceAccessReason": "结账已禁用：客户价目表尚未启用。",
-  "storefront.checkout.runtime.priceAccessTitle": "价目表待启用",
+    "补全客户资料后可查看零售价并下单；批发价仍由后台审核升级后开放。",
+  "storefront.checkout.runtime.priceAccessReason": "结账已禁用：请先补全客户资料。",
+  "storefront.checkout.runtime.priceAccessTitle": "客户资料待补全",
   "storefront.checkout.runtime.readyBadge": "Supabase 已启用",
   "storefront.checkout.runtime.readyDescription":
     "Supabase 会话有效。订单将提交到现有 /api/orders API。",

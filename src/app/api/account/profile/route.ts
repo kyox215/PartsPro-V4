@@ -27,10 +27,6 @@ const profileSchema = z
   .refine((value) => Boolean(value.vatNumber || value.fiscalCode), {
     message: "VAT number or fiscal code is required.",
     path: ["vatNumber"],
-  })
-  .refine((value) => Boolean(value.pec || value.sdi), {
-    message: "PEC or SDI is required for checkout.",
-    path: ["pec"],
   });
 
 export async function GET() {

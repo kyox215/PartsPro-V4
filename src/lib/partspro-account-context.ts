@@ -41,6 +41,7 @@ export type AccountCustomerContext = {
   level: CustomerLevel;
   lifetimeSpendNet: number;
   name: string;
+  profileComplete: boolean;
   profileKind: CustomerProfileKind;
   profileCompletedAt: string | null;
   status: string;
@@ -163,21 +164,20 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
   const employeeSelfCustomer = employeeSelfCustomerRow
     ? toCustomerContext(employeeSelfCustomerRow)
     : null;
+  const customerReadyForCommerce = Boolean(
+    customerContext &&
+      customerContext.status === "active" &&
+      customerContext.assignmentStatus === "assigned" &&
+      isCustomerProfileComplete(customer)
+  );
   const canViewPrices = Boolean(
     isEmployee ||
-      (customerContext &&
-        customerContext.status === "active" &&
-        (customerContext.assignmentStatus === "assigned" ||
-          customerContext.assignmentStatus === "needs_review"))
+      customerReadyForCommerce
   );
   const canCheckout = Boolean(
     accountType === "customer" &&
       !accountSyncError &&
-      customerContext &&
-      customerContext.status === "active" &&
-      customerContext.customerType === "wholesale" &&
-      customerContext.assignmentStatus === "assigned" &&
-      isCustomerProfileComplete(customer)
+      customerReadyForCommerce
   );
   const canEmployeeSelfCheckout = Boolean(
     isEmployee &&
@@ -273,8 +273,9 @@ export function applyAccountPriceToProduct(
       ? account.employeeSelfCustomer?.level ?? "bronze"
       : account.customer?.level ?? "bronze";
   const basePrice = customerType === "wholesale" ? product.price : product.retailPrice;
-  const finalPrice = calculateTierPrice(basePrice, level);
-  const levelDiscountPercent = getTierRule(level).discountRate * 100;
+  const appliesLevelDiscount = customerType === "wholesale";
+  const finalPrice = appliesLevelDiscount ? calculateTierPrice(basePrice, level) : basePrice;
+  const levelDiscountPercent = appliesLevelDiscount ? getTierRule(level).discountRate * 100 : 0;
 
   return {
     ...product,
@@ -283,7 +284,12 @@ export function applyAccountPriceToProduct(
     discountPercent: levelDiscountPercent,
     levelDiscountPercent,
     price: finalPrice,
-    priceSource: levelDiscountPercent > 0 ? "local_customer_level" : "local_base_price",
+    priceSource:
+      customerType === "retail"
+        ? "local_retail_price"
+        : levelDiscountPercent > 0
+          ? "local_customer_level"
+          : "local_base_price",
     priceResolved: true,
     retailPrice: product.retailPrice,
   };
@@ -314,12 +320,12 @@ export function priceVisibilityReason(account: AccountContext) {
     return "customer_suspended";
   }
 
-  if (account.customer.assignmentStatus === "needs_review") {
-    return "customer_needs_assignment";
+  if (!account.customer.profileComplete) {
+    return "customer_profile_required";
   }
 
-  if (account.customer.customerType !== "wholesale") {
-    return "wholesale_required";
+  if (account.customer.assignmentStatus === "needs_review") {
+    return "customer_needs_assignment";
   }
 
   if (account.canViewPrices) {
@@ -439,6 +445,7 @@ function toCustomerContext(row: DbRow): AccountCustomerContext {
     level,
     lifetimeSpendNet: readNumber(row.lifetime_spend_net) ?? 0,
     name: readString(row.company_name) ?? "Cliente PartsPro",
+    profileComplete: isCustomerProfileComplete(row),
     profileKind: normalizeCustomerProfileKind(readString(row.profile_kind)),
     profileCompletedAt: readString(row.profile_completed_at),
     status: readString(row.status) ?? "pending",

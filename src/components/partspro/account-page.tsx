@@ -704,11 +704,11 @@ function AccountProfileNotice({
       <CardContent className="flex flex-col gap-3 p-3 text-sm text-amber-950 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="text-sm font-black">
-            {forceSetup ? "请补全账户资料" : "客户资料审核中"}
+            {forceSetup ? "请补全账户资料" : "客户资料待补全"}
           </div>
           <p className="mt-1 text-xs font-semibold leading-5">
             {isPending
-              ? "账户已注册，请补全资料，工作人员可继续完成审核。"
+              ? "补全后系统会启用零售价客户，可查看零售价并下单；批发价由后台升级。"
               : "补全客户资料后可使用结账、单据和订单管理。"}
           </p>
           {missingFields.length > 0 ? (
