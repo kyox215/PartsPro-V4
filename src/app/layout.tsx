@@ -4,17 +4,26 @@ import { CartSyncBridge } from "@/components/partspro/cart-sync-bridge";
 import { I18nProvider } from "@/components/partspro/i18n-provider";
 import { getDictionary } from "@/i18n/get-dictionary";
 import { getRequestI18n } from "@/i18n/request";
+import { getPartsProSiteUrl } from "@/lib/partspro-site-url";
 import "./globals.css";
 
 export async function generateMetadata(): Promise<Metadata> {
   const { locale } = await getRequestI18n();
   const dictionary = getDictionary(locale);
+  const title = dictionary["metadata.title"];
+  const description = dictionary["metadata.description"];
 
   return {
-    title: dictionary["metadata.title"],
-    description: dictionary["metadata.description"],
+    metadataBase: new URL(getPartsProSiteUrl()),
+    applicationName: "PartsPro",
+    title,
+    description,
     openGraph: {
-      locale,
+      description,
+      locale: locale === "zh-CN" ? "zh_CN" : "it_IT",
+      siteName: "PartsPro",
+      title,
+      type: "website",
     },
   };
 }

@@ -552,9 +552,9 @@ begin
     updated_at = now()
   where id = v_order_id;
 
-  -- TODO: reserve/decrement inventory_items.available_qty in this transaction
-  -- once warehouse allocation rules are finalized. For now the RPC rejects
-  -- out-of-stock and over-stock requests but does not lock inventory.
+  -- Historical note: inventory reservation/decrement is implemented by
+  -- 20260525210756_admin_inventory_order_rpc.sql and later order lifecycle
+  -- migrations. This earlier draft only rejected out-of-stock orders.
 
   insert into public.order_events (
     order_id,

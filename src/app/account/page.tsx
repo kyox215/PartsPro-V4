@@ -2,10 +2,12 @@ import { AccountPage } from "@/components/partspro/account-page";
 import { getCurrentAccountContext } from "@/lib/partspro-account-context";
 import {
   getCurrentCustomerProfile,
+  getCurrentEmployeeSelfCompany,
   getCurrentEmployeeSelfProfile,
   listCurrentCustomerCompanies,
   listCurrentCustomerOrderSummaries,
   listCurrentCustomerRmaRequests,
+  listCurrentEmployeeSelfOrderSummaries,
 } from "@/lib/partspro-repository";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
@@ -48,8 +50,11 @@ export default async function Page({
       ])
     : shouldReadEmployeeSelfData
       ? await Promise.all([
-          { data: [], warning: undefined },
-          { data: [], warning: undefined },
+          getCurrentEmployeeSelfCompany().then((result) => ({
+            ...result,
+            data: result.data ? [result.data] : [],
+          })),
+          listCurrentEmployeeSelfOrderSummaries(),
           { data: [], warning: undefined },
           getCurrentEmployeeSelfProfile(),
         ])
@@ -60,8 +65,10 @@ export default async function Page({
         { data: null, warning: undefined },
       ];
   const company =
-    account.customer?.id
+    shouldReadCustomerData && account.customer?.id
       ? companies.data.find((item) => item.id === account.customer?.id) ?? null
+      : shouldReadEmployeeSelfData
+        ? companies.data[0] ?? null
       : null;
 
   return (

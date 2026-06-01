@@ -264,9 +264,9 @@
 --   partspro_order_lines_unit_price_nonnegative not valid
 --   private.create_order_transaction(...) with line/MOQ/stock/shipping checks
 --   public.create_order_transaction(...) RPC wrapper for authenticated users
---   TODO: add atomic inventory reservation/decrement once warehouse allocation
---   rules are finalized; current draft rejects out-of-stock and over-stock
---   orders but does not lock inventory_items.available_qty.
+--   Historical note: atomic inventory reservation/decrement was added in
+--   20260525210756_admin_inventory_order_rpc.sql and expanded by later order
+--   lifecycle migrations.
 
 -- RMA model.
 --

@@ -2,6 +2,10 @@
 
 日期：2026-05-27
 
+状态更新：2026-06-01
+
+独立后台“客户”入口已被“后台 > 账号管理 > 客户账号”取代。旧客户后台 API 不再作为新功能入口，当前文档仅保留为历史设计参考；仍有价值但未纳入当前上线范围的内容统一归为 Backlog，不再混作当前未完成任务。
+
 ## 1. 目标
 
 把当前偏 B2B 审批/商业条款/成员管理的客户工作台，收敛成一个基础、清晰、可先落地的客户管理功能：
@@ -48,7 +52,7 @@
 
 - 页面信息过重，包含 B2B 档案、商业条款、信用额度、应收、逾期、价格组、成员转员工、归属状态等。
 - 列表依赖 `orders_count/revenue/last_order_at`，但当前只看到订单变更后重算 `lifetime_spend_net/level/tier`，未看到稳定维护 `orders_count/revenue/last_order_at` 的触发器。
-- 账号转换 RPC 存在 `admin_update_account_type` 与 `admin_update_account` 两套语义相近实现，后续容易漂移。
+- 账号转换 RPC 存在 `admin_update_account_type` 与 `admin_update_account` 两套语义相近实现，语义容易漂移。
 
 ### 2.3 订单历史与详情
 
@@ -59,7 +63,7 @@
 - DTO 已返回 `lines` 和 `operationHistory`。
 - 客户详情当前已经读取最近 20 个订单并显示在订单 tab。
 
-前台账号页当前只显示订单摘要，“详情”按钮是 disabled。基础版后台客户管理可以先复用管理端订单详情弹窗，后续再补客户自助订单详情接口。
+前台账号页当前只显示订单摘要，“详情”按钮是 disabled。基础版后台客户管理可以先复用管理端订单详情弹窗；客户自助订单详情接口列入 Backlog。
 
 ### 2.4 最近操作历史
 
@@ -252,7 +256,7 @@ RLS：
   - 基础版短期只用来保存 `level`，但权限必须改为独立的 `customers.manage_level`。
   - 中期建议新增更清晰的 `/level` endpoint，避免继续把客户等级和商业条款绑定。
 
-建议后续新增一个更贴合基础版的合并接口：
+Backlog：可新增一个更贴合基础版的合并接口：
 
 - `PATCH /api/admin/customers/[id]/basics`
   - `companyName/contactName/email/phone/shippingAddress/status/customerType/level/reason`
@@ -266,7 +270,7 @@ RLS：
 
 - `GET /api/admin/orders/[orderId]`
 
-客户自助后台后续新增：
+Backlog：客户自助后台可新增：
 
 - `GET /api/orders/[orderId]`
 
@@ -299,7 +303,7 @@ RLS：
 - `customers.manage`：编辑基础资料，如姓名/邮箱/电话/地址。
 - `customers.classify`：修改客户类型和活跃状态。
 - `customers.manage_level`：修改客户等级。
-- `customers.manage_terms`：旧商业条款权限，基础版不再用于前端客户等级修改；保留兼容旧代码，后续下线或只给管理员。
+- `customers.manage_terms`：旧商业条款权限，基础版不再用于前端客户等级修改；仅保留兼容旧代码，作为权限清理 Backlog。
 - `employees.manage_permissions`：管理员或超级管理员权限，用于分配员工角色模板和单项权限。
 
 管理员分配方式：
@@ -538,7 +542,7 @@ RLS：
 - 客户管理 UI 不再调用 `/api/admin/b2b-applications/**` 和 legacy `/api/admin/customers/applications/**`。
 - 去掉相关字典文案。
 - 删除或隐藏无入口代码前先保留 API 兼容，避免线上旧链接报错。
-- 后续确认无调用后再移除废弃 API。
+- 当前状态：活跃前端已不再调用 legacy `/api/admin/customers/**`，本轮已从工作区清除未跟踪的旧 API 文件。线上仍需保留前台客户资料、订单、价格和 checkout 读取逻辑。
 
 ## 9. 测试与验收清单
 
@@ -635,9 +639,9 @@ RLS：
 - 基础版 API 收口：后台 B2B 审核、legacy customer applications、商业条款写入、成员转员工接口均返回基础版禁用响应；通用客户 PATCH 不再接受授信、账期、价格组、月采购额等商业条款字段。
 - 状态收口：旧 `pending` 客户状态在迁移中归并为 `active`，前端和 repository 基础客户状态只按 `active/suspended` 显示。
 
-待后续确认或继续深化：
+Backlog / 环境验证记录：
 
 - 已补最小邮箱注册入口；如果 Supabase 项目启用邮箱确认，新客户记录会在确认回调或首次登录时创建。
-- 本地 Supabase/Postgres 未启动，数据库 migration 还需要在可用环境中执行一次真实迁移验证。
+- 本地 Supabase/Postgres 未启动，数据库 migration 需要在可用环境中执行一次真实迁移验证。
 - TypeScript 全量检查已通过；此前 `.next/types/* d 4.ts` 重复声明文件已清理。
 - 本轮权限 UI/API/基础版收口变更已通过目标 lint 和 `npx tsc --noEmit`。

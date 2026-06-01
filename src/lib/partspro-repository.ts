@@ -2416,6 +2416,22 @@ export async function listCurrentCustomerOrderSummaries(): Promise<
   );
 }
 
+export async function listCurrentEmployeeSelfOrderSummaries(): Promise<
+  RepositoryResult<OrderSummary[]>
+> {
+  const supabaseResult = await withSupabase(readCurrentEmployeeSelfOrderSummaries);
+
+  return (
+    supabaseResult ??
+    emptyResult(
+      [],
+      isSupabaseConfigured()
+        ? "Supabase employee self orders could not be read."
+        : "Supabase is not configured; no employee self orders are available."
+    )
+  );
+}
+
 export async function listAdminOrders(
   query: AdminOrderQueryInput
 ): Promise<RepositoryResult<AdminOrderPage>> {
@@ -2453,6 +2469,41 @@ export async function getCurrentCustomerOrder(
       403,
       "CUSTOMER_ORDER_CUSTOMER_REQUIRED",
       "The current user is not linked to a customer."
+    );
+  }
+
+  const order = await readAdminOrderDetail(context.client, orderId);
+
+  if (!order) {
+    return { data: null, source: "supabase" };
+  }
+
+  if (order.customer.id !== customerId) {
+    throw new RepositoryWriteError(
+      404,
+      "CUSTOMER_ORDER_NOT_FOUND",
+      "Order was not found."
+    );
+  }
+
+  return { data: order, source: "supabase" };
+}
+
+export async function getCurrentEmployeeSelfOrder(
+  orderId: string
+): Promise<RepositoryResult<AdminOrder | null>> {
+  const context = await requireSupabaseContext();
+  await ensureEmployeeSelfCustomer(context.client);
+  const customerId = await readCurrentEmployeeSelfCustomerId(
+    context.client,
+    context.userId
+  );
+
+  if (!customerId) {
+    throw new RepositoryWriteError(
+      403,
+      "EMPLOYEE_SELF_ORDER_CUSTOMER_REQUIRED",
+      "The current employee is not linked to a self-purchase profile."
     );
   }
 
@@ -4379,6 +4430,36 @@ async function readCurrentCustomerOrderSummaries(
     return [];
   }
 
+  return readOrderSummariesForCustomer(
+    context,
+    customerId,
+    customerProfile?.profile.companyName ?? "Cliente PartsPro"
+  );
+}
+
+async function readCurrentEmployeeSelfOrderSummaries(
+  context: SupabaseContext
+): Promise<OrderSummary[] | null> {
+  await ensureEmployeeSelfCustomer(context.client);
+  const employeeSelfProfile = await readCurrentEmployeeSelfProfile(context);
+  const customerId = pickString(employeeSelfProfile?.raw, ["id"]);
+
+  if (!customerId) {
+    return [];
+  }
+
+  return readOrderSummariesForCustomer(
+    context,
+    customerId,
+    employeeSelfProfile?.profile.companyName ?? "PartsPro employee"
+  );
+}
+
+async function readOrderSummariesForCustomer(
+  context: SupabaseContext,
+  customerId: string,
+  companyName: string
+): Promise<OrderSummary[] | null> {
   const orderRows = await readCustomerOrderRows(context.client, customerId);
 
   if (!orderRows) {
@@ -4388,9 +4469,7 @@ async function readCurrentCustomerOrderSummaries(
   const orderIds = uniqueDefinedStrings(orderRows.map((row) => pickString(row, ["id"])));
   const lineRows = await readOrderLineRowsForOrderIds(context.client, orderIds);
   const lineCounts = countLinesByOrder(lineRows ?? []);
-  const companyNames = new Map<string, string>([
-    [customerId, customerProfile?.profile.companyName ?? "Cliente PartsPro"],
-  ]);
+  const companyNames = new Map<string, string>([[customerId, companyName]]);
 
   return orderRows
     .map((row) => mapOrderSummaryRow(row, companyNames, lineCounts))

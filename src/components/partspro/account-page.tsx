@@ -105,7 +105,7 @@ type AccountProfilePayload = {
   vatNumber: string;
 };
 
-type OrderFilterId = "all" | "open" | "pending_payment" | "shipped" | "delivered";
+type OrderFilterId = "all" | "open" | "pending_payment" | "shipped" | "completed";
 
 const orderFilters: Array<{
   id: OrderFilterId;
@@ -123,7 +123,7 @@ const orderFilters: Array<{
     id: "open",
     label: "处理中",
     description: "待处理",
-    predicate: (order) => !["delivered", "cancelled"].includes(order.status),
+    predicate: (order) => !isTerminalOrderStatus(order.status),
   },
   {
     id: "pending_payment",
@@ -138,10 +138,10 @@ const orderFilters: Array<{
     predicate: (order) => order.status === "shipped",
   },
   {
-    id: "delivered",
+    id: "completed",
     label: "已完成",
     description: "历史订单",
-    predicate: (order) => order.status === "delivered",
+    predicate: (order) => isCompletedOrderStatus(order.status),
   },
 ];
 
@@ -177,7 +177,7 @@ export function AccountPage({
   const metrics = [
     [
       "未完单",
-      String(orderSummaries.filter((order) => !["delivered", "cancelled"].includes(order.status)).length),
+      String(orderSummaries.filter((order) => !isTerminalOrderStatus(order.status)).length),
       Package,
     ],
     ["配送", String(orderSummaries.filter((order) => order.status === "shipped").length), Truck],
@@ -1092,6 +1092,14 @@ function orderStatusLabel(status: string) {
   };
 
   return labels[status] ?? status;
+}
+
+function isCompletedOrderStatus(status: string) {
+  return status === "completed" || status === "delivered";
+}
+
+function isTerminalOrderStatus(status: string) {
+  return isCompletedOrderStatus(status) || status === "cancelled";
 }
 
 function paymentStatusLabel(status: string) {
