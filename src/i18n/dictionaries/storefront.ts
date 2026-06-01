@@ -246,6 +246,8 @@ export const storefrontItIT = {
     "Le righe restano nel carrello. Controlla lo stato su ogni articolo: puoi correggere quantità oltre stock o MOQ senza perdere la selezione.",
   "storefront.cart.blockedLoginDescription":
     "Le righe restano nel carrello. Accedi o richiedi accesso professionale per vedere i prezzi, oppure rimuovi gli articoli non disponibili.",
+  "storefront.cart.blockedAccountDescription":
+    "Account riconosciuto. Completa o fai attivare il profilo cliente, poi aggiorna il carrello per vedere prezzi e checkout.",
   "storefront.cart.blockedTitle": "Alcuni articoli richiedono attenzione",
   "storefront.cart.continueShort": "Continua",
   "storefront.cart.detailsError":
@@ -288,6 +290,21 @@ export const storefrontItIT = {
   "storefront.cart.rejectedLoginDescription":
     "Articolo salvato nel carrello. Accedi o richiedi accesso come cliente professionale per vedere il prezzo e procedere.",
   "storefront.cart.rejectedLoginLabel": "Prezzo professionale protetto",
+  "storefront.cart.rejectedAccountSyncDescription":
+    "Sessione valida, ma il profilo account non e stato sincronizzato. Aggiorna la pagina o contatta un amministratore.",
+  "storefront.cart.rejectedAccountSyncLabel": "Sincronizzazione account richiesta",
+  "storefront.cart.rejectedCustomerProfileDescription":
+    "Account riconosciuto, ma il profilo cliente e ancora in collegamento o da completare. Apri il centro personale o contatta un amministratore.",
+  "storefront.cart.rejectedCustomerProfileLabel": "Profilo cliente da collegare",
+  "storefront.cart.rejectedCustomerAssignmentDescription":
+    "Account riconosciuto, ma il listino cliente non e ancora attivo. Chiedi all'amministratore di attivare l'account in gestione account.",
+  "storefront.cart.rejectedCustomerAssignmentLabel": "Cliente da attivare",
+  "storefront.cart.rejectedCustomerSuspendedDescription":
+    "Account riconosciuto, ma il profilo cliente e sospeso. Contatta l'amministratore prima di procedere.",
+  "storefront.cart.rejectedCustomerSuspendedLabel": "Account cliente sospeso",
+  "storefront.cart.rejectedWholesaleRequiredDescription":
+    "Account riconosciuto, ma il listino professionale non e ancora abilitato per questo cliente.",
+  "storefront.cart.rejectedWholesaleRequiredLabel": "Prezzi professionali da abilitare",
   "storefront.cart.rejectedLoadingDescription":
     "Stiamo recuperando nome, immagine e disponibilita aggiornati per questa riga.",
   "storefront.cart.rejectedLoadingLabel": "Dettagli prodotto in caricamento",
@@ -1022,6 +1039,8 @@ export const storefrontZhCN = {
     "商品行会继续保留在购物车中。请查看每个商品的状态；超过库存或低于起订量时可以手动调整数量，不会丢失选择。",
   "storefront.cart.blockedLoginDescription":
     "商品行会继续保留在购物车中。请登录或申请专业客户权限查看价格，也可以移除不可用商品。",
+  "storefront.cart.blockedAccountDescription":
+    "已识别当前账号。请补全或启用客户资料后刷新购物车，即可查看价格和结账。",
   "storefront.cart.blockedTitle": "部分商品需要处理",
   "storefront.cart.continueShort": "继续",
   "storefront.cart.detailsError":
@@ -1062,6 +1081,21 @@ export const storefrontZhCN = {
   "storefront.cart.rejectedLoginDescription":
     "商品已保存在购物车中。登录或申请专业客户权限后可以查看价格并继续。",
   "storefront.cart.rejectedLoginLabel": "专业客户价格受保护",
+  "storefront.cart.rejectedAccountSyncDescription":
+    "已识别登录会话，但账号资料暂未同步完成。请刷新页面，或联系管理员检查账号管理。",
+  "storefront.cart.rejectedAccountSyncLabel": "账号资料待同步",
+  "storefront.cart.rejectedCustomerProfileDescription":
+    "已识别当前账号，但客户档案仍在关联或待补全。请打开个人中心刷新资料，或联系管理员。",
+  "storefront.cart.rejectedCustomerProfileLabel": "客户档案待关联",
+  "storefront.cart.rejectedCustomerAssignmentDescription":
+    "已识别当前账号，但客户价目表还未启用。请管理员在账号管理中激活该客户。",
+  "storefront.cart.rejectedCustomerAssignmentLabel": "客户待启用",
+  "storefront.cart.rejectedCustomerSuspendedDescription":
+    "已识别当前账号，但客户档案已暂停。请联系管理员恢复后再继续。",
+  "storefront.cart.rejectedCustomerSuspendedLabel": "客户账号已暂停",
+  "storefront.cart.rejectedWholesaleRequiredDescription":
+    "已识别当前账号，但专业客户价目表尚未启用。",
+  "storefront.cart.rejectedWholesaleRequiredLabel": "专业价待启用",
   "storefront.cart.rejectedLoadingDescription":
     "正在获取该商品行的名称、图片和最新可用状态。",
   "storefront.cart.rejectedLoadingLabel": "商品资料加载中",

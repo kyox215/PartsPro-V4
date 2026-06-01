@@ -278,6 +278,9 @@ function CartPageContent({
   const hasLoginRequiredUnresolved = unresolvedItems.some(
     isLoginRequiredCartRejection
   );
+  const hasAccountStatusUnresolved = unresolvedItems.some(
+    isAccountStatusCartRejection
+  );
   const displayRows = React.useMemo<CartDisplayRow[]>(
     () =>
       cart.items.map((item) => {
@@ -648,6 +651,12 @@ function CartPageContent({
                         "storefront.cart.blockedLoginDescription",
                         "Le righe restano nel carrello. Accedi o richiedi accesso professionale per vedere i prezzi, oppure rimuovi gli articoli non disponibili."
                       )
+                      : hasAccountStatusUnresolved
+                        ? tx(
+                          t,
+                          "storefront.cart.blockedAccountDescription",
+                          "Account riconosciuto. Completa o fai attivare il profilo cliente, poi aggiorna il carrello per vedere prezzi e checkout."
+                        )
                       : tx(t, "storefront.cart.blockedDescription", "Le righe restano nel carrello. Controlla lo stato su ogni articolo: puoi correggere quantità oltre stock o MOQ senza perdere la selezione.")}
                   </p>
                 </div>
@@ -667,6 +676,10 @@ function CartPageContent({
                         </Link>
                       </Button>
                     </>
+                  ) : hasAccountStatusUnresolved ? (
+                    <Button variant="outline" asChild className="h-8 bg-white">
+                      <Link href="/account">{tx(t, "storefront.account.openAccount", "Centro personale")}</Link>
+                    </Button>
                   ) : (
                     <Button variant="outline" asChild className="h-8 bg-white">
                       <Link href={catalogHref}>{tx(t, "storefront.cart.goToCatalog", "Vai al catalogo")}</Link>
@@ -879,14 +892,21 @@ function cartProductRejectionReason(product: PartProduct, quantity: number) {
 }
 
 function isLoginRequiredCartRejection(item: CartCatalogRejectedItem) {
+  return item.reason === "login_required";
+}
+
+function isAccountStatusCartRejection(item: CartCatalogRejectedItem) {
   return [
     "account_sync_failed",
     "customer_needs_assignment",
     "customer_profile_required",
     "customer_suspended",
-    "login_required",
     "wholesale_required",
   ].includes(item.reason ?? "");
+}
+
+function isAccountAccessCartRejection(item: CartCatalogRejectedItem) {
+  return isLoginRequiredCartRejection(item) || isAccountStatusCartRejection(item);
 }
 
 function cartRejectedStatusCopy(
@@ -901,6 +921,31 @@ function cartRejectedStatusCopy(
   }
 
   switch (item.reason) {
+    case "account_sync_failed":
+      return {
+        description: tx(t, "storefront.cart.rejectedAccountSyncDescription", "Sessione valida, ma il profilo account non e stato sincronizzato. Aggiorna la pagina o contatta un amministratore."),
+        label: tx(t, "storefront.cart.rejectedAccountSyncLabel", "Sincronizzazione account richiesta"),
+      };
+    case "customer_profile_required":
+      return {
+        description: tx(t, "storefront.cart.rejectedCustomerProfileDescription", "Account riconosciuto, ma il profilo cliente e ancora in collegamento o da completare. Apri il centro personale o contatta un amministratore."),
+        label: tx(t, "storefront.cart.rejectedCustomerProfileLabel", "Profilo cliente da collegare"),
+      };
+    case "customer_needs_assignment":
+      return {
+        description: tx(t, "storefront.cart.rejectedCustomerAssignmentDescription", "Account riconosciuto, ma il listino cliente non e ancora attivo. Chiedi all'amministratore di attivare l'account in gestione account."),
+        label: tx(t, "storefront.cart.rejectedCustomerAssignmentLabel", "Cliente da attivare"),
+      };
+    case "customer_suspended":
+      return {
+        description: tx(t, "storefront.cart.rejectedCustomerSuspendedDescription", "Account riconosciuto, ma il profilo cliente e sospeso. Contatta l'amministratore prima di procedere."),
+        label: tx(t, "storefront.cart.rejectedCustomerSuspendedLabel", "Account cliente sospeso"),
+      };
+    case "wholesale_required":
+      return {
+        description: tx(t, "storefront.cart.rejectedWholesaleRequiredDescription", "Account riconosciuto, ma il listino professionale non e ancora abilitato per questo cliente."),
+        label: tx(t, "storefront.cart.rejectedWholesaleRequiredLabel", "Prezzi professionali da abilitare"),
+      };
     case "loading":
       return {
         description: tx(t, "storefront.cart.rejectedLoadingDescription", "Stiamo recuperando nome, immagine e disponibilita aggiornati per questa riga."),
@@ -952,7 +997,7 @@ function rejectedStatusBadgeClass(
       ? "h-5 px-1.5 text-[10px] leading-none"
       : "border px-2 py-0.5 text-xs";
 
-  if (isLoginRequiredCartRejection(item)) {
+  if (isAccountAccessCartRejection(item)) {
     return `${sizeClass} border-sky-200 bg-sky-50 text-sky-700`;
   }
 
@@ -1043,7 +1088,7 @@ function rejectedQuantityState(
 ) {
   const reason = item.reason ?? "";
   const canEditInput =
-    isLoginRequiredCartRejection(item) ||
+    isAccountAccessCartRejection(item) ||
     reason === "quantity_below_moq" ||
     reason === "quantity_over_stock";
   const minimum = 1;

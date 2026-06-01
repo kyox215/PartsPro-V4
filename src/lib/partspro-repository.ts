@@ -1,6 +1,10 @@
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 import {
+  readLinkedCustomerId,
+  readLinkedCustomerRow,
+} from "@/lib/partspro-customer-linkage";
+import {
   centsToNumber,
   formatItalianDate,
   formatPartsProDateTime,
@@ -3948,42 +3952,17 @@ async function readCurrentCustomerId(
   try {
     const { data: profile } = await client
       .from("profiles")
-      .select("account_type, customer_id")
+      .select("account_type, email")
       .eq("id", userId)
       .maybeSingle();
-    const profileCustomerId = isDbRow(profile) ? pickString(profile, ["customer_id"]) : null;
     const profileAccountType = isDbRow(profile) ? pickString(profile, ["account_type"]) : null;
+    const profileEmail = isDbRow(profile) ? pickString(profile, ["email"]) : null;
 
     if (profileAccountType === "employee") {
       return null;
     }
 
-    if (profileCustomerId) {
-      return profileCustomerId;
-    }
-
-    const { data: customer } = await client
-      .from("customers")
-      .select("id")
-      .eq("user_id", userId)
-      .maybeSingle();
-    const ownedCustomerId = isDbRow(customer) ? pickString(customer, ["id"]) : null;
-
-    if (ownedCustomerId) {
-      return ownedCustomerId;
-    }
-
-    const { data: memberships } = await client
-      .from("customer_memberships")
-      .select("customer_id")
-      .eq("user_id", userId)
-      .eq("status", "active")
-      .limit(1);
-    const membershipRows = Array.isArray(memberships)
-      ? (memberships as unknown[]).filter(isDbRow)
-      : [];
-
-    return pickString(membershipRows[0], ["customer_id"]);
+    return await readLinkedCustomerId(client, userId, profileEmail);
   } catch {
     return null;
   }
@@ -4354,19 +4333,9 @@ async function readCompanies(context: SupabaseContext) {
 async function readCurrentCustomerProfile(
   context: SupabaseContext
 ): Promise<{ profile: AccountCustomerProfile; raw: DbRow } | null> {
-  const customerId = await readCurrentCustomerId(context.client, context.userId);
-
-  if (!customerId) {
-    return null;
-  }
-
-  const row = await readSingleRow(
-    context.client,
-    "customers",
-    "id",
-    customerId,
-    adminCustomerSelect
-  );
+  const row = await readLinkedCustomerRow(context.client, context.userId, {
+    select: adminCustomerSelect,
+  });
   const profile = row ? mapAccountCustomerProfileRow(row) : null;
 
   return row && profile ? { profile, raw: row } : null;

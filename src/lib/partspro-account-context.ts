@@ -1,4 +1,5 @@
 import { isBootstrapAdminEmail } from "@/lib/partspro-admin-auth";
+import { readLinkedCustomerRow } from "@/lib/partspro-customer-linkage";
 import {
   calculateTierPrice,
   getTierRule,
@@ -18,6 +19,9 @@ import type {
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 type DbRow = Record<string, unknown>;
+
+const accountCustomerSelect =
+  "id, user_id, company_name, status, customer_type, assignment_status, profile_kind, level, lifetime_spend_net, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address, updated_at, created_at";
 
 export type AccountType = "customer" | "employee";
 export type PriceVisibilityReason =
@@ -134,15 +138,17 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
     readProfile(supabase, user.id),
     readPermissions(supabase),
   ]);
-  const customerId = readString(profile?.customer_id);
-  const customer = customerId
-    ? await readCustomer(supabase, customerId)
-    : await readCustomerByUserId(supabase, user.id);
   const email = user.email ?? readString(profile?.email);
   const accountType = isBootstrapAdminEmail(email)
     ? "employee"
     : normalizeAccountType(readString(profile?.account_type));
   const isEmployee = accountType === "employee";
+  const customer = isEmployee
+    ? null
+    : await readLinkedCustomerRow(supabase, user.id, {
+        email,
+        select: accountCustomerSelect,
+      });
   let employeeSelfCustomerRow: DbRow | null = null;
 
   if (isEmployee) {
@@ -393,32 +399,6 @@ async function readPermissions(client: SupabaseServerClient) {
   }
 
   return data.filter((permission): permission is string => typeof permission === "string");
-}
-
-async function readCustomer(client: SupabaseServerClient, customerId: string) {
-  const { data, error } = await client
-    .from("customers")
-    .select(
-      "id, company_name, status, customer_type, assignment_status, profile_kind, level, lifetime_spend_net, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address"
-    )
-    .eq("id", customerId)
-    .maybeSingle();
-
-  return error ? null : asRow(data);
-}
-
-async function readCustomerByUserId(client: SupabaseServerClient, userId: string) {
-  const { data, error } = await client
-    .from("customers")
-    .select(
-      "id, company_name, status, customer_type, assignment_status, profile_kind, level, lifetime_spend_net, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address"
-    )
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  return error ? null : asRow(data);
 }
 
 async function readEmployeeSelfCustomerByUserId(

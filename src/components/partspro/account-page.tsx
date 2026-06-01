@@ -247,7 +247,7 @@ export function AccountPage({
                   </div>
                   <div className="min-w-0">
                     <h1 className="text-base font-black">
-                      {profile?.companyName || (isEmployeeAccount ? "员工自购资料待创建" : "未关联客户档案")}
+                      {profile?.companyName || (isEmployeeAccount ? "员工自购资料待创建" : "客户档案正在关联")}
                     </h1>
                     <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
                       {profile?.companyName
@@ -256,7 +256,7 @@ export function AccountPage({
                           : "资料已保存，等待客户档案关联。"
                         : isEmployeeAccount
                           ? "请先补全员工自购资料，然后可用自己的资料下单。"
-                          : "请在后台客户管理中关联或补全资料。"}
+                          : "已检测到登录账号，但客户档案还未完成关联。请刷新页面，或联系管理员在账号管理中补齐客户资料。"}
                     </p>
                     {userEmail && <Info label="登录账号" value={userEmail} />}
                   </div>
