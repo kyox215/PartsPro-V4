@@ -273,9 +273,8 @@ export function applyAccountPriceToProduct(
       ? account.employeeSelfCustomer?.level ?? "bronze"
       : account.customer?.level ?? "bronze";
   const basePrice = customerType === "wholesale" ? product.price : product.retailPrice;
-  const appliesLevelDiscount = customerType === "wholesale";
-  const finalPrice = appliesLevelDiscount ? calculateTierPrice(basePrice, level) : basePrice;
-  const levelDiscountPercent = appliesLevelDiscount ? getTierRule(level).discountRate * 100 : 0;
+  const finalPrice = calculateTierPrice(basePrice, level);
+  const levelDiscountPercent = getTierRule(level).discountRate * 100;
 
   return {
     ...product,
@@ -285,10 +284,12 @@ export function applyAccountPriceToProduct(
     levelDiscountPercent,
     price: finalPrice,
     priceSource:
-      customerType === "retail"
-        ? "local_retail_price"
-        : levelDiscountPercent > 0
-          ? "local_customer_level"
+      levelDiscountPercent > 0
+        ? customerType === "retail"
+          ? "local_retail_customer_level"
+          : "local_customer_level"
+        : customerType === "retail"
+          ? "local_retail_price"
           : "local_base_price",
     priceResolved: true,
     retailPrice: product.retailPrice,

@@ -163,8 +163,7 @@ export async function POST(request: Request) {
       ? []
       : customerReadinessIssues(
           company,
-          customerProfile.data,
-          checkoutMode !== "customer_self"
+          customerProfile.data
         );
 
     if (!targetCanCheckout || company.status !== "approved") {
@@ -399,24 +398,23 @@ function resolveCheckoutMode(
 
 function customerReadinessIssues(
   company: CompanyProfile,
-  profile: Awaited<ReturnType<typeof getCurrentCustomerProfile>>["data"],
-  requiresWholesale: boolean
+  profile: Awaited<ReturnType<typeof getCurrentCustomerProfile>>["data"]
 ) {
   const issues: PreviewIssue[] = [];
+
+  if (company.profileKind === "employee_self") {
+    issues.push({
+      sku: "customer",
+      code: "customer_not_orderable",
+      message: "Employee self profile cannot be used for delegated checkout.",
+    });
+  }
 
   if (company.status !== "approved") {
     issues.push({
       sku: "customer",
       code: "customer_not_orderable",
       message: "Customer must be active before checkout.",
-    });
-  }
-
-  if (requiresWholesale && company.customerType !== "wholesale") {
-    issues.push({
-      sku: "customer",
-      code: "customer_not_orderable",
-      message: "Delegated checkout requires a wholesale customer.",
     });
   }
 
@@ -437,12 +435,12 @@ function profileReadinessIssues(profile: Awaited<ReturnType<typeof getCurrentCus
   }
 
   const missing = [
-    profile.companyName ? null : "company",
     profile.contactName ? null : "contact",
     profile.email ? null : "email",
     profile.phone ? null : "phone",
     profile.billingAddress ? null : "billing_address",
     profile.shippingAddress ? null : "shipping_address",
+    profile.customerType === "wholesale" && !profile.companyName ? "company" : null,
     profile.customerType === "retail" && !(profile.fiscalCode || profile.vatNumber) ? "fiscal_code" : null,
     profile.customerType === "wholesale" && !profile.vatNumber ? "vat_number" : null,
     profile.customerType === "wholesale" && !profile.fiscalCode ? "fiscal_code" : null,
@@ -465,7 +463,6 @@ function isDelegatedCompanyOrderable(
 ) {
   return Boolean(
     company.status === "approved" &&
-      company.customerType === "wholesale" &&
       company.assignmentStatus === "assigned" &&
       profile &&
       profileReadinessIssues(profile).length === 0

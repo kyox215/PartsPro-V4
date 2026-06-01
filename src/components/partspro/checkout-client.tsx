@@ -14,6 +14,7 @@ import {
   Loader2,
   MapPin,
   RefreshCcw,
+  Search,
   Send,
   ShieldCheck,
   ShoppingBag,
@@ -32,6 +33,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -94,7 +100,6 @@ type CheckoutClientProps = {
 };
 
 type CheckoutFormState = {
-  deliveryWindow: string;
   notes: string;
   paymentMethod: "bank_transfer" | "cash" | "agreed_terms";
 };
@@ -649,7 +654,7 @@ function CheckoutClientContent({
           checkoutMode,
           paymentMethod: form.paymentMethod,
           deliveryAddress: selectedShippingAddress,
-          notes: buildOrderNotes(form.notes, form.deliveryWindow),
+          notes: buildOrderNotes(form.notes),
           items: cartItemsForApi(cart.items),
         }),
       });
@@ -736,11 +741,9 @@ function CheckoutClientContent({
             unresolvedSkus={reviewUnresolvedSkus}
           />
           <DeliverySection
-            form={form}
             errors={formErrors}
             shippingAddress={selectedShippingAddress}
             submitAttempted={submitAttempted}
-            onChange={setForm}
           />
           <PaymentSection form={form} onChange={setForm} />
           <ConfirmationSection
@@ -957,7 +960,105 @@ function DelegatedCustomerSelector({
   selectedCompanyId: string;
 }) {
   const t = useT();
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
   const selectedCompany = companies.find((company) => company.id === selectedCompanyId);
+  const selectedReadiness = selectedCompany
+    ? delegatedCompanyReadiness(t, selectedCompany)
+    : null;
+  const normalizedQuery = query.trim();
+  const searchResults = React.useMemo(() => {
+    const matched = companies
+      .filter((company) => delegatedCompanyMatchesSearch(company, normalizedQuery))
+      .map((company) => ({
+        company,
+        readiness: delegatedCompanyReadiness(t, company),
+      }))
+      .sort((left, right) => {
+        if (left.readiness.selectable !== right.readiness.selectable) {
+          return left.readiness.selectable ? -1 : 1;
+        }
+
+        return left.company.name.localeCompare(right.company.name, "zh-Hans-CN");
+      })
+      .slice(0, 20);
+
+    return {
+      blocked: matched.filter((item) => !item.readiness.selectable),
+      ready: matched.filter((item) => item.readiness.selectable),
+    };
+  }, [companies, normalizedQuery, t]);
+
+  function selectCompany(companyId: string) {
+    onSelectedCompanyIdChange(companyId);
+    setOpen(false);
+    setQuery("");
+  }
+
+  function renderResults(
+    label: string,
+    results: Array<{
+      company: CompanyProfile;
+      readiness: ReturnType<typeof delegatedCompanyReadiness>;
+    }>
+  ) {
+    if (results.length === 0) {
+      return null;
+    }
+
+    return (
+      <div className="space-y-1.5">
+        <div className="px-1 text-[11px] font-black uppercase tracking-wide text-slate-400">
+          {label}
+        </div>
+        <div className="space-y-1">
+          {results.map(({ company, readiness }) => (
+            <Button
+              key={company.id}
+              type="button"
+              variant="ghost"
+              disabled={!readiness.selectable}
+              className={cn(
+                "h-auto w-full justify-start rounded-md px-2 py-2 text-left",
+                readiness.selectable
+                  ? "hover:bg-blue-50"
+                  : "cursor-not-allowed opacity-70"
+              )}
+              onClick={() => selectCompany(company.id)}
+            >
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                  <span className="line-clamp-1 min-w-0 font-black text-slate-950">
+                    {company.name}
+                  </span>
+                  <Badge className={cn("border px-1.5 py-0 text-[10px]", customerTypeBadgeClass(company.customerType))}>
+                    {customerTypeBadgeLabel(t, company.customerType)}
+                  </Badge>
+                  <Badge className="border border-blue-200 bg-blue-50 px-1.5 py-0 text-[10px] text-blue-700">
+                    {customerLevelLabel(t, company.priceList)}
+                  </Badge>
+                </div>
+                <div className="mt-1 line-clamp-1 text-xs font-semibold text-slate-500">
+                  {[company.phone, company.email, company.partitaIva || company.codiceFiscale]
+                    .filter(Boolean)
+                    .join(" · ") ||
+                    tx(t, "storefront.checkout.delegated.noContact", "暂无联系方式")}
+                </div>
+                <div
+                  className={cn(
+                    "mt-1 text-xs font-bold",
+                    readiness.selectable ? "text-emerald-700" : "text-amber-700"
+                  )}
+                >
+                  {readiness.label}
+                </div>
+              </div>
+            </Button>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Card size="sm" className="rounded-lg border-blue-200 bg-blue-50/70">
@@ -975,23 +1076,64 @@ function DelegatedCustomerSelector({
           <Label htmlFor="delegated-customer" className="sr-only">
             {tx(t, "storefront.checkout.delegated.select", "Seleziona cliente")}
           </Label>
-          <Select value={selectedCompanyId} onValueChange={onSelectedCompanyIdChange}>
-            <SelectTrigger id="delegated-customer" className="h-10 bg-white">
-              <SelectValue placeholder={tx(t, "storefront.checkout.delegated.placeholder", "Seleziona cliente")} />
-            </SelectTrigger>
-            <SelectContent>
-              {companies.map((company) => (
-                <SelectItem key={company.id} value={company.id}>
-                  {company.name} · {customerTypeLabel(t, company.customerType)} · {assignmentStatusLabel(t, company.assignmentStatus)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {selectedCompany ? (
-            <div className="mt-1 truncate text-xs font-semibold text-blue-800">
-              {customerLevelLabel(t, selectedCompany.priceList)} · {companyStatusLabel(t, selectedCompany.status)}
-            </div>
-          ) : null}
+          <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                id="delegated-customer"
+                type="button"
+                variant="outline"
+                className="h-auto min-h-10 w-full justify-between gap-2 bg-white px-3 py-2 text-left"
+              >
+                <span className="min-w-0 flex-1">
+                  <span className="line-clamp-1 text-sm font-black text-slate-950">
+                    {selectedCompany?.name ??
+                      tx(t, "storefront.checkout.delegated.placeholder", "Seleziona cliente")}
+                  </span>
+                  <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+                    {selectedCompany ? (
+                      <>
+                        <span>{customerTypeBadgeLabel(t, selectedCompany.customerType)}</span>
+                        <span>·</span>
+                        <span>{customerLevelLabel(t, selectedCompany.priceList)}</span>
+                        {selectedReadiness ? (
+                          <>
+                            <span>·</span>
+                            <span>{selectedReadiness.label}</span>
+                          </>
+                        ) : null}
+                      </>
+                    ) : (
+                      tx(t, "storefront.checkout.delegated.searchHint", "按店名、手机号、邮箱或税号搜索")
+                    )}
+                  </span>
+                </span>
+                <ChevronDown className="size-4 shrink-0 text-slate-500" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              className="w-[min(680px,calc(100vw-2rem))] gap-2 p-2"
+            >
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={query}
+                  onChange={(event) => setQuery(event.currentTarget.value)}
+                  className="h-9 bg-white pl-9"
+                  placeholder={tx(t, "storefront.checkout.delegated.searchPlaceholder", "搜索店名、手机号、邮箱或税号")}
+                />
+              </div>
+              <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
+                {renderResults(tx(t, "storefront.checkout.delegated.readyGroup", "可下单"), searchResults.ready)}
+                {renderResults(tx(t, "storefront.checkout.delegated.blockedGroup", "需处理"), searchResults.blocked)}
+                {searchResults.ready.length === 0 && searchResults.blocked.length === 0 ? (
+                  <div className="rounded-md border border-dashed border-slate-200 p-4 text-center text-xs font-semibold text-slate-500">
+                    {tx(t, "storefront.checkout.delegated.noResults", "没有找到匹配客户。")}
+                  </div>
+                ) : null}
+              </div>
+            </PopoverContent>
+          </Popover>
         </div>
       </CardContent>
     </Card>
@@ -1176,14 +1318,10 @@ function OrderLineRow({ issues, line }: { issues: PreviewIssue[]; line: CartLine
 
 function DeliverySection({
   errors,
-  form,
-  onChange,
   shippingAddress,
   submitAttempted,
 }: {
   errors: Record<string, string>;
-  form: CheckoutFormState;
-  onChange: React.Dispatch<React.SetStateAction<CheckoutFormState>>;
   shippingAddress: string;
   submitAttempted: boolean;
 }) {
@@ -1250,46 +1388,11 @@ function DeliverySection({
             {fixedShippingMethod}
           </div>
           <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-            {tx(t, "storefront.checkout.shippingFixedCompact", "PartsPro 仓库统一安排物流；可填写配送时段或备注。")}
+            {tx(t, "storefront.checkout.shippingFixedCompact", "PartsPro 仓库统一安排物流；默认 16:00 前发货，如有特殊要求请写订单备注。")}
           </p>
         </div>
-        <TextField
-          id="deliveryWindow"
-          label={tx(t, "storefront.checkout.field.deliveryWindow", "Fascia consegna preferita")}
-          value={form.deliveryWindow}
-          onChange={(value) => onChange((current) => ({ ...current, deliveryWindow: value }))}
-        />
       </CardContent>
     </Card>
-  );
-}
-
-function TextField({
-  error,
-  id,
-  label,
-  onChange,
-  value,
-  wrapperClassName,
-}: {
-  error?: string;
-  id: string;
-  label: string;
-  onChange: (value: string) => void;
-  value: string;
-  wrapperClassName?: string;
-}) {
-  return (
-    <div className={cn("space-y-2", wrapperClassName)}>
-      <Label htmlFor={id}>{label}</Label>
-      <Input
-        id={id}
-        value={value}
-        aria-invalid={Boolean(error)}
-        onChange={(event) => onChange(event.currentTarget.value)}
-      />
-      {error && <div className="text-xs font-bold text-red-600">{error}</div>}
-    </div>
   );
 }
 
@@ -1953,9 +2056,83 @@ function validateForm(
 
 function initialFormState(): CheckoutFormState {
   return {
-    deliveryWindow: "",
     notes: "",
     paymentMethod: "bank_transfer",
+  };
+}
+
+function delegatedCompanyMatchesSearch(company: CompanyProfile, query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+
+  if (normalizedQuery.length === 0) {
+    return true;
+  }
+
+  return [
+    company.name,
+    company.phone,
+    company.email,
+    company.partitaIva,
+    company.codiceFiscale,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .includes(normalizedQuery);
+}
+
+function delegatedCompanyReadiness(
+  t: StorefrontTranslator,
+  company: CompanyProfile
+) {
+  if (company.profileKind === "employee_self") {
+    return {
+      label: tx(t, "storefront.checkout.delegated.disabled.employeeSelf", "员工自购档案不可代客下单"),
+      selectable: false,
+    };
+  }
+
+  if (company.status !== "approved") {
+    return {
+      label: txFormat(
+        t,
+        "storefront.checkout.delegated.disabled.status",
+        "状态需处理：{status}",
+        { status: companyStatusLabel(t, company.status) }
+      ),
+      selectable: false,
+    };
+  }
+
+  if (company.assignmentStatus !== "assigned") {
+    return {
+      label: txFormat(
+        t,
+        "storefront.checkout.delegated.disabled.assignment",
+        "价格未启用：{status}",
+        { status: assignmentStatusLabel(t, company.assignmentStatus) }
+      ),
+      selectable: false,
+    };
+  }
+
+  const missing = missingProfileLabels(t, customerProfileFromCompany(company));
+
+  if (missing.length > 0) {
+    return {
+      label: txFormat(
+        t,
+        "storefront.checkout.delegated.disabled.profile",
+        "资料待补全：{fields}",
+        { fields: missing.join(tx(t, "storefront.common.listSeparator", ", ")) }
+      ),
+      selectable: false,
+    };
+  }
+
+  return {
+    label: tx(t, "storefront.checkout.delegated.ready", "可下单"),
+    selectable: true,
   };
 }
 
@@ -2005,14 +2182,6 @@ function customerOrderBlocker(
     };
   }
 
-  if (delegatedCheckout && company.customerType !== "wholesale") {
-    return {
-      title,
-      message: tx(t, "storefront.checkout.customerBlocker.type", "Il cliente deve essere wholesale per l'ordine assistito."),
-      tone: "warning",
-    };
-  }
-
   if (company.assignmentStatus !== "assigned") {
     return {
       title,
@@ -2047,7 +2216,6 @@ function missingProfileLabels(t: StorefrontTranslator, profile: AccountCustomerP
   }
 
   const shared = [
-    profile.companyName ? null : tx(t, "storefront.checkout.field.companyName", "Ragione sociale"),
     profile.contactName ? null : tx(t, "storefront.account.field.contactName", "Referente"),
     profile.email ? null : tx(t, "storefront.professional.field.email", "Email"),
     profile.phone ? null : tx(t, "storefront.account.field.phone", "Telefono"),
@@ -2062,6 +2230,7 @@ function missingProfileLabels(t: StorefrontTranslator, profile: AccountCustomerP
             : tx(t, "storefront.checkout.field.codiceFiscale", "Codice fiscale"),
         ]
       : [
+          profile.companyName ? null : tx(t, "storefront.checkout.field.companyName", "Ragione sociale"),
           profile.vatNumber ? null : tx(t, "storefront.checkout.field.partitaIva", "Partita IVA"),
           profile.fiscalCode ? null : tx(t, "storefront.checkout.field.codiceFiscale", "Codice fiscale"),
           profile.pec || profile.sdi ? null : "PEC / SDI",
@@ -2091,7 +2260,7 @@ function formatPreviewIssue(t: StorefrontTranslator, issue: PreviewIssue) {
         ? txFormat(t, "storefront.checkout.issue.profileIncomplete", "Profilo cliente incompleto: {fields}.", {
             fields: labels.join(tx(t, "storefront.common.listSeparator", ", ")),
           })
-        : tx(t, "storefront.checkout.customerNotReadyDescription", "Il cliente selezionato non soddisfa i requisiti ordine. Controlla stato, tipo, assegnazione e dati profilo.");
+        : tx(t, "storefront.checkout.customerNotReadyDescription", "Il cliente selezionato non soddisfa i requisiti ordine. Controlla stato, assegnazione e dati profilo.");
     }
     case "profile_missing":
       return tx(t, "storefront.checkout.issue.profileMissing", "Profilo cliente non disponibile.");
@@ -2131,12 +2300,18 @@ function profileIssueFieldLabel(t: StorefrontTranslator, field: string) {
   }
 }
 
-function customerTypeLabel(t: StorefrontTranslator, value: CompanyProfile["customerType"] | undefined) {
+function customerTypeBadgeLabel(t: StorefrontTranslator, value: CompanyProfile["customerType"] | undefined) {
   if (value === "wholesale") {
-    return tx(t, "storefront.customer.type.wholesale", "Wholesale");
+    return tx(t, "storefront.customer.typeBadge.wholesale", "Cliente wholesale");
   }
 
-  return tx(t, "storefront.customer.type.retail", "Retail");
+  return tx(t, "storefront.customer.typeBadge.retail", "Cliente retail");
+}
+
+function customerTypeBadgeClass(value: CompanyProfile["customerType"] | undefined) {
+  return value === "wholesale"
+    ? "border-blue-200 bg-blue-50 text-blue-700"
+    : "border-emerald-200 bg-emerald-50 text-emerald-700";
 }
 
 function assignmentStatusLabel(
@@ -2174,10 +2349,9 @@ function customerLevelLabel(t: StorefrontTranslator, value: CompanyProfile["pric
   return tx(t, `storefront.customer.level.${value}`, value);
 }
 
-function buildOrderNotes(customerNotes: string, deliveryWindow: string) {
+function buildOrderNotes(customerNotes: string) {
   const details = [
     `Consegna: ${fixedShippingMethod}`,
-    optionalText(deliveryWindow) ? `Fascia: ${deliveryWindow.trim()}` : undefined,
     optionalText(customerNotes) ? `Note: ${customerNotes.trim()}` : undefined,
   ].filter((value): value is string => Boolean(value));
 

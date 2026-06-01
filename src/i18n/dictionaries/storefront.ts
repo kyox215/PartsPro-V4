@@ -361,7 +361,7 @@ export const storefrontItIT = {
   "storefront.checkout.confirm.single":
     "Confermo dati fiscali, indirizzo di spedizione, prezzi IVA inclusa, disponibilita e MOQ mostrati nel checkout.",
   "storefront.checkout.confirm.address":
-    "Confermo che l'indirizzo di spedizione e la fascia consegna sono aggiornati.",
+    "Confermo che l'indirizzo di spedizione salvato sia corretto.",
   "storefront.checkout.confirm.invoice":
     "Confermo che Partita IVA, codice fiscale, PEC e codice destinatario sono corretti per la fattura elettronica.",
   "storefront.checkout.confirm.stockPolicy":
@@ -379,15 +379,13 @@ export const storefrontItIT = {
   "storefront.checkout.completeProfile": "Completa profilo",
   "storefront.checkout.customerNotReady": "Cliente non pronto per l'ordine",
   "storefront.checkout.customerNotReadyDescription":
-    "Il cliente selezionato non soddisfa i requisiti ordine. Controlla stato, tipo, assegnazione e dati profilo.",
+    "Il cliente selezionato non soddisfa i requisiti ordine. Controlla stato, assegnazione e dati profilo.",
   "storefront.checkout.customerBlocker.assignment":
     "Il cliente deve essere assegnato a un listino prima dell'ordine.",
   "storefront.checkout.customerBlocker.profile":
     "Completa questi dati cliente prima dell'ordine: {fields}.",
   "storefront.checkout.customerBlocker.status":
     "Il cliente deve essere attivo prima di creare ordini.",
-  "storefront.checkout.customerBlocker.type":
-    "Il cliente deve essere wholesale per l'ordine assistito.",
   "storefront.checkout.customerContextPendingDescription":
     "Seleziona o completa il cliente per calcolare prezzo, scorte e MOQ prima dell'invio. SKU: {skus}.",
   "storefront.checkout.customerContextPendingTitle": "Cliente da completare",
@@ -399,6 +397,17 @@ export const storefrontItIT = {
   "storefront.checkout.delegated.placeholder": "Seleziona cliente",
   "storefront.checkout.delegated.select": "Seleziona cliente",
   "storefront.checkout.delegated.title": "Ordine per conto cliente",
+  "storefront.checkout.delegated.blockedGroup": "Da gestire",
+  "storefront.checkout.delegated.disabled.assignment": "Listino da attivare: {status}",
+  "storefront.checkout.delegated.disabled.employeeSelf": "Profilo staff non selezionabile",
+  "storefront.checkout.delegated.disabled.profile": "Dati da completare: {fields}",
+  "storefront.checkout.delegated.disabled.status": "Stato da gestire: {status}",
+  "storefront.checkout.delegated.noContact": "Nessun contatto salvato",
+  "storefront.checkout.delegated.noResults": "Nessun cliente trovato.",
+  "storefront.checkout.delegated.ready": "Pronto all'ordine",
+  "storefront.checkout.delegated.readyGroup": "Pronti all'ordine",
+  "storefront.checkout.delegated.searchHint": "Cerca per negozio, telefono, email o codice fiscale",
+  "storefront.checkout.delegated.searchPlaceholder": "Cerca negozio, telefono, email o codice fiscale",
   "storefront.checkout.deliveryAddressMissing":
     "Completa l'indirizzo di spedizione nel profilo cliente.",
   "storefront.checkout.fixCart": "Torna al carrello per correggere",
@@ -430,9 +439,9 @@ export const storefrontItIT = {
   "storefront.checkout.preview.errorTitle": "Controllo ordine non riuscito",
   "storefront.checkout.preview.loading": "Controllo prezzi, scorte e MOQ in corso.",
   "storefront.checkout.shippingFixed":
-    "Metodo logistico gestito dal magazzino PartsPro. Puoi indicare fascia oraria o note di consegna.",
+    "Metodo logistico gestito dal magazzino PartsPro. Partenza standard entro le 16:00; usa le note per richieste speciali.",
   "storefront.checkout.shippingFixedCompact":
-    "Logistica gestita dal magazzino PartsPro; puoi indicare fascia oraria o note.",
+    "GLS/BRT 24-48h; partenza standard entro le 16:00. Usa le note per richieste speciali.",
   "storefront.checkout.preview.title": "Controllo ordine",
   "storefront.checkout.profileMissing": "Dati cliente da completare",
   "storefront.checkout.profileMissingAll": "Profilo cliente",
@@ -448,9 +457,6 @@ export const storefrontItIT = {
   "storefront.checkout.field.codiceDestinatario": "Codice destinatario",
   "storefront.checkout.field.codiceFiscale": "Codice fiscale",
   "storefront.checkout.field.companyName": "Ragione sociale",
-  "storefront.checkout.field.deliveryWindow": "Fascia consegna preferita",
-  "storefront.checkout.field.deliveryWindowPlaceholder":
-    "Es. mattina, pomeriggio, ritiro su appuntamento",
   "storefront.checkout.field.electronicInvoice": "PEC / SDI",
   "storefront.checkout.field.notes": "Note ordine",
   "storefront.checkout.field.notesPlaceholder":
@@ -585,6 +591,8 @@ export const storefrontItIT = {
   "storefront.customer.status.suspended": "Sospeso",
   "storefront.customer.type.retail": "Retail",
   "storefront.customer.type.wholesale": "Wholesale",
+  "storefront.customer.typeBadge.retail": "Cliente retail",
+  "storefront.customer.typeBadge.wholesale": "Cliente wholesale",
   "storefront.product.backToCatalog": "Torna al catalogo",
   "storefront.product.card.accountReviewHint": "MOQ {moq} · verifica listino",
   "storefront.product.card.accountReviewLabel": "Account in revisione",
@@ -1152,7 +1160,7 @@ export const storefrontZhCN = {
   "storefront.checkout.companyMissingTitle": "缺少客户资料",
   "storefront.checkout.confirm.single":
     "我确认税务资料、客户账号配送地址、含税价格、库存和 MOQ 均已核对。",
-  "storefront.checkout.confirm.address": "我确认配送地址和首选配送时段已更新。",
+  "storefront.checkout.confirm.address": "我确认客户账号的已保存配送地址已核对。",
   "storefront.checkout.confirm.invoice":
     "我确认增值税号、税号、PEC 和收件代码可用于电子发票。",
   "storefront.checkout.confirm.stockPolicy":
@@ -1169,15 +1177,13 @@ export const storefrontZhCN = {
   "storefront.checkout.completeProfile": "补全资料",
   "storefront.checkout.customerNotReady": "客户暂不能下单",
   "storefront.checkout.customerNotReadyDescription":
-    "所选客户当前不满足下单条件，请检查客户状态、类型、归属和资料完整度。",
+    "所选客户当前不满足下单条件，请检查客户状态、归属和资料完整度。",
   "storefront.checkout.customerBlocker.assignment":
     "该客户必须先分配到价目表后才能下单。",
   "storefront.checkout.customerBlocker.profile":
     "请先补全这些客户资料：{fields}。",
   "storefront.checkout.customerBlocker.status":
     "该客户必须处于活跃/已批准状态后才能下单。",
-  "storefront.checkout.customerBlocker.type":
-    "代客户下单只支持已启用的批发客户。",
   "storefront.checkout.customerContextPendingDescription":
     "请先选择或完善客户资料，再计算商品价格、库存和 MOQ 后提交。SKU：{skus}。",
   "storefront.checkout.customerContextPendingTitle": "客户资料待完善",
@@ -1189,6 +1195,17 @@ export const storefrontZhCN = {
   "storefront.checkout.delegated.placeholder": "选择客户",
   "storefront.checkout.delegated.select": "选择客户",
   "storefront.checkout.delegated.title": "代客户下单",
+  "storefront.checkout.delegated.blockedGroup": "需处理",
+  "storefront.checkout.delegated.disabled.assignment": "价格未启用：{status}",
+  "storefront.checkout.delegated.disabled.employeeSelf": "员工自购档案不可代客下单",
+  "storefront.checkout.delegated.disabled.profile": "资料待补全：{fields}",
+  "storefront.checkout.delegated.disabled.status": "状态需处理：{status}",
+  "storefront.checkout.delegated.noContact": "暂无联系方式",
+  "storefront.checkout.delegated.noResults": "没有找到匹配客户。",
+  "storefront.checkout.delegated.ready": "可下单",
+  "storefront.checkout.delegated.readyGroup": "可下单",
+  "storefront.checkout.delegated.searchHint": "按店名、手机号、邮箱或税号搜索",
+  "storefront.checkout.delegated.searchPlaceholder": "搜索店名、手机号、邮箱或税号",
   "storefront.checkout.deliveryAddressMissing": "请先在客户资料中补全配送地址。",
   "storefront.checkout.fixCart": "返回购物车修正",
   "storefront.checkout.formInvalid": "请补全客户配送地址并勾选最终确认后再提交订单。",
@@ -1213,9 +1230,9 @@ export const storefrontZhCN = {
   "storefront.checkout.preview.errorTitle": "订单校验失败",
   "storefront.checkout.preview.loading": "正在校验价格、库存和 MOQ。",
   "storefront.checkout.shippingFixed":
-    "由 PartsPro 仓库统一安排物流；可填写期望配送时段或配送备注。",
+    "由 PartsPro 仓库统一安排物流；默认 16:00 前发货，如有特殊要求请写订单备注。",
   "storefront.checkout.shippingFixedCompact":
-    "PartsPro 仓库统一安排物流；可填写配送时段或备注。",
+    "GLS/BRT 24-48h；默认 16:00 前发货，如有特殊要求请写订单备注。",
   "storefront.checkout.preview.title": "订单校验",
   "storefront.checkout.profileMissing": "客户资料待补全",
   "storefront.checkout.profileMissingAll": "客户资料",
@@ -1230,9 +1247,6 @@ export const storefrontZhCN = {
   "storefront.checkout.field.codiceDestinatario": "收件代码",
   "storefront.checkout.field.codiceFiscale": "税号",
   "storefront.checkout.field.companyName": "公司名称",
-  "storefront.checkout.field.deliveryWindow": "首选配送时段",
-  "storefront.checkout.field.deliveryWindowPlaceholder":
-    "例如上午、下午、预约自提",
   "storefront.checkout.field.electronicInvoice": "PEC / SDI",
   "storefront.checkout.field.notes": "订单备注",
   "storefront.checkout.field.notesPlaceholder":
@@ -1353,6 +1367,8 @@ export const storefrontZhCN = {
   "storefront.customer.status.suspended": "已暂停",
   "storefront.customer.type.retail": "零售",
   "storefront.customer.type.wholesale": "批发",
+  "storefront.customer.typeBadge.retail": "零售价客户",
+  "storefront.customer.typeBadge.wholesale": "批发客户",
   "storefront.product.backToCatalog": "返回目录",
   "storefront.product.card.accountReviewHint": "起订量 {moq} · 价目表审核",
   "storefront.product.card.accountReviewLabel": "账户审核中",

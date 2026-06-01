@@ -439,7 +439,6 @@ function isDelegatedCompanyOrderable(
 ) {
   return Boolean(
     company.status === "approved" &&
-      company.customerType === "wholesale" &&
       company.assignmentStatus === "assigned" &&
       profile &&
       isCheckoutProfileComplete(profile)
@@ -493,8 +492,7 @@ function resolveCheckoutMode(
 
 function isCheckoutProfileComplete(profile: AccountCustomerProfile) {
   const sharedComplete = Boolean(
-    profile.companyName &&
-      profile.contactName &&
+    profile.contactName &&
       profile.email &&
       profile.phone &&
       profile.billingAddress &&
@@ -510,7 +508,8 @@ function isCheckoutProfileComplete(profile: AccountCustomerProfile) {
   }
 
   return Boolean(
-    profile.vatNumber &&
+    profile.companyName &&
+      profile.vatNumber &&
       profile.fiscalCode &&
       (profile.pec || profile.sdi)
   );

@@ -111,14 +111,12 @@ export function CheckoutSubmitButton({
     const selectedCompanyId = companyId?.trim();
     const paymentMethod = readPaymentMethod(formData);
     const deliveryMethod = readDeliveryMethod(formData);
-    const deliveryWindow = readOptionalText(formData, "deliveryWindow");
     const purchaseOrderNumber = readOptionalText(formData, "purchaseOrderNumber");
     const deliveryAddress = readDeliveryAddress(formData);
     const companySnapshot = readCompanySnapshot(formData, deliveryAddress);
     const notes = buildOrderNotes(
       readOptionalText(formData, "notes"),
-      deliveryMethod,
-      deliveryWindow
+      deliveryMethod
     );
     const items = cartItemsForApi(cart.items);
 
@@ -377,12 +375,10 @@ function removeEmptyValues<T extends Record<string, unknown>>(payload: T) {
 
 function buildOrderNotes(
   customerNotes: string | undefined,
-  deliveryMethod: string | undefined,
-  deliveryWindow: string | undefined
+  deliveryMethod: string | undefined
 ) {
   const details = [
     deliveryMethod ? `Consegna: ${deliveryMethod}` : undefined,
-    deliveryWindow ? `Fascia: ${deliveryWindow}` : undefined,
     customerNotes ? `Note: ${customerNotes}` : undefined,
   ].filter((value): value is string => Boolean(value));
 
