@@ -896,22 +896,27 @@ begin
 end;
 $$;
 
-update public.customers as c
-set status = 'active',
-    assignment_status = 'assigned',
-    customer_type = coalesce(nullif(c.customer_type, ''), 'retail'),
-    profile_completed_at = coalesce(c.profile_completed_at, now()),
-    updated_at = now()
-from public.profiles as p
-where p.customer_id = c.id
-  and coalesce(p.account_type, 'customer') = 'customer'
-  and coalesce(c.profile_kind, 'customer') = 'customer'
-  and c.status <> 'suspended'
-  and coalesce(c.customer_type, 'retail') = 'retail'
-  and nullif(coalesce(c.company_name, ''), '') is not null
-  and nullif(coalesce(c.contact_name, ''), '') is not null
-  and nullif(coalesce(c.email, ''), '') is not null
-  and nullif(coalesce(c.phone, ''), '') is not null
-  and nullif(coalesce(c.billing_address, ''), '') is not null
-  and nullif(coalesce(c.shipping_address, ''), '') is not null
-  and coalesce(nullif(c.fiscal_code, ''), nullif(c.vat_number, ''), '') <> '';
+do $$
+begin
+  perform set_config('partspro.allow_account_admin_update', 'on', true);
+
+  update public.customers as c
+  set status = 'active',
+      assignment_status = 'assigned',
+      customer_type = coalesce(nullif(c.customer_type, ''), 'retail'),
+      profile_completed_at = coalesce(c.profile_completed_at, now()),
+      updated_at = now()
+  from public.profiles as p
+  where p.customer_id = c.id
+    and coalesce(p.account_type, 'customer') = 'customer'
+    and coalesce(c.profile_kind, 'customer') = 'customer'
+    and c.status <> 'suspended'
+    and coalesce(c.customer_type, 'retail') = 'retail'
+    and nullif(coalesce(c.company_name, ''), '') is not null
+    and nullif(coalesce(c.contact_name, ''), '') is not null
+    and nullif(coalesce(c.email, ''), '') is not null
+    and nullif(coalesce(c.phone, ''), '') is not null
+    and nullif(coalesce(c.billing_address, ''), '') is not null
+    and nullif(coalesce(c.shipping_address, ''), '') is not null
+    and coalesce(nullif(c.fiscal_code, ''), nullif(c.vat_number, ''), '') <> '';
+end $$;

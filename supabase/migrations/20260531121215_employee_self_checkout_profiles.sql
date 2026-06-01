@@ -41,6 +41,8 @@ begin
       using errcode = '42501';
   end if;
 
+  perform set_config('partspro.allow_account_admin_update', 'on', true);
+
   select *
   into v_customer
   from public.customers
@@ -122,14 +124,19 @@ where p.id = c.user_id
   and coalesce(p.account_type, 'customer') = 'employee'
   and c.profile_kind = 'customer';
 
-update public.profiles as p
-set customer_id = c.id,
-    updated_at = now()
-from public.customers as c
-where p.id = c.user_id
-  and coalesce(p.account_type, 'customer') = 'employee'
-  and c.profile_kind = 'employee_self'
-  and p.customer_id is distinct from c.id;
+do $$
+begin
+  perform set_config('partspro.allow_account_admin_update', 'on', true);
+
+  update public.profiles as p
+  set customer_id = c.id,
+      updated_at = now()
+  from public.customers as c
+  where p.id = c.user_id
+    and coalesce(p.account_type, 'customer') = 'employee'
+    and c.profile_kind = 'employee_self'
+    and p.customer_id is distinct from c.id;
+end $$;
 
 update public.customer_memberships as cm
 set status = 'disabled',

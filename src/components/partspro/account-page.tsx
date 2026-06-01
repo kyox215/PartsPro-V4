@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Building2,
   CheckCircle2,
@@ -155,6 +156,7 @@ export function AccountPage({
   rmaRequests = [],
   userEmail,
 }: AccountPageProps) {
+  const router = useRouter();
   const [activeFilter, setActiveFilter] = React.useState<OrderFilterId>("all");
   const [orderDetail, setOrderDetail] = React.useState<AccountOrderDetail | null>(null);
   const [orderDetailError, setOrderDetailError] = React.useState<string | null>(null);
@@ -165,10 +167,12 @@ export function AccountPage({
     savedProfile && (!customerProfile || savedProfile.id === customerProfile.id)
       ? savedProfile
       : customerProfile;
-  const [profileDialogOpen, setProfileDialogOpen] = React.useState(() =>
-    Boolean(customerProfile && (forceSetup || !customerProfile.profileCompletedAt))
-  );
   const isEmployeeAccount = accountType === "employee";
+  const editableProfile =
+    profile ?? createEmptyAccountProfile(userEmail, isEmployeeAccount);
+  const [profileDialogOpen, setProfileDialogOpen] = React.useState(() =>
+    Boolean(forceSetup || (customerProfile && !customerProfile.profileCompletedAt))
+  );
 
   const selectedFilter =
     orderFilters.find((filter) => filter.id === activeFilter) ?? orderFilters[0];
@@ -203,6 +207,11 @@ export function AccountPage({
     } finally {
       setOrderDetailLoading(false);
     }
+  }
+
+  function handleProfileSaved(nextProfile: AccountCustomerProfile) {
+    setSavedProfile(nextProfile);
+    router.refresh();
   }
 
   return (
@@ -259,6 +268,17 @@ export function AccountPage({
                           : "已检测到登录账号，但客户档案还未完成关联。请刷新页面，或联系管理员在账号管理中补齐客户资料。"}
                     </p>
                     {userEmail && <Info label="登录账号" value={userEmail} />}
+                    {!profile ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="mt-3"
+                        onClick={() => setProfileDialogOpen(true)}
+                      >
+                        <Pencil className="size-4" />
+                        补全资料
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
               )}
@@ -498,15 +518,13 @@ export function AccountPage({
           </DialogContent>
         </Dialog>
 
-        {profile ? (
-          <AccountProfileDialog
-            open={profileDialogOpen}
-            profile={profile}
-            userEmail={userEmail}
-            onOpenChange={setProfileDialogOpen}
-            onSaved={setSavedProfile}
-          />
-        ) : null}
+        <AccountProfileDialog
+          open={profileDialogOpen}
+          profile={editableProfile}
+          userEmail={userEmail}
+          onOpenChange={setProfileDialogOpen}
+          onSaved={handleProfileSaved}
+        />
       </div>
     </main>
   );
@@ -1004,6 +1022,31 @@ function ProfileTextarea({
       />
     </div>
   );
+}
+
+function createEmptyAccountProfile(
+  userEmail: string | undefined,
+  isEmployeeAccount: boolean
+): AccountCustomerProfile {
+  return {
+    assignmentStatus: isEmployeeAccount ? "assigned" : "needs_review",
+    billingAddress: "",
+    companyName: "",
+    contactName: "",
+    customerType: isEmployeeAccount ? "wholesale" : "retail",
+    email: userEmail ?? "",
+    fiscalCode: "",
+    id: "new",
+    level: "bronze",
+    pec: "",
+    phone: "",
+    profileCompletedAt: null,
+    profileKind: isEmployeeAccount ? "employee_self" : "customer",
+    sdi: "",
+    shippingAddress: "",
+    status: isEmployeeAccount ? "active" : "pending",
+    vatNumber: "",
+  };
 }
 
 function accountProfileToForm(
