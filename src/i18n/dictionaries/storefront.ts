@@ -368,7 +368,7 @@ export const storefrontItIT = {
     "Accetto che disponibilità, MOQ e tempi di evasione seguano lo stato magazzino mostrato nel checkout.",
   "storefront.checkout.confirmTitle": "Conferme prima dell'invio",
   "storefront.checkout.description":
-    "Controlla cliente, articoli, spedizione e pagamento prima dell'invio.",
+    "Controlla articoli, spedizione e pagamento prima dell'invio.",
   "storefront.checkout.disabledCompanyReason":
     "Checkout disabilitato: collega un profilo cliente all'utente Supabase.",
   "storefront.checkout.accountVerified": "Account verificato",
@@ -431,6 +431,8 @@ export const storefrontItIT = {
   "storefront.checkout.preview.loading": "Controllo prezzi, scorte e MOQ in corso.",
   "storefront.checkout.shippingFixed":
     "Metodo logistico gestito dal magazzino PartsPro. Puoi indicare fascia oraria o note di consegna.",
+  "storefront.checkout.shippingFixedCompact":
+    "Logistica gestita dal magazzino PartsPro; puoi indicare fascia oraria o note.",
   "storefront.checkout.preview.title": "Controllo ordine",
   "storefront.checkout.profileMissing": "Dati cliente da completare",
   "storefront.checkout.profileMissingAll": "Profilo cliente",
@@ -565,7 +567,7 @@ export const storefrontItIT = {
   "storefront.checkout.success.orderNumber": "Numero ordine",
   "storefront.checkout.success.total": "Totale ordine",
   "storefront.checkout.unitPriceTaxIncluded": "Prezzo IVA incl.",
-  "storefront.checkout.title": "Conferma ordine e dati fiscali",
+  "storefront.checkout.title": "Conferma ordine",
   "storefront.customer.assignment.archived": "Archiviato",
   "storefront.customer.assignment.assigned": "Assegnato",
   "storefront.customer.assignment.convertedToEmployee": "Convertito in staff",
@@ -1157,7 +1159,7 @@ export const storefrontZhCN = {
     "我接受库存、起订量和发货时间以结账页显示的仓库状态为准。",
   "storefront.checkout.confirmTitle": "提交前确认",
   "storefront.checkout.description":
-    "提交前核对客户、商品、配送和付款。",
+    "提交前核对商品、配送和付款。",
   "storefront.checkout.disabledCompanyReason":
     "结账已禁用：请将 Supabase 用户关联到客户资料。",
   "storefront.checkout.accountVerified": "账户已验证",
@@ -1212,6 +1214,8 @@ export const storefrontZhCN = {
   "storefront.checkout.preview.loading": "正在校验价格、库存和 MOQ。",
   "storefront.checkout.shippingFixed":
     "由 PartsPro 仓库统一安排物流；可填写期望配送时段或配送备注。",
+  "storefront.checkout.shippingFixedCompact":
+    "PartsPro 仓库统一安排物流；可填写配送时段或备注。",
   "storefront.checkout.preview.title": "订单校验",
   "storefront.checkout.profileMissing": "客户资料待补全",
   "storefront.checkout.profileMissingAll": "客户资料",
@@ -1331,7 +1335,7 @@ export const storefrontZhCN = {
   "storefront.checkout.success.orderNumber": "订单号",
   "storefront.checkout.success.total": "订单总计",
   "storefront.checkout.unitPriceTaxIncluded": "含税单价",
-  "storefront.checkout.title": "确认订单与税务资料",
+  "storefront.checkout.title": "确认订单",
   "storefront.customer.assignment.archived": "已归档",
   "storefront.customer.assignment.assigned": "已分配",
   "storefront.customer.assignment.convertedToEmployee": "已转为员工",

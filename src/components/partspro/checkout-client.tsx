@@ -6,13 +6,11 @@ import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   ArrowLeft,
-  Building2,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   ClipboardCheck,
   CreditCard,
-  FileText,
   Loader2,
   MapPin,
   RefreshCcw,
@@ -710,8 +708,8 @@ function CheckoutClientContent({
         initialAccountAccess={initialAccountAccess}
       />
       <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
-        <div className="mx-auto grid max-w-[1460px] gap-3 px-2 pt-2 pb-[calc(5.75rem_+_env(safe-area-inset-bottom))] sm:px-4 sm:pt-3 lg:grid-cols-[minmax(0,1fr)_330px] lg:pb-6">
-          <section className="space-y-2.5">
+        <div className="mx-auto grid max-w-[1460px] gap-2.5 px-2 pt-2 pb-[calc(5.75rem_+_env(safe-area-inset-bottom))] sm:px-4 sm:pt-3 lg:grid-cols-[minmax(0,1fr)_330px] lg:gap-3 lg:pb-6">
+          <section className="space-y-2">
           <CheckoutHeader cartHref={cartHref} runtime={runtime} company={selectedCompany} />
           {hasEmployeeSelfProfile && delegatedCheckout ? (
             <CheckoutModeSelector
@@ -736,11 +734,6 @@ function CheckoutClientContent({
             pendingCustomerItems={pendingCustomerItems}
             pendingItemsReason={pendingItemsReason}
             unresolvedSkus={reviewUnresolvedSkus}
-          />
-          <CompanyReview
-            company={selectedCompany}
-            profile={selectedCustomerProfile}
-            runtime={runtime}
           />
           <DeliverySection
             form={form}
@@ -1121,27 +1114,27 @@ function OrderLineRow({ issues, line }: { issues: PreviewIssue[]; line: CartLine
   const stockMeta = publicStockLevelMeta(t, line.product);
 
   return (
-    <div className="grid grid-cols-[52px_minmax(0,1fr)] gap-2.5 rounded-lg border border-slate-200 p-2.5 sm:grid-cols-[56px_minmax(220px,1fr)_70px_110px_110px] sm:items-center">
+    <div className="grid grid-cols-[48px_minmax(0,1fr)] gap-2 rounded-lg border border-slate-200 p-2 sm:grid-cols-[56px_minmax(220px,1fr)_70px_110px_110px] sm:items-center sm:gap-2.5 sm:p-2.5">
       <StorefrontProductImage
         product={line.product}
         sizes="56px"
         quality={55}
-        className="size-12 rounded-md border border-slate-100 bg-slate-50 sm:size-14"
+        className="size-11 rounded-md border border-slate-100 bg-slate-50 sm:size-14"
         fallbackClassName="shrink-0"
         imageClassName="object-contain p-1.5"
       />
-      <div className="min-w-0">
-        <div className="line-clamp-1 font-black leading-5">{line.product.name}</div>
-        <div className="mt-1 font-mono text-xs text-slate-500">{line.sku}</div>
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
-          <Badge variant="outline">{line.product.grade}</Badge>
-          <Badge variant="outline">
-            {txFormat(t, "storefront.checkout.moq", "MOQ {count}", { count: line.product.moq })}
-          </Badge>
-          <Badge className={stockMeta.className}>
-            {stockMeta.label}
-          </Badge>
-        </div>
+        <div className="min-w-0">
+          <div className="line-clamp-1 font-black leading-5">{line.product.name}</div>
+          <div className="mt-1 font-mono text-xs text-slate-500">{line.sku}</div>
+          <div className="mt-1 flex flex-wrap gap-1">
+            <Badge variant="outline">{line.product.grade}</Badge>
+            <Badge variant="outline">
+              {txFormat(t, "storefront.checkout.moq", "MOQ {count}", { count: line.product.moq })}
+            </Badge>
+            <Badge className={stockMeta.className}>
+              {stockMeta.label}
+            </Badge>
+          </div>
         {issues.length > 0 && (
           <div className="mt-2 space-y-1">
             {issues.map((issue) => (
@@ -1181,95 +1174,6 @@ function OrderLineRow({ issues, line }: { issues: PreviewIssue[]; line: CartLine
   );
 }
 
-function CompanyReview({
-  company,
-  profile,
-  runtime,
-}: {
-  company: CompanyProfile | null;
-  profile: AccountCustomerProfile | null;
-  runtime: CheckoutRuntimeView;
-}) {
-  const t = useT();
-  const missing = missingProfileLabels(t, profile);
-
-  return (
-    <Card size="sm" className="rounded-lg border-slate-200 bg-white">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Building2 className="size-5 text-primary" />
-          {tx(t, "storefront.checkout.section.customer", "Cliente e fatturazione")}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
-          <div className="flex items-start gap-2">
-            <ShieldCheck className="mt-0.5 size-5 shrink-0 text-emerald-600" />
-            <div className="min-w-0">
-              <div className="font-black">
-                {runtime.mode === "ready"
-                  ? tx(t, "storefront.checkout.accountVerified", "Account verificato")
-                  : runtime.title}
-              </div>
-              <p className="mt-1 leading-6">{runtime.description}</p>
-              {runtime.userEmail && (
-                <div className="mt-1 break-words text-xs font-bold">{runtime.userEmail}</div>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <ReadonlyInfo icon={Building2} label={tx(t, "storefront.checkout.field.companyName", "Ragione sociale")} value={profile?.companyName || company?.name} />
-          <ReadonlyInfo icon={FileText} label={tx(t, "storefront.account.field.contactName", "Referente")} value={profile?.contactName} />
-          <ReadonlyInfo icon={FileText} label={tx(t, "storefront.professional.field.email", "Email")} value={profile?.email} />
-          <ReadonlyInfo icon={FileText} label={tx(t, "storefront.checkout.field.partitaIva", "Partita IVA")} value={profile?.vatNumber || company?.partitaIva} />
-          <ReadonlyInfo icon={FileText} label={tx(t, "storefront.checkout.field.codiceFiscale", "Codice fiscale")} value={profile?.fiscalCode || company?.codiceFiscale} />
-          <ReadonlyInfo icon={FileText} label="PEC / SDI" value={[profile?.pec || company?.pec, profile?.sdi || company?.codiceDestinatario].filter(Boolean).join(" / ")} />
-          <ReadonlyInfo icon={MapPin} label={tx(t, "storefront.checkout.billingAddress", "Indirizzo fatturazione")} value={profile?.billingAddress} wide />
-          <ReadonlyInfo icon={MapPin} label={tx(t, "storefront.checkout.savedShippingAddress", "Indirizzo spedizione salvato")} value={profile?.shippingAddress} wide />
-        </div>
-        {missing.length > 0 && (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-            <div className="font-black">
-              {tx(t, "storefront.checkout.profileMissing", "Dati cliente da completare")}
-            </div>
-            <p className="mt-1 leading-6">{missing.join(", ")}</p>
-            <Button asChild variant="outline" size="sm" className="mt-3 bg-white">
-              <Link href="/account?setup=1">
-                {tx(t, "storefront.checkout.completeProfile", "Completa profilo")}
-              </Link>
-            </Button>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function ReadonlyInfo({
-  icon: Icon,
-  label,
-  value,
-  wide = false,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value?: string | null;
-  wide?: boolean;
-}) {
-  return (
-    <div className={cn("rounded-lg border border-slate-200 bg-slate-50 p-3", wide && "sm:col-span-2")}>
-      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-normal text-slate-500">
-        <Icon className="size-4 text-primary" />
-        {label}
-      </div>
-      <div className="mt-2 break-words text-sm font-black text-slate-950">
-        {value || "-"}
-      </div>
-    </div>
-  );
-}
-
 function DeliverySection({
   errors,
   form,
@@ -1286,26 +1190,17 @@ function DeliverySection({
   const t = useT();
 
   return (
-    <Card size="sm" className="rounded-lg border-slate-200 bg-white">
-      <CardHeader>
+    <Card size="sm" className="rounded-lg border-slate-200 bg-white py-2.5">
+      <CardHeader className="px-3">
         <CardTitle className="flex items-center gap-2">
-          <Truck className="size-5 text-primary" />
+          <Truck className="size-4 text-primary" />
           {tx(t, "storefront.checkout.group.delivery", "Consegna")}
         </CardTitle>
       </CardHeader>
-      <CardContent className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(220px,300px)]">
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <div className="flex items-center gap-2 text-sm font-black">
-            <Truck className="size-4 text-primary" />
-            {fixedShippingMethod}
-          </div>
-          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-            {tx(t, "storefront.checkout.shippingFixed", "Metodo logistico gestito dal magazzino PartsPro. Puoi indicare fascia oraria o note di consegna.")}
-          </p>
-        </div>
+      <CardContent className="grid gap-2.5 px-3 sm:grid-cols-[minmax(0,1fr)_minmax(220px,300px)]">
         <div
           className={cn(
-            "rounded-lg border p-3 text-sm",
+            "rounded-lg border p-2.5 text-sm sm:col-span-2",
             shippingAddress
               ? "border-emerald-200 bg-emerald-50 text-emerald-950"
               : "border-amber-200 bg-amber-50 text-amber-950"
@@ -1317,20 +1212,51 @@ function DeliverySection({
               <div className="font-black">
                 {tx(t, "storefront.checkout.savedShippingAddress", "Indirizzo spedizione salvato")}
               </div>
-              <p className="mt-1 break-words text-xs font-semibold leading-5">
-                {shippingAddress || tx(t, "storefront.checkout.deliveryAddressMissing", "Completa l'indirizzo di spedizione nel profilo cliente.")}
-              </p>
+              {shippingAddress ? (
+                <Select defaultValue="saved-shipping-address">
+                  <SelectTrigger className="mt-2 h-auto min-h-10 w-full whitespace-normal bg-white py-2 text-left">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem
+                      value="saved-shipping-address"
+                      className="max-w-[calc(100vw-3rem)] whitespace-normal"
+                    >
+                      {shippingAddress}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="mt-2">
+                  <p className="break-words text-xs font-semibold leading-5">
+                    {tx(t, "storefront.checkout.deliveryAddressMissing", "Completa l'indirizzo di spedizione nel profilo cliente.")}
+                  </p>
+                  <Button asChild variant="outline" size="sm" className="mt-2 bg-white">
+                    <Link href="/account?setup=1">
+                      {tx(t, "storefront.checkout.completeProfile", "Completa profilo")}
+                    </Link>
+                  </Button>
+                </div>
+              )}
               {submitAttempted && errors.deliveryAddress ? (
                 <div className="mt-1 text-xs font-bold text-red-600">{errors.deliveryAddress}</div>
               ) : null}
             </div>
           </div>
         </div>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
+          <div className="flex items-center gap-2 text-sm font-black">
+            <Truck className="size-4 text-primary" />
+            {fixedShippingMethod}
+          </div>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+            {tx(t, "storefront.checkout.shippingFixedCompact", "PartsPro 仓库统一安排物流；可填写配送时段或备注。")}
+          </p>
+        </div>
         <TextField
           id="deliveryWindow"
           label={tx(t, "storefront.checkout.field.deliveryWindow", "Fascia consegna preferita")}
           value={form.deliveryWindow}
-          wrapperClassName="sm:col-span-2"
           onChange={(value) => onChange((current) => ({ ...current, deliveryWindow: value }))}
         />
       </CardContent>
@@ -1394,27 +1320,27 @@ function PaymentSection({
   ];
 
   return (
-    <Card size="sm" className="rounded-lg border-slate-200 bg-white">
-      <CardHeader>
+    <Card size="sm" className="rounded-lg border-slate-200 bg-white py-2.5">
+      <CardHeader className="px-3">
         <CardTitle className="flex items-center gap-2">
-          <CreditCard className="size-5 text-primary" />
+          <CreditCard className="size-4 text-primary" />
           {tx(t, "storefront.checkout.group.payment", "Pagamento")}
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-3">
+      <CardContent className="space-y-2.5 px-3">
+        <div className="grid grid-cols-3 gap-1.5">
           {options.map((option) => (
             <label
               key={option.value}
               className={cn(
-                "flex min-h-24 cursor-pointer gap-3 rounded-lg border p-3 text-sm transition",
+                "flex min-h-14 cursor-pointer items-center justify-center rounded-lg border px-2 py-2 text-center text-xs font-black leading-4 transition sm:min-h-20 sm:items-start sm:justify-start sm:gap-2 sm:text-left sm:text-sm",
                 form.paymentMethod === option.value
                   ? "border-primary/50 bg-primary/8"
                   : "border-slate-200 bg-white hover:border-primary/30"
               )}
             >
               <input
-                className="mt-1 size-4 accent-primary"
+                className="sr-only"
                 type="radio"
                 name="paymentMethod"
                 value={option.value}
@@ -1424,27 +1350,25 @@ function PaymentSection({
                 }
               />
               <span className="min-w-0">
-                <span className="block font-black">{option.label}</span>
-                <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">
+                <span className="block">{option.label}</span>
+                <span className="mt-1 hidden text-xs font-semibold leading-5 text-slate-500 sm:block">
                   {option.description}
                 </span>
               </span>
             </label>
           ))}
         </div>
-        <div className="grid gap-3">
-          <div className="space-y-2">
-            <Label htmlFor="notes">{tx(t, "storefront.checkout.field.notes", "Note ordine")}</Label>
-            <Textarea
-              id="notes"
-              value={form.notes}
-              className="min-h-20"
-              maxLength={500}
-              onChange={(event) =>
-                onChange((current) => ({ ...current, notes: event.currentTarget.value }))
-              }
-            />
-          </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="notes">{tx(t, "storefront.checkout.field.notes", "Note ordine")}</Label>
+          <Textarea
+            id="notes"
+            value={form.notes}
+            className="min-h-16"
+            maxLength={500}
+            onChange={(event) =>
+              onChange((current) => ({ ...current, notes: event.currentTarget.value }))
+            }
+          />
         </div>
       </CardContent>
     </Card>
@@ -1465,14 +1389,14 @@ function ConfirmationSection({
   const t = useT();
 
   return (
-    <Card size="sm" className="rounded-lg border-slate-200 bg-white">
-      <CardHeader>
+    <Card size="sm" className="rounded-lg border-slate-200 bg-white py-2.5">
+      <CardHeader className="px-3">
         <CardTitle className="flex items-center gap-2">
-          <ClipboardCheck className="size-5 text-primary" />
+          <ClipboardCheck className="size-4 text-primary" />
           {tx(t, "storefront.checkout.confirmTitle", "Conferme prima dell'invio")}
         </CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="px-3">
         <ConfirmLine
           checked={confirmed}
           error={submitAttempted ? errors.confirmed : undefined}
@@ -1502,7 +1426,7 @@ function ConfirmLine({
     <label
       htmlFor={id}
       className={cn(
-        "flex gap-3 rounded-lg border bg-white p-4 text-sm font-semibold leading-6 text-slate-700",
+        "flex gap-2.5 rounded-lg border bg-white p-3 text-xs font-semibold leading-5 text-slate-700 sm:text-sm",
         error ? "border-red-300" : "border-slate-200"
       )}
     >
