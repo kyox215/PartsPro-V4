@@ -24,6 +24,7 @@ export async function GET() {
     roleTemplate: account.roleTemplate,
     permissions,
     visiblePanels,
+    canUseCart: account.canUseCart,
     canViewPrices: account.canViewPrices,
     canCheckout: account.canCheckout,
     admin: {

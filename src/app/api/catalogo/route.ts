@@ -130,7 +130,7 @@ function toCatalogProduct(product: PartProduct, account: AccountContext) {
     galleryImageUrls: pricedProduct.galleryImageUrls,
     priceGate: {
       orderable: Boolean(
-        (account.canCheckout || account.accountType === "employee") &&
+        account.canUseCart &&
           hasEffectivePrice
       ),
       visible: account.canViewPrices,

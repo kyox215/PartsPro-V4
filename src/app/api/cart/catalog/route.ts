@@ -97,9 +97,8 @@ export async function GET(request: NextRequest) {
     const requestedCartProducts = repositoryResult.data.map((product) =>
         toCartCatalogProduct(product, account, {
           orderable:
-            account.canCheckout ||
+            account.canUseCart ||
             account.canEmployeeSelfCheckout ||
-            account.accountType === "employee" ||
             Boolean(buyerCustomerId && delegatedCheckout),
           visible: canResolveTargetPrices,
         })

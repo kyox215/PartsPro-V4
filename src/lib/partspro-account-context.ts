@@ -53,6 +53,7 @@ export type AccountContext = {
   authenticated: boolean;
   canCheckout: boolean;
   canEmployeeSelfCheckout: boolean;
+  canUseCart: boolean;
   canViewPrices: boolean;
   customer: AccountCustomerContext | null;
   employeeSelfCustomer: AccountCustomerContext | null;
@@ -70,6 +71,7 @@ export const anonymousAccountContext: AccountContext = {
   authenticated: false,
   canCheckout: false,
   canEmployeeSelfCheckout: false,
+  canUseCart: false,
   canViewPrices: false,
   customer: null,
   employeeSelfCustomer: null,
@@ -164,16 +166,16 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
   const employeeSelfCustomer = employeeSelfCustomerRow
     ? toCustomerContext(employeeSelfCustomerRow)
     : null;
-  const customerReadyForCommerce = Boolean(
+  const customerReadyForPricing = Boolean(
     customerContext &&
       customerContext.status === "active" &&
-      customerContext.assignmentStatus === "assigned" &&
-      isCustomerProfileComplete(customer)
+      customerContext.assignmentStatus === "assigned"
   );
-  const canViewPrices = Boolean(
-    isEmployee ||
-      customerReadyForCommerce
+  const customerReadyForCommerce = Boolean(
+    customerReadyForPricing && isCustomerProfileComplete(customer)
   );
+  const canViewPrices = Boolean(isEmployee || customerReadyForPricing);
+  const canUseCart = Boolean(isEmployee || customerReadyForPricing);
   const canCheckout = Boolean(
     accountType === "customer" &&
       !accountSyncError &&
@@ -195,6 +197,7 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
     authenticated: true,
     canCheckout,
     canEmployeeSelfCheckout,
+    canUseCart,
     canViewPrices,
     customer: customerContext,
     employeeSelfCustomer,
@@ -321,16 +324,19 @@ export function priceVisibilityReason(account: AccountContext) {
     return "customer_suspended";
   }
 
-  if (!account.customer.profileComplete) {
-    return "customer_profile_required";
-  }
-
-  if (account.customer.assignmentStatus === "needs_review") {
+  if (
+    account.customer.status !== "active" ||
+    account.customer.assignmentStatus !== "assigned"
+  ) {
     return "customer_needs_assignment";
   }
 
   if (account.canViewPrices) {
     return "customer";
+  }
+
+  if (!account.customer.profileComplete) {
+    return "customer_profile_required";
   }
 
   return "customer_needs_assignment";
