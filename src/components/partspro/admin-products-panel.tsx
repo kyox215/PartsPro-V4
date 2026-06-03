@@ -112,6 +112,7 @@ import { PartVisual as ProductVisual } from "./part-visual";
 
 const adminProductsEndpoint = "/api/admin/products";
 const productImagesBucket = "product-images";
+const adminProductWriteTimeoutMs = 25_000;
 const lowStockThreshold = 10;
 const productGrades = ["A+", "A", "B", "Refurbished"] as const;
 const defaultWarehouse: PartProduct["warehouse"] = "Milano";
@@ -979,8 +980,8 @@ export function AdminProductsPanel() {
       });
 
       return saved;
-    } catch {
-      setNotice({ tone: "error", message: text.saveError });
+    } catch (error) {
+      setNotice({ tone: "error", message: formatNoticeError(text.saveError, error) });
       return null;
     } finally {
       setIsMutating(false);
@@ -2951,17 +2952,22 @@ function ProductDetails({
       isSubmitting: true,
     }));
 
-    const saved = await onSave(product.sku, editValues);
+    let saved: AdminProductRow | null = null;
+
+    try {
+      saved = await onSave(product.sku, editValues);
+    } finally {
+      if (!saved) {
+        setEditorState((current) => (
+          current?.sku === product.sku ? { ...current, isSubmitting: false } : current
+        ));
+      }
+    }
 
     if (saved) {
       onSaved(saved);
       stopInlineEdit();
-      return;
     }
-
-    setEditorState((current) => (
-      current?.sku === product.sku ? { ...current, isSubmitting: false } : current
-    ));
   }
 
   return (
@@ -3342,14 +3348,18 @@ function ProductEditorForm({
     }
 
     setIsSubmitting(true);
-    const saved =
-      isEdit && product
-        ? await onSave(product.sku, submitValues)
-        : await onCreate(submitValues);
-    setIsSubmitting(false);
 
-    if (saved) {
-      onSaved(saved);
+    try {
+      const saved =
+        isEdit && product
+          ? await onSave(product.sku, submitValues)
+          : await onCreate(submitValues);
+
+      if (saved) {
+        onSaved(saved);
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -4409,83 +4419,78 @@ async function fetchAdminProductModelGroups(
 
 async function createAdminProduct(values: ProductFormValues) {
   const payload = buildProductWritePayload(values, "create");
-  const response = await fetch(adminProductsEndpoint, {
-    method: "POST",
-    cache: "no-store",
-    headers: {
-      Accept: "application/json",
-      "Cache-Control": "no-cache",
-      "Content-Type": "application/json",
+  const response = await fetchAdminWriteResponse(
+    adminProductsEndpoint,
+    {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Cache-Control": "no-cache",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ product: payload }),
     },
-    body: JSON.stringify({ product: payload }),
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      await readApiErrorMessage(
-        response,
-        `POST ${adminProductsEndpoint} responded ${response.status}`
-      )
-    );
-  }
+    `POST ${adminProductsEndpoint} failed`
+  );
 
   return readSavedProduct(await readJsonResponse(response));
 }
 
 async function updateAdminProduct(sku: string, values: ProductFormValues) {
   const payload = buildProductWritePayload(values, "update");
-  const response = await fetch(adminProductsEndpoint, {
-    method: "PATCH",
-    cache: "no-store",
-    headers: {
-      Accept: "application/json",
-      "Cache-Control": "no-cache",
-      "Content-Type": "application/json",
+  const response = await fetchAdminWriteResponse(
+    adminProductsEndpoint,
+    {
+      method: "PATCH",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Cache-Control": "no-cache",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ sku, product: payload }),
     },
-    body: JSON.stringify({ sku, product: payload }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`PATCH ${adminProductsEndpoint} responded ${response.status}`);
-  }
+    `PATCH ${adminProductsEndpoint} failed`
+  );
 
   return readSavedProduct(await readJsonResponse(response));
 }
 
 async function runAdminProductAction(sku: string, action: ProductAction) {
-  const response = await fetch(`${adminProductsEndpoint}/${encodeURIComponent(sku)}/${action}`, {
-    method: "POST",
-    cache: "no-store",
-    headers: {
-      Accept: "application/json",
-      "Cache-Control": "no-cache",
-      "Content-Type": "application/json",
+  const response = await fetchAdminWriteResponse(
+    `${adminProductsEndpoint}/${encodeURIComponent(sku)}/${action}`,
+    {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Cache-Control": "no-cache",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ reason: `Product ${action} from admin products panel.` }),
     },
-    body: JSON.stringify({ reason: `Product ${action} from admin products panel.` }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`POST ${action} responded ${response.status}`);
-  }
+    `POST ${action} failed`
+  );
 
   return readSavedProduct(await readJsonResponse(response));
 }
 
 async function hideAdminProducts(skus: string[]) {
-  const response = await fetch(adminProductsEndpoint, {
-    method: "DELETE",
-    cache: "no-store",
-    headers: {
-      Accept: "application/json",
-      "Cache-Control": "no-cache",
-      "Content-Type": "application/json",
+  const response = await fetchAdminWriteResponse(
+    adminProductsEndpoint,
+    {
+      method: "DELETE",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Cache-Control": "no-cache",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ skus }),
     },
-    body: JSON.stringify({ skus }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`DELETE ${adminProductsEndpoint} responded ${response.status}`);
-  }
+    `DELETE ${adminProductsEndpoint} failed`
+  );
 
   return readProductsRows(await readJsonResponse(response))
     .map(normalizeProductApiRow)
@@ -4496,20 +4501,20 @@ async function saveAdminProductStockAdjustment(
   sku: string,
   adjustment: StockAdjustmentPayload
 ) {
-  const response = await fetch(`${adminProductsEndpoint}/${encodeURIComponent(sku)}/stock-adjustments`, {
-    method: "POST",
-    cache: "no-store",
-    headers: {
-      Accept: "application/json",
-      "Cache-Control": "no-cache",
-      "Content-Type": "application/json",
+  const response = await fetchAdminWriteResponse(
+    `${adminProductsEndpoint}/${encodeURIComponent(sku)}/stock-adjustments`,
+    {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Cache-Control": "no-cache",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(adjustment),
     },
-    body: JSON.stringify(adjustment),
-  });
-
-  if (!response.ok) {
-    throw new Error(`POST stock adjustment responded ${response.status}`);
-  }
+    "POST stock adjustment failed"
+  );
 
   return readSavedProduct(await readJsonResponse(response));
 }
@@ -4529,16 +4534,16 @@ async function uploadAdminProductImage(
   formData.set("reason", payload.reason);
   formData.set("setPrimary", String(payload.setPrimary));
 
-  const response = await fetch(`${adminProductsEndpoint}/${encodeURIComponent(sku)}/images`, {
-    method: "POST",
-    cache: "no-store",
-    headers: { Accept: "application/json", "Cache-Control": "no-cache" },
-    body: formData,
-  });
-
-  if (!response.ok) {
-    throw new Error(`POST image upload responded ${response.status}`);
-  }
+  const response = await fetchAdminWriteResponse(
+    `${adminProductsEndpoint}/${encodeURIComponent(sku)}/images`,
+    {
+      method: "POST",
+      cache: "no-store",
+      headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+      body: formData,
+    },
+    "POST image upload failed"
+  );
 
   return readSavedProduct(await readJsonResponse(response));
 }
@@ -5262,6 +5267,38 @@ async function readJsonResponse(response: Response) {
   return (await response.json()) as unknown;
 }
 
+async function fetchAdminWriteResponse(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  fallback: string
+) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), adminProductWriteTimeoutMs);
+
+  try {
+    const response = await fetch(input, { ...init, signal: controller.signal });
+
+    if (!response.ok) {
+      throw new Error(
+        await readApiErrorMessage(
+          response,
+          `${fallback}: HTTP ${response.status}`
+        )
+      );
+    }
+
+    return response;
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error("请求超时，请刷新后重试，或检查当前账号的商品权限。");
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 async function readApiErrorMessage(response: Response, fallback: string) {
   let payload: unknown;
 
@@ -5285,6 +5322,12 @@ async function readApiErrorMessage(response: Response, fallback: string) {
 
 function readApiErrorDetail(details: unknown) {
   if (isRecord(details)) {
+    const missing = readMissingPermissionDetails(details.missing);
+
+    if (missing) {
+      return missing;
+    }
+
     return (
       readString(details.message) ??
       readString(details.details) ??
@@ -5294,6 +5337,33 @@ function readApiErrorDetail(details: unknown) {
   }
 
   return readString(details);
+}
+
+function readMissingPermissionDetails(value: unknown) {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const permissions = value
+    .map((item) => {
+      if (!isRecord(item)) {
+        return null;
+      }
+
+      const permission = readString(item.permission);
+      const fields = Array.isArray(item.fields)
+        ? item.fields.map(readString).filter(Boolean)
+        : [];
+
+      if (!permission) {
+        return null;
+      }
+
+      return fields.length > 0 ? `${permission} (${fields.join(", ")})` : permission;
+    })
+    .filter(isDefined);
+
+  return permissions.length > 0 ? `缺少权限：${permissions.join("; ")}` : null;
 }
 
 function getErrorMessage(error: unknown) {

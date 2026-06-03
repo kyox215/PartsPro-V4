@@ -9,6 +9,7 @@ import {
 } from "@/lib/partspro-repository";
 import { parseAdminQuery, repositoryErrorResponse, requireAdminApi } from "../_shared";
 import { toAdminProductDto } from "./_dto";
+import { missingProductPatchPermissions } from "./_permissions";
 import {
   productPatchSchema,
   productQuerySchema,
@@ -139,6 +140,15 @@ export async function PATCH(request: NextRequest) {
 
   if (!hasWritableProductPatch(parsed.data)) {
     return apiError(400, "ADMIN_PRODUCT_PATCH_EMPTY", "Product update payload is empty.");
+  }
+
+  const missingPermissions = missingProductPatchPermissions(admin.authState, parsed.data);
+
+  if (missingPermissions.length > 0) {
+    return apiError(403, "ADMIN_PRODUCT_PERMISSION_DENIED", "Missing product edit permission.", {
+      missing: missingPermissions,
+      role: admin.authState.role,
+    });
   }
 
   try {

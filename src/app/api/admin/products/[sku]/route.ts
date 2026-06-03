@@ -7,6 +7,7 @@ import {
 } from "@/lib/partspro-repository";
 import { repositoryErrorResponse, requireAdminApi } from "../../_shared";
 import { toAdminProductDto } from "../_dto";
+import { missingProductPatchPermissions } from "../_permissions";
 import { productPatchSchema } from "../_schemas";
 
 export const dynamic = "force-dynamic";
@@ -67,6 +68,15 @@ export async function PATCH(request: NextRequest, { params }: ProductParams) {
 
   if (!hasWritableProductPatch(parsed.data)) {
     return apiError(400, "ADMIN_PRODUCT_PATCH_EMPTY", "Product update payload is empty.");
+  }
+
+  const missingPermissions = missingProductPatchPermissions(admin.authState, parsed.data);
+
+  if (missingPermissions.length > 0) {
+    return apiError(403, "ADMIN_PRODUCT_PERMISSION_DENIED", "Missing product edit permission.", {
+      missing: missingPermissions,
+      role: admin.authState.role,
+    });
   }
 
   const { sku } = await params;
