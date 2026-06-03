@@ -58,7 +58,7 @@ export function CatalogBrandTree({
   const selectedCategory = selectedCatalog?.category;
   const selectedModel = selectedCatalog?.model;
   const selectedModelSeries = selectedCatalog?.modelSeries;
-  const inStockOnly = Boolean(selectedCatalog?.inStockOnly);
+  const inStockOnly = selectedCatalog?.inStockOnly ?? true;
   const selectionKnown = Boolean(selectedCatalog);
   const [expandedSeriesKey, setExpandedSeriesKey] = useState<string | null>(null);
   const groups = useMemo(
@@ -102,14 +102,14 @@ export function CatalogBrandTree({
   }
 
   function handleCatalogRootSelect() {
-    handleSelect({ inStockOnly: inStockOnly || undefined });
+    handleSelect({ inStockOnly });
   }
 
   function handleAvailabilityToggle(checked: boolean) {
     handleSelect({
       brand: selectedBrand,
       category: selectedCategory,
-      inStockOnly: checked || undefined,
+      inStockOnly: checked,
       model: selectedModel,
       modelSeries: selectedSeries,
     });
@@ -119,7 +119,7 @@ export function CatalogBrandTree({
     handleSelect({
       brand,
       category: selectedCategory,
-      inStockOnly: inStockOnly || undefined,
+      inStockOnly,
       model,
       modelSeries,
     });
@@ -378,7 +378,7 @@ export function CatalogBrandTree({
                                     selection: {
                                       brand: entry.brand,
                                       category: selectedCategory,
-                                      inStockOnly: inStockOnly || undefined,
+                                      inStockOnly,
                                       model,
                                       modelSeries: seriesGroup.series,
                                     },
@@ -414,7 +414,7 @@ export function CatalogBrandTree({
                           selection: {
                             brand: entry.brand,
                             category: selectedCategory,
-                            inStockOnly: inStockOnly || undefined,
+                            inStockOnly,
                             model,
                           },
                           elementId: modelSelected ? selectedModelElementId(idPrefix) : undefined,
@@ -468,7 +468,9 @@ function catalogQueryHref(
     params.set("model", model);
   }
 
-  if (inStockOnly) {
+  if (inStockOnly === false) {
+    params.set("minStock", "0");
+  } else if (inStockOnly) {
     params.set("minStock", "1");
   }
 

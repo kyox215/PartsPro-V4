@@ -60,7 +60,7 @@ function getModelSeriesFromParams(searchParams: CatalogSearchParams) {
 }
 
 function getInStockOnlyFromParams(searchParams: CatalogSearchParams) {
-  return Number(searchParams.get("minStock") ?? "0") > 0;
+  return Number(searchParams.get("minStock") ?? "1") > 0;
 }
 
 type CatalogPageProps = {
@@ -155,7 +155,7 @@ function CatalogPageContent({
           {
             brand: initialFilters.brand[0],
             category: initialFilters.category[0],
-            inStockOnly: initialInStockOnly || undefined,
+            inStockOnly: initialInStockOnly,
             model: initialSearchTerm || undefined,
             modelSeries: initialModelSeries || undefined,
             searchQuery: initialSearchQuery || undefined,
@@ -191,7 +191,7 @@ function CatalogPageContent({
   const initialActivitySelectionRef = useRef<CatalogSelection>({
     brand: initialFilters.brand[0],
     category: initialFilters.category[0],
-    inStockOnly: initialInStockOnly || undefined,
+    inStockOnly: initialInStockOnly,
     model: initialSearchTerm || undefined,
     modelSeries: initialModelSeries || undefined,
     searchQuery: initialSearchQuery || undefined,
@@ -549,7 +549,9 @@ function buildCatalogSelectionPath(
     params.set("q", selection.searchQuery);
   }
 
-  if (selection.inStockOnly) {
+  if (selection.inStockOnly === false) {
+    params.set("minStock", "0");
+  } else if (selection.inStockOnly) {
     params.set("minStock", "1");
   }
 
@@ -672,7 +674,9 @@ function buildCatalogApiPath(
     params.set("q", selection.searchQuery);
   }
 
-  if (selection.inStockOnly) {
+  if (selection.inStockOnly === false) {
+    params.set("minStock", "0");
+  } else if (selection.inStockOnly) {
     params.set("minStock", "1");
   }
 
