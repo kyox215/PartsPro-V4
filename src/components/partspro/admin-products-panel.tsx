@@ -101,7 +101,12 @@ import {
   getAdminDictionary,
   type AdminText,
 } from "@/i18n/dictionaries/admin";
-import { sanitizeSupplierText, toPublicSku } from "@/lib/partspro-sku";
+import {
+  buildAdminProductSkuCandidate,
+  isValidAdminSku,
+  sanitizeSupplierText,
+  toPublicSku,
+} from "@/lib/partspro-sku";
 import { useI18n } from "./i18n-provider";
 import { PartVisual as ProductVisual } from "./part-visual";
 
@@ -214,6 +219,7 @@ type ProductModelGroupsResult = {
 
 type ProductFormValues = {
   sku: string;
+  skuMode: "auto" | "manual";
   name: string;
   category: string;
   brand: string;
@@ -270,8 +276,13 @@ type ProductAuditEvent = {
   action: string;
   actorEmail: string | null;
   actorRole: string | null;
+  afterData: Record<string, unknown>;
+  beforeData: Record<string, unknown>;
   reason: string | null;
+  result: string;
+  requestMetadata: Record<string, unknown>;
   createdAt: string;
+  createdAtRaw: string | null;
 };
 
 const defaultFilters: ProductListFilters = {
@@ -423,7 +434,7 @@ const panelText = {
     tags: "标签",
     modelSeries: "系列",
     model: "主型号",
-    modelCode: "型号代码",
+    modelCode: "外部码 / EAN / 型号代码",
     batchCode: "批次",
     supplier: "供应商",
     imagePath: "主图路径",
@@ -441,11 +452,82 @@ const panelText = {
     saving: "正在保存...",
     loading: "正在加载...",
     skuReadonly: "编辑时 SKU 只读",
+    skuAutoHint: "新增时由外部码优先生成；未填写外部码时按品牌、型号、分类和品质生成。",
+    skuAutoPreview: "自动生成 SKU",
+    skuManualEnable: "手动覆盖",
+    skuManualDisable: "恢复自动",
+    skuManualHint: "仅特殊情况手动输入；保存时后端仍会校验唯一性。",
+    skuExternalInvalid: "外部码格式不适合作为 SKU，系统会改用商品信息生成。",
     stockReadonly: "库存只能通过库存动作调整",
     storefrontVisible: "前台可见",
     auditLoading: "正在读取审计记录...",
     auditEmpty: "暂无审计记录。",
     auditError: "审计记录暂时无法读取。",
+    auditActorFallback: "未知操作者",
+    auditChangesTitle: "变更",
+    auditDetailsTitle: "详情",
+    auditUnknownTime: "-",
+    auditChangedField: "{field}: {before} → {after}",
+    auditResultLabels: {
+      success: "成功",
+      failed: "失败",
+    },
+    auditCatalogStatusLabels: {
+      active: "已上架",
+      blocked: "已阻塞",
+      draft: "草稿",
+      hidden: "已隐藏",
+    },
+    auditActionLabels: {
+      "product.update": "商品资料更新",
+      "product.stock_adjust": "库存调整",
+      "product.images_update": "图片更新",
+      "product.publish": "发布商品",
+      "product.hide": "隐藏商品",
+      "product.block": "阻塞商品",
+      "product.restore_draft": "恢复草稿",
+      "product.audit": "商品审计",
+    },
+    auditDefaultReasons: {
+      "Updated from admin product API.": "后台保存了商品资料。",
+      "Published from admin product API.": "后台发布了商品。",
+      "Hidden from admin product API.": "后台隐藏了商品。",
+      "Blocked from admin product API.": "后台阻塞了商品。",
+      "Restored to draft from admin product API.": "后台恢复为草稿。",
+      "Uploaded product image for": "后台上传了商品图片。",
+    },
+    auditMetadataLabels: {
+      action: "动作",
+      batch_code: "批次",
+      delta: "库存变化",
+      gallery_count: "图库数量",
+      image_path: "主图路径",
+      location: "仓库",
+      quantity: "数量",
+      supplier: "供应商",
+    },
+    auditFieldLabels: {
+      actual_qty: "实物库存",
+      available_qty: "可售库存",
+      b2b_price: "批发价",
+      brand: "品牌",
+      category: "分类",
+      cost_price: "成本价",
+      gallery_image_paths: "图库路径",
+      image_alt: "图片 Alt",
+      image_path: "主图路径",
+      lead_time: "交期",
+      model: "主型号",
+      model_code: "外部码 / EAN / 型号代码",
+      moq: "MOQ",
+      name: "商品名称",
+      quality_grade: "品质",
+      retail_price: "零售价",
+      status: "发布状态",
+      stock_qty: "库存",
+      supplier: "供应商",
+      tags: "标签",
+    },
     formRequired: "请补全必填字段。",
     invalidNumber: "请输入有效数字。",
     sortLabels: {
@@ -590,7 +672,7 @@ const panelText = {
     tags: "Tag",
     modelSeries: "Serie",
     model: "Modello principale",
-    modelCode: "Codice modello",
+    modelCode: "Codice esterno / EAN / modello",
     batchCode: "Lotto",
     supplier: "Fornitore",
     imagePath: "Percorso immagine",
@@ -608,11 +690,82 @@ const panelText = {
     saving: "Salvataggio...",
     loading: "Caricamento...",
     skuReadonly: "SKU in sola lettura in modifica",
+    skuAutoHint: "In creazione usa prima il codice esterno; se manca, genera da brand, modello, categoria e qualita.",
+    skuAutoPreview: "SKU generato",
+    skuManualEnable: "Modifica manuale",
+    skuManualDisable: "Ripristina automatico",
+    skuManualHint: "Usa il manuale solo per casi speciali; il backend controlla comunque l'univocita.",
+    skuExternalInvalid: "Il codice esterno non e valido come SKU; verra usata la scheda prodotto.",
     stockReadonly: "Lo stock si modifica solo con movimento stock",
     storefrontVisible: "Visibile in storefront",
     auditLoading: "Caricamento audit...",
     auditEmpty: "Nessun audit registrato.",
     auditError: "Audit non disponibile.",
+    auditActorFallback: "Operatore sconosciuto",
+    auditChangesTitle: "Modifiche",
+    auditDetailsTitle: "Dettagli",
+    auditUnknownTime: "-",
+    auditChangedField: "{field}: {before} → {after}",
+    auditResultLabels: {
+      success: "Riuscito",
+      failed: "Fallito",
+    },
+    auditCatalogStatusLabels: {
+      active: "Pubblicato",
+      blocked: "Bloccato",
+      draft: "Bozza",
+      hidden: "Nascosto",
+    },
+    auditActionLabels: {
+      "product.update": "Aggiornamento prodotto",
+      "product.stock_adjust": "Movimento stock",
+      "product.images_update": "Aggiornamento immagini",
+      "product.publish": "Pubblicazione prodotto",
+      "product.hide": "Prodotto nascosto",
+      "product.block": "Prodotto bloccato",
+      "product.restore_draft": "Ripristino bozza",
+      "product.audit": "Audit prodotto",
+    },
+    auditDefaultReasons: {
+      "Updated from admin product API.": "Scheda prodotto salvata dal backend.",
+      "Published from admin product API.": "Prodotto pubblicato dal backend.",
+      "Hidden from admin product API.": "Prodotto nascosto dal backend.",
+      "Blocked from admin product API.": "Prodotto bloccato dal backend.",
+      "Restored to draft from admin product API.": "Prodotto riportato in bozza dal backend.",
+      "Uploaded product image for": "Immagine prodotto caricata dal backend.",
+    },
+    auditMetadataLabels: {
+      action: "Azione",
+      batch_code: "Lotto",
+      delta: "Variazione stock",
+      gallery_count: "Immagini galleria",
+      image_path: "Percorso immagine",
+      location: "Magazzino",
+      quantity: "Quantita",
+      supplier: "Fornitore",
+    },
+    auditFieldLabels: {
+      actual_qty: "Stock fisico",
+      available_qty: "Stock disponibile",
+      b2b_price: "Prezzo wholesale",
+      brand: "Brand",
+      category: "Categoria",
+      cost_price: "Costo",
+      gallery_image_paths: "Galleria",
+      image_alt: "Alt immagine",
+      image_path: "Immagine principale",
+      lead_time: "Lead time",
+      model: "Modello principale",
+      model_code: "Codice esterno / EAN / modello",
+      moq: "MOQ",
+      name: "Nome prodotto",
+      quality_grade: "Qualita",
+      retail_price: "Prezzo retail",
+      status: "Stato pubblicazione",
+      stock_qty: "Stock",
+      supplier: "Fornitore",
+      tags: "Tag",
+    },
     formRequired: "Completa i campi obbligatori.",
     invalidNumber: "Inserisci un numero valido.",
     sortLabels: {
@@ -806,8 +959,8 @@ export function AdminProductsPanel() {
       });
 
       return saved;
-    } catch {
-      setNotice({ tone: "error", message: text.saveError });
+    } catch (error) {
+      setNotice({ tone: "error", message: formatNoticeError(text.saveError, error) });
       return null;
     } finally {
       setIsMutating(false);
@@ -1125,6 +1278,7 @@ export function AdminProductsPanel() {
       <ProductDrawer
         mode={drawerMode}
         product={drawerProduct}
+        products={products}
         isMutating={isMutating}
         text={text}
         adminText={adminText}
@@ -2566,6 +2720,7 @@ function ProductPagination({
 function ProductDrawer({
   mode,
   product,
+  products,
   isMutating,
   text,
   adminText,
@@ -2580,6 +2735,7 @@ function ProductDrawer({
 }: {
   mode: ProductDrawerMode | null;
   product: AdminProductRow | null;
+  products: AdminProductRow[];
   isMutating: boolean;
   text: typeof panelText.zh | typeof panelText.it;
   adminText: ReturnType<typeof getAdminDictionary>["admin"];
@@ -2632,6 +2788,7 @@ function ProductDrawer({
               key={`${mode}-${product?.sku ?? "new"}`}
               mode={mode}
               product={product}
+              products={products}
               isMutating={isMutating}
               text={text}
               adminText={adminText}
@@ -3129,6 +3286,7 @@ function ProductDetails({
 function ProductEditorForm({
   mode,
   product,
+  products,
   isMutating,
   text,
   adminText,
@@ -3140,6 +3298,7 @@ function ProductEditorForm({
 }: {
   mode: ProductDrawerMode;
   product: AdminProductRow | null;
+  products: AdminProductRow[];
   isMutating: boolean;
   text: typeof panelText.zh | typeof panelText.it;
   adminText: ReturnType<typeof getAdminDictionary>["admin"];
@@ -3155,6 +3314,11 @@ function ProductEditorForm({
   );
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const isManualSku = values.skuMode === "manual";
+  const generatedSku = buildProductFormSkuCandidate(values, products);
+  const displayedSku = isEdit || isManualSku ? values.sku : generatedSku.sku;
+  const externalCodeIsInvalid =
+    !isEdit && values.modelCode.trim().length > 0 && !isValidAdminSku(values.modelCode);
 
   function setValue<K extends keyof ProductFormValues>(key: K, value: ProductFormValues[K]) {
     setValues((current) => ({ ...current, [key]: value }));
@@ -3167,7 +3331,9 @@ function ProductEditorForm({
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const nextErrors = validateProductForm(values, isEdit, text);
+    const submitValues =
+      !isEdit && !isManualSku ? { ...values, sku: generatedSku.sku } : values;
+    const nextErrors = validateProductForm(submitValues, isEdit, text);
 
     setErrors(nextErrors);
 
@@ -3178,8 +3344,8 @@ function ProductEditorForm({
     setIsSubmitting(true);
     const saved =
       isEdit && product
-        ? await onSave(product.sku, values)
-        : await onCreate(values);
+        ? await onSave(product.sku, submitValues)
+        : await onCreate(submitValues);
     setIsSubmitting(false);
 
     if (saved) {
@@ -3195,12 +3361,55 @@ function ProductEditorForm({
             <Input value={values.name} onChange={(event) => setValue("name", event.target.value)} />
           </Field>
           <Field label={text.sku} error={errors.sku} hint={isEdit ? text.skuReadonly : undefined}>
-            <Input
-              value={values.sku}
-              readOnly={isEdit}
-              className={cn(isEdit && "bg-slate-50 text-slate-500")}
-              onChange={(event) => setValue("sku", event.target.value)}
-            />
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <Input
+                  value={displayedSku}
+                  readOnly={isEdit || !isManualSku}
+                  className={cn(
+                    "font-mono",
+                    (isEdit || !isManualSku) && "bg-slate-50 text-slate-500"
+                  )}
+                  onChange={(event) => setValue("sku", event.target.value)}
+                />
+                {!isEdit && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="shrink-0 bg-white"
+                    onClick={() => {
+                      setValues((current) => ({
+                        ...current,
+                        sku: isManualSku ? current.sku : displayedSku,
+                        skuMode: isManualSku ? "auto" : "manual",
+                      }));
+                      setErrors((current) => {
+                        if (!current.sku) {
+                          return current;
+                        }
+
+                        const next = { ...current };
+                        delete next.sku;
+                        return next;
+                      });
+                    }}
+                  >
+                    {isManualSku ? text.skuManualDisable : text.skuManualEnable}
+                  </Button>
+                )}
+              </div>
+              {!isEdit && (
+                <div className="space-y-1 text-xs font-semibold text-slate-500">
+                  <div>
+                    {isManualSku ? text.skuManualHint : `${text.skuAutoPreview}: ${generatedSku.sku}`}
+                  </div>
+                  <div>{text.skuAutoHint}</div>
+                  {externalCodeIsInvalid && (
+                    <div className="text-amber-700">{text.skuExternalInvalid}</div>
+                  )}
+                </div>
+              )}
+            </div>
           </Field>
           <Field label={text.category} error={errors.category}>
             <Select value={values.category} onValueChange={(value) => setValue("category", value)}>
@@ -3542,6 +3751,7 @@ function ProductAuditPanel({
   sku: string;
   text: typeof panelText.zh | typeof panelText.it;
 }) {
+  const { locale } = useI18n();
   const [state, setState] = React.useState<{
     events: ProductAuditEvent[];
     sku: string;
@@ -3595,24 +3805,301 @@ function ProductAuditPanel({
 
   return (
     <div className="space-y-2">
-      {events.map((event) => (
-        <div key={event.id} className="rounded-lg border border-slate-200 p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm font-bold text-slate-900">{event.action}</div>
-            <div className="text-xs font-medium text-slate-500">{event.createdAt}</div>
-          </div>
-          <div className="mt-1 text-xs text-slate-500">
-            {event.actorEmail ?? event.actorRole ?? text.none}
-          </div>
-          {event.reason && (
-            <div className="mt-2 text-sm font-medium text-slate-700">
-              {event.reason}
+      {events.map((event) => {
+        const metadataItems = auditMetadataItems(event, text);
+        const changeItems = auditChangeItems(event, text).slice(0, 6);
+        const reason = auditReasonLabel(event.reason, text);
+
+        return (
+          <div key={event.id} className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <div className="text-sm font-black text-slate-950">
+                  {auditActionLabel(event.action, text)}
+                </div>
+                <Badge className={cn("px-2 py-0.5 text-[11px]", auditResultBadgeClass(event.result))}>
+                  {auditResultLabel(event.result, text)}
+                </Badge>
+              </div>
+              <time className="text-xs font-bold text-slate-500">
+                {formatAuditDateTime(event.createdAtRaw ?? event.createdAt, locale, text)}
+              </time>
             </div>
-          )}
-        </div>
-      ))}
+            <div className="mt-1 text-xs font-semibold text-slate-500">
+              {event.actorEmail ?? event.actorRole ?? text.auditActorFallback}
+            </div>
+            {metadataItems.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {metadataItems.map((item) => (
+                  <span
+                    key={`${item.label}-${item.value}`}
+                    className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-bold text-slate-600"
+                  >
+                    {item.label}: <span className="text-slate-950">{item.value}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+            {changeItems.length > 0 && (
+              <div className="mt-3 space-y-1">
+                <div className="text-[11px] font-black uppercase tracking-wide text-slate-400">
+                  {text.auditChangesTitle}
+                </div>
+                {changeItems.map((item) => (
+                  <div key={item} className="text-xs font-semibold text-slate-700">
+                    {item}
+                  </div>
+                ))}
+              </div>
+            )}
+            {reason && (
+              <div className="mt-3 rounded-md border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs font-semibold text-slate-700">
+                {reason}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
+}
+
+const auditChangeFieldKeys = [
+  "name",
+  "category",
+  "brand",
+  "quality_grade",
+  "b2b_price",
+  "retail_price",
+  "cost_price",
+  "stock_qty",
+  "available_qty",
+  "actual_qty",
+  "status",
+  "moq",
+  "lead_time",
+  "model",
+  "model_code",
+  "supplier",
+  "image_path",
+  "image_alt",
+  "gallery_image_paths",
+  "tags",
+] as const;
+
+const auditMetadataKeys = [
+  "action",
+  "quantity",
+  "delta",
+  "location",
+  "batch_code",
+  "supplier",
+  "image_path",
+  "gallery_count",
+] as const;
+
+const auditPriceFields = new Set(["b2b_price", "retail_price", "cost_price"]);
+
+function auditActionLabel(
+  action: string,
+  text: typeof panelText.zh | typeof panelText.it
+) {
+  return readTextMap(text.auditActionLabels)[action] ?? action;
+}
+
+function auditResultLabel(
+  result: string,
+  text: typeof panelText.zh | typeof panelText.it
+) {
+  return readTextMap(text.auditResultLabels)[result] ?? result;
+}
+
+function auditResultBadgeClass(result: string) {
+  return result === "failed"
+    ? "border-red-200 bg-red-50 text-red-700"
+    : "border-emerald-200 bg-emerald-50 text-emerald-700";
+}
+
+function auditReasonLabel(
+  reason: string | null,
+  text: typeof panelText.zh | typeof panelText.it
+) {
+  if (!reason) {
+    return null;
+  }
+
+  const defaultReasons = readTextMap(text.auditDefaultReasons);
+  const exact = defaultReasons[reason];
+
+  if (exact) {
+    return exact;
+  }
+
+  const prefix = Object.keys(defaultReasons).find((key) => reason.startsWith(key));
+
+  return prefix ? defaultReasons[prefix] : reason;
+}
+
+function auditMetadataItems(
+  event: ProductAuditEvent,
+  text: typeof panelText.zh | typeof panelText.it
+) {
+  const labels = readTextMap(text.auditMetadataLabels);
+
+  return auditMetadataKeys
+    .map((key) => {
+      const rawValue = event.requestMetadata[key];
+
+      if (!hasDisplayValue(rawValue)) {
+        return null;
+      }
+
+      const value =
+        key === "action"
+          ? text.stockActions[String(rawValue) as StockAdjustmentAction] ?? String(rawValue)
+          : formatAuditValue(key, rawValue, text);
+
+      return {
+        label: labels[key] ?? key,
+        value,
+      };
+    })
+    .filter(isDefined);
+}
+
+function auditChangeItems(
+  event: ProductAuditEvent,
+  text: typeof panelText.zh | typeof panelText.it
+) {
+  const fieldLabels = readTextMap(text.auditFieldLabels);
+
+  return auditChangeFieldKeys
+    .map((key) => {
+      const beforeValue = event.beforeData[key];
+      const afterValue = event.afterData[key];
+
+      if (!hasDisplayValue(beforeValue) && !hasDisplayValue(afterValue)) {
+        return null;
+      }
+
+      if (auditValuesEqual(beforeValue, afterValue)) {
+        return null;
+      }
+
+      return formatPanelTemplate(text.auditChangedField, {
+        after: formatAuditValue(key, afterValue, text),
+        before: formatAuditValue(key, beforeValue, text),
+        field: fieldLabels[key] ?? key,
+      });
+    })
+    .filter(isDefined);
+}
+
+function formatAuditDateTime(
+  value: string | null | undefined,
+  locale: string,
+  text: typeof panelText.zh | typeof panelText.it
+) {
+  if (!value) {
+    return text.auditUnknownTime;
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return text.auditUnknownTime;
+  }
+
+  if (locale.toLowerCase().startsWith("zh")) {
+    const parts = new Intl.DateTimeFormat("zh-CN", {
+      day: "2-digit",
+      hour: "2-digit",
+      hour12: false,
+      minute: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).formatToParts(date);
+    const part = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((item) => item.type === type)?.value ?? "";
+
+    return `${part("year")}年${part("month")}月${part("day")}日 ${part("hour")}:${part("minute")}`;
+  }
+
+  return new Intl.DateTimeFormat("it-IT", {
+    day: "2-digit",
+    hour: "2-digit",
+    hour12: false,
+    minute: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+function formatAuditValue(
+  key: string,
+  value: unknown,
+  text: typeof panelText.zh | typeof panelText.it
+) {
+  if (!hasDisplayValue(value)) {
+    return text.none;
+  }
+
+  if (key === "status") {
+    return readTextMap(text.auditCatalogStatusLabels)[String(value)] ?? String(value);
+  }
+
+  if (auditPriceFields.has(key)) {
+    const amount = readNumber(value);
+
+    return amount === undefined ? String(value) : formatEuro(amount);
+  }
+
+  if (Array.isArray(value)) {
+    const items = value.map((item) => String(item)).filter(Boolean);
+
+    if (items.length === 0) {
+      return text.none;
+    }
+
+    return items.length <= 3 ? items.join(", ") : String(items.length);
+  }
+
+  if (typeof value === "object") {
+    return JSON.stringify(value);
+  }
+
+  return String(value);
+}
+
+function formatPanelTemplate(template: string, values: Record<string, string>) {
+  return Object.entries(values).reduce(
+    (current, [key, value]) => current.replaceAll(`{${key}}`, value),
+    template
+  );
+}
+
+function auditValuesEqual(left: unknown, right: unknown) {
+  return JSON.stringify(normalizeAuditComparableValue(left)) === JSON.stringify(normalizeAuditComparableValue(right));
+}
+
+function normalizeAuditComparableValue(value: unknown) {
+  if (value === "" || value === null || value === undefined) {
+    return null;
+  }
+
+  return value;
+}
+
+function hasDisplayValue(value: unknown) {
+  if (value === null || value === undefined) {
+    return false;
+  }
+
+  return typeof value !== "string" || value.trim().length > 0;
+}
+
+function readTextMap(value: Record<string, string>) {
+  return value;
 }
 
 function FormSection({
@@ -3934,7 +4421,12 @@ async function createAdminProduct(values: ProductFormValues) {
   });
 
   if (!response.ok) {
-    throw new Error(`POST ${adminProductsEndpoint} responded ${response.status}`);
+    throw new Error(
+      await readApiErrorMessage(
+        response,
+        `POST ${adminProductsEndpoint} responded ${response.status}`
+      )
+    );
   }
 
   return readSavedProduct(await readJsonResponse(response));
@@ -4335,8 +4827,17 @@ function normalizeProductAuditEvent(row: unknown): ProductAuditEvent | null {
     action: readString(row.action) ?? "product_update",
     actorEmail: readString(row.actorEmail) ?? readString(row.actor_email) ?? null,
     actorRole: readString(row.actorRole) ?? readString(row.actor_role) ?? null,
+    afterData: readRecordObject(row.afterData) ?? readRecordObject(row.after_data) ?? {},
+    beforeData: readRecordObject(row.beforeData) ?? readRecordObject(row.before_data) ?? {},
     reason: readString(row.reason) ?? null,
+    result: readString(row.result) ?? "success",
+    requestMetadata: readRecordObject(row.requestMetadata) ?? readRecordObject(row.request_metadata) ?? {},
     createdAt: readString(row.createdAt) ?? readString(row.created_at) ?? formatTimestamp(),
+    createdAtRaw:
+      readString(row.createdAtRaw) ??
+      readString(row.created_at_raw) ??
+      readString(row.created_at) ??
+      null,
   };
 }
 
@@ -4357,7 +4858,12 @@ function buildProductWritePayload(values: ProductFormValues, mode: "create" | "u
   };
 
   if (mode === "create") {
-    payload.sku = toPublicSku(values.sku);
+    const sku = toPublicSku(values.sku);
+
+    if (sku && (values.skuMode === "manual" || isValidAdminSku(values.modelCode))) {
+      payload.sku = sku;
+    }
+
     payload.stock = parseInteger(values.stock) ?? 0;
     payload.warehouse = defaultWarehouse;
   }
@@ -4376,6 +4882,7 @@ function buildProductWritePayload(values: ProductFormValues, mode: "create" | "u
 function defaultProductFormValues(): ProductFormValues {
   return {
     sku: "",
+    skuMode: "auto",
     name: "",
     category: "Schermi",
     brand: "OEM",
@@ -4400,6 +4907,7 @@ function defaultProductFormValues(): ProductFormValues {
 function productFormDefaults(product: AdminProductRow): ProductFormValues {
   return {
     sku: product.sku,
+    skuMode: "manual",
     name: product.name,
     category: product.category,
     brand: product.brand,
@@ -4418,6 +4926,29 @@ function productFormDefaults(product: AdminProductRow): ProductFormValues {
     supplier: product.supplier ?? "",
     imagePath: product.imagePath ?? "",
     imageAlt: product.imageAlt ?? "",
+  };
+}
+
+function buildProductFormSkuCandidate(
+  values: ProductFormValues,
+  products: AdminProductRow[]
+) {
+  const candidate = buildAdminProductSkuCandidate({
+    brand: values.brand,
+    category: values.category,
+    grade: values.grade,
+    model: values.model,
+    modelCode: values.modelCode,
+    name: values.name,
+  });
+
+  if (candidate.source === "external") {
+    return candidate;
+  }
+
+  return {
+    ...candidate,
+    sku: ensureUniqueSku(candidate.sku, products),
   };
 }
 
@@ -4711,6 +5242,10 @@ function readStringArray(value: unknown) {
   }
 
   return undefined;
+}
+
+function readRecordObject(value: unknown) {
+  return isRecord(value) ? value : undefined;
 }
 
 function parseNumber(value: string) {

@@ -273,7 +273,7 @@ export type AdminProductPage = {
 };
 
 export type AdminProductWriteInput = {
-  sku: string;
+  sku?: string;
   name: string;
   category: string;
   brand: string;
@@ -335,9 +335,13 @@ export type AdminAuditEvent = {
   action: string;
   actorEmail: string | null;
   actorRole: string | null;
+  afterData: unknown;
+  beforeData: unknown;
   reason: string | null;
+  result: string;
   requestMetadata: unknown;
   createdAt: string;
+  createdAtRaw: string | null;
 };
 
 export type AdminCustomerAuditEvent = AdminAuditEvent & {
@@ -777,6 +781,10 @@ export type CatalogProductPage = {
   total: number;
 };
 
+export type HotCatalogProductQueryInput = {
+  limit: number;
+};
+
 type CatalogProductPageOptions = {
   buyerCustomerId?: string;
   includeBuyerPrices?: boolean;
@@ -965,6 +973,23 @@ export async function pageCatalogProducts(
       isSupabaseConfigured()
         ? "Supabase catalog could not be read; no local catalog is available."
         : "Supabase is not configured; no local catalog is available."
+    )
+  );
+}
+
+export async function pageHotCatalogProducts(
+  query: HotCatalogProductQueryInput,
+  options: CatalogProductPageOptions = {}
+): Promise<RepositoryResult<CatalogProductPage>> {
+  const supabaseResult = await readPublicHotCatalogProductPage(query.limit, options);
+
+  return (
+    supabaseResult ??
+    emptyResult(
+      { products: [], total: 0 },
+      isSupabaseConfigured()
+        ? "Supabase hot catalog products could not be read; falling back to standard shelves."
+        : "Supabase is not configured; no hot catalog products are available."
     )
   );
 }
@@ -1200,6 +1225,62 @@ async function readPublicCatalogProductsBySkus(
   }
 }
 
+async function readPublicHotCatalogProductPage(
+  limit: number,
+  options: Pick<CatalogProductPageOptions, "buyerCustomerId" | "includeBuyerPrices"> = {}
+): Promise<RepositoryResult<CatalogProductPage> | null> {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
+  try {
+    const client = await createClient();
+    const shelfLimit = Math.max(1, Math.trunc(limit));
+    const rowLimit = Math.min(50, Math.max(shelfLimit * 3, shelfLimit));
+    const { data, error, count } = await client
+      .from("catalog_hot_products_30d")
+      .select("sku_code, sold_qty, last_order_at", { count: "planned" })
+      .order("sold_qty", { ascending: false })
+      .order("last_order_at", { ascending: false })
+      .order("sku_code", { ascending: true })
+      .limit(rowLimit);
+    const rows = Array.isArray(data)
+      ? (data as unknown[]).filter(isDbRow)
+      : null;
+
+    if (error || !rows) {
+      return null;
+    }
+
+    const skus = uniqueDefinedStrings(
+      rows.map((row) => pickString(row, ["sku_code", "sku"]))
+    );
+
+    if (skus.length === 0) {
+      return {
+        data: { products: [], total: 0 },
+        source: "supabase",
+      };
+    }
+
+    const products = await readCatalogProductsBySkus(client, skus, options);
+
+    if (!products) {
+      return null;
+    }
+
+    return {
+      data: {
+        products: products.slice(0, shelfLimit),
+        total: count ?? rows.length,
+      },
+      source: "supabase",
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function readPublicCatalogProductPage(
   query: CatalogProductQueryInput,
   options: CatalogProductPageOptions = {}
@@ -1367,9 +1448,9 @@ export async function createAdminProduct(
   input: AdminProductWriteInput
 ): Promise<RepositoryResult<AdminProduct>> {
   const context = await requireSupabaseContext();
-  const sku = normalizeSku(input.sku);
+  const sku = input.sku ? normalizeSku(input.sku) : undefined;
   const payload = buildProductPayload(
-    { ...input, sku, catalogStatus: "draft" as AdminCatalogStatus },
+    { ...input, ...(sku ? { sku } : {}), catalogStatus: "draft" as AdminCatalogStatus },
     false,
     { includeStatus: true, includeStock: true, includeSku: true }
   );
@@ -1531,7 +1612,7 @@ export async function listAdminProductAuditEvents(
   try {
     const { data, error } = await context.client
       .from("admin_audit_events")
-      .select("id, action, actor_email, actor_role, reason, request_metadata, created_at")
+      .select("id, action, actor_email, actor_role, before_data, after_data, reason, request_metadata, result, created_at")
       .eq("entity_type", "product")
       .eq("sku_code", normalizedSku)
       .order("created_at", { ascending: false })
@@ -5664,14 +5745,20 @@ function mapAdminProductRow(row: DbRow): AdminProduct | null {
 }
 
 function mapAdminAuditEvent(row: DbRow): AdminAuditEvent {
+  const createdAtRaw = pickString(row, ["created_at", "createdAt"]) ?? null;
+
   return {
     id: pickString(row, ["id"]) ?? "",
     action: pickString(row, ["action"]) ?? "product.audit",
     actorEmail: pickString(row, ["actor_email", "actorEmail"]),
     actorRole: pickString(row, ["actor_role", "actorRole"]),
+    afterData: row.after_data ?? row.afterData ?? {},
+    beforeData: row.before_data ?? row.beforeData ?? {},
     reason: pickString(row, ["reason"]),
+    result: pickString(row, ["result"]) ?? "success",
     requestMetadata: row.request_metadata ?? row.requestMetadata ?? {},
-    createdAt: formatPartsProDateTime(pickString(row, ["created_at", "createdAt"])),
+    createdAt: formatPartsProDateTime(createdAtRaw),
+    createdAtRaw,
   };
 }
 

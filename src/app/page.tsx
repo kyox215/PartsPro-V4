@@ -2,6 +2,7 @@ import { HomePage } from "@/components/partspro/home-page";
 import {
   getCatalogCategoryCounts,
   listCatalogModelGroups,
+  pageHotCatalogProducts,
   pageCatalogProducts,
 } from "@/lib/partspro-repository";
 import { type PartProduct } from "@/lib/partspro-data";
@@ -13,7 +14,7 @@ import {
 } from "@/lib/partspro-account-context";
 import { toStoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 
-const featuredProductLimit = 8;
+const homeShelfProductLimit = 8;
 
 export default async function Home() {
   const [account, modelGroups, catalogSummary] = await Promise.all([
@@ -21,28 +22,55 @@ export default async function Home() {
     listCatalogModelGroups(),
     getCatalogCategoryCounts(),
   ]);
-  const catalogPage = await pageCatalogProducts(
-    {
-      limit: featuredProductLimit,
-      minStock: 1,
-      offset: 0,
-      sort: "stock_desc",
-    },
-    {
-      includeBuyerPrices: account.canViewPrices,
-    }
+  const productPageOptions = {
+    includeBuyerPrices: account.canViewPrices,
+  };
+  const [hotProductsPage, newProductsPage, stockedProductsPage] = await Promise.all([
+    pageHotCatalogProducts(
+      {
+        limit: homeShelfProductLimit,
+      },
+      productPageOptions
+    ),
+    pageCatalogProducts(
+      {
+        limit: homeShelfProductLimit,
+        offset: 0,
+        sort: "created_desc",
+      },
+      productPageOptions
+    ),
+    pageCatalogProducts(
+      {
+        limit: homeShelfProductLimit,
+        minStock: 1,
+        offset: 0,
+        sort: "stock_desc",
+      },
+      productPageOptions
+    ),
+  ]);
+  const stockedProducts = stockedProductsPage.data.products.map((product) =>
+    toHomeProduct(product, account)
   );
+  const hotProducts =
+    hotProductsPage.data.products.length > 0
+      ? hotProductsPage.data.products.map((product) => toHomeProduct(product, account))
+      : stockedProducts;
 
   return (
     <HomePage
       catalogTotal={catalogSummary.warning ? undefined : catalogSummary.data.total}
       categoryCounts={catalogSummary.data.categoryCounts}
-      featuredProducts={catalogPage.data.products.map((product) =>
-        toHomeProduct(product, account)
-      )}
+      hotProducts={hotProducts}
       initialAccountAccess={toStoreHeaderAccountAccess(account)}
       modelGroups={modelGroups.data}
+      newProducts={newProductsPage.data.products.map((product) =>
+        toHomeProduct(product, account)
+      )}
       priceGateReason={priceVisibilityReason(account)}
+      showPrices={account.canViewPrices}
+      stockedProducts={stockedProducts}
     />
   );
 }

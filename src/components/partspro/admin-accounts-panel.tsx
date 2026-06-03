@@ -451,17 +451,26 @@ export function AdminAccountsPanel() {
   }
 
   return (
-    <section className="min-w-0 space-y-4">
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+    <section className="min-w-0 space-y-3">
+      <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div className="min-w-0">
-          <h3 className="text-xl font-black tracking-normal">账号工作台</h3>
-          <p className="mt-1 text-sm leading-6 text-slate-500">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-lg font-black tracking-normal text-slate-950">账号工作台</h3>
+            <Badge className="border-slate-200 bg-slate-50 text-slate-600" variant="outline">
+              {total} 个账号
+            </Badge>
+            <Badge className="border-blue-200 bg-blue-50 text-blue-700" variant="outline">
+              {accountType === "employee" ? "员工账号" : "客户账号"}
+            </Badge>
+          </div>
+          <p className="mt-0.5 text-xs font-semibold leading-5 text-slate-500">
             管理已存在的客户账号和员工账号，不创建新的 Supabase Auth 用户。
           </p>
         </div>
         <Button
           variant="outline"
-          className="bg-white"
+          size="sm"
+          className="h-8 bg-white"
           disabled={loading || !permissionsLoaded || !canReadSelectedAccountType}
           onClick={() => void refreshAccounts()}
         >
@@ -472,9 +481,9 @@ export function AdminAccountsPanel() {
 
       {notice ? <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} /> : null}
 
-      <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
-        <div className="grid gap-3 xl:grid-cols-[360px_minmax(0,1fr)]">
-          <div className="min-w-0 space-y-3">
+      <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
+        <div className="grid gap-2 xl:grid-cols-[minmax(360px,410px)_minmax(0,1fr)]">
+          <div className="min-w-0 space-y-2 rounded-md border border-slate-100 bg-slate-50/60 p-2">
             {permissionsLoaded && visibleAccountTabCount > 0 ? (
               <Tabs
                 value={accountType}
@@ -495,17 +504,17 @@ export function AdminAccountsPanel() {
               >
                 <TabsList
                   className={cn(
-                    "grid h-9 rounded-md bg-slate-100 p-1",
+                    "grid h-8 rounded-md bg-white p-1 shadow-sm",
                     visibleAccountTabCount > 1 ? "grid-cols-2" : "grid-cols-1"
                   )}
                 >
                   {canReadCustomerAccounts ? (
-                    <TabsTrigger value="customer" className="h-7 rounded text-xs font-bold">
+                    <TabsTrigger value="customer" className="h-6 rounded text-xs font-bold">
                       客户账号
                     </TabsTrigger>
                   ) : null}
                   {canReadEmployeeAccounts ? (
-                    <TabsTrigger value="employee" className="h-7 rounded text-xs font-bold">
+                    <TabsTrigger value="employee" className="h-6 rounded text-xs font-bold">
                       员工账号
                     </TabsTrigger>
                   ) : null}
@@ -515,7 +524,7 @@ export function AdminAccountsPanel() {
 
             <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
               <div className="relative min-w-0">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
                 <Input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
@@ -525,13 +534,13 @@ export function AdminAccountsPanel() {
                     }
                   }}
                   disabled={!permissionsLoaded || !canReadSelectedAccountType}
-                  className="h-9 bg-white pl-9"
+                  className="h-8 bg-white pl-8 text-sm"
                   placeholder="搜索邮箱、姓名或角色"
                 />
               </div>
               <Button
                 size="sm"
-                className="h-9"
+                className="h-8 px-3"
                 disabled={!permissionsLoaded || !canReadSelectedAccountType}
                 onClick={applySearch}
               >
@@ -539,11 +548,11 @@ export function AdminAccountsPanel() {
               </Button>
             </div>
 
-            <div className="max-h-[640px] space-y-2 overflow-y-auto pr-1">
+            <div className="max-h-[calc(100vh-280px)] min-h-[320px] space-y-1.5 overflow-y-auto pr-1">
               {!permissionsLoaded || loading ? (
                 <AccountListSkeleton />
               ) : !canReadSelectedAccountType ? (
-                <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+                <div className="rounded-md border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-slate-500">
                   当前账号没有读取{accountType === "employee" ? "员工" : "客户"}账号的权限。
                 </div>
               ) : accounts.length > 0 ? (
@@ -557,30 +566,30 @@ export function AdminAccountsPanel() {
                   />
                 ))
               ) : (
-                <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+                <div className="rounded-md border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-slate-500">
                   没有匹配的账号。
                 </div>
               )}
             </div>
 
-            <div className="flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+            <div className="flex items-center justify-between gap-2 border-t border-slate-200 pt-2">
               <Button
                 variant="outline"
                 size="sm"
-                className="bg-white"
+                className="h-8 bg-white px-2"
                 disabled={loading || !canReadSelectedAccountType || page <= 0}
                 onClick={() => setPage((current) => Math.max(0, current - 1))}
               >
                 <ChevronLeft className="size-4" />
                 上一页
               </Button>
-              <span className="text-xs font-semibold text-slate-500">
+              <span className="text-xs font-bold text-slate-500">
                 {page + 1}/{totalPages} · {total}
               </span>
               <Button
                 variant="outline"
                 size="sm"
-                className="bg-white"
+                className="h-8 bg-white px-2"
                 disabled={loading || !canReadSelectedAccountType || page + 1 >= totalPages}
                 onClick={() => setPage((current) => current + 1)}
               >
@@ -614,7 +623,7 @@ export function AdminAccountsPanel() {
             <SheetTitle>{detail?.account.email ?? "账号详情"}</SheetTitle>
             <SheetDescription>账号、客户绑定、权限和审计。</SheetDescription>
           </SheetHeader>
-          <div className="p-3">
+          <div className="p-2">
             <AccountDetailPane
               canManageCustomerLevel={canManageCustomerLevel}
               canManageCustomerStatus={canManageCustomerStatus}
@@ -666,41 +675,41 @@ function AccountListItem({
     <button
       type="button"
       className={cn(
-        "w-full rounded-md border p-3 text-left transition",
+        "w-full rounded-md border px-2.5 py-2 text-left transition",
         active
           ? "border-primary/30 bg-primary/8"
           : "border-slate-200 bg-white hover:border-primary/30 hover:bg-primary/5"
       )}
       onClick={() => onOpen(account)}
     >
-      <div className="flex min-w-0 items-start gap-2.5">
+      <div className="flex min-w-0 items-start gap-2">
         <AccountAvatar account={account} />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
-            <div className="truncate text-sm font-black text-slate-950">
+            <div className="truncate text-[13px] font-black leading-5 text-slate-950">
               {account.displayName ?? account.email ?? account.userId}
             </div>
             {isSelf ? (
-              <Badge className="border-blue-200 bg-blue-50 text-blue-700" variant="outline">
+              <Badge className="h-5 border-blue-200 bg-blue-50 px-1.5 text-[10px] text-blue-700" variant="outline">
                 当前账号
               </Badge>
             ) : null}
           </div>
-          <div className="mt-0.5 truncate text-xs font-medium text-slate-500">
+          <div className="truncate text-[11px] font-semibold leading-4 text-slate-500">
             {account.email ?? account.userId}
           </div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <Badge className={accountTypeBadgeClass(account.accountType)} variant="outline">
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            <Badge className={cn("h-5 px-1.5 text-[10px]", accountTypeBadgeClass(account.accountType))} variant="outline">
               {accountTypeLabel(account.accountType)}
             </Badge>
             {account.accountType === "employee" ? (
-              <Badge className="border-indigo-200 bg-indigo-50 text-indigo-700" variant="outline">
+              <Badge className="h-5 border-indigo-200 bg-indigo-50 px-1.5 text-[10px] text-indigo-700" variant="outline">
                 {roleTemplateLabel(text, account.roleTemplate ?? account.role)}
               </Badge>
             ) : (
               <CustomerAssignmentBadges customer={account.customer} />
             )}
-            <Badge className="border-slate-200 bg-slate-50 text-slate-500" variant="outline">
+            <Badge className="h-5 border-slate-200 bg-slate-50 px-1.5 text-[10px] text-slate-500" variant="outline">
               {account.customerState === "linked" ? "已绑定客户" : "仅账号"}
             </Badge>
           </div>
@@ -733,21 +742,28 @@ function AccountDetailPane({
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-slate-200 bg-white p-4">
-        <div className="h-8 w-48 animate-pulse rounded bg-slate-100" />
-        <div className="mt-4 grid gap-2 sm:grid-cols-2">
-          <div className="h-20 animate-pulse rounded bg-slate-100" />
-          <div className="h-20 animate-pulse rounded bg-slate-100" />
+      <div className="rounded-md border border-slate-200 bg-white p-3">
+        <div className="h-7 w-48 animate-pulse rounded bg-slate-100" />
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <div className="h-16 animate-pulse rounded bg-slate-100" />
+          <div className="h-16 animate-pulse rounded bg-slate-100" />
+          <div className="h-16 animate-pulse rounded bg-slate-100" />
         </div>
-        <div className="mt-3 h-48 animate-pulse rounded bg-slate-100" />
+        <div className="mt-3 h-36 animate-pulse rounded bg-slate-100" />
       </div>
     );
   }
 
   if (!detail) {
     return (
-      <div className="grid min-h-[420px] place-items-center rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-        选择一个账号查看详情。
+      <div className="grid min-h-[320px] place-items-center rounded-md border border-dashed border-slate-300 bg-slate-50/70 p-6 text-center">
+        <div>
+          <UsersRound className="mx-auto size-8 text-slate-300" />
+          <div className="mt-2 text-sm font-black text-slate-700">选择一个账号查看详情</div>
+          <div className="mt-1 text-xs font-semibold text-slate-500">
+            右侧会显示资料、权限、客户等级和最近操作。
+          </div>
+        </div>
       </div>
     );
   }
@@ -756,12 +772,12 @@ function AccountDetailPane({
   const isSelf = currentUserId === account.userId;
 
   return (
-    <div className="min-w-0 space-y-3 rounded-lg border border-slate-200 bg-white p-3">
-      <div className="flex min-w-0 items-start gap-3">
+    <div className="min-w-0 space-y-2 rounded-md border border-slate-200 bg-slate-50/70 p-2">
+      <div className="flex min-w-0 items-start gap-2 rounded-md border border-slate-200 bg-white p-2.5">
         <AccountAvatar account={account} size="lg" />
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h3 className="min-w-0 break-words text-lg font-black text-slate-950">
+            <h3 className="min-w-0 break-words text-base font-black leading-6 text-slate-950">
               {account.displayName ?? account.email ?? "账号详情"}
             </h3>
             {isSelf ? (
@@ -770,10 +786,10 @@ function AccountDetailPane({
               </Badge>
             ) : null}
           </div>
-          <div className="mt-1 break-words text-sm text-slate-500">
+          <div className="break-words text-xs font-semibold text-slate-500">
             {account.email ?? account.userId}
           </div>
-          <div className="mt-2 flex flex-wrap gap-1.5">
+          <div className="mt-1.5 flex flex-wrap gap-1">
             <Badge className={accountTypeBadgeClass(account.accountType)} variant="outline">
               {accountTypeLabel(account.accountType)}
             </Badge>
@@ -787,7 +803,7 @@ function AccountDetailPane({
         </div>
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-1.5 sm:grid-cols-3">
         <InfoTile
           icon={UsersRound}
           label="客户绑定"
@@ -806,7 +822,7 @@ function AccountDetailPane({
       </div>
 
       {account.accountType === "customer" && detail.customer ? (
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+        <div className="grid gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
           <InfoTile
             icon={BadgeCheck}
             label="活跃状态"
@@ -840,10 +856,11 @@ function AccountDetailPane({
         </div>
       ) : null}
 
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5">
         {account.accountType === "customer" && canManageEmployeeAccounts ? (
           <Button
             size="sm"
+            className="h-8"
             disabled={isSelf}
             onClick={() => onAction("to_employee", account)}
           >
@@ -855,7 +872,7 @@ function AccountDetailPane({
             <Button
               size="sm"
               variant="outline"
-              className="bg-white"
+              className="h-8 bg-white"
               disabled={isSelf}
               onClick={() => onAction("role", account)}
             >
@@ -865,7 +882,7 @@ function AccountDetailPane({
             <Button
               size="sm"
               variant="outline"
-              className="bg-white"
+              className="h-8 bg-white"
               disabled={isSelf}
               onClick={() => onAction("to_customer", account)}
             >
@@ -888,12 +905,12 @@ function AccountDetailPane({
 
       <DetailSection title="客户资料">
         {detail.customer ? (
-          <div className="space-y-3">
-            <div className="flex flex-wrap gap-2">
+          <div className="space-y-2">
+            <div className="flex flex-wrap gap-1.5">
               <Button
                 size="sm"
                 variant="outline"
-                className="bg-white"
+                className="h-8 bg-white"
                 disabled={!canManageCustomerLevel}
                 onClick={() => onCustomerAction("customer_level", account)}
               >
@@ -903,7 +920,7 @@ function AccountDetailPane({
               <Button
                 size="sm"
                 variant="outline"
-                className="bg-white"
+                className="h-8 bg-white"
                 disabled={!canManageCustomerStatus}
                 onClick={() => onCustomerAction("customer_status", account)}
               >
@@ -916,7 +933,7 @@ function AccountDetailPane({
                 </span>
               ) : null}
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
               <DetailLine label="公司/名称" value={detail.customer.name ?? "暂无"} />
               <DetailLine label="活跃状态" value={customerStatusLabel(detail.customer.status)} />
               <DetailLine label="价格类型" value={customerTypeLabel(detail.customer.customerType)} />
@@ -933,14 +950,14 @@ function AccountDetailPane({
         title={account.accountType === "employee" ? "历史客户成员关系" : "账号成员"}
       >
         {detail.memberships.length > 0 ? (
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {detail.memberships.map((membership) => (
               <div
                 key={`${membership.customerId}:${membership.userId}`}
-                className="rounded-md border border-slate-200 bg-slate-50/70 p-2"
+                className="rounded-md border border-slate-200 bg-slate-50/70 px-2 py-1.5"
               >
                 <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <span className="min-w-0 break-words text-sm font-black text-slate-900">
+                  <span className="min-w-0 break-words text-xs font-black text-slate-900">
                     {membership.displayName ?? membership.email ?? membership.userId}
                   </span>
                   <Badge className={accountTypeBadgeClass(membership.accountType)} variant="outline">
@@ -950,7 +967,7 @@ function AccountDetailPane({
                     {memberStatusLabel(membership.status)}
                   </Badge>
                 </div>
-                <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs text-slate-500">
+                <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold text-slate-500">
                   <span>{membership.email ?? membership.userId}</span>
                   <span>成员角色：{memberRoleLabel(membership.memberRole)}</span>
                   {membership.roleTemplate ? (
@@ -970,14 +987,14 @@ function AccountDetailPane({
 
       <DetailSection title="有效权限">
         {detail.permissions.length > 0 ? (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto pr-1">
             {detail.permissions.slice(0, 24).map((permission) => (
-              <Badge key={permission} className="border-slate-200 bg-slate-50 text-slate-600" variant="outline">
+              <Badge key={permission} className="h-5 border-slate-200 bg-slate-50 px-1.5 text-[10px] text-slate-600" variant="outline">
                 {adminPermissionLabel(text, permission, permission)}
               </Badge>
             ))}
             {detail.permissions.length > 24 ? (
-              <Badge className="border-slate-200 bg-white text-slate-500" variant="outline">
+              <Badge className="h-5 border-slate-200 bg-white px-1.5 text-[10px] text-slate-500" variant="outline">
                 +{detail.permissions.length - 24}
               </Badge>
             ) : null}
@@ -989,43 +1006,43 @@ function AccountDetailPane({
 
       <DetailSection title="最近操作">
         {detail.auditEvents.length > 0 || (detail.customer?.recentActivity.length ?? 0) > 0 ? (
-          <div className="grid gap-3 xl:grid-cols-2">
+          <div className="grid gap-2 xl:grid-cols-2">
             <div className="min-w-0">
-              <div className="mb-2 flex items-center gap-1.5 text-xs font-black text-slate-500">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-black text-slate-500">
                 <ShieldCheck className="size-3.5" />
                 后台审计
               </div>
               {detail.auditEvents.length > 0 ? (
-                <ol className="space-y-2">
+                <ol className="space-y-1.5">
                   {detail.auditEvents.slice(0, 8).map((event) => (
-              <li key={event.id} className="rounded-md border border-slate-200 bg-white p-2 text-sm">
-                <div className="flex min-w-0 items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="break-words font-black text-slate-900">
-                      {adminActionLabel(event.action)}
-                    </div>
-                    <div className="mt-1 break-words text-xs leading-5 text-slate-500">
-                      {[
-                        event.actorEmail,
-                        event.actorRole
-                          ? roleTemplateLabel(text, event.actorRole, event.actorRole)
-                          : null,
-                        event.entityType,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ") || "系统记录"}
-                    </div>
-                    {event.reason ? (
-                      <div className="mt-1 break-words text-xs leading-5 text-slate-600">
-                        {event.reason}
+                    <li key={event.id} className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
+                      <div className="flex min-w-0 items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="break-words text-xs font-black text-slate-900">
+                            {adminActionLabel(event.action)}
+                          </div>
+                          <div className="mt-0.5 break-words text-[11px] font-semibold leading-4 text-slate-500">
+                            {[
+                              event.actorEmail,
+                              event.actorRole
+                                ? roleTemplateLabel(text, event.actorRole, event.actorRole)
+                                : null,
+                              event.entityType,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ") || "系统记录"}
+                          </div>
+                          {event.reason ? (
+                            <div className="mt-0.5 break-words text-[11px] leading-4 text-slate-600">
+                              {event.reason}
+                            </div>
+                          ) : null}
+                        </div>
+                        <span className="shrink-0 text-[11px] font-semibold text-slate-500">
+                          {formatDateTime(event.createdAt) ?? "暂无"}
+                        </span>
                       </div>
-                    ) : null}
-                  </div>
-                  <span className="shrink-0 text-xs font-medium text-slate-500">
-                    {formatDateTime(event.createdAt) ?? "暂无"}
-                  </span>
-                </div>
-              </li>
+                    </li>
                   ))}
                 </ol>
               ) : (
@@ -1033,24 +1050,24 @@ function AccountDetailPane({
               )}
             </div>
             <div className="min-w-0">
-              <div className="mb-2 flex items-center gap-1.5 text-xs font-black text-slate-500">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-black text-slate-500">
                 <Activity className="size-3.5" />
                 客户活动
               </div>
               {detail.customer?.recentActivity.length ? (
-                <ol className="space-y-2">
+                <ol className="space-y-1.5">
                   {detail.customer.recentActivity.slice(0, 8).map((event) => (
-                    <li key={event.id} className="rounded-md border border-slate-200 bg-white p-2 text-sm">
+                    <li key={event.id} className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
                       <div className="flex min-w-0 items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="break-words font-black text-slate-900">
+                          <div className="break-words text-xs font-black text-slate-900">
                             {customerActivityLabel(event)}
                           </div>
-                          <div className="mt-1 break-words text-xs leading-5 text-slate-500">
+                          <div className="mt-0.5 break-words text-[11px] font-semibold leading-4 text-slate-500">
                             {customerActivitySubject(event)}
                           </div>
                         </div>
-                        <span className="shrink-0 text-xs font-medium text-slate-500">
+                        <span className="shrink-0 text-[11px] font-semibold text-slate-500">
                           {formatDateTime(event.createdAt) ?? "暂无"}
                         </span>
                       </div>
@@ -1480,7 +1497,7 @@ function AccountAvatar({
       className={cn(
         "grid shrink-0 place-items-center rounded-full text-white shadow-sm",
         account.accountType === "employee" ? "bg-indigo-600" : "bg-blue-600",
-        size === "lg" ? "size-12" : "size-9"
+        size === "lg" ? "size-10" : "size-8"
       )}
       aria-hidden="true"
     >
@@ -1503,20 +1520,20 @@ function InfoTile({
   value: React.ReactNode;
 }) {
   return (
-    <div className="min-w-0 rounded-md border border-slate-200 bg-slate-50/70 p-2">
-      <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+    <div className="min-w-0 rounded-md border border-slate-200 bg-white px-2 py-1.5">
+      <div className="flex items-center gap-1 text-[11px] font-bold text-slate-500">
         <Icon className="size-3.5" />
         {label}
       </div>
-      <div className="mt-1 truncate text-sm font-black text-slate-900">{value}</div>
+      <div className="mt-0.5 truncate text-[13px] font-black leading-5 text-slate-900">{value}</div>
     </div>
   );
 }
 
 function DetailSection({ children, title }: { children: React.ReactNode; title: string }) {
   return (
-    <section className="rounded-md border border-slate-200 bg-white p-3">
-      <h4 className="mb-2 text-sm font-black text-slate-950">{title}</h4>
+    <section className="rounded-md border border-slate-200 bg-white p-2.5">
+      <h4 className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">{title}</h4>
       {children}
     </section>
   );
@@ -1524,17 +1541,19 @@ function DetailSection({ children, title }: { children: React.ReactNode; title: 
 
 function DetailLine({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="min-w-0 rounded-md bg-slate-50 px-2 py-1.5">
-      <div className="truncate text-[11px] font-semibold text-slate-500">{label}</div>
-      <div className="mt-0.5 break-words text-sm font-bold text-slate-900">{value}</div>
+    <div className="min-w-0 rounded-md bg-slate-50 px-2 py-1">
+      <div className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</div>
+      <div className="break-words text-xs font-bold leading-5 text-slate-900">{value}</div>
     </div>
   );
 }
 
 function CustomerAssignmentBadges({ customer }: { customer: AccountCustomer | null }) {
+  const badgeClass = "h-5 px-1.5 text-[10px]";
+
   if (!customer) {
     return (
-      <Badge className="border-slate-200 bg-slate-50 text-slate-500" variant="outline">
+      <Badge className={cn(badgeClass, "border-slate-200 bg-slate-50 text-slate-500")} variant="outline">
         未建客户资料
       </Badge>
     );
@@ -1542,16 +1561,16 @@ function CustomerAssignmentBadges({ customer }: { customer: AccountCustomer | nu
 
   return (
     <>
-      <Badge className={customerStatusBadgeClass(customer.status)} variant="outline">
+      <Badge className={cn(badgeClass, customerStatusBadgeClass(customer.status))} variant="outline">
         {customerStatusLabel(customer.status)}
       </Badge>
-      <Badge className="border-sky-200 bg-sky-50 text-sky-700" variant="outline">
+      <Badge className={cn(badgeClass, "border-sky-200 bg-sky-50 text-sky-700")} variant="outline">
         {customerTypeLabel(customer.customerType)}
       </Badge>
-      <Badge className="border-violet-200 bg-violet-50 text-violet-700" variant="outline">
+      <Badge className={cn(badgeClass, "border-violet-200 bg-violet-50 text-violet-700")} variant="outline">
         {customerLevelLabel(customer.level)}
       </Badge>
-      <Badge className="border-slate-200 bg-slate-50 text-slate-500" variant="outline">
+      <Badge className={cn(badgeClass, "border-slate-200 bg-slate-50 text-slate-500")} variant="outline">
         {customer.ordersCount} 单
       </Badge>
     </>
@@ -1591,7 +1610,7 @@ function AccountListSkeleton() {
   return (
     <>
       {Array.from({ length: 5 }).map((_, index) => (
-        <div key={index} className="h-[94px] animate-pulse rounded-md bg-slate-100" />
+        <div key={index} className="h-[76px] animate-pulse rounded-md bg-white" />
       ))}
     </>
   );

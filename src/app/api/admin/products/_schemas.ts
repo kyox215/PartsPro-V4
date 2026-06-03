@@ -32,7 +32,7 @@ export const productQuerySchema = z
 
 export const productWriteSchema = z
   .object({
-    sku: z.string().trim().min(2).max(64).regex(/^[A-Za-z0-9_+.-]+$/),
+    sku: z.string().trim().min(2).max(64).regex(/^[A-Za-z0-9_+.-]+$/).optional(),
     name: z.string().trim().min(2).max(180),
     category: z.string().trim().min(2).max(80),
     brand: z.string().trim().min(1).max(80),
