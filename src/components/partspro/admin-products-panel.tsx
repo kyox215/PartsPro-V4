@@ -86,6 +86,11 @@ import {
 } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   categories,
   formatEuro,
   type DeviceModelGroup,
@@ -359,6 +364,7 @@ const panelText = {
     catalogTree: "分类目录",
     mobileFilters: "目录 / 筛选",
     mobileFiltersDescription: "选择品牌、系列、型号和其他筛选条件。",
+    selectedCatalogPath: "已选路径",
     reset: "重置",
     sync: "同步",
     exportView: "导出当前视图",
@@ -604,6 +610,7 @@ const panelText = {
     catalogTree: "Catalogo",
     mobileFilters: "Catalogo / filtri",
     mobileFiltersDescription: "Seleziona brand, serie, modello e altri filtri.",
+    selectedCatalogPath: "Percorso selezionato",
     reset: "Reset",
     sync: "Sincronizza",
     exportView: "Esporta vista",
@@ -1734,6 +1741,7 @@ function ProductMobileFiltersSheet({
           </SheetDescription>
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-3">
+          <ProductCatalogSelectionSummary filters={filters} text={text} />
           <ProductCatalogTree
             filters={filters}
             modelGroups={modelGroups}
@@ -1762,6 +1770,36 @@ function ProductMobileFiltersSheet({
         </SheetFooter>
       </SheetContent>
     </Sheet>
+  );
+}
+
+function ProductCatalogSelectionSummary({
+  filters,
+  text,
+}: {
+  filters: ProductListFilters;
+  text: typeof panelText.zh | typeof panelText.it;
+}) {
+  const path = buildProductCatalogSelectionPath(filters);
+
+  if (path.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="mb-2 min-w-0 rounded-lg border border-primary/15 bg-primary/5 px-2.5 py-2 text-xs">
+      <div className="font-black text-primary">{text.selectedCatalogPath}</div>
+      <div className="mt-1 break-words font-semibold leading-5 text-slate-700 [overflow-wrap:anywhere]">
+        {path.join(" / ")}
+      </div>
+    </section>
+  );
+}
+
+function buildProductCatalogSelectionPath(filters: ProductListFilters) {
+  return [filters.brand, filters.modelSeries, filters.model].filter(
+    (value): value is string =>
+      typeof value === "string" && value.length > 0 && value !== "all"
   );
 }
 
@@ -1980,11 +2018,12 @@ function CatalogTreeNodeButton({
 }) {
   const hasChildren = typeof expanded === "boolean";
 
-  return (
+  const nodeButton = (
     <button
       type="button"
       aria-expanded={hasChildren ? expanded : undefined}
       aria-controls={hasChildren ? controls : undefined}
+      title={label}
       className={cn(
         "flex w-full min-w-0 items-center gap-2 rounded-md text-left font-bold transition hover:bg-slate-100",
         compact ? "min-h-8 px-2 py-1.5 text-xs" : "min-h-9 px-2.5 py-2 text-sm",
@@ -2004,11 +2043,33 @@ function CatalogTreeNodeButton({
         <span className="size-3.5 shrink-0" />
       )}
       <Icon className="size-3.5 shrink-0 text-current/70" />
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span
+        className={cn(
+          "min-w-0 flex-1",
+          selected
+            ? "line-clamp-2 break-words leading-snug [overflow-wrap:anywhere]"
+            : "truncate"
+        )}
+      >
+        {label}
+      </span>
       {meta && (
         <span className="shrink-0 text-[11px] font-black text-current/55">{meta}</span>
       )}
     </button>
+  );
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{nodeButton}</TooltipTrigger>
+      <TooltipContent
+        side="right"
+        sideOffset={8}
+        className="max-w-[min(320px,calc(100vw-2rem))] break-words text-xs font-semibold"
+      >
+        {label}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
