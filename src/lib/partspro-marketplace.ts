@@ -457,10 +457,12 @@ async function publishMarketplaceListing(client: SupabaseServerClient, sku: stri
   }
 
   const ebay = await createAuthorizedEbayClient(client, settings, connection);
-  const listing = await readListingBySku(client, sku);
-  const offerId = readString(listing?.ebay_offer_id) ?? (await readExistingOfferId(ebay, sku));
+  const ebaySku = marketplaceSku(product);
+  const listing = await readListingBySku(client, ebaySku);
+  const offerId =
+    readString(listing?.ebay_offer_id) ?? (await readExistingOfferId(ebay, ebaySku));
 
-  await ebay.createOrReplaceInventoryItem(sku, evaluation.inventoryItemPayload);
+  await ebay.createOrReplaceInventoryItem(ebaySku, evaluation.inventoryItemPayload);
 
   const offerPayload = {
     ...evaluation.offerPayload,
@@ -490,7 +492,7 @@ async function publishMarketplaceListing(client: SupabaseServerClient, sku: stri
     listingStatus: "published",
   });
 
-  return { listingId, offerId: resolvedOfferId, sku };
+  return { listingId, offerId: resolvedOfferId, sku: ebaySku };
 }
 
 async function syncMarketplaceListing(client: SupabaseServerClient, sku: string | null) {
@@ -498,7 +500,7 @@ async function syncMarketplaceListing(client: SupabaseServerClient, sku: string 
     throw new Error("缺少 SKU，无法同步。");
   }
 
-  const [settings, connection, product, mappings, listing] = await Promise.all([
+  const [settings, connection, product, mappings, initialListing] = await Promise.all([
     readMarketplaceSettings(client),
     readMarketplaceConnection(client),
     getAdminProduct(sku).then((result) => result.data),
@@ -510,6 +512,9 @@ async function syncMarketplaceListing(client: SupabaseServerClient, sku: string 
     throw new Error(`找不到商品 ${sku}。`);
   }
 
+  const ebaySku = marketplaceSku(product);
+  const listing =
+    initialListing ?? (ebaySku !== sku ? await readListingBySku(client, ebaySku) : null);
   const offerId = readString(listing?.ebay_offer_id);
 
   if (!offerId) {
@@ -524,7 +529,7 @@ async function syncMarketplaceListing(client: SupabaseServerClient, sku: string 
   }
 
   const ebay = await createAuthorizedEbayClient(client, settings, connection);
-  await ebay.createOrReplaceInventoryItem(sku, evaluation.inventoryItemPayload);
+  await ebay.createOrReplaceInventoryItem(ebaySku, evaluation.inventoryItemPayload);
   await ebay.updateOffer(offerId, evaluation.offerPayload);
   await upsertMarketplaceListing(client, {
     ...evaluation,
@@ -534,7 +539,7 @@ async function syncMarketplaceListing(client: SupabaseServerClient, sku: string 
     listingStatus: "published",
   });
 
-  return { offerId, sku, synced: true };
+  return { offerId, sku: ebaySku, synced: true };
 }
 
 async function importRecentEbayOrders(client: SupabaseServerClient) {
@@ -790,6 +795,7 @@ function evaluateProduct(product: AdminProduct, settings: DbRow, mappings: DbRow
       sku,
     },
     product,
+    sku,
     title,
   };
 }
@@ -1129,7 +1135,7 @@ function normalizeEbayOrder(order: unknown) {
   return {
     externalOrderId,
     lines,
-    marketplaceId: readString(record?.salesRecordReference) ? ebayMarketplaceDefaults.marketplaceId : ebayMarketplaceDefaults.marketplaceId,
+    marketplaceId: ebayMarketplaceDefaults.marketplaceId,
     order: {
       buyer: readRecord(record?.buyer) ?? {},
       currency: total.currency,
@@ -1274,7 +1280,7 @@ function formatEbayAddress(order: DbRow | null) {
     .join(", ");
 }
 
-function toSettingsDto(row: DbRow): MarketplaceSettingsDto & { offerFormat?: string } {
+function toSettingsDto(row: DbRow): MarketplaceSettingsDto {
   return {
     autoPublishEnabled: readBoolean(row.auto_publish_enabled) ?? false,
     autoSyncEnabled: readBoolean(row.auto_sync_enabled) ?? true,
@@ -1456,6 +1462,10 @@ function normalizeKey(value: string | null | undefined) {
 
 function roundMoney(value: number) {
   return Number(value.toFixed(2));
+}
+
+function marketplaceSku(product: AdminProduct) {
+  return (product.sourceSku ?? product.sku).toUpperCase();
 }
 
 function resultToJson(value: unknown) {
