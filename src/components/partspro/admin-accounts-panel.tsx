@@ -176,6 +176,7 @@ type CurrentUser = {
   userId: string | null;
 };
 
+const accountDetailInlineMediaQuery = "(min-width: 1280px)";
 const pageSize = 12;
 const customerLevels = [
   "bronze",
@@ -201,6 +202,7 @@ export function AdminAccountsPanel() {
   const [accounts, setAccounts] = React.useState<Account[]>([]);
   const [detail, setDetail] = React.useState<AccountDetail | null>(null);
   const [detailOpen, setDetailOpen] = React.useState(false);
+  const [usesInlineDetailPane, setUsesInlineDetailPane] = React.useState(false);
   const [roleTemplates, setRoleTemplates] = React.useState<RoleTemplate[]>([]);
   const [currentUserId, setCurrentUserId] = React.useState<string | null>(null);
   const [currentPermissions, setCurrentPermissions] = React.useState<string[]>([]);
@@ -281,6 +283,27 @@ export function AdminAccountsPanel() {
   }, [refreshAccounts]);
 
   React.useEffect(() => {
+    const mediaQuery = window.matchMedia(accountDetailInlineMediaQuery);
+
+    function handleMediaQueryChange() {
+      const matches = mediaQuery.matches;
+
+      setUsesInlineDetailPane(matches);
+
+      if (matches) {
+        setDetailOpen(false);
+      }
+    }
+
+    handleMediaQueryChange();
+    mediaQuery.addEventListener("change", handleMediaQueryChange);
+
+    return () => {
+      mediaQuery.removeEventListener("change", handleMediaQueryChange);
+    };
+  }, []);
+
+  React.useEffect(() => {
     const controller = new AbortController();
 
     void fetchCurrentUser(controller.signal)
@@ -326,6 +349,7 @@ export function AdminAccountsPanel() {
 
       setPage(0);
       setDetail(null);
+      setDetailOpen(false);
       setAccounts([]);
       setTotal(0);
     }, 0);
@@ -347,7 +371,10 @@ export function AdminAccountsPanel() {
   }
 
   function openDetail(account: Account) {
-    setDetailOpen(true);
+    const shouldUseInlineDetailPane =
+      usesInlineDetailPane || window.matchMedia(accountDetailInlineMediaQuery).matches;
+
+    setDetailOpen(!shouldUseInlineDetailPane);
     void loadDetail(account.userId);
   }
 
@@ -499,6 +526,7 @@ export function AdminAccountsPanel() {
                   setAccountType(nextType);
                   setPage(0);
                   setDetail(null);
+                  setDetailOpen(false);
                 }}
               >
                 <TabsList

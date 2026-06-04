@@ -1,5 +1,11 @@
 drop function if exists public.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text);
+drop function if exists public.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text);
+drop function if exists public.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text);
+drop function if exists public.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text, text);
 drop function if exists private.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text);
+drop function if exists private.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text);
+drop function if exists private.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text);
+drop function if exists private.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text, text);
 
 create or replace function private.admin_list_products(
   p_limit integer default 20,
@@ -13,8 +19,9 @@ create or replace function private.admin_list_products(
   p_warehouse text default null,
   p_grade text default null,
   p_sort text default 'updated_desc',
-  p_batch_code text default null,
-  p_supplier text default null
+  p_model_series text default null,
+  p_supplier text default null,
+  p_batch_code text default null
 )
 returns jsonb
 language plpgsql
@@ -82,6 +89,7 @@ begin
         or p.category ilike '%' || btrim(p_q) || '%'
         or p.model ilike '%' || btrim(p_q) || '%'
         or p.model_code ilike '%' || btrim(p_q) || '%'
+        or p.model_series ilike '%' || btrim(p_q) || '%'
         or p.batch_code ilike '%' || btrim(p_q) || '%'
         or p.supplier ilike '%' || btrim(p_q) || '%')
       and (nullif(btrim(coalesce(p_brand, '')), '') is null or p.brand = p_brand)
@@ -92,6 +100,13 @@ begin
       and (nullif(btrim(coalesce(p_grade, '')), '') is null or p.quality_grade = p_grade)
       and (nullif(btrim(coalesce(p_batch_code, '')), '') is null or p.batch_code ilike '%' || btrim(p_batch_code) || '%')
       and (nullif(btrim(coalesce(p_supplier, '')), '') is null or p.supplier ilike '%' || btrim(p_supplier) || '%')
+      and (nullif(btrim(coalesce(p_model_series, '')), '') is null
+        or p.model_series = p_model_series
+        or exists (
+          select 1
+          from unnest(coalesce(p.model_codes, '{}'::text[]) || coalesce(p.compatibility_models, '{}'::text[])) as model_option(model)
+          where private.partspro_model_series(p.brand, model_option.model) = p_model_series
+        ))
       and (
         nullif(btrim(coalesce(p_model, '')), '') is null
         or p.model = p_model
@@ -154,6 +169,7 @@ begin
         or p.category ilike '%' || btrim(p_q) || '%'
         or p.model ilike '%' || btrim(p_q) || '%'
         or p.model_code ilike '%' || btrim(p_q) || '%'
+        or p.model_series ilike '%' || btrim(p_q) || '%'
         or p.batch_code ilike '%' || btrim(p_q) || '%'
         or p.supplier ilike '%' || btrim(p_q) || '%')
       and (nullif(btrim(coalesce(p_brand, '')), '') is null or p.brand = p_brand)
@@ -164,6 +180,13 @@ begin
       and (nullif(btrim(coalesce(p_grade, '')), '') is null or p.quality_grade = p_grade)
       and (nullif(btrim(coalesce(p_batch_code, '')), '') is null or p.batch_code ilike '%' || btrim(p_batch_code) || '%')
       and (nullif(btrim(coalesce(p_supplier, '')), '') is null or p.supplier ilike '%' || btrim(p_supplier) || '%')
+      and (nullif(btrim(coalesce(p_model_series, '')), '') is null
+        or p.model_series = p_model_series
+        or exists (
+          select 1
+          from unnest(coalesce(p.model_codes, '{}'::text[]) || coalesce(p.compatibility_models, '{}'::text[])) as model_option(model)
+          where private.partspro_model_series(p.brand, model_option.model) = p_model_series
+        ))
       and (
         nullif(btrim(coalesce(p_model, '')), '') is null
         or p.model = p_model
@@ -206,8 +229,9 @@ create or replace function public.admin_list_products(
   p_warehouse text default null,
   p_grade text default null,
   p_sort text default 'updated_desc',
-  p_batch_code text default null,
-  p_supplier text default null
+  p_model_series text default null,
+  p_supplier text default null,
+  p_batch_code text default null
 )
 returns jsonb
 language sql
@@ -215,26 +239,27 @@ security invoker
 set search_path = public, pg_temp
 as $$
   select private.admin_list_products(
-    p_limit,
-    p_offset,
-    p_q,
-    p_brand,
-    p_model,
-    p_category,
-    p_catalog_status,
-    p_stock_status,
-    p_warehouse,
-    p_grade,
-    p_sort,
-    p_batch_code,
-    p_supplier
+    p_limit => p_limit,
+    p_offset => p_offset,
+    p_q => p_q,
+    p_brand => p_brand,
+    p_model => p_model,
+    p_category => p_category,
+    p_catalog_status => p_catalog_status,
+    p_stock_status => p_stock_status,
+    p_warehouse => p_warehouse,
+    p_grade => p_grade,
+    p_sort => p_sort,
+    p_model_series => p_model_series,
+    p_supplier => p_supplier,
+    p_batch_code => p_batch_code
   )
 $$;
 
-revoke execute on function private.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text) from public;
-revoke execute on function private.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text) from anon;
-grant execute on function private.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text) to authenticated;
+revoke execute on function private.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text, text) from public;
+revoke execute on function private.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text, text) from anon;
+grant execute on function private.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text, text) to authenticated;
 
-revoke execute on function public.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text) from public;
-revoke execute on function public.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text) from anon;
-grant execute on function public.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text) to authenticated;
+revoke execute on function public.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text, text) from public;
+revoke execute on function public.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text, text) from anon;
+grant execute on function public.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text, text) to authenticated;
