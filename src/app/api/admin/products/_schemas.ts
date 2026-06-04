@@ -26,7 +26,6 @@ export const productQuerySchema = z
     status: catalogStatusSchema.optional(),
     catalogStatus: catalogStatusSchema.optional(),
     grade: z.enum(["A+", "A", "B", "Refurbished"]).optional(),
-    supplier: z.string().trim().min(1).max(120).optional(),
     sort: z.enum(["name", "stock_desc", "updated_desc", "created_desc"]).default("updated_desc"),
     limit: z.coerce.number().int().min(1).max(100).default(50),
     offset: z.coerce.number().int().min(0).max(5000).default(0),
