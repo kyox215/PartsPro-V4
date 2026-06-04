@@ -47,7 +47,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import {
   adminPermissionLabel,
@@ -56,6 +56,7 @@ import {
   type AdminText,
 } from "@/i18n/dictionaries/admin";
 import { formatEuro } from "@/lib/partspro-data";
+import { formatTierDiscount } from "@/lib/partspro-pricing";
 import { cn } from "@/lib/utils";
 import { AdminBusyRegion } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
@@ -76,11 +77,39 @@ type AccountCustomer = {
   level: string;
   lifetimeSpendNet: number;
   name: string | null;
+  orders: AccountCustomerOrder[];
   ordersCount: number;
   recentActivity: AccountCustomerActivity[];
   revenue: number;
+  spendSummary: AccountSpendSummary;
   status: string;
   updatedAt: string | null;
+};
+
+type AccountCustomerOrder = {
+  createdAt: string | null;
+  id: string;
+  lineCount: number;
+  orderNo: string;
+  paymentStatus: string;
+  shipping: number;
+  status: string;
+  total: number;
+  totalNet: number;
+  updatedAt: string | null;
+  vat: number;
+};
+
+type AccountSpendSummary = {
+  cancelledAmount: number;
+  orderCount: number;
+  paidAmount: number;
+  pendingAmount: number;
+  refundedAmount: number;
+  shipping: number;
+  total: number;
+  totalNet: number;
+  vat: number;
 };
 
 type AccountCustomerActivity = {
@@ -142,6 +171,9 @@ type AccountDetail = {
   memberships: AccountMembership[];
   permissions: string[];
 };
+
+type AccountDetailInclude = "activity" | "audit" | "orders";
+type AccountDetailTab = "activity" | "memberships" | "orders" | "permissions" | "profile" | "spend";
 
 type RoleTemplate = {
   description: string | null;
@@ -213,10 +245,21 @@ export function AdminAccountsPanel() {
   const [total, setTotal] = React.useState(0);
   const [loading, setLoading] = React.useState(false);
   const [detailLoading, setDetailLoading] = React.useState(false);
+  const [detailTab, setDetailTab] = React.useState<AccountDetailTab>("profile");
+  const [detailLoadedIncludes, setDetailLoadedIncludes] = React.useState<Set<AccountDetailInclude>>(
+    () => new Set()
+  );
+  const [detailLoadingIncludes, setDetailLoadingIncludes] = React.useState<Set<AccountDetailInclude>>(
+    () => new Set()
+  );
   const [submitting, setSubmitting] = React.useState(false);
   const [notice, setNotice] = React.useState<Notice | null>(null);
   const [conversion, setConversion] = React.useState<ConversionState | null>(null);
   const [customerAction, setCustomerAction] = React.useState<CustomerActionState | null>(null);
+  const detailCacheRef = React.useRef(new Map<string, AccountDetail>());
+  const detailLoadedIncludesRef = React.useRef(new Map<string, Set<AccountDetailInclude>>());
+  const detailEpochRef = React.useRef(0);
+  const detailAbortRef = React.useRef<AbortController | null>(null);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const currentPermissionSet = React.useMemo(
     () => new Set(currentPermissions),
@@ -303,6 +346,8 @@ export function AdminAccountsPanel() {
     };
   }, []);
 
+  React.useEffect(() => () => detailAbortRef.current?.abort(), []);
+
   React.useEffect(() => {
     const controller = new AbortController();
 
@@ -348,8 +393,13 @@ export function AdminAccountsPanel() {
       }
 
       setPage(0);
+      detailEpochRef.current += 1;
+      detailAbortRef.current?.abort();
       setDetail(null);
       setDetailOpen(false);
+      setDetailLoading(false);
+      setDetailLoadedIncludes(new Set());
+      setDetailLoadingIncludes(new Set());
       setAccounts([]);
       setTotal(0);
     }, 0);
@@ -373,20 +423,116 @@ export function AdminAccountsPanel() {
   function openDetail(account: Account) {
     const shouldUseInlineDetailPane =
       usesInlineDetailPane || window.matchMedia(accountDetailInlineMediaQuery).matches;
+    const userId = account.userId;
+    const epoch = detailEpochRef.current + 1;
+    const cached = detailCacheRef.current.get(userId);
+    const initialDetail = cached ?? createLightweightAccountDetail(account);
+    const loadedIncludes = detailLoadedIncludesRef.current.get(userId) ?? new Set();
 
+    detailEpochRef.current = epoch;
+    detailAbortRef.current?.abort();
+    detailAbortRef.current = new AbortController();
+    detailCacheRef.current.set(userId, initialDetail);
+    setDetail(initialDetail);
+    setDetailTab(account.accountType === "employee" ? "permissions" : "profile");
+    setDetailLoadedIncludes(new Set(loadedIncludes));
+    setDetailLoadingIncludes(new Set());
     setDetailOpen(!shouldUseInlineDetailPane);
-    void loadDetail(account.userId);
+    void loadDetail(userId, {
+      epoch,
+      signal: detailAbortRef.current.signal,
+    });
   }
 
-  async function loadDetail(userId: string) {
-    setDetailLoading(true);
+  function handleDetailTabChange(value: string) {
+    const tab = normalizeDetailTab(value);
+
+    setDetailTab(tab);
+
+    if (!detail) {
+      return;
+    }
+
+    const includes = includesForDetailTab(tab, detail).filter(
+      (include) => !detailLoadedIncludes.has(include) && !detailLoadingIncludes.has(include)
+    );
+
+    if (includes.length > 0) {
+      void loadDetail(detail.account.userId, { includes });
+    }
+  }
+
+  async function loadDetail(
+    userId: string,
+    {
+      epoch = detailEpochRef.current,
+      includes = [],
+      signal,
+    }: {
+      epoch?: number;
+      includes?: AccountDetailInclude[];
+      signal?: AbortSignal;
+    } = {}
+  ) {
+    const isCoreRefresh = includes.length === 0;
+
+    if (isCoreRefresh) {
+      setDetailLoading(true);
+    } else {
+      setDetailLoadingIncludes((current) => {
+        const next = new Set(current);
+
+        for (const include of includes) {
+          next.add(include);
+        }
+
+        return next;
+      });
+    }
 
     try {
-      setDetail(await fetchAccountDetail(userId));
+      const nextDetail = await fetchAccountDetail(userId, { includes, signal });
+
+      if (signal?.aborted || epoch !== detailEpochRef.current) {
+        return;
+      }
+
+      const previousDetail = detailCacheRef.current.get(userId);
+      const mergedDetail = previousDetail
+        ? mergeAccountDetails(previousDetail, nextDetail, includes)
+        : nextDetail;
+      const loadedIncludes = new Set(detailLoadedIncludesRef.current.get(userId) ?? []);
+
+      for (const include of includes) {
+        loadedIncludes.add(include);
+      }
+
+      detailCacheRef.current.set(userId, mergedDetail);
+      detailLoadedIncludesRef.current.set(userId, loadedIncludes);
+      setDetail(mergedDetail);
+      setDetailLoadedIncludes(new Set(loadedIncludes));
     } catch (error) {
-      setNotice({ message: readableError(error), tone: "error" });
+      if (!signal?.aborted && epoch === detailEpochRef.current) {
+        setNotice({ message: readableError(error), tone: "error" });
+      }
     } finally {
-      setDetailLoading(false);
+      if (signal?.aborted || epoch !== detailEpochRef.current) {
+        return;
+      }
+
+      if (isCoreRefresh) {
+        setDetailLoading(false);
+      } else {
+        setDetailLoadingIncludes((current) => {
+          const next = new Set(current);
+
+          for (const include of includes) {
+            next.delete(include);
+          }
+
+          return next;
+        });
+      }
     }
   }
 
@@ -467,7 +613,13 @@ export function AdminAccountsPanel() {
         tone: "success",
       });
       setCustomerAction(null);
-      setDetail(nextDetail);
+      const cachedDetail = detailCacheRef.current.get(nextDetail.account.userId);
+      const mergedDetail = cachedDetail
+        ? mergeAccountDetails(cachedDetail, nextDetail, [])
+        : nextDetail;
+
+      detailCacheRef.current.set(nextDetail.account.userId, mergedDetail);
+      setDetail(mergedDetail);
       await refreshAccounts();
     } catch (error) {
       setNotice({ message: readableError(error), tone: "error" });
@@ -525,8 +677,13 @@ export function AdminAccountsPanel() {
 
                   setAccountType(nextType);
                   setPage(0);
+                  detailEpochRef.current += 1;
+                  detailAbortRef.current?.abort();
                   setDetail(null);
                   setDetailOpen(false);
+                  setDetailLoading(false);
+                  setDetailLoadedIncludes(new Set());
+                  setDetailLoadingIncludes(new Set());
                 }}
               >
                 <TabsList
@@ -643,9 +800,13 @@ export function AdminAccountsPanel() {
               canManageEmployeeAccounts={canManageEmployeeAccounts}
               currentUserId={currentUserId}
               detail={detail}
-              loading={detailLoading}
+              loadedIncludes={detailLoadedIncludes}
+              loading={detailLoading || detailLoadingIncludes.size > 0}
+              loadingIncludes={detailLoadingIncludes}
               onAction={openConversion}
               onCustomerAction={openCustomerAction}
+              onTabChange={handleDetailTabChange}
+              tab={detailTab}
             />
           </div>
         </div>
@@ -668,9 +829,13 @@ export function AdminAccountsPanel() {
               canManageEmployeeAccounts={canManageEmployeeAccounts}
               currentUserId={currentUserId}
               detail={detail}
-              loading={detailLoading}
+              loadedIncludes={detailLoadedIncludes}
+              loading={detailLoading || detailLoadingIncludes.size > 0}
+              loadingIncludes={detailLoadingIncludes}
               onAction={openConversion}
               onCustomerAction={openCustomerAction}
+              onTabChange={handleDetailTabChange}
+              tab={detailTab}
             />
           </div>
         </SheetContent>
@@ -693,6 +858,98 @@ export function AdminAccountsPanel() {
       />
     </section>
   );
+}
+
+function createLightweightAccountDetail(account: Account): AccountDetail {
+  const customer = account.customer
+    ? {
+        ...account.customer,
+        orders: account.customer.orders ?? [],
+        recentActivity: account.customer.recentActivity ?? [],
+        spendSummary: account.customer.spendSummary ?? emptySpendSummary(),
+      }
+    : null;
+
+  return {
+    account: {
+      ...account,
+      customer,
+    },
+    auditEvents: [],
+    customer,
+    memberships: [],
+    permissions: [],
+  };
+}
+
+function mergeAccountDetails(
+  previous: AccountDetail,
+  incoming: AccountDetail,
+  includes: readonly AccountDetailInclude[]
+): AccountDetail {
+  const includeSet = new Set(includes);
+  const previousCustomer = previous.customer ?? previous.account.customer;
+  const incomingCustomer = incoming.customer ?? incoming.account.customer;
+  const customer = incomingCustomer
+    ? {
+        ...incomingCustomer,
+        orders: includeSet.has("orders")
+          ? incomingCustomer.orders
+          : previousCustomer?.orders ?? incomingCustomer.orders,
+        recentActivity: includeSet.has("activity")
+          ? incomingCustomer.recentActivity
+          : previousCustomer?.recentActivity ?? incomingCustomer.recentActivity,
+        spendSummary: includeSet.has("orders")
+          ? incomingCustomer.spendSummary
+          : previousCustomer?.spendSummary ?? incomingCustomer.spendSummary,
+      }
+    : null;
+
+  return {
+    account: {
+      ...incoming.account,
+      customer,
+    },
+    auditEvents: includeSet.has("audit") ? incoming.auditEvents : previous.auditEvents,
+    customer,
+    memberships: incoming.memberships,
+    permissions: incoming.permissions,
+  };
+}
+
+function includesForDetailTab(tab: AccountDetailTab, detail: AccountDetail): AccountDetailInclude[] {
+  if (tab === "orders" || tab === "spend") {
+    return detail.account.accountType === "customer" ? ["orders"] : [];
+  }
+
+  if (tab === "activity") {
+    return detail.account.accountType === "customer" ? ["activity", "audit"] : ["audit"];
+  }
+
+  return [];
+}
+
+function normalizeDetailTab(value: string): AccountDetailTab {
+  if (
+    value === "activity" ||
+    value === "memberships" ||
+    value === "orders" ||
+    value === "permissions" ||
+    value === "profile" ||
+    value === "spend"
+  ) {
+    return value;
+  }
+
+  return "profile";
+}
+
+function customerDetailTabValue(tab: AccountDetailTab) {
+  return tab === "orders" || tab === "spend" || tab === "activity" ? tab : "profile";
+}
+
+function employeeDetailTabValue(tab: AccountDetailTab) {
+  return tab === "memberships" || tab === "activity" ? tab : "permissions";
 }
 
 function AccountListItem({
@@ -761,9 +1018,13 @@ function AccountDetailPane({
   canManageEmployeeAccounts,
   currentUserId,
   detail,
+  loadedIncludes,
   loading,
+  loadingIncludes,
   onAction,
   onCustomerAction,
+  onTabChange,
+  tab,
 }: {
   canManageCustomerLevel: boolean;
   canManageCustomerStatus: boolean;
@@ -771,9 +1032,13 @@ function AccountDetailPane({
   canManageEmployeeAccounts: boolean;
   currentUserId: string | null;
   detail: AccountDetail | null;
+  loadedIncludes: Set<AccountDetailInclude>;
   loading: boolean;
+  loadingIncludes: Set<AccountDetailInclude>;
   onAction: (kind: ConversionKind, account: Account) => void;
   onCustomerAction: (kind: CustomerActionKind, account: Account) => void;
+  onTabChange: (value: string) => void;
+  tab: AccountDetailTab;
 }) {
   const text = useAdminText();
 
@@ -809,13 +1074,20 @@ function AccountDetailPane({
   const isSelf = currentUserId === account.userId;
 
   return (
-    <AdminBusyRegion
+    <div
+      aria-busy={loading}
+      aria-live="polite"
       className="min-w-0"
-      label={text.common.refreshing}
-      overlayClassName="rounded-md"
-      pending={loading}
-      rows={3}
     >
+      {loading ? (
+        <div className="mb-1.5 overflow-hidden rounded-md border border-primary/10 bg-white text-primary shadow-sm">
+          <div className="h-0.5 w-full animate-pulse bg-primary/40" />
+          <div className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-bold leading-4">
+            <Loader2 className="size-3 animate-spin" />
+            <span>{text.common.refreshing}</span>
+          </div>
+        </div>
+      ) : null}
       <div className="min-w-0 space-y-1.5 rounded-md border border-slate-200 bg-slate-50/70 p-1.5 sm:space-y-2 sm:p-2">
         <div className="flex min-w-0 items-start gap-2 rounded-md border border-slate-200 bg-white p-2 sm:p-2.5">
           <AccountAvatar account={account} size="lg" />
@@ -885,12 +1157,12 @@ function AccountDetailPane({
           <InfoTile
             icon={ShoppingBag}
             label="订单数量"
-            value={detail.customer.ordersCount}
+            value={detail.customer.spendSummary.orderCount || detail.customer.ordersCount}
           />
           <InfoTile
             icon={CircleDollarSign}
             label="消费金额"
-            value={formatEuro(detail.customer.revenue)}
+            value={formatEuro(detail.customer.spendSummary.total || detail.customer.revenue)}
           />
           <InfoTile
             icon={Clock3}
@@ -946,199 +1218,459 @@ function AccountDetailPane({
         ) : null}
       </div>
 
-      <DetailSection title="客户资料">
-        {detail.customer ? (
-          <div className="space-y-1.5 sm:space-y-2">
-            <div className="grid grid-cols-3 gap-1 sm:flex sm:flex-wrap sm:gap-1.5">
-              <Button
-                size="xs"
-                variant="outline"
-                className="bg-white"
-                disabled={!canManageCustomerLevel}
-                onClick={() => onCustomerAction("customer_level", account)}
-              >
-                <Star className="size-3.5" />
-                修改等级
-              </Button>
-              <Button
-                size="xs"
-                variant="outline"
-                className="bg-white"
-                disabled={!canManageCustomerStatus}
-                onClick={() => onCustomerAction("customer_status", account)}
-              >
-                <BadgeCheck className="size-3.5" />
-                修改状态
-              </Button>
-              <Button
-                size="xs"
-                variant="outline"
-                className="bg-white"
-                disabled={!canManageCustomerType}
-                onClick={() => onCustomerAction("customer_type", account)}
-              >
-                <BriefcaseBusiness className="size-3.5" />
-                修改价格类型
-              </Button>
-              {!canManageCustomerLevel || !canManageCustomerStatus || !canManageCustomerType ? (
-                <span className="col-span-3 text-[11px] font-semibold leading-5 text-slate-500 sm:text-xs sm:leading-8">
-                  缺少权限的操作会被锁定。
-                </span>
-              ) : null}
-            </div>
-            <div className="grid grid-cols-2 gap-1 sm:gap-1.5 lg:grid-cols-3">
-              <DetailLine label="公司/名称" value={detail.customer.name ?? "暂无"} />
-              <DetailLine label="活跃状态" value={customerStatusLabel(detail.customer.status)} />
-              <DetailLine label="价格类型" value={customerTypeLabel(detail.customer.customerType)} />
-              <DetailLine label="客户等级" value={customerLevelLabel(detail.customer.level)} />
-              <DetailLine label="最近活动" value={formatDateTime(detail.customer.lastActivityAt) ?? "暂无"} />
-              <DetailLine label="更新时间" value={formatDateTime(detail.customer.updatedAt) ?? "暂无"} />
-            </div>
-          </div>
-        ) : (
-          <EmptyText text="客户资料未初始化。" />
-        )}
-      </DetailSection>
+      {account.accountType === "customer" ? (
+        <Tabs value={customerDetailTabValue(tab)} onValueChange={onTabChange} className="space-y-2">
+          <TabsList className="grid h-auto grid-cols-2 gap-1 rounded-md bg-white p-1 shadow-sm sm:grid-cols-4">
+            <TabsTrigger value="profile" className="h-8 rounded text-xs font-bold">
+              客户资料
+            </TabsTrigger>
+            <TabsTrigger value="orders" className="h-8 rounded text-xs font-bold">
+              历史订单
+            </TabsTrigger>
+            <TabsTrigger value="spend" className="h-8 rounded text-xs font-bold">
+              消费明细
+            </TabsTrigger>
+            <TabsTrigger value="activity" className="h-8 rounded text-xs font-bold">
+              活动记录
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="profile" className="m-0">
+            <CustomerProfileTab
+              account={account}
+              canManageCustomerLevel={canManageCustomerLevel}
+              canManageCustomerStatus={canManageCustomerStatus}
+              canManageCustomerType={canManageCustomerType}
+              customer={detail.customer}
+              onCustomerAction={onCustomerAction}
+            />
+          </TabsContent>
+          <TabsContent value="orders" className="m-0">
+            <CustomerOrdersTab
+              loaded={loadedIncludes.has("orders")}
+              loading={loadingIncludes.has("orders")}
+              orders={detail.customer?.orders ?? []}
+            />
+          </TabsContent>
+          <TabsContent value="spend" className="m-0">
+            <CustomerSpendTab
+              customer={detail.customer}
+              loaded={loadedIncludes.has("orders")}
+              loading={loadingIncludes.has("orders")}
+            />
+          </TabsContent>
+          <TabsContent value="activity" className="m-0">
+            <AccountActivityTab
+              detail={detail}
+              loaded={loadedIncludes.has("activity") || loadedIncludes.has("audit")}
+              loading={loadingIncludes.has("activity") || loadingIncludes.has("audit")}
+              text={text}
+            />
+          </TabsContent>
+        </Tabs>
+      ) : (
+        <Tabs value={employeeDetailTabValue(tab)} onValueChange={onTabChange} className="space-y-2">
+          <TabsList className="grid h-auto grid-cols-3 gap-1 rounded-md bg-white p-1 shadow-sm">
+            <TabsTrigger value="permissions" className="h-8 rounded text-xs font-bold">
+              有效权限
+            </TabsTrigger>
+            <TabsTrigger value="memberships" className="h-8 rounded text-xs font-bold">
+              客户关系
+            </TabsTrigger>
+            <TabsTrigger value="activity" className="h-8 rounded text-xs font-bold">
+              活动记录
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="permissions" className="m-0">
+            <AccountPermissionsSection detail={detail} text={text} />
+          </TabsContent>
+          <TabsContent value="memberships" className="m-0">
+            <EmployeeMembershipsSection detail={detail} text={text} />
+          </TabsContent>
+          <TabsContent value="activity" className="m-0">
+            <AccountActivityTab
+              detail={detail}
+              loaded={loadedIncludes.has("audit")}
+              loading={loadingIncludes.has("audit")}
+              text={text}
+            />
+          </TabsContent>
+        </Tabs>
+      )}
+      </div>
+    </div>
+  );
+}
 
-      {account.accountType === "employee" ? (
-        <DetailSection title="历史客户成员关系">
-          {detail.memberships.length > 0 ? (
-            <div className="space-y-1.5">
-              {detail.memberships.map((membership) => (
+function CustomerProfileTab({
+  account,
+  canManageCustomerLevel,
+  canManageCustomerStatus,
+  canManageCustomerType,
+  customer,
+  onCustomerAction,
+}: {
+  account: Account;
+  canManageCustomerLevel: boolean;
+  canManageCustomerStatus: boolean;
+  canManageCustomerType: boolean;
+  customer: AccountCustomer | null;
+  onCustomerAction: (kind: CustomerActionKind, account: Account) => void;
+}) {
+  return (
+    <DetailSection title="客户资料">
+      {customer ? (
+        <div className="space-y-1.5 sm:space-y-2">
+          <div className="grid grid-cols-3 gap-1 sm:flex sm:flex-wrap sm:gap-1.5">
+            <Button
+              size="xs"
+              variant="outline"
+              className="bg-white"
+              disabled={!canManageCustomerLevel}
+              onClick={() => onCustomerAction("customer_level", account)}
+            >
+              <Star className="size-3.5" />
+              修改等级
+            </Button>
+            <Button
+              size="xs"
+              variant="outline"
+              className="bg-white"
+              disabled={!canManageCustomerStatus}
+              onClick={() => onCustomerAction("customer_status", account)}
+            >
+              <BadgeCheck className="size-3.5" />
+              修改状态
+            </Button>
+            <Button
+              size="xs"
+              variant="outline"
+              className="bg-white"
+              disabled={!canManageCustomerType}
+              onClick={() => onCustomerAction("customer_type", account)}
+            >
+              <BriefcaseBusiness className="size-3.5" />
+              修改价格类型
+            </Button>
+            {!canManageCustomerLevel || !canManageCustomerStatus || !canManageCustomerType ? (
+              <span className="col-span-3 text-[11px] font-semibold leading-5 text-slate-500 sm:text-xs sm:leading-8">
+                缺少权限的操作会被锁定。
+              </span>
+            ) : null}
+          </div>
+          <div className="grid grid-cols-2 gap-1 sm:gap-1.5 lg:grid-cols-3">
+            <DetailLine label="公司/名称" value={customer.name ?? "暂无"} />
+            <DetailLine label="活跃状态" value={customerStatusLabel(customer.status)} />
+            <DetailLine label="价格类型" value={customerTypeLabel(customer.customerType)} />
+            <DetailLine label="客户等级" value={customerLevelLabel(customer.level)} />
+            <DetailLine label="最近活动" value={formatDateTime(customer.lastActivityAt) ?? "暂无"} />
+            <DetailLine label="更新时间" value={formatDateTime(customer.updatedAt) ?? "暂无"} />
+          </div>
+        </div>
+      ) : (
+        <EmptyText text="客户资料未初始化。" />
+      )}
+    </DetailSection>
+  );
+}
+
+function CustomerOrdersTab({
+  loaded,
+  loading,
+  orders,
+}: {
+  loaded: boolean;
+  loading: boolean;
+  orders: AccountCustomerOrder[];
+}) {
+  return (
+    <DetailSection title="历史订单">
+      {loading || !loaded ? (
+        <LoadingText text="正在加载历史订单..." />
+      ) : orders.length > 0 ? (
+        <div className="space-y-1.5">
+          {orders.map((order) => (
+            <div
+              key={order.id}
+              className="grid gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1.5 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_auto]"
+            >
+              <div className="min-w-0">
+                <div className="break-words text-xs font-black text-slate-950">
+                  {order.orderNo}
+                </div>
+                <div className="text-[11px] font-semibold text-slate-500">
+                  {formatDateTime(order.createdAt) ?? "暂无日期"}
+                </div>
+              </div>
+              <div className="flex min-w-0 flex-wrap items-center gap-1">
+                <Badge className={orderStatusBadgeClass(order.status)} variant="outline">
+                  {orderStatusLabel(order.status)}
+                </Badge>
+                <Badge className={paymentStatusBadgeClass(order.paymentStatus)} variant="outline">
+                  {paymentStatusLabel(order.paymentStatus)}
+                </Badge>
+              </div>
+              <div className="text-[11px] font-semibold text-slate-500">
+                {order.lineCount} 行商品
+              </div>
+              <div className="text-right text-sm font-black text-slate-950">
+                {formatEuro(order.total)}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyText text="暂无历史订单。" />
+      )}
+    </DetailSection>
+  );
+}
+
+function CustomerSpendTab({
+  customer,
+  loaded,
+  loading,
+}: {
+  customer: AccountCustomer | null;
+  loaded: boolean;
+  loading: boolean;
+}) {
+  const summary = customer?.spendSummary ?? emptySpendSummary();
+  const orders = customer?.orders ?? [];
+
+  return (
+    <DetailSection title="消费金额明细">
+      {loading || !loaded ? (
+        <LoadingText text="正在加载消费明细..." />
+      ) : (
+      <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-1 sm:grid-cols-5 sm:gap-1.5">
+          <SpendTile label="累计消费" value={formatEuro(summary.total)} />
+          <SpendTile label="已付款" value={formatEuro(summary.paidAmount)} />
+          <SpendTile label="待收款" value={formatEuro(summary.pendingAmount)} />
+          <SpendTile label="退款/取消" value={formatEuro(summary.refundedAmount + summary.cancelledAmount)} />
+          <SpendTile label="订单数" value={`${summary.orderCount} 单`} />
+        </div>
+        <div className="grid grid-cols-2 gap-1 sm:grid-cols-4 sm:gap-1.5">
+          <DetailLine label="净额" value={formatEuro(summary.totalNet)} />
+          <DetailLine label="VAT" value={formatEuro(summary.vat)} />
+          <DetailLine label="运费" value={formatEuro(summary.shipping)} />
+          <DetailLine label="退款金额" value={formatEuro(summary.refundedAmount)} />
+        </div>
+        {orders.length > 0 ? (
+          <div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
+            <div className="min-w-[620px]">
+              <div className="grid grid-cols-[1.3fr_0.9fr_0.8fr_0.8fr_0.8fr_0.9fr] border-b border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-slate-500">
+                <span>订单</span>
+                <span>付款</span>
+                <span className="text-right">净额</span>
+                <span className="text-right">VAT</span>
+                <span className="text-right">运费</span>
+                <span className="text-right">总额</span>
+              </div>
+              {orders.map((order) => (
                 <div
-                  key={`${membership.customerId}:${membership.userId}`}
-                  className="rounded-md border border-slate-200 bg-slate-50/70 px-2 py-1.5"
+                  key={order.id}
+                  className="grid grid-cols-[1.3fr_0.9fr_0.8fr_0.8fr_0.8fr_0.9fr] border-b border-slate-100 px-2 py-1.5 text-xs last:border-b-0"
                 >
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <span className="min-w-0 break-words text-xs font-black text-slate-900">
-                      {membership.displayName ?? membership.email ?? membership.userId}
-                    </span>
-                    <Badge className={accountTypeBadgeClass(membership.accountType)} variant="outline">
-                      {accountTypeLabel(membership.accountType)}
-                    </Badge>
-                    <Badge className={memberStatusBadgeClass(membership.status)} variant="outline">
-                      {memberStatusLabel(membership.status)}
-                    </Badge>
-                  </div>
-                  <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold text-slate-500">
-                    <span>{membership.email ?? membership.userId}</span>
-                    <span>成员角色：{memberRoleLabel(membership.memberRole)}</span>
-                    {membership.roleTemplate ? (
-                      <span>员工角色：{roleTemplateLabel(text, membership.roleTemplate)}</span>
-                    ) : null}
-                    {membership.status === "disabled" ? (
-                      <span>旧客户成员关系已停用，不代表员工登录被禁用</span>
-                    ) : null}
-                  </div>
+                  <span className="min-w-0 truncate font-black text-slate-900">{order.orderNo}</span>
+                  <span className="font-semibold text-slate-600">{paymentStatusLabel(order.paymentStatus)}</span>
+                  <span className="text-right font-semibold text-slate-700">{formatEuro(order.totalNet)}</span>
+                  <span className="text-right font-semibold text-slate-700">{formatEuro(order.vat)}</span>
+                  <span className="text-right font-semibold text-slate-700">{formatEuro(order.shipping)}</span>
+                  <span className="text-right font-black text-slate-950">{formatEuro(order.total)}</span>
                 </div>
               ))}
             </div>
-          ) : (
-            <EmptyText text="暂无历史客户成员关系。" />
-          )}
-        </DetailSection>
-      ) : null}
-
-      <DetailSection title="有效权限">
-        {detail.permissions.length > 0 ? (
-          <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto pr-1">
-            {detail.permissions.slice(0, 24).map((permission) => (
-              <Badge key={permission} className="h-5 border-slate-200 bg-slate-50 px-1.5 text-[10px] text-slate-600" variant="outline">
-                {adminPermissionLabel(text, permission, permission)}
-              </Badge>
-            ))}
-            {detail.permissions.length > 24 ? (
-              <Badge className="h-5 border-slate-200 bg-white px-1.5 text-[10px] text-slate-500" variant="outline">
-                +{detail.permissions.length - 24}
-              </Badge>
-            ) : null}
           </div>
         ) : (
-          <EmptyText text="暂无后台权限。" />
+          <EmptyText text="暂无消费明细。" />
         )}
-      </DetailSection>
-
-      <DetailSection title="最近操作">
-        {detail.auditEvents.length > 0 || (detail.customer?.recentActivity.length ?? 0) > 0 ? (
-          <div className="grid gap-2 xl:grid-cols-2">
-            <div className="min-w-0">
-              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-black text-slate-500">
-                <ShieldCheck className="size-3.5" />
-                后台审计
-              </div>
-              {detail.auditEvents.length > 0 ? (
-                <ol className="space-y-1.5">
-                  {detail.auditEvents.slice(0, 8).map((event) => (
-                    <li key={event.id} className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
-                      <div className="flex min-w-0 items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="break-words text-xs font-black text-slate-900">
-                            {adminActionLabel(event.action)}
-                          </div>
-                          <div className="mt-0.5 break-words text-[11px] font-semibold leading-4 text-slate-500">
-                            {[
-                              event.actorEmail,
-                              event.actorRole
-                                ? roleTemplateLabel(text, event.actorRole, event.actorRole)
-                                : null,
-                              event.entityType,
-                            ]
-                              .filter(Boolean)
-                              .join(" · ") || "系统记录"}
-                          </div>
-                          {event.reason ? (
-                            <div className="mt-0.5 break-words text-[11px] leading-4 text-slate-600">
-                              {event.reason}
-                            </div>
-                          ) : null}
-                        </div>
-                        <span className="shrink-0 text-[11px] font-semibold text-slate-500">
-                          {formatDateTime(event.createdAt) ?? "暂无"}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <EmptyText text="暂无后台审计记录。" />
-              )}
-            </div>
-            <div className="min-w-0">
-              <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-black text-slate-500">
-                <Activity className="size-3.5" />
-                客户活动
-              </div>
-              {detail.customer?.recentActivity.length ? (
-                <ol className="space-y-1.5">
-                  {detail.customer.recentActivity.slice(0, 8).map((event) => (
-                    <li key={event.id} className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
-                      <div className="flex min-w-0 items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="break-words text-xs font-black text-slate-900">
-                            {customerActivityLabel(event)}
-                          </div>
-                          <div className="mt-0.5 break-words text-[11px] font-semibold leading-4 text-slate-500">
-                            {customerActivitySubject(event)}
-                          </div>
-                        </div>
-                        <span className="shrink-0 text-[11px] font-semibold text-slate-500">
-                          {formatDateTime(event.createdAt) ?? "暂无"}
-                        </span>
-                      </div>
-                    </li>
-                  ))}
-                </ol>
-              ) : (
-                <EmptyText text="暂无客户活动记录。" />
-              )}
-            </div>
-          </div>
-        ) : (
-          <EmptyText text="暂无最近操作记录。" />
-        )}
-      </DetailSection>
       </div>
-    </AdminBusyRegion>
+      )}
+    </DetailSection>
+  );
+}
+
+function SpendTile({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5">
+      <div className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">
+        {label}
+      </div>
+      <div className="mt-0.5 truncate text-sm font-black text-slate-950">{value}</div>
+    </div>
+  );
+}
+
+function AccountPermissionsSection({
+  detail,
+  text,
+}: {
+  detail: AccountDetail;
+  text: AdminText;
+}) {
+  return (
+    <DetailSection title="有效权限">
+      {detail.permissions.length > 0 ? (
+        <div className="flex max-h-24 flex-wrap gap-1 overflow-y-auto pr-1">
+          {detail.permissions.slice(0, 24).map((permission) => (
+            <Badge key={permission} className="h-5 border-slate-200 bg-slate-50 px-1.5 text-[10px] text-slate-600" variant="outline">
+              {adminPermissionLabel(text, permission, permission)}
+            </Badge>
+          ))}
+          {detail.permissions.length > 24 ? (
+            <Badge className="h-5 border-slate-200 bg-white px-1.5 text-[10px] text-slate-500" variant="outline">
+              +{detail.permissions.length - 24}
+            </Badge>
+          ) : null}
+        </div>
+      ) : (
+        <EmptyText text="暂无后台权限。" />
+      )}
+    </DetailSection>
+  );
+}
+
+function EmployeeMembershipsSection({
+  detail,
+  text,
+}: {
+  detail: AccountDetail;
+  text: AdminText;
+}) {
+  return (
+    <DetailSection title="历史客户成员关系">
+      {detail.memberships.length > 0 ? (
+        <div className="space-y-1.5">
+          {detail.memberships.map((membership) => (
+            <div
+              key={`${membership.customerId}:${membership.userId}`}
+              className="rounded-md border border-slate-200 bg-slate-50/70 px-2 py-1.5"
+            >
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <span className="min-w-0 break-words text-xs font-black text-slate-900">
+                  {membership.displayName ?? membership.email ?? membership.userId}
+                </span>
+                <Badge className={accountTypeBadgeClass(membership.accountType)} variant="outline">
+                  {accountTypeLabel(membership.accountType)}
+                </Badge>
+                <Badge className={memberStatusBadgeClass(membership.status)} variant="outline">
+                  {memberStatusLabel(membership.status)}
+                </Badge>
+              </div>
+              <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold text-slate-500">
+                <span>{membership.email ?? membership.userId}</span>
+                <span>成员角色：{memberRoleLabel(membership.memberRole)}</span>
+                {membership.roleTemplate ? (
+                  <span>员工角色：{roleTemplateLabel(text, membership.roleTemplate)}</span>
+                ) : null}
+                {membership.status === "disabled" ? (
+                  <span>旧客户成员关系已停用，不代表员工登录被禁用</span>
+                ) : null}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <EmptyText text="暂无历史客户成员关系。" />
+      )}
+    </DetailSection>
+  );
+}
+
+function AccountActivityTab({
+  detail,
+  loaded,
+  loading,
+  text,
+}: {
+  detail: AccountDetail;
+  loaded: boolean;
+  loading: boolean;
+  text: AdminText;
+}) {
+  return (
+    <DetailSection title="活动记录">
+      {loading || !loaded ? (
+        <LoadingText text="正在加载活动记录..." />
+      ) : detail.auditEvents.length > 0 || (detail.customer?.recentActivity.length ?? 0) > 0 ? (
+        <div className="grid gap-2 xl:grid-cols-2">
+          <div className="min-w-0">
+            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-black text-slate-500">
+              <ShieldCheck className="size-3.5" />
+              后台审计
+            </div>
+            {detail.auditEvents.length > 0 ? (
+              <ol className="space-y-1.5">
+                {detail.auditEvents.slice(0, 8).map((event) => (
+                  <li key={event.id} className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
+                    <div className="flex min-w-0 items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="break-words text-xs font-black text-slate-900">
+                          {adminActionLabel(event.action)}
+                        </div>
+                        <div className="mt-0.5 break-words text-[11px] font-semibold leading-4 text-slate-500">
+                          {[
+                            event.actorEmail,
+                            event.actorRole
+                              ? roleTemplateLabel(text, event.actorRole, event.actorRole)
+                              : null,
+                            event.entityType,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || "系统记录"}
+                        </div>
+                        {event.reason ? (
+                          <div className="mt-0.5 break-words text-[11px] leading-4 text-slate-600">
+                            {event.reason}
+                          </div>
+                        ) : null}
+                      </div>
+                      <span className="shrink-0 text-[11px] font-semibold text-slate-500">
+                        {formatDateTime(event.createdAt) ?? "暂无"}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <EmptyText text="暂无后台审计记录。" />
+            )}
+          </div>
+          <div className="min-w-0">
+            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-black text-slate-500">
+              <Activity className="size-3.5" />
+              客户活动
+            </div>
+            {detail.customer?.recentActivity.length ? (
+              <ol className="space-y-1.5">
+                {detail.customer.recentActivity.slice(0, 8).map((event) => (
+                  <li key={event.id} className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
+                    <div className="flex min-w-0 items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="break-words text-xs font-black text-slate-900">
+                          {customerActivityLabel(event)}
+                        </div>
+                        <div className="mt-0.5 break-words text-[11px] font-semibold leading-4 text-slate-500">
+                          {customerActivitySubject(event)}
+                        </div>
+                      </div>
+                      <span className="shrink-0 text-[11px] font-semibold text-slate-500">
+                        {formatDateTime(event.createdAt) ?? "暂无"}
+                      </span>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <EmptyText text="暂无客户活动记录。" />
+            )}
+          </div>
+        </div>
+      ) : (
+        <EmptyText text="暂无最近操作记录。" />
+      )}
+    </DetailSection>
   );
 }
 
@@ -1298,11 +1830,14 @@ function CustomerAccountActionDialog({
                   <SelectContent>
                     {customerLevels.map((level) => (
                       <SelectItem key={level} value={level}>
-                        {customerLevelLabel(level)}
+                        {customerLevelOptionLabel(level)}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                <div className="text-xs font-semibold text-slate-500">
+                  当前等级折扣：{customerLevelDiscountLabel(action.level)}
+                </div>
               </div>
             ) : action.kind === "customer_type" ? (
               <div className="space-y-1.5">
@@ -1454,10 +1989,27 @@ async function fetchAccounts(
   };
 }
 
-async function fetchAccountDetail(userId: string): Promise<AccountDetail> {
-  const response = await fetch(`/api/admin/accounts/${encodeURIComponent(userId)}`, {
+async function fetchAccountDetail(
+  userId: string,
+  {
+    includes = [],
+    signal,
+  }: {
+    includes?: AccountDetailInclude[];
+    signal?: AbortSignal;
+  } = {}
+): Promise<AccountDetail> {
+  const params = new URLSearchParams();
+
+  if (includes.length > 0) {
+    params.set("include", includes.join(","));
+  }
+
+  const query = params.toString();
+  const response = await fetch(`/api/admin/accounts/${encodeURIComponent(userId)}${query ? `?${query}` : ""}`, {
     cache: "no-store",
     headers: { Accept: "application/json" },
+    signal,
   });
 
   if (!response.ok) {
@@ -1743,6 +2295,15 @@ function EmptyText({ text }: { text: string }) {
   );
 }
 
+function LoadingText({ text }: { text: string }) {
+  return (
+    <div className="flex items-center justify-center gap-1.5 rounded-md border border-primary/10 bg-primary/5 p-4 text-sm font-semibold text-primary">
+      <Loader2 className="size-4 animate-spin" />
+      {text}
+    </div>
+  );
+}
+
 function normalizeAccountDetail(value: unknown): AccountDetail | null {
   if (!isRecord(value)) {
     return null;
@@ -1804,12 +2365,73 @@ function normalizeCustomer(value: unknown): AccountCustomer | null {
     assignmentStatus: readString(value.assignmentStatus) ?? "needs_review",
     level: readString(value.level) ?? "bronze",
     lifetimeSpendNet: readNumber(value.lifetimeSpendNet) ?? 0,
+    orders: readArray(value.orders).map(normalizeCustomerOrder).filter(isDefined),
     ordersCount: readNumber(value.ordersCount) ?? 0,
     revenue: readNumber(value.revenue) ?? readNumber(value.lifetimeSpendNet) ?? 0,
     lastOrderAt: readString(value.lastOrderAt),
     lastActivityAt: readString(value.lastActivityAt),
     recentActivity: readArray(value.recentActivity).map(normalizeCustomerActivity).filter(isDefined),
+    spendSummary: normalizeSpendSummary(value.spendSummary),
     updatedAt: readString(value.updatedAt),
+  };
+}
+
+function normalizeCustomerOrder(value: unknown): AccountCustomerOrder | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const id = readString(value.id);
+  const orderNo = readString(value.orderNo);
+
+  if (!id || !orderNo) {
+    return null;
+  }
+
+  return {
+    id,
+    orderNo,
+    status: readString(value.status) ?? "submitted",
+    paymentStatus: readString(value.paymentStatus) ?? "unpaid",
+    totalNet: readNumber(value.totalNet) ?? 0,
+    vat: readNumber(value.vat) ?? 0,
+    shipping: readNumber(value.shipping) ?? 0,
+    total: readNumber(value.total) ?? 0,
+    lineCount: readNumber(value.lineCount) ?? 0,
+    createdAt: readString(value.createdAt),
+    updatedAt: readString(value.updatedAt),
+  };
+}
+
+function normalizeSpendSummary(value: unknown): AccountSpendSummary {
+  if (!isRecord(value)) {
+    return emptySpendSummary();
+  }
+
+  return {
+    cancelledAmount: readNumber(value.cancelledAmount) ?? 0,
+    orderCount: readNumber(value.orderCount) ?? 0,
+    paidAmount: readNumber(value.paidAmount) ?? 0,
+    pendingAmount: readNumber(value.pendingAmount) ?? 0,
+    refundedAmount: readNumber(value.refundedAmount) ?? 0,
+    shipping: readNumber(value.shipping) ?? 0,
+    total: readNumber(value.total) ?? 0,
+    totalNet: readNumber(value.totalNet) ?? 0,
+    vat: readNumber(value.vat) ?? 0,
+  };
+}
+
+function emptySpendSummary(): AccountSpendSummary {
+  return {
+    cancelledAmount: 0,
+    orderCount: 0,
+    paidAmount: 0,
+    pendingAmount: 0,
+    refundedAmount: 0,
+    shipping: 0,
+    total: 0,
+    totalNet: 0,
+    vat: 0,
   };
 }
 
@@ -1925,18 +2547,55 @@ function customerTypeLabel(value: string) {
   return value === "wholesale" ? "批发客户" : "零售价客户";
 }
 
-function customerLevelLabel(value: string) {
+function orderStatusLabel(value: string) {
   const labels: Record<string, string> = {
-    bronze: "Bronze",
-    diamond: "Diamond",
-    emerald: "Emerald",
-    gold: "Gold",
-    king: "King",
-    master: "Master",
-    silver: "Silver",
+    accepted: "已接单",
+    cancelled: "已取消",
+    completed: "已完成",
+    packed: "已打包",
+    picking: "拣货中",
+    shipped: "已发货",
+    submitted: "新订单",
   };
 
   return labels[value] ?? value;
+}
+
+function paymentStatusLabel(value: string) {
+  const labels: Record<string, string> = {
+    authorized: "待核查",
+    paid: "已付款",
+    refunded: "已退款",
+    unpaid: "待收款",
+  };
+
+  return labels[value] ?? value;
+}
+
+function customerLevelLabel(value: string) {
+  return `${customerLevelName(value)} · ${customerLevelDiscountLabel(value)}`;
+}
+
+function customerLevelOptionLabel(value: string) {
+  return `${customerLevelName(value)} · ${customerLevelDiscountLabel(value)} 折扣`;
+}
+
+function customerLevelDiscountLabel(value: string) {
+  return formatTierDiscount(normalizeCustomerLevel(value));
+}
+
+function customerLevelName(value: string) {
+  const labels: Record<CustomerLevel, string> = {
+    bronze: "铜牌",
+    silver: "银牌",
+    gold: "金牌",
+    emerald: "翡翠",
+    diamond: "钻石",
+    master: "大师",
+    king: "王者",
+  };
+
+  return labels[normalizeCustomerLevel(value)];
 }
 
 function normalizeCustomerLevel(value: string): CustomerLevel {
@@ -2039,6 +2698,38 @@ function customerStatusBadgeClass(value: string) {
 
   if (value === "suspended") {
     return "border-red-200 bg-red-50 text-red-700";
+  }
+
+  return "border-amber-200 bg-amber-50 text-amber-700";
+}
+
+function orderStatusBadgeClass(value: string) {
+  if (value === "completed" || value === "shipped") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (value === "cancelled") {
+    return "border-red-200 bg-red-50 text-red-700";
+  }
+
+  if (value === "packed" || value === "picking") {
+    return "border-blue-200 bg-blue-50 text-blue-700";
+  }
+
+  return "border-amber-200 bg-amber-50 text-amber-700";
+}
+
+function paymentStatusBadgeClass(value: string) {
+  if (value === "paid") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (value === "refunded") {
+    return "border-slate-200 bg-slate-50 text-slate-600";
+  }
+
+  if (value === "authorized") {
+    return "border-blue-200 bg-blue-50 text-blue-700";
   }
 
   return "border-amber-200 bg-amber-50 text-amber-700";

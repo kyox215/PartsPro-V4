@@ -18,6 +18,10 @@ export const customerSelect =
   "id, user_id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address, status, customer_type, assignment_status, level, lifetime_spend_net, orders_count, revenue, last_order_at, last_activity_at, profile_completed_at, created_at, updated_at";
 const customerActivitySelect =
   "id, user_id, customer_id, event_type, sku_code, product_name, brand, model, model_series, search_query, metadata, created_at";
+const customerOrderSelect =
+  "id, order_no, status, payment_status, total_net, vat, shipping, created_at, updated_at";
+
+export type AdminAccountDetailInclude = "activity" | "audit" | "orders";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 type DbRow = Record<string, unknown>;
@@ -51,6 +55,7 @@ export type AdminAccountCustomerDto = {
   lastOrderAt: string | null;
   level: string;
   lifetimeSpendNet: number;
+  orders: AdminAccountCustomerOrderDto[];
   name: string | null;
   ordersCount: number;
   pec: string | null;
@@ -60,10 +65,37 @@ export type AdminAccountCustomerDto = {
   revenue: number;
   sdi: string | null;
   shippingAddress: string | null;
+  spendSummary: AdminAccountCustomerSpendSummaryDto;
   status: string;
   updatedAt: string | null;
   userId: string | null;
   vatNumber: string | null;
+};
+
+export type AdminAccountCustomerOrderDto = {
+  createdAt: string | null;
+  id: string;
+  lineCount: number;
+  orderNo: string;
+  paymentStatus: string;
+  shipping: number;
+  status: string;
+  total: number;
+  totalNet: number;
+  updatedAt: string | null;
+  vat: number;
+};
+
+export type AdminAccountCustomerSpendSummaryDto = {
+  cancelledAmount: number;
+  orderCount: number;
+  paidAmount: number;
+  pendingAmount: number;
+  refundedAmount: number;
+  shipping: number;
+  total: number;
+  totalNet: number;
+  vat: number;
 };
 
 export type AdminAccountCustomerActivityDto = {
@@ -114,6 +146,10 @@ export type AdminAccountDetailDto = {
   customer: AdminAccountCustomerDto | null;
   memberships: AdminAccountMembershipDto[];
   permissions: string[];
+};
+
+export type ReadAdminAccountDetailOptions = {
+  include?: readonly AdminAccountDetailInclude[];
 };
 
 export async function readCustomersForProfiles(
@@ -254,8 +290,10 @@ export async function readAdminAccountByUserId(
 
 export async function readAdminAccountDetail(
   supabase: SupabaseServerClient,
-  userId: string
+  userId: string,
+  options: ReadAdminAccountDetailOptions = {}
 ): Promise<AdminAccountDetailDto | null> {
+  const include = new Set(options.include ?? []);
   const account = await readAdminAccountByUserId(supabase, userId);
 
   if (!account) {
@@ -265,13 +303,25 @@ export async function readAdminAccountDetail(
   const [memberships, permissions, auditEvents] = await Promise.all([
     readAccountMemberships(supabase, account),
     readAccountPermissions(supabase, account),
-    readAccountAuditEvents(supabase, account),
+    include.has("audit") ? readAccountAuditEvents(supabase, account) : Promise.resolve([]),
   ]);
-  const recentActivity = account.customer?.id
-    ? await readCustomerRecentActivity(supabase, account.customer.id)
-    : [];
+  const [recentActivity, orderLedger] = account.customer?.id
+    ? await Promise.all([
+        include.has("activity")
+          ? readCustomerRecentActivity(supabase, account.customer.id)
+          : Promise.resolve([]),
+        include.has("orders")
+          ? readCustomerOrderLedger(supabase, account.customer.id)
+          : Promise.resolve(emptyCustomerOrderLedger()),
+      ])
+    : [[], emptyCustomerOrderLedger()];
   const customer = account.customer
-    ? { ...account.customer, recentActivity }
+    ? {
+        ...account.customer,
+        orders: orderLedger.orders,
+        recentActivity,
+        spendSummary: orderLedger.spendSummary,
+      }
     : null;
 
   return {
@@ -443,11 +493,13 @@ function toCustomerDto(row: DbRow): AdminAccountCustomerDto {
     assignmentStatus: readString(row.assignment_status) ?? "needs_review",
     level: readString(row.level) ?? "bronze",
     lifetimeSpendNet: readNumber(row.lifetime_spend_net) ?? 0,
+    orders: [],
     ordersCount: readNumber(row.orders_count) ?? 0,
     revenue: readNumber(row.revenue) ?? readNumber(row.lifetime_spend_net) ?? 0,
     lastActivityAt: readString(row.last_activity_at),
     lastOrderAt: readString(row.last_order_at),
     recentActivity: [],
+    spendSummary: emptySpendSummary(),
     profileCompletedAt: readString(row.profile_completed_at),
     createdAt: readString(row.created_at),
     updatedAt: readString(row.updated_at),
@@ -625,6 +677,236 @@ async function readAccountAuditEvents(
   }));
 }
 
+async function readCustomerOrderLedger(
+  supabase: SupabaseServerClient,
+  customerId: string
+): Promise<{
+  orders: AdminAccountCustomerOrderDto[];
+  spendSummary: AdminAccountCustomerSpendSummaryDto;
+}> {
+  const ledger = await supabase.rpc("admin_customer_order_ledger", {
+    p_customer_id: customerId,
+    p_order_limit: 20,
+  });
+
+  if (!ledger.error) {
+    return normalizeCustomerOrderLedger(ledger.data);
+  }
+
+  const { data, error } = await supabase
+    .from("orders")
+    .select(customerOrderSelect)
+    .eq("customer_id", customerId)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  if (error || !Array.isArray(data)) {
+    return emptyCustomerOrderLedger();
+  }
+
+  const rows = data.filter(isRow);
+  const lineCounts = await readOrderLineCounts(supabase, rows);
+
+  return {
+    orders: rows.map((row) => toCustomerOrderDto(row, lineCounts)).filter(isDefined),
+    spendSummary: emptySpendSummary(),
+  };
+}
+
+function normalizeCustomerOrderLedger(value: unknown) {
+  if (!isRow(value)) {
+    return emptyCustomerOrderLedger();
+  }
+
+  return {
+    orders: readArray(value.orders).map(normalizeCustomerOrderDto).filter(isDefined),
+    spendSummary: normalizeSpendSummaryDto(value.spendSummary),
+  };
+}
+
+function normalizeCustomerOrderDto(value: unknown): AdminAccountCustomerOrderDto | null {
+  if (!isRow(value)) {
+    return null;
+  }
+
+  const id = readString(value.id);
+  const orderNo = readString(value.orderNo) ?? readString(value.order_no);
+
+  if (!id || !orderNo) {
+    return null;
+  }
+
+  return {
+    id,
+    orderNo,
+    status: readString(value.status) ?? "submitted",
+    paymentStatus: normalizeOrderPaymentStatus(
+      readString(value.paymentStatus) ?? readString(value.payment_status)
+    ),
+    totalNet: readNumber(value.totalNet) ?? readNumber(value.total_net) ?? 0,
+    vat: readNumber(value.vat) ?? 0,
+    shipping: readNumber(value.shipping) ?? 0,
+    total: readNumber(value.total) ?? 0,
+    lineCount: readNumber(value.lineCount) ?? readNumber(value.line_count) ?? 0,
+    createdAt: readString(value.createdAt) ?? readString(value.created_at),
+    updatedAt: readString(value.updatedAt) ?? readString(value.updated_at),
+  };
+}
+
+function normalizeSpendSummaryDto(value: unknown): AdminAccountCustomerSpendSummaryDto {
+  if (!isRow(value)) {
+    return emptySpendSummary();
+  }
+
+  return roundSpendSummary({
+    cancelledAmount: readNumber(value.cancelledAmount) ?? 0,
+    orderCount: readNumber(value.orderCount) ?? 0,
+    paidAmount: readNumber(value.paidAmount) ?? 0,
+    pendingAmount: readNumber(value.pendingAmount) ?? 0,
+    refundedAmount: readNumber(value.refundedAmount) ?? 0,
+    shipping: readNumber(value.shipping) ?? 0,
+    total: readNumber(value.total) ?? 0,
+    totalNet: readNumber(value.totalNet) ?? 0,
+    vat: readNumber(value.vat) ?? 0,
+  });
+}
+
+async function readOrderLineCounts(
+  supabase: SupabaseServerClient,
+  orderRows: DbRow[]
+) {
+  const orderIds = uniqueStrings(orderRows.map((row) => readString(row.id)).filter(isString));
+  const counts = new Map<string, number>();
+
+  if (orderIds.length === 0) {
+    return counts;
+  }
+
+  const { data, error } = await supabase
+    .from("order_lines")
+    .select("order_id")
+    .in("order_id", orderIds)
+    .limit(10000);
+
+  if (error || !Array.isArray(data)) {
+    return counts;
+  }
+
+  for (const row of data.filter(isRow)) {
+    const orderId = readString(row.order_id);
+
+    if (orderId) {
+      counts.set(orderId, (counts.get(orderId) ?? 0) + 1);
+    }
+  }
+
+  return counts;
+}
+
+function toCustomerOrderDto(
+  row: DbRow,
+  lineCounts: Map<string, number>
+): AdminAccountCustomerOrderDto | null {
+  const id = readString(row.id);
+  const orderNo = readString(row.order_no) ?? readString(row.order_number) ?? readString(row.reference) ?? id;
+
+  if (!id || !orderNo) {
+    return null;
+  }
+
+  const amounts = readOrderAmounts(row);
+
+  return {
+    id,
+    orderNo,
+    status: readString(row.status) ?? "submitted",
+    paymentStatus: normalizeOrderPaymentStatus(readString(row.payment_status)),
+    totalNet: amounts.totalNet,
+    vat: amounts.vat,
+    shipping: amounts.shipping,
+    total: amounts.total,
+    lineCount: lineCounts.get(id) ?? readNumber(row.line_count) ?? readNumber(row.items_count) ?? 0,
+    createdAt: readString(row.created_at),
+    updatedAt: readString(row.updated_at),
+  };
+}
+
+function readOrderAmounts(row: DbRow) {
+  const totalNet = readNumber(row.total_net) ?? 0;
+  const vat = readNumber(row.vat) ?? 0;
+  const shipping = readNumber(row.shipping) ?? 0;
+  const total =
+    readNumber(row.total) ??
+    readNumber(row.grand_total) ??
+    readNumber(row.amount_total) ??
+    readNumber(row.total_amount) ??
+    totalNet + vat + shipping;
+
+  return {
+    shipping,
+    total,
+    totalNet,
+    vat,
+  };
+}
+
+function normalizeOrderPaymentStatus(value: string | null) {
+  if (value === "paid") {
+    return "paid";
+  }
+
+  if (value === "bank_waiting" || value === "authorized") {
+    return "authorized";
+  }
+
+  if (value === "refunded" || value === "failed") {
+    return "refunded";
+  }
+
+  return "unpaid";
+}
+
+function emptyCustomerOrderLedger() {
+  return {
+    orders: [] as AdminAccountCustomerOrderDto[],
+    spendSummary: emptySpendSummary(),
+  };
+}
+
+function emptySpendSummary(): AdminAccountCustomerSpendSummaryDto {
+  return {
+    cancelledAmount: 0,
+    orderCount: 0,
+    paidAmount: 0,
+    pendingAmount: 0,
+    refundedAmount: 0,
+    shipping: 0,
+    total: 0,
+    totalNet: 0,
+    vat: 0,
+  };
+}
+
+function roundSpendSummary(
+  summary: AdminAccountCustomerSpendSummaryDto
+): AdminAccountCustomerSpendSummaryDto {
+  return {
+    cancelledAmount: roundMoney(summary.cancelledAmount),
+    orderCount: summary.orderCount,
+    paidAmount: roundMoney(summary.paidAmount),
+    pendingAmount: roundMoney(summary.pendingAmount),
+    refundedAmount: roundMoney(summary.refundedAmount),
+    shipping: roundMoney(summary.shipping),
+    total: roundMoney(summary.total),
+    totalNet: roundMoney(summary.totalNet),
+    vat: roundMoney(summary.vat),
+  };
+}
+
+function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 async function readCustomerRecentActivity(
   supabase: SupabaseServerClient,
   customerId: string
@@ -667,6 +949,10 @@ function readNumber(value: unknown) {
   }
 
   return null;
+}
+
+function readArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
 }
 
 function uniqueStrings(values: string[]) {

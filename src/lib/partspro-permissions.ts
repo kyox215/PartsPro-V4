@@ -2,6 +2,7 @@ export const adminPanelPermissions = {
   accounts: "panel.accounts",
   catalog: "panel.catalog",
   inventory: "panel.inventory",
+  marketplace: "panel.marketplace",
   orders: "panel.orders",
   overview: "panel.orders",
   settings: "panel.settings",
@@ -15,6 +16,7 @@ export const adminPermissions = [
   "panel.accounts",
   "panel.catalog",
   "panel.inventory",
+  "panel.marketplace",
   "panel.settings",
   "customers.read",
   "customers.classify",
@@ -38,6 +40,11 @@ export const adminPermissions = [
   "product.block",
   "product.restore_draft",
   "product.image_manage",
+  "ebay.connect",
+  "ebay.publish",
+  "ebay.sync_inventory",
+  "ebay.orders",
+  "ebay.settings",
 ] as const;
 
 export type AdminPermission = (typeof adminPermissions)[number] | string;
