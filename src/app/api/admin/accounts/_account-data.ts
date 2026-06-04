@@ -15,7 +15,7 @@ export const roleTemplates = [
 export const profileSelect =
   "id, email, role, account_type, auth_provider, display_name, avatar_url, role_template, customer_id, created_at, updated_at";
 export const customerSelect =
-  "id, user_id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address, status, customer_type, assignment_status, level, lifetime_spend_net, orders_count, revenue, last_order_at, profile_completed_at, created_at, updated_at";
+  "id, user_id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address, status, customer_type, assignment_status, level, lifetime_spend_net, orders_count, revenue, last_order_at, last_activity_at, profile_completed_at, created_at, updated_at";
 const customerActivitySelect =
   "id, user_id, customer_id, event_type, sku_code, product_name, brand, model, model_series, search_query, metadata, created_at";
 
@@ -47,6 +47,7 @@ export type AdminAccountCustomerDto = {
   email: string | null;
   fiscalCode: string | null;
   id: string | null;
+  lastActivityAt: string | null;
   lastOrderAt: string | null;
   level: string;
   lifetimeSpendNet: number;
@@ -270,6 +271,7 @@ function toCustomerDto(row: DbRow): AdminAccountCustomerDto {
     lifetimeSpendNet: readNumber(row.lifetime_spend_net) ?? 0,
     ordersCount: readNumber(row.orders_count) ?? 0,
     revenue: readNumber(row.revenue) ?? readNumber(row.lifetime_spend_net) ?? 0,
+    lastActivityAt: readString(row.last_activity_at),
     lastOrderAt: readString(row.last_order_at),
     recentActivity: [],
     profileCompletedAt: readString(row.profile_completed_at),

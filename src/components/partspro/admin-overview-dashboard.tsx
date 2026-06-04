@@ -1087,31 +1087,40 @@ function useDashboardSnapshot() {
 
       const [ordersResult, productsResult] = results;
       const errors: string[] = [];
+      const orderUpdate =
+        ordersResult.status === "fulfilled"
+          ? {
+              orderSource: ordersResult.value.source,
+              orderTotal: ordersResult.value.total,
+              orders: ordersResult.value.orders,
+              ordersReturned: ordersResult.value.returned,
+            }
+          : null;
+      const productUpdate =
+        productsResult.status === "fulfilled"
+          ? {
+              productSource: productsResult.value.source,
+              productTotal: productsResult.value.total,
+              products: productsResult.value.products,
+              productsReturned: productsResult.value.returned,
+            }
+          : null;
+
+      if (ordersResult.status === "rejected") {
+        errors.push(readErrorMessage(ordersResult.reason));
+      }
+
+      if (productsResult.status === "rejected") {
+        errors.push(readErrorMessage(productsResult.reason));
+      }
+      const errorMessage = errors.length > 0 ? errors.join(" ") : null;
 
       setSnapshot((current) => {
-        const next = { ...current };
-
-        if (ordersResult.status === "fulfilled") {
-          next.orders = ordersResult.value.orders;
-          next.orderSource = ordersResult.value.source;
-          next.orderTotal = ordersResult.value.total;
-          next.ordersReturned = ordersResult.value.returned;
-        } else {
-          errors.push(readErrorMessage(ordersResult.reason));
-        }
-
-        if (productsResult.status === "fulfilled") {
-          next.products = productsResult.value.products;
-          next.productSource = productsResult.value.source;
-          next.productTotal = productsResult.value.total;
-          next.productsReturned = productsResult.value.returned;
-        } else {
-          errors.push(readErrorMessage(productsResult.reason));
-        }
-
         return {
-          ...next,
-          error: errors.length > 0 ? errors.join(" ") : null,
+          ...current,
+          ...orderUpdate,
+          ...productUpdate,
+          error: errorMessage,
           isLoading: false,
           syncedAt: new Date().toISOString(),
         };

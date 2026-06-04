@@ -62,14 +62,16 @@ import { useI18n } from "./i18n-provider";
 
 type AccountType = "customer" | "employee";
 type ConversionKind = "role" | "to_customer" | "to_employee";
-type CustomerActionKind = "customer_level" | "customer_status";
+type CustomerActionKind = "customer_level" | "customer_status" | "customer_type";
 type CustomerLevel = "bronze" | "silver" | "gold" | "emerald" | "diamond" | "master" | "king";
 type CustomerStatus = "pending" | "active" | "suspended";
+type CustomerType = "retail" | "wholesale";
 
 type AccountCustomer = {
   assignmentStatus: string;
   customerType: string;
   id: string | null;
+  lastActivityAt: string | null;
   lastOrderAt: string | null;
   level: string;
   lifetimeSpendNet: number;
@@ -162,6 +164,7 @@ type ConversionState = {
 
 type CustomerActionState = {
   account: Account;
+  customerType: CustomerType;
   kind: CustomerActionKind;
   level: CustomerLevel;
   reason: string;
@@ -184,6 +187,7 @@ const customerLevels = [
   "king",
 ] as const satisfies readonly CustomerLevel[];
 const customerStatuses = ["pending", "active", "suspended"] as const satisfies readonly CustomerStatus[];
+const customerTypes = ["retail", "wholesale"] as const satisfies readonly CustomerType[];
 
 function useAdminText() {
   const { locale } = useI18n();
@@ -218,6 +222,7 @@ export function AdminAccountsPanel() {
   );
   const canManageCustomerLevel = currentPermissionSet.has("customers.manage_level");
   const canManageCustomerStatus = currentPermissionSet.has("customers.classify");
+  const canManageCustomerType = currentPermissionSet.has("customers.classify");
   const canReadCustomerAccounts = currentPermissionSet.has("customers.read");
   const canReadEmployeeAccounts =
     currentPermissionSet.has("employees.read") ||
@@ -378,6 +383,7 @@ export function AdminAccountsPanel() {
 
     setCustomerAction({
       account,
+      customerType: normalizeCustomerType(customer.customerType),
       kind,
       level: normalizeCustomerLevel(customer.level),
       reason: "",
@@ -422,24 +428,15 @@ export function AdminAccountsPanel() {
     setSubmitting(true);
 
     try {
-      const nextDetail =
-        customerAction.kind === "customer_level"
-          ? await patchCustomerLevel(
-              customerAction.account.userId,
-              customerAction.level,
-              customerAction.reason
-            )
-          : await patchCustomerStatus(
-              customerAction.account.userId,
-              customerAction.status,
-              customerAction.reason
-            );
+      const nextDetail = await submitCustomerAccountAction(customerAction);
 
       setNotice({
         message:
           customerAction.kind === "customer_level"
             ? "客户等级已保存。"
-            : "客户状态已保存。",
+            : customerAction.kind === "customer_type"
+              ? "价格类型已保存。"
+              : "客户状态已保存。",
         tone: "success",
       });
       setCustomerAction(null);
@@ -614,6 +611,7 @@ export function AdminAccountsPanel() {
             <AccountDetailPane
               canManageCustomerLevel={canManageCustomerLevel}
               canManageCustomerStatus={canManageCustomerStatus}
+              canManageCustomerType={canManageCustomerType}
               canManageEmployeeAccounts={canManageEmployeeAccounts}
               currentUserId={currentUserId}
               detail={detail}
@@ -638,6 +636,7 @@ export function AdminAccountsPanel() {
             <AccountDetailPane
               canManageCustomerLevel={canManageCustomerLevel}
               canManageCustomerStatus={canManageCustomerStatus}
+              canManageCustomerType={canManageCustomerType}
               canManageEmployeeAccounts={canManageEmployeeAccounts}
               currentUserId={currentUserId}
               detail={detail}
@@ -733,6 +732,7 @@ function AccountListItem({
 function AccountDetailPane({
   canManageCustomerLevel,
   canManageCustomerStatus,
+  canManageCustomerType,
   canManageEmployeeAccounts,
   currentUserId,
   detail,
@@ -742,6 +742,7 @@ function AccountDetailPane({
 }: {
   canManageCustomerLevel: boolean;
   canManageCustomerStatus: boolean;
+  canManageCustomerType: boolean;
   canManageEmployeeAccounts: boolean;
   currentUserId: string | null;
   detail: AccountDetail | null;
@@ -945,7 +946,17 @@ function AccountDetailPane({
                 <BadgeCheck className="size-4" />
                 修改状态
               </Button>
-              {!canManageCustomerLevel || !canManageCustomerStatus ? (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 bg-white"
+                disabled={!canManageCustomerType}
+                onClick={() => onCustomerAction("customer_type", account)}
+              >
+                <BriefcaseBusiness className="size-4" />
+                修改价格类型
+              </Button>
+              {!canManageCustomerLevel || !canManageCustomerStatus || !canManageCustomerType ? (
                 <span className="text-xs font-semibold leading-8 text-slate-500">
                   缺少权限的操作会被锁定。
                 </span>
@@ -956,6 +967,7 @@ function AccountDetailPane({
               <DetailLine label="活跃状态" value={customerStatusLabel(detail.customer.status)} />
               <DetailLine label="价格类型" value={customerTypeLabel(detail.customer.customerType)} />
               <DetailLine label="客户等级" value={customerLevelLabel(detail.customer.level)} />
+              <DetailLine label="最近活动" value={formatDateTime(detail.customer.lastActivityAt) ?? "暂无"} />
               <DetailLine label="更新时间" value={formatDateTime(detail.customer.updatedAt) ?? "暂无"} />
             </div>
           </div>
@@ -1216,11 +1228,18 @@ function CustomerAccountActionDialog({
   onSubmit: () => void;
   submitting: boolean;
 }) {
-  const title = action?.kind === "customer_level" ? "修改客户等级" : "修改活跃状态";
+  const title =
+    action?.kind === "customer_level"
+      ? "修改客户等级"
+      : action?.kind === "customer_type"
+        ? "修改价格类型"
+        : "修改活跃状态";
   const description =
     action?.kind === "customer_level"
       ? "客户等级会影响前台客户价和代客下单价格。"
-      : "激活客户会自动保持 assigned + wholesale，以保证前台价格和 checkout 可用。";
+      : action?.kind === "customer_type"
+        ? "价格类型决定客户使用零售价还是批发价，和活跃状态独立。"
+        : "活跃状态只控制账号是否可继续使用价格和 checkout，不会改变价格类型。";
   const canSubmit = Boolean(action && action.reason.trim().length >= 3);
 
   return (
@@ -1256,6 +1275,27 @@ function CustomerAccountActionDialog({
                     {customerLevels.map((level) => (
                       <SelectItem key={level} value={level}>
                         {customerLevelLabel(level)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            ) : action.kind === "customer_type" ? (
+              <div className="space-y-1.5">
+                <Label>价格类型</Label>
+                <Select
+                  value={action.customerType}
+                  onValueChange={(value) =>
+                    onChange({ ...action, customerType: normalizeCustomerType(value) })
+                  }
+                >
+                  <SelectTrigger className="bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customerTypes.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {customerTypeLabel(type)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1339,6 +1379,18 @@ async function fetchRoleTemplates(signal?: AbortSignal): Promise<RoleTemplate[]>
   const data = isRecord(payload) && isRecord(payload.data) ? payload.data : {};
 
   return readArray(data.roleTemplates).map(normalizeRoleTemplate).filter(isDefined);
+}
+
+function submitCustomerAccountAction(action: CustomerActionState): Promise<AccountDetail> {
+  if (action.kind === "customer_level") {
+    return patchCustomerLevel(action.account.userId, action.level, action.reason);
+  }
+
+  if (action.kind === "customer_type") {
+    return patchCustomerType(action.account.userId, action.customerType, action.reason);
+  }
+
+  return patchCustomerStatus(action.account.userId, action.status, action.reason);
 }
 
 async function fetchAccounts(
@@ -1489,6 +1541,28 @@ async function patchCustomerStatus(
   }
 
   return accountDetailFromResponse(await response.json(), "客户状态更新返回格式不完整");
+}
+
+async function patchCustomerType(
+  userId: string,
+  customerType: CustomerType,
+  reason: string
+): Promise<AccountDetail> {
+  const response = await fetch(`/api/admin/accounts/${encodeURIComponent(userId)}/customer-type`, {
+    body: JSON.stringify({ customerType, reason }),
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    method: "PATCH",
+  });
+
+  if (!response.ok) {
+    throw new Error(`PATCH /api/admin/accounts/${userId}/customer-type 返回 ${response.status}`);
+  }
+
+  return accountDetailFromResponse(await response.json(), "价格类型更新返回格式不完整");
 }
 
 function accountDetailFromResponse(payload: unknown, message: string): AccountDetail {
@@ -1707,6 +1781,7 @@ function normalizeCustomer(value: unknown): AccountCustomer | null {
     ordersCount: readNumber(value.ordersCount) ?? 0,
     revenue: readNumber(value.revenue) ?? readNumber(value.lifetimeSpendNet) ?? 0,
     lastOrderAt: readString(value.lastOrderAt),
+    lastActivityAt: readString(value.lastActivityAt),
     recentActivity: readArray(value.recentActivity).map(normalizeCustomerActivity).filter(isDefined),
     updatedAt: readString(value.updatedAt),
   };
@@ -1848,6 +1923,12 @@ function normalizeCustomerStatus(value: string): CustomerStatus {
   return customerStatuses.includes(value as CustomerStatus)
     ? (value as CustomerStatus)
     : "pending";
+}
+
+function normalizeCustomerType(value: string): CustomerType {
+  return customerTypes.includes(value as CustomerType)
+    ? (value as CustomerType)
+    : "retail";
 }
 
 function customerActivityLabel(event: AccountCustomerActivity) {

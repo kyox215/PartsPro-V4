@@ -14,10 +14,10 @@ const accountParamSchema = z
   })
   .strict();
 
-const customerStatusPatchSchema = z
+const customerTypePatchSchema = z
   .object({
+    customerType: z.enum(["retail", "wholesale"]),
     reason: z.string().trim().min(3).max(1000),
-    status: z.enum(["pending", "active", "suspended"]),
   })
   .strict();
 
@@ -44,10 +44,10 @@ export async function PATCH(request: NextRequest, { params }: AccountParams) {
     return apiError(400, "INVALID_JSON", "Request body must be valid JSON.");
   }
 
-  const parsed = customerStatusPatchSchema.safeParse(body.data);
+  const parsed = customerTypePatchSchema.safeParse(body.data);
 
   if (!parsed.success) {
-    return apiError(400, "INVALID_ADMIN_ACCOUNT_CUSTOMER_STATUS", "Customer status payload is invalid.", {
+    return apiError(400, "INVALID_ADMIN_ACCOUNT_CUSTOMER_TYPE", "Customer type payload is invalid.", {
       issues: formatZodIssues(parsed.error),
     });
   }
@@ -63,9 +63,8 @@ export async function PATCH(request: NextRequest, { params }: AccountParams) {
     }
 
     await updateAdminCustomerClassification(account.customer.id, {
-      assignmentStatus: parsed.data.status === "active" ? "assigned" : undefined,
+      customerType: parsed.data.customerType,
       reason: parsed.data.reason,
-      status: parsed.data.status,
     });
 
     const detail = await readAdminAccountDetail(supabase, paramResult.data.userId);
@@ -83,8 +82,8 @@ export async function PATCH(request: NextRequest, { params }: AccountParams) {
   } catch (error) {
     return repositoryErrorResponse(
       error,
-      "ADMIN_ACCOUNT_CUSTOMER_STATUS_UPDATE_FAILED",
-      "Customer status could not be updated at this time."
+      "ADMIN_ACCOUNT_CUSTOMER_TYPE_UPDATE_FAILED",
+      "Customer type could not be updated at this time."
     );
   }
 }
