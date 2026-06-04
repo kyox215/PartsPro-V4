@@ -57,6 +57,7 @@ import {
 } from "@/i18n/dictionaries/admin";
 import { formatEuro } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
+import { AdminBusyRegion } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
 
 type AccountType = "customer" | "employee";
@@ -191,6 +192,7 @@ function useAdminText() {
 }
 
 export function AdminAccountsPanel() {
+  const text = useAdminText();
   const [accountType, setAccountType] = React.useState<AccountType>("customer");
   const [accounts, setAccounts] = React.useState<Account[]>([]);
   const [detail, setDetail] = React.useState<AccountDetail | null>(null);
@@ -548,27 +550,36 @@ export function AdminAccountsPanel() {
               </Button>
             </div>
 
-            <div className="max-h-[calc(100vh-280px)] min-h-[320px] space-y-1.5 overflow-y-auto pr-1">
-              {!permissionsLoaded || loading ? (
+            <div className="max-h-[calc(100vh-280px)] min-h-[320px] overflow-y-auto pr-1">
+              {!permissionsLoaded || (loading && accounts.length === 0) ? (
                 <AccountListSkeleton />
               ) : !canReadSelectedAccountType ? (
                 <div className="rounded-md border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-slate-500">
                   当前账号没有读取{accountType === "employee" ? "员工" : "客户"}账号的权限。
                 </div>
-              ) : accounts.length > 0 ? (
-                accounts.map((account) => (
-                  <AccountListItem
-                    key={account.userId}
-                    account={account}
-                    active={detail?.account.userId === account.userId}
-                    currentUserId={currentUserId}
-                    onOpen={openDetail}
-                  />
-                ))
               ) : (
-                <div className="rounded-md border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-slate-500">
-                  没有匹配的账号。
-                </div>
+                <AdminBusyRegion
+                  contentClassName="space-y-1.5"
+                  label={text.common.refreshing}
+                  pending={loading}
+                  rows={4}
+                >
+                  {accounts.length > 0 ? (
+                    accounts.map((account) => (
+                      <AccountListItem
+                        key={account.userId}
+                        account={account}
+                        active={detail?.account.userId === account.userId}
+                        currentUserId={currentUserId}
+                        onOpen={openDetail}
+                      />
+                    ))
+                  ) : (
+                    <div className="rounded-md border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-slate-500">
+                      没有匹配的账号。
+                    </div>
+                  )}
+                </AdminBusyRegion>
               )}
             </div>
 
@@ -740,7 +751,7 @@ function AccountDetailPane({
 }) {
   const text = useAdminText();
 
-  if (loading) {
+  if (loading && !detail) {
     return (
       <div className="rounded-md border border-slate-200 bg-white p-3">
         <div className="h-7 w-48 animate-pulse rounded bg-slate-100" />
@@ -772,7 +783,14 @@ function AccountDetailPane({
   const isSelf = currentUserId === account.userId;
 
   return (
-    <div className="min-w-0 space-y-2 rounded-md border border-slate-200 bg-slate-50/70 p-2">
+    <AdminBusyRegion
+      className="min-w-0"
+      label={text.common.refreshing}
+      overlayClassName="rounded-md"
+      pending={loading}
+      rows={3}
+    >
+      <div className="min-w-0 space-y-2 rounded-md border border-slate-200 bg-slate-50/70 p-2">
       <div className="flex min-w-0 items-start gap-2 rounded-md border border-slate-200 bg-white p-2.5">
         <AccountAvatar account={account} size="lg" />
         <div className="min-w-0 flex-1">
@@ -1083,7 +1101,8 @@ function AccountDetailPane({
           <EmptyText text="暂无最近操作记录。" />
         )}
       </DetailSection>
-    </div>
+      </div>
+    </AdminBusyRegion>
   );
 }
 

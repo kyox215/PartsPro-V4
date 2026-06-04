@@ -797,7 +797,7 @@ function CartPageContent({
               summaryNote={
                 hasCheckoutBlockers
                   ? tx(t, "storefront.cart.summaryNoteReviewCheckout", "Puoi aprire il checkout per vedere cosa manca. Login, cliente, prezzi, stock e MOQ verranno comunque verificati prima dell'invio.")
-                  : tx(t, "storefront.cart.summaryNoteSynced", "Il carrello non blocca stock: l'ordine riserverà gli articoli solo dopo la conferma.")
+                  : tx(t, "storefront.cart.summaryNoteSynced", "Il carrello non blocca stock: spedizione €6,50, gratuita da €100; l'ordine riserverà gli articoli solo dopo la conferma.")
               }
             />
           )}

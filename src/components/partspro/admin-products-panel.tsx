@@ -107,6 +107,7 @@ import {
   sanitizeSupplierText,
   toPublicSku,
 } from "@/lib/partspro-sku";
+import { AdminBusyRegion } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
 import { PartVisual as ProductVisual } from "./part-visual";
 
@@ -355,6 +356,9 @@ const panelText = {
     batchFilter: "批次",
     batchFilterPlaceholder: "批次，例如 UTOPYA-7086282",
     filters: "筛选",
+    catalogTree: "分类目录",
+    mobileFilters: "目录 / 筛选",
+    mobileFiltersDescription: "选择品牌、系列、型号和其他筛选条件。",
     reset: "重置",
     sync: "同步",
     exportView: "导出当前视图",
@@ -597,6 +601,9 @@ const panelText = {
     batchFilter: "Lotto",
     batchFilterPlaceholder: "Lotto, es. UTOPYA-7086282",
     filters: "Filtri",
+    catalogTree: "Catalogo",
+    mobileFilters: "Catalogo / filtri",
+    mobileFiltersDescription: "Seleziona brand, serie, modello e altri filtri.",
     reset: "Reset",
     sync: "Sincronizza",
     exportView: "Esporta vista",
@@ -812,9 +819,12 @@ export function AdminProductsPanel() {
   const [notice, setNotice] = React.useState<ProductNotice | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
   const [isMutating, setIsMutating] = React.useState(false);
+  const [pendingProductActionKey, setPendingProductActionKey] =
+    React.useState<string | null>(null);
   const [isLoadingModelGroups, setIsLoadingModelGroups] = React.useState(true);
   const [showRestockOnly, setShowRestockOnly] = React.useState(false);
   const [isRestockDialogOpen, setIsRestockDialogOpen] = React.useState(false);
+  const [isMobileFiltersOpen, setIsMobileFiltersOpen] = React.useState(false);
   const [drawerMode, setDrawerMode] = React.useState<ProductDrawerMode | null>(null);
   const [drawerProduct, setDrawerProduct] = React.useState<AdminProductRow | null>(null);
   const [drawerInlineEditSku, setDrawerInlineEditSku] = React.useState<string | null>(null);
@@ -847,16 +857,11 @@ export function AdminProductsPanel() {
           return;
         }
 
-        setProducts([]);
-        setDataSource({
-          source: "empty",
-          label: productSourceLabel("empty", adminText),
-          syncedAt: formatTimestamp(),
-          total: 0,
-          returned: 0,
+        setDataSource((current) => ({
+          ...current,
           error: getErrorMessage(error),
-        });
-        setSelectedSkus(new Set());
+          syncedAt: formatTimestamp(),
+        }));
         setNotice({ tone: "error", message: formatNoticeError(text.syncError, error) });
       } finally {
         if (!signal?.aborted) {
@@ -917,16 +922,6 @@ export function AdminProductsPanel() {
     () => buildProductMetrics(products, dataSource.total),
     [dataSource.total, products]
   );
-  const selectedBrandGroup = modelGroups.find((group) => group.brand === filters.brand);
-  const seriesOptions = selectedBrandGroup?.series ?? [];
-  const selectedSeriesGroup =
-    filters.modelSeries === "all"
-      ? null
-      : seriesOptions.find((group) => group.series === filters.modelSeries) ?? null;
-  const modelOptions =
-    filters.brand === "all"
-      ? Array.from(new Set(modelGroups.flatMap((group) => group.models))).sort(compareModelNames)
-      : selectedSeriesGroup?.models ?? selectedBrandGroup?.models ?? [];
   const pageCount = Math.max(1, Math.ceil(dataSource.total / filters.pageSize));
 
   function updateFilters(patch: Partial<ProductListFilters>) {
@@ -1001,6 +996,7 @@ export function AdminProductsPanel() {
   }
 
   async function handleProductAction(product: AdminProductRow, action: ProductAction) {
+    setPendingProductActionKey(`${product.sku}:${action}`);
     setIsMutating(true);
 
     try {
@@ -1016,6 +1012,7 @@ export function AdminProductsPanel() {
     } catch {
       setNotice({ tone: "error", message: text.actionError });
     } finally {
+      setPendingProductActionKey(null);
       setIsMutating(false);
     }
   }
@@ -1025,6 +1022,7 @@ export function AdminProductsPanel() {
       return;
     }
 
+    setPendingProductActionKey("bulk:hide");
     setIsMutating(true);
 
     try {
@@ -1039,6 +1037,7 @@ export function AdminProductsPanel() {
     } catch {
       setNotice({ tone: "error", message: text.actionError });
     } finally {
+      setPendingProductActionKey(null);
       setIsMutating(false);
     }
   }
@@ -1059,6 +1058,7 @@ export function AdminProductsPanel() {
   }
 
   async function handleStockAdjustment(sku: string, payload: StockAdjustmentPayload) {
+    setPendingProductActionKey(`${sku}:stock`);
     setIsMutating(true);
 
     try {
@@ -1074,6 +1074,7 @@ export function AdminProductsPanel() {
       setNotice({ tone: "error", message: text.stockError });
       return false;
     } finally {
+      setPendingProductActionKey(null);
       setIsMutating(false);
     }
   }
@@ -1180,112 +1181,153 @@ export function AdminProductsPanel() {
           </div>
         </div>
 
-        <div className="border-b border-slate-200 bg-slate-50/70 px-2.5 py-2 sm:px-4 sm:py-3">
-          <ProductCascadeMenu
-            filters={filters}
-            modelGroups={modelGroups}
-            isLoadingModelGroups={isLoadingModelGroups}
-            text={text}
-            onChange={updateFilters}
-          />
-          <ProductFilters
-            filters={filters}
-            modelGroups={modelGroups}
-            seriesOptions={seriesOptions}
-            modelOptions={modelOptions}
-            isLoadingModelGroups={isLoadingModelGroups}
-            text={text}
-            adminText={adminText}
-            onChange={updateFilters}
-            onReset={() => setFilters(defaultFilters)}
-          />
+        <div className="border-b border-slate-200 bg-slate-50/70 px-2.5 py-2 sm:px-4 sm:py-3 lg:hidden">
+          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+            <ProductSearchField
+              value={filters.q}
+              text={text}
+              onChange={(value) => updateFilters({ q: value })}
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={text.mobileFilters}
+              className="h-8 bg-white px-2 sm:h-9 sm:px-3"
+              onClick={() => setIsMobileFiltersOpen(true)}
+            >
+              <SlidersHorizontal className="size-4" />
+              <span className="hidden sm:inline">{text.mobileFilters}</span>
+            </Button>
+          </div>
         </div>
 
-        {notice && (
-          <div className="px-3 pt-3 sm:px-4">
-            <div className={cn("flex items-center gap-3 rounded-lg border px-3 py-2 text-sm font-medium", noticeClassName(notice.tone))}>
-              {notice.tone === "error" ? (
-                <XCircle className="size-4 shrink-0" />
-              ) : notice.tone === "warning" ? (
-                <AlertTriangle className="size-4 shrink-0" />
-              ) : (
-                <CheckCircle2 className="size-4 shrink-0" />
-              )}
-              <span className="min-w-0 flex-1">{notice.message}</span>
-              <Button
-                variant="ghost"
-                size="xs"
-                className="text-current hover:bg-white/60"
-                onClick={() => setNotice(null)}
-              >
-                {text.close}
-              </Button>
-            </div>
-          </div>
-        )}
+        <div className="lg:grid lg:grid-cols-[290px_minmax(0,1fr)]">
+          <aside className="hidden border-r border-slate-200 bg-slate-50/70 p-2.5 lg:block">
+            <ProductCatalogTree
+              className="sticky top-3 max-h-[calc(100dvh-8rem)] overflow-y-auto pr-1"
+              filters={filters}
+              modelGroups={modelGroups}
+              isLoadingModelGroups={isLoadingModelGroups}
+              text={text}
+              onChange={updateFilters}
+            />
+          </aside>
 
-        {selectedProducts.length > 0 && (
-          <div className="px-3 pt-3 sm:px-4">
-            <div className="flex flex-col gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-              <div className="font-semibold text-slate-800">
-                {formatAdminMessage(text.selectedCount, { count: selectedProducts.length })}
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="bg-white"
-                  onClick={() => downloadProductsCsv(selectedProducts, "selected")}
-                >
-                  <Download className="size-4" />
-                  {text.exportSelection}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="bg-white text-amber-700 hover:text-amber-700"
-                  disabled={isMutating}
-                  onClick={() => void handleHideProducts(selectedProducts.map((item) => item.sku))}
-                >
-                  <EyeOff className="size-4" />
-                  {text.hideSelected}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => setSelectedSkus(new Set())}
-                >
-                  {adminText.common.deselect}
-                </Button>
-              </div>
+          <div className="min-w-0">
+            <div className="hidden border-b border-slate-200 bg-slate-50/70 px-3 py-2 lg:block">
+              <ProductFilters
+                filters={filters}
+                text={text}
+                adminText={adminText}
+                onChange={updateFilters}
+                onReset={() => setFilters(defaultFilters)}
+              />
             </div>
-          </div>
-        )}
 
-        <ProductTable
-          products={visibleProducts}
-          selectedSkus={selectedSkus}
-          isLoading={isLoading}
-          isMutating={isMutating}
-          text={text}
-          adminText={adminText}
-          onSelectChange={setSelectedSkus}
-          onView={(product) => openDrawer("view", product)}
-          onEdit={(product) => openDrawer("edit", product)}
-          onDuplicate={(product) => void handleDuplicateProduct(product)}
-          onAction={(product, action) => void handleProductAction(product, action)}
-          onHide={(product) => void handleProductAction(product, "hide")}
-          onStockAdjust={setStockAdjustProduct}
-        />
+            {notice && (
+              <div className="px-3 pt-3 sm:px-4">
+                <div className={cn("flex items-center gap-3 rounded-lg border px-3 py-2 text-sm font-medium", noticeClassName(notice.tone))}>
+                  {notice.tone === "error" ? (
+                    <XCircle className="size-4 shrink-0" />
+                  ) : notice.tone === "warning" ? (
+                    <AlertTriangle className="size-4 shrink-0" />
+                  ) : (
+                    <CheckCircle2 className="size-4 shrink-0" />
+                  )}
+                  <span className="min-w-0 flex-1">{notice.message}</span>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    className="text-current hover:bg-white/60"
+                    onClick={() => setNotice(null)}
+                  >
+                    {text.close}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {selectedProducts.length > 0 && (
+              <div className="px-3 pt-3 sm:px-4">
+                <div className="flex flex-col gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                  <div className="font-semibold text-slate-800">
+                    {formatAdminMessage(text.selectedCount, { count: selectedProducts.length })}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="bg-white"
+                      onClick={() => downloadProductsCsv(selectedProducts, "selected")}
+                    >
+                      <Download className="size-4" />
+                      {text.exportSelection}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="bg-white text-amber-700 hover:text-amber-700"
+                      disabled={isMutating}
+                      onClick={() => void handleHideProducts(selectedProducts.map((item) => item.sku))}
+                    >
+                      {pendingProductActionKey === "bulk:hide" ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <EyeOff className="size-4" />
+                      )}
+                      {text.hideSelected}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setSelectedSkus(new Set())}
+                    >
+                      {adminText.common.deselect}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <ProductTable
+              products={visibleProducts}
+              selectedSkus={selectedSkus}
+              isLoading={isLoading}
+              isMutating={isMutating}
+              pendingActionKey={pendingProductActionKey}
+              text={text}
+              adminText={adminText}
+              onSelectChange={setSelectedSkus}
+              onView={(product) => openDrawer("view", product)}
+              onEdit={(product) => openDrawer("edit", product)}
+              onDuplicate={(product) => void handleDuplicateProduct(product)}
+              onAction={(product, action) => void handleProductAction(product, action)}
+              onHide={(product) => void handleProductAction(product, "hide")}
+              onStockAdjust={setStockAdjustProduct}
+            />
+
+            <ProductPagination
+              filters={filters}
+              pageCount={pageCount}
+              total={dataSource.total}
+              returned={visibleProducts.length}
+              text={text}
+              onChange={updateFilters}
+            />
+          </div>
+        </div>
       </div>
 
-      <ProductPagination
+      <ProductMobileFiltersSheet
+        open={isMobileFiltersOpen}
         filters={filters}
-        pageCount={pageCount}
-        total={dataSource.total}
-        returned={visibleProducts.length}
+        modelGroups={modelGroups}
+        isLoadingModelGroups={isLoadingModelGroups}
         text={text}
+        adminText={adminText}
+        onOpenChange={setIsMobileFiltersOpen}
         onChange={updateFilters}
+        onReset={() => setFilters(defaultFilters)}
       />
 
       <ProductDrawer
@@ -1523,22 +1565,38 @@ function ProductMetricGrid({
   );
 }
 
+function ProductSearchField({
+  className,
+  value,
+  text,
+  onChange,
+}: {
+  className?: string;
+  value: string;
+  text: typeof panelText.zh | typeof panelText.it;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className={cn("relative min-w-0", className)}>
+      <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+      <Input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-8 rounded-md bg-white pl-9 text-sm sm:h-9"
+        placeholder={text.searchPlaceholder}
+      />
+    </div>
+  );
+}
+
 function ProductFilters({
   filters,
-  modelGroups,
-  seriesOptions,
-  modelOptions,
-  isLoadingModelGroups,
   text,
   adminText,
   onChange,
   onReset,
 }: {
   filters: ProductListFilters;
-  modelGroups: DeviceModelGroup[];
-  seriesOptions: NonNullable<DeviceModelGroup["series"]>;
-  modelOptions: string[];
-  isLoadingModelGroups: boolean;
   text: typeof panelText.zh | typeof panelText.it;
   adminText: ReturnType<typeof getAdminDictionary>["admin"];
   onChange: (patch: Partial<ProductListFilters>) => void;
@@ -1555,87 +1613,28 @@ function ProductFilters({
   const inputClass = "h-8 rounded-md bg-white text-sm sm:h-9";
 
   return (
-    <div className="grid min-w-0 grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2 md:grid-cols-6 lg:grid-cols-8 2xl:grid-cols-12">
-      <div className="relative col-span-2 min-w-0 sm:col-span-4 md:col-span-3 2xl:col-span-2">
-        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-        <Input
-          value={filters.q}
-          onChange={(event) => onChange({ q: event.target.value })}
-          className={cn(inputClass, "pl-9")}
-          placeholder={text.searchPlaceholder}
-        />
-      </div>
-      <div className="min-w-0 2xl:col-auto">
-        <Select
-          value={filters.brand}
-          onValueChange={(value) => onChange({ brand: value, modelSeries: "all", model: "all" })}
-        >
-          <SelectTrigger size="sm" className={selectTriggerClass}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{text.allBrands}</SelectItem>
-            {modelGroups.map((group) => (
-              <SelectItem key={group.brand} value={group.brand}>
-                {group.brand}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="min-w-0 2xl:col-auto">
-        <Select
-          value={filters.modelSeries}
-          onValueChange={(value) => onChange({ modelSeries: value, model: "all" })}
-          disabled={filters.brand === "all" || isLoadingModelGroups || seriesOptions.length === 0}
-        >
-          <SelectTrigger size="sm" className={selectTriggerClass}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{text.allSeries}</SelectItem>
-            {seriesOptions.map((group) => (
-              <SelectItem key={group.series} value={group.series}>
-                {group.series}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="min-w-0 2xl:col-auto">
-        <Select
-          value={filters.model}
-          onValueChange={(value) => onChange({ model: value })}
-          disabled={isLoadingModelGroups || modelOptions.length === 0}
-        >
-          <SelectTrigger size="sm" className={selectTriggerClass}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{text.allModels}</SelectItem>
-            {modelOptions.map((model) => (
-              <SelectItem key={model} value={model}>
-                {model}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="min-w-0 2xl:col-auto">
+    <div className="grid min-w-0 grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2 lg:grid-cols-12 2xl:grid-cols-[minmax(220px,1.35fr)_minmax(145px,0.9fr)_minmax(145px,0.9fr)_minmax(120px,0.75fr)_minmax(145px,0.9fr)_minmax(190px,1.1fr)_minmax(145px,0.9fr)_auto]">
+      <ProductSearchField
+        className="col-span-2 sm:col-span-4 lg:col-span-3 2xl:col-auto"
+        value={filters.q}
+        text={text}
+        onChange={(value) => onChange({ q: value })}
+      />
+      <div className="min-w-0 lg:col-span-2 2xl:col-auto">
         <CatalogStatusSelect
           value={filters.catalogStatus}
           text={text}
           onChange={(value) => onChange({ catalogStatus: value })}
         />
       </div>
-      <div className="min-w-0 2xl:col-auto">
+      <div className="min-w-0 lg:col-span-2 2xl:col-auto">
         <StockStatusSelect
           value={filters.stockStatus}
           text={text}
           onChange={(value) => onChange({ stockStatus: value })}
         />
       </div>
-      <div className="min-w-0 2xl:col-auto">
+      <div className="min-w-0 lg:col-span-1 2xl:col-auto">
         <Select
           value={filters.grade}
           onValueChange={(value) =>
@@ -1655,7 +1654,7 @@ function ProductFilters({
           </SelectContent>
         </Select>
       </div>
-      <div className="min-w-0 2xl:col-auto">
+      <div className="min-w-0 lg:col-span-2 2xl:col-auto">
         <Input
           value={filters.supplier}
           aria-label={text.supplierFilter}
@@ -1664,7 +1663,7 @@ function ProductFilters({
           onChange={(event) => onChange({ supplier: event.target.value })}
         />
       </div>
-      <div className="min-w-0 md:col-span-2 2xl:col-auto">
+      <div className="col-span-2 min-w-0 sm:col-span-2 lg:col-span-2 2xl:col-auto">
         <Input
           value={filters.batchCode}
           aria-label={text.batchFilter}
@@ -1673,7 +1672,7 @@ function ProductFilters({
           onChange={(event) => onChange({ batchCode: event.target.value })}
         />
       </div>
-      <div className="min-w-0 2xl:col-auto">
+      <div className="min-w-0 lg:col-span-2 2xl:col-auto">
         <Select
           value={filters.sort}
           onValueChange={(value) => onChange({ sort: value as ProductSort })}
@@ -1693,7 +1692,7 @@ function ProductFilters({
       <Button
         variant="outline"
         size="sm"
-        className="h-8 min-w-0 rounded-md bg-white px-2 sm:h-9 2xl:col-auto"
+        className="h-8 min-w-0 rounded-md bg-white px-2 sm:h-9 lg:col-span-1 2xl:col-auto"
         onClick={onReset}
         disabled={!hasFilters}
       >
@@ -1704,19 +1703,84 @@ function ProductFilters({
   );
 }
 
-function ProductCascadeMenu({
+function ProductMobileFiltersSheet({
+  open,
+  filters,
+  modelGroups,
+  isLoadingModelGroups,
+  text,
+  adminText,
+  onOpenChange,
+  onChange,
+  onReset,
+}: {
+  open: boolean;
+  filters: ProductListFilters;
+  modelGroups: DeviceModelGroup[];
+  isLoadingModelGroups: boolean;
+  text: typeof panelText.zh | typeof panelText.it;
+  adminText: ReturnType<typeof getAdminDictionary>["admin"];
+  onOpenChange: (open: boolean) => void;
+  onChange: (patch: Partial<ProductListFilters>) => void;
+  onReset: () => void;
+}) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="left" className="w-[92vw] max-w-md gap-0 overflow-hidden p-0 sm:max-w-md">
+        <SheetHeader className="border-b border-slate-200 bg-white p-3 pr-12">
+          <SheetTitle className="text-base font-black">{text.mobileFilters}</SheetTitle>
+          <SheetDescription className="text-xs font-semibold">
+            {text.mobileFiltersDescription}
+          </SheetDescription>
+        </SheetHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-3">
+          <ProductCatalogTree
+            filters={filters}
+            modelGroups={modelGroups}
+            isLoadingModelGroups={isLoadingModelGroups}
+            text={text}
+            onChange={onChange}
+          />
+          <section className="mt-3 rounded-lg border border-slate-200 bg-white p-2">
+            <div className="mb-2 flex items-center gap-2 text-xs font-black text-slate-700">
+              <SlidersHorizontal className="size-4 text-slate-500" />
+              {text.filters}
+            </div>
+            <ProductFilters
+              filters={filters}
+              text={text}
+              adminText={adminText}
+              onChange={onChange}
+              onReset={onReset}
+            />
+          </section>
+        </div>
+        <SheetFooter className="border-t border-slate-200 bg-white p-3">
+          <Button variant="outline" className="bg-white" onClick={() => onOpenChange(false)}>
+            {text.close}
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function ProductCatalogTree({
+  className,
   filters,
   modelGroups,
   isLoadingModelGroups,
   text,
   onChange,
 }: {
+  className?: string;
   filters: ProductListFilters;
   modelGroups: DeviceModelGroup[];
   isLoadingModelGroups: boolean;
   text: typeof panelText.zh | typeof panelText.it;
   onChange: (patch: Partial<ProductListFilters>) => void;
 }) {
+  const treeId = React.useId();
   const groups = React.useMemo(
     () => buildCascadeModelGroups(modelGroups),
     [modelGroups]
@@ -1724,199 +1788,240 @@ function ProductCascadeMenu({
   const selectedBrand = filters.brand === "all" ? "" : filters.brand;
   const selectedSeries = filters.modelSeries === "all" ? "" : filters.modelSeries;
   const selectedModel = filters.model === "all" ? "" : filters.model;
-  const selectedGroup = selectedBrand
-    ? groups.find((group) => group.brand === selectedBrand)
-    : null;
-  const selectedSeriesGroup =
-    selectedGroup && selectedSeries
-      ? selectedGroup.series?.find((group) => group.series === selectedSeries) ?? null
-      : null;
-  const seriesGroups = selectedGroup?.series ?? [];
-  const modelList = selectedSeriesGroup?.models ?? selectedGroup?.models ?? [];
+  const selectedSeriesKey =
+    selectedBrand && selectedSeries ? catalogTreeSeriesKey(selectedBrand, selectedSeries) : "";
+  const [collapsedBrand, setCollapsedBrand] = React.useState<string | null>(null);
+  const [collapsedSeriesKey, setCollapsedSeriesKey] = React.useState<string | null>(null);
+  const expandedBrand = selectedBrand && collapsedBrand !== selectedBrand ? selectedBrand : "";
+  const expandedSeriesKey =
+    selectedSeriesKey && collapsedSeriesKey !== selectedSeriesKey ? selectedSeriesKey : "";
 
   return (
-    <div className="mb-3 grid gap-2 lg:grid-cols-[minmax(130px,0.8fr)_minmax(150px,0.95fr)_minmax(180px,1fr)_minmax(220px,1.15fr)]">
-      <CascadeColumn
-        title="1"
-        label={text.accessoryRoot}
-        icon={Package}
-      >
-        <button
-          type="button"
-          className="flex min-h-10 w-full items-center justify-between gap-2 rounded-md border border-primary/25 bg-primary/10 px-3 py-2 text-left text-sm font-bold text-primary"
-          onClick={() => onChange({ q: "", brand: "all", modelSeries: "all", model: "all" })}
-        >
-          <span className="truncate">{text.accessoryRoot}</span>
-          <ChevronRight className="size-4 shrink-0" />
-        </button>
-      </CascadeColumn>
-
-      <CascadeColumn
-        title="2"
-        label={text.cascadeBrand}
-        icon={Tag}
-      >
-        <CascadeScrollArea empty={isLoadingModelGroups ? text.loading : text.noCascadeOptions}>
-          {groups.map((group) => (
-            <CascadeOption
-              key={group.brand}
-              selected={group.brand === selectedBrand}
-              label={group.brand}
-              meta={`${group.series?.length || group.models.length}`}
-              onClick={() => onChange({ q: "", brand: group.brand, modelSeries: "all", model: "all" })}
-            />
-          ))}
-        </CascadeScrollArea>
-      </CascadeColumn>
-
-      <CascadeColumn
-        title="3"
-        label={text.cascadeSeries}
-        icon={Boxes}
-      >
-        {selectedGroup ? (
-          seriesGroups.length > 0 ? (
-            <CascadeScrollArea empty={text.noCascadeOptions}>
-              <CascadeOption
-                key="all-series"
-                selected={!selectedSeries}
-                label={text.allSeries}
-                meta={`${selectedGroup.models.length}`}
-                onClick={() => onChange({ q: "", modelSeries: "all", model: "all" })}
-              />
-              {seriesGroups.map((group) => (
-                <CascadeOption
-                  key={group.series}
-                  selected={group.series === selectedSeries}
-                  label={group.series}
-                  meta={`${group.models.length}`}
-                  onClick={() => onChange({ q: "", modelSeries: group.series, model: "all" })}
-                />
-              ))}
-            </CascadeScrollArea>
-          ) : (
-            <CascadePlaceholder>{text.noCascadeOptions}</CascadePlaceholder>
-          )
-        ) : (
-          <CascadePlaceholder>{text.pickBrand}</CascadePlaceholder>
-        )}
-      </CascadeColumn>
-
-      <CascadeColumn
-        title="4"
-        label={text.cascadeModel}
-        icon={Smartphone}
-      >
-        {modelList.length > 0 ? (
-          <CascadeScrollArea empty={text.noCascadeOptions}>
-            <CascadeOption
-              key="all-models"
-              selected={!selectedModel}
-              label={text.allModels}
-              meta={`${modelList.length}`}
-              onClick={() => onChange({ q: "", model: "all" })}
-            />
-            {modelList.map((model) => (
-              <CascadeOption
-                key={model}
-                selected={model === selectedModel}
-                label={model}
-                onClick={() => onChange({ q: "", model })}
-              />
-            ))}
-          </CascadeScrollArea>
-        ) : (
-          <CascadePlaceholder>
-            {selectedGroup && seriesGroups.length > 0 ? text.pickSeries : text.pickBrand}
-          </CascadePlaceholder>
-        )}
-      </CascadeColumn>
-    </div>
-  );
-}
-
-function CascadeColumn({
-  title,
-  label,
-  icon: Icon,
-  meta,
-  children,
-}: {
-  title: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-  meta?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-2 shadow-[0_8px_20px_rgba(15,23,42,0.03)]">
-      <div className="mb-2 flex min-h-6 items-center justify-between gap-2">
+    <nav
+      aria-label={text.catalogTree}
+      className={cn(
+        "min-w-0 rounded-lg border border-slate-200 bg-white p-2 shadow-[0_8px_20px_rgba(15,23,42,0.03)]",
+        className
+      )}
+    >
+      <div className="mb-2 flex items-center justify-between gap-2 px-1">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="grid size-5 shrink-0 place-items-center rounded-md bg-slate-100 text-[11px] font-black text-slate-600">
-            {title}
-          </span>
-          <Icon className="size-4 shrink-0 text-slate-500" />
-          <span className="truncate text-xs font-bold text-slate-700">{label}</span>
+          <Package className="size-4 shrink-0 text-primary" />
+          <span className="truncate text-sm font-black text-slate-900">{text.catalogTree}</span>
         </div>
-        {meta && <span className="shrink-0 text-[11px] font-semibold text-slate-400">{meta}</span>}
+        <span className="shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-bold text-slate-500">
+          {groups.length}
+        </span>
       </div>
-      {children}
-    </div>
+
+      <div className="grid gap-1">
+        <CatalogTreeNodeButton
+          icon={Package}
+          label={text.accessoryRoot}
+          meta={`${groups.length}`}
+          selected={!selectedBrand}
+          onClick={() => {
+            setCollapsedBrand(null);
+            setCollapsedSeriesKey(null);
+            onChange({ q: "", brand: "all", modelSeries: "all", model: "all" });
+          }}
+        />
+
+        {isLoadingModelGroups ? (
+          <CatalogTreePlaceholder>{text.loading}</CatalogTreePlaceholder>
+        ) : groups.length > 0 ? (
+          groups.map((group, groupIndex) => {
+            const isBrandExpanded = expandedBrand === group.brand;
+            const isBrandSelected = selectedBrand === group.brand;
+            const brandRegionId = `${treeId}-brand-${groupIndex}`;
+
+            return (
+              <div key={group.brand} className="min-w-0">
+                <CatalogTreeNodeButton
+                  icon={Tag}
+                  label={group.brand}
+                  meta={`${group.models.length}`}
+                  selected={isBrandSelected && !selectedSeries && !selectedModel}
+                  expanded={isBrandExpanded}
+                  controls={brandRegionId}
+                  onClick={() => {
+                    setCollapsedBrand(
+                      isBrandExpanded && isBrandSelected && !selectedSeries && !selectedModel
+                        ? group.brand
+                        : null
+                    );
+                    setCollapsedSeriesKey(null);
+                    onChange({ q: "", brand: group.brand, modelSeries: "all", model: "all" });
+                  }}
+                />
+
+                {isBrandExpanded && (
+                  <div id={brandRegionId} className="ml-3 mt-1 grid gap-1 border-l border-slate-200 pl-2">
+                    {group.series.length > 0 ? (
+                      group.series.map((seriesGroup, seriesIndex) => {
+                        const seriesKey = catalogTreeSeriesKey(group.brand, seriesGroup.series);
+                        const isSeriesExpanded = expandedSeriesKey === seriesKey;
+                        const isSeriesSelected =
+                          isBrandSelected && selectedSeries === seriesGroup.series;
+                        const seriesRegionId = `${treeId}-series-${groupIndex}-${seriesIndex}`;
+
+                        return (
+                          <div key={seriesGroup.series} className="min-w-0">
+                            <CatalogTreeNodeButton
+                              icon={Boxes}
+                              label={seriesGroup.series}
+                              meta={`${seriesGroup.models.length}`}
+                              selected={isSeriesSelected && !selectedModel}
+                              expanded={isSeriesExpanded}
+                              controls={seriesRegionId}
+                              compact
+                              onClick={() => {
+                                setCollapsedBrand(null);
+                                setCollapsedSeriesKey(
+                                  isSeriesExpanded && isSeriesSelected && !selectedModel
+                                    ? seriesKey
+                                    : null
+                                );
+                                onChange({
+                                  q: "",
+                                  brand: group.brand,
+                                  modelSeries: seriesGroup.series,
+                                  model: "all",
+                                });
+                              }}
+                            />
+
+                            {isSeriesExpanded && (
+                              <div id={seriesRegionId} className="ml-3 mt-1 grid gap-1 border-l border-slate-100 pl-2">
+                                {seriesGroup.models.map((model) => (
+                                  <CatalogTreeNodeButton
+                                    key={model}
+                                    icon={Smartphone}
+                                    label={model}
+                                    selected={
+                                      isSeriesSelected && selectedModel === model
+                                    }
+                                    compact
+                                    leaf
+                                    onClick={() => {
+                                      setCollapsedBrand(null);
+                                      setCollapsedSeriesKey(null);
+                                      onChange({
+                                        q: "",
+                                        brand: group.brand,
+                                        modelSeries: seriesGroup.series,
+                                        model,
+                                      });
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })
+                    ) : group.models.length > 0 ? (
+                      group.models.map((model) => (
+                        <CatalogTreeNodeButton
+                          key={model}
+                          icon={Smartphone}
+                          label={model}
+                          selected={isBrandSelected && !selectedSeries && selectedModel === model}
+                          compact
+                          leaf
+                          onClick={() => {
+                            setCollapsedBrand(null);
+                            setCollapsedSeriesKey(null);
+                            onChange({
+                              q: "",
+                              brand: group.brand,
+                              modelSeries: "all",
+                              model,
+                            });
+                          }}
+                        />
+                      ))
+                    ) : (
+                      <CatalogTreePlaceholder>{text.noCascadeOptions}</CatalogTreePlaceholder>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          <CatalogTreePlaceholder>{text.noCascadeOptions}</CatalogTreePlaceholder>
+        )}
+      </div>
+    </nav>
   );
 }
 
-function CascadeScrollArea({
-  empty,
-  children,
-}: {
-  empty: string;
-  children: React.ReactNode;
-}) {
-  const items = React.Children.toArray(children).filter(Boolean);
-
-  if (items.length === 0) {
-    return <CascadePlaceholder>{empty}</CascadePlaceholder>;
-  }
-
-  return <div className="grid max-h-48 gap-1 overflow-y-auto pr-1">{items}</div>;
-}
-
-function CascadeOption({
-  selected,
+function CatalogTreeNodeButton({
+  icon: Icon,
   label,
   meta,
+  selected,
+  expanded,
+  controls,
+  compact,
+  leaf,
   onClick,
 }: {
-  selected: boolean;
+  icon: React.ComponentType<{ className?: string }>;
   label: string;
   meta?: string;
+  selected: boolean;
+  expanded?: boolean;
+  controls?: string;
+  compact?: boolean;
+  leaf?: boolean;
   onClick: () => void;
 }) {
+  const hasChildren = typeof expanded === "boolean";
+
   return (
     <button
       type="button"
+      aria-expanded={hasChildren ? expanded : undefined}
+      aria-controls={hasChildren ? controls : undefined}
       className={cn(
-        "flex min-h-9 w-full items-center justify-between gap-2 rounded-md px-2.5 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-slate-100",
-        selected && "bg-slate-900 text-white hover:bg-slate-900"
+        "flex w-full min-w-0 items-center gap-2 rounded-md text-left font-bold transition hover:bg-slate-100",
+        compact ? "min-h-8 px-2 py-1.5 text-xs" : "min-h-9 px-2.5 py-2 text-sm",
+        selected ? "bg-primary text-primary-foreground hover:bg-primary" : "text-slate-700",
+        leaf && "font-semibold"
       )}
       onClick={onClick}
     >
-      <span className="min-w-0 truncate">{label}</span>
+      {hasChildren ? (
+        <ChevronRight
+          className={cn(
+            "size-3.5 shrink-0 text-current/60 transition-transform",
+            expanded && "rotate-90"
+          )}
+        />
+      ) : (
+        <span className="size-3.5 shrink-0" />
+      )}
+      <Icon className="size-3.5 shrink-0 text-current/70" />
+      <span className="min-w-0 flex-1 truncate">{label}</span>
       {meta && (
-        <span className={cn("shrink-0 text-[11px] font-bold text-slate-400", selected && "text-white/70")}>
-          {meta}
-        </span>
+        <span className="shrink-0 text-[11px] font-black text-current/55">{meta}</span>
       )}
     </button>
   );
 }
 
-function CascadePlaceholder({ children }: { children: React.ReactNode }) {
+function CatalogTreePlaceholder({ children }: { children: React.ReactNode }) {
   return (
-    <div className="grid min-h-24 place-items-center rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs font-semibold text-slate-400">
+    <div className="grid min-h-16 place-items-center rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-center text-xs font-semibold text-slate-400">
       {children}
     </div>
   );
+}
+
+function catalogTreeSeriesKey(brand: string, series: string) {
+  return `${brand}::${series}`;
 }
 
 function CatalogStatusSelect({
@@ -1982,6 +2087,7 @@ function ProductTable({
   selectedSkus,
   isLoading,
   isMutating,
+  pendingActionKey,
   text,
   adminText,
   onSelectChange,
@@ -1996,6 +2102,7 @@ function ProductTable({
   selectedSkus: Set<string>;
   isLoading: boolean;
   isMutating: boolean;
+  pendingActionKey: string | null;
   text: typeof panelText.zh | typeof panelText.it;
   adminText: ReturnType<typeof getAdminDictionary>["admin"];
   onSelectChange: (value: Set<string>) => void;
@@ -2026,7 +2133,8 @@ function ProductTable({
   }
 
   return (
-    <div className="overflow-hidden bg-white">
+    <AdminBusyRegion label={text.loading} pending={isLoading} rows={5}>
+      <div className="overflow-hidden bg-white">
       <div className="lg:hidden">
         {products.length ? (
           <div className="grid gap-2 p-2">
@@ -2036,6 +2144,7 @@ function ProductTable({
                 product={product}
                 selected={selectedSkus.has(product.sku)}
                 isMutating={isMutating}
+                pendingActionKey={pendingActionKey}
                 text={text}
                 adminText={adminText}
                 onSelect={(checked) => toggleOne(product.sku, checked)}
@@ -2078,8 +2187,13 @@ function ProductTable({
                 products.map((product) => (
                   <TableRow
                     key={product.sku}
-                    className="cursor-pointer"
+                    className={cn(
+                      "cursor-pointer",
+                      pendingActionKey?.startsWith(`${product.sku}:`) &&
+                        "ring-2 ring-primary/15"
+                    )}
                     data-state={selectedSkus.has(product.sku) ? "selected" : undefined}
+                    data-pending={pendingActionKey?.startsWith(`${product.sku}:`) ? "true" : undefined}
                     onClick={() => onView(product)}
                   >
                     <TableCell onClick={(event) => event.stopPropagation()}>
@@ -2119,6 +2233,7 @@ function ProductTable({
                       <ProductActionsMenu
                         product={product}
                         isMutating={isMutating}
+                        pendingActionKey={pendingActionKey}
                         text={text}
                         onView={onView}
                         onEdit={onEdit}
@@ -2141,7 +2256,8 @@ function ProductTable({
           </Table>
         </div>
       </div>
-    </div>
+      </div>
+    </AdminBusyRegion>
   );
 }
 
@@ -2149,6 +2265,7 @@ function ProductMobileCard({
   product,
   selected,
   isMutating,
+  pendingActionKey,
   text,
   adminText,
   onSelect,
@@ -2162,6 +2279,7 @@ function ProductMobileCard({
   product: AdminProductRow;
   selected: boolean;
   isMutating: boolean;
+  pendingActionKey: string | null;
   text: typeof panelText.zh | typeof panelText.it;
   adminText: ReturnType<typeof getAdminDictionary>["admin"];
   onSelect: (checked: boolean) => void;
@@ -2176,7 +2294,9 @@ function ProductMobileCard({
     <div
       className={cn(
         "min-h-[124px] rounded-md border border-slate-200 bg-white p-2 shadow-[0_8px_22px_rgba(15,23,42,0.035)]",
-        selected && "border-primary/40 bg-primary/5"
+        selected && "border-primary/40 bg-primary/5",
+        pendingActionKey?.startsWith(`${product.sku}:`) &&
+          "border-primary/30 ring-2 ring-primary/15"
       )}
     >
       <div className="grid min-w-0 grid-cols-[64px_minmax(0,1fr)_auto] gap-2">
@@ -2215,6 +2335,7 @@ function ProductMobileCard({
           <ProductActionsMenu
             product={product}
             isMutating={isMutating}
+            pendingActionKey={pendingActionKey}
             text={text}
             onView={onView}
             onEdit={onEdit}
@@ -2558,6 +2679,7 @@ function ProductPriceSummary({
 function ProductActionsMenu({
   product,
   isMutating,
+  pendingActionKey,
   text,
   onView,
   onEdit,
@@ -2568,6 +2690,7 @@ function ProductActionsMenu({
 }: {
   product: AdminProductRow;
   isMutating: boolean;
+  pendingActionKey: string | null;
   text: typeof panelText.zh | typeof panelText.it;
   onView: (product: AdminProductRow) => void;
   onEdit: (product: AdminProductRow) => void;
@@ -2577,6 +2700,9 @@ function ProductActionsMenu({
   onStockAdjust: (product: AdminProductRow) => void;
 }) {
   const storefrontUrl = product.storefrontVisible ? product.storefrontUrl : null;
+  const isProductPending = pendingActionKey?.startsWith(`${product.sku}:`) ?? false;
+  const isActionPending = (action: ProductAction | "stock") =>
+    pendingActionKey === `${product.sku}:${action}`;
 
   return (
     <DropdownMenu>
@@ -2588,7 +2714,11 @@ function ProductActionsMenu({
           aria-label={`${text.moreActions}: ${product.sku}`}
           title={`${text.moreActions}: ${product.sku}`}
         >
-          <MoreHorizontal className="size-4" />
+          {isProductPending ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <MoreHorizontal className="size-4" />
+          )}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
@@ -2627,24 +2757,40 @@ function ProductActionsMenu({
         <DropdownMenuSeparator />
         {product.catalogStatus !== "active" && (
           <DropdownMenuItem disabled={isMutating} onClick={() => onAction(product, "publish")}>
-            <PackageCheck className="size-4" />
+            {isActionPending("publish") ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <PackageCheck className="size-4" />
+            )}
             {text.publish}
           </DropdownMenuItem>
         )}
         {product.catalogStatus !== "draft" && (
           <DropdownMenuItem disabled={isMutating} onClick={() => onAction(product, "restore")}>
-            <RotateCcw className="size-4" />
+            {isActionPending("restore") ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <RotateCcw className="size-4" />
+            )}
             {text.restore}
           </DropdownMenuItem>
         )}
         {product.catalogStatus !== "blocked" && (
           <DropdownMenuItem disabled={isMutating} onClick={() => onAction(product, "block")}>
-            <Ban className="size-4" />
+            {isActionPending("block") ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Ban className="size-4" />
+            )}
             {text.block}
           </DropdownMenuItem>
         )}
         <DropdownMenuItem disabled={isMutating} onClick={() => onStockAdjust(product)}>
-          <SlidersHorizontal className="size-4" />
+          {isActionPending("stock") ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <SlidersHorizontal className="size-4" />
+          )}
           {text.stockAdjust}
         </DropdownMenuItem>
         <DropdownMenuSeparator />
@@ -2653,7 +2799,11 @@ function ProductActionsMenu({
           className="text-amber-700 focus:text-amber-700"
           onClick={() => onHide(product)}
         >
-          <EyeOff className="size-4" />
+          {isActionPending("hide") ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <EyeOff className="size-4" />
+          )}
           {text.hide}
         </DropdownMenuItem>
       </DropdownMenuContent>
@@ -2703,7 +2853,7 @@ function ProductPagination({
   const page = filters.page + 1;
 
   return (
-    <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-[0_12px_30px_rgba(15,23,42,0.04)] sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 border-t border-slate-200 bg-white px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
       <div className="font-medium text-slate-500">
         {formatAdminMessage(text.pageInfo, { page, pages: pageCount })} · {returned}/{total}
       </div>

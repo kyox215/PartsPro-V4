@@ -1,3 +1,5 @@
+import { calculateShippingCents } from "@/lib/partspro-shipping";
+
 export type PartVisual =
   | "screen"
   | "battery"
@@ -7,8 +9,6 @@ export type PartVisual =
   | "flex"
   | "speaker"
   | "frame";
-
-import { calculateShippingCents } from "@/lib/partspro-shipping";
 
 export type StockStatus = "In Stock" | "Low Stock" | "Out of Stock";
 export type ProductGrade = "A+" | "A" | "B" | "Refurbished";
@@ -292,7 +292,7 @@ export function getCartLines() {
 export function calculateCartTotals() {
   const lines = getCartLines();
   const subtotal = roundMoney(lines.reduce((total, line) => total + line.lineTotal, 0));
-  const shipping = subtotal > 250 ? 0 : 12.9;
+  const shipping = roundMoney(calculateShippingCents(Math.round(subtotal * 100)) / 100);
 
   return {
     lines,

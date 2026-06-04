@@ -1388,7 +1388,7 @@ function DeliverySection({
             {fixedShippingMethod}
           </div>
           <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-            {tx(t, "storefront.checkout.shippingFixedCompact", "PartsPro 仓库统一安排物流；默认 16:00 前发货，如有特殊要求请写订单备注。")}
+            {tx(t, "storefront.checkout.shippingFixedCompact", "GLS/BRT 24-48h；未满 €100 运费 €6.50，满 €100 包邮，默认 16:00 前发货。")}
           </p>
         </div>
       </CardContent>

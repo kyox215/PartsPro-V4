@@ -81,7 +81,7 @@ function OrderSummaryCardView({
     checkoutLabel ?? tx(t, "storefront.cart.checkoutLabel", "Procedi al checkout");
   const effectiveSummaryNote =
     summaryNote ??
-    tx(t, "storefront.cart.summaryNote", "Il carrello non blocca stock: disponibilita e quantita vengono riservate solo alla conferma ordine.");
+    tx(t, "storefront.cart.summaryNote", "Il carrello non blocca stock: spedizione €6,50, gratuita da €100; disponibilita e quantita vengono verificate alla conferma.");
   const effectiveLineCount = lineCount ?? totals.lines.length;
   const effectiveCheckoutDisabled =
     checkoutDisabled || !isHydrated || effectiveLineCount === 0;

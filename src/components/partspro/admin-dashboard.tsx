@@ -44,6 +44,11 @@ import { cn } from "@/lib/utils";
 import { useI18n } from "./i18n-provider";
 import { LanguageSwitcher } from "./language-switcher";
 import { PartsProLogo } from "./logo";
+import {
+  DelayedPendingIndicator,
+  RoutePendingIndicator,
+  useDelayedVisible,
+} from "./pending-feedback";
 
 type AdminPanelValue =
   | "overview"
@@ -87,40 +92,40 @@ type AdminOverviewDashboardProps = {
 
 const AdminOrdersPanel = dynamic(
   () => import("./admin-orders-panel").then((module) => module.AdminOrdersPanel),
-  { loading: () => <AdminPanelLoading /> }
+  { loading: () => <AdminPanelLoadingFallback /> }
 );
 const AdminProductsPanel = dynamic(
   () =>
     import("./admin-products-panel").then((module) => module.AdminProductsPanel),
-  { loading: () => <AdminPanelLoading /> }
+  { loading: () => <AdminPanelLoadingFallback /> }
 );
 const AdminActivityTimeline = dynamic(
   () =>
     import("./admin-activity-timeline").then(
       (module) => module.AdminActivityTimeline
     ),
-  { loading: () => <AdminPanelLoading /> }
+  { loading: () => <AdminPanelLoadingFallback /> }
 );
 const AdminSettingsPanel = dynamic(
   () =>
     import("./admin-settings-panel").then(
       (module) => module.AdminSettingsPanel
     ),
-  { loading: () => <AdminPanelLoading /> }
+  { loading: () => <AdminPanelLoadingFallback /> }
 );
 const AdminAccountsPanel = dynamic(
   () =>
     import("./admin-accounts-panel").then(
       (module) => module.AdminAccountsPanel
     ),
-  { loading: () => <AdminPanelLoading /> }
+  { loading: () => <AdminPanelLoadingFallback /> }
 );
 const AdminOverviewDashboard = dynamic<AdminOverviewDashboardProps>(
   () =>
     import("./admin-overview-dashboard").then(
       (module) => module.AdminOverviewDashboard
     ),
-  { loading: () => <AdminPanelLoading /> }
+  { loading: () => <AdminPanelLoadingFallback /> }
 );
 
 function isAdminPanelValue(value: string): value is AdminPanelValue {
@@ -151,9 +156,39 @@ function AdminPanelLoading() {
   );
 }
 
+function AdminPanelLoadingFallback() {
+  const text = useAdminText();
+  const showSkeleton = useDelayedVisible(true, 300);
+
+  if (showSkeleton) {
+    return <AdminPanelLoading />;
+  }
+
+  return (
+    <div
+      aria-busy="true"
+      className="grid min-h-[360px] place-items-start rounded-lg border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.045)]"
+    >
+      <div
+        className="inline-flex items-center gap-2 rounded-full border border-primary/15 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary"
+        role="status"
+      >
+        <DelayedPendingIndicator
+          className="size-3.5"
+          label={text.common.loadingPanel}
+          pending
+        />
+        {text.common.loadingPanel}
+      </div>
+    </div>
+  );
+}
+
 export function AdminDashboard() {
   const [activePanel, setActivePanel] =
     React.useState<AdminPanelValue>("overview");
+  const [pendingPanel, setPendingPanel] =
+    React.useState<AdminPanelValue | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(true);
   const [visiblePanels, setVisiblePanels] =
     React.useState<AdminPanelValue[] | null>(null);
@@ -205,13 +240,45 @@ export function AdminDashboard() {
     }
   }, [activePanel, visiblePanels, visiblePanelSet]);
 
+  const pendingPanelTimerRef = React.useRef<number | null>(null);
+
+  const selectPanel = React.useCallback(
+    (panel: AdminPanelValue) => {
+      if (!visiblePanelSet.has(panel)) {
+        return;
+      }
+
+      if (pendingPanelTimerRef.current !== null) {
+        window.clearTimeout(pendingPanelTimerRef.current);
+      }
+
+      if (panel !== activePanel) {
+        setPendingPanel(panel);
+      }
+
+      setActivePanel(panel);
+      pendingPanelTimerRef.current = window.setTimeout(() => {
+        setPendingPanel((current) => (current === panel ? null : current));
+      }, 360);
+    },
+    [activePanel, visiblePanelSet]
+  );
+
+  React.useEffect(() => {
+    return () => {
+      if (pendingPanelTimerRef.current !== null) {
+        window.clearTimeout(pendingPanelTimerRef.current);
+      }
+    };
+  }, []);
+
   const handlePanelChange = React.useCallback(
     (value: string) => {
-      if (isAdminPanelValue(value) && visiblePanelSet.has(value)) {
-        setActivePanel(value);
+      if (isAdminPanelValue(value)) {
+        selectPanel(value);
       }
     },
-    [visiblePanelSet]
+    [selectPanel]
   );
 
   return (
@@ -219,7 +286,8 @@ export function AdminDashboard() {
       <div className="flex min-w-0">
         <AdminSidebar
           activePanel={activePanel}
-          onPanelChange={setActivePanel}
+          onPanelChange={selectPanel}
+          pendingPanel={pendingPanel}
           visiblePanels={visiblePanelSet}
           collapsed={isSidebarCollapsed}
           onCollapsedChange={setIsSidebarCollapsed}
@@ -227,7 +295,8 @@ export function AdminDashboard() {
         <section className="w-full min-w-0 flex-1">
           <AdminTopbar
             activePanel={activePanel}
-            onPanelChange={setActivePanel}
+            onPanelChange={selectPanel}
+            pendingPanel={pendingPanel}
             visiblePanels={visiblePanelSet}
           />
           <div className="mx-auto w-full max-w-[1500px] min-w-0 px-3 pb-3 pt-2 sm:px-4 sm:py-4">
@@ -253,7 +322,7 @@ export function AdminDashboard() {
               </TabsContent>
               <TabsContent value="overview" className="order-4 mt-0 min-w-0">
                 <AdminOverviewDashboard
-                  onPanelChange={setActivePanel}
+                  onPanelChange={selectPanel}
                   visiblePanels={visiblePanelSet}
                 />
               </TabsContent>
@@ -268,6 +337,7 @@ export function AdminDashboard() {
 type AdminNavigationProps = {
   activePanel: AdminPanelValue;
   onPanelChange: (panel: AdminPanelValue) => void;
+  pendingPanel: AdminPanelValue | null;
   visiblePanels: ReadonlySet<AdminPanelValue>;
 };
 
@@ -281,6 +351,7 @@ function AdminSidebar({
   collapsed,
   onCollapsedChange,
   onPanelChange,
+  pendingPanel,
   visiblePanels,
 }: AdminSidebarProps) {
   const text = useAdminText();
@@ -347,6 +418,7 @@ function AdminSidebar({
           const label = text.nav[item.labelKey];
           const isAvailable = Boolean(panel && visiblePanels.has(panel));
           const isActive = panel === activePanel;
+          const isPending = panel === pendingPanel;
 
           if (panel && !visiblePanels.has(panel)) {
             return null;
@@ -365,19 +437,34 @@ function AdminSidebar({
                 }
               }}
               className={cn(
-                "flex h-10 w-full items-center rounded-lg text-sm font-medium transition",
+                "relative flex h-10 w-full items-center rounded-lg text-sm font-medium transition active:scale-[0.98]",
                 collapsed ? "justify-center px-0" : "gap-3 px-3 text-left",
                 isActive
                   ? "bg-primary/10 text-primary"
                   : "text-slate-600 hover:bg-primary/8 hover:text-primary",
+                isPending && "ring-2 ring-primary/15",
                 !isAvailable &&
                   "cursor-default opacity-55 hover:bg-transparent hover:text-slate-600"
               )}
             >
               <item.icon className="size-4 shrink-0" />
               {!collapsed && <span className="min-w-0 truncate">{label}</span>}
-              {!collapsed && item.labelKey === "catalog" && (
+              {!collapsed && isPending && (
+                <DelayedPendingIndicator
+                  className="ml-auto size-3.5"
+                  label={text.common.loadingPanel}
+                  pending
+                />
+              )}
+              {!collapsed && !isPending && item.labelKey === "catalog" && (
                 <ChevronRight className="ml-auto size-4 opacity-60" />
+              )}
+              {collapsed && isPending && (
+                <DelayedPendingIndicator
+                  className="absolute right-1 top-1 size-3"
+                  label={text.common.loadingPanel}
+                  pending
+                />
               )}
             </button>
           );
@@ -419,6 +506,7 @@ function AdminSidebar({
 function AdminTopbar({
   activePanel,
   onPanelChange,
+  pendingPanel,
   visiblePanels,
 }: AdminNavigationProps) {
   const text = useAdminText();
@@ -457,6 +545,10 @@ function AdminTopbar({
                 >
                   <Home className="size-4 shrink-0" />
                   <span className="truncate">{text.topbar.home}</span>
+                  <RoutePendingIndicator
+                    className="ml-auto size-3.5"
+                    label={text.common.loadingPanel}
+                  />
                 </Link>
                 <LanguageSwitcher scope="admin" compact className="h-10 shadow-sm" />
               </div>
@@ -464,6 +556,7 @@ function AdminTopbar({
                 const panel = "panel" in item ? item.panel : undefined;
                 const isAvailable = Boolean(panel && visiblePanels.has(panel));
                 const isActive = panel === activePanel;
+                const isPending = panel === pendingPanel;
 
                 if (panel && !visiblePanels.has(panel)) {
                   return null;
@@ -482,19 +575,26 @@ function AdminTopbar({
                       }
                     }}
                     className={cn(
-                      "flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-medium transition",
+                      "flex h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-medium transition active:scale-[0.98]",
                       isActive
                         ? "bg-primary/10 text-primary"
                         : "text-slate-700 hover:bg-primary/8 hover:text-primary",
+                      isPending && "ring-2 ring-primary/15",
                       !isAvailable &&
                         "cursor-default opacity-55 hover:bg-transparent hover:text-slate-700"
                     )}
                   >
                     <item.icon className="size-4" />
                     <span className="min-w-0 flex-1 truncate">{text.nav[item.labelKey]}</span>
-                    {item.labelKey === "catalog" && (
+                    {isPending ? (
+                      <DelayedPendingIndicator
+                        className="size-3.5"
+                        label={text.common.loadingPanel}
+                        pending
+                      />
+                    ) : item.labelKey === "catalog" ? (
                       <ChevronRight className="size-4 opacity-60" />
-                    )}
+                    ) : null}
                   </button>
                 );
               })}
@@ -519,7 +619,13 @@ function AdminTopbar({
 
         <LanguageSwitcher scope="admin" compact className="hidden sm:inline-flex" />
         <Button variant="outline" asChild className="hidden bg-white sm:inline-flex">
-          <Link href="/">{text.topbar.home}</Link>
+          <Link href="/">
+            <span>{text.topbar.home}</span>
+            <RoutePendingIndicator
+              className="size-3.5"
+              label={text.common.loadingPanel}
+            />
+          </Link>
         </Button>
       </div>
     </header>

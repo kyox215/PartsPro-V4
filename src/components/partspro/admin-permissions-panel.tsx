@@ -39,6 +39,7 @@ import {
 } from "@/i18n/dictionaries/admin";
 import { CUSTOMER_MANAGE_LEVEL_PERMISSION } from "@/lib/partspro-permissions";
 import { cn } from "@/lib/utils";
+import { AdminBusyRegion, AdminInlinePending } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
 
 type PermissionEffect = "grant" | "deny" | "inherit";
@@ -353,38 +354,45 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
               />
             </div>
             <div className="grid max-h-[560px] gap-2 overflow-y-auto pr-1">
-              {filteredEmployees.length > 0 ? (
-                filteredEmployees.map((employee) => (
-                  <button
-                    key={employee.userId}
-                    type="button"
-                    className={cn(
-                      "min-w-0 rounded-lg border p-3 text-left transition",
-                      employee.userId === selectedEmployee?.userId
-                        ? "border-primary/30 bg-primary/8"
-                        : "border-slate-200 bg-white hover:border-primary/30"
-                    )}
-                    aria-label={formatAdminMessage(copy.employeeSelectAria, {
-                      name: employee.displayName ?? employee.email ?? employee.userId,
-                    })}
-                    onClick={() => setSelectedUserId(employee.userId)}
-                  >
-                    <div className="truncate text-sm font-black">
-                      {employee.displayName ?? employee.email ?? copy.employees}
-                    </div>
-                    <div className="mt-1 truncate text-xs font-medium text-slate-500">
-                      {employee.email ?? employee.userId}
-                    </div>
-                    <Badge variant="outline" className="mt-2 bg-white">
-                      {adminRoleTemplateLabel(text, employee.roleTemplate)}
-                    </Badge>
-                  </button>
-                ))
-              ) : (
-                <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-                  {copy.employeeEmpty}
-                </div>
-              )}
+              <AdminBusyRegion
+                contentClassName="grid gap-2"
+                label={text.common.refreshing}
+                pending={isLoading}
+                rows={4}
+              >
+                {filteredEmployees.length > 0 ? (
+                  filteredEmployees.map((employee) => (
+                    <button
+                      key={employee.userId}
+                      type="button"
+                      className={cn(
+                        "min-w-0 rounded-lg border p-3 text-left transition active:scale-[0.99]",
+                        employee.userId === selectedEmployee?.userId
+                          ? "border-primary/30 bg-primary/8"
+                          : "border-slate-200 bg-white hover:border-primary/30"
+                      )}
+                      aria-label={formatAdminMessage(copy.employeeSelectAria, {
+                        name: employee.displayName ?? employee.email ?? employee.userId,
+                      })}
+                      onClick={() => setSelectedUserId(employee.userId)}
+                    >
+                      <div className="truncate text-sm font-black">
+                        {employee.displayName ?? employee.email ?? copy.employees}
+                      </div>
+                      <div className="mt-1 truncate text-xs font-medium text-slate-500">
+                        {employee.email ?? employee.userId}
+                      </div>
+                      <Badge variant="outline" className="mt-2 bg-white">
+                        {adminRoleTemplateLabel(text, employee.roleTemplate)}
+                      </Badge>
+                    </button>
+                  ))
+                ) : (
+                  <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+                    {copy.employeeEmpty}
+                  </div>
+                )}
+              </AdminBusyRegion>
             </div>
           </CardContent>
         </Card>
@@ -401,6 +409,10 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                   ? selectedEmployee.email ?? selectedEmployee.userId
                   : copy.userRequired}
               </CardDescription>
+              <AdminInlinePending
+                label={pendingKey?.startsWith("role:") ? text.common.saving : text.common.refreshing}
+                pending={Boolean(pendingKey?.startsWith("role:"))}
+              />
             </div>
             {selectedEmployee && (
               <Select
@@ -422,6 +434,12 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
             )}
           </CardHeader>
           <CardContent className="min-w-0 space-y-4">
+            <AdminBusyRegion
+              contentClassName="min-w-0 space-y-4"
+              label={isLoading ? text.common.refreshing : text.common.saving}
+              pending={isLoading}
+              rows={5}
+            >
             {selectedRole && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-600">
                 <span className="font-black text-slate-900">{selectedRole.label}</span>
@@ -466,7 +484,12 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                             key={effect}
                             size="sm"
                             variant={customerLevelOverride === effect ? "default" : "outline"}
-                            className={customerLevelOverride === effect ? "" : "bg-white"}
+                            className={cn(
+                              customerLevelOverride === effect ? "" : "bg-white",
+                              pendingKey ===
+                                `permission:${CUSTOMER_MANAGE_LEVEL_PERMISSION}` &&
+                                "ring-2 ring-primary/15"
+                            )}
                             disabled={
                               pendingKey ===
                               `permission:${CUSTOMER_MANAGE_LEVEL_PERMISSION}`
@@ -546,7 +569,11 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                                     key={effect}
                                     size="sm"
                                     variant={overrideEffect === effect ? "default" : "outline"}
-                                    className={overrideEffect === effect ? "" : "bg-white"}
+                                    className={cn(
+                                      overrideEffect === effect ? "" : "bg-white",
+                                      pendingKey === `permission:${permission.id}` &&
+                                        "ring-2 ring-primary/15"
+                                    )}
                                     disabled={pendingKey === `permission:${permission.id}`}
                                     onClick={() => void updateOverride(permission.id, effect)}
                                   >
@@ -571,6 +598,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                 {copy.matrixEmpty}
               </div>
             )}
+            </AdminBusyRegion>
           </CardContent>
         </Card>
       </div>

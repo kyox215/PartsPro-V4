@@ -333,13 +333,13 @@ export const storefrontItIT = {
   "storefront.cart.stockBadge": "Stock {stock}",
   "storefront.cart.summaryLoading": "Caricamento carrello del tuo account...",
   "storefront.cart.summaryNote":
-    "Il carrello non blocca stock: disponibilita e quantita vengono riservate solo alla conferma ordine.",
+    "Il carrello non blocca stock: spedizione €6,50, gratuita da €100; disponibilita e quantita vengono verificate alla conferma.",
   "storefront.cart.summaryNoteBlocked":
     "Il carrello non blocca stock. Alcune righe richiedono login, disponibilita o correzione quantita; i totali includono solo righe acquistabili.",
   "storefront.cart.summaryNoteReviewCheckout":
     "Puoi aprire il checkout per vedere cosa manca. Login, cliente, prezzi, stock e MOQ verranno comunque verificati prima dell'invio.",
   "storefront.cart.summaryNoteSynced":
-    "Il carrello non blocca stock: l'ordine riservera gli articoli solo dopo la conferma.",
+    "Il carrello non blocca stock: spedizione €6,50, gratuita da €100; l'ordine riservera gli articoli solo dopo la conferma.",
   "storefront.cart.summaryTitle": "Riepilogo ordine",
   "storefront.cart.title": "Conferma prodotti e quantità",
   "storefront.assistedOrder.catalogBanner": "Ordine per cliente",
@@ -444,9 +444,9 @@ export const storefrontItIT = {
   "storefront.checkout.preview.errorTitle": "Controllo ordine non riuscito",
   "storefront.checkout.preview.loading": "Controllo prezzi, scorte e MOQ in corso.",
   "storefront.checkout.shippingFixed":
-    "Metodo logistico gestito dal magazzino PartsPro. Partenza standard entro le 16:00; usa le note per richieste speciali.",
+    "Metodo logistico gestito dal magazzino PartsPro. Spedizione €6,50, gratuita da €100; partenza standard entro le 16:00.",
   "storefront.checkout.shippingFixedCompact":
-    "GLS/BRT 24-48h; partenza standard entro le 16:00. Usa le note per richieste speciali.",
+    "GLS/BRT 24-48h; €6,50 sotto €100, gratis da €100. Partenza standard entro le 16:00.",
   "storefront.checkout.preview.title": "Controllo ordine",
   "storefront.checkout.profileMissing": "Dati cliente da completare",
   "storefront.checkout.profileMissingAll": "Profilo cliente",
@@ -1152,13 +1152,13 @@ export const storefrontZhCN = {
   "storefront.cart.stockBadge": "库存 {stock}",
   "storefront.cart.summaryLoading": "正在加载当前账号的购物车...",
   "storefront.cart.summaryNote":
-    "购物车不会锁定库存；库存和数量只会在确认下单时重新检查并锁定。",
+    "购物车不会锁定库存；满 €100 包邮，未满统一 €6.50，确认下单时会重新检查库存和数量。",
   "storefront.cart.summaryNoteBlocked":
     "购物车不会锁定库存。部分商品需要登录、恢复库存或手动调整数量后才能结账；合计金额只包含当前可购买的商品项。",
   "storefront.cart.summaryNoteReviewCheckout":
     "可以先进入结账页查看和处理原因；提交订单前仍会校验登录、客户资料、价格、库存和 MOQ。",
   "storefront.cart.summaryNoteSynced":
-    "购物车不会锁定库存；确认下单成功后才会锁定商品。",
+    "购物车不会锁定库存；满 €100 包邮，未满统一 €6.50，确认下单成功后才会锁定商品。",
   "storefront.cart.summaryTitle": "订单摘要",
   "storefront.cart.title": "确认商品与数量",
   "storefront.assistedOrder.catalogBanner": "代客户下单",
@@ -1253,9 +1253,9 @@ export const storefrontZhCN = {
   "storefront.checkout.preview.errorTitle": "订单校验失败",
   "storefront.checkout.preview.loading": "正在校验价格、库存和 MOQ。",
   "storefront.checkout.shippingFixed":
-    "由 PartsPro 仓库统一安排物流；默认 16:00 前发货，如有特殊要求请写订单备注。",
+    "由 PartsPro 仓库统一安排物流；未满 €100 运费 €6.50，满 €100 包邮，默认 16:00 前发货。",
   "storefront.checkout.shippingFixedCompact":
-    "GLS/BRT 24-48h；默认 16:00 前发货，如有特殊要求请写订单备注。",
+    "GLS/BRT 24-48h；未满 €100 运费 €6.50，满 €100 包邮，默认 16:00 前发货。",
   "storefront.checkout.preview.title": "订单校验",
   "storefront.checkout.profileMissing": "客户资料待补全",
   "storefront.checkout.profileMissingAll": "客户资料",

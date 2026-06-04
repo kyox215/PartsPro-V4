@@ -1,4 +1,5 @@
 import type { CompanyProfile, CustomerLevel } from "@/lib/partspro-data";
+import { freeShippingThresholdEuros } from "@/lib/partspro-shipping";
 
 export type CustomerTier = CustomerLevel;
 
@@ -38,7 +39,7 @@ export const customerTierRules = {
     discountRate: 0,
     paymentTerms: "Pagamento anticipato",
     creditLimit: 0,
-    freeShippingThreshold: 250,
+    freeShippingThreshold: freeShippingThresholdEuros,
     label: "Bronzo",
     tagLabel: "Livello Bronzo",
     minSpend: 0,
@@ -49,7 +50,7 @@ export const customerTierRules = {
     discountRate: 0.02,
     paymentTerms: "30 giorni data fattura",
     creditLimit: 1000,
-    freeShippingThreshold: 150,
+    freeShippingThreshold: freeShippingThresholdEuros,
     label: "Argento",
     tagLabel: "Livello Argento",
     minSpend: 1000,
@@ -60,7 +61,7 @@ export const customerTierRules = {
     discountRate: 0.04,
     paymentTerms: "45 giorni data fattura",
     creditLimit: 2500,
-    freeShippingThreshold: 0,
+    freeShippingThreshold: freeShippingThresholdEuros,
     label: "Oro",
     tagLabel: "Livello Oro",
     minSpend: 10800,
@@ -71,7 +72,7 @@ export const customerTierRules = {
     discountRate: 0.06,
     paymentTerms: "45 giorni data fattura",
     creditLimit: 5000,
-    freeShippingThreshold: 0,
+    freeShippingThreshold: freeShippingThresholdEuros,
     label: "Smeraldo",
     tagLabel: "Livello Smeraldo",
     minSpend: 20600,
@@ -82,7 +83,7 @@ export const customerTierRules = {
     discountRate: 0.08,
     paymentTerms: "60 giorni data fattura",
     creditLimit: 7500,
-    freeShippingThreshold: 0,
+    freeShippingThreshold: freeShippingThresholdEuros,
     label: "Diamante",
     tagLabel: "Livello Diamante",
     minSpend: 30400,
@@ -93,7 +94,7 @@ export const customerTierRules = {
     discountRate: 0.1,
     paymentTerms: "60 giorni data fattura",
     creditLimit: 10000,
-    freeShippingThreshold: 0,
+    freeShippingThreshold: freeShippingThresholdEuros,
     label: "Maestro",
     tagLabel: "Livello Maestro",
     minSpend: 40200,
@@ -104,7 +105,7 @@ export const customerTierRules = {
     discountRate: 0.12,
     paymentTerms: "60 giorni data fattura",
     creditLimit: 15000,
-    freeShippingThreshold: 0,
+    freeShippingThreshold: freeShippingThresholdEuros,
     label: "Re",
     tagLabel: "Livello Re",
     minSpend: 50000,

@@ -64,6 +64,7 @@ import {
   type AdminText,
 } from "@/i18n/dictionaries/admin";
 import { sanitizeSupplierText, toPublicSku } from "@/lib/partspro-sku";
+import { AdminBusyRegion } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
 
 type OrderDbStatus =
@@ -440,20 +441,17 @@ export function AdminOrdersPanel() {
           return;
         }
 
-        setOrders([]);
-        setDetailsById({});
-        setSelectedOrderId("");
-        setDataSource({
-          source: "empty",
-          label: sourceLabel("empty", text),
+        const message =
+          error instanceof Error ? error.message : text.orders.apiError;
+
+        setDataSource((current) => ({
+          ...current,
+          error: message,
           syncedAt: formatSyncTime(),
-          total: 0,
-          returned: 0,
-          error: error instanceof Error ? error.message : text.orders.apiError,
-        });
+        }));
         setNotice({
           tone: "error",
-          message: text.orders.apiError,
+          message,
         });
       } finally {
         if (!signal?.aborted) {
@@ -936,22 +934,28 @@ export function AdminOrdersPanel() {
           )}
 
           <div className="min-w-0">
-            <OrdersList
-              labels={labels}
-              orders={visibleOrders}
-              page={currentPage}
-              pendingActionKey={pendingOrderAction}
-              selectedOrderId={selectedOrder?.id ?? ""}
-              text={text}
-              totalFiltered={filteredOrders.length}
-              totalPages={totalPages}
-              viewMode={viewMode}
-              onNextPage={() => setPage((current) => Math.min(totalPages, current + 1))}
-              onOpenMobileDetails={handleOpenMobileDetails}
-              onPreviousPage={() => setPage((current) => Math.max(1, current - 1))}
-              onQuickTransition={handleQuickTransition}
-              onSelectOrder={handleOpenOrder}
-            />
+            <AdminBusyRegion
+              label={text.common.refreshing}
+              pending={isLoadingOrders}
+              rows={5}
+            >
+              <OrdersList
+                labels={labels}
+                orders={visibleOrders}
+                page={currentPage}
+                pendingActionKey={pendingOrderAction}
+                selectedOrderId={selectedOrder?.id ?? ""}
+                text={text}
+                totalFiltered={filteredOrders.length}
+                totalPages={totalPages}
+                viewMode={viewMode}
+                onNextPage={() => setPage((current) => Math.min(totalPages, current + 1))}
+                onOpenMobileDetails={handleOpenMobileDetails}
+                onPreviousPage={() => setPage((current) => Math.max(1, current - 1))}
+                onQuickTransition={handleQuickTransition}
+                onSelectOrder={handleOpenOrder}
+              />
+            </AdminBusyRegion>
           </div>
           <Dialog
             open={mobileDetailsOpen && selectedOrder !== null}
@@ -1727,7 +1731,14 @@ function OrderDetailsPanel({
   const canEditStaffNote = adminSession.allowed;
 
   return (
-    <div className="min-w-0 space-y-1.5 bg-slate-50/40 p-1.5 sm:space-y-2 sm:p-2">
+    <AdminBusyRegion
+      className="min-w-0"
+      label={loading ? text.orders.detailLoading : text.common.saving}
+      overlayClassName="rounded-lg"
+      pending={loading || isMutating}
+      rows={3}
+    >
+      <div className="min-w-0 space-y-1.5 bg-slate-50/40 p-1.5 sm:space-y-2 sm:p-2">
       <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
@@ -1888,7 +1899,8 @@ function OrderDetailsPanel({
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </AdminBusyRegion>
   );
 }
 

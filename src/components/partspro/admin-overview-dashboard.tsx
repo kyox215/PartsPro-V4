@@ -53,6 +53,7 @@ import {
 } from "@/i18n/dictionaries/admin";
 import { formatEuro, type StockStatus } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
+import { AdminBusyRegion } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
 
 type AdminOverviewPanelValue =
@@ -312,30 +313,37 @@ export function AdminOverviewDashboard({
         </div>
       ) : null}
 
-      <MetricGrid metrics={metrics} />
+      <AdminBusyRegion
+        contentClassName="space-y-2.5 sm:space-y-3"
+        label={text.common.refreshing}
+        pending={snapshot.isLoading}
+        rows={6}
+      >
+        <MetricGrid metrics={metrics} />
 
-      <section className="grid gap-2.5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.75fr)]">
-        <SalesTrendCard
-          copy={copy}
-          model={model}
-          onRangeChange={setSalesRange}
-          range={salesRange}
-          text={text}
-        />
-        <InventoryRiskCard copy={copy} locale={locale} model={model} />
-      </section>
+        <section className="grid gap-2.5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.75fr)]">
+          <SalesTrendCard
+            copy={copy}
+            model={model}
+            onRangeChange={setSalesRange}
+            range={salesRange}
+            text={text}
+          />
+          <InventoryRiskCard copy={copy} locale={locale} model={model} />
+        </section>
 
-      <section className="grid gap-2.5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.1fr)_minmax(0,0.85fr)]">
-        <OrderPipelineCard model={model} text={text} />
-        <HotSkuCard copy={copy} locale={locale} model={model} />
-        <CatalogOpsCard
-          copy={copy}
-          model={model}
-          onPanelChange={onPanelChange}
-          text={text}
-          visiblePanels={visiblePanels}
-        />
-      </section>
+        <section className="grid gap-2.5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.1fr)_minmax(0,0.85fr)]">
+          <OrderPipelineCard model={model} text={text} />
+          <HotSkuCard copy={copy} locale={locale} model={model} />
+          <CatalogOpsCard
+            copy={copy}
+            model={model}
+            onPanelChange={onPanelChange}
+            text={text}
+            visiblePanels={visiblePanels}
+          />
+        </section>
+      </AdminBusyRegion>
     </div>
   );
 }
@@ -1078,32 +1086,35 @@ function useDashboardSnapshot() {
       }
 
       const [ordersResult, productsResult] = results;
-      const next = emptyDashboardSnapshot();
       const errors: string[] = [];
 
-      if (ordersResult.status === "fulfilled") {
-        next.orders = ordersResult.value.orders;
-        next.orderSource = ordersResult.value.source;
-        next.orderTotal = ordersResult.value.total;
-        next.ordersReturned = ordersResult.value.returned;
-      } else {
-        errors.push(readErrorMessage(ordersResult.reason));
-      }
+      setSnapshot((current) => {
+        const next = { ...current };
 
-      if (productsResult.status === "fulfilled") {
-        next.products = productsResult.value.products;
-        next.productSource = productsResult.value.source;
-        next.productTotal = productsResult.value.total;
-        next.productsReturned = productsResult.value.returned;
-      } else {
-        errors.push(readErrorMessage(productsResult.reason));
-      }
+        if (ordersResult.status === "fulfilled") {
+          next.orders = ordersResult.value.orders;
+          next.orderSource = ordersResult.value.source;
+          next.orderTotal = ordersResult.value.total;
+          next.ordersReturned = ordersResult.value.returned;
+        } else {
+          errors.push(readErrorMessage(ordersResult.reason));
+        }
 
-      setSnapshot({
-        ...next,
-        error: errors.length > 0 ? errors.join(" ") : null,
-        isLoading: false,
-        syncedAt: new Date().toISOString(),
+        if (productsResult.status === "fulfilled") {
+          next.products = productsResult.value.products;
+          next.productSource = productsResult.value.source;
+          next.productTotal = productsResult.value.total;
+          next.productsReturned = productsResult.value.returned;
+        } else {
+          errors.push(readErrorMessage(productsResult.reason));
+        }
+
+        return {
+          ...next,
+          error: errors.length > 0 ? errors.join(" ") : null,
+          isLoading: false,
+          syncedAt: new Date().toISOString(),
+        };
       });
     });
 
