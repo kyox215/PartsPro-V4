@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { adminPermissions } from "@/lib/partspro-permissions";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 
 const STAFF_ROLES = new Set([
@@ -7,6 +8,7 @@ const STAFF_ROLES = new Set([
   "purchasing",
   "admin",
   "catalog_manager",
+  "commerce_manager",
   "pricing_manager",
   "inventory_manager",
   "sales_support",
@@ -56,21 +58,16 @@ export async function getAdminAuthState(): Promise<AdminAuthState> {
 
   if (isBootstrapAdminEmail(user.email)) {
     const remotePermissions = await readEffectivePermissions(supabase);
-
-    if (!remotePermissions.ok || remotePermissions.permissions.length === 0) {
-      return {
-        configured: true,
-        allowed: false,
-        reason: "permission_unavailable",
-        role: role ?? "admin",
-      };
-    }
+    const permissions = mergePermissions(
+      adminPermissions,
+      remotePermissions.ok ? remotePermissions.permissions : []
+    );
 
     return {
       configured: true,
       email: user.email ?? null,
       allowed: true,
-      permissions: remotePermissions.permissions,
+      permissions,
       reason: "admin_email",
       role: role ?? "admin",
       userId: user.id,
@@ -126,6 +123,10 @@ export function hasAdminPermission(
 
 function normalizeEmail(email: string | null | undefined) {
   return email?.trim().toLowerCase() ?? "";
+}
+
+function mergePermissions(...permissionLists: Array<Iterable<string>>) {
+  return [...new Set(permissionLists.flatMap((permissions) => [...permissions]))];
 }
 
 function permissionAliases(permission: string) {
