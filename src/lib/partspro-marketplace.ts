@@ -623,27 +623,51 @@ async function saveEbayConnection(
   const refreshToken = token.refresh_token
     ? encryptEbaySecret(token.refresh_token)
     : readString(current?.refresh_token_ciphertext);
-  const { error } = await client.from("marketplace_connections").upsert(
-    {
-      access_token_ciphertext: encryptEbaySecret(token.access_token),
-      connection_status: "connected",
-      environment,
-      last_connected_at: now.toISOString(),
-      last_error: null,
-      marketplace_id: ebayMarketplaceDefaults.marketplaceId,
-      oauth_scopes: ebayDefaultScopes,
-      provider: ebayMarketplaceDefaults.provider,
-      refresh_token_ciphertext: refreshToken,
-      refresh_token_expires_at: refreshTokenExpiresAt,
-      token_expires_at: tokenExpiresAt,
-    },
-    { onConflict: "provider,marketplace_id,environment" }
-  );
+  const { data, error } = await client
+    .from("marketplace_connections")
+    .upsert(
+      {
+        access_token_ciphertext: encryptEbaySecret(token.access_token),
+        connection_status: "connected",
+        environment,
+        last_connected_at: now.toISOString(),
+        last_error: null,
+        marketplace_id: ebayMarketplaceDefaults.marketplaceId,
+        oauth_scopes: ebayDefaultScopes,
+        provider: ebayMarketplaceDefaults.provider,
+        refresh_token_ciphertext: refreshToken,
+        refresh_token_expires_at: refreshTokenExpiresAt,
+        token_expires_at: tokenExpiresAt,
+      },
+      { onConflict: "provider,marketplace_id,environment" }
+    )
+    .select("id")
+    .maybeSingle();
 
   if (error) {
     throw new RepositoryWriteError(502, "MARKETPLACE_CONNECTION_SAVE_FAILED", "eBay 连接保存失败。", {
       message: error.message,
     });
+  }
+
+  const connectionId = readString(data?.id);
+
+  if (connectionId) {
+    const { error: settingsError } = await client
+      .from("marketplace_settings")
+      .update({ connection_id: connectionId })
+      .eq("provider", ebayMarketplaceDefaults.provider)
+      .eq("marketplace_id", ebayMarketplaceDefaults.marketplaceId)
+      .eq("environment", environment);
+
+    if (settingsError) {
+      throw new RepositoryWriteError(
+        502,
+        "MARKETPLACE_CONNECTION_LINK_FAILED",
+        "eBay 连接已保存，但设置关联失败。",
+        { message: settingsError.message }
+      );
+    }
   }
 }
 
@@ -702,6 +726,7 @@ function evaluateProduct(product: AdminProduct, settings: DbRow, mappings: DbRow
   );
   const computedQuantity = Math.max(0, product.availableQty - settingsDto.stockBuffer);
   const title = buildEbayTitle(product);
+  const sku = marketplaceSku(product);
   const blockers = [
     product.catalogStatus !== "active" ? "商品未发布到前台" : null,
     imageUrls.length === 0 ? "缺少主图" : null,
@@ -762,7 +787,7 @@ function evaluateProduct(product: AdminProduct, settings: DbRow, mappings: DbRow
           value: computedPrice.toFixed(2),
         },
       },
-      sku: product.sku,
+      sku,
     },
     product,
     title,
@@ -810,7 +835,7 @@ async function upsertMarketplaceListing(
       product_id: product.id,
       provider: ebayMarketplaceDefaults.provider,
       quantity: input.computedQuantity,
-      sku_code: product.sourceSku ?? product.sku,
+      sku_code: marketplaceSku(product),
       title: input.title,
     },
     { onConflict: "provider,marketplace_id,sku_code" }
