@@ -16,6 +16,7 @@ const warehouseSchema = z.literal("Milano");
 export const productQuerySchema = z
   .object({
     brand: z.string().trim().min(1).max(80).optional(),
+    batchCode: z.string().trim().min(1).max(80).optional(),
     category: z.string().trim().min(1).max(80).optional(),
     model: z.string().trim().min(2).max(120).optional(),
     modelSeries: z.string().trim().min(1).max(120).optional(),
@@ -24,6 +25,7 @@ export const productQuerySchema = z
     status: catalogStatusSchema.optional(),
     catalogStatus: catalogStatusSchema.optional(),
     grade: z.enum(["A+", "A", "B", "Refurbished"]).optional(),
+    supplier: z.string().trim().min(1).max(120).optional(),
     sort: z.enum(["name", "stock_desc", "updated_desc", "created_desc"]).default("updated_desc"),
     limit: z.coerce.number().int().min(1).max(100).default(50),
     offset: z.coerce.number().int().min(0).max(5000).default(0),

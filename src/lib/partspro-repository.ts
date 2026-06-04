@@ -254,6 +254,7 @@ export type AdminProduct = RepositoryPartProduct & {
 
 export type AdminProductQueryInput = {
   brand?: string;
+  batchCode?: string;
   category?: string;
   catalogStatus?: AdminCatalogStatus;
   grade?: ProductGrade;
@@ -264,12 +265,56 @@ export type AdminProductQueryInput = {
   q?: string;
   sort: "name" | "stock_desc" | "updated_desc" | "created_desc";
   stockStatus?: StockStatus;
+  supplier?: string;
   warehouse?: PartProduct["warehouse"];
 };
 
 export type AdminProductPage = {
   products: AdminProduct[];
   total: number;
+};
+
+export type AdminSupplier = {
+  id: string;
+  code: string;
+  name: string;
+  displayLabel: string;
+  vatNumber: string | null;
+  eori: string | null;
+  country: string | null;
+  websiteUrl: string | null;
+  tags: string[];
+  status: string;
+  metadata: Record<string, unknown>;
+  productCount: number;
+  batchCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminSupplierBatch = {
+  id: string;
+  batchCode: string;
+  supplierId: string;
+  supplierCode: string | null;
+  supplierName: string | null;
+  invoiceNo: string | null;
+  orderNo: string | null;
+  invoiceDate: string | null;
+  receivedAt: string | null;
+  totalQty: number;
+  totalCost: number;
+  currency: string;
+  vatMode: string;
+  tags: string[];
+  sourceFileName: string | null;
+  metadata: Record<string, unknown>;
+  lineCount: number;
+  activeProductCount: number;
+  draftProductCount: number;
+  missingImageCount: number;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type AdminProductWriteInput = {
@@ -1419,6 +1464,28 @@ export async function listAdminProducts(
 
   return {
     data: await attachActiveRestockCounts(context.client, page),
+    source: "supabase",
+  };
+}
+
+export async function listAdminSuppliers(): Promise<RepositoryResult<AdminSupplier[]>> {
+  const context = await requireSupabaseContext();
+  const suppliers = await readAdminSuppliers(context.client);
+
+  return {
+    data: suppliers,
+    source: "supabase",
+  };
+}
+
+export async function listAdminSupplierBatches(
+  query: { batchCode?: string; limit?: number; offset?: number; supplier?: string } = {}
+): Promise<RepositoryResult<{ batches: AdminSupplierBatch[]; total: number }>> {
+  const context = await requireSupabaseContext();
+  const page = await readAdminSupplierBatches(context.client, query);
+
+  return {
+    data: page,
     source: "supabase",
   };
 }
@@ -3436,6 +3503,8 @@ async function readAdminProductPage(
     p_q: query.q ?? null,
     p_sort: query.sort,
     p_stock_status: query.stockStatus ? stockStatusToDbValue(query.stockStatus) : null,
+    p_supplier: query.supplier ?? null,
+    p_batch_code: query.batchCode ?? null,
     p_warehouse: query.warehouse ?? null,
   });
 
@@ -3449,6 +3518,169 @@ async function readAdminProductPage(
   }
 
   return parseAdminProductPageRpcPayload(data);
+}
+
+async function readAdminSuppliers(
+  client: SupabaseServerClient
+): Promise<AdminSupplier[]> {
+  const { data, error } = await client
+    .from("suppliers")
+    .select(
+      "id, code, name, display_label, vat_number, eori, country, website_url, tags, status, metadata, created_at, updated_at"
+    )
+    .order("display_label", { ascending: true });
+
+  if (error) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_SUPPLIERS_READ_UNAVAILABLE",
+      "Admin supplier data could not be read from Supabase.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const rows = Array.isArray(data) ? data.map((row) => row as DbRow) : [];
+  const [productCounts, batchCounts] = await Promise.all([
+    readSupplierProductCounts(client),
+    readSupplierBatchCounts(client),
+  ]);
+
+  return rows
+    .map((row) => mapAdminSupplierRow(row, productCounts, batchCounts))
+    .filter(isDefined);
+}
+
+async function readSupplierProductCounts(client: SupabaseServerClient) {
+  const { data, error } = await client.from("products").select("supplier");
+
+  if (error || !Array.isArray(data)) {
+    return new Map<string, number>();
+  }
+
+  const counts = new Map<string, number>();
+
+  for (const row of data as DbRow[]) {
+    const supplier = sanitizeOptionalSupplierText(pickString(row, ["supplier"]));
+
+    if (supplier) {
+      counts.set(supplier, (counts.get(supplier) ?? 0) + 1);
+    }
+  }
+
+  return counts;
+}
+
+async function readSupplierBatchCounts(client: SupabaseServerClient) {
+  const { data, error } = await client
+    .from("supplier_batches")
+    .select("supplier_id");
+
+  if (error || !Array.isArray(data)) {
+    return new Map<string, number>();
+  }
+
+  const counts = new Map<string, number>();
+
+  for (const row of data as DbRow[]) {
+    const supplierId = pickString(row, ["supplier_id"]);
+
+    if (supplierId) {
+      counts.set(supplierId, (counts.get(supplierId) ?? 0) + 1);
+    }
+  }
+
+  return counts;
+}
+
+async function readAdminSupplierBatches(
+  client: SupabaseServerClient,
+  query: { batchCode?: string; limit?: number; offset?: number; supplier?: string }
+) {
+  const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
+  const offset = Math.max(query.offset ?? 0, 0);
+  let request = client
+    .from("supplier_batches")
+    .select(
+      "id, batch_code, supplier_id, invoice_no, order_no, invoice_date, received_at, total_qty, total_cost, currency, vat_mode, tags, source_file_name, metadata, created_at, updated_at, suppliers!inner(code, name, display_label)",
+      { count: "exact" }
+    )
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (query.batchCode) {
+    request = request.eq("batch_code", query.batchCode);
+  }
+
+  if (query.supplier) {
+    request = request.eq("suppliers.display_label", query.supplier);
+  }
+
+  const { data, error, count } = await request;
+
+  if (error) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_SUPPLIER_BATCHES_READ_UNAVAILABLE",
+      "Admin supplier batch data could not be read from Supabase.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const rows = Array.isArray(data) ? data.map((row) => row as DbRow) : [];
+  const batchIds = rows.map((row) => pickString(row, ["id"])).filter(isDefined);
+  const lineStats = await readSupplierBatchLineStats(client, batchIds);
+
+  return {
+    batches: rows.map((row) => mapAdminSupplierBatchRow(row, lineStats)).filter(isDefined),
+    total: count ?? rows.length,
+  };
+}
+
+async function readSupplierBatchLineStats(
+  client: SupabaseServerClient,
+  batchIds: string[]
+) {
+  if (batchIds.length === 0) {
+    return new Map<string, { active: number; draft: number; lines: number; missingImages: number }>();
+  }
+
+  const { data, error } = await client
+    .from("supplier_batch_lines")
+    .select("batch_id, image_status, product_status")
+    .in("batch_id", batchIds);
+
+  if (error || !Array.isArray(data)) {
+    return new Map<string, { active: number; draft: number; lines: number; missingImages: number }>();
+  }
+
+  const stats = new Map<string, { active: number; draft: number; lines: number; missingImages: number }>();
+
+  for (const row of data as DbRow[]) {
+    const batchId = pickString(row, ["batch_id"]);
+
+    if (!batchId) {
+      continue;
+    }
+
+    const current = stats.get(batchId) ?? { active: 0, draft: 0, lines: 0, missingImages: 0 };
+    current.lines += 1;
+
+    if (pickString(row, ["product_status"]) === "active") {
+      current.active += 1;
+    }
+
+    if (pickString(row, ["product_status"]) === "draft") {
+      current.draft += 1;
+    }
+
+    if (pickString(row, ["image_status"]) === "missing") {
+      current.missingImages += 1;
+    }
+
+    stats.set(batchId, current);
+  }
+
+  return stats;
 }
 
 async function readAdminProduct(
@@ -5744,6 +5976,95 @@ function mapAdminProductRow(row: DbRow): AdminProduct | null {
   };
 }
 
+function mapAdminSupplierRow(
+  row: DbRow,
+  productCounts: Map<string, number>,
+  batchCounts: Map<string, number>
+): AdminSupplier | null {
+  const id = pickString(row, ["id"]);
+  const code = pickString(row, ["code"]);
+  const name = pickString(row, ["name"]);
+
+  if (!id || !code || !name) {
+    return null;
+  }
+
+  const displayLabel = pickString(row, ["display_label"]) ?? name;
+
+  return {
+    id,
+    code,
+    name,
+    displayLabel,
+    vatNumber: pickString(row, ["vat_number"]),
+    eori: pickString(row, ["eori"]),
+    country: pickString(row, ["country"]),
+    websiteUrl: pickString(row, ["website_url"]),
+    tags: sanitizeSupplierStringArray(readStringArray(row, ["tags"])),
+    status: pickString(row, ["status"]) ?? "active",
+    metadata: readRecordObject(row.metadata) ?? {},
+    productCount: productCounts.get(displayLabel) ?? productCounts.get(name) ?? 0,
+    batchCount: batchCounts.get(id) ?? 0,
+    createdAt: formatPartsProDateTime(pickString(row, ["created_at", "createdAt"])),
+    updatedAt: formatPartsProDateTime(pickString(row, ["updated_at", "updatedAt"])),
+  };
+}
+
+function mapAdminSupplierBatchRow(
+  row: DbRow,
+  lineStats: Map<string, { active: number; draft: number; lines: number; missingImages: number }>
+): AdminSupplierBatch | null {
+  const id = pickString(row, ["id"]);
+  const batchCode = pickString(row, ["batch_code"]);
+  const supplierId = pickString(row, ["supplier_id"]);
+
+  if (!id || !batchCode || !supplierId) {
+    return null;
+  }
+
+  const supplier = readSupplierJoin(row.suppliers);
+  const stats = lineStats.get(id) ?? { active: 0, draft: 0, lines: 0, missingImages: 0 };
+
+  return {
+    id,
+    batchCode,
+    supplierId,
+    supplierCode: supplier.code,
+    supplierName: supplier.displayLabel ?? supplier.name,
+    invoiceNo: pickString(row, ["invoice_no"]),
+    orderNo: pickString(row, ["order_no"]),
+    invoiceDate: pickString(row, ["invoice_date"]),
+    receivedAt: pickString(row, ["received_at"]),
+    totalQty: pickNumber(row, ["total_qty"]) ?? 0,
+    totalCost: pickNumber(row, ["total_cost"]) ?? 0,
+    currency: pickString(row, ["currency"]) ?? "EUR",
+    vatMode: pickString(row, ["vat_mode"]) ?? "IVA esclusa",
+    tags: sanitizeSupplierStringArray(readStringArray(row, ["tags"])),
+    sourceFileName: pickString(row, ["source_file_name"]),
+    metadata: readRecordObject(row.metadata) ?? {},
+    lineCount: stats.lines,
+    activeProductCount: stats.active,
+    draftProductCount: stats.draft,
+    missingImageCount: stats.missingImages,
+    createdAt: formatPartsProDateTime(pickString(row, ["created_at", "createdAt"])),
+    updatedAt: formatPartsProDateTime(pickString(row, ["updated_at", "updatedAt"])),
+  };
+}
+
+function readSupplierJoin(value: unknown) {
+  const row = Array.isArray(value) ? value[0] : value;
+
+  if (!isDbRow(row)) {
+    return { code: null, displayLabel: null, name: null };
+  }
+
+  return {
+    code: pickString(row, ["code"]),
+    displayLabel: pickString(row, ["display_label"]),
+    name: pickString(row, ["name"]),
+  };
+}
+
 function mapAdminAuditEvent(row: DbRow): AdminAuditEvent {
   const createdAtRaw = pickString(row, ["created_at", "createdAt"]) ?? null;
 
@@ -6777,6 +7098,10 @@ function sanitizeSupplierStringArray(values: string[]) {
 
 function getObject(row: DbRow, key: string): DbRow | null {
   const value = row[key];
+  return isDbRow(value) ? value : null;
+}
+
+function readRecordObject(value: unknown): Record<string, unknown> | null {
   return isDbRow(value) ? value : null;
 }
 

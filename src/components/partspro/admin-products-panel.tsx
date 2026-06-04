@@ -147,12 +147,14 @@ type FilterValue<T extends string> = "all" | T;
 type ProductListFilters = {
   q: string;
   brand: string;
+  batchCode: string;
   modelSeries: string;
   model: string;
   catalogStatus: FilterValue<CatalogStatus>;
   stockStatus: FilterValue<StockStatus>;
   grade: FilterValue<ProductGrade>;
   sort: ProductSort;
+  supplier: string;
   page: number;
   pageSize: number;
 };
@@ -289,12 +291,14 @@ type ProductAuditEvent = {
 const defaultFilters: ProductListFilters = {
   q: "",
   brand: "all",
+  batchCode: "",
   modelSeries: "all",
   model: "all",
   catalogStatus: "all",
   stockStatus: "all",
   grade: "all",
   sort: "updated_desc",
+  supplier: "",
   page: 0,
   pageSize: 20,
 };
@@ -346,6 +350,10 @@ const panelText = {
     allStockStatuses: "全部库存状态",
     allWarehouses: "全部仓库",
     allGrades: "全部品质",
+    supplierFilter: "供应商",
+    supplierFilterPlaceholder: "供应商，例如 UTOPYA",
+    batchFilter: "批次",
+    batchFilterPlaceholder: "批次，例如 UTOPYA-7086282",
     filters: "筛选",
     reset: "重置",
     sync: "同步",
@@ -584,6 +592,10 @@ const panelText = {
     allStockStatuses: "Tutti stati stock",
     allWarehouses: "Tutti magazzini",
     allGrades: "Tutte qualita",
+    supplierFilter: "Fornitore",
+    supplierFilterPlaceholder: "Fornitore, es. UTOPYA",
+    batchFilter: "Lotto",
+    batchFilterPlaceholder: "Lotto, es. UTOPYA-7086282",
     filters: "Filtri",
     reset: "Reset",
     sync: "Sincronizza",
@@ -1608,7 +1620,7 @@ function ProductFilters({
           onChange={(value) => onChange({ catalogStatus: value })}
         />
       </div>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[180px_160px_190px_auto]">
+      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[180px_160px_190px_minmax(170px,1fr)_minmax(190px,1fr)_auto]">
         <StockStatusSelect
           value={filters.stockStatus}
           text={text}
@@ -1632,6 +1644,24 @@ function ProductFilters({
             ))}
           </SelectContent>
         </Select>
+        <div className="space-y-1">
+          <Label className="text-[11px] font-bold text-slate-500">{text.supplierFilter}</Label>
+          <Input
+            value={filters.supplier}
+            className="h-9 bg-white"
+            placeholder={text.supplierFilterPlaceholder}
+            onChange={(event) => onChange({ supplier: event.target.value })}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-[11px] font-bold text-slate-500">{text.batchFilter}</Label>
+          <Input
+            value={filters.batchCode}
+            className="h-9 bg-white font-mono text-xs"
+            placeholder={text.batchFilterPlaceholder}
+            onChange={(event) => onChange({ batchCode: event.target.value })}
+          />
+        </div>
         <Select
           value={filters.sort}
           onValueChange={(value) => onChange({ sort: value as ProductSort })}
@@ -4322,6 +4352,14 @@ async function fetchAdminProducts(
 
   if (filters.grade !== "all") {
     params.set("grade", filters.grade);
+  }
+
+  if (filters.supplier.trim()) {
+    params.set("supplier", filters.supplier.trim());
+  }
+
+  if (filters.batchCode.trim()) {
+    params.set("batchCode", filters.batchCode.trim());
   }
 
   const response = await fetch(`${adminProductsEndpoint}?${params.toString()}`, {
