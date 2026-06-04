@@ -2668,7 +2668,7 @@ function OrderNotesBanner({
 }) {
   const customerNote =
     order.customerNote.trim() ||
-    (!order.staffNote.trim() && !isGeneratedLogisticsNote(order.notes, order, text)
+    (!order.staffNote.trim() && !isGeneratedOperationNote(order.notes, order, text)
       ? order.notes.trim()
       : "");
   const staffNote = getDisplayStaffNote(order, text);
@@ -2840,14 +2840,77 @@ function NoteValue({ label, value }: { label: string; value: string }) {
 function getDisplayStaffNote(order: AdminOrder, text: AdminText) {
   const staffNote = order.staffNote.trim();
 
-  return isGeneratedLogisticsNote(staffNote, order, text) ? "" : staffNote;
+  return isGeneratedOperationNote(staffNote, order, text) ? "" : staffNote;
 }
 
-function isGeneratedLogisticsNote(note: string, order: AdminOrder, text: AdminText) {
-  const normalized = note.trim().toLowerCase();
+function isGeneratedOperationNote(note: string, order: AdminOrder, text: AdminText) {
+  const normalized = normalizeGeneratedNoteToken(note);
 
   if (!normalized) {
     return false;
+  }
+
+  const labels = buildOrderLabels(text);
+  const statusTokens = new Set(
+    [
+      ...Object.keys(labels.status),
+      ...Object.values(labels.status),
+      "新订单",
+      "已接单",
+      "拣货中",
+      "已打包",
+      "已发货",
+      "已完成",
+      "已取消",
+      "submitted",
+      "accepted",
+      "picking",
+      "packed",
+      "shipped",
+      "completed",
+      "cancelled",
+      "Nuovo ordine",
+      "Accettato",
+      "Picking",
+      "Imballato",
+      "Spedito",
+      "Completato",
+      "Annullato",
+    ].map(normalizeGeneratedNoteToken)
+  );
+  const rollbackPrefixes = [
+    `${text.orders.rollbackStatus}:`,
+    "回滚状态:",
+    "rollback status:",
+    "ripristina stato:",
+  ].map(normalizeGeneratedNoteToken);
+  const exactOperationNotes = [
+    text.orders.cancelOrder,
+    text.orders.activity.staffNoteUpdated,
+    "取消订单",
+    "Annulla ordine",
+    "Cancel order",
+    "Admin order update",
+    "Admin order status rollback",
+    "Staff note updated",
+  ].map(normalizeGeneratedNoteToken);
+
+  if (exactOperationNotes.includes(normalized)) {
+    return true;
+  }
+
+  const transitionParts = normalized.split("->").map((part) => part.trim());
+
+  if (transitionParts.length === 2) {
+    const fromStatus = stripGeneratedOperationPrefix(
+      transitionParts[0],
+      rollbackPrefixes
+    );
+    const toStatus = transitionParts[1];
+
+    if (statusTokens.has(fromStatus) && statusTokens.has(toStatus)) {
+      return true;
+    }
   }
 
   const carrierPrefixes = [
@@ -2855,19 +2918,31 @@ function isGeneratedLogisticsNote(note: string, order: AdminOrder, text: AdminTe
     "carrier:",
     "corriere:",
     "运输公司:",
-  ].map((prefix) => prefix.toLowerCase());
+    "配送服务:",
+    "物流单号:",
+    "tracking:",
+    "codice tracking:",
+    "numero tracking:",
+  ].map(normalizeGeneratedNoteToken);
 
   if (carrierPrefixes.some((prefix) => normalized.startsWith(prefix))) {
     return true;
   }
 
-  if (normalized.startsWith("tracking:")) {
-    return true;
-  }
-
-  const carrier = carrierLabel(order.carrier, text).toLowerCase();
+  const carrier = normalizeGeneratedNoteToken(carrierLabel(order.carrier, text));
 
   return Boolean(carrier && normalized === carrier);
+}
+
+function normalizeGeneratedNoteToken(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function stripGeneratedOperationPrefix(value: string, prefixes: string[]) {
+  const normalized = normalizeGeneratedNoteToken(value);
+  const prefix = prefixes.find((candidate) => normalized.startsWith(candidate));
+
+  return prefix ? normalized.slice(prefix.length).trim() : normalized;
 }
 
 function printOrderPackingSlip(

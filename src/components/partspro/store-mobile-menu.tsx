@@ -3,7 +3,7 @@
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown, Grid3X3, Home, Menu, Search, User } from "lucide-react";
+import { ChevronDown, Grid3X3, Home, Menu, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -25,7 +25,6 @@ import { useT } from "./i18n-provider";
 
 const storeMobileNavItems = [
   { labelKey: "nav.home", labelFallback: "Home", href: "/", icon: Home },
-  { labelKey: "nav.account", labelFallback: "Account", href: "/account", icon: User },
 ];
 
 export type StoreMobileMenuProps = {
@@ -151,7 +150,7 @@ export function StoreMobileMenu({
             {tx(
               t,
               "storefront.home.mobileMenuDescription",
-              "Menu mobile con home, catalogo e account."
+              "Menu mobile con home e catalogo."
             )}
           </SheetDescription>
         </SheetHeader>
@@ -243,26 +242,6 @@ export function StoreMobileMenu({
                   />
                 </div>
               )}
-              {storeMobileNavItems.slice(1).map((item) => {
-                const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
-
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition",
-                      active
-                        ? "bg-white text-primary shadow-sm"
-                        : "text-slate-700 hover:bg-white hover:text-primary"
-                    )}
-                    onClick={closeMenu}
-                  >
-                    <item.icon className="size-4" />
-                    {tx(t, item.labelKey, item.labelFallback)}
-                  </Link>
-                );
-              })}
             </div>
           </nav>
           <div className="mt-auto border-t border-slate-100 px-3 py-3">
