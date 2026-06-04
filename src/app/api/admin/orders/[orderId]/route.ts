@@ -304,7 +304,7 @@ function hasOperationsPatch(patch: {
 function hasRequiredShipmentInfo(carrier: string | undefined, tracking: string | undefined) {
   const deliveryService = carrier?.trim();
 
-  if (!deliveryService) {
+  if (!deliveryService || isUnassignedDeliveryService(deliveryService)) {
     return false;
   }
 
@@ -313,4 +313,15 @@ function hasRequiredShipmentInfo(carrier: string | undefined, tracking: string |
   }
 
   return Boolean(tracking?.trim());
+}
+
+function isUnassignedDeliveryService(value: string) {
+  const normalized = value.trim().toLowerCase();
+
+  return (
+    normalized === "unassigned" ||
+    normalized === "none" ||
+    normalized === "nessuno" ||
+    value.trim() === "未选择"
+  );
 }

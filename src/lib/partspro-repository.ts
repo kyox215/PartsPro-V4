@@ -2853,8 +2853,8 @@ export async function updateAdminOrderOperations(
 
   const orderPayload: Record<string, unknown> = {};
 
-  assignDefined(orderPayload, "carrier", trimOptional(input.carrier));
-  assignDefined(orderPayload, "tracking_code", input.tracking);
+  assignDefined(orderPayload, "carrier", normalizeNullableOperationsText(input.carrier));
+  assignDefined(orderPayload, "tracking_code", normalizeNullableOperationsText(input.tracking));
   assignDefined(orderPayload, "payment_status", normalizeAdminPaymentStatusForWrite(input.paymentStatus));
 
   if (input.staffNote !== undefined) {
@@ -7041,6 +7041,27 @@ function assignStringValue(
 function trimOptional(value: string | undefined) {
   const trimmed = value?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
+}
+
+function normalizeNullableOperationsText(value: string | undefined) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  const normalized = trimmed.toLowerCase();
+
+  if (
+    trimmed.length === 0 ||
+    trimmed === "未选择" ||
+    normalized === "unassigned" ||
+    normalized === "none" ||
+    normalized === "nessuno"
+  ) {
+    return null;
+  }
+
+  return trimmed;
 }
 
 function normalizeSku(value: string) {

@@ -1894,6 +1894,7 @@ function OrderDetailsPanel({
           </div>
 
           <OrderLogisticsCard
+            key={`${order.id}:${order.carrier}:${order.tracking}`}
             canEditLogistics={canEditLogistics}
             isMutating={isMutating}
             order={order}
@@ -1944,7 +1945,7 @@ function canShipOrder(order: AdminOrder) {
   return (
     order.status === "packed" &&
     order.carrier !== unassignedCarrier &&
-    order.tracking.trim().length > 0
+    (isPickupCarrier(order.carrier) || order.tracking.trim().length > 0)
   );
 }
 
@@ -1952,8 +1953,12 @@ function hasCarrier(order: AdminOrder) {
   return order.carrier !== unassignedCarrier;
 }
 
-function hasTracking(order: AdminOrder) {
-  return order.tracking.trim().length > 0;
+function hasRequiredOrderTracking(order: AdminOrder) {
+  return isPickupCarrier(order.carrier) || order.tracking.trim().length > 0;
+}
+
+function isPickupCarrier(carrier: string) {
+  return carrier.trim().toLowerCase().includes("ritiro");
 }
 
 function buildOrderTrackingDetail(
@@ -2064,9 +2069,12 @@ function ShipmentReadiness({
     },
     {
       label: text.orders.print.tracking,
-      ok: hasTracking(order),
+      ok: hasRequiredOrderTracking(order),
       value: order.tracking.trim() || text.common.none,
-      action: hasTracking(order) ? onToggleTrackingDetails : undefined,
+      action:
+        !isPickupCarrier(order.carrier) && order.tracking.trim()
+          ? onToggleTrackingDetails
+          : undefined,
     },
     {
       label: text.orders.details.orderLines,
@@ -2506,11 +2514,6 @@ function OrderLogisticsCard({
   const [carrierDraft, setCarrierDraft] = React.useState<Carrier>(order.carrier);
   const [trackingDraft, setTrackingDraft] = React.useState(order.tracking);
 
-  React.useEffect(() => {
-    setCarrierDraft(order.carrier);
-    setTrackingDraft(order.tracking);
-  }, [order.id, order.carrier, order.tracking]);
-
   const pickup = isPickupCarrier(carrierDraft);
   const normalizedTrackingDraft = pickup ? "" : trackingDraft.trim();
   const trackingUrl = buildCarrierTrackingUrl(carrierDraft, normalizedTrackingDraft);
@@ -2632,7 +2635,6 @@ function OrderLogisticsCard({
           {trackingUrl ? (
             <Button
               asChild
-              type="button"
               variant="outline"
               size="sm"
               className="min-w-0 rounded-md bg-white"
@@ -4474,11 +4476,36 @@ function normalizeWarehouseValue(value: unknown): WarehouseName {
 
 function normalizeCarrierValue(value: unknown): Carrier {
   const carrier = readString(value);
+  const normalized = carrier?.toLowerCase();
   const match = carrierOptions.find(
-    (item) => item.toLowerCase() === carrier?.toLowerCase()
+    (item) => item.toLowerCase() === normalized
   );
 
-  return match ?? unassignedCarrier;
+  if (match) {
+    return match;
+  }
+
+  if (normalized === "brt" || normalized?.includes("brt")) {
+    return "BRT 24-48h";
+  }
+
+  if (normalized === "gls" || normalized?.includes("gls")) {
+    return "GLS 24-48h";
+  }
+
+  if (normalized?.includes("dhl")) {
+    return "DHL Express";
+  }
+
+  if (normalized?.includes("ups")) {
+    return "UPS";
+  }
+
+  if (normalized?.includes("ritiro")) {
+    return "Ritiro in sede";
+  }
+
+  return unassignedCarrier;
 }
 
 function normalizeOrderDbStatusValue(value: unknown): OrderDbStatus {
