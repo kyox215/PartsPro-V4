@@ -107,7 +107,7 @@ import {
   sanitizeSupplierText,
   toPublicSku,
 } from "@/lib/partspro-sku";
-import { AdminBusyRegion } from "./admin-feedback";
+import { AdminSkeletonRows } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
 import { PartVisual as ProductVisual } from "./part-visual";
 
@@ -2115,6 +2115,8 @@ function ProductTable({
 }) {
   const allSelected = products.length > 0 && products.every((product) => selectedSkus.has(product.sku));
   const someSelected = products.some((product) => selectedSkus.has(product.sku));
+  const showInitialSkeleton = isLoading && products.length === 0;
+  const showRefreshBar = isLoading && products.length > 0;
 
   function toggleAll(checked: boolean) {
     onSelectChange(checked ? new Set(products.map((product) => product.sku)) : new Set());
@@ -2133,8 +2135,12 @@ function ProductTable({
   }
 
   return (
-    <AdminBusyRegion label={text.loading} pending={isLoading} rows={5}>
-      <div className="overflow-hidden bg-white">
+    <div
+      aria-busy={isLoading}
+      aria-live="polite"
+      className="min-w-0 overflow-hidden bg-white"
+    >
+      {showRefreshBar ? <ProductTableLoadingBar label={text.loading} /> : null}
       <div className="lg:hidden">
         {products.length ? (
           <div className="grid gap-2 p-2">
@@ -2157,29 +2163,47 @@ function ProductTable({
               />
             ))}
           </div>
+        ) : showInitialSkeleton ? (
+          <div className="p-2">
+            <AdminSkeletonRows rows={5} />
+          </div>
         ) : (
           <ProductEmptyState isLoading={isLoading} text={text} />
         )}
       </div>
       <div className="hidden lg:block">
-        <div className="max-w-full overflow-x-auto">
-          <Table className="min-w-[1080px]">
-            <TableHeader className="bg-slate-50">
+        <div className="max-w-full overflow-hidden">
+          <Table className="w-full table-fixed">
+            <TableHeader className="bg-slate-50 text-xs">
               <TableRow>
-                <TableHead className="w-10">
+                <TableHead className="w-9 whitespace-normal px-2">
                   <Checkbox
                     checked={allSelected || (someSelected && "indeterminate")}
                     onCheckedChange={(value) => toggleAll(value === true)}
                     aria-label="Select all products"
                   />
                 </TableHead>
-                <TableHead>{text.tableProduct}</TableHead>
-                <TableHead>{text.tableBrandModel}</TableHead>
-                <TableHead>{text.tableCatalog}</TableHead>
-                <TableHead>{text.tableStock}</TableHead>
-                <TableHead>{text.tablePrice}</TableHead>
-                <TableHead>{text.tableUpdated}</TableHead>
-                <TableHead className="text-right">{text.tableActions}</TableHead>
+                <TableHead className="w-[38%] whitespace-normal 2xl:w-[32%]">
+                  {text.tableProduct}
+                </TableHead>
+                <TableHead className="w-[16%] whitespace-normal 2xl:w-[14%]">
+                  {text.tableBrandModel}
+                </TableHead>
+                <TableHead className="w-[9%] whitespace-normal 2xl:w-[8%]">
+                  {text.tableCatalog}
+                </TableHead>
+                <TableHead className="w-[10%] whitespace-normal 2xl:w-[9%]">
+                  {text.tableStock}
+                </TableHead>
+                <TableHead className="w-[11%] whitespace-normal 2xl:w-[10%]">
+                  {text.tablePrice}
+                </TableHead>
+                <TableHead className="hidden w-[12%] whitespace-normal 2xl:table-cell">
+                  {text.tableUpdated}
+                </TableHead>
+                <TableHead className="w-12 whitespace-normal text-right">
+                  {text.tableActions}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -2196,40 +2220,40 @@ function ProductTable({
                     data-pending={pendingActionKey?.startsWith(`${product.sku}:`) ? "true" : undefined}
                     onClick={() => onView(product)}
                   >
-                    <TableCell onClick={(event) => event.stopPropagation()}>
+                    <TableCell className="w-9 whitespace-normal px-2" onClick={(event) => event.stopPropagation()}>
                       <Checkbox
                         checked={selectedSkus.has(product.sku)}
                         onCheckedChange={(value) => toggleOne(product.sku, value === true)}
                         aria-label={`Select ${product.sku}`}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-0 whitespace-normal">
                       <ProductIdentity product={product} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-0 whitespace-normal">
                       <ProductBrandModel product={product} />
                     </TableCell>
-                    <TableCell>
-                      <Badge className={catalogStatusBadgeClass(product.catalogStatus)}>
+                    <TableCell className="whitespace-normal">
+                      <Badge className={cn(catalogStatusBadgeClass(product.catalogStatus), "max-w-full truncate")}>
                         {adminText.enums.catalogStatus[product.catalogStatus]}
                       </Badge>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-0 whitespace-normal">
                       <ProductStockSummary
                         product={product}
                         adminText={adminText}
                         text={text}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="min-w-0 whitespace-normal">
                       <ProductPriceSummary product={product} text={text} />
                     </TableCell>
-                    <TableCell>
-                      <span className="whitespace-nowrap text-xs font-medium text-slate-500">
+                    <TableCell className="hidden whitespace-normal 2xl:table-cell">
+                      <span className="text-xs font-medium leading-tight text-slate-500">
                         {product.updatedAt}
                       </span>
                     </TableCell>
-                    <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
+                    <TableCell className="w-12 whitespace-normal px-2 text-right" onClick={(event) => event.stopPropagation()}>
                       <ProductActionsMenu
                         product={product}
                         isMutating={isMutating}
@@ -2247,8 +2271,12 @@ function ProductTable({
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={8}>
-                    <ProductEmptyState isLoading={isLoading} text={text} />
+                  <TableCell className="whitespace-normal p-3" colSpan={8}>
+                    {showInitialSkeleton ? (
+                      <AdminSkeletonRows rows={5} />
+                    ) : (
+                      <ProductEmptyState isLoading={isLoading} text={text} />
+                    )}
                   </TableCell>
                 </TableRow>
               )}
@@ -2256,8 +2284,24 @@ function ProductTable({
           </Table>
         </div>
       </div>
+    </div>
+  );
+}
+
+function ProductTableLoadingBar({ label }: { label: string }) {
+  return (
+    <div
+      className="border-b border-primary/10 bg-primary/5 px-3 py-1.5 text-xs font-bold text-primary"
+      role="status"
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <Loader2 className="size-3.5 shrink-0 animate-spin" />
+        <span className="truncate">{label}</span>
       </div>
-    </AdminBusyRegion>
+      <div className="mt-1 h-0.5 overflow-hidden rounded-full bg-primary/10">
+        <div className="h-full w-1/3 animate-pulse rounded-full bg-primary/70" />
+      </div>
+    </div>
   );
 }
 
@@ -2317,7 +2361,7 @@ function ProductMobileCard({
           className="grid min-w-0 content-start text-left"
           onClick={() => onView(product)}
         >
-          <div className="line-clamp-2 min-h-9 text-[13px] font-black leading-[18px] text-slate-950">
+          <div className="line-clamp-2 min-h-9 break-words text-[13px] font-black leading-[18px] text-slate-950 [overflow-wrap:anywhere]">
             {product.name}
           </div>
           <div className="mt-0.5 truncate font-mono text-[11px] font-semibold leading-4 text-slate-500">
@@ -2358,17 +2402,17 @@ function ProductMobileCard({
 
 function ProductIdentity({ product }: { product: AdminProductRow }) {
   return (
-    <div className="flex min-w-[280px] items-center gap-3">
-      <ProductImageThumb product={product} className="size-11" sizes="44px" />
-      <div className="min-w-0">
-        <div className="line-clamp-2 text-sm font-bold leading-snug text-slate-950">
+    <div className="flex min-w-0 items-center gap-2">
+      <ProductImageThumb product={product} className="size-10 xl:size-11" sizes="44px" />
+      <div className="min-w-0 flex-1">
+        <div className="line-clamp-2 break-words text-sm font-bold leading-snug text-slate-950 [overflow-wrap:anywhere]">
           {product.name}
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-2">
-          <span className="break-all font-mono text-[11px] font-semibold text-slate-500">
+        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+          <span className="min-w-0 break-all font-mono text-[11px] font-semibold text-slate-500">
             {product.sku}
           </span>
-          <span className="text-[11px] font-semibold text-slate-400">
+          <span className="min-w-0 truncate text-[11px] font-semibold text-slate-400">
             {product.category}
           </span>
         </div>
@@ -2605,18 +2649,18 @@ function ProductBrandModel({ product }: { product: AdminProductRow }) {
   const firstModel = product.compatibleWith[0] ?? product.model ?? "—";
 
   return (
-    <div className="space-y-1">
-      <div className="text-sm font-bold text-slate-900">{product.brand}</div>
+    <div className="min-w-0 space-y-1">
+      <div className="truncate text-sm font-bold text-slate-900">{product.brand}</div>
       {product.modelSeries && (
-        <div className="max-w-[220px] truncate text-[11px] font-bold text-slate-400">
+        <div className="line-clamp-1 break-words text-[11px] font-bold text-slate-400 [overflow-wrap:anywhere]">
           {product.modelSeries}
         </div>
       )}
-      <div className="max-w-[220px] truncate text-xs font-medium text-slate-500">
+      <div className="line-clamp-2 break-words text-xs font-medium leading-snug text-slate-500 [overflow-wrap:anywhere]">
         {firstModel}
       </div>
       {product.modelCode && (
-        <div className="font-mono text-[11px] text-slate-400">{product.modelCode}</div>
+        <div className="break-all font-mono text-[11px] leading-tight text-slate-400">{product.modelCode}</div>
       )}
     </div>
   );
@@ -2634,8 +2678,8 @@ function ProductStockSummary({
   const restockCount = product.activeRestockRequestCount ?? 0;
 
   return (
-    <div className="space-y-1">
-      <Badge className={stockStatusBadgeClass(product.status)}>
+    <div className="min-w-0 space-y-1">
+      <Badge className={cn(stockStatusBadgeClass(product.status), "max-w-full truncate")}>
         {adminText.enums.stockStatus[product.status]}
       </Badge>
       <div className="text-xs font-semibold text-slate-600">
@@ -2647,9 +2691,11 @@ function ProductStockSummary({
         })}
       </div>
       {restockCount > 0 ? (
-        <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-bold text-amber-700">
-          <Bell className="size-3" />
-          {formatAdminMessage(text.restockActiveCount, { count: restockCount })}
+        <div className="inline-flex max-w-full items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-bold text-amber-700">
+          <Bell className="size-3 shrink-0" />
+          <span className="truncate">
+            {formatAdminMessage(text.restockActiveCount, { count: restockCount })}
+          </span>
         </div>
       ) : null}
     </div>
@@ -2664,12 +2710,12 @@ function ProductPriceSummary({
   text: typeof panelText.zh | typeof panelText.it;
 }) {
   return (
-    <div className="space-y-1">
-      <div className="text-sm font-black text-slate-950">{formatEuro(product.price)}</div>
-      <div className="text-xs font-semibold text-slate-500">
+    <div className="min-w-0 space-y-1">
+      <div className="text-sm font-black leading-tight text-slate-950">{formatEuro(product.price)}</div>
+      <div className="break-words text-xs font-semibold leading-tight text-slate-500">
         {text.margin} {(product.margin ?? 0).toFixed(1)}%
       </div>
-      <div className="text-[11px] text-slate-400">
+      <div className="break-words text-[11px] leading-tight text-slate-400">
         {text.costPrice} {formatEuro(product.costPrice ?? 0)}
       </div>
     </div>
