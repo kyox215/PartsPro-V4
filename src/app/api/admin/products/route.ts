@@ -45,6 +45,7 @@ export async function GET(request: NextRequest) {
       data: result.data.products.map(toAdminProductDto),
       meta: {
         source: result.source,
+        summary: result.data.summary,
         total: result.data.total,
         limit: resolvedQuery.data.limit,
         offset: resolvedQuery.data.offset,

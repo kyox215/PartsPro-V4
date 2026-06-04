@@ -660,7 +660,7 @@ export function AdminAccountsPanel() {
             <SheetTitle>{detail?.account.email ?? "账号详情"}</SheetTitle>
             <SheetDescription>账号资料、权限和审计。</SheetDescription>
           </SheetHeader>
-          <div className="p-2">
+          <div className="p-1.5 sm:p-2">
             <AccountDetailPane
               canManageCustomerLevel={canManageCustomerLevel}
               canManageCustomerStatus={canManageCustomerStatus}
@@ -779,14 +779,14 @@ function AccountDetailPane({
 
   if (loading && !detail) {
     return (
-      <div className="rounded-md border border-slate-200 bg-white p-3">
-        <div className="h-7 w-48 animate-pulse rounded bg-slate-100" />
-        <div className="mt-3 grid gap-2 sm:grid-cols-3">
-          <div className="h-16 animate-pulse rounded bg-slate-100" />
-          <div className="h-16 animate-pulse rounded bg-slate-100" />
-          <div className="h-16 animate-pulse rounded bg-slate-100" />
+      <div className="rounded-md border border-slate-200 bg-white p-2 sm:p-3">
+        <div className="h-6 w-40 animate-pulse rounded bg-slate-100 sm:h-7 sm:w-48" />
+        <div className="mt-2 grid grid-cols-3 gap-1 sm:mt-3 sm:gap-2">
+          <div className="h-12 animate-pulse rounded bg-slate-100 sm:h-16" />
+          <div className="h-12 animate-pulse rounded bg-slate-100 sm:h-16" />
+          <div className="h-12 animate-pulse rounded bg-slate-100 sm:h-16" />
         </div>
-        <div className="mt-3 h-36 animate-pulse rounded bg-slate-100" />
+        <div className="mt-2 h-28 animate-pulse rounded bg-slate-100 sm:mt-3 sm:h-36" />
       </div>
     );
   }
@@ -816,57 +816,57 @@ function AccountDetailPane({
       pending={loading}
       rows={3}
     >
-      <div className="min-w-0 space-y-2 rounded-md border border-slate-200 bg-slate-50/70 p-2">
-      <div className="flex min-w-0 items-start gap-2 rounded-md border border-slate-200 bg-white p-2.5">
-        <AccountAvatar account={account} size="lg" />
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <h3 className="min-w-0 break-words text-base font-black leading-6 text-slate-950">
-              {account.displayName ?? account.email ?? "账号详情"}
-            </h3>
-            {isSelf ? (
-              <Badge className="border-blue-200 bg-blue-50 text-blue-700" variant="outline">
-                当前账号
+      <div className="min-w-0 space-y-1.5 rounded-md border border-slate-200 bg-slate-50/70 p-1.5 sm:space-y-2 sm:p-2">
+        <div className="flex min-w-0 items-start gap-2 rounded-md border border-slate-200 bg-white p-2 sm:p-2.5">
+          <AccountAvatar account={account} size="lg" />
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5 sm:gap-2">
+              <h3 className="min-w-0 break-words text-sm font-black leading-5 text-slate-950 sm:text-base sm:leading-6">
+                {account.displayName ?? account.email ?? "账号详情"}
+              </h3>
+              {isSelf ? (
+                <Badge className="border-blue-200 bg-blue-50 text-blue-700" variant="outline">
+                  当前账号
+                </Badge>
+              ) : null}
+            </div>
+            <div className="break-words text-[11px] font-semibold leading-4 text-slate-500 sm:text-xs">
+              {account.email ?? account.userId}
+            </div>
+            <div className="mt-1 flex flex-wrap gap-1 sm:mt-1.5">
+              <Badge className={accountTypeBadgeClass(account.accountType)} variant="outline">
+                {accountTypeLabel(account.accountType)}
               </Badge>
-            ) : null}
-          </div>
-          <div className="break-words text-xs font-semibold text-slate-500">
-            {account.email ?? account.userId}
-          </div>
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            <Badge className={accountTypeBadgeClass(account.accountType)} variant="outline">
-              {accountTypeLabel(account.accountType)}
-            </Badge>
-            <Badge className="border-slate-200 bg-slate-50 text-slate-600" variant="outline">
-              {account.authProvider}
-            </Badge>
-            <Badge className="border-slate-200 bg-slate-50 text-slate-600" variant="outline">
-              {formatDate(account.createdAt) ?? "无创建时间"}
-            </Badge>
+              <Badge className="border-slate-200 bg-slate-50 text-slate-600" variant="outline">
+                {account.authProvider}
+              </Badge>
+              <Badge className="border-slate-200 bg-slate-50 text-slate-600" variant="outline">
+                {formatDate(account.createdAt) ?? "无创建时间"}
+              </Badge>
+            </div>
           </div>
         </div>
-      </div>
 
-      <div className="grid gap-1.5 sm:grid-cols-3">
-        <InfoTile
-          icon={UsersRound}
-          label={account.accountType === "customer" ? "客户资料" : "账号资料"}
-          value={account.customer?.name ?? account.displayName ?? account.email ?? "客户资料未初始化"}
-        />
-        <InfoTile
-          icon={BriefcaseBusiness}
-          label="账号角色"
-          value={
-            account.accountType === "employee"
-              ? roleTemplateLabel(text, account.roleTemplate ?? account.role)
-              : accountTypeLabel(account.accountType)
-          }
-        />
-        <InfoTile icon={KeyRound} label="有效权限" value={detail.permissions.length} />
-      </div>
+        <div className="grid grid-cols-3 gap-1 sm:gap-1.5">
+          <InfoTile
+            icon={UsersRound}
+            label={account.accountType === "customer" ? "客户资料" : "账号资料"}
+            value={account.customer?.name ?? account.displayName ?? account.email ?? "客户资料未初始化"}
+          />
+          <InfoTile
+            icon={BriefcaseBusiness}
+            label="账号角色"
+            value={
+              account.accountType === "employee"
+                ? roleTemplateLabel(text, account.roleTemplate ?? account.role)
+                : accountTypeLabel(account.accountType)
+            }
+          />
+          <InfoTile icon={KeyRound} label="有效权限" value={detail.permissions.length} />
+        </div>
 
       {account.accountType === "customer" && detail.customer ? (
-        <div className="grid gap-1.5 sm:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-3 gap-1 sm:gap-1.5 lg:grid-cols-6">
           <InfoTile
             icon={BadgeCheck}
             label="活跃状态"
@@ -900,37 +900,36 @@ function AccountDetailPane({
         </div>
       ) : null}
 
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex flex-wrap gap-1">
         {account.accountType === "customer" && canManageEmployeeAccounts ? (
           <Button
-            size="sm"
-            className="h-8"
+            size="xs"
             disabled={isSelf}
             onClick={() => onAction("to_employee", account)}
           >
-            <ArrowLeftRight className="size-4" />
+            <ArrowLeftRight className="size-3.5" />
             转为员工
           </Button>
         ) : account.accountType === "employee" && canManageEmployeeAccounts ? (
           <>
             <Button
-              size="sm"
+              size="xs"
               variant="outline"
-              className="h-8 bg-white"
+              className="bg-white"
               disabled={isSelf}
               onClick={() => onAction("role", account)}
             >
-              <ShieldCheck className="size-4" />
+              <ShieldCheck className="size-3.5" />
               调整角色
             </Button>
             <Button
-              size="sm"
+              size="xs"
               variant="outline"
-              className="h-8 bg-white"
+              className="bg-white"
               disabled={isSelf}
               onClick={() => onAction("to_customer", account)}
             >
-              <ArrowLeftRight className="size-4" />
+              <ArrowLeftRight className="size-3.5" />
               转为客户
             </Button>
           </>
@@ -949,45 +948,45 @@ function AccountDetailPane({
 
       <DetailSection title="客户资料">
         {detail.customer ? (
-          <div className="space-y-2">
-            <div className="flex flex-wrap gap-1.5">
+          <div className="space-y-1.5 sm:space-y-2">
+            <div className="grid grid-cols-3 gap-1 sm:flex sm:flex-wrap sm:gap-1.5">
               <Button
-                size="sm"
+                size="xs"
                 variant="outline"
-                className="h-8 bg-white"
+                className="bg-white"
                 disabled={!canManageCustomerLevel}
                 onClick={() => onCustomerAction("customer_level", account)}
               >
-                <Star className="size-4" />
+                <Star className="size-3.5" />
                 修改等级
               </Button>
               <Button
-                size="sm"
+                size="xs"
                 variant="outline"
-                className="h-8 bg-white"
+                className="bg-white"
                 disabled={!canManageCustomerStatus}
                 onClick={() => onCustomerAction("customer_status", account)}
               >
-                <BadgeCheck className="size-4" />
+                <BadgeCheck className="size-3.5" />
                 修改状态
               </Button>
               <Button
-                size="sm"
+                size="xs"
                 variant="outline"
-                className="h-8 bg-white"
+                className="bg-white"
                 disabled={!canManageCustomerType}
                 onClick={() => onCustomerAction("customer_type", account)}
               >
-                <BriefcaseBusiness className="size-4" />
+                <BriefcaseBusiness className="size-3.5" />
                 修改价格类型
               </Button>
               {!canManageCustomerLevel || !canManageCustomerStatus || !canManageCustomerType ? (
-                <span className="text-xs font-semibold leading-8 text-slate-500">
+                <span className="col-span-3 text-[11px] font-semibold leading-5 text-slate-500 sm:text-xs sm:leading-8">
                   缺少权限的操作会被锁定。
                 </span>
               ) : null}
             </div>
-            <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-2 gap-1 sm:gap-1.5 lg:grid-cols-3">
               <DetailLine label="公司/名称" value={detail.customer.name ?? "暂无"} />
               <DetailLine label="活跃状态" value={customerStatusLabel(detail.customer.status)} />
               <DetailLine label="价格类型" value={customerTypeLabel(detail.customer.customerType)} />
@@ -1638,20 +1637,22 @@ function InfoTile({
   value: React.ReactNode;
 }) {
   return (
-    <div className="min-w-0 rounded-md border border-slate-200 bg-white px-2 py-1.5">
-      <div className="flex items-center gap-1 text-[11px] font-bold text-slate-500">
-        <Icon className="size-3.5" />
-        {label}
+    <div className="min-h-[46px] min-w-0 rounded-md border border-slate-200 bg-white px-1.5 py-1 sm:min-h-[56px] sm:px-2 sm:py-1.5">
+      <div className="flex min-w-0 items-center gap-1 text-[10px] font-bold leading-3 text-slate-500 sm:text-[11px]">
+        <Icon className="size-3 shrink-0 sm:size-3.5" />
+        <span className="min-w-0 truncate">{label}</span>
       </div>
-      <div className="mt-0.5 truncate text-[13px] font-black leading-5 text-slate-900">{value}</div>
+      <div className="mt-0.5 truncate text-[12px] font-black leading-4 text-slate-900 sm:text-[13px] sm:leading-5">
+        {value}
+      </div>
     </div>
   );
 }
 
 function DetailSection({ children, title }: { children: React.ReactNode; title: string }) {
   return (
-    <section className="rounded-md border border-slate-200 bg-white p-2.5">
-      <h4 className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">{title}</h4>
+    <section className="rounded-md border border-slate-200 bg-white p-2 sm:p-2.5">
+      <h4 className="mb-1.5 text-[11px] font-black uppercase tracking-wide text-slate-500 sm:mb-2 sm:text-xs">{title}</h4>
       {children}
     </section>
   );
@@ -1659,9 +1660,9 @@ function DetailSection({ children, title }: { children: React.ReactNode; title: 
 
 function DetailLine({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="min-w-0 rounded-md bg-slate-50 px-2 py-1">
+    <div className="min-w-0 rounded-md bg-slate-50 px-1.5 py-1 sm:px-2">
       <div className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</div>
-      <div className="break-words text-xs font-bold leading-5 text-slate-900">{value}</div>
+      <div className="truncate text-[11px] font-bold leading-4 text-slate-900 sm:break-words sm:text-xs sm:leading-5">{value}</div>
     </div>
   );
 }

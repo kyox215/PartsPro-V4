@@ -1,0 +1,234 @@
+drop function if exists public.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text);
+drop function if exists public.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text);
+drop function if exists public.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text);
+drop function if exists public.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text, text);
+drop function if exists public.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text, text, boolean);
+drop function if exists private.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text);
+drop function if exists private.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text);
+drop function if exists private.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text);
+drop function if exists private.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text, text);
+drop function if exists private.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text, text, boolean);
+
+create or replace function private.admin_list_products(
+  p_limit integer default 20,
+  p_offset integer default 0,
+  p_q text default null,
+  p_brand text default null,
+  p_model text default null,
+  p_category text default null,
+  p_catalog_status text default null,
+  p_stock_status text default null,
+  p_warehouse text default null,
+  p_grade text default null,
+  p_sort text default 'updated_desc',
+  p_model_series text default null,
+  p_supplier text default null,
+  p_batch_code text default null,
+  p_active_restock_only boolean default false
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_limit integer := least(greatest(coalesce(p_limit, 20), 1), 200);
+  v_offset integer := greatest(coalesce(p_offset, 0), 0);
+  v_sort text := coalesce(nullif(btrim(p_sort), ''), 'updated_desc');
+  v_products jsonb := '[]'::jsonb;
+  v_summary jsonb := '{}'::jsonb;
+begin
+  perform private.partspro_assert_admin_product_read();
+
+  with inventory_summary as (
+    select
+      i.sku_code,
+      coalesce(sum(i.actual_qty), 0) as actual_qty,
+      coalesce(sum(i.available_qty), 0) as available_qty,
+      coalesce(sum(i.locked_qty), 0) as locked_qty
+    from public.inventory_items as i
+    group by i.sku_code
+  ),
+  restock_summary as (
+    select
+      r.sku_code,
+      count(*)::bigint as active_restock_request_count
+    from public.product_restock_requests as r
+    where r.status = 'active'
+    group by r.sku_code
+  ),
+  filtered_products as (
+    select
+      p.id,
+      p.sku_code,
+      p.name,
+      p.brand,
+      p.model,
+      p.model_code,
+      p.model_codes,
+      p.category,
+      p.quality_grade,
+      p.stock_status,
+      p.moq,
+      p.cost_price,
+      p.retail_price,
+      p.b2b_price,
+      p.vat_mode,
+      p.warranty_days,
+      p.weight_gram,
+      p.stock_qty,
+      p.location,
+      p.batch_code,
+      p.supplier,
+      p.compatibility_models,
+      p.highlights,
+      p.status,
+      p.updated_at,
+      p.image_path,
+      p.image_alt,
+      p.gallery_image_paths,
+      p.created_at,
+      coalesce(inv.actual_qty, p.stock_qty::bigint) as actual_qty,
+      coalesce(inv.available_qty, p.stock_qty::bigint) as available_qty,
+      coalesce(inv.locked_qty, 0) as locked_qty,
+      coalesce(restock.active_restock_request_count, 0) as active_restock_request_count
+    from public.products as p
+    left join inventory_summary as inv on inv.sku_code = p.sku_code
+    left join restock_summary as restock on restock.sku_code = p.sku_code
+    where (nullif(btrim(coalesce(p_q, '')), '') is null
+        or p.name ilike '%' || btrim(p_q) || '%'
+        or p.sku_code ilike '%' || btrim(p_q) || '%'
+        or p.brand ilike '%' || btrim(p_q) || '%'
+        or p.category ilike '%' || btrim(p_q) || '%'
+        or p.model ilike '%' || btrim(p_q) || '%'
+        or p.model_code ilike '%' || btrim(p_q) || '%'
+        or p.model_series ilike '%' || btrim(p_q) || '%'
+        or p.batch_code ilike '%' || btrim(p_q) || '%'
+        or p.supplier ilike '%' || btrim(p_q) || '%')
+      and (nullif(btrim(coalesce(p_brand, '')), '') is null or p.brand = p_brand)
+      and (nullif(btrim(coalesce(p_category, '')), '') is null or p.category = p_category)
+      and (nullif(btrim(coalesce(p_catalog_status, '')), '') is null or p.status = p_catalog_status)
+      and (nullif(btrim(coalesce(p_stock_status, '')), '') is null or p.stock_status = p_stock_status)
+      and (nullif(btrim(coalesce(p_warehouse, '')), '') is null or p.location = p_warehouse)
+      and (nullif(btrim(coalesce(p_grade, '')), '') is null or p.quality_grade = p_grade)
+      and (nullif(btrim(coalesce(p_batch_code, '')), '') is null or p.batch_code ilike '%' || btrim(p_batch_code) || '%')
+      and (nullif(btrim(coalesce(p_supplier, '')), '') is null or p.supplier ilike '%' || btrim(p_supplier) || '%')
+      and (not coalesce(p_active_restock_only, false) or coalesce(restock.active_restock_request_count, 0) > 0)
+      and (nullif(btrim(coalesce(p_model_series, '')), '') is null
+        or p.model_series = p_model_series
+        or exists (
+          select 1
+          from unnest(coalesce(p.model_codes, '{}'::text[]) || coalesce(p.compatibility_models, '{}'::text[])) as model_option(model)
+          where private.partspro_model_series(p.brand, model_option.model) = p_model_series
+        ))
+      and (
+        nullif(btrim(coalesce(p_model, '')), '') is null
+        or p.model = p_model
+        or p_model = any(p.model_codes)
+        or p.compatibility_models @> array[p_model]::text[]
+      )
+  ),
+  summary as (
+    select
+      count(*)::bigint as total,
+      count(*) filter (where status = 'active') as active,
+      count(*) filter (where status = 'draft') as draft,
+      count(*) filter (where status = 'hidden') as hidden,
+      count(*) filter (where status = 'blocked') as blocked,
+      count(*) filter (where coalesce(available_qty, stock_qty::bigint, 0) > 0 and coalesce(available_qty, stock_qty::bigint, 0) < 10) as low_stock,
+      count(*) filter (where nullif(btrim(coalesce(image_path, '')), '') is null) as missing_image,
+      count(*) filter (where coalesce(b2b_price, 0) <= 0) as missing_price,
+      coalesce(sum(active_restock_request_count), 0)::bigint as restock_requests
+    from filtered_products
+  ),
+  page_products as (
+    select *
+    from filtered_products
+    order by
+      case when v_sort = 'stock_desc' then stock_qty end desc nulls last,
+      case when v_sort = 'created_desc' then created_at end desc nulls last,
+      case when v_sort = 'name' then name end asc nulls last,
+      case when v_sort not in ('stock_desc', 'created_desc', 'name') then updated_at end desc nulls last,
+      sku_code asc
+    limit v_limit
+    offset v_offset
+  ),
+  page_json as (
+    select coalesce(jsonb_agg(to_jsonb(page_products)), '[]'::jsonb) as products
+    from page_products
+  )
+  select
+    page_json.products,
+    jsonb_build_object(
+      'total', coalesce(summary.total, 0),
+      'active', coalesce(summary.active, 0),
+      'draft', coalesce(summary.draft, 0),
+      'hidden', coalesce(summary.hidden, 0),
+      'blocked', coalesce(summary.blocked, 0),
+      'lowStock', coalesce(summary.low_stock, 0),
+      'restockRequests', coalesce(summary.restock_requests, 0),
+      'missingImage', coalesce(summary.missing_image, 0),
+      'missingPrice', coalesce(summary.missing_price, 0)
+    )
+  into v_products, v_summary
+  from page_json
+  cross join summary;
+
+  return jsonb_build_object(
+    'products', coalesce(v_products, '[]'::jsonb),
+    'total', coalesce((v_summary->>'total')::bigint, 0),
+    'summary', coalesce(v_summary, '{}'::jsonb)
+  );
+end;
+$$;
+
+create or replace function public.admin_list_products(
+  p_limit integer default 20,
+  p_offset integer default 0,
+  p_q text default null,
+  p_brand text default null,
+  p_model text default null,
+  p_category text default null,
+  p_catalog_status text default null,
+  p_stock_status text default null,
+  p_warehouse text default null,
+  p_grade text default null,
+  p_sort text default 'updated_desc',
+  p_model_series text default null,
+  p_supplier text default null,
+  p_batch_code text default null,
+  p_active_restock_only boolean default false
+)
+returns jsonb
+language sql
+security invoker
+set search_path = public, pg_temp
+as $$
+  select private.admin_list_products(
+    p_limit => p_limit,
+    p_offset => p_offset,
+    p_q => p_q,
+    p_brand => p_brand,
+    p_model => p_model,
+    p_category => p_category,
+    p_catalog_status => p_catalog_status,
+    p_stock_status => p_stock_status,
+    p_warehouse => p_warehouse,
+    p_grade => p_grade,
+    p_sort => p_sort,
+    p_model_series => p_model_series,
+    p_supplier => p_supplier,
+    p_batch_code => p_batch_code,
+    p_active_restock_only => p_active_restock_only
+  )
+$$;
+
+revoke execute on function private.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text, text, boolean) from public;
+revoke execute on function private.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text, text, boolean) from anon;
+grant execute on function private.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text, text, boolean) to authenticated;
+
+revoke execute on function public.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text, text, boolean) from public;
+revoke execute on function public.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text, text, boolean) from anon;
+grant execute on function public.admin_list_products(integer, integer, text, text, text, text, text, text, text, text, text, text, text, text, boolean) to authenticated;
+
+notify pgrst, 'reload schema';

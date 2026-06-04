@@ -151,6 +151,7 @@ type ProductSource = "supabase" | "api" | "empty";
 type StockAdjustmentAction = (typeof stockAdjustmentActions)[number];
 type FilterValue<T extends string> = "all" | T;
 type ProductListFilters = {
+  activeRestockOnly: boolean;
   q: string;
   brand: string;
   batchCode: string;
@@ -196,6 +197,18 @@ type ProductDataSource = {
   error?: string;
 };
 
+type ProductMetrics = {
+  total: number;
+  active: number;
+  draft: number;
+  hidden: number;
+  blocked: number;
+  lowStock: number;
+  restockRequests: number;
+  missingImage: number;
+  missingPrice: number;
+};
+
 type ProductNotice = {
   tone: "success" | "info" | "warning" | "error";
   message: string;
@@ -217,6 +230,7 @@ type AdminRestockRequest = {
 type ProductsApiResult = {
   products: AdminProductRow[];
   source: ProductSource;
+  summary: ProductMetrics;
   total: number;
   returned: number;
 };
@@ -295,6 +309,7 @@ type ProductAuditEvent = {
 };
 
 const defaultFilters: ProductListFilters = {
+  activeRestockOnly: false,
   q: "",
   brand: "all",
   batchCode: "",
@@ -315,6 +330,17 @@ const emptyProductSource: ProductDataSource = {
   syncedAt: null,
   total: 0,
   returned: 0,
+};
+const emptyProductMetrics: ProductMetrics = {
+  total: 0,
+  active: 0,
+  draft: 0,
+  hidden: 0,
+  blocked: 0,
+  lowStock: 0,
+  restockRequests: 0,
+  missingImage: 0,
+  missingPrice: 0,
 };
 
 const panelText = {
@@ -817,6 +843,8 @@ export function AdminProductsPanel() {
   const adminText = getAdminDictionary(locale).admin;
   const [filters, setFilters] = React.useState<ProductListFilters>(defaultFilters);
   const [products, setProducts] = React.useState<AdminProductRow[]>([]);
+  const [productMetrics, setProductMetrics] =
+    React.useState<ProductMetrics>(emptyProductMetrics);
   const [dataSource, setDataSource] = React.useState<ProductDataSource>(() => ({
     ...emptyProductSource,
     label: productSourceLabel("empty", adminText),
@@ -829,7 +857,6 @@ export function AdminProductsPanel() {
   const [pendingProductActionKey, setPendingProductActionKey] =
     React.useState<string | null>(null);
   const [isLoadingModelGroups, setIsLoadingModelGroups] = React.useState(true);
-  const [showRestockOnly, setShowRestockOnly] = React.useState(false);
   const [isRestockDialogOpen, setIsRestockDialogOpen] = React.useState(false);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = React.useState(false);
   const [drawerMode, setDrawerMode] = React.useState<ProductDrawerMode | null>(null);
@@ -839,7 +866,10 @@ export function AdminProductsPanel() {
     React.useState<AdminProductRow | null>(null);
 
   const refreshProducts = React.useCallback(
-    async (signal?: AbortSignal) => {
+    async (
+      signal?: AbortSignal,
+      options: { clearNotice?: boolean } = {}
+    ) => {
       setIsLoading(true);
 
       try {
@@ -850,6 +880,7 @@ export function AdminProductsPanel() {
         }
 
         setProducts(result.products);
+        setProductMetrics(result.summary);
         setDataSource({
           source: result.source,
           label: productSourceLabel(result.source, adminText),
@@ -858,7 +889,9 @@ export function AdminProductsPanel() {
           returned: result.returned,
         });
         setSelectedSkus(new Set());
-        setNotice(null);
+        if (options.clearNotice !== false) {
+          setNotice(null);
+        }
       } catch (error) {
         if (signal?.aborted) {
           return;
@@ -914,21 +947,16 @@ export function AdminProductsPanel() {
     return () => controller.abort();
   }, []);
 
+  const refreshProductsQuietly = React.useCallback(() => {
+    void refreshProducts(undefined, { clearNotice: false });
+  }, [refreshProducts]);
+
   const selectedProducts = React.useMemo(
     () => products.filter((product) => selectedSkus.has(product.sku)),
     [products, selectedSkus]
   );
-  const visibleProducts = React.useMemo(
-    () =>
-      showRestockOnly
-        ? products.filter((product) => (product.activeRestockRequestCount ?? 0) > 0)
-        : products,
-    [products, showRestockOnly]
-  );
-  const metrics = React.useMemo(
-    () => buildProductMetrics(products, dataSource.total),
-    [dataSource.total, products]
-  );
+  const visibleProducts = products;
+  const metrics = productMetrics;
   const pageCount = Math.max(1, Math.ceil(dataSource.total / filters.pageSize));
 
   function updateFilters(patch: Partial<ProductListFilters>) {
@@ -972,6 +1000,7 @@ export function AdminProductsPanel() {
         tone: "success",
         message: formatAdminMessage(text.createSuccess, { sku: saved.sku }),
       });
+      refreshProductsQuietly();
 
       return saved;
     } catch (error) {
@@ -992,6 +1021,7 @@ export function AdminProductsPanel() {
         tone: "success",
         message: formatAdminMessage(text.saveSuccess, { sku: saved.sku }),
       });
+      refreshProductsQuietly();
 
       return saved;
     } catch (error) {
@@ -1016,6 +1046,7 @@ export function AdminProductsPanel() {
           status: adminText.enums.catalogStatus[saved.catalogStatus],
         }),
       });
+      refreshProductsQuietly();
     } catch {
       setNotice({ tone: "error", message: text.actionError });
     } finally {
@@ -1041,6 +1072,7 @@ export function AdminProductsPanel() {
         tone: "info",
         message: formatAdminMessage(text.hideSuccess, { count: savedProducts.length }),
       });
+      refreshProductsQuietly();
     } catch {
       setNotice({ tone: "error", message: text.actionError });
     } finally {
@@ -1076,6 +1108,7 @@ export function AdminProductsPanel() {
         tone: "success",
         message: formatAdminMessage(text.stockSuccess, { sku: saved.sku }),
       });
+      refreshProductsQuietly();
       return true;
     } catch {
       setNotice({ tone: "error", message: text.stockError });
@@ -1092,6 +1125,7 @@ export function AdminProductsPanel() {
       tone: "success",
       message: formatAdminMessage(text.mediaSuccess, { sku: product.sku }),
     });
+    refreshProductsQuietly();
   }
 
   function openDrawer(mode: ProductDrawerMode, product: AdminProductRow | null = null) {
@@ -1150,10 +1184,12 @@ export function AdminProductsPanel() {
               <span className="min-w-0 truncate">{text.sync}</span>
             </Button>
             <Button
-              variant={showRestockOnly ? "default" : "outline"}
+              variant={filters.activeRestockOnly ? "default" : "outline"}
               size="xs"
               className="h-8 min-w-0 px-2 sm:h-9 sm:px-3"
-              onClick={() => setShowRestockOnly((current) => !current)}
+              onClick={() =>
+                updateFilters({ activeRestockOnly: !filters.activeRestockOnly })
+              }
             >
               <Bell className="size-4" />
               <span className="min-w-0 truncate">{text.restockOnly}</span>
@@ -1375,6 +1411,7 @@ export function AdminProductsPanel() {
                 : product
             )
           );
+          refreshProductsQuietly();
         }}
         onNotice={setNotice}
         onOpenChange={setIsRestockDialogOpen}
@@ -1539,7 +1576,7 @@ function ProductMetricGrid({
   metrics,
   text,
 }: {
-  metrics: ReturnType<typeof buildProductMetrics>;
+  metrics: ProductMetrics;
   text: typeof panelText.zh | typeof panelText.it;
 }) {
   const cards = [
@@ -4632,6 +4669,10 @@ async function fetchAdminProducts(
     params.set("batchCode", filters.batchCode.trim());
   }
 
+  if (filters.activeRestockOnly) {
+    params.set("activeRestockOnly", "1");
+  }
+
   const response = await fetch(`${adminProductsEndpoint}?${params.toString()}`, {
     cache: "no-store",
     headers: { Accept: "application/json", "Cache-Control": "no-cache" },
@@ -4879,12 +4920,37 @@ function parseProductsApiPayload(payload: unknown): ProductsApiResult {
   const products = rows.map(normalizeProductApiRow).filter(isDefined);
   const meta = readProductsMeta(payload);
   const source = readProductsSource(readString(meta.source), products.length);
+  const total = readNumber(meta.total) ?? products.length;
 
   return {
     products,
     source,
-    total: readNumber(meta.total) ?? products.length,
+    summary: parseProductMetrics(meta.summary, products, total),
+    total,
     returned: readNumber(meta.returned) ?? products.length,
+  };
+}
+
+function parseProductMetrics(
+  value: unknown,
+  products: AdminProductRow[],
+  total: number
+): ProductMetrics {
+  if (!isRecord(value)) {
+    return buildProductMetrics(products, total);
+  }
+
+  return {
+    total: readNumber(value.total) ?? total,
+    active: readNumber(value.active) ?? 0,
+    draft: readNumber(value.draft) ?? 0,
+    hidden: readNumber(value.hidden) ?? 0,
+    blocked: readNumber(value.blocked) ?? 0,
+    lowStock: readNumber(value.lowStock) ?? readNumber(value.low_stock) ?? 0,
+    restockRequests:
+      readNumber(value.restockRequests) ?? readNumber(value.restock_requests) ?? 0,
+    missingImage: readNumber(value.missingImage) ?? readNumber(value.missing_image) ?? 0,
+    missingPrice: readNumber(value.missingPrice) ?? readNumber(value.missing_price) ?? 0,
   };
 }
 

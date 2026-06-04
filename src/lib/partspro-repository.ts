@@ -253,6 +253,7 @@ export type AdminProduct = RepositoryPartProduct & {
 };
 
 export type AdminProductQueryInput = {
+  activeRestockOnly?: boolean;
   brand?: string;
   batchCode?: string;
   category?: string;
@@ -271,7 +272,20 @@ export type AdminProductQueryInput = {
 
 export type AdminProductPage = {
   products: AdminProduct[];
+  summary: AdminProductSummary;
   total: number;
+};
+
+export type AdminProductSummary = {
+  total: number;
+  active: number;
+  draft: number;
+  hidden: number;
+  blocked: number;
+  lowStock: number;
+  restockRequests: number;
+  missingImage: number;
+  missingPrice: number;
 };
 
 export type AdminSupplier = {
@@ -3492,6 +3506,7 @@ async function readAdminProductPage(
   query: AdminProductQueryInput
 ): Promise<AdminProductPage | null> {
   const { data, error } = await client.rpc("admin_list_products", {
+    p_active_restock_only: query.activeRestockOnly ?? false,
     p_brand: query.brand ?? null,
     p_catalog_status: query.catalogStatus ?? null,
     p_category: query.category ?? null,
@@ -3725,10 +3740,31 @@ function parseAdminProductPageRpcPayload(data: unknown): AdminProductPage | null
   }
 
   const rows = data.products.filter(isDbRow);
+  const total = pickNumber(data, ["total"]) ?? rows.length;
 
   return {
     products: rows.map(mapAdminProductRow).filter(isDefined),
-    total: pickNumber(data, ["total"]) ?? rows.length,
+    summary: parseAdminProductSummary(data.summary, total),
+    total,
+  };
+}
+
+function parseAdminProductSummary(
+  value: unknown,
+  total: number
+): AdminProductSummary {
+  const row = isDbRow(value) ? value : {};
+
+  return {
+    total: pickNumber(row, ["total"]) ?? total,
+    active: pickNumber(row, ["active"]) ?? 0,
+    draft: pickNumber(row, ["draft"]) ?? 0,
+    hidden: pickNumber(row, ["hidden"]) ?? 0,
+    blocked: pickNumber(row, ["blocked"]) ?? 0,
+    lowStock: pickNumber(row, ["lowStock", "low_stock"]) ?? 0,
+    restockRequests: pickNumber(row, ["restockRequests", "restock_requests"]) ?? 0,
+    missingImage: pickNumber(row, ["missingImage", "missing_image"]) ?? 0,
+    missingPrice: pickNumber(row, ["missingPrice", "missing_price"]) ?? 0,
   };
 }
 
