@@ -126,11 +126,11 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
       const carrier = parsed.data.carrier ?? currentOrder.carrier;
       const tracking = parsed.data.tracking ?? currentOrder.trackingCode;
 
-      if (!hasShipmentInfo(carrier, tracking)) {
+      if (!hasRequiredShipmentInfo(carrier, tracking)) {
         return apiError(
           400,
           "ADMIN_ORDER_LOGISTICS_REQUIRED",
-          "Carrier and tracking are required before an order can be shipped.",
+          "Delivery service is required before an order can be shipped. Tracking is required for carrier shipments.",
           { orderId }
         );
       }
@@ -219,7 +219,7 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
 
     return NextResponse.json({
       data: toAdminOrderDto(order, {
-        ...(parsed.data.carrier ? { carrier: parsed.data.carrier } : {}),
+        ...(parsed.data.carrier !== undefined ? { carrier: parsed.data.carrier } : {}),
         ...(parsed.data.tracking !== undefined ? { tracking: parsed.data.tracking } : {}),
         ...(parsed.data.paymentStatus
           ? { paymentStatus: toUiPaymentStatus(parsed.data.paymentStatus) }
@@ -277,6 +277,16 @@ function hasOperationsPatch(patch: {
   );
 }
 
-function hasShipmentInfo(carrier: string | undefined, tracking: string | undefined) {
-  return Boolean(carrier?.trim() && tracking?.trim());
+function hasRequiredShipmentInfo(carrier: string | undefined, tracking: string | undefined) {
+  const deliveryService = carrier?.trim();
+
+  if (!deliveryService) {
+    return false;
+  }
+
+  if (deliveryService === "Ritiro in sede") {
+    return true;
+  }
+
+  return Boolean(tracking?.trim());
 }

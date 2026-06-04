@@ -42,7 +42,7 @@ export const orderPatchSchema = z
     fulfillmentStatus: z
       .enum(["queued", "allocated", "picking", "packed", "shipped", "delivered", "blocked"])
       .optional(),
-    carrier: z.string().trim().min(1).max(80).optional(),
+    carrier: z.string().trim().max(80).optional(),
     tracking: z.string().trim().max(120).optional(),
     note: z.string().trim().max(500).optional(),
     staffNote: z.string().trim().max(1000).optional(),

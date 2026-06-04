@@ -21,6 +21,7 @@ export const productQuerySchema = z
     model: z.string().trim().min(2).max(120).optional(),
     modelSeries: z.string().trim().min(1).max(120).optional(),
     q: z.string().trim().min(2).max(80).optional(),
+    supplier: z.string().trim().min(1).max(120).optional(),
     stockStatus: stockStatusSchema.optional(),
     status: catalogStatusSchema.optional(),
     catalogStatus: catalogStatusSchema.optional(),
