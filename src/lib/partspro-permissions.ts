@@ -45,6 +45,7 @@ export const adminPermissions = [
   "ebay.sync_inventory",
   "ebay.orders",
   "ebay.settings",
+  "ebay.jobs",
 ] as const;
 
 export type AdminPermission = (typeof adminPermissions)[number] | string;
@@ -53,6 +54,7 @@ export const roleTemplateLabels: Record<string, string> = {
   admin: "Administrator",
   auditor: "Auditor",
   catalog_manager: "Catalog manager",
+  commerce_manager: "Commerce manager",
   inventory_manager: "Inventory manager",
   pricing_manager: "Pricing manager",
   purchasing: "Purchasing",
@@ -84,6 +86,18 @@ export const roleTemplatePermissions: Record<string, Set<string>> = {
     "product.hide",
     "product.restore_draft",
     "product.image_manage",
+  ]),
+  commerce_manager: new Set([
+    "panel.marketplace",
+    "ebay.connect",
+    "ebay.publish",
+    "ebay.sync_inventory",
+    "ebay.orders",
+    "ebay.settings",
+    "ebay.jobs",
+    "products.read_admin",
+    "product.read_admin",
+    "orders.read",
   ]),
   inventory_manager: new Set([
     "panel.catalog",
@@ -150,17 +164,6 @@ export function visiblePanelsForPermissions(permissions: Iterable<string>) {
     if (permissionSet.has(permission)) {
       panels.add(panel);
     }
-  }
-
-  if (
-    permissionSet.has("panel.marketplace") ||
-    permissionSet.has("ebay.connect") ||
-    permissionSet.has("ebay.publish") ||
-    permissionSet.has("ebay.sync_inventory") ||
-    permissionSet.has("ebay.orders") ||
-    permissionSet.has("ebay.settings")
-  ) {
-    panels.add("marketplace");
   }
 
   if (

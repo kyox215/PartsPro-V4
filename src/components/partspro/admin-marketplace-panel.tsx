@@ -153,6 +153,24 @@ type DraftState = {
   settings: MarketplaceSettings;
 };
 
+type AdminMarketplacePanelProps = {
+  permissions?: readonly string[];
+};
+
+type EbayQueueAction = "publish_eligible" | "sync_inventory" | "import_orders";
+
+const queueActionPermissionLabels: Record<EbayQueueAction, string> = {
+  import_orders: "管理 eBay 订单",
+  publish_eligible: "发布 eBay 商品",
+  sync_inventory: "同步 eBay 价格库存",
+};
+
+const queueActionPermissions: Record<EbayQueueAction, string> = {
+  import_orders: "ebay.orders",
+  publish_eligible: "ebay.publish",
+  sync_inventory: "ebay.sync_inventory",
+};
+
 const emptySettings: MarketplaceSettings = {
   autoPublishEnabled: false,
   autoSyncEnabled: true,
@@ -173,7 +191,7 @@ const emptySettings: MarketplaceSettings = {
   stockBuffer: 1,
 };
 
-export function AdminMarketplacePanel() {
+export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePanelProps) {
   const [overview, setOverview] = React.useState<MarketplaceOverview | null>(null);
   const [draft, setDraft] = React.useState<DraftState>({
     mappings: [],
@@ -182,6 +200,13 @@ export function AdminMarketplacePanel() {
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState<string | null>("load");
+  const permissionSet = React.useMemo(() => new Set(permissions), [permissions]);
+  const canConnectEbay = permissionSet.has("ebay.connect");
+  const canManageSettings = permissionSet.has("ebay.settings");
+  const canPublishListings = permissionSet.has("ebay.publish");
+  const canSyncInventory = permissionSet.has("ebay.sync_inventory");
+  const canImportOrders = permissionSet.has("ebay.orders");
+  const canRunJobs = permissionSet.has("ebay.jobs");
 
   const loadOverview = React.useCallback(async () => {
     setPending((current) => current ?? "load");
@@ -241,6 +266,12 @@ export function AdminMarketplacePanel() {
   );
 
   async function saveSettings() {
+    if (!canManageSettings) {
+      setError(missingPermissionMessage("管理 eBay 设置"));
+      setNotice(null);
+      return;
+    }
+
     setPending("save");
     setError(null);
     setNotice(null);
@@ -286,7 +317,13 @@ export function AdminMarketplacePanel() {
     }
   }
 
-  async function queueAction(action: "publish_eligible" | "sync_inventory" | "import_orders") {
+  async function queueAction(action: EbayQueueAction) {
+    if (!permissionSet.has(queueActionPermissions[action])) {
+      setError(missingPermissionMessage(queueActionPermissionLabels[action]));
+      setNotice(null);
+      return;
+    }
+
     setPending(action);
     setError(null);
     setNotice(null);
@@ -321,6 +358,12 @@ export function AdminMarketplacePanel() {
   }
 
   async function runJobs() {
+    if (!canRunJobs) {
+      setError(missingPermissionMessage("执行 eBay 队列"));
+      setNotice(null);
+      return;
+    }
+
     setPending("run");
     setError(null);
     setNotice(null);
@@ -353,6 +396,12 @@ export function AdminMarketplacePanel() {
   }
 
   function connectEbay() {
+    if (!canConnectEbay) {
+      setError(missingPermissionMessage("连接 eBay"));
+      setNotice(null);
+      return;
+    }
+
     const environment = draft.settings.environment;
     window.location.assign(`/api/admin/ebay/oauth?environment=${environment}`);
   }
@@ -402,6 +451,7 @@ export function AdminMarketplacePanel() {
               </Field>
               <Field label="环境">
                 <Select
+                  disabled={isBusy || !canManageSettings}
                   value={draft.settings.environment}
                   onValueChange={(value) =>
                     updateSettings({ environment: value as EbayEnvironment })
@@ -424,7 +474,12 @@ export function AdminMarketplacePanel() {
               </Field>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" onClick={connectEbay} disabled={isBusy}>
+              <Button
+                type="button"
+                onClick={connectEbay}
+                disabled={isBusy || !canConnectEbay}
+                title={!canConnectEbay ? missingPermissionMessage("连接 eBay") : undefined}
+              >
                 <ExternalLink className="size-4" />
                 连接 eBay
               </Button>
@@ -533,37 +588,46 @@ export function AdminMarketplacePanel() {
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button type="button" onClick={saveSettings} disabled={isBusy}>
+              <Button
+                type="button"
+                onClick={saveSettings}
+                disabled={isBusy || !canManageSettings}
+                title={!canManageSettings ? missingPermissionMessage("管理 eBay 设置") : undefined}
+              >
                 <Save className="size-4" />
                 保存设置
               </Button>
               <ActionButton
-                disabled={isBusy}
+                disabled={isBusy || !canPublishListings}
                 icon={Send}
                 label="发布完整商品"
                 loading={pending === "publish_eligible"}
                 onClick={() => void queueAction("publish_eligible")}
+                title={!canPublishListings ? missingPermissionMessage("发布 eBay 商品") : undefined}
               />
               <ActionButton
-                disabled={isBusy}
+                disabled={isBusy || !canSyncInventory}
                 icon={RefreshCcw}
                 label="同步库存价格"
                 loading={pending === "sync_inventory"}
                 onClick={() => void queueAction("sync_inventory")}
+                title={!canSyncInventory ? missingPermissionMessage("同步 eBay 价格库存") : undefined}
               />
               <ActionButton
-                disabled={isBusy}
+                disabled={isBusy || !canImportOrders}
                 icon={Truck}
                 label="拉取 eBay 订单"
                 loading={pending === "import_orders"}
                 onClick={() => void queueAction("import_orders")}
+                title={!canImportOrders ? missingPermissionMessage("管理 eBay 订单") : undefined}
               />
               <ActionButton
-                disabled={isBusy}
+                disabled={isBusy || !canRunJobs}
                 icon={Play}
                 label="执行队列"
                 loading={pending === "run"}
                 onClick={() => void runJobs()}
+                title={!canRunJobs ? missingPermissionMessage("执行 eBay 队列") : undefined}
               />
             </div>
           </CardContent>
@@ -578,6 +642,8 @@ export function AdminMarketplacePanel() {
               type="button"
               size="sm"
               variant="outline"
+              disabled={!canManageSettings}
+              title={!canManageSettings ? missingPermissionMessage("管理 eBay 设置") : undefined}
               onClick={() =>
                 setDraft((current) => ({
                   ...current,
@@ -684,6 +750,7 @@ export function AdminMarketplacePanel() {
                         size="icon-sm"
                         variant="ghost"
                         aria-label="删除映射"
+                        disabled={!canManageSettings}
                         onClick={() =>
                           setDraft((current) => ({
                             ...current,
@@ -908,15 +975,17 @@ function ActionButton({
   label,
   loading,
   onClick,
+  title,
 }: {
   disabled: boolean;
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   loading: boolean;
   onClick: () => void;
+  title?: string;
 }) {
   return (
-    <Button type="button" variant="outline" onClick={onClick} disabled={disabled}>
+    <Button type="button" variant="outline" onClick={onClick} disabled={disabled} title={title}>
       {loading ? <Loader2 className="size-4 animate-spin" /> : <Icon className="size-4" />}
       {label}
     </Button>
@@ -1050,6 +1119,10 @@ function formatDateTime(value: string | null | undefined) {
 function emptyToNull(value: string | null | undefined) {
   const normalized = value?.trim();
   return normalized ? normalized : null;
+}
+
+function missingPermissionMessage(label: string) {
+  return `缺少权限：${label}。`;
 }
 
 function readApiError(error: unknown) {

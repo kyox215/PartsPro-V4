@@ -94,6 +94,10 @@ type AdminOverviewDashboardProps = {
   visiblePanels?: ReadonlySet<AdminPanelValue>;
 };
 
+type AdminCommercePanelProps = {
+  permissions?: readonly string[];
+};
+
 const AdminOrdersPanel = dynamic(
   () => import("./admin-orders-panel").then((module) => module.AdminOrdersPanel),
   { loading: () => <AdminPanelLoadingFallback /> }
@@ -124,10 +128,10 @@ const AdminAccountsPanel = dynamic(
     ),
   { loading: () => <AdminPanelLoadingFallback /> }
 );
-const AdminMarketplacePanel = dynamic(
+const AdminCommercePanel = dynamic<AdminCommercePanelProps>(
   () =>
-    import("./admin-marketplace-panel").then(
-      (module) => module.AdminMarketplacePanel
+    import("./admin-commerce-panel").then(
+      (module) => module.AdminCommercePanel
     ),
   { loading: () => <AdminPanelLoadingFallback /> }
 );
@@ -203,6 +207,7 @@ export function AdminDashboard() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(true);
   const [visiblePanels, setVisiblePanels] =
     React.useState<AdminPanelValue[] | null>(null);
+  const [currentPermissions, setCurrentPermissions] = React.useState<string[]>([]);
   const visiblePanelSet = React.useMemo(
     () => new Set<AdminPanelValue>(visiblePanels ?? [...adminPanelValues]),
     [visiblePanels]
@@ -217,21 +222,27 @@ export function AdminDashboard() {
     })
       .then((response) => (response.ok ? response.json() : null))
       .then((payload: unknown) => {
-        if (
-          cancelled ||
-          !isRecord(payload) ||
-          !Array.isArray(payload.visiblePanels)
-        ) {
+        if (cancelled || !isRecord(payload)) {
           return;
         }
 
-        const panels = payload.visiblePanels.filter(
-          (panel): panel is AdminPanelValue =>
-            typeof panel === "string" && isAdminPanelValue(panel)
-        );
+        if (Array.isArray(payload.permissions)) {
+          setCurrentPermissions(
+            payload.permissions.filter(
+              (permission): permission is string => typeof permission === "string"
+            )
+          );
+        }
 
-        if (panels.length > 0) {
-          setVisiblePanels(panels);
+        if (Array.isArray(payload.visiblePanels)) {
+          const panels = payload.visiblePanels.filter(
+            (panel): panel is AdminPanelValue =>
+              typeof panel === "string" && isAdminPanelValue(panel)
+          );
+
+          if (panels.length > 0) {
+            setVisiblePanels(panels);
+          }
         }
       })
       .catch(() => undefined);
@@ -323,7 +334,7 @@ export function AdminDashboard() {
                 <AdminProductsPanel />
               </TabsContent>
               <TabsContent value="marketplace" className="order-4 mt-0 min-w-0">
-                <AdminMarketplacePanel />
+                <AdminCommercePanel permissions={currentPermissions} />
               </TabsContent>
               <TabsContent value="timeline" className="order-4 mt-0 min-w-0">
                 <AdminActivityTimeline />

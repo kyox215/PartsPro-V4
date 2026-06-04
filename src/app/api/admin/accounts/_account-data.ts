@@ -4,6 +4,7 @@ export const roleTemplates = [
   "admin",
   "auditor",
   "catalog_manager",
+  "commerce_manager",
   "inventory_manager",
   "pricing_manager",
   "purchasing",

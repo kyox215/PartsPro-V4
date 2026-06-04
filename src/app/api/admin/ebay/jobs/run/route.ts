@@ -11,7 +11,7 @@ const runJobsSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const admin = await requireAdminApi("panel.marketplace");
+  const admin = await requireAdminApi("ebay.jobs");
 
   if (!admin.ok) {
     return admin.response;
