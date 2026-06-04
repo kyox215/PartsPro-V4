@@ -9,6 +9,7 @@ import {
   Boxes,
   CheckCircle2,
   Clock,
+  Loader2,
   LogIn,
   Lock,
   PackageCheck,
@@ -36,6 +37,7 @@ import { publicStockLevelMeta } from "@/lib/partspro-stock-availability";
 import { cn } from "@/lib/utils";
 import { addCartItem } from "./cart-state";
 import { useT } from "./i18n-provider";
+import { RoutePendingIndicator } from "./pending-feedback";
 import { PartVisual } from "./part-visual";
 import {
   ProductCartQuantityControl,
@@ -58,7 +60,7 @@ const ProductImagePreviewDialog = dynamic(
     import("./product-image-preview-dialog").then(
       (module) => module.ProductImagePreviewDialog
     ),
-  { loading: () => null, ssr: false }
+  { loading: () => <ProductImagePreviewLoading />, ssr: false }
 );
 
 export const ProductCard = memo(function ProductCard({
@@ -105,12 +107,17 @@ export const ProductCard = memo(function ProductCard({
     showWholesalePrice && priceGateReason === "customer_needs_assignment";
   const [addFeedbackState, setAddFeedbackState] = useState<AddFeedbackState>("idle");
   const addFeedbackTimerRef = useRef<number | null>(null);
+  const addLockTimerRef = useRef<number | null>(null);
+  const [addLocked, setAddLocked] = useState(false);
   const cartQuantity = useProductCartQuantity(product.sku);
 
   useEffect(() => {
     return () => {
       if (addFeedbackTimerRef.current) {
         window.clearTimeout(addFeedbackTimerRef.current);
+      }
+      if (addLockTimerRef.current) {
+        window.clearTimeout(addLockTimerRef.current);
       }
     };
   }, []);
@@ -122,12 +129,21 @@ export const ProductCard = memo(function ProductCard({
   }
 
   function handleAddToCart() {
-    if (!canAddToCart) {
+    if (!canAddToCart || addLocked) {
       return;
     }
 
+    setAddLocked(true);
     const didAdd = safeAddCartItem(product.sku, Math.max(1, product.moq), [product]);
     setAddFeedbackState(didAdd ? "success" : "error");
+
+    if (addLockTimerRef.current) {
+      window.clearTimeout(addLockTimerRef.current);
+    }
+
+    addLockTimerRef.current = window.setTimeout(() => {
+      setAddLocked(false);
+    }, 320);
 
     if (addFeedbackTimerRef.current) {
       window.clearTimeout(addFeedbackTimerRef.current);
@@ -212,9 +228,13 @@ export const ProductCard = memo(function ProductCard({
           <div className="flex min-w-0 flex-1 flex-col sm:mt-2">
             <Link
               href={productPath}
-              className="line-clamp-2 min-h-0 break-words text-[13px] font-black leading-[0.95rem] text-slate-950 hover:text-primary sm:min-h-[2.15rem] sm:text-[13px] sm:leading-[1.08rem]"
+              className="relative block min-h-0 pr-5 text-[13px] font-black leading-[0.95rem] text-slate-950 transition active:translate-y-px hover:text-primary sm:min-h-[2.15rem] sm:text-[13px] sm:leading-[1.08rem]"
             >
-              {product.name}
+              <span className="line-clamp-2 break-words">{product.name}</span>
+              <RoutePendingIndicator
+                className="absolute right-0 top-0.5 size-3 text-primary"
+                label={tx(t, "storefront.navigation.loadingProduct", "Caricamento prodotto...")}
+              />
             </Link>
             <div className="mt-0.5 flex min-w-0 flex-wrap gap-0.5 sm:mt-1 sm:gap-1">
               {product.compatibleWith.slice(0, 2).map((model, index) => (
@@ -353,6 +373,7 @@ export const ProductCard = memo(function ProductCard({
                       "border-red-200 bg-red-50 text-red-700"
                   )}
                   onClick={handleAddToCart}
+                  disabled={addLocked}
                   aria-describedby={stockDescriptionId}
                   aria-label={txFormat(
                     t,
@@ -397,6 +418,7 @@ export const ProductCard = memo(function ProductCard({
                     <span className="sr-only min-w-0 truncate sm:not-sr-only">
                       {tx(t, "storefront.product.card.loginToAdd", "Accedi")}
                     </span>
+                    <RoutePendingIndicator className="size-3 text-primary" />
                   </Link>
                 </Button>
               ) : canRequestRestock ? (
@@ -441,6 +463,26 @@ export const ProductCard = memo(function ProductCard({
     </>
   );
 });
+
+function ProductImagePreviewLoading() {
+  const t = useT();
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-3 backdrop-blur-sm">
+      <div
+        className="w-full max-w-3xl rounded-lg border border-slate-200 bg-white p-3 shadow-2xl"
+        role="status"
+        aria-live="polite"
+      >
+        <div className="flex items-center gap-2 pr-10 text-sm font-black text-slate-950">
+          <Loader2 className="size-4 animate-spin text-primary" />
+          {tx(t, "storefront.product.card.previewLoading", "Caricamento anteprima...")}
+        </div>
+        <div className="mt-3 h-[min(72vh,620px)] min-h-[280px] animate-pulse rounded-lg bg-slate-100" />
+      </div>
+    </div>
+  );
+}
 
 function safeAddCartItem(
   sku: string,

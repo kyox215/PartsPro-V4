@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
+import { RoutePendingIndicator } from "./pending-feedback";
 
 export type StoreAccountDropdownProps = {
   access: StoreHeaderAccountAccess;
@@ -74,14 +75,16 @@ export function StoreAccountDropdown({
         <DropdownMenuItem asChild className="h-9 cursor-pointer">
           <Link href="/account">
             <User className="size-4" />
-            {accountLabel}
+            <span className="min-w-0 flex-1 truncate">{accountLabel}</span>
+            <RoutePendingIndicator className="size-3 text-primary" />
           </Link>
         </DropdownMenuItem>
         {access.canOpenAdmin ? (
           <DropdownMenuItem asChild className="h-9 cursor-pointer">
             <Link href="/admin">
               <LayoutDashboard className="size-4" />
-              {adminLabel}
+              <span className="min-w-0 flex-1 truncate">{adminLabel}</span>
+              <RoutePendingIndicator className="size-3 text-primary" />
             </Link>
           </DropdownMenuItem>
         ) : null}

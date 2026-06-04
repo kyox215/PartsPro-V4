@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ChevronDown, Grid3X3, Home, Menu, Search } from "lucide-react";
@@ -21,6 +21,10 @@ import { tx } from "@/i18n/dictionaries/storefront";
 import { CatalogBrandTree, type CatalogSelection } from "./catalog-brand-tree";
 import { LanguageSwitcher } from "./language-switcher";
 import { PartsProLogo } from "./logo";
+import {
+  DelayedPendingIndicator,
+  RoutePendingIndicator,
+} from "./pending-feedback";
 import { useT } from "./i18n-provider";
 
 const storeMobileNavItems = [
@@ -48,6 +52,7 @@ export function StoreMobileMenu({
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [isSearchPending, startSearchTransition] = useTransition();
   const [catalogOpen, setCatalogOpen] = useState(() => pathname.startsWith("/catalogo"));
   const catalogSearchValue = selectedCatalog?.searchQuery ?? selectedCatalog?.model ?? "";
   const [expandedBrandOverride, setExpandedBrandOverride] = useState<
@@ -97,12 +102,14 @@ export function StoreMobileMenu({
       return;
     }
 
-    router.push(
-      hrefWithAssistedCompanyId(
-        `/catalogo?${new URLSearchParams({ q: query }).toString()}`,
-        assistedCompanyId
-      )
-    );
+    startSearchTransition(() => {
+      router.push(
+        hrefWithAssistedCompanyId(
+          `/catalogo?${new URLSearchParams({ q: query }).toString()}`,
+          assistedCompanyId
+        )
+      );
+    });
     closeMenu();
   }
 
@@ -171,7 +178,14 @@ export function StoreMobileMenu({
                 className="absolute right-1 top-1/2 size-7 -translate-y-1/2 rounded-md"
                 aria-label={tx(t, "storefront.header.searchSubmit", "Cerca")}
               >
-                <Search className="size-3.5" />
+                <span className="relative grid size-3.5 place-items-center">
+                  <Search className="size-3.5" />
+                  <DelayedPendingIndicator
+                    className="absolute size-3.5 text-white"
+                    label={tx(t, "storefront.header.searchLoading", "Ricerca in corso...")}
+                    pending={isSearchPending}
+                  />
+                </span>
               </Button>
             </form>
           </div>
@@ -196,7 +210,10 @@ export function StoreMobileMenu({
                     onClick={closeMenu}
                   >
                     <item.icon className="size-4" />
-                    {tx(t, item.labelKey, item.labelFallback)}
+                    <span className="min-w-0 flex-1 truncate">
+                      {tx(t, item.labelKey, item.labelFallback)}
+                    </span>
+                    <RoutePendingIndicator className="size-3.5 text-primary" />
                   </Link>
                 );
               })}

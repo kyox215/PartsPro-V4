@@ -1551,24 +1551,26 @@ function ProductFilters({
 
     return value !== defaultFilters[key as keyof ProductListFilters];
   });
+  const selectTriggerClass = "h-8 w-full rounded-md bg-white text-sm sm:h-9";
+  const inputClass = "h-8 rounded-md bg-white text-sm sm:h-9";
 
   return (
-    <div className="space-y-3">
-      <div className="grid gap-2 lg:grid-cols-[minmax(240px,1fr)_160px_180px_200px_180px]">
-        <div className="relative min-w-0">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-          <Input
-            value={filters.q}
-            onChange={(event) => onChange({ q: event.target.value })}
-            className="h-9 bg-white pl-9"
-            placeholder={text.searchPlaceholder}
-          />
-        </div>
+    <div className="grid min-w-0 grid-cols-2 gap-1.5 sm:grid-cols-4 sm:gap-2 md:grid-cols-6 lg:grid-cols-8 2xl:grid-cols-12">
+      <div className="relative col-span-2 min-w-0 sm:col-span-4 md:col-span-3 2xl:col-span-2">
+        <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+        <Input
+          value={filters.q}
+          onChange={(event) => onChange({ q: event.target.value })}
+          className={cn(inputClass, "pl-9")}
+          placeholder={text.searchPlaceholder}
+        />
+      </div>
+      <div className="min-w-0 2xl:col-auto">
         <Select
           value={filters.brand}
           onValueChange={(value) => onChange({ brand: value, modelSeries: "all", model: "all" })}
         >
-          <SelectTrigger size="sm" className="w-full bg-white">
+          <SelectTrigger size="sm" className={selectTriggerClass}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -1580,12 +1582,14 @@ function ProductFilters({
             ))}
           </SelectContent>
         </Select>
+      </div>
+      <div className="min-w-0 2xl:col-auto">
         <Select
           value={filters.modelSeries}
           onValueChange={(value) => onChange({ modelSeries: value, model: "all" })}
           disabled={filters.brand === "all" || isLoadingModelGroups || seriesOptions.length === 0}
         >
-          <SelectTrigger size="sm" className="w-full bg-white">
+          <SelectTrigger size="sm" className={selectTriggerClass}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -1597,12 +1601,14 @@ function ProductFilters({
             ))}
           </SelectContent>
         </Select>
+      </div>
+      <div className="min-w-0 2xl:col-auto">
         <Select
           value={filters.model}
           onValueChange={(value) => onChange({ model: value })}
           disabled={isLoadingModelGroups || modelOptions.length === 0}
         >
-          <SelectTrigger size="sm" className="w-full bg-white">
+          <SelectTrigger size="sm" className={selectTriggerClass}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -1614,25 +1620,29 @@ function ProductFilters({
             ))}
           </SelectContent>
         </Select>
+      </div>
+      <div className="min-w-0 2xl:col-auto">
         <CatalogStatusSelect
           value={filters.catalogStatus}
           text={text}
           onChange={(value) => onChange({ catalogStatus: value })}
         />
       </div>
-      <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[180px_160px_190px_minmax(170px,1fr)_minmax(190px,1fr)_auto]">
+      <div className="min-w-0 2xl:col-auto">
         <StockStatusSelect
           value={filters.stockStatus}
           text={text}
           onChange={(value) => onChange({ stockStatus: value })}
         />
+      </div>
+      <div className="min-w-0 2xl:col-auto">
         <Select
           value={filters.grade}
           onValueChange={(value) =>
             onChange({ grade: value as ProductListFilters["grade"] })
           }
         >
-          <SelectTrigger size="sm" className="w-full bg-white">
+          <SelectTrigger size="sm" className={selectTriggerClass}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -1644,29 +1654,31 @@ function ProductFilters({
             ))}
           </SelectContent>
         </Select>
-        <div className="space-y-1">
-          <Label className="text-[11px] font-bold text-slate-500">{text.supplierFilter}</Label>
-          <Input
-            value={filters.supplier}
-            className="h-9 bg-white"
-            placeholder={text.supplierFilterPlaceholder}
-            onChange={(event) => onChange({ supplier: event.target.value })}
-          />
-        </div>
-        <div className="space-y-1">
-          <Label className="text-[11px] font-bold text-slate-500">{text.batchFilter}</Label>
-          <Input
-            value={filters.batchCode}
-            className="h-9 bg-white font-mono text-xs"
-            placeholder={text.batchFilterPlaceholder}
-            onChange={(event) => onChange({ batchCode: event.target.value })}
-          />
-        </div>
+      </div>
+      <div className="min-w-0 2xl:col-auto">
+        <Input
+          value={filters.supplier}
+          aria-label={text.supplierFilter}
+          className={inputClass}
+          placeholder={text.supplierFilterPlaceholder}
+          onChange={(event) => onChange({ supplier: event.target.value })}
+        />
+      </div>
+      <div className="min-w-0 md:col-span-2 2xl:col-auto">
+        <Input
+          value={filters.batchCode}
+          aria-label={text.batchFilter}
+          className={cn(inputClass, "font-mono text-xs")}
+          placeholder={text.batchFilterPlaceholder}
+          onChange={(event) => onChange({ batchCode: event.target.value })}
+        />
+      </div>
+      <div className="min-w-0 2xl:col-auto">
         <Select
           value={filters.sort}
           onValueChange={(value) => onChange({ sort: value as ProductSort })}
         >
-          <SelectTrigger size="sm" className="w-full bg-white">
+          <SelectTrigger size="sm" className={selectTriggerClass}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -1677,16 +1689,17 @@ function ProductFilters({
             ))}
           </SelectContent>
         </Select>
-        <Button
-          variant="outline"
-          className="bg-white"
-          onClick={onReset}
-          disabled={!hasFilters}
-        >
-          <Filter className="size-4" />
-          {text.reset}
-        </Button>
       </div>
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-8 min-w-0 rounded-md bg-white px-2 sm:h-9 2xl:col-auto"
+        onClick={onReset}
+        disabled={!hasFilters}
+      >
+        <Filter className="size-4" />
+        <span className="min-w-0 truncate">{text.reset}</span>
+      </Button>
     </div>
   );
 }
@@ -1920,7 +1933,7 @@ function CatalogStatusSelect({
 
   return (
     <Select value={value} onValueChange={(nextValue) => onChange(nextValue as FilterValue<CatalogStatus>)}>
-      <SelectTrigger size="sm" className="w-full bg-white">
+      <SelectTrigger size="sm" className="h-8 w-full rounded-md bg-white text-sm sm:h-9">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -1949,7 +1962,7 @@ function StockStatusSelect({
 
   return (
     <Select value={value} onValueChange={(nextValue) => onChange(nextValue as FilterValue<StockStatus>)}>
-      <SelectTrigger size="sm" className="w-full bg-white">
+      <SelectTrigger size="sm" className="h-8 w-full rounded-md bg-white text-sm sm:h-9">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

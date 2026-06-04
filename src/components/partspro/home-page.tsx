@@ -31,6 +31,7 @@ import {
   type StorefrontTranslator,
 } from "@/i18n/dictionaries/storefront";
 import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
+import { RoutePendingIndicator } from "./pending-feedback";
 import { ProductCard } from "./product-card";
 
 type HomeCategorySummary = {
@@ -215,12 +216,20 @@ function HomeCatalogHeader({
           <Button asChild className="h-10 px-4 shadow-sm shadow-primary/15">
             <Link href="/catalogo">
               {tx(t, "storefront.home.hero.browseCatalog", "Sfoglia catalogo")}
+              <RoutePendingIndicator
+                className="size-3.5 text-primary-foreground"
+                label={tx(t, "storefront.navigation.loadingCatalog", "Caricamento catalogo...")}
+              />
               <ArrowRight className="size-4" />
             </Link>
           </Button>
           <Button variant="outline" asChild className="h-10 bg-white px-4">
             <Link href="/catalogo?minStock=1">
               {tx(t, "storefront.home.header.availableOnly", "Solo disponibili")}
+              <RoutePendingIndicator
+                className="size-3.5 text-primary"
+                label={tx(t, "storefront.navigation.loadingCatalog", "Caricamento catalogo...")}
+              />
             </Link>
           </Button>
         </div>
@@ -307,8 +316,9 @@ function CategoryShowcase({ categories: items }: { categories: HomeCategorySumma
           <Link
             key={category.value}
             href={`/catalogo?category=${encodeURIComponent(category.value)}`}
-            className="group min-w-0 rounded-lg border border-slate-200 bg-white p-2 text-center shadow-[0_12px_28px_rgba(15,23,42,0.04)] transition hover:border-primary/40 sm:p-3"
+            className="group relative min-w-0 rounded-lg border border-slate-200 bg-white p-2 text-center shadow-[0_12px_28px_rgba(15,23,42,0.04)] transition active:translate-y-px hover:border-primary/40 sm:p-3"
           >
+            <RoutePendingIndicator className="absolute right-2 top-2 size-3 text-primary" />
             <PartVisual
               variant={category.visual}
               className="mx-auto mb-2 w-14 rounded-md transition group-hover:scale-[1.02] sm:w-16"
@@ -357,8 +367,9 @@ function BrandModelStrip({
             key={group.brand}
             href={`/catalogo?brand=${encodeURIComponent(group.brand)}`}
             title={brandLabel(t, group.brand) === group.brand ? undefined : group.brand}
-            className="grid h-16 min-w-0 place-items-center rounded-lg border border-slate-200 bg-white px-3 text-center text-sm font-black shadow-[0_12px_28px_rgba(15,23,42,0.04)] transition hover:border-primary/40 hover:text-primary"
+            className="relative grid h-16 min-w-0 place-items-center rounded-lg border border-slate-200 bg-white px-3 text-center text-sm font-black shadow-[0_12px_28px_rgba(15,23,42,0.04)] transition active:translate-y-px hover:border-primary/40 hover:text-primary"
           >
+            <RoutePendingIndicator className="absolute right-2 top-2 size-3 text-primary" />
             <span className="max-w-full truncate">{brandLabel(t, group.brand)}</span>
           </Link>
         ))}
@@ -402,6 +413,8 @@ function SectionHeader({
   icon?: LucideIcon;
   title: string;
 }) {
+  const t = useT();
+
   return (
     <div className="flex flex-wrap items-end justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2">
@@ -422,6 +435,10 @@ function SectionHeader({
       <Button variant="ghost" size="sm" className="shrink-0 text-primary" asChild>
         <Link href={actionHref}>
           {actionLabel}
+          <RoutePendingIndicator
+            className="size-3.5 text-primary"
+            label={tx(t, "storefront.navigation.loadingCatalog", "Caricamento catalogo...")}
+          />
           <ChevronRight className="size-4" />
         </Link>
       </Button>

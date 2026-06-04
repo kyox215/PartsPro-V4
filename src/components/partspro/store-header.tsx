@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
@@ -18,6 +18,10 @@ import { cn } from "@/lib/utils";
 import type { CatalogSelection } from "./catalog-brand-tree";
 import { PartsProLogo } from "./logo";
 import { LanguageSwitcher } from "./language-switcher";
+import {
+  DelayedPendingIndicator,
+  RoutePendingIndicator,
+} from "./pending-feedback";
 import type { StoreAccountDropdownProps } from "./store-account-dropdown";
 import { StoreCartButton } from "./store-cart-button";
 import type { StoreMobileMenuProps } from "./store-mobile-menu";
@@ -71,6 +75,7 @@ export function StoreHeader({
 }: StoreHeaderProps) {
   const t = useT();
   const router = useRouter();
+  const [isSearchPending, startSearchTransition] = useTransition();
   const [accountAccess, setAccountAccess] = useState<AccountAccessState>(
     () => initialAccountAccess ?? loadingAccountAccess
   );
@@ -141,12 +146,14 @@ export function StoreHeader({
       return;
     }
 
-    router.push(
-      hrefWithAssistedCompanyId(
-        `/catalogo?${new URLSearchParams({ q: query }).toString()}`,
-        assistedCompanyId
-      )
-    );
+    startSearchTransition(() => {
+      router.push(
+        hrefWithAssistedCompanyId(
+          `/catalogo?${new URLSearchParams({ q: query }).toString()}`,
+          assistedCompanyId
+        )
+      );
+    });
   }
 
   return (
@@ -164,7 +171,7 @@ export function StoreHeader({
           <Link
             href="/"
             aria-label={tx(t, "storefront.home.header.logoLabel", "Torna alla home PartsPro")}
-            className="hidden shrink-0 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:flex"
+            className="hidden shrink-0 items-center gap-1 rounded-lg outline-none transition active:translate-y-px focus-visible:ring-3 focus-visible:ring-ring/50 sm:flex"
           >
             <PartsProLogo
               tagline={tx(
@@ -173,16 +180,18 @@ export function StoreHeader({
                 "Ricambi smartphone Italia"
               )}
             />
+            <RoutePendingIndicator className="size-3 text-primary" />
           </Link>
           <Link
             href="/"
             aria-label={tx(t, "storefront.home.header.logoLabel", "Torna alla home PartsPro")}
-            className="flex min-w-0 shrink-0 items-center gap-1.5 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50 sm:hidden"
+            className="flex min-w-0 shrink-0 items-center gap-1.5 rounded-lg outline-none transition active:translate-y-px focus-visible:ring-3 focus-visible:ring-ring/50 sm:hidden"
           >
             <PartsProLogo compact />
             <span className="text-base font-black leading-none tracking-normal text-slate-950">
               PartsPro
             </span>
+            <RoutePendingIndicator className="size-3 text-primary" />
           </Link>
 
           <form
@@ -203,7 +212,14 @@ export function StoreHeader({
               className="absolute right-0.5 top-1/2 size-9 -translate-y-1/2 rounded-full"
               aria-label={tx(t, "storefront.header.searchSubmit", "Cerca")}
             >
-              <Search className="size-4" />
+              <span className="relative grid size-4 place-items-center">
+                <Search className="size-4" />
+                <DelayedPendingIndicator
+                  className="absolute size-4 text-white"
+                  label={tx(t, "storefront.header.searchLoading", "Ricerca in corso...")}
+                  pending={isSearchPending}
+                />
+              </span>
             </Button>
           </form>
 

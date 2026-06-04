@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
 import { brandLabel, tx } from "@/i18n/dictionaries/storefront";
 import { useT } from "./i18n-provider";
+import { RoutePendingIndicator } from "./pending-feedback";
 
 type CatalogBrandTreeVariant = "mobile" | "desktop";
 
@@ -169,7 +170,10 @@ export function CatalogBrandTree({
         onClick={onNavigate}
         title={title}
       >
-        {children}
+        <span className="flex min-w-0 items-center gap-1">
+          <span className="min-w-0 flex-1">{children}</span>
+          <RoutePendingIndicator className="size-3 text-primary" />
+        </span>
       </Link>
     );
   }
@@ -217,7 +221,10 @@ export function CatalogBrandTree({
           className={catalogLinkClassName}
           onClick={onNavigate}
         >
-          {tx(t, "storefront.catalog.allProducts", "Tutto il catalogo")}
+          <span className="min-w-0 flex-1 truncate">
+            {tx(t, "storefront.catalog.allProducts", "Tutto il catalogo")}
+          </span>
+          <RoutePendingIndicator className="size-3.5 text-primary" />
         </Link>
       )}
       {showAvailableLink && (
@@ -254,7 +261,10 @@ export function CatalogBrandTree({
             className={availableLinkClassName}
             onClick={onNavigate}
           >
-            {tx(t, "storefront.catalog.availableOnly", "Solo disponibili")}
+            <span className="min-w-0 flex-1 truncate">
+              {tx(t, "storefront.catalog.availableOnly", "Solo disponibili")}
+            </span>
+            <RoutePendingIndicator className="size-3.5 text-emerald-700" />
           </Link>
         )
       )}

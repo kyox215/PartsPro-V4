@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Grid3X3, RotateCcw } from "lucide-react";
+import { AlertTriangle, Grid3X3, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { products as localProducts } from "@/lib/partspro-data";
@@ -15,10 +15,15 @@ import { tx, txFormat } from "@/i18n/dictionaries/storefront";
 import { inferDeviceModelSeries } from "@/lib/partspro-device-series";
 import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
+import { cn } from "@/lib/utils";
 import { CatalogBrandTree, type CatalogSelection } from "./catalog-brand-tree";
 import { ProductCard } from "./product-card";
 import { StoreHeader } from "./store-header";
 import { useT } from "./i18n-provider";
+import {
+  DelayedPendingIndicator,
+  useDelayedVisible,
+} from "./pending-feedback";
 
 type FilterKey = "brand" | "category" | "status" | "grade";
 
@@ -145,6 +150,7 @@ function CatalogPageContent({
   const [catalogLoadState, setCatalogLoadState] = useState<
     "idle" | "loading" | "loading-more"
   >("idle");
+  const [catalogError, setCatalogError] = useState<"network" | null>(null);
   const [expandedBrand, setExpandedBrand] = useState<string | null>(
     () => initialFilters.brand[0] ?? null
   );
@@ -206,6 +212,7 @@ function CatalogPageContent({
         catalogRequestRef.current?.abort();
       }
 
+      setCatalogError(null);
       setCatalogLoadState(offset > 0 ? "loading-more" : "loading");
 
       if (cachedPage) {
@@ -229,6 +236,7 @@ function CatalogPageContent({
         });
 
         if (!response.ok) {
+          setCatalogError("network");
           return;
         }
 
@@ -248,10 +256,12 @@ function CatalogPageContent({
         setProducts((currentProducts) =>
           offset > 0 ? [...currentProducts, ...nextProducts] : nextProducts
         );
+        setCatalogError(null);
       } catch (error) {
         if (error instanceof Error && error.name === "AbortError") {
           return;
         }
+        setCatalogError("network");
       } finally {
         if (!tracksLatestRequest || catalogRequestRef.current === controller) {
           if (tracksLatestRequest) {
@@ -302,6 +312,9 @@ function CatalogPageContent({
   }, [loadCatalogSelection]);
 
   const hiddenProductCount = Math.max(filteredTotal - products.length, 0);
+  const catalogReplacing = catalogLoadState === "loading";
+  const showCatalogPendingHint = useDelayedVisible(catalogReplacing, 120);
+  const showCatalogSkeleton = useDelayedVisible(catalogReplacing, 300);
 
   function clearAll() {
     setSearchTerm("");
@@ -362,19 +375,64 @@ function CatalogPageContent({
                 : tx(t, "storefront.assistedOrder.catalogBannerGeneric", "Ordine per cliente: prezzi del cliente selezionato")}
             </div>
           ) : null}
-          {products.length > 0 ? (
+          {catalogError ? (
+            <CatalogLoadErrorBanner
+              loading={catalogLoadState !== "idle"}
+              onRetry={() => {
+                void loadCatalogSelection(selectedCatalog);
+              }}
+            />
+          ) : null}
+          {showCatalogPendingHint ? (
+            <div
+              className="flex items-center gap-2 rounded-lg border border-primary/15 bg-white px-3 py-2 text-xs font-black text-primary shadow-sm"
+              role="status"
+              aria-live="polite"
+            >
+              <DelayedPendingIndicator
+                className="size-3.5 text-primary"
+                delayMs={0}
+                pending={catalogReplacing}
+              />
+              {tx(t, "storefront.catalog.filtering", "Filtro in corso...")}
+            </div>
+          ) : null}
+          {products.length > 0 || catalogReplacing ? (
             <div className="space-y-3">
-              <div className="partspro-catalog-grid">
-                {products.map((product, index) => (
-                  <ProductCard
-                    assistedCompanyId={assistedCompanyId}
-                    key={product.sku}
-                    priceGateReason={priceGateReason}
-                    priorityImage={index === 0}
-                    product={product}
-                    showWholesalePrice={showWholesalePrice}
-                  />
-                ))}
+              <div
+                className="relative min-h-[320px]"
+                aria-busy={catalogReplacing}
+                aria-live="polite"
+              >
+                {products.length > 0 ? (
+                  <div
+                    className={cn(
+                      "partspro-catalog-grid transition-opacity duration-150",
+                      catalogReplacing && "opacity-45"
+                    )}
+                  >
+                    {products.map((product, index) => (
+                      <ProductCard
+                        assistedCompanyId={assistedCompanyId}
+                        key={product.sku}
+                        priceGateReason={priceGateReason}
+                        priorityImage={index === 0}
+                        product={product}
+                        showWholesalePrice={showWholesalePrice}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+                {showCatalogSkeleton ? (
+                  <div
+                    className={cn(
+                      products.length > 0 &&
+                        "pointer-events-none absolute inset-x-0 top-0"
+                    )}
+                  >
+                    <CatalogProductSkeletonGrid count={products.length > 0 ? 10 : 8} />
+                  </div>
+                ) : null}
               </div>
               {hiddenProductCount > 0 && (
                 <div className="flex justify-center">
@@ -387,14 +445,19 @@ function CatalogPageContent({
                       void loadCatalogSelection(selectedCatalog, products.length);
                     }}
                   >
-                    {catalogLoadState === "loading-more"
-                      ? tx(t, "storefront.catalog.loadingMore", "Caricamento...")
-                      : txFormat(t, "storefront.catalog.loadMore", "Carica altri {count} SKU", {
+                    {catalogLoadState === "loading-more" ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" />
+                        {tx(t, "storefront.catalog.loadingMore", "Caricamento...")}
+                      </>
+                    ) : (
+                      txFormat(t, "storefront.catalog.loadMore", "Carica altri {count} SKU", {
                           count: Math.min(
                             hiddenProductCount,
                             visibleProductsIncrement
                           ),
-                        })}
+                        })
+                    )}
                   </Button>
                 </div>
               )}
@@ -466,6 +529,75 @@ function CatalogNavigationSidebar({
         showAvailableLink
         variant="desktop"
       />
+    </div>
+  );
+}
+
+function CatalogLoadErrorBanner({
+  loading,
+  onRetry,
+}: {
+  loading: boolean;
+  onRetry: () => void;
+}) {
+  const t = useT();
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-2">
+        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-700" />
+        <div className="min-w-0">
+          <div className="font-black">
+            {tx(t, "storefront.catalog.loadErrorTitle", "Catalogo non aggiornato")}
+          </div>
+          <div className="mt-0.5 text-xs font-semibold leading-5 text-amber-900">
+            {tx(
+              t,
+              "storefront.catalog.loadErrorDescription",
+              "La selezione precedente resta visibile. Riprova quando la connessione e stabile."
+            )}
+          </div>
+        </div>
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="bg-white"
+        disabled={loading}
+        onClick={onRetry}
+      >
+        {loading ? <Loader2 className="size-4 animate-spin" /> : null}
+        {tx(t, "storefront.catalog.retry", "Riprova")}
+      </Button>
+    </div>
+  );
+}
+
+function CatalogProductSkeletonGrid({ count }: { count: number }) {
+  return (
+    <div className="partspro-catalog-grid">
+      {Array.from({ length: count }, (_, index) => (
+        <div
+          key={index}
+          className="h-[184px] animate-pulse rounded-lg border border-slate-200 bg-white p-2 shadow-sm sm:h-[318px]"
+        >
+          <div className="h-28 rounded-md bg-slate-100 sm:h-36" />
+          <div className="mt-2 h-4 w-5/6 rounded bg-slate-100" />
+          <div className="mt-1.5 h-4 w-2/3 rounded bg-slate-100" />
+          <div className="mt-2 grid grid-cols-2 gap-1">
+            <div className="h-6 rounded bg-slate-100" />
+            <div className="h-6 rounded bg-slate-100" />
+          </div>
+          <div className="mt-3 flex items-end justify-between gap-2">
+            <div className="space-y-1">
+              <div className="h-5 w-16 rounded bg-slate-100" />
+              <div className="h-3 w-24 rounded bg-slate-100" />
+            </div>
+            <div className="h-8 w-20 rounded-md bg-slate-100" />
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
