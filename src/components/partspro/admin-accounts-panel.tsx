@@ -630,7 +630,7 @@ export function AdminAccountsPanel() {
         >
           <SheetHeader className="sr-only">
             <SheetTitle>{detail?.account.email ?? "账号详情"}</SheetTitle>
-            <SheetDescription>账号、客户绑定、权限和审计。</SheetDescription>
+            <SheetDescription>账号资料、权限和审计。</SheetDescription>
           </SheetHeader>
           <div className="p-2">
             <AccountDetailPane
@@ -719,9 +719,6 @@ function AccountListItem({
             ) : (
               <CustomerAssignmentBadges customer={account.customer} />
             )}
-            <Badge className="h-5 border-slate-200 bg-slate-50 px-1.5 text-[10px] text-slate-500" variant="outline">
-              {account.customerState === "linked" ? "已绑定客户" : "仅账号"}
-            </Badge>
           </div>
         </div>
       </div>
@@ -825,8 +822,8 @@ function AccountDetailPane({
       <div className="grid gap-1.5 sm:grid-cols-3">
         <InfoTile
           icon={UsersRound}
-          label="客户绑定"
-          value={account.customer?.name ?? (account.customerState === "linked" ? "已绑定" : "未绑定")}
+          label={account.accountType === "customer" ? "客户资料" : "账号资料"}
+          value={account.customer?.name ?? account.displayName ?? account.email ?? "客户资料未初始化"}
         />
         <InfoTile
           icon={BriefcaseBusiness}
@@ -972,48 +969,48 @@ function AccountDetailPane({
             </div>
           </div>
         ) : (
-          <EmptyText text="此账号尚未绑定客户资料。" />
+          <EmptyText text="客户资料未初始化。" />
         )}
       </DetailSection>
 
-      <DetailSection
-        title={account.accountType === "employee" ? "历史客户成员关系" : "账号成员"}
-      >
-        {detail.memberships.length > 0 ? (
-          <div className="space-y-1.5">
-            {detail.memberships.map((membership) => (
-              <div
-                key={`${membership.customerId}:${membership.userId}`}
-                className="rounded-md border border-slate-200 bg-slate-50/70 px-2 py-1.5"
-              >
-                <div className="flex min-w-0 flex-wrap items-center gap-2">
-                  <span className="min-w-0 break-words text-xs font-black text-slate-900">
-                    {membership.displayName ?? membership.email ?? membership.userId}
-                  </span>
-                  <Badge className={accountTypeBadgeClass(membership.accountType)} variant="outline">
-                    {accountTypeLabel(membership.accountType)}
-                  </Badge>
-                  <Badge className={memberStatusBadgeClass(membership.status)} variant="outline">
-                    {memberStatusLabel(membership.status)}
-                  </Badge>
+      {account.accountType === "employee" ? (
+        <DetailSection title="历史客户成员关系">
+          {detail.memberships.length > 0 ? (
+            <div className="space-y-1.5">
+              {detail.memberships.map((membership) => (
+                <div
+                  key={`${membership.customerId}:${membership.userId}`}
+                  className="rounded-md border border-slate-200 bg-slate-50/70 px-2 py-1.5"
+                >
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <span className="min-w-0 break-words text-xs font-black text-slate-900">
+                      {membership.displayName ?? membership.email ?? membership.userId}
+                    </span>
+                    <Badge className={accountTypeBadgeClass(membership.accountType)} variant="outline">
+                      {accountTypeLabel(membership.accountType)}
+                    </Badge>
+                    <Badge className={memberStatusBadgeClass(membership.status)} variant="outline">
+                      {memberStatusLabel(membership.status)}
+                    </Badge>
+                  </div>
+                  <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold text-slate-500">
+                    <span>{membership.email ?? membership.userId}</span>
+                    <span>成员角色：{memberRoleLabel(membership.memberRole)}</span>
+                    {membership.roleTemplate ? (
+                      <span>员工角色：{roleTemplateLabel(text, membership.roleTemplate)}</span>
+                    ) : null}
+                    {membership.status === "disabled" ? (
+                      <span>旧客户成员关系已停用，不代表员工登录被禁用</span>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold text-slate-500">
-                  <span>{membership.email ?? membership.userId}</span>
-                  <span>成员角色：{memberRoleLabel(membership.memberRole)}</span>
-                  {membership.roleTemplate ? (
-                    <span>员工角色：{roleTemplateLabel(text, membership.roleTemplate)}</span>
-                  ) : null}
-                  {membership.status === "disabled" ? (
-                    <span>旧客户成员关系已停用，不代表员工登录被禁用</span>
-                  ) : null}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <EmptyText text="暂无账号成员。" />
-        )}
-      </DetailSection>
+              ))}
+            </div>
+          ) : (
+            <EmptyText text="暂无历史客户成员关系。" />
+          )}
+        </DetailSection>
+      ) : null}
 
       <DetailSection title="有效权限">
         {detail.permissions.length > 0 ? (
@@ -1647,7 +1644,7 @@ function CustomerAssignmentBadges({ customer }: { customer: AccountCustomer | nu
   if (!customer) {
     return (
       <Badge className={cn(badgeClass, "border-slate-200 bg-slate-50 text-slate-500")} variant="outline">
-        未建客户资料
+        客户资料未初始化
       </Badge>
     );
   }

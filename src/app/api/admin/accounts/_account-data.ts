@@ -118,42 +118,115 @@ export type AdminAccountDetailDto = {
 
 export async function readCustomersForProfiles(
   supabase: SupabaseServerClient,
-  customerIds: string[],
-  userIds: string[]
+  profiles: DbRow[]
 ) {
-  const customers = new Map<string, DbRow>();
+  const contexts = profiles
+    .map((profile) => ({
+      customerId: readString(profile.customer_id),
+      email: readString(profile.email),
+      userId: readString(profile.id),
+    }))
+    .filter((context): context is { customerId: string | null; email: string | null; userId: string } =>
+      Boolean(context.userId)
+    );
+  const customerIds = uniqueStrings(contexts.map((context) => context.customerId).filter(isString));
+  const userIds = uniqueStrings(contexts.map((context) => context.userId));
+  const emails = uniqueStrings(contexts.map((context) => context.email).filter(isString));
+  const rowsById = new Map<string, DbRow>();
+  const ownerMembershipCustomerIdsByUserId = new Map<string, string[]>();
+
+  function addRows(rows: unknown) {
+    for (const row of Array.isArray(rows) ? rows.filter(isRow) : []) {
+      const id = readString(row.id);
+
+      if (id) {
+        rowsById.set(id, row);
+      }
+    }
+  }
 
   if (customerIds.length > 0) {
     const { data } = await supabase
       .from("customers")
       .select(customerSelect)
-      .in("id", uniqueStrings(customerIds));
+      .in("id", customerIds);
 
-    for (const row of Array.isArray(data) ? data.filter(isRow) : []) {
-      const id = readString(row.id);
-
-      if (id) {
-        customers.set(id, row);
-      }
-    }
+    addRows(data);
   }
 
   if (userIds.length > 0) {
     const { data } = await supabase
       .from("customers")
       .select(customerSelect)
-      .in("user_id", uniqueStrings(userIds));
+      .in("user_id", userIds);
+
+    addRows(data);
+  }
+
+  if (userIds.length > 0) {
+    const { data } = await supabase
+      .from("customer_memberships")
+      .select("customer_id, user_id, member_role, status")
+      .in("user_id", userIds)
+      .eq("status", "active")
+      .eq("member_role", "owner");
 
     for (const row of Array.isArray(data) ? data.filter(isRow) : []) {
       const userId = readString(row.user_id);
+      const customerId = readString(row.customer_id);
 
-      if (userId && !customers.has(userId)) {
-        customers.set(userId, row);
+      if (userId && customerId) {
+        ownerMembershipCustomerIdsByUserId.set(userId, [
+          ...(ownerMembershipCustomerIdsByUserId.get(userId) ?? []),
+          customerId,
+        ]);
+      }
+    }
+
+    const membershipCustomerIds = uniqueStrings(
+      Array.from(ownerMembershipCustomerIdsByUserId.values()).flat()
+    ).filter((id) => !rowsById.has(id));
+
+    if (membershipCustomerIds.length > 0) {
+      const { data: customers } = await supabase
+        .from("customers")
+        .select(customerSelect)
+        .in("id", membershipCustomerIds);
+
+      addRows(customers);
+    }
+  }
+
+  if (emails.length > 0) {
+    const { data } = await supabase
+      .from("customers")
+      .select(customerSelect)
+      .in("email", emails);
+
+    addRows(data);
+  }
+
+  const selected = new Map<string, DbRow>();
+  const allRows = Array.from(rowsById.values()).filter(isNormalCustomerRow);
+
+  for (const context of contexts) {
+    const customer = chooseCustomerForProfile(allRows, {
+      ...context,
+      ownerMembershipCustomerIds: ownerMembershipCustomerIdsByUserId.get(context.userId) ?? [],
+    });
+
+    if (customer) {
+      const customerId = readString(customer.id);
+
+      selected.set(context.userId, customer);
+
+      if (customerId) {
+        selected.set(customerId, customer);
       }
     }
   }
 
-  return customers;
+  return selected;
 }
 
 export async function readAdminAccountByUserId(
@@ -174,8 +247,7 @@ export async function readAdminAccountByUserId(
     return null;
   }
 
-  const customerIds = [readString(data.customer_id)].filter(isString);
-  const customers = await readCustomersForProfiles(supabase, customerIds, [userId]);
+  const customers = await readCustomersForProfiles(supabase, [data]);
 
   return toAccountDto(data, customers);
 }
@@ -240,6 +312,108 @@ export function toAccountDto(
     createdAt: readString(profile.created_at),
     updatedAt: readString(profile.updated_at),
   };
+}
+
+function chooseCustomerForProfile(
+  customers: DbRow[],
+  context: {
+    customerId: string | null;
+    email: string | null;
+    ownerMembershipCustomerIds: string[];
+    userId: string;
+  }
+) {
+  const ranked = customers
+    .map((customer) => ({
+      customer,
+      rank: customerLinkRank(customer, context),
+      timestamp: timestampOf(customer),
+    }))
+    .filter((entry) => entry.rank > 0);
+
+  ranked.sort((left, right) => {
+    const rankDelta = right.rank - left.rank;
+
+    return rankDelta !== 0 ? rankDelta : right.timestamp - left.timestamp;
+  });
+
+  return ranked[0]?.customer ?? null;
+}
+
+function customerLinkRank(
+  customer: DbRow,
+  context: {
+    customerId: string | null;
+    email: string | null;
+    ownerMembershipCustomerIds: string[];
+    userId: string;
+  }
+) {
+  const customerId = readString(customer.id);
+  const customerUserId = readString(customer.user_id);
+
+  if (
+    customerId &&
+    customerId === context.customerId &&
+    (!customerUserId || customerUserId === context.userId)
+  ) {
+    return 400 + customerTieBreakRank(customer);
+  }
+
+  if (customerUserId === context.userId) {
+    return 300 + customerTieBreakRank(customer);
+  }
+
+  if (
+    customerId &&
+    context.ownerMembershipCustomerIds.includes(customerId) &&
+    (!customerUserId || customerUserId === context.userId)
+  ) {
+    return 200 + customerTieBreakRank(customer);
+  }
+
+  if (
+    context.email &&
+    equalEmail(readString(customer.email), context.email) &&
+    (!customerUserId || customerUserId === context.userId)
+  ) {
+    return 100 + customerTieBreakRank(customer);
+  }
+
+  return 0;
+}
+
+function customerTieBreakRank(customer: DbRow) {
+  let rank = 0;
+
+  if (readString(customer.status) === "active") {
+    rank += 30;
+  }
+
+  if (readString(customer.assignment_status) === "assigned") {
+    rank += 20;
+  } else if (readString(customer.assignment_status) === "needs_review") {
+    rank += 10;
+  }
+
+  return rank;
+}
+
+function isNormalCustomerRow(row: DbRow) {
+  const profileKind = readString(row.profile_kind) ?? "customer";
+
+  return profileKind !== "employee_self" && profileKind !== "archived_customer";
+}
+
+function timestampOf(row: DbRow) {
+  const value = readString(row.updated_at) ?? readString(row.created_at);
+  const timestamp = value ? Date.parse(value) : 0;
+
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function equalEmail(left: string | null, right: string) {
+  return left?.toLowerCase() === right.toLowerCase();
 }
 
 export function readString(value: unknown) {

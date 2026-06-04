@@ -9,7 +9,6 @@ import {
   profileSelect,
   readAdminAccountDetail,
   readCustomersForProfiles,
-  readString,
   roleTemplates,
   toAccountDto,
 } from "./_account-data";
@@ -88,11 +87,7 @@ export async function GET(request: NextRequest) {
       return apiError(502, "ADMIN_ACCOUNTS_READ_FAILED", "Admin accounts could not be read.");
     }
 
-    const customerIds = profiles
-      .map((profile) => readString(profile.customer_id))
-      .filter(isString);
-    const userIds = profiles.map((profile) => readString(profile.id)).filter(isString);
-    const customers = await readCustomersForProfiles(supabase, customerIds, userIds);
+    const customers = await readCustomersForProfiles(supabase, profiles);
 
     return NextResponse.json({
       data: profiles.map((profile) => toAccountDto(profile, customers)),
@@ -231,8 +226,4 @@ function parseAccountQuery(request: NextRequest) {
   }
 
   return { ok: true as const, data: result.data };
-}
-
-function isString(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
 }
