@@ -13,6 +13,8 @@ import {
   Home,
   Menu,
   Package,
+  PanelLeftClose,
+  PanelLeftOpen,
   Search,
   Settings,
   User,
@@ -32,6 +34,11 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { getAdminDictionary, type AdminText } from "@/i18n/dictionaries/admin";
 import { cn } from "@/lib/utils";
 import { useI18n } from "./i18n-provider";
@@ -147,6 +154,7 @@ function AdminPanelLoading() {
 export function AdminDashboard() {
   const [activePanel, setActivePanel] =
     React.useState<AdminPanelValue>("overview");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(true);
   const [visiblePanels, setVisiblePanels] =
     React.useState<AdminPanelValue[] | null>(null);
   const visiblePanelSet = React.useMemo(
@@ -213,6 +221,8 @@ export function AdminDashboard() {
           activePanel={activePanel}
           onPanelChange={setActivePanel}
           visiblePanels={visiblePanelSet}
+          collapsed={isSidebarCollapsed}
+          onCollapsedChange={setIsSidebarCollapsed}
         />
         <section className="w-full min-w-0 flex-1">
           <AdminTopbar
@@ -261,19 +271,80 @@ type AdminNavigationProps = {
   visiblePanels: ReadonlySet<AdminPanelValue>;
 };
 
+type AdminSidebarProps = AdminNavigationProps & {
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
+};
+
 function AdminSidebar({
   activePanel,
+  collapsed,
+  onCollapsedChange,
   onPanelChange,
   visiblePanels,
-}: AdminNavigationProps) {
+}: AdminSidebarProps) {
   const text = useAdminText();
+  const toggleLabel = collapsed ? "Expand admin sidebar" : "Collapse admin sidebar";
+  const ToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
+  const userCard = (
+    <div
+      className={cn(
+        "flex items-center rounded-lg bg-slate-50",
+        collapsed ? "justify-center p-2" : "gap-3 p-3"
+      )}
+    >
+      <div className="grid size-9 place-items-center rounded-full bg-primary text-white">
+        <User className="size-4" />
+      </div>
+      {!collapsed && (
+        <>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-bold">{text.topbar.adminName}</div>
+            <div className="text-xs text-slate-500">{text.topbar.adminRole}</div>
+          </div>
+          <ChevronDown className="ml-auto size-4 text-slate-400" />
+        </>
+      )}
+    </div>
+  );
 
   return (
-    <aside className="sticky top-0 hidden h-screen w-[250px] shrink-0 border-r border-slate-200 bg-white p-4 lg:block">
-      <PartsProLogo />
-      <nav className="mt-8 space-y-1">
+    <aside
+      className={cn(
+        "sticky top-0 hidden h-screen shrink-0 border-r border-slate-200 bg-white transition-[width,padding] duration-200 lg:block",
+        collapsed ? "w-[72px] px-3 py-4" : "w-[250px] p-4"
+      )}
+    >
+      <div
+        className={cn(
+          "flex",
+          collapsed ? "flex-col items-center gap-3" : "items-center justify-between gap-3"
+        )}
+      >
+        <PartsProLogo compact={collapsed} className={cn(collapsed && "justify-center")} />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-expanded={!collapsed}
+              aria-label={toggleLabel}
+              className="bg-white"
+              onClick={() => onCollapsedChange(!collapsed)}
+            >
+              <ToggleIcon className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side={collapsed ? "right" : "bottom"} sideOffset={8}>
+            {toggleLabel}
+          </TooltipContent>
+        </Tooltip>
+      </div>
+      <nav className={cn("space-y-1", collapsed ? "mt-6" : "mt-8")}>
         {navItems.map((item) => {
           const panel = "panel" in item ? item.panel : undefined;
+          const label = text.nav[item.labelKey];
           const isAvailable = Boolean(panel && visiblePanels.has(panel));
           const isActive = panel === activePanel;
 
@@ -281,11 +352,12 @@ function AdminSidebar({
             return null;
           }
 
-          return (
+          const navButton = (
             <button
               key={item.labelKey}
               type="button"
               disabled={!isAvailable}
+              aria-label={collapsed ? label : undefined}
               aria-current={isActive ? "page" : undefined}
               onClick={() => {
                 if (panel) {
@@ -293,7 +365,8 @@ function AdminSidebar({
                 }
               }}
               className={cn(
-                "flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-medium transition",
+                "flex h-10 w-full items-center rounded-lg text-sm font-medium transition",
+                collapsed ? "justify-center px-0" : "gap-3 px-3 text-left",
                 isActive
                   ? "bg-primary/10 text-primary"
                   : "text-slate-600 hover:bg-primary/8 hover:text-primary",
@@ -301,31 +374,43 @@ function AdminSidebar({
                   "cursor-default opacity-55 hover:bg-transparent hover:text-slate-600"
               )}
             >
-              <item.icon className="size-4" />
-              <span className="min-w-0 flex-1 truncate">{text.nav[item.labelKey]}</span>
-              {item.labelKey === "catalog" && (
-                <ChevronRight className="size-4 opacity-60" />
+              <item.icon className="size-4 shrink-0" />
+              {!collapsed && <span className="min-w-0 truncate">{label}</span>}
+              {!collapsed && item.labelKey === "catalog" && (
+                <ChevronRight className="ml-auto size-4 opacity-60" />
               )}
             </button>
           );
+
+          if (!collapsed) {
+            return navButton;
+          }
+
+          return (
+            <Tooltip key={item.labelKey}>
+              <TooltipTrigger asChild>
+                <span className="block">{navButton}</span>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={10}>
+                {label}
+              </TooltipContent>
+            </Tooltip>
+          );
         })}
       </nav>
-      <div className="absolute bottom-4 left-4 right-4">
+      <div className={cn("absolute bottom-4", collapsed ? "left-3 right-3" : "left-4 right-4")}>
         <Separator className="mb-4" />
-        <div className="flex items-center gap-3 rounded-lg bg-slate-50 p-3">
-          <div className="grid size-9 place-items-center rounded-full bg-primary text-white">
-            <User className="size-4" />
-          </div>
-          <div className="min-w-0">
-            <div className="truncate text-sm font-bold">
-              {text.topbar.adminName}
-            </div>
-            <div className="text-xs text-slate-500">
-              {text.topbar.adminRole}
-            </div>
-          </div>
-          <ChevronDown className="ml-auto size-4 text-slate-400" />
-        </div>
+        {collapsed ? (
+          <Tooltip>
+            <TooltipTrigger asChild>{userCard}</TooltipTrigger>
+            <TooltipContent side="right" sideOffset={10}>
+              <div className="font-semibold">{text.topbar.adminName}</div>
+              <div className="text-xs opacity-80">{text.topbar.adminRole}</div>
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          userCard
+        )}
       </div>
     </aside>
   );
