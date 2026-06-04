@@ -5,6 +5,7 @@ import {
   products,
   type PartProduct,
 } from "@/lib/partspro-data";
+import { calculateShippingCents } from "@/lib/partspro-shipping";
 import { toPublicSku } from "@/lib/partspro-sku";
 
 export type CartItem = {
@@ -388,7 +389,7 @@ export function calculateCartTotalsFromItems(
     (total, line) => total + toCents(line.product.price) * line.quantity,
     0
   );
-  const shippingCents = subtotalCents === 0 || subtotalCents > 25000 ? 0 : 1290;
+  const shippingCents = calculateShippingCents(subtotalCents);
 
   return {
     lines,

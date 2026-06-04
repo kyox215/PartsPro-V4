@@ -35,6 +35,10 @@ import {
   type PartProduct,
 } from "@/lib/partspro-data";
 import {
+  calculateShippingCents,
+  freeShippingThresholdCents,
+} from "@/lib/partspro-shipping";
+import {
   applyAccountPriceToProduct,
   canDelegateCheckout,
   getCurrentAccountContext,
@@ -728,7 +732,7 @@ function toOrderLineDto(line: OrderLine) {
 
 function calculateTotals(lines: OrderLine[]): PreparedOrderTotals {
   const subtotalCents = lines.reduce((total, line) => total + line.lineNetCents, 0);
-  const shippingCents = subtotalCents > 25000 ? 0 : 1290;
+  const shippingCents = calculateShippingCents(subtotalCents);
   const totalCents = subtotalCents + shippingCents;
 
   return {
@@ -745,7 +749,7 @@ function totalsDto(totals: PreparedOrderTotals) {
     shipping: money(totals.shippingCents),
     vat: money(totals.vatCents),
     total: money(totals.totalCents),
-    freeShippingThreshold: money(25000),
+    freeShippingThreshold: money(freeShippingThresholdCents),
     vatMode: "tax_included_shipping_only",
   };
 }

@@ -8,6 +8,8 @@ export type PartVisual =
   | "speaker"
   | "frame";
 
+import { calculateShippingCents } from "@/lib/partspro-shipping";
+
 export type StockStatus = "In Stock" | "Low Stock" | "Out of Stock";
 export type ProductGrade = "A+" | "A" | "B" | "Refurbished";
 export type CompanyStatus = "pending" | "approved" | "rejected" | "suspended";

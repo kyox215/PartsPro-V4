@@ -24,6 +24,10 @@ import {
   listCurrentCustomerCompanies,
 } from "@/lib/partspro-repository";
 import { type CompanyProfile, type PartProduct } from "@/lib/partspro-data";
+import {
+  calculateShippingCents,
+  freeShippingThresholdCents,
+} from "@/lib/partspro-shipping";
 import { toPublicSku } from "@/lib/partspro-sku";
 
 const previewItemSchema = z
@@ -309,7 +313,7 @@ function buildPreviewLine(product: PartProduct, quantity: number): PreviewLine {
 
 function calculateTotals(lines: PreviewLine[]) {
   const subtotalCents = lines.reduce((total, line) => total + line.lineNetCents, 0);
-  const shippingCents = subtotalCents > 25000 ? 0 : subtotalCents > 0 ? 1290 : 0;
+  const shippingCents = calculateShippingCents(subtotalCents);
   const totalCents = subtotalCents + shippingCents;
 
   return {
@@ -342,7 +346,7 @@ function totalsDto(totals: ReturnType<typeof calculateTotals>) {
     shipping: money(totals.shippingCents),
     vat: money(totals.vatCents),
     total: money(totals.totalCents),
-    freeShippingThreshold: money(25000),
+    freeShippingThreshold: money(freeShippingThresholdCents),
     vatMode: "tax_included_shipping_only",
   };
 }
