@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
+import { syncMarketplaceFulfillmentForOrder } from "@/lib/partspro-marketplace";
 import {
   forceCancelAdminShippedOrder,
   getAdminOrder,
@@ -217,6 +218,11 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
       });
     }
 
+    const marketplaceFulfillment =
+      order.status === "shipped" && order.carrier && order.trackingCode
+        ? await syncMarketplaceFulfillment(order)
+        : null;
+
     return NextResponse.json({
       data: toAdminOrderDto(order, {
         ...(parsed.data.carrier !== undefined ? { carrier: parsed.data.carrier } : {}),
@@ -231,6 +237,7 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
       }),
       meta: {
         source: result.source,
+        marketplaceFulfillment,
         transition:
           rollbackResult?.data.transition ??
           forceCancelResult?.data.transition ??
@@ -244,6 +251,23 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
       "ADMIN_ORDER_UPDATE_FAILED",
       "Order could not be updated at this time."
     );
+  }
+}
+
+async function syncMarketplaceFulfillment(
+  order: Awaited<ReturnType<typeof getAdminOrder>>["data"]
+) {
+  if (!order) {
+    return null;
+  }
+
+  try {
+    return await syncMarketplaceFulfillmentForOrder(order);
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "eBay fulfillment sync failed.",
+      synced: false,
+    };
   }
 }
 

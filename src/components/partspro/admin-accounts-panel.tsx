@@ -352,19 +352,33 @@ export function AdminAccountsPanel() {
     const controller = new AbortController();
 
     void fetchCurrentUser(controller.signal)
-      .then(async (me) => {
+      .then((me) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
         const canReadEmployees =
           me.permissions.includes("employees.read") ||
           me.permissions.includes("employees.manage_permissions");
-        const templates = canReadEmployees
-          ? await fetchRoleTemplates(controller.signal)
-          : [];
 
-        if (!controller.signal.aborted) {
-          setCurrentUserId(me.userId);
-          setCurrentPermissions(me.permissions);
-          setRoleTemplates(templates);
-          setPermissionsLoaded(true);
+        setCurrentUserId(me.userId);
+        setCurrentPermissions(me.permissions);
+        setPermissionsLoaded(true);
+
+        if (canReadEmployees) {
+          void fetchRoleTemplates(controller.signal)
+            .then((templates) => {
+              if (!controller.signal.aborted) {
+                setRoleTemplates(templates);
+              }
+            })
+            .catch(() => {
+              if (!controller.signal.aborted) {
+                setRoleTemplates([]);
+              }
+            });
+        } else {
+          setRoleTemplates([]);
         }
       })
       .catch(() => {
@@ -438,10 +452,14 @@ export function AdminAccountsPanel() {
     setDetailLoadedIncludes(new Set(loadedIncludes));
     setDetailLoadingIncludes(new Set());
     setDetailOpen(!shouldUseInlineDetailPane);
-    void loadDetail(userId, {
-      epoch,
-      signal: detailAbortRef.current.signal,
-    });
+
+    if (account.accountType === "employee") {
+      void loadDetail(userId, {
+        epoch,
+        silent: true,
+        signal: detailAbortRef.current.signal,
+      });
+    }
   }
 
   function handleDetailTabChange(value: string) {
@@ -467,18 +485,21 @@ export function AdminAccountsPanel() {
     {
       epoch = detailEpochRef.current,
       includes = [],
+      silent = false,
       signal,
     }: {
       epoch?: number;
       includes?: AccountDetailInclude[];
+      silent?: boolean;
       signal?: AbortSignal;
     } = {}
   ) {
     const isCoreRefresh = includes.length === 0;
+    const showCoreLoading = isCoreRefresh && !silent;
 
-    if (isCoreRefresh) {
+    if (showCoreLoading) {
       setDetailLoading(true);
-    } else {
+    } else if (!isCoreRefresh) {
       setDetailLoadingIncludes((current) => {
         const next = new Set(current);
 
@@ -520,9 +541,9 @@ export function AdminAccountsPanel() {
         return;
       }
 
-      if (isCoreRefresh) {
+      if (showCoreLoading) {
         setDetailLoading(false);
-      } else {
+      } else if (!isCoreRefresh) {
         setDetailLoadingIncludes((current) => {
           const next = new Set(current);
 
@@ -801,7 +822,7 @@ export function AdminAccountsPanel() {
               currentUserId={currentUserId}
               detail={detail}
               loadedIncludes={detailLoadedIncludes}
-              loading={detailLoading || detailLoadingIncludes.size > 0}
+              loading={detailLoading}
               loadingIncludes={detailLoadingIncludes}
               onAction={openConversion}
               onCustomerAction={openCustomerAction}
@@ -830,7 +851,7 @@ export function AdminAccountsPanel() {
               currentUserId={currentUserId}
               detail={detail}
               loadedIncludes={detailLoadedIncludes}
-              loading={detailLoading || detailLoadingIncludes.size > 0}
+              loading={detailLoading}
               loadingIncludes={detailLoadingIncludes}
               onAction={openConversion}
               onCustomerAction={openCustomerAction}

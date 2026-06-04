@@ -1,6 +1,17 @@
 create index if not exists admin_audit_events_entity_id_created_idx
   on public.admin_audit_events (entity_id, created_at desc);
 
+create index if not exists customers_user_id_idx
+  on public.customers (user_id)
+  where user_id is not null;
+
+create index if not exists customers_email_idx
+  on public.customers (email)
+  where email is not null;
+
+create index if not exists customer_memberships_user_owner_idx
+  on public.customer_memberships (user_id, status, member_role, customer_id);
+
 create or replace function public.admin_customer_order_ledger(
   p_customer_id uuid,
   p_order_limit integer default 20

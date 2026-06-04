@@ -17,6 +17,7 @@ import {
   PanelLeftOpen,
   Search,
   Settings,
+  ShoppingBag,
   User,
   UsersRound,
   Warehouse,
@@ -54,6 +55,7 @@ type AdminPanelValue =
   | "overview"
   | "orders"
   | "catalog"
+  | "marketplace"
   | "timeline"
   | "accounts"
   | "settings";
@@ -68,6 +70,7 @@ const adminPanelValues = [
   "overview",
   "orders",
   "catalog",
+  "marketplace",
   "timeline",
   "accounts",
   "settings",
@@ -77,6 +80,7 @@ const navItems = [
   { labelKey: "dashboard", icon: Home, panel: "overview" },
   { labelKey: "orders", icon: ClipboardList, panel: "orders" },
   { labelKey: "catalog", icon: Package, panel: "catalog" },
+  { labelKey: "marketplace", icon: ShoppingBag, panel: "marketplace" },
   { labelKey: "accounts", icon: UsersRound, panel: "accounts" },
   { labelKey: "warehouse", icon: Warehouse },
   { labelKey: "marketing", icon: Bell, panel: "timeline" },
@@ -117,6 +121,13 @@ const AdminAccountsPanel = dynamic(
   () =>
     import("./admin-accounts-panel").then(
       (module) => module.AdminAccountsPanel
+    ),
+  { loading: () => <AdminPanelLoadingFallback /> }
+);
+const AdminMarketplacePanel = dynamic(
+  () =>
+    import("./admin-marketplace-panel").then(
+      (module) => module.AdminMarketplacePanel
     ),
   { loading: () => <AdminPanelLoadingFallback /> }
 );
@@ -310,6 +321,9 @@ export function AdminDashboard() {
               </TabsContent>
               <TabsContent value="catalog" className="order-4 mt-0 min-w-0">
                 <AdminProductsPanel />
+              </TabsContent>
+              <TabsContent value="marketplace" className="order-4 mt-0 min-w-0">
+                <AdminMarketplacePanel />
               </TabsContent>
               <TabsContent value="timeline" className="order-4 mt-0 min-w-0">
                 <AdminActivityTimeline />

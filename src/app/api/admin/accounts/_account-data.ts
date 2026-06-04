@@ -24,6 +24,7 @@ const customerOrderSelect =
 export type AdminAccountDetailInclude = "activity" | "audit" | "orders";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+type SupabaseSelectQuery = ReturnType<ReturnType<SupabaseServerClient["from"]>["select"]>;
 type DbRow = Record<string, unknown>;
 
 export type AdminAccountDto = {
@@ -283,9 +284,113 @@ export async function readAdminAccountByUserId(
     return null;
   }
 
-  const customers = await readCustomersForProfiles(supabase, [data]);
+  const customer = await readCustomerForProfile(supabase, data);
+  const customers = new Map<string, DbRow>();
+
+  if (customer) {
+    const customerId = readString(customer.id);
+
+    customers.set(userId, customer);
+
+    if (customerId) {
+      customers.set(customerId, customer);
+    }
+  }
 
   return toAccountDto(data, customers);
+}
+
+async function readCustomerForProfile(
+  supabase: SupabaseServerClient,
+  profile: DbRow
+) {
+  const context = {
+    customerId: readString(profile.customer_id),
+    email: readString(profile.email),
+    ownerMembershipCustomerIds: [] as string[],
+    userId: readString(profile.id) ?? "",
+  };
+
+  if (!context.userId) {
+    return null;
+  }
+
+  if (context.customerId) {
+    const customer = await readFirstMatchingCustomer(supabase, context, (request) =>
+      request.eq("id", context.customerId)
+    );
+
+    if (customer) {
+      return customer;
+    }
+  }
+
+  const ownedCustomer = await readFirstMatchingCustomer(supabase, context, (request) =>
+    request.eq("user_id", context.userId)
+  );
+
+  if (ownedCustomer) {
+    return ownedCustomer;
+  }
+
+  const { data: memberships } = await supabase
+    .from("customer_memberships")
+    .select("customer_id")
+    .eq("user_id", context.userId)
+    .eq("status", "active")
+    .eq("member_role", "owner")
+    .limit(5);
+  const membershipCustomerIds = uniqueStrings(
+    (Array.isArray(memberships) ? memberships.filter(isRow) : [])
+      .map((row) => readString(row.customer_id))
+      .filter(isString)
+  );
+
+  if (membershipCustomerIds.length > 0) {
+    context.ownerMembershipCustomerIds = membershipCustomerIds;
+
+    const membershipCustomer = await readFirstMatchingCustomer(supabase, context, (request) =>
+      request.in("id", membershipCustomerIds)
+    );
+
+    if (membershipCustomer) {
+      return membershipCustomer;
+    }
+  }
+
+  if (context.email) {
+    return readFirstMatchingCustomer(supabase, context, (request) =>
+      request.eq("email", context.email)
+    );
+  }
+
+  return null;
+}
+
+async function readFirstMatchingCustomer(
+  supabase: SupabaseServerClient,
+  context: {
+    customerId: string | null;
+    email: string | null;
+    ownerMembershipCustomerIds: string[];
+    userId: string;
+  },
+  applyFilter: (
+    request: SupabaseSelectQuery
+  ) => PromiseLike<{ data: unknown }> | { data: unknown }
+) {
+  const request = supabase
+    .from("customers")
+    .select(customerSelect)
+    .order("updated_at", { ascending: false })
+    .limit(5);
+  const filteredRequest = request as unknown as SupabaseSelectQuery;
+  const { data } = (await applyFilter(filteredRequest)) as {
+    data: unknown;
+  };
+  const rows = Array.isArray(data) ? data.filter(isRow).filter(isNormalCustomerRow) : [];
+
+  return chooseCustomerForProfile(rows, context);
 }
 
 export async function readAdminAccountDetail(
@@ -587,29 +692,29 @@ async function readAccountPermissions(
   supabase: SupabaseServerClient,
   account: AdminAccountDto
 ) {
+  const templateId = account.roleTemplate ?? account.role ?? "customer";
   const [allPermissions, templatePermissions, overrides] = await Promise.all([
-    supabase.from("admin_permissions").select("id"),
+    account.role === "admin"
+      ? supabase.from("admin_permissions").select("id")
+      : Promise.resolve({ data: [] }),
     supabase
       .from("admin_role_template_permissions")
-      .select("role_template_id, permission_id"),
+      .select("permission_id")
+      .eq("role_template_id", templateId),
     supabase
       .from("admin_user_permission_overrides")
       .select("permission_id, effect")
       .eq("user_id", account.userId),
   ]);
-
-  const templateId = account.roleTemplate ?? account.role ?? "customer";
   const permissionSet = new Set<string>();
 
   for (const row of Array.isArray(templatePermissions.data)
     ? templatePermissions.data.filter(isRow)
     : []) {
-    if (readString(row.role_template_id) === templateId) {
-      const permissionId = readString(row.permission_id);
+    const permissionId = readString(row.permission_id);
 
-      if (permissionId) {
-        permissionSet.add(permissionId);
-      }
+    if (permissionId) {
+      permissionSet.add(permissionId);
     }
   }
 

@@ -153,6 +153,17 @@ export function visiblePanelsForPermissions(permissions: Iterable<string>) {
   }
 
   if (
+    permissionSet.has("panel.marketplace") ||
+    permissionSet.has("ebay.connect") ||
+    permissionSet.has("ebay.publish") ||
+    permissionSet.has("ebay.sync_inventory") ||
+    permissionSet.has("ebay.orders") ||
+    permissionSet.has("ebay.settings")
+  ) {
+    panels.add("marketplace");
+  }
+
+  if (
     permissionSet.has("panel.accounts") ||
     permissionSet.has("customers.read") ||
     permissionSet.has("employees.read") ||

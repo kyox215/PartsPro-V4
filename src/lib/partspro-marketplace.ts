@@ -18,6 +18,7 @@ import {
   RepositoryWriteError,
   getAdminProduct,
   listAdminProducts,
+  type AdminOrder,
   type AdminProduct,
 } from "@/lib/partspro-repository";
 import { createClient } from "@/lib/supabase/server";
@@ -381,6 +382,71 @@ export async function importMarketplaceOrderPayload(order: unknown) {
   }
 
   return { localOrderId: typeof data === "string" ? data : String(data) };
+}
+
+export async function syncMarketplaceFulfillmentForOrder(order: AdminOrder) {
+  if (order.status !== "shipped") {
+    return { skipped: true, reason: "order_not_shipped" };
+  }
+
+  const carrier = order.carrier.trim();
+  const tracking = order.trackingCode.trim();
+
+  if (!carrier || !tracking) {
+    return { skipped: true, reason: "missing_logistics" };
+  }
+
+  const client = await createClient();
+  const link = await readMarketplaceOrderLinkByLocalOrder(client, order);
+
+  if (!link) {
+    return { skipped: true, reason: "not_marketplace_order" };
+  }
+
+  const [settings, connection] = await Promise.all([
+    readMarketplaceSettings(client),
+    readMarketplaceConnection(client),
+  ]);
+  const ebay = await createAuthorizedEbayClient(client, settings, connection);
+  const externalOrderId = readString(link.external_order_id);
+
+  if (!externalOrderId) {
+    return { skipped: true, reason: "missing_external_order_id" };
+  }
+
+  try {
+    const result = await ebay.createShippingFulfillment(externalOrderId, {
+      shippedDate: new Date().toISOString(),
+      shippingCarrierCode: normalizeEbayCarrierCode(carrier),
+      trackingNumber: tracking,
+    });
+
+    await client
+      .from("marketplace_order_links")
+      .update({
+        external_order_status: "FULFILLED",
+        import_status: "imported",
+        last_error: null,
+        order_payload: {
+          ...(readRecord(link.order_payload) ?? {}),
+          local_fulfillment: {
+            carrier,
+            synced_at: new Date().toISOString(),
+            tracking,
+          },
+        },
+      })
+      .eq("id", link.id);
+
+    return { externalOrderId, fulfillmentId: result.fulfillmentId ?? null, synced: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "eBay 物流回写失败。";
+    await client
+      .from("marketplace_order_links")
+      .update({ last_error: message })
+      .eq("id", link.id);
+    throw error;
+  }
 }
 
 async function runMarketplaceJob(client: SupabaseServerClient, job: DbRow) {
@@ -1075,6 +1141,32 @@ async function readMarketplaceOrderLinks(client: SupabaseServerClient) {
   return readRows(data);
 }
 
+async function readMarketplaceOrderLinkByLocalOrder(
+  client: SupabaseServerClient,
+  order: AdminOrder
+) {
+  const { data, error } = await client
+    .from("marketplace_order_links")
+    .select("*")
+    .eq("provider", ebayMarketplaceDefaults.provider)
+    .eq("marketplace_id", ebayMarketplaceDefaults.marketplaceId)
+    .or(`local_order_id.eq.${order.id},local_order_no.eq.${order.orderNo}`)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new RepositoryWriteError(
+      502,
+      "MARKETPLACE_ORDER_LINK_READ_FAILED",
+      "eBay 订单关联读取失败。",
+      { message: error.message }
+    );
+  }
+
+  return isRow(data) ? data : null;
+}
+
 async function enrichListingsWithProducts(
   listings: DbRow[],
   settings: DbRow,
@@ -1278,6 +1370,28 @@ function formatEbayAddress(order: DbRow | null) {
   ]
     .filter(Boolean)
     .join(", ");
+}
+
+function normalizeEbayCarrierCode(carrier: string) {
+  const normalized = carrier.trim().toLowerCase();
+
+  if (normalized.includes("dhl")) {
+    return "DHL";
+  }
+
+  if (normalized.includes("ups")) {
+    return "UPS";
+  }
+
+  if (normalized.includes("gls")) {
+    return "GLS";
+  }
+
+  if (normalized.includes("brt") || normalized.includes("bartolini")) {
+    return "BRT";
+  }
+
+  return carrier.trim();
 }
 
 function toSettingsDto(row: DbRow): MarketplaceSettingsDto {

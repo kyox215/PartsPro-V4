@@ -39,6 +39,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Table,
   TableBody,
@@ -109,7 +117,13 @@ type WorkflowKey =
   | "agedReservations";
 
 const unassignedCarrier = "unassigned" as const;
-const carrierOptions = ["DHL Express", "BRT", "GLS", "UPS", "Ritiro in sede"] as const;
+const carrierOptions = [
+  "BRT 24-48h",
+  "GLS 24-48h",
+  "DHL Express",
+  "UPS",
+  "Ritiro in sede",
+] as const;
 type Carrier = (typeof carrierOptions)[number] | typeof unassignedCarrier;
 
 type CustomerSnapshot = {
@@ -769,6 +783,21 @@ export function AdminOrdersPanel() {
     [patchOrder, text.orders.activity.staffNoteUpdated, text.orders.notices.staffNote]
   );
 
+  const handleUpdateLogistics = React.useCallback(
+    (order: AdminOrder, carrier: string, tracking: string) => {
+      void patchOrder(
+        order,
+        {
+          carrier,
+          note: text.orders.shipmentSaved,
+          tracking,
+        },
+        text.orders.shipmentSaved
+      );
+    },
+    [patchOrder, text.orders.shipmentSaved]
+  );
+
   const handlePrintOrder = React.useCallback(
     (order: AdminOrder) => {
       printOrderPackingSlip(order, labels, text);
@@ -986,6 +1015,7 @@ export function AdminOrdersPanel() {
                     onPrintOrder={handlePrintOrder}
                     onRollback={handleRollbackOrder}
                     onTransition={handleTransition}
+                    onUpdateLogistics={handleUpdateLogistics}
                     onUpdateStaffNote={handleUpdateStaffNote}
                   />
                 </div>
@@ -1648,6 +1678,7 @@ function OrderDetailsPanel({
   onPrintOrder,
   onRollback,
   onTransition,
+  onUpdateLogistics,
   onUpdateStaffNote,
 }: {
   adminSession: AdminSessionState;
@@ -1661,6 +1692,7 @@ function OrderDetailsPanel({
   onPrintOrder: (order: AdminOrder) => void;
   onRollback: (order: AdminOrder) => void;
   onTransition: (order: AdminOrder, status: OrderDbStatus, successMessage: string) => void;
+  onUpdateLogistics: (order: AdminOrder, carrier: string, tracking: string) => void;
   onUpdateStaffNote: (order: AdminOrder, staffNote: string) => void;
 }) {
   const [trackingDetailsState, setTrackingDetailsState] = React.useState(() => ({
@@ -1729,6 +1761,7 @@ function OrderDetailsPanel({
   const isMutating = pendingActionKey?.startsWith(`${order.id}:`) ?? false;
   const isReadOnly = order.status === "completed" || order.status === "cancelled";
   const canEditStaffNote = adminSession.allowed;
+  const canEditLogistics = adminSession.allowed && !isReadOnly;
 
   return (
     <AdminBusyRegion
@@ -1861,12 +1894,15 @@ function OrderDetailsPanel({
           </div>
 
           <OrderLogisticsCard
+            canEditLogistics={canEditLogistics}
+            isMutating={isMutating}
             order={order}
             text={text}
             trackingDetail={trackingDetail}
             trackingDetailsOpen={trackingDetailsOpen}
             onRefreshTrackingDetails={handleRefreshTrackingDetails}
             onToggleTrackingDetails={handleToggleTrackingDetails}
+            onUpdateLogistics={onUpdateLogistics}
           />
 
           <OrderNotesBanner
@@ -2447,20 +2483,68 @@ function TrackingTimelineItem({ event }: { event: TrackingTimelineEvent }) {
 }
 
 function OrderLogisticsCard({
+  canEditLogistics,
+  isMutating,
   order,
   text,
   trackingDetail,
   trackingDetailsOpen,
   onRefreshTrackingDetails,
   onToggleTrackingDetails,
+  onUpdateLogistics,
 }: {
+  canEditLogistics: boolean;
+  isMutating: boolean;
   order: AdminOrder;
   text: AdminText;
   trackingDetail: OrderTrackingDetail;
   trackingDetailsOpen: boolean;
   onRefreshTrackingDetails: () => void;
   onToggleTrackingDetails: () => void;
+  onUpdateLogistics: (order: AdminOrder, carrier: string, tracking: string) => void;
 }) {
+  const [carrierDraft, setCarrierDraft] = React.useState<Carrier>(order.carrier);
+  const [trackingDraft, setTrackingDraft] = React.useState(order.tracking);
+
+  React.useEffect(() => {
+    setCarrierDraft(order.carrier);
+    setTrackingDraft(order.tracking);
+  }, [order.id, order.carrier, order.tracking]);
+
+  const pickup = isPickupCarrier(carrierDraft);
+  const normalizedTrackingDraft = pickup ? "" : trackingDraft.trim();
+  const trackingUrl = buildCarrierTrackingUrl(carrierDraft, normalizedTrackingDraft);
+  const hasLogisticsChanges =
+    carrierDraft !== order.carrier ||
+    normalizedTrackingDraft !== (isPickupCarrier(order.carrier) ? "" : order.tracking.trim());
+  const canSave = canEditLogistics && hasLogisticsChanges && !isMutating;
+
+  const handleCarrierChange = React.useCallback((value: string) => {
+    const nextCarrier = normalizeCarrierValue(value);
+    setCarrierDraft(nextCarrier);
+
+    if (nextCarrier === unassignedCarrier || isPickupCarrier(nextCarrier)) {
+      setTrackingDraft("");
+    }
+  }, []);
+
+  const handleSubmit = React.useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+
+      if (!canSave) {
+        return;
+      }
+
+      onUpdateLogistics(
+        order,
+        carrierDraft === unassignedCarrier ? "" : carrierDraft,
+        normalizedTrackingDraft
+      );
+    },
+    [canSave, carrierDraft, normalizedTrackingDraft, onUpdateLogistics, order]
+  );
+
   return (
     <div className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5 sm:p-2">
       <div className="mb-1 flex items-center gap-2 text-sm font-bold text-slate-900 sm:mb-2">
@@ -2476,6 +2560,102 @@ function OrderLogisticsCard({
           value={order.shippingAddress}
         />
       </div>
+      <form
+        className="mt-1.5 grid gap-1.5 rounded-md border border-slate-100 bg-slate-50 p-1.5 sm:grid-cols-[minmax(160px,0.9fr)_minmax(180px,1.1fr)_auto] sm:items-end"
+        onSubmit={handleSubmit}
+      >
+        <label className="min-w-0">
+          <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+            {text.common.carrier}
+          </span>
+          <Select
+            value={carrierDraft}
+            onValueChange={handleCarrierChange}
+            disabled={!canEditLogistics || isMutating}
+          >
+            <SelectTrigger className="h-9 w-full rounded-md border-slate-200 bg-white text-xs font-bold text-slate-900 sm:text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={unassignedCarrier}>{text.common.none}</SelectItem>
+              {carrierOptions.map((carrier) => (
+                <SelectItem key={carrier} value={carrier}>
+                  {carrier}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </label>
+
+        <label className="min-w-0">
+          <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+            {text.orders.print.tracking}
+          </span>
+          <div className="flex min-w-0 items-center gap-1">
+            <Input
+              className="h-9 rounded-md border-slate-200 bg-white text-xs font-semibold sm:text-sm"
+              disabled={
+                !canEditLogistics ||
+                isMutating ||
+                carrierDraft === unassignedCarrier ||
+                pickup
+              }
+              value={pickup ? "" : trackingDraft}
+              placeholder={pickup ? text.common.none : text.orders.print.tracking}
+              onChange={(event) => setTrackingDraft(event.target.value)}
+            />
+            {normalizedTrackingDraft && (
+              <CopyValueButton
+                className="shrink-0 bg-white"
+                label={text.orders.print.tracking}
+                text={text}
+                value={normalizedTrackingDraft}
+              />
+            )}
+          </div>
+        </label>
+
+        <div className="grid min-w-0 grid-cols-2 gap-1 sm:flex sm:w-fit sm:grid-cols-none">
+          <Button
+            type="submit"
+            size="sm"
+            className="min-w-0 rounded-md"
+            disabled={!canSave}
+          >
+            {isMutating ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Save className="size-3.5" />
+            )}
+            <span className="truncate">{text.common.saveChanges}</span>
+          </Button>
+          {trackingUrl ? (
+            <Button
+              asChild
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-w-0 rounded-md bg-white"
+            >
+              <a href={trackingUrl} target="_blank" rel="noreferrer">
+                <ExternalLink className="size-3.5" />
+                <span className="truncate">{text.orders.tracking.carrierPortal}</span>
+              </a>
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="min-w-0 rounded-md bg-white"
+              disabled
+            >
+              <ExternalLink className="size-3.5" />
+              <span className="truncate">{text.orders.tracking.carrierPortal}</span>
+            </Button>
+          )}
+        </div>
+      </form>
       <ShipmentReadiness
         order={order}
         text={text}

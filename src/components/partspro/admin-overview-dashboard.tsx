@@ -60,6 +60,7 @@ type AdminOverviewPanelValue =
   | "overview"
   | "orders"
   | "catalog"
+  | "marketplace"
   | "timeline"
   | "accounts"
   | "settings";
