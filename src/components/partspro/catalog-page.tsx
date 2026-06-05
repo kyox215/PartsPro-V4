@@ -154,6 +154,7 @@ function CatalogPageContent({
   const [expandedBrand, setExpandedBrand] = useState<string | null>(
     () => initialFilters.brand[0] ?? null
   );
+  const shouldUseCatalogPageCache = !showWholesalePrice;
   const catalogPageCacheRef = useRef(
     new Map<string, { products: PartProduct[]; total: number }>([
       [
@@ -205,7 +206,9 @@ function CatalogPageContent({
   const loadCatalogSelection = useCallback(
     async (selection: CatalogSelection, offset = 0) => {
       const apiPath = buildCatalogApiPath(selection, offset, assistedCompanyId);
-      const cachedPage = catalogPageCacheRef.current.get(apiPath);
+      const cachedPage = shouldUseCatalogPageCache
+        ? catalogPageCacheRef.current.get(apiPath)
+        : undefined;
       const tracksLatestRequest = offset === 0;
 
       if (tracksLatestRequest) {
@@ -232,6 +235,7 @@ function CatalogPageContent({
 
       try {
         const response = await fetch(apiPath, {
+          cache: "no-store",
           signal: controller.signal,
         });
 
@@ -247,10 +251,12 @@ function CatalogPageContent({
         const nextProducts = payload.data ?? [];
         const nextTotal = payload.meta?.total ?? nextProducts.length;
 
-        rememberCatalogPage(catalogPageCacheRef.current, apiPath, {
-          products: nextProducts,
-          total: nextTotal,
-        });
+        if (shouldUseCatalogPageCache) {
+          rememberCatalogPage(catalogPageCacheRef.current, apiPath, {
+            products: nextProducts,
+            total: nextTotal,
+          });
+        }
 
         setFilteredTotal(nextTotal);
         setProducts((currentProducts) =>
@@ -271,7 +277,7 @@ function CatalogPageContent({
         }
       }
     },
-    [assistedCompanyId]
+    [assistedCompanyId, shouldUseCatalogPageCache]
   );
 
   useEffect(() => {

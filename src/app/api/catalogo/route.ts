@@ -35,6 +35,9 @@ const catalogQuerySchema = z
 
 const allowedQueryKeys = new Set(Object.keys(catalogQuerySchema.shape));
 export const dynamic = "force-dynamic";
+const noStoreHeaders = {
+  "Cache-Control": "no-store, max-age=0",
+};
 
 export async function GET(request: NextRequest) {
   try {
@@ -77,25 +80,28 @@ export async function GET(request: NextRequest) {
       includeBuyerPrices: showPrice,
     });
 
-    return NextResponse.json({
-      data: repositoryResult.data.products.map((product) =>
-        toCatalogProduct(product, account)
-      ),
-      meta: {
-        source: repositoryResult.source,
-        total: repositoryResult.data.total,
-        limit: result.data.limit,
-        offset: result.data.offset,
-        returned: repositoryResult.data.products.length,
-        assistedOrderCustomerId: buyerCustomerId ?? null,
-        currency: "EUR",
-        priceVisibility:
-          showPrice && visibilityReason !== "customer_needs_assignment"
-            ? "visible_authenticated"
-            : visibilityReason,
-        vatMode: "tax_included_shipping_only",
+    return NextResponse.json(
+      {
+        data: repositoryResult.data.products.map((product) =>
+          toCatalogProduct(product, account)
+        ),
+        meta: {
+          source: repositoryResult.source,
+          total: repositoryResult.data.total,
+          limit: result.data.limit,
+          offset: result.data.offset,
+          returned: repositoryResult.data.products.length,
+          assistedOrderCustomerId: buyerCustomerId ?? null,
+          currency: "EUR",
+          priceVisibility:
+            showPrice && visibilityReason !== "customer_needs_assignment"
+              ? "visible_authenticated"
+              : visibilityReason,
+          vatMode: "tax_included_shipping_only",
+        },
       },
-    });
+      { headers: noStoreHeaders }
+    );
   } catch {
     return apiError(500, "CATALOG_UNAVAILABLE", "Catalog data is temporarily unavailable.");
   }

@@ -29,6 +29,7 @@ export type CartItemSnapshot = {
   name: string;
   price: number;
   priceGroupDiscountPercent?: number;
+  priceVersion?: string;
   retailPrice: number;
   sku: string;
   status: PartProduct["status"];
@@ -710,6 +711,7 @@ function cartItemSnapshotFromProduct(product: PartProduct): CartItemSnapshot {
     name: product.name,
     price: product.price,
     priceGroupDiscountPercent: product.priceGroupDiscountPercent,
+    priceVersion: product.priceVersion,
     retailPrice: product.retailPrice,
     sku: normalizeSku(product.sku),
     status: product.status,
@@ -748,6 +750,7 @@ function normalizeCartItemSnapshot(
     name,
     price: Math.max(0, readOptionalNumber(value.price) ?? 0),
     priceGroupDiscountPercent: readOptionalNumber(value.priceGroupDiscountPercent),
+    priceVersion: readString(value.priceVersion),
     retailPrice: Math.max(0, readOptionalNumber(value.retailPrice) ?? 0),
     sku: normalizeSku(readString(value.sku) ?? sku),
     status: normalizeStockStatus(value.status),
@@ -866,7 +869,17 @@ function getProductFromLookup(sku: string, lookup: CatalogLookup) {
 function cartCatalogKey(catalog: readonly PartProduct[]) {
   return catalog
     .map((product) => (
-      `${normalizeSku(product.sku)}:${product.stock}:${product.moq}:${product.status}`
+      [
+        normalizeSku(product.sku),
+        product.stock,
+        product.moq,
+        product.status,
+        product.price,
+        product.basePrice ?? "",
+        product.discountPercent ?? "",
+        product.levelDiscountAmount ?? "",
+        product.priceVersion ?? "",
+      ].join(":")
     ))
     .join("|");
 }

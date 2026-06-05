@@ -30,6 +30,9 @@ const cartCatalogQuerySchema = z
 const allowedQueryKeys = new Set(Object.keys(cartCatalogQuerySchema.shape));
 
 export const dynamic = "force-dynamic";
+const noStoreHeaders = {
+  "Cache-Control": "no-store, max-age=0",
+};
 
 export async function GET(request: NextRequest) {
   try {
@@ -119,21 +122,24 @@ export async function GET(request: NextRequest) {
         })),
     ];
 
-    return NextResponse.json({
-      data: cartProducts,
-      meta: {
-        source: repositoryResult.source,
-        requested: skus.length,
-        returned: cartProducts.length,
-        rejected: rejectedProducts,
-        currency: "EUR",
-        priceVisibility:
-          canResolveTargetPrices && visibilityReason !== "customer_needs_assignment"
-            ? "visible_authenticated"
-            : visibilityReason,
-        vatMode: "tax_included_shipping_only",
+    return NextResponse.json(
+      {
+        data: cartProducts,
+        meta: {
+          source: repositoryResult.source,
+          requested: skus.length,
+          returned: cartProducts.length,
+          rejected: rejectedProducts,
+          currency: "EUR",
+          priceVisibility:
+            canResolveTargetPrices && visibilityReason !== "customer_needs_assignment"
+              ? "visible_authenticated"
+              : visibilityReason,
+          vatMode: "tax_included_shipping_only",
+        },
       },
-    });
+      { headers: noStoreHeaders }
+    );
   } catch {
     return apiError(
       500,

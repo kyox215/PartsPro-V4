@@ -32,6 +32,13 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import {
   formatEuro,
@@ -46,6 +53,7 @@ import {
 import { cn } from "@/lib/utils";
 import { signOut } from "@/app/login/actions";
 import type { AccountCustomerProfile } from "@/lib/partspro-repository";
+import type { ItalyCapLookupResult } from "@/lib/italy-cap-lookup";
 import { StoreHeader } from "./store-header";
 
 type AccountPageProps = {
@@ -870,11 +878,11 @@ function AccountProfileDialog({
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  function updateAddressField(
+  const updateAddressField = React.useCallback((
     addressKey: "billingAddress" | "shippingAddress",
     field: AddressDraftField,
     value: string
-  ) {
+  ) => {
     setForm((current) => {
       const nextAddress = {
         ...current[addressKey],
@@ -895,7 +903,7 @@ function AccountProfileDialog({
 
       return nextForm;
     });
-  }
+  }, []);
 
   function updateBillingSameAsShipping(checked: boolean) {
     setForm((current) => ({
@@ -1114,8 +1122,59 @@ function AddressFields({
   title: string;
   value: AddressDraft;
 }) {
+  const [capMatches, setCapMatches] = React.useState<ItalyCapLookupResult[]>([]);
+  const candidateSelectId = `account-profile-${addressKey}-cap-candidate`;
+  const postalCode = normalizeItalianPostalCode(value.postalCode);
+  const visibleCapMatches = postalCode.length === 5 ? capMatches : [];
+  const selectedCapMatchValue = getSelectedCapMatchValue(visibleCapMatches, value);
+
+  const applyCapMatch = React.useCallback(
+    (match: ItalyCapLookupResult) => {
+      onChange(addressKey, "province", match.provinceCode);
+      onChange(addressKey, "city", match.city);
+    },
+    [addressKey, onChange]
+  );
+
+  React.useEffect(() => {
+    let active = true;
+
+    if (postalCode.length !== 5) {
+      return () => {
+        active = false;
+      };
+    }
+
+    import("@/lib/italy-cap-lookup")
+      .then(({ lookupItalyCap }) => {
+        if (!active) {
+          return;
+        }
+
+        const matches = lookupItalyCap(postalCode);
+        setCapMatches(matches);
+
+        if (matches.length === 1) {
+          applyCapMatch(matches[0]);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setCapMatches([]);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [applyCapMatch, postalCode]);
+
   function updateField(field: AddressDraftField, nextValue: string) {
-    onChange(addressKey, field, nextValue);
+    onChange(
+      addressKey,
+      field,
+      field === "postalCode" ? normalizeItalianPostalCode(nextValue) : nextValue
+    );
   }
 
   return (
@@ -1123,6 +1182,17 @@ function AddressFields({
       <div className="mb-3 text-sm font-black text-slate-700">{title}</div>
       <div className="grid gap-3 sm:grid-cols-3">
         <ProfileInput
+          id={`account-profile-${addressKey}-postalCode`}
+          field="postalCode"
+          label="CAP"
+          inputMode="numeric"
+          maxLength={5}
+          required
+          value={value.postalCode}
+          onChange={updateField}
+        />
+        <ProfileInput
+          id={`account-profile-${addressKey}-province`}
           field="province"
           label="省 / Provincia"
           required
@@ -1130,21 +1200,45 @@ function AddressFields({
           onChange={updateField}
         />
         <ProfileInput
+          id={`account-profile-${addressKey}-city`}
           field="city"
           label="城市 / Citta"
           required
           value={value.city}
           onChange={updateField}
         />
+        {visibleCapMatches.length > 1 ? (
+          <div className="space-y-1.5 sm:col-span-3">
+            <Label htmlFor={candidateSelectId} className="text-xs font-black text-slate-500">
+              CAP 匹配城市
+            </Label>
+            <Select
+              value={selectedCapMatchValue}
+              onValueChange={(matchValue) => {
+                const nextMatch = visibleCapMatches.find(
+                  (match) => getCapMatchValue(match) === matchValue
+                );
+
+                if (nextMatch) {
+                  applyCapMatch(nextMatch);
+                }
+              }}
+            >
+              <SelectTrigger id={candidateSelectId} className="w-full bg-white">
+                <SelectValue placeholder="请选择城市 / Provincia" />
+              </SelectTrigger>
+              <SelectContent>
+                {visibleCapMatches.map((match) => (
+                  <SelectItem key={getCapMatchValue(match)} value={getCapMatchValue(match)}>
+                    {match.city} ({match.provinceCode})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        ) : null}
         <ProfileInput
-          field="postalCode"
-          label="CAP"
-          inputMode="numeric"
-          required
-          value={value.postalCode}
-          onChange={updateField}
-        />
-        <ProfileInput
+          id={`account-profile-${addressKey}-street`}
           field="street"
           label="街道 / Via"
           required
@@ -1152,6 +1246,7 @@ function AddressFields({
           onChange={updateField}
         />
         <ProfileInput
+          id={`account-profile-${addressKey}-streetNumber`}
           field="streetNumber"
           label="门牌 / Numero"
           required
@@ -1159,6 +1254,7 @@ function AddressFields({
           onChange={updateField}
         />
         <ProfileInput
+          id={`account-profile-${addressKey}-extra`}
           field="extra"
           label="补充信息"
           value={value.extra}
@@ -1173,8 +1269,10 @@ type ProfileInputProps<Field extends string> = {
   autoComplete?: string;
   disabled?: boolean;
   field: Field;
+  id?: string;
   inputMode?: React.InputHTMLAttributes<HTMLInputElement>["inputMode"];
   label: string;
+  maxLength?: number;
   onChange: (field: Field, value: string) => void;
   required?: boolean;
   type?: React.HTMLInputTypeAttribute;
@@ -1184,15 +1282,17 @@ type ProfileInputProps<Field extends string> = {
 function ProfileInput<Field extends string>({
   autoComplete,
   field,
+  id: idProp,
   disabled,
   inputMode,
   label,
+  maxLength,
   onChange,
   required,
   type = "text",
   value,
 }: ProfileInputProps<Field>) {
-  const id = `account-profile-${field}`;
+  const id = idProp ?? `account-profile-${field}`;
 
   return (
     <div className="space-y-1.5">
@@ -1205,6 +1305,7 @@ function ProfileInput<Field extends string>({
         disabled={disabled}
         id={id}
         inputMode={inputMode}
+        maxLength={maxLength}
         required={required}
         type={type}
         value={value}
@@ -1292,7 +1393,7 @@ function parseAddressDraft(address: string): AddressDraft {
   return {
     city: match[4]?.trim() ?? "",
     extra: match[6]?.trim() ?? "",
-    postalCode: match[3]?.trim() ?? "",
+    postalCode: normalizeItalianPostalCode(match[3]?.trim() ?? ""),
     province: match[5]?.trim() ?? "",
     street: match[1]?.trim() ?? "",
     streetNumber: match[2]?.trim() ?? "",
@@ -1302,7 +1403,7 @@ function parseAddressDraft(address: string): AddressDraft {
 function formatAddressDraft(address: AddressDraft) {
   const street = address.street.trim();
   const streetNumber = address.streetNumber.trim();
-  const postalCode = address.postalCode.trim();
+  const postalCode = normalizeItalianPostalCode(address.postalCode);
   const city = address.city.trim();
   const province = address.province.trim();
   const extra = address.extra.trim();
@@ -1315,7 +1416,7 @@ function isAddressDraftComplete(address: AddressDraft) {
   return Boolean(
     address.province.trim() &&
       address.city.trim() &&
-      address.postalCode.trim() &&
+      normalizeItalianPostalCode(address.postalCode).length === 5 &&
       address.street.trim() &&
       address.streetNumber.trim()
   );
@@ -1323,6 +1424,27 @@ function isAddressDraftComplete(address: AddressDraft) {
 
 function normalizeAddressText(address: string | null | undefined) {
   return (address ?? "").trim().replace(/\s+/g, " ");
+}
+
+function normalizeItalianPostalCode(postalCode: string) {
+  return postalCode.replace(/\D/g, "").slice(0, 5);
+}
+
+function getCapMatchValue(match: ItalyCapLookupResult) {
+  return `${match.cap}:${match.provinceCode}:${match.city}`;
+}
+
+function getSelectedCapMatchValue(
+  matches: ItalyCapLookupResult[],
+  address: AddressDraft
+) {
+  const city = address.city.trim();
+  const province = address.province.trim().toUpperCase();
+  const selectedMatch = matches.find(
+    (match) => match.city === city && match.provinceCode === province
+  );
+
+  return selectedMatch ? getCapMatchValue(selectedMatch) : "";
 }
 
 function Info({ label, value }: { label: string; value: string }) {

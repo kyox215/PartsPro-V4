@@ -29,7 +29,7 @@ import { formatEuro } from "@/lib/partspro-data";
 import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
 import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
 import {
-  formatPercentBadge,
+  formatPriceDiscountBadge,
   getProductPriceDisplay,
 } from "@/lib/partspro-price-display";
 import { getProductImageCandidates } from "@/lib/partspro-product-images";
@@ -306,7 +306,7 @@ export const ProductCard = memo(function ProductCard({
                       </div>
                       {priceDisplay.hasDiscount ? (
                         <Badge className="shrink-0 border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-black text-emerald-700">
-                          {formatPercentBadge(priceDisplay.discountPercent)}
+                          {formatPriceDiscountBadge(priceDisplay)}
                         </Badge>
                       ) : null}
                       {isReviewPriceVisible ? (

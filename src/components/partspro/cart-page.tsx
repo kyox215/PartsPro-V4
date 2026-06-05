@@ -27,7 +27,7 @@ import {
 import { type PartProduct } from "@/lib/partspro-data";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import {
-  formatPercentBadge,
+  formatPriceDiscountBadge,
   getProductPriceDisplay,
 } from "@/lib/partspro-price-display";
 import { publicStockLevelMeta } from "@/lib/partspro-stock-availability";
@@ -1069,6 +1069,7 @@ function cartSnapshotProduct(
     name: snapshot.name,
     price: Math.max(0, snapshot.price),
     priceGroupDiscountPercent: snapshot.priceGroupDiscountPercent,
+    priceVersion: snapshot.priceVersion,
     retailPrice: Math.max(0, snapshot.retailPrice),
     rmaDays: 0,
     sku: snapshot.sku || fallbackSku,
@@ -1553,7 +1554,7 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
               <div className="flex justify-end gap-1 whitespace-nowrap text-[11px] text-slate-400">
                 <span className="line-through">{formatMoney(priceDisplay.basePrice, locale)}</span>
                 <span className="font-bold text-emerald-700">
-                  {formatPercentBadge(priceDisplay.discountPercent)}
+                  {formatPriceDiscountBadge(priceDisplay)}
                 </span>
               </div>
             ) : null}

@@ -26,7 +26,7 @@ import { inferDeviceModelSeries } from "@/lib/partspro-device-series";
 import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import {
-  formatPercentBadge,
+  formatPriceDiscountBadge,
   getProductPriceDisplay,
 } from "@/lib/partspro-price-display";
 import { publicStockLevelMeta } from "@/lib/partspro-stock-availability";
@@ -200,7 +200,7 @@ export async function ProductDetailPage({
                             {formatEuro(priceDisplay.basePrice)}
                           </div>
                           <Badge className="mb-0.5 border border-emerald-200 bg-emerald-50 text-emerald-700">
-                            {formatPercentBadge(priceDisplay.discountPercent)}
+                            {formatPriceDiscountBadge(priceDisplay)}
                           </Badge>
                         </>
                       ) : null}

@@ -51,6 +51,12 @@ export function formatPercentBadge(value: number) {
   return `-${Math.round(Math.max(0, value))}%`;
 }
 
+export function formatPriceDiscountBadge(display: ProductPriceDisplay) {
+  return display.levelDiscountAmount > 0
+    ? `-${formatEuroCents(display.levelDiscountAmount)} cad.`
+    : formatPercentBadge(display.discountPercent);
+}
+
 function finiteMoney(value: unknown) {
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
@@ -66,4 +72,13 @@ function finiteMoney(value: unknown) {
 
 function roundPercent(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function formatEuroCents(value: number) {
+  return new Intl.NumberFormat("it-IT", {
+    currency: "EUR",
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+    style: "currency",
+  }).format(Math.max(0, value));
 }
