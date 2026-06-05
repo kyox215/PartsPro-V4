@@ -4,7 +4,10 @@ import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
 import { updateAdminCustomerClassification } from "@/lib/partspro-repository";
 import { createClient } from "@/lib/supabase/server";
 import { repositoryErrorResponse, requireAdminApi } from "../../../_shared";
-import { readAdminAccountByUserId, readAdminAccountDetail } from "../../_account-data";
+import {
+  readAdminAccountDetail,
+  readEditableAdminAccountCustomerByUserId,
+} from "../../_account-data";
 
 export const dynamic = "force-dynamic";
 
@@ -54,15 +57,18 @@ export async function PATCH(request: NextRequest, { params }: AccountParams) {
 
   try {
     const supabase = await createClient();
-    const account = await readAdminAccountByUserId(supabase, paramResult.data.userId);
+    const editableCustomer = await readEditableAdminAccountCustomerByUserId(
+      supabase,
+      paramResult.data.userId
+    );
 
-    if (!account?.customer?.id) {
+    if (!editableCustomer?.customer?.id) {
       return apiError(404, "ADMIN_ACCOUNT_CUSTOMER_NOT_FOUND", "Account is not linked to a customer profile.", {
         userId: paramResult.data.userId,
       });
     }
 
-    await updateAdminCustomerClassification(account.customer.id, {
+    await updateAdminCustomerClassification(editableCustomer.customer.id, {
       customerType: parsed.data.customerType,
       reason: parsed.data.reason,
     });

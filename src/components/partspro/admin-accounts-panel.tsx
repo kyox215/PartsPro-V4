@@ -70,6 +70,7 @@ type CustomerType = "retail" | "wholesale";
 
 type AccountCustomer = {
   assignmentStatus: string;
+  convertedToEmployeeAt: string | null;
   customerType: string;
   id: string | null;
   lastActivityAt: string | null;
@@ -79,6 +80,7 @@ type AccountCustomer = {
   name: string | null;
   orders: AccountCustomerOrder[];
   ordersCount: number;
+  profileKind: string;
   recentActivity: AccountCustomerActivity[];
   revenue: number;
   spendSummary: AccountSpendSummary;
@@ -448,7 +450,7 @@ export function AdminAccountsPanel() {
     detailAbortRef.current = new AbortController();
     detailCacheRef.current.set(userId, initialDetail);
     setDetail(initialDetail);
-    setDetailTab(account.accountType === "employee" ? "permissions" : "profile");
+    setDetailTab(defaultDetailTabForAccount(account));
     setDetailLoadedIncludes(new Set(loadedIncludes));
     setDetailLoadingIncludes(new Set());
     setDetailOpen(!shouldUseInlineDetailPane);
@@ -593,6 +595,8 @@ export function AdminAccountsPanel() {
     setSubmitting(true);
 
     try {
+      let nextDetail: AccountDetail | null = null;
+
       if (conversion.kind === "role") {
         await patchAccountRole(
           conversion.account.userId,
@@ -600,13 +604,48 @@ export function AdminAccountsPanel() {
           conversion.reason
         );
       } else {
-        await patchAccountType(conversion);
+        nextDetail = await patchAccountType(conversion);
       }
 
       setNotice({ message: "账号变更已保存。", tone: "success" });
       setConversion(null);
-      await refreshAccounts();
-      await loadDetail(conversion.account.userId);
+
+      if (nextDetail) {
+        const userId = nextDetail.account.userId;
+        const nextLoadedIncludes = new Set<AccountDetailInclude>();
+
+        detailEpochRef.current += 1;
+        detailAbortRef.current?.abort();
+        detailCacheRef.current.set(userId, nextDetail);
+        detailLoadedIncludesRef.current.set(userId, nextLoadedIncludes);
+        setDetail(nextDetail);
+        setDetailLoadedIncludes(nextLoadedIncludes);
+        setDetailLoadingIncludes(new Set());
+        setDetailTab(defaultDetailTabForAccount(nextDetail.account));
+
+        if (
+          (nextDetail.account.accountType === "customer" && canReadCustomerAccounts) ||
+          (nextDetail.account.accountType === "employee" && canReadEmployeeAccounts)
+        ) {
+          setAccountType(nextDetail.account.accountType);
+          setPage(0);
+          setLoading(true);
+
+          try {
+            const payload = await fetchAccounts(nextDetail.account.accountType, 0, appliedQuery);
+
+            setAccounts(payload.data);
+            setTotal(payload.total);
+          } finally {
+            setLoading(false);
+          }
+        } else {
+          await refreshAccounts();
+        }
+      } else {
+        await refreshAccounts();
+        await loadDetail(conversion.account.userId);
+      }
     } catch (error) {
       setNotice({ message: readableError(error), tone: "error" });
     } finally {
@@ -944,7 +983,9 @@ function includesForDetailTab(tab: AccountDetailTab, detail: AccountDetail): Acc
   }
 
   if (tab === "activity") {
-    return detail.account.accountType === "customer" ? ["activity", "audit"] : ["audit"];
+    return detail.account.accountType === "customer" || detail.customer
+      ? ["activity", "audit"]
+      : ["audit"];
   }
 
   return [];
@@ -969,8 +1010,16 @@ function customerDetailTabValue(tab: AccountDetailTab) {
   return tab === "orders" || tab === "spend" || tab === "activity" ? tab : "profile";
 }
 
-function employeeDetailTabValue(tab: AccountDetailTab) {
+function employeeDetailTabValue(tab: AccountDetailTab, hasCustomerProfile: boolean) {
+  if (hasCustomerProfile && tab === "profile") {
+    return "profile";
+  }
+
   return tab === "memberships" || tab === "activity" ? tab : "permissions";
+}
+
+function defaultDetailTabForAccount(account: Account): AccountDetailTab {
+  return account.accountType === "employee" && !account.customer ? "permissions" : "profile";
 }
 
 function AccountListItem({
@@ -1158,7 +1207,7 @@ function AccountDetailPane({
           <InfoTile icon={KeyRound} label="有效权限" value={detail.permissions.length} />
         </div>
 
-      {account.accountType === "customer" && detail.customer ? (
+      {detail.customer ? (
         <div className="grid grid-cols-3 gap-1 sm:gap-1.5 lg:grid-cols-6">
           <InfoTile
             icon={BadgeCheck}
@@ -1289,8 +1338,22 @@ function AccountDetailPane({
           </TabsContent>
         </Tabs>
       ) : (
-        <Tabs value={employeeDetailTabValue(tab)} onValueChange={onTabChange} className="space-y-2">
-          <TabsList className="grid h-auto grid-cols-3 gap-1 rounded-md bg-white p-1 shadow-sm">
+        <Tabs
+          value={employeeDetailTabValue(tab, Boolean(detail.customer))}
+          onValueChange={onTabChange}
+          className="space-y-2"
+        >
+          <TabsList
+            className={cn(
+              "grid h-auto gap-1 rounded-md bg-white p-1 shadow-sm",
+              detail.customer ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"
+            )}
+          >
+            {detail.customer ? (
+              <TabsTrigger value="profile" className="h-8 rounded text-xs font-bold">
+                客户档案
+              </TabsTrigger>
+            ) : null}
             <TabsTrigger value="permissions" className="h-8 rounded text-xs font-bold">
               有效权限
             </TabsTrigger>
@@ -1301,6 +1364,18 @@ function AccountDetailPane({
               活动记录
             </TabsTrigger>
           </TabsList>
+          {detail.customer ? (
+            <TabsContent value="profile" className="m-0">
+              <CustomerProfileTab
+                account={account}
+                canManageCustomerLevel={canManageCustomerLevel}
+                canManageCustomerStatus={canManageCustomerStatus}
+                canManageCustomerType={canManageCustomerType}
+                customer={detail.customer}
+                onCustomerAction={onCustomerAction}
+              />
+            </TabsContent>
+          ) : null}
           <TabsContent value="permissions" className="m-0">
             <AccountPermissionsSection detail={detail} text={text} />
           </TabsContent>
@@ -2048,7 +2123,7 @@ async function fetchAccountDetail(
   return detail;
 }
 
-async function patchAccountType(conversion: ConversionState) {
+async function patchAccountType(conversion: ConversionState): Promise<AccountDetail> {
   const body =
     conversion.kind === "to_employee"
       ? {
@@ -2078,6 +2153,16 @@ async function patchAccountType(conversion: ConversionState) {
   if (!response.ok) {
     throw new Error(`PATCH /api/admin/accounts 返回 ${response.status}`);
   }
+
+  const payload = (await response.json()) as unknown;
+  const data = isRecord(payload) && isRecord(payload.data) ? payload.data : null;
+  const detail = normalizeAccountDetail(data);
+
+  if (!detail) {
+    throw new Error("账号变更返回格式不完整");
+  }
+
+  return detail;
 }
 
 async function patchAccountRole(userId: string, roleTemplate: string, reason: string) {
@@ -2384,6 +2469,7 @@ function normalizeCustomer(value: unknown): AccountCustomer | null {
     status: readString(value.status) ?? "pending",
     customerType: readString(value.customerType) ?? "retail",
     assignmentStatus: readString(value.assignmentStatus) ?? "needs_review",
+    profileKind: readString(value.profileKind) ?? "customer",
     level: readString(value.level) ?? "bronze",
     lifetimeSpendNet: readNumber(value.lifetimeSpendNet) ?? 0,
     orders: readArray(value.orders).map(normalizeCustomerOrder).filter(isDefined),
@@ -2393,6 +2479,7 @@ function normalizeCustomer(value: unknown): AccountCustomer | null {
     lastActivityAt: readString(value.lastActivityAt),
     recentActivity: readArray(value.recentActivity).map(normalizeCustomerActivity).filter(isDefined),
     spendSummary: normalizeSpendSummary(value.spendSummary),
+    convertedToEmployeeAt: readString(value.convertedToEmployeeAt),
     updatedAt: readString(value.updatedAt),
   };
 }

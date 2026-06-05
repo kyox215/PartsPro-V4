@@ -3,6 +3,7 @@ import { z } from "zod";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
 import { createClient } from "@/lib/supabase/server";
 import { requireAdminApi } from "../../../_shared";
+import { readAdminAccountDetail } from "../../_account-data";
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +70,7 @@ export async function PATCH(request: NextRequest, { params }: AccountParams) {
 
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase.rpc("admin_update_account_type", {
+    const { error } = await supabase.rpc("admin_update_account_type", {
       p_account_type: parsed.data.accountType,
       p_assignment_status: parsed.data.assignmentStatus ?? null,
       p_customer_type: parsed.data.customerType ?? null,
@@ -83,8 +84,16 @@ export async function PATCH(request: NextRequest, { params }: AccountParams) {
       });
     }
 
+    const detail = await readAdminAccountDetail(supabase, paramResult.data.userId);
+
+    if (!detail) {
+      return apiError(404, "ADMIN_ACCOUNT_NOT_FOUND", "Account was updated but could not be reloaded.", {
+        userId: paramResult.data.userId,
+      });
+    }
+
     return NextResponse.json({
-      data,
+      data: detail,
       meta: { source: "supabase_rpc", rpc: "admin_update_account_type" },
     });
   } catch {

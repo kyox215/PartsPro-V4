@@ -16,7 +16,7 @@ export const roleTemplates = [
 export const profileSelect =
   "id, email, role, account_type, auth_provider, display_name, avatar_url, role_template, customer_id, created_at, updated_at";
 export const customerSelect =
-  "id, user_id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address, status, customer_type, assignment_status, level, lifetime_spend_net, orders_count, revenue, last_order_at, last_activity_at, profile_completed_at, created_at, updated_at";
+  "id, user_id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address, status, customer_type, assignment_status, profile_kind, level, lifetime_spend_net, orders_count, revenue, last_order_at, last_activity_at, profile_completed_at, converted_to_employee_at, created_at, updated_at";
 const customerActivitySelect =
   "id, user_id, customer_id, event_type, sku_code, product_name, brand, model, model_series, search_query, metadata, created_at";
 const customerOrderSelect =
@@ -48,6 +48,7 @@ export type AdminAccountCustomerDto = {
   assignmentStatus: string;
   billingAddress: string | null;
   contactName: string | null;
+  convertedToEmployeeAt: string | null;
   createdAt: string | null;
   customerType: string;
   email: string | null;
@@ -63,6 +64,7 @@ export type AdminAccountCustomerDto = {
   pec: string | null;
   phone: string | null;
   profileCompletedAt: string | null;
+  profileKind: string;
   recentActivity: AdminAccountCustomerActivityDto[];
   revenue: number;
   sdi: string | null;
@@ -299,6 +301,22 @@ export async function readAdminAccountByUserId(
   }
 
   return toAccountDto(data, customers);
+}
+
+export async function readEditableAdminAccountCustomerByUserId(
+  supabase: SupabaseServerClient,
+  userId: string
+) {
+  const account = await readAdminAccountByUserId(supabase, userId);
+
+  if (!account) {
+    return null;
+  }
+
+  return {
+    account,
+    customer: account.customer,
+  };
 }
 
 async function readCustomerForProfile(
@@ -597,6 +615,7 @@ function toCustomerDto(row: DbRow): AdminAccountCustomerDto {
     status: readString(row.status) ?? "pending",
     customerType: readString(row.customer_type) ?? "retail",
     assignmentStatus: readString(row.assignment_status) ?? "needs_review",
+    profileKind: readString(row.profile_kind) ?? "customer",
     level: readString(row.level) ?? "bronze",
     lifetimeSpendNet: readNumber(row.lifetime_spend_net) ?? 0,
     orders: [],
@@ -607,6 +626,7 @@ function toCustomerDto(row: DbRow): AdminAccountCustomerDto {
     recentActivity: [],
     spendSummary: emptySpendSummary(),
     profileCompletedAt: readString(row.profile_completed_at),
+    convertedToEmployeeAt: readString(row.converted_to_employee_at),
     createdAt: readString(row.created_at),
     updatedAt: readString(row.updated_at),
   };
