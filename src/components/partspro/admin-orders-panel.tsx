@@ -99,6 +99,12 @@ type FulfillmentStatus =
 type StockRisk = "clear" | "low" | "blocked" | "unknown";
 type Priority = "standard" | "high" | "urgent";
 type ViewMode = "orders" | "payments" | "shipping";
+type MobileOrderDetailsSection =
+  | "overview"
+  | "payment"
+  | "logistics"
+  | "lines"
+  | "history";
 type StatusFilterValue = "all" | OrderDbStatus;
 type PaymentFilterValue = "all" | "open" | "paid";
 type StockRiskFilterValue = "all" | "risk" | StockRisk;
@@ -1893,6 +1899,19 @@ function OrderDetailsPanel({
         : null,
     [order, text, trackingDetailsState.refreshedAt]
   );
+  const orderId = order?.id ?? "";
+  const [mobileSectionState, setMobileSectionState] = React.useState<{
+    orderId: string;
+    section: MobileOrderDetailsSection;
+  }>({ orderId: "", section: "overview" });
+  const mobileSection =
+    mobileSectionState.orderId === orderId ? mobileSectionState.section : "overview";
+  const handleMobileSectionChange = React.useCallback(
+    (section: MobileOrderDetailsSection) => {
+      setMobileSectionState({ orderId, section });
+    },
+    [orderId]
+  );
 
   const handleToggleTrackingDetails = React.useCallback(() => {
     setTrackingDetailsState((current) => {
@@ -2017,27 +2036,41 @@ function OrderDetailsPanel({
         </div>
       )}
 
-      <div className="grid min-w-0 gap-1 sm:gap-1.5 xl:grid-cols-[minmax(0,1fr)_minmax(330px,360px)] 2xl:grid-cols-[minmax(0,1fr)_minmax(350px,380px)]">
-        <div className="min-w-0 space-y-1.5">
-          <div className="grid grid-cols-2 gap-1 rounded-md border border-slate-200 bg-white p-1 text-[11px] font-medium text-slate-600 sm:p-2.5 sm:text-xs md:hidden">
-            <div className="min-w-0 rounded bg-slate-50 px-1.5 py-1">
-              <div className="text-[10px] font-bold leading-none text-slate-400">
-                {text.common.payment}
-              </div>
-              <div className="mt-0.5 truncate font-bold leading-tight text-slate-900">
-                {labels.payment[order.paymentStatus]} · {labels.paymentMethod[order.paymentMethod]}
-              </div>
-            </div>
-            <div className="min-w-0 rounded bg-slate-50 px-1.5 py-1">
-              <div className="text-[10px] font-bold leading-none text-slate-400">
-                {text.common.fulfillment}
-              </div>
-              <div className="mt-0.5 truncate font-bold leading-tight text-slate-900">
-                {labels.fulfillment[order.fulfillmentStatus]} · {pickedItems}/{order.items}
-              </div>
-            </div>
-          </div>
+      <OrderMobileSectionTabs
+        activeSection={mobileSection}
+        historyCount={order.operationHistory.length || order.activity.length}
+        lineCount={order.lines.length}
+        text={text}
+        onChange={handleMobileSectionChange}
+      />
 
+      <div className="md:hidden">
+        <OrderMobileDetailsSection
+          activeSection={mobileSection}
+          canAdjustShipping={canAdjustShipping}
+          canEditLogistics={canEditLogistics}
+          canEditPayment={canManageOrders && !isReadOnly}
+          canEditStaffNote={canEditStaffNote}
+          canReconcilePayment={canReconcilePayment}
+          isMutating={isMutating}
+          labels={labels}
+          order={order}
+          pickedItems={pickedItems}
+          text={text}
+          trackingDetail={trackingDetail}
+          trackingDetailsOpen={trackingDetailsOpen}
+          onAdjustShipping={onAdjustShipping}
+          onRefreshTrackingDetails={handleRefreshTrackingDetails}
+          onToggleTrackingDetails={handleToggleTrackingDetails}
+          onUpdateLogistics={onUpdateLogistics}
+          onUpdatePayment={onUpdatePayment}
+          onUpdatePaymentMethod={onUpdatePaymentMethod}
+          onUpdateStaffNote={onUpdateStaffNote}
+        />
+      </div>
+
+      <div className="hidden min-w-0 gap-1 sm:gap-1.5 md:grid xl:grid-cols-[minmax(0,1fr)_minmax(330px,360px)] 2xl:grid-cols-[minmax(0,1fr)_minmax(350px,380px)]">
+        <div className="min-w-0 space-y-1.5">
           <div className="hidden gap-1.5 md:grid md:grid-cols-2 xl:grid-cols-5">
             <DetailFact
               label={text.orders.details.orderTotal}
@@ -2134,6 +2167,279 @@ function OrderDetailsPanel({
       </div>
       </div>
     </AdminBusyRegion>
+  );
+}
+
+function OrderMobileSectionTabs({
+  activeSection,
+  historyCount,
+  lineCount,
+  text,
+  onChange,
+}: {
+  activeSection: MobileOrderDetailsSection;
+  historyCount: number;
+  lineCount: number;
+  text: AdminText;
+  onChange: (section: MobileOrderDetailsSection) => void;
+}) {
+  const sections: Array<{
+    key: MobileOrderDetailsSection;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    count?: number;
+  }> = [
+    {
+      key: "overview",
+      label: text.orders.mobileSections.overview,
+      icon: ClipboardList,
+    },
+    {
+      key: "payment",
+      label: text.orders.mobileSections.payment,
+      icon: CreditCard,
+    },
+    {
+      key: "logistics",
+      label: text.orders.mobileSections.logistics,
+      icon: Truck,
+    },
+    {
+      key: "lines",
+      label: text.orders.mobileSections.lines,
+      icon: PackageCheck,
+      count: lineCount,
+    },
+    {
+      key: "history",
+      label: text.orders.mobileSections.history,
+      icon: Clock3,
+      count: historyCount,
+    },
+  ];
+
+  return (
+    <div className="sticky top-0 z-20 -mx-1.5 bg-slate-50/95 px-1.5 py-1 backdrop-blur md:hidden">
+      <div className="grid grid-cols-5 gap-1 rounded-md border border-slate-200 bg-white p-1 shadow-[0_1px_0_rgba(15,23,42,0.04)]">
+        {sections.map((section) => {
+          const Icon = section.icon;
+          const selected = activeSection === section.key;
+
+          return (
+            <button
+              key={section.key}
+              type="button"
+              className={cn(
+                "flex min-w-0 flex-col items-center justify-center gap-0.5 rounded px-1 py-1 text-[10px] font-black leading-tight transition",
+                selected
+                  ? "bg-primary text-white shadow-sm"
+                  : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
+              )}
+              aria-pressed={selected}
+              onClick={() => onChange(section.key)}
+            >
+              <span className="relative grid size-4 place-items-center">
+                <Icon className="size-3.5" />
+                {section.count !== undefined && section.count > 0 ? (
+                  <span
+                    className={cn(
+                      "absolute -right-2 -top-1 rounded-full px-1 text-[9px] leading-3",
+                      selected ? "bg-white/20 text-white" : "bg-white text-slate-500"
+                    )}
+                  >
+                    {section.count}
+                  </span>
+                ) : null}
+              </span>
+              <span className="w-full truncate">{section.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function OrderMobileDetailsSection({
+  activeSection,
+  canAdjustShipping,
+  canEditLogistics,
+  canEditPayment,
+  canEditStaffNote,
+  canReconcilePayment,
+  isMutating,
+  labels,
+  order,
+  pickedItems,
+  text,
+  trackingDetail,
+  trackingDetailsOpen,
+  onAdjustShipping,
+  onRefreshTrackingDetails,
+  onToggleTrackingDetails,
+  onUpdateLogistics,
+  onUpdatePayment,
+  onUpdatePaymentMethod,
+  onUpdateStaffNote,
+}: {
+  activeSection: MobileOrderDetailsSection;
+  canAdjustShipping: boolean;
+  canEditLogistics: boolean;
+  canEditPayment: boolean;
+  canEditStaffNote: boolean;
+  canReconcilePayment: boolean;
+  isMutating: boolean;
+  labels: OrderLabels;
+  order: AdminOrder;
+  pickedItems: number;
+  text: AdminText;
+  trackingDetail: OrderTrackingDetail;
+  trackingDetailsOpen: boolean;
+  onAdjustShipping: (order: AdminOrder, patch: OrderShippingPatchInput) => void;
+  onRefreshTrackingDetails: () => void;
+  onToggleTrackingDetails: () => void;
+  onUpdateLogistics: (order: AdminOrder, carrier: string, tracking: string) => void;
+  onUpdatePayment: (order: AdminOrder, patch: OrderPaymentPatchInput) => void;
+  onUpdatePaymentMethod: (order: AdminOrder, paymentMethod: PaymentMethod) => void;
+  onUpdateStaffNote: (order: AdminOrder, staffNote: string) => void;
+}) {
+  if (activeSection === "payment") {
+    return (
+      <OrderPaymentMethodCard
+        compact
+        canEditPayment={canEditPayment}
+        canReconcilePayment={canReconcilePayment}
+        isMutating={isMutating}
+        labels={labels}
+        order={order}
+        text={text}
+        onUpdatePayment={onUpdatePayment}
+        onUpdatePaymentMethod={onUpdatePaymentMethod}
+      />
+    );
+  }
+
+  if (activeSection === "logistics") {
+    return (
+      <OrderLogisticsCard
+        compact
+        canAdjustShipping={canAdjustShipping}
+        canEditLogistics={canEditLogistics}
+        isMutating={isMutating}
+        order={order}
+        text={text}
+        trackingDetail={trackingDetail}
+        trackingDetailsOpen={trackingDetailsOpen}
+        onAdjustShipping={onAdjustShipping}
+        onRefreshTrackingDetails={onRefreshTrackingDetails}
+        onToggleTrackingDetails={onToggleTrackingDetails}
+        onUpdateLogistics={onUpdateLogistics}
+      />
+    );
+  }
+
+  if (activeSection === "lines") {
+    return (
+      <div className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5">
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1.5 text-sm font-black text-slate-900">
+            <PackageCheck className="size-4 shrink-0 text-primary" />
+            <span className="truncate">{text.orders.details.orderLines}</span>
+          </div>
+          <Badge variant="outline" className="h-5 bg-white px-1.5 text-[10px]">
+            {order.lines.length}
+          </Badge>
+        </div>
+        <OrderLines lines={order.lines} text={text} />
+      </div>
+    );
+  }
+
+  if (activeSection === "history") {
+    return (
+      <div className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5">
+        <OrderOperationHistory
+          events={order.operationHistory}
+          fallbackActivity={order.activity}
+          labels={labels}
+          text={text}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <OrderMobileOverview
+      canEditStaffNote={canEditStaffNote}
+      isMutating={isMutating}
+      labels={labels}
+      order={order}
+      pickedItems={pickedItems}
+      text={text}
+      onUpdateStaffNote={onUpdateStaffNote}
+    />
+  );
+}
+
+function OrderMobileOverview({
+  canEditStaffNote,
+  isMutating,
+  labels,
+  order,
+  pickedItems,
+  text,
+  onUpdateStaffNote,
+}: {
+  canEditStaffNote: boolean;
+  isMutating: boolean;
+  labels: OrderLabels;
+  order: AdminOrder;
+  pickedItems: number;
+  text: AdminText;
+  onUpdateStaffNote: (order: AdminOrder, staffNote: string) => void;
+}) {
+  return (
+    <div className="min-w-0 space-y-1.5">
+      <section className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5">
+        <div className="mb-1.5 flex min-w-0 items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1.5 text-sm font-black text-slate-900">
+            <ClipboardList className="size-4 shrink-0 text-primary" />
+            <span className="truncate">{text.orders.mobileSections.overview}</span>
+          </div>
+          <Badge className={orderStatusBadgeClass(order.status)}>
+            {labels.status[order.status]}
+          </Badge>
+        </div>
+        <div className="grid grid-cols-2 gap-1">
+          <MobileFact label={text.orders.details.orderTotal} value={formatEuro(order.total)} />
+          <MobileFact
+            label={text.common.payment}
+            value={`${labels.payment[order.paymentStatus]} · ${labels.paymentMethod[order.paymentMethod]}`}
+          />
+          <MobileFact
+            label={text.common.fulfillment}
+            value={`${labels.fulfillment[order.fulfillmentStatus]} · ${pickedItems}/${order.items}`}
+          />
+          <MobileFact
+            label={text.orders.details.reservation}
+            value={reservationValue(order, text)}
+          />
+          <MobileFact label={text.common.customer} value={order.company} />
+          <MobileFact
+            label={text.orders.details.shipping}
+            value={isPickupCarrier(order.carrier) ? text.orders.details.pickupFree : formatEuro(order.shipping)}
+          />
+        </div>
+        <MobileOrderProgress labels={labels} status={order.status} />
+      </section>
+      <OrderNotesBanner
+        canEditStaffNote={canEditStaffNote}
+        isMutating={isMutating}
+        order={order}
+        text={text}
+        onUpdateStaffNote={onUpdateStaffNote}
+      />
+    </div>
   );
 }
 
@@ -2691,6 +2997,7 @@ function TrackingTimelineItem({ event }: { event: TrackingTimelineEvent }) {
 function OrderPaymentMethodCard({
   canEditPayment,
   canReconcilePayment,
+  compact = false,
   isMutating,
   labels,
   order,
@@ -2700,6 +3007,7 @@ function OrderPaymentMethodCard({
 }: {
   canEditPayment: boolean;
   canReconcilePayment: boolean;
+  compact?: boolean;
   isMutating: boolean;
   labels: OrderLabels;
   order: AdminOrder;
@@ -2788,9 +3096,58 @@ function OrderPaymentMethodCard({
     order.paymentReconciliation.receivedBy?.label ??
     order.paymentReconciliation.receivedBy?.email ??
     text.common.none;
+  const receivedAmountLabel =
+    order.paymentReconciliation.receivedAmount !== null
+      ? formatEuro(order.paymentReconciliation.receivedAmount)
+      : text.common.none;
+  const receivedAtLabel = order.paymentReconciliation.receivedAt
+    ? formatDisplayDate(order.paymentReconciliation.receivedAt)
+    : text.common.none;
+  const paymentInfoRows = [
+    {
+      label: text.orders.details.paymentMethod,
+      value: labels.paymentMethod[order.paymentMethod],
+      show: true,
+    },
+    {
+      label: text.orders.paymentAmountDue,
+      value: order.paymentDueAmount > 0 ? formatEuro(order.paymentDueAmount) : text.common.none,
+      show: true,
+    },
+    {
+      label: text.orders.paymentReceivedAmount,
+      value: receivedAmountLabel,
+      show: !compact || order.paymentReconciliation.receivedAmount !== null,
+    },
+    {
+      label: text.orders.paymentReceivedBy,
+      value: collectorLabel,
+      show: !compact || collectorLabel !== text.common.none,
+    },
+    {
+      label: text.orders.paymentReceivedAt,
+      value: receivedAtLabel,
+      show: !compact || Boolean(order.paymentReconciliation.receivedAt),
+    },
+    {
+      label: text.orders.paymentReference,
+      value: order.paymentReconciliation.reference || text.common.none,
+      show: !compact || Boolean(order.paymentReconciliation.reference),
+    },
+    {
+      label: text.orders.paymentNote,
+      value: order.paymentReconciliation.note || text.common.none,
+      show: !compact || Boolean(order.paymentReconciliation.note),
+    },
+  ].filter((row) => row.show);
 
   return (
-    <section className="rounded-md border border-slate-200 bg-white p-2 sm:p-2.5">
+    <section
+      className={cn(
+        "rounded-md border border-slate-200 bg-white",
+        compact ? "p-1.5" : "p-2 sm:p-2.5"
+      )}
+    >
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5 text-xs font-black text-slate-900 sm:text-sm">
           <CreditCard className="size-3.5 shrink-0 text-primary" />
@@ -2800,40 +3157,25 @@ function OrderPaymentMethodCard({
           {labels.payment[order.paymentStatus]}
         </Badge>
       </div>
-      <div className="mb-2 grid gap-1 rounded-md border border-slate-100 bg-slate-50/60 p-1.5 text-xs sm:grid-cols-2">
-        <InfoRow label={text.orders.details.paymentMethod} value={labels.paymentMethod[order.paymentMethod]} />
-        <InfoRow
-          label={text.orders.paymentReceivedAmount}
-          value={
-            order.paymentReconciliation.receivedAmount !== null
-              ? formatEuro(order.paymentReconciliation.receivedAmount)
-              : text.common.none
-          }
-        />
-        <InfoRow
-          label={text.orders.paymentAmountDue}
-          value={order.paymentDueAmount > 0 ? formatEuro(order.paymentDueAmount) : text.common.none}
-        />
-        <InfoRow label={text.orders.paymentReceivedBy} value={collectorLabel} />
-        <InfoRow
-          label={text.orders.paymentReceivedAt}
-          value={
-            order.paymentReconciliation.receivedAt
-              ? formatDisplayDate(order.paymentReconciliation.receivedAt)
-              : text.common.none
-          }
-        />
-        <InfoRow
-          label={text.orders.paymentReference}
-          value={order.paymentReconciliation.reference || text.common.none}
-        />
-        <InfoRow
-          label={text.orders.paymentNote}
-          value={order.paymentReconciliation.note || text.common.none}
-        />
+      <div
+        className={cn(
+          "mb-2 grid gap-1 rounded-md border border-slate-100 bg-slate-50/60 p-1.5",
+          compact ? "grid-cols-2" : "text-xs sm:grid-cols-2"
+        )}
+      >
+        {paymentInfoRows.map((row) =>
+          compact ? (
+            <MobileFact key={row.label} label={row.label} value={row.value} />
+          ) : (
+            <InfoRow key={row.label} label={row.label} value={row.value} />
+          )
+        )}
       </div>
       <form
-        className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
+        className={cn(
+          "grid min-w-0",
+          compact ? "gap-1.5" : "gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
+        )}
         onSubmit={handleSubmit}
       >
         <label className="min-w-0">
@@ -2860,7 +3202,7 @@ function OrderPaymentMethodCard({
         <Button
           type="submit"
           size="sm"
-          className="self-end rounded-md"
+          className={cn("self-end rounded-md", compact && "w-full")}
           disabled={!canSave}
         >
           {isMutating ? (
@@ -2871,7 +3213,7 @@ function OrderPaymentMethodCard({
           <span className="truncate">{text.common.saveChanges}</span>
         </Button>
       </form>
-      <div className="mt-2 flex flex-wrap gap-2">
+      <div className={cn("mt-2 flex flex-wrap gap-2", compact && "gap-1.5")}>
         {order.paymentStatus !== "paid" && (
           <Button
             type="button"
@@ -3053,6 +3395,7 @@ function OrderPaymentMethodCard({
 function OrderLogisticsCard({
   canAdjustShipping,
   canEditLogistics,
+  compact = false,
   isMutating,
   order,
   text,
@@ -3065,6 +3408,7 @@ function OrderLogisticsCard({
 }: {
   canAdjustShipping: boolean;
   canEditLogistics: boolean;
+  compact?: boolean;
   isMutating: boolean;
   order: AdminOrder;
   text: AdminText;
@@ -3167,12 +3511,22 @@ function OrderLogisticsCard({
   );
 
   return (
-    <div className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5 sm:p-2">
+    <div
+      className={cn(
+        "min-w-0 rounded-md border border-slate-200 bg-white",
+        compact ? "p-1.5" : "p-1.5 sm:p-2"
+      )}
+    >
       <div className="mb-1 flex items-center gap-2 text-sm font-bold text-slate-900 sm:mb-2">
         <Truck className="size-4 text-primary" />
         {text.orders.details.logistics}
       </div>
-      <div className="grid gap-1 text-xs text-slate-600 sm:grid-cols-2 sm:text-sm xl:grid-cols-5">
+      <div
+        className={cn(
+          "grid gap-1 text-xs text-slate-600",
+          compact ? "grid-cols-2" : "sm:grid-cols-2 sm:text-sm xl:grid-cols-5"
+        )}
+      >
         <InfoRow label={text.common.service} value={orderValueLabel(text, order.service)} />
         <InfoRow label={text.common.eta} value={orderValueLabel(text, order.eta)} />
         <InfoRow label={text.common.owner} value={orderValueLabel(text, order.owner)} />

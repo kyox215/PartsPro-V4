@@ -758,6 +758,13 @@ export const adminDictionaries = {
           payments: "付款",
           shipping: "发货",
         },
+        mobileSections: {
+          overview: "总览",
+          payment: "付款",
+          logistics: "物流",
+          lines: "商品",
+          history: "历史",
+        },
         workflow: {
           agedReservations: "超期锁货",
           all: "全部订单",
@@ -1911,6 +1918,13 @@ export const adminDictionaries = {
           orders: "Ordini",
           payments: "Pagamenti",
           shipping: "Spedizioni",
+        },
+        mobileSections: {
+          overview: "Sintesi",
+          payment: "Pagamento",
+          logistics: "Logistica",
+          lines: "Articoli",
+          history: "Storico",
         },
         workflow: {
           agedReservations: "Riserve scadute",
