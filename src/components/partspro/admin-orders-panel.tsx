@@ -64,6 +64,7 @@ import {
   type CustomerLevel,
   type PartProduct,
 } from "@/lib/partspro-data";
+import { calculateShippingCents } from "@/lib/partspro-shipping";
 import { cn } from "@/lib/utils";
 import {
   adminRoleTemplateLabel,
@@ -197,6 +198,9 @@ type AdminOrder = {
   stockRisk: StockRisk;
   company: string;
   total: number;
+  totalNet: number;
+  vat: number;
+  shipping: number;
   items: number;
   paymentStatus: PaymentStatus;
   fulfillmentStatus: FulfillmentStatus;
@@ -204,6 +208,7 @@ type AdminOrder = {
   customer: CustomerSnapshot;
   paymentMethod: PaymentMethod;
   paymentDue: string;
+  paymentDueAmount: number;
   paymentReconciliation: PaymentReconciliation;
   warehouse: WarehouseName;
   carrier: Carrier;
@@ -291,6 +296,12 @@ type OrderPaymentPatchInput = {
   receivedAmount?: number;
   receivedAt?: string;
   reference?: string;
+  note?: string;
+};
+
+type OrderShippingPatchInput = {
+  shippingAmount: number;
+  reason: string;
   note?: string;
 };
 
@@ -757,6 +768,41 @@ export function AdminOrdersPanel() {
     [text, upsertOrder]
   );
 
+  const patchOrderShipping = React.useCallback(
+    async (order: AdminOrder, patch: OrderShippingPatchInput, successMessage: string) => {
+      const actionKey = `${order.id}:shipping`;
+
+      setPendingOrderAction(actionKey);
+
+      try {
+        const result = await patchOrderShippingInApi(order.id, patch, text);
+
+        if (result.order) {
+          upsertOrder(result.order);
+        }
+
+        const refreshedOrder = await fetchOrderDetailFromApi(order.id);
+
+        upsertOrder(refreshedOrder);
+        setNotice({
+          tone: "success",
+          message: `${successMessage} ${formatAdminMessage(text.orders.notices.persisted, {
+            id: order.id,
+          })}`,
+        });
+      } catch (error) {
+        setNotice({
+          tone: "error",
+          message:
+            error instanceof Error ? error.message : text.orders.notices.rejected,
+        });
+      } finally {
+        setPendingOrderAction(null);
+      }
+    },
+    [text, upsertOrder]
+  );
+
   const handleTransition = React.useCallback(
     (order: AdminOrder, status: OrderDbStatus, successMessage: string) => {
       void patchOrder(
@@ -883,6 +929,13 @@ export function AdminOrdersPanel() {
       void patchOrderPayment(order, patch, text.orders.paymentReconciliationSaved);
     },
     [patchOrderPayment, text.orders.paymentReconciliationSaved]
+  );
+
+  const handleAdjustShipping = React.useCallback(
+    (order: AdminOrder, patch: OrderShippingPatchInput) => {
+      void patchOrderShipping(order, patch, text.orders.shippingAdjustmentSaved);
+    },
+    [patchOrderShipping, text.orders.shippingAdjustmentSaved]
   );
 
   const handlePrintOrder = React.useCallback(
@@ -1107,6 +1160,7 @@ export function AdminOrdersPanel() {
                     onRollback={handleRollbackOrder}
                     onTransition={handleTransition}
                     onUpdateLogistics={handleUpdateLogistics}
+                    onAdjustShipping={handleAdjustShipping}
                     onUpdatePayment={handleUpdatePayment}
                     onUpdatePaymentMethod={handleUpdatePaymentMethod}
                     onUpdateStaffNote={handleUpdateStaffNote}
@@ -1441,7 +1495,7 @@ function OrdersList({
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="text-xs font-semibold">{orderValueLabel(text, order.paymentDue)}</div>
+                        <div className="text-xs font-semibold">{paymentDueLabel(order, text)}</div>
                         <div className="text-[11px] text-slate-500">
                           {labels.paymentMethod[order.paymentMethod]}
                         </div>
@@ -1712,7 +1766,7 @@ function getMobileSummaryFacts(
   if (viewMode === "payments") {
     return [
       { label: text.orders.summary.payment, value: labels.payment[order.paymentStatus] },
-      { label: text.orders.details.paymentMethod, value: labels.paymentMethod[order.paymentMethod] },
+      { label: text.orders.summary.due, value: paymentDueLabel(order, text) },
     ];
   }
 
@@ -1799,6 +1853,7 @@ function OrderDetailsPanel({
   onPrintOrder,
   onRollback,
   onTransition,
+  onAdjustShipping,
   onUpdateLogistics,
   onUpdatePayment,
   onUpdatePaymentMethod,
@@ -1815,6 +1870,7 @@ function OrderDetailsPanel({
   onPrintOrder: (order: AdminOrder) => void;
   onRollback: (order: AdminOrder) => void;
   onTransition: (order: AdminOrder, status: OrderDbStatus, successMessage: string) => void;
+  onAdjustShipping: (order: AdminOrder, patch: OrderShippingPatchInput) => void;
   onUpdateLogistics: (order: AdminOrder, carrier: string, tracking: string) => void;
   onUpdatePayment: (order: AdminOrder, patch: OrderPaymentPatchInput) => void;
   onUpdatePaymentMethod: (order: AdminOrder, paymentMethod: PaymentMethod) => void;
@@ -1888,6 +1944,7 @@ function OrderDetailsPanel({
   const canManageOrders = hasAdminSessionPermission(adminSession, "orders.manage");
   const canEditStaffNote = canManageOrders;
   const canEditLogistics = canManageOrders && !isReadOnly;
+  const canAdjustShipping = canManageOrders && order.status !== "cancelled";
   const canReconcilePayment = canManageOrders && order.status !== "cancelled";
 
   return (
@@ -1992,10 +2049,7 @@ function OrderDetailsPanel({
             <DetailFact
               label={text.common.payment}
               value={labels.payment[order.paymentStatus]}
-              helper={`${labels.paymentMethod[order.paymentMethod]} - ${orderValueLabel(
-                text,
-                order.paymentDue
-              )}`}
+              helper={`${labels.paymentMethod[order.paymentMethod]} - ${paymentDueLabel(order, text)}`}
             />
             <DetailFact
               label={text.orders.details.fulfillment}
@@ -2035,6 +2089,7 @@ function OrderDetailsPanel({
 
           <OrderLogisticsCard
             key={`${order.id}:${order.carrier}:${order.tracking}`}
+            canAdjustShipping={canAdjustShipping}
             canEditLogistics={canEditLogistics}
             isMutating={isMutating}
             order={order}
@@ -2043,6 +2098,7 @@ function OrderDetailsPanel({
             trackingDetailsOpen={trackingDetailsOpen}
             onRefreshTrackingDetails={handleRefreshTrackingDetails}
             onToggleTrackingDetails={handleToggleTrackingDetails}
+            onAdjustShipping={onAdjustShipping}
             onUpdateLogistics={onUpdateLogistics}
           />
 
@@ -2659,7 +2715,7 @@ function OrderPaymentMethodCard({
   const [reconciliationMethodDraft, setReconciliationMethodDraft] =
     React.useState<PaymentMethod>(order.paymentMethod);
   const [amountDraft, setAmountDraft] = React.useState(() =>
-    formatPaymentAmountInput(order.paymentReconciliation.receivedAmount ?? order.total)
+    formatPaymentAmountInput(defaultPaymentReconciliationAmount(order, "paid"))
   );
   const [receivedAtDraft, setReceivedAtDraft] = React.useState(() =>
     toDateTimeLocalInput(order.paymentReconciliation.receivedAt ?? new Date().toISOString())
@@ -2697,7 +2753,7 @@ function OrderPaymentMethodCard({
     setStatusDraft(nextStatus);
     setReconciliationMethodDraft(order.paymentMethod);
     setAmountDraft(
-      formatPaymentAmountInput(order.paymentReconciliation.receivedAmount ?? order.total)
+      formatPaymentAmountInput(defaultPaymentReconciliationAmount(order, nextStatus))
     );
     setReceivedAtDraft(
       toDateTimeLocalInput(order.paymentReconciliation.receivedAt ?? new Date().toISOString())
@@ -2753,6 +2809,10 @@ function OrderPaymentMethodCard({
               ? formatEuro(order.paymentReconciliation.receivedAmount)
               : text.common.none
           }
+        />
+        <InfoRow
+          label={text.orders.paymentAmountDue}
+          value={order.paymentDueAmount > 0 ? formatEuro(order.paymentDueAmount) : text.common.none}
         />
         <InfoRow label={text.orders.paymentReceivedBy} value={collectorLabel} />
         <InfoRow
@@ -2821,7 +2881,11 @@ function OrderPaymentMethodCard({
             onClick={() => openReconciliationDialog("paid")}
           >
             <BadgeCheck className="size-3.5" />
-            <span className="truncate">{text.orders.markPaymentReceived}</span>
+            <span className="truncate">
+              {hasSupplementalPaymentDue(order)
+                ? text.orders.markSupplementPaymentReceived
+                : text.orders.markPaymentReceived}
+            </span>
           </Button>
         )}
         {order.paymentStatus === "paid" && (
@@ -2987,6 +3051,7 @@ function OrderPaymentMethodCard({
 }
 
 function OrderLogisticsCard({
+  canAdjustShipping,
   canEditLogistics,
   isMutating,
   order,
@@ -2995,8 +3060,10 @@ function OrderLogisticsCard({
   trackingDetailsOpen,
   onRefreshTrackingDetails,
   onToggleTrackingDetails,
+  onAdjustShipping,
   onUpdateLogistics,
 }: {
+  canAdjustShipping: boolean;
   canEditLogistics: boolean;
   isMutating: boolean;
   order: AdminOrder;
@@ -3005,18 +3072,39 @@ function OrderLogisticsCard({
   trackingDetailsOpen: boolean;
   onRefreshTrackingDetails: () => void;
   onToggleTrackingDetails: () => void;
+  onAdjustShipping: (order: AdminOrder, patch: OrderShippingPatchInput) => void;
   onUpdateLogistics: (order: AdminOrder, carrier: string, tracking: string) => void;
 }) {
   const [carrierDraft, setCarrierDraft] = React.useState<Carrier>(order.carrier);
   const [trackingDraft, setTrackingDraft] = React.useState(order.tracking);
+  const [shippingDialogOpen, setShippingDialogOpen] = React.useState(false);
+  const [shippingAmountDraft, setShippingAmountDraft] = React.useState(() =>
+    formatPaymentAmountInput(suggestedShippingAmount(order))
+  );
+  const [shippingReasonDraft, setShippingReasonDraft] = React.useState("");
+  const [shippingNoteDraft, setShippingNoteDraft] = React.useState("");
 
   const pickup = isPickupCarrier(carrierDraft);
+  const orderPickup = isPickupCarrier(order.carrier);
   const normalizedTrackingDraft = pickup ? "" : trackingDraft.trim();
   const trackingUrl = buildCarrierTrackingUrl(carrierDraft, normalizedTrackingDraft);
+  const shippingAmountValue = parsePaymentAmountInput(shippingAmountDraft);
+  const shippingAdjustmentSuggestedAmount = suggestedShippingAmount(order);
+  const needsShippingAdjustment =
+    !pickup &&
+    !orderPickup &&
+    order.shipping <= 0 &&
+    shippingAdjustmentSuggestedAmount > 0;
   const hasLogisticsChanges =
     carrierDraft !== order.carrier ||
     normalizedTrackingDraft !== (isPickupCarrier(order.carrier) ? "" : order.tracking.trim());
   const canSave = canEditLogistics && hasLogisticsChanges && !isMutating;
+  const canSaveShippingAdjustment =
+    canAdjustShipping &&
+    !isMutating &&
+    shippingAmountValue !== null &&
+    shippingAmountValue !== order.shipping &&
+    shippingReasonDraft.trim().length > 0;
 
   const handleCarrierChange = React.useCallback((value: string) => {
     const nextCarrier = normalizeCarrierValue(value);
@@ -3044,16 +3132,54 @@ function OrderLogisticsCard({
     [canSave, carrierDraft, normalizedTrackingDraft, onUpdateLogistics, order]
   );
 
+  const openShippingDialog = React.useCallback(() => {
+    setShippingAmountDraft(formatPaymentAmountInput(shippingAdjustmentSuggestedAmount));
+    setShippingReasonDraft(
+      needsShippingAdjustment ? text.orders.shippingAdjustmentDefaultReason : ""
+    );
+    setShippingNoteDraft("");
+    setShippingDialogOpen(true);
+  }, [needsShippingAdjustment, shippingAdjustmentSuggestedAmount, text.orders.shippingAdjustmentDefaultReason]);
+
+  const handleShippingAdjustmentSubmit = React.useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+
+      if (!canSaveShippingAdjustment || shippingAmountValue === null) {
+        return;
+      }
+
+      onAdjustShipping(order, {
+        shippingAmount: shippingAmountValue,
+        reason: shippingReasonDraft.trim(),
+        note: shippingNoteDraft.trim() || undefined,
+      });
+      setShippingDialogOpen(false);
+    },
+    [
+      canSaveShippingAdjustment,
+      onAdjustShipping,
+      order,
+      shippingAmountValue,
+      shippingNoteDraft,
+      shippingReasonDraft,
+    ]
+  );
+
   return (
     <div className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5 sm:p-2">
       <div className="mb-1 flex items-center gap-2 text-sm font-bold text-slate-900 sm:mb-2">
         <Truck className="size-4 text-primary" />
         {text.orders.details.logistics}
       </div>
-      <div className="grid gap-1 text-xs text-slate-600 sm:grid-cols-2 sm:text-sm xl:grid-cols-4">
+      <div className="grid gap-1 text-xs text-slate-600 sm:grid-cols-2 sm:text-sm xl:grid-cols-5">
         <InfoRow label={text.common.service} value={orderValueLabel(text, order.service)} />
         <InfoRow label={text.common.eta} value={orderValueLabel(text, order.eta)} />
         <InfoRow label={text.common.owner} value={orderValueLabel(text, order.owner)} />
+        <InfoRow
+          label={text.orders.details.shipping}
+          value={pickup ? text.orders.details.pickupFree : formatEuro(order.shipping)}
+        />
         <InfoRow
           label={text.orders.details.deliveryAddress}
           value={order.shippingAddress}
@@ -3154,6 +3280,33 @@ function OrderLogisticsCard({
           )}
         </div>
       </form>
+      {needsShippingAdjustment && (
+        <div className="mt-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-semibold text-amber-800">
+          {formatAdminMessage(text.orders.shippingAdjustmentPrompt, {
+            amount: formatEuro(shippingAdjustmentSuggestedAmount),
+          })}
+        </div>
+      )}
+      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant={needsShippingAdjustment ? "default" : "outline"}
+          className="rounded-md"
+          disabled={!canAdjustShipping || isMutating}
+          onClick={openShippingDialog}
+        >
+          <Pencil className="size-3.5" />
+          <span className="truncate">{text.orders.adjustShipping}</span>
+        </Button>
+        {order.paymentDueAmount > 0 && hasSupplementalPaymentDue(order) && (
+          <span className="rounded-md border border-amber-200 bg-white px-2 py-1 text-xs font-bold text-amber-700">
+            {formatAdminMessage(text.orders.paymentSupplementDue, {
+              amount: formatEuro(order.paymentDueAmount),
+            })}
+          </span>
+        )}
+      </div>
       <ShipmentReadiness
         order={order}
         text={text}
@@ -3169,6 +3322,97 @@ function OrderLogisticsCard({
           />
         </div>
       )}
+      <Dialog open={shippingDialogOpen} onOpenChange={setShippingDialogOpen}>
+        <DialogContent className="max-w-[520px] rounded-lg bg-white">
+          <DialogHeader>
+            <DialogTitle className="text-base font-black text-slate-950">
+              {text.orders.adjustShipping}
+            </DialogTitle>
+            <DialogDescription>
+              {formatAdminMessage(text.orders.shippingAdjustmentDialogDescription, {
+                current: formatEuro(order.shipping),
+                total: formatEuro(order.total),
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-3" onSubmit={handleShippingAdjustmentSubmit}>
+            <div className="grid gap-2 rounded-md border border-slate-100 bg-slate-50/70 p-2 text-xs sm:grid-cols-3">
+              <InfoRow label={text.orders.currentShipping} value={formatEuro(order.shipping)} />
+              <InfoRow
+                label={text.orders.suggestedShipping}
+                value={formatEuro(shippingAdjustmentSuggestedAmount)}
+              />
+              <InfoRow
+                label={text.orders.newOrderTotal}
+                value={
+                  shippingAmountValue !== null
+                    ? formatEuro(roundMoney(order.total - order.shipping + shippingAmountValue))
+                    : text.common.none
+                }
+              />
+            </div>
+            <label className="block min-w-0">
+              <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                {text.orders.shippingAmount}
+              </span>
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                value={shippingAmountDraft}
+                onChange={(event) => setShippingAmountDraft(event.target.value)}
+                disabled={!canAdjustShipping || isMutating}
+                className="h-9 rounded-md text-xs font-bold sm:text-sm"
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                {text.orders.shippingAdjustmentReason}
+              </span>
+              <Input
+                value={shippingReasonDraft}
+                onChange={(event) => setShippingReasonDraft(event.target.value)}
+                disabled={!canAdjustShipping || isMutating}
+                className="h-9 rounded-md text-xs font-bold sm:text-sm"
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                {text.orders.paymentNote}
+              </span>
+              <Textarea
+                value={shippingNoteDraft}
+                onChange={(event) => setShippingNoteDraft(event.target.value)}
+                disabled={!canAdjustShipping || isMutating}
+                className="min-h-20 rounded-md text-xs font-bold sm:text-sm"
+              />
+            </label>
+            {shippingReasonDraft.trim().length === 0 && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-semibold text-amber-700">
+                {text.orders.shippingAdjustmentReasonRequired}
+              </div>
+            )}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-md"
+                onClick={() => setShippingDialogOpen(false)}
+              >
+                {text.common.cancel}
+              </Button>
+              <Button type="submit" className="rounded-md" disabled={!canSaveShippingAdjustment}>
+                {isMutating ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Save className="size-3.5" />
+                )}
+                <span className="truncate">{text.common.saveChanges}</span>
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -4496,6 +4740,48 @@ async function patchOrderPaymentInApi(
   };
 }
 
+async function patchOrderShippingInApi(
+  orderId: string,
+  patch: OrderShippingPatchInput,
+  text: AdminText
+) {
+  const encodedOrderId = encodeURIComponent(orderId);
+  const path = `/api/admin/orders/${encodedOrderId}/shipping`;
+  const response = await fetch(path, {
+    body: JSON.stringify(serializeOrderShippingPatch(patch)),
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    method: "PATCH",
+  });
+
+  if (!response.ok) {
+    const payload = await readJsonSafely(response);
+    const message = readApiErrorMessage(payload, text);
+
+    throw new Error(
+      message ??
+        formatAdminMessage(text.orders.notices.requestFailed, {
+          method: "PATCH",
+          path,
+          status: response.status,
+        })
+    );
+  }
+
+  const payload = await readJsonSafely(response);
+  const meta = isRecord(payload) && isRecord(payload.meta) ? payload.meta : {};
+  const source = readSource(meta.source ?? (isRecord(payload) ? payload.source : null));
+  const row = extractOrderPayload(payload);
+
+  return {
+    order: row ? normalizeAdminOrder(row, 0, source) : null,
+    source,
+  };
+}
+
 function normalizeAdminOrder(
   row: unknown,
   index: number,
@@ -4576,6 +4862,17 @@ function normalizeAdminOrder(
     readRecordValue(row, ["total", "totalAmount", "total_amount", "grandTotal"]) ??
       readRecordValue(totalsRecord, ["total", "gross", "grandTotal", "grand_total"])
   );
+  const totalNet = readMoney(
+    readRecordValue(row, ["totalNet", "total_net"]) ??
+      readRecordValue(totalsRecord, ["totalNet", "total_net", "subtotal", "net"])
+  );
+  const vat = readMoney(
+    readRecordValue(row, ["vat"]) ?? readRecordValue(totalsRecord, ["vat", "tax"])
+  );
+  const shipping = readMoney(
+    readRecordValue(row, ["shipping", "shippingAmount", "shipping_amount"]) ??
+      readRecordValue(totalsRecord, ["shipping", "shippingAmount", "shipping_amount"])
+  );
   const warehouse = normalizeWarehouseValue(
     readRecordValue(row, ["warehouse"]) ??
       readRecordValue(shippingRecord, ["warehouse"])
@@ -4590,6 +4887,20 @@ function normalizeAdminOrder(
     readString(readRecordValue(row, ["staffNote", "staff_note", "internalNote", "internal_note"])) ??
     "";
   const legacyNote = readString(row.notes) ?? "";
+  const paymentReconciliation = normalizePaymentReconciliation(
+    readRecordValue(row, ["paymentReconciliation", "payment_reconciliation"])
+  );
+  const receivedAmountForDue =
+    paymentReconciliation.receivedAmount ??
+    (paymentStatus === "paid" ? total : 0);
+  const paymentDueAmountValue = readRecordValue(row, [
+    "paymentDueAmount",
+    "payment_due_amount",
+  ]);
+  const paymentDueAmount =
+    paymentDueAmountValue !== undefined
+      ? readMoney(paymentDueAmountValue)
+      : Math.max(0, roundMoney(total - receivedAmountForDue));
 
   return {
     id,
@@ -4601,6 +4912,9 @@ function normalizeAdminOrder(
     status,
     stockRisk: normalizeStockRiskValue(readRecordValue(row, ["stockRisk", "stock_risk"])),
     total,
+    totalNet,
+    vat,
+    shipping,
     items: itemCount,
     paymentStatus,
     fulfillmentStatus,
@@ -4612,9 +4926,8 @@ function normalizeAdminOrder(
     paymentDue:
       readString(readRecordValue(row, ["paymentDue", "payment_due", "dueDate"])) ??
       (paymentStatus === "paid" ? "Pagato" : "Da verificare"),
-    paymentReconciliation: normalizePaymentReconciliation(
-      readRecordValue(row, ["paymentReconciliation", "payment_reconciliation"])
-    ),
+    paymentDueAmount,
+    paymentReconciliation,
     warehouse,
     carrier: normalizeCarrierValue(
       readRecordValue(row, ["carrier"]) ?? readRecordValue(shippingRecord, ["carrier"])
@@ -5089,7 +5402,7 @@ function normalizeCarrierValue(value: unknown): Carrier {
     return "UPS";
   }
 
-  if (normalized?.includes("ritiro")) {
+  if (normalized === "pickup" || normalized?.includes("ritiro")) {
     return "Ritiro in sede";
   }
 
@@ -5251,6 +5564,51 @@ function buildOrderLabels(text: AdminText): OrderLabels {
 
 function carrierLabel(carrier: Carrier, text: AdminText) {
   return carrier === unassignedCarrier ? text.common.none : carrier;
+}
+
+function paymentDueLabel(order: AdminOrder, text: AdminText) {
+  if (hasSupplementalPaymentDue(order)) {
+    return formatAdminMessage(text.orders.paymentSupplementDue, {
+      amount: formatEuro(order.paymentDueAmount),
+    });
+  }
+
+  return orderValueLabel(text, order.paymentDue);
+}
+
+function hasSupplementalPaymentDue(order: AdminOrder) {
+  return (
+    order.paymentStatus !== "paid" &&
+    order.paymentDueAmount > 0 &&
+    (order.paymentReconciliation.receivedAmount ?? 0) > 0
+  );
+}
+
+function defaultPaymentReconciliationAmount(
+  order: AdminOrder,
+  nextStatus: PaymentStatus
+) {
+  if (nextStatus !== "paid") {
+    return order.paymentReconciliation.receivedAmount ?? order.total;
+  }
+
+  if (order.paymentStatus !== "paid" || hasSupplementalPaymentDue(order)) {
+    return order.total;
+  }
+
+  return order.paymentReconciliation.receivedAmount ?? order.total;
+}
+
+function suggestedShippingAmount(order: AdminOrder) {
+  if (isPickupCarrier(order.carrier)) {
+    return order.shipping > 0 ? order.shipping : 0;
+  }
+
+  if (order.shipping > 0) {
+    return order.shipping;
+  }
+
+  return roundMoney(calculateShippingCents(Math.round(order.totalNet * 100)) / 100);
 }
 
 function orderValueLabel(
@@ -5483,6 +5841,12 @@ function serializeOrderPatch(patch: OrderPatchInput) {
 }
 
 function serializeOrderPaymentPatch(patch: OrderPaymentPatchInput) {
+  return Object.fromEntries(
+    Object.entries(patch).filter(([, value]) => value !== undefined)
+  );
+}
+
+function serializeOrderShippingPatch(patch: OrderShippingPatchInput) {
   return Object.fromEntries(
     Object.entries(patch).filter(([, value]) => value !== undefined)
   );

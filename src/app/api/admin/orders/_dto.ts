@@ -10,6 +10,13 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
   const companySnapshot = isRecord(companySnapshotValue) ? companySnapshotValue : null;
   const operationHistory = toOrderOperationHistory(order);
   const paymentCollector = findPaymentCollector(order, operationHistory);
+  const paymentReceivedForDue =
+    order.paymentReceivedAmount ?? (order.paymentStatus === "paid" ? order.total : 0);
+  const paymentDueAmount = Math.max(0, roundMoney(order.total - paymentReceivedForDue));
+  const hasSupplementDue =
+    order.paymentStatus !== "paid" &&
+    paymentDueAmount > 0 &&
+    paymentReceivedForDue > 0;
 
   return {
     id: order.orderNo,
@@ -53,7 +60,8 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
     reservationOverdue: order.reservationOverdue,
     reservationWarning: order.reservationWarning,
     paymentMethod: normalizePaymentMethod(order.paymentMethod, fiscal),
-    paymentDue: order.paymentStatus === "paid" ? "Pagato" : "Da verificare",
+    paymentDue: order.paymentStatus === "paid" ? "Pagato" : hasSupplementDue ? "Da integrare" : "Da verificare",
+    paymentDueAmount,
     paymentReconciliation: {
       receivedAt: order.paymentReceivedAt,
       receivedAmount: order.paymentReceivedAmount,
@@ -105,6 +113,10 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
     operationHistory,
     ...overlay,
   };
+}
+
+function roundMoney(value: number) {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 function findPaymentCollector(

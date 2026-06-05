@@ -36,7 +36,11 @@ import {
 } from "@/lib/partspro-data";
 import {
   calculateShippingCents,
+  deliveryMethodInputValues,
   freeShippingThresholdCents,
+  normalizeDeliveryMethod,
+  shippingMethodForDeliveryMethod,
+  type DeliveryMethod,
 } from "@/lib/partspro-shipping";
 import {
   applyAccountPriceToProduct,
@@ -86,6 +90,7 @@ const createOrderSchema = z
   .object({
     companyId: z.string().trim().min(1).max(40).regex(/^[A-Za-z0-9_-]+$/),
     checkoutMode: z.enum(["customer_self", "employee_self", "delegated_customer"]).optional(),
+    deliveryMethod: z.enum(deliveryMethodInputValues).optional(),
     paymentMethod: z.enum(["bank_transfer", "cash"]),
     notes: z.string().trim().max(500).optional(),
     purchaseOrderNumber: z.string().trim().min(1).max(64).optional(),
@@ -241,6 +246,7 @@ export async function POST(request: NextRequest) {
 
     const requestedItems = result.data.items;
     const requestedSkus = requestedItems.map((item) => item.sku);
+    const deliveryMethod = normalizeDeliveryMethod(result.data.deliveryMethod);
     const deliveryAddress = normalizeDeliveryAddress(result.data.deliveryAddress);
     const [companies, customerProfile] = await Promise.all([
       checkoutMode === "delegated_customer"
@@ -316,7 +322,7 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const totals = calculateTotals(orderBuild.lines);
+    const totals = calculateTotals(orderBuild.lines, deliveryMethod);
     const fiscal = buildServerFiscalSnapshot(
       company,
       customerProfile.data,
@@ -326,6 +332,7 @@ export async function POST(request: NextRequest) {
       company,
       paymentMethod: result.data.paymentMethod,
       deliveryAddress,
+      deliveryMethod,
       fiscal,
       notes: result.data.notes,
       lines: orderBuild.lines,
@@ -716,12 +723,13 @@ function toOrderLineDto(line: OrderLine) {
   };
 }
 
-function calculateTotals(lines: OrderLine[]): PreparedOrderTotals {
+function calculateTotals(lines: OrderLine[], deliveryMethod: DeliveryMethod): PreparedOrderTotals {
   const subtotalCents = lines.reduce((total, line) => total + line.lineNetCents, 0);
-  const shippingCents = calculateShippingCents(subtotalCents);
+  const shippingCents = calculateShippingCents(subtotalCents, deliveryMethod);
   const totalCents = subtotalCents + shippingCents;
 
   return {
+    deliveryMethod,
     subtotalCents,
     shippingCents,
     vatCents: 0,
@@ -735,6 +743,7 @@ function totalsDto(totals: PreparedOrderTotals) {
     shipping: money(totals.shippingCents),
     vat: money(totals.vatCents),
     total: money(totals.totalCents),
+    shippingMethod: shippingMethodForDeliveryMethod(totals.deliveryMethod),
     freeShippingThreshold: money(freeShippingThresholdCents),
     vatMode: "tax_included_shipping_only",
   };

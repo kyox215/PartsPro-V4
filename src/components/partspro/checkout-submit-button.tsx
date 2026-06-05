@@ -11,6 +11,11 @@ import {
   txFormat,
   type StorefrontTranslator,
 } from "@/i18n/dictionaries/storefront";
+import {
+  normalizeDeliveryMethod,
+  shippingMethodForDeliveryMethod,
+  type DeliveryMethod,
+} from "@/lib/partspro-shipping";
 import { cartItemsForApi, useCart } from "./cart-state";
 import { useI18n, useT } from "./i18n-provider";
 
@@ -142,6 +147,7 @@ export function CheckoutSubmitButton({
           paymentMethod,
           purchaseOrderNumber,
           deliveryAddress,
+          deliveryMethod,
           fiscal: {
             companySnapshot,
           },
@@ -312,20 +318,7 @@ function readPaymentMethod(formData: FormData) {
 
 function readDeliveryMethod(formData: FormData) {
   const value = formData.get("deliveryMethod");
-
-  if (value === "insured_express") {
-    return "Espresso assicurato";
-  }
-
-  if (value === "pickup_milano") {
-    return "Ritiro sede Milano";
-  }
-
-  if (value === "express_24_48") {
-    return "Corriere espresso 24/48h";
-  }
-
-  return undefined;
+  return normalizeDeliveryMethod(value);
 }
 
 function readOptionalText(formData: FormData, key: string) {
@@ -375,10 +368,10 @@ function removeEmptyValues<T extends Record<string, unknown>>(payload: T) {
 
 function buildOrderNotes(
   customerNotes: string | undefined,
-  deliveryMethod: string | undefined
+  deliveryMethod: DeliveryMethod
 ) {
   const details = [
-    deliveryMethod ? `Consegna: ${deliveryMethod}` : undefined,
+    `Consegna: ${shippingMethodForDeliveryMethod(deliveryMethod)}`,
     customerNotes ? `Note: ${customerNotes}` : undefined,
   ].filter((value): value is string => Boolean(value));
 

@@ -516,14 +516,15 @@ export const storefrontItIT = {
   "storefront.checkout.option.express.description":
     "GLS/BRT con tracking e consegna in Italia lavorativa.",
   "storefront.checkout.option.express.label": "Corriere espresso 24/48h",
-  "storefront.checkout.option.insured.detail": "Priorità magazzino Milano",
+  "storefront.checkout.option.insured.detail": "Priorità magazzino",
   "storefront.checkout.option.insured.description":
     "Copertura merce per display e ricambi ad alto valore.",
   "storefront.checkout.option.insured.label": "Espresso assicurato",
   "storefront.checkout.option.pickup.detail": "Disponibile su appuntamento",
   "storefront.checkout.option.pickup.description":
     "Preparazione banco e ritiro da parte del cliente.",
-  "storefront.checkout.option.pickup.label": "Ritiro sede Milano",
+  "storefront.checkout.option.pickup.label": "Ritiro in sede",
+  "storefront.checkout.summary.pickupNote": "Ritiro in sede: spedizione gratuita.",
   "storefront.checkout.runtime.disabled": "Checkout disabilitato",
   "storefront.checkout.runtime.loginDescription":
     "Supabase è configurato: accedi per associare il checkout alla sessione.",
@@ -1350,14 +1351,15 @@ export const storefrontZhCN = {
   "storefront.checkout.option.express.description":
     "GLS/BRT，可追踪，意大利工作日配送。",
   "storefront.checkout.option.express.label": "24/48 小时快递",
-  "storefront.checkout.option.insured.detail": "米兰仓库优先处理",
+  "storefront.checkout.option.insured.detail": "仓库优先处理",
   "storefront.checkout.option.insured.description":
     "为屏幕和高价值配件提供货物保险。",
   "storefront.checkout.option.insured.label": "保价快递",
   "storefront.checkout.option.pickup.detail": "可预约",
   "storefront.checkout.option.pickup.description":
-    "仓库备货后由客户到米兰门店/仓库自提。",
-  "storefront.checkout.option.pickup.label": "米兰自提",
+    "仓库备货后由客户自提，不计算运费。",
+  "storefront.checkout.option.pickup.label": "自提",
+  "storefront.checkout.summary.pickupNote": "自提：免运费。",
   "storefront.checkout.runtime.disabled": "已禁用",
   "storefront.checkout.runtime.loginDescription":
     "Supabase 已配置：请登录以将结账与当前会话关联。",

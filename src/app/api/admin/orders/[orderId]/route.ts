@@ -325,11 +325,16 @@ function hasRequiredShipmentInfo(carrier: string | undefined, tracking: string |
     return false;
   }
 
-  if (deliveryService === "Ritiro in sede") {
+  if (isPickupDeliveryService(deliveryService)) {
     return true;
   }
 
   return Boolean(tracking?.trim());
+}
+
+function isPickupDeliveryService(value: string) {
+  const normalized = value.trim().toLowerCase();
+  return normalized === "pickup" || normalized.includes("ritiro");
 }
 
 function isUnassignedDeliveryService(value: string) {

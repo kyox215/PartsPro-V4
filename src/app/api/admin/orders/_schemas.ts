@@ -75,3 +75,11 @@ export const orderPaymentPatchSchema = z
     note: z.string().trim().max(1000).optional(),
   })
   .strict();
+
+export const orderShippingPatchSchema = z
+  .object({
+    shippingAmount: z.coerce.number().min(0),
+    reason: z.string().trim().min(1).max(500),
+    note: z.string().trim().max(1000).optional(),
+  })
+  .strict();

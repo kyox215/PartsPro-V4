@@ -41,6 +41,11 @@ import {
   normalizeDeviceModelSeries,
 } from "@/lib/partspro-device-series";
 import { normalizeCustomerTier } from "@/lib/partspro-pricing";
+import {
+  defaultDeliveryMethod,
+  shippingMethodForDeliveryMethod,
+  type DeliveryMethod,
+} from "@/lib/partspro-shipping";
 
 type DbRow = Record<string, unknown>;
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -807,6 +812,7 @@ export type AdminOrderOperationsPatchInput = {
 };
 
 export type AdminOrderOperationsPatchResult = {
+  logistics?: unknown;
   order: AdminOrder;
 };
 
@@ -826,6 +832,19 @@ export type AdminOrderPaymentReconciliationResult = {
   reconciliation: unknown;
 };
 
+export type AdminOrderShippingAdjustmentInput = {
+  orderId: string;
+  shippingAmount: number;
+  reason: string;
+  note?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type AdminOrderShippingAdjustmentResult = {
+  adjustment: unknown;
+  order: AdminOrder;
+};
+
 export type PreparedOrderLine = {
   product: PartProduct;
   quantity: number;
@@ -837,6 +856,7 @@ export type PreparedOrderLine = {
 };
 
 export type PreparedOrderTotals = {
+  deliveryMethod: DeliveryMethod;
   subtotalCents: number;
   shippingCents: number;
   vatCents: number;
@@ -914,6 +934,7 @@ export type SaveOrderInput = {
   paymentMethod: AdminPaymentMethod;
   purchaseOrderNumber?: string;
   deliveryAddress: DeliveryAddressSnapshot;
+  deliveryMethod: DeliveryMethod;
   fiscal: FiscalSnapshot;
   notes?: string;
   lines: PreparedOrderLine[];
@@ -2881,9 +2902,41 @@ export async function updateAdminOrderOperations(
       pickString(readFiscalRecord(orderRow), ["payment_method", "paymentMethod"])
   );
   const nextPaymentMethod = normalizeAdminPaymentMethodForWrite(input.paymentMethod);
+  const hasLogisticsPatch = input.carrier !== undefined || input.tracking !== undefined;
 
-  assignDefined(orderPayload, "carrier", normalizeNullableOperationsText(input.carrier));
-  assignDefined(orderPayload, "tracking_code", normalizeNullableOperationsText(input.tracking));
+  let logisticsResult: unknown = null;
+
+  if (hasLogisticsPatch) {
+    const nextCarrier =
+      input.carrier !== undefined
+        ? normalizeNullableOperationsText(input.carrier)
+        : normalizeNullableOperationsText(pickString(orderRow, ["carrier"]) ?? undefined);
+    const nextTracking =
+      input.tracking !== undefined
+        ? normalizeNullableOperationsText(input.tracking)
+        : normalizeNullableOperationsText(pickString(orderRow, ["tracking_code"]) ?? undefined);
+    const { data, error } = await context.client.rpc("admin_update_order_logistics", {
+      p_order_id: orderId,
+      p_carrier: nextCarrier,
+      p_tracking: nextTracking,
+      p_note: input.note ?? null,
+      p_metadata: {
+        source: "admin_order_operations_patch",
+      },
+    });
+
+    if (error) {
+      throw new RepositoryWriteError(
+        supabaseRpcStatus(error),
+        "ADMIN_ORDER_LOGISTICS_UPDATE_FAILED",
+        "Supabase rejected the order logistics update.",
+        supabaseErrorDetails(error)
+      );
+    }
+
+    logisticsResult = data;
+  }
+
   assignDefined(orderPayload, "payment_method", nextPaymentMethod);
   assignDefined(orderPayload, "payment_status", normalizeAdminPaymentStatusForWrite(input.paymentStatus));
 
@@ -2916,16 +2969,14 @@ export async function updateAdminOrderOperations(
       order_id: orderId,
       event_type: "operations_updated",
       actor_id: context.userId,
-      note: input.note ?? (input.staffNote !== undefined ? "Staff note updated" : "Admin operations fields updated"),
-      metadata: {
-        carrier: input.carrier ?? null,
+        note: input.note ?? (input.staffNote !== undefined ? "Staff note updated" : "Admin operations fields updated"),
+        metadata: {
         payment_method: nextPaymentMethod ?? null,
         previous_payment_method: input.paymentMethod !== undefined ? previousPaymentMethod : null,
         payment_status: input.paymentStatus ?? null,
         staff_note_updated: input.staffNote !== undefined,
-        tracking: input.tracking ?? null,
-      },
-    });
+        },
+      });
   }
 
   const order = await readAdminOrderDetail(context.client, orderId);
@@ -2939,7 +2990,7 @@ export async function updateAdminOrderOperations(
   }
 
   return {
-    data: { order },
+    data: { order, logistics: logisticsResult },
     source: "supabase",
   };
 }
@@ -3005,6 +3056,58 @@ export async function reconcileAdminOrderPayment(
     data: {
       order,
       reconciliation: data,
+    },
+    source: "supabase",
+  };
+}
+
+export async function adjustAdminOrderShipping(
+  input: AdminOrderShippingAdjustmentInput
+): Promise<RepositoryResult<AdminOrderShippingAdjustmentResult>> {
+  const context = await requireSupabaseContext();
+  const orderRow = await readOrderByIdOrNumber(context.client, input.orderId);
+  const orderId = pickString(orderRow, ["id"]);
+
+  if (!orderId) {
+    throw new RepositoryWriteError(
+      404,
+      "ADMIN_ORDER_NOT_FOUND",
+      "Order was not found.",
+      { orderId: input.orderId }
+    );
+  }
+
+  const { data, error } = await context.client.rpc("admin_adjust_order_shipping", {
+    p_order_id: orderId,
+    p_shipping_amount: input.shippingAmount,
+    p_reason: input.reason,
+    p_note: input.note ?? null,
+    p_metadata: input.metadata ?? {},
+  });
+
+  if (error) {
+    throw new RepositoryWriteError(
+      supabaseRpcStatus(error),
+      "ADMIN_ORDER_SHIPPING_ADJUSTMENT_FAILED",
+      "Supabase rejected the order shipping adjustment.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const order = await readAdminOrderDetail(context.client, orderId);
+
+  if (!order) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_ORDER_RESULT_INVALID",
+      "Supabase returned an invalid order after the shipping adjustment."
+    );
+  }
+
+  return {
+    data: {
+      adjustment: data,
+      order,
     },
     source: "supabase",
   };
@@ -4988,6 +5091,7 @@ async function createRemoteOrderTransaction(
   input: SaveOrderInput
 ): Promise<SavedOrder | null> {
   const customerId = parseUuid(input.company.id);
+  const deliveryMethod = input.deliveryMethod ?? input.totals.deliveryMethod ?? defaultDeliveryMethod;
 
   if (!customerId) {
     throw new RepositoryWriteError(
@@ -5007,7 +5111,7 @@ async function createRemoteOrderTransaction(
     p_customer_id: customerId,
     p_delivery_address: formatDeliveryAddress(input.deliveryAddress),
     p_customer_note: input.notes ?? "",
-    p_shipping_method: "GLS/BRT 24-48h",
+    p_shipping_method: shippingMethodForDeliveryMethod(deliveryMethod),
     p_shipping: centsToNumber(input.totals.shippingCents),
     p_fiscal: {
       payment_method: input.paymentMethod,

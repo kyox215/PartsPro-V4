@@ -26,7 +26,11 @@ import {
 import { type CompanyProfile, type PartProduct } from "@/lib/partspro-data";
 import {
   calculateShippingCents,
+  deliveryMethodInputValues,
   freeShippingThresholdCents,
+  normalizeDeliveryMethod,
+  shippingMethodForDeliveryMethod,
+  type DeliveryMethod,
 } from "@/lib/partspro-shipping";
 import { toPublicSku } from "@/lib/partspro-sku";
 
@@ -41,6 +45,7 @@ const previewOrderSchema = z
   .object({
     companyId: z.string().trim().min(1).max(40).regex(/^[A-Za-z0-9_-]+$/),
     checkoutMode: z.enum(["customer_self", "employee_self", "delegated_customer"]).optional(),
+    deliveryMethod: z.enum(deliveryMethodInputValues).optional(),
     items: z.array(previewItemSchema).min(1).max(100),
   })
   .strict();
@@ -85,6 +90,7 @@ export async function POST(request: Request) {
 
   try {
     const account = await getCurrentAccountContext({ ensure: true });
+    const deliveryMethod = normalizeDeliveryMethod(result.data.deliveryMethod);
     const delegatedCheckout = canDelegateCheckout(account);
     const checkoutMode = resolveCheckoutMode(
       account,
@@ -181,7 +187,7 @@ export async function POST(request: Request) {
           },
           issues: customerIssues,
           lines: [],
-          totals: totalsDto(calculateTotals([])),
+          totals: totalsDto(calculateTotals([], deliveryMethod), deliveryMethod),
         },
         meta: {
           source: "checkout_preview",
@@ -204,7 +210,7 @@ export async function POST(request: Request) {
         : applyAccountPriceToProduct(product, account)
     );
     const orderBuild = buildPreviewOrder(result.data.items, pricedCatalog);
-    const totals = calculateTotals(orderBuild.lines);
+    const totals = calculateTotals(orderBuild.lines, deliveryMethod);
 
     return NextResponse.json({
       data: {
@@ -219,7 +225,9 @@ export async function POST(request: Request) {
         },
         issues: orderBuild.issues,
         lines: orderBuild.lines.map(toPreviewLineDto),
-        totals: totalsDto(totals),
+        deliveryMethod,
+        shippingMethod: shippingMethodForDeliveryMethod(deliveryMethod),
+        totals: totalsDto(totals, deliveryMethod),
       },
       meta: {
         source: "checkout_preview",
@@ -311,9 +319,9 @@ function buildPreviewLine(product: PartProduct, quantity: number): PreviewLine {
   };
 }
 
-function calculateTotals(lines: PreviewLine[]) {
+function calculateTotals(lines: PreviewLine[], deliveryMethod: DeliveryMethod) {
   const subtotalCents = lines.reduce((total, line) => total + line.lineNetCents, 0);
-  const shippingCents = calculateShippingCents(subtotalCents);
+  const shippingCents = calculateShippingCents(subtotalCents, deliveryMethod);
   const totalCents = subtotalCents + shippingCents;
 
   return {
@@ -340,12 +348,14 @@ function toPreviewLineDto(line: PreviewLine) {
   };
 }
 
-function totalsDto(totals: ReturnType<typeof calculateTotals>) {
+function totalsDto(totals: ReturnType<typeof calculateTotals>, deliveryMethod: DeliveryMethod) {
   return {
     subtotal: money(totals.subtotalCents),
     shipping: money(totals.shippingCents),
     vat: money(totals.vatCents),
     total: money(totals.totalCents),
+    deliveryMethod,
+    shippingMethod: shippingMethodForDeliveryMethod(deliveryMethod),
     freeShippingThreshold: money(freeShippingThresholdCents),
     vatMode: "tax_included_shipping_only",
   };

@@ -63,6 +63,14 @@ import { type CompanyProfile, type PartProduct } from "@/lib/partspro-data";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import { type AccountCustomerProfile } from "@/lib/partspro-repository";
 import { publicStockLevelMeta } from "@/lib/partspro-stock-availability";
+import {
+  calculateShippingCents,
+  defaultDeliveryMethod,
+  expressShippingMethodLabel,
+  pickupShippingMethodLabel,
+  shippingMethodForDeliveryMethod,
+  type DeliveryMethod,
+} from "@/lib/partspro-shipping";
 import { cn } from "@/lib/utils";
 import {
   CartCatalogProvider,
@@ -100,6 +108,7 @@ type CheckoutClientProps = {
 };
 
 type CheckoutFormState = {
+  deliveryMethod: DeliveryMethod;
   notes: string;
   paymentMethod: "bank_transfer" | "cash";
 };
@@ -163,7 +172,7 @@ type Blocker = {
   tone: "warning" | "error" | "neutral";
 };
 
-const fixedShippingMethod = "GLS/BRT 24-48h";
+const fixedShippingMethod = expressShippingMethodLabel;
 const idlePreviewState: PreviewState = { status: "idle", issues: [] };
 const previewDebounceMs = 180;
 const orderSubmitTimeoutMs = 25_000;
@@ -333,7 +342,13 @@ function CheckoutClientContent({
   const loginHref = loginHrefForNext(checkoutHref);
   const summaryNote = needsCustomerSelection
     ? tx(t, "storefront.checkout.summary.needsCustomer", "选择客户后计算客户价、库存和 MOQ。")
-    : tx(t, "storefront.checkout.summary.note", "Prezzi IVA inclusa; viene aggiunta solo la spedizione.");
+    : form.deliveryMethod === "pickup"
+      ? tx(t, "storefront.checkout.summary.pickupNote", "Ritiro in sede: spedizione gratuita.")
+      : tx(t, "storefront.checkout.summary.note", "Prezzi IVA inclusa; viene aggiunta solo la spedizione.");
+  const checkoutTotals = React.useMemo(
+    () => totalsForDeliveryMethod(cart.totals, form.deliveryMethod),
+    [cart.totals, form.deliveryMethod]
+  );
   const shouldLoadPreview =
     cart.isHydrated && cart.items.length > 0 && Boolean(selectedCompany?.id) && !targetCustomerBlocker;
   const previewForUi = shouldLoadPreview ? preview : idlePreviewState;
@@ -567,6 +582,7 @@ function CheckoutClientContent({
           body: JSON.stringify({
             companyId: previewCompanyId,
             checkoutMode,
+            deliveryMethod: form.deliveryMethod,
             items: previewItems,
           }),
           cache: "no-store",
@@ -611,7 +627,7 @@ function CheckoutClientContent({
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [cart.items, cartSignature, checkoutMode, selectedCompany?.id, shouldLoadPreview, t]);
+  }, [cart.items, cartSignature, checkoutMode, form.deliveryMethod, selectedCompany?.id, shouldLoadPreview, t]);
 
   async function submitOrder() {
     setSubmitAttempted(true);
@@ -654,7 +670,8 @@ function CheckoutClientContent({
           checkoutMode,
           paymentMethod: form.paymentMethod,
           deliveryAddress: selectedShippingAddress,
-          notes: buildOrderNotes(form.notes),
+          deliveryMethod: form.deliveryMethod,
+          notes: buildOrderNotes(form.notes, form.deliveryMethod),
           items: cartItemsForApi(cart.items),
         }),
       });
@@ -742,6 +759,8 @@ function CheckoutClientContent({
           />
           <DeliverySection
             errors={formErrors}
+            form={form}
+            onChange={setForm}
             shippingAddress={selectedShippingAddress}
             submitAttempted={submitAttempted}
           />
@@ -757,7 +776,7 @@ function CheckoutClientContent({
         <aside className="hidden lg:block">
           <div className="space-y-2.5 lg:sticky lg:top-28">
             <OrderSummaryCard
-              totals={cart.totals}
+              totals={checkoutTotals}
               continueHref={catalogHref}
               lineCount={cart.items.length}
               showContinueAction={false}
@@ -780,7 +799,7 @@ function CheckoutClientContent({
         disabledReason={disabledReason}
         onSubmit={submitOrder}
         state={submitState}
-        totals={cart.totals}
+        totals={checkoutTotals}
         lineCount={cart.items.length}
       />
       <CheckoutSuccessDialog
@@ -1318,14 +1337,32 @@ function OrderLineRow({ issues, line }: { issues: PreviewIssue[]; line: CartLine
 
 function DeliverySection({
   errors,
+  form,
+  onChange,
   shippingAddress,
   submitAttempted,
 }: {
   errors: Record<string, string>;
+  form: CheckoutFormState;
+  onChange: React.Dispatch<React.SetStateAction<CheckoutFormState>>;
   shippingAddress: string;
   submitAttempted: boolean;
 }) {
   const t = useT();
+  const options = [
+    {
+      value: "express_24_48" as const,
+      label: tx(t, "storefront.checkout.option.express.label", "Corriere espresso 24/48h"),
+      detail: tx(t, "storefront.checkout.shippingFixedCompact", "GLS/BRT 24-48h；未满 €100 运费 €6.50，满 €100 包邮，默认 16:00 前发货。"),
+      service: fixedShippingMethod,
+    },
+    {
+      value: "pickup" as const,
+      label: tx(t, "storefront.checkout.option.pickup.label", "Ritiro in sede"),
+      detail: tx(t, "storefront.checkout.option.pickup.description", "Ritiro in sede senza costo di spedizione."),
+      service: pickupShippingMethodLabel,
+    },
+  ];
 
   return (
     <Card size="sm" className="rounded-lg border-slate-200 bg-white py-2.5">
@@ -1382,14 +1419,39 @@ function DeliverySection({
             </div>
           </div>
         </div>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5">
-          <div className="flex items-center gap-2 text-sm font-black">
-            <Truck className="size-4 text-primary" />
-            {fixedShippingMethod}
-          </div>
-          <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-            {tx(t, "storefront.checkout.shippingFixedCompact", "GLS/BRT 24-48h；未满 €100 运费 €6.50，满 €100 包邮，默认 16:00 前发货。")}
-          </p>
+        <div className="grid gap-1.5 sm:col-span-2 sm:grid-cols-2">
+          {options.map((option) => (
+            <label
+              key={option.value}
+              className={cn(
+                "flex min-h-20 cursor-pointer items-start gap-2 rounded-lg border px-2.5 py-2.5 text-sm transition",
+                form.deliveryMethod === option.value
+                  ? "border-primary/50 bg-primary/8"
+                  : "border-slate-200 bg-slate-50 hover:border-primary/30"
+              )}
+            >
+              <input
+                className="sr-only"
+                type="radio"
+                name="deliveryMethod"
+                value={option.value}
+                checked={form.deliveryMethod === option.value}
+                onChange={() =>
+                  onChange((current) => ({ ...current, deliveryMethod: option.value }))
+                }
+              />
+              <Truck className="mt-0.5 size-4 shrink-0 text-primary" />
+              <span className="min-w-0">
+                <span className="block font-black">{option.label}</span>
+                <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">
+                  {option.detail}
+                </span>
+                <span className="mt-1 block text-[11px] font-bold uppercase tracking-normal text-slate-400">
+                  {option.service}
+                </span>
+              </span>
+            </label>
+          ))}
         </div>
       </CardContent>
     </Card>
@@ -2051,8 +2113,21 @@ function validateForm(
 
 function initialFormState(): CheckoutFormState {
   return {
+    deliveryMethod: defaultDeliveryMethod,
     notes: "",
     paymentMethod: "bank_transfer",
+  };
+}
+
+function totalsForDeliveryMethod(totals: CartTotals, deliveryMethod: DeliveryMethod): CartTotals {
+  const subtotalCents = Math.max(0, Math.round(totals.subtotal * 100));
+  const shippingCents = calculateShippingCents(subtotalCents, deliveryMethod);
+  const shipping = shippingCents / 100;
+
+  return {
+    ...totals,
+    shipping,
+    total: Number((totals.subtotal + totals.vat + shipping).toFixed(2)),
   };
 }
 
@@ -2330,9 +2405,9 @@ function customerLevelLabel(t: StorefrontTranslator, value: CompanyProfile["pric
   return tx(t, `storefront.customer.level.${value}`, value);
 }
 
-function buildOrderNotes(customerNotes: string) {
+function buildOrderNotes(customerNotes: string, deliveryMethod: DeliveryMethod) {
   const details = [
-    `Consegna: ${fixedShippingMethod}`,
+    `Consegna: ${shippingMethodForDeliveryMethod(deliveryMethod)}`,
     optionalText(customerNotes) ? `Note: ${customerNotes.trim()}` : undefined,
   ].filter((value): value is string => Boolean(value));
 
