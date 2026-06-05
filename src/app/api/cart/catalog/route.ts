@@ -298,6 +298,7 @@ function productPriceFields(product: RepositoryPartProduct, visible: boolean) {
     basePrice: visible ? product.basePrice ?? null : null,
     customerLevel: visible ? product.customerLevel ?? null : null,
     discountPercent: visible ? product.discountPercent ?? null : null,
+    levelDiscountAmount: visible ? product.levelDiscountAmount ?? null : null,
     levelDiscountPercent: visible ? product.levelDiscountPercent ?? null : null,
     priceGroupDiscountPercent: visible ? product.priceGroupDiscountPercent ?? null : null,
     priceResolved: Boolean(visible && product.priceResolved),

@@ -521,7 +521,7 @@ function productDetailPriceGateCopy(
     description: tx(
       t,
       "storefront.product.detail.priceGate.login.description",
-      "Accedi per vedere prezzo, quantità minime, sconti livello e condizioni di pagamento."
+      "Accedi per vedere prezzo, quantità minime, riduzione livello e condizioni di pagamento."
     ),
     title: tx(
       t,

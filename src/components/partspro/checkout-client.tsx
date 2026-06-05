@@ -2215,28 +2215,14 @@ function missingProfileLabels(t: StorefrontTranslator, profile: AccountCustomerP
     return [tx(t, "storefront.checkout.profileMissingAll", "Profilo cliente")];
   }
 
-  const shared = [
-    profile.contactName ? null : tx(t, "storefront.account.field.contactName", "Referente"),
+  return [
+    profile.companyName ? null : tx(t, "storefront.checkout.field.companyName", "Ragione sociale"),
     profile.email ? null : tx(t, "storefront.professional.field.email", "Email"),
     profile.phone ? null : tx(t, "storefront.account.field.phone", "Telefono"),
     profile.billingAddress ? null : tx(t, "storefront.checkout.billingAddress", "Indirizzo fatturazione"),
     profile.shippingAddress ? null : tx(t, "storefront.checkout.savedShippingAddress", "Indirizzo spedizione salvato"),
-  ];
-  const fiscal =
-    profile.customerType === "retail"
-      ? [
-          profile.fiscalCode || profile.vatNumber
-            ? null
-            : tx(t, "storefront.checkout.field.codiceFiscale", "Codice fiscale"),
-        ]
-      : [
-          profile.companyName ? null : tx(t, "storefront.checkout.field.companyName", "Ragione sociale"),
-          profile.vatNumber ? null : tx(t, "storefront.checkout.field.partitaIva", "Partita IVA"),
-          profile.fiscalCode ? null : tx(t, "storefront.checkout.field.codiceFiscale", "Codice fiscale"),
-          profile.pec || profile.sdi ? null : "PEC / SDI",
-        ];
-
-  return [...shared, ...fiscal].filter((label): label is string => Boolean(label));
+    profile.fiscalCode ? null : tx(t, "storefront.checkout.field.codiceFiscale", "Codice fiscale"),
+  ].filter((label): label is string => Boolean(label));
 }
 
 function formatPreviewIssue(t: StorefrontTranslator, issue: PreviewIssue) {

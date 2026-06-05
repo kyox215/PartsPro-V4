@@ -7,6 +7,7 @@ export type ProductPriceDisplay = {
   effectivePrice: number;
   hasDiscount: boolean;
   level: CustomerLevel;
+  levelDiscountAmount: number;
   levelDiscountPercent: number;
   priceGroupDiscountPercent: number;
 };
@@ -24,6 +25,7 @@ export function getProductPriceDisplay(product: PartProduct): ProductPriceDispla
       : 0;
   const discountPercent =
     finiteMoney(product.discountPercent) ?? computedDiscountPercent;
+  const levelDiscountAmount = finiteMoney(product.levelDiscountAmount) ?? 0;
   const levelDiscountPercent = finiteMoney(product.levelDiscountPercent) ?? 0;
   const priceGroupDiscountPercent = finiteMoney(product.priceGroupDiscountPercent) ?? 0;
   const hasDiscount = Boolean(
@@ -39,6 +41,7 @@ export function getProductPriceDisplay(product: PartProduct): ProductPriceDispla
     effectivePrice,
     hasDiscount,
     level: normalizeCustomerTier(product.customerLevel),
+    levelDiscountAmount: Math.max(0, levelDiscountAmount),
     levelDiscountPercent: Math.max(0, levelDiscountPercent),
     priceGroupDiscountPercent: Math.max(0, priceGroupDiscountPercent),
   };

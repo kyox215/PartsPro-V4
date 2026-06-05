@@ -5894,6 +5894,7 @@ function mapProductRow(row: DbRow): RepositoryPartProduct | null {
   const basePrice = pickNumber(row, ["base_unit_price", "basePrice"]);
   const customerLevel = pickString(row, ["customer_level", "customerLevel"]);
   const discountPercent = pickNumber(row, ["discount_percent", "discountPercent"]);
+  const levelDiscountAmount = pickNumber(row, ["level_discount_amount", "levelDiscountAmount"]);
   const levelDiscountPercent = pickNumber(row, ["level_discount_percent", "levelDiscountPercent"]);
   const marginPercent = pickNumber(row, ["margin_percent", "marginPercent"]);
   const priceGroupDiscountPercent = pickNumber(row, [
@@ -5942,6 +5943,7 @@ function mapProductRow(row: DbRow): RepositoryPartProduct | null {
     ...(basePrice !== null ? { basePrice } : {}),
     ...(customerLevel ? { customerLevel } : {}),
     ...(discountPercent !== null ? { discountPercent } : {}),
+    ...(levelDiscountAmount !== null ? { levelDiscountAmount } : {}),
     ...(levelDiscountPercent !== null ? { levelDiscountPercent } : {}),
     ...(marginPercent !== null ? { marginPercent } : {}),
     ...(priceGroupDiscountPercent !== null ? { priceGroupDiscountPercent } : {}),

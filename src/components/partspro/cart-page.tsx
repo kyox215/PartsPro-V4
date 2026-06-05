@@ -1062,6 +1062,7 @@ function cartSnapshotProduct(
     imageAlt: snapshot.imageAlt,
     imageUrl: snapshot.imageUrl,
     leadTime: "",
+    levelDiscountAmount: snapshot.levelDiscountAmount,
     levelDiscountPercent: snapshot.levelDiscountPercent,
     marginPercent: snapshot.marginPercent,
     moq: Math.max(1, snapshot.moq),

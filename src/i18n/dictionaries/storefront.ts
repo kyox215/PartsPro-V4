@@ -685,7 +685,7 @@ export const storefrontItIT = {
     "Accedi con un account cliente per sbloccare prezzo netto, preventivo e invio al carrello.",
   "storefront.product.detail.priceGate.login.cardTitle": "Prezzo protetto",
   "storefront.product.detail.priceGate.login.description":
-    "Accedi per vedere prezzo, quantità minime, sconti livello e condizioni di pagamento.",
+    "Accedi per vedere prezzo, quantità minime, riduzione livello e condizioni di pagamento.",
   "storefront.product.detail.priceGate.login.title":
     "Prezzi riservati agli account verificati",
   "storefront.product.detail.priceGate.profile.actionLabel": "Apri account",
@@ -1473,7 +1473,7 @@ export const storefrontZhCN = {
     "登录客户账户后可解锁净价、报价和加入购物车。",
   "storefront.product.detail.priceGate.login.cardTitle": "价格受保护",
   "storefront.product.detail.priceGate.login.description":
-    "登录后可查看价格、起订量、等级折扣和付款条件。",
+    "登录后可查看价格、起订量、等级减价和付款条件。",
   "storefront.product.detail.priceGate.login.title": "价格仅对已验证账户开放",
   "storefront.product.detail.priceGate.profile.actionLabel": "打开账户",
   "storefront.product.detail.priceGate.profile.cardDescription":

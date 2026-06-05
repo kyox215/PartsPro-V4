@@ -495,27 +495,13 @@ function resolveCheckoutMode(
 }
 
 function isCheckoutProfileComplete(profile: AccountCustomerProfile) {
-  const sharedComplete = Boolean(
-    profile.contactName &&
-      profile.email &&
-      profile.phone &&
-      profile.billingAddress &&
-      profile.shippingAddress
-  );
-
-  if (!sharedComplete) {
-    return false;
-  }
-
-  if (profile.customerType === "retail") {
-    return Boolean(profile.fiscalCode || profile.vatNumber);
-  }
-
   return Boolean(
     profile.companyName &&
-      profile.vatNumber &&
+      profile.email &&
+      profile.phone &&
       profile.fiscalCode &&
-      (profile.pec || profile.sdi)
+      profile.billingAddress &&
+      profile.shippingAddress
   );
 }
 

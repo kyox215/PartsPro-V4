@@ -166,14 +166,15 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
   const employeeSelfCustomer = employeeSelfCustomerRow
     ? toCustomerContext(employeeSelfCustomerRow)
     : null;
-  const customerReadyForPricing = Boolean(
+  const customerReadyForAssignment = Boolean(
     customerContext &&
       customerContext.status === "active" &&
       customerContext.assignmentStatus === "assigned"
   );
-  const customerReadyForCommerce = Boolean(
-    customerReadyForPricing && isCustomerProfileComplete(customer)
+  const customerReadyForPricing = Boolean(
+    customerReadyForAssignment && isCustomerProfileComplete(customer)
   );
+  const customerReadyForCommerce = customerReadyForPricing;
   const canViewPrices = Boolean(isEmployee || customerReadyForPricing);
   const canUseCart = Boolean(isEmployee || customerReadyForPricing);
   const canCheckout = Boolean(
@@ -228,27 +229,15 @@ export function isCustomerProfileComplete(row: DbRow | null | undefined) {
 
   const customerType = normalizeCustomerType(readString(row.customer_type));
   const sharedFields = [
-    readString(row.contact_name),
+    readString(row.company_name),
     readString(row.email),
     readString(row.phone),
+    readString(row.fiscal_code),
     readString(row.billing_address),
     readString(row.shipping_address),
   ];
 
-  if (sharedFields.some((value) => !value)) {
-    return false;
-  }
-
-  if (customerType === "retail") {
-    return Boolean(readString(row.fiscal_code) || readString(row.vat_number));
-  }
-
-  return Boolean(
-    readString(row.company_name) &&
-      readString(row.vat_number) &&
-      readString(row.fiscal_code) &&
-      (readString(row.pec) || readString(row.sdi))
-  );
+  return sharedFields.every((value) => Boolean(value)) && Boolean(customerType);
 }
 
 export function applyAccountPriceToProduct(
@@ -277,17 +266,24 @@ export function applyAccountPriceToProduct(
       : account.customer?.level ?? "bronze";
   const basePrice = customerType === "wholesale" ? product.price : product.retailPrice;
   const finalPrice = calculateTierPrice(basePrice, level);
-  const levelDiscountPercent = getTierRule(level).discountRate * 100;
+  const levelDiscountAmount = getTierRule(level).discountAmount;
+  const levelDiscountPercent =
+    basePrice > 0
+      ? Math.round((Math.min(levelDiscountAmount, basePrice) / basePrice) * 10000) / 100
+      : 0;
+  const discountPercent =
+    basePrice > 0 ? Math.round((1 - finalPrice / basePrice) * 10000) / 100 : 0;
 
   return {
     ...product,
     basePrice,
     customerLevel: level,
-    discountPercent: levelDiscountPercent,
+    discountPercent,
+    levelDiscountAmount,
     levelDiscountPercent,
     price: finalPrice,
     priceSource:
-      levelDiscountPercent > 0
+      levelDiscountAmount > 0
         ? customerType === "retail"
           ? "local_retail_customer_level"
           : "local_customer_level"

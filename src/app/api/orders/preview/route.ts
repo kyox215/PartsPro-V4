@@ -439,16 +439,12 @@ function profileReadinessIssues(profile: Awaited<ReturnType<typeof getCurrentCus
   }
 
   const missing = [
-    profile.contactName ? null : "contact",
+    profile.companyName ? null : "company",
     profile.email ? null : "email",
     profile.phone ? null : "phone",
     profile.billingAddress ? null : "billing_address",
     profile.shippingAddress ? null : "shipping_address",
-    profile.customerType === "wholesale" && !profile.companyName ? "company" : null,
-    profile.customerType === "retail" && !(profile.fiscalCode || profile.vatNumber) ? "fiscal_code" : null,
-    profile.customerType === "wholesale" && !profile.vatNumber ? "vat_number" : null,
-    profile.customerType === "wholesale" && !profile.fiscalCode ? "fiscal_code" : null,
-    profile.customerType === "wholesale" && !(profile.pec || profile.sdi) ? "electronic_invoice" : null,
+    profile.fiscalCode ? null : "fiscal_code",
   ].filter((item): item is string => Boolean(item));
 
   return missing.length > 0

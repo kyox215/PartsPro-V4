@@ -9,6 +9,7 @@ import {
   Bell,
   Boxes,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -351,7 +352,7 @@ const panelText = {
     currentPage: "当前页",
     active: "已上架",
     drafts: "草稿",
-    hidden: "隐藏",
+    hidden: "已下架",
     blocked: "阻塞",
     lowStock: "低库存",
     restockRequests: "补货提醒",
@@ -397,7 +398,7 @@ const panelText = {
     exportSelection: "导出所选",
     create: "新建商品",
     selectedCount: "已选择 {count} 个商品",
-    hideSelected: "批量隐藏",
+    hideSelected: "批量下架",
     sourceStats: "{returned}/{total} 个商品 · {time}",
     sourcePending: "等待同步",
     syncSuccess: "商品列表已同步。",
@@ -406,7 +407,7 @@ const panelText = {
     saveSuccess: "商品 {sku} 已保存。",
     createSuccess: "商品 {sku} 已创建为草稿。",
     actionSuccess: "商品 {sku} 已更新为 {status}。",
-    hideSuccess: "{count} 个商品已隐藏。",
+    hideSuccess: "{count} 个商品已下架，不再前台展示。",
     stockSuccess: "商品 {sku} 的库存动作已入账。",
     mediaSuccess: "商品 {sku} 的媒体信息已保存。",
     saveError: "保存失败，商品未修改。",
@@ -435,7 +436,7 @@ const panelText = {
     publish: "发布",
     restore: "恢复草稿",
     block: "阻塞",
-    hide: "隐藏",
+    hide: "下架",
     stockAdjust: "库存动作",
     quickActions: "快捷操作",
     copySku: "复制 SKU",
@@ -505,6 +506,7 @@ const panelText = {
     skuExternalInvalid: "外部码格式不适合作为 SKU，系统会改用商品信息生成。",
     stockReadonly: "库存只能通过库存动作调整",
     storefrontVisible: "前台可见",
+    storefrontHidden: "前台不可见",
     auditLoading: "正在读取审计记录...",
     auditEmpty: "暂无审计记录。",
     auditError: "审计记录暂时无法读取。",
@@ -521,14 +523,14 @@ const panelText = {
       active: "已上架",
       blocked: "已阻塞",
       draft: "草稿",
-      hidden: "已隐藏",
+      hidden: "已下架",
     },
     auditActionLabels: {
       "product.update": "商品资料更新",
       "product.stock_adjust": "库存调整",
       "product.images_update": "图片更新",
       "product.publish": "发布商品",
-      "product.hide": "隐藏商品",
+      "product.hide": "下架商品",
       "product.block": "阻塞商品",
       "product.restore_draft": "恢复草稿",
       "product.audit": "商品审计",
@@ -536,7 +538,7 @@ const panelText = {
     auditDefaultReasons: {
       "Updated from admin product API.": "后台保存了商品资料。",
       "Published from admin product API.": "后台发布了商品。",
-      "Hidden from admin product API.": "后台隐藏了商品。",
+      "Hidden from admin product API.": "后台下架了商品。",
       "Blocked from admin product API.": "后台阻塞了商品。",
       "Restored to draft from admin product API.": "后台恢复为草稿。",
       "Uploaded product image for": "后台上传了商品图片。",
@@ -751,6 +753,7 @@ const panelText = {
     skuExternalInvalid: "Il codice esterno non e valido come SKU; verra usata la scheda prodotto.",
     stockReadonly: "Lo stock si modifica solo con movimento stock",
     storefrontVisible: "Visibile in storefront",
+    storefrontHidden: "Non visibile in storefront",
     auditLoading: "Caricamento audit...",
     auditEmpty: "Nessun audit registrato.",
     auditError: "Audit non disponibile.",
@@ -2331,10 +2334,15 @@ function ProductTable({
                     <TableCell className="min-w-0 whitespace-normal">
                       <ProductBrandModel product={product} />
                     </TableCell>
-                    <TableCell className="whitespace-normal">
-                      <Badge className={cn(catalogStatusBadgeClass(product.catalogStatus), "max-w-full truncate")}>
-                        {adminText.enums.catalogStatus[product.catalogStatus]}
-                      </Badge>
+                    <TableCell className="whitespace-normal" onClick={(event) => event.stopPropagation()}>
+                      <ProductCatalogStatusMenu
+                        product={product}
+                        isMutating={isMutating}
+                        pendingActionKey={pendingActionKey}
+                        adminText={adminText}
+                        text={text}
+                        onAction={onAction}
+                      />
                     </TableCell>
                     <TableCell className="min-w-0 whitespace-normal">
                       <ProductStockSummary
@@ -2471,9 +2479,15 @@ function ProductMobileCard({
         </button>
 
         <div className="flex shrink-0 flex-col items-end gap-1">
-          <Badge className={cn(catalogStatusBadgeClass(product.catalogStatus), "h-5 px-1.5 text-[10px]")}>
-            {adminText.enums.catalogStatus[product.catalogStatus]}
-          </Badge>
+          <ProductCatalogStatusMenu
+            product={product}
+            isMutating={isMutating}
+            pendingActionKey={pendingActionKey}
+            adminText={adminText}
+            text={text}
+            compact
+            onAction={onAction}
+          />
           <ProductActionsMenu
             product={product}
             isMutating={isMutating}
@@ -2820,6 +2834,114 @@ function ProductPriceSummary({
   );
 }
 
+function ProductCatalogStatusMenu({
+  adminText,
+  compact = false,
+  isMutating,
+  onAction,
+  pendingActionKey,
+  product,
+  text,
+}: {
+  adminText: ReturnType<typeof getAdminDictionary>["admin"];
+  compact?: boolean;
+  isMutating: boolean;
+  onAction: (product: AdminProductRow, action: ProductAction) => void;
+  pendingActionKey: string | null;
+  product: AdminProductRow;
+  text: typeof panelText.zh | typeof panelText.it;
+}) {
+  const isProductPending = pendingActionKey?.startsWith(`${product.sku}:`) ?? false;
+  const pendingAction = pendingActionKey?.startsWith(`${product.sku}:`)
+    ? pendingActionKey.split(":").at(-1)
+    : null;
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          className={cn(
+            "h-auto min-h-6 max-w-full justify-between rounded-md border px-1.5 py-0.5 font-black",
+            compact ? "text-[10px]" : "w-full text-xs",
+            catalogStatusBadgeClass(product.catalogStatus)
+          )}
+          disabled={isMutating}
+          aria-label={`${text.tableCatalog}: ${adminText.enums.catalogStatus[product.catalogStatus]}`}
+          title={`${text.tableCatalog}: ${adminText.enums.catalogStatus[product.catalogStatus]}`}
+        >
+          {isProductPending ? (
+            <Loader2 className="size-3 animate-spin" />
+          ) : (
+            <span className="min-w-0 truncate">
+              {adminText.enums.catalogStatus[product.catalogStatus]}
+            </span>
+          )}
+          <ChevronDown className="size-3 opacity-70" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align={compact ? "end" : "start"}>
+        {catalogStatuses.map((status) => {
+          const action = productActionForCatalogStatus(status);
+          const current = product.catalogStatus === status;
+          const pending = pendingAction === action;
+
+          return (
+            <DropdownMenuItem
+              key={status}
+              disabled={isMutating || current}
+              onClick={() => onAction(product, action)}
+            >
+              {pending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : current ? (
+                <CheckCircle2 className="size-4" />
+              ) : (
+                catalogStatusIcon(status)
+              )}
+              {adminText.enums.catalogStatus[status]}
+            </DropdownMenuItem>
+          );
+        })}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function productActionForCatalogStatus(status: CatalogStatus): ProductAction {
+  if (status === "active") {
+    return "publish";
+  }
+
+  if (status === "draft") {
+    return "restore";
+  }
+
+  if (status === "blocked") {
+    return "block";
+  }
+
+  return "hide";
+}
+
+function catalogStatusIcon(status: CatalogStatus) {
+  if (status === "active") {
+    return <PackageCheck className="size-4" />;
+  }
+
+  if (status === "draft") {
+    return <RotateCcw className="size-4" />;
+  }
+
+  if (status === "blocked") {
+    return <Ban className="size-4" />;
+  }
+
+  return <EyeOff className="size-4" />;
+}
+
 function ProductActionsMenu({
   product,
   isMutating,
@@ -2939,7 +3061,7 @@ function ProductActionsMenu({
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          disabled={isMutating}
+          disabled={isMutating || product.catalogStatus === "hidden"}
           className="text-amber-700 focus:text-amber-700"
           onClick={() => onHide(product)}
         >
@@ -3327,6 +3449,11 @@ function ProductDetails({
               <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 font-mono text-[11px] font-bold text-slate-500">
                 {product.sku}
               </span>
+              {!product.storefrontVisible ? (
+                <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
+                  {text.storefrontHidden}
+                </Badge>
+              ) : null}
             </div>
             <h3 className="mt-2 break-words text-base font-black leading-snug text-slate-950 lg:text-xl">
               {displayName}

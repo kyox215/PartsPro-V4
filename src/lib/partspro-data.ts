@@ -77,6 +77,7 @@ export type PartProduct = {
   basePrice?: number;
   customerLevel?: CustomerLevel | string;
   discountPercent?: number;
+  levelDiscountAmount?: number;
   levelDiscountPercent?: number;
   marginPercent?: number;
   priceGroupDiscountPercent?: number;

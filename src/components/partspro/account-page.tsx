@@ -21,6 +21,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -32,7 +33,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { Textarea } from "@/components/ui/textarea";
 import {
   formatEuro,
   type CompanyProfile,
@@ -104,10 +104,33 @@ type AccountProfilePayload = {
   fiscalCode: string;
   pec: string;
   phone: string;
-  sdi: string;
   shippingAddress: string;
-  vatNumber: string;
 };
+
+type AccountProfileField =
+  | "companyName"
+  | "contactName"
+  | "email"
+  | "fiscalCode"
+  | "pec"
+  | "phone";
+
+type AddressDraft = {
+  city: string;
+  extra: string;
+  postalCode: string;
+  province: string;
+  street: string;
+  streetNumber: string;
+};
+
+type AccountProfileForm = Pick<AccountProfilePayload, AccountProfileField> & {
+  billingAddress: AddressDraft;
+  billingSameAsShipping: boolean;
+  shippingAddress: AddressDraft;
+};
+
+type AddressDraftField = keyof AddressDraft;
 
 type OrderFilterId = "all" | "open" | "pending_payment" | "shipped" | "completed";
 
@@ -749,15 +772,15 @@ function CustomerLevelCard({
               {customerLevelLabel(level)}
             </div>
             <div className="truncate text-xs font-semibold text-slate-500">
-              等级折扣 {formatTierDiscount(level)}
+              每件等级减价 {formatTierDiscount(level)}
             </div>
           </div>
           <Badge className="shrink-0 border border-emerald-200 bg-emerald-50 text-emerald-700">
-            {formatTierDiscount(level)}
+            每件减 {formatTierDiscount(level)}
           </Badge>
         </div>
         <div className="text-xs font-semibold leading-5 text-slate-500">
-          目录价格会显示原价和当前等级折扣后的价格。
+          目录价格会显示原价和当前等级每件固定减价后的价格。
         </div>
       </CardContent>
     </Card>
@@ -775,12 +798,11 @@ function AccountProfileNotice({
 }) {
   const missingFields = [
     profile.companyName ? null : "公司",
-    profile.contactName ? null : "联系人",
     profile.email ? null : "邮箱",
     profile.phone ? null : "电话",
     profile.billingAddress ? null : "账单地址",
     profile.shippingAddress ? null : "配送地址",
-    profile.vatNumber || profile.fiscalCode ? null : "增值税号或税号",
+    profile.fiscalCode ? null : "税号",
   ].filter(Boolean);
   const isPending = profile.status === "pending";
 
@@ -828,7 +850,7 @@ function AccountProfileDialog({
   profile: AccountCustomerProfile;
   userEmail?: string;
 }) {
-  const [form, setForm] = React.useState<AccountProfilePayload>(() =>
+  const [form, setForm] = React.useState<AccountProfileForm>(() =>
     accountProfileToForm(profile, userEmail)
   );
   const [error, setError] = React.useState<string | null>(null);
@@ -844,23 +866,82 @@ function AccountProfileDialog({
     wasOpenRef.current = open;
   }, [open, profile, userEmail]);
 
-  function updateField(field: keyof AccountProfilePayload, value: string) {
+  function updateField(field: AccountProfileField, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateAddressField(
+    addressKey: "billingAddress" | "shippingAddress",
+    field: AddressDraftField,
+    value: string
+  ) {
+    setForm((current) => {
+      const nextAddress = {
+        ...current[addressKey],
+        [field]: value,
+      };
+
+      const nextForm = {
+        ...current,
+        [addressKey]: nextAddress,
+      };
+
+      if (addressKey === "shippingAddress" && current.billingSameAsShipping) {
+        return {
+          ...nextForm,
+          billingAddress: nextAddress,
+        };
+      }
+
+      return nextForm;
+    });
+  }
+
+  function updateBillingSameAsShipping(checked: boolean) {
+    setForm((current) => ({
+      ...current,
+      billingSameAsShipping: checked,
+      billingAddress: checked ? current.shippingAddress : current.billingAddress,
+    }));
   }
 
   async function submitProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+
+    if (
+      !isAddressDraftComplete(form.shippingAddress) ||
+      (!form.billingSameAsShipping && !isAddressDraftComplete(form.billingAddress))
+    ) {
+      setError("请补全地址里的 Provincia、Citta、CAP、Via 和 Numero。");
+      return;
+    }
+
+    const shippingAddress = formatAddressDraft(form.shippingAddress);
+    const billingAddress = form.billingSameAsShipping
+      ? shippingAddress
+      : formatAddressDraft(form.billingAddress);
+    const payload: AccountProfilePayload = {
+      billingAddress,
+      companyName: form.companyName,
+      contactName: form.contactName,
+      email: form.email,
+      fiscalCode: form.fiscalCode,
+      pec: form.pec,
+      phone: form.phone,
+      shippingAddress,
+    };
+
     setSaving(true);
 
     try {
-      const payload = await fetchJson<{ data: AccountCustomerProfile }>("/api/account/profile", {
-        body: JSON.stringify(form),
+      const response = await fetchJson<{ data: AccountCustomerProfile }>("/api/account/profile", {
+        body: JSON.stringify(payload),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",
       });
 
-      onSaved(payload.data);
+      onSaved(response.data);
       onOpenChange(false);
     } catch (submitError) {
       setError(
@@ -888,7 +969,7 @@ function AccountProfileDialog({
       <div
         aria-labelledby="account-profile-title"
         aria-modal="true"
-        className="fixed left-1/2 top-1/2 grid max-h-[90vh] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 gap-3 overflow-y-auto rounded-lg bg-white p-4 text-sm text-slate-950 shadow-2xl ring-1 ring-slate-200"
+        className="fixed left-1/2 top-1/2 grid max-h-[90vh] w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 -translate-y-1/2 gap-3 overflow-y-auto rounded-lg bg-white p-4 text-sm text-slate-950 shadow-2xl ring-1 ring-slate-200"
         role="dialog"
       >
         <Button
@@ -906,7 +987,7 @@ function AccountProfileDialog({
             完善个人中心资料
           </h2>
           <p className="text-sm text-slate-500">
-            这些资料用于账户、订单、发票和配送。
+            这些资料用于账户、订单、税务和配送。
           </p>
         </div>
         <form className="space-y-3" onSubmit={submitProfile}>
@@ -920,8 +1001,7 @@ function AccountProfileDialog({
             />
             <ProfileInput
               field="contactName"
-              label="联系人"
-              required
+              label="微信号码 / WhatsApp 号码"
               value={form.contactName}
               onChange={updateField}
             />
@@ -942,14 +1022,9 @@ function AccountProfileDialog({
               onChange={updateField}
             />
             <ProfileInput
-              field="vatNumber"
-              label="增值税号"
-              value={form.vatNumber}
-              onChange={updateField}
-            />
-            <ProfileInput
               field="fiscalCode"
               label="税号"
+              required
               value={form.fiscalCode}
               onChange={updateField}
             />
@@ -960,33 +1035,35 @@ function AccountProfileDialog({
               value={form.pec}
               onChange={updateField}
             />
-            <ProfileInput
-              field="sdi"
-              label="SDI 代码"
-              value={form.sdi}
-              onChange={updateField}
-            />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            <ProfileTextarea
-              field="billingAddress"
-              label="账单地址"
-              required
-              value={form.billingAddress}
-              onChange={updateField}
-            />
-            <ProfileTextarea
-              field="shippingAddress"
-              label="配送地址"
-              required
+          <div className="space-y-3">
+            <AddressFields
+              title="配送地址"
+              addressKey="shippingAddress"
               value={form.shippingAddress}
-              onChange={updateField}
+              onChange={updateAddressField}
             />
+            <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
+              <Checkbox
+                className="mt-0.5"
+                checked={form.billingSameAsShipping}
+                onCheckedChange={(checked) => updateBillingSameAsShipping(Boolean(checked))}
+              />
+              <span>账单地址跟配送地址一样</span>
+            </label>
+            {!form.billingSameAsShipping ? (
+              <AddressFields
+                title="账单地址"
+                addressKey="billingAddress"
+                value={form.billingAddress}
+                onChange={updateAddressField}
+              />
+            ) : null}
           </div>
 
           <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs font-semibold leading-5 text-blue-800">
-            至少需要填写增值税号或税号。保存后资料会保持审核状态，直到管理员分配客户类型和等级。
+            税号、电话和详细地址用于订单与配送；微信或 WhatsApp 可留空。保存后资料会保持审核状态，直到管理员分配客户类型和等级。
           </div>
 
           {error ? (
@@ -1022,23 +1099,99 @@ function AccountProfileDialog({
   );
 }
 
-function ProfileInput({
+function AddressFields({
+  addressKey,
+  onChange,
+  title,
+  value,
+}: {
+  addressKey: "billingAddress" | "shippingAddress";
+  onChange: (
+    addressKey: "billingAddress" | "shippingAddress",
+    field: AddressDraftField,
+    value: string
+  ) => void;
+  title: string;
+  value: AddressDraft;
+}) {
+  function updateField(field: AddressDraftField, nextValue: string) {
+    onChange(addressKey, field, nextValue);
+  }
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="mb-3 text-sm font-black text-slate-700">{title}</div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <ProfileInput
+          field="province"
+          label="省 / Provincia"
+          required
+          value={value.province}
+          onChange={updateField}
+        />
+        <ProfileInput
+          field="city"
+          label="城市 / Citta"
+          required
+          value={value.city}
+          onChange={updateField}
+        />
+        <ProfileInput
+          field="postalCode"
+          label="CAP"
+          inputMode="numeric"
+          required
+          value={value.postalCode}
+          onChange={updateField}
+        />
+        <ProfileInput
+          field="street"
+          label="街道 / Via"
+          required
+          value={value.street}
+          onChange={updateField}
+        />
+        <ProfileInput
+          field="streetNumber"
+          label="门牌 / Numero"
+          required
+          value={value.streetNumber}
+          onChange={updateField}
+        />
+        <ProfileInput
+          field="extra"
+          label="补充信息"
+          value={value.extra}
+          onChange={updateField}
+        />
+      </div>
+    </section>
+  );
+}
+
+type ProfileInputProps<Field extends string> = {
+  autoComplete?: string;
+  disabled?: boolean;
+  field: Field;
+  inputMode?: React.InputHTMLAttributes<HTMLInputElement>["inputMode"];
+  label: string;
+  onChange: (field: Field, value: string) => void;
+  required?: boolean;
+  type?: React.HTMLInputTypeAttribute;
+  value: string;
+};
+
+function ProfileInput<Field extends string>({
+  autoComplete,
   field,
   disabled,
+  inputMode,
   label,
   onChange,
   required,
   type = "text",
   value,
-}: {
-  disabled?: boolean;
-  field: keyof AccountProfilePayload;
-  label: string;
-  onChange: (field: keyof AccountProfilePayload, value: string) => void;
-  required?: boolean;
-  type?: React.HTMLInputTypeAttribute;
-  value: string;
-}) {
+}: ProfileInputProps<Field>) {
   const id = `account-profile-${field}`;
 
   return (
@@ -1048,42 +1201,12 @@ function ProfileInput({
         {required ? " *" : null}
       </Label>
       <Input
+        autoComplete={autoComplete}
         disabled={disabled}
         id={id}
+        inputMode={inputMode}
         required={required}
         type={type}
-        value={value}
-        onChange={(event) => onChange(field, event.currentTarget.value)}
-      />
-    </div>
-  );
-}
-
-function ProfileTextarea({
-  field,
-  label,
-  onChange,
-  required,
-  value,
-}: {
-  field: keyof AccountProfilePayload;
-  label: string;
-  onChange: (field: keyof AccountProfilePayload, value: string) => void;
-  required?: boolean;
-  value: string;
-}) {
-  const id = `account-profile-${field}`;
-
-  return (
-    <div className="space-y-1.5">
-      <Label htmlFor={id} className="text-xs font-black text-slate-500">
-        {label}
-        {required ? " *" : null}
-      </Label>
-      <Textarea
-        id={id}
-        className="min-h-24 resize-y"
-        required={required}
         value={value}
         onChange={(event) => onChange(field, event.currentTarget.value)}
       />
@@ -1119,19 +1242,87 @@ function createEmptyAccountProfile(
 function accountProfileToForm(
   profile: AccountCustomerProfile,
   userEmail?: string
-): AccountProfilePayload {
+): AccountProfileForm {
+  const shippingAddress = parseAddressDraft(profile.shippingAddress);
+  const billingAddress = parseAddressDraft(profile.billingAddress);
+  const billingSameAsShipping =
+    !normalizeAddressText(profile.billingAddress) ||
+    normalizeAddressText(profile.billingAddress) === normalizeAddressText(profile.shippingAddress);
+
   return {
-    billingAddress: profile.billingAddress,
+    billingAddress,
+    billingSameAsShipping,
     companyName: profile.companyName,
     contactName: profile.contactName,
     email: userEmail || profile.email || "",
     fiscalCode: profile.fiscalCode,
     pec: profile.pec,
     phone: profile.phone,
-    sdi: profile.sdi,
-    shippingAddress: profile.shippingAddress,
-    vatNumber: profile.vatNumber,
+    shippingAddress,
   };
+}
+
+function emptyAddressDraft(): AddressDraft {
+  return {
+    city: "",
+    extra: "",
+    postalCode: "",
+    province: "",
+    street: "",
+    streetNumber: "",
+  };
+}
+
+function parseAddressDraft(address: string): AddressDraft {
+  const normalized = normalizeAddressText(address);
+
+  if (!normalized) {
+    return emptyAddressDraft();
+  }
+
+  const match = normalized.match(/^(.+)\s+([^,\s]+),\s*([0-9A-Za-z-]+)\s+(.+)\s+\(([^)]+)\)(?:\s+-\s*(.+))?$/);
+
+  if (!match) {
+    return {
+      ...emptyAddressDraft(),
+      street: normalized,
+    };
+  }
+
+  return {
+    city: match[4]?.trim() ?? "",
+    extra: match[6]?.trim() ?? "",
+    postalCode: match[3]?.trim() ?? "",
+    province: match[5]?.trim() ?? "",
+    street: match[1]?.trim() ?? "",
+    streetNumber: match[2]?.trim() ?? "",
+  };
+}
+
+function formatAddressDraft(address: AddressDraft) {
+  const street = address.street.trim();
+  const streetNumber = address.streetNumber.trim();
+  const postalCode = address.postalCode.trim();
+  const city = address.city.trim();
+  const province = address.province.trim();
+  const extra = address.extra.trim();
+  const base = `${street} ${streetNumber}, ${postalCode} ${city} (${province})`;
+
+  return extra ? `${base} - ${extra}` : base;
+}
+
+function isAddressDraftComplete(address: AddressDraft) {
+  return Boolean(
+    address.province.trim() &&
+      address.city.trim() &&
+      address.postalCode.trim() &&
+      address.street.trim() &&
+      address.streetNumber.trim()
+  );
+}
+
+function normalizeAddressText(address: string | null | undefined) {
+  return (address ?? "").trim().replace(/\s+/g, " ");
 }
 
 function Info({ label, value }: { label: string; value: string }) {

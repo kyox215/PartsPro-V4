@@ -22,6 +22,7 @@ export type CartItemSnapshot = {
   grade: PartProduct["grade"];
   imageAlt?: string;
   imageUrl?: string;
+  levelDiscountAmount?: number;
   levelDiscountPercent?: number;
   marginPercent?: number;
   moq: number;
@@ -702,6 +703,7 @@ function cartItemSnapshotFromProduct(product: PartProduct): CartItemSnapshot {
     grade: product.grade,
     imageAlt: product.imageAlt,
     imageUrl: product.imageUrl,
+    levelDiscountAmount: product.levelDiscountAmount,
     levelDiscountPercent: product.levelDiscountPercent,
     marginPercent: product.marginPercent,
     moq: Math.max(1, product.moq),
@@ -739,6 +741,7 @@ function normalizeCartItemSnapshot(
     grade: normalizeProductGrade(value.grade),
     imageAlt: readString(value.imageAlt),
     imageUrl: readString(value.imageUrl),
+    levelDiscountAmount: readOptionalNumber(value.levelDiscountAmount),
     levelDiscountPercent: readOptionalNumber(value.levelDiscountPercent),
     marginPercent: readOptionalNumber(value.marginPercent),
     moq: Math.max(1, readOptionalNumber(value.moq) ?? 1),

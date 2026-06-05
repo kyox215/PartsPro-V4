@@ -14,20 +14,16 @@ const profileSchema = z
   .object({
     billingAddress: z.string().trim().min(1).max(240),
     companyName: z.string().trim().min(1).max(160),
-    contactName: z.string().trim().min(1).max(120),
+    contactName: z.string().trim().max(120).optional(),
     email: z.string().trim().email().max(160),
-    fiscalCode: z.string().trim().max(32).optional(),
+    fiscalCode: z.string().trim().min(1).max(32),
     pec: z.string().trim().email().max(160).optional().or(z.literal("")),
     phone: z.string().trim().min(5).max(40),
     sdi: z.string().trim().max(16).optional(),
     shippingAddress: z.string().trim().min(1).max(240),
     vatNumber: z.string().trim().max(32).optional(),
   })
-  .strict()
-  .refine((value) => Boolean(value.vatNumber || value.fiscalCode), {
-    message: "VAT number or fiscal code is required.",
-    path: ["vatNumber"],
-  });
+  .strict();
 
 export async function GET() {
   try {

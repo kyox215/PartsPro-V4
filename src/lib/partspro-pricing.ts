@@ -5,7 +5,7 @@ export type CustomerTier = CustomerLevel;
 
 export type CustomerTierRule = {
   tier: CustomerTier;
-  discountRate: number;
+  discountAmount: number;
   paymentTerms: string;
   creditLimit: number;
   freeShippingThreshold: number;
@@ -18,7 +18,6 @@ export type CustomerTierRule = {
 export type TierPriceBreakdown = {
   tier: CustomerTier;
   basePrice: number;
-  discountRate: number;
   discountAmount: number;
   finalPrice: number;
 };
@@ -36,7 +35,7 @@ export const customerTiers = [
 export const customerTierRules = {
   bronze: {
     tier: "bronze",
-    discountRate: 0,
+    discountAmount: 0,
     paymentTerms: "Pagamento anticipato",
     creditLimit: 0,
     freeShippingThreshold: freeShippingThresholdEuros,
@@ -47,7 +46,7 @@ export const customerTierRules = {
   },
   silver: {
     tier: "silver",
-    discountRate: 0.02,
+    discountAmount: 0.25,
     paymentTerms: "30 giorni data fattura",
     creditLimit: 1000,
     freeShippingThreshold: freeShippingThresholdEuros,
@@ -58,7 +57,7 @@ export const customerTierRules = {
   },
   gold: {
     tier: "gold",
-    discountRate: 0.04,
+    discountAmount: 0.5,
     paymentTerms: "45 giorni data fattura",
     creditLimit: 2500,
     freeShippingThreshold: freeShippingThresholdEuros,
@@ -69,7 +68,7 @@ export const customerTierRules = {
   },
   emerald: {
     tier: "emerald",
-    discountRate: 0.06,
+    discountAmount: 0.75,
     paymentTerms: "45 giorni data fattura",
     creditLimit: 5000,
     freeShippingThreshold: freeShippingThresholdEuros,
@@ -80,7 +79,7 @@ export const customerTierRules = {
   },
   diamond: {
     tier: "diamond",
-    discountRate: 0.08,
+    discountAmount: 1,
     paymentTerms: "60 giorni data fattura",
     creditLimit: 7500,
     freeShippingThreshold: freeShippingThresholdEuros,
@@ -91,7 +90,7 @@ export const customerTierRules = {
   },
   master: {
     tier: "master",
-    discountRate: 0.1,
+    discountAmount: 1.25,
     paymentTerms: "60 giorni data fattura",
     creditLimit: 10000,
     freeShippingThreshold: freeShippingThresholdEuros,
@@ -102,7 +101,7 @@ export const customerTierRules = {
   },
   king: {
     tier: "king",
-    discountRate: 0.12,
+    discountAmount: 1.5,
     paymentTerms: "60 giorni data fattura",
     creditLimit: 15000,
     freeShippingThreshold: freeShippingThresholdEuros,
@@ -154,9 +153,9 @@ export function calculateTierPrice(
   tier: CompanyProfile["priceList"]
 ): number {
   const price = Math.max(0, basePrice);
-  const { discountRate } = getTierRule(tier);
+  const { discountAmount } = getTierRule(tier);
 
-  return roundCurrency(price * (1 - discountRate));
+  return roundCurrency(Math.max(0, price - discountAmount));
 }
 
 export function levelForLifetimeSpend(spend: number): CustomerTier {
@@ -174,24 +173,22 @@ export function getTierPriceBreakdown(
   tier: CompanyProfile["priceList"]
 ): TierPriceBreakdown {
   const price = Math.max(0, basePrice);
-  const rule = getTierRule(tier);
   const finalPrice = calculateTierPrice(price, tier);
 
   return {
     tier,
     basePrice: roundCurrency(price),
-    discountRate: rule.discountRate,
     discountAmount: roundCurrency(price - finalPrice),
     finalPrice,
   };
 }
 
 export function formatTierDiscount(tier: CompanyProfile["priceList"]): string {
-  return formatDiscountRate(getTierRule(tier).discountRate);
+  return formatTierDiscountAmount(getTierRule(tier).discountAmount);
 }
 
-export function formatDiscountRate(discountRate: number): string {
-  return `${Math.round(discountRate * 100)}%`;
+export function formatTierDiscountAmount(discountAmount: number): string {
+  return `${formatEuroCents(Math.max(0, discountAmount))} cad.`;
 }
 
 export function formatTierCreditLimit(tier: CompanyProfile["priceList"]): string {
@@ -214,6 +211,15 @@ function formatEuro(value: number): string {
   return new Intl.NumberFormat("it-IT", {
     currency: "EUR",
     maximumFractionDigits: 0,
+    style: "currency",
+  }).format(value);
+}
+
+function formatEuroCents(value: number): string {
+  return new Intl.NumberFormat("it-IT", {
+    currency: "EUR",
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
     style: "currency",
   }).format(value);
 }

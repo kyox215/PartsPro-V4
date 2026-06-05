@@ -1813,7 +1813,7 @@ function CustomerAccountActionDialog({
         : "修改活跃状态";
   const description =
     action?.kind === "customer_level"
-      ? "客户等级会影响前台客户价和代客下单价格。"
+      ? "客户等级会按每件固定金额影响前台客户价和代客下单价格。"
       : action?.kind === "customer_type"
         ? "价格类型决定客户使用零售价还是批发价，和活跃状态独立。"
         : "活跃状态只控制账号是否可继续使用价格和 checkout，不会改变价格类型。";
@@ -1857,7 +1857,7 @@ function CustomerAccountActionDialog({
                   </SelectContent>
                 </Select>
                 <div className="text-xs font-semibold text-slate-500">
-                  当前等级折扣：{customerLevelDiscountLabel(action.level)}
+                  当前等级减价：每件减 {customerLevelDiscountLabel(action.level)}
                 </div>
               </div>
             ) : action.kind === "customer_type" ? (
@@ -2594,11 +2594,11 @@ function paymentStatusLabel(value: string) {
 }
 
 function customerLevelLabel(value: string) {
-  return `${customerLevelName(value)} · ${customerLevelDiscountLabel(value)}`;
+  return `${customerLevelName(value)} · 每件减 ${customerLevelDiscountLabel(value)}`;
 }
 
 function customerLevelOptionLabel(value: string) {
-  return `${customerLevelName(value)} · ${customerLevelDiscountLabel(value)} 折扣`;
+  return `${customerLevelName(value)} · 每件减 ${customerLevelDiscountLabel(value)}`;
 }
 
 function customerLevelDiscountLabel(value: string) {

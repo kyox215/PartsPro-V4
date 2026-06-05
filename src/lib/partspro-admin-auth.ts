@@ -56,20 +56,21 @@ export async function getAdminAuthState(): Promise<AdminAuthState> {
   const profile = await readStaffProfile(supabase, user.id);
   const role = profile?.role;
 
-  if (isBootstrapAdminEmail(user.email)) {
+  if (isBootstrapAdminEmail(user.email) || isFullAdminProfile(profile)) {
     const remotePermissions = await readEffectivePermissions(supabase);
     const permissions = mergePermissions(
       adminPermissions,
       remotePermissions.ok ? remotePermissions.permissions : []
     );
+    const isBootstrapAdmin = isBootstrapAdminEmail(user.email);
 
     return {
       configured: true,
       email: user.email ?? null,
       allowed: true,
       permissions,
-      reason: "admin_email",
-      role: role ?? "admin",
+      reason: isBootstrapAdmin ? "admin_email" : "staff",
+      role: role ?? profile?.roleTemplate ?? "admin",
       userId: user.id,
     };
   }
@@ -123,6 +124,10 @@ export function hasAdminPermission(
 
 function normalizeEmail(email: string | null | undefined) {
   return email?.trim().toLowerCase() ?? "";
+}
+
+function isFullAdminProfile(profile: Awaited<ReturnType<typeof readStaffProfile>>) {
+  return profile?.role === "admin" || profile?.roleTemplate === "admin";
 }
 
 function mergePermissions(...permissionLists: Array<Iterable<string>>) {
