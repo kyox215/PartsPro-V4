@@ -49,6 +49,8 @@ export function HomePage({
   showPrices = false,
   stockedProducts = [],
 }: HomePageProps) {
+  const t = useT();
+
   return (
     <main className="min-h-screen overflow-x-clip bg-[#f4f6fa] text-slate-950">
       <StoreHeader
