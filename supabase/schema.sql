@@ -223,6 +223,8 @@
 --     allowed remotely: submitted, accepted, picking, packed, shipped, completed
 --   payment_status text default 'pending'
 --     allowed remotely: pending, paid, bank_waiting, failed
+--   payment_method text default 'bank_transfer'
+--     allowed remotely: bank_transfer, cash
 --   stock_risk text default 'clear'
 --     allowed remotely: clear, low, split, blocked
 --   total_net numeric default 0

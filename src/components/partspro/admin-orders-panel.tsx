@@ -72,7 +72,7 @@ import {
   type AdminText,
 } from "@/i18n/dictionaries/admin";
 import { sanitizeSupplierText, toPublicSku } from "@/lib/partspro-sku";
-import { AdminBusyRegion } from "./admin-feedback";
+import { AdminBusyRegion, AdminSkeletonRows } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
 
 type OrderDbStatus =
@@ -84,6 +84,7 @@ type OrderDbStatus =
   | "completed"
   | "cancelled";
 type PaymentStatus = "unpaid" | "authorized" | "paid" | "refunded";
+type PaymentMethod = "bank_transfer" | "cash";
 type FulfillmentStatus =
   | "queued"
   | "allocated"
@@ -125,6 +126,7 @@ const carrierOptions = [
   "Ritiro in sede",
 ] as const;
 type Carrier = (typeof carrierOptions)[number] | typeof unassignedCarrier;
+const paymentMethodOptions: PaymentMethod[] = ["bank_transfer", "cash"];
 
 type CustomerSnapshot = {
   id?: string;
@@ -190,7 +192,7 @@ type AdminOrder = {
   fulfillmentStatus: FulfillmentStatus;
   priority: Priority;
   customer: CustomerSnapshot;
-  paymentMethod: string;
+  paymentMethod: PaymentMethod;
   paymentDue: string;
   warehouse: WarehouseName;
   carrier: Carrier;
@@ -262,6 +264,7 @@ type OrdersApiResult = {
 type OrderPatchInput = {
   carrier?: string;
   forceCancel?: boolean;
+  paymentMethod?: PaymentMethod;
   paymentStatus?: PaymentStatus;
   rollback?: boolean;
   staffNote?: string;
@@ -272,6 +275,7 @@ type OrderPatchInput = {
 
 type OrderLabels = {
   fulfillment: Record<FulfillmentStatus, string>;
+  paymentMethod: Record<PaymentMethod, string>;
   payment: Record<PaymentStatus, string>;
   priority: Record<Priority, string>;
   status: Record<OrderDbStatus, string>;
@@ -798,6 +802,20 @@ export function AdminOrdersPanel() {
     [patchOrder, text.orders.shipmentSaved]
   );
 
+  const handleUpdatePaymentMethod = React.useCallback(
+    (order: AdminOrder, paymentMethod: PaymentMethod) => {
+      void patchOrder(
+        order,
+        {
+          note: `${text.orders.details.paymentMethod}: ${labels.paymentMethod[order.paymentMethod]} -> ${labels.paymentMethod[paymentMethod]}`,
+          paymentMethod,
+        },
+        text.orders.paymentMethodSaved
+      );
+    },
+    [labels.paymentMethod, patchOrder, text.orders.details.paymentMethod, text.orders.paymentMethodSaved]
+  );
+
   const handlePrintOrder = React.useCallback(
     (order: AdminOrder) => {
       printOrderPackingSlip(order, labels, text);
@@ -963,28 +981,32 @@ export function AdminOrdersPanel() {
           )}
 
           <div className="min-w-0">
-            <AdminBusyRegion
-              label={text.common.refreshing}
-              pending={isLoadingOrders}
-              rows={5}
-            >
-              <OrdersList
-                labels={labels}
-                orders={visibleOrders}
-                page={currentPage}
-                pendingActionKey={pendingOrderAction}
-                selectedOrderId={selectedOrder?.id ?? ""}
-                text={text}
-                totalFiltered={filteredOrders.length}
-                totalPages={totalPages}
-                viewMode={viewMode}
-                onNextPage={() => setPage((current) => Math.min(totalPages, current + 1))}
-                onOpenMobileDetails={handleOpenMobileDetails}
-                onPreviousPage={() => setPage((current) => Math.max(1, current - 1))}
-                onQuickTransition={handleQuickTransition}
-                onSelectOrder={handleOpenOrder}
-              />
-            </AdminBusyRegion>
+            {isLoadingOrders && !dataSource.syncedAt && orders.length === 0 ? (
+              <OrdersListSkeleton text={text} />
+            ) : (
+              <AdminBusyRegion
+                label={text.common.refreshing}
+                pending={isLoadingOrders}
+                rows={5}
+              >
+                <OrdersList
+                  labels={labels}
+                  orders={visibleOrders}
+                  page={currentPage}
+                  pendingActionKey={pendingOrderAction}
+                  selectedOrderId={selectedOrder?.id ?? ""}
+                  text={text}
+                  totalFiltered={filteredOrders.length}
+                  totalPages={totalPages}
+                  viewMode={viewMode}
+                  onNextPage={() => setPage((current) => Math.min(totalPages, current + 1))}
+                  onOpenMobileDetails={handleOpenMobileDetails}
+                  onPreviousPage={() => setPage((current) => Math.max(1, current - 1))}
+                  onQuickTransition={handleQuickTransition}
+                  onSelectOrder={handleOpenOrder}
+                />
+              </AdminBusyRegion>
+            )}
           </div>
           <Dialog
             open={mobileDetailsOpen && selectedOrder !== null}
@@ -1016,6 +1038,7 @@ export function AdminOrdersPanel() {
                     onRollback={handleRollbackOrder}
                     onTransition={handleTransition}
                     onUpdateLogistics={handleUpdateLogistics}
+                    onUpdatePaymentMethod={handleUpdatePaymentMethod}
                     onUpdateStaffNote={handleUpdateStaffNote}
                   />
                 </div>
@@ -1350,7 +1373,7 @@ function OrdersList({
                       <TableCell>
                         <div className="text-xs font-semibold">{orderValueLabel(text, order.paymentDue)}</div>
                         <div className="text-[11px] text-slate-500">
-                          {orderValueLabel(text, order.paymentMethod)}
+                          {labels.paymentMethod[order.paymentMethod]}
                         </div>
                       </TableCell>
                     </>
@@ -1436,6 +1459,34 @@ function OrdersList({
           {text.orders.nextPage}
         </Button>
       </div>
+    </div>
+  );
+}
+
+function OrdersListSkeleton({ text }: { text: AdminText }) {
+  return (
+    <div className="min-w-0 space-y-2" aria-busy="true" aria-live="polite">
+      <div className="flex min-w-0 items-center justify-between gap-3">
+        <div className="min-w-0 space-y-1.5">
+          <div className="h-4 w-28 animate-pulse rounded bg-slate-100" />
+          <div className="h-3 w-44 animate-pulse rounded bg-slate-100" />
+        </div>
+        <div className="h-6 w-20 animate-pulse rounded-full bg-slate-100" />
+      </div>
+      <div className="md:hidden">
+        <AdminSkeletonRows rows={4} />
+      </div>
+      <div className="hidden overflow-hidden rounded-md border border-slate-200 bg-white md:block">
+        <div className="grid grid-cols-[1fr_1.5fr_1.4fr_1fr_1fr_0.9fr] gap-3 border-b border-slate-200 bg-slate-50 p-2">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div key={index} className="h-3 animate-pulse rounded bg-slate-100" />
+          ))}
+        </div>
+        <div className="p-2">
+          <AdminSkeletonRows rows={5} />
+        </div>
+      </div>
+      <span className="sr-only">{text.common.loadingPanel}</span>
     </div>
   );
 }
@@ -1591,7 +1642,7 @@ function getMobileSummaryFacts(
   if (viewMode === "payments") {
     return [
       { label: text.orders.summary.payment, value: labels.payment[order.paymentStatus] },
-      { label: text.orders.summary.due, value: orderValueLabel(text, order.paymentDue) },
+      { label: text.orders.details.paymentMethod, value: labels.paymentMethod[order.paymentMethod] },
     ];
   }
 
@@ -1679,6 +1730,7 @@ function OrderDetailsPanel({
   onRollback,
   onTransition,
   onUpdateLogistics,
+  onUpdatePaymentMethod,
   onUpdateStaffNote,
 }: {
   adminSession: AdminSessionState;
@@ -1693,6 +1745,7 @@ function OrderDetailsPanel({
   onRollback: (order: AdminOrder) => void;
   onTransition: (order: AdminOrder, status: OrderDbStatus, successMessage: string) => void;
   onUpdateLogistics: (order: AdminOrder, carrier: string, tracking: string) => void;
+  onUpdatePaymentMethod: (order: AdminOrder, paymentMethod: PaymentMethod) => void;
   onUpdateStaffNote: (order: AdminOrder, staffNote: string) => void;
 }) {
   const [trackingDetailsState, setTrackingDetailsState] = React.useState(() => ({
@@ -1766,9 +1819,9 @@ function OrderDetailsPanel({
   return (
     <AdminBusyRegion
       className="min-w-0"
-      label={loading ? text.orders.detailLoading : text.common.saving}
+      label={text.orders.detailLoading}
       overlayClassName="rounded-lg"
-      pending={loading || isMutating}
+      pending={loading}
       rows={3}
     >
       <div className="min-w-0 space-y-1.5 bg-slate-50/40 p-1.5 sm:space-y-2 sm:p-2">
@@ -1840,7 +1893,7 @@ function OrderDetailsPanel({
                 {text.common.payment}
               </div>
               <div className="mt-0.5 truncate font-bold leading-tight text-slate-900">
-                {labels.payment[order.paymentStatus]} · {orderValueLabel(text, order.paymentDue)}
+                {labels.payment[order.paymentStatus]} · {labels.paymentMethod[order.paymentMethod]}
               </div>
             </div>
             <div className="min-w-0 rounded bg-slate-50 px-1.5 py-1">
@@ -1864,7 +1917,7 @@ function OrderDetailsPanel({
             <DetailFact
               label={text.common.payment}
               value={labels.payment[order.paymentStatus]}
-              helper={`${orderValueLabel(text, order.paymentMethod)} - ${orderValueLabel(
+              helper={`${labels.paymentMethod[order.paymentMethod]} - ${orderValueLabel(
                 text,
                 order.paymentDue
               )}`}
@@ -1892,6 +1945,16 @@ function OrderDetailsPanel({
           <div className="hidden md:block">
             <StatusStepper labels={labels} status={order.status} />
           </div>
+
+          <OrderPaymentMethodCard
+            key={`${order.id}:${order.paymentMethod}`}
+            canEditPayment={adminSession.allowed && !isReadOnly}
+            isMutating={isMutating}
+            labels={labels}
+            order={order}
+            text={text}
+            onUpdatePaymentMethod={onUpdatePaymentMethod}
+          />
 
           <OrderLogisticsCard
             key={`${order.id}:${order.carrier}:${order.tracking}`}
@@ -2487,6 +2550,93 @@ function TrackingTimelineItem({ event }: { event: TrackingTimelineEvent }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function OrderPaymentMethodCard({
+  canEditPayment,
+  isMutating,
+  labels,
+  order,
+  text,
+  onUpdatePaymentMethod,
+}: {
+  canEditPayment: boolean;
+  isMutating: boolean;
+  labels: OrderLabels;
+  order: AdminOrder;
+  text: AdminText;
+  onUpdatePaymentMethod: (order: AdminOrder, paymentMethod: PaymentMethod) => void;
+}) {
+  const [paymentMethodDraft, setPaymentMethodDraft] = React.useState<PaymentMethod>(
+    order.paymentMethod
+  );
+  const canSave =
+    canEditPayment &&
+    !isMutating &&
+    paymentMethodDraft !== order.paymentMethod;
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!canSave) {
+      return;
+    }
+
+    onUpdatePaymentMethod(order, paymentMethodDraft);
+  }
+
+  return (
+    <section className="rounded-md border border-slate-200 bg-white p-2 sm:p-2.5">
+      <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5 text-xs font-black text-slate-900 sm:text-sm">
+          <CreditCard className="size-3.5 shrink-0 text-primary" />
+          <span className="truncate">{text.orders.details.paymentMethod}</span>
+        </div>
+        <Badge className={paymentBadgeClass(order.paymentStatus)} variant="outline">
+          {labels.payment[order.paymentStatus]}
+        </Badge>
+      </div>
+      <form
+        className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
+        onSubmit={handleSubmit}
+      >
+        <label className="min-w-0">
+          <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+            {text.orders.details.paymentMethod}
+          </span>
+          <Select
+            value={paymentMethodDraft}
+            onValueChange={(value) => setPaymentMethodDraft(normalizePaymentMethodValue(value))}
+            disabled={!canEditPayment || isMutating}
+          >
+            <SelectTrigger className="h-9 w-full rounded-md border-slate-200 bg-white text-xs font-bold text-slate-900 sm:text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {paymentMethodOptions.map((paymentMethod) => (
+                <SelectItem key={paymentMethod} value={paymentMethod}>
+                  {labels.paymentMethod[paymentMethod]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </label>
+        <Button
+          type="submit"
+          size="sm"
+          className="self-end rounded-md"
+          disabled={!canSave}
+        >
+          {isMutating ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Save className="size-3.5" />
+          )}
+          <span className="truncate">{text.common.saveChanges}</span>
+        </Button>
+      </form>
+    </section>
   );
 }
 
@@ -4068,9 +4218,9 @@ function normalizeAdminOrder(
     fulfillmentStatus,
     priority: normalizePriorityValue(row.priority, status, index),
     customer,
-    paymentMethod:
-      readString(readRecordValue(row, ["paymentMethod", "payment_method"])) ??
-      "Da /api/admin/orders",
+    paymentMethod: normalizePaymentMethodValue(
+      readRecordValue(row, ["paymentMethod", "payment_method"])
+    ),
     paymentDue:
       readString(readRecordValue(row, ["paymentDue", "payment_due", "dueDate"])) ??
       (paymentStatus === "paid" ? "Pagato" : "Da verificare"),
@@ -4406,6 +4556,10 @@ function normalizePaymentStatusValue(value: unknown): PaymentStatus {
   return "unpaid";
 }
 
+function normalizePaymentMethodValue(value: unknown): PaymentMethod {
+  return value === "cash" ? "cash" : "bank_transfer";
+}
+
 function normalizeFulfillmentStatusValue(
   value: unknown,
   status: OrderDbStatus
@@ -4633,6 +4787,10 @@ function buildOrderLabels(text: AdminText): OrderLabels {
       authorized: text.enums.paymentStatus.authorized,
       paid: text.enums.paymentStatus.paid,
       refunded: text.enums.paymentStatus.refunded,
+    },
+    paymentMethod: {
+      bank_transfer: adminValueLabel(text, "bank_transfer"),
+      cash: adminValueLabel(text, "cash"),
     },
     fulfillment: {
       queued: text.enums.fulfillmentStatus.queued,
@@ -4905,6 +5063,7 @@ function isPlainStatusTransitionPatch(patch: OrderPatchInput) {
     patch.status !== "cancelled" &&
     patch.carrier === undefined &&
     patch.forceCancel === undefined &&
+    patch.paymentMethod === undefined &&
     patch.paymentStatus === undefined &&
     patch.rollback === undefined &&
     patch.staffNote === undefined &&

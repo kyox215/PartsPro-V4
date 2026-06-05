@@ -314,37 +314,66 @@ export function AdminOverviewDashboard({
         </div>
       ) : null}
 
-      <AdminBusyRegion
-        contentClassName="space-y-2.5 sm:space-y-3"
-        label={text.common.refreshing}
-        pending={snapshot.isLoading}
-        rows={6}
-      >
-        <MetricGrid metrics={metrics} />
+      {snapshot.isLoading && !snapshot.syncedAt ? (
+        <OverviewDashboardSkeleton />
+      ) : (
+        <AdminBusyRegion
+          contentClassName="space-y-2.5 sm:space-y-3"
+          label={text.common.refreshing}
+          pending={snapshot.isLoading}
+          rows={6}
+        >
+          <MetricGrid metrics={metrics} />
 
-        <section className="grid gap-2.5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.75fr)]">
-          <SalesTrendCard
-            copy={copy}
-            model={model}
-            onRangeChange={setSalesRange}
-            range={salesRange}
-            text={text}
-          />
-          <InventoryRiskCard copy={copy} locale={locale} model={model} />
-        </section>
+          <section className="grid gap-2.5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.75fr)]">
+            <SalesTrendCard
+              copy={copy}
+              model={model}
+              onRangeChange={setSalesRange}
+              range={salesRange}
+              text={text}
+            />
+            <InventoryRiskCard copy={copy} locale={locale} model={model} />
+          </section>
 
-        <section className="grid gap-2.5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.1fr)_minmax(0,0.85fr)]">
-          <OrderPipelineCard model={model} text={text} />
-          <HotSkuCard copy={copy} locale={locale} model={model} />
-          <CatalogOpsCard
-            copy={copy}
-            model={model}
-            onPanelChange={onPanelChange}
-            text={text}
-            visiblePanels={visiblePanels}
-          />
-        </section>
-      </AdminBusyRegion>
+          <section className="grid gap-2.5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.1fr)_minmax(0,0.85fr)]">
+            <OrderPipelineCard model={model} text={text} />
+            <HotSkuCard copy={copy} locale={locale} model={model} />
+            <CatalogOpsCard
+              copy={copy}
+              model={model}
+              onPanelChange={onPanelChange}
+              text={text}
+              visiblePanels={visiblePanels}
+            />
+          </section>
+        </AdminBusyRegion>
+      )}
+    </div>
+  );
+}
+
+function OverviewDashboardSkeleton() {
+  return (
+    <div className="space-y-2.5 sm:space-y-3" aria-hidden="true">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
+        {Array.from({ length: 6 }).map((_, index) => (
+          <div key={index} className="h-24 animate-pulse rounded-lg border border-slate-200 bg-white p-3">
+            <div className="h-3 w-20 rounded bg-slate-100" />
+            <div className="mt-4 h-6 w-16 rounded bg-slate-100" />
+            <div className="mt-3 h-3 w-24 rounded bg-slate-100" />
+          </div>
+        ))}
+      </div>
+      <section className="grid gap-2.5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.75fr)]">
+        <div className="h-80 animate-pulse rounded-lg border border-slate-200 bg-white" />
+        <div className="h-80 animate-pulse rounded-lg border border-slate-200 bg-white" />
+      </section>
+      <section className="grid gap-2.5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.1fr)_minmax(0,0.85fr)]">
+        <div className="h-72 animate-pulse rounded-lg border border-slate-200 bg-white" />
+        <div className="h-72 animate-pulse rounded-lg border border-slate-200 bg-white" />
+        <div className="h-72 animate-pulse rounded-lg border border-slate-200 bg-white" />
+      </section>
     </div>
   );
 }

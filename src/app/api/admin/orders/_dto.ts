@@ -51,7 +51,7 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
     reservationAgeHours: order.reservationAgeHours,
     reservationOverdue: order.reservationOverdue,
     reservationWarning: order.reservationWarning,
-    paymentMethod: order.paymentStatus === "paid" ? "Incassato" : "Da incassare",
+    paymentMethod: normalizePaymentMethod(order.paymentMethod, fiscal),
     paymentDue: order.paymentStatus === "paid" ? "Pagato" : "Da verificare",
     warehouse: primaryWarehouse(order),
     carrier: order.carrier,
@@ -185,6 +185,17 @@ function toUiPaymentStatus(status: AdminOrder["paymentStatus"]) {
   }
 
   return "unpaid";
+}
+
+function normalizePaymentMethod(
+  value: AdminOrder["paymentMethod"] | string | undefined,
+  fiscal: Record<string, unknown> | null
+) {
+  const fiscalValue =
+    readStringValue(readRecordValue(fiscal, ["payment_method", "paymentMethod"])) ??
+    undefined;
+
+  return value === "cash" || fiscalValue === "cash" ? "cash" : "bank_transfer";
 }
 
 function toUiFulfillmentStatus(status: AdminOrder["status"]) {

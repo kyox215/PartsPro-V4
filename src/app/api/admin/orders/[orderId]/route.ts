@@ -153,12 +153,13 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
       parsed.data.status === "shipped" &&
       hasOperationsPatch(parsed.data)
         ? await updateAdminOrderOperations({
-            orderId: decodedOrderId,
-            carrier: parsed.data.carrier,
-            note: parsed.data.note,
-            paymentStatus: parsed.data.paymentStatus,
-            staffNote: parsed.data.staffNote,
-            tracking: parsed.data.tracking,
+          orderId: decodedOrderId,
+          carrier: parsed.data.carrier,
+          note: parsed.data.note,
+          paymentMethod: parsed.data.paymentMethod,
+          paymentStatus: parsed.data.paymentStatus,
+          staffNote: parsed.data.staffNote,
+          tracking: parsed.data.tracking,
           })
         : null;
     const rollbackResult = !forceCancelResult && parsed.data.rollback
@@ -178,6 +179,7 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
           metadata: {
             carrier: parsed.data.carrier ?? null,
             fulfillmentStatus: parsed.data.fulfillmentStatus ?? null,
+            paymentMethod: parsed.data.paymentMethod ?? null,
             paymentStatus: parsed.data.paymentStatus ?? null,
             tracking: parsed.data.tracking ?? null,
           },
@@ -192,6 +194,7 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
             orderId: decodedOrderId,
             carrier: parsed.data.carrier,
             note: parsed.data.note,
+            paymentMethod: parsed.data.paymentMethod,
             paymentStatus: parsed.data.paymentStatus,
             staffNote: parsed.data.staffNote,
             tracking: parsed.data.tracking,
@@ -227,6 +230,9 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
       data: toAdminOrderDto(order, {
         ...(parsed.data.carrier !== undefined ? { carrier: parsed.data.carrier } : {}),
         ...(parsed.data.tracking !== undefined ? { tracking: parsed.data.tracking } : {}),
+        ...(parsed.data.paymentMethod !== undefined
+          ? { paymentMethod: parsed.data.paymentMethod }
+          : {}),
         ...(parsed.data.paymentStatus
           ? { paymentStatus: toUiPaymentStatus(parsed.data.paymentStatus) }
           : {}),
@@ -289,12 +295,14 @@ function toUiPaymentStatus(status: string) {
 
 function hasOperationsPatch(patch: {
   carrier?: string;
+  paymentMethod?: string;
   paymentStatus?: string;
   staffNote?: string;
   tracking?: string;
 }) {
   return (
     patch.carrier !== undefined ||
+    patch.paymentMethod !== undefined ||
     patch.paymentStatus !== undefined ||
     patch.staffNote !== undefined ||
     patch.tracking !== undefined

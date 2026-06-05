@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -14,36 +14,22 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  categories,
   type DeviceModelGroup,
   type PartProduct,
-  type PartVisual as PartVisualType,
 } from "@/lib/partspro-data";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
-import { PartVisual } from "./part-visual";
 import { CatalogBrandTree } from "./catalog-brand-tree";
 import { StoreHeader } from "./store-header";
 import { useI18n, useT } from "./i18n-provider";
 import {
-  brandLabel,
-  categoryLabel,
   tx,
-  type StorefrontTranslator,
 } from "@/i18n/dictionaries/storefront";
 import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
 import { RoutePendingIndicator } from "./pending-feedback";
 import { ProductCard } from "./product-card";
 
-type HomeCategorySummary = {
-  count?: number;
-  label: string;
-  value: string;
-  visual: PartVisualType;
-};
-
 type HomePageProps = {
   catalogTotal?: number;
-  categoryCounts?: Record<string, number | undefined>;
   hotProducts?: PartProduct[];
   initialAccountAccess?: StoreHeaderAccountAccess;
   modelGroups?: readonly DeviceModelGroup[];
@@ -55,7 +41,6 @@ type HomePageProps = {
 
 export function HomePage({
   catalogTotal = 0,
-  categoryCounts = {},
   hotProducts = [],
   initialAccountAccess,
   modelGroups = [],
@@ -64,16 +49,6 @@ export function HomePage({
   showPrices = false,
   stockedProducts = [],
 }: HomePageProps) {
-  const t = useT();
-  const categorySummaries = useMemo(
-    () =>
-      categories.map((category) => ({
-        ...category,
-        count: categoryCounts[category.value],
-      })),
-    [categoryCounts]
-  );
-
   return (
     <main className="min-h-screen overflow-x-clip bg-[#f4f6fa] text-slate-950">
       <StoreHeader
@@ -133,8 +108,6 @@ export function HomePage({
             titleKey="storefront.home.products.title"
             titleFallback="Ricambi disponibili ora"
           />
-          <CategoryShowcase categories={categorySummaries} />
-          <BrandModelStrip catalogTotal={catalogTotal} modelGroups={modelGroups} />
         </div>
       </div>
     </main>
@@ -299,107 +272,6 @@ function ProductShelf({
   );
 }
 
-function CategoryShowcase({ categories: items }: { categories: HomeCategorySummary[] }) {
-  const t = useT();
-  const { locale } = useI18n();
-
-  return (
-    <section id="categories" className="space-y-3">
-      <SectionHeader
-        actionHref="/catalogo"
-        actionLabel={tx(t, "storefront.home.common.viewAll", "Vedi tutto")}
-        eyebrow={tx(t, "storefront.home.categories.eyebrow", "Catalogo")}
-        title={tx(t, "storefront.home.categories.title", "Categorie richieste dai laboratori")}
-      />
-      <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3 xl:grid-cols-8">
-        {items.map((category) => (
-          <Link
-            key={category.value}
-            href={`/catalogo?category=${encodeURIComponent(category.value)}`}
-            className="group relative min-w-0 rounded-lg border border-slate-200 bg-white p-2 text-center shadow-[0_12px_28px_rgba(15,23,42,0.04)] transition active:translate-y-px hover:border-primary/40 sm:p-3"
-          >
-            <RoutePendingIndicator className="absolute right-2 top-2 size-3 text-primary" />
-            <PartVisual
-              variant={category.visual}
-              className="mx-auto mb-2 w-14 rounded-md transition group-hover:scale-[1.02] sm:w-16"
-            />
-            <div className="truncate text-xs font-black sm:text-sm">
-              {categoryLabel(t, category.label)}
-            </div>
-            <div className="mt-1 truncate text-[11px] font-semibold text-slate-500 sm:text-xs">
-              {formatCount(
-                t,
-                locale,
-                category.count,
-                tx(t, "storefront.home.common.catalog", "Catalogo")
-              )}
-            </div>
-          </Link>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function BrandModelStrip({
-  catalogTotal,
-  modelGroups,
-}: {
-  catalogTotal: number;
-  modelGroups: readonly DeviceModelGroup[];
-}) {
-  const t = useT();
-  const { locale } = useI18n();
-  const visibleBrands = modelGroups.slice(0, 8);
-  const modelTotal = modelGroups.reduce((total, group) => total + group.models.length, 0);
-
-  return (
-    <section className="space-y-3 pb-4">
-      <SectionHeader
-        actionHref="/catalogo"
-        actionLabel={tx(t, "storefront.home.common.openCatalog", "Apri catalogo")}
-        eyebrow={tx(t, "storefront.home.brands.eyebrow", "Brand e modelli")}
-        title={tx(t, "storefront.home.brands.title", "Navigazione rapida per compatibilità")}
-      />
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-8">
-        {(visibleBrands.length > 0 ? visibleBrands : fallbackBrands()).map((group) => (
-          <Link
-            key={group.brand}
-            href={`/catalogo?brand=${encodeURIComponent(group.brand)}`}
-            title={brandLabel(t, group.brand) === group.brand ? undefined : group.brand}
-            className="relative grid h-16 min-w-0 place-items-center rounded-lg border border-slate-200 bg-white px-3 text-center text-sm font-black shadow-[0_12px_28px_rgba(15,23,42,0.04)] transition active:translate-y-px hover:border-primary/40 hover:text-primary"
-          >
-            <RoutePendingIndicator className="absolute right-2 top-2 size-3 text-primary" />
-            <span className="max-w-full truncate">{brandLabel(t, group.brand)}</span>
-          </Link>
-        ))}
-      </div>
-      <div className="grid rounded-lg border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.04)] sm:grid-cols-4">
-        {[
-          [
-            catalogTotal > 0 ? new Intl.NumberFormat(locale).format(catalogTotal) : "Pro",
-            tx(t, "storefront.home.brands.stats.sku", "SKU catalogo"),
-          ],
-          [
-            String(modelGroups.length || visibleBrands.length || 8),
-            tx(t, "storefront.home.brands.stats.brands", "brand gestiti"),
-          ],
-          [
-            String(modelTotal || 40),
-            tx(t, "storefront.home.brands.stats.models", "modelli indicizzati"),
-          ],
-          ["24/48h", tx(t, "storefront.home.brands.stats.delivery", "Italia")],
-        ].map(([value, label]) => (
-          <div key={label} className="min-w-0 p-3 text-center">
-            <div className="truncate text-2xl font-black text-primary">{value}</div>
-            <div className="mt-1 truncate text-xs text-slate-500">{label}</div>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function SectionHeader({
   actionHref,
   actionLabel,
@@ -444,33 +316,4 @@ function SectionHeader({
       </Button>
     </div>
   );
-}
-
-function formatCount(
-  t: StorefrontTranslator,
-  locale: string,
-  count: number | undefined,
-  fallback: string
-) {
-  if (count === undefined) {
-    return fallback;
-  }
-
-  return tx(t, "storefront.home.common.skuCount", "{count} SKU").replace(
-    "{count}",
-    new Intl.NumberFormat(locale).format(count)
-  );
-}
-
-function fallbackBrands(): DeviceModelGroup[] {
-  return [
-    { brand: "Apple", models: [] },
-    { brand: "Samsung", models: [] },
-    { brand: "Xiaomi", models: [] },
-    { brand: "Huawei", models: [] },
-    { brand: "Oppo", models: [] },
-    { brand: "Honor", models: [] },
-    { brand: "Google", models: [] },
-    { brand: "OnePlus", models: [] },
-  ];
 }

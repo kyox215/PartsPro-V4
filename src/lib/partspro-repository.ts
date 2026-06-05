@@ -150,6 +150,7 @@ export type AdminOrderDbStatus =
   | "completed"
   | "cancelled";
 export type AdminPaymentStatus = "pending" | "paid" | "bank_waiting" | "failed";
+export type AdminPaymentMethod = "bank_transfer" | "cash";
 
 export type AccountCustomerProfile = {
   assignmentStatus: CustomerAssignmentStatus;
@@ -717,6 +718,7 @@ export type AdminOrder = {
   status: AdminOrderDbStatus;
   uiStatus: OrderStatus;
   paymentStatus: AdminPaymentStatus;
+  paymentMethod: AdminPaymentMethod;
   stockRisk: string;
   totalNet: number;
   vat: number;
@@ -793,6 +795,7 @@ export type AdminOrderOperationsPatchInput = {
   orderId: string;
   carrier?: string;
   note?: string;
+  paymentMethod?: AdminPaymentMethod;
   paymentStatus?: AdminPaymentStatus | "unpaid" | "authorized" | "refunded";
   staffNote?: string;
   tracking?: string;
@@ -887,7 +890,7 @@ export type FiscalSnapshot = {
 
 export type SaveOrderInput = {
   company: CompanyProfile;
-  paymentMethod: "bank_transfer" | "cash" | "agreed_terms";
+  paymentMethod: AdminPaymentMethod;
   purchaseOrderNumber?: string;
   deliveryAddress: DeliveryAddressSnapshot;
   fiscal: FiscalSnapshot;
@@ -2852,9 +2855,15 @@ export async function updateAdminOrderOperations(
   }
 
   const orderPayload: Record<string, unknown> = {};
+  const previousPaymentMethod = normalizeAdminPaymentMethod(
+    pickString(orderRow, ["payment_method"]) ??
+      pickString(readFiscalRecord(orderRow), ["payment_method", "paymentMethod"])
+  );
+  const nextPaymentMethod = normalizeAdminPaymentMethodForWrite(input.paymentMethod);
 
   assignDefined(orderPayload, "carrier", normalizeNullableOperationsText(input.carrier));
   assignDefined(orderPayload, "tracking_code", normalizeNullableOperationsText(input.tracking));
+  assignDefined(orderPayload, "payment_method", nextPaymentMethod);
   assignDefined(orderPayload, "payment_status", normalizeAdminPaymentStatusForWrite(input.paymentStatus));
 
   if (input.staffNote !== undefined) {
@@ -2889,6 +2898,8 @@ export async function updateAdminOrderOperations(
       note: input.note ?? (input.staffNote !== undefined ? "Staff note updated" : "Admin operations fields updated"),
       metadata: {
         carrier: input.carrier ?? null,
+        payment_method: nextPaymentMethod ?? null,
+        previous_payment_method: input.paymentMethod !== undefined ? previousPaymentMethod : null,
         payment_status: input.paymentStatus ?? null,
         staff_note_updated: input.staffNote !== undefined,
         tracking: input.tracking ?? null,
@@ -6536,6 +6547,10 @@ function mapAdminOrderRow(
     status,
     uiStatus: normalizeOrderStatus(status),
     paymentStatus: normalizePaymentStatus(pickString(row, ["payment_status"])),
+    paymentMethod: normalizeAdminPaymentMethod(
+      pickString(row, ["payment_method"]) ??
+        pickString(readFiscalRecord(row), ["payment_method", "paymentMethod"])
+    ),
     stockRisk: pickString(row, ["stock_risk"]) ?? "clear",
     totalNet,
     vat,
@@ -6951,6 +6966,16 @@ function pickString(row: DbRow | null | undefined, keys: string[]) {
   return null;
 }
 
+function readFiscalRecord(row: DbRow | null | undefined): DbRow | null {
+  if (!row) {
+    return null;
+  }
+
+  const fiscal = row.fiscal;
+
+  return isDbRow(fiscal) ? fiscal : null;
+}
+
 function pickNumber(row: DbRow | null | undefined, keys: string[]) {
   if (!row) {
     return null;
@@ -7359,6 +7384,20 @@ function normalizePaymentStatus(value: string | null): AdminPaymentStatus {
   }
 
   return "pending";
+}
+
+function normalizeAdminPaymentMethod(value: string | null | undefined): AdminPaymentMethod {
+  return value === "cash" ? "cash" : "bank_transfer";
+}
+
+function normalizeAdminPaymentMethodForWrite(
+  value: AdminOrderOperationsPatchInput["paymentMethod"] | undefined
+): AdminPaymentMethod | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  return normalizeAdminPaymentMethod(value);
 }
 
 function normalizeAdminPaymentStatusForWrite(

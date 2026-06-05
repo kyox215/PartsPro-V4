@@ -17,6 +17,11 @@ export const adminPaymentStatuses = [
   "failed",
 ] as const;
 
+export const adminPaymentMethods = [
+  "bank_transfer",
+  "cash",
+] as const;
+
 export const orderQuerySchema = z
   .object({
     customerId: z.string().trim().uuid().optional(),
@@ -36,6 +41,7 @@ export const orderQuerySchema = z
 export const orderPatchSchema = z
   .object({
     status: z.enum(adminOrderDbStatuses).optional(),
+    paymentMethod: z.enum(adminPaymentMethods).optional(),
     paymentStatus: z
       .enum(["unpaid", "authorized", "paid", "refunded", ...adminPaymentStatuses] as const)
       .optional(),

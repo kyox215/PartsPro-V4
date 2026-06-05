@@ -1,6 +1,5 @@
 import { HomePage } from "@/components/partspro/home-page";
 import {
-  getCatalogCategoryCounts,
   listCatalogModelGroups,
   pageHotCatalogProducts,
   pageCatalogProducts,
@@ -18,6 +17,7 @@ const homeShelfProductLimit = 8;
 const publicHomeShelfCacheTtlMs = 30 * 1000;
 
 type HomeShelfProducts = {
+  catalogTotal: number;
   hotProducts: PartProduct[];
   newProducts: PartProduct[];
   stockedProducts: PartProduct[];
@@ -32,10 +32,9 @@ let publicHomeShelfCache:
 let publicHomeShelfRequest: Promise<HomeShelfProducts> | null = null;
 
 export default async function Home() {
-  const [account, modelGroups, catalogSummary] = await Promise.all([
+  const [account, modelGroups] = await Promise.all([
     getCurrentAccountContext({ ensure: true }),
     listCatalogModelGroups(),
-    getCatalogCategoryCounts(),
   ]);
   const homeShelves = account.canViewPrices
     ? await readHomeShelfProducts({ includeBuyerPrices: true })
@@ -50,8 +49,7 @@ export default async function Home() {
 
   return (
     <HomePage
-      catalogTotal={catalogSummary.warning ? undefined : catalogSummary.data.total}
-      categoryCounts={catalogSummary.data.categoryCounts}
+      catalogTotal={homeShelves.catalogTotal}
       hotProducts={hotProducts}
       initialAccountAccess={toStoreHeaderAccountAccess(account)}
       modelGroups={modelGroups.data}
@@ -126,6 +124,7 @@ async function readHomeShelfProducts(options: { includeBuyerPrices: boolean }) {
   ]);
 
   return {
+    catalogTotal: newProductsPage.data.total,
     hotProducts: hotProductsPage.data.products,
     newProducts: newProductsPage.data.products,
     stockedProducts: stockedProductsPage.data.products,

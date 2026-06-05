@@ -101,7 +101,7 @@ type CheckoutClientProps = {
 
 type CheckoutFormState = {
   notes: string;
-  paymentMethod: "bank_transfer" | "cash" | "agreed_terms";
+  paymentMethod: "bank_transfer" | "cash";
 };
 
 type SubmitState =
@@ -1415,11 +1415,6 @@ function PaymentSection({
       label: tx(t, "storefront.checkout.option.cash.label", "Contanti"),
       description: tx(t, "storefront.checkout.option.cash.description", "Ordine in attesa di incasso in sede."),
     },
-    {
-      value: "agreed_terms" as const,
-      label: tx(t, "storefront.checkout.option.agreedTerms.label", "Pagamento concordato"),
-      description: tx(t, "storefront.checkout.option.agreedTerms.description", "Solo per clienti con termini approvati."),
-    },
   ];
 
   return (
@@ -1431,7 +1426,7 @@ function PaymentSection({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2.5 px-3">
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="grid grid-cols-2 gap-1.5">
           {options.map((option) => (
             <label
               key={option.value}

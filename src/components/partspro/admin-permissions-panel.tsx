@@ -39,7 +39,7 @@ import {
 } from "@/i18n/dictionaries/admin";
 import { CUSTOMER_MANAGE_LEVEL_PERMISSION } from "@/lib/partspro-permissions";
 import { cn } from "@/lib/utils";
-import { AdminBusyRegion, AdminInlinePending } from "./admin-feedback";
+import { AdminBusyRegion, AdminInlinePending, AdminSkeletonRows } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
 
 type PermissionEffect = "grant" | "deny" | "inherit";
@@ -235,6 +235,8 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
   const customerLevelAllowed =
     customerLevelOverride === "grant" ||
     (customerLevelOverride === "inherit" && customerLevelRoleAllows);
+  const isInitialLoading =
+    isLoading && employees.length === 0 && permissions.length === 0;
 
   async function updateRoleTemplate(roleTemplate: string) {
     if (!selectedEmployee || selectedEmployee.roleTemplate === roleTemplate) {
@@ -354,45 +356,49 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
               />
             </div>
             <div className="grid max-h-[560px] gap-2 overflow-y-auto pr-1">
-              <AdminBusyRegion
-                contentClassName="grid gap-2"
-                label={text.common.refreshing}
-                pending={isLoading}
-                rows={4}
-              >
-                {filteredEmployees.length > 0 ? (
-                  filteredEmployees.map((employee) => (
-                    <button
-                      key={employee.userId}
-                      type="button"
-                      className={cn(
-                        "min-w-0 rounded-lg border p-3 text-left transition active:scale-[0.99]",
-                        employee.userId === selectedEmployee?.userId
-                          ? "border-primary/30 bg-primary/8"
-                          : "border-slate-200 bg-white hover:border-primary/30"
-                      )}
-                      aria-label={formatAdminMessage(copy.employeeSelectAria, {
-                        name: employee.displayName ?? employee.email ?? employee.userId,
-                      })}
-                      onClick={() => setSelectedUserId(employee.userId)}
-                    >
-                      <div className="truncate text-sm font-black">
-                        {employee.displayName ?? employee.email ?? copy.employees}
-                      </div>
-                      <div className="mt-1 truncate text-xs font-medium text-slate-500">
-                        {employee.email ?? employee.userId}
-                      </div>
-                      <Badge variant="outline" className="mt-2 bg-white">
-                        {adminRoleTemplateLabel(text, employee.roleTemplate)}
-                      </Badge>
-                    </button>
-                  ))
-                ) : (
-                  <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-                    {copy.employeeEmpty}
-                  </div>
-                )}
-              </AdminBusyRegion>
+              {isInitialLoading ? (
+                <EmployeeListSkeleton />
+              ) : (
+                <AdminBusyRegion
+                  contentClassName="grid gap-2"
+                  label={text.common.refreshing}
+                  pending={isLoading}
+                  rows={4}
+                >
+                  {filteredEmployees.length > 0 ? (
+                    filteredEmployees.map((employee) => (
+                      <button
+                        key={employee.userId}
+                        type="button"
+                        className={cn(
+                          "min-w-0 rounded-lg border p-3 text-left transition active:scale-[0.99]",
+                          employee.userId === selectedEmployee?.userId
+                            ? "border-primary/30 bg-primary/8"
+                            : "border-slate-200 bg-white hover:border-primary/30"
+                        )}
+                        aria-label={formatAdminMessage(copy.employeeSelectAria, {
+                          name: employee.displayName ?? employee.email ?? employee.userId,
+                        })}
+                        onClick={() => setSelectedUserId(employee.userId)}
+                      >
+                        <div className="truncate text-sm font-black">
+                          {employee.displayName ?? employee.email ?? copy.employees}
+                        </div>
+                        <div className="mt-1 truncate text-xs font-medium text-slate-500">
+                          {employee.email ?? employee.userId}
+                        </div>
+                        <Badge variant="outline" className="mt-2 bg-white">
+                          {adminRoleTemplateLabel(text, employee.roleTemplate)}
+                        </Badge>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="rounded-lg border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
+                      {copy.employeeEmpty}
+                    </div>
+                  )}
+                </AdminBusyRegion>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -434,12 +440,15 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
             )}
           </CardHeader>
           <CardContent className="min-w-0 space-y-4">
-            <AdminBusyRegion
-              contentClassName="min-w-0 space-y-4"
-              label={isLoading ? text.common.refreshing : text.common.saving}
-              pending={isLoading}
-              rows={5}
-            >
+            {isInitialLoading ? (
+              <PermissionMatrixSkeleton />
+            ) : (
+              <AdminBusyRegion
+                contentClassName="min-w-0 space-y-4"
+                label={isLoading ? text.common.refreshing : text.common.saving}
+                pending={isLoading}
+                rows={5}
+              >
             {selectedRole && (
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm leading-6 text-slate-600">
                 <span className="font-black text-slate-900">{selectedRole.label}</span>
@@ -598,11 +607,41 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                 {copy.matrixEmpty}
               </div>
             )}
-            </AdminBusyRegion>
+              </AdminBusyRegion>
+            )}
           </CardContent>
         </Card>
       </div>
     </section>
+  );
+}
+
+function EmployeeListSkeleton() {
+  return (
+    <div className="grid gap-2" aria-hidden="true">
+      {Array.from({ length: 4 }).map((_, index) => (
+        <div key={index} className="rounded-lg border border-slate-200 bg-white p-3">
+          <div className="h-4 w-32 animate-pulse rounded bg-slate-100" />
+          <div className="mt-2 h-3 w-44 animate-pulse rounded bg-slate-100" />
+          <div className="mt-3 h-5 w-24 animate-pulse rounded-full bg-slate-100" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PermissionMatrixSkeleton() {
+  return (
+    <div className="min-w-0 space-y-4" aria-hidden="true">
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+        <div className="h-4 w-40 animate-pulse rounded bg-slate-100" />
+        <div className="mt-2 h-3 w-3/5 animate-pulse rounded bg-slate-100" />
+      </div>
+      <div className="h-9 animate-pulse rounded-md bg-slate-100" />
+      <div className="rounded-lg border border-slate-200 bg-white p-2">
+        <AdminSkeletonRows rows={5} />
+      </div>
+    </div>
   );
 }
 

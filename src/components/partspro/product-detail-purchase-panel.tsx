@@ -214,18 +214,51 @@ export function ProductDetailPurchasePanel({
             <>
               <div className="flex items-center gap-2 text-xs font-black text-slate-950">
                 <BadgeEuro className="size-4 text-primary" />
-                Riepilogo preventivo
+                {tx(t, "storefront.product.purchase.quoteTitle", "Riepilogo preventivo")}
               </div>
               <div className="mt-2 space-y-1.5 text-xs">
-                <SummaryLine label="Prezzo IVA inclusa" value={`${formatEuro(product.price)} cad.`} />
-                <SummaryLine label="Quantita" value={`${activeQuantity} pz`} />
-                <SummaryLine label="Subtotale prodotti" value={formatEuro(subtotal)} />
+                <SummaryLine
+                  label={tx(
+                    t,
+                    "storefront.product.purchase.quotePriceEach",
+                    "Prezzo IVA inclusa"
+                  )}
+                  value={txFormat(t, "storefront.cart.priceEach", "{price} / pz", {
+                    price: formatEuro(product.price),
+                  })}
+                />
+                <SummaryLine
+                  label={tx(t, "storefront.product.purchase.quoteQuantity", "Quantita")}
+                  value={txFormat(t, "storefront.cart.itemCountMany", "{count} pezzi", {
+                    count: activeQuantity,
+                  })}
+                />
+                <SummaryLine
+                  label={tx(
+                    t,
+                    "storefront.product.purchase.quoteSubtotal",
+                    "Subtotale prodotti"
+                  )}
+                  value={formatEuro(subtotal)}
+                />
                 <div className="border-t border-slate-100 pt-2">
-                  <SummaryLine label="Totale stimato" value={formatEuro(total)} strong />
+                  <SummaryLine
+                    label={tx(
+                      t,
+                      "storefront.product.purchase.quoteEstimatedTotal",
+                      "Totale stimato"
+                    )}
+                    value={formatEuro(total)}
+                    strong
+                  />
                 </div>
               </div>
               <div className="mt-2 text-[11px] font-semibold leading-4 text-slate-500">
-                Preventivo locale: lo stock viene controllato lato interfaccia prima dell&apos;invio.
+                {tx(
+                  t,
+                  "storefront.product.purchase.quoteLocalNote",
+                  "Preventivo locale: lo stock viene controllato lato interfaccia prima dell'invio."
+                )}
               </div>
             </>
           ) : canRequestRestock ? (

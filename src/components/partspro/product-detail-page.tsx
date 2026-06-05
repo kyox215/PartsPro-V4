@@ -200,7 +200,7 @@ export async function ProductDetailPage({
                             {formatEuro(priceDisplay.basePrice)}
                           </div>
                           <Badge className="mb-0.5 border border-emerald-200 bg-emerald-50 text-emerald-700">
-                            {formatPriceDiscountBadge(priceDisplay)}
+                            {formatPriceDiscountBadge(priceDisplay, t)}
                           </Badge>
                         </>
                       ) : null}

@@ -303,7 +303,7 @@ function ResultLine({
 function readPaymentMethod(formData: FormData) {
   const value = formData.get("paymentMethod");
 
-  if (value === "cash" || value === "agreed_terms") {
+  if (value === "cash") {
     return value;
   }
 

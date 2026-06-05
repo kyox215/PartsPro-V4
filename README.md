@@ -4,7 +4,7 @@ Italy-focused B2B smartphone spare-parts storefront and operations dashboard.
 
 ## Tech Stack
 
-- Next.js 16 App Router
+- Next.js 16.2.6 App Router
 - TypeScript
 - TailwindCSS v4
 - shadcn/ui with Radix UI
@@ -14,6 +14,13 @@ Italy-focused B2B smartphone spare-parts storefront and operations dashboard.
 - Framer Motion
 - Lucide React
 - Recharts
+
+## Agent and Operations Rules
+
+- Repository-wide agent rules live in `AGENTS.md`. `CLAUDE.md` points to the same file through `@AGENTS.md`.
+- Reusable sub-agent profiles live in `docs/agents/`.
+- Supabase migration safety rules live in `docs/PartsPro 代理协作与迁移护栏.md`.
+- Treat the linked Supabase project `yiuxrjqexlfjtxxrkqvi` / `PartsPro-V4` as production-sensitive. Do not apply linked migrations unless the migration safety gate passes.
 
 ## Routes
 
@@ -35,23 +42,18 @@ Italy-focused B2B smartphone spare-parts storefront and operations dashboard.
 
 ## Supabase
 
-The local database documentation lives in `supabase/schema.sql`. It reflects the
-current remote v4 table names inspected read-only on 2026-05-24, including
-`products`, `inventory_items`, `customers`, `orders`, `order_lines`,
-`rma_requests`, `b2b_applications`, `profiles`, and related pricing/catalog
-tables.
+The local database reference lives in `supabase/schema.sql`, but it is only a
+snapshot. The linked database migration state must be checked with:
 
-Pending migration draft: `supabase/migrations/20260524133225_harden_partspro_relations.sql`.
-It has not been applied to the remote database. The draft adds profile to
-customer/company links, staff role helpers, guarded B2B price visibility through
-catalog views, order integrity constraints plus an authenticated order creation
-RPC, and stricter RMA linkage to `order_lines` with quantity, attachment, and
-status checks.
+```bash
+SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase migration list --linked
+```
 
-Apply this migration only after review and after catalog clients are ready to
-read public catalog data from `catalog_public_summary` and buyer prices from
-`catalog_buyer_prices`, because the draft narrows direct `products` SELECT
-grants for `anon` and `authenticated`.
+When a task adds or changes `supabase/migrations/*.sql`, follow
+`docs/PartsPro 代理协作与迁移护栏.md`. Automatic linked migration application is
+allowed only when the dry-run contains only the current task's migration and all
+safety checks pass. Do not use `--include-seed`, `--include-all`, `migration repair`,
+or `db reset --linked` unless explicitly authorized.
 
 ## Development
 

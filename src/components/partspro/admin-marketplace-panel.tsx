@@ -44,6 +44,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { AdminSkeletonRows } from "./admin-feedback";
 
 type EbayEnvironment = "sandbox" | "production";
 
@@ -408,6 +409,10 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
 
   const isBusy = pending !== null;
   const connection = overview?.connection;
+
+  if (pending === "load" && !overview) {
+    return <MarketplacePanelSkeleton />;
+  }
 
   return (
     <div className="min-w-0 space-y-4">
@@ -887,6 +892,56 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
           </TableBody>
         </Table>
       </DataTableCard>
+    </div>
+  );
+}
+
+function MarketplacePanelSkeleton() {
+  return (
+    <div className="min-w-0 space-y-4" aria-busy="true" aria-live="polite">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="h-3 w-20 animate-pulse rounded bg-slate-100" />
+            <div className="mt-4 h-7 w-24 animate-pulse rounded bg-slate-100" />
+          </div>
+        ))}
+      </section>
+      <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <Card className="rounded-lg bg-white">
+          <CardHeader className="border-b">
+            <div className="h-4 w-32 animate-pulse rounded bg-slate-100" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {Array.from({ length: 4 }).map((_, index) => (
+                <div key={index} className="h-10 animate-pulse rounded-md bg-slate-100" />
+              ))}
+            </div>
+            <div className="h-9 w-32 animate-pulse rounded-md bg-primary/15" />
+          </CardContent>
+        </Card>
+        <Card className="rounded-lg bg-white">
+          <CardHeader className="border-b">
+            <div className="h-4 w-36 animate-pulse rounded bg-slate-100" />
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <div key={index} className="h-10 animate-pulse rounded-md bg-slate-100" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </section>
+      <Card className="rounded-lg bg-white">
+        <CardHeader className="border-b">
+          <div className="h-4 w-28 animate-pulse rounded bg-slate-100" />
+        </CardHeader>
+        <CardContent>
+          <AdminSkeletonRows rows={4} />
+        </CardContent>
+      </Card>
     </div>
   );
 }

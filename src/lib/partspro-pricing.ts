@@ -188,7 +188,7 @@ export function formatTierDiscount(tier: CompanyProfile["priceList"]): string {
 }
 
 export function formatTierDiscountAmount(discountAmount: number): string {
-  return `${formatEuroCents(Math.max(0, discountAmount))} cad.`;
+  return formatEuroCents(Math.max(0, discountAmount));
 }
 
 export function formatTierCreditLimit(tier: CompanyProfile["priceList"]): string {

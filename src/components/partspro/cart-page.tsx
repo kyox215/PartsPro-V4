@@ -1242,7 +1242,7 @@ const CartLineMobileSnapshotRow = React.memo(function CartLineMobileSnapshotRow(
             {formatMoney(lineTotal, locale)}
           </div>
           <div className="whitespace-nowrap text-[10px] leading-3 text-slate-500">
-            {txFormat(t, "storefront.cart.priceEach", "{price} cad.", {
+            {txFormat(t, "storefront.cart.priceEach", "{price} / pz", {
               price: formatMoney(product.price, locale),
             })}
           </div>
@@ -1425,13 +1425,15 @@ const CartLineMobileRow = React.memo(function CartLineMobileRow({
             {formatMoney(line.lineTotal, locale)}
           </div>
           <div className="whitespace-nowrap text-[10px] leading-3 text-slate-500">
-            {txFormat(t, "storefront.cart.priceEach", "{price} cad.", {
+            {txFormat(t, "storefront.cart.priceEach", "{price} / pz", {
               price: formatMoney(line.product.price, locale),
             })}
           </div>
           {priceDisplay.hasDiscount && priceDisplay.basePrice ? (
             <div className="whitespace-nowrap text-[10px] leading-3 text-slate-400 line-through">
-              {formatMoney(priceDisplay.basePrice, locale)} cad.
+              {txFormat(t, "storefront.cart.priceEach", "{price} / pz", {
+                price: formatMoney(priceDisplay.basePrice, locale),
+              })}
             </div>
           ) : null}
         </div>
@@ -1546,7 +1548,7 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
               {formatMoney(line.lineTotal, locale)}
             </div>
             <div className="whitespace-nowrap text-[11px] leading-4 text-slate-500">
-              {txFormat(t, "storefront.cart.priceEach", "{price} cad.", {
+              {txFormat(t, "storefront.cart.priceEach", "{price} / pz", {
                 price: formatMoney(line.product.price, locale),
               })}
             </div>
@@ -1554,7 +1556,7 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
               <div className="flex justify-end gap-1 whitespace-nowrap text-[11px] text-slate-400">
                 <span className="line-through">{formatMoney(priceDisplay.basePrice, locale)}</span>
                 <span className="font-bold text-emerald-700">
-                  {formatPriceDiscountBadge(priceDisplay)}
+                  {formatPriceDiscountBadge(priceDisplay, t)}
                 </span>
               </div>
             ) : null}
@@ -1666,13 +1668,15 @@ const CartLineDesktopSnapshotCard = React.memo(function CartLineDesktopSnapshotC
             {formatMoney(lineTotal, locale)}
           </div>
           <div className="mt-0.5 whitespace-nowrap text-xs leading-4 text-slate-500">
-            {txFormat(t, "storefront.cart.priceEach", "{price} cad.", {
+            {txFormat(t, "storefront.cart.priceEach", "{price} / pz", {
               price: formatMoney(product.price, locale),
             })}
           </div>
           {priceDisplay.hasDiscount && priceDisplay.basePrice ? (
             <div className="whitespace-nowrap text-xs leading-4 text-slate-400 line-through">
-              {formatMoney(priceDisplay.basePrice, locale)} cad.
+              {txFormat(t, "storefront.cart.priceEach", "{price} / pz", {
+                price: formatMoney(priceDisplay.basePrice, locale),
+              })}
             </div>
           ) : null}
           <div className="mt-2 inline-flex h-7 items-center rounded-md border border-slate-100 bg-slate-50 px-3 text-xs font-black text-slate-500">

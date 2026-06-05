@@ -306,7 +306,7 @@ export const ProductCard = memo(function ProductCard({
                       </div>
                       {priceDisplay.hasDiscount ? (
                         <Badge className="shrink-0 border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-black text-emerald-700">
-                          {formatPriceDiscountBadge(priceDisplay)}
+                          {formatPriceDiscountBadge(priceDisplay, t)}
                         </Badge>
                       ) : null}
                       {isReviewPriceVisible ? (

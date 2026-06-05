@@ -86,7 +86,7 @@ const createOrderSchema = z
   .object({
     companyId: z.string().trim().min(1).max(40).regex(/^[A-Za-z0-9_-]+$/),
     checkoutMode: z.enum(["customer_self", "employee_self", "delegated_customer"]).optional(),
-    paymentMethod: z.enum(["bank_transfer", "cash", "agreed_terms"]),
+    paymentMethod: z.enum(["bank_transfer", "cash"]),
     notes: z.string().trim().max(500).optional(),
     purchaseOrderNumber: z.string().trim().min(1).max(64).optional(),
     deliveryAddress: deliveryAddressSchema,

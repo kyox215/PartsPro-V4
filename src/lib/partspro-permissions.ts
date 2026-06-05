@@ -136,6 +136,8 @@ export const roleTemplatePermissions: Record<string, Set<string>> = {
     "panel.catalog",
     "orders.read",
     "customers.read",
+    "customers.classify",
+    CUSTOMER_MANAGE_LEVEL_PERMISSION,
     "products.read_admin",
     "product.read_admin",
   ]),

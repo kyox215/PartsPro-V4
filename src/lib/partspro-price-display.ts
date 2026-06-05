@@ -1,3 +1,7 @@
+import {
+  txFormat,
+  type StorefrontTranslator,
+} from "@/i18n/dictionaries/storefront";
 import type { CustomerLevel, PartProduct } from "@/lib/partspro-data";
 import { normalizeCustomerTier } from "@/lib/partspro-pricing";
 
@@ -51,10 +55,24 @@ export function formatPercentBadge(value: number) {
   return `-${Math.round(Math.max(0, value))}%`;
 }
 
-export function formatPriceDiscountBadge(display: ProductPriceDisplay) {
+export function formatPriceDiscountBadge(
+  display: ProductPriceDisplay,
+  t?: StorefrontTranslator
+) {
   return display.levelDiscountAmount > 0
-    ? `-${formatEuroCents(display.levelDiscountAmount)} cad.`
+    ? txFormat(
+      t ?? passthroughTranslator,
+      "storefront.price.discountEach",
+      "-{amount} / pz",
+      {
+        amount: formatEuroCents(display.levelDiscountAmount),
+      }
+    )
     : formatPercentBadge(display.discountPercent);
+}
+
+function passthroughTranslator(key: string) {
+  return key;
 }
 
 function finiteMoney(value: unknown) {

@@ -53,44 +53,52 @@ export function AdminBusyRegion({
   className,
   contentClassName,
   label,
-  overlayClassName,
   pending,
-  rows = 4,
 }: AdminBusyRegionProps) {
-  const showStatus = useDelayedVisible(pending, 120);
-  const showOverlay = useDelayedVisible(pending, 300);
-
   return (
     <div
       aria-busy={pending}
       aria-live="polite"
-      className={cn("relative min-w-0", className)}
+      className={cn("min-w-0", className)}
     >
-      <div
-        className={cn(
-          "min-w-0 transition-opacity duration-150",
-          showOverlay && "opacity-60",
-          contentClassName
-        )}
-      >
+      <AdminRefreshBar label={label} pending={pending} />
+      <div className={cn("min-w-0", contentClassName)}>
         {children}
       </div>
-      {showStatus ? (
-        <div className="pointer-events-none absolute right-2 top-2 z-20 inline-flex max-w-[calc(100%-1rem)] items-center gap-1.5 rounded-full border border-primary/15 bg-white/95 px-2 py-1 text-[11px] font-bold text-primary shadow-sm">
-          <Loader2 className="size-3 animate-spin" />
-          <span className="truncate">{label}</span>
-        </div>
-      ) : null}
-      {showOverlay ? (
-        <div
-          className={cn(
-            "pointer-events-none absolute inset-0 z-10 rounded-md border border-primary/10 bg-white/65 p-3 backdrop-blur-[1px]",
-            overlayClassName
-          )}
-        >
-          <AdminSkeletonRows rows={rows} />
-        </div>
-      ) : null}
+    </div>
+  );
+}
+
+export function AdminRefreshBar({
+  className,
+  label,
+  pending,
+}: {
+  className?: string;
+  label: string;
+  pending: boolean;
+}) {
+  const visible = useDelayedVisible(pending, 120);
+
+  if (!visible) {
+    return null;
+  }
+
+  return (
+    <div
+      className={cn(
+        "mb-2 overflow-hidden rounded-md border border-primary/10 bg-primary/5 text-primary",
+        className
+      )}
+      role="status"
+    >
+      <div className="h-0.5 w-full overflow-hidden bg-primary/10">
+        <div className="h-full w-1/3 animate-pulse rounded-full bg-primary/70" />
+      </div>
+      <div className="flex min-w-0 items-center gap-1.5 px-2 py-1 text-[11px] font-bold leading-4">
+        <Loader2 className="size-3 shrink-0 animate-spin" />
+        <span className="truncate">{label}</span>
+      </div>
     </div>
   );
 }
