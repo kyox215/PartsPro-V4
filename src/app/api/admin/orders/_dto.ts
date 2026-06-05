@@ -9,6 +9,7 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
   ]);
   const companySnapshot = isRecord(companySnapshotValue) ? companySnapshotValue : null;
   const operationHistory = toOrderOperationHistory(order);
+  const paymentCollector = findPaymentCollector(order, operationHistory);
 
   return {
     id: order.orderNo,
@@ -53,6 +54,13 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
     reservationWarning: order.reservationWarning,
     paymentMethod: normalizePaymentMethod(order.paymentMethod, fiscal),
     paymentDue: order.paymentStatus === "paid" ? "Pagato" : "Da verificare",
+    paymentReconciliation: {
+      receivedAt: order.paymentReceivedAt,
+      receivedAmount: order.paymentReceivedAmount,
+      receivedBy: paymentCollector,
+      reference: order.paymentReference,
+      note: order.paymentReconciliationNote,
+    },
     warehouse: primaryWarehouse(order),
     carrier: order.carrier,
     tracking: order.trackingCode,
@@ -96,6 +104,41 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
     ),
     operationHistory,
     ...overlay,
+  };
+}
+
+function findPaymentCollector(
+  order: AdminOrder,
+  operationHistory: ReturnType<typeof toOrderOperationHistory>
+) {
+  const receivedById = order.paymentReceivedBy;
+  if (!receivedById && !order.paymentReceivedAt) {
+    return null;
+  }
+
+  const paymentEvent =
+    operationHistory.find((event) => {
+      if (event.eventType !== "payment_reconciled") {
+        return false;
+      }
+
+      if (!receivedById) {
+        return true;
+      }
+
+      return event.actor.id === receivedById;
+    }) ?? null;
+
+  if (!receivedById && !paymentEvent) {
+    return null;
+  }
+
+  return {
+    id: receivedById ?? paymentEvent?.actor.id ?? null,
+    email: paymentEvent?.actor.email ?? null,
+    name: paymentEvent?.actor.name ?? null,
+    role: paymentEvent?.actor.role ?? null,
+    label: paymentEvent?.actor.label ?? receivedById ?? null,
   };
 }
 

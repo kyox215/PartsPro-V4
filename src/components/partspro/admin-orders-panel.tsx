@@ -36,6 +36,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -56,6 +57,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Textarea } from "@/components/ui/textarea";
 import {
   formatEuro,
   type CompanyStatus,
@@ -177,6 +179,14 @@ type OrderActivityEvent = {
   createdAt: string;
 };
 
+type PaymentReconciliation = {
+  receivedAt: string | null;
+  receivedAmount: number | null;
+  receivedBy: OrderActivityActor | null;
+  reference: string;
+  note: string;
+};
+
 type AdminOrder = {
   id: string;
   remoteId?: string;
@@ -194,6 +204,7 @@ type AdminOrder = {
   customer: CustomerSnapshot;
   paymentMethod: PaymentMethod;
   paymentDue: string;
+  paymentReconciliation: PaymentReconciliation;
   warehouse: WarehouseName;
   carrier: Carrier;
   service: string;
@@ -251,6 +262,7 @@ type PanelNotice = {
 
 type AdminSessionState = {
   allowed: boolean;
+  permissions: string[];
   role: string | null;
 };
 
@@ -270,6 +282,15 @@ type OrderPatchInput = {
   staffNote?: string;
   status?: OrderDbStatus;
   tracking?: string;
+  note?: string;
+};
+
+type OrderPaymentPatchInput = {
+  paymentMethod?: PaymentMethod;
+  paymentStatus: PaymentStatus;
+  receivedAmount?: number;
+  receivedAt?: string;
+  reference?: string;
   note?: string;
 };
 
@@ -346,6 +367,7 @@ export function AdminOrdersPanel() {
   const [notice, setNotice] = React.useState<PanelNotice | null>(null);
   const [adminSession, setAdminSession] = React.useState<AdminSessionState>({
     allowed: false,
+    permissions: [],
     role: null,
   });
   const [page, setPage] = React.useState(1);
@@ -367,6 +389,11 @@ export function AdminOrdersPanel() {
 
         setAdminSession({
           allowed: Boolean(admin?.allowed),
+          permissions: Array.isArray(payload.permissions)
+            ? payload.permissions.filter(
+                (permission): permission is string => typeof permission === "string"
+              )
+            : [],
           role: readString(admin?.role),
         });
       })
@@ -695,6 +722,41 @@ export function AdminOrdersPanel() {
     [text, upsertOrder]
   );
 
+  const patchOrderPayment = React.useCallback(
+    async (order: AdminOrder, patch: OrderPaymentPatchInput, successMessage: string) => {
+      const actionKey = `${order.id}:payment`;
+
+      setPendingOrderAction(actionKey);
+
+      try {
+        const result = await patchOrderPaymentInApi(order.id, patch, text);
+
+        if (result.order) {
+          upsertOrder(result.order);
+        }
+
+        const refreshedOrder = await fetchOrderDetailFromApi(order.id);
+
+        upsertOrder(refreshedOrder);
+        setNotice({
+          tone: "success",
+          message: `${successMessage} ${formatAdminMessage(text.orders.notices.persisted, {
+            id: order.id,
+          })}`,
+        });
+      } catch (error) {
+        setNotice({
+          tone: "error",
+          message:
+            error instanceof Error ? error.message : text.orders.notices.rejected,
+        });
+      } finally {
+        setPendingOrderAction(null);
+      }
+    },
+    [text, upsertOrder]
+  );
+
   const handleTransition = React.useCallback(
     (order: AdminOrder, status: OrderDbStatus, successMessage: string) => {
       void patchOrder(
@@ -814,6 +876,13 @@ export function AdminOrdersPanel() {
       );
     },
     [labels.paymentMethod, patchOrder, text.orders.details.paymentMethod, text.orders.paymentMethodSaved]
+  );
+
+  const handleUpdatePayment = React.useCallback(
+    (order: AdminOrder, patch: OrderPaymentPatchInput) => {
+      void patchOrderPayment(order, patch, text.orders.paymentReconciliationSaved);
+    },
+    [patchOrderPayment, text.orders.paymentReconciliationSaved]
   );
 
   const handlePrintOrder = React.useCallback(
@@ -1038,6 +1107,7 @@ export function AdminOrdersPanel() {
                     onRollback={handleRollbackOrder}
                     onTransition={handleTransition}
                     onUpdateLogistics={handleUpdateLogistics}
+                    onUpdatePayment={handleUpdatePayment}
                     onUpdatePaymentMethod={handleUpdatePaymentMethod}
                     onUpdateStaffNote={handleUpdateStaffNote}
                   />
@@ -1730,6 +1800,7 @@ function OrderDetailsPanel({
   onRollback,
   onTransition,
   onUpdateLogistics,
+  onUpdatePayment,
   onUpdatePaymentMethod,
   onUpdateStaffNote,
 }: {
@@ -1745,6 +1816,7 @@ function OrderDetailsPanel({
   onRollback: (order: AdminOrder) => void;
   onTransition: (order: AdminOrder, status: OrderDbStatus, successMessage: string) => void;
   onUpdateLogistics: (order: AdminOrder, carrier: string, tracking: string) => void;
+  onUpdatePayment: (order: AdminOrder, patch: OrderPaymentPatchInput) => void;
   onUpdatePaymentMethod: (order: AdminOrder, paymentMethod: PaymentMethod) => void;
   onUpdateStaffNote: (order: AdminOrder, staffNote: string) => void;
 }) {
@@ -1813,8 +1885,10 @@ function OrderDetailsPanel({
   const pickedItems = order.lines.reduce((total, line) => total + line.picked, 0);
   const isMutating = pendingActionKey?.startsWith(`${order.id}:`) ?? false;
   const isReadOnly = order.status === "completed" || order.status === "cancelled";
-  const canEditStaffNote = adminSession.allowed;
-  const canEditLogistics = adminSession.allowed && !isReadOnly;
+  const canManageOrders = hasAdminSessionPermission(adminSession, "orders.manage");
+  const canEditStaffNote = canManageOrders;
+  const canEditLogistics = canManageOrders && !isReadOnly;
+  const canReconcilePayment = canManageOrders && order.status !== "cancelled";
 
   return (
     <AdminBusyRegion
@@ -1869,7 +1943,8 @@ function OrderDetailsPanel({
           order={order}
           text={text}
           isMutating={isMutating}
-          canForceCancel={adminSession.role === "admin" && order.status === "shipped"}
+          canForceCancel={canManageOrders && adminSession.role === "admin" && order.status === "shipped"}
+          canManageOrders={canManageOrders}
           onCancelOrder={onCancelOrder}
           onForceCancelOrder={onForceCancelOrder}
           onPrintOrder={onPrintOrder}
@@ -1947,13 +2022,15 @@ function OrderDetailsPanel({
           </div>
 
           <OrderPaymentMethodCard
-            key={`${order.id}:${order.paymentMethod}`}
-            canEditPayment={adminSession.allowed && !isReadOnly}
+            key={`${order.id}:${order.paymentMethod}:${order.paymentStatus}:${order.paymentReconciliation.receivedAt ?? ""}`}
+            canEditPayment={canManageOrders && !isReadOnly}
+            canReconcilePayment={canReconcilePayment}
             isMutating={isMutating}
             labels={labels}
             order={order}
             text={text}
             onUpdatePaymentMethod={onUpdatePaymentMethod}
+            onUpdatePayment={onUpdatePayment}
           />
 
           <OrderLogisticsCard
@@ -2284,6 +2361,7 @@ function OrderActionBar({
   text,
   isMutating,
   canForceCancel,
+  canManageOrders,
   onCancelOrder,
   onForceCancelOrder,
   onPrintOrder,
@@ -2295,6 +2373,7 @@ function OrderActionBar({
   text: AdminText;
   isMutating: boolean;
   canForceCancel: boolean;
+  canManageOrders: boolean;
   onCancelOrder: (order: AdminOrder) => void;
   onForceCancelOrder: (order: AdminOrder) => void;
   onPrintOrder: (order: AdminOrder) => void;
@@ -2306,10 +2385,10 @@ function OrderActionBar({
   const rollback = getOrderRollback(order, text, labels);
   const actionCount = [
     true,
-    cancellableStatuses.has(order.status),
+    canManageOrders && cancellableStatuses.has(order.status),
     canForceCancel,
-    Boolean(rollback),
-    Boolean(transition),
+    canManageOrders && Boolean(rollback),
+    canManageOrders && Boolean(transition),
   ].filter(Boolean).length;
 
   return (
@@ -2335,7 +2414,7 @@ function OrderActionBar({
           <Printer className="size-4" />
           <span className="min-w-0 truncate">{text.orders.print.action}</span>
         </Button>
-        {cancellableStatuses.has(order.status) && (
+        {canManageOrders && cancellableStatuses.has(order.status) && (
           <Button
             variant="outline"
             size="sm"
@@ -2359,7 +2438,7 @@ function OrderActionBar({
             <span className="min-w-0 truncate">{text.orders.forceCancelOrder}</span>
           </Button>
         )}
-        {rollback && (
+        {canManageOrders && rollback && (
           <Button
             variant="outline"
             size="sm"
@@ -2371,7 +2450,7 @@ function OrderActionBar({
             <span className="min-w-0 truncate">{rollback.label}</span>
           </Button>
         )}
-        {transition && (
+        {canManageOrders && transition && (
           <Button
             size="sm"
             className="h-7 min-w-0 rounded-md px-1.5 text-[11px] sm:h-8 sm:px-2 sm:text-xs"
@@ -2555,22 +2634,50 @@ function TrackingTimelineItem({ event }: { event: TrackingTimelineEvent }) {
 
 function OrderPaymentMethodCard({
   canEditPayment,
+  canReconcilePayment,
   isMutating,
   labels,
   order,
   text,
+  onUpdatePayment,
   onUpdatePaymentMethod,
 }: {
   canEditPayment: boolean;
+  canReconcilePayment: boolean;
   isMutating: boolean;
   labels: OrderLabels;
   order: AdminOrder;
   text: AdminText;
+  onUpdatePayment: (order: AdminOrder, patch: OrderPaymentPatchInput) => void;
   onUpdatePaymentMethod: (order: AdminOrder, paymentMethod: PaymentMethod) => void;
 }) {
   const [paymentMethodDraft, setPaymentMethodDraft] = React.useState<PaymentMethod>(
     order.paymentMethod
   );
+  const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [statusDraft, setStatusDraft] = React.useState<PaymentStatus>("paid");
+  const [reconciliationMethodDraft, setReconciliationMethodDraft] =
+    React.useState<PaymentMethod>(order.paymentMethod);
+  const [amountDraft, setAmountDraft] = React.useState(() =>
+    formatPaymentAmountInput(order.paymentReconciliation.receivedAmount ?? order.total)
+  );
+  const [receivedAtDraft, setReceivedAtDraft] = React.useState(() =>
+    toDateTimeLocalInput(order.paymentReconciliation.receivedAt ?? new Date().toISOString())
+  );
+  const [referenceDraft, setReferenceDraft] = React.useState(
+    order.paymentReconciliation.reference
+  );
+  const [noteDraft, setNoteDraft] = React.useState(order.paymentReconciliation.note);
+  const amountValue = parsePaymentAmountInput(amountDraft);
+  const requiresReversalNote = order.paymentStatus === "paid" && statusDraft !== "paid";
+  const receivedAtIsValid =
+    statusDraft !== "paid" || Number.isFinite(Date.parse(receivedAtDraft));
+  const canSaveReconciliation =
+    canReconcilePayment &&
+    !isMutating &&
+    (statusDraft !== "paid" || amountValue !== null) &&
+    receivedAtIsValid &&
+    (!requiresReversalNote || noteDraft.trim().length > 0);
   const canSave =
     canEditPayment &&
     !isMutating &&
@@ -2586,16 +2693,84 @@ function OrderPaymentMethodCard({
     onUpdatePaymentMethod(order, paymentMethodDraft);
   }
 
+  function openReconciliationDialog(nextStatus: PaymentStatus) {
+    setStatusDraft(nextStatus);
+    setReconciliationMethodDraft(order.paymentMethod);
+    setAmountDraft(
+      formatPaymentAmountInput(order.paymentReconciliation.receivedAmount ?? order.total)
+    );
+    setReceivedAtDraft(
+      toDateTimeLocalInput(order.paymentReconciliation.receivedAt ?? new Date().toISOString())
+    );
+    setReferenceDraft(order.paymentReconciliation.reference);
+    setNoteDraft(order.paymentReconciliation.note);
+    setDialogOpen(true);
+  }
+
+  function handleReconciliationSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!canSaveReconciliation) {
+      return;
+    }
+
+    onUpdatePayment(order, {
+      paymentMethod: reconciliationMethodDraft,
+      paymentStatus: statusDraft,
+      receivedAmount: statusDraft === "paid" ? amountValue ?? undefined : undefined,
+      receivedAt:
+        statusDraft === "paid" && receivedAtDraft
+          ? new Date(receivedAtDraft).toISOString()
+          : undefined,
+      reference: referenceDraft.trim() || undefined,
+      note: noteDraft.trim() || undefined,
+    });
+    setDialogOpen(false);
+  }
+
+  const collectorLabel =
+    order.paymentReconciliation.receivedBy?.label ??
+    order.paymentReconciliation.receivedBy?.email ??
+    text.common.none;
+
   return (
     <section className="rounded-md border border-slate-200 bg-white p-2 sm:p-2.5">
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
         <div className="flex min-w-0 items-center gap-1.5 text-xs font-black text-slate-900 sm:text-sm">
           <CreditCard className="size-3.5 shrink-0 text-primary" />
-          <span className="truncate">{text.orders.details.paymentMethod}</span>
+          <span className="truncate">{text.orders.paymentReconciliation}</span>
         </div>
         <Badge className={paymentBadgeClass(order.paymentStatus)} variant="outline">
           {labels.payment[order.paymentStatus]}
         </Badge>
+      </div>
+      <div className="mb-2 grid gap-1 rounded-md border border-slate-100 bg-slate-50/60 p-1.5 text-xs sm:grid-cols-2">
+        <InfoRow label={text.orders.details.paymentMethod} value={labels.paymentMethod[order.paymentMethod]} />
+        <InfoRow
+          label={text.orders.paymentReceivedAmount}
+          value={
+            order.paymentReconciliation.receivedAmount !== null
+              ? formatEuro(order.paymentReconciliation.receivedAmount)
+              : text.common.none
+          }
+        />
+        <InfoRow label={text.orders.paymentReceivedBy} value={collectorLabel} />
+        <InfoRow
+          label={text.orders.paymentReceivedAt}
+          value={
+            order.paymentReconciliation.receivedAt
+              ? formatDisplayDate(order.paymentReconciliation.receivedAt)
+              : text.common.none
+          }
+        />
+        <InfoRow
+          label={text.orders.paymentReference}
+          value={order.paymentReconciliation.reference || text.common.none}
+        />
+        <InfoRow
+          label={text.orders.paymentNote}
+          value={order.paymentReconciliation.note || text.common.none}
+        />
       </div>
       <form
         className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
@@ -2636,6 +2811,177 @@ function OrderPaymentMethodCard({
           <span className="truncate">{text.common.saveChanges}</span>
         </Button>
       </form>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {order.paymentStatus !== "paid" && (
+          <Button
+            type="button"
+            size="sm"
+            className="rounded-md"
+            disabled={!canReconcilePayment || isMutating}
+            onClick={() => openReconciliationDialog("paid")}
+          >
+            <BadgeCheck className="size-3.5" />
+            <span className="truncate">{text.orders.markPaymentReceived}</span>
+          </Button>
+        )}
+        {order.paymentStatus === "paid" && (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              className="rounded-md"
+              disabled={!canReconcilePayment || isMutating}
+              onClick={() => openReconciliationDialog("paid")}
+            >
+              <Pencil className="size-3.5" />
+              <span className="truncate">{text.orders.modifyPaymentReconciliation}</span>
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="rounded-md text-amber-700 hover:text-amber-700"
+              disabled={!canReconcilePayment || isMutating}
+              onClick={() => openReconciliationDialog("unpaid")}
+            >
+              <RotateCcw className="size-3.5" />
+              <span className="truncate">{text.orders.undoPaymentReceived}</span>
+            </Button>
+          </>
+        )}
+      </div>
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-[520px] rounded-lg bg-white">
+          <DialogHeader>
+            <DialogTitle className="text-base font-black text-slate-950">
+              {text.orders.paymentReconciliation}
+            </DialogTitle>
+            <DialogDescription>
+              {formatAdminMessage(text.orders.paymentDialogDescription, {
+                amount: formatEuro(order.total),
+                id: order.id,
+              })}
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-3" onSubmit={handleReconciliationSubmit}>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="min-w-0">
+                <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                  {text.orders.paymentStatus}
+                </span>
+                <Select
+                  value={statusDraft}
+                  onValueChange={(value) => setStatusDraft(normalizePaymentStatusValue(value))}
+                  disabled={!canReconcilePayment || isMutating}
+                >
+                  <SelectTrigger className="h-9 rounded-md border-slate-200 bg-white text-xs font-bold text-slate-900 sm:text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(["unpaid", "authorized", "paid", "refunded"] as PaymentStatus[]).map((status) => (
+                      <SelectItem key={status} value={status}>
+                        {labels.payment[status]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+              <label className="min-w-0">
+                <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                  {text.orders.details.paymentMethod}
+                </span>
+                <Select
+                  value={reconciliationMethodDraft}
+                  onValueChange={(value) => setReconciliationMethodDraft(normalizePaymentMethodValue(value))}
+                  disabled={!canReconcilePayment || isMutating}
+                >
+                  <SelectTrigger className="h-9 rounded-md border-slate-200 bg-white text-xs font-bold text-slate-900 sm:text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {paymentMethodOptions.map((paymentMethod) => (
+                      <SelectItem key={paymentMethod} value={paymentMethod}>
+                        {labels.paymentMethod[paymentMethod]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </label>
+              <label className="min-w-0">
+                <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                  {text.orders.paymentReceivedAmount}
+                </span>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={amountDraft}
+                  onChange={(event) => setAmountDraft(event.target.value)}
+                  disabled={statusDraft !== "paid" || !canReconcilePayment || isMutating}
+                  className="h-9 rounded-md text-xs font-bold sm:text-sm"
+                />
+              </label>
+              <label className="min-w-0">
+                <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                  {text.orders.paymentReceivedAt}
+                </span>
+                <Input
+                  type="datetime-local"
+                  value={receivedAtDraft}
+                  onChange={(event) => setReceivedAtDraft(event.target.value)}
+                  disabled={statusDraft !== "paid" || !canReconcilePayment || isMutating}
+                  className="h-9 rounded-md text-xs font-bold sm:text-sm"
+                />
+              </label>
+            </div>
+            <label className="block min-w-0">
+              <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                {text.orders.paymentReference}
+              </span>
+              <Input
+                value={referenceDraft}
+                onChange={(event) => setReferenceDraft(event.target.value)}
+                disabled={!canReconcilePayment || isMutating}
+                className="h-9 rounded-md text-xs font-bold sm:text-sm"
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                {text.orders.paymentNote}
+              </span>
+              <Textarea
+                value={noteDraft}
+                onChange={(event) => setNoteDraft(event.target.value)}
+                disabled={!canReconcilePayment || isMutating}
+                className="min-h-20 rounded-md text-xs font-bold sm:text-sm"
+              />
+            </label>
+            {requiresReversalNote && noteDraft.trim().length === 0 && (
+              <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-semibold text-amber-700">
+                {text.orders.paymentReversalNoteRequired}
+              </div>
+            )}
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-md"
+                onClick={() => setDialogOpen(false)}
+              >
+                {text.common.cancel}
+              </Button>
+              <Button type="submit" className="rounded-md" disabled={!canSaveReconciliation}>
+                {isMutating ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Save className="size-3.5" />
+                )}
+                <span className="truncate">{text.common.saveChanges}</span>
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
@@ -4108,6 +4454,48 @@ async function patchOrderInApi(
   };
 }
 
+async function patchOrderPaymentInApi(
+  orderId: string,
+  patch: OrderPaymentPatchInput,
+  text: AdminText
+) {
+  const encodedOrderId = encodeURIComponent(orderId);
+  const path = `/api/admin/orders/${encodedOrderId}/payment`;
+  const response = await fetch(path, {
+    body: JSON.stringify(serializeOrderPaymentPatch(patch)),
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    method: "PATCH",
+  });
+
+  if (!response.ok) {
+    const payload = await readJsonSafely(response);
+    const message = readApiErrorMessage(payload, text);
+
+    throw new Error(
+      message ??
+        formatAdminMessage(text.orders.notices.requestFailed, {
+          method: "PATCH",
+          path,
+          status: response.status,
+        })
+    );
+  }
+
+  const payload = await readJsonSafely(response);
+  const meta = isRecord(payload) && isRecord(payload.meta) ? payload.meta : {};
+  const source = readSource(meta.source ?? (isRecord(payload) ? payload.source : null));
+  const row = extractOrderPayload(payload);
+
+  return {
+    order: row ? normalizeAdminOrder(row, 0, source) : null,
+    source,
+  };
+}
+
 function normalizeAdminOrder(
   row: unknown,
   index: number,
@@ -4224,6 +4612,9 @@ function normalizeAdminOrder(
     paymentDue:
       readString(readRecordValue(row, ["paymentDue", "payment_due", "dueDate"])) ??
       (paymentStatus === "paid" ? "Pagato" : "Da verificare"),
+    paymentReconciliation: normalizePaymentReconciliation(
+      readRecordValue(row, ["paymentReconciliation", "payment_reconciliation"])
+    ),
     warehouse,
     carrier: normalizeCarrierValue(
       readRecordValue(row, ["carrier"]) ?? readRecordValue(shippingRecord, ["carrier"])
@@ -4380,6 +4771,39 @@ function normalizeCustomerSnapshot(
       readString(readRecordValue(row, ["province"])) ??
       readString(readRecordValue(address, ["province"])) ??
       "--",
+  };
+}
+
+function normalizePaymentReconciliation(value: unknown): PaymentReconciliation {
+  const row = isRecord(value) ? value : null;
+  const receivedByValue = readRecordValue(row, ["receivedBy", "received_by"]);
+  const receivedByRow = isRecord(receivedByValue) ? receivedByValue : null;
+  const actorId = readString(readRecordValue(receivedByRow, ["id"]));
+  const actorEmail = readString(readRecordValue(receivedByRow, ["email"]));
+  const actorName = readString(readRecordValue(receivedByRow, ["name", "displayName", "display_name"]));
+  const actorRole = readString(readRecordValue(receivedByRow, ["role"]));
+  const actorLabel =
+    readString(readRecordValue(receivedByRow, ["label"])) ??
+    actorName ??
+    actorEmail ??
+    actorRole ??
+    actorId ??
+    "";
+
+  return {
+    receivedAt: readString(readRecordValue(row, ["receivedAt", "received_at"])) ?? null,
+    receivedAmount: readNumber(readRecordValue(row, ["receivedAmount", "received_amount"])),
+    receivedBy: actorId || actorEmail || actorName || actorRole || actorLabel
+      ? {
+          id: actorId,
+          email: actorEmail,
+          label: sanitizeSupplierText(actorLabel) || actorLabel,
+          name: actorName,
+          role: actorRole,
+        }
+      : null,
+    reference: readString(readRecordValue(row, ["reference"])) ?? "",
+    note: readString(readRecordValue(row, ["note"])) ?? "",
   };
 }
 
@@ -4558,6 +4982,16 @@ function normalizePaymentStatusValue(value: unknown): PaymentStatus {
 
 function normalizePaymentMethodValue(value: unknown): PaymentMethod {
   return value === "cash" ? "cash" : "bank_transfer";
+}
+
+function parsePaymentAmountInput(value: string) {
+  const parsed = Number(value.replace(",", "."));
+
+  return Number.isFinite(parsed) && parsed >= 0 ? roundMoney(parsed) : null;
+}
+
+function formatPaymentAmountInput(value: number) {
+  return Number.isFinite(value) ? roundMoney(value).toFixed(2) : "0.00";
 }
 
 function normalizeFulfillmentStatusValue(
@@ -5048,6 +5482,12 @@ function serializeOrderPatch(patch: OrderPatchInput) {
   );
 }
 
+function serializeOrderPaymentPatch(patch: OrderPaymentPatchInput) {
+  return Object.fromEntries(
+    Object.entries(patch).filter(([, value]) => value !== undefined)
+  );
+}
+
 function serializeOrderStatusPatch(patch: OrderPatchInput) {
   return Object.fromEntries(
     Object.entries({
@@ -5167,6 +5607,19 @@ function formatDisplayDate(value: string) {
   }).format(new Date(timestamp));
 }
 
+function toDateTimeLocalInput(value: string) {
+  const timestamp = Date.parse(value);
+
+  if (!Number.isFinite(timestamp)) {
+    return "";
+  }
+
+  const date = new Date(timestamp);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+
+  return local.toISOString().slice(0, 16);
+}
+
 function formatSyncTime() {
   return new Intl.DateTimeFormat("it-IT", {
     day: "2-digit",
@@ -5258,6 +5711,10 @@ function sourceBadgeClass(source: OrdersSource) {
   }
 
   return "border-amber-200 bg-amber-50 text-amber-700";
+}
+
+function hasAdminSessionPermission(session: AdminSessionState, permission: string) {
+  return session.allowed && session.permissions.includes(permission);
 }
 
 function orderStatusBadgeClass(status: OrderDbStatus) {

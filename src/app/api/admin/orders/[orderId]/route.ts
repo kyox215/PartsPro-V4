@@ -71,6 +71,15 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
   const { orderId } = await params;
   const decodedOrderId = decodeURIComponent(orderId);
 
+  if (parsed.data.paymentStatus !== undefined) {
+    return apiError(
+      400,
+      "ADMIN_ORDER_PAYMENT_RECONCILIATION_REQUIRED",
+      "Payment status updates must use the order payment reconciliation endpoint.",
+      { orderId }
+    );
+  }
+
   if (parsed.data.rollback && (parsed.data.status || hasOperationsPatch(parsed.data))) {
     return apiError(
       400,

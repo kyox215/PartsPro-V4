@@ -64,3 +64,14 @@ export const orderStatusPatchSchema = z
     metadata: z.record(z.string(), z.unknown()).optional(),
   })
   .strict();
+
+export const orderPaymentPatchSchema = z
+  .object({
+    paymentMethod: z.enum(adminPaymentMethods).optional(),
+    paymentStatus: z.enum(["unpaid", "authorized", "paid", "refunded", ...adminPaymentStatuses] as const),
+    receivedAmount: z.coerce.number().min(0).optional(),
+    receivedAt: z.string().trim().datetime({ offset: true }).optional(),
+    reference: z.string().trim().max(120).optional(),
+    note: z.string().trim().max(1000).optional(),
+  })
+  .strict();

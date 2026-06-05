@@ -719,6 +719,11 @@ export type AdminOrder = {
   uiStatus: OrderStatus;
   paymentStatus: AdminPaymentStatus;
   paymentMethod: AdminPaymentMethod;
+  paymentReceivedAt: string | null;
+  paymentReceivedBy: string | null;
+  paymentReceivedAmount: number | null;
+  paymentReference: string;
+  paymentReconciliationNote: string;
   stockRisk: string;
   totalNet: number;
   vat: number;
@@ -803,6 +808,22 @@ export type AdminOrderOperationsPatchInput = {
 
 export type AdminOrderOperationsPatchResult = {
   order: AdminOrder;
+};
+
+export type AdminOrderPaymentReconciliationInput = {
+  orderId: string;
+  paymentMethod?: AdminPaymentMethod;
+  paymentStatus: AdminPaymentStatus | "unpaid" | "authorized" | "refunded";
+  receivedAmount?: number;
+  receivedAt?: string;
+  reference?: string;
+  note?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type AdminOrderPaymentReconciliationResult = {
+  order: AdminOrder;
+  reconciliation: unknown;
 };
 
 export type PreparedOrderLine = {
@@ -2919,6 +2940,72 @@ export async function updateAdminOrderOperations(
 
   return {
     data: { order },
+    source: "supabase",
+  };
+}
+
+export async function reconcileAdminOrderPayment(
+  input: AdminOrderPaymentReconciliationInput
+): Promise<RepositoryResult<AdminOrderPaymentReconciliationResult>> {
+  const context = await requireSupabaseContext();
+  const orderRow = await readOrderByIdOrNumber(context.client, input.orderId);
+  const orderId = pickString(orderRow, ["id"]);
+  const paymentStatus = normalizeAdminPaymentStatusForWrite(input.paymentStatus);
+  const paymentMethod = normalizeAdminPaymentMethodForWrite(input.paymentMethod);
+
+  if (!orderId) {
+    throw new RepositoryWriteError(
+      404,
+      "ADMIN_ORDER_NOT_FOUND",
+      "Order was not found.",
+      { orderId: input.orderId }
+    );
+  }
+
+  if (!paymentStatus) {
+    throw new RepositoryWriteError(
+      400,
+      "ADMIN_ORDER_PAYMENT_STATUS_INVALID",
+      "Payment status is not valid.",
+      { paymentStatus: input.paymentStatus }
+    );
+  }
+
+  const { data, error } = await context.client.rpc("admin_reconcile_order_payment", {
+    p_order_id: orderId,
+    p_payment_method: paymentMethod ?? null,
+    p_payment_status: paymentStatus,
+    p_received_amount: input.receivedAmount ?? null,
+    p_received_at: input.receivedAt ?? null,
+    p_reference: input.reference ?? null,
+    p_note: input.note ?? null,
+    p_metadata: input.metadata ?? {},
+  });
+
+  if (error) {
+    throw new RepositoryWriteError(
+      supabaseRpcStatus(error),
+      "ADMIN_ORDER_PAYMENT_RECONCILIATION_FAILED",
+      "Supabase rejected the order payment reconciliation.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const order = await readAdminOrderDetail(context.client, orderId);
+
+  if (!order) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_ORDER_RESULT_INVALID",
+      "Supabase returned an invalid order after the payment reconciliation."
+    );
+  }
+
+  return {
+    data: {
+      order,
+      reconciliation: data,
+    },
     source: "supabase",
   };
 }
@@ -6551,6 +6638,11 @@ function mapAdminOrderRow(
       pickString(row, ["payment_method"]) ??
         pickString(readFiscalRecord(row), ["payment_method", "paymentMethod"])
     ),
+    paymentReceivedAt: pickString(row, ["payment_received_at"]),
+    paymentReceivedBy: pickString(row, ["payment_received_by"]),
+    paymentReceivedAmount: pickNumber(row, ["payment_received_amount"]),
+    paymentReference: pickString(row, ["payment_reference"]) ?? "",
+    paymentReconciliationNote: pickString(row, ["payment_reconciliation_note"]) ?? "",
     stockRisk: pickString(row, ["stock_risk"]) ?? "clear",
     totalNet,
     vat,
@@ -7409,6 +7501,10 @@ function normalizeAdminPaymentStatusForWrite(
 
   if (value === "paid" || value === "pending" || value === "bank_waiting" || value === "failed") {
     return value;
+  }
+
+  if (value === "authorized") {
+    return "bank_waiting";
   }
 
   if (value === "refunded") {
