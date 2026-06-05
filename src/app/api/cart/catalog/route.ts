@@ -156,15 +156,21 @@ function toCartCatalogRejection(
     sku: product.sku,
     brand: product.brand,
     category: product.category,
+    compatibleWith: product.compatibleWith,
     grade: product.grade,
+    galleryImageUrls: product.galleryImageUrls,
     imageAlt: product.imageAlt,
     imageUrl: product.imageUrl,
+    leadTime: product.leadTime,
     name: product.name,
     reason: product.priceGate.reason,
+    rmaDays: product.rmaDays,
     stock: product.stock,
     status: product.status,
+    tags: product.tags,
     moq: product.moq,
     visual: product.visual,
+    warehouse: product.warehouse,
   };
 }
 

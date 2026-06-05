@@ -7,17 +7,35 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  ImageIcon,
+  Info,
   LogIn,
   Minus,
   Plus,
   Trash2,
   UserPlus,
+  ZoomIn,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { type StorefrontTranslator, tx, txFormat } from "@/i18n/dictionaries/storefront";
+import {
+  brandLabel,
+  categoryLabel,
+  leadTimeLabel,
+  stockStatusLabel,
+  type StorefrontTranslator,
+  tx,
+  txFormat,
+} from "@/i18n/dictionaries/storefront";
 import { formatMoney } from "@/i18n/format";
 import {
   hrefWithAssistedCompanyId,
@@ -26,6 +44,7 @@ import {
 } from "@/lib/partspro-assisted-order";
 import { type PartProduct } from "@/lib/partspro-data";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
+import { getProductImageCandidates } from "@/lib/partspro-product-images";
 import {
   formatPriceDiscountBadge,
   getProductPriceDisplay,
@@ -42,6 +61,7 @@ import {
 } from "./cart-state";
 import { useI18n, useT } from "./i18n-provider";
 import { OrderSummaryCard } from "./order-summary-card";
+import { ProductImagePreviewDialog } from "./product-image-preview-dialog";
 import { StorefrontProductImage } from "./storefront-product-image";
 import { StoreHeader } from "./store-header";
 
@@ -69,16 +89,22 @@ type CartCatalogLoadState = "idle" | "loading" | "ready" | "error";
 type CartCatalogRejectedItem = {
   brand?: string;
   category?: string;
+  compatibleWith?: string[];
+  galleryImageUrls?: string[];
   grade?: PartProduct["grade"];
   imageAlt?: string;
   imageUrl?: string;
+  leadTime?: string;
   moq?: number;
   name?: string;
   reason?: string;
+  rmaDays?: number;
   sku: string;
   status?: string;
   stock?: number;
+  tags?: string[];
   visual?: PartProduct["visual"];
+  warehouse?: PartProduct["warehouse"];
 };
 
 type CartDisplayRow =
@@ -852,16 +878,22 @@ function cartRejectionFromProduct(
   return {
     brand: product.brand,
     category: product.category,
+    compatibleWith: product.compatibleWith,
     grade: product.grade,
+    galleryImageUrls: product.galleryImageUrls,
     imageAlt: product.imageAlt,
     imageUrl: product.imageUrl,
+    leadTime: product.leadTime,
     moq: product.moq,
     name: product.name,
     reason: cartProductRejectionReason(product, quantity),
+    rmaDays: product.rmaDays,
     sku: product.sku,
     status: product.status,
     stock: product.stock,
+    tags: product.tags,
     visual: product.visual,
+    warehouse: product.warehouse,
   };
 }
 
@@ -1026,25 +1058,26 @@ function rejectedCartProduct(
   return {
     brand: item.brand ?? "",
     category: item.category ?? "",
-    compatibleWith: [],
+    compatibleWith: item.compatibleWith ?? [],
     grade: normalizeRejectedGrade(item.grade),
+    galleryImageUrls: item.galleryImageUrls,
     imageAlt: item.imageAlt,
     imageUrl: item.imageUrl,
-    leadTime: "",
+    leadTime: item.leadTime ?? "",
     moq: Math.max(1, item.moq ?? 1),
     name: item.name ?? fallbackName,
     price: 0,
     retailPrice: 0,
-    rmaDays: 0,
+    rmaDays: Math.max(0, item.rmaDays ?? 0),
     sku: item.sku,
     slug: item.sku,
     status: normalizeRejectedStatus(item.status, item.stock),
     stock: Math.max(0, item.stock ?? 0),
-    tags: [],
+    tags: item.tags ?? [],
     updatedAt: "",
     vatRate: 22,
     visual: normalizeRejectedVisual(item.visual),
-    warehouse: "Milano",
+    warehouse: item.warehouse ?? "Milano",
   };
 }
 
@@ -1211,31 +1244,38 @@ const CartLineMobileSnapshotRow = React.memo(function CartLineMobileSnapshotRow(
   const lineTotal = product.price * quantity;
 
   return (
-    <div className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-start gap-2 border-b border-slate-100 bg-white px-2.5 py-2 last:border-b-0">
-      <StorefrontProductImage
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 border-b border-slate-100 bg-white px-2.5 py-2 last:border-b-0">
+      <CartProductDetailsTrigger
         product={product}
-        sizes="40px"
-        quality={55}
-        className="size-10 rounded-md border border-slate-100 bg-slate-50"
-        fallbackClassName="shrink-0"
-        imageClassName="object-contain p-1"
-      />
-      <div className="min-w-0 pt-0.5">
-        <div className="line-clamp-2 break-words text-[13px] font-black leading-4">
-          {product.name}
+        quantity={quantity}
+        lineTotal={lineTotal}
+        className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-start gap-2 rounded-md text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+      >
+        <StorefrontProductImage
+          product={product}
+          sizes="40px"
+          quality={55}
+          className="size-10 rounded-md border border-slate-100 bg-slate-50"
+          fallbackClassName="shrink-0"
+          imageClassName="object-contain p-1"
+        />
+        <div className="min-w-0 pt-0.5">
+          <div className="line-clamp-2 break-words text-[13px] font-black leading-4">
+            {product.name}
+          </div>
+          <div className="mt-0.5 truncate font-mono text-[10px] leading-3 text-slate-500">
+            {sku}
+          </div>
+          <div className="mt-1 flex min-w-0 items-center gap-1">
+            <Badge variant="outline" className="h-5 px-1.5 text-[10px] leading-none">
+              {product.grade}
+            </Badge>
+            <Badge className="h-5 border border-sky-200 bg-sky-50 px-1.5 text-[10px] leading-none text-sky-700">
+              {tx(t, "storefront.cart.snapshotRefreshing", "Aggiornamento")}
+            </Badge>
+          </div>
         </div>
-        <div className="mt-0.5 truncate font-mono text-[10px] leading-3 text-slate-500">
-          {sku}
-        </div>
-        <div className="mt-1 flex min-w-0 items-center gap-1">
-          <Badge variant="outline" className="h-5 px-1.5 text-[10px] leading-none">
-            {product.grade}
-          </Badge>
-          <Badge className="h-5 border border-sky-200 bg-sky-50 px-1.5 text-[10px] leading-none text-sky-700">
-            {tx(t, "storefront.cart.snapshotRefreshing", "Aggiornamento")}
-          </Badge>
-        </div>
-      </div>
+      </CartProductDetailsTrigger>
       <div className="grid min-w-[92px] justify-items-end gap-1 text-right">
         <div>
           <div className="whitespace-nowrap text-[13px] font-black leading-4">
@@ -1301,34 +1341,42 @@ const RejectedCartLineMobileRow = React.memo(function RejectedCartLineMobileRow(
   const quantityState = rejectedQuantityState(quantity, item);
 
   return (
-    <div className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-start gap-2 border-b border-amber-100 bg-amber-50/35 px-2.5 py-2 last:border-b-0">
-      <StorefrontProductImage
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 border-b border-amber-100 bg-amber-50/35 px-2.5 py-2 last:border-b-0">
+      <CartProductDetailsTrigger
         product={product}
-        sizes="40px"
-        quality={55}
-        className="size-10 rounded-md border border-amber-100 bg-white"
-        fallbackClassName="shrink-0"
-        imageClassName="object-contain p-1"
-      />
-      <div className="min-w-0 pt-0.5">
-        <div className="line-clamp-2 break-words text-[13px] font-black leading-4">
-          {product.name}
+        quantity={quantity}
+        statusDescription={statusCopy.description}
+        statusLabel={statusCopy.label}
+        className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-start gap-2 rounded-md text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+      >
+        <StorefrontProductImage
+          product={product}
+          sizes="40px"
+          quality={55}
+          className="size-10 rounded-md border border-amber-100 bg-white"
+          fallbackClassName="shrink-0"
+          imageClassName="object-contain p-1"
+        />
+        <div className="min-w-0 pt-0.5">
+          <div className="line-clamp-2 break-words text-[13px] font-black leading-4">
+            {product.name}
+          </div>
+          <div className="mt-0.5 truncate font-mono text-[10px] leading-3 text-slate-500">
+            {item.sku}
+          </div>
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
+            <Badge variant="outline" className="h-5 px-1.5 text-[10px] leading-none">
+              {product.grade}
+            </Badge>
+            <Badge className={rejectedStatusBadgeClass(item, "compact")}>
+              {statusCopy.label}
+            </Badge>
+          </div>
+          <p className="mt-1 line-clamp-2 text-[11px] font-semibold leading-4 text-amber-950">
+            {statusCopy.description}
+          </p>
         </div>
-        <div className="mt-0.5 truncate font-mono text-[10px] leading-3 text-slate-500">
-          {item.sku}
-        </div>
-        <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1">
-          <Badge variant="outline" className="h-5 px-1.5 text-[10px] leading-none">
-            {product.grade}
-          </Badge>
-          <Badge className={rejectedStatusBadgeClass(item, "compact")}>
-            {statusCopy.label}
-          </Badge>
-        </div>
-        <p className="mt-1 line-clamp-2 text-[11px] font-semibold leading-4 text-amber-950">
-          {statusCopy.description}
-        </p>
-      </div>
+      </CartProductDetailsTrigger>
       <div className="grid min-w-[92px] justify-items-end gap-1 text-right">
         <div className="inline-flex h-7 items-center rounded-md border bg-white">
           <Button
@@ -1397,28 +1445,35 @@ const CartLineMobileRow = React.memo(function CartLineMobileRow({
   const priceDisplay = getProductPriceDisplay(line.product);
 
   return (
-    <div className="grid grid-cols-[40px_minmax(0,1fr)_auto] items-start gap-2 border-b border-slate-100 px-2.5 py-2 last:border-b-0">
-      <StorefrontProductImage
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 border-b border-slate-100 px-2.5 py-2 last:border-b-0">
+      <CartProductDetailsTrigger
         product={line.product}
-        sizes="40px"
-        quality={55}
-        className="size-10 rounded-md border border-slate-100 bg-slate-50"
-        fallbackClassName="shrink-0"
-        imageClassName="object-contain p-1"
-      />
-      <div className="min-w-0 pt-0.5">
-        <div className="line-clamp-2 break-words text-[13px] font-black leading-4">
-          {line.product.name}
+        quantity={line.quantity}
+        lineTotal={line.lineTotal}
+        className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-start gap-2 rounded-md text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+      >
+        <StorefrontProductImage
+          product={line.product}
+          sizes="40px"
+          quality={55}
+          className="size-10 rounded-md border border-slate-100 bg-slate-50"
+          fallbackClassName="shrink-0"
+          imageClassName="object-contain p-1"
+        />
+        <div className="min-w-0 pt-0.5">
+          <div className="line-clamp-2 break-words text-[13px] font-black leading-4">
+            {line.product.name}
+          </div>
+          <div className="mt-0.5 truncate font-mono text-[10px] leading-3 text-slate-500">
+            {line.sku}
+          </div>
+          <div className="mt-1 flex min-w-0 items-center gap-1">
+            <Badge variant="outline" className="h-5 px-1.5 text-[10px] leading-none">
+              {line.product.grade}
+            </Badge>
+          </div>
         </div>
-        <div className="mt-0.5 truncate font-mono text-[10px] leading-3 text-slate-500">
-          {line.sku}
-        </div>
-        <div className="mt-1 flex min-w-0 items-center gap-1">
-          <Badge variant="outline" className="h-5 px-1.5 text-[10px] leading-none">
-            {line.product.grade}
-          </Badge>
-        </div>
-      </div>
+      </CartProductDetailsTrigger>
       <div className="grid min-w-[92px] justify-items-end gap-1 text-right">
         <div>
           <div className="whitespace-nowrap text-[13px] font-black leading-4">
@@ -1511,37 +1566,44 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
 
   return (
     <Card size="sm" className="rounded-lg border-slate-200 bg-white">
-      <CardContent className="grid grid-cols-[64px_minmax(0,1fr)_190px] items-center gap-3 p-2.5">
-        <StorefrontProductImage
+      <CardContent className="grid grid-cols-[minmax(0,1fr)_190px] items-center gap-3 p-2.5">
+        <CartProductDetailsTrigger
           product={line.product}
-          sizes="64px"
-          quality={55}
-          className="size-16 rounded-md border border-slate-100 bg-slate-50"
-          fallbackClassName="shrink-0"
-          imageClassName="object-contain p-1.5"
-        />
-        <div className="min-w-0">
-          <div className="line-clamp-1 text-base font-black leading-5">{line.product.name}</div>
-          <div className="mt-0.5 truncate font-mono text-[11px] font-semibold leading-4 text-slate-500">
-            {txFormat(t, "storefront.cart.skuLabel", "SKU {sku}", { sku: line.sku })}
+          quantity={line.quantity}
+          lineTotal={line.lineTotal}
+          className="grid min-w-0 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 rounded-md text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+        >
+          <StorefrontProductImage
+            product={line.product}
+            sizes="64px"
+            quality={55}
+            className="size-16 rounded-md border border-slate-100 bg-slate-50"
+            fallbackClassName="shrink-0"
+            imageClassName="object-contain p-1.5"
+          />
+          <div className="min-w-0">
+            <div className="line-clamp-1 text-base font-black leading-5">{line.product.name}</div>
+            <div className="mt-0.5 truncate font-mono text-[11px] font-semibold leading-4 text-slate-500">
+              {txFormat(t, "storefront.cart.skuLabel", "SKU {sku}", { sku: line.sku })}
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
+                {line.product.grade}
+              </Badge>
+              <Badge variant="outline" className="h-5 max-w-[160px] px-1.5 text-[11px]">
+                <span className="truncate">{line.product.brand} · {line.product.category}</span>
+              </Badge>
+              <Badge className={cn("h-5 px-1.5 text-[11px]", stockMeta.className)}>
+                {stockMeta.label}
+              </Badge>
+              <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
+                {txFormat(t, "storefront.cart.moqBadge", "MOQ {moq}", {
+                  moq: minimumQuantity,
+                })}
+              </Badge>
+            </div>
           </div>
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
-              {line.product.grade}
-            </Badge>
-            <Badge variant="outline" className="h-5 max-w-[160px] px-1.5 text-[11px]">
-              <span className="truncate">{line.product.brand} · {line.product.category}</span>
-            </Badge>
-            <Badge className={cn("h-5 px-1.5 text-[11px]", stockMeta.className)}>
-              {stockMeta.label}
-            </Badge>
-            <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
-              {txFormat(t, "storefront.cart.moqBadge", "MOQ {moq}", {
-                moq: minimumQuantity,
-              })}
-            </Badge>
-          </div>
-        </div>
+        </CartProductDetailsTrigger>
         <div className="block text-right">
           <div>
             <div className="whitespace-nowrap text-base font-black leading-5">
@@ -1635,34 +1697,41 @@ const CartLineDesktopSnapshotCard = React.memo(function CartLineDesktopSnapshotC
 
   return (
     <Card size="sm" className="rounded-lg border-slate-200 bg-white">
-      <CardContent className="grid grid-cols-[64px_minmax(0,1fr)_190px] items-center gap-3 p-2.5">
-        <StorefrontProductImage
+      <CardContent className="grid grid-cols-[minmax(0,1fr)_190px] items-center gap-3 p-2.5">
+        <CartProductDetailsTrigger
           product={product}
-          sizes="64px"
-          quality={55}
-          className="size-16 rounded-md border border-slate-100 bg-slate-50"
-          fallbackClassName="shrink-0"
-          imageClassName="object-contain p-1.5"
-        />
-        <div className="min-w-0">
-          <div className="line-clamp-1 text-base font-black leading-5">{product.name}</div>
-          <div className="mt-0.5 truncate font-mono text-[11px] font-semibold leading-4 text-slate-500">
-            {txFormat(t, "storefront.cart.skuLabel", "SKU {sku}", { sku })}
-          </div>
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
-              {product.grade}
-            </Badge>
-            <Badge className="h-5 border border-sky-200 bg-sky-50 px-1.5 text-[11px] text-sky-700">
-              {tx(t, "storefront.cart.snapshotRefreshing", "Aggiornamento")}
-            </Badge>
-            {(product.brand || product.category) && (
-              <Badge variant="outline" className="h-5 max-w-[160px] px-1.5 text-[11px]">
-                <span className="truncate">{product.brand} · {product.category}</span>
+          quantity={quantity}
+          lineTotal={lineTotal}
+          className="grid min-w-0 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 rounded-md text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+        >
+          <StorefrontProductImage
+            product={product}
+            sizes="64px"
+            quality={55}
+            className="size-16 rounded-md border border-slate-100 bg-slate-50"
+            fallbackClassName="shrink-0"
+            imageClassName="object-contain p-1.5"
+          />
+          <div className="min-w-0">
+            <div className="line-clamp-1 text-base font-black leading-5">{product.name}</div>
+            <div className="mt-0.5 truncate font-mono text-[11px] font-semibold leading-4 text-slate-500">
+              {txFormat(t, "storefront.cart.skuLabel", "SKU {sku}", { sku })}
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
+                {product.grade}
               </Badge>
-            )}
+              <Badge className="h-5 border border-sky-200 bg-sky-50 px-1.5 text-[11px] text-sky-700">
+                {tx(t, "storefront.cart.snapshotRefreshing", "Aggiornamento")}
+              </Badge>
+              {(product.brand || product.category) && (
+                <Badge variant="outline" className="h-5 max-w-[160px] px-1.5 text-[11px]">
+                  <span className="truncate">{product.brand} · {product.category}</span>
+                </Badge>
+              )}
+            </div>
           </div>
-        </div>
+        </CartProductDetailsTrigger>
         <div className="block text-right">
           <div className="whitespace-nowrap text-lg font-black leading-5">
             {formatMoney(lineTotal, locale)}
@@ -1741,53 +1810,61 @@ const RejectedCartLineDesktopCard = React.memo(function RejectedCartLineDesktopC
 
   return (
     <Card size="sm" className="rounded-lg border-amber-200 bg-white">
-      <CardContent className="grid grid-cols-[64px_minmax(0,1fr)_190px] items-center gap-3 p-2.5">
-        <StorefrontProductImage
+      <CardContent className="grid grid-cols-[minmax(0,1fr)_190px] items-center gap-3 p-2.5">
+        <CartProductDetailsTrigger
           product={product}
-          sizes="64px"
-          quality={55}
-          className="size-16 rounded-md border border-amber-100 bg-amber-50"
-          fallbackClassName="shrink-0"
-          imageClassName="object-contain p-1.5"
-        />
-        <div className="min-w-0">
-          <div className="line-clamp-1 text-base font-black leading-5">{product.name}</div>
-          <div className="mt-0.5 truncate font-mono text-[11px] font-semibold leading-4 text-slate-500">
-            {txFormat(t, "storefront.cart.skuLabel", "SKU {sku}", { sku: item.sku })}
-          </div>
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
-              {product.grade}
-            </Badge>
-            <Badge className={rejectedStatusBadgeClass(item)}>
-              {statusCopy.label}
-            </Badge>
-            {(product.brand || product.category) && (
-              <Badge variant="outline" className="h-5 max-w-[160px] px-1.5 text-[11px]">
-                <span className="truncate">{product.brand} · {product.category}</span>
-              </Badge>
-            )}
-            {item.reason === "quantity_over_stock" && typeof item.stock === "number" ? (
+          quantity={quantity}
+          statusDescription={statusCopy.description}
+          statusLabel={statusCopy.label}
+          className="grid min-w-0 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 rounded-md text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+        >
+          <StorefrontProductImage
+            product={product}
+            sizes="64px"
+            quality={55}
+            className="size-16 rounded-md border border-amber-100 bg-amber-50"
+            fallbackClassName="shrink-0"
+            imageClassName="object-contain p-1.5"
+          />
+          <div className="min-w-0">
+            <div className="line-clamp-1 text-base font-black leading-5">{product.name}</div>
+            <div className="mt-0.5 truncate font-mono text-[11px] font-semibold leading-4 text-slate-500">
+              {txFormat(t, "storefront.cart.skuLabel", "SKU {sku}", { sku: item.sku })}
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-1">
               <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
-                {txFormat(t, "storefront.cart.stockBadge", "Stock {stock}", {
-                  stock: item.stock,
+                {product.grade}
+              </Badge>
+              <Badge className={rejectedStatusBadgeClass(item)}>
+                {statusCopy.label}
+              </Badge>
+              {(product.brand || product.category) && (
+                <Badge variant="outline" className="h-5 max-w-[160px] px-1.5 text-[11px]">
+                  <span className="truncate">{product.brand} · {product.category}</span>
+                </Badge>
+              )}
+              {item.reason === "quantity_over_stock" && typeof item.stock === "number" ? (
+                <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
+                  {txFormat(t, "storefront.cart.stockBadge", "Stock {stock}", {
+                    stock: item.stock,
+                  })}
+                </Badge>
+              ) : (
+                <Badge className={cn("h-5 px-1.5 text-[11px]", stockMeta.className)}>
+                  {stockMeta.label}
+                </Badge>
+              )}
+              <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
+                {txFormat(t, "storefront.cart.moqBadge", "MOQ {moq}", {
+                  moq: Math.max(1, item.moq ?? 1),
                 })}
               </Badge>
-            ) : (
-              <Badge className={cn("h-5 px-1.5 text-[11px]", stockMeta.className)}>
-                {stockMeta.label}
-              </Badge>
-            )}
-            <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
-              {txFormat(t, "storefront.cart.moqBadge", "MOQ {moq}", {
-                moq: Math.max(1, item.moq ?? 1),
-              })}
-            </Badge>
+            </div>
+            <p className="mt-1 line-clamp-1 max-w-2xl text-xs font-semibold leading-5 text-amber-950">
+              {statusCopy.description}
+            </p>
           </div>
-          <p className="mt-1 line-clamp-1 max-w-2xl text-xs font-semibold leading-5 text-amber-950">
-            {statusCopy.description}
-          </p>
-        </div>
+        </CartProductDetailsTrigger>
         <div className="block text-right">
           <div className="line-clamp-2 text-sm font-black leading-5 text-amber-950">
             {statusCopy.label}
@@ -1847,6 +1924,326 @@ const RejectedCartLineDesktopCard = React.memo(function RejectedCartLineDesktopC
     </Card>
   );
 });
+
+type CartProductDetailsTriggerProps = {
+  children: React.ReactNode;
+  className?: string;
+  lineTotal?: number;
+  product: PartProduct;
+  quantity: number;
+  statusDescription?: string;
+  statusLabel?: string;
+};
+
+function CartProductDetailsTrigger({
+  children,
+  className,
+  lineTotal,
+  product,
+  quantity,
+  statusDescription,
+  statusLabel,
+}: CartProductDetailsTriggerProps) {
+  const t = useT();
+  const [detailsOpen, setDetailsOpen] = React.useState(false);
+
+  return (
+    <>
+      <button
+        type="button"
+        className={cn("appearance-none bg-transparent p-0", className)}
+        onClick={() => setDetailsOpen(true)}
+        aria-label={txFormat(
+          t,
+          "storefront.cart.detailsOpenAria",
+          "Apri dettagli prodotto per {name}",
+          { name: product.name }
+        )}
+        title={tx(t, "storefront.cart.detailsOpenTitle", "Vedi dettagli prodotto")}
+      >
+        {children}
+      </button>
+      <CartProductDetailsDialog
+        lineTotal={lineTotal}
+        onOpenChange={setDetailsOpen}
+        open={detailsOpen}
+        product={product}
+        quantity={quantity}
+        statusDescription={statusDescription}
+        statusLabel={statusLabel}
+      />
+    </>
+  );
+}
+
+function CartProductDetailsDialog({
+  lineTotal,
+  onOpenChange,
+  open,
+  product,
+  quantity,
+  statusDescription,
+  statusLabel,
+}: {
+  lineTotal?: number;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  product: PartProduct;
+  quantity: number;
+  statusDescription?: string;
+  statusLabel?: string;
+}) {
+  const t = useT();
+  const { locale } = useI18n();
+  const imageCandidates = React.useMemo(
+    () => getProductImageCandidates(product),
+    [product]
+  );
+  const [failedImageUrls, setFailedImageUrls] = React.useState<string[]>([]);
+  const [previewOpen, setPreviewOpen] = React.useState(false);
+  const imageUrl = imageCandidates.find(
+    (candidate) => !failedImageUrls.includes(candidate)
+  );
+  const minimumQuantity = Math.max(1, product.moq);
+  const stockMeta = publicStockLevelMeta(t, product);
+  const priceDisplay = getProductPriceDisplay(product);
+
+  function markImageFailed(failedUrl: string) {
+    setFailedImageUrls((current) =>
+      current.includes(failedUrl) ? current : [...current, failedUrl]
+    );
+  }
+
+  function handleOpenChange(nextOpen: boolean) {
+    if (!nextOpen) {
+      setPreviewOpen(false);
+    }
+
+    onOpenChange(nextOpen);
+  }
+
+  const hasPrice = product.price > 0;
+  const productMeta = [
+    brandLabel(t, product.brand),
+    categoryLabel(t, product.category),
+    product.grade,
+  ].filter(Boolean);
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className="max-h-[calc(100dvh-1rem)] max-w-[calc(100vw-1rem)] overflow-y-auto p-3 sm:max-w-2xl sm:p-4">
+          <DialogHeader className="pr-10">
+            <DialogTitle className="text-base font-black leading-6 text-slate-950 sm:text-lg">
+              {tx(t, "storefront.cart.detailsTitle", "Dettaglio prodotto")}
+            </DialogTitle>
+            <DialogDescription className="font-mono text-xs font-semibold text-slate-500">
+              {txFormat(t, "storefront.cart.skuLabel", "SKU {sku}", {
+                sku: product.sku,
+              })}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
+            <div className="min-w-0">
+              {imageUrl ? (
+                <button
+                  type="button"
+                  className="group relative aspect-square w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                  onClick={() => setPreviewOpen(true)}
+                  aria-label={txFormat(
+                    t,
+                    "storefront.cart.detailsImageZoomAria",
+                    "Ingrandisci immagine per {name}",
+                    { name: product.name }
+                  )}
+                  title={tx(t, "storefront.cart.detailsImageZoomTitle", "Ingrandisci immagine")}
+                >
+                  <StorefrontProductImage
+                    product={product}
+                    sizes="(max-width: 640px) 92vw, 180px"
+                    quality={75}
+                    className="absolute inset-0"
+                    fallbackClassName="size-full"
+                    imageClassName="object-contain p-3"
+                  />
+                  <span className="absolute right-2 bottom-2 inline-flex size-8 items-center justify-center rounded-md border border-slate-200 bg-white/95 text-slate-700 shadow-sm">
+                    <ZoomIn className="size-4" />
+                  </span>
+                </button>
+              ) : (
+                <div className="grid aspect-square w-full place-items-center rounded-lg border border-slate-200 bg-slate-50 text-slate-400">
+                  <div className="grid justify-items-center gap-2 text-xs font-bold">
+                    <ImageIcon className="size-8" />
+                    {tx(t, "storefront.cart.detailsNoImage", "Nessuna immagine")}
+                  </div>
+                </div>
+              )}
+              <div className="mt-2 flex items-center gap-2 text-xs font-semibold text-slate-500">
+                <Info className="size-3.5 text-primary" />
+                {imageUrl
+                  ? tx(t, "storefront.cart.detailsImageHint", "Tocca l'immagine per ingrandire.")
+                  : tx(t, "storefront.cart.detailsNoImageHint", "Il prodotto usa il segnaposto categoria.")}
+              </div>
+            </div>
+
+            <div className="min-w-0 space-y-3">
+              <div>
+                <div className="text-lg font-black leading-6 text-slate-950">
+                  {product.name}
+                </div>
+                {productMeta.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {productMeta.map((item) => (
+                      <Badge key={item} variant="outline" className="h-6 px-2 text-[11px]">
+                        {item}
+                      </Badge>
+                    ))}
+                    <Badge className={cn("h-6 px-2 text-[11px]", stockMeta.className)}>
+                      {stockMeta.label}
+                    </Badge>
+                  </div>
+                )}
+              </div>
+
+              {statusLabel && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                  <div className="font-black">{statusLabel}</div>
+                  {statusDescription && (
+                    <p className="mt-1 leading-5">{statusDescription}</p>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <CartProductDetailField
+                  label={tx(t, "storefront.cart.detailsQuantity", "Quantità")}
+                  value={`x${quantity}`}
+                />
+                <CartProductDetailField
+                  label={tx(t, "storefront.cart.detailsMoq", "MOQ")}
+                  value={String(minimumQuantity)}
+                />
+                <CartProductDetailField
+                  label={tx(t, "storefront.cart.detailsStock", "Stock")}
+                  value={`${product.stock} ${tx(t, "storefront.common.piecesShort", "pz")}`}
+                />
+                <CartProductDetailField
+                  label={tx(t, "storefront.cart.detailsStatus", "Stato")}
+                  value={stockStatusLabel(t, product.status)}
+                />
+                <CartProductDetailField
+                  label={tx(t, "storefront.cart.detailsUnitPrice", "Prezzo unitario")}
+                  value={hasPrice ? formatMoney(product.price, locale) : null}
+                />
+                <CartProductDetailField
+                  label={tx(t, "storefront.cart.detailsLineTotal", "Totale riga")}
+                  value={
+                    hasPrice && typeof lineTotal === "number"
+                      ? formatMoney(lineTotal, locale)
+                      : null
+                  }
+                />
+                {priceDisplay.hasDiscount && priceDisplay.basePrice ? (
+                  <CartProductDetailField
+                    label={tx(t, "storefront.cart.detailsBasePrice", "Prezzo listino")}
+                    value={formatMoney(priceDisplay.basePrice, locale)}
+                  />
+                ) : null}
+                <CartProductDetailField
+                  label={tx(t, "storefront.cart.detailsLeadTime", "Consegna")}
+                  value={product.leadTime ? leadTimeLabel(t, product.leadTime) : null}
+                />
+                <CartProductDetailField
+                  label={tx(t, "storefront.cart.detailsRma", "RMA")}
+                  value={
+                    product.rmaDays > 0
+                      ? txFormat(t, "storefront.cart.detailsRmaDays", "{days} giorni", {
+                          days: product.rmaDays,
+                        })
+                      : null
+                  }
+                />
+                <CartProductDetailField
+                  label={tx(t, "storefront.cart.detailsWarehouse", "Magazzino")}
+                  value={product.warehouse}
+                />
+              </div>
+
+              {product.compatibleWith.length > 0 && (
+                <CartProductDetailChips
+                  label={tx(t, "storefront.cart.detailsCompatibility", "Modelli compatibili")}
+                  items={product.compatibleWith}
+                />
+              )}
+
+              {product.tags.length > 0 && (
+                <CartProductDetailChips
+                  label={tx(t, "storefront.cart.detailsTags", "Tag prodotto")}
+                  items={product.tags}
+                />
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      {imageUrl && previewOpen && (
+        <ProductImagePreviewDialog
+          imageAlt={product.imageAlt ?? product.name}
+          imageUrl={imageUrl}
+          onImageError={() => markImageFailed(imageUrl)}
+          onOpenChange={setPreviewOpen}
+          open={previewOpen}
+          productName={product.name}
+        />
+      )}
+    </>
+  );
+}
+
+function CartProductDetailField({
+  label,
+  value,
+}: {
+  label: string;
+  value?: string | null;
+}) {
+  if (!value) {
+    return null;
+  }
+
+  return (
+    <div className="min-w-0 rounded-lg border border-slate-200 bg-white p-2">
+      <div className="text-[11px] font-bold uppercase text-slate-500">{label}</div>
+      <div className="mt-1 break-words text-sm font-black text-slate-950">{value}</div>
+    </div>
+  );
+}
+
+function CartProductDetailChips({
+  items,
+  label,
+}: {
+  items: readonly string[];
+  label: string;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white p-2">
+      <div className="text-[11px] font-bold uppercase text-slate-500">{label}</div>
+      <div className="mt-2 flex flex-wrap gap-1">
+        {items.map((item) => (
+          <Badge
+            key={item}
+            variant="outline"
+            className="max-w-full px-2 py-0.5 text-[11px]"
+          >
+            <span className="break-words">{item}</span>
+          </Badge>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function QuantityInput({
   compact = false,
