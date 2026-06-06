@@ -1,4 +1,3 @@
-import { isBootstrapAdminEmail } from "@/lib/partspro-admin-auth";
 import { readLinkedCustomerRow } from "@/lib/partspro-customer-linkage";
 import {
   calculateTierPrice,
@@ -142,9 +141,7 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
     readPermissions(supabase),
   ]);
   const email = user.email ?? readString(profile?.email);
-  const accountType = isBootstrapAdminEmail(email)
-    ? "employee"
-    : normalizeAccountType(readString(profile?.account_type));
+  const accountType = normalizeAccountType(readString(profile?.account_type));
   const isEmployee = accountType === "employee";
   const customer = isEmployee
     ? null
