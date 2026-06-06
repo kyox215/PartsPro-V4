@@ -16,6 +16,7 @@ import {
   Plus,
   RotateCcw,
   Truck,
+  WalletCards,
   X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -52,7 +53,7 @@ import {
 } from "@/lib/partspro-pricing";
 import { cn } from "@/lib/utils";
 import { signOut } from "@/app/login/actions";
-import type { AccountCustomerProfile } from "@/lib/partspro-repository";
+import type { AccountCustomerProfile, CustomerWallet } from "@/lib/partspro-repository";
 import type { ItalyCapLookupResult } from "@/lib/italy-cap-lookup";
 import { StoreHeader } from "./store-header";
 
@@ -64,17 +65,23 @@ type AccountPageProps = {
   forceSetup?: boolean;
   orderSummaries?: OrderSummary[];
   rmaRequests?: RmaRequest[];
+  wallet?: CustomerWallet;
   userEmail?: string;
 };
 
 type AccountOrderDetailLine = {
+  billableQty?: number;
+  cancelledQty?: number;
   imageAlt?: string;
   imageUrl?: string;
   id: string;
   lineTotal: number;
+  lineStatus?: string;
   name?: string;
+  pickedQty?: number;
   productName?: string;
   quantity: number;
+  shortageQty?: number;
   sku: string;
   unitPrice: number;
 };
@@ -95,9 +102,11 @@ type AccountOrderDetail = {
   number: string;
   operationHistory?: AccountOrderDetailEvent[];
   paymentStatus: string;
+  paymentOverpaidAmount?: number;
   status: string;
   total: number;
   uiStatus?: string;
+  walletAppliedAmount?: number;
 };
 
 type AccountOrderDetailResponse = {
@@ -188,6 +197,7 @@ export function AccountPage({
   forceSetup = false,
   orderSummaries = [],
   rmaRequests = [],
+  wallet = { balance: 0, currency: "EUR", transactions: [] },
   userEmail,
 }: AccountPageProps) {
   const router = useRouter();
@@ -319,6 +329,7 @@ export function AccountPage({
             </CardContent>
           </Card>
           <CustomerLevelCard company={company} profile={profile} />
+          <WalletCard wallet={wallet} />
           <Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
             <CardHeader className="pb-0">
               <CardTitle className="text-sm font-black">快捷操作</CardTitle>
@@ -610,6 +621,16 @@ function AccountOrderDetailPanel({
         <DetailTile label="付款" value={paymentStatusLabel(detail.paymentStatus)} />
         <DetailTile label="合计" value={formatEuro(detail.total)} />
       </div>
+      {(detail.walletAppliedAmount ?? 0) > 0 || (detail.paymentOverpaidAmount ?? 0) > 0 ? (
+        <div className="grid gap-2 sm:grid-cols-2">
+          {(detail.walletAppliedAmount ?? 0) > 0 ? (
+            <DetailTile label="钱包抵扣" value={formatEuro(detail.walletAppliedAmount ?? 0)} />
+          ) : null}
+          {(detail.paymentOverpaidAmount ?? 0) > 0 ? (
+            <DetailTile label="差价入钱包" value={formatEuro(detail.paymentOverpaidAmount ?? 0)} />
+          ) : null}
+        </div>
+      ) : null}
 
       <section className="rounded-lg border border-slate-200">
         <div className="border-b border-slate-100 px-3 py-2 text-sm font-black">
@@ -634,6 +655,13 @@ function AccountOrderDetailPanel({
                   <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs font-semibold text-slate-500">
                     <span className="font-mono">{line.sku}</span>
                     <span>{line.quantity} × {formatEuro(line.unitPrice)}</span>
+                    {(line.shortageQty ?? line.cancelledQty ?? 0) > 0 ? (
+                      <span className="text-amber-700">
+                        缺货 {line.shortageQty ?? line.cancelledQty} 件
+                      </span>
+                    ) : line.pickedQty !== undefined ? (
+                      <span>实给 {line.pickedQty} 件</span>
+                    ) : null}
                   </div>
                 </div>
                 <div className="col-start-2 flex items-center justify-between gap-2 text-right sm:col-start-auto sm:block">
@@ -738,6 +766,70 @@ function DetailTile({ label, value }: { label: string; value: string }) {
   );
 }
 
+function WalletCard({ wallet }: { wallet: CustomerWallet }) {
+  const recentTransactions = wallet.transactions.slice(0, 4);
+
+  return (
+    <Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
+      <CardHeader className="pb-0">
+        <CardTitle className="flex items-center justify-between gap-2 text-sm font-black">
+          <span className="flex min-w-0 items-center gap-2">
+            <WalletCards className="size-4 text-primary" />
+            <span className="truncate">钱包余额</span>
+          </span>
+          <Badge className="border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700">
+            自动抵扣
+          </Badge>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="rounded-lg border border-blue-100 bg-blue-50/70 p-3">
+          <div className="text-xs font-bold text-blue-700">可用余额</div>
+          <div className="mt-1 text-2xl font-black text-slate-950">
+            {formatEuro(wallet.balance)}
+          </div>
+          <div className="mt-1 text-[11px] font-semibold leading-4 text-slate-500">
+            银行转账订单缺货差价会进入钱包，下次下单自动抵扣。
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <div className="text-xs font-black text-slate-500">最近流水</div>
+          {recentTransactions.length === 0 ? (
+            <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-xs font-semibold text-slate-500">
+              暂无钱包流水。
+            </div>
+          ) : (
+            recentTransactions.map((transaction) => (
+              <div
+                key={transaction.id}
+                className="grid grid-cols-[1fr_auto] gap-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs"
+              >
+                <div className="min-w-0">
+                  <div className="truncate font-black text-slate-800">
+                    {transaction.reason || walletTransactionLabel(transaction.direction)}
+                  </div>
+                  <div className="mt-0.5 truncate font-semibold text-slate-500">
+                    {formatAccountOrderDateTime(transaction.createdAt)}
+                  </div>
+                </div>
+                <div
+                  className={cn(
+                    "text-right font-black",
+                    transaction.direction === "credit" ? "text-emerald-700" : "text-blue-700"
+                  )}
+                >
+                  {transaction.direction === "credit" ? "+" : "-"}
+                  {formatEuro(transaction.amount)}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function AccountRuntimeCard({
   userEmail,
 }: {
@@ -757,6 +849,10 @@ function AccountRuntimeCard({
       </CardContent>
     </Card>
   );
+}
+
+function walletTransactionLabel(direction: "credit" | "debit") {
+  return direction === "credit" ? "钱包入账" : "钱包抵扣";
 }
 
 function CustomerLevelCard({

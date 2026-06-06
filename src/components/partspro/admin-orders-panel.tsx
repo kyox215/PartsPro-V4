@@ -40,6 +40,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -157,6 +169,11 @@ type OrderLine = {
   category: string;
   quantity: number;
   picked: number;
+  pickedQty: number;
+  cancelledQty: number;
+  shortageQty: number;
+  lineStatus: string;
+  billableQty: number;
   unitPrice: number;
   lineTotal: number;
   warehouse: WarehouseName;
@@ -215,6 +232,13 @@ type AdminOrder = {
   paymentMethod: PaymentMethod;
   paymentDue: string;
   paymentDueAmount: number;
+  paymentOverpaidAmount: number;
+  walletAppliedAmount: number;
+  softDeletedAt: string | null;
+  softDeletedBy: string | null;
+  dangerActionType: string;
+  dangerActionReason: string;
+  dangerActionMetadata: unknown;
   paymentReconciliation: PaymentReconciliation;
   warehouse: WarehouseName;
   carrier: Carrier;
@@ -296,6 +320,11 @@ type OrderPatchInput = {
   note?: string;
 };
 
+type OrderDangerActionInput = {
+  confirmOrderNo: string;
+  reason: string;
+};
+
 type OrderPaymentPatchInput = {
   paymentMethod?: PaymentMethod;
   paymentStatus: PaymentStatus;
@@ -309,6 +338,11 @@ type OrderShippingPatchInput = {
   shippingAmount: number;
   reason: string;
   note?: string;
+};
+
+type OrderLineFulfillmentInput = {
+  actualQuantity: number;
+  reason?: string;
 };
 
 type OrderLabels = {
@@ -436,6 +470,15 @@ export function AdminOrdersPanel() {
       ...currentDetails,
       [order.id]: order,
     }));
+  }, []);
+
+  const removeOrder = React.useCallback((orderId: string) => {
+    setOrders((currentOrders) => currentOrders.filter((order) => order.id !== orderId));
+    setDetailsById((currentDetails) => {
+      const nextDetails = { ...currentDetails };
+      delete nextDetails[orderId];
+      return nextDetails;
+    });
   }, []);
 
   const loadOrderDetails = React.useCallback(
@@ -809,8 +852,56 @@ export function AdminOrdersPanel() {
     [text, upsertOrder]
   );
 
+  const patchOrderLineFulfillment = React.useCallback(
+    async (
+      order: AdminOrder,
+      line: OrderLine,
+      patch: OrderLineFulfillmentInput
+    ) => {
+      const actionKey = `${order.id}:line:${line.id}`;
+
+      setPendingOrderAction(actionKey);
+
+      try {
+        const result = await patchOrderLineFulfillmentInApi(order.id, line.id, patch, text);
+
+        if (result.order) {
+          upsertOrder(result.order);
+        }
+
+        const refreshedOrder = await fetchOrderDetailFromApi(order.id);
+
+        upsertOrder(refreshedOrder);
+        setNotice({
+          tone: "success",
+          message: `${line.name} 实给数量已保存。`,
+        });
+      } catch (error) {
+        setNotice({
+          tone: "error",
+          message:
+            error instanceof Error ? error.message : text.orders.notices.rejected,
+        });
+      } finally {
+        setPendingOrderAction(null);
+      }
+    },
+    [text, upsertOrder]
+  );
+
   const handleTransition = React.useCallback(
     (order: AdminOrder, status: OrderDbStatus, successMessage: string) => {
+      if (
+        status === "packed" &&
+        order.lines.some((line) => line.pickedQty <= 0 && line.cancelledQty <= 0)
+      ) {
+        setNotice({
+          tone: "warning",
+          message: "请先在“商品”分组确认每个商品的实给数量，再打包完成。",
+        });
+        return;
+      }
+
       void patchOrder(
         order,
         {
@@ -864,6 +955,47 @@ export function AdminOrdersPanel() {
       text.orders.forceCancelPrompt,
       text.orders.forceCancelReasonRequired,
       text.orders.forceCancelledNotice,
+    ]
+  );
+
+  const handleDangerVoidOrder = React.useCallback(
+    async (order: AdminOrder, input: OrderDangerActionInput) => {
+      const actionKey = `${order.id}:danger`;
+
+      setPendingOrderAction(actionKey);
+
+      try {
+        const result = await voidOrderWithDangerAction(order.id, input, text);
+        const restoredQty = result.restoredQty;
+        const walletRefundAmount = result.walletRefundAmount;
+
+        removeOrder(order.id);
+        setActiveOrderId((currentId) => (currentId === order.id ? null : currentId));
+        setNotice({
+          tone: "success",
+          message: formatAdminMessage(text.orders.dangerActionSuccess, {
+            id: order.id,
+            restored: restoredQty,
+            wallet: formatEuro(walletRefundAmount),
+          }),
+        });
+      } catch (error) {
+        setNotice({
+          tone: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : text.orders.dangerActionFailed,
+        });
+      } finally {
+        setPendingOrderAction((currentAction) =>
+          currentAction === actionKey ? null : currentAction
+        );
+      }
+    },
+    [
+      removeOrder,
+      text,
     ]
   );
 
@@ -935,6 +1067,13 @@ export function AdminOrdersPanel() {
       void patchOrderPayment(order, patch, text.orders.paymentReconciliationSaved);
     },
     [patchOrderPayment, text.orders.paymentReconciliationSaved]
+  );
+
+  const handleUpdateLineFulfillment = React.useCallback(
+    (order: AdminOrder, line: OrderLine, patch: OrderLineFulfillmentInput) => {
+      void patchOrderLineFulfillment(order, line, patch);
+    },
+    [patchOrderLineFulfillment]
   );
 
   const handleAdjustShipping = React.useCallback(
@@ -1141,7 +1280,7 @@ export function AdminOrdersPanel() {
             onOpenChange={setMobileDetailsOpen}
           >
             {selectedOrder && (
-              <DialogContent className="grid max-h-[calc(100dvh-0.5rem)] w-[calc(100vw-0.5rem)] max-w-[calc(100vw-0.5rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg bg-white p-0 pt-7 sm:max-h-[calc(100dvh-1rem)] sm:w-[calc(100vw-1rem)] sm:max-w-[calc(100vw-1rem)] sm:pt-10 xl:max-w-[1280px] 2xl:max-w-[1360px]">
+              <DialogContent className="grid h-[min(760px,calc(100dvh-0.5rem))] max-h-[calc(100dvh-0.5rem)] w-[calc(100vw-0.5rem)] max-w-[calc(100vw-0.5rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg bg-white p-0 pt-7 sm:h-[min(820px,calc(100dvh-1rem))] sm:max-h-[calc(100dvh-1rem)] sm:w-[calc(100vw-1rem)] sm:max-w-[calc(100vw-1rem)] sm:pt-10 xl:max-w-[1280px] 2xl:max-w-[1360px]">
                 <DialogHeader className="border-b border-slate-200 px-2.5 pb-1.5 pr-12 sm:px-4 sm:pb-2.5">
                   <DialogTitle className="break-words text-sm font-black leading-tight text-slate-950 sm:text-base">
                     {formatAdminMessage(text.orders.detailDialogTitle, {
@@ -1152,7 +1291,7 @@ export function AdminOrdersPanel() {
                     {text.orders.detailDialogDescription}
                   </DialogDescription>
                 </DialogHeader>
-                <div className="min-h-0 overflow-y-auto overscroll-contain">
+                <div className="min-h-0 overflow-y-auto overscroll-contain bg-slate-50/40">
                   <OrderDetailsPanel
                     adminSession={adminSession}
                     labels={labels}
@@ -1161,11 +1300,13 @@ export function AdminOrdersPanel() {
                     pendingActionKey={pendingOrderAction}
                     text={text}
                     onCancelOrder={handleCancelOrder}
+                    onDangerVoidOrder={handleDangerVoidOrder}
                     onForceCancelOrder={handleForceCancelOrder}
                     onPrintOrder={handlePrintOrder}
                     onRollback={handleRollbackOrder}
                     onTransition={handleTransition}
                     onUpdateLogistics={handleUpdateLogistics}
+                    onUpdateLineFulfillment={handleUpdateLineFulfillment}
                     onAdjustShipping={handleAdjustShipping}
                     onUpdatePayment={handleUpdatePayment}
                     onUpdatePaymentMethod={handleUpdatePaymentMethod}
@@ -1855,12 +1996,14 @@ function OrderDetailsPanel({
   pendingActionKey,
   text,
   onCancelOrder,
+  onDangerVoidOrder,
   onForceCancelOrder,
   onPrintOrder,
   onRollback,
   onTransition,
   onAdjustShipping,
   onUpdateLogistics,
+  onUpdateLineFulfillment,
   onUpdatePayment,
   onUpdatePaymentMethod,
   onUpdateStaffNote,
@@ -1872,12 +2015,18 @@ function OrderDetailsPanel({
   pendingActionKey: string | null;
   text: AdminText;
   onCancelOrder: (order: AdminOrder) => void;
+  onDangerVoidOrder: (order: AdminOrder, input: OrderDangerActionInput) => void;
   onForceCancelOrder: (order: AdminOrder) => void;
   onPrintOrder: (order: AdminOrder) => void;
   onRollback: (order: AdminOrder) => void;
   onTransition: (order: AdminOrder, status: OrderDbStatus, successMessage: string) => void;
   onAdjustShipping: (order: AdminOrder, patch: OrderShippingPatchInput) => void;
   onUpdateLogistics: (order: AdminOrder, carrier: string, tracking: string) => void;
+  onUpdateLineFulfillment: (
+    order: AdminOrder,
+    line: OrderLine,
+    patch: OrderLineFulfillmentInput
+  ) => void;
   onUpdatePayment: (order: AdminOrder, patch: OrderPaymentPatchInput) => void;
   onUpdatePaymentMethod: (order: AdminOrder, paymentMethod: PaymentMethod) => void;
   onUpdateStaffNote: (order: AdminOrder, staffNote: string) => void;
@@ -1961,20 +2110,30 @@ function OrderDetailsPanel({
   const isMutating = pendingActionKey?.startsWith(`${order.id}:`) ?? false;
   const isReadOnly = order.status === "completed" || order.status === "cancelled";
   const canManageOrders = hasAdminSessionPermission(adminSession, "orders.manage");
+  const canDangerVoidOrder =
+    isReadOnly &&
+    adminSession.role === "admin" &&
+    hasAdminSessionPermission(adminSession, "orders.danger") &&
+    !order.softDeletedAt;
   const canEditStaffNote = canManageOrders;
   const canEditLogistics = canManageOrders && !isReadOnly;
+  const canEditLines =
+    canManageOrders &&
+    !isReadOnly &&
+    order.status !== "shipped";
   const canAdjustShipping = canManageOrders && order.status !== "cancelled";
   const canReconcilePayment = canManageOrders && order.status !== "cancelled";
 
   return (
     <AdminBusyRegion
-      className="min-w-0"
+      className="min-h-full min-w-0"
+      contentClassName="min-h-full"
       label={text.orders.detailLoading}
       overlayClassName="rounded-lg"
       pending={loading}
       rows={3}
     >
-      <div className="min-w-0 space-y-1.5 bg-slate-50/40 p-1.5 sm:space-y-2 sm:p-2">
+      <div className="min-h-full min-w-0 space-y-1.5 bg-slate-50/40 p-1.5 sm:space-y-2 sm:p-2">
       <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
@@ -2019,9 +2178,11 @@ function OrderDetailsPanel({
           order={order}
           text={text}
           isMutating={isMutating}
+          canDangerVoidOrder={canDangerVoidOrder}
           canForceCancel={canManageOrders && adminSession.role === "admin" && order.status === "shipped"}
           canManageOrders={canManageOrders}
           onCancelOrder={onCancelOrder}
+          onDangerVoidOrder={onDangerVoidOrder}
           onForceCancelOrder={onForceCancelOrder}
           onPrintOrder={onPrintOrder}
           onRollback={onRollback}
@@ -2049,6 +2210,7 @@ function OrderDetailsPanel({
           activeSection={mobileSection}
           canAdjustShipping={canAdjustShipping}
           canEditLogistics={canEditLogistics}
+          canEditLines={canEditLines}
           canEditPayment={canManageOrders && !isReadOnly}
           canEditStaffNote={canEditStaffNote}
           canReconcilePayment={canReconcilePayment}
@@ -2063,6 +2225,7 @@ function OrderDetailsPanel({
           onRefreshTrackingDetails={handleRefreshTrackingDetails}
           onToggleTrackingDetails={handleToggleTrackingDetails}
           onUpdateLogistics={onUpdateLogistics}
+          onUpdateLineFulfillment={onUpdateLineFulfillment}
           onUpdatePayment={onUpdatePayment}
           onUpdatePaymentMethod={onUpdatePaymentMethod}
           onUpdateStaffNote={onUpdateStaffNote}
@@ -2150,7 +2313,14 @@ function OrderDetailsPanel({
                 {text.orders.details.orderLines}
               </div>
             </div>
-            <OrderLines lines={order.lines} text={text} />
+            <OrderLines
+              canEditLines={canEditLines}
+              isMutating={isMutating}
+              lines={order.lines}
+              order={order}
+              text={text}
+              onUpdateLineFulfillment={onUpdateLineFulfillment}
+            />
           </div>
         </div>
 
@@ -2264,6 +2434,7 @@ function OrderMobileDetailsSection({
   activeSection,
   canAdjustShipping,
   canEditLogistics,
+  canEditLines,
   canEditPayment,
   canEditStaffNote,
   canReconcilePayment,
@@ -2278,6 +2449,7 @@ function OrderMobileDetailsSection({
   onRefreshTrackingDetails,
   onToggleTrackingDetails,
   onUpdateLogistics,
+  onUpdateLineFulfillment,
   onUpdatePayment,
   onUpdatePaymentMethod,
   onUpdateStaffNote,
@@ -2285,6 +2457,7 @@ function OrderMobileDetailsSection({
   activeSection: MobileOrderDetailsSection;
   canAdjustShipping: boolean;
   canEditLogistics: boolean;
+  canEditLines: boolean;
   canEditPayment: boolean;
   canEditStaffNote: boolean;
   canReconcilePayment: boolean;
@@ -2299,6 +2472,11 @@ function OrderMobileDetailsSection({
   onRefreshTrackingDetails: () => void;
   onToggleTrackingDetails: () => void;
   onUpdateLogistics: (order: AdminOrder, carrier: string, tracking: string) => void;
+  onUpdateLineFulfillment: (
+    order: AdminOrder,
+    line: OrderLine,
+    patch: OrderLineFulfillmentInput
+  ) => void;
   onUpdatePayment: (order: AdminOrder, patch: OrderPaymentPatchInput) => void;
   onUpdatePaymentMethod: (order: AdminOrder, paymentMethod: PaymentMethod) => void;
   onUpdateStaffNote: (order: AdminOrder, staffNote: string) => void;
@@ -2350,7 +2528,14 @@ function OrderMobileDetailsSection({
             {order.lines.length}
           </Badge>
         </div>
-        <OrderLines lines={order.lines} text={text} />
+        <OrderLines
+          canEditLines={canEditLines}
+          isMutating={isMutating}
+          lines={order.lines}
+          order={order}
+          text={text}
+          onUpdateLineFulfillment={onUpdateLineFulfillment}
+        />
       </div>
     );
   }
@@ -2722,9 +2907,11 @@ function OrderActionBar({
   order,
   text,
   isMutating,
+  canDangerVoidOrder,
   canForceCancel,
   canManageOrders,
   onCancelOrder,
+  onDangerVoidOrder,
   onForceCancelOrder,
   onPrintOrder,
   onRollback,
@@ -2734,24 +2921,31 @@ function OrderActionBar({
   order: AdminOrder;
   text: AdminText;
   isMutating: boolean;
+  canDangerVoidOrder: boolean;
   canForceCancel: boolean;
   canManageOrders: boolean;
   onCancelOrder: (order: AdminOrder) => void;
+  onDangerVoidOrder: (order: AdminOrder, input: OrderDangerActionInput) => void;
   onForceCancelOrder: (order: AdminOrder) => void;
   onPrintOrder: (order: AdminOrder) => void;
   onRollback: (order: AdminOrder) => void;
   onTransition: (order: AdminOrder, status: OrderDbStatus, successMessage: string) => void;
 }) {
+  const [dangerReason, setDangerReason] = React.useState("");
+  const [dangerConfirmation, setDangerConfirmation] = React.useState("");
   const canShip = canShipOrder(order);
   const transition = getOrderTransition(order, text);
   const rollback = getOrderRollback(order, text, labels);
   const actionCount = [
     true,
     canManageOrders && cancellableStatuses.has(order.status),
+    canDangerVoidOrder,
     canForceCancel,
     canManageOrders && Boolean(rollback),
     canManageOrders && Boolean(transition),
   ].filter(Boolean).length;
+  const dangerActionReady =
+    dangerReason.trim().length > 0 && dangerConfirmation.trim() === order.id;
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:items-end">
@@ -2777,16 +2971,72 @@ function OrderActionBar({
           <span className="min-w-0 truncate">{text.orders.print.action}</span>
         </Button>
         {canManageOrders && cancellableStatuses.has(order.status) && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-red-600 hover:text-red-600 sm:h-8 sm:px-2 sm:text-xs"
-            onClick={() => onCancelOrder(order)}
-            disabled={isMutating}
-          >
-            <XCircle className="size-4" />
-            <span className="min-w-0 truncate">{text.orders.cancelOrder}</span>
-          </Button>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-red-600 hover:text-red-600 sm:h-8 sm:px-2 sm:text-xs"
+                disabled={isMutating}
+              >
+                <XCircle className="size-4" />
+                <span className="min-w-0 truncate">{text.orders.cancelOrder}</span>
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent className="max-w-[calc(100vw-1.5rem)] sm:max-w-sm">
+              <AlertDialogHeader>
+                <AlertDialogMedia className="bg-red-50 text-red-600">
+                  <AlertTriangle className="size-5" />
+                </AlertDialogMedia>
+                <AlertDialogTitle className="font-black text-slate-950">
+                  {text.orders.cancelConfirmTitle}
+                </AlertDialogTitle>
+                <AlertDialogDescription className="leading-6 text-slate-600">
+                  {formatAdminMessage(text.orders.cancelConfirmDescription, {
+                    id: order.id,
+                  })}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="grid gap-2 rounded-lg border border-red-100 bg-red-50/50 p-3 text-sm">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-bold text-slate-500">{text.orders.table.order}</span>
+                  <span className="min-w-0 truncate font-mono font-black text-slate-950">
+                    {order.id}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-bold text-slate-500">{text.orders.table.status}</span>
+                  <span className="font-black text-slate-950">
+                    {labels.status[order.status]}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-bold text-slate-500">{text.orders.table.customer}</span>
+                  <span className="min-w-0 truncate font-black text-slate-950">
+                    {order.company}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
+                  <span className="font-bold text-slate-500">{text.orders.table.total}</span>
+                  <span className="font-black text-slate-950">
+                    {formatEuro(order.total)}
+                  </span>
+                </div>
+              </div>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="h-10">
+                  {text.orders.cancelConfirmBack}
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  className="h-10 bg-red-600 text-white hover:bg-red-700"
+                  disabled={isMutating}
+                  onClick={() => onCancelOrder(order)}
+                >
+                  {text.orders.cancelConfirmAction}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
         {canForceCancel && (
           <Button
@@ -2799,6 +3049,88 @@ function OrderActionBar({
             <XCircle className="size-4" />
             <span className="min-w-0 truncate">{text.orders.forceCancelOrder}</span>
           </Button>
+        )}
+        {canDangerVoidOrder && (
+          <AlertDialog
+            onOpenChange={(open) => {
+              if (!open) {
+                setDangerReason("");
+                setDangerConfirmation("");
+              }
+            }}
+          >
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-red-700 hover:text-red-700 sm:h-8 sm:px-2 sm:text-xs"
+                disabled={isMutating}
+              >
+                <AlertTriangle className="size-4" />
+                <span className="min-w-0 truncate">{text.orders.dangerAction}</span>
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent className="max-w-[calc(100vw-1.5rem)] sm:max-w-md">
+              <AlertDialogHeader>
+                <AlertDialogMedia className="bg-red-50 text-red-600">
+                  <AlertTriangle className="size-5" />
+                </AlertDialogMedia>
+                <AlertDialogTitle className="font-black text-slate-950">
+                  {text.orders.dangerActionTitle}
+                </AlertDialogTitle>
+                <AlertDialogDescription className="leading-6 text-slate-600">
+                  {formatAdminMessage(text.orders.dangerActionDescription, {
+                    id: order.id,
+                    wallet: formatEuro(order.walletAppliedAmount),
+                  })}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="grid gap-3">
+                <div className="grid gap-1.5">
+                  <label className="text-xs font-black text-slate-500">
+                    {text.orders.dangerActionReason}
+                  </label>
+                  <Textarea
+                    className="min-h-20 resize-none text-sm"
+                    value={dangerReason}
+                    onChange={(event) => setDangerReason(event.target.value)}
+                    maxLength={1000}
+                  />
+                </div>
+                <div className="grid gap-1.5">
+                  <label className="text-xs font-black text-slate-500">
+                    {formatAdminMessage(text.orders.dangerActionConfirmLabel, {
+                      id: order.id,
+                    })}
+                  </label>
+                  <Input
+                    value={dangerConfirmation}
+                    onChange={(event) => setDangerConfirmation(event.target.value)}
+                    autoCapitalize="off"
+                    autoCorrect="off"
+                    spellCheck={false}
+                  />
+                </div>
+              </div>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="h-10">
+                  {text.orders.cancelConfirmBack}
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  className="h-10 bg-red-600 text-white hover:bg-red-700"
+                  disabled={isMutating || !dangerActionReady}
+                  onClick={() =>
+                    onDangerVoidOrder(order, {
+                      confirmOrderNo: dangerConfirmation,
+                      reason: dangerReason,
+                    })
+                  }
+                >
+                  {text.orders.dangerActionConfirm}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
         {canManageOrders && rollback && (
           <Button
@@ -3141,121 +3473,8 @@ function OrderPaymentMethodCard({
     },
   ].filter((row) => row.show);
 
-  return (
-    <section
-      className={cn(
-        "rounded-md border border-slate-200 bg-white",
-        compact ? "p-1.5" : "p-2 sm:p-2.5"
-      )}
-    >
-      <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5 text-xs font-black text-slate-900 sm:text-sm">
-          <CreditCard className="size-3.5 shrink-0 text-primary" />
-          <span className="truncate">{text.orders.paymentReconciliation}</span>
-        </div>
-        <Badge className={paymentBadgeClass(order.paymentStatus)} variant="outline">
-          {labels.payment[order.paymentStatus]}
-        </Badge>
-      </div>
-      <div
-        className={cn(
-          "mb-2 grid gap-1 rounded-md border border-slate-100 bg-slate-50/60 p-1.5",
-          compact ? "grid-cols-2" : "text-xs sm:grid-cols-2"
-        )}
-      >
-        {paymentInfoRows.map((row) =>
-          compact ? (
-            <MobileFact key={row.label} label={row.label} value={row.value} />
-          ) : (
-            <InfoRow key={row.label} label={row.label} value={row.value} />
-          )
-        )}
-      </div>
-      <form
-        className={cn(
-          "grid min-w-0",
-          compact ? "gap-1.5" : "gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
-        )}
-        onSubmit={handleSubmit}
-      >
-        <label className="min-w-0">
-          <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
-            {text.orders.details.paymentMethod}
-          </span>
-          <Select
-            value={paymentMethodDraft}
-            onValueChange={(value) => setPaymentMethodDraft(normalizePaymentMethodValue(value))}
-            disabled={!canEditPayment || isMutating}
-          >
-            <SelectTrigger className="h-9 w-full rounded-md border-slate-200 bg-white text-xs font-bold text-slate-900 sm:text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {paymentMethodOptions.map((paymentMethod) => (
-                <SelectItem key={paymentMethod} value={paymentMethod}>
-                  {labels.paymentMethod[paymentMethod]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </label>
-        <Button
-          type="submit"
-          size="sm"
-          className={cn("self-end rounded-md", compact && "w-full")}
-          disabled={!canSave}
-        >
-          {isMutating ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Save className="size-3.5" />
-          )}
-          <span className="truncate">{text.common.saveChanges}</span>
-        </Button>
-      </form>
-      <div className={cn("mt-2 flex flex-wrap gap-2", compact && "gap-1.5")}>
-        {order.paymentStatus !== "paid" && (
-          <Button
-            type="button"
-            size="sm"
-            className="rounded-md"
-            disabled={!canReconcilePayment || isMutating}
-            onClick={() => openReconciliationDialog("paid")}
-          >
-            <BadgeCheck className="size-3.5" />
-            <span className="truncate">
-              {hasSupplementalPaymentDue(order)
-                ? text.orders.markSupplementPaymentReceived
-                : text.orders.markPaymentReceived}
-            </span>
-          </Button>
-        )}
-        {order.paymentStatus === "paid" && (
-          <>
-            <Button
-              type="button"
-              size="sm"
-              className="rounded-md"
-              disabled={!canReconcilePayment || isMutating}
-              onClick={() => openReconciliationDialog("paid")}
-            >
-              <Pencil className="size-3.5" />
-              <span className="truncate">{text.orders.modifyPaymentReconciliation}</span>
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              className="rounded-md text-amber-700 hover:text-amber-700"
-              disabled={!canReconcilePayment || isMutating}
-              onClick={() => openReconciliationDialog("unpaid")}
-            >
-              <RotateCcw className="size-3.5" />
-              <span className="truncate">{text.orders.undoPaymentReceived}</span>
-            </Button>
-          </>
-        )}
-      </div>
+  function renderPaymentDialog() {
+    return (
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-[520px] rounded-lg bg-white">
           <DialogHeader>
@@ -3388,6 +3607,213 @@ function OrderPaymentMethodCard({
           </form>
         </DialogContent>
       </Dialog>
+    );
+  }
+
+  if (compact) {
+    const primaryAmountLabel =
+      order.paymentStatus === "paid"
+        ? receivedAmountLabel
+        : order.paymentDueAmount > 0
+          ? formatEuro(order.paymentDueAmount)
+          : text.common.none;
+    const primaryAmountTitle =
+      order.paymentStatus === "paid"
+        ? text.orders.paymentReceivedAmount
+        : text.orders.paymentAmountDue;
+    const compactRows = [
+      {
+        label: text.orders.details.paymentMethod,
+        value: labels.paymentMethod[order.paymentMethod],
+        show: true,
+      },
+      {
+        label: text.orders.paymentReceivedBy,
+        value: collectorLabel,
+        show: collectorLabel !== text.common.none,
+      },
+      {
+        label: text.orders.paymentReceivedAt,
+        value: receivedAtLabel,
+        show: Boolean(order.paymentReconciliation.receivedAt),
+      },
+      {
+        label: text.orders.paymentReference,
+        value: order.paymentReconciliation.reference || text.common.none,
+        show: Boolean(order.paymentReconciliation.reference),
+      },
+      {
+        label: text.orders.paymentNote,
+        value: order.paymentReconciliation.note || text.common.none,
+        show: Boolean(order.paymentReconciliation.note),
+      },
+    ].filter((row) => row.show);
+
+    return (
+      <section className="rounded-md border border-slate-200 bg-white p-1.5">
+        <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-1.5 text-xs font-black text-slate-900">
+            <CreditCard className="size-3.5 shrink-0 text-primary" />
+            <span className="truncate">{text.orders.paymentReconciliation}</span>
+          </div>
+          <Badge className={paymentBadgeClass(order.paymentStatus)} variant="outline">
+            {labels.payment[order.paymentStatus]}
+          </Badge>
+        </div>
+        <div className="mb-1.5 rounded-md border border-primary/10 bg-primary/5 px-2 py-2">
+          <div className="text-[10px] font-black uppercase leading-none text-primary/70">
+            {primaryAmountTitle}
+          </div>
+          <div className="mt-1 text-lg font-black leading-none text-slate-950">
+            {primaryAmountLabel}
+          </div>
+        </div>
+        <div className="grid gap-1 rounded-md border border-slate-100 bg-slate-50/60 p-1.5">
+          {compactRows.map((row) => (
+            <InfoRow key={row.label} label={row.label} value={row.value} />
+          ))}
+        </div>
+        <div className="mt-2 grid gap-1.5">
+          <Button
+            type="button"
+            size="sm"
+            className="w-full rounded-md"
+            disabled={!canReconcilePayment || isMutating}
+            onClick={() => openReconciliationDialog("paid")}
+          >
+            {order.paymentStatus === "paid" ? (
+              <Pencil className="size-3.5" />
+            ) : (
+              <BadgeCheck className="size-3.5" />
+            )}
+            <span className="truncate">
+              {order.paymentStatus === "paid"
+                ? text.orders.modifyPaymentReconciliation
+                : hasSupplementalPaymentDue(order)
+                  ? text.orders.markSupplementPaymentReceived
+                  : text.orders.markPaymentReceived}
+            </span>
+          </Button>
+          {order.paymentStatus === "paid" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="w-full rounded-md text-amber-700 hover:text-amber-700"
+              disabled={!canReconcilePayment || isMutating}
+              onClick={() => openReconciliationDialog("unpaid")}
+            >
+              <RotateCcw className="size-3.5" />
+              <span className="truncate">{text.orders.undoPaymentReceived}</span>
+            </Button>
+          )}
+        </div>
+        {renderPaymentDialog()}
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-md border border-slate-200 bg-white p-2 sm:p-2.5">
+      <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1.5 text-xs font-black text-slate-900 sm:text-sm">
+          <CreditCard className="size-3.5 shrink-0 text-primary" />
+          <span className="truncate">{text.orders.paymentReconciliation}</span>
+        </div>
+        <Badge className={paymentBadgeClass(order.paymentStatus)} variant="outline">
+          {labels.payment[order.paymentStatus]}
+        </Badge>
+      </div>
+      <div
+        className="mb-2 grid gap-1 rounded-md border border-slate-100 bg-slate-50/60 p-1.5 text-xs sm:grid-cols-2"
+      >
+        {paymentInfoRows.map((row) =>
+          <InfoRow key={row.label} label={row.label} value={row.value} />
+        )}
+      </div>
+      <form
+        className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
+        onSubmit={handleSubmit}
+      >
+        <label className="min-w-0">
+          <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+            {text.orders.details.paymentMethod}
+          </span>
+          <Select
+            value={paymentMethodDraft}
+            onValueChange={(value) => setPaymentMethodDraft(normalizePaymentMethodValue(value))}
+            disabled={!canEditPayment || isMutating}
+          >
+            <SelectTrigger className="h-9 w-full rounded-md border-slate-200 bg-white text-xs font-bold text-slate-900 sm:text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {paymentMethodOptions.map((paymentMethod) => (
+                <SelectItem key={paymentMethod} value={paymentMethod}>
+                  {labels.paymentMethod[paymentMethod]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </label>
+        <Button
+          type="submit"
+          size="sm"
+          className="self-end rounded-md"
+          disabled={!canSave}
+        >
+          {isMutating ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Save className="size-3.5" />
+          )}
+          <span className="truncate">{text.common.saveChanges}</span>
+        </Button>
+      </form>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {order.paymentStatus !== "paid" && (
+          <Button
+            type="button"
+            size="sm"
+            className="rounded-md"
+            disabled={!canReconcilePayment || isMutating}
+            onClick={() => openReconciliationDialog("paid")}
+          >
+            <BadgeCheck className="size-3.5" />
+            <span className="truncate">
+              {hasSupplementalPaymentDue(order)
+                ? text.orders.markSupplementPaymentReceived
+                : text.orders.markPaymentReceived}
+            </span>
+          </Button>
+        )}
+        {order.paymentStatus === "paid" && (
+          <>
+            <Button
+              type="button"
+              size="sm"
+              className="rounded-md"
+              disabled={!canReconcilePayment || isMutating}
+              onClick={() => openReconciliationDialog("paid")}
+            >
+              <Pencil className="size-3.5" />
+              <span className="truncate">{text.orders.modifyPaymentReconciliation}</span>
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              className="rounded-md text-amber-700 hover:text-amber-700"
+              disabled={!canReconcilePayment || isMutating}
+              onClick={() => openReconciliationDialog("unpaid")}
+            >
+              <RotateCcw className="size-3.5" />
+              <span className="truncate">{text.orders.undoPaymentReceived}</span>
+            </Button>
+          </>
+        )}
+      </div>
+      {renderPaymentDialog()}
     </section>
   );
 }
@@ -3772,15 +4198,58 @@ function OrderLogisticsCard({
 }
 
 function OrderLines({
+  canEditLines = false,
+  isMutating = false,
   lines,
+  order,
   text,
+  onUpdateLineFulfillment,
 }: {
+  canEditLines?: boolean;
+  isMutating?: boolean;
   lines: OrderLine[];
+  order?: AdminOrder;
   text: AdminText;
+  onUpdateLineFulfillment?: (
+    order: AdminOrder,
+    line: OrderLine,
+    patch: OrderLineFulfillmentInput
+  ) => void;
 }) {
+  const [editingLine, setEditingLine] = React.useState<OrderLine | null>(null);
+  const [actualQuantity, setActualQuantity] = React.useState("0");
+  const [reason, setReason] = React.useState("");
+
   if (lines.length === 0) {
     return <EmptyState text={text} />;
   }
+
+  const openEditor = (line: OrderLine) => {
+    setEditingLine(line);
+    setActualQuantity(String(line.pickedQty || line.billableQty || line.quantity));
+    setReason("");
+  };
+
+  const submitEditor = () => {
+    if (!editingLine || !order || !onUpdateLineFulfillment) {
+      return;
+    }
+
+    const parsedQuantity = Number.parseInt(actualQuantity, 10);
+    const safeQuantity = Number.isFinite(parsedQuantity)
+      ? Math.max(0, Math.min(editingLine.quantity, parsedQuantity))
+      : editingLine.quantity;
+
+    if (safeQuantity < editingLine.quantity && reason.trim().length === 0) {
+      return;
+    }
+
+    onUpdateLineFulfillment(order, editingLine, {
+      actualQuantity: safeQuantity,
+      reason: reason.trim() || undefined,
+    });
+    setEditingLine(null);
+  };
 
   return (
     <div className="min-w-0">
@@ -3801,9 +4270,26 @@ function OrderLines({
                 </div>
                 <div className="mt-1.5 grid grid-cols-4 gap-1 text-xs max-[360px]:grid-cols-2">
                   <MobileFact label={text.orders.lines.quantity} value={`${line.quantity}`} />
+                  <MobileFact label="实给" value={`${line.pickedQty || 0}`} />
                   <MobileFact label={text.orders.lines.reserved} value={`${line.reservedQty}`} />
-                  <MobileFact label={text.orders.lines.fulfilled} value={`${line.fulfilledQty}`} />
-                  <MobileFact label={text.common.total} value={formatEuro(line.lineTotal)} />
+                  <MobileFact label="缺货" value={`${line.cancelledQty}`} />
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <Badge className={orderLineOperationalBadgeClass(line)}>
+                    {orderLineOperationalLabel(line)}
+                  </Badge>
+                  {canEditLines && order && onUpdateLineFulfillment ? (
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      className="h-7 bg-white px-2"
+                      disabled={isMutating}
+                      onClick={() => openEditor(line)}
+                    >
+                      登记实给
+                    </Button>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -3817,9 +4303,11 @@ function OrderLines({
               <TableHead className="w-[188px]">{text.common.sku}</TableHead>
               <TableHead className="min-w-0">{text.common.product}</TableHead>
               <TableHead className="w-[48px] text-center">{text.orders.lines.quantity}</TableHead>
+              <TableHead className="w-[56px] text-center">实给</TableHead>
               <TableHead className="w-[64px] text-center">{text.orders.lines.reserved}</TableHead>
               <TableHead className="w-[64px] text-center">{text.orders.lines.fulfilled}</TableHead>
               <TableHead className="w-[82px] text-right">{text.common.price}</TableHead>
+              <TableHead className="w-[84px] text-right">操作</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody className="[&_td]:px-1.5 [&_td]:py-1.5">
@@ -3847,6 +4335,11 @@ function OrderLines({
                 </TableCell>
                 <TableCell className="align-top text-center font-semibold">{line.quantity}</TableCell>
                 <TableCell className="align-top text-center">
+                  <Badge className={orderLineOperationalBadgeClass(line)}>
+                    {line.pickedQty || 0}/{line.quantity}
+                  </Badge>
+                </TableCell>
+                <TableCell className="align-top text-center">
                   <Badge className={reservationBadgeClass(line)}>
                     {line.reservedQty}/{line.quantity}
                   </Badge>
@@ -3859,11 +4352,80 @@ function OrderLines({
                 <TableCell className="whitespace-nowrap align-top text-right font-semibold">
                   {formatEuro(line.unitPrice)}
                 </TableCell>
+                <TableCell className="align-top text-right">
+                  {canEditLines && order && onUpdateLineFulfillment ? (
+                    <Button
+                      type="button"
+                      size="xs"
+                      variant="outline"
+                      className="h-7 bg-white px-2"
+                      disabled={isMutating}
+                      onClick={() => openEditor(line)}
+                    >
+                      登记
+                    </Button>
+                  ) : (
+                    <span className="text-[11px] font-semibold text-slate-400">
+                      {orderLineOperationalLabel(line)}
+                    </span>
+                  )}
+                </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
       </div>
+      <Dialog open={editingLine !== null} onOpenChange={(open) => !open && setEditingLine(null)}>
+        <DialogContent className="max-w-[calc(100vw-1.5rem)] rounded-lg bg-white sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-base font-black">登记实给数量</DialogTitle>
+            <DialogDescription>
+              少给数量会核销锁货库存，不会释放回可售库存；已付款银行转账订单会把差价入钱包。
+            </DialogDescription>
+          </DialogHeader>
+          {editingLine ? (
+            <div className="space-y-3">
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
+                <div className="line-clamp-2 text-sm font-black text-slate-900">
+                  {editingLine.name}
+                </div>
+                <div className="mt-1 font-mono text-xs font-semibold text-slate-500">
+                  {editingLine.sku}
+                </div>
+              </div>
+              <div className="grid gap-1.5">
+                <div className="text-xs font-black text-slate-500">实际给货数量</div>
+                <Input
+                  type="number"
+                  min={0}
+                  max={editingLine.quantity}
+                  value={actualQuantity}
+                  onChange={(event) => setActualQuantity(event.target.value)}
+                />
+                <div className="text-[11px] font-semibold text-slate-500">
+                  订购 {editingLine.quantity} 件，少给需要填写原因。
+                </div>
+              </div>
+              <div className="grid gap-1.5">
+                <div className="text-xs font-black text-slate-500">缺货原因</div>
+                <Textarea
+                  value={reason}
+                  placeholder="例如：仓库实盘为 0，锁货商品不存在。"
+                  onChange={(event) => setReason(event.target.value)}
+                />
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setEditingLine(null)}>
+              {text.common.cancel}
+            </Button>
+            <Button type="button" onClick={submitEditor}>
+              保存实给
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -5052,6 +5614,58 @@ async function patchOrderInApi(
   };
 }
 
+async function voidOrderWithDangerAction(
+  orderId: string,
+  input: OrderDangerActionInput,
+  text: AdminText
+) {
+  const encodedOrderId = encodeURIComponent(orderId);
+  const path = `/api/admin/orders/${encodedOrderId}/danger-actions`;
+  const response = await fetch(path, {
+    body: JSON.stringify({
+      action: "void_and_soft_delete",
+      confirmOrderNo: input.confirmOrderNo,
+      reason: input.reason,
+    }),
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    const payload = await readJsonSafely(response);
+    const message = readApiErrorMessage(payload, text);
+
+    throw new Error(
+      message ??
+        formatAdminMessage(text.orders.notices.requestFailed, {
+          method: "POST",
+          path,
+          status: response.status,
+        })
+    );
+  }
+
+  const payload = await readJsonSafely(response);
+  const meta = isRecord(payload) && isRecord(payload.meta) ? payload.meta : {};
+  const dangerAction = isRecord(meta.dangerAction)
+    ? meta.dangerAction
+    : isRecord(payload) && isRecord(payload.data) && isRecord(payload.data.dangerAction)
+      ? payload.data.dangerAction
+      : {};
+
+  return {
+    restoredQty:
+      readNumber(readRecordValue(dangerAction, ["restored_qty", "restoredQty"])) ?? 0,
+    walletRefundAmount:
+      readNumber(readRecordValue(dangerAction, ["wallet_refund_amount", "walletRefundAmount"])) ??
+      0,
+  };
+}
+
 async function patchOrderPaymentInApi(
   orderId: string,
   patch: OrderPaymentPatchInput,
@@ -5119,6 +5733,49 @@ async function patchOrderShippingInApi(
       message ??
         formatAdminMessage(text.orders.notices.requestFailed, {
           method: "PATCH",
+          path,
+          status: response.status,
+        })
+    );
+  }
+
+  const payload = await readJsonSafely(response);
+  const meta = isRecord(payload) && isRecord(payload.meta) ? payload.meta : {};
+  const source = readSource(meta.source ?? (isRecord(payload) ? payload.source : null));
+  const row = extractOrderPayload(payload);
+
+  return {
+    order: row ? normalizeAdminOrder(row, 0, source) : null,
+    source,
+  };
+}
+
+async function patchOrderLineFulfillmentInApi(
+  orderId: string,
+  lineId: string,
+  patch: OrderLineFulfillmentInput,
+  text: AdminText
+) {
+  const encodedOrderId = encodeURIComponent(orderId);
+  const path = `/api/admin/orders/${encodedOrderId}/lines/${encodeURIComponent(lineId)}/fulfillment`;
+  const response = await fetch(path, {
+    body: JSON.stringify(patch),
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    const payload = await readJsonSafely(response);
+    const message = readApiErrorMessage(payload, text);
+
+    throw new Error(
+      message ??
+        formatAdminMessage(text.orders.notices.requestFailed, {
+          method: "POST",
           path,
           status: response.status,
         })
@@ -5244,9 +5901,14 @@ function normalizeAdminOrder(
   const paymentReconciliation = normalizePaymentReconciliation(
     readRecordValue(row, ["paymentReconciliation", "payment_reconciliation"])
   );
+  const walletAppliedAmount = readMoney(readRecordValue(row, ["walletAppliedAmount", "wallet_applied_amount"]));
   const receivedAmountForDue =
-    paymentReconciliation.receivedAmount ??
-    (paymentStatus === "paid" ? total : 0);
+    (paymentReconciliation.receivedAmount ??
+      (paymentStatus === "paid" && walletAppliedAmount <= 0 ? total : 0)) +
+    walletAppliedAmount;
+  const paymentOverpaidAmount =
+    readMoney(readRecordValue(row, ["paymentOverpaidAmount", "payment_overpaid_amount"])) ??
+    Math.max(0, roundMoney(receivedAmountForDue - total));
   const paymentDueAmountValue = readRecordValue(row, [
     "paymentDueAmount",
     "payment_due_amount",
@@ -5281,6 +5943,16 @@ function normalizeAdminOrder(
       readString(readRecordValue(row, ["paymentDue", "payment_due", "dueDate"])) ??
       (paymentStatus === "paid" ? "Pagato" : "Da verificare"),
     paymentDueAmount,
+    paymentOverpaidAmount,
+    walletAppliedAmount,
+    softDeletedAt: readString(readRecordValue(row, ["softDeletedAt", "soft_deleted_at"])),
+    softDeletedBy: readString(readRecordValue(row, ["softDeletedBy", "soft_deleted_by"])),
+    dangerActionType:
+      readString(readRecordValue(row, ["dangerActionType", "danger_action_type"])) ?? "",
+    dangerActionReason:
+      readString(readRecordValue(row, ["dangerActionReason", "danger_action_reason"])) ?? "",
+    dangerActionMetadata:
+      readRecordValue(row, ["dangerActionMetadata", "danger_action_metadata"]) ?? {},
     paymentReconciliation,
     warehouse,
     carrier: normalizeCarrierValue(
@@ -5351,8 +6023,6 @@ function normalizeOrderLine(
   const unitPrice =
     readMoney(readRecordValue(row, ["unitPrice", "unit_price", "price"])) ||
     (lineTotal > 0 ? roundMoney(lineTotal / quantity) : 0);
-  const normalizedLineTotal =
-    lineTotal > 0 ? lineTotal : roundMoney(unitPrice * quantity);
   const fulfilledQty =
     readNumber(readRecordValue(row, ["fulfilledQty", "fulfilled_qty"])) ??
     (fulfillmentStatus === "delivered"
@@ -5372,6 +6042,16 @@ function normalizeOrderLine(
     readNumber(readRecordValue(row, ["picked", "pickedQuantity", "picked_quantity"])) ??
     fulfilledQty ??
     reservedQty;
+  const cancelledQty =
+    readNumber(readRecordValue(row, ["cancelledQty", "cancelled_qty"])) ??
+    readNumber(readRecordValue(row, ["shortageQty", "shortage_qty"])) ??
+    0;
+  const pickedQty =
+    readNumber(readRecordValue(row, ["pickedQty", "picked_qty"])) ??
+    picked;
+  const billableQty =
+    readNumber(readRecordValue(row, ["billableQty", "billable_qty"])) ??
+    Math.max(0, quantity - cancelledQty);
 
   return {
     id: readString(readRecordValue(row, ["id", "lineId", "line_id", "orderLineId", "order_line_id"])) ?? `${sku}:${index}`,
@@ -5397,6 +6077,11 @@ function normalizeOrderLine(
       "Ricambio",
     quantity,
     picked,
+    pickedQty,
+    cancelledQty,
+    shortageQty: cancelledQty,
+    lineStatus: readString(readRecordValue(row, ["lineStatus", "line_status"])) ?? "",
+    billableQty,
     reservedQty,
     fulfilledQty,
     stockStatus: readString(readRecordValue(row, ["stockStatus", "stock_status"])) ?? "",
@@ -5404,7 +6089,7 @@ function normalizeOrderLine(
       readString(readRecordValue(row, ["batchCode", "batch_code"]))
     ),
     unitPrice,
-    lineTotal: normalizedLineTotal,
+    lineTotal: lineTotal > 0 ? lineTotal : roundMoney(unitPrice * billableQty),
     warehouse: normalizeWarehouseValue(
       readRecordValue(row, ["warehouse", "location"])
     ),
@@ -6097,6 +6782,13 @@ function adminOrderErrorMessage(code: string | null, text: AdminText) {
       return text.orders.forceCancelReasonRequired;
     case "ADMIN_ORDER_FORCE_CANCEL_ADMIN_REQUIRED":
       return text.orders.notices.adminOnlyForceCancel;
+    case "ADMIN_ORDER_DANGER_REASON_REQUIRED":
+      return text.orders.dangerActionReasonRequired;
+    case "ADMIN_ORDER_DANGER_CONFIRMATION_REQUIRED":
+    case "ADMIN_ORDER_DANGER_ACTION_FAILED":
+      return text.orders.dangerActionFailed;
+    case "ADMIN_ORDER_DANGER_ADMIN_REQUIRED":
+      return text.orders.notices.adminOnlyDangerAction;
     default:
       return null;
   }
@@ -6517,4 +7209,36 @@ function fulfilledBadgeClass(line: OrderLine) {
   }
 
   return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function orderLineOperationalBadgeClass(line: OrderLine) {
+  if (line.cancelledQty >= line.quantity) {
+    return "border-red-200 bg-red-50 text-red-700";
+  }
+
+  if (line.cancelledQty > 0) {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  if (line.pickedQty >= line.quantity) {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function orderLineOperationalLabel(line: OrderLine) {
+  if (line.cancelledQty >= line.quantity) {
+    return "缺货核销";
+  }
+
+  if (line.cancelledQty > 0) {
+    return "部分缺货";
+  }
+
+  if (line.pickedQty >= line.quantity) {
+    return "已确认";
+  }
+
+  return "待确认";
 }

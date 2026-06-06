@@ -10,9 +10,14 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
   const companySnapshot = isRecord(companySnapshotValue) ? companySnapshotValue : null;
   const operationHistory = toOrderOperationHistory(order);
   const paymentCollector = findPaymentCollector(order, operationHistory);
+  const walletAppliedAmount = order.walletAppliedAmount ?? 0;
+  const receivedAmount =
+    order.paymentReceivedAmount ??
+    (order.paymentStatus === "paid" && walletAppliedAmount <= 0 ? order.total : 0);
   const paymentReceivedForDue =
-    order.paymentReceivedAmount ?? (order.paymentStatus === "paid" ? order.total : 0);
+    receivedAmount + walletAppliedAmount;
   const paymentDueAmount = Math.max(0, roundMoney(order.total - paymentReceivedForDue));
+  const paymentOverpaidAmount = Math.max(0, roundMoney(paymentReceivedForDue - order.total));
   const hasSupplementDue =
     order.paymentStatus !== "paid" &&
     paymentDueAmount > 0 &&
@@ -62,6 +67,13 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
     paymentMethod: normalizePaymentMethod(order.paymentMethod, fiscal),
     paymentDue: order.paymentStatus === "paid" ? "Pagato" : hasSupplementDue ? "Da integrare" : "Da verificare",
     paymentDueAmount,
+    paymentOverpaidAmount,
+    walletAppliedAmount,
+    softDeletedAt: order.softDeletedAt,
+    softDeletedBy: order.softDeletedBy,
+    dangerActionType: order.dangerActionType,
+    dangerActionReason: order.dangerActionReason,
+    dangerActionMetadata: order.dangerActionMetadata,
     paymentReconciliation: {
       receivedAt: order.paymentReceivedAt,
       receivedAmount: order.paymentReceivedAmount,
@@ -80,6 +92,8 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
     staffNote: order.staffNote,
     notes: order.staffNote || order.customerNote,
     lines: (order.lines ?? []).map((line) => ({
+      billableQty: Math.max(0, line.quantity - line.cancelledQty),
+      cancelledQty: line.cancelledQty,
       id: line.id,
       sku: toPublicSku(line.sku),
       name: line.productName,
@@ -88,7 +102,10 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
       imageAlt: line.productImageAlt,
       category: sanitizeSupplierText(line.qualityGrade) || "Ricambio",
       quantity: line.quantity,
-      picked: line.fulfilledQty || line.reservedQty,
+      picked: line.pickedQty || line.fulfilledQty || line.reservedQty,
+      pickedQty: line.pickedQty,
+      shortageQty: line.cancelledQty,
+      lineStatus: orderLineStatus(line),
       unitPrice: line.unitPrice,
       lineTotal: line.lineNet,
       warehouse: normalizeWarehouse(line.location),
@@ -117,6 +134,22 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
 
 function roundMoney(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function orderLineStatus(line: NonNullable<AdminOrder["lines"]>[number]) {
+  if (line.cancelledQty >= line.quantity) {
+    return "shortage_cancelled";
+  }
+
+  if (line.cancelledQty > 0) {
+    return "partial_shortage";
+  }
+
+  if (line.pickedQty >= line.quantity) {
+    return "pick_confirmed";
+  }
+
+  return "pending";
 }
 
 function findPaymentCollector(

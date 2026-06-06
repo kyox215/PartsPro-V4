@@ -2,6 +2,7 @@ import { AccountPage } from "@/components/partspro/account-page";
 import { getCurrentAccountContext } from "@/lib/partspro-account-context";
 import {
   getCurrentCustomerProfile,
+  getCurrentCustomerWallet,
   getCurrentEmployeeSelfCompany,
   getCurrentEmployeeSelfProfile,
   listCurrentCustomerCompanies,
@@ -41,12 +42,13 @@ export default async function Page({
   const account = await getCurrentAccountContext({ ensure: true });
   const shouldReadCustomerData = account.accountType === "customer";
   const shouldReadEmployeeSelfData = account.accountType === "employee";
-  const [companies, orders, rmas, customerProfile] = shouldReadCustomerData
+  const [companies, orders, rmas, customerProfile, wallet] = shouldReadCustomerData
     ? await Promise.all([
         listCurrentCustomerCompanies(),
         listCurrentCustomerOrderSummaries(),
         listCurrentCustomerRmaRequests(),
         getCurrentCustomerProfile(),
+        getCurrentCustomerWallet(),
       ])
     : shouldReadEmployeeSelfData
       ? await Promise.all([
@@ -57,12 +59,14 @@ export default async function Page({
           listCurrentEmployeeSelfOrderSummaries(),
           { data: [], warning: undefined },
           getCurrentEmployeeSelfProfile(),
+          getCurrentCustomerWallet(),
         ])
     : [
         { data: [], warning: undefined },
         { data: [], warning: undefined },
         { data: [], warning: undefined },
         { data: null, warning: undefined },
+        { data: { balance: 0, currency: "EUR" as const, transactions: [] }, warning: undefined },
       ];
   const company =
     shouldReadCustomerData && account.customer?.id
@@ -80,6 +84,7 @@ export default async function Page({
       forceSetup={readSingleParam(params.setup) === "1"}
       orderSummaries={orders.data}
       rmaRequests={rmas.data}
+      wallet={wallet.data}
       userEmail={account.email ?? user.email ?? undefined}
     />
   );

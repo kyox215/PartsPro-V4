@@ -190,6 +190,23 @@ export type AccountCustomerProfileInput = {
   vatNumber?: string;
 };
 
+export type CustomerWalletTransaction = {
+  amount: number;
+  balanceAfter: number;
+  createdAt: string;
+  direction: "credit" | "debit";
+  id: string;
+  orderId: string | null;
+  orderLineId: string | null;
+  reason: string;
+};
+
+export type CustomerWallet = {
+  balance: number;
+  currency: "EUR";
+  transactions: CustomerWalletTransaction[];
+};
+
 export type CustomerCartItem = {
   createdAt: string;
   customerId: string | null;
@@ -675,6 +692,8 @@ export type AdminOrderLine = {
   productImageAlt?: string;
   qualityGrade: string;
   quantity: number;
+  pickedQty: number;
+  cancelledQty: number;
   unitPrice: number;
   lineNet: number;
   stockStatus: string;
@@ -729,6 +748,12 @@ export type AdminOrder = {
   paymentReceivedAmount: number | null;
   paymentReference: string;
   paymentReconciliationNote: string;
+  walletAppliedAmount: number;
+  softDeletedAt: string | null;
+  softDeletedBy: string | null;
+  dangerActionType: string;
+  dangerActionReason: string;
+  dangerActionMetadata: unknown;
   stockRisk: string;
   totalNet: number;
   vat: number;
@@ -796,6 +821,13 @@ export type AdminOrderForceCancelInput = {
   metadata?: Record<string, unknown>;
 };
 
+export type AdminOrderDangerActionInput = {
+  confirmOrderNo: string;
+  metadata?: Record<string, unknown>;
+  orderId: string;
+  reason: string;
+};
+
 export type AdminOrderStatusTransitionResult = {
   order: AdminOrder;
   transition: unknown;
@@ -843,6 +875,19 @@ export type AdminOrderShippingAdjustmentInput = {
 export type AdminOrderShippingAdjustmentResult = {
   adjustment: unknown;
   order: AdminOrder;
+};
+
+export type AdminOrderLinePickInput = {
+  actualQuantity: number;
+  lineId: string;
+  orderId: string;
+  reason?: string;
+  metadata?: Record<string, unknown>;
+};
+
+export type AdminOrderLinePickResult = {
+  order: AdminOrder;
+  result: unknown;
 };
 
 export type PreparedOrderLine = {
@@ -939,6 +984,7 @@ export type SaveOrderInput = {
   notes?: string;
   lines: PreparedOrderLine[];
   totals: PreparedOrderTotals;
+  walletRequestedAmount?: number;
 };
 
 export type SavedOrder = {
@@ -946,6 +992,7 @@ export type SavedOrder = {
   orderNo?: string;
   status: OrderStatus;
   createdAt: string;
+  walletAppliedAmount?: number;
 };
 
 export type SaveRmaInput = {
@@ -2103,6 +2150,31 @@ export async function getCurrentEmployeeSelfProfile(): Promise<
   );
 }
 
+export async function getCurrentCustomerWallet(): Promise<RepositoryResult<CustomerWallet>> {
+  const supabaseResult = await withSupabase(async (context) => {
+    const profile =
+      (await readCurrentCustomerProfile(context)) ??
+      (await readCurrentEmployeeSelfProfile(context));
+    const customerId = pickString(profile?.raw, ["id"]);
+
+    if (!customerId) {
+      return { balance: 0, currency: "EUR" as const, transactions: [] };
+    }
+
+    return readCustomerWallet(context.client, customerId);
+  });
+
+  return (
+    supabaseResult ??
+    emptyResult(
+      { balance: 0, currency: "EUR", transactions: [] },
+      isSupabaseConfigured()
+        ? "Supabase customer wallet could not be read."
+        : "Supabase is not configured; no customer wallet is available."
+    )
+  );
+}
+
 export async function getCurrentEmployeeSelfCompany(): Promise<
   RepositoryResult<CompanyProfile | null>
 > {
@@ -2830,6 +2902,79 @@ export async function forceCancelAdminShippedOrder(
   };
 }
 
+export async function voidAndSoftDeleteAdminOrder(
+  input: AdminOrderDangerActionInput
+): Promise<RepositoryResult<AdminOrderStatusTransitionResult>> {
+  const context = await requireSupabaseContext();
+  const orderRow = await readOrderByIdOrNumber(context.client, input.orderId);
+  const orderId = pickString(orderRow, ["id"]);
+  const reason = input.reason.trim();
+  const confirmOrderNo = input.confirmOrderNo.trim();
+
+  if (!orderId) {
+    throw new RepositoryWriteError(
+      404,
+      "ADMIN_ORDER_NOT_FOUND",
+      "Order was not found.",
+      { orderId: input.orderId }
+    );
+  }
+
+  if (!reason) {
+    throw new RepositoryWriteError(
+      400,
+      "ADMIN_ORDER_DANGER_REASON_REQUIRED",
+      "A reason is required before an order can be voided.",
+      { orderId }
+    );
+  }
+
+  if (!confirmOrderNo) {
+    throw new RepositoryWriteError(
+      400,
+      "ADMIN_ORDER_DANGER_CONFIRMATION_REQUIRED",
+      "The order number must be confirmed before this dangerous action.",
+      { orderId }
+    );
+  }
+
+  const { data, error } = await context.client.rpc("admin_void_completed_order", {
+    p_order_id: orderId,
+    p_reason: reason,
+    p_confirm_order_no: confirmOrderNo,
+    p_metadata: input.metadata ?? {},
+  });
+
+  if (error) {
+    throw new RepositoryWriteError(
+      409,
+      "ADMIN_ORDER_DANGER_ACTION_FAILED",
+      "Supabase rejected the dangerous order action.",
+      adminOrderTransitionErrorDetails(error)
+    );
+  }
+
+  const order = await readAdminOrderDetail(context.client, orderId, {
+    includeSoftDeleted: true,
+  });
+
+  if (!order) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_ORDER_RESULT_INVALID",
+      "Supabase returned an invalid order after the dangerous action."
+    );
+  }
+
+  return {
+    data: {
+      order,
+      transition: data,
+    },
+    source: "supabase",
+  };
+}
+
 export async function rollbackAdminOrderStatus(
   input: AdminOrderStatusRollbackInput
 ): Promise<RepositoryResult<AdminOrderStatusTransitionResult>> {
@@ -3108,6 +3253,58 @@ export async function adjustAdminOrderShipping(
     data: {
       adjustment: data,
       order,
+    },
+    source: "supabase",
+  };
+}
+
+export async function recordAdminOrderLinePick(
+  input: AdminOrderLinePickInput
+): Promise<RepositoryResult<AdminOrderLinePickResult>> {
+  const context = await requireSupabaseContext();
+  const orderRow = await readOrderByIdOrNumber(context.client, input.orderId);
+  const orderId = pickString(orderRow, ["id"]);
+
+  if (!orderId) {
+    throw new RepositoryWriteError(
+      404,
+      "ADMIN_ORDER_NOT_FOUND",
+      "Order was not found.",
+      { orderId: input.orderId }
+    );
+  }
+
+  const { data, error } = await context.client.rpc("admin_record_order_line_pick", {
+    p_actual_quantity: input.actualQuantity,
+    p_metadata: input.metadata ?? {},
+    p_order_id: orderId,
+    p_order_line_id: input.lineId,
+    p_reason: input.reason ?? "",
+  });
+
+  if (error) {
+    throw new RepositoryWriteError(
+      supabaseRpcStatus(error),
+      "ADMIN_ORDER_LINE_PICK_FAILED",
+      "Supabase rejected the order line actual quantity update.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const order = await readAdminOrderDetail(context.client, orderId);
+
+  if (!order) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_ORDER_RESULT_INVALID",
+      "Supabase returned an invalid order after the line update."
+    );
+  }
+
+  return {
+    data: {
+      order,
+      result: data,
     },
     source: "supabase",
   };
@@ -4341,6 +4538,7 @@ async function readAdminCustomerOrders(
       .from("orders")
       .select("*")
       .eq("customer_id", customerId)
+      .is("soft_deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(20);
     const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
@@ -4693,7 +4891,10 @@ async function readAdminOrderPage(
   const to = from + Math.max(query.limit, 1) - 1;
 
   try {
-    let request = client.from("orders").select("*", { count: "exact" });
+    let request = client
+      .from("orders")
+      .select("*", { count: "exact" })
+      .is("soft_deleted_at", null);
 
     if (query.customerId) {
       request = request.eq("customer_id", query.customerId);
@@ -4783,13 +4984,18 @@ async function readAdminOrderPage(
 
 async function readAdminOrderDetail(
   client: SupabaseServerClient,
-  orderId: string
+  orderId: string,
+  options: { includeSoftDeleted?: boolean } = {}
 ): Promise<AdminOrder | null> {
-  const orderRow = await readOrderByIdOrNumber(client, orderId);
+    const orderRow = await readOrderByIdOrNumber(client, orderId);
 
-  if (!orderRow) {
-    return null;
-  }
+    if (!orderRow) {
+      return null;
+    }
+
+    if (!options.includeSoftDeleted && pickString(orderRow, ["soft_deleted_at"])) {
+      return null;
+    }
 
   const id = pickString(orderRow, ["id"]);
 
@@ -4888,6 +5094,37 @@ async function readCurrentEmployeeSelfProfile(
   return row && profile ? { profile, raw: row } : null;
 }
 
+async function readCustomerWallet(
+  client: SupabaseServerClient,
+  customerId: string
+): Promise<CustomerWallet> {
+  const walletRow = await readSingleRow(
+    client,
+    "customer_wallets",
+    "customer_id",
+    customerId
+  );
+  const walletId = pickString(walletRow, ["id"]);
+  const transactionRows = walletId
+    ? await readRowsByColumn(
+        client,
+        "customer_wallet_transactions",
+        "*",
+        "wallet_id",
+        walletId,
+        { orderColumn: "created_at", ascending: false }
+      )
+    : [];
+
+  return {
+    balance: pickNumber(walletRow, ["balance"]) ?? 0,
+    currency: "EUR",
+    transactions: (transactionRows ?? [])
+      .map(mapCustomerWalletTransactionRow)
+      .filter(isDefined),
+  };
+}
+
 async function readCustomerOrderRows(
   client: SupabaseServerClient,
   customerId: string,
@@ -4969,9 +5206,13 @@ async function readOrderSummariesForCustomer(
 }
 
 async function readOrderSummaries(context: SupabaseContext) {
-  const orderRows = await readRows(context.client, "orders");
+  const { data, error } = await context.client
+    .from("orders")
+    .select("*")
+    .is("soft_deleted_at", null);
+  const orderRows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
 
-  if (!orderRows) {
+  if (error || !orderRows) {
     return null;
   }
 
@@ -5115,6 +5356,7 @@ async function createRemoteOrderTransaction(
     p_shipping: centsToNumber(input.totals.shippingCents),
     p_fiscal: {
       payment_method: input.paymentMethod,
+      wallet_requested_amount: input.walletRequestedAmount ?? 0,
       totals: {
         subtotal: centsToNumber(input.totals.subtotalCents),
         shipping: centsToNumber(input.totals.shippingCents),
@@ -5161,12 +5403,14 @@ async function createRemoteOrderTransaction(
     const row = await readSingleRow(context.client, "orders", "id", orderId);
     const createdAt = pickString(row, ["created_at", "createdAt"]) ?? new Date().toISOString();
     const orderNo = pickString(row, ["order_no", "order_number", "reference"]) ?? orderId;
+    const walletAppliedAmount = pickNumber(row, ["wallet_applied_amount", "walletAppliedAmount"]) ?? 0;
 
     return {
       id: orderNo,
       orderNo,
       status: normalizeOrderStatus(pickString(row, ["status", "payment_status"])),
       createdAt,
+      walletAppliedAmount,
     };
   } catch (error) {
     if (error instanceof RepositoryWriteError) {
@@ -6747,6 +6991,12 @@ function mapAdminOrderRow(
     paymentReceivedAmount: pickNumber(row, ["payment_received_amount"]),
     paymentReference: pickString(row, ["payment_reference"]) ?? "",
     paymentReconciliationNote: pickString(row, ["payment_reconciliation_note"]) ?? "",
+    walletAppliedAmount: pickNumber(row, ["wallet_applied_amount", "walletAppliedAmount"]) ?? 0,
+    softDeletedAt: pickString(row, ["soft_deleted_at", "softDeletedAt"]),
+    softDeletedBy: pickString(row, ["soft_deleted_by", "softDeletedBy"]),
+    dangerActionType: pickString(row, ["danger_action_type", "dangerActionType"]) ?? "",
+    dangerActionReason: pickString(row, ["danger_action_reason", "dangerActionReason"]) ?? "",
+    dangerActionMetadata: row.danger_action_metadata ?? {},
     stockRisk: pickString(row, ["stock_risk"]) ?? "clear",
     totalNet,
     vat,
@@ -6787,6 +7037,26 @@ function mapAdminOrderRow(
   };
 }
 
+function mapCustomerWalletTransactionRow(row: DbRow): CustomerWalletTransaction | null {
+  const id = pickString(row, ["id"]);
+  const direction = pickString(row, ["direction"]);
+
+  if (!id || (direction !== "credit" && direction !== "debit")) {
+    return null;
+  }
+
+  return {
+    amount: pickNumber(row, ["amount"]) ?? 0,
+    balanceAfter: pickNumber(row, ["balance_after", "balanceAfter"]) ?? 0,
+    createdAt: pickString(row, ["created_at", "createdAt"]) ?? new Date().toISOString(),
+    direction,
+    id,
+    orderId: pickString(row, ["order_id", "orderId"]),
+    orderLineId: pickString(row, ["order_line_id", "orderLineId"]),
+    reason: pickString(row, ["reason"]) ?? "",
+  };
+}
+
 function mapAdminOrderLineRow(
   row: DbRow,
   productsBySku: Map<string, DbRow> = new Map()
@@ -6820,8 +7090,10 @@ function mapAdminOrderLineRow(
     ...(productImageAlt ? { productImageAlt } : {}),
     qualityGrade: pickString(row, ["quality_grade"]) ?? "",
     quantity,
+    pickedQty: pickNumber(row, ["picked_qty", "pickedQty"]) ?? 0,
+    cancelledQty: pickNumber(row, ["cancelled_qty", "cancelledQty"]) ?? 0,
     unitPrice,
-    lineNet: roundMoney(unitPrice * quantity),
+    lineNet: roundMoney(unitPrice * Math.max(0, quantity - (pickNumber(row, ["cancelled_qty", "cancelledQty"]) ?? 0))),
     stockStatus: pickString(row, ["stock_status"]) ?? "available",
     reservedQty: pickNumber(row, ["reserved_qty"]) ?? 0,
     fulfilledQty: pickNumber(row, ["fulfilled_qty"]) ?? 0,

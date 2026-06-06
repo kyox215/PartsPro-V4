@@ -83,3 +83,18 @@ export const orderShippingPatchSchema = z
     note: z.string().trim().max(1000).optional(),
   })
   .strict();
+
+export const orderLineFulfillmentSchema = z
+  .object({
+    actualQuantity: z.coerce.number().int().min(0).max(999),
+    reason: z.string().trim().max(500).optional(),
+  })
+  .strict();
+
+export const orderDangerActionSchema = z
+  .object({
+    action: z.literal("void_and_soft_delete"),
+    confirmOrderNo: z.string().trim().min(1).max(80),
+    reason: z.string().trim().min(1).max(1000),
+  })
+  .strict();

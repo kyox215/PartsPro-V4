@@ -25,6 +25,7 @@ export const adminPermissions = [
   "employees.manage_permissions",
   "orders.read",
   "orders.manage",
+  "orders.danger",
   "products.read_admin",
   "products.manage",
   "products.pricing",

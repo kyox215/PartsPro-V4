@@ -17,6 +17,7 @@ import {
   clearCurrentCustomerCart,
   getCustomerProfileById,
   getCurrentCustomerProfile,
+  getCurrentCustomerWallet,
   getCurrentEmployeeSelfCompany,
   getCurrentEmployeeSelfProfile,
   listCatalogProductsBySkus,
@@ -328,6 +329,11 @@ export async function POST(request: NextRequest) {
       customerProfile.data,
       deliveryAddress
     );
+    const wallet =
+      checkoutMode === "delegated_customer"
+        ? { data: { balance: 0 } }
+        : await getCurrentCustomerWallet();
+    const walletRequestedAmount = Math.max(0, wallet.data.balance);
     const saved = await saveOrder({
       company,
       paymentMethod: result.data.paymentMethod,
@@ -337,6 +343,7 @@ export async function POST(request: NextRequest) {
       notes: result.data.notes,
       lines: orderBuild.lines,
       totals,
+      walletRequestedAmount,
     });
     let cartClearWarning: string | undefined;
 
@@ -364,6 +371,8 @@ export async function POST(request: NextRequest) {
             priceList: company.priceList,
           },
           paymentMethod: result.data.paymentMethod,
+          walletAppliedAmount: saved.data.walletAppliedAmount ?? 0,
+          payableAmount: Math.max(0, totals.totalCents / 100 - (saved.data.walletAppliedAmount ?? 0)),
           notes: result.data.notes ?? null,
           lines: orderBuild.lines.map(toOrderLineDto),
           totals: totalsDto(totals),
