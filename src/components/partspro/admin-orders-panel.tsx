@@ -5435,50 +5435,73 @@ function OrderOperationHistory({
         </Badge>
       </div>
       {events.length > 0 ? (
-        <div className="max-h-[180px] space-y-1 overflow-y-auto pr-1 sm:max-h-[240px] xl:max-h-[340px]">
-          {events.map((event) => (
-            <div
-              key={event.id}
-              className="relative min-w-0 rounded-md border border-slate-200 bg-white px-2 py-1.5"
-            >
-              <div className="flex min-w-0 items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <Badge className={activityBadgeClass(event.eventType)}>
-                      {activityEventLabel(event.eventType, text)}
-                    </Badge>
-                    {event.fromStatus && event.toStatus && (
-                      <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-black text-slate-600">
-                        {labels.status[event.fromStatus]} {"->"}{" "}
-                        {labels.status[event.toStatus]}
+        <div className="max-h-[220px] overflow-y-auto pr-1 sm:max-h-[260px] xl:max-h-[360px]">
+          {events.map((event, index) => {
+            const actorName = activityActorPrimaryLabel(event, text);
+            const actorSecondary = activityActorSecondaryLabel(event, actorName);
+            const actorRole = event.actor.role
+              ? adminRoleTemplateLabel(text, event.actor.role, event.actor.role)
+              : null;
+
+            return (
+              <div key={event.id} className="relative flex min-w-0 gap-2 pb-2 last:pb-0">
+                <div className="relative flex w-4 shrink-0 justify-center">
+                  <span
+                    className={cn(
+                      "mt-3 h-2.5 w-2.5 rounded-full ring-4 ring-white",
+                      activityDotClass(event.eventType)
+                    )}
+                  />
+                  {index < events.length - 1 && (
+                    <span className="absolute bottom-0 top-6 w-px bg-slate-200" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-2 shadow-sm">
+                  <div className="flex min-w-0 flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <Badge className={activityBadgeClass(event.eventType)}>
+                          {activityEventLabel(event.eventType, text)}
+                        </Badge>
+                        {event.fromStatus && event.toStatus && (
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-black text-slate-600">
+                            {labels.status[event.fromStatus]} {"->"}{" "}
+                            {labels.status[event.toStatus]}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-1 break-words text-xs font-semibold text-slate-700">
+                        {event.note || text.common.none}
+                      </div>
+                    </div>
+                    <time className="shrink-0 whitespace-nowrap text-[10px] font-bold text-slate-400 sm:text-right">
+                      {formatDisplayDate(event.createdAt)}
+                    </time>
+                  </div>
+                  <div className="mt-2 grid min-w-0 gap-2 rounded-md bg-slate-50 px-2 py-1.5 text-[11px] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-400">
+                        {text.activity.actor}
+                      </div>
+                      <div className="mt-0.5 break-words text-xs font-black text-slate-800">
+                        {actorName}
+                      </div>
+                      {actorSecondary && (
+                        <div className="mt-0.5 break-all text-[11px] font-semibold text-slate-500">
+                          {actorSecondary}
+                        </div>
+                      )}
+                    </div>
+                    {actorRole && (
+                      <span className="w-fit rounded bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-500 ring-1 ring-slate-200">
+                        {actorRole}
                       </span>
                     )}
                   </div>
-                  <div className="mt-1 break-words text-xs font-semibold text-slate-700">
-                    {event.note || text.common.none}
-                  </div>
                 </div>
-                <time className="shrink-0 text-right text-[10px] font-semibold text-slate-400">
-                  {formatDisplayDate(event.createdAt)}
-                </time>
               </div>
-              <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-500">
-                <span className="text-slate-400">{text.activity.actor}</span>
-                <span className="min-w-0 break-words text-slate-800">
-                  {orderValueLabel(
-                    text,
-                    event.actor.label,
-                    text.orders.activity.systemActor
-                  )}
-                </span>
-                {event.actor.role && (
-                  <span className="rounded bg-slate-50 px-1.5 py-0.5 text-[10px] text-slate-500">
-                    {adminRoleTemplateLabel(text, event.actor.role, event.actor.role)}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : fallbackActivity.length > 0 ? (
         <div className="space-y-2">
@@ -5498,6 +5521,50 @@ function OrderOperationHistory({
       )}
     </div>
   );
+}
+
+function activityActorPrimaryLabel(event: OrderActivityEvent, text: AdminText) {
+  const candidate =
+    preferredActorText(event.actor.name) ??
+    preferredActorText(event.actor.label) ??
+    preferredActorText(event.actor.email) ??
+    preferredActorText(event.actor.id) ??
+    text.orders.activity.systemActor;
+
+  return orderValueLabel(text, candidate, text.orders.activity.systemActor);
+}
+
+function activityActorSecondaryLabel(event: OrderActivityEvent, primaryLabel: string) {
+  const email = preferredActorText(event.actor.email);
+  const id = preferredActorText(event.actor.id);
+
+  if (email && !sameText(email, primaryLabel)) {
+    return email;
+  }
+
+  if (id && !sameText(id, primaryLabel)) {
+    return shortActorId(id);
+  }
+
+  return null;
+}
+
+function preferredActorText(value: string | null | undefined) {
+  const text = sanitizeSupplierText(value);
+
+  if (!text || sameText(text, "System")) {
+    return null;
+  }
+
+  return text;
+}
+
+function sameText(left: string, right: string) {
+  return left.trim().toLowerCase() === right.trim().toLowerCase();
+}
+
+function shortActorId(value: string) {
+  return value.length > 12 ? `${value.slice(0, 8)}...${value.slice(-4)}` : value;
 }
 
 function StatusStepper({
@@ -7520,6 +7587,22 @@ function noticeToneClass(tone: NoticeTone) {
 }
 
 function activityEventLabel(eventType: string, text: AdminText) {
+  if (eventType === "admin_voided_soft_deleted") {
+    return text.orders.activity.adminVoidedSoftDeleted;
+  }
+
+  if (eventType === "shipping_adjusted") {
+    return text.orders.activity.shippingAdjusted;
+  }
+
+  if (eventType === "payment_reconciled") {
+    return text.orders.activity.paymentReconciled;
+  }
+
+  if (eventType === "order_created") {
+    return text.orders.activity.orderCreated;
+  }
+
   if (eventType === "status_rolled_back") {
     return text.orders.activity.statusRolledBack;
   }
@@ -7548,7 +7631,15 @@ function orderActivityLineLabel(text: AdminText, value: string) {
 }
 
 function activityBadgeClass(eventType: string) {
+  if (eventType === "admin_voided_soft_deleted") {
+    return "border-red-200 bg-red-50 text-red-700";
+  }
+
   if (eventType === "status_rolled_back") {
+    return "border-amber-200 bg-amber-50 text-amber-700";
+  }
+
+  if (eventType === "shipping_adjusted") {
     return "border-amber-200 bg-amber-50 text-amber-700";
   }
 
@@ -7556,11 +7647,39 @@ function activityBadgeClass(eventType: string) {
     return "border-cyan-200 bg-cyan-50 text-cyan-700";
   }
 
-  if (eventType === "created") {
+  if (eventType === "payment_reconciled") {
+    return "border-blue-200 bg-blue-50 text-blue-700";
+  }
+
+  if (eventType === "created" || eventType === "order_created") {
     return "border-slate-200 bg-slate-50 text-slate-700";
   }
 
   return "border-emerald-200 bg-emerald-50 text-emerald-700";
+}
+
+function activityDotClass(eventType: string) {
+  if (eventType === "admin_voided_soft_deleted") {
+    return "bg-red-500";
+  }
+
+  if (eventType === "status_rolled_back" || eventType === "shipping_adjusted") {
+    return "bg-amber-500";
+  }
+
+  if (eventType === "operations_updated") {
+    return "bg-cyan-500";
+  }
+
+  if (eventType === "payment_reconciled") {
+    return "bg-blue-500";
+  }
+
+  if (eventType === "created" || eventType === "order_created") {
+    return "bg-slate-400";
+  }
+
+  return "bg-emerald-500";
 }
 
 function sourceBadgeClass(source: OrdersSource) {

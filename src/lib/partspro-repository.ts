@@ -6104,7 +6104,7 @@ async function readOrderEventActorRows(
   eventRows: DbRow[]
 ) {
   const actorIds = uniqueDefinedStrings(
-    eventRows.map((row) => pickString(row, ["actor_id", "actorId"]))
+    eventRows.map((row) => pickOrderEventActorId(row))
   );
 
   if (actorIds.length === 0) {
@@ -6114,10 +6114,19 @@ async function readOrderEventActorRows(
   return readMatchingRows(
     client,
     "profiles",
-    "id, email, role",
+    "id, email, role, account_type, display_name, role_template",
     "id",
     actorIds,
     actorIds.length
+  );
+}
+
+function pickOrderEventActorId(row: DbRow) {
+  const metadata = isDbRow(row.metadata) ? row.metadata : null;
+
+  return (
+    pickString(row, ["actor_id", "actorId"]) ??
+    pickString(metadata, ["actor_id", "actorId", "user_id", "userId"])
   );
 }
 
@@ -7538,10 +7547,21 @@ function mapAdminOrderEventRow(
     return null;
   }
 
-  const actorId = pickString(row, ["actor_id"]);
+  const metadata = isDbRow(row.metadata) ? row.metadata : {};
+  const actorId = pickOrderEventActorId(row);
   const actor = actorId ? actorsById.get(actorId) : undefined;
-  const actorEmail = pickString(row, ["actor_email", "actorEmail"]) ?? pickString(actor, ["email"]);
-  const actorRole = pickString(row, ["actor_role", "actorRole"]) ?? pickString(actor, ["role"]);
+  const actorEmail =
+    pickString(row, ["actor_email", "actorEmail"]) ??
+    pickString(metadata, ["actor_email", "actorEmail", "email"]) ??
+    pickString(actor, ["email"]);
+  const actorName =
+    pickString(row, ["actor_name", "actorName"]) ??
+    pickString(metadata, ["actor_name", "actorName", "display_name", "displayName"]) ??
+    pickString(actor, ["display_name", "displayName"]);
+  const actorRole =
+    pickString(row, ["actor_role", "actorRole"]) ??
+    pickString(metadata, ["actor_role", "actorRole", "role_template", "roleTemplate", "role"]) ??
+    pickString(actor, ["role_template", "roleTemplate", "role", "account_type", "accountType"]);
 
   return {
     id,
@@ -7552,7 +7572,7 @@ function mapAdminOrderEventRow(
     metadata: row.metadata ?? {},
     actorId,
     actorEmail,
-    actorName: pickString(row, ["actor_name", "actorName"]) ?? actorEmail,
+    actorName: actorName ?? actorEmail,
     actorRole,
     createdAt: pickString(row, ["created_at"]) ?? "",
   };
