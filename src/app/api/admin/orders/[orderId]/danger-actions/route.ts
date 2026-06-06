@@ -16,17 +16,6 @@ export async function POST(request: NextRequest, { params }: OrderDangerActionPa
     return admin.response;
   }
 
-  if (admin.authState.role !== "admin") {
-    const { orderId } = await params;
-
-    return apiError(
-      403,
-      "ADMIN_ORDER_DANGER_ADMIN_REQUIRED",
-      "Only administrators can perform dangerous order actions.",
-      { orderId, role: admin.authState.role }
-    );
-  }
-
   const body = await readJsonBody(request);
 
   if (!body.ok) {

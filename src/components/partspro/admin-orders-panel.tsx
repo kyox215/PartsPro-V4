@@ -2112,7 +2112,6 @@ function OrderDetailsPanel({
   const canManageOrders = hasAdminSessionPermission(adminSession, "orders.manage");
   const canDangerVoidOrder =
     isReadOnly &&
-    adminSession.role === "admin" &&
     hasAdminSessionPermission(adminSession, "orders.danger") &&
     !order.softDeletedAt;
   const canEditStaffNote = canManageOrders;

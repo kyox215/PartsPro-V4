@@ -63,6 +63,9 @@ export async function getAdminAuthState(): Promise<AdminAuthState> {
       remotePermissions.ok ? remotePermissions.permissions : []
     );
     const isBootstrapAdmin = isBootstrapAdminEmail(user.email);
+    const effectiveRole = isBootstrapAdmin
+      ? "admin"
+      : role ?? profile?.roleTemplate ?? "admin";
 
     return {
       configured: true,
@@ -70,7 +73,7 @@ export async function getAdminAuthState(): Promise<AdminAuthState> {
       allowed: true,
       permissions,
       reason: isBootstrapAdmin ? "admin_email" : "staff",
-      role: role ?? profile?.roleTemplate ?? "admin",
+      role: effectiveRole,
       userId: user.id,
     };
   }
