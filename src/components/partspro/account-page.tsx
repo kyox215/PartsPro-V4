@@ -15,7 +15,6 @@ import {
   Pencil,
   Plus,
   RotateCcw,
-  Truck,
   WalletCards,
   X,
 } from "lucide-react";
@@ -40,7 +39,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Separator } from "@/components/ui/separator";
 import {
   formatEuro,
   type CompanyProfile,
@@ -222,16 +220,6 @@ export function AccountPage({
     orderFilters.find((filter) => filter.id === activeFilter) ?? orderFilters[0];
   const filteredOrders = orderSummaries.filter(selectedFilter.predicate);
   const shouldShowProfileNotice = Boolean(profile && !profile.profileCompletedAt);
-  const metrics = [
-    [
-      "未完单",
-      String(orderSummaries.filter((order) => !isTerminalOrderStatus(order.status)).length),
-      Package,
-    ],
-    ["配送", String(orderSummaries.filter((order) => order.status === "shipped").length), Truck],
-    ["RMA", String(rmaRequests.length), RotateCcw],
-  ] as const;
-
   async function openOrderDetail(order: OrderSummary) {
     setOrderDetailOpen(true);
     setOrderDetail(null);
@@ -261,112 +249,18 @@ export function AccountPage({
   return (
     <main className="min-h-screen overflow-x-hidden bg-slate-100 text-slate-950">
       <StoreHeader />
-      <div className="mx-auto grid max-w-[1500px] gap-3 px-3 py-3 md:px-4 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[300px_minmax(0,1fr)_320px]">
-        <aside className="space-y-3 lg:sticky lg:top-20 lg:self-start">
-          <AccountRuntimeCard userEmail={userEmail} />
-          <Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
-            <CardContent className="p-3">
-              {company ? (
-                <>
-                  <div className="flex items-start gap-2.5">
-                    <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                      <Building2 className="size-4" />
-                    </div>
-                    <div className="min-w-0">
-                      <h1 className="truncate text-base font-black">{company.name}</h1>
-                      <div className="mt-0.5 text-xs font-semibold text-slate-500">
-                        {company.city} · {company.province}
-                      </div>
-                      <Badge className="mt-2 border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-700">
-                        <CheckCircle2 className="size-3" />
-                        {companyStatusLabel(company.status)}
-                      </Badge>
-                    </div>
-                  </div>
-                  <Separator className="my-3" />
-                  <div className="grid grid-cols-2 gap-2">
-                    <Info label="增值税号" value={company.partitaIva} />
-                    <Info label="税号" value={company.codiceFiscale} />
-                    <Info label="PEC" value={company.pec} />
-                    <Info label="收件代码" value={company.codiceDestinatario} />
-                    <Info label="价目表" value={company.priceList} />
-                    {userEmail && <Info label="登录账号" value={userEmail} />}
-                  </div>
-                </>
-              ) : (
-                <div className="flex items-start gap-2.5">
-                  <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-amber-100 text-amber-700">
-                    <Building2 className="size-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <h1 className="text-base font-black">
-                      {profile?.companyName || (isEmployeeAccount ? "员工自购资料待创建" : "客户档案正在关联")}
-                    </h1>
-                    <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-                      {profile?.companyName
-                        ? isEmployeeAccount
-                          ? "员工可使用这份资料自己下单。"
-                          : "资料已保存，等待客户档案关联。"
-                        : isEmployeeAccount
-                          ? "请先补全员工自购资料，然后可用自己的资料下单。"
-                          : "已检测到登录账号，但客户档案还未完成关联。请刷新页面，或联系管理员在账号管理中补齐客户资料。"}
-                    </p>
-                    {userEmail && <Info label="登录账号" value={userEmail} />}
-                    {!profile ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="mt-3"
-                        onClick={() => setProfileDialogOpen(true)}
-                      >
-                        <Pencil className="size-4" />
-                        补全资料
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-          <CustomerLevelCard company={company} profile={profile} />
-          <WalletCard wallet={wallet} />
-          <Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
-            <CardHeader className="pb-0">
-              <CardTitle className="text-sm font-black">快捷操作</CardTitle>
-            </CardHeader>
-            <CardContent className="grid grid-cols-2 gap-2 lg:grid-cols-1">
-              <Button size="sm" asChild>
-                <Link href="/catalogo">
-                  <Plus className="size-4" />
-                  新订单
-                </Link>
-              </Button>
-              <Button size="sm" variant="outline" className="bg-white" asChild>
-                <Link href="/rma">
-                  <RotateCcw className="size-4" />
-                  提交 RMA
-                </Link>
-              </Button>
-              {profile ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="bg-white"
-                  onClick={() => setProfileDialogOpen(true)}
-                >
-                  <Pencil className="size-4" />
-                  {isEmployeeAccount ? "编辑自购资料" : "编辑资料"}
-                </Button>
-              ) : null}
-              <form action={signOut} className="min-w-0">
-                <Button size="sm" variant="outline" className="w-full bg-white" type="submit">
-                  <LogOut className="size-4" />
-                  退出
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+      <div className="mx-auto grid max-w-[1500px] gap-2 px-2 py-2 md:px-3 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_320px]">
+        <aside className="lg:sticky lg:top-20 lg:self-start">
+          <AccountSummaryPanel
+            company={company}
+            isEmployeeAccount={isEmployeeAccount}
+            orderSummaries={orderSummaries}
+            profile={profile}
+            rmaRequests={rmaRequests}
+            userEmail={userEmail}
+            wallet={wallet}
+            onOpenProfile={() => setProfileDialogOpen(true)}
+          />
         </aside>
 
         <section className="min-w-0 space-y-3">
@@ -383,22 +277,6 @@ export function AccountPage({
               {dataWarning}
             </div>
           ) : null}
-
-          <div className="grid grid-cols-3 gap-2">
-            {metrics.map(([label, value, Icon]) => (
-              <Card key={label as string} size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
-                <CardContent className="flex min-w-0 items-center gap-2 p-3">
-                  <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                    <Icon className="size-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="truncate text-[11px] font-bold text-slate-500">{label as string}</div>
-                    <div className="text-xl font-black leading-none">{value as string}</div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
 
           <Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
             <CardHeader className="pb-0">
@@ -766,128 +644,200 @@ function DetailTile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function WalletCard({ wallet }: { wallet: CustomerWallet }) {
-  const recentTransactions = wallet.transactions.slice(0, 4);
-
-  return (
-    <Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
-      <CardHeader className="pb-0">
-        <CardTitle className="flex items-center justify-between gap-2 text-sm font-black">
-          <span className="flex min-w-0 items-center gap-2">
-            <WalletCards className="size-4 text-primary" />
-            <span className="truncate">钱包余额</span>
-          </span>
-          <Badge className="border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700">
-            自动抵扣
-          </Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="rounded-lg border border-blue-100 bg-blue-50/70 p-3">
-          <div className="text-xs font-bold text-blue-700">可用余额</div>
-          <div className="mt-1 text-2xl font-black text-slate-950">
-            {formatEuro(wallet.balance)}
-          </div>
-          <div className="mt-1 text-[11px] font-semibold leading-4 text-slate-500">
-            银行转账订单缺货差价会进入钱包，下次下单自动抵扣。
-          </div>
-        </div>
-        <div className="space-y-1.5">
-          <div className="text-xs font-black text-slate-500">最近流水</div>
-          {recentTransactions.length === 0 ? (
-            <div className="rounded-md border border-slate-200 bg-slate-50 p-2 text-xs font-semibold text-slate-500">
-              暂无钱包流水。
-            </div>
-          ) : (
-            recentTransactions.map((transaction) => (
-              <div
-                key={transaction.id}
-                className="grid grid-cols-[1fr_auto] gap-2 rounded-md border border-slate-200 bg-slate-50 p-2 text-xs"
-              >
-                <div className="min-w-0">
-                  <div className="truncate font-black text-slate-800">
-                    {transaction.reason || walletTransactionLabel(transaction.direction)}
-                  </div>
-                  <div className="mt-0.5 truncate font-semibold text-slate-500">
-                    {formatAccountOrderDateTime(transaction.createdAt)}
-                  </div>
-                </div>
-                <div
-                  className={cn(
-                    "text-right font-black",
-                    transaction.direction === "credit" ? "text-emerald-700" : "text-blue-700"
-                  )}
-                >
-                  {transaction.direction === "credit" ? "+" : "-"}
-                  {formatEuro(transaction.amount)}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function AccountRuntimeCard({
-  userEmail,
-}: {
-  userEmail?: string;
-}) {
-  return (
-    <Card size="sm" className="rounded-lg border-emerald-200 bg-emerald-50 shadow-sm">
-      <CardContent className="flex gap-2.5 p-3 text-sm text-emerald-900">
-        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" />
-        <div className="min-w-0">
-          <div className="text-sm font-black">Supabase 会话已验证</div>
-          <p className="mt-1 text-xs font-semibold leading-5">
-            业务数据来自已连接后端。
-          </p>
-          {userEmail && <div className="mt-2 break-words text-xs font-bold">{userEmail}</div>}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
 function walletTransactionLabel(direction: "credit" | "debit") {
   return direction === "credit" ? "钱包入账" : "钱包抵扣";
 }
 
-function CustomerLevelCard({
+function AccountSummaryPanel({
   company,
+  isEmployeeAccount,
+  onOpenProfile,
+  orderSummaries,
   profile,
+  rmaRequests,
+  userEmail,
+  wallet,
 }: {
   company: CompanyProfile | null;
+  isEmployeeAccount: boolean;
+  onOpenProfile: () => void;
+  orderSummaries: OrderSummary[];
   profile: AccountCustomerProfile | null;
+  rmaRequests: RmaRequest[];
+  userEmail?: string;
+  wallet: CustomerWallet;
 }) {
   const level = normalizeCustomerTier(profile?.level ?? company?.level ?? company?.priceList);
+  const latestWalletTransaction = wallet.transactions[0];
+  const openOrderCount = orderSummaries.filter((order) => !isTerminalOrderStatus(order.status)).length;
+  const shippedOrderCount = orderSummaries.filter((order) => order.status === "shipped").length;
+  const displayName =
+    company?.name ||
+    profile?.companyName ||
+    (isEmployeeAccount ? "员工自购资料待创建" : "客户档案正在关联");
+  const profileStatus = company
+    ? companyStatusLabel(company.status)
+    : profile?.profileCompletedAt
+      ? "资料已保存"
+      : profile
+        ? "资料待补全"
+        : "资料待创建";
+  const profileDescription = profile?.companyName
+    ? isEmployeeAccount
+      ? "员工可使用这份自购资料下单。"
+      : "资料已保存，等待客户档案关联。"
+    : isEmployeeAccount
+      ? "补全后可使用自己的资料下单。"
+      : "登录已验证，等待客户档案关联。";
+  const primaryAddress =
+    company?.shippingAddress ||
+    profile?.shippingAddress ||
+    company?.billingAddress ||
+    profile?.billingAddress ||
+    "";
+  const summaryRows = [
+    { label: "账号", value: userEmail ?? profile?.email ?? company?.email ?? "-" },
+    { label: "电话", value: profile?.phone ?? company?.phone ?? "-" },
+    { label: "税号", value: profile?.fiscalCode ?? company?.codiceFiscale ?? "-" },
+    { label: "配送", value: primaryAddress || "-", wide: true },
+  ] as const;
 
   return (
     <Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
-      <CardHeader className="pb-0">
-        <CardTitle className="text-sm font-black">客户等级</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2 p-3">
-        <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/15 bg-primary/8 px-3 py-2">
-          <div className="min-w-0">
-            <div className="truncate text-lg font-black text-primary">
-              {customerLevelLabel(level)}
+      <CardContent className="space-y-2 p-2.5 sm:p-3">
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <div className="flex min-w-0 items-start gap-2">
+            <div
+              className={cn(
+                "grid size-9 shrink-0 place-items-center rounded-lg",
+                profile ? "bg-primary/10 text-primary" : "bg-amber-100 text-amber-700"
+              )}
+            >
+              <Building2 className="size-4" />
             </div>
-            <div className="truncate text-xs font-semibold text-slate-500">
-              每件等级减价 {formatTierDiscount(level)}
+            <div className="min-w-0">
+              <h1 className="truncate text-base font-black leading-5">{displayName}</h1>
+              <p className="mt-0.5 line-clamp-2 text-[11px] font-semibold leading-4 text-slate-500">
+                {profileDescription}
+              </p>
             </div>
           </div>
-          <Badge className="shrink-0 border border-emerald-200 bg-emerald-50 text-emerald-700">
-            每件减 {formatTierDiscount(level)}
+          <Badge className="shrink-0 border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] text-emerald-700">
+            <CheckCircle2 className="size-3" />
+            已验证
           </Badge>
         </div>
-        <div className="text-xs font-semibold leading-5 text-slate-500">
-          目录价格会显示原价和当前等级每件固定减价后的价格。
+
+        <div className="grid grid-cols-3 gap-1.5">
+          <SummaryMetric label="资料" value={profileStatus} />
+          <SummaryMetric label="等级" value={customerLevelLabel(level)} helper={`每件减 ${formatTierDiscount(level)}`} />
+          <SummaryMetric label="钱包" value={formatEuro(wallet.balance)} accent />
+          <SummaryMetric label="未完单" value={openOrderCount} />
+          <SummaryMetric label="配送" value={shippedOrderCount} />
+          <SummaryMetric label="RMA" value={rmaRequests.length} />
+        </div>
+
+        <div className="grid grid-cols-2 gap-1.5">
+          {summaryRows.map((row) => (
+            <Info
+              key={row.label}
+              label={row.label}
+              value={row.value}
+              className={"wide" in row && row.wide ? "col-span-2" : undefined}
+            />
+          ))}
+        </div>
+
+        <div className="rounded-md border border-blue-100 bg-blue-50/70 px-2 py-1.5">
+          <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-blue-700">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <WalletCards className="size-3.5 shrink-0" />
+              <span className="truncate">钱包自动抵扣</span>
+            </span>
+            {latestWalletTransaction ? (
+              <span
+                className={cn(
+                  "shrink-0 font-black",
+                  latestWalletTransaction.direction === "credit" ? "text-emerald-700" : "text-blue-700"
+                )}
+              >
+                {latestWalletTransaction.direction === "credit" ? "+" : "-"}
+                {formatEuro(latestWalletTransaction.amount)}
+              </span>
+            ) : (
+              <span className="shrink-0 text-slate-500">暂无流水</span>
+            )}
+          </div>
+          {latestWalletTransaction ? (
+            <div className="mt-0.5 truncate text-[10px] font-semibold text-slate-500">
+              {latestWalletTransaction.reason || walletTransactionLabel(latestWalletTransaction.direction)}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="grid grid-cols-4 gap-1.5">
+          <Button size="xs" className="h-8 px-1 text-[11px]" asChild>
+            <Link href="/catalogo">
+              <Plus className="size-3.5" />
+              下单
+            </Link>
+          </Button>
+          <Button size="xs" variant="outline" className="h-8 bg-white px-1 text-[11px]" asChild>
+            <Link href="/rma">
+              <RotateCcw className="size-3.5" />
+              RMA
+            </Link>
+          </Button>
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            className="h-8 bg-white px-1 text-[11px]"
+            onClick={onOpenProfile}
+          >
+            <Pencil className="size-3.5" />
+            资料
+          </Button>
+          <form action={signOut} className="min-w-0">
+            <Button size="xs" variant="outline" className="h-8 w-full bg-white px-1 text-[11px]" type="submit">
+              <LogOut className="size-3.5" />
+              退出
+            </Button>
+          </form>
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function SummaryMetric({
+  accent = false,
+  helper,
+  label,
+  value,
+}: {
+  accent?: boolean;
+  helper?: string;
+  label: string;
+  value: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "min-w-0 rounded-md border px-2 py-1.5",
+        accent ? "border-primary/15 bg-primary/10" : "border-slate-100 bg-slate-50"
+      )}
+    >
+      <div className="truncate text-[10px] font-bold text-slate-400">{label}</div>
+      <div className={cn("mt-0.5 truncate text-xs font-black", accent ? "text-primary" : "text-slate-800")}>
+        {value}
+      </div>
+      {helper ? (
+        <div className="mt-0.5 truncate text-[10px] font-semibold text-slate-500">
+          {helper}
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -1543,11 +1493,22 @@ function getSelectedCapMatchValue(
   return selectedMatch ? getCapMatchValue(selectedMatch) : "";
 }
 
-function Info({ label, value }: { label: string; value: string }) {
+function Info({
+  className,
+  label,
+  value,
+}: {
+  className?: string;
+  label: string;
+  value: string;
+}) {
   return (
-    <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 px-2.5 py-2">
+    <div className={cn("min-w-0 rounded-md border border-slate-100 bg-slate-50 px-2 py-1.5", className)}>
       <div className="truncate text-[11px] font-bold text-slate-400">{label}</div>
-      <div className="mt-0.5 break-words text-xs font-semibold text-slate-700">
+      <div
+        className="mt-0.5 truncate text-xs font-semibold text-slate-700"
+        title={value || "-"}
+      >
         {value || "-"}
       </div>
     </div>
