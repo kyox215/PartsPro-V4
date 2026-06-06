@@ -80,9 +80,9 @@ type CustomerStatus = "pending" | "active" | "suspended";
 type CustomerType = "retail" | "wholesale";
 
 const detailTabsListClassName =
-  "!grid !h-auto !w-full grid-cols-2 gap-1 overflow-hidden rounded-lg border border-slate-200 bg-slate-50/80 p-1 shadow-sm sm:grid-cols-4";
+  "!flex !h-auto !w-full min-w-0 gap-1 overflow-x-auto overflow-y-hidden rounded-md border border-slate-200 bg-white/80 p-0.5 shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
 const detailTabsTriggerClassName =
-  "!h-9 !flex-none w-full min-w-0 rounded-md px-2 text-xs font-bold leading-none text-slate-500 data-active:!bg-white data-active:!text-slate-950 data-active:!shadow-none";
+  "!h-7 min-w-[72px] flex-1 whitespace-nowrap rounded px-2 text-[11px] font-bold leading-none text-slate-500 transition-colors data-active:!bg-primary data-active:!text-white data-active:!shadow-sm sm:!h-8 sm:min-w-0 sm:text-xs";
 
 type AccountCustomer = {
   assignmentStatus: string;
