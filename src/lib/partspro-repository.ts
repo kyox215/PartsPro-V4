@@ -87,6 +87,7 @@ const customerCartSelect =
 const productRestockRequestSelect =
   "id, user_id, customer_id, sku_code, product_name, status, metadata, notified_at, cancelled_at, created_at, updated_at";
 const walletRefundTables = ["wallet_refund_requests", "wallet_refunds"] as const;
+type WalletRefundTable = (typeof walletRefundTables)[number];
 
 export type RepositorySource = "supabase" | "empty";
 
@@ -6153,6 +6154,8 @@ async function readAdminWalletRefundPage(
     null;
 
   for (const table of walletRefundTables) {
+    const orderColumn = walletRefundOrderColumn(table);
+
     if (orderId || orderNo) {
       const rowsById = orderId
         ? await readAdminWalletRefundRowsByColumn(
@@ -6208,7 +6211,7 @@ async function readAdminWalletRefundPage(
       let request = client
         .from(table)
         .select("*", { count: "exact" })
-        .order("created_at", { ascending: false })
+        .order(orderColumn, { ascending: false })
         .range(offset, offset + limit - 1);
 
       if (input.status) {
@@ -6236,7 +6239,7 @@ async function readAdminWalletRefundPage(
 
 async function readAdminWalletRefundRowsByColumn(
   client: SupabaseServerClient,
-  table: (typeof walletRefundTables)[number],
+  table: WalletRefundTable,
   column: string,
   value: string,
   status: AdminWalletRefundStatus | undefined,
@@ -6244,11 +6247,12 @@ async function readAdminWalletRefundRowsByColumn(
   offset: number
 ) {
   try {
+    const orderColumn = walletRefundOrderColumn(table);
     let request = client
       .from(table)
       .select("*")
       .eq(column, value)
-      .order("created_at", { ascending: false })
+      .order(orderColumn, { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (status) {
@@ -6281,6 +6285,10 @@ async function readAdminWalletRefundById(
   }
 
   return null;
+}
+
+function walletRefundOrderColumn(table: WalletRefundTable) {
+  return table === "wallet_refund_requests" ? "requested_at" : "created_at";
 }
 
 async function updateSingleRow(
@@ -7417,7 +7425,7 @@ function mapAdminWalletRefundRow(row: DbRow): AdminWalletRefund | null {
     amount,
     approvedAt: pickString(row, ["approved_at", "reviewed_at"]),
     approvedBy: pickString(row, ["approved_by", "reviewed_by"]),
-    createdAt: pickString(row, ["created_at", "createdAt"]) ?? "",
+    createdAt: pickString(row, ["created_at", "createdAt", "requested_at"]) ?? "",
     creditedAt: pickString(row, ["credited_at", "settled_at", "completed_at"]),
     currency: "EUR",
     customerId: pickString(row, ["customer_id", "company_id"]),

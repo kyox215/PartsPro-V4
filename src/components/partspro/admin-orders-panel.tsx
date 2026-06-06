@@ -521,16 +521,22 @@ export function AdminOrdersPanel() {
           return null;
         }
 
-        const orderWithRefunds = canReadWalletRefunds(adminSession)
-          ? {
-              ...order,
-              walletRefunds: await fetchWalletRefundsForOrderFromApi(
-                order.id,
-                text,
-                signal
-              ),
-            }
-          : order;
+        upsertOrder(order);
+
+        if (!canReadWalletRefunds(adminSession)) {
+          return order;
+        }
+
+        let orderWithRefunds = order;
+
+        try {
+          orderWithRefunds = {
+            ...order,
+            walletRefunds: await fetchWalletRefundsForOrderFromApi(order.id, text, signal),
+          };
+        } catch {
+          return order;
+        }
 
         if (signal?.aborted) {
           return null;
