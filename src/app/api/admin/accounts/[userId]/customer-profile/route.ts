@@ -80,7 +80,7 @@ export async function PATCH(request: NextRequest, { params }: AccountParams) {
     }
 
     const isEmployee = editableProfile.account.accountType === "employee";
-    const requiredPermission = isEmployee ? "employees.manage_permissions" : "customers.classify";
+    const requiredPermission = "customers.classify";
 
     if (!hasAdminPermission(admin.authState, requiredPermission)) {
       return apiError(403, "ADMIN_PERMISSION_DENIED", "Missing admin permission.", {

@@ -289,12 +289,13 @@ export async function readProfileCustomersForProfiles(
     .filter((profile) => readString(profile.account_type) === "employee")
     .map((profile) => readString(profile.id))
     .filter(isString);
+  const employeeUserIdSet = new Set(employeeUserIds);
 
   for (const profile of profiles) {
     const profileId = readString(profile.id);
     const normalCustomer = profileId ? customers.get(profileId) : null;
 
-    if (profileId && normalCustomer) {
+    if (profileId && normalCustomer && !employeeUserIdSet.has(profileId)) {
       profileCustomers.set(profileId, normalCustomer);
     }
   }
@@ -314,7 +315,7 @@ export async function readProfileCustomersForProfiles(
     const userId = readString(row.user_id);
     const customerId = readString(row.id);
 
-    if (userId && !profileCustomers.has(userId)) {
+    if (userId) {
       profileCustomers.set(userId, row);
     }
 
@@ -604,12 +605,14 @@ export function toAccountDto(
 ): AdminAccountDto {
   const profileId = readString(profile.id) ?? "";
   const customerId = readString(profile.customer_id);
+  const accountType = readString(profile.account_type) ?? "customer";
   const customer = customerId
     ? customers.get(customerId) ?? customers.get(profileId) ?? null
     : customers.get(profileId) ?? null;
-  const profileCustomer = profileCustomers.get(profileId) ?? (customer ?? null);
+  const profileCustomer =
+    profileCustomers.get(profileId) ??
+    (accountType === "employee" ? null : customer ?? null);
   const linkedCustomerId = customer ? readString(customer.id) : null;
-  const accountType = readString(profile.account_type) ?? "customer";
   const profileCustomerDto = profileCustomer ? toCustomerDto(profileCustomer) : null;
 
   return {

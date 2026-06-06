@@ -175,8 +175,22 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
     customerReadyForAssignment && isCustomerProfileComplete(customer)
   );
   const customerReadyForCommerce = customerReadyForPricing;
+  const employeeSelfReadyForPricing = Boolean(
+    employeeSelfCustomerRow &&
+      employeeSelfCustomer?.status === "active" &&
+      employeeSelfCustomer.assignmentStatus === "assigned" &&
+      isCustomerProfileComplete(employeeSelfCustomerRow)
+  );
+  const delegatedCheckoutAvailable = Boolean(
+    isEmployee &&
+      permissions.includes("orders.manage") &&
+      permissions.includes("customers.read")
+  );
   const canViewPrices = Boolean(isEmployee || customerReadyForPricing);
-  const canUseCart = Boolean(isEmployee || customerReadyForPricing);
+  const canUseCart = Boolean(
+    customerReadyForPricing ||
+      (isEmployee && (employeeSelfReadyForPricing || delegatedCheckoutAvailable))
+  );
   const canCheckout = Boolean(
     accountType === "customer" &&
       !accountSyncError &&
@@ -185,11 +199,7 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
   const canEmployeeSelfCheckout = Boolean(
     isEmployee &&
       !accountSyncError &&
-      employeeSelfCustomerRow &&
-      employeeSelfCustomer?.status === "active" &&
-      employeeSelfCustomer.customerType === "wholesale" &&
-      employeeSelfCustomer.assignmentStatus === "assigned" &&
-      isCustomerProfileComplete(employeeSelfCustomerRow)
+      employeeSelfReadyForPricing
   );
 
   return {
@@ -258,7 +268,7 @@ export function applyAccountPriceToProduct(
 
   const customerType =
     account.accountType === "employee"
-      ? "wholesale"
+      ? account.employeeSelfCustomer?.customerType ?? "wholesale"
       : account.customer?.customerType ?? "retail";
   const level =
     account.accountType === "employee"

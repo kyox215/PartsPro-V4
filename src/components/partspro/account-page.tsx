@@ -1556,8 +1556,8 @@ function Info({ label, value }: { label: string; value: string }) {
 
 function companyStatusLabel(status: CompanyProfile["status"]) {
   const labels: Record<CompanyProfile["status"], string> = {
-    approved: "客户已批准",
-    pending: "资料审核中",
+    approved: "活跃",
+    pending: "待处理",
     rejected: "资料已拒绝",
     suspended: "客户已暂停",
   };
@@ -1567,9 +1567,9 @@ function companyStatusLabel(status: CompanyProfile["status"]) {
 
 function customerLevelLabel(level: CompanyProfile["priceList"]) {
   const labels: Record<CompanyProfile["priceList"], string> = {
-    bronze: "铜牌 Bronze",
-    silver: "银牌 Silver",
-    gold: "金牌 Gold",
+    bronze: "青铜 Bronze",
+    silver: "白银 Silver",
+    gold: "黄金 Gold",
     emerald: "翡翠 Emerald",
     diamond: "钻石 Diamond",
     master: "大师 Master",

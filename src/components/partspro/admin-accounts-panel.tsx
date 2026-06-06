@@ -79,6 +79,11 @@ type CustomerLevel = "bronze" | "silver" | "gold" | "emerald" | "diamond" | "mas
 type CustomerStatus = "pending" | "active" | "suspended";
 type CustomerType = "retail" | "wholesale";
 
+const detailTabsListClassName =
+  "!grid !h-auto !w-full grid-cols-2 gap-1 overflow-hidden rounded-lg border border-slate-200 bg-slate-50/80 p-1 shadow-sm sm:grid-cols-4";
+const detailTabsTriggerClassName =
+  "!h-9 !flex-none w-full min-w-0 rounded-md px-2 text-xs font-bold leading-none text-slate-500 data-active:!bg-white data-active:!text-slate-950 data-active:!shadow-none";
+
 type AccountCustomer = {
   assignmentStatus: string;
   billingAddress: string | null;
@@ -236,6 +241,7 @@ type CustomerActionState = {
   level: CustomerLevel;
   reason: string;
   status: CustomerStatus;
+  targetCustomer: AccountCustomer;
 };
 
 type AccountProfileEditorState = {
@@ -628,7 +634,7 @@ export function AdminAccountsPanel() {
   }
 
   function openCustomerAction(kind: CustomerActionKind, account: Account) {
-    const customer = account.customer;
+    const customer = commerceCustomerForAccount(account);
 
     if (!customer) {
       return;
@@ -641,6 +647,7 @@ export function AdminAccountsPanel() {
       level: normalizeCustomerLevel(customer.level),
       reason: "",
       status: normalizeCustomerStatus(customer.status),
+      targetCustomer: customer,
     });
   }
 
@@ -1248,6 +1255,12 @@ function defaultDetailTabForAccount(): AccountDetailTab {
   return "profile";
 }
 
+function commerceCustomerForAccount(
+  account: Pick<Account, "accountType" | "customer" | "profileCustomer">
+) {
+  return account.accountType === "employee" ? account.profileCustomer : account.customer;
+}
+
 function AccountListItem({
   account,
   active,
@@ -1261,6 +1274,7 @@ function AccountListItem({
 }) {
   const isSelf = account.userId === currentUserId;
   const text = useAdminText();
+  const commerceCustomer = commerceCustomerForAccount(account);
 
   return (
     <button
@@ -1298,9 +1312,8 @@ function AccountListItem({
               <Badge className="h-5 border-indigo-200 bg-indigo-50 px-1.5 text-[10px] text-indigo-700" variant="outline">
                 {roleTemplateLabel(text, account.roleTemplate ?? account.role)}
               </Badge>
-            ) : (
-              <CustomerAssignmentBadges customer={account.customer} />
-            )}
+            ) : null}
+            <CustomerAssignmentBadges customer={commerceCustomer} />
           </div>
         </div>
       </div>
@@ -1373,8 +1386,9 @@ function AccountDetailPane({
 
   const { account } = detail;
   const isSelf = currentUserId === account.userId;
-  const canManageAccountProfile =
-    account.accountType === "employee" ? canManageEmployeeAccounts : canManageCustomerProfile;
+  const canManageAccountProfile = canManageCustomerProfile;
+  const commerceCustomer = commerceCustomerForAccount(account);
+  const commerceSpend = commerceCustomer?.spendSummary ?? emptySpendSummary();
 
   return (
     <div
@@ -1445,37 +1459,37 @@ function AccountDetailPane({
           <InfoTile icon={KeyRound} label="有效权限" value={detail.permissions.length} />
         </div>
 
-      {detail.customer ? (
+      {commerceCustomer ? (
         <div className="grid grid-cols-3 gap-1 sm:gap-1.5 lg:grid-cols-6">
           <InfoTile
             icon={BadgeCheck}
             label="活跃状态"
-            value={customerStatusLabel(detail.customer.status)}
+            value={customerStatusLabel(commerceCustomer.status)}
           />
           <InfoTile
             icon={BriefcaseBusiness}
             label="价格类型"
-            value={customerTypeLabel(detail.customer.customerType)}
+            value={customerTypeLabel(commerceCustomer.customerType)}
           />
           <InfoTile
             icon={Star}
             label="客户等级"
-            value={customerLevelLabel(detail.customer.level)}
+            value={customerLevelLabel(commerceCustomer.level)}
           />
           <InfoTile
             icon={ShoppingBag}
             label="订单数量"
-            value={detail.customer.spendSummary.orderCount || detail.customer.ordersCount}
+            value={commerceSpend.orderCount || commerceCustomer.ordersCount}
           />
           <InfoTile
             icon={CircleDollarSign}
             label="消费金额"
-            value={formatEuro(detail.customer.spendSummary.total || detail.customer.revenue)}
+            value={formatEuro(commerceSpend.total || commerceCustomer.revenue)}
           />
           <InfoTile
             icon={Clock3}
             label="最近订单"
-            value={formatDate(detail.customer.lastOrderAt) ?? "暂无"}
+            value={formatDate(commerceCustomer.lastOrderAt) ?? "暂无"}
           />
         </div>
       ) : null}
@@ -1528,17 +1542,17 @@ function AccountDetailPane({
 
       {account.accountType === "customer" ? (
         <Tabs value={customerDetailTabValue(tab)} onValueChange={onTabChange} className="space-y-2">
-          <TabsList className="grid h-auto grid-cols-2 gap-1 rounded-md bg-white p-1 shadow-sm sm:grid-cols-4">
-            <TabsTrigger value="profile" className="h-8 rounded text-xs font-bold">
+          <TabsList className={detailTabsListClassName}>
+            <TabsTrigger value="profile" className={detailTabsTriggerClassName}>
               客户资料
             </TabsTrigger>
-            <TabsTrigger value="orders" className="h-8 rounded text-xs font-bold">
+            <TabsTrigger value="orders" className={detailTabsTriggerClassName}>
               历史订单
             </TabsTrigger>
-            <TabsTrigger value="spend" className="h-8 rounded text-xs font-bold">
+            <TabsTrigger value="spend" className={detailTabsTriggerClassName}>
               消费明细
             </TabsTrigger>
-            <TabsTrigger value="activity" className="h-8 rounded text-xs font-bold">
+            <TabsTrigger value="activity" className={detailTabsTriggerClassName}>
               活动记录
             </TabsTrigger>
           </TabsList>
@@ -1585,17 +1599,17 @@ function AccountDetailPane({
           onValueChange={onTabChange}
           className="space-y-2"
         >
-          <TabsList className="grid h-auto grid-cols-2 gap-1 rounded-md bg-white p-1 shadow-sm sm:grid-cols-4">
-            <TabsTrigger value="profile" className="h-8 rounded text-xs font-bold">
+          <TabsList className={detailTabsListClassName}>
+            <TabsTrigger value="profile" className={detailTabsTriggerClassName}>
               自购资料
             </TabsTrigger>
-            <TabsTrigger value="permissions" className="h-8 rounded text-xs font-bold">
+            <TabsTrigger value="permissions" className={detailTabsTriggerClassName}>
               有效权限
             </TabsTrigger>
-            <TabsTrigger value="memberships" className="h-8 rounded text-xs font-bold">
+            <TabsTrigger value="memberships" className={detailTabsTriggerClassName}>
               客户关系
             </TabsTrigger>
-            <TabsTrigger value="activity" className="h-8 rounded text-xs font-bold">
+            <TabsTrigger value="activity" className={detailTabsTriggerClassName}>
               活动记录
             </TabsTrigger>
           </TabsList>
@@ -1657,7 +1671,12 @@ function CustomerProfileTab({
   profileCustomer: AccountCustomer | null;
   profileState: AccountProfileState;
 }) {
-  const canShowCustomerActions = account.accountType === "customer" && Boolean(customer);
+  const commerceCustomer = account.accountType === "employee" ? profileCustomer : customer;
+  const historyCustomer =
+    account.accountType === "employee" && customer?.id && customer.id !== commerceCustomer?.id
+      ? customer
+      : null;
+  const canShowCustomerActions = Boolean(commerceCustomer);
   const title = account.accountType === "employee" ? "员工自购资料" : "客户资料";
 
   return (
@@ -1728,11 +1747,11 @@ function CustomerProfileTab({
             <DetailLine label="税号" value={profileCustomer.fiscalCode ?? "暂无"} />
             <DetailLine label="微信/WhatsApp" value={profileCustomer.contactName ?? "可留空"} />
             <DetailLine label="PEC" value={profileCustomer.pec ?? "可留空"} />
-            {customer && account.accountType === "customer" ? (
+            {commerceCustomer ? (
               <>
-                <DetailLine label="活跃状态" value={customerStatusLabel(customer.status)} />
-                <DetailLine label="价格类型" value={customerTypeLabel(customer.customerType)} />
-                <DetailLine label="客户等级" value={customerLevelLabel(customer.level)} />
+                <DetailLine label="活跃状态" value={customerStatusLabel(commerceCustomer.status)} />
+                <DetailLine label="价格类型" value={customerTypeLabel(commerceCustomer.customerType)} />
+                <DetailLine label="客户等级" value={customerLevelLabel(commerceCustomer.level)} />
               </>
             ) : null}
             <DetailLine label="配送地址" multiline value={profileCustomer.shippingAddress ?? "暂无"} />
@@ -1740,6 +1759,25 @@ function CustomerProfileTab({
             <DetailLine label="资料完成时间" value={formatDateTime(profileCustomer.profileCompletedAt) ?? "未完成"} />
             <DetailLine label="更新时间" value={formatDateTime(profileCustomer.updatedAt) ?? "暂无"} />
           </div>
+          {historyCustomer ? (
+            <div className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-600">
+              <div className="mb-1 font-black text-slate-800">历史客户资料 / 已转员工</div>
+              <div className="flex flex-wrap gap-1">
+                <Badge className="border-amber-200 bg-amber-50 text-amber-800" variant="outline">
+                  {assignmentStatusLabel(historyCustomer.assignmentStatus)}
+                </Badge>
+                <Badge className="border-sky-200 bg-sky-50 text-sky-700" variant="outline">
+                  {customerTypeLabel(historyCustomer.customerType)}
+                </Badge>
+                <Badge className="border-violet-200 bg-violet-50 text-violet-700" variant="outline">
+                  {customerLevelLabel(historyCustomer.level)}
+                </Badge>
+                <Badge className="border-slate-200 bg-slate-50 text-slate-500" variant="outline">
+                  只读历史记录
+                </Badge>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : (
         <EmptyText text={account.accountType === "employee" ? "员工自购资料未创建。" : "客户资料未初始化。"} />
@@ -2159,12 +2197,13 @@ function CustomerAccountActionDialog({
   onSubmit: () => void;
   submitting: boolean;
 }) {
+  const scopeLabel = action?.account.accountType === "employee" ? "员工自购资料" : "客户资料";
   const title =
     action?.kind === "customer_level"
-      ? "修改客户等级"
+      ? `修改${scopeLabel}等级`
       : action?.kind === "customer_type"
-        ? "修改价格类型"
-        : "修改活跃状态";
+        ? `修改${scopeLabel}价格类型`
+        : `修改${scopeLabel}活跃状态`;
   const description =
     action?.kind === "customer_level"
       ? "客户等级会按每件固定金额影响前台客户价和代客下单价格。"
@@ -2184,10 +2223,10 @@ function CustomerAccountActionDialog({
           <div className="space-y-3">
             <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
               <div className="font-black text-slate-900">
-                {action.account.customer?.name ?? action.account.displayName ?? action.account.email ?? action.account.userId}
+                {action.targetCustomer.name ?? action.account.displayName ?? action.account.email ?? action.account.userId}
               </div>
               <div className="mt-1 break-words text-xs text-slate-500">
-                {action.account.email ?? action.account.userId}
+                {scopeLabel} · {action.targetCustomer.email ?? action.account.email ?? action.account.userId}
               </div>
             </div>
             {action.kind === "customer_level" ? (
@@ -2942,7 +2981,8 @@ function normalizeAccount(value: unknown): Account | null {
   const accountType: AccountType =
     readString(value.accountType) === "employee" ? "employee" : "customer";
   const customer = normalizeCustomer(value.customer);
-  const profileCustomer = normalizeCustomer(value.profileCustomer) ?? customer;
+  const rawProfileCustomer = normalizeCustomer(value.profileCustomer);
+  const profileCustomer = rawProfileCustomer ?? (accountType === "employee" ? null : customer);
   const profileState = normalizeProfileState(value.profileState, accountType, profileCustomer);
 
   return {
@@ -3259,6 +3299,17 @@ function customerTypeLabel(value: string) {
   return value === "wholesale" ? "批发客户" : "零售价客户";
 }
 
+function assignmentStatusLabel(value: string) {
+  const labels: Record<string, string> = {
+    archived: "已归档",
+    assigned: "已启用",
+    converted_to_employee: "已转员工",
+    needs_review: "待审核",
+  };
+
+  return labels[value] ?? value;
+}
+
 function orderStatusLabel(value: string) {
   const labels: Record<string, string> = {
     accepted: "已接单",
@@ -3298,13 +3349,13 @@ function customerLevelDiscountLabel(value: string) {
 
 function customerLevelName(value: string) {
   const labels: Record<CustomerLevel, string> = {
-    bronze: "铜牌",
-    silver: "银牌",
-    gold: "金牌",
-    emerald: "翡翠",
-    diamond: "钻石",
-    master: "大师",
-    king: "王者",
+    bronze: "青铜 Bronze",
+    silver: "白银 Silver",
+    gold: "黄金 Gold",
+    emerald: "翡翠 Emerald",
+    diamond: "钻石 Diamond",
+    master: "大师 Master",
+    king: "王者 King",
   };
 
   return labels[normalizeCustomerLevel(value)];

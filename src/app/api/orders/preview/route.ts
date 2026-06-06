@@ -173,7 +173,8 @@ export async function POST(request: Request) {
       ? []
       : customerReadinessIssues(
           company,
-          customerProfile.data
+          customerProfile.data,
+          checkoutMode
         );
 
     if (!targetCanCheckout || company.status !== "approved") {
@@ -412,11 +413,12 @@ function resolveCheckoutMode(
 
 function customerReadinessIssues(
   company: CompanyProfile,
-  profile: Awaited<ReturnType<typeof getCurrentCustomerProfile>>["data"]
+  profile: Awaited<ReturnType<typeof getCurrentCustomerProfile>>["data"],
+  checkoutMode: CheckoutMode
 ) {
   const issues: PreviewIssue[] = [];
 
-  if (company.profileKind === "employee_self") {
+  if (checkoutMode === "delegated_customer" && company.profileKind === "employee_self") {
     issues.push({
       sku: "customer",
       code: "customer_not_orderable",

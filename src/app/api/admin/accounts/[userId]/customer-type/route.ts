@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
-import { updateAdminCustomerClassification } from "@/lib/partspro-repository";
+import {
+  ensureAdminEmployeeSelfCustomer,
+  updateAdminCustomerClassification,
+} from "@/lib/partspro-repository";
 import { createClient } from "@/lib/supabase/server";
 import { repositoryErrorResponse, requireAdminApi } from "../../../_shared";
 import {
   readAdminAccountDetail,
-  readEditableAdminAccountCustomerByUserId,
+  readEditableAdminAccountProfileCustomerByUserId,
 } from "../../_account-data";
 
 export const dynamic = "force-dynamic";
@@ -57,24 +60,46 @@ export async function PATCH(request: NextRequest, { params }: AccountParams) {
 
   try {
     const supabase = await createClient();
-    const editableCustomer = await readEditableAdminAccountCustomerByUserId(
+    let editableCustomer = await readEditableAdminAccountProfileCustomerByUserId(
       supabase,
       paramResult.data.userId
     );
 
-    if (!editableCustomer?.customer?.id) {
+    if (!editableCustomer) {
+      return apiError(404, "ADMIN_ACCOUNT_NOT_FOUND", "Account was not found.", {
+        userId: paramResult.data.userId,
+      });
+    }
+
+    if (editableCustomer.account.accountType === "employee" && !editableCustomer.profileCustomer?.id) {
+      await ensureAdminEmployeeSelfCustomer(paramResult.data.userId, parsed.data.reason);
+      editableCustomer = await readEditableAdminAccountProfileCustomerByUserId(
+        supabase,
+        paramResult.data.userId
+      );
+    }
+
+    const targetCustomer =
+      editableCustomer?.account.accountType === "employee"
+        ? editableCustomer.profileCustomer
+        : editableCustomer?.account.customer ?? editableCustomer?.profileCustomer ?? null;
+
+    if (!targetCustomer?.id) {
       return apiError(404, "ADMIN_ACCOUNT_CUSTOMER_NOT_FOUND", "Account is not linked to a customer profile.", {
         userId: paramResult.data.userId,
       });
     }
 
-    if (editableCustomer.account.accountType === "employee") {
-      return apiError(403, "ADMIN_EMPLOYEE_CUSTOMER_ACTION_DENIED", "Employee account profiles cannot be updated with customer type actions.", {
+    if (
+      editableCustomer?.account.accountType === "employee" &&
+      targetCustomer.profileKind !== "employee_self"
+    ) {
+      return apiError(502, "ADMIN_EMPLOYEE_SELF_CUSTOMER_REQUIRED", "Employee account price type changes must target the self-purchase profile.", {
         userId: paramResult.data.userId,
       });
     }
 
-    await updateAdminCustomerClassification(editableCustomer.customer.id, {
+    await updateAdminCustomerClassification(targetCustomer.id, {
       customerType: parsed.data.customerType,
       reason: parsed.data.reason,
     });
