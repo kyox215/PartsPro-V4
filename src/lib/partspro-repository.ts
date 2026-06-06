@@ -2263,9 +2263,13 @@ export async function getCurrentCustomerWallet(): Promise<RepositoryResult<Custo
 export async function getCurrentEmployeeSelfCompany(): Promise<
   RepositoryResult<CompanyProfile | null>
 > {
-  const supabaseResult = await withSupabase(async (context) => {
-    await ensureEmployeeSelfCustomer(context.client);
+  const supabaseResult = await withSupabaseResult(async (context) => {
+    if (!(await ensureEmployeeSelfCustomer(context.client))) {
+      throw new Error("Employee self customer profile could not be ensured.");
+    }
+
     const profile = await readCurrentEmployeeSelfProfile(context);
+
     return profile?.raw ? mapCompanyRow(profile.raw) : null;
   });
 

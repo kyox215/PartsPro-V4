@@ -148,6 +148,7 @@ type AccountProfileForm = Pick<AccountProfilePayload, AccountProfileField> & {
 type AddressDraftField = keyof AddressDraft;
 
 type OrderFilterId = "all" | "open" | "pending_payment" | "shipped" | "completed";
+type AccountSectionId = "overview" | "wallet" | "orders" | "service";
 
 const orderFilters: Array<{
   id: OrderFilterId;
@@ -204,6 +205,7 @@ export function AccountPage({
   const [orderDetailError, setOrderDetailError] = React.useState<string | null>(null);
   const [orderDetailLoading, setOrderDetailLoading] = React.useState(false);
   const [orderDetailOpen, setOrderDetailOpen] = React.useState(false);
+  const [activeSection, setActiveSection] = React.useState<AccountSectionId>("overview");
   const [savedProfile, setSavedProfile] = React.useState<AccountCustomerProfile | null>(null);
   const profile =
     savedProfile && (!customerProfile || savedProfile.id === customerProfile.id)
@@ -249,179 +251,63 @@ export function AccountPage({
   return (
     <main className="min-h-screen overflow-x-hidden bg-slate-100 text-slate-950">
       <StoreHeader />
-      <div className="mx-auto grid max-w-[1500px] gap-2 px-2 py-2 md:px-3 lg:grid-cols-[320px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_320px]">
-        <aside className="lg:sticky lg:top-20 lg:self-start">
-          <AccountSummaryPanel
-            company={company}
-            isEmployeeAccount={isEmployeeAccount}
-            orderSummaries={orderSummaries}
-            profile={profile}
-            rmaRequests={rmaRequests}
-            userEmail={userEmail}
-            wallet={wallet}
-            onOpenProfile={() => setProfileDialogOpen(true)}
-          />
-        </aside>
+      <div className="mx-auto max-w-[1180px] space-y-2 px-2 py-2 md:px-3 lg:space-y-3">
+        <AccountSectionNav
+          activeSection={activeSection}
+          company={company}
+          orderSummaries={orderSummaries}
+          profile={profile}
+          rmaRequests={rmaRequests}
+          wallet={wallet}
+          onSectionChange={setActiveSection}
+        />
 
-        <section className="min-w-0 space-y-3">
-          {shouldShowProfileNotice && profile ? (
-            <AccountProfileNotice
-              forceSetup={forceSetup}
+        {shouldShowProfileNotice && profile ? (
+          <AccountProfileNotice
+            forceSetup={forceSetup}
+            profile={profile}
+            onOpen={() => setProfileDialogOpen(true)}
+          />
+        ) : null}
+
+        {dataWarning ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
+            {accountDataWarningLabel(dataWarning, isEmployeeAccount)}
+          </div>
+        ) : null}
+
+        <section className="min-w-0">
+          {activeSection === "overview" ? (
+            <AccountSummaryPanel
+              company={company}
+              isEmployeeAccount={isEmployeeAccount}
+              orderSummaries={orderSummaries}
               profile={profile}
-              onOpen={() => setProfileDialogOpen(true)}
+              rmaRequests={rmaRequests}
+              userEmail={userEmail}
+              wallet={wallet}
+              onOpenProfile={() => setProfileDialogOpen(true)}
             />
           ) : null}
 
-          {dataWarning ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
-              {dataWarning}
-            </div>
+          {activeSection === "wallet" ? (
+            <WalletSection wallet={wallet} />
           ) : null}
 
-          <Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
-            <CardHeader className="pb-0">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <CardTitle className="flex flex-wrap items-center gap-2 text-sm font-black">
-                  <Filter className="size-4 text-primary" />
-                  最近订单
-                </CardTitle>
-                <div className="text-right text-xs font-semibold text-slate-500">
-                  {filteredOrders.length} / {orderSummaries.length} 单
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex flex-wrap gap-1.5" aria-label="按状态筛选订单">
-                {orderFilters.map((filter) => {
-                  const count = orderSummaries.filter(filter.predicate).length;
-                  const isActive = filter.id === activeFilter;
+          {activeSection === "orders" ? (
+            <OrdersSection
+              activeFilter={activeFilter}
+              filteredOrders={filteredOrders}
+              onFilterChange={setActiveFilter}
+              onOpenOrder={openOrderDetail}
+              orderSummaries={orderSummaries}
+            />
+          ) : null}
 
-                  return (
-                    <Button
-                      key={filter.id}
-                      type="button"
-                      size="xs"
-                      variant={isActive ? "default" : "outline"}
-                      className={cn("h-7 gap-1 px-2", !isActive && "bg-white")}
-                      aria-pressed={isActive}
-                      title={filter.description}
-                      onClick={() => setActiveFilter(filter.id)}
-                    >
-                      {filter.label}
-                      <span className="font-mono text-xs">{count}</span>
-                    </Button>
-                  );
-                })}
-              </div>
-
-              {filteredOrders.length === 0 && (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-600">
-                  当前筛选下没有订单。切换状态可查看其他记录。
-                </div>
-              )}
-
-              {filteredOrders.map((order) => (
-                <div
-                  key={order.id}
-                  className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-sm md:grid-cols-[minmax(160px,1fr)_110px_minmax(120px,.8fr)_auto] md:items-center"
-                >
-                  <div className="min-w-0">
-                    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                      <span className="font-mono text-sm font-black">{order.id}</span>
-                      <Badge className={cn("border px-2 py-0.5 text-[11px]", orderBadgeClass(order.status))}>
-                        {orderStatusLabel(order.status)}
-                      </Badge>
-                    </div>
-                    <div className="mt-1 truncate text-xs font-semibold text-slate-500 md:hidden">
-                      {order.date} · {order.items} 件 · {order.company}
-                    </div>
-                  </div>
-                  <div className="hidden text-xs font-semibold text-slate-500 md:block">
-                    {order.date} · {order.items} 件
-                  </div>
-                  <div className="hidden truncate text-xs font-semibold text-slate-500 md:block">
-                    {order.company}
-                  </div>
-                  <div className="flex items-center justify-between gap-2 md:justify-end">
-                    <div className="text-sm font-black">{formatEuro(order.total)}</div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="xs"
-                      className="h-7 bg-white px-2"
-                      onClick={() => void openOrderDetail(order)}
-                    >
-                      <FileText className="size-3.5" />
-                      详情
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+          {activeSection === "service" ? (
+            <ServiceSection rmaRequests={rmaRequests} />
+          ) : null}
         </section>
-
-        <aside className="space-y-3 lg:col-span-2 lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0 xl:sticky xl:top-20 xl:col-span-1 xl:block xl:self-start xl:space-y-3">
-          <Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
-            <CardHeader className="pb-0">
-              <CardTitle className="flex items-center gap-2 text-sm font-black">
-                <RotateCcw className="size-4 text-primary" />
-                RMA / 退换货
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              {rmaRequests.length === 0 && (
-                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-600">
-                  当前账户暂无 RMA 申请。
-                </div>
-              )}
-              {rmaRequests.map((request) => (
-                <div
-                  key={request.id}
-                  className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-                >
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="font-mono text-sm font-black">{request.id}</span>
-                      <Badge className={cn("border px-2 py-0.5 text-[11px]", rmaBadgeClass(request.status))}>
-                        {rmaStatusLabel(request.status)}
-                      </Badge>
-                    </div>
-                    <div className="mt-1 break-words text-sm font-bold">
-                      {request.productName}
-                    </div>
-                    <div className="mt-1 text-xs text-slate-500">
-                      {request.orderId} · {request.sku} · {request.createdAt}
-                    </div>
-                  </div>
-                  <Button asChild variant="outline" size="xs" className="h-7 bg-white px-2">
-                    <Link href="/rma">打开</Link>
-                  </Button>
-                </div>
-              ))}
-              <Button asChild size="sm" className="w-full">
-                <Link href="/rma">
-                  <RotateCcw className="size-4" />
-                  新建 RMA
-                </Link>
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
-            <CardHeader className="pb-0">
-              <CardTitle className="flex items-center gap-2 text-sm font-black">
-                <FileText className="size-4 text-primary" />
-                单据 / 发票
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-600">
-                暂无可下载单据。
-              </div>
-            </CardContent>
-          </Card>
-        </aside>
 
         <Dialog open={orderDetailOpen} onOpenChange={setOrderDetailOpen}>
           <DialogContent className="max-h-[90vh] overflow-y-auto rounded-lg sm:max-w-3xl">
@@ -648,6 +534,351 @@ function walletTransactionLabel(direction: "credit" | "debit") {
   return direction === "credit" ? "钱包入账" : "钱包抵扣";
 }
 
+function AccountSectionNav({
+  activeSection,
+  company,
+  onSectionChange,
+  orderSummaries,
+  profile,
+  rmaRequests,
+  wallet,
+}: {
+  activeSection: AccountSectionId;
+  company: CompanyProfile | null;
+  onSectionChange: (section: AccountSectionId) => void;
+  orderSummaries: OrderSummary[];
+  profile: AccountCustomerProfile | null;
+  rmaRequests: RmaRequest[];
+  wallet: CustomerWallet;
+}) {
+  const openOrderCount = orderSummaries.filter((order) => !isTerminalOrderStatus(order.status)).length;
+  const profileStatus = company
+    ? companyStatusLabel(company.status)
+    : profile?.profileCompletedAt
+      ? "资料完整"
+      : profile
+        ? "待补全"
+        : "待创建";
+  const sections: Array<{
+    badge?: string;
+    caption: string;
+    id: AccountSectionId;
+    icon: React.ComponentType<{ className?: string }>;
+    label: string;
+    value: string;
+  }> = [
+    {
+      badge: company || profile?.profileCompletedAt ? "已" : "待",
+      caption: profileStatus,
+      id: "overview",
+      icon: Building2,
+      label: "概览",
+      value: profile?.companyName || company?.name || "账户资料",
+    },
+    {
+      badge: "€",
+      caption: "自动抵扣",
+      id: "wallet",
+      icon: WalletCards,
+      label: "钱包",
+      value: formatEuro(wallet.balance),
+    },
+    {
+      badge: String(orderSummaries.length),
+      caption: openOrderCount > 0 ? `${openOrderCount} 单处理中` : "暂无未完单",
+      id: "orders",
+      icon: Package,
+      label: "订单",
+      value: `${orderSummaries.length} 单`,
+    },
+    {
+      badge: String(rmaRequests.length),
+      caption: "售后与发票",
+      id: "service",
+      icon: RotateCcw,
+      label: "售后",
+      value: `${rmaRequests.length} RMA`,
+    },
+  ];
+
+  return (
+    <nav className="-mx-2 overflow-x-auto px-2 sm:mx-0 sm:px-0" aria-label="个人中心分组">
+      <div className="grid min-w-[620px] grid-cols-4 gap-2 sm:min-w-0">
+        {sections.map((section) => {
+          const Icon = section.icon;
+          const active = section.id === activeSection;
+
+          return (
+            <button
+              key={section.id}
+              type="button"
+              className={cn(
+                "min-w-0 rounded-lg border p-2 text-left shadow-sm transition",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+                active
+                  ? "border-primary bg-primary text-white shadow-primary/20"
+                  : "border-slate-200 bg-white text-slate-700 hover:border-primary/40 hover:bg-primary/5"
+              )}
+              aria-pressed={active}
+              onClick={() => onSectionChange(section.id)}
+            >
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <Icon className={cn("size-4 shrink-0", active ? "text-white" : "text-primary")} />
+                  <span className="truncate text-xs font-black">{section.label}</span>
+                </span>
+                {section.badge ? (
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-black",
+                      active ? "bg-white/20 text-white" : "bg-slate-100 text-slate-500"
+                    )}
+                  >
+                    {section.badge}
+                  </span>
+                ) : null}
+              </div>
+              <div className="mt-2 truncate text-sm font-black leading-4">{section.value}</div>
+              <div className={cn("mt-0.5 truncate text-[11px] font-semibold", active ? "text-white/80" : "text-slate-500")}>
+                {section.caption}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
+function WalletSection({ wallet }: { wallet: CustomerWallet }) {
+  const recentTransactions = wallet.transactions.slice(0, 8);
+
+  return (
+    <Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
+      <CardHeader className="pb-0">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="flex items-center gap-2 text-sm font-black">
+            <WalletCards className="size-4 text-primary" />
+            钱包 / 自动抵扣
+          </CardTitle>
+          <Badge className="border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700">
+            下单自动使用
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent className="grid gap-2 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="rounded-lg border border-blue-100 bg-blue-50/70 p-3">
+          <div className="text-xs font-bold text-blue-700">可用余额</div>
+          <div className="mt-1 text-3xl font-black leading-none text-slate-950">
+            {formatEuro(wallet.balance)}
+          </div>
+          <div className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+            银行转账订单缺货差价会进入钱包，下次下单自动抵扣。
+          </div>
+        </div>
+
+        <div className="min-w-0 space-y-1.5">
+          <div className="text-xs font-black text-slate-500">最近流水</div>
+          {recentTransactions.length === 0 ? (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-600">
+              暂无钱包流水。
+            </div>
+          ) : (
+            recentTransactions.map((transaction) => (
+              <div
+                key={transaction.id}
+                className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-md border border-slate-200 bg-slate-50/70 px-2.5 py-2 text-xs"
+              >
+                <div className="min-w-0">
+                  <div className="truncate font-black text-slate-800">
+                    {transaction.reason || walletTransactionLabel(transaction.direction)}
+                  </div>
+                  <div className="mt-0.5 truncate font-semibold text-slate-500">
+                    {formatAccountOrderDateTime(transaction.createdAt)}
+                  </div>
+                </div>
+                <div
+                  className={cn(
+                    "text-right font-black",
+                    transaction.direction === "credit" ? "text-emerald-700" : "text-blue-700"
+                  )}
+                >
+                  {transaction.direction === "credit" ? "+" : "-"}
+                  {formatEuro(transaction.amount)}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function OrdersSection({
+  activeFilter,
+  filteredOrders,
+  onFilterChange,
+  onOpenOrder,
+  orderSummaries,
+}: {
+  activeFilter: OrderFilterId;
+  filteredOrders: OrderSummary[];
+  onFilterChange: (filter: OrderFilterId) => void;
+  onOpenOrder: (order: OrderSummary) => void;
+  orderSummaries: OrderSummary[];
+}) {
+  return (
+    <Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
+      <CardHeader className="pb-0">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <CardTitle className="flex flex-wrap items-center gap-2 text-sm font-black">
+            <Filter className="size-4 text-primary" />
+            订单历史
+          </CardTitle>
+          <div className="text-right text-xs font-semibold text-slate-500">
+            {filteredOrders.length} / {orderSummaries.length} 单
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        <div className="flex flex-wrap gap-1.5" aria-label="按状态筛选订单">
+          {orderFilters.map((filter) => {
+            const count = orderSummaries.filter(filter.predicate).length;
+            const isActive = filter.id === activeFilter;
+
+            return (
+              <Button
+                key={filter.id}
+                type="button"
+                size="xs"
+                variant={isActive ? "default" : "outline"}
+                className={cn("h-7 gap-1 px-2", !isActive && "bg-white")}
+                aria-pressed={isActive}
+                title={filter.description}
+                onClick={() => onFilterChange(filter.id)}
+              >
+                {filter.label}
+                <span className="font-mono text-xs">{count}</span>
+              </Button>
+            );
+          })}
+        </div>
+
+        {filteredOrders.length === 0 && (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-600">
+            当前筛选下没有订单。切换状态可查看其他记录。
+          </div>
+        )}
+
+        {filteredOrders.map((order) => (
+          <div
+            key={order.id}
+            className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-sm md:grid-cols-[minmax(160px,1fr)_110px_minmax(120px,.8fr)_auto] md:items-center"
+          >
+            <div className="min-w-0">
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                <span className="font-mono text-sm font-black">{order.id}</span>
+                <Badge className={cn("border px-2 py-0.5 text-[11px]", orderBadgeClass(order.status))}>
+                  {orderStatusLabel(order.status)}
+                </Badge>
+              </div>
+              <div className="mt-1 truncate text-xs font-semibold text-slate-500 md:hidden">
+                {order.date} · {order.items} 件 · {order.company}
+              </div>
+            </div>
+            <div className="hidden text-xs font-semibold text-slate-500 md:block">
+              {order.date} · {order.items} 件
+            </div>
+            <div className="hidden truncate text-xs font-semibold text-slate-500 md:block">
+              {order.company}
+            </div>
+            <div className="flex items-center justify-between gap-2 md:justify-end">
+              <div className="text-sm font-black">{formatEuro(order.total)}</div>
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                className="h-7 bg-white px-2"
+                onClick={() => onOpenOrder(order)}
+              >
+                <FileText className="size-3.5" />
+                详情
+              </Button>
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ServiceSection({ rmaRequests }: { rmaRequests: RmaRequest[] }) {
+  return (
+    <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
+        <CardHeader className="pb-0">
+          <CardTitle className="flex items-center gap-2 text-sm font-black">
+            <RotateCcw className="size-4 text-primary" />
+            RMA / 退换货
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {rmaRequests.length === 0 && (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-600">
+              当前账户暂无 RMA 申请。
+            </div>
+          )}
+          {rmaRequests.map((request) => (
+            <div
+              key={request.id}
+              className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+            >
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-mono text-sm font-black">{request.id}</span>
+                  <Badge className={cn("border px-2 py-0.5 text-[11px]", rmaBadgeClass(request.status))}>
+                    {rmaStatusLabel(request.status)}
+                  </Badge>
+                </div>
+                <div className="mt-1 break-words text-sm font-bold">
+                  {request.productName}
+                </div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {request.orderId} · {request.sku} · {request.createdAt}
+                </div>
+              </div>
+              <Button asChild variant="outline" size="xs" className="h-7 bg-white px-2">
+                <Link href="/rma">打开</Link>
+              </Button>
+            </div>
+          ))}
+          <Button asChild size="sm" className="w-full">
+            <Link href="/rma">
+              <RotateCcw className="size-4" />
+              新建 RMA
+            </Link>
+          </Button>
+        </CardContent>
+      </Card>
+
+      <Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
+        <CardHeader className="pb-0">
+          <CardTitle className="flex items-center gap-2 text-sm font-black">
+            <FileText className="size-4 text-primary" />
+            单据 / 发票
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-600">
+            暂无可下载单据。
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function AccountSummaryPanel({
   company,
   isEmployeeAccount,
@@ -668,7 +899,6 @@ function AccountSummaryPanel({
   wallet: CustomerWallet;
 }) {
   const level = normalizeCustomerTier(profile?.level ?? company?.level ?? company?.priceList);
-  const latestWalletTransaction = wallet.transactions[0];
   const openOrderCount = orderSummaries.filter((order) => !isTerminalOrderStatus(order.status)).length;
   const shippedOrderCount = orderSummaries.filter((order) => order.status === "shipped").length;
   const displayName =
@@ -746,33 +976,6 @@ function AccountSummaryPanel({
               className={"wide" in row && row.wide ? "col-span-2" : undefined}
             />
           ))}
-        </div>
-
-        <div className="rounded-md border border-blue-100 bg-blue-50/70 px-2 py-1.5">
-          <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-blue-700">
-            <span className="flex min-w-0 items-center gap-1.5">
-              <WalletCards className="size-3.5 shrink-0" />
-              <span className="truncate">钱包自动抵扣</span>
-            </span>
-            {latestWalletTransaction ? (
-              <span
-                className={cn(
-                  "shrink-0 font-black",
-                  latestWalletTransaction.direction === "credit" ? "text-emerald-700" : "text-blue-700"
-                )}
-              >
-                {latestWalletTransaction.direction === "credit" ? "+" : "-"}
-                {formatEuro(latestWalletTransaction.amount)}
-              </span>
-            ) : (
-              <span className="shrink-0 text-slate-500">暂无流水</span>
-            )}
-          </div>
-          {latestWalletTransaction ? (
-            <div className="mt-0.5 truncate text-[10px] font-semibold text-slate-500">
-              {latestWalletTransaction.reason || walletTransactionLabel(latestWalletTransaction.direction)}
-            </div>
-          ) : null}
         </div>
 
         <div className="grid grid-cols-4 gap-1.5">
@@ -1513,6 +1716,34 @@ function Info({
       </div>
     </div>
   );
+}
+
+function accountDataWarningLabel(warning: string, isEmployeeAccount: boolean) {
+  const normalized = warning.toLowerCase();
+
+  if (normalized.includes("employee self company")) {
+    return isEmployeeAccount
+      ? "员工自购资料还没有补全或暂时无法读取。请点击“资料”补全名称、电话、税号和地址；如果补全后仍显示，请管理员检查员工自购资料权限。"
+      : "账户资料暂时无法读取。请刷新页面，或联系管理员检查客户资料权限。";
+  }
+
+  if (normalized.includes("employee self profile")) {
+    return "员工自购资料暂时无法读取。请刷新页面；如果持续出现，请管理员检查 employee_self 资料。";
+  }
+
+  if (normalized.includes("orders")) {
+    return "订单数据暂时无法读取。请刷新页面或稍后再试。";
+  }
+
+  if (normalized.includes("rma")) {
+    return "RMA / 退换货数据暂时无法读取。请刷新页面或稍后再试。";
+  }
+
+  if (normalized.startsWith("supabase")) {
+    return "部分账户数据暂时无法读取。请刷新页面；如果持续出现，请联系管理员检查后端连接和资料权限。";
+  }
+
+  return warning;
 }
 
 function companyStatusLabel(status: CompanyProfile["status"]) {
