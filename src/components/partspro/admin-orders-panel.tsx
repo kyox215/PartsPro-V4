@@ -162,6 +162,8 @@ type CustomerSnapshot = {
   pec: string;
   status: CompanyStatus;
   priceList: CustomerLevel;
+  address: string;
+  postalCode: string;
   city: string;
   province: string;
 };
@@ -1697,8 +1699,11 @@ function OrdersList({
                     <div className="max-w-[260px] truncate text-xs font-bold text-slate-900">
                       {order.company}
                     </div>
-                    <div className="text-[11px] text-slate-500">
-                      {order.customer.city} ({order.customer.province})
+                    <div
+                      className="text-[11px] text-slate-500"
+                      title={order.shippingAddress || order.customer.address}
+                    >
+                      {orderCustomerLocationLabel(order, text)}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -2273,8 +2278,11 @@ function OrderDetailsPanel({
               </Badge>
             )}
           </div>
-          <p className="mt-0.5 truncate text-xs leading-snug text-slate-500 sm:break-words sm:text-[13px]">
-            {order.company} - {order.customer.city} ({order.customer.province})
+          <p
+            className="mt-0.5 truncate text-xs leading-snug text-slate-500 sm:break-words sm:text-[13px]"
+            title={order.shippingAddress || order.customer.address}
+          >
+            {order.company} - {orderCustomerLocationLabel(order, text)}
           </p>
         </div>
         <OrderActionBar
@@ -6339,6 +6347,23 @@ function normalizeAdminOrder(
     paymentDueAmountValue !== undefined
       ? readMoney(paymentDueAmountValue)
       : Math.max(0, roundMoney(total - receivedAmountForDue));
+  const shippingAddress =
+    readableAddressText(
+      readString(readRecordValue(row, ["shippingAddress", "deliveryAddress", "delivery_address"]))
+    ) ??
+    readableAddressText(
+      readString(
+        readRecordValue(shippingRecord, [
+          "address",
+          "shippingAddress",
+          "deliveryAddress",
+          "delivery_address",
+        ])
+      )
+    ) ??
+    readableAddressText(customer.address) ??
+    customerLocationAddressFallback(customer) ??
+    "";
 
   return {
     id,
@@ -6392,10 +6417,7 @@ function normalizeAdminOrder(
       readString(readRecordValue(row, ["eta", "estimatedDelivery", "estimated_delivery"])) ??
       readString(readRecordValue(shippingRecord, ["eta", "estimatedDelivery", "estimated_delivery"])) ??
       "Da pianificare",
-    shippingAddress:
-      readString(readRecordValue(row, ["shippingAddress", "deliveryAddress", "delivery_address"])) ??
-      readString(readRecordValue(shippingRecord, ["address", "shippingAddress", "deliveryAddress", "delivery_address"])) ??
-      (customer.city ? `${customer.city}, Italia` : "Non disponibile"),
+    shippingAddress,
     owner: readString(readRecordValue(row, ["owner", "accountOwner"])) ?? "Operations",
     customerNote,
     staffNote,
@@ -6524,6 +6546,32 @@ function normalizeCustomerSnapshot(
   fallbackName: string
 ): CustomerSnapshot {
   const address = isRecord(row?.address) ? row?.address : null;
+  const addressText =
+    readableAddressText(
+      readString(
+        readRecordValue(row, [
+          "address",
+          "shippingAddress",
+          "shipping_address",
+          "deliveryAddress",
+          "delivery_address",
+        ])
+      )
+    ) ??
+    readableAddressText(
+      readString(
+        readRecordValue(address, [
+          "formatted",
+          "full",
+          "address",
+          "line1",
+          "street",
+          "value",
+        ])
+      )
+    ) ??
+    "";
+  const parsedLocation = parseItalianAddressLocation(addressText);
 
   return {
     id: readString(readRecordValue(row, ["id"])) ?? undefined,
@@ -6538,15 +6586,133 @@ function normalizeCustomerSnapshot(
     priceList: normalizePriceListValue(
       readRecordValue(row, ["priceList", "price_list", "tier"])
     ),
+    address: addressText,
+    postalCode:
+      readLocationValue(readString(readRecordValue(row, ["postalCode", "postal_code", "cap"]))) ??
+      readLocationValue(readString(readRecordValue(address, ["postalCode", "postal_code", "cap", "zip"]))) ??
+      parsedLocation?.postalCode ??
+      "",
     city:
-      readString(readRecordValue(row, ["city"])) ??
-      readString(readRecordValue(address, ["city"])) ??
-      "Non disponibile",
+      readLocationValue(readString(readRecordValue(row, ["city"]))) ??
+      readLocationValue(readString(readRecordValue(address, ["city"]))) ??
+      parsedLocation?.city ??
+      "",
     province:
-      readString(readRecordValue(row, ["province"])) ??
-      readString(readRecordValue(address, ["province"])) ??
-      "--",
+      readLocationValue(readString(readRecordValue(row, ["province"]))) ??
+      readLocationValue(readString(readRecordValue(address, ["province", "state"]))) ??
+      parsedLocation?.province ??
+      "",
   };
+}
+
+function orderCustomerLocationLabel(order: AdminOrder, text: AdminText) {
+  const parsedLocation =
+    parseItalianAddressLocation(order.shippingAddress) ??
+    parseItalianAddressLocation(order.customer.address);
+
+  if (parsedLocation) {
+    return formatItalianAddressLocation(parsedLocation);
+  }
+
+  const city = readLocationValue(order.customer.city);
+  const province = readLocationValue(order.customer.province);
+  const postalCode = readLocationValue(order.customer.postalCode);
+
+  if (city && province) {
+    return `${[postalCode, city].filter(Boolean).join(" ")} (${province})`;
+  }
+
+  if (city) {
+    return [postalCode, city].filter(Boolean).join(" ");
+  }
+
+  if (readableAddressText(order.shippingAddress) || readableAddressText(order.customer.address)) {
+    return text.orders.details.addressRecorded;
+  }
+
+  return text.orders.details.addressMissing;
+}
+
+function customerLocationAddressFallback(customer: CustomerSnapshot) {
+  const city = readLocationValue(customer.city);
+  const province = readLocationValue(customer.province);
+  const postalCode = readLocationValue(customer.postalCode);
+
+  if (!city) {
+    return null;
+  }
+
+  return [postalCode, city, province ? `(${province})` : null, "Italia"]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function parseItalianAddressLocation(address: string | null | undefined) {
+  const value = readableAddressText(address);
+
+  if (!value) {
+    return null;
+  }
+
+  const match = value.match(/\b(\d{5})\s+(.+?)\s*\(([A-Za-z]{2})\)/);
+
+  if (!match) {
+    return null;
+  }
+
+  const city = match[2]?.replace(/[,;:-]+$/g, "").trim();
+  const province = match[3]?.toUpperCase();
+
+  if (!city || !province) {
+    return null;
+  }
+
+  return {
+    postalCode: match[1],
+    city,
+    province,
+  };
+}
+
+function formatItalianAddressLocation(location: {
+  postalCode: string;
+  city: string;
+  province: string;
+}) {
+  return `${location.postalCode} ${location.city} (${location.province})`;
+}
+
+function readableAddressText(value: string | null | undefined) {
+  const text = sanitizeSupplierText(value);
+
+  if (!text || isMissingLocationValue(text)) {
+    return null;
+  }
+
+  return text;
+}
+
+function readLocationValue(value: string | null | undefined) {
+  const text = sanitizeSupplierText(value);
+
+  if (!text || isMissingLocationValue(text)) {
+    return null;
+  }
+
+  return text;
+}
+
+function isMissingLocationValue(value: string) {
+  const normalized = value.trim().toLowerCase();
+
+  return (
+    normalized === "--" ||
+    normalized === "-" ||
+    normalized === "n/a" ||
+    normalized === "non disponibile" ||
+    normalized === "暂无数据" ||
+    normalized === "地址未填写"
+  );
 }
 
 function normalizePaymentReconciliation(value: unknown): PaymentReconciliation {

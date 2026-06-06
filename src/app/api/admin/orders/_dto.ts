@@ -8,6 +8,17 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
     "companySnapshot",
   ]);
   const companySnapshot = isRecord(companySnapshotValue) ? companySnapshotValue : null;
+  const customerAddress =
+    readStringValue(readRecordValue(companySnapshot, ["address"])) ?? order.deliveryAddress;
+  const customerDeliveryAddress =
+    readStringValue(
+      readRecordValue(companySnapshot, [
+        "delivery_address",
+        "deliveryAddress",
+        "shipping_address",
+        "shippingAddress",
+      ])
+    ) ?? order.deliveryAddress;
   const operationHistory = toOrderOperationHistory(order);
   const paymentCollector = findPaymentCollector(order, operationHistory);
   const walletAppliedAmount = order.walletAppliedAmount ?? 0;
@@ -51,7 +62,9 @@ export function toAdminOrderDto(order: AdminOrder, overlay: Record<string, unkno
         readRecordValue(companySnapshot, ["partita_iva", "partitaIva", "vat_number"])
       ),
       pec: readStringValue(readRecordValue(companySnapshot, ["pec"])),
-      address: readStringValue(readRecordValue(companySnapshot, ["address"])),
+      address: customerAddress,
+      deliveryAddress: customerDeliveryAddress,
+      shippingAddress: customerDeliveryAddress,
     },
     total: order.total,
     totalNet: order.totalNet,

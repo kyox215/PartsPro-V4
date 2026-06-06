@@ -842,6 +842,8 @@ export const adminDictionaries = {
           warehouse: "仓库",
         },
         details: {
+          addressMissing: "地址未填写",
+          addressRecorded: "配送地址已填写",
           customer: "客户",
           customerNote: "客户备注",
           deliveryAddress: "配送地址",
@@ -2048,6 +2050,8 @@ export const adminDictionaries = {
           warehouse: "Magazzino",
         },
         details: {
+          addressMissing: "Indirizzo mancante",
+          addressRecorded: "Indirizzo consegna presente",
           customer: "Cliente",
           customerNote: "Nota cliente",
           deliveryAddress: "Indirizzo consegna",
