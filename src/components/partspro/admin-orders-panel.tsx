@@ -970,7 +970,7 @@ export function AdminOrdersPanel() {
         const walletRefundAmount = result.walletRefundAmount;
 
         removeOrder(order.id);
-        setActiveOrderId((currentId) => (currentId === order.id ? null : currentId));
+        setSelectedOrderId((currentId) => (currentId === order.id ? "" : currentId));
         setNotice({
           tone: "success",
           message: formatAdminMessage(text.orders.dangerActionSuccess, {
