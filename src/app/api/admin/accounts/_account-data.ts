@@ -38,10 +38,18 @@ export type AdminAccountDto = {
   customerState: "linked" | "profiles_only";
   displayName: string | null;
   email: string | null;
+  profileCustomer: AdminAccountCustomerDto | null;
+  profileState: AdminAccountProfileStateDto;
   role: string;
   roleTemplate: string | null;
   updatedAt: string | null;
   userId: string;
+};
+
+export type AdminAccountProfileStateDto = {
+  kind: "customer" | "employee_self";
+  missingFields: string[];
+  status: "complete" | "incomplete" | "missing";
 };
 
 export type AdminAccountCustomerDto = {
@@ -150,6 +158,8 @@ export type AdminAccountDetailDto = {
   customer: AdminAccountCustomerDto | null;
   memberships: AdminAccountMembershipDto[];
   permissions: string[];
+  profileCustomer: AdminAccountCustomerDto | null;
+  profileState: AdminAccountProfileStateDto;
 };
 
 export type ReadAdminAccountDetailOptions = {
@@ -269,6 +279,53 @@ export async function readCustomersForProfiles(
   return selected;
 }
 
+export async function readProfileCustomersForProfiles(
+  supabase: SupabaseServerClient,
+  profiles: DbRow[],
+  customers: Map<string, DbRow>
+) {
+  const profileCustomers = new Map<string, DbRow>();
+  const employeeUserIds = profiles
+    .filter((profile) => readString(profile.account_type) === "employee")
+    .map((profile) => readString(profile.id))
+    .filter(isString);
+
+  for (const profile of profiles) {
+    const profileId = readString(profile.id);
+    const normalCustomer = profileId ? customers.get(profileId) : null;
+
+    if (profileId && normalCustomer) {
+      profileCustomers.set(profileId, normalCustomer);
+    }
+  }
+
+  if (employeeUserIds.length === 0) {
+    return profileCustomers;
+  }
+
+  const { data } = await supabase
+    .from("customers")
+    .select(customerSelect)
+    .in("user_id", uniqueStrings(employeeUserIds))
+    .eq("profile_kind", "employee_self")
+    .order("updated_at", { ascending: false });
+
+  for (const row of Array.isArray(data) ? data.filter(isRow) : []) {
+    const userId = readString(row.user_id);
+    const customerId = readString(row.id);
+
+    if (userId && !profileCustomers.has(userId)) {
+      profileCustomers.set(userId, row);
+    }
+
+    if (customerId) {
+      profileCustomers.set(customerId, row);
+    }
+  }
+
+  return profileCustomers;
+}
+
 export async function readAdminAccountByUserId(
   supabase: SupabaseServerClient,
   userId: string
@@ -288,7 +345,12 @@ export async function readAdminAccountByUserId(
   }
 
   const customer = await readCustomerForProfile(supabase, data);
+  const profileCustomer =
+    readString(data.account_type) === "employee"
+      ? await readEmployeeSelfCustomerForProfile(supabase, data)
+      : customer;
   const customers = new Map<string, DbRow>();
+  const profileCustomers = new Map<string, DbRow>();
 
   if (customer) {
     const customerId = readString(customer.id);
@@ -300,7 +362,20 @@ export async function readAdminAccountByUserId(
     }
   }
 
-  return toAccountDto(data, customers);
+  if (profileCustomer) {
+    const profileId = readString(data.id);
+    const profileCustomerId = readString(profileCustomer.id);
+
+    if (profileId) {
+      profileCustomers.set(profileId, profileCustomer);
+    }
+
+    if (profileCustomerId) {
+      profileCustomers.set(profileCustomerId, profileCustomer);
+    }
+  }
+
+  return toAccountDto(data, customers, profileCustomers);
 }
 
 export async function readEditableAdminAccountCustomerByUserId(
@@ -316,6 +391,23 @@ export async function readEditableAdminAccountCustomerByUserId(
   return {
     account,
     customer: account.customer,
+  };
+}
+
+export async function readEditableAdminAccountProfileCustomerByUserId(
+  supabase: SupabaseServerClient,
+  userId: string
+) {
+  const account = await readAdminAccountByUserId(supabase, userId);
+
+  if (!account) {
+    return null;
+  }
+
+  return {
+    account,
+    profileCustomer: account.profileCustomer,
+    profileState: account.profileState,
   };
 }
 
@@ -386,6 +478,42 @@ async function readCustomerForProfile(
   return null;
 }
 
+async function readEmployeeSelfCustomerForProfile(
+  supabase: SupabaseServerClient,
+  profile: DbRow
+) {
+  const profileId = readString(profile.id);
+  const customerId = readString(profile.customer_id);
+
+  if (!profileId) {
+    return null;
+  }
+
+  if (customerId) {
+    const { data } = await supabase
+      .from("customers")
+      .select(customerSelect)
+      .eq("id", customerId)
+      .eq("profile_kind", "employee_self")
+      .maybeSingle();
+
+    if (isRow(data)) {
+      return data;
+    }
+  }
+
+  const { data } = await supabase
+    .from("customers")
+    .select(customerSelect)
+    .eq("user_id", profileId)
+    .eq("profile_kind", "employee_self")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return isRow(data) ? data : null;
+}
+
 async function readFirstMatchingCustomer(
   supabase: SupabaseServerClient,
   context: {
@@ -447,29 +575,42 @@ export async function readAdminAccountDetail(
         spendSummary: orderLedger.spendSummary,
       }
     : null;
+  const profileCustomer =
+    account.profileCustomer?.id && customer?.id === account.profileCustomer.id
+      ? customer
+      : account.profileCustomer;
+  const profileState = profileStateForAccount(account, profileCustomer);
 
   return {
     account: {
       ...account,
       customer,
+      profileCustomer,
+      profileState,
     },
     auditEvents,
     customer,
     memberships,
     permissions,
+    profileCustomer,
+    profileState,
   };
 }
 
 export function toAccountDto(
   profile: DbRow,
-  customers: Map<string, DbRow>
+  customers: Map<string, DbRow>,
+  profileCustomers: Map<string, DbRow> = new Map()
 ): AdminAccountDto {
   const profileId = readString(profile.id) ?? "";
   const customerId = readString(profile.customer_id);
   const customer = customerId
     ? customers.get(customerId) ?? customers.get(profileId) ?? null
     : customers.get(profileId) ?? null;
+  const profileCustomer = profileCustomers.get(profileId) ?? (customer ?? null);
   const linkedCustomerId = customer ? readString(customer.id) : null;
+  const accountType = readString(profile.account_type) ?? "customer";
+  const profileCustomerDto = profileCustomer ? toCustomerDto(profileCustomer) : null;
 
   return {
     userId: profileId,
@@ -477,12 +618,14 @@ export function toAccountDto(
     displayName: readString(profile.display_name),
     avatarUrl: readString(profile.avatar_url),
     authProvider: readString(profile.auth_provider) ?? "password",
-    accountType: readString(profile.account_type) ?? "customer",
+    accountType,
     role: readString(profile.role) ?? "customer",
     roleTemplate: readString(profile.role_template),
     customerId: customerId ?? linkedCustomerId,
     customerState: customer ? "linked" : "profiles_only",
     customer: customer ? toCustomerDto(customer) : null,
+    profileCustomer: profileCustomerDto,
+    profileState: profileStateForProfile(accountType, profileCustomerDto),
     createdAt: readString(profile.created_at),
     updatedAt: readString(profile.updated_at),
   };
@@ -512,6 +655,55 @@ function chooseCustomerForProfile(
   });
 
   return ranked[0]?.customer ?? null;
+}
+
+function profileStateForAccount(
+  account: Pick<AdminAccountDto, "accountType">,
+  profileCustomer: AdminAccountCustomerDto | null
+) {
+  return profileStateForProfile(account.accountType, profileCustomer);
+}
+
+function profileStateForProfile(
+  accountType: string,
+  profileCustomer: AdminAccountCustomerDto | null
+): AdminAccountProfileStateDto {
+  const kind = accountType === "employee" ? "employee_self" : "customer";
+
+  if (!profileCustomer) {
+    return {
+      kind,
+      missingFields: ["profile"],
+      status: "missing",
+    };
+  }
+
+  const missingFields = profileMissingFields(profileCustomer);
+
+  return {
+    kind,
+    missingFields,
+    status: missingFields.length > 0 ? "incomplete" : "complete",
+  };
+}
+
+function profileMissingFields(customer: AdminAccountCustomerDto) {
+  const missingFields: string[] = [];
+
+  for (const [field, value] of [
+    ["name", customer.name],
+    ["email", customer.email],
+    ["phone", customer.phone],
+    ["fiscalCode", customer.fiscalCode],
+    ["billingAddress", customer.billingAddress],
+    ["shippingAddress", customer.shippingAddress],
+  ] as const) {
+    if (!readString(value)) {
+      missingFields.push(field);
+    }
+  }
+
+  return missingFields;
 }
 
 function customerLinkRank(
@@ -773,7 +965,11 @@ async function readAccountAuditEvents(
   supabase: SupabaseServerClient,
   account: AdminAccountDto
 ): Promise<AdminAccountAuditEventDto[]> {
-  const entityIds = uniqueStrings([account.userId, account.customer?.id].filter(isString));
+  const entityIds = uniqueStrings([
+    account.userId,
+    account.customer?.id,
+    account.profileCustomer?.id,
+  ].filter(isString));
 
   if (entityIds.length === 0) {
     return [];

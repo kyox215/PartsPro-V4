@@ -31,10 +31,11 @@ export async function POST(request: NextRequest, { params }: OrderDangerActionPa
   }
 
   const { orderId } = await params;
+  const decodedOrderId = decodeURIComponent(orderId);
 
   try {
     const result = await voidAndSoftDeleteAdminOrder({
-      orderId: decodeURIComponent(orderId),
+      orderId: decodedOrderId,
       confirmOrderNo: parsed.data.confirmOrderNo,
       reason: parsed.data.reason,
       metadata: {
@@ -42,6 +43,23 @@ export async function POST(request: NextRequest, { params }: OrderDangerActionPa
         source: "admin_order_danger_action",
       },
     });
+    const dangerAction = isRecord(result.data.transition)
+      ? result.data.transition
+      : {};
+    const nestedWalletRefundRequest = isRecord(dangerAction.wallet_refund_request)
+      ? dangerAction.wallet_refund_request
+      : isRecord(dangerAction.walletRefundRequest)
+        ? dangerAction.walletRefundRequest
+        : null;
+    const walletRefundAmount =
+      readNumber(dangerAction.wallet_refund_amount) ??
+      readNumber(dangerAction.walletRefundAmount) ??
+      readNumber(readRecordValue(nestedWalletRefundRequest, ["amount"])) ??
+      0;
+    const walletRefundRequestId =
+      readString(dangerAction.wallet_refund_request_id) ??
+      readString(dangerAction.walletRefundRequestId) ??
+      readString(readRecordValue(nestedWalletRefundRequest, ["request_id", "requestId", "id"]));
 
     return NextResponse.json({
       data: {
@@ -50,7 +68,12 @@ export async function POST(request: NextRequest, { params }: OrderDangerActionPa
       },
       meta: {
         source: result.source,
-        dangerAction: result.data.transition,
+        dangerAction: {
+          ...dangerAction,
+          wallet_refund_amount: walletRefundAmount,
+          wallet_refund_request_id: walletRefundRequestId,
+        },
+        walletRefundRequest: walletRefundRequestId ? { id: walletRefundRequestId } : null,
       },
     });
   } catch (error) {
@@ -60,4 +83,51 @@ export async function POST(request: NextRequest, { params }: OrderDangerActionPa
       "Order could not be voided at this time."
     );
   }
+}
+
+function readNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return null;
+}
+
+function readString(value: unknown) {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return null;
+}
+
+function readRecordValue(
+  value: Record<string, unknown> | null,
+  keys: string[]
+) {
+  if (!value) {
+    return undefined;
+  }
+
+  for (const key of keys) {
+    if (value[key] !== undefined) {
+      return value[key];
+    }
+  }
+
+  return undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

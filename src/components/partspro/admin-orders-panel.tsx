@@ -125,6 +125,12 @@ type WarehouseName = PartProduct["warehouse"];
 type OrdersSource = "admin_api" | "supabase" | "empty";
 type ApiOrdersSource = OrdersSource;
 type NoticeTone = "success" | "info" | "warning" | "error";
+type WalletRefundStatus =
+  | "requested"
+  | "approved"
+  | "rejected"
+  | "credited"
+  | "cancelled";
 type WorkflowKey =
   | "all"
   | "submitted"
@@ -181,6 +187,28 @@ type OrderLine = {
   reservedQty: number;
   fulfilledQty: number;
   batchCode: string;
+};
+
+type WalletRefundRequest = {
+  amount: number;
+  approvedAt: string | null;
+  approvedBy: string | null;
+  createdAt: string;
+  creditedAt: string | null;
+  currency: "EUR";
+  customerId: string | null;
+  customerName: string | null;
+  id: string;
+  metadata: unknown;
+  orderId: string | null;
+  orderLineId: string | null;
+  orderNo: string | null;
+  reason: string;
+  requestType: string;
+  requestedAt: string;
+  requestedBy: string | null;
+  status: WalletRefundStatus;
+  updatedAt: string;
 };
 
 type OrderActivityActor = {
@@ -257,6 +285,7 @@ type AdminOrder = {
   reservationOverdue: boolean;
   reservationWarning: boolean;
   lines: OrderLine[];
+  walletRefunds: WalletRefundRequest[];
   activity: string[];
   operationHistory: OrderActivityEvent[];
 };
@@ -492,8 +521,23 @@ export function AdminOrdersPanel() {
           return null;
         }
 
-        upsertOrder(order);
-        return order;
+        const orderWithRefunds = canReadWalletRefunds(adminSession)
+          ? {
+              ...order,
+              walletRefunds: await fetchWalletRefundsForOrderFromApi(
+                order.id,
+                text,
+                signal
+              ),
+            }
+          : order;
+
+        if (signal?.aborted) {
+          return null;
+        }
+
+        upsertOrder(orderWithRefunds);
+        return orderWithRefunds;
       } catch (error) {
         if (!signal?.aborted) {
           setNotice({
@@ -510,7 +554,7 @@ export function AdminOrdersPanel() {
         }
       }
     },
-    [text.orders.detailError, upsertOrder]
+    [adminSession, text, upsertOrder]
   );
 
   const refreshOrders = React.useCallback(
@@ -870,11 +914,17 @@ export function AdminOrdersPanel() {
         }
 
         const refreshedOrder = await fetchOrderDetailFromApi(order.id);
+        const walletRefunds = canReadWalletRefunds(adminSession)
+          ? await fetchWalletRefundsForOrderFromApi(order.id, text)
+          : refreshedOrder.walletRefunds;
 
-        upsertOrder(refreshedOrder);
+        upsertOrder({ ...refreshedOrder, walletRefunds });
         setNotice({
           tone: "success",
-          message: `${line.name} 实给数量已保存。`,
+          message:
+            patch.actualQuantity < line.quantity
+              ? `${line.name} 实给数量已保存；生成申请，审批通过后入账。`
+              : `${line.name} 实给数量已保存。`,
         });
       } catch (error) {
         setNotice({
@@ -886,7 +936,7 @@ export function AdminOrdersPanel() {
         setPendingOrderAction(null);
       }
     },
-    [text, upsertOrder]
+    [adminSession, text, upsertOrder]
   );
 
   const handleTransition = React.useCallback(
@@ -968,6 +1018,7 @@ export function AdminOrdersPanel() {
         const result = await voidOrderWithDangerAction(order.id, input, text);
         const restoredQty = result.restoredQty;
         const walletRefundAmount = result.walletRefundAmount;
+        const walletRefundRequestId = result.walletRefundRequestId;
 
         removeOrder(order.id);
         setSelectedOrderId((currentId) => (currentId === order.id ? "" : currentId));
@@ -977,6 +1028,9 @@ export function AdminOrdersPanel() {
             id: order.id,
             restored: restoredQty,
             wallet: formatEuro(walletRefundAmount),
+            request:
+              walletRefundRequestId ??
+              (walletRefundAmount > 0 ? text.orders.walletRefundRequestPending : text.common.none),
           }),
         });
       } catch (error) {
@@ -997,6 +1051,39 @@ export function AdminOrdersPanel() {
       removeOrder,
       text,
     ]
+  );
+
+  const approveWalletRefund = React.useCallback(
+    async (order: AdminOrder, refund: WalletRefundRequest) => {
+      const actionKey = `${order.id}:wallet-refund:${refund.id}`;
+
+      setPendingOrderAction(actionKey);
+
+      try {
+        const reviewed = await patchWalletRefundApprovalInApi(refund.id, "approve", text);
+        const walletRefunds = replaceWalletRefund(order.walletRefunds, reviewed);
+
+        upsertOrder({ ...order, walletRefunds });
+        setNotice({
+          tone: "success",
+          message: formatAdminMessage(text.orders.walletRefundApprovedNotice, {
+            amount: formatEuro(reviewed.amount),
+            id: reviewed.id,
+          }),
+        });
+      } catch (error) {
+        setNotice({
+          tone: "error",
+          message:
+            error instanceof Error ? error.message : text.orders.walletRefundApproveFailed,
+        });
+      } finally {
+        setPendingOrderAction((currentAction) =>
+          currentAction === actionKey ? null : currentAction
+        );
+      }
+    },
+    [text, upsertOrder]
   );
 
   const handleRollbackOrder = React.useCallback(
@@ -1300,6 +1387,7 @@ export function AdminOrdersPanel() {
                     pendingActionKey={pendingOrderAction}
                     text={text}
                     onCancelOrder={handleCancelOrder}
+                    onApproveWalletRefund={approveWalletRefund}
                     onDangerVoidOrder={handleDangerVoidOrder}
                     onForceCancelOrder={handleForceCancelOrder}
                     onPrintOrder={handlePrintOrder}
@@ -1996,6 +2084,7 @@ function OrderDetailsPanel({
   pendingActionKey,
   text,
   onCancelOrder,
+  onApproveWalletRefund,
   onDangerVoidOrder,
   onForceCancelOrder,
   onPrintOrder,
@@ -2015,6 +2104,7 @@ function OrderDetailsPanel({
   pendingActionKey: string | null;
   text: AdminText;
   onCancelOrder: (order: AdminOrder) => void;
+  onApproveWalletRefund: (order: AdminOrder, refund: WalletRefundRequest) => void;
   onDangerVoidOrder: (order: AdminOrder, input: OrderDangerActionInput) => void;
   onForceCancelOrder: (order: AdminOrder) => void;
   onPrintOrder: (order: AdminOrder) => void;
@@ -2110,9 +2200,18 @@ function OrderDetailsPanel({
   const isMutating = pendingActionKey?.startsWith(`${order.id}:`) ?? false;
   const isReadOnly = order.status === "completed" || order.status === "cancelled";
   const canManageOrders = hasAdminSessionPermission(adminSession, "orders.manage");
+  const canRequestWalletRefunds = hasAdminSessionPermission(
+    adminSession,
+    "wallet_refunds.request"
+  );
+  const canApproveWalletRefunds = hasAdminSessionPermission(
+    adminSession,
+    "wallet_refunds.approve"
+  );
   const canDangerVoidOrder =
     isReadOnly &&
     hasAdminSessionPermission(adminSession, "orders.danger") &&
+    (order.walletAppliedAmount <= 0 || canRequestWalletRefunds) &&
     !order.softDeletedAt;
   const canEditStaffNote = canManageOrders;
   const canEditLogistics = canManageOrders && !isReadOnly;
@@ -2212,6 +2311,7 @@ function OrderDetailsPanel({
           canEditLines={canEditLines}
           canEditPayment={canManageOrders && !isReadOnly}
           canEditStaffNote={canEditStaffNote}
+          canApproveWalletRefunds={canApproveWalletRefunds}
           canReconcilePayment={canReconcilePayment}
           isMutating={isMutating}
           labels={labels}
@@ -2221,6 +2321,7 @@ function OrderDetailsPanel({
           trackingDetail={trackingDetail}
           trackingDetailsOpen={trackingDetailsOpen}
           onAdjustShipping={onAdjustShipping}
+          onApproveWalletRefund={onApproveWalletRefund}
           onRefreshTrackingDetails={handleRefreshTrackingDetails}
           onToggleTrackingDetails={handleToggleTrackingDetails}
           onUpdateLogistics={onUpdateLogistics}
@@ -2272,12 +2373,14 @@ function OrderDetailsPanel({
 
           <OrderPaymentMethodCard
             key={`${order.id}:${order.paymentMethod}:${order.paymentStatus}:${order.paymentReconciliation.receivedAt ?? ""}`}
+            canApproveWalletRefunds={canApproveWalletRefunds}
             canEditPayment={canManageOrders && !isReadOnly}
             canReconcilePayment={canReconcilePayment}
             isMutating={isMutating}
             labels={labels}
             order={order}
             text={text}
+            onApproveWalletRefund={onApproveWalletRefund}
             onUpdatePaymentMethod={onUpdatePaymentMethod}
             onUpdatePayment={onUpdatePayment}
           />
@@ -2436,6 +2539,7 @@ function OrderMobileDetailsSection({
   canEditLines,
   canEditPayment,
   canEditStaffNote,
+  canApproveWalletRefunds,
   canReconcilePayment,
   isMutating,
   labels,
@@ -2445,6 +2549,7 @@ function OrderMobileDetailsSection({
   trackingDetail,
   trackingDetailsOpen,
   onAdjustShipping,
+  onApproveWalletRefund,
   onRefreshTrackingDetails,
   onToggleTrackingDetails,
   onUpdateLogistics,
@@ -2459,6 +2564,7 @@ function OrderMobileDetailsSection({
   canEditLines: boolean;
   canEditPayment: boolean;
   canEditStaffNote: boolean;
+  canApproveWalletRefunds: boolean;
   canReconcilePayment: boolean;
   isMutating: boolean;
   labels: OrderLabels;
@@ -2468,6 +2574,7 @@ function OrderMobileDetailsSection({
   trackingDetail: OrderTrackingDetail;
   trackingDetailsOpen: boolean;
   onAdjustShipping: (order: AdminOrder, patch: OrderShippingPatchInput) => void;
+  onApproveWalletRefund: (order: AdminOrder, refund: WalletRefundRequest) => void;
   onRefreshTrackingDetails: () => void;
   onToggleTrackingDetails: () => void;
   onUpdateLogistics: (order: AdminOrder, carrier: string, tracking: string) => void;
@@ -2484,6 +2591,7 @@ function OrderMobileDetailsSection({
     return (
       <OrderPaymentMethodCard
         compact
+        canApproveWalletRefunds={canApproveWalletRefunds}
         canEditPayment={canEditPayment}
         canReconcilePayment={canReconcilePayment}
         isMutating={isMutating}
@@ -2492,6 +2600,7 @@ function OrderMobileDetailsSection({
         text={text}
         onUpdatePayment={onUpdatePayment}
         onUpdatePaymentMethod={onUpdatePaymentMethod}
+        onApproveWalletRefund={onApproveWalletRefund}
       />
     );
   }
@@ -3326,6 +3435,7 @@ function TrackingTimelineItem({ event }: { event: TrackingTimelineEvent }) {
 }
 
 function OrderPaymentMethodCard({
+  canApproveWalletRefunds,
   canEditPayment,
   canReconcilePayment,
   compact = false,
@@ -3333,9 +3443,11 @@ function OrderPaymentMethodCard({
   labels,
   order,
   text,
+  onApproveWalletRefund,
   onUpdatePayment,
   onUpdatePaymentMethod,
 }: {
+  canApproveWalletRefunds: boolean;
   canEditPayment: boolean;
   canReconcilePayment: boolean;
   compact?: boolean;
@@ -3343,6 +3455,7 @@ function OrderPaymentMethodCard({
   labels: OrderLabels;
   order: AdminOrder;
   text: AdminText;
+  onApproveWalletRefund: (order: AdminOrder, refund: WalletRefundRequest) => void;
   onUpdatePayment: (order: AdminOrder, patch: OrderPaymentPatchInput) => void;
   onUpdatePaymentMethod: (order: AdminOrder, paymentMethod: PaymentMethod) => void;
 }) {
@@ -3434,6 +3547,7 @@ function OrderPaymentMethodCard({
   const receivedAtLabel = order.paymentReconciliation.receivedAt
     ? formatDisplayDate(order.paymentReconciliation.receivedAt)
     : text.common.none;
+  const walletRefundSummary = summarizeWalletRefunds(order.walletRefunds);
   const paymentInfoRows = [
     {
       label: text.orders.details.paymentMethod,
@@ -3469,6 +3583,16 @@ function OrderPaymentMethodCard({
       label: text.orders.paymentNote,
       value: order.paymentReconciliation.note || text.common.none,
       show: !compact || Boolean(order.paymentReconciliation.note),
+    },
+    {
+      label: text.orders.walletRefundPending,
+      value: formatEuro(walletRefundSummary.pendingAmount),
+      show: walletRefundSummary.pendingAmount > 0,
+    },
+    {
+      label: text.orders.walletRefundCredited,
+      value: formatEuro(walletRefundSummary.creditedAmount),
+      show: walletRefundSummary.creditedAmount > 0,
     },
   ].filter((row) => row.show);
 
@@ -3646,6 +3770,16 @@ function OrderPaymentMethodCard({
         value: order.paymentReconciliation.note || text.common.none,
         show: Boolean(order.paymentReconciliation.note),
       },
+      {
+        label: text.orders.walletRefundPending,
+        value: formatEuro(walletRefundSummary.pendingAmount),
+        show: walletRefundSummary.pendingAmount > 0,
+      },
+      {
+        label: text.orders.walletRefundCredited,
+        value: formatEuro(walletRefundSummary.creditedAmount),
+        show: walletRefundSummary.creditedAmount > 0,
+      },
     ].filter((row) => row.show);
 
     return (
@@ -3672,6 +3806,14 @@ function OrderPaymentMethodCard({
             <InfoRow key={row.label} label={row.label} value={row.value} />
           ))}
         </div>
+        <OrderWalletRefundsCard
+          compact
+          canApproveWalletRefunds={canApproveWalletRefunds}
+          isMutating={isMutating}
+          order={order}
+          text={text}
+          onApproveWalletRefund={onApproveWalletRefund}
+        />
         <div className="mt-2 grid gap-1.5">
           <Button
             type="button"
@@ -3812,8 +3954,98 @@ function OrderPaymentMethodCard({
           </>
         )}
       </div>
+      <OrderWalletRefundsCard
+        canApproveWalletRefunds={canApproveWalletRefunds}
+        isMutating={isMutating}
+        order={order}
+        text={text}
+        onApproveWalletRefund={onApproveWalletRefund}
+      />
       {renderPaymentDialog()}
     </section>
+  );
+}
+
+function OrderWalletRefundsCard({
+  canApproveWalletRefunds,
+  compact = false,
+  isMutating,
+  order,
+  text,
+  onApproveWalletRefund,
+}: {
+  canApproveWalletRefunds: boolean;
+  compact?: boolean;
+  isMutating: boolean;
+  order: AdminOrder;
+  text: AdminText;
+  onApproveWalletRefund: (order: AdminOrder, refund: WalletRefundRequest) => void;
+}) {
+  if (order.walletRefunds.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      className={cn(
+        "mt-2 rounded-md border border-slate-100 bg-slate-50/70",
+        compact ? "p-1.5" : "p-2"
+      )}
+    >
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <div className="min-w-0 text-[11px] font-black uppercase leading-none text-slate-400">
+          {text.orders.walletRefundRequests}
+        </div>
+        <Badge variant="outline" className="h-5 bg-white px-1.5 text-[10px]">
+          {order.walletRefunds.length}
+        </Badge>
+      </div>
+      <div className="grid gap-1">
+        {order.walletRefunds.map((refund) => {
+          const canApprove =
+            canApproveWalletRefunds &&
+            refund.status === "requested" &&
+            !isMutating;
+
+          return (
+            <div
+              key={refund.id}
+              className="grid min-w-0 gap-1 rounded-md border border-slate-100 bg-white px-2 py-1.5"
+            >
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="truncate text-xs font-black text-slate-950">
+                    {formatEuro(refund.amount)}
+                  </div>
+                  <div className="mt-0.5 truncate text-[10px] font-semibold text-slate-500">
+                    {refund.reason || text.common.none}
+                  </div>
+                </div>
+                <Badge className={walletRefundBadgeClass(refund.status)}>
+                  {walletRefundStatusLabel(refund.status, text)}
+                </Badge>
+              </div>
+              <div className="flex min-w-0 items-center justify-between gap-2">
+                <span className="truncate text-[10px] font-semibold text-slate-400">
+                  {refund.requestedAt ? formatDisplayDate(refund.requestedAt) : refund.id}
+                </span>
+                {canApprove ? (
+                  <Button
+                    type="button"
+                    size="xs"
+                    className="h-7 shrink-0 rounded-md px-2"
+                    onClick={() => onApproveWalletRefund(order, refund)}
+                  >
+                    <BadgeCheck className="size-3" />
+                    {text.orders.walletRefundApprove}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -4228,6 +4460,7 @@ function OrderLines({
     setActualQuantity(String(line.pickedQty || line.billableQty || line.quantity));
     setReason("");
   };
+  const refundSummary = order ? summarizeWalletRefunds(order.walletRefunds) : null;
 
   const submitEditor = () => {
     if (!editingLine || !order || !onUpdateLineFulfillment) {
@@ -4273,6 +4506,26 @@ function OrderLines({
                   <MobileFact label={text.orders.lines.reserved} value={`${line.reservedQty}`} />
                   <MobileFact label="缺货" value={`${line.cancelledQty}`} />
                 </div>
+                {refundSummary && lineShortageRefundAmount(line) > 0 ? (
+                  <div className="mt-1 grid grid-cols-2 gap-1 text-xs">
+                    <MobileFact
+                      label={text.orders.walletRefundPending}
+                      value={
+                        refundSummary.pendingAmount > 0
+                          ? formatEuro(lineShortageRefundAmount(line))
+                          : text.common.none
+                      }
+                    />
+                    <MobileFact
+                      label={text.orders.walletRefundCredited}
+                      value={
+                        refundSummary.creditedAmount > 0
+                          ? formatEuro(lineShortageRefundAmount(line))
+                          : text.common.none
+                      }
+                    />
+                  </div>
+                ) : null}
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <Badge className={orderLineOperationalBadgeClass(line)}>
                     {orderLineOperationalLabel(line)}
@@ -4379,7 +4632,7 @@ function OrderLines({
           <DialogHeader>
             <DialogTitle className="text-base font-black">登记实给数量</DialogTitle>
             <DialogDescription>
-              少给数量会核销锁货库存，不会释放回可售库存；已付款银行转账订单会把差价入钱包。
+              少给数量会核销锁货库存，不会释放回可售库存；已付款银行转账订单会生成申请，审批通过后入账。
             </DialogDescription>
           </DialogHeader>
           {editingLine ? (
@@ -5539,6 +5792,46 @@ async function fetchOrderDetailFromApi(
   return order;
 }
 
+async function fetchWalletRefundsForOrderFromApi(
+  orderId: string,
+  text: AdminText,
+  signal?: AbortSignal
+) {
+  const params = new URLSearchParams({
+    limit: "50",
+    offset: "0",
+    orderId,
+  });
+  const path = `/api/admin/wallet-refunds?${params.toString()}`;
+  const response = await fetch(path, {
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Cache-Control": "no-cache",
+    },
+    signal,
+  });
+
+  if (!response.ok) {
+    const payload = await readJsonSafely(response);
+    const message = readApiErrorMessage(payload, text);
+
+    throw new Error(
+      message ??
+        formatAdminMessage(text.orders.notices.requestFailed, {
+          method: "GET",
+          path,
+          status: response.status,
+        })
+    );
+  }
+
+  const payload = (await response.json()) as unknown;
+  const rows = isRecord(payload) ? readArrayPayload(payload, ["data", "refunds"]) : null;
+
+  return normalizeWalletRefunds(rows);
+}
+
 function parseOrdersApiPayload(payload: unknown): OrdersApiResult {
   if (!isRecord(payload)) {
     throw new Error("Incomplete /api/admin/orders response");
@@ -5662,7 +5955,61 @@ async function voidOrderWithDangerAction(
     walletRefundAmount:
       readNumber(readRecordValue(dangerAction, ["wallet_refund_amount", "walletRefundAmount"])) ??
       0,
+    walletRefundRequestId:
+      readString(
+        readRecordValue(dangerAction, [
+          "wallet_refund_request_id",
+          "walletRefundRequestId",
+        ])
+      ) ??
+      readString(
+        readRecordValue(
+          isRecord(meta.walletRefundRequest) ? meta.walletRefundRequest : null,
+          ["id"]
+        )
+      ),
   };
+}
+
+async function patchWalletRefundApprovalInApi(
+  refundId: string,
+  decision: "approve" | "reject",
+  text: AdminText
+) {
+  const path = `/api/admin/wallet-refunds/${encodeURIComponent(refundId)}`;
+  const response = await fetch(path, {
+    body: JSON.stringify({ decision }),
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    method: "PATCH",
+  });
+
+  if (!response.ok) {
+    const payload = await readJsonSafely(response);
+    const message = readApiErrorMessage(payload, text);
+
+    throw new Error(
+      message ??
+        formatAdminMessage(text.orders.notices.requestFailed, {
+          method: "PATCH",
+          path,
+          status: response.status,
+        })
+    );
+  }
+
+  const payload = await readJsonSafely(response);
+  const row = extractOrderPayload(payload);
+  const refund = normalizeWalletRefund(row);
+
+  if (!refund) {
+    throw new Error("PATCH /api/admin/wallet-refunds returned an incomplete refund request");
+  }
+
+  return refund;
 }
 
 async function patchOrderPaymentInApi(
@@ -5891,6 +6238,9 @@ function normalizeAdminOrder(
   const operationHistory = normalizeOperationHistory(
     readArrayPayload(row, ["operationHistory", "operation_history", "events"])
   );
+  const walletRefunds = normalizeWalletRefunds(
+    readArrayPayload(row, ["walletRefunds", "wallet_refunds", "walletRefundRequests"])
+  );
   const customerNote =
     readString(readRecordValue(row, ["customerNote", "customer_note"])) ?? "";
   const staffNote =
@@ -5988,6 +6338,7 @@ function normalizeAdminOrder(
     reservationOverdue,
     reservationWarning,
     lines,
+    walletRefunds,
     activity: normalizeActivity(row.activity, date, source, operationHistory),
     operationHistory,
   };
@@ -6199,6 +6550,69 @@ function normalizeOperationHistory(value: unknown): OrderActivityEvent[] {
     });
 }
 
+function normalizeWalletRefunds(value: unknown[] | null): WalletRefundRequest[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map(normalizeWalletRefund)
+    .filter((refund): refund is WalletRefundRequest => refund !== null)
+    .sort(
+      (left, right) =>
+        orderTimestamp(right.requestedAt || right.createdAt) -
+        orderTimestamp(left.requestedAt || left.createdAt)
+    );
+}
+
+function normalizeWalletRefund(row: unknown): WalletRefundRequest | null {
+  if (!isRecord(row)) {
+    return null;
+  }
+
+  const id = readString(readRecordValue(row, ["id"]));
+  const amount = readMoney(
+    readRecordValue(row, [
+      "amount",
+      "approvedAmount",
+      "approved_amount",
+      "requestedAmount",
+      "requested_amount",
+      "refundAmount",
+      "refund_amount",
+      "walletRefundAmount",
+      "wallet_refund_amount",
+    ])
+  );
+
+  if (!id || amount <= 0) {
+    return null;
+  }
+
+  return {
+    amount,
+    approvedAt: readString(readRecordValue(row, ["approvedAt", "approved_at", "reviewedAt", "reviewed_at"])),
+    approvedBy: readString(readRecordValue(row, ["approvedBy", "approved_by", "reviewedBy", "reviewed_by"])),
+    createdAt: readString(readRecordValue(row, ["createdAt", "created_at"])) ?? "",
+    creditedAt: readString(readRecordValue(row, ["creditedAt", "credited_at", "settledAt", "settled_at"])),
+    currency: "EUR",
+    customerId: readString(readRecordValue(row, ["customerId", "customer_id", "companyId", "company_id"])),
+    customerName: readString(readRecordValue(row, ["customerName", "customer_name", "companyName", "company_name"])),
+    id,
+    metadata: readRecordValue(row, ["metadata", "requestMetadata", "request_metadata"]) ?? {},
+    orderId: readString(readRecordValue(row, ["orderId", "order_id"])),
+    orderLineId: readString(readRecordValue(row, ["orderLineId", "order_line_id"])),
+    orderNo: readString(readRecordValue(row, ["orderNo", "order_no", "orderNumber", "order_number"])),
+    reason: readString(readRecordValue(row, ["reason", "note"])) ?? "",
+    requestType: readString(readRecordValue(row, ["requestType", "request_type", "type"])) ?? "",
+    requestedAt:
+      readString(readRecordValue(row, ["requestedAt", "requested_at", "submittedAt", "submitted_at", "createdAt", "created_at"])) ?? "",
+    requestedBy: readString(readRecordValue(row, ["requestedBy", "requested_by", "createdBy", "created_by"])),
+    status: normalizeWalletRefundStatus(readRecordValue(row, ["status"])),
+    updatedAt: readString(readRecordValue(row, ["updatedAt", "updated_at"])) ?? "",
+  };
+}
+
 function normalizeOrderActivityEvent(row: unknown): OrderActivityEvent | null {
   if (!isRecord(row)) {
     return null;
@@ -6276,6 +6690,10 @@ function mergeOrderSummary(current: AdminOrder, incoming: AdminOrder) {
     ...current,
     ...incoming,
     lines: incoming.lines.length > 0 ? incoming.lines : current.lines,
+    walletRefunds:
+      incoming.walletRefunds.length > 0
+        ? incoming.walletRefunds
+        : current.walletRefunds,
     activity: incoming.activity.length > 0 ? incoming.activity : current.activity,
     operationHistory:
       incoming.operationHistory.length > 0
@@ -6329,6 +6747,31 @@ function normalizePaymentStatusValue(value: unknown): PaymentStatus {
   }
 
   return "unpaid";
+}
+
+function normalizeWalletRefundStatus(value: unknown): WalletRefundStatus {
+  if (value === "pending") {
+    return "requested";
+  }
+
+  if (
+    value === "approved" ||
+    value === "rejected" ||
+    value === "credited" ||
+    value === "cancelled"
+  ) {
+    return value;
+  }
+
+  if (value === "paid" || value === "completed" || value === "settled") {
+    return "credited";
+  }
+
+  if (value === "denied") {
+    return "rejected";
+  }
+
+  return "requested";
 }
 
 function normalizePaymentMethodValue(value: unknown): PaymentMethod {
@@ -7126,6 +7569,52 @@ function hasAdminSessionPermission(session: AdminSessionState, permission: strin
   return session.allowed && session.permissions.includes(permission);
 }
 
+function canReadWalletRefunds(session: AdminSessionState) {
+  return (
+    hasAdminSessionPermission(session, "wallet_refunds.request") ||
+    hasAdminSessionPermission(session, "wallet_refunds.approve")
+  );
+}
+
+function replaceWalletRefund(
+  refunds: WalletRefundRequest[],
+  nextRefund: WalletRefundRequest
+) {
+  const exists = refunds.some((refund) => refund.id === nextRefund.id);
+  const nextRefunds = exists
+    ? refunds.map((refund) => (refund.id === nextRefund.id ? nextRefund : refund))
+    : [nextRefund, ...refunds];
+
+  return nextRefunds.sort(
+    (left, right) =>
+      orderTimestamp(right.requestedAt || right.createdAt) -
+      orderTimestamp(left.requestedAt || left.createdAt)
+  );
+}
+
+function summarizeWalletRefunds(refunds: WalletRefundRequest[]) {
+  return refunds.reduce(
+    (summary, refund) => {
+      if (isWalletRefundCredited(refund.status)) {
+        summary.creditedAmount += refund.amount;
+      } else if (refund.status === "requested") {
+        summary.pendingAmount += refund.amount;
+      }
+
+      return summary;
+    },
+    { creditedAmount: 0, pendingAmount: 0 }
+  );
+}
+
+function lineShortageRefundAmount(line: OrderLine) {
+  return roundMoney(Math.max(0, line.cancelledQty) * line.unitPrice);
+}
+
+function isWalletRefundCredited(status: WalletRefundStatus) {
+  return status === "credited" || status === "approved";
+}
+
 function orderStatusBadgeClass(status: OrderDbStatus) {
   if (status === "completed" || status === "accepted") {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
@@ -7156,6 +7645,38 @@ function paymentBadgeClass(status: PaymentStatus) {
   }
 
   return "border-amber-200 bg-amber-50 text-amber-700";
+}
+
+function walletRefundBadgeClass(status: WalletRefundStatus) {
+  if (status === "credited") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (status === "approved") {
+    return "border-cyan-200 bg-cyan-50 text-cyan-700";
+  }
+
+  if (status === "rejected" || status === "cancelled") {
+    return "border-slate-200 bg-slate-50 text-slate-600";
+  }
+
+  return "border-amber-200 bg-amber-50 text-amber-700";
+}
+
+function walletRefundStatusLabel(status: WalletRefundStatus, text: AdminText) {
+  switch (status) {
+    case "approved":
+      return text.orders.walletRefundStatus.approved;
+    case "credited":
+      return text.orders.walletRefundStatus.credited;
+    case "rejected":
+      return text.orders.walletRefundStatus.rejected;
+    case "cancelled":
+      return text.orders.walletRefundStatus.cancelled;
+    case "requested":
+    default:
+      return text.orders.walletRefundStatus.requested;
+  }
 }
 
 function priorityBadgeClass(priority: Priority) {

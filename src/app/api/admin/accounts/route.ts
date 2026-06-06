@@ -9,6 +9,7 @@ import {
   profileSelect,
   readAdminAccountDetail,
   readCustomersForProfiles,
+  readProfileCustomersForProfiles,
   roleTemplates,
   toAccountDto,
 } from "./_account-data";
@@ -88,9 +89,10 @@ export async function GET(request: NextRequest) {
     }
 
     const customers = await readCustomersForProfiles(supabase, profiles);
+    const profileCustomers = await readProfileCustomersForProfiles(supabase, profiles, customers);
 
     return NextResponse.json({
-      data: profiles.map((profile) => toAccountDto(profile, customers)),
+      data: profiles.map((profile) => toAccountDto(profile, customers, profileCustomers)),
       meta: {
         source: "supabase",
         total: count ?? profiles.length,

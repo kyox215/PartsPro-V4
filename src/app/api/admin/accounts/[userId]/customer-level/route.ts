@@ -78,6 +78,12 @@ export async function PATCH(request: NextRequest, { params }: AccountParams) {
       });
     }
 
+    if (editableCustomer.account.accountType === "employee") {
+      return apiError(403, "ADMIN_EMPLOYEE_CUSTOMER_ACTION_DENIED", "Employee account profiles cannot be updated with customer level actions.", {
+        userId: paramResult.data.userId,
+      });
+    }
+
     await updateAdminCustomerLevel(editableCustomer.customer.id, parsed.data);
 
     const detail = await readAdminAccountDetail(supabase, paramResult.data.userId);

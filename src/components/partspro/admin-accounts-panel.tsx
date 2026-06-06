@@ -11,6 +11,7 @@ import {
   ChevronRight,
   CircleDollarSign,
   Clock3,
+  FilePenLine,
   KeyRound,
   Loader2,
   RefreshCcw,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -49,6 +51,7 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { AddressDraftFields } from "@/components/partspro/address-draft-fields";
 import {
   adminPermissionLabel,
   adminRoleTemplateLabel,
@@ -57,6 +60,14 @@ import {
 } from "@/i18n/dictionaries/admin";
 import { formatEuro } from "@/lib/partspro-data";
 import { formatTierDiscount } from "@/lib/partspro-pricing";
+import {
+  type AddressDraft,
+  type AddressDraftField,
+  formatAddressDraft,
+  isAddressDraftComplete,
+  normalizeAddressText,
+  parseAddressDraft,
+} from "@/lib/partspro-address-draft";
 import { cn } from "@/lib/utils";
 import { AdminBusyRegion } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
@@ -70,8 +81,13 @@ type CustomerType = "retail" | "wholesale";
 
 type AccountCustomer = {
   assignmentStatus: string;
+  billingAddress: string | null;
+  contactName: string | null;
   convertedToEmployeeAt: string | null;
+  createdAt: string | null;
   customerType: string;
+  email: string | null;
+  fiscalCode: string | null;
   id: string | null;
   lastActivityAt: string | null;
   lastOrderAt: string | null;
@@ -80,12 +96,19 @@ type AccountCustomer = {
   name: string | null;
   orders: AccountCustomerOrder[];
   ordersCount: number;
+  pec: string | null;
+  phone: string | null;
+  profileCompletedAt: string | null;
   profileKind: string;
   recentActivity: AccountCustomerActivity[];
   revenue: number;
+  sdi: string | null;
+  shippingAddress: string | null;
   spendSummary: AccountSpendSummary;
   status: string;
   updatedAt: string | null;
+  userId: string | null;
+  vatNumber: string | null;
 };
 
 type AccountCustomerOrder = {
@@ -136,10 +159,18 @@ type Account = {
   customerState: string;
   displayName: string | null;
   email: string | null;
+  profileCustomer: AccountCustomer | null;
+  profileState: AccountProfileState;
   role: string;
   roleTemplate: string | null;
   updatedAt: string | null;
   userId: string;
+};
+
+type AccountProfileState = {
+  kind: "customer" | "employee_self";
+  missingFields: string[];
+  status: "complete" | "incomplete" | "missing";
 };
 
 type AccountMembership = {
@@ -172,6 +203,8 @@ type AccountDetail = {
   customer: AccountCustomer | null;
   memberships: AccountMembership[];
   permissions: string[];
+  profileCustomer: AccountCustomer | null;
+  profileState: AccountProfileState;
 };
 
 type AccountDetailInclude = "activity" | "audit" | "orders";
@@ -204,6 +237,28 @@ type CustomerActionState = {
   reason: string;
   status: CustomerStatus;
 };
+
+type AccountProfileEditorState = {
+  account: Account;
+  billingAddress: AddressDraft;
+  billingSameAsShipping: boolean;
+  companyName: string;
+  contactName: string;
+  email: string;
+  fiscalCode: string;
+  pec: string;
+  phone: string;
+  reason: string;
+  shippingAddress: AddressDraft;
+};
+
+type AccountProfileEditorField =
+  | "companyName"
+  | "contactName"
+  | "fiscalCode"
+  | "pec"
+  | "phone"
+  | "reason";
 
 type CurrentUser = {
   permissions: string[];
@@ -258,6 +313,7 @@ export function AdminAccountsPanel() {
   const [notice, setNotice] = React.useState<Notice | null>(null);
   const [conversion, setConversion] = React.useState<ConversionState | null>(null);
   const [customerAction, setCustomerAction] = React.useState<CustomerActionState | null>(null);
+  const [profileEditor, setProfileEditor] = React.useState<AccountProfileEditorState | null>(null);
   const detailCacheRef = React.useRef(new Map<string, AccountDetail>());
   const detailLoadedIncludesRef = React.useRef(new Map<string, Set<AccountDetailInclude>>());
   const detailEpochRef = React.useRef(0);
@@ -269,6 +325,7 @@ export function AdminAccountsPanel() {
   );
   const canManageCustomerLevel = currentPermissionSet.has("customers.manage_level");
   const canManageCustomerStatus = currentPermissionSet.has("customers.classify");
+  const canManageCustomerProfile = currentPermissionSet.has("customers.classify");
   const canManageCustomerType = currentPermissionSet.has("customers.classify");
   const canReadCustomerAccounts = currentPermissionSet.has("customers.read");
   const canReadEmployeeAccounts =
@@ -450,7 +507,7 @@ export function AdminAccountsPanel() {
     detailAbortRef.current = new AbortController();
     detailCacheRef.current.set(userId, initialDetail);
     setDetail(initialDetail);
-    setDetailTab(defaultDetailTabForAccount(account));
+        setDetailTab(defaultDetailTabForAccount());
     setDetailLoadedIncludes(new Set(loadedIncludes));
     setDetailLoadingIncludes(new Set());
     setDetailOpen(!shouldUseInlineDetailPane);
@@ -587,6 +644,59 @@ export function AdminAccountsPanel() {
     });
   }
 
+  function openProfileEditor(account: Account, profileCustomer?: AccountCustomer | null) {
+    setProfileEditor(createAccountProfileEditor(account, profileCustomer ?? account.profileCustomer));
+  }
+
+  function updateProfileEditorField(field: AccountProfileEditorField, value: string) {
+    setProfileEditor((current) => (current ? { ...current, [field]: value } : current));
+  }
+
+  const updateProfileEditorAddress = React.useCallback(
+    (
+      addressKey: "billingAddress" | "shippingAddress",
+      field: AddressDraftField,
+      value: string
+    ) => {
+      setProfileEditor((current) => {
+        if (!current) {
+          return current;
+        }
+
+        const nextAddress = {
+          ...current[addressKey],
+          [field]: value,
+        };
+        const nextEditor = {
+          ...current,
+          [addressKey]: nextAddress,
+        };
+
+        if (addressKey === "shippingAddress" && current.billingSameAsShipping) {
+          return {
+            ...nextEditor,
+            billingAddress: nextAddress,
+          };
+        }
+
+        return nextEditor;
+      });
+    },
+    []
+  );
+
+  function updateProfileEditorBillingSameAsShipping(checked: boolean) {
+    setProfileEditor((current) =>
+      current
+        ? {
+            ...current,
+            billingSameAsShipping: checked,
+            billingAddress: checked ? current.shippingAddress : current.billingAddress,
+          }
+        : current
+    );
+  }
+
   async function submitConversion() {
     if (!conversion || conversion.reason.trim().length < 3) {
       return;
@@ -621,7 +731,7 @@ export function AdminAccountsPanel() {
         setDetail(nextDetail);
         setDetailLoadedIncludes(nextLoadedIncludes);
         setDetailLoadingIncludes(new Set());
-        setDetailTab(defaultDetailTabForAccount(nextDetail.account));
+        setDetailTab(defaultDetailTabForAccount());
 
         if (
           (nextDetail.account.accountType === "customer" && canReadCustomerAccounts) ||
@@ -680,6 +790,58 @@ export function AdminAccountsPanel() {
 
       detailCacheRef.current.set(nextDetail.account.userId, mergedDetail);
       setDetail(mergedDetail);
+      await refreshAccounts();
+    } catch (error) {
+      setNotice({ message: readableError(error), tone: "error" });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function submitProfileEditor() {
+    if (!profileEditor || profileEditor.reason.trim().length < 3) {
+      return;
+    }
+
+    if (
+      !isAddressDraftComplete(profileEditor.shippingAddress) ||
+      (!profileEditor.billingSameAsShipping &&
+        !isAddressDraftComplete(profileEditor.billingAddress))
+    ) {
+      setNotice({
+        message: "请补全 CAP、Provincia、Citta、Via 和 Numero 后再保存。",
+        tone: "error",
+      });
+      return;
+    }
+
+    const shippingAddress = formatAddressDraft(profileEditor.shippingAddress);
+    const billingAddress = profileEditor.billingSameAsShipping
+      ? shippingAddress
+      : formatAddressDraft(profileEditor.billingAddress);
+
+    setSubmitting(true);
+
+    try {
+      const nextDetail = await patchAccountCustomerProfile(profileEditor.account.userId, {
+        billingAddress,
+        companyName: profileEditor.companyName,
+        contactName: profileEditor.contactName,
+        fiscalCode: profileEditor.fiscalCode,
+        pec: profileEditor.pec,
+        phone: profileEditor.phone,
+        reason: profileEditor.reason,
+        shippingAddress,
+      });
+      const cachedDetail = detailCacheRef.current.get(nextDetail.account.userId);
+      const mergedDetail = cachedDetail
+        ? mergeAccountDetails(cachedDetail, nextDetail, [])
+        : nextDetail;
+
+      detailCacheRef.current.set(nextDetail.account.userId, mergedDetail);
+      setDetail(mergedDetail);
+      setProfileEditor(null);
+      setNotice({ message: "账号资料已保存。", tone: "success" });
       await refreshAccounts();
     } catch (error) {
       setNotice({ message: readableError(error), tone: "error" });
@@ -855,6 +1017,7 @@ export function AdminAccountsPanel() {
           <div className="hidden min-w-0 xl:block">
             <AccountDetailPane
               canManageCustomerLevel={canManageCustomerLevel}
+              canManageCustomerProfile={canManageCustomerProfile}
               canManageCustomerStatus={canManageCustomerStatus}
               canManageCustomerType={canManageCustomerType}
               canManageEmployeeAccounts={canManageEmployeeAccounts}
@@ -865,6 +1028,7 @@ export function AdminAccountsPanel() {
               loadingIncludes={detailLoadingIncludes}
               onAction={openConversion}
               onCustomerAction={openCustomerAction}
+              onProfileEdit={openProfileEditor}
               onTabChange={handleDetailTabChange}
               tab={detailTab}
             />
@@ -884,6 +1048,7 @@ export function AdminAccountsPanel() {
           <div className="p-1.5 sm:p-2">
             <AccountDetailPane
               canManageCustomerLevel={canManageCustomerLevel}
+              canManageCustomerProfile={canManageCustomerProfile}
               canManageCustomerStatus={canManageCustomerStatus}
               canManageCustomerType={canManageCustomerType}
               canManageEmployeeAccounts={canManageEmployeeAccounts}
@@ -894,6 +1059,7 @@ export function AdminAccountsPanel() {
               loadingIncludes={detailLoadingIncludes}
               onAction={openConversion}
               onCustomerAction={openCustomerAction}
+              onProfileEdit={openProfileEditor}
               onTabChange={handleDetailTabChange}
               tab={detailTab}
             />
@@ -916,6 +1082,15 @@ export function AdminAccountsPanel() {
         onSubmit={submitCustomerAction}
         submitting={submitting}
       />
+      <AccountProfileEditorDialog
+        editor={profileEditor}
+        onAddressChange={updateProfileEditorAddress}
+        onBillingSameAsShippingChange={updateProfileEditorBillingSameAsShipping}
+        onChange={updateProfileEditorField}
+        onClose={() => setProfileEditor(null)}
+        onSubmit={submitProfileEditor}
+        submitting={submitting}
+      />
     </section>
   );
 }
@@ -929,16 +1104,27 @@ function createLightweightAccountDetail(account: Account): AccountDetail {
         spendSummary: account.customer.spendSummary ?? emptySpendSummary(),
       }
     : null;
+  const profileCustomer = account.profileCustomer
+    ? {
+        ...account.profileCustomer,
+        orders: account.profileCustomer.orders ?? [],
+        recentActivity: account.profileCustomer.recentActivity ?? [],
+        spendSummary: account.profileCustomer.spendSummary ?? emptySpendSummary(),
+      }
+    : null;
 
   return {
     account: {
       ...account,
       customer,
+      profileCustomer,
     },
     auditEvents: [],
     customer,
     memberships: [],
     permissions: [],
+    profileCustomer,
+    profileState: account.profileState,
   };
 }
 
@@ -964,16 +1150,56 @@ function mergeAccountDetails(
           : previousCustomer?.spendSummary ?? incomingCustomer.spendSummary,
       }
     : null;
+  const incomingProfileCustomer = incoming.profileCustomer ?? incoming.account.profileCustomer;
+  const profileCustomer =
+    incomingProfileCustomer?.id && incomingProfileCustomer.id === customer?.id
+      ? customer
+      : incomingProfileCustomer;
+  const profileState = incoming.profileState ?? incoming.account.profileState;
 
   return {
     account: {
       ...incoming.account,
       customer,
+      profileCustomer,
+      profileState,
     },
     auditEvents: includeSet.has("audit") ? incoming.auditEvents : previous.auditEvents,
     customer,
     memberships: incoming.memberships,
     permissions: incoming.permissions,
+    profileCustomer,
+    profileState,
+  };
+}
+
+function createAccountProfileEditor(
+  account: Account,
+  profileCustomer: AccountCustomer | null
+): AccountProfileEditorState {
+  const shippingAddress = parseAddressDraft(profileCustomer?.shippingAddress);
+  const billingAddress = parseAddressDraft(profileCustomer?.billingAddress);
+  const billingSameAsShipping =
+    !normalizeAddressText(profileCustomer?.billingAddress) ||
+    normalizeAddressText(profileCustomer?.billingAddress) ===
+      normalizeAddressText(profileCustomer?.shippingAddress);
+
+  return {
+    account,
+    billingAddress: billingSameAsShipping ? shippingAddress : billingAddress,
+    billingSameAsShipping,
+    companyName:
+      profileCustomer?.name ??
+      account.displayName ??
+      account.email ??
+      "",
+    contactName: profileCustomer?.contactName ?? "",
+    email: account.email ?? profileCustomer?.email ?? "",
+    fiscalCode: profileCustomer?.fiscalCode ?? "",
+    pec: profileCustomer?.pec ?? "",
+    phone: profileCustomer?.phone ?? "",
+    reason: "",
+    shippingAddress,
   };
 }
 
@@ -1010,16 +1236,16 @@ function customerDetailTabValue(tab: AccountDetailTab) {
   return tab === "orders" || tab === "spend" || tab === "activity" ? tab : "profile";
 }
 
-function employeeDetailTabValue(tab: AccountDetailTab, hasCustomerProfile: boolean) {
-  if (hasCustomerProfile && tab === "profile") {
+function employeeDetailTabValue(tab: AccountDetailTab) {
+  if (tab === "profile") {
     return "profile";
   }
 
   return tab === "memberships" || tab === "activity" ? tab : "permissions";
 }
 
-function defaultDetailTabForAccount(account: Account): AccountDetailTab {
-  return account.accountType === "employee" && !account.customer ? "permissions" : "profile";
+function defaultDetailTabForAccount(): AccountDetailTab {
+  return "profile";
 }
 
 function AccountListItem({
@@ -1067,6 +1293,7 @@ function AccountListItem({
             <Badge className={cn("h-5 px-1.5 text-[10px]", accountTypeBadgeClass(account.accountType))} variant="outline">
               {accountTypeLabel(account.accountType)}
             </Badge>
+            <ProfileStateBadge state={account.profileState} />
             {account.accountType === "employee" ? (
               <Badge className="h-5 border-indigo-200 bg-indigo-50 px-1.5 text-[10px] text-indigo-700" variant="outline">
                 {roleTemplateLabel(text, account.roleTemplate ?? account.role)}
@@ -1083,6 +1310,7 @@ function AccountListItem({
 
 function AccountDetailPane({
   canManageCustomerLevel,
+  canManageCustomerProfile,
   canManageCustomerStatus,
   canManageCustomerType,
   canManageEmployeeAccounts,
@@ -1093,10 +1321,12 @@ function AccountDetailPane({
   loadingIncludes,
   onAction,
   onCustomerAction,
+  onProfileEdit,
   onTabChange,
   tab,
 }: {
   canManageCustomerLevel: boolean;
+  canManageCustomerProfile: boolean;
   canManageCustomerStatus: boolean;
   canManageCustomerType: boolean;
   canManageEmployeeAccounts: boolean;
@@ -1107,6 +1337,7 @@ function AccountDetailPane({
   loadingIncludes: Set<AccountDetailInclude>;
   onAction: (kind: ConversionKind, account: Account) => void;
   onCustomerAction: (kind: CustomerActionKind, account: Account) => void;
+  onProfileEdit: (account: Account, profileCustomer?: AccountCustomer | null) => void;
   onTabChange: (value: string) => void;
   tab: AccountDetailTab;
 }) {
@@ -1142,6 +1373,8 @@ function AccountDetailPane({
 
   const { account } = detail;
   const isSelf = currentUserId === account.userId;
+  const canManageAccountProfile =
+    account.accountType === "employee" ? canManageEmployeeAccounts : canManageCustomerProfile;
 
   return (
     <div
@@ -1189,11 +1422,16 @@ function AccountDetailPane({
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-1 sm:gap-1.5">
+        <div className="grid grid-cols-2 gap-1 sm:grid-cols-4 sm:gap-1.5">
           <InfoTile
             icon={UsersRound}
-            label={account.accountType === "customer" ? "客户资料" : "账号资料"}
-            value={account.customer?.name ?? account.displayName ?? account.email ?? "客户资料未初始化"}
+            label={account.accountType === "customer" ? "客户资料" : "自购资料"}
+            value={account.profileCustomer?.name ?? account.displayName ?? account.email ?? "资料未创建"}
+          />
+          <InfoTile
+            icon={BadgeCheck}
+            label="资料状态"
+            value={profileStateLabel(account.profileState)}
           />
           <InfoTile
             icon={BriefcaseBusiness}
@@ -1308,10 +1546,14 @@ function AccountDetailPane({
             <CustomerProfileTab
               account={account}
               canManageCustomerLevel={canManageCustomerLevel}
+              canManageProfile={canManageAccountProfile}
               canManageCustomerStatus={canManageCustomerStatus}
               canManageCustomerType={canManageCustomerType}
               customer={detail.customer}
               onCustomerAction={onCustomerAction}
+              onProfileEdit={onProfileEdit}
+              profileCustomer={detail.profileCustomer}
+              profileState={detail.profileState}
             />
           </TabsContent>
           <TabsContent value="orders" className="m-0">
@@ -1339,21 +1581,14 @@ function AccountDetailPane({
         </Tabs>
       ) : (
         <Tabs
-          value={employeeDetailTabValue(tab, Boolean(detail.customer))}
+          value={employeeDetailTabValue(tab)}
           onValueChange={onTabChange}
           className="space-y-2"
         >
-          <TabsList
-            className={cn(
-              "grid h-auto gap-1 rounded-md bg-white p-1 shadow-sm",
-              detail.customer ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"
-            )}
-          >
-            {detail.customer ? (
-              <TabsTrigger value="profile" className="h-8 rounded text-xs font-bold">
-                客户档案
-              </TabsTrigger>
-            ) : null}
+          <TabsList className="grid h-auto grid-cols-2 gap-1 rounded-md bg-white p-1 shadow-sm sm:grid-cols-4">
+            <TabsTrigger value="profile" className="h-8 rounded text-xs font-bold">
+              自购资料
+            </TabsTrigger>
             <TabsTrigger value="permissions" className="h-8 rounded text-xs font-bold">
               有效权限
             </TabsTrigger>
@@ -1364,18 +1599,20 @@ function AccountDetailPane({
               活动记录
             </TabsTrigger>
           </TabsList>
-          {detail.customer ? (
-            <TabsContent value="profile" className="m-0">
-              <CustomerProfileTab
-                account={account}
-                canManageCustomerLevel={canManageCustomerLevel}
-                canManageCustomerStatus={canManageCustomerStatus}
-                canManageCustomerType={canManageCustomerType}
-                customer={detail.customer}
-                onCustomerAction={onCustomerAction}
-              />
-            </TabsContent>
-          ) : null}
+          <TabsContent value="profile" className="m-0">
+            <CustomerProfileTab
+              account={account}
+              canManageCustomerLevel={canManageCustomerLevel}
+              canManageProfile={canManageAccountProfile}
+              canManageCustomerStatus={canManageCustomerStatus}
+              canManageCustomerType={canManageCustomerType}
+              customer={detail.customer}
+              onCustomerAction={onCustomerAction}
+              onProfileEdit={onProfileEdit}
+              profileCustomer={detail.profileCustomer}
+              profileState={detail.profileState}
+            />
+          </TabsContent>
           <TabsContent value="permissions" className="m-0">
             <AccountPermissionsSection detail={detail} text={text} />
           </TabsContent>
@@ -1400,23 +1637,53 @@ function AccountDetailPane({
 function CustomerProfileTab({
   account,
   canManageCustomerLevel,
+  canManageProfile,
   canManageCustomerStatus,
   canManageCustomerType,
   customer,
   onCustomerAction,
+  onProfileEdit,
+  profileCustomer,
+  profileState,
 }: {
   account: Account;
   canManageCustomerLevel: boolean;
+  canManageProfile: boolean;
   canManageCustomerStatus: boolean;
   canManageCustomerType: boolean;
   customer: AccountCustomer | null;
   onCustomerAction: (kind: CustomerActionKind, account: Account) => void;
+  onProfileEdit: (account: Account, profileCustomer?: AccountCustomer | null) => void;
+  profileCustomer: AccountCustomer | null;
+  profileState: AccountProfileState;
 }) {
+  const canShowCustomerActions = account.accountType === "customer" && Boolean(customer);
+  const title = account.accountType === "employee" ? "员工自购资料" : "客户资料";
+
   return (
-    <DetailSection title="客户资料">
-      {customer ? (
+    <DetailSection title={title}>
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
+        <ProfileStateBadge state={profileState} />
+        {profileState.missingFields.length > 0 ? (
+          <span className="text-[11px] font-semibold leading-5 text-slate-500">
+            缺少：{profileState.missingFields.map(profileMissingFieldLabel).join("、")}
+          </span>
+        ) : null}
+        <Button
+          size="xs"
+          variant="outline"
+          className="ml-auto bg-white"
+          disabled={!canManageProfile}
+          onClick={() => onProfileEdit(account, profileCustomer)}
+        >
+          <FilePenLine className="size-3.5" />
+          编辑资料
+        </Button>
+      </div>
+      {profileCustomer ? (
         <div className="space-y-1.5 sm:space-y-2">
-          <div className="grid grid-cols-3 gap-1 sm:flex sm:flex-wrap sm:gap-1.5">
+          {canShowCustomerActions ? (
+            <div className="grid grid-cols-3 gap-1 sm:flex sm:flex-wrap sm:gap-1.5">
             <Button
               size="xs"
               variant="outline"
@@ -1452,18 +1719,30 @@ function CustomerProfileTab({
                 缺少权限的操作会被锁定。
               </span>
             ) : null}
-          </div>
+            </div>
+          ) : null}
           <div className="grid grid-cols-2 gap-1 sm:gap-1.5 lg:grid-cols-3">
-            <DetailLine label="公司/名称" value={customer.name ?? "暂无"} />
-            <DetailLine label="活跃状态" value={customerStatusLabel(customer.status)} />
-            <DetailLine label="价格类型" value={customerTypeLabel(customer.customerType)} />
-            <DetailLine label="客户等级" value={customerLevelLabel(customer.level)} />
-            <DetailLine label="最近活动" value={formatDateTime(customer.lastActivityAt) ?? "暂无"} />
-            <DetailLine label="更新时间" value={formatDateTime(customer.updatedAt) ?? "暂无"} />
+            <DetailLine label="名称" value={profileCustomer.name ?? "暂无"} />
+            <DetailLine label="登录邮箱" value={account.email ?? profileCustomer.email ?? "暂无"} />
+            <DetailLine label="电话" value={profileCustomer.phone ?? "暂无"} />
+            <DetailLine label="税号" value={profileCustomer.fiscalCode ?? "暂无"} />
+            <DetailLine label="微信/WhatsApp" value={profileCustomer.contactName ?? "可留空"} />
+            <DetailLine label="PEC" value={profileCustomer.pec ?? "可留空"} />
+            {customer && account.accountType === "customer" ? (
+              <>
+                <DetailLine label="活跃状态" value={customerStatusLabel(customer.status)} />
+                <DetailLine label="价格类型" value={customerTypeLabel(customer.customerType)} />
+                <DetailLine label="客户等级" value={customerLevelLabel(customer.level)} />
+              </>
+            ) : null}
+            <DetailLine label="配送地址" multiline value={profileCustomer.shippingAddress ?? "暂无"} />
+            <DetailLine label="账单地址" multiline value={profileCustomer.billingAddress ?? "暂无"} />
+            <DetailLine label="资料完成时间" value={formatDateTime(profileCustomer.profileCompletedAt) ?? "未完成"} />
+            <DetailLine label="更新时间" value={formatDateTime(profileCustomer.updatedAt) ?? "暂无"} />
           </div>
         </div>
       ) : (
-        <EmptyText text="客户资料未初始化。" />
+        <EmptyText text={account.accountType === "employee" ? "员工自购资料未创建。" : "客户资料未初始化。"} />
       )}
     </DetailSection>
   );
@@ -2003,6 +2282,155 @@ function CustomerAccountActionDialog({
   );
 }
 
+function AccountProfileEditorDialog({
+  editor,
+  onAddressChange,
+  onBillingSameAsShippingChange,
+  onChange,
+  onClose,
+  onSubmit,
+  submitting,
+}: {
+  editor: AccountProfileEditorState | null;
+  onAddressChange: (
+    addressKey: "billingAddress" | "shippingAddress",
+    field: AddressDraftField,
+    value: string
+  ) => void;
+  onBillingSameAsShippingChange: (checked: boolean) => void;
+  onChange: (field: AccountProfileEditorField, value: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+  submitting: boolean;
+}) {
+  const canSubmit = Boolean(
+    editor &&
+      editor.companyName.trim() &&
+      editor.phone.trim() &&
+      editor.fiscalCode.trim() &&
+      editor.reason.trim().length >= 3 &&
+      isAddressDraftComplete(editor.shippingAddress) &&
+      (editor.billingSameAsShipping || isAddressDraftComplete(editor.billingAddress))
+  );
+
+  return (
+    <Dialog open={Boolean(editor)} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>
+            {editor?.account.accountType === "employee" ? "编辑员工自购资料" : "编辑客户个人中心资料"}
+          </DialogTitle>
+          <DialogDescription>
+            这些资料用于账号、订单、发票和配送；邮箱来自登录账号，不能在这里修改。
+          </DialogDescription>
+        </DialogHeader>
+        {editor ? (
+          <form
+            className="space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              onSubmit();
+            }}
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ProfileEditorInput field="companyName" label="客户名称" required value={editor.companyName} onChange={onChange} />
+              <ProfileEditorInput field="contactName" label="微信号码 / WhatsApp 号码" value={editor.contactName} onChange={onChange} />
+              <div className="space-y-1.5">
+                <Label htmlFor="admin-profile-editor-email" className="text-xs font-black text-slate-500">
+                  邮箱 *
+                </Label>
+                <Input id="admin-profile-editor-email" disabled type="email" value={editor.email} />
+              </div>
+              <ProfileEditorInput field="phone" label="电话" required value={editor.phone} onChange={onChange} />
+              <ProfileEditorInput field="fiscalCode" label="税号" required value={editor.fiscalCode} onChange={onChange} />
+              <ProfileEditorInput field="pec" label="PEC" value={editor.pec} onChange={onChange} />
+            </div>
+
+            <AddressDraftFields
+              addressKey="shippingAddress"
+              idPrefix="admin-profile-editor"
+              title="配送地址"
+              value={editor.shippingAddress}
+              onChange={onAddressChange}
+            />
+            <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
+              <Checkbox
+                className="mt-0.5"
+                checked={editor.billingSameAsShipping}
+                onCheckedChange={(checked) => onBillingSameAsShippingChange(Boolean(checked))}
+              />
+              <span>账单地址跟配送地址一样</span>
+            </label>
+            {!editor.billingSameAsShipping ? (
+              <AddressDraftFields
+                addressKey="billingAddress"
+                idPrefix="admin-profile-editor"
+                title="账单地址"
+                value={editor.billingAddress}
+                onChange={onAddressChange}
+              />
+            ) : null}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="admin-profile-editor-reason" className="text-xs font-black text-slate-500">
+                变更原因 *
+              </Label>
+              <Textarea
+                id="admin-profile-editor-reason"
+                value={editor.reason}
+                onChange={(event) => onChange("reason", event.target.value)}
+                placeholder="说明业务原因，便于审计追踪"
+                rows={3}
+              />
+            </div>
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+                取消
+              </Button>
+              <Button type="submit" disabled={!canSubmit || submitting}>
+                {submitting ? <Loader2 className="size-4 animate-spin" /> : <BadgeCheck className="size-4" />}
+                保存资料
+              </Button>
+            </DialogFooter>
+          </form>
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ProfileEditorInput({
+  field,
+  label,
+  onChange,
+  required,
+  value,
+}: {
+  field: Exclude<AccountProfileEditorField, "reason">;
+  label: string;
+  onChange: (field: AccountProfileEditorField, value: string) => void;
+  required?: boolean;
+  value: string;
+}) {
+  const id = `admin-profile-editor-${field}`;
+
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id} className="text-xs font-black text-slate-500">
+        {label}
+        {required ? " *" : null}
+      </Label>
+      <Input
+        id={id}
+        required={required}
+        value={value}
+        onChange={(event) => onChange(field, event.currentTarget.value)}
+      />
+    </div>
+  );
+}
+
 async function fetchCurrentUser(signal?: AbortSignal): Promise<CurrentUser> {
   const response = await fetch("/api/me", {
     cache: "no-store",
@@ -2247,6 +2675,36 @@ async function patchCustomerType(
   return accountDetailFromResponse(await response.json(), "价格类型更新返回格式不完整");
 }
 
+async function patchAccountCustomerProfile(
+  userId: string,
+  profile: {
+    billingAddress: string;
+    companyName: string;
+    contactName: string;
+    fiscalCode: string;
+    pec: string;
+    phone: string;
+    reason: string;
+    shippingAddress: string;
+  }
+): Promise<AccountDetail> {
+  const response = await fetch(`/api/admin/accounts/${encodeURIComponent(userId)}/customer-profile`, {
+    body: JSON.stringify(profile),
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    method: "PATCH",
+  });
+
+  if (!response.ok) {
+    throw new Error(`PATCH /api/admin/accounts/${userId}/customer-profile 返回 ${response.status}`);
+  }
+
+  return accountDetailFromResponse(await response.json(), "账号资料更新返回格式不完整");
+}
+
 function accountDetailFromResponse(payload: unknown, message: string): AccountDetail {
   const data = isRecord(payload) && isRecord(payload.data) ? payload.data : null;
   const detail = normalizeAccountDetail(data);
@@ -2316,11 +2774,26 @@ function DetailSection({ children, title }: { children: React.ReactNode; title: 
   );
 }
 
-function DetailLine({ label, value }: { label: string; value: React.ReactNode }) {
+function DetailLine({
+  label,
+  multiline = false,
+  value,
+}: {
+  label: string;
+  multiline?: boolean;
+  value: React.ReactNode;
+}) {
   return (
-    <div className="min-w-0 rounded-md bg-slate-50 px-1.5 py-1 sm:px-2">
+    <div className={cn("min-w-0 rounded-md bg-slate-50 px-1.5 py-1 sm:px-2", multiline && "sm:col-span-2 lg:col-span-3")}>
       <div className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</div>
-      <div className="truncate text-[11px] font-bold leading-4 text-slate-900 sm:break-words sm:text-xs sm:leading-5">{value}</div>
+      <div
+        className={cn(
+          "text-[11px] font-bold leading-4 text-slate-900 sm:text-xs sm:leading-5",
+          multiline ? "break-words" : "truncate sm:break-words"
+        )}
+      >
+        {value}
+      </div>
     </div>
   );
 }
@@ -2351,6 +2824,17 @@ function CustomerAssignmentBadges({ customer }: { customer: AccountCustomer | nu
         {customer.ordersCount} 单
       </Badge>
     </>
+  );
+}
+
+function ProfileStateBadge({ state }: { state: AccountProfileState }) {
+  return (
+    <Badge
+      className={cn("h-5 px-1.5 text-[10px]", profileStateBadgeClass(state.status))}
+      variant="outline"
+    >
+      {profileStateLabel(state)}
+    </Badge>
   );
 }
 
@@ -2420,13 +2904,28 @@ function normalizeAccountDetail(value: unknown): AccountDetail | null {
   if (!account) {
     return null;
   }
+  const customer = normalizeCustomer(value.customer) ?? account.customer;
+  const profileCustomer = normalizeCustomer(value.profileCustomer) ?? account.profileCustomer;
+  const profileState = normalizeProfileState(
+    value.profileState,
+    account.accountType,
+    profileCustomer
+  );
+  const normalizedAccount = {
+    ...account,
+    customer,
+    profileCustomer,
+    profileState,
+  };
 
   return {
-    account,
-    customer: normalizeCustomer(value.customer),
+    account: normalizedAccount,
+    customer,
     memberships: readArray(value.memberships).map(normalizeMembership).filter(isDefined),
     permissions: readArray(value.permissions).map(readString).filter(isDefined),
     auditEvents: readArray(value.auditEvents).map(normalizeAuditEvent).filter(isDefined),
+    profileCustomer,
+    profileState,
   };
 }
 
@@ -2440,6 +2939,11 @@ function normalizeAccount(value: unknown): Account | null {
   if (!userId) {
     return null;
   }
+  const accountType: AccountType =
+    readString(value.accountType) === "employee" ? "employee" : "customer";
+  const customer = normalizeCustomer(value.customer);
+  const profileCustomer = normalizeCustomer(value.profileCustomer) ?? customer;
+  const profileState = normalizeProfileState(value.profileState, accountType, profileCustomer);
 
   return {
     userId,
@@ -2447,12 +2951,14 @@ function normalizeAccount(value: unknown): Account | null {
     displayName: readString(value.displayName),
     avatarUrl: readString(value.avatarUrl),
     authProvider: readString(value.authProvider) ?? "password",
-    accountType: readString(value.accountType) === "employee" ? "employee" : "customer",
+    accountType,
     role: readString(value.role) ?? "customer",
     roleTemplate: readString(value.roleTemplate),
     customerId: readString(value.customerId),
     customerState: readString(value.customerState) ?? "profiles_only",
-    customer: normalizeCustomer(value.customer),
+    customer,
+    profileCustomer,
+    profileState,
     createdAt: readString(value.createdAt),
     updatedAt: readString(value.updatedAt),
   };
@@ -2465,7 +2971,17 @@ function normalizeCustomer(value: unknown): AccountCustomer | null {
 
   return {
     id: readString(value.id),
+    userId: readString(value.userId),
     name: readString(value.name),
+    contactName: readString(value.contactName),
+    email: readString(value.email),
+    phone: readString(value.phone),
+    vatNumber: readString(value.vatNumber),
+    fiscalCode: readString(value.fiscalCode),
+    sdi: readString(value.sdi),
+    pec: readString(value.pec),
+    billingAddress: readString(value.billingAddress),
+    shippingAddress: readString(value.shippingAddress),
     status: readString(value.status) ?? "pending",
     customerType: readString(value.customerType) ?? "retail",
     assignmentStatus: readString(value.assignmentStatus) ?? "needs_review",
@@ -2479,9 +2995,71 @@ function normalizeCustomer(value: unknown): AccountCustomer | null {
     lastActivityAt: readString(value.lastActivityAt),
     recentActivity: readArray(value.recentActivity).map(normalizeCustomerActivity).filter(isDefined),
     spendSummary: normalizeSpendSummary(value.spendSummary),
+    profileCompletedAt: readString(value.profileCompletedAt),
     convertedToEmployeeAt: readString(value.convertedToEmployeeAt),
+    createdAt: readString(value.createdAt),
     updatedAt: readString(value.updatedAt),
   };
+}
+
+function normalizeProfileState(
+  value: unknown,
+  accountType: AccountType,
+  profileCustomer: AccountCustomer | null
+): AccountProfileState {
+  if (isRecord(value)) {
+    const statusValue = readString(value.status);
+    const status =
+      statusValue === "complete" || statusValue === "missing"
+        ? statusValue
+        : statusValue === "incomplete"
+          ? "incomplete"
+          : null;
+    const kind = readString(value.kind) === "employee_self" ? "employee_self" : "customer";
+
+    if (status) {
+      return {
+        kind,
+        missingFields: readArray(value.missingFields).map(readString).filter(isDefined),
+        status,
+      };
+    }
+  }
+
+  if (!profileCustomer) {
+    return {
+      kind: accountType === "employee" ? "employee_self" : "customer",
+      missingFields: ["profile"],
+      status: "missing",
+    };
+  }
+
+  const missingFields = profileMissingFields(profileCustomer);
+
+  return {
+    kind: accountType === "employee" ? "employee_self" : "customer",
+    missingFields,
+    status: missingFields.length > 0 ? "incomplete" : "complete",
+  };
+}
+
+function profileMissingFields(profileCustomer: AccountCustomer) {
+  const missingFields: string[] = [];
+
+  for (const [field, value] of [
+    ["name", profileCustomer.name],
+    ["email", profileCustomer.email],
+    ["phone", profileCustomer.phone],
+    ["fiscalCode", profileCustomer.fiscalCode],
+    ["billingAddress", profileCustomer.billingAddress],
+    ["shippingAddress", profileCustomer.shippingAddress],
+  ] as const) {
+    if (!value) {
+      missingFields.push(field);
+    }
+  }
+
+  return missingFields;
 }
 
 function normalizeCustomerOrder(value: unknown): AccountCustomerOrder | null {
@@ -2639,6 +3217,32 @@ function accountTypeLabel(value: string) {
   return value === "employee" ? "员工账号" : "客户账号";
 }
 
+function profileStateLabel(state: AccountProfileState) {
+  if (state.status === "complete") {
+    return "资料完整";
+  }
+
+  if (state.status === "missing") {
+    return "资料未创建";
+  }
+
+  return "资料待补全";
+}
+
+function profileMissingFieldLabel(value: string) {
+  const labels: Record<string, string> = {
+    billingAddress: "账单地址",
+    email: "邮箱",
+    fiscalCode: "税号",
+    name: "名称",
+    phone: "电话",
+    profile: "资料",
+    shippingAddress: "配送地址",
+  };
+
+  return labels[value] ?? value;
+}
+
 function customerStatusLabel(value: string) {
   if (value === "active") {
     return "活跃";
@@ -2784,9 +3388,11 @@ function adminActionLabel(value: string) {
     "account.role_update": "员工角色更新",
     "account.type_update": "账号类型更新",
     "customer.classification_update": "客户分类更新",
+    "customer.profile_ensure": "客户资料创建",
     "customer.level_update": "客户等级更新",
     "customer.profile_update": "客户档案更新",
     "customer.terms_update": "商业条款更新",
+    "employee.self_customer_ensure": "员工自购资料创建",
     "permissions.update": "权限覆盖更新",
   };
 
@@ -2797,6 +3403,18 @@ function accountTypeBadgeClass(value: string) {
   return value === "employee"
     ? "border-indigo-200 bg-indigo-50 text-indigo-700"
     : "border-blue-200 bg-blue-50 text-blue-700";
+}
+
+function profileStateBadgeClass(value: AccountProfileState["status"]) {
+  if (value === "complete") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (value === "missing") {
+    return "border-slate-200 bg-slate-50 text-slate-500";
+  }
+
+  return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
 function customerStatusBadgeClass(value: string) {

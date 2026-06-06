@@ -86,6 +86,7 @@ const customerCartSelect =
   "id, user_id, customer_id, sku_code, quantity, created_at, updated_at";
 const productRestockRequestSelect =
   "id, user_id, customer_id, sku_code, product_name, status, metadata, notified_at, cancelled_at, created_at, updated_at";
+const walletRefundTables = ["wallet_refund_requests", "wallet_refunds"] as const;
 
 export type RepositorySource = "supabase" | "empty";
 
@@ -205,6 +206,62 @@ export type CustomerWallet = {
   balance: number;
   currency: "EUR";
   transactions: CustomerWalletTransaction[];
+};
+
+export type AdminWalletRefundStatus =
+  | "requested"
+  | "approved"
+  | "rejected"
+  | "credited"
+  | "cancelled";
+
+export type AdminWalletRefund = {
+  amount: number;
+  approvedAt: string | null;
+  approvedBy: string | null;
+  createdAt: string;
+  creditedAt: string | null;
+  currency: "EUR";
+  customerId: string | null;
+  customerName: string | null;
+  id: string;
+  metadata: unknown;
+  orderId: string | null;
+  orderLineId: string | null;
+  orderNo: string | null;
+  reason: string;
+  requestType: string;
+  requestedAt: string;
+  requestedBy: string | null;
+  status: AdminWalletRefundStatus;
+  updatedAt: string;
+};
+
+export type AdminWalletRefundQueryInput = {
+  limit: number;
+  offset: number;
+  orderId?: string;
+  status?: AdminWalletRefundStatus;
+};
+
+export type AdminWalletRefundPage = {
+  refunds: AdminWalletRefund[];
+  total: number;
+};
+
+export type AdminWalletRefundRequestInput = {
+  amount: number;
+  customerId?: string | null;
+  metadata?: Record<string, unknown>;
+  orderId: string;
+  reason: string;
+};
+
+export type AdminWalletRefundApprovalInput = {
+  decision: "approve" | "reject";
+  metadata?: Record<string, unknown>;
+  note?: string;
+  refundId: string;
 };
 
 export type CustomerCartItem = {
@@ -781,6 +838,7 @@ export type AdminOrder = {
   reservationWarning: boolean;
   lines?: AdminOrderLine[];
   events?: AdminOrderEvent[];
+  walletRefunds?: AdminWalletRefund[];
   createdAt: string;
   updatedAt: string;
 };
@@ -1981,6 +2039,32 @@ export async function updateAdminCustomerProfile(
   return { data: requireAdminCustomerRow(row), source: "supabase" };
 }
 
+export async function ensureAdminCustomerProfile(
+  userId: string,
+  reason: string
+): Promise<RepositoryResult<AdminCustomer>> {
+  const context = await requireSupabaseContext();
+  const row = await rpcRow(context.client, "admin_ensure_customer_profile", {
+    p_reason: reason,
+    p_user_id: userId,
+  }, "ADMIN_CUSTOMER_PROFILE_ENSURE_FAILED");
+
+  return { data: requireAdminCustomerRow(row), source: "supabase" };
+}
+
+export async function ensureAdminEmployeeSelfCustomer(
+  userId: string,
+  reason: string
+): Promise<RepositoryResult<AdminCustomer>> {
+  const context = await requireSupabaseContext();
+  const row = await rpcRow(context.client, "admin_ensure_employee_self_customer", {
+    p_reason: reason,
+    p_user_id: userId,
+  }, "ADMIN_EMPLOYEE_SELF_CUSTOMER_ENSURE_FAILED");
+
+  return { data: requireAdminCustomerRow(row), source: "supabase" };
+}
+
 export async function updateAdminCustomerClassification(
   id: string,
   input: AdminCustomerClassificationInput
@@ -2778,6 +2862,129 @@ export async function getCurrentEmployeeSelfOrder(
   }
 
   return { data: order, source: "supabase" };
+}
+
+export async function listAdminWalletRefundRequests(
+  input: AdminWalletRefundQueryInput
+): Promise<RepositoryResult<AdminWalletRefundPage>> {
+  const context = await requireSupabaseContext();
+  const page = await readAdminWalletRefundPage(context.client, input);
+
+  if (!page) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_WALLET_REFUNDS_READ_UNAVAILABLE",
+      "Wallet refund requests could not be read from Supabase."
+    );
+  }
+
+  return { data: page, source: "supabase" };
+}
+
+export async function createAdminWalletRefundRequest(
+  input: AdminWalletRefundRequestInput
+): Promise<RepositoryResult<AdminWalletRefund>> {
+  const context = await requireSupabaseContext();
+  const orderRow = await readOrderByIdOrNumber(context.client, input.orderId);
+  const orderId = pickString(orderRow, ["id"]);
+  const amount = roundMoney(input.amount);
+  const reason = input.reason.trim();
+
+  if (!orderId) {
+    throw new RepositoryWriteError(
+      404,
+      "ADMIN_WALLET_REFUND_ORDER_NOT_FOUND",
+      "Order was not found for the wallet refund request.",
+      { orderId: input.orderId }
+    );
+  }
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new RepositoryWriteError(
+      400,
+      "ADMIN_WALLET_REFUND_AMOUNT_INVALID",
+      "Wallet refund amount must be greater than zero.",
+      { amount: input.amount }
+    );
+  }
+
+  if (!reason) {
+    throw new RepositoryWriteError(
+      400,
+      "ADMIN_WALLET_REFUND_REASON_REQUIRED",
+      "Wallet refund requests require a reason."
+    );
+  }
+
+  const { data, error } = await context.client.rpc("admin_create_wallet_refund_request", {
+    p_amount: amount,
+    p_metadata: input.metadata ?? {},
+    p_order_id: orderId,
+    p_order_line_id: null,
+    p_reason: reason,
+    p_request_type: "order_void",
+  });
+
+  if (!error && isDbRow(data)) {
+    const refund = mapAdminWalletRefundRow(data);
+
+    if (refund) {
+      return { data: refund, source: "supabase" };
+    }
+  }
+
+  throw new RepositoryWriteError(
+    error ? supabaseRpcStatus(error) : 502,
+    "ADMIN_WALLET_REFUND_REQUEST_FAILED",
+    "Supabase could not create the wallet refund request.",
+    error ? supabaseErrorDetails(error) : { orderId, amount }
+  );
+}
+
+export async function approveAdminWalletRefundRequest(
+  input: AdminWalletRefundApprovalInput
+): Promise<RepositoryResult<AdminWalletRefund>> {
+  const context = await requireSupabaseContext();
+  const decision = input.decision === "reject" ? "reject" : "approve";
+  if (decision === "reject") {
+    throw new RepositoryWriteError(
+      400,
+      "ADMIN_WALLET_REFUND_REJECT_UNAVAILABLE",
+      "Wallet refund rejection is not available in the current approval RPC."
+    );
+  }
+
+  const { data: finalData, error: finalError } = await context.client.rpc(
+    "admin_approve_wallet_refund_request",
+    {
+      p_metadata: input.metadata ?? {},
+      p_note: input.note ?? null,
+      p_request_id: input.refundId,
+    }
+  );
+
+  if (finalError) {
+    throw new RepositoryWriteError(
+      supabaseRpcStatus(finalError),
+      "ADMIN_WALLET_REFUND_APPROVAL_FAILED",
+      "Supabase rejected the wallet refund approval.",
+      supabaseErrorDetails(finalError)
+    );
+  }
+
+  const row = extractRpcRow(finalData);
+  const requestId = pickString(row, ["request_id", "id"]) ?? input.refundId;
+  const refund = await readAdminWalletRefundById(context.client, requestId);
+
+  if (!refund) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_WALLET_REFUND_RESULT_INVALID",
+      "Supabase did not return a valid wallet refund request."
+    );
+  }
+
+  return { data: refund, source: "supabase" };
 }
 
 export async function transitionAdminOrderStatus(
@@ -5003,13 +5210,18 @@ async function readAdminOrderDetail(
     return null;
   }
 
-  const [lineRows, eventRows, customerRow] = await Promise.all([
+  const [lineRows, eventRows, customerRow, walletRefundPage] = await Promise.all([
     readRowsByColumn(client, "order_lines", "*", "order_id", id),
     readRowsByColumn(client, "order_events", "*", "order_id", id, {
       orderColumn: "created_at",
       ascending: false,
     }),
     readOrderCustomerRow(client, orderRow),
+    readAdminWalletRefundPage(client, {
+      limit: 50,
+      offset: 0,
+      orderId: id,
+    }),
   ]);
   const actorRows = await readOrderEventActorRows(client, eventRows ?? []);
   const actorsById = new Map<string, DbRow>();
@@ -5046,6 +5258,7 @@ async function readAdminOrderDetail(
     events: (eventRows ?? [])
       .map((row) => mapAdminOrderEventRow(row, actorsById))
       .filter(isDefined),
+    walletRefunds: walletRefundPage?.refunds ?? [],
   };
 }
 
@@ -5922,6 +6135,152 @@ async function readOrderByIdOrNumber(
   }
 
   return readSingleRow(client, "orders", "order_no", orderId);
+}
+
+async function readAdminWalletRefundPage(
+  client: SupabaseServerClient,
+  input: AdminWalletRefundQueryInput
+): Promise<AdminWalletRefundPage | null> {
+  const limit = Math.max(1, Math.min(input.limit, 100));
+  const offset = Math.max(0, input.offset);
+  const orderRow = input.orderId
+    ? await readOrderByIdOrNumber(client, input.orderId)
+    : null;
+  const orderId = pickString(orderRow, ["id"]) ?? input.orderId ?? null;
+  const orderNo =
+    pickString(orderRow, ["order_no", "order_number", "reference"]) ??
+    input.orderId ??
+    null;
+
+  for (const table of walletRefundTables) {
+    if (orderId || orderNo) {
+      const rowsById = orderId
+        ? await readAdminWalletRefundRowsByColumn(
+            client,
+            table,
+            "order_id",
+            orderId,
+            input.status,
+            limit,
+            offset
+          )
+        : null;
+      const rowsByNo =
+        orderNo && orderNo !== orderId
+          ? await readAdminWalletRefundRowsByColumn(
+              client,
+              table,
+              "order_no",
+              orderNo,
+              input.status,
+              limit,
+              offset
+            )
+          : null;
+      const rows = [...(rowsById ?? []), ...(rowsByNo ?? [])];
+
+      if (rowsById || rowsByNo) {
+        const refundsById = new Map<string, AdminWalletRefund>();
+
+        for (const row of rows) {
+          const refund = mapAdminWalletRefundRow(row);
+          if (refund) {
+            refundsById.set(refund.id, refund);
+          }
+        }
+
+        const refunds = [...refundsById.values()].sort(
+          (left, right) =>
+            timestampFromIso(right.requestedAt || right.createdAt) -
+            timestampFromIso(left.requestedAt || left.createdAt)
+        );
+
+        return {
+          refunds,
+          total: refunds.length,
+        };
+      }
+
+      continue;
+    }
+
+    try {
+      let request = client
+        .from(table)
+        .select("*", { count: "exact" })
+        .order("created_at", { ascending: false })
+        .range(offset, offset + limit - 1);
+
+      if (input.status) {
+        request = request.eq("status", walletRefundStatusForDb(input.status));
+      }
+
+      const { count, data, error } = await request;
+      const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
+
+      if (!error && rows) {
+        const refunds = rows.map(mapAdminWalletRefundRow).filter(isDefined);
+
+        return {
+          refunds,
+          total: count ?? refunds.length,
+        };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+async function readAdminWalletRefundRowsByColumn(
+  client: SupabaseServerClient,
+  table: (typeof walletRefundTables)[number],
+  column: string,
+  value: string,
+  status: AdminWalletRefundStatus | undefined,
+  limit: number,
+  offset: number
+) {
+  try {
+    let request = client
+      .from(table)
+      .select("*")
+      .eq(column, value)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (status) {
+      request = request.eq("status", walletRefundStatusForDb(status));
+    }
+
+    const { data, error } = await request;
+
+    if (error || !Array.isArray(data)) {
+      return null;
+    }
+
+    return (data as unknown[]).filter(isDbRow);
+  } catch {
+    return null;
+  }
+}
+
+async function readAdminWalletRefundById(
+  client: SupabaseServerClient,
+  refundId: string
+) {
+  for (const table of walletRefundTables) {
+    const row = await readSingleRow(client, table, "id", refundId);
+    const refund = row ? mapAdminWalletRefundRow(row) : null;
+
+    if (refund) {
+      return refund;
+    }
+  }
+
+  return null;
 }
 
 async function updateSingleRow(
@@ -7037,6 +7396,47 @@ function mapAdminOrderRow(
   };
 }
 
+function mapAdminWalletRefundRow(row: DbRow): AdminWalletRefund | null {
+  const id = pickString(row, ["id"]);
+  const amount =
+    pickNumber(row, [
+      "approved_amount",
+      "approvedAmount",
+      "requested_amount",
+      "requestedAmount",
+      "amount",
+      "refund_amount",
+      "wallet_refund_amount",
+    ]) ?? 0;
+
+  if (!id || amount <= 0) {
+    return null;
+  }
+
+  return {
+    amount,
+    approvedAt: pickString(row, ["approved_at", "reviewed_at"]),
+    approvedBy: pickString(row, ["approved_by", "reviewed_by"]),
+    createdAt: pickString(row, ["created_at", "createdAt"]) ?? "",
+    creditedAt: pickString(row, ["credited_at", "settled_at", "completed_at"]),
+    currency: "EUR",
+    customerId: pickString(row, ["customer_id", "company_id"]),
+    customerName: pickString(row, ["customer_name", "company_name"]),
+    id,
+    metadata: row.metadata ?? row.request_metadata ?? {},
+    orderId: pickString(row, ["order_id", "orderId"]),
+    orderLineId: pickString(row, ["order_line_id", "orderLineId"]),
+    orderNo: pickString(row, ["order_no", "order_number", "reference"]),
+    reason: pickString(row, ["reason", "note"]) ?? "",
+    requestType: pickString(row, ["request_type", "requestType", "type"]) ?? "",
+    requestedAt:
+      pickString(row, ["requested_at", "submitted_at", "created_at"]) ?? "",
+    requestedBy: pickString(row, ["requested_by", "created_by", "actor_id"]),
+    status: normalizeAdminWalletRefundStatus(pickString(row, ["status"])),
+    updatedAt: pickString(row, ["updated_at", "updatedAt"]) ?? "",
+  };
+}
+
 function mapCustomerWalletTransactionRow(row: DbRow): CustomerWalletTransaction | null {
   const id = pickString(row, ["id"]);
   const direction = pickString(row, ["direction"]);
@@ -7854,6 +8254,37 @@ function normalizePaymentStatus(value: string | null): AdminPaymentStatus {
   return "pending";
 }
 
+function normalizeAdminWalletRefundStatus(
+  value: string | null
+): AdminWalletRefundStatus {
+  if (value === "pending") {
+    return "requested";
+  }
+
+  if (
+    value === "approved" ||
+    value === "rejected" ||
+    value === "credited" ||
+    value === "cancelled"
+  ) {
+    return value;
+  }
+
+  if (value === "paid" || value === "completed" || value === "settled") {
+    return "credited";
+  }
+
+  if (value === "denied") {
+    return "rejected";
+  }
+
+  return "requested";
+}
+
+function walletRefundStatusForDb(status: AdminWalletRefundStatus) {
+  return status === "requested" ? "pending" : status;
+}
+
 function normalizeAdminPaymentMethod(value: string | null | undefined): AdminPaymentMethod {
   return value === "cash" ? "cash" : "bank_transfer";
 }
@@ -8211,6 +8642,12 @@ function isRecoverableRestockSchemaError(error: unknown) {
     text.includes("could not find the table 'public.product_restock_requests'") ||
     text.includes("relation \"public.product_restock_requests\" does not exist")
   );
+}
+
+function timestampFromIso(value: string | null | undefined) {
+  const timestamp = Date.parse(value ?? "");
+
+  return Number.isFinite(timestamp) ? timestamp : 0;
 }
 
 function isDbRow(value: unknown): value is DbRow {

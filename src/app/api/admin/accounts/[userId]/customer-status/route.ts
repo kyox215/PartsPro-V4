@@ -68,13 +68,14 @@ export async function PATCH(request: NextRequest, { params }: AccountParams) {
       });
     }
 
+    if (editableCustomer.account.accountType === "employee") {
+      return apiError(403, "ADMIN_EMPLOYEE_CUSTOMER_ACTION_DENIED", "Employee account profiles cannot be updated with customer status actions.", {
+        userId: paramResult.data.userId,
+      });
+    }
+
     await updateAdminCustomerClassification(editableCustomer.customer.id, {
-      assignmentStatus:
-        editableCustomer.account.accountType === "employee"
-          ? undefined
-          : parsed.data.status === "active"
-            ? "assigned"
-            : undefined,
+      assignmentStatus: parsed.data.status === "active" ? "assigned" : undefined,
       reason: parsed.data.reason,
       status: parsed.data.status,
     });
