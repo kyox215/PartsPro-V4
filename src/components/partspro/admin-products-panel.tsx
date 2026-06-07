@@ -100,6 +100,10 @@ import {
   type ProductGrade,
   type StockStatus,
 } from "@/lib/partspro-data";
+import type {
+  AdminHomeBanner,
+  HomeBannerTarget,
+} from "@/lib/partspro-repository";
 import { cn } from "@/lib/utils";
 import {
   adminSourceLabel,
@@ -113,7 +117,7 @@ import {
   sanitizeSupplierText,
   toPublicSku,
 } from "@/lib/partspro-sku";
-import { AdminSkeletonRows } from "./admin-feedback";
+import { AdminBusyRegion, AdminSkeletonRows } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
 import { PartVisual as ProductVisual } from "./part-visual";
 
@@ -377,6 +381,7 @@ const panelText = {
     pickModel: "选择型号",
     noCascadeOptions: "暂无选项",
     allBrands: "全部品牌",
+    allCategories: "全部分类",
     allSeries: "全部系列",
     allModels: "全部型号",
     allCatalogStatuses: "全部发布状态",
@@ -397,6 +402,8 @@ const panelText = {
     exportView: "导出当前视图",
     exportSelection: "导出所选",
     create: "新建商品",
+    workspaceProducts: "商品目录",
+    workspaceBanners: "首页横幅",
     selectedCount: "已选择 {count} 个商品",
     hideSelected: "批量下架",
     sourceStats: "{returned}/{total} 个商品 · {time}",
@@ -414,6 +421,36 @@ const panelText = {
     actionError: "商品动作失败。",
     stockError: "库存动作失败。",
     mediaError: "媒体保存失败。",
+    banners: {
+      active: "启用",
+      activeCount: "{count}/8 已启用",
+      add: "添加横幅",
+      bannerTitle: "横幅标题",
+      category: "分类",
+      delete: "删除",
+      description: "上传固定比例海报，并配置点击后打开的目录筛选。",
+      edit: "编辑横幅",
+      empty: "暂无首页横幅。",
+      inactive: "停用",
+      imageAlt: "图片 Alt",
+      imagePath: "海报路径",
+      minStock: "仅有货",
+      moveDown: "下移",
+      moveUp: "上移",
+      newTitle: "新横幅",
+      openCatalog: "打开目录",
+      preview: "预览",
+      q: "搜索词",
+      refresh: "刷新",
+      save: "保存横幅",
+      saved: "横幅已保存。",
+      saving: "正在保存...",
+      syncError: "首页横幅暂时不可用。",
+      title: "首页横幅",
+      upload: "上传海报",
+      uploadHint: "推荐 1600×400 或 1200×300，前台按 4:1 等比缩放，不裁切。",
+      uploadError: "海报上传失败。",
+    },
     emptyTitle: "没有匹配的商品",
     emptyBody: "调整搜索或筛选条件后再试。",
     tableProduct: "商品 / SKU",
@@ -624,6 +661,7 @@ const panelText = {
     pickModel: "Seleziona modello",
     noCascadeOptions: "Nessuna opzione",
     allBrands: "Tutti i brand",
+    allCategories: "Tutte le categorie",
     allSeries: "Tutte le serie",
     allModels: "Tutti i modelli",
     allCatalogStatuses: "Tutti stati catalogo",
@@ -644,6 +682,8 @@ const panelText = {
     exportView: "Esporta vista",
     exportSelection: "Esporta selezione",
     create: "Nuovo prodotto",
+    workspaceProducts: "Catalogo prodotti",
+    workspaceBanners: "Banner homepage",
     selectedCount: "{count} prodotti selezionati",
     hideSelected: "Nascondi selezionati",
     sourceStats: "{returned}/{total} prodotti · {time}",
@@ -661,6 +701,36 @@ const panelText = {
     actionError: "Azione prodotto non riuscita.",
     stockError: "Movimento stock non riuscito.",
     mediaError: "Salvataggio media non riuscito.",
+    banners: {
+      active: "Attivo",
+      activeCount: "{count}/8 attivi",
+      add: "Aggiungi banner",
+      bannerTitle: "Titolo banner",
+      category: "Categoria",
+      delete: "Elimina",
+      description: "Carica un poster fisso e configura il catalogo da aprire al click.",
+      edit: "Modifica banner",
+      empty: "Nessun banner homepage.",
+      inactive: "Disattivo",
+      imageAlt: "Alt immagine",
+      imagePath: "Percorso poster",
+      minStock: "Solo disponibili",
+      moveDown: "Sposta giu",
+      moveUp: "Sposta su",
+      newTitle: "Nuovo banner",
+      openCatalog: "Apri catalogo",
+      preview: "Anteprima",
+      q: "Ricerca",
+      refresh: "Aggiorna",
+      save: "Salva banner",
+      saved: "Banner salvato.",
+      saving: "Salvataggio...",
+      syncError: "Banner homepage non disponibili.",
+      title: "Banner homepage",
+      upload: "Carica poster",
+      uploadHint: "Consigliato 1600x400 o 1200x300. In frontend scala 4:1 senza crop.",
+      uploadError: "Caricamento poster non riuscito.",
+    },
     emptyTitle: "Nessun prodotto corrispondente",
     emptyBody: "Modifica ricerca o filtri.",
     tableProduct: "Prodotto / SKU",
@@ -867,6 +937,7 @@ export function AdminProductsPanel() {
   const [drawerInlineEditSku, setDrawerInlineEditSku] = React.useState<string | null>(null);
   const [stockAdjustProduct, setStockAdjustProduct] =
     React.useState<AdminProductRow | null>(null);
+  const [workspace, setWorkspace] = React.useState<"products" | "banners">("products");
 
   const refreshProducts = React.useCallback(
     async (
@@ -1152,9 +1223,20 @@ export function AdminProductsPanel() {
 
   return (
     <section className="min-w-0 space-y-2 sm:space-y-4">
-      <ProductMetricGrid metrics={metrics} text={text} />
+      <Tabs value={workspace} onValueChange={(value) => setWorkspace(value === "banners" ? "banners" : "products")}>
+        <TabsList className="grid h-auto w-full grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 shadow-[0_8px_22px_rgba(15,23,42,0.04)] sm:w-auto sm:inline-grid">
+          <TabsTrigger value="products" className="rounded-md px-3 py-2 text-xs font-bold">
+            {text.workspaceProducts}
+          </TabsTrigger>
+          <TabsTrigger value="banners" className="rounded-md px-3 py-2 text-xs font-bold">
+            {text.workspaceBanners}
+          </TabsTrigger>
+        </TabsList>
 
-      <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.04)] sm:rounded-lg sm:shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
+        <TabsContent value="products" className="m-0 space-y-2 pt-2 sm:space-y-4">
+          <ProductMetricGrid metrics={metrics} text={text} />
+
+          <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.04)] sm:rounded-lg sm:shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
         <div className="flex flex-col gap-2 border-b border-slate-200 px-2.5 py-2 sm:gap-3 sm:px-4 sm:py-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
@@ -1362,7 +1444,17 @@ export function AdminProductsPanel() {
             />
           </div>
         </div>
-      </div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="banners" className="m-0 pt-2">
+          <AdminHomeBannersPanel
+            isLoadingModelGroups={isLoadingModelGroups}
+            modelGroups={modelGroups}
+            text={text}
+          />
+        </TabsContent>
+      </Tabs>
 
       <ProductMobileFiltersSheet
         open={isMobileFiltersOpen}
@@ -1428,6 +1520,572 @@ export function AdminProductsPanel() {
         onSave={handleStockAdjustment}
       />
     </section>
+  );
+}
+
+type HomeBannerFormValues = {
+  brand: string;
+  category: string;
+  imageAlt: string;
+  imagePath: string;
+  isActive: boolean;
+  minStock: boolean;
+  model: string;
+  modelSeries: string;
+  position: number;
+  q: string;
+  sort: "name" | "stock_desc" | "updated_desc";
+  title: string;
+};
+
+function AdminHomeBannersPanel({
+  isLoadingModelGroups,
+  modelGroups,
+  text,
+}: {
+  isLoadingModelGroups: boolean;
+  modelGroups: DeviceModelGroup[];
+  text: typeof panelText.zh | typeof panelText.it;
+}) {
+  const copy = text.banners;
+  const [banners, setBanners] = React.useState<AdminHomeBanner[]>([]);
+  const [editingId, setEditingId] = React.useState<string | null>(null);
+  const [formValues, setFormValues] = React.useState<HomeBannerFormValues>(() =>
+    homeBannerFormDefaults()
+  );
+  const [isLoading, setIsLoading] = React.useState(true);
+  const [isSaving, setIsSaving] = React.useState(false);
+  const [pendingId, setPendingId] = React.useState<string | null>(null);
+  const [isUploading, setIsUploading] = React.useState(false);
+  const [notice, setNotice] = React.useState<ProductNotice | null>(null);
+  const sortedBanners = React.useMemo(() => sortHomeBanners(banners), [banners]);
+  const activeCount = sortedBanners.filter((banner) => banner.isActive).length;
+  const selectedBrandGroup = modelGroups.find((group) => group.brand === formValues.brand);
+  const selectedSeriesGroup = selectedBrandGroup?.series?.find(
+    (series) => series.series === formValues.modelSeries
+  );
+  const availableModels =
+    selectedSeriesGroup?.models ?? selectedBrandGroup?.models ?? [];
+  const previewHref = buildBannerPreviewHref(formValues);
+
+  const refreshBanners = React.useCallback(
+    async (signal?: AbortSignal) => {
+      setIsLoading(true);
+
+      try {
+        const nextBanners = await fetchAdminHomeBanners(signal);
+
+        if (!signal?.aborted) {
+          setBanners(nextBanners);
+          setNotice(null);
+        }
+      } catch {
+        if (!signal?.aborted) {
+          setNotice({ tone: "error", message: copy.syncError });
+        }
+      } finally {
+        if (!signal?.aborted) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [copy.syncError]
+  );
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      void refreshBanners(controller.signal);
+    }, 0);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [refreshBanners]);
+
+  function setFormValue<Key extends keyof HomeBannerFormValues>(
+    key: Key,
+    value: HomeBannerFormValues[Key]
+  ) {
+    setFormValues((current) => {
+      const next = { ...current, [key]: value };
+
+      if (key === "brand") {
+        next.modelSeries = "";
+        next.model = "";
+      }
+
+      if (key === "modelSeries") {
+        next.model = "";
+      }
+
+      return next;
+    });
+  }
+
+  function startCreate() {
+    setEditingId(null);
+    setFormValues(homeBannerFormDefaults(sortedBanners.length));
+  }
+
+  function startEdit(banner: AdminHomeBanner) {
+    setEditingId(banner.id);
+    setFormValues(homeBannerFormDefaults(sortedBanners.length, banner));
+  }
+
+  async function saveBanner() {
+    setIsSaving(true);
+
+    try {
+      const saved = editingId
+        ? await saveAdminHomeBanner(editingId, homeBannerFormPayload(formValues))
+        : await createAdminHomeBanner(homeBannerFormPayload(formValues));
+
+      setBanners((current) => upsertHomeBanner(current, saved));
+      setEditingId(saved.id);
+      setFormValues(homeBannerFormDefaults(sortedBanners.length, saved));
+      setNotice({ tone: "success", message: copy.saved });
+    } catch (error) {
+      setNotice({ tone: "error", message: getErrorMessage(error) || text.saveError });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function patchBanner(
+    banner: AdminHomeBanner,
+    patch: Partial<ReturnType<typeof homeBannerFormPayload>>
+  ) {
+    setPendingId(banner.id);
+
+    try {
+      const saved = await saveAdminHomeBanner(banner.id, patch);
+      setBanners((current) => upsertHomeBanner(current, saved));
+      setNotice({ tone: "success", message: copy.saved });
+    } catch (error) {
+      setNotice({ tone: "error", message: getErrorMessage(error) || text.saveError });
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function moveBanner(index: number, direction: -1 | 1) {
+    const current = sortedBanners[index];
+    const target = sortedBanners[index + direction];
+
+    if (!current || !target) {
+      return;
+    }
+
+    setPendingId(current.id);
+
+    try {
+      const [savedCurrent, savedTarget] = await Promise.all([
+        saveAdminHomeBanner(current.id, { position: target.position }),
+        saveAdminHomeBanner(target.id, { position: current.position }),
+      ]);
+
+      setBanners((items) => upsertHomeBanner(upsertHomeBanner(items, savedCurrent), savedTarget));
+      setNotice({ tone: "success", message: copy.saved });
+    } catch (error) {
+      setNotice({ tone: "error", message: getErrorMessage(error) || text.saveError });
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function removeBanner(banner: AdminHomeBanner) {
+    if (!window.confirm(copy.delete)) {
+      return;
+    }
+
+    setPendingId(banner.id);
+
+    try {
+      await deleteAdminHomeBannerRequest(banner.id);
+      setBanners((current) => current.filter((item) => item.id !== banner.id));
+      if (editingId === banner.id) {
+        startCreate();
+      }
+    } catch (error) {
+      setNotice({ tone: "error", message: getErrorMessage(error) || text.actionError });
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function uploadBannerImage(file: File | null) {
+    if (!file) {
+      return;
+    }
+
+    setIsUploading(true);
+
+    try {
+      const uploaded = await uploadAdminHomeBannerImage(file);
+      setFormValues((current) => ({
+        ...current,
+        imageAlt: current.imageAlt || current.title || copy.bannerTitle,
+        imagePath: uploaded.imagePath,
+      }));
+      setNotice(null);
+    } catch {
+      setNotice({ tone: "error", message: copy.uploadError });
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  return (
+    <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <section className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
+        <div className="flex flex-col gap-2 border-b border-slate-200 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+          <div className="min-w-0">
+            <h2 className="text-base font-black text-slate-950">{copy.title}</h2>
+            <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+              {copy.description}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge className="border-primary/15 bg-primary/8 text-primary" variant="outline">
+              {formatAdminMessage(copy.activeCount, { count: activeCount })}
+            </Badge>
+            <Button
+              className="h-8 bg-white px-2"
+              disabled={isLoading}
+              onClick={() => void refreshBanners()}
+              size="xs"
+              variant="outline"
+            >
+              <RefreshCw className={cn("size-4", isLoading && "animate-spin")} />
+              {copy.refresh}
+            </Button>
+            <Button className="h-8 px-2" onClick={startCreate} size="xs">
+              <Plus className="size-4" />
+              {copy.add}
+            </Button>
+          </div>
+        </div>
+
+        {notice && (
+          <div className="px-3 pt-3 sm:px-4">
+            <div className={cn("flex items-center gap-3 rounded-lg border px-3 py-2 text-sm font-medium", noticeClassName(notice.tone))}>
+              {notice.tone === "error" ? (
+                <XCircle className="size-4 shrink-0" />
+              ) : (
+                <CheckCircle2 className="size-4 shrink-0" />
+              )}
+              <span className="min-w-0 flex-1">{notice.message}</span>
+              <Button
+                className="text-current hover:bg-white/60"
+                onClick={() => setNotice(null)}
+                size="xs"
+                variant="ghost"
+              >
+                {text.close}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        <AdminBusyRegion
+          className="p-3 sm:p-4"
+          label={copy.refresh}
+          pending={isLoading && sortedBanners.length > 0}
+        >
+          {isLoading && sortedBanners.length === 0 ? (
+            <AdminSkeletonRows rows={4} />
+          ) : sortedBanners.length > 0 ? (
+            <div className="grid gap-3">
+              {sortedBanners.map((banner, index) => (
+                <article
+                  key={banner.id}
+                  className={cn(
+                    "grid gap-3 rounded-lg border border-slate-200 bg-slate-50/60 p-2 sm:grid-cols-[220px_minmax(0,1fr)]",
+                    editingId === banner.id && "border-primary/40 bg-primary/5"
+                  )}
+                >
+                  <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
+                    <div className="relative aspect-[4/1]">
+                      <Image
+                        alt={banner.imageAlt}
+                        className="object-contain"
+                        fill
+                        loading="lazy"
+                        sizes="220px"
+                        src={banner.imageUrl}
+                        unoptimized
+                      />
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h3 className="truncate text-sm font-black text-slate-950">
+                          {banner.title}
+                        </h3>
+                        <p className="mt-1 truncate text-xs font-semibold text-slate-500">
+                          {banner.href}
+                        </p>
+                      </div>
+                      <Badge
+                        className={cn(
+                          "border",
+                          banner.isActive
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : "border-slate-200 bg-white text-slate-500"
+                        )}
+                        variant="outline"
+                      >
+                        {banner.isActive ? copy.active : copy.inactive}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      <Button
+                        className="h-8 bg-white px-2"
+                        onClick={() => startEdit(banner)}
+                        size="xs"
+                        variant="outline"
+                      >
+                        <Edit className="size-4" />
+                        {copy.edit}
+                      </Button>
+                      <Button
+                        asChild
+                        className="h-8 bg-white px-2"
+                        size="xs"
+                        variant="outline"
+                      >
+                        <Link href={banner.href} target="_blank">
+                          <ExternalLink className="size-4" />
+                          {copy.openCatalog}
+                        </Link>
+                      </Button>
+                      <Button
+                        className="h-8 bg-white px-2"
+                        disabled={pendingId === banner.id}
+                        onClick={() => void patchBanner(banner, { isActive: !banner.isActive })}
+                        size="xs"
+                        variant="outline"
+                      >
+                        {pendingId === banner.id ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : banner.isActive ? (
+                          <EyeOff className="size-4" />
+                        ) : (
+                          <Eye className="size-4" />
+                        )}
+                        {banner.isActive ? copy.inactive : copy.active}
+                      </Button>
+                      <Button
+                        aria-label={copy.moveUp}
+                        className="h-8 bg-white px-2"
+                        disabled={index === 0 || pendingId === banner.id}
+                        onClick={() => void moveBanner(index, -1)}
+                        size="xs"
+                        variant="outline"
+                      >
+                        <ChevronLeft className="size-4 rotate-90" />
+                      </Button>
+                      <Button
+                        aria-label={copy.moveDown}
+                        className="h-8 bg-white px-2"
+                        disabled={index === sortedBanners.length - 1 || pendingId === banner.id}
+                        onClick={() => void moveBanner(index, 1)}
+                        size="xs"
+                        variant="outline"
+                      >
+                        <ChevronRight className="size-4 rotate-90" />
+                      </Button>
+                      <Button
+                        className="h-8 bg-white px-2 text-red-600 hover:text-red-700"
+                        disabled={pendingId === banner.id}
+                        onClick={() => void removeBanner(banner)}
+                        size="xs"
+                        variant="outline"
+                      >
+                        <XCircle className="size-4" />
+                        {copy.delete}
+                      </Button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500">
+              {copy.empty}
+            </div>
+          )}
+        </AdminBusyRegion>
+      </section>
+
+      <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.04)] sm:p-4">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-black text-slate-950">
+              {editingId ? copy.edit : copy.newTitle}
+            </h2>
+            <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+              {copy.uploadHint}
+            </p>
+          </div>
+          <Badge variant="outline">4:1</Badge>
+        </div>
+
+        <div className="grid gap-3">
+          <Field label={copy.bannerTitle}>
+            <Input
+              value={formValues.title}
+              onChange={(event) => setFormValue("title", event.currentTarget.value)}
+            />
+          </Field>
+          <Field label={copy.upload}>
+            <Input
+              accept="image/jpeg,image/png,image/webp"
+              disabled={isUploading}
+              type="file"
+              onChange={(event) => void uploadBannerImage(event.currentTarget.files?.[0] ?? null)}
+            />
+          </Field>
+          <Field label={copy.imagePath}>
+            <Input
+              value={formValues.imagePath}
+              onChange={(event) => setFormValue("imagePath", event.currentTarget.value)}
+            />
+          </Field>
+          <Field label={copy.imageAlt}>
+            <Input
+              value={formValues.imageAlt}
+              onChange={(event) => setFormValue("imageAlt", event.currentTarget.value)}
+            />
+          </Field>
+
+          {formValues.imagePath && (
+            <div className="overflow-hidden rounded-md border border-slate-200 bg-slate-50">
+              <div className="relative aspect-[4/1]">
+                <Image
+                  alt={formValues.imageAlt || formValues.title}
+                  className="object-contain"
+                  fill
+                  sizes="420px"
+                  src={resolveAdminProductImageUrl(formValues.imagePath)}
+                  unoptimized
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Field label={text.brand}>
+              <Select
+                disabled={isLoadingModelGroups}
+                value={formValues.brand || "all"}
+                onValueChange={(value) => setFormValue("brand", value === "all" ? "" : value)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{text.allBrands}</SelectItem>
+                  {modelGroups.map((group) => (
+                    <SelectItem key={group.brand} value={group.brand}>
+                      {group.brand}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label={copy.category}>
+              <Select
+                value={formValues.category || "all"}
+                onValueChange={(value) => setFormValue("category", value === "all" ? "" : value)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{text.allCategories}</SelectItem>
+                  {categories.map((category) => (
+                    <SelectItem key={category.value} value={category.value}>
+                      {category.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label={text.modelSeries}>
+              <Select
+                disabled={!selectedBrandGroup}
+                value={formValues.modelSeries || "all"}
+                onValueChange={(value) =>
+                  setFormValue("modelSeries", value === "all" ? "" : value)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{text.allSeries}</SelectItem>
+                  {(selectedBrandGroup?.series ?? []).map((series) => (
+                    <SelectItem key={series.series} value={series.series}>
+                      {series.series}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label={text.model}>
+              <Select
+                disabled={!selectedBrandGroup}
+                value={formValues.model || "all"}
+                onValueChange={(value) => setFormValue("model", value === "all" ? "" : value)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{text.allModels}</SelectItem>
+                  {availableModels.map((model) => (
+                    <SelectItem key={model} value={model}>
+                      {model}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+
+          <Field label={copy.q}>
+            <Input
+              value={formValues.q}
+              onChange={(event) => setFormValue("q", event.currentTarget.value)}
+            />
+          </Field>
+          <label className="flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
+            <Checkbox
+              checked={formValues.minStock}
+              onCheckedChange={(value) => setFormValue("minStock", value === true)}
+            />
+            {copy.minStock}
+          </label>
+
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={isSaving || isUploading} onClick={() => void saveBanner()}>
+              {isSaving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+              {isSaving ? copy.saving : copy.save}
+            </Button>
+            <Button asChild className="bg-white" variant="outline">
+              <Link href={previewHref} target="_blank">
+                <ExternalLink className="size-4" />
+                {copy.preview}
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -4749,6 +5407,107 @@ function MetricPill({
   );
 }
 
+async function fetchAdminHomeBanners(signal?: AbortSignal) {
+  const response = await fetch("/api/admin/home-banners", {
+    cache: "no-store",
+    headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readApiErrorMessage(
+        response,
+        `GET /api/admin/home-banners responded ${response.status}`
+      )
+    );
+  }
+
+  return readPayloadDataArray(await readJsonResponse(response))
+    .map(normalizeAdminHomeBanner)
+    .filter(isDefined);
+}
+
+async function createAdminHomeBanner(payload: ReturnType<typeof homeBannerFormPayload>) {
+  const response = await fetchAdminWriteResponse(
+    "/api/admin/home-banners",
+    {
+      body: JSON.stringify(payload),
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Cache-Control": "no-cache",
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+    "POST /api/admin/home-banners failed"
+  );
+
+  return readSavedHomeBanner(await readJsonResponse(response));
+}
+
+async function saveAdminHomeBanner(
+  id: string,
+  payload: Partial<ReturnType<typeof homeBannerFormPayload>>
+) {
+  const response = await fetchAdminWriteResponse(
+    `/api/admin/home-banners/${encodeURIComponent(id)}`,
+    {
+      body: JSON.stringify(payload),
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Cache-Control": "no-cache",
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
+    },
+    `PATCH /api/admin/home-banners/${id} failed`
+  );
+
+  return readSavedHomeBanner(await readJsonResponse(response));
+}
+
+async function deleteAdminHomeBannerRequest(id: string) {
+  const response = await fetchAdminWriteResponse(
+    `/api/admin/home-banners/${encodeURIComponent(id)}`,
+    {
+      cache: "no-store",
+      headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+      method: "DELETE",
+    },
+    `DELETE /api/admin/home-banners/${id} failed`
+  );
+
+  return readJsonResponse(response);
+}
+
+async function uploadAdminHomeBannerImage(file: File) {
+  const formData = new FormData();
+  formData.set("file", file);
+
+  const response = await fetchAdminWriteResponse(
+    "/api/admin/home-banners/images",
+    {
+      body: formData,
+      cache: "no-store",
+      headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+      method: "POST",
+    },
+    "POST /api/admin/home-banners/images failed"
+  );
+  const data = readPayloadDataObject(await readJsonResponse(response));
+  const imagePath = readString(data.imagePath);
+  const imageUrl = readString(data.imageUrl);
+
+  if (!imagePath || !imageUrl) {
+    throw new Error("Banner image upload response is incomplete.");
+  }
+
+  return { imagePath, imageUrl };
+}
+
 async function fetchAdminProducts(
   filters: ProductListFilters,
   signal?: AbortSignal
@@ -5111,6 +5870,198 @@ function readSavedProductCandidates(payload: unknown) {
   }
 
   return [payload];
+}
+
+function readSavedHomeBanner(payload: unknown) {
+  const banner = normalizeAdminHomeBanner(readPayloadDataObject(payload));
+
+  if (!banner) {
+    throw new Error("Homepage banner response did not contain a banner.");
+  }
+
+  return banner;
+}
+
+function normalizeAdminHomeBanner(value: unknown): AdminHomeBanner | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const id = readString(value.id);
+  const title = readString(value.title);
+  const imagePath = readString(value.imagePath) ?? readString(value.image_path);
+  const imageAlt = readString(value.imageAlt) ?? readString(value.image_alt) ?? title;
+  const imageUrl = readString(value.imageUrl) ?? readString(value.image_url);
+
+  if (!id || !title || !imagePath || !imageAlt) {
+    return null;
+  }
+
+  const target = normalizeHomeBannerTargetValue(value.target);
+
+  return {
+    createdAt: readString(value.createdAt) ?? readString(value.created_at) ?? "",
+    deletedAt: readString(value.deletedAt) ?? readString(value.deleted_at),
+    endsAt: readString(value.endsAt) ?? readString(value.ends_at),
+    href: readString(value.href) ?? buildHomeBannerTargetHref(target),
+    id,
+    imageAlt,
+    imagePath,
+    imageUrl: imageUrl ?? resolveAdminProductImageUrl(imagePath),
+    isActive: readBoolean(value.isActive) ?? readBoolean(value.is_active) ?? false,
+    position: readNumber(value.position) ?? 0,
+    startsAt: readString(value.startsAt) ?? readString(value.starts_at),
+    target,
+    title,
+    updatedAt: readString(value.updatedAt) ?? readString(value.updated_at) ?? "",
+  };
+}
+
+function normalizeHomeBannerTargetValue(value: unknown): HomeBannerTarget {
+  const target = isRecord(value) ? value : {};
+  const minStock = readNumber(target.minStock) ?? readNumber(target.min_stock);
+  const sort = readString(target.sort);
+
+  return {
+    ...(readString(target.brand) ? { brand: readString(target.brand) } : {}),
+    ...(readString(target.category) ? { category: readString(target.category) } : {}),
+    ...(minStock && minStock > 0 ? { minStock: Math.trunc(minStock) } : {}),
+    ...(readString(target.model) ? { model: readString(target.model) } : {}),
+    ...(readString(target.modelSeries) || readString(target.model_series)
+      ? { modelSeries: readString(target.modelSeries) ?? readString(target.model_series) }
+      : {}),
+    ...(readString(target.q) ? { q: readString(target.q) } : {}),
+    ...(sort === "stock_desc" || sort === "updated_desc" || sort === "name"
+      ? { sort }
+      : {}),
+  };
+}
+
+function homeBannerFormDefaults(
+  nextPosition = 0,
+  banner?: AdminHomeBanner
+): HomeBannerFormValues {
+  return {
+    brand: banner?.target.brand ?? "",
+    category: banner?.target.category ?? "",
+    imageAlt: banner?.imageAlt ?? "",
+    imagePath: banner?.imagePath ?? "",
+    isActive: banner?.isActive ?? true,
+    minStock: Boolean(banner?.target.minStock),
+    model: banner?.target.model ?? "",
+    modelSeries: banner?.target.modelSeries ?? "",
+    position: banner?.position ?? nextPosition,
+    q: banner?.target.q ?? "",
+    sort: banner?.target.sort ?? "name",
+    title: banner?.title ?? "",
+  };
+}
+
+function homeBannerFormPayload(values: HomeBannerFormValues) {
+  const target: HomeBannerTarget = {};
+  const q = values.q.trim();
+
+  if (values.brand) {
+    target.brand = values.brand;
+  }
+
+  if (values.category) {
+    target.category = values.category;
+  }
+
+  if (values.modelSeries) {
+    target.modelSeries = values.modelSeries;
+  }
+
+  if (values.model) {
+    target.model = values.model;
+  }
+
+  if (q.length >= 2) {
+    target.q = q;
+  }
+
+  if (values.minStock) {
+    target.minStock = 1;
+  }
+
+  if (values.sort !== "name") {
+    target.sort = values.sort;
+  }
+
+  return {
+    imageAlt: values.imageAlt.trim(),
+    imagePath: values.imagePath.trim(),
+    isActive: values.isActive,
+    position: Math.max(0, Math.trunc(values.position)),
+    target,
+    title: values.title.trim(),
+  };
+}
+
+function buildBannerPreviewHref(values: HomeBannerFormValues) {
+  return buildHomeBannerTargetHref(homeBannerFormPayload(values).target);
+}
+
+function buildHomeBannerTargetHref(target: HomeBannerTarget) {
+  const params = new URLSearchParams();
+
+  if (target.brand) {
+    params.set("brand", target.brand);
+  }
+
+  if (target.category) {
+    params.set("category", target.category);
+  }
+
+  if (target.modelSeries) {
+    params.set("modelSeries", target.modelSeries);
+  }
+
+  if (target.model) {
+    params.set("model", target.model);
+  }
+
+  if (target.q) {
+    params.set("q", target.q);
+  }
+
+  if (target.minStock) {
+    params.set("minStock", String(target.minStock));
+  }
+
+  if (target.sort && target.sort !== "name") {
+    params.set("sort", target.sort);
+  }
+
+  const query = params.toString();
+
+  return query ? `/catalogo?${query}` : "/catalogo";
+}
+
+function sortHomeBanners(banners: AdminHomeBanner[]) {
+  return [...banners].sort((left, right) => {
+    if (left.position !== right.position) {
+      return left.position - right.position;
+    }
+
+    return right.updatedAt.localeCompare(left.updatedAt);
+  });
+}
+
+function upsertHomeBanner(
+  banners: AdminHomeBanner[],
+  banner: AdminHomeBanner
+) {
+  const exists = banners.some((item) => item.id === banner.id);
+
+  return exists
+    ? banners.map((item) => (item.id === banner.id ? banner : item))
+    : [banner, ...banners];
+}
+
+function readPayloadDataArray(payload: unknown) {
+  return isRecord(payload) && Array.isArray(payload.data) ? payload.data : [];
 }
 
 function readProductsRows(payload: unknown) {

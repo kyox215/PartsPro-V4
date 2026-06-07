@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
+  ChevronLeft,
   ChevronRight,
   Flame,
   Grid3X3,
@@ -17,10 +19,12 @@ import {
   type DeviceModelGroup,
   type PartProduct,
 } from "@/lib/partspro-data";
+import type { HomeBanner } from "@/lib/partspro-repository";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
+import { cn } from "@/lib/utils";
 import { CatalogBrandTree } from "./catalog-brand-tree";
 import { StoreHeader } from "./store-header";
-import { useI18n, useT } from "./i18n-provider";
+import { useT } from "./i18n-provider";
 import {
   tx,
 } from "@/i18n/dictionaries/storefront";
@@ -30,6 +34,7 @@ import { ProductCard } from "./product-card";
 
 type HomePageProps = {
   catalogTotal?: number;
+  homeBanners?: HomeBanner[];
   hotProducts?: PartProduct[];
   initialAccountAccess?: StoreHeaderAccountAccess;
   modelGroups?: readonly DeviceModelGroup[];
@@ -41,6 +46,7 @@ type HomePageProps = {
 
 export function HomePage({
   catalogTotal = 0,
+  homeBanners = [],
   hotProducts = [],
   initialAccountAccess,
   modelGroups = [],
@@ -61,7 +67,8 @@ export function HomePage({
       <div className="mx-auto grid w-full max-w-[1500px] min-w-0 grid-cols-[minmax(0,1fr)] gap-3 px-2 py-3 sm:gap-4 sm:px-4 sm:py-4 lg:grid-cols-[230px_minmax(0,1fr)]">
         <CategorySidebar modelGroups={modelGroups} />
         <div className="min-w-0 space-y-4">
-          <HomeCatalogHeader
+          <HomeBannerCarousel
+            banners={homeBanners}
             catalogTotal={catalogTotal}
             modelGroupCount={modelGroups.length}
           />
@@ -150,65 +157,148 @@ function CategorySidebar({ modelGroups }: { modelGroups?: readonly DeviceModelGr
   );
 }
 
-function HomeCatalogHeader({
+function HomeBannerCarousel({
+  banners,
   catalogTotal,
   modelGroupCount,
 }: {
+  banners: HomeBanner[];
   catalogTotal: number;
   modelGroupCount: number;
 }) {
   const t = useT();
-  const { locale } = useI18n();
-  const skuLabel =
-    catalogTotal > 0
-      ? new Intl.NumberFormat(locale).format(catalogTotal)
-      : tx(t, "storefront.home.hero.catalogFallback", "Catalogo professionale");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const trackRef = useRef<HTMLDivElement | null>(null);
+  const hasBanners = banners.length > 0;
+  const safeActiveIndex = Math.min(activeIndex, Math.max(0, banners.length - 1));
 
-  return (
-    <section className="rounded-lg border border-slate-200 bg-white p-3 shadow-[0_14px_34px_rgba(15,23,42,0.05)] sm:p-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="min-w-0">
-          <Badge className="mb-2 border border-primary/15 bg-primary/8 text-primary shadow-sm">
-            {tx(t, "storefront.home.shelves.badge", "Catalogo prodotti")}
-          </Badge>
-          <h1 className="break-words text-2xl font-black leading-tight tracking-normal text-slate-950 sm:text-3xl">
-            {tx(t, "storefront.home.shelves.title", "Prodotti pronti per l'acquisto")}
-          </h1>
-          <div className="mt-3 flex min-w-0 flex-wrap gap-2 text-xs font-bold text-slate-500">
-            <span className="rounded-md bg-slate-50 px-2 py-1">
-              {skuLabel} {tx(t, "storefront.home.hero.stats.sku", "SKU nel catalogo")}
-            </span>
-            <span className="rounded-md bg-slate-50 px-2 py-1">
-              {modelGroupCount > 0 ? modelGroupCount : "8+"}{" "}
-              {tx(t, "storefront.home.hero.stats.brands", "brand e famiglie")}
-            </span>
-            <span className="rounded-md bg-slate-50 px-2 py-1">
-              24/48h {tx(t, "storefront.home.brands.stats.delivery", "Italia")}
-            </span>
+  function scrollToBanner(index: number) {
+    const nextIndex = Math.max(0, Math.min(index, banners.length - 1));
+    const track = trackRef.current;
+
+    setActiveIndex(nextIndex);
+    track?.scrollTo({
+      behavior: "smooth",
+      left: nextIndex * track.clientWidth,
+    });
+  }
+
+  function handleScroll() {
+    const track = trackRef.current;
+
+    if (!track || track.clientWidth <= 0) {
+      return;
+    }
+
+    const nextIndex = Math.round(track.scrollLeft / track.clientWidth);
+    setActiveIndex(Math.max(0, Math.min(nextIndex, banners.length - 1)));
+  }
+
+  if (!hasBanners) {
+    return (
+      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
+        <div className="grid aspect-[4/1] min-h-[96px] place-items-center bg-[linear-gradient(135deg,#eef4ff,#ffffff_55%,#f1f5f9)] px-4 text-center">
+          <div className="min-w-0">
+            <Badge className="border border-primary/15 bg-primary/8 text-primary shadow-sm">
+              {tx(t, "storefront.home.shelves.badge", "Catalogo prodotti")}
+            </Badge>
+            <h1 className="mt-2 text-lg font-black tracking-normal text-slate-950 sm:text-2xl">
+              {tx(t, "storefront.home.shelves.title", "Prodotti pronti per l'acquisto")}
+            </h1>
+            <div className="mt-2 flex min-w-0 flex-wrap justify-center gap-2 text-xs font-bold text-slate-500">
+              <span>{catalogTotal.toLocaleString()} SKU</span>
+              <span>{modelGroupCount || "8+"} brand</span>
+              <span>24/48h Italia</span>
+            </div>
+            <Button asChild className="mt-3 h-8 px-3 shadow-sm shadow-primary/15">
+              <Link href="/catalogo">
+                {tx(t, "storefront.home.hero.browseCatalog", "Sfoglia catalogo")}
+                <RoutePendingIndicator
+                  className="size-3.5 text-primary-foreground"
+                  label={tx(t, "storefront.navigation.loadingCatalog", "Caricamento catalogo...")}
+                />
+                <ArrowRight className="size-4" />
+              </Link>
+            </Button>
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
-          <Button asChild className="h-10 px-4 shadow-sm shadow-primary/15">
-            <Link href="/catalogo">
-              {tx(t, "storefront.home.hero.browseCatalog", "Sfoglia catalogo")}
+      </section>
+    );
+  }
+
+  return (
+    <section
+      aria-label={tx(t, "storefront.home.banners.label", "Promozioni catalogo")}
+      className="group relative overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.05)]"
+    >
+      <div
+        ref={trackRef}
+        className="flex snap-x snap-mandatory overflow-x-auto scroll-smooth [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        onScroll={handleScroll}
+      >
+        {banners.map((banner, index) => (
+          <Link
+            key={banner.id}
+            aria-label={banner.title}
+            className="relative block aspect-[4/1] min-h-[86px] w-full min-w-full snap-start bg-slate-50 outline-none transition-transform duration-150 active:scale-[0.995] focus-visible:ring-2 focus-visible:ring-primary sm:min-h-[150px]"
+            href={banner.href}
+            prefetch
+          >
+            <Image
+              alt={banner.imageAlt}
+              className="object-contain"
+              fill
+              fetchPriority={index === 0 ? "high" : "auto"}
+              loading={index === 0 ? "eager" : "lazy"}
+              sizes="(min-width: 1024px) 1220px, 100vw"
+              src={banner.imageUrl}
+              unoptimized
+            />
+            <span className="pointer-events-none absolute right-2 top-2 grid size-7 place-items-center text-primary drop-shadow-sm">
               <RoutePendingIndicator
-                className="size-3.5 text-primary-foreground"
+                className="size-4"
                 label={tx(t, "storefront.navigation.loadingCatalog", "Caricamento catalogo...")}
               />
-              <ArrowRight className="size-4" />
-            </Link>
-          </Button>
-          <Button variant="outline" asChild className="h-10 bg-white px-4">
-            <Link href="/catalogo?minStock=1">
-              {tx(t, "storefront.home.header.availableOnly", "Solo disponibili")}
-              <RoutePendingIndicator
-                className="size-3.5 text-primary"
-                label={tx(t, "storefront.navigation.loadingCatalog", "Caricamento catalogo...")}
-              />
-            </Link>
-          </Button>
-        </div>
+            </span>
+          </Link>
+        ))}
       </div>
+      {banners.length > 1 && (
+        <>
+          <Button
+            aria-label={tx(t, "storefront.home.banners.previous", "Banner precedente")}
+            className="absolute left-2 top-1/2 hidden size-9 -translate-y-1/2 rounded-full bg-white/90 p-0 text-slate-700 opacity-0 shadow-sm transition-opacity hover:bg-white group-hover:opacity-100 sm:inline-flex"
+            onClick={() => scrollToBanner(safeActiveIndex - 1)}
+            type="button"
+            variant="outline"
+          >
+            <ChevronLeft className="size-4" />
+          </Button>
+          <Button
+            aria-label={tx(t, "storefront.home.banners.next", "Banner successivo")}
+            className="absolute right-2 top-1/2 hidden size-9 -translate-y-1/2 rounded-full bg-white/90 p-0 text-slate-700 opacity-0 shadow-sm transition-opacity hover:bg-white group-hover:opacity-100 sm:inline-flex"
+            onClick={() => scrollToBanner(safeActiveIndex + 1)}
+            type="button"
+            variant="outline"
+          >
+            <ChevronRight className="size-4" />
+          </Button>
+          <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-1.5 rounded-full bg-white/80 px-2 py-1 shadow-sm">
+            {banners.map((banner, index) => (
+              <button
+                key={`${banner.id}-dot`}
+                aria-label={`${tx(t, "storefront.home.banners.open", "Apri banner")} ${index + 1}`}
+                className={cn(
+                  "size-1.5 rounded-full bg-slate-300 transition-[width,background-color] duration-150",
+                  safeActiveIndex === index && "w-4 bg-primary"
+                )}
+                onClick={() => scrollToBanner(index)}
+                type="button"
+              />
+            ))}
+          </div>
+        </>
+      )}
     </section>
   );
 }

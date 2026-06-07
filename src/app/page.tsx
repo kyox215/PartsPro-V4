@@ -1,5 +1,6 @@
 import { HomePage } from "@/components/partspro/home-page";
 import {
+  listActiveHomeBanners,
   listCatalogModelGroups,
   pageHotCatalogProducts,
   pageCatalogProducts,
@@ -32,9 +33,10 @@ let publicHomeShelfCache:
 let publicHomeShelfRequest: Promise<HomeShelfProducts> | null = null;
 
 export default async function Home() {
-  const [account, modelGroups] = await Promise.all([
+  const [account, modelGroups, homeBanners] = await Promise.all([
     getCurrentAccountContext({ ensure: true }),
     listCatalogModelGroups(),
+    listActiveHomeBanners(),
   ]);
   const homeShelves = account.canViewPrices
     ? await readHomeShelfProducts({ includeBuyerPrices: true })
@@ -50,6 +52,7 @@ export default async function Home() {
   return (
     <HomePage
       catalogTotal={homeShelves.catalogTotal}
+      homeBanners={homeBanners.data}
       hotProducts={hotProducts}
       initialAccountAccess={toStoreHeaderAccountAccess(account)}
       modelGroups={modelGroups.data}

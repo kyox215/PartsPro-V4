@@ -80,6 +80,8 @@ const adminProfileSelect =
   "id, email, display_name, avatar_url, account_type, role, role_template, customer_id, created_at, updated_at";
 const adminAuditSelect =
   "id, action, actor_email, actor_role, entity_type, entity_id, before_data, after_data, reason, request_metadata, result, created_at";
+const homeBannerSelect =
+  "id, title, image_path, image_alt, target, position, is_active, starts_at, ends_at, deleted_at, created_at, updated_at";
 const customerActivitySelect =
   "id, user_id, customer_id, event_type, sku_code, product_name, brand, model, model_series, search_query, metadata, created_at";
 const customerCartSelect =
@@ -992,6 +994,49 @@ export type HotCatalogProductQueryInput = {
   limit: number;
 };
 
+export type HomeBannerSort = "name" | "stock_desc" | "updated_desc";
+
+export type HomeBannerTarget = {
+  brand?: string;
+  category?: string;
+  minStock?: number;
+  model?: string;
+  modelSeries?: string;
+  q?: string;
+  sort?: HomeBannerSort;
+};
+
+export type HomeBanner = {
+  href: string;
+  id: string;
+  imageAlt: string;
+  imageUrl: string;
+  position: number;
+  title: string;
+};
+
+export type AdminHomeBanner = HomeBanner & {
+  createdAt: string;
+  deletedAt?: string | null;
+  endsAt?: string | null;
+  imagePath: string;
+  isActive: boolean;
+  startsAt?: string | null;
+  target: HomeBannerTarget;
+  updatedAt: string;
+};
+
+export type AdminHomeBannerWriteInput = {
+  endsAt?: string | null;
+  imageAlt?: string;
+  imagePath?: string;
+  isActive?: boolean;
+  position?: number;
+  startsAt?: string | null;
+  target?: HomeBannerTarget;
+  title?: string;
+};
+
 type CatalogProductPageOptions = {
   buyerCustomerId?: string;
   includeBuyerPrices?: boolean;
@@ -1202,6 +1247,138 @@ export async function pageHotCatalogProducts(
         : "Supabase is not configured; no hot catalog products are available."
     )
   );
+}
+
+export async function listActiveHomeBanners(
+  limit = 8
+): Promise<RepositoryResult<HomeBanner[]>> {
+  const supabaseResult = await readPublicHomeBanners(limit);
+
+  return (
+    supabaseResult ??
+    emptyResult(
+      [],
+      isSupabaseConfigured()
+        ? "Supabase homepage banners could not be read."
+        : "Supabase is not configured; no homepage banners are available."
+    )
+  );
+}
+
+export async function listAdminHomeBanners(): Promise<
+  RepositoryResult<AdminHomeBanner[]>
+> {
+  const context = await requireSupabaseContext();
+  const { data, error } = await context.client
+    .from("homepage_banners")
+    .select(homeBannerSelect)
+    .is("deleted_at", null)
+    .order("position", { ascending: true })
+    .order("updated_at", { ascending: false });
+
+  if (error || !Array.isArray(data)) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_HOME_BANNERS_READ_FAILED",
+      "Homepage banners could not be read from Supabase.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  return {
+    data: data.filter(isDbRow).map(mapAdminHomeBannerRow).filter(isDefined),
+    source: "supabase",
+  };
+}
+
+export async function createAdminHomeBanner(
+  input: AdminHomeBannerWriteInput
+): Promise<RepositoryResult<AdminHomeBanner>> {
+  const context = await requireSupabaseContext();
+  const payload = buildHomeBannerPayload(input, context.userId, false);
+
+  if (payload.is_active !== false) {
+    await assertHomeBannerActiveLimit(context.client);
+  }
+
+  const { data, error } = await context.client
+    .from("homepage_banners")
+    .insert(payload)
+    .select(homeBannerSelect)
+    .single();
+  const banner = isDbRow(data) ? mapAdminHomeBannerRow(data) : null;
+
+  if (error || !banner) {
+    throw new RepositoryWriteError(
+      supabaseRpcStatus(error),
+      "ADMIN_HOME_BANNER_CREATE_FAILED",
+      "Homepage banner could not be created.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  return { data: banner, source: "supabase" };
+}
+
+export async function updateAdminHomeBanner(
+  id: string,
+  input: AdminHomeBannerWriteInput
+): Promise<RepositoryResult<AdminHomeBanner>> {
+  const context = await requireSupabaseContext();
+  const payload = buildHomeBannerPayload(input, context.userId, true);
+
+  if (payload.is_active === true) {
+    await assertHomeBannerActiveLimit(context.client, id);
+  }
+
+  const { data, error } = await context.client
+    .from("homepage_banners")
+    .update(payload)
+    .eq("id", id)
+    .is("deleted_at", null)
+    .select(homeBannerSelect)
+    .maybeSingle();
+  const banner = isDbRow(data) ? mapAdminHomeBannerRow(data) : null;
+
+  if (error || !banner) {
+    throw new RepositoryWriteError(
+      error ? supabaseRpcStatus(error) : 404,
+      "ADMIN_HOME_BANNER_UPDATE_FAILED",
+      "Homepage banner could not be updated.",
+      error ? supabaseErrorDetails(error) : { id }
+    );
+  }
+
+  return { data: banner, source: "supabase" };
+}
+
+export async function deleteAdminHomeBanner(
+  id: string
+): Promise<RepositoryResult<{ id: string }>> {
+  const context = await requireSupabaseContext();
+  const { data, error } = await context.client
+    .from("homepage_banners")
+    .update({
+      deleted_at: new Date().toISOString(),
+      is_active: false,
+      updated_at: new Date().toISOString(),
+      updated_by: context.userId,
+    })
+    .eq("id", id)
+    .is("deleted_at", null)
+    .select("id")
+    .maybeSingle();
+
+  if (error || !isDbRow(data)) {
+    throw new RepositoryWriteError(
+      error ? supabaseRpcStatus(error) : 404,
+      "ADMIN_HOME_BANNER_DELETE_FAILED",
+      "Homepage banner could not be deleted.",
+      error ? supabaseErrorDetails(error) : { id }
+    );
+  }
+
+  return { data: { id }, source: "supabase" };
 }
 
 export async function listCatalogModelGroups(): Promise<
@@ -1484,6 +1661,38 @@ async function readPublicHotCatalogProductPage(
         products: products.slice(0, shelfLimit),
         total: count ?? rows.length,
       },
+      source: "supabase",
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function readPublicHomeBanners(
+  limit: number
+): Promise<RepositoryResult<HomeBanner[]> | null> {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
+  try {
+    const client = await createClient();
+    const bannerLimit = Math.min(8, Math.max(1, Math.trunc(limit)));
+    const { data, error } = await client
+      .from("homepage_banners")
+      .select(homeBannerSelect)
+      .is("deleted_at", null)
+      .eq("is_active", true)
+      .order("position", { ascending: true })
+      .order("created_at", { ascending: false })
+      .limit(bannerLimit);
+
+    if (error || !Array.isArray(data)) {
+      return null;
+    }
+
+    return {
+      data: data.filter(isDbRow).map(mapHomeBannerRow).filter(isDefined),
       source: "supabase",
     };
   } catch {
@@ -6674,6 +6883,74 @@ function assignCustomerActivityText(
   payload[key] = text.length > 0 ? text : null;
 }
 
+function buildHomeBannerPayload(
+  input: AdminHomeBannerWriteInput,
+  userId: string,
+  partial: boolean
+) {
+  const payload: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+    updated_by: userId,
+  };
+
+  if (!partial) {
+    payload.created_by = userId;
+    payload.is_active = input.isActive ?? true;
+  }
+
+  assignRequiredOrDefined(payload, "title", input.title, partial, "title");
+  assignRequiredOrDefined(payload, "image_path", input.imagePath, partial, "imagePath");
+  assignRequiredOrDefined(payload, "image_alt", input.imageAlt, partial, "imageAlt");
+  assignDefined(payload, "target", input.target ? normalizeHomeBannerTarget(input.target) : undefined);
+  assignDefined(
+    payload,
+    "position",
+    input.position === undefined ? undefined : Math.max(0, Math.trunc(input.position))
+  );
+  assignDefined(payload, "is_active", input.isActive);
+  assignDefined(payload, "starts_at", normalizeNullableIso(input.startsAt));
+  assignDefined(payload, "ends_at", normalizeNullableIso(input.endsAt));
+
+  if (!partial && payload.target === undefined) {
+    payload.target = {};
+  }
+
+  return payload;
+}
+
+function assignRequiredOrDefined(
+  payload: Record<string, unknown>,
+  key: string,
+  value: string | undefined,
+  partial: boolean,
+  field: string
+) {
+  const trimmed = trimOptional(value);
+
+  if (!partial && !trimmed) {
+    throw new RepositoryWriteError(
+      400,
+      "ADMIN_HOME_BANNER_REQUIRED_FIELD",
+      "Homepage banner payload is missing a required field.",
+      { field }
+    );
+  }
+
+  assignDefined(payload, key, trimmed);
+}
+
+function normalizeNullableIso(value: string | null | undefined) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (value === null || value.trim().length === 0) {
+    return null;
+  }
+
+  return value;
+}
+
 function buildB2BReviewTermsPayload(input: AdminB2BApplicationReviewInput) {
   const payload: Record<string, unknown> = {};
 
@@ -6682,6 +6959,153 @@ function buildB2BReviewTermsPayload(input: AdminB2BApplicationReviewInput) {
   assignStringValue(payload, "payment_terms", input.paymentTerms);
 
   return payload;
+}
+
+function mapHomeBannerRow(row: DbRow): HomeBanner | null {
+  const adminBanner = mapAdminHomeBannerRow(row);
+
+  if (!adminBanner) {
+    return null;
+  }
+
+  return {
+    href: adminBanner.href,
+    id: adminBanner.id,
+    imageAlt: adminBanner.imageAlt,
+    imageUrl: adminBanner.imageUrl,
+    position: adminBanner.position,
+    title: adminBanner.title,
+  };
+}
+
+function mapAdminHomeBannerRow(row: DbRow): AdminHomeBanner | null {
+  const id = pickString(row, ["id"]);
+  const title = pickString(row, ["title"]);
+  const imagePath = pickString(row, ["image_path", "imagePath"]);
+  const imageAlt = pickString(row, ["image_alt", "imageAlt"]) ?? title;
+  const imageUrl = resolveProductImageUrl(imagePath);
+
+  if (!id || !title || !imagePath || !imageAlt || !imageUrl) {
+    return null;
+  }
+
+  const target = normalizeHomeBannerTarget(isDbRow(row.target) ? row.target : {});
+
+  return {
+    createdAt: pickString(row, ["created_at", "createdAt"]) ?? "",
+    deletedAt: pickString(row, ["deleted_at", "deletedAt"]),
+    endsAt: pickString(row, ["ends_at", "endsAt"]),
+    href: buildHomeBannerHref(target),
+    id,
+    imageAlt,
+    imagePath,
+    imageUrl,
+    isActive: readBoolean(row, ["is_active", "isActive"]) ?? false,
+    position: Math.max(0, Math.trunc(pickNumber(row, ["position"]) ?? 0)),
+    startsAt: pickString(row, ["starts_at", "startsAt"]),
+    target,
+    title,
+    updatedAt: pickString(row, ["updated_at", "updatedAt"]) ?? "",
+  };
+}
+
+function normalizeHomeBannerTarget(value: unknown): HomeBannerTarget {
+  const target = isDbRow(value) ? value : {};
+  const normalized: HomeBannerTarget = {};
+  const brand = pickString(target, ["brand"]);
+  const category = pickString(target, ["category"]);
+  const model = pickString(target, ["model"]);
+  const modelSeries = pickString(target, ["modelSeries", "model_series"]);
+  const q = pickString(target, ["q", "query"]);
+  const minStock = pickNumber(target, ["minStock", "min_stock"]);
+  const sort = pickString(target, ["sort"]);
+
+  assignDefined(normalized, "brand", brand ?? undefined);
+  assignDefined(normalized, "category", category ?? undefined);
+  assignDefined(normalized, "model", model ?? undefined);
+  assignDefined(normalized, "modelSeries", modelSeries ?? undefined);
+  assignDefined(normalized, "q", q ?? undefined);
+
+  if (minStock !== null && minStock > 0) {
+    normalized.minStock = Math.min(10000, Math.trunc(minStock));
+  }
+
+  if (sort === "stock_desc" || sort === "updated_desc" || sort === "name") {
+    normalized.sort = sort;
+  }
+
+  return normalized;
+}
+
+function buildHomeBannerHref(target: HomeBannerTarget) {
+  const params = new URLSearchParams();
+
+  if (target.brand) {
+    params.set("brand", target.brand);
+  }
+
+  if (target.category) {
+    params.set("category", target.category);
+  }
+
+  if (target.modelSeries) {
+    params.set("modelSeries", target.modelSeries);
+  }
+
+  if (target.model) {
+    params.set("model", target.model);
+  }
+
+  if (target.q) {
+    params.set("q", target.q);
+  }
+
+  if (target.minStock && target.minStock > 0) {
+    params.set("minStock", String(target.minStock));
+  }
+
+  if (target.sort && target.sort !== "name") {
+    params.set("sort", target.sort);
+  }
+
+  const query = params.toString();
+
+  return query ? `/catalogo?${query}` : "/catalogo";
+}
+
+async function assertHomeBannerActiveLimit(
+  client: SupabaseServerClient,
+  excludingId?: string
+) {
+  let request = client
+    .from("homepage_banners")
+    .select("id", { count: "exact", head: true })
+    .is("deleted_at", null)
+    .eq("is_active", true);
+
+  if (excludingId) {
+    request = request.neq("id", excludingId);
+  }
+
+  const { count, error } = await request;
+
+  if (error) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_HOME_BANNER_LIMIT_CHECK_FAILED",
+      "Homepage banner active count could not be checked.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  if ((count ?? 0) >= 8) {
+    throw new RepositoryWriteError(
+      409,
+      "ADMIN_HOME_BANNER_ACTIVE_LIMIT",
+      "Only 8 homepage banners can be active at the same time.",
+      { maxActive: 8 }
+    );
+  }
 }
 
 function mapProductRow(row: DbRow): RepositoryPartProduct | null {
@@ -7893,6 +8317,32 @@ function pickNumber(row: DbRow | null | undefined, keys: string[]) {
 
       if (Number.isFinite(parsed)) {
         return parsed;
+      }
+    }
+  }
+
+  return null;
+}
+
+function readBoolean(row: DbRow | null | undefined, keys: string[]) {
+  if (!row) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const value = row[key];
+
+    if (typeof value === "boolean") {
+      return value;
+    }
+
+    if (typeof value === "string") {
+      if (value === "true" || value === "1") {
+        return true;
+      }
+
+      if (value === "false" || value === "0") {
+        return false;
       }
     }
   }
