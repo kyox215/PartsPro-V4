@@ -172,6 +172,14 @@ type Blocker = {
   tone: "warning" | "error" | "neutral";
 };
 
+type CheckoutSyncKind = "cart" | "catalog" | "preview" | "submit";
+
+type CheckoutSyncState = {
+  kind: CheckoutSyncKind;
+  message: string;
+  title: string;
+} | null;
+
 const fixedShippingMethod = expressShippingMethodLabel;
 const idlePreviewState: PreviewState = { status: "idle", issues: [] };
 const previewDebounceMs = 180;
@@ -383,6 +391,13 @@ function CheckoutClientContent({
     [previewForUi.issues]
   );
   const formErrors = validateForm(t, confirmed, selectedShippingAddress);
+  const checkoutSyncState = buildCheckoutSyncState({
+    cartHydrated: cart.isHydrated,
+    catalogResolutionPending,
+    preview: previewForUi,
+    submitState,
+    t,
+  });
   const blockers = buildCheckoutBlockers({
     cartHref,
     catalogHref,
@@ -408,6 +423,7 @@ function CheckoutClientContent({
   const disabledReason = blockers[0]?.message;
   const canSubmit =
     blockers.length === 0 &&
+    !checkoutSyncState &&
     submitState.status !== "loading" &&
     submitState.status !== "success";
 
@@ -729,7 +745,11 @@ function CheckoutClientContent({
         assistedCompanyId={checkoutContextCompanyId || null}
         initialAccountAccess={initialAccountAccess}
       />
-      <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
+      <CheckoutSyncStatusBar state={checkoutSyncState} />
+      <main
+        aria-busy={Boolean(checkoutSyncState)}
+        className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950"
+      >
         <div className="mx-auto grid max-w-[1460px] gap-2.5 px-2 pt-2 pb-[calc(5.75rem_+_env(safe-area-inset-bottom))] sm:px-4 sm:pt-3 lg:grid-cols-[minmax(0,1fr)_330px] lg:gap-3 lg:pb-6">
           <section className="space-y-2">
           <CheckoutHeader cartHref={cartHref} runtime={runtime} company={selectedCompany} />
@@ -869,6 +889,35 @@ function StatusChip({ label, ok }: { label: string; ok: boolean }) {
       {ok ? <CheckCircle2 className="size-3.5" /> : <AlertTriangle className="size-3.5" />}
       {label}
     </Badge>
+  );
+}
+
+function CheckoutSyncStatusBar({ state }: { state: CheckoutSyncState }) {
+  if (!state) {
+    return null;
+  }
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className="sticky inset-x-0 top-14 z-40 border-b border-blue-100 bg-white/95 shadow-[0_12px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:top-16"
+    >
+      <div className="mx-auto flex max-w-[1460px] items-center gap-2.5 px-3 py-2 sm:px-4">
+        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-blue-50 text-primary">
+          <Loader2 className="size-4 animate-spin" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-black text-slate-950">
+            {state.title}
+          </div>
+          <div className="truncate text-xs font-semibold text-slate-500">
+            {state.message}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1900,6 +1949,54 @@ function CompactSummaryLine({
   );
 }
 
+function buildCheckoutSyncState({
+  cartHydrated,
+  catalogResolutionPending,
+  preview,
+  submitState,
+  t,
+}: {
+  cartHydrated: boolean;
+  catalogResolutionPending: boolean;
+  preview: PreviewState;
+  submitState: SubmitState;
+  t: StorefrontTranslator;
+}): CheckoutSyncState {
+  if (submitState.status === "loading") {
+    return {
+      kind: "submit",
+      title: tx(t, "storefront.checkout.sync.submitTitle", "订单提交中 / Invio ordine..."),
+      message: submitState.message,
+    };
+  }
+
+  if (preview.status === "loading") {
+    return {
+      kind: "preview",
+      title: tx(t, "storefront.checkout.sync.previewTitle", "订单校验中 / Verifica ordine..."),
+      message: tx(t, "storefront.checkout.preview.loading", "Controllo prezzi, scorte e MOQ in corso."),
+    };
+  }
+
+  if (catalogResolutionPending) {
+    return {
+      kind: "catalog",
+      title: tx(t, "storefront.checkout.sync.catalogTitle", "正在同步客户价格 / Sincronizzazione prezzi cliente..."),
+      message: tx(t, "storefront.checkout.loadingTargetPrices", "Caricamento prezzi cliente per gli articoli del carrello."),
+    };
+  }
+
+  if (!cartHydrated) {
+    return {
+      kind: "cart",
+      title: tx(t, "storefront.checkout.sync.cartTitle", "正在加载购物车 / Caricamento carrello..."),
+      message: tx(t, "storefront.checkout.submit.cartLoadingReason", "Caricamento carrello del tuo account..."),
+    };
+  }
+
+  return null;
+}
+
 function buildCheckoutBlockers({
   cart,
   cartHref,
@@ -1979,13 +2076,7 @@ function buildCheckoutBlockers({
     blockers.push(targetCustomerBlocker);
   }
 
-  if (!cart.isHydrated) {
-    blockers.push({
-      message: tx(t, "storefront.checkout.submit.cartLoadingReason", "Caricamento carrello del tuo account..."),
-      title: tx(t, "storefront.cart.loadingTitle", "Caricamento carrello"),
-      tone: "neutral",
-    });
-  } else if (cart.items.length === 0) {
+  if (cart.isHydrated && cart.items.length === 0) {
     blockers.push({
       actionHref: catalogHref,
       actionLabel: tx(t, "storefront.cart.goToCatalog", "Vai al catalogo"),
@@ -2001,17 +2092,13 @@ function buildCheckoutBlockers({
       title: tx(t, "storefront.checkout.preview.errorTitle", "Controllo ordine non riuscito"),
       tone: "error",
     });
-  } else if (!needsCustomerSelection && unresolvedSkus.length > 0) {
+  } else if (!needsCustomerSelection && unresolvedSkus.length > 0 && !isCatalogLoading) {
     blockers.push({
       actionHref: cartHref,
       actionLabel: tx(t, "storefront.checkout.fixCart", "Torna al carrello per correggere"),
-      message: isCatalogLoading
-        ? tx(t, "storefront.checkout.loadingTargetPrices", "Caricamento prezzi cliente per gli articoli del carrello.")
-        : `${tx(t, "storefront.checkout.unresolvedItems", "Alcune righe non sono piu disponibili.")} ${unresolvedSkus.join(", ")}`,
-      title: isCatalogLoading
-        ? tx(t, "storefront.checkout.loadingItemsTitle", "Caricamento articoli ordine")
-        : tx(t, "storefront.cart.unresolvedTitle", "Prodotti del carrello non disponibili"),
-      tone: isCatalogLoading ? "neutral" : "warning",
+      message: `${tx(t, "storefront.checkout.unresolvedItems", "Alcune righe non sono piu disponibili.")} ${unresolvedSkus.join(", ")}`,
+      title: tx(t, "storefront.cart.unresolvedTitle", "Prodotti del carrello non disponibili"),
+      tone: "warning",
     });
   }
 
@@ -2025,14 +2112,6 @@ function buildCheckoutBlockers({
       ),
       title: tx(t, "storefront.checkout.customerContextPendingTitle", "Cliente da completare"),
       tone: "warning",
-    });
-  }
-
-  if (preview.status === "loading") {
-    blockers.push({
-      message: tx(t, "storefront.checkout.preview.loading", "Controllo prezzi, scorte e MOQ in corso."),
-      title: tx(t, "storefront.checkout.preview.title", "Controllo ordine"),
-      tone: "neutral",
     });
   }
 
