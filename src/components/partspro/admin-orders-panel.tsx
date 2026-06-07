@@ -931,8 +931,8 @@ export function AdminOrdersPanel() {
           tone: "success",
           message:
             patch.actualQuantity < line.quantity
-              ? `${line.name} 实给数量已保存；生成申请，审批通过后入账。`
-              : `${line.name} 实给数量已保存。`,
+              ? `${line.name} 缺货数量已保存；生成申请，审批通过后入账。`
+              : `${line.name} 无缺货，按订购数量处理。`,
         });
       } catch (error) {
         setNotice({
@@ -949,17 +949,6 @@ export function AdminOrdersPanel() {
 
   const handleTransition = React.useCallback(
     (order: AdminOrder, status: OrderDbStatus, successMessage: string) => {
-      if (
-        status === "packed" &&
-        order.lines.some((line) => line.pickedQty <= 0 && line.cancelledQty <= 0)
-      ) {
-        setNotice({
-          tone: "warning",
-          message: "请先在“商品”分组确认每个商品的实给数量，再打包完成。",
-        });
-        return;
-      }
-
       void patchOrder(
         order,
         {
@@ -4471,22 +4460,37 @@ function OrderLines({
 
   const openEditor = (line: OrderLine) => {
     setEditingLine(line);
-    setActualQuantity(String(line.pickedQty || line.billableQty || line.quantity));
+    setActualQuantity(String(lineEffectivePickedQty(line)));
     setReason("");
   };
   const refundSummary = order ? summarizeWalletRefunds(order.walletRefunds) : null;
+  const editingActualQuantity = editingLine
+    ? normalizeActualLineQuantity(actualQuantity, editingLine.quantity)
+    : 0;
+  const editingIsShortage =
+    editingLine !== null && editingActualQuantity < editingLine.quantity;
+  const canSaveShortage =
+    editingLine !== null &&
+    editingIsShortage &&
+    reason.trim().length > 0 &&
+    !isMutating;
 
   const submitEditor = () => {
     if (!editingLine || !order || !onUpdateLineFulfillment) {
       return;
     }
 
-    const parsedQuantity = Number.parseInt(actualQuantity, 10);
-    const safeQuantity = Number.isFinite(parsedQuantity)
-      ? Math.max(0, Math.min(editingLine.quantity, parsedQuantity))
-      : editingLine.quantity;
+    const safeQuantity = normalizeActualLineQuantity(
+      actualQuantity,
+      editingLine.quantity
+    );
 
-    if (safeQuantity < editingLine.quantity && reason.trim().length === 0) {
+    if (safeQuantity >= editingLine.quantity) {
+      setEditingLine(null);
+      return;
+    }
+
+    if (reason.trim().length === 0) {
       return;
     }
 
@@ -4516,7 +4520,7 @@ function OrderLines({
                 </div>
                 <div className="mt-1.5 grid grid-cols-4 gap-1 text-xs max-[360px]:grid-cols-2">
                   <MobileFact label={text.orders.lines.quantity} value={`${line.quantity}`} />
-                  <MobileFact label="实给" value={`${line.pickedQty || 0}`} />
+                  <MobileFact label="实给" value={`${lineEffectivePickedQty(line)}`} />
                   <MobileFact label={text.orders.lines.reserved} value={`${line.reservedQty}`} />
                   <MobileFact label="缺货" value={`${line.cancelledQty}`} />
                 </div>
@@ -4553,7 +4557,7 @@ function OrderLines({
                       disabled={isMutating}
                       onClick={() => openEditor(line)}
                     >
-                      登记实给
+                      登记缺货
                     </Button>
                   ) : null}
                 </div>
@@ -4602,7 +4606,7 @@ function OrderLines({
                 <TableCell className="align-top text-center font-semibold">{line.quantity}</TableCell>
                 <TableCell className="align-top text-center">
                   <Badge className={orderLineOperationalBadgeClass(line)}>
-                    {line.pickedQty || 0}/{line.quantity}
+                    {lineEffectivePickedQty(line)}/{line.quantity}
                   </Badge>
                 </TableCell>
                 <TableCell className="align-top text-center">
@@ -4628,7 +4632,7 @@ function OrderLines({
                       disabled={isMutating}
                       onClick={() => openEditor(line)}
                     >
-                      登记
+                      缺货
                     </Button>
                   ) : (
                     <span className="text-[11px] font-semibold text-slate-400">
@@ -4644,9 +4648,9 @@ function OrderLines({
       <Dialog open={editingLine !== null} onOpenChange={(open) => !open && setEditingLine(null)}>
         <DialogContent className="max-w-[calc(100vw-1.5rem)] rounded-lg bg-white sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-base font-black">登记实给数量</DialogTitle>
+            <DialogTitle className="text-base font-black">登记缺货数量</DialogTitle>
             <DialogDescription>
-              少给数量会核销锁货库存，不会释放回可售库存；已付款银行转账订单会生成申请，审批通过后入账。
+              默认全部有货并按订购数量打包。只有实际缺货或少给时，填写实际给货数量和原因。
             </DialogDescription>
           </DialogHeader>
           {editingLine ? (
@@ -4669,14 +4673,24 @@ function OrderLines({
                   onChange={(event) => setActualQuantity(event.target.value)}
                 />
                 <div className="text-[11px] font-semibold text-slate-500">
-                  订购 {editingLine.quantity} 件，少给需要填写原因。
+                  订购 {editingLine.quantity} 件。没有缺货时无需保存，直接打包完成即可。
                 </div>
               </div>
+              {editingIsShortage ? (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-semibold text-amber-800">
+                  少给 {editingLine.quantity - editingActualQuantity} 件，需要填写原因；保存后会走缺货核销和退款申请流程。
+                </div>
+              ) : (
+                <div className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-semibold text-emerald-700">
+                  当前等于订购数量，系统默认全给，不需要登记。
+                </div>
+              )}
               <div className="grid gap-1.5">
                 <div className="text-xs font-black text-slate-500">缺货原因</div>
                 <Textarea
                   value={reason}
                   placeholder="例如：仓库实盘为 0，锁货商品不存在。"
+                  disabled={!editingIsShortage}
                   onChange={(event) => setReason(event.target.value)}
                 />
               </div>
@@ -4686,8 +4700,8 @@ function OrderLines({
             <Button type="button" variant="outline" onClick={() => setEditingLine(null)}>
               {text.common.cancel}
             </Button>
-            <Button type="button" onClick={submitEditor}>
-              保存实给
+            <Button type="button" onClick={submitEditor} disabled={!canSaveShortage}>
+              保存缺货
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -8022,6 +8036,26 @@ function fulfilledBadgeClass(line: OrderLine) {
   return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
+function normalizeActualLineQuantity(value: string, maxQuantity: number) {
+  const parsedQuantity = Number.parseInt(value, 10);
+
+  return Number.isFinite(parsedQuantity)
+    ? Math.max(0, Math.min(maxQuantity, parsedQuantity))
+    : maxQuantity;
+}
+
+function isLineShortageRecorded(line: OrderLine) {
+  return line.cancelledQty > 0;
+}
+
+function lineEffectivePickedQty(line: OrderLine) {
+  if (isLineShortageRecorded(line)) {
+    return Math.max(0, Math.min(line.quantity, line.quantity - line.cancelledQty));
+  }
+
+  return line.quantity;
+}
+
 function orderLineOperationalBadgeClass(line: OrderLine) {
   if (line.cancelledQty >= line.quantity) {
     return "border-red-200 bg-red-50 text-red-700";
@@ -8035,7 +8069,7 @@ function orderLineOperationalBadgeClass(line: OrderLine) {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
 
-  return "border-slate-200 bg-slate-50 text-slate-700";
+  return "border-emerald-200 bg-emerald-50 text-emerald-700";
 }
 
 function orderLineOperationalLabel(line: OrderLine) {
@@ -8051,5 +8085,5 @@ function orderLineOperationalLabel(line: OrderLine) {
     return "已确认";
   }
 
-  return "待确认";
+  return "默认全给";
 }
