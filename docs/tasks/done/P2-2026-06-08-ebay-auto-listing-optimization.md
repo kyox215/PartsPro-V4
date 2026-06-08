@@ -1,6 +1,6 @@
 # P2-2026-06-08-ebay-auto-listing-optimization
 
-状态：backlog
+状态：done
 
 优先级：P2
 
@@ -50,15 +50,15 @@
 
 ## 验收标准
 
-- 输出一份可实现的 eBay 自动刊登优化方案，包含资格规则、价格规则、库存规则、队列规则、失败处理和上线顺序。
-- 明确哪些字段来自本地商品真相，哪些字段来自 marketplace 设置，哪些字段可人工覆盖。
-- 明确 sandbox 验证流程和 production 发布前安全门。
-- 明确是否需要 Supabase migration；如果需要，列出表/RPC/权限变化，但本 backlog 任务不创建 migration。
-- 明确最小可交付版本和后续迭代边界。
+- 已输出 eBay 自动刊登优化规划，包含资格规则、价格规则、库存规则、队列规则、失败处理和上线顺序。
+- 已明确哪些字段来自本地商品真相，哪些字段来自 marketplace 设置，哪些字段可人工覆盖。
+- 已明确 sandbox 验证流程和 production 发布前安全门。
+- 已确认本次 MVP 不需要 Supabase migration。
+- 已实现最小可交付版本，并记录后续迭代边界。
 
 ## 禁止事项
 
-- 当前任务只规划，不实现代码、不改数据库、不创建 migration、不运行 eBay 队列。
+- 当前任务不改数据库、不创建 migration、不运行 eBay 队列。
 - 不连接或修改 eBay production 设置。
 - 不批量发布商品，不修改真实刊登，不同步真实库存。
 - 不把外部 eBay 订单直接写成本地订单，除非后续任务经过订单契约验收。
@@ -72,9 +72,18 @@ git diff --check
 ## 执行记录
 
 - 创建：2026-06-08
-- 开始：未开始
-- 完成：未完成
+- 开始：2026-06-08
+- 完成：2026-06-08
 
 ## 结果
 
-待后续进入 `now/` 后，由电商渠道部先输出详细方案，再决定是否拆分为 schema、API、UI、队列和发布验证任务。
+已完成安全 MVP：
+
+- 新增 `plan_listings` 动作，只生成本地刊登计划，不调用 eBay API、不入队。
+- 发布、同步和拉单动作会检查 eBay 设置开关；production 还要求 `productionEnabled=true`。
+- 队列新增 queued/running 去重，避免重复点击造成重复任务。
+- 类目映射的 required aspects 会进入阻断原因。
+- 后台 marketplace 面板新增“生成刊登计划”按钮和更清楚的结果提示。
+- 规划文档见 `docs/marketplace-ebay-auto-listing-plan.md`。
+
+后续任务：按规划文档拆分 SKU 级预检、eBay policy/aspect 拉取、最低毛利保护、sandbox 全链路验证和 production 发布安全门。

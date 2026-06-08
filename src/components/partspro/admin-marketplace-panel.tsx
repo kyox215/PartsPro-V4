@@ -97,6 +97,7 @@ type MarketplaceConnection = {
 };
 
 type CategoryMapping = {
+  aspects: Record<string, string[]>;
   brand: string | null;
   conditionId: string;
   conditionLabel: string;
@@ -107,6 +108,7 @@ type CategoryMapping = {
   id: string;
   localCategory: string;
   modelSeries: string | null;
+  requiredAspects: unknown[];
 };
 
 type MarketplaceListing = {
@@ -158,16 +160,18 @@ type AdminMarketplacePanelProps = {
   permissions?: readonly string[];
 };
 
-type EbayQueueAction = "publish_eligible" | "sync_inventory" | "import_orders";
+type EbayQueueAction = "plan_listings" | "publish_eligible" | "sync_inventory" | "import_orders";
 
 const queueActionPermissionLabels: Record<EbayQueueAction, string> = {
   import_orders: "管理 eBay 订单",
+  plan_listings: "发布 eBay 商品",
   publish_eligible: "发布 eBay 商品",
   sync_inventory: "同步 eBay 价格库存",
 };
 
 const queueActionPermissions: Record<EbayQueueAction, string> = {
   import_orders: "ebay.orders",
+  plan_listings: "ebay.publish",
   publish_eligible: "ebay.publish",
   sync_inventory: "ebay.sync_inventory",
 };
@@ -205,6 +209,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
   const canConnectEbay = permissionSet.has("ebay.connect");
   const canManageSettings = permissionSet.has("ebay.settings");
   const canPublishListings = permissionSet.has("ebay.publish");
+  const canPlanListings = canPublishListings;
   const canSyncInventory = permissionSet.has("ebay.sync_inventory");
   const canImportOrders = permissionSet.has("ebay.orders");
   const canRunJobs = permissionSet.has("ebay.jobs");
@@ -283,6 +288,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
           ...draft.settings,
           categoryMappings: draft.mappings.map((mapping) => ({
             brand: emptyToNull(mapping.brand),
+            aspects: mapping.aspects,
             conditionId: mapping.conditionId,
             conditionLabel: mapping.conditionLabel,
             ebayCategoryId: mapping.ebayCategoryId,
@@ -291,6 +297,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
             enabled: mapping.enabled,
             localCategory: mapping.localCategory,
             modelSeries: emptyToNull(mapping.modelSeries),
+            requiredAspects: mapping.requiredAspects,
           })),
         }),
         headers: {
@@ -339,7 +346,13 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
         method: "POST",
       });
       const payload = (await response.json()) as {
-        data?: { enqueued: number; evaluated: number; skipped: number };
+        data?: {
+          blocked: number;
+          eligible: number;
+          enqueued: number;
+          evaluated: number;
+          skipped: number;
+        };
         error?: unknown;
       };
 
@@ -347,9 +360,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
         throw new Error(readApiError(payload.error) ?? "eBay 任务入队失败。");
       }
 
-      setNotice(
-        `已入队 ${payload.data.enqueued} 个任务，检查 ${payload.data.evaluated} 条，跳过 ${payload.data.skipped} 条。`
-      );
+      setNotice(queueActionNotice(action, payload.data));
       await loadOverview();
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "eBay 任务入队失败。");
@@ -603,6 +614,14 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                 保存设置
               </Button>
               <ActionButton
+                disabled={isBusy || !canPlanListings}
+                icon={CheckCircle2}
+                label="生成刊登计划"
+                loading={pending === "plan_listings"}
+                onClick={() => void queueAction("plan_listings")}
+                title={!canPlanListings ? missingPermissionMessage("发布 eBay 商品") : undefined}
+              />
+              <ActionButton
                 disabled={isBusy || !canPublishListings}
                 icon={Send}
                 label="发布完整商品"
@@ -655,6 +674,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                   mappings: [
                     ...current.mappings,
                     {
+                      aspects: {},
                       brand: "",
                       conditionId: current.settings.defaultConditionId,
                       conditionLabel: current.settings.defaultConditionLabel,
@@ -665,6 +685,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                       id: `new-${Date.now()}`,
                       localCategory: "",
                       modelSeries: "",
+                      requiredAspects: [],
                     },
                   ],
                 }))
@@ -1045,6 +1066,23 @@ function ActionButton({
       {label}
     </Button>
   );
+}
+
+function queueActionNotice(
+  action: EbayQueueAction,
+  result: {
+    blocked: number;
+    eligible: number;
+    enqueued: number;
+    evaluated: number;
+    skipped: number;
+  }
+) {
+  if (action === "plan_listings") {
+    return `已生成刊登计划：检查 ${result.evaluated} 条，可发布 ${result.eligible} 条，阻断 ${result.blocked} 条。`;
+  }
+
+  return `已入队 ${result.enqueued} 个任务，检查 ${result.evaluated} 条，可执行 ${result.eligible} 条，跳过 ${result.skipped} 条。`;
 }
 
 function DataTableCard({

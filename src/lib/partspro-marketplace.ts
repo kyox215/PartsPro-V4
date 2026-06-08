@@ -147,6 +147,20 @@ export type MarketplaceOverviewDto = {
   };
 };
 
+export type MarketplaceQueueAction =
+  | "import_orders"
+  | "plan_listings"
+  | "publish_eligible"
+  | "sync_inventory";
+
+export type MarketplaceQueueResult = {
+  blocked: number;
+  eligible: number;
+  enqueued: number;
+  evaluated: number;
+  skipped: number;
+};
+
 export type MarketplaceSettingsInput = Partial<
   Pick<
     MarketplaceSettingsDto,
@@ -278,58 +292,85 @@ export async function saveEbayConnectionFromCode(input: {
 }
 
 export async function enqueueMarketplaceSync(input: {
-  action: "publish_eligible" | "sync_inventory" | "import_orders";
+  action: MarketplaceQueueAction;
   skus?: string[];
-}) {
+}): Promise<MarketplaceQueueResult> {
   const client = await createClient();
   const settings = await readMarketplaceSettings(client);
 
   switch (input.action) {
+    case "plan_listings": {
+      const result = await evaluateAndUpsertListings(client, settings, input.skus);
+      return summarizeListingPlan(result, 0);
+    }
     case "publish_eligible": {
+      assertMarketplaceActionEnabled(settings, input.action);
       const result = await evaluateAndUpsertListings(client, settings, input.skus);
       const eligible = result.filter((item) => item.eligible);
+      let enqueued = 0;
 
       for (const item of eligible) {
-        await enqueueJob(client, {
+        const queued = await enqueueJob(client, {
           idempotencyKey: `publish:${item.sku}:${Date.now()}`,
           jobType: "publish_listing",
           targetSku: item.sku,
         });
+
+        if (queued) {
+          enqueued += 1;
+        }
       }
 
-      return {
-        enqueued: eligible.length,
-        evaluated: result.length,
-        skipped: result.length - eligible.length,
-      };
+      return summarizeListingPlan(result, enqueued);
     }
     case "sync_inventory": {
+      assertMarketplaceActionEnabled(settings, input.action);
       const listings = await readMarketplaceListings(client, {
         status: "published",
       });
+      const syncableListings = listings.filter((listing) => readBoolean(listing.sync_enabled) !== false);
+      let enqueued = 0;
 
-      for (const listing of listings) {
+      for (const listing of syncableListings) {
         const sku = readString(listing.sku_code);
 
         if (sku) {
-          await enqueueJob(client, {
+          const queued = await enqueueJob(client, {
             idempotencyKey: `sync:${sku}:${Date.now()}`,
             jobType: "sync_inventory",
             targetSku: sku,
           });
+
+          if (queued) {
+            enqueued += 1;
+          }
         }
       }
 
-      return { enqueued: listings.length, evaluated: listings.length, skipped: 0 };
+      return {
+        blocked: 0,
+        eligible: syncableListings.length,
+        enqueued,
+        evaluated: listings.length,
+        skipped: listings.length - enqueued,
+      };
     }
-    case "import_orders":
-      await enqueueJob(client, {
+    case "import_orders": {
+      assertMarketplaceActionEnabled(settings, input.action);
+      const queued = await enqueueJob(client, {
         idempotencyKey: `import-orders:${new Date().toISOString().slice(0, 13)}`,
         jobType: "import_orders",
       });
-      return { enqueued: 1, evaluated: 1, skipped: 0 };
+      return {
+        blocked: 0,
+        eligible: 1,
+        enqueued: queued ? 1 : 0,
+        evaluated: 1,
+        skipped: queued ? 0 : 1,
+      };
+    }
     default:
-      return { enqueued: 0, evaluated: 0, skipped: 0 };
+      return { blocked: 0, eligible: 0, enqueued: 0, evaluated: 0, skipped: 0 };
   }
 }
 
@@ -769,6 +810,61 @@ async function evaluateAndUpsertListings(
   return evaluations;
 }
 
+function summarizeListingPlan(
+  evaluations: Array<ReturnType<typeof evaluateProduct>>,
+  enqueued: number
+): MarketplaceQueueResult {
+  const eligible = evaluations.filter((item) => item.eligible).length;
+
+  return {
+    blocked: evaluations.length - eligible,
+    eligible,
+    enqueued,
+    evaluated: evaluations.length,
+    skipped: Math.max(evaluations.length - enqueued, 0),
+  };
+}
+
+function assertMarketplaceActionEnabled(settings: DbRow, action: MarketplaceQueueAction) {
+  const settingsDto = toSettingsDto(settings);
+
+  if (!settingsDto.enabled) {
+    throw new RepositoryWriteError(
+      409,
+      "EBAY_MARKETPLACE_DISABLED",
+      "eBay 自动化未启用。请先启用 eBay。"
+    );
+  }
+
+  if (settingsDto.environment === "production" && !settingsDto.productionEnabled) {
+    throw new RepositoryWriteError(
+      409,
+      "EBAY_PRODUCTION_DISABLED",
+      "eBay production 尚未启用，不能执行生产环境自动化。"
+    );
+  }
+
+  if (action === "publish_eligible" && !settingsDto.autoPublishEnabled) {
+    throw new RepositoryWriteError(
+      409,
+      "EBAY_AUTO_PUBLISH_DISABLED",
+      "eBay 自动发布未启用。请先生成刊登计划并开启自动发布。"
+    );
+  }
+
+  if (action === "sync_inventory" && !settingsDto.autoSyncEnabled) {
+    throw new RepositoryWriteError(
+      409,
+      "EBAY_AUTO_SYNC_DISABLED",
+      "eBay 价格库存同步未启用。"
+    );
+  }
+
+  if (action === "import_orders" && !settingsDto.orderImportEnabled) {
+    throw new RepositoryWriteError(409, "EBAY_ORDER_IMPORT_DISABLED", "eBay 订单回流未启用。");
+  }
+}
+
 async function readProductsForEvaluation(skus?: string[]) {
   if (skus?.length) {
     const products = await Promise.all(
@@ -798,22 +894,30 @@ function evaluateProduct(product: AdminProduct, settings: DbRow, mappings: DbRow
   const computedQuantity = Math.max(0, product.availableQty - settingsDto.stockBuffer);
   const title = buildEbayTitle(product);
   const sku = marketplaceSku(product);
+  const conditionId = readString(mapping?.condition_id) ?? settingsDto.defaultConditionId;
+  const categoryId = readString(mapping?.ebay_category_id) ?? "";
+  const aspects = normalizeAspects(readRecord(mapping?.aspects), product);
+  const aspectValuesByKey = new Map(
+    Object.entries(aspects).map(([key, value]) => [normalizeKey(key), value])
+  );
+  const missingAspects = requiredAspectNames(mapping).filter((name) => {
+    const value = aspectValuesByKey.get(normalizeKey(name));
+    return !Array.isArray(value) || value.length === 0;
+  });
+  const description = buildEbayDescription(product);
   const blockers = [
     product.catalogStatus !== "active" ? "商品未发布到前台" : null,
     imageUrls.length === 0 ? "缺少主图" : null,
     product.retailPrice <= 0 ? "缺少零售价" : null,
     computedQuantity <= 0 ? "可售库存不足或被安全库存扣减为 0" : null,
     !mapping ? "缺少 eBay 类目映射" : null,
+    missingAspects.length > 0 ? `缺少 eBay 必填属性：${missingAspects.join("、")}` : null,
     !settingsDto.merchantLocationKey ? "缺少默认 merchantLocationKey" : null,
     !settingsDto.paymentPolicyId ? "缺少 eBay payment policy" : null,
     !settingsDto.returnPolicyId ? "缺少 eBay return policy" : null,
     !settingsDto.fulfillmentPolicyId ? "缺少 eBay fulfillment policy" : null,
     readBoolean((product as unknown as DbRow).isDangerousGoods) ? "危险品需要人工合规确认" : null,
   ].filter(isNonEmptyString);
-  const conditionId = readString(mapping?.condition_id) ?? settingsDto.defaultConditionId;
-  const categoryId = readString(mapping?.ebay_category_id) ?? "";
-  const aspects = normalizeAspects(readRecord(mapping?.aspects), product);
-  const description = buildEbayDescription(product);
 
   return {
     blockers,
@@ -930,6 +1034,12 @@ async function enqueueJob(
     targetSku?: string;
   }
 ) {
+  const hasActiveJob = await hasActiveMarketplaceJob(client, input);
+
+  if (hasActiveJob) {
+    return false;
+  }
+
   const { error } = await client.from("marketplace_sync_jobs").upsert(
     {
       idempotency_key: input.idempotencyKey,
@@ -949,6 +1059,41 @@ async function enqueueJob(
       message: error.message,
     });
   }
+
+  return true;
+}
+
+async function hasActiveMarketplaceJob(
+  client: SupabaseServerClient,
+  input: {
+    jobType: string;
+    targetOrderId?: string;
+    targetSku?: string;
+  }
+) {
+  let request = client
+    .from("marketplace_sync_jobs")
+    .select("id")
+    .eq("provider", ebayMarketplaceDefaults.provider)
+    .eq("marketplace_id", ebayMarketplaceDefaults.marketplaceId)
+    .eq("job_type", input.jobType)
+    .in("status", ["queued", "running"])
+    .limit(1);
+
+  request = input.targetSku ? request.eq("target_sku", input.targetSku) : request.is("target_sku", null);
+  request = input.targetOrderId
+    ? request.eq("target_order_id", input.targetOrderId)
+    : request.is("target_order_id", null);
+
+  const { data, error } = await request;
+
+  if (error) {
+    throw new RepositoryWriteError(502, "MARKETPLACE_JOB_READ_FAILED", "eBay 队列去重检查失败。", {
+      message: error.message,
+    });
+  }
+
+  return readRows(data).length > 0;
 }
 
 async function updateJob(client: SupabaseServerClient, id: string, payload: Record<string, unknown>) {
@@ -1350,6 +1495,25 @@ function normalizeAspects(raw: Record<string, unknown> | null, product: AdminPro
       Array.isArray(value) ? value.map(String).filter(Boolean) : [String(value)].filter(Boolean),
     ])
   );
+}
+
+function requiredAspectNames(mapping: DbRow | null) {
+  const names = readArray(mapping?.required_aspects)
+    .map((value) => {
+      if (typeof value === "string") {
+        return value;
+      }
+
+      const record = readRecord(value);
+      return (
+        readString(record?.localizedAspectName) ??
+        readString(record?.aspectName) ??
+        readString(record?.name)
+      );
+    })
+    .filter(isNonEmptyString);
+
+  return [...new Set(names)];
 }
 
 function formatEbayAddress(order: DbRow | null) {

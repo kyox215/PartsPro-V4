@@ -1888,7 +1888,7 @@ function MobileOrderCard({
         </div>
       </div>
 
-      <div className="mt-1.5 flex min-w-0 items-center gap-1 overflow-hidden">
+      <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1">
         <Badge
           className={cn(
             orderStatusBadgeClass(order.status),
@@ -1899,14 +1899,14 @@ function MobileOrderCard({
         </Badge>
         <Badge
           className={cn(
-            priorityBadgeClass(order.priority),
+            paymentBadgeClass(order.paymentStatus),
             "h-5 shrink-0 rounded px-1.5 text-[11px] leading-none"
           )}
         >
-          {labels.priority[order.priority]}
+          {labels.payment[order.paymentStatus]}
         </Badge>
         <span className="min-w-0 truncate rounded bg-slate-50 px-1.5 py-1 text-[11px] font-semibold leading-3 text-slate-500">
-          {labels.payment[order.paymentStatus]} · {labels.fulfillment[order.fulfillmentStatus]}
+          {labels.fulfillment[order.fulfillmentStatus]}
         </span>
         <ReservationBadge compact order={order} text={text} />
       </div>
@@ -7949,7 +7949,7 @@ function paymentBadgeClass(status: PaymentStatus) {
     return "border-slate-200 bg-slate-50 text-slate-700";
   }
 
-  return "border-amber-200 bg-amber-50 text-amber-700";
+  return "border-red-200 bg-red-50 text-red-700";
 }
 
 function walletRefundBadgeClass(status: WalletRefundStatus) {
@@ -7982,18 +7982,6 @@ function walletRefundStatusLabel(status: WalletRefundStatus, text: AdminText) {
     default:
       return text.orders.walletRefundStatus.requested;
   }
-}
-
-function priorityBadgeClass(priority: Priority) {
-  if (priority === "urgent") {
-    return "border-red-200 bg-red-50 text-red-700";
-  }
-
-  if (priority === "high") {
-    return "border-amber-200 bg-amber-50 text-amber-700";
-  }
-
-  return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
 function stockRiskBadgeClass(risk: StockRisk) {

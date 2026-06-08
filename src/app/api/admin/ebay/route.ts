@@ -5,6 +5,7 @@ import {
   enqueueMarketplaceSync,
   getMarketplaceOverview,
   updateMarketplaceSettings,
+  type MarketplaceQueueAction,
 } from "@/lib/partspro-marketplace";
 import { repositoryErrorResponse, requireAdminApi } from "../_shared";
 
@@ -46,12 +47,13 @@ const settingsSchema = z.object({
 });
 
 const syncSchema = z.object({
-  action: z.enum(["publish_eligible", "sync_inventory", "import_orders"]),
+  action: z.enum(["plan_listings", "publish_eligible", "sync_inventory", "import_orders"]),
   skus: z.array(z.string().trim().min(1)).max(100).optional(),
 });
 
-const actionPermissions = {
+const actionPermissions: Record<MarketplaceQueueAction, string> = {
   import_orders: "ebay.orders",
+  plan_listings: "ebay.publish",
   publish_eligible: "ebay.publish",
   sync_inventory: "ebay.sync_inventory",
 } as const;

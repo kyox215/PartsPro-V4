@@ -371,6 +371,8 @@ const panelText = {
     restockUpdateError: "补货提醒更新失败。",
     missingImage: "缺主图",
     missingPrice: "缺价格",
+    metricsMore: "更多 {count} 项",
+    metricsLess: "收起",
     searchPlaceholder: "搜索 SKU / 商品 / 品牌 / 型号",
     accessoryRoot: "手机配件",
     cascadeBrand: "品牌",
@@ -651,6 +653,8 @@ const panelText = {
     restockUpdateError: "Aggiornamento avviso non riuscito.",
     missingImage: "Senza immagine",
     missingPrice: "Senza prezzo",
+    metricsMore: "Altri {count}",
+    metricsLess: "Chiudi",
     searchPlaceholder: "Cerca SKU / prodotto / brand / modello",
     accessoryRoot: "Ricambi smartphone",
     cascadeBrand: "Brand",
@@ -2240,6 +2244,8 @@ function ProductMetricGrid({
   metrics: ProductMetrics;
   text: typeof panelText.zh | typeof panelText.it;
 }) {
+  const [mobileExpanded, setMobileExpanded] = React.useState(false);
+  const mobileDetailsId = React.useId();
   const cards = [
     { label: text.queryTotal, value: metrics.total, icon: Package, tone: "blue" },
     { label: text.active, value: metrics.active, icon: PackageCheck, tone: "green" },
@@ -2251,21 +2257,89 @@ function ProductMetricGrid({
     { label: text.missingImage, value: metrics.missingImage, icon: ImageIcon, tone: "cyan" },
     { label: text.missingPrice, value: metrics.missingPrice, icon: Euro, tone: "violet" },
   ] as const;
+  const primaryCards = [cards[0], cards[1], cards[5], cards[8]];
+  const secondaryCards = [cards[2], cards[3], cards[4], cards[6], cards[7]];
 
   return (
-    <div className="grid grid-cols-2 gap-1.5 sm:gap-3 lg:grid-cols-5 xl:grid-cols-9">
-      {cards.map(({ label, value, icon: Icon, tone }) => (
-        <div
-          key={label}
-          className="min-h-[58px] min-w-0 rounded-md border border-slate-200 bg-white px-2 py-1.5 shadow-[0_8px_20px_rgba(15,23,42,0.035)] sm:min-h-[68px] sm:rounded-lg sm:px-3 sm:py-2 sm:shadow-[0_12px_30px_rgba(15,23,42,0.04)]"
-        >
-          <div className="flex items-start justify-between gap-1.5">
-            <div className="min-w-0 truncate text-[11px] font-semibold leading-4 text-slate-500 sm:text-xs">{label}</div>
-            <Icon className={cn("mt-0.5 size-3.5 shrink-0 sm:size-4", metricIconClass(tone))} />
-          </div>
-          <div className="mt-0.5 truncate text-lg font-black leading-6 text-slate-950 sm:mt-1 sm:text-xl">{value}</div>
+    <>
+      <div className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5 shadow-[0_8px_20px_rgba(15,23,42,0.035)] sm:hidden">
+        <div className="grid min-w-0 grid-cols-[repeat(4,minmax(0,1fr))_auto] items-stretch gap-1">
+          {primaryCards.map(({ label, value, tone }) => (
+            <ProductMobileMetricItem key={label} label={label} tone={tone} value={value} />
+          ))}
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="h-auto min-h-[42px] min-w-0 rounded-md border border-slate-100 bg-slate-50 px-1 text-[10px] font-black text-slate-600"
+            aria-controls={mobileDetailsId}
+            aria-expanded={mobileExpanded}
+            onClick={() => setMobileExpanded((current) => !current)}
+          >
+            <span className="min-w-0 truncate">
+              {mobileExpanded
+                ? text.metricsLess
+                : formatAdminMessage(text.metricsMore, { count: secondaryCards.length })}
+            </span>
+            <ChevronDown
+              className={cn(
+                "size-3.5 shrink-0 transition-transform",
+                mobileExpanded && "rotate-180"
+              )}
+            />
+          </Button>
         </div>
-      ))}
+        {mobileExpanded ? (
+          <div
+            id={mobileDetailsId}
+            className="mt-1 grid min-w-0 grid-cols-3 gap-1 border-t border-slate-100 pt-1"
+          >
+            {secondaryCards.map(({ label, value, tone }) => (
+              <ProductMobileMetricItem key={label} label={label} tone={tone} value={value} />
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="hidden grid-cols-3 gap-1 sm:grid sm:gap-2 lg:grid-cols-5 xl:grid-cols-9">
+        {cards.map(({ label, value, icon: Icon, tone }) => (
+          <div
+            key={label}
+            className="min-h-[58px] min-w-0 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 shadow-[0_10px_24px_rgba(15,23,42,0.035)] lg:min-h-[64px] lg:rounded-lg lg:px-3 lg:py-2"
+            title={`${label}: ${value}`}
+          >
+            <div className="flex min-w-0 items-start justify-between gap-1">
+              <div className="min-w-0 truncate text-[11px] font-bold leading-4 text-slate-500 lg:text-xs">{label}</div>
+              <Icon className={cn("mt-0.5 size-3.5 shrink-0 lg:size-4", metricIconClass(tone))} />
+            </div>
+            <div className="mt-0.5 truncate text-lg font-black leading-6 text-slate-950 lg:mt-1 lg:text-xl">{value}</div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function ProductMobileMetricItem({
+  label,
+  tone,
+  value,
+}: {
+  label: string;
+  tone: string;
+  value: number;
+}) {
+  return (
+    <div
+      className="min-h-[42px] min-w-0 rounded-md bg-slate-50 px-1.5 py-1"
+      title={`${label}: ${value}`}
+    >
+      <div className="min-w-0 truncate text-[10px] font-bold leading-3 text-slate-500">
+        {label}
+      </div>
+      <div className={cn("mt-0.5 truncate text-sm font-black leading-5", metricTextClass(tone))}>
+        {value}
+      </div>
     </div>
   );
 }
@@ -6873,6 +6947,30 @@ function metricIconClass(tone: string) {
 
   if (tone === "violet") {
     return "text-violet-600";
+  }
+
+  return "text-primary";
+}
+
+function metricTextClass(tone: string) {
+  if (tone === "green") {
+    return "text-emerald-700";
+  }
+
+  if (tone === "amber" || tone === "orange") {
+    return "text-amber-700";
+  }
+
+  if (tone === "red") {
+    return "text-red-700";
+  }
+
+  if (tone === "cyan") {
+    return "text-cyan-700";
+  }
+
+  if (tone === "violet") {
+    return "text-violet-700";
   }
 
   return "text-primary";
