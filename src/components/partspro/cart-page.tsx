@@ -9,6 +9,7 @@ import {
   ChevronUp,
   ImageIcon,
   Info,
+  Loader2,
   LogIn,
   Minus,
   Plus,
@@ -59,9 +60,14 @@ import {
   type CartTotals,
   useCart,
 } from "./cart-state";
+import { useCartSyncStatus } from "./cart-sync-bridge";
 import { useI18n, useT } from "./i18n-provider";
 import { OrderSummaryCard } from "./order-summary-card";
 import { ProductImagePreviewDialog } from "./product-image-preview-dialog";
+import {
+  StorefrontSyncStatusBar,
+  type StorefrontSyncStatusState,
+} from "./storefront-commerce-status";
 import { StorefrontProductImage } from "./storefront-product-image";
 import { StoreHeader } from "./store-header";
 
@@ -219,8 +225,10 @@ function CartPageContent({
     consumeUrlIntent: !isLoginRequired,
     preserveUnknown: true,
   });
+  const cartSyncStatus = useCartSyncStatus();
   const [catalogLoadState, setCatalogLoadState] =
     React.useState<CartCatalogLoadState>("idle");
+  const [catalogRetryToken, setCatalogRetryToken] = React.useState(0);
   const [catalogRejections, setCatalogRejections] = React.useState<
     Record<string, CartCatalogRejectedItem>
   >({});
@@ -269,7 +277,17 @@ function CartPageContent({
     cart.isHydrated &&
     cart.items.length > 0 &&
     (catalogLoadState === "loading" || hasPendingCatalogResolution);
-  const isEmpty = !isLoginRequired && cart.isHydrated && cart.items.length === 0;
+  const isRemoteCartLoading =
+    !isLoginRequired && cartSyncStatus.remoteStatus === "loading";
+  const isCartBootstrapping =
+    !isLoginRequired && (!cart.isHydrated || isRemoteCartLoading);
+  const isCartSyncError =
+    !isLoginRequired && cartSyncStatus.remoteStatus === "error";
+  const isEmpty =
+    !isLoginRequired &&
+    cart.isHydrated &&
+    !isRemoteCartLoading &&
+    cart.items.length === 0;
   const unresolvedSkus = React.useMemo(() => {
     const resolvedSkus = new Set(totals.lines.map((line) => line.sku));
 
@@ -376,16 +394,49 @@ function CartPageContent({
   const readyForCheckout =
     !isLoginRequired &&
     cart.isHydrated &&
+    !isRemoteCartLoading &&
     !isCatalogResolving &&
     totals.lines.length > 0 &&
     unresolvedSkus.length === 0;
   const canNavigateToCheckout =
-    !isLoginRequired && cart.isHydrated && cart.items.length > 0;
+    !isLoginRequired && cart.isHydrated && !isRemoteCartLoading && cart.items.length > 0;
   const hasCheckoutBlockers =
     canNavigateToCheckout &&
     (isCatalogResolving || totals.lines.length === 0 || unresolvedSkus.length > 0);
   const checkoutDisabled =
     !canNavigateToCheckout || isCatalogResolving;
+  const cartAmountState: MobileCartAmountState =
+    isCartBootstrapping || isCatalogResolving
+      ? "loading"
+      : hasCheckoutBlockers
+        ? "stale"
+        : "ready";
+  const cartPendingTitle =
+    isRemoteCartLoading || !cart.isHydrated
+      ? tx(t, "storefront.cart.sync.remoteTitle", "正在同步购物车 / Sincronizzazione carrello...")
+      : isCatalogResolving
+        ? tx(t, "storefront.cart.sync.catalogTitle", "正在更新价格与库存 / Aggiornamento prezzi e disponibilità...")
+        : undefined;
+  const cartPendingMessage =
+    isRemoteCartLoading || !cart.isHydrated
+      ? tx(t, "storefront.cart.sync.remoteMessage", "正在读取当前账号的购物车，金额计算完成前不会启用结算。")
+      : isCatalogResolving
+        ? tx(t, "storefront.cart.sync.catalogMessage", "正在校验商品、客户价、库存和 MOQ。")
+        : undefined;
+  const cartSyncBanner = buildCartSyncBanner({
+    isCartBootstrapping,
+    isCartSyncError,
+    isCatalogResolving,
+    t,
+  });
+  const checkoutDisabledReason =
+    isCartBootstrapping
+      ? tx(t, "storefront.cart.sync.remoteMessage", "正在读取当前账号的购物车，金额计算完成前不会启用结算。")
+      : isCatalogResolving
+        ? tx(t, "storefront.cart.sync.catalogMessage", "正在校验商品、客户价、库存和 MOQ。")
+        : hasCheckoutBlockers
+          ? tx(t, "storefront.cart.summaryNoteReviewCheckout", "Puoi aprire il checkout per vedere cosa manca. Login, cliente, prezzi, stock e MOQ verranno comunque verificati prima dell'invio.")
+          : undefined;
 
   React.useEffect(() => {
     rememberAssistedCompanyId(assistedCompanyId);
@@ -479,6 +530,7 @@ function CartPageContent({
     cart.isHydrated,
     cart.items,
     catalogRejections,
+    catalogRetryToken,
     catalogSkuSet,
     onCatalogProductsLoaded,
   ]);
@@ -552,11 +604,21 @@ function CartPageContent({
     }
   }, [clearCartItems, t]);
 
+  const retryCatalogLoad = React.useCallback(() => {
+    requestedCatalogSkus.current.clear();
+    setCatalogLoadState("idle");
+    setCatalogRetryToken((value) => value + 1);
+  }, []);
+
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
       <StoreHeader
         assistedCompanyId={assistedCompanyId}
         initialAccountAccess={initialAccountAccess}
+      />
+      <StorefrontSyncStatusBar
+        maxWidthClassName="max-w-[1360px]"
+        state={cartSyncBanner}
       />
       <div className="mx-auto grid max-w-[1360px] gap-2 px-2 pt-2 pb-[calc(5.25rem_+_env(safe-area-inset-bottom))] sm:gap-4 sm:px-4 sm:pt-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-3 lg:pt-3 lg:pb-4">
         <section className="space-y-2 sm:space-y-4 lg:space-y-3">
@@ -601,15 +663,15 @@ function CartPageContent({
             </Card>
           )}
 
-          {!isLoginRequired && !cart.isHydrated && (
+          {isCartBootstrapping && (
             <Card className="border-slate-200 bg-white">
               <CardContent className="flex flex-col items-start gap-3 p-4 sm:p-5">
                 <div>
                   <div className="text-lg font-black">
-                    {tx(t, "storefront.cart.loadingTitle", "Caricamento carrello")}
+                    {cartPendingTitle ?? tx(t, "storefront.cart.loadingTitle", "Caricamento carrello")}
                   </div>
                   <p className="mt-1 text-sm leading-6 text-slate-500">
-                    {tx(t, "storefront.cart.loadingDescription", "Sincronizzazione del carrello del tuo account.")}
+                    {cartPendingMessage ?? tx(t, "storefront.cart.loadingDescription", "Sincronizzazione del carrello del tuo account.")}
                   </p>
                 </div>
               </CardContent>
@@ -637,10 +699,20 @@ function CartPageContent({
             </Card>
           )}
 
-          {isCatalogResolving && (
-            <p className="sr-only" role="status">
-              {tx(t, "storefront.cart.loadingProductsTitle", "Caricamento prodotti")}
-            </p>
+          {isCatalogResolving && !isCartBootstrapping && (
+            <Card className="border-blue-100 bg-blue-50/70">
+              <CardContent className="flex gap-3 p-3 text-sm text-blue-950 sm:p-4">
+                <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin text-primary" />
+                <div className="min-w-0">
+                  <div className="font-black">
+                    {cartPendingTitle ?? tx(t, "storefront.cart.loadingProductsTitle", "Caricamento prodotti")}
+                  </div>
+                  <p className="mt-1 leading-6">
+                    {cartPendingMessage ?? tx(t, "storefront.cart.loadingDescription", "Sincronizzazione del carrello del tuo account.")}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           )}
 
           {isEmpty && (
@@ -727,8 +799,19 @@ function CartPageContent({
 
           {catalogLoadState === "error" && !hasUnresolvedItems && (
             <Card className="border-amber-200 bg-amber-50">
-              <CardContent className="p-4 text-sm font-semibold leading-6 text-amber-950 sm:p-5">
-                {tx(t, "storefront.cart.detailsError", "Alcuni dettagli del carrello non sono stati aggiornati. Ricarica la pagina se i totali non corrispondono.")}
+              <CardContent className="flex flex-col items-start gap-3 p-4 text-sm font-semibold leading-6 text-amber-950 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+                <span>
+                  {tx(t, "storefront.cart.detailsError", "Alcuni dettagli del carrello non sono stati aggiornati. Ricarica la pagina se i totali non corrispondono.")}
+                </span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-8 bg-white"
+                  onClick={retryCatalogLoad}
+                >
+                  <Loader2 className="size-4" />
+                  {tx(t, "storefront.common.retry", "Riprova")}
+                </Button>
               </CardContent>
             </Card>
           )}
@@ -810,8 +893,12 @@ function CartPageContent({
         </section>
 
         <div className="hidden lg:block">
-          {isLoginRequired ? null : isCatalogResolving ? (
-            <CartSummaryLoadingCard lineCount={cart.items.length} />
+          {isLoginRequired ? null : isCartBootstrapping || isCatalogResolving ? (
+            <CartSummaryLoadingCard
+              lineCount={cart.items.length}
+              message={cartPendingMessage}
+              title={cartPendingTitle}
+            />
           ) : (
             <OrderSummaryCard
               totals={totals}
@@ -829,16 +916,20 @@ function CartPageContent({
           )}
         </div>
       </div>
-      {!isCatalogResolving && !isLoginRequired && (
+      {!isLoginRequired && (
         <MobileCartCheckoutBar
+          amountState={cartAmountState}
           totals={totals}
           catalogHref={catalogHref}
           checkoutDisabled={checkoutDisabled}
+          disabledReason={checkoutDisabledReason}
           checkoutHref={checkoutHref}
           hasBlockedItems={hasCheckoutBlockers}
           itemCount={displayItemCount}
           lineCount={displayRows.length}
           onClear={clearCart}
+          pendingMessage={cartPendingMessage}
+          pendingTitle={cartPendingTitle}
         />
       )}
     </main>
@@ -1215,16 +1306,58 @@ function removeRejection(
   return next;
 }
 
+function buildCartSyncBanner({
+  isCartBootstrapping,
+  isCartSyncError,
+  isCatalogResolving,
+  t,
+}: {
+  isCartBootstrapping: boolean;
+  isCartSyncError: boolean;
+  isCatalogResolving: boolean;
+  t: StorefrontTranslator;
+}): StorefrontSyncStatusState | null {
+  if (isCartBootstrapping) {
+    return {
+      title: tx(t, "storefront.cart.sync.remoteTitle", "正在同步购物车 / Sincronizzazione carrello..."),
+      message: tx(t, "storefront.cart.sync.remoteMessage", "正在读取当前账号的购物车，金额计算完成前不会启用结算。"),
+    };
+  }
+
+  if (isCatalogResolving) {
+    return {
+      title: tx(t, "storefront.cart.sync.catalogTitle", "正在更新价格与库存 / Aggiornamento prezzi e disponibilità..."),
+      message: tx(t, "storefront.cart.sync.catalogMessage", "正在校验商品、客户价、库存和 MOQ。"),
+    };
+  }
+
+  if (isCartSyncError) {
+    return {
+      title: tx(t, "storefront.cart.sync.errorTitle", "购物车同步异常 / Sincronizzazione carrello non riuscita"),
+      message: tx(t, "storefront.cart.sync.errorMessage", "当前显示本地购物车，请刷新后重试。"),
+      tone: "warning",
+    };
+  }
+
+  return null;
+}
+
 type MobileCartCheckoutBarProps = {
+  amountState: MobileCartAmountState;
   catalogHref: string;
   checkoutDisabled: boolean;
   checkoutHref: string;
+  disabledReason?: string;
   hasBlockedItems: boolean;
   itemCount: number;
   lineCount: number;
   onClear: () => void;
+  pendingMessage?: string;
+  pendingTitle?: string;
   totals: CartTotals;
 };
+
+type MobileCartAmountState = "loading" | "ready" | "stale";
 
 type CartLineViewProps = {
   line: CartLine;
@@ -2292,7 +2425,15 @@ function QuantityInput({
   );
 }
 
-function CartSummaryLoadingCard({ lineCount }: { lineCount: number }) {
+function CartSummaryLoadingCard({
+  lineCount,
+  message,
+  title,
+}: {
+  lineCount: number;
+  message?: string;
+  title?: string;
+}) {
   const t = useT();
 
   return (
@@ -2302,8 +2443,10 @@ function CartSummaryLoadingCard({ lineCount }: { lineCount: number }) {
     >
       <CardContent className="space-y-3 px-3 py-3">
         <div className="flex items-center gap-2">
-          <div className="size-4 animate-pulse rounded bg-primary/20" />
-          <div className="h-4 w-32 animate-pulse rounded bg-slate-100" />
+          <Loader2 className="size-4 animate-spin text-primary" />
+          <div className="text-sm font-black text-slate-950">
+            {title ?? tx(t, "storefront.cart.summaryLoadingTitle", "正在计算金额 / Calcolo totale...")}
+          </div>
         </div>
         <div className="space-y-2">
           <CompactSummaryLine
@@ -2318,8 +2461,9 @@ function CartSummaryLoadingCard({ lineCount }: { lineCount: number }) {
           ))}
         </div>
         <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
-          <div className="h-3 w-full animate-pulse rounded bg-slate-100" />
-          <div className="mt-1.5 h-3 w-2/3 animate-pulse rounded bg-slate-100" />
+          <p className="text-xs font-semibold leading-5 text-slate-500">
+            {message ?? tx(t, "storefront.cart.summaryLoading", "Caricamento carrello del tuo account...")}
+          </p>
         </div>
         <div className="h-10 animate-pulse rounded-md bg-primary/20" />
         <div className="h-9 animate-pulse rounded-md bg-slate-100" />
@@ -2329,13 +2473,17 @@ function CartSummaryLoadingCard({ lineCount }: { lineCount: number }) {
 }
 
 function MobileCartCheckoutBar({
+  amountState,
   catalogHref,
   checkoutDisabled,
   checkoutHref,
+  disabledReason,
   hasBlockedItems,
   itemCount,
   lineCount,
   onClear,
+  pendingMessage,
+  pendingTitle,
   totals,
 }: MobileCartCheckoutBarProps) {
   const t = useT();
@@ -2354,6 +2502,18 @@ function MobileCartCheckoutBar({
           count: itemCount,
         });
   const summaryId = React.useId();
+  const amountPending = amountState === "loading";
+  const amountStale = amountState === "stale";
+  const totalLabel =
+    amountPending
+      ? tx(t, "storefront.cart.amountCalculating", "金额计算中 / Calcolo totale...")
+      : amountStale
+        ? tx(t, "storefront.cart.amountNeedsReview", "金额待确认 / Totale da confermare")
+        : tx(t, "storefront.common.total", "Totale");
+  const effectivePendingTitle =
+    pendingTitle ?? tx(t, "storefront.cart.amountCalculating", "金额计算中 / Calcolo totale...");
+  const effectivePendingMessage =
+    pendingMessage ?? tx(t, "storefront.cart.amountCalculatingDescription", "正在同步商品、价格、库存和 MOQ。");
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 shadow-[0_-18px_40px_rgba(15,23,42,0.12)] backdrop-blur lg:hidden">
@@ -2362,25 +2522,34 @@ function MobileCartCheckoutBar({
           <div className="space-y-1.5">
             <CompactSummaryLine
               label={tx(t, "storefront.common.subtotal", "Subtotale")}
-              value={formatMoney(totals.subtotal, locale)}
+              value={amountPending ? tx(t, "storefront.common.loading", "Caricamento") : formatMoney(totals.subtotal, locale)}
             />
             <CompactSummaryLine
               label={tx(t, "storefront.common.shipping", "Spedizione")}
               value={
-                totals.shipping === 0
-                  ? tx(t, "storefront.common.free", "Gratis")
-                  : formatMoney(totals.shipping, locale)
+                amountPending
+                  ? tx(t, "storefront.common.loading", "Caricamento")
+                  : totals.shipping === 0
+                    ? tx(t, "storefront.common.free", "Gratis")
+                    : formatMoney(totals.shipping, locale)
               }
             />
             <CompactSummaryLine
-              label={tx(t, "storefront.common.total", "Totale")}
-              value={formatMoney(totals.total, locale)}
+              label={totalLabel}
+              value={amountPending ? tx(t, "storefront.common.loading", "Caricamento") : formatMoney(totals.total, locale)}
               strong
             />
           </div>
-          {hasBlockedItems && (
-            <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] font-semibold leading-4 text-amber-900">
-              {tx(t, "storefront.cart.summaryNoteReviewCheckout", "Puoi aprire il checkout per vedere cosa manca. Login, cliente, prezzi, stock e MOQ verranno comunque verificati prima dell'invio.")}
+          {(amountPending || hasBlockedItems || disabledReason) && (
+            <div
+              className={cn(
+                "mt-2 rounded-md border p-2 text-[11px] font-semibold leading-4",
+                amountPending
+                  ? "border-blue-200 bg-blue-50 text-blue-950"
+                  : "border-amber-200 bg-amber-50 text-amber-900"
+              )}
+            >
+              {amountPending ? effectivePendingMessage : disabledReason ?? tx(t, "storefront.cart.summaryNoteReviewCheckout", "Puoi aprire il checkout per vedere cosa manca. Login, cliente, prezzi, stock e MOQ verranno comunque verificati prima dell'invio.")}
             </div>
           )}
           <div className="mt-2 grid grid-cols-2 gap-2">
@@ -2419,10 +2588,19 @@ function MobileCartCheckoutBar({
           onClick={() => setExpanded((current) => !current)}
         >
           <div className="truncate text-[10px] font-bold uppercase tracking-normal text-slate-500">
-            {lineLabel} · {itemLabel}
+            {amountPending ? effectivePendingTitle : `${lineLabel} · ${itemLabel}`}
           </div>
           <div className="flex min-w-0 items-center gap-1 text-lg font-black" aria-live="polite">
-            <span className="truncate">{formatMoney(totals.total, locale)}</span>
+            {amountPending ? (
+              <>
+                <span className="h-5 w-24 animate-pulse rounded bg-slate-200" />
+                <span className="text-xs font-bold text-slate-500">
+                  {tx(t, "storefront.common.loading", "Caricamento")}
+                </span>
+              </>
+            ) : (
+              <span className="truncate">{formatMoney(totals.total, locale)}</span>
+            )}
             {expanded ? (
               <ChevronDown className="size-4 shrink-0 text-slate-500" />
             ) : (
@@ -2432,7 +2610,10 @@ function MobileCartCheckoutBar({
         </button>
         {!expanded && (
           checkoutDisabled ? (
-            <Button className="h-10 min-w-[128px] px-3" disabled>
+            <Button className="h-10 min-w-[128px] gap-2 px-3" disabled>
+              {amountPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : null}
               {tx(t, "storefront.common.checkout", "Checkout")}
             </Button>
           ) : (

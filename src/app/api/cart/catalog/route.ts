@@ -96,6 +96,16 @@ export async function GET(request: NextRequest) {
       buyerCustomerId,
       includeBuyerPrices: canResolveTargetPrices,
     });
+
+    if (repositoryResult.source === "empty" && repositoryResult.warning) {
+      return apiError(
+        503,
+        "CART_CATALOG_UNAVAILABLE",
+        "Cart catalog data is temporarily unavailable.",
+        { warning: repositoryResult.warning }
+      );
+    }
+
     const visibilityReason = priceVisibilityReason(account);
     const requestedCartProducts = repositoryResult.data.map((product) =>
         toCartCatalogProduct(product, account, {

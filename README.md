@@ -19,6 +19,7 @@ Italy-focused B2B smartphone spare-parts storefront and operations dashboard.
 
 - Repository-wide agent rules live in `AGENTS.md`. `CLAUDE.md` points to the same file through `@AGENTS.md`.
 - Reusable sub-agent profiles live in `docs/agents/`.
+- AI department task workflow lives in `docs/tasks/`.
 - Supabase migration safety rules live in `docs/PartsPro 代理协作与迁移护栏.md`.
 - Treat the linked Supabase project `yiuxrjqexlfjtxxrkqvi` / `PartsPro-V4` as production-sensitive. Do not apply linked migrations unless the migration safety gate passes.
 

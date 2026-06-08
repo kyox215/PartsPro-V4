@@ -510,6 +510,18 @@ export const storefrontItIT = {
   "storefront.checkout.option.cash.description":
     "Ordine in attesa di incasso in sede.",
   "storefront.checkout.option.cash.label": "Contanti",
+  "storefront.checkout.wallet.applied": "Detrazione wallet",
+  "storefront.checkout.wallet.available": "Disponibile",
+  "storefront.checkout.wallet.description":
+    "Seleziona per scalare il saldo disponibile da questo ordine.",
+  "storefront.checkout.wallet.empty":
+    "Nessun saldo wallet disponibile per questo cliente.",
+  "storefront.checkout.wallet.loading":
+    "Il saldo wallet viene calcolato con il controllo ordine.",
+  "storefront.checkout.wallet.noApplied":
+    "Il totale o il saldo non permette una detrazione.",
+  "storefront.checkout.wallet.payable": "Importo da pagare",
+  "storefront.checkout.wallet.use": "Usa saldo wallet",
   "storefront.checkout.option.card.description": "Metodo non più usato nel checkout.",
   "storefront.checkout.option.card.label": "Metodo legacy",
   "storefront.checkout.option.express.detail": "Gratis sopra 250 EUR prodotti IVA inclusa",
@@ -628,7 +640,9 @@ export const storefrontItIT = {
   "storefront.product.card.addAria":
     "Aggiungi {name} al carrello. MOQ {moq}.",
   "storefront.product.card.added": "Aggiunto",
-  "storefront.product.card.addFailed": "Riprova",
+  "storefront.product.card.addFailed": "Non aggiunto",
+  "storefront.product.card.addFailedHint":
+    "Carrello non sincronizzato. Aggiorna la pagina o accedi di nuovo.",
   "storefront.product.card.basePrice": "Prezzo base",
   "storefront.product.card.extraModelsTitle":
     "{count} modelli compatibili aggiuntivi",
@@ -664,7 +678,9 @@ export const storefrontItIT = {
   "storefront.product.purchase.addAria":
     "Aggiungi {quantity} pezzi di {name} al carrello",
   "storefront.product.purchase.added": "Aggiunto",
-  "storefront.product.purchase.addFailed": "Riprova",
+  "storefront.product.purchase.addFailed": "Non aggiunto",
+  "storefront.product.purchase.addFailedHint":
+    "Carrello non sincronizzato. Aggiorna la pagina o accedi di nuovo.",
   "storefront.product.purchase.goCheckout": "Vai al checkout",
   "storefront.product.purchase.orderNow": "Ordina ora",
   "storefront.product.purchase.orderNowAria":
@@ -1345,6 +1361,14 @@ export const storefrontZhCN = {
   "storefront.checkout.option.bankTransfer.label": "银行转账",
   "storefront.checkout.option.cash.description": "创建待收款订单，后台收款后再标记已支付。",
   "storefront.checkout.option.cash.label": "现金支付",
+  "storefront.checkout.wallet.applied": "钱包抵扣",
+  "storefront.checkout.wallet.available": "可用",
+  "storefront.checkout.wallet.description": "勾选后从本订单中抵扣当前可用钱包余额。",
+  "storefront.checkout.wallet.empty": "该客户暂无可用钱包余额。",
+  "storefront.checkout.wallet.loading": "钱包余额会随订单校验一起计算。",
+  "storefront.checkout.wallet.noApplied": "当前订单金额或余额无法产生抵扣。",
+  "storefront.checkout.wallet.payable": "仍需支付",
+  "storefront.checkout.wallet.use": "使用钱包余额",
   "storefront.checkout.option.card.description": "结账页已不再使用该付款方式。",
   "storefront.checkout.option.card.label": "旧付款方式",
   "storefront.checkout.option.express.detail": "含税商品金额超过 250 EUR 免运费",
@@ -1452,7 +1476,8 @@ export const storefrontZhCN = {
   "storefront.product.card.addAria":
     "将 {name} 加入购物车。起订量 {moq}。",
   "storefront.product.card.added": "已添加",
-  "storefront.product.card.addFailed": "重试",
+  "storefront.product.card.addFailed": "未加入",
+  "storefront.product.card.addFailedHint": "购物车未同步，请刷新页面或重新登录。",
   "storefront.product.card.basePrice": "原价",
   "storefront.product.card.extraModelsTitle": "另有 {count} 个兼容机型",
   "storefront.product.card.loginHint": "起订量 {moq} · 需要登录",
@@ -1485,7 +1510,8 @@ export const storefrontZhCN = {
   "storefront.product.purchase.add": "添加到购物车",
   "storefront.product.purchase.addAria": "将 {quantity} 件 {name} 加入购物车",
   "storefront.product.purchase.added": "已添加",
-  "storefront.product.purchase.addFailed": "重试",
+  "storefront.product.purchase.addFailed": "未加入",
+  "storefront.product.purchase.addFailedHint": "购物车未同步，请刷新页面或重新登录。",
   "storefront.product.purchase.goCheckout": "前往结账",
   "storefront.product.purchase.orderNow": "立即下单",
   "storefront.product.purchase.orderNowAria": "立即下单 {quantity} 件 {name}",

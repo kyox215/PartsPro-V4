@@ -531,6 +531,14 @@ function walletTransactionLabel(direction: "credit" | "debit") {
   return direction === "credit" ? "钱包入账" : "钱包抵扣";
 }
 
+function walletTransactionReasonLabel(reason: string, direction: "credit" | "debit") {
+  if (reason === "钱包余额自动抵扣订单") {
+    return "钱包余额抵扣订单";
+  }
+
+  return reason || walletTransactionLabel(direction);
+}
+
 function AccountSectionNav({
   activeSection,
   onSectionChange,
@@ -623,10 +631,10 @@ function WalletSection({ wallet }: { wallet: CustomerWallet }) {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2 text-sm font-black">
             <WalletCards className="size-4 text-primary" />
-            钱包 / 自动抵扣
+            钱包 / 结算抵扣
           </CardTitle>
           <Badge className="border border-blue-200 bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700">
-            下单自动使用
+            下单时选择
           </Badge>
         </div>
       </CardHeader>
@@ -637,7 +645,7 @@ function WalletSection({ wallet }: { wallet: CustomerWallet }) {
             {formatEuro(wallet.balance)}
           </div>
           <div className="mt-2 text-xs font-semibold leading-5 text-slate-500">
-            银行转账订单缺货差价会进入钱包，下次下单自动抵扣。
+            银行转账订单缺货差价会进入钱包；结算时可勾选使用余额抵扣。
           </div>
         </div>
 
@@ -655,7 +663,7 @@ function WalletSection({ wallet }: { wallet: CustomerWallet }) {
               >
                 <div className="min-w-0">
                   <div className="truncate font-black text-slate-800">
-                    {transaction.reason || walletTransactionLabel(transaction.direction)}
+                    {walletTransactionReasonLabel(transaction.reason, transaction.direction)}
                   </div>
                   <div className="mt-0.5 truncate font-semibold text-slate-500">
                     {formatAccountOrderDateTime(transaction.createdAt)}

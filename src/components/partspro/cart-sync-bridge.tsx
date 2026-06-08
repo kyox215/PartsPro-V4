@@ -27,6 +27,56 @@ type RemoteCartWriteResult = "synced" | "local";
 type RemoteCartLoadResult =
   | { status: "remote"; items: CartItem[] }
   | { status: "local" };
+export type CartRemoteSyncStatus = "idle" | "loading" | "ready" | "local" | "error";
+
+export type CartSyncStatusSnapshot = {
+  errorMessage?: string;
+  remoteStatus: CartRemoteSyncStatus;
+  updatedAt: number;
+};
+
+const defaultCartSyncStatus: CartSyncStatusSnapshot = {
+  remoteStatus: "idle",
+  updatedAt: 0,
+};
+
+let cartSyncStatusSnapshot = defaultCartSyncStatus;
+const cartSyncStatusListeners = new Set<() => void>();
+
+export function useCartSyncStatus() {
+  return React.useSyncExternalStore(
+    subscribeToCartSyncStatus,
+    getCartSyncStatusSnapshot,
+    getCartSyncStatusServerSnapshot
+  );
+}
+
+function subscribeToCartSyncStatus(listener: () => void) {
+  cartSyncStatusListeners.add(listener);
+
+  return () => {
+    cartSyncStatusListeners.delete(listener);
+  };
+}
+
+function getCartSyncStatusSnapshot() {
+  return cartSyncStatusSnapshot;
+}
+
+function getCartSyncStatusServerSnapshot() {
+  return defaultCartSyncStatus;
+}
+
+function setCartSyncStatus(next: Omit<CartSyncStatusSnapshot, "updatedAt">) {
+  cartSyncStatusSnapshot = {
+    ...next,
+    updatedAt: Date.now(),
+  };
+
+  for (const listener of cartSyncStatusListeners) {
+    listener();
+  }
+}
 
 export function CartSyncBridge() {
   const { scope } = useI18n();
@@ -38,8 +88,11 @@ export function CartSyncBridge() {
 
   React.useEffect(() => {
     if (scope !== "storefront") {
+      setCartSyncStatus({ remoteStatus: "idle" });
       return;
     }
+
+    setCartSyncStatus({ remoteStatus: "loading" });
 
     const controller = new AbortController();
     let disposed = false;
@@ -59,6 +112,7 @@ export function CartSyncBridge() {
       if (!disposed) {
         setSyncEnabled(false);
         setRemoteLoaded(true);
+        setCartSyncStatus({ remoteStatus: "local" });
       }
     }
 
@@ -106,6 +160,10 @@ export function CartSyncBridge() {
       } catch {
         if (!controller.signal.aborted) {
           setSyncEnabled(false);
+          setCartSyncStatus({
+            errorMessage: "Unable to refresh remote cart",
+            remoteStatus: "error",
+          });
         }
       }
     }
@@ -195,11 +253,19 @@ export function CartSyncBridge() {
         if (!disposed) {
           setSyncEnabled(true);
           setRemoteLoaded(true);
+          setCartSyncStatus({ remoteStatus: "ready" });
           subscribeToRemoteCart(userId);
         }
       } catch {
         if (!controller.signal.aborted) {
-          enterLocalMode();
+          if (!disposed) {
+            setSyncEnabled(false);
+            setRemoteLoaded(true);
+            setCartSyncStatus({
+              errorMessage: "Unable to load remote cart",
+              remoteStatus: "error",
+            });
+          }
         }
       }
     }
@@ -238,14 +304,20 @@ export function CartSyncBridge() {
         .then((result) => {
           if (result === "local") {
             setSyncEnabled(false);
+            setCartSyncStatus({ remoteStatus: "local" });
             return;
           }
 
           lastSyncedSnapshotRef.current = snapshot;
+          setCartSyncStatus({ remoteStatus: "ready" });
         })
         .catch(() => {
           if (!controller.signal.aborted) {
             setSyncEnabled(false);
+            setCartSyncStatus({
+              errorMessage: "Unable to save remote cart",
+              remoteStatus: "error",
+            });
           }
         });
     }, syncDebounceMs);

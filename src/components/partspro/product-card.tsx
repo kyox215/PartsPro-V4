@@ -103,6 +103,11 @@ export const ProductCard = memo(function ProductCard({
     hasOpenPrice,
     hasSellableStock,
   });
+  const addFailedHint = tx(
+    t,
+    "storefront.product.card.addFailedHint",
+    "Carrello non sincronizzato. Aggiorna la pagina o accedi di nuovo."
+  );
   const isReviewPriceVisible =
     showWholesalePrice && priceGateReason === "customer_needs_assignment";
   const [addFeedbackState, setAddFeedbackState] = useState<AddFeedbackState>("idle");
@@ -375,12 +380,17 @@ export const ProductCard = memo(function ProductCard({
                   onClick={handleAddToCart}
                   disabled={addLocked}
                   aria-describedby={stockDescriptionId}
-                  aria-label={txFormat(
-                    t,
-                    "storefront.product.card.addAria",
-                    "Aggiungi {name} al carrello. MOQ {moq}.",
-                    { name: product.name, moq: product.moq }
-                  )}
+                  aria-label={
+                    addFeedbackState === "error"
+                      ? addFailedHint
+                      : txFormat(
+                          t,
+                          "storefront.product.card.addAria",
+                          "Aggiungi {name} al carrello. MOQ {moq}.",
+                          { name: product.name, moq: product.moq }
+                        )
+                  }
+                  title={addFeedbackState === "error" ? addFailedHint : undefined}
                 >
                   {addFeedbackState === "success" ? (
                     <CheckCircle2 className="size-3.5 sm:size-4" />
@@ -447,6 +457,21 @@ export const ProductCard = memo(function ProductCard({
                 </Button>
               )}
             </div>
+            {canAddToCart ? (
+              <div
+                className={cn(
+                  "mt-1 flex min-h-5 items-start gap-1 rounded-md border px-1.5 py-1 text-[10px] font-bold leading-3",
+                  addFeedbackState === "error"
+                    ? "border-red-100 bg-red-50 text-red-700"
+                    : "invisible border-transparent"
+                )}
+                role={addFeedbackState === "error" ? "alert" : undefined}
+                aria-live="polite"
+              >
+                <AlertTriangle className="mt-px size-3 shrink-0" />
+                <span className="line-clamp-2">{addFailedHint}</span>
+              </div>
+            ) : null}
           </div>
         </CardContent>
       </Card>

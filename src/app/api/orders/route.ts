@@ -16,8 +16,8 @@ import { getAdminAuthState, hasAdminPermission } from "@/lib/partspro-admin-auth
 import {
   clearCurrentCustomerCart,
   getCustomerProfileById,
+  getCustomerWalletById,
   getCurrentCustomerProfile,
-  getCurrentCustomerWallet,
   getCurrentEmployeeSelfCompany,
   getCurrentEmployeeSelfProfile,
   listCatalogProductsBySkus,
@@ -98,6 +98,7 @@ const createOrderSchema = z
     deliveryAddress: deliveryAddressSchema,
     fiscal: z.unknown().optional(),
     items: z.array(orderItemSchema).min(1).max(100),
+    useWallet: z.boolean().optional(),
   })
   .strict();
 
@@ -329,11 +330,9 @@ export async function POST(request: NextRequest) {
       customerProfile.data,
       deliveryAddress
     );
-    const wallet =
-      checkoutMode === "delegated_customer"
-        ? { data: { balance: 0 } }
-        : await getCurrentCustomerWallet();
-    const walletRequestedAmount = Math.max(0, wallet.data.balance);
+    const walletRequestedAmount = result.data.useWallet
+      ? Math.max(0, (await getCustomerWalletById(company.id)).data.balance)
+      : 0;
     const saved = await saveOrder({
       company,
       paymentMethod: result.data.paymentMethod,
@@ -372,7 +371,11 @@ export async function POST(request: NextRequest) {
           },
           paymentMethod: result.data.paymentMethod,
           walletAppliedAmount: saved.data.walletAppliedAmount ?? 0,
-          payableAmount: Math.max(0, totals.totalCents / 100 - (saved.data.walletAppliedAmount ?? 0)),
+          payableAmount:
+            Math.max(
+              0,
+              totals.totalCents - Math.round((saved.data.walletAppliedAmount ?? 0) * 100)
+            ) / 100,
           notes: result.data.notes ?? null,
           lines: orderBuild.lines.map(toOrderLineDto),
           totals: totalsDto(totals),

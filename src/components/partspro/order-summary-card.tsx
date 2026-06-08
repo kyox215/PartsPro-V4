@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ShoppingBag } from "lucide-react";
+import { Loader2, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -12,6 +12,8 @@ import { type CartTotals, useCart } from "./cart-state";
 import { useI18n, useT } from "./i18n-provider";
 
 type OrderSummaryCardProps = {
+  amountMessage?: string;
+  amountStatus?: "loading" | "ready" | "stale";
   showCheckoutAction?: boolean;
   checkoutLabel?: string;
   checkoutDisabled?: boolean;
@@ -20,10 +22,12 @@ type OrderSummaryCardProps = {
   consumeUrlIntent?: boolean;
   continueHref?: string;
   lineCount?: number;
+  payableAmount?: number;
   showContinueAction?: boolean;
   sticky?: boolean;
   summaryNote?: string;
   totals?: CartTotals;
+  walletAppliedAmount?: number;
 };
 
 export function OrderSummaryCard({
@@ -60,6 +64,8 @@ function ConnectedOrderSummaryCard({
 
 function OrderSummaryCardView({
   showCheckoutAction = true,
+  amountMessage,
+  amountStatus = "ready",
   checkoutLabel,
   checkoutDisabled = false,
   checkoutHref = "/checkout",
@@ -67,10 +73,12 @@ function OrderSummaryCardView({
   continueHref = "/catalogo",
   isHydrated,
   lineCount,
+  payableAmount,
   showContinueAction = true,
   sticky = true,
   summaryNote,
   totals,
+  walletAppliedAmount = 0,
 }: Omit<OrderSummaryCardProps, "consumeUrlIntent"> & {
   isHydrated: boolean;
   totals: CartTotals;
@@ -83,8 +91,22 @@ function OrderSummaryCardView({
     summaryNote ??
     tx(t, "storefront.cart.summaryNote", "Il carrello non blocca stock: spedizione €6,50, gratuita da €100; disponibilita e quantita vengono verificate alla conferma.");
   const effectiveLineCount = lineCount ?? totals.lines.length;
+  const summaryLoading = !isHydrated || amountStatus === "loading";
+  const loadingValue = tx(t, "storefront.common.loading", "Caricamento");
   const effectiveCheckoutDisabled =
-    checkoutDisabled || !isHydrated || effectiveLineCount === 0;
+    checkoutDisabled || summaryLoading || effectiveLineCount === 0;
+  const effectiveWalletApplied = Math.max(0, walletAppliedAmount);
+  const effectivePayable =
+    payableAmount === undefined
+      ? Math.max(0, totals.total - effectiveWalletApplied)
+      : Math.max(0, payableAmount);
+  const hasWalletApplied = !summaryLoading && effectiveWalletApplied > 0;
+  const summaryStatusNote =
+    summaryLoading
+      ? amountMessage ?? tx(t, "storefront.cart.summaryLoading", "Caricamento carrello del tuo account...")
+      : amountStatus === "stale"
+        ? amountMessage ?? tx(t, "storefront.cart.amountNeedsReview", "金额待确认 / Totale da confermare")
+        : effectiveSummaryNote;
 
   return (
     <Card
@@ -96,28 +118,61 @@ function OrderSummaryCardView({
     >
       <CardHeader className={compact ? "px-3" : undefined}>
         <CardTitle className={compact ? "flex items-center gap-2 text-base" : "flex items-center gap-2"}>
-          <ShoppingBag className={compact ? "size-4 text-primary" : "size-5 text-primary"} />
+          {summaryLoading ? (
+            <Loader2 className={compact ? "size-4 animate-spin text-primary" : "size-5 animate-spin text-primary"} />
+          ) : (
+            <ShoppingBag className={compact ? "size-4 text-primary" : "size-5 text-primary"} />
+          )}
           {tx(t, "storefront.cart.summaryTitle", "Riepilogo ordine")}
         </CardTitle>
       </CardHeader>
       <CardContent className={compact ? "space-y-2 px-3" : "space-y-3"}>
         <Line compact={compact} label={tx(t, "storefront.cart.rows", "Articoli")} value={String(effectiveLineCount)} />
-        <Line compact={compact} label={tx(t, "storefront.common.subtotal", "Subtotale")} value={formatMoney(totals.subtotal, locale)} />
+        <Line
+          compact={compact}
+          label={tx(t, "storefront.common.subtotal", "Subtotale")}
+          value={summaryLoading ? loadingValue : formatMoney(totals.subtotal, locale)}
+        />
         <Line
           compact={compact}
           label={tx(t, "storefront.common.shipping", "Spedizione")}
           value={
-            totals.shipping === 0
+            summaryLoading
+              ? loadingValue
+              : totals.shipping === 0
               ? tx(t, "storefront.common.free", "Gratis")
               : formatMoney(totals.shipping, locale)
           }
         />
-        <Separator />
-        <Line compact={compact} label={tx(t, "storefront.common.total", "Totale")} value={formatMoney(totals.total, locale)} strong />
+        {hasWalletApplied ? (
+          <>
+            <Line compact={compact} label={tx(t, "storefront.common.total", "Totale")} value={formatMoney(totals.total, locale)} />
+            <Line
+              compact={compact}
+              label={tx(t, "storefront.checkout.wallet.applied", "Detrazione wallet")}
+              value={`-${formatMoney(effectiveWalletApplied, locale)}`}
+            />
+            <Separator />
+            <Line
+              compact={compact}
+              label={tx(t, "storefront.checkout.wallet.payable", "Importo da pagare")}
+              value={formatMoney(effectivePayable, locale)}
+              strong
+            />
+          </>
+        ) : (
+          <>
+            <Separator />
+            <Line
+              compact={compact}
+              label={tx(t, "storefront.common.total", "Totale")}
+              value={summaryLoading ? loadingValue : formatMoney(totals.total, locale)}
+              strong
+            />
+          </>
+        )}
         <div className={compact ? "rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] font-semibold leading-4 text-amber-900" : "rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900"}>
-          {!isHydrated
-            ? tx(t, "storefront.cart.summaryLoading", "Caricamento carrello del tuo account...")
-            : effectiveSummaryNote}
+          {summaryStatusNote}
         </div>
         {(showCheckoutAction || showContinueAction) && (
           <div className="grid gap-2">

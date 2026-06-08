@@ -71,6 +71,11 @@ export function ProductDetailPurchasePanel({
     safeQuantity: activeQuantity,
     stockAvailable,
   });
+  const addFailedHint = tx(
+    t,
+    "storefront.product.purchase.addFailedHint",
+    "Carrello non sincronizzato. Aggiorna la pagina o accedi di nuovo."
+  );
   const [addFeedbackState, setAddFeedbackState] = useState<AddFeedbackState>("idle");
   const addFeedbackTimerRef = useRef<number | null>(null);
 
@@ -313,12 +318,17 @@ export function ProductDetailPurchasePanel({
                 "bg-red-600 text-white hover:bg-red-600"
             )}
             onClick={handleAddToCart}
-            aria-label={txFormat(
-              t,
-              "storefront.product.purchase.addAria",
-              "Aggiungi {quantity} pezzi di {name} al carrello",
-              { quantity: safeQuantity, name: product.name }
-            )}
+            aria-label={
+              addFeedbackState === "error"
+                ? addFailedHint
+                : txFormat(
+                    t,
+                    "storefront.product.purchase.addAria",
+                    "Aggiungi {quantity} pezzi di {name} al carrello",
+                    { quantity: safeQuantity, name: product.name }
+                  )
+            }
+            title={addFeedbackState === "error" ? addFailedHint : undefined}
           >
             {addFeedbackState === "success" ? (
               <CheckIcon className="size-4" />
@@ -412,6 +422,15 @@ export function ProductDetailPurchasePanel({
           </Button>
         )}
       </div>
+      {addFeedbackState === "error" ? (
+        <div
+          className="mt-2 flex items-start gap-2 rounded-md border border-red-100 bg-red-50 px-2.5 py-2 text-xs font-semibold leading-5 text-red-700"
+          role="alert"
+        >
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>{addFailedHint}</span>
+        </div>
+      ) : null}
     </div>
   );
 }

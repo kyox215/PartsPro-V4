@@ -16,6 +16,7 @@ import {
 } from "@/lib/partspro-account-context";
 import {
   getCustomerProfileById,
+  getCustomerWalletById,
   getCurrentCustomerProfile,
   getCurrentEmployeeSelfCompany,
   getCurrentEmployeeSelfProfile,
@@ -47,6 +48,7 @@ const previewOrderSchema = z
     checkoutMode: z.enum(["customer_self", "employee_self", "delegated_customer"]).optional(),
     deliveryMethod: z.enum(deliveryMethodInputValues).optional(),
     items: z.array(previewItemSchema).min(1).max(100),
+    useWallet: z.boolean().optional(),
   })
   .strict();
 
@@ -189,6 +191,9 @@ export async function POST(request: Request) {
           issues: customerIssues,
           lines: [],
           totals: totalsDto(calculateTotals([], deliveryMethod), deliveryMethod),
+          wallet: walletSummaryDto(
+            calculateWalletSummary(0, 0, Boolean(result.data.useWallet))
+          ),
         },
         meta: {
           source: "checkout_preview",
@@ -205,6 +210,16 @@ export async function POST(request: Request) {
       buyerCustomerId: checkoutMode === "customer_self" ? undefined : company.id,
       includeBuyerPrices: account.canViewPrices || checkoutMode !== "customer_self",
     });
+
+    if (catalog.source === "empty" && catalog.warning) {
+      return apiError(
+        503,
+        "ORDER_PREVIEW_CATALOG_UNAVAILABLE",
+        "Checkout preview catalog data is temporarily unavailable.",
+        { warning: catalog.warning }
+      );
+    }
+
     const pricedCatalog = catalog.data.map((product) =>
       product.priceResolved || product.priceVersion
         ? product
@@ -212,6 +227,12 @@ export async function POST(request: Request) {
     );
     const orderBuild = buildPreviewOrder(result.data.items, pricedCatalog);
     const totals = calculateTotals(orderBuild.lines, deliveryMethod);
+    const wallet = await getCustomerWalletById(company.id);
+    const walletSummary = calculateWalletSummary(
+      totals.totalCents,
+      wallet.data.balance,
+      Boolean(result.data.useWallet)
+    );
 
     return NextResponse.json({
       data: {
@@ -229,12 +250,14 @@ export async function POST(request: Request) {
         deliveryMethod,
         shippingMethod: shippingMethodForDeliveryMethod(deliveryMethod),
         totals: totalsDto(totals, deliveryMethod),
+        wallet: walletSummaryDto(walletSummary),
       },
       meta: {
         source: "checkout_preview",
         catalogSource: catalog.source,
         companiesSource: companies.source,
         profileSource: customerProfile.source,
+        walletSource: wallet.source,
         currency: "EUR",
         vatMode: "tax_included_shipping_only",
         ...warningsMeta(companies.warning, catalog.warning, customerProfile.warning),
@@ -359,6 +382,31 @@ function totalsDto(totals: ReturnType<typeof calculateTotals>, deliveryMethod: D
     shippingMethod: shippingMethodForDeliveryMethod(deliveryMethod),
     freeShippingThreshold: money(freeShippingThresholdCents),
     vatMode: "tax_included_shipping_only",
+  };
+}
+
+function calculateWalletSummary(
+  totalCents: number,
+  walletBalance: number,
+  useWallet: boolean
+) {
+  const availableCents = Math.max(0, toCents(walletBalance));
+  const appliedCents = useWallet ? Math.min(availableCents, totalCents) : 0;
+
+  return {
+    appliedCents,
+    availableCents,
+    enabled: useWallet,
+    payableCents: Math.max(0, totalCents - appliedCents),
+  };
+}
+
+function walletSummaryDto(summary: ReturnType<typeof calculateWalletSummary>) {
+  return {
+    appliedAmount: money(summary.appliedCents),
+    availableAmount: money(summary.availableCents),
+    enabled: summary.enabled,
+    payableAmount: money(summary.payableCents),
   };
 }
 

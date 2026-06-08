@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   ShoppingBag,
   Truck,
+  WalletCards,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -80,8 +81,13 @@ import {
   type CartTotals,
   useCart,
 } from "./cart-state";
+import { useCartSyncStatus } from "./cart-sync-bridge";
 import { useI18n, useT } from "./i18n-provider";
 import { OrderSummaryCard } from "./order-summary-card";
+import {
+  StorefrontSyncStatusBar,
+  type StorefrontSyncStatusState,
+} from "./storefront-commerce-status";
 import { StoreHeader } from "./store-header";
 import { StorefrontProductImage } from "./storefront-product-image";
 
@@ -111,6 +117,7 @@ type CheckoutFormState = {
   deliveryMethod: DeliveryMethod;
   notes: string;
   paymentMethod: "bank_transfer" | "cash";
+  useWallet: boolean;
 };
 
 type SubmitState =
@@ -129,12 +136,14 @@ type OrderResult = {
   id: string;
   orderNo?: string;
   status: string;
+  payableAmount?: number;
   totals: {
     subtotal: MoneyDto;
     shipping: MoneyDto;
     vat: MoneyDto;
     total: MoneyDto;
   };
+  walletAppliedAmount?: number;
   lines: Array<{
     sku: string;
     quantity: number;
@@ -151,6 +160,13 @@ type PreviewIssue = {
   stock?: number;
 };
 
+type WalletPreview = {
+  appliedAmount: MoneyDto;
+  availableAmount: MoneyDto;
+  enabled: boolean;
+  payableAmount: MoneyDto;
+};
+
 type CartCatalogRejection = {
   reason?: string;
   sku: string;
@@ -159,10 +175,10 @@ type CartCatalogRejection = {
 type PendingItemsReason = "account" | "customer" | "customer-context";
 
 type PreviewState =
-  | { status: "idle"; canSubmit?: boolean; issues: PreviewIssue[] }
-  | { status: "loading"; canSubmit?: boolean; issues: PreviewIssue[] }
-  | { status: "ready"; canSubmit?: boolean; issues: PreviewIssue[] }
-  | { status: "error"; canSubmit?: boolean; issues: PreviewIssue[]; message: string };
+  | { status: "idle"; canSubmit?: boolean; issues: PreviewIssue[]; wallet?: WalletPreview }
+  | { status: "loading"; canSubmit?: boolean; issues: PreviewIssue[]; wallet?: WalletPreview }
+  | { status: "ready"; canSubmit?: boolean; issues: PreviewIssue[]; wallet?: WalletPreview }
+  | { status: "error"; canSubmit?: boolean; issues: PreviewIssue[]; message: string; wallet?: WalletPreview };
 
 type Blocker = {
   actionHref?: string;
@@ -172,13 +188,13 @@ type Blocker = {
   tone: "warning" | "error" | "neutral";
 };
 
-type CheckoutSyncKind = "cart" | "catalog" | "preview" | "submit";
+type CheckoutSyncKind = "cart" | "catalog" | "preview" | "remote-cart" | "submit";
 
-type CheckoutSyncState = {
+type CheckoutSyncState = (StorefrontSyncStatusState & {
   kind: CheckoutSyncKind;
-  message: string;
-  title: string;
-} | null;
+}) | null;
+
+type CheckoutAmountStatus = "loading" | "ready" | "stale";
 
 const fixedShippingMethod = expressShippingMethodLabel;
 const idlePreviewState: PreviewState = { status: "idle", issues: [] };
@@ -289,10 +305,12 @@ function CheckoutClientContent({
     isDelegatedMode
   );
   const cart = useCart({ preserveUnknown: true });
+  const cartSyncStatus = useCartSyncStatus();
   const [form, setForm] = React.useState<CheckoutFormState>(() =>
     initialFormState()
   );
   const [catalogLoadState, setCatalogLoadState] = React.useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [catalogRetryToken, setCatalogRetryToken] = React.useState(0);
   const [catalogRejections, setCatalogRejections] = React.useState<Record<string, CartCatalogRejection>>({});
   const requestedCatalogKeys = React.useRef(new Set<string>());
   const [confirmed, setConfirmed] = React.useState(false);
@@ -303,6 +321,7 @@ function CheckoutClientContent({
     status: "idle",
     issues: [],
   });
+  const [previewRetryToken, setPreviewRetryToken] = React.useState(0);
   const cartSignature = React.useMemo(
     () => serializeCartItems(cart.items),
     [cart.items]
@@ -360,6 +379,9 @@ function CheckoutClientContent({
   const shouldLoadPreview =
     cart.isHydrated && cart.items.length > 0 && Boolean(selectedCompany?.id) && !targetCustomerBlocker;
   const previewForUi = shouldLoadPreview ? preview : idlePreviewState;
+  const walletPreview = previewForUi.wallet;
+  const walletAppliedAmount = moneyDtoToNumber(walletPreview?.appliedAmount);
+  const payableAmount = moneyDtoToNumber(walletPreview?.payableAmount);
   const unresolvedSkus = React.useMemo(() => {
     const resolvedSkus = new Set(cart.lines.map((line) => line.sku));
 
@@ -382,6 +404,20 @@ function CheckoutClientContent({
     cart.items.length > 0 &&
     unresolvedCatalogSkus.length > 0 &&
     (catalogLoadState === "idle" || catalogLoadState === "loading");
+  const isRemoteCartLoading = cartSyncStatus.remoteStatus === "loading";
+  const isCartBootstrapping = !cart.isHydrated || isRemoteCartLoading;
+  const previewQueued =
+    shouldLoadPreview &&
+    !catalogResolutionPending &&
+    previewForUi.status === "idle";
+  const previewBusy = previewQueued || previewForUi.status === "loading";
+  const checkoutAmountStatus: CheckoutAmountStatus =
+    cart.items.length > 0 &&
+    (isCartBootstrapping || catalogResolutionPending || previewBusy)
+      ? "loading"
+      : cart.items.length > 0 && previewForUi.status === "error"
+        ? "stale"
+        : "ready";
   const lineIssues = React.useMemo(
     () => previewForUi.issues.filter((issue) => issue.sku !== "customer"),
     [previewForUi.issues]
@@ -394,7 +430,9 @@ function CheckoutClientContent({
   const checkoutSyncState = buildCheckoutSyncState({
     cartHydrated: cart.isHydrated,
     catalogResolutionPending,
+    previewQueued,
     preview: previewForUi,
+    remoteCartLoading: isRemoteCartLoading,
     submitState,
     t,
   });
@@ -420,10 +458,20 @@ function CheckoutClientContent({
     unresolvedSkus: reviewUnresolvedSkus,
     t,
   });
-  const disabledReason = blockers[0]?.message;
+  const formDisabledReason =
+    Object.keys(formErrors).length > 0
+      ? tx(t, "storefront.checkout.formInvalid", "Completa indirizzo e conferme prima di inviare l'ordine.")
+      : undefined;
+  const syncDisabledReason = checkoutSyncState?.message;
+  const disabledReason = blockers[0]?.message ?? syncDisabledReason ?? formDisabledReason;
+  const previewReadyForSubmit =
+    !shouldLoadPreview ||
+    (previewForUi.status === "ready" && previewForUi.canSubmit === true);
   const canSubmit =
     blockers.length === 0 &&
     !checkoutSyncState &&
+    !formDisabledReason &&
+    previewReadyForSubmit &&
     submitState.status !== "loading" &&
     submitState.status !== "success";
 
@@ -565,6 +613,7 @@ function CheckoutClientContent({
     cart.isHydrated,
     cart.items,
     cartSignature,
+    catalogRetryToken,
     catalogRejectionBySku,
     catalogSkuSet,
     onCatalogProductsLoaded,
@@ -589,6 +638,7 @@ function CheckoutClientContent({
         issues: current.status === "ready" || current.status === "loading"
           ? current.issues
           : [],
+        wallet: current.wallet,
       }));
 
       try {
@@ -600,13 +650,14 @@ function CheckoutClientContent({
             checkoutMode,
             deliveryMethod: form.deliveryMethod,
             items: previewItems,
+            useWallet: form.useWallet,
           }),
           cache: "no-store",
           credentials: "same-origin",
           signal: controller.signal,
         });
         const payload = (await response.json().catch(() => null)) as {
-          data?: { canSubmit?: boolean; issues?: PreviewIssue[] };
+          data?: { canSubmit?: boolean; issues?: PreviewIssue[]; wallet?: WalletPreview };
           error?: { code?: string; message?: string };
         } | null;
 
@@ -619,18 +670,20 @@ function CheckoutClientContent({
             status: "ready",
             canSubmit: Boolean(payload?.data?.canSubmit),
             issues: Array.isArray(payload?.data?.issues) ? payload.data.issues : [],
+            wallet: payload?.data?.wallet,
           });
         }
       } catch (error) {
         if (!controller.signal.aborted) {
-          setPreview({
+          setPreview((current) => ({
             status: "error",
             issues: [],
             message:
               error instanceof Error
                 ? error.message
                 : tx(t, "storefront.checkout.preview.error", "Impossibile aggiornare i controlli ordine."),
-          });
+            wallet: current.wallet,
+          }));
         }
       }
     }
@@ -643,7 +696,7 @@ function CheckoutClientContent({
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [cart.items, cartSignature, checkoutMode, form.deliveryMethod, selectedCompany?.id, shouldLoadPreview, t]);
+  }, [cart.items, cartSignature, checkoutMode, form.deliveryMethod, form.useWallet, previewRetryToken, selectedCompany?.id, shouldLoadPreview, t]);
 
   async function submitOrder() {
     setSubmitAttempted(true);
@@ -685,6 +738,7 @@ function CheckoutClientContent({
           companyId: selectedCompany?.id,
           checkoutMode,
           paymentMethod: form.paymentMethod,
+          useWallet: form.useWallet,
           deliveryAddress: selectedShippingAddress,
           deliveryMethod: form.deliveryMethod,
           notes: buildOrderNotes(form.notes, form.deliveryMethod),
@@ -739,13 +793,25 @@ function CheckoutClientContent({
     }
   }
 
+  function retryCheckoutValidation() {
+    requestedCatalogKeys.current.clear();
+    setCatalogLoadState("idle");
+    setSubmitState({ status: "idle" });
+    setPreview(idlePreviewState);
+    setCatalogRetryToken((value) => value + 1);
+    setPreviewRetryToken((value) => value + 1);
+  }
+
+  const canRetryCheckoutValidation =
+    previewForUi.status === "error" || catalogLoadState === "error";
+
   return (
     <>
       <StoreHeader
         assistedCompanyId={checkoutContextCompanyId || null}
         initialAccountAccess={initialAccountAccess}
       />
-      <CheckoutSyncStatusBar state={checkoutSyncState} />
+      <StorefrontSyncStatusBar state={checkoutSyncState} />
       <main
         aria-busy={Boolean(checkoutSyncState)}
         className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950"
@@ -767,6 +833,17 @@ function CheckoutClientContent({
             />
           ) : null}
           <GlobalBlockers blockers={blockers} />
+          {canRetryCheckoutValidation && (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 w-fit bg-white"
+              onClick={retryCheckoutValidation}
+            >
+              <RefreshCcw className="size-4" />
+              {tx(t, "storefront.common.retry", "Riprova")}
+            </Button>
+          )}
           <OrderLinesReview
             cartHref={cartHref}
             catalogLoadState={catalogLoadState}
@@ -784,7 +861,11 @@ function CheckoutClientContent({
             shippingAddress={selectedShippingAddress}
             submitAttempted={submitAttempted}
           />
-          <PaymentSection form={form} onChange={setForm} />
+          <PaymentSection
+            form={form}
+            onChange={setForm}
+            walletPreview={walletPreview}
+          />
           <ConfirmationSection
             confirmed={confirmed}
             errors={formErrors}
@@ -796,7 +877,11 @@ function CheckoutClientContent({
         <aside className="hidden lg:block">
           <div className="space-y-2.5 lg:sticky lg:top-28">
             <OrderSummaryCard
+              amountMessage={checkoutSyncState?.message}
+              amountStatus={checkoutAmountStatus}
               totals={checkoutTotals}
+              walletAppliedAmount={walletAppliedAmount}
+              payableAmount={payableAmount}
               continueHref={catalogHref}
               lineCount={cart.items.length}
               showContinueAction={false}
@@ -815,11 +900,15 @@ function CheckoutClientContent({
       </div>
 
       <CheckoutMobileBar
+        amountMessage={checkoutSyncState?.message}
+        amountStatus={checkoutAmountStatus}
         canSubmit={canSubmit}
         disabledReason={disabledReason}
         onSubmit={submitOrder}
         state={submitState}
         totals={checkoutTotals}
+        walletAppliedAmount={walletAppliedAmount}
+        payableAmount={payableAmount}
         lineCount={cart.items.length}
       />
       <CheckoutSuccessDialog
@@ -889,35 +978,6 @@ function StatusChip({ label, ok }: { label: string; ok: boolean }) {
       {ok ? <CheckCircle2 className="size-3.5" /> : <AlertTriangle className="size-3.5" />}
       {label}
     </Badge>
-  );
-}
-
-function CheckoutSyncStatusBar({ state }: { state: CheckoutSyncState }) {
-  if (!state) {
-    return null;
-  }
-
-  return (
-    <div
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-      className="sticky inset-x-0 top-14 z-40 border-b border-blue-100 bg-white/95 shadow-[0_12px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:top-16"
-    >
-      <div className="mx-auto flex max-w-[1460px] items-center gap-2.5 px-3 py-2 sm:px-4">
-        <span className="grid size-8 shrink-0 place-items-center rounded-full bg-blue-50 text-primary">
-          <Loader2 className="size-4 animate-spin" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-black text-slate-950">
-            {state.title}
-          </div>
-          <div className="truncate text-xs font-semibold text-slate-500">
-            {state.message}
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
@@ -1510,11 +1570,17 @@ function DeliverySection({
 function PaymentSection({
   form,
   onChange,
+  walletPreview,
 }: {
   form: CheckoutFormState;
   onChange: React.Dispatch<React.SetStateAction<CheckoutFormState>>;
+  walletPreview?: WalletPreview;
 }) {
   const t = useT();
+  const { locale } = useI18n();
+  const walletAvailable = walletPreview?.availableAmount.cents ?? 0;
+  const walletApplied = walletPreview?.appliedAmount.cents ?? 0;
+  const canUseWallet = Boolean(walletPreview && walletAvailable > 0);
   const options = [
     {
       value: "bank_transfer" as const,
@@ -1567,6 +1633,71 @@ function PaymentSection({
             </label>
           ))}
         </div>
+        <label
+          className={cn(
+            "flex min-w-0 items-start gap-2.5 rounded-lg border px-2.5 py-2.5 text-sm transition",
+            form.useWallet && canUseWallet
+              ? "border-blue-300 bg-blue-50 text-blue-950"
+              : "border-slate-200 bg-slate-50 text-slate-700",
+            !canUseWallet && "cursor-not-allowed opacity-75"
+          )}
+        >
+          <input
+            type="checkbox"
+            className="mt-1 size-4 shrink-0 accent-primary"
+            disabled={!canUseWallet}
+            checked={form.useWallet && canUseWallet}
+            onChange={(event) =>
+              onChange((current) => ({ ...current, useWallet: event.currentTarget.checked }))
+            }
+          />
+          <WalletCards className="mt-0.5 size-4 shrink-0 text-primary" />
+          <span className="min-w-0 flex-1">
+            <span className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1">
+              <span className="font-black">
+                {tx(t, "storefront.checkout.wallet.use", "Usa saldo wallet")}
+              </span>
+              {walletPreview ? (
+                <span className="text-xs font-black text-blue-700">
+                  {tx(t, "storefront.checkout.wallet.available", "Disponibile")}{" "}
+                  {formatMoneyDto(walletPreview.availableAmount, locale)}
+                </span>
+              ) : null}
+            </span>
+            <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">
+              {walletPreview
+                ? canUseWallet
+                  ? tx(t, "storefront.checkout.wallet.description", "Seleziona per scalare il saldo disponibile da questo ordine.")
+                  : tx(t, "storefront.checkout.wallet.empty", "Nessun saldo wallet disponibile per questo cliente.")
+                : tx(t, "storefront.checkout.wallet.loading", "Il saldo wallet viene calcolato con il controllo ordine.")}
+            </span>
+            {walletPreview && form.useWallet && canUseWallet ? (
+              <span className="mt-2 grid gap-1 rounded-md border border-blue-100 bg-white/70 p-2 text-xs">
+                <span className="flex items-center justify-between gap-3">
+                  <span className="font-semibold text-slate-500">
+                    {tx(t, "storefront.checkout.wallet.applied", "Detrazione wallet")}
+                  </span>
+                  <span className="font-black text-blue-700">
+                    -{formatMoneyDto(walletPreview.appliedAmount, locale)}
+                  </span>
+                </span>
+                <span className="flex items-center justify-between gap-3">
+                  <span className="font-semibold text-slate-500">
+                    {tx(t, "storefront.checkout.wallet.payable", "Importo da pagare")}
+                  </span>
+                  <span className="font-black text-slate-950">
+                    {formatMoneyDto(walletPreview.payableAmount, locale)}
+                  </span>
+                </span>
+                {walletApplied === 0 ? (
+                  <span className="font-semibold text-amber-700">
+                    {tx(t, "storefront.checkout.wallet.noApplied", "Il totale o il saldo non permette una detrazione.")}
+                  </span>
+                ) : null}
+              </span>
+            ) : null}
+          </span>
+        </label>
         <div className="space-y-1.5">
           <Label htmlFor="notes">{tx(t, "storefront.checkout.field.notes", "Note ordine")}</Label>
           <Textarea
@@ -1727,6 +1858,11 @@ function OrderSuccess({ message, order }: { message: string; order: OrderResult 
   const { locale } = useI18n();
   const totalQuantity = order.lines.reduce((total, line) => total + line.quantity, 0);
   const orderReference = order.orderNo ?? order.id;
+  const walletAppliedAmount = Math.max(0, order.walletAppliedAmount ?? 0);
+  const payableAmount = Math.max(
+    0,
+    order.payableAmount ?? Number(order.totals.total.amount) - walletAppliedAmount
+  );
 
   return (
     <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
@@ -1750,6 +1886,24 @@ function OrderSuccess({ message, order }: { message: string; order: OrderResult 
           <span className="font-bold">{tx(t, "storefront.checkout.success.total", "Totale ordine")}</span>
           <span className="text-lg font-black">{formatMoneyDto(order.totals.total, locale)}</span>
         </div>
+        {walletAppliedAmount > 0 ? (
+          <>
+            <div className="mt-2 flex items-center justify-between gap-3 text-sm">
+              <span className="font-bold text-emerald-800">
+                {tx(t, "storefront.checkout.wallet.applied", "Detrazione wallet")}
+              </span>
+              <span className="font-black text-emerald-800">
+                -{formatMoney(walletAppliedAmount, locale)}
+              </span>
+            </div>
+            <div className="mt-2 flex items-center justify-between gap-3 border-t border-emerald-100 pt-2">
+              <span className="font-bold">
+                {tx(t, "storefront.checkout.wallet.payable", "Importo da pagare")}
+              </span>
+              <span className="text-lg font-black">{formatMoney(payableAmount, locale)}</span>
+            </div>
+          </>
+        ) : null}
       </div>
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
         <Button asChild className="bg-emerald-700 hover:bg-emerald-700">
@@ -1782,6 +1936,11 @@ function CheckoutSuccessDialog({
   const order = state.order;
   const totalQuantity = order.lines.reduce((total, line) => total + line.quantity, 0);
   const orderReference = order.orderNo ?? order.id;
+  const walletAppliedAmount = Math.max(0, order.walletAppliedAmount ?? 0);
+  const payableAmount = Math.max(
+    0,
+    order.payableAmount ?? Number(order.totals.total.amount) - walletAppliedAmount
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -1824,6 +1983,18 @@ function CheckoutSuccessDialog({
               value={formatMoneyDto(order.totals.total, locale)}
             />
           </div>
+          {walletAppliedAmount > 0 ? (
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <SuccessMetric
+                label={tx(t, "storefront.checkout.wallet.applied", "Detrazione wallet")}
+                value={`-${formatMoney(walletAppliedAmount, locale)}`}
+              />
+              <SuccessMetric
+                label={tx(t, "storefront.checkout.wallet.payable", "Importo da pagare")}
+                value={formatMoney(payableAmount, locale)}
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="grid gap-2 bg-slate-50 p-3 sm:grid-cols-3">
@@ -1854,24 +2025,54 @@ function SuccessMetric({ label, value }: { label: string; value: string }) {
 }
 
 function CheckoutMobileBar({
+  amountMessage,
+  amountStatus,
   canSubmit,
   disabledReason,
   lineCount,
   onSubmit,
+  payableAmount,
   state,
   totals,
+  walletAppliedAmount,
 }: {
+  amountMessage?: string;
+  amountStatus: CheckoutAmountStatus;
   canSubmit: boolean;
   disabledReason?: string;
   lineCount: number;
   onSubmit: () => void;
+  payableAmount?: number;
   state: SubmitState;
   totals: CartTotals;
+  walletAppliedAmount?: number;
 }) {
   const t = useT();
   const { locale } = useI18n();
   const [expanded, setExpanded] = React.useState(false);
   const summaryId = React.useId();
+  const effectiveWalletApplied = Math.max(0, walletAppliedAmount ?? 0);
+  const effectivePayable = Math.max(0, payableAmount ?? totals.total - effectiveWalletApplied);
+  const amountPending = amountStatus === "loading";
+  const amountStale = amountStatus === "stale";
+  const hasWalletApplied = !amountPending && effectiveWalletApplied > 0;
+  const amountLabel =
+    amountPending
+      ? tx(t, "storefront.checkout.amountCalculating", "订单校验中 / Verifica ordine...")
+      : hasWalletApplied
+        ? tx(t, "storefront.checkout.wallet.payable", "Importo da pagare")
+        : amountStale
+          ? tx(t, "storefront.cart.amountNeedsReview", "金额待确认 / Totale da confermare")
+          : tx(t, "storefront.common.total", "Totale");
+  const amountStatusMessage =
+    amountMessage ??
+    (amountPending
+      ? tx(t, "storefront.checkout.preview.loading", "Controllo prezzi, scorte e MOQ in corso.")
+      : amountStale
+        ? tx(t, "storefront.checkout.preview.error", "Impossibile aggiornare i controlli ordine.")
+        : undefined);
+  const mobileStatusMessage =
+    state.status === "error" ? state.message : disabledReason ?? amountStatusMessage;
 
   if (state.status === "success") {
     return null;
@@ -1879,17 +2080,49 @@ function CheckoutMobileBar({
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 shadow-[0_-18px_40px_rgba(15,23,42,0.12)] backdrop-blur lg:hidden">
+      {!expanded && state.status === "error" && (
+        <div className="border-b border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold leading-5 text-red-700">
+          {state.message}
+        </div>
+      )}
       {expanded && (
         <div id={summaryId} className="space-y-2 border-b border-slate-200 px-3 py-2">
           <CompactSummaryLine label={tx(t, "storefront.cart.rows", "Articoli")} value={String(lineCount)} />
-          <CompactSummaryLine label={tx(t, "storefront.common.subtotal", "Subtotale")} value={formatMoney(totals.subtotal, locale)} />
+          <CompactSummaryLine
+            label={tx(t, "storefront.common.subtotal", "Subtotale")}
+            value={amountPending ? tx(t, "storefront.common.loading", "Caricamento") : formatMoney(totals.subtotal, locale)}
+          />
           <CompactSummaryLine
             label={tx(t, "storefront.common.shipping", "Spedizione")}
-            value={totals.shipping === 0 ? tx(t, "storefront.common.free", "Gratis") : formatMoney(totals.shipping, locale)}
+            value={
+              amountPending
+                ? tx(t, "storefront.common.loading", "Caricamento")
+                : totals.shipping === 0
+                  ? tx(t, "storefront.common.free", "Gratis")
+                  : formatMoney(totals.shipping, locale)
+            }
           />
-          {disabledReason && (
-            <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs font-semibold leading-5 text-amber-900">
-              {disabledReason}
+          {hasWalletApplied ? (
+            <>
+              <CompactSummaryLine label={tx(t, "storefront.common.total", "Totale")} value={formatMoney(totals.total, locale)} />
+              <CompactSummaryLine
+                label={tx(t, "storefront.checkout.wallet.applied", "Detrazione wallet")}
+                value={`-${formatMoney(effectiveWalletApplied, locale)}`}
+              />
+            </>
+          ) : null}
+          {mobileStatusMessage && (
+            <div
+              className={cn(
+                "rounded-md border p-2 text-xs font-semibold leading-5",
+                state.status === "error" || amountStale
+                  ? "border-red-200 bg-red-50 text-red-700"
+                  : amountPending
+                    ? "border-blue-200 bg-blue-50 text-blue-950"
+                    : "border-amber-200 bg-amber-50 text-amber-900"
+              )}
+            >
+              {mobileStatusMessage}
             </div>
           )}
         </div>
@@ -1903,10 +2136,21 @@ function CheckoutMobileBar({
           onClick={() => setExpanded((current) => !current)}
         >
           <div className="truncate text-[10px] font-bold uppercase tracking-normal text-slate-500">
-            {tx(t, "storefront.common.total", "Totale")}
+            {amountLabel}
           </div>
           <div className="flex min-w-0 items-center gap-1 text-lg font-black" aria-live="polite">
-            <span className="truncate">{formatMoney(totals.total, locale)}</span>
+            {amountPending ? (
+              <>
+                <span className="h-5 w-24 animate-pulse rounded bg-slate-200" />
+                <span className="text-xs font-bold text-slate-500">
+                  {tx(t, "storefront.common.loading", "Caricamento")}
+                </span>
+              </>
+            ) : (
+              <span className="truncate">
+                {formatMoney(hasWalletApplied ? effectivePayable : totals.total, locale)}
+              </span>
+            )}
             {expanded ? (
               <ChevronDown className="size-4 shrink-0 text-slate-500" />
             ) : (
@@ -1921,6 +2165,8 @@ function CheckoutMobileBar({
           onClick={onSubmit}
         >
           {state.status === "loading" ? (
+            <Loader2 className="size-4 shrink-0 animate-spin" />
+          ) : amountPending ? (
             <Loader2 className="size-4 shrink-0 animate-spin" />
           ) : (
             <Send className="size-4 shrink-0" />
@@ -1952,13 +2198,17 @@ function CompactSummaryLine({
 function buildCheckoutSyncState({
   cartHydrated,
   catalogResolutionPending,
+  previewQueued,
   preview,
+  remoteCartLoading,
   submitState,
   t,
 }: {
   cartHydrated: boolean;
   catalogResolutionPending: boolean;
+  previewQueued: boolean;
   preview: PreviewState;
+  remoteCartLoading: boolean;
   submitState: SubmitState;
   t: StorefrontTranslator;
 }): CheckoutSyncState {
@@ -1970,7 +2220,7 @@ function buildCheckoutSyncState({
     };
   }
 
-  if (preview.status === "loading") {
+  if (previewQueued || preview.status === "loading") {
     return {
       kind: "preview",
       title: tx(t, "storefront.checkout.sync.previewTitle", "订单校验中 / Verifica ordine..."),
@@ -1983,6 +2233,14 @@ function buildCheckoutSyncState({
       kind: "catalog",
       title: tx(t, "storefront.checkout.sync.catalogTitle", "正在同步客户价格 / Sincronizzazione prezzi cliente..."),
       message: tx(t, "storefront.checkout.loadingTargetPrices", "Caricamento prezzi cliente per gli articoli del carrello."),
+    };
+  }
+
+  if (remoteCartLoading) {
+    return {
+      kind: "remote-cart",
+      title: tx(t, "storefront.checkout.sync.remoteCartTitle", "正在同步购物车 / Sincronizzazione carrello..."),
+      message: tx(t, "storefront.checkout.sync.remoteCartMessage", "正在读取当前账号的购物车，金额和订单校验完成前无法提交。"),
     };
   }
 
@@ -2195,6 +2453,7 @@ function initialFormState(): CheckoutFormState {
     deliveryMethod: defaultDeliveryMethod,
     notes: "",
     paymentMethod: "bank_transfer",
+    useWallet: false,
   };
 }
 
@@ -2555,6 +2814,8 @@ function friendlyCheckoutError(
     case "ORDER_CUSTOMER_NOT_READY":
     case "CUSTOMER_PROFILE_INCOMPLETE":
       return tx(t, "storefront.checkout.error.customerNotReady", "Il profilo cliente deve essere completato prima dell'ordine.");
+    case "ORDER_PREVIEW_CATALOG_UNAVAILABLE":
+      return tx(t, "storefront.checkout.error.catalogUnavailable", "客户价目表暂时无法加载，请稍后重试。");
     case "PRICE_ACCESS_REQUIRED":
       return tx(t, "storefront.checkout.error.priceAccess", "Il listino cliente non e ancora abilitato.");
     case "LOGIN_REQUIRED":
@@ -2575,4 +2836,10 @@ function formatMoneyDto(value: MoneyDto, locale: string) {
     style: "currency",
     currency: value.currency,
   }).format(Number(value.amount));
+}
+
+function moneyDtoToNumber(value: MoneyDto | undefined) {
+  const amount = value ? Number(value.amount) : Number.NaN;
+
+  return Number.isFinite(amount) ? amount : undefined;
 }

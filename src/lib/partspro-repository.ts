@@ -2469,6 +2469,17 @@ export async function getCurrentCustomerWallet(): Promise<RepositoryResult<Custo
   );
 }
 
+export async function getCustomerWalletById(
+  customerId: string
+): Promise<RepositoryResult<CustomerWallet>> {
+  const context = await requireSupabaseContext();
+
+  return {
+    data: await readCustomerWallet(context.client, customerId),
+    source: "supabase",
+  };
+}
+
 export async function getCurrentEmployeeSelfCompany(): Promise<
   RepositoryResult<CompanyProfile | null>
 > {

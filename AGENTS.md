@@ -25,6 +25,41 @@ This version has breaking changes — APIs, conventions, and file structure may 
 6. 不在浏览器端暴露 `SUPABASE_SERVICE_ROLE_KEY`、secret key 或任何非 `NEXT_PUBLIC_` 的敏感变量。
 7. Vercel 发布和 Supabase migration 应用是两个独立动作，不能自动绑在一起。
 
+## 老板派单入口
+
+老板可以把任务写成一句业务目标，但代理接手后必须先把它整理成可执行任务卡。长期任务和跨部门任务统一放入 `docs/tasks/`：
+
+- `docs/tasks/urgent/`：P0/P1，生产、付款、订单、库存、权限、数据安全等必须优先处理的问题。
+- `docs/tasks/now/`：当前正在推进的任务。
+- `docs/tasks/backlog/`：已确认但暂不执行的计划。
+- `docs/tasks/done/`：已完成并可追溯验收结果的任务。
+
+任务文件命名使用 `P1-YYYY-MM-DD-short-slug.md`，不要使用 `4.md`、`4.mad` 这类无语义文件名。每个任务至少写清楚：目标、业务影响、主责部门、协作部门、涉及页面/API/表、验收标准、禁止事项和验证命令。
+
+## AI 部门路由
+
+当任务需要 AI 员工分工时，先指定一个主责部门，再按风险加上工程守门代理。业务部门 profile 位于 `docs/agents/`：
+
+- 总调度/项目经理：拆任务、定优先级、分派部门、维护 `docs/tasks/` 状态。
+- 商品目录部：商品建档、SKU、分类、图片、上下架和商品资料质量。
+- 价格与客户部：客户等级、零售/批发、客户资料、价格展示和客户权限。
+- 订单运营部：购物车、checkout、订单、付款、钱包退款和客户订单体验。
+- 仓库库存部：库存、锁货、出入库、库存动作、缺货和 RMA 回补。
+- 采购到货部：供应商、批次、发票/装箱单、Mobilax/UTOPYA 导入和补图清单。
+- 电商渠道部：eBay 连接、刊登、价格库存同步、队列和订单回流。
+- 平台发布部：Next.js、Supabase、Vercel、环境变量、构建和上线 smoke test。
+- 文档审计部：README、AGENTS、runbook、历史计划和交接记录。
+
+业务部门负责目标、业务规则和验收；工程守门代理负责技术边界、安全门和验证。
+
+## Skill 使用规则
+
+- 涉及 PartsPro 全链路审计、业务契约、价格、订单、库存、客户、RMA 或前后端字段一致性时，优先使用可用的 `partspro-fullstack-audit` skill 做只读扫描或检查清单。
+- 涉及 Supabase、RLS、migration、RPC、Storage、Auth 或数据库权限时，必须遵守 Supabase 相关 skill/文档和本文件的 migration 安全门。
+- 涉及 Next.js 16 App Router、Route Handlers、Server Actions、metadata、缓存或 config 时，必须先读 `node_modules/next/dist/docs/` 中对应主题。
+- 涉及 Vercel 部署、日志、env 或域名时，使用 Vercel 相关能力前必须确认是否依赖已应用 migration。
+- 项目文档只声明 skill 使用规则，不把个人本机 `.codex/skills` 当成仓库依赖；如果某个 skill 不可用，代理必须说明降级方案。
+
 ## 子代理路由
 
 当任务复杂、可并行或用户明确要求子代理时，按下面角色拆分。独立 profile 位于 `docs/agents/`。
@@ -37,6 +72,16 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - 供应商到货导入代理：遵守 `docs/PartsPro 到货导入声明规则.md`，先只读预检，再确认导入声明，再写库。
 - Vercel 发布代理：负责 build、env、deployment readiness、部署验证；不负责自动应用 migration。
 - 文档账本代理：维护 README、AGENTS、schema 状态说明、runbook 和历史声明，避免过期 pending 信息误导。
+
+## 跨部门协作规则
+
+- 一个任务只能有一个主责部门，但可以有多个协作部门和守门代理。
+- 价格、订单、库存、权限、客户资料和支付相关任务，必须由 PartsPro 业务契约代理参与验收。
+- 新增或修改 `supabase/migrations/*.sql` 时，必须由 Supabase Migration 守门代理收尾；涉及 policy/grant/RLS 时还必须加入 Supabase RLS/权限代理。
+- 修改 `src/app/**`、Route Handler、Server Action、缓存或 Next config 时，必须加入 Next.js 16 App Router 代理。
+- 修改 storefront/admin UI 或 i18n 文案时，必须加入前端体验代理。
+- 发布、回滚、线上 smoke test 或 Vercel env 变更必须加入 Vercel 发布代理，且不得自动代替数据库 migration。
+- 文档与当前代码、migration 或线上状态冲突时，由文档账本代理修正，不保留误导性 pending 描述。
 
 ## Supabase Migration 安全门
 
