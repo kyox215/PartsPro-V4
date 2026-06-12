@@ -813,6 +813,15 @@ export const storefrontItIT = {
   "storefront.home.hero.visualText":
     "SKU, stock, MOQ e compatibilità sono pensati per acquisti ricorrenti.",
   "storefront.home.hero.visualTitle": "Catalogo operativo, non vetrina statica",
+  "storefront.home.cuttingPoster.action": "Sfoglia catalogo",
+  "storefront.home.cuttingPoster.alt": "Poster macchina intelligente per taglio pellicole",
+  "storefront.home.cuttingPoster.badge": "New Generation",
+  "storefront.home.cuttingPoster.database": "2W+ database",
+  "storefront.home.cuttingPoster.description":
+    "Taglio personalizzato per pellicole frontali e posteriori, smartwatch, tablet e altri dispositivi elettronici.",
+  "storefront.home.cuttingPoster.screen": "Schermo grande",
+  "storefront.home.cuttingPoster.system": "Sistema smart",
+  "storefront.home.cuttingPoster.title": "Intelligent Film Cutting Machine",
   "storefront.home.hot.empty":
     "Non ci sono ancora vendite recenti. Sfoglia il catalogo disponibile.",
   "storefront.home.hot.eyebrow": "Vendite recenti",
@@ -1636,6 +1645,15 @@ export const storefrontZhCN = {
   "storefront.home.hero.title": "面向维修店和经销商的手机配件供货",
   "storefront.home.hero.visualText": "SKU、库存、起订量和兼容性信息都围绕高频补货采购设计。",
   "storefront.home.hero.visualTitle": "可操作目录，不是静态展示页",
+  "storefront.home.cuttingPoster.action": "浏览目录",
+  "storefront.home.cuttingPoster.alt": "智能贴膜切割机海报",
+  "storefront.home.cuttingPoster.badge": "New Generation",
+  "storefront.home.cuttingPoster.database": "2W+ 数据库",
+  "storefront.home.cuttingPoster.description":
+    "支持手机前膜、后膜、智能手表、平板和其他电子设备保护膜的定制切割。",
+  "storefront.home.cuttingPoster.screen": "大屏操作",
+  "storefront.home.cuttingPoster.system": "智能系统",
+  "storefront.home.cuttingPoster.title": "智能贴膜切割机",
   "storefront.home.hot.empty": "最近还没有热卖数据。你可以先查看当前有货商品。",
   "storefront.home.hot.eyebrow": "近期销量",
   "storefront.home.hot.title": "热卖产品",

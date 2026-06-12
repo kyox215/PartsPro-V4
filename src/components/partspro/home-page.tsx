@@ -196,33 +196,10 @@ function HomeBannerCarousel({
 
   if (!hasBanners) {
     return (
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
-        <div className="grid aspect-[4/1] min-h-[96px] place-items-center bg-[linear-gradient(135deg,#eef4ff,#ffffff_55%,#f1f5f9)] px-4 text-center">
-          <div className="min-w-0">
-            <Badge className="border border-primary/15 bg-primary/8 text-primary shadow-sm">
-              {tx(t, "storefront.home.shelves.badge", "Catalogo prodotti")}
-            </Badge>
-            <h1 className="mt-2 text-lg font-black tracking-normal text-slate-950 sm:text-2xl">
-              {tx(t, "storefront.home.shelves.title", "Prodotti pronti per l'acquisto")}
-            </h1>
-            <div className="mt-2 flex min-w-0 flex-wrap justify-center gap-2 text-xs font-bold text-slate-500">
-              <span>{catalogTotal.toLocaleString()} SKU</span>
-              <span>{modelGroupCount || "8+"} brand</span>
-              <span>24/48h Italia</span>
-            </div>
-            <Button asChild className="mt-3 h-8 px-3 shadow-sm shadow-primary/15">
-              <Link href="/catalogo">
-                {tx(t, "storefront.home.hero.browseCatalog", "Sfoglia catalogo")}
-                <RoutePendingIndicator
-                  className="size-3.5 text-primary-foreground"
-                  label={tx(t, "storefront.navigation.loadingCatalog", "Caricamento catalogo...")}
-                />
-                <ArrowRight className="size-4" />
-              </Link>
-            </Button>
-          </div>
-        </div>
-      </section>
+      <CuttingMachinePoster
+        catalogTotal={catalogTotal}
+        modelGroupCount={modelGroupCount}
+      />
     );
   }
 
@@ -299,6 +276,82 @@ function HomeBannerCarousel({
           </div>
         </>
       )}
+    </section>
+  );
+}
+
+function CuttingMachinePoster({
+  catalogTotal,
+  modelGroupCount,
+}: {
+  catalogTotal: number;
+  modelGroupCount: number;
+}) {
+  const t = useT();
+  const stats = [
+    tx(t, "storefront.home.cuttingPoster.database", "2W+ database"),
+    tx(t, "storefront.home.cuttingPoster.screen", "Big screen"),
+    tx(t, "storefront.home.cuttingPoster.system", "Smart system"),
+  ];
+
+  return (
+    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
+      <div className="grid min-h-[270px] bg-[#f7f4ef] md:min-h-[300px] lg:min-h-[340px] lg:grid-cols-[minmax(0,0.9fr)_minmax(320px,1.1fr)]">
+        <div className="relative z-10 flex min-w-0 flex-col justify-center px-4 py-5 text-center sm:px-6 md:text-left lg:px-8">
+          <Badge className="mx-auto w-fit border border-primary/15 bg-primary text-primary-foreground shadow-sm md:mx-0">
+            {tx(t, "storefront.home.cuttingPoster.badge", "New Generation")}
+          </Badge>
+          <h1 className="mt-3 max-w-xl text-2xl font-black leading-tight tracking-normal text-slate-950 sm:text-3xl lg:text-4xl">
+            {tx(t, "storefront.home.cuttingPoster.title", "Intelligent Film Cutting Machine")}
+          </h1>
+          <p className="mt-3 max-w-xl text-sm font-semibold leading-6 text-slate-600 sm:text-base">
+            {tx(
+              t,
+              "storefront.home.cuttingPoster.description",
+              "Custom cutting for phone front and back films, smart watches, tablets and other electronic devices."
+            )}
+          </p>
+          <div className="mt-4 flex min-w-0 flex-wrap justify-center gap-2 text-xs font-black text-slate-600 md:justify-start">
+            {stats.map((item) => (
+              <span
+                key={item}
+                className="rounded-full border border-white/80 bg-white/75 px-3 py-1.5 shadow-sm"
+              >
+                {item}
+              </span>
+            ))}
+          </div>
+          <div className="mt-4 flex min-w-0 flex-wrap items-center justify-center gap-3 md:justify-start">
+            <Button asChild className="h-9 px-4 shadow-sm shadow-primary/15">
+              <Link href="/catalogo">
+                {tx(t, "storefront.home.cuttingPoster.action", "Browse catalog")}
+                <RoutePendingIndicator
+                  className="size-3.5 text-primary-foreground"
+                  label={tx(t, "storefront.navigation.loadingCatalog", "Caricamento catalogo...")}
+                />
+                <ArrowRight className="size-4" />
+              </Link>
+            </Button>
+            <div className="text-xs font-bold text-slate-500">
+              {catalogTotal.toLocaleString()} SKU · {modelGroupCount || "8+"} brand
+            </div>
+          </div>
+        </div>
+        <div className="relative min-h-[170px] overflow-hidden border-t border-white/80 bg-[#efe8de] md:min-h-[220px] lg:min-h-0 lg:border-l lg:border-t-0">
+          <Image
+            alt={tx(
+              t,
+              "storefront.home.cuttingPoster.alt",
+              "Intelligent film cutting machine poster"
+            )}
+            className="object-cover object-[center_68%]"
+            fill
+            priority
+            sizes="(min-width: 1024px) 640px, 100vw"
+            src="/home/film-cutting-machine-poster.jpg"
+          />
+        </div>
+      </div>
     </section>
   );
 }
