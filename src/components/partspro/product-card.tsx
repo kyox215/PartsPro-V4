@@ -314,8 +314,8 @@ export const ProductCard = memo(function ProductCard({
               <div className="min-w-0">
                 {showWholesalePrice ? (
                   <>
-                    <div className="flex min-w-0 items-center gap-1.5">
-                      <div className="truncate text-sm font-black sm:text-base">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                      <div className="shrink-0 whitespace-nowrap text-sm font-black sm:text-base">
                         {hasEffectivePrice
                           ? formatEuro(product.price)
                           : tx(
@@ -325,13 +325,13 @@ export const ProductCard = memo(function ProductCard({
                           )}
                       </div>
                       {priceDisplay.hasDiscount ? (
-                        <Badge className="shrink-0 border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-black text-emerald-700">
+                        <Badge className="max-w-full shrink border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-black text-emerald-700">
                           {formatPriceDiscountBadge(priceDisplay, t)}
                         </Badge>
                       ) : null}
                       {isReviewPriceVisible ? (
                         <Badge
-                          className="shrink-0 border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-black text-amber-800"
+                          className="max-w-full shrink border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-black text-amber-800"
                           title={tx(
                             t,
                             "storefront.product.card.reviewBadgeTitle",
@@ -343,7 +343,7 @@ export const ProductCard = memo(function ProductCard({
                       ) : null}
                     </div>
                     {priceDisplay.hasDiscount && priceDisplay.basePrice ? (
-                      <div className="truncate text-[10px] font-semibold text-slate-400 line-through sm:text-xs">
+                      <div className="mt-0.5 text-[10px] font-semibold leading-3 text-slate-400 line-through sm:text-xs sm:leading-4">
                         {tx(t, "storefront.product.card.basePrice", "Prezzo base")} {formatEuro(priceDisplay.basePrice)}
                       </div>
                     ) : null}
