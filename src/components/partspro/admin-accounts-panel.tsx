@@ -271,7 +271,15 @@ type CurrentUser = {
   userId: string | null;
 };
 
+type AdminAccountsPanelProps = {
+  initialPermissions?: readonly string[];
+  initialUserId?: string | null;
+  permissionsLoaded?: boolean;
+};
+
 const accountDetailInlineMediaQuery = "(min-width: 1280px)";
+const adminAccountReadTimeoutMs = 8000;
+const adminAccountAuxiliaryReadTimeoutMs = 6000;
 const pageSize = 12;
 const customerLevels = [
   "bronze",
@@ -291,17 +299,25 @@ function useAdminText() {
   return getAdminDictionary(locale).admin;
 }
 
-export function AdminAccountsPanel() {
+export function AdminAccountsPanel({
+  initialPermissions,
+  initialUserId = null,
+  permissionsLoaded: externalPermissionsLoaded = false,
+}: AdminAccountsPanelProps = {}) {
   const text = useAdminText();
+  const hasExternalPermissions = initialPermissions !== undefined;
   const [accountType, setAccountType] = React.useState<AccountType>("customer");
   const [accounts, setAccounts] = React.useState<Account[]>([]);
   const [detail, setDetail] = React.useState<AccountDetail | null>(null);
   const [detailOpen, setDetailOpen] = React.useState(false);
   const [usesInlineDetailPane, setUsesInlineDetailPane] = React.useState(false);
   const [roleTemplates, setRoleTemplates] = React.useState<RoleTemplate[]>([]);
-  const [currentUserId, setCurrentUserId] = React.useState<string | null>(null);
-  const [currentPermissions, setCurrentPermissions] = React.useState<string[]>([]);
-  const [permissionsLoaded, setPermissionsLoaded] = React.useState(false);
+  const [fetchedCurrentUserId, setFetchedCurrentUserId] =
+    React.useState<string | null>(null);
+  const [fetchedCurrentPermissions, setFetchedCurrentPermissions] =
+    React.useState<string[]>([]);
+  const [fetchedPermissionsLoaded, setFetchedPermissionsLoaded] =
+    React.useState(false);
   const [query, setQuery] = React.useState("");
   const [appliedQuery, setAppliedQuery] = React.useState("");
   const [page, setPage] = React.useState(0);
@@ -324,6 +340,17 @@ export function AdminAccountsPanel() {
   const detailLoadedIncludesRef = React.useRef(new Map<string, Set<AccountDetailInclude>>());
   const detailEpochRef = React.useRef(0);
   const detailAbortRef = React.useRef<AbortController | null>(null);
+  const currentUserId = hasExternalPermissions ? initialUserId : fetchedCurrentUserId;
+  const currentPermissions = React.useMemo(
+    () =>
+      hasExternalPermissions
+        ? [...(initialPermissions ?? [])]
+        : fetchedCurrentPermissions,
+    [fetchedCurrentPermissions, hasExternalPermissions, initialPermissions]
+  );
+  const permissionsLoaded = hasExternalPermissions
+    ? externalPermissionsLoaded
+    : fetchedPermissionsLoaded;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const currentPermissionSet = React.useMemo(
     () => new Set(currentPermissions),
@@ -414,6 +441,10 @@ export function AdminAccountsPanel() {
   React.useEffect(() => () => detailAbortRef.current?.abort(), []);
 
   React.useEffect(() => {
+    if (hasExternalPermissions) {
+      return;
+    }
+
     const controller = new AbortController();
 
     void fetchCurrentUser(controller.signal)
@@ -422,38 +453,44 @@ export function AdminAccountsPanel() {
           return;
         }
 
-        const canReadEmployees =
-          me.permissions.includes("employees.read") ||
-          me.permissions.includes("employees.manage_permissions");
-
-        setCurrentUserId(me.userId);
-        setCurrentPermissions(me.permissions);
-        setPermissionsLoaded(true);
-
-        if (canReadEmployees) {
-          void fetchRoleTemplates(controller.signal)
-            .then((templates) => {
-              if (!controller.signal.aborted) {
-                setRoleTemplates(templates);
-              }
-            })
-            .catch(() => {
-              if (!controller.signal.aborted) {
-                setRoleTemplates([]);
-              }
-            });
-        } else {
-          setRoleTemplates([]);
-        }
+        setFetchedCurrentUserId(me.userId);
+        setFetchedCurrentPermissions(me.permissions);
+        setFetchedPermissionsLoaded(true);
       })
       .catch(() => {
         if (!controller.signal.aborted) {
-          setPermissionsLoaded(true);
+          setFetchedPermissionsLoaded(true);
         }
       });
 
     return () => controller.abort();
-  }, []);
+  }, [hasExternalPermissions]);
+
+  React.useEffect(() => {
+    if (!permissionsLoaded || !canReadEmployeeAccounts) {
+      const timeoutId = window.setTimeout(() => {
+        setRoleTemplates([]);
+      }, 0);
+
+      return () => window.clearTimeout(timeoutId);
+    }
+
+    const controller = new AbortController();
+
+    void fetchRoleTemplates(controller.signal)
+      .then((templates) => {
+        if (!controller.signal.aborted) {
+          setRoleTemplates(templates);
+        }
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          setRoleTemplates([]);
+        }
+      });
+
+    return () => controller.abort();
+  }, [canReadEmployeeAccounts, permissionsLoaded]);
 
   React.useEffect(() => {
     if (!permissionsLoaded || canReadSelectedAccountType) {
@@ -864,7 +901,9 @@ export function AdminAccountsPanel() {
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-lg font-black tracking-normal text-slate-950">账号工作台</h3>
             <Badge className="border-slate-200 bg-slate-50 text-slate-600" variant="outline">
-              {total} 个账号
+              {!permissionsLoaded || (loading && accounts.length === 0)
+                ? "加载中"
+                : `${total} 个账号`}
             </Badge>
             <Badge className="border-blue-200 bg-blue-50 text-blue-700" variant="outline">
               {accountType === "employee" ? "员工账号" : "客户账号"}
@@ -2470,12 +2509,58 @@ function ProfileEditorInput({
   );
 }
 
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit & { timeoutMs?: number } = {}
+) {
+  const { signal, timeoutMs = adminAccountReadTimeoutMs, ...requestInit } = init;
+  const controller = new AbortController();
+  let timedOut = false;
+
+  function abortFromParent() {
+    controller.abort(signal?.reason);
+  }
+
+  if (signal?.aborted) {
+    abortFromParent();
+  } else {
+    signal?.addEventListener("abort", abortFromParent, { once: true });
+  }
+
+  const timeoutId = window.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(input, {
+      ...requestInit,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (timedOut) {
+      throw new Error("账号数据加载超时，请检查网络后重试。");
+    }
+
+    throw error;
+  } finally {
+    window.clearTimeout(timeoutId);
+    signal?.removeEventListener("abort", abortFromParent);
+  }
+}
+
 async function fetchCurrentUser(signal?: AbortSignal): Promise<CurrentUser> {
-  const response = await fetch("/api/me", {
+  const response = await fetchWithTimeout("/api/me", {
     cache: "no-store",
     headers: { Accept: "application/json" },
     signal,
+    timeoutMs: adminAccountAuxiliaryReadTimeoutMs,
   });
+
+  if (!response.ok) {
+    throw new Error(`GET /api/me 返回 ${response.status}`);
+  }
+
   const payload = (await response.json()) as unknown;
 
   return {
@@ -2487,10 +2572,11 @@ async function fetchCurrentUser(signal?: AbortSignal): Promise<CurrentUser> {
 }
 
 async function fetchRoleTemplates(signal?: AbortSignal): Promise<RoleTemplate[]> {
-  const response = await fetch("/api/admin/permissions/catalog", {
+  const response = await fetchWithTimeout("/api/admin/permissions/catalog", {
     cache: "no-store",
     headers: { Accept: "application/json" },
     signal,
+    timeoutMs: adminAccountAuxiliaryReadTimeoutMs,
   });
 
   if (!response.ok) {
@@ -2531,10 +2617,11 @@ async function fetchAccounts(
     params.set("q", query.trim());
   }
 
-  const response = await fetch(`/api/admin/accounts?${params.toString()}`, {
+  const response = await fetchWithTimeout(`/api/admin/accounts?${params.toString()}`, {
     cache: "no-store",
     headers: { Accept: "application/json" },
     signal,
+    timeoutMs: adminAccountReadTimeoutMs,
   });
 
   if (!response.ok) {
@@ -2569,10 +2656,11 @@ async function fetchAccountDetail(
   }
 
   const query = params.toString();
-  const response = await fetch(`/api/admin/accounts/${encodeURIComponent(userId)}${query ? `?${query}` : ""}`, {
+  const response = await fetchWithTimeout(`/api/admin/accounts/${encodeURIComponent(userId)}${query ? `?${query}` : ""}`, {
     cache: "no-store",
     headers: { Accept: "application/json" },
     signal,
+    timeoutMs: adminAccountReadTimeoutMs,
   });
 
   if (!response.ok) {
@@ -2908,11 +2996,22 @@ function NoticeBanner({
 
 function AccountListSkeleton() {
   return (
-    <>
+    <div className="space-y-2">
+      <LoadingText text="正在加载账号..." />
       {Array.from({ length: 5 }).map((_, index) => (
-        <div key={index} className="h-[76px] animate-pulse rounded-md bg-white" />
+        <div
+          key={index}
+          className="grid h-[76px] animate-pulse grid-cols-[minmax(0,1fr)_68px] gap-3 rounded-md border border-slate-200 bg-white p-2"
+        >
+          <div className="min-w-0 space-y-2">
+            <div className="h-4 w-2/3 rounded bg-slate-200" />
+            <div className="h-3 w-5/6 rounded bg-slate-100" />
+            <div className="h-5 w-24 rounded-full bg-slate-100" />
+          </div>
+          <div className="h-7 rounded bg-slate-100" />
+        </div>
       ))}
-    </>
+    </div>
   );
 }
 

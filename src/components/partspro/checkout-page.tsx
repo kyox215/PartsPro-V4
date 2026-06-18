@@ -4,8 +4,10 @@ import { getRequestI18n } from "@/i18n/request";
 import {
   canDelegateCheckout,
   getCurrentAccountContext,
+  priceVisibilityReason,
   type AccountContext,
 } from "@/lib/partspro-account-context";
+import { getAccountGateCopy } from "@/lib/partspro-account-gate-copy";
 import { type CompanyProfile } from "@/lib/partspro-data";
 import { toStoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import {
@@ -89,12 +91,16 @@ function getCheckoutRuntime(
   }
 
   if (account.customer && !account.canViewPrices) {
+    const accountGateCopy = getAccountGateCopy(t, priceVisibilityReason(account));
+
     return {
       mode: "needs-profile",
       canSubmit: false,
-      title: tx(t, "storefront.checkout.runtime.priceAccessTitle", "Dati cliente da completare"),
-      description: tx(t, "storefront.checkout.runtime.priceAccessDescription", "Completa il profilo cliente per vedere il prezzo retail e confermare l'ordine. Il prezzo wholesale resta riservato agli account approvati."),
-      disabledReason: tx(t, "storefront.checkout.runtime.priceAccessReason", "Checkout disabilitato: completa il profilo cliente prima di ordinare."),
+      actionHref: accountGateCopy.actionHref ?? undefined,
+      actionLabel: accountGateCopy.actionLabel ?? undefined,
+      title: accountGateCopy.title,
+      description: accountGateCopy.description,
+      disabledReason: accountGateCopy.cardDescription,
       userEmail: account.email ?? undefined,
     };
   }
@@ -111,12 +117,16 @@ function getCheckoutRuntime(
   }
 
   if (!account.canCheckout && !delegatedCheckout) {
+    const accountGateCopy = getAccountGateCopy(t, priceVisibilityReason(account));
+
     return {
       mode: "needs-profile",
       canSubmit: false,
-      title: tx(t, "storefront.checkout.runtime.needsProfileTitle", "Dati cliente da completare"),
-      description: tx(t, "storefront.checkout.runtime.needsProfileDescription", "Completa dati fiscali, contatto, fatturazione e spedizione prima di confermare l'ordine."),
-      disabledReason: tx(t, "storefront.checkout.runtime.needsProfileReason", "Checkout disabilitato: completa i dati cliente prima di ordinare."),
+      actionHref: accountGateCopy.actionHref ?? undefined,
+      actionLabel: accountGateCopy.actionLabel ?? undefined,
+      title: accountGateCopy.title,
+      description: accountGateCopy.description,
+      disabledReason: accountGateCopy.cardDescription,
       userEmail: account.email ?? undefined,
     };
   }

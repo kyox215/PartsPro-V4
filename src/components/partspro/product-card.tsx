@@ -9,6 +9,7 @@ import {
   Boxes,
   CheckCircle2,
   Clock,
+  Info,
   Loader2,
   LogIn,
   Lock,
@@ -29,6 +30,10 @@ import { formatEuro } from "@/lib/partspro-data";
 import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
 import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
 import {
+  getAccountGateCopy,
+  isCustomerActionRequiredReason,
+} from "@/lib/partspro-account-gate-copy";
+import {
   formatPriceDiscountBadge,
   getProductPriceDisplay,
 } from "@/lib/partspro-price-display";
@@ -39,6 +44,7 @@ import { addCartItem } from "./cart-state";
 import { useT } from "./i18n-provider";
 import { RoutePendingIndicator } from "./pending-feedback";
 import { PartVisual } from "./part-visual";
+import { AccountGateDialog } from "./account-gate-dialog";
 import {
   ProductCartQuantityControl,
   useProductCartQuantity,
@@ -72,6 +78,7 @@ export const ProductCard = memo(function ProductCard({
 }: ProductCardProps) {
   const t = useT();
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [accountGateOpen, setAccountGateOpen] = useState(false);
   const stockMeta = publicStockLevelMeta(t, product);
   const hasEffectivePrice = product.price > 0;
   const priceDisplay = getProductPriceDisplay(product);
@@ -97,12 +104,20 @@ export const ProductCard = memo(function ProductCard({
   const imageCandidates = useMemo(() => getProductImageCandidates(product), [product]);
   const [failedImageUrls, setFailedImageUrls] = useState<string[]>([]);
   const imageUrl = imageCandidates.find((candidate) => !failedImageUrls.includes(candidate));
-  const hiddenPriceCopy = productPriceGateCopy(t, priceGateReason, product.moq);
+  const hiddenPriceCopy = getAccountGateCopy(t, priceGateReason, {
+    loginNextPath: productPath,
+    moq: product.moq,
+  });
   const disabledCartCopy = productCartDisabledCopy(t, {
     hasEffectivePrice,
     hasOpenPrice,
     hasSellableStock,
   });
+  const canOpenAccountGate =
+    hasSellableStock &&
+    !hasOpenPrice &&
+    !isLoginRequired &&
+    isCustomerActionRequiredReason(priceGateReason);
   const addFailedHint = tx(
     t,
     "storefront.product.card.addFailedHint",
@@ -431,6 +446,27 @@ export const ProductCard = memo(function ProductCard({
                     <RoutePendingIndicator className="size-3 text-primary" />
                   </Link>
                 </Button>
+              ) : canOpenAccountGate ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="size-8 min-w-0 shrink-0 bg-white px-0 text-primary sm:h-8 sm:w-[104px] sm:px-2"
+                  aria-describedby={stockDescriptionId}
+                  aria-label={txFormat(
+                    t,
+                    "storefront.product.card.accountGateAria",
+                    "{name}: apri istruzioni account.",
+                    { name: product.name }
+                  )}
+                  title={hiddenPriceCopy.title}
+                  onClick={() => setAccountGateOpen(true)}
+                >
+                  <Info className="size-3.5 sm:size-4" />
+                  <span className="sr-only min-w-0 truncate sm:not-sr-only sm:max-w-[72px]">
+                    {hiddenPriceCopy.label}
+                  </span>
+                </Button>
               ) : canRequestRestock ? (
                 <ProductRestockReminderButton
                   isAuthenticated={priceGateReason !== "login_required"}
@@ -485,6 +521,16 @@ export const ProductCard = memo(function ProductCard({
           productName={product.name}
         />
       )}
+      {canOpenAccountGate ? (
+        <AccountGateDialog
+          loginNextPath={productPath}
+          moq={product.moq}
+          onOpenChange={setAccountGateOpen}
+          open={accountGateOpen}
+          productName={product.name}
+          reason={priceGateReason}
+        />
+      ) : null}
     </>
   );
 });
@@ -551,85 +597,5 @@ function productCartDisabledCopy(
 
   return {
     label: tx(t, "storefront.product.card.unavailable", "Esaurito"),
-  };
-}
-
-function productPriceGateCopy(
-  t: StorefrontTranslator,
-  reason: PriceVisibilityReason,
-  moq: number
-) {
-  if (reason === "customer_needs_assignment") {
-    return {
-      label: tx(
-        t,
-        "storefront.product.card.accountReviewLabel",
-        "Account in revisione"
-      ),
-      hint: txFormat(
-        t,
-        "storefront.product.card.accountReviewHint",
-        "MOQ {moq} · verifica listino",
-        { moq }
-      ),
-    };
-  }
-
-  if (reason === "wholesale_required") {
-    return {
-      label: tx(
-        t,
-        "storefront.product.card.wholesaleLabel",
-        "Listino da abilitare"
-      ),
-      hint: txFormat(
-        t,
-        "storefront.product.card.wholesaleHint",
-        "MOQ {moq} · verifica cliente",
-        { moq }
-      ),
-    };
-  }
-
-  if (reason === "account_sync_failed" || reason === "customer_profile_required") {
-    return {
-      label: tx(
-        t,
-        "storefront.product.card.profileLabel",
-        "Profilo in preparazione"
-      ),
-      hint: txFormat(
-        t,
-        "storefront.product.card.profileHint",
-        "MOQ {moq} · riprova tra poco",
-        { moq }
-      ),
-    };
-  }
-
-  if (reason === "customer_suspended") {
-    return {
-      label: tx(
-        t,
-        "storefront.product.card.suspendedLabel",
-        "Account sospeso"
-      ),
-      hint: txFormat(
-        t,
-        "storefront.product.card.suspendedHint",
-        "MOQ {moq} · contatta supporto",
-        { moq }
-      ),
-    };
-  }
-
-  return {
-    label: tx(t, "storefront.product.card.loginLabel", "Accedi per prezzo"),
-    hint: txFormat(
-      t,
-      "storefront.product.card.loginHint",
-      "MOQ {moq} · login richiesto",
-      { moq }
-    ),
   };
 }

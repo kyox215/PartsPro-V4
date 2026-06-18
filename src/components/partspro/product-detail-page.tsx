@@ -24,6 +24,7 @@ import { formatEuro, type PartProduct } from "@/lib/partspro-data";
 import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
 import { inferDeviceModelSeries } from "@/lib/partspro-device-series";
 import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
+import { getAccountGateCopy } from "@/lib/partspro-account-gate-copy";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import {
   formatPriceDiscountBadge,
@@ -66,7 +67,10 @@ export async function ProductDetailPage({
     product.stock < minimumQuantity;
   const shouldShowPurchasePanel = canPurchaseProduct || canRequestRestock;
   const productPath = `/prodotto/${encodeURIComponent(product.sku)}`;
-  const hiddenPriceCopy = productDetailPriceGateCopy(t, priceGateReason, productPath);
+  const hiddenPriceCopy = getAccountGateCopy(t, priceGateReason, {
+    loginNextPath: productPath,
+    moq: product.moq,
+  });
   const isReviewPriceVisible =
     showWholesalePrice && priceGateReason === "customer_needs_assignment";
   const primaryModel = product.compatibleWith[0] ?? null;
@@ -292,14 +296,14 @@ export async function ProductDetailPage({
                           {tx(
                             t,
                             "storefront.product.detail.priceVisibleOrderLockedTitle",
-                            "Listino non abilitato all'ordine"
+                            hiddenPriceCopy.cardTitle
                           )}
                         </div>
                         <p className="mt-1 leading-5">
                           {tx(
                             t,
                             "storefront.product.detail.priceVisibleOrderLockedDescription",
-                            "Il prezzo è disponibile per consultazione, ma checkout e carrello richiedono un cliente professionale abilitato."
+                            hiddenPriceCopy.cardDescription
                           )}
                         </p>
                       </div>
@@ -378,157 +382,6 @@ export async function ProductDetailPage({
       </div>
     </main>
   );
-}
-
-function productDetailPriceGateCopy(
-  t: StorefrontTranslator,
-  reason: PriceVisibilityReason,
-  loginNextPath: string
-) {
-  if (reason === "customer_needs_assignment") {
-    return {
-      actionHref: "/account",
-      actionLabel: tx(
-        t,
-        "storefront.product.detail.priceGate.review.actionLabel",
-        "Apri account"
-      ),
-      cardDescription: tx(
-        t,
-        "storefront.product.detail.priceGate.review.cardDescription",
-        "Il tuo account è attivo e può vedere i prezzi. Il team PartsPro completerà la verifica del profilo cliente."
-      ),
-      cardTitle: tx(
-        t,
-        "storefront.product.detail.priceGate.review.cardTitle",
-        "In revisione"
-      ),
-      description: tx(
-        t,
-        "storefront.product.detail.priceGate.review.description",
-        "Account in revisione: il prezzo resta visibile mentre PartsPro completa la verifica del profilo cliente."
-      ),
-      title: tx(t, "storefront.product.detail.priceGate.review.title", "In revisione"),
-    };
-  }
-
-  if (reason === "wholesale_required") {
-    return {
-      actionHref: "/account",
-      actionLabel: tx(
-        t,
-        "storefront.product.detail.priceGate.wholesale.actionLabel",
-        "Apri account"
-      ),
-      cardDescription: tx(
-        t,
-        "storefront.product.detail.priceGate.wholesale.cardDescription",
-        "Questo account non è ancora abilitato al listino cliente. Completa la verifica del profilo."
-      ),
-      cardTitle: tx(
-        t,
-        "storefront.product.detail.priceGate.wholesale.cardTitle",
-        "Listino da abilitare"
-      ),
-      description: tx(
-        t,
-        "storefront.product.detail.priceGate.wholesale.description",
-        "Accesso rilevato: per questo SKU serve un profilo cliente abilitato."
-      ),
-      title: tx(
-        t,
-        "storefront.product.detail.priceGate.wholesale.title",
-        "Prezzi riservati ai clienti abilitati"
-      ),
-    };
-  }
-
-  if (reason === "account_sync_failed" || reason === "customer_profile_required") {
-    return {
-      actionHref: "/account",
-      actionLabel: tx(
-        t,
-        "storefront.product.detail.priceGate.profile.actionLabel",
-        "Apri account"
-      ),
-      cardDescription: tx(
-        t,
-        "storefront.product.detail.priceGate.profile.cardDescription",
-        "La sessione è valida, ma il profilo cliente PartsPro non è ancora collegato correttamente."
-      ),
-      cardTitle: tx(
-        t,
-        "storefront.product.detail.priceGate.profile.cardTitle",
-        "Profilo in preparazione"
-      ),
-      description: tx(
-        t,
-        "storefront.product.detail.priceGate.profile.description",
-        "Accesso rilevato: stiamo preparando il profilo cliente necessario per mostrare il listino."
-      ),
-      title: tx(
-        t,
-        "storefront.product.detail.priceGate.profile.title",
-        "Profilo cliente richiesto"
-      ),
-    };
-  }
-
-  if (reason === "customer_suspended") {
-    return {
-      actionHref: null,
-      actionLabel: null,
-      cardDescription: tx(
-        t,
-        "storefront.product.detail.priceGate.suspended.cardDescription",
-        "Il listino è temporaneamente bloccato per questo account. Contatta il team PartsPro."
-      ),
-      cardTitle: tx(
-        t,
-        "storefront.product.detail.priceGate.suspended.cardTitle",
-        "Account sospeso"
-      ),
-      description: tx(
-        t,
-        "storefront.product.detail.priceGate.suspended.description",
-        "Accesso rilevato, ma il listino non è disponibile per account sospesi."
-      ),
-      title: tx(
-        t,
-        "storefront.product.detail.priceGate.suspended.title",
-        "Listino sospeso"
-      ),
-    };
-  }
-
-  return {
-    actionHref: `/login?${new URLSearchParams({ next: loginNextPath }).toString()}`,
-    actionLabel: tx(
-      t,
-      "storefront.product.detail.priceGate.login.actionLabel",
-      "Accedi"
-    ),
-    cardDescription: tx(
-      t,
-      "storefront.product.detail.priceGate.login.cardDescription",
-      "Accedi con un account cliente per sbloccare prezzo netto, preventivo e invio al carrello."
-    ),
-    cardTitle: tx(
-      t,
-      "storefront.product.detail.priceGate.login.cardTitle",
-      "Prezzo protetto"
-    ),
-    description: tx(
-      t,
-      "storefront.product.detail.priceGate.login.description",
-      "Accedi per vedere prezzo, quantità minime, riduzione livello e condizioni di pagamento."
-    ),
-    title: tx(
-      t,
-      "storefront.product.detail.priceGate.login.title",
-      "Prezzi riservati agli account verificati"
-    ),
-  };
 }
 
 function Spec({ label, value }: { label: string; value: string }) {

@@ -43,6 +43,11 @@ import {
   readAssistedCompanyIdFromSearchParams,
   rememberAssistedCompanyId,
 } from "@/lib/partspro-assisted-order";
+import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
+import {
+  getAccountGateCopy,
+  isCustomerActionRequiredReason,
+} from "@/lib/partspro-account-gate-copy";
 import { type PartProduct } from "@/lib/partspro-data";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import { getProductImageCandidates } from "@/lib/partspro-product-images";
@@ -1019,13 +1024,9 @@ function isLoginRequiredCartRejection(item: CartCatalogRejectedItem) {
 }
 
 function isAccountStatusCartRejection(item: CartCatalogRejectedItem) {
-  return [
-    "account_sync_failed",
-    "customer_needs_assignment",
-    "customer_profile_required",
-    "customer_suspended",
-    "wholesale_required",
-  ].includes(item.reason ?? "");
+  const reason = toPriceVisibilityReason(item.reason);
+
+  return reason ? isCustomerActionRequiredReason(reason) : false;
 }
 
 function isAccountAccessCartRejection(item: CartCatalogRejectedItem) {
@@ -1043,32 +1044,18 @@ function cartRejectedStatusCopy(
     };
   }
 
+  const accountReason = toPriceVisibilityReason(item.reason);
+
+  if (accountReason && isCustomerActionRequiredReason(accountReason)) {
+    const copy = getAccountGateCopy(t, accountReason, { moq: item.moq });
+
+    return {
+      description: copy.description,
+      label: copy.cardTitle,
+    };
+  }
+
   switch (item.reason) {
-    case "account_sync_failed":
-      return {
-        description: tx(t, "storefront.cart.rejectedAccountSyncDescription", "Sessione valida, ma il profilo account non e stato sincronizzato. Aggiorna la pagina o contatta un amministratore."),
-        label: tx(t, "storefront.cart.rejectedAccountSyncLabel", "Sincronizzazione account richiesta"),
-      };
-    case "customer_profile_required":
-      return {
-        description: tx(t, "storefront.cart.rejectedCustomerProfileDescription", "Account riconosciuto, ma il profilo cliente e ancora in collegamento o da completare. Apri il centro personale o contatta un amministratore."),
-        label: tx(t, "storefront.cart.rejectedCustomerProfileLabel", "Profilo cliente da collegare"),
-      };
-    case "customer_needs_assignment":
-      return {
-        description: tx(t, "storefront.cart.rejectedCustomerAssignmentDescription", "Account riconosciuto, ma il listino cliente non e ancora attivo. Chiedi all'amministratore di attivare l'account in gestione account."),
-        label: tx(t, "storefront.cart.rejectedCustomerAssignmentLabel", "Cliente da attivare"),
-      };
-    case "customer_suspended":
-      return {
-        description: tx(t, "storefront.cart.rejectedCustomerSuspendedDescription", "Account riconosciuto, ma il profilo cliente e sospeso. Contatta l'amministratore prima di procedere."),
-        label: tx(t, "storefront.cart.rejectedCustomerSuspendedLabel", "Account cliente sospeso"),
-      };
-    case "wholesale_required":
-      return {
-        description: tx(t, "storefront.cart.rejectedWholesaleRequiredDescription", "Account riconosciuto, ma il listino professionale non e ancora abilitato per questo cliente."),
-        label: tx(t, "storefront.cart.rejectedWholesaleRequiredLabel", "Prezzi professionali da abilitare"),
-      };
     case "loading":
       return {
         description: tx(t, "storefront.cart.rejectedLoadingDescription", "Stiamo recuperando nome, immagine e disponibilita aggiornati per questa riga."),
@@ -1108,6 +1095,22 @@ function cartRejectedStatusCopy(
         description: tx(t, "storefront.cart.rejectedGenericDescription", "Questa riga resta salvata, ma deve essere risolta prima del checkout."),
         label: tx(t, "storefront.cart.rejectedGenericLabel", "Da verificare"),
       };
+  }
+}
+
+function toPriceVisibilityReason(reason: string | undefined): PriceVisibilityReason | null {
+  switch (reason) {
+    case "account_sync_failed":
+    case "customer":
+    case "customer_needs_assignment":
+    case "customer_profile_required":
+    case "customer_suspended":
+    case "employee":
+    case "login_required":
+    case "wholesale_required":
+      return reason;
+    default:
+      return null;
   }
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { AlertTriangle, Grid3X3, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,11 @@ import {
 import { tx, txFormat } from "@/i18n/dictionaries/storefront";
 import { inferDeviceModelSeries } from "@/lib/partspro-device-series";
 import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
+import {
+  getAccountGateCopy,
+  isCustomerActionRequiredReason,
+  type AccountGateCopy,
+} from "@/lib/partspro-account-gate-copy";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import { cn } from "@/lib/utils";
 import { CatalogBrandTree, type CatalogSelection } from "./catalog-brand-tree";
@@ -321,6 +327,10 @@ function CatalogPageContent({
   const catalogReplacing = catalogLoadState === "loading";
   const showCatalogPendingHint = useDelayedVisible(catalogReplacing, 120);
   const showCatalogSkeleton = useDelayedVisible(catalogReplacing, 300);
+  const accountGateCopy =
+    !assistedCompanyId && isCustomerActionRequiredReason(priceGateReason)
+      ? getAccountGateCopy(t, priceGateReason)
+      : null;
 
   function clearAll() {
     setSearchTerm("");
@@ -381,6 +391,7 @@ function CatalogPageContent({
                 : tx(t, "storefront.assistedOrder.catalogBannerGeneric", "Ordine per cliente: prezzi del cliente selezionato")}
             </div>
           ) : null}
+          {accountGateCopy ? <CatalogAccountGateBanner copy={accountGateCopy} /> : null}
           {catalogError ? (
             <CatalogLoadErrorBanner
               loading={catalogLoadState !== "idle"}
@@ -489,6 +500,33 @@ function CatalogPageContent({
         </section>
       </div>
     </main>
+  );
+}
+
+function CatalogAccountGateBanner({ copy }: { copy: AccountGateCopy }) {
+  const t = useT();
+
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-start gap-2">
+        <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-700" />
+        <div className="min-w-0">
+          <div className="font-black">{copy.title}</div>
+          <p className="mt-0.5 text-xs font-semibold leading-5 text-amber-900">
+            {copy.description}
+          </p>
+        </div>
+      </div>
+      {copy.actionHref && copy.actionLabel ? (
+        <Button asChild size="sm" className="shrink-0 bg-amber-600 text-white hover:bg-amber-600">
+          <Link href={copy.actionHref}>{copy.actionLabel}</Link>
+        </Button>
+      ) : (
+        <span className="shrink-0 text-xs font-black text-amber-800">
+          {tx(t, "storefront.accountGate.noAction", "Contatta PartsPro")}
+        </span>
+      )}
+    </div>
   );
 }
 

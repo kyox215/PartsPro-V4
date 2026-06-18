@@ -1,5 +1,6 @@
 import { AdminDashboard } from "@/components/partspro/admin-dashboard";
 import { getAdminAuthState } from "@/lib/partspro-admin-auth";
+import { visiblePanelsForPermissions } from "@/lib/partspro-permissions";
 import { redirect } from "next/navigation";
 
 export default async function AdminPage() {
@@ -13,7 +14,13 @@ export default async function AdminPage() {
     redirect("/login?next=/admin");
   }
 
-  return <AdminDashboard />;
+  return (
+    <AdminDashboard
+      initialPermissions={authState.permissions}
+      initialUserId={authState.userId}
+      initialVisiblePanels={visiblePanelsForPermissions(authState.permissions)}
+    />
+  );
 }
 
 function AdminPermissionSyncRequired() {

@@ -195,65 +195,60 @@ export async function readCustomersForProfiles(
     }
   }
 
-  if (customerIds.length > 0) {
-    const { data } = await supabase
-      .from("customers")
-      .select(customerSelect)
-      .in("id", customerIds);
+  const [
+    customersByIdResult,
+    customersByUserResult,
+    ownerMembershipsResult,
+    customersByEmailResult,
+  ] = await Promise.all([
+    customerIds.length > 0
+      ? supabase.from("customers").select(customerSelect).in("id", customerIds)
+      : Promise.resolve({ data: null }),
+    userIds.length > 0
+      ? supabase.from("customers").select(customerSelect).in("user_id", userIds)
+      : Promise.resolve({ data: null }),
+    userIds.length > 0
+      ? supabase
+          .from("customer_memberships")
+          .select("customer_id, user_id, member_role, status")
+          .in("user_id", userIds)
+          .eq("status", "active")
+          .eq("member_role", "owner")
+      : Promise.resolve({ data: null }),
+    emails.length > 0
+      ? supabase.from("customers").select(customerSelect).in("email", emails)
+      : Promise.resolve({ data: null }),
+  ]);
 
-    addRows(data);
-  }
+  addRows(customersByIdResult.data);
+  addRows(customersByUserResult.data);
+  addRows(customersByEmailResult.data);
 
-  if (userIds.length > 0) {
-    const { data } = await supabase
-      .from("customers")
-      .select(customerSelect)
-      .in("user_id", userIds);
+  for (const row of Array.isArray(ownerMembershipsResult.data)
+    ? ownerMembershipsResult.data.filter(isRow)
+    : []) {
+    const userId = readString(row.user_id);
+    const customerId = readString(row.customer_id);
 
-    addRows(data);
-  }
-
-  if (userIds.length > 0) {
-    const { data } = await supabase
-      .from("customer_memberships")
-      .select("customer_id, user_id, member_role, status")
-      .in("user_id", userIds)
-      .eq("status", "active")
-      .eq("member_role", "owner");
-
-    for (const row of Array.isArray(data) ? data.filter(isRow) : []) {
-      const userId = readString(row.user_id);
-      const customerId = readString(row.customer_id);
-
-      if (userId && customerId) {
-        ownerMembershipCustomerIdsByUserId.set(userId, [
-          ...(ownerMembershipCustomerIdsByUserId.get(userId) ?? []),
-          customerId,
-        ]);
-      }
-    }
-
-    const membershipCustomerIds = uniqueStrings(
-      Array.from(ownerMembershipCustomerIdsByUserId.values()).flat()
-    ).filter((id) => !rowsById.has(id));
-
-    if (membershipCustomerIds.length > 0) {
-      const { data: customers } = await supabase
-        .from("customers")
-        .select(customerSelect)
-        .in("id", membershipCustomerIds);
-
-      addRows(customers);
+    if (userId && customerId) {
+      ownerMembershipCustomerIdsByUserId.set(userId, [
+        ...(ownerMembershipCustomerIdsByUserId.get(userId) ?? []),
+        customerId,
+      ]);
     }
   }
 
-  if (emails.length > 0) {
-    const { data } = await supabase
+  const membershipCustomerIds = uniqueStrings(
+    Array.from(ownerMembershipCustomerIdsByUserId.values()).flat()
+  ).filter((id) => !rowsById.has(id));
+
+  if (membershipCustomerIds.length > 0) {
+    const { data: customers } = await supabase
       .from("customers")
       .select(customerSelect)
-      .in("email", emails);
+      .in("id", membershipCustomerIds);
 
-    addRows(data);
+    addRows(customers);
   }
 
   const selected = new Map<string, DbRow>();

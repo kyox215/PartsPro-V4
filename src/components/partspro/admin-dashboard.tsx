@@ -98,6 +98,18 @@ type AdminCommercePanelProps = {
   permissions?: readonly string[];
 };
 
+type AdminAccountsPanelProps = {
+  initialPermissions?: readonly string[];
+  initialUserId?: string | null;
+  permissionsLoaded?: boolean;
+};
+
+type AdminDashboardProps = {
+  initialPermissions?: readonly string[];
+  initialUserId?: string | null;
+  initialVisiblePanels?: readonly string[];
+};
+
 const AdminOrdersPanel = dynamic(
   () => import("./admin-orders-panel").then((module) => module.AdminOrdersPanel),
   { loading: () => <AdminPanelLoadingFallback /> }
@@ -121,7 +133,7 @@ const AdminSettingsPanel = dynamic(
     ),
   { loading: () => <AdminPanelLoadingFallback /> }
 );
-const AdminAccountsPanel = dynamic(
+const AdminAccountsPanel = dynamic<AdminAccountsPanelProps>(
   () =>
     import("./admin-accounts-panel").then(
       (module) => module.AdminAccountsPanel
@@ -145,6 +157,12 @@ const AdminOverviewDashboard = dynamic<AdminOverviewDashboardProps>(
 
 function isAdminPanelValue(value: string): value is AdminPanelValue {
   return adminPanelValues.includes(value as AdminPanelValue);
+}
+
+function normalizeVisiblePanels(values: readonly string[] | undefined) {
+  const panels = values?.filter(isAdminPanelValue) ?? [];
+
+  return panels.length > 0 ? panels : null;
 }
 
 function useAdminText() {
@@ -199,21 +217,39 @@ function AdminPanelLoadingFallback() {
   );
 }
 
-export function AdminDashboard() {
+export function AdminDashboard({
+  initialPermissions,
+  initialUserId = null,
+  initialVisiblePanels,
+}: AdminDashboardProps = {}) {
+  const hasInitialAdminContext = initialPermissions !== undefined;
   const [activePanel, setActivePanel] =
     React.useState<AdminPanelValue>("overview");
   const [pendingPanel, setPendingPanel] =
     React.useState<AdminPanelValue | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(true);
   const [visiblePanels, setVisiblePanels] =
-    React.useState<AdminPanelValue[] | null>(null);
-  const [currentPermissions, setCurrentPermissions] = React.useState<string[]>([]);
+    React.useState<AdminPanelValue[] | null>(() =>
+      normalizeVisiblePanels(initialVisiblePanels)
+    );
+  const [currentPermissions, setCurrentPermissions] = React.useState<string[]>(
+    () => [...(initialPermissions ?? [])]
+  );
+  const [currentUserId, setCurrentUserId] = React.useState<string | null>(
+    initialUserId
+  );
+  const [adminContextLoaded, setAdminContextLoaded] =
+    React.useState(hasInitialAdminContext);
   const visiblePanelSet = React.useMemo(
     () => new Set<AdminPanelValue>(visiblePanels ?? [...adminPanelValues]),
     [visiblePanels]
   );
 
   React.useEffect(() => {
+    if (hasInitialAdminContext) {
+      return;
+    }
+
     let cancelled = false;
 
     void fetch("/api/me", {
@@ -234,6 +270,10 @@ export function AdminDashboard() {
           );
         }
 
+        if (typeof payload.userId === "string") {
+          setCurrentUserId(payload.userId);
+        }
+
         if (Array.isArray(payload.visiblePanels)) {
           const panels = payload.visiblePanels.filter(
             (panel): panel is AdminPanelValue =>
@@ -245,12 +285,17 @@ export function AdminDashboard() {
           }
         }
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) {
+          setAdminContextLoaded(true);
+        }
+      });
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [hasInitialAdminContext]);
 
   React.useEffect(() => {
     if (!visiblePanelSet.has(activePanel)) {
@@ -340,7 +385,11 @@ export function AdminDashboard() {
                 <AdminActivityTimeline />
               </TabsContent>
               <TabsContent value="accounts" className="order-4 mt-0 min-w-0">
-                <AdminAccountsPanel />
+                <AdminAccountsPanel
+                  initialPermissions={currentPermissions}
+                  initialUserId={currentUserId}
+                  permissionsLoaded={adminContextLoaded}
+                />
               </TabsContent>
               <TabsContent value="settings" className="order-4 mt-0 min-w-0">
                 <AdminSettingsPanel />

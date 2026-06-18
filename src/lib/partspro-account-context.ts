@@ -327,6 +327,10 @@ export function priceVisibilityReason(account: AccountContext) {
     return "customer_suspended";
   }
 
+  if (!account.customer.profileComplete) {
+    return "customer_profile_required";
+  }
+
   if (
     account.customer.status !== "active" ||
     account.customer.assignmentStatus !== "assigned"
@@ -336,10 +340,6 @@ export function priceVisibilityReason(account: AccountContext) {
 
   if (account.canViewPrices) {
     return "customer";
-  }
-
-  if (!account.customer.profileComplete) {
-    return "customer_profile_required";
   }
 
   return "customer_needs_assignment";

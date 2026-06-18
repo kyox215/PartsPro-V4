@@ -92,6 +92,8 @@ import { StoreHeader } from "./store-header";
 import { StorefrontProductImage } from "./storefront-product-image";
 
 export type CheckoutRuntimeView = {
+  actionHref?: string;
+  actionLabel?: string;
   canSubmit: boolean;
   description: string;
   disabledReason?: string;
@@ -2310,8 +2312,14 @@ function buildCheckoutBlockers({
     });
   } else if (!runtime.canSubmit) {
     blockers.push({
-      actionHref: runtime.mode === "needs-profile" ? "/account?setup=1" : undefined,
-      actionLabel: runtime.mode === "needs-profile" ? tx(t, "storefront.checkout.completeProfile", "Completa profilo") : undefined,
+      actionHref:
+        runtime.actionHref ??
+        (runtime.mode === "needs-profile" ? "/account?setup=1" : undefined),
+      actionLabel:
+        runtime.actionLabel ??
+        (runtime.mode === "needs-profile"
+          ? tx(t, "storefront.checkout.completeProfile", "Completa profilo")
+          : undefined),
       message: runtime.disabledReason ?? runtime.description,
       title: runtime.title,
       tone: runtime.mode === "error" ? "error" : "warning",

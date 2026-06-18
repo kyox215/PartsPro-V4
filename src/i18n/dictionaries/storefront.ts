@@ -633,6 +633,91 @@ export const storefrontItIT = {
   "storefront.customer.type.wholesale": "Wholesale",
   "storefront.customer.typeBadge.retail": "Cliente retail",
   "storefront.customer.typeBadge.wholesale": "Cliente wholesale",
+  "storefront.accountGate.close": "Ho capito",
+  "storefront.accountGate.dialogProduct": "Prodotto: {name}",
+  "storefront.accountGate.noAction": "Contatta PartsPro",
+  "storefront.accountGate.stepsTitle": "Cosa fare",
+  "storefront.accountGate.profile.action": "Completa profilo",
+  "storefront.accountGate.profile.cardDescription":
+    "Completa i dati richiesti nel centro personale per sbloccare prezzi, carrello e checkout.",
+  "storefront.accountGate.profile.cardTitle": "Dati cliente da completare",
+  "storefront.accountGate.profile.description":
+    "Il tuo account e riconosciuto, ma mancano dati obbligatori. Completa azienda, telefono, codice fiscale, indirizzo di fatturazione e spedizione.",
+  "storefront.accountGate.profile.hint": "MOQ {moq} · completa dati",
+  "storefront.accountGate.profile.label": "Completa profilo",
+  "storefront.accountGate.profile.stepAddress":
+    "Indirizzo spedizione e fatturazione",
+  "storefront.accountGate.profile.stepContact": "Dati azienda e telefono",
+  "storefront.accountGate.profile.stepTax": "Codice fiscale o Partita IVA",
+  "storefront.accountGate.profile.title": "Completa il profilo cliente",
+  "storefront.accountGate.sync.action": "Apri account",
+  "storefront.accountGate.sync.cardDescription":
+    "La sessione e valida, ma non abbiamo potuto sincronizzare il profilo cliente.",
+  "storefront.accountGate.sync.cardTitle": "Sincronizzazione account richiesta",
+  "storefront.accountGate.sync.description":
+    "Aggiorna la pagina o apri il centro personale. Se il problema continua, contatta PartsPro per controllare il collegamento account.",
+  "storefront.accountGate.sync.hint": "MOQ {moq} · sincronizza account",
+  "storefront.accountGate.sync.label": "Account da sincronizzare",
+  "storefront.accountGate.sync.stepAccount": "Controlla il centro personale",
+  "storefront.accountGate.sync.stepRefresh": "Aggiorna la pagina",
+  "storefront.accountGate.sync.stepSupport":
+    "Contatta PartsPro se resta bloccato",
+  "storefront.accountGate.sync.title": "Account non sincronizzato",
+  "storefront.accountGate.review.action": "Vedi stato account",
+  "storefront.accountGate.review.cardDescription":
+    "I dati sono presenti. PartsPro deve completare la verifica e abilitare il listino prima dell'ordine.",
+  "storefront.accountGate.review.cardTitle": "Account in revisione",
+  "storefront.accountGate.review.description":
+    "Il profilo e stato inviato. Appena il team attiva cliente e listino, potrai aggiungere prodotti al carrello e confermare ordini.",
+  "storefront.accountGate.review.hint": "MOQ {moq} · verifica listino",
+  "storefront.accountGate.review.label": "Account in revisione",
+  "storefront.accountGate.review.stepStatus":
+    "Controlla lo stato nel centro personale",
+  "storefront.accountGate.review.stepWait": "Attendi l'approvazione PartsPro",
+  "storefront.accountGate.review.title": "Account in revisione",
+  "storefront.accountGate.wholesale.action": "Vedi account",
+  "storefront.accountGate.wholesale.cardDescription":
+    "Il profilo esiste, ma il listino professionale non e ancora abilitato per questo account.",
+  "storefront.accountGate.wholesale.cardTitle": "Listino da abilitare",
+  "storefront.accountGate.wholesale.description":
+    "Completa o fai verificare il profilo cliente. Dopo l'abilitazione del listino potrai usare carrello e checkout.",
+  "storefront.accountGate.wholesale.hint": "MOQ {moq} · listino da abilitare",
+  "storefront.accountGate.wholesale.label": "Listino da abilitare",
+  "storefront.accountGate.wholesale.stepApproval":
+    "Attendi abilitazione listino",
+  "storefront.accountGate.wholesale.stepProfile":
+    "Verifica che il profilo sia completo",
+  "storefront.accountGate.wholesale.title":
+    "Prezzi professionali non ancora abilitati",
+  "storefront.accountGate.suspended.cardDescription":
+    "Il listino e temporaneamente bloccato per questo account.",
+  "storefront.accountGate.suspended.cardTitle": "Account sospeso",
+  "storefront.accountGate.suspended.description":
+    "Contatta PartsPro per riattivare il profilo cliente prima di usare prezzi, carrello o checkout.",
+  "storefront.accountGate.suspended.hint": "MOQ {moq} · contatta supporto",
+  "storefront.accountGate.suspended.label": "Account sospeso",
+  "storefront.accountGate.suspended.stepSupport": "Contatta PartsPro",
+  "storefront.accountGate.suspended.title": "Account sospeso",
+  "storefront.accountGate.ready.cardDescription":
+    "Prezzi, carrello e checkout sono disponibili per questo account.",
+  "storefront.accountGate.ready.cardTitle": "Account abilitato",
+  "storefront.accountGate.ready.description":
+    "Prezzi, carrello e checkout sono disponibili per questo account.",
+  "storefront.accountGate.ready.hint": "MOQ {moq}",
+  "storefront.accountGate.ready.label": "Account abilitato",
+  "storefront.accountGate.ready.title": "Account abilitato",
+  "storefront.accountGate.login.action": "Accedi",
+  "storefront.accountGate.login.cardDescription":
+    "Accedi con un account cliente per vedere prezzi, MOQ e disponibilita d'ordine.",
+  "storefront.accountGate.login.cardTitle": "Prezzo protetto",
+  "storefront.accountGate.login.description":
+    "Accedi o richiedi un account cliente per sbloccare prezzi, carrello e checkout.",
+  "storefront.accountGate.login.hint": "MOQ {moq} · login richiesto",
+  "storefront.accountGate.login.label": "Accedi per prezzo",
+  "storefront.accountGate.login.stepLogin": "Accedi con il tuo account",
+  "storefront.accountGate.login.stepProfile":
+    "Completa il profilo cliente se richiesto",
+  "storefront.accountGate.login.title": "Accedi per continuare",
   "storefront.product.backToCatalog": "Torna al catalogo",
   "storefront.product.card.accountReviewHint": "MOQ {moq} · verifica listino",
   "storefront.product.card.accountReviewLabel": "Account in revisione",
@@ -643,6 +728,8 @@ export const storefrontItIT = {
   "storefront.product.card.addFailed": "Non aggiunto",
   "storefront.product.card.addFailedHint":
     "Carrello non sincronizzato. Aggiorna la pagina o accedi di nuovo.",
+  "storefront.product.card.accountGateAria":
+    "{name}: apri istruzioni account.",
   "storefront.product.card.basePrice": "Prezzo base",
   "storefront.product.card.extraModelsTitle":
     "{count} modelli compatibili aggiuntivi",
@@ -654,8 +741,8 @@ export const storefrontItIT = {
   "storefront.product.card.priceUnset": "Prezzo non impostato",
   "storefront.product.card.previewImageAria": "Apri anteprima immagine {name}",
   "storefront.product.card.previewLoading": "Caricamento anteprima...",
-  "storefront.product.card.profileHint": "MOQ {moq} · riprova tra poco",
-  "storefront.product.card.profileLabel": "Profilo in preparazione",
+  "storefront.product.card.profileHint": "MOQ {moq} · completa dati",
+  "storefront.product.card.profileLabel": "Completa profilo",
   "storefront.product.card.reviewBadgeTitle": "Account in revisione",
   "storefront.product.card.stockLevelTitle": "Disponibilita: {level}",
   "storefront.product.card.stockLine": "{level}",
@@ -1478,6 +1565,82 @@ export const storefrontZhCN = {
   "storefront.customer.type.wholesale": "批发客户",
   "storefront.customer.typeBadge.retail": "零售价客户",
   "storefront.customer.typeBadge.wholesale": "批发客户",
+  "storefront.accountGate.close": "我知道了",
+  "storefront.accountGate.dialogProduct": "商品：{name}",
+  "storefront.accountGate.noAction": "请联系 PartsPro",
+  "storefront.accountGate.stepsTitle": "需要做什么",
+  "storefront.accountGate.profile.action": "去补全资料",
+  "storefront.accountGate.profile.cardDescription":
+    "请在个人中心补全必填资料，完成后即可解锁价格、购物车和结账。",
+  "storefront.accountGate.profile.cardTitle": "客户资料待补全",
+  "storefront.accountGate.profile.description":
+    "系统已识别你的账号，但客户资料还缺必填项。请补全公司名称、电话、税号、账单地址和收货地址。",
+  "storefront.accountGate.profile.hint": "起订量 {moq} · 补全资料",
+  "storefront.accountGate.profile.label": "补全资料",
+  "storefront.accountGate.profile.stepAddress": "收货地址和账单地址",
+  "storefront.accountGate.profile.stepContact": "公司名称和联系电话",
+  "storefront.accountGate.profile.stepTax": "Codice fiscale 或 Partita IVA",
+  "storefront.accountGate.profile.title": "请先补全客户资料",
+  "storefront.accountGate.sync.action": "打开个人中心",
+  "storefront.accountGate.sync.cardDescription":
+    "当前登录会话有效，但客户资料暂时没有同步成功。",
+  "storefront.accountGate.sync.cardTitle": "账号资料待同步",
+  "storefront.accountGate.sync.description":
+    "请刷新页面或打开个人中心检查资料。如果仍然卡住，请联系 PartsPro 检查账号绑定。",
+  "storefront.accountGate.sync.hint": "起订量 {moq} · 同步账号",
+  "storefront.accountGate.sync.label": "账号待同步",
+  "storefront.accountGate.sync.stepAccount": "打开个人中心检查资料",
+  "storefront.accountGate.sync.stepRefresh": "刷新当前页面",
+  "storefront.accountGate.sync.stepSupport": "仍然卡住时联系 PartsPro",
+  "storefront.accountGate.sync.title": "账号资料未同步",
+  "storefront.accountGate.review.action": "查看账号状态",
+  "storefront.accountGate.review.cardDescription":
+    "资料已提交，PartsPro 需要完成审核并启用价目表后才能下单。",
+  "storefront.accountGate.review.cardTitle": "账号审核中",
+  "storefront.accountGate.review.description":
+    "你的资料已提交。后台启用客户和价目表后，就可以加入购物车并确认订单。",
+  "storefront.accountGate.review.hint": "起订量 {moq} · 价目表审核",
+  "storefront.accountGate.review.label": "账号审核中",
+  "storefront.accountGate.review.stepStatus": "在个人中心查看当前状态",
+  "storefront.accountGate.review.stepWait": "等待 PartsPro 审核通过",
+  "storefront.accountGate.review.title": "账号正在审核",
+  "storefront.accountGate.wholesale.action": "查看账号",
+  "storefront.accountGate.wholesale.cardDescription":
+    "客户资料存在，但专业客户价目表尚未启用。",
+  "storefront.accountGate.wholesale.cardTitle": "价目表待启用",
+  "storefront.accountGate.wholesale.description":
+    "请确认客户资料已补全，等待后台启用价目表；启用后即可使用购物车和结账。",
+  "storefront.accountGate.wholesale.hint": "起订量 {moq} · 价目表待启用",
+  "storefront.accountGate.wholesale.label": "价目表待启用",
+  "storefront.accountGate.wholesale.stepApproval": "等待后台启用价目表",
+  "storefront.accountGate.wholesale.stepProfile": "确认客户资料已补全",
+  "storefront.accountGate.wholesale.title": "专业价尚未启用",
+  "storefront.accountGate.suspended.cardDescription":
+    "该账号的价目表暂时被锁定。",
+  "storefront.accountGate.suspended.cardTitle": "账号已暂停",
+  "storefront.accountGate.suspended.description":
+    "请联系 PartsPro 恢复客户资料后，再使用价格、购物车和结账。",
+  "storefront.accountGate.suspended.hint": "起订量 {moq} · 联系支持",
+  "storefront.accountGate.suspended.label": "账号已暂停",
+  "storefront.accountGate.suspended.stepSupport": "联系 PartsPro",
+  "storefront.accountGate.suspended.title": "账号已暂停",
+  "storefront.accountGate.ready.cardDescription": "该账号已可查看价格、使用购物车和结账。",
+  "storefront.accountGate.ready.cardTitle": "账号已启用",
+  "storefront.accountGate.ready.description": "该账号已可查看价格、使用购物车和结账。",
+  "storefront.accountGate.ready.hint": "起订量 {moq}",
+  "storefront.accountGate.ready.label": "账号已启用",
+  "storefront.accountGate.ready.title": "账号已启用",
+  "storefront.accountGate.login.action": "登录",
+  "storefront.accountGate.login.cardDescription":
+    "登录客户账号后可查看价格、MOQ 和下单可用状态。",
+  "storefront.accountGate.login.cardTitle": "价格受保护",
+  "storefront.accountGate.login.description":
+    "请登录或申请客户账号，以解锁价格、购物车和结账。",
+  "storefront.accountGate.login.hint": "起订量 {moq} · 需要登录",
+  "storefront.accountGate.login.label": "登录看价格",
+  "storefront.accountGate.login.stepLogin": "使用你的账号登录",
+  "storefront.accountGate.login.stepProfile": "如系统提示，请补全客户资料",
+  "storefront.accountGate.login.title": "登录后继续",
   "storefront.product.backToCatalog": "返回目录",
   "storefront.product.card.accountReviewHint": "起订量 {moq} · 价目表审核",
   "storefront.product.card.accountReviewLabel": "账户审核中",
@@ -1487,6 +1650,7 @@ export const storefrontZhCN = {
   "storefront.product.card.added": "已添加",
   "storefront.product.card.addFailed": "未加入",
   "storefront.product.card.addFailedHint": "购物车未同步，请刷新页面或重新登录。",
+  "storefront.product.card.accountGateAria": "{name}：打开账号处理说明。",
   "storefront.product.card.basePrice": "原价",
   "storefront.product.card.extraModelsTitle": "另有 {count} 个兼容机型",
   "storefront.product.card.loginHint": "起订量 {moq} · 需要登录",
@@ -1497,8 +1661,8 @@ export const storefrontZhCN = {
   "storefront.product.card.priceUnset": "价格未设置",
   "storefront.product.card.previewImageAria": "打开 {name} 图片预览",
   "storefront.product.card.previewLoading": "正在加载预览...",
-  "storefront.product.card.profileHint": "起订量 {moq} · 请稍后重试",
-  "storefront.product.card.profileLabel": "资料准备中",
+  "storefront.product.card.profileHint": "起订量 {moq} · 补全资料",
+  "storefront.product.card.profileLabel": "补全资料",
   "storefront.product.card.reviewBadgeTitle": "账户审核中",
   "storefront.product.card.stockLevelTitle": "库存等级：{level}",
   "storefront.product.card.stockLine": "{level}",

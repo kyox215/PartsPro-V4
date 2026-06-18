@@ -48,6 +48,7 @@ const accountPatchSchema = z
 const accountQueryKeys = new Set(Object.keys(accountQuerySchema.shape));
 
 export async function GET(request: NextRequest) {
+  const startedAt = Date.now();
   const query = parseAccountQuery(request);
 
   if (!query.ok) {
@@ -68,7 +69,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     let profileRequest = supabase
       .from("profiles")
-      .select(profileSelect, { count: "exact" });
+      .select(profileSelect, { count: "planned" });
 
     profileRequest = profileRequest.eq("account_type", accountType);
 
@@ -99,6 +100,7 @@ export async function GET(request: NextRequest) {
         limit: query.data.limit,
         offset: query.data.offset,
         returned: profiles.length,
+        durationMs: Date.now() - startedAt,
         workflow: "profiles + customers + permissions",
       },
     });
