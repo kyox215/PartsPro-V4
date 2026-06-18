@@ -130,15 +130,15 @@ export function ProductDetailPurchasePanel({
   }
 
   return (
-    <div className="mt-2 rounded-lg border border-primary/20 bg-primary/8 p-3">
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
-        <div className="space-y-2">
+    <div className="mt-2 rounded-lg border border-primary/20 bg-primary/8 p-2.5">
+      <div className="grid gap-2 lg:grid-cols-[minmax(0,0.86fr)_minmax(220px,0.64fr)]">
+        <div className="space-y-1.5">
           {isInCart ? (
             <div>
               <div className="text-[10px] font-bold uppercase text-primary/70">
                 {tx(t, "storefront.product.quantity.inCart", "Nel carrello")}
               </div>
-              <div className="mt-1.5 rounded-md border border-primary/20 bg-white p-2 text-xs font-semibold text-slate-700">
+              <div className="mt-1 rounded-md border border-primary/20 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700">
                 {txFormat(
                   t,
                   "storefront.product.quantity.inCartSummary",
@@ -155,12 +155,12 @@ export function ProductDetailPurchasePanel({
               >
                 Quantita richiesta
               </label>
-              <div className="mt-1.5 flex min-w-0 items-center rounded-md border border-primary/20 bg-white">
+              <div className="mt-1 flex min-w-0 items-center rounded-md border border-primary/20 bg-white">
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  className="size-9 rounded-none"
+                  className="size-8 rounded-none"
                   disabled={!stockAvailable || safeQuantity <= 1}
                   onClick={() => updateQuantity(safeQuantity - 1)}
                   aria-label={`Riduci quantita per ${product.name}`}
@@ -178,13 +178,13 @@ export function ProductDetailPurchasePanel({
                   aria-describedby={validationId}
                   aria-invalid={!canOrder}
                   onChange={(event) => updateQuantity(Number(event.target.value))}
-                  className="h-9 min-w-0 flex-1 border-x border-primary/10 bg-white px-2 text-center text-sm font-black outline-none focus:ring-3 focus:ring-primary/20 disabled:bg-slate-50 disabled:text-slate-500"
+                  className="h-8 min-w-0 flex-1 border-x border-primary/10 bg-white px-2 text-center text-sm font-black outline-none focus:ring-3 focus:ring-primary/20 disabled:bg-slate-50 disabled:text-slate-500"
                 />
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  className="size-9 rounded-none"
+                  className="size-8 rounded-none"
                   disabled={!stockAvailable || safeQuantity >= product.stock}
                   onClick={() => updateQuantity(safeQuantity + 1)}
                   aria-label={`Aumenta quantita per ${product.name}`}
@@ -199,7 +199,7 @@ export function ProductDetailPurchasePanel({
             id={validationId}
             role="status"
             className={cn(
-              "flex items-start gap-2 rounded-md border p-2 text-xs font-semibold leading-4",
+              "flex items-start gap-1.5 rounded-md border px-2 py-1.5 text-[11px] font-semibold leading-4",
               canOrder
                 ? "border-emerald-200 bg-emerald-50 text-emerald-800"
                 : "border-amber-200 bg-amber-50 text-amber-950"
@@ -214,24 +214,14 @@ export function ProductDetailPurchasePanel({
           </div>
         </div>
 
-        <div className="rounded-md border border-primary/15 bg-white p-2.5">
+        <div className="rounded-md border border-primary/15 bg-white p-2">
           {showQuoteSummary ? (
             <>
               <div className="flex items-center gap-2 text-xs font-black text-slate-950">
                 <BadgeEuro className="size-4 text-primary" />
                 {tx(t, "storefront.product.purchase.quoteTitle", "Riepilogo preventivo")}
               </div>
-              <div className="mt-2 space-y-1.5 text-xs">
-                <SummaryLine
-                  label={tx(
-                    t,
-                    "storefront.product.purchase.quotePriceEach",
-                    "Prezzo IVA inclusa"
-                  )}
-                  value={txFormat(t, "storefront.cart.priceEach", "{price} / pz", {
-                    price: formatEuro(product.price),
-                  })}
-                />
+              <div className="mt-1.5 space-y-1 text-xs">
                 <SummaryLine
                   label={tx(t, "storefront.product.purchase.quoteQuantity", "Quantita")}
                   value={txFormat(t, "storefront.cart.itemCountMany", "{count} pezzi", {
@@ -246,7 +236,7 @@ export function ProductDetailPurchasePanel({
                   )}
                   value={formatEuro(subtotal)}
                 />
-                <div className="border-t border-slate-100 pt-2">
+                <div className="border-t border-slate-100 pt-1.5">
                   <SummaryLine
                     label={tx(
                       t,
@@ -258,7 +248,7 @@ export function ProductDetailPurchasePanel({
                   />
                 </div>
               </div>
-              <div className="mt-2 text-[11px] font-semibold leading-4 text-slate-500">
+              <div className="mt-1.5 line-clamp-2 text-[10px] font-semibold leading-4 text-slate-500">
                 {tx(
                   t,
                   "storefront.product.purchase.quoteLocalNote",
@@ -300,7 +290,7 @@ export function ProductDetailPurchasePanel({
         </div>
       </div>
 
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+      <div className="mt-2 flex flex-col gap-2 sm:flex-row">
         {isInCart ? (
           <ProductCartQuantityControl
             className="flex-1"
@@ -311,7 +301,7 @@ export function ProductDetailPurchasePanel({
           <Button
             type="button"
             className={cn(
-              "h-10 min-w-0 flex-1",
+              "h-9 min-w-0 flex-1",
               addFeedbackState === "success" &&
                 "bg-emerald-600 text-white hover:bg-emerald-600",
               addFeedbackState === "error" &&
@@ -353,7 +343,7 @@ export function ProductDetailPurchasePanel({
             product={product}
           />
         ) : (
-          <Button className="h-10 min-w-0 flex-1" disabled aria-describedby={validationId}>
+          <Button className="h-9 min-w-0 flex-1" disabled aria-describedby={validationId}>
             <ShoppingCart className="size-4" />
             <span className="min-w-0 truncate">
               {tx(t, "storefront.product.purchase.add", "Aggiungi al carrello")}
@@ -364,7 +354,7 @@ export function ProductDetailPurchasePanel({
           canOrder ? (
             <Button
               variant="outline"
-              className="h-10 min-w-0 flex-1 bg-white"
+              className="h-9 min-w-0 flex-1 bg-white"
               asChild
             >
               <Link href={checkoutHref}>
@@ -383,7 +373,7 @@ export function ProductDetailPurchasePanel({
           ) : (
             <Button
               variant="outline"
-              className="h-10 min-w-0 flex-1 bg-white"
+              className="h-9 min-w-0 flex-1 bg-white"
               disabled
               aria-describedby={validationId}
             >
@@ -396,7 +386,7 @@ export function ProductDetailPurchasePanel({
           <Button
             type="button"
             variant="outline"
-            className="h-10 min-w-0 flex-1 bg-white"
+            className="h-9 min-w-0 flex-1 bg-white"
             onClick={handleOrderNow}
             aria-label={txFormat(
               t,
@@ -412,7 +402,7 @@ export function ProductDetailPurchasePanel({
         ) : (
           <Button
             variant="outline"
-            className="h-10 min-w-0 flex-1 bg-white"
+            className="h-9 min-w-0 flex-1 bg-white"
             disabled
             aria-describedby={validationId}
           >

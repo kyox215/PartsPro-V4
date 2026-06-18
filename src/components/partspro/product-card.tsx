@@ -6,21 +6,17 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   AlertTriangle,
-  Boxes,
   CheckCircle2,
-  Clock,
   Info,
   Loader2,
   LogIn,
   Lock,
-  PackageCheck,
   ShoppingCart,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  leadTimeLabel,
   tx,
   txFormat,
   type StorefrontTranslator,
@@ -38,7 +34,6 @@ import {
   getProductPriceDisplay,
 } from "@/lib/partspro-price-display";
 import { getProductImageCandidates } from "@/lib/partspro-product-images";
-import { publicStockLevelMeta } from "@/lib/partspro-stock-availability";
 import { cn } from "@/lib/utils";
 import { addCartItem } from "./cart-state";
 import { useT } from "./i18n-provider";
@@ -79,7 +74,6 @@ export const ProductCard = memo(function ProductCard({
   const t = useT();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [accountGateOpen, setAccountGateOpen] = useState(false);
-  const stockMeta = publicStockLevelMeta(t, product);
   const hasEffectivePrice = product.price > 0;
   const priceDisplay = getProductPriceDisplay(product);
   const hasOpenPrice =
@@ -98,7 +92,6 @@ export const ProductCard = memo(function ProductCard({
     assistedCompanyId
   );
   const loginHref = `/login?${new URLSearchParams({ next: productPath }).toString()}`;
-  const stockDescriptionId = `stock-${product.sku.replace(/[^a-zA-Z0-9]/g, "-")}`;
   const imageAlt = product.imageAlt ?? product.name;
   const remainingModels = Math.max(product.compatibleWith.length - 2, 0);
   const imageCandidates = useMemo(() => getProductImageCandidates(product), [product]);
@@ -210,38 +203,10 @@ export const ProductCard = memo(function ProductCard({
                   className="object-contain p-1.5 sm:p-2"
                 />
               </div>
-              <Badge
-                className={cn(
-                  "absolute bottom-1.5 left-1.5 max-w-[calc(100%-0.75rem)] truncate border px-1.5 py-0.5 text-[10px] sm:bottom-2 sm:left-2 sm:max-w-[calc(100%-1rem)]",
-                  stockMeta.className
-                )}
-                title={txFormat(
-                  t,
-                  "storefront.product.card.stockLevelTitle",
-                  "Disponibilita: {level}",
-                  { level: stockMeta.label }
-                )}
-              >
-                {stockMeta.label}
-              </Badge>
             </button>
           ) : (
             <div className="relative block h-28 overflow-hidden rounded-md bg-slate-50 sm:h-auto sm:rounded-lg">
               <PartVisual variant={product.visual} className="h-full rounded-md sm:h-36 sm:rounded-lg" />
-              <Badge
-                className={cn(
-                  "absolute bottom-1.5 left-1.5 max-w-[calc(100%-0.75rem)] truncate border px-1.5 py-0.5 text-[10px] sm:bottom-2 sm:left-2 sm:max-w-[calc(100%-1rem)]",
-                  stockMeta.className
-                )}
-                title={txFormat(
-                  t,
-                  "storefront.product.card.stockLevelTitle",
-                  "Disponibilita: {level}",
-                  { level: stockMeta.label }
-                )}
-              >
-                {stockMeta.label}
-              </Badge>
             </div>
           )}
 
@@ -289,27 +254,6 @@ export const ProductCard = memo(function ProductCard({
               )}
             </div>
 
-            <div className="mt-1 grid grid-cols-2 gap-0.5 text-[10px] font-semibold text-slate-600 sm:mt-2 sm:gap-1">
-              <div
-                id={stockDescriptionId}
-                className={cn(
-                  "flex min-w-0 items-center gap-0.5 rounded-md border px-1.5 py-0.5 sm:gap-1 sm:rounded-md sm:py-1",
-                  stockMeta.className
-                )}
-              >
-                <PackageCheck className="size-3 shrink-0" />
-                <span className="truncate">{stockMeta.label}</span>
-              </div>
-              <div className="flex min-w-0 items-center gap-0.5 rounded-md border border-slate-100 bg-slate-50 px-1.5 py-0.5 sm:gap-1 sm:rounded-md sm:py-1">
-                <Boxes className="size-3 shrink-0 text-primary" />
-                <span className="truncate">MOQ {product.moq}</span>
-              </div>
-              <div className="col-span-2 hidden min-w-0 items-center gap-1 rounded-md border border-slate-100 bg-slate-50 px-1.5 py-1 sm:flex">
-                <Clock className="size-3 shrink-0 text-primary" />
-                <span className="truncate">{leadTimeLabel(t, product.leadTime)}</span>
-              </div>
-            </div>
-
             <div className="mt-auto flex items-center justify-between gap-1 pt-1 sm:items-end sm:pt-2">
               <div className="min-w-0">
                 {showWholesalePrice ? (
@@ -347,27 +291,6 @@ export const ProductCard = memo(function ProductCard({
                         {tx(t, "storefront.product.card.basePrice", "Prezzo base")} {formatEuro(priceDisplay.basePrice)}
                       </div>
                     ) : null}
-                    <div className="truncate text-[10px] leading-3 text-slate-500">
-                      {isReviewPriceVisible
-                        ? txFormat(
-                          t,
-                          "storefront.home.productCard.pendingHint",
-                          "In revisione · MOQ {moq}",
-                          { moq: product.moq }
-                        )
-                        : hasEffectivePrice
-                        ? txFormat(
-                          t,
-                          "storefront.product.card.visiblePriceHint",
-                          "IVA inclusa · MOQ {moq}",
-                          { moq: product.moq }
-                        )
-                        : tx(
-                          t,
-                          "storefront.product.card.priceNeedsUpdate",
-                          "Listino da aggiornare"
-                        )}
-                    </div>
                   </>
                 ) : (
                   <>
@@ -394,15 +317,14 @@ export const ProductCard = memo(function ProductCard({
                   )}
                   onClick={handleAddToCart}
                   disabled={addLocked}
-                  aria-describedby={stockDescriptionId}
                   aria-label={
                     addFeedbackState === "error"
                       ? addFailedHint
                       : txFormat(
                           t,
-                          "storefront.product.card.addAria",
-                          "Aggiungi {name} al carrello. MOQ {moq}.",
-                          { name: product.name, moq: product.moq }
+                          "storefront.product.card.addAriaShort",
+                          "Aggiungi {name} al carrello.",
+                          { name: product.name }
                         )
                   }
                   title={addFeedbackState === "error" ? addFailedHint : undefined}
@@ -428,7 +350,6 @@ export const ProductCard = memo(function ProductCard({
                   variant="outline"
                   className="size-8 min-w-0 shrink-0 bg-white px-0 text-primary sm:size-auto sm:min-w-[96px] sm:px-2"
                   asChild
-                  aria-describedby={stockDescriptionId}
                 >
                   <Link
                     href={loginHref}
@@ -452,7 +373,6 @@ export const ProductCard = memo(function ProductCard({
                   size="sm"
                   variant="outline"
                   className="size-8 min-w-0 shrink-0 bg-white px-0 text-primary sm:h-8 sm:w-[104px] sm:px-2"
-                  aria-describedby={stockDescriptionId}
                   aria-label={txFormat(
                     t,
                     "storefront.product.card.accountGateAria",
@@ -478,7 +398,6 @@ export const ProductCard = memo(function ProductCard({
                   variant="outline"
                   className="size-8 min-w-0 shrink-0 bg-slate-50 px-0 text-slate-500 sm:size-auto sm:min-w-[96px] sm:px-2"
                   disabled
-                  aria-describedby={stockDescriptionId}
                   aria-label={txFormat(
                     t,
                     "storefront.product.card.unavailableAria",
