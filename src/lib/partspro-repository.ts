@@ -406,12 +406,92 @@ export type AdminSupplierBatch = {
   tags: string[];
   sourceFileName: string | null;
   metadata: Record<string, unknown>;
+  orderedQty: number | null;
+  shortQty: number;
+  lineQtyTotal: number;
+  lineCostTotal: number;
   lineCount: number;
   activeProductCount: number;
   draftProductCount: number;
   missingImageCount: number;
+  productMissingCount: number;
+  activeMissingImageCount: number;
+  priceViolationCount: number;
+  modelPrefixIssueCount: number;
+  verification: AdminSupplierBatchVerification;
   createdAt: string;
   updatedAt: string;
+};
+
+export type AdminSupplierBatchDateMode = "imported" | "received" | "invoice";
+export type AdminSupplierBatchVerificationStatus = "ok" | "warning" | "error";
+
+export type AdminSupplierBatchQueryInput = {
+  batchCode?: string;
+  dateFrom?: string;
+  dateMode?: AdminSupplierBatchDateMode;
+  dateTo?: string;
+  limit?: number;
+  offset?: number;
+  q?: string;
+  supplier?: string;
+};
+
+export type AdminSupplierBatchVerification = {
+  status: AdminSupplierBatchVerificationStatus;
+  issues: string[];
+  quantityMatches: boolean;
+  costMatches: boolean;
+};
+
+export type AdminSupplierBatchLineProduct = {
+  sku: string;
+  name: string;
+  brand: string;
+  model: string | null;
+  category: string | null;
+  grade: string | null;
+  catalogStatus: AdminCatalogStatus;
+  stockStatus: StockStatus;
+  stockQty: number;
+  actualQty: number;
+  availableQty: number;
+  lockedQty: number;
+  costPrice: number;
+  retailPrice: number;
+  b2bPrice: number;
+  imagePath: string | null;
+  modelCodes: string[];
+  compatibilityModels: string[];
+  priceRuleOk: boolean;
+  activeMissingImage: boolean;
+  modelPrefixIssue: boolean;
+};
+
+export type AdminSupplierBatchLine = {
+  id: string;
+  lineNo: number;
+  ean: string | null;
+  supplierSku: string | null;
+  skuCode: string | null;
+  name: string;
+  qtyReceived: number;
+  qtyOrdered: number | null;
+  qtyShort: number;
+  unitCost: number;
+  lineTotal: number;
+  imageStatus: string;
+  productStatus: AdminCatalogStatus;
+  metadata: Record<string, unknown>;
+  product: AdminSupplierBatchLineProduct | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminSupplierBatchDetail = {
+  batch: AdminSupplierBatch;
+  lines: AdminSupplierBatchLine[];
+  verification: AdminSupplierBatchVerification;
 };
 
 export type AdminProductWriteInput = {
@@ -1853,13 +1933,25 @@ export async function listAdminSuppliers(): Promise<RepositoryResult<AdminSuppli
 }
 
 export async function listAdminSupplierBatches(
-  query: { batchCode?: string; limit?: number; offset?: number; supplier?: string } = {}
+  query: AdminSupplierBatchQueryInput = {}
 ): Promise<RepositoryResult<{ batches: AdminSupplierBatch[]; total: number }>> {
   const context = await requireSupabaseContext();
   const page = await readAdminSupplierBatches(context.client, query);
 
   return {
     data: page,
+    source: "supabase",
+  };
+}
+
+export async function getAdminSupplierBatchDetail(
+  batchCode: string
+): Promise<RepositoryResult<AdminSupplierBatchDetail | null>> {
+  const context = await requireSupabaseContext();
+  const detail = await readAdminSupplierBatchDetail(context.client, batchCode);
+
+  return {
+    data: detail,
     source: "supabase",
   };
 }
@@ -4437,11 +4529,89 @@ async function readSupplierBatchCounts(client: SupabaseServerClient) {
   return counts;
 }
 
+type SupplierBatchLineStats = {
+  active: number;
+  draft: number;
+  lines: number;
+  missingImages: number;
+  orderedQty: number | null;
+  shortQty: number;
+  lineQtyTotal: number;
+  lineCostTotal: number;
+  productMissingCount: number;
+  activeMissingImageCount: number;
+  priceViolationCount: number;
+  modelPrefixIssueCount: number;
+};
+
+const emptySupplierBatchLineStats: SupplierBatchLineStats = {
+  active: 0,
+  draft: 0,
+  lines: 0,
+  missingImages: 0,
+  orderedQty: null,
+  shortQty: 0,
+  lineQtyTotal: 0,
+  lineCostTotal: 0,
+  productMissingCount: 0,
+  activeMissingImageCount: 0,
+  priceViolationCount: 0,
+  modelPrefixIssueCount: 0,
+};
+
+type SupplierBatchDateFilterBuilder<T> = {
+  gte(column: string, value: string): T;
+  lte(column: string, value: string): T;
+  lt(column: string, value: string): T;
+};
+
+function applySupplierBatchDateFilters<T extends SupplierBatchDateFilterBuilder<T>>(
+  request: T,
+  query: AdminSupplierBatchQueryInput
+) {
+  const mode = query.dateMode ?? "imported";
+  const column =
+    mode === "invoice" ? "invoice_date" : mode === "received" ? "received_at" : "created_at";
+  let nextRequest = request;
+
+  if (query.dateFrom) {
+    nextRequest = nextRequest.gte(column, mode === "invoice" ? query.dateFrom : dateStartIso(query.dateFrom));
+  }
+
+  if (query.dateTo) {
+    nextRequest =
+      mode === "invoice"
+        ? nextRequest.lte(column, query.dateTo)
+        : nextRequest.lt(column, nextDateStartIso(query.dateTo));
+  }
+
+  return nextRequest;
+}
+
+function dateStartIso(value: string) {
+  return `${value}T00:00:00.000Z`;
+}
+
+function nextDateStartIso(value: string) {
+  const date = new Date(`${value}T00:00:00.000Z`);
+
+  if (Number.isNaN(date.getTime())) {
+    return dateStartIso(value);
+  }
+
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString();
+}
+
+function sanitizePostgrestLikeTerm(value: string) {
+  return value.trim().replace(/[%,]/g, "");
+}
+
 async function readAdminSupplierBatches(
   client: SupabaseServerClient,
-  query: { batchCode?: string; limit?: number; offset?: number; supplier?: string }
+  query: AdminSupplierBatchQueryInput
 ) {
-  const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
+  const limit = Math.min(Math.max(query.limit ?? 50, 1), 500);
   const offset = Math.max(query.offset ?? 0, 0);
   let request = client
     .from("supplier_batches")
@@ -4453,12 +4623,29 @@ async function readAdminSupplierBatches(
     .range(offset, offset + limit - 1);
 
   if (query.batchCode) {
-    request = request.eq("batch_code", query.batchCode);
+    request = request.ilike("batch_code", `%${sanitizePostgrestLikeTerm(query.batchCode)}%`);
   }
 
   if (query.supplier) {
-    request = request.eq("suppliers.display_label", query.supplier);
+    request = request.ilike("suppliers.display_label", `%${sanitizePostgrestLikeTerm(query.supplier)}%`);
   }
+
+  if (query.q) {
+    const q = sanitizePostgrestLikeTerm(query.q);
+
+    if (q) {
+      request = request.or(
+        [
+          `batch_code.ilike.%${q}%`,
+          `invoice_no.ilike.%${q}%`,
+          `order_no.ilike.%${q}%`,
+          `source_file_name.ilike.%${q}%`,
+        ].join(",")
+      );
+    }
+  }
+
+  request = applySupplierBatchDateFilters(request, query);
 
   const { data, error, count } = await request;
 
@@ -4481,51 +4668,453 @@ async function readAdminSupplierBatches(
   };
 }
 
+async function readAdminSupplierBatchDetail(
+  client: SupabaseServerClient,
+  batchCode: string
+): Promise<AdminSupplierBatchDetail | null> {
+  const { data, error } = await client
+    .from("supplier_batches")
+    .select(
+      "id, batch_code, supplier_id, invoice_no, order_no, invoice_date, received_at, total_qty, total_cost, currency, vat_mode, tags, source_file_name, metadata, created_at, updated_at, suppliers!inner(code, name, display_label)"
+    )
+    .eq("batch_code", batchCode)
+    .maybeSingle();
+
+  if (error) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_SUPPLIER_BATCH_READ_UNAVAILABLE",
+      "Admin supplier batch data could not be read from Supabase.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  if (!data || !isDbRow(data)) {
+    return null;
+  }
+
+  const batchId = pickString(data, ["id"]);
+
+  if (!batchId) {
+    return null;
+  }
+
+  const lines = await readSupplierBatchLines(client, [batchId]);
+  const productsBySku = await readSupplierBatchProducts(client, lines);
+  const inventoryBySku = await readSupplierBatchInventory(client, lines);
+  const stats = summarizeSupplierBatchLines(lines, productsBySku);
+  const statsByBatch = new Map([[batchId, stats]]);
+  const batch = mapAdminSupplierBatchRow(data, statsByBatch);
+
+  if (!batch) {
+    return null;
+  }
+
+  return {
+    batch,
+    lines: lines
+      .map((line) => mapAdminSupplierBatchLine(line, productsBySku, inventoryBySku))
+      .filter(isDefined),
+    verification: batch.verification,
+  };
+}
+
 async function readSupplierBatchLineStats(
   client: SupabaseServerClient,
   batchIds: string[]
 ) {
   if (batchIds.length === 0) {
-    return new Map<string, { active: number; draft: number; lines: number; missingImages: number }>();
+    return new Map<string, SupplierBatchLineStats>();
   }
 
-  const { data, error } = await client
-    .from("supplier_batch_lines")
-    .select("batch_id, image_status, product_status")
-    .in("batch_id", batchIds);
+  const rows = await readSupplierBatchLines(client, batchIds);
+  const productsBySku = await readSupplierBatchProducts(client, rows);
+  const rowsByBatch = new Map<string, DbRow[]>();
 
-  if (error || !Array.isArray(data)) {
-    return new Map<string, { active: number; draft: number; lines: number; missingImages: number }>();
-  }
-
-  const stats = new Map<string, { active: number; draft: number; lines: number; missingImages: number }>();
-
-  for (const row of data as DbRow[]) {
+  for (const row of rows) {
     const batchId = pickString(row, ["batch_id"]);
-
     if (!batchId) {
       continue;
     }
 
-    const current = stats.get(batchId) ?? { active: 0, draft: 0, lines: 0, missingImages: 0 };
-    current.lines += 1;
+    const current = rowsByBatch.get(batchId) ?? [];
+    current.push(row);
+    rowsByBatch.set(batchId, current);
+  }
 
-    if (pickString(row, ["product_status"]) === "active") {
-      current.active += 1;
-    }
+  const stats = new Map<string, SupplierBatchLineStats>();
 
-    if (pickString(row, ["product_status"]) === "draft") {
-      current.draft += 1;
-    }
-
-    if (pickString(row, ["image_status"]) === "missing") {
-      current.missingImages += 1;
-    }
-
-    stats.set(batchId, current);
+  for (const batchId of batchIds) {
+    stats.set(batchId, summarizeSupplierBatchLines(rowsByBatch.get(batchId) ?? [], productsBySku));
   }
 
   return stats;
+}
+
+async function readSupplierBatchLines(
+  client: SupabaseServerClient,
+  batchIds: string[]
+) {
+  if (batchIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await client
+    .from("supplier_batch_lines")
+    .select(
+      "id, batch_id, line_no, ean, supplier_sku, sku_code, name, qty_received, unit_cost, line_total, image_status, product_status, metadata, created_at, updated_at"
+    )
+    .in("batch_id", batchIds)
+    .order("line_no", { ascending: true });
+
+  if (error) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_SUPPLIER_BATCH_LINES_READ_UNAVAILABLE",
+      "Admin supplier batch line data could not be read from Supabase.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  return Array.isArray(data) ? data.map((row) => row as DbRow) : [];
+}
+
+async function readSupplierBatchProducts(
+  client: SupabaseServerClient,
+  lines: DbRow[]
+) {
+  const skuCodes = uniqueDefinedStrings(lines.flatMap(supplierBatchLineSkuCandidates));
+
+  if (skuCodes.length === 0) {
+    return new Map<string, DbRow>();
+  }
+
+  const { data, error } = await client
+    .from("products")
+    .select(
+      "sku_code, name, brand, model, model_codes, compatibility_models, category, quality_grade, cost_price, retail_price, b2b_price, stock_qty, stock_status, status, image_path"
+    )
+    .in("sku_code", skuCodes);
+
+  if (error || !Array.isArray(data)) {
+    return new Map<string, DbRow>();
+  }
+
+  const productsBySku = new Map<string, DbRow>();
+
+  for (const row of data as DbRow[]) {
+    const sku = pickString(row, ["sku_code"]);
+
+    if (sku) {
+      productsBySku.set(toSupplierBatchSkuKey(sku), row);
+    }
+  }
+
+  return productsBySku;
+}
+
+async function readSupplierBatchInventory(
+  client: SupabaseServerClient,
+  lines: DbRow[]
+) {
+  const skuCodes = uniqueDefinedStrings(lines.flatMap(supplierBatchLineSkuCandidates));
+
+  if (skuCodes.length === 0) {
+    return new Map<string, { actualQty: number; availableQty: number; lockedQty: number }>();
+  }
+
+  const { data, error } = await client
+    .from("inventory_items")
+    .select("sku_code, actual_qty, available_qty, locked_qty")
+    .in("sku_code", skuCodes);
+
+  if (error || !Array.isArray(data)) {
+    return new Map<string, { actualQty: number; availableQty: number; lockedQty: number }>();
+  }
+
+  const inventoryBySku = new Map<string, { actualQty: number; availableQty: number; lockedQty: number }>();
+
+  for (const row of data as DbRow[]) {
+    const sku = pickString(row, ["sku_code"]);
+
+    if (!sku) {
+      continue;
+    }
+
+    const key = toSupplierBatchSkuKey(sku);
+    const current = inventoryBySku.get(key) ?? { actualQty: 0, availableQty: 0, lockedQty: 0 };
+    current.actualQty += pickNumber(row, ["actual_qty"]) ?? 0;
+    current.availableQty += pickNumber(row, ["available_qty"]) ?? 0;
+    current.lockedQty += pickNumber(row, ["locked_qty"]) ?? 0;
+    inventoryBySku.set(key, current);
+  }
+
+  return inventoryBySku;
+}
+
+function summarizeSupplierBatchLines(
+  lines: DbRow[],
+  productsBySku: Map<string, DbRow>
+): SupplierBatchLineStats {
+  const stats: SupplierBatchLineStats = { ...emptySupplierBatchLineStats };
+  let orderedQtyTotal = 0;
+  let hasOrderedQty = false;
+
+  for (const line of lines) {
+    const qtyReceived = Math.max(0, Math.trunc(pickNumber(line, ["qty_received"]) ?? 0));
+    const orderedQty = readSupplierBatchLineOrderedQty(line);
+    const product = readSupplierBatchLineProduct(line, productsBySku);
+    const productStatus = normalizeCatalogStatusValue(pickString(line, ["product_status"]));
+
+    stats.lines += 1;
+    stats.lineQtyTotal += qtyReceived;
+    stats.lineCostTotal = roundMoney(stats.lineCostTotal + (pickNumber(line, ["line_total"]) ?? 0));
+
+    if (orderedQty !== null) {
+      hasOrderedQty = true;
+      orderedQtyTotal += orderedQty;
+      stats.shortQty += Math.max(0, orderedQty - qtyReceived);
+    }
+
+    if (productStatus === "active") {
+      stats.active += 1;
+    }
+
+    if (productStatus === "draft") {
+      stats.draft += 1;
+    }
+
+    if (pickString(line, ["image_status"]) === "missing") {
+      stats.missingImages += 1;
+    }
+
+    if (qtyReceived > 0 && !product) {
+      stats.productMissingCount += 1;
+    }
+
+    if (product) {
+      const productSummary = readSupplierBatchLineProductSummary(product);
+      if (productSummary.activeMissingImage) {
+        stats.activeMissingImageCount += 1;
+      }
+
+      if (!productSummary.priceRuleOk) {
+        stats.priceViolationCount += 1;
+      }
+
+      if (productSummary.modelPrefixIssue) {
+        stats.modelPrefixIssueCount += 1;
+      }
+    }
+  }
+
+  stats.orderedQty = hasOrderedQty ? orderedQtyTotal : null;
+  return stats;
+}
+
+function buildSupplierBatchVerification(
+  batch: { totalCost: number; totalQty: number },
+  stats: SupplierBatchLineStats
+): AdminSupplierBatchVerification {
+  const issues: string[] = [];
+  const quantityMatches = stats.lineQtyTotal === batch.totalQty;
+  const costMatches = Math.abs(roundMoney(stats.lineCostTotal - batch.totalCost)) <= 0.01;
+
+  if (!quantityMatches) {
+    issues.push("quantity_mismatch");
+  }
+
+  if (!costMatches) {
+    issues.push("cost_mismatch");
+  }
+
+  if (stats.productMissingCount > 0) {
+    issues.push("missing_product");
+  }
+
+  if (stats.shortQty > 0) {
+    issues.push("short_received");
+  }
+
+  if (stats.missingImages > 0 || stats.activeMissingImageCount > 0) {
+    issues.push("missing_image");
+  }
+
+  if (stats.draft > 0) {
+    issues.push("draft_product");
+  }
+
+  if (stats.priceViolationCount > 0) {
+    issues.push("price_rule");
+  }
+
+  if (stats.modelPrefixIssueCount > 0) {
+    issues.push("model_prefix");
+  }
+
+  const status: AdminSupplierBatchVerificationStatus =
+    !quantityMatches || !costMatches || stats.productMissingCount > 0
+      ? "error"
+      : issues.length > 0
+        ? "warning"
+        : "ok";
+
+  return { status, issues, quantityMatches, costMatches };
+}
+
+function mapAdminSupplierBatchLine(
+  row: DbRow,
+  productsBySku: Map<string, DbRow>,
+  inventoryBySku: Map<string, { actualQty: number; availableQty: number; lockedQty: number }>
+): AdminSupplierBatchLine | null {
+  const id = pickString(row, ["id"]);
+  const lineNo = pickNumber(row, ["line_no"]);
+
+  if (!id || !lineNo) {
+    return null;
+  }
+
+  const qtyReceived = Math.max(0, Math.trunc(pickNumber(row, ["qty_received"]) ?? 0));
+  const qtyOrdered = readSupplierBatchLineOrderedQty(row);
+  const product = readSupplierBatchLineProduct(row, productsBySku);
+  const sku = supplierBatchLineSkuCandidates(row)[0] ?? null;
+  const inventory = sku ? inventoryBySku.get(toSupplierBatchSkuKey(sku)) : null;
+  const productSummary = product ? readSupplierBatchLineProductSummary(product, inventory) : null;
+
+  return {
+    id,
+    lineNo,
+    ean: pickString(row, ["ean"]),
+    supplierSku: pickString(row, ["supplier_sku"]),
+    skuCode: pickString(row, ["sku_code"]),
+    name: pickString(row, ["name"]) ?? "",
+    qtyReceived,
+    qtyOrdered,
+    qtyShort: qtyOrdered === null ? 0 : Math.max(0, qtyOrdered - qtyReceived),
+    unitCost: pickNumber(row, ["unit_cost"]) ?? 0,
+    lineTotal: pickNumber(row, ["line_total"]) ?? 0,
+    imageStatus: pickString(row, ["image_status"]) ?? "missing",
+    productStatus: normalizeCatalogStatusValue(pickString(row, ["product_status"])),
+    metadata: readRecordObject(row.metadata) ?? {},
+    product: productSummary,
+    createdAt: formatPartsProDateTime(pickString(row, ["created_at", "createdAt"])),
+    updatedAt: formatPartsProDateTime(pickString(row, ["updated_at", "updatedAt"])),
+  };
+}
+
+function readSupplierBatchLineProductSummary(
+  product: DbRow,
+  inventory?: { actualQty: number; availableQty: number; lockedQty: number } | null
+): AdminSupplierBatchLineProduct {
+  const sku = pickString(product, ["sku_code"]) ?? "";
+  const brand = pickString(product, ["brand"]) ?? "";
+  const model = pickString(product, ["model"]);
+  const costPrice = pickNumber(product, ["cost_price"]) ?? 0;
+  const retailPrice = pickNumber(product, ["retail_price"]) ?? 0;
+  const b2bPrice = pickNumber(product, ["b2b_price"]) ?? 0;
+  const expectedPrice = Math.ceil(costPrice + 5);
+  const catalogStatus = normalizeCatalogStatusValue(pickString(product, ["status"]));
+  const stockQty = pickNumber(product, ["stock_qty"]) ?? 0;
+  const imagePath = pickString(product, ["image_path"]);
+  const modelCodes = sanitizeSupplierStringArray(readStringArray(product, ["model_codes"]));
+  const compatibilityModels = sanitizeSupplierStringArray(readStringArray(product, ["compatibility_models"]));
+  const modelPrefixIssue = hasSupplierBatchModelPrefixIssue(brand, [model, ...compatibilityModels]);
+
+  return {
+    sku,
+    name: pickString(product, ["name"]) ?? sku,
+    brand,
+    model,
+    category: pickString(product, ["category"]),
+    grade: pickString(product, ["quality_grade"]),
+    catalogStatus,
+    stockStatus: normalizeStockStatus(pickString(product, ["stock_status"]), stockQty),
+    stockQty,
+    actualQty: inventory?.actualQty ?? stockQty,
+    availableQty: inventory?.availableQty ?? stockQty,
+    lockedQty: inventory?.lockedQty ?? 0,
+    costPrice,
+    retailPrice,
+    b2bPrice,
+    imagePath,
+    modelCodes,
+    compatibilityModels,
+    priceRuleOk: retailPrice === expectedPrice && b2bPrice === expectedPrice,
+    activeMissingImage: catalogStatus === "active" && !imagePath,
+    modelPrefixIssue,
+  };
+}
+
+function readSupplierBatchLineProduct(
+  line: DbRow,
+  productsBySku: Map<string, DbRow>
+) {
+  for (const sku of supplierBatchLineSkuCandidates(line)) {
+    const product = productsBySku.get(toSupplierBatchSkuKey(sku));
+
+    if (product) {
+      return product;
+    }
+  }
+
+  return null;
+}
+
+function supplierBatchLineSkuCandidates(line: DbRow) {
+  return uniqueDefinedStrings([
+    pickString(line, ["sku_code"]),
+    pickString(line, ["ean"]),
+  ]);
+}
+
+function toSupplierBatchSkuKey(value: string) {
+  return toPublicSku(value).toUpperCase();
+}
+
+function readSupplierBatchLineOrderedQty(line: DbRow) {
+  const metadata = readRecordObject(line.metadata) ?? {};
+  const value =
+    readUnknownNumber(metadata.ordered_qty) ??
+    readUnknownNumber(metadata.qty_ordered) ??
+    readUnknownNumber(metadata.orderedQty) ??
+    readUnknownNumber(metadata.ordered);
+
+  return value === null ? null : Math.max(0, Math.trunc(value));
+}
+
+function readUnknownNumber(value: unknown) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+function normalizeCatalogStatusValue(value: string | null): AdminCatalogStatus {
+  return value === "active" || value === "draft" || value === "hidden" || value === "blocked"
+    ? value
+    : "draft";
+}
+
+function hasSupplierBatchModelPrefixIssue(
+  brand: string,
+  values: Array<string | null | undefined>
+) {
+  const normalizedBrand = brand.trim().toLowerCase();
+
+  if (!normalizedBrand) {
+    return false;
+  }
+
+  return values.some((value) => value?.trim().toLowerCase().startsWith(`${normalizedBrand} `));
 }
 
 async function readAdminProduct(
@@ -7311,7 +7900,7 @@ function mapAdminSupplierRow(
 
 function mapAdminSupplierBatchRow(
   row: DbRow,
-  lineStats: Map<string, { active: number; draft: number; lines: number; missingImages: number }>
+  lineStats: Map<string, SupplierBatchLineStats>
 ): AdminSupplierBatch | null {
   const id = pickString(row, ["id"]);
   const batchCode = pickString(row, ["batch_code"]);
@@ -7322,7 +7911,10 @@ function mapAdminSupplierBatchRow(
   }
 
   const supplier = readSupplierJoin(row.suppliers);
-  const stats = lineStats.get(id) ?? { active: 0, draft: 0, lines: 0, missingImages: 0 };
+  const stats = lineStats.get(id) ?? emptySupplierBatchLineStats;
+  const totalQty = pickNumber(row, ["total_qty"]) ?? 0;
+  const totalCost = pickNumber(row, ["total_cost"]) ?? 0;
+  const verification = buildSupplierBatchVerification({ totalCost, totalQty }, stats);
 
   return {
     id,
@@ -7334,17 +7926,26 @@ function mapAdminSupplierBatchRow(
     orderNo: pickString(row, ["order_no"]),
     invoiceDate: pickString(row, ["invoice_date"]),
     receivedAt: pickString(row, ["received_at"]),
-    totalQty: pickNumber(row, ["total_qty"]) ?? 0,
-    totalCost: pickNumber(row, ["total_cost"]) ?? 0,
+    totalQty,
+    totalCost,
     currency: pickString(row, ["currency"]) ?? "EUR",
     vatMode: pickString(row, ["vat_mode"]) ?? "IVA esclusa",
     tags: sanitizeSupplierStringArray(readStringArray(row, ["tags"])),
     sourceFileName: pickString(row, ["source_file_name"]),
     metadata: readRecordObject(row.metadata) ?? {},
+    orderedQty: stats.orderedQty,
+    shortQty: stats.shortQty,
+    lineQtyTotal: stats.lineQtyTotal,
+    lineCostTotal: stats.lineCostTotal,
     lineCount: stats.lines,
     activeProductCount: stats.active,
     draftProductCount: stats.draft,
     missingImageCount: stats.missingImages,
+    productMissingCount: stats.productMissingCount,
+    activeMissingImageCount: stats.activeMissingImageCount,
+    priceViolationCount: stats.priceViolationCount,
+    modelPrefixIssueCount: stats.modelPrefixIssueCount,
+    verification,
     createdAt: formatPartsProDateTime(pickString(row, ["created_at", "createdAt"])),
     updatedAt: formatPartsProDateTime(pickString(row, ["updated_at", "updatedAt"])),
   };

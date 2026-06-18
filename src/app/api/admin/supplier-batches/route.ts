@@ -8,8 +8,12 @@ export const dynamic = "force-dynamic";
 const supplierBatchQuerySchema = z
   .object({
     batchCode: z.string().trim().min(1).max(80).optional(),
-    limit: z.coerce.number().int().min(1).max(200).default(50),
+    dateFrom: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    dateMode: z.enum(["imported", "received", "invoice"]).default("imported"),
+    dateTo: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    limit: z.coerce.number().int().min(1).max(500).default(50),
     offset: z.coerce.number().int().min(0).max(5000).default(0),
+    q: z.string().trim().min(1).max(120).optional(),
     supplier: z.string().trim().min(1).max(120).optional(),
   })
   .strict();

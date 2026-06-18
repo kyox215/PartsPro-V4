@@ -20,7 +20,10 @@ import {
   Eye,
   EyeOff,
   Filter,
+  FileSpreadsheet,
+  FileText,
   ImageIcon,
+  ListChecks,
   Loader2,
   MoreHorizontal,
   Package,
@@ -122,6 +125,7 @@ import { useI18n } from "./i18n-provider";
 import { PartVisual as ProductVisual } from "./part-visual";
 
 const adminProductsEndpoint = "/api/admin/products";
+const adminSupplierBatchesEndpoint = "/api/admin/supplier-batches";
 const productImagesBucket = "product-images";
 const adminProductWriteTimeoutMs = 25_000;
 const lowStockThreshold = 10;
@@ -154,6 +158,10 @@ type ProductAction = "publish" | "hide" | "block" | "restore";
 type ProductDrawerMode = "view" | "edit" | "create";
 type ProductSource = "supabase" | "api" | "empty";
 type StockAdjustmentAction = (typeof stockAdjustmentActions)[number];
+type SupplierBatchDateMode = "imported" | "received" | "invoice";
+type SupplierBatchVerificationStatus = "ok" | "warning" | "error";
+type SupplierBatchExportFormat = "csv" | "xlsx";
+type SupplierBatchExportScope = "batches" | "lines";
 type FilterValue<T extends string> = "all" | T;
 type ProductListFilters = {
   activeRestockOnly: boolean;
@@ -166,6 +174,17 @@ type ProductListFilters = {
   stockStatus: FilterValue<StockStatus>;
   grade: FilterValue<ProductGrade>;
   sort: ProductSort;
+  supplier: string;
+  page: number;
+  pageSize: number;
+};
+
+type SupplierBatchFilters = {
+  batchCode: string;
+  dateFrom: string;
+  dateMode: SupplierBatchDateMode;
+  dateTo: string;
+  q: string;
   supplier: string;
   page: number;
   pageSize: number;
@@ -200,6 +219,101 @@ type ProductDataSource = {
   total: number;
   returned: number;
   error?: string;
+};
+
+type SupplierBatchDataSource = {
+  source: ProductSource;
+  syncedAt: string | null;
+  total: number;
+  returned: number;
+  error?: string;
+};
+
+type SupplierBatchVerification = {
+  status: SupplierBatchVerificationStatus;
+  issues: string[];
+  quantityMatches: boolean;
+  costMatches: boolean;
+};
+
+type AdminSupplierBatchRow = {
+  id: string;
+  batchCode: string;
+  supplierCode: string | null;
+  supplierName: string | null;
+  invoiceNo: string | null;
+  orderNo: string | null;
+  invoiceDate: string | null;
+  receivedAt: string | null;
+  totalQty: number;
+  totalCost: number;
+  currency: string;
+  vatMode: string;
+  sourceFileName: string | null;
+  orderedQty: number | null;
+  shortQty: number;
+  lineQtyTotal: number;
+  lineCostTotal: number;
+  lineCount: number;
+  activeProductCount: number;
+  draftProductCount: number;
+  missingImageCount: number;
+  productMissingCount: number;
+  activeMissingImageCount: number;
+  priceViolationCount: number;
+  modelPrefixIssueCount: number;
+  verification: SupplierBatchVerification;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type AdminSupplierBatchLineProduct = {
+  sku: string;
+  name: string;
+  brand: string;
+  model: string | null;
+  category: string | null;
+  grade: string | null;
+  catalogStatus: CatalogStatus;
+  stockStatus: StockStatus;
+  stockQty: number;
+  actualQty: number;
+  availableQty: number;
+  lockedQty: number;
+  costPrice: number;
+  retailPrice: number;
+  b2bPrice: number;
+  imagePath: string | null;
+  modelCodes: string[];
+  compatibilityModels: string[];
+  priceRuleOk: boolean;
+  activeMissingImage: boolean;
+  modelPrefixIssue: boolean;
+};
+
+type AdminSupplierBatchLineRow = {
+  id: string;
+  lineNo: number;
+  ean: string | null;
+  supplierSku: string | null;
+  skuCode: string | null;
+  name: string;
+  qtyReceived: number;
+  qtyOrdered: number | null;
+  qtyShort: number;
+  unitCost: number;
+  lineTotal: number;
+  imageStatus: string;
+  productStatus: CatalogStatus;
+  product: AdminSupplierBatchLineProduct | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type AdminSupplierBatchDetail = {
+  batch: AdminSupplierBatchRow;
+  lines: AdminSupplierBatchLineRow[];
+  verification: SupplierBatchVerification;
 };
 
 type ProductMetrics = {
@@ -329,6 +443,21 @@ const defaultFilters: ProductListFilters = {
   pageSize: 20,
 };
 
+function defaultSupplierBatchFilters(): SupplierBatchFilters {
+  const today = formatDateInputValue(new Date());
+
+  return {
+    batchCode: "",
+    dateFrom: today,
+    dateMode: "imported",
+    dateTo: today,
+    q: "",
+    supplier: "",
+    page: 0,
+    pageSize: 20,
+  };
+}
+
 const emptyProductSource: ProductDataSource = {
   source: "empty",
   label: "空状态",
@@ -336,6 +465,14 @@ const emptyProductSource: ProductDataSource = {
   total: 0,
   returned: 0,
 };
+
+const emptySupplierBatchSource: SupplierBatchDataSource = {
+  source: "empty",
+  syncedAt: null,
+  total: 0,
+  returned: 0,
+};
+
 const emptyProductMetrics: ProductMetrics = {
   total: 0,
   active: 0,
@@ -406,6 +543,7 @@ const panelText = {
     create: "新建商品",
     workspaceProducts: "商品目录",
     workspaceBanners: "首页横幅",
+    workspaceBatches: "到货批次",
     selectedCount: "已选择 {count} 个商品",
     hideSelected: "批量下架",
     sourceStats: "{returned}/{total} 个商品 · {time}",
@@ -452,6 +590,67 @@ const panelText = {
       upload: "上传海报",
       uploadHint: "推荐 1600×400 或 1200×300，前台按 4:1 等比缩放，不裁切。",
       uploadError: "海报上传失败。",
+    },
+    batches: {
+      active: "上架",
+      allDates: "全部",
+      amount: "金额",
+      batch: "批次",
+      costMismatch: "金额不一致",
+      dateFrom: "开始日期",
+      dateMode: "日期口径",
+      dateModeLabels: {
+        imported: "录入日期",
+        received: "到货日期",
+        invoice: "发票日期",
+      } satisfies Record<SupplierBatchDateMode, string>,
+      dateTo: "结束日期",
+      detail: "到货明细",
+      detailEmpty: "暂无批次明细。",
+      downloadCsv: "CSV",
+      downloadTemplate: "模板",
+      downloadXlsx: "Excel",
+      draft: "草稿",
+      empty: "没有匹配的到货批次。",
+      exportBatches: "导出批次",
+      exportLines: "导出明细",
+      imageMissing: "缺图",
+      importedAt: "录入时间",
+      invoice: "发票",
+      issues: "问题",
+      lineCount: "行数",
+      lineTotal: "明细合计",
+      loading: "正在读取到货批次...",
+      missingProduct: "缺商品",
+      noIssues: "核对通过",
+      openDetail: "查看明细",
+      order: "订单",
+      priceIssue: "价格异常",
+      productStatus: "商品状态",
+      quantity: "数量",
+      quantityMismatch: "数量不一致",
+      quick30: "30 天",
+      quick7: "7 天",
+      quickToday: "今天",
+      receivedAt: "到货时间",
+      searchPlaceholder: "搜索批次 / 发票 / 订单",
+      shortQty: "短到货",
+      sourceStats: "{returned}/{total} 个批次 · {time}",
+      stock: "当前库存",
+      supplier: "供应商",
+      syncError: "到货批次暂时不可用。",
+      syncSuccess: "到货批次已同步。",
+      templateCsv: "CSV 模板",
+      templateXlsx: "Excel 模板",
+      title: "到货批次核对",
+      totalCost: "成本合计",
+      verification: "核对",
+      verificationLabels: {
+        ok: "OK",
+        warning: "Warning",
+        error: "Error",
+      } satisfies Record<SupplierBatchVerificationStatus, string>,
+      viewProducts: "查看商品",
     },
     emptyTitle: "没有匹配的商品",
     emptyBody: "调整搜索或筛选条件后再试。",
@@ -688,6 +887,7 @@ const panelText = {
     create: "Nuovo prodotto",
     workspaceProducts: "Catalogo prodotti",
     workspaceBanners: "Banner homepage",
+    workspaceBatches: "Lotti arrivo",
     selectedCount: "{count} prodotti selezionati",
     hideSelected: "Nascondi selezionati",
     sourceStats: "{returned}/{total} prodotti · {time}",
@@ -734,6 +934,67 @@ const panelText = {
       upload: "Carica poster",
       uploadHint: "Consigliato 1600x400 o 1200x300. In frontend scala 4:1 senza crop.",
       uploadError: "Caricamento poster non riuscito.",
+    },
+    batches: {
+      active: "Attivi",
+      allDates: "Tutto",
+      amount: "Importo",
+      batch: "Lotto",
+      costMismatch: "Importo non torna",
+      dateFrom: "Da",
+      dateMode: "Data",
+      dateModeLabels: {
+        imported: "Inserimento",
+        received: "Arrivo",
+        invoice: "Fattura",
+      } satisfies Record<SupplierBatchDateMode, string>,
+      dateTo: "A",
+      detail: "Dettaglio arrivo",
+      detailEmpty: "Nessuna riga per questo lotto.",
+      downloadCsv: "CSV",
+      downloadTemplate: "Template",
+      downloadXlsx: "Excel",
+      draft: "Bozze",
+      empty: "Nessun lotto arrivo trovato.",
+      exportBatches: "Esporta lotti",
+      exportLines: "Esporta righe",
+      imageMissing: "Senza foto",
+      importedAt: "Inserito",
+      invoice: "Fattura",
+      issues: "Problemi",
+      lineCount: "Righe",
+      lineTotal: "Totale righe",
+      loading: "Caricamento lotti arrivo...",
+      missingProduct: "Prodotto mancante",
+      noIssues: "Verifica OK",
+      openDetail: "Dettaglio",
+      order: "Ordine",
+      priceIssue: "Prezzo",
+      productStatus: "Stato prodotto",
+      quantity: "Quantita",
+      quantityMismatch: "Quantita non torna",
+      quick30: "30 giorni",
+      quick7: "7 giorni",
+      quickToday: "Oggi",
+      receivedAt: "Arrivo",
+      searchPlaceholder: "Cerca lotto / fattura / ordine",
+      shortQty: "Mancanti",
+      sourceStats: "{returned}/{total} lotti · {time}",
+      stock: "Stock attuale",
+      supplier: "Fornitore",
+      syncError: "Lotti arrivo non disponibili.",
+      syncSuccess: "Lotti arrivo sincronizzati.",
+      templateCsv: "Template CSV",
+      templateXlsx: "Template Excel",
+      title: "Controllo lotti arrivo",
+      totalCost: "Costo totale",
+      verification: "Verifica",
+      verificationLabels: {
+        ok: "OK",
+        warning: "Warning",
+        error: "Error",
+      } satisfies Record<SupplierBatchVerificationStatus, string>,
+      viewProducts: "Vedi prodotti",
     },
     emptyTitle: "Nessun prodotto corrispondente",
     emptyBody: "Modifica ricerca o filtri.",
@@ -941,7 +1202,20 @@ export function AdminProductsPanel() {
   const [drawerInlineEditSku, setDrawerInlineEditSku] = React.useState<string | null>(null);
   const [stockAdjustProduct, setStockAdjustProduct] =
     React.useState<AdminProductRow | null>(null);
-  const [workspace, setWorkspace] = React.useState<"products" | "banners">("products");
+  const [workspace, setWorkspace] =
+    React.useState<"products" | "banners" | "batches">("products");
+  const [batchFilters, setBatchFilters] = React.useState<SupplierBatchFilters>(() =>
+    defaultSupplierBatchFilters()
+  );
+  const [supplierBatches, setSupplierBatches] = React.useState<AdminSupplierBatchRow[]>([]);
+  const [batchDataSource, setBatchDataSource] = React.useState<SupplierBatchDataSource>(
+    emptySupplierBatchSource
+  );
+  const [isLoadingBatches, setIsLoadingBatches] = React.useState(false);
+  const [batchDetail, setBatchDetail] = React.useState<AdminSupplierBatchDetail | null>(null);
+  const [isBatchDetailOpen, setIsBatchDetailOpen] = React.useState(false);
+  const [isLoadingBatchDetail, setIsLoadingBatchDetail] = React.useState(false);
+  const [pendingBatchDownload, setPendingBatchDownload] = React.useState<string | null>(null);
 
   const refreshProducts = React.useCallback(
     async (
@@ -990,6 +1264,48 @@ export function AdminProductsPanel() {
     [adminText, filters, text]
   );
 
+  const refreshSupplierBatches = React.useCallback(
+    async (signal?: AbortSignal, options: { clearNotice?: boolean } = {}) => {
+      setIsLoadingBatches(true);
+
+      try {
+        const result = await fetchAdminSupplierBatches(batchFilters, signal);
+
+        if (signal?.aborted) {
+          return;
+        }
+
+        setSupplierBatches(result.batches);
+        setBatchDataSource({
+          source: result.source,
+          syncedAt: formatTimestamp(),
+          total: result.total,
+          returned: result.returned,
+        });
+
+        if (options.clearNotice !== false) {
+          setNotice(null);
+        }
+      } catch (error) {
+        if (signal?.aborted) {
+          return;
+        }
+
+        setBatchDataSource((current) => ({
+          ...current,
+          error: getErrorMessage(error),
+          syncedAt: formatTimestamp(),
+        }));
+        setNotice({ tone: "error", message: formatNoticeError(text.batches.syncError, error) });
+      } finally {
+        if (!signal?.aborted) {
+          setIsLoadingBatches(false);
+        }
+      }
+    },
+    [batchFilters, text.batches.syncError]
+  );
+
   React.useEffect(() => {
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
@@ -1001,6 +1317,22 @@ export function AdminProductsPanel() {
       window.clearTimeout(timeoutId);
     };
   }, [refreshProducts]);
+
+  React.useEffect(() => {
+    if (workspace !== "batches") {
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => {
+      void refreshSupplierBatches(controller.signal);
+    }, 180);
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
+  }, [refreshSupplierBatches, workspace]);
 
   React.useEffect(() => {
     const controller = new AbortController();
@@ -1043,6 +1375,82 @@ export function AdminProductsPanel() {
       ...patch,
       page: patch.page ?? 0,
     }));
+  }
+
+  function updateBatchFilters(patch: Partial<SupplierBatchFilters>) {
+    setBatchFilters((current) => ({
+      ...current,
+      ...patch,
+      page: patch.page ?? 0,
+    }));
+  }
+
+  function setBatchQuickRange(range: "today" | "7" | "30" | "all") {
+    if (range === "all") {
+      updateBatchFilters({ dateFrom: "", dateTo: "" });
+      return;
+    }
+
+    const today = new Date();
+    const from =
+      range === "today" ? today : addDays(today, range === "7" ? -6 : -29);
+
+    updateBatchFilters({
+      dateFrom: formatDateInputValue(from),
+      dateTo: formatDateInputValue(today),
+    });
+  }
+
+  async function openBatchDetail(batch: AdminSupplierBatchRow) {
+    setIsBatchDetailOpen(true);
+    setIsLoadingBatchDetail(true);
+
+    try {
+      const detail = await fetchAdminSupplierBatchDetail(batch.batchCode);
+      setBatchDetail(detail);
+    } catch (error) {
+      setNotice({ tone: "error", message: formatNoticeError(text.batches.syncError, error) });
+    } finally {
+      setIsLoadingBatchDetail(false);
+    }
+  }
+
+  function viewProductsForBatch(batch: AdminSupplierBatchRow) {
+    setWorkspace("products");
+    updateFilters({
+      batchCode: batch.batchCode,
+      supplier: batch.supplierName ?? "",
+    });
+  }
+
+  async function downloadSupplierBatchFile(
+    scope: SupplierBatchExportScope,
+    format: SupplierBatchExportFormat,
+    batch?: AdminSupplierBatchRow
+  ) {
+    const pendingKey = `${scope}:${format}:${batch?.batchCode ?? "view"}`;
+    setPendingBatchDownload(pendingKey);
+
+    try {
+      await downloadSupplierBatchExport(batchFilters, scope, format, batch?.batchCode);
+    } catch (error) {
+      setNotice({ tone: "error", message: formatNoticeError(text.batches.syncError, error) });
+    } finally {
+      setPendingBatchDownload(null);
+    }
+  }
+
+  async function downloadSupplierBatchTemplate(format: SupplierBatchExportFormat) {
+    const pendingKey = `template:${format}`;
+    setPendingBatchDownload(pendingKey);
+
+    try {
+      await downloadSupplierBatchTemplateFile(format);
+    } catch (error) {
+      setNotice({ tone: "error", message: formatNoticeError(text.batches.syncError, error) });
+    } finally {
+      setPendingBatchDownload(null);
+    }
   }
 
   function replaceProduct(product: AdminProductRow) {
@@ -1227,10 +1635,18 @@ export function AdminProductsPanel() {
 
   return (
     <section className="min-w-0 space-y-2 sm:space-y-4">
-      <Tabs value={workspace} onValueChange={(value) => setWorkspace(value === "banners" ? "banners" : "products")}>
-        <TabsList className="grid h-auto w-full grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 shadow-[0_8px_22px_rgba(15,23,42,0.04)] sm:w-auto sm:inline-grid">
+      <Tabs
+        value={workspace}
+        onValueChange={(value) =>
+          setWorkspace(value === "banners" ? "banners" : value === "batches" ? "batches" : "products")
+        }
+      >
+        <TabsList className="grid h-auto w-full grid-cols-3 rounded-lg border border-slate-200 bg-white p-1 shadow-[0_8px_22px_rgba(15,23,42,0.04)] sm:w-auto sm:inline-grid">
           <TabsTrigger value="products" className="rounded-md px-3 py-2 text-xs font-bold">
             {text.workspaceProducts}
+          </TabsTrigger>
+          <TabsTrigger value="batches" className="rounded-md px-3 py-2 text-xs font-bold">
+            {text.workspaceBatches}
           </TabsTrigger>
           <TabsTrigger value="banners" className="rounded-md px-3 py-2 text-xs font-bold">
             {text.workspaceBanners}
@@ -1458,6 +1874,24 @@ export function AdminProductsPanel() {
             text={text}
           />
         </TabsContent>
+
+        <TabsContent value="batches" className="m-0 pt-2">
+          <SupplierBatchesPanel
+            batches={supplierBatches}
+            dataSource={batchDataSource}
+            filters={batchFilters}
+            isLoading={isLoadingBatches}
+            pendingDownload={pendingBatchDownload}
+            text={text}
+            onChange={updateBatchFilters}
+            onDownload={downloadSupplierBatchFile}
+            onDownloadTemplate={downloadSupplierBatchTemplate}
+            onOpenDetail={(batch) => void openBatchDetail(batch)}
+            onQuickRange={setBatchQuickRange}
+            onRefresh={() => void refreshSupplierBatches()}
+            onViewProducts={viewProductsForBatch}
+          />
+        </TabsContent>
       </Tabs>
 
       <ProductMobileFiltersSheet
@@ -1523,8 +1957,797 @@ export function AdminProductsPanel() {
         onOpenChange={(open) => !open && setStockAdjustProduct(null)}
         onSave={handleStockAdjustment}
       />
+
+      <SupplierBatchDetailSheet
+        detail={batchDetail}
+        isLoading={isLoadingBatchDetail}
+        open={isBatchDetailOpen}
+        pendingDownload={pendingBatchDownload}
+        text={text}
+        onDownload={(batch, scope, format) => void downloadSupplierBatchFile(scope, format, batch)}
+        onOpenChange={(open) => {
+          setIsBatchDetailOpen(open);
+          if (!open) {
+            setBatchDetail(null);
+          }
+        }}
+        onViewProducts={viewProductsForBatch}
+      />
     </section>
   );
+}
+
+function SupplierBatchesPanel({
+  batches,
+  dataSource,
+  filters,
+  isLoading,
+  pendingDownload,
+  text,
+  onChange,
+  onDownload,
+  onDownloadTemplate,
+  onOpenDetail,
+  onQuickRange,
+  onRefresh,
+  onViewProducts,
+}: {
+  batches: AdminSupplierBatchRow[];
+  dataSource: SupplierBatchDataSource;
+  filters: SupplierBatchFilters;
+  isLoading: boolean;
+  pendingDownload: string | null;
+  text: typeof panelText.zh | typeof panelText.it;
+  onChange: (patch: Partial<SupplierBatchFilters>) => void;
+  onDownload: (
+    scope: SupplierBatchExportScope,
+    format: SupplierBatchExportFormat,
+    batch?: AdminSupplierBatchRow
+  ) => Promise<void>;
+  onDownloadTemplate: (format: SupplierBatchExportFormat) => Promise<void>;
+  onOpenDetail: (batch: AdminSupplierBatchRow) => void;
+  onQuickRange: (range: "today" | "7" | "30" | "all") => void;
+  onRefresh: () => void;
+  onViewProducts: (batch: AdminSupplierBatchRow) => void;
+}) {
+  const copy = text.batches;
+  const pageCount = Math.max(1, Math.ceil(dataSource.total / filters.pageSize));
+  const showRefreshBar = isLoading && batches.length > 0;
+
+  return (
+    <section className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
+      <div className="flex flex-col gap-3 border-b border-slate-200 px-3 py-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-base font-bold tracking-normal text-slate-950">
+              {copy.title}
+            </h1>
+            <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+              {dataSource.returned}/{dataSource.total}
+            </span>
+          </div>
+          <div className="mt-1 truncate text-xs font-medium text-slate-500">
+            {dataSource.syncedAt
+              ? formatAdminMessage(copy.sourceStats, {
+                  returned: dataSource.returned,
+                  total: dataSource.total,
+                  time: dataSource.syncedAt,
+                })
+              : text.sourcePending}
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="bg-white"
+            onClick={onRefresh}
+            disabled={isLoading}
+          >
+            <RefreshCw className={cn("size-4", isLoading && "animate-spin")} />
+            {text.sync}
+          </Button>
+          <BatchDownloadMenu
+            label={copy.exportBatches}
+            pendingKeyPrefix="batches"
+            pendingDownload={pendingDownload}
+            text={copy}
+            onDownload={(format) => onDownload("batches", format)}
+          />
+          <BatchDownloadMenu
+            label={copy.exportLines}
+            pendingKeyPrefix="lines"
+            pendingDownload={pendingDownload}
+            text={copy}
+            onDownload={(format) => onDownload("lines", format)}
+          />
+          <BatchTemplateMenu
+            pendingDownload={pendingDownload}
+            text={copy}
+            onDownload={onDownloadTemplate}
+          />
+        </div>
+      </div>
+
+      <div className="grid gap-2 border-b border-slate-200 bg-slate-50/70 px-3 py-3 lg:grid-cols-[1.2fr_1fr_1fr_1fr_1fr_auto]">
+        <Input
+          value={filters.q}
+          className="h-9 bg-white"
+          placeholder={copy.searchPlaceholder}
+          onChange={(event) => onChange({ q: event.target.value })}
+        />
+        <Input
+          value={filters.supplier}
+          className="h-9 bg-white"
+          placeholder={text.supplierFilterPlaceholder}
+          onChange={(event) => onChange({ supplier: event.target.value })}
+        />
+        <Input
+          value={filters.batchCode}
+          className="h-9 bg-white font-mono text-xs"
+          placeholder={text.batchFilterPlaceholder}
+          onChange={(event) => onChange({ batchCode: event.target.value })}
+        />
+        <Select
+          value={filters.dateMode}
+          onValueChange={(value) => onChange({ dateMode: value as SupplierBatchDateMode })}
+        >
+          <SelectTrigger size="sm" className="h-9 bg-white">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {(["imported", "received", "invoice"] as const).map((mode) => (
+              <SelectItem key={mode} value={mode}>
+                {copy.dateModeLabels[mode]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="grid grid-cols-2 gap-2">
+          <Input
+            value={filters.dateFrom}
+            aria-label={copy.dateFrom}
+            className="h-9 bg-white"
+            type="date"
+            onChange={(event) => onChange({ dateFrom: event.target.value })}
+          />
+          <Input
+            value={filters.dateTo}
+            aria-label={copy.dateTo}
+            className="h-9 bg-white"
+            type="date"
+            onChange={(event) => onChange({ dateTo: event.target.value })}
+          />
+        </div>
+        <div className="grid grid-cols-4 gap-1">
+          <Button variant="outline" size="xs" className="bg-white px-2" onClick={() => onQuickRange("today")}>
+            {copy.quickToday}
+          </Button>
+          <Button variant="outline" size="xs" className="bg-white px-2" onClick={() => onQuickRange("7")}>
+            {copy.quick7}
+          </Button>
+          <Button variant="outline" size="xs" className="bg-white px-2" onClick={() => onQuickRange("30")}>
+            {copy.quick30}
+          </Button>
+          <Button variant="outline" size="xs" className="bg-white px-2" onClick={() => onQuickRange("all")}>
+            {copy.allDates}
+          </Button>
+        </div>
+      </div>
+
+      <div aria-busy={isLoading} aria-live="polite" className="min-w-0">
+        {showRefreshBar ? <ProductTableLoadingBar label={copy.loading} /> : null}
+        <div className="overflow-x-auto">
+          <Table className="min-w-[1080px]">
+            <TableHeader className="bg-slate-50 text-xs">
+              <TableRow>
+                <TableHead className="w-[18%]">{copy.batch}</TableHead>
+                <TableHead className="w-[16%]">{copy.supplier}</TableHead>
+                <TableHead className="w-[14%]">{copy.quantity}</TableHead>
+                <TableHead className="w-[13%]">{copy.amount}</TableHead>
+                <TableHead className="w-[17%]">{copy.productStatus}</TableHead>
+                <TableHead className="w-[13%]">{copy.verification}</TableHead>
+                <TableHead className="w-[9%] text-right">{text.tableActions}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {batches.length ? (
+                batches.map((batch) => (
+                  <TableRow key={batch.id} className="cursor-pointer" onClick={() => onOpenDetail(batch)}>
+                    <TableCell className="align-top">
+                      <div className="font-mono text-xs font-black text-slate-950">
+                        {batch.batchCode}
+                      </div>
+                      <div className="mt-1 text-xs font-medium text-slate-500">
+                        {copy.invoice}: {batch.invoiceNo ?? text.none}
+                      </div>
+                      <div className="text-xs font-medium text-slate-500">
+                        {copy.order}: {batch.orderNo ?? text.none}
+                      </div>
+                      <div className="mt-1 flex flex-wrap gap-1 text-[11px] font-semibold text-slate-500">
+                        <span>{copy.importedAt}: {batch.createdAt}</span>
+                        {batch.receivedAt ? <span>{copy.receivedAt}: {formatDateTimeShort(batch.receivedAt)}</span> : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <div className="font-bold text-slate-900">{batch.supplierName ?? text.none}</div>
+                      <div className="mt-1 font-mono text-[11px] font-semibold text-slate-500">
+                        {batch.supplierCode ?? text.none}
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <BatchMetricLine label={copy.lineCount} value={batch.lineCount} />
+                      <BatchMetricLine label={copy.quantity} value={`${batch.lineQtyTotal}/${batch.totalQty}`} />
+                      {batch.shortQty > 0 ? (
+                        <BatchMetricLine label={copy.shortQty} value={batch.shortQty} tone="warning" />
+                      ) : null}
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <BatchMetricLine label={copy.lineTotal} value={formatEuro(batch.lineCostTotal)} />
+                      <BatchMetricLine label={copy.totalCost} value={formatEuro(batch.totalCost)} />
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <div className="flex flex-wrap gap-1.5">
+                        <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
+                          {copy.active} {batch.activeProductCount}
+                        </Badge>
+                        <Badge className="border border-amber-200 bg-amber-50 text-amber-700">
+                          {copy.draft} {batch.draftProductCount}
+                        </Badge>
+                        {batch.missingImageCount + batch.activeMissingImageCount > 0 ? (
+                          <Badge className="border border-red-200 bg-red-50 text-red-700">
+                            {copy.imageMissing} {batch.missingImageCount + batch.activeMissingImageCount}
+                          </Badge>
+                        ) : null}
+                        {batch.productMissingCount > 0 ? (
+                          <Badge className="border border-red-200 bg-red-50 text-red-700">
+                            {copy.missingProduct} {batch.productMissingCount}
+                          </Badge>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <SupplierBatchVerificationBadge batch={batch} text={text} />
+                      <SupplierBatchIssueList batch={batch} text={text} />
+                    </TableCell>
+                    <TableCell className="align-top text-right" onClick={(event) => event.stopPropagation()}>
+                      <div className="flex justify-end gap-1">
+                        <Button variant="outline" size="xs" className="bg-white" onClick={() => onOpenDetail(batch)}>
+                          <ListChecks className="size-3.5" />
+                          {copy.openDetail}
+                        </Button>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon-sm" aria-label={text.moreActions}>
+                              <MoreHorizontal className="size-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => onViewProducts(batch)}>
+                              <Package className="size-4" />
+                              {copy.viewProducts}
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => void onDownload("batches", "csv", batch)}>
+                              <FileText className="size-4" />
+                              {copy.exportBatches} CSV
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => void onDownload("lines", "xlsx", batch)}>
+                              <FileSpreadsheet className="size-4" />
+                              {copy.exportLines} Excel
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={7}>
+                    <AdminSkeletonRows rows={6} />
+                  </TableCell>
+                </TableRow>
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={7}>
+                    <div className="p-8 text-center text-sm font-semibold text-slate-500">
+                      {copy.empty}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
+
+      <SupplierBatchPagination
+        filters={filters}
+        pageCount={pageCount}
+        returned={batches.length}
+        text={text}
+        total={dataSource.total}
+        onChange={onChange}
+      />
+    </section>
+  );
+}
+
+function BatchDownloadMenu({
+  label,
+  pendingDownload,
+  pendingKeyPrefix,
+  text,
+  onDownload,
+}: {
+  label: string;
+  pendingDownload: string | null;
+  pendingKeyPrefix: SupplierBatchExportScope;
+  text: (typeof panelText.zh | typeof panelText.it)["batches"];
+  onDownload: (format: SupplierBatchExportFormat) => Promise<void>;
+}) {
+  const pending = pendingDownload?.startsWith(`${pendingKeyPrefix}:`);
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="bg-white" disabled={pending}>
+          {pending ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+          {label}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => void onDownload("csv")}>
+          <FileText className="size-4" />
+          {text.downloadCsv}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => void onDownload("xlsx")}>
+          <FileSpreadsheet className="size-4" />
+          {text.downloadXlsx}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function BatchTemplateMenu({
+  pendingDownload,
+  text,
+  onDownload,
+}: {
+  pendingDownload: string | null;
+  text: (typeof panelText.zh | typeof panelText.it)["batches"];
+  onDownload: (format: SupplierBatchExportFormat) => Promise<void>;
+}) {
+  const pending = pendingDownload?.startsWith("template:");
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline" size="sm" className="bg-white" disabled={pending}>
+          {pending ? <Loader2 className="size-4 animate-spin" /> : <FileSpreadsheet className="size-4" />}
+          {text.downloadTemplate}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onClick={() => void onDownload("csv")}>
+          <FileText className="size-4" />
+          {text.templateCsv}
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => void onDownload("xlsx")}>
+          <FileSpreadsheet className="size-4" />
+          {text.templateXlsx}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function SupplierBatchDetailSheet({
+  detail,
+  isLoading,
+  open,
+  pendingDownload,
+  text,
+  onDownload,
+  onOpenChange,
+  onViewProducts,
+}: {
+  detail: AdminSupplierBatchDetail | null;
+  isLoading: boolean;
+  open: boolean;
+  pendingDownload: string | null;
+  text: typeof panelText.zh | typeof panelText.it;
+  onDownload: (
+    batch: AdminSupplierBatchRow,
+    scope: SupplierBatchExportScope,
+    format: SupplierBatchExportFormat
+  ) => void;
+  onOpenChange: (open: boolean) => void;
+  onViewProducts: (batch: AdminSupplierBatchRow) => void;
+}) {
+  const copy = text.batches;
+  const batch = detail?.batch;
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        className="w-screen max-w-none gap-0 overflow-hidden p-0"
+        style={{ width: "min(1100px, 100vw)", maxWidth: "min(1100px, 100vw)" }}
+      >
+        <SheetHeader className="border-b border-slate-200 bg-white p-4 pr-12">
+          <SheetTitle className="text-lg font-bold">
+            {copy.detail}
+          </SheetTitle>
+          <SheetDescription className="break-all">
+            {batch?.batchCode ?? text.loading}
+          </SheetDescription>
+        </SheetHeader>
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-3 lg:p-4">
+          {isLoading ? (
+            <AdminSkeletonRows rows={8} />
+          ) : batch && detail ? (
+            <div className="space-y-3">
+              <section className="rounded-lg border border-slate-200 bg-white p-3">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <SupplierBatchVerificationBadge batch={batch} text={text} />
+                      <span className="font-mono text-sm font-black text-slate-950">
+                        {batch.batchCode}
+                      </span>
+                    </div>
+                    <div className="mt-2 text-sm font-semibold text-slate-600">
+                      {batch.supplierName ?? text.none} · {copy.invoice}: {batch.invoiceNo ?? text.none} · {copy.order}: {batch.orderNo ?? text.none}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" size="sm" className="bg-white" onClick={() => onViewProducts(batch)}>
+                      <Package className="size-4" />
+                      {copy.viewProducts}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="bg-white"
+                      disabled={pendingDownload === `lines:xlsx:${batch.batchCode}`}
+                      onClick={() => onDownload(batch, "lines", "xlsx")}
+                    >
+                      {pendingDownload === `lines:xlsx:${batch.batchCode}` ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <FileSpreadsheet className="size-4" />
+                      )}
+                      {copy.exportLines}
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+                  <DetailItem label={copy.lineCount} value={batch.lineCount} />
+                  <DetailItem label={copy.quantity} value={`${batch.lineQtyTotal}/${batch.totalQty}`} />
+                  <DetailItem label={copy.shortQty} value={batch.shortQty} />
+                  <DetailItem label={copy.lineTotal} value={formatEuro(batch.lineCostTotal)} />
+                  <DetailItem label={copy.totalCost} value={formatEuro(batch.totalCost)} />
+                  <DetailItem label={copy.imageMissing} value={batch.missingImageCount + batch.activeMissingImageCount} />
+                </div>
+                <SupplierBatchIssueList batch={batch} text={text} className="mt-3" />
+              </section>
+
+              <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+                <div className="border-b border-slate-200 px-3 py-2 text-sm font-black text-slate-950">
+                  {copy.detail}
+                </div>
+                <div className="overflow-x-auto">
+                  <Table className="min-w-[1180px]">
+                    <TableHeader className="bg-slate-50 text-xs">
+                      <TableRow>
+                        <TableHead className="w-14">#</TableHead>
+                        <TableHead className="w-[24%]">{text.tableProduct}</TableHead>
+                        <TableHead className="w-[13%]">SKU</TableHead>
+                        <TableHead className="w-[12%]">{copy.quantity}</TableHead>
+                        <TableHead className="w-[12%]">{copy.amount}</TableHead>
+                        <TableHead className="w-[14%]">{copy.stock}</TableHead>
+                        <TableHead className="w-[14%]">{copy.productStatus}</TableHead>
+                        <TableHead className="w-[11%]">{copy.issues}</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {detail.lines.length ? (
+                        detail.lines.map((line) => (
+                          <TableRow key={line.id}>
+                            <TableCell className="font-mono text-xs font-bold">{line.lineNo}</TableCell>
+                            <TableCell>
+                              <div className="font-bold text-slate-950">{line.name}</div>
+                              <div className="mt-1 text-xs font-medium text-slate-500">
+                                {line.product?.brand ?? text.none}
+                                {line.product?.model ? ` · ${line.product.model}` : ""}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="font-mono text-xs font-bold text-slate-900">
+                                {line.skuCode ?? line.ean ?? text.none}
+                              </div>
+                              <div className="mt-1 font-mono text-[11px] font-semibold text-slate-500">
+                                {line.supplierSku ?? text.none}
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <BatchMetricLine label="received" value={line.qtyReceived} />
+                              {line.qtyOrdered !== null ? (
+                                <BatchMetricLine label="ordered" value={line.qtyOrdered} />
+                              ) : null}
+                              {line.qtyShort > 0 ? (
+                                <BatchMetricLine label={copy.shortQty} value={line.qtyShort} tone="warning" />
+                              ) : null}
+                            </TableCell>
+                            <TableCell>
+                              <BatchMetricLine label="unit" value={formatEuro(line.unitCost)} />
+                              <BatchMetricLine label="line" value={formatEuro(line.lineTotal)} />
+                            </TableCell>
+                            <TableCell>
+                              {line.product ? (
+                                <>
+                                  <BatchMetricLine label={text.stock} value={line.product.stockQty} />
+                                  <BatchMetricLine label={text.availableStock} value={line.product.availableQty} />
+                                  <BatchMetricLine label={text.lockedStock} value={line.product.lockedQty} />
+                                </>
+                              ) : (
+                                <Badge className="border border-red-200 bg-red-50 text-red-700">
+                                  {copy.missingProduct}
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-wrap gap-1">
+                                <Badge className={catalogStatusBadgeClass(line.product?.catalogStatus ?? line.productStatus)}>
+                                  {line.product?.catalogStatus ?? line.productStatus}
+                                </Badge>
+                                <Badge className={line.imageStatus === "uploaded" || line.imageStatus === "matched" ? "border border-emerald-200 bg-emerald-50 text-emerald-700" : "border border-amber-200 bg-amber-50 text-amber-700"}>
+                                  {line.imageStatus}
+                                </Badge>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <SupplierBatchLineIssueBadges line={line} text={text} />
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell colSpan={8}>
+                            <div className="p-8 text-center text-sm font-semibold text-slate-500">
+                              {copy.detailEmpty}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
+              </section>
+            </div>
+          ) : (
+            <div className="p-8 text-center text-sm font-semibold text-slate-500">
+              {copy.detailEmpty}
+            </div>
+          )}
+        </div>
+        <SheetFooter className="border-t border-slate-200 bg-white p-3 sm:flex-row sm:justify-end">
+          <Button variant="outline" className="bg-white" onClick={() => onOpenChange(false)}>
+            {text.close}
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function SupplierBatchPagination({
+  filters,
+  pageCount,
+  returned,
+  text,
+  total,
+  onChange,
+}: {
+  filters: SupplierBatchFilters;
+  pageCount: number;
+  returned: number;
+  text: typeof panelText.zh | typeof panelText.it;
+  total: number;
+  onChange: (patch: Partial<SupplierBatchFilters>) => void;
+}) {
+  const page = filters.page + 1;
+
+  return (
+    <div className="flex flex-col gap-2 border-t border-slate-200 px-3 py-3 text-xs font-semibold text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        {formatAdminMessage(text.pageInfo, { page, pages: pageCount })} · {returned}/{total}
+      </div>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="icon-sm"
+          className="bg-white"
+          disabled={filters.page <= 0}
+          onClick={() => onChange({ page: Math.max(0, filters.page - 1) })}
+        >
+          <ChevronLeft className="size-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          className="bg-white"
+          disabled={filters.page >= pageCount - 1}
+          onClick={() => onChange({ page: Math.min(pageCount - 1, filters.page + 1) })}
+        >
+          <ChevronRight className="size-4" />
+        </Button>
+        <Select
+          value={String(filters.pageSize)}
+          onValueChange={(value) => onChange({ pageSize: Number(value) })}
+        >
+          <SelectTrigger size="sm" className="h-8 w-[104px] bg-white">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {[20, 50, 100, 200].map((pageSize) => (
+              <SelectItem key={pageSize} value={String(pageSize)}>
+                {formatAdminMessage(text.pageSizeOption, { count: pageSize })}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+}
+
+function SupplierBatchVerificationBadge({
+  batch,
+  text,
+}: {
+  batch: AdminSupplierBatchRow;
+  text: typeof panelText.zh | typeof panelText.it;
+}) {
+  const status = batch.verification.status;
+
+  return (
+    <Badge className={supplierBatchVerificationBadgeClass(status)}>
+      {text.batches.verificationLabels[status]}
+    </Badge>
+  );
+}
+
+function SupplierBatchIssueList({
+  batch,
+  className,
+  text,
+}: {
+  batch: AdminSupplierBatchRow;
+  className?: string;
+  text: typeof panelText.zh | typeof panelText.it;
+}) {
+  const labels = supplierBatchIssueLabels(batch, text);
+
+  if (labels.length === 0) {
+    return (
+      <div className={cn("text-xs font-semibold text-emerald-700", className)}>
+        {text.batches.noIssues}
+      </div>
+    );
+  }
+
+  return (
+    <div className={cn("flex flex-wrap gap-1", className)}>
+      {labels.map((label) => (
+        <Badge key={label} className="border border-amber-200 bg-amber-50 text-amber-700">
+          {label}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+function SupplierBatchLineIssueBadges({
+  line,
+  text,
+}: {
+  line: AdminSupplierBatchLineRow;
+  text: typeof panelText.zh | typeof panelText.it;
+}) {
+  const labels = [
+    !line.product ? text.batches.missingProduct : null,
+    line.product?.activeMissingImage ? text.batches.imageMissing : null,
+    line.product && !line.product.priceRuleOk ? text.batches.priceIssue : null,
+    line.product?.modelPrefixIssue ? "model" : null,
+  ].filter(isDefined);
+
+  if (labels.length === 0) {
+    return <span className="text-xs font-semibold text-emerald-700">{text.batches.noIssues}</span>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1">
+      {labels.map((label) => (
+        <Badge key={label} className="border border-amber-200 bg-amber-50 text-amber-700">
+          {label}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+function BatchMetricLine({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: React.ReactNode;
+  tone?: "warning";
+}) {
+  return (
+    <div className={cn("text-xs font-semibold text-slate-500", tone === "warning" && "text-amber-700")}>
+      <span className="font-medium">{label}</span>:{" "}
+      <span className="font-bold text-slate-900">{value}</span>
+    </div>
+  );
+}
+
+function supplierBatchIssueLabels(
+  batch: AdminSupplierBatchRow,
+  text: typeof panelText.zh | typeof panelText.it
+) {
+  return batch.verification.issues.map((issue) => {
+    if (issue === "quantity_mismatch") {
+      return text.batches.quantityMismatch;
+    }
+
+    if (issue === "cost_mismatch") {
+      return text.batches.costMismatch;
+    }
+
+    if (issue === "missing_product") {
+      return text.batches.missingProduct;
+    }
+
+    if (issue === "short_received") {
+      return text.batches.shortQty;
+    }
+
+    if (issue === "missing_image") {
+      return text.batches.imageMissing;
+    }
+
+    if (issue === "draft_product") {
+      return text.batches.draft;
+    }
+
+    if (issue === "price_rule") {
+      return text.batches.priceIssue;
+    }
+
+    return issue;
+  });
+}
+
+function supplierBatchVerificationBadgeClass(status: SupplierBatchVerificationStatus) {
+  if (status === "ok") {
+    return "border border-emerald-200 bg-emerald-50 text-emerald-700";
+  }
+
+  if (status === "error") {
+    return "border border-red-200 bg-red-50 text-red-700";
+  }
+
+  return "border border-amber-200 bg-amber-50 text-amber-700";
+}
+
+function formatDateTimeShort(value: string) {
+  return value.length > 16 ? value.slice(0, 16).replace("T", " ") : value;
 }
 
 type HomeBannerFormValues = {
@@ -5651,6 +6874,160 @@ async function fetchAdminProducts(
   return parseProductsApiPayload(await readJsonResponse(response));
 }
 
+async function fetchAdminSupplierBatches(
+  filters: SupplierBatchFilters,
+  signal?: AbortSignal
+) {
+  const params = supplierBatchSearchParams(filters);
+  const response = await fetch(`${adminSupplierBatchesEndpoint}?${params.toString()}`, {
+    cache: "no-store",
+    headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+    signal,
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readApiErrorMessage(
+        response,
+        `GET ${adminSupplierBatchesEndpoint} responded ${response.status}`
+      )
+    );
+  }
+
+  return parseSupplierBatchesApiPayload(await readJsonResponse(response));
+}
+
+async function fetchAdminSupplierBatchDetail(batchCode: string) {
+  const response = await fetch(
+    `${adminSupplierBatchesEndpoint}/${encodeURIComponent(batchCode)}`,
+    {
+      cache: "no-store",
+      headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await readApiErrorMessage(
+        response,
+        `GET ${adminSupplierBatchesEndpoint}/${batchCode} responded ${response.status}`
+      )
+    );
+  }
+
+  const detail = normalizeSupplierBatchDetail(readPayloadDataObject(await readJsonResponse(response)));
+
+  if (!detail) {
+    throw new Error("Supplier batch detail response is incomplete.");
+  }
+
+  return detail;
+}
+
+async function downloadSupplierBatchExport(
+  filters: SupplierBatchFilters,
+  scope: SupplierBatchExportScope,
+  format: SupplierBatchExportFormat,
+  batchCode?: string
+) {
+  const params = supplierBatchSearchParams({
+    ...filters,
+    batchCode: batchCode ?? filters.batchCode,
+    page: 0,
+  });
+  params.delete("limit");
+  params.delete("offset");
+  params.set("format", format);
+  params.set("scope", scope);
+
+  const response = await fetch(`${adminSupplierBatchesEndpoint}/export?${params.toString()}`, {
+    cache: "no-store",
+    headers: { Accept: "*/*", "Cache-Control": "no-cache" },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readApiErrorMessage(
+        response,
+        `GET ${adminSupplierBatchesEndpoint}/export responded ${response.status}`
+      )
+    );
+  }
+
+  await downloadResponseBlob(response, `partspro-supplier-batches-${scope}.${format}`);
+}
+
+async function downloadSupplierBatchTemplateFile(format: SupplierBatchExportFormat) {
+  const response = await fetch(`${adminSupplierBatchesEndpoint}/template?format=${format}`, {
+    cache: "no-store",
+    headers: { Accept: "*/*", "Cache-Control": "no-cache" },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await readApiErrorMessage(
+        response,
+        `GET ${adminSupplierBatchesEndpoint}/template responded ${response.status}`
+      )
+    );
+  }
+
+  await downloadResponseBlob(response, `partspro-supplier-batches-template.${format}`);
+}
+
+function supplierBatchSearchParams(filters: SupplierBatchFilters) {
+  const params = new URLSearchParams({
+    dateMode: filters.dateMode,
+    limit: String(filters.pageSize),
+    offset: String(filters.page * filters.pageSize),
+  });
+
+  if (filters.q.trim()) {
+    params.set("q", filters.q.trim());
+  }
+
+  if (filters.supplier.trim()) {
+    params.set("supplier", filters.supplier.trim());
+  }
+
+  if (filters.batchCode.trim()) {
+    params.set("batchCode", filters.batchCode.trim());
+  }
+
+  if (filters.dateFrom) {
+    params.set("dateFrom", filters.dateFrom);
+  }
+
+  if (filters.dateTo) {
+    params.set("dateTo", filters.dateTo);
+  }
+
+  return params;
+}
+
+async function downloadResponseBlob(response: Response, fallbackFileName: string) {
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  const fileName = readContentDispositionFileName(response.headers.get("Content-Disposition")) ?? fallbackFileName;
+
+  anchor.href = url;
+  anchor.download = fileName;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function readContentDispositionFileName(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const match = /filename="([^"]+)"/.exec(value) ?? /filename=([^;]+)/.exec(value);
+  return match?.[1]?.trim() ?? null;
+}
+
 async function fetchAdminRestockRequests(
   signal?: AbortSignal
 ): Promise<AdminRestockRequest[]> {
@@ -5888,6 +7265,191 @@ function parseProductsApiPayload(payload: unknown): ProductsApiResult {
     summary: parseProductMetrics(meta.summary, products, total),
     total,
     returned: readNumber(meta.returned) ?? products.length,
+  };
+}
+
+function parseSupplierBatchesApiPayload(payload: unknown) {
+  const rows = readPayloadDataArray(payload);
+  const batches = rows.map(normalizeSupplierBatchRow).filter(isDefined);
+  const meta = readProductsMeta(payload);
+  const source = readProductsSource(readString(meta.source), batches.length);
+  const total = readNumber(meta.total) ?? batches.length;
+
+  return {
+    batches,
+    source,
+    total,
+    returned: readNumber(meta.returned) ?? batches.length,
+  };
+}
+
+function normalizeSupplierBatchDetail(value: unknown): AdminSupplierBatchDetail | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const batch = normalizeSupplierBatchRow(value.batch);
+  const lines = Array.isArray(value.lines)
+    ? value.lines.map(normalizeSupplierBatchLineRow).filter(isDefined)
+    : [];
+  const verification = normalizeSupplierBatchVerification(value.verification);
+
+  if (!batch || !verification) {
+    return null;
+  }
+
+  return { batch, lines, verification };
+}
+
+function normalizeSupplierBatchRow(row: unknown): AdminSupplierBatchRow | null {
+  if (!isRecord(row)) {
+    return null;
+  }
+
+  const id = readString(row.id);
+  const batchCode = readString(row.batchCode) ?? readString(row.batch_code);
+
+  if (!id || !batchCode) {
+    return null;
+  }
+
+  return {
+    id,
+    batchCode,
+    supplierCode: readString(row.supplierCode) ?? readString(row.supplier_code) ?? null,
+    supplierName: readString(row.supplierName) ?? readString(row.supplier_name) ?? null,
+    invoiceNo: readString(row.invoiceNo) ?? readString(row.invoice_no) ?? null,
+    orderNo: readString(row.orderNo) ?? readString(row.order_no) ?? null,
+    invoiceDate: readString(row.invoiceDate) ?? readString(row.invoice_date) ?? null,
+    receivedAt: readString(row.receivedAt) ?? readString(row.received_at) ?? null,
+    totalQty: readNumber(row.totalQty) ?? readNumber(row.total_qty) ?? 0,
+    totalCost: readNumber(row.totalCost) ?? readNumber(row.total_cost) ?? 0,
+    currency: readString(row.currency) ?? "EUR",
+    vatMode: readString(row.vatMode) ?? readString(row.vat_mode) ?? "IVA esclusa",
+    sourceFileName: readString(row.sourceFileName) ?? readString(row.source_file_name) ?? null,
+    orderedQty: readNumber(row.orderedQty) ?? readNumber(row.ordered_qty) ?? null,
+    shortQty: readNumber(row.shortQty) ?? readNumber(row.short_qty) ?? 0,
+    lineQtyTotal: readNumber(row.lineQtyTotal) ?? readNumber(row.line_qty_total) ?? 0,
+    lineCostTotal: readNumber(row.lineCostTotal) ?? readNumber(row.line_cost_total) ?? 0,
+    lineCount: readNumber(row.lineCount) ?? readNumber(row.line_count) ?? 0,
+    activeProductCount:
+      readNumber(row.activeProductCount) ?? readNumber(row.active_product_count) ?? 0,
+    draftProductCount:
+      readNumber(row.draftProductCount) ?? readNumber(row.draft_product_count) ?? 0,
+    missingImageCount:
+      readNumber(row.missingImageCount) ?? readNumber(row.missing_image_count) ?? 0,
+    productMissingCount:
+      readNumber(row.productMissingCount) ?? readNumber(row.product_missing_count) ?? 0,
+    activeMissingImageCount:
+      readNumber(row.activeMissingImageCount) ??
+      readNumber(row.active_missing_image_count) ??
+      0,
+    priceViolationCount:
+      readNumber(row.priceViolationCount) ?? readNumber(row.price_violation_count) ?? 0,
+    modelPrefixIssueCount:
+      readNumber(row.modelPrefixIssueCount) ??
+      readNumber(row.model_prefix_issue_count) ??
+      0,
+    verification: normalizeSupplierBatchVerification(row.verification) ?? {
+      costMatches: true,
+      issues: [],
+      quantityMatches: true,
+      status: "ok",
+    },
+    createdAt: readString(row.createdAt) ?? readString(row.created_at) ?? "",
+    updatedAt: readString(row.updatedAt) ?? readString(row.updated_at) ?? "",
+  };
+}
+
+function normalizeSupplierBatchLineRow(row: unknown): AdminSupplierBatchLineRow | null {
+  if (!isRecord(row)) {
+    return null;
+  }
+
+  const id = readString(row.id);
+  const lineNo = readNumber(row.lineNo) ?? readNumber(row.line_no);
+
+  if (!id || !lineNo) {
+    return null;
+  }
+
+  return {
+    id,
+    lineNo,
+    ean: readString(row.ean) ?? null,
+    supplierSku: readString(row.supplierSku) ?? readString(row.supplier_sku) ?? null,
+    skuCode: readString(row.skuCode) ?? readString(row.sku_code) ?? null,
+    name: readString(row.name) ?? "",
+    qtyReceived: readNumber(row.qtyReceived) ?? readNumber(row.qty_received) ?? 0,
+    qtyOrdered: readNumber(row.qtyOrdered) ?? readNumber(row.qty_ordered) ?? null,
+    qtyShort: readNumber(row.qtyShort) ?? readNumber(row.qty_short) ?? 0,
+    unitCost: readNumber(row.unitCost) ?? readNumber(row.unit_cost) ?? 0,
+    lineTotal: readNumber(row.lineTotal) ?? readNumber(row.line_total) ?? 0,
+    imageStatus: readString(row.imageStatus) ?? readString(row.image_status) ?? "missing",
+    productStatus:
+      normalizeCatalogStatus(row.productStatus) ??
+      normalizeCatalogStatus(row.product_status) ??
+      "draft",
+    product: normalizeSupplierBatchLineProduct(row.product),
+    createdAt: readString(row.createdAt) ?? readString(row.created_at) ?? "",
+    updatedAt: readString(row.updatedAt) ?? readString(row.updated_at) ?? "",
+  };
+}
+
+function normalizeSupplierBatchLineProduct(
+  value: unknown
+): AdminSupplierBatchLineProduct | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const sku = readString(value.sku);
+
+  if (!sku) {
+    return null;
+  }
+
+  return {
+    sku,
+    name: readString(value.name) ?? sku,
+    brand: readString(value.brand) ?? "",
+    model: readString(value.model) ?? null,
+    category: readString(value.category) ?? null,
+    grade: readString(value.grade) ?? null,
+    catalogStatus: normalizeCatalogStatus(value.catalogStatus) ?? "draft",
+    stockStatus: normalizeStockStatus(value.stockStatus) ?? "Out of Stock",
+    stockQty: readNumber(value.stockQty) ?? 0,
+    actualQty: readNumber(value.actualQty) ?? 0,
+    availableQty: readNumber(value.availableQty) ?? 0,
+    lockedQty: readNumber(value.lockedQty) ?? 0,
+    costPrice: readNumber(value.costPrice) ?? 0,
+    retailPrice: readNumber(value.retailPrice) ?? 0,
+    b2bPrice: readNumber(value.b2bPrice) ?? 0,
+    imagePath: readString(value.imagePath) ?? null,
+    modelCodes: readStringArray(value.modelCodes) ?? [],
+    compatibilityModels: readStringArray(value.compatibilityModels) ?? [],
+    priceRuleOk: readBoolean(value.priceRuleOk) ?? true,
+    activeMissingImage: readBoolean(value.activeMissingImage) ?? false,
+    modelPrefixIssue: readBoolean(value.modelPrefixIssue) ?? false,
+  };
+}
+
+function normalizeSupplierBatchVerification(value: unknown): SupplierBatchVerification | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const status = readString(value.status);
+
+  if (status !== "ok" && status !== "warning" && status !== "error") {
+    return null;
+  }
+
+  return {
+    status,
+    issues: readStringArray(value.issues) ?? [],
+    quantityMatches: readBoolean(value.quantityMatches) ?? false,
+    costMatches: readBoolean(value.costMatches) ?? false,
   };
 }
 
@@ -6915,6 +8477,17 @@ function formatTimestamp() {
   const pad = (value: number) => String(value).padStart(2, "0");
 
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
+
+function formatDateInputValue(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
 }
 
 function slugify(value: string) {
