@@ -792,7 +792,7 @@ function ServiceSection({
   orderSummaries: OrderSummary[];
   rmaRequests: RmaRequest[];
 }) {
-  const rmaStartableOrders = orderSummaries.filter(isRmaStartableOrder).slice(0, 4);
+  const rmaStartableOrders = orderSummaries.filter(isRmaStartableOrder).slice(0, 6);
 
   return (
     <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -800,13 +800,29 @@ function ServiceSection({
         <CardHeader className="pb-0">
           <CardTitle className="flex items-center gap-2 text-sm font-black">
             <RotateCcw className="size-4 text-primary" />
-            RMA / 退换货
+            售后中心
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
+          <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="text-sm font-black text-slate-900">新建售后申请</div>
+                <div className="mt-0.5 text-xs font-semibold leading-5 text-slate-600">
+                  先选择订单，再选择商品和问题类型，避免手填订单号或 SKU。
+                </div>
+              </div>
+              <Button asChild size="sm" className="w-full sm:w-auto">
+                <Link href="/rma">
+                  <Plus className="size-4" />
+                  新建售后
+                </Link>
+              </Button>
+            </div>
+          </div>
           <div className="rounded-lg border border-primary/15 bg-primary/5 p-3">
             <div className="mb-2 flex items-center justify-between gap-2">
-              <div className="text-xs font-black text-slate-700">从订单发起售后</div>
+              <div className="text-xs font-black text-slate-700">从最近订单直接发起</div>
               <Badge className="border border-primary/20 bg-white text-[11px] text-primary" variant="outline">
                 选择订单
               </Badge>
@@ -836,7 +852,7 @@ function ServiceSection({
                     <Button asChild variant="outline" size="xs" className="h-7 bg-white px-2">
                       <Link href={`/rma?order=${encodeURIComponent(order.id)}`}>
                         <RotateCcw className="size-3.5" />
-                        售后
+                        选择
                       </Link>
                     </Button>
                   </div>
@@ -874,12 +890,6 @@ function ServiceSection({
               </Button>
             </div>
           ))}
-          <Button asChild size="sm" className="w-full">
-            <Link href="/rma">
-              <RotateCcw className="size-4" />
-              新建 RMA
-            </Link>
-          </Button>
         </CardContent>
       </Card>
 

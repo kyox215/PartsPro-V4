@@ -61,7 +61,7 @@ Next.js 16 App Router 代理、Supabase RLS/权限代理、PartsPro 业务契约
 
 - `rma_requests` 已有 `order_line_id`、`sku_code`、`order_no`、`quantity`、`problem_type`、`requested_resolution` 等字段。
 - 现有数据库 trigger/policy 会要求 RMA 绑定真实订单行，并校验订单行属于当前账号或当前客户。
-- 当前页面仍要求客户手动输入订单号、订单行 ID 和 SKU。
+- 当前页面已改为客户选择订单和订单商品，不再要求客户手动输入订单号、订单行 ID 和 SKU。
 
 ## 假设与未知项
 
@@ -92,6 +92,7 @@ Next.js 16 App Router 代理、Supabase RLS/权限代理、PartsPro 业务契约
 - 数量使用选项选择，且不能超过剩余可申请数量。
 - 提交 API 根据订单行反推订单号、SKU 和商品名，并校验当前账号归属。
 - 个人中心售后区能从最近订单发起售后，并继续展示最近 RMA 状态。
+- 选完售后订单后的页面使用订单摘要、商品卡、问题选项、检测状态选项和提交摘要，文本输入只作为补充说明。
 
 ## 禁止事项
 
@@ -119,6 +120,15 @@ npm run build
 | `curl -I http://127.0.0.1:3000/rma` | passed | 未登录时 307 到 `/login?next=/rma` |
 | `curl -I http://127.0.0.1:3000/account` | passed | 未登录时 307 到 `/login?next=/account` |
 | `curl -i http://127.0.0.1:3000/api/rma` | passed | 未登录时 401 `LOGIN_REQUIRED` |
+
+## 二次优化记录：售后选择向导
+
+- 日期：2026-06-20
+- 触发：老板要求“选完售后订单后的页面也要改下，还有新建售后的页面，都尽量选择而不是填写”。
+- 输出：`/rma` 改成“选择订单 -> 选择商品/数量 -> 选择问题/症状 -> 选择检测和损伤状态 -> 准备凭证 -> 提交摘要”的手机端向导。
+- 输出：个人中心售后区改为“新建售后申请”主入口，并展示更多可直接选择的最近订单。
+- 数据策略：不新增 migration，前端把选项自动整理到现有 `description` 字段，`POST /api/rma` 仍由 `orderLineId` 反查订单号、SKU 和商品名。
+- 验证：`npx tsc --noEmit`、`git diff --check`、`npm run lint`、`npm run build` 均通过。
 
 ## 执行记录
 
