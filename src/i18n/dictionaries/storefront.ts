@@ -363,6 +363,17 @@ export const storefrontItIT = {
   "storefront.cart.summaryNoteSynced":
     "Il carrello non blocca stock: spedizione €6,50, gratuita da €100; l'ordine riservera gli articoli solo dopo la conferma.",
   "storefront.cart.summaryTitle": "Riepilogo ordine",
+  "storefront.cart.sync.catalogMessage": "Verifica prodotti, prezzi cliente, stock e MOQ.",
+  "storefront.cart.sync.catalogTitle": "Aggiornamento prezzi e disponibilita...",
+  "storefront.cart.sync.errorBlocker":
+    "Sincronizzazione carrello non riuscita: checkout sospeso. Riprova la sincronizzazione o aggiorna la pagina.",
+  "storefront.cart.sync.errorMessage":
+    "Sincronizzazione carrello non riuscita: checkout sospeso. Riprova la sincronizzazione o aggiorna la pagina.",
+  "storefront.cart.sync.errorTitle": "Sincronizzazione carrello non riuscita",
+  "storefront.cart.sync.remoteMessage":
+    "Lettura del carrello del tuo account. Il checkout resta disattivato finche il totale non e aggiornato.",
+  "storefront.cart.sync.remoteTitle": "Sincronizzazione carrello...",
+  "storefront.cart.sync.retry": "Riprova sincronizzazione",
   "storefront.cart.title": "Conferma prodotti e quantità",
   "storefront.assistedOrder.catalogBanner": "Ordine per cliente",
   "storefront.assistedOrder.catalogBannerGeneric":
@@ -575,6 +586,9 @@ export const storefrontItIT = {
     "Il carrello è vuoto: aggiungi almeno un prodotto prima di confermare l'ordine.",
   "storefront.checkout.submit.cartLoadingReason":
     "Caricamento carrello del tuo account...",
+  "storefront.checkout.sync.remoteCartErrorMessage":
+    "Sincronizzazione carrello non riuscita: checkout sospeso. Riprova la sincronizzazione o aggiorna la pagina.",
+  "storefront.checkout.sync.remoteCartErrorTitle": "Sincronizzazione carrello non riuscita",
   "storefront.checkout.submit.defaultDisabled": "Checkout disabilitato in questo momento.",
   "storefront.checkout.submit.formMissing":
     "Modulo checkout non trovato. Ricarica la pagina e riprova.",
@@ -1327,6 +1341,15 @@ export const storefrontZhCN = {
   "storefront.cart.summaryNoteSynced":
     "购物车不会锁定库存；满 €100 包邮，未满统一 €6.50，确认下单成功后才会锁定商品。",
   "storefront.cart.summaryTitle": "订单摘要",
+  "storefront.cart.sync.catalogMessage": "正在校验商品、客户价、库存和 MOQ。",
+  "storefront.cart.sync.catalogTitle": "正在更新价格与库存...",
+  "storefront.cart.sync.errorBlocker": "购物车同步失败，已暂停结账。请重试同步或刷新页面。",
+  "storefront.cart.sync.errorMessage": "购物车同步失败，已暂停结账。请重试同步或刷新页面。",
+  "storefront.cart.sync.errorTitle": "购物车同步异常",
+  "storefront.cart.sync.remoteMessage":
+    "正在读取当前账号的购物车，金额计算完成前不会启用结算。",
+  "storefront.cart.sync.remoteTitle": "正在同步购物车...",
+  "storefront.cart.sync.retry": "重试同步",
   "storefront.cart.title": "确认商品与数量",
   "storefront.assistedOrder.catalogBanner": "代客户下单",
   "storefront.assistedOrder.catalogBannerGeneric":
@@ -1518,6 +1541,9 @@ export const storefrontZhCN = {
   "storefront.checkout.submit.cartEmptyReason":
     "购物车为空：请至少添加一个商品后再确认订单。",
   "storefront.checkout.submit.cartLoadingReason": "正在加载当前账号的购物车...",
+  "storefront.checkout.sync.remoteCartErrorMessage":
+    "购物车同步失败，已暂停结账。请重试同步或刷新页面。",
+  "storefront.checkout.sync.remoteCartErrorTitle": "购物车同步异常",
   "storefront.checkout.submit.defaultDisabled": "当前无法结账。",
   "storefront.checkout.submit.formMissing": "未找到结账表单。请刷新页面后重试。",
   "storefront.checkout.submit.idleDisabled": "当前无法结账。",

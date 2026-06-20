@@ -1,10 +1,13 @@
 "use client";
 
 import { AlertTriangle, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export type StorefrontSyncStatusState = {
+  actionLabel?: string;
   message: string;
+  onAction?: () => void;
   title: string;
   tone?: "info" | "warning" | "error";
 };
@@ -50,6 +53,17 @@ export function StorefrontSyncStatusBar({
           <div className="truncate text-sm font-black text-slate-950">{state.title}</div>
           <div className="truncate text-xs font-semibold text-slate-500">{state.message}</div>
         </div>
+        {state.actionLabel && state.onAction ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-8 shrink-0 bg-white px-2 text-xs sm:px-3"
+            onClick={state.onAction}
+          >
+            {state.actionLabel}
+          </Button>
+        ) : null}
       </div>
     </div>
   );

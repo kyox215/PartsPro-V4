@@ -81,7 +81,10 @@ import {
   type CartTotals,
   useCart,
 } from "./cart-state";
-import { useCartSyncStatus } from "./cart-sync-bridge";
+import {
+  requestCartSyncRetry,
+  useCartSyncStatus,
+} from "./cart-sync-bridge";
 import { useI18n, useT } from "./i18n-provider";
 import { OrderSummaryCard } from "./order-summary-card";
 import {
@@ -205,7 +208,7 @@ type Blocker = {
   tone: "warning" | "error" | "neutral";
 };
 
-type CheckoutSyncKind = "cart" | "catalog" | "preview" | "remote-cart" | "submit";
+type CheckoutSyncKind = "cart" | "catalog" | "preview" | "remote-cart" | "remote-cart-error" | "submit";
 
 type CheckoutSyncState = (StorefrontSyncStatusState & {
   kind: CheckoutSyncKind;
@@ -432,6 +435,7 @@ function CheckoutClientContent({
     unresolvedCatalogSkus.length > 0 &&
     (catalogLoadState === "idle" || catalogLoadState === "loading");
   const isRemoteCartLoading = cartSyncStatus.remoteStatus === "loading";
+  const isRemoteCartError = cartSyncStatus.remoteStatus === "error";
   const isCartBootstrapping = !cart.isHydrated || isRemoteCartLoading;
   const previewQueued =
     shouldLoadPreview &&
@@ -442,7 +446,7 @@ function CheckoutClientContent({
     cart.items.length > 0 &&
     (isCartBootstrapping || catalogResolutionPending || previewBusy)
       ? "loading"
-      : cart.items.length > 0 && previewForUi.status === "error"
+      : cart.items.length > 0 && (isRemoteCartError || previewForUi.status === "error")
         ? "stale"
         : "ready";
   const lineIssues = React.useMemo(
@@ -459,8 +463,10 @@ function CheckoutClientContent({
     catalogResolutionPending,
     previewQueued,
     preview: previewForUi,
+    remoteCartError: isRemoteCartError,
     remoteCartLoading: isRemoteCartLoading,
     submitState,
+    onRemoteCartRetry: requestCartSyncRetry,
     t,
   });
   const blockers = buildCheckoutBlockers({
@@ -849,6 +855,7 @@ function CheckoutClientContent({
   }
 
   function retryCheckoutValidation() {
+    requestCartSyncRetry();
     requestedCatalogKeys.current.clear();
     setCatalogLoadState("idle");
     setSubmitState({ status: "idle" });
@@ -858,7 +865,7 @@ function CheckoutClientContent({
   }
 
   const canRetryCheckoutValidation =
-    previewForUi.status === "error" || catalogLoadState === "error";
+    isRemoteCartError || previewForUi.status === "error" || catalogLoadState === "error";
 
   return (
     <>
@@ -2253,16 +2260,20 @@ function CompactSummaryLine({
 function buildCheckoutSyncState({
   cartHydrated,
   catalogResolutionPending,
+  onRemoteCartRetry,
   previewQueued,
   preview,
+  remoteCartError,
   remoteCartLoading,
   submitState,
   t,
 }: {
   cartHydrated: boolean;
   catalogResolutionPending: boolean;
+  onRemoteCartRetry: () => void;
   previewQueued: boolean;
   preview: PreviewState;
+  remoteCartError: boolean;
   remoteCartLoading: boolean;
   submitState: SubmitState;
   t: StorefrontTranslator;
@@ -2272,6 +2283,17 @@ function buildCheckoutSyncState({
       kind: "submit",
       title: tx(t, "storefront.checkout.sync.submitTitle", "订单提交中 / Invio ordine..."),
       message: submitState.message,
+    };
+  }
+
+  if (remoteCartError) {
+    return {
+      actionLabel: tx(t, "storefront.cart.sync.retry", "重试同步"),
+      kind: "remote-cart-error",
+      title: tx(t, "storefront.checkout.sync.remoteCartErrorTitle", "购物车同步异常 / Sincronizzazione carrello non riuscita"),
+      message: tx(t, "storefront.checkout.sync.remoteCartErrorMessage", "购物车同步失败，已暂停结账。请重试同步或刷新页面。"),
+      onAction: onRemoteCartRetry,
+      tone: "error",
     };
   }
 

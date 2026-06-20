@@ -23,6 +23,7 @@ type CartApiPayload = {
 
 const syncDebounceMs = 500;
 const realtimeRefreshDebounceMs = 250;
+const CART_SYNC_RETRY_EVENT = "partspro-cart-sync-retry";
 type RemoteCartWriteResult = "synced" | "local";
 type RemoteCartLoadResult =
   | { status: "remote"; items: CartItem[] }
@@ -49,6 +50,14 @@ export function useCartSyncStatus() {
     getCartSyncStatusSnapshot,
     getCartSyncStatusServerSnapshot
   );
+}
+
+export function requestCartSyncRetry() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.dispatchEvent(new Event(CART_SYNC_RETRY_EVENT));
 }
 
 function subscribeToCartSyncStatus(listener: () => void) {
@@ -270,10 +279,30 @@ export function CartSyncBridge() {
       }
     }
 
+    function retryRemoteCartSync() {
+      if (disposed) {
+        return;
+      }
+
+      removeRealtimeChannel?.();
+      removeRealtimeChannel = null;
+      if (refreshTimeout !== null) {
+        window.clearTimeout(refreshTimeout);
+        refreshTimeout = null;
+      }
+
+      setSyncEnabled(false);
+      setRemoteLoaded(false);
+      setCartSyncStatus({ remoteStatus: "loading" });
+      void loadInitialRemoteCart();
+    }
+
     void loadInitialRemoteCart();
+    window.addEventListener(CART_SYNC_RETRY_EVENT, retryRemoteCartSync);
 
     return () => {
       disposed = true;
+      window.removeEventListener(CART_SYNC_RETRY_EVENT, retryRemoteCartSync);
       if (refreshTimeout !== null) {
         window.clearTimeout(refreshTimeout);
       }

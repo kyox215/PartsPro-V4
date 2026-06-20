@@ -65,7 +65,10 @@ import {
   type CartTotals,
   useCart,
 } from "./cart-state";
-import { useCartSyncStatus } from "./cart-sync-bridge";
+import {
+  requestCartSyncRetry,
+  useCartSyncStatus,
+} from "./cart-sync-bridge";
 import { useI18n, useT } from "./i18n-provider";
 import { OrderSummaryCard } from "./order-summary-card";
 import { ProductImagePreviewDialog } from "./product-image-preview-dialog";
@@ -288,6 +291,9 @@ function CartPageContent({
     !isLoginRequired && (!cart.isHydrated || isRemoteCartLoading);
   const isCartSyncError =
     !isLoginRequired && cartSyncStatus.remoteStatus === "error";
+  const retryCartSync = React.useCallback(() => {
+    requestCartSyncRetry();
+  }, []);
   const isEmpty =
     !isLoginRequired &&
     cart.isHydrated &&
@@ -400,20 +406,25 @@ function CartPageContent({
     !isLoginRequired &&
     cart.isHydrated &&
     !isRemoteCartLoading &&
+    !isCartSyncError &&
     !isCatalogResolving &&
     totals.lines.length > 0 &&
     unresolvedSkus.length === 0;
   const canNavigateToCheckout =
-    !isLoginRequired && cart.isHydrated && !isRemoteCartLoading && cart.items.length > 0;
+    !isLoginRequired &&
+    cart.isHydrated &&
+    !isRemoteCartLoading &&
+    !isCartSyncError &&
+    cart.items.length > 0;
   const hasCheckoutBlockers =
     canNavigateToCheckout &&
     (isCatalogResolving || totals.lines.length === 0 || unresolvedSkus.length > 0);
   const checkoutDisabled =
-    !canNavigateToCheckout || isCatalogResolving;
+    !canNavigateToCheckout || isCatalogResolving || isCartSyncError;
   const cartAmountState: MobileCartAmountState =
     isCartBootstrapping || isCatalogResolving
       ? "loading"
-      : hasCheckoutBlockers
+      : isCartSyncError || hasCheckoutBlockers
         ? "stale"
         : "ready";
   const cartPendingTitle =
@@ -432,6 +443,7 @@ function CartPageContent({
     isCartBootstrapping,
     isCartSyncError,
     isCatalogResolving,
+    onRetry: retryCartSync,
     t,
   });
   const checkoutDisabledReason =
@@ -439,9 +451,11 @@ function CartPageContent({
       ? tx(t, "storefront.cart.sync.remoteMessage", "正在读取当前账号的购物车，金额计算完成前不会启用结算。")
       : isCatalogResolving
         ? tx(t, "storefront.cart.sync.catalogMessage", "正在校验商品、客户价、库存和 MOQ。")
-        : hasCheckoutBlockers
-          ? tx(t, "storefront.cart.summaryNoteReviewCheckout", "Puoi aprire il checkout per vedere cosa manca. Login, cliente, prezzi, stock e MOQ verranno comunque verificati prima dell'invio.")
-          : undefined;
+        : isCartSyncError
+          ? tx(t, "storefront.cart.sync.errorBlocker", "购物车同步失败，已暂停结账。请重试同步或刷新页面。")
+          : hasCheckoutBlockers
+            ? tx(t, "storefront.cart.summaryNoteReviewCheckout", "Puoi aprire il checkout per vedere cosa manca. Login, cliente, prezzi, stock e MOQ verranno comunque verificati prima dell'invio.")
+            : undefined;
 
   React.useEffect(() => {
     rememberAssistedCompanyId(assistedCompanyId);
@@ -906,6 +920,8 @@ function CartPageContent({
             />
           ) : (
             <OrderSummaryCard
+              amountMessage={checkoutDisabledReason}
+              amountStatus={isCartSyncError || hasCheckoutBlockers ? "stale" : "ready"}
               totals={totals}
               checkoutDisabled={checkoutDisabled}
               checkoutHref={checkoutHref}
@@ -913,7 +929,9 @@ function CartPageContent({
               continueHref={catalogHref}
               lineCount={cart.items.length}
               summaryNote={
-                hasCheckoutBlockers
+                isCartSyncError
+                  ? tx(t, "storefront.cart.sync.errorBlocker", "购物车同步失败，已暂停结账。请重试同步或刷新页面。")
+                  : hasCheckoutBlockers
                   ? tx(t, "storefront.cart.summaryNoteReviewCheckout", "Puoi aprire il checkout per vedere cosa manca. Login, cliente, prezzi, stock e MOQ verranno comunque verificati prima dell'invio.")
                   : tx(t, "storefront.cart.summaryNoteSynced", "Il carrello non blocca stock: spedizione €6,50, gratuita da €100; l'ordine riserverà gli articoli solo dopo la conferma.")
               }
@@ -1313,11 +1331,13 @@ function buildCartSyncBanner({
   isCartBootstrapping,
   isCartSyncError,
   isCatalogResolving,
+  onRetry,
   t,
 }: {
   isCartBootstrapping: boolean;
   isCartSyncError: boolean;
   isCatalogResolving: boolean;
+  onRetry: () => void;
   t: StorefrontTranslator;
 }): StorefrontSyncStatusState | null {
   if (isCartBootstrapping) {
@@ -1336,9 +1356,11 @@ function buildCartSyncBanner({
 
   if (isCartSyncError) {
     return {
+      actionLabel: tx(t, "storefront.cart.sync.retry", "重试同步"),
       title: tx(t, "storefront.cart.sync.errorTitle", "购物车同步异常 / Sincronizzazione carrello non riuscita"),
-      message: tx(t, "storefront.cart.sync.errorMessage", "当前显示本地购物车，请刷新后重试。"),
-      tone: "warning",
+      message: tx(t, "storefront.cart.sync.errorMessage", "购物车同步失败，已暂停结账。请重试同步或刷新页面。"),
+      onAction: onRetry,
+      tone: "error",
     };
   }
 
