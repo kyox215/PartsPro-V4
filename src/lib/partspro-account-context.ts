@@ -136,17 +136,19 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
     }
   }
 
-  const [profile, permissions] = await Promise.all([
-    readProfile(supabase, user.id),
-    readPermissions(supabase),
-  ]);
+  const profile = await readProfile(supabase, user.id);
   const email = user.email ?? readString(profile?.email);
   const accountType = normalizeAccountType(readString(profile?.account_type));
   const isEmployee = accountType === "employee";
+  const role = readString(profile?.role);
+  const roleTemplate = readString(profile?.role_template);
+  const permissions =
+    isEmployee || role || roleTemplate ? await readPermissions(supabase) : [];
   const customer = isEmployee
     ? null
     : await readLinkedCustomerRow(supabase, user.id, {
         email,
+        profile,
         select: accountCustomerSelect,
       });
   let employeeSelfCustomerRow: DbRow | null = null;
@@ -211,8 +213,8 @@ export async function getCurrentAccountContext(options: { ensure?: boolean } = {
     employeeSelfCustomer,
     email,
     permissions,
-    role: readString(profile?.role),
-    roleTemplate: readString(profile?.role_template),
+    role,
+    roleTemplate,
     userId: user.id,
     visiblePanels: visiblePanelsForPermissions(permissions),
   } satisfies AccountContext;
@@ -354,6 +356,35 @@ export function canDelegateCheckout(account: AccountContext) {
     hasAccountPermission(account, "orders.manage") &&
     hasAccountPermission(account, "customers.read")
   );
+}
+
+export function canUseStorefrontCart(
+  account: AccountContext,
+  assistedCompanyId?: string | null
+) {
+  if (account.accountType === "customer") {
+    return account.canUseCart;
+  }
+
+  if (account.accountType === "employee") {
+    return assistedCompanyId
+      ? canDelegateCheckout(account)
+      : account.canEmployeeSelfCheckout;
+  }
+
+  return false;
+}
+
+export function accountPricingCustomerId(account: AccountContext) {
+  if (account.accountType === "customer") {
+    return account.customer?.id;
+  }
+
+  if (account.accountType === "employee") {
+    return account.employeeSelfCustomer?.id;
+  }
+
+  return undefined;
 }
 
 export function hasAccountPermission(account: AccountContext, permission: string) {

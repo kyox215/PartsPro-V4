@@ -2637,6 +2637,12 @@ export async function replaceCurrentCustomerCart(
 ): Promise<RepositoryResult<CustomerCartItem[]>> {
   const context = await requireSupabaseContext();
   const normalizedItems = normalizeCustomerCartWriteItems(items);
+  const rpcResult = await replaceCurrentCustomerCartViaRpc(context, normalizedItems);
+
+  if (rpcResult) {
+    return rpcResult;
+  }
+
   const existingRows = await readCurrentCustomerCartRows(context);
 
   if (!existingRows) {
@@ -2706,7 +2712,66 @@ export async function replaceCurrentCustomerCart(
 
   await touchCurrentCustomerCartSyncState(context, customerId);
 
-  return readCurrentCustomerCart();
+  return {
+    data: normalizedItems.map((item) => ({
+      createdAt: "",
+      customerId,
+      quantity: item.quantity,
+      sku: item.sku,
+      updatedAt: "",
+    })),
+    source: "supabase",
+  };
+}
+
+async function replaceCurrentCustomerCartViaRpc(
+  context: SupabaseContext,
+  items: CustomerCartWriteItem[]
+): Promise<RepositoryResult<CustomerCartItem[]> | null> {
+  try {
+    const { data, error } = await context.client.rpc(
+      "replace_current_customer_cart",
+      {
+        p_items: items,
+      }
+    );
+
+    if (error) {
+      if (isRecoverableCartRpcSchemaError(error)) {
+        return null;
+      }
+
+      throw new RepositoryWriteError(
+        supabaseRpcStatus(error),
+        "CUSTOMER_CART_REPLACE_FAILED",
+        "Customer cart could not be saved to Supabase.",
+        supabaseErrorDetails(error)
+      );
+    }
+
+    const rows = Array.isArray(data)
+      ? (data as unknown[]).filter(isDbRow)
+      : [];
+
+    return {
+      data: rows.map(mapCustomerCartItemRow).filter(isDefined),
+      source: "supabase",
+    };
+  } catch (error) {
+    if (error instanceof RepositoryWriteError) {
+      throw error;
+    }
+
+    if (isRecoverableCartRpcSchemaError(error)) {
+      return null;
+    }
+
+    throw new RepositoryWriteError(
+      502,
+      "CUSTOMER_CART_REPLACE_FAILED",
+      "Customer cart could not be saved to Supabase."
+    );
+  }
 }
 
 export async function clearCurrentCustomerCart(): Promise<
@@ -4273,26 +4338,21 @@ async function readCatalogBuyerPriceRowsForProducts(
   const priceRows: DbRow[] = [];
 
   try {
-    if (ids.length > 0) {
-      const { data, error } = await client
-        .from("catalog_buyer_prices")
-        .select("*")
-        .in("id", ids);
+    const [idResult, skuResult] = await Promise.all([
+      ids.length > 0
+        ? client.from("catalog_buyer_prices").select("*").in("id", ids)
+        : Promise.resolve({ data: null, error: null }),
+      skus.length > 0
+        ? client.from("catalog_buyer_prices").select("*").in("sku_code", skus)
+        : Promise.resolve({ data: null, error: null }),
+    ]);
 
-      if (!error && Array.isArray(data)) {
-        priceRows.push(...data.filter(isDbRow));
-      }
+    if (!idResult.error && Array.isArray(idResult.data)) {
+      priceRows.push(...idResult.data.filter(isDbRow));
     }
 
-    if (skus.length > 0) {
-      const { data, error } = await client
-        .from("catalog_buyer_prices")
-        .select("*")
-        .in("sku_code", skus);
-
-      if (!error && Array.isArray(data)) {
-        priceRows.push(...data.filter(isDbRow));
-      }
+    if (!skuResult.error && Array.isArray(skuResult.data)) {
+      priceRows.push(...skuResult.data.filter(isDbRow));
     }
   } catch {
     return [];
@@ -9735,6 +9795,27 @@ function isRecoverableRestockSchemaError(error: unknown) {
     (text.includes("schema cache") && text.includes("product_restock_requests")) ||
     text.includes("could not find the table 'public.product_restock_requests'") ||
     text.includes("relation \"public.product_restock_requests\" does not exist")
+  );
+}
+
+function isRecoverableCartRpcSchemaError(error: unknown) {
+  const errorRow = isDbRow(error) ? error : null;
+  const parts = [
+    error instanceof Error ? error.message : null,
+    pickString(errorRow, ["code"]),
+    pickString(errorRow, ["message"]),
+    pickString(errorRow, ["details"]),
+    pickString(errorRow, ["hint"]),
+  ].filter(isDefined);
+  const text = parts.join(" ").toLowerCase();
+
+  return (
+    text.includes("pgrst202") ||
+    text.includes("42883") ||
+    (text.includes("schema cache") &&
+      text.includes("replace_current_customer_cart")) ||
+    text.includes("could not find the function") ||
+    text.includes("function public.replace_current_customer_cart")
   );
 }
 

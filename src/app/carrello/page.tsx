@@ -6,7 +6,7 @@ import { toStoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
-  const account = await getCurrentAccountContext({ ensure: true });
+  const account = await getCurrentAccountContext();
 
   return (
     <Suspense fallback={null}>

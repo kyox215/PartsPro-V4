@@ -5,6 +5,7 @@ type DbRow = Record<string, unknown>;
 
 type LinkedCustomerOptions = {
   email?: string | null;
+  profile?: DbRow | null;
   select: string;
 };
 
@@ -13,7 +14,10 @@ export async function readLinkedCustomerRow(
   userId: string,
   options: LinkedCustomerOptions
 ): Promise<DbRow | null> {
-  const profile = await readProfileLinkage(client, userId);
+  const profile =
+    options.profile === undefined
+      ? await readProfileLinkage(client, userId)
+      : options.profile;
 
   if (readString(profile?.account_type) === "employee") {
     return null;
@@ -27,16 +31,21 @@ export async function readLinkedCustomerRow(
     const row = await readCustomerById(client, profileCustomerId, options.select);
 
     if (row) {
+      if (isNormalCustomerProfile(row)) {
+        return row;
+      }
+
       candidates.push(row);
     }
   }
 
-  candidates.push(...await readCustomerRowsByUserId(client, userId, options.select));
-  candidates.push(...await readCustomerRowsByMembership(client, userId, options.select));
+  const [userRows, membershipRows, emailRows] = await Promise.all([
+    readCustomerRowsByUserId(client, userId, options.select),
+    readCustomerRowsByMembership(client, userId, options.select),
+    email ? readCustomerRowsByEmail(client, email, options.select) : Promise.resolve([]),
+  ]);
 
-  if (email) {
-    candidates.push(...await readCustomerRowsByEmail(client, email, options.select));
-  }
+  candidates.push(...userRows, ...membershipRows, ...emailRows);
 
   return chooseLinkedCustomer(candidates, {
     email,

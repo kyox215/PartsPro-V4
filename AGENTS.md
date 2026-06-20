@@ -15,6 +15,15 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - 关键业务域：商品目录、客户等级与价格、购物车、checkout、订单、库存、RMA、后台账号和权限、供应商到货导入。
 - linked Supabase 本机状态默认指向 `yiuxrjqexlfjtxxrkqvi` / `PartsPro-V4`。该目标按生产敏感项目处理，不能因为已经 linked 就无条件写库。
 
+## AI Company OS 接入层
+
+- 完整 AI Company OS 治理包已接入 `.ai-company/`，作为任务治理、角色分工、风险控制、质量门禁、发布运营、决策记录和复盘模板的参考库。
+- PartsPro 专属执行层位于 `docs/project-charter.md`、`docs/roadmap.md`、`docs/risks/risk-register.md`、`docs/decisions/decision-log.md`、`docs/adr/`、`docs/runbooks/`、`docs/tasks/` 和 `docs/agents/`。
+- 规则优先级：老板当前明确指令 > 本文件 `AGENTS.md` 和 PartsPro 专用文档 > 已批准的项目章程/决策/runbook/任务卡 > `.ai-company/` 通用规则。
+- 非微小任务应参考 `.ai-company/TASK_FLOW.md` 和 `docs/tasks/TEMPLATE.md`，记录 Task ID、风险等级、自治等级、RACI、批准要求、验证证据和残余风险。
+- 低风险任务可以简化流程；R2 以上任务、跨部门任务、价格/订单/库存/权限/数据库/发布任务必须保留完整任务卡和工程守门。
+- 不要把 `.ai-company/MASTER_PROMPT.md` 或通用 `AGENTS.md` 直接提升为高于本文件的规则；如需调整项目制度，必须写入 `docs/decisions/decision-log.md` 或 `docs/adr/`。
+
 ## 工作原则
 
 1. 先读现状，再动手。搜索优先使用 `rg` / `rg --files`。
@@ -34,7 +43,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - `docs/tasks/backlog/`：已确认但暂不执行的计划。
 - `docs/tasks/done/`：已完成并可追溯验收结果的任务。
 
-任务文件命名使用 `P1-YYYY-MM-DD-short-slug.md`，不要使用 `4.md`、`4.mad` 这类无语义文件名。每个任务至少写清楚：目标、业务影响、主责部门、协作部门、涉及页面/API/表、验收标准、禁止事项和验证命令。
+任务文件命名使用 `P1-YYYY-MM-DD-short-slug.md`，不要使用 `4.md`、`4.mad` 这类无语义文件名。每个任务至少写清楚：目标、业务影响、主责部门、协作部门、涉及页面/API/表、风险等级、自治等级、批准要求、验收标准、禁止事项和验证命令。
 
 ## AI 部门路由
 

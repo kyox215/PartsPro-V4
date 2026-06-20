@@ -1,8 +1,10 @@
 import { ProductDetailPage } from "@/components/partspro/product-detail-page";
 import type { PartProduct } from "@/lib/partspro-data";
 import {
+  accountPricingCustomerId,
   applyAccountPriceToProduct,
   canDelegateCheckout,
+  canUseStorefrontCart,
   getCurrentAccountContext,
   priceVisibilityReason,
   type AccountContext,
@@ -26,13 +28,14 @@ export default async function Page({
 }) {
   const [{ sku }, resolvedSearchParams] = await Promise.all([params, searchParams]);
   const decodedSku = decodeURIComponent(sku);
-  const account = await getCurrentAccountContext({ ensure: true });
+  const account = await getCurrentAccountContext();
   const requestedCompanyId = readAssistedCompanyIdFromRecord(resolvedSearchParams);
   const assistedCompanyId =
     requestedCompanyId && canDelegateCheckout(account) ? requestedCompanyId : null;
-  const productResult = assistedCompanyId
+  const buyerCustomerId = assistedCompanyId ?? accountPricingCustomerId(account);
+  const productResult = buyerCustomerId && (account.canViewPrices || assistedCompanyId)
     ? await listCatalogProductsBySkus([decodedSku], {
-        buyerCustomerId: assistedCompanyId,
+        buyerCustomerId,
         includeBuyerPrices: true,
       })
     : null;
@@ -50,6 +53,7 @@ export default async function Page({
     <ProductDetailPage
       initialAccountAccess={toStoreHeaderAccountAccess(account)}
       assistedCompanyId={assistedCompanyId}
+      canUseCart={canUseStorefrontCart(account, assistedCompanyId)}
       priceGateReason={priceVisibilityReason(account)}
       product={toProductDetailProduct(product, account)}
       showWholesalePrice={account.canViewPrices}

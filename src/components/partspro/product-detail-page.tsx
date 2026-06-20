@@ -28,6 +28,7 @@ import { StorefrontProductImage } from "./storefront-product-image";
 
 type ProductDetailPageProps = {
   assistedCompanyId?: string | null;
+  canUseCart?: boolean;
   initialAccountAccess?: StoreHeaderAccountAccess;
   priceGateReason?: PriceVisibilityReason;
   product: PartProduct;
@@ -36,6 +37,7 @@ type ProductDetailPageProps = {
 
 export async function ProductDetailPage({
   assistedCompanyId = null,
+  canUseCart = false,
   initialAccountAccess,
   priceGateReason = "login_required",
   product,
@@ -47,6 +49,7 @@ export async function ProductDetailPage({
   const hasBuyerPrice = product.price > 0;
   const priceDisplay = getProductPriceDisplay(product);
   const canPurchaseProduct =
+    canUseCart &&
     showWholesalePrice &&
     (priceGateReason === "customer" || priceGateReason === "employee") &&
     hasBuyerPrice;

@@ -33,6 +33,7 @@ import { RoutePendingIndicator } from "./pending-feedback";
 import { ProductCard } from "./product-card";
 
 type HomePageProps = {
+  canUseCart?: boolean;
   catalogTotal?: number;
   homeBanners?: HomeBanner[];
   hotProducts?: PartProduct[];
@@ -45,6 +46,7 @@ type HomePageProps = {
 };
 
 export function HomePage({
+  canUseCart = false,
   catalogTotal = 0,
   homeBanners = [],
   hotProducts = [],
@@ -81,6 +83,7 @@ export function HomePage({
             eyebrowFallback="Vendite recenti"
             icon={Flame}
             id="hot-products"
+            canUseCart={canUseCart}
             priceGateReason={priceGateReason}
             products={hotProducts}
             showPrices={showPrices}
@@ -96,6 +99,7 @@ export function HomePage({
             eyebrowFallback="Arrivi catalogo"
             icon={Sparkles}
             id="new-products"
+            canUseCart={canUseCart}
             priceGateReason={priceGateReason}
             products={newProducts}
             showPrices={showPrices}
@@ -111,6 +115,7 @@ export function HomePage({
             eyebrowFallback="Stock reale"
             icon={PackageCheck}
             id="stocked-products"
+            canUseCart={canUseCart}
             priceGateReason={priceGateReason}
             products={stockedProducts}
             showPrices={showPrices}
@@ -365,6 +370,7 @@ function ProductShelf({
   eyebrowKey,
   icon: Icon,
   id,
+  canUseCart,
   priceGateReason,
   products,
   showPrices,
@@ -379,6 +385,7 @@ function ProductShelf({
   eyebrowKey: string;
   icon: LucideIcon;
   id: string;
+  canUseCart: boolean;
   priceGateReason: PriceVisibilityReason;
   products: PartProduct[];
   showPrices: boolean;
@@ -401,6 +408,7 @@ function ProductShelf({
           {products.map((product, index) => (
             <ProductCard
               key={`${id}-${product.sku}`}
+              canUseCart={canUseCart}
               priceGateReason={priceGateReason}
               priorityImage={index < 4}
               product={product}

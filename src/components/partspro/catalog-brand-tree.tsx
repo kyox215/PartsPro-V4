@@ -361,7 +361,7 @@ export function CatalogBrandTree({
                                 id={seriesPanelId}
                                 className={cn(
                                   "grid border-t border-white/80 p-1",
-                                  desktop ? "gap-1" : "grid-cols-2 gap-1"
+                                  "gap-1"
                                 )}
                               >
                                 {seriesGroup.models.map((model) => {
@@ -370,10 +370,10 @@ export function CatalogBrandTree({
 
                                   return renderSelectionItem({
                                     className: cn(
-                                      "min-w-0 rounded-md bg-white text-left font-semibold leading-4 text-slate-600 transition hover:bg-primary/8 hover:text-primary",
+                                      "min-w-0 w-full rounded-md bg-white text-left font-semibold leading-4 text-slate-600 transition hover:bg-primary/8 hover:text-primary",
                                       desktop
                                         ? "px-2.5 py-2 text-xs"
-                                        : "h-9 px-2 py-2 text-[11px]",
+                                        : "min-h-9 px-2 py-2 text-[11px]",
                                       modelSelected &&
                                         "bg-primary text-white shadow-sm hover:bg-primary hover:text-white"
                                     ),
@@ -396,7 +396,11 @@ export function CatalogBrandTree({
                                       ? selectedModelElementId(idPrefix)
                                       : undefined,
                                     title: model,
-                                    children: <span className="block truncate">{model}</span>,
+                                    children: (
+                                      <span className="block whitespace-normal break-words [overflow-wrap:anywhere]">
+                                        {model}
+                                      </span>
+                                    ),
                                   });
                                 })}
                               </div>
@@ -406,15 +410,15 @@ export function CatalogBrandTree({
                       })}
                     </div>
                   ) : (
-                    <div className={desktop ? "grid gap-1" : "grid grid-cols-2 gap-1"}>
+                    <div className="grid gap-1">
                       {entry.models.map((model) => {
                         const modelSelected =
                           brandSelected && isSameCatalogValue(selectedModel, model);
 
                         return renderSelectionItem({
                           className: cn(
-                            "min-w-0 rounded-md bg-slate-50 text-left font-semibold leading-4 text-slate-600 transition hover:bg-primary/8 hover:text-primary",
-                            desktop ? "px-2.5 py-2 text-xs" : "h-9 px-2 py-2 text-[11px]",
+                            "min-w-0 w-full rounded-md bg-slate-50 text-left font-semibold leading-4 text-slate-600 transition hover:bg-primary/8 hover:text-primary",
+                            desktop ? "px-2.5 py-2 text-xs" : "min-h-9 px-2 py-2 text-[11px]",
                             modelSelected &&
                               "bg-primary text-white shadow-sm hover:bg-primary hover:text-white"
                           ),
@@ -429,7 +433,11 @@ export function CatalogBrandTree({
                           },
                           elementId: modelSelected ? selectedModelElementId(idPrefix) : undefined,
                           title: model,
-                          children: <span className="block truncate">{model}</span>,
+                          children: (
+                            <span className="block whitespace-normal break-words [overflow-wrap:anywhere]">
+                              {model}
+                            </span>
+                          ),
                         });
                       })}
                     </div>

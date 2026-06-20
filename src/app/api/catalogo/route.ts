@@ -8,8 +8,10 @@ import {
 import { pageCatalogProducts } from "@/lib/partspro-repository";
 import { type PartProduct } from "@/lib/partspro-data";
 import {
+  accountPricingCustomerId,
   applyAccountPriceToProduct,
   canDelegateCheckout,
+  canUseStorefrontCart,
   getCurrentAccountContext,
   hasOrderableEffectivePrice,
   priceVisibilityReason,
@@ -55,11 +57,12 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const account = await getCurrentAccountContext({ ensure: true });
+    const account = await getCurrentAccountContext();
     const { companyId, ...catalogQuery } = result.data;
     const delegatedCheckout = canDelegateCheckout(account);
     const employeeSelfCustomerId =
       account.accountType === "employee" ? account.employeeSelfCustomer?.id : undefined;
+    const assistedCustomerId = delegatedCheckout && companyId ? companyId : null;
 
     if (companyId && companyId !== employeeSelfCustomerId && !delegatedCheckout) {
       return apiError(403, "ASSISTED_ORDER_FORBIDDEN", "Only authorized staff can price catalog products for another customer.", {
@@ -68,11 +71,12 @@ export async function GET(request: NextRequest) {
     }
 
     const buyerCustomerId =
-      delegatedCheckout && companyId
+      assistedCustomerId
         ? companyId
         : account.accountType === "employee"
           ? employeeSelfCustomerId
-          : undefined;
+          : accountPricingCustomerId(account);
+    const canUseCatalogCart = canUseStorefrontCart(account, assistedCustomerId);
     const showPrice = account.canViewPrices || Boolean(buyerCustomerId);
     const visibilityReason = priceVisibilityReason(account);
     const repositoryResult = await pageCatalogProducts(catalogQuery, {
@@ -83,7 +87,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         data: repositoryResult.data.products.map((product) =>
-          toCatalogProduct(product, account)
+          toCatalogProduct(product, account, { orderable: canUseCatalogCart })
         ),
         meta: {
           source: repositoryResult.source,
@@ -107,9 +111,16 @@ export async function GET(request: NextRequest) {
   }
 }
 
-function toCatalogProduct(product: PartProduct, account: AccountContext) {
+function toCatalogProduct(
+  product: PartProduct,
+  account: AccountContext,
+  priceAccess: { orderable: boolean }
+) {
   const pricedProduct = applyAccountPriceToProduct(product, account);
   const hasEffectivePrice = hasOrderableEffectivePrice(pricedProduct);
+  const hasSellableStock =
+    pricedProduct.status !== "Out of Stock" &&
+    pricedProduct.stock >= Math.max(1, pricedProduct.moq);
 
   return {
     sku: pricedProduct.sku,
@@ -136,8 +147,9 @@ function toCatalogProduct(product: PartProduct, account: AccountContext) {
     galleryImageUrls: pricedProduct.galleryImageUrls,
     priceGate: {
       orderable: Boolean(
-        account.canUseCart &&
-          hasEffectivePrice
+        priceAccess.orderable &&
+          hasEffectivePrice &&
+          hasSellableStock
       ),
       visible: account.canViewPrices,
       reason: priceVisibilityReason(account),

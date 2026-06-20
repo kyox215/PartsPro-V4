@@ -71,6 +71,28 @@ const orderItemSchema = z
     quantity: z.coerce.number().int().min(1).max(999),
   })
   .strict();
+const expectedPreviewLineSchema = z
+  .object({
+    sku: z.string().trim().min(3).max(64).regex(/^[A-Za-z0-9_+.-]+$/),
+    quantity: z.coerce.number().int().min(1).max(999),
+    unitNetCents: z.coerce.number().int().min(0).max(100_000_000),
+    priceVersion: z.string().trim().min(1).max(160).nullable().optional(),
+  })
+  .strict();
+const expectedPreviewTotalsSchema = z
+  .object({
+    subtotalCents: z.coerce.number().int().min(0).max(1_000_000_000),
+    shippingCents: z.coerce.number().int().min(0).max(1_000_000_000),
+    vatCents: z.coerce.number().int().min(0).max(1_000_000_000),
+    totalCents: z.coerce.number().int().min(0).max(1_000_000_000),
+  })
+  .strict();
+const expectedPreviewSchema = z
+  .object({
+    lines: z.array(expectedPreviewLineSchema).min(1).max(100),
+    totals: expectedPreviewTotalsSchema,
+  })
+  .strict();
 
 const deliveryAddressObjectSchema = z
   .object({
@@ -98,6 +120,7 @@ const createOrderSchema = z
     deliveryAddress: deliveryAddressSchema,
     fiscal: z.unknown().optional(),
     items: z.array(orderItemSchema).min(1).max(100),
+    expectedPreview: expectedPreviewSchema.optional(),
     useWallet: z.boolean().optional(),
   })
   .strict();
@@ -120,6 +143,7 @@ const ordersQuerySchema = z
 const ordersQueryKeys = new Set(Object.keys(ordersQuerySchema.shape));
 
 type RequestedOrderItem = z.infer<typeof orderItemSchema>;
+type ExpectedPreview = z.infer<typeof expectedPreviewSchema>;
 type DeliveryAddressInput = z.infer<typeof deliveryAddressSchema>;
 type OrdersQuery = z.infer<typeof ordersQuerySchema>;
 type OrderLine = PreparedOrderLine;
@@ -308,7 +332,7 @@ export async function POST(request: NextRequest) {
     }
 
     const catalog = await listCatalogProductsBySkus(requestedSkus, {
-      buyerCustomerId: checkoutMode === "customer_self" ? undefined : company.id,
+      buyerCustomerId: company.id,
       includeBuyerPrices: account.canViewPrices || checkoutMode !== "customer_self",
     });
     const pricedCatalog = catalog.data.map((product) =>
@@ -325,6 +349,19 @@ export async function POST(request: NextRequest) {
     }
 
     const totals = calculateTotals(orderBuild.lines, deliveryMethod);
+    const previewMismatches = result.data.expectedPreview
+      ? compareExpectedPreview(result.data.expectedPreview, orderBuild.lines, totals)
+      : [];
+
+    if (previewMismatches.length > 0) {
+      return apiError(
+        409,
+        "ORDER_PRICE_CHANGED",
+        "Order prices, quantities or totals changed after preview. Refresh checkout and try again.",
+        { issues: previewMismatches }
+      );
+    }
+
     const fiscal = buildServerFiscalSnapshot(
       company,
       customerProfile.data,
@@ -714,6 +751,86 @@ function buildOrderLine(product: PartProduct, quantity: number) {
   };
 
   return product.priceVersion ? { ...line, priceVersion: product.priceVersion } : line;
+}
+
+function compareExpectedPreview(
+  expected: ExpectedPreview,
+  lines: OrderLine[],
+  totals: PreparedOrderTotals
+) {
+  const issues: Array<{ code: string; expected?: unknown; actual?: unknown; sku?: string }> = [];
+  const expectedLinesBySku = new Map(
+    expected.lines.map((line) => [toPublicSku(line.sku), line])
+  );
+  const actualSkus = new Set<string>();
+
+  for (const line of lines) {
+    const sku = toPublicSku(line.product.sku);
+    actualSkus.add(sku);
+    const expectedLine = expectedLinesBySku.get(sku);
+
+    if (!expectedLine) {
+      issues.push({ code: "line_added", sku, actual: line.quantity });
+      continue;
+    }
+
+    if (expectedLine.quantity !== line.quantity) {
+      issues.push({
+        code: "quantity_changed",
+        sku,
+        expected: expectedLine.quantity,
+        actual: line.quantity,
+      });
+    }
+
+    if (expectedLine.unitNetCents !== line.unitNetCents) {
+      issues.push({
+        code: "unit_price_changed",
+        sku,
+        expected: expectedLine.unitNetCents,
+        actual: line.unitNetCents,
+      });
+    }
+
+    const expectedPriceVersion = expectedLine.priceVersion ?? null;
+    const actualPriceVersion = line.priceVersion ?? line.product.priceVersion ?? null;
+
+    if (expectedPriceVersion !== actualPriceVersion) {
+      issues.push({
+        code: "price_version_changed",
+        sku,
+        expected: expectedPriceVersion,
+        actual: actualPriceVersion,
+      });
+    }
+  }
+
+  for (const expectedLine of expected.lines) {
+    const sku = toPublicSku(expectedLine.sku);
+
+    if (!actualSkus.has(sku)) {
+      issues.push({ code: "line_removed", sku, expected: expectedLine.quantity });
+    }
+  }
+
+  const actualTotals = {
+    subtotalCents: totals.subtotalCents,
+    shippingCents: totals.shippingCents,
+    vatCents: totals.vatCents,
+    totalCents: totals.totalCents,
+  };
+
+  for (const key of Object.keys(actualTotals) as Array<keyof typeof actualTotals>) {
+    if (expected.totals[key] !== actualTotals[key]) {
+      issues.push({
+        code: `${key}_changed`,
+        expected: expected.totals[key],
+        actual: actualTotals[key],
+      });
+    }
+  }
+
+  return issues;
 }
 
 function toOrderLineDto(line: OrderLine) {

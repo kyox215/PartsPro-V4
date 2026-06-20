@@ -7,7 +7,9 @@ import {
 } from "@/lib/partspro-repository";
 import { type PartProduct } from "@/lib/partspro-data";
 import {
+  accountPricingCustomerId,
   applyAccountPriceToProduct,
+  canUseStorefrontCart,
   getCurrentAccountContext,
   priceVisibilityReason,
   type AccountContext,
@@ -34,12 +36,13 @@ let publicHomeShelfRequest: Promise<HomeShelfProducts> | null = null;
 
 export default async function Home() {
   const [account, modelGroups, homeBanners] = await Promise.all([
-    getCurrentAccountContext({ ensure: true }),
+    getCurrentAccountContext(),
     listCatalogModelGroups(),
     listActiveHomeBanners(),
   ]);
+  const buyerCustomerId = accountPricingCustomerId(account);
   const homeShelves = account.canViewPrices
-    ? await readHomeShelfProducts({ includeBuyerPrices: true })
+    ? await readHomeShelfProducts({ buyerCustomerId, includeBuyerPrices: true })
     : await readCachedPublicHomeShelfProducts();
   const stockedProducts = homeShelves.stockedProducts.map((product) =>
     toHomeProduct(product, account)
@@ -59,6 +62,7 @@ export default async function Home() {
       newProducts={homeShelves.newProducts.map((product) =>
         toHomeProduct(product, account)
       )}
+      canUseCart={canUseStorefrontCart(account)}
       priceGateReason={priceVisibilityReason(account)}
       showPrices={account.canViewPrices}
       stockedProducts={stockedProducts}
@@ -99,7 +103,10 @@ async function readCachedPublicHomeShelfProducts() {
   return publicHomeShelfRequest;
 }
 
-async function readHomeShelfProducts(options: { includeBuyerPrices: boolean }) {
+async function readHomeShelfProducts(options: {
+  buyerCustomerId?: string;
+  includeBuyerPrices: boolean;
+}) {
   const [hotProductsPage, newProductsPage, stockedProductsPage] = await Promise.all([
     pageHotCatalogProducts(
       {

@@ -18,6 +18,8 @@ Italy-focused B2B smartphone spare-parts storefront and operations dashboard.
 ## Agent and Operations Rules
 
 - Repository-wide agent rules live in `AGENTS.md`. `CLAUDE.md` points to the same file through `@AGENTS.md`.
+- The full AI Company OS governance package lives in `.ai-company/`. It is a reference library; `AGENTS.md` and PartsPro-specific docs remain authoritative.
+- Project charter, roadmap, risk register, decision records and runbooks live in `docs/project-charter.md`, `docs/roadmap.md`, `docs/risks/`, `docs/decisions/`, `docs/adr/` and `docs/runbooks/`.
 - Reusable sub-agent profiles live in `docs/agents/`.
 - AI department task workflow lives in `docs/tasks/`.
 - Supabase migration safety rules live in `docs/PartsPro 代理协作与迁移护栏.md`.

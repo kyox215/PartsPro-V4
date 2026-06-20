@@ -77,6 +77,7 @@ function getInStockOnlyFromParams(searchParams: CatalogSearchParams) {
 type CatalogPageProps = {
   assistedCompanyId?: string | null;
   assistedCompanyName?: string | null;
+  canUseCart?: boolean;
   filteredTotal?: number;
   initialAccountAccess?: StoreHeaderAccountAccess;
   initialModelGroups?: DeviceModelGroup[];
@@ -88,6 +89,7 @@ type CatalogPageProps = {
 export function CatalogPage({
   assistedCompanyId = null,
   assistedCompanyName = null,
+  canUseCart = false,
   filteredTotal,
   initialAccountAccess,
   initialModelGroups,
@@ -107,6 +109,7 @@ export function CatalogPage({
       initialInStockOnly={getInStockOnlyFromParams(searchParams)}
       initialModelGroups={initialModelGroups}
       initialProducts={initialProducts}
+      canUseCart={canUseCart}
       initialModelSeries={getModelSeriesFromParams(searchParams)}
       initialSearchQuery={getSearchQueryFromParams(searchParams)}
       initialSearchTerm={getModelSearchFromParams(searchParams)}
@@ -121,6 +124,7 @@ function CatalogPageContent({
   assistedCompanyId,
   assistedCompanyName,
   initialAccountAccess,
+  canUseCart,
   initialFilters,
   initialInStockOnly,
   initialModelGroups,
@@ -135,6 +139,7 @@ function CatalogPageContent({
   assistedCompanyId: string | null;
   assistedCompanyName: string | null;
   initialAccountAccess?: StoreHeaderAccountAccess;
+  canUseCart: boolean;
   initialFilters: CatalogFiltersState;
   initialInStockOnly: boolean;
   initialModelGroups?: DeviceModelGroup[];
@@ -431,6 +436,7 @@ function CatalogPageContent({
                     {products.map((product, index) => (
                       <ProductCard
                         assistedCompanyId={assistedCompanyId}
+                        canUseCart={canUseCart}
                         key={product.sku}
                         priceGateReason={priceGateReason}
                         priorityImage={index === 0}

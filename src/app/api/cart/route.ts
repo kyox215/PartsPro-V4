@@ -28,6 +28,9 @@ const replaceCartSchema = z
   .strict();
 
 export const dynamic = "force-dynamic";
+const noStoreHeaders = {
+  "Cache-Control": "no-store, max-age=0",
+};
 
 export async function GET() {
   const unavailable = remoteCartUnavailableResponse();
@@ -39,15 +42,18 @@ export async function GET() {
   try {
     const result = await readCurrentCustomerCart();
 
-    return NextResponse.json({
-      data: {
-        items: result.data.map(toCartItemDto),
+    return NextResponse.json(
+      {
+        data: {
+          items: result.data.map(toCartItemDto),
+        },
+        meta: {
+          source: result.source,
+          persistence: "supabase_cart",
+        },
       },
-      meta: {
-        source: result.source,
-        persistence: "supabase_cart",
-      },
-    });
+      { headers: noStoreHeaders }
+    );
   } catch (error) {
     if (
       error instanceof RepositoryWriteError &&
@@ -95,15 +101,18 @@ export async function PUT(request: Request) {
       }))
     );
 
-    return NextResponse.json({
-      data: {
-        items: cart.data.map(toCartItemDto),
+    return NextResponse.json(
+      {
+        data: {
+          items: cart.data.map(toCartItemDto),
+        },
+        meta: {
+          source: cart.source,
+          persistence: "supabase_cart",
+        },
       },
-      meta: {
-        source: cart.source,
-        persistence: "supabase_cart",
-      },
-    });
+      { headers: noStoreHeaders }
+    );
   } catch (error) {
     return cartRouteError(error, "CUSTOMER_CART_SAVE_FAILED");
   }
@@ -119,15 +128,18 @@ export async function DELETE() {
   try {
     const result = await clearCurrentCustomerCart();
 
-    return NextResponse.json({
-      data: {
-        items: [],
+    return NextResponse.json(
+      {
+        data: {
+          items: [],
+        },
+        meta: {
+          source: result.source,
+          persistence: "supabase_cart",
+        },
       },
-      meta: {
-        source: result.source,
-        persistence: "supabase_cart",
-      },
-    });
+      { headers: noStoreHeaders }
+    );
   } catch (error) {
     return cartRouteError(error, "CUSTOMER_CART_CLEAR_FAILED");
   }

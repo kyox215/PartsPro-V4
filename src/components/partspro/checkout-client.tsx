@@ -169,6 +169,21 @@ type WalletPreview = {
   payableAmount: MoneyDto;
 };
 
+type PreviewLine = {
+  sku: string;
+  quantity: number;
+  unitPrice: MoneyDto;
+  lineGross: MoneyDto;
+  priceVersion?: string | null;
+};
+
+type PreviewTotals = {
+  subtotal: MoneyDto;
+  shipping: MoneyDto;
+  vat: MoneyDto;
+  total: MoneyDto;
+};
+
 type CartCatalogRejection = {
   reason?: string;
   sku: string;
@@ -177,10 +192,10 @@ type CartCatalogRejection = {
 type PendingItemsReason = "account" | "customer" | "customer-context";
 
 type PreviewState =
-  | { status: "idle"; canSubmit?: boolean; issues: PreviewIssue[]; wallet?: WalletPreview }
-  | { status: "loading"; canSubmit?: boolean; issues: PreviewIssue[]; wallet?: WalletPreview }
-  | { status: "ready"; canSubmit?: boolean; issues: PreviewIssue[]; wallet?: WalletPreview }
-  | { status: "error"; canSubmit?: boolean; issues: PreviewIssue[]; message: string; wallet?: WalletPreview };
+  | { status: "idle"; canSubmit?: boolean; issues: PreviewIssue[]; lines?: PreviewLine[]; totals?: PreviewTotals; wallet?: WalletPreview }
+  | { status: "loading"; canSubmit?: boolean; issues: PreviewIssue[]; lines?: PreviewLine[]; totals?: PreviewTotals; wallet?: WalletPreview }
+  | { status: "ready"; canSubmit?: boolean; issues: PreviewIssue[]; lines?: PreviewLine[]; totals?: PreviewTotals; wallet?: WalletPreview }
+  | { status: "error"; canSubmit?: boolean; issues: PreviewIssue[]; message: string; lines?: PreviewLine[]; totals?: PreviewTotals; wallet?: WalletPreview };
 
 type Blocker = {
   actionHref?: string;
@@ -659,7 +674,13 @@ function CheckoutClientContent({
           signal: controller.signal,
         });
         const payload = (await response.json().catch(() => null)) as {
-          data?: { canSubmit?: boolean; issues?: PreviewIssue[]; wallet?: WalletPreview };
+          data?: {
+            canSubmit?: boolean;
+            issues?: PreviewIssue[];
+            lines?: PreviewLine[];
+            totals?: PreviewTotals;
+            wallet?: WalletPreview;
+          };
           error?: { code?: string; message?: string };
         } | null;
 
@@ -672,6 +693,8 @@ function CheckoutClientContent({
             status: "ready",
             canSubmit: Boolean(payload?.data?.canSubmit),
             issues: Array.isArray(payload?.data?.issues) ? payload.data.issues : [],
+            lines: Array.isArray(payload?.data?.lines) ? payload.data.lines : [],
+            totals: payload?.data?.totals,
             wallet: payload?.data?.wallet,
           });
         }
@@ -739,6 +762,7 @@ function CheckoutClientContent({
         body: JSON.stringify({
           companyId: selectedCompany?.id,
           checkoutMode,
+          expectedPreview: expectedPreviewForOrder(previewForUi),
           paymentMethod: form.paymentMethod,
           useWallet: form.useWallet,
           deliveryAddress: selectedShippingAddress,
@@ -2758,6 +2782,32 @@ function buildOrderNotes(customerNotes: string, deliveryMethod: DeliveryMethod) 
   ].filter((value): value is string => Boolean(value));
 
   return details.join(" | ").slice(0, 500);
+}
+
+function expectedPreviewForOrder(preview: PreviewState) {
+  if (
+    preview.status !== "ready" ||
+    !preview.canSubmit ||
+    !preview.totals ||
+    !preview.lines?.length
+  ) {
+    return undefined;
+  }
+
+  return {
+    lines: preview.lines.map((line) => ({
+      sku: line.sku,
+      quantity: line.quantity,
+      unitNetCents: line.unitPrice.cents,
+      priceVersion: line.priceVersion ?? null,
+    })),
+    totals: {
+      subtotalCents: preview.totals.subtotal.cents,
+      shippingCents: preview.totals.shipping.cents,
+      vatCents: preview.totals.vat.cents,
+      totalCents: preview.totals.total.cents,
+    },
+  };
 }
 
 function optionalText(value: string) {

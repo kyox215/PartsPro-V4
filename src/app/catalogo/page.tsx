@@ -7,8 +7,10 @@ import {
 } from "@/lib/partspro-repository";
 import type { PartProduct } from "@/lib/partspro-data";
 import {
+  accountPricingCustomerId,
   applyAccountPriceToProduct,
   canDelegateCheckout,
+  canUseStorefrontCart,
   getCurrentAccountContext,
   priceVisibilityReason,
   type AccountContext,
@@ -30,12 +32,13 @@ export default async function Page({
 }) {
   const resolvedSearchParams = await searchParams;
   const query = readCatalogQuery(resolvedSearchParams);
-  const accountPromise = getCurrentAccountContext({ ensure: true });
+  const accountPromise = getCurrentAccountContext();
   const modelGroupsPromise = listCatalogModelGroups();
   const account = await accountPromise;
   const requestedCompanyId = readAssistedCompanyIdFromRecord(resolvedSearchParams);
   const assistedCompanyId =
     requestedCompanyId && canDelegateCheckout(account) ? requestedCompanyId : null;
+  const buyerCustomerId = assistedCompanyId ?? accountPricingCustomerId(account);
   const [catalogPage, modelGroups, assistedCustomer] = await Promise.all([
     pageCatalogProducts(
       {
@@ -45,7 +48,7 @@ export default async function Page({
         sort: "stock_desc",
       },
       {
-        buyerCustomerId: assistedCompanyId ?? undefined,
+        buyerCustomerId,
         includeBuyerPrices: account.canViewPrices || Boolean(assistedCompanyId),
       }
     ),
@@ -67,6 +70,7 @@ export default async function Page({
         initialProducts={catalogPage.data.products.map((product) =>
           toCatalogCardProduct(product, account)
         )}
+        canUseCart={canUseStorefrontCart(account, assistedCompanyId)}
         priceGateReason={priceVisibilityReason(account)}
         showWholesalePrice={account.canViewPrices}
       />

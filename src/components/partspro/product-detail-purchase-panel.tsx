@@ -129,9 +129,136 @@ export function ProductDetailPurchasePanel({
     }
   }
 
+  function renderPurchaseActions() {
+    return (
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        {isInCart ? (
+          <ProductCartQuantityControl
+            className="min-w-0"
+            density="detail"
+            product={product}
+          />
+        ) : canOrder ? (
+          <Button
+            type="button"
+            className={cn(
+              "h-9 min-w-0",
+              addFeedbackState === "success" &&
+                "bg-emerald-600 text-white hover:bg-emerald-600",
+              addFeedbackState === "error" &&
+                "bg-red-600 text-white hover:bg-red-600"
+            )}
+            onClick={handleAddToCart}
+            aria-label={
+              addFeedbackState === "error"
+                ? addFailedHint
+                : txFormat(
+                    t,
+                    "storefront.product.purchase.addAria",
+                    "Aggiungi {quantity} pezzi di {name} al carrello",
+                    { quantity: safeQuantity, name: product.name }
+                  )
+            }
+            title={addFeedbackState === "error" ? addFailedHint : undefined}
+          >
+            {addFeedbackState === "success" ? (
+              <CheckIcon className="size-4" />
+            ) : addFeedbackState === "error" ? (
+              <AlertTriangle className="size-4" />
+            ) : (
+              <ShoppingCart className="size-4" />
+            )}
+            <span className="min-w-0 truncate" aria-live="polite">
+              {addFeedbackState === "success"
+                ? tx(t, "storefront.product.purchase.added", "Aggiunto")
+                : addFeedbackState === "error"
+                  ? tx(t, "storefront.product.purchase.addFailed", "Riprova")
+                  : tx(t, "storefront.product.purchase.add", "Aggiungi al carrello")}
+            </span>
+          </Button>
+        ) : canRequestRestock ? (
+          <ProductRestockReminderButton
+            className="min-w-0"
+            density="detail"
+            isAuthenticated={isAuthenticated}
+            product={product}
+          />
+        ) : (
+          <Button className="h-9 min-w-0" disabled aria-describedby={validationId}>
+            <ShoppingCart className="size-4" />
+            <span className="min-w-0 truncate">
+              {tx(t, "storefront.product.purchase.add", "Aggiungi al carrello")}
+            </span>
+          </Button>
+        )}
+        {isInCart ? (
+          canOrder ? (
+            <Button
+              variant="outline"
+              className="h-9 min-w-0 bg-white"
+              asChild
+            >
+              <Link href={checkoutHref}>
+                <span className="min-w-0 truncate">
+                  {tx(t, "storefront.product.purchase.goCheckout", "Vai al checkout")}
+                </span>
+              </Link>
+            </Button>
+          ) : canRequestRestock ? (
+            <ProductRestockReminderButton
+              className="min-w-0"
+              density="detail"
+              isAuthenticated={isAuthenticated}
+              product={product}
+            />
+          ) : (
+            <Button
+              variant="outline"
+              className="h-9 min-w-0 bg-white"
+              disabled
+              aria-describedby={validationId}
+            >
+              <span className="min-w-0 truncate">
+                {tx(t, "storefront.product.purchase.goCheckout", "Vai al checkout")}
+              </span>
+            </Button>
+          )
+        ) : canOrder ? (
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 min-w-0 bg-white"
+            onClick={handleOrderNow}
+            aria-label={txFormat(
+              t,
+              "storefront.product.purchase.orderNowAria",
+              "Ordina ora {quantity} pezzi di {name}",
+              { quantity: safeQuantity, name: product.name }
+            )}
+          >
+            <span className="min-w-0 truncate">
+              {tx(t, "storefront.product.purchase.orderNow", "Ordina ora")}
+            </span>
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            className="h-9 min-w-0 bg-white"
+            disabled
+            aria-describedby={validationId}
+          >
+            <span className="min-w-0 truncate">
+              {tx(t, "storefront.product.purchase.orderNow", "Ordina ora")}
+            </span>
+          </Button>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <div className="mt-2 rounded-lg border border-primary/20 bg-primary/8 p-2.5">
-      <div className="grid gap-2 lg:grid-cols-[minmax(0,0.86fr)_minmax(220px,0.64fr)]">
+    <div className="mt-2 rounded-lg border border-primary/20 bg-primary/8 p-2">
+      <div className="grid gap-2 lg:grid-cols-[minmax(260px,360px)_minmax(240px,1fr)] xl:grid-cols-[minmax(280px,380px)_minmax(260px,1fr)]">
         <div className="space-y-1.5">
           {isInCart ? (
             <div>
@@ -153,7 +280,7 @@ export function ProductDetailPurchasePanel({
                 htmlFor={quantityId}
                 className="text-[10px] font-bold uppercase text-primary/70"
               >
-                Quantita richiesta
+                Quantita
               </label>
               <div className="mt-1 flex min-w-0 items-center rounded-md border border-primary/20 bg-white">
                 <Button
@@ -212,6 +339,7 @@ export function ProductDetailPurchasePanel({
             )}
             <span className="min-w-0">{validationMessage}</span>
           </div>
+          {renderPurchaseActions()}
         </div>
 
         <div className="rounded-md border border-primary/15 bg-white p-2">
@@ -288,129 +416,6 @@ export function ProductDetailPurchasePanel({
             </div>
           )}
         </div>
-      </div>
-
-      <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-        {isInCart ? (
-          <ProductCartQuantityControl
-            className="flex-1"
-            density="detail"
-            product={product}
-          />
-        ) : canOrder ? (
-          <Button
-            type="button"
-            className={cn(
-              "h-9 min-w-0 flex-1",
-              addFeedbackState === "success" &&
-                "bg-emerald-600 text-white hover:bg-emerald-600",
-              addFeedbackState === "error" &&
-                "bg-red-600 text-white hover:bg-red-600"
-            )}
-            onClick={handleAddToCart}
-            aria-label={
-              addFeedbackState === "error"
-                ? addFailedHint
-                : txFormat(
-                    t,
-                    "storefront.product.purchase.addAria",
-                    "Aggiungi {quantity} pezzi di {name} al carrello",
-                    { quantity: safeQuantity, name: product.name }
-                  )
-            }
-            title={addFeedbackState === "error" ? addFailedHint : undefined}
-          >
-            {addFeedbackState === "success" ? (
-              <CheckIcon className="size-4" />
-            ) : addFeedbackState === "error" ? (
-              <AlertTriangle className="size-4" />
-            ) : (
-              <ShoppingCart className="size-4" />
-            )}
-            <span className="min-w-0 truncate" aria-live="polite">
-              {addFeedbackState === "success"
-                ? tx(t, "storefront.product.purchase.added", "Aggiunto")
-                : addFeedbackState === "error"
-                ? tx(t, "storefront.product.purchase.addFailed", "Riprova")
-                : tx(t, "storefront.product.purchase.add", "Aggiungi al carrello")}
-            </span>
-          </Button>
-        ) : canRequestRestock ? (
-          <ProductRestockReminderButton
-            className="flex-1"
-            density="detail"
-            isAuthenticated={isAuthenticated}
-            product={product}
-          />
-        ) : (
-          <Button className="h-9 min-w-0 flex-1" disabled aria-describedby={validationId}>
-            <ShoppingCart className="size-4" />
-            <span className="min-w-0 truncate">
-              {tx(t, "storefront.product.purchase.add", "Aggiungi al carrello")}
-            </span>
-          </Button>
-        )}
-        {isInCart ? (
-          canOrder ? (
-            <Button
-              variant="outline"
-              className="h-9 min-w-0 flex-1 bg-white"
-              asChild
-            >
-              <Link href={checkoutHref}>
-                <span className="min-w-0 truncate">
-                  {tx(t, "storefront.product.purchase.goCheckout", "Vai al checkout")}
-                </span>
-              </Link>
-            </Button>
-          ) : canRequestRestock ? (
-            <ProductRestockReminderButton
-              className="flex-1"
-              density="detail"
-              isAuthenticated={isAuthenticated}
-              product={product}
-            />
-          ) : (
-            <Button
-              variant="outline"
-              className="h-9 min-w-0 flex-1 bg-white"
-              disabled
-              aria-describedby={validationId}
-            >
-              <span className="min-w-0 truncate">
-                {tx(t, "storefront.product.purchase.goCheckout", "Vai al checkout")}
-              </span>
-            </Button>
-          )
-        ) : canOrder ? (
-          <Button
-            type="button"
-            variant="outline"
-            className="h-9 min-w-0 flex-1 bg-white"
-            onClick={handleOrderNow}
-            aria-label={txFormat(
-              t,
-              "storefront.product.purchase.orderNowAria",
-              "Ordina ora {quantity} pezzi di {name}",
-              { quantity: safeQuantity, name: product.name }
-            )}
-          >
-            <span className="min-w-0 truncate">
-              {tx(t, "storefront.product.purchase.orderNow", "Ordina ora")}
-            </span>
-          </Button>
-        ) : (
-          <Button
-            variant="outline"
-            className="h-9 min-w-0 flex-1 bg-white"
-            disabled
-            aria-describedby={validationId}
-          >
-            <span className="min-w-0 truncate">
-              {tx(t, "storefront.product.purchase.orderNow", "Ordina ora")}
-            </span>
-          </Button>
-        )}
       </div>
       {addFeedbackState === "error" ? (
         <div

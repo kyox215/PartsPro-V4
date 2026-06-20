@@ -48,6 +48,7 @@ import { ProductRestockReminderButton } from "./product-restock-reminder-button"
 
 type ProductCardProps = {
   assistedCompanyId?: string | null;
+  canUseCart?: boolean;
   priceGateReason?: PriceVisibilityReason;
   priorityImage?: boolean;
   product: PartProduct;
@@ -66,6 +67,7 @@ const ProductImagePreviewDialog = dynamic(
 
 export const ProductCard = memo(function ProductCard({
   assistedCompanyId,
+  canUseCart = false,
   priceGateReason = "login_required",
   priorityImage = false,
   product,
@@ -85,7 +87,7 @@ export const ProductCard = memo(function ProductCard({
     product.status === "Out of Stock" ||
     product.stock <= 0 ||
     product.stock < Math.max(1, product.moq);
-  const canAddToCart = hasOpenPrice && hasEffectivePrice && hasSellableStock;
+  const canAddToCart = canUseCart && hasOpenPrice && hasEffectivePrice && hasSellableStock;
   const isLoginRequired = priceGateReason === "login_required";
   const productPath = hrefWithAssistedCompanyId(
     `/prodotto/${encodeURIComponent(product.sku)}`,
@@ -102,6 +104,7 @@ export const ProductCard = memo(function ProductCard({
     moq: product.moq,
   });
   const disabledCartCopy = productCartDisabledCopy(t, {
+    canUseCart,
     hasEffectivePrice,
     hasOpenPrice,
     hasSellableStock,
@@ -491,6 +494,7 @@ function safeAddCartItem(
 function productCartDisabledCopy(
   t: StorefrontTranslator,
   state: {
+    canUseCart: boolean;
     hasEffectivePrice: boolean;
     hasOpenPrice: boolean;
     hasSellableStock: boolean;
@@ -505,6 +509,12 @@ function productCartDisabledCopy(
   if (!state.hasOpenPrice) {
     return {
       label: tx(t, "storefront.product.card.priceLocked", "Listino"),
+    };
+  }
+
+  if (!state.canUseCart) {
+    return {
+      label: tx(t, "storefront.product.card.cartLocked", "Bloccato"),
     };
   }
 

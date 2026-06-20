@@ -6,8 +6,10 @@ import {
   readQueryParams,
 } from "@/lib/partspro-api";
 import {
+  accountPricingCustomerId,
   applyAccountPriceToProduct,
   canDelegateCheckout,
+  canUseStorefrontCart,
   getCurrentAccountContext,
   hasOrderableEffectivePrice,
   priceVisibilityReason,
@@ -70,7 +72,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const account = await getCurrentAccountContext({ ensure: true });
+    const account = await getCurrentAccountContext();
     const delegatedCheckout = canDelegateCheckout(account);
     const requestedCompanyId = result.data.companyId;
     const checkoutMode = resolveCheckoutMode(
@@ -84,10 +86,11 @@ export async function GET(request: NextRequest) {
       return apiError(403, "COMPANY_FORBIDDEN", "This customer cannot be used for cart pricing.");
     }
 
-    const buyerCustomerId =
-      requestedCompanyId && requestedCompanyId !== account.customer?.id
-        ? requestedCompanyId
-        : requestedCompanyId ?? undefined;
+    const buyerCustomerId = requestedCompanyId ?? accountPricingCustomerId(account);
+    const canUseCatalogCart =
+      checkoutMode === "delegated_customer"
+        ? Boolean(buyerCustomerId && canUseStorefrontCart(account, buyerCustomerId))
+        : canUseStorefrontCart(account);
     const canResolveTargetPrices =
       account.canViewPrices ||
       Boolean(buyerCustomerId && (delegatedCheckout || checkoutMode === "employee_self"));
@@ -108,13 +111,10 @@ export async function GET(request: NextRequest) {
 
     const visibilityReason = priceVisibilityReason(account);
     const requestedCartProducts = repositoryResult.data.map((product) =>
-        toCartCatalogProduct(product, account, {
-          orderable:
-            account.canUseCart ||
-            account.canEmployeeSelfCheckout ||
-            Boolean(buyerCustomerId && delegatedCheckout),
-          visible: canResolveTargetPrices,
-        })
+      toCartCatalogProduct(product, account, {
+        orderable: canUseCatalogCart,
+        visible: canResolveTargetPrices,
+      })
     );
     const foundSkus = new Set(requestedCartProducts.map((product) => product.sku));
     const cartProducts = requestedCartProducts.filter(
