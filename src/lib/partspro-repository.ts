@@ -40,7 +40,7 @@ import {
   inferDeviceModelSeries,
   normalizeDeviceModelSeries,
 } from "@/lib/partspro-device-series";
-import { normalizeCustomerTier } from "@/lib/partspro-pricing";
+import { effectiveCustomerTier, normalizeCustomerTier } from "@/lib/partspro-pricing";
 import {
   defaultDeliveryMethod,
   shippingMethodForDeliveryMethod,
@@ -67,11 +67,11 @@ const catalogPublicCardSelect =
 const catalogProductCardSelect =
   "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at, image_path, image_alt";
 const adminCustomerSelect =
-  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, customer_type, assignment_status, profile_kind, level, lifetime_spend_net, assigned_by, assigned_at, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
+  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, customer_type, assignment_status, profile_kind, level, lifetime_spend_net, promo_level, promo_level_starts_at, promo_level_expires_at, promo_level_reason, assigned_by, assigned_at, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
 const adminCustomerCompatSelect =
-  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, profile_kind, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
+  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, profile_kind, promo_level, promo_level_starts_at, promo_level_expires_at, promo_level_reason, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
 const adminCustomerMinimalSelect =
-  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, profile_kind, created_at, updated_at";
+  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, profile_kind, promo_level, promo_level_starts_at, promo_level_expires_at, promo_level_reason, created_at, updated_at";
 const adminB2BApplicationSelect =
   "id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, registered_address, shipping_address, monthly_purchase, requested_price_group_id, status, review_note, approved_customer_id, submitted_at, reviewed_at";
 const adminCustomerMembershipSelect =
@@ -173,6 +173,10 @@ export type AccountCustomerProfile = {
   level: CustomerLevel;
   pec: string;
   phone: string;
+  promoLevel: CustomerLevel | null;
+  promoLevelStartsAt: string | null;
+  promoLevelExpiresAt: string | null;
+  promoLevelReason: string | null;
   profileKind: CustomerProfileKind;
   profileCompletedAt: string | null;
   sdi: string;
@@ -8171,6 +8175,16 @@ function mapCompanyRow(row: DbRow): CompanyProfile | null {
 
   const billingAddress = getObject(row, "billing_address") ?? getObject(row, "billingAddress");
   const shippingAddress = getObject(row, "shipping_address") ?? getObject(row, "shippingAddress");
+  const lifetimeSpendNet = pickNumber(row, ["lifetime_spend_net"]) ?? 0;
+  const promoLevel = normalizeOptionalCustomerLevel(pickString(row, ["promo_level", "promoLevel"]));
+  const effectiveLevel = effectiveCustomerTier({
+    level: pickString(row, ["level", "price_list", "priceList"]),
+    lifetimeSpendNet,
+    promoLevel,
+    promoLevelExpiresAt: pickString(row, ["promo_level_expires_at", "promoLevelExpiresAt"]),
+    promoLevelStartsAt: pickString(row, ["promo_level_starts_at", "promoLevelStartsAt"]),
+    tier: pickString(row, ["tier"]),
+  });
 
   return {
     id,
@@ -8180,7 +8194,7 @@ function mapCompanyRow(row: DbRow): CompanyProfile | null {
     pec: pickString(row, ["pec", "certified_email"]) ?? "",
     codiceDestinatario: pickString(row, ["codice_destinatario", "codiceDestinatario", "sdi_code"]) ?? "",
     status: normalizeCompanyStatus(pickString(row, ["status"])),
-    priceList: normalizePriceList(pickString(row, ["level", "price_list", "priceList", "tier"])),
+    priceList: effectiveLevel,
     billingAddress: pickString(row, ["billing_address", "billingAddress"]) ?? formatAddressObject(billingAddress),
     city: pickString(row, ["city"]) ?? pickString(billingAddress, ["city"]) ?? "",
     contactName: pickString(row, ["contact_name", "contactName"]) ?? "",
@@ -8191,8 +8205,12 @@ function mapCompanyRow(row: DbRow): CompanyProfile | null {
     customerType: normalizeCustomerType(pickString(row, ["customer_type"])),
     assignmentStatus: normalizeCustomerAssignmentStatus(pickString(row, ["assignment_status"])),
     profileKind: normalizeCustomerProfileKind(pickString(row, ["profile_kind", "profileKind"])),
-    level: normalizePriceList(pickString(row, ["level", "tier"])),
-    lifetimeSpendNet: pickNumber(row, ["lifetime_spend_net"]) ?? 0,
+    level: effectiveLevel,
+    lifetimeSpendNet,
+    promoLevel,
+    promoLevelStartsAt: pickString(row, ["promo_level_starts_at", "promoLevelStartsAt"]),
+    promoLevelExpiresAt: pickString(row, ["promo_level_expires_at", "promoLevelExpiresAt"]),
+    promoLevelReason: pickString(row, ["promo_level_reason", "promoLevelReason"]),
     profileCompletedAt: pickString(row, ["profile_completed_at"]),
   };
 }
@@ -8204,6 +8222,17 @@ function mapAccountCustomerProfileRow(row: DbRow): AccountCustomerProfile | null
     return null;
   }
 
+  const lifetimeSpendNet = pickNumber(row, ["lifetime_spend_net"]) ?? 0;
+  const promoLevel = normalizeOptionalCustomerLevel(pickString(row, ["promo_level"]));
+  const effectiveLevel = effectiveCustomerTier({
+    level: pickString(row, ["level"]),
+    lifetimeSpendNet,
+    promoLevel,
+    promoLevelExpiresAt: pickString(row, ["promo_level_expires_at"]),
+    promoLevelStartsAt: pickString(row, ["promo_level_starts_at"]),
+    tier: pickString(row, ["tier"]),
+  });
+
   return {
     assignmentStatus: normalizeCustomerAssignmentStatus(pickString(row, ["assignment_status"])),
     billingAddress: pickString(row, ["billing_address"]) ?? "",
@@ -8213,7 +8242,11 @@ function mapAccountCustomerProfileRow(row: DbRow): AccountCustomerProfile | null
     email: pickString(row, ["email"]) ?? "",
     fiscalCode: pickString(row, ["fiscal_code"]) ?? "",
     id,
-    level: normalizeCustomerTier(pickString(row, ["level", "tier"])),
+    level: effectiveLevel,
+    promoLevel,
+    promoLevelStartsAt: pickString(row, ["promo_level_starts_at"]),
+    promoLevelExpiresAt: pickString(row, ["promo_level_expires_at"]),
+    promoLevelReason: pickString(row, ["promo_level_reason"]),
     pec: pickString(row, ["pec"]) ?? "",
     phone: pickString(row, ["phone"]) ?? "",
     profileKind: normalizeCustomerProfileKind(pickString(row, ["profile_kind"])),
@@ -8232,6 +8265,9 @@ function mapAdminCustomerRow(row: DbRow): AdminCustomer | null {
     return null;
   }
 
+  const lifetimeSpendNet = pickNumber(row, ["lifetime_spend_net"]) ?? 0;
+  const effectiveLevel = profile.level ?? profile.priceList;
+
   return {
     ...profile,
     customerStatus: normalizeAdminCustomerStatus(pickString(row, ["status"])),
@@ -8242,9 +8278,9 @@ function mapAdminCustomerRow(row: DbRow): AdminCustomer | null {
     phone: pickString(row, ["phone"]) ?? "",
     billingAddress: pickString(row, ["billing_address"]) ?? "",
     shippingAddress: pickString(row, ["shipping_address"]) ?? "",
-    tier: normalizePriceList(pickString(row, ["level", "tier"])),
-    level: normalizePriceList(pickString(row, ["level", "tier"])),
-    lifetimeSpendNet: pickNumber(row, ["lifetime_spend_net"]) ?? 0,
+    tier: effectiveLevel,
+    level: effectiveLevel,
+    lifetimeSpendNet,
     assignedBy: pickString(row, ["assigned_by"]),
     assignedAt: pickString(row, ["assigned_at"]),
     priceGroupId: pickString(row, ["price_group_id"]),
@@ -9554,8 +9590,8 @@ function normalizeRmaStatus(value: string | null): RmaStatus {
   return "requested";
 }
 
-function normalizePriceList(value: string | null): CustomerLevel {
-  return normalizeCustomerTier(value);
+function normalizeOptionalCustomerLevel(value: string | null): CustomerLevel | null {
+  return value ? normalizeCustomerTier(value) : null;
 }
 
 function normalizeCustomerType(value: string | null): CustomerType {

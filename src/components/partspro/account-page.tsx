@@ -932,7 +932,11 @@ function AccountSummaryPanel({
 
         <div className="grid grid-cols-3 gap-1.5">
           <SummaryMetric label="资料" value={profileStatus} />
-          <SummaryMetric label="等级" value={customerLevelLabel(level)} helper={`每件减 ${formatTierDiscount(level)}`} />
+          <SummaryMetric
+            label="等级"
+            value={customerLevelLabel(level)}
+            helper={customerPromoHelper(profile, company) ?? `每件减 ${formatTierDiscount(level)}`}
+          />
           <SummaryMetric label="钱包" value={formatEuro(wallet.balance)} accent />
           <SummaryMetric label="未完单" value={openOrderCount} />
           <SummaryMetric label="配送" value={shippedOrderCount} />
@@ -1552,6 +1556,10 @@ function createEmptyAccountProfile(
     level: "bronze",
     pec: "",
     phone: "",
+    promoLevel: null,
+    promoLevelStartsAt: null,
+    promoLevelExpiresAt: null,
+    promoLevelReason: null,
     profileCompletedAt: null,
     profileKind: isEmployeeAccount ? "employee_self" : "customer",
     sdi: "",
@@ -1741,6 +1749,33 @@ function customerLevelLabel(level: CompanyProfile["priceList"]) {
   };
 
   return labels[level] ?? level;
+}
+
+function customerPromoHelper(
+  profile: AccountCustomerProfile | null,
+  company: CompanyProfile | null
+) {
+  const promoLevel = profile?.promoLevel ?? company?.promoLevel;
+  const startsAtValue = profile?.promoLevelStartsAt ?? company?.promoLevelStartsAt;
+  const expiresAtValue = profile?.promoLevelExpiresAt ?? company?.promoLevelExpiresAt;
+
+  if (!promoLevel || !startsAtValue || !expiresAtValue) {
+    return null;
+  }
+
+  const startsAt = new Date(startsAtValue).getTime();
+  const expiresAt = new Date(expiresAtValue).getTime();
+  const now = Date.now();
+
+  if (!Number.isFinite(startsAt) || !Number.isFinite(expiresAt) || now < startsAt || now >= expiresAt) {
+    return null;
+  }
+
+  return `活动至 ${new Intl.DateTimeFormat("zh-CN", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+  }).format(new Date(expiresAtValue))}`;
 }
 
 function orderBadgeClass(status: string) {

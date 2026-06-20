@@ -1,6 +1,7 @@
 import { readLinkedCustomerRow } from "@/lib/partspro-customer-linkage";
 import {
   calculateTierPrice,
+  effectiveCustomerTier,
   getTierRule,
   normalizeCustomerTier,
 } from "@/lib/partspro-pricing";
@@ -20,7 +21,7 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 type DbRow = Record<string, unknown>;
 
 const accountCustomerSelect =
-  "id, user_id, company_name, status, customer_type, assignment_status, profile_kind, level, lifetime_spend_net, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address, updated_at, created_at";
+  "id, user_id, company_name, status, customer_type, assignment_status, profile_kind, level, tier, lifetime_spend_net, promo_level, promo_level_starts_at, promo_level_expires_at, promo_level_reason, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address, updated_at, created_at";
 
 export type AccountType = "customer" | "employee";
 export type PriceVisibilityReason =
@@ -40,6 +41,10 @@ export type AccountCustomerContext = {
   level: CustomerLevel;
   lifetimeSpendNet: number;
   name: string;
+  promoLevel: CustomerLevel | null;
+  promoLevelStartsAt: string | null;
+  promoLevelExpiresAt: string | null;
+  promoLevelReason: string | null;
   profileComplete: boolean;
   profileKind: CustomerProfileKind;
   profileCompletedAt: string | null;
@@ -455,7 +460,7 @@ async function readEmployeeSelfCustomerByUserId(
   const { data, error } = await client
     .from("customers")
     .select(
-      "id, company_name, status, customer_type, assignment_status, profile_kind, level, lifetime_spend_net, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address"
+      "id, company_name, status, customer_type, assignment_status, profile_kind, level, tier, lifetime_spend_net, promo_level, promo_level_starts_at, promo_level_expires_at, promo_level_reason, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address"
     )
     .eq("user_id", userId)
     .eq("profile_kind", "employee_self")
@@ -477,15 +482,28 @@ async function ensureEmployeeSelfCustomer(client: SupabaseServerClient) {
 }
 
 function toCustomerContext(row: DbRow): AccountCustomerContext {
-  const level = normalizeCustomerTier(readString(row.level));
+  const lifetimeSpendNet = readNumber(row.lifetime_spend_net) ?? 0;
+  const promoLevel = normalizeOptionalCustomerTier(readString(row.promo_level));
+  const level = effectiveCustomerTier({
+    level: readString(row.level),
+    lifetimeSpendNet,
+    promoLevel,
+    promoLevelExpiresAt: readString(row.promo_level_expires_at),
+    promoLevelStartsAt: readString(row.promo_level_starts_at),
+    tier: readString(row.tier),
+  });
 
   return {
     assignmentStatus: normalizeAssignmentStatus(readString(row.assignment_status)),
     customerType: normalizeCustomerType(readString(row.customer_type)),
     id: readString(row.id) ?? "",
     level,
-    lifetimeSpendNet: readNumber(row.lifetime_spend_net) ?? 0,
+    lifetimeSpendNet,
     name: readString(row.company_name) ?? "Cliente PartsPro",
+    promoLevel,
+    promoLevelStartsAt: readString(row.promo_level_starts_at),
+    promoLevelExpiresAt: readString(row.promo_level_expires_at),
+    promoLevelReason: readString(row.promo_level_reason),
     profileComplete: isCustomerProfileComplete(row),
     profileKind: normalizeCustomerProfileKind(readString(row.profile_kind)),
     profileCompletedAt: readString(row.profile_completed_at),
@@ -499,6 +517,10 @@ function normalizeAccountType(value: string | null): AccountType {
 
 function normalizeCustomerType(value: string | null): CustomerType {
   return value === "wholesale" ? "wholesale" : "retail";
+}
+
+function normalizeOptionalCustomerTier(value: string | null): CustomerLevel | null {
+  return value ? normalizeCustomerTier(value) : null;
 }
 
 function normalizeCustomerProfileKind(value: string | null): CustomerProfileKind {

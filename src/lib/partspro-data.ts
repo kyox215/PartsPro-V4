@@ -113,6 +113,10 @@ export type CompanyProfile = {
   profileKind?: CustomerProfileKind;
   level?: CustomerLevel;
   lifetimeSpendNet?: number;
+  promoLevel?: CustomerLevel | null;
+  promoLevelStartsAt?: string | null;
+  promoLevelExpiresAt?: string | null;
+  promoLevelReason?: string | null;
   profileCompletedAt?: string | null;
   billingAddress?: string;
   city: string;

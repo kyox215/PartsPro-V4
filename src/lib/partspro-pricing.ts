@@ -144,6 +144,52 @@ export function normalizeCustomerTier(
   return "bronze";
 }
 
+export type CustomerTierPromotionInput = {
+  level?: CustomerTier | string | null;
+  lifetimeSpendNet?: number | null;
+  promoLevel?: CustomerTier | string | null;
+  promoLevelExpiresAt?: string | Date | null;
+  promoLevelStartsAt?: string | Date | null;
+  tier?: CustomerTier | string | null;
+};
+
+export function isCustomerTierPromotionActive(
+  input: CustomerTierPromotionInput,
+  now: Date = new Date()
+): boolean {
+  const promoLevel = normalizeOptionalCustomerTier(input.promoLevel);
+
+  if (!promoLevel || !input.promoLevelStartsAt || !input.promoLevelExpiresAt) {
+    return false;
+  }
+
+  const startsAt = toValidDate(input.promoLevelStartsAt);
+  const expiresAt = toValidDate(input.promoLevelExpiresAt);
+
+  if (!startsAt || !expiresAt) {
+    return false;
+  }
+
+  return now >= startsAt && now < expiresAt;
+}
+
+export function effectiveCustomerTier(
+  input: CustomerTierPromotionInput,
+  now: Date = new Date()
+): CustomerTier {
+  if (isCustomerTierPromotionActive(input, now)) {
+    return normalizeCustomerTier(input.promoLevel);
+  }
+
+  const expiresAt = toValidDate(input.promoLevelExpiresAt ?? null);
+
+  if (normalizeOptionalCustomerTier(input.promoLevel) && expiresAt && now >= expiresAt) {
+    return levelForLifetimeSpend(input.lifetimeSpendNet ?? 0);
+  }
+
+  return normalizeCustomerTier(input.level ?? input.tier);
+}
+
 export function getTierRule(tier: CompanyProfile["priceList"]): CustomerTierRule {
   return customerTierRules[tier];
 }
@@ -222,4 +268,20 @@ function formatEuroCents(value: number): string {
     minimumFractionDigits: 2,
     style: "currency",
   }).format(value);
+}
+
+function normalizeOptionalCustomerTier(
+  tier: CustomerTier | string | null | undefined
+): CustomerTier | null {
+  if (typeof tier !== "string" || tier.trim().length === 0) {
+    return null;
+  }
+
+  return normalizeCustomerTier(tier);
+}
+
+function toValidDate(value: string | Date | null): Date | null {
+  const date = value instanceof Date ? value : typeof value === "string" ? new Date(value) : null;
+
+  return date && Number.isFinite(date.getTime()) ? date : null;
 }

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { effectiveCustomerTier, normalizeCustomerTier } from "@/lib/partspro-pricing";
 
 export const roleTemplates = [
   "admin",
@@ -16,7 +17,7 @@ export const roleTemplates = [
 export const profileSelect =
   "id, email, role, account_type, auth_provider, display_name, avatar_url, role_template, customer_id, created_at, updated_at";
 export const customerSelect =
-  "id, user_id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address, status, customer_type, assignment_status, profile_kind, level, lifetime_spend_net, orders_count, revenue, last_order_at, last_activity_at, profile_completed_at, converted_to_employee_at, created_at, updated_at";
+  "id, user_id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address, status, customer_type, assignment_status, profile_kind, level, tier, lifetime_spend_net, promo_level, promo_level_starts_at, promo_level_expires_at, promo_level_reason, orders_count, revenue, last_order_at, last_activity_at, profile_completed_at, converted_to_employee_at, created_at, updated_at";
 const customerActivitySelect =
   "id, user_id, customer_id, event_type, sku_code, product_name, brand, model, model_series, search_query, metadata, created_at";
 const customerOrderSelect =
@@ -66,6 +67,10 @@ export type AdminAccountCustomerDto = {
   lastOrderAt: string | null;
   level: string;
   lifetimeSpendNet: number;
+  promoLevel: string | null;
+  promoLevelStartsAt: string | null;
+  promoLevelExpiresAt: string | null;
+  promoLevelReason: string | null;
   orders: AdminAccountCustomerOrderDto[];
   name: string | null;
   ordersCount: number;
@@ -784,11 +789,26 @@ export function readString(value: unknown) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+function normalizeOptionalCustomerTier(value: string | null) {
+  return value ? normalizeCustomerTier(value) : null;
+}
+
 export function isRow(value: unknown): value is DbRow {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function toCustomerDto(row: DbRow): AdminAccountCustomerDto {
+  const lifetimeSpendNet = readNumber(row.lifetime_spend_net) ?? 0;
+  const promoLevel = normalizeOptionalCustomerTier(readString(row.promo_level));
+  const level = effectiveCustomerTier({
+    level: readString(row.level),
+    lifetimeSpendNet,
+    promoLevel,
+    promoLevelExpiresAt: readString(row.promo_level_expires_at),
+    promoLevelStartsAt: readString(row.promo_level_starts_at),
+    tier: readString(row.tier),
+  });
+
   return {
     id: readString(row.id),
     userId: readString(row.user_id),
@@ -806,8 +826,12 @@ function toCustomerDto(row: DbRow): AdminAccountCustomerDto {
     customerType: readString(row.customer_type) ?? "retail",
     assignmentStatus: readString(row.assignment_status) ?? "needs_review",
     profileKind: readString(row.profile_kind) ?? "customer",
-    level: readString(row.level) ?? "bronze",
-    lifetimeSpendNet: readNumber(row.lifetime_spend_net) ?? 0,
+    level,
+    lifetimeSpendNet,
+    promoLevel,
+    promoLevelStartsAt: readString(row.promo_level_starts_at),
+    promoLevelExpiresAt: readString(row.promo_level_expires_at),
+    promoLevelReason: readString(row.promo_level_reason),
     orders: [],
     ordersCount: readNumber(row.orders_count) ?? 0,
     revenue: readNumber(row.revenue) ?? readNumber(row.lifetime_spend_net) ?? 0,

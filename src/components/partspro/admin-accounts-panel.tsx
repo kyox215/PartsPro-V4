@@ -98,6 +98,10 @@ type AccountCustomer = {
   lastOrderAt: string | null;
   level: string;
   lifetimeSpendNet: number;
+  promoLevel: string | null;
+  promoLevelStartsAt: string | null;
+  promoLevelExpiresAt: string | null;
+  promoLevelReason: string | null;
   name: string | null;
   orders: AccountCustomerOrder[];
   ordersCount: number;
@@ -1513,7 +1517,12 @@ function AccountDetailPane({
           <InfoTile
             icon={Star}
             label="客户等级"
-            value={customerLevelLabel(commerceCustomer.level)}
+            value={
+              <span className="inline-flex min-w-0 items-center gap-1">
+                <span className="truncate">{customerLevelLabel(commerceCustomer.level)}</span>
+                <CustomerPromoBadge customer={commerceCustomer} compact />
+              </span>
+            }
           />
           <InfoTile
             icon={ShoppingBag}
@@ -1790,7 +1799,15 @@ function CustomerProfileTab({
               <>
                 <DetailLine label="活跃状态" value={customerStatusLabel(commerceCustomer.status)} />
                 <DetailLine label="价格类型" value={customerTypeLabel(commerceCustomer.customerType)} />
-                <DetailLine label="客户等级" value={customerLevelLabel(commerceCustomer.level)} />
+                <DetailLine
+                  label="客户等级"
+                  value={
+                    <span className="inline-flex min-w-0 flex-wrap items-center gap-1">
+                      <span>{customerLevelLabel(commerceCustomer.level)}</span>
+                      <CustomerPromoBadge customer={commerceCustomer} />
+                    </span>
+                  }
+                />
               </>
             ) : null}
             <DetailLine label="配送地址" multiline value={profileCustomer.shippingAddress ?? "暂无"} />
@@ -2947,6 +2964,7 @@ function CustomerAssignmentBadges({ customer }: { customer: AccountCustomer | nu
       <Badge className={cn(badgeClass, "border-violet-200 bg-violet-50 text-violet-700")} variant="outline">
         {customerLevelLabel(customer.level)}
       </Badge>
+      <CustomerPromoBadge customer={customer} compact />
       <Badge className={cn(badgeClass, "border-slate-200 bg-slate-50 text-slate-500")} variant="outline">
         {customer.ordersCount} 单
       </Badge>
@@ -2961,6 +2979,32 @@ function ProfileStateBadge({ state }: { state: AccountProfileState }) {
       variant="outline"
     >
       {profileStateLabel(state)}
+    </Badge>
+  );
+}
+
+function CustomerPromoBadge({
+  compact = false,
+  customer,
+}: {
+  compact?: boolean;
+  customer: AccountCustomer;
+}) {
+  const expiresAt = activePromoExpiresAt(customer);
+
+  if (!expiresAt) {
+    return null;
+  }
+
+  return (
+    <Badge
+      className={cn(
+        "h-5 shrink-0 border-emerald-200 bg-emerald-50 px-1.5 text-[10px] font-black text-emerald-700",
+        compact && "max-w-[92px] truncate"
+      )}
+      variant="outline"
+    >
+      活动至 {formatDate(expiresAt)}
     </Badge>
   );
 }
@@ -3127,6 +3171,10 @@ function normalizeCustomer(value: unknown): AccountCustomer | null {
     profileKind: readString(value.profileKind) ?? "customer",
     level: readString(value.level) ?? "bronze",
     lifetimeSpendNet: readNumber(value.lifetimeSpendNet) ?? 0,
+    promoLevel: readString(value.promoLevel),
+    promoLevelStartsAt: readString(value.promoLevelStartsAt),
+    promoLevelExpiresAt: readString(value.promoLevelExpiresAt),
+    promoLevelReason: readString(value.promoLevelReason),
     orders: readArray(value.orders).map(normalizeCustomerOrder).filter(isDefined),
     ordersCount: readNumber(value.ordersCount) ?? 0,
     revenue: readNumber(value.revenue) ?? readNumber(value.lifetimeSpendNet) ?? 0,
@@ -3458,6 +3506,22 @@ function customerLevelName(value: string) {
   };
 
   return labels[normalizeCustomerLevel(value)];
+}
+
+function activePromoExpiresAt(customer: AccountCustomer) {
+  if (!customer.promoLevel || !customer.promoLevelStartsAt || !customer.promoLevelExpiresAt) {
+    return null;
+  }
+
+  const now = Date.now();
+  const startsAt = new Date(customer.promoLevelStartsAt).getTime();
+  const expiresAt = new Date(customer.promoLevelExpiresAt).getTime();
+
+  if (!Number.isFinite(startsAt) || !Number.isFinite(expiresAt)) {
+    return null;
+  }
+
+  return now >= startsAt && now < expiresAt ? customer.promoLevelExpiresAt : null;
 }
 
 function normalizeCustomerLevel(value: string): CustomerLevel {
