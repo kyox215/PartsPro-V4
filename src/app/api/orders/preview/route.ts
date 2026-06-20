@@ -26,6 +26,10 @@ import {
 } from "@/lib/partspro-repository";
 import { type CompanyProfile, type PartProduct } from "@/lib/partspro-data";
 import {
+  checkoutProfileMissingFields,
+  customerCheckoutReadiness,
+} from "@/lib/partspro-customer-readiness";
+import {
   calculateShippingCents,
   deliveryMethodInputValues,
   freeShippingThresholdCents,
@@ -498,14 +502,7 @@ function profileReadinessIssues(profile: Awaited<ReturnType<typeof getCurrentCus
     return [{ sku: "customer", code: "profile_missing", message: "Customer profile is not available." }];
   }
 
-  const missing = [
-    profile.companyName ? null : "company",
-    profile.email ? null : "email",
-    profile.phone ? null : "phone",
-    profile.billingAddress ? null : "billing_address",
-    profile.shippingAddress ? null : "shipping_address",
-    profile.fiscalCode ? null : "fiscal_code",
-  ].filter((item): item is string => Boolean(item));
+  const missing = checkoutProfileMissingFields(profile);
 
   return missing.length > 0
     ? [{
@@ -521,12 +518,7 @@ function isDelegatedCompanyOrderable(
   company: CompanyProfile,
   profile: Awaited<ReturnType<typeof getCurrentCustomerProfile>>["data"]
 ) {
-  return Boolean(
-    company.status === "approved" &&
-      company.assignmentStatus === "assigned" &&
-      profile &&
-      profileReadinessIssues(profile).length === 0
-  );
+  return customerCheckoutReadiness(company, profile).orderable;
 }
 
 function warningsMeta(...warnings: Array<string | undefined>) {

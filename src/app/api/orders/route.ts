@@ -36,6 +36,9 @@ import {
   type PartProduct,
 } from "@/lib/partspro-data";
 import {
+  customerCheckoutReadiness,
+} from "@/lib/partspro-customer-readiness";
+import {
   calculateShippingCents,
   deliveryMethodInputValues,
   freeShippingThresholdCents,
@@ -257,7 +260,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (checkoutMode === "customer_self" && !account.canCheckout) {
+    if (checkoutMode === "customer_self" && !account.customer?.id) {
       return apiError(
         422,
         "CUSTOMER_PROFILE_INCOMPLETE",
@@ -319,14 +322,17 @@ export async function POST(request: NextRequest) {
           : account.canCheckout;
 
     if (!targetCanCheckout) {
+      const readiness = customerCheckoutReadiness(company, customerProfile.data);
+
       return apiError(
         422,
         "CUSTOMER_PROFILE_INCOMPLETE",
         "Complete the required customer, tax, billing and shipping profile before checkout.",
         {
-          assignmentStatus: company.assignmentStatus ?? null,
-          companyId: company.id,
-          customerType: company.customerType ?? null,
+          ...readiness,
+          accountCanCheckout: account.canCheckout,
+          accountProfileComplete: account.customer?.profileComplete ?? null,
+          accountStatus: account.customer?.status ?? null,
         }
       );
     }
@@ -497,12 +503,7 @@ function isDelegatedCompanyOrderable(
   company: CompanyProfile,
   profile: AccountCustomerProfile | null
 ) {
-  return Boolean(
-    company.status === "approved" &&
-      company.assignmentStatus === "assigned" &&
-      profile &&
-      isCheckoutProfileComplete(profile)
-  );
+  return customerCheckoutReadiness(company, profile).orderable;
 }
 
 function singleCompanyResult(
@@ -548,17 +549,6 @@ function resolveCheckoutMode(
   }
 
   return "forbidden";
-}
-
-function isCheckoutProfileComplete(profile: AccountCustomerProfile) {
-  return Boolean(
-    profile.companyName &&
-      profile.email &&
-      profile.phone &&
-      profile.fiscalCode &&
-      profile.billingAddress &&
-      profile.shippingAddress
-  );
 }
 
 function orderRepositoryError(error: RepositoryWriteError) {

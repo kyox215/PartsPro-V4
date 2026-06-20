@@ -213,6 +213,16 @@ type CheckoutSyncState = (StorefrontSyncStatusState & {
 
 type CheckoutAmountStatus = "loading" | "ready" | "stale";
 
+type CheckoutApiErrorDetails = {
+  accountProfileComplete?: boolean | null;
+  accountStatus?: string | null;
+  assignmentStatus?: string | null;
+  customerType?: string | null;
+  missingFields?: string[];
+  profileComplete?: boolean | null;
+  status?: string | null;
+};
+
 const fixedShippingMethod = expressShippingMethodLabel;
 const idlePreviewState: PreviewState = { status: "idle", issues: [] };
 const previewDebounceMs = 180;
@@ -773,11 +783,30 @@ function CheckoutClientContent({
       });
       const payload = (await response.json().catch(() => null)) as {
         data?: OrderResult;
-        error?: { code?: string; message?: string };
+        error?: {
+          code?: string;
+          details?: CheckoutApiErrorDetails;
+          message?: string;
+        };
       } | null;
 
       if (!response.ok) {
-        throw new Error(friendlyCheckoutError(t, payload?.error?.code, payload?.error?.message));
+        if (isCheckoutContextError(payload?.error?.code)) {
+          setPreview(idlePreviewState);
+          setPreviewRetryToken((value) => value + 1);
+          startTransition(() => {
+            router.refresh();
+          });
+        }
+
+        throw new Error(
+          friendlyCheckoutError(
+            t,
+            payload?.error?.code,
+            payload?.error?.message,
+            payload?.error?.details
+          )
+        );
       }
 
       if (!payload?.data?.id || !payload.data.totals?.total) {
@@ -2859,7 +2888,8 @@ function submitButtonLabel(
 function friendlyCheckoutError(
   t: StorefrontTranslator,
   code?: string,
-  message?: string
+  message?: string,
+  details?: CheckoutApiErrorDetails
 ) {
   switch (code) {
     case "ORDER_PRICE_CHANGED":
@@ -2871,7 +2901,10 @@ function friendlyCheckoutError(
       return tx(t, "storefront.checkout.error.skuUnavailable", "Uno o piu articoli non sono piu disponibili.");
     case "ORDER_CUSTOMER_NOT_READY":
     case "CUSTOMER_PROFILE_INCOMPLETE":
-      return tx(t, "storefront.checkout.error.customerNotReady", "Il profilo cliente deve essere completato prima dell'ordine.");
+      return (
+        customerReadinessErrorMessage(t, details) ??
+        tx(t, "storefront.checkout.error.customerNotReady", "Il profilo cliente deve essere completato prima dell'ordine.")
+      );
     case "ORDER_PREVIEW_CATALOG_UNAVAILABLE":
       return tx(t, "storefront.checkout.error.catalogUnavailable", "客户价目表暂时无法加载，请稍后重试。");
     case "PRICE_ACCESS_REQUIRED":
@@ -2881,6 +2914,57 @@ function friendlyCheckoutError(
     default:
       return message ?? tx(t, "storefront.checkout.submit.sendError", "Errore durante l'invio.");
   }
+}
+
+function isCheckoutContextError(code?: string) {
+  return (
+    code === "CUSTOMER_PROFILE_INCOMPLETE" ||
+    code === "ORDER_CUSTOMER_NOT_READY" ||
+    code === "PRICE_ACCESS_REQUIRED"
+  );
+}
+
+function customerReadinessErrorMessage(
+  t: StorefrontTranslator,
+  details?: CheckoutApiErrorDetails
+) {
+  if (!details) {
+    return null;
+  }
+
+  const status = details.status ?? details.accountStatus ?? null;
+  const assignmentStatus = details.assignmentStatus ?? null;
+  const profileComplete = Boolean(details.profileComplete ?? details.accountProfileComplete);
+  const missingLabels = Array.isArray(details.missingFields)
+    ? details.missingFields.map((field) => profileIssueFieldLabel(t, field)).filter(Boolean)
+    : [];
+
+  if (missingLabels.length > 0) {
+    return txFormat(
+      t,
+      "storefront.checkout.issue.profileIncomplete",
+      "Profilo cliente incompleto: {fields}.",
+      { fields: missingLabels.join(tx(t, "storefront.common.listSeparator", ", ")) }
+    );
+  }
+
+  if (status && status !== "approved" && status !== "active") {
+    return tx(t, "storefront.checkout.customerBlocker.status", "Il cliente deve essere attivo prima di creare ordini.");
+  }
+
+  if (assignmentStatus && assignmentStatus !== "assigned") {
+    return tx(t, "storefront.checkout.customerBlocker.assignment", "Il cliente deve essere assegnato a un listino prima dell'ordine.");
+  }
+
+  if (profileComplete) {
+    return tx(
+      t,
+      "storefront.checkout.error.customerContextStale",
+      "客户资料已完整，结账页面资料可能仍是旧状态。页面已刷新，请再提交一次。"
+    );
+  }
+
+  return null;
 }
 
 function isAbortError(error: unknown) {
