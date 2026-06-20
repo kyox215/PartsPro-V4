@@ -8,7 +8,7 @@ Last reviewed: 2026-06-19
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | R-001 | 客户等级、批发价或零售价展示错误 | Pricing | Medium | High | R3 | PartsPro 业务契约代理、服务端重算 | 价格/API/前端文案同任务核对；关键路径加 smoke | 价格与客户部 | 改动价格、客户资料、catalog/order API | 每次价格相关任务 | open |
 | R-002 | 订单金额、IVA、运费或 MOQ 被客户端篡改 | Orders | Medium | High | R3 | 服务端校验、未知金额字段拒绝 | 增加 API 契约测试；订单预览和创建保持同源逻辑 | 订单运营部 | 改动购物车、checkout、orders API | 每次订单相关任务 | open |
-| R-003 | 库存锁定、扣减或回补不一致 | Inventory | Medium | High | R3 | 仓库库存部、业务契约验收 | 库存动作审计；RMA 和订单状态机统一 | 仓库库存部 | 改动库存、订单状态、RMA | 每次库存相关任务 | open |
+| R-003 | 库存锁定、扣减或回补不一致 | Inventory | Medium | High | R3 | 仓库库存部、业务契约验收 | 库存动作审计；售后申请和订单状态机统一 | 仓库库存部 | 改动库存、订单状态、售后申请 | 每次库存相关任务 | open |
 | R-004 | Supabase linked migration 应用夹带旧 pending 或高风险 SQL | Database | Medium | Critical | R4 | migration 安全门、dry-run 要求 | dry-run 只允许本任务 migration；危险 SQL 停止询问 | 平台发布部 | 新增或修改 `supabase/migrations/*.sql` | 每次 schema 任务 | open |
 | R-005 | RLS、service role 或 secret 暴露导致越权 | Security | Low | Critical | R4 | RLS/权限代理、禁止客户端 secret | 最小权限；权限例外写决策日志并设到期 | Supabase RLS/权限代理 | 改动 Auth、RLS、Storage、env | 每次权限任务 | open |
 | R-006 | Vercel 发布与数据库状态不匹配 | Release | Medium | High | R3 | 发布代理、migration 与 release 分离 | 发布清单必须确认 schema 依赖和 smoke test | 平台发布部 | 发布、回滚、env 变更 | 每次发布任务 | open |

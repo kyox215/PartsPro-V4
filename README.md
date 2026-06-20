@@ -29,18 +29,18 @@ Italy-focused B2B smartphone spare-parts storefront and operations dashboard.
 
 - `/` storefront home: Italian B2B entry, categories, recommended products, cart preview
 - `/catalogo` catalog: brand, model, category, warehouse and stock filtering UI
-- `/prodotto/[sku]` product detail: compatibility, B2B price gate, MOQ, RMA, stock and logistics
+- `/prodotto/[sku]` product detail: compatibility, B2B price gate, MOQ, after-sales coverage, stock and logistics
 - `/carrello` cart: quantities, IVA, shipping and order summary
 - `/checkout` checkout: company data, e-invoice fields, shipping address and payment choice
-- `/account` customer area: company data, orders, RMA and documents
-- `/rma` RMA: return request form, attachment placeholder and status timeline
+- `/account` customer area: company data, orders, after-sales requests and documents
+- `/rma` after-sales request: guided order/product selection, evidence placeholder and status timeline
 - `/admin` dashboard: KPI cards, charts, inventory table, add-product dialog and stock alerts
 
 ## API Routes
 
 - `GET /api/catalogo` Supabase-aware catalog API with strict query validation, pagination and sorting. If Supabase is unavailable, it returns an empty result instead of local sample data.
 - `GET/POST /api/orders` Supabase-aware order API with company, SKU, MOQ and stock validation. Order totals are always recalculated server-side, and unknown client money fields are rejected.
-- `GET/POST /api/rma` Supabase-aware RMA listing and creation API with Zod validation. Writes require a configured Supabase session.
+- `GET/POST /api/rma` Supabase-aware after-sales request listing and creation API with Zod validation. Writes require a configured Supabase session.
 - `POST /api/b2b-applications` B2B onboarding application endpoint. It writes to the remote `b2b_applications` table and fails closed when Supabase is not configured.
 
 ## Supabase

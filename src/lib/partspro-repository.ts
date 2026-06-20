@@ -3933,7 +3933,7 @@ export async function saveOrder(input: SaveOrderInput): Promise<RepositoryResult
 
 export async function listRmaRequests(): Promise<RepositoryResult<RmaRequest[]>> {
   const supabaseResult = await withSupabase(readRmaRequests);
-  return supabaseResult ?? emptyResult([], "No local RMA requests are available.");
+  return supabaseResult ?? emptyResult([], "No local after-sales requests are available.");
 }
 
 export async function listCurrentCustomerRmaRequests(): Promise<
@@ -3946,8 +3946,8 @@ export async function listCurrentCustomerRmaRequests(): Promise<
     emptyResult(
       [],
       isSupabaseConfigured()
-        ? "Supabase customer RMA requests could not be read."
-        : "Supabase is not configured; no customer RMA requests are available."
+        ? "Supabase customer after-sales requests could not be read."
+        : "Supabase is not configured; no customer after-sales requests are available."
     )
   );
 }
@@ -3962,8 +3962,8 @@ export async function listCurrentEmployeeSelfRmaRequests(): Promise<
     emptyResult(
       [],
       isSupabaseConfigured()
-        ? "Supabase employee self RMA requests could not be read."
-        : "Supabase is not configured; no employee self RMA requests are available."
+        ? "Supabase employee self after-sales requests could not be read."
+        : "Supabase is not configured; no employee self after-sales requests are available."
     )
   );
 }
@@ -3978,8 +3978,8 @@ export async function listCurrentCustomerRmaOrderOptions(): Promise<
     emptyResult(
       [],
       isSupabaseConfigured()
-        ? "Supabase customer RMA order options could not be read."
-        : "Supabase is not configured; no customer RMA order options are available."
+        ? "Supabase customer after-sales order options could not be read."
+        : "Supabase is not configured; no customer after-sales order options are available."
     )
   );
 }
@@ -3994,8 +3994,8 @@ export async function listCurrentEmployeeSelfRmaOrderOptions(): Promise<
     emptyResult(
       [],
       isSupabaseConfigured()
-        ? "Supabase employee self RMA order options could not be read."
-        : "Supabase is not configured; no employee self RMA order options are available."
+        ? "Supabase employee self after-sales order options could not be read."
+        : "Supabase is not configured; no employee self after-sales order options are available."
     )
   );
 }
@@ -4005,7 +4005,7 @@ export async function saveRmaRequest(input: SaveRmaInput): Promise<RepositoryRes
     throw new RepositoryWriteError(
       503,
       "SUPABASE_NOT_CONFIGURED",
-      "Supabase must be configured before RMA requests can be created."
+      "Supabase must be configured before after-sales requests can be created."
     );
   }
 
@@ -4016,7 +4016,7 @@ export async function saveRmaRequest(input: SaveRmaInput): Promise<RepositoryRes
     throw new RepositoryWriteError(
       502,
       "RMA_WRITE_UNAVAILABLE",
-      "RMA request could not be persisted in Supabase."
+      "After-sales request could not be persisted in Supabase."
     );
   }
 
@@ -6773,7 +6773,7 @@ async function insertRmaRequest(context: SupabaseContext, input: SaveRmaInput): 
 
     if (row) {
       return {
-        id: pickString(row, ["id", "rma_id", "request_id"]) ?? `RMA-${Date.now()}`,
+        id: pickString(row, ["id", "rma_id", "request_id"]) ?? `ASSISTENZA-${Date.now()}`,
         orderId:
           pickString(row, ["order_id", "orderId", "order_no"]) ??
           input.orderId ??
@@ -8925,7 +8925,7 @@ function mapRmaRow(row: DbRow, linesById: Map<string, DbRow>): RmaRequest | null
       (line ? pickString(line, ["product_name", "name_snapshot", "name"]) : null) ??
       "Ricambio",
     status: normalizeRmaStatus(pickString(row, ["status"])),
-    reason: pickString(row, ["reason", "problem_type"]) ?? "Richiesta RMA",
+    reason: pickString(row, ["reason", "problem_type"]) ?? "Richiesta assistenza",
     createdAt: formatItalianDate(pickString(row, ["created_at", "createdAt"])),
     resolution: rmaResolutionSummary(row),
   };

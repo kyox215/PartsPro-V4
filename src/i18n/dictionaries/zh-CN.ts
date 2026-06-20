@@ -4,7 +4,7 @@ import { storefrontZhCN } from "./storefront";
 const dictionary = {
   "metadata.title": "PartsPro | 意大利专业客户手机配件平台",
   "metadata.description":
-    "PartsPro 平台用于专业客户配件目录、订单、RMA 和手机维修配件管理。",
+    "PartsPro 平台用于专业客户配件目录、订单、售后申请和手机维修配件管理。",
   "language.label": "语言",
   "language.switchTo": "切换语言",
   "language.current": "当前语言",

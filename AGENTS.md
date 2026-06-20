@@ -12,7 +12,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 - PartsPro 是面向意大利手机维修店和专业客户的配件商城与后台运营系统。
 - 技术栈：Next.js 16 App Router、React 19、TypeScript、TailwindCSS v4、shadcn/Radix、Supabase、Vercel。
-- 关键业务域：商品目录、客户等级与价格、购物车、checkout、订单、库存、RMA、后台账号和权限、供应商到货导入。
+- 关键业务域：商品目录、客户等级与价格、购物车、checkout、订单、库存、售后申请、后台账号和权限、供应商到货导入。
 - linked Supabase 本机状态默认指向 `yiuxrjqexlfjtxxrkqvi` / `PartsPro-V4`。该目标按生产敏感项目处理，不能因为已经 linked 就无条件写库。
 
 ## AI Company OS 接入层
@@ -53,7 +53,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - 商品目录部：商品建档、SKU、分类、图片、上下架和商品资料质量。
 - 价格与客户部：客户等级、零售/批发、客户资料、价格展示和客户权限。
 - 订单运营部：购物车、checkout、订单、付款、钱包退款和客户订单体验。
-- 仓库库存部：库存、锁货、出入库、库存动作、缺货和 RMA 回补。
+- 仓库库存部：库存、锁货、出入库、库存动作、缺货和售后回补。
 - 采购到货部：供应商、批次、发票/装箱单、Mobilax/UTOPYA 导入和补图清单。
 - 电商渠道部：eBay 连接、刊登、价格库存同步、队列和订单回流。
 - 平台发布部：Next.js、Supabase、Vercel、环境变量、构建和上线 smoke test。
@@ -63,7 +63,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Skill 使用规则
 
-- 涉及 PartsPro 全链路审计、业务契约、价格、订单、库存、客户、RMA 或前后端字段一致性时，优先使用可用的 `partspro-fullstack-audit` skill 做只读扫描或检查清单。
+- 涉及 PartsPro 全链路审计、业务契约、价格、订单、库存、客户、售后申请或前后端字段一致性时，优先使用可用的 `partspro-fullstack-audit` skill 做只读扫描或检查清单。
 - 涉及 Supabase、RLS、migration、RPC、Storage、Auth 或数据库权限时，必须遵守 Supabase 相关 skill/文档和本文件的 migration 安全门。
 - 涉及 Next.js 16 App Router、Route Handlers、Server Actions、metadata、缓存或 config 时，必须先读 `node_modules/next/dist/docs/` 中对应主题。
 - 涉及 Vercel 部署、日志、env 或域名时，使用 Vercel 相关能力前必须确认是否依赖已应用 migration。
@@ -76,7 +76,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - Next.js 16 App Router 代理：负责 App Router、Route Handlers、Server/Client 边界、Next config、缓存和 Vercel 运行时兼容。
 - Supabase Migration 守门代理：负责 migration 生成、风险扫描、dry-run、linked 项目确认、应用后验证。
 - Supabase RLS/权限代理：负责 RLS、policy、grant/revoke、security definer、search_path、Storage policy 和 exposed schema 安全。
-- PartsPro 业务契约代理：负责商品、价格、客户、订单、库存、RMA、后台权限的端到端一致性。
+- PartsPro 业务契约代理：负责商品、价格、客户、订单、库存、售后申请、后台权限的端到端一致性。
 - 前端体验代理：负责 storefront/admin UI、i18n、shadcn/Radix/Tailwind v4、响应式和可访问性。
 - 供应商到货导入代理：遵守 `docs/PartsPro 到货导入声明规则.md`，先只读预检，再确认导入声明，再写库。
 - Vercel 发布代理：负责 build、env、deployment readiness、部署验证；不负责自动应用 migration。

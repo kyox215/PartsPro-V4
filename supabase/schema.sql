@@ -270,7 +270,7 @@
 --   20260525210756_admin_inventory_order_rpc.sql and expanded by later order
 --   lifecycle migrations.
 
--- RMA model.
+-- After-sales request model. Technical table names still use rma_* for compatibility.
 --
 -- public.rma_requests
 --   id uuid primary key default gen_random_uuid()

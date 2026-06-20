@@ -2291,7 +2291,7 @@ function CartProductDetailsDialog({
                   value={product.leadTime ? leadTimeLabel(t, product.leadTime) : null}
                 />
                 <CartProductDetailField
-                  label={tx(t, "storefront.cart.detailsRma", "RMA")}
+                  label={tx(t, "storefront.cart.detailsRma", "Assistenza")}
                   value={
                     product.rmaDays > 0
                       ? txFormat(t, "storefront.cart.detailsRmaDays", "{days} giorni", {

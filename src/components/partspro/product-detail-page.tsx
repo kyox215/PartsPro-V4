@@ -7,6 +7,7 @@ import {
   brandLabel,
   categoryLabel,
   tx,
+  txFormat,
   type StorefrontTranslator,
 } from "@/i18n/dictionaries/storefront";
 import { getDictionary, translate } from "@/i18n/get-dictionary";
@@ -276,7 +277,12 @@ export async function ProductDetailPage({
                     <Spec label="Brand" value={localizedBrand} />
                     <Spec label="Categoria" value={localizedCategory} />
                     <Spec label="IVA" value={`${product.vatRate}%`} />
-                    <Spec label="RMA" value={`${product.rmaDays} giorni`} />
+                    <Spec
+                      label={tx(t, "storefront.product.detail.afterSales", "Assistenza")}
+                      value={txFormat(t, "storefront.product.detail.afterSalesDays", "{days} giorni", {
+                        days: product.rmaDays,
+                      })}
+                    />
                     <Spec
                       label={tx(t, "storefront.product.detail.invoice", "Fattura")}
                       value={tx(

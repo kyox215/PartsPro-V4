@@ -1,6 +1,6 @@
-# P1-2026-06-20-account-rma-selection-flow
+# P1-2026-06-20-account-after-sales-selection-flow
 
-状态：in_progress
+状态：closed
 
 看板目录：now
 
@@ -18,15 +18,15 @@ Task ID：TASK-20260620-01
 
 ## 目标
 
-把个人中心售后/RMA 从手填订单号、订单行 ID 和 SKU，改成“选择订单 -> 选择商品 -> 选择原因/数量/处理方式 -> 提交后追踪状态”的闭环。
+把个人中心售后申请从手填订单号、订单行 ID 和 SKU，改成“选择订单 -> 选择商品 -> 选择原因/数量/处理方式 -> 提交后追踪状态”的闭环。
 
 ## 业务影响
 
-减少客户填错订单、SKU 和订单行 ID 的概率，让 RMA 申请直接绑定真实订单行，后台后续检测、换货、退款和状态追踪更可靠。
+减少客户填错订单、SKU 和订单行 ID 的概率，让售后申请直接绑定真实订单行，后台后续检测、换货、退款和状态追踪更可靠。
 
 ## 完成定义
 
-客户能从个人中心售后区进入 RMA，RMA 页面能读取当前账号可售后的订单与订单行，提交 API 会在服务端再次校验订单行归属、剩余可申请数量和 RMA 载荷。
+客户能从个人中心售后区进入售后申请页面，`/rma` 页面能读取当前账号可售后的订单与订单行，提交 API 会在服务端再次校验订单行归属、剩余可申请数量和售后申请载荷。
 
 ## 主责部门
 
@@ -60,20 +60,20 @@ Next.js 16 App Router 代理、Supabase RLS/权限代理、PartsPro 业务契约
 ## 已知事实
 
 - `rma_requests` 已有 `order_line_id`、`sku_code`、`order_no`、`quantity`、`problem_type`、`requested_resolution` 等字段。
-- 现有数据库 trigger/policy 会要求 RMA 绑定真实订单行，并校验订单行属于当前账号或当前客户。
+- 现有数据库 trigger/policy 会要求售后申请绑定真实订单行，并校验订单行属于当前账号或当前客户。
 - 当前页面已改为客户选择订单和订单商品，不再要求客户手动输入订单号、订单行 ID 和 SKU。
 
 ## 假设与未知项
 
 - 本次不新增文件上传存储，只保留本地选择提示。
 - 本次不改数据库 schema，不自动应用 migration。
-- 已发货、已完成、已送达订单优先视为可发起 RMA 的订单。
+- 已发货、已完成、已送达订单优先视为可发起售后申请的订单。
 
 ## 工作包
 
 | WP | 负责人 | 输出 | 依赖 | 退出条件 |
 |---|---|---|---|---|
-| WP-01 | 订单运营部 | 选择式 RMA 流程设计 | 现有订单/RMA表 | 订单、商品、原因、数量、状态闭环明确 |
+| WP-01 | 订单运营部 | 选择式售后申请流程设计 | 现有订单/售后申请表 | 订单、商品、原因、数量、状态闭环明确 |
 | WP-02 | 工程守门代理 | API 与 repository 校验 | 现有 Supabase RLS | 服务端不信任前端手填订单/SKU |
 | WP-03 | 前端体验代理 | 手机端可操作表单 | API 输出 | 客户无需手填订单行/SKU |
 | WP-04 | QA | 验证证据 | 代码完成 | lint/build 或失败原因已记录 |
@@ -87,11 +87,11 @@ Next.js 16 App Router 代理、Supabase RLS/权限代理、PartsPro 业务契约
 
 ## 验收标准
 
-- RMA 页面加载当前账号可申请的订单选项。
-- 选择订单后只能选择该订单内还有剩余 RMA 数量的商品。
+- 售后申请页面加载当前账号可申请的订单选项。
+- 选择订单后只能选择该订单内还有剩余售后申请数量的商品。
 - 数量使用选项选择，且不能超过剩余可申请数量。
 - 提交 API 根据订单行反推订单号、SKU 和商品名，并校验当前账号归属。
-- 个人中心售后区能从最近订单发起售后，并继续展示最近 RMA 状态。
+- 个人中心售后区能从最近订单发起售后，并继续展示最近售后申请状态。
 - 选完售后订单后的页面使用订单摘要、商品卡、问题选项、检测状态选项和提交摘要，文本输入只作为补充说明。
 
 ## 禁止事项
@@ -117,6 +117,8 @@ npm run build
 | `git diff --check` | passed | 无 whitespace/error diff |
 | `npm run lint` | passed | ESLint 通过 |
 | `npm run build` | passed | Next.js 16.2.6 生产构建通过 |
+| `partspro-fullstack-audit contract_scan.py` | passed | 只读契约扫描完成，确认技术表名仍为 `rma_requests` |
+| 旧缩写项目扫描 | passed | 非 migration 范围只剩技术常量、API 错误码和表名兼容项 |
 | `curl -I http://127.0.0.1:3000/rma` | passed | 未登录时 307 到 `/login?next=/rma` |
 | `curl -I http://127.0.0.1:3000/account` | passed | 未登录时 307 到 `/login?next=/account` |
 | `curl -i http://127.0.0.1:3000/api/rma` | passed | 未登录时 401 `LOGIN_REQUIRED` |
@@ -130,6 +132,14 @@ npm run build
 - 数据策略：不新增 migration，前端把选项自动整理到现有 `description` 字段，`POST /api/rma` 仍由 `orderLineId` 反查订单号、SKU 和商品名。
 - 验证：`npx tsc --noEmit`、`git diff --check`、`npm run lint`、`npm run build` 均通过。
 
+## 三次优化记录：售后申请术语统一
+
+- 日期：2026-06-20
+- 触发：老板要求将项目里的旧缩写字段全部改为“售后申请”，方便客户理解。
+- 输出：客户可见、后台可见、API message、i18n 字典、首页/个人中心/商品详情/购物车/售后申请页和项目文档里的业务文案统一为“售后申请”或意大利语 `assistenza/richiesta assistenza`。
+- 边界：保留 `/rma`、`/api/rma`、`rma_requests`、`RmaRequest`、`rmaDays`、API 错误码和历史 migration 中的旧技术命名，避免破坏接口、数据库契约和历史迁移。
+- 验证：`partspro-fullstack-audit contract_scan.py`、旧缩写项目扫描、`git diff --check`、`npx tsc --noEmit`、`npm run lint`、`npm run build`、本地 `/rma`/`/account`/`/api/rma` smoke test 均通过。
+
 ## 执行记录
 
 - 创建：2026-06-20
@@ -142,4 +152,4 @@ npm run build
 
 ## 结果
 
-已完成个人中心售后入口、RMA 选择式提交页、`GET /api/rma` 订单选项输出、`POST /api/rma` 服务端订单行校验和剩余数量校验。未新增数据库 migration，文件上传仍为本地选择提示。残余风险：多账号共享同一客户时，现有 RLS 读取策略主要按 `rma_requests.user_id` 读取，跨账号累计 RMA 数量仍依赖后续数据库级增强。
+已完成个人中心售后入口、售后申请选择式提交页、`GET /api/rma` 订单选项输出、`POST /api/rma` 服务端订单行校验和剩余数量校验。未新增数据库 migration，文件上传仍为本地选择提示。残余风险：多账号共享同一客户时，现有 RLS 读取策略主要按 `rma_requests.user_id` 读取，跨账号累计售后申请数量仍依赖后续数据库级增强。

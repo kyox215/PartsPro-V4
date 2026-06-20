@@ -257,7 +257,7 @@ export function RmaPage({
     message: tx(
       t,
       "storefront.rma.submit.idle",
-      "Seleziona ordine, ricambio e motivo prima di inviare la richiesta."
+      "Seleziona ordine, ricambio e motivo prima di inviare la richiesta assistenza."
     ),
   });
   const initialSelectionAppliedRef = React.useRef(false);
@@ -274,7 +274,7 @@ export function RmaPage({
         const payload = (await response.json().catch(() => null)) as RmaIndexResponse | null;
 
         if (!response.ok) {
-          throw new Error(readPayloadError(payload) ?? "RMA data is temporarily unavailable.");
+          throw new Error(readPayloadError(payload) ?? "I dati assistenza sono temporaneamente non disponibili.");
         }
 
         if (!active) {
@@ -296,7 +296,7 @@ export function RmaPage({
         initialSelectionAppliedRef.current = true;
       } catch (error) {
         if (active) {
-          setDataError(error instanceof Error ? error.message : "RMA data is temporarily unavailable.");
+          setDataError(error instanceof Error ? error.message : "I dati assistenza sono temporaneamente non disponibili.");
         }
       } finally {
         if (active) {
@@ -355,7 +355,7 @@ export function RmaPage({
         message: tx(
           t,
           "storefront.rma.submit.changed",
-          "Modifiche locali pronte. Invia di nuovo per creare una nuova RMA."
+          "Modifiche locali pronte. Invia di nuovo per creare una nuova richiesta assistenza."
         ),
       });
     }
@@ -445,7 +445,7 @@ export function RmaPage({
       message: tx(
         t,
         "storefront.rma.submit.loading",
-        "Invio richiesta RMA in corso..."
+        "Invio richiesta assistenza in corso..."
       ),
     });
 
@@ -477,11 +477,11 @@ export function RmaPage({
       const payload = (await response.json().catch(() => null)) as RmaSubmitResponse | null;
 
       if (!response.ok) {
-        throw new Error(payload?.error?.message ?? "Richiesta RMA non accettata.");
+        throw new Error(payload?.error?.message ?? "Richiesta assistenza non accettata.");
       }
 
       if (!payload?.data?.id || !payload.data.status) {
-        throw new Error("Risposta RMA incompleta. Controlla l'API /api/rma.");
+        throw new Error("Risposta richiesta assistenza incompleta. Controlla l'API /api/rma.");
       }
 
       const savedRequest = payload.data;
@@ -512,7 +512,7 @@ export function RmaPage({
         status: "error",
         message: error instanceof Error
           ? error.message
-          : tx(t, "storefront.rma.submit.error", "Errore durante l'invio RMA."),
+          : tx(t, "storefront.rma.submit.error", "Errore durante l'invio della richiesta assistenza."),
       });
     }
   }
@@ -524,7 +524,7 @@ export function RmaPage({
         <section className="space-y-4">
           <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.04)]">
             <Badge className="mb-3 border border-primary/20 bg-primary/8 text-primary">
-              {tx(t, "storefront.rma.badge", "RMA tracciabile")}
+              {tx(t, "storefront.rma.badge", "Assistenza tracciabile")}
             </Badge>
             <h1 className="text-3xl font-black tracking-normal md:text-4xl">
               {tx(
@@ -547,7 +547,7 @@ export function RmaPage({
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <RotateCcw className="size-5 text-primary" />
-                  {tx(t, "storefront.rma.form.title", "Nuova richiesta RMA")}
+                  {tx(t, "storefront.rma.form.title", "Nuova richiesta assistenza")}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -578,7 +578,7 @@ export function RmaPage({
                       {tx(
                         t,
                         "storefront.rma.form.noEligibleOrders",
-                        "Nessun ordine spedito con quantità RMA disponibile."
+                        "Nessun ordine spedito con quantità disponibile per assistenza."
                       )}
                     </div>
                   ) : (
@@ -647,7 +647,7 @@ export function RmaPage({
                       helper={tx(t, "storefront.rma.flow.problem.helper", "Prima scegli la categoria, poi il sintomo piu vicino.")}
                     >
                       <ChoiceGroup
-                        label={tx(t, "storefront.rma.form.reason", "Motivo RMA")}
+                        label={tx(t, "storefront.rma.form.reason", "Motivo assistenza")}
                         options={problemCategories}
                         value={form.reason}
                         onChange={updateReason}
@@ -766,7 +766,7 @@ export function RmaPage({
                             : tx(
                               t,
                               "storefront.rma.form.evidenceEmpty",
-                              "Nessun file selezionato. L'API riceve solo i dati RMA."
+                              "Nessun file selezionato. Il sistema riceve solo i dati della richiesta assistenza."
                             )}
                         </div>
                       </div>
@@ -818,8 +818,8 @@ export function RmaPage({
                     <Send className="size-4" />
                   )}
                   {submitState.status === "loading"
-                    ? tx(t, "storefront.rma.submit.buttonLoading", "Invio RMA...")
-                    : tx(t, "storefront.rma.submit.button", "Invia richiesta RMA")}
+                    ? tx(t, "storefront.rma.submit.buttonLoading", "Invio assistenza...")
+                    : tx(t, "storefront.rma.submit.button", "Invia richiesta assistenza")}
                 </Button>
                 <RmaSubmitStatus state={submitState} t={t} />
               </CardContent>
@@ -839,7 +839,7 @@ export function RmaPage({
               ) : null}
               {!dataLoading && recentRequests.length === 0 ? (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">
-                  {tx(t, "storefront.rma.recent.empty", "Nessuna richiesta RMA registrata.")}
+                  {tx(t, "storefront.rma.recent.empty", "Nessuna richiesta assistenza registrata.")}
                 </div>
               ) : null}
               {recentRequests.map((request) => (
@@ -852,7 +852,7 @@ export function RmaPage({
         <aside className="space-y-4">
           <Card className="border-slate-200 bg-white lg:sticky lg:top-32">
             <CardHeader>
-              <CardTitle>{tx(t, "storefront.rma.rules.title", "Regole RMA")}</CardTitle>
+              <CardTitle>{tx(t, "storefront.rma.rules.title", "Regole assistenza")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {[
@@ -1143,7 +1143,7 @@ function ProductOptionCard({
             })}
           </span>
           <span>
-            {txFormat(t, "storefront.rma.form.lineAlreadyRequested", "gia in RMA {count}", {
+            {txFormat(t, "storefront.rma.form.lineAlreadyRequested", "gia in assistenza {count}", {
               count: line.alreadyRequestedQuantity,
             })}
           </span>
@@ -1300,7 +1300,7 @@ function RmaSubmitPreview({
         <PreviewItem label={tx(t, "storefront.rma.result.order", "Ordine")} value={order.number} mono />
         <PreviewItem label="SKU" value={line.sku} mono />
         <PreviewItem label={tx(t, "storefront.rma.form.quantity", "Quantità")} value={form.quantity} />
-        <PreviewItem label={tx(t, "storefront.rma.form.reason", "Motivo RMA")} value={rmaReasonLabel(t, form.reason)} />
+        <PreviewItem label={tx(t, "storefront.rma.form.reason", "Motivo assistenza")} value={rmaReasonLabel(t, form.reason)} />
         <PreviewItem label={tx(t, "storefront.rma.flow.problem.symptom", "Sintomo")} value={selectedSymptom.label} />
         <PreviewItem
           label={tx(t, "storefront.rma.form.resolution", "Soluzione richiesta")}
@@ -1414,7 +1414,7 @@ function RmaSubmitStatus({
           {state.status === "success" && (
             <div className="mt-2 grid gap-2 rounded-lg border border-emerald-200 bg-white/70 p-3 text-xs font-semibold text-emerald-900 sm:grid-cols-2">
               <ResultInfo
-                label={tx(t, "storefront.rma.result.number", "Numero RMA")}
+                label={tx(t, "storefront.rma.result.number", "Numero richiesta assistenza")}
                 value={state.request.id}
                 mono
               />

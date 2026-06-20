@@ -42,7 +42,7 @@
 现有后台客户管理已经有：
 
 - `GET /api/admin/customers` 列表。
-- `GET /api/admin/customers/[id]` 详情，返回客户、成员、订单、RMA、审计日志。
+- `GET /api/admin/customers/[id]` 详情，返回客户、成员、订单、售后申请、审计日志。
 - `PATCH /api/admin/customers/[id]/profile` 更新客户档案。
 - `PATCH /api/admin/customers/[id]/classification` 更新状态、客户类型、归属状态等。
 - `PATCH /api/admin/customers/[id]/commercial-terms` 更新等级、价格组、授信、付款条件等。
@@ -618,7 +618,7 @@ Backlog：客户自助后台可新增：
 - 权限线补强：旧商业条款 RPC 和 API schema 不再允许 `tier/level`，避免绕过 `customers.manage_level`。
 - API 线：新增 `PATCH /api/admin/customers/[id]/level`、`POST /api/customer-activity`，客户详情 DTO 增加 `recentActivity`。
 - 订单线：新增客户自助订单详情接口 `/api/account/orders/[orderId]`，账户页订单详情按钮可打开订单行和操作历史。
-- 前端线：客户管理页收敛为基础台账，隐藏 B2B/商业条款/成员转员工/RMA 等基础版不需要的入口；等级编辑按 `customers.manage_level` 权限启用；订单历史可打开详情；最近操作展示客户行为日志。
+- 前端线：客户管理页收敛为基础台账，隐藏 B2B/商业条款/成员转员工/售后申请等基础版不需要的入口；等级编辑按 `customers.manage_level` 权限启用；订单历史可打开详情；最近操作展示客户行为日志。
 - 前端线补强：客户详情只保留“客户资料 / 订单历史 / 最近操作”三个 tab，删除成员晋升、金额/授信明细、商业条款残留 UI，内部等级编辑状态改为独立 `level` 流程。
 - 行为日志线：商品详情页记录 `product_view`，目录搜索记录 `catalog_search`，目录选择型号/筛选记录 `model_view/catalog_filter`，客户打开订单详情记录 `order_detail_view`，并做 5 分钟浏览器端去重。
 - 行为日志线补强：`recordCustomerActivity` 在 repository 层按客户、用户、事件类型和核心字段做 5 分钟去重，避免前端漏去重或订单详情重复打开导致最近操作刷屏。
@@ -631,7 +631,7 @@ Backlog：客户自助后台可新增：
 - 注册入口补强：登录页新增邮箱注册表单；注册后若 Supabase 返回 session 会立即执行 `ensureCurrentUserAccount()` 建客户，需邮件确认时在确认/首次登录链路继续建档；普通客户登录默认进入 `/account`。
 - 第二轮子代理已启动：
   - Confucius：复查权限分配闭环，重点看 `customers.manage_level` 是否可由管理员 grant/deny/inherit。
-  - Locke：复查客户管理主流程是否仍暴露 B2B、商业条款、成员、RMA、待审核等基础版无关入口。
+  - Locke：复查客户管理主流程是否仍暴露 B2B、商业条款、成员、售后申请、待审核等基础版无关入口。
   - Carson：复查注册客户、订单详情、最近操作、等级权限等验收矩阵和剩余风险。
 - 权限管理 UI 补强：`AdminPermissionsPanel` 新增权限搜索，并给 `customers.manage_level` 提供快捷继承/允许/拒绝控制；展示文案统一为“修改客户等级”。
 - 权限接口补强：`GET /api/admin/permissions` 改为要求 `employees.manage_permissions`，只有管理员或被授权员工可读取全量权限矩阵和个人覆盖记录。

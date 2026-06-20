@@ -34,7 +34,7 @@ export async function GET() {
     const account = await getCurrentAccountContext({ ensure: true });
 
     if (!account.authenticated) {
-      return apiError(401, "LOGIN_REQUIRED", "Login is required to read RMA requests.");
+      return apiError(401, "LOGIN_REQUIRED", "Login is required to read after-sales requests.");
     }
 
     const [requestsResult, orderOptionsResult] =
@@ -59,7 +59,7 @@ export async function GET() {
       },
     });
   } catch {
-    return apiError(500, "RMA_UNAVAILABLE", "RMA data is temporarily unavailable.");
+    return apiError(500, "RMA_UNAVAILABLE", "After-sales request data is temporarily unavailable.");
   }
 }
 
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
   const result = createRmaSchema.safeParse(body.data);
 
   if (!result.success) {
-    return apiError(400, "INVALID_RMA_PAYLOAD", "RMA payload is invalid.", {
+    return apiError(400, "INVALID_RMA_PAYLOAD", "After-sales request payload is invalid.", {
       issues: formatZodIssues(result.error),
     });
   }
@@ -82,11 +82,11 @@ export async function POST(request: NextRequest) {
     const account = await getCurrentAccountContext({ ensure: true });
 
     if (!account.authenticated) {
-      return apiError(401, "LOGIN_REQUIRED", "Login is required to create an RMA request.");
+      return apiError(401, "LOGIN_REQUIRED", "Login is required to create an after-sales request.");
     }
 
     if (account.accountType !== "customer" && account.accountType !== "employee") {
-      return apiError(403, "RMA_ACCOUNT_NOT_ALLOWED", "Only customer accounts can create RMA requests.");
+      return apiError(403, "RMA_ACCOUNT_NOT_ALLOWED", "Only customer accounts can create after-sales requests.");
     }
 
     const orderOptions =
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
       return apiError(
         404,
         "RMA_ORDER_LINE_NOT_FOUND",
-        "Select a valid order item from your account before creating an RMA request."
+        "Select a valid order item from your account before creating an after-sales request."
       );
     }
 
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
       return apiError(
         409,
         "RMA_QUANTITY_EXCEEDS_REMAINING",
-        "RMA quantity exceeds the remaining quantity available for this order item.",
+        "After-sales request quantity exceeds the remaining quantity available for this order item.",
         {
           orderedQuantity: selection.line.orderedQuantity,
           alreadyRequestedQuantity: selection.line.alreadyRequestedQuantity,
@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
       return apiError(error.status, error.code, error.message);
     }
 
-    return apiError(500, "RMA_CREATE_FAILED", "RMA request could not be created at this time.");
+    return apiError(500, "RMA_CREATE_FAILED", "After-sales request could not be created at this time.");
   }
 }
 

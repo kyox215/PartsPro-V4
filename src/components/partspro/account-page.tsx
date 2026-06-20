@@ -863,7 +863,7 @@ function ServiceSection({
 
           {rmaRequests.length === 0 && (
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-600">
-              当前账户暂无 RMA 申请。
+              当前账户暂无售后申请。
             </div>
           )}
           {rmaRequests.map((request) => (
@@ -999,7 +999,7 @@ function AccountSummaryPanel({
           <SummaryMetric label="钱包" value={formatEuro(wallet.balance)} accent />
           <SummaryMetric label="未完单" value={openOrderCount} />
           <SummaryMetric label="配送" value={shippedOrderCount} />
-          <SummaryMetric label="RMA" value={rmaRequests.length} />
+          <SummaryMetric label="售后" value={rmaRequests.length} />
         </div>
 
         <div className="grid grid-cols-2 gap-1.5">
@@ -1023,7 +1023,7 @@ function AccountSummaryPanel({
           <Button size="xs" variant="outline" className="h-8 bg-white px-1 text-[11px]" asChild>
             <Link href="/rma">
               <RotateCcw className="size-3.5" />
-              RMA
+              售后
             </Link>
           </Button>
           <Button
@@ -1775,7 +1775,7 @@ function accountDataWarningLabel(warning: string, isEmployeeAccount: boolean) {
   }
 
   if (normalized.includes("rma")) {
-    return "RMA / 退换货数据暂时无法读取。请刷新页面或稍后再试。";
+    return "售后申请数据暂时无法读取。请刷新页面或稍后再试。";
   }
 
   if (normalized.startsWith("supabase")) {
@@ -1909,7 +1909,7 @@ function orderEventLabel(event: AccountOrderDetailEvent) {
     order_submitted: "订单已提交",
     operations_updated: "订单状态已更新",
     payment_updated: "付款状态已更新",
-    rma_created: "RMA 已创建",
+    rma_created: "售后申请已创建",
     shipment_updated: "配送状态已更新",
     status_updated: "订单状态已更新",
   };

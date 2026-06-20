@@ -109,7 +109,7 @@ export function HomeRightRail() {
               {tx(t, "storefront.common.b2bAccount", "Centro personale")}
             </div>
             <div className="truncate text-xs text-slate-500">
-              {tx(t, "storefront.home.rightRail.account.subtitle", "Profilo, ordini e RMA")}
+              {tx(t, "storefront.home.rightRail.account.subtitle", "Profilo, ordini e assistenza")}
             </div>
           </div>
         </div>
@@ -118,7 +118,7 @@ export function HomeRightRail() {
             <Link href="/account">{tx(t, "nav.orders", "Ordini")}</Link>
           </Button>
           <Button variant="outline" size="sm" asChild>
-            <Link href="/rma">RMA</Link>
+            <Link href="/rma">{tx(t, "storefront.rma.linkLabel", "Assistenza")}</Link>
           </Button>
         </div>
       </section>

@@ -826,7 +826,7 @@ const panelText = {
       cycle_count: "盘点",
       release: "释放锁定",
       scrap: "报废",
-      rma_return: "RMA 回补",
+      rma_return: "售后回补",
     } satisfies Record<StockAdjustmentAction, string>,
   },
   it: {
@@ -1170,7 +1170,7 @@ const panelText = {
       cycle_count: "Inventario",
       release: "Rilascio blocco",
       scrap: "Scarto",
-      rma_return: "Rientro RMA",
+      rma_return: "Rientro assistenza",
     } satisfies Record<StockAdjustmentAction, string>,
   },
 } as const;

@@ -487,7 +487,7 @@ export function ProfessionalApplicationPage({
                   body: tx(
                     t,
                     "storefront.professional.after.account.body",
-                    "Userai login, carrello, checkout e RMA con lo stesso profilo cliente."
+                    "Userai login, carrello, checkout e assistenza con lo stesso profilo cliente."
                   ),
                 },
               ].map((item) => (

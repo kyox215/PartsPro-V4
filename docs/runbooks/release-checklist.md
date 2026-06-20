@@ -23,7 +23,7 @@ Related migrations:
 - [ ] `npm run lint` passed or failure is documented and accepted.
 - [ ] `npm run build` passed or failure is documented and accepted.
 - [ ] QA conclusion recorded for affected pages/APIs.
-- [ ] PartsPro business-contract validation completed for price, order, inventory, customer, permission, payment or RMA changes.
+- [ ] PartsPro business-contract validation completed for price, order, inventory, customer, permission, payment or after-sales request changes.
 - [ ] Security/RLS review completed where required.
 - [ ] Supabase migration list checked if schema changed.
 - [ ] Supabase dry-run includes only this task's migration if applying linked migration.
@@ -44,7 +44,7 @@ Related migrations:
 ## After Release
 
 - [ ] Storefront home/catalog/product/cart/checkout path smoke tested when affected.
-- [ ] Admin/order/inventory/RMA path smoke tested when affected.
+- [ ] Admin/order/inventory/after-sales request path smoke tested when affected.
 - [ ] Data consistency checks run when database behavior changed.
 - [ ] Customer/support signals checked when customer-facing.
 - [ ] Temporary flags, access, debug logs and test data cleaned up.
