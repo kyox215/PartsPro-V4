@@ -147,6 +147,29 @@ export type RmaRequest = {
   resolution: string;
 };
 
+export type RmaOrderLineOption = {
+  id: string;
+  sku: string;
+  productName: string;
+  imageUrl?: string;
+  imageAlt?: string;
+  orderedQuantity: number;
+  alreadyRequestedQuantity: number;
+  remainingQuantity: number;
+  unitPrice: number;
+  lineTotal: number;
+};
+
+export type RmaOrderOption = {
+  id: string;
+  number: string;
+  date: string;
+  status: OrderStatus;
+  total: number;
+  items: number;
+  lines: RmaOrderLineOption[];
+};
+
 export const deviceModels: DeviceModelGroup[] = [
   {
     brand: "Apple",

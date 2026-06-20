@@ -32,6 +32,7 @@ import {
   type PartVisual,
   type ProductGrade,
   type RmaRequest,
+  type RmaOrderOption,
   type RmaStatus,
   type StockStatus,
 } from "@/lib/partspro-data";
@@ -1191,6 +1192,10 @@ export type SaveRmaInput = {
   reason: string;
   description: string;
   productName?: string;
+  hasPhysicalDamage?: boolean;
+  installed?: boolean;
+  requestedResolution?: "replacement" | "refund" | "credit_note";
+  testedBeforeInstall?: boolean;
 };
 
 export type B2BApplicationInput = {
@@ -3947,6 +3952,54 @@ export async function listCurrentCustomerRmaRequests(): Promise<
   );
 }
 
+export async function listCurrentEmployeeSelfRmaRequests(): Promise<
+  RepositoryResult<RmaRequest[]>
+> {
+  const supabaseResult = await withSupabase(readCurrentEmployeeSelfRmaRequests);
+
+  return (
+    supabaseResult ??
+    emptyResult(
+      [],
+      isSupabaseConfigured()
+        ? "Supabase employee self RMA requests could not be read."
+        : "Supabase is not configured; no employee self RMA requests are available."
+    )
+  );
+}
+
+export async function listCurrentCustomerRmaOrderOptions(): Promise<
+  RepositoryResult<RmaOrderOption[]>
+> {
+  const supabaseResult = await withSupabase(readCurrentCustomerRmaOrderOptions);
+
+  return (
+    supabaseResult ??
+    emptyResult(
+      [],
+      isSupabaseConfigured()
+        ? "Supabase customer RMA order options could not be read."
+        : "Supabase is not configured; no customer RMA order options are available."
+    )
+  );
+}
+
+export async function listCurrentEmployeeSelfRmaOrderOptions(): Promise<
+  RepositoryResult<RmaOrderOption[]>
+> {
+  const supabaseResult = await withSupabase(readCurrentEmployeeSelfRmaOrderOptions);
+
+  return (
+    supabaseResult ??
+    emptyResult(
+      [],
+      isSupabaseConfigured()
+        ? "Supabase employee self RMA order options could not be read."
+        : "Supabase is not configured; no employee self RMA order options are available."
+    )
+  );
+}
+
 export async function saveRmaRequest(input: SaveRmaInput): Promise<RepositoryResult<RmaRequest>> {
   if (!isSupabaseConfigured()) {
     throw new RepositoryWriteError(
@@ -6329,6 +6382,57 @@ async function readCurrentCustomerRmaRequests(
     return [];
   }
 
+  return readRmaRequestsForCustomer(context, customerId);
+}
+
+async function readCurrentEmployeeSelfRmaRequests(
+  context: SupabaseContext
+): Promise<RmaRequest[] | null> {
+  await ensureEmployeeSelfCustomer(context.client);
+  const customerId = await readCurrentEmployeeSelfCustomerId(
+    context.client,
+    context.userId
+  );
+
+  if (!customerId) {
+    return [];
+  }
+
+  return readRmaRequestsForCustomer(context, customerId);
+}
+
+async function readCurrentCustomerRmaOrderOptions(
+  context: SupabaseContext
+): Promise<RmaOrderOption[] | null> {
+  const customerId = await readCurrentCustomerId(context.client, context.userId);
+
+  if (!customerId) {
+    return [];
+  }
+
+  return readRmaOrderOptionsForCustomer(context, customerId);
+}
+
+async function readCurrentEmployeeSelfRmaOrderOptions(
+  context: SupabaseContext
+): Promise<RmaOrderOption[] | null> {
+  await ensureEmployeeSelfCustomer(context.client);
+  const customerId = await readCurrentEmployeeSelfCustomerId(
+    context.client,
+    context.userId
+  );
+
+  if (!customerId) {
+    return [];
+  }
+
+  return readRmaOrderOptionsForCustomer(context, customerId);
+}
+
+async function readRmaRequestsForCustomer(
+  context: SupabaseContext,
+  customerId: string
+): Promise<RmaRequest[] | null> {
   const orderRows = await readCustomerOrderRows(context.client, customerId);
 
   if (!orderRows) {
@@ -6392,6 +6496,83 @@ async function readCurrentCustomerRmaRequests(
   }
 
   return [...rmaRowsById.values()].map((row) => mapRmaRow(row, linesById)).filter(isDefined);
+}
+
+async function readRmaOrderOptionsForCustomer(
+  context: SupabaseContext,
+  customerId: string
+): Promise<RmaOrderOption[] | null> {
+  const orderRows = await readCustomerOrderRows(context.client, customerId);
+
+  if (!orderRows) {
+    return null;
+  }
+
+  const eligibleOrderRows = orderRows.filter(isRmaEligibleOrderRow);
+  const orderIds = uniqueDefinedStrings(eligibleOrderRows.map((row) => pickString(row, ["id"])));
+
+  if (orderIds.length === 0) {
+    return [];
+  }
+
+  const lineRows = await readOrderLineRowsForOrderIds(context.client, orderIds);
+
+  if (!lineRows) {
+    return null;
+  }
+
+  const productRows = await readProductRowsForOrderLines(context.client, lineRows);
+  const productsBySku = mapProductRowsBySku(productRows ?? []);
+  const lineIds = uniqueDefinedStrings(
+    lineRows.map((line) => pickString(line, ["id", "line_id", "order_item_id"]))
+  );
+  const rmaRows = await readRmaRowsForValues(context.client, "order_line_id", lineIds);
+  const requestedQuantityByLineId = sumRmaRequestedQuantitiesByLineId(rmaRows);
+  const eligibleOrderIdSet = new Set(orderIds);
+  const linesByOrderId = new Map<string, RmaOrderOption["lines"]>();
+
+  for (const line of lineRows) {
+    const orderId = pickString(line, ["order_id"]);
+    const lineId = pickString(line, ["id", "line_id", "order_item_id"]);
+
+    if (!orderId || !lineId || !eligibleOrderIdSet.has(orderId)) {
+      continue;
+    }
+
+    const mappedLine = mapAdminOrderLineRow(line, productsBySku);
+
+    if (!mappedLine) {
+      continue;
+    }
+
+    const orderedQuantity = Math.max(0, mappedLine.quantity - mappedLine.cancelledQty);
+    const alreadyRequestedQuantity = requestedQuantityByLineId.get(lineId) ?? 0;
+    const remainingQuantity = Math.max(0, orderedQuantity - alreadyRequestedQuantity);
+
+    if (remainingQuantity <= 0) {
+      continue;
+    }
+
+    const option = {
+      id: mappedLine.id,
+      sku: mappedLine.sku,
+      productName: mappedLine.productName,
+      ...(mappedLine.productImageUrl ? { imageUrl: mappedLine.productImageUrl } : {}),
+      ...(mappedLine.productImageAlt ? { imageAlt: mappedLine.productImageAlt } : {}),
+      orderedQuantity,
+      alreadyRequestedQuantity,
+      remainingQuantity,
+      unitPrice: mappedLine.unitPrice,
+      lineTotal: mappedLine.lineNet,
+    };
+    const existing = linesByOrderId.get(orderId) ?? [];
+
+    linesByOrderId.set(orderId, [...existing, option]);
+  }
+
+  return eligibleOrderRows
+    .map((row) => mapRmaOrderOptionRow(row, linesByOrderId))
+    .filter(isDefined);
 }
 
 async function readRmaRequests(context: SupabaseContext) {
@@ -6530,7 +6711,12 @@ async function insertRmaRequest(context: SupabaseContext, input: SaveRmaInput): 
           status: "submitted",
           problem_type: input.reason,
           description: input.description,
+          evidence_urls: [],
           attachments: [],
+          tested_before_install: input.testedBeforeInstall ?? false,
+          installed: input.installed ?? false,
+          has_physical_damage: input.hasPhysicalDamage ?? false,
+          requested_resolution: input.requestedResolution ?? "replacement",
         }
       : null,
     input.orderId
@@ -6543,10 +6729,10 @@ async function insertRmaRequest(context: SupabaseContext, input: SaveRmaInput): 
           description: input.description,
           evidence_urls: [],
           quantity: input.quantity,
-          tested_before_install: false,
-          installed: false,
-          has_physical_damage: false,
-          requested_resolution: "replacement",
+          tested_before_install: input.testedBeforeInstall ?? false,
+          installed: input.installed ?? false,
+          has_physical_damage: input.hasPhysicalDamage ?? false,
+          requested_resolution: input.requestedResolution ?? "replacement",
         }
       : null,
     companyId
@@ -8741,8 +8927,87 @@ function mapRmaRow(row: DbRow, linesById: Map<string, DbRow>): RmaRequest | null
     status: normalizeRmaStatus(pickString(row, ["status"])),
     reason: pickString(row, ["reason", "problem_type"]) ?? "Richiesta RMA",
     createdAt: formatItalianDate(pickString(row, ["created_at", "createdAt"])),
-    resolution: pickString(row, ["resolution", "description"]) ?? "In attesa di verifica laboratorio",
+    resolution: rmaResolutionSummary(row),
   };
+}
+
+function mapRmaOrderOptionRow(
+  row: DbRow,
+  linesByOrderId: Map<string, RmaOrderOption["lines"]>
+): RmaOrderOption | null {
+  const id = pickString(row, ["id"]);
+  const number = pickString(row, ["order_no", "order_number", "reference"]) ?? id;
+
+  if (!id || !number) {
+    return null;
+  }
+
+  const lines = linesByOrderId.get(id) ?? [];
+
+  if (lines.length === 0) {
+    return null;
+  }
+
+  const totalNet = pickNumber(row, ["total_net"]) ?? 0;
+  const vat = pickNumber(row, ["vat"]) ?? 0;
+  const shipping = pickNumber(row, ["shipping"]) ?? 0;
+
+  return {
+    id,
+    number,
+    date: formatItalianDate(pickString(row, ["created_at", "createdAt", "order_date", "date"])),
+    status: normalizeOrderStatus(pickString(row, ["status"])),
+    total: roundMoney(totalNet + vat + shipping),
+    items: lines.length,
+    lines,
+  };
+}
+
+function isRmaEligibleOrderRow(row: DbRow) {
+  return isRmaEligibleOrderStatus(normalizeOrderStatus(pickString(row, ["status"])));
+}
+
+function isRmaEligibleOrderStatus(status: OrderStatus) {
+  return status === "shipped" || status === "completed" || status === "delivered";
+}
+
+function sumRmaRequestedQuantitiesByLineId(rows: DbRow[]) {
+  const quantities = new Map<string, number>();
+
+  for (const row of rows) {
+    const lineId = pickString(row, ["order_line_id", "order_item_id", "line_id"]);
+
+    if (!lineId || !isRmaQuantityConsumingStatus(pickString(row, ["status"]))) {
+      continue;
+    }
+
+    quantities.set(
+      lineId,
+      (quantities.get(lineId) ?? 0) + Math.max(0, Math.floor(pickNumber(row, ["quantity"]) ?? 1))
+    );
+  }
+
+  return quantities;
+}
+
+function isRmaQuantityConsumingStatus(status: string | null) {
+  return status !== "rejected";
+}
+
+function rmaResolutionSummary(row: DbRow) {
+  const explicitResolution = pickString(row, ["resolution"]);
+
+  if (explicitResolution) {
+    return explicitResolution;
+  }
+
+  const status = pickString(row, ["status"]);
+
+  if (status === "replacement_sent" || status === "replaced") {
+    return "Sostituzione spedita";
+  }
+
+  return "In attesa di verifica laboratorio";
 }
 
 function countLinesByOrder(rows: DbRow[]) {
@@ -9585,6 +9850,10 @@ function normalizeRmaStatus(value: string | null): RmaStatus {
 
   if (value === "submitted") {
     return "requested";
+  }
+
+  if (value === "replacement_sent") {
+    return "replaced";
   }
 
   return "requested";

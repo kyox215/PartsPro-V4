@@ -9,6 +9,7 @@ import {
   listCurrentCustomerOrderSummaries,
   listCurrentCustomerRmaRequests,
   listCurrentEmployeeSelfOrderSummaries,
+  listCurrentEmployeeSelfRmaRequests,
 } from "@/lib/partspro-repository";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
@@ -57,7 +58,7 @@ export default async function Page({
             data: result.data ? [result.data] : [],
           })),
           listCurrentEmployeeSelfOrderSummaries(),
-          { data: [], warning: undefined },
+          listCurrentEmployeeSelfRmaRequests(),
           getCurrentEmployeeSelfProfile(),
           getCurrentCustomerWallet(),
         ])

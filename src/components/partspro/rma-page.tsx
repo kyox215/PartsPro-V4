@@ -16,7 +16,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -26,7 +25,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { rmaRequests } from "@/lib/partspro-data";
+import {
+  formatEuro,
+  type RmaOrderOption,
+  type RmaOrderLineOption,
+  type RmaRequest,
+} from "@/lib/partspro-data";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import { cn } from "@/lib/utils";
 import {
@@ -46,67 +50,148 @@ const rmaReasons = [
   "Connettore danneggiato",
   "Prodotto errato",
   "Danno da trasporto",
+  "Capacità sotto soglia test",
+  "Touch non risponde dopo installazione",
 ];
+
+const rmaResolutions = [
+  { value: "replacement", label: "Sostituzione" },
+  { value: "refund", label: "Rimborso" },
+  { value: "credit_note", label: "Nota credito" },
+] as const;
+
+type BinaryChoice = "yes" | "no";
 
 type RmaFormState = {
   orderId: string;
   orderLineId: string;
-  sku: string;
   quantity: string;
   reason: string;
   description: string;
+  requestedResolution: (typeof rmaResolutions)[number]["value"];
+  testedBeforeInstall: BinaryChoice;
+  installed: BinaryChoice;
+  hasPhysicalDamage: BinaryChoice;
 };
 
-type RmaResult = {
-  id: string;
-  orderId: string;
-  sku: string;
-  productName: string;
-  status: string;
-  reason: string;
-  createdAt: string;
-  resolution: string;
+type RmaIndexResponse = {
+  data?: RmaRequest[];
+  meta?: {
+    orderOptions?: RmaOrderOption[];
+    warnings?: string[];
+  };
+};
+
+type RmaSubmitResponse = {
+  data?: RmaRequest;
+  error?: { message?: string };
 };
 
 type SubmitState =
   | { status: "idle"; message: string }
   | { status: "loading"; message: string }
-  | { status: "success"; message: string; request: RmaResult }
+  | { status: "success"; message: string; request: RmaRequest }
   | { status: "error"; message: string };
 
 export function RmaPage({
   initialAccountAccess,
+  initialOrderId,
 }: {
   initialAccountAccess?: StoreHeaderAccountAccess;
+  initialOrderId?: string;
 }) {
   const t = useT();
   const [form, setForm] = React.useState<RmaFormState>({
     orderId: "",
     orderLineId: "",
-    sku: "",
     quantity: "1",
     reason: rmaReasons[0],
     description: "",
+    requestedResolution: "replacement",
+    testedBeforeInstall: "yes",
+    installed: "no",
+    hasPhysicalDamage: "no",
   });
   const [evidenceCount, setEvidenceCount] = React.useState(0);
+  const [recentRequests, setRecentRequests] = React.useState<RmaRequest[]>([]);
+  const [orderOptions, setOrderOptions] = React.useState<RmaOrderOption[]>([]);
+  const [dataLoading, setDataLoading] = React.useState(true);
+  const [dataError, setDataError] = React.useState<string | null>(null);
   const [submitState, setSubmitState] = React.useState<SubmitState>({
     status: "idle",
     message: tx(
       t,
       "storefront.rma.submit.idle",
-      "Compila i dati e invia la richiesta al flusso RMA."
+      "Seleziona ordine, ricambio e motivo prima di inviare la richiesta."
     ),
   });
-  const visibleRequests =
-    submitState.status === "success"
-      ? [submitState.request, ...rmaRequests]
-      : rmaRequests;
+  const initialSelectionAppliedRef = React.useRef(false);
 
-  function updateField<Key extends keyof RmaFormState>(
-    key: Key,
-    value: RmaFormState[Key]
-  ) {
-    setForm((current) => ({ ...current, [key]: value }));
+  React.useEffect(() => {
+    let active = true;
+
+    async function loadRmaData() {
+      setDataLoading(true);
+      setDataError(null);
+
+      try {
+        const response = await fetch("/api/rma", { cache: "no-store" });
+        const payload = (await response.json().catch(() => null)) as RmaIndexResponse | null;
+
+        if (!response.ok) {
+          throw new Error(readPayloadError(payload) ?? "RMA data is temporarily unavailable.");
+        }
+
+        if (!active) {
+          return;
+        }
+
+        const nextRequests = Array.isArray(payload?.data) ? payload.data : [];
+        const nextOrderOptions = Array.isArray(payload?.meta?.orderOptions)
+          ? payload.meta.orderOptions
+          : [];
+
+        setRecentRequests(nextRequests);
+        setOrderOptions(nextOrderOptions);
+        setForm((current) =>
+          initialSelectionAppliedRef.current
+            ? sanitizeFormSelection(current, nextOrderOptions)
+            : applyInitialOrderSelection(current, nextOrderOptions, initialOrderId)
+        );
+        initialSelectionAppliedRef.current = true;
+      } catch (error) {
+        if (active) {
+          setDataError(error instanceof Error ? error.message : "RMA data is temporarily unavailable.");
+        }
+      } finally {
+        if (active) {
+          setDataLoading(false);
+        }
+      }
+    }
+
+    void loadRmaData();
+
+    return () => {
+      active = false;
+    };
+  }, [initialOrderId]);
+
+  const selectedOrder = React.useMemo(
+    () => orderOptions.find((order) => order.id === form.orderId) ?? null,
+    [form.orderId, orderOptions]
+  );
+  const selectedLine = React.useMemo(
+    () => selectedOrder?.lines.find((line) => line.id === form.orderLineId) ?? null,
+    [form.orderLineId, selectedOrder]
+  );
+  const quantityOptions = React.useMemo(
+    () => createQuantityOptions(selectedLine?.remainingQuantity ?? 0),
+    [selectedLine]
+  );
+  const canSubmit = Boolean(selectedOrder && selectedLine && quantityOptions.includes(form.quantity));
+
+  function resetSubmitState() {
     if (submitState.status === "error" || submitState.status === "success") {
       setSubmitState({
         status: "idle",
@@ -119,17 +204,60 @@ export function RmaPage({
     }
   }
 
+  function updateField<Key extends keyof RmaFormState>(
+    key: Key,
+    value: RmaFormState[Key]
+  ) {
+    setForm((current) => ({ ...current, [key]: value }));
+    resetSubmitState();
+  }
+
+  function updateOrder(orderId: string) {
+    const order = orderOptions.find((item) => item.id === orderId) ?? null;
+    const firstLine = order?.lines.length === 1 ? order.lines[0] : null;
+
+    setForm((current) => ({
+      ...current,
+      orderId,
+      orderLineId: firstLine?.id ?? "",
+      quantity: "1",
+    }));
+    resetSubmitState();
+  }
+
+  function updateOrderLine(orderLineId: string) {
+    setForm((current) => ({
+      ...current,
+      orderLineId,
+      quantity: "1",
+    }));
+    resetSubmitState();
+  }
+
   async function submitRma(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    if (!selectedOrder || !selectedLine) {
+      setSubmitState({
+        status: "error",
+        message: tx(
+          t,
+          "storefront.rma.submit.selectOrderLine",
+          "Seleziona prima un ordine e un ricambio acquistato."
+        ),
+      });
+      return;
+    }
+
     const quantity = Number(form.quantity);
-    if (!Number.isInteger(quantity) || quantity < 1) {
+
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > selectedLine.remainingQuantity) {
       setSubmitState({
         status: "error",
         message: tx(
           t,
           "storefront.rma.submit.invalidQuantity",
-          "Inserisci una quantità valida, almeno 1 pezzo."
+          "Seleziona una quantità valida tra quelle disponibili."
         ),
       });
       return;
@@ -149,18 +277,17 @@ export function RmaPage({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          orderId: form.orderId,
-          ...(form.orderLineId ? { orderLineId: form.orderLineId } : {}),
-          sku: form.sku.trim().toUpperCase(),
+          orderLineId: selectedLine.id,
           quantity,
           reason: form.reason,
           description: form.description.trim(),
+          requestedResolution: form.requestedResolution,
+          testedBeforeInstall: form.testedBeforeInstall === "yes",
+          installed: form.installed === "yes",
+          hasPhysicalDamage: form.hasPhysicalDamage === "yes",
         }),
       });
-      const payload = (await response.json().catch(() => null)) as {
-        data?: RmaResult;
-        error?: { message?: string };
-      } | null;
+      const payload = (await response.json().catch(() => null)) as RmaSubmitResponse | null;
 
       if (!response.ok) {
         throw new Error(payload?.error?.message ?? "Richiesta RMA non accettata.");
@@ -170,15 +297,26 @@ export function RmaPage({
         throw new Error("Risposta RMA incompleta. Controlla l'API /api/rma.");
       }
 
+      const savedRequest = payload.data;
+
+      setRecentRequests((current) => dedupeRmaRequests([savedRequest, ...current]));
+      setOrderOptions((current) => decrementLineRemaining(current, selectedLine.id, quantity));
+      setForm((current) => ({
+        ...current,
+        orderLineId: "",
+        quantity: "1",
+        description: "",
+      }));
+      setEvidenceCount(0);
       setSubmitState({
         status: "success",
         message: txFormat(
           t,
           "storefront.rma.submit.success",
           "Richiesta {id} registrata correttamente.",
-          { id: payload.data.id }
+          { id: savedRequest.id }
         ),
-        request: payload.data,
+        request: savedRequest,
       });
     } catch (error) {
       setSubmitState({
@@ -210,7 +348,7 @@ export function RmaPage({
               {tx(
                 t,
                 "storefront.rma.description",
-                "Collega la richiesta a un ordine, descrivi il difetto e prepara foto o video per velocizzare la verifica del laboratorio."
+                "Collega la richiesta a un ordine, scegli il ricambio acquistato e prepara foto o video per velocizzare la verifica del laboratorio."
               )}
             </p>
           </div>
@@ -224,47 +362,96 @@ export function RmaPage({
                 </CardTitle>
               </CardHeader>
               <CardContent className="grid gap-4 sm:grid-cols-2">
+                {dataError ? (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900 sm:col-span-2">
+                    {dataError}
+                  </div>
+                ) : null}
+
                 <Field label={tx(t, "storefront.rma.form.order", "Ordine")} htmlFor="rma-order">
-                  <Input
-                    id="rma-order"
+                  <Select
+                    disabled={dataLoading || orderOptions.length === 0}
                     value={form.orderId}
-                    onChange={(event) => updateField("orderId", event.target.value)}
-                    required
-                    maxLength={80}
-                    placeholder={tx(
-                      t,
-                      "storefront.rma.form.orderPlaceholder",
-                      "Numero ordine reale"
-                    )}
-                  />
+                    onValueChange={updateOrder}
+                  >
+                    <SelectTrigger id="rma-order" className="bg-white">
+                      <SelectValue
+                        placeholder={
+                          dataLoading
+                            ? tx(t, "storefront.rma.form.loadingOrders", "Caricamento ordini...")
+                            : tx(t, "storefront.rma.form.orderPlaceholder", "Seleziona un ordine spedito")
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {orderOptions.map((order) => (
+                        <SelectItem key={order.id} value={order.id}>
+                          {order.number} · {order.date} · {formatEuro(order.total)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </Field>
+
                 <Field
-                  label={tx(t, "storefront.rma.form.orderLine", "Riga ordine")}
+                  label={tx(t, "storefront.rma.form.orderLine", "Ricambio acquistato")}
                   htmlFor="rma-order-line"
                 >
-                  <Input
-                    id="rma-order-line"
+                  <Select
+                    disabled={!selectedOrder}
                     value={form.orderLineId}
-                    onChange={(event) => updateField("orderLineId", event.target.value)}
-                    maxLength={80}
-                    required
-                    placeholder={tx(
+                    onValueChange={updateOrderLine}
+                  >
+                    <SelectTrigger id="rma-order-line" className="bg-white">
+                      <SelectValue
+                        placeholder={tx(
+                          t,
+                          "storefront.rma.form.orderLinePlaceholder",
+                          "Seleziona il prodotto dell'ordine"
+                        )}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {selectedOrder?.lines.map((line) => (
+                        <SelectItem key={line.id} value={line.id}>
+                          {line.productName} · {line.sku} · max {line.remainingQuantity}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+
+                {selectedLine ? (
+                  <SelectedLineSummary line={selectedLine} t={t} />
+                ) : orderOptions.length === 0 && !dataLoading ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-600 sm:col-span-2">
+                    {tx(
                       t,
-                      "storefront.rma.form.orderLinePlaceholder",
-                      "ID riga ordine dallo storico ordini"
+                      "storefront.rma.form.noEligibleOrders",
+                      "Nessun ordine spedito con quantità RMA disponibile."
                     )}
-                  />
+                  </div>
+                ) : null}
+
+                <Field label={tx(t, "storefront.rma.form.quantity", "Quantità")} htmlFor="rma-quantity">
+                  <Select
+                    disabled={!selectedLine || quantityOptions.length === 0}
+                    value={form.quantity}
+                    onValueChange={(value) => updateField("quantity", value)}
+                  >
+                    <SelectTrigger id="rma-quantity" className="bg-white">
+                      <SelectValue placeholder="1" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {quantityOptions.map((quantity) => (
+                        <SelectItem key={quantity} value={quantity}>
+                          {quantity}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </Field>
-                <Field label="SKU" htmlFor="rma-sku">
-                  <Input
-                    id="rma-sku"
-                    value={form.sku}
-                    onChange={(event) => updateField("sku", event.target.value)}
-                    autoCapitalize="characters"
-                    required
-                    maxLength={64}
-                  />
-                </Field>
+
                 <Field label={tx(t, "storefront.rma.form.reason", "Motivo RMA")} htmlFor="rma-reason">
                   <Select
                     value={form.reason}
@@ -282,36 +469,70 @@ export function RmaPage({
                     </SelectContent>
                   </Select>
                 </Field>
-                <Field label={tx(t, "storefront.rma.form.quantity", "Quantità")} htmlFor="rma-quantity">
-                  <Input
-                    id="rma-quantity"
-                    type="number"
-                    value={form.quantity}
-                    onChange={(event) => updateField("quantity", event.target.value)}
-                    min={1}
-                    max={999}
-                    required
-                  />
+
+                <Field
+                  label={tx(t, "storefront.rma.form.resolution", "Soluzione richiesta")}
+                  htmlFor="rma-resolution"
+                >
+                  <Select
+                    value={form.requestedResolution}
+                    onValueChange={(value) =>
+                      updateField(
+                        "requestedResolution",
+                        value as RmaFormState["requestedResolution"]
+                      )
+                    }
+                  >
+                    <SelectTrigger id="rma-resolution" className="bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {rmaResolutions.map((resolution) => (
+                        <SelectItem key={resolution.value} value={resolution.value}>
+                          {resolution.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </Field>
+
+                <BinarySelect
+                  id="rma-tested-before-install"
+                  label={tx(t, "storefront.rma.form.testedBeforeInstall", "Testato prima del montaggio")}
+                  value={form.testedBeforeInstall}
+                  onChange={(value) => updateField("testedBeforeInstall", value)}
+                />
+                <BinarySelect
+                  id="rma-installed"
+                  label={tx(t, "storefront.rma.form.installed", "Gia montato sul dispositivo")}
+                  value={form.installed}
+                  onChange={(value) => updateField("installed", value)}
+                />
+                <BinarySelect
+                  id="rma-physical-damage"
+                  label={tx(t, "storefront.rma.form.physicalDamage", "Segni fisici o liquidi")}
+                  value={form.hasPhysicalDamage}
+                  onChange={(value) => updateField("hasPhysicalDamage", value)}
+                />
+
                 <div className="space-y-2 sm:col-span-2">
                   <Label htmlFor="rma-description">
-                    {tx(t, "storefront.rma.form.description", "Descrizione problema")}
+                    {tx(t, "storefront.rma.form.description", "Dettagli aggiuntivi")}
                   </Label>
                   <Textarea
                     id="rma-description"
-                    className="min-h-28"
+                    className="min-h-24"
                     value={form.description}
                     onChange={(event) => updateField("description", event.target.value)}
-                    minLength={10}
                     maxLength={1000}
-                    required
                     placeholder={tx(
                       t,
                       "storefront.rma.form.descriptionPlaceholder",
-                      "Indica test effettuati, sintomi, modello dispositivo e condizioni del ricambio..."
+                      "Modello dispositivo, test effettuati, sintomi o note per il laboratorio..."
                     )}
                   />
                 </div>
+
                 <div className="space-y-2 sm:col-span-2">
                   <Label
                     htmlFor="rma-evidence"
@@ -350,10 +571,11 @@ export function RmaPage({
                       )}
                   </div>
                 </div>
+
                 <Button
                   type="submit"
                   className="h-11 sm:col-span-2"
-                  disabled={submitState.status === "loading"}
+                  disabled={submitState.status === "loading" || !canSubmit}
                 >
                   {submitState.status === "loading" ? (
                     <Loader2 className="size-4 animate-spin" />
@@ -374,35 +596,19 @@ export function RmaPage({
               <CardTitle>{tx(t, "storefront.rma.recent.title", "Richieste recenti")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {visibleRequests.length === 0 && (
+              {dataLoading ? (
+                <div className="flex min-h-24 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-slate-50 text-sm font-semibold text-slate-500">
+                  <Loader2 className="size-4 animate-spin" />
+                  {tx(t, "storefront.rma.recent.loading", "Caricamento richieste...")}
+                </div>
+              ) : null}
+              {!dataLoading && recentRequests.length === 0 ? (
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-600">
                   {tx(t, "storefront.rma.recent.empty", "Nessuna richiesta RMA registrata.")}
                 </div>
-              )}
-              {visibleRequests.map((request) => (
-                <div
-                  key={request.id}
-                  className="grid gap-3 rounded-lg border border-slate-200 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
-                >
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-sm font-black">{request.id}</span>
-                      <Badge className={cn("border", rmaBadgeClass(request.status))}>
-                        {rmaStatusLabel(t, request.status)}
-                      </Badge>
-                    </div>
-                    <div className="mt-2 text-sm font-bold">{request.productName}</div>
-                    <div className="mt-1 text-xs text-slate-500">
-                      {request.orderId} · {request.sku} · {request.createdAt}
-                    </div>
-                    <div className="mt-2 break-words text-sm text-slate-600">
-                      {rmaReasonLabel(t, request.reason)}
-                    </div>
-                  </div>
-                  <div className="rounded-lg bg-slate-50 p-3 text-sm font-semibold text-slate-600 md:max-w-[220px]">
-                    {rmaResolutionLabel(t, request.resolution)}
-                  </div>
-                </div>
+              ) : null}
+              {recentRequests.map((request) => (
+                <RmaRequestCard key={request.id} request={request} t={t} />
               ))}
             </CardContent>
           </Card>
@@ -421,7 +627,7 @@ export function RmaPage({
                   body: tx(
                     t,
                     "storefront.rma.rules.order.body",
-                    "Le richieste senza numero ordine non possono essere validate automaticamente."
+                    "Le richieste vengono accettate solo da righe ordine gia presenti nel tuo account."
                   ),
                 },
                 {
@@ -497,6 +703,108 @@ function Field({
   );
 }
 
+function BinarySelect({
+  id,
+  label,
+  onChange,
+  value,
+}: {
+  id: string;
+  label: string;
+  onChange: (value: BinaryChoice) => void;
+  value: BinaryChoice;
+}) {
+  return (
+    <Field label={label} htmlFor={id}>
+      <Select value={value} onValueChange={(nextValue) => onChange(nextValue as BinaryChoice)}>
+        <SelectTrigger id={id} className="bg-white">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="yes">Si</SelectItem>
+          <SelectItem value="no">No</SelectItem>
+        </SelectContent>
+      </Select>
+    </Field>
+  );
+}
+
+function SelectedLineSummary({
+  line,
+  t,
+}: {
+  line: RmaOrderLineOption;
+  t: StorefrontTranslator;
+}) {
+  return (
+    <div className="grid gap-3 rounded-lg border border-primary/15 bg-primary/5 p-3 sm:col-span-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+      <div className="min-w-0">
+        <div className="line-clamp-2 break-words text-sm font-black">
+          {line.productName}
+        </div>
+        <div className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-xs font-semibold text-slate-500">
+          <span className="font-mono">{line.sku}</span>
+          <span>
+            {txFormat(
+              t,
+              "storefront.rma.form.linePurchased",
+              "acquistati {count}",
+              { count: line.orderedQuantity }
+            )}
+          </span>
+          <span>
+            {txFormat(
+              t,
+              "storefront.rma.form.lineAlreadyRequested",
+              "gia in RMA {count}",
+              { count: line.alreadyRequestedQuantity }
+            )}
+          </span>
+        </div>
+      </div>
+      <div className="rounded-lg bg-white px-3 py-2 text-sm font-black text-primary shadow-sm">
+        {txFormat(
+          t,
+          "storefront.rma.form.lineRemaining",
+          "Disponibili {count}",
+          { count: line.remainingQuantity }
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RmaRequestCard({
+  request,
+  t,
+}: {
+  request: RmaRequest;
+  t: StorefrontTranslator;
+}) {
+  return (
+    <div className="grid gap-3 rounded-lg border border-slate-200 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+      <div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-sm font-black">{request.id}</span>
+          <Badge className={cn("border", rmaBadgeClass(request.status))}>
+            {rmaStatusLabel(t, request.status)}
+          </Badge>
+        </div>
+        <div className="mt-2 text-sm font-bold">{request.productName}</div>
+        <div className="mt-1 text-xs text-slate-500">
+          {request.orderId} · {request.sku} · {request.createdAt}
+        </div>
+        <div className="mt-2 break-words text-sm text-slate-600">
+          {rmaReasonLabel(t, request.reason)}
+        </div>
+      </div>
+      <div className="rounded-lg bg-slate-50 p-3 text-sm font-semibold text-slate-600 md:max-w-[220px]">
+        {rmaResolutionLabel(t, request.resolution)}
+      </div>
+    </div>
+  );
+}
+
 function RmaSubmitStatus({
   state,
   t,
@@ -563,6 +871,108 @@ function ResultInfo({
       <div className={cn("mt-0.5 break-words font-black", mono && "font-mono")}>{value}</div>
     </div>
   );
+}
+
+function applyInitialOrderSelection(
+  form: RmaFormState,
+  orderOptions: RmaOrderOption[],
+  initialOrderId: string | undefined
+): RmaFormState {
+  const selectedOrder =
+    findOrderOption(orderOptions, initialOrderId) ??
+    (orderOptions.length === 1 ? orderOptions[0] : null);
+  const selectedLine = selectedOrder?.lines.length === 1 ? selectedOrder.lines[0] : null;
+
+  if (!selectedOrder) {
+    return sanitizeFormSelection(form, orderOptions);
+  }
+
+  return {
+    ...form,
+    orderId: selectedOrder.id,
+    orderLineId: selectedLine?.id ?? "",
+    quantity: "1",
+  };
+}
+
+function sanitizeFormSelection(
+  form: RmaFormState,
+  orderOptions: RmaOrderOption[]
+): RmaFormState {
+  const selectedOrder = orderOptions.find((order) => order.id === form.orderId) ?? null;
+
+  if (!selectedOrder) {
+    return { ...form, orderId: "", orderLineId: "", quantity: "1" };
+  }
+
+  const selectedLine = selectedOrder.lines.find((line) => line.id === form.orderLineId) ?? null;
+
+  if (!selectedLine) {
+    return { ...form, orderLineId: "", quantity: "1" };
+  }
+
+  return {
+    ...form,
+    quantity: createQuantityOptions(selectedLine.remainingQuantity).includes(form.quantity)
+      ? form.quantity
+      : "1",
+  };
+}
+
+function findOrderOption(orderOptions: RmaOrderOption[], value: string | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  return orderOptions.find((order) => order.id === value || order.number === value) ?? null;
+}
+
+function createQuantityOptions(maxQuantity: number) {
+  const safeMax = Math.max(0, Math.min(Math.floor(maxQuantity), 200));
+
+  return Array.from({ length: safeMax }, (_, index) => String(index + 1));
+}
+
+function decrementLineRemaining(
+  orderOptions: RmaOrderOption[],
+  orderLineId: string,
+  quantity: number
+) {
+  return orderOptions
+    .map((order) => ({
+      ...order,
+      lines: order.lines
+        .map((line) =>
+          line.id === orderLineId
+            ? {
+                ...line,
+                alreadyRequestedQuantity: line.alreadyRequestedQuantity + quantity,
+                remainingQuantity: Math.max(0, line.remainingQuantity - quantity),
+              }
+            : line
+        )
+        .filter((line) => line.remainingQuantity > 0),
+    }))
+    .filter((order) => order.lines.length > 0);
+}
+
+function dedupeRmaRequests(requests: RmaRequest[]) {
+  const byId = new Map<string, RmaRequest>();
+
+  for (const request of requests) {
+    byId.set(request.id, request);
+  }
+
+  return [...byId.values()];
+}
+
+function readPayloadError(payload: RmaIndexResponse | null) {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const error = (payload as { error?: { message?: unknown } }).error;
+  return typeof error?.message === "string" ? error.message : null;
 }
 
 function rmaBadgeClass(status: string) {

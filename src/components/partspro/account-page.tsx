@@ -302,7 +302,7 @@ export function AccountPage({
           ) : null}
 
           {activeSection === "service" ? (
-            <ServiceSection rmaRequests={rmaRequests} />
+            <ServiceSection orderSummaries={orderSummaries} rmaRequests={rmaRequests} />
           ) : null}
         </section>
 
@@ -785,7 +785,15 @@ function OrdersSection({
   );
 }
 
-function ServiceSection({ rmaRequests }: { rmaRequests: RmaRequest[] }) {
+function ServiceSection({
+  orderSummaries,
+  rmaRequests,
+}: {
+  orderSummaries: OrderSummary[];
+  rmaRequests: RmaRequest[];
+}) {
+  const rmaStartableOrders = orderSummaries.filter(isRmaStartableOrder).slice(0, 4);
+
   return (
     <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_360px]">
       <Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
@@ -796,6 +804,47 @@ function ServiceSection({ rmaRequests }: { rmaRequests: RmaRequest[] }) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
+          <div className="rounded-lg border border-primary/15 bg-primary/5 p-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="text-xs font-black text-slate-700">从订单发起售后</div>
+              <Badge className="border border-primary/20 bg-white text-[11px] text-primary" variant="outline">
+                选择订单
+              </Badge>
+            </div>
+            {rmaStartableOrders.length === 0 ? (
+              <div className="text-xs font-semibold leading-5 text-slate-500">
+                暂无已发货或已完成的订单可申请售后。
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {rmaStartableOrders.map((order) => (
+                  <div
+                    key={order.id}
+                    className="grid gap-2 rounded-md border border-slate-200 bg-white p-2 text-xs sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                  >
+                    <div className="min-w-0">
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <span className="truncate font-mono font-black">{order.id}</span>
+                        <Badge className={cn("border px-1.5 py-0 text-[10px]", orderBadgeClass(order.status))}>
+                          {orderStatusLabel(order.status)}
+                        </Badge>
+                      </div>
+                      <div className="mt-0.5 truncate font-semibold text-slate-500">
+                        {order.date} · {order.items} 件 · {formatEuro(order.total)}
+                      </div>
+                    </div>
+                    <Button asChild variant="outline" size="xs" className="h-7 bg-white px-2">
+                      <Link href={`/rma?order=${encodeURIComponent(order.id)}`}>
+                        <RotateCcw className="size-3.5" />
+                        售后
+                      </Link>
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {rmaRequests.length === 0 && (
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-600">
               当前账户暂无 RMA 申请。
@@ -1818,6 +1867,10 @@ function isCompletedOrderStatus(status: string) {
 
 function isTerminalOrderStatus(status: string) {
   return isCompletedOrderStatus(status) || status === "cancelled";
+}
+
+function isRmaStartableOrder(order: OrderSummary) {
+  return order.status === "shipped" || isCompletedOrderStatus(order.status);
 }
 
 function paymentStatusLabel(status: string) {
