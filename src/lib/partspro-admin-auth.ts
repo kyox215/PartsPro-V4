@@ -206,6 +206,14 @@ function permissionAliases(permission: string) {
       return ["inventory.manage"];
     case "employees.read":
       return ["employees.manage_permissions"];
+    case "rma.read":
+      return ["orders.read"];
+    case "rma.manage":
+      return ["orders.manage"];
+    case "rma.refund":
+      return ["wallet_refunds.request"];
+    case "rma.inventory":
+      return ["product.adjust_stock", "inventory.manage"];
     default:
       return [];
   }

@@ -31,8 +31,12 @@ import {
   type PartProduct,
   type PartVisual,
   type ProductGrade,
+  type RmaInventoryDisposition,
+  type RmaAttachment,
+  type RmaEvent,
   type RmaRequest,
   type RmaOrderOption,
+  type RmaResolutionAction,
   type RmaStatus,
   type StockStatus,
 } from "@/lib/partspro-data";
@@ -1198,6 +1202,7 @@ export type SavedOrder = {
 };
 
 export type SaveRmaInput = {
+  attachments?: RmaAttachment[];
   orderId?: string;
   orderLineId?: string;
   sku: string;
@@ -1209,6 +1214,68 @@ export type SaveRmaInput = {
   installed?: boolean;
   requestedResolution?: "replacement" | "refund" | "credit_note";
   testedBeforeInstall?: boolean;
+};
+
+export type AdminRmaStatusFilter =
+  | "submitted"
+  | "under_review"
+  | "approved"
+  | "rejected"
+  | "received"
+  | "replacement_sent"
+  | "refunded"
+  | "closed";
+
+export type AdminRmaQueueFilter =
+  | "mine"
+  | "needs_inventory"
+  | "needs_refund"
+  | "overdue"
+  | "unassigned";
+
+export type AdminRmaQuery = {
+  limit?: number;
+  offset?: number;
+  queue?: AdminRmaQueueFilter;
+  q?: string;
+  status?: AdminRmaStatusFilter;
+};
+
+export type AdminRmaPage = {
+  requests: RmaRequest[];
+  total: number;
+};
+
+export type UpdateAdminRmaInput = {
+  customerVisibleNote?: string;
+  internalNote?: string;
+  labResult?: string;
+  refundAmount?: number;
+  requestId: string;
+  resolutionNote?: string;
+  status: AdminRmaStatusFilter;
+};
+
+export type AdminRmaAction =
+  | "assign"
+  | "request_wallet_refund"
+  | "mark_received"
+  | "restock_return"
+  | "mark_scrapped"
+  | "close";
+
+export type PerformAdminRmaActionInput = {
+  action: AdminRmaAction;
+  assignedTo?: string | null;
+  batchCode?: string;
+  customerVisibleNote?: string;
+  internalNote?: string;
+  quantity?: number;
+  reason?: string;
+  refundAmount?: number;
+  requestId: string;
+  supplier?: string;
+  warehouse?: PartProduct["warehouse"];
 };
 
 export type B2BApplicationInput = {
@@ -4069,6 +4136,24 @@ export async function listRmaRequests(): Promise<RepositoryResult<RmaRequest[]>>
   return supabaseResult ?? emptyResult([], "No local after-sales requests are available.");
 }
 
+export async function listAdminRmaRequests(
+  query: AdminRmaQuery = {}
+): Promise<RepositoryResult<AdminRmaPage>> {
+  const supabaseResult = await withSupabase((context) =>
+    readAdminRmaRequests(context, query)
+  );
+
+  return (
+    supabaseResult ??
+    emptyResult(
+      { requests: [], total: 0 },
+      isSupabaseConfigured()
+        ? "Supabase admin after-sales requests could not be read."
+        : "Supabase is not configured; no admin after-sales requests are available."
+    )
+  );
+}
+
 export async function listCurrentCustomerRmaRequests(): Promise<
   RepositoryResult<RmaRequest[]>
 > {
@@ -4151,6 +4236,60 @@ export async function saveRmaRequest(input: SaveRmaInput): Promise<RepositoryRes
       "RMA_WRITE_UNAVAILABLE",
       "After-sales request could not be persisted in Supabase."
     );
+  }
+
+  return { data: request, source: "supabase" };
+}
+
+export async function updateAdminRmaRequest(
+  input: UpdateAdminRmaInput
+): Promise<RepositoryResult<RmaRequest>> {
+  if (!isSupabaseConfigured()) {
+    throw new RepositoryWriteError(
+      503,
+      "SUPABASE_NOT_CONFIGURED",
+      "Supabase must be configured before after-sales requests can be updated."
+    );
+  }
+
+  const context = await requireSupabaseContext();
+  const request = await updateAdminRmaRequestViaRpc(context, input);
+
+  if (!request) {
+    throw new RepositoryWriteError(
+      502,
+      "RMA_UPDATE_UNAVAILABLE",
+      "After-sales request could not be updated in Supabase."
+    );
+  }
+
+  return { data: request, source: "supabase" };
+}
+
+export async function performAdminRmaAction(
+  input: PerformAdminRmaActionInput
+): Promise<RepositoryResult<RmaRequest>> {
+  if (!isSupabaseConfigured()) {
+    throw new RepositoryWriteError(
+      503,
+      "SUPABASE_NOT_CONFIGURED",
+      "Supabase must be configured before after-sales actions can be processed."
+    );
+  }
+
+  const context = await requireSupabaseContext();
+  const request = await performAdminRmaActionViaRpc(context, input);
+
+  if (!request) {
+    throw new RepositoryWriteError(
+      502,
+      "RMA_ACTION_UNAVAILABLE",
+      "After-sales action could not be processed in Supabase."
+    );
+  }
+
+  if (input.action === "restock_return") {
+    clearPublicCatalogPageCache();
   }
 
   return { data: request, source: "supabase" };
@@ -6496,6 +6635,80 @@ async function readCurrentCustomerRmaRequests(
   return readRmaRequestsForCustomer(context, customerId);
 }
 
+async function readAdminRmaRequests(
+  context: SupabaseContext,
+  query: AdminRmaQuery
+): Promise<AdminRmaPage | null> {
+  const limit = Math.min(Math.max(Math.trunc(query.limit ?? 50), 1), 200);
+  const offset = Math.max(Math.trunc(query.offset ?? 0), 0);
+  const search = query.q?.trim();
+  let request = context.client
+    .from("rma_requests")
+    .select("*", { count: "exact" })
+    .order("created_at", { ascending: false });
+
+  if (query.status) {
+    request = request.eq("status", query.status);
+  }
+
+  if (query.queue === "mine") {
+    request = request.eq("assigned_to", context.userId);
+  } else if (query.queue === "unassigned") {
+    request = request.is("assigned_to", null);
+  } else if (query.queue === "needs_refund") {
+    request = request
+      .is("wallet_refund_request_id", null)
+      .or("resolution_action.eq.refund_wallet,requested_resolution.eq.refund");
+  } else if (query.queue === "needs_inventory") {
+    request = request
+      .in("status", ["approved", "received", "refunded"])
+      .in("inventory_disposition", ["pending", "quarantine"]);
+  } else if (query.queue === "overdue") {
+    request = request
+      .lt("due_at", new Date().toISOString())
+      .not("status", "in", "(closed,refunded,rejected,replacement_sent)");
+  }
+
+  if (search) {
+    const pattern = `%${search.replaceAll("%", "\\%").replaceAll(",", " ")}%`;
+    request = request.or(
+      [
+        `order_no.ilike.${pattern}`,
+        `sku_code.ilike.${pattern}`,
+        `problem_type.ilike.${pattern}`,
+        `description.ilike.${pattern}`,
+      ].join(",")
+    );
+  }
+
+  const { data, error, count } = await request.range(offset, offset + limit - 1);
+  const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
+
+  if (error || !rows) {
+    return null;
+  }
+
+  const lineIds = uniqueDefinedStrings(
+    rows.map((row) => pickString(row, ["order_line_id", "order_item_id", "line_id"]))
+  );
+  const lineRows = await readOrderLineRowsForLineIds(context.client, lineIds);
+  const linesById = mapRowsById(lineRows ?? []);
+  const orderRows = await readOrderRowsForRmaRows(context.client, rows, lineRows ?? []);
+  const ordersById = mapRowsById(orderRows ?? []);
+  const eventsByRequestId = await readRmaEventsByRequestId(
+    context.client,
+    uniqueDefinedStrings(rows.map((row) => pickString(row, ["id"])))
+  );
+  const requests = rows
+    .map((row) => mapRmaRow(row, linesById, eventsByRequestId, ordersById))
+    .filter(isDefined);
+
+  return {
+    requests,
+    total: count ?? requests.length,
+  };
+}
+
 async function readCurrentEmployeeSelfRmaRequests(
   context: SupabaseContext
 ): Promise<RmaRequest[] | null> {
@@ -6606,7 +6819,13 @@ async function readRmaRequestsForCustomer(
     }
   }
 
-  return [...rmaRowsById.values()].map((row) => mapRmaRow(row, linesById)).filter(isDefined);
+  const rmaRows = [...rmaRowsById.values()];
+  const eventsByRequestId = await readRmaEventsByRequestId(
+    context.client,
+    uniqueDefinedStrings(rmaRows.map((row) => pickString(row, ["id"])))
+  );
+
+  return rmaRows.map((row) => mapRmaRow(row, linesById, eventsByRequestId)).filter(isDefined);
 }
 
 async function readRmaOrderOptionsForCustomer(
@@ -6703,7 +6922,12 @@ async function readRmaRequests(context: SupabaseContext) {
     }
   }
 
-  return rmaRows.map((row) => mapRmaRow(row, linesById)).filter(isDefined);
+  const eventsByRequestId = await readRmaEventsByRequestId(
+    context.client,
+    uniqueDefinedStrings(rmaRows.map((row) => pickString(row, ["id"])))
+  );
+
+  return rmaRows.map((row) => mapRmaRow(row, linesById, eventsByRequestId)).filter(isDefined);
 }
 
 async function insertOrder(context: SupabaseContext, input: SaveOrderInput): Promise<SavedOrder | null> {
@@ -6823,7 +7047,7 @@ async function insertRmaRequest(context: SupabaseContext, input: SaveRmaInput): 
           problem_type: input.reason,
           description: input.description,
           evidence_urls: [],
-          attachments: [],
+          attachments: normalizeRmaAttachmentsForWrite(input.attachments),
           tested_before_install: input.testedBeforeInstall ?? false,
           installed: input.installed ?? false,
           has_physical_damage: input.hasPhysicalDamage ?? false,
@@ -6839,6 +7063,7 @@ async function insertRmaRequest(context: SupabaseContext, input: SaveRmaInput): 
           problem_type: input.reason,
           description: input.description,
           evidence_urls: [],
+          attachments: normalizeRmaAttachmentsForWrite(input.attachments),
           quantity: input.quantity,
           tested_before_install: input.testedBeforeInstall ?? false,
           installed: input.installed ?? false,
@@ -6883,24 +7108,122 @@ async function insertRmaRequest(context: SupabaseContext, input: SaveRmaInput): 
     const row = await insertRow(context.client, "rma_requests", payload);
 
     if (row) {
-      return {
-        id: pickString(row, ["id", "rma_id", "request_id"]) ?? `ASSISTENZA-${Date.now()}`,
-        orderId:
-          pickString(row, ["order_id", "orderId", "order_no"]) ??
-          input.orderId ??
-          input.orderLineId ??
-          "ORD-ND",
-        sku: pickString(row, ["sku", "sku_code", "sku_snapshot"]) ?? input.sku,
-        productName: input.productName ?? pickString(row, ["product_name", "name"]) ?? input.sku,
-        status: normalizeRmaStatus(pickString(row, ["status"]) ?? "requested"),
-        reason: pickString(row, ["reason", "problem_type"]) ?? input.reason,
-        createdAt: formatItalianDate(pickString(row, ["created_at", "createdAt"]) ?? now),
-        resolution: pickString(row, ["resolution", "description"]) ?? "In attesa di verifica laboratorio",
-      };
+      const lineRows = await readOrderLineRowsForLineIds(
+        context.client,
+        input.orderLineId ? [input.orderLineId] : []
+      );
+      const linesById = mapRowsById(lineRows ?? []);
+      const eventsByRequestId = new Map<string, RmaEvent[]>();
+
+      return (
+        mapRmaRow(row, linesById, eventsByRequestId) ?? {
+          id: pickString(row, ["id", "rma_id", "request_id"]) ?? `ASSISTENZA-${Date.now()}`,
+          orderId:
+            pickString(row, ["order_id", "orderId", "order_no"]) ??
+            input.orderId ??
+            input.orderLineId ??
+            "ORD-ND",
+          sku: pickString(row, ["sku", "sku_code", "sku_snapshot"]) ?? input.sku,
+          productName: input.productName ?? pickString(row, ["product_name", "name"]) ?? input.sku,
+          status: normalizeRmaStatus(pickString(row, ["status"]) ?? "submitted"),
+          reason: pickString(row, ["reason", "problem_type"]) ?? input.reason,
+          createdAt: formatItalianDate(pickString(row, ["created_at", "createdAt"]) ?? now),
+          resolution: pickString(row, ["resolution", "description"]) ?? "In attesa di verifica laboratorio",
+        }
+      );
     }
   }
 
   return null;
+}
+
+async function updateAdminRmaRequestViaRpc(
+  context: SupabaseContext,
+  input: UpdateAdminRmaInput
+): Promise<RmaRequest | null> {
+  const { data, error } = await context.client.rpc("admin_update_rma_request", {
+    p_customer_visible_note: input.customerVisibleNote ?? null,
+    p_internal_note: input.internalNote ?? null,
+    p_lab_result: input.labResult ?? null,
+    p_refund_amount: input.refundAmount ?? null,
+    p_request_id: input.requestId,
+    p_resolution_note: input.resolutionNote ?? null,
+    p_status: input.status,
+  });
+
+  if (error) {
+    throw new RepositoryWriteError(
+      502,
+      "RMA_UPDATE_RPC_FAILED",
+      "Supabase rejected the after-sales workflow update.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const row = Array.isArray(data) ? data.find(isDbRow) : data;
+
+  if (!isDbRow(row)) {
+    return null;
+  }
+
+  return mapRmaRpcRow(context, row);
+}
+
+async function performAdminRmaActionViaRpc(
+  context: SupabaseContext,
+  input: PerformAdminRmaActionInput
+): Promise<RmaRequest | null> {
+  const { data, error } = await context.client.rpc("admin_perform_rma_action", {
+    p_action: input.action,
+    p_assigned_to: input.assignedTo ?? null,
+    p_batch_code: input.batchCode ?? null,
+    p_customer_visible_note: input.customerVisibleNote ?? null,
+    p_internal_note: input.internalNote ?? null,
+    p_location: input.warehouse ?? null,
+    p_quantity: input.quantity ?? null,
+    p_reason: input.reason ?? null,
+    p_refund_amount: input.refundAmount ?? null,
+    p_request_id: input.requestId,
+    p_supplier: input.supplier ?? null,
+  });
+
+  if (error) {
+    throw new RepositoryWriteError(
+      502,
+      "RMA_ACTION_RPC_FAILED",
+      "Supabase rejected the after-sales workflow action.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const row = Array.isArray(data) ? data.find(isDbRow) : data;
+
+  if (!isDbRow(row)) {
+    return null;
+  }
+
+  return mapRmaRpcRow(context, row);
+}
+
+async function mapRmaRpcRow(
+  context: SupabaseContext,
+  row: DbRow
+): Promise<RmaRequest | null> {
+  const lineId = pickString(row, ["order_line_id", "order_item_id", "line_id"]);
+  const lineRows = await readOrderLineRowsForLineIds(
+    context.client,
+    lineId ? [lineId] : []
+  );
+  const linesById = mapRowsById(lineRows ?? []);
+  const orderRows = await readOrderRowsForRmaRows(context.client, [row], lineRows ?? []);
+  const ordersById = mapRowsById(orderRows ?? []);
+  const requestId = pickString(row, ["id"]);
+  const eventsByRequestId = await readRmaEventsByRequestId(
+    context.client,
+    requestId ? [requestId] : []
+  );
+
+  return mapRmaRow(row, linesById, eventsByRequestId, ordersById);
 }
 
 async function insertB2BApplication(
@@ -7155,6 +7478,142 @@ async function readRmaRowsForValues(
   } catch {
     return [];
   }
+}
+
+async function readOrderLineRowsForLineIds(
+  client: SupabaseServerClient,
+  lineIds: string[]
+) {
+  const candidates = uniqueDefinedStrings(lineIds);
+
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  try {
+    const { data, error } = await client
+      .from("order_lines")
+      .select("*")
+      .in("id", candidates);
+    const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
+
+    if (error || !rows) {
+      return [];
+    }
+
+    return rows;
+  } catch {
+    return [];
+  }
+}
+
+async function readOrderRowsForRmaRows(
+  client: SupabaseServerClient,
+  rmaRows: DbRow[],
+  lineRows: DbRow[]
+) {
+  const orderIds = uniqueDefinedStrings([
+    ...rmaRows.map((row) => pickString(row, ["order_id"])),
+    ...lineRows.map((row) => pickString(row, ["order_id"])),
+  ]);
+  const orderNos = uniqueDefinedStrings(
+    rmaRows.map((row) => pickString(row, ["order_no", "order_number"]))
+  );
+  const rowsById = new Map<string, DbRow>();
+
+  for (const row of await readRowsForColumnValues(client, "orders", "id", orderIds)) {
+    const id = pickString(row, ["id"]);
+    if (id) {
+      rowsById.set(id, row);
+    }
+  }
+
+  for (const row of await readRowsForColumnValues(client, "orders", "order_no", orderNos)) {
+    const id = pickString(row, ["id"]);
+    if (id) {
+      rowsById.set(id, row);
+    }
+  }
+
+  return [...rowsById.values()];
+}
+
+async function readRmaEventsByRequestId(
+  client: SupabaseServerClient,
+  requestIds: string[]
+) {
+  const rows = await readRowsForColumnValues(
+    client,
+    "rma_request_events",
+    "rma_request_id",
+    requestIds,
+    "id, rma_request_id, actor_id, event_type, from_status, to_status, note, metadata, created_at"
+  );
+  const eventsByRequestId = new Map<string, RmaEvent[]>();
+
+  for (const row of rows) {
+    const requestId = pickString(row, ["rma_request_id"]);
+    const event = mapRmaEventRow(row);
+
+    if (!requestId || !event) {
+      continue;
+    }
+
+    const existing = eventsByRequestId.get(requestId) ?? [];
+    eventsByRequestId.set(requestId, [...existing, event]);
+  }
+
+  for (const [requestId, events] of eventsByRequestId) {
+    eventsByRequestId.set(
+      requestId,
+      events.sort((left, right) => timestampFromIso(left.createdAt) - timestampFromIso(right.createdAt))
+    );
+  }
+
+  return eventsByRequestId;
+}
+
+async function readRowsForColumnValues(
+  client: SupabaseServerClient,
+  table: string,
+  column: string,
+  values: string[],
+  select = "*"
+) {
+  const candidates = uniqueDefinedStrings(values);
+
+  if (candidates.length === 0) {
+    return [];
+  }
+
+  try {
+    const { data, error } = await client
+      .from(table)
+      .select(select)
+      .in(column, candidates);
+    const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
+
+    if (error || !rows) {
+      return [];
+    }
+
+    return rows;
+  } catch {
+    return [];
+  }
+}
+
+function mapRowsById(rows: DbRow[]) {
+  const map = new Map<string, DbRow>();
+
+  for (const row of rows) {
+    const id = pickString(row, ["id", "line_id", "order_item_id"]);
+    if (id) {
+      map.set(id, row);
+    }
+  }
+
+  return map;
 }
 
 async function readOrderLineRowsForOrderIds(
@@ -9011,13 +9470,89 @@ function mapAdminOrderEventRow(
   };
 }
 
-function mapRmaRow(row: DbRow, linesById: Map<string, DbRow>): RmaRequest | null {
+function normalizeRmaAttachmentsForWrite(input: RmaAttachment[] | undefined) {
+  if (!input || input.length === 0) {
+    return [];
+  }
+
+  return input
+    .map((item) => normalizeRmaAttachment(item))
+    .filter(isDefined)
+    .map((attachment) => {
+      const safeAttachment = { ...attachment };
+      delete safeAttachment.signedUrl;
+      return safeAttachment;
+    });
+}
+
+function normalizeRmaAttachments(value: unknown): RmaAttachment[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map((item) => normalizeRmaAttachment(item)).filter(isDefined);
+}
+
+function normalizeRmaAttachment(value: unknown): RmaAttachment | null {
+  if (!isDbRow(value)) {
+    return null;
+  }
+
+  const path = pickString(value, ["path"]);
+  const name = pickString(value, ["name", "file_name", "fileName"]);
+
+  if (!path || !name) {
+    return null;
+  }
+
+  return {
+    bucket: pickString(value, ["bucket"]) ?? "rma-evidence",
+    contentType: pickString(value, ["content_type", "contentType"]) ?? undefined,
+    name,
+    path,
+    signedUrl: pickString(value, ["signed_url", "signedUrl"]) ?? undefined,
+    size: pickNumber(value, ["size"]) ?? undefined,
+    uploadedAt: pickString(value, ["uploaded_at", "uploadedAt"]) ?? undefined,
+  };
+}
+
+function mapRmaEventRow(row: DbRow): RmaEvent | null {
+  const id = pickString(row, ["id"]);
+
+  if (!id) {
+    return null;
+  }
+
+  return {
+    actorId: pickString(row, ["actor_id", "actorId"]),
+    createdAt: pickString(row, ["created_at", "createdAt"]) ?? "",
+    eventType: pickString(row, ["event_type", "eventType"]) ?? "event",
+    fromStatus: normalizeOptionalRmaStatus(pickString(row, ["from_status", "fromStatus"])),
+    id,
+    metadata: isDbRow(row.metadata) ? row.metadata : undefined,
+    note: pickString(row, ["note"]) ?? undefined,
+    toStatus: normalizeOptionalRmaStatus(pickString(row, ["to_status", "toStatus"])),
+  };
+}
+
+function mapRmaRow(
+  row: DbRow,
+  linesById: Map<string, DbRow>,
+  eventsByRequestId: Map<string, RmaEvent[]> = new Map(),
+  ordersById: Map<string, DbRow> = new Map()
+): RmaRequest | null {
   const id = pickString(row, ["id", "rma_id", "request_id"]);
   const lineId = pickString(row, ["order_line_id", "order_item_id", "line_id"]);
   const line = lineId ? linesById.get(lineId) : undefined;
+  const lineOrderId = line ? pickString(line, ["order_id", "orderId"]) : null;
+  const orderRow =
+    (lineOrderId ? ordersById.get(lineOrderId) : undefined) ??
+    ordersById.get(pickString(row, ["order_id"]) ?? "") ??
+    null;
   const orderId =
-    pickString(row, ["order_id", "orderId", "order_no"]) ??
-    (line ? pickString(line, ["order_id", "orderId"]) : null);
+    pickString(row, ["order_no", "order_number", "order_id", "orderId"]) ??
+    pickString(orderRow, ["order_no", "order_number", "id"]) ??
+    lineOrderId;
 
   if (!id || !orderId) {
     return null;
@@ -9037,8 +9572,39 @@ function mapRmaRow(row: DbRow, linesById: Map<string, DbRow>): RmaRequest | null
       "Ricambio",
     status: normalizeRmaStatus(pickString(row, ["status"])),
     reason: pickString(row, ["reason", "problem_type"]) ?? "Richiesta assistenza",
+    quantity: Math.max(1, Math.trunc(pickNumber(row, ["quantity"]) ?? 1)),
+    orderLineId: lineId ?? undefined,
     createdAt: formatItalianDate(pickString(row, ["created_at", "createdAt"])),
+    updatedAt: formatPartsProDateTime(pickString(row, ["updated_at", "updatedAt"])),
     resolution: rmaResolutionSummary(row),
+    requestedResolution: pickString(row, ["requested_resolution"]) ?? undefined,
+    description: pickString(row, ["description"]) ?? "",
+    attachments: normalizeRmaAttachments(row.attachments),
+    customerName:
+      pickString(row, ["customer_name", "company_name"]) ??
+      pickString(orderRow, ["customer_name", "company_name"]) ??
+      undefined,
+    customerVisibleNote: pickString(row, ["customer_visible_note"]) ?? undefined,
+    assignedAt: pickString(row, ["assigned_at"]),
+    assignedBy: pickString(row, ["assigned_by"]),
+    assignedTo: pickString(row, ["assigned_to"]),
+    closedAt: pickString(row, ["closed_at"]),
+    dueAt: pickString(row, ["due_at"]),
+    internalNote: pickString(row, ["internal_note"]) ?? undefined,
+    inventoryDisposition: normalizeRmaInventoryDisposition(
+      pickString(row, ["inventory_disposition"])
+    ),
+    labResult: pickString(row, ["lab_result"]) ?? undefined,
+    refundAmount: pickNumber(row, ["refund_amount"]) ?? 0,
+    resolutionAction: normalizeRmaResolutionAction(
+      pickString(row, ["resolution_action"])
+    ),
+    reviewedAt: pickString(row, ["reviewed_at"]),
+    receivedAt: pickString(row, ["received_at"]),
+    resolvedAt: pickString(row, ["resolved_at"]),
+    resolutionNote: pickString(row, ["resolution_note"]) ?? undefined,
+    walletRefundRequestId: pickString(row, ["wallet_refund_request_id"]),
+    events: eventsByRequestId.get(id) ?? [],
   };
 }
 
@@ -9106,7 +9672,12 @@ function isRmaQuantityConsumingStatus(status: string | null) {
 }
 
 function rmaResolutionSummary(row: DbRow) {
-  const explicitResolution = pickString(row, ["resolution"]);
+  const explicitResolution = pickString(row, [
+    "resolution",
+    "resolution_note",
+    "customer_visible_note",
+    "lab_result",
+  ]);
 
   if (explicitResolution) {
     return explicitResolution;
@@ -9116,6 +9687,22 @@ function rmaResolutionSummary(row: DbRow) {
 
   if (status === "replacement_sent" || status === "replaced") {
     return "Sostituzione spedita";
+  }
+
+  if (status === "refunded") {
+    return "Rimborso registrato";
+  }
+
+  if (status === "rejected") {
+    return "Richiesta respinta";
+  }
+
+  if (status === "closed") {
+    return "Richiesta chiusa";
+  }
+
+  if (status === "under_review") {
+    return "In verifica laboratorio";
   }
 
   return "In attesa di verifica laboratorio";
@@ -9949,25 +10536,57 @@ function normalizeOrderStatus(value: string | null): OrderStatus {
 
 function normalizeRmaStatus(value: string | null): RmaStatus {
   if (
+    value === "submitted" ||
     value === "requested" ||
+    value === "under_review" ||
     value === "approved" ||
     value === "rejected" ||
     value === "received" ||
+    value === "replacement_sent" ||
     value === "replaced" ||
-    value === "refunded"
+    value === "refunded" ||
+    value === "closed"
   ) {
     return value;
   }
 
-  if (value === "submitted") {
-    return "requested";
+  return "submitted";
+}
+
+function normalizeRmaResolutionAction(
+  value: string | null
+): RmaResolutionAction | null {
+  if (
+    value === "replacement" ||
+    value === "refund_wallet" ||
+    value === "credit_note" ||
+    value === "no_fault" ||
+    value === "scrap" ||
+    value === "return_to_stock"
+  ) {
+    return value;
   }
 
-  if (value === "replacement_sent") {
-    return "replaced";
+  return null;
+}
+
+function normalizeRmaInventoryDisposition(
+  value: string | null
+): RmaInventoryDisposition {
+  if (
+    value === "quarantine" ||
+    value === "restock" ||
+    value === "scrap" ||
+    value === "supplier_return"
+  ) {
+    return value;
   }
 
-  return "requested";
+  return "pending";
+}
+
+function normalizeOptionalRmaStatus(value: string | null): RmaStatus | null {
+  return value ? normalizeRmaStatus(value) : null;
 }
 
 function normalizeOptionalCustomerLevel(value: string | null): CustomerLevel | null {

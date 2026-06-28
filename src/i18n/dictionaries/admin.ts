@@ -71,6 +71,7 @@ export const adminDictionaries = {
       nav: {
         dashboard: "仪表盘",
         orders: "订单",
+        rma: "售后",
         catalog: "商品",
         marketplace: "电商",
         support: "客服",
@@ -94,6 +95,7 @@ export const adminDictionaries = {
       tabs: {
         overview: "概览",
         orders: "订单",
+        rma: "售后",
         catalog: "商品",
         marketplace: "电商",
         support: "客服",
@@ -212,12 +214,16 @@ export const adminDictionaries = {
           Refurbished: "翻新",
         },
         rmaStatus: {
+          submitted: "已提交",
           requested: "已申请",
+          under_review: "审核中",
           approved: "已批准",
           rejected: "已拒绝",
           received: "已收货",
+          replacement_sent: "替换件已发出",
           replaced: "已换货",
           refunded: "已退款",
+          closed: "已关闭",
         },
         stockStatus: {
           "In Stock": "有货",
@@ -1277,6 +1283,7 @@ export const adminDictionaries = {
       nav: {
         dashboard: "Dashboard",
         orders: "Ordini",
+        rma: "RMA",
         catalog: "Prodotti",
         marketplace: "E-commerce",
         support: "Assistenza",
@@ -1301,6 +1308,7 @@ export const adminDictionaries = {
       tabs: {
         overview: "Panoramica",
         orders: "Ordini",
+        rma: "RMA",
         catalog: "Prodotti",
         marketplace: "E-commerce",
         support: "Assistenza",
@@ -1421,12 +1429,16 @@ export const adminDictionaries = {
           Refurbished: "Ricondizionato",
         },
         rmaStatus: {
+          submitted: "Richiesta",
           requested: "Richiesta",
+          under_review: "In verifica",
           approved: "Approvata",
           rejected: "Respinta",
           received: "Ricevuta",
+          replacement_sent: "Sostituzione spedita",
           replaced: "Sostituita",
           refunded: "Rimborsata",
+          closed: "Chiusa",
         },
         stockStatus: {
           "In Stock": "In Stock",

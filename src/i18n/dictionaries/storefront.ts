@@ -79,11 +79,15 @@ const orderStatusKeys: Record<string, string> = {
 
 const rmaStatusKeys: Record<string, string> = {
   approved: "approved",
+  closed: "closed",
   received: "received",
   refunded: "refunded",
   rejected: "rejected",
+  replacement_sent: "replacementSent",
   replaced: "replaced",
   requested: "requested",
+  submitted: "requested",
+  under_review: "underReview",
 };
 
 const leadTimeKeys: Record<string, string> = {
@@ -196,11 +200,14 @@ export const storefrontItIT = {
   "storefront.data.rmaResolutions.replacementShipped": "Sostituzione spedita",
   "storefront.data.rmaResolutions.waitingLabCheck": "In attesa di verifica laboratorio",
   "storefront.data.rmaStatus.approved": "Approvata",
+  "storefront.data.rmaStatus.closed": "Chiusa",
   "storefront.data.rmaStatus.received": "Ricevuta",
   "storefront.data.rmaStatus.refunded": "Rimborsata",
   "storefront.data.rmaStatus.rejected": "Respinta",
+  "storefront.data.rmaStatus.replacementSent": "Sostituzione spedita",
   "storefront.data.rmaStatus.replaced": "Sostituita",
   "storefront.data.rmaStatus.requested": "Richiesta",
+  "storefront.data.rmaStatus.underReview": "In verifica",
   "storefront.data.stockStatus.inStock": "Disponibile",
   "storefront.data.stockStatus.lowStock": "Scorta bassa",
   "storefront.data.stockStatus.outOfStock": "Esaurito",
@@ -1092,11 +1099,11 @@ export const storefrontItIT = {
     "Indica test effettuati, sintomi, modello dispositivo e condizioni del ricambio...",
   "storefront.rma.form.evidence": "Carica foto o video del difetto",
   "storefront.rma.form.evidenceEmpty":
-    "Nessun file selezionato. Il sistema riceve solo i dati della richiesta assistenza.",
+    "Nessun file selezionato. Puoi inviare solo i dati della richiesta assistenza.",
   "storefront.rma.form.evidenceHint":
-    "JPG, PNG o MP4 fino a 20MB. I file restano come anteprima locale.",
+    "JPG, PNG, WebP, HEIC, MP4 o MOV fino a 20MB per file.",
   "storefront.rma.form.evidenceSelected":
-    "{count} file selezionati solo come anteprima locale.",
+    "{count} file pronti per il caricamento.",
   "storefront.rma.linkLabel": "Assistenza",
   "storefront.rma.form.order": "Ordine",
   "storefront.rma.form.orderLine": "Riga ordine",
@@ -1127,6 +1134,7 @@ export const storefrontItIT = {
   "storefront.rma.submit.buttonLoading": "Invio assistenza...",
   "storefront.rma.submit.changed":
     "Modifiche locali pronte. Invia di nuovo per creare una nuova richiesta assistenza.",
+  "storefront.rma.submit.uploadingEvidence": "Caricamento prove in corso...",
   "storefront.rma.submit.error": "Errore durante l'invio della richiesta assistenza.",
   "storefront.rma.submit.idle":
     "Compila i dati e invia la richiesta al flusso assistenza.",
@@ -1178,11 +1186,14 @@ export const storefrontZhCN = {
   "storefront.data.rmaResolutions.replacementShipped": "替换件已发出",
   "storefront.data.rmaResolutions.waitingLabCheck": "等待实验室检测",
   "storefront.data.rmaStatus.approved": "已批准",
+  "storefront.data.rmaStatus.closed": "已关闭",
   "storefront.data.rmaStatus.received": "已收到",
   "storefront.data.rmaStatus.refunded": "已退款",
   "storefront.data.rmaStatus.rejected": "已拒绝",
+  "storefront.data.rmaStatus.replacementSent": "替换件已发出",
   "storefront.data.rmaStatus.replaced": "已更换",
   "storefront.data.rmaStatus.requested": "已提交",
+  "storefront.data.rmaStatus.underReview": "审核中",
   "storefront.data.stockStatus.inStock": "有库存",
   "storefront.data.stockStatus.lowStock": "库存紧张",
   "storefront.data.stockStatus.outOfStock": "缺货",
@@ -2002,10 +2013,10 @@ export const storefrontZhCN = {
   "storefront.rma.form.descriptionPlaceholder":
     "填写已做测试、故障表现、设备型号和配件状态...",
   "storefront.rma.form.evidence": "上传故障照片或视频",
-  "storefront.rma.form.evidenceEmpty": "未选择文件。系统只接收售后申请数据。",
+  "storefront.rma.form.evidenceEmpty": "未选择文件。也可以只提交售后申请数据。",
   "storefront.rma.form.evidenceHint":
-    "支持 JPG、PNG 或 MP4，最大 20MB。文件仅作为本地预览。",
-  "storefront.rma.form.evidenceSelected": "已选择 {count} 个文件，仅作为本地预览。",
+    "支持 JPG、PNG、WebP、HEIC、MP4 或 MOV，每个文件最大 20MB。",
+  "storefront.rma.form.evidenceSelected": "已选择 {count} 个文件，提交时会上传。",
   "storefront.rma.linkLabel": "售后申请",
   "storefront.rma.form.order": "订单",
   "storefront.rma.form.orderLine": "订单行",
@@ -2035,6 +2046,7 @@ export const storefrontZhCN = {
   "storefront.rma.submit.idle": "填写资料后提交售后申请流程。",
   "storefront.rma.submit.invalidQuantity": "请输入有效数量，至少 1 件。",
   "storefront.rma.submit.loading": "正在提交售后申请...",
+  "storefront.rma.submit.uploadingEvidence": "正在上传证据文件...",
   "storefront.rma.submit.success": "申请 {id} 已成功登记。",
   "storefront.rma.title": "提交退货或更换申请",
 };

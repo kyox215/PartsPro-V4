@@ -5,6 +5,7 @@ export const adminPanelPermissions = {
   marketplace: "panel.marketplace",
   orders: "panel.orders",
   overview: "panel.orders",
+  rma: "rma.read",
   settings: "panel.settings",
   support: "panel.support",
   timeline: "panel.orders",
@@ -28,6 +29,10 @@ export const adminPermissions = [
   "orders.read",
   "orders.manage",
   "orders.danger",
+  "rma.read",
+  "rma.manage",
+  "rma.refund",
+  "rma.inventory",
   "support.read",
   "support.reply",
   "support.assign",
@@ -80,6 +85,7 @@ export const roleTemplatePermissions: Record<string, Set<string>> = {
     "panel.orders",
     "panel.catalog",
     "orders.read",
+    "rma.read",
     "customers.read",
     "products.read_admin",
     "product.read_admin",
@@ -115,6 +121,8 @@ export const roleTemplatePermissions: Record<string, Set<string>> = {
     "inventory.manage",
     "product.read_admin",
     "product.adjust_stock",
+    "rma.read",
+    "rma.inventory",
   ]),
   pricing_manager: new Set([
     "panel.catalog",
@@ -137,6 +145,9 @@ export const roleTemplatePermissions: Record<string, Set<string>> = {
     "panel.support",
     "orders.read",
     "orders.manage",
+    "rma.read",
+    "rma.manage",
+    "rma.refund",
     "support.read",
     "support.reply",
     "support.assign",
@@ -151,6 +162,8 @@ export const roleTemplatePermissions: Record<string, Set<string>> = {
     "panel.catalog",
     "panel.support",
     "orders.read",
+    "rma.read",
+    "rma.manage",
     "support.read",
     "support.reply",
     "support.assign",
@@ -167,6 +180,8 @@ export const roleTemplatePermissions: Record<string, Set<string>> = {
     "inventory.manage",
     "product.read_admin",
     "product.adjust_stock",
+    "rma.read",
+    "rma.inventory",
   ]),
 };
 
@@ -186,6 +201,15 @@ export function visiblePanelsForPermissions(permissions: Iterable<string>) {
     if (permissionSet.has(permission)) {
       panels.add(panel);
     }
+  }
+
+  if (
+    permissionSet.has("rma.read") ||
+    permissionSet.has("orders.read") ||
+    permissionSet.has("orders.manage") ||
+    permissionSet.has("panel.orders")
+  ) {
+    panels.add("rma");
   }
 
   if (

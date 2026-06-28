@@ -26,12 +26,29 @@ export type OrderStatus =
   | "delivered"
   | "cancelled";
 export type RmaStatus =
+  | "submitted"
   | "requested"
+  | "under_review"
   | "approved"
   | "rejected"
   | "received"
+  | "replacement_sent"
   | "replaced"
-  | "refunded";
+  | "refunded"
+  | "closed";
+export type RmaResolutionAction =
+  | "replacement"
+  | "refund_wallet"
+  | "credit_note"
+  | "no_fault"
+  | "scrap"
+  | "return_to_stock";
+export type RmaInventoryDisposition =
+  | "pending"
+  | "quarantine"
+  | "restock"
+  | "scrap"
+  | "supplier_return";
 export type CustomerType = "retail" | "wholesale";
 export type CustomerAssignmentStatus =
   | "needs_review"
@@ -139,12 +156,57 @@ export type OrderSummary = {
 export type RmaRequest = {
   id: string;
   orderId: string;
+  orderLineId?: string;
   sku: string;
   productName: string;
   status: RmaStatus;
   reason: string;
+  quantity?: number;
   createdAt: string;
+  updatedAt?: string;
   resolution: string;
+  requestedResolution?: "replacement" | "refund" | "credit_note" | string;
+  description?: string;
+  attachments?: RmaAttachment[];
+  events?: RmaEvent[];
+  customerName?: string;
+  customerVisibleNote?: string;
+  assignedAt?: string | null;
+  assignedBy?: string | null;
+  assignedTo?: string | null;
+  closedAt?: string | null;
+  dueAt?: string | null;
+  internalNote?: string;
+  inventoryDisposition?: RmaInventoryDisposition;
+  labResult?: string;
+  refundAmount?: number;
+  resolutionAction?: RmaResolutionAction | null;
+  reviewedAt?: string | null;
+  receivedAt?: string | null;
+  resolvedAt?: string | null;
+  resolutionNote?: string;
+  walletRefundRequestId?: string | null;
+};
+
+export type RmaAttachment = {
+  bucket?: string;
+  contentType?: string;
+  name: string;
+  path: string;
+  signedUrl?: string;
+  size?: number;
+  uploadedAt?: string;
+};
+
+export type RmaEvent = {
+  actorId?: string | null;
+  createdAt: string;
+  eventType: string;
+  fromStatus?: RmaStatus | null;
+  id: string;
+  metadata?: Record<string, unknown>;
+  note?: string;
+  toStatus?: RmaStatus | null;
 };
 
 export type RmaOrderLineOption = {

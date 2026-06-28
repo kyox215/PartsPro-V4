@@ -83,21 +83,29 @@ export function companyStatusLabel(status: CompanyStatus, locale: Locale) {
 export function rmaStatusLabel(status: RmaStatus, locale: Locale) {
   if (locale === "zh-CN") {
     return {
+      submitted: "已提交",
       requested: "已申请",
+      under_review: "审核中",
       approved: "已批准",
       rejected: "已拒绝",
       received: "已收货",
+      replacement_sent: "替换件已发出",
       replaced: "已换货",
       refunded: "已退款",
+      closed: "已关闭",
     }[status];
   }
 
   return {
+    submitted: "Richiesta",
     requested: "Richiesta",
+    under_review: "In verifica",
     approved: "Approvata",
     rejected: "Respinta",
     received: "Ricevuta",
+    replacement_sent: "Sostituzione spedita",
     replaced: "Sostituita",
     refunded: "Rimborsata",
+    closed: "Chiusa",
   }[status];
 }

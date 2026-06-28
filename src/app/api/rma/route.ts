@@ -10,7 +10,33 @@ import {
   RepositoryWriteError,
   saveRmaRequest,
 } from "@/lib/partspro-repository";
-import type { RmaOrderOption } from "@/lib/partspro-data";
+import type { RmaOrderOption, RmaRequest } from "@/lib/partspro-data";
+import {
+  signRmaRequestAttachments,
+  signSingleRmaRequestAttachments,
+} from "@/lib/partspro-rma-evidence";
+
+const rmaAttachmentSchema = z
+  .object({
+    bucket: z.string().trim().min(1).max(80).optional().default("rma-evidence"),
+    contentType: z
+      .enum([
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/heic",
+        "image/heif",
+        "video/mp4",
+        "video/quicktime",
+      ])
+      .optional(),
+    name: z.string().trim().min(1).max(180),
+    path: z.string().trim().min(1).max(500),
+    signedUrl: z.string().trim().url().optional(),
+    size: z.coerce.number().int().min(1).max(20 * 1024 * 1024).optional(),
+    uploadedAt: z.string().trim().max(80).optional(),
+  })
+  .strict();
 
 const createRmaSchema = z
   .object({
@@ -24,6 +50,7 @@ const createRmaSchema = z
     installed: z.boolean().optional().default(false),
     requestedResolution: z.enum(["replacement", "refund", "credit_note"]).optional().default("replacement"),
     testedBeforeInstall: z.boolean().optional().default(false),
+    attachments: z.array(rmaAttachmentSchema).max(8).optional().default([]),
   })
   .strict();
 
@@ -48,12 +75,16 @@ export async function GET() {
             listCurrentCustomerRmaOrderOptions(),
           ]);
 
+    const signedRequests = await signRmaRequestAttachments(
+      toCustomerRmaRequests(requestsResult.data)
+    );
+
     return NextResponse.json({
-      data: requestsResult.data,
+      data: signedRequests,
       meta: {
         orderOptions: orderOptionsResult.data,
         source: requestsResult.source,
-        total: requestsResult.data.length,
+        total: signedRequests.length,
         uploadPolicy: "photos_or_video_before_return",
         warnings: [requestsResult.warning, orderOptionsResult.warning].filter(Boolean),
       },
@@ -128,11 +159,15 @@ export async function POST(request: NextRequest) {
       requestedResolution: result.data.requestedResolution,
       sku: selection.line.sku,
       testedBeforeInstall: result.data.testedBeforeInstall,
+      attachments: result.data.attachments,
     });
+    const signedRequest = await signSingleRmaRequestAttachments(
+      toCustomerRmaRequest(saved.data)
+    );
 
     return NextResponse.json(
       {
-        data: saved.data,
+        data: signedRequest,
         meta: {
           source: saved.source,
           order: {
@@ -151,6 +186,17 @@ export async function POST(request: NextRequest) {
 
     return apiError(500, "RMA_CREATE_FAILED", "After-sales request could not be created at this time.");
   }
+}
+
+function toCustomerRmaRequests(requests: RmaRequest[]) {
+  return requests.map(toCustomerRmaRequest);
+}
+
+function toCustomerRmaRequest(request: RmaRequest): RmaRequest {
+  return {
+    ...request,
+    internalNote: undefined,
+  };
 }
 
 function findRmaOrderLineSelection(orderOptions: RmaOrderOption[], orderLineId: string) {

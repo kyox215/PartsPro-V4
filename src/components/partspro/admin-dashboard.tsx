@@ -16,6 +16,7 @@ import {
   Package,
   PanelLeftClose,
   PanelLeftOpen,
+  RotateCcw,
   Search,
   Settings,
   ShoppingBag,
@@ -55,6 +56,7 @@ import {
 type AdminPanelValue =
   | "overview"
   | "orders"
+  | "rma"
   | "catalog"
   | "marketplace"
   | "support"
@@ -71,6 +73,7 @@ type AdminNavItem = {
 const adminPanelValues = [
   "overview",
   "orders",
+  "rma",
   "catalog",
   "marketplace",
   "support",
@@ -82,6 +85,7 @@ const adminPanelValues = [
 const navItems = [
   { labelKey: "dashboard", icon: Home, panel: "overview" },
   { labelKey: "orders", icon: ClipboardList, panel: "orders" },
+  { labelKey: "rma", icon: RotateCcw, panel: "rma" },
   { labelKey: "catalog", icon: Package, panel: "catalog" },
   { labelKey: "marketplace", icon: ShoppingBag, panel: "marketplace" },
   { labelKey: "support", icon: MessageCircle, panel: "support" },
@@ -116,6 +120,10 @@ type AdminDashboardProps = {
 
 const AdminOrdersPanel = dynamic(
   () => import("./admin-orders-panel").then((module) => module.AdminOrdersPanel),
+  { loading: () => <AdminPanelLoadingFallback /> }
+);
+const AdminRmaPanel = dynamic(
+  () => import("./admin-rma-panel").then((module) => module.AdminRmaPanel),
   { loading: () => <AdminPanelLoadingFallback /> }
 );
 const AdminProductsPanel = dynamic(
@@ -385,6 +393,9 @@ export function AdminDashboard({
             >
               <TabsContent value="orders" className="order-4 mt-0 min-w-0">
                 <AdminOrdersPanel />
+              </TabsContent>
+              <TabsContent value="rma" className="order-4 mt-0 min-w-0">
+                <AdminRmaPanel />
               </TabsContent>
               <TabsContent value="catalog" className="order-4 mt-0 min-w-0">
                 <AdminProductsPanel />

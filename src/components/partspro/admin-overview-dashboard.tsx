@@ -49,6 +49,7 @@ import { useI18n } from "./i18n-provider";
 type AdminOverviewPanelValue =
   | "overview"
   | "orders"
+  | "rma"
   | "catalog"
   | "marketplace"
   | "support"

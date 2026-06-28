@@ -28,6 +28,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import {
   formatEuro,
+  type RmaAttachment,
   type RmaOrderOption,
   type RmaOrderLineOption,
   type RmaRequest,
@@ -218,6 +219,11 @@ type RmaSubmitResponse = {
   error?: { message?: string };
 };
 
+type RmaEvidenceUploadResponse = {
+  data?: RmaAttachment;
+  error?: { message?: string };
+};
+
 type SubmitState =
   | { status: "idle"; message: string }
   | { status: "loading"; message: string }
@@ -245,7 +251,7 @@ export function RmaPage({
     installed: "not_installed",
     damageCondition: "none",
   });
-  const [evidenceCount, setEvidenceCount] = React.useState(0);
+  const [evidenceFiles, setEvidenceFiles] = React.useState<File[]>([]);
   const [evidenceChecklist, setEvidenceChecklist] = React.useState<EvidenceChecklistChoice[]>([]);
   const [orderFilter, setOrderFilter] = React.useState<RmaOrderFilter>("all");
   const [recentRequests, setRecentRequests] = React.useState<RmaRequest[]>([]);
@@ -261,6 +267,8 @@ export function RmaPage({
     ),
   });
   const initialSelectionAppliedRef = React.useRef(false);
+  const evidenceInputRef = React.useRef<HTMLInputElement>(null);
+  const evidenceCount = evidenceFiles.length;
 
   React.useEffect(() => {
     let active = true;
@@ -411,6 +419,11 @@ export function RmaPage({
     resetSubmitState();
   }
 
+  function updateEvidenceFiles(files: FileList | null) {
+    setEvidenceFiles(files ? Array.from(files).slice(0, 8) : []);
+    resetSubmitState();
+  }
+
   async function submitRma(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -440,15 +453,6 @@ export function RmaPage({
       return;
     }
 
-    setSubmitState({
-      status: "loading",
-      message: tx(
-        t,
-        "storefront.rma.submit.loading",
-        "Invio richiesta assistenza in corso..."
-      ),
-    });
-
     const description = buildRmaDescription({
       evidenceChecklist,
       evidenceCount,
@@ -460,6 +464,27 @@ export function RmaPage({
     });
 
     try {
+      setSubmitState({
+        status: "loading",
+        message: evidenceFiles.length > 0
+          ? tx(t, "storefront.rma.submit.uploadingEvidence", "Caricamento prove in corso...")
+          : tx(
+            t,
+            "storefront.rma.submit.loading",
+            "Invio richiesta assistenza in corso..."
+          ),
+      });
+      const attachments = await uploadRmaEvidenceFiles(evidenceFiles);
+
+      setSubmitState({
+        status: "loading",
+        message: tx(
+          t,
+          "storefront.rma.submit.loading",
+          "Invio richiesta assistenza in corso..."
+        ),
+      });
+
       const response = await fetch("/api/rma", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -472,6 +497,7 @@ export function RmaPage({
           testedBeforeInstall: form.testedBeforeInstall === "yes",
           installed: form.installed === "installed" || form.installed === "removed",
           hasPhysicalDamage: form.damageCondition !== "none",
+          attachments,
         }),
       });
       const payload = (await response.json().catch(() => null)) as RmaSubmitResponse | null;
@@ -495,7 +521,10 @@ export function RmaPage({
         symptom: findProblemCategory(current.reason).symptoms[0].value,
         description: "",
       }));
-      setEvidenceCount(0);
+      setEvidenceFiles([]);
+      if (evidenceInputRef.current) {
+        evidenceInputRef.current.value = "";
+      }
       setEvidenceChecklist([]);
       setSubmitState({
         status: "success",
@@ -743,30 +772,31 @@ export function RmaPage({
                             {tx(
                               t,
                               "storefront.rma.form.evidenceHint",
-                              "JPG, PNG o MP4 fino a 20MB. I file restano come anteprima locale."
+                              "JPG, PNG, WebP, HEIC, MP4 o MOV fino a 20MB per file."
                             )}
                           </span>
                         </Label>
                         <input
                           id="rma-evidence"
+                          ref={evidenceInputRef}
                           className="sr-only"
                           type="file"
-                          accept="image/jpeg,image/png,video/mp4"
+                          accept="image/jpeg,image/png,image/webp,image/heic,image/heif,video/mp4,video/quicktime"
                           multiple
-                          onChange={(event) => setEvidenceCount(event.target.files?.length ?? 0)}
+                          onChange={(event) => updateEvidenceFiles(event.target.files)}
                         />
                         <div className="text-xs font-semibold text-slate-500" aria-live="polite">
                           {evidenceCount > 0
                             ? txFormat(
                               t,
                               "storefront.rma.form.evidenceSelected",
-                              "{count} file selezionati solo come anteprima locale.",
+                              "{count} file pronti per il caricamento.",
                               { count: evidenceCount }
                             )
                             : tx(
                               t,
                               "storefront.rma.form.evidenceEmpty",
-                              "Nessun file selezionato. Il sistema riceve solo i dati della richiesta assistenza."
+                              "Nessun file selezionato. Puoi inviare solo i dati della richiesta assistenza."
                             )}
                         </div>
                       </div>
@@ -1361,8 +1391,16 @@ function RmaRequestCard({
   request: RmaRequest;
   t: StorefrontTranslator;
 }) {
+  const visibleNotes = [
+    request.customerVisibleNote,
+    request.labResult,
+    request.resolutionNote,
+  ].filter((value): value is string => Boolean(value?.trim()));
+  const attachments = request.attachments ?? [];
+  const events = request.events ?? [];
+
   return (
-    <div className="grid gap-3 rounded-lg border border-slate-200 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+    <div className="grid gap-3 rounded-lg border border-slate-200 p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-start">
       <div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-sm font-black">{request.id}</span>
@@ -1377,6 +1415,58 @@ function RmaRequestCard({
         <div className="mt-2 break-words text-sm text-slate-600">
           {rmaReasonLabel(t, request.reason)}
         </div>
+        {visibleNotes.length > 0 ? (
+          <div className="mt-3 space-y-2">
+            {visibleNotes.map((note) => (
+              <div
+                key={note}
+                className="rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-900"
+              >
+                {note}
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {request.refundAmount && request.refundAmount > 0 ? (
+          <div className="mt-2 text-sm font-black text-emerald-700">
+            Rimborso: {formatEuro(request.refundAmount)}
+          </div>
+        ) : null}
+        {attachments.length > 0 ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {attachments.map((attachment) =>
+              attachment.signedUrl ? (
+                <a
+                  key={attachment.path}
+                  href={attachment.signedUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-black text-slate-700 hover:border-primary/30 hover:text-primary"
+                >
+                  {attachment.name}
+                </a>
+              ) : (
+                <span
+                  key={attachment.path}
+                  className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-black text-slate-700"
+                >
+                  {attachment.name}
+                </span>
+              )
+            )}
+          </div>
+        ) : null}
+        {events.length > 0 ? (
+          <div className="mt-3 space-y-1 border-l border-slate-200 pl-3 text-xs text-slate-500">
+            {events.slice(0, 4).map((event) => (
+              <div key={event.id}>
+                <span className="font-black text-slate-700">{event.createdAt}</span>
+                {event.toStatus ? ` · ${rmaStatusLabel(t, event.toStatus)}` : null}
+                {event.note ? ` · ${event.note}` : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
       <div className="rounded-lg bg-slate-50 p-3 text-sm font-semibold text-slate-600 md:max-w-[220px]">
         {rmaResolutionLabel(t, request.resolution)}
@@ -1493,6 +1583,29 @@ function buildRmaDescription({
   return rows.join("\n").slice(0, 1000);
 }
 
+async function uploadRmaEvidenceFiles(files: File[]) {
+  const attachments: RmaAttachment[] = [];
+
+  for (const file of files) {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch("/api/rma/evidence", {
+      method: "POST",
+      body: formData,
+    });
+    const payload = (await response.json().catch(() => null)) as RmaEvidenceUploadResponse | null;
+
+    if (!response.ok || !payload?.data?.path || !payload.data.name) {
+      throw new Error(payload?.error?.message ?? "Caricamento prove non riuscito.");
+    }
+
+    attachments.push(payload.data);
+  }
+
+  return attachments;
+}
+
 function applyInitialOrderSelection(
   form: RmaFormState,
   orderOptions: RmaOrderOption[],
@@ -1567,7 +1680,7 @@ function formatEvidenceSummary(
   );
   const labelsText = selectedLabels.length > 0 ? selectedLabels.join(", ") : "Nessuna prova selezionata";
 
-  return evidenceCount > 0 ? `${labelsText}; file locali ${evidenceCount}` : labelsText;
+  return evidenceCount > 0 ? `${labelsText}; file da caricare ${evidenceCount}` : labelsText;
 }
 
 function matchesOrderFilter(order: RmaOrderOption, filter: RmaOrderFilter) {
@@ -1631,12 +1744,20 @@ function readPayloadError(payload: RmaIndexResponse | null) {
 }
 
 function rmaBadgeClass(status: string) {
-  if (status === "replaced" || status === "refunded") {
+  if (status === "replacement_sent" || status === "replaced" || status === "refunded") {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
 
   if (status === "rejected") {
     return "border-red-200 bg-red-50 text-red-700";
+  }
+
+  if (status === "under_review" || status === "received" || status === "approved") {
+    return "border-amber-200 bg-amber-50 text-amber-800";
+  }
+
+  if (status === "closed") {
+    return "border-slate-200 bg-slate-100 text-slate-600";
   }
 
   return "border-primary/20 bg-primary/8 text-primary";
