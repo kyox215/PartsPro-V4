@@ -13,6 +13,14 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -53,6 +61,15 @@ const copy = {
     markAll: "Segna lette",
     notifications: "Notifiche",
     permissionDefault: "Non attive",
+    permissionPromptBody:
+      "Ricevi avvisi per nuovi ordini, messaggi e aggiornamenti anche senza tenere aperta questa pagina.",
+    permissionPromptEnable: "Attiva notifiche",
+    permissionPromptIosBody:
+      "Su iPhone aggiungi PartsPro alla schermata Home e riaprilo da lì per attivare le notifiche.",
+    permissionPromptIosTitle: "Apri PartsPro dalla schermata Home",
+    permissionPromptLater: "Più tardi",
+    permissionPromptOk: "Ho capito",
+    permissionPromptTitle: "Attiva le notifiche PartsPro",
     pushUnavailable: "Chiavi push non configurate",
     sendTest: "Test",
     testSent: "Test inviato",
@@ -69,12 +86,24 @@ const copy = {
     markAll: "全部已读",
     notifications: "通知",
     permissionDefault: "未开启",
+    permissionPromptBody:
+      "开启后可以收到新订单、客服消息和订单跟进提醒，不需要一直打开页面。",
+    permissionPromptEnable: "开启通知",
+    permissionPromptIosBody:
+      "iPhone 需要先把 PartsPro 添加到主屏幕，再从主屏幕打开网站开启通知。",
+    permissionPromptIosTitle: "从主屏幕打开 PartsPro",
+    permissionPromptLater: "稍后再说",
+    permissionPromptOk: "知道了",
+    permissionPromptTitle: "开启 PartsPro 通知",
     pushUnavailable: "推送密钥未配置",
     sendTest: "测试",
     testSent: "测试已发送",
     unread: "未读",
   },
 };
+
+const NOTIFICATION_PROMPT_SESSION_KEY =
+  "partspro:notification-permission-prompt:v1";
 
 export function NotificationCenter({
   audience,
@@ -92,6 +121,11 @@ export function NotificationCenter({
   >("checking");
   const [isIosStandaloneMissing, setIsIosStandaloneMissing] =
     React.useState(false);
+  const [permissionPromptOpen, setPermissionPromptOpen] =
+    React.useState(false);
+  const [permissionPromptKind, setPermissionPromptKind] = React.useState<
+    "enable" | "ios" | null
+  >(null);
 
   const loadNotifications = React.useCallback(async () => {
     setLoading(true);
@@ -130,36 +164,89 @@ export function NotificationCenter({
   }, [loadNotifications]);
 
   React.useEffect(() => {
+    let isActive = true;
     const timeoutId = window.setTimeout(() => {
-      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-        setPushState("unsupported");
-        return;
-      }
-
-      if (!("Notification" in window)) {
-        setPushState("unsupported");
-        return;
-      }
-
       const isIos =
         /iPad|iPhone|iPod/.test(navigator.userAgent) ||
         (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
       const isStandalone =
         window.matchMedia("(display-mode: standalone)").matches ||
         Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+      const iosStandaloneMissing = isIos && !isStandalone;
 
-      setIsIosStandaloneMissing(isIos && !isStandalone);
+      if (isActive) {
+        setIsIosStandaloneMissing(iosStandaloneMissing);
+      }
+
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        if (isActive) {
+          setPushState("unsupported");
+        }
+        return;
+      }
+
+      if (!("Notification" in window)) {
+        if (isActive) {
+          setPushState("unsupported");
+        }
+        return;
+      }
 
       void navigator.serviceWorker.register("/sw.js", {
         scope: "/",
         updateViaCache: "none",
       });
 
-      setPushState(Notification.permission);
+      void (async () => {
+        const publicKey = await readPushPublicKey();
+
+        if (!isActive) {
+          return;
+        }
+
+        if (publicKey === null) {
+          setPushState("unconfigured");
+          return;
+        }
+
+        setPushState(Notification.permission);
+      })();
     }, 0);
 
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      isActive = false;
+      window.clearTimeout(timeoutId);
+    };
   }, []);
+
+  React.useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      if (hasSeenNotificationPermissionPrompt()) {
+        return;
+      }
+
+      if (
+        isIosStandaloneMissing &&
+        pushState !== "granted" &&
+        pushState !== "denied" &&
+        pushState !== "checking" &&
+        pushState !== "unconfigured"
+      ) {
+        markNotificationPermissionPromptSeen();
+        setPermissionPromptKind("ios");
+        setPermissionPromptOpen(true);
+        return;
+      }
+
+      if (pushState === "default" && !isIosStandaloneMissing) {
+        markNotificationPermissionPromptSeen();
+        setPermissionPromptKind("enable");
+        setPermissionPromptOpen(true);
+      }
+    }, 800);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isIosStandaloneMissing, pushState]);
 
   React.useEffect(() => {
     if (!("serviceWorker" in navigator)) {
@@ -200,10 +287,7 @@ export function NotificationCenter({
         headers: { Accept: "application/json" },
       });
       const configPayload = configResponse.ok ? await configResponse.json() : null;
-      const publicKey =
-        isRecord(configPayload?.data) && typeof configPayload.data.publicKey === "string"
-          ? configPayload.data.publicKey
-          : null;
+      const publicKey = readPushPublicKeyFromPayload(configPayload);
 
       if (!publicKey) {
         setPushState("unconfigured");
@@ -242,6 +326,18 @@ export function NotificationCenter({
     } finally {
       setBusyAction(null);
     }
+  }
+
+  async function handlePermissionPromptEnable() {
+    await enablePush();
+    setPermissionPromptOpen(false);
+    setPermissionPromptKind(null);
+  }
+
+  function closePermissionPrompt() {
+    markNotificationPermissionPromptSeen();
+    setPermissionPromptOpen(false);
+    setPermissionPromptKind(null);
   }
 
   async function markAllRead() {
@@ -294,132 +390,239 @@ export function NotificationCenter({
 
   const statusLabel = statusText(pushState, text);
   const hasUnread = unreadCount > 0;
+  const permissionPromptIsIos = permissionPromptKind === "ios";
 
   return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          className={cn("relative bg-white", className)}
-          aria-label={`${text.notifications} ${audience}`}
-        >
-          {hasUnread ? <BellRing className="size-4" /> : <Bell className="size-4" />}
-          {hasUnread ? (
-            <span className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-black text-white">
-              {Math.min(unreadCount, 99)}
-            </span>
-          ) : null}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(360px,calc(100vw-1.5rem))] p-0">
-        <div className="border-b border-slate-200 p-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="min-w-0">
-              <h2 className="text-sm font-black text-slate-950">{text.notifications}</h2>
-              <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">
-                {unreadCount} {text.unread} · {statusLabel}
-              </p>
+    <>
+      <Popover>
+        <PopoverTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className={cn("relative bg-white", className)}
+            aria-label={`${text.notifications} ${audience}`}
+          >
+            {hasUnread ? <BellRing className="size-4" /> : <Bell className="size-4" />}
+            {hasUnread ? (
+              <span className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-black text-white">
+                {Math.min(unreadCount, 99)}
+              </span>
+            ) : null}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="w-[min(360px,calc(100vw-1.5rem))] p-0">
+          <div className="border-b border-slate-200 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <h2 className="text-sm font-black text-slate-950">{text.notifications}</h2>
+                <p className="mt-0.5 truncate text-xs font-semibold text-slate-500">
+                  {unreadCount} {text.unread} · {statusLabel}
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 bg-white px-2 text-xs"
+                onClick={enablePush}
+                disabled={busyAction === "enable" || pushState === "unsupported"}
+              >
+                {busyAction === "enable" ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Smartphone className="size-3.5" />
+                )}
+                {text.enable}
+              </Button>
             </div>
+            {isIosStandaloneMissing ? (
+              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-semibold text-amber-900">
+                {text.iosHint}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="max-h-[320px] overflow-y-auto p-2">
+            {loading && items.length === 0 ? (
+              <div className="flex h-24 items-center justify-center text-xs font-bold text-slate-500">
+                <Loader2 className="mr-2 size-3.5 animate-spin" />
+                {text.loading}
+              </div>
+            ) : items.length === 0 ? (
+              <div className="grid h-24 place-items-center text-xs font-bold text-slate-500">
+                {text.empty}
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {items.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={cn(
+                      "w-full rounded-md border px-2.5 py-2 text-left transition hover:border-primary/40 hover:bg-primary/5",
+                      item.readAt
+                        ? "border-slate-200 bg-white"
+                        : "border-primary/20 bg-primary/5"
+                    )}
+                    onClick={() => {
+                      void openNotification(item);
+                    }}
+                  >
+                    <div className="flex min-w-0 items-start justify-between gap-2">
+                      <p className="line-clamp-1 text-xs font-black text-slate-950">
+                        {item.title}
+                      </p>
+                      {item.readAt ? (
+                        <Check className="mt-0.5 size-3 shrink-0 text-emerald-600" />
+                      ) : (
+                        <span className="mt-1 size-2 shrink-0 rounded-full bg-primary" />
+                      )}
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-600">
+                      {item.body}
+                    </p>
+                    <p className="mt-1 text-[11px] font-semibold text-slate-400">
+                      {formatNotificationTime(item.createdAt)}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-2 border-t border-slate-200 p-2">
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-8 px-2 text-xs"
+              onClick={markAllRead}
+              disabled={busyAction === "read" || unreadCount === 0}
+            >
+              {busyAction === "read" ? <Loader2 className="size-3.5 animate-spin" /> : <X className="size-3.5" />}
+              {text.markAll}
+            </Button>
             <Button
               type="button"
               size="sm"
               variant="outline"
               className="h-8 bg-white px-2 text-xs"
-              onClick={enablePush}
-              disabled={busyAction === "enable" || pushState === "unsupported"}
+              onClick={sendTest}
+              disabled={busyAction === "test"}
             >
-              {busyAction === "enable" ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <Smartphone className="size-3.5" />
-              )}
-              {text.enable}
+              {busyAction === "test" ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+              {text.sendTest}
             </Button>
           </div>
-          {isIosStandaloneMissing ? (
-            <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-semibold text-amber-900">
-              {text.iosHint}
-            </p>
-          ) : null}
-        </div>
+        </PopoverContent>
+      </Popover>
 
-        <div className="max-h-[320px] overflow-y-auto p-2">
-          {loading && items.length === 0 ? (
-            <div className="flex h-24 items-center justify-center text-xs font-bold text-slate-500">
-              <Loader2 className="mr-2 size-3.5 animate-spin" />
-              {text.loading}
-            </div>
-          ) : items.length === 0 ? (
-            <div className="grid h-24 place-items-center text-xs font-bold text-slate-500">
-              {text.empty}
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {items.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  className={cn(
-                    "w-full rounded-md border px-2.5 py-2 text-left transition hover:border-primary/40 hover:bg-primary/5",
-                    item.readAt
-                      ? "border-slate-200 bg-white"
-                      : "border-primary/20 bg-primary/5"
-                  )}
-                  onClick={() => {
-                    void openNotification(item);
-                  }}
-                >
-                  <div className="flex min-w-0 items-start justify-between gap-2">
-                    <p className="line-clamp-1 text-xs font-black text-slate-950">
-                      {item.title}
-                    </p>
-                    {item.readAt ? (
-                      <Check className="mt-0.5 size-3 shrink-0 text-emerald-600" />
-                    ) : (
-                      <span className="mt-1 size-2 shrink-0 rounded-full bg-primary" />
-                    )}
-                  </div>
-                  <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-600">
-                    {item.body}
-                  </p>
-                  <p className="mt-1 text-[11px] font-semibold text-slate-400">
-                    {formatNotificationTime(item.createdAt)}
-                  </p>
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+      <Dialog
+        open={permissionPromptOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            closePermissionPrompt();
+            return;
+          }
 
-        <div className="flex items-center justify-between gap-2 border-t border-slate-200 p-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            className="h-8 px-2 text-xs"
-            onClick={markAllRead}
-            disabled={busyAction === "read" || unreadCount === 0}
-          >
-            {busyAction === "read" ? <Loader2 className="size-3.5 animate-spin" /> : <X className="size-3.5" />}
-            {text.markAll}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            className="h-8 bg-white px-2 text-xs"
-            onClick={sendTest}
-            disabled={busyAction === "test"}
-          >
-            {busyAction === "test" ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
-            {text.sendTest}
-          </Button>
-        </div>
-      </PopoverContent>
-    </Popover>
+          setPermissionPromptOpen(open);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mb-1 flex size-10 items-center justify-center rounded-md bg-primary/10 text-primary">
+              <BellRing className="size-5" />
+            </div>
+            <DialogTitle className="text-base font-black text-slate-950">
+              {permissionPromptIsIos
+                ? text.permissionPromptIosTitle
+                : text.permissionPromptTitle}
+            </DialogTitle>
+            <DialogDescription className="text-sm font-semibold leading-6 text-slate-600">
+              {permissionPromptIsIos
+                ? text.permissionPromptIosBody
+                : text.permissionPromptBody}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              className="bg-white"
+              onClick={closePermissionPrompt}
+            >
+              {permissionPromptIsIos
+                ? text.permissionPromptOk
+                : text.permissionPromptLater}
+            </Button>
+            {permissionPromptIsIos ? null : (
+              <Button
+                type="button"
+                onClick={() => {
+                  void handlePermissionPromptEnable();
+                }}
+                disabled={busyAction === "enable"}
+              >
+                {busyAction === "enable" ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Smartphone className="size-4" />
+                )}
+                {text.permissionPromptEnable}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
+}
+
+async function readPushPublicKey() {
+  try {
+    const response = await fetch("/api/notifications/config", {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+    });
+
+    if (!response.ok) {
+      return undefined;
+    }
+
+    return readPushPublicKeyFromPayload(await response.json());
+  } catch {
+    return undefined;
+  }
+}
+
+function readPushPublicKeyFromPayload(payload: unknown) {
+  if (
+    isRecord(payload) &&
+    isRecord(payload.data) &&
+    typeof payload.data.publicKey === "string" &&
+    payload.data.publicKey.length > 0
+  ) {
+    return payload.data.publicKey;
+  }
+
+  return null;
+}
+
+function hasSeenNotificationPermissionPrompt() {
+  try {
+    return window.sessionStorage.getItem(NOTIFICATION_PROMPT_SESSION_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markNotificationPermissionPromptSeen() {
+  try {
+    window.sessionStorage.setItem(NOTIFICATION_PROMPT_SESSION_KEY, "1");
+  } catch {
+    // Ignore storage failures; permission prompts still work without persistence.
+  }
 }
 
 function statusText(
