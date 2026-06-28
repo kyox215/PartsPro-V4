@@ -1,8 +1,8 @@
 # P1-2026-06-28-rma-admin-workflow-v2
 
-状态：production_customer_smoke_passed_admin_e2e_pending_approval
+状态：closed
 
-看板目录：now
+看板目录：done
 
 优先级：P1
 
@@ -117,7 +117,9 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db advisors --linked --typ
 | production anonymous smoke | pass | `/rma` 307 -> `/login?next=/rma`；`/api/rma` 401 `LOGIN_REQUIRED`；`/api/admin/rma` 401 `ADMIN_FORBIDDEN` |
 | production migration confirmation | pass / degraded command | `supabase migration list --linked` 当前因 CLI DB password auth 失败不可用；通过 `supabase_migrations.schema_migrations` 查询确认 `20260628003335` 与 `20260628134442` 已在远端 |
 | production customer RMA smoke | pass | run `rma-customer-smoke-20260628182833-6889f3`：临时客户资料补全、现有 SKU `3000000105689` 订单候选、附件上传、RMA `01fb2b85-fa04-440e-9310-008993e27f3b` 提交、客户隔离、普通客户 admin API 403、测试数据清理 remaining=0 |
-| production admin RMA E2E | blocked pending approval | 完整分配、收货、钱包退款、回补库存、关闭链路需要生产管理员登录态或临时 admin 授权；安全审查不允许自行 magic-link 真实管理员或用 SQL 绕过 admin RPC 给临时账号提权，需老板明确批准方案后执行 |
+| production admin RMA E2E | pass | 老板批准方案 2 后执行 run `rma-admin-e2e-20260628185347-975580`：临时 admin 授权、临时 SKU `RMA-E2E-20260628185347-975580`、RMA `a27e9bb6-7bd9-4da0-9b85-9406ce7c7d3a`、wallet refund `1b3cba9b-66d4-468e-85ed-91dc4c226011`；提交、队列、分配、审批、收货 quarantine、钱包退款申请幂等、回补库存、审批钱包退款、关闭、客户可见 closed、事件 9 条、wallet credit transaction `1c84aff2-046f-4d89-84ba-c4fbcd02e696` 全部通过 |
+| production cleanup after admin E2E | pass | 测试数据清理 `remaining={"rma":0,"refund":0,"order":0,"product":0,"inventory":0,"customers":0,"profiles":0}`，`errors={}` |
+| Vercel production error logs after admin E2E | pass | `vercel logs --environment production --level error --since 30m --limit 20 --no-follow` 无 error log |
 
 ## 执行记录
 
@@ -129,9 +131,10 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db advisors --linked --typ
 - migration_applied：2026-06-28，linked Supabase 项目已应用 `20260628134442_rma_admin_workflow_v2.sql`，post-migration smoke SQL 通过
 - released：2026-06-28，生产 Vercel deployment READY，`www.partspro.app` 指向 commit `85655b700712dc24f16c53b61ed408196fdcda3f`
 - production_customer_smoke：2026-06-28，客户侧 RMA smoke 通过并清理临时数据
-- blocked：2026-06-28，管理员端完整 E2E 需要明确批准生产管理员会话或临时 admin 授权方案
-- closed：
+- approved：2026-06-28，老板选择方案 2，批准临时 admin 授权方式执行生产完整 E2E
+- production_admin_e2e：2026-06-28，完整管理员闭环 E2E 通过并清理临时数据
+- closed：2026-06-28
 
 ## 结果
 
-代码和 migration 已实现、推送并在生产 Vercel READY；linked Supabase migration 已确认应用。客户侧生产 smoke 已验证通过，包括资料补全、订单候选、附件上传、提交 RMA、客户隔离和清理。任务暂不关闭：管理员端分配、收货、钱包退款、库存回补和关闭的生产 E2E 仍需老板明确批准管理员会话或临时授权方案后再执行。
+代码和 migration 已实现、推送并在生产 Vercel READY；linked Supabase migration 已确认应用。客户侧生产 smoke 与管理员端完整闭环 E2E 均已通过：客户提交 RMA、附件上传、后台队列、负责人分配、审批、收货 quarantine、钱包退款申请幂等、库存回补、钱包退款审批、关闭、客户可见状态、事件历史和临时数据清理均完成。任务关闭。
