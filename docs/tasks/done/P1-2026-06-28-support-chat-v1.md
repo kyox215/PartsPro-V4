@@ -1,8 +1,8 @@
 # P1-2026-06-28-support-chat-v1
 
-状态：released
+状态：closed
 
-看板目录：now
+看板目录：done
 
 优先级：P1
 
@@ -110,6 +110,9 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase migration list --linked
 SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db push --linked --dry-run
 SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db push --linked
 SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db query --linked "<targeted smoke SQL>"
+vercel env ls production
+vercel redeploy parts-pro-v4-a6kjssf0j-kyox120-9295s-projects.vercel.app --target production
+node --input-type=module <support-e2e-smoke>
 ```
 
 ## 验证证据
@@ -131,6 +134,11 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db query --linked "<target
 | security definer ACL smoke query | pass | `private.support_can_read_conversation` 位于 `private` schema，ACL 为 `postgres` 和 `authenticated`，未公开给 `public` |
 | `supabase db advisors --linked --type security --level warn --fail-on none` | pass with existing warnings | 未发现本次新增 support 函数告警；输出包含项目历史 `function_search_path_mutable` 和 public security-definer RPC 告警 |
 | production anonymous API smoke | pass | `GET /api/support/conversations/current` 返回 401 `SUPPORT_LOGIN_REQUIRED`；`GET /api/admin/support/conversations` 返回 401 `ADMIN_FORBIDDEN`，无 5xx |
+| Vercel production env check | fixed | Production 最初缺少 server-only `SUPABASE_SERVICE_ROLE_KEY`；已添加 encrypted env var，未暴露密钥值 |
+| Vercel production redeploy | pass | 重部署 latest Git deployment `9651048`，新 production URL `parts-pro-v4-fsyz8b94m-kyox120-9295s-projects.vercel.app` 已 alias 到 `https://www.partspro.app` |
+| production login E2E support smoke | pass | Run `20260628102755`：4 个临时用户；客户发起消息；support A 认领/回复；转派 support B；support B 回复；解决/重开/最终解决；`messageCount=3`，`eventCount=9` |
+| customer isolation smoke | pass | Run `20260628102755`：customer B 跨客户读取被 404 `SUPPORT_CONVERSATION_NOT_FOUND` 阻止；customer B 当前会话为空；匿名客户/后台 API 仍返回 401 |
+| temporary test data cleanup | pass | Run `20260628102755`：targeted cleanup SQL 已删除临时 support rows、auth users、profiles 和 customers |
 
 ## 执行记录
 
@@ -140,8 +148,8 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db query --linked "<target
 - review：2026-06-28，本地实现和 build 通过；生产 migration 因安全门未自动应用。
 - verified：2026-06-28，migration list、schema/RLS/permission/Realtime/security-definer ACL、production anonymous API smoke 均通过。
 - released：2026-06-28，生产 Supabase migration 已应用；GitHub `origin/main` 已包含代码提交 `f9493a1`。
-- closed：
+- closed：2026-06-28，生产 Vercel env 修复并重部署后，登录态客服端到端验收通过，测试账号和测试数据已清理。
 
 ## 结果
 
-已完成代码推送和生产数据库上线：新增客服 schema migration、服务端 API、客户悬浮窗、后台客服台、权限映射、Realtime 订阅和浏览器通知入口。生产 Supabase migration 已在批准后应用，匿名线上 API smoke 通过。剩余人工验收项是使用真实客户和员工账号完成登录态端到端会话测试。
+已完成代码推送、生产数据库上线、Vercel Production 环境变量修复和 production redeploy：新增客服 schema migration、服务端 API、客户悬浮窗、后台客服台、权限映射、Realtime 订阅和浏览器通知入口。生产 Supabase migration 已在批准后应用；匿名线上 API smoke 和登录态端到端客服流程均已通过。任务关闭。
