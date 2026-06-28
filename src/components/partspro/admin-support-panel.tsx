@@ -117,6 +117,7 @@ const supportCopy = {
     sendFailed: "Invio risposta non riuscito.",
     subtitle: "Messaggi clienti, assegnazione e responsabilita in tempo reale.",
     title: "Assistenza clienti",
+    unread: "Non lette",
     unavailable: "Assistenza temporaneamente non disponibile.",
   },
   zh: {
@@ -148,6 +149,7 @@ const supportCopy = {
     sendFailed: "回复发送失败。",
     subtitle: "客户消息、负责人分配和处理状态集中管理。",
     title: "客户客服",
+    unread: "未读",
     unavailable: "客服暂时不可用。",
   },
 };
@@ -445,39 +447,62 @@ export function AdminSupportPanel({
 
   const selectedConversation =
     conversations.find((conversation) => conversation.id === selectedId) ?? null;
+  const unreadCount = conversations.reduce(
+    (total, conversation) => total + conversation.staffUnreadCount,
+    0
+  );
+  const unassignedCount = conversations.filter(
+    (conversation) => !conversation.assignedTo
+  ).length;
+  const myCount = currentUserId
+    ? conversations.filter((conversation) => conversation.assignedTo === currentUserId).length
+    : 0;
 
   return (
-    <section className="min-w-0 space-y-3">
-      <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-slate-200 bg-white p-3 shadow-[0_12px_32px_rgba(15,23,42,0.045)] sm:flex-row sm:items-start sm:justify-between sm:p-4">
+    <section className="min-w-0 space-y-2 sm:space-y-3">
+      <div className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-[0_12px_32px_rgba(15,23,42,0.045)] sm:p-4">
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-2">
-            <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+            <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary sm:size-9">
               <MessageCircle className="size-4" />
             </div>
             <div className="min-w-0">
-              <h1 className="truncate text-xl font-black">{copy.title}</h1>
-              <p className="truncate text-sm font-semibold text-slate-500">
+              <h1 className="truncate text-lg font-black sm:text-xl">{copy.title}</h1>
+              <p className="line-clamp-1 text-xs font-semibold text-slate-500 sm:text-sm">
                 {copy.subtitle}
               </p>
             </div>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
           <Button
             type="button"
             variant="outline"
-            className="bg-white"
+            className="h-8 bg-white px-2 text-xs sm:h-9 sm:px-3 sm:text-sm"
             onClick={() => void refreshList()}
           >
             <RefreshCw className={cn("size-4", isLoadingList && "animate-spin")} />
             {copy.actions.refresh}
           </Button>
           {"Notification" in globalThis && !notificationsEnabled ? (
-            <Button type="button" variant="outline" className="bg-white" onClick={enableNotifications}>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-8 bg-white px-2 text-xs sm:h-9 sm:px-3 sm:text-sm"
+              onClick={enableNotifications}
+            >
               <Bell className="size-4" />
               {copy.actions.enableNotifications}
             </Button>
           ) : null}
+        </div>
+        </div>
+        <div className="mt-2 grid grid-cols-4 gap-1.5 sm:hidden">
+          <SupportCompactStat label={copy.filters.all} value={conversations.length} />
+          <SupportCompactStat label={copy.filters.unassigned} value={unassignedCount} />
+          <SupportCompactStat label={copy.filters.mine} value={myCount} />
+          <SupportCompactStat label={copy.unread} value={unreadCount} tone={unreadCount > 0 ? "hot" : "neutral"} />
         </div>
       </div>
 
@@ -496,17 +521,18 @@ export function AdminSupportPanel({
         </div>
       ) : null}
 
-      <div className="grid min-h-[640px] min-w-0 gap-3 lg:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="grid min-w-0 gap-2 lg:min-h-[640px] lg:grid-cols-[360px_minmax(0,1fr)] lg:gap-3">
         <AdminBusyRegion
           pending={isLoadingList}
           label={copy.loading}
-          className="min-h-0 rounded-lg border border-slate-200 bg-white p-3 shadow-[0_12px_32px_rgba(15,23,42,0.045)]"
+          className="h-[36svh] min-h-[190px] max-h-[320px] overflow-hidden rounded-lg border border-slate-200 bg-white p-2 shadow-[0_12px_32px_rgba(15,23,42,0.045)] sm:p-3 lg:h-auto lg:min-h-0 lg:max-h-none"
+          contentClassName="flex h-full min-h-0 flex-col"
         >
-          <div className="mb-3 flex min-w-0 items-center justify-between gap-2">
+          <div className="mb-2 flex min-w-0 items-center justify-between gap-2 sm:mb-3">
             <h2 className="truncate text-sm font-black">{copy.queueTitle}</h2>
             <Badge variant="outline">{conversations.length}</Badge>
           </div>
-          <div className="mb-3 grid grid-cols-2 gap-2">
+          <div className="mb-2 grid grid-cols-2 gap-1.5 sm:mb-3 sm:gap-2">
             <Select value={status} onValueChange={(value) => setStatus(value as SupportStatus)}>
               <SelectTrigger size="sm" className="bg-white">
                 <SelectValue />
@@ -539,13 +565,13 @@ export function AdminSupportPanel({
               {copy.emptyQueue}
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5 sm:space-y-2">
               {conversations.map((conversation) => (
                 <button
                   key={conversation.id}
                   type="button"
                   className={cn(
-                    "w-full rounded-lg border p-3 text-left transition",
+                    "w-full rounded-lg border p-2 text-left transition sm:p-3",
                     conversation.id === selectedId
                       ? "border-primary bg-primary/5 ring-2 ring-primary/10"
                       : "border-slate-200 bg-white hover:border-primary/40 hover:bg-slate-50"
@@ -554,13 +580,13 @@ export function AdminSupportPanel({
                 >
                   <div className="flex min-w-0 items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-black">
+                      <div className="truncate text-sm font-black leading-5">
                         {conversation.customer?.companyName ??
                           conversation.customer?.email ??
                           conversation.subject ??
                           conversation.id}
                       </div>
-                      <div className="mt-1 line-clamp-2 text-xs font-semibold text-slate-500">
+                      <div className="line-clamp-1 text-xs font-semibold text-slate-500 sm:mt-1 sm:line-clamp-2">
                         {conversation.subject ?? conversation.id}
                       </div>
                     </div>
@@ -572,12 +598,17 @@ export function AdminSupportPanel({
                       <StatusBadge status={conversation.status} />
                     )}
                   </div>
-                  <div className="mt-2 flex min-w-0 items-center gap-2 text-xs font-semibold text-slate-500">
-                    <UserCheck className="size-3.5 shrink-0" />
-                    <span className="truncate">
+                  <div className="mt-1.5 flex min-w-0 items-center justify-between gap-2 text-xs font-semibold text-slate-500 sm:mt-2">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <UserCheck className="size-3.5 shrink-0" />
+                      <span className="truncate">
                       {conversation.assignee?.displayName ??
                         conversation.assignee?.email ??
                         copy.filters.unassigned}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-[11px] text-slate-400">
+                      {formatSupportTime(conversation.lastMessageAt ?? conversation.updatedAt, locale)}
                     </span>
                   </div>
                 </button>
@@ -590,15 +621,15 @@ export function AdminSupportPanel({
           pending={isLoadingDetail}
           label={copy.loading}
           className="min-h-0 rounded-lg border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.045)]"
-          contentClassName="flex h-full min-h-[640px] flex-col"
+          contentClassName="flex h-[58svh] min-h-[420px] flex-col lg:h-full lg:min-h-[640px]"
         >
           {detail && selectedConversation ? (
             <>
-              <div className="border-b border-slate-200 p-3 sm:p-4">
-                <div className="flex min-w-0 flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+              <div className="border-b border-slate-200 p-2.5 sm:p-4">
+                <div className="flex min-w-0 flex-col gap-2 xl:flex-row xl:items-start xl:justify-between">
                   <div className="min-w-0">
                     <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <h2 className="truncate text-lg font-black">
+                      <h2 className="truncate text-base font-black sm:text-lg">
                         {detail.conversation.customer?.companyName ??
                           detail.conversation.customer?.email ??
                           detail.conversation.subject ??
@@ -606,17 +637,17 @@ export function AdminSupportPanel({
                       </h2>
                       <StatusBadge status={detail.conversation.status} />
                     </div>
-                    <p className="mt-1 truncate text-sm font-semibold text-slate-500">
+                    <p className="mt-0.5 truncate text-xs font-semibold text-slate-500 sm:mt-1 sm:text-sm">
                       {detail.conversation.customer?.email ?? detail.conversation.customer?.phone ?? detail.conversation.id}
                     </p>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                  <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
                     {detail.conversation.status === "open" ? (
                       <>
                         <Button
                           type="button"
                           variant="outline"
-                          className="bg-white"
+                          className="h-8 bg-white px-2 text-xs sm:h-9 sm:px-3 sm:text-sm"
                           disabled={pendingAction !== null}
                           onClick={() => void runAction("claim")}
                         >
@@ -626,7 +657,7 @@ export function AdminSupportPanel({
                         <Button
                           type="button"
                           variant="outline"
-                          className="bg-white"
+                          className="h-8 bg-white px-2 text-xs sm:h-9 sm:px-3 sm:text-sm"
                           disabled={pendingAction !== null}
                           onClick={() => void runAction("resolve")}
                         >
@@ -638,7 +669,7 @@ export function AdminSupportPanel({
                       <Button
                         type="button"
                         variant="outline"
-                        className="bg-white"
+                        className="h-8 bg-white px-2 text-xs sm:h-9 sm:px-3 sm:text-sm"
                         disabled={pendingAction !== null}
                         onClick={() => void runAction("reopen")}
                       >
@@ -648,9 +679,9 @@ export function AdminSupportPanel({
                     ) : null}
                   </div>
                 </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-1.5 sm:mt-3 sm:gap-2">
                   <Select value={assignee} onValueChange={setAssignee}>
-                    <SelectTrigger className="bg-white">
+                    <SelectTrigger className="h-9 bg-white">
                       <SelectValue placeholder={copy.assignedTo} />
                     </SelectTrigger>
                     <SelectContent>
@@ -664,6 +695,7 @@ export function AdminSupportPanel({
                   </Select>
                   <Button
                     type="button"
+                    className="h-9 px-2 text-xs sm:px-3 sm:text-sm"
                     disabled={pendingAction !== null}
                     onClick={() =>
                       void runAction(
@@ -682,29 +714,30 @@ export function AdminSupportPanel({
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-3 sm:p-4">
-                <div className="space-y-2">
+              <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-2 sm:p-4">
+                <div className="space-y-1.5 sm:space-y-2">
                   {detail.messages.map((message) => (
                     <SupportMessageBubble key={message.id} message={message} />
                   ))}
                 </div>
               </div>
 
-              <form className="border-t border-slate-200 p-3 sm:p-4" onSubmit={sendReply}>
+              <form className="border-t border-slate-200 p-2.5 sm:p-4" onSubmit={sendReply}>
                 <Textarea
                   value={reply}
-                  className="max-h-32 min-h-20 resize-none bg-white text-sm"
+                  className="max-h-28 min-h-16 resize-none bg-white text-sm sm:max-h-32 sm:min-h-20"
                   maxLength={2000}
                   placeholder={copy.composerPlaceholder}
                   disabled={detail.conversation.status !== "open"}
                   onChange={(event) => setReply(event.target.value)}
                 />
-                <div className="mt-2 flex items-center justify-between gap-2">
+                <div className="mt-1.5 flex items-center justify-between gap-2 sm:mt-2">
                   <span className="text-xs font-semibold text-slate-400">
                     {reply.trim().length}/2000
                   </span>
                   <Button
                     type="submit"
+                    className="h-9 px-3"
                     disabled={
                       detail.conversation.status !== "open" ||
                       pendingAction !== null ||
@@ -729,6 +762,32 @@ export function AdminSupportPanel({
         </AdminBusyRegion>
       </div>
     </section>
+  );
+}
+
+function SupportCompactStat({
+  label,
+  tone = "neutral",
+  value,
+}: {
+  label: string;
+  tone?: "hot" | "neutral";
+  value: number;
+}) {
+  return (
+    <div
+      className={cn(
+        "min-w-0 rounded-md border px-2 py-1",
+        tone === "hot"
+          ? "border-red-200 bg-red-50 text-red-700"
+          : "border-slate-200 bg-slate-50 text-slate-700"
+      )}
+    >
+      <div className="truncate text-[10px] font-bold leading-3 text-current/70">
+        {label}
+      </div>
+      <div className="mt-0.5 text-sm font-black leading-4">{value}</div>
+    </div>
   );
 }
 
@@ -760,6 +819,25 @@ function SupportMessageBubble({ message }: { message: SupportMessage }) {
       </div>
     </div>
   );
+}
+
+function formatSupportTime(value: string | null, locale: string) {
+  if (!value) {
+    return "--";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "--";
+  }
+
+  return new Intl.DateTimeFormat(locale === "zh-CN" ? "zh-CN" : "it-IT", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "2-digit",
+  }).format(date);
 }
 
 function StatusBadge({ status }: { status: Exclude<SupportStatus, "all"> }) {
