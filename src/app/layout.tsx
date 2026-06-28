@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CartSyncBridge } from "@/components/partspro/cart-sync-bridge";
 import { I18nProvider } from "@/components/partspro/i18n-provider";
+import { SupportWidget } from "@/components/partspro/support-widget";
 import { getDictionary } from "@/i18n/get-dictionary";
 import { getRequestI18n } from "@/i18n/request";
 import { getPartsProSiteUrl } from "@/lib/partspro-site-url";
@@ -41,6 +42,7 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col">
         <I18nProvider locale={locale} scope={scope} dictionary={dictionary}>
           <CartSyncBridge />
+          <SupportWidget />
           <TooltipProvider delayDuration={120}>{children}</TooltipProvider>
         </I18nProvider>
       </body>

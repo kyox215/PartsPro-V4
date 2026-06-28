@@ -12,6 +12,7 @@ import {
   ClipboardList,
   Home,
   Menu,
+  MessageCircle,
   Package,
   PanelLeftClose,
   PanelLeftOpen,
@@ -56,6 +57,7 @@ type AdminPanelValue =
   | "orders"
   | "catalog"
   | "marketplace"
+  | "support"
   | "timeline"
   | "accounts"
   | "settings";
@@ -71,6 +73,7 @@ const adminPanelValues = [
   "orders",
   "catalog",
   "marketplace",
+  "support",
   "timeline",
   "accounts",
   "settings",
@@ -81,6 +84,7 @@ const navItems = [
   { labelKey: "orders", icon: ClipboardList, panel: "orders" },
   { labelKey: "catalog", icon: Package, panel: "catalog" },
   { labelKey: "marketplace", icon: ShoppingBag, panel: "marketplace" },
+  { labelKey: "support", icon: MessageCircle, panel: "support" },
   { labelKey: "accounts", icon: UsersRound, panel: "accounts" },
   { labelKey: "warehouse", icon: Warehouse },
   { labelKey: "marketing", icon: Bell, panel: "timeline" },
@@ -144,6 +148,13 @@ const AdminCommercePanel = dynamic<AdminCommercePanelProps>(
   () =>
     import("./admin-commerce-panel").then(
       (module) => module.AdminCommercePanel
+    ),
+  { loading: () => <AdminPanelLoadingFallback /> }
+);
+const AdminSupportPanel = dynamic(
+  () =>
+    import("./admin-support-panel").then(
+      (module) => module.AdminSupportPanel
     ),
   { loading: () => <AdminPanelLoadingFallback /> }
 );
@@ -380,6 +391,9 @@ export function AdminDashboard({
               </TabsContent>
               <TabsContent value="marketplace" className="order-4 mt-0 min-w-0">
                 <AdminCommercePanel permissions={currentPermissions} />
+              </TabsContent>
+              <TabsContent value="support" className="order-4 mt-0 min-w-0">
+                <AdminSupportPanel currentUserId={currentUserId} />
               </TabsContent>
               <TabsContent value="timeline" className="order-4 mt-0 min-w-0">
                 <AdminActivityTimeline />
