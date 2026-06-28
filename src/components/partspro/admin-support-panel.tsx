@@ -459,46 +459,46 @@ export function AdminSupportPanel({
     : 0;
 
   return (
-    <section className="min-w-0 space-y-2 sm:space-y-3">
-      <div className="rounded-lg border border-slate-200 bg-white p-2.5 shadow-[0_12px_32px_rgba(15,23,42,0.045)] sm:p-4">
-        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="grid size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary sm:size-9">
-              <MessageCircle className="size-4" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="truncate text-lg font-black sm:text-xl">{copy.title}</h1>
-              <p className="line-clamp-1 text-xs font-semibold text-slate-500 sm:text-sm">
-                {copy.subtitle}
-              </p>
+    <section className="min-w-0 space-y-1.5 sm:space-y-3">
+      <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-[0_12px_32px_rgba(15,23,42,0.045)] sm:p-4">
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="hidden size-8 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary sm:grid sm:size-9">
+                <MessageCircle className="size-4" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="truncate text-base font-black leading-5 sm:text-xl sm:leading-7">{copy.title}</h1>
+                <p className="hidden text-xs font-semibold text-slate-500 sm:line-clamp-1 sm:text-sm">
+                  {copy.subtitle}
+                </p>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            className="h-8 bg-white px-2 text-xs sm:h-9 sm:px-3 sm:text-sm"
-            onClick={() => void refreshList()}
-          >
-            <RefreshCw className={cn("size-4", isLoadingList && "animate-spin")} />
-            {copy.actions.refresh}
-          </Button>
-          {"Notification" in globalThis && !notificationsEnabled ? (
+          <div className="flex shrink-0 items-center gap-1.5 sm:flex-wrap sm:gap-2">
             <Button
               type="button"
               variant="outline"
-              className="h-8 bg-white px-2 text-xs sm:h-9 sm:px-3 sm:text-sm"
-              onClick={enableNotifications}
+              className="size-8 bg-white p-0 sm:h-9 sm:w-auto sm:px-3 sm:text-sm"
+              onClick={() => void refreshList()}
             >
-              <Bell className="size-4" />
-              {copy.actions.enableNotifications}
+              <RefreshCw className={cn("size-4", isLoadingList && "animate-spin")} />
+              <span className="hidden sm:inline">{copy.actions.refresh}</span>
             </Button>
-          ) : null}
+            {"Notification" in globalThis && !notificationsEnabled ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="size-8 bg-white p-0 sm:h-9 sm:w-auto sm:px-3 sm:text-sm"
+                onClick={enableNotifications}
+              >
+                <Bell className="size-4" />
+                <span className="hidden sm:inline">{copy.actions.enableNotifications}</span>
+              </Button>
+            ) : null}
+          </div>
         </div>
-        </div>
-        <div className="mt-2 grid grid-cols-4 gap-1.5 sm:hidden">
+        <div className="mt-1.5 grid grid-cols-4 gap-1 sm:hidden">
           <SupportCompactStat label={copy.filters.all} value={conversations.length} />
           <SupportCompactStat label={copy.filters.unassigned} value={unassignedCount} />
           <SupportCompactStat label={copy.filters.mine} value={myCount} />
@@ -525,16 +525,16 @@ export function AdminSupportPanel({
         <AdminBusyRegion
           pending={isLoadingList}
           label={copy.loading}
-          className="h-[36svh] min-h-[190px] max-h-[320px] overflow-hidden rounded-lg border border-slate-200 bg-white p-2 shadow-[0_12px_32px_rgba(15,23,42,0.045)] sm:p-3 lg:h-auto lg:min-h-0 lg:max-h-none"
-          contentClassName="flex h-full min-h-0 flex-col"
+          className="overflow-hidden rounded-lg border border-slate-200 bg-white p-2 shadow-[0_12px_32px_rgba(15,23,42,0.045)] sm:p-3 lg:h-auto lg:min-h-0 lg:max-h-none"
+          contentClassName="flex min-h-0 flex-col lg:h-full"
         >
-          <div className="mb-2 flex min-w-0 items-center justify-between gap-2 sm:mb-3">
-            <h2 className="truncate text-sm font-black">{copy.queueTitle}</h2>
-            <Badge variant="outline">{conversations.length}</Badge>
+          <div className="mb-1.5 flex min-w-0 items-center justify-between gap-2 sm:mb-3">
+            <h2 className="truncate text-sm font-black leading-5">{copy.queueTitle}</h2>
+            <Badge className="h-5 px-2 text-[11px]" variant="outline">{conversations.length}</Badge>
           </div>
-          <div className="mb-2 grid grid-cols-2 gap-1.5 sm:mb-3 sm:gap-2">
+          <div className="mb-1.5 grid grid-cols-2 gap-1.5 sm:mb-3 sm:gap-2">
             <Select value={status} onValueChange={(value) => setStatus(value as SupportStatus)}>
-              <SelectTrigger size="sm" className="bg-white">
+              <SelectTrigger size="sm" className="h-8 bg-white text-xs sm:h-9 sm:text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -545,7 +545,7 @@ export function AdminSupportPanel({
               </SelectContent>
             </Select>
             <Select value={scope} onValueChange={(value) => setScope(value as SupportScope)}>
-              <SelectTrigger size="sm" className="bg-white">
+              <SelectTrigger size="sm" className="h-8 bg-white text-xs sm:h-9 sm:text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -559,19 +559,19 @@ export function AdminSupportPanel({
           </div>
 
           {isLoadingList && conversations.length === 0 ? (
-            <AdminSkeletonRows rows={6} />
+            <AdminSkeletonRows rows={4} />
           ) : conversations.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-slate-300 p-4 text-sm font-semibold text-slate-500">
+            <div className="rounded-lg border border-dashed border-slate-300 p-3 text-sm font-semibold text-slate-500 sm:p-4">
               {copy.emptyQueue}
             </div>
           ) : (
-            <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto pr-0.5 sm:space-y-2">
+            <div className="max-h-[32svh] min-h-0 space-y-1.5 overflow-y-auto pr-0.5 sm:space-y-2 lg:max-h-none lg:flex-1">
               {conversations.map((conversation) => (
                 <button
                   key={conversation.id}
                   type="button"
                   className={cn(
-                    "w-full rounded-lg border p-2 text-left transition sm:p-3",
+                    "w-full rounded-lg border p-1.5 text-left transition sm:p-3",
                     conversation.id === selectedId
                       ? "border-primary bg-primary/5 ring-2 ring-primary/10"
                       : "border-slate-200 bg-white hover:border-primary/40 hover:bg-slate-50"
@@ -580,25 +580,25 @@ export function AdminSupportPanel({
                 >
                   <div className="flex min-w-0 items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="truncate text-sm font-black leading-5">
+                      <div className="truncate text-[13px] font-black leading-4 sm:text-sm sm:leading-5">
                         {conversation.customer?.companyName ??
                           conversation.customer?.email ??
                           conversation.subject ??
                           conversation.id}
                       </div>
-                      <div className="line-clamp-1 text-xs font-semibold text-slate-500 sm:mt-1 sm:line-clamp-2">
+                      <div className="line-clamp-1 text-[11px] font-semibold leading-4 text-slate-500 sm:mt-1 sm:line-clamp-2 sm:text-xs">
                         {conversation.subject ?? conversation.id}
                       </div>
                     </div>
                     {conversation.staffUnreadCount > 0 ? (
-                      <Badge className="bg-red-500 text-white">
+                      <Badge className="h-5 min-w-5 justify-center bg-red-500 px-1.5 text-[11px] text-white">
                         {conversation.staffUnreadCount}
                       </Badge>
                     ) : (
                       <StatusBadge status={conversation.status} />
                     )}
                   </div>
-                  <div className="mt-1.5 flex min-w-0 items-center justify-between gap-2 text-xs font-semibold text-slate-500 sm:mt-2">
+                  <div className="mt-1 flex min-w-0 items-center justify-between gap-2 text-[11px] font-semibold text-slate-500 sm:mt-2 sm:text-xs">
                     <span className="flex min-w-0 items-center gap-1.5">
                       <UserCheck className="size-3.5 shrink-0" />
                       <span className="truncate">
@@ -621,67 +621,67 @@ export function AdminSupportPanel({
           pending={isLoadingDetail}
           label={copy.loading}
           className="min-h-0 rounded-lg border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.045)]"
-          contentClassName="flex h-[58svh] min-h-[420px] flex-col lg:h-full lg:min-h-[640px]"
+          contentClassName="flex min-h-0 flex-col lg:h-full lg:min-h-[640px]"
         >
           {detail && selectedConversation ? (
             <>
-              <div className="border-b border-slate-200 p-2.5 sm:p-4">
-                <div className="flex min-w-0 flex-col gap-2 xl:flex-row xl:items-start xl:justify-between">
+              <div className="border-b border-slate-200 p-2 sm:p-4">
+                <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 xl:flex xl:items-start xl:justify-between">
                   <div className="min-w-0">
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
-                      <h2 className="truncate text-base font-black sm:text-lg">
+                    <div className="min-w-0">
+                      <h2 className="truncate text-sm font-black leading-5 sm:text-lg sm:leading-7">
                         {detail.conversation.customer?.companyName ??
                           detail.conversation.customer?.email ??
                           detail.conversation.subject ??
                           detail.conversation.id}
                       </h2>
-                      <StatusBadge status={detail.conversation.status} />
                     </div>
-                    <p className="mt-0.5 truncate text-xs font-semibold text-slate-500 sm:mt-1 sm:text-sm">
+                    <p className="truncate text-[11px] font-semibold leading-4 text-slate-500 sm:mt-1 sm:text-sm">
                       {detail.conversation.customer?.email ?? detail.conversation.customer?.phone ?? detail.conversation.id}
                     </p>
                   </div>
-                  <div className="grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
-                    {detail.conversation.status === "open" ? (
-                      <>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-8 bg-white px-2 text-xs sm:h-9 sm:px-3 sm:text-sm"
-                          disabled={pendingAction !== null}
-                          onClick={() => void runAction("claim")}
-                        >
-                          <UserCheck className="size-4" />
-                          {copy.actions.claim}
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-8 bg-white px-2 text-xs sm:h-9 sm:px-3 sm:text-sm"
-                          disabled={pendingAction !== null}
-                          onClick={() => void runAction("resolve")}
-                        >
-                          <CheckCircle2 className="size-4" />
-                          {copy.actions.resolve}
-                        </Button>
-                      </>
-                    ) : detail.conversation.status === "resolved" ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="h-8 bg-white px-2 text-xs sm:h-9 sm:px-3 sm:text-sm"
-                        disabled={pendingAction !== null}
-                        onClick={() => void runAction("reopen")}
-                      >
-                        <RotateCcw className="size-4" />
-                        {copy.actions.reopen}
-                      </Button>
-                    ) : null}
-                  </div>
+                  <StatusBadge status={detail.conversation.status} />
                 </div>
-                <div className="mt-2 grid grid-cols-[minmax(0,1fr)_auto] gap-1.5 sm:mt-3 sm:gap-2">
+                {detail.conversation.status === "open" ? (
+                  <div className="mt-1.5 grid grid-cols-2 gap-1.5 sm:mt-2 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 bg-white px-2 text-xs sm:h-9 sm:px-3 sm:text-sm"
+                      disabled={pendingAction !== null}
+                      onClick={() => void runAction("claim")}
+                    >
+                      <UserCheck className="size-4" />
+                      {copy.actions.claim}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 bg-white px-2 text-xs sm:h-9 sm:px-3 sm:text-sm"
+                      disabled={pendingAction !== null}
+                      onClick={() => void runAction("resolve")}
+                    >
+                      <CheckCircle2 className="size-4" />
+                      {copy.actions.resolve}
+                    </Button>
+                  </div>
+                ) : detail.conversation.status === "resolved" ? (
+                  <div className="mt-1.5 flex sm:mt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-8 bg-white px-2 text-xs sm:h-9 sm:px-3 sm:text-sm"
+                      disabled={pendingAction !== null}
+                      onClick={() => void runAction("reopen")}
+                    >
+                      <RotateCcw className="size-4" />
+                      {copy.actions.reopen}
+                    </Button>
+                  </div>
+                ) : null}
+                <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_auto] gap-1.5 sm:mt-3 sm:gap-2">
                   <Select value={assignee} onValueChange={setAssignee}>
-                    <SelectTrigger className="h-9 bg-white">
+                    <SelectTrigger className="h-8 bg-white text-xs sm:h-9 sm:text-sm">
                       <SelectValue placeholder={copy.assignedTo} />
                     </SelectTrigger>
                     <SelectContent>
@@ -695,7 +695,7 @@ export function AdminSupportPanel({
                   </Select>
                   <Button
                     type="button"
-                    className="h-9 px-2 text-xs sm:px-3 sm:text-sm"
+                    className="h-8 px-2 text-xs sm:h-9 sm:px-3 sm:text-sm"
                     disabled={pendingAction !== null}
                     onClick={() =>
                       void runAction(
@@ -714,18 +714,18 @@ export function AdminSupportPanel({
                 </div>
               </div>
 
-              <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-2 sm:p-4">
-                <div className="space-y-1.5 sm:space-y-2">
+              <div className="max-h-[34svh] min-h-0 overflow-y-auto bg-slate-50 p-2 sm:flex-1 sm:p-4 lg:max-h-none">
+                <div className="space-y-1 sm:space-y-2">
                   {detail.messages.map((message) => (
                     <SupportMessageBubble key={message.id} message={message} />
                   ))}
                 </div>
               </div>
 
-              <form className="border-t border-slate-200 p-2.5 sm:p-4" onSubmit={sendReply}>
+              <form className="border-t border-slate-200 p-2 sm:p-4" onSubmit={sendReply}>
                 <Textarea
                   value={reply}
-                  className="max-h-28 min-h-16 resize-none bg-white text-sm sm:max-h-32 sm:min-h-20"
+                  className="max-h-24 min-h-12 resize-none bg-white text-sm sm:max-h-32 sm:min-h-20"
                   maxLength={2000}
                   placeholder={copy.composerPlaceholder}
                   disabled={detail.conversation.status !== "open"}
@@ -737,7 +737,7 @@ export function AdminSupportPanel({
                   </span>
                   <Button
                     type="submit"
-                    className="h-9 px-3"
+                    className="h-8 px-3 text-xs sm:h-9 sm:text-sm"
                     disabled={
                       detail.conversation.status !== "open" ||
                       pendingAction !== null ||
@@ -755,7 +755,7 @@ export function AdminSupportPanel({
               </form>
             </>
           ) : (
-            <div className="grid min-h-[520px] place-items-center p-6 text-center text-sm font-semibold text-slate-500">
+            <div className="grid min-h-32 place-items-center p-4 text-center text-sm font-semibold text-slate-500 sm:min-h-[280px] sm:p-6 lg:min-h-[520px]">
               {copy.emptyConversation}
             </div>
           )}
@@ -777,16 +777,16 @@ function SupportCompactStat({
   return (
     <div
       className={cn(
-        "min-w-0 rounded-md border px-2 py-1",
+        "min-w-0 rounded-md border px-1.5 py-0.5 sm:px-2 sm:py-1",
         tone === "hot"
           ? "border-red-200 bg-red-50 text-red-700"
           : "border-slate-200 bg-slate-50 text-slate-700"
       )}
     >
-      <div className="truncate text-[10px] font-bold leading-3 text-current/70">
+      <div className="truncate text-[9px] font-bold leading-3 text-current/70 sm:text-[10px]">
         {label}
       </div>
-      <div className="mt-0.5 text-sm font-black leading-4">{value}</div>
+      <div className="text-[13px] font-black leading-4 sm:mt-0.5 sm:text-sm">{value}</div>
     </div>
   );
 }
@@ -804,7 +804,7 @@ function SupportMessageBubble({ message }: { message: SupportMessage }) {
     >
       <div
         className={cn(
-          "max-w-[78%] whitespace-pre-wrap break-words rounded-lg px-3 py-2 text-sm leading-5",
+          "max-w-[88%] whitespace-pre-wrap break-words rounded-lg px-2.5 py-1.5 text-xs leading-4 sm:max-w-[78%] sm:px-3 sm:py-2 sm:text-sm sm:leading-5",
           isSystem
             ? "bg-slate-200 text-xs font-semibold text-slate-600"
             : isCustomer
@@ -813,7 +813,7 @@ function SupportMessageBubble({ message }: { message: SupportMessage }) {
         )}
       >
         <div>{message.body}</div>
-        <div className={cn("mt-1 text-[11px]", isCustomer ? "text-slate-400" : "text-white/65")}>
+        <div className={cn("mt-1 text-[10px] sm:text-[11px]", isCustomer ? "text-slate-400" : "text-white/65")}>
           {message.sender?.displayName ?? message.sender?.email ?? message.senderType}
         </div>
       </div>
@@ -843,7 +843,7 @@ function formatSupportTime(value: string | null, locale: string) {
 function StatusBadge({ status }: { status: Exclude<SupportStatus, "all"> }) {
   if (status === "resolved") {
     return (
-      <Badge className="border-emerald-200 bg-emerald-50 text-emerald-700" variant="outline">
+      <Badge className="h-5 gap-1 border-emerald-200 bg-emerald-50 px-1.5 text-[11px] text-emerald-700" variant="outline">
         <CheckCircle2 className="size-3" />
         resolved
       </Badge>
@@ -852,14 +852,14 @@ function StatusBadge({ status }: { status: Exclude<SupportStatus, "all"> }) {
 
   if (status === "archived") {
     return (
-      <Badge className="border-slate-200 bg-slate-50 text-slate-600" variant="outline">
+      <Badge className="h-5 border-slate-200 bg-slate-50 px-1.5 text-[11px] text-slate-600" variant="outline">
         archived
       </Badge>
     );
   }
 
   return (
-    <Badge className="border-sky-200 bg-sky-50 text-sky-700" variant="outline">
+    <Badge className="h-5 gap-1 border-sky-200 bg-sky-50 px-1.5 text-[11px] text-sky-700" variant="outline">
       <CircleDot className="size-3" />
       open
     </Badge>
