@@ -1,6 +1,6 @@
 # P1-2026-06-28-support-chat-v1
 
-状态：review
+状态：released
 
 看板目录：now
 
@@ -108,6 +108,8 @@ npm run lint
 npm run build
 SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase migration list --linked
 SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db push --linked --dry-run
+SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db push --linked
+SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db query --linked "<targeted smoke SQL>"
 ```
 
 ## 验证证据
@@ -120,9 +122,15 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db push --linked --dry-run
 | contract scan | pass | 扫描到 38 张表，包含 `support_conversations`、`support_messages`、`support_conversation_events` |
 | SQL risk scan | review required | 本次 migration 涉及 grant/revoke、RLS policy、private security definer 辅助函数；无 drop/truncate/数据回填 |
 | `supabase db push --linked --dry-run` | pass with hold | dry-run 只显示 `20260628003335_support_conversations_v1.sql` |
-| `supabase migration list --linked` | blocked | 远端数据库密码认证失败：`password authentication failed for user "cli_login_postgres"` |
-| `npm run lint` |  |  |
-| `npm run build` |  |  |
+| `supabase migration list --linked` | pass | `20260628003335` 已显示在 Local 和 Remote；无 remote-only divergence |
+| `supabase db push --linked` | pass | 已应用 `20260628003335_support_conversations_v1.sql` 到 `yiuxrjqexlfjtxxrkqvi / PartsPro-V4` |
+| support table smoke query | pass | 3 张 support 表存在，RLS 已启用，replica identity 为 full |
+| support policy smoke query | pass | 3 条 select policy 存在：conversation、message、event |
+| support permission smoke query | pass | `panel.support` 和 4 个 `support.*` 权限存在；`admin`、`sales`、`sales_support` 各有 5 个客服权限 |
+| Realtime publication smoke query | pass | 3 张 support 表已加入 `supabase_realtime` publication |
+| security definer ACL smoke query | pass | `private.support_can_read_conversation` 位于 `private` schema，ACL 为 `postgres` 和 `authenticated`，未公开给 `public` |
+| `supabase db advisors --linked --type security --level warn --fail-on none` | pass with existing warnings | 未发现本次新增 support 函数告警；输出包含项目历史 `function_search_path_mutable` 和 public security-definer RPC 告警 |
+| production anonymous API smoke | pass | `GET /api/support/conversations/current` 返回 401 `SUPPORT_LOGIN_REQUIRED`；`GET /api/admin/support/conversations` 返回 401 `ADMIN_FORBIDDEN`，无 5xx |
 
 ## 执行记录
 
@@ -130,10 +138,10 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db push --linked --dry-run
 - 批准：老板要求 “Implement the proposed plan.”
 - 开始：2026-06-28
 - review：2026-06-28，本地实现和 build 通过；生产 migration 因安全门未自动应用。
-- verified：
-- released：
+- verified：2026-06-28，migration list、schema/RLS/permission/Realtime/security-definer ACL、production anonymous API smoke 均通过。
+- released：2026-06-28，生产 Supabase migration 已应用；GitHub `origin/main` 已包含代码提交 `f9493a1`。
 - closed：
 
 ## 结果
 
-本地实现完成：新增客服 schema migration、服务端 API、客户悬浮窗、后台客服台、权限映射、Realtime 订阅和浏览器通知入口。生产 Supabase migration 未自动应用，原因是 linked migration list 认证失败且本次 SQL 涉及 RLS/权限变更，按护栏需要人工确认后再推库。
+已完成代码推送和生产数据库上线：新增客服 schema migration、服务端 API、客户悬浮窗、后台客服台、权限映射、Realtime 订阅和浏览器通知入口。生产 Supabase migration 已在批准后应用，匿名线上 API smoke 通过。剩余人工验收项是使用真实客户和员工账号完成登录态端到端会话测试。
