@@ -1,6 +1,6 @@
 # P1-2026-06-28-rma-admin-workflow-v2
 
-状态：migration_applied_pending_code_push
+状态：production_customer_smoke_passed_admin_e2e_pending_approval
 
 看板目录：now
 
@@ -112,6 +112,12 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db advisors --linked --typ
 | `supabase db lint --linked --schema public,private,storage --level error --fail-on error` | pass | 远端当前 schema 无 error 级 lint 输出；不代表未应用 migration 已解析 |
 | `supabase db advisors --linked --type security --level error --fail-on error` | pass | 远端当前 security advisor error 级无问题；不代表未应用 migration 已解析 |
 | local dev smoke | pass | `http://127.0.0.1:3010/admin` 返回 200；未登录 `/rma` 按预期 307 到 `/login?next=/rma` |
+| Vercel production deployment | pass | `www.partspro.app` production READY，latest deployment commit `85655b700712dc24f16c53b61ed408196fdcda3f` / `Implement RMA refund and inventory closure` |
+| Vercel production error logs | pass | `vercel logs --environment production --level error --since 1h --limit 20 --no-follow` 无 error log |
+| production anonymous smoke | pass | `/rma` 307 -> `/login?next=/rma`；`/api/rma` 401 `LOGIN_REQUIRED`；`/api/admin/rma` 401 `ADMIN_FORBIDDEN` |
+| production migration confirmation | pass / degraded command | `supabase migration list --linked` 当前因 CLI DB password auth 失败不可用；通过 `supabase_migrations.schema_migrations` 查询确认 `20260628003335` 与 `20260628134442` 已在远端 |
+| production customer RMA smoke | pass | run `rma-customer-smoke-20260628182833-6889f3`：临时客户资料补全、现有 SKU `3000000105689` 订单候选、附件上传、RMA `01fb2b85-fa04-440e-9310-008993e27f3b` 提交、客户隔离、普通客户 admin API 403、测试数据清理 remaining=0 |
+| production admin RMA E2E | blocked pending approval | 完整分配、收货、钱包退款、回补库存、关闭链路需要生产管理员登录态或临时 admin 授权；安全审查不允许自行 magic-link 真实管理员或用 SQL 绕过 admin RPC 给临时账号提权，需老板明确批准方案后执行 |
 
 ## 执行记录
 
@@ -121,9 +127,11 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db advisors --linked --typ
 - expanded：2026-06-28，增加 RMA v2.1 退款申请、库存处置、负责人、队列筛选和 action API
 - verified：2026-06-28，RMA v2.1 本地类型检查、lint、build、Supabase dry-run、远端当前 schema lint/advisor error 级检查和 dev smoke 通过
 - migration_applied：2026-06-28，linked Supabase 项目已应用 `20260628134442_rma_admin_workflow_v2.sql`，post-migration smoke SQL 通过
-- released：
+- released：2026-06-28，生产 Vercel deployment READY，`www.partspro.app` 指向 commit `85655b700712dc24f16c53b61ed408196fdcda3f`
+- production_customer_smoke：2026-06-28，客户侧 RMA smoke 通过并清理临时数据
+- blocked：2026-06-28，管理员端完整 E2E 需要明确批准生产管理员会话或临时 admin 授权方案
 - closed：
 
 ## 结果
 
-代码和 migration 已实现并扩展到 RMA v2.1；老板确认后已应用 linked Supabase migration。下一步是提交并推送本次 RMA 范围代码，不包含无关 `public/brand/`。
+代码和 migration 已实现、推送并在生产 Vercel READY；linked Supabase migration 已确认应用。客户侧生产 smoke 已验证通过，包括资料补全、订单候选、附件上传、提交 RMA、客户隔离和清理。任务暂不关闭：管理员端分配、收货、钱包退款、库存回补和关闭的生产 E2E 仍需老板明确批准管理员会话或临时授权方案后再执行。
