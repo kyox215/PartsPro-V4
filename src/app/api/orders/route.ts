@@ -52,6 +52,7 @@ import {
   getCurrentAccountContext,
   hasOrderableEffectivePrice,
 } from "@/lib/partspro-account-context";
+import { notifyNewOrder } from "@/lib/partspro-notifications";
 import { toPublicSku } from "@/lib/partspro-sku";
 
 const orderStatuses = [
@@ -398,11 +399,31 @@ export async function POST(request: NextRequest) {
           : "Customer cart could not be cleared after order creation.";
     }
 
+    const orderNo = saved.data.orderNo ?? saved.data.id;
+    let notificationWarning: string | undefined;
+
+    try {
+      await notifyNewOrder({
+        actorUserId: account.userId ?? null,
+        customerName: company.name,
+        orderNo,
+      });
+    } catch (error) {
+      notificationWarning =
+        error instanceof Error
+          ? error.message
+          : "New order notification could not be sent.";
+      console.error("[orders:create] notification failed", {
+        message: notificationWarning,
+        orderNo,
+      });
+    }
+
     return NextResponse.json(
       {
         data: {
           id: saved.data.id,
-          orderNo: saved.data.orderNo ?? saved.data.id,
+          orderNo,
           status: saved.data.status,
           createdAt: saved.data.createdAt,
           company: {
@@ -440,7 +461,8 @@ export async function POST(request: NextRequest) {
             customerProfile.warning,
             companyResolution.warning,
             saved.warning,
-            cartClearWarning
+            cartClearWarning,
+            notificationWarning
           ),
         },
       },

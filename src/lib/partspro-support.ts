@@ -4,6 +4,11 @@ import {
   createServiceRoleClient,
   isSupabaseServiceRoleConfigured,
 } from "@/lib/supabase/admin";
+import {
+  notifySupportAssigned,
+  notifySupportCustomerMessage,
+  notifySupportStaffReply,
+} from "@/lib/partspro-notifications";
 
 type SupportDbClient = ReturnType<typeof createServiceRoleClient>;
 type DbRow = Record<string, unknown>;
@@ -201,6 +206,20 @@ export async function createCustomerSupportMessage(input: {
     metadata: { source: "customer_widget" },
   });
 
+  try {
+    await notifySupportCustomerMessage({
+      actorUserId: input.userId,
+      assignedTo: readString(updatedConversation.assigned_to),
+      conversationId,
+      customerName: await readConversationCustomerName(client, updatedConversation),
+    });
+  } catch (error) {
+    console.error("[support:customer_message] notification failed", {
+      conversationId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   return readCustomerConversationBundle(client, updatedConversation);
 }
 
@@ -375,6 +394,23 @@ export async function createAdminSupportMessage(input: {
     eventType: "staff_message",
   });
 
+  const customerUserId = readString(conversation.user_id);
+
+  if (customerUserId) {
+    try {
+      await notifySupportStaffReply({
+        actorUserId: input.userId,
+        conversationId,
+        customerUserId,
+      });
+    } catch (error) {
+      console.error("[support:staff_message] notification failed", {
+        conversationId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   return getAdminSupportConversationDetail({ conversationId });
 }
 
@@ -407,6 +443,11 @@ export async function updateAdminSupportConversation(input: {
         note: input.note,
         toAssignee: input.userId,
       });
+      await notifySupportAssignmentChange({
+        actorUserId: input.userId,
+        assignedTo: input.userId,
+        conversationId,
+      });
       break;
     case "assign":
       await assertAssignableStaff(client, input.assignedTo);
@@ -422,6 +463,11 @@ export async function updateAdminSupportConversation(input: {
         fromAssignee: previousAssignee,
         note: input.note,
         toAssignee: input.assignedTo ?? null,
+      });
+      await notifySupportAssignmentChange({
+        actorUserId: input.userId,
+        assignedTo: input.assignedTo ?? null,
+        conversationId,
       });
       break;
     case "mark_read":
@@ -570,6 +616,44 @@ async function readConversation(client: SupportDbClient, conversationId: string)
   }
 
   return data;
+}
+
+async function readConversationCustomerName(
+  client: SupportDbClient,
+  conversation: DbRow
+) {
+  const customerId = readString(conversation.customer_id);
+
+  if (!customerId) {
+    return null;
+  }
+
+  const { data } = await client
+    .from("customers")
+    .select("company_name, email")
+    .eq("id", customerId)
+    .maybeSingle();
+
+  if (!isRow(data)) {
+    return null;
+  }
+
+  return readString(data.company_name) ?? readString(data.email);
+}
+
+async function notifySupportAssignmentChange(input: {
+  actorUserId: string;
+  assignedTo: string | null;
+  conversationId: string;
+}) {
+  try {
+    await notifySupportAssigned(input);
+  } catch (error) {
+    console.error("[support:assignment] notification failed", {
+      conversationId: input.conversationId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 async function readCustomerConversationBundle(

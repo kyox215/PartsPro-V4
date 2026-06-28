@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
+import { notifyOrderStatusUpdated } from "@/lib/partspro-notifications";
 import { transitionAdminOrderStatus } from "@/lib/partspro-repository";
 import { repositoryErrorResponse, requireAdminApi } from "../../../_shared";
 import { toAdminOrderDto } from "../../_dto";
@@ -37,6 +38,26 @@ export async function PATCH(request: NextRequest, { params }: OrderStatusParams)
       orderId: decodeURIComponent(orderId),
       ...parsed.data,
     });
+    let notificationWarning: string | undefined;
+
+    try {
+      await notifyOrderStatusUpdated({
+        actorUserId: admin.authState.userId,
+        customerId: result.data.order.customer.id,
+        orderNo: result.data.order.orderNo,
+        status: result.data.order.status,
+        trackingCode: result.data.order.trackingCode,
+      });
+    } catch (error) {
+      notificationWarning =
+        error instanceof Error
+          ? error.message
+          : "Order status notification could not be sent.";
+      console.error("[admin:orders:status] notification failed", {
+        message: notificationWarning,
+        orderId,
+      });
+    }
 
     return NextResponse.json({
       data: {
@@ -48,6 +69,8 @@ export async function PATCH(request: NextRequest, { params }: OrderStatusParams)
         inventoryLifecycle:
           "reserved_on_order_create, released_on_pre_ship_cancel, consumed_on_completed",
         paymentLifecycle: "explicit_payment_status_updates_only",
+        notification: notificationWarning ? "failed" : "sent",
+        notificationWarning,
       },
     });
   } catch (error) {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
+import { notifyOrderStatusUpdated } from "@/lib/partspro-notifications";
 import { syncMarketplaceFulfillmentForOrder } from "@/lib/partspro-marketplace";
 import {
   forceCancelAdminShippedOrder,
@@ -234,6 +235,28 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
       order.status === "shipped" && order.carrier && order.trackingCode
         ? await syncMarketplaceFulfillment(order)
         : null;
+    let notificationWarning: string | undefined;
+
+    if (parsed.data.status !== undefined || parsed.data.tracking !== undefined) {
+      try {
+        await notifyOrderStatusUpdated({
+          actorUserId: admin.authState.userId,
+          customerId: order.customer.id,
+          orderNo: order.orderNo,
+          status: order.status,
+          trackingCode: order.trackingCode,
+        });
+      } catch (error) {
+        notificationWarning =
+          error instanceof Error
+            ? error.message
+            : "Order notification could not be sent.";
+        console.error("[admin:orders:patch] notification failed", {
+          message: notificationWarning,
+          orderId,
+        });
+      }
+    }
 
     return NextResponse.json({
       data: toAdminOrderDto(order, {
@@ -258,6 +281,13 @@ export async function PATCH(request: NextRequest, { params }: OrderParams) {
           forceCancelResult?.data.transition ??
           transitionResult?.data.transition ??
           null,
+        notification:
+          parsed.data.status !== undefined || parsed.data.tracking !== undefined
+            ? notificationWarning
+              ? "failed"
+              : "sent"
+            : "not_applicable",
+        notificationWarning,
       },
     });
   } catch (error) {

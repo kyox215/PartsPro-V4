@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import {
-  Bell,
   CheckCircle2,
   CircleDot,
   Loader2,
@@ -117,7 +116,6 @@ const supportCopy = {
     actions: {
       assign: "Assegna",
       claim: "Prendi in carico",
-      enableNotifications: "Attiva notifiche",
       markRead: "Segna letto",
       refresh: "Aggiorna",
       reopen: "Riapri",
@@ -148,8 +146,6 @@ const supportCopy = {
       unassigned: "Non assegnate",
     },
     loading: "Caricamento assistenza",
-    notificationBody: "Nuovo messaggio cliente in PartsPro.",
-    notificationTitle: "Nuova richiesta assistenza",
     queueTitle: "Coda assistenza",
     sendFailed: "Invio risposta non riuscito.",
     subtitle: "Messaggi clienti, assegnazione e responsabilita in tempo reale.",
@@ -173,7 +169,6 @@ const supportCopy = {
     actions: {
       assign: "转派",
       claim: "认领",
-      enableNotifications: "启用通知",
       markRead: "标记已读",
       refresh: "刷新",
       reopen: "重开",
@@ -204,8 +199,6 @@ const supportCopy = {
       unassigned: "未分配",
     },
     loading: "正在加载客服",
-    notificationBody: "PartsPro 有新的客户消息。",
-    notificationTitle: "新的客服消息",
     queueTitle: "客服队列",
     sendFailed: "回复发送失败。",
     subtitle: "客户消息、负责人分配和处理状态集中管理。",
@@ -231,8 +224,10 @@ type SupportPanelCopy = typeof supportCopy.zh;
 
 export function AdminSupportPanel({
   currentUserId,
+  focusConversationId,
 }: {
   currentUserId?: string | null;
+  focusConversationId?: string;
 }) {
   const { locale } = useI18n();
   const copy = locale === "zh-CN" ? supportCopy.zh : supportCopy.it;
@@ -254,9 +249,6 @@ export function AdminSupportPanel({
   const [mobileInboxMode, setMobileInboxMode] = React.useState<MobileInboxMode>("needsReply");
   const [pendingAction, setPendingAction] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<Notice | null>(null);
-  const [notificationsEnabled, setNotificationsEnabled] = React.useState(
-    () => "Notification" in globalThis && Notification.permission === "granted"
-  );
   const effectiveScope = !currentUserId && scope === "mine" ? "all" : scope;
 
   const refreshInbox = React.useCallback(async (signal?: AbortSignal) => {
@@ -464,15 +456,9 @@ export function AdminSupportPanel({
           schema: "public",
           table: "support_conversations",
         },
-        (payload) => {
-          const next = payload.new;
-
+        () => {
           void refreshList();
           void refreshInbox();
-
-          if (isRecord(next) && readNumber(next.staff_unread_count) > 0) {
-            notifyStaff(copy.notificationTitle, copy.notificationBody);
-          }
         }
       )
       .on(
@@ -491,10 +477,6 @@ export function AdminSupportPanel({
             }
 
             void refreshInbox();
-
-            if (next.sender_type === "customer") {
-              notifyStaff(copy.notificationTitle, copy.notificationBody);
-            }
           }
         }
       )
@@ -503,7 +485,22 @@ export function AdminSupportPanel({
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [copy.notificationBody, copy.notificationTitle, refreshDetail, refreshInbox, refreshList, selectedId]);
+  }, [refreshDetail, refreshInbox, refreshList, selectedId]);
+
+  React.useEffect(() => {
+    if (!focusConversationId) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSelectedId(focusConversationId);
+      setDetailView("messages");
+      setMobileDetailOpen(true);
+      void refreshDetail(focusConversationId);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [focusConversationId, refreshDetail]);
 
   async function runAction(
     action: "assign" | "claim" | "mark_read" | "reopen" | "resolve",
@@ -585,15 +582,6 @@ export function AdminSupportPanel({
     } finally {
       setPendingAction(null);
     }
-  }
-
-  async function enableNotifications() {
-    if (!("Notification" in window)) {
-      return;
-    }
-
-    const permission = await Notification.requestPermission();
-    setNotificationsEnabled(permission === "granted");
   }
 
   const selectedConversation =
@@ -678,17 +666,6 @@ export function AdminSupportPanel({
               <RefreshCw className={cn("size-4", isLoadingList && "animate-spin")} />
               <span className="hidden sm:inline">{copy.actions.refresh}</span>
             </Button>
-            {"Notification" in globalThis && !notificationsEnabled ? (
-              <Button
-                type="button"
-                variant="outline"
-                className="size-8 bg-white p-0 sm:h-9 sm:w-auto sm:px-3 sm:text-sm"
-                onClick={enableNotifications}
-              >
-                <Bell className="size-4" />
-                <span className="hidden sm:inline">{copy.actions.enableNotifications}</span>
-              </Button>
-            ) : null}
           </div>
         </div>
         <div className="mt-1.5 grid grid-cols-4 gap-1 sm:hidden">
@@ -1501,19 +1478,6 @@ function StatusBadge({ status }: { status: Exclude<SupportStatus, "all"> }) {
       open
     </Badge>
   );
-}
-
-function notifyStaff(title: string, body: string) {
-  if (!("Notification" in window) || Notification.permission !== "granted") {
-    return;
-  }
-
-  const notification = new Notification(title, { body });
-
-  notification.onclick = () => {
-    window.focus();
-    notification.close();
-  };
 }
 
 function readConversations(payload: unknown): SupportConversation[] {

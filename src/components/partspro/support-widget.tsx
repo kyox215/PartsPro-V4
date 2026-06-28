@@ -80,6 +80,22 @@ export function SupportWidget() {
   const markedReadRef = React.useRef("");
 
   React.useEffect(() => {
+    if (
+      scope !== "storefront" ||
+      !eligible ||
+      new URLSearchParams(window.location.search).get("support") !== "open"
+    ) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setOpen(true);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [eligible, scope]);
+
+  React.useEffect(() => {
     if (scope !== "storefront") {
       return;
     }

@@ -17,8 +17,17 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     metadataBase: new URL(getPartsProSiteUrl()),
     applicationName: "PartsPro",
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: "black-translucent",
+      title: "PartsPro",
+    },
     title,
     description,
+    icons: {
+      apple: "/pwa/icon-192.png",
+      icon: "/pwa/icon-192.png",
+    },
     openGraph: {
       description,
       locale: locale === "zh-CN" ? "zh_CN" : "it_IT",

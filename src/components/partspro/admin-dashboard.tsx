@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { useSearchParams } from "next/navigation";
 import {
   BarChart3,
   Bell,
@@ -47,6 +48,7 @@ import { cn } from "@/lib/utils";
 import { useI18n } from "./i18n-provider";
 import { LanguageSwitcher } from "./language-switcher";
 import { PartsProLogo } from "./logo";
+import { NotificationCenter } from "./notification-center";
 import {
   DelayedPendingIndicator,
   RoutePendingIndicator,
@@ -106,10 +108,19 @@ type AdminCommercePanelProps = {
   permissions?: readonly string[];
 };
 
+type AdminOrdersPanelProps = {
+  focusOrderId?: string;
+};
+
 type AdminAccountsPanelProps = {
   initialPermissions?: readonly string[];
   initialUserId?: string | null;
   permissionsLoaded?: boolean;
+};
+
+type AdminSupportPanelProps = {
+  currentUserId?: string | null;
+  focusConversationId?: string;
 };
 
 type AdminDashboardProps = {
@@ -121,7 +132,7 @@ type AdminDashboardProps = {
 const AdminOrdersPanel = dynamic(
   () => import("./admin-orders-panel").then((module) => module.AdminOrdersPanel),
   { loading: () => <AdminPanelLoadingFallback /> }
-);
+) as React.ComponentType<AdminOrdersPanelProps>;
 const AdminRmaPanel = dynamic(
   () => import("./admin-rma-panel").then((module) => module.AdminRmaPanel),
   { loading: () => <AdminPanelLoadingFallback /> }
@@ -165,7 +176,7 @@ const AdminSupportPanel = dynamic(
       (module) => module.AdminSupportPanel
     ),
   { loading: () => <AdminPanelLoadingFallback /> }
-);
+) as React.ComponentType<AdminSupportPanelProps>;
 const AdminOverviewDashboard = dynamic<AdminOverviewDashboardProps>(
   () =>
     import("./admin-overview-dashboard").then(
@@ -241,6 +252,7 @@ export function AdminDashboard({
   initialUserId = null,
   initialVisiblePanels,
 }: AdminDashboardProps = {}) {
+  const searchParams = useSearchParams();
   const hasInitialAdminContext = initialPermissions !== undefined;
   const [activePanel, setActivePanel] =
     React.useState<AdminPanelValue>("overview");
@@ -366,6 +378,20 @@ export function AdminDashboard({
     },
     [selectPanel]
   );
+  const focusOrderId = searchParams.get("orderId") ?? undefined;
+  const focusConversationId = searchParams.get("conversationId") ?? undefined;
+
+  React.useEffect(() => {
+    const requestedPanel = searchParams.get("panel");
+
+    if (requestedPanel && isAdminPanelValue(requestedPanel)) {
+      const timeoutId = window.setTimeout(() => {
+        selectPanel(requestedPanel);
+      }, 0);
+
+      return () => window.clearTimeout(timeoutId);
+    }
+  }, [searchParams, selectPanel]);
 
   return (
     <main className="h-dvh overflow-y-auto overflow-x-clip bg-slate-50 text-slate-950">
@@ -381,10 +407,10 @@ export function AdminDashboard({
         <section className="w-full min-w-0 flex-1">
           <AdminTopbar
             activePanel={activePanel}
-            onPanelChange={selectPanel}
-            pendingPanel={pendingPanel}
-            visiblePanels={visiblePanelSet}
-          />
+              onPanelChange={selectPanel}
+              pendingPanel={pendingPanel}
+              visiblePanels={visiblePanelSet}
+            />
           <div className="mx-auto w-full max-w-[1500px] min-w-0 px-3 pb-3 pt-2 sm:px-4 sm:py-4">
             <Tabs
               value={activePanel}
@@ -392,7 +418,7 @@ export function AdminDashboard({
               className="flex min-w-0 flex-col gap-3 sm:gap-4"
             >
               <TabsContent value="orders" className="order-4 mt-0 min-w-0">
-                <AdminOrdersPanel />
+                <AdminOrdersPanel focusOrderId={focusOrderId} />
               </TabsContent>
               <TabsContent value="rma" className="order-4 mt-0 min-w-0">
                 <AdminRmaPanel />
@@ -404,7 +430,10 @@ export function AdminDashboard({
                 <AdminCommercePanel permissions={currentPermissions} />
               </TabsContent>
               <TabsContent value="support" className="order-4 mt-0 min-w-0">
-                <AdminSupportPanel currentUserId={currentUserId} />
+                <AdminSupportPanel
+                  currentUserId={currentUserId}
+                  focusConversationId={focusConversationId}
+                />
               </TabsContent>
               <TabsContent value="timeline" className="order-4 mt-0 min-w-0">
                 <AdminActivityTimeline />
@@ -717,6 +746,7 @@ function AdminTopbar({
         </div>
 
         <LanguageSwitcher scope="admin" compact className="hidden sm:inline-flex" />
+        <NotificationCenter audience="staff" />
         <Button variant="outline" asChild className="hidden bg-white sm:inline-flex">
           <Link href="/">
             <span>{text.topbar.home}</span>

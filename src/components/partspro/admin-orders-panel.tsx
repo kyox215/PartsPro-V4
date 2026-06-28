@@ -418,7 +418,11 @@ function useAdminText() {
   return getAdminDictionary(locale).admin;
 }
 
-export function AdminOrdersPanel() {
+export function AdminOrdersPanel({
+  focusOrderId,
+}: {
+  focusOrderId?: string;
+} = {}) {
   const text = useAdminText();
   const labels = React.useMemo(() => buildOrderLabels(text), [text]);
   const [orders, setOrders] = React.useState<AdminOrder[]>([]);
@@ -646,6 +650,20 @@ export function AdminOrdersPanel() {
       window.clearTimeout(timeoutId);
     };
   }, [loadOrderDetails, selectedOrderId]);
+
+  React.useEffect(() => {
+    if (!focusOrderId) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setSelectedOrderId(focusOrderId);
+      setMobileDetailsOpen(true);
+      void loadOrderDetails(focusOrderId);
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [focusOrderId, loadOrderDetails]);
 
   const filteredOrders = React.useMemo(
     () =>

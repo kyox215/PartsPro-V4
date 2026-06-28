@@ -3,7 +3,7 @@
 import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Building2,
   CheckCircle2,
@@ -53,6 +53,7 @@ import { cn } from "@/lib/utils";
 import { signOut } from "@/app/login/actions";
 import type { AccountCustomerProfile, CustomerWallet } from "@/lib/partspro-repository";
 import type { ItalyCapLookupResult } from "@/lib/italy-cap-lookup";
+import { NotificationCenter } from "./notification-center";
 import { StoreHeader } from "./store-header";
 
 type AccountPageProps = {
@@ -200,6 +201,7 @@ export function AccountPage({
   userEmail,
 }: AccountPageProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [activeFilter, setActiveFilter] = React.useState<OrderFilterId>("all");
   const [orderDetail, setOrderDetail] = React.useState<AccountOrderDetail | null>(null);
   const [orderDetailError, setOrderDetailError] = React.useState<string | null>(null);
@@ -222,7 +224,7 @@ export function AccountPage({
     orderFilters.find((filter) => filter.id === activeFilter) ?? orderFilters[0];
   const filteredOrders = orderSummaries.filter(selectedFilter.predicate);
   const shouldShowProfileNotice = Boolean(profile && !profile.profileCompletedAt);
-  async function openOrderDetail(order: OrderSummary) {
+  const openOrderDetail = React.useCallback(async (order: OrderSummary) => {
     setOrderDetailOpen(true);
     setOrderDetail(null);
     setOrderDetailError(null);
@@ -241,7 +243,30 @@ export function AccountPage({
     } finally {
       setOrderDetailLoading(false);
     }
-  }
+  }, []);
+
+  React.useEffect(() => {
+    const requestedSection = searchParams.get("section");
+    const requestedOrderId = searchParams.get("orderId");
+    const timeoutId = window.setTimeout(() => {
+      if (isAccountSectionId(requestedSection)) {
+        setActiveSection(requestedSection);
+      }
+
+      if (!requestedOrderId) {
+        return;
+      }
+
+      const order = orderSummaries.find((item) => item.id === requestedOrderId);
+
+      if (order) {
+        setActiveSection("orders");
+        void openOrderDetail(order);
+      }
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [openOrderDetail, orderSummaries, searchParams]);
 
   function handleProfileSaved(nextProfile: AccountCustomerProfile) {
     setSavedProfile(nextProfile);
@@ -252,12 +277,18 @@ export function AccountPage({
     <main className="min-h-screen overflow-x-hidden bg-slate-100 text-slate-950">
       <StoreHeader />
       <div className="mx-auto max-w-[1180px] space-y-2 px-2 py-2 md:px-3 lg:space-y-3">
-        <AccountSectionNav
-          activeSection={activeSection}
-          orderSummaries={orderSummaries}
-          rmaRequests={rmaRequests}
-          onSectionChange={setActiveSection}
-        />
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+          <AccountSectionNav
+            activeSection={activeSection}
+            orderSummaries={orderSummaries}
+            rmaRequests={rmaRequests}
+            onSectionChange={setActiveSection}
+          />
+          <NotificationCenter
+            audience={isEmployeeAccount ? "staff" : "customer"}
+            className="h-full min-h-12 w-12"
+          />
+        </div>
 
         {shouldShowProfileNotice && profile ? (
           <AccountProfileNotice
@@ -619,6 +650,15 @@ function AccountSectionNav({
         })}
       </div>
     </nav>
+  );
+}
+
+function isAccountSectionId(value: string | null): value is AccountSectionId {
+  return (
+    value === "overview" ||
+    value === "wallet" ||
+    value === "orders" ||
+    value === "service"
   );
 }
 
