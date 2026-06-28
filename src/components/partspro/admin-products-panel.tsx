@@ -3042,7 +3042,6 @@ function AdminHomeBannersPanel({
                         loading="lazy"
                         sizes="220px"
                         src={banner.imageUrl}
-                        unoptimized
                       />
                     </div>
                   </div>
@@ -3198,7 +3197,6 @@ function AdminHomeBannersPanel({
                   fill
                   sizes="420px"
                   src={resolveAdminProductImageUrl(formValues.imagePath)}
-                  unoptimized
                 />
               </div>
             </div>

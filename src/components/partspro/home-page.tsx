@@ -234,7 +234,6 @@ function HomeBannerCarousel({
               loading={index === 0 ? "eager" : "lazy"}
               sizes="(min-width: 1024px) 1220px, 100vw"
               src={banner.imageUrl}
-              unoptimized
             />
             <span className="pointer-events-none absolute right-2 top-2 grid size-7 place-items-center text-primary drop-shadow-sm">
               <RoutePendingIndicator

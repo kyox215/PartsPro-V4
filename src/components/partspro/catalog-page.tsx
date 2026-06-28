@@ -439,7 +439,7 @@ function CatalogPageContent({
                         canUseCart={canUseCart}
                         key={product.sku}
                         priceGateReason={priceGateReason}
-                        priorityImage={index === 0}
+                        priorityImage={index < 4}
                         product={product}
                         showWholesalePrice={showWholesalePrice}
                       />

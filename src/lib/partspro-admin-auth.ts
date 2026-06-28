@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import type { AccountContext } from "@/lib/partspro-account-context";
 import { adminPermissions } from "@/lib/partspro-permissions";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 
@@ -21,7 +22,7 @@ const ADMIN_EMAILS = new Set(
     .filter(Boolean)
 );
 
-type AdminAuthState =
+export type AdminAuthState =
   | { configured: false; allowed: false; reason: "missing_env" }
   | {
       configured: true;
@@ -38,6 +39,55 @@ type AdminAuthState =
       reason: "missing_session" | "not_staff" | "permission_unavailable";
       role?: string;
     };
+
+export function getAdminAuthStateFromAccount(account: AccountContext): AdminAuthState {
+  if (!isSupabaseConfigured()) {
+    return { configured: false, allowed: false, reason: "missing_env" };
+  }
+
+  if (!account.authenticated || !account.userId) {
+    return { configured: true, allowed: false, reason: "missing_session" };
+  }
+
+  const role = account.role;
+  const roleTemplate = account.roleTemplate;
+  const isBootstrapAdmin = isBootstrapAdminEmail(account.email);
+
+  if (isBootstrapAdmin || role === "admin" || roleTemplate === "admin") {
+    return {
+      configured: true,
+      email: account.email,
+      allowed: true,
+      permissions: mergePermissions(adminPermissions, account.permissions),
+      reason: isBootstrapAdmin ? "admin_email" : "staff",
+      role: isBootstrapAdmin ? "admin" : role ?? roleTemplate ?? "admin",
+      userId: account.userId,
+    };
+  }
+
+  if (role && (STAFF_ROLES.has(role) || account.accountType === "employee")) {
+    if (account.permissions.length === 0) {
+      return {
+        configured: true,
+        allowed: false,
+        reason: "permission_unavailable",
+        role,
+      };
+    }
+
+    return {
+      configured: true,
+      email: account.email,
+      allowed: true,
+      permissions: account.permissions,
+      reason: "staff",
+      role,
+      userId: account.userId,
+    };
+  }
+
+  return { configured: true, allowed: false, reason: "not_staff", role: role ?? undefined };
+}
 
 export async function getAdminAuthState(): Promise<AdminAuthState> {
   if (!isSupabaseConfigured()) {

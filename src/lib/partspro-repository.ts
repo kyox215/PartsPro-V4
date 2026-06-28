@@ -117,6 +117,8 @@ const catalogModelGroupsWarningCacheTtlMs = 15 * 1000;
 const catalogModelGroupsRowLimit = 100000;
 const catalogCategoryCountsCacheTtlMs = 60 * 1000;
 const catalogCategoryCountsWarningCacheTtlMs = 15 * 1000;
+const publicCatalogPageCacheTtlMs = 30 * 1000;
+const publicCatalogPageCacheMaxEntries = 120;
 const customerActivityDedupeWindowMs = 5 * 60 * 1000;
 const maxCustomerCartItems = 100;
 const maxCustomerCartQuantity = 999;
@@ -143,6 +145,17 @@ let catalogCategoryCountsCache:
 let catalogCategoryCountsRequest:
   | Promise<RepositoryResult<CatalogCategoryCountSummary>>
   | null = null;
+const publicCatalogPageCache = new Map<
+  string,
+  {
+    expiresAt: number;
+    result: RepositoryResult<CatalogProductPage>;
+  }
+>();
+const publicCatalogPageRequests = new Map<
+  string,
+  Promise<RepositoryResult<CatalogProductPage> | null>
+>();
 
 export type RepositoryPartProduct = PartProduct & {
   remoteId?: string;
@@ -1793,6 +1806,49 @@ async function readPublicCatalogProductPage(
   query: CatalogProductQueryInput,
   options: CatalogProductPageOptions = {}
 ): Promise<RepositoryResult<CatalogProductPage> | null> {
+  if (!canUsePublicCatalogPageCache(options)) {
+    return readPublicCatalogProductPageUncached(query, options);
+  }
+
+  const cacheKey = publicCatalogPageCacheKey(query, options);
+  const now = Date.now();
+  const cached = publicCatalogPageCache.get(cacheKey);
+
+  if (cached && cached.expiresAt > now) {
+    return cached.result;
+  }
+
+  if (cached) {
+    publicCatalogPageCache.delete(cacheKey);
+  }
+
+  const pending = publicCatalogPageRequests.get(cacheKey);
+
+  if (pending) {
+    return pending;
+  }
+
+  const request = readPublicCatalogProductPageUncached(query, options)
+    .then((result) => {
+      if (result) {
+        rememberPublicCatalogPage(cacheKey, result);
+      }
+
+      return result;
+    })
+    .finally(() => {
+      publicCatalogPageRequests.delete(cacheKey);
+    });
+
+  publicCatalogPageRequests.set(cacheKey, request);
+
+  return request;
+}
+
+async function readPublicCatalogProductPageUncached(
+  query: CatalogProductQueryInput,
+  options: CatalogProductPageOptions = {}
+): Promise<RepositoryResult<CatalogProductPage> | null> {
   if (!isSupabaseConfigured()) {
     return null;
   }
@@ -1819,6 +1875,73 @@ async function readPublicCatalogProductPage(
   } catch {
     return null;
   }
+}
+
+function canUsePublicCatalogPageCache(options: CatalogProductPageOptions) {
+  return (
+    (options.scope ?? "public") === "public" &&
+    !options.includeBuyerPrices &&
+    !options.buyerCustomerId
+  );
+}
+
+function publicCatalogPageCacheKey(
+  query: CatalogProductQueryInput,
+  options: CatalogProductPageOptions
+) {
+  return JSON.stringify({
+    brand: query.brand ?? null,
+    catalogStatus: query.catalogStatus ?? null,
+    category: query.category ?? null,
+    grade: query.grade ?? null,
+    limit: Math.max(query.limit, 1),
+    minStock: query.minStock ?? null,
+    model: query.model ?? null,
+    modelSeries: query.modelSeries ?? null,
+    offset: Math.max(query.offset, 0),
+    q: query.q?.trim() || null,
+    scope: options.scope ?? "public",
+    sort: query.sort,
+    status: query.status ?? null,
+    warehouse: query.warehouse ?? null,
+  });
+}
+
+function rememberPublicCatalogPage(
+  cacheKey: string,
+  result: RepositoryResult<CatalogProductPage>
+) {
+  const now = Date.now();
+
+  prunePublicCatalogPageCache(now);
+  publicCatalogPageCache.delete(cacheKey);
+  publicCatalogPageCache.set(cacheKey, {
+    expiresAt: now + publicCatalogPageCacheTtlMs,
+    result,
+  });
+
+  while (publicCatalogPageCache.size > publicCatalogPageCacheMaxEntries) {
+    const oldestKey = publicCatalogPageCache.keys().next().value;
+
+    if (!oldestKey) {
+      break;
+    }
+
+    publicCatalogPageCache.delete(oldestKey);
+  }
+}
+
+function prunePublicCatalogPageCache(now = Date.now()) {
+  for (const [cacheKey, cached] of publicCatalogPageCache) {
+    if (cached.expiresAt <= now) {
+      publicCatalogPageCache.delete(cacheKey);
+    }
+  }
+}
+
+function clearPublicCatalogPageCache() {
+  publicCatalogPageCache.clear();
+  publicCatalogPageRequests.clear();
 }
 
 async function readPublicCatalogModelGroups(): Promise<
@@ -1926,7 +2049,7 @@ export async function listAdminProducts(
   }
 
   return {
-    data: await attachActiveRestockCounts(context.client, page),
+    data: page,
     source: "supabase",
   };
 }
@@ -2011,6 +2134,8 @@ export async function createAdminProduct(
     );
   }
 
+  clearPublicCatalogPageCache();
+
   return { data: product, source: "supabase" };
 }
 
@@ -2060,6 +2185,8 @@ export async function updateAdminProduct(
       "Supabase returned an invalid product row."
     );
   }
+
+  clearPublicCatalogPageCache();
 
   return { data: product, source: "supabase" };
 }
@@ -2116,6 +2243,8 @@ export async function adjustAdminProductStock(
     );
   }
 
+  clearPublicCatalogPageCache();
+
   return { data: product, source: "supabase" };
 }
 
@@ -2140,6 +2269,8 @@ export async function setAdminProductImages(
       "Supabase returned an invalid product row."
     );
   }
+
+  clearPublicCatalogPageCache();
 
   return { data: product, source: "supabase" };
 }
@@ -2206,6 +2337,8 @@ async function runAdminProductAction(
       "Supabase returned an invalid product row."
     );
   }
+
+  clearPublicCatalogPageCache();
 
   return { data: product, source: "supabase" };
 }
@@ -5301,28 +5434,6 @@ function parseAdminProductSummary(
     restockRequests: pickNumber(row, ["restockRequests", "restock_requests"]) ?? 0,
     missingImage: pickNumber(row, ["missingImage", "missing_image"]) ?? 0,
     missingPrice: pickNumber(row, ["missingPrice", "missing_price"]) ?? 0,
-  };
-}
-
-async function attachActiveRestockCounts(
-  client: SupabaseServerClient,
-  page: AdminProductPage
-): Promise<AdminProductPage> {
-  if (page.products.length === 0) {
-    return page;
-  }
-
-  const counts = await readActiveRestockRequestCounts(
-    client,
-    page.products.map((product) => product.sku)
-  );
-
-  return {
-    ...page,
-    products: page.products.map((product) => ({
-      ...product,
-      activeRestockRequestCount: counts.get(product.sku) ?? 0,
-    })),
   };
 }
 

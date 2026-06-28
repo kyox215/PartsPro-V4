@@ -2,17 +2,7 @@
 
 import * as React from "react";
 import Image from "next/image";
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
-  Tooltip as RechartsTooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import dynamic from "next/dynamic";
 import {
   ArrowRight,
   BarChart3,
@@ -69,6 +59,15 @@ type AdminOverviewPanelValue =
 type AdminOverviewDashboardProps = {
   onPanelChange?: (panel: AdminOverviewPanelValue) => void;
   visiblePanels?: ReadonlySet<AdminOverviewPanelValue>;
+};
+
+type AdminSalesTrendChartProps = {
+  data: readonly SalesTrendPoint[];
+  salesLabel: string;
+};
+
+type AdminInventoryMixChartProps = {
+  data: readonly InventoryMixPoint[];
 };
 
 type DashboardRange = (typeof dashboardRanges)[number];
@@ -237,6 +236,27 @@ const fulfillmentQueueStatuses = new Set<OrderStatus>([
 ]);
 const cardClass =
   "min-w-0 rounded-lg border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.045)]";
+
+const AdminSalesTrendChart = dynamic<AdminSalesTrendChartProps>(
+  () =>
+    import("./admin-overview-charts").then(
+      (module) => module.AdminSalesTrendChart
+    ),
+  {
+    ssr: false,
+    loading: () => <ChartPlaceholder />,
+  }
+);
+const AdminInventoryMixChart = dynamic<AdminInventoryMixChartProps>(
+  () =>
+    import("./admin-overview-charts").then(
+      (module) => module.AdminInventoryMixChart
+    ),
+  {
+    ssr: false,
+    loading: () => <ChartPlaceholder compact />,
+  }
+);
 
 export function AdminOverviewDashboard({
   onPanelChange,
@@ -491,8 +511,6 @@ function SalesTrendCard({
   range: DashboardRange;
   text: ReturnType<typeof getAdminDictionary>["admin"];
 }) {
-  const gradientId = React.useId().replaceAll(":", "");
-
   return (
     <Card className={cardClass}>
       <CardHeader className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 px-3">
@@ -527,53 +545,10 @@ function SalesTrendCard({
       </CardHeader>
       <CardContent className="grid gap-2 px-2 pb-2 sm:px-3 lg:grid-cols-[minmax(0,1fr)_180px]">
         <div className="h-[220px] min-w-0">
-          <MeasuredChart height={220}>
-            {(width, height) => (
-              <AreaChart width={width} height={height} data={model.salesTrend}>
-                <defs>
-                  <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="#2563eb" stopOpacity={0.25} />
-                    <stop offset="100%" stopColor="#2563eb" stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="#e5edf7" strokeDasharray="4 4" vertical={false} />
-                <XAxis
-                  dataKey="day"
-                  fontSize={11}
-                  interval="preserveStartEnd"
-                  minTickGap={18}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  width={42}
-                  fontSize={11}
-                  tickFormatter={formatAxisEuro}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <RechartsTooltip
-                  formatter={(value, name) => [
-                    name === "sales" ? formatEuro(Number(value)) : value,
-                    name === "sales" ? text.dashboard.charts.sales : name,
-                  ]}
-                  contentStyle={{
-                    border: "1px solid #dfe6f1",
-                    borderRadius: 8,
-                    boxShadow: "0 16px 40px rgba(15,23,42,0.12)",
-                    fontSize: 12,
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="sales"
-                  stroke="#2563eb"
-                  strokeWidth={2.5}
-                  fill={`url(#${gradientId})`}
-                />
-              </AreaChart>
-            )}
-          </MeasuredChart>
+          <AdminSalesTrendChart
+            data={model.salesTrend}
+            salesLabel={text.dashboard.charts.sales}
+          />
         </div>
         <div className="grid grid-cols-3 gap-1.5 lg:grid-cols-1">
           <MiniKpi
@@ -624,27 +599,7 @@ function InventoryRiskCard({
       <CardContent className="grid gap-2 px-3 pb-3 md:grid-cols-[136px_minmax(0,1fr)] xl:grid-cols-1 2xl:grid-cols-[136px_minmax(0,1fr)]">
         <div className="grid grid-cols-[116px_minmax(0,1fr)] gap-2 md:block xl:grid-cols-[116px_minmax(0,1fr)] 2xl:block">
           <div className="h-[116px]">
-            {model.inventoryMix.some((item) => item.value > 0) ? (
-              <MeasuredChart compact height={116}>
-                {(width, height) => (
-                  <PieChart width={width} height={height}>
-                    <Pie
-                      data={model.inventoryMix}
-                      innerRadius={34}
-                      outerRadius={52}
-                      paddingAngle={3}
-                      dataKey="value"
-                    >
-                      {model.inventoryMix.map((entry) => (
-                        <Cell key={entry.key} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                )}
-              </MeasuredChart>
-            ) : (
-              <ChartPlaceholder compact />
-            )}
+            <AdminInventoryMixChart data={model.inventoryMix} />
           </div>
           <div className="flex min-w-0 flex-col justify-center gap-1.5 text-[11px] md:mt-2 xl:mt-0 2xl:mt-2">
             {model.inventoryMix.map((item) => (
@@ -1040,50 +995,6 @@ function DenseFact({ label, value }: { label: string; value: string }) {
   );
 }
 
-function MeasuredChart({
-  children,
-  compact = false,
-  height,
-}: {
-  children: (width: number, height: number) => React.ReactNode;
-  compact?: boolean;
-  height: number;
-}) {
-  const ref = React.useRef<HTMLDivElement>(null);
-  const [width, setWidth] = React.useState(0);
-
-  React.useEffect(() => {
-    const element = ref.current;
-
-    if (!element) {
-      return;
-    }
-
-    let frame = 0;
-    const updateWidth = () => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        setWidth(Math.floor(element.getBoundingClientRect().width));
-      });
-    };
-
-    updateWidth();
-    const observer = new ResizeObserver(updateWidth);
-    observer.observe(element);
-
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
-  }, []);
-
-  return (
-    <div ref={ref} className="h-full w-full min-w-0">
-      {width > 0 ? children(width, height) : <ChartPlaceholder compact={compact} />}
-    </div>
-  );
-}
-
 function ChartPlaceholder({ compact = false }: { compact?: boolean }) {
   return (
     <div className="flex h-full min-h-[96px] items-end gap-1.5 rounded-lg bg-slate-50 p-3">
@@ -1108,55 +1019,39 @@ function useDashboardSnapshot() {
   React.useEffect(() => {
     const controller = new AbortController();
 
-    void Promise.allSettled([
-      fetchDashboardOrders(controller.signal),
-      fetchDashboardProducts(controller.signal),
-    ]).then((results) => {
-      if (controller.signal.aborted) {
-        return;
-      }
+    void fetchDashboardOverview(controller.signal)
+      .then((overview) => {
+        if (controller.signal.aborted) {
+          return;
+        }
 
-      const [ordersResult, productsResult] = results;
-      const errors: string[] = [];
-      const orderUpdate =
-        ordersResult.status === "fulfilled"
-          ? {
-              orderSource: ordersResult.value.source,
-              orderTotal: ordersResult.value.total,
-              orders: ordersResult.value.orders,
-              ordersReturned: ordersResult.value.returned,
-            }
-          : null;
-      const productUpdate =
-        productsResult.status === "fulfilled"
-          ? {
-              productSource: productsResult.value.source,
-              productTotal: productsResult.value.total,
-              products: productsResult.value.products,
-              productsReturned: productsResult.value.returned,
-            }
-          : null;
-
-      if (ordersResult.status === "rejected") {
-        errors.push(readErrorMessage(ordersResult.reason));
-      }
-
-      if (productsResult.status === "rejected") {
-        errors.push(readErrorMessage(productsResult.reason));
-      }
-      const errorMessage = errors.length > 0 ? errors.join(" ") : null;
-
-      setSnapshot((current) => {
-        return {
+        setSnapshot((current) => ({
           ...current,
-          ...orderUpdate,
-          ...productUpdate,
-          error: errorMessage,
+          error: overview.errors.length > 0 ? overview.errors.join(" ") : null,
+          isLoading: false,
+          orderSource: overview.orderSource,
+          orderTotal: overview.orderTotal,
+          orders: overview.orders,
+          ordersReturned: overview.ordersReturned,
+          productSource: overview.productSource,
+          productTotal: overview.productTotal,
+          products: overview.products,
+          productsReturned: overview.productsReturned,
+          syncedAt: new Date().toISOString(),
+        }));
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setSnapshot((current) => ({
+          ...current,
+          error: readErrorMessage(error),
           isLoading: false,
           syncedAt: new Date().toISOString(),
-        };
+        }));
       });
-    });
 
     return () => {
       controller.abort();
@@ -1176,61 +1071,38 @@ function useDashboardSnapshot() {
   };
 }
 
-async function fetchDashboardOrders(signal: AbortSignal) {
-  const params = new URLSearchParams({
-    limit: "100",
-    offset: "0",
-    sort: "date_desc",
-  });
-  const response = await fetch(`/api/admin/orders?${params.toString()}`, {
+async function fetchDashboardOverview(signal: AbortSignal) {
+  const response = await fetch("/api/admin/overview", {
     cache: "no-store",
     headers: { Accept: "application/json", "Cache-Control": "no-cache" },
     signal,
   });
 
   if (!response.ok) {
-    throw new Error(`GET /api/admin/orders ${response.status}`);
+    throw new Error(`GET /api/admin/overview ${response.status}`);
   }
 
   const payload = (await response.json()) as unknown;
   const meta = readMeta(payload);
-  const rows = readRows(payload);
-  const orders = rows.map(normalizeDashboardOrder).filter(isDefined);
+  const data = isRecord(payload) && isRecord(payload.data) ? payload.data : {};
+  const orders = (readArrayPayload(data, ["orders"]) ?? [])
+    .map(normalizeDashboardOrder)
+    .filter(isDefined);
+  const products = (readArrayPayload(data, ["products"]) ?? [])
+    .map(normalizeDashboardProduct)
+    .filter(isDefined);
+  const errors = readStringArray(meta.errors) ?? [];
 
   return {
+    errors,
+    orderSource: readString(meta.orderSource) ?? "empty",
+    orderTotal: readNumber(meta.orderTotal) ?? orders.length,
     orders,
-    returned: readNumber(meta.returned) ?? orders.length,
-    source: readString(meta.source) ?? "empty",
-    total: readNumber(meta.total) ?? orders.length,
-  };
-}
-
-async function fetchDashboardProducts(signal: AbortSignal) {
-  const params = new URLSearchParams({
-    limit: "100",
-    offset: "0",
-    sort: "updated_desc",
-  });
-  const response = await fetch(`/api/admin/products?${params.toString()}`, {
-    cache: "no-store",
-    headers: { Accept: "application/json", "Cache-Control": "no-cache" },
-    signal,
-  });
-
-  if (!response.ok) {
-    throw new Error(`GET /api/admin/products ${response.status}`);
-  }
-
-  const payload = (await response.json()) as unknown;
-  const meta = readMeta(payload);
-  const rows = readRows(payload);
-  const products = rows.map(normalizeDashboardProduct).filter(isDefined);
-
-  return {
+    ordersReturned: readNumber(meta.ordersReturned) ?? orders.length,
     products,
-    returned: readNumber(meta.returned) ?? products.length,
-    source: readString(meta.source) ?? "empty",
-    total: readNumber(meta.total) ?? products.length,
+    productsReturned: readNumber(meta.productsReturned) ?? products.length,
+    productSource: readString(meta.productSource) ?? "empty",
+    productTotal: readNumber(meta.productTotal) ?? products.length,
   };
 }
 
@@ -1701,38 +1573,6 @@ function stockStatusLabel(
   return copy.inventory.inStock;
 }
 
-function readRows(payload: unknown) {
-  if (!isRecord(payload)) {
-    return [];
-  }
-
-  if (Array.isArray(payload.data)) {
-    return payload.data;
-  }
-
-  if (isRecord(payload.data) && Array.isArray(payload.data.rows)) {
-    return payload.data.rows;
-  }
-
-  if (isRecord(payload.data) && Array.isArray(payload.data.orders)) {
-    return payload.data.orders;
-  }
-
-  if (isRecord(payload.data) && Array.isArray(payload.data.products)) {
-    return payload.data.products;
-  }
-
-  if (Array.isArray(payload.orders)) {
-    return payload.orders;
-  }
-
-  if (Array.isArray(payload.products)) {
-    return payload.products;
-  }
-
-  return [];
-}
-
 function readMeta(payload: unknown) {
   return isRecord(payload) && isRecord(payload.meta) ? payload.meta : {};
 }
@@ -1846,20 +1686,6 @@ function formatDelta(current: number, previous: number) {
   const fractionDigits = Math.abs(delta) >= 10 ? 0 : 1;
 
   return `${delta >= 0 ? "+" : ""}${delta.toFixed(fractionDigits)}%`;
-}
-
-function formatAxisEuro(value: unknown) {
-  const amount = Number(value);
-
-  if (!Number.isFinite(amount)) {
-    return "";
-  }
-
-  if (Math.abs(amount) >= 1000) {
-    return `€${Math.round(amount / 1000)}k`;
-  }
-
-  return `€${Math.round(amount)}`;
 }
 
 function formatTime(value: string, locale: string) {
