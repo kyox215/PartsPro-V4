@@ -93,6 +93,8 @@ const customerCartSelect =
   "id, user_id, customer_id, sku_code, quantity, created_at, updated_at";
 const productRestockRequestSelect =
   "id, user_id, customer_id, sku_code, product_name, status, metadata, notified_at, cancelled_at, created_at, updated_at";
+const adminOrderListSelect =
+  "id, order_no, customer_id, customer_name, customer_tier, status, payment_status, payment_method, payment_received_at, payment_received_by, payment_received_amount, payment_reference, payment_reconciliation_note, wallet_applied_amount, soft_deleted_at, soft_deleted_by, danger_action_type, danger_action_reason, danger_action_metadata, stock_risk, total_net, vat, shipping, shipping_method, carrier, tracking_code, fiscal, delivery_address, customer_note, staff_note, created_at, updated_at, admin_queue_bucket, admin_status_rank";
 const walletRefundTables = ["wallet_refund_requests", "wallet_refunds"] as const;
 type WalletRefundTable = (typeof walletRefundTables)[number];
 
@@ -6281,7 +6283,7 @@ async function readAdminOrderPage(
   try {
     let request = client
       .from("orders")
-      .select("*", { count: "exact" })
+      .select(adminOrderListSelect, { count: "exact" })
       .is("soft_deleted_at", null);
 
     if (query.customerId) {

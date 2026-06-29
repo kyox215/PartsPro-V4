@@ -44,6 +44,11 @@ type NotificationPayload = {
   unreadCount: number;
 };
 
+type NotificationSummaryPayload = {
+  latestCreatedAt: string | null;
+  unreadCount: number;
+};
+
 type NotificationCenterProps = {
   audience: NotificationAudience;
   className?: string;
@@ -104,6 +109,7 @@ const copy = {
 
 const NOTIFICATION_PROMPT_SESSION_KEY =
   "partspro:notification-permission-prompt:v1";
+const notificationSummaryPollMs = 150_000;
 
 export function NotificationCenter({
   audience,
@@ -114,6 +120,7 @@ export function NotificationCenter({
   const text = locale === "zh-CN" ? copy.zh : copy.it;
   const [items, setItems] = React.useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = React.useState(0);
+  const [popoverOpen, setPopoverOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [busyAction, setBusyAction] = React.useState<string | null>(null);
   const [pushState, setPushState] = React.useState<
@@ -126,6 +133,25 @@ export function NotificationCenter({
   const [permissionPromptKind, setPermissionPromptKind] = React.useState<
     "enable" | "ios" | null
   >(null);
+
+  const loadNotificationSummary = React.useCallback(async () => {
+    try {
+      const response = await fetch("/api/notifications/summary", {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = await response.json();
+      const data = readNotificationSummaryPayload(payload);
+      setUnreadCount(data.unreadCount);
+    } catch {
+      // Summary refresh is best-effort; the full popover load still reports errors.
+    }
+  }, []);
 
   const loadNotifications = React.useCallback(async () => {
     setLoading(true);
@@ -150,18 +176,44 @@ export function NotificationCenter({
   }, []);
 
   React.useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      void loadNotifications();
-    }, 0);
+    let disposed = false;
+
+    function refreshVisibleSummary() {
+      if (disposed || document.visibilityState === "hidden") {
+        return;
+      }
+
+      void loadNotificationSummary();
+    }
+
+    const timeoutId = window.setTimeout(refreshVisibleSummary, 0);
     const intervalId = window.setInterval(() => {
-      void loadNotifications();
-    }, 45_000);
+      refreshVisibleSummary();
+    }, notificationSummaryPollMs);
+
+    document.addEventListener("visibilitychange", refreshVisibleSummary);
 
     return () => {
+      disposed = true;
+      document.removeEventListener("visibilitychange", refreshVisibleSummary);
       window.clearInterval(intervalId);
       window.clearTimeout(timeoutId);
     };
-  }, [loadNotifications]);
+  }, [loadNotificationSummary]);
+
+  React.useEffect(() => {
+    if (!popoverOpen) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void loadNotifications();
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [loadNotifications, popoverOpen]);
 
   React.useEffect(() => {
     let isActive = true;
@@ -322,7 +374,11 @@ export function NotificationCenter({
         method: "POST",
       });
 
-      await loadNotifications();
+      if (popoverOpen) {
+        await loadNotifications();
+      } else {
+        await loadNotificationSummary();
+      }
     } finally {
       setBusyAction(null);
     }
@@ -394,7 +450,7 @@ export function NotificationCenter({
 
   return (
     <>
-      <Popover>
+      <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
         <PopoverTrigger asChild>
           <Button
             type="button"
@@ -674,6 +730,16 @@ function readNotificationPayload(payload: unknown): NotificationPayload {
       : notifications.filter((item) => !item.readAt).length;
 
   return { notifications, unreadCount };
+}
+
+function readNotificationSummaryPayload(payload: unknown): NotificationSummaryPayload {
+  const data = isRecord(payload) && isRecord(payload.data) ? payload.data : null;
+
+  return {
+    latestCreatedAt:
+      typeof data?.latestCreatedAt === "string" ? data.latestCreatedAt : null,
+    unreadCount: typeof data?.unreadCount === "number" ? data.unreadCount : 0,
+  };
 }
 
 function readNotification(value: unknown): NotificationItem | null {

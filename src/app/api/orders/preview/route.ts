@@ -67,6 +67,10 @@ type PreviewIssue = {
   sku: string;
   stock?: number;
 };
+type PreviewCatalogRejection = {
+  reason: string;
+  sku: string;
+};
 
 type PreviewLine = {
   product: PartProduct;
@@ -193,6 +197,10 @@ export async function POST(request: Request) {
             status: company.status,
           },
           issues: customerIssues,
+          catalog: {
+            products: [],
+            rejected: [],
+          },
           lines: [],
           totals: totalsDto(calculateTotals([], deliveryMethod), deliveryMethod),
           wallet: walletSummaryDto(
@@ -249,6 +257,10 @@ export async function POST(request: Request) {
           name: company.name,
           status: company.status,
         },
+        catalog: {
+          products: orderBuild.lines.map((line) => line.product),
+          rejected: buildPreviewCatalogRejections(orderBuild.issues, pricedCatalog),
+        },
         issues: orderBuild.issues,
         lines: orderBuild.lines.map(toPreviewLineDto),
         deliveryMethod,
@@ -269,6 +281,44 @@ export async function POST(request: Request) {
     });
   } catch {
     return apiError(500, "ORDER_PREVIEW_FAILED", "Checkout preview is temporarily unavailable.");
+  }
+}
+
+function buildPreviewCatalogRejections(
+  issues: PreviewIssue[],
+  catalog: PartProduct[]
+): PreviewCatalogRejection[] {
+  const catalogBySku = new Map(
+    catalog.map((product) => [toPublicSku(product.sku), product])
+  );
+
+  return issues
+    .filter((issue) => issue.sku !== "customer")
+    .map((issue) => ({
+      reason: previewCatalogRejectionReason(issue, catalogBySku.get(toPublicSku(issue.sku))),
+      sku: toPublicSku(issue.sku),
+    }));
+}
+
+function previewCatalogRejectionReason(
+  issue: PreviewIssue,
+  product: PartProduct | undefined
+) {
+  if (!product) {
+    return "not_found";
+  }
+
+  switch (issue.code) {
+    case "moq":
+      return "quantity_below_moq";
+    case "out_of_stock":
+      return "unavailable";
+    case "price_missing":
+      return "price_unavailable";
+    case "stock_limit":
+      return "quantity_over_stock";
+    default:
+      return issue.code || "unavailable";
   }
 }
 

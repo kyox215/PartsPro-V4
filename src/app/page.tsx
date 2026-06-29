@@ -1,9 +1,11 @@
 import { HomePage } from "@/components/partspro/home-page";
 import {
+  type HomeBanner,
   listActiveHomeBanners,
   listCatalogModelGroups,
   pageHotCatalogProducts,
   pageCatalogProducts,
+  type RepositoryResult,
 } from "@/lib/partspro-repository";
 import { type PartProduct } from "@/lib/partspro-data";
 import {
@@ -18,6 +20,7 @@ import { toStoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 
 const homeShelfProductLimit = 8;
 const publicHomeShelfCacheTtlMs = 30 * 1000;
+const publicHomeBannersCacheTtlMs = 30 * 1000;
 
 type HomeShelfProducts = {
   catalogTotal: number;
@@ -33,12 +36,19 @@ let publicHomeShelfCache:
     }
   | null = null;
 let publicHomeShelfRequest: Promise<HomeShelfProducts> | null = null;
+let publicHomeBannersCache:
+  | {
+      expiresAt: number;
+      result: RepositoryResult<HomeBanner[]>;
+    }
+  | null = null;
+let publicHomeBannersRequest: Promise<RepositoryResult<HomeBanner[]>> | null = null;
 
 export default async function Home() {
   const [account, modelGroups, homeBanners] = await Promise.all([
     getCurrentAccountContext(),
     listCatalogModelGroups(),
-    listActiveHomeBanners(),
+    readCachedPublicHomeBanners(),
   ]);
   const buyerCustomerId = accountPricingCustomerId(account);
   const homeShelves = account.canViewPrices
@@ -68,6 +78,35 @@ export default async function Home() {
       stockedProducts={stockedProducts}
     />
   );
+}
+
+async function readCachedPublicHomeBanners() {
+  const now = Date.now();
+
+  if (publicHomeBannersCache && publicHomeBannersCache.expiresAt > now) {
+    return publicHomeBannersCache.result;
+  }
+
+  if (publicHomeBannersRequest) {
+    return publicHomeBannersRequest;
+  }
+
+  publicHomeBannersRequest = listActiveHomeBanners()
+    .then((result) => {
+      publicHomeBannersCache = {
+        expiresAt: Date.now() + publicHomeBannersCacheTtlMs,
+        result,
+      };
+      publicHomeBannersRequest = null;
+
+      return result;
+    })
+    .catch((error) => {
+      publicHomeBannersRequest = null;
+      throw error;
+    });
+
+  return publicHomeBannersRequest;
 }
 
 function toHomeProduct(product: PartProduct, account: AccountContext): PartProduct {

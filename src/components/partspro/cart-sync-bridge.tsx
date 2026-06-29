@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
-import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { getSupabaseEnv, isSupabaseConfigured } from "@/lib/supabase/env";
 import type { CartItem } from "./cart-state";
 import {
   cartItemsForApi,
@@ -219,6 +219,11 @@ export function CartSyncBridge() {
 
     async function loadInitialRemoteCart() {
       if (!isSupabaseConfigured()) {
+        enterLocalMode();
+        return;
+      }
+
+      if (!hasClientSupabaseSessionHint()) {
         enterLocalMode();
         return;
       }
@@ -446,4 +451,24 @@ async function writeRemoteCart(
   }
 
   return "synced";
+}
+
+function hasClientSupabaseSessionHint() {
+  if (!isSupabaseConfigured()) {
+    return false;
+  }
+
+  try {
+    const { url } = getSupabaseEnv();
+    const projectRef = new URL(url).hostname.split(".")[0];
+    const authKey = `sb-${projectRef}-auth-token`;
+    const hasCookie = document.cookie
+      .split(";")
+      .some((cookie) => cookie.trim().startsWith(`${authKey}`));
+    const hasLocalSession = Boolean(window.localStorage.getItem(authKey));
+
+    return hasCookie || hasLocalSession;
+  } catch {
+    return true;
+  }
 }

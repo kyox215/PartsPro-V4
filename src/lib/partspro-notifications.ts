@@ -169,27 +169,66 @@ export async function listNotificationEvents(input: {
   userId: string;
 }) {
   const client = getNotificationClient();
-  const { data, error } = await client
-    .from("notification_events")
-    .select("*")
-    .eq("recipient_user_id", input.userId)
-    .order("created_at", { ascending: false })
-    .limit(input.limit);
+  const [eventsResult, unreadResult] = await Promise.all([
+    client
+      .from("notification_events")
+      .select("id, audience, body, created_at, event_type, payload, read_at, target_path, title")
+      .eq("recipient_user_id", input.userId)
+      .order("created_at", { ascending: false })
+      .limit(input.limit),
+    client
+      .from("notification_events")
+      .select("id", { count: "exact", head: true })
+      .eq("recipient_user_id", input.userId)
+      .is("read_at", null),
+  ]);
 
-  if (error) {
+  if (eventsResult.error || unreadResult.error) {
     throw new NotificationServiceError(
       502,
       "NOTIFICATIONS_READ_FAILED",
       "Notifications could not be read.",
-      error
+      eventsResult.error ?? unreadResult.error
     );
   }
 
-  const events = readRows(data).map(toNotificationEventDto);
+  const events = readRows(eventsResult.data).map(toNotificationEventDto);
 
   return {
     notifications: events,
-    unreadCount: events.filter((event) => !event.readAt).length,
+    unreadCount: unreadResult.count ?? events.filter((event) => !event.readAt).length,
+  };
+}
+
+export async function getNotificationSummary(input: { userId: string }) {
+  const client = getNotificationClient();
+  const [unreadResult, latestResult] = await Promise.all([
+    client
+      .from("notification_events")
+      .select("id", { count: "exact", head: true })
+      .eq("recipient_user_id", input.userId)
+      .is("read_at", null),
+    client
+      .from("notification_events")
+      .select("created_at")
+      .eq("recipient_user_id", input.userId)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  if (unreadResult.error || latestResult.error) {
+    throw new NotificationServiceError(
+      502,
+      "NOTIFICATION_SUMMARY_READ_FAILED",
+      "Notification summary could not be read.",
+      unreadResult.error ?? latestResult.error
+    );
+  }
+
+  return {
+    latestCreatedAt: readString(latestResult.data?.created_at),
+    unreadCount: unreadResult.count ?? 0,
   };
 }
 

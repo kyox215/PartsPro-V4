@@ -340,9 +340,7 @@ function CheckoutClientContent({
     initialFormState()
   );
   const [catalogLoadState, setCatalogLoadState] = React.useState<"idle" | "loading" | "ready" | "error">("idle");
-  const [catalogRetryToken, setCatalogRetryToken] = React.useState(0);
   const [catalogRejections, setCatalogRejections] = React.useState<Record<string, CartCatalogRejection>>({});
-  const requestedCatalogKeys = React.useRef(new Set<string>());
   const [confirmed, setConfirmed] = React.useState(false);
   const [submitAttempted, setSubmitAttempted] = React.useState(false);
   const [submitState, setSubmitState] = React.useState<SubmitState>({ status: "idle" });
@@ -548,112 +546,11 @@ function CheckoutClientContent({
 
   React.useEffect(() => {
     onCatalogScopeChange(selectedCatalogScope);
-    requestedCatalogKeys.current.clear();
   }, [onCatalogScopeChange, selectedCatalogScope]);
 
   React.useEffect(() => {
     rememberAssistedCompanyId(checkoutContextCompanyId || null);
   }, [checkoutContextCompanyId]);
-
-  React.useEffect(() => {
-    if (!cart.isHydrated || cart.items.length === 0 || !selectedCompany?.id || targetCustomerBlocker) {
-      return;
-    }
-
-    const missingSkus = cart.items
-      .map((item) => item.sku)
-      .filter((sku) => !catalogSkuSet.has(sku) && !catalogRejectionBySku.has(sku));
-    const requestKey = `${selectedCompany.id}:${missingSkus.join(",")}`;
-
-    if (missingSkus.length === 0) {
-      return;
-    }
-
-    const requestedKeys = requestedCatalogKeys.current;
-
-    if (requestedKeys.has(requestKey)) {
-      return;
-    }
-
-    const controller = new AbortController();
-    let completed = false;
-    requestedKeys.add(requestKey);
-
-    async function loadCartCatalogProducts() {
-      setCatalogLoadState("loading");
-
-      try {
-        const params = new URLSearchParams({
-          companyId: selectedCompany?.id ?? "",
-          checkoutMode,
-          skus: missingSkus.join(","),
-        });
-        const response = await fetch(`/api/cart/catalog?${params.toString()}`, {
-          cache: "no-store",
-          credentials: "same-origin",
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error("Unable to load cart catalog products");
-        }
-
-        const payload = (await response.json()) as {
-          data?: PartProduct[];
-          meta?: { rejected?: CartCatalogRejection[] };
-        };
-        const products = Array.isArray(payload.data) ? payload.data : [];
-        const rejections = Array.isArray(payload.meta?.rejected)
-          ? payload.meta.rejected.filter((rejection) => rejection?.sku)
-          : [];
-
-        completed = true;
-        onCatalogProductsLoaded(products);
-        setCatalogRejections((current) => {
-          const next = { ...current };
-
-          for (const sku of missingSkus) {
-            delete next[sku];
-          }
-
-          for (const rejection of rejections) {
-            next[rejection.sku] = {
-              reason: rejection.reason,
-              sku: rejection.sku,
-            };
-          }
-
-          return next;
-        });
-        setCatalogLoadState("ready");
-      } catch {
-        if (!controller.signal.aborted) {
-          requestedKeys.delete(requestKey);
-          setCatalogLoadState("error");
-        }
-      }
-    }
-
-    void loadCartCatalogProducts();
-
-    return () => {
-      controller.abort();
-      if (!completed) {
-        requestedKeys.delete(requestKey);
-      }
-    };
-  }, [
-    cart.isHydrated,
-    cart.items,
-    cartSignature,
-    catalogRetryToken,
-    catalogRejectionBySku,
-    catalogSkuSet,
-    onCatalogProductsLoaded,
-    selectedCompany?.id,
-    checkoutMode,
-    targetCustomerBlocker,
-  ]);
 
   React.useEffect(() => {
     if (!shouldLoadPreview) {
@@ -673,6 +570,7 @@ function CheckoutClientContent({
           : [],
         wallet: current.wallet,
       }));
+      setCatalogLoadState("loading");
 
       try {
         const response = await fetch("/api/orders/preview", {
@@ -691,6 +589,10 @@ function CheckoutClientContent({
         });
         const payload = (await response.json().catch(() => null)) as {
           data?: {
+            catalog?: {
+              products?: PartProduct[];
+              rejected?: CartCatalogRejection[];
+            };
             canSubmit?: boolean;
             issues?: PreviewIssue[];
             lines?: PreviewLine[];
@@ -705,6 +607,30 @@ function CheckoutClientContent({
         }
 
         if (!controller.signal.aborted) {
+          const catalog = payload?.data?.catalog;
+          const products = Array.isArray(catalog?.products) ? catalog.products : [];
+          const rejections = Array.isArray(catalog?.rejected)
+            ? catalog.rejected.filter((rejection) => rejection?.sku)
+            : [];
+
+          onCatalogProductsLoaded(products);
+          setCatalogRejections((current) => {
+            const next = { ...current };
+
+            for (const item of previewItems) {
+              delete next[item.sku];
+            }
+
+            for (const rejection of rejections) {
+              next[rejection.sku] = {
+                reason: rejection.reason,
+                sku: rejection.sku,
+              };
+            }
+
+            return next;
+          });
+          setCatalogLoadState("ready");
           setPreview({
             status: "ready",
             canSubmit: Boolean(payload?.data?.canSubmit),
@@ -716,6 +642,7 @@ function CheckoutClientContent({
         }
       } catch (error) {
         if (!controller.signal.aborted) {
+          setCatalogLoadState("error");
           setPreview((current) => ({
             status: "error",
             issues: [],
@@ -737,7 +664,7 @@ function CheckoutClientContent({
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [cart.items, cartSignature, checkoutMode, form.deliveryMethod, form.useWallet, previewRetryToken, selectedCompany?.id, shouldLoadPreview, t]);
+  }, [cart.items, cartSignature, checkoutMode, form.deliveryMethod, form.useWallet, onCatalogProductsLoaded, previewRetryToken, selectedCompany?.id, shouldLoadPreview, t]);
 
   async function submitOrder() {
     setSubmitAttempted(true);
@@ -856,11 +783,9 @@ function CheckoutClientContent({
 
   function retryCheckoutValidation() {
     requestCartSyncRetry();
-    requestedCatalogKeys.current.clear();
     setCatalogLoadState("idle");
     setSubmitState({ status: "idle" });
     setPreview(idlePreviewState);
-    setCatalogRetryToken((value) => value + 1);
     setPreviewRetryToken((value) => value + 1);
   }
 
