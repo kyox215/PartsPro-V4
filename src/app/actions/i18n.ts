@@ -9,6 +9,7 @@ import {
   type Locale,
   type LocaleScope,
 } from "@/i18n/config";
+import { persistCurrentAccountPreferredLocale } from "@/i18n/account-locale";
 
 export async function setLocale(locale: Locale, scope: LocaleScope) {
   if (!isLocale(locale) || !isLocaleScope(scope)) {
@@ -23,7 +24,14 @@ export async function setLocale(locale: Locale, scope: LocaleScope) {
     maxAge: 60 * 60 * 24 * 365,
   });
 
+  const persistence = await persistCurrentAccountPreferredLocale(locale);
+
   revalidatePath("/", "layout");
 
-  return { ok: true, locale, scope };
+  return {
+    ok: true,
+    locale,
+    scope,
+    persisted: persistence.persisted,
+  };
 }

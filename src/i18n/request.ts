@@ -3,11 +3,14 @@ import {
   defaultLocaleByScope,
   isLocale,
   isLocaleScope,
-  localeCookieByScope,
   resolveLocaleScope,
   type Locale,
   type LocaleScope,
 } from "./config";
+import {
+  readCurrentAccountPreferredLocale,
+  readLocaleCookie,
+} from "./account-locale";
 
 export type RequestI18n = {
   locale: Locale;
@@ -22,10 +25,11 @@ export async function getRequestI18n(): Promise<RequestI18n> {
   const scope = isLocaleScope(headerScope)
     ? headerScope
     : resolveLocaleScope(pathname);
-  const cookieLocale = cookieStore.get(localeCookieByScope[scope])?.value;
-  const locale = isLocale(cookieLocale)
-    ? cookieLocale
-    : defaultLocaleByScope[scope];
+  const accountLocale = await readCurrentAccountPreferredLocale(cookieStore);
+  const cookieLocale = readLocaleCookie(cookieStore, scope);
+  const locale = isLocale(accountLocale)
+    ? accountLocale
+    : cookieLocale ?? defaultLocaleByScope[scope];
 
   return { locale, scope };
 }
