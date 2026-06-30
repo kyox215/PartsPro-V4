@@ -60,6 +60,7 @@ type AdminPanelValue =
   | "orders"
   | "rma"
   | "catalog"
+  | "inventory"
   | "marketplace"
   | "support"
   | "timeline"
@@ -77,6 +78,7 @@ const adminPanelValues = [
   "orders",
   "rma",
   "catalog",
+  "inventory",
   "marketplace",
   "support",
   "timeline",
@@ -89,10 +91,10 @@ const navItems = [
   { labelKey: "orders", icon: ClipboardList, panel: "orders" },
   { labelKey: "rma", icon: RotateCcw, panel: "rma" },
   { labelKey: "catalog", icon: Package, panel: "catalog" },
+  { labelKey: "warehouse", icon: Warehouse, panel: "inventory" },
   { labelKey: "marketplace", icon: ShoppingBag, panel: "marketplace" },
   { labelKey: "support", icon: MessageCircle, panel: "support" },
   { labelKey: "accounts", icon: UsersRound, panel: "accounts" },
-  { labelKey: "warehouse", icon: Warehouse },
   { labelKey: "marketing", icon: Bell, panel: "timeline" },
   { labelKey: "finance", icon: BarChart3 },
   { labelKey: "reports", icon: Boxes },
@@ -140,6 +142,13 @@ const AdminRmaPanel = dynamic(
 const AdminProductsPanel = dynamic(
   () =>
     import("./admin-products-panel").then((module) => module.AdminProductsPanel),
+  { loading: () => <AdminPanelLoadingFallback /> }
+);
+const AdminInventoryPanel = dynamic(
+  () =>
+    import("./admin-inventory-panel").then(
+      (module) => module.AdminInventoryPanel
+    ),
   { loading: () => <AdminPanelLoadingFallback /> }
 );
 const AdminActivityTimeline = dynamic(
@@ -425,6 +434,9 @@ export function AdminDashboard({
               </TabsContent>
               <TabsContent value="catalog" className="order-4 mt-0 min-w-0">
                 <AdminProductsPanel />
+              </TabsContent>
+              <TabsContent value="inventory" className="order-4 mt-0 min-w-0">
+                <AdminInventoryPanel />
               </TabsContent>
               <TabsContent value="marketplace" className="order-4 mt-0 min-w-0">
                 <AdminCommercePanel permissions={currentPermissions} />

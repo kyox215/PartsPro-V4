@@ -967,6 +967,55 @@ export type AdminOrderPage = {
   total: number;
 };
 
+export type AdminSoldStockShortageSort = "urgency" | "sold_desc" | "stock_asc" | "last_sold_desc";
+
+export type AdminSoldStockShortageQueryInput = {
+  limit: number;
+  offset: number;
+  lowStockThreshold: number;
+  q?: string;
+  sort: AdminSoldStockShortageSort;
+  windowDays: number;
+};
+
+export type AdminSoldStockShortageRow = {
+  sku: string;
+  sourceSku: string;
+  name: string;
+  brand: string | null;
+  model: string | null;
+  modelSeries: string | null;
+  category: string | null;
+  qualityGrade: string | null;
+  imageUrl: string | null;
+  imageAlt: string | null;
+  soldQty: number;
+  orderCount: number;
+  lastSoldAt: string | null;
+  startingAvailableQty: number;
+  availableQty: number;
+  actualQty: number;
+  lockedQty: number;
+  stockQty: number;
+  stockStatus: StockStatus;
+  shortageType: "out_of_stock" | "low_stock";
+  suggestedRestockQty: number;
+};
+
+export type AdminSoldStockShortagePage = {
+  rows: AdminSoldStockShortageRow[];
+  summary: {
+    outOfStock: number;
+    lowStock: number;
+    totalSoldQty: number;
+    suggestedRestockQty: number;
+    total: number;
+    windowDays: number;
+    lowStockThreshold: number;
+  };
+  total: number;
+};
+
 export type AdminOrderStatusTransitionInput = {
   orderId: string;
   status: AdminOrderDbStatus | OrderStatus;
@@ -3363,6 +3412,15 @@ export async function listCurrentEmployeeSelfOrderSummaries(): Promise<
         : "Supabase is not configured; no employee self orders are available."
     )
   );
+}
+
+export async function listAdminSoldStockShortages(
+  query: AdminSoldStockShortageQueryInput
+): Promise<RepositoryResult<AdminSoldStockShortagePage>> {
+  const context = await requireSupabaseContext();
+  const page = await readAdminSoldStockShortagePage(context.client, query);
+
+  return { data: page, source: "supabase" };
 }
 
 export async function listAdminOrders(
@@ -6370,6 +6428,308 @@ async function readAdminOrderPage(
   } catch {
     return null;
   }
+}
+
+async function readAdminSoldStockShortagePage(
+  client: SupabaseServerClient,
+  query: AdminSoldStockShortageQueryInput
+): Promise<AdminSoldStockShortagePage> {
+  const windowDays = Math.min(Math.max(Math.trunc(query.windowDays), 1), 365);
+  const lowStockThreshold = Math.min(
+    Math.max(Math.trunc(query.lowStockThreshold), 1),
+    999
+  );
+  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
+  const orderRows = await readRecentSoldOrderRows(client, since);
+  const orderIds = uniqueDefinedStrings(orderRows.map((row) => pickString(row, ["id"])));
+  const orderCreatedAtById = new Map(
+    orderRows
+      .map((row) => [pickString(row, ["id"]), pickString(row, ["created_at", "createdAt"])])
+      .filter((entry): entry is [string, string] => Boolean(entry[0] && entry[1]))
+  );
+  const lineRows = await readOrderLineRowsForOrderIds(client, orderIds);
+
+  if (!lineRows) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_SOLD_STOCK_LINES_UNAVAILABLE",
+      "Sold order lines could not be read from Supabase."
+    );
+  }
+
+  const salesBySku = aggregateSoldOrderLines(lineRows, orderCreatedAtById);
+  const skuCandidates = uniqueDefinedStrings(
+    [...salesBySku.keys()].flatMap((sku) => [sku, ...catalogLookupCandidates(sku)])
+  );
+  const [productRows, inventoryRows] = await Promise.all([
+    readMatchingRows(
+      client,
+      "products",
+      "id, sku_code, name, brand, model, model_series, category, quality_grade, stock_status, stock_qty, image_path, image_alt, status",
+      "sku_code",
+      skuCandidates,
+      Math.max(skuCandidates.length, 1)
+    ),
+    readMatchingRows(
+      client,
+      "inventory_items",
+      "sku_code, actual_qty, available_qty, locked_qty",
+      "sku_code",
+      skuCandidates,
+      Math.max(skuCandidates.length, 1)
+    ),
+  ]);
+  const productsBySku = mapProductRowsBySku(productRows ?? []);
+  const inventoryBySku = aggregateInventoryRowsBySku(inventoryRows ?? []);
+  const normalizedSearch = query.q?.trim().toLowerCase() ?? "";
+  const rows = [...salesBySku.values()]
+    .map((sale) =>
+      buildAdminSoldStockShortageRow(
+        sale,
+        productsBySku.get(sale.sku.toUpperCase()),
+        inventoryBySku.get(sale.sku.toUpperCase()),
+        lowStockThreshold
+      )
+    )
+    .filter(isDefined)
+    .filter((row) => adminSoldStockShortageMatches(row, normalizedSearch));
+  const sortedRows = sortAdminSoldStockShortages(rows, query.sort);
+  const total = sortedRows.length;
+  const offset = Math.max(query.offset, 0);
+  const limit = Math.min(Math.max(query.limit, 1), 200);
+  const pageRows = sortedRows.slice(offset, offset + limit);
+
+  return {
+    rows: pageRows,
+    summary: {
+      outOfStock: rows.filter((row) => row.shortageType === "out_of_stock").length,
+      lowStock: rows.filter((row) => row.shortageType === "low_stock").length,
+      totalSoldQty: rows.reduce((totalQty, row) => totalQty + row.soldQty, 0),
+      suggestedRestockQty: rows.reduce(
+        (totalQty, row) => totalQty + row.suggestedRestockQty,
+        0
+      ),
+      total,
+      windowDays,
+      lowStockThreshold,
+    },
+    total,
+  };
+}
+
+async function readRecentSoldOrderRows(
+  client: SupabaseServerClient,
+  since: string
+) {
+  const { data, error } = await client
+    .from("orders")
+    .select("id, created_at")
+    .is("soft_deleted_at", null)
+    .in("status", ["shipped", "completed"])
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(2000);
+  const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
+
+  if (error || !rows) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_SOLD_STOCK_ORDERS_UNAVAILABLE",
+      "Recent sold orders could not be read from Supabase.",
+      error ? supabaseErrorDetails(error) : undefined
+    );
+  }
+
+  return rows;
+}
+
+type SoldSkuAggregate = {
+  sku: string;
+  sourceSku: string;
+  fallbackName: string;
+  soldQty: number;
+  orderIds: Set<string>;
+  lastSoldAt: string | null;
+};
+
+function aggregateSoldOrderLines(
+  lineRows: DbRow[],
+  orderCreatedAtById: Map<string, string>
+) {
+  const salesBySku = new Map<string, SoldSkuAggregate>();
+
+  for (const line of lineRows) {
+    const rawSku = pickString(line, ["sku_code", "sku"]);
+    const orderId = pickString(line, ["order_id", "orderId"]);
+
+    if (!rawSku || !orderId) {
+      continue;
+    }
+
+    const quantity = Math.max(0, Math.trunc(pickNumber(line, ["quantity"]) ?? 0));
+    const cancelledQty = Math.max(
+      0,
+      Math.trunc(pickNumber(line, ["cancelled_qty", "cancelledQty"]) ?? 0)
+    );
+    const soldQty = Math.max(0, quantity - cancelledQty);
+
+    if (soldQty <= 0) {
+      continue;
+    }
+
+    const sku = toPublicSku(rawSku);
+    const current = salesBySku.get(sku) ?? {
+      sku,
+      sourceSku: rawSku,
+      fallbackName: pickString(line, ["product_name", "name"]) ?? sku,
+      soldQty: 0,
+      orderIds: new Set<string>(),
+      lastSoldAt: null,
+    };
+    const soldAt = orderCreatedAtById.get(orderId) ?? null;
+
+    current.soldQty += soldQty;
+    current.orderIds.add(orderId);
+    if (timestampFromIso(soldAt) > timestampFromIso(current.lastSoldAt)) {
+      current.lastSoldAt = soldAt;
+    }
+
+    salesBySku.set(sku, current);
+  }
+
+  return salesBySku;
+}
+
+function aggregateInventoryRowsBySku(rows: DbRow[]) {
+  const inventoryBySku = new Map<
+    string,
+    { actualQty: number; availableQty: number; lockedQty: number }
+  >();
+
+  for (const row of rows) {
+    const rawSku = pickString(row, ["sku_code", "sku"]);
+
+    if (!rawSku) {
+      continue;
+    }
+
+    const key = toPublicSku(rawSku).toUpperCase();
+    const current = inventoryBySku.get(key) ?? {
+      actualQty: 0,
+      availableQty: 0,
+      lockedQty: 0,
+    };
+
+    current.actualQty += Math.max(0, pickNumber(row, ["actual_qty", "actualQty"]) ?? 0);
+    current.availableQty += Math.max(
+      0,
+      pickNumber(row, ["available_qty", "availableQty"]) ?? 0
+    );
+    current.lockedQty += Math.max(0, pickNumber(row, ["locked_qty", "lockedQty"]) ?? 0);
+    inventoryBySku.set(key, current);
+  }
+
+  return inventoryBySku;
+}
+
+function buildAdminSoldStockShortageRow(
+  sale: SoldSkuAggregate,
+  product: DbRow | undefined,
+  inventory: { actualQty: number; availableQty: number; lockedQty: number } | undefined,
+  lowStockThreshold: number
+): AdminSoldStockShortageRow | null {
+  const sourceSku = pickString(product, ["sku_code", "sku"]) ?? sale.sourceSku;
+  const stockQty = Math.max(0, pickNumber(product, ["stock_qty", "stock"]) ?? 0);
+  const availableQty = inventory?.availableQty ?? stockQty;
+  const actualQty = inventory?.actualQty ?? stockQty;
+  const lockedQty = inventory?.lockedQty ?? 0;
+
+  if (availableQty >= lowStockThreshold) {
+    return null;
+  }
+
+  const shortageType = availableQty <= 0 ? "out_of_stock" : "low_stock";
+  const imagePath = pickString(product, ["image_path", "imagePath"]);
+
+  return {
+    sku: sale.sku,
+    sourceSku,
+    name: pickString(product, ["name", "product_name"]) ?? sale.fallbackName,
+    brand: pickString(product, ["brand"]),
+    model: pickString(product, ["model"]),
+    modelSeries: pickString(product, ["model_series", "modelSeries"]),
+    category: pickString(product, ["category"]),
+    qualityGrade: pickString(product, ["quality_grade", "qualityGrade"]),
+    imageUrl: resolveProductImageUrl(imagePath) ?? null,
+    imageAlt: pickString(product, ["image_alt", "imageAlt"]),
+    soldQty: sale.soldQty,
+    orderCount: sale.orderIds.size,
+    lastSoldAt: sale.lastSoldAt,
+    startingAvailableQty: availableQty + sale.soldQty,
+    availableQty,
+    actualQty,
+    lockedQty,
+    stockQty,
+    stockStatus: normalizeStockStatus(pickString(product, ["stock_status"]), availableQty),
+    shortageType,
+    suggestedRestockQty: Math.max(sale.soldQty, lowStockThreshold - availableQty),
+  };
+}
+
+function adminSoldStockShortageMatches(
+  row: AdminSoldStockShortageRow,
+  normalizedSearch: string
+) {
+  if (!normalizedSearch) {
+    return true;
+  }
+
+  return [
+    row.sku,
+    row.sourceSku,
+    row.name,
+    row.brand,
+    row.model,
+    row.modelSeries,
+    row.category,
+    row.qualityGrade,
+  ]
+    .filter(isDefined)
+    .some((value) => value.toLowerCase().includes(normalizedSearch));
+}
+
+function sortAdminSoldStockShortages(
+  rows: AdminSoldStockShortageRow[],
+  sort: AdminSoldStockShortageSort
+) {
+  return [...rows].sort((left, right) => {
+    if (sort === "sold_desc") {
+      return right.soldQty - left.soldQty || compareNullableIsoDesc(left.lastSoldAt, right.lastSoldAt);
+    }
+
+    if (sort === "stock_asc") {
+      return left.availableQty - right.availableQty || right.soldQty - left.soldQty;
+    }
+
+    if (sort === "last_sold_desc") {
+      return compareNullableIsoDesc(left.lastSoldAt, right.lastSoldAt);
+    }
+
+    return (
+      shortageRank(left.shortageType) - shortageRank(right.shortageType) ||
+      left.availableQty - right.availableQty ||
+      right.soldQty - left.soldQty ||
+      compareNullableIsoDesc(left.lastSoldAt, right.lastSoldAt)
+    );
+  });
+}
+
+function shortageRank(type: AdminSoldStockShortageRow["shortageType"]) {
+  return type === "out_of_stock" ? 0 : 1;
+}
+
+function compareNullableIsoDesc(left: string | null, right: string | null) {
+  return timestampFromIso(right) - timestampFromIso(left);
 }
 
 async function readAdminOrderDetail(
