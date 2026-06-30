@@ -3,6 +3,7 @@
 import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   Ban,
@@ -1176,6 +1177,7 @@ const panelText = {
 } as const;
 
 export function AdminProductsPanel() {
+  const searchParams = useSearchParams();
   const { locale } = useI18n();
   const text = locale.toLowerCase().startsWith("it") ? panelText.it : panelText.zh;
   const adminText = getAdminDictionary(locale).admin;
@@ -1216,6 +1218,24 @@ export function AdminProductsPanel() {
   const [isBatchDetailOpen, setIsBatchDetailOpen] = React.useState(false);
   const [isLoadingBatchDetail, setIsLoadingBatchDetail] = React.useState(false);
   const [pendingBatchDownload, setPendingBatchDownload] = React.useState<string | null>(null);
+  const focusedSku = searchParams.get("sku")?.trim() ?? "";
+
+  React.useEffect(() => {
+    if (!focusedSku) {
+      return;
+    }
+
+    setWorkspace("products");
+    setFilters((current) =>
+      current.q === focusedSku
+        ? current
+        : {
+            ...current,
+            q: focusedSku,
+            page: 0,
+          }
+    );
+  }, [focusedSku]);
 
   const refreshProducts = React.useCallback(
     async (

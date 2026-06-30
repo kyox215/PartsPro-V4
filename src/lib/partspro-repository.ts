@@ -968,6 +968,12 @@ export type AdminOrderPage = {
 };
 
 export type AdminSoldStockShortageSort = "urgency" | "sold_desc" | "stock_asc" | "last_sold_desc";
+export type AdminWarehouseReplenishmentStatus =
+  | "open"
+  | "planned"
+  | "ordered"
+  | "received"
+  | "ignored";
 
 export type AdminSoldStockShortageQueryInput = {
   limit: number;
@@ -1000,6 +1006,10 @@ export type AdminSoldStockShortageRow = {
   stockStatus: StockStatus;
   shortageType: "out_of_stock" | "low_stock";
   suggestedRestockQty: number;
+  supplier: string | null;
+  costPrice: number;
+  moq: number;
+  activeReplenishmentItem: AdminWarehouseReplenishmentItem | null;
 };
 
 export type AdminSoldStockShortagePage = {
@@ -1012,6 +1022,90 @@ export type AdminSoldStockShortagePage = {
     total: number;
     windowDays: number;
     lowStockThreshold: number;
+  };
+  total: number;
+};
+
+export type AdminWarehouseReplenishmentQueryInput = {
+  limit: number;
+  offset: number;
+  q?: string;
+  status?: AdminWarehouseReplenishmentStatus | "all";
+  supplier?: string;
+};
+
+export type AdminWarehouseReplenishmentCreateInput = {
+  availableQty: number;
+  actualQty: number;
+  costPrice?: number | null;
+  lastSoldAt?: string | null;
+  lockedQty: number;
+  lowStockThreshold: number;
+  moq?: number | null;
+  note?: string | null;
+  orderCount: number;
+  plannedQty?: number | null;
+  productName: string;
+  shortageType: "out_of_stock" | "low_stock";
+  sku: string;
+  soldQty: number;
+  source?: string;
+  startingAvailableQty: number;
+  stockQty: number;
+  suggestedQty: number;
+  supplier?: string | null;
+  windowDays: number;
+};
+
+export type AdminWarehouseReplenishmentUpdateInput = {
+  id: string;
+  note?: string | null;
+  plannedQty?: number;
+  status?: AdminWarehouseReplenishmentStatus;
+  supplier?: string | null;
+};
+
+export type AdminWarehouseReplenishmentItem = {
+  id: string;
+  sku: string;
+  source: string;
+  status: AdminWarehouseReplenishmentStatus;
+  productName: string;
+  supplier: string | null;
+  costPrice: number;
+  moq: number;
+  suggestedQty: number;
+  plannedQty: number;
+  soldQty: number;
+  orderCount: number;
+  startingAvailableQty: number;
+  availableQty: number;
+  actualQty: number;
+  lockedQty: number;
+  stockQty: number;
+  lowStockThreshold: number;
+  windowDays: number;
+  shortageType: "out_of_stock" | "low_stock";
+  lastSoldAt: string | null;
+  note: string | null;
+  snapshot: Record<string, unknown>;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminWarehouseReplenishmentPage = {
+  items: AdminWarehouseReplenishmentItem[];
+  summary: {
+    open: number;
+    planned: number;
+    ordered: number;
+    received: number;
+    ignored: number;
+    active: number;
+    supplierMissing: number;
+    plannedQty: number;
   };
   total: number;
 };
@@ -3421,6 +3515,41 @@ export async function listAdminSoldStockShortages(
   const page = await readAdminSoldStockShortagePage(context.client, query);
 
   return { data: page, source: "supabase" };
+}
+
+export async function listAdminWarehouseReplenishmentItems(
+  query: AdminWarehouseReplenishmentQueryInput
+): Promise<RepositoryResult<AdminWarehouseReplenishmentPage>> {
+  const context = await requireSupabaseContext();
+  const page = await readAdminWarehouseReplenishmentPage(context.client, query);
+
+  return { data: page, source: "supabase" };
+}
+
+export async function createAdminWarehouseReplenishmentItem(
+  input: AdminWarehouseReplenishmentCreateInput
+): Promise<RepositoryResult<AdminWarehouseReplenishmentItem>> {
+  const context = await requireSupabaseContext();
+  const item = await insertAdminWarehouseReplenishmentItem(
+    context.client,
+    context.userId,
+    input
+  );
+
+  return { data: item, source: "supabase" };
+}
+
+export async function updateAdminWarehouseReplenishmentItem(
+  input: AdminWarehouseReplenishmentUpdateInput
+): Promise<RepositoryResult<AdminWarehouseReplenishmentItem>> {
+  const context = await requireSupabaseContext();
+  const item = await patchAdminWarehouseReplenishmentItem(
+    context.client,
+    context.userId,
+    input
+  );
+
+  return { data: item, source: "supabase" };
 }
 
 export async function listAdminOrders(
@@ -6465,7 +6594,7 @@ async function readAdminSoldStockShortagePage(
     readMatchingRows(
       client,
       "products",
-      "id, sku_code, name, brand, model, model_series, category, quality_grade, stock_status, stock_qty, image_path, image_alt, status",
+      "id, sku_code, name, brand, model, model_series, category, quality_grade, stock_status, stock_qty, cost_price, moq, supplier, image_path, image_alt, status",
       "sku_code",
       skuCandidates,
       Math.max(skuCandidates.length, 1)
@@ -6481,6 +6610,10 @@ async function readAdminSoldStockShortagePage(
   ]);
   const productsBySku = mapProductRowsBySku(productRows ?? []);
   const inventoryBySku = aggregateInventoryRowsBySku(inventoryRows ?? []);
+  const activeReplenishmentBySku = await readActiveWarehouseReplenishmentBySku(
+    client,
+    skuCandidates
+  );
   const normalizedSearch = query.q?.trim().toLowerCase() ?? "";
   const rows = [...salesBySku.values()]
     .map((sale) =>
@@ -6488,6 +6621,7 @@ async function readAdminSoldStockShortagePage(
         sale,
         productsBySku.get(sale.sku.toUpperCase()),
         inventoryBySku.get(sale.sku.toUpperCase()),
+        activeReplenishmentBySku.get(sale.sku.toUpperCase()) ?? null,
         lowStockThreshold
       )
     )
@@ -6515,6 +6649,365 @@ async function readAdminSoldStockShortagePage(
     },
     total,
   };
+}
+
+async function readAdminWarehouseReplenishmentPage(
+  client: SupabaseServerClient,
+  query: AdminWarehouseReplenishmentQueryInput
+): Promise<AdminWarehouseReplenishmentPage> {
+  const limit = Math.min(Math.max(Math.trunc(query.limit), 1), 200);
+  const offset = Math.max(Math.trunc(query.offset), 0);
+  const status =
+    query.status && query.status !== "all"
+      ? normalizeWarehouseReplenishmentStatus(query.status)
+      : null;
+  const q = query.q?.trim();
+  const supplier = sanitizeSupplierText(query.supplier);
+  let request = client
+    .from("warehouse_replenishment_items")
+    .select("*", { count: "exact" })
+    .order("updated_at", { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (status) {
+    request = request.eq("status", status);
+  }
+
+  if (supplier) {
+    request = request.ilike("supplier", `%${sanitizePostgrestLikeTerm(supplier)}%`);
+  }
+
+  if (q && q.length >= 2) {
+    const escaped = sanitizePostgrestLikeTerm(q);
+    request = request.or(
+      `sku_code.ilike.%${escaped}%,product_name.ilike.%${escaped}%,supplier.ilike.%${escaped}%,note.ilike.%${escaped}%`
+    );
+  }
+
+  const { data, error, count } = await request;
+
+  if (error || !Array.isArray(data)) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_WAREHOUSE_REPLENISHMENT_READ_UNAVAILABLE",
+      "Warehouse replenishment queue could not be read from Supabase.",
+      error ? supabaseErrorDetails(error) : undefined
+    );
+  }
+
+  const summaryRows = await readWarehouseReplenishmentSummaryRows(client, {
+    q,
+    supplier,
+  });
+  const summary = summarizeWarehouseReplenishmentItems(summaryRows);
+
+  return {
+    items: data.filter(isDbRow).map(mapWarehouseReplenishmentItemRow).filter(isDefined),
+    summary,
+    total: count ?? data.length,
+  };
+}
+
+async function readWarehouseReplenishmentSummaryRows(
+  client: SupabaseServerClient,
+  query: { q?: string; supplier?: string }
+) {
+  let request = client
+    .from("warehouse_replenishment_items")
+    .select("status, supplier, planned_qty")
+    .limit(5000);
+
+  if (query.supplier) {
+    request = request.ilike("supplier", `%${sanitizePostgrestLikeTerm(query.supplier)}%`);
+  }
+
+  if (query.q && query.q.length >= 2) {
+    const escaped = sanitizePostgrestLikeTerm(query.q);
+    request = request.or(
+      `sku_code.ilike.%${escaped}%,product_name.ilike.%${escaped}%,supplier.ilike.%${escaped}%,note.ilike.%${escaped}%`
+    );
+  }
+
+  const { data, error } = await request;
+
+  if (error || !Array.isArray(data)) {
+    return [];
+  }
+
+  return data.filter(isDbRow).map(mapWarehouseReplenishmentItemRow).filter(isDefined);
+}
+
+async function readActiveWarehouseReplenishmentBySku(
+  client: SupabaseServerClient,
+  skuCandidates: string[]
+) {
+  const normalizedSkus = uniqueDefinedStrings(skuCandidates.map((sku) => toPublicSku(sku)));
+  const itemsBySku = new Map<string, AdminWarehouseReplenishmentItem>();
+
+  if (normalizedSkus.length === 0) {
+    return itemsBySku;
+  }
+
+  const { data, error } = await client
+    .from("warehouse_replenishment_items")
+    .select("*")
+    .in("sku_code", normalizedSkus)
+    .in("status", ["open", "planned", "ordered"])
+    .order("updated_at", { ascending: false })
+    .limit(Math.max(normalizedSkus.length * 2, 1));
+
+  if (error || !Array.isArray(data)) {
+    return itemsBySku;
+  }
+
+  for (const item of data.filter(isDbRow).map(mapWarehouseReplenishmentItemRow).filter(isDefined)) {
+    const key = item.sku.toUpperCase();
+
+    if (!itemsBySku.has(key)) {
+      itemsBySku.set(key, item);
+    }
+  }
+
+  return itemsBySku;
+}
+
+async function insertAdminWarehouseReplenishmentItem(
+  client: SupabaseServerClient,
+  userId: string,
+  input: AdminWarehouseReplenishmentCreateInput
+) {
+  const sku = normalizeSku(input.sku);
+  const activeBySku = await readActiveWarehouseReplenishmentBySku(client, [sku]);
+  const existing = activeBySku.get(sku.toUpperCase());
+
+  if (existing) {
+    return existing;
+  }
+
+  const productName = input.productName.trim();
+  const supplier = sanitizeSupplierText(input.supplier);
+  const moq = Math.max(1, Math.trunc(input.moq ?? 1));
+  const suggestedQty = Math.max(0, Math.trunc(input.suggestedQty));
+  const plannedQty = Math.max(
+    0,
+    Math.trunc(input.plannedQty ?? Math.max(suggestedQty, moq))
+  );
+  const source = input.source?.trim() || "sold_stock_shortage";
+
+  if (!sku || !productName) {
+    throw new RepositoryWriteError(
+      400,
+      "ADMIN_WAREHOUSE_REPLENISHMENT_INVALID",
+      "Warehouse replenishment item requires SKU and product name."
+    );
+  }
+
+  const payload = {
+    sku_code: sku,
+    source,
+    status: "open",
+    product_name: productName,
+    supplier: supplier || null,
+    cost_price: roundMoney(Math.max(0, input.costPrice ?? 0)),
+    moq,
+    suggested_qty: suggestedQty,
+    planned_qty: plannedQty,
+    sold_qty: Math.max(0, Math.trunc(input.soldQty)),
+    order_count: Math.max(0, Math.trunc(input.orderCount)),
+    starting_available_qty: Math.max(0, Math.trunc(input.startingAvailableQty)),
+    available_qty: Math.max(0, Math.trunc(input.availableQty)),
+    actual_qty: Math.max(0, Math.trunc(input.actualQty)),
+    locked_qty: Math.max(0, Math.trunc(input.lockedQty)),
+    stock_qty: Math.max(0, Math.trunc(input.stockQty)),
+    low_stock_threshold: Math.max(1, Math.trunc(input.lowStockThreshold)),
+    window_days: Math.max(1, Math.trunc(input.windowDays)),
+    shortage_type: input.shortageType,
+    last_sold_at: input.lastSoldAt ?? null,
+    note: normalizeNullableOperationsText(input.note ?? undefined),
+    snapshot: {
+      createdFrom: "sold_stock_shortage",
+      lowStockThreshold: Math.max(1, Math.trunc(input.lowStockThreshold)),
+      windowDays: Math.max(1, Math.trunc(input.windowDays)),
+      suggestedQty,
+    },
+    created_by: userId,
+    updated_by: userId,
+  };
+  const { data, error } = await client
+    .from("warehouse_replenishment_items")
+    .insert(payload)
+    .select("*")
+    .single();
+
+  if (error || !isDbRow(data)) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_WAREHOUSE_REPLENISHMENT_CREATE_FAILED",
+      "Warehouse replenishment item could not be created.",
+      error ? supabaseErrorDetails(error) : undefined
+    );
+  }
+
+  const item = mapWarehouseReplenishmentItemRow(data);
+
+  if (!item) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_WAREHOUSE_REPLENISHMENT_CREATE_INVALID",
+      "Warehouse replenishment item was saved but returned an invalid shape."
+    );
+  }
+
+  return item;
+}
+
+async function patchAdminWarehouseReplenishmentItem(
+  client: SupabaseServerClient,
+  userId: string,
+  input: AdminWarehouseReplenishmentUpdateInput
+) {
+  if (!uuidPattern.test(input.id)) {
+    throw new RepositoryWriteError(
+      400,
+      "ADMIN_WAREHOUSE_REPLENISHMENT_ID_INVALID",
+      "Warehouse replenishment item id is invalid."
+    );
+  }
+
+  const payload: Record<string, unknown> = {
+    updated_by: userId,
+  };
+
+  if (input.status !== undefined) {
+    payload.status = input.status;
+  }
+
+  if (input.plannedQty !== undefined) {
+    payload.planned_qty = Math.max(0, Math.trunc(input.plannedQty));
+  }
+
+  if (input.supplier !== undefined) {
+    payload.supplier = sanitizeSupplierText(input.supplier) || null;
+  }
+
+  if (input.note !== undefined) {
+    payload.note = normalizeNullableOperationsText(input.note ?? undefined);
+  }
+
+  const { data, error } = await client
+    .from("warehouse_replenishment_items")
+    .update(payload)
+    .eq("id", input.id)
+    .select("*")
+    .single();
+
+  if (error || !isDbRow(data)) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_WAREHOUSE_REPLENISHMENT_UPDATE_FAILED",
+      "Warehouse replenishment item could not be updated.",
+      error ? supabaseErrorDetails(error) : undefined
+    );
+  }
+
+  const item = mapWarehouseReplenishmentItemRow(data);
+
+  if (!item) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_WAREHOUSE_REPLENISHMENT_UPDATE_INVALID",
+      "Warehouse replenishment item was updated but returned an invalid shape."
+    );
+  }
+
+  return item;
+}
+
+function summarizeWarehouseReplenishmentItems(items: AdminWarehouseReplenishmentItem[]) {
+  return {
+    open: items.filter((item) => item.status === "open").length,
+    planned: items.filter((item) => item.status === "planned").length,
+    ordered: items.filter((item) => item.status === "ordered").length,
+    received: items.filter((item) => item.status === "received").length,
+    ignored: items.filter((item) => item.status === "ignored").length,
+    active: items.filter((item) =>
+      item.status === "open" || item.status === "planned" || item.status === "ordered"
+    ).length,
+    supplierMissing: items.filter((item) => !item.supplier).length,
+    plannedQty: items.reduce((totalQty, item) => totalQty + item.plannedQty, 0),
+  };
+}
+
+function mapWarehouseReplenishmentItemRow(
+  row: DbRow
+): AdminWarehouseReplenishmentItem | null {
+  const id = pickString(row, ["id"]);
+  const sku = pickString(row, ["sku_code", "sku"]);
+  const productName = pickString(row, ["product_name", "productName"]);
+  const status = normalizeWarehouseReplenishmentStatus(pickString(row, ["status"]));
+  const shortageType = pickString(row, ["shortage_type", "shortageType"]);
+
+  if (
+    !id ||
+    !sku ||
+    !productName ||
+    !status ||
+    (shortageType !== "out_of_stock" && shortageType !== "low_stock")
+  ) {
+    return null;
+  }
+
+  return {
+    id,
+    sku: toPublicSku(sku),
+    source: pickString(row, ["source"]) ?? "sold_stock_shortage",
+    status,
+    productName,
+    supplier: sanitizeOptionalSupplierText(pickString(row, ["supplier"])) ?? null,
+    costPrice: pickNumber(row, ["cost_price", "costPrice"]) ?? 0,
+    moq: Math.max(1, Math.trunc(pickNumber(row, ["moq"]) ?? 1)),
+    suggestedQty: Math.max(0, Math.trunc(pickNumber(row, ["suggested_qty", "suggestedQty"]) ?? 0)),
+    plannedQty: Math.max(0, Math.trunc(pickNumber(row, ["planned_qty", "plannedQty"]) ?? 0)),
+    soldQty: Math.max(0, Math.trunc(pickNumber(row, ["sold_qty", "soldQty"]) ?? 0)),
+    orderCount: Math.max(0, Math.trunc(pickNumber(row, ["order_count", "orderCount"]) ?? 0)),
+    startingAvailableQty: Math.max(
+      0,
+      Math.trunc(pickNumber(row, ["starting_available_qty", "startingAvailableQty"]) ?? 0)
+    ),
+    availableQty: Math.max(0, Math.trunc(pickNumber(row, ["available_qty", "availableQty"]) ?? 0)),
+    actualQty: Math.max(0, Math.trunc(pickNumber(row, ["actual_qty", "actualQty"]) ?? 0)),
+    lockedQty: Math.max(0, Math.trunc(pickNumber(row, ["locked_qty", "lockedQty"]) ?? 0)),
+    stockQty: Math.max(0, Math.trunc(pickNumber(row, ["stock_qty", "stockQty"]) ?? 0)),
+    lowStockThreshold: Math.max(
+      1,
+      Math.trunc(pickNumber(row, ["low_stock_threshold", "lowStockThreshold"]) ?? 10)
+    ),
+    windowDays: Math.max(1, Math.trunc(pickNumber(row, ["window_days", "windowDays"]) ?? 30)),
+    shortageType,
+    lastSoldAt: pickString(row, ["last_sold_at", "lastSoldAt"]),
+    note: pickString(row, ["note"]),
+    snapshot: readRecordObject(row.snapshot) ?? {},
+    createdBy: pickString(row, ["created_by", "createdBy"]),
+    updatedBy: pickString(row, ["updated_by", "updatedBy"]),
+    createdAt: pickString(row, ["created_at", "createdAt"]) ?? "",
+    updatedAt: pickString(row, ["updated_at", "updatedAt"]) ?? "",
+  };
+}
+
+function normalizeWarehouseReplenishmentStatus(
+  value: string | null | undefined
+): AdminWarehouseReplenishmentStatus | null {
+  if (
+    value === "open" ||
+    value === "planned" ||
+    value === "ordered" ||
+    value === "received" ||
+    value === "ignored"
+  ) {
+    return value;
+  }
+
+  return null;
 }
 
 async function readRecentSoldOrderRows(
@@ -6636,6 +7129,7 @@ function buildAdminSoldStockShortageRow(
   sale: SoldSkuAggregate,
   product: DbRow | undefined,
   inventory: { actualQty: number; availableQty: number; lockedQty: number } | undefined,
+  activeReplenishmentItem: AdminWarehouseReplenishmentItem | null,
   lowStockThreshold: number
 ): AdminSoldStockShortageRow | null {
   const sourceSku = pickString(product, ["sku_code", "sku"]) ?? sale.sourceSku;
@@ -6643,6 +7137,11 @@ function buildAdminSoldStockShortageRow(
   const availableQty = inventory?.availableQty ?? stockQty;
   const actualQty = inventory?.actualQty ?? stockQty;
   const lockedQty = inventory?.lockedQty ?? 0;
+  const costPrice = pickNumber(product, ["cost_price", "costPrice"]) ?? 0;
+  const moq = Math.max(
+    1,
+    Math.trunc(pickNumber(product, ["moq", "min_order_quantity"]) ?? 1)
+  );
 
   if (availableQty >= lowStockThreshold) {
     return null;
@@ -6672,7 +7171,11 @@ function buildAdminSoldStockShortageRow(
     stockQty,
     stockStatus: normalizeStockStatus(pickString(product, ["stock_status"]), availableQty),
     shortageType,
-    suggestedRestockQty: Math.max(sale.soldQty, lowStockThreshold - availableQty),
+    suggestedRestockQty: Math.max(sale.soldQty, lowStockThreshold - availableQty, moq),
+    supplier: sanitizeOptionalSupplierText(pickString(product, ["supplier"])) ?? null,
+    costPrice,
+    moq,
+    activeReplenishmentItem,
   };
 }
 
