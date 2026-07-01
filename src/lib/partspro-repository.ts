@@ -1,4 +1,8 @@
 import { isSupabaseConfigured } from "@/lib/supabase/env";
+import {
+  createServiceRoleClient,
+  isSupabaseServiceRoleConfigured,
+} from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
   readLinkedCustomerId,
@@ -5278,8 +5282,9 @@ async function readAdminSupplierBatchDetail(
   }
 
   const lines = await readSupplierBatchLines(client, [batchId]);
-  const productsBySku = await readSupplierBatchProducts(client, lines);
-  const inventoryBySku = await readSupplierBatchInventory(client, lines);
+  const lookupClient = createSupplierBatchLookupClient(client);
+  const productsBySku = await readSupplierBatchProducts(lookupClient, lines);
+  const inventoryBySku = await readSupplierBatchInventory(lookupClient, lines);
   const stats = summarizeSupplierBatchLines(lines, productsBySku);
   const statsByBatch = new Map([[batchId, stats]]);
   const batch = mapAdminSupplierBatchRow(data, statsByBatch);
@@ -5297,6 +5302,18 @@ async function readAdminSupplierBatchDetail(
   };
 }
 
+function createSupplierBatchLookupClient(client: SupabaseServerClient): SupabaseServerClient {
+  if (!isSupabaseServiceRoleConfigured()) {
+    return client;
+  }
+
+  try {
+    return createServiceRoleClient() as unknown as SupabaseServerClient;
+  } catch {
+    return client;
+  }
+}
+
 async function readSupplierBatchLineStats(
   client: SupabaseServerClient,
   batchIds: string[]
@@ -5306,7 +5323,8 @@ async function readSupplierBatchLineStats(
   }
 
   const rows = await readSupplierBatchLines(client, batchIds);
-  const productsBySku = await readSupplierBatchProducts(client, rows);
+  const lookupClient = createSupplierBatchLookupClient(client);
+  const productsBySku = await readSupplierBatchProducts(lookupClient, rows);
   const rowsByBatch = new Map<string, DbRow[]>();
 
   for (const row of rows) {
@@ -5367,20 +5385,26 @@ async function readSupplierBatchProducts(
     return new Map<string, DbRow>();
   }
 
-  const { data, error } = await client
-    .from("products")
-    .select(
-      "sku_code, name, brand, model, model_codes, compatibility_models, category, quality_grade, cost_price, retail_price, b2b_price, stock_qty, stock_status, status, image_path"
-    )
-    .in("sku_code", skuCodes);
+  const rows = await readMatchingRows(
+    client,
+    "products",
+    "sku_code, name, brand, model, model_codes, compatibility_models, category, quality_grade, cost_price, retail_price, b2b_price, stock_qty, stock_status, status, image_path",
+    "sku_code",
+    skuCodes,
+    skuCodes.length
+  );
 
-  if (error || !Array.isArray(data)) {
-    return new Map<string, DbRow>();
+  if (!rows) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_SUPPLIER_BATCH_PRODUCTS_READ_UNAVAILABLE",
+      "Admin supplier batch products could not be read from Supabase."
+    );
   }
 
   const productsBySku = new Map<string, DbRow>();
 
-  for (const row of data as DbRow[]) {
+  for (const row of rows) {
     const sku = pickString(row, ["sku_code"]);
 
     if (sku) {
@@ -5401,18 +5425,26 @@ async function readSupplierBatchInventory(
     return new Map<string, { actualQty: number; availableQty: number; lockedQty: number }>();
   }
 
-  const { data, error } = await client
-    .from("inventory_items")
-    .select("sku_code, actual_qty, available_qty, locked_qty")
-    .in("sku_code", skuCodes);
+  const rows = await readMatchingRows(
+    client,
+    "inventory_items",
+    "sku_code, actual_qty, available_qty, locked_qty",
+    "sku_code",
+    skuCodes,
+    skuCodes.length
+  );
 
-  if (error || !Array.isArray(data)) {
-    return new Map<string, { actualQty: number; availableQty: number; lockedQty: number }>();
+  if (!rows) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_SUPPLIER_BATCH_INVENTORY_READ_UNAVAILABLE",
+      "Admin supplier batch inventory could not be read from Supabase."
+    );
   }
 
   const inventoryBySku = new Map<string, { actualQty: number; availableQty: number; lockedQty: number }>();
 
-  for (const row of data as DbRow[]) {
+  for (const row of rows) {
     const sku = pickString(row, ["sku_code"]);
 
     if (!sku) {
