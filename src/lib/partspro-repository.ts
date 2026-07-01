@@ -6594,7 +6594,7 @@ async function readAdminSoldStockShortagePage(
     readMatchingRows(
       client,
       "products",
-      "id, sku_code, name, brand, model, model_series, category, quality_grade, stock_status, stock_qty, cost_price, moq, supplier, image_path, image_alt, status",
+      "id, sku_code, name, brand, model, model_series, category, quality_grade, stock_status, stock_qty, cost_price, moq, supplier, image_path, image_alt, gallery_image_paths, status",
       "sku_code",
       skuCandidates,
       Math.max(skuCandidates.length, 1)
@@ -7148,7 +7148,10 @@ function buildAdminSoldStockShortageRow(
   }
 
   const shortageType = availableQty <= 0 ? "out_of_stock" : "low_stock";
-  const imagePath = pickString(product, ["image_path", "imagePath"]);
+  const imagePath =
+    pickString(product, ["image_path", "imagePath"]) ??
+    readStringArray(product ?? {}, ["gallery_image_paths", "galleryImagePaths"])[0] ??
+    null;
 
   return {
     sku: sale.sku,

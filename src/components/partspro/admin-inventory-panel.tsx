@@ -427,54 +427,57 @@ export function AdminInventoryPanel() {
   );
 
   return (
-    <section className="min-w-0 space-y-4">
-      <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+    <section className="min-w-0 space-y-3">
+      <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
-          <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800">
             <Warehouse className="size-3.5" />
             {text.eyebrow}
           </div>
-          <h1 className="mt-3 text-2xl font-black tracking-normal text-slate-950">
+          <h1 className="mt-2 text-xl font-black tracking-normal text-slate-950 lg:text-2xl">
             {text.title}
           </h1>
-          <p className="mt-1 max-w-3xl text-sm font-medium leading-6 text-slate-600">
+          <p className="mt-0.5 max-w-3xl text-xs font-medium leading-5 text-slate-600 lg:text-sm">
             {text.description}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-3 gap-1.5 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
           <Button
             type="button"
             variant="outline"
-            className="bg-white"
+            size="sm"
+            className="min-w-0 bg-white px-2.5"
             onClick={() => refresh()}
           >
             <RefreshCw className={cn("size-4", pending && "animate-spin")} />
-            {text.refresh}
+            <span className="truncate">{text.refresh}</span>
           </Button>
           <Button
             type="button"
             variant="outline"
-            className="bg-white"
+            size="sm"
+            className="min-w-0 bg-white px-2.5"
             disabled={rows.length === 0}
             onClick={exportCsv}
           >
             <Download className="size-4" />
-            {text.exportCsv}
+            <span className="truncate">{text.exportCsv}</span>
           </Button>
           <Button
             type="button"
             variant="outline"
-            className="bg-white"
+            size="sm"
+            className="min-w-0 bg-white px-2.5"
             disabled={replenishmentItems.length === 0}
             onClick={exportPurchaseCsv}
           >
             <FileSpreadsheet className="size-4" />
-            {text.exportPurchaseCsv}
+            <span className="truncate">{text.exportPurchaseCsv}</span>
           </Button>
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 xl:grid-cols-8">
         <InventoryMetric
           icon={PackageX}
           label={text.outOfStock}
@@ -499,9 +502,6 @@ export function AdminInventoryPanel() {
           tone="green"
           value={summary.suggestedRestockQty}
         />
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <InventoryMetric
           icon={Clipboard}
           label={text.queueActive}
@@ -528,24 +528,24 @@ export function AdminInventoryPanel() {
         />
       </div>
 
-      <Card className="overflow-hidden rounded-lg border-slate-200 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
-        <CardHeader className="border-b bg-white">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <CardTitle className="text-base font-black text-slate-950">
+      <Card className="overflow-hidden rounded-md border-slate-200 shadow-[0_8px_18px_rgba(15,23,42,0.035)]">
+        <CardHeader className="border-b bg-white px-3 py-2">
+          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+            <CardTitle className="text-sm font-black text-slate-950">
               {text.tableTitle}
             </CardTitle>
-            <div className="grid gap-2 md:grid-cols-[minmax(220px,1fr)_130px_130px_150px]">
+            <div className="grid gap-1.5 md:grid-cols-[minmax(220px,1fr)_112px_112px_132px]">
               <form className="relative min-w-0" onSubmit={submitSearch}>
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
                 <Input
-                  className="bg-white pl-9"
+                  className="h-8 bg-white pl-8 text-xs"
                   value={queryInput}
                   placeholder={text.searchPlaceholder}
                   onChange={(event) => setQueryInput(event.target.value)}
                 />
               </form>
               <Select value={windowDays} onValueChange={setWindowDays}>
-                <SelectTrigger className="bg-white">
+                <SelectTrigger className="h-8 bg-white text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -555,7 +555,7 @@ export function AdminInventoryPanel() {
                 </SelectContent>
               </Select>
               <Select value={lowStockThreshold} onValueChange={setLowStockThreshold}>
-                <SelectTrigger className="bg-white">
+                <SelectTrigger className="h-8 bg-white text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -568,7 +568,7 @@ export function AdminInventoryPanel() {
                 value={sort}
                 onValueChange={(value) => setSort(value as ShortageSort)}
               >
-                <SelectTrigger className="bg-white">
+                <SelectTrigger className="h-8 bg-white text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -585,10 +585,10 @@ export function AdminInventoryPanel() {
           <AdminBusyRegion
             label={dictionary.common.refreshing}
             pending={pending}
-            contentClassName="min-h-[360px]"
+            contentClassName="min-h-[280px]"
           >
             {pending && rows.length === 0 ? (
-              <div className="p-4">
+              <div className="p-3">
                 <AdminSkeletonRows rows={6} />
               </div>
             ) : error ? (
@@ -601,44 +601,44 @@ export function AdminInventoryPanel() {
             ) : (
               <>
                 <div className="hidden overflow-x-auto lg:block">
-                  <Table>
+                  <Table className="table-fixed">
                     <TableHeader>
                       <TableRow>
-                        <TableHead>{text.product}</TableHead>
-                        <TableHead className="text-center">{text.soldQty}</TableHead>
-                        <TableHead className="text-center">{text.stockFlow}</TableHead>
-                        <TableHead className="text-center">{text.currentStock}</TableHead>
-                        <TableHead className="text-center">{text.suggestedRestock}</TableHead>
-                        <TableHead>{text.supplier}</TableHead>
-                        <TableHead>{text.lastSoldAt}</TableHead>
-                        <TableHead className="text-right">{dictionary.common.actions}</TableHead>
+                        <TableHead className="w-[38%] px-2 py-2">{text.product}</TableHead>
+                        <TableHead className="w-[58px] px-1 text-center">{text.soldQty}</TableHead>
+                        <TableHead className="w-[92px] px-1 text-center">{text.stockFlow}</TableHead>
+                        <TableHead className="w-[86px] px-1 text-center">{text.currentStock}</TableHead>
+                        <TableHead className="w-[78px] px-1 text-center">{text.suggestedRestock}</TableHead>
+                        <TableHead className="w-[116px] px-2">{text.supplier}</TableHead>
+                        <TableHead className="w-[120px] px-2">{text.lastSoldAt}</TableHead>
+                        <TableHead className="w-[132px] px-2 text-right">{dictionary.common.actions}</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {rows.map((row) => (
-                        <TableRow key={row.sku}>
-                          <TableCell>
+                        <TableRow key={row.sku} className="h-[54px]">
+                          <TableCell className="px-2 py-1.5 align-middle">
                             <InventoryProductCell row={row} />
                           </TableCell>
-                          <TableCell className="text-center font-black">
+                          <TableCell className="px-1 py-1.5 text-center text-sm font-black">
                             {row.soldQty}
                           </TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="px-1 py-1.5 text-center">
                             <StockFlow row={row} />
                           </TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="px-1 py-1.5 text-center">
                             <ShortageBadge row={row} text={text} />
                           </TableCell>
-                          <TableCell className="text-center font-black text-slate-950">
+                          <TableCell className="px-1 py-1.5 text-center text-sm font-black text-slate-950">
                             {row.suggestedRestockQty}
                           </TableCell>
-                          <TableCell className="text-sm font-semibold text-slate-600">
-                            {row.supplier ?? text.supplierMissing}
+                          <TableCell className="px-2 py-1.5 text-xs font-semibold text-slate-600">
+                            <span className="line-clamp-2">{row.supplier ?? text.supplierMissing}</span>
                           </TableCell>
-                          <TableCell className="text-sm text-slate-600">
+                          <TableCell className="px-2 py-1.5 text-xs text-slate-600">
                             {formatDate(row.lastSoldAt, locale)}
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="px-2 py-1.5 text-right">
                             <InventoryRowActions
                               actionPending={actionKey === `${row.sku}:create`}
                               copied={copiedSku === row.sku}
@@ -653,41 +653,45 @@ export function AdminInventoryPanel() {
                     </TableBody>
                   </Table>
                 </div>
-                <div className="grid gap-3 p-3 lg:hidden">
+                <div className="grid gap-1.5 p-2 lg:hidden">
                   {rows.map((row) => (
                     <div
                       key={row.sku}
-                      className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+                      className="rounded-md border border-slate-200 bg-white p-2 shadow-sm"
                     >
-                      <div className="flex min-w-0 items-start gap-3">
+                      <div className="grid min-w-0 grid-cols-[34px_minmax(0,1fr)_auto] items-start gap-2">
                         <InventoryProductVisual row={row} />
                         <div className="min-w-0 flex-1">
-                          <div className="line-clamp-2 text-sm font-black text-slate-950">
+                          <div className="line-clamp-2 text-xs font-black leading-4 text-slate-950">
                             {row.name}
                           </div>
-                          <div className="mt-1 truncate text-xs font-semibold text-slate-500">
+                          <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">
                             {row.sku}
                           </div>
                         </div>
                         <ShortageBadge row={row} text={text} compact />
                       </div>
-                      <div className="mt-3 grid grid-cols-3 gap-2">
+                      <div className="mt-2 grid grid-cols-4 gap-1.5">
                         <MobileMetric label={text.soldQty} value={row.soldQty} />
                         <MobileMetric
-                          label={text.stockFlow}
-                          value={`${row.startingAvailableQty} -> ${row.availableQty}`}
+                          label={text.currentStock}
+                          value={row.availableQty}
                         />
                         <MobileMetric
                           label={text.suggestedRestock}
                           value={row.suggestedRestockQty}
                         />
+                        <MobileMetric
+                          label={text.startingStock}
+                          value={row.startingAvailableQty}
+                        />
                       </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-slate-500">
-                        <span>{text.supplier}: {row.supplier ?? text.supplierMissing}</span>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+                        <span className="max-w-[58%] truncate">{text.supplier}: {row.supplier ?? text.supplierMissing}</span>
                         <ReplenishmentInlineStatus row={row} text={text} />
                       </div>
-                      <div className="mt-3 flex items-center justify-between gap-2">
-                        <span className="min-w-0 truncate text-xs font-semibold text-slate-500">
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <span className="min-w-0 truncate text-[11px] font-semibold text-slate-500">
                           {formatDate(row.lastSoldAt, locale)}
                         </span>
                         <InventoryRowActions
@@ -708,20 +712,20 @@ export function AdminInventoryPanel() {
         </CardContent>
       </Card>
 
-      <Card className="overflow-hidden rounded-lg border-slate-200 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
-        <CardHeader className="border-b bg-white">
-          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-            <CardTitle className="text-base font-black text-slate-950">
+      <Card className="overflow-hidden rounded-md border-slate-200 shadow-[0_8px_18px_rgba(15,23,42,0.035)]">
+        <CardHeader className="border-b bg-white px-3 py-2">
+          <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+            <CardTitle className="text-sm font-black text-slate-950">
               {text.queueTitle}
             </CardTitle>
-            <div className="grid gap-2 md:grid-cols-[150px_minmax(180px,1fr)_auto]">
+            <div className="grid gap-1.5 md:grid-cols-[132px_minmax(180px,1fr)_auto]">
               <Select
                 value={queueStatus}
                 onValueChange={(value) =>
                   setQueueStatus(value as ReplenishmentStatusFilter)
                 }
               >
-                <SelectTrigger className="bg-white">
+                <SelectTrigger className="h-8 bg-white text-xs">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -734,7 +738,7 @@ export function AdminInventoryPanel() {
                 </SelectContent>
               </Select>
               <Input
-                className="bg-white"
+                className="h-8 bg-white text-xs"
                 value={queueSupplier}
                 placeholder={text.supplierFilterPlaceholder}
                 onChange={(event) => setQueueSupplier(event.target.value)}
@@ -742,7 +746,8 @@ export function AdminInventoryPanel() {
               <Button
                 type="button"
                 variant="outline"
-                className="bg-white"
+                size="sm"
+                className="h-8 bg-white px-2.5"
                 onClick={() => refresh()}
               >
                 <RefreshCw className={cn("size-4", pending && "animate-spin")} />
@@ -760,15 +765,15 @@ export function AdminInventoryPanel() {
           ) : (
             <>
               <div className="hidden overflow-x-auto lg:block">
-                <Table>
+                <Table className="table-fixed">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>{text.product}</TableHead>
-                      <TableHead>{text.status}</TableHead>
-                      <TableHead className="text-center">{text.plannedQty}</TableHead>
-                      <TableHead>{text.supplier}</TableHead>
-                      <TableHead>{text.note}</TableHead>
-                      <TableHead className="text-right">{dictionary.common.actions}</TableHead>
+                      <TableHead className="w-[38%] px-2 py-2">{text.product}</TableHead>
+                      <TableHead className="w-[132px] px-2">{text.status}</TableHead>
+                      <TableHead className="w-[92px] px-1 text-center">{text.plannedQty}</TableHead>
+                      <TableHead className="w-[150px] px-2">{text.supplier}</TableHead>
+                      <TableHead className="px-2">{text.note}</TableHead>
+                      <TableHead className="w-[92px] px-2 text-right">{dictionary.common.actions}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -777,20 +782,20 @@ export function AdminInventoryPanel() {
                       const pendingItem = actionKey === `${item.id}:update`;
 
                       return (
-                        <TableRow key={item.id}>
-                          <TableCell>
-                            <div className="min-w-[260px]">
-                              <div className="line-clamp-2 font-bold text-slate-950">
+                        <TableRow key={item.id} className="h-[54px]">
+                          <TableCell className="px-2 py-1.5 align-middle">
+                            <div className="min-w-0">
+                              <div className="line-clamp-2 text-sm font-bold leading-4 text-slate-950">
                                 {item.productName}
                               </div>
-                              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-slate-500">
+                              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] font-semibold text-slate-500">
                                 <span>{item.sku}</span>
                                 <span>{text.soldQty}: {item.soldQty}</span>
                                 <span>{text.currentStock}: {item.availableQty}</span>
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="px-2 py-1.5">
                             <ReplenishmentStatusSelect
                               disabled={pendingItem}
                               item={item}
@@ -798,9 +803,9 @@ export function AdminInventoryPanel() {
                               onUpdate={updateReplenishmentItem}
                             />
                           </TableCell>
-                          <TableCell className="text-center">
+                          <TableCell className="px-1 py-1.5 text-center">
                             <Input
-                              className="mx-auto h-9 w-20 bg-white text-center font-black"
+                              className="mx-auto h-8 w-16 bg-white text-center text-sm font-black"
                               inputMode="numeric"
                               value={draft.plannedQty}
                               onChange={(event) =>
@@ -808,9 +813,9 @@ export function AdminInventoryPanel() {
                               }
                             />
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="px-2 py-1.5">
                             <Input
-                              className="h-9 min-w-[140px] bg-white"
+                              className="h-8 min-w-0 bg-white text-xs"
                               value={draft.supplier}
                               placeholder={text.supplierMissing}
                               onChange={(event) =>
@@ -818,9 +823,9 @@ export function AdminInventoryPanel() {
                               }
                             />
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="px-2 py-1.5">
                             <Input
-                              className="h-9 min-w-[180px] bg-white"
+                              className="h-8 min-w-0 bg-white text-xs"
                               value={draft.note}
                               placeholder={text.notePlaceholder}
                               onChange={(event) =>
@@ -828,11 +833,12 @@ export function AdminInventoryPanel() {
                               }
                             />
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="px-2 py-1.5 text-right">
                             <Button
                               type="button"
                               variant="outline"
-                              size="sm"
+                              size="icon-sm"
+                              title={text.save}
                               className="bg-white"
                               disabled={pendingItem}
                               onClick={() =>
@@ -844,7 +850,6 @@ export function AdminInventoryPanel() {
                               }
                             >
                               <CheckCircle2 className="size-4" />
-                              {text.save}
                             </Button>
                           </TableCell>
                         </TableRow>
@@ -853,31 +858,31 @@ export function AdminInventoryPanel() {
                   </TableBody>
                 </Table>
               </div>
-              <div className="grid gap-3 p-3 lg:hidden">
+              <div className="grid gap-1.5 p-2 lg:hidden">
                 {replenishmentItems.map((item) => {
                   const draft = drafts[item.id] ?? replenishmentDraft(item);
 
                   return (
-                    <div key={item.id} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+                    <div key={item.id} className="rounded-md border border-slate-200 bg-white p-2 shadow-sm">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="line-clamp-2 text-sm font-black text-slate-950">
+                          <div className="line-clamp-2 text-xs font-black leading-4 text-slate-950">
                             {item.productName}
                           </div>
-                          <div className="mt-1 truncate text-xs font-semibold text-slate-500">
+                          <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">
                             {item.sku}
                           </div>
                         </div>
                         <ReplenishmentStatusBadge status={item.status} text={text} />
                       </div>
-                      <div className="mt-3 grid grid-cols-3 gap-2">
+                      <div className="mt-2 grid grid-cols-3 gap-1.5">
                         <MobileMetric label={text.soldQty} value={item.soldQty} />
                         <MobileMetric label={text.currentStock} value={item.availableQty} />
                         <MobileMetric label={text.plannedQty} value={item.plannedQty} />
                       </div>
-                      <div className="mt-3 grid gap-2">
+                      <div className="mt-2 grid grid-cols-[minmax(0,1fr)_72px] gap-1.5">
                         <Input
-                          className="h-9 bg-white"
+                          className="h-8 bg-white text-xs"
                           value={draft.supplier}
                           placeholder={text.supplierMissing}
                           onChange={(event) =>
@@ -885,15 +890,17 @@ export function AdminInventoryPanel() {
                           }
                         />
                         <Input
-                          className="h-9 bg-white"
+                          className="h-8 bg-white text-xs"
                           value={draft.plannedQty}
                           inputMode="numeric"
                           onChange={(event) =>
                             updateDraft(item.id, { plannedQty: event.target.value })
                           }
                         />
+                      </div>
+                      <div className="mt-1.5 grid gap-1.5">
                         <Input
-                          className="h-9 bg-white"
+                          className="h-8 bg-white text-xs"
                           value={draft.note}
                           placeholder={text.notePlaceholder}
                           onChange={(event) =>
@@ -901,7 +908,7 @@ export function AdminInventoryPanel() {
                           }
                         />
                       </div>
-                      <div className="mt-3 flex justify-end">
+                      <div className="mt-2 flex justify-end">
                         <Button
                           type="button"
                           variant="outline"
@@ -951,13 +958,15 @@ function InventoryMetric({
   }[tone];
 
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-      <div className={cn("inline-flex rounded-lg border p-2", toneClass)}>
-        <Icon className="size-4" />
+    <div className="grid min-h-[54px] grid-cols-[28px_minmax(0,1fr)] items-center gap-2 rounded-md border border-slate-200 bg-white px-2.5 py-2 shadow-sm">
+      <div className={cn("grid size-7 place-items-center rounded-md border", toneClass)}>
+        <Icon className="size-3.5" />
       </div>
-      <div className="mt-3 text-2xl font-black text-slate-950">{value}</div>
-      <div className="mt-1 text-xs font-bold uppercase tracking-normal text-slate-500">
-        {label}
+      <div className="min-w-0">
+        <div className="text-lg font-black leading-5 text-slate-950">{value}</div>
+        <div className="mt-0.5 truncate text-[11px] font-bold tracking-normal text-slate-500">
+          {label}
+        </div>
       </div>
     </div>
   );
@@ -965,15 +974,15 @@ function InventoryMetric({
 
 function InventoryProductCell({ row }: { row: SoldStockShortageRow }) {
   return (
-    <div className="flex min-w-[280px] items-center gap-3">
+    <div className="grid min-w-0 grid-cols-[38px_minmax(0,1fr)] items-center gap-2">
       <InventoryProductVisual row={row} />
       <div className="min-w-0">
-        <div className="line-clamp-2 font-bold text-slate-950">{row.name}</div>
-        <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs font-semibold text-slate-500">
-          <span>{row.sku}</span>
-          {row.brand ? <span>{row.brand}</span> : null}
-          {row.model ? <span>{row.model}</span> : null}
-          {row.qualityGrade ? <span>{row.qualityGrade}</span> : null}
+        <div className="line-clamp-2 text-sm font-bold leading-4 text-slate-950">{row.name}</div>
+        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+          <span className="shrink-0">{row.sku}</span>
+          {row.brand ? <span className="truncate">{row.brand}</span> : null}
+          {row.model ? <span className="truncate">{row.model}</span> : null}
+          {row.qualityGrade ? <span className="shrink-0">{row.qualityGrade}</span> : null}
         </div>
       </div>
     </div>
@@ -983,8 +992,8 @@ function InventoryProductCell({ row }: { row: SoldStockShortageRow }) {
 function InventoryProductVisual({ row }: { row: SoldStockShortageRow }) {
   if (!row.imageUrl) {
     return (
-      <div className="grid size-12 shrink-0 place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400">
-        <Boxes className="size-5" />
+      <div className="grid size-9 shrink-0 place-items-center rounded-md border border-slate-200 bg-slate-50 text-slate-400">
+        <Boxes className="size-4" />
       </div>
     );
   }
@@ -993,16 +1002,16 @@ function InventoryProductVisual({ row }: { row: SoldStockShortageRow }) {
     <Image
       src={row.imageUrl}
       alt={row.imageAlt ?? row.name}
-      width={48}
-      height={48}
-      className="size-12 shrink-0 rounded-md border border-slate-200 object-cover"
+      width={36}
+      height={36}
+      className="size-9 shrink-0 rounded-md border border-slate-200 object-cover"
     />
   );
 }
 
 function StockFlow({ row }: { row: SoldStockShortageRow }) {
   return (
-    <div className="inline-flex min-w-[86px] items-center justify-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-sm font-black text-slate-950">
+    <div className="inline-flex min-w-[74px] items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-black text-slate-950">
       <span>{row.startingAvailableQty}</span>
       <span className="text-slate-400">-&gt;</span>
       <span className={row.availableQty <= 0 ? "text-rose-700" : "text-amber-700"}>
@@ -1026,7 +1035,7 @@ function ShortageBadge({
   return (
     <Badge
       className={cn(
-        "max-w-full truncate",
+        "max-w-full truncate px-1.5 py-0 text-[11px]",
         out
           ? "border-rose-200 bg-rose-50 text-rose-700"
           : "border-amber-200 bg-amber-50 text-amber-700",
@@ -1056,19 +1065,19 @@ function InventoryRowActions({
   const activeItem = row.activeReplenishmentItem;
 
   return (
-    <div className="inline-flex items-center gap-1.5">
+    <div className="inline-flex max-w-full items-center justify-end gap-1">
       {activeItem ? (
         <ReplenishmentStatusBadge status={activeItem.status} text={text} />
       ) : (
         <Button
           type="button"
           variant="outline"
-          size="sm"
-          className="bg-white"
+          size="xs"
+          className="h-7 bg-white px-2 text-[11px]"
           disabled={actionPending}
           onClick={() => onCreate(row)}
         >
-          <CheckCircle2 className="size-4" />
+          <CheckCircle2 className="size-3.5" />
           {text.addToQueue}
         </Button>
       )}
@@ -1076,15 +1085,15 @@ function InventoryRowActions({
         type="button"
         variant="outline"
         size="icon-sm"
-        className="bg-white"
+        className="size-7 bg-white"
         title={copied ? text.copied : text.copySku}
         onClick={() => onCopy(row.sku)}
       >
-        <Clipboard className="size-4" />
+        <Clipboard className="size-3.5" />
       </Button>
-      <Button type="button" variant="outline" size="icon-sm" asChild className="bg-white">
+      <Button type="button" variant="outline" size="icon-sm" asChild className="size-7 bg-white">
         <Link href={`/admin?panel=catalog&sku=${encodeURIComponent(row.sku)}`} title={text.openCatalog}>
-          <ArrowUpRight className="size-4" />
+          <ArrowUpRight className="size-3.5" />
         </Link>
       </Button>
     </div>
