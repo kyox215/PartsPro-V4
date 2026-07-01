@@ -26,6 +26,7 @@ export function PartsProLogo({
           "size-11 shrink-0 rounded-xl bg-black object-cover shadow-[0_12px_30px_rgba(59,91,255,0.24)] ring-1 ring-white/70",
           compact && "size-10 rounded-lg"
         )}
+        unoptimized
       />
       {!compact && (
         <div className="leading-none">
