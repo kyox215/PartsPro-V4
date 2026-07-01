@@ -255,7 +255,7 @@ export function SupportChatPanel({ onClose }: SupportChatPanelProps) {
   const canUseComposer = loaded && !accessError && (!error || messages.length > 0);
 
   return (
-    <section className="flex h-[min(620px,calc(100dvh-2rem))] w-[min(390px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.22)]">
+    <section className="flex h-[min(620px,var(--support-widget-panel-height,calc(100dvh-2rem)))] w-[min(390px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.22)]">
       <div className="flex min-w-0 items-center gap-3 border-b border-slate-200 bg-slate-950 px-3 py-3 text-white">
         <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-white/12">
           <Headphones className="size-4" />

@@ -2541,7 +2541,10 @@ function MobileCartCheckoutBar({
     pendingMessage ?? tx(t, "storefront.cart.amountCalculatingDescription", "正在同步商品、价格、库存和 MOQ。");
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 shadow-[0_-18px_40px_rgba(15,23,42,0.12)] backdrop-blur lg:hidden">
+    <div
+      className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 shadow-[0_-18px_40px_rgba(15,23,42,0.12)] backdrop-blur lg:hidden"
+      data-support-offset="mobile-action-bar"
+    >
       {expanded && (
         <div id={summaryId} className="border-b border-slate-200 px-3 py-2">
           <div className="space-y-1.5">
