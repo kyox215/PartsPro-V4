@@ -1,8 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#0f172a"/>
-  <rect x="86" y="108" width="340" height="296" rx="56" fill="#f8fafc"/>
-  <path d="M154 188h138c52 0 86 31 86 78s-34 78-86 78h-82v-54h78c19 0 32-9 32-24s-13-24-32-24H154v102H96V188h58z" fill="#0f172a"/>
-  <path d="M108 126h296v42H108z" fill="#22c55e"/>
-  <circle cx="374" cy="138" r="54" fill="#2563eb"/>
-  <path d="M374 102l11 23 25 4-18 18 4 25-22-12-23 12 5-25-18-18 25-4 11-23z" fill="#f8fafc"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc"><title id="title">PartsPro app icon</title><desc id="desc">PartsPro main app icon.</desc><image width="512" height="512" href="/brand/partspro-main-logo.png" preserveAspectRatio="xMidYMid slice"/></svg>

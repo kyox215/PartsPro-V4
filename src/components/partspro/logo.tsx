@@ -1,5 +1,7 @@
-import { Hexagon } from "lucide-react";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
+
+export const PARTSPRO_MAIN_LOGO_SRC = "/brand/partspro-main-logo.png";
 
 type LogoProps = {
   compact?: boolean;
@@ -14,10 +16,17 @@ export function PartsProLogo({
 }: LogoProps) {
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
-      <div className="relative grid size-9 place-items-center rounded-lg bg-[linear-gradient(135deg,#3b5bff,#7c3aed)] text-white shadow-[0_12px_30px_rgba(59,91,255,0.24)]">
-        <Hexagon className="size-6 fill-white/12" strokeWidth={2.4} />
-        <span className="absolute text-sm font-black tracking-tight">P</span>
-      </div>
+      <Image
+        src={PARTSPRO_MAIN_LOGO_SRC}
+        alt=""
+        width={44}
+        height={44}
+        sizes={compact ? "40px" : "44px"}
+        className={cn(
+          "size-11 shrink-0 rounded-xl bg-black object-cover shadow-[0_12px_30px_rgba(59,91,255,0.24)] ring-1 ring-white/70",
+          compact && "size-10 rounded-lg"
+        )}
+      />
       {!compact && (
         <div className="leading-none">
           <div className="text-xl font-black tracking-normal text-slate-950">
