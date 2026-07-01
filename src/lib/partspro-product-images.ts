@@ -17,22 +17,20 @@ export function resolveProductImageUrl(value: string | null | undefined) {
     return null;
   }
 
-  const importedFallbackUrl = getImportedProductImageFallbackUrl(normalized);
-
-  if (importedFallbackUrl) {
-    return importedFallbackUrl;
-  }
-
   if (/^https?:\/\//i.test(normalized)) {
     return normalized;
   }
 
+  return getProductStorageImageUrl(normalized);
+}
+
+function getProductStorageImageUrl(value: string) {
   const supabaseUrl = (
     process.env.NEXT_PUBLIC_SUPABASE_URL ?? defaultSupabaseUrl
   ).replace(/\/+$/, "");
   const publicPrefix = `${supabaseUrl}/storage/v1/object/public/${productImagesBucket}/`;
 
-  return `${publicPrefix}${normalized.replace(/^\/+/, "")}`;
+  return `${publicPrefix}${value.replace(/^\/+/, "")}`;
 }
 
 export function getExternalProductImageFallbackUrl(
@@ -51,21 +49,6 @@ export function getExternalProductImageFallbackUrl(
   const imageId = directApiMatch?.[1] ?? importedAssetMatch?.[1];
 
   return imageId ? `${mobilaxImageBaseUrl}/${imageId}?size=bg` : null;
-}
-
-function getImportedProductImageFallbackUrl(value: string) {
-  const fallbackUrl = getExternalProductImageFallbackUrl(value);
-
-  if (
-    fallbackUrl &&
-    (/\/imported\//i.test(value) ||
-      /\/mobilax\//i.test(value) ||
-      /mobilax-[^-]+-\d+\./i.test(value))
-  ) {
-    return fallbackUrl;
-  }
-
-  return null;
 }
 
 export function getProductImageCandidates(source: ProductImageSource) {

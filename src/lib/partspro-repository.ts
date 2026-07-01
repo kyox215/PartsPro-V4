@@ -8254,24 +8254,33 @@ async function readMatchingRows(
   limit = 1
 ): Promise<DbRow[] | null> {
   const candidates = [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+  const chunkSize = 100;
 
   if (candidates.length === 0) {
     return [];
   }
 
   try {
-    const { data, error } = await client
-      .from(table)
-      .select(select)
-      .in(column, candidates)
-      .limit(limit);
+    const rows: DbRow[] = [];
 
-    const rows = Array.isArray(data)
-      ? (data as unknown[]).filter(isDbRow)
-      : null;
+    for (let index = 0; index < candidates.length && rows.length < limit; index += chunkSize) {
+      const chunk = candidates.slice(index, index + chunkSize);
+      const remainingLimit = Math.max(limit - rows.length, 1);
+      const { data, error } = await client
+        .from(table)
+        .select(select)
+        .in(column, chunk)
+        .limit(Math.min(remainingLimit, chunk.length));
 
-    if (error || !rows) {
-      return null;
+      const chunkRows = Array.isArray(data)
+        ? (data as unknown[]).filter(isDbRow)
+        : null;
+
+      if (error || !chunkRows) {
+        return null;
+      }
+
+      rows.push(...chunkRows);
     }
 
     return rows;
