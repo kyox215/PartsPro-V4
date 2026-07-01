@@ -521,6 +521,35 @@ metadata 至少包含：
 
 ## 导入后验证
 
+### 自动批次完整性校验
+
+每次供应商到货导入完成后，必须先运行批次完整性脚本：
+
+```bash
+npm run verify:supplier-batch -- :batch_code
+```
+
+例如：
+
+```bash
+npm run verify:supplier-batch -- UTOPYA-7091760
+```
+
+脚本会只读检查：
+
+- `supplier_batches.total_qty` 是否等于 `supplier_batch_lines.qty_received` 合计。
+- `supplier_batches.total_cost` 是否等于 `supplier_batch_lines.line_total` 合计，允许 `0.01` 欧元内四舍五入误差。
+- 每条 `qty_received > 0` 的到货行是否能通过 `sku_code` / `ean` 精确关联到 `products.sku_code`。
+- 每个关联商品是否有 `inventory_items`。
+- `product_status = active` 或商品 `status = active` 时是否有 `image_path`。
+- `image_status = uploaded` 时商品是否确实写入主图路径。
+- `retail_price = b2b_price = ceil(cost_price + 5)`。
+- `model` / `compatibility_models` 是否重复带品牌前缀。
+
+脚本返回非零退出码时，本批导入不得标记为完成，也不得只凭后台 UI 把它解释成真实“缺商品”。先修复真实数据或查询/API 错误，再重新运行脚本。
+
+后台“到货批次”页面如果显示 `缺商品`，必须用本脚本复核。如果脚本通过但 UI 仍显示 `缺商品 / Error`，说明是后台核对接口或前端展示层的问题，不允许修改库存或重复导入。
+
 ### 批次数量
 
 ```sql

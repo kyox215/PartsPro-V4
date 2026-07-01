@@ -15,7 +15,8 @@
     "import:mobilax:vivo": "node scripts/import-mobilax-iphone-catalog.mjs --brand vivo",
     "import:mobilax:tcl": "node scripts/import-mobilax-iphone-catalog.mjs --brand tcl",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "verify:supplier-batch": "node scripts/verify-supplier-batch-integrity.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.4.0",
