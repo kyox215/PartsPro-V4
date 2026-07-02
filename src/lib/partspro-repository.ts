@@ -3018,6 +3018,14 @@ export async function replaceCurrentCustomerCart(
     .filter((sku) => !nextSkus.has(toPublicSku(sku)));
   const customerId = await readCurrentCustomerId(context.client, context.userId);
 
+  if (!customerId) {
+    throw new RepositoryWriteError(
+      404,
+      "CUSTOMER_REQUIRED",
+      "A customer account is required before using the remote cart."
+    );
+  }
+
   try {
     if (normalizedItems.length > 0) {
       const payloads = normalizedItems.map((item) => ({

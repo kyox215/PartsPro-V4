@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
-import { getSupabaseEnv, isSupabaseConfigured } from "@/lib/supabase/env";
+import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { CartItem } from "./cart-state";
 import {
   cartItemsForApi,
@@ -23,6 +23,7 @@ type CartApiPayload = {
 
 const syncDebounceMs = 500;
 const realtimeRefreshDebounceMs = 250;
+const sessionRetryDelaysMs = [0, 600, 1500] as const;
 const CART_SYNC_RETRY_EVENT = "partspro-cart-sync-retry";
 type RemoteCartWriteResult = "synced" | "local";
 type RemoteCartLoadResult =
@@ -107,6 +108,7 @@ export function CartSyncBridge() {
     let disposed = false;
     let refreshTimeout: number | null = null;
     let removeRealtimeChannel: (() => void) | null = null;
+    let removeAuthListener: (() => void) | null = null;
 
     function enterLocalMode() {
       removeRealtimeChannel?.();
@@ -223,21 +225,9 @@ export function CartSyncBridge() {
         return;
       }
 
-      if (!hasClientSupabaseSessionHint()) {
-        enterLocalMode();
-        return;
-      }
+      const userId = await resolveClientSupabaseUserId(controller.signal);
 
-      let userId: string | undefined;
-
-      try {
-        const supabase = createClient();
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
-        userId = user?.id;
-      } catch {
-        enterLocalMode();
+      if (controller.signal.aborted || disposed) {
         return;
       }
 
@@ -302,16 +292,44 @@ export function CartSyncBridge() {
       void loadInitialRemoteCart();
     }
 
+    function retryVisibleRemoteCartSync() {
+      if (document.visibilityState === "visible") {
+        retryRemoteCartSync();
+      }
+    }
+
+    if (isSupabaseConfigured()) {
+      const supabase = createClient();
+      const { data } = supabase.auth.onAuthStateChange((event) => {
+        if (
+          event === "SIGNED_IN" ||
+          event === "TOKEN_REFRESHED" ||
+          event === "USER_UPDATED"
+        ) {
+          retryRemoteCartSync();
+        }
+      });
+
+      removeAuthListener = () => {
+        data.subscription.unsubscribe();
+      };
+    }
+
     void loadInitialRemoteCart();
     window.addEventListener(CART_SYNC_RETRY_EVENT, retryRemoteCartSync);
+    window.addEventListener("online", retryRemoteCartSync);
+    document.addEventListener("visibilitychange", retryVisibleRemoteCartSync);
 
     return () => {
       disposed = true;
       window.removeEventListener(CART_SYNC_RETRY_EVENT, retryRemoteCartSync);
+      window.removeEventListener("online", retryRemoteCartSync);
+      document.removeEventListener("visibilitychange", retryVisibleRemoteCartSync);
       if (refreshTimeout !== null) {
         window.clearTimeout(refreshTimeout);
       }
       removeRealtimeChannel?.();
+      removeAuthListener?.();
       controller.abort();
     };
   }, [scope]);
@@ -453,22 +471,67 @@ async function writeRemoteCart(
   return "synced";
 }
 
-function hasClientSupabaseSessionHint() {
+async function resolveClientSupabaseUserId(signal: AbortSignal) {
   if (!isSupabaseConfigured()) {
-    return false;
+    return null;
   }
 
-  try {
-    const { url } = getSupabaseEnv();
-    const projectRef = new URL(url).hostname.split(".")[0];
-    const authKey = `sb-${projectRef}-auth-token`;
-    const hasCookie = document.cookie
-      .split(";")
-      .some((cookie) => cookie.trim().startsWith(`${authKey}`));
-    const hasLocalSession = Boolean(window.localStorage.getItem(authKey));
+  const supabase = createClient();
 
-    return hasCookie || hasLocalSession;
-  } catch {
-    return true;
+  for (const delay of sessionRetryDelaysMs) {
+    if (signal.aborted) {
+      return null;
+    }
+
+    if (delay > 0) {
+      await sleep(delay, signal);
+    }
+
+    if (signal.aborted) {
+      return null;
+    }
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session?.user?.id) {
+        return session.user.id;
+      }
+
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user?.id) {
+        return user.id;
+      }
+    } catch {
+      // Standalone PWA cold starts can briefly surface auth storage/network
+      // errors before Supabase has restored the session. Retry before falling
+      // back to local cart mode.
+    }
   }
+
+  return null;
+}
+
+function sleep(delayMs: number, signal: AbortSignal) {
+  if (delayMs <= 0 || signal.aborted) {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolve) => {
+    const timeout = window.setTimeout(resolve, delayMs);
+
+    signal.addEventListener(
+      "abort",
+      () => {
+        window.clearTimeout(timeout);
+        resolve();
+      },
+      { once: true }
+    );
+  });
 }
