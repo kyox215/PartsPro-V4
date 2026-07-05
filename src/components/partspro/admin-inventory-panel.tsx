@@ -1084,7 +1084,7 @@ function InventoryHealthSection({
             {text.title}
           </CardTitle>
           <div className="text-xs font-semibold text-slate-500">
-            {text.scope(summary.windowDays, summary.staleLockHours)}
+            {text.scope(summary.windowDays)}
           </div>
         </div>
       </CardHeader>
@@ -1849,8 +1849,8 @@ function inventoryHealthText(locale: string) {
   if (locale.toLowerCase().startsWith("it")) {
     return {
       title: "Controllo inventario",
-      scope: (windowDays: number, staleLockHours: number) =>
-        `${windowDays} giorni vendite · lock oltre ${staleLockHours}h`,
+      scope: (windowDays: number) =>
+        `${windowDays} giorni vendite · differenze lock/ordini`,
       stockMismatch: "Stock diverso",
       reservedMismatch: "Lock/riserva",
       lockedOrphan: "Lock orfani",
@@ -1880,8 +1880,7 @@ function inventoryHealthText(locale: string) {
 
   return {
     title: "库存体检",
-    scope: (windowDays: number, staleLockHours: number) =>
-      `${windowDays} 天销量 · 锁货 ${staleLockHours}h`,
+    scope: (windowDays: number) => `${windowDays} 天销量 · 锁货/订单差异`,
     stockMismatch: "商品/库存不一致",
     reservedMismatch: "锁货/订单不一致",
     lockedOrphan: "孤儿锁货",

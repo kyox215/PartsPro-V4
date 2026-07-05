@@ -6,6 +6,8 @@ import {
   listAdminFinanceLedger,
   type AdminFinanceLedgerRow,
 } from "@/lib/partspro-repository";
+import { apiError } from "@/lib/partspro-api";
+import { hasAdminPermission } from "@/lib/partspro-admin-auth";
 import { parseAdminQuery, repositoryErrorResponse, requireAdminApi } from "../../_shared";
 import { financeQuerySchema } from "../_shared";
 
@@ -20,6 +22,16 @@ export async function GET(request: NextRequest) {
 
   if (!admin.ok) {
     return admin.response;
+  }
+
+  if (
+    !hasAdminPermission(admin.authState, "finance.read") &&
+    !hasAdminPermission(admin.authState, "finance.manage")
+  ) {
+    return apiError(403, "ADMIN_PERMISSION_DENIED", "Missing admin permission.", {
+      permission: "finance.read",
+      role: admin.authState.role,
+    });
   }
 
   const query = parseAdminQuery(request.nextUrl.searchParams, exportQuerySchema);

@@ -6320,85 +6320,31 @@ function summarizeAdminFinance(
   query: NormalizedFinanceQuery
 ): AdminFinanceSummary {
   const maps = makeAdminFinanceMaps(dataSet);
-  const eligibleOrders = dataSet.orders.filter(isFinanceOrderEligible);
-  const filteredOrders = eligibleOrders.filter((row) =>
-    financeWithinDate(financeOrderDate(row, query.dateMode), query)
+  const ledgerRows = buildAdminFinanceLedgerRows(dataSet, query).filter((row) =>
+    financeLedgerRowMatches(row, query)
   );
-  const paidOrderIds = new Set(
-    eligibleOrders
-      .filter((row) => normalizePaymentStatus(pickString(row, ["payment_status"])) === "paid")
-      .map((row) => pickString(row, ["id"]))
-      .filter(isDefined)
-  );
-  const salesOrders = filteredOrders.filter(
-    (row) => normalizePaymentStatus(pickString(row, ["payment_status"])) === "paid"
-  );
-  const pendingOrders = filteredOrders.filter(
-    (row) => normalizePaymentStatus(pickString(row, ["payment_status"])) !== "paid"
-  );
-  const filteredBatchLines = dataSet.supplierBatchLines.filter((line) => {
-    const batch = maps.batchById.get(pickString(line, ["batch_id"]) ?? "");
-    return (
-      financeWithinDate(financeBatchDate(batch, line, query.dateMode), query) &&
-      financeSupplierMatches(batch, maps, query.supplier)
-    );
-  });
-  const filteredExpenses = dataSet.expenses.filter(
-    (row) =>
-      financeWithinDate(financeExpenseDate(row, query.dateMode), query) &&
-      financeCategoryMatches(pickString(row, ["category"]), query.category) &&
-      normalizeFinanceEntryStatus(pickString(row, ["status"])) !== "cancelled"
-  );
-  const filteredPayments = dataSet.payments.filter((row) => {
-    const batch = maps.batchById.get(pickString(row, ["batch_id"]) ?? "");
-    const supplierId = pickString(row, ["supplier_id"]) ?? pickString(batch, ["supplier_id"]);
-    return (
-      financeWithinDate(financePaymentDate(row, query.dateMode), query) &&
-      financeSupplierMatchesById(supplierId, maps, query.supplier) &&
-      normalizeFinanceEntryStatus(pickString(row, ["status"])) !== "cancelled"
-    );
-  });
-  const filteredAllocations = dataSet.allocations.filter((row) => {
-    const order = maps.orderById.get(pickString(row, ["order_id"]) ?? "");
-    const allocation = mapAdminFinanceCostAllocation(row, maps);
-    const layer = maps.costLayerById.get(pickString(row, ["cost_layer_id"]) ?? "");
-
-    return (
-      allocation !== null &&
-      allocation.status === "consumed" &&
-      isFinanceOrderEligible(order) &&
-      (order ? paidOrderIds.has(pickString(order, ["id"]) ?? "") : true) &&
-      financeWithinDate(allocation.recognizedAt ?? allocation.createdAt, query) &&
-      financeConfidenceMatches(allocation.confidence, query.confidence) &&
-      financeSupplierMatchesById(pickString(layer, ["supplier_id"]), maps, query.supplier)
-    );
-  });
-  const salesNet = roundMoney(sumMoney(salesOrders, (row) => pickNumber(row, ["total_net"]) ?? 0));
-  const pendingReceivables = roundMoney(
-    sumMoney(pendingOrders, (row) => Math.max(0, financeOrderGross(row) - (pickNumber(row, ["payment_received_amount"]) ?? 0)))
-  );
-  const purchaseNet = roundMoney(
-    sumMoney(filteredBatchLines, (row) => pickNumber(row, ["line_total"]) ?? 0)
-  );
-  const vatAmbiguousPurchaseNet = roundMoney(
-    sumMoney(filteredBatchLines, (line) => {
-      const batch = maps.batchById.get(pickString(line, ["batch_id"]) ?? "");
-      return financeBatchVatExcluded(batch) ? 0 : pickNumber(line, ["line_total"]) ?? 0;
-    })
-  );
-  const cogsNet = roundMoney(
-    sumMoney(filteredAllocations, (row) => pickNumber(row, ["total_cost_net"]) ?? 0)
-  );
-  const expenseNet = roundMoney(
-    sumMoney(filteredExpenses, (row) => pickNumber(row, ["amount_net"]) ?? 0)
-  );
+  const salesNet = sumFinanceLedgerRows(ledgerRows, "sale");
+  const pendingReceivables = sumFinanceLedgerRows(ledgerRows, "receivable");
+  const purchaseNet = sumFinanceLedgerRows(ledgerRows, "purchase");
+  const cogsNet = sumFinanceLedgerRows(ledgerRows, "cogs");
+  const expenseNet = sumFinanceLedgerRows(ledgerRows, "expense");
   const supplierPaymentsNet = roundMoney(
     sumMoney(
-      filteredPayments.filter((row) => normalizeFinanceEntryStatus(pickString(row, ["status"])) === "paid"),
-      (row) => pickNumber(row, ["amount_net"]) ?? 0
+      ledgerRows.filter((row) => row.type === "supplier_payment" && row.status === "paid"),
+      (row) => row.amountNet
     )
   );
-  const purchaseNetByBatch = financePurchaseNetByBatch(filteredBatchLines);
+  const vatAmbiguousPurchaseNet = roundMoney(
+    sumMoney(
+      ledgerRows.filter(
+        (row) =>
+          row.type === "purchase" &&
+          readRecordObject(row.metadata)?.vatRequiresReview === true
+      ),
+      (row) => row.amountNet
+    )
+  );
+  const purchaseNetByBatch = financePurchaseNetByBatchFromLedger(ledgerRows);
   const paidByBatch = financePaidNetByBatch(dataSet.payments);
   const accountsPayable = roundMoney(
     Array.from(purchaseNetByBatch.entries()).reduce((total, [batchId, batchTotal]) => {
@@ -6407,9 +6353,7 @@ function summarizeAdminFinance(
   );
   const inventoryCostValue = roundMoney(
     sumMoney(
-      dataSet.costLayers.filter((row) =>
-        financeSupplierMatchesById(pickString(row, ["supplier_id"]), maps, query.supplier)
-      ),
+      dataSet.costLayers.filter((row) => financeCostLayerMatches(row, maps, query)),
       (row) => {
         const received = pickNumber(row, ["received_qty"]) ?? 0;
         const consumed = pickNumber(row, ["consumed_qty"]) ?? 0;
@@ -6424,9 +6368,10 @@ function summarizeAdminFinance(
     unmatched: 0,
   } satisfies Record<AdminFinanceConfidence, number>;
 
-  for (const row of filteredAllocations) {
-    const value = normalizeFinanceConfidence(pickString(row, ["confidence"]));
-    confidence[value] += 1;
+  for (const row of ledgerRows) {
+    if (row.type === "cogs" && row.confidence) {
+      confidence[row.confidence] += 1;
+    }
   }
 
   const grossProfit = roundMoney(salesNet - cogsNet);
@@ -6453,9 +6398,72 @@ function summarizeAdminFinance(
     supplierPaymentsNet,
     vatAmbiguousPurchaseNet,
     walletAppliedNet: roundMoney(
-      sumMoney(salesOrders, (row) => pickNumber(row, ["wallet_applied_amount"]) ?? 0)
+      sumMoney(ledgerRows.filter((row) => row.type === "sale"), (row) =>
+        pickNumber(row.metadata, ["walletAppliedAmount"]) ?? 0
+      )
     ),
   };
+}
+
+function sumFinanceLedgerRows(
+  rows: AdminFinanceLedgerRow[],
+  type: AdminFinanceLedgerType
+) {
+  return roundMoney(sumMoney(rows.filter((row) => row.type === type), (row) => row.amountNet));
+}
+
+function financePurchaseNetByBatchFromLedger(rows: AdminFinanceLedgerRow[]) {
+  const totals = new Map<string, number>();
+
+  for (const row of rows) {
+    if (row.type !== "purchase" || !row.batchId) {
+      continue;
+    }
+
+    totals.set(row.batchId, roundMoney((totals.get(row.batchId) ?? 0) + row.amountNet));
+  }
+
+  return totals;
+}
+
+function financeCostLayerMatches(
+  row: DbRow,
+  maps: AdminFinanceMaps,
+  query: NormalizedFinanceQuery
+) {
+  const supplierId = pickString(row, ["supplier_id"]);
+
+  if (!financeSupplierMatchesById(supplierId, maps, query.supplier)) {
+    return false;
+  }
+
+  if (!financeConfidenceMatches(normalizeFinanceConfidence(pickString(row, ["confidence"])), query.confidence)) {
+    return false;
+  }
+
+  if (query.category && !["purchase", "cogs", "supplier_payment"].includes(query.category)) {
+    return false;
+  }
+
+  if (query.q) {
+    const needle = query.q.toLowerCase();
+    const haystack = [
+      pickString(row, ["sku_code"]),
+      pickString(row, ["batch_code"]),
+      supplierNameForId(supplierId, maps),
+      pickString(row, ["confidence"]),
+      pickString(row, ["vat_treatment"]),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    if (!haystack.includes(needle)) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function buildAdminFinanceLedgerRows(
@@ -7179,21 +7187,6 @@ function financeBatchVatExcluded(row: DbRow | undefined) {
   const vatMode = (pickString(row, ["vat_mode"]) ?? "").toLowerCase();
 
   return vatMode.includes("esclus") || vatMode.includes("excluded");
-}
-
-function financePurchaseNetByBatch(lines: DbRow[]) {
-  const totals = new Map<string, number>();
-
-  for (const line of lines) {
-    const batchId = pickString(line, ["batch_id"]);
-    if (!batchId) {
-      continue;
-    }
-
-    totals.set(batchId, roundMoney((totals.get(batchId) ?? 0) + (pickNumber(line, ["line_total"]) ?? 0)));
-  }
-
-  return totals;
 }
 
 function financePaidNetByBatch(payments: DbRow[]) {

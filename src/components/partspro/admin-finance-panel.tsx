@@ -777,12 +777,11 @@ function SupplierPaymentDialog({
         </DialogHeader>
         <div className="grid gap-3">
           <Label>{copy.batch}</Label>
-          <Select value={form.batchId || "none"} onValueChange={(value) => setForm((current) => ({ ...current, batchId: value === "none" ? "" : value }))}>
+          <Select value={form.batchId} onValueChange={(value) => setForm((current) => ({ ...current, batchId: value }))}>
             <SelectTrigger className="w-full">
-              <SelectValue />
+              <SelectValue placeholder={copy.batchPlaceholder} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">{copy.noBatch}</SelectItem>
               {batchOptions.map((row) => (
                 <SelectItem key={row.batchId ?? row.id} value={row.batchId as string}>
                   {[row.batchCode, row.supplierName, row.amountNet.toFixed(2)].filter(Boolean).join(" / ")}
@@ -874,7 +873,7 @@ function financeCopy(locale: string) {
       loadError: "Dati finanza non disponibili.",
       loading: "Caricamento...",
       netChart: "Netto operativo",
-      noBatch: "Nessun batch",
+      batchPlaceholder: "Seleziona batch",
       note: "Nota",
       operatingProfit: "Utile operativo",
       payables: "Debiti fornitori",
@@ -940,7 +939,7 @@ function financeCopy(locale: string) {
     loadError: "财务数据暂时不可用。",
     loading: "加载中...",
     netChart: "经营净额",
-    noBatch: "不选择批次",
+    batchPlaceholder: "选择批次",
     note: "备注",
     operatingProfit: "经营利润",
     payables: "应付供应商",
