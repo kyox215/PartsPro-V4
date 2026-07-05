@@ -23,13 +23,19 @@ type CartApiPayload = {
 
 const syncDebounceMs = 500;
 const realtimeRefreshDebounceMs = 250;
-const sessionRetryDelaysMs = [0, 600, 1500] as const;
+const sessionRetryDelaysMs = [0, 600, 1500, 3000] as const;
 const CART_SYNC_RETRY_EVENT = "partspro-cart-sync-retry";
 type RemoteCartWriteResult = "synced" | "local";
 type RemoteCartLoadResult =
   | { status: "remote"; items: CartItem[] }
   | { status: "local" };
-export type CartRemoteSyncStatus = "idle" | "loading" | "ready" | "local" | "error";
+export type CartRemoteSyncStatus =
+  | "idle"
+  | "loading"
+  | "restoring"
+  | "ready"
+  | "local"
+  | "error";
 
 export type CartSyncStatusSnapshot = {
   errorMessage?: string;
@@ -110,13 +116,17 @@ export function CartSyncBridge() {
     let removeRealtimeChannel: (() => void) | null = null;
     let removeAuthListener: (() => void) | null = null;
 
-    function enterLocalMode() {
+    function stopRemoteListeners() {
       removeRealtimeChannel?.();
       removeRealtimeChannel = null;
       if (refreshTimeout !== null) {
         window.clearTimeout(refreshTimeout);
         refreshTimeout = null;
       }
+    }
+
+    function enterLocalMode() {
+      stopRemoteListeners();
 
       setCartStorageOwner(null);
       lastSyncedSnapshotRef.current = serializeCartItems([]);
@@ -124,6 +134,18 @@ export function CartSyncBridge() {
         setSyncEnabled(false);
         setRemoteLoaded(true);
         setCartSyncStatus({ remoteStatus: "local" });
+      }
+    }
+
+    function enterRestoringMode() {
+      stopRemoteListeners();
+      if (!disposed) {
+        setSyncEnabled(false);
+        setRemoteLoaded(false);
+        setCartSyncStatus({
+          errorMessage: "Restoring account cart session",
+          remoteStatus: "restoring",
+        });
       }
     }
 
@@ -232,7 +254,29 @@ export function CartSyncBridge() {
       }
 
       if (!userId) {
-        enterLocalMode();
+        try {
+          const result = await readRemoteCart(controller.signal);
+
+          if (controller.signal.aborted || disposed) {
+            return;
+          }
+
+          if (result.status === "local") {
+            enterLocalMode();
+            return;
+          }
+
+          enterRestoringMode();
+        } catch {
+          if (!controller.signal.aborted && !disposed) {
+            setSyncEnabled(false);
+            setRemoteLoaded(false);
+            setCartSyncStatus({
+              errorMessage: "Unable to restore remote cart session",
+              remoteStatus: "error",
+            });
+          }
+        }
         return;
       }
 
@@ -279,12 +323,7 @@ export function CartSyncBridge() {
         return;
       }
 
-      removeRealtimeChannel?.();
-      removeRealtimeChannel = null;
-      if (refreshTimeout !== null) {
-        window.clearTimeout(refreshTimeout);
-        refreshTimeout = null;
-      }
+      stopRemoteListeners();
 
       setSyncEnabled(false);
       setRemoteLoaded(false);
@@ -301,6 +340,11 @@ export function CartSyncBridge() {
     if (isSupabaseConfigured()) {
       const supabase = createClient();
       const { data } = supabase.auth.onAuthStateChange((event) => {
+        if (event === "SIGNED_OUT") {
+          enterLocalMode();
+          return;
+        }
+
         if (
           event === "SIGNED_IN" ||
           event === "TOKEN_REFRESHED" ||

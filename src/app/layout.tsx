@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CartSyncBridge } from "@/components/partspro/cart-sync-bridge";
 import { I18nProvider } from "@/components/partspro/i18n-provider";
@@ -7,6 +7,10 @@ import { getDictionary } from "@/i18n/get-dictionary";
 import { getRequestI18n } from "@/i18n/request";
 import { getPartsProSiteUrl } from "@/lib/partspro-site-url";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  themeColor: "#0f172a",
+};
 
 export async function generateMetadata(): Promise<Metadata> {
   const { locale } = await getRequestI18n();
@@ -19,7 +23,7 @@ export async function generateMetadata(): Promise<Metadata> {
     applicationName: "PartsPro",
     appleWebApp: {
       capable: true,
-      statusBarStyle: "black-translucent",
+      statusBarStyle: "default",
       title: "PartsPro",
     },
     title,

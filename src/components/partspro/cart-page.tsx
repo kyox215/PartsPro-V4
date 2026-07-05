@@ -286,7 +286,9 @@ function CartPageContent({
     cart.items.length > 0 &&
     (catalogLoadState === "loading" || hasPendingCatalogResolution);
   const isRemoteCartLoading =
-    !isLoginRequired && cartSyncStatus.remoteStatus === "loading";
+    !isLoginRequired &&
+    (cartSyncStatus.remoteStatus === "loading" ||
+      cartSyncStatus.remoteStatus === "restoring");
   const isCartBootstrapping =
     !isLoginRequired && (!cart.isHydrated || isRemoteCartLoading);
   const isCartSyncError =

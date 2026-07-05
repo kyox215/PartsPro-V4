@@ -1,3 +1,11 @@
+self.addEventListener("install", (event) => {
+  event.waitUntil(self.skipWaiting());
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
 self.addEventListener("push", (event) => {
   if (!event.data) {
     return;
@@ -29,12 +37,10 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
 
-  const targetUrl =
-    event.notification.data?.targetUrl ||
-    event.notification.data?.targetPath ||
-    "/";
+  const targetPath = event.notification.data?.targetPath;
+  const targetUrl = event.notification.data?.targetUrl;
   const notificationId = event.notification.data?.notificationId;
-  const url = new URL(targetUrl, self.location.origin).toString();
+  const url = resolveNotificationTargetUrl(targetPath, targetUrl);
 
   event.waitUntil(
     (async () => {
@@ -72,3 +78,23 @@ self.addEventListener("notificationclick", (event) => {
     })()
   );
 });
+
+function resolveNotificationTargetUrl(targetPath, targetUrl) {
+  if (typeof targetPath === "string" && targetPath.startsWith("/")) {
+    return new URL(targetPath, self.location.origin).toString();
+  }
+
+  if (typeof targetUrl === "string") {
+    try {
+      const url = new URL(targetUrl, self.location.origin);
+
+      if (url.origin === self.location.origin) {
+        return url.toString();
+      }
+    } catch {
+      // Fall through to the app root for malformed notification targets.
+    }
+  }
+
+  return new URL("/", self.location.origin).toString();
+}

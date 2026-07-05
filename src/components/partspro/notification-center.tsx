@@ -57,6 +57,7 @@ type NotificationCenterProps = {
 const copy = {
   it: {
     browserDenied: "Notifiche bloccate dal browser",
+    browserError: "Notifiche non salvate",
     browserReady: "Notifiche browser attive",
     browserUnsupported: "Notifiche push non supportate",
     enable: "Attiva",
@@ -82,6 +83,7 @@ const copy = {
   },
   zh: {
     browserDenied: "浏览器已阻止通知",
+    browserError: "通知保存失败",
     browserReady: "浏览器通知已开启",
     browserUnsupported: "当前浏览器不支持推送",
     enable: "开启",
@@ -124,7 +126,7 @@ export function NotificationCenter({
   const [loading, setLoading] = React.useState(false);
   const [busyAction, setBusyAction] = React.useState<string | null>(null);
   const [pushState, setPushState] = React.useState<
-    "checking" | "unsupported" | "default" | "denied" | "granted" | "unconfigured"
+    "checking" | "unsupported" | "default" | "denied" | "granted" | "unconfigured" | "error"
   >("checking");
   const [isIosStandaloneMissing, setIsIosStandaloneMissing] =
     React.useState(false);
@@ -281,8 +283,7 @@ export function NotificationCenter({
         isIosStandaloneMissing &&
         pushState !== "granted" &&
         pushState !== "denied" &&
-        pushState !== "checking" &&
-        pushState !== "unconfigured"
+        pushState !== "checking"
       ) {
         markNotificationPermissionPromptSeen();
         setPermissionPromptKind("ios");
@@ -328,7 +329,7 @@ export function NotificationCenter({
   async function enablePush() {
     if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
       setPushState("unsupported");
-      return;
+      return false;
     }
 
     setBusyAction("enable");
@@ -343,26 +344,37 @@ export function NotificationCenter({
 
       if (!publicKey) {
         setPushState("unconfigured");
-        return;
+        return false;
       }
 
       const permission = await Notification.requestPermission();
       setPushState(permission);
 
       if (permission !== "granted") {
-        return;
+        return false;
       }
 
       const registration = await navigator.serviceWorker.ready;
       const existingSubscription = await registration.pushManager.getSubscription();
+      const applicationServerKey = urlBase64ToUint8Array(publicKey);
+      const reusableSubscription =
+        existingSubscription &&
+        pushSubscriptionKeyMatches(existingSubscription, applicationServerKey)
+          ? existingSubscription
+          : null;
+
+      if (existingSubscription && !reusableSubscription) {
+        await existingSubscription.unsubscribe().catch(() => false);
+      }
+
       const subscription =
-        existingSubscription ??
+        reusableSubscription ??
         (await registration.pushManager.subscribe({
-          applicationServerKey: urlBase64ToUint8Array(publicKey),
+          applicationServerKey,
           userVisibleOnly: true,
         }));
 
-      await fetch("/api/notifications/subscriptions", {
+      const saveResponse = await fetch("/api/notifications/subscriptions", {
         body: JSON.stringify({
           browser: detectBrowser(),
           platform: navigator.platform || null,
@@ -374,20 +386,33 @@ export function NotificationCenter({
         method: "POST",
       });
 
+      if (!saveResponse.ok) {
+        setPushState("error");
+        return false;
+      }
+
+      setPushState("granted");
+
       if (popoverOpen) {
         await loadNotifications();
       } else {
         await loadNotificationSummary();
       }
+
+      return true;
+    } catch {
+      setPushState("error");
+      return false;
     } finally {
       setBusyAction(null);
     }
   }
 
   async function handlePermissionPromptEnable() {
-    await enablePush();
-    setPermissionPromptOpen(false);
-    setPermissionPromptKind(null);
+    if (await enablePush()) {
+      setPermissionPromptOpen(false);
+      setPermissionPromptKind(null);
+    }
   }
 
   function closePermissionPrompt() {
@@ -682,7 +707,7 @@ function markNotificationPermissionPromptSeen() {
 }
 
 function statusText(
-  state: "checking" | "unsupported" | "default" | "denied" | "granted" | "unconfigured",
+  state: "checking" | "unsupported" | "default" | "denied" | "granted" | "unconfigured" | "error",
   text: typeof copy.zh
 ) {
   if (state === "granted") {
@@ -701,6 +726,10 @@ function statusText(
     return text.pushUnavailable;
   }
 
+  if (state === "error") {
+    return text.browserError;
+  }
+
   return text.permissionDefault;
 }
 
@@ -715,6 +744,33 @@ function urlBase64ToUint8Array(base64String: string) {
   }
 
   return outputArray;
+}
+
+function pushSubscriptionKeyMatches(
+  subscription: PushSubscription,
+  expectedKey: Uint8Array
+) {
+  const currentKey = subscription.options.applicationServerKey;
+
+  if (!currentKey) {
+    return false;
+  }
+
+  return uint8ArrayEquals(new Uint8Array(currentKey), expectedKey);
+}
+
+function uint8ArrayEquals(left: Uint8Array, right: Uint8Array) {
+  if (left.byteLength !== right.byteLength) {
+    return false;
+  }
+
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function readNotificationPayload(payload: unknown): NotificationPayload {
