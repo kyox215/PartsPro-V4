@@ -27,6 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   adminPermissionDescription,
   adminPermissionGroupLabel,
@@ -83,6 +84,8 @@ type Notice = {
   tone: "success" | "warning" | "error";
 };
 
+type MobilePermissionView = "employees" | "permissions" | "role";
+
 export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean }) {
   const { locale } = useI18n();
   const text = getAdminDictionary(locale).admin;
@@ -95,6 +98,8 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
   const [query, setQuery] = React.useState("");
   const [permissionQuery, setPermissionQuery] = React.useState("");
   const [isLoading, setIsLoading] = React.useState(false);
+  const [mobilePermissionGroup, setMobilePermissionGroup] = React.useState("");
+  const [mobileView, setMobileView] = React.useState<MobilePermissionView>("employees");
   const [pendingKey, setPendingKey] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<Notice | null>(null);
 
@@ -237,6 +242,28 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
     (customerLevelOverride === "inherit" && customerLevelRoleAllows);
   const isInitialLoading =
     isLoading && employees.length === 0 && permissions.length === 0;
+  const selectedOverrideCount = React.useMemo(
+    () =>
+      overrides.filter((override) => override.userId === selectedEmployee?.userId)
+        .length,
+    [overrides, selectedEmployee?.userId]
+  );
+  const mobileRoleLabel = copy.mobileRole;
+  const mobilePermissionsLabel = copy.mobilePermissions;
+  const selectedEmployeeName =
+    selectedEmployee?.displayName ??
+    selectedEmployee?.email ??
+    selectedEmployee?.userId ??
+    copy.userRequired;
+  const activeMobilePermissionGroup = filteredPermissionGroups.some(
+    ([groupName]) => groupName === mobilePermissionGroup
+  )
+    ? mobilePermissionGroup
+    : filteredPermissionGroups[0]?.[0] ?? "";
+  const activeMobilePermissionItems =
+    filteredPermissionGroups.find(
+      ([groupName]) => groupName === activeMobilePermissionGroup
+    )?.[1] ?? [];
 
   async function updateRoleTemplate(roleTemplate: string) {
     if (!selectedEmployee || selectedEmployee.roleTemplate === roleTemplate) {
@@ -310,7 +337,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
   }
 
   return (
-    <section className="min-w-0 space-y-4 text-slate-950">
+    <section className="min-w-0 space-y-2 text-slate-950 sm:space-y-4">
       <div
         className={cn(
           "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
@@ -336,7 +363,329 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
 
       {notice && <NoticeBanner copy={copy} notice={notice} onDismiss={() => setNotice(null)} />}
 
-      <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="sm:hidden">
+        <Tabs
+          value={mobileView}
+          onValueChange={(value) => setMobileView(value as MobilePermissionView)}
+          className="gap-2"
+        >
+          <div className="rounded-xl border border-slate-200 bg-white p-2 shadow-[0_12px_30px_rgba(15,23,42,0.05)]">
+            <div className="flex min-w-0 items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate text-[15px] font-black leading-5 text-slate-950">
+                  {selectedEmployeeName}
+                </div>
+                <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
+                  <Badge className="h-5 max-w-full truncate bg-slate-50 px-1.5 text-[11px]" variant="outline">
+                    {selectedRole?.label ?? copy.roleSelectPlaceholder}
+                  </Badge>
+                  <span className="text-[11px] font-bold text-slate-400">
+                    {filteredEmployees.length}/{employees.length}
+                  </span>
+                  <span className="text-[11px] font-bold text-slate-400">
+                    {localizedPermissions.length} {mobilePermissionsLabel}
+                  </span>
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="size-8 shrink-0 bg-white p-0"
+                disabled={isLoading}
+                aria-label={copy.sync}
+                onClick={() => void refreshData()}
+              >
+                <RefreshCcw className={cn("size-4", isLoading && "animate-spin")} />
+              </Button>
+            </div>
+            <TabsList className="mt-2 grid h-9 w-full grid-cols-3 bg-slate-100">
+              <TabsTrigger value="employees" className="text-xs">
+                {copy.employees}
+                <span className="text-[10px] text-slate-400">{employees.length}</span>
+              </TabsTrigger>
+              <TabsTrigger value="role" className="text-xs">
+                {mobileRoleLabel}
+                <span className="text-[10px] text-slate-400">{selectedOverrideCount}</span>
+              </TabsTrigger>
+              <TabsTrigger value="permissions" className="text-xs">
+                {mobilePermissionsLabel}
+                <span className="text-[10px] text-slate-400">{localizedPermissions.length}</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
+
+          <TabsContent value="employees" className="m-0 min-w-0">
+            <div className="rounded-xl border border-slate-200 bg-white p-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  className="h-9 bg-white pl-9 text-sm"
+                  placeholder={copy.employeeSearchPlaceholder}
+                />
+              </div>
+              <div className="mt-2 max-h-[calc(100svh-320px)] min-h-[240px] space-y-1.5 overflow-y-auto pr-0.5">
+                {isInitialLoading ? (
+                  <EmployeeListSkeleton />
+                ) : (
+                  <AdminBusyRegion
+                    contentClassName="space-y-1.5"
+                    label={text.common.refreshing}
+                    pending={isLoading}
+                    rows={4}
+                  >
+                    {filteredEmployees.length > 0 ? (
+                      filteredEmployees.map((employee) => (
+                        <button
+                          key={employee.userId}
+                          type="button"
+                          className={cn(
+                            "flex min-w-0 items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-left transition active:scale-[0.99]",
+                            employee.userId === selectedEmployee?.userId
+                              ? "border-primary/35 bg-primary/8"
+                              : "border-slate-200 bg-white"
+                          )}
+                          aria-label={formatAdminMessage(copy.employeeSelectAria, {
+                            name: employee.displayName ?? employee.email ?? employee.userId,
+                          })}
+                          onClick={() => {
+                            setSelectedUserId(employee.userId);
+                            setMobileView("role");
+                          }}
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-black leading-5 text-slate-950">
+                              {employee.displayName ?? employee.email ?? copy.employees}
+                            </div>
+                            <div className="truncate text-[11px] font-semibold leading-4 text-slate-500">
+                              {employee.email ?? employee.userId}
+                            </div>
+                          </div>
+                          <Badge className="h-6 shrink-0 bg-white px-2 text-[11px]" variant="outline">
+                            {adminRoleTemplateLabel(text, employee.roleTemplate)}
+                          </Badge>
+                        </button>
+                      ))
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">
+                        {copy.employeeEmpty}
+                      </div>
+                    )}
+                  </AdminBusyRegion>
+                )}
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="role" className="m-0 min-w-0">
+            <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-2">
+              {selectedEmployee ? (
+                <>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
+                    <div className="truncate text-sm font-black text-slate-950">
+                      {selectedEmployeeName}
+                    </div>
+                    <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">
+                      {selectedEmployee.email ?? selectedEmployee.userId}
+                    </div>
+                  </div>
+                  <Select
+                    value={selectedRole?.id ?? ""}
+                    onValueChange={(value) => void updateRoleTemplate(value)}
+                    disabled={pendingKey?.startsWith("role:")}
+                  >
+                    <SelectTrigger className="h-10 bg-white" aria-label={copy.roleSelectLabel}>
+                      <SelectValue placeholder={copy.roleSelectPlaceholder} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {localizedRoleTemplates.map((roleTemplate) => (
+                        <SelectItem key={roleTemplate.id} value={roleTemplate.id}>
+                          {roleTemplate.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedRole ? (
+                    <div className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs font-semibold leading-5 text-slate-600">
+                      <span className="font-black text-slate-900">{selectedRole.label}</span>
+                      {selectedRole.description ? `：${selectedRole.description}` : ""}
+                    </div>
+                  ) : null}
+                  {customerLevelPermission ? (
+                    <div className="rounded-lg border border-primary/20 bg-primary/5 p-2">
+                      <div className="flex min-w-0 items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-black text-slate-950">
+                            {customerLevelPermission.label}
+                          </div>
+                          <div className="truncate font-mono text-[11px] font-semibold text-slate-500">
+                            {CUSTOMER_MANAGE_LEVEL_PERMISSION}
+                          </div>
+                        </div>
+                        <Badge
+                          className={cn(
+                            "h-6 shrink-0 border px-2 text-[11px]",
+                            customerLevelAllowed
+                              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border-slate-200 bg-white text-slate-600"
+                          )}
+                        >
+                          {customerLevelAllowed ? copy.customerLevelOpen : copy.customerLevelClosed}
+                        </Badge>
+                      </div>
+                      <div className="mt-2 grid grid-cols-3 gap-1.5">
+                        {(["inherit", "grant", "deny"] as const).map((effect) => (
+                          <Button
+                            key={effect}
+                            size="sm"
+                            variant={customerLevelOverride === effect ? "default" : "outline"}
+                            className={cn(
+                              "h-8 px-1.5 text-xs",
+                              customerLevelOverride === effect ? "" : "bg-white"
+                            )}
+                            disabled={
+                              pendingKey ===
+                              `permission:${CUSTOMER_MANAGE_LEVEL_PERMISSION}`
+                            }
+                            onClick={() =>
+                              void updateOverride(CUSTOMER_MANAGE_LEVEL_PERMISSION, effect)
+                            }
+                          >
+                            {effectLabel(effect, copy)}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <div className="rounded-lg border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">
+                  {copy.userRequired}
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="permissions" className="m-0 min-w-0">
+            <div className="rounded-xl border border-slate-200 bg-white p-2">
+              {selectedEmployee ? (
+                <>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                    <Input
+                      value={permissionQuery}
+                      onChange={(event) => setPermissionQuery(event.target.value)}
+                      className="h-9 bg-white pl-9 text-sm"
+                      placeholder={copy.matrixSearchPlaceholder}
+                    />
+                  </div>
+                  {filteredPermissionGroups.length > 0 ? (
+                    <Select
+                      value={activeMobilePermissionGroup}
+                      onValueChange={setMobilePermissionGroup}
+                    >
+                      <SelectTrigger
+                        className="mt-2 h-9 bg-white text-sm"
+                        aria-label={copy.matrixSearchPlaceholder}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {filteredPermissionGroups.map(([groupName, items]) => (
+                          <SelectItem key={groupName} value={groupName}>
+                            {groupLabel(text, groupName)} · {items.length}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : null}
+                  <div className="mt-2 max-h-[calc(100svh-350px)] min-h-[210px] space-y-2 overflow-y-auto pr-0.5">
+                    {isInitialLoading ? (
+                      <PermissionMatrixSkeleton />
+                    ) : filteredPermissionGroups.length > 0 ? (
+                      <div className="min-w-0 rounded-lg border border-slate-200">
+                        <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-2.5 py-1.5">
+                          <span className="truncate text-xs font-black text-slate-600">
+                            {groupLabel(text, activeMobilePermissionGroup)}
+                          </span>
+                          <Badge className="h-5 bg-white px-1.5 text-[10px]" variant="outline">
+                            {activeMobilePermissionItems.length}
+                          </Badge>
+                        </div>
+                        <div className="divide-y divide-slate-100">
+                          {activeMobilePermissionItems.map((permission) => {
+                            const roleAllows = Boolean(
+                              selectedRole?.permissions.includes(permission.id)
+                            );
+                            const overrideEffect =
+                              selectedOverrideMap.get(permission.id) ?? "inherit";
+                            const effectiveAllowed =
+                              overrideEffect === "grant" ||
+                              (overrideEffect === "inherit" && roleAllows);
+
+                            return (
+                              <div key={permission.id} className="min-w-0 px-2.5 py-2">
+                                <div className="flex min-w-0 items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="truncate text-sm font-black leading-5 text-slate-900">
+                                      {permission.label}
+                                    </div>
+                                    <div className="truncate font-mono text-[10px] font-semibold leading-4 text-slate-400">
+                                      {permission.id}
+                                    </div>
+                                  </div>
+                                  <Badge
+                                    className={cn(
+                                      "h-5 shrink-0 border px-1.5 text-[10px]",
+                                      effectiveAllowed
+                                        ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                                        : "border-slate-200 bg-slate-50 text-slate-600"
+                                    )}
+                                  >
+                                    {effectiveAllowed ? copy.permissionOpen : copy.permissionClosed}
+                                  </Badge>
+                                </div>
+                                <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+                                  {(["inherit", "grant", "deny"] as const).map((effect) => (
+                                    <Button
+                                      key={effect}
+                                      size="sm"
+                                      variant={overrideEffect === effect ? "default" : "outline"}
+                                      className={cn(
+                                        "h-7 px-1 text-[11px]",
+                                        overrideEffect === effect ? "" : "bg-white"
+                                      )}
+                                      disabled={pendingKey === `permission:${permission.id}`}
+                                      onClick={() => void updateOverride(permission.id, effect)}
+                                    >
+                                      {effectLabel(effect, copy)}
+                                    </Button>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">
+                        {copy.noPermissionMatches}
+                      </div>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <div className="rounded-lg border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">
+                  {copy.matrixEmpty}
+                </div>
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      <div className="hidden gap-4 sm:grid xl:grid-cols-[360px_minmax(0,1fr)]">
         <Card className="border-slate-200 bg-white">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
