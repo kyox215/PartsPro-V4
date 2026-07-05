@@ -75,6 +75,8 @@ const catalogPublicCardSelect =
   "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, quality_grade, stock_status, moq, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, updated_at, image_path, image_alt";
 const catalogProductCardSelect =
   "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at, image_path, image_alt";
+const adminProductFallbackSelect =
+  "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, quality_grade, stock_status, moq, cost_price, retail_price, b2b_price, vat_mode, warranty_days, weight_gram, stock_qty, location, batch_code, supplier, compatibility_models, alternative_skus, highlights, status, updated_at, image_path, image_alt, gallery_image_paths, created_at";
 const adminCustomerSelect =
   "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, customer_type, assignment_status, profile_kind, level, lifetime_spend_net, promo_level, promo_level_starts_at, promo_level_expires_at, promo_level_reason, assigned_by, assigned_at, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
 const adminCustomerCompatSelect =
@@ -363,6 +365,12 @@ export type AdminProduct = RepositoryPartProduct & {
   createdAt: string;
 };
 
+export type AdminProductIssueFilter =
+  | "missing_price"
+  | "missing_image"
+  | "zero_stock_unsold"
+  | "zero_stock_sold";
+
 export type AdminProductQueryInput = {
   activeRestockOnly?: boolean;
   brand?: string;
@@ -370,6 +378,7 @@ export type AdminProductQueryInput = {
   category?: string;
   catalogStatus?: AdminCatalogStatus;
   grade?: ProductGrade;
+  issueFilter?: AdminProductIssueFilter;
   limit: number;
   model?: string;
   modelSeries?: string;
@@ -394,6 +403,8 @@ export type AdminProductSummary = {
   hidden: number;
   blocked: number;
   lowStock: number;
+  activeLowStock: number;
+  activeOutOfStock: number;
   restockRequests: number;
   missingImage: number;
   missingPrice: number;
@@ -520,6 +531,199 @@ export type AdminSupplierBatchDetail = {
   batch: AdminSupplierBatch;
   lines: AdminSupplierBatchLine[];
   verification: AdminSupplierBatchVerification;
+};
+
+export type AdminFinanceConfidence = "exact" | "estimated" | "unmatched";
+export type AdminFinanceAllocationStatus =
+  | "reserved"
+  | "consumed"
+  | "released"
+  | "reversed"
+  | "backfilled";
+export type AdminFinanceDateMode =
+  | "created"
+  | "paid"
+  | "received"
+  | "invoice"
+  | "recognized"
+  | "occurred";
+export type AdminFinanceExpenseCategory =
+  | "rent"
+  | "salary"
+  | "shipping"
+  | "platform_fee"
+  | "utilities"
+  | "tax"
+  | "supplier_fee"
+  | "bank_fee"
+  | "other";
+export type AdminFinanceEntryStatus = "pending" | "paid" | "cancelled";
+export type AdminFinanceLedgerType =
+  | "sale"
+  | "receivable"
+  | "purchase"
+  | "cogs"
+  | "expense"
+  | "supplier_payment";
+
+export type AdminFinanceQueryInput = {
+  category?: string;
+  confidence?: AdminFinanceConfidence;
+  dateFrom?: string;
+  dateMode?: AdminFinanceDateMode;
+  dateTo?: string;
+  limit?: number;
+  offset?: number;
+  q?: string;
+  supplier?: string;
+};
+
+export type AdminFinanceSummary = {
+  accountsPayable: number;
+  cogsNet: number;
+  currency: string;
+  expenseNet: number;
+  grossMarginRate: number;
+  grossProfit: number;
+  inventoryCostValue: number;
+  operatingProfit: number;
+  pendingReceivables: number;
+  purchaseNet: number;
+  salesNet: number;
+  supplierPaymentsNet: number;
+  vatAmbiguousPurchaseNet: number;
+  walletAppliedNet: number;
+  confidence: Record<AdminFinanceConfidence, number>;
+  range: {
+    dateFrom: string | null;
+    dateMode: AdminFinanceDateMode;
+    dateTo: string | null;
+  };
+};
+
+export type AdminFinanceLedgerRow = {
+  id: string;
+  type: AdminFinanceLedgerType;
+  date: string;
+  title: string;
+  amountNet: number;
+  currency: string;
+  orderId: string | null;
+  orderNo: string | null;
+  skuCode: string | null;
+  batchId: string | null;
+  batchCode: string | null;
+  supplierId: string | null;
+  supplierName: string | null;
+  category: string | null;
+  status: string | null;
+  confidence: AdminFinanceConfidence | null;
+  metadata: Record<string, unknown>;
+};
+
+export type AdminFinanceLedgerPage = {
+  rows: AdminFinanceLedgerRow[];
+  summary: AdminFinanceSummary;
+  total: number;
+};
+
+export type AdminFinanceCostAllocation = {
+  id: string;
+  orderId: string | null;
+  orderNo: string | null;
+  orderLineId: string | null;
+  skuCode: string;
+  productName: string | null;
+  batchCode: string | null;
+  supplierName: string | null;
+  quantity: number;
+  unitCostNet: number;
+  totalCostNet: number;
+  currency: string;
+  status: AdminFinanceAllocationStatus;
+  confidence: AdminFinanceConfidence;
+  source: string;
+  recognizedAt: string | null;
+  createdAt: string;
+  metadata: Record<string, unknown>;
+};
+
+export type AdminFinanceCogsPage = {
+  allocations: AdminFinanceCostAllocation[];
+  total: number;
+};
+
+export type AdminFinanceExpenseEntry = {
+  id: string;
+  category: AdminFinanceExpenseCategory;
+  description: string;
+  amountNet: number;
+  vatAmount: number;
+  amountGross: number;
+  currency: string;
+  status: AdminFinanceEntryStatus;
+  occurredAt: string;
+  paidAt: string | null;
+  counterpartyName: string | null;
+  paymentMethod: string | null;
+  reference: string | null;
+  evidenceUrl: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  metadata: Record<string, unknown>;
+};
+
+export type AdminSupplierBatchPayment = {
+  id: string;
+  batchId: string | null;
+  batchCode: string | null;
+  supplierId: string | null;
+  supplierName: string | null;
+  amountNet: number;
+  vatAmount: number;
+  amountGross: number;
+  currency: string;
+  status: AdminFinanceEntryStatus;
+  paidAt: string | null;
+  dueAt: string | null;
+  paymentMethod: string | null;
+  reference: string | null;
+  note: string | null;
+  createdAt: string;
+  updatedAt: string;
+  metadata: Record<string, unknown>;
+};
+
+export type AdminFinanceExpenseEntryInput = {
+  amountNet: number;
+  category: AdminFinanceExpenseCategory;
+  description: string;
+  counterpartyName?: string | null;
+  evidenceUrl?: string | null;
+  metadata?: Record<string, unknown>;
+  notes?: string | null;
+  occurredAt?: string;
+  paidAt?: string | null;
+  paymentMethod?: string | null;
+  reference?: string | null;
+  status?: AdminFinanceEntryStatus;
+  vatAmount?: number;
+};
+
+export type AdminSupplierBatchPaymentInput = {
+  amountNet: number;
+  amountGross?: number;
+  batchId?: string | null;
+  dueAt?: string | null;
+  metadata?: Record<string, unknown>;
+  note?: string | null;
+  paidAt?: string | null;
+  paymentMethod?: string | null;
+  reference?: string | null;
+  status?: AdminFinanceEntryStatus;
+  supplierId?: string | null;
+  vatAmount?: number;
 };
 
 export type AdminProductWriteInput = {
@@ -1026,6 +1230,66 @@ export type AdminSoldStockShortagePage = {
     total: number;
     windowDays: number;
     lowStockThreshold: number;
+  };
+  total: number;
+};
+
+export type AdminInventoryHealthIssue =
+  | "stock_mismatch"
+  | "reserved_mismatch"
+  | "locked_orphan"
+  | "active_zero_stock_sold";
+
+export type AdminInventoryHealthIssueFilter = AdminInventoryHealthIssue | "all";
+export type AdminInventoryHealthSort =
+  | "severity"
+  | "delta_desc"
+  | "last_sold_desc"
+  | "sku";
+
+export type AdminInventoryHealthQueryInput = {
+  issue: AdminInventoryHealthIssueFilter;
+  limit: number;
+  offset: number;
+  q?: string;
+  sort: AdminInventoryHealthSort;
+  staleLockHours: number;
+  windowDays: number;
+};
+
+export type AdminInventoryHealthRow = {
+  sku: string;
+  name: string;
+  brand: string | null;
+  model: string | null;
+  status: AdminCatalogStatus;
+  issues: AdminInventoryHealthIssue[];
+  severity: "critical" | "warning" | "info";
+  productStockQty: number;
+  inventoryAvailableQty: number;
+  inventoryActualQty: number;
+  inventoryLockedQty: number;
+  activeReservedQty: number;
+  activeReservedOrderCount: number;
+  soldQtyWindow: number;
+  lastSoldAt: string | null;
+  delta: number;
+  recommendedAction:
+    | "recount_stock"
+    | "release_or_check_reservation"
+    | "create_replenishment"
+    | "review";
+};
+
+export type AdminInventoryHealthPage = {
+  rows: AdminInventoryHealthRow[];
+  summary: Record<AdminInventoryHealthIssue, number> & {
+    critical: number;
+    warning: number;
+    info: number;
+    total: number;
+    windowDays: number;
+    staleLockHours: number;
   };
   total: number;
 };
@@ -2304,6 +2568,141 @@ export async function getAdminSupplierBatchDetail(
   };
 }
 
+export async function getAdminFinanceSummary(
+  query: AdminFinanceQueryInput = {}
+): Promise<RepositoryResult<AdminFinanceSummary>> {
+  const context = await requireSupabaseContext();
+  const data = await readAdminFinanceSummary(context.client, query);
+
+  return {
+    data,
+    source: "supabase",
+  };
+}
+
+export async function listAdminFinanceLedger(
+  query: AdminFinanceQueryInput = {}
+): Promise<RepositoryResult<AdminFinanceLedgerPage>> {
+  const context = await requireSupabaseContext();
+  const data = await readAdminFinanceLedger(context.client, query);
+
+  return {
+    data,
+    source: "supabase",
+  };
+}
+
+export async function listAdminFinanceCogs(
+  query: AdminFinanceQueryInput = {}
+): Promise<RepositoryResult<AdminFinanceCogsPage>> {
+  const context = await requireSupabaseContext();
+  const data = await readAdminFinanceCogs(context.client, query);
+
+  return {
+    data,
+    source: "supabase",
+  };
+}
+
+export async function createAdminFinanceExpense(
+  input: AdminFinanceExpenseEntryInput
+): Promise<RepositoryResult<AdminFinanceExpenseEntry>> {
+  const context = await requireSupabaseContext();
+  const entry = await writeAdminFinanceExpense(context, input);
+
+  return {
+    data: entry,
+    source: "supabase",
+  };
+}
+
+export async function updateAdminFinanceExpense(
+  expenseId: string,
+  input: Partial<AdminFinanceExpenseEntryInput>
+): Promise<RepositoryResult<AdminFinanceExpenseEntry>> {
+  const context = await requireSupabaseContext();
+  const entry = await writeAdminFinanceExpense(context, input, expenseId);
+
+  return {
+    data: entry,
+    source: "supabase",
+  };
+}
+
+export async function createAdminSupplierBatchPayment(
+  input: AdminSupplierBatchPaymentInput
+): Promise<RepositoryResult<AdminSupplierBatchPayment>> {
+  const context = await requireSupabaseContext();
+  const payment = await writeAdminSupplierBatchPayment(context, input);
+
+  return {
+    data: payment,
+    source: "supabase",
+  };
+}
+
+export async function updateAdminSupplierBatchPayment(
+  paymentId: string,
+  input: Partial<AdminSupplierBatchPaymentInput>
+): Promise<RepositoryResult<AdminSupplierBatchPayment>> {
+  const context = await requireSupabaseContext();
+  const payment = await writeAdminSupplierBatchPayment(context, input, paymentId);
+
+  return {
+    data: payment,
+    source: "supabase",
+  };
+}
+
+export async function auditAdminFinanceExport(
+  metadata: Record<string, unknown>
+): Promise<RepositoryResult<{ audited: boolean }>> {
+  const context = await requireSupabaseContext();
+
+  if (!isSupabaseServiceRoleConfigured()) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_FINANCE_EXPORT_AUDIT_UNAVAILABLE",
+      "Finance export audit requires the Supabase service role."
+    );
+  }
+
+  const serviceClient = createServiceRoleClient() as unknown as SupabaseServerClient;
+  const { data: profile } = await serviceClient
+    .from("profiles")
+    .select("email, role")
+    .eq("id", context.userId)
+    .maybeSingle();
+  const profileRow = isDbRow(profile) ? profile : null;
+  const { error } = await serviceClient.from("admin_audit_events").insert({
+    action: "finance.export",
+    actor_email: pickString(profileRow, ["email"]),
+    actor_id: context.userId,
+    actor_role: pickString(profileRow, ["role"]),
+    after_data: metadata,
+    before_data: {},
+    entity_id: null,
+    entity_type: "finance_export",
+    reason: "Finance ledger export",
+    request_metadata: metadata,
+    result: "success",
+  });
+
+  if (error) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_FINANCE_EXPORT_AUDIT_FAILED",
+      "Finance export audit event could not be recorded.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  return {
+    data: { audited: true },
+    source: "supabase",
+  };
+}
+
 export async function getAdminProduct(
   sku: string
 ): Promise<RepositoryResult<AdminProduct | null>> {
@@ -2540,10 +2939,34 @@ async function runAdminProductAction(
 ): Promise<RepositoryResult<AdminProduct>> {
   const context = await requireSupabaseContext();
   const sourceSku = await resolveAdminProductRpcSku(context.client, sku);
-  const row = await rpcProductRow(context.client, rpcName, {
-    p_reason: reason,
-    p_sku_code: sourceSku,
-  });
+  let row: DbRow;
+
+  try {
+    row = await rpcProductRow(context.client, rpcName, {
+      p_reason: reason,
+      p_sku_code: sourceSku,
+    });
+  } catch (error) {
+    if (rpcName === "admin_publish_product" && error instanceof RepositoryWriteError) {
+      const issues = parseProductPublishIssues(error.details);
+
+      if (issues.length > 0) {
+        throw new RepositoryWriteError(
+          409,
+          "ADMIN_PRODUCT_NOT_PUBLISHABLE",
+          "Product is not publishable.",
+          {
+            reason: "not_publishable",
+            issues,
+            source: error.details,
+          }
+        );
+      }
+    }
+
+    throw error;
+  }
+
   const product = mapAdminProductRow(row);
 
   if (!product) {
@@ -3525,6 +3948,15 @@ export async function listAdminSoldStockShortages(
 ): Promise<RepositoryResult<AdminSoldStockShortagePage>> {
   const context = await requireSupabaseContext();
   const page = await readAdminSoldStockShortagePage(context.client, query);
+
+  return { data: page, source: "supabase" };
+}
+
+export async function listAdminInventoryHealth(
+  query: AdminInventoryHealthQueryInput
+): Promise<RepositoryResult<AdminInventoryHealthPage>> {
+  const context = await requireSupabaseContext();
+  const page = await readAdminInventoryHealthPage(context.client, query);
 
   return { data: page, source: "supabase" };
 }
@@ -5017,7 +5449,7 @@ async function readAdminProductPage(
   client: SupabaseServerClient,
   query: AdminProductQueryInput
 ): Promise<AdminProductPage | null> {
-  const { data, error } = await client.rpc("admin_list_products", {
+  const rpcArgs: Record<string, unknown> = {
     p_active_restock_only: query.activeRestockOnly ?? false,
     p_brand: query.brand ?? null,
     p_catalog_status: query.catalogStatus ?? null,
@@ -5033,9 +5465,19 @@ async function readAdminProductPage(
     p_supplier: query.supplier ?? null,
     p_batch_code: query.batchCode ?? null,
     p_warehouse: query.warehouse ?? null,
-  });
+  };
+
+  if (query.issueFilter) {
+    rpcArgs.p_issue_filter = query.issueFilter;
+  }
+
+  const { data, error } = await client.rpc("admin_list_products", rpcArgs);
 
   if (error) {
+    if (query.issueFilter && isRecoverableAdminProductIssueFilterRpcError(error)) {
+      return readAdminProductIssueFilterFallbackPage(client, query);
+    }
+
     throw new RepositoryWriteError(
       502,
       "ADMIN_PRODUCTS_READ_UNAVAILABLE",
@@ -5045,6 +5487,412 @@ async function readAdminProductPage(
   }
 
   return parseAdminProductPageRpcPayload(data);
+}
+
+async function readAdminProductIssueFilterFallbackPage(
+  client: SupabaseServerClient,
+  query: AdminProductQueryInput
+): Promise<AdminProductPage> {
+  const [productRows, inventoryRows, restockRows] = await Promise.all([
+    readRows(client, "products", adminProductFallbackSelect, 50000),
+    readRows(client, "inventory_items", "sku_code, actual_qty, available_qty, locked_qty", 50000),
+    readRows(client, "product_restock_requests", "sku_code, status", 50000),
+  ]);
+
+  if (!productRows || !inventoryRows) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_PRODUCTS_FALLBACK_UNAVAILABLE",
+      "Admin product issue filter fallback data could not be read from Supabase."
+    );
+  }
+
+  const inventoryBySku = aggregateInventoryRowsBySku(inventoryRows);
+  const restockCounts = aggregateActiveRestockRequestRowsBySku(restockRows ?? []);
+  const enrichedRows = productRows.map((row) =>
+    enrichAdminProductFallbackRow(row, inventoryBySku, restockCounts)
+  );
+  const baseRows = enrichedRows.filter((row) => adminProductFallbackBaseMatches(row, query));
+  const salesBySku =
+    query.issueFilter === "zero_stock_sold" || query.issueFilter === "zero_stock_unsold"
+      ? await readAdminProductSoldQuantityBySku(client)
+      : new Map<string, number>();
+  const filteredRows = baseRows.filter((row) =>
+    adminProductFallbackIssueMatches(row, query.issueFilter, salesBySku)
+  );
+  const sortedRows = sortAdminProductFallbackRows(filteredRows, query.sort);
+  const offset = Math.max(query.offset, 0);
+  const limit = Math.min(Math.max(query.limit, 1), 200);
+  const pageRows = sortedRows.slice(offset, offset + limit);
+
+  return {
+    products: pageRows.map(mapAdminProductRow).filter(isDefined),
+    summary: summarizeAdminProductFallbackRows(filteredRows),
+    total: filteredRows.length,
+  };
+}
+
+function enrichAdminProductFallbackRow(
+  row: DbRow,
+  inventoryBySku: Map<string, { actualQty: number; availableQty: number; lockedQty: number }>,
+  restockCounts: Map<string, number>
+): DbRow {
+  const sku = toPublicSku(pickString(row, ["sku_code", "sku"]) ?? "").toUpperCase();
+  const stockQty = pickNumber(row, ["stock_qty"]) ?? 0;
+  const inventory = inventoryBySku.get(sku);
+
+  return {
+    ...row,
+    actual_qty: inventory?.actualQty ?? stockQty,
+    available_qty: inventory?.availableQty ?? stockQty,
+    locked_qty: inventory?.lockedQty ?? 0,
+    active_restock_request_count: restockCounts.get(sku) ?? 0,
+  };
+}
+
+function aggregateActiveRestockRequestRowsBySku(rows: DbRow[]) {
+  const counts = new Map<string, number>();
+
+  for (const row of rows) {
+    if (pickString(row, ["status"]) !== "active") {
+      continue;
+    }
+
+    const sku = pickString(row, ["sku_code", "sku"]);
+
+    if (!sku) {
+      continue;
+    }
+
+    const key = toPublicSku(sku).toUpperCase();
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+
+  return counts;
+}
+
+function adminProductFallbackBaseMatches(row: DbRow, query: AdminProductQueryInput) {
+  const q = query.q?.trim().toLowerCase();
+
+  if (q && !adminProductFallbackSearchText(row).includes(q)) {
+    return false;
+  }
+
+  if (query.brand && pickString(row, ["brand"]) !== query.brand) {
+    return false;
+  }
+
+  if (query.category && pickString(row, ["category"]) !== query.category) {
+    return false;
+  }
+
+  if (query.catalogStatus && normalizeCatalogStatus(pickString(row, ["status"])) !== query.catalogStatus) {
+    return false;
+  }
+
+  if (query.stockStatus) {
+    if (pickString(row, ["stock_status"]) !== stockStatusToDbValue(query.stockStatus)) {
+      return false;
+    }
+  }
+
+  if (query.warehouse && pickString(row, ["location"]) !== query.warehouse) {
+    return false;
+  }
+
+  if (query.grade && pickString(row, ["quality_grade"]) !== query.grade) {
+    return false;
+  }
+
+  if (
+    query.batchCode &&
+    !caseInsensitiveIncludes(pickString(row, ["batch_code"]), query.batchCode)
+  ) {
+    return false;
+  }
+
+  if (
+    query.supplier &&
+    !caseInsensitiveIncludes(pickString(row, ["supplier"]), query.supplier)
+  ) {
+    return false;
+  }
+
+  if (
+    query.activeRestockOnly &&
+    (pickNumber(row, ["active_restock_request_count"]) ?? 0) <= 0
+  ) {
+    return false;
+  }
+
+  if (query.modelSeries && !adminProductFallbackModelSeriesMatches(row, query.modelSeries)) {
+    return false;
+  }
+
+  if (query.model && !adminProductFallbackModelMatches(row, query.model)) {
+    return false;
+  }
+
+  return true;
+}
+
+function adminProductFallbackSearchText(row: DbRow) {
+  return [
+    pickString(row, ["name"]),
+    pickString(row, ["sku_code", "sku"]),
+    pickString(row, ["brand"]),
+    pickString(row, ["category"]),
+    pickString(row, ["model"]),
+    pickString(row, ["model_code"]),
+    pickString(row, ["model_series"]),
+    pickString(row, ["batch_code"]),
+    pickString(row, ["supplier"]),
+    ...readStringArray(row, ["alternative_skus"]),
+  ]
+    .filter(isDefined)
+    .join(" ")
+    .toLowerCase();
+}
+
+function adminProductFallbackModelSeriesMatches(row: DbRow, modelSeries: string) {
+  const brand = pickString(row, ["brand"]);
+  const candidates = [
+    pickString(row, ["model_series"]),
+    pickString(row, ["model"]),
+    ...readStringArray(row, ["model_codes"]),
+    ...readStringArray(row, ["compatibility_models"]),
+  ].filter(isDefined);
+
+  return candidates.some((candidate) => {
+    return (
+      candidate === modelSeries ||
+      normalizeDeviceModelSeries(brand, candidate, pickString(row, ["model"])) === modelSeries
+    );
+  });
+}
+
+function adminProductFallbackModelMatches(row: DbRow, model: string) {
+  return [
+    pickString(row, ["model"]),
+    ...readStringArray(row, ["model_codes"]),
+    ...readStringArray(row, ["compatibility_models"]),
+  ]
+    .filter(isDefined)
+    .some((candidate) => candidate === model);
+}
+
+function caseInsensitiveIncludes(value: string | null, search: string) {
+  return value?.toLowerCase().includes(search.trim().toLowerCase()) ?? false;
+}
+
+function adminProductFallbackIssueMatches(
+  row: DbRow,
+  issueFilter: AdminProductIssueFilter | undefined,
+  salesBySku: Map<string, number>
+) {
+  if (!issueFilter) {
+    return true;
+  }
+
+  if (issueFilter === "missing_price") {
+    return (pickNumber(row, ["b2b_price"]) ?? 0) <= 0;
+  }
+
+  if (issueFilter === "missing_image") {
+    return !pickString(row, ["image_path"]);
+  }
+
+  const availableQty = pickNumber(row, ["available_qty", "stock_qty"]) ?? 0;
+
+  if (availableQty > 0) {
+    return false;
+  }
+
+  const sku = toPublicSku(pickString(row, ["sku_code", "sku"]) ?? "").toUpperCase();
+  const soldQty = salesBySku.get(sku) ?? 0;
+
+  return issueFilter === "zero_stock_sold" ? soldQty > 0 : soldQty === 0;
+}
+
+function compareStrings(left: string | null, right: string | null) {
+  return (left ?? "").localeCompare(right ?? "", undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function sortAdminProductFallbackRows(rows: DbRow[], sort: AdminProductQueryInput["sort"]) {
+  const sortedRows = [...rows];
+
+  sortedRows.sort((left, right) => {
+    switch (sort) {
+      case "stock_desc":
+        return (
+          (pickNumber(right, ["stock_qty"]) ?? 0) - (pickNumber(left, ["stock_qty"]) ?? 0) ||
+          compareStrings(pickString(left, ["sku_code"]), pickString(right, ["sku_code"]))
+        );
+      case "created_desc":
+        return (
+          timestampFromIso(pickString(right, ["created_at"])) -
+            timestampFromIso(pickString(left, ["created_at"])) ||
+          compareStrings(pickString(left, ["sku_code"]), pickString(right, ["sku_code"]))
+        );
+      case "name":
+        return (
+          compareStrings(pickString(left, ["name"]), pickString(right, ["name"])) ||
+          compareStrings(pickString(left, ["sku_code"]), pickString(right, ["sku_code"]))
+        );
+      case "updated_desc":
+      default:
+        return (
+          timestampFromIso(pickString(right, ["updated_at"])) -
+            timestampFromIso(pickString(left, ["updated_at"])) ||
+          compareStrings(pickString(left, ["sku_code"]), pickString(right, ["sku_code"]))
+        );
+    }
+  });
+
+  return sortedRows;
+}
+
+function summarizeAdminProductFallbackRows(rows: DbRow[]): AdminProductSummary {
+  return {
+    total: rows.length,
+    active: rows.filter((row) => normalizeCatalogStatus(pickString(row, ["status"])) === "active").length,
+    draft: rows.filter((row) => normalizeCatalogStatus(pickString(row, ["status"])) === "draft").length,
+    hidden: rows.filter((row) => normalizeCatalogStatus(pickString(row, ["status"])) === "hidden").length,
+    blocked: rows.filter((row) => normalizeCatalogStatus(pickString(row, ["status"])) === "blocked").length,
+    lowStock: rows.filter((row) => {
+      const availableQty = pickNumber(row, ["available_qty", "stock_qty"]) ?? 0;
+      return availableQty > 0 && availableQty < 10;
+    }).length,
+    activeLowStock: rows.filter((row) => {
+      return (
+        normalizeCatalogStatus(pickString(row, ["status"])) === "active" &&
+        pickString(row, ["stock_status"]) === "low_stock"
+      );
+    }).length,
+    activeOutOfStock: rows.filter((row) => {
+      return (
+        normalizeCatalogStatus(pickString(row, ["status"])) === "active" &&
+        pickString(row, ["stock_status"]) === "out_of_stock"
+      );
+    }).length,
+    restockRequests: rows.reduce(
+      (total, row) => total + (pickNumber(row, ["active_restock_request_count"]) ?? 0),
+      0
+    ),
+    missingImage: rows.filter((row) => !pickString(row, ["image_path"])).length,
+    missingPrice: rows.filter((row) => (pickNumber(row, ["b2b_price"]) ?? 0) <= 0).length,
+  };
+}
+
+async function readAdminProductSoldQuantityBySku(client: SupabaseServerClient) {
+  const orderRows = await readAdminProductSoldOrderRows(client);
+  const orderIds = uniqueDefinedStrings(orderRows.map((row) => pickString(row, ["id"])));
+  const orderCreatedAtById = new Map(
+    orderRows
+      .map((row) => [pickString(row, ["id"]), pickString(row, ["created_at", "createdAt"])])
+      .filter((entry): entry is [string, string] => Boolean(entry[0] && entry[1]))
+  );
+  const lineRows = await readOrderLineRowsForOrderIdsBatched(client, orderIds);
+  const salesBySku = aggregateSoldOrderLines(lineRows, orderCreatedAtById);
+  const soldQtyBySku = new Map<string, number>();
+
+  for (const [sku, sale] of salesBySku) {
+    soldQtyBySku.set(sku.toUpperCase(), sale.soldQty);
+  }
+
+  return soldQtyBySku;
+}
+
+async function readAdminProductSoldOrderRows(client: SupabaseServerClient) {
+  const pageSize = 1000;
+  const limit = 50000;
+  const rows: DbRow[] = [];
+
+  while (rows.length < limit) {
+    const from = rows.length;
+    const to = Math.min(from + pageSize, limit) - 1;
+    const { data, error } = await client
+      .from("orders")
+      .select("id, created_at")
+      .is("soft_deleted_at", null)
+      .in("status", ["shipped", "completed"])
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(from, to);
+    const pageRows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
+
+    if (error || !pageRows) {
+      throw new RepositoryWriteError(
+        502,
+        "ADMIN_PRODUCT_SALES_READ_UNAVAILABLE",
+        "Admin product sales data could not be read from Supabase.",
+        error ? supabaseErrorDetails(error) : undefined
+      );
+    }
+
+    rows.push(...pageRows);
+
+    if (pageRows.length < to - from + 1) {
+      break;
+    }
+
+    if (rows.length >= limit) {
+      throw new RepositoryWriteError(
+        502,
+        "ADMIN_PRODUCT_SALES_READ_LIMIT_EXCEEDED",
+        "Admin product sales fallback reached its read limit. Apply the product issue filter RPC migration before using zero-stock sold filters."
+      );
+    }
+  }
+
+  return rows;
+}
+
+async function readOrderLineRowsForOrderIdsBatched(
+  client: SupabaseServerClient,
+  orderIds: string[]
+) {
+  const uniqueOrderIds = uniqueDefinedStrings(orderIds);
+  const chunkSize = 100;
+  const pageSize = 1000;
+  const rows: DbRow[] = [];
+
+  for (let index = 0; index < uniqueOrderIds.length; index += chunkSize) {
+    const chunk = uniqueOrderIds.slice(index, index + chunkSize);
+    let offset = 0;
+
+    while (true) {
+      const { data, error } = await client
+        .from("order_lines")
+        .select("id, order_id, sku_code, product_name, quantity, cancelled_qty")
+        .in("order_id", chunk)
+        .order("id", { ascending: true })
+        .range(offset, offset + pageSize - 1);
+      const pageRows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
+
+      if (error || !pageRows) {
+        throw new RepositoryWriteError(
+          502,
+          "ADMIN_PRODUCT_SALES_LINES_READ_UNAVAILABLE",
+          "Admin product sales line data could not be read from Supabase.",
+          error ? supabaseErrorDetails(error) : undefined
+        );
+      }
+
+      rows.push(...pageRows);
+
+      if (pageRows.length < pageSize) {
+        break;
+      }
+
+      offset += pageSize;
+    }
+  }
+
+  return rows;
 }
 
 async function readAdminSuppliers(
@@ -5308,6 +6156,1123 @@ async function readAdminSupplierBatchDetail(
       .filter(isDefined),
     verification: batch.verification,
   };
+}
+
+const adminFinanceReadLimit = 50000;
+
+type AdminFinanceDataSet = {
+  allocations: DbRow[];
+  costLayers: DbRow[];
+  expenses: DbRow[];
+  orderLines: DbRow[];
+  orders: DbRow[];
+  payments: DbRow[];
+  supplierBatchLines: DbRow[];
+  supplierBatches: DbRow[];
+  suppliers: DbRow[];
+};
+
+type NormalizedFinanceQuery = Required<
+  Pick<AdminFinanceQueryInput, "dateMode" | "limit" | "offset">
+> &
+  Omit<AdminFinanceQueryInput, "dateMode" | "limit" | "offset">;
+
+async function readAdminFinanceSummary(
+  client: SupabaseServerClient,
+  query: AdminFinanceQueryInput
+): Promise<AdminFinanceSummary> {
+  const dataSet = await readAdminFinanceDataSet(client);
+  return summarizeAdminFinance(dataSet, normalizeFinanceQuery(query));
+}
+
+async function readAdminFinanceLedger(
+  client: SupabaseServerClient,
+  query: AdminFinanceQueryInput
+): Promise<AdminFinanceLedgerPage> {
+  const normalized = normalizeFinanceQuery(query);
+  const dataSet = await readAdminFinanceDataSet(client);
+  const summary = summarizeAdminFinance(dataSet, normalized);
+  const rows = buildAdminFinanceLedgerRows(dataSet, normalized)
+    .filter((row) => financeLedgerRowMatches(row, normalized))
+    .sort((left, right) => compareIsoDesc(left.date, right.date));
+  const offset = Math.max(normalized.offset, 0);
+  const limit = Math.max(normalized.limit, 1);
+
+  return {
+    rows: rows.slice(offset, offset + limit),
+    summary,
+    total: rows.length,
+  };
+}
+
+async function readAdminFinanceCogs(
+  client: SupabaseServerClient,
+  query: AdminFinanceQueryInput
+): Promise<AdminFinanceCogsPage> {
+  const normalized = normalizeFinanceQuery(query);
+  const dataSet = await readAdminFinanceDataSet(client);
+  const maps = makeAdminFinanceMaps(dataSet);
+  const rows = dataSet.allocations
+    .map((row) => mapAdminFinanceCostAllocation(row, maps))
+    .filter(isDefined)
+    .filter((allocation) => financeAllocationMatches(allocation, normalized))
+    .sort((left, right) =>
+      compareIsoDesc(left.recognizedAt ?? left.createdAt, right.recognizedAt ?? right.createdAt)
+    );
+  const offset = Math.max(normalized.offset, 0);
+  const limit = Math.max(normalized.limit, 1);
+
+  return {
+    allocations: rows.slice(offset, offset + limit),
+    total: rows.length,
+  };
+}
+
+async function readAdminFinanceDataSet(
+  client: SupabaseServerClient
+): Promise<AdminFinanceDataSet> {
+  try {
+    const [
+      orders,
+      orderLines,
+      suppliers,
+      supplierBatches,
+      supplierBatchLines,
+      costLayers,
+      allocations,
+      expenses,
+      payments,
+    ] = await Promise.all([
+      readRowsStrict(client, "orders", adminOrderListSelect, adminFinanceReadLimit),
+      readRowsStrict(
+        client,
+        "order_lines",
+        "id, order_id, sku_code, product_name, quantity, unit_price, batch_code, reserved_qty, fulfilled_qty, cancelled_qty, stock_status, reservation_allocations",
+        adminFinanceReadLimit
+      ),
+      readRowsStrict(
+        client,
+        "suppliers",
+        "id, code, name, display_label, status, created_at, updated_at",
+        adminFinanceReadLimit
+      ),
+      readRowsStrict(
+        client,
+        "supplier_batches",
+        "id, batch_code, supplier_id, invoice_no, order_no, invoice_date, received_at, total_qty, total_cost, currency, vat_mode, tags, source_file_name, metadata, created_at, updated_at",
+        adminFinanceReadLimit
+      ),
+      readRowsStrict(
+        client,
+        "supplier_batch_lines",
+        "id, batch_id, sku_code, name, qty_received, unit_cost, line_total, created_at, updated_at",
+        adminFinanceReadLimit
+      ),
+      readRowsStrict(
+        client,
+        "finance_cost_layers",
+        "id, supplier_batch_line_id, supplier_batch_id, supplier_id, sku_code, batch_code, received_qty, allocated_qty, consumed_qty, unit_cost_net, total_cost_net, currency, vat_mode, vat_treatment, confidence, metadata, created_at, updated_at",
+        adminFinanceReadLimit
+      ),
+      readRowsStrict(
+        client,
+        "finance_order_line_cost_allocations",
+        "id, allocation_key, order_id, order_line_id, cost_layer_id, supplier_batch_line_id, inventory_item_id, sku_code, batch_code, quantity, unit_cost_net, total_cost_net, currency, status, confidence, source, recognized_at, metadata, created_at, updated_at",
+        adminFinanceReadLimit
+      ),
+      readRowsStrict(
+        client,
+        "finance_expense_entries",
+        "id, category, description, amount_net, vat_amount, amount_gross, currency, status, occurred_at, paid_at, counterparty_name, payment_method, reference, evidence_url, notes, metadata, created_at, updated_at",
+        adminFinanceReadLimit
+      ),
+      readRowsStrict(
+        client,
+        "supplier_batch_payments",
+        "id, batch_id, supplier_id, amount_net, vat_amount, amount_gross, currency, status, paid_at, due_at, payment_method, reference, note, metadata, created_at, updated_at",
+        adminFinanceReadLimit
+      ),
+    ]);
+
+    return {
+      allocations,
+      costLayers,
+      expenses,
+      orderLines,
+      orders,
+      payments,
+      supplierBatchLines,
+      supplierBatches,
+      suppliers,
+    };
+  } catch (error) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_FINANCE_READ_UNAVAILABLE",
+      "Admin finance data could not be read from Supabase.",
+      supabaseErrorDetails(error)
+    );
+  }
+}
+
+function summarizeAdminFinance(
+  dataSet: AdminFinanceDataSet,
+  query: NormalizedFinanceQuery
+): AdminFinanceSummary {
+  const maps = makeAdminFinanceMaps(dataSet);
+  const eligibleOrders = dataSet.orders.filter(isFinanceOrderEligible);
+  const filteredOrders = eligibleOrders.filter((row) =>
+    financeWithinDate(financeOrderDate(row, query.dateMode), query)
+  );
+  const paidOrderIds = new Set(
+    eligibleOrders
+      .filter((row) => normalizePaymentStatus(pickString(row, ["payment_status"])) === "paid")
+      .map((row) => pickString(row, ["id"]))
+      .filter(isDefined)
+  );
+  const salesOrders = filteredOrders.filter(
+    (row) => normalizePaymentStatus(pickString(row, ["payment_status"])) === "paid"
+  );
+  const pendingOrders = filteredOrders.filter(
+    (row) => normalizePaymentStatus(pickString(row, ["payment_status"])) !== "paid"
+  );
+  const filteredBatchLines = dataSet.supplierBatchLines.filter((line) => {
+    const batch = maps.batchById.get(pickString(line, ["batch_id"]) ?? "");
+    return (
+      financeWithinDate(financeBatchDate(batch, line, query.dateMode), query) &&
+      financeSupplierMatches(batch, maps, query.supplier)
+    );
+  });
+  const filteredExpenses = dataSet.expenses.filter(
+    (row) =>
+      financeWithinDate(financeExpenseDate(row, query.dateMode), query) &&
+      financeCategoryMatches(pickString(row, ["category"]), query.category) &&
+      normalizeFinanceEntryStatus(pickString(row, ["status"])) !== "cancelled"
+  );
+  const filteredPayments = dataSet.payments.filter((row) => {
+    const batch = maps.batchById.get(pickString(row, ["batch_id"]) ?? "");
+    const supplierId = pickString(row, ["supplier_id"]) ?? pickString(batch, ["supplier_id"]);
+    return (
+      financeWithinDate(financePaymentDate(row, query.dateMode), query) &&
+      financeSupplierMatchesById(supplierId, maps, query.supplier) &&
+      normalizeFinanceEntryStatus(pickString(row, ["status"])) !== "cancelled"
+    );
+  });
+  const filteredAllocations = dataSet.allocations.filter((row) => {
+    const order = maps.orderById.get(pickString(row, ["order_id"]) ?? "");
+    const allocation = mapAdminFinanceCostAllocation(row, maps);
+    const layer = maps.costLayerById.get(pickString(row, ["cost_layer_id"]) ?? "");
+
+    return (
+      allocation !== null &&
+      allocation.status === "consumed" &&
+      isFinanceOrderEligible(order) &&
+      (order ? paidOrderIds.has(pickString(order, ["id"]) ?? "") : true) &&
+      financeWithinDate(allocation.recognizedAt ?? allocation.createdAt, query) &&
+      financeConfidenceMatches(allocation.confidence, query.confidence) &&
+      financeSupplierMatchesById(pickString(layer, ["supplier_id"]), maps, query.supplier)
+    );
+  });
+  const salesNet = roundMoney(sumMoney(salesOrders, (row) => pickNumber(row, ["total_net"]) ?? 0));
+  const pendingReceivables = roundMoney(
+    sumMoney(pendingOrders, (row) => Math.max(0, financeOrderGross(row) - (pickNumber(row, ["payment_received_amount"]) ?? 0)))
+  );
+  const purchaseNet = roundMoney(
+    sumMoney(filteredBatchLines, (row) => pickNumber(row, ["line_total"]) ?? 0)
+  );
+  const vatAmbiguousPurchaseNet = roundMoney(
+    sumMoney(filteredBatchLines, (line) => {
+      const batch = maps.batchById.get(pickString(line, ["batch_id"]) ?? "");
+      return financeBatchVatExcluded(batch) ? 0 : pickNumber(line, ["line_total"]) ?? 0;
+    })
+  );
+  const cogsNet = roundMoney(
+    sumMoney(filteredAllocations, (row) => pickNumber(row, ["total_cost_net"]) ?? 0)
+  );
+  const expenseNet = roundMoney(
+    sumMoney(filteredExpenses, (row) => pickNumber(row, ["amount_net"]) ?? 0)
+  );
+  const supplierPaymentsNet = roundMoney(
+    sumMoney(
+      filteredPayments.filter((row) => normalizeFinanceEntryStatus(pickString(row, ["status"])) === "paid"),
+      (row) => pickNumber(row, ["amount_net"]) ?? 0
+    )
+  );
+  const purchaseNetByBatch = financePurchaseNetByBatch(filteredBatchLines);
+  const paidByBatch = financePaidNetByBatch(dataSet.payments);
+  const accountsPayable = roundMoney(
+    Array.from(purchaseNetByBatch.entries()).reduce((total, [batchId, batchTotal]) => {
+      return total + Math.max(0, roundMoney(batchTotal - (paidByBatch.get(batchId) ?? 0)));
+    }, 0)
+  );
+  const inventoryCostValue = roundMoney(
+    sumMoney(
+      dataSet.costLayers.filter((row) =>
+        financeSupplierMatchesById(pickString(row, ["supplier_id"]), maps, query.supplier)
+      ),
+      (row) => {
+        const received = pickNumber(row, ["received_qty"]) ?? 0;
+        const consumed = pickNumber(row, ["consumed_qty"]) ?? 0;
+        const unitCost = pickNumber(row, ["unit_cost_net"]) ?? 0;
+        return Math.max(0, received - consumed) * unitCost;
+      }
+    )
+  );
+  const confidence = {
+    exact: 0,
+    estimated: 0,
+    unmatched: 0,
+  } satisfies Record<AdminFinanceConfidence, number>;
+
+  for (const row of filteredAllocations) {
+    const value = normalizeFinanceConfidence(pickString(row, ["confidence"]));
+    confidence[value] += 1;
+  }
+
+  const grossProfit = roundMoney(salesNet - cogsNet);
+  const operatingProfit = roundMoney(grossProfit - expenseNet);
+
+  return {
+    accountsPayable,
+    cogsNet,
+    confidence,
+    currency: "EUR",
+    expenseNet,
+    grossMarginRate: salesNet > 0 ? roundMoney((grossProfit / salesNet) * 100) : 0,
+    grossProfit,
+    inventoryCostValue,
+    operatingProfit,
+    pendingReceivables,
+    purchaseNet,
+    range: {
+      dateFrom: query.dateFrom ?? null,
+      dateMode: query.dateMode,
+      dateTo: query.dateTo ?? null,
+    },
+    salesNet,
+    supplierPaymentsNet,
+    vatAmbiguousPurchaseNet,
+    walletAppliedNet: roundMoney(
+      sumMoney(salesOrders, (row) => pickNumber(row, ["wallet_applied_amount"]) ?? 0)
+    ),
+  };
+}
+
+function buildAdminFinanceLedgerRows(
+  dataSet: AdminFinanceDataSet,
+  query: NormalizedFinanceQuery
+): AdminFinanceLedgerRow[] {
+  const maps = makeAdminFinanceMaps(dataSet);
+  const rows: AdminFinanceLedgerRow[] = [];
+
+  for (const order of dataSet.orders.filter(isFinanceOrderEligible)) {
+    const paymentStatus = normalizePaymentStatus(pickString(order, ["payment_status"]));
+    const date = financeOrderDate(order, query.dateMode);
+
+    if (!financeWithinDate(date, query)) {
+      continue;
+    }
+
+    rows.push({
+      id: `order:${pickString(order, ["id"]) ?? pickString(order, ["order_no"])}`,
+      amountNet:
+        paymentStatus === "paid"
+          ? roundMoney(pickNumber(order, ["total_net"]) ?? 0)
+          : roundMoney(Math.max(0, financeOrderGross(order) - (pickNumber(order, ["payment_received_amount"]) ?? 0))),
+      batchCode: null,
+      batchId: null,
+      category: paymentStatus === "paid" ? "sales" : "receivable",
+      confidence: null,
+      currency: "EUR",
+      date,
+      metadata: {
+        paymentStatus,
+        status: pickString(order, ["status"]),
+        walletAppliedAmount: pickNumber(order, ["wallet_applied_amount"]) ?? 0,
+      },
+      orderId: pickString(order, ["id"]),
+      orderNo: pickString(order, ["order_no"]),
+      skuCode: null,
+      status: paymentStatus,
+      supplierId: null,
+      supplierName: null,
+      title: paymentStatus === "paid" ? "Sales net" : "Pending receivable",
+      type: paymentStatus === "paid" ? "sale" : "receivable",
+    });
+  }
+
+  const linesByBatch = new Map<string, DbRow[]>();
+
+  for (const line of dataSet.supplierBatchLines) {
+    const batchId = pickString(line, ["batch_id"]);
+    if (!batchId) {
+      continue;
+    }
+
+    const current = linesByBatch.get(batchId) ?? [];
+    current.push(line);
+    linesByBatch.set(batchId, current);
+  }
+
+  for (const batch of dataSet.supplierBatches) {
+    const batchId = pickString(batch, ["id"]);
+    if (!batchId || !financeSupplierMatches(batch, maps, query.supplier)) {
+      continue;
+    }
+
+    const date = financeBatchDate(batch, null, query.dateMode);
+    if (!financeWithinDate(date, query)) {
+      continue;
+    }
+
+    const amountNet = roundMoney(
+      sumMoney(linesByBatch.get(batchId) ?? [], (line) => pickNumber(line, ["line_total"]) ?? 0)
+    );
+    const supplierId = pickString(batch, ["supplier_id"]);
+
+    rows.push({
+      id: `purchase:${batchId}`,
+      amountNet,
+      batchCode: pickString(batch, ["batch_code"]),
+      batchId,
+      category: "purchase",
+      confidence: financeBatchVatExcluded(batch) ? "exact" : "estimated",
+      currency: pickString(batch, ["currency"]) ?? "EUR",
+      date,
+      metadata: {
+        invoiceNo: pickString(batch, ["invoice_no"]),
+        vatMode: pickString(batch, ["vat_mode"]),
+        vatRequiresReview: !financeBatchVatExcluded(batch),
+      },
+      orderId: null,
+      orderNo: null,
+      skuCode: null,
+      status: "booked",
+      supplierId,
+      supplierName: supplierNameForId(supplierId, maps),
+      title: "Purchase batch",
+      type: "purchase",
+    });
+  }
+
+  for (const allocation of dataSet.allocations) {
+    const mapped = mapAdminFinanceCostAllocation(allocation, maps);
+    if (!mapped || mapped.status !== "consumed" || !financeAllocationMatches(mapped, query)) {
+      continue;
+    }
+
+    rows.push({
+      id: `cogs:${mapped.id}`,
+      amountNet: roundMoney(mapped.totalCostNet),
+      batchCode: mapped.batchCode,
+      batchId: pickString(
+        maps.costLayerById.get(pickString(allocation, ["cost_layer_id"]) ?? ""),
+        ["supplier_batch_id"]
+      ),
+      category: "cogs",
+      confidence: mapped.confidence,
+      currency: mapped.currency,
+      date: mapped.recognizedAt ?? mapped.createdAt,
+      metadata: mapped.metadata,
+      orderId: mapped.orderId,
+      orderNo: mapped.orderNo,
+      skuCode: mapped.skuCode,
+      status: mapped.status,
+      supplierId: pickString(
+        maps.costLayerById.get(pickString(allocation, ["cost_layer_id"]) ?? ""),
+        ["supplier_id"]
+      ),
+      supplierName: mapped.supplierName,
+      title: "Cost of goods sold",
+      type: "cogs",
+    });
+  }
+
+  for (const expense of dataSet.expenses) {
+    const mapped = mapAdminFinanceExpenseEntry(expense);
+    if (!mapped || !financeWithinDate(financeExpenseDate(expense, query.dateMode), query)) {
+      continue;
+    }
+
+    rows.push({
+      id: `expense:${mapped.id}`,
+      amountNet: roundMoney(mapped.amountNet),
+      batchCode: null,
+      batchId: null,
+      category: mapped.category,
+      confidence: null,
+      currency: mapped.currency,
+      date: financeExpenseDate(expense, query.dateMode),
+      metadata: mapped.metadata,
+      orderId: null,
+      orderNo: null,
+      skuCode: null,
+      status: mapped.status,
+      supplierId: null,
+      supplierName: mapped.counterpartyName,
+      title: mapped.description,
+      type: "expense",
+    });
+  }
+
+  for (const payment of dataSet.payments) {
+    const mapped = mapAdminSupplierBatchPayment(payment, maps);
+    if (!mapped || !financeWithinDate(financePaymentDate(payment, query.dateMode), query)) {
+      continue;
+    }
+
+    rows.push({
+      id: `supplier_payment:${mapped.id}`,
+      amountNet: roundMoney(mapped.amountNet),
+      batchCode: mapped.batchCode,
+      batchId: mapped.batchId,
+      category: "supplier_payment",
+      confidence: null,
+      currency: mapped.currency,
+      date: financePaymentDate(payment, query.dateMode),
+      metadata: mapped.metadata,
+      orderId: null,
+      orderNo: null,
+      skuCode: null,
+      status: mapped.status,
+      supplierId: mapped.supplierId,
+      supplierName: mapped.supplierName,
+      title: "Supplier payment",
+      type: "supplier_payment",
+    });
+  }
+
+  return rows;
+}
+
+async function writeAdminFinanceExpense(
+  context: SupabaseContext,
+  input: Partial<AdminFinanceExpenseEntryInput>,
+  expenseId?: string
+): Promise<AdminFinanceExpenseEntry> {
+  const payload: Record<string, unknown> = {};
+
+  assignDefined(payload, "amount_net", input.amountNet === undefined ? undefined : roundMoney(input.amountNet));
+  assignStringValue(payload, "category", input.category);
+  assignStringValue(payload, "description", input.description);
+  assignStringValue(payload, "counterparty_name", input.counterpartyName);
+  assignStringValue(payload, "evidence_url", input.evidenceUrl);
+  assignDefined(payload, "metadata", input.metadata);
+  assignStringValue(payload, "notes", input.notes);
+  assignStringValue(payload, "occurred_at", input.occurredAt);
+  assignStringValue(payload, "paid_at", input.paidAt);
+  assignStringValue(payload, "payment_method", input.paymentMethod);
+  assignStringValue(payload, "reference", input.reference);
+  assignStringValue(payload, "status", input.status);
+  assignDefined(payload, "vat_amount", input.vatAmount === undefined ? undefined : roundMoney(input.vatAmount));
+
+  if (expenseId) {
+    payload.updated_by = context.userId;
+  } else {
+    payload.created_by = context.userId;
+    payload.updated_by = context.userId;
+  }
+
+  const request = expenseId
+    ? context.client
+        .from("finance_expense_entries")
+        .update(payload)
+        .eq("id", expenseId)
+        .select("*")
+        .single()
+    : context.client.from("finance_expense_entries").insert(payload).select("*").single();
+  const { data, error } = await request;
+  const row = isDbRow(data) ? data : null;
+
+  if (error || !row) {
+    throw new RepositoryWriteError(
+      error?.code === "PGRST116" ? 404 : 502,
+      expenseId ? "ADMIN_FINANCE_EXPENSE_UPDATE_FAILED" : "ADMIN_FINANCE_EXPENSE_CREATE_FAILED",
+      expenseId
+        ? "Finance expense entry could not be updated."
+        : "Finance expense entry could not be created.",
+      error ? supabaseErrorDetails(error) : undefined
+    );
+  }
+
+  const mapped = mapAdminFinanceExpenseEntry(row);
+
+  if (!mapped) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_FINANCE_EXPENSE_INVALID",
+      "Supabase returned an invalid finance expense row."
+    );
+  }
+
+  return mapped;
+}
+
+async function writeAdminSupplierBatchPayment(
+  context: SupabaseContext,
+  input: Partial<AdminSupplierBatchPaymentInput>,
+  paymentId?: string
+): Promise<AdminSupplierBatchPayment> {
+  const payload: Record<string, unknown> = {};
+  const batchId = input.batchId ?? undefined;
+  let supplierId = input.supplierId ?? undefined;
+
+  if (batchId && !supplierId) {
+    const batch = await readSingleRow(context.client, "supplier_batches", "id", batchId, "id, supplier_id");
+    supplierId = pickString(batch, ["supplier_id"]) ?? undefined;
+  }
+
+  assignDefined(payload, "amount_net", input.amountNet === undefined ? undefined : roundMoney(input.amountNet));
+  assignDefined(payload, "amount_gross", input.amountGross === undefined ? undefined : roundMoney(input.amountGross));
+  assignStringValue(payload, "batch_id", input.batchId);
+  assignStringValue(payload, "due_at", input.dueAt);
+  assignDefined(payload, "metadata", input.metadata);
+  assignStringValue(payload, "note", input.note);
+  assignStringValue(payload, "paid_at", input.paidAt);
+  assignStringValue(payload, "payment_method", input.paymentMethod);
+  assignStringValue(payload, "reference", input.reference);
+  assignStringValue(payload, "status", input.status);
+  assignStringValue(payload, "supplier_id", supplierId);
+  assignDefined(payload, "vat_amount", input.vatAmount === undefined ? undefined : roundMoney(input.vatAmount));
+
+  if (input.amountGross === undefined && input.amountNet !== undefined) {
+    payload.amount_gross = roundMoney(input.amountNet + (input.vatAmount ?? 0));
+  }
+
+  if (paymentId) {
+    payload.updated_by = context.userId;
+  } else {
+    payload.created_by = context.userId;
+    payload.updated_by = context.userId;
+  }
+
+  const request = paymentId
+    ? context.client
+        .from("supplier_batch_payments")
+        .update(payload)
+        .eq("id", paymentId)
+        .select("*")
+        .single()
+    : context.client.from("supplier_batch_payments").insert(payload).select("*").single();
+  const { data, error } = await request;
+  const row = isDbRow(data) ? data : null;
+
+  if (error || !row) {
+    throw new RepositoryWriteError(
+      error?.code === "PGRST116" ? 404 : 502,
+      paymentId
+        ? "ADMIN_SUPPLIER_PAYMENT_UPDATE_FAILED"
+        : "ADMIN_SUPPLIER_PAYMENT_CREATE_FAILED",
+      paymentId
+        ? "Supplier batch payment could not be updated."
+        : "Supplier batch payment could not be created.",
+      error ? supabaseErrorDetails(error) : undefined
+    );
+  }
+
+  const dataSet = await readAdminFinanceDataSet(context.client);
+  const mapped = mapAdminSupplierBatchPayment(row, makeAdminFinanceMaps(dataSet));
+
+  if (!mapped) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_SUPPLIER_PAYMENT_INVALID",
+      "Supabase returned an invalid supplier payment row."
+    );
+  }
+
+  return mapped;
+}
+
+type AdminFinanceMaps = {
+  batchById: Map<string, DbRow>;
+  costLayerById: Map<string, DbRow>;
+  orderById: Map<string, DbRow>;
+  orderLineById: Map<string, DbRow>;
+  supplierById: Map<string, DbRow>;
+};
+
+function normalizeFinanceQuery(query: AdminFinanceQueryInput): NormalizedFinanceQuery {
+  return {
+    ...query,
+    dateMode: query.dateMode ?? "created",
+    limit: Math.min(Math.max(query.limit ?? 50, 1), 500),
+    offset: Math.max(query.offset ?? 0, 0),
+  };
+}
+
+function makeAdminFinanceMaps(dataSet: AdminFinanceDataSet): AdminFinanceMaps {
+  return {
+    batchById: makeRowMap(dataSet.supplierBatches),
+    costLayerById: makeRowMap(dataSet.costLayers),
+    orderById: makeRowMap(dataSet.orders),
+    orderLineById: makeRowMap(dataSet.orderLines),
+    supplierById: makeRowMap(dataSet.suppliers),
+  };
+}
+
+function makeRowMap(rows: DbRow[]) {
+  const map = new Map<string, DbRow>();
+
+  for (const row of rows) {
+    const id = pickString(row, ["id"]);
+    if (id) {
+      map.set(id, row);
+    }
+  }
+
+  return map;
+}
+
+function mapAdminFinanceCostAllocation(
+  row: DbRow,
+  maps: AdminFinanceMaps
+): AdminFinanceCostAllocation | null {
+  const id = pickString(row, ["id"]);
+  const skuCode = pickString(row, ["sku_code", "sku"]);
+
+  if (!id || !skuCode) {
+    return null;
+  }
+
+  const orderId = pickString(row, ["order_id"]);
+  const order = orderId ? maps.orderById.get(orderId) : undefined;
+  const orderLineId = pickString(row, ["order_line_id"]);
+  const orderLine = orderLineId ? maps.orderLineById.get(orderLineId) : undefined;
+  const costLayer = maps.costLayerById.get(pickString(row, ["cost_layer_id"]) ?? "");
+  const supplierId = pickString(costLayer, ["supplier_id"]);
+
+  return {
+    batchCode: pickString(row, ["batch_code"]) ?? pickString(costLayer, ["batch_code"]),
+    createdAt: pickString(row, ["created_at"]) ?? "",
+    currency: pickString(row, ["currency"]) ?? "EUR",
+    confidence: normalizeFinanceConfidence(pickString(row, ["confidence"])),
+    id,
+    metadata: readRecordObject(row.metadata) ?? {},
+    orderId,
+    orderLineId,
+    orderNo: pickString(order, ["order_no"]),
+    productName: pickString(orderLine, ["product_name"]),
+    quantity: pickNumber(row, ["quantity"]) ?? 0,
+    recognizedAt: pickString(row, ["recognized_at"]),
+    skuCode: toPublicSku(skuCode),
+    source: pickString(row, ["source"]) ?? "manual",
+    status: normalizeFinanceAllocationStatus(pickString(row, ["status"])),
+    supplierName: supplierNameForId(supplierId, maps),
+    totalCostNet: roundMoney(pickNumber(row, ["total_cost_net"]) ?? 0),
+    unitCostNet: roundMoney(pickNumber(row, ["unit_cost_net"]) ?? 0),
+  };
+}
+
+function mapAdminFinanceExpenseEntry(row: DbRow): AdminFinanceExpenseEntry | null {
+  const id = pickString(row, ["id"]);
+  const description = pickString(row, ["description"]);
+
+  if (!id || !description) {
+    return null;
+  }
+
+  return {
+    amountGross: roundMoney(
+      pickNumber(row, ["amount_gross"]) ??
+        (pickNumber(row, ["amount_net"]) ?? 0) + (pickNumber(row, ["vat_amount"]) ?? 0)
+    ),
+    amountNet: roundMoney(pickNumber(row, ["amount_net"]) ?? 0),
+    category: normalizeFinanceExpenseCategory(pickString(row, ["category"])),
+    counterpartyName: pickString(row, ["counterparty_name"]),
+    createdAt: pickString(row, ["created_at"]) ?? "",
+    currency: pickString(row, ["currency"]) ?? "EUR",
+    description,
+    evidenceUrl: pickString(row, ["evidence_url"]),
+    id,
+    metadata: readRecordObject(row.metadata) ?? {},
+    notes: pickString(row, ["notes"]),
+    occurredAt: pickString(row, ["occurred_at"]) ?? "",
+    paidAt: pickString(row, ["paid_at"]),
+    paymentMethod: pickString(row, ["payment_method"]),
+    reference: pickString(row, ["reference"]),
+    status: normalizeFinanceEntryStatus(pickString(row, ["status"])),
+    updatedAt: pickString(row, ["updated_at"]) ?? "",
+    vatAmount: roundMoney(pickNumber(row, ["vat_amount"]) ?? 0),
+  };
+}
+
+function mapAdminSupplierBatchPayment(
+  row: DbRow,
+  maps: AdminFinanceMaps
+): AdminSupplierBatchPayment | null {
+  const id = pickString(row, ["id"]);
+
+  if (!id) {
+    return null;
+  }
+
+  const batchId = pickString(row, ["batch_id"]);
+  const batch = batchId ? maps.batchById.get(batchId) : undefined;
+  const supplierId = pickString(row, ["supplier_id"]) ?? pickString(batch, ["supplier_id"]);
+
+  return {
+    amountGross: roundMoney(
+      pickNumber(row, ["amount_gross"]) ??
+        (pickNumber(row, ["amount_net"]) ?? 0) + (pickNumber(row, ["vat_amount"]) ?? 0)
+    ),
+    amountNet: roundMoney(pickNumber(row, ["amount_net"]) ?? 0),
+    batchCode: pickString(batch, ["batch_code"]),
+    batchId,
+    createdAt: pickString(row, ["created_at"]) ?? "",
+    currency: pickString(row, ["currency"]) ?? "EUR",
+    dueAt: pickString(row, ["due_at"]),
+    id,
+    metadata: readRecordObject(row.metadata) ?? {},
+    note: pickString(row, ["note"]),
+    paidAt: pickString(row, ["paid_at"]),
+    paymentMethod: pickString(row, ["payment_method"]),
+    reference: pickString(row, ["reference"]),
+    status: normalizeFinanceEntryStatus(pickString(row, ["status"])),
+    supplierId,
+    supplierName: supplierNameForId(supplierId, maps),
+    updatedAt: pickString(row, ["updated_at"]) ?? "",
+    vatAmount: roundMoney(pickNumber(row, ["vat_amount"]) ?? 0),
+  };
+}
+
+function financeLedgerRowMatches(
+  row: AdminFinanceLedgerRow,
+  query: NormalizedFinanceQuery
+) {
+  if (!financeCategoryMatches(row.category, query.category)) {
+    return false;
+  }
+
+  if (!financeConfidenceMatches(row.confidence, query.confidence)) {
+    return false;
+  }
+
+  if (query.supplier) {
+    const needle = query.supplier.toLowerCase();
+    const supplierMatch =
+      (row.supplierId ?? "").toLowerCase().includes(needle) ||
+      (row.supplierName ?? "").toLowerCase().includes(needle) ||
+      (row.batchCode ?? "").toLowerCase().includes(needle);
+
+    if (!supplierMatch) {
+      return false;
+    }
+  }
+
+  if (query.q) {
+    const needle = query.q.toLowerCase();
+    const haystack = [
+      row.title,
+      row.orderNo,
+      row.skuCode,
+      row.batchCode,
+      row.supplierName,
+      row.category,
+      row.status,
+      row.confidence,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    if (!haystack.includes(needle)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function financeAllocationMatches(
+  allocation: AdminFinanceCostAllocation,
+  query: NormalizedFinanceQuery
+) {
+  if (!financeWithinDate(allocation.recognizedAt ?? allocation.createdAt, query)) {
+    return false;
+  }
+
+  if (!financeConfidenceMatches(allocation.confidence, query.confidence)) {
+    return false;
+  }
+
+  if (query.category && query.category !== "cogs") {
+    return false;
+  }
+
+  if (query.supplier) {
+    const needle = query.supplier.toLowerCase();
+    if (
+      ![
+        allocation.supplierName,
+        allocation.batchCode,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(needle)
+    ) {
+      return false;
+    }
+  }
+
+  if (query.q) {
+    const needle = query.q.toLowerCase();
+    const haystack = [
+      allocation.orderNo,
+      allocation.skuCode,
+      allocation.productName,
+      allocation.batchCode,
+      allocation.supplierName,
+      allocation.status,
+      allocation.confidence,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    if (!haystack.includes(needle)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function financeWithinDate(value: string | null | undefined, query: NormalizedFinanceQuery) {
+  const date = value?.slice(0, 10) ?? null;
+
+  if (!date) {
+    return !query.dateFrom && !query.dateTo;
+  }
+
+  if (query.dateFrom && date < query.dateFrom) {
+    return false;
+  }
+
+  if (query.dateTo && date > query.dateTo) {
+    return false;
+  }
+
+  return true;
+}
+
+function financeOrderDate(row: DbRow | undefined, dateMode: AdminFinanceDateMode) {
+  if (!row) {
+    return "";
+  }
+
+  return dateMode === "paid"
+    ? pickString(row, ["payment_received_at", "created_at"]) ?? ""
+    : pickString(row, ["created_at", "payment_received_at"]) ?? "";
+}
+
+function financeBatchDate(
+  batch: DbRow | undefined,
+  line: DbRow | null,
+  dateMode: AdminFinanceDateMode
+) {
+  if (dateMode === "invoice") {
+    return pickString(batch, ["invoice_date", "created_at"]) ?? pickString(line, ["created_at"]) ?? "";
+  }
+
+  if (dateMode === "received") {
+    return pickString(batch, ["received_at", "created_at"]) ?? pickString(line, ["created_at"]) ?? "";
+  }
+
+  return pickString(batch, ["created_at", "received_at", "invoice_date"]) ?? pickString(line, ["created_at"]) ?? "";
+}
+
+function financeExpenseDate(row: DbRow, dateMode: AdminFinanceDateMode) {
+  if (dateMode === "paid") {
+    return pickString(row, ["paid_at", "occurred_at", "created_at"]) ?? "";
+  }
+
+  return pickString(row, ["occurred_at", "created_at", "paid_at"]) ?? "";
+}
+
+function financePaymentDate(row: DbRow, dateMode: AdminFinanceDateMode) {
+  if (dateMode === "paid") {
+    return pickString(row, ["paid_at", "created_at", "due_at"]) ?? "";
+  }
+
+  return pickString(row, ["created_at", "paid_at", "due_at"]) ?? "";
+}
+
+function financeCategoryMatches(value: string | null | undefined, category: string | undefined) {
+  if (!category) {
+    return true;
+  }
+
+  return (value ?? "").toLowerCase() === category.toLowerCase();
+}
+
+function financeConfidenceMatches(
+  value: AdminFinanceConfidence | string | null | undefined,
+  confidence: AdminFinanceConfidence | undefined
+) {
+  if (!confidence) {
+    return true;
+  }
+
+  return normalizeFinanceConfidence(typeof value === "string" ? value : null) === confidence;
+}
+
+function financeSupplierMatches(
+  batch: DbRow | undefined,
+  maps: AdminFinanceMaps,
+  supplier: string | undefined
+) {
+  return financeSupplierMatchesById(pickString(batch, ["supplier_id"]), maps, supplier);
+}
+
+function financeSupplierMatchesById(
+  supplierId: string | null | undefined,
+  maps: AdminFinanceMaps,
+  supplier: string | undefined
+) {
+  if (!supplier) {
+    return true;
+  }
+
+  const row = supplierId ? maps.supplierById.get(supplierId) : undefined;
+  const needle = supplier.toLowerCase();
+  const haystack = [
+    supplierId,
+    pickString(row, ["display_label"]),
+    pickString(row, ["name"]),
+    pickString(row, ["code"]),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return haystack.includes(needle);
+}
+
+function supplierNameForId(supplierId: string | null | undefined, maps: AdminFinanceMaps) {
+  const row = supplierId ? maps.supplierById.get(supplierId) : undefined;
+
+  return pickString(row, ["display_label", "name", "code"]);
+}
+
+function isFinanceOrderEligible(row: DbRow | undefined) {
+  if (!row) {
+    return false;
+  }
+
+  return (
+    !pickString(row, ["soft_deleted_at"]) &&
+    normalizeAdminOrderDbStatus(pickString(row, ["status"])) !== "cancelled"
+  );
+}
+
+function financeOrderGross(row: DbRow) {
+  return roundMoney(
+    (pickNumber(row, ["total_net"]) ?? 0) +
+      (pickNumber(row, ["vat"]) ?? 0) +
+      (pickNumber(row, ["shipping"]) ?? 0)
+  );
+}
+
+function financeBatchVatExcluded(row: DbRow | undefined) {
+  const vatMode = (pickString(row, ["vat_mode"]) ?? "").toLowerCase();
+
+  return vatMode.includes("esclus") || vatMode.includes("excluded");
+}
+
+function financePurchaseNetByBatch(lines: DbRow[]) {
+  const totals = new Map<string, number>();
+
+  for (const line of lines) {
+    const batchId = pickString(line, ["batch_id"]);
+    if (!batchId) {
+      continue;
+    }
+
+    totals.set(batchId, roundMoney((totals.get(batchId) ?? 0) + (pickNumber(line, ["line_total"]) ?? 0)));
+  }
+
+  return totals;
+}
+
+function financePaidNetByBatch(payments: DbRow[]) {
+  const totals = new Map<string, number>();
+
+  for (const payment of payments) {
+    if (normalizeFinanceEntryStatus(pickString(payment, ["status"])) !== "paid") {
+      continue;
+    }
+
+    const batchId = pickString(payment, ["batch_id"]);
+    if (!batchId) {
+      continue;
+    }
+
+    totals.set(batchId, roundMoney((totals.get(batchId) ?? 0) + (pickNumber(payment, ["amount_net"]) ?? 0)));
+  }
+
+  return totals;
+}
+
+function sumMoney<T>(values: T[], read: (value: T) => number) {
+  return values.reduce((total, value) => total + read(value), 0);
+}
+
+function compareIsoDesc(left: string, right: string) {
+  return right.localeCompare(left);
+}
+
+function normalizeFinanceConfidence(value: string | null): AdminFinanceConfidence {
+  if (value === "exact" || value === "estimated" || value === "unmatched") {
+    return value;
+  }
+
+  return "unmatched";
+}
+
+function normalizeFinanceAllocationStatus(
+  value: string | null
+): AdminFinanceAllocationStatus {
+  if (
+    value === "reserved" ||
+    value === "consumed" ||
+    value === "released" ||
+    value === "reversed" ||
+    value === "backfilled"
+  ) {
+    return value;
+  }
+
+  return "backfilled";
+}
+
+function normalizeFinanceEntryStatus(value: string | null): AdminFinanceEntryStatus {
+  if (value === "pending" || value === "paid" || value === "cancelled") {
+    return value;
+  }
+
+  return "pending";
+}
+
+function normalizeFinanceExpenseCategory(
+  value: string | null
+): AdminFinanceExpenseCategory {
+  if (
+    value === "rent" ||
+    value === "salary" ||
+    value === "shipping" ||
+    value === "platform_fee" ||
+    value === "utilities" ||
+    value === "tax" ||
+    value === "supplier_fee" ||
+    value === "bank_fee" ||
+    value === "other"
+  ) {
+    return value;
+  }
+
+  return "other";
 }
 
 function createSupplierBatchLookupClient(client: SupabaseServerClient): SupabaseServerClient {
@@ -5799,6 +7764,8 @@ function parseAdminProductSummary(
     hidden: pickNumber(row, ["hidden"]) ?? 0,
     blocked: pickNumber(row, ["blocked"]) ?? 0,
     lowStock: pickNumber(row, ["lowStock", "low_stock"]) ?? 0,
+    activeLowStock: pickNumber(row, ["activeLowStock", "active_low_stock"]) ?? 0,
+    activeOutOfStock: pickNumber(row, ["activeOutOfStock", "active_out_of_stock"]) ?? 0,
     restockRequests: pickNumber(row, ["restockRequests", "restock_requests"]) ?? 0,
     missingImage: pickNumber(row, ["missingImage", "missing_image"]) ?? 0,
     missingPrice: pickNumber(row, ["missingPrice", "missing_price"]) ?? 0,
@@ -6691,6 +8658,86 @@ async function readAdminSoldStockShortagePage(
   };
 }
 
+async function readAdminInventoryHealthPage(
+  client: SupabaseServerClient,
+  query: AdminInventoryHealthQueryInput
+): Promise<AdminInventoryHealthPage> {
+  const windowDays = Math.min(Math.max(Math.trunc(query.windowDays), 1), 365);
+  const staleLockHours = Math.min(Math.max(Math.trunc(query.staleLockHours), 1), 24 * 30);
+  const since = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
+  const [productRows, inventoryRows, soldOrderRows, activeOrderRows] = await Promise.all([
+    readRows(
+      client,
+      "products",
+      "sku_code, name, brand, model, status, stock_qty",
+      50000
+    ),
+    readRows(
+      client,
+      "inventory_items",
+      "sku_code, actual_qty, available_qty, locked_qty",
+      50000
+    ),
+    readRecentSoldOrderRows(client, since),
+    readActiveReservationOrderRows(client),
+  ]);
+
+  if (!productRows || !inventoryRows) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_INVENTORY_HEALTH_UNAVAILABLE",
+      "Inventory health data could not be read from Supabase."
+    );
+  }
+
+  const soldOrderIds = uniqueDefinedStrings(soldOrderRows.map((row) => pickString(row, ["id"])));
+  const soldOrderCreatedAtById = new Map(
+    soldOrderRows
+      .map((row) => [pickString(row, ["id"]), pickString(row, ["created_at", "createdAt"])])
+      .filter((entry): entry is [string, string] => Boolean(entry[0] && entry[1]))
+  );
+  const activeOrderIds = uniqueDefinedStrings(activeOrderRows.map((row) => pickString(row, ["id"])));
+  const [soldLineRows, activeLineRows] = await Promise.all([
+    readOrderLineRowsForOrderIds(client, soldOrderIds),
+    readOrderLineRowsForOrderIds(client, activeOrderIds),
+  ]);
+
+  if (!soldLineRows || !activeLineRows) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_INVENTORY_HEALTH_LINES_UNAVAILABLE",
+      "Inventory health order lines could not be read from Supabase."
+    );
+  }
+
+  const inventoryBySku = aggregateInventoryRowsBySku(inventoryRows);
+  const salesBySku = aggregateSoldOrderLines(soldLineRows, soldOrderCreatedAtById);
+  const reservationsBySku = aggregateActiveReservations(activeLineRows);
+  const q = query.q?.trim().toLowerCase() ?? "";
+  const rows = productRows
+    .map((product) =>
+      buildAdminInventoryHealthRow(
+        product,
+        inventoryBySku.get(toPublicSku(pickString(product, ["sku_code"]) ?? "").toUpperCase()),
+        reservationsBySku.get(toPublicSku(pickString(product, ["sku_code"]) ?? "").toUpperCase()),
+        salesBySku.get(toPublicSku(pickString(product, ["sku_code"]) ?? "")),
+      )
+    )
+    .filter(isDefined)
+    .filter((row) => adminInventoryHealthMatches(row, query.issue, q));
+  const sortedRows = sortAdminInventoryHealthRows(rows, query.sort);
+  const total = sortedRows.length;
+  const offset = Math.max(query.offset, 0);
+  const limit = Math.min(Math.max(query.limit, 1), 200);
+  const pageRows = sortedRows.slice(offset, offset + limit);
+
+  return {
+    rows: pageRows,
+    summary: summarizeAdminInventoryHealthRows(rows, windowDays, staleLockHours),
+    total,
+  };
+}
+
 async function readAdminWarehouseReplenishmentPage(
   client: SupabaseServerClient,
   query: AdminWarehouseReplenishmentQueryInput
@@ -7076,6 +9123,28 @@ async function readRecentSoldOrderRows(
   return rows;
 }
 
+async function readActiveReservationOrderRows(client: SupabaseServerClient) {
+  const { data, error } = await client
+    .from("orders")
+    .select("id, created_at")
+    .is("soft_deleted_at", null)
+    .in("status", ["submitted", "accepted", "picking", "packed", "shipped"])
+    .order("created_at", { ascending: false })
+    .limit(5000);
+  const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
+
+  if (error || !rows) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_INVENTORY_HEALTH_ORDERS_UNAVAILABLE",
+      "Active reservation orders could not be read from Supabase.",
+      error ? supabaseErrorDetails(error) : undefined
+    );
+  }
+
+  return rows;
+}
+
 type SoldSkuAggregate = {
   sku: string;
   sourceSku: string;
@@ -7163,6 +9232,204 @@ function aggregateInventoryRowsBySku(rows: DbRow[]) {
   }
 
   return inventoryBySku;
+}
+
+type ActiveReservationAggregate = {
+  reservedQty: number;
+  orderIds: Set<string>;
+};
+
+function aggregateActiveReservations(lineRows: DbRow[]) {
+  const reservationsBySku = new Map<string, ActiveReservationAggregate>();
+
+  for (const line of lineRows) {
+    const rawSku = pickString(line, ["sku_code", "sku"]);
+    const orderId = pickString(line, ["order_id", "orderId"]);
+
+    if (!rawSku || !orderId) {
+      continue;
+    }
+
+    const reservedQty = Math.max(
+      0,
+      Math.trunc(pickNumber(line, ["reserved_qty", "reservedQty"]) ?? 0)
+    );
+
+    if (reservedQty <= 0) {
+      continue;
+    }
+
+    const key = toPublicSku(rawSku).toUpperCase();
+    const current = reservationsBySku.get(key) ?? {
+      reservedQty: 0,
+      orderIds: new Set<string>(),
+    };
+
+    current.reservedQty += reservedQty;
+    current.orderIds.add(orderId);
+    reservationsBySku.set(key, current);
+  }
+
+  return reservationsBySku;
+}
+
+function buildAdminInventoryHealthRow(
+  product: DbRow,
+  inventory: { actualQty: number; availableQty: number; lockedQty: number } | undefined,
+  reservation: ActiveReservationAggregate | undefined,
+  sale: SoldSkuAggregate | undefined
+): AdminInventoryHealthRow | null {
+  const rawSku = pickString(product, ["sku_code", "sku"]);
+  const name = pickString(product, ["name"]);
+
+  if (!rawSku || !name) {
+    return null;
+  }
+
+  const sku = toPublicSku(rawSku);
+  const status = normalizeCatalogStatusValue(pickString(product, ["status"]));
+  const productStockQty = Math.max(0, Math.trunc(pickNumber(product, ["stock_qty", "stock"]) ?? 0));
+  const inventoryAvailableQty = inventory?.availableQty ?? productStockQty;
+  const inventoryActualQty = inventory?.actualQty ?? productStockQty;
+  const inventoryLockedQty = inventory?.lockedQty ?? 0;
+  const activeReservedQty = reservation?.reservedQty ?? 0;
+  const soldQtyWindow = sale?.soldQty ?? 0;
+  const issues: AdminInventoryHealthIssue[] = [];
+
+  if (inventory && productStockQty !== inventoryAvailableQty) {
+    issues.push("stock_mismatch");
+  }
+
+  if (inventoryLockedQty !== activeReservedQty) {
+    issues.push("reserved_mismatch");
+  }
+
+  if (inventoryLockedQty > activeReservedQty) {
+    issues.push("locked_orphan");
+  }
+
+  if (status === "active" && inventoryAvailableQty <= 0 && soldQtyWindow > 0) {
+    issues.push("active_zero_stock_sold");
+  }
+
+  if (issues.length === 0) {
+    return null;
+  }
+
+  const severity = issues.includes("active_zero_stock_sold") || issues.includes("locked_orphan")
+    ? "critical"
+    : issues.includes("stock_mismatch") || issues.includes("reserved_mismatch")
+      ? "warning"
+      : "info";
+  const recommendedAction: AdminInventoryHealthRow["recommendedAction"] =
+    issues.includes("active_zero_stock_sold")
+      ? "create_replenishment"
+      : issues.includes("locked_orphan") || issues.includes("reserved_mismatch")
+        ? "release_or_check_reservation"
+        : issues.includes("stock_mismatch")
+          ? "recount_stock"
+          : "review";
+
+  return {
+    sku,
+    name,
+    brand: pickString(product, ["brand"]),
+    model: pickString(product, ["model"]),
+    status,
+    issues,
+    severity,
+    productStockQty,
+    inventoryAvailableQty,
+    inventoryActualQty,
+    inventoryLockedQty,
+    activeReservedQty,
+    activeReservedOrderCount: reservation?.orderIds.size ?? 0,
+    soldQtyWindow,
+    lastSoldAt: sale?.lastSoldAt ?? null,
+    delta: productStockQty - inventoryAvailableQty,
+    recommendedAction,
+  };
+}
+
+function adminInventoryHealthMatches(
+  row: AdminInventoryHealthRow,
+  issue: AdminInventoryHealthIssueFilter,
+  q: string
+) {
+  if (issue !== "all" && !row.issues.includes(issue)) {
+    return false;
+  }
+
+  if (!q) {
+    return true;
+  }
+
+  return [row.sku, row.name, row.brand, row.model, row.status, row.issues.join(" ")]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase()
+    .includes(q);
+}
+
+function sortAdminInventoryHealthRows(
+  rows: AdminInventoryHealthRow[],
+  sort: AdminInventoryHealthSort
+) {
+  const severityRank = { critical: 0, warning: 1, info: 2 } satisfies Record<
+    AdminInventoryHealthRow["severity"],
+    number
+  >;
+
+  return [...rows].sort((left, right) => {
+    switch (sort) {
+      case "delta_desc":
+        return Math.abs(right.delta) - Math.abs(left.delta) || left.sku.localeCompare(right.sku);
+      case "last_sold_desc":
+        return (
+          timestampFromIso(right.lastSoldAt) -
+            timestampFromIso(left.lastSoldAt) ||
+          left.sku.localeCompare(right.sku)
+        );
+      case "sku":
+        return left.sku.localeCompare(right.sku);
+      case "severity":
+      default:
+        return (
+          severityRank[left.severity] - severityRank[right.severity] ||
+          Math.abs(right.delta) - Math.abs(left.delta) ||
+          left.sku.localeCompare(right.sku)
+        );
+    }
+  });
+}
+
+function summarizeAdminInventoryHealthRows(
+  rows: AdminInventoryHealthRow[],
+  windowDays: number,
+  staleLockHours: number
+) {
+  const summary = {
+    stock_mismatch: 0,
+    reserved_mismatch: 0,
+    locked_orphan: 0,
+    active_zero_stock_sold: 0,
+    critical: 0,
+    warning: 0,
+    info: 0,
+    total: rows.length,
+    windowDays,
+    staleLockHours,
+  };
+
+  for (const row of rows) {
+    summary[row.severity] += 1;
+
+    for (const issue of row.issues) {
+      summary[issue] += 1;
+    }
+  }
+
+  return summary;
 }
 
 function buildAdminSoldStockShortageRow(
@@ -11634,6 +13901,46 @@ function supabaseErrorDetails(error: unknown) {
   return Object.fromEntries(Object.entries(details).filter(([, value]) => value !== null));
 }
 
+function parseProductPublishIssues(details: unknown) {
+  const messages = collectProductPublishIssueMessages(details);
+
+  for (const message of messages) {
+    const match = message.match(/Product is not publishable:\s*([^:]+)/i);
+
+    if (!match) {
+      continue;
+    }
+
+    const issues = match[1]
+      .split(/[;,]/)
+      .map((issue) => issue.trim())
+      .filter(Boolean);
+
+    if (issues.length > 0) {
+      return [...new Set(issues)];
+    }
+  }
+
+  return [];
+}
+
+function collectProductPublishIssueMessages(value: unknown): string[] {
+  if (typeof value === "string") {
+    return [value];
+  }
+
+  if (!isDbRow(value)) {
+    return [];
+  }
+
+  return [
+    pickString(value, ["message"]),
+    pickString(value, ["details"]),
+    pickString(value, ["hint"]),
+    pickString(value, ["code"]),
+  ].filter((message): message is string => Boolean(message));
+}
+
 function adminOrderTransitionErrorDetails(error: unknown) {
   const details = supabaseErrorDetails(error);
 
@@ -11768,6 +14075,24 @@ function isRecoverableCartRpcSchemaError(error: unknown) {
       text.includes("replace_current_customer_cart")) ||
     text.includes("could not find the function") ||
     text.includes("function public.replace_current_customer_cart")
+  );
+}
+
+function isRecoverableAdminProductIssueFilterRpcError(error: unknown) {
+  const errorRow = isDbRow(error) ? error : null;
+  const parts = [
+    error instanceof Error ? error.message : null,
+    pickString(errorRow, ["code"]),
+    pickString(errorRow, ["message"]),
+    pickString(errorRow, ["details"]),
+    pickString(errorRow, ["hint"]),
+  ].filter(isDefined);
+  const text = parts.join(" ").toLowerCase();
+
+  return (
+    (text.includes("pgrst202") || text.includes("42883") || text.includes("schema cache")) &&
+    text.includes("admin_list_products") &&
+    text.includes("p_issue_filter")
   );
 }
 

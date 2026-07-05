@@ -11,6 +11,12 @@ const optionalTrimmedString = (max: number) =>
 const stringArray = z.array(z.string().trim().min(1).max(120)).max(100);
 const catalogStatusSchema = z.enum(["active", "draft", "hidden", "blocked"]);
 const stockStatusSchema = z.enum(["In Stock", "Low Stock", "Out of Stock"]);
+const productIssueFilterSchema = z.enum([
+  "missing_price",
+  "missing_image",
+  "zero_stock_unsold",
+  "zero_stock_sold",
+]);
 const warehouseSchema = z.literal("Milano");
 const optionalBooleanFlagSchema = z
   .enum(["1", "0", "true", "false"])
@@ -30,6 +36,7 @@ export const productQuerySchema = z
     stockStatus: stockStatusSchema.optional(),
     status: catalogStatusSchema.optional(),
     catalogStatus: catalogStatusSchema.optional(),
+    issueFilter: productIssueFilterSchema.optional(),
     grade: z.enum(["A+", "A", "B", "Refurbished"]).optional(),
     sort: z.enum(["name", "stock_desc", "updated_desc", "created_desc"]).default("updated_desc"),
     limit: z.coerce.number().int().min(1).max(100).default(50),

@@ -51,6 +51,7 @@ type AdminOverviewPanelValue =
   | "orders"
   | "rma"
   | "catalog"
+  | "finance"
   | "inventory"
   | "marketplace"
   | "support"

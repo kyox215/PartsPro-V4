@@ -51,6 +51,17 @@ type ShortageType = "out_of_stock" | "low_stock";
 type ShortageSort = "urgency" | "sold_desc" | "stock_asc" | "last_sold_desc";
 type ReplenishmentStatus = "open" | "planned" | "ordered" | "received" | "ignored";
 type ReplenishmentStatusFilter = ReplenishmentStatus | "all";
+type InventoryHealthIssue =
+  | "stock_mismatch"
+  | "reserved_mismatch"
+  | "locked_orphan"
+  | "active_zero_stock_sold";
+type InventoryHealthSeverity = "critical" | "warning" | "info";
+type InventoryHealthRecommendedAction =
+  | "recount_stock"
+  | "release_or_check_reservation"
+  | "create_replenishment"
+  | "review";
 
 type SoldStockShortageRow = {
   sku: string;
@@ -144,7 +155,45 @@ type ReplenishmentPayload = {
   };
 };
 
+type InventoryHealthRow = {
+  sku: string;
+  name: string;
+  brand: string | null;
+  model: string | null;
+  status: "active" | "draft" | "hidden" | "blocked";
+  issues: InventoryHealthIssue[];
+  severity: InventoryHealthSeverity;
+  productStockQty: number;
+  inventoryAvailableQty: number;
+  inventoryActualQty: number;
+  inventoryLockedQty: number;
+  activeReservedQty: number;
+  activeReservedOrderCount: number;
+  soldQtyWindow: number;
+  lastSoldAt: string | null;
+  delta: number;
+  recommendedAction: InventoryHealthRecommendedAction;
+};
+
+type InventoryHealthSummary = Record<InventoryHealthIssue, number> & {
+  critical: number;
+  warning: number;
+  info: number;
+  total: number;
+  windowDays: number;
+  staleLockHours: number;
+};
+
+type InventoryHealthPayload = {
+  data?: unknown;
+  meta?: {
+    summary?: unknown;
+    total?: unknown;
+  };
+};
+
 const endpoint = "/api/admin/sold-stock-shortages";
+const inventoryHealthEndpoint = "/api/admin/inventory-health";
 const replenishmentEndpoint = "/api/admin/warehouse/replenishment";
 const pageSize = 50;
 const defaultSummary: SoldStockShortageSummary = {
@@ -166,6 +215,18 @@ const defaultReplenishmentSummary: ReplenishmentSummary = {
   supplierMissing: 0,
   plannedQty: 0,
 };
+const defaultInventoryHealthSummary: InventoryHealthSummary = {
+  stock_mismatch: 0,
+  reserved_mismatch: 0,
+  locked_orphan: 0,
+  active_zero_stock_sold: 0,
+  critical: 0,
+  warning: 0,
+  info: 0,
+  total: 0,
+  windowDays: 90,
+  staleLockHours: 72,
+};
 
 export function AdminInventoryPanel() {
   const { locale } = useI18n();
@@ -179,6 +240,10 @@ export function AdminInventoryPanel() {
   >([]);
   const [replenishmentSummary, setReplenishmentSummary] =
     React.useState<ReplenishmentSummary>(defaultReplenishmentSummary);
+  const [healthRows, setHealthRows] = React.useState<InventoryHealthRow[]>([]);
+  const [healthSummary, setHealthSummary] =
+    React.useState<InventoryHealthSummary>(defaultInventoryHealthSummary);
+  const [healthError, setHealthError] = React.useState<string | null>(null);
   const [queryInput, setQueryInput] = React.useState("");
   const [query, setQuery] = React.useState("");
   const [windowDays, setWindowDays] = React.useState("30");
@@ -194,6 +259,7 @@ export function AdminInventoryPanel() {
   const [drafts, setDrafts] = React.useState<
     Record<string, { note: string; plannedQty: string; supplier: string }>
   >({});
+  const healthText = React.useMemo(() => inventoryHealthText(locale), [locale]);
 
   const refresh = React.useCallback(
     (signal?: AbortSignal) => {
@@ -221,54 +287,95 @@ export function AdminInventoryPanel() {
         queueParams.set("supplier", queueSupplier.trim());
       }
 
+      const healthParams = new URLSearchParams({
+        limit: String(pageSize),
+        sort: "severity",
+        staleLockHours: "72",
+        windowDays: "90",
+      });
+
+      if (query.trim().length >= 2) {
+        healthParams.set("q", query.trim());
+      }
+
       setPending(true);
       setError(null);
+      setHealthError(null);
 
-      void Promise.all([
-        fetch(`${endpoint}?${params.toString()}`, {
-          cache: "no-store",
-          headers: { Accept: "application/json" },
-          signal,
-        }).then(async (response) => {
-          const payload = (await response.json().catch(() => null)) as unknown;
+      const shortageRequest = fetch(`${endpoint}?${params.toString()}`, {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+        signal,
+      }).then(async (response) => {
+        const payload = (await response.json().catch(() => null)) as unknown;
 
-          if (!response.ok) {
-            throw new Error(`${response.status}`);
-          }
+        if (!response.ok) {
+          throw new Error(`${response.status}`);
+        }
 
-          return parseSoldStockShortagePayload(payload);
-        }),
-        fetch(`${replenishmentEndpoint}?${queueParams.toString()}`, {
-          cache: "no-store",
-          headers: { Accept: "application/json" },
-          signal,
-        }).then(async (response) => {
-          const payload = (await response.json().catch(() => null)) as unknown;
+        return parseSoldStockShortagePayload(payload);
+      });
+      const replenishmentRequest = fetch(`${replenishmentEndpoint}?${queueParams.toString()}`, {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+        signal,
+      }).then(async (response) => {
+        const payload = (await response.json().catch(() => null)) as unknown;
 
-          if (!response.ok) {
-            throw new Error(`${response.status}`);
-          }
+        if (!response.ok) {
+          throw new Error(`${response.status}`);
+        }
 
-          return parseReplenishmentPayload(payload);
-        }),
-      ])
-        .then(([shortagePayload, replenishmentPayload]) => {
-          setRows(shortagePayload.rows);
-          setSummary(shortagePayload.summary);
-          setReplenishmentItems(replenishmentPayload.items);
-          setReplenishmentSummary(replenishmentPayload.summary);
-          setDrafts((current) => hydrateDrafts(current, replenishmentPayload.items));
-        })
-        .catch((reason: unknown) => {
-          if (reason instanceof DOMException && reason.name === "AbortError") {
+        return parseReplenishmentPayload(payload);
+      });
+      const healthRequest = fetch(`${inventoryHealthEndpoint}?${healthParams.toString()}`, {
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+        signal,
+      }).then(async (response) => {
+        const payload = (await response.json().catch(() => null)) as unknown;
+
+        if (!response.ok) {
+          throw new Error(`${response.status}`);
+        }
+
+        return parseInventoryHealthPayload(payload);
+      });
+
+      void Promise.allSettled([shortageRequest, replenishmentRequest, healthRequest])
+        .then(([shortageResult, replenishmentResult, healthResult]) => {
+          if (signal?.aborted) {
             return;
           }
 
-          setRows([]);
-          setSummary(defaultSummary);
-          setReplenishmentItems([]);
-          setReplenishmentSummary(defaultReplenishmentSummary);
-          setError(text.error);
+          if (shortageResult.status === "fulfilled") {
+            setRows(shortageResult.value.rows);
+            setSummary(shortageResult.value.summary);
+          } else {
+            setRows([]);
+            setSummary(defaultSummary);
+            setError(text.error);
+          }
+
+          if (replenishmentResult.status === "fulfilled") {
+            setReplenishmentItems(replenishmentResult.value.items);
+            setReplenishmentSummary(replenishmentResult.value.summary);
+            setDrafts((current) => hydrateDrafts(current, replenishmentResult.value.items));
+          } else {
+            setReplenishmentItems([]);
+            setReplenishmentSummary(defaultReplenishmentSummary);
+            setError(text.error);
+          }
+
+          if (healthResult.status === "fulfilled") {
+            setHealthRows(healthResult.value.rows);
+            setHealthSummary(healthResult.value.summary);
+            setHealthError(null);
+          } else {
+            setHealthRows([]);
+            setHealthSummary(defaultInventoryHealthSummary);
+            setHealthError(healthText.error);
+          }
         })
         .finally(() => {
           if (!signal?.aborted) {
@@ -276,7 +383,16 @@ export function AdminInventoryPanel() {
           }
         });
     },
-    [lowStockThreshold, query, queueStatus, queueSupplier, sort, text.error, windowDays]
+    [
+      healthText.error,
+      lowStockThreshold,
+      query,
+      queueStatus,
+      queueSupplier,
+      sort,
+      text.error,
+      windowDays,
+    ]
   );
 
   React.useEffect(() => {
@@ -527,6 +643,14 @@ export function AdminInventoryPanel() {
           value={replenishmentSummary.plannedQty}
         />
       </div>
+
+      <InventoryHealthSection
+        error={healthError}
+        rows={healthRows}
+        summary={healthSummary}
+        text={healthText}
+        locale={locale}
+      />
 
       <Card className="overflow-hidden rounded-md border-slate-200 shadow-[0_8px_18px_rgba(15,23,42,0.035)]">
         <CardHeader className="border-b bg-white px-3 py-2">
@@ -939,6 +1063,140 @@ export function AdminInventoryPanel() {
   );
 }
 
+function InventoryHealthSection({
+  error,
+  rows,
+  summary,
+  text,
+  locale,
+}: {
+  error: string | null;
+  rows: InventoryHealthRow[];
+  summary: InventoryHealthSummary;
+  text: ReturnType<typeof inventoryHealthText>;
+  locale: string;
+}) {
+  return (
+    <Card className="overflow-hidden rounded-md border-slate-200 shadow-[0_8px_18px_rgba(15,23,42,0.035)]">
+      <CardHeader className="border-b bg-white px-3 py-2">
+        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+          <CardTitle className="text-sm font-black text-slate-950">
+            {text.title}
+          </CardTitle>
+          <div className="text-xs font-semibold text-slate-500">
+            {text.scope(summary.windowDays, summary.staleLockHours)}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-2 p-3">
+        {error ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+            {error}
+          </div>
+        ) : null}
+        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+          <InventoryMetric
+            icon={AlertTriangle}
+            label={text.stockMismatch}
+            tone="amber"
+            value={summary.stock_mismatch}
+          />
+          <InventoryMetric
+            icon={Boxes}
+            label={text.reservedMismatch}
+            tone="blue"
+            value={summary.reserved_mismatch}
+          />
+          <InventoryMetric
+            icon={PackageX}
+            label={text.lockedOrphan}
+            tone="red"
+            value={summary.locked_orphan}
+          />
+          <InventoryMetric
+            icon={TrendingUp}
+            label={text.activeZeroSold}
+            tone="red"
+            value={summary.active_zero_stock_sold}
+          />
+        </div>
+        {rows.length === 0 ? (
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+            {text.empty}
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-md border border-slate-200">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="min-w-[260px] px-2 py-2">{text.product}</TableHead>
+                  <TableHead className="min-w-[180px] px-2">{text.issues}</TableHead>
+                  <TableHead className="px-2 text-center">{text.productStock}</TableHead>
+                  <TableHead className="px-2 text-center">{text.inventoryStock}</TableHead>
+                  <TableHead className="px-2 text-center">{text.lockedReserved}</TableHead>
+                  <TableHead className="px-2">{text.action}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.slice(0, 8).map((row) => (
+                  <TableRow key={row.sku}>
+                    <TableCell className="px-2 py-1.5">
+                      <div className="min-w-0">
+                        <div className="line-clamp-2 text-sm font-bold text-slate-950">
+                          {row.name}
+                        </div>
+                        <div className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                          {row.sku}
+                          {row.model ? ` · ${row.model}` : ""}
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="px-2 py-1.5">
+                      <div className="flex flex-wrap gap-1">
+                        {row.issues.map((issue) => (
+                          <Badge
+                            key={issue}
+                            variant="outline"
+                            className={cn(
+                              "rounded-md text-[10px] font-black",
+                              row.severity === "critical"
+                                ? "border-rose-200 bg-rose-50 text-rose-700"
+                                : "border-amber-200 bg-amber-50 text-amber-700"
+                            )}
+                          >
+                            {text.issueLabels[issue]}
+                          </Badge>
+                        ))}
+                      </div>
+                    </TableCell>
+                    <TableCell className="px-2 py-1.5 text-center text-sm font-black">
+                      {row.productStockQty}
+                    </TableCell>
+                    <TableCell className="px-2 py-1.5 text-center text-xs font-semibold text-slate-600">
+                      {row.inventoryAvailableQty}/{row.inventoryActualQty}
+                    </TableCell>
+                    <TableCell className="px-2 py-1.5 text-center text-xs font-semibold text-slate-600">
+                      {row.inventoryLockedQty}/{row.activeReservedQty}
+                    </TableCell>
+                    <TableCell className="px-2 py-1.5 text-xs font-semibold text-slate-600">
+                      <div>{text.actionLabels[row.recommendedAction]}</div>
+                      {row.lastSoldAt ? (
+                        <div className="mt-0.5 text-[11px] text-slate-400">
+                          {formatDate(row.lastSoldAt, locale)}
+                        </div>
+                      ) : null}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function InventoryMetric({
   icon: Icon,
   label,
@@ -1278,6 +1536,58 @@ function parseReplenishmentPayload(payload: unknown) {
   return { items, summary };
 }
 
+function parseInventoryHealthPayload(payload: unknown) {
+  const record = isRecord(payload) ? (payload as InventoryHealthPayload) : {};
+  const rows = Array.isArray(record.data)
+    ? record.data.map(parseInventoryHealthRow).filter(isDefined)
+    : [];
+  const summary = parseInventoryHealthSummary(record.meta?.summary);
+
+  return { rows, summary };
+}
+
+function parseInventoryHealthRow(value: unknown): InventoryHealthRow | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const sku = readString(value.sku);
+  const name = readString(value.name);
+  const status = readString(value.status);
+  const severity = readString(value.severity);
+  const recommendedAction = readString(value.recommendedAction);
+
+  if (
+    !sku ||
+    !name ||
+    !isCatalogStatus(status) ||
+    !isInventoryHealthSeverity(severity) ||
+    !isInventoryHealthRecommendedAction(recommendedAction)
+  ) {
+    return null;
+  }
+
+  return {
+    sku,
+    name,
+    brand: readString(value.brand),
+    model: readString(value.model),
+    status,
+    issues: readInventoryHealthIssues(value.issues),
+    severity,
+    productStockQty: readNumber(value.productStockQty),
+    inventoryAvailableQty: readNumber(value.inventoryAvailableQty),
+    inventoryActualQty: readNumber(value.inventoryActualQty),
+    inventoryLockedQty: readNumber(value.inventoryLockedQty),
+    activeReservedQty: readNumber(value.activeReservedQty),
+    activeReservedOrderCount: readNumber(value.activeReservedOrderCount),
+    soldQtyWindow: readNumber(value.soldQtyWindow),
+    lastSoldAt: readString(value.lastSoldAt),
+    delta: readNumber(value.delta),
+    recommendedAction,
+  };
+}
+
 function parseReplenishmentItem(value: unknown): ReplenishmentItem | null {
   if (!isRecord(value)) {
     return null;
@@ -1357,6 +1667,25 @@ function parseReplenishmentSummary(value: unknown): ReplenishmentSummary {
     active: readNumber(value.active),
     supplierMissing: readNumber(value.supplierMissing),
     plannedQty: readNumber(value.plannedQty),
+  };
+}
+
+function parseInventoryHealthSummary(value: unknown): InventoryHealthSummary {
+  if (!isRecord(value)) {
+    return defaultInventoryHealthSummary;
+  }
+
+  return {
+    stock_mismatch: readNumber(value.stock_mismatch),
+    reserved_mismatch: readNumber(value.reserved_mismatch),
+    locked_orphan: readNumber(value.locked_orphan),
+    active_zero_stock_sold: readNumber(value.active_zero_stock_sold),
+    critical: readNumber(value.critical),
+    warning: readNumber(value.warning),
+    info: readNumber(value.info),
+    total: readNumber(value.total),
+    windowDays: readNumber(value.windowDays) || 90,
+    staleLockHours: readNumber(value.staleLockHours) || 72,
   };
 }
 
@@ -1478,6 +1807,106 @@ function isReplenishmentStatus(value: string | null): value is ReplenishmentStat
     value === "received" ||
     value === "ignored"
   );
+}
+
+function isCatalogStatus(value: string | null): value is InventoryHealthRow["status"] {
+  return value === "active" || value === "draft" || value === "hidden" || value === "blocked";
+}
+
+function isInventoryHealthIssue(value: string | null): value is InventoryHealthIssue {
+  return (
+    value === "stock_mismatch" ||
+    value === "reserved_mismatch" ||
+    value === "locked_orphan" ||
+    value === "active_zero_stock_sold"
+  );
+}
+
+function isInventoryHealthSeverity(value: string | null): value is InventoryHealthSeverity {
+  return value === "critical" || value === "warning" || value === "info";
+}
+
+function isInventoryHealthRecommendedAction(
+  value: string | null
+): value is InventoryHealthRecommendedAction {
+  return (
+    value === "recount_stock" ||
+    value === "release_or_check_reservation" ||
+    value === "create_replenishment" ||
+    value === "review"
+  );
+}
+
+function readInventoryHealthIssues(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.map(readString).filter(isInventoryHealthIssue);
+}
+
+function inventoryHealthText(locale: string) {
+  if (locale.toLowerCase().startsWith("it")) {
+    return {
+      title: "Controllo inventario",
+      scope: (windowDays: number, staleLockHours: number) =>
+        `${windowDays} giorni vendite · lock oltre ${staleLockHours}h`,
+      stockMismatch: "Stock diverso",
+      reservedMismatch: "Lock/riserva",
+      lockedOrphan: "Lock orfani",
+      activeZeroSold: "Venduti senza stock",
+      empty: "Nessuna anomalia critica nella prima scansione.",
+      error: "Il controllo inventario non è disponibile. Gli altri dati inventario restano validi.",
+      product: "Prodotto / SKU",
+      issues: "Anomalie",
+      productStock: "Prodotto",
+      inventoryStock: "Inventario",
+      lockedReserved: "Lock/Riserva",
+      action: "Azione",
+      issueLabels: {
+        stock_mismatch: "stock diverso",
+        reserved_mismatch: "lock/riserva",
+        locked_orphan: "lock orfano",
+        active_zero_stock_sold: "venduto senza stock",
+      } satisfies Record<InventoryHealthIssue, string>,
+      actionLabels: {
+        recount_stock: "Fare conteggio stock",
+        release_or_check_reservation: "Controllare o rilasciare lock",
+        create_replenishment: "Creare replenishment",
+        review: "Verificare manualmente",
+      } satisfies Record<InventoryHealthRecommendedAction, string>,
+    };
+  }
+
+  return {
+    title: "库存体检",
+    scope: (windowDays: number, staleLockHours: number) =>
+      `${windowDays} 天销量 · 锁货 ${staleLockHours}h`,
+    stockMismatch: "商品/库存不一致",
+    reservedMismatch: "锁货/订单不一致",
+    lockedOrphan: "孤儿锁货",
+    activeZeroSold: "已售零库存",
+    empty: "当前未发现关键库存异常。",
+    error: "库存体检暂时不可用，其他库存数据不受影响。",
+    product: "商品 / SKU",
+    issues: "问题",
+    productStock: "商品库存",
+    inventoryStock: "台账库存",
+    lockedReserved: "锁货/预留",
+    action: "建议动作",
+    issueLabels: {
+      stock_mismatch: "库存不一致",
+      reserved_mismatch: "锁货不一致",
+      locked_orphan: "孤儿锁货",
+      active_zero_stock_sold: "售过零库存",
+    } satisfies Record<InventoryHealthIssue, string>,
+    actionLabels: {
+      recount_stock: "盘点库存",
+      release_or_check_reservation: "检查或释放锁货",
+      create_replenishment: "加入补货",
+      review: "人工复核",
+    } satisfies Record<InventoryHealthRecommendedAction, string>,
+  };
 }
 
 function readString(value: unknown) {

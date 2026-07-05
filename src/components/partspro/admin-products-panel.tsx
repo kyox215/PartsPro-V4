@@ -3,7 +3,7 @@
 import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   Ban,
@@ -153,8 +153,25 @@ const stockAdjustmentActions = [
   "rma_return",
 ] as const;
 
+class AdminApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly code: string | null,
+    message: string,
+    public readonly details: unknown
+  ) {
+    super(message);
+    this.name = "AdminApiError";
+  }
+}
+
 type CatalogStatus = (typeof catalogStatuses)[number];
 type ProductSort = (typeof productSorts)[number];
+type ProductIssueFilter =
+  | "missing_price"
+  | "missing_image"
+  | "zero_stock_unsold"
+  | "zero_stock_sold";
 type ProductAction = "publish" | "hide" | "block" | "restore";
 type ProductDrawerMode = "view" | "edit" | "create";
 type ProductSource = "supabase" | "api" | "empty";
@@ -174,6 +191,7 @@ type ProductListFilters = {
   catalogStatus: FilterValue<CatalogStatus>;
   stockStatus: FilterValue<StockStatus>;
   grade: FilterValue<ProductGrade>;
+  issueFilter: FilterValue<ProductIssueFilter>;
   sort: ProductSort;
   supplier: string;
   page: number;
@@ -324,6 +342,8 @@ type ProductMetrics = {
   hidden: number;
   blocked: number;
   lowStock: number;
+  activeLowStock: number;
+  activeOutOfStock: number;
   restockRequests: number;
   missingImage: number;
   missingPrice: number;
@@ -438,6 +458,7 @@ const defaultFilters: ProductListFilters = {
   catalogStatus: "all",
   stockStatus: "all",
   grade: "all",
+  issueFilter: "all",
   sort: "updated_desc",
   supplier: "",
   page: 0,
@@ -484,6 +505,8 @@ const emptyProductMetrics: ProductMetrics = {
   restockRequests: 0,
   missingImage: 0,
   missingPrice: 0,
+  activeLowStock: 0,
+  activeOutOfStock: 0,
 };
 
 const panelText = {
@@ -560,6 +583,30 @@ const panelText = {
     mediaSuccess: "商品 {sku} 的媒体信息已保存。",
     saveError: "保存失败，商品未修改。",
     actionError: "商品动作失败。",
+    actionPublishBlocked: "无法上架，缺少必要资料",
+    publishIssueLabels: {
+      sku_code: "SKU",
+      name: "商品名称",
+      brand: "品牌",
+      category: "分类",
+      moq: "最小起订量",
+      b2b_price: "批发价",
+      vat_mode: "VAT 模式",
+      warranty_days: "保修天数",
+      location: "仓库位置",
+      supplier: "供应商",
+      compatibility_models: "兼容型号",
+      image_path: "主图",
+    } satisfies Record<string, string>,
+    quickFilters: "问题快捷筛选",
+    quickFilterDrafts: "草稿待完善",
+    quickFilterActiveOutOfStock: "已上架零库存",
+    quickFilterLowStockActive: "已上架低库存",
+    quickFilterRestock: "补货提醒",
+    quickFilterMissingImage: "缺主图",
+    quickFilterMissingPrice: "缺价格",
+    quickFilterZeroStockUnsold: "零库存未售",
+    quickFilterZeroStockSold: "零库存售过",
     stockError: "库存动作失败。",
     mediaError: "媒体保存失败。",
     banners: {
@@ -904,6 +951,30 @@ const panelText = {
     mediaSuccess: "Media salvati per {sku}.",
     saveError: "Salvataggio non riuscito.",
     actionError: "Azione prodotto non riuscita.",
+    actionPublishBlocked: "Pubblicazione bloccata, dati obbligatori mancanti",
+    publishIssueLabels: {
+      sku_code: "SKU",
+      name: "Nome prodotto",
+      brand: "Brand",
+      category: "Categoria",
+      moq: "MOQ",
+      b2b_price: "Prezzo B2B",
+      vat_mode: "Modalita IVA",
+      warranty_days: "Giorni garanzia",
+      location: "Magazzino",
+      supplier: "Fornitore",
+      compatibility_models: "Modelli compatibili",
+      image_path: "Immagine principale",
+    } satisfies Record<string, string>,
+    quickFilters: "Filtri rapidi problemi",
+    quickFilterDrafts: "Bozze da completare",
+    quickFilterActiveOutOfStock: "Pubblicati senza stock",
+    quickFilterLowStockActive: "Pubblicati stock basso",
+    quickFilterRestock: "Avvisi stock",
+    quickFilterMissingImage: "Senza immagine",
+    quickFilterMissingPrice: "Senza prezzo",
+    quickFilterZeroStockUnsold: "Zero stock mai venduti",
+    quickFilterZeroStockSold: "Zero stock venduti",
     stockError: "Movimento stock non riuscito.",
     mediaError: "Salvataggio media non riuscito.",
     banners: {
@@ -1177,6 +1248,7 @@ const panelText = {
 } as const;
 
 export function AdminProductsPanel() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const { locale } = useI18n();
   const text = locale.toLowerCase().startsWith("it") ? panelText.it : panelText.zh;
@@ -1219,12 +1291,34 @@ export function AdminProductsPanel() {
   const [isLoadingBatchDetail, setIsLoadingBatchDetail] = React.useState(false);
   const [pendingBatchDownload, setPendingBatchDownload] = React.useState<string | null>(null);
   const focusedSku = searchParams.get("sku")?.trim() ?? "";
+  const [pendingFocusedSku, setPendingFocusedSku] = React.useState<string | null>(null);
+  const lastFocusedSkuRef = React.useRef<string | null>(null);
 
-  React.useEffect(() => {
-    if (!focusedSku) {
+  const clearFocusedSkuParam = React.useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+
+    if (!params.has("sku")) {
       return;
     }
 
+    params.set("panel", "catalog");
+    params.delete("sku");
+    router.replace(`/admin?${params.toString()}`, { scroll: false });
+  }, [router, searchParams]);
+
+  React.useEffect(() => {
+    if (!focusedSku) {
+      lastFocusedSkuRef.current = null;
+      setPendingFocusedSku(null);
+      return;
+    }
+
+    if (lastFocusedSkuRef.current === focusedSku) {
+      return;
+    }
+
+    lastFocusedSkuRef.current = focusedSku;
+    setPendingFocusedSku(focusedSku);
     setWorkspace("products");
     setFilters((current) =>
       current.q === focusedSku
@@ -1236,6 +1330,30 @@ export function AdminProductsPanel() {
           }
     );
   }, [focusedSku]);
+
+  React.useEffect(() => {
+    if (!pendingFocusedSku) {
+      return;
+    }
+
+    const focusedProduct = products.find(
+      (product) => toPublicSku(product.sku) === toPublicSku(pendingFocusedSku)
+    );
+
+    if (focusedProduct) {
+      setDrawerMode("view");
+      setDrawerProduct(focusedProduct);
+      setDrawerInlineEditSku(null);
+      setPendingFocusedSku(null);
+      clearFocusedSkuParam();
+      return;
+    }
+
+    if (!isLoading && dataSource.syncedAt) {
+      setPendingFocusedSku(null);
+      clearFocusedSkuParam();
+    }
+  }, [clearFocusedSkuParam, dataSource.syncedAt, isLoading, pendingFocusedSku, products]);
 
   const refreshProducts = React.useCallback(
     async (
@@ -1553,8 +1671,11 @@ export function AdminProductsPanel() {
         }),
       });
       refreshProductsQuietly();
-    } catch {
-      setNotice({ tone: "error", message: text.actionError });
+    } catch (error) {
+      setNotice({
+        tone: "error",
+        message: formatProductActionError(text.actionError, error, text),
+      });
     } finally {
       setPendingProductActionKey(null);
       setIsMutating(false);
@@ -1579,8 +1700,8 @@ export function AdminProductsPanel() {
         message: formatAdminMessage(text.hideSuccess, { count: savedProducts.length }),
       });
       refreshProductsQuietly();
-    } catch {
-      setNotice({ tone: "error", message: text.actionError });
+    } catch (error) {
+      setNotice({ tone: "error", message: formatNoticeError(text.actionError, error) });
     } finally {
       setPendingProductActionKey(null);
       setIsMutating(false);
@@ -1748,6 +1869,13 @@ export function AdminProductsPanel() {
             </Button>
           </div>
         </div>
+
+        <ProductQuickFilters
+          filters={filters}
+          metrics={metrics}
+          text={text}
+          onChange={updateFilters}
+        />
 
         <div className="border-b border-slate-200 bg-slate-50/70 px-2.5 py-2 sm:px-4 sm:py-3 lg:hidden">
           <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
@@ -3605,6 +3733,156 @@ function ProductSearchField({
         className="h-8 rounded-md bg-white pl-9 text-sm sm:h-9"
         placeholder={text.searchPlaceholder}
       />
+    </div>
+  );
+}
+
+function ProductQuickFilters({
+  filters,
+  metrics,
+  text,
+  onChange,
+}: {
+  filters: ProductListFilters;
+  metrics: ProductMetrics;
+  text: typeof panelText.zh | typeof panelText.it;
+  onChange: (patch: Partial<ProductListFilters>) => void;
+}) {
+  const quickFilters: Array<{
+    key: string;
+    label: string;
+    count?: number;
+    active: boolean;
+    patch: Partial<ProductListFilters>;
+  }> = [
+    {
+      key: "drafts",
+      label: text.quickFilterDrafts,
+      count: metrics.draft,
+      active:
+        filters.catalogStatus === "draft" &&
+        filters.stockStatus === "all" &&
+        filters.issueFilter === "all" &&
+        !filters.activeRestockOnly,
+      patch: {
+        activeRestockOnly: false,
+        catalogStatus: "draft",
+        issueFilter: "all",
+        stockStatus: "all",
+      },
+    },
+    {
+      key: "active-out-of-stock",
+      label: text.quickFilterActiveOutOfStock,
+      count: metrics.activeOutOfStock,
+      active:
+        filters.catalogStatus === "active" &&
+        filters.stockStatus === "Out of Stock" &&
+        filters.issueFilter === "all" &&
+        !filters.activeRestockOnly,
+      patch: {
+        activeRestockOnly: false,
+        catalogStatus: "active",
+        issueFilter: "all",
+        stockStatus: "Out of Stock",
+      },
+    },
+    {
+      key: "active-low-stock",
+      label: text.quickFilterLowStockActive,
+      count: metrics.activeLowStock,
+      active:
+        filters.catalogStatus === "active" &&
+        filters.stockStatus === "Low Stock" &&
+        filters.issueFilter === "all" &&
+        !filters.activeRestockOnly,
+      patch: {
+        activeRestockOnly: false,
+        catalogStatus: "active",
+        issueFilter: "all",
+        stockStatus: "Low Stock",
+      },
+    },
+    {
+      key: "missing-image",
+      label: text.quickFilterMissingImage,
+      count: metrics.missingImage,
+      active: filters.issueFilter === "missing_image" && !filters.activeRestockOnly,
+      patch: {
+        activeRestockOnly: false,
+        catalogStatus: "all",
+        issueFilter: "missing_image",
+        stockStatus: "all",
+      },
+    },
+    {
+      key: "missing-price",
+      label: text.quickFilterMissingPrice,
+      count: metrics.missingPrice,
+      active: filters.issueFilter === "missing_price" && !filters.activeRestockOnly,
+      patch: {
+        activeRestockOnly: false,
+        catalogStatus: "all",
+        issueFilter: "missing_price",
+        stockStatus: "all",
+      },
+    },
+    {
+      key: "zero-stock-unsold",
+      label: text.quickFilterZeroStockUnsold,
+      active: filters.issueFilter === "zero_stock_unsold" && !filters.activeRestockOnly,
+      patch: {
+        activeRestockOnly: false,
+        catalogStatus: "all",
+        issueFilter: "zero_stock_unsold",
+        stockStatus: "all",
+      },
+    },
+    {
+      key: "zero-stock-sold",
+      label: text.quickFilterZeroStockSold,
+      active: filters.issueFilter === "zero_stock_sold" && !filters.activeRestockOnly,
+      patch: {
+        activeRestockOnly: false,
+        catalogStatus: "all",
+        issueFilter: "zero_stock_sold",
+        stockStatus: "all",
+      },
+    },
+    {
+      key: "restock",
+      label: text.quickFilterRestock,
+      count: metrics.restockRequests,
+      active: filters.activeRestockOnly,
+      patch: {
+        activeRestockOnly: true,
+        issueFilter: "all",
+      },
+    },
+  ];
+
+  return (
+    <div className="border-b border-slate-200 bg-white px-2.5 py-2 sm:px-4">
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <span className="mr-1 text-xs font-black text-slate-500">{text.quickFilters}</span>
+        {quickFilters.map((item) => (
+          <Button
+            key={item.key}
+            type="button"
+            variant={item.active ? "default" : "outline"}
+            size="xs"
+            className={cn("h-7 min-w-0 rounded-md px-2 text-xs", !item.active && "bg-white")}
+            onClick={() => onChange(item.patch)}
+          >
+            <span className="min-w-0 truncate">{item.label}</span>
+            {typeof item.count === "number" ? (
+              <span className={cn("font-mono", item.active ? "text-white/80" : "text-slate-500")}>
+                {item.count}
+              </span>
+            ) : null}
+          </Button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -6862,6 +7140,10 @@ async function fetchAdminProducts(
     params.set("grade", filters.grade);
   }
 
+  if (filters.issueFilter !== "all") {
+    params.set("issueFilter", filters.issueFilter);
+  }
+
   if (filters.supplier.trim()) {
     params.set("supplier", filters.supplier.trim());
   }
@@ -7487,6 +7769,10 @@ function parseProductMetrics(
     hidden: readNumber(value.hidden) ?? 0,
     blocked: readNumber(value.blocked) ?? 0,
     lowStock: readNumber(value.lowStock) ?? readNumber(value.low_stock) ?? 0,
+    activeLowStock:
+      readNumber(value.activeLowStock) ?? readNumber(value.active_low_stock) ?? 0,
+    activeOutOfStock:
+      readNumber(value.activeOutOfStock) ?? readNumber(value.active_out_of_stock) ?? 0,
     restockRequests:
       readNumber(value.restockRequests) ?? readNumber(value.restock_requests) ?? 0,
     missingImage: readNumber(value.missingImage) ?? readNumber(value.missing_image) ?? 0,
@@ -8106,6 +8392,16 @@ function buildProductMetrics(products: AdminProductRow[], total: number) {
         metrics.lowStock += 1;
       }
 
+      const stockStatus = stockStatusFromStock(product.stock);
+
+      if (product.catalogStatus === "active" && stockStatus === "Low Stock") {
+        metrics.activeLowStock += 1;
+      }
+
+      if (product.catalogStatus === "active" && stockStatus === "Out of Stock") {
+        metrics.activeOutOfStock += 1;
+      }
+
       if (!product.imagePath && !product.imageUrl) {
         metrics.missingImage += 1;
       }
@@ -8125,6 +8421,8 @@ function buildProductMetrics(products: AdminProductRow[], total: number) {
       hidden: 0,
       blocked: 0,
       lowStock: 0,
+      activeLowStock: 0,
+      activeOutOfStock: 0,
       restockRequests: 0,
       missingImage: 0,
       missingPrice: 0,
@@ -8385,12 +8683,7 @@ async function fetchAdminWriteResponse(
     const response = await fetch(input, { ...init, signal: controller.signal });
 
     if (!response.ok) {
-      throw new Error(
-        await readApiErrorMessage(
-          response,
-          `${fallback}: HTTP ${response.status}`
-        )
-      );
+      throw await readApiError(response, `${fallback}: HTTP ${response.status}`);
     }
 
     return response;
@@ -8403,6 +8696,33 @@ async function fetchAdminWriteResponse(
   } finally {
     window.clearTimeout(timeoutId);
   }
+}
+
+async function readApiError(response: Response, fallback: string) {
+  let payload: unknown;
+
+  try {
+    payload = await readJsonResponse(response);
+  } catch {
+    return new AdminApiError(response.status, null, fallback, undefined);
+  }
+
+  if (!isRecord(payload) || !isRecord(payload.error)) {
+    return new AdminApiError(response.status, null, fallback, undefined);
+  }
+
+  const code = readString(payload.error.code);
+  const message = readString(payload.error.message);
+  const details = payload.error.details;
+  const detailText = readApiErrorDetail(details);
+  const parts = [code, message, detailText].filter(Boolean);
+
+  return new AdminApiError(
+    response.status,
+    code ?? null,
+    parts.length > 0 ? parts.join(": ") : fallback,
+    details
+  );
 }
 
 async function readApiErrorMessage(response: Response, fallback: string) {
@@ -8434,6 +8754,18 @@ function readApiErrorDetail(details: unknown) {
       return missing;
     }
 
+    const publishIssues = readProductPublishIssueDetails(details);
+
+    if (publishIssues.length > 0) {
+      return `Product is not publishable: ${publishIssues.join(", ")}`;
+    }
+
+    const permission = readString(details.permission);
+
+    if (permission) {
+      return `缺少权限：${permission}`;
+    }
+
     return (
       readString(details.message) ??
       readString(details.details) ??
@@ -8443,6 +8775,14 @@ function readApiErrorDetail(details: unknown) {
   }
 
   return readString(details);
+}
+
+function readProductPublishIssueDetails(details: Record<string, unknown>) {
+  if (readString(details.reason) !== "not_publishable" || !Array.isArray(details.issues)) {
+    return [];
+  }
+
+  return details.issues.map(readString).filter(isDefined);
 }
 
 function readMissingPermissionDetails(value: unknown) {
@@ -8480,6 +8820,53 @@ function formatNoticeError(baseMessage: string, error: unknown) {
   const detail = getErrorMessage(error);
 
   return detail === "Unknown error" ? baseMessage : `${baseMessage} ${detail}`;
+}
+
+function formatProductActionError(
+  baseMessage: string,
+  error: unknown,
+  text: typeof panelText.zh | typeof panelText.it
+) {
+  if (error instanceof AdminApiError && isRecord(error.details)) {
+    const publishIssues = readProductPublishIssueDetails(error.details);
+
+    if (publishIssues.length > 0) {
+      return formatProductPublishBlockedMessage(baseMessage, publishIssues, text);
+    }
+  }
+
+  const detail = getErrorMessage(error);
+
+  if (detail === "Unknown error") {
+    return baseMessage;
+  }
+
+  const publishIssueMatch = detail.match(/Product is not publishable:\s*([^:]+)/i);
+
+  if (!publishIssueMatch) {
+    return `${baseMessage} ${detail}`;
+  }
+
+  const issueLabels = publishIssueMatch[1]
+    .split(",")
+    .map((issue) => issue.trim())
+    .filter(Boolean);
+
+  if (issueLabels.length === 0) {
+    return `${baseMessage} ${detail}`;
+  }
+
+  return formatProductPublishBlockedMessage(baseMessage, issueLabels, text);
+}
+
+function formatProductPublishBlockedMessage(
+  baseMessage: string,
+  issues: string[],
+  text: typeof panelText.zh | typeof panelText.it
+) {
+  const publishIssueLabels: Record<string, string> = text.publishIssueLabels;
+  const issueLabels = issues.map((issue) => publishIssueLabels[issue] ?? issue);
+  return `${baseMessage} ${text.actionPublishBlocked}: ${issueLabels.join(", ")}.`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

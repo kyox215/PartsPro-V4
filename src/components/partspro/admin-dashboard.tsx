@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   BarChart3,
   Bell,
@@ -60,6 +60,7 @@ type AdminPanelValue =
   | "orders"
   | "rma"
   | "catalog"
+  | "finance"
   | "inventory"
   | "marketplace"
   | "support"
@@ -78,6 +79,7 @@ const adminPanelValues = [
   "orders",
   "rma",
   "catalog",
+  "finance",
   "inventory",
   "marketplace",
   "support",
@@ -96,7 +98,7 @@ const navItems = [
   { labelKey: "support", icon: MessageCircle, panel: "support" },
   { labelKey: "accounts", icon: UsersRound, panel: "accounts" },
   { labelKey: "marketing", icon: Bell, panel: "timeline" },
-  { labelKey: "finance", icon: BarChart3 },
+  { labelKey: "finance", icon: BarChart3, panel: "finance" },
   { labelKey: "reports", icon: Boxes },
   { labelKey: "settings", icon: Settings, panel: "settings" },
 ] as const satisfies readonly AdminNavItem[];
@@ -142,6 +144,11 @@ const AdminRmaPanel = dynamic(
 const AdminProductsPanel = dynamic(
   () =>
     import("./admin-products-panel").then((module) => module.AdminProductsPanel),
+  { loading: () => <AdminPanelLoadingFallback /> }
+);
+const AdminFinancePanel = dynamic(
+  () =>
+    import("./admin-finance-panel").then((module) => module.AdminFinancePanel),
   { loading: () => <AdminPanelLoadingFallback /> }
 );
 const AdminInventoryPanel = dynamic(
@@ -196,6 +203,10 @@ const AdminOverviewDashboard = dynamic<AdminOverviewDashboardProps>(
 
 function isAdminPanelValue(value: string): value is AdminPanelValue {
   return adminPanelValues.includes(value as AdminPanelValue);
+}
+
+function adminPanelHref(panel: AdminPanelValue) {
+  return `/admin?panel=${encodeURIComponent(panel)}`;
 }
 
 function normalizeVisiblePanels(values: readonly string[] | undefined) {
@@ -261,6 +272,7 @@ export function AdminDashboard({
   initialUserId = null,
   initialVisiblePanels,
 }: AdminDashboardProps = {}) {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const hasInitialAdminContext = initialPermissions !== undefined;
   const [activePanel, setActivePanel] =
@@ -284,6 +296,11 @@ export function AdminDashboard({
     () => new Set<AdminPanelValue>(visiblePanels ?? [...adminPanelValues]),
     [visiblePanels]
   );
+  const activePanelRef = React.useRef<AdminPanelValue>(activePanel);
+
+  React.useEffect(() => {
+    activePanelRef.current = activePanel;
+  }, [activePanel]);
 
   React.useEffect(() => {
     if (hasInitialAdminContext) {
@@ -350,7 +367,7 @@ export function AdminDashboard({
   const pendingPanelTimerRef = React.useRef<number | null>(null);
 
   const selectPanel = React.useCallback(
-    (panel: AdminPanelValue) => {
+    (panel: AdminPanelValue, options: { syncUrl?: boolean } = {}) => {
       if (!visiblePanelSet.has(panel)) {
         return;
       }
@@ -359,16 +376,25 @@ export function AdminDashboard({
         window.clearTimeout(pendingPanelTimerRef.current);
       }
 
-      if (panel !== activePanel) {
+      if (panel !== activePanelRef.current) {
         setPendingPanel(panel);
       }
 
+      activePanelRef.current = panel;
       setActivePanel(panel);
+      if (options.syncUrl) {
+        router.replace(adminPanelHref(panel), { scroll: false });
+      }
       pendingPanelTimerRef.current = window.setTimeout(() => {
         setPendingPanel((current) => (current === panel ? null : current));
       }, 360);
     },
-    [activePanel, visiblePanelSet]
+    [router, visiblePanelSet]
+  );
+
+  const navigateToPanel = React.useCallback(
+    (panel: AdminPanelValue) => selectPanel(panel, { syncUrl: true }),
+    [selectPanel]
   );
 
   React.useEffect(() => {
@@ -382,7 +408,7 @@ export function AdminDashboard({
   const handlePanelChange = React.useCallback(
     (value: string) => {
       if (isAdminPanelValue(value)) {
-        selectPanel(value);
+        selectPanel(value, { syncUrl: value !== activePanelRef.current });
       }
     },
     [selectPanel]
@@ -407,7 +433,7 @@ export function AdminDashboard({
       <div className="flex min-w-0">
         <AdminSidebar
           activePanel={activePanel}
-          onPanelChange={selectPanel}
+          onPanelChange={navigateToPanel}
           pendingPanel={pendingPanel}
           visiblePanels={visiblePanelSet}
           collapsed={isSidebarCollapsed}
@@ -416,10 +442,10 @@ export function AdminDashboard({
         <section className="w-full min-w-0 flex-1">
           <AdminTopbar
             activePanel={activePanel}
-              onPanelChange={selectPanel}
-              pendingPanel={pendingPanel}
-              visiblePanels={visiblePanelSet}
-            />
+            onPanelChange={navigateToPanel}
+            pendingPanel={pendingPanel}
+            visiblePanels={visiblePanelSet}
+          />
           <div className="mx-auto w-full max-w-[1500px] min-w-0 px-3 pb-3 pt-2 sm:px-4 sm:py-4">
             <Tabs
               value={activePanel}
@@ -434,6 +460,9 @@ export function AdminDashboard({
               </TabsContent>
               <TabsContent value="catalog" className="order-4 mt-0 min-w-0">
                 <AdminProductsPanel />
+              </TabsContent>
+              <TabsContent value="finance" className="order-4 mt-0 min-w-0">
+                <AdminFinancePanel />
               </TabsContent>
               <TabsContent value="inventory" className="order-4 mt-0 min-w-0">
                 <AdminInventoryPanel />
@@ -462,7 +491,7 @@ export function AdminDashboard({
               </TabsContent>
               <TabsContent value="overview" className="order-4 mt-0 min-w-0">
                 <AdminOverviewDashboard
-                  onPanelChange={selectPanel}
+                  onPanelChange={navigateToPanel}
                   visiblePanels={visiblePanelSet}
                 />
               </TabsContent>
