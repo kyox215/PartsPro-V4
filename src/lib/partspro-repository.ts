@@ -2592,6 +2592,18 @@ export async function listAdminFinanceLedger(
   };
 }
 
+export async function listAdminFinanceLedgerExport(
+  query: AdminFinanceQueryInput = {}
+): Promise<RepositoryResult<AdminFinanceLedgerPage>> {
+  const context = await requireSupabaseContext();
+  const data = await readAdminFinanceLedgerExport(context.client, query);
+
+  return {
+    data,
+    source: "supabase",
+  };
+}
+
 export async function listAdminFinanceCogs(
   query: AdminFinanceQueryInput = {}
 ): Promise<RepositoryResult<AdminFinanceCogsPage>> {
@@ -5853,7 +5865,8 @@ async function readAdminProductSoldOrderRows(client: SupabaseServerClient) {
 
 async function readOrderLineRowsForOrderIdsBatched(
   client: SupabaseServerClient,
-  orderIds: string[]
+  orderIds: string[],
+  select = "id, order_id, sku_code, product_name, quantity, cancelled_qty"
 ) {
   const uniqueOrderIds = uniqueDefinedStrings(orderIds);
   const chunkSize = 100;
@@ -5867,7 +5880,7 @@ async function readOrderLineRowsForOrderIdsBatched(
     while (true) {
       const { data, error } = await client
         .from("order_lines")
-        .select("id, order_id, sku_code, product_name, quantity, cancelled_qty")
+        .select(select)
         .in("order_id", chunk)
         .order("id", { ascending: true })
         .range(offset, offset + pageSize - 1);
@@ -6205,6 +6218,36 @@ async function readAdminFinanceLedger(
   };
 }
 
+async function readAdminFinanceLedgerExport(
+  client: SupabaseServerClient,
+  query: AdminFinanceQueryInput
+): Promise<AdminFinanceLedgerPage> {
+  const normalized = normalizeFinanceQuery(query, {
+    defaultLimit: adminFinanceReadLimit,
+    maxLimit: adminFinanceReadLimit,
+  });
+  const dataSet = await readAdminFinanceDataSet(client);
+  const summary = summarizeAdminFinance(dataSet, normalized);
+  const rows = buildAdminFinanceLedgerRows(dataSet, normalized)
+    .filter((row) => financeLedgerRowMatches(row, normalized))
+    .sort((left, right) => compareIsoDesc(left.date, right.date));
+
+  if (rows.length > adminFinanceReadLimit) {
+    throw new RepositoryWriteError(
+      413,
+      "ADMIN_FINANCE_EXPORT_TOO_LARGE",
+      "Finance export is too large. Narrow the date range or filters before exporting.",
+      { maxRows: adminFinanceReadLimit, total: rows.length }
+    );
+  }
+
+  return {
+    rows,
+    summary,
+    total: rows.length,
+  };
+}
+
 async function readAdminFinanceCogs(
   client: SupabaseServerClient,
   query: AdminFinanceQueryInput
@@ -6327,7 +6370,9 @@ function summarizeAdminFinance(
   const pendingReceivables = sumFinanceLedgerRows(ledgerRows, "receivable");
   const purchaseNet = sumFinanceLedgerRows(ledgerRows, "purchase");
   const cogsNet = sumFinanceLedgerRows(ledgerRows, "cogs");
-  const expenseNet = sumFinanceLedgerRows(ledgerRows, "expense");
+  const expenseNet = roundMoney(
+    sumMoney(ledgerRows.filter(isRecognizedFinanceExpenseRow), (row) => row.amountNet)
+  );
   const supplierPaymentsNet = roundMoney(
     sumMoney(
       ledgerRows.filter((row) => row.type === "supplier_payment" && row.status === "paid"),
@@ -6410,6 +6455,10 @@ function sumFinanceLedgerRows(
   type: AdminFinanceLedgerType
 ) {
   return roundMoney(sumMoney(rows.filter((row) => row.type === type), (row) => row.amountNet));
+}
+
+function isRecognizedFinanceExpenseRow(row: AdminFinanceLedgerRow) {
+  return row.type === "expense" && row.status !== "cancelled";
 }
 
 function financePurchaseNetByBatchFromLedger(rows: AdminFinanceLedgerRow[]) {
@@ -6800,11 +6849,17 @@ type AdminFinanceMaps = {
   supplierById: Map<string, DbRow>;
 };
 
-function normalizeFinanceQuery(query: AdminFinanceQueryInput): NormalizedFinanceQuery {
+function normalizeFinanceQuery(
+  query: AdminFinanceQueryInput,
+  options: { defaultLimit?: number; maxLimit?: number } = {}
+): NormalizedFinanceQuery {
+  const defaultLimit = options.defaultLimit ?? 50;
+  const maxLimit = options.maxLimit ?? 500;
+
   return {
     ...query,
     dateMode: query.dateMode ?? "created",
-    limit: Math.min(Math.max(query.limit ?? 50, 1), 500),
+    limit: Math.min(Math.max(query.limit ?? defaultLimit, 1), maxLimit),
     offset: Math.max(query.offset ?? 0, 0),
   };
 }
@@ -8576,7 +8631,7 @@ async function readAdminSoldStockShortagePage(
       .map((row) => [pickString(row, ["id"]), pickString(row, ["created_at", "createdAt"])])
       .filter((entry): entry is [string, string] => Boolean(entry[0] && entry[1]))
   );
-  const lineRows = await readOrderLineRowsForOrderIds(client, orderIds);
+  const lineRows = await readOrderLineRowsForOrderIdsBatched(client, orderIds);
 
   if (!lineRows) {
     throw new RepositoryWriteError(
@@ -8691,8 +8746,12 @@ async function readAdminInventoryHealthPage(
   );
   const activeOrderIds = uniqueDefinedStrings(activeOrderRows.map((row) => pickString(row, ["id"])));
   const [soldLineRows, activeLineRows] = await Promise.all([
-    readOrderLineRowsForOrderIds(client, soldOrderIds),
-    readOrderLineRowsForOrderIds(client, activeOrderIds),
+    readOrderLineRowsForOrderIdsBatched(client, soldOrderIds),
+    readOrderLineRowsForOrderIdsBatched(
+      client,
+      activeOrderIds,
+      "id, order_id, sku_code, product_name, quantity, cancelled_qty, reserved_qty"
+    ),
   ]);
 
   if (!soldLineRows || !activeLineRows) {

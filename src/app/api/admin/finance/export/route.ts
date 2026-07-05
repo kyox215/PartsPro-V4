@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
   auditAdminFinanceExport,
-  listAdminFinanceLedger,
+  listAdminFinanceLedgerExport,
   type AdminFinanceLedgerRow,
 } from "@/lib/partspro-repository";
 import { apiError } from "@/lib/partspro-api";
@@ -41,11 +41,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const result = await listAdminFinanceLedger({
-      ...query.data,
-      limit: 500,
-      offset: 0,
-    });
+    const result = await listAdminFinanceLedgerExport(query.data);
     const fileBase = `partspro-finance-${new Date().toISOString().slice(0, 10)}`;
 
     await auditAdminFinanceExport({
@@ -127,7 +123,7 @@ function buildFinanceCsv(rows: AdminFinanceLedgerRow[]) {
 
 async function buildFinanceWorkbook(
   rows: AdminFinanceLedgerRow[],
-  summary: Awaited<ReturnType<typeof listAdminFinanceLedger>>["data"]["summary"]
+  summary: Awaited<ReturnType<typeof listAdminFinanceLedgerExport>>["data"]["summary"]
 ) {
   const workbook = new ExcelJS.Workbook();
   const ledgerSheet = workbook.addWorksheet("Ledger");
@@ -171,9 +167,12 @@ async function buildFinanceWorkbook(
 }
 
 function escapeCsvCell(value: string) {
-  if (/[",\n]/.test(value)) {
-    return `"${value.replace(/"/g, '""')}"`;
+  const normalized = value.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const safeValue = /^[=+\-@]/.test(normalized) ? `'${normalized}` : normalized;
+
+  if (/[",\n]/.test(safeValue)) {
+    return `"${safeValue.replace(/"/g, '""')}"`;
   }
 
-  return value;
+  return safeValue;
 }
