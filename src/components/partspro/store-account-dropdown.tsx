@@ -47,6 +47,8 @@ export function StoreAccountDropdown({
     onSignOut?.();
   }
 
+  const accountDisplay = access.displayName ?? access.email;
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -65,6 +67,11 @@ export function StoreAccountDropdown({
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuLabel className="flex flex-col gap-0.5">
           <span>{menuLabel}</span>
+          {access.authenticated && accountDisplay ? (
+            <span className="truncate text-[11px] font-medium text-slate-500">
+              {accountDisplay}
+            </span>
+          ) : null}
           {access.canOpenAdmin && access.role ? (
             <span className="text-[11px] font-medium text-primary">
               {staffLabel}: {access.role}

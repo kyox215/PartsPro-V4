@@ -40,8 +40,11 @@ type StoreHeaderProps = {
 type AccountAccessState = StoreHeaderAccountAccess;
 
 const loadingAccountAccess: AccountAccessState = {
+  accountType: null,
   authenticated: false,
   canOpenAdmin: false,
+  displayName: null,
+  email: null,
   role: null,
   status: "loading",
 };
@@ -100,24 +103,33 @@ export function StoreHeader({
         }
 
         const data = (await response.json()) as {
+          accountType?: StoreHeaderAccountAccess["accountType"];
           authenticated?: boolean;
           admin?: { allowed?: boolean; role?: string | null };
+          displayName?: string | null;
+          email?: string | null;
         };
 
         if (!cancelled) {
           setAccountAccess({
+            accountType: data.accountType ?? null,
             status: "ready",
             canOpenAdmin: Boolean(data.admin?.allowed),
             authenticated: Boolean(data.authenticated),
+            displayName: data.displayName ?? data.email ?? null,
+            email: data.email ?? null,
             role: data.admin?.role ?? null,
           });
         }
       } catch {
         if (!cancelled) {
           setAccountAccess({
+            accountType: null,
             status: "error",
             canOpenAdmin: false,
             authenticated: false,
+            displayName: null,
+            email: null,
             role: null,
           });
         }

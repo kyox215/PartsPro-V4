@@ -1,15 +1,21 @@
 import type { AccountContext } from "@/lib/partspro-account-context";
 
 export type StoreHeaderAccountAccess = {
+  accountType: AccountContext["accountType"];
   authenticated: boolean;
   canOpenAdmin: boolean;
+  displayName: string | null;
+  email: string | null;
   role: string | null;
   status: "loading" | "ready" | "error";
 };
 
 export const anonymousStoreHeaderAccess: StoreHeaderAccountAccess = {
+  accountType: null,
   authenticated: false,
   canOpenAdmin: false,
+  displayName: null,
+  email: null,
   role: null,
   status: "ready",
 };
@@ -37,6 +43,7 @@ export function toStoreHeaderAccountAccess(
   account: AccountContext
 ): StoreHeaderAccountAccess {
   const normalizedRole = account.role?.trim().toLowerCase() ?? null;
+  const staffRole = normalizedRole && staffRoles.has(normalizedRole) ? normalizedRole : null;
   const adminEmail = Boolean(
     account.email && adminEmails.has(account.email.trim().toLowerCase())
   );
@@ -47,9 +54,16 @@ export function toStoreHeaderAccountAccess(
     account.visiblePanels.length > 0;
 
   return {
+    accountType: account.accountType,
     authenticated: account.authenticated,
     canOpenAdmin: staff,
-    role: staff ? account.role ?? (adminEmail ? "admin" : null) : null,
+    displayName:
+      account.customer?.name ??
+      account.employeeSelfCustomer?.name ??
+      account.email ??
+      null,
+    email: account.email,
+    role: staff ? (adminEmail ? "admin" : staffRole) : null,
     status: "ready",
   };
 }

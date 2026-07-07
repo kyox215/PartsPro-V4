@@ -18,6 +18,12 @@ export async function GET() {
     authenticated: account.authenticated,
     accountType: account.accountType,
     customer: account.customer,
+    displayName:
+      account.customer?.name ??
+      account.employeeSelfCustomer?.name ??
+      account.email ??
+      null,
+    email: account.email,
     userId: account.userId,
     roleTemplate: account.roleTemplate,
     permissions,
