@@ -68,6 +68,14 @@ export function requestCartSyncRetry() {
   window.dispatchEvent(new Event(CART_SYNC_RETRY_EVENT));
 }
 
+export function isCartRemoteSyncPending(status: CartRemoteSyncStatus) {
+  return status === "loading" || status === "restoring";
+}
+
+export function isCartRemoteSyncError(status: CartRemoteSyncStatus) {
+  return status === "error";
+}
+
 function subscribeToCartSyncStatus(listener: () => void) {
   cartSyncStatusListeners.add(listener);
 
@@ -102,9 +110,12 @@ export function CartSyncBridge() {
   const [remoteLoaded, setRemoteLoaded] = React.useState(false);
   const applyingRemoteRef = React.useRef(false);
   const lastSyncedSnapshotRef = React.useRef("");
+  const remoteSnapshotLoadedRef = React.useRef(false);
 
   React.useEffect(() => {
     if (scope !== "storefront") {
+      remoteSnapshotLoadedRef.current = false;
+      lastSyncedSnapshotRef.current = "";
       setCartSyncStatus({ remoteStatus: "idle" });
       return;
     }
@@ -198,6 +209,7 @@ export function CartSyncBridge() {
 
       setCartStorageOwner(null);
       lastSyncedSnapshotRef.current = serializeCartItems([]);
+      remoteSnapshotLoadedRef.current = false;
       if (!disposed) {
         setSyncEnabled(false);
         setRemoteLoaded(true);
@@ -208,6 +220,7 @@ export function CartSyncBridge() {
     function enterRestoringMode() {
       stopRemoteListeners();
       resetErrorRetry();
+      remoteSnapshotLoadedRef.current = false;
       if (!disposed) {
         setSyncEnabled(false);
         setRemoteLoaded(false);
@@ -225,6 +238,7 @@ export function CartSyncBridge() {
       const remoteSnapshot = serializeCartItems(nextItems);
 
       lastSyncedSnapshotRef.current = remoteSnapshot;
+      remoteSnapshotLoadedRef.current = true;
 
       if (localSnapshot === remoteSnapshot) {
         return true;
@@ -271,6 +285,48 @@ export function CartSyncBridge() {
       } catch {
         if (!signal.aborted && attempt === remoteAttempt) {
           enterRemoteErrorMode("Unable to refresh remote cart");
+        }
+      }
+    }
+
+    function hasPendingLocalCartWrite() {
+      if (!remoteSnapshotLoadedRef.current) {
+        return false;
+      }
+
+      const localSnapshot = serializeCartItems(
+        readClientStoredCartItems({ preserveUnknown: true })
+      );
+
+      return localSnapshot !== lastSyncedSnapshotRef.current;
+    }
+
+    async function saveCurrentLocalCart() {
+      const { attempt, signal } = beginRemoteAttempt();
+
+      try {
+        const items = readClientStoredCartItems({ preserveUnknown: true });
+        const snapshot = serializeCartItems(items);
+        const result = await writeRemoteCart(items, signal);
+
+        if (!isCurrentRemoteAttempt(attempt, signal)) {
+          return;
+        }
+
+        if (result === "local") {
+          enterLocalMode();
+          return;
+        }
+
+        lastSyncedSnapshotRef.current = snapshot;
+        remoteSnapshotLoadedRef.current = true;
+        resetErrorRetry();
+        setSyncEnabled(true);
+        setRemoteLoaded(true);
+        setCartSyncStatus({ remoteStatus: "ready" });
+      } catch {
+        if (!signal.aborted && attempt === remoteAttempt) {
+          enterRemoteErrorMode("Unable to save remote cart");
         }
       }
     }
@@ -397,9 +453,17 @@ export function CartSyncBridge() {
       }
       stopRemoteListeners();
 
+      const shouldSaveLocalCart = hasPendingLocalCartWrite();
+
       setSyncEnabled(false);
-      setRemoteLoaded(false);
+      setRemoteLoaded(shouldSaveLocalCart);
       setCartSyncStatus({ remoteStatus: "loading" });
+
+      if (shouldSaveLocalCart) {
+        void saveCurrentLocalCart();
+        return;
+      }
+
       void loadInitialRemoteCart();
     }
 
@@ -476,12 +540,17 @@ export function CartSyncBridge() {
       writeRemoteCart(localItems, controller.signal)
         .then((result) => {
           if (result === "local") {
+            setCartStorageOwner(null);
+            lastSyncedSnapshotRef.current = serializeCartItems([]);
+            remoteSnapshotLoadedRef.current = false;
             setSyncEnabled(false);
+            setRemoteLoaded(true);
             setCartSyncStatus({ remoteStatus: "local" });
             return;
           }
 
           lastSyncedSnapshotRef.current = snapshot;
+          remoteSnapshotLoadedRef.current = true;
           setCartSyncStatus({ remoteStatus: "ready" });
         })
         .catch(() => {
@@ -491,6 +560,7 @@ export function CartSyncBridge() {
               errorMessage: "Unable to save remote cart",
               remoteStatus: "error",
             });
+            window.setTimeout(requestCartSyncRetry, syncErrorRetryDelaysMs[0]);
           }
         });
     }, syncDebounceMs);

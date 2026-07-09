@@ -66,6 +66,8 @@ import {
   useCart,
 } from "./cart-state";
 import {
+  isCartRemoteSyncError,
+  isCartRemoteSyncPending,
   requestCartSyncRetry,
   useCartSyncStatus,
 } from "./cart-sync-bridge";
@@ -287,12 +289,11 @@ function CartPageContent({
     (catalogLoadState === "loading" || hasPendingCatalogResolution);
   const isRemoteCartLoading =
     !isLoginRequired &&
-    (cartSyncStatus.remoteStatus === "loading" ||
-      cartSyncStatus.remoteStatus === "restoring");
+    isCartRemoteSyncPending(cartSyncStatus.remoteStatus);
   const isCartBootstrapping =
     !isLoginRequired && (!cart.isHydrated || isRemoteCartLoading);
   const isCartSyncError =
-    !isLoginRequired && cartSyncStatus.remoteStatus === "error";
+    !isLoginRequired && isCartRemoteSyncError(cartSyncStatus.remoteStatus);
   const retryCartSync = React.useCallback(() => {
     requestCartSyncRetry();
   }, []);

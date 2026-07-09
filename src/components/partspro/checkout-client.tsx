@@ -82,6 +82,8 @@ import {
   useCart,
 } from "./cart-state";
 import {
+  isCartRemoteSyncError,
+  isCartRemoteSyncPending,
   requestCartSyncRetry,
   useCartSyncStatus,
 } from "./cart-sync-bridge";
@@ -432,8 +434,8 @@ function CheckoutClientContent({
     cart.items.length > 0 &&
     unresolvedCatalogSkus.length > 0 &&
     (catalogLoadState === "idle" || catalogLoadState === "loading");
-  const isRemoteCartLoading = cartSyncStatus.remoteStatus === "loading";
-  const isRemoteCartError = cartSyncStatus.remoteStatus === "error";
+  const isRemoteCartLoading = isCartRemoteSyncPending(cartSyncStatus.remoteStatus);
+  const isRemoteCartError = isCartRemoteSyncError(cartSyncStatus.remoteStatus);
   const isCartBootstrapping = !cart.isHydrated || isRemoteCartLoading;
   const previewQueued =
     shouldLoadPreview &&
