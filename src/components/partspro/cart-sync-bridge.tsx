@@ -24,6 +24,7 @@ type CartApiPayload = {
 const syncDebounceMs = 500;
 const realtimeRefreshDebounceMs = 250;
 const sessionRetryDelaysMs = [0, 600, 1500, 3000] as const;
+const syncErrorRetryDelaysMs = [1500, 4000, 10000] as const;
 const CART_SYNC_RETRY_EVENT = "partspro-cart-sync-retry";
 type RemoteCartWriteResult = "synced" | "local";
 type RemoteCartLoadResult =
@@ -110,11 +111,41 @@ export function CartSyncBridge() {
 
     setCartSyncStatus({ remoteStatus: "loading" });
 
-    const controller = new AbortController();
     let disposed = false;
+    let activeRemoteController: AbortController | null = null;
+    let errorRetryIndex = 0;
+    let errorRetryTimeout: number | null = null;
     let refreshTimeout: number | null = null;
     let removeRealtimeChannel: (() => void) | null = null;
     let removeAuthListener: (() => void) | null = null;
+    let remoteAttempt = 0;
+
+    function beginRemoteAttempt() {
+      remoteAttempt += 1;
+      activeRemoteController?.abort();
+      activeRemoteController = new AbortController();
+
+      return {
+        attempt: remoteAttempt,
+        signal: activeRemoteController.signal,
+      };
+    }
+
+    function isCurrentRemoteAttempt(attempt: number, signal: AbortSignal) {
+      return !disposed && !signal.aborted && attempt === remoteAttempt;
+    }
+
+    function clearErrorRetry() {
+      if (errorRetryTimeout !== null) {
+        window.clearTimeout(errorRetryTimeout);
+        errorRetryTimeout = null;
+      }
+    }
+
+    function resetErrorRetry() {
+      errorRetryIndex = 0;
+      clearErrorRetry();
+    }
 
     function stopRemoteListeners() {
       removeRealtimeChannel?.();
@@ -125,8 +156,45 @@ export function CartSyncBridge() {
       }
     }
 
+    function scheduleErrorRetry() {
+      if (
+        disposed ||
+        errorRetryTimeout !== null ||
+        errorRetryIndex >= syncErrorRetryDelaysMs.length
+      ) {
+        return;
+      }
+
+      const delay = syncErrorRetryDelaysMs[errorRetryIndex];
+      errorRetryIndex += 1;
+      errorRetryTimeout = window.setTimeout(() => {
+        errorRetryTimeout = null;
+        if (!disposed && document.visibilityState === "visible") {
+          retryRemoteCartSync({ resetBackoff: false });
+        }
+      }, delay);
+    }
+
+    function enterRemoteErrorMode(
+      errorMessage: string,
+      options: { remoteLoaded?: boolean } = {}
+    ) {
+      if (disposed) {
+        return;
+      }
+
+      setSyncEnabled(false);
+      setRemoteLoaded(options.remoteLoaded ?? true);
+      setCartSyncStatus({
+        errorMessage,
+        remoteStatus: "error",
+      });
+      scheduleErrorRetry();
+    }
+
     function enterLocalMode() {
       stopRemoteListeners();
+      resetErrorRetry();
 
       setCartStorageOwner(null);
       lastSyncedSnapshotRef.current = serializeCartItems([]);
@@ -139,6 +207,7 @@ export function CartSyncBridge() {
 
     function enterRestoringMode() {
       stopRemoteListeners();
+      resetErrorRetry();
       if (!disposed) {
         setSyncEnabled(false);
         setRemoteLoaded(false);
@@ -177,10 +246,12 @@ export function CartSyncBridge() {
     }
 
     async function refreshRemoteCart() {
-      try {
-        const result = await readRemoteCart(controller.signal);
+      const { attempt, signal } = beginRemoteAttempt();
 
-        if (disposed || controller.signal.aborted) {
+      try {
+        const result = await readRemoteCart(signal);
+
+        if (!isCurrentRemoteAttempt(attempt, signal)) {
           return;
         }
 
@@ -189,14 +260,17 @@ export function CartSyncBridge() {
           return;
         }
 
-        applyRemoteCartItems(result.items);
+        if (!applyRemoteCartItems(result.items)) {
+          return;
+        }
+
+        resetErrorRetry();
+        setSyncEnabled(true);
+        setRemoteLoaded(true);
+        setCartSyncStatus({ remoteStatus: "ready" });
       } catch {
-        if (!controller.signal.aborted) {
-          setSyncEnabled(false);
-          setCartSyncStatus({
-            errorMessage: "Unable to refresh remote cart",
-            remoteStatus: "error",
-          });
+        if (!signal.aborted && attempt === remoteAttempt) {
+          enterRemoteErrorMode("Unable to refresh remote cart");
         }
       }
     }
@@ -242,22 +316,24 @@ export function CartSyncBridge() {
     }
 
     async function loadInitialRemoteCart() {
+      const { attempt, signal } = beginRemoteAttempt();
+
       if (!isSupabaseConfigured()) {
         enterLocalMode();
         return;
       }
 
-      const userId = await resolveClientSupabaseUserId(controller.signal);
+      const userId = await resolveClientSupabaseUserId(signal);
 
-      if (controller.signal.aborted || disposed) {
+      if (!isCurrentRemoteAttempt(attempt, signal)) {
         return;
       }
 
       if (!userId) {
         try {
-          const result = await readRemoteCart(controller.signal);
+          const result = await readRemoteCart(signal);
 
-          if (controller.signal.aborted || disposed) {
+          if (!isCurrentRemoteAttempt(attempt, signal)) {
             return;
           }
 
@@ -268,12 +344,9 @@ export function CartSyncBridge() {
 
           enterRestoringMode();
         } catch {
-          if (!controller.signal.aborted && !disposed) {
-            setSyncEnabled(false);
-            setRemoteLoaded(false);
-            setCartSyncStatus({
-              errorMessage: "Unable to restore remote cart session",
-              remoteStatus: "error",
+          if (!signal.aborted && attempt === remoteAttempt) {
+            enterRemoteErrorMode("Unable to restore remote cart session", {
+              remoteLoaded: false,
             });
           }
         }
@@ -283,9 +356,9 @@ export function CartSyncBridge() {
       setCartStorageOwner(userId);
 
       try {
-        const result = await readRemoteCart(controller.signal);
+        const result = await readRemoteCart(signal);
 
-        if (disposed || controller.signal.aborted) {
+        if (!isCurrentRemoteAttempt(attempt, signal)) {
           return;
         }
 
@@ -299,36 +372,39 @@ export function CartSyncBridge() {
         }
 
         if (!disposed) {
+          resetErrorRetry();
           setSyncEnabled(true);
           setRemoteLoaded(true);
           setCartSyncStatus({ remoteStatus: "ready" });
           subscribeToRemoteCart(userId);
         }
       } catch {
-        if (!controller.signal.aborted) {
-          if (!disposed) {
-            setSyncEnabled(false);
-            setRemoteLoaded(true);
-            setCartSyncStatus({
-              errorMessage: "Unable to load remote cart",
-              remoteStatus: "error",
-            });
-          }
+        if (!signal.aborted && attempt === remoteAttempt) {
+          enterRemoteErrorMode("Unable to load remote cart");
         }
       }
     }
 
-    function retryRemoteCartSync() {
+    function retryRemoteCartSync(options: { resetBackoff?: boolean } = {}) {
       if (disposed) {
         return;
       }
 
+      if (options.resetBackoff !== false) {
+        resetErrorRetry();
+      } else {
+        clearErrorRetry();
+      }
       stopRemoteListeners();
 
       setSyncEnabled(false);
       setRemoteLoaded(false);
       setCartSyncStatus({ remoteStatus: "loading" });
       void loadInitialRemoteCart();
+    }
+
+    function retryRequestedRemoteCartSync() {
+      retryRemoteCartSync();
     }
 
     function retryVisibleRemoteCartSync() {
@@ -360,21 +436,22 @@ export function CartSyncBridge() {
     }
 
     void loadInitialRemoteCart();
-    window.addEventListener(CART_SYNC_RETRY_EVENT, retryRemoteCartSync);
-    window.addEventListener("online", retryRemoteCartSync);
+    window.addEventListener(CART_SYNC_RETRY_EVENT, retryRequestedRemoteCartSync);
+    window.addEventListener("online", retryRequestedRemoteCartSync);
     document.addEventListener("visibilitychange", retryVisibleRemoteCartSync);
 
     return () => {
       disposed = true;
-      window.removeEventListener(CART_SYNC_RETRY_EVENT, retryRemoteCartSync);
-      window.removeEventListener("online", retryRemoteCartSync);
+      clearErrorRetry();
+      window.removeEventListener(CART_SYNC_RETRY_EVENT, retryRequestedRemoteCartSync);
+      window.removeEventListener("online", retryRequestedRemoteCartSync);
       document.removeEventListener("visibilitychange", retryVisibleRemoteCartSync);
       if (refreshTimeout !== null) {
         window.clearTimeout(refreshTimeout);
       }
       removeRealtimeChannel?.();
       removeAuthListener?.();
-      controller.abort();
+      activeRemoteController?.abort();
     };
   }, [scope]);
 
