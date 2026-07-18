@@ -1,8 +1,8 @@
 # P2-2026-07-18-admin-order-product-name-visibility
 
-状态：verified
+状态：closed
 
-看板目录：now
+看板目录：done
 
 优先级：P2
 
@@ -118,7 +118,10 @@ npm run build
 | `npm run lint` | pass | ESLint 全量检查通过 |
 | `npm run build` | pass | Next.js 16.2.6 编译、TypeScript、17 个静态页面生成全部通过 |
 | 生产基线 | captured | 长名称可见宽度 284px、内容宽度 412px、`text-overflow: ellipsis`、商品行高度 69px |
-| production smoke | pending | 待部署后执行 |
+| production smoke | pass | `c9d10a7` / `dpl_D3RXwsvBoAqNnZqHJY6QZL3nQ3iF` READY；`www.partspro.app/admin?panel=orders` 真实管理员会话通过 |
+| production layout metrics | pass | 1280/1920 宽度下名称 412/412px 完整显示，`overflow: visible`、`text-overflow: clip`、行高保持 69px |
+| horizontal access | pass | 表格容器 `overflow-x: auto`，实测可滚动 144px 并访问价格和操作列 |
+| production observability | pass | 浏览器控制台无 warning/error；Vercel 15 分钟窗口无 runtime/build error |
 
 ## 执行记录
 
@@ -127,9 +130,9 @@ npm run build
 - 开始：2026-07-18，Codex
 - review：2026-07-18，定向 diff/ESLint 与订单显示契约检查通过
 - verified：2026-07-18，全量 lint、生产 build 与生产基线采集通过
-- released：pending
-- closed：pending
+- released：2026-07-18，提交 `c9d10a7` 已推送 `origin/main`，Vercel production READY
+- closed：2026-07-18，生产视觉、响应式、横向滚动和错误扫描全部通过
 
 ## 结果
 
-实现与发布前验证完成，等待精确提交、推送和 Vercel 生产发布。
+商品名不再使用省略号或隐藏溢出，桌面订单明细改用内容驱动的单行表格布局；空间不足时由既有表格容器横向滚动。生产验证确认示例长名称完整显示，商品行仍为 69px，数量、履约、价格和操作列均可访问。无 API、数据库、权限或移动端布局变更，残余风险仅为窄容器需要横向滚动，符合已批准方案。
