@@ -4585,11 +4585,11 @@ function OrderLines({
         ))}
       </div>
       <div className="hidden min-w-0 overflow-hidden rounded-md border border-slate-200 md:block">
-        <Table className="w-full table-fixed text-xs">
+        <Table className="min-w-max table-auto text-xs">
           <TableHeader className="bg-slate-50 [&_th]:h-8 [&_th]:px-1.5 [&_th]:text-xs">
             <TableRow>
               <TableHead className="w-[188px]">{text.common.sku}</TableHead>
-              <TableHead className="min-w-0">{text.common.product}</TableHead>
+              <TableHead className="min-w-[420px]">{text.common.product}</TableHead>
               <TableHead className="w-[48px] text-center">{text.orders.lines.quantity}</TableHead>
               <TableHead className="w-[56px] text-center">实给</TableHead>
               <TableHead className="w-[64px] text-center">{text.orders.lines.reserved}</TableHead>
@@ -4607,9 +4607,9 @@ function OrderLines({
                     <span className="min-w-0 break-all leading-tight">{line.sku}</span>
                   </div>
                 </TableCell>
-                <TableCell className="max-w-0 overflow-hidden align-top">
+                <TableCell className="align-top">
                   <div
-                    className="min-w-0 truncate text-xs font-bold leading-tight text-slate-900"
+                    className="whitespace-nowrap text-xs font-bold leading-tight text-slate-900"
                     title={line.name}
                   >
                     {line.name}
