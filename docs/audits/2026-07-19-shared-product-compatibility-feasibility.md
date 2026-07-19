@@ -28,6 +28,18 @@
 
 首批逐条决定与证据见 `docs/audits/2026-07-19-shared-product-compatibility-pilot-review.csv`。
 
+## 第二批高优先级批准（2026-07-20）
+
+老板批准执行先前列出的 10 个高库存 Mobilax 待审核商品，而不是按审核表整体批量导入。逐条复核结果已记录在 `docs/audits/2026-07-20-shared-product-compatibility-batch-2-review.csv`：10 个商品可批准 43 条规范化兼容关系，库存动作全部为 `none`。
+
+- `3000000166222` 的到货标题明确包含 Redmi A2+，修复旧解析数组漏项。
+- `3000000093085` 的 BLP805 到货标题明确包含 8 个 OPPO 型号，补回 A53s 2020、A54s、A16s；A53s 2020 不等同于另一个 A53s 5G 型号。
+- `3000000338667` 只批准公开商品页和早期到货记录一致支持的 A16 4G/5G、A17 4G/5G、A26 5G。最新到货标题新增的 Galaxy A27 5G 与当前公开商品页不一致，本批继续保留待审核。
+- 其余 7 个商品按 Mobilax 到货标题、厂家料号和公开目录批准；没有创建第二个商品、第二个 SKU 或第二份库存。
+- data-only migration `20260719233322_approve_high_priority_mobilax_compatibility_batch_2.sql` 已通过生产事务回滚演练并正式应用；应用前后都用 SQL 断言保护 `stock_qty = available_qty` 及 `actual_qty = available_qty + locked_qty`。
+
+生产 smoke 已确认本批 10 个唯一商品对应 43 条 approved 关系和 10 条 Mobilax 报价，Galaxy A27 5G 的 approved 数为 0；规范化模型累计实测为 47 个 canonical 设备、57 条 approved 关系、1 条 rejected 负证据和 18 条供应商报价映射。10 个商品的库存值与应用前一致；当前快照待审核数由 109 降至 99，历史 2,342 条候选继续只作为底稿。
+
 ## 数据范围和证据边界
 
 本次只读核对了：
@@ -37,7 +49,7 @@
 - UTOPYA 未登录公开商品页的若干高置信样本。
 - 本地 schema、目录筛选、购物车、订单预留和导入脚本。
 
-这不是 Mobilax 或 UTOPYA 在 2026-07-19 的完整实时全目录。Mobilax 官网/API 本轮未访问；UTOPYA 仅核验了当前 69 条商品和少量公开候选。所有导出项都标为候选，不能跳过技术确认直接批量合并。
+这不是 Mobilax 或 UTOPYA 的完整实时全目录。首批只读盘点时未访问 Mobilax 官网；第二批在 2026-07-20 对 10 个目标补查了 Mobilax 当前公开商品/分类页面和 PartsPro 到货原文。UTOPYA 仍只核验了当前 69 条商品和少量公开候选。未进入已批准批次的导出项仍是候选，不能跳过技术确认直接批量合并。
 
 ## 当前到货商品盘点
 
@@ -245,3 +257,4 @@ UTO 与 Mobi 的两个商品只有在 EAN、明确制造商料号或供应商书
 
 - `docs/audits/2026-07-19-mobilax-utopya-multi-model-candidates.csv`：当前两家到货商品的 117 条多值兼容原始候选快照。
 - `docs/audits/2026-07-19-historical-mobilax-multi-model-candidates.csv`：2,342 条历史 Mobilax 目录候选；供应商标签已脱敏，不能视为当前官网库存。
+- `docs/audits/2026-07-20-shared-product-compatibility-batch-2-review.csv`：第二批 10 个高优先级商品的逐项决定、型号、证据和库存动作。
