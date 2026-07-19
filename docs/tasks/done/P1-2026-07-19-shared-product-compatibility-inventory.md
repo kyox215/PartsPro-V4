@@ -1,8 +1,8 @@
 # P1-2026-07-19-shared-product-compatibility-inventory
 
-状态：release_ready
+状态：completed
 
-看板目录：now
+看板目录：done
 
 优先级：P1
 
@@ -147,6 +147,8 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db push --linked --dry-run
 | shared identity and stock | passed | 8 个试点均为 1 个 product ID；库存不变量 mismatch 0 |
 | negative evidence | passed | iPhone 8 电池→SE2 approved 0 / rejected 1 |
 | Supabase advisors | passed with baseline/info | security 33→33；仅新增 5 条新索引尚未被真实流量使用的 INFO |
+| production deploy | passed | commit `37e456769727ad17150b059dc98069efa3c9238c`；Vercel `dpl_82EdBBPbDae3tRxP5sELgv9qne7v` READY；正式域名 aliasError=null |
+| production catalog/API smoke | passed | 多型号入口同 SKU/同库存、`iPhone SE 2020` 别名、`total=returned`；核心页面 200，匿名后台 API 401；build/runtime/5xx 错误为 0 |
 
 ## 执行记录
 
@@ -155,9 +157,9 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db push --linked --dry-run
 - 开始：2026-07-19，已进入 R3 工程实施与发布流程
 - review：2026-07-20，前端契约与 migration/RLS 双重阻塞复审通过
 - verified：2026-07-20，事务回滚、authenticated RPC、生产 schema/库存/API smoke 通过
-- released：待执行
-- closed：待执行
+- released：2026-07-20 00:23:10 CEST，commit `37e456769727ad17150b059dc98069efa3c9238c`，deployment `dpl_82EdBBPbDae3tRxP5sELgv9qne7v`
+- closed：2026-07-20，生产 migration、Vercel READY、别名/共享 SKU/库存/API/权限 smoke 全部通过
 
 ## 结果
 
-已完成规范化设备/兼容/供应商报价模型、首批高置信回填、目录与后台读写契约修复，并已安全应用生产 migration；待 main 推送、Vercel READY 和线上 smoke 后关闭。详细结论见 `docs/audits/2026-07-19-shared-product-compatibility-feasibility.md`。
+已完成规范化设备/兼容/供应商报价模型、首批高置信回填、目录与后台读写契约修复、生产 migration、main 发布和 Vercel 线上验证。多个 approved 型号入口现在指向同一个商品/SKU/库存；iPhone 8 与 SE 2020 电池的不兼容负证据已保留，未发生错误合并。详细结论见 `docs/audits/2026-07-19-shared-product-compatibility-feasibility.md`。

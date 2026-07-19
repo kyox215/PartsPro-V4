@@ -2,7 +2,7 @@
 
 日期：2026-07-19（Europe/Rome）
 
-状态：方案已实施；生产 migration 已应用，代码待随 main 发布。
+状态：已完成；生产 migration、代码发布和线上 smoke 均已通过。
 
 目标项目：已复核为 `yiuxrjqexlfjtxxrkqvi / PartsPro-V4`，状态 `ACTIVE_HEALTHY`。
 
@@ -17,12 +17,14 @@
 ## 实施结果
 
 - 生产 migration `20260719221153_normalize_product_device_compatibility.sql` 已应用到 `PartsPro-V4`。
+- 代码提交 `37e456769727ad17150b059dc98069efa3c9238c` 已部署到 Vercel production；deployment `dpl_82EdBBPbDae3tRxP5sELgv9qne7v` 于 2026-07-20 00:23:10 CEST READY，并接管 `www.partspro.app` / `partspro.app`。
 - 新增 12 个 canonical 设备型号、14 条 approved 商品兼容关系、1 条 rejected 负证据关系和 8 条供应商报价映射。
 - 首批 8 个商品全部保持原 `product.id / SKU / products.stock_qty / inventory_items`；没有复制商品，也没有改库存数量或订单。
 - Mobilax 黑白两款 iPhone 8/SE2 屏、UTOPYA iPhone 12/12 Pro 电池、A52 4G/5G、A15 4G/5G、A13/M13 等入口已验证为同一商品和同一库存。
 - iPhone 8 电池 `3667075049470` 到 SE2 的关系明确保存为 rejected；普通后台兼容编辑不能覆盖该负证据。
 - A14/A17 的设备代码只进入别名/代码搜索，不再生成伪目录项目。
 - 当前候选快照剩余 109 条未批准，历史 Mobilax 2,342 条仍只作为审核底稿，不会自动上线或跨供应商合并。
+- 生产 smoke 已确认共享 SKU 在各 approved 型号和 `iPhone SE 2020` 别名入口返回相同库存，目录 `total = returned`；核心页面均为 200，匿名后台 API 仍为 401，部署后 build/runtime/5xx 错误均为 0。
 
 首批逐条决定与证据见 `docs/audits/2026-07-19-shared-product-compatibility-pilot-review.csv`。
 
