@@ -33,6 +33,7 @@ type NotificationAudience = "customer" | "staff";
 type NotificationItem = {
   body: string;
   createdAt: string;
+  eventType: string;
   id: string;
   readAt: string | null;
   targetPath: string;
@@ -552,7 +553,7 @@ export function NotificationCenter({
                   >
                     <div className="flex min-w-0 items-start justify-between gap-2">
                       <p className="line-clamp-1 text-xs font-black text-slate-950">
-                        {item.title}
+                        {notificationTitle(item, locale)}
                       </p>
                       {item.readAt ? (
                         <Check className="mt-0.5 size-3 shrink-0 text-emerald-600" />
@@ -806,11 +807,20 @@ function readNotification(value: unknown): NotificationItem | null {
   return {
     body: typeof value.body === "string" ? value.body : "",
     createdAt: typeof value.createdAt === "string" ? value.createdAt : new Date().toISOString(),
+    eventType: typeof value.eventType === "string" ? value.eventType : "",
     id: value.id,
     readAt: typeof value.readAt === "string" ? value.readAt : null,
     targetPath: typeof value.targetPath === "string" ? value.targetPath : "/",
     title: typeof value.title === "string" ? value.title : "PartsPro",
   };
+}
+
+function notificationTitle(item: NotificationItem, locale: string) {
+  if (item.eventType === "new_order") {
+    return locale === "zh-CN" ? "新订单" : "Nuovo ordine";
+  }
+
+  return item.title;
 }
 
 function detectBrowser() {

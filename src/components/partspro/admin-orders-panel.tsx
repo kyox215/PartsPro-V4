@@ -1891,12 +1891,6 @@ function MobileOrderCard({
           >
             {order.company}
           </div>
-          <div
-            className="mt-0.5 truncate font-mono text-[11px] font-semibold leading-3 text-slate-500"
-            title={order.id}
-          >
-            {shortOrderId(order.id)}
-          </div>
         </div>
         <div className="shrink-0 text-right">
           <div className="text-sm font-black leading-4 text-slate-950">{formatEuro(order.total)}</div>

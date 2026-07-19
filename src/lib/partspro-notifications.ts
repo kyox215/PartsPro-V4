@@ -302,7 +302,7 @@ export async function notifyNewOrder(input: {
     sourceId: input.orderNo,
     sourceTable: "orders",
     targetPath: `/admin?panel=orders&orderId=${encodeURIComponent(input.orderNo)}`,
-    title: `新订单 ${input.orderNo}`,
+    title: "新订单",
   });
 }
 
