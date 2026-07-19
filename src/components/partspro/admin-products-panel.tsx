@@ -16,7 +16,6 @@ import {
   Copy,
   Download,
   Edit,
-  Euro,
   ExternalLink,
   Eye,
   EyeOff,
@@ -37,7 +36,6 @@ import {
   Smartphone,
   Tag,
   Upload,
-  Warehouse,
   XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -129,6 +127,12 @@ const adminProductsEndpoint = "/api/admin/products";
 const adminSupplierBatchesEndpoint = "/api/admin/supplier-batches";
 const productImagesBucket = "product-images";
 const adminProductWriteTimeoutMs = 25_000;
+const maxProductImageBytes = 10 * 1024 * 1024;
+const acceptedProductImageTypes = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
 const lowStockThreshold = 10;
 const productGrades = ["A+", "A", "B", "Refurbished"] as const;
 const defaultWarehouse: PartProduct["warehouse"] = "Milano";
@@ -429,6 +433,24 @@ type ProductWritePayload = {
 };
 
 type ProductUpdateScope = "all" | "base" | "price" | "compatibility";
+
+type ProductCapabilities = {
+  adjustStock: boolean;
+  block: boolean;
+  create: boolean;
+  editContent: boolean;
+  editCost: boolean;
+  editPrice: boolean;
+  hide: boolean;
+  imageManage: boolean;
+  publish: boolean;
+  restore: boolean;
+};
+
+type AdminProductsPanelProps = {
+  permissions?: readonly string[];
+  permissionsLoaded?: boolean;
+};
 
 type StockAdjustmentPayload = {
   action: StockAdjustmentAction;
@@ -868,6 +890,12 @@ const panelText = {
       supplier: "供应商",
       tags: "标签",
     },
+    simpleFormHint: "按顺序填写即可；商品会先保存为草稿，资料不完整时不会误上架。",
+    photo: "商品照片",
+    photoHint: "可直接拍照或从相册选择，支持 JPG、PNG、WebP，最大 10MB。",
+    moreDetails: "更多资料（可选）",
+    systemDefaultsHint: "系统自动处理 SKU、MOQ 1、Milano 仓库、保修和零售价建议；需要时可在“更多资料”调整。",
+    partialImageError: "商品 {sku} 已保存为草稿，但图片未上传。请重新选择图片后再保存，不会重复创建商品。",
     formRequired: "请补全必填字段。",
     invalidNumber: "请输入有效数字。",
     sortLabels: {
@@ -1238,6 +1266,12 @@ const panelText = {
       supplier: "Fornitore",
       tags: "Tag",
     },
+    simpleFormHint: "Compila i campi in ordine: il prodotto viene salvato prima come bozza e non sarà pubblicato se mancano dati.",
+    photo: "Foto prodotto",
+    photoHint: "Scatta una foto o sceglila dalla galleria. JPG, PNG o WebP, massimo 10 MB.",
+    moreDetails: "Altri dati (facoltativi)",
+    systemDefaultsHint: "Il sistema gestisce SKU, MOQ 1, magazzino Milano, garanzia e prezzo retail suggerito; puoi modificarli in Altri dati.",
+    partialImageError: "Il prodotto {sku} è stato salvato come bozza, ma la foto non è stata caricata. Seleziona di nuovo la foto e salva: il prodotto non verrà duplicato.",
     formRequired: "Completa i campi obbligatori.",
     invalidNumber: "Inserisci un numero valido.",
     sortLabels: {
@@ -1256,12 +1290,19 @@ const panelText = {
   },
 } as const;
 
-export function AdminProductsPanel() {
+export function AdminProductsPanel({
+  permissions = [],
+  permissionsLoaded = false,
+}: AdminProductsPanelProps = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { locale } = useI18n();
   const text = locale.toLowerCase().startsWith("it") ? panelText.it : panelText.zh;
   const adminText = getAdminDictionary(locale).admin;
+  const capabilities = React.useMemo(
+    () => buildProductCapabilities(permissionsLoaded ? permissions : []),
+    [permissions, permissionsLoaded]
+  );
   const [filters, setFilters] = React.useState<ProductListFilters>(defaultFilters);
   const [products, setProducts] = React.useState<AdminProductRow[]>([]);
   const [productMetrics, setProductMetrics] =
@@ -1619,7 +1660,7 @@ export function AdminProductsPanel() {
     setIsMutating(true);
 
     try {
-      const saved = await createAdminProduct(values);
+      const saved = await createAdminProduct(values, capabilities);
       replaceProduct(saved);
       setDataSource((current) => ({
         ...current,
@@ -1657,7 +1698,8 @@ export function AdminProductsPanel() {
         sku,
         values,
         scope,
-        compatibilityManaged
+        compatibilityManaged,
+        capabilities
       );
       replaceProduct(saved);
       setNotice({
@@ -1775,13 +1817,6 @@ export function AdminProductsPanel() {
   }
 
   function openDrawer(mode: ProductDrawerMode, product: AdminProductRow | null = null) {
-    if (mode === "edit" && product) {
-      setDrawerMode("view");
-      setDrawerProduct(product);
-      setDrawerInlineEditSku(product.sku);
-      return;
-    }
-
     setDrawerMode(mode);
     setDrawerProduct(product);
     setDrawerInlineEditSku(null);
@@ -1813,131 +1848,85 @@ export function AdminProductsPanel() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="products" className="m-0 space-y-2 pt-2 sm:space-y-4">
-          <ProductMetricGrid metrics={metrics} text={text} />
-
+        <TabsContent value="products" className="m-0 pt-2">
           <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.04)] sm:rounded-lg sm:shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
-        <div className="flex flex-col gap-2 border-b border-slate-200 px-2.5 py-2 sm:gap-3 sm:px-4 sm:py-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-base font-bold tracking-normal text-slate-950">
-                {text.title}
-              </h1>
-              <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-semibold text-slate-600 sm:px-2 sm:py-1">
-                {dataSource.returned}/{dataSource.total}
-              </span>
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-3 sm:px-4">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-base font-bold tracking-normal text-slate-950">{text.title}</h1>
+                  <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+                    {dataSource.returned}/{dataSource.total}
+                  </span>
+                </div>
+                <div className="mt-1 truncate text-xs font-medium text-slate-500">
+                  {dataSource.syncedAt
+                    ? formatAdminMessage(text.sourceStats, {
+                        returned: dataSource.returned,
+                        total: dataSource.total,
+                        time: dataSource.syncedAt,
+                      })
+                    : text.sourcePending}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-2">
+                {capabilities.create && (
+                  <Button className="h-10 px-3" onClick={() => openDrawer("create")}>
+                    <Plus className="size-4" />
+                    {text.create}
+                  </Button>
+                )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" className="size-10 bg-white" aria-label={text.moreActions}>
+                      <MoreHorizontal className="size-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem disabled={isLoading} onClick={() => void refreshProducts()}>
+                      <RefreshCw className={cn("size-4", isLoading && "animate-spin")} />
+                      {text.sync}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => updateFilters({ activeRestockOnly: !filters.activeRestockOnly })}>
+                      <Bell className="size-4" />
+                      {text.restockOnly}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => setIsRestockDialogOpen(true)}>
+                      <Bell className="size-4" />
+                      {formatAdminMessage(text.restockActiveCount, { count: metrics.restockRequests })}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem disabled={products.length === 0} onClick={() => downloadProductsCsv(products, "view")}>
+                      <Download className="size-4" />
+                      {text.exportView}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
-            <div className="mt-0.5 truncate text-[11px] font-medium leading-4 text-slate-500 sm:mt-1 sm:text-xs">
-              {dataSource.syncedAt
-                ? formatAdminMessage(text.sourceStats, {
-                    returned: dataSource.returned,
-                    total: dataSource.total,
-                    time: dataSource.syncedAt,
-                  })
-                : text.sourcePending}
-            </div>
-          </div>
-          <div className="grid min-w-0 grid-cols-3 gap-1.5 sm:flex sm:flex-wrap sm:gap-2">
-            <Button
-              variant="outline"
-              size="xs"
-              className="h-8 min-w-0 bg-white px-2 sm:h-9 sm:px-3"
-              onClick={() => void refreshProducts()}
-              disabled={isLoading}
-            >
-              <RefreshCw className={cn("size-4", isLoading && "animate-spin")} />
-              <span className="min-w-0 truncate">{text.sync}</span>
-            </Button>
-            <Button
-              variant={filters.activeRestockOnly ? "default" : "outline"}
-              size="xs"
-              className="h-8 min-w-0 px-2 sm:h-9 sm:px-3"
-              onClick={() =>
-                updateFilters({ activeRestockOnly: !filters.activeRestockOnly })
-              }
-            >
-              <Bell className="size-4" />
-              <span className="min-w-0 truncate">{text.restockOnly}</span>
-            </Button>
-            <Button
-              variant="outline"
-              size="xs"
-              className="h-8 min-w-0 bg-white px-2 sm:h-9 sm:px-3"
-              onClick={() => setIsRestockDialogOpen(true)}
-            >
-              <Bell className="size-4" />
-              <span className="min-w-0 truncate">
-                {formatAdminMessage(text.restockActiveCount, {
-                  count: metrics.restockRequests,
-                })}
-              </span>
-            </Button>
-            <Button
-              variant="outline"
-              size="xs"
-              className="h-8 min-w-0 bg-white px-2 sm:h-9 sm:px-3"
-              onClick={() => downloadProductsCsv(products, "view")}
-              disabled={products.length === 0}
-            >
-              <Download className="size-4" />
-              <span className="min-w-0 truncate">{text.exportView}</span>
-            </Button>
-            <Button size="xs" className="h-8 min-w-0 px-2 sm:h-9 sm:px-3" onClick={() => openDrawer("create")}>
-              <Plus className="size-4" />
-              <span className="min-w-0 truncate">{text.create}</span>
-            </Button>
-          </div>
-        </div>
 
-        <ProductQuickFilters
-          filters={filters}
-          metrics={metrics}
-          text={text}
-          onChange={updateFilters}
-        />
-
-        <div className="border-b border-slate-200 bg-slate-50/70 px-2.5 py-2 sm:px-4 sm:py-3 lg:hidden">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-            <ProductSearchField
-              value={filters.q}
-              text={text}
-              onChange={(value) => updateFilters({ q: value })}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              aria-label={text.mobileFilters}
-              className="h-8 bg-white px-2 sm:h-9 sm:px-3"
-              onClick={() => setIsMobileFiltersOpen(true)}
-            >
-              <SlidersHorizontal className="size-4" />
-              <span className="hidden sm:inline">{text.mobileFilters}</span>
-            </Button>
-          </div>
-        </div>
-
-        <div className="lg:grid lg:grid-cols-[290px_minmax(0,1fr)]">
-          <aside className="hidden border-r border-slate-200 bg-slate-50/70 p-2.5 lg:block">
-            <ProductCatalogTree
-              className="sticky top-3 max-h-[calc(100dvh-8rem)] overflow-y-auto pr-1"
-              filters={filters}
-              modelGroups={modelGroups}
-              isLoadingModelGroups={isLoadingModelGroups}
-              text={text}
-              onChange={updateFilters}
-            />
-          </aside>
-
-          <div className="min-w-0">
-            <div className="hidden border-b border-slate-200 bg-slate-50/70 px-3 py-2 lg:block">
-              <ProductFilters
-                filters={filters}
+            <div className="grid gap-2 border-b border-slate-200 bg-slate-50/70 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_180px_auto] sm:px-4">
+              <ProductSearchField
+                value={filters.q}
                 text={text}
-                adminText={adminText}
-                onChange={updateFilters}
-                onReset={() => setFilters(defaultFilters)}
+                onChange={(value) => updateFilters({ q: value })}
               />
+              <CatalogStatusSelect
+                value={filters.catalogStatus}
+                text={text}
+                onChange={(catalogStatus) => updateFilters({ catalogStatus })}
+              />
+              <Button
+                variant="outline"
+                aria-label={text.filters}
+                className="h-9 bg-white px-3"
+                onClick={() => setIsMobileFiltersOpen(true)}
+              >
+                <SlidersHorizontal className="size-4" />
+                {text.filters}
+              </Button>
             </div>
+
+            <div className="min-w-0">
 
             {notice && (
               <div className="px-3 pt-3 sm:px-4">
@@ -1978,7 +1967,7 @@ export function AdminProductsPanel() {
                       <Download className="size-4" />
                       {text.exportSelection}
                     </Button>
-                    <Button
+                    {capabilities.hide && <Button
                       size="sm"
                       variant="outline"
                       className="bg-white text-amber-700 hover:text-amber-700"
@@ -1991,7 +1980,7 @@ export function AdminProductsPanel() {
                         <EyeOff className="size-4" />
                       )}
                       {text.hideSelected}
-                    </Button>
+                    </Button>}
                     <Button
                       size="sm"
                       variant="ghost"
@@ -2010,6 +1999,7 @@ export function AdminProductsPanel() {
               isLoading={isLoading}
               isMutating={isMutating}
               pendingActionKey={pendingProductActionKey}
+              capabilities={capabilities}
               text={text}
               adminText={adminText}
               onSelectChange={setSelectedSkus}
@@ -2029,8 +2019,7 @@ export function AdminProductsPanel() {
               text={text}
               onChange={updateFilters}
             />
-          </div>
-        </div>
+            </div>
           </div>
         </TabsContent>
 
@@ -2078,6 +2067,7 @@ export function AdminProductsPanel() {
         product={drawerProduct}
         products={products}
         isMutating={isMutating}
+        capabilities={capabilities}
         text={text}
         adminText={adminText}
         initialEditSku={drawerInlineEditSku}
@@ -3625,113 +3615,6 @@ function ProductRestockRequestsDialog({
   );
 }
 
-function ProductMetricGrid({
-  metrics,
-  text,
-}: {
-  metrics: ProductMetrics;
-  text: typeof panelText.zh | typeof panelText.it;
-}) {
-  const [mobileExpanded, setMobileExpanded] = React.useState(false);
-  const mobileDetailsId = React.useId();
-  const cards = [
-    { label: text.queryTotal, value: metrics.total, icon: Package, tone: "blue" },
-    { label: text.active, value: metrics.active, icon: PackageCheck, tone: "green" },
-    { label: text.drafts, value: metrics.draft, icon: Edit, tone: "amber" },
-    { label: text.hidden, value: metrics.hidden, icon: EyeOff, tone: "slate" },
-    { label: text.blocked, value: metrics.blocked, icon: Ban, tone: "red" },
-    { label: text.lowStock, value: metrics.lowStock, icon: Boxes, tone: "orange" },
-    { label: text.restockRequests, value: metrics.restockRequests, icon: Bell, tone: "amber" },
-    { label: text.missingImage, value: metrics.missingImage, icon: ImageIcon, tone: "cyan" },
-    { label: text.missingPrice, value: metrics.missingPrice, icon: Euro, tone: "violet" },
-  ] as const;
-  const primaryCards = [cards[0], cards[1], cards[5], cards[8]];
-  const secondaryCards = [cards[2], cards[3], cards[4], cards[6], cards[7]];
-
-  return (
-    <>
-      <div className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5 shadow-[0_8px_20px_rgba(15,23,42,0.035)] sm:hidden">
-        <div className="grid min-w-0 grid-cols-[repeat(4,minmax(0,1fr))_auto] items-stretch gap-1">
-          {primaryCards.map(({ label, value, tone }) => (
-            <ProductMobileMetricItem key={label} label={label} tone={tone} value={value} />
-          ))}
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            className="h-auto min-h-[42px] min-w-0 rounded-md border border-slate-100 bg-slate-50 px-1 text-[10px] font-black text-slate-600"
-            aria-controls={mobileDetailsId}
-            aria-expanded={mobileExpanded}
-            onClick={() => setMobileExpanded((current) => !current)}
-          >
-            <span className="min-w-0 truncate">
-              {mobileExpanded
-                ? text.metricsLess
-                : formatAdminMessage(text.metricsMore, { count: secondaryCards.length })}
-            </span>
-            <ChevronDown
-              className={cn(
-                "size-3.5 shrink-0 transition-transform",
-                mobileExpanded && "rotate-180"
-              )}
-            />
-          </Button>
-        </div>
-        {mobileExpanded ? (
-          <div
-            id={mobileDetailsId}
-            className="mt-1 grid min-w-0 grid-cols-3 gap-1 border-t border-slate-100 pt-1"
-          >
-            {secondaryCards.map(({ label, value, tone }) => (
-              <ProductMobileMetricItem key={label} label={label} tone={tone} value={value} />
-            ))}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="hidden grid-cols-3 gap-1 sm:grid sm:gap-2 lg:grid-cols-5 xl:grid-cols-9">
-        {cards.map(({ label, value, icon: Icon, tone }) => (
-          <div
-            key={label}
-            className="min-h-[58px] min-w-0 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 shadow-[0_10px_24px_rgba(15,23,42,0.035)] lg:min-h-[64px] lg:rounded-lg lg:px-3 lg:py-2"
-            title={`${label}: ${value}`}
-          >
-            <div className="flex min-w-0 items-start justify-between gap-1">
-              <div className="min-w-0 truncate text-[11px] font-bold leading-4 text-slate-500 lg:text-xs">{label}</div>
-              <Icon className={cn("mt-0.5 size-3.5 shrink-0 lg:size-4", metricIconClass(tone))} />
-            </div>
-            <div className="mt-0.5 truncate text-lg font-black leading-6 text-slate-950 lg:mt-1 lg:text-xl">{value}</div>
-          </div>
-        ))}
-      </div>
-    </>
-  );
-}
-
-function ProductMobileMetricItem({
-  label,
-  tone,
-  value,
-}: {
-  label: string;
-  tone: string;
-  value: number;
-}) {
-  return (
-    <div
-      className="min-h-[42px] min-w-0 rounded-md bg-slate-50 px-1.5 py-1"
-      title={`${label}: ${value}`}
-    >
-      <div className="min-w-0 truncate text-[10px] font-bold leading-3 text-slate-500">
-        {label}
-      </div>
-      <div className={cn("mt-0.5 truncate text-sm font-black leading-5", metricTextClass(tone))}>
-        {value}
-      </div>
-    </div>
-  );
-}
-
 function ProductSearchField({
   className,
   value,
@@ -3752,156 +3635,6 @@ function ProductSearchField({
         className="h-8 rounded-md bg-white pl-9 text-sm sm:h-9"
         placeholder={text.searchPlaceholder}
       />
-    </div>
-  );
-}
-
-function ProductQuickFilters({
-  filters,
-  metrics,
-  text,
-  onChange,
-}: {
-  filters: ProductListFilters;
-  metrics: ProductMetrics;
-  text: typeof panelText.zh | typeof panelText.it;
-  onChange: (patch: Partial<ProductListFilters>) => void;
-}) {
-  const quickFilters: Array<{
-    key: string;
-    label: string;
-    count?: number;
-    active: boolean;
-    patch: Partial<ProductListFilters>;
-  }> = [
-    {
-      key: "drafts",
-      label: text.quickFilterDrafts,
-      count: metrics.draft,
-      active:
-        filters.catalogStatus === "draft" &&
-        filters.stockStatus === "all" &&
-        filters.issueFilter === "all" &&
-        !filters.activeRestockOnly,
-      patch: {
-        activeRestockOnly: false,
-        catalogStatus: "draft",
-        issueFilter: "all",
-        stockStatus: "all",
-      },
-    },
-    {
-      key: "active-out-of-stock",
-      label: text.quickFilterActiveOutOfStock,
-      count: metrics.activeOutOfStock,
-      active:
-        filters.catalogStatus === "active" &&
-        filters.stockStatus === "Out of Stock" &&
-        filters.issueFilter === "all" &&
-        !filters.activeRestockOnly,
-      patch: {
-        activeRestockOnly: false,
-        catalogStatus: "active",
-        issueFilter: "all",
-        stockStatus: "Out of Stock",
-      },
-    },
-    {
-      key: "active-low-stock",
-      label: text.quickFilterLowStockActive,
-      count: metrics.activeLowStock,
-      active:
-        filters.catalogStatus === "active" &&
-        filters.stockStatus === "Low Stock" &&
-        filters.issueFilter === "all" &&
-        !filters.activeRestockOnly,
-      patch: {
-        activeRestockOnly: false,
-        catalogStatus: "active",
-        issueFilter: "all",
-        stockStatus: "Low Stock",
-      },
-    },
-    {
-      key: "missing-image",
-      label: text.quickFilterMissingImage,
-      count: metrics.missingImage,
-      active: filters.issueFilter === "missing_image" && !filters.activeRestockOnly,
-      patch: {
-        activeRestockOnly: false,
-        catalogStatus: "all",
-        issueFilter: "missing_image",
-        stockStatus: "all",
-      },
-    },
-    {
-      key: "missing-price",
-      label: text.quickFilterMissingPrice,
-      count: metrics.missingPrice,
-      active: filters.issueFilter === "missing_price" && !filters.activeRestockOnly,
-      patch: {
-        activeRestockOnly: false,
-        catalogStatus: "all",
-        issueFilter: "missing_price",
-        stockStatus: "all",
-      },
-    },
-    {
-      key: "zero-stock-unsold",
-      label: text.quickFilterZeroStockUnsold,
-      active: filters.issueFilter === "zero_stock_unsold" && !filters.activeRestockOnly,
-      patch: {
-        activeRestockOnly: false,
-        catalogStatus: "all",
-        issueFilter: "zero_stock_unsold",
-        stockStatus: "all",
-      },
-    },
-    {
-      key: "zero-stock-sold",
-      label: text.quickFilterZeroStockSold,
-      active: filters.issueFilter === "zero_stock_sold" && !filters.activeRestockOnly,
-      patch: {
-        activeRestockOnly: false,
-        catalogStatus: "all",
-        issueFilter: "zero_stock_sold",
-        stockStatus: "all",
-      },
-    },
-    {
-      key: "restock",
-      label: text.quickFilterRestock,
-      count: metrics.restockRequests,
-      active: filters.activeRestockOnly,
-      patch: {
-        activeRestockOnly: true,
-        issueFilter: "all",
-      },
-    },
-  ];
-
-  return (
-    <div className="border-b border-slate-200 bg-white px-2.5 py-2 sm:px-4">
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-        <span className="mr-1 text-xs font-black text-slate-500">{text.quickFilters}</span>
-        {quickFilters.map((item) => (
-          <Button
-            key={item.key}
-            type="button"
-            variant={item.active ? "default" : "outline"}
-            size="xs"
-            className={cn("h-7 min-w-0 rounded-md px-2 text-xs", !item.active && "bg-white")}
-            onClick={() => onChange(item.patch)}
-          >
-            <span className="min-w-0 truncate">{item.label}</span>
-            {typeof item.count === "number" ? (
-              <span className={cn("font-mono", item.active ? "text-white/80" : "text-slate-500")}>
-                {item.count}
-              </span>
-            ) : null}
-          </Button>
-        ))}
-      </div>
     </div>
   );
 }
@@ -4459,6 +4192,7 @@ function ProductTable({
   isLoading,
   isMutating,
   pendingActionKey,
+  capabilities,
   text,
   adminText,
   onSelectChange,
@@ -4474,6 +4208,7 @@ function ProductTable({
   isLoading: boolean;
   isMutating: boolean;
   pendingActionKey: string | null;
+  capabilities: ProductCapabilities;
   text: typeof panelText.zh | typeof panelText.it;
   adminText: ReturnType<typeof getAdminDictionary>["admin"];
   onSelectChange: (value: Set<string>) => void;
@@ -4519,12 +4254,11 @@ function ProductTable({
               <ProductMobileCard
                 key={product.sku}
                 product={product}
-                selected={selectedSkus.has(product.sku)}
                 isMutating={isMutating}
                 pendingActionKey={pendingActionKey}
+                capabilities={capabilities}
                 text={text}
                 adminText={adminText}
-                onSelect={(checked) => toggleOne(product.sku, checked)}
                 onView={onView}
                 onEdit={onEdit}
                 onDuplicate={onDuplicate}
@@ -4589,7 +4323,7 @@ function ProductTable({
                     )}
                     data-state={selectedSkus.has(product.sku) ? "selected" : undefined}
                     data-pending={pendingActionKey?.startsWith(`${product.sku}:`) ? "true" : undefined}
-                    onClick={() => onView(product)}
+                    onClick={() => canEditProduct(capabilities) ? onEdit(product) : onView(product)}
                   >
                     <TableCell className="w-9 whitespace-normal px-2" onClick={(event) => event.stopPropagation()}>
                       <Checkbox
@@ -4609,6 +4343,7 @@ function ProductTable({
                         product={product}
                         isMutating={isMutating}
                         pendingActionKey={pendingActionKey}
+                        capabilities={capabilities}
                         adminText={adminText}
                         text={text}
                         onAction={onAction}
@@ -4622,7 +4357,11 @@ function ProductTable({
                       />
                     </TableCell>
                     <TableCell className="min-w-0 whitespace-normal">
-                      <ProductPriceSummary product={product} text={text} />
+                      <ProductPriceSummary
+                        product={product}
+                        text={text}
+                        showCost={capabilities.editCost}
+                      />
                     </TableCell>
                     <TableCell className="hidden whitespace-normal 2xl:table-cell">
                       <span className="text-xs font-medium leading-tight text-slate-500">
@@ -4634,6 +4373,7 @@ function ProductTable({
                         product={product}
                         isMutating={isMutating}
                         pendingActionKey={pendingActionKey}
+                        capabilities={capabilities}
                         text={text}
                         onView={onView}
                         onEdit={onEdit}
@@ -4683,12 +4423,11 @@ function ProductTableLoadingBar({ label }: { label: string }) {
 
 function ProductMobileCard({
   product,
-  selected,
   isMutating,
   pendingActionKey,
+  capabilities,
   text,
   adminText,
-  onSelect,
   onView,
   onEdit,
   onDuplicate,
@@ -4697,12 +4436,11 @@ function ProductMobileCard({
   onStockAdjust,
 }: {
   product: AdminProductRow;
-  selected: boolean;
   isMutating: boolean;
   pendingActionKey: string | null;
+  capabilities: ProductCapabilities;
   text: typeof panelText.zh | typeof panelText.it;
   adminText: ReturnType<typeof getAdminDictionary>["admin"];
-  onSelect: (checked: boolean) => void;
   onView: (product: AdminProductRow) => void;
   onEdit: (product: AdminProductRow) => void;
   onDuplicate: (product: AdminProductRow) => void;
@@ -4710,58 +4448,44 @@ function ProductMobileCard({
   onHide: (product: AdminProductRow) => void;
   onStockAdjust: (product: AdminProductRow) => void;
 }) {
+  const editable = canEditProduct(capabilities);
+
   return (
     <div
       className={cn(
-        "min-h-[124px] rounded-md border border-slate-200 bg-white p-2 shadow-[0_8px_22px_rgba(15,23,42,0.035)]",
-        selected && "border-primary/40 bg-primary/5",
+        "rounded-lg border border-slate-200 bg-white p-3 shadow-[0_8px_22px_rgba(15,23,42,0.035)]",
         pendingActionKey?.startsWith(`${product.sku}:`) &&
           "border-primary/30 ring-2 ring-primary/15"
       )}
     >
-      <div className="grid min-w-0 grid-cols-[64px_minmax(0,1fr)_auto] gap-2">
-        <div className="relative">
-          <ProductImageThumb product={product} className="size-16" sizes="64px" />
-          <div className="absolute left-1 top-1 rounded bg-white/90 shadow-sm">
-            <Checkbox
-              checked={selected}
-              onCheckedChange={(value) => onSelect(value === true)}
-              aria-label={`Select ${product.sku}`}
-              className="size-4 border-slate-300"
-            />
-          </div>
-        </div>
+      <div className="grid min-w-0 grid-cols-[72px_minmax(0,1fr)_auto] gap-3">
+        <ProductImageThumb product={product} className="size-[72px]" sizes="72px" />
 
         <button
           type="button"
-          className="grid min-w-0 content-start text-left"
-          onClick={() => onView(product)}
+          className="grid min-h-11 min-w-0 content-start text-left"
+          onClick={() => editable ? onEdit(product) : onView(product)}
         >
-          <div className="line-clamp-2 min-h-9 break-words text-[13px] font-black leading-[18px] text-slate-950 [overflow-wrap:anywhere]">
+          <div className="line-clamp-2 break-words text-sm font-black leading-5 text-slate-950 [overflow-wrap:anywhere]">
             {product.name}
           </div>
-          <div className="mt-0.5 truncate font-mono text-[11px] font-semibold leading-4 text-slate-500">
+          <div className="mt-1 truncate font-mono text-[11px] font-semibold leading-4 text-slate-500">
             {product.sku}
           </div>
-          <div className="mt-0.5 truncate text-[10px] font-semibold leading-3 text-slate-400">
+          <div className="mt-1 truncate text-xs font-semibold leading-4 text-slate-400">
             {product.category} · {[product.modelSeries, product.model || product.compatibleWith[0] || text.none].filter(Boolean).join(" / ")}
           </div>
         </button>
 
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <ProductCatalogStatusMenu
-            product={product}
-            isMutating={isMutating}
-            pendingActionKey={pendingActionKey}
-            adminText={adminText}
-            text={text}
-            compact
-            onAction={onAction}
-          />
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <span className={cn("rounded-md border px-2 py-1 text-[11px] font-black", catalogStatusBadgeClass(product.catalogStatus))}>
+            {adminText.enums.catalogStatus[product.catalogStatus]}
+          </span>
           <ProductActionsMenu
             product={product}
             isMutating={isMutating}
             pendingActionKey={pendingActionKey}
+            capabilities={capabilities}
             text={text}
             onView={onView}
             onEdit={onEdit}
@@ -4772,11 +4496,17 @@ function ProductMobileCard({
           />
         </div>
       </div>
-      <div className="mt-2 grid grid-cols-4 gap-1.5 text-xs">
-        <MetricPill label={text.brand} value={product.brand} />
-        <MetricPill label={text.stock} value={product.availableQty ?? product.stock} />
-        <MetricPill label={text.restockRequests} value={product.activeRestockRequestCount ?? 0} />
-        <MetricPill label={text.netPrice} value={formatEuro(product.price)} />
+      <div className="mt-3 flex min-h-11 items-center justify-between gap-3 border-t border-slate-100 pt-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-slate-500">
+          <span>{text.netPrice} <strong className="text-slate-950">{formatEuro(product.price)}</strong></span>
+          <span>{text.stock} <strong className="text-slate-950">{product.availableQty ?? product.stock}</strong></span>
+        </div>
+        {editable && (
+          <Button size="sm" className="h-10 shrink-0 px-3" onClick={() => onEdit(product)}>
+            <Edit className="size-4" />
+            {text.edit}
+          </Button>
+        )}
       </div>
     </div>
   );
@@ -5087,19 +4817,25 @@ function ProductStockSummary({
 function ProductPriceSummary({
   product,
   text,
+  showCost = false,
 }: {
   product: AdminProductRow;
   text: typeof panelText.zh | typeof panelText.it;
+  showCost?: boolean;
 }) {
   return (
     <div className="min-w-0 space-y-1">
       <div className="text-sm font-black leading-tight text-slate-950">{formatEuro(product.price)}</div>
-      <div className="break-words text-xs font-semibold leading-tight text-slate-500">
-        {text.margin} {(product.margin ?? 0).toFixed(1)}%
-      </div>
-      <div className="break-words text-[11px] leading-tight text-slate-400">
-        {text.costPrice} {formatEuro(product.costPrice ?? 0)}
-      </div>
+      {showCost && (
+        <div className="break-words text-xs font-semibold leading-tight text-slate-500">
+          {text.margin} {(product.margin ?? 0).toFixed(1)}%
+        </div>
+      )}
+      {showCost && (
+        <div className="break-words text-[11px] leading-tight text-slate-400">
+          {text.costPrice} {formatEuro(product.costPrice ?? 0)}
+        </div>
+      )}
     </div>
   );
 }
@@ -5107,6 +4843,7 @@ function ProductPriceSummary({
 function ProductCatalogStatusMenu({
   adminText,
   compact = false,
+  capabilities,
   isMutating,
   onAction,
   pendingActionKey,
@@ -5115,6 +4852,7 @@ function ProductCatalogStatusMenu({
 }: {
   adminText: ReturnType<typeof getAdminDictionary>["admin"];
   compact?: boolean;
+  capabilities: ProductCapabilities;
   isMutating: boolean;
   onAction: (product: AdminProductRow, action: ProductAction) => void;
   pendingActionKey: string | null;
@@ -5125,6 +4863,23 @@ function ProductCatalogStatusMenu({
   const pendingAction = pendingActionKey?.startsWith(`${product.sku}:`)
     ? pendingActionKey.split(":").at(-1)
     : null;
+  const visibleStatuses = catalogStatuses.filter((status) =>
+    status === product.catalogStatus ||
+    canRunProductAction(capabilities, productActionForCatalogStatus(status))
+  );
+
+  if (visibleStatuses.length <= 1) {
+    return (
+      <span
+        className={cn(
+          "inline-flex max-w-full rounded-md border px-2 py-1 text-xs font-black",
+          catalogStatusBadgeClass(product.catalogStatus)
+        )}
+      >
+        {adminText.enums.catalogStatus[product.catalogStatus]}
+      </span>
+    );
+  }
 
   return (
     <DropdownMenu>
@@ -5153,7 +4908,7 @@ function ProductCatalogStatusMenu({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align={compact ? "end" : "start"}>
-        {catalogStatuses.map((status) => {
+        {visibleStatuses.map((status) => {
           const action = productActionForCatalogStatus(status);
           const current = product.catalogStatus === status;
           const pending = pendingAction === action;
@@ -5216,6 +4971,7 @@ function ProductActionsMenu({
   product,
   isMutating,
   pendingActionKey,
+  capabilities,
   text,
   onView,
   onEdit,
@@ -5227,6 +4983,7 @@ function ProductActionsMenu({
   product: AdminProductRow;
   isMutating: boolean;
   pendingActionKey: string | null;
+  capabilities: ProductCapabilities;
   text: typeof panelText.zh | typeof panelText.it;
   onView: (product: AdminProductRow) => void;
   onEdit: (product: AdminProductRow) => void;
@@ -5239,6 +4996,7 @@ function ProductActionsMenu({
   const isProductPending = pendingActionKey?.startsWith(`${product.sku}:`) ?? false;
   const isActionPending = (action: ProductAction | "stock") =>
     pendingActionKey === `${product.sku}:${action}`;
+  const editable = canEditProduct(capabilities);
 
   return (
     <DropdownMenu>
@@ -5262,14 +5020,14 @@ function ProductActionsMenu({
           <Eye className="size-4" />
           {text.details}
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onEdit(product)}>
+        {editable && <DropdownMenuItem onClick={() => onEdit(product)}>
           <Edit className="size-4" />
           {text.edit}
-        </DropdownMenuItem>
-        <DropdownMenuItem disabled={isMutating} onClick={() => onDuplicate(product)}>
+        </DropdownMenuItem>}
+        {capabilities.create && <DropdownMenuItem disabled={isMutating} onClick={() => onDuplicate(product)}>
           <Copy className="size-4" />
           {text.duplicate}
-        </DropdownMenuItem>
+        </DropdownMenuItem>}
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild>
           <Link href={product.catalogUrl ?? "/catalogo"}>
@@ -5291,7 +5049,7 @@ function ProductActionsMenu({
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
-        {product.catalogStatus !== "active" && (
+        {capabilities.publish && product.catalogStatus !== "active" && (
           <DropdownMenuItem disabled={isMutating} onClick={() => onAction(product, "publish")}>
             {isActionPending("publish") ? (
               <Loader2 className="size-4 animate-spin" />
@@ -5301,7 +5059,7 @@ function ProductActionsMenu({
             {text.publish}
           </DropdownMenuItem>
         )}
-        {product.catalogStatus !== "draft" && (
+        {capabilities.restore && product.catalogStatus !== "draft" && (
           <DropdownMenuItem disabled={isMutating} onClick={() => onAction(product, "restore")}>
             {isActionPending("restore") ? (
               <Loader2 className="size-4 animate-spin" />
@@ -5311,7 +5069,7 @@ function ProductActionsMenu({
             {text.restore}
           </DropdownMenuItem>
         )}
-        {product.catalogStatus !== "blocked" && (
+        {capabilities.block && product.catalogStatus !== "blocked" && (
           <DropdownMenuItem disabled={isMutating} onClick={() => onAction(product, "block")}>
             {isActionPending("block") ? (
               <Loader2 className="size-4 animate-spin" />
@@ -5321,16 +5079,16 @@ function ProductActionsMenu({
             {text.block}
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem disabled={isMutating} onClick={() => onStockAdjust(product)}>
+        {capabilities.adjustStock && <DropdownMenuItem disabled={isMutating} onClick={() => onStockAdjust(product)}>
           {isActionPending("stock") ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
             <SlidersHorizontal className="size-4" />
           )}
           {text.stockAdjust}
-        </DropdownMenuItem>
+        </DropdownMenuItem>}
         <DropdownMenuSeparator />
-        <DropdownMenuItem
+        {capabilities.hide && <DropdownMenuItem
           disabled={isMutating || product.catalogStatus === "hidden"}
           className="text-amber-700 focus:text-amber-700"
           onClick={() => onHide(product)}
@@ -5341,7 +5099,7 @@ function ProductActionsMenu({
             <EyeOff className="size-4" />
           )}
           {text.hide}
-        </DropdownMenuItem>
+        </DropdownMenuItem>}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -5452,6 +5210,7 @@ function ProductDrawer({
   product,
   products,
   isMutating,
+  capabilities,
   text,
   adminText,
   initialEditSku,
@@ -5467,6 +5226,7 @@ function ProductDrawer({
   product: AdminProductRow | null;
   products: AdminProductRow[];
   isMutating: boolean;
+  capabilities: ProductCapabilities;
   text: typeof panelText.zh | typeof panelText.it;
   adminText: ReturnType<typeof getAdminDictionary>["admin"];
   initialEditSku: string | null;
@@ -5496,7 +5256,7 @@ function ProductDrawer({
       <SheetContent
         side="right"
         className="w-screen max-w-none gap-0 overflow-hidden p-0"
-        style={{ width: "min(960px, 100vw)", maxWidth: "min(960px, 100vw)" }}
+        style={{ width: "min(820px, 100vw)", maxWidth: "min(820px, 100vw)" }}
       >
         <SheetHeader className="border-b border-slate-200 bg-white p-4 pr-12">
           <SheetTitle className="text-lg font-bold">{title}</SheetTitle>
@@ -5509,6 +5269,7 @@ function ProductDrawer({
             <ProductDetails
               product={product}
               isMutating={isMutating}
+              capabilities={capabilities}
               text={text}
               adminText={adminText}
               initialEditSku={initialEditSku}
@@ -5525,20 +5286,24 @@ function ProductDrawer({
               product={product}
               products={products}
               isMutating={isMutating}
+              capabilities={capabilities}
               text={text}
               adminText={adminText}
               onCreate={onCreate}
               onSave={onSave}
               onSaved={onSaved}
+              onCancel={onClose}
               onStockAdjust={onStockAdjust}
             />
           ) : null}
         </div>
-        <SheetFooter className="border-t border-slate-200 bg-white p-3 sm:flex-row sm:justify-end">
-          <Button variant="outline" className="bg-white" onClick={onClose}>
-            {text.close}
-          </Button>
-        </SheetFooter>
+        {mode === "view" && (
+          <SheetFooter className="border-t border-slate-200 bg-white p-3 sm:flex-row sm:justify-end">
+            <Button variant="outline" className="bg-white" onClick={onClose}>
+              {text.close}
+            </Button>
+          </SheetFooter>
+        )}
       </SheetContent>
     </Sheet>
   );
@@ -5547,6 +5312,7 @@ function ProductDrawer({
 function ProductDetails({
   product,
   isMutating,
+  capabilities,
   text,
   adminText,
   initialEditSku,
@@ -5558,6 +5324,7 @@ function ProductDetails({
 }: {
   product: AdminProductRow;
   isMutating: boolean;
+  capabilities: ProductCapabilities;
   text: typeof panelText.zh | typeof panelText.it;
   adminText: ReturnType<typeof getAdminDictionary>["admin"];
   initialEditSku: string | null;
@@ -5683,7 +5450,7 @@ function ProductDetails({
   }
 
   async function saveInlineEdit() {
-    const nextErrors = validateProductForm(editValues, true, text);
+    const nextErrors = validateProductForm(editValues, true, text, capabilities);
 
     if (Object.keys(nextErrors).length > 0) {
       setEditorState((current) => ({
@@ -5765,11 +5532,18 @@ function ProductDetails({
               {displayCategory} · {displayBrand}
               {displayModel ? ` · ${displayModel}` : ""}
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-5">
+            <div
+              className={cn(
+                "mt-3 grid grid-cols-2 gap-2",
+                capabilities.editCost ? "md:grid-cols-5" : "md:grid-cols-4"
+              )}
+            >
               <ProductHeroMetric label={text.netPrice} value={formatEuro(displayPrice)} />
               <ProductHeroMetric label={text.availableStock} value={product.availableQty ?? product.stock} />
               <ProductHeroMetric label={text.actualStock} value={product.actualQty ?? product.stock} />
-              <ProductHeroMetric label={text.margin} value={`${(product.margin ?? 0).toFixed(1)}%`} />
+              {capabilities.editCost ? (
+                <ProductHeroMetric label={text.margin} value={`${(product.margin ?? 0).toFixed(1)}%`} />
+              ) : null}
               <ProductHeroMetric label={text.restockRequests} value={product.activeRestockRequestCount ?? 0} />
             </div>
           </div>
@@ -5777,19 +5551,19 @@ function ProductDetails({
             <div className="col-span-2 text-[11px] font-bold text-slate-500 lg:col-span-1">
               {text.quickActions}
             </div>
-            <Button variant="outline" size="sm" className="bg-white lg:w-full" onClick={onStockAdjust}>
+            {capabilities.adjustStock && <Button variant="outline" size="sm" className="bg-white lg:w-full" onClick={onStockAdjust}>
               <SlidersHorizontal className="size-4" />
               {text.stockAdjust}
-            </Button>
-            <Button
+            </Button>}
+            {(capabilities.editContent || capabilities.editPrice || capabilities.editCost) && <Button
               size="sm"
               className="lg:w-full"
               disabled={isEditing}
-              onClick={() => startInlineEdit("base")}
+              onClick={() => startInlineEdit(capabilities.editContent ? "base" : "price")}
             >
               <Edit className="size-4" />
               {text.edit}
-            </Button>
+            </Button>}
             <Button variant="outline" size="sm" className="bg-white lg:w-full" onClick={() => void copySku()}>
               {isSkuCopied ? <CheckCircle2 className="size-4" /> : <Copy className="size-4" />}
               {isSkuCopied ? text.copied : text.copySku}
@@ -5832,12 +5606,12 @@ function ProductDetails({
                     {isSubmittingEdit || isMutating ? text.saving : text.save}
                   </Button>
                 </>
-              ) : (
+              ) : capabilities.editContent ? (
                 <Button variant="outline" size="xs" className="bg-white" onClick={() => startInlineEdit("base")}>
                   <Edit className="size-3.5" />
                   {text.edit}
                 </Button>
-              )}
+              ) : null}
             </DetailPanelToolbar>
             {isEditing ? (
               <InfoGrid>
@@ -5932,12 +5706,12 @@ function ProductDetails({
                     {isSubmittingEdit || isMutating ? text.saving : text.save}
                   </Button>
                 </>
-              ) : (
+              ) : capabilities.editPrice && capabilities.editCost ? (
                 <Button variant="outline" size="xs" className="bg-white" onClick={() => startInlineEdit("price")}>
                   <Edit className="size-3.5" />
                   {text.edit}
                 </Button>
-              )}
+              ) : null}
             </DetailPanelToolbar>
             {isEditing ? (
               <InfoGrid>
@@ -5974,8 +5748,8 @@ function ProductDetails({
               <InfoGrid>
                 <DetailItem label={text.netPrice} value={formatEuro(product.price)} />
                 <DetailItem label={text.retailPrice} value={formatEuro(product.retailPrice)} />
-                <DetailItem label={text.costPrice} value={formatEuro(product.costPrice ?? 0)} />
-                <DetailItem label={text.margin} value={`${(product.margin ?? 0).toFixed(2)}%`} />
+                {capabilities.editCost && <DetailItem label={text.costPrice} value={formatEuro(product.costPrice ?? 0)} />}
+                {capabilities.editCost && <DetailItem label={text.margin} value={`${(product.margin ?? 0).toFixed(2)}%`} />}
               </InfoGrid>
             )}
           </div>
@@ -5983,10 +5757,10 @@ function ProductDetails({
         <TabsContent value="inventory" className="mt-0">
           <div className="space-y-2">
             <DetailPanelToolbar title={text.sectionInventory}>
-              <Button variant="outline" size="xs" className="bg-white" onClick={onStockAdjust}>
+              {capabilities.adjustStock && <Button variant="outline" size="xs" className="bg-white" onClick={onStockAdjust}>
                 <SlidersHorizontal className="size-3.5" />
                 {text.stockAdjust}
-              </Button>
+              </Button>}
             </DetailPanelToolbar>
             <InfoGrid>
               <DetailItem label={text.stock} value={<Badge className={stockStatusBadgeClass(product.status)}>{adminText.enums.stockStatus[product.status]}</Badge>} />
@@ -5998,7 +5772,11 @@ function ProductDetails({
           </div>
         </TabsContent>
         <TabsContent value="media" className="mt-0">
-          <ProductMediaManager product={product} text={text} onSaved={onMediaSaved} />
+          {capabilities.imageManage ? (
+            <ProductMediaManager product={product} text={text} onSaved={onMediaSaved} />
+          ) : (
+            <ProductDetailImageGallery product={product} text={text} sizes="240px" />
+          )}
         </TabsContent>
         <TabsContent value="compatibility" className="mt-0">
           <div className="space-y-2">
@@ -6017,12 +5795,12 @@ function ProductDetails({
                     {isSubmittingEdit || isMutating ? text.saving : text.save}
                   </Button>
                 </>
-              ) : (
+              ) : capabilities.editContent ? (
                 <Button variant="outline" size="xs" className="bg-white" onClick={() => startInlineEdit("compatibility")}>
                   <Edit className="size-3.5" />
                   {text.edit}
                 </Button>
-              )}
+              ) : null}
             </DetailPanelToolbar>
             {isEditing ? (
               <div className="grid gap-2 sm:grid-cols-2">
@@ -6084,6 +5862,7 @@ function ProductEditorForm({
   product,
   products,
   isMutating,
+  capabilities,
   text,
   adminText,
   onCreate,
@@ -6096,6 +5875,7 @@ function ProductEditorForm({
   product: AdminProductRow | null;
   products: AdminProductRow[];
   isMutating: boolean;
+  capabilities: ProductCapabilities;
   text: typeof panelText.zh | typeof panelText.it;
   adminText: ReturnType<typeof getAdminDictionary>["admin"];
   onCreate: (values: ProductFormValues) => Promise<AdminProductRow | null>;
@@ -6110,16 +5890,30 @@ function ProductEditorForm({
   onStockAdjust: (product: AdminProductRow) => void;
 }) {
   const isEdit = mode === "edit";
+  const canEditContent = capabilities.editContent || (!isEdit && capabilities.create);
+  const canSaveData = canEditContent || capabilities.editPrice || capabilities.editCost;
   const [values, setValues] = React.useState<ProductFormValues>(() =>
     product ? productFormDefaults(product) : defaultProductFormValues()
   );
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [file, setFile] = React.useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
+  const [createdDraft, setCreatedDraft] = React.useState<AdminProductRow | null>(null);
+  const [partialNotice, setPartialNotice] = React.useState<string | null>(null);
   const isManualSku = values.skuMode === "manual";
   const generatedSku = buildProductFormSkuCandidate(values, products);
   const displayedSku = isEdit || isManualSku ? values.sku : generatedSku.sku;
   const externalCodeIsInvalid =
     !isEdit && values.modelCode.trim().length > 0 && !isValidAdminSku(values.modelCode);
+
+  React.useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   function setValue<K extends keyof ProductFormValues>(key: K, value: ProductFormValues[K]) {
     setValues((current) => ({ ...current, [key]: value }));
@@ -6130,13 +5924,65 @@ function ProductEditorForm({
     });
   }
 
+  function selectImage(nextFile: File | null) {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+
+    setPartialNotice(null);
+
+    if (!nextFile) {
+      setFile(null);
+      setPreviewUrl(null);
+      setErrors((current) => {
+        const next = { ...current };
+        delete next.media;
+        return next;
+      });
+      return true;
+    }
+
+    if (!acceptedProductImageTypes.has(nextFile.type) || nextFile.size > maxProductImageBytes) {
+      setFile(null);
+      setPreviewUrl(null);
+      setErrors((current) => ({ ...current, media: text.mediaError }));
+      return false;
+    }
+
+    setFile(nextFile);
+    setPreviewUrl(URL.createObjectURL(nextFile));
+    setErrors((current) => {
+      const next = { ...current };
+      delete next.media;
+      return next;
+    });
+    return true;
+  }
+
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const submitValues =
+    const withGeneratedSku =
       !isEdit && !isManualSku ? { ...values, sku: generatedSku.sku } : values;
-    const nextErrors = validateProductForm(submitValues, isEdit, text);
+    const submitValues: ProductFormValues = {
+      ...withGeneratedSku,
+      compatibleWith:
+        withGeneratedSku.compatibleWith.trim() || withGeneratedSku.model.trim(),
+      costPrice: capabilities.editCost ? withGeneratedSku.costPrice : "",
+      imageAlt: "",
+      imagePath: "",
+      price: capabilities.editPrice ? withGeneratedSku.price : "",
+      retailPrice: capabilities.editPrice ? withGeneratedSku.retailPrice : "",
+      stock: capabilities.adjustStock ? withGeneratedSku.stock : "0",
+    };
+    const nextErrors = validateProductForm(
+      submitValues,
+      isEdit,
+      text,
+      capabilities
+    );
 
     setErrors(nextErrors);
+    setPartialNotice(null);
 
     if (Object.keys(nextErrors).length > 0) {
       return;
@@ -6145,231 +5991,254 @@ function ProductEditorForm({
     setIsSubmitting(true);
 
     try {
-      const saved =
-        isEdit && product
+      let saved = createdDraft;
+
+      if (isEdit && product) {
+        saved = canSaveData
           ? await onSave(
               product.sku,
               submitValues,
               "all",
               Boolean(product.compatibilityManaged)
             )
-          : await onCreate(submitValues);
-
-      if (saved) {
-        onSaved(saved);
+          : product;
+      } else if (!saved) {
+        saved = await onCreate(submitValues);
+        if (saved) {
+          setCreatedDraft(saved);
+        }
+      } else if (canSaveData) {
+        saved = await onSave(
+          saved.sku,
+          submitValues,
+          "all",
+          Boolean(saved.compatibilityManaged)
+        );
       }
+
+      if (!saved) {
+        return;
+      }
+
+      if (file && capabilities.imageManage) {
+        try {
+          saved = await uploadAdminProductImage(saved.sku, {
+            file,
+            imageAlt: submitValues.name || saved.name,
+            reason: `Uploaded product image for ${saved.sku}.`,
+            setPrimary: true,
+          });
+        } catch (error) {
+          setErrors((current) => ({
+            ...current,
+            media: formatNoticeError(text.mediaError, error),
+          }));
+          setPartialNotice(
+            formatAdminMessage(text.partialImageError, { sku: saved.sku })
+          );
+          return;
+        }
+      }
+
+      onSaved(saved);
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-5">
-      <FormSection title={text.sectionBase} icon={Package}>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={text.name} error={errors.name}>
-            <Input value={values.name} onChange={(event) => setValue("name", event.target.value)} />
+    <form onSubmit={onSubmit} className="space-y-4 pb-20">
+      <div className="rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 text-sm font-semibold text-slate-700">
+        {text.simpleFormHint}
+      </div>
+
+      {capabilities.imageManage && (
+        <FormSection title={text.photo} icon={ImageIcon}>
+          <div className="grid gap-3 sm:grid-cols-[128px_minmax(0,1fr)] sm:items-center">
+            <div className="relative aspect-square w-32 overflow-hidden rounded-lg border border-dashed border-slate-300 bg-slate-50">
+              {previewUrl ? (
+                <Image src={previewUrl} alt={values.name || text.photo} fill unoptimized className="object-contain" />
+              ) : product ? (
+                <ProductImageThumb product={product} className="size-full" sizes="128px" />
+              ) : (
+                <div className="grid size-full place-items-center text-slate-400">
+                  <ImageIcon className="size-8" />
+                </div>
+              )}
+            </div>
+            <Field label={text.uploadImage} error={errors.media} hint={text.photoHint}>
+              <Input
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                capture="environment"
+                onChange={(event) => {
+                  const accepted = selectImage(event.target.files?.[0] ?? null);
+                  if (!accepted) {
+                    event.currentTarget.value = "";
+                  }
+                }}
+              />
+            </Field>
+          </div>
+        </FormSection>
+      )}
+
+      {canEditContent && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={text.category} error={errors.category}>
+            <Select value={values.category} onValueChange={(value) => setValue("category", value)}>
+              <SelectTrigger className="h-11 bg-white"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {categories.map((category) => (
+                  <SelectItem key={category.label} value={category.label}>{category.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
-          <Field label={text.sku} error={errors.sku} hint={isEdit ? text.skuReadonly : undefined}>
-            <div className="space-y-2">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={text.brand} error={errors.brand}>
+              <Input className="h-11" value={values.brand} onChange={(event) => setValue("brand", event.target.value)} />
+            </Field>
+            <Field label={text.model} error={errors.model}>
+              <Input className="h-11" value={values.model} onChange={(event) => setValue("model", event.target.value)} />
+            </Field>
+          </div>
+          <Field label={text.name} error={errors.name}>
+            <Input className="h-11" value={values.name} onChange={(event) => setValue("name", event.target.value)} />
+          </Field>
+          <Field label={text.supplier} error={errors.supplier}>
+            <Input className="h-11" value={values.supplier} onChange={(event) => setValue("supplier", event.target.value)} />
+          </Field>
+        </div>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        {capabilities.editPrice && (
+          <Field label={text.netPrice} error={errors.price}>
+            <Input className="h-11" value={values.price} type="number" step="0.01" min={0} onChange={(event) => setValue("price", event.target.value)} />
+          </Field>
+        )}
+        {capabilities.adjustStock && (
+          <Field label={text.stock} error={errors.stock} hint={isEdit ? text.stockReadonly : undefined}>
+            <div className="flex gap-2">
+              <Input
+                className={cn("h-11", isEdit && "bg-slate-50 text-slate-500")}
+                value={values.stock}
+                type="number"
+                min={0}
+                readOnly={isEdit}
+                onChange={(event) => setValue("stock", event.target.value)}
+              />
+              {isEdit && product && (
+                <Button type="button" variant="outline" className="h-11 shrink-0 bg-white" onClick={() => onStockAdjust(product)}>
+                  <SlidersHorizontal className="size-4" />
+                  {text.stockAdjust}
+                </Button>
+              )}
+            </div>
+          </Field>
+        )}
+      </div>
+
+      {(canEditContent || capabilities.editPrice || capabilities.editCost) && (
+        <details className="rounded-lg border border-slate-200 bg-white">
+          <summary className="cursor-pointer px-3 py-3 text-sm font-bold text-slate-800">
+            {text.moreDetails}
+          </summary>
+          <div className="grid gap-4 border-t border-slate-200 p-3 sm:grid-cols-2">
+            <Field label={text.sku} error={errors.sku} hint={isEdit ? text.skuReadonly : text.skuAutoHint}>
               <div className="flex gap-2">
                 <Input
                   value={displayedSku}
                   readOnly={isEdit || !isManualSku}
-                  className={cn(
-                    "font-mono",
-                    (isEdit || !isManualSku) && "bg-slate-50 text-slate-500"
-                  )}
+                  className="h-11 bg-slate-50 font-mono text-slate-600"
                   onChange={(event) => setValue("sku", event.target.value)}
                 />
                 {!isEdit && (
                   <Button
                     type="button"
                     variant="outline"
-                    className="shrink-0 bg-white"
-                    onClick={() => {
-                      setValues((current) => ({
-                        ...current,
-                        sku: isManualSku ? current.sku : displayedSku,
-                        skuMode: isManualSku ? "auto" : "manual",
-                      }));
-                      setErrors((current) => {
-                        if (!current.sku) {
-                          return current;
-                        }
-
-                        const next = { ...current };
-                        delete next.sku;
-                        return next;
-                      });
-                    }}
+                    className="h-11 shrink-0 bg-white"
+                    onClick={() => setValues((current) => ({
+                      ...current,
+                      sku: isManualSku ? current.sku : displayedSku,
+                      skuMode: isManualSku ? "auto" : "manual",
+                    }))}
                   >
                     {isManualSku ? text.skuManualDisable : text.skuManualEnable}
                   </Button>
                 )}
               </div>
-              {!isEdit && (
-                <div className="space-y-1 text-xs font-semibold text-slate-500">
-                  <div>
-                    {isManualSku ? text.skuManualHint : `${text.skuAutoPreview}: ${generatedSku.sku}`}
-                  </div>
-                  <div>{text.skuAutoHint}</div>
-                  {externalCodeIsInvalid && (
-                    <div className="text-amber-700">{text.skuExternalInvalid}</div>
-                  )}
-                </div>
-              )}
-            </div>
-          </Field>
-          <Field label={text.category} error={errors.category}>
-            <Select value={values.category} onValueChange={(value) => setValue("category", value)}>
-              <SelectTrigger className="bg-white">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((category) => (
-                  <SelectItem key={category.label} value={category.label}>
-                    {category.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label={text.brand} error={errors.brand}>
-            <Input value={values.brand} onChange={(event) => setValue("brand", event.target.value)} />
-          </Field>
-          <Field label={text.quality}>
-            <Select value={values.grade} onValueChange={(value) => setValue("grade", value as ProductGrade)}>
-              <SelectTrigger className="bg-white">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {productGrades.map((grade) => (
-                  <SelectItem key={grade} value={grade}>
-                    {adminText.enums.productGrade[grade]}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label={text.moq} error={errors.moq}>
-            <Input value={values.moq} type="number" min={1} onChange={(event) => setValue("moq", event.target.value)} />
-          </Field>
-          <Field label={text.leadTime} error={errors.leadTime}>
-            <Input value={values.leadTime} onChange={(event) => setValue("leadTime", event.target.value)} />
-          </Field>
-        </div>
-      </FormSection>
+              {externalCodeIsInvalid && <p className="mt-1 text-xs font-semibold text-amber-700">{text.skuExternalInvalid}</p>}
+            </Field>
+            {canEditContent && (
+              <>
+                <Field label={text.quality}>
+                  <Select value={values.grade} onValueChange={(value) => setValue("grade", value as ProductGrade)}>
+                    <SelectTrigger className="h-11 bg-white"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {productGrades.map((grade) => <SelectItem key={grade} value={grade}>{adminText.enums.productGrade[grade]}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field label={text.moq} error={errors.moq}>
+                  <Input className="h-11" value={values.moq} type="number" min={1} onChange={(event) => setValue("moq", event.target.value)} />
+                </Field>
+                <Field label={text.modelCode}>
+                  <Input className="h-11" value={values.modelCode} onChange={(event) => setValue("modelCode", event.target.value)} />
+                </Field>
+                <Field label={text.compatibility}>
+                  <Textarea value={values.compatibleWith} className="min-h-20" onChange={(event) => setValue("compatibleWith", event.target.value)} />
+                </Field>
+                <Field label={text.tags}>
+                  <Textarea value={values.tags} className="min-h-20" onChange={(event) => setValue("tags", event.target.value)} />
+                </Field>
+                <Field label={text.modelCodes} hint={product?.compatibilityManaged ? text.managedModelCodesHint : undefined}>
+                  <Textarea value={values.modelCodes} className="min-h-20" disabled={Boolean(product?.compatibilityManaged)} onChange={(event) => setValue("modelCodes", event.target.value)} />
+                </Field>
+                <Field label={text.batchCode}>
+                  <Input className="h-11" value={values.batchCode} onChange={(event) => setValue("batchCode", event.target.value)} />
+                </Field>
+              </>
+            )}
+            {capabilities.editPrice && (
+              <Field label={text.retailPrice} hint={text.systemDefaultsHint}>
+                <Input className="h-11" value={values.retailPrice} type="number" step="0.01" min={0} onChange={(event) => setValue("retailPrice", event.target.value)} />
+              </Field>
+            )}
+            {capabilities.editCost && (
+              <Field label={text.costPrice}>
+                <Input className="h-11" value={values.costPrice} type="number" step="0.01" min={0} onChange={(event) => setValue("costPrice", event.target.value)} />
+              </Field>
+            )}
+          </div>
+        </details>
+      )}
 
-      <FormSection title={text.sectionPrice} icon={Euro}>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Field label={text.netPrice} error={errors.price}>
-            <Input value={values.price} type="number" step="0.01" min={0} onChange={(event) => setValue("price", event.target.value)} />
-          </Field>
-          <Field label={text.retailPrice}>
-            <Input value={values.retailPrice} type="number" step="0.01" min={0} onChange={(event) => setValue("retailPrice", event.target.value)} />
-          </Field>
-          <Field label={text.costPrice}>
-            <Input value={values.costPrice} type="number" step="0.01" min={0} onChange={(event) => setValue("costPrice", event.target.value)} />
-          </Field>
-        </div>
-      </FormSection>
+      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
+        {text.systemDefaultsHint}
+      </div>
 
-      <FormSection title={text.sectionInventory} icon={Warehouse}>
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-          <Field label={text.stock} error={errors.stock} hint={isEdit ? text.stockReadonly : undefined}>
-            <Input
-              value={values.stock}
-              type="number"
-              min={0}
-              readOnly={isEdit}
-              className={cn(isEdit && "bg-slate-50 text-slate-500")}
-              onChange={(event) => setValue("stock", event.target.value)}
-            />
-          </Field>
-          {isEdit && product && (
-            <div className="flex items-end">
-              <Button
-                type="button"
-                variant="outline"
-                className="bg-white"
-                onClick={() => onStockAdjust(product)}
-              >
-                <SlidersHorizontal className="size-4" />
-                {text.stockAdjust}
-              </Button>
-            </div>
-          )}
+      {partialNotice && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800" role="status">
+          {partialNotice}
         </div>
-      </FormSection>
+      )}
 
-      <FormSection title={text.sectionCatalog} icon={Tag}>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={text.compatibility} error={errors.compatibleWith}>
-            <Textarea
-              value={values.compatibleWith}
-              className="min-h-24"
-              onChange={(event) => setValue("compatibleWith", event.target.value)}
-            />
-          </Field>
-          <Field label={text.tags}>
-            <Textarea
-              value={values.tags}
-              className="min-h-24"
-              onChange={(event) => setValue("tags", event.target.value)}
-            />
-          </Field>
-          <Field label={text.model}>
-            <Input value={values.model} onChange={(event) => setValue("model", event.target.value)} />
-          </Field>
-          <Field label={text.modelCode}>
-            <Input value={values.modelCode} onChange={(event) => setValue("modelCode", event.target.value)} />
-          </Field>
-          <Field
-            label={text.modelCodes}
-            hint={product?.compatibilityManaged ? text.managedModelCodesHint : undefined}
-          >
-            <Textarea
-              value={values.modelCodes}
-              className="min-h-20"
-              disabled={Boolean(product?.compatibilityManaged)}
-              onChange={(event) => setValue("modelCodes", event.target.value)}
-            />
-          </Field>
-          <Field label={text.batchCode}>
-            <Input value={values.batchCode} onChange={(event) => setValue("batchCode", event.target.value)} />
-          </Field>
-          <Field label={text.supplier}>
-            <Input value={values.supplier} onChange={(event) => setValue("supplier", event.target.value)} />
-          </Field>
-        </div>
-      </FormSection>
-
-      <FormSection title={text.sectionMedia} icon={ImageIcon}>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={text.imagePath}>
-            <Input value={values.imagePath} onChange={(event) => setValue("imagePath", event.target.value)} />
-          </Field>
-          <Field label={text.imageAlt}>
-            <Input value={values.imageAlt} onChange={(event) => setValue("imageAlt", event.target.value)} />
-          </Field>
-        </div>
-      </FormSection>
-
-      <div className="flex flex-wrap justify-end gap-2">
+      <div className="sticky bottom-0 z-10 -mx-3 flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur lg:-mx-4 lg:px-4">
         {onCancel && (
-          <Button type="button" variant="outline" className="bg-white" onClick={onCancel}>
+          <Button type="button" variant="outline" className="h-11 bg-white" onClick={onCancel}>
             {text.cancel}
           </Button>
         )}
-        <Button type="submit" disabled={isSubmitting || isMutating}>
+        {(canSaveData || capabilities.imageManage) && <Button className="h-11" type="submit" disabled={isSubmitting || isMutating}>
           {isSubmitting || isMutating ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
             <CheckCircle2 className="size-4" />
           )}
           {isSubmitting || isMutating ? text.saving : text.save}
-        </Button>
+        </Button>}
       </div>
     </form>
   );
@@ -7081,21 +6950,6 @@ function TokenPanel({
   );
 }
 
-function MetricPill({
-  label,
-  value,
-}: {
-  label: string;
-  value: React.ReactNode;
-}) {
-  return (
-    <div className="min-h-[38px] rounded-md border border-slate-200 bg-slate-50 px-1.5 py-1">
-      <div className="truncate text-[10px] font-semibold leading-3 text-slate-400">{label}</div>
-      <div className="mt-0.5 truncate text-[12px] font-black leading-4 text-slate-900">{value}</div>
-    </div>
-  );
-}
-
 async function fetchAdminHomeBanners(signal?: AbortSignal) {
   const response = await fetch("/api/admin/home-banners", {
     cache: "no-store",
@@ -7499,8 +7353,11 @@ async function fetchAdminProductModelGroups(
   };
 }
 
-async function createAdminProduct(values: ProductFormValues) {
-  const payload = buildProductWritePayload(values, "create");
+async function createAdminProduct(
+  values: ProductFormValues,
+  capabilities: ProductCapabilities
+) {
+  const payload = buildProductWritePayload(values, "create", "all", capabilities);
   const response = await fetchAdminWriteResponse(
     adminProductsEndpoint,
     {
@@ -7523,9 +7380,10 @@ async function updateAdminProduct(
   sku: string,
   values: ProductFormValues,
   scope: ProductUpdateScope = "all",
-  compatibilityManaged = false
+  compatibilityManaged = false,
+  capabilities: ProductCapabilities = buildProductCapabilities([])
 ) {
-  const payload = buildProductWritePayload(values, "update", scope);
+  const payload = buildProductWritePayload(values, "update", scope, capabilities);
 
   if (compatibilityManaged) {
     delete payload.modelCodes;
@@ -8351,7 +8209,8 @@ function normalizeProductAuditEvent(row: unknown): ProductAuditEvent | null {
 function buildProductWritePayload(
   values: ProductFormValues,
   mode: "create" | "update",
-  scope: ProductUpdateScope = "all"
+  scope: ProductUpdateScope = "all",
+  capabilities: ProductCapabilities = buildProductCapabilities([])
 ) {
   const price = parseNumber(values.price) ?? 0;
   const retailPrice = parseNumber(values.retailPrice);
@@ -8361,8 +8220,10 @@ function buildProductWritePayload(
     category: values.category.trim(),
     brand: values.brand.trim(),
     grade: values.grade,
-    price,
-    retailPrice: retailPrice ?? Number((price * 1.35).toFixed(2)),
+    price: capabilities.editPrice ? price : 0,
+    retailPrice: capabilities.editPrice
+      ? retailPrice ?? Number((price * 1.35).toFixed(2))
+      : undefined,
     moq: parseInteger(values.moq) ?? 1,
     compatibleWith: splitList(values.compatibleWith),
     tags: splitList(values.tags),
@@ -8375,42 +8236,74 @@ function buildProductWritePayload(
       payload.sku = sku;
     }
 
-    payload.stock = parseInteger(values.stock) ?? 0;
+    payload.stock = capabilities.adjustStock ? parseInteger(values.stock) ?? 0 : 0;
     payload.warehouse = defaultWarehouse;
   }
 
-  assignOptional(payload, "costPrice", costPrice);
+  if (capabilities.editCost) {
+    assignOptional(payload, "costPrice", costPrice);
+  }
   assignOptional(payload, "model", values.model.trim());
   assignOptional(payload, "modelCode", sanitizeSupplierText(values.modelCode));
   payload.modelCodes = splitList(values.modelCodes).map(sanitizeSupplierText).filter(Boolean);
   assignOptional(payload, "batchCode", sanitizeSupplierText(values.batchCode));
   assignOptional(payload, "supplier", sanitizeSupplierText(values.supplier));
-  assignOptional(payload, "imagePath", values.imagePath.trim());
-  assignOptional(payload, "imageAlt", values.imageAlt.trim());
 
-  if (mode === "create" || scope === "all") {
+  if (mode === "create") {
     return payload;
   }
 
+  const allowedKeys: Array<keyof ProductWritePayload> = [];
+
+  if (capabilities.editContent) {
+    allowedKeys.push(
+      "name",
+      "category",
+      "brand",
+      "grade",
+      "moq",
+      "compatibleWith",
+      "tags",
+      "model",
+      "modelCode",
+      "modelCodes",
+      "batchCode",
+      "supplier"
+    );
+  }
+
+  if (capabilities.editPrice) {
+    allowedKeys.push("price", "retailPrice");
+  }
+
+  if (capabilities.editCost) {
+    allowedKeys.push("costPrice");
+  }
+
+  if (scope === "all") {
+    return pickProductPayload(payload, allowedKeys);
+  }
+
   if (scope === "price") {
-    return pickProductPayload(payload, ["price", "retailPrice", "costPrice"]);
+    return pickProductPayload(
+      payload,
+      allowedKeys.filter((key) => ["price", "retailPrice", "costPrice"].includes(key))
+    );
   }
 
   if (scope === "compatibility") {
-    return pickProductPayload(payload, ["compatibleWith", "modelCodes", "tags"]);
+    return pickProductPayload(
+      payload,
+      allowedKeys.filter((key) => ["compatibleWith", "modelCodes", "tags"].includes(key))
+    );
   }
 
-  return pickProductPayload(payload, [
-    "name",
-    "category",
-    "brand",
-    "grade",
-    "moq",
-    "model",
-    "modelCode",
-    "batchCode",
-    "supplier",
-  ]);
+  return pickProductPayload(
+    payload,
+    allowedKeys.filter((key) =>
+      ["name", "category", "brand", "grade", "moq", "model", "modelCode", "batchCode", "supplier"].includes(key)
+    )
+  );
 }
 
 function productUpdateScopeForTab(tab: string): ProductUpdateScope {
@@ -8518,35 +8411,84 @@ function buildProductFormSkuCandidate(
 function validateProductForm(
   values: ProductFormValues,
   isEdit: boolean,
-  text: typeof panelText.zh | typeof panelText.it
+  text: typeof panelText.zh | typeof panelText.it,
+  capabilities: ProductCapabilities
 ) {
   const errors: Record<string, string> = {};
+  const canEditContent = capabilities.editContent || (!isEdit && capabilities.create);
 
-  if (!values.name.trim() || !values.category.trim() || !values.brand.trim() || !values.leadTime.trim()) {
-    errors.name = text.formRequired;
+  if (canEditContent) {
+    if (!values.name.trim()) errors.name = text.formRequired;
+    if (!values.category.trim()) errors.category = text.formRequired;
+    if (!values.brand.trim()) errors.brand = text.formRequired;
+    if (!values.model.trim()) errors.model = text.formRequired;
+    if (!values.supplier.trim()) errors.supplier = text.formRequired;
   }
 
   if (!isEdit && values.sku.trim().length < 2) {
     errors.sku = text.formRequired;
   }
 
-  if (splitList(values.compatibleWith).length === 0) {
-    errors.compatibleWith = text.formRequired;
-  }
-
-  if (!Number.isFinite(parseNumber(values.price)) || (parseNumber(values.price) ?? 0) < 0) {
+  if (
+    capabilities.editPrice &&
+    (!Number.isFinite(parseNumber(values.price)) || (parseNumber(values.price) ?? -1) < 0)
+  ) {
     errors.price = text.invalidNumber;
   }
 
-  if (!Number.isInteger(parseInteger(values.moq)) || (parseInteger(values.moq) ?? 0) < 1) {
+  if (
+    canEditContent &&
+    (!Number.isInteger(parseInteger(values.moq)) || (parseInteger(values.moq) ?? 0) < 1)
+  ) {
     errors.moq = text.invalidNumber;
   }
 
-  if (!isEdit && (!Number.isInteger(parseInteger(values.stock)) || (parseInteger(values.stock) ?? -1) < 0)) {
+  if (
+    capabilities.adjustStock &&
+    !isEdit &&
+    (!Number.isInteger(parseInteger(values.stock)) || (parseInteger(values.stock) ?? -1) < 0)
+  ) {
     errors.stock = text.invalidNumber;
   }
 
   return errors;
+}
+
+function buildProductCapabilities(permissions: readonly string[]): ProductCapabilities {
+  const permissionSet = new Set(permissions);
+
+  return {
+    adjustStock: permissionSet.has("product.adjust_stock"),
+    block: permissionSet.has("product.block"),
+    create: permissionSet.has("product.create_draft"),
+    editContent: permissionSet.has("product.edit_content"),
+    editCost: permissionSet.has("product.edit_cost"),
+    editPrice: permissionSet.has("product.edit_price"),
+    hide: permissionSet.has("product.hide"),
+    imageManage: permissionSet.has("product.image_manage"),
+    publish: permissionSet.has("product.publish"),
+    restore: permissionSet.has("product.restore_draft"),
+  };
+}
+
+function canEditProduct(capabilities: ProductCapabilities) {
+  return (
+    capabilities.editContent ||
+    capabilities.editPrice ||
+    capabilities.editCost ||
+    capabilities.adjustStock ||
+    capabilities.imageManage
+  );
+}
+
+function canRunProductAction(
+  capabilities: ProductCapabilities,
+  action: ProductAction
+) {
+  if (action === "publish") return capabilities.publish;
+  if (action === "restore") return capabilities.restore;
+  if (action === "block") return capabilities.block;
+  return capabilities.hide;
 }
 
 function buildProductMetrics(products: AdminProductRow[], total: number) {
@@ -9070,54 +9012,6 @@ function slugify(value: string) {
 
 function compareModelNames(left: string, right: string) {
   return left.localeCompare(right, undefined, { numeric: true, sensitivity: "base" });
-}
-
-function metricIconClass(tone: string) {
-  if (tone === "green") {
-    return "text-emerald-600";
-  }
-
-  if (tone === "amber" || tone === "orange") {
-    return "text-amber-600";
-  }
-
-  if (tone === "red") {
-    return "text-red-600";
-  }
-
-  if (tone === "cyan") {
-    return "text-cyan-600";
-  }
-
-  if (tone === "violet") {
-    return "text-violet-600";
-  }
-
-  return "text-primary";
-}
-
-function metricTextClass(tone: string) {
-  if (tone === "green") {
-    return "text-emerald-700";
-  }
-
-  if (tone === "amber" || tone === "orange") {
-    return "text-amber-700";
-  }
-
-  if (tone === "red") {
-    return "text-red-700";
-  }
-
-  if (tone === "cyan") {
-    return "text-cyan-700";
-  }
-
-  if (tone === "violet") {
-    return "text-violet-700";
-  }
-
-  return "text-primary";
 }
 
 function stockStatusBadgeClass(status: StockStatus) {

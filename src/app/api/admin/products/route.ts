@@ -9,7 +9,10 @@ import {
 } from "@/lib/partspro-repository";
 import { parseAdminQuery, repositoryErrorResponse, requireAdminApi } from "../_shared";
 import { toAdminProductDto } from "./_dto";
-import { missingProductPatchPermissions } from "./_permissions";
+import {
+  missingProductCreatePermissions,
+  missingProductPatchPermissions,
+} from "./_permissions";
 import {
   productPatchSchema,
   productQuerySchema,
@@ -81,6 +84,18 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) {
     return apiError(400, "INVALID_ADMIN_PRODUCT_PAYLOAD", "Product payload is invalid.", {
       issues: formatZodIssues(parsed.error),
+    });
+  }
+
+  const missingPermissions = missingProductCreatePermissions(
+    admin.authState,
+    parsed.data
+  );
+
+  if (missingPermissions.length > 0) {
+    return apiError(403, "ADMIN_PRODUCT_PERMISSION_DENIED", "Missing product create permission.", {
+      missing: missingPermissions,
+      role: admin.authState.role,
     });
   }
 

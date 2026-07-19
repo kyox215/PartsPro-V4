@@ -67,6 +67,26 @@ export async function POST(request: NextRequest, { params }: ProductParams) {
 
   const { sku } = await params;
   const decodedSku = decodeURIComponent(sku);
+  const normalizedSku = decodedSku.trim().toUpperCase();
+  let current: NonNullable<Awaited<ReturnType<typeof getAdminProduct>>["data"]>;
+
+  try {
+    const result = await getAdminProduct(normalizedSku);
+
+    if (!result.data) {
+      return apiError(404, "ADMIN_PRODUCT_NOT_FOUND", "Product was not found.", {
+        sku: normalizedSku,
+      });
+    }
+
+    current = result.data;
+  } catch (error) {
+    return repositoryErrorResponse(
+      error,
+      "ADMIN_PRODUCT_IMAGE_PRODUCT_READ_FAILED",
+      "Product could not be checked before image upload."
+    );
+  }
 
   let formData: FormData;
 
@@ -95,7 +115,6 @@ export async function POST(request: NextRequest, { params }: ProductParams) {
     return apiError(415, "UNSUPPORTED_IMAGE_TYPE", "Image must be JPEG, PNG, or WebP.");
   }
 
-  const normalizedSku = decodedSku.trim().toUpperCase();
   const storagePath = `products/${normalizedSku.toLowerCase()}/${crypto.randomUUID()}.${imageType.extension}`;
   const supabase = await createClient();
   const { error: uploadError } = await supabase.storage
@@ -113,20 +132,12 @@ export async function POST(request: NextRequest, { params }: ProductParams) {
   }
 
   try {
-    const current = await getAdminProduct(normalizedSku);
-
-    if (!current.data) {
-      return apiError(404, "ADMIN_PRODUCT_NOT_FOUND", "Product was not found.", {
-        sku: normalizedSku,
-      });
-    }
-
     const setPrimary = formData.get("setPrimary") !== "false";
-    const gallery = mergeGallery(current.data.galleryImagePaths, storagePath);
+    const gallery = mergeGallery(current.galleryImagePaths, storagePath);
     const result = await setAdminProductImages({
       galleryImagePaths: gallery,
-      imageAlt: readFormString(formData.get("imageAlt")) ?? current.data.imageAlt ?? current.data.name,
-      imagePath: setPrimary ? storagePath : current.data.imagePath,
+      imageAlt: readFormString(formData.get("imageAlt")) ?? current.imageAlt ?? current.name,
+      imagePath: setPrimary ? storagePath : current.imagePath,
       reason: readFormString(formData.get("reason")) ?? "Uploaded product image from admin API.",
       sku: normalizedSku,
     });
@@ -143,10 +154,12 @@ export async function POST(request: NextRequest, { params }: ProductParams) {
       { status: 201 }
     );
   } catch (error) {
+    await supabase.storage.from(productImagesBucket).remove([storagePath]);
+
     return repositoryErrorResponse(
       error,
       "ADMIN_PRODUCT_IMAGE_ATTACH_FAILED",
-      "Image uploaded but could not be attached to the product."
+      "Image could not be attached to the product."
     );
   }
 }

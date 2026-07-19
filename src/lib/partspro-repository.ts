@@ -11569,7 +11569,7 @@ function buildProductPayload(
         ? undefined
         : stockQtyToDbStatus(input.stock)
   );
-  assignDefined(payload, "vat_mode", input.vatMode ?? (partial ? undefined : "IVA inclusa"));
+  assignDefined(payload, "vat_mode", input.vatMode);
   assignDefined(payload, "warranty_days", input.rmaDays ?? (partial ? undefined : 180));
   assignDefined(payload, "weight_gram", input.weightGram ?? (partial ? undefined : 0));
   assignDefined(payload, "model", trimOptional(input.model));

@@ -112,6 +112,11 @@ type AdminCommercePanelProps = {
   permissions?: readonly string[];
 };
 
+type AdminProductsPanelProps = {
+  permissions?: readonly string[];
+  permissionsLoaded?: boolean;
+};
+
 type AdminOrdersPanelProps = {
   focusOrderId?: string;
 };
@@ -141,7 +146,7 @@ const AdminRmaPanel = dynamic(
   () => import("./admin-rma-panel").then((module) => module.AdminRmaPanel),
   { loading: () => <AdminPanelLoadingFallback /> }
 );
-const AdminProductsPanel = dynamic(
+const AdminProductsPanel = dynamic<AdminProductsPanelProps>(
   () =>
     import("./admin-products-panel").then((module) => module.AdminProductsPanel),
   { loading: () => <AdminPanelLoadingFallback /> }
@@ -459,7 +464,10 @@ export function AdminDashboard({
                 <AdminRmaPanel />
               </TabsContent>
               <TabsContent value="catalog" className="order-4 mt-0 min-w-0">
-                <AdminProductsPanel />
+                <AdminProductsPanel
+                  permissions={currentPermissions}
+                  permissionsLoaded={adminContextLoaded}
+                />
               </TabsContent>
               <TabsContent value="finance" className="order-4 mt-0 min-w-0">
                 <AdminFinancePanel />
