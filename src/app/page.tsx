@@ -11,9 +11,9 @@ import { type PartProduct } from "@/lib/partspro-data";
 import {
   accountPricingCustomerId,
   applyAccountPriceToProduct,
-  canUseStorefrontCart,
   getCurrentAccountContext,
   priceVisibilityReason,
+  storefrontCartAccess,
   type AccountContext,
 } from "@/lib/partspro-account-context";
 import { toStoreHeaderAccountAccess } from "@/lib/partspro-header-access";
@@ -72,7 +72,7 @@ export default async function Home() {
       newProducts={homeShelves.newProducts.map((product) =>
         toHomeProduct(product, account)
       )}
-      canUseCart={canUseStorefrontCart(account)}
+      cartAccess={storefrontCartAccess(account)}
       priceGateReason={priceVisibilityReason(account)}
       showPrices={account.canViewPrices}
       stockedProducts={stockedProducts}

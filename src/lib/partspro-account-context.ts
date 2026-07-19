@@ -9,6 +9,7 @@ import { visiblePanelsForPermissions } from "@/lib/partspro-permissions";
 import { getSupabaseEnv, isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 import { cookies } from "next/headers";
+export { hasOrderableEffectivePrice } from "@/lib/partspro-commerce-rules";
 import type {
   CustomerAssignmentStatus,
   CustomerLevel,
@@ -34,12 +35,36 @@ export type PriceVisibilityReason =
   | "login_required"
   | "wholesale_required";
 
+export type RequiredAccountProfileField =
+  | "billing_address"
+  | "company_name"
+  | "email"
+  | "fiscal_code"
+  | "phone"
+  | "shipping_address";
+
+export type StorefrontCartGateReason =
+  | Exclude<PriceVisibilityReason, "customer" | "employee">
+  | "delegated_checkout_forbidden"
+  | "employee_self_needs_assignment"
+  | "employee_self_profile_required"
+  | "employee_self_suspended";
+
+export type StorefrontCartAccess =
+  | { allowed: true }
+  | {
+      allowed: false;
+      missingFields: RequiredAccountProfileField[];
+      reason: StorefrontCartGateReason;
+    };
+
 export type AccountCustomerContext = {
   assignmentStatus: CustomerAssignmentStatus;
   customerType: CustomerType;
   id: string;
   level: CustomerLevel;
   lifetimeSpendNet: number;
+  missingFields: RequiredAccountProfileField[];
   name: string;
   promoLevel: CustomerLevel | null;
   promoLevelStartsAt: string | null;
@@ -237,21 +262,44 @@ async function hasSupabaseSessionCookie() {
 }
 
 export function isCustomerProfileComplete(row: DbRow | null | undefined) {
+  return Boolean(
+    row &&
+      customerProfileMissingFields(row).length === 0 &&
+      normalizeCustomerType(readString(row.customer_type))
+  );
+}
+
+export function customerProfileMissingFields(
+  row: DbRow | null | undefined
+): RequiredAccountProfileField[] {
   if (!row) {
-    return false;
+    return [
+      "company_name",
+      "email",
+      "phone",
+      "fiscal_code",
+      "billing_address",
+      "shipping_address",
+    ];
   }
 
-  const customerType = normalizeCustomerType(readString(row.customer_type));
-  const sharedFields = [
-    readString(row.company_name),
-    readString(row.email),
-    readString(row.phone),
-    readString(row.fiscal_code),
-    readString(row.billing_address),
-    readString(row.shipping_address),
+  const missingFields: RequiredAccountProfileField[] = [];
+  const requiredFields: Array<[RequiredAccountProfileField, unknown]> = [
+    ["company_name", row.company_name],
+    ["email", row.email],
+    ["phone", row.phone],
+    ["fiscal_code", row.fiscal_code],
+    ["billing_address", row.billing_address],
+    ["shipping_address", row.shipping_address],
   ];
 
-  return sharedFields.every((value) => Boolean(value)) && Boolean(customerType);
+  for (const [field, value] of requiredFields) {
+    if (!readString(value)) {
+      missingFields.push(field);
+    }
+  }
+
+  return missingFields;
 }
 
 export function applyAccountPriceToProduct(
@@ -307,10 +355,6 @@ export function applyAccountPriceToProduct(
     priceResolved: true,
     retailPrice: product.retailPrice,
   };
-}
-
-export function hasOrderableEffectivePrice(product: Pick<PartProduct, "price">) {
-  return Number.isFinite(product.price) && product.price > 0;
 }
 
 export function priceVisibilityReason(account: AccountContext) {
@@ -378,6 +422,84 @@ export function canUseStorefrontCart(
   }
 
   return false;
+}
+
+export function storefrontCartAccess(
+  account: AccountContext,
+  assistedCompanyId?: string | null
+): StorefrontCartAccess {
+  if (canUseStorefrontCart(account, assistedCompanyId)) {
+    return { allowed: true };
+  }
+
+  if (!account.authenticated) {
+    return { allowed: false, missingFields: [], reason: "login_required" };
+  }
+
+  if (account.accountSyncError) {
+    return { allowed: false, missingFields: [], reason: "account_sync_failed" };
+  }
+
+  if (assistedCompanyId) {
+    return {
+      allowed: false,
+      missingFields: [],
+      reason: "delegated_checkout_forbidden",
+    };
+  }
+
+  if (account.accountType === "customer") {
+    const reason = priceVisibilityReason(account);
+
+    return {
+      allowed: false,
+      missingFields: account.customer?.missingFields ?? [],
+      reason:
+        reason === "customer" || reason === "employee"
+          ? "customer_needs_assignment"
+          : reason,
+    };
+  }
+
+  if (account.accountType === "employee") {
+    const employeeSelfCustomer = account.employeeSelfCustomer;
+
+    if (employeeSelfCustomer?.status === "suspended") {
+      return {
+        allowed: false,
+        missingFields: [],
+        reason: "employee_self_suspended",
+      };
+    }
+
+    if (!employeeSelfCustomer || !employeeSelfCustomer.profileComplete) {
+      return {
+        allowed: false,
+        missingFields:
+          employeeSelfCustomer?.missingFields ?? customerProfileMissingFields(null),
+        reason: "employee_self_profile_required",
+      };
+    }
+
+    if (
+      employeeSelfCustomer.status !== "active" ||
+      employeeSelfCustomer.assignmentStatus !== "assigned"
+    ) {
+      return {
+        allowed: false,
+        missingFields: [],
+        reason: "employee_self_needs_assignment",
+      };
+    }
+
+    return {
+      allowed: false,
+      missingFields: [],
+      reason: "employee_self_profile_required",
+    };
+  }
+
+  return { allowed: false, missingFields: [], reason: "login_required" };
 }
 
 export function accountPricingCustomerId(account: AccountContext) {
@@ -499,6 +621,7 @@ function toCustomerContext(row: DbRow): AccountCustomerContext {
     id: readString(row.id) ?? "",
     level,
     lifetimeSpendNet,
+    missingFields: customerProfileMissingFields(row),
     name: readString(row.company_name) ?? "Cliente PartsPro",
     promoLevel,
     promoLevelStartsAt: readString(row.promo_level_starts_at),

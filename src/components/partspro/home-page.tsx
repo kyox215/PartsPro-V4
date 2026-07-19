@@ -28,12 +28,15 @@ import { useT } from "./i18n-provider";
 import {
   tx,
 } from "@/i18n/dictionaries/storefront";
-import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
+import type {
+  PriceVisibilityReason,
+  StorefrontCartAccess,
+} from "@/lib/partspro-account-context";
 import { RoutePendingIndicator } from "./pending-feedback";
 import { ProductCard } from "./product-card";
 
 type HomePageProps = {
-  canUseCart?: boolean;
+  cartAccess?: StorefrontCartAccess;
   catalogTotal?: number;
   homeBanners?: HomeBanner[];
   hotProducts?: PartProduct[];
@@ -46,7 +49,7 @@ type HomePageProps = {
 };
 
 export function HomePage({
-  canUseCart = false,
+  cartAccess = { allowed: false, missingFields: [], reason: "login_required" },
   catalogTotal = 0,
   homeBanners = [],
   hotProducts = [],
@@ -83,7 +86,7 @@ export function HomePage({
             eyebrowFallback="Vendite recenti"
             icon={Flame}
             id="hot-products"
-            canUseCart={canUseCart}
+            cartAccess={cartAccess}
             priceGateReason={priceGateReason}
             products={hotProducts}
             showPrices={showPrices}
@@ -99,7 +102,7 @@ export function HomePage({
             eyebrowFallback="Arrivi catalogo"
             icon={Sparkles}
             id="new-products"
-            canUseCart={canUseCart}
+            cartAccess={cartAccess}
             priceGateReason={priceGateReason}
             products={newProducts}
             showPrices={showPrices}
@@ -115,7 +118,7 @@ export function HomePage({
             eyebrowFallback="Stock reale"
             icon={PackageCheck}
             id="stocked-products"
-            canUseCart={canUseCart}
+            cartAccess={cartAccess}
             priceGateReason={priceGateReason}
             products={stockedProducts}
             showPrices={showPrices}
@@ -369,7 +372,7 @@ function ProductShelf({
   eyebrowKey,
   icon: Icon,
   id,
-  canUseCart,
+  cartAccess,
   priceGateReason,
   products,
   showPrices,
@@ -384,7 +387,7 @@ function ProductShelf({
   eyebrowKey: string;
   icon: LucideIcon;
   id: string;
-  canUseCart: boolean;
+  cartAccess: StorefrontCartAccess;
   priceGateReason: PriceVisibilityReason;
   products: PartProduct[];
   showPrices: boolean;
@@ -407,7 +410,7 @@ function ProductShelf({
           {products.map((product, index) => (
             <ProductCard
               key={`${id}-${product.sku}`}
-              canUseCart={canUseCart}
+              cartAccess={cartAccess}
               priceGateReason={priceGateReason}
               priorityImage={index < 4}
               product={product}

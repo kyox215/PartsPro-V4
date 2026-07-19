@@ -658,6 +658,79 @@ export const storefrontItIT = {
   "storefront.accountGate.dialogProduct": "Prodotto: {name}",
   "storefront.accountGate.noAction": "Contatta PartsPro",
   "storefront.accountGate.stepsTitle": "Cosa fare",
+  "storefront.accountGate.delegatedForbidden.cardDescription":
+    "Questo account non può creare ordini assistiti per altri clienti.",
+  "storefront.accountGate.delegatedForbidden.cardTitle":
+    "Ordine assistito non autorizzato",
+  "storefront.accountGate.delegatedForbidden.description":
+    "Sono necessarie le autorizzazioni ordini e clienti per usare il carrello con un cliente selezionato.",
+  "storefront.accountGate.delegatedForbidden.hint":
+    "MOQ {moq} · autorizzazione richiesta",
+  "storefront.accountGate.delegatedForbidden.label": "Non autorizzato",
+  "storefront.accountGate.delegatedForbidden.stepSupport":
+    "Contatta un amministratore PartsPro",
+  "storefront.accountGate.delegatedForbidden.title":
+    "Ordine assistito non autorizzato",
+  "storefront.accountGate.employeeSelfProfile.action": "Completa i dati",
+  "storefront.accountGate.employeeSelfProfile.cardDescription":
+    "Completa il profilo di acquisto personale per usare carrello e checkout.",
+  "storefront.accountGate.employeeSelfProfile.cardTitle":
+    "Dati acquisto personale da completare",
+  "storefront.accountGate.employeeSelfProfile.description":
+    "Questo account staff può vedere i prezzi, ma non può ancora ordinare con i propri dati. Completa il profilo di acquisto personale per usare carrello e checkout.",
+  "storefront.accountGate.employeeSelfProfile.hint":
+    "MOQ {moq} · completa i dati",
+  "storefront.accountGate.employeeSelfProfile.label": "Profilo incompleto",
+  "storefront.accountGate.employeeSelfProfile.missingTitle": "Da completare",
+  "storefront.accountGate.employeeSelfProfile.stepAccount":
+    "Controlla i dati nel centro personale",
+  "storefront.accountGate.employeeSelfProfile.title":
+    "Dati acquisto personale dipendente incompleti",
+  "storefront.accountGate.employeeSelfReview.action": "Vedi account",
+  "storefront.accountGate.employeeSelfReview.cardDescription":
+    "Il profilo di acquisto personale deve essere abilitato prima dell'ordine.",
+  "storefront.accountGate.employeeSelfReview.cardTitle":
+    "Profilo acquisti da abilitare",
+  "storefront.accountGate.employeeSelfReview.description":
+    "PartsPro deve completare l'abilitazione del profilo di acquisto personale prima di usare carrello e checkout.",
+  "storefront.accountGate.employeeSelfReview.hint":
+    "MOQ {moq} · profilo da abilitare",
+  "storefront.accountGate.employeeSelfReview.label": "Da abilitare",
+  "storefront.accountGate.employeeSelfReview.stepStatus":
+    "Controlla lo stato nel centro personale",
+  "storefront.accountGate.employeeSelfReview.title":
+    "Profilo acquisti da abilitare",
+  "storefront.accountGate.employeeSelfSuspended.cardDescription":
+    "Il profilo di acquisto personale dello staff è sospeso.",
+  "storefront.accountGate.employeeSelfSuspended.cardTitle":
+    "Acquisti personali sospesi",
+  "storefront.accountGate.employeeSelfSuspended.description":
+    "Contatta PartsPro per riattivare il profilo di acquisto personale prima di usare carrello e checkout.",
+  "storefront.accountGate.employeeSelfSuspended.hint":
+    "MOQ {moq} · contatta PartsPro",
+  "storefront.accountGate.employeeSelfSuspended.label": "Profilo sospeso",
+  "storefront.accountGate.employeeSelfSuspended.stepSupport": "Contatta PartsPro",
+  "storefront.accountGate.employeeSelfSuspended.title":
+    "Acquisti personali sospesi",
+  "storefront.accountGate.missingField.billingAddress":
+    "Indirizzo di fatturazione",
+  "storefront.accountGate.missingField.companyName": "Azienda",
+  "storefront.accountGate.missingField.email": "Email",
+  "storefront.accountGate.missingField.fiscalCode": "Codice fiscale",
+  "storefront.accountGate.missingField.phone": "Telefono",
+  "storefront.accountGate.missingField.shippingAddress":
+    "Indirizzo di spedizione",
+  "storefront.accountGate.priceUnavailable.cardDescription":
+    "Il prezzo di questo prodotto non è ancora disponibile.",
+  "storefront.accountGate.priceUnavailable.cardTitle": "Prezzo non impostato",
+  "storefront.accountGate.priceUnavailable.description":
+    "Il tuo account è abilitato, ma il prezzo di questo prodotto deve ancora essere aggiornato prima dell'acquisto.",
+  "storefront.accountGate.priceUnavailable.hint":
+    "MOQ {moq} · prezzo da aggiornare",
+  "storefront.accountGate.priceUnavailable.label": "Prezzo non disponibile",
+  "storefront.accountGate.priceUnavailable.stepSupport":
+    "Contatta PartsPro per verificare il prezzo",
+  "storefront.accountGate.priceUnavailable.title": "Prezzo non disponibile",
   "storefront.accountGate.profile.action": "Completa profilo",
   "storefront.accountGate.profile.cardDescription":
     "Completa i dati richiesti nel centro personale per sbloccare prezzi, carrello e checkout.",
@@ -751,6 +824,8 @@ export const storefrontItIT = {
     "Carrello non sincronizzato. Aggiorna la pagina o accedi di nuovo.",
   "storefront.product.card.accountGateAria":
     "{name}: apri istruzioni account.",
+  "storefront.product.card.unavailableReasonAria":
+    "{name} non disponibile per il carrello. Apri il motivo.",
   "storefront.product.card.basePrice": "Prezzo base",
   "storefront.product.card.extraModelsTitle":
     "{count} modelli compatibili aggiuntivi",
@@ -1609,6 +1684,68 @@ export const storefrontZhCN = {
   "storefront.accountGate.dialogProduct": "商品：{name}",
   "storefront.accountGate.noAction": "请联系 PartsPro",
   "storefront.accountGate.stepsTitle": "需要做什么",
+  "storefront.accountGate.delegatedForbidden.cardDescription":
+    "该账号没有权限为其他客户创建代客订单。",
+  "storefront.accountGate.delegatedForbidden.cardTitle": "没有代客下单权限",
+  "storefront.accountGate.delegatedForbidden.description":
+    "使用已选择客户的购物车需要订单管理和客户查看权限。",
+  "storefront.accountGate.delegatedForbidden.hint": "起订量 {moq} · 需要授权",
+  "storefront.accountGate.delegatedForbidden.label": "没有权限",
+  "storefront.accountGate.delegatedForbidden.stepSupport":
+    "请联系 PartsPro 管理员",
+  "storefront.accountGate.delegatedForbidden.title": "没有代客下单权限",
+  "storefront.accountGate.employeeSelfProfile.action": "去补全资料",
+  "storefront.accountGate.employeeSelfProfile.cardDescription":
+    "补全员工自购资料后即可使用购物车和结账。",
+  "storefront.accountGate.employeeSelfProfile.cardTitle": "员工自购资料待补全",
+  "storefront.accountGate.employeeSelfProfile.description":
+    "此员工账号可以查看价格，但暂时不能以自己的资料下单。补全员工自购资料后，即可加入购物车和结账。",
+  "storefront.accountGate.employeeSelfProfile.hint":
+    "起订量 {moq} · 补全员工自购资料",
+  "storefront.accountGate.employeeSelfProfile.label": "自购资料不完整",
+  "storefront.accountGate.employeeSelfProfile.missingTitle": "待补全",
+  "storefront.accountGate.employeeSelfProfile.stepAccount":
+    "前往个人中心检查员工自购资料",
+  "storefront.accountGate.employeeSelfProfile.title": "员工自购资料未完成",
+  "storefront.accountGate.employeeSelfReview.action": "查看账号",
+  "storefront.accountGate.employeeSelfReview.cardDescription":
+    "员工自购资料需要先完成启用才能下单。",
+  "storefront.accountGate.employeeSelfReview.cardTitle": "员工自购功能待启用",
+  "storefront.accountGate.employeeSelfReview.description":
+    "PartsPro 需要先启用该员工的自购资料，之后才能使用购物车和结账。",
+  "storefront.accountGate.employeeSelfReview.hint":
+    "起订量 {moq} · 自购功能待启用",
+  "storefront.accountGate.employeeSelfReview.label": "待启用",
+  "storefront.accountGate.employeeSelfReview.stepStatus":
+    "在个人中心查看当前状态",
+  "storefront.accountGate.employeeSelfReview.title": "员工自购功能待启用",
+  "storefront.accountGate.employeeSelfSuspended.cardDescription":
+    "该员工的自购资料目前处于暂停状态。",
+  "storefront.accountGate.employeeSelfSuspended.cardTitle": "员工自购已暂停",
+  "storefront.accountGate.employeeSelfSuspended.description":
+    "请联系 PartsPro 重新启用员工自购资料，之后才能使用购物车和结账。",
+  "storefront.accountGate.employeeSelfSuspended.hint":
+    "起订量 {moq} · 联系 PartsPro",
+  "storefront.accountGate.employeeSelfSuspended.label": "自购已暂停",
+  "storefront.accountGate.employeeSelfSuspended.stepSupport": "联系 PartsPro",
+  "storefront.accountGate.employeeSelfSuspended.title": "员工自购已暂停",
+  "storefront.accountGate.missingField.billingAddress": "账单地址",
+  "storefront.accountGate.missingField.companyName": "公司名称",
+  "storefront.accountGate.missingField.email": "邮箱",
+  "storefront.accountGate.missingField.fiscalCode": "税号",
+  "storefront.accountGate.missingField.phone": "电话",
+  "storefront.accountGate.missingField.shippingAddress": "收货地址",
+  "storefront.accountGate.priceUnavailable.cardDescription":
+    "该商品的价格暂时不可用。",
+  "storefront.accountGate.priceUnavailable.cardTitle": "商品价格未设置",
+  "storefront.accountGate.priceUnavailable.description":
+    "你的账号已经启用，但该商品需要先更新价格才能购买。",
+  "storefront.accountGate.priceUnavailable.hint":
+    "起订量 {moq} · 等待价格更新",
+  "storefront.accountGate.priceUnavailable.label": "价格不可用",
+  "storefront.accountGate.priceUnavailable.stepSupport":
+    "联系 PartsPro 确认商品价格",
+  "storefront.accountGate.priceUnavailable.title": "商品价格不可用",
   "storefront.accountGate.profile.action": "去补全资料",
   "storefront.accountGate.profile.cardDescription":
     "请在个人中心补全必填资料，完成后即可解锁价格、购物车和结账。",
@@ -1691,6 +1828,8 @@ export const storefrontZhCN = {
   "storefront.product.card.addFailed": "未加入",
   "storefront.product.card.addFailedHint": "购物车未同步，请刷新页面或重新登录。",
   "storefront.product.card.accountGateAria": "{name}：打开账号处理说明。",
+  "storefront.product.card.unavailableReasonAria":
+    "{name} 暂时不能加入购物车，查看原因。",
   "storefront.product.card.basePrice": "原价",
   "storefront.product.card.extraModelsTitle": "另有 {count} 个兼容机型",
   "storefront.product.card.loginHint": "起订量 {moq} · 需要登录",

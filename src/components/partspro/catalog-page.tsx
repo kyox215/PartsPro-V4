@@ -14,7 +14,10 @@ import {
 } from "@/lib/partspro-assisted-order";
 import { tx, txFormat } from "@/i18n/dictionaries/storefront";
 import { inferDeviceModelSeries } from "@/lib/partspro-device-series";
-import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
+import type {
+  PriceVisibilityReason,
+  StorefrontCartAccess,
+} from "@/lib/partspro-account-context";
 import {
   getAccountGateCopy,
   isCustomerActionRequiredReason,
@@ -77,7 +80,7 @@ function getInStockOnlyFromParams(searchParams: CatalogSearchParams) {
 type CatalogPageProps = {
   assistedCompanyId?: string | null;
   assistedCompanyName?: string | null;
-  canUseCart?: boolean;
+  cartAccess?: StorefrontCartAccess;
   filteredTotal?: number;
   initialAccountAccess?: StoreHeaderAccountAccess;
   initialModelGroups?: DeviceModelGroup[];
@@ -89,7 +92,7 @@ type CatalogPageProps = {
 export function CatalogPage({
   assistedCompanyId = null,
   assistedCompanyName = null,
-  canUseCart = false,
+  cartAccess = { allowed: false, missingFields: [], reason: "login_required" },
   filteredTotal,
   initialAccountAccess,
   initialModelGroups,
@@ -109,7 +112,7 @@ export function CatalogPage({
       initialInStockOnly={getInStockOnlyFromParams(searchParams)}
       initialModelGroups={initialModelGroups}
       initialProducts={initialProducts}
-      canUseCart={canUseCart}
+      cartAccess={cartAccess}
       initialModelSeries={getModelSeriesFromParams(searchParams)}
       initialSearchQuery={getSearchQueryFromParams(searchParams)}
       initialSearchTerm={getModelSearchFromParams(searchParams)}
@@ -124,7 +127,7 @@ function CatalogPageContent({
   assistedCompanyId,
   assistedCompanyName,
   initialAccountAccess,
-  canUseCart,
+  cartAccess,
   initialFilters,
   initialInStockOnly,
   initialModelGroups,
@@ -139,7 +142,7 @@ function CatalogPageContent({
   assistedCompanyId: string | null;
   assistedCompanyName: string | null;
   initialAccountAccess?: StoreHeaderAccountAccess;
-  canUseCart: boolean;
+  cartAccess: StorefrontCartAccess;
   initialFilters: CatalogFiltersState;
   initialInStockOnly: boolean;
   initialModelGroups?: DeviceModelGroup[];
@@ -436,7 +439,7 @@ function CatalogPageContent({
                     {products.map((product, index) => (
                       <ProductCard
                         assistedCompanyId={assistedCompanyId}
-                        canUseCart={canUseCart}
+                        cartAccess={cartAccess}
                         key={product.sku}
                         priceGateReason={priceGateReason}
                         priorityImage={index < 4}

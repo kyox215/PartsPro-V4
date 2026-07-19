@@ -10,9 +10,9 @@ import {
   accountPricingCustomerId,
   applyAccountPriceToProduct,
   canDelegateCheckout,
-  canUseStorefrontCart,
   getCurrentAccountContext,
   priceVisibilityReason,
+  storefrontCartAccess,
   type AccountContext,
 } from "@/lib/partspro-account-context";
 import { toStoreHeaderAccountAccess } from "@/lib/partspro-header-access";
@@ -70,7 +70,7 @@ export default async function Page({
         initialProducts={catalogPage.data.products.map((product) =>
           toCatalogCardProduct(product, account)
         )}
-        canUseCart={canUseStorefrontCart(account, assistedCompanyId)}
+        cartAccess={storefrontCartAccess(account, assistedCompanyId)}
         priceGateReason={priceVisibilityReason(account)}
         showWholesalePrice={account.canViewPrices}
       />

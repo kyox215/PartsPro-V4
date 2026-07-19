@@ -14,24 +14,27 @@ import {
 } from "@/components/ui/dialog";
 import { tx, txFormat } from "@/i18n/dictionaries/storefront";
 import {
+  type AccountGateReason,
   getAccountGateCopy,
   type AccountGateCopy,
 } from "@/lib/partspro-account-gate-copy";
-import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
+import type { RequiredAccountProfileField } from "@/lib/partspro-account-context";
 import { cn } from "@/lib/utils";
 import { useT } from "./i18n-provider";
 
 type AccountGateDialogProps = {
   loginNextPath?: string;
+  missingFields?: RequiredAccountProfileField[];
   moq?: number;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   productName?: string;
-  reason: PriceVisibilityReason;
+  reason: AccountGateReason;
 };
 
 export function AccountGateDialog({
   loginNextPath,
+  missingFields,
   moq,
   onOpenChange,
   open,
@@ -39,11 +42,15 @@ export function AccountGateDialog({
   reason,
 }: AccountGateDialogProps) {
   const t = useT();
-  const copy = getAccountGateCopy(t, reason, { loginNextPath, moq });
+  const copy = getAccountGateCopy(t, reason, {
+    loginNextPath,
+    missingFields,
+    moq,
+  });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md">
         <DialogHeader className="pr-8">
           <div className="flex items-start gap-3">
             <div
@@ -58,26 +65,29 @@ export function AccountGateDialog({
               <DialogTitle className="text-base font-black leading-5 text-slate-950">
                 {copy.title}
               </DialogTitle>
+              {productName ? (
+                <div className="mt-1 break-words text-sm leading-5 text-muted-foreground">
+                  {txFormat(
+                    t,
+                    "storefront.accountGate.dialogProduct",
+                    "Prodotto: {name}",
+                    { name: productName }
+                  )}
+                </div>
+              ) : null}
               <DialogDescription className="mt-1 leading-5">
-                {productName
-                  ? txFormat(
-                      t,
-                      "storefront.accountGate.dialogProduct",
-                      "Prodotto: {name}",
-                      { name: productName }
-                    )
-                  : copy.cardTitle}
+                {copy.description}
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
         <div className="space-y-3 text-sm text-slate-700">
-          <p className="leading-6">{copy.description}</p>
           {copy.steps.length > 0 ? (
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
               <div className="text-xs font-black uppercase text-slate-500">
-                {tx(t, "storefront.accountGate.stepsTitle", "Cosa fare")}
+                {copy.stepsTitle ??
+                  tx(t, "storefront.accountGate.stepsTitle", "Cosa fare")}
               </div>
               <ul className="mt-2 space-y-2">
                 {copy.steps.map((step) => (

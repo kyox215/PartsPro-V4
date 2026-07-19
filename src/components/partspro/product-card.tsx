@@ -19,12 +19,15 @@ import { Card, CardContent } from "@/components/ui/card";
 import {
   tx,
   txFormat,
-  type StorefrontTranslator,
 } from "@/i18n/dictionaries/storefront";
 import type { PartProduct } from "@/lib/partspro-data";
 import { formatEuro } from "@/lib/partspro-data";
 import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
-import type { PriceVisibilityReason } from "@/lib/partspro-account-context";
+import type {
+  PriceVisibilityReason,
+  StorefrontCartAccess,
+} from "@/lib/partspro-account-context";
+import { hasOrderableEffectivePrice } from "@/lib/partspro-commerce-rules";
 import {
   getAccountGateCopy,
   isCustomerActionRequiredReason,
@@ -48,7 +51,7 @@ import { ProductRestockReminderButton } from "./product-restock-reminder-button"
 
 type ProductCardProps = {
   assistedCompanyId?: string | null;
-  canUseCart?: boolean;
+  cartAccess?: StorefrontCartAccess;
   priceGateReason?: PriceVisibilityReason;
   priorityImage?: boolean;
   product: PartProduct;
@@ -67,7 +70,7 @@ const ProductImagePreviewDialog = dynamic(
 
 export const ProductCard = memo(function ProductCard({
   assistedCompanyId,
-  canUseCart = false,
+  cartAccess = { allowed: false, missingFields: [], reason: "login_required" },
   priceGateReason = "login_required",
   priorityImage = false,
   product,
@@ -76,7 +79,8 @@ export const ProductCard = memo(function ProductCard({
   const t = useT();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [accountGateOpen, setAccountGateOpen] = useState(false);
-  const hasEffectivePrice = product.price > 0;
+  const canUseCart = cartAccess.allowed;
+  const hasEffectivePrice = hasOrderableEffectivePrice(product);
   const priceDisplay = getProductPriceDisplay(product);
   const hasOpenPrice =
     showWholesalePrice &&
@@ -103,17 +107,22 @@ export const ProductCard = memo(function ProductCard({
     loginNextPath: productPath,
     moq: product.moq,
   });
-  const disabledCartCopy = productCartDisabledCopy(t, {
-    canUseCart,
-    hasEffectivePrice,
-    hasOpenPrice,
-    hasSellableStock,
+  const blockedCartReason = cartAccess.allowed
+    ? "price_unavailable"
+    : cartAccess.reason;
+  const blockedCartCopy = getAccountGateCopy(t, blockedCartReason, {
+    missingFields: cartAccess.allowed ? [] : cartAccess.missingFields,
+    moq: product.moq,
   });
   const canOpenAccountGate =
     hasSellableStock &&
     !hasOpenPrice &&
     !isLoginRequired &&
     isCustomerActionRequiredReason(priceGateReason);
+  const canExplainBlockedCart =
+    hasSellableStock && !canAddToCart && !isLoginRequired;
+  const dialogReason = canOpenAccountGate ? priceGateReason : blockedCartReason;
+  const dialogMissingFields = cartAccess.allowed ? [] : cartAccess.missingFields;
   const addFailedHint = tx(
     t,
     "storefront.product.card.addFailedHint",
@@ -384,6 +393,7 @@ export const ProductCard = memo(function ProductCard({
                   )}
                   title={hiddenPriceCopy.title}
                   onClick={() => setAccountGateOpen(true)}
+                  aria-haspopup="dialog"
                 >
                   <Info className="size-3.5 sm:size-4" />
                   <span className="sr-only min-w-0 truncate sm:not-sr-only sm:max-w-[72px]">
@@ -397,20 +407,23 @@ export const ProductCard = memo(function ProductCard({
                 />
               ) : (
                 <Button
+                  type="button"
                   size="sm"
                   variant="outline"
-                  className="size-8 min-w-0 shrink-0 bg-slate-50 px-0 text-slate-500 sm:size-auto sm:min-w-[96px] sm:px-2"
-                  disabled
+                  className="size-8 min-w-0 shrink-0 bg-slate-50 px-0 text-slate-500 hover:bg-slate-100 hover:text-slate-700 sm:size-auto sm:min-w-[96px] sm:px-2"
+                  onClick={() => setAccountGateOpen(true)}
+                  aria-haspopup="dialog"
                   aria-label={txFormat(
                     t,
-                    "storefront.product.card.unavailableAria",
-                    "{name} non disponibile per il carrello",
+                    "storefront.product.card.unavailableReasonAria",
+                    "{name} non disponibile per il carrello. Apri il motivo.",
                     { name: product.name }
                   )}
+                  title={blockedCartCopy.title}
                 >
                   <ShoppingCart className="size-3.5 sm:size-4" />
                   <span className="sr-only sm:not-sr-only">
-                    {disabledCartCopy.label}
+                    {blockedCartCopy.label}
                   </span>
                 </Button>
               )}
@@ -443,14 +456,15 @@ export const ProductCard = memo(function ProductCard({
           productName={product.name}
         />
       )}
-      {canOpenAccountGate ? (
+      {canExplainBlockedCart ? (
         <AccountGateDialog
           loginNextPath={productPath}
+          missingFields={dialogMissingFields}
           moq={product.moq}
           onOpenChange={setAccountGateOpen}
           open={accountGateOpen}
           productName={product.name}
-          reason={priceGateReason}
+          reason={dialogReason}
         />
       ) : null}
     </>
@@ -489,42 +503,4 @@ function safeAddCartItem(
   } catch {
     return false;
   }
-}
-
-function productCartDisabledCopy(
-  t: StorefrontTranslator,
-  state: {
-    canUseCart: boolean;
-    hasEffectivePrice: boolean;
-    hasOpenPrice: boolean;
-    hasSellableStock: boolean;
-  }
-) {
-  if (!state.hasSellableStock) {
-    return {
-      label: tx(t, "storefront.product.card.unavailable", "Esaurito"),
-    };
-  }
-
-  if (!state.hasOpenPrice) {
-    return {
-      label: tx(t, "storefront.product.card.priceLocked", "Listino"),
-    };
-  }
-
-  if (!state.canUseCart) {
-    return {
-      label: tx(t, "storefront.product.card.cartLocked", "Bloccato"),
-    };
-  }
-
-  if (!state.hasEffectivePrice) {
-    return {
-      label: tx(t, "storefront.product.card.priceMissing", "Prezzo"),
-    };
-  }
-
-  return {
-    label: tx(t, "storefront.product.card.unavailable", "Esaurito"),
-  };
 }
