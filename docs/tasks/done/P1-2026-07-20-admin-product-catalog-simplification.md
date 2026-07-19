@@ -1,8 +1,8 @@
 # P1-2026-07-20-admin-product-catalog-simplification
 
-状态：in_progress
+状态：done
 
-看板目录：now
+看板目录：done
 
 优先级：P1
 
@@ -95,7 +95,7 @@ Task ID：TASK-20260720-03
 
 ## 批准要求
 
-- 是否需要老板批准：已通过“开始按照计划……完成后推送以及应用”批准
+- 是否需要老板批准：已批准；2026-07-20 老板明确回复“批准”，同意应用本任务的生产权限 DDL
 - 是否需要 Supabase migration 安全门：是；创建 RPC 的直接调用路径必须在数据库层补齐字段权限，migration 不改表、不回填数据
 - 是否需要 Vercel 发布门：是
 - 是否需要 PartsPro 业务契约验收：是
@@ -144,19 +144,26 @@ npm run build
 | `npm run lint` | pass | ESLint 0 error / 0 warning |
 | `npx tsc --noEmit` | pass | TypeScript 通过 |
 | `npm run build` | pass | Next.js 16.2.6 production build 通过 |
-| browser mobile / desktop | pending |  |
-| Vercel production | pending |  |
+| browser mobile / desktop | pass | 已登录生产后台；桌面与 390×844 手机端目录、新建、编辑、中文/意大利语通过；页面与抽屉 `scrollWidth = clientWidth`，控制台 0 error；未提交表单 |
+| Vercel production | pass | commit `e755281`，deployment `dpl_4i73MDuEXtkzwNoqeZUMisgA6ZUr` READY，`www.partspro.app` alias 正常 |
+| production API auth smoke | pass | 未登录请求 `/api/admin/products?limit=1` 返回预期 401 `missing_session` |
+| Supabase migration | pass | `PartsPro-V4` / `yiuxrjqexlfjtxxrkqvi` ACTIVE_HEALTHY；仅本任务 migration 已写入远端版本 `20260719232814`；远端 statement 与本地文件 SHA-256 均为 `657a3db633a879ff1be1d38ac707873ccb57284fccd6cf0189774236153da077`，另两份 pending migration 未应用 |
+| RPC permission smoke | pass | 原始 private writer 对 `authenticated`/`anon` 均不可执行；guard 仅允许 `authenticated`/`service_role`；public wrapper 为 invoker 且 `anon` 不可执行；guard 固定 `search_path = public, pg_temp` |
+| Supabase advisors | pass with baseline warnings | security 33 WARN / 0 ERROR、performance 11 WARN + 86 INFO / 0 ERROR；目标函数无新增 advisory，现有项目级告警不在本任务范围 |
+| production data invariant | pass | migration statement 仅含函数、授权与注释 DDL；当前商品数 17,906，最新 `products.updated_at` 为 `2026-07-19 11:55:15.196229+00`；未创建测试商品、未回填数据 |
 
 ## 执行记录
 
 - 创建：2026-07-20
 - 批准：2026-07-20，老板要求按已确认的极简计划执行并推送应用
 - 开始：2026-07-20
-- review：
-- verified：
-- released：
-- closed：
+- review：2026-07-20，完成 React、API、RPC 权限、移动端响应式与 SQL 风险复核
+- verified：2026-07-20，lint、TypeScript、build、生产桌面/手机端、双语和 API 鉴权 smoke 通过
+- released：2026-07-20，`e755281` 已推送 `main`，Vercel production READY
+- approved-ddl：2026-07-20，老板明确批准生产权限 DDL
+- applied-db：2026-07-20，远端 migration `20260719232814_guard_admin_product_create_permissions` 已确认应用并完成权限、哈希与数据不变量核验
+- closed：2026-07-20
 
 ## 结果
 
-执行中。
+极简商品目录与一页式新建/编辑已上线，创建 RPC 的价格、成本、库存和图片字段权限已在生产数据库收紧。手机端、桌面端、双语、构建、API 鉴权、Supabase 权限与生产部署均通过；未触碰其他任务的 migration、审计文件、前台改动或重复 PWA 图标。
