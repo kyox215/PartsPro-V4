@@ -1,8 +1,8 @@
 # P2-2026-07-20-hide-admin-order-numbers
 
-状态：verified
+状态：closed
 
-看板目录：now
+看板目录：done
 
 优先级：P2
 
@@ -118,7 +118,9 @@ npm run build
 | target ESLint | pass | 三个目标源码文件检查通过，退出码 0 |
 | `npm run lint` | pass | ESLint 全量检查通过 |
 | `npm run build` | pass | Next.js 16.2.6 编译、TypeScript 与 17 个静态页面生成通过 |
-| production smoke | pending |  |
+| production deploy | pass | `27dd781` / `dpl_8K7HVavpzJVdZMmzHURq8G82n8G2`，Vercel production READY，别名包含 `www.partspro.app` |
+| production smoke | pass | `/admin?panel=orders` 返回 200 并按未登录预期跳转 `/login?next=/admin`；部署 15 分钟窗口无 error/fatal runtime 日志 |
+| authenticated visual | limited | 独立应用内浏览器无管理员登录态；未获授权，不读取用户现有 Chrome 会话 |
 
 ## 执行记录
 
@@ -127,9 +129,11 @@ npm run build
 - 开始：2026-07-20，Codex
 - review：2026-07-20，定向 diff、订单显示契约与通知跳转字段检查通过
 - verified：2026-07-20，目标 ESLint、全量 lint 与生产 build 通过
-- released：
-- closed：
+- released：2026-07-20，提交 `27dd781` 已推送 `origin/main`，Vercel production READY
+- closed：2026-07-20，代码、构建、部署、公开 smoke 与运行时错误扫描完成
 
 ## 结果
 
-执行中。
+后台移动订单卡片不再在客户名下方显示短订单号；通知中心按 `new_order` 事件类型把新旧通知标题简化为“新订单”或“Nuovo ordine”；后续浏览器推送标题也不再附带订单号。订单号继续保留在通知 payload、source、targetPath、订单详情、搜索、打印和数据库中，点击定位与审计契约不变。
+
+本次没有 Supabase 变更，因此未应用任何 migration。生产部署已 READY，公开路由与运行时错误扫描通过。残余验证边界：自动化浏览器没有管理员登录态，因此没有对真实订单数据做登录后截图级复核；组件差异、TypeScript、lint、生产 build 与 Vercel 构建均已覆盖本次改动。
