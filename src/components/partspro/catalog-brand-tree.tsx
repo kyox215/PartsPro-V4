@@ -478,7 +478,7 @@ function catalogQueryHref(
     params.set("brand", brand);
   }
 
-  if (modelSeries) {
+  if (modelSeries && !model) {
     params.set("modelSeries", modelSeries);
   }
 

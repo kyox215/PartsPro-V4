@@ -216,6 +216,7 @@ type AdminProductRow = PartProduct & {
   batchCode?: string | null;
   catalogUrl?: string;
   catalogStatus: CatalogStatus;
+  compatibilityManaged?: boolean;
   costPrice?: number;
   galleryImagePaths?: string[];
   imagePath?: string | null;
@@ -397,6 +398,7 @@ type ProductFormValues = {
   tags: string;
   model: string;
   modelCode: string;
+  modelCodes: string;
   batchCode: string;
   supplier: string;
   imagePath: string;
@@ -419,11 +421,14 @@ type ProductWritePayload = {
   tags: string[];
   model?: string;
   modelCode?: string;
+  modelCodes?: string[];
   batchCode?: string;
   supplier?: string;
   imagePath?: string;
   imageAlt?: string;
 };
+
+type ProductUpdateScope = "all" | "base" | "price" | "compatibility";
 
 type StockAdjustmentPayload = {
   action: StockAdjustmentAction;
@@ -767,6 +772,8 @@ const panelText = {
     modelSeries: "系列",
     model: "主型号",
     modelCode: "外部码 / EAN / 型号代码",
+    modelCodes: "设备型号代码（独立于适配型号）",
+    managedModelCodesHint: "该商品已使用规范设备关系；型号代码由设备档案统一管理，此处只读。",
     batchCode: "批次",
     supplier: "供应商",
     imagePath: "主图路径",
@@ -1135,6 +1142,8 @@ const panelText = {
     modelSeries: "Serie",
     model: "Modello principale",
     modelCode: "Codice esterno / EAN / modello",
+    modelCodes: "Codici modello dispositivo (separati dai modelli compatibili)",
+    managedModelCodesHint: "Questo prodotto usa relazioni dispositivo normalizzate; i codici sono gestiti nella scheda dispositivo e qui sono di sola lettura.",
     batchCode: "Lotto",
     supplier: "Fornitore",
     imagePath: "Percorso immagine",
@@ -1635,11 +1644,21 @@ export function AdminProductsPanel() {
     }
   }
 
-  async function handleUpdateProduct(sku: string, values: ProductFormValues) {
+  async function handleUpdateProduct(
+    sku: string,
+    values: ProductFormValues,
+    scope: ProductUpdateScope = "all",
+    compatibilityManaged = false
+  ) {
     setIsMutating(true);
 
     try {
-      const saved = await updateAdminProduct(sku, values);
+      const saved = await updateAdminProduct(
+        sku,
+        values,
+        scope,
+        compatibilityManaged
+      );
       replaceProduct(saved);
       setNotice({
         tone: "success",
@@ -5454,7 +5473,12 @@ function ProductDrawer({
   onInitialEditHandled: () => void;
   onClose: () => void;
   onCreate: (values: ProductFormValues) => Promise<AdminProductRow | null>;
-  onSave: (sku: string, values: ProductFormValues) => Promise<AdminProductRow | null>;
+  onSave: (
+    sku: string,
+    values: ProductFormValues,
+    scope?: ProductUpdateScope,
+    compatibilityManaged?: boolean
+  ) => Promise<AdminProductRow | null>;
   onSaved: (product: AdminProductRow) => void;
   onStockAdjust: (product: AdminProductRow) => void;
   onMediaSaved: (product: AdminProductRow) => void;
@@ -5538,7 +5562,12 @@ function ProductDetails({
   adminText: ReturnType<typeof getAdminDictionary>["admin"];
   initialEditSku: string | null;
   onInitialEditHandled: () => void;
-  onSave: (sku: string, values: ProductFormValues) => Promise<AdminProductRow | null>;
+  onSave: (
+    sku: string,
+    values: ProductFormValues,
+    scope?: ProductUpdateScope,
+    compatibilityManaged?: boolean
+  ) => Promise<AdminProductRow | null>;
   onSaved: (product: AdminProductRow) => void;
   onStockAdjust: () => void;
   onMediaSaved: (product: AdminProductRow) => void;
@@ -5550,6 +5579,7 @@ function ProductDetails({
     values: ProductFormValues;
     errors: Record<string, string>;
     isSubmitting: boolean;
+    scope: ProductUpdateScope;
   } | null>(null);
   const [activeTabState, setActiveTabState] = React.useState({
     sku: product.sku,
@@ -5608,6 +5638,7 @@ function ProductDetails({
               values: productFormDefaults(product),
               errors: {},
               isSubmitting: false,
+              scope: productUpdateScopeForTab(activeTab),
             };
       const nextErrors = { ...nextState.errors };
       delete nextErrors[key];
@@ -5621,12 +5652,17 @@ function ProductDetails({
   }
 
   function startInlineEdit(tabValue = "base") {
+    if (isEditing) {
+      return;
+    }
+
     setActiveTabState({ sku: product.sku, value: tabValue });
     setEditorState({
       sku: product.sku,
       values: productFormDefaults(product),
       errors: {},
       isSubmitting: false,
+      scope: productUpdateScopeForTab(tabValue),
     });
     setEditingSku(product.sku);
     onInitialEditHandled();
@@ -5639,6 +5675,10 @@ function ProductDetails({
   }
 
   function setActiveTab(value: string) {
+    if (isEditing && value !== activeTab) {
+      return;
+    }
+
     setActiveTabState({ sku: product.sku, value });
   }
 
@@ -5651,6 +5691,9 @@ function ProductDetails({
         values: current?.sku === product.sku ? current.values : editValues,
         errors: nextErrors,
         isSubmitting: false,
+        scope: current?.sku === product.sku
+          ? current.scope
+          : productUpdateScopeForTab(activeTab),
       }));
       return;
     }
@@ -5660,12 +5703,21 @@ function ProductDetails({
       values: current?.sku === product.sku ? current.values : editValues,
       errors: {},
       isSubmitting: true,
+      scope: current?.sku === product.sku
+        ? current.scope
+        : productUpdateScopeForTab(activeTab),
     }));
 
     let saved: AdminProductRow | null = null;
 
     try {
-      saved = await onSave(product.sku, editValues);
+      const scope = editorState?.scope ?? productUpdateScopeForTab(activeTab);
+      saved = await onSave(
+        product.sku,
+        editValues,
+        scope,
+        Boolean(product.compatibilityManaged)
+      );
     } finally {
       if (!saved) {
         setEditorState((current) => (
@@ -5729,7 +5781,12 @@ function ProductDetails({
               <SlidersHorizontal className="size-4" />
               {text.stockAdjust}
             </Button>
-            <Button size="sm" className="lg:w-full" onClick={() => startInlineEdit("base")}>
+            <Button
+              size="sm"
+              className="lg:w-full"
+              disabled={isEditing}
+              onClick={() => startInlineEdit("base")}
+            >
               <Edit className="size-4" />
               {text.edit}
             </Button>
@@ -5750,12 +5807,12 @@ function ProductDetails({
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
         <div className="max-w-full overflow-x-auto rounded-lg border border-slate-200 bg-white p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <TabsList variant="line" className="grid min-w-[660px] grid-cols-6 bg-transparent">
-            <TabsTrigger value="base">{text.tabBase}</TabsTrigger>
-            <TabsTrigger value="price">{text.tabPrice}</TabsTrigger>
-            <TabsTrigger value="inventory">{text.tabInventory}</TabsTrigger>
-            <TabsTrigger value="media">{text.tabMedia}</TabsTrigger>
-            <TabsTrigger value="compatibility">{text.tabCompatibility}</TabsTrigger>
-            <TabsTrigger value="audit">{text.tabAudit}</TabsTrigger>
+            <TabsTrigger value="base" disabled={isEditing && activeTab !== "base"}>{text.tabBase}</TabsTrigger>
+            <TabsTrigger value="price" disabled={isEditing && activeTab !== "price"}>{text.tabPrice}</TabsTrigger>
+            <TabsTrigger value="inventory" disabled={isEditing && activeTab !== "inventory"}>{text.tabInventory}</TabsTrigger>
+            <TabsTrigger value="media" disabled={isEditing && activeTab !== "media"}>{text.tabMedia}</TabsTrigger>
+            <TabsTrigger value="compatibility" disabled={isEditing && activeTab !== "compatibility"}>{text.tabCompatibility}</TabsTrigger>
+            <TabsTrigger value="audit" disabled={isEditing && activeTab !== "audit"}>{text.tabAudit}</TabsTrigger>
           </TabsList>
         </div>
         <TabsContent value="base" className="mt-0">
@@ -5976,6 +6033,19 @@ function ProductDetails({
                     onChange={(event) => setEditValue("compatibleWith", event.target.value)}
                   />
                 </EditableDetailItem>
+                <EditableDetailItem label={text.modelCodes}>
+                  <Textarea
+                    value={editValues.modelCodes}
+                    className="min-h-24"
+                    disabled={Boolean(product.compatibilityManaged)}
+                    onChange={(event) => setEditValue("modelCodes", event.target.value)}
+                  />
+                  {product.compatibilityManaged ? (
+                    <p className="mt-1 text-xs font-medium text-slate-500">
+                      {text.managedModelCodesHint}
+                    </p>
+                  ) : null}
+                </EditableDetailItem>
                 <EditableDetailItem label={text.tags}>
                   <Textarea
                     value={editValues.tags}
@@ -5990,6 +6060,11 @@ function ProductDetails({
                   title={text.compatibility}
                   empty={text.none}
                   items={product.compatibleWith}
+                />
+                <TokenPanel
+                  title={text.modelCodes}
+                  empty={text.none}
+                  items={product.modelCodes ?? []}
                 />
                 <TokenPanel title={text.tags} empty={text.none} items={product.tags} />
               </div>
@@ -6024,7 +6099,12 @@ function ProductEditorForm({
   text: typeof panelText.zh | typeof panelText.it;
   adminText: ReturnType<typeof getAdminDictionary>["admin"];
   onCreate: (values: ProductFormValues) => Promise<AdminProductRow | null>;
-  onSave: (sku: string, values: ProductFormValues) => Promise<AdminProductRow | null>;
+  onSave: (
+    sku: string,
+    values: ProductFormValues,
+    scope?: ProductUpdateScope,
+    compatibilityManaged?: boolean
+  ) => Promise<AdminProductRow | null>;
   onSaved: (product: AdminProductRow) => void;
   onCancel?: () => void;
   onStockAdjust: (product: AdminProductRow) => void;
@@ -6067,7 +6147,12 @@ function ProductEditorForm({
     try {
       const saved =
         isEdit && product
-          ? await onSave(product.sku, submitValues)
+          ? await onSave(
+              product.sku,
+              submitValues,
+              "all",
+              Boolean(product.compatibilityManaged)
+            )
           : await onCreate(submitValues);
 
       if (saved) {
@@ -6239,6 +6324,17 @@ function ProductEditorForm({
           </Field>
           <Field label={text.modelCode}>
             <Input value={values.modelCode} onChange={(event) => setValue("modelCode", event.target.value)} />
+          </Field>
+          <Field
+            label={text.modelCodes}
+            hint={product?.compatibilityManaged ? text.managedModelCodesHint : undefined}
+          >
+            <Textarea
+              value={values.modelCodes}
+              className="min-h-20"
+              disabled={Boolean(product?.compatibilityManaged)}
+              onChange={(event) => setValue("modelCodes", event.target.value)}
+            />
           </Field>
           <Field label={text.batchCode}>
             <Input value={values.batchCode} onChange={(event) => setValue("batchCode", event.target.value)} />
@@ -7423,8 +7519,18 @@ async function createAdminProduct(values: ProductFormValues) {
   return readSavedProduct(await readJsonResponse(response));
 }
 
-async function updateAdminProduct(sku: string, values: ProductFormValues) {
-  const payload = buildProductWritePayload(values, "update");
+async function updateAdminProduct(
+  sku: string,
+  values: ProductFormValues,
+  scope: ProductUpdateScope = "all",
+  compatibilityManaged = false
+) {
+  const payload = buildProductWritePayload(values, "update", scope);
+
+  if (compatibilityManaged) {
+    delete payload.modelCodes;
+  }
+
   const response = await fetchAdminWriteResponse(
     adminProductsEndpoint,
     {
@@ -8118,6 +8224,10 @@ function normalizeProductApiRow(row: unknown): AdminProductRow | null {
     batchCode: sanitizeSupplierText(readString(row.batchCode) ?? readString(row.batch_code)),
     catalogUrl: readString(row.catalogUrl) ?? readString(row.catalog_url),
     catalogStatus,
+    compatibilityManaged:
+      readBoolean(row.compatibilityManaged) ??
+      readBoolean(row.compatibility_managed) ??
+      false,
     costPrice: readNumber(row.costPrice) ?? readNumber(row.cost_price),
     galleryImagePaths:
       readStringArray(row.galleryImagePaths) ??
@@ -8238,7 +8348,11 @@ function normalizeProductAuditEvent(row: unknown): ProductAuditEvent | null {
   };
 }
 
-function buildProductWritePayload(values: ProductFormValues, mode: "create" | "update") {
+function buildProductWritePayload(
+  values: ProductFormValues,
+  mode: "create" | "update",
+  scope: ProductUpdateScope = "all"
+) {
   const price = parseNumber(values.price) ?? 0;
   const retailPrice = parseNumber(values.retailPrice);
   const costPrice = parseNumber(values.costPrice);
@@ -8268,12 +8382,62 @@ function buildProductWritePayload(values: ProductFormValues, mode: "create" | "u
   assignOptional(payload, "costPrice", costPrice);
   assignOptional(payload, "model", values.model.trim());
   assignOptional(payload, "modelCode", sanitizeSupplierText(values.modelCode));
+  payload.modelCodes = splitList(values.modelCodes).map(sanitizeSupplierText).filter(Boolean);
   assignOptional(payload, "batchCode", sanitizeSupplierText(values.batchCode));
   assignOptional(payload, "supplier", sanitizeSupplierText(values.supplier));
   assignOptional(payload, "imagePath", values.imagePath.trim());
   assignOptional(payload, "imageAlt", values.imageAlt.trim());
 
-  return payload;
+  if (mode === "create" || scope === "all") {
+    return payload;
+  }
+
+  if (scope === "price") {
+    return pickProductPayload(payload, ["price", "retailPrice", "costPrice"]);
+  }
+
+  if (scope === "compatibility") {
+    return pickProductPayload(payload, ["compatibleWith", "modelCodes", "tags"]);
+  }
+
+  return pickProductPayload(payload, [
+    "name",
+    "category",
+    "brand",
+    "grade",
+    "moq",
+    "model",
+    "modelCode",
+    "batchCode",
+    "supplier",
+  ]);
+}
+
+function productUpdateScopeForTab(tab: string): ProductUpdateScope {
+  if (tab === "price") {
+    return "price";
+  }
+
+  if (tab === "compatibility") {
+    return "compatibility";
+  }
+
+  return "base";
+}
+
+function pickProductPayload<Key extends keyof ProductWritePayload>(
+  payload: ProductWritePayload,
+  keys: Key[]
+) {
+  const picked: Partial<ProductWritePayload> = {};
+
+  for (const key of keys) {
+    if (payload[key] !== undefined) {
+      Object.assign(picked, { [key]: payload[key] });
+    }
+  }
+
+  return picked;
 }
 
 function defaultProductFormValues(): ProductFormValues {
@@ -8294,6 +8458,7 @@ function defaultProductFormValues(): ProductFormValues {
     tags: "",
     model: "",
     modelCode: "",
+    modelCodes: "",
     batchCode: "",
     supplier: "",
     imagePath: "",
@@ -8319,6 +8484,7 @@ function productFormDefaults(product: AdminProductRow): ProductFormValues {
     tags: product.tags.join(", "),
     model: product.model ?? "",
     modelCode: product.modelCode ?? "",
+    modelCodes: product.modelCodes?.join(", ") ?? "",
     batchCode: product.batchCode ?? "",
     supplier: product.supplier ?? "",
     imagePath: product.imagePath ?? "",

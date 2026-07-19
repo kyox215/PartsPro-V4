@@ -40,6 +40,7 @@ export function toAdminProductDto(product: AdminProduct) {
     modelSeries: product.modelSeries ?? null,
     modelCode: product.modelCode ?? null,
     modelCodes: product.modelCodes,
+    compatibilityManaged: product.compatibilityManaged,
     batchCode: sanitizeNullableSupplierText(product.batchCode),
     supplier: sanitizeNullableSupplierText(product.supplier),
     compatibleWith: product.compatibleWith,

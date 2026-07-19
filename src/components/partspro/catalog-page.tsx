@@ -719,7 +719,7 @@ function buildCatalogSelectionPath(
     params.set("category", selection.category);
   }
 
-  if (selection.modelSeries) {
+  if (selection.modelSeries && !selection.model) {
     params.set("modelSeries", selection.modelSeries);
   }
 
@@ -844,7 +844,7 @@ function buildCatalogApiPath(
     params.set("category", selection.category);
   }
 
-  if (selection.modelSeries) {
+  if (selection.modelSeries && !selection.model) {
     params.set("modelSeries", selection.modelSeries);
   }
 

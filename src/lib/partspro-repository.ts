@@ -47,6 +47,7 @@ import {
 import {
   deviceModelSeriesFilterValues,
   inferDeviceModelSeries,
+  normalizeDeviceModelName,
   normalizeDeviceModelSeries,
 } from "@/lib/partspro-device-series";
 import { effectiveCustomerTier, normalizeCustomerTier } from "@/lib/partspro-pricing";
@@ -341,6 +342,7 @@ export type ProductRestockRequestPage = {
 export type AdminProduct = RepositoryPartProduct & {
   id: string;
   sourceSku?: string;
+  compatibilityManaged: boolean;
   activeRestockRequestCount: number;
   catalogStatus: AdminCatalogStatus;
   stockStatus: StockStatus;
@@ -1563,6 +1565,7 @@ type ProductQueryRequest = {
   eq(column: string, value: unknown): ProductQueryRequest;
   gte(column: string, value: unknown): ProductQueryRequest;
   in(column: string, values: unknown[]): ProductQueryRequest;
+  overlaps(column: string, values: unknown[]): ProductQueryRequest;
   or(filters: string): ProductQueryRequest;
   order(column: string, options: { ascending: boolean }): ProductQueryRequest;
   range(
@@ -2376,8 +2379,8 @@ function publicCatalogPageCacheKey(
     grade: query.grade ?? null,
     limit: Math.max(query.limit, 1),
     minStock: query.minStock ?? null,
-    model: query.model ?? null,
-    modelSeries: query.modelSeries ?? null,
+    model: normalizeDeviceModelName(query.brand, query.model) ?? null,
+    modelSeries: query.model ? null : query.modelSeries ?? null,
     offset: Math.max(query.offset, 0),
     q: query.q?.trim() || null,
     scope: options.scope ?? "public",
@@ -2422,6 +2425,8 @@ function prunePublicCatalogPageCache(now = Date.now()) {
 function clearPublicCatalogPageCache() {
   publicCatalogPageCache.clear();
   publicCatalogPageRequests.clear();
+  catalogModelGroupsCache = null;
+  catalogModelGroupsRequest = null;
 }
 
 async function readPublicCatalogModelGroups(): Promise<
@@ -2813,9 +2818,14 @@ export async function updateAdminProduct(
     );
   }
 
+  const [enrichedProduct] = await enrichAdminProductsWithDeviceCompatibility(
+    context.client,
+    [product]
+  );
+
   clearPublicCatalogPageCache();
 
-  return { data: product, source: "supabase" };
+  return { data: enrichedProduct ?? product, source: "supabase" };
 }
 
 export async function hideAdminProduct(
@@ -2870,9 +2880,14 @@ export async function adjustAdminProductStock(
     );
   }
 
+  const [enrichedProduct] = await enrichAdminProductsWithDeviceCompatibility(
+    context.client,
+    [product]
+  );
+
   clearPublicCatalogPageCache();
 
-  return { data: product, source: "supabase" };
+  return { data: enrichedProduct ?? product, source: "supabase" };
 }
 
 export async function setAdminProductImages(
@@ -2897,9 +2912,14 @@ export async function setAdminProductImages(
     );
   }
 
+  const [enrichedProduct] = await enrichAdminProductsWithDeviceCompatibility(
+    context.client,
+    [product]
+  );
+
   clearPublicCatalogPageCache();
 
-  return { data: product, source: "supabase" };
+  return { data: enrichedProduct ?? product, source: "supabase" };
 }
 
 export async function listAdminProductAuditEvents(
@@ -2989,9 +3009,14 @@ async function runAdminProductAction(
     );
   }
 
+  const [enrichedProduct] = await enrichAdminProductsWithDeviceCompatibility(
+    context.client,
+    [product]
+  );
+
   clearPublicCatalogPageCache();
 
-  return { data: product, source: "supabase" };
+  return { data: enrichedProduct ?? product, source: "supabase" };
 }
 
 export async function listAdminCustomers(
@@ -5156,7 +5181,7 @@ async function readCatalogProductPageFromTable(
 
   try {
     const request = applyCatalogProductQuery(
-      client.from(table).select(select, { count: "planned" }) as unknown as ProductQueryRequest,
+      client.from(table).select(select, { count: "exact" }) as unknown as ProductQueryRequest,
       table,
       query,
       options.scope ?? "public"
@@ -5202,7 +5227,10 @@ function applyCatalogProductQuery(
   }
 
   if (query.brand) {
-    request = request.eq("brand", query.brand);
+    request =
+      table === "catalog_public_summary"
+        ? request.contains("compatibility_brands", [query.brand])
+        : request.eq("brand", query.brand);
   }
 
   if (query.category) {
@@ -5218,13 +5246,21 @@ function applyCatalogProductQuery(
   }
 
   if (query.model) {
-    request = request.contains("compatibility_models", [query.model]);
+    const model = normalizeDeviceModelName(query.brand, query.model) ?? query.model;
+    request = request.contains(
+      table === "catalog_public_summary" ? "compatibility_search_terms" : "compatibility_models",
+      [model]
+    );
   }
 
-  if (query.modelSeries) {
+  if (query.modelSeries && !query.model) {
     const seriesFilters = deviceModelSeriesFilterValues(query.brand, query.modelSeries);
-    request =
-      seriesFilters.length > 1
+    request = table === "catalog_public_summary"
+      ? request.overlaps(
+          "compatibility_model_series",
+          seriesFilters.length > 0 ? seriesFilters : [query.modelSeries]
+        )
+      : seriesFilters.length > 1
         ? request.in("model_series", seriesFilters)
         : request.eq("model_series", seriesFilters[0] ?? query.modelSeries);
   }
@@ -5498,7 +5534,16 @@ async function readAdminProductPage(
     );
   }
 
-  return parseAdminProductPageRpcPayload(data);
+  const page = parseAdminProductPageRpcPayload(data);
+
+  if (!page) {
+    return null;
+  }
+
+  return {
+    ...page,
+    products: await enrichAdminProductsWithDeviceCompatibility(client, page.products),
+  };
 }
 
 async function readAdminProductIssueFilterFallbackPage(
@@ -5537,10 +5582,15 @@ async function readAdminProductIssueFilterFallbackPage(
   const limit = Math.min(Math.max(query.limit, 1), 200);
   const pageRows = sortedRows.slice(offset, offset + limit);
 
-  return {
+  const page: AdminProductPage = {
     products: pageRows.map(mapAdminProductRow).filter(isDefined),
     summary: summarizeAdminProductFallbackRows(filteredRows),
     total: filteredRows.length,
+  };
+
+  return {
+    ...page,
+    products: await enrichAdminProductsWithDeviceCompatibility(client, page.products),
   };
 }
 
@@ -7769,11 +7819,99 @@ async function readAdminProduct(
     const product = isDbRow(data) ? mapAdminProductRow(data) : null;
 
     if (product) {
-      return product;
+      const [enrichedProduct] = await enrichAdminProductsWithDeviceCompatibility(
+        client,
+        [product]
+      );
+      return enrichedProduct ?? product;
     }
   }
 
   return null;
+}
+
+async function enrichAdminProductsWithDeviceCompatibility(
+  client: SupabaseServerClient,
+  products: AdminProduct[]
+) {
+  const productIds = uniqueDefinedStrings(products.map((product) => product.id));
+
+  if (productIds.length === 0) {
+    return products;
+  }
+
+  const { data, error } = await client
+    .from("product_device_compatibilities")
+    .select(
+      "product_id, review_status, device_models!inner(canonical_name, model_codes)"
+    )
+    .in("product_id", productIds);
+
+  if (error) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_PRODUCT_COMPATIBILITY_READ_UNAVAILABLE",
+      "Normalized product compatibility could not be read from Supabase.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const managedProductIds = new Set<string>();
+  const approvedModelsByProduct = new Map<string, string[]>();
+  const approvedCodesByProduct = new Map<string, string[]>();
+
+  for (const row of Array.isArray(data) ? data.filter(isDbRow) : []) {
+    const productId = pickString(row, ["product_id"]);
+
+    if (!productId) {
+      continue;
+    }
+
+    managedProductIds.add(productId);
+
+    if (pickString(row, ["review_status"]) !== "approved") {
+      continue;
+    }
+
+    const device = readNestedRow(row, "device_models");
+    const model = device ? pickString(device, ["canonical_name"]) : null;
+    const modelCodes = device ? readStringArray(device, ["model_codes"]) : [];
+
+    if (model) {
+      approvedModelsByProduct.set(productId, [
+        ...(approvedModelsByProduct.get(productId) ?? []),
+        model,
+      ]);
+    }
+
+    if (modelCodes.length > 0) {
+      approvedCodesByProduct.set(productId, [
+        ...(approvedCodesByProduct.get(productId) ?? []),
+        ...modelCodes,
+      ]);
+    }
+  }
+
+  return products.map((product) => {
+    if (!managedProductIds.has(product.id)) {
+      return product;
+    }
+
+    const approvedModels = uniqueDefinedStrings(
+      approvedModelsByProduct.get(product.id) ?? []
+    );
+    const approvedCodes = uniqueDefinedStrings(
+      approvedCodesByProduct.get(product.id) ?? []
+    );
+
+    return {
+      ...product,
+      compatibilityManaged: true,
+      compatibleWith:
+        approvedModels.length > 0 ? approvedModels : product.compatibleWith,
+      modelCodes: approvedCodes.length > 0 ? approvedCodes : product.modelCodes,
+    };
+  });
 }
 
 async function resolveAdminProductRpcSku(
@@ -11883,6 +12021,7 @@ function mapAdminProductRow(row: DbRow): AdminProduct | null {
     ...product,
     id,
     sourceSku: sourceSku ? sourceSku.toUpperCase() : undefined,
+    compatibilityManaged: false,
     activeRestockRequestCount:
       pickNumber(row, [
         "active_restock_request_count",
@@ -13007,23 +13146,27 @@ function readCompatibility(row: DbRow) {
     "compatibleWith",
     "compatible_models",
     "compatibility_models",
-    "model_codes",
     "models",
   ]);
-  const model = pickString(row, ["model", "model_code"]);
+  const model = pickString(row, ["model"]);
 
-  if (model) {
+  if (model && direct.length === 0) {
     direct.push(model);
   }
 
-  const compatibilityRows = getArray(row, "product_compatibility");
+  const compatibilityRows = [
+    ...getArray(row, "product_device_compatibilities"),
+    ...getArray(row, "product_compatibility"),
+  ];
 
   for (const item of compatibilityRows) {
     if (!isDbRow(item)) {
       continue;
     }
 
-    const model = pickNestedString(item, "device_models", ["name"]) ?? pickString(item, ["model_name", "name"]);
+    const model =
+      pickNestedString(item, "device_models", ["canonical_name", "name"]) ??
+      pickString(item, ["canonical_name", "model_name", "name"]);
     if (model) {
       direct.push(model);
     }
@@ -13053,8 +13196,10 @@ function buildDeviceModelGroupsFromPrimaryRows(
     }
 
     const brand = pickString(row, ["brand"]);
-    const model = pickString(row, ["model"]);
-    const compatibilityModels = readStringArray(row, ["compatibility_models", "compatibilityModels"]);
+    const model = normalizeDeviceModelName(brand, pickString(row, ["model"]));
+    const compatibilityModels = readStringArray(row, ["compatibility_models", "compatibilityModels"])
+      .map((entry) => normalizeDeviceModelName(brand, entry))
+      .filter((entry): entry is string => Boolean(entry));
 
     if (!brand || (!model && compatibilityModels.length === 0)) {
       continue;
@@ -13439,6 +13584,16 @@ function sanitizeSupplierStringArray(values: string[]) {
 
 function getObject(row: DbRow, key: string): DbRow | null {
   const value = row[key];
+  return isDbRow(value) ? value : null;
+}
+
+function readNestedRow(row: DbRow, key: string): DbRow | null {
+  const value = row[key];
+
+  if (Array.isArray(value)) {
+    return value.find(isDbRow) ?? null;
+  }
+
   return isDbRow(value) ? value : null;
 }
 

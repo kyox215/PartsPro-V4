@@ -5,6 +5,28 @@ export type DeviceModelSeriesGroup = {
 
 const emptySeries = "";
 
+const canonicalDeviceModelAliases = new Map<string, string>([
+  ["apple:iphone se", "iPhone SE 1st Gen"],
+  ["apple:iphone se 2016", "iPhone SE 1st Gen"],
+  ["apple:iphone se 2020", "iPhone SE 2nd Gen"],
+  ["apple:iphone se2", "iPhone SE 2nd Gen"],
+  ["apple:iphone se 2022", "iPhone SE 3rd Gen"],
+  ["apple:iphone se3", "iPhone SE 3rd Gen"],
+]);
+
+export function normalizeDeviceModelName(
+  brand: string | null | undefined,
+  model: string | null | undefined
+) {
+  const value = normalizeModelName(model);
+
+  if (!value) {
+    return null;
+  }
+
+  return canonicalDeviceModelAliases.get(`${normalizeToken(brand)}:${normalizeToken(value)}`) ?? value;
+}
+
 export function shouldUseDeviceSeries(brand: string | null | undefined) {
   return normalizeToken(brand) !== "apple";
 }
