@@ -48,6 +48,11 @@ export function StoreAccountDropdown({
   }
 
   const accountDisplay = access.displayName ?? access.email;
+  const showEmail =
+    access.authenticated &&
+    access.email &&
+    access.email.trim().toLocaleLowerCase() !==
+      accountDisplay?.trim().toLocaleLowerCase();
 
   return (
     <DropdownMenu>
@@ -70,6 +75,15 @@ export function StoreAccountDropdown({
           {access.authenticated && accountDisplay ? (
             <span className="truncate text-[11px] font-medium text-slate-500">
               {accountDisplay}
+            </span>
+          ) : null}
+          {showEmail ? (
+            <span
+              className="truncate text-[11px] font-medium text-slate-500"
+              dir="ltr"
+              title={access.email ?? undefined}
+            >
+              {access.email}
             </span>
           ) : null}
           {access.canOpenAdmin && access.role ? (
