@@ -1,8 +1,8 @@
 # P1-2026-07-20-cart-gate-reason-dialog
 
-状态：ready_for_release
+状态：done
 
-看板目录：now
+看板目录：done
 
 优先级：P1
 
@@ -125,7 +125,7 @@ npm run build
 | `npx tsc --noEmit` | pass | TypeScript exit 0 |
 | `npm run build` | pass | Next.js 16.2.6 webpack production build exit 0 |
 | browser mobile smoke | pass | 390×844：灰色购物车可点击，弹窗列出电话、税号、账单地址、收货地址；无 console error |
-| Vercel production | pending |  |
+| Vercel production | pass | `dpl_7PNnSbxFT4JPnjayfQh8DuX5oXS5` READY；commit `db4c0d2`；`partspro.app` 首页和目录 smoke 通过 |
 
 ## 执行记录
 
@@ -134,9 +134,9 @@ npm run build
 - 开始：2026-07-20
 - review：2026-07-20，业务契约、Next.js Server/Client 边界、前端体验审查通过
 - verified：2026-07-20，本地质量门与移动端浏览器 smoke 通过
-- released：pending
-- closed：pending
+- released：2026-07-20，Vercel 生产部署 READY，别名绑定成功
+- closed：2026-07-20
 
 ## 结果
 
-代码与本地验证已完成，等待提交、推送及 Vercel 生产发布验证。
+灰色购物车已可点击并显示准确原因弹窗；员工自购资料不完整时列出实际缺失字段并提供资料补全入口。代码已推送 `main`，生产部署与公开域名 smoke 均通过；无 Supabase migration 或生产数据写入。
