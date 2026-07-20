@@ -158,12 +158,12 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db push --linked --dry-run
 
 | Command / Check | Result | Evidence |
 |---|---|---|
-| 最终 contract scan | passed | `/private/tmp/partspro-remax-contract-scan.md`；识别 `order_line_preorder_allocations` 及 `20260720000827_remax_preorder_center.sql` |
+| 最终 contract scan | passed | `/private/tmp/partspro-remax-contract-scan.md`；识别 `order_line_preorder_allocations` 及 `20260720002209_remax_preorder_center.sql` |
 | `git diff --check` | passed | 2026-07-20，退出码 0 |
 | `npm run lint` | passed | 2026-07-20，ESLint 退出码 0 |
 | `npx tsc --noEmit` | passed | 2026-07-20，退出码 0 |
 | `npm run build` | passed | Next.js 16.2.6 production build；包含 `/admin/remax` 和 6 个 REMAX API 路由 |
-| migration history / dry-run | blocked | CLI 缺少 `SUPABASE_ACCESS_TOKEN`；且本地另有非本任务 pending `20260719235337_approve_remaining_mobilax_compatibility_batch_3.sql`，禁止夹带应用 |
+| migration history / dry-run | blocked | 非本任务的 Mobilax migration 已独立重编号为 `20260720001643` 并应用；REMAX 已用 CLI 重编号到其后。当前只剩 CLI 缺少 `SUPABASE_ACCESS_TOKEN`，无法执行强制 linked history / dry-run 门禁 |
 | isolated SQL smoke | passed | 隔离 Supabase 实例完整应用同一 SQL（SHA-256 `3da848c5899946a30bcc493e303944a03645806310109fde2f8d004f96098a78`）；通过权限、容量、下单、部分到货、幂等和取消释放事务 smoke，最后 rollback |
 | browser mobile / desktop | passed | 1440x900 与 390x844 首页均无横向溢出；未登录 `/admin/remax` 跳转 `/login?next=/admin/remax`；控制台 0 error/warning |
 | linked SQL smoke | blocked | 生产 migration 未应用，不能把隔离实例结果冒充 linked 结果 |
@@ -176,9 +176,10 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db push --linked --dry-run
 - 开始：2026-07-20
 - review：2026-07-20，完成前后端业务契约、权限、导入/到货和响应式 UI 复核。
 - verified：2026-07-20，代码、构建、隔离数据库和浏览器验证通过；linked migration 安全门未通过。
+- migration 重编号：2026-07-20，因并发 Mobilax migration 先应用，使用 `supabase migration new` 将未应用的 REMAX SQL 从 `20260720000827` 安全重编号为 `20260720002209`；SQL SHA-256 保持不变。
 - released：
 - closed：
 
 ## 结果
 
-代码已具备范围化提交与推送条件；生产数据库尚未应用。解除 CLI 认证并确认非本任务 pending migration 已独立处理后，重新执行 linked history、dry-run、apply 和 linked smoke，才能关闭任务。
+代码已推送；生产数据库尚未应用。非本任务 pending 已独立处理，解除 CLI 认证后重新执行 linked history、dry-run、apply 和 linked smoke，才能关闭任务。
