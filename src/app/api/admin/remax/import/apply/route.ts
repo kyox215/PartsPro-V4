@@ -6,7 +6,10 @@ import {
   previewRemaxImport,
   RemaxImportError,
 } from "@/lib/partspro-remax-import";
-import { importAdminRemaxBatch } from "@/lib/partspro-remax-repository";
+import {
+  blockExistingAdminRemaxImportRows,
+  importAdminRemaxBatch,
+} from "@/lib/partspro-remax-repository";
 import { repositoryErrorResponse, requireAdminApi } from "../../../_shared";
 
 export const dynamic = "force-dynamic";
@@ -42,7 +45,9 @@ export async function POST(request: Request) {
     }
 
     const settings = parseRemaxImportSettings(JSON.parse(rawSettings) as unknown);
-    const preview = await previewRemaxImport(file, settings);
+    const preview = await blockExistingAdminRemaxImportRows(
+      await previewRemaxImport(file, settings)
+    );
 
     if (preview.previewHash !== previewHash) {
       return apiError(409, "REMAX_IMPORT_PREVIEW_STALE", "Il file o i dati del lotto sono cambiati. Ripeti il controllo.");

@@ -5,7 +5,8 @@ import {
   previewRemaxImport,
   RemaxImportError,
 } from "@/lib/partspro-remax-import";
-import { requireAdminApi } from "../../../_shared";
+import { blockExistingAdminRemaxImportRows } from "@/lib/partspro-remax-repository";
+import { repositoryErrorResponse, requireAdminApi } from "../../../_shared";
 
 export const dynamic = "force-dynamic";
 
@@ -15,13 +16,19 @@ export async function POST(request: Request) {
 
   try {
     const { file, settings } = await readImportForm(request);
-    const preview = await previewRemaxImport(file, settings);
+    const preview = await blockExistingAdminRemaxImportRows(
+      await previewRemaxImport(file, settings)
+    );
     return NextResponse.json({ data: preview });
   } catch (error) {
     if (error instanceof RemaxImportError) {
       return apiError(400, "INVALID_REMAX_IMPORT", error.message, error.details);
     }
-    return apiError(500, "REMAX_IMPORT_PREVIEW_FAILED", "Impossibile controllare il file REMAX.");
+    return repositoryErrorResponse(
+      error,
+      "REMAX_IMPORT_PREVIEW_FAILED",
+      "Impossibile controllare il file REMAX."
+    );
   }
 }
 

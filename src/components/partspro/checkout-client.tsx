@@ -776,7 +776,12 @@ function CheckoutClientContent({
         status: "success",
         message:
           payload.data.orderKind === "preorder"
-            ? `Preordine ${orderReference} ricevuto. Ti avviseremo quando la merce sarà arrivata.`
+            ? txFormat(
+                t,
+                "storefront.checkout.preorder.received",
+                "Preordine {id} ricevuto. Ti avviseremo quando la merce sarà arrivata.",
+                { id: orderReference }
+              )
             : txFormat(t, "storefront.checkout.submit.orderAccepted", "Ordine {id} creato correttamente.", {
                 id: orderReference,
               }),
@@ -1627,7 +1632,11 @@ function PaymentSection({
       <CardContent className="space-y-2.5 px-3">
         {isPreorder ? (
           <div className="rounded-lg border border-fuchsia-200 bg-fuchsia-50 p-3 text-xs font-semibold leading-5 text-fuchsia-950">
-            Questo è un preordine REMAX: il pagamento è registrato tramite bonifico e il saldo wallet non viene utilizzato.
+            {tx(
+              t,
+              "storefront.checkout.preorder.paymentNotice",
+              "Questo è un preordine REMAX: il pagamento è registrato tramite bonifico e il saldo wallet non viene utilizzato."
+            )}
           </div>
         ) : null}
         <div className="grid grid-cols-2 gap-1.5">
@@ -1777,7 +1786,11 @@ function ConfirmationSection({
             checked={form.preorderTermsAccepted}
             error={submitAttempted ? errors.preorderTermsAccepted : undefined}
             id="confirmPreorderTerms"
-            label="Ho capito che si tratta di una prenotazione: la merce non è ancora disponibile, la data prevista può variare e la spedizione avverrà dopo l'arrivo e l'assegnazione della quantità."
+            label={tx(
+              t,
+              "storefront.checkout.preorder.confirmTerms",
+              "Ho capito che si tratta di una prenotazione: la merce non è ancora disponibile, la data prevista può variare e la spedizione avverrà dopo l'arrivo e l'assegnazione della quantità."
+            )}
             onChange={(checked) =>
               onFormChange((current) => ({
                 ...current,

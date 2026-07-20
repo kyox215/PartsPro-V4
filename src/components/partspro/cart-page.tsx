@@ -1642,7 +1642,12 @@ const CartLineMobileRow = React.memo(function CartLineMobileRow({
             </Badge>
             {isPreorderProduct(line.product) && line.product.preorder ? (
               <Badge className="h-5 border border-violet-200 bg-violet-50 px-1.5 text-[10px] text-violet-800">
-                Preordine · ETA {preorderEtaLabel(line.product.preorder)}
+                {txFormat(
+                  t,
+                  "storefront.preorder.etaBadge",
+                  "Preordine · ETA {eta}",
+                  { eta: preorderEtaLabel(line.product.preorder) }
+                )}
               </Badge>
             ) : null}
           </div>
@@ -1770,7 +1775,12 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
               </Badge>
               {isPreorderProduct(line.product) && line.product.preorder ? (
                 <Badge className="h-5 border border-violet-200 bg-violet-50 px-1.5 text-[11px] text-violet-800">
-                  Preordine · ETA {preorderEtaLabel(line.product.preorder)}
+                  {txFormat(
+                    t,
+                    "storefront.preorder.etaBadge",
+                    "Preordine · ETA {eta}",
+                    { eta: preorderEtaLabel(line.product.preorder) }
+                  )}
                 </Badge>
               ) : (
                 <Badge className={cn("h-5 px-1.5 text-[11px]", stockMeta.className)}>

@@ -11,6 +11,7 @@ import type {
 } from "@/lib/partspro-repository";
 import {
   RepositoryWriteError,
+  listCatalogProductsBySkus,
   pageCatalogProducts,
 } from "@/lib/partspro-repository";
 import {
@@ -51,9 +52,16 @@ export async function mergePreorderAvailability<T extends PartProduct>(
     return [...products];
   }
 
+  return mergePreorderAvailabilityRows(products, data as PreorderAvailabilityRow[]);
+}
+
+function mergePreorderAvailabilityRows<T extends PartProduct>(
+  products: readonly T[],
+  rows: readonly PreorderAvailabilityRow[]
+) {
   const preorderBySku = new Map<string, ProductPreorderAvailability>();
 
-  for (const rawRow of data as PreorderAvailabilityRow[]) {
+  for (const rawRow of rows) {
     const sku = rawRow.sku_code?.trim();
     const etaStart = rawRow.eta_start?.trim();
     const etaEnd = rawRow.eta_end?.trim();
@@ -89,10 +97,44 @@ export async function listRemaxPreorderProducts(options: {
   includeBuyerPrices: boolean;
   limit?: number;
 }): Promise<RepositoryResult<PartProduct[]>> {
+  const limit = Math.max(1, Math.min(options.limit ?? 12, 24));
+
+  if (isSupabaseConfigured()) {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("catalog_preorder_availability", {
+      p_skus: null,
+    });
+
+    if (!error && Array.isArray(data)) {
+      const availabilityRows = data as PreorderAvailabilityRow[];
+      const openSkus = availabilityRows
+        .filter(
+          (row) =>
+            row.preorder_enabled &&
+            row.preorder_status === "open" &&
+            toNonNegativeInteger(row.remaining_qty) > 0
+        )
+        .map((row) => row.sku_code?.trim() ?? "")
+        .filter(Boolean);
+      const catalog = await listCatalogProductsBySkus(openSkus, options);
+      const products = mergePreorderAvailabilityRows(catalog.data, availabilityRows)
+        .filter(
+          (product) =>
+            product.brand.trim().toUpperCase() === "REMAX" &&
+            product.preorder?.enabled &&
+            product.preorder.status === "open" &&
+            product.preorder.remainingQty >= Math.max(1, product.moq)
+        )
+        .slice(0, limit);
+
+      return { ...catalog, data: products };
+    }
+  }
+
   const page = await pageCatalogProducts(
     {
       brand: "REMAX",
-      limit: options.limit ?? 12,
+      limit: Math.max(limit * 4, 48),
       offset: 0,
       sort: "updated_desc",
     },
@@ -106,7 +148,7 @@ export async function listRemaxPreorderProducts(options: {
         product.preorder?.enabled &&
         product.preorder.status === "open" &&
         product.preorder.remainingQty >= Math.max(1, product.moq)
-    ),
+    ).slice(0, limit),
     source: page.source,
     warning: page.warning,
   };

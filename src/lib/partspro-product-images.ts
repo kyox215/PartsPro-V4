@@ -64,8 +64,11 @@ export function getProductImageCandidates(source: ProductImageSource) {
     const externalFallback = getExternalProductImageFallbackUrl(value);
     const resolvedExternalFallback = getExternalProductImageFallbackUrl(resolved);
     const preferredExternalFallback = externalFallback ?? resolvedExternalFallback;
+    const isApprovedRemaxStorageAsset =
+      /\/products\/imported\/external\/remax(?:[-/]|$)/i.test(normalizedValue);
     const preferExternalFallback =
       Boolean(preferredExternalFallback) &&
+      !isApprovedRemaxStorageAsset &&
       (/\/imported\//i.test(normalizedValue) ||
         /\/mobilax\//i.test(normalizedValue) ||
         /mobilax-[^-]+-\d+\./i.test(normalizedValue));

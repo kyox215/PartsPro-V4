@@ -6,7 +6,10 @@ import {
   type PartProduct,
 } from "@/lib/partspro-data";
 import { calculateShippingCents } from "@/lib/partspro-shipping";
-import { isProductOrderable } from "@/lib/partspro-preorder-contract";
+import {
+  getProductPurchaseKind,
+  isProductOrderable,
+} from "@/lib/partspro-preorder-contract";
 import { toPublicSku } from "@/lib/partspro-sku";
 
 export type CartItem = {
@@ -127,9 +130,14 @@ export function useCart({
   }, [catalog, normalizeOptions]);
 
   const addItem = React.useCallback((sku: string, quantity = 1) => {
+    const currentItems = readStoredCartItems(catalog, normalizeOptions);
+    if (!canAddPurchaseKind(currentItems, sku, catalog)) {
+      return false;
+    }
+
     return setItems(
       mergeCartItems(
-        readStoredCartItems(catalog, normalizeOptions),
+        currentItems,
         { sku, quantity },
         catalog,
         normalizeOptions
@@ -198,8 +206,12 @@ export function addCartItem(
 
   try {
     const options = { preserveUnknown: true };
+    const currentItems = readStoredCartItems(catalog, options);
+    if (!canAddPurchaseKind(currentItems, sku, catalog)) {
+      return false;
+    }
     const nextItems = mergeCartItems(
-      readStoredCartItems(catalog, options),
+      currentItems,
       { sku, quantity },
       catalog,
       options
@@ -627,6 +639,39 @@ function mergeCartItems(
   options: NormalizeCartOptions = {}
 ) {
   return normalizeCartItems([...items, item], catalog, options);
+}
+
+function canAddPurchaseKind(
+  items: readonly CartItem[],
+  sku: string,
+  catalog: readonly PartProduct[]
+) {
+  const lookup = createCatalogLookup(catalog);
+  const incomingProduct = getProductFromLookup(normalizeSku(sku), lookup);
+
+  if (!incomingProduct) {
+    return true;
+  }
+
+  const incomingKind = getProductPurchaseKind(incomingProduct);
+  if (incomingKind === "unavailable") {
+    return true;
+  }
+
+  const existingKinds = new Set(
+    items
+      .map((item) => {
+        const product = getProductFromLookup(normalizeSku(item.sku), lookup);
+        return product
+          ? getProductPurchaseKind(product)
+          : item.snapshot
+            ? getProductPurchaseKind(item.snapshot)
+            : "unavailable";
+      })
+      .filter((kind) => kind !== "unavailable")
+  );
+
+  return existingKinds.size === 0 || existingKinds.has(incomingKind);
 }
 
 function updateCartItemQuantity(

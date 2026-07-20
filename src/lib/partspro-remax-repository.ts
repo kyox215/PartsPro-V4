@@ -1,6 +1,9 @@
 import "server-only";
 
-import type { RemaxImportPayload } from "@/lib/partspro-remax-import";
+import type {
+  RemaxImportPayload,
+  RemaxImportPreview,
+} from "@/lib/partspro-remax-import";
 import { RepositoryWriteError } from "@/lib/partspro-repository";
 import { createClient } from "@/lib/supabase/server";
 
@@ -117,6 +120,107 @@ export async function importAdminRemaxBatch(payload: RemaxImportPayload) {
     "ADMIN_REMAX_IMPORT_FAILED",
     "REMAX preorder batch could not be imported."
   );
+}
+
+export async function blockExistingAdminRemaxImportRows(
+  preview: RemaxImportPreview
+): Promise<RemaxImportPreview> {
+  const supabase = await createClient();
+  const skus = [...new Set(preview.rows.map((row) => row.sku).filter(Boolean))];
+  const eans = [
+    ...new Set(
+      preview.rows
+        .map((row) => row.ean?.trim() ?? "")
+        .filter(Boolean)
+    ),
+  ];
+  const existingSkuRows = new Map<string, { brand: string; name: string }>();
+  const existingEanRows = new Map<string, string>();
+
+  if (skus.length > 0) {
+    const { data, error } = await supabase
+      .from("products")
+      .select("sku_code, brand, name")
+      .in("sku_code", skus);
+
+    if (error || !Array.isArray(data)) {
+      throw new RepositoryWriteError(
+        502,
+        "ADMIN_REMAX_IMPORT_CONFLICT_CHECK_FAILED",
+        "Existing REMAX products could not be checked before import.",
+        error
+      );
+    }
+
+    for (const value of data) {
+      if (!value || typeof value !== "object") continue;
+      const row = value as Record<string, unknown>;
+      const sku = typeof row.sku_code === "string" ? row.sku_code.trim().toUpperCase() : "";
+      if (!sku) continue;
+      existingSkuRows.set(sku, {
+        brand: typeof row.brand === "string" ? row.brand.trim() : "",
+        name: typeof row.name === "string" ? row.name.trim() : "",
+      });
+    }
+  }
+
+  if (eans.length > 0) {
+    const { data, error } = await supabase
+      .from("supplier_batch_lines")
+      .select("ean, sku_code")
+      .in("ean", eans);
+
+    if (error || !Array.isArray(data)) {
+      throw new RepositoryWriteError(
+        502,
+        "ADMIN_REMAX_IMPORT_EAN_CHECK_FAILED",
+        "Existing supplier EAN values could not be checked before import.",
+        error
+      );
+    }
+
+    for (const value of data) {
+      if (!value || typeof value !== "object") continue;
+      const row = value as Record<string, unknown>;
+      const ean = typeof row.ean === "string" ? row.ean.trim() : "";
+      const sku = typeof row.sku_code === "string" ? row.sku_code.trim().toUpperCase() : "";
+      if (ean && sku && !existingEanRows.has(ean)) existingEanRows.set(ean, sku);
+    }
+  }
+
+  const rows = preview.rows.map((row) => {
+    const issues = [...row.issues];
+    const existingSku = existingSkuRows.get(row.sku.toUpperCase());
+    const eanSku = row.ean ? existingEanRows.get(row.ean) : null;
+
+    if (existingSku) {
+      issues.push(
+        `SKU già esistente (${existingSku.brand || "brand non indicato"}: ${existingSku.name || row.sku}); l'importazione non aggiorna prodotti senza una revisione esplicita`
+      );
+    }
+    if (eanSku) {
+      issues.push(
+        eanSku === row.sku.toUpperCase()
+          ? `EAN già presente in un lotto fornitore per lo SKU ${eanSku}`
+          : `EAN già associato allo SKU ${eanSku}`
+      );
+    }
+
+    return issues.length === row.issues.length
+      ? row
+      : { ...row, issues, status: "blocked" as const };
+  });
+
+  return {
+    ...preview,
+    counts: {
+      blocked: rows.filter((row) => row.status === "blocked").length,
+      draft: rows.filter((row) => row.status === "draft").length,
+      ready: rows.filter((row) => row.status === "ready").length,
+      total: rows.length,
+    },
+    rows,
+  };
 }
 
 export async function previewAdminRemaxArrival(
