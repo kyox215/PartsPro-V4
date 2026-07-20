@@ -1,8 +1,8 @@
 # P1-2026-07-20-remax-preorder-launch
 
-状态：in_progress
+状态：done
 
-看板目录：now
+看板目录：done
 
 优先级：P1
 
@@ -163,11 +163,12 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db push --linked --dry-run
 | `npm run lint` | passed | 2026-07-20，ESLint 退出码 0 |
 | `npx tsc --noEmit` | passed | 2026-07-20，退出码 0 |
 | `npm run build` | passed | Next.js 16.2.6 production build；包含 `/admin/remax` 和 6 个 REMAX API 路由 |
-| migration history / dry-run | blocked | 非本任务的 Mobilax migration 已独立重编号为 `20260720001643` 并应用；REMAX 已用 CLI 重编号到其后。当前只剩 CLI 缺少 `SUPABASE_ACCESS_TOKEN`，无法执行强制 linked history / dry-run 门禁 |
+| migration history / dry-run | passed | linked ref `yiuxrjqexlfjtxxrkqvi`；应用前 history 无分叉，dry-run 只列出 `20260720002209_remax_preorder_center.sql`；应用后 Local/Remote 全部对齐 |
 | isolated SQL smoke | passed | 隔离 Supabase 实例完整应用同一 SQL（SHA-256 `3da848c5899946a30bcc493e303944a03645806310109fde2f8d004f96098a78`）；通过权限、容量、下单、部分到货、幂等和取消释放事务 smoke，最后 rollback |
 | browser mobile / desktop | passed | 1440x900 与 390x844 首页均无横向溢出；未登录 `/admin/remax` 跳转 `/login?next=/admin/remax`；控制台 0 error/warning |
-| linked SQL smoke | blocked | 生产 migration 未应用，不能把隔离实例结果冒充 linked 结果 |
-| Vercel production | pending | 代码推送后检查目标 commit deployment；REMAX 数据库能力在 migration 安全门解除前保持关闭 |
+| linked DB lint | passed | `supabase db lint --linked --level error --fail-on error` 退出码 0；顾问仅报告既有或设计内 warning/info，无 REMAX error |
+| linked SQL smoke | passed | migration 已登记；18 个字段、分配表、RLS、1 条读取 policy、6 个 RPC 全部存在；anon 只能执行目录查询，不能创建预订单或调用后台 RPC；当前 REMAX 预售商品为 0 |
+| Vercel production | passed | commit `8a477cf` deployment `dpl_F64rSuyfg6NEmh4X8Fb9AkUm6du2` 为 `READY`，alias 无错误；`www.partspro.app` 首页 200 级加载、无横向溢出，未登录后台正确跳转登录页，控制台与 30 分钟 error/fatal 日志均为空 |
 
 ## 执行记录
 
@@ -175,11 +176,11 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db push --linked --dry-run
 - 批准：2026-07-20，老板要求按已确认计划执行、推送并应用。
 - 开始：2026-07-20
 - review：2026-07-20，完成前后端业务契约、权限、导入/到货和响应式 UI 复核。
-- verified：2026-07-20，代码、构建、隔离数据库和浏览器验证通过；linked migration 安全门未通过。
+- verified：2026-07-20，代码、构建、隔离数据库、linked 数据库、Vercel 和正式域名浏览器验证通过。
 - migration 重编号：2026-07-20，因并发 Mobilax migration 先应用，使用 `supabase migration new` 将未应用的 REMAX SQL 从 `20260720000827` 安全重编号为 `20260720002209`；SQL SHA-256 保持不变。
-- released：
-- closed：
+- released：2026-07-20，migration `20260720002209` 已应用到 `PartsPro-V4`，Vercel production deployment `dpl_F64rSuyfg6NEmh4X8Fb9AkUm6du2` READY。
+- closed：2026-07-20
 
 ## 结果
 
-代码已推送；生产数据库尚未应用。非本任务 pending 已独立处理，解除 CLI 认证后重新执行 linked history、dry-run、apply 和 linked smoke，才能关闭任务。
+完成。REMAX 预售闭环的代码、生产 migration 和发布验证均已落地。当前数据库中没有 REMAX 预售商品，因此首页专区按设计保持隐藏；收到老板的到货表后，使用 `/admin/remax` 的“下载模板 → 上传预检 → 确认导入”流程即可正式开放具体商品预订。
