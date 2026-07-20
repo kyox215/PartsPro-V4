@@ -1,8 +1,8 @@
 # P1-2026-07-20-catalog-department-navigation
 
-状态：verified
+状态：closed
 
-看板目录：now
+看板目录：done
 
 优先级：P1
 
@@ -60,7 +60,7 @@ PartsPro 业务契约代理、前端体验代理、Next.js 16 App Router 代理�
 ## 已知事实
 
 - 现有 `products.category` 表示屏幕、电池等配件类型，不能复用为手机/平板/电脑大类。
-- 现有 active 商品中 REMAX 共 58 个，其余品牌均为手机目录；当前没有可可靠自动识别的平板/电脑商品。
+- 执行前盘点 active REMAX 为 58 个，其余品牌均归入手机目录；当前没有可可靠自动识别的平板/电脑商品。上线验收时 active REMAX 为 57 个，属于并发商品状态变化，不是 migration 数据丢失。
 - 当前目录默认 `minStock=1`，且品牌/系列文字只展开、不筛选。
 
 ## 假设与未知项
@@ -125,7 +125,7 @@ npx supabase db push --linked --dry-run
 | migration history / single pending gate | pass | 应用前 remote 99 / local 100，唯一 pending 为本任务；CLI dry-run 仅因缺少 access token 无法认证 |
 | linked apply + SQL smoke | pass | `20260720202358_catalog_department_navigation` 已应用；local/remote 均 100；invalid=0；REMAX 74/74 属于百货；view/ACL/trigger/RPC 均通过；公开 REST 200 |
 | 本地桌面/移动 smoke | pass | 父级筛选、独立箭头、REMAX 百货、手机抽屉自动关闭、URL 和无 `minStock` 均通过；console error/warn 为空 |
-| main push + production smoke | pending |  |
+| main push + production smoke | pass | 功能提交 `e4f18f5` 已推送 `main`；Vercel production `dpl_4tTmcL2cr9Qo3SR2ZJEzp7ygmg4M` 为 `READY` 并绑定 `www.partspro.app`；正式站桌面/移动目录 smoke 通过；近 30 分钟无 runtime error 或 5xx |
 
 ## 执行记录
 
@@ -134,9 +134,11 @@ npx supabase db push --linked --dry-run
 - 开始：2026-07-20
 - review：2026-07-20，业务契约、前端体验、Next.js 和 migration 守门完成
 - verified：2026-07-20，lint/type/build、linked SQL/REST smoke、桌面及移动浏览器 smoke 全部通过
-- released：
-- closed：
+- released：2026-07-20，Supabase migration 已应用，GitHub main 已推送，Vercel production READY
+- closed：2026-07-20，正式域名桌面/移动 smoke 及运行时错误检查通过
 
 ## 结果
 
-功能与 migration 已验证，等待 scoped main push 和 Vercel production smoke 后关闭。
+已完成“业务大类 → 品牌 → 系列 → 型号”四级目录、父级直接筛选、独立展开箭头、默认展示全部库存状态、REMAX 百货归类，以及前台/API/后台/数据库契约同步。migration、main push、Vercel production 与正式域名 smoke 均已完成。
+
+残余风险：平板和电脑目录当前为空，需要后续建档或后台编辑时显式归类；Apple 等缺少可靠系列字段的数据不会伪造系列，而是从品牌直接展示型号。
