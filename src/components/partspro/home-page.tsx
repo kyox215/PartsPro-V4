@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
+  CalendarClock,
   ChevronLeft,
   ChevronRight,
   Flame,
@@ -44,6 +45,7 @@ type HomePageProps = {
   modelGroups?: readonly DeviceModelGroup[];
   newProducts?: PartProduct[];
   priceGateReason?: PriceVisibilityReason;
+  remaxPreorderProducts?: PartProduct[];
   showPrices?: boolean;
   stockedProducts?: PartProduct[];
 };
@@ -57,6 +59,7 @@ export function HomePage({
   modelGroups = [],
   newProducts = [],
   priceGateReason = "login_required",
+  remaxPreorderProducts = [],
   showPrices = false,
   stockedProducts = [],
 }: HomePageProps) {
@@ -77,6 +80,25 @@ export function HomePage({
             catalogTotal={catalogTotal}
             modelGroupCount={modelGroups.length}
           />
+          {remaxPreorderProducts.length > 0 ? (
+            <ProductShelf
+              actionHref="/catalogo?brand=REMAX&minStock=0"
+              actionLabel={tx(t, "storefront.home.common.viewAll", "Vedi tutto")}
+              emptyKey="storefront.home.remax.empty"
+              emptyFallback="I preordini REMAX saranno disponibili a breve."
+              eyebrowKey="storefront.home.remax.eyebrow"
+              eyebrowFallback="Esclusiva PartsPro"
+              icon={CalendarClock}
+              id="remax-preorders"
+              cartAccess={cartAccess}
+              priceGateReason={priceGateReason}
+              products={remaxPreorderProducts}
+              showPrices={showPrices}
+              titleKey="storefront.home.remax.title"
+              titleFallback="REMAX · Prenota i prossimi arrivi"
+              tone="preorder"
+            />
+          ) : null}
           <ProductShelf
             actionHref="/catalogo?minStock=1"
             actionLabel={tx(t, "storefront.home.common.viewAll", "Vedi tutto")}
@@ -378,6 +400,7 @@ function ProductShelf({
   showPrices,
   titleFallback,
   titleKey,
+  tone = "default",
 }: {
   actionHref: string;
   actionLabel: string;
@@ -393,11 +416,19 @@ function ProductShelf({
   showPrices: boolean;
   titleFallback: string;
   titleKey: string;
+  tone?: "default" | "preorder";
 }) {
   const t = useT();
 
   return (
-    <section id={id} className="space-y-2">
+    <section
+      id={id}
+      className={cn(
+        "space-y-2",
+        tone === "preorder" &&
+          "rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-sky-50 p-3 shadow-[0_16px_38px_rgba(91,33,182,0.08)]"
+      )}
+    >
       <SectionHeader
         actionHref={actionHref}
         actionLabel={actionLabel}

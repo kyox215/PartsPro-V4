@@ -20,6 +20,9 @@ import {
   type RepositoryPartProduct,
 } from "@/lib/partspro-repository";
 import { toPublicSku } from "@/lib/partspro-sku";
+import { isProductOrderable } from "@/lib/partspro-preorder-contract";
+import { getProductOrderableQuantity } from "@/lib/partspro-preorder-contract";
+import { mergePreorderAvailability } from "@/lib/partspro-preorder-server";
 
 const maxCartCatalogSkus = 50;
 const cartCatalogQuerySchema = z
@@ -110,7 +113,10 @@ export async function GET(request: NextRequest) {
     }
 
     const visibilityReason = priceVisibilityReason(account);
-    const requestedCartProducts = repositoryResult.data.map((product) =>
+    const productsWithPreorders = await mergePreorderAvailability(
+      repositoryResult.data
+    );
+    const requestedCartProducts = productsWithPreorders.map((product) =>
       toCartCatalogProduct(product, account, {
         orderable: canUseCatalogCart,
         visible: canResolveTargetPrices,
@@ -173,9 +179,10 @@ function toCartCatalogRejection(
     imageUrl: product.imageUrl,
     leadTime: product.leadTime,
     name: product.name,
+    preorder: product.preorder,
     reason: product.priceGate.reason,
     rmaDays: product.rmaDays,
-    stock: product.stock,
+    stock: getProductOrderableQuantity(product),
     status: product.status,
     tags: product.tags,
     moq: product.moq,
@@ -245,9 +252,10 @@ function toCartCatalogProduct(
     ? product
     : applyAccountPriceToProduct(product, account);
   const hasEffectivePrice = hasOrderableEffectivePrice(pricedProduct);
-  const hasSellableStock =
-    pricedProduct.status !== "Out of Stock" &&
-    pricedProduct.stock >= Math.max(1, pricedProduct.moq);
+  const hasSellableStock = isProductOrderable(
+    pricedProduct,
+    Math.max(1, pricedProduct.moq)
+  );
   const blockReason = cartCatalogBlockReason(account, priceAccess, {
     hasEffectivePrice,
     hasSellableStock,
@@ -261,6 +269,7 @@ function toCartCatalogProduct(
     brand: pricedProduct.brand,
     grade: pricedProduct.grade,
     price: pricedProduct.price,
+    preorder: pricedProduct.preorder,
     retailPrice: priceAccess.visible ? pricedProduct.retailPrice : 0,
     stock: pricedProduct.stock,
     status: pricedProduct.status,

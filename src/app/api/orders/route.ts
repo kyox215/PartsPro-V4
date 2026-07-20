@@ -54,6 +54,15 @@ import {
 } from "@/lib/partspro-account-context";
 import { notifyNewOrder } from "@/lib/partspro-notifications";
 import { toPublicSku } from "@/lib/partspro-sku";
+import {
+  getProductOrderableQuantity,
+  getProductPurchaseKind,
+  isProductOrderable,
+} from "@/lib/partspro-preorder-contract";
+import {
+  mergePreorderAvailability,
+  savePreorder,
+} from "@/lib/partspro-preorder-server";
 
 const orderStatuses = [
   "draft",
@@ -80,7 +89,9 @@ const expectedPreviewLineSchema = z
     sku: z.string().trim().min(3).max(64).regex(/^[A-Za-z0-9_+.-]+$/),
     quantity: z.coerce.number().int().min(1).max(999),
     unitNetCents: z.coerce.number().int().min(0).max(100_000_000),
+    offerVersion: z.string().trim().min(1).max(160).nullable().optional(),
     priceVersion: z.string().trim().min(1).max(160).nullable().optional(),
+    purchaseKind: z.enum(["stock", "preorder"]).optional(),
   })
   .strict();
 const expectedPreviewTotalsSchema = z
@@ -119,6 +130,7 @@ const createOrderSchema = z
     checkoutMode: z.enum(["customer_self", "employee_self", "delegated_customer"]).optional(),
     deliveryMethod: z.enum(deliveryMethodInputValues).optional(),
     paymentMethod: z.enum(["bank_transfer", "cash"]),
+    preorderTermsAccepted: z.boolean().optional(),
     notes: z.string().trim().max(500).optional(),
     purchaseOrderNumber: z.string().trim().min(1).max(64).optional(),
     deliveryAddress: deliveryAddressSchema,
@@ -342,7 +354,8 @@ export async function POST(request: NextRequest) {
       buyerCustomerId: company.id,
       includeBuyerPrices: account.canViewPrices || checkoutMode !== "customer_self",
     });
-    const pricedCatalog = catalog.data.map((product) =>
+    const productsWithPreorders = await mergePreorderAvailability(catalog.data);
+    const pricedCatalog = productsWithPreorders.map((product) =>
       product.priceResolved || product.priceVersion
         ? product
         : applyAccountPriceToProduct(product, account)
@@ -353,6 +366,32 @@ export async function POST(request: NextRequest) {
       return apiError(422, "ORDER_ITEMS_INVALID", "One or more order items cannot be accepted.", {
         issues: orderBuild.issues,
       });
+    }
+
+    if (orderBuild.orderKind === "preorder") {
+      if (result.data.paymentMethod !== "bank_transfer") {
+        return apiError(
+          422,
+          "PREORDER_PAYMENT_METHOD_INVALID",
+          "Preorders currently require bank transfer."
+        );
+      }
+
+      if (result.data.useWallet) {
+        return apiError(
+          422,
+          "PREORDER_WALLET_NOT_ALLOWED",
+          "Wallet credit cannot be applied to a preorder."
+        );
+      }
+
+      if (!result.data.preorderTermsAccepted) {
+        return apiError(
+          422,
+          "PREORDER_TERMS_REQUIRED",
+          "Preorder terms must be accepted before submission."
+        );
+      }
     }
 
     const totals = calculateTotals(orderBuild.lines, deliveryMethod);
@@ -374,10 +413,10 @@ export async function POST(request: NextRequest) {
       customerProfile.data,
       deliveryAddress
     );
-    const walletRequestedAmount = result.data.useWallet
+    const walletRequestedAmount = orderBuild.orderKind === "stock" && result.data.useWallet
       ? Math.max(0, (await getCustomerWalletById(company.id)).data.balance)
       : 0;
-    const saved = await saveOrder({
+    const saveInput = {
       company,
       paymentMethod: result.data.paymentMethod,
       deliveryAddress,
@@ -387,7 +426,10 @@ export async function POST(request: NextRequest) {
       lines: orderBuild.lines,
       totals,
       walletRequestedAmount,
-    });
+    };
+    const saved = orderBuild.orderKind === "preorder"
+      ? await savePreorder(saveInput)
+      : await saveOrder(saveInput);
     let cartClearWarning: string | undefined;
 
     try {
@@ -434,6 +476,7 @@ export async function POST(request: NextRequest) {
             priceList: company.priceList,
           },
           paymentMethod: result.data.paymentMethod,
+          orderKind: orderBuild.orderKind,
           walletAppliedAmount: saved.data.walletAppliedAmount ?? 0,
           payableAmount:
             Math.max(
@@ -449,6 +492,7 @@ export async function POST(request: NextRequest) {
           catalogSource: catalog.source,
           companiesSource: companies.source,
           persistence: "supabase_rpc",
+          orderKind: orderBuild.orderKind,
           remoteCart:
             account.accountType === "customer"
               ? cartClearWarning
@@ -574,7 +618,7 @@ function resolveCheckoutMode(
 }
 
 function orderRepositoryError(error: RepositoryWriteError) {
-  if (error.code !== "ORDER_RPC_FAILED") {
+  if (error.code !== "ORDER_RPC_FAILED" && error.code !== "PREORDER_RPC_FAILED") {
     return apiError(error.status, error.code, error.message, error.details);
   }
 
@@ -582,6 +626,20 @@ function orderRepositoryError(error: RepositoryWriteError) {
   const sqlState = readString(details.code);
   const rpcMessage = readString(details.message) ?? error.message;
   const normalizedMessage = rpcMessage.toLowerCase();
+
+  if (
+    sqlState === "40001" &&
+    (normalizedMessage.includes("preorder") ||
+      normalizedMessage.includes("capacity") ||
+      normalizedMessage.includes("eta"))
+  ) {
+    return apiError(
+      409,
+      "PREORDER_OFFER_CHANGED",
+      "Preorder capacity or arrival dates changed. Refresh checkout and confirm again.",
+      error.details
+    );
+  }
 
   if (sqlState === "40001" || normalizedMessage.includes("price changed")) {
     return apiError(
@@ -602,6 +660,15 @@ function orderRepositoryError(error: RepositoryWriteError) {
       422,
       "ORDER_STOCK_INVALID",
       "One or more items no longer match stock, quantity or MOQ rules.",
+      error.details
+    );
+  }
+
+  if (normalizedMessage.includes("terms")) {
+    return apiError(
+      422,
+      "PREORDER_TERMS_REQUIRED",
+      "Preorder terms must be accepted before submission.",
       error.details
     );
   }
@@ -715,7 +782,10 @@ function buildOrder(requestedItems: RequestedOrderItem[], catalog: PartProduct[]
       continue;
     }
 
-    if (product.status === "Out of Stock") {
+    const purchaseKind = getProductPurchaseKind(product);
+    const orderableQuantity = getProductOrderableQuantity(product);
+
+    if (purchaseKind === "unavailable") {
       issues.push({ sku, message: "Product is currently out of stock." });
       continue;
     }
@@ -725,15 +795,33 @@ function buildOrder(requestedItems: RequestedOrderItem[], catalog: PartProduct[]
       continue;
     }
 
-    if (item.quantity > product.stock) {
-      issues.push({ sku, message: `Only ${product.stock} units are currently available.` });
+    if (!isProductOrderable(product, item.quantity)) {
+      issues.push({ sku, message: `Only ${orderableQuantity} units are currently available.` });
       continue;
     }
 
     lines.push(buildOrderLine(product, item.quantity));
   }
 
-  return { lines, issues };
+  const purchaseKinds = new Set(
+    lines.map((line) => getProductPurchaseKind(line.product))
+  );
+
+  if (purchaseKinds.size > 1) {
+    issues.push({
+      sku: "order",
+      message: "Stock items and preorder items must be checked out separately.",
+    });
+  }
+
+  return {
+    lines,
+    issues,
+    orderKind:
+      purchaseKinds.size === 1 && purchaseKinds.has("preorder")
+        ? ("preorder" as const)
+        : ("stock" as const),
+  };
 }
 
 function resolveCompany(
@@ -815,6 +903,30 @@ function compareExpectedPreview(
         actual: actualPriceVersion,
       });
     }
+
+    const expectedPurchaseKind = expectedLine.purchaseKind ?? "stock";
+    const actualPurchaseKind = getProductPurchaseKind(line.product);
+
+    if (expectedPurchaseKind !== actualPurchaseKind) {
+      issues.push({
+        code: "purchase_kind_changed",
+        sku,
+        expected: expectedPurchaseKind,
+        actual: actualPurchaseKind,
+      });
+    }
+
+    const expectedOfferVersion = expectedLine.offerVersion ?? null;
+    const actualOfferVersion = line.product.preorder?.offerVersion ?? null;
+
+    if (expectedOfferVersion !== actualOfferVersion) {
+      issues.push({
+        code: "preorder_offer_changed",
+        sku,
+        expected: expectedOfferVersion,
+        actual: actualOfferVersion,
+      });
+    }
   }
 
   for (const expectedLine of expected.lines) {
@@ -861,6 +973,9 @@ function toOrderLineDto(line: OrderLine) {
     vatRate: decimal(line.product.vatRate),
     vat: money(line.vatCents),
     lineGross: money(line.lineGrossCents),
+    orderableQuantity: getProductOrderableQuantity(line.product),
+    purchaseKind: getProductPurchaseKind(line.product),
+    preorder: line.product.preorder ?? null,
   };
 }
 

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Image from "next/image";
+import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
   ArrowRight,
@@ -15,6 +16,7 @@ import {
   RefreshCw,
   ShieldAlert,
   ShoppingCart,
+  Sparkles,
   Truck,
   type LucideIcon,
 } from "lucide-react";
@@ -936,6 +938,17 @@ function CatalogOpsCard({
             {copy.sections.quickOps}
           </div>
           <div className="grid grid-cols-2 gap-1.5">
+            {!visiblePanels || visiblePanels.has("catalog") ? (
+              <Button asChild className="h-8 justify-between rounded-md border-purple-200 bg-purple-50 px-2 text-xs text-purple-900 hover:bg-purple-100" variant="outline">
+                <Link href="/admin/remax">
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <Sparkles className="size-3.5 shrink-0" />
+                    <span className="truncate">REMAX preordini</span>
+                  </span>
+                  <ArrowRight className="size-3 shrink-0 text-purple-500" />
+                </Link>
+              </Button>
+            ) : null}
             {actions.map((action) => {
               const isVisible = !visiblePanels || visiblePanels.has(action.panel);
 

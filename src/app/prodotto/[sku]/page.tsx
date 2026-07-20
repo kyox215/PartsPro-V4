@@ -15,6 +15,7 @@ import {
   getCatalogProductBySkuOrSlug,
   listCatalogProductsBySkus,
 } from "@/lib/partspro-repository";
+import { mergePreorderAvailability } from "@/lib/partspro-preorder-server";
 import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -43,7 +44,12 @@ export default async function Page({
   const fallbackProductResult = assistedProduct
     ? null
     : await getCatalogProductBySkuOrSlug(decodedSku);
-  const product = assistedProduct ?? fallbackProductResult?.data ?? null;
+  const rawProduct = assistedProduct ?? fallbackProductResult?.data ?? null;
+
+  if (!rawProduct) {
+    notFound();
+  }
+  const [product] = await mergePreorderAvailability([rawProduct]);
 
   if (!product) {
     notFound();

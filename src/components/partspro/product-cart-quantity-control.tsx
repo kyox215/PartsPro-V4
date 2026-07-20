@@ -4,6 +4,10 @@ import { Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { tx, txFormat } from "@/i18n/dictionaries/storefront";
 import type { PartProduct } from "@/lib/partspro-data";
+import {
+  getProductOrderableQuantity,
+  getProductPurchaseKind,
+} from "@/lib/partspro-preorder-contract";
 import { toPublicSku } from "@/lib/partspro-sku";
 import { cn } from "@/lib/utils";
 import {
@@ -38,10 +42,11 @@ export function ProductCartQuantityControl({
   const t = useT();
   const quantity = useProductCartQuantity(product.sku);
   const minimumQuantity = Math.max(1, product.moq);
-  const stockAvailable = product.stock > 0 && product.status !== "Out of Stock";
-  const canIncrease = stockAvailable && quantity < product.stock;
+  const orderableQuantity = getProductOrderableQuantity(product);
+  const stockAvailable = getProductPurchaseKind(product) !== "unavailable";
+  const canIncrease = stockAvailable && quantity < orderableQuantity;
   const removesOnDecrease = quantity <= minimumQuantity;
-  const isOverStock = stockAvailable && quantity > product.stock;
+  const isOverStock = stockAvailable && quantity > orderableQuantity;
 
   if (quantity <= 0) {
     return null;
@@ -96,7 +101,7 @@ export function ProductCartQuantityControl({
                 t,
                 "storefront.product.quantity.overStockTitle",
                 "Quantita oltre stock: disponibili {stock} pezzi.",
-                { stock: product.stock }
+                { stock: orderableQuantity }
               )
             : txFormat(
                 t,
@@ -184,7 +189,7 @@ export function ProductCartQuantityControl({
             t,
             "storefront.product.quantity.overStock",
             "Disponibili {stock}: riduci la quantita per procedere.",
-            { stock: product.stock }
+            { stock: orderableQuantity }
           )}
         </div>
       ) : null}

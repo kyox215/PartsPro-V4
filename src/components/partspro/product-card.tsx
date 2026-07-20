@@ -6,6 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   AlertTriangle,
+  CalendarClock,
   CheckCircle2,
   Info,
   Loader2,
@@ -37,6 +38,12 @@ import {
   getProductPriceDisplay,
 } from "@/lib/partspro-price-display";
 import { getProductImageCandidates } from "@/lib/partspro-product-images";
+import {
+  getProductOrderableQuantity,
+  getProductPurchaseKind,
+  isProductOrderable,
+  preorderEtaLabel,
+} from "@/lib/partspro-preorder-contract";
 import { cn } from "@/lib/utils";
 import { addCartItem } from "./cart-state";
 import { useT } from "./i18n-provider";
@@ -85,12 +92,11 @@ export const ProductCard = memo(function ProductCard({
   const hasOpenPrice =
     showWholesalePrice &&
     (priceGateReason === "customer" || priceGateReason === "employee");
-  const hasSellableStock =
-    product.stock >= Math.max(1, product.moq) && product.status !== "Out of Stock";
-  const canRequestRestock =
-    product.status === "Out of Stock" ||
-    product.stock <= 0 ||
-    product.stock < Math.max(1, product.moq);
+  const purchaseKind = getProductPurchaseKind(product);
+  const isPreorder = purchaseKind === "preorder";
+  const orderableQuantity = getProductOrderableQuantity(product);
+  const hasSellableStock = isProductOrderable(product, Math.max(1, product.moq));
+  const canRequestRestock = purchaseKind === "unavailable";
   const canAddToCart = canUseCart && hasOpenPrice && hasEffectivePrice && hasSellableStock;
   const isLoginRequired = priceGateReason === "login_required";
   const productPath = hrefWithAssistedCompanyId(
@@ -233,6 +239,16 @@ export const ProductCard = memo(function ProductCard({
                 label={tx(t, "storefront.navigation.loadingProduct", "Caricamento prodotto...")}
               />
             </Link>
+            {isPreorder ? (
+              <div className="mt-1 flex min-w-0 items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-1.5 py-1 text-[10px] font-black text-violet-800">
+                <CalendarClock className="size-3 shrink-0" />
+                <span className="min-w-0 truncate">
+                  {tx(t, "storefront.preorder.badge", "Preordine")} · {orderableQuantity}{" "}
+                  {tx(t, "storefront.preorder.available", "prenotabili")}
+                  {product.preorder ? ` · ETA ${preorderEtaLabel(product.preorder)}` : ""}
+                </span>
+              </div>
+            ) : null}
             <div className="mt-0.5 flex min-w-0 flex-wrap gap-0.5 sm:mt-1 sm:gap-1">
               {product.compatibleWith.slice(0, 2).map((model, index) => (
                 <span
@@ -353,7 +369,9 @@ export const ProductCard = memo(function ProductCard({
                       ? tx(t, "storefront.product.card.added", "Aggiunto")
                       : addFeedbackState === "error"
                       ? tx(t, "storefront.product.card.addFailed", "Riprova")
-                      : tx(t, "storefront.product.card.add", "Aggiungi")}
+                      : isPreorder
+                        ? tx(t, "storefront.preorder.reserve", "Prenota")
+                        : tx(t, "storefront.product.card.add", "Aggiungi")}
                   </span>
                 </Button>
               ) : isLoginRequired && hasSellableStock ? (

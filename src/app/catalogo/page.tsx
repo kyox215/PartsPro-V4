@@ -17,6 +17,7 @@ import {
 } from "@/lib/partspro-account-context";
 import { toStoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import { readAssistedCompanyIdFromRecord } from "@/lib/partspro-assisted-order";
+import { mergePreorderAvailability } from "@/lib/partspro-preorder-server";
 
 const initialCatalogLimit = 24;
 export const dynamic = "force-dynamic";
@@ -58,6 +59,9 @@ export default async function Page({
       : Promise.resolve(null),
   ]);
   const assistedProfile = assistedCustomer?.data ?? null;
+  const productsWithPreorders = await mergePreorderAvailability(
+    catalogPage.data.products
+  );
 
   return (
     <Suspense fallback={null}>
@@ -67,7 +71,7 @@ export default async function Page({
         filteredTotal={catalogPage.data.total}
         initialAccountAccess={toStoreHeaderAccountAccess(account)}
         initialModelGroups={modelGroups.data}
-        initialProducts={catalogPage.data.products.map((product) =>
+        initialProducts={productsWithPreorders.map((product) =>
           toCatalogCardProduct(product, account)
         )}
         cartAccess={storefrontCartAccess(account, assistedCompanyId)}

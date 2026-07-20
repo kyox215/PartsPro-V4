@@ -103,6 +103,20 @@ export type PartProduct = {
   priceResolvedAt?: string;
   priceSource?: string;
   priceVersion?: string;
+  preorder?: ProductPreorderAvailability;
+};
+
+export type ProductPreorderAvailability = {
+  capacityQty: number;
+  closeAt?: string | null;
+  enabled: boolean;
+  etaEnd: string;
+  etaStart: string;
+  offerVersion: string;
+  pendingQty: number;
+  remainingQty: number;
+  status: "open" | "sold_out" | "closed";
+  terms: string;
 };
 
 export type DeviceModelSeriesGroup = {

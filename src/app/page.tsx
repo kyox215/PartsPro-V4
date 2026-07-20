@@ -17,6 +17,7 @@ import {
   type AccountContext,
 } from "@/lib/partspro-account-context";
 import { toStoreHeaderAccountAccess } from "@/lib/partspro-header-access";
+import { listRemaxPreorderProducts } from "@/lib/partspro-preorder-server";
 
 const homeShelfProductLimit = 8;
 const publicHomeShelfCacheTtlMs = 30 * 1000;
@@ -26,6 +27,7 @@ type HomeShelfProducts = {
   catalogTotal: number;
   hotProducts: PartProduct[];
   newProducts: PartProduct[];
+  remaxPreorderProducts: PartProduct[];
   stockedProducts: PartProduct[];
 };
 
@@ -70,6 +72,9 @@ export default async function Home() {
       initialAccountAccess={toStoreHeaderAccountAccess(account)}
       modelGroups={modelGroups.data}
       newProducts={homeShelves.newProducts.map((product) =>
+        toHomeProduct(product, account)
+      )}
+      remaxPreorderProducts={homeShelves.remaxPreorderProducts.map((product) =>
         toHomeProduct(product, account)
       )}
       cartAccess={storefrontCartAccess(account)}
@@ -146,7 +151,12 @@ async function readHomeShelfProducts(options: {
   buyerCustomerId?: string;
   includeBuyerPrices: boolean;
 }) {
-  const [hotProductsPage, newProductsPage, stockedProductsPage] = await Promise.all([
+  const [
+    hotProductsPage,
+    newProductsPage,
+    stockedProductsPage,
+    remaxPreorderProducts,
+  ] = await Promise.all([
     pageHotCatalogProducts(
       {
         limit: homeShelfProductLimit,
@@ -170,12 +180,17 @@ async function readHomeShelfProducts(options: {
       },
       options
     ),
+    listRemaxPreorderProducts({
+      ...options,
+      limit: homeShelfProductLimit,
+    }),
   ]);
 
   return {
     catalogTotal: newProductsPage.data.total,
     hotProducts: hotProductsPage.data.products,
     newProducts: newProductsPage.data.products,
+    remaxPreorderProducts: remaxPreorderProducts.data,
     stockedProducts: stockedProductsPage.data.products,
   };
 }

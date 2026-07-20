@@ -6,6 +6,7 @@ import {
   type PartProduct,
 } from "@/lib/partspro-data";
 import { calculateShippingCents } from "@/lib/partspro-shipping";
+import { isProductOrderable } from "@/lib/partspro-preorder-contract";
 import { toPublicSku } from "@/lib/partspro-sku";
 
 export type CartItem = {
@@ -30,6 +31,7 @@ export type CartItemSnapshot = {
   price: number;
   priceGroupDiscountPercent?: number;
   priceVersion?: string;
+  preorder?: PartProduct["preorder"];
   retailPrice: number;
   sku: string;
   status: PartProduct["status"];
@@ -712,6 +714,7 @@ function cartItemSnapshotFromProduct(product: PartProduct): CartItemSnapshot {
     price: product.price,
     priceGroupDiscountPercent: product.priceGroupDiscountPercent,
     priceVersion: product.priceVersion,
+    preorder: product.preorder,
     retailPrice: product.retailPrice,
     sku: normalizeSku(product.sku),
     status: product.status,
@@ -751,6 +754,7 @@ function normalizeCartItemSnapshot(
     price: Math.max(0, readOptionalNumber(value.price) ?? 0),
     priceGroupDiscountPercent: readOptionalNumber(value.priceGroupDiscountPercent),
     priceVersion: readString(value.priceVersion),
+    preorder: normalizePreorderSnapshot(value.preorder),
     retailPrice: Math.max(0, readOptionalNumber(value.retailPrice) ?? 0),
     sku: normalizeSku(readString(value.sku) ?? sku),
     status: normalizeStockStatus(value.status),
@@ -821,15 +825,47 @@ function omitUndefined<T extends Record<string, unknown>>(value: T): T {
 }
 
 function isOrderableCartLine(product: PartProduct, quantity: number) {
-  const minimumQuantity = Math.max(1, product.moq);
+  return isProductOrderable(product, quantity);
+}
 
-  return (
-    product.price > 0 &&
-    product.status !== "Out of Stock" &&
-    product.stock >= minimumQuantity &&
-    quantity >= minimumQuantity &&
-    quantity <= product.stock
-  );
+function normalizePreorderSnapshot(
+  value: unknown
+): PartProduct["preorder"] | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const etaStart = readString(value.etaStart);
+  const etaEnd = readString(value.etaEnd);
+  const offerVersion = readString(value.offerVersion);
+  const terms = readString(value.terms);
+  const status = readString(value.status);
+
+  if (
+    !etaStart ||
+    !etaEnd ||
+    !offerVersion ||
+    !terms ||
+    (status !== "open" && status !== "sold_out" && status !== "closed")
+  ) {
+    return undefined;
+  }
+
+  return {
+    capacityQty: Math.max(0, Math.trunc(readOptionalNumber(value.capacityQty) ?? 0)),
+    closeAt: readString(value.closeAt) ?? null,
+    enabled: value.enabled === true,
+    etaEnd,
+    etaStart,
+    offerVersion,
+    pendingQty: Math.max(0, Math.trunc(readOptionalNumber(value.pendingQty) ?? 0)),
+    remainingQty: Math.max(
+      0,
+      Math.trunc(readOptionalNumber(value.remainingQty) ?? 0)
+    ),
+    status,
+    terms,
+  };
 }
 
 function normalizeQuantity(value: unknown) {
@@ -879,6 +915,8 @@ function cartCatalogKey(catalog: readonly PartProduct[]) {
         product.discountPercent ?? "",
         product.levelDiscountAmount ?? "",
         product.priceVersion ?? "",
+        product.preorder?.offerVersion ?? "",
+        product.preorder?.remainingQty ?? "",
       ].join(":")
     ))
     .join("|");

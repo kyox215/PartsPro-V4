@@ -124,6 +124,7 @@ type CheckoutFormState = {
   deliveryMethod: DeliveryMethod;
   notes: string;
   paymentMethod: "bank_transfer" | "cash";
+  preorderTermsAccepted: boolean;
   useWallet: boolean;
 };
 
@@ -141,6 +142,7 @@ type MoneyDto = {
 
 type OrderResult = {
   id: string;
+  orderKind?: "stock" | "preorder";
   orderNo?: string;
   status: string;
   payableAmount?: number;
@@ -179,7 +181,9 @@ type PreviewLine = {
   quantity: number;
   unitPrice: MoneyDto;
   lineGross: MoneyDto;
+  offerVersion?: string | null;
   priceVersion?: string | null;
+  purchaseKind?: "stock" | "preorder";
 };
 
 type PreviewTotals = {
@@ -197,10 +201,10 @@ type CartCatalogRejection = {
 type PendingItemsReason = "account" | "customer" | "customer-context";
 
 type PreviewState =
-  | { status: "idle"; canSubmit?: boolean; issues: PreviewIssue[]; lines?: PreviewLine[]; totals?: PreviewTotals; wallet?: WalletPreview }
-  | { status: "loading"; canSubmit?: boolean; issues: PreviewIssue[]; lines?: PreviewLine[]; totals?: PreviewTotals; wallet?: WalletPreview }
-  | { status: "ready"; canSubmit?: boolean; issues: PreviewIssue[]; lines?: PreviewLine[]; totals?: PreviewTotals; wallet?: WalletPreview }
-  | { status: "error"; canSubmit?: boolean; issues: PreviewIssue[]; message: string; lines?: PreviewLine[]; totals?: PreviewTotals; wallet?: WalletPreview };
+  | { status: "idle"; canSubmit?: boolean; issues: PreviewIssue[]; lines?: PreviewLine[]; orderKind?: "stock" | "preorder"; totals?: PreviewTotals; wallet?: WalletPreview }
+  | { status: "loading"; canSubmit?: boolean; issues: PreviewIssue[]; lines?: PreviewLine[]; orderKind?: "stock" | "preorder"; totals?: PreviewTotals; wallet?: WalletPreview }
+  | { status: "ready"; canSubmit?: boolean; issues: PreviewIssue[]; lines?: PreviewLine[]; orderKind?: "stock" | "preorder"; totals?: PreviewTotals; wallet?: WalletPreview }
+  | { status: "error"; canSubmit?: boolean; issues: PreviewIssue[]; message: string; lines?: PreviewLine[]; orderKind?: "stock" | "preorder"; totals?: PreviewTotals; wallet?: WalletPreview };
 
 type Blocker = {
   actionHref?: string;
@@ -409,6 +413,9 @@ function CheckoutClientContent({
   const shouldLoadPreview =
     cart.isHydrated && cart.items.length > 0 && Boolean(selectedCompany?.id) && !targetCustomerBlocker;
   const previewForUi = shouldLoadPreview ? preview : idlePreviewState;
+  const isPreorder = previewForUi.orderKind === "preorder";
+  const effectivePaymentMethod = isPreorder ? "bank_transfer" : form.paymentMethod;
+  const effectiveUseWallet = isPreorder ? false : form.useWallet;
   const walletPreview = previewForUi.wallet;
   const walletAppliedAmount = moneyDtoToNumber(walletPreview?.appliedAmount);
   const payableAmount = moneyDtoToNumber(walletPreview?.payableAmount);
@@ -457,7 +464,13 @@ function CheckoutClientContent({
     () => previewForUi.issues.filter((issue) => issue.sku === "customer"),
     [previewForUi.issues]
   );
-  const formErrors = validateForm(t, confirmed, selectedShippingAddress);
+  const formErrors = validateForm(
+    t,
+    confirmed,
+    selectedShippingAddress,
+    isPreorder,
+    form.preorderTermsAccepted
+  );
   const checkoutSyncState = buildCheckoutSyncState({
     cartHydrated: cart.isHydrated,
     catalogResolutionPending,
@@ -570,6 +583,9 @@ function CheckoutClientContent({
         issues: current.status === "ready" || current.status === "loading"
           ? current.issues
           : [],
+        lines: current.lines,
+        orderKind: current.orderKind,
+        totals: current.totals,
         wallet: current.wallet,
       }));
       setCatalogLoadState("loading");
@@ -583,7 +599,7 @@ function CheckoutClientContent({
             checkoutMode,
             deliveryMethod: form.deliveryMethod,
             items: previewItems,
-            useWallet: form.useWallet,
+            useWallet: effectiveUseWallet,
           }),
           cache: "no-store",
           credentials: "same-origin",
@@ -598,6 +614,7 @@ function CheckoutClientContent({
             canSubmit?: boolean;
             issues?: PreviewIssue[];
             lines?: PreviewLine[];
+            orderKind?: "stock" | "preorder";
             totals?: PreviewTotals;
             wallet?: WalletPreview;
           };
@@ -638,6 +655,7 @@ function CheckoutClientContent({
             canSubmit: Boolean(payload?.data?.canSubmit),
             issues: Array.isArray(payload?.data?.issues) ? payload.data.issues : [],
             lines: Array.isArray(payload?.data?.lines) ? payload.data.lines : [],
+            orderKind: payload?.data?.orderKind,
             totals: payload?.data?.totals,
             wallet: payload?.data?.wallet,
           });
@@ -652,6 +670,9 @@ function CheckoutClientContent({
               error instanceof Error
                 ? error.message
                 : tx(t, "storefront.checkout.preview.error", "Impossibile aggiornare i controlli ordine."),
+            lines: current.lines,
+            orderKind: current.orderKind,
+            totals: current.totals,
             wallet: current.wallet,
           }));
         }
@@ -666,7 +687,7 @@ function CheckoutClientContent({
       window.clearTimeout(timeout);
       controller.abort();
     };
-  }, [cart.items, cartSignature, checkoutMode, form.deliveryMethod, form.useWallet, onCatalogProductsLoaded, previewRetryToken, selectedCompany?.id, shouldLoadPreview, t]);
+  }, [cart.items, cartSignature, checkoutMode, effectiveUseWallet, form.deliveryMethod, onCatalogProductsLoaded, previewRetryToken, selectedCompany?.id, shouldLoadPreview, t]);
 
   async function submitOrder() {
     setSubmitAttempted(true);
@@ -708,8 +729,9 @@ function CheckoutClientContent({
           companyId: selectedCompany?.id,
           checkoutMode,
           expectedPreview: expectedPreviewForOrder(previewForUi),
-          paymentMethod: form.paymentMethod,
-          useWallet: form.useWallet,
+          paymentMethod: effectivePaymentMethod,
+          preorderTermsAccepted: form.preorderTermsAccepted,
+          useWallet: effectiveUseWallet,
           deliveryAddress: selectedShippingAddress,
           deliveryMethod: form.deliveryMethod,
           notes: buildOrderNotes(form.notes, form.deliveryMethod),
@@ -752,9 +774,12 @@ function CheckoutClientContent({
 
       setSubmitState({
         status: "success",
-        message: txFormat(t, "storefront.checkout.submit.orderAccepted", "Ordine {id} creato correttamente.", {
-          id: orderReference,
-        }),
+        message:
+          payload.data.orderKind === "preorder"
+            ? `Preordine ${orderReference} ricevuto. Ti avviseremo quando la merce sarà arrivata.`
+            : txFormat(t, "storefront.checkout.submit.orderAccepted", "Ordine {id} creato correttamente.", {
+                id: orderReference,
+              }),
         order: payload.data,
       });
       setSuccessDialogOpen(true);
@@ -852,14 +877,18 @@ function CheckoutClientContent({
           />
           <PaymentSection
             form={form}
+            isPreorder={isPreorder}
             onChange={setForm}
             walletPreview={walletPreview}
           />
           <ConfirmationSection
             confirmed={confirmed}
             errors={formErrors}
+            form={form}
+            isPreorder={isPreorder}
             submitAttempted={submitAttempted}
             onChange={setConfirmed}
+            onFormChange={setForm}
           />
         </section>
 
@@ -881,6 +910,7 @@ function CheckoutClientContent({
             <CheckoutSubmitPanel
               canSubmit={canSubmit}
               disabledReason={disabledReason}
+              isPreorder={isPreorder}
               onSubmit={submitOrder}
               state={submitState}
             />
@@ -893,6 +923,7 @@ function CheckoutClientContent({
         amountStatus={checkoutAmountStatus}
         canSubmit={canSubmit}
         disabledReason={disabledReason}
+        isPreorder={isPreorder}
         onSubmit={submitOrder}
         state={submitState}
         totals={checkoutTotals}
@@ -1558,10 +1589,12 @@ function DeliverySection({
 
 function PaymentSection({
   form,
+  isPreorder,
   onChange,
   walletPreview,
 }: {
   form: CheckoutFormState;
+  isPreorder: boolean;
   onChange: React.Dispatch<React.SetStateAction<CheckoutFormState>>;
   walletPreview?: WalletPreview;
 }) {
@@ -1569,7 +1602,7 @@ function PaymentSection({
   const { locale } = useI18n();
   const walletAvailable = walletPreview?.availableAmount.cents ?? 0;
   const walletApplied = walletPreview?.appliedAmount.cents ?? 0;
-  const canUseWallet = Boolean(walletPreview && walletAvailable > 0);
+  const canUseWallet = Boolean(!isPreorder && walletPreview && walletAvailable > 0);
   const options = [
     {
       value: "bank_transfer" as const,
@@ -1592,15 +1625,21 @@ function PaymentSection({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-2.5 px-3">
+        {isPreorder ? (
+          <div className="rounded-lg border border-fuchsia-200 bg-fuchsia-50 p-3 text-xs font-semibold leading-5 text-fuchsia-950">
+            Questo è un preordine REMAX: il pagamento è registrato tramite bonifico e il saldo wallet non viene utilizzato.
+          </div>
+        ) : null}
         <div className="grid grid-cols-2 gap-1.5">
           {options.map((option) => (
             <label
               key={option.value}
               className={cn(
                 "flex min-h-14 cursor-pointer items-center justify-center rounded-lg border px-2 py-2 text-center text-xs font-black leading-4 transition sm:min-h-20 sm:items-start sm:justify-start sm:gap-2 sm:text-left sm:text-sm",
-                form.paymentMethod === option.value
+                (isPreorder ? option.value === "bank_transfer" : form.paymentMethod === option.value)
                   ? "border-primary/50 bg-primary/8"
-                  : "border-slate-200 bg-white hover:border-primary/30"
+                  : "border-slate-200 bg-white hover:border-primary/30",
+                isPreorder && option.value === "cash" && "cursor-not-allowed opacity-45"
               )}
             >
               <input
@@ -1608,7 +1647,8 @@ function PaymentSection({
                 type="radio"
                 name="paymentMethod"
                 value={option.value}
-                checked={form.paymentMethod === option.value}
+                disabled={isPreorder && option.value === "cash"}
+                checked={isPreorder ? option.value === "bank_transfer" : form.paymentMethod === option.value}
                 onChange={() =>
                   onChange((current) => ({ ...current, paymentMethod: option.value }))
                 }
@@ -1635,7 +1675,7 @@ function PaymentSection({
             type="checkbox"
             className="mt-1 size-4 shrink-0 accent-primary"
             disabled={!canUseWallet}
-            checked={form.useWallet && canUseWallet}
+            checked={!isPreorder && form.useWallet && canUseWallet}
             onChange={(event) =>
               onChange((current) => ({ ...current, useWallet: event.currentTarget.checked }))
             }
@@ -1707,12 +1747,18 @@ function PaymentSection({
 function ConfirmationSection({
   confirmed,
   errors,
+  form,
+  isPreorder,
   onChange,
+  onFormChange,
   submitAttempted,
 }: {
   confirmed: boolean;
   errors: Record<string, string>;
+  form: CheckoutFormState;
+  isPreorder: boolean;
   onChange: React.Dispatch<React.SetStateAction<boolean>>;
+  onFormChange: React.Dispatch<React.SetStateAction<CheckoutFormState>>;
   submitAttempted: boolean;
 }) {
   const t = useT();
@@ -1725,7 +1771,21 @@ function ConfirmationSection({
           {tx(t, "storefront.checkout.confirmTitle", "Conferme prima dell'invio")}
         </CardTitle>
       </CardHeader>
-      <CardContent className="px-3">
+      <CardContent className="space-y-2 px-3">
+        {isPreorder ? (
+          <ConfirmLine
+            checked={form.preorderTermsAccepted}
+            error={submitAttempted ? errors.preorderTermsAccepted : undefined}
+            id="confirmPreorderTerms"
+            label="Ho capito che si tratta di una prenotazione: la merce non è ancora disponibile, la data prevista può variare e la spedizione avverrà dopo l'arrivo e l'assegnazione della quantità."
+            onChange={(checked) =>
+              onFormChange((current) => ({
+                ...current,
+                preorderTermsAccepted: checked,
+              }))
+            }
+          />
+        ) : null}
         <ConfirmLine
           checked={confirmed}
           error={submitAttempted ? errors.confirmed : undefined}
@@ -1777,11 +1837,13 @@ function ConfirmLine({
 function CheckoutSubmitPanel({
   canSubmit,
   disabledReason,
+  isPreorder,
   onSubmit,
   state,
 }: {
   canSubmit: boolean;
   disabledReason?: string;
+  isPreorder: boolean;
   onSubmit: () => void;
   state: SubmitState;
 }) {
@@ -1803,7 +1865,7 @@ function CheckoutSubmitPanel({
           <Send className="size-4 shrink-0" />
         )}
         <span className="min-w-0 truncate">
-          {submitButtonLabel(t, state, canSubmit)}
+          {submitButtonLabel(t, state, canSubmit, isPreorder)}
         </span>
       </Button>
       {!canSubmit && disabledReason && state.status !== "success" && (
@@ -2018,6 +2080,7 @@ function CheckoutMobileBar({
   amountStatus,
   canSubmit,
   disabledReason,
+  isPreorder,
   lineCount,
   onSubmit,
   payableAmount,
@@ -2029,6 +2092,7 @@ function CheckoutMobileBar({
   amountStatus: CheckoutAmountStatus;
   canSubmit: boolean;
   disabledReason?: string;
+  isPreorder: boolean;
   lineCount: number;
   onSubmit: () => void;
   payableAmount?: number;
@@ -2164,7 +2228,7 @@ function CheckoutMobileBar({
             <Send className="size-4 shrink-0" />
           )}
           <span className="min-w-0 truncate">
-            {submitButtonLabel(t, state, canSubmit)}
+            {submitButtonLabel(t, state, canSubmit, isPreorder)}
           </span>
         </Button>
       </div>
@@ -2445,7 +2509,9 @@ function isCustomerContextCatalogRejection(reason?: string) {
 function validateForm(
   t: StorefrontTranslator,
   confirmed: boolean,
-  shippingAddress: string
+  shippingAddress: string,
+  isPreorder: boolean,
+  preorderTermsAccepted: boolean
 ) {
   const required = tx(t, "storefront.checkout.required", "Campo obbligatorio.");
   const errors: Record<string, string> = {};
@@ -2458,6 +2524,10 @@ function validateForm(
     errors.confirmed = required;
   }
 
+  if (isPreorder && !preorderTermsAccepted) {
+    errors.preorderTermsAccepted = required;
+  }
+
   return errors;
 }
 
@@ -2466,6 +2536,7 @@ function initialFormState(): CheckoutFormState {
     deliveryMethod: defaultDeliveryMethod,
     notes: "",
     paymentMethod: "bank_transfer",
+    preorderTermsAccepted: false,
     useWallet: false,
   };
 }
@@ -2660,6 +2731,10 @@ function formatPreviewIssue(t: StorefrontTranslator, issue: PreviewIssue) {
       });
     case "out_of_stock":
       return tx(t, "storefront.checkout.issue.outOfStock", "Prodotto attualmente esaurito.");
+    case "mixed_order_kind":
+      return "I prodotti disponibili e i preordini devono essere inviati come due ordini separati.";
+    case "preorder_wallet_not_allowed":
+      return "Il saldo wallet non può essere usato per un preordine.";
     case "price_missing":
       return tx(t, "storefront.checkout.issue.priceMissing", "Prezzo effettivo non disponibile per questo SKU.");
     case "profile_incomplete": {
@@ -2784,7 +2859,9 @@ function expectedPreviewForOrder(preview: PreviewState) {
       sku: line.sku,
       quantity: line.quantity,
       unitNetCents: line.unitPrice.cents,
+      offerVersion: line.offerVersion ?? null,
       priceVersion: line.priceVersion ?? null,
+      purchaseKind: line.purchaseKind ?? "stock",
     })),
     totals: {
       subtotalCents: preview.totals.subtotal.cents,
@@ -2824,7 +2901,8 @@ function mergeCatalogProducts(
 function submitButtonLabel(
   t: StorefrontTranslator,
   state: SubmitState,
-  canSubmit: boolean
+  canSubmit: boolean,
+  isPreorder: boolean
 ) {
   if (state.status === "success") {
     return tx(t, "storefront.checkout.submit.button.success", "Ordine inviato");
@@ -2836,6 +2914,10 @@ function submitButtonLabel(
 
   if (!canSubmit) {
     return tx(t, "storefront.checkout.submit.button.blocked", "无法提交");
+  }
+
+  if (isPreorder) {
+    return "Conferma preordine";
   }
 
   return tx(t, "storefront.checkout.submit.button.idle", "Conferma ordine");
@@ -2855,6 +2937,14 @@ function friendlyCheckoutError(
       return tx(t, "storefront.checkout.error.stockInvalid", "Una o piu righe non rispettano scorte, quantita o MOQ.");
     case "ORDER_SKU_UNAVAILABLE":
       return tx(t, "storefront.checkout.error.skuUnavailable", "Uno o piu articoli non sono piu disponibili.");
+    case "PREORDER_OFFER_CHANGED":
+      return "La disponibilità del preordine è cambiata. Aggiorna il checkout e riprova.";
+    case "PREORDER_PAYMENT_METHOD_INVALID":
+      return "Per il preordine è disponibile solo il bonifico bancario.";
+    case "PREORDER_TERMS_REQUIRED":
+      return "Conferma le condizioni del preordine prima di inviare.";
+    case "PREORDER_WALLET_NOT_ALLOWED":
+      return "Il saldo wallet non può essere usato per un preordine.";
     case "ORDER_CUSTOMER_NOT_READY":
     case "CUSTOMER_PROFILE_INCOMPLETE":
       return (

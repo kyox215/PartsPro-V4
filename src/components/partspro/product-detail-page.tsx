@@ -22,6 +22,7 @@ import {
   formatPriceDiscountBadge,
   getProductPriceDisplay,
 } from "@/lib/partspro-price-display";
+import { getProductPurchaseKind } from "@/lib/partspro-preorder-contract";
 import { CustomerActivityTracker } from "./customer-activity-tracker";
 import { ProductDetailPurchasePanelSlot } from "./product-detail-purchase-panel-slot";
 import { StoreHeader } from "./store-header";
@@ -54,11 +55,7 @@ export async function ProductDetailPage({
     showWholesalePrice &&
     (priceGateReason === "customer" || priceGateReason === "employee") &&
     hasBuyerPrice;
-  const minimumQuantity = Math.max(1, product.moq);
-  const canRequestRestock =
-    product.status === "Out of Stock" ||
-    product.stock <= 0 ||
-    product.stock < minimumQuantity;
+  const canRequestRestock = getProductPurchaseKind(product) === "unavailable";
   const shouldShowPurchasePanel = canPurchaseProduct || canRequestRestock;
   const productPath = `/prodotto/${encodeURIComponent(product.sku)}`;
   const hiddenPriceCopy = getAccountGateCopy(t, priceGateReason, {

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   AlertTriangle,
   BadgeEuro,
+  CalendarClock,
   CheckCircle2 as CheckIcon,
   CheckCircle2,
   Minus,
@@ -16,6 +17,11 @@ import { Button } from "@/components/ui/button";
 import { tx, txFormat } from "@/i18n/dictionaries/storefront";
 import type { PartProduct } from "@/lib/partspro-data";
 import { formatEuro } from "@/lib/partspro-data";
+import {
+  getProductOrderableQuantity,
+  getProductPurchaseKind,
+  preorderEtaLabel,
+} from "@/lib/partspro-preorder-contract";
 import { cn } from "@/lib/utils";
 import { addCartItem } from "./cart-state";
 import { useT } from "./i18n-provider";
@@ -41,9 +47,12 @@ export function ProductDetailPurchasePanel({
   const t = useT();
   const router = useRouter();
   const minimumQuantity = Math.max(product.moq, 1);
-  const stockAvailable = product.stock > 0 && product.status !== "Out of Stock";
+  const purchaseKind = getProductPurchaseKind(product);
+  const isPreorder = purchaseKind === "preorder";
+  const orderableQuantity = getProductOrderableQuantity(product);
+  const stockAvailable = purchaseKind !== "unavailable" && orderableQuantity > 0;
   const initialQuantity = stockAvailable
-    ? Math.min(Math.max(minimumQuantity, 1), product.stock)
+    ? Math.min(Math.max(minimumQuantity, 1), orderableQuantity)
     : minimumQuantity;
   const [quantity, setQuantity] = useState(initialQuantity);
   const cartQuantity = useProductCartQuantity(product.sku);
@@ -51,12 +60,9 @@ export function ProductDetailPurchasePanel({
   const safeQuantity = Number.isFinite(quantity) ? Math.max(1, Math.trunc(quantity)) : 1;
   const activeQuantity = isInCart ? cartQuantity : safeQuantity;
   const isBelowMoq = activeQuantity < minimumQuantity;
-  const isAboveStock = stockAvailable && activeQuantity > product.stock;
+  const isAboveStock = stockAvailable && activeQuantity > orderableQuantity;
   const canOrder = stockAvailable && !isBelowMoq && !isAboveStock;
-  const canRequestRestock =
-    product.status === "Out of Stock" ||
-    product.stock <= 0 ||
-    product.stock < minimumQuantity;
+  const canRequestRestock = purchaseKind === "unavailable";
   const showQuoteSummary = canOrder && product.price > 0;
   const subtotal = product.price * activeQuantity;
   const total = subtotal;
@@ -67,7 +73,9 @@ export function ProductDetailPurchasePanel({
     isAboveStock,
     isBelowMoq,
     minimumQuantity,
+    orderableQuantity,
     product,
+    purchaseKind,
     safeQuantity: activeQuantity,
     stockAvailable,
   });
@@ -173,7 +181,9 @@ export function ProductDetailPurchasePanel({
                 ? tx(t, "storefront.product.purchase.added", "Aggiunto")
                 : addFeedbackState === "error"
                   ? tx(t, "storefront.product.purchase.addFailed", "Riprova")
-                  : tx(t, "storefront.product.purchase.add", "Aggiungi al carrello")}
+                  : isPreorder
+                    ? tx(t, "storefront.preorder.reserve", "Prenota")
+                    : tx(t, "storefront.product.purchase.add", "Aggiungi al carrello")}
             </span>
           </Button>
         ) : canRequestRestock ? (
@@ -237,7 +247,9 @@ export function ProductDetailPurchasePanel({
             )}
           >
             <span className="min-w-0 truncate">
-              {tx(t, "storefront.product.purchase.orderNow", "Ordina ora")}
+              {isPreorder
+                ? tx(t, "storefront.preorder.reserveNow", "Prenota ora")
+                : tx(t, "storefront.product.purchase.orderNow", "Ordina ora")}
             </span>
           </Button>
         ) : (
@@ -257,7 +269,14 @@ export function ProductDetailPurchasePanel({
   }
 
   return (
-    <div className="mt-2 rounded-lg border border-primary/20 bg-primary/8 p-2">
+    <div
+      className={cn(
+        "mt-2 rounded-lg border p-2",
+        isPreorder
+          ? "border-violet-200 bg-violet-50/80"
+          : "border-primary/20 bg-primary/8"
+      )}
+    >
       <div className="grid gap-2 lg:grid-cols-[minmax(260px,360px)_minmax(240px,1fr)] xl:grid-cols-[minmax(280px,380px)_minmax(260px,1fr)]">
         <div className="space-y-1.5">
           {isInCart ? (
@@ -299,7 +318,7 @@ export function ProductDetailPurchasePanel({
                   type="number"
                   inputMode="numeric"
                   min={1}
-                  max={stockAvailable ? product.stock : undefined}
+                  max={stockAvailable ? orderableQuantity : undefined}
                   value={safeQuantity}
                   disabled={!stockAvailable}
                   aria-describedby={validationId}
@@ -312,7 +331,7 @@ export function ProductDetailPurchasePanel({
                   variant="ghost"
                   size="icon-sm"
                   className="size-8 rounded-none"
-                  disabled={!stockAvailable || safeQuantity >= product.stock}
+                  disabled={!stockAvailable || safeQuantity >= orderableQuantity}
                   onClick={() => updateQuantity(safeQuantity + 1)}
                   aria-label={`Aumenta quantita per ${product.name}`}
                 >
@@ -346,9 +365,23 @@ export function ProductDetailPurchasePanel({
           {showQuoteSummary ? (
             <>
               <div className="flex items-center gap-2 text-xs font-black text-slate-950">
-                <BadgeEuro className="size-4 text-primary" />
-                {tx(t, "storefront.product.purchase.quoteTitle", "Riepilogo preventivo")}
+                {isPreorder ? (
+                  <CalendarClock className="size-4 text-violet-600" />
+                ) : (
+                  <BadgeEuro className="size-4 text-primary" />
+                )}
+                {isPreorder
+                  ? tx(t, "storefront.preorder.summaryTitle", "Riepilogo preordine")
+                  : tx(t, "storefront.product.purchase.quoteTitle", "Riepilogo preventivo")}
               </div>
+              {isPreorder && product.preorder ? (
+                <div className="mt-2 rounded-md border border-violet-100 bg-violet-50 px-2 py-1.5 text-[11px] font-semibold leading-4 text-violet-900">
+                  <div className="font-black">
+                    {tx(t, "storefront.preorder.eta", "Arrivo previsto")}: {preorderEtaLabel(product.preorder)}
+                  </div>
+                  <p className="mt-1">{product.preorder.terms}</p>
+                </div>
+              ) : null}
               <div className="mt-1.5 space-y-1 text-xs">
                 <SummaryLine
                   label={tx(t, "storefront.product.purchase.quoteQuantity", "Quantita")}
@@ -475,7 +508,9 @@ function getPurchaseValidationMessage({
   isAboveStock,
   isBelowMoq,
   minimumQuantity,
+  orderableQuantity,
   product,
+  purchaseKind,
   safeQuantity,
   stockAvailable,
 }: {
@@ -483,7 +518,9 @@ function getPurchaseValidationMessage({
   isAboveStock: boolean;
   isBelowMoq: boolean;
   minimumQuantity: number;
+  orderableQuantity: number;
   product: PartProduct;
+  purchaseKind: ReturnType<typeof getProductPurchaseKind>;
   safeQuantity: number;
   stockAvailable: boolean;
 }) {
@@ -491,12 +528,17 @@ function getPurchaseValidationMessage({
     return "Articolo esaurito: il carrello resta disattivato finche lo stock non rientra.";
   }
 
+  if (purchaseKind === "preorder" && canOrder) {
+    const eta = product.preorder ? preorderEtaLabel(product.preorder) : "";
+    return `${safeQuantity} pezzi prenotabili${eta ? ` · arrivo previsto ${eta}` : ""}.`;
+  }
+
   if (isBelowMoq) {
     return `Quantita sotto MOQ: seleziona almeno ${minimumQuantity} pezzi per procedere.`;
   }
 
   if (isAboveStock) {
-    return `Quantita oltre stock: disponibili ${product.stock} pezzi.`;
+    return `Quantita oltre disponibilita: disponibili ${orderableQuantity} pezzi.`;
   }
 
   if (canOrder) {

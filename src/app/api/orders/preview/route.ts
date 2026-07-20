@@ -38,6 +38,12 @@ import {
   type DeliveryMethod,
 } from "@/lib/partspro-shipping";
 import { toPublicSku } from "@/lib/partspro-sku";
+import {
+  getProductOrderableQuantity,
+  getProductPurchaseKind,
+  isProductOrderable,
+} from "@/lib/partspro-preorder-contract";
+import { mergePreorderAvailability } from "@/lib/partspro-preorder-server";
 
 const previewItemSchema = z
   .object({
@@ -232,18 +238,26 @@ export async function POST(request: Request) {
       );
     }
 
-    const pricedCatalog = catalog.data.map((product) =>
+    const productsWithPreorders = await mergePreorderAvailability(catalog.data);
+    const pricedCatalog = productsWithPreorders.map((product) =>
       product.priceResolved || product.priceVersion
         ? product
         : applyAccountPriceToProduct(product, account)
     );
     const orderBuild = buildPreviewOrder(result.data.items, pricedCatalog);
+    if (orderBuild.orderKind === "preorder" && result.data.useWallet) {
+      orderBuild.issues.push({
+        code: "preorder_wallet_not_allowed",
+        message: "Wallet credit cannot be used for preorders.",
+        sku: "order",
+      });
+    }
     const totals = calculateTotals(orderBuild.lines, deliveryMethod);
     const wallet = await getCustomerWalletById(company.id);
     const walletSummary = calculateWalletSummary(
       totals.totalCents,
       wallet.data.balance,
-      Boolean(result.data.useWallet)
+      orderBuild.orderKind === "preorder" ? false : Boolean(result.data.useWallet)
     );
 
     return NextResponse.json({
@@ -263,6 +277,7 @@ export async function POST(request: Request) {
         },
         issues: orderBuild.issues,
         lines: orderBuild.lines.map(toPreviewLineDto),
+        orderKind: orderBuild.orderKind,
         deliveryMethod,
         shippingMethod: shippingMethodForDeliveryMethod(deliveryMethod),
         totals: totalsDto(totals, deliveryMethod),
@@ -293,7 +308,7 @@ function buildPreviewCatalogRejections(
   );
 
   return issues
-    .filter((issue) => issue.sku !== "customer")
+    .filter((issue) => issue.sku !== "customer" && issue.sku !== "order")
     .map((issue) => ({
       reason: previewCatalogRejectionReason(issue, catalogBySku.get(toPublicSku(issue.sku))),
       sku: toPublicSku(issue.sku),
@@ -357,7 +372,10 @@ function buildPreviewOrder(requestedItems: RequestedPreviewItem[], catalog: Part
       continue;
     }
 
-    if (product.status === "Out of Stock") {
+    const purchaseKind = getProductPurchaseKind(product);
+    const orderableQuantity = getProductOrderableQuantity(product);
+
+    if (purchaseKind === "unavailable") {
       issues.push({ sku, code: "out_of_stock", message: "Product is currently out of stock." });
       continue;
     }
@@ -367,12 +385,12 @@ function buildPreviewOrder(requestedItems: RequestedPreviewItem[], catalog: Part
       continue;
     }
 
-    if (item.quantity > product.stock) {
+    if (!isProductOrderable(product, item.quantity)) {
       issues.push({
         sku,
         code: "stock_limit",
-        message: `Only ${product.stock} units are currently available.`,
-        stock: product.stock,
+        message: `Only ${orderableQuantity} units are currently available.`,
+        stock: orderableQuantity,
       });
       continue;
     }
@@ -380,7 +398,26 @@ function buildPreviewOrder(requestedItems: RequestedPreviewItem[], catalog: Part
     lines.push(buildPreviewLine(product, item.quantity));
   }
 
-  return { lines, issues };
+  const purchaseKinds = new Set(
+    lines.map((line) => getProductPurchaseKind(line.product))
+  );
+
+  if (purchaseKinds.size > 1) {
+    issues.push({
+      sku: "order",
+      code: "mixed_order_kind",
+      message: "Stock items and preorder items must be checked out separately.",
+    });
+  }
+
+  return {
+    lines,
+    issues,
+    orderKind:
+      purchaseKinds.size === 1 && purchaseKinds.has("preorder")
+        ? ("preorder" as const)
+        : ("stock" as const),
+  };
 }
 
 function buildPreviewLine(product: PartProduct, quantity: number): PreviewLine {
@@ -417,6 +454,9 @@ function toPreviewLineDto(line: PreviewLine) {
     quantity: line.quantity,
     moq: line.product.moq,
     stock: line.product.stock,
+    orderableQuantity: getProductOrderableQuantity(line.product),
+    purchaseKind: getProductPurchaseKind(line.product),
+    preorder: line.product.preorder ?? null,
     unitPrice: money(line.unitNetCents),
     lineNet: money(line.lineNetCents),
     vatRate: decimal(line.product.vatRate),

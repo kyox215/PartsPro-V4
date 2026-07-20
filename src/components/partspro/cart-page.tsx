@@ -52,6 +52,12 @@ import { type PartProduct } from "@/lib/partspro-data";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import { getProductImageCandidates } from "@/lib/partspro-product-images";
 import {
+  getProductOrderableQuantity,
+  isPreorderProduct,
+  isProductOrderable,
+  preorderEtaLabel,
+} from "@/lib/partspro-preorder-contract";
+import {
   formatPriceDiscountBadge,
   getProductPriceDisplay,
 } from "@/lib/partspro-price-display";
@@ -113,6 +119,7 @@ type CartCatalogRejectedItem = {
   leadTime?: string;
   moq?: number;
   name?: string;
+  preorder?: PartProduct["preorder"];
   reason?: string;
   rmaDays?: number;
   sku: string;
@@ -1003,11 +1010,12 @@ function cartRejectionFromProduct(
     leadTime: product.leadTime,
     moq: product.moq,
     name: product.name,
+    preorder: product.preorder,
     reason: cartProductRejectionReason(product, quantity),
     rmaDays: product.rmaDays,
     sku: product.sku,
     status: product.status,
-    stock: product.stock,
+    stock: getProductOrderableQuantity(product),
     tags: product.tags,
     visual: product.visual,
     warehouse: product.warehouse,
@@ -1016,16 +1024,13 @@ function cartRejectionFromProduct(
 
 function cartProductRejectionReason(product: PartProduct, quantity: number) {
   const minimumQuantity = Math.max(1, product.moq);
+  const orderableQuantity = getProductOrderableQuantity(product);
 
   if (product.price <= 0) {
     return "price_unavailable";
   }
 
-  if (
-    product.status === "Out of Stock" ||
-    product.stock <= 0 ||
-    product.stock < minimumQuantity
-  ) {
+  if (!isProductOrderable(product, minimumQuantity)) {
     return "unavailable";
   }
 
@@ -1033,7 +1038,7 @@ function cartProductRejectionReason(product: PartProduct, quantity: number) {
     return "quantity_below_moq";
   }
 
-  if (quantity > product.stock) {
+  if (quantity > orderableQuantity) {
     return "quantity_over_stock";
   }
 
@@ -1181,6 +1186,7 @@ function rejectedCartProduct(
     leadTime: item.leadTime ?? "",
     moq: Math.max(1, item.moq ?? 1),
     name: item.name ?? fallbackName,
+    preorder: item.preorder,
     price: 0,
     retailPrice: 0,
     rmaDays: Math.max(0, item.rmaDays ?? 0),
@@ -1218,6 +1224,7 @@ function cartSnapshotProduct(
     price: Math.max(0, snapshot.price),
     priceGroupDiscountPercent: snapshot.priceGroupDiscountPercent,
     priceVersion: snapshot.priceVersion,
+    preorder: snapshot.preorder,
     retailPrice: Math.max(0, snapshot.retailPrice),
     rmaDays: 0,
     sku: snapshot.sku || fallbackSku,
@@ -1601,8 +1608,9 @@ const CartLineMobileRow = React.memo(function CartLineMobileRow({
   const t = useT();
   const { locale } = useI18n();
   const minimumQuantity = Math.max(1, line.product.moq);
+  const orderableQuantity = getProductOrderableQuantity(line.product);
   const canDecrease = line.quantity > minimumQuantity;
-  const canIncrease = line.quantity < line.product.stock;
+  const canIncrease = line.quantity < orderableQuantity;
   const priceDisplay = getProductPriceDisplay(line.product);
 
   return (
@@ -1632,6 +1640,11 @@ const CartLineMobileRow = React.memo(function CartLineMobileRow({
             <Badge variant="outline" className="h-5 px-1.5 text-[10px] leading-none">
               {line.product.grade}
             </Badge>
+            {isPreorderProduct(line.product) && line.product.preorder ? (
+              <Badge className="h-5 border border-violet-200 bg-violet-50 px-1.5 text-[10px] text-violet-800">
+                Preordine · ETA {preorderEtaLabel(line.product.preorder)}
+              </Badge>
+            ) : null}
           </div>
         </div>
       </CartProductDetailsTrigger>
@@ -1671,7 +1684,7 @@ const CartLineMobileRow = React.memo(function CartLineMobileRow({
             <Minus className="size-3.5" />
           </Button>
           <QuantityInput
-            max={line.product.stock}
+            max={orderableQuantity}
             min={minimumQuantity}
             quantity={line.quantity}
             sku={line.sku}
@@ -1720,8 +1733,9 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
   const t = useT();
   const { locale } = useI18n();
   const minimumQuantity = Math.max(1, line.product.moq);
+  const orderableQuantity = getProductOrderableQuantity(line.product);
   const canDecrease = line.quantity > minimumQuantity;
-  const canIncrease = line.quantity < line.product.stock;
+  const canIncrease = line.quantity < orderableQuantity;
   const priceDisplay = getProductPriceDisplay(line.product);
   const stockMeta = publicStockLevelMeta(t, line.product);
 
@@ -1754,9 +1768,15 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
               <Badge variant="outline" className="h-5 max-w-[160px] px-1.5 text-[11px]">
                 <span className="truncate">{line.product.brand} · {line.product.category}</span>
               </Badge>
-              <Badge className={cn("h-5 px-1.5 text-[11px]", stockMeta.className)}>
-                {stockMeta.label}
-              </Badge>
+              {isPreorderProduct(line.product) && line.product.preorder ? (
+                <Badge className="h-5 border border-violet-200 bg-violet-50 px-1.5 text-[11px] text-violet-800">
+                  Preordine · ETA {preorderEtaLabel(line.product.preorder)}
+                </Badge>
+              ) : (
+                <Badge className={cn("h-5 px-1.5 text-[11px]", stockMeta.className)}>
+                  {stockMeta.label}
+                </Badge>
+              )}
               <Badge variant="outline" className="h-5 px-1.5 text-[11px]">
                 {txFormat(t, "storefront.cart.moqBadge", "MOQ {moq}", {
                   moq: minimumQuantity,
@@ -1804,7 +1824,7 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
               </Button>
               <QuantityInput
                 compact
-                max={line.product.stock}
+                max={orderableQuantity}
                 min={minimumQuantity}
                 quantity={line.quantity}
                 sku={line.sku}
@@ -2700,13 +2720,9 @@ function mergeCatalogProducts(
 }
 
 function filterOrderableCatalogProducts(products: readonly PartProduct[]) {
-  return products.filter((product) => {
-    return (
-      product.price > 0 &&
-      product.status !== "Out of Stock" &&
-      product.stock >= Math.max(1, product.moq)
-    );
-  });
+  return products.filter((product) =>
+    isProductOrderable(product, Math.max(1, product.moq))
+  );
 }
 
 function loginHrefForNext(nextHref: string) {
