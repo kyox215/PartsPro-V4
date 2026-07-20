@@ -17,7 +17,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
-  type DeviceModelGroup,
+  type CatalogDepartment,
+  type CatalogDepartmentGroup,
   type PartProduct,
 } from "@/lib/partspro-data";
 import type { HomeBanner } from "@/lib/partspro-repository";
@@ -39,10 +40,10 @@ import { ProductCard } from "./product-card";
 type HomePageProps = {
   cartAccess?: StorefrontCartAccess;
   catalogTotal?: number;
+  departmentGroups?: readonly CatalogDepartmentGroup[];
   homeBanners?: HomeBanner[];
   hotProducts?: PartProduct[];
   initialAccountAccess?: StoreHeaderAccountAccess;
-  modelGroups?: readonly DeviceModelGroup[];
   newProducts?: PartProduct[];
   priceGateReason?: PriceVisibilityReason;
   remaxPreorderProducts?: PartProduct[];
@@ -53,10 +54,10 @@ type HomePageProps = {
 export function HomePage({
   cartAccess = { allowed: false, missingFields: [], reason: "login_required" },
   catalogTotal = 0,
+  departmentGroups = [],
   homeBanners = [],
   hotProducts = [],
   initialAccountAccess,
-  modelGroups = [],
   newProducts = [],
   priceGateReason = "login_required",
   remaxPreorderProducts = [],
@@ -68,21 +69,21 @@ export function HomePage({
   return (
     <main className="min-h-screen overflow-x-clip bg-[#f4f6fa] text-slate-950">
       <StoreHeader
+        departmentGroups={departmentGroups}
         initialAccountAccess={initialAccountAccess}
-        modelGroups={modelGroups}
         prefetchCatalogLinks
       />
       <div className="mx-auto grid w-full max-w-[1500px] min-w-0 grid-cols-[minmax(0,1fr)] gap-3 px-2 py-3 sm:gap-4 sm:px-4 sm:py-4 lg:grid-cols-[230px_minmax(0,1fr)]">
-        <CategorySidebar modelGroups={modelGroups} />
+        <CategorySidebar departmentGroups={departmentGroups} />
         <div className="min-w-0 space-y-4">
           <HomeBannerCarousel
             banners={homeBanners}
             catalogTotal={catalogTotal}
-            modelGroupCount={modelGroups.length}
+            catalogBrandCount={countCatalogBrands(departmentGroups)}
           />
           {remaxPreorderProducts.length > 0 ? (
             <ProductShelf
-              actionHref="/catalogo?brand=REMAX&minStock=0"
+              actionHref="/catalogo?department=general_merchandise&brand=REMAX"
               actionLabel={tx(t, "storefront.home.common.viewAll", "Vedi tutto")}
               emptyKey="storefront.home.remax.empty"
               emptyFallback="I preordini REMAX saranno disponibili a breve."
@@ -153,9 +154,15 @@ export function HomePage({
   );
 }
 
-function CategorySidebar({ modelGroups }: { modelGroups?: readonly DeviceModelGroup[] }) {
+function CategorySidebar({
+  departmentGroups,
+}: {
+  departmentGroups?: readonly CatalogDepartmentGroup[];
+}) {
   const t = useT();
-  const [expandedBrand, setExpandedBrand] = useState<string | null>(null);
+  const [expandedDepartment, setExpandedDepartment] =
+    useState<CatalogDepartment | null>(null);
+  const [expandedBrandKey, setExpandedBrandKey] = useState<string | null>(null);
 
   return (
     <aside className="hidden lg:block">
@@ -174,12 +181,13 @@ function CategorySidebar({ modelGroups }: { modelGroups?: readonly DeviceModelGr
           </div>
         </div>
         <CatalogBrandTree
-          expandedBrand={expandedBrand}
+          departmentGroups={departmentGroups}
+          expandedBrandKey={expandedBrandKey}
+          expandedDepartment={expandedDepartment}
           idPrefix="home-desktop-catalog"
-          modelGroups={modelGroups}
-          onExpandedBrandChange={setExpandedBrand}
+          onExpandedBrandKeyChange={setExpandedBrandKey}
+          onExpandedDepartmentChange={setExpandedDepartment}
           prefetchCatalogLinks
-          showAvailableLink
           variant="desktop"
         />
       </div>
@@ -189,12 +197,12 @@ function CategorySidebar({ modelGroups }: { modelGroups?: readonly DeviceModelGr
 
 function HomeBannerCarousel({
   banners,
+  catalogBrandCount,
   catalogTotal,
-  modelGroupCount,
 }: {
   banners: HomeBanner[];
+  catalogBrandCount: number;
   catalogTotal: number;
-  modelGroupCount: number;
 }) {
   const t = useT();
   const [activeIndex, setActiveIndex] = useState(0);
@@ -227,8 +235,8 @@ function HomeBannerCarousel({
   if (!hasBanners) {
     return (
       <CuttingMachinePoster
+        catalogBrandCount={catalogBrandCount}
         catalogTotal={catalogTotal}
-        modelGroupCount={modelGroupCount}
       />
     );
   }
@@ -310,11 +318,11 @@ function HomeBannerCarousel({
 }
 
 function CuttingMachinePoster({
+  catalogBrandCount,
   catalogTotal,
-  modelGroupCount,
 }: {
+  catalogBrandCount: number;
   catalogTotal: number;
-  modelGroupCount: number;
 }) {
   const t = useT();
   const stats = [
@@ -362,7 +370,7 @@ function CuttingMachinePoster({
               </Link>
             </Button>
             <div className="text-xs font-bold text-slate-500">
-              {catalogTotal.toLocaleString()} SKU · {modelGroupCount || "8+"} brand
+              {catalogTotal.toLocaleString()} SKU · {catalogBrandCount || "8+"} brand
             </div>
           </div>
         </div>
@@ -383,6 +391,12 @@ function CuttingMachinePoster({
       </div>
     </section>
   );
+}
+
+function countCatalogBrands(groups: readonly CatalogDepartmentGroup[]) {
+  return new Set(
+    groups.flatMap((group) => group.brands.map((brand) => brand.brand))
+  ).size;
 }
 
 function ProductShelf({

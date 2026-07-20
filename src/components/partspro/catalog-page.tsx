@@ -6,8 +6,14 @@ import { useSearchParams } from "next/navigation";
 import { AlertTriangle, Grid3X3, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { products as localProducts } from "@/lib/partspro-data";
-import type { DeviceModelGroup, PartProduct } from "@/lib/partspro-data";
+import {
+  catalogDepartmentGroups as fallbackCatalogDepartmentGroups,
+  catalogDepartments,
+  products as localProducts,
+  type CatalogDepartment,
+  type CatalogDepartmentGroup,
+  type PartProduct,
+} from "@/lib/partspro-data";
 import {
   hrefWithAssistedCompanyId,
   rememberAssistedCompanyId,
@@ -34,13 +40,14 @@ import {
   useDelayedVisible,
 } from "./pending-feedback";
 
-type FilterKey = "brand" | "category" | "status" | "grade";
+type FilterKey = "brand" | "category" | "department" | "status" | "grade";
 
 type CatalogFiltersState = Record<FilterKey, string[]>;
 
 const emptyFilters: CatalogFiltersState = {
   brand: [],
   category: [],
+  department: [],
   status: [],
   grade: [],
 };
@@ -53,11 +60,18 @@ type CatalogSearchParams = {
 function getFiltersFromParams(searchParams: CatalogSearchParams): CatalogFiltersState {
   const brand = searchParams.get("brand");
   const category = searchParams.get("category");
+  const departmentValue = searchParams.get("department");
+  const department = catalogDepartments.includes(
+    departmentValue as CatalogDepartment
+  )
+    ? departmentValue
+    : null;
 
   return {
     ...emptyFilters,
     brand: brand ? [brand] : [],
     category: category ? [category] : [],
+    department: department ? [department] : [],
   };
 }
 
@@ -74,7 +88,7 @@ function getModelSeriesFromParams(searchParams: CatalogSearchParams) {
 }
 
 function getInStockOnlyFromParams(searchParams: CatalogSearchParams) {
-  return Number(searchParams.get("minStock") ?? "1") > 0;
+  return Number(searchParams.get("minStock") ?? "0") > 0;
 }
 
 type CatalogPageProps = {
@@ -83,7 +97,7 @@ type CatalogPageProps = {
   cartAccess?: StorefrontCartAccess;
   filteredTotal?: number;
   initialAccountAccess?: StoreHeaderAccountAccess;
-  initialModelGroups?: DeviceModelGroup[];
+  initialDepartmentGroups?: CatalogDepartmentGroup[];
   initialProducts?: PartProduct[];
   priceGateReason?: PriceVisibilityReason;
   showWholesalePrice?: boolean;
@@ -95,7 +109,7 @@ export function CatalogPage({
   cartAccess = { allowed: false, missingFields: [], reason: "login_required" },
   filteredTotal,
   initialAccountAccess,
-  initialModelGroups,
+  initialDepartmentGroups,
   initialProducts = localProducts,
   priceGateReason = "login_required",
   showWholesalePrice = false,
@@ -110,7 +124,7 @@ export function CatalogPage({
       initialAccountAccess={initialAccountAccess}
       initialFilters={getFiltersFromParams(searchParams)}
       initialInStockOnly={getInStockOnlyFromParams(searchParams)}
-      initialModelGroups={initialModelGroups}
+      initialDepartmentGroups={initialDepartmentGroups}
       initialProducts={initialProducts}
       cartAccess={cartAccess}
       initialModelSeries={getModelSeriesFromParams(searchParams)}
@@ -130,7 +144,7 @@ function CatalogPageContent({
   cartAccess,
   initialFilters,
   initialInStockOnly,
-  initialModelGroups,
+  initialDepartmentGroups,
   initialProducts,
   initialModelSeries,
   initialSearchQuery,
@@ -145,7 +159,7 @@ function CatalogPageContent({
   cartAccess: StorefrontCartAccess;
   initialFilters: CatalogFiltersState;
   initialInStockOnly: boolean;
-  initialModelGroups?: DeviceModelGroup[];
+  initialDepartmentGroups?: CatalogDepartmentGroup[];
   initialProducts: PartProduct[];
   initialModelSeries: string;
   initialSearchQuery: string;
@@ -165,8 +179,14 @@ function CatalogPageContent({
     "idle" | "loading" | "loading-more"
   >("idle");
   const [catalogError, setCatalogError] = useState<"network" | null>(null);
-  const [expandedBrand, setExpandedBrand] = useState<string | null>(
-    () => initialFilters.brand[0] ?? null
+  const initialDepartment = readDepartmentFilter(initialFilters);
+  const [expandedDepartment, setExpandedDepartment] =
+    useState<CatalogDepartment | null>(() => initialDepartment);
+  const [expandedBrandKey, setExpandedBrandKey] = useState<string | null>(
+    () =>
+      initialDepartment && initialFilters.brand[0]
+        ? `${initialDepartment}::${initialFilters.brand[0]}`
+        : null
   );
   const shouldUseCatalogPageCache = !showWholesalePrice;
   const catalogPageCacheRef = useRef(
@@ -176,6 +196,7 @@ function CatalogPageContent({
           {
             brand: initialFilters.brand[0],
             category: initialFilters.category[0],
+            department: initialDepartment ?? undefined,
             inStockOnly: initialInStockOnly,
             model: initialSearchTerm || undefined,
             modelSeries: initialModelSeries || undefined,
@@ -192,26 +213,40 @@ function CatalogPageContent({
     ])
   );
   const catalogRequestRef = useRef<AbortController | null>(null);
-  const modelGroups = useMemo(
-    () => initialModelGroups ?? buildModelGroups(initialProducts),
-    [initialModelGroups, initialProducts]
+  const departmentGroups = useMemo(
+    () =>
+      initialDepartmentGroups?.length
+        ? initialDepartmentGroups
+        : fallbackCatalogDepartmentGroups,
+    [initialDepartmentGroups]
   );
   const selectedBrand = filters.brand[0];
   const selectedCategory = filters.category[0];
+  const selectedDepartment = readDepartmentFilter(filters) ?? undefined;
   const selectedCatalog = useMemo(
     () => ({
       brand: selectedBrand,
       category: selectedCategory,
+      department: selectedDepartment,
       inStockOnly,
       model: searchTerm.trim() || undefined,
       modelSeries: modelSeries || undefined,
       searchQuery: searchQuery.trim() || undefined,
     }),
-    [inStockOnly, modelSeries, searchQuery, searchTerm, selectedBrand, selectedCategory]
+    [
+      inStockOnly,
+      modelSeries,
+      searchQuery,
+      searchTerm,
+      selectedBrand,
+      selectedCategory,
+      selectedDepartment,
+    ]
   );
   const initialActivitySelectionRef = useRef<CatalogSelection>({
     brand: initialFilters.brand[0],
     category: initialFilters.category[0],
+    department: initialDepartment ?? undefined,
     inStockOnly: initialInStockOnly,
     model: initialSearchTerm || undefined,
     modelSeries: initialModelSeries || undefined,
@@ -309,6 +344,7 @@ function CatalogPageContent({
       const nextSelection = {
         brand: nextFilters.brand[0],
         category: nextFilters.category[0],
+        department: readDepartmentFilter(nextFilters) ?? undefined,
         inStockOnly: getInStockOnlyFromParams(search),
         model: getModelSearchFromParams(search) || undefined,
         modelSeries: getModelSeriesFromParams(search) || undefined,
@@ -320,7 +356,12 @@ function CatalogPageContent({
       setModelSeries(nextSelection.modelSeries ?? "");
       setFilters(nextFilters);
       setInStockOnly(Boolean(nextSelection.inStockOnly));
-      setExpandedBrand(nextFilters.brand[0] ?? null);
+      setExpandedDepartment(nextSelection.department ?? null);
+      setExpandedBrandKey(
+        nextSelection.department && nextSelection.brand
+          ? `${nextSelection.department}::${nextSelection.brand}`
+          : null
+      );
       void loadCatalogSelection(nextSelection);
     }
 
@@ -353,6 +394,7 @@ function CatalogPageContent({
       ...emptyFilters,
       brand: selection.brand ? [selection.brand] : [],
       category: selection.category ? [selection.category] : [],
+      department: selection.department ? [selection.department] : [],
     };
 
     setSearchTerm(selection.model ?? "");
@@ -360,7 +402,6 @@ function CatalogPageContent({
     setModelSeries(selection.modelSeries ?? "");
     setFilters(nextFilters);
     setInStockOnly(Boolean(selection.inStockOnly));
-    setExpandedBrand(selection.brand ?? null);
     const nextPath = buildCatalogSelectionPath(selection, assistedCompanyId);
 
     if (nextPath !== `${window.location.pathname}${window.location.search}`) {
@@ -374,8 +415,8 @@ function CatalogPageContent({
     <main className="min-h-screen overflow-x-clip bg-[#f4f6fa] text-slate-950">
       <StoreHeader
         assistedCompanyId={assistedCompanyId}
+        departmentGroups={departmentGroups}
         initialAccountAccess={initialAccountAccess}
-        modelGroups={modelGroups}
         onCatalogSelect={selectCatalog}
         selectedCatalog={selectedCatalog}
       />
@@ -383,9 +424,11 @@ function CatalogPageContent({
         <aside className="hidden lg:block">
           <CatalogNavigationSidebar
             assistedCompanyId={assistedCompanyId}
-            expandedBrand={expandedBrand}
-            modelGroups={modelGroups}
-            onExpandedBrandChange={setExpandedBrand}
+            departmentGroups={departmentGroups}
+            expandedBrandKey={expandedBrandKey}
+            expandedDepartment={expandedDepartment}
+            onExpandedBrandKeyChange={setExpandedBrandKey}
+            onExpandedDepartmentChange={setExpandedDepartment}
             onSelectCatalog={selectCatalog}
             selectedCatalog={selectedCatalog}
           />
@@ -541,16 +584,20 @@ function CatalogAccountGateBanner({ copy }: { copy: AccountGateCopy }) {
 
 function CatalogNavigationSidebar({
   assistedCompanyId,
-  expandedBrand,
-  modelGroups,
-  onExpandedBrandChange,
+  departmentGroups,
+  expandedBrandKey,
+  expandedDepartment,
+  onExpandedBrandKeyChange,
+  onExpandedDepartmentChange,
   onSelectCatalog,
   selectedCatalog,
 }: {
   assistedCompanyId: string | null;
-  expandedBrand: string | null;
-  modelGroups: readonly DeviceModelGroup[];
-  onExpandedBrandChange: (brand: string | null) => void;
+  departmentGroups: readonly CatalogDepartmentGroup[];
+  expandedBrandKey: string | null;
+  expandedDepartment: CatalogDepartment | null;
+  onExpandedBrandKeyChange: (brandKey: string | null) => void;
+  onExpandedDepartmentChange: (department: CatalogDepartment | null) => void;
   onSelectCatalog: (selection: CatalogSelection) => void;
   selectedCatalog: CatalogSelection;
 }) {
@@ -573,13 +620,14 @@ function CatalogNavigationSidebar({
       </div>
       <CatalogBrandTree
         assistedCompanyId={assistedCompanyId}
-        expandedBrand={expandedBrand}
+        departmentGroups={departmentGroups}
+        expandedBrandKey={expandedBrandKey}
+        expandedDepartment={expandedDepartment}
         idPrefix="catalog-desktop-catalog"
-        modelGroups={modelGroups}
-        onExpandedBrandChange={onExpandedBrandChange}
+        onExpandedBrandKeyChange={onExpandedBrandKeyChange}
+        onExpandedDepartmentChange={onExpandedDepartmentChange}
         onSelectCatalog={onSelectCatalog}
         selectedCatalog={selectedCatalog}
-        showAvailableLink
         variant="desktop"
       />
     </div>
@@ -655,64 +703,15 @@ function CatalogProductSkeletonGrid({ count }: { count: number }) {
   );
 }
 
-function buildModelGroups(items: PartProduct[]): DeviceModelGroup[] {
-  const groups = new Map<
-    string,
-    {
-      models: Set<string>;
-      series: Map<string, Set<string>>;
-    }
-  >();
-
-  for (const item of items) {
-    const brand = item.brand.trim();
-
-    if (!brand) {
-      continue;
-    }
-
-    const group = groups.get(brand) ?? {
-      models: new Set<string>(),
-      series: new Map<string, Set<string>>(),
-    };
-
-    for (const model of item.compatibleWith) {
-      const normalizedModel = model.trim();
-
-      if (normalizedModel) {
-        group.models.add(normalizedModel);
-
-        const series = inferDeviceModelSeries(brand, normalizedModel);
-
-        if (series) {
-          const seriesModels = group.series.get(series) ?? new Set<string>();
-          seriesModels.add(normalizedModel);
-          group.series.set(series, seriesModels);
-        }
-      }
-    }
-
-    groups.set(brand, group);
-  }
-
-  return Array.from(groups.entries()).map(([brand, group]) => ({
-    brand,
-    models: Array.from(group.models).sort(compareModelNames),
-    series: Array.from(group.series.entries())
-      .map(([series, models]) => ({
-        series,
-        models: Array.from(models).sort(compareModelNames),
-      }))
-      .filter((entry) => entry.models.length > 0)
-      .sort((left, right) => left.series.localeCompare(right.series, "it", { numeric: true })),
-  }));
-}
-
 function buildCatalogSelectionPath(
   selection: CatalogSelection,
   assistedCompanyId?: string | null
 ) {
   const params = new URLSearchParams();
+
+  if (selection.department) {
+    params.set("department", selection.department);
+  }
 
   if (selection.brand) {
     params.set("brand", selection.brand);
@@ -734,9 +733,7 @@ function buildCatalogSelectionPath(
     params.set("q", selection.searchQuery);
   }
 
-  if (selection.inStockOnly === false) {
-    params.set("minStock", "0");
-  } else if (selection.inStockOnly) {
+  if (selection.inStockOnly) {
     params.set("minStock", "1");
   }
 
@@ -758,7 +755,11 @@ async function recordCatalogActivity(
     ? "catalog_search"
     : selection.model
       ? "model_view"
-      : selection.brand || selection.category || selection.modelSeries || selection.inStockOnly
+      : selection.department ||
+          selection.brand ||
+          selection.category ||
+          selection.modelSeries ||
+          selection.inStockOnly
         ? "catalog_filter"
         : null;
 
@@ -775,6 +776,7 @@ async function recordCatalogActivity(
     "partspro",
     "activity",
     eventType,
+    selection.department,
     selection.brand,
     modelSeries,
     selection.model,
@@ -804,6 +806,7 @@ async function recordCatalogActivity(
       eventType,
       metadata: {
         category: selection.category ?? null,
+        department: selection.department ?? null,
         inStockOnly: Boolean(selection.inStockOnly),
       },
       model: selection.model ?? null,
@@ -823,6 +826,7 @@ async function recordCatalogActivity(
 
 function catalogFilterSummary(selection: CatalogSelection) {
   const parts = [
+    selection.department ? `Reparto: ${selection.department}` : null,
     selection.brand ? `Brand: ${selection.brand}` : null,
     selection.category ? `Categoria: ${selection.category}` : null,
     selection.modelSeries ? `Serie: ${selection.modelSeries}` : null,
@@ -838,6 +842,10 @@ function buildCatalogApiPath(
   assistedCompanyId?: string | null
 ) {
   const params = new URLSearchParams();
+
+  if (selection.department) {
+    params.set("department", selection.department);
+  }
 
   if (selection.brand) {
     params.set("brand", selection.brand);
@@ -859,9 +867,7 @@ function buildCatalogApiPath(
     params.set("q", selection.searchQuery);
   }
 
-  if (selection.inStockOnly === false) {
-    params.set("minStock", "0");
-  } else if (selection.inStockOnly) {
+  if (selection.inStockOnly) {
     params.set("minStock", "1");
   }
 
@@ -873,10 +879,6 @@ function buildCatalogApiPath(
     `/api/catalogo?${params.toString()}`,
     assistedCompanyId
   );
-}
-
-function compareModelNames(left: string, right: string) {
-  return left.localeCompare(right, "it", { numeric: true, sensitivity: "base" });
 }
 
 function rememberCatalogPage(
@@ -895,4 +897,12 @@ function rememberCatalogPage(
   if (firstKey) {
     cache.delete(firstKey);
   }
+}
+
+function readDepartmentFilter(filters: CatalogFiltersState) {
+  const department = filters.department[0];
+
+  return catalogDepartments.includes(department as CatalogDepartment)
+    ? (department as CatalogDepartment)
+    : null;
 }

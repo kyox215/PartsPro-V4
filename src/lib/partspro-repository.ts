@@ -20,8 +20,12 @@ import {
 } from "@/lib/partspro-sku";
 import { resolveProductImageUrl } from "@/lib/partspro-product-images";
 import {
+  catalogDepartmentGroups as fallbackCatalogDepartmentGroups,
+  catalogDepartments,
   categories,
   deviceModels,
+  type CatalogDepartment,
+  type CatalogDepartmentGroup,
   type CompanyProfile,
   type CompanyStatus,
   type CustomerAssignmentStatus,
@@ -73,11 +77,11 @@ type ProductPayloadOptions = {
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const catalogPublicCardSelect =
-  "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, quality_grade, stock_status, moq, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, updated_at, image_path, image_alt";
+  "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, catalog_department, quality_grade, stock_status, moq, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, updated_at, image_path, image_alt";
 const catalogProductCardSelect =
-  "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at, image_path, image_alt";
+  "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, catalog_department, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at, image_path, image_alt";
 const adminProductFallbackSelect =
-  "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, quality_grade, stock_status, moq, cost_price, retail_price, b2b_price, vat_mode, warranty_days, weight_gram, stock_qty, location, batch_code, supplier, compatibility_models, alternative_skus, highlights, status, updated_at, image_path, image_alt, gallery_image_paths, created_at";
+  "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, catalog_department, quality_grade, stock_status, moq, cost_price, retail_price, b2b_price, vat_mode, warranty_days, weight_gram, stock_qty, location, batch_code, supplier, compatibility_models, alternative_skus, highlights, status, updated_at, image_path, image_alt, gallery_image_paths, created_at";
 const adminCustomerSelect =
   "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, customer_type, assignment_status, profile_kind, level, lifetime_spend_net, promo_level, promo_level_starts_at, promo_level_expires_at, promo_level_reason, assigned_by, assigned_at, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
 const adminCustomerCompatSelect =
@@ -143,6 +147,15 @@ let catalogModelGroupsCache:
   | null = null;
 let catalogModelGroupsRequest: Promise<RepositoryResult<DeviceModelGroup[]>> | null =
   null;
+let catalogDepartmentGroupsCache:
+  | {
+      expiresAt: number;
+      result: RepositoryResult<CatalogDepartmentGroup[]>;
+    }
+  | null = null;
+let catalogDepartmentGroupsRequest: Promise<
+  RepositoryResult<CatalogDepartmentGroup[]>
+> | null = null;
 
 export type CatalogCategoryCountSummary = {
   categoryCounts: Record<string, number | undefined>;
@@ -171,6 +184,7 @@ const publicCatalogPageRequests = new Map<
 >();
 
 export type RepositoryPartProduct = PartProduct & {
+  catalogDepartment: CatalogDepartment;
   remoteId?: string;
 };
 
@@ -732,6 +746,7 @@ export type AdminProductWriteInput = {
   sku?: string;
   name: string;
   category: string;
+  catalogDepartment: CatalogDepartment;
   brand: string;
   grade: ProductGrade;
   price: number;
@@ -1488,6 +1503,7 @@ export type PreparedOrderTotals = {
 
 export type CatalogProductQueryInput = {
   brand?: string;
+  department?: CatalogDepartment;
   catalogStatus?: AdminCatalogStatus;
   category?: string;
   grade?: ProductGrade;
@@ -1516,6 +1532,7 @@ export type HomeBannerSort = "name" | "stock_desc" | "updated_desc";
 export type HomeBannerTarget = {
   brand?: string;
   category?: string;
+  department?: CatalogDepartment;
   minStock?: number;
   model?: string;
   modelSeries?: string;
@@ -1997,6 +2014,37 @@ export async function listCatalogModelGroups(): Promise<
   return catalogModelGroupsRequest;
 }
 
+export async function listCatalogDepartmentGroups(): Promise<
+  RepositoryResult<CatalogDepartmentGroup[]>
+> {
+  const now = Date.now();
+
+  if (catalogDepartmentGroupsCache && catalogDepartmentGroupsCache.expiresAt > now) {
+    return catalogDepartmentGroupsCache.result;
+  }
+
+  if (catalogDepartmentGroupsRequest) {
+    return catalogDepartmentGroupsRequest;
+  }
+
+  catalogDepartmentGroupsRequest = readCatalogDepartmentGroupsUncached().then((result) => {
+    const ttl =
+      result.source === "supabase" && !result.warning
+        ? catalogModelGroupsCacheTtlMs
+        : catalogModelGroupsWarningCacheTtlMs;
+
+    catalogDepartmentGroupsCache = {
+      expiresAt: Date.now() + ttl,
+      result,
+    };
+    catalogDepartmentGroupsRequest = null;
+
+    return result;
+  });
+
+  return catalogDepartmentGroupsRequest;
+}
+
 export async function getCatalogCategoryCounts(): Promise<
   RepositoryResult<CatalogCategoryCountSummary>
 > {
@@ -2057,6 +2105,22 @@ async function readCatalogModelGroupsUncached(): Promise<
       isSupabaseConfigured()
         ? "Supabase catalog models could not be read; using local catalog model fallback."
         : "Supabase is not configured; using local catalog model fallback."
+    )
+  );
+}
+
+async function readCatalogDepartmentGroupsUncached(): Promise<
+  RepositoryResult<CatalogDepartmentGroup[]>
+> {
+  const supabaseResult = await readPublicCatalogDepartmentGroups();
+
+  return (
+    supabaseResult ??
+    emptyResult(
+      fallbackCatalogDepartmentGroups,
+      isSupabaseConfigured()
+        ? "Supabase catalog departments could not be read; using local catalog department fallback."
+        : "Supabase is not configured; using local catalog department fallback."
     )
   );
 }
@@ -2376,6 +2440,7 @@ function publicCatalogPageCacheKey(
     brand: query.brand ?? null,
     catalogStatus: query.catalogStatus ?? null,
     category: query.category ?? null,
+    department: query.department ?? null,
     grade: query.grade ?? null,
     limit: Math.max(query.limit, 1),
     minStock: query.minStock ?? null,
@@ -2427,6 +2492,55 @@ function clearPublicCatalogPageCache() {
   publicCatalogPageRequests.clear();
   catalogModelGroupsCache = null;
   catalogModelGroupsRequest = null;
+  catalogDepartmentGroupsCache = null;
+  catalogDepartmentGroupsRequest = null;
+}
+
+async function readPublicCatalogDepartmentGroups(): Promise<
+  RepositoryResult<CatalogDepartmentGroup[]> | null
+> {
+  if (!isSupabaseConfigured()) {
+    return null;
+  }
+
+  try {
+    const client = await createClient();
+    const modelOptionRows = await readRows(
+      client,
+      "catalog_model_options",
+      "catalog_department, brand, model, model_series",
+      catalogModelGroupsRowLimit
+    );
+
+    if (modelOptionRows) {
+      return {
+        data: buildCatalogDepartmentGroupsFromPrimaryRows(modelOptionRows, {
+          scope: "public",
+        }),
+        source: "supabase",
+      };
+    }
+
+    const productRows = await readRows(
+      client,
+      "catalog_public_summary",
+      "catalog_department, brand, model, model_series, compatibility_models",
+      catalogModelGroupsRowLimit
+    );
+
+    if (productRows) {
+      return {
+        data: buildCatalogDepartmentGroupsFromPrimaryRows(productRows, {
+          scope: "public",
+        }),
+        source: "supabase",
+      };
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 async function readPublicCatalogModelGroups(): Promise<
@@ -5226,9 +5340,13 @@ function applyCatalogProductQuery(
     }
   }
 
+  if (query.department) {
+    request = request.eq("catalog_department", query.department);
+  }
+
   if (query.brand) {
     request =
-      table === "catalog_public_summary"
+      table === "catalog_public_summary" && query.department !== "general_merchandise"
         ? request.contains("compatibility_brands", [query.brand])
         : request.eq("brand", query.brand);
   }
@@ -11533,6 +11651,7 @@ function buildProductPayload(
   );
   assignDefined(payload, "name", trimOptional(input.name));
   assignDefined(payload, "category", trimOptional(input.category));
+  assignDefined(payload, "catalog_department", input.catalogDepartment);
   assignDefined(payload, "brand", trimOptional(input.brand));
   assignDefined(payload, "quality_grade", input.grade);
   assignDefined(payload, "b2b_price", input.price);
@@ -11808,6 +11927,9 @@ function normalizeHomeBannerTarget(value: unknown): HomeBannerTarget {
   const normalized: HomeBannerTarget = {};
   const brand = pickString(target, ["brand"]);
   const category = pickString(target, ["category"]);
+  const department = readCatalogDepartment(
+    pickString(target, ["department", "catalog_department", "catalogDepartment"])
+  );
   const model = pickString(target, ["model"]);
   const modelSeries = pickString(target, ["modelSeries", "model_series"]);
   const q = pickString(target, ["q", "query"]);
@@ -11816,6 +11938,7 @@ function normalizeHomeBannerTarget(value: unknown): HomeBannerTarget {
 
   assignDefined(normalized, "brand", brand ?? undefined);
   assignDefined(normalized, "category", category ?? undefined);
+  assignDefined(normalized, "department", department ?? undefined);
   assignDefined(normalized, "model", model ?? undefined);
   assignDefined(normalized, "modelSeries", modelSeries ?? undefined);
   assignDefined(normalized, "q", q ?? undefined);
@@ -11840,6 +11963,10 @@ function buildHomeBannerHref(target: HomeBannerTarget) {
 
   if (target.category) {
     params.set("category", target.category);
+  }
+
+  if (target.department) {
+    params.set("department", target.department);
   }
 
   if (target.modelSeries) {
@@ -11965,6 +12092,10 @@ function mapProductRow(row: DbRow): RepositoryPartProduct | null {
       sku.toLowerCase(),
     name,
     category: normalizeCategory(category),
+    catalogDepartment: normalizeCatalogDepartment(
+      pickString(row, ["catalog_department", "catalogDepartment"]),
+      brand
+    ),
     brand,
     grade: normalizeGrade(pickString(row, ["grade", "quality_grade", "quality", "condition"])),
     price,
@@ -13177,7 +13308,7 @@ function readCompatibility(row: DbRow) {
 
 function buildDeviceModelGroupsFromPrimaryRows(
   rows: DbRow[],
-  options: { scope?: "public" | "admin" } = {}
+  options: { includeBrandOnly?: boolean; scope?: "public" | "admin" } = {}
 ): DeviceModelGroup[] {
   const groups = new Map<
     string,
@@ -13201,7 +13332,18 @@ function buildDeviceModelGroupsFromPrimaryRows(
       .map((entry) => normalizeDeviceModelName(brand, entry))
       .filter((entry): entry is string => Boolean(entry));
 
-    if (!brand || (!model && compatibilityModels.length === 0)) {
+    if (!brand) {
+      continue;
+    }
+
+    if (!model && compatibilityModels.length === 0) {
+      if (options.includeBrandOnly && !groups.has(brand)) {
+        groups.set(brand, {
+          models: new Set<string>(),
+          series: new Map<string, Set<string>>(),
+        });
+      }
+
       continue;
     }
 
@@ -13227,7 +13369,20 @@ function buildDeviceModelGroupsFromPrimaryRows(
     }
   }
 
-  return sortDeviceModelGroups(groups);
+  return sortDeviceModelGroups(groups, options.includeBrandOnly ?? false);
+}
+
+function buildCatalogDepartmentGroupsFromPrimaryRows(
+  rows: DbRow[],
+  options: { scope?: "public" | "admin" } = {}
+): CatalogDepartmentGroup[] {
+  return catalogDepartments.map((department) => ({
+    department,
+    brands: buildDeviceModelGroupsFromPrimaryRows(
+      rows.filter((row) => catalogDepartmentFromRow(row) === department),
+      { ...options, includeBrandOnly: true }
+    ),
+  }));
 }
 
 function addDeviceModelGroupOption(
@@ -13253,7 +13408,8 @@ function addDeviceModelGroupOption(
 }
 
 function sortDeviceModelGroups(
-  groups: Map<string, { models: Set<string>; series: Map<string, Set<string>> }>
+  groups: Map<string, { models: Set<string>; series: Map<string, Set<string>> }>,
+  includeBrandOnly = false
 ): DeviceModelGroup[] {
   const preferredBrandOrder = deviceModels.map((group) => group.brand);
 
@@ -13263,7 +13419,7 @@ function sortDeviceModelGroups(
       models: Array.from(group.models).sort(compareDeviceModelNames),
       series: sortDeviceModelSeriesGroups(group.series),
     }))
-    .filter((group) => group.models.length > 0)
+    .filter((group) => includeBrandOnly || group.models.length > 0)
     .sort((left, right) => {
       const leftIndex = preferredBrandOrder.indexOf(left.brand);
       const rightIndex = preferredBrandOrder.indexOf(right.brand);
@@ -13293,6 +13449,38 @@ function sortDeviceModelSeriesGroups(
 
 function compareDeviceModelNames(left: string, right: string) {
   return left.localeCompare(right, "it", { numeric: true, sensitivity: "base" });
+}
+
+function catalogDepartmentFromRow(row: DbRow): CatalogDepartment {
+  return normalizeCatalogDepartment(
+    pickString(row, ["catalog_department", "catalogDepartment"]),
+    pickString(row, ["brand", "brand_name", "manufacturer"])
+  );
+}
+
+function normalizeCatalogDepartment(
+  value: string | null | undefined,
+  brand: string | null | undefined
+): CatalogDepartment {
+  const normalized = readCatalogDepartment(value);
+
+  if (normalized) {
+    return normalized;
+  }
+
+  return brand?.trim().toUpperCase() === "REMAX"
+    ? "general_merchandise"
+    : "phone";
+}
+
+function readCatalogDepartment(
+  value: string | null | undefined
+): CatalogDepartment | null {
+  const normalized = value?.trim().toLowerCase();
+
+  return catalogDepartments.includes(normalized as CatalogDepartment)
+    ? (normalized as CatalogDepartment)
+    : null;
 }
 
 function readWarehouse(row: DbRow) {

@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { DeviceModelGroup } from "@/lib/partspro-data";
+import type { CatalogDepartmentGroup } from "@/lib/partspro-data";
 import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import { cn } from "@/lib/utils";
@@ -30,8 +30,8 @@ import { tx } from "@/i18n/dictionaries/storefront";
 
 type StoreHeaderProps = {
   assistedCompanyId?: string | null;
+  departmentGroups?: readonly CatalogDepartmentGroup[];
   initialAccountAccess?: StoreHeaderAccountAccess;
-  modelGroups?: readonly DeviceModelGroup[];
   onCatalogSelect?: (selection: CatalogSelection) => void;
   prefetchCatalogLinks?: boolean;
   selectedCatalog?: CatalogSelection;
@@ -70,8 +70,8 @@ const StoreMobileMenu = dynamic<StoreMobileMenuProps>(
 
 export function StoreHeader({
   assistedCompanyId,
+  departmentGroups,
   initialAccountAccess,
-  modelGroups,
   onCatalogSelect,
   prefetchCatalogLinks = false,
   selectedCatalog,
@@ -174,7 +174,7 @@ export function StoreHeader({
         <div className="mx-auto flex h-14 w-full max-w-[1500px] items-center gap-2 px-3 sm:h-16 sm:gap-3 sm:px-4">
           <StoreMobileMenu
             assistedCompanyId={assistedCompanyId}
-            modelGroups={modelGroups}
+            departmentGroups={departmentGroups}
             onCatalogSelect={onCatalogSelect}
             prefetchCatalogLinks={prefetchCatalogLinks}
             selectedCatalog={selectedCatalog}

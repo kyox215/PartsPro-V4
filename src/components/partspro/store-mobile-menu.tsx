@@ -15,7 +15,10 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import type { DeviceModelGroup } from "@/lib/partspro-data";
+import type {
+  CatalogDepartment,
+  CatalogDepartmentGroup,
+} from "@/lib/partspro-data";
 import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
 import { tx } from "@/i18n/dictionaries/storefront";
 import { CatalogBrandTree, type CatalogSelection } from "./catalog-brand-tree";
@@ -34,7 +37,7 @@ const storeMobileNavItems = [
 export type StoreMobileMenuProps = {
   assistedCompanyId?: string | null;
   className?: string;
-  modelGroups?: readonly DeviceModelGroup[];
+  departmentGroups?: readonly CatalogDepartmentGroup[];
   onCatalogSelect?: (selection: CatalogSelection) => void;
   prefetchCatalogLinks?: boolean;
   selectedCatalog?: CatalogSelection;
@@ -43,7 +46,7 @@ export type StoreMobileMenuProps = {
 export function StoreMobileMenu({
   assistedCompanyId,
   className,
-  modelGroups,
+  departmentGroups,
   onCatalogSelect,
   prefetchCatalogLinks = false,
   selectedCatalog,
@@ -55,35 +58,52 @@ export function StoreMobileMenu({
   const [isSearchPending, startSearchTransition] = useTransition();
   const [catalogOpen, setCatalogOpen] = useState(() => pathname.startsWith("/catalogo"));
   const catalogSearchValue = selectedCatalog?.searchQuery ?? selectedCatalog?.model ?? "";
-  const [expandedBrandOverride, setExpandedBrandOverride] = useState<
+  const [expandedDepartmentOverride, setExpandedDepartmentOverride] = useState<
+    CatalogDepartment | null | undefined
+  >(undefined);
+  const [expandedBrandKeyOverride, setExpandedBrandKeyOverride] = useState<
     string | null | undefined
   >(undefined);
   const catalogActive = pathname === "/catalogo" || pathname.startsWith("/catalogo/");
+  const selectedDepartment = selectedCatalog?.department ?? null;
   const selectedBrand = selectedCatalog?.brand ?? null;
-  const expandedBrand =
-    expandedBrandOverride === undefined ? selectedBrand : expandedBrandOverride;
+  const selectedBrandKey =
+    selectedDepartment && selectedBrand
+      ? `${selectedDepartment}::${selectedBrand}`
+      : null;
+  const expandedDepartment =
+    expandedDepartmentOverride === undefined
+      ? selectedDepartment
+      : expandedDepartmentOverride;
+  const expandedBrandKey =
+    expandedBrandKeyOverride === undefined
+      ? selectedBrandKey
+      : expandedBrandKeyOverride;
 
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen);
 
     if (nextOpen && catalogActive) {
       setCatalogOpen(true);
-      setExpandedBrandOverride(undefined);
+      setExpandedDepartmentOverride(undefined);
+      setExpandedBrandKeyOverride(undefined);
     }
 
     if (!nextOpen) {
-      setExpandedBrandOverride(undefined);
+      setExpandedDepartmentOverride(undefined);
+      setExpandedBrandKeyOverride(undefined);
     }
   }
 
   function closeMenu() {
     setOpen(false);
-    setExpandedBrandOverride(undefined);
+    setExpandedDepartmentOverride(undefined);
+    setExpandedBrandKeyOverride(undefined);
   }
 
   function handleCatalogSelect(selection: CatalogSelection) {
-    setExpandedBrandOverride(undefined);
     onCatalogSelect?.(selection);
+    closeMenu();
   }
 
   function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
@@ -114,7 +134,8 @@ export function StoreMobileMenu({
   }
 
   function toggleCatalog() {
-    setExpandedBrandOverride(undefined);
+    setExpandedDepartmentOverride(undefined);
+    setExpandedBrandKeyOverride(undefined);
     setCatalogOpen((current) => {
       return !current;
     });
@@ -245,17 +266,20 @@ export function StoreMobileMenu({
                   id="store-mobile-catalog-tree"
                   className="rounded-lg bg-white shadow-sm"
                 >
-                <CatalogBrandTree
-                  assistedCompanyId={assistedCompanyId}
-                  expandedBrand={expandedBrand}
+                  <CatalogBrandTree
+                    assistedCompanyId={assistedCompanyId}
+                    departmentGroups={departmentGroups}
+                    expandedBrandKey={expandedBrandKey}
+                    expandedDepartment={expandedDepartment}
                     idPrefix="store-mobile-catalog"
-                    modelGroups={modelGroups}
-                    onExpandedBrandChange={setExpandedBrandOverride}
+                    onExpandedBrandKeyChange={setExpandedBrandKeyOverride}
+                    onExpandedDepartmentChange={setExpandedDepartmentOverride}
                     onNavigate={onCatalogSelect ? undefined : closeMenu}
-                    onSelectCatalog={onCatalogSelect ? handleCatalogSelect : undefined}
+                    onSelectCatalog={
+                      onCatalogSelect ? handleCatalogSelect : undefined
+                    }
                     prefetchCatalogLinks={prefetchCatalogLinks}
                     selectedCatalog={selectedCatalog}
-                    showAvailableLink
                   />
                 </div>
               )}

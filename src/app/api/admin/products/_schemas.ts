@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { catalogDepartments } from "@/lib/partspro-data";
 
 const optionalTrimmedString = (max: number) =>
   z
@@ -10,6 +11,7 @@ const optionalTrimmedString = (max: number) =>
 
 const stringArray = z.array(z.string().trim().min(1).max(120)).max(100);
 const catalogStatusSchema = z.enum(["active", "draft", "hidden", "blocked"]);
+const catalogDepartmentSchema = z.enum(catalogDepartments);
 const stockStatusSchema = z.enum(["In Stock", "Low Stock", "Out of Stock"]);
 const productIssueFilterSchema = z.enum([
   "missing_price",
@@ -49,6 +51,7 @@ export const productWriteSchema = z
     sku: z.string().trim().min(2).max(64).regex(/^[A-Za-z0-9_+.-]+$/).optional(),
     name: z.string().trim().min(2).max(180),
     category: z.string().trim().min(2).max(80),
+    catalogDepartment: catalogDepartmentSchema,
     brand: z.string().trim().min(1).max(80),
     grade: z.enum(["A+", "A", "B", "Refurbished"]),
     price: z.coerce.number().min(0).max(100000),
@@ -79,6 +82,7 @@ export const productPatchSchema = z
   .object({
     name: z.string().trim().min(2).max(180).optional(),
     category: z.string().trim().min(2).max(80).optional(),
+    catalogDepartment: catalogDepartmentSchema.optional(),
     brand: z.string().trim().min(1).max(80).optional(),
     grade: z.enum(["A+", "A", "B", "Refurbished"]).optional(),
     price: z.coerce.number().min(0).max(100000).optional(),

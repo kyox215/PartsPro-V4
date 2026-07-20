@@ -2,7 +2,7 @@ import { HomePage } from "@/components/partspro/home-page";
 import {
   type HomeBanner,
   listActiveHomeBanners,
-  listCatalogModelGroups,
+  listCatalogDepartmentGroups,
   pageHotCatalogProducts,
   pageCatalogProducts,
   type RepositoryResult,
@@ -47,9 +47,9 @@ let publicHomeBannersCache:
 let publicHomeBannersRequest: Promise<RepositoryResult<HomeBanner[]>> | null = null;
 
 export default async function Home() {
-  const [account, modelGroups, homeBanners] = await Promise.all([
+  const [account, departmentGroups, homeBanners] = await Promise.all([
     getCurrentAccountContext(),
-    listCatalogModelGroups(),
+    listCatalogDepartmentGroups(),
     readCachedPublicHomeBanners(),
   ]);
   const buyerCustomerId = accountPricingCustomerId(account);
@@ -67,10 +67,10 @@ export default async function Home() {
   return (
     <HomePage
       catalogTotal={homeShelves.catalogTotal}
+      departmentGroups={departmentGroups.data}
       homeBanners={homeBanners.data}
       hotProducts={hotProducts}
       initialAccountAccess={toStoreHeaderAccountAccess(account)}
-      modelGroups={modelGroups.data}
       newProducts={homeShelves.newProducts.map((product) =>
         toHomeProduct(product, account)
       )}

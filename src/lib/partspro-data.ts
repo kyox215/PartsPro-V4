@@ -12,6 +12,13 @@ export type PartVisual =
 
 export type StockStatus = "In Stock" | "Low Stock" | "Out of Stock";
 export type ProductGrade = "A+" | "A" | "B" | "Refurbished";
+export const catalogDepartments = [
+  "phone",
+  "tablet",
+  "computer",
+  "general_merchandise",
+] as const;
+export type CatalogDepartment = (typeof catalogDepartments)[number];
 export type CompanyStatus = "pending" | "approved" | "rejected" | "suspended";
 export type OrderStatus =
   | "draft"
@@ -128,6 +135,11 @@ export type DeviceModelGroup = {
   brand: string;
   models: string[];
   series?: DeviceModelSeriesGroup[];
+};
+
+export type CatalogDepartmentGroup = {
+  department: CatalogDepartment;
+  brands: DeviceModelGroup[];
 };
 
 export type CompanyProfile = {
@@ -304,6 +316,16 @@ export const deviceModels: DeviceModelGroup[] = [
   { brand: "Huawei", models: ["P30", "P40", "Mate 40"] },
   { brand: "Oppo", models: ["Find X5", "Reno 8", "A96"] },
   { brand: "Honor", models: ["Honor 70", "Honor 90", "Magic 5"] },
+];
+
+export const catalogDepartmentGroups: CatalogDepartmentGroup[] = [
+  { department: "phone", brands: deviceModels },
+  { department: "tablet", brands: [] },
+  { department: "computer", brands: [] },
+  {
+    department: "general_merchandise",
+    brands: [{ brand: "REMAX", models: [] }],
+  },
 ];
 
 export const categories = [

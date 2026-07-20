@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
+import { catalogDepartments } from "@/lib/partspro-data";
 import {
   deleteAdminHomeBanner,
   updateAdminHomeBanner,
@@ -30,6 +31,7 @@ const bannerTargetSchema = z
   .object({
     brand: optionalTrimmedString(80),
     category: optionalTrimmedString(80),
+    department: z.enum(catalogDepartments).optional(),
     minStock: z.coerce.number().int().min(0).max(10000).optional(),
     model: optionalTrimmedString(120),
     modelSeries: optionalTrimmedString(120),

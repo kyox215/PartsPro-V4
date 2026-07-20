@@ -3,15 +3,22 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronDown } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
 import {
-  deviceModels,
+  catalogDepartmentGroups as fallbackCatalogDepartmentGroups,
+  catalogDepartments,
+  type CatalogDepartment,
+  type CatalogDepartmentGroup,
   type DeviceModelGroup,
   type DeviceModelSeriesGroup,
 } from "@/lib/partspro-data";
 import { cn } from "@/lib/utils";
 import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
-import { brandLabel, tx } from "@/i18n/dictionaries/storefront";
+import {
+  brandLabel,
+  catalogDepartmentLabel,
+  tx,
+  txFormat,
+} from "@/i18n/dictionaries/storefront";
 import { useT } from "./i18n-provider";
 import { RoutePendingIndicator } from "./pending-feedback";
 
@@ -20,6 +27,7 @@ type CatalogBrandTreeVariant = "mobile" | "desktop";
 export type CatalogSelection = {
   brand?: string;
   category?: string;
+  department?: CatalogDepartment;
   inStockOnly?: boolean;
   model?: string;
   modelSeries?: string;
@@ -28,102 +36,114 @@ export type CatalogSelection = {
 
 type CatalogBrandTreeProps = {
   assistedCompanyId?: string | null;
-  expandedBrand: string | null;
+  departmentGroups?: readonly CatalogDepartmentGroup[];
+  expandedBrandKey: string | null;
+  expandedDepartment: CatalogDepartment | null;
   idPrefix: string;
-  modelGroups?: readonly DeviceModelGroup[];
-  onExpandedBrandChange: (brand: string | null) => void;
+  onExpandedBrandKeyChange: (brandKey: string | null) => void;
+  onExpandedDepartmentChange: (department: CatalogDepartment | null) => void;
   onNavigate?: () => void;
   onSelectCatalog?: (selection: CatalogSelection) => void;
   prefetchCatalogLinks?: boolean;
   selectedCatalog?: CatalogSelection;
-  showAvailableLink?: boolean;
   variant?: CatalogBrandTreeVariant;
 };
 
 export function CatalogBrandTree({
   assistedCompanyId,
-  expandedBrand,
+  departmentGroups,
+  expandedBrandKey,
+  expandedDepartment,
   idPrefix,
-  modelGroups,
-  onExpandedBrandChange,
+  onExpandedBrandKeyChange,
+  onExpandedDepartmentChange,
   onNavigate,
   onSelectCatalog,
   prefetchCatalogLinks = false,
   selectedCatalog,
-  showAvailableLink = false,
   variant = "mobile",
 }: CatalogBrandTreeProps) {
   const t = useT();
   const desktop = variant === "desktop";
   const selectedBrand = selectedCatalog?.brand;
   const selectedCategory = selectedCatalog?.category;
+  const selectedDepartment = selectedCatalog?.department;
   const selectedModel = selectedCatalog?.model;
   const selectedModelSeries = selectedCatalog?.modelSeries;
-  const inStockOnly = selectedCatalog?.inStockOnly ?? true;
+  const selectedSearchQuery = selectedCatalog?.searchQuery;
+  const inStockOnly = selectedCatalog?.inStockOnly ?? false;
   const selectionKnown = Boolean(selectedCatalog);
   const [expandedSeriesKey, setExpandedSeriesKey] = useState<string | null>(null);
   const groups = useMemo(
-    () => canonicalModelGroups(modelGroups ?? deviceModels),
-    [modelGroups]
+    () =>
+      canonicalDepartmentGroups(
+        departmentGroups?.length
+          ? departmentGroups
+          : fallbackCatalogDepartmentGroups
+      ),
+    [departmentGroups]
   );
   const selectedModelSeriesFromGroups = useMemo(
-    () => findSeriesForModel(groups, selectedBrand, selectedModel),
-    [groups, selectedBrand, selectedModel]
+    () =>
+      findSeriesForModel(
+        groups,
+        selectedDepartment,
+        selectedBrand,
+        selectedModel
+      ),
+    [groups, selectedBrand, selectedDepartment, selectedModel]
   );
   const selectedSeries =
     selectedModel && selectedModelSeriesFromGroups
       ? selectedModelSeriesFromGroups
       : selectedModelSeries;
+  const selectedBrandPanelKey =
+    selectedDepartment && selectedBrand
+      ? catalogBrandKey(selectedDepartment, selectedBrand)
+      : null;
   const selectedSeriesPanelKey =
-    selectedBrand && selectedModel && selectedSeries && expandedBrand === selectedBrand
-      ? seriesPanelKey(selectedBrand, selectedSeries)
+    selectedDepartment &&
+    selectedBrand &&
+    selectedModel &&
+    selectedSeries &&
+    expandedDepartment === selectedDepartment &&
+    expandedBrandKey === selectedBrandPanelKey
+      ? seriesPanelKey(selectedDepartment, selectedBrand, selectedSeries)
+      : null;
+  const expandedSeriesForCurrentBrand =
+    expandedSeriesKey &&
+    expandedBrandKey &&
+    seriesPanelMatchesBrand(expandedSeriesKey, expandedBrandKey)
+      ? expandedSeriesKey
       : null;
   const expandedSeriesPanelKey =
-    expandedSeriesKey && !isClosedSeriesPanelKey(expandedSeriesKey)
-      ? expandedSeriesKey
+    expandedSeriesForCurrentBrand &&
+    !isClosedSeriesPanelKey(expandedSeriesForCurrentBrand)
+      ? expandedSeriesForCurrentBrand
       : null;
   const activeSeriesPanelKey =
     expandedSeriesPanelKey ??
     (selectedSeriesPanelKey &&
-    expandedSeriesKey !== closedSeriesPanelKey(selectedSeriesPanelKey)
+    expandedSeriesForCurrentBrand !== closedSeriesPanelKey(selectedSeriesPanelKey)
       ? selectedSeriesPanelKey
       : null);
   const catalogLinkClassName = cn(
     "flex w-full items-center rounded-md text-left font-black text-primary transition hover:bg-primary/8",
     desktop ? "h-10 bg-primary/8 px-3 text-sm" : "h-8 px-2 text-xs"
   );
-  const availableLinkClassName = cn(
-    "flex w-full items-center rounded-md text-left font-black text-emerald-700 transition hover:bg-emerald-50",
-    desktop ? "h-10 px-3 text-sm" : "h-8 px-2 text-xs"
-  );
+  const catalogRootSelected =
+    selectionKnown &&
+    !selectedBrand &&
+    !selectedCategory &&
+    !selectedDepartment &&
+    !selectedModel &&
+    !selectedModelSeries &&
+    !selectedSearchQuery &&
+    !inStockOnly;
 
   function handleSelect(selection: CatalogSelection) {
     onSelectCatalog?.(selection);
     onNavigate?.();
-  }
-
-  function handleCatalogRootSelect() {
-    handleSelect({ inStockOnly });
-  }
-
-  function handleAvailabilityToggle(checked: boolean) {
-    handleSelect({
-      brand: selectedBrand,
-      category: selectedCategory,
-      inStockOnly: checked,
-      model: selectedModel,
-      modelSeries: selectedSeries,
-    });
-  }
-
-  function handleModelSelect(brand: string, model: string, modelSeries?: string) {
-    handleSelect({
-      brand,
-      category: selectedCategory,
-      inStockOnly,
-      model,
-      modelSeries,
-    });
   }
 
   function renderSelectionItem({
@@ -166,6 +186,7 @@ export function CatalogBrandTree({
         id={elementId}
         href={catalogQueryHref(selection, assistedCompanyId)}
         prefetch={prefetchCatalogLinks ? null : false}
+        aria-current={pressed ? "page" : undefined}
         className={className}
         onClick={onNavigate}
         title={title}
@@ -178,8 +199,50 @@ export function CatalogBrandTree({
     );
   }
 
+  function renderModelSelection(
+    department: CatalogDepartment,
+    brand: string,
+    model: string,
+    modelSeries?: string
+  ) {
+    const modelSelected =
+      selectedDepartment === department &&
+      isSameCatalogValue(selectedBrand, brand) &&
+      isSameCatalogValue(selectedModel, model);
+
+    return renderSelectionItem({
+      className: cn(
+        "min-w-0 w-full rounded-md bg-white text-left font-semibold leading-4 text-slate-600 transition hover:bg-primary/8 hover:text-primary",
+        desktop ? "px-2.5 py-2 text-xs" : "min-h-9 px-2 py-2 text-[11px]",
+        modelSelected &&
+          "bg-primary text-white shadow-sm hover:bg-primary hover:text-white"
+      ),
+      itemKey: `${department}-${brand}-${modelSeries ?? "direct"}-${model}`,
+      pressed: modelSelected,
+      selection: {
+        brand,
+        department,
+        model,
+        modelSeries,
+      },
+      elementId: modelSelected ? selectedModelElementId(idPrefix) : undefined,
+      title: model,
+      children: (
+        <span className="block whitespace-normal break-words [overflow-wrap:anywhere]">
+          {model}
+        </span>
+      ),
+    });
+  }
+
   useEffect(() => {
-    if (!selectedModel || !selectedBrand || expandedBrand !== selectedBrand) {
+    if (
+      !selectedModel ||
+      !selectedBrand ||
+      !selectedDepartment ||
+      expandedDepartment !== selectedDepartment ||
+      expandedBrandKey !== selectedBrandPanelKey
+    ) {
       return;
     }
 
@@ -191,7 +254,16 @@ export function CatalogBrandTree({
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [activeSeriesPanelKey, expandedBrand, idPrefix, selectedBrand, selectedModel]);
+  }, [
+    activeSeriesPanelKey,
+    expandedBrandKey,
+    expandedDepartment,
+    idPrefix,
+    selectedBrand,
+    selectedBrandPanelKey,
+    selectedDepartment,
+    selectedModel,
+  ]);
 
   return (
     <div
@@ -202,15 +274,13 @@ export function CatalogBrandTree({
       {onSelectCatalog ? (
         <button
           type="button"
+          aria-pressed={catalogRootSelected}
           className={cn(
             catalogLinkClassName,
-            selectionKnown &&
-              !selectedBrand &&
-              !selectedModel &&
-              !inStockOnly &&
+            catalogRootSelected &&
               "bg-primary text-white shadow-sm hover:bg-primary"
           )}
-          onClick={handleCatalogRootSelect}
+          onClick={() => handleSelect({})}
         >
           {tx(t, "storefront.catalog.allProducts", "Tutto il catalogo")}
         </button>
@@ -227,223 +297,311 @@ export function CatalogBrandTree({
           <RoutePendingIndicator className="size-3.5 text-primary" />
         </Link>
       )}
-      {showAvailableLink && (
-        onSelectCatalog ? (
-          <div
-            className={cn(
-              "flex w-full cursor-pointer items-center justify-between gap-3 rounded-md border text-left font-black transition",
-              desktop ? "min-h-10 px-3 text-sm" : "min-h-9 px-2 text-xs",
-              inStockOnly
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                : "border-slate-100 bg-white text-emerald-700 hover:bg-emerald-50"
-            )}
-            onClick={() => handleAvailabilityToggle(!inStockOnly)}
-          >
-            <span className="min-w-0 flex-1 truncate">
-              {tx(t, "storefront.catalog.availableOnly", "Solo disponibili")}
-            </span>
-            <Switch
-              aria-label={tx(
-                t,
-                "storefront.catalog.availableOnlyAria",
-                "Filtra solo prodotti disponibili"
-              )}
-              checked={inStockOnly}
-              onCheckedChange={handleAvailabilityToggle}
-              onClick={(event) => event.stopPropagation()}
-              size={desktop ? "default" : "sm"}
-            />
-          </div>
-        ) : (
-          <Link
-            href={hrefWithAssistedCompanyId("/catalogo?minStock=1", assistedCompanyId)}
-            prefetch={prefetchCatalogLinks ? null : false}
-            className={availableLinkClassName}
-            onClick={onNavigate}
-          >
-            <span className="min-w-0 flex-1 truncate">
-              {tx(t, "storefront.catalog.availableOnly", "Solo disponibili")}
-            </span>
-            <RoutePendingIndicator className="size-3.5 text-emerald-700" />
-          </Link>
-        )
-      )}
+
       <div className={desktop ? "space-y-1.5" : "space-y-1"}>
-        {groups.map((entry) => {
-          const brandOpen = expandedBrand === entry.brand;
-          const localizedBrand = brandLabel(t, entry.brand);
-          const brandSelected = isSameCatalogValue(selectedBrand, entry.brand);
-          const brandPanelId = catalogBrandPanelId(idPrefix, entry.brand);
+        {groups.map((departmentGroup) => {
+          const department = departmentGroup.department;
+          const departmentOpen = expandedDepartment === department;
+          const departmentWithinSelection = selectedDepartment === department;
+          const departmentSelected =
+            departmentWithinSelection &&
+            !selectedBrand &&
+            !selectedModelSeries &&
+            !selectedModel &&
+            !selectedCategory &&
+            !selectedSearchQuery &&
+            !inStockOnly;
+          const departmentPanelId = catalogDepartmentPanelId(idPrefix, department);
+          const localizedDepartment = catalogDepartmentLabel(t, department);
+          const hasBrands = departmentGroup.brands.length > 0;
 
           return (
             <div
-              key={entry.brand}
+              key={department}
               className={cn(
                 "overflow-hidden rounded-md border border-slate-100 bg-white",
                 desktop && "border-slate-200 shadow-[0_8px_22px_rgba(15,23,42,0.03)]"
               )}
             >
-              <button
-                type="button"
-                className={cn(
-                  "flex w-full items-center gap-2 rounded-md text-left font-black text-slate-900 transition hover:bg-slate-50 hover:text-primary",
-                  desktop ? "h-10 px-3 text-sm" : "h-9 px-2 text-xs",
-                  brandSelected && "text-primary"
-                )}
-                aria-expanded={brandOpen}
-                aria-controls={brandPanelId}
-                onClick={() => {
-                  setExpandedSeriesKey(null);
-                  onExpandedBrandChange(brandOpen ? null : entry.brand);
-                }}
-                title={localizedBrand === entry.brand ? undefined : entry.brand}
-              >
-                <span className="min-w-0 flex-1 truncate">{localizedBrand}</span>
-                {desktop && (
-                  <span className="text-[11px] font-semibold text-slate-400">
-                    {entry.models.length}
-                  </span>
-                )}
-                <ChevronDown
-                  className={cn(
-                    desktop ? "size-4" : "size-3.5",
-                    "text-slate-400 transition",
-                    brandOpen && "rotate-180 text-primary"
-                  )}
-                />
-              </button>
-              {brandOpen && (
-                <div
-                  id={brandPanelId}
-                  className={cn(
-                    "border-t border-slate-100",
-                    "p-2"
-                  )}
-                >
-                  {entry.series?.length ? (
-                    <div className="space-y-1">
-                      {entry.series.map((seriesGroup) => {
-                        const panelKey = seriesPanelKey(entry.brand, seriesGroup.series);
-                        const seriesOpen = activeSeriesPanelKey === panelKey;
-                        const seriesPanelId = `${brandPanelId}-series-${slugKey(seriesGroup.series)}`;
+              <div className="flex min-w-0 items-stretch">
+                {renderSelectionItem({
+                  className: cn(
+                    "flex min-w-0 flex-1 items-center gap-2 rounded-md text-left font-black text-slate-900 transition hover:bg-slate-50 hover:text-primary",
+                    desktop ? "min-h-10 px-3 text-sm" : "min-h-9 px-2 text-xs",
+                    departmentWithinSelection && "text-primary",
+                    departmentSelected &&
+                      "bg-primary text-white shadow-sm hover:bg-primary hover:text-white"
+                  ),
+                  itemKey: `department-${department}`,
+                  pressed: departmentSelected,
+                  selection: { department },
+                  children: (
+                    <>
+                      <span className="min-w-0 flex-1 truncate">
+                        {localizedDepartment}
+                      </span>
+                      {desktop && (
+                        <span
+                          className={cn(
+                            "text-[11px] font-semibold text-slate-400",
+                            departmentSelected && "text-white/80"
+                          )}
+                        >
+                          {departmentGroup.brands.length}
+                        </span>
+                      )}
+                    </>
+                  ),
+                })}
+                {hasBrands ? (
+                  <button
+                    type="button"
+                    className={cn(
+                      "grid shrink-0 place-items-center rounded-md text-slate-400 transition hover:bg-slate-50 hover:text-primary",
+                      desktop ? "w-10" : "w-9"
+                    )}
+                    aria-label={groupToggleLabel(t, localizedDepartment, departmentOpen)}
+                    aria-expanded={departmentOpen}
+                    aria-controls={departmentPanelId}
+                    onClick={() => {
+                      setExpandedSeriesKey(null);
+                      onExpandedBrandKeyChange(null);
+                      onExpandedDepartmentChange(departmentOpen ? null : department);
+                    }}
+                  >
+                    <ChevronDown
+                      className={cn(
+                        desktop ? "size-4" : "size-3.5",
+                        "transition",
+                        departmentOpen && "rotate-180 text-primary"
+                      )}
+                    />
+                  </button>
+                ) : null}
+              </div>
 
-                        return (
-                          <div key={seriesGroup.series} className="rounded-md bg-slate-50/70">
-                            <button
-                              type="button"
-                              className={cn(
-                                "flex w-full items-center gap-2 rounded-md text-left font-black leading-4 text-slate-900 transition hover:bg-slate-100 hover:text-primary",
-                                desktop ? "px-2.5 py-2 text-xs" : "h-9 px-2 py-2 text-[11px]",
-                                seriesOpen && "bg-slate-100"
-                              )}
-                              aria-expanded={seriesOpen}
-                              aria-controls={seriesPanelId}
-                              onClick={() =>
-                                setExpandedSeriesKey(
-                                  seriesOpen ? closedSeriesPanelKey(panelKey) : panelKey
-                                )
-                              }
-                              title={seriesGroup.series}
-                            >
-                              <span className="min-w-0 flex-1 truncate">
-                                {seriesGroup.series}
-                              </span>
-                              <ChevronDown
+              {departmentOpen && hasBrands ? (
+                <div id={departmentPanelId} className="border-t border-slate-100 p-2">
+                  <div className="space-y-1">
+                    {departmentGroup.brands.map((entry) => {
+                      const brandPanelKey = catalogBrandKey(department, entry.brand);
+                      const brandOpen = expandedBrandKey === brandPanelKey;
+                      const localizedBrand = brandLabel(t, entry.brand);
+                      const brandWithinSelection =
+                        departmentWithinSelection &&
+                        isSameCatalogValue(selectedBrand, entry.brand);
+                      const brandSelected =
+                        brandWithinSelection &&
+                        !selectedModelSeries &&
+                        !selectedModel &&
+                        !selectedCategory &&
+                        !selectedSearchQuery &&
+                        !inStockOnly;
+                      const brandPanelId = catalogBrandPanelId(
+                        idPrefix,
+                        department,
+                        entry.brand
+                      );
+                      const seriesGroups = entry.series ?? [];
+                      const groupedModels = new Set(
+                        seriesGroups.flatMap((seriesGroup) => seriesGroup.models)
+                      );
+                      const standaloneModels = entry.models.filter(
+                        (model) => !groupedModels.has(model)
+                      );
+                      const hasBrandChildren =
+                        seriesGroups.length > 0 || standaloneModels.length > 0;
+
+                      return (
+                        <div
+                          key={brandPanelKey}
+                          className="overflow-hidden rounded-md border border-slate-100 bg-white"
+                        >
+                          <div className="flex min-w-0 items-stretch">
+                            {renderSelectionItem({
+                              className: cn(
+                                "flex min-w-0 flex-1 items-center gap-2 rounded-md text-left font-black text-slate-900 transition hover:bg-slate-50 hover:text-primary",
+                                desktop ? "min-h-10 px-3 text-sm" : "min-h-9 px-2 text-xs",
+                                brandWithinSelection && "text-primary",
+                                brandSelected &&
+                                  "bg-primary text-white shadow-sm hover:bg-primary hover:text-white"
+                              ),
+                              itemKey: `brand-${brandPanelKey}`,
+                              pressed: brandSelected,
+                              selection: { brand: entry.brand, department },
+                              title:
+                                localizedBrand === entry.brand ? undefined : entry.brand,
+                              children: (
+                                <>
+                                  <span className="min-w-0 flex-1 truncate">
+                                    {localizedBrand}
+                                  </span>
+                                  {desktop && hasBrandChildren ? (
+                                    <span
+                                      className={cn(
+                                        "text-[11px] font-semibold text-slate-400",
+                                        brandSelected && "text-white/80"
+                                      )}
+                                    >
+                                      {entry.models.length}
+                                    </span>
+                                  ) : null}
+                                </>
+                              ),
+                            })}
+                            {hasBrandChildren ? (
+                              <button
+                                type="button"
                                 className={cn(
-                                  desktop ? "size-3.5" : "size-3",
-                                  "shrink-0 text-slate-400 transition",
-                                  seriesOpen && "rotate-180 text-primary"
+                                  "grid shrink-0 place-items-center rounded-md text-slate-400 transition hover:bg-slate-50 hover:text-primary",
+                                  desktop ? "w-10" : "w-9"
                                 )}
-                              />
-                            </button>
-                            {seriesOpen && (
-                              <div
-                                id={seriesPanelId}
-                                className={cn(
-                                  "grid border-t border-white/80 p-1",
-                                  "gap-1"
-                                )}
+                                aria-label={groupToggleLabel(t, localizedBrand, brandOpen)}
+                                aria-expanded={brandOpen}
+                                aria-controls={brandPanelId}
+                                onClick={() => {
+                                  setExpandedSeriesKey(null);
+                                  onExpandedBrandKeyChange(
+                                    brandOpen ? null : brandPanelKey
+                                  );
+                                }}
                               >
-                                {seriesGroup.models.map((model) => {
-                                  const modelSelected =
-                                    brandSelected && isSameCatalogValue(selectedModel, model);
-
-                                  return renderSelectionItem({
-                                    className: cn(
-                                      "min-w-0 w-full rounded-md bg-white text-left font-semibold leading-4 text-slate-600 transition hover:bg-primary/8 hover:text-primary",
-                                      desktop
-                                        ? "px-2.5 py-2 text-xs"
-                                        : "min-h-9 px-2 py-2 text-[11px]",
-                                      modelSelected &&
-                                        "bg-primary text-white shadow-sm hover:bg-primary hover:text-white"
-                                    ),
-                                    itemKey: model,
-                                    onClick: () =>
-                                      handleModelSelect(
-                                        entry.brand,
-                                        model,
-                                        seriesGroup.series
-                                      ),
-                                    pressed: modelSelected,
-                                    selection: {
-                                      brand: entry.brand,
-                                      category: selectedCategory,
-                                      inStockOnly,
-                                      model,
-                                      modelSeries: seriesGroup.series,
-                                    },
-                                    elementId: modelSelected
-                                      ? selectedModelElementId(idPrefix)
-                                      : undefined,
-                                    title: model,
-                                    children: (
-                                      <span className="block whitespace-normal break-words [overflow-wrap:anywhere]">
-                                        {model}
-                                      </span>
-                                    ),
-                                  });
-                                })}
-                              </div>
-                            )}
+                                <ChevronDown
+                                  className={cn(
+                                    desktop ? "size-4" : "size-3.5",
+                                    "transition",
+                                    brandOpen && "rotate-180 text-primary"
+                                  )}
+                                />
+                              </button>
+                            ) : null}
                           </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="grid gap-1">
-                      {entry.models.map((model) => {
-                        const modelSelected =
-                          brandSelected && isSameCatalogValue(selectedModel, model);
 
-                        return renderSelectionItem({
-                          className: cn(
-                            "min-w-0 w-full rounded-md bg-slate-50 text-left font-semibold leading-4 text-slate-600 transition hover:bg-primary/8 hover:text-primary",
-                            desktop ? "px-2.5 py-2 text-xs" : "min-h-9 px-2 py-2 text-[11px]",
-                            modelSelected &&
-                              "bg-primary text-white shadow-sm hover:bg-primary hover:text-white"
-                          ),
-                          itemKey: model,
-                          onClick: () => handleModelSelect(entry.brand, model),
-                          pressed: modelSelected,
-                          selection: {
-                            brand: entry.brand,
-                            category: selectedCategory,
-                            inStockOnly,
-                            model,
-                          },
-                          elementId: modelSelected ? selectedModelElementId(idPrefix) : undefined,
-                          title: model,
-                          children: (
-                            <span className="block whitespace-normal break-words [overflow-wrap:anywhere]">
-                              {model}
-                            </span>
-                          ),
-                        });
-                      })}
-                    </div>
-                  )}
+                          {brandOpen && hasBrandChildren ? (
+                            <div id={brandPanelId} className="border-t border-slate-100 p-2">
+                              <div className="space-y-1">
+                                {seriesGroups.map((seriesGroup) => {
+                                  const panelKey = seriesPanelKey(
+                                    department,
+                                    entry.brand,
+                                    seriesGroup.series
+                                  );
+                                  const seriesOpen = activeSeriesPanelKey === panelKey;
+                                  const seriesPanelId = `${brandPanelId}-series-${slugKey(
+                                    seriesGroup.series
+                                  )}`;
+                                  const seriesWithinSelection =
+                                    brandWithinSelection &&
+                                    isSameCatalogValue(
+                                      selectedSeries,
+                                      seriesGroup.series
+                                    );
+                                  const seriesSelected =
+                                    seriesWithinSelection &&
+                                    !selectedModel &&
+                                    !selectedCategory &&
+                                    !selectedSearchQuery &&
+                                    !inStockOnly;
+
+                                  return (
+                                    <div
+                                      key={seriesGroup.series}
+                                      className="rounded-md bg-slate-50/70"
+                                    >
+                                      <div className="flex min-w-0 items-stretch">
+                                        {renderSelectionItem({
+                                          className: cn(
+                                            "flex min-w-0 flex-1 items-center rounded-md text-left font-black leading-4 text-slate-900 transition hover:bg-slate-100 hover:text-primary",
+                                            desktop
+                                              ? "min-h-9 px-2.5 py-2 text-xs"
+                                              : "min-h-9 px-2 py-2 text-[11px]",
+                                            seriesWithinSelection && "text-primary",
+                                            seriesSelected &&
+                                              "bg-primary text-white shadow-sm hover:bg-primary hover:text-white"
+                                          ),
+                                          itemKey: `series-${panelKey}`,
+                                          pressed: seriesSelected,
+                                          selection: {
+                                            brand: entry.brand,
+                                            department,
+                                            modelSeries: seriesGroup.series,
+                                          },
+                                          title: seriesGroup.series,
+                                          children: (
+                                            <span className="min-w-0 flex-1 truncate">
+                                              {seriesGroup.series}
+                                            </span>
+                                          ),
+                                        })}
+                                        <button
+                                          type="button"
+                                          className={cn(
+                                            "grid shrink-0 place-items-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-primary",
+                                            desktop ? "w-9" : "w-8"
+                                          )}
+                                          aria-label={groupToggleLabel(
+                                            t,
+                                            seriesGroup.series,
+                                            seriesOpen
+                                          )}
+                                          aria-expanded={seriesOpen}
+                                          aria-controls={seriesPanelId}
+                                          onClick={() =>
+                                            setExpandedSeriesKey(
+                                              seriesOpen
+                                                ? closedSeriesPanelKey(panelKey)
+                                                : panelKey
+                                            )
+                                          }
+                                        >
+                                          <ChevronDown
+                                            className={cn(
+                                              desktop ? "size-3.5" : "size-3",
+                                              "transition",
+                                              seriesOpen && "rotate-180 text-primary"
+                                            )}
+                                          />
+                                        </button>
+                                      </div>
+                                      {seriesOpen ? (
+                                        <div
+                                          id={seriesPanelId}
+                                          className="grid gap-1 border-t border-white/80 p-1"
+                                        >
+                                          {seriesGroup.models.map((model) =>
+                                            renderModelSelection(
+                                              department,
+                                              entry.brand,
+                                              model,
+                                              seriesGroup.series
+                                            )
+                                          )}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                  );
+                                })}
+
+                                {standaloneModels.length > 0 ? (
+                                  <div className="grid gap-1">
+                                    {standaloneModels.map((model) =>
+                                      renderModelSelection(
+                                        department,
+                                        entry.brand,
+                                        model
+                                      )
+                                    )}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              )}
+              ) : null}
             </div>
           );
         })}
@@ -456,19 +614,19 @@ function catalogQueryHref(
   {
     brand,
     category,
+    department,
     inStockOnly,
     model,
     modelSeries,
-  }: {
-  brand?: string;
-  category?: string;
-  inStockOnly?: boolean;
-  model?: string;
-  modelSeries?: string;
-  },
+    searchQuery,
+  }: CatalogSelection,
   assistedCompanyId?: string | null
 ) {
   const params = new URLSearchParams();
+
+  if (department) {
+    params.set("department", department);
+  }
 
   if (category) {
     params.set("category", category);
@@ -486,9 +644,11 @@ function catalogQueryHref(
     params.set("model", model);
   }
 
-  if (inStockOnly === false) {
-    params.set("minStock", "0");
-  } else if (inStockOnly) {
+  if (searchQuery) {
+    params.set("q", searchQuery);
+  }
+
+  if (inStockOnly) {
     params.set("minStock", "1");
   }
 
@@ -500,19 +660,25 @@ function catalogQueryHref(
   );
 }
 
-function catalogBrandPanelId(prefix: string, brand: string) {
-  return `${prefix}-brand-${slugKey(brand)}`;
-}
+function canonicalDepartmentGroups(sourceGroups: readonly CatalogDepartmentGroup[]) {
+  const brandsByDepartment = new Map<CatalogDepartment, DeviceModelGroup[]>();
 
-function isSameCatalogValue(left?: string, right?: string) {
-  if (!left || !right) {
-    return false;
+  for (const department of catalogDepartments) {
+    brandsByDepartment.set(department, []);
   }
 
-  return left.trim().localeCompare(right.trim(), "it", {
-    numeric: true,
-    sensitivity: "base",
-  }) === 0;
+  for (const group of sourceGroups) {
+    if (!isCatalogDepartment(group.department)) {
+      continue;
+    }
+
+    brandsByDepartment.get(group.department)?.push(...group.brands);
+  }
+
+  return catalogDepartments.map((department) => ({
+    department,
+    brands: canonicalModelGroups(brandsByDepartment.get(department) ?? []),
+  }));
 }
 
 function canonicalModelGroups(sourceGroups: readonly DeviceModelGroup[]) {
@@ -591,32 +757,36 @@ function canonicalModelGroups(sourceGroups: readonly DeviceModelGroup[]) {
     });
 }
 
-function sortSeriesGroups(series: Map<string, Set<string>>): DeviceModelSeriesGroup[] | undefined {
+function sortSeriesGroups(
+  series: Map<string, Set<string>>
+): DeviceModelSeriesGroup[] | undefined {
   const groups = Array.from(series.entries())
     .map(([seriesName, models]) => ({
       series: seriesName,
       models: Array.from(models).sort(compareModelNames),
     }))
     .filter((group) => group.models.length > 0)
-    .sort((left, right) => left.series.localeCompare(right.series, "it", { numeric: true }));
+    .sort((left, right) =>
+      left.series.localeCompare(right.series, "it", { numeric: true })
+    );
 
   return groups.length > 0 ? groups : undefined;
 }
 
-function compareModelNames(left: string, right: string) {
-  return left.localeCompare(right, "it", { numeric: true, sensitivity: "base" });
-}
-
 function findSeriesForModel(
-  groups: readonly DeviceModelGroup[],
+  groups: readonly CatalogDepartmentGroup[],
+  department?: CatalogDepartment,
   brand?: string,
   model?: string
 ) {
-  if (!brand || !model) {
+  if (!department || !brand || !model) {
     return undefined;
   }
 
-  const group = groups.find((entry) => isSameCatalogValue(entry.brand, brand));
+  const departmentGroup = groups.find((entry) => entry.department === department);
+  const group = departmentGroup?.brands.find((entry) =>
+    isSameCatalogValue(entry.brand, brand)
+  );
   const seriesGroup = group?.series?.find((entry) =>
     entry.models.some((entryModel) => isSameCatalogValue(entryModel, model))
   );
@@ -624,8 +794,28 @@ function findSeriesForModel(
   return seriesGroup?.series;
 }
 
-function seriesPanelKey(brand: string, series: string) {
-  return `${brand}::${series}`;
+function catalogDepartmentPanelId(prefix: string, department: CatalogDepartment) {
+  return `${prefix}-department-${department}`;
+}
+
+function catalogBrandPanelId(
+  prefix: string,
+  department: CatalogDepartment,
+  brand: string
+) {
+  return `${prefix}-brand-${department}-${slugKey(brand)}`;
+}
+
+function catalogBrandKey(department: CatalogDepartment, brand: string) {
+  return `${department}::${brand}`;
+}
+
+function seriesPanelKey(
+  department: CatalogDepartment,
+  brand: string,
+  series: string
+) {
+  return `${catalogBrandKey(department, brand)}::series::${series}`;
 }
 
 function closedSeriesPanelKey(panelKey: string) {
@@ -636,8 +826,52 @@ function isClosedSeriesPanelKey(panelKey: string) {
   return panelKey.startsWith("closed::");
 }
 
+function seriesPanelMatchesBrand(panelKey: string, brandKey: string) {
+  const openPanelKey = isClosedSeriesPanelKey(panelKey)
+    ? panelKey.slice("closed::".length)
+    : panelKey;
+
+  return openPanelKey.startsWith(`${brandKey}::series::`);
+}
+
 function selectedModelElementId(prefix: string) {
   return `${prefix}-selected-model`;
+}
+
+function groupToggleLabel(
+  t: (key: string) => string,
+  label: string,
+  expanded: boolean
+) {
+  return txFormat(
+    t,
+    expanded
+      ? "storefront.catalog.collapseGroup"
+      : "storefront.catalog.expandGroup",
+    expanded ? "Comprimi {label}" : "Espandi {label}",
+    { label }
+  );
+}
+
+function compareModelNames(left: string, right: string) {
+  return left.localeCompare(right, "it", { numeric: true, sensitivity: "base" });
+}
+
+function isSameCatalogValue(left?: string, right?: string) {
+  if (!left || !right) {
+    return false;
+  }
+
+  return (
+    left.trim().localeCompare(right.trim(), "it", {
+      numeric: true,
+      sensitivity: "base",
+    }) === 0
+  );
+}
+
+function isCatalogDepartment(value: string): value is CatalogDepartment {
+  return (catalogDepartments as readonly string[]).includes(value);
 }
 
 function slugKey(value: string) {

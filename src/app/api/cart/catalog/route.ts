@@ -19,6 +19,7 @@ import {
   listCatalogProductsBySkus,
   type RepositoryPartProduct,
 } from "@/lib/partspro-repository";
+import type { PartProduct } from "@/lib/partspro-data";
 import { toPublicSku } from "@/lib/partspro-sku";
 import { isProductOrderable } from "@/lib/partspro-preorder-contract";
 import { getProductOrderableQuantity } from "@/lib/partspro-preorder-contract";
@@ -324,7 +325,7 @@ function cartCatalogBlockReason(
   return priceVisibilityReason(account);
 }
 
-function productPriceFields(product: RepositoryPartProduct, visible: boolean) {
+function productPriceFields(product: PartProduct, visible: boolean) {
   return {
     basePrice: visible ? product.basePrice ?? null : null,
     customerLevel: visible ? product.customerLevel ?? null : null,

@@ -25,6 +25,7 @@ const productPatchPermissionRequirements: ProductPatchPermissionRequirement[] = 
     fields: [
       "name",
       "category",
+      "catalogDepartment",
       "brand",
       "grade",
       "moq",

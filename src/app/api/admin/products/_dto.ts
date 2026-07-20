@@ -12,6 +12,7 @@ export function toAdminProductDto(product: AdminProduct) {
     slug: product.slug,
     name: product.name,
     category: product.category,
+    catalogDepartment: product.catalogDepartment,
     brand: product.brand,
     grade: product.grade,
     b2bPrice: product.b2bPrice,
@@ -69,6 +70,8 @@ function buildCatalogUrl(product: AdminProduct) {
   if (product.brand) {
     params.set("brand", product.brand);
   }
+
+  params.set("department", product.catalogDepartment);
 
   if (model) {
     params.set("model", model);

@@ -1,3 +1,5 @@
+import type { CatalogDepartment } from "@/lib/partspro-data";
+
 export type StorefrontTranslator = (key: string) => string;
 
 export function tx(
@@ -55,6 +57,13 @@ const brandKeys: Record<string, string> = {
   Oppo: "oppo",
   Samsung: "samsung",
   Xiaomi: "xiaomi",
+};
+
+const catalogDepartmentKeys: Record<CatalogDepartment, string> = {
+  phone: "phone",
+  tablet: "tablet",
+  computer: "computer",
+  general_merchandise: "generalMerchandise",
 };
 
 const stockStatusKeys: Record<string, string> = {
@@ -121,6 +130,17 @@ export function brandLabel(t: StorefrontTranslator, value: string) {
   const key = brandKeys[value];
 
   return key ? tx(t, `storefront.data.brands.${key}`, value) : value;
+}
+
+export function catalogDepartmentLabel(
+  t: StorefrontTranslator,
+  value: CatalogDepartment
+) {
+  return tx(
+    t,
+    `storefront.data.catalogDepartments.${catalogDepartmentKeys[value]}`,
+    value
+  );
 }
 
 export function stockStatusLabel(t: StorefrontTranslator, value: string) {
@@ -215,12 +235,16 @@ export const storefrontItIT = {
   "storefront.data.stockLevel.good": "Disponibilita buona",
   "storefront.data.stockLevel.limited": "Scorte limitate",
   "storefront.data.stockLevel.outOfStock": "Esaurito",
+  "storefront.data.catalogDepartments.phone": "Smartphone",
+  "storefront.data.catalogDepartments.tablet": "Tablet",
+  "storefront.data.catalogDepartments.computer": "Computer",
+  "storefront.data.catalogDepartments.generalMerchandise": "Accessori e altro",
   "storefront.catalog.allProducts": "Tutto il catalogo",
-  "storefront.catalog.availableOnly": "Solo disponibili",
-  "storefront.catalog.availableOnlyAria": "Filtra solo prodotti disponibili",
+  "storefront.catalog.collapseGroup": "Comprimi {label}",
   "storefront.catalog.clearFilters": "Cancella filtri",
+  "storefront.catalog.expandGroup": "Espandi {label}",
   "storefront.catalog.emptyDescription":
-    "Modifica ricerca o filtri rapidi per tornare al listino disponibile.",
+    "Modifica ricerca o filtri rapidi per tornare al catalogo.",
   "storefront.catalog.emptyTitle": "Nessun ricambio trovato",
   "storefront.catalog.filtering": "Filtro in corso...",
   "storefront.catalog.loadErrorDescription":
@@ -983,7 +1007,6 @@ export const storefrontItIT = {
   "storefront.home.common.openCatalog": "Apri catalogo",
   "storefront.home.common.skuCount": "{count} SKU",
   "storefront.home.common.viewAll": "Vedi tutto",
-  "storefront.home.header.availableOnly": "Solo disponibili",
   "storefront.home.header.logoLabel": "Torna alla home PartsPro",
   "storefront.home.hero.badge": "Forniture professionali Italia",
   "storefront.home.hero.browseCatalog": "Sfoglia catalogo",
@@ -1057,7 +1080,7 @@ export const storefrontItIT = {
   "storefront.home.searchPlaceholder": "Cerca prodotto, SKU, brand, modello...",
   "storefront.home.shelves.badge": "Catalogo prodotti",
   "storefront.home.shelves.title": "Prodotti pronti per l'acquisto",
-  "storefront.home.sidebar.subtitle": "Brand e modelli",
+  "storefront.home.sidebar.subtitle": "Categorie, brand e modelli",
   "storefront.home.sidebar.title": "Catalogo rapido",
   "storefront.home.trust.delivery.title": "Logistica Italia",
   "storefront.home.trust.delivery.value": "24/48h sui ricambi disponibili",
@@ -1292,11 +1315,15 @@ export const storefrontZhCN = {
   "storefront.data.stockLevel.good": "库存充足",
   "storefront.data.stockLevel.limited": "少量现货",
   "storefront.data.stockLevel.outOfStock": "暂时缺货",
+  "storefront.data.catalogDepartments.phone": "手机",
+  "storefront.data.catalogDepartments.tablet": "平板",
+  "storefront.data.catalogDepartments.computer": "电脑",
+  "storefront.data.catalogDepartments.generalMerchandise": "百货系列",
   "storefront.catalog.allProducts": "全部目录",
-  "storefront.catalog.availableOnly": "仅看有货",
-  "storefront.catalog.availableOnlyAria": "仅筛选有货商品",
+  "storefront.catalog.collapseGroup": "收起{label}",
   "storefront.catalog.clearFilters": "清除筛选",
-  "storefront.catalog.emptyDescription": "调整搜索或快速筛选，以返回可售目录。",
+  "storefront.catalog.expandGroup": "展开{label}",
+  "storefront.catalog.emptyDescription": "调整搜索或快速筛选，以返回商品目录。",
   "storefront.catalog.emptyTitle": "未找到配件",
   "storefront.catalog.filtering": "正在筛选...",
   "storefront.catalog.loadErrorDescription": "上一组商品仍会保留显示。网络稳定后请重试。",
@@ -1992,7 +2019,6 @@ export const storefrontZhCN = {
   "storefront.home.common.openCatalog": "打开目录",
   "storefront.home.common.skuCount": "{count} SKU",
   "storefront.home.common.viewAll": "查看全部",
-  "storefront.home.header.availableOnly": "仅看有货",
   "storefront.home.header.logoLabel": "返回 PartsPro 首页",
   "storefront.home.hero.badge": "意大利专业客户供货",
   "storefront.home.hero.browseCatalog": "浏览目录",
@@ -2063,7 +2089,7 @@ export const storefrontZhCN = {
   "storefront.home.searchPlaceholder": "搜索商品、SKU、品牌、机型...",
   "storefront.home.shelves.badge": "商品首页",
   "storefront.home.shelves.title": "热卖与新到配件",
-  "storefront.home.sidebar.subtitle": "品牌与机型",
+  "storefront.home.sidebar.subtitle": "分类、品牌与机型",
   "storefront.home.sidebar.title": "快速目录",
   "storefront.home.trust.delivery.title": "意大利物流",
   "storefront.home.trust.delivery.value": "有货配件 24/48 小时配送",

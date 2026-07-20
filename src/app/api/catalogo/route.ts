@@ -5,8 +5,11 @@ import {
   formatZodIssues,
   readQueryParams,
 } from "@/lib/partspro-api";
-import { pageCatalogProducts } from "@/lib/partspro-repository";
-import { type PartProduct } from "@/lib/partspro-data";
+import {
+  pageCatalogProducts,
+  type RepositoryPartProduct,
+} from "@/lib/partspro-repository";
+import { catalogDepartments, type PartProduct } from "@/lib/partspro-data";
 import {
   accountPricingCustomerId,
   applyAccountPriceToProduct,
@@ -22,6 +25,7 @@ const catalogQuerySchema = z
   .object({
     brand: z.string().trim().min(1).max(40).optional(),
     category: z.string().trim().min(1).max(40).optional(),
+    department: z.enum(catalogDepartments).optional(),
     q: z.string().trim().min(2).max(80).optional(),
     model: z.string().trim().min(2).max(80).optional(),
     modelSeries: z.string().trim().min(1).max(80).optional(),
@@ -112,7 +116,7 @@ export async function GET(request: NextRequest) {
 }
 
 function toCatalogProduct(
-  product: PartProduct,
+  product: RepositoryPartProduct,
   account: AccountContext,
   priceAccess: { orderable: boolean }
 ) {
@@ -127,6 +131,7 @@ function toCatalogProduct(
     slug: pricedProduct.slug,
     name: pricedProduct.name,
     category: pricedProduct.category,
+    catalogDepartment: product.catalogDepartment,
     brand: pricedProduct.brand,
     grade: pricedProduct.grade,
     price: pricedProduct.price,

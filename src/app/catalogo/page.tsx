@@ -2,10 +2,14 @@ import { Suspense } from "react";
 import { CatalogPage } from "@/components/partspro/catalog-page";
 import {
   getCustomerProfileById,
-  listCatalogModelGroups,
+  listCatalogDepartmentGroups,
   pageCatalogProducts,
 } from "@/lib/partspro-repository";
-import type { PartProduct } from "@/lib/partspro-data";
+import {
+  catalogDepartments,
+  type CatalogDepartment,
+  type PartProduct,
+} from "@/lib/partspro-data";
 import {
   accountPricingCustomerId,
   applyAccountPriceToProduct,
@@ -34,13 +38,13 @@ export default async function Page({
   const resolvedSearchParams = await searchParams;
   const query = readCatalogQuery(resolvedSearchParams);
   const accountPromise = getCurrentAccountContext();
-  const modelGroupsPromise = listCatalogModelGroups();
+  const departmentGroupsPromise = listCatalogDepartmentGroups();
   const account = await accountPromise;
   const requestedCompanyId = readAssistedCompanyIdFromRecord(resolvedSearchParams);
   const assistedCompanyId =
     requestedCompanyId && canDelegateCheckout(account) ? requestedCompanyId : null;
   const buyerCustomerId = assistedCompanyId ?? accountPricingCustomerId(account);
-  const [catalogPage, modelGroups, assistedCustomer] = await Promise.all([
+  const [catalogPage, departmentGroups, assistedCustomer] = await Promise.all([
     pageCatalogProducts(
       {
         ...query,
@@ -53,7 +57,7 @@ export default async function Page({
         includeBuyerPrices: account.canViewPrices || Boolean(assistedCompanyId),
       }
     ),
-    modelGroupsPromise,
+    departmentGroupsPromise,
     assistedCompanyId
       ? getCustomerProfileById(assistedCompanyId).catch(() => null)
       : Promise.resolve(null),
@@ -70,7 +74,7 @@ export default async function Page({
         assistedCompanyName={assistedProfile?.companyName ?? null}
         filteredTotal={catalogPage.data.total}
         initialAccountAccess={toStoreHeaderAccountAccess(account)}
-        initialModelGroups={modelGroups.data}
+        initialDepartmentGroups={departmentGroups.data}
         initialProducts={productsWithPreorders.map((product) =>
           toCatalogCardProduct(product, account)
         )}
@@ -88,11 +92,20 @@ function readCatalogQuery(params: Awaited<CatalogPageSearchParams>) {
   return {
     brand: readSingleParam(params.brand),
     category: readSingleParam(params.category),
-    minStock: Number(minStockParam ?? "1") > 0 ? 1 : undefined,
+    department: readCatalogDepartment(params.department),
+    minStock: Number(minStockParam ?? "0") > 0 ? 1 : undefined,
     model: readSingleParam(params.model),
     modelSeries: readSingleParam(params.modelSeries),
     q: readSingleParam(params.q),
   };
+}
+
+function readCatalogDepartment(value: string | string[] | undefined) {
+  const department = readSingleParam(value);
+
+  return catalogDepartments.includes(department as CatalogDepartment)
+    ? (department as CatalogDepartment)
+    : undefined;
 }
 
 function readSingleParam(value: string | string[] | undefined) {

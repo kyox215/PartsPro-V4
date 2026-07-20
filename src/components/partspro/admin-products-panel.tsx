@@ -94,8 +94,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  catalogDepartments,
   categories,
   formatEuro,
+  type CatalogDepartment,
   type DeviceModelGroup,
   type PartProduct,
   type PartVisual,
@@ -218,6 +220,7 @@ type AdminProductRow = PartProduct & {
   actualQty?: number;
   availableQty?: number;
   batchCode?: string | null;
+  catalogDepartment: CatalogDepartment;
   catalogUrl?: string;
   catalogStatus: CatalogStatus;
   compatibilityManaged?: boolean;
@@ -390,6 +393,7 @@ type ProductFormValues = {
   skuMode: "auto" | "manual";
   name: string;
   category: string;
+  catalogDepartment: CatalogDepartment;
   brand: string;
   grade: ProductGrade;
   price: string;
@@ -413,6 +417,7 @@ type ProductWritePayload = {
   sku?: string;
   name: string;
   category: string;
+  catalogDepartment: CatalogDepartment;
   brand: string;
   grade: ProductGrade;
   price: number;
@@ -571,6 +576,7 @@ const panelText = {
     pickModel: "选择型号",
     noCascadeOptions: "暂无选项",
     allBrands: "全部品牌",
+    allCatalogDepartments: "全部一级目录",
     allCategories: "全部分类",
     allSeries: "全部系列",
     allModels: "全部型号",
@@ -616,6 +622,7 @@ const panelText = {
       name: "商品名称",
       brand: "品牌",
       category: "分类",
+      catalog_department: "一级目录",
       moq: "最小起订量",
       b2b_price: "批发价",
       vat_mode: "VAT 模式",
@@ -776,6 +783,13 @@ const panelText = {
     name: "商品名称",
     sku: "SKU",
     category: "分类",
+    catalogDepartment: "一级目录",
+    catalogDepartmentLabels: {
+      phone: "手机",
+      tablet: "平板",
+      computer: "电脑",
+      general_merchandise: "百货系列",
+    } satisfies Record<CatalogDepartment, string>,
     brand: "品牌",
     quality: "品质",
     warehouse: "仓库",
@@ -874,6 +888,7 @@ const panelText = {
       b2b_price: "批发价",
       brand: "品牌",
       category: "分类",
+      catalog_department: "一级目录",
       cost_price: "成本价",
       gallery_image_paths: "图库路径",
       image_alt: "图片 Alt",
@@ -947,6 +962,7 @@ const panelText = {
     pickModel: "Seleziona modello",
     noCascadeOptions: "Nessuna opzione",
     allBrands: "Tutti i brand",
+    allCatalogDepartments: "Tutti i reparti",
     allCategories: "Tutte le categorie",
     allSeries: "Tutte le serie",
     allModels: "Tutti i modelli",
@@ -992,6 +1008,7 @@ const panelText = {
       name: "Nome prodotto",
       brand: "Brand",
       category: "Categoria",
+      catalog_department: "Reparto catalogo",
       moq: "MOQ",
       b2b_price: "Prezzo B2B",
       vat_mode: "Modalita IVA",
@@ -1152,6 +1169,13 @@ const panelText = {
     name: "Nome prodotto",
     sku: "SKU",
     category: "Categoria",
+    catalogDepartment: "Reparto catalogo",
+    catalogDepartmentLabels: {
+      phone: "Smartphone",
+      tablet: "Tablet",
+      computer: "Computer",
+      general_merchandise: "Accessori e altro",
+    } satisfies Record<CatalogDepartment, string>,
     brand: "Brand",
     quality: "Qualita",
     warehouse: "Magazzino",
@@ -1250,6 +1274,7 @@ const panelText = {
       b2b_price: "Prezzo wholesale",
       brand: "Brand",
       category: "Categoria",
+      catalog_department: "Reparto catalogo",
       cost_price: "Costo",
       gallery_image_paths: "Galleria",
       image_alt: "Alt immagine",
@@ -2910,6 +2935,7 @@ function formatDateTimeShort(value: string) {
 type HomeBannerFormValues = {
   brand: string;
   category: string;
+  department: CatalogDepartment | "";
   imageAlt: string;
   imagePath: string;
   isActive: boolean;
@@ -3360,6 +3386,29 @@ function AdminHomeBannersPanel({
           )}
 
           <div className="grid gap-2 sm:grid-cols-2">
+            <Field label={text.catalogDepartment}>
+              <Select
+                value={formValues.department || "all"}
+                onValueChange={(value) =>
+                  setFormValue(
+                    "department",
+                    value === "all" ? "" : (value as CatalogDepartment)
+                  )
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">{text.allCatalogDepartments}</SelectItem>
+                  {catalogDepartments.map((department) => (
+                    <SelectItem key={department} value={department}>
+                      {text.catalogDepartmentLabels[department]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
             <Field label={text.brand}>
               <Select
                 disabled={isLoadingModelGroups}
@@ -5635,6 +5684,28 @@ function ProductDetails({
                     </SelectContent>
                   </Select>
                 </EditableDetailItem>
+                <EditableDetailItem
+                  label={text.catalogDepartment}
+                  error={editErrors.catalogDepartment}
+                >
+                  <Select
+                    value={editValues.catalogDepartment}
+                    onValueChange={(value) =>
+                      setEditValue("catalogDepartment", value as CatalogDepartment)
+                    }
+                  >
+                    <SelectTrigger className="bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {catalogDepartments.map((department) => (
+                        <SelectItem key={department} value={department}>
+                          {text.catalogDepartmentLabels[department]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </EditableDetailItem>
                 <EditableDetailItem label={text.brand} error={editErrors.brand}>
                   <Input value={editValues.brand} onChange={(event) => setEditValue("brand", event.target.value)} />
                 </EditableDetailItem>
@@ -5676,6 +5747,10 @@ function ProductDetails({
                 <DetailItem className="lg:col-span-2" label={text.name} value={product.name} />
                 <DetailItem label={text.sku} value={<span className="font-mono">{product.sku}</span>} />
                 <DetailItem label={text.category} value={product.category} />
+                <DetailItem
+                  label={text.catalogDepartment}
+                  value={text.catalogDepartmentLabels[product.catalogDepartment]}
+                />
                 <DetailItem label={text.brand} value={product.brand} />
                 <DetailItem label={text.quality} value={adminText.enums.productGrade[product.grade]} />
                 <DetailItem label={text.moq} value={product.moq} />
@@ -6085,6 +6160,23 @@ function ProductEditorForm({
 
       {canEditContent && (
         <div className="grid gap-4 sm:grid-cols-2">
+          <Field label={text.catalogDepartment} error={errors.catalogDepartment}>
+            <Select
+              value={values.catalogDepartment}
+              onValueChange={(value) =>
+                setValue("catalogDepartment", value as CatalogDepartment)
+              }
+            >
+              <SelectTrigger className="h-11 bg-white"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {catalogDepartments.map((department) => (
+                  <SelectItem key={department} value={department}>
+                    {text.catalogDepartmentLabels[department]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
           <Field label={text.category} error={errors.category}>
             <Select value={values.category} onValueChange={(value) => setValue("category", value)}>
               <SelectTrigger className="h-11 bg-white"><SelectValue /></SelectTrigger>
@@ -7823,12 +7915,16 @@ function normalizeAdminHomeBanner(value: unknown): AdminHomeBanner | null {
 
 function normalizeHomeBannerTargetValue(value: unknown): HomeBannerTarget {
   const target = isRecord(value) ? value : {};
+  const department = readCatalogDepartmentValue(
+    target.department ?? target.catalogDepartment ?? target.catalog_department
+  );
   const minStock = readNumber(target.minStock) ?? readNumber(target.min_stock);
   const sort = readString(target.sort);
 
   return {
     ...(readString(target.brand) ? { brand: readString(target.brand) } : {}),
     ...(readString(target.category) ? { category: readString(target.category) } : {}),
+    ...(department ? { department } : {}),
     ...(minStock && minStock > 0 ? { minStock: Math.trunc(minStock) } : {}),
     ...(readString(target.model) ? { model: readString(target.model) } : {}),
     ...(readString(target.modelSeries) || readString(target.model_series)
@@ -7848,6 +7944,7 @@ function homeBannerFormDefaults(
   return {
     brand: banner?.target.brand ?? "",
     category: banner?.target.category ?? "",
+    department: banner?.target.department ?? "",
     imageAlt: banner?.imageAlt ?? "",
     imagePath: banner?.imagePath ?? "",
     isActive: banner?.isActive ?? true,
@@ -7871,6 +7968,10 @@ function homeBannerFormPayload(values: HomeBannerFormValues) {
 
   if (values.category) {
     target.category = values.category;
+  }
+
+  if (values.department) {
+    target.department = values.department;
   }
 
   if (values.modelSeries) {
@@ -7916,6 +8017,10 @@ function buildHomeBannerTargetHref(target: HomeBannerTarget) {
 
   if (target.category) {
     params.set("category", target.category);
+  }
+
+  if (target.department) {
+    params.set("department", target.department);
   }
 
   if (target.modelSeries) {
@@ -8026,6 +8131,7 @@ function normalizeProductApiRow(row: unknown): AdminProductRow | null {
 
   const name = readString(row.name) ?? sku;
   const category = readString(row.category) ?? "Schermi";
+  const brand = readString(row.brand) ?? "OEM";
   const categoryVisual = categories.find((item) => item.label === category || item.value === category)?.visual;
   const stock =
     readNumber(row.stockQty) ??
@@ -8048,7 +8154,11 @@ function normalizeProductApiRow(row: unknown): AdminProductRow | null {
     slug: readString(row.slug) ?? slugify(sku),
     name,
     category,
-    brand: readString(row.brand) ?? "OEM",
+    catalogDepartment: normalizeCatalogDepartment(
+      row.catalogDepartment ?? row.catalog_department,
+      brand
+    ),
+    brand,
     grade: normalizeProductGrade(row.grade ?? row.quality_grade),
     price: readNumber(row.b2bPrice) ?? readNumber(row.b2b_price) ?? readNumber(row.price) ?? 0,
     retailPrice:
@@ -8218,6 +8328,7 @@ function buildProductWritePayload(
   const payload: ProductWritePayload = {
     name: values.name.trim(),
     category: values.category.trim(),
+    catalogDepartment: values.catalogDepartment,
     brand: values.brand.trim(),
     grade: values.grade,
     price: capabilities.editPrice ? price : 0,
@@ -8259,6 +8370,7 @@ function buildProductWritePayload(
     allowedKeys.push(
       "name",
       "category",
+      "catalogDepartment",
       "brand",
       "grade",
       "moq",
@@ -8301,7 +8413,7 @@ function buildProductWritePayload(
   return pickProductPayload(
     payload,
     allowedKeys.filter((key) =>
-      ["name", "category", "brand", "grade", "moq", "model", "modelCode", "batchCode", "supplier"].includes(key)
+      ["name", "category", "catalogDepartment", "brand", "grade", "moq", "model", "modelCode", "batchCode", "supplier"].includes(key)
     )
   );
 }
@@ -8339,6 +8451,7 @@ function defaultProductFormValues(): ProductFormValues {
     skuMode: "auto",
     name: "",
     category: "Schermi",
+    catalogDepartment: "phone",
     brand: "OEM",
     grade: "A+",
     price: "",
@@ -8365,6 +8478,7 @@ function productFormDefaults(product: AdminProductRow): ProductFormValues {
     skuMode: "manual",
     name: product.name,
     category: product.category,
+    catalogDepartment: product.catalogDepartment,
     brand: product.brand,
     grade: product.grade,
     price: String(product.price),
@@ -8420,6 +8534,9 @@ function validateProductForm(
   if (canEditContent) {
     if (!values.name.trim()) errors.name = text.formRequired;
     if (!values.category.trim()) errors.category = text.formRequired;
+    if (!catalogDepartments.includes(values.catalogDepartment)) {
+      errors.catalogDepartment = text.formRequired;
+    }
     if (!values.brand.trim()) errors.brand = text.formRequired;
     if (!values.model.trim()) errors.model = text.formRequired;
     if (!values.supplier.trim()) errors.supplier = text.formRequired;
@@ -8565,6 +8682,29 @@ function normalizeCatalogStatus(value: unknown): CatalogStatus | null {
   return catalogStatuses.find((item) => item === status) ?? null;
 }
 
+function normalizeCatalogDepartment(
+  value: unknown,
+  brand: string | null | undefined
+): CatalogDepartment {
+  const normalized = readCatalogDepartmentValue(value);
+
+  if (normalized) {
+    return normalized;
+  }
+
+  return brand?.trim().toUpperCase() === "REMAX"
+    ? "general_merchandise"
+    : "phone";
+}
+
+function readCatalogDepartmentValue(value: unknown): CatalogDepartment | null {
+  const normalized = readString(value)?.toLowerCase();
+
+  return catalogDepartments.includes(normalized as CatalogDepartment)
+    ? (normalized as CatalogDepartment)
+    : null;
+}
+
 function normalizeWarehouse(value: unknown): PartProduct["warehouse"] {
   void value;
   return defaultWarehouse;
@@ -8669,6 +8809,7 @@ function downloadProductsCsv(products: AdminProductRow[], scope: "selected" | "v
     "sku",
     "name",
     "category",
+    "catalogDepartment",
     "brand",
     "grade",
     "catalogStatus",
@@ -8682,6 +8823,7 @@ function downloadProductsCsv(products: AdminProductRow[], scope: "selected" | "v
     product.sku,
     product.name,
     product.category,
+    product.catalogDepartment,
     product.brand,
     product.grade,
     product.catalogStatus,
