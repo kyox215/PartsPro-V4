@@ -1,8 +1,8 @@
 # P1-2026-07-21-checkout-localization-state-recovery
 
-状态：verified
+状态：done
 
-看板目录：now
+看板目录：done
 
 优先级：P1
 
@@ -126,7 +126,7 @@ node --test tests/partspro-storefront-i18n.test.mjs
 | `npm run build` | pass | Next.js 16.2.6 production build 通过 |
 | `npm run test:storefront` | pass | 6/6：字典对称、缺键、汉字泄漏、cart/preview deadline 与状态优先级 |
 | mobile browser smoke | pass | 未登录 `/` 与 `/checkout` 均为 `lang=it-IT`；除语言按钮“中”外无中文；17 秒后无无限等待；console 无 error/warn |
-| production deployment | pending |  |
+| production deployment | pass | `9fc841f` 已推送 `main`；Vercel `dpl_GhAssQdgCQn2LDoCG9UnMecbSvVj` READY；`www.partspro.app` 首页和 `/checkout` 线上 smoke 通过 |
 
 ## 执行记录
 
@@ -135,9 +135,9 @@ node --test tests/partspro-storefront-i18n.test.mjs
 - 开始：2026-07-21
 - review：2026-07-21 已完成 i18n、cart/checkout 状态机与业务提交守门复核
 - verified：2026-07-21 自动测试、lint、typecheck、build、浏览器 smoke 通过
-- released：
-- closed：
+- released：2026-07-21 Vercel production READY
+- closed：2026-07-21 线上首页与 checkout 无中文状态残留，console 无 error/warn
 
 ## 结果
 
-代码与本地验证已完成，等待生产发布与线上 smoke。
+已修复购物车恢复、远端请求和订单预览的无界等待；补齐双语字典并移除意大利语路径中的中文 fallback；生产发布和线上 smoke 均已通过。
