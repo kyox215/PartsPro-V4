@@ -173,6 +173,7 @@ class AdminApiError extends Error {
 }
 
 type CatalogStatus = (typeof catalogStatuses)[number];
+type CatalogStatusFilter = FilterValue<CatalogStatus> | "missing_image";
 type ProductSort = (typeof productSorts)[number];
 type ProductIssueFilter =
   | "missing_price"
@@ -195,7 +196,7 @@ type ProductListFilters = {
   batchCode: string;
   modelSeries: string;
   model: string;
-  catalogStatus: FilterValue<CatalogStatus>;
+  catalogStatus: CatalogStatusFilter;
   stockStatus: FilterValue<StockStatus>;
   grade: FilterValue<ProductGrade>;
   issueFilter: FilterValue<ProductIssueFilter>;
@@ -582,6 +583,7 @@ const panelText = {
     allSeries: "全部系列",
     allModels: "全部型号",
     allCatalogStatuses: "全部发布状态",
+    missingImageCatalogStatus: "未上传商品图片",
     allStockStatuses: "全部库存状态",
     allWarehouses: "全部仓库",
     allGrades: "全部品质",
@@ -968,6 +970,7 @@ const panelText = {
     allSeries: "Tutte le serie",
     allModels: "Tutti i modelli",
     allCatalogStatuses: "Tutti stati catalogo",
+    missingImageCatalogStatus: "Immagine prodotto non caricata",
     allStockStatuses: "Tutti stati stock",
     allWarehouses: "Tutti magazzini",
     allGrades: "Tutte qualita",
@@ -4208,15 +4211,15 @@ function CatalogStatusSelect({
   text,
   onChange,
 }: {
-  value: FilterValue<CatalogStatus>;
+  value: CatalogStatusFilter;
   text: typeof panelText.zh | typeof panelText.it;
-  onChange: (value: FilterValue<CatalogStatus>) => void;
+  onChange: (value: CatalogStatusFilter) => void;
 }) {
   const { locale } = useI18n();
   const adminText = getAdminDictionary(locale).admin;
 
   return (
-    <Select value={value} onValueChange={(nextValue) => onChange(nextValue as FilterValue<CatalogStatus>)}>
+    <Select value={value} onValueChange={(nextValue) => onChange(nextValue as CatalogStatusFilter)}>
       <SelectTrigger size="sm" className="h-8 w-full rounded-md bg-white text-sm sm:h-9">
         <SelectValue />
       </SelectTrigger>
@@ -4227,6 +4230,7 @@ function CatalogStatusSelect({
             {adminText.enums.catalogStatus[status]}
           </SelectItem>
         ))}
+        <SelectItem value="missing_image">{text.missingImageCatalogStatus}</SelectItem>
       </SelectContent>
     </Select>
   );
@@ -7196,7 +7200,9 @@ async function fetchAdminProducts(
     params.set("model", filters.model);
   }
 
-  if (filters.catalogStatus !== "all") {
+  if (filters.catalogStatus === "missing_image") {
+    params.set("issueFilter", "missing_image");
+  } else if (filters.catalogStatus !== "all") {
     params.set("catalogStatus", filters.catalogStatus);
   }
 
@@ -7208,7 +7214,7 @@ async function fetchAdminProducts(
     params.set("grade", filters.grade);
   }
 
-  if (filters.issueFilter !== "all") {
+  if (filters.issueFilter !== "all" && filters.catalogStatus !== "missing_image") {
     params.set("issueFilter", filters.issueFilter);
   }
 
