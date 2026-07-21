@@ -2855,6 +2855,46 @@ export async function getAdminProduct(
   };
 }
 
+export async function getAdminProductsBySkus(
+  skus: string[]
+): Promise<RepositoryResult<AdminProduct[]>> {
+  const context = await requireSupabaseContext();
+  const candidates = uniqueDefinedStrings(
+    skus.flatMap((sku) => catalogLookupCandidates(sku).map((candidate) => candidate.trim().toUpperCase()))
+  );
+
+  if (candidates.length === 0) {
+    return { data: [], source: "supabase" };
+  }
+
+  const rows: DbRow[] = [];
+
+  for (let index = 0; index < candidates.length; index += 100) {
+    const chunk = candidates.slice(index, index + 100);
+    const { data, error } = await context.client
+      .from("products")
+      .select("*")
+      .in("sku_code", chunk);
+
+    if (error) {
+      throw new RepositoryWriteError(
+        502,
+        "ADMIN_PRODUCT_IMPORT_LOOKUP_UNAVAILABLE",
+        "Products could not be checked before import.",
+        supabaseErrorDetails(error)
+      );
+    }
+
+    rows.push(...(Array.isArray(data) ? data.filter(isDbRow) : []));
+  }
+
+  const products = rows.map(mapAdminProductRow).filter((product): product is AdminProduct => Boolean(product));
+  return {
+    data: await enrichAdminProductsWithDeviceCompatibility(context.client, products),
+    source: "supabase",
+  };
+}
+
 export async function createAdminProduct(
   input: AdminProductWriteInput
 ): Promise<RepositoryResult<AdminProduct>> {

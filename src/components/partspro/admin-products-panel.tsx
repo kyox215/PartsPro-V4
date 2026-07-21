@@ -122,6 +122,7 @@ import {
   toPublicSku,
 } from "@/lib/partspro-sku";
 import { AdminBusyRegion, AdminSkeletonRows } from "./admin-feedback";
+import { AdminProductImportDialog } from "./admin-product-import-dialog";
 import { useI18n } from "./i18n-provider";
 import { PartVisual as ProductVisual } from "./part-visual";
 
@@ -1345,6 +1346,7 @@ export function AdminProductsPanel({
     React.useState<string | null>(null);
   const [isLoadingModelGroups, setIsLoadingModelGroups] = React.useState(true);
   const [isRestockDialogOpen, setIsRestockDialogOpen] = React.useState(false);
+  const [isProductImportOpen, setIsProductImportOpen] = React.useState(false);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = React.useState(false);
   const [drawerMode, setDrawerMode] = React.useState<ProductDrawerMode | null>(null);
   const [drawerProduct, setDrawerProduct] = React.useState<AdminProductRow | null>(null);
@@ -1894,6 +1896,23 @@ export function AdminProductsPanel({
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+                {permissionsLoaded && (
+                  capabilities.create ||
+                  capabilities.editContent ||
+                  capabilities.editPrice ||
+                  capabilities.editCost
+                ) && (
+                  <Button
+                    variant="outline"
+                    className="h-10 bg-white px-3"
+                    onClick={() => setIsProductImportOpen(true)}
+                  >
+                    <FileSpreadsheet className="size-4" />
+                    <span className="hidden sm:inline">
+                      {locale.toLowerCase().startsWith("it") ? "Importa Excel" : "Excel 导入"}
+                    </span>
+                  </Button>
+                )}
                 {capabilities.create && (
                   <Button className="h-10 px-3" onClick={() => openDrawer("create")}>
                     <Plus className="size-4" />
@@ -2074,6 +2093,13 @@ export function AdminProductsPanel({
           />
         </TabsContent>
       </Tabs>
+
+      <AdminProductImportDialog
+        locale={locale}
+        open={isProductImportOpen}
+        onOpenChange={setIsProductImportOpen}
+        onImported={refreshProductsQuietly}
+      />
 
       <ProductMobileFiltersSheet
         open={isMobileFiltersOpen}
