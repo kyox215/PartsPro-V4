@@ -258,6 +258,8 @@ export const storefrontItIT = {
   "storefront.account.openAdmin": "Pannello admin",
   "storefront.account.signOut": "Esci",
   "storefront.account.staffRole": "Accesso staff",
+  "storefront.account.field.contactName": "Referente",
+  "storefront.account.field.phone": "Telefono",
   "storefront.common.b2bAccount": "Centro personale",
   "storefront.common.checkout": "Checkout",
   "storefront.common.close": "Chiudi",
@@ -266,8 +268,10 @@ export const storefrontItIT = {
   "storefront.common.continueShopping": "Continua acquisti",
   "storefront.common.free": "Gratis",
   "storefront.common.listSeparator": ", ",
+  "storefront.common.loading": "Caricamento",
   "storefront.common.pieces": "pezzi",
   "storefront.common.piecesShort": "pz",
+  "storefront.common.retry": "Riprova",
   "storefront.common.shipping": "Spedizione",
   "storefront.common.status": "Stato",
   "storefront.common.subtotal": "Subtotale",
@@ -384,7 +388,12 @@ export const storefrontItIT = {
   "storefront.cart.rejectedUnavailableLabel": "Non acquistabile",
   "storefront.cart.rows": "Articoli",
   "storefront.cart.stockBadge": "Stock {stock}",
+  "storefront.cart.amountCalculating": "Calcolo totale in corso...",
+  "storefront.cart.amountCalculatingDescription":
+    "Sincronizzazione di prodotti, prezzi, disponibilita e MOQ.",
+  "storefront.cart.amountNeedsReview": "Totale da confermare",
   "storefront.cart.summaryLoading": "Caricamento carrello del tuo account...",
+  "storefront.cart.summaryLoadingTitle": "Calcolo totale...",
   "storefront.cart.summaryNote":
     "Il carrello non blocca stock: spedizione €6,50, gratuita da €100; disponibilita e quantita vengono verificate alla conferma.",
   "storefront.cart.summaryNoteBlocked":
@@ -458,6 +467,12 @@ export const storefrontItIT = {
   "storefront.checkout.customerContextPendingDescription":
     "Seleziona o completa il cliente per calcolare prezzo, scorte e MOQ prima dell'invio. SKU: {skus}.",
   "storefront.checkout.customerContextPendingTitle": "Cliente da completare",
+  "storefront.checkout.mode.delegated": "Ordine per cliente",
+  "storefront.checkout.mode.delegatedDescription":
+    "Seleziona un cliente e usa il suo livello, profilo e listino.",
+  "storefront.checkout.mode.employeeSelf": "Acquisto personale staff",
+  "storefront.checkout.mode.employeeSelfDescription":
+    "Usa i dati fiscali e di spedizione personali dello staff.",
   "storefront.checkout.delegated.description":
     "Scegli il cliente: prezzi, controlli e ordine useranno il suo livello e profilo.",
   "storefront.checkout.delegated.missingDescription":
@@ -492,9 +507,15 @@ export const storefrontItIT = {
     "Questa riga non e piu disponibile per il checkout.",
   "storefront.checkout.itemsNeedReview": "Articoli da rivedere",
   "storefront.checkout.itemColumn.product": "Prodotto",
+  "storefront.checkout.moq": "MOQ {count}",
+  "storefront.checkout.quantity": "Quantita",
   "storefront.checkout.issue.duplicate": "SKU duplicato nel carrello.",
+  "storefront.checkout.issue.mixedOrderKind":
+    "I prodotti disponibili e i preordini devono essere inviati come due ordini separati.",
   "storefront.checkout.issue.moq": "Quantità inferiore al MOQ {moq}.",
   "storefront.checkout.issue.outOfStock": "Prodotto attualmente esaurito.",
+  "storefront.checkout.issue.preorderWalletNotAllowed":
+    "Il saldo wallet non può essere usato per un preordine.",
   "storefront.checkout.issue.priceMissing":
     "Prezzo effettivo non disponibile per questo SKU.",
   "storefront.checkout.issue.profileIncomplete":
@@ -505,8 +526,12 @@ export const storefrontItIT = {
   "storefront.checkout.loadingItemsTitle": "Caricamento articoli ordine",
   "storefront.checkout.loadingTargetPrices":
     "Caricamento prezzi cliente per gli articoli del carrello.",
+  "storefront.checkout.preview.error":
+    "Impossibile aggiornare i controlli ordine.",
   "storefront.checkout.preview.errorTitle": "Controllo ordine non riuscito",
   "storefront.checkout.preview.loading": "Controllo prezzi, scorte e MOQ in corso.",
+  "storefront.checkout.preview.timeout":
+    "Il controllo ordine ha impiegato troppo tempo. Controlla la connessione e riprova.",
   "storefront.checkout.shippingFixed":
     "Metodo logistico gestito dal magazzino PartsPro. Spedizione €6,50, gratuita da €100; partenza standard entro le 16:00.",
   "storefront.checkout.shippingFixedCompact":
@@ -522,6 +547,7 @@ export const storefrontItIT = {
     "Seleziona il cliente per calcolare prezzi, scorte e MOQ.",
   "storefront.checkout.summary.note":
     "Prezzi IVA inclusa; viene aggiunta solo la spedizione.",
+  "storefront.checkout.amountCalculating": "Controllo ordine in corso...",
   "storefront.checkout.unresolvedItems": "Alcuni articoli non sono piu disponibili.",
   "storefront.checkout.field.codiceDestinatario": "Codice destinatario",
   "storefront.checkout.field.codiceFiscale": "Codice fiscale",
@@ -579,7 +605,15 @@ export const storefrontItIT = {
     "Preparazione banco e ritiro da parte del cliente.",
   "storefront.checkout.option.pickup.label": "Ritiro in sede",
   "storefront.checkout.summary.pickupNote": "Ritiro in sede: spedizione gratuita.",
+  "storefront.checkout.runtime.delegatedReadyDescription":
+    "Seleziona un cliente: prezzi e ordine useranno il profilo cliente scelto.",
   "storefront.checkout.runtime.disabled": "Checkout disabilitato",
+  "storefront.checkout.runtime.employeeSelfProfileDescription":
+    "Completa il profilo acquisti dello staff per usare i dati fiscali e di spedizione personali.",
+  "storefront.checkout.runtime.employeeSelfProfileReason":
+    "Checkout disabilitato: completa prima il profilo acquisti dello staff.",
+  "storefront.checkout.runtime.employeeSelfProfileTitle":
+    "Profilo acquisti staff da completare",
   "storefront.checkout.runtime.loginDescription":
     "Supabase è configurato: accedi per associare il checkout alla sessione.",
   "storefront.checkout.runtime.loginReason":
@@ -612,6 +646,7 @@ export const storefrontItIT = {
   "storefront.checkout.submit.button.loading": "Invio ordine...",
   "storefront.checkout.submit.button.loadingCart": "Caricamento carrello",
   "storefront.checkout.submit.button.blocked": "Non inviabile",
+  "storefront.checkout.submit.button.preorder": "Conferma preordine",
   "storefront.checkout.submit.button.success": "Ordine inviato",
   "storefront.checkout.submit.cartEmptyReason":
     "Il carrello è vuoto: aggiungi almeno un prodotto prima di confermare l'ordine.",
@@ -620,6 +655,13 @@ export const storefrontItIT = {
   "storefront.checkout.sync.remoteCartErrorMessage":
     "Sincronizzazione carrello non riuscita: checkout sospeso. Riprova la sincronizzazione o aggiorna la pagina.",
   "storefront.checkout.sync.remoteCartErrorTitle": "Sincronizzazione carrello non riuscita",
+  "storefront.checkout.sync.cartTitle": "Caricamento carrello...",
+  "storefront.checkout.sync.catalogTitle": "Sincronizzazione prezzi cliente...",
+  "storefront.checkout.sync.previewTitle": "Controllo ordine in corso...",
+  "storefront.checkout.sync.remoteCartMessage":
+    "Lettura del carrello del tuo account. L'invio resta disattivato finche totale e controlli ordine non sono aggiornati.",
+  "storefront.checkout.sync.remoteCartTitle": "Sincronizzazione carrello...",
+  "storefront.checkout.sync.submitTitle": "Invio ordine...",
   "storefront.checkout.submit.defaultDisabled": "Checkout disabilitato in questo momento.",
   "storefront.checkout.submit.formMissing":
     "Modulo checkout non trovato. Ricarica la pagina e riprova.",
@@ -644,7 +686,21 @@ export const storefrontItIT = {
     "Alcuni articoli del carrello non sono più disponibili: torna al carrello e rimuovili prima di confermare l'ordine.",
   "storefront.checkout.error.customerNotReady":
     "Il profilo cliente deve essere completato prima dell'ordine.",
+  "storefront.checkout.error.catalogUnavailable":
+    "Il listino cliente non e disponibile. Riprova tra poco.",
+  "storefront.checkout.error.customerContextStale":
+    "Il profilo cliente e completo, ma il checkout potrebbe mostrare dati non aggiornati. La pagina e stata aggiornata: invia di nuovo l'ordine.",
+  "storefront.checkout.error.generic":
+    "Si è verificato un errore durante il checkout. Riprova.",
   "storefront.checkout.error.loginRequired": "Accedi prima di confermare l'ordine.",
+  "storefront.checkout.error.preorderOfferChanged":
+    "La disponibilità del preordine è cambiata. Aggiorna il checkout e riprova.",
+  "storefront.checkout.error.preorderPaymentMethodInvalid":
+    "Per il preordine è disponibile solo il bonifico bancario.",
+  "storefront.checkout.error.preorderTermsRequired":
+    "Conferma le condizioni del preordine prima di inviare.",
+  "storefront.checkout.error.preorderWalletNotAllowed":
+    "Il saldo wallet non può essere usato per un preordine.",
   "storefront.checkout.error.priceAccess": "Il listino cliente non è ancora abilitato.",
   "storefront.checkout.error.priceChanged":
     "Alcuni prezzi sono cambiati. Aggiorna il checkout e riprova.",
@@ -1336,6 +1392,8 @@ export const storefrontZhCN = {
   "storefront.account.openAdmin": "后台面板",
   "storefront.account.signOut": "退出账号",
   "storefront.account.staffRole": "员工权限",
+  "storefront.account.field.contactName": "联系人",
+  "storefront.account.field.phone": "电话",
   "storefront.common.b2bAccount": "个人中心",
   "storefront.common.checkout": "结账",
   "storefront.common.close": "关闭",
@@ -1344,8 +1402,10 @@ export const storefrontZhCN = {
   "storefront.common.continueShopping": "继续采购",
   "storefront.common.free": "免费",
   "storefront.common.listSeparator": "、",
+  "storefront.common.loading": "加载中",
   "storefront.common.pieces": "件",
   "storefront.common.piecesShort": "件",
+  "storefront.common.retry": "重试",
   "storefront.common.shipping": "配送",
   "storefront.common.status": "状态",
   "storefront.common.subtotal": "小计",
@@ -1460,7 +1520,12 @@ export const storefrontZhCN = {
   "storefront.cart.rejectedUnavailableLabel": "当前不可购买",
   "storefront.cart.rows": "商品项",
   "storefront.cart.stockBadge": "库存 {stock}",
+  "storefront.cart.amountCalculating": "正在计算金额...",
+  "storefront.cart.amountCalculatingDescription":
+    "正在同步商品、价格、库存和 MOQ。",
+  "storefront.cart.amountNeedsReview": "金额待确认",
   "storefront.cart.summaryLoading": "正在加载当前账号的购物车...",
+  "storefront.cart.summaryLoadingTitle": "正在计算金额...",
   "storefront.cart.summaryNote":
     "购物车不会锁定库存；满 €100 包邮，未满统一 €6.50，确认下单时会重新检查库存和数量。",
   "storefront.cart.summaryNoteBlocked":
@@ -1529,6 +1594,12 @@ export const storefrontZhCN = {
   "storefront.checkout.customerContextPendingDescription":
     "请先选择或完善客户资料，再计算商品价格、库存和 MOQ 后提交。SKU：{skus}。",
   "storefront.checkout.customerContextPendingTitle": "客户资料待完善",
+  "storefront.checkout.mode.delegated": "代客户下单",
+  "storefront.checkout.mode.delegatedDescription":
+    "选择客户，并使用客户等级、资料和价格。",
+  "storefront.checkout.mode.employeeSelf": "员工自购",
+  "storefront.checkout.mode.employeeSelfDescription":
+    "使用员工自己的税务和配送资料。",
   "storefront.checkout.delegated.description":
     "选择客户后，价格、校验和订单都会使用该客户的等级和资料。",
   "storefront.checkout.delegated.missingDescription":
@@ -1559,9 +1630,15 @@ export const storefrontZhCN = {
   "storefront.checkout.itemUnavailable": "该商品项当前无法用于结账。",
   "storefront.checkout.itemsNeedReview": "商品项需要处理",
   "storefront.checkout.itemColumn.product": "商品",
+  "storefront.checkout.moq": "MOQ {count}",
+  "storefront.checkout.quantity": "数量",
   "storefront.checkout.issue.duplicate": "购物车中有重复 SKU。",
+  "storefront.checkout.issue.mixedOrderKind":
+    "现货商品和预购商品必须分别提交为两个订单。",
   "storefront.checkout.issue.moq": "数量低于起订量 {moq}。",
   "storefront.checkout.issue.outOfStock": "商品当前缺货。",
+  "storefront.checkout.issue.preorderWalletNotAllowed":
+    "钱包余额不能用于预购订单。",
   "storefront.checkout.issue.priceMissing": "该 SKU 暂无有效客户价。",
   "storefront.checkout.issue.profileIncomplete": "客户资料缺少：{fields}。",
   "storefront.checkout.issue.profileMissing": "客户资料不可用。",
@@ -1569,8 +1646,11 @@ export const storefrontZhCN = {
   "storefront.checkout.issue.unavailable": "该 SKU 当前不在可售目录中。",
   "storefront.checkout.loadingItemsTitle": "正在加载商品明细",
   "storefront.checkout.loadingTargetPrices": "正在加载购物车商品的客户价格。",
+  "storefront.checkout.preview.error": "无法更新订单校验。",
   "storefront.checkout.preview.errorTitle": "订单校验失败",
   "storefront.checkout.preview.loading": "正在校验价格、库存和 MOQ。",
+  "storefront.checkout.preview.timeout":
+    "订单校验超时，请检查网络后重试。",
   "storefront.checkout.shippingFixed":
     "由 PartsPro 仓库统一安排物流；未满 €100 运费 €6.50，满 €100 包邮，默认 16:00 前发货。",
   "storefront.checkout.shippingFixedCompact":
@@ -1585,6 +1665,7 @@ export const storefrontZhCN = {
   "storefront.checkout.summary.needsCustomer": "选择客户后计算客户价、库存和 MOQ。",
   "storefront.checkout.summary.note":
     "价格已含税，仅另计运费。",
+  "storefront.checkout.amountCalculating": "正在校验订单...",
   "storefront.checkout.unresolvedItems": "部分商品项当前不可用。",
   "storefront.checkout.field.codiceDestinatario": "收件代码",
   "storefront.checkout.field.codiceFiscale": "税号",
@@ -1635,7 +1716,14 @@ export const storefrontZhCN = {
     "仓库备货后由客户自提，不计算运费。",
   "storefront.checkout.option.pickup.label": "自提",
   "storefront.checkout.summary.pickupNote": "自提：免运费。",
+  "storefront.checkout.runtime.delegatedReadyDescription":
+    "选择客户后，价格和订单将使用所选客户的资料。",
   "storefront.checkout.runtime.disabled": "已禁用",
+  "storefront.checkout.runtime.employeeSelfProfileDescription":
+    "补全员工自购资料后，可使用自己的税务和配送资料下单。",
+  "storefront.checkout.runtime.employeeSelfProfileReason":
+    "结账已禁用：请先补全员工自购资料。",
+  "storefront.checkout.runtime.employeeSelfProfileTitle": "员工自购资料待补全",
   "storefront.checkout.runtime.loginDescription":
     "Supabase 已配置：请登录以将结账与当前会话关联。",
   "storefront.checkout.runtime.loginReason": "结账已禁用：请先登录再确认订单。",
@@ -1666,6 +1754,7 @@ export const storefrontZhCN = {
   "storefront.checkout.submit.button.loading": "正在提交订单...",
   "storefront.checkout.submit.button.loadingCart": "正在加载购物车",
   "storefront.checkout.submit.button.blocked": "无法提交",
+  "storefront.checkout.submit.button.preorder": "确认预购订单",
   "storefront.checkout.submit.button.success": "订单已提交",
   "storefront.checkout.submit.cartEmptyReason":
     "购物车为空：请至少添加一个商品后再确认订单。",
@@ -1673,6 +1762,13 @@ export const storefrontZhCN = {
   "storefront.checkout.sync.remoteCartErrorMessage":
     "购物车同步失败，已暂停结账。请重试同步或刷新页面。",
   "storefront.checkout.sync.remoteCartErrorTitle": "购物车同步异常",
+  "storefront.checkout.sync.cartTitle": "正在加载购物车...",
+  "storefront.checkout.sync.catalogTitle": "正在同步客户价格...",
+  "storefront.checkout.sync.previewTitle": "正在校验订单...",
+  "storefront.checkout.sync.remoteCartMessage":
+    "正在读取当前账号的购物车，金额和订单校验完成前无法提交。",
+  "storefront.checkout.sync.remoteCartTitle": "正在同步购物车...",
+  "storefront.checkout.sync.submitTitle": "正在提交订单...",
   "storefront.checkout.submit.defaultDisabled": "当前无法结账。",
   "storefront.checkout.submit.formMissing": "未找到结账表单。请刷新页面后重试。",
   "storefront.checkout.submit.idleDisabled": "当前无法结账。",
@@ -1692,7 +1788,20 @@ export const storefrontZhCN = {
   "storefront.checkout.submit.unresolvedItemsReason":
     "购物车中有商品当前不可用：请返回购物车移除后再确认订单。",
   "storefront.checkout.error.customerNotReady": "客户资料需要补全后才能下单。",
+  "storefront.checkout.error.catalogUnavailable":
+    "客户价目表暂时无法加载，请稍后重试。",
+  "storefront.checkout.error.customerContextStale":
+    "客户资料已完整，但结账页可能仍显示旧状态。页面已刷新，请再提交一次。",
+  "storefront.checkout.error.generic": "结账时发生错误，请重试。",
   "storefront.checkout.error.loginRequired": "请先登录再确认订单。",
+  "storefront.checkout.error.preorderOfferChanged":
+    "预购供应情况已变化，请刷新结账页后重试。",
+  "storefront.checkout.error.preorderPaymentMethodInvalid":
+    "预购订单仅支持银行转账。",
+  "storefront.checkout.error.preorderTermsRequired":
+    "请先确认预购条款再提交。",
+  "storefront.checkout.error.preorderWalletNotAllowed":
+    "钱包余额不能用于预购订单。",
   "storefront.checkout.error.priceAccess": "客户价目表尚未启用。",
   "storefront.checkout.error.priceChanged": "部分价格已变化。请刷新结账页后重试。",
   "storefront.checkout.error.skuUnavailable": "一个或多个商品当前不可用。",

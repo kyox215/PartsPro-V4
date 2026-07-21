@@ -439,15 +439,15 @@ function CartPageContent({
         : "ready";
   const cartPendingTitle =
     isRemoteCartLoading || !cart.isHydrated
-      ? tx(t, "storefront.cart.sync.remoteTitle", "正在同步购物车 / Sincronizzazione carrello...")
+      ? tx(t, "storefront.cart.sync.remoteTitle", "Sincronizzazione carrello...")
       : isCatalogResolving
-        ? tx(t, "storefront.cart.sync.catalogTitle", "正在更新价格与库存 / Aggiornamento prezzi e disponibilità...")
+        ? tx(t, "storefront.cart.sync.catalogTitle", "Aggiornamento prezzi e disponibilità...")
         : undefined;
   const cartPendingMessage =
     isRemoteCartLoading || !cart.isHydrated
-      ? tx(t, "storefront.cart.sync.remoteMessage", "正在读取当前账号的购物车，金额计算完成前不会启用结算。")
+      ? tx(t, "storefront.cart.sync.remoteMessage", "Lettura del carrello del tuo account. Il checkout resta disattivato finche il totale non e aggiornato.")
       : isCatalogResolving
-        ? tx(t, "storefront.cart.sync.catalogMessage", "正在校验商品、客户价、库存和 MOQ。")
+        ? tx(t, "storefront.cart.sync.catalogMessage", "Verifica prodotti, prezzi cliente, stock e MOQ.")
         : undefined;
   const cartSyncBanner = buildCartSyncBanner({
     isCartBootstrapping,
@@ -458,11 +458,11 @@ function CartPageContent({
   });
   const checkoutDisabledReason =
     isCartBootstrapping
-      ? tx(t, "storefront.cart.sync.remoteMessage", "正在读取当前账号的购物车，金额计算完成前不会启用结算。")
+      ? tx(t, "storefront.cart.sync.remoteMessage", "Lettura del carrello del tuo account. Il checkout resta disattivato finche il totale non e aggiornato.")
       : isCatalogResolving
-        ? tx(t, "storefront.cart.sync.catalogMessage", "正在校验商品、客户价、库存和 MOQ。")
+        ? tx(t, "storefront.cart.sync.catalogMessage", "Verifica prodotti, prezzi cliente, stock e MOQ.")
         : isCartSyncError
-          ? tx(t, "storefront.cart.sync.errorBlocker", "购物车同步失败，已暂停结账。请重试同步或刷新页面。")
+          ? tx(t, "storefront.cart.sync.errorBlocker", "Sincronizzazione carrello non riuscita: checkout sospeso. Riprova la sincronizzazione o aggiorna la pagina.")
           : hasCheckoutBlockers
             ? tx(t, "storefront.cart.summaryNoteReviewCheckout", "Puoi aprire il checkout per vedere cosa manca. Login, cliente, prezzi, stock e MOQ verranno comunque verificati prima dell'invio.")
             : undefined;
@@ -940,7 +940,7 @@ function CartPageContent({
               lineCount={cart.items.length}
               summaryNote={
                 isCartSyncError
-                  ? tx(t, "storefront.cart.sync.errorBlocker", "购物车同步失败，已暂停结账。请重试同步或刷新页面。")
+                  ? tx(t, "storefront.cart.sync.errorBlocker", "Sincronizzazione carrello non riuscita: checkout sospeso. Riprova la sincronizzazione o aggiorna la pagina.")
                   : hasCheckoutBlockers
                   ? tx(t, "storefront.cart.summaryNoteReviewCheckout", "Puoi aprire il checkout per vedere cosa manca. Login, cliente, prezzi, stock e MOQ verranno comunque verificati prima dell'invio.")
                   : tx(t, "storefront.cart.summaryNoteSynced", "Il carrello non blocca stock: spedizione €6,50, gratuita da €100; l'ordine riserverà gli articoli solo dopo la conferma.")
@@ -1352,23 +1352,23 @@ function buildCartSyncBanner({
 }): StorefrontSyncStatusState | null {
   if (isCartBootstrapping) {
     return {
-      title: tx(t, "storefront.cart.sync.remoteTitle", "正在同步购物车 / Sincronizzazione carrello..."),
-      message: tx(t, "storefront.cart.sync.remoteMessage", "正在读取当前账号的购物车，金额计算完成前不会启用结算。"),
+      title: tx(t, "storefront.cart.sync.remoteTitle", "Sincronizzazione carrello..."),
+      message: tx(t, "storefront.cart.sync.remoteMessage", "Lettura del carrello del tuo account. Il checkout resta disattivato finche il totale non e aggiornato."),
     };
   }
 
   if (isCatalogResolving) {
     return {
-      title: tx(t, "storefront.cart.sync.catalogTitle", "正在更新价格与库存 / Aggiornamento prezzi e disponibilità..."),
-      message: tx(t, "storefront.cart.sync.catalogMessage", "正在校验商品、客户价、库存和 MOQ。"),
+      title: tx(t, "storefront.cart.sync.catalogTitle", "Aggiornamento prezzi e disponibilità..."),
+      message: tx(t, "storefront.cart.sync.catalogMessage", "Verifica prodotti, prezzi cliente, stock e MOQ."),
     };
   }
 
   if (isCartSyncError) {
     return {
-      actionLabel: tx(t, "storefront.cart.sync.retry", "重试同步"),
-      title: tx(t, "storefront.cart.sync.errorTitle", "购物车同步异常 / Sincronizzazione carrello non riuscita"),
-      message: tx(t, "storefront.cart.sync.errorMessage", "购物车同步失败，已暂停结账。请重试同步或刷新页面。"),
+      actionLabel: tx(t, "storefront.cart.sync.retry", "Riprova sincronizzazione"),
+      title: tx(t, "storefront.cart.sync.errorTitle", "Sincronizzazione carrello non riuscita"),
+      message: tx(t, "storefront.cart.sync.errorMessage", "Sincronizzazione carrello non riuscita: checkout sospeso. Riprova la sincronizzazione o aggiorna la pagina."),
       onAction: onRetry,
       tone: "error",
     };
@@ -2503,7 +2503,7 @@ function CartSummaryLoadingCard({
         <div className="flex items-center gap-2">
           <Loader2 className="size-4 animate-spin text-primary" />
           <div className="text-sm font-black text-slate-950">
-            {title ?? tx(t, "storefront.cart.summaryLoadingTitle", "正在计算金额 / Calcolo totale...")}
+            {title ?? tx(t, "storefront.cart.summaryLoadingTitle", "Calcolo totale...")}
           </div>
         </div>
         <div className="space-y-2">
@@ -2564,14 +2564,14 @@ function MobileCartCheckoutBar({
   const amountStale = amountState === "stale";
   const totalLabel =
     amountPending
-      ? tx(t, "storefront.cart.amountCalculating", "金额计算中 / Calcolo totale...")
+      ? tx(t, "storefront.cart.amountCalculating", "Calcolo totale...")
       : amountStale
-        ? tx(t, "storefront.cart.amountNeedsReview", "金额待确认 / Totale da confermare")
+        ? tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare")
         : tx(t, "storefront.common.total", "Totale");
   const effectivePendingTitle =
-    pendingTitle ?? tx(t, "storefront.cart.amountCalculating", "金额计算中 / Calcolo totale...");
+    pendingTitle ?? tx(t, "storefront.cart.amountCalculating", "Calcolo totale...");
   const effectivePendingMessage =
-    pendingMessage ?? tx(t, "storefront.cart.amountCalculatingDescription", "正在同步商品、价格、库存和 MOQ。");
+    pendingMessage ?? tx(t, "storefront.cart.amountCalculatingDescription", "Sincronizzazione di prodotti, prezzi, disponibilita e MOQ.");
 
   return (
     <div

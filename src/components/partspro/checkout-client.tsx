@@ -235,6 +235,7 @@ type CheckoutApiErrorDetails = {
 const fixedShippingMethod = expressShippingMethodLabel;
 const idlePreviewState: PreviewState = { status: "idle", issues: [] };
 const previewDebounceMs = 180;
+const previewRequestTimeoutMs = 15_000;
 const orderSubmitTimeoutMs = 25_000;
 
 export function CheckoutClient(props: CheckoutClientProps) {
@@ -402,7 +403,7 @@ function CheckoutClientContent({
   const catalogHref = hrefWithAssistedCompanyId("/catalogo", checkoutContextCompanyId);
   const loginHref = loginHrefForNext(checkoutHref);
   const summaryNote = needsCustomerSelection
-    ? tx(t, "storefront.checkout.summary.needsCustomer", "选择客户后计算客户价、库存和 MOQ。")
+    ? tx(t, "storefront.checkout.summary.needsCustomer", "Seleziona il cliente per calcolare prezzi, scorte e MOQ.")
     : form.deliveryMethod === "pickup"
       ? tx(t, "storefront.checkout.summary.pickupNote", "Ritiro in sede: spedizione gratuita.")
       : tx(t, "storefront.checkout.summary.note", "Prezzi IVA inclusa; viene aggiunta solo la spedizione.");
@@ -410,8 +411,19 @@ function CheckoutClientContent({
     () => totalsForDeliveryMethod(cart.totals, form.deliveryMethod),
     [cart.totals, form.deliveryMethod]
   );
+  const isRemoteCartLoading =
+    cartSyncStatus.remoteStatus === "idle" ||
+    isCartRemoteSyncPending(cartSyncStatus.remoteStatus);
+  const isRemoteCartError = isCartRemoteSyncError(cartSyncStatus.remoteStatus);
+  const isRemoteCartReadyForPreview =
+    cartSyncStatus.remoteStatus === "ready" ||
+    cartSyncStatus.remoteStatus === "local";
   const shouldLoadPreview =
-    cart.isHydrated && cart.items.length > 0 && Boolean(selectedCompany?.id) && !targetCustomerBlocker;
+    cart.isHydrated &&
+    cart.items.length > 0 &&
+    Boolean(selectedCompany?.id) &&
+    !targetCustomerBlocker &&
+    isRemoteCartReadyForPreview;
   const previewForUi = shouldLoadPreview ? preview : idlePreviewState;
   const isPreorder = previewForUi.orderKind === "preorder";
   const effectivePaymentMethod = isPreorder ? "bank_transfer" : form.paymentMethod;
@@ -441,8 +453,6 @@ function CheckoutClientContent({
     cart.items.length > 0 &&
     unresolvedCatalogSkus.length > 0 &&
     (catalogLoadState === "idle" || catalogLoadState === "loading");
-  const isRemoteCartLoading = isCartRemoteSyncPending(cartSyncStatus.remoteStatus);
-  const isRemoteCartError = isCartRemoteSyncError(cartSyncStatus.remoteStatus);
   const isCartBootstrapping = !cart.isHydrated || isRemoteCartLoading;
   const previewQueued =
     shouldLoadPreview &&
@@ -575,6 +585,9 @@ function CheckoutClientContent({
     const controller = new AbortController();
     const previewCompanyId = selectedCompany?.id;
     const previewItems = cartItemsForApi(cart.items);
+    let active = true;
+    let requestTimedOut = false;
+    let requestTimeout: number | null = null;
 
     async function loadPreview() {
       setPreview((current) => ({
@@ -591,6 +604,10 @@ function CheckoutClientContent({
       setCatalogLoadState("loading");
 
       try {
+        requestTimeout = window.setTimeout(() => {
+          requestTimedOut = true;
+          controller.abort();
+        }, previewRequestTimeoutMs);
         const response = await fetch("/api/orders/preview", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -625,7 +642,7 @@ function CheckoutClientContent({
           throw new Error(friendlyCheckoutError(t, payload?.error?.code, payload?.error?.message));
         }
 
-        if (!controller.signal.aborted) {
+        if (active && !controller.signal.aborted) {
           const catalog = payload?.data?.catalog;
           const products = Array.isArray(catalog?.products) ? catalog.products : [];
           const rejections = Array.isArray(catalog?.rejected)
@@ -661,20 +678,36 @@ function CheckoutClientContent({
           });
         }
       } catch (error) {
-        if (!controller.signal.aborted) {
+        if (active && (requestTimedOut || !controller.signal.aborted)) {
+          const previewErrorMessage = requestTimedOut
+            ? tx(
+                t,
+                "storefront.checkout.preview.timeout",
+                "Il controllo ordine sta impiegando troppo tempo. Riprova."
+              )
+            : error instanceof Error
+              ? error.message
+              : tx(
+                  t,
+                  "storefront.checkout.preview.error",
+                  "Impossibile aggiornare i controlli ordine."
+                );
+
           setCatalogLoadState("error");
           setPreview((current) => ({
             status: "error",
             issues: [],
-            message:
-              error instanceof Error
-                ? error.message
-                : tx(t, "storefront.checkout.preview.error", "Impossibile aggiornare i controlli ordine."),
+            message: previewErrorMessage,
             lines: current.lines,
             orderKind: current.orderKind,
             totals: current.totals,
             wallet: current.wallet,
           }));
+        }
+      } finally {
+        if (requestTimeout !== null) {
+          window.clearTimeout(requestTimeout);
+          requestTimeout = null;
         }
       }
     }
@@ -684,7 +717,11 @@ function CheckoutClientContent({
     }, previewDebounceMs);
 
     return () => {
+      active = false;
       window.clearTimeout(timeout);
+      if (requestTimeout !== null) {
+        window.clearTimeout(requestTimeout);
+      }
       controller.abort();
     };
   }, [cart.items, cartSignature, checkoutMode, effectiveUseWallet, form.deliveryMethod, onCatalogProductsLoaded, previewRetryToken, selectedCompany?.id, shouldLoadPreview, t]);
@@ -1063,13 +1100,13 @@ function CheckoutModeSelector({
   }> = [
     {
       value: "employee_self",
-      label: tx(t, "storefront.checkout.mode.employeeSelf", "员工自购"),
-      description: tx(t, "storefront.checkout.mode.employeeSelfDescription", "使用员工自己的税务和配送资料。"),
+      label: tx(t, "storefront.checkout.mode.employeeSelf", "Acquisto personale staff"),
+      description: tx(t, "storefront.checkout.mode.employeeSelfDescription", "Usa i dati fiscali e di spedizione personali dello staff."),
     },
     {
       value: "delegated_customer",
-      label: tx(t, "storefront.checkout.mode.delegated", "代客户下单"),
-      description: tx(t, "storefront.checkout.mode.delegatedDescription", "选择客户，并使用客户等级、资料和价格。"),
+      label: tx(t, "storefront.checkout.mode.delegated", "Ordine per cliente"),
+      description: tx(t, "storefront.checkout.mode.delegatedDescription", "Seleziona un cliente e usa il suo livello, profilo e listino."),
     },
   ];
 
@@ -1195,7 +1232,7 @@ function DelegatedCustomerSelector({
                   {[company.phone, company.email, company.partitaIva || company.codiceFiscale]
                     .filter(Boolean)
                     .join(" · ") ||
-                    tx(t, "storefront.checkout.delegated.noContact", "暂无联系方式")}
+                    tx(t, "storefront.checkout.delegated.noContact", "Nessun contatto salvato")}
                 </div>
                 <div
                   className={cn(
@@ -1256,7 +1293,7 @@ function DelegatedCustomerSelector({
                         ) : null}
                       </>
                     ) : (
-                      tx(t, "storefront.checkout.delegated.searchHint", "按店名、手机号、邮箱或税号搜索")
+                      tx(t, "storefront.checkout.delegated.searchHint", "Cerca per negozio, telefono, email o codice fiscale")
                     )}
                   </span>
                 </span>
@@ -1273,15 +1310,15 @@ function DelegatedCustomerSelector({
                   value={query}
                   onChange={(event) => setQuery(event.currentTarget.value)}
                   className="h-9 bg-white pl-9"
-                  placeholder={tx(t, "storefront.checkout.delegated.searchPlaceholder", "搜索店名、手机号、邮箱或税号")}
+                  placeholder={tx(t, "storefront.checkout.delegated.searchPlaceholder", "Cerca negozio, telefono, email o codice fiscale")}
                 />
               </div>
               <div className="max-h-[360px] space-y-3 overflow-y-auto pr-1">
-                {renderResults(tx(t, "storefront.checkout.delegated.readyGroup", "可下单"), searchResults.ready)}
-                {renderResults(tx(t, "storefront.checkout.delegated.blockedGroup", "需处理"), searchResults.blocked)}
+                {renderResults(tx(t, "storefront.checkout.delegated.readyGroup", "Pronti all'ordine"), searchResults.ready)}
+                {renderResults(tx(t, "storefront.checkout.delegated.blockedGroup", "Da gestire"), searchResults.blocked)}
                 {searchResults.ready.length === 0 && searchResults.blocked.length === 0 ? (
                   <div className="rounded-md border border-dashed border-slate-200 p-4 text-center text-xs font-semibold text-slate-500">
-                    {tx(t, "storefront.checkout.delegated.noResults", "没有找到匹配客户。")}
+                    {tx(t, "storefront.checkout.delegated.noResults", "Nessun cliente trovato.")}
                   </div>
                 ) : null}
               </div>
@@ -1350,13 +1387,13 @@ function OrderLinesReview({
             <p className="mt-1 font-semibold leading-6">
               {pendingItemsReason === "account"
                 ? tx(t, "storefront.checkout.itemPendingAccount", "Accedi o collega un cliente per calcolare prezzo, scorte e MOQ.")
-                : tx(t, "storefront.checkout.itemPendingCustomerContext", "选择或完善客户资料后再计算价格、库存和 MOQ。")}
+                : tx(t, "storefront.checkout.itemPendingCustomerContext", "Seleziona o completa il cliente per calcolare prezzo, scorte e MOQ.")}
             </p>
           </div>
         ))}
         {catalogLoadState === "error" && unresolvedSkus.length > 0 && (
           <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold leading-6 text-red-800">
-            {tx(t, "storefront.checkout.catalogLoadError", "客户价目表加载失败，请刷新后重试。")}
+            {tx(t, "storefront.checkout.catalogLoadError", "Impossibile caricare il listino cliente. Aggiorna la pagina e riprova.")}
           </div>
         )}
         {catalogResolutionPending && (
@@ -1487,7 +1524,7 @@ function DeliverySection({
     {
       value: "express_24_48" as const,
       label: tx(t, "storefront.checkout.option.express.label", "Corriere espresso 24/48h"),
-      detail: tx(t, "storefront.checkout.shippingFixedCompact", "GLS/BRT 24-48h；未满 €100 运费 €6.50，满 €100 包邮，默认 16:00 前发货。"),
+      detail: tx(t, "storefront.checkout.shippingFixedCompact", "GLS/BRT 24-48h; €6,50 sotto €100, gratis da €100. Partenza standard entro le 16:00."),
       service: fixedShippingMethod,
     },
     {
@@ -2124,11 +2161,11 @@ function CheckoutMobileBar({
   const hasWalletApplied = !amountPending && effectiveWalletApplied > 0;
   const amountLabel =
     amountPending
-      ? tx(t, "storefront.checkout.amountCalculating", "订单校验中 / Verifica ordine...")
+      ? tx(t, "storefront.checkout.amountCalculating", "Verifica ordine...")
       : hasWalletApplied
         ? tx(t, "storefront.checkout.wallet.payable", "Importo da pagare")
         : amountStale
-          ? tx(t, "storefront.cart.amountNeedsReview", "金额待确认 / Totale da confermare")
+          ? tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare")
           : tx(t, "storefront.common.total", "Totale");
   const amountStatusMessage =
     amountMessage ??
@@ -2288,51 +2325,67 @@ function buildCheckoutSyncState({
   if (submitState.status === "loading") {
     return {
       kind: "submit",
-      title: tx(t, "storefront.checkout.sync.submitTitle", "订单提交中 / Invio ordine..."),
+      title: tx(t, "storefront.checkout.sync.submitTitle", "Invio ordine..."),
       message: submitState.message,
     };
   }
 
   if (remoteCartError) {
     return {
-      actionLabel: tx(t, "storefront.cart.sync.retry", "重试同步"),
+      actionLabel: tx(t, "storefront.cart.sync.retry", "Riprova sincronizzazione"),
       kind: "remote-cart-error",
-      title: tx(t, "storefront.checkout.sync.remoteCartErrorTitle", "购物车同步异常 / Sincronizzazione carrello non riuscita"),
-      message: tx(t, "storefront.checkout.sync.remoteCartErrorMessage", "购物车同步失败，已暂停结账。请重试同步或刷新页面。"),
+      title: tx(t, "storefront.checkout.sync.remoteCartErrorTitle", "Sincronizzazione carrello non riuscita"),
+      message: tx(t, "storefront.checkout.sync.remoteCartErrorMessage", "Sincronizzazione carrello non riuscita: checkout sospeso. Riprova la sincronizzazione o aggiorna la pagina."),
       onAction: onRemoteCartRetry,
       tone: "error",
-    };
-  }
-
-  if (previewQueued || preview.status === "loading") {
-    return {
-      kind: "preview",
-      title: tx(t, "storefront.checkout.sync.previewTitle", "订单校验中 / Verifica ordine..."),
-      message: tx(t, "storefront.checkout.preview.loading", "Controllo prezzi, scorte e MOQ in corso."),
-    };
-  }
-
-  if (catalogResolutionPending) {
-    return {
-      kind: "catalog",
-      title: tx(t, "storefront.checkout.sync.catalogTitle", "正在同步客户价格 / Sincronizzazione prezzi cliente..."),
-      message: tx(t, "storefront.checkout.loadingTargetPrices", "Caricamento prezzi cliente per gli articoli del carrello."),
     };
   }
 
   if (remoteCartLoading) {
     return {
       kind: "remote-cart",
-      title: tx(t, "storefront.checkout.sync.remoteCartTitle", "正在同步购物车 / Sincronizzazione carrello..."),
-      message: tx(t, "storefront.checkout.sync.remoteCartMessage", "正在读取当前账号的购物车，金额和订单校验完成前无法提交。"),
+      title: tx(
+        t,
+        "storefront.checkout.sync.remoteCartTitle",
+        "Sincronizzazione carrello..."
+      ),
+      message: tx(
+        t,
+        "storefront.checkout.sync.remoteCartMessage",
+        "Lettura del carrello del tuo account. L'ordine resta disattivato fino al completamento dei controlli."
+      ),
     };
   }
 
   if (!cartHydrated) {
     return {
       kind: "cart",
-      title: tx(t, "storefront.checkout.sync.cartTitle", "正在加载购物车 / Caricamento carrello..."),
+      title: tx(
+        t,
+        "storefront.checkout.sync.cartTitle",
+        "Caricamento carrello..."
+      ),
       message: tx(t, "storefront.checkout.submit.cartLoadingReason", "Caricamento carrello del tuo account..."),
+    };
+  }
+
+  if (catalogResolutionPending) {
+    return {
+      kind: "catalog",
+      title: tx(
+        t,
+        "storefront.checkout.sync.catalogTitle",
+        "Sincronizzazione prezzi cliente..."
+      ),
+      message: tx(t, "storefront.checkout.loadingTargetPrices", "Caricamento prezzi cliente per gli articoli del carrello."),
+    };
+  }
+
+  if (previewQueued || preview.status === "loading") {
+    return {
+      kind: "preview",
+      title: tx(t, "storefront.checkout.sync.previewTitle", "Verifica ordine..."),
+      message: tx(t, "storefront.checkout.preview.loading", "Controllo prezzi, scorte e MOQ in corso."),
     };
   }
 
@@ -2436,7 +2489,7 @@ function buildCheckoutBlockers({
 
   if (catalogLoadState === "error" && unresolvedSkus.length > 0) {
     blockers.push({
-      message: tx(t, "storefront.checkout.catalogLoadError", "客户价目表加载失败，请刷新后重试。"),
+      message: tx(t, "storefront.checkout.catalogLoadError", "Impossibile caricare il listino cliente. Aggiorna la pagina e riprova."),
       title: tx(t, "storefront.checkout.preview.errorTitle", "Controllo ordine non riuscito"),
       tone: "error",
     });
@@ -2474,13 +2527,13 @@ function buildCheckoutBlockers({
   if (customerIssues.length > 0) {
     blockers.push({
       message: customerIssues.map((issue) => formatPreviewIssue(t, issue)).join(" "),
-      title: tx(t, "storefront.checkout.customerNotReady", "客户暂不能下单"),
+      title: tx(t, "storefront.checkout.customerNotReady", "Cliente non pronto per l'ordine"),
       tone: "warning",
     });
   } else if (preview.status === "ready" && preview.canSubmit === false && cart.items.length > 0) {
     blockers.push({
-      message: tx(t, "storefront.checkout.customerNotReadyDescription", "所选客户当前不满足下单条件，请检查客户状态、类型、归属和资料完整度。"),
-      title: tx(t, "storefront.checkout.customerNotReady", "客户暂不能下单"),
+      message: tx(t, "storefront.checkout.customerNotReadyDescription", "Il cliente selezionato non soddisfa i requisiti ordine. Controlla stato, assegnazione e dati profilo."),
+      title: tx(t, "storefront.checkout.customerNotReady", "Cliente non pronto per l'ordine"),
       tone: "warning",
     });
   }
@@ -2592,7 +2645,7 @@ function delegatedCompanyReadiness(
 ) {
   if (company.profileKind === "employee_self") {
     return {
-      label: tx(t, "storefront.checkout.delegated.disabled.employeeSelf", "员工自购档案不可代客下单"),
+      label: tx(t, "storefront.checkout.delegated.disabled.employeeSelf", "Profilo staff non selezionabile"),
       selectable: false,
     };
   }
@@ -2602,7 +2655,7 @@ function delegatedCompanyReadiness(
       label: txFormat(
         t,
         "storefront.checkout.delegated.disabled.status",
-        "状态需处理：{status}",
+        "Stato da gestire: {status}",
         { status: companyStatusLabel(t, company.status) }
       ),
       selectable: false,
@@ -2614,7 +2667,7 @@ function delegatedCompanyReadiness(
       label: txFormat(
         t,
         "storefront.checkout.delegated.disabled.assignment",
-        "价格未启用：{status}",
+        "Listino da attivare: {status}",
         { status: assignmentStatusLabel(t, company.assignmentStatus) }
       ),
       selectable: false,
@@ -2628,7 +2681,7 @@ function delegatedCompanyReadiness(
       label: txFormat(
         t,
         "storefront.checkout.delegated.disabled.profile",
-        "资料待补全：{fields}",
+        "Dati da completare: {fields}",
         { fields: missing.join(tx(t, "storefront.common.listSeparator", ", ")) }
       ),
       selectable: false,
@@ -2636,7 +2689,7 @@ function delegatedCompanyReadiness(
   }
 
   return {
-    label: tx(t, "storefront.checkout.delegated.ready", "可下单"),
+    label: tx(t, "storefront.checkout.delegated.ready", "Pronto all'ordine"),
     selectable: true,
   };
 }
@@ -2745,9 +2798,17 @@ function formatPreviewIssue(t: StorefrontTranslator, issue: PreviewIssue) {
     case "out_of_stock":
       return tx(t, "storefront.checkout.issue.outOfStock", "Prodotto attualmente esaurito.");
     case "mixed_order_kind":
-      return "I prodotti disponibili e i preordini devono essere inviati come due ordini separati.";
+      return tx(
+        t,
+        "storefront.checkout.issue.mixedOrderKind",
+        "I prodotti disponibili e i preordini devono essere inviati come due ordini separati."
+      );
     case "preorder_wallet_not_allowed":
-      return "Il saldo wallet non può essere usato per un preordine.";
+      return tx(
+        t,
+        "storefront.checkout.issue.preorderWalletNotAllowed",
+        "Il saldo wallet non può essere usato per un preordine."
+      );
     case "price_missing":
       return tx(t, "storefront.checkout.issue.priceMissing", "Prezzo effettivo non disponibile per questo SKU.");
     case "profile_incomplete": {
@@ -2926,11 +2987,15 @@ function submitButtonLabel(
   }
 
   if (!canSubmit) {
-    return tx(t, "storefront.checkout.submit.button.blocked", "无法提交");
+    return tx(t, "storefront.checkout.submit.button.blocked", "Non inviabile");
   }
 
   if (isPreorder) {
-    return "Conferma preordine";
+    return tx(
+      t,
+      "storefront.checkout.submit.button.preorder",
+      "Conferma preordine"
+    );
   }
 
   return tx(t, "storefront.checkout.submit.button.idle", "Conferma ordine");
@@ -2939,7 +3004,7 @@ function submitButtonLabel(
 function friendlyCheckoutError(
   t: StorefrontTranslator,
   code?: string,
-  message?: string,
+  _message?: string,
   details?: CheckoutApiErrorDetails
 ) {
   switch (code) {
@@ -2951,13 +3016,29 @@ function friendlyCheckoutError(
     case "ORDER_SKU_UNAVAILABLE":
       return tx(t, "storefront.checkout.error.skuUnavailable", "Uno o piu articoli non sono piu disponibili.");
     case "PREORDER_OFFER_CHANGED":
-      return "La disponibilità del preordine è cambiata. Aggiorna il checkout e riprova.";
+      return tx(
+        t,
+        "storefront.checkout.error.preorderOfferChanged",
+        "La disponibilità del preordine è cambiata. Aggiorna il checkout e riprova."
+      );
     case "PREORDER_PAYMENT_METHOD_INVALID":
-      return "Per il preordine è disponibile solo il bonifico bancario.";
+      return tx(
+        t,
+        "storefront.checkout.error.preorderPaymentMethodInvalid",
+        "Per il preordine è disponibile solo il bonifico bancario."
+      );
     case "PREORDER_TERMS_REQUIRED":
-      return "Conferma le condizioni del preordine prima di inviare.";
+      return tx(
+        t,
+        "storefront.checkout.error.preorderTermsRequired",
+        "Conferma le condizioni del preordine prima di inviare."
+      );
     case "PREORDER_WALLET_NOT_ALLOWED":
-      return "Il saldo wallet non può essere usato per un preordine.";
+      return tx(
+        t,
+        "storefront.checkout.error.preorderWalletNotAllowed",
+        "Il saldo wallet non può essere usato per un preordine."
+      );
     case "ORDER_CUSTOMER_NOT_READY":
     case "CUSTOMER_PROFILE_INCOMPLETE":
       return (
@@ -2965,13 +3046,17 @@ function friendlyCheckoutError(
         tx(t, "storefront.checkout.error.customerNotReady", "Il profilo cliente deve essere completato prima dell'ordine.")
       );
     case "ORDER_PREVIEW_CATALOG_UNAVAILABLE":
-      return tx(t, "storefront.checkout.error.catalogUnavailable", "客户价目表暂时无法加载，请稍后重试。");
+      return tx(t, "storefront.checkout.error.catalogUnavailable", "Il listino cliente non e disponibile. Riprova tra poco.");
     case "PRICE_ACCESS_REQUIRED":
       return tx(t, "storefront.checkout.error.priceAccess", "Il listino cliente non e ancora abilitato.");
     case "LOGIN_REQUIRED":
       return tx(t, "storefront.checkout.error.loginRequired", "Accedi prima di confermare l'ordine.");
     default:
-      return message ?? tx(t, "storefront.checkout.submit.sendError", "Errore durante l'invio.");
+      return tx(
+        t,
+        "storefront.checkout.error.generic",
+        "Si è verificato un errore durante il checkout. Riprova."
+      );
   }
 }
 
@@ -3019,7 +3104,7 @@ function customerReadinessErrorMessage(
     return tx(
       t,
       "storefront.checkout.error.customerContextStale",
-      "客户资料已完整，结账页面资料可能仍是旧状态。页面已刷新，请再提交一次。"
+      "Il profilo cliente e completo, ma il checkout potrebbe mostrare dati non aggiornati. La pagina e stata aggiornata: invia di nuovo l'ordine."
     );
   }
 

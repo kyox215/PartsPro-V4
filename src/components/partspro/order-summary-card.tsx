@@ -105,7 +105,7 @@ function OrderSummaryCardView({
     summaryLoading
       ? amountMessage ?? tx(t, "storefront.cart.summaryLoading", "Caricamento carrello del tuo account...")
       : amountStatus === "stale"
-        ? amountMessage ?? tx(t, "storefront.cart.amountNeedsReview", "金额待确认 / Totale da confermare")
+        ? amountMessage ?? tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare")
         : effectiveSummaryNote;
 
   return (

@@ -23,6 +23,8 @@ type CartApiPayload = {
 
 const syncDebounceMs = 500;
 const realtimeRefreshDebounceMs = 250;
+const remoteCartRequestTimeoutMs = 10_000;
+const sessionRestoreDeadlineMs = 15_000;
 const sessionRetryDelaysMs = [0, 600, 1500, 3000] as const;
 const syncErrorRetryDelaysMs = [1500, 4000, 10000] as const;
 const CART_SYNC_RETRY_EVENT = "partspro-cart-sync-retry";
@@ -127,6 +129,7 @@ export function CartSyncBridge() {
     let errorRetryIndex = 0;
     let errorRetryTimeout: number | null = null;
     let refreshTimeout: number | null = null;
+    let restoreDeadlineTimeout: number | null = null;
     let removeRealtimeChannel: (() => void) | null = null;
     let removeAuthListener: (() => void) | null = null;
     let remoteAttempt = 0;
@@ -156,6 +159,13 @@ export function CartSyncBridge() {
     function resetErrorRetry() {
       errorRetryIndex = 0;
       clearErrorRetry();
+    }
+
+    function clearRestoreDeadline() {
+      if (restoreDeadlineTimeout !== null) {
+        window.clearTimeout(restoreDeadlineTimeout);
+        restoreDeadlineTimeout = null;
+      }
     }
 
     function stopRemoteListeners() {
@@ -194,6 +204,7 @@ export function CartSyncBridge() {
         return;
       }
 
+      clearRestoreDeadline();
       setSyncEnabled(false);
       setRemoteLoaded(options.remoteLoaded ?? true);
       setCartSyncStatus({
@@ -206,6 +217,7 @@ export function CartSyncBridge() {
     function enterLocalMode() {
       stopRemoteListeners();
       resetErrorRetry();
+      clearRestoreDeadline();
 
       setCartStorageOwner(null);
       lastSyncedSnapshotRef.current = serializeCartItems([]);
@@ -217,9 +229,9 @@ export function CartSyncBridge() {
       }
     }
 
-    function enterRestoringMode() {
+    function enterRestoringMode(deadlineAt: number) {
       stopRemoteListeners();
-      resetErrorRetry();
+      clearRestoreDeadline();
       remoteSnapshotLoadedRef.current = false;
       if (!disposed) {
         setSyncEnabled(false);
@@ -228,6 +240,13 @@ export function CartSyncBridge() {
           errorMessage: "Restoring account cart session",
           remoteStatus: "restoring",
         });
+
+        restoreDeadlineTimeout = window.setTimeout(() => {
+          restoreDeadlineTimeout = null;
+          enterRemoteErrorMode("Unable to restore remote cart session", {
+            remoteLoaded: false,
+          });
+        }, Math.max(0, deadlineAt - Date.now()));
       }
     }
 
@@ -279,6 +298,7 @@ export function CartSyncBridge() {
         }
 
         resetErrorRetry();
+        clearRestoreDeadline();
         setSyncEnabled(true);
         setRemoteLoaded(true);
         setCartSyncStatus({ remoteStatus: "ready" });
@@ -321,6 +341,7 @@ export function CartSyncBridge() {
         lastSyncedSnapshotRef.current = snapshot;
         remoteSnapshotLoadedRef.current = true;
         resetErrorRetry();
+        clearRestoreDeadline();
         setSyncEnabled(true);
         setRemoteLoaded(true);
         setCartSyncStatus({ remoteStatus: "ready" });
@@ -373,21 +394,34 @@ export function CartSyncBridge() {
 
     async function loadInitialRemoteCart() {
       const { attempt, signal } = beginRemoteAttempt();
+      const restoreDeadlineAt = Date.now() + sessionRestoreDeadlineMs;
 
       if (!isSupabaseConfigured()) {
         enterLocalMode();
         return;
       }
 
-      const userId = await resolveClientSupabaseUserId(signal);
+      const userId = await resolveClientSupabaseUserId(signal, restoreDeadlineAt);
 
       if (!isCurrentRemoteAttempt(attempt, signal)) {
         return;
       }
 
       if (!userId) {
+        const remainingRestoreMs = restoreDeadlineAt - Date.now();
+
+        if (remainingRestoreMs <= 0) {
+          enterRemoteErrorMode("Unable to restore remote cart session", {
+            remoteLoaded: false,
+          });
+          return;
+        }
+
         try {
-          const result = await readRemoteCart(signal);
+          const result = await readRemoteCart(
+            signal,
+            Math.min(remoteCartRequestTimeoutMs, remainingRestoreMs)
+          );
 
           if (!isCurrentRemoteAttempt(attempt, signal)) {
             return;
@@ -398,7 +432,7 @@ export function CartSyncBridge() {
             return;
           }
 
-          enterRestoringMode();
+          enterRestoringMode(restoreDeadlineAt);
         } catch {
           if (!signal.aborted && attempt === remoteAttempt) {
             enterRemoteErrorMode("Unable to restore remote cart session", {
@@ -429,6 +463,7 @@ export function CartSyncBridge() {
 
         if (!disposed) {
           resetErrorRetry();
+          clearRestoreDeadline();
           setSyncEnabled(true);
           setRemoteLoaded(true);
           setCartSyncStatus({ remoteStatus: "ready" });
@@ -452,6 +487,7 @@ export function CartSyncBridge() {
         clearErrorRetry();
       }
       stopRemoteListeners();
+      clearRestoreDeadline();
 
       const shouldSaveLocalCart = hasPendingLocalCartWrite();
 
@@ -507,6 +543,7 @@ export function CartSyncBridge() {
     return () => {
       disposed = true;
       clearErrorRetry();
+      clearRestoreDeadline();
       window.removeEventListener(CART_SYNC_RETRY_EVENT, retryRequestedRemoteCartSync);
       window.removeEventListener("online", retryRequestedRemoteCartSync);
       document.removeEventListener("visibilitychange", retryVisibleRemoteCartSync);
@@ -586,12 +623,15 @@ function readCartItemsFromPayload(payload: CartApiPayload) {
   return [];
 }
 
-async function readRemoteCart(signal: AbortSignal): Promise<RemoteCartLoadResult> {
-  const response = await fetch("/api/cart", {
+async function readRemoteCart(
+  signal: AbortSignal,
+  timeoutMs = remoteCartRequestTimeoutMs
+): Promise<RemoteCartLoadResult> {
+  const response = await fetchWithTimeout("/api/cart", {
     cache: "no-store",
     credentials: "same-origin",
     signal,
-  });
+  }, timeoutMs);
 
   if (response.status === 401 || response.status === 404) {
     return { status: "local" };
@@ -636,7 +676,7 @@ async function writeRemoteCart(
   signal: AbortSignal
 ): Promise<RemoteCartWriteResult> {
   const normalizedItems = cartItemsForApi(mergeCartItemCollections(items, []));
-  const response = await fetch("/api/cart", {
+  const response = await fetchWithTimeout("/api/cart", {
     method: normalizedItems.length > 0 ? "PUT" : "DELETE",
     headers:
       normalizedItems.length > 0
@@ -649,7 +689,7 @@ async function writeRemoteCart(
     cache: "no-store",
     credentials: "same-origin",
     signal,
-  });
+  }, remoteCartRequestTimeoutMs);
 
   if (response.status === 401 || response.status === 404) {
     return "local";
@@ -662,7 +702,10 @@ async function writeRemoteCart(
   return "synced";
 }
 
-async function resolveClientSupabaseUserId(signal: AbortSignal) {
+async function resolveClientSupabaseUserId(
+  signal: AbortSignal,
+  deadlineAt: number
+) {
   if (!isSupabaseConfigured()) {
     return null;
   }
@@ -670,22 +713,26 @@ async function resolveClientSupabaseUserId(signal: AbortSignal) {
   const supabase = createClient();
 
   for (const delay of sessionRetryDelaysMs) {
-    if (signal.aborted) {
+    if (signal.aborted || Date.now() >= deadlineAt) {
       return null;
     }
 
     if (delay > 0) {
-      await sleep(delay, signal);
+      await sleep(Math.min(delay, Math.max(0, deadlineAt - Date.now())), signal);
     }
 
-    if (signal.aborted) {
+    if (signal.aborted || Date.now() >= deadlineAt) {
       return null;
     }
 
     try {
       const {
         data: { session },
-      } = await supabase.auth.getSession();
+      } = await awaitWithinDeadline(
+        supabase.auth.getSession(),
+        signal,
+        deadlineAt
+      );
 
       if (session?.user?.id) {
         return session.user.id;
@@ -693,7 +740,11 @@ async function resolveClientSupabaseUserId(signal: AbortSignal) {
 
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } = await awaitWithinDeadline(
+        supabase.auth.getUser(),
+        signal,
+        deadlineAt
+      );
 
       if (user?.id) {
         return user.id;
@@ -706,6 +757,71 @@ async function resolveClientSupabaseUserId(signal: AbortSignal) {
   }
 
   return null;
+}
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit,
+  timeoutMs: number
+) {
+  const parentSignal = init.signal;
+  const controller = new AbortController();
+  const abortFromParent = () => controller.abort(parentSignal?.reason);
+
+  if (parentSignal?.aborted) {
+    abortFromParent();
+  } else {
+    parentSignal?.addEventListener("abort", abortFromParent, { once: true });
+  }
+
+  const timeout = window.setTimeout(() => controller.abort(), Math.max(0, timeoutMs));
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    window.clearTimeout(timeout);
+    parentSignal?.removeEventListener("abort", abortFromParent);
+  }
+}
+
+function awaitWithinDeadline<T>(
+  operation: PromiseLike<T>,
+  signal: AbortSignal,
+  deadlineAt: number
+) {
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+
+    const finish = (callback: () => void) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      window.clearTimeout(timeout);
+      signal.removeEventListener("abort", handleAbort);
+      callback();
+    };
+    const handleAbort = () => {
+      finish(() => reject(signal.reason ?? new DOMException("Operation aborted", "AbortError")));
+    };
+    const timeout = window.setTimeout(() => {
+      finish(() => reject(new DOMException("Session restore timed out", "TimeoutError")));
+    }, Math.max(0, deadlineAt - Date.now()));
+
+    signal.addEventListener("abort", handleAbort, { once: true });
+    Promise.resolve(operation).then(
+      (value) => finish(() => resolve(value)),
+      (error) => finish(() => reject(error))
+    );
+
+    if (signal.aborted) {
+      handleAbort();
+    }
+  });
 }
 
 function sleep(delayMs: number, signal: AbortSignal) {

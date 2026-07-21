@@ -109,9 +109,9 @@ function getCheckoutRuntime(
     return {
       mode: "needs-profile",
       canSubmit: false,
-      title: tx(t, "storefront.checkout.runtime.employeeSelfProfileTitle", "员工自购资料待补全"),
-      description: tx(t, "storefront.checkout.runtime.employeeSelfProfileDescription", "补全员工自购资料后，可使用自己的税务和配送资料下单。"),
-      disabledReason: tx(t, "storefront.checkout.runtime.employeeSelfProfileReason", "结账已禁用：请先补全员工自购资料。"),
+      title: tx(t, "storefront.checkout.runtime.employeeSelfProfileTitle", "Profilo acquisti staff da completare"),
+      description: tx(t, "storefront.checkout.runtime.employeeSelfProfileDescription", "Completa il profilo acquisti dello staff per usare i dati fiscali e di spedizione personali."),
+      disabledReason: tx(t, "storefront.checkout.runtime.employeeSelfProfileReason", "Checkout disabilitato: completa prima il profilo acquisti dello staff."),
       userEmail: account.email ?? undefined,
     };
   }
