@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import {
+  Check,
+  CheckCheck,
   Headphones,
   Loader2,
   LogIn,
@@ -23,6 +25,7 @@ type SupportChatPanelProps = {
 type SupportConversation = {
   customerUnreadCount: number;
   id: string;
+  staffLastReadAt: string | null;
   status: "open" | "resolved" | "archived";
   subject: string | null;
 };
@@ -55,6 +58,8 @@ const supportCopy = {
     loading: "Caricamento assistenza...",
     loginAction: "Accedi",
     loginRequired: "Accedi per contattare l'assistenza.",
+    receiptRead: "Letto",
+    receiptSent: "Inviato",
     send: "Invia",
     sending: "Invio...",
     unavailable: "Assistenza temporaneamente non disponibile.",
@@ -68,6 +73,8 @@ const supportCopy = {
     loading: "正在加载客服...",
     loginAction: "去登录",
     loginRequired: "登录后可以联系客服。",
+    receiptRead: "已读",
+    receiptSent: "已发送",
     send: "发送",
     sending: "发送中...",
     unavailable: "客服暂时不可用。",
@@ -295,7 +302,12 @@ export function SupportChatPanel({ onClose }: SupportChatPanelProps) {
         ) : (
           <div className="space-y-2">
             {messages.map((message) => (
-              <MessageBubble key={message.id} message={message} />
+              <MessageBubble
+                key={message.id}
+                copy={copy}
+                message={message}
+                readAt={conversation?.staffLastReadAt ?? null}
+              />
             ))}
           </div>
         )}
@@ -369,9 +381,18 @@ function SupportAccessNotice({
   );
 }
 
-function MessageBubble({ message }: { message: SupportMessage }) {
+function MessageBubble({
+  copy,
+  message,
+  readAt,
+}: {
+  copy: typeof supportCopy.zh;
+  message: SupportMessage;
+  readAt: string | null;
+}) {
   const isCustomer = message.senderType === "customer";
   const isSystem = message.senderType === "system";
+  const isRead = isCustomer && wasMessageRead(message.createdAt, readAt);
 
   return (
     <div
@@ -390,7 +411,17 @@ function MessageBubble({ message }: { message: SupportMessage }) {
               : "border border-slate-200 bg-white text-slate-800"
         )}
       >
-        {message.body}
+        <div>{message.body}</div>
+        {isCustomer ? (
+          <div className="mt-1 flex items-center justify-end gap-1 text-[10px] font-semibold text-white/70">
+            {isRead ? (
+              <CheckCheck className="size-3" aria-hidden="true" />
+            ) : (
+              <Check className="size-3" aria-hidden="true" />
+            )}
+            <span>{isRead ? copy.receiptRead : copy.receiptSent}</span>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -435,12 +466,27 @@ function readConversation(value: Record<string, unknown>): SupportConversation |
     customerUnreadCount:
       typeof value.customerUnreadCount === "number" ? value.customerUnreadCount : 0,
     id: value.id,
+    staffLastReadAt:
+      typeof value.staffLastReadAt === "string" ? value.staffLastReadAt : null,
     status:
       value.status === "resolved" || value.status === "archived"
         ? value.status
         : "open",
     subject: typeof value.subject === "string" ? value.subject : null,
   };
+}
+
+function wasMessageRead(createdAt: string, readAt: string | null) {
+  if (!createdAt || !readAt) {
+    return false;
+  }
+
+  const createdTimestamp = Date.parse(createdAt);
+  const readTimestamp = Date.parse(readAt);
+
+  return Number.isFinite(createdTimestamp) &&
+    Number.isFinite(readTimestamp) &&
+    createdTimestamp <= readTimestamp;
 }
 
 function readMessage(value: unknown): SupportMessage | null {

@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import {
+  Check,
+  CheckCheck,
   CheckCircle2,
   CircleDot,
   Loader2,
@@ -55,6 +57,7 @@ type SupportConversation = {
   assignee: SupportActor | null;
   createdAt: string;
   customer: SupportCustomer | null;
+  customerLastReadAt: string | null;
   customerUnreadCount: number;
   id: string;
   lastCustomerMessageAt: string | null;
@@ -146,6 +149,8 @@ const supportCopy = {
       unassigned: "Non assegnate",
     },
     loading: "Caricamento assistenza",
+    receiptRead: "Letto",
+    receiptSent: "Inviato",
     queueTitle: "Coda assistenza",
     sendFailed: "Invio risposta non riuscito.",
     subtitle: "Messaggi clienti, assegnazione e responsabilita in tempo reale.",
@@ -199,6 +204,8 @@ const supportCopy = {
       unassigned: "未分配",
     },
     loading: "正在加载客服",
+    receiptRead: "已读",
+    receiptSent: "已发送",
     queueTitle: "客服队列",
     sendFailed: "回复发送失败。",
     subtitle: "客户消息、负责人分配和处理状态集中管理。",
@@ -918,7 +925,12 @@ export function AdminSupportPanel({
               <div className="max-h-[34svh] min-h-0 overflow-y-auto bg-slate-50 p-2 sm:flex-1 sm:p-4 lg:max-h-none">
                 <div className="space-y-1 sm:space-y-2">
                   {detail.messages.map((message) => (
-                    <SupportMessageBubble key={message.id} message={message} />
+                    <SupportMessageBubble
+                      key={message.id}
+                      message={message}
+                      readAt={detail.conversation.customerLastReadAt}
+                      text={copy}
+                    />
                   ))}
                 </div>
               </div>
@@ -1216,7 +1228,12 @@ function MobileSupportDetail({
         >
           <div className="space-y-1">
             {detail.messages.map((message) => (
-              <SupportMessageBubble key={message.id} message={message} />
+              <SupportMessageBubble
+                key={message.id}
+                message={message}
+                readAt={detail.conversation.customerLastReadAt}
+                text={copy}
+              />
             ))}
           </div>
         </TabsContent>
@@ -1335,9 +1352,18 @@ function SupportEventItem({
   );
 }
 
-function SupportMessageBubble({ message }: { message: SupportMessage }) {
+function SupportMessageBubble({
+  message,
+  readAt,
+  text,
+}: {
+  message: SupportMessage;
+  readAt: string | null;
+  text: SupportPanelCopy;
+}) {
   const isCustomer = message.senderType === "customer";
   const isSystem = message.senderType === "system";
+  const isRead = !isCustomer && !isSystem && wasMessageRead(message.createdAt, readAt);
 
   return (
     <div
@@ -1360,6 +1386,16 @@ function SupportMessageBubble({ message }: { message: SupportMessage }) {
         <div className={cn("mt-1 text-[10px] sm:text-[11px]", isCustomer ? "text-slate-400" : "text-white/65")}>
           {message.sender?.displayName ?? message.sender?.email ?? message.senderType}
         </div>
+        {!isCustomer && !isSystem ? (
+          <div className="mt-1 flex items-center justify-end gap-1 text-[10px] font-semibold text-white/70 sm:text-[11px]">
+            {isRead ? (
+              <CheckCheck className="size-3" aria-hidden="true" />
+            ) : (
+              <Check className="size-3" aria-hidden="true" />
+            )}
+            <span>{isRead ? text.receiptRead : text.receiptSent}</span>
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -1525,6 +1561,7 @@ function readConversation(value: unknown): SupportConversation | null {
     assignee: readActor(value.assignee),
     createdAt: readString(value.createdAt) ?? "",
     customer: readCustomer(value.customer),
+    customerLastReadAt: readString(value.customerLastReadAt),
     customerUnreadCount: readNumber(value.customerUnreadCount),
     id: value.id,
     lastCustomerMessageAt: readString(value.lastCustomerMessageAt),
@@ -1538,6 +1575,19 @@ function readConversation(value: unknown): SupportConversation | null {
     subject: readString(value.subject),
     updatedAt: readString(value.updatedAt) ?? "",
   };
+}
+
+function wasMessageRead(createdAt: string, readAt: string | null) {
+  if (!createdAt || !readAt) {
+    return false;
+  }
+
+  const createdTimestamp = Date.parse(createdAt);
+  const readTimestamp = Date.parse(readAt);
+
+  return Number.isFinite(createdTimestamp) &&
+    Number.isFinite(readTimestamp) &&
+    createdTimestamp <= readTimestamp;
 }
 
 function readMessage(value: unknown): SupportMessage | null {
