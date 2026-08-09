@@ -9,6 +9,11 @@ import {
   shouldSkipProductImportUpdate,
   splitProductImportList,
 } from "@/lib/partspro-product-import-core.mjs";
+import {
+  analyzeProductCompatibilityReview,
+  hasCompatibilityReviewField,
+  toCompatibilityReviewProductInput,
+} from "@/lib/partspro-compatibility-review-guard";
 import type {
   AdminProduct,
   AdminProductPatchInput,
@@ -45,10 +50,19 @@ export type ProductImportColumn = (typeof productImportColumns)[number];
 export type ProductImportResolvedOperation = "create" | "update" | "skip";
 export type ProductImportStatus = "ready" | "draft" | "blocked" | "skipped";
 
+export type ProductImportCompatibilityReview = {
+  fingerprint: string;
+  reasonCodes: string[];
+  required: boolean;
+  signalCount: number;
+  signals: unknown[];
+  structuredModelCount: number;
+};
+
 const maxFileBytes = 5 * 1024 * 1024;
 const maxRows = 500;
 const maxColumns = 100;
-const allowedExtensions = new Set(["xlsx", "csv"]);
+const allowedExtensions = new Set(["xlsx", "csv", "tsv"]);
 const skuPattern = /^[A-Za-z0-9_+.-]+$/;
 const grades = new Set(["A+", "A", "B", "Refurbished"]);
 const departments = new Set(["phone", "tablet", "computer", "general_merchandise"]);
@@ -118,6 +132,7 @@ export type ProductImportSource = {
 };
 
 export type ProductImportPreviewRow = {
+  compatibilityReview: ProductImportCompatibilityReview;
   changes: ProductImportChange[];
   createInput: AdminProductWriteInput | null;
   existing: AdminProduct | null;
@@ -135,6 +150,7 @@ export type ProductImportPreviewRow = {
 export type ProductImportPreview = {
   counts: {
     blocked: number;
+    compatibilityReviewRequired: number;
     create: number;
     draft: number;
     ready: number;
@@ -231,6 +247,7 @@ export function buildProductImportPreview(
   );
   const counts = {
     blocked: rows.filter((row) => row.status === "blocked").length,
+    compatibilityReviewRequired: rows.filter((row) => row.compatibilityReview.required).length,
     create: rows.filter((row) => row.operation === "create").length,
     draft: rows.filter((row) => row.status === "draft").length,
     ready: rows.filter((row) => row.status === "ready").length,
@@ -243,6 +260,7 @@ export function buildProductImportPreview(
     existingUpdatedAt: row.existing?.updatedAt ?? null,
     operation: row.operation,
     patchInput: row.patchInput,
+    compatibilityReview: row.compatibilityReview,
     rowNumber: row.rowNumber,
     sku: row.sku,
     status: row.status,
@@ -311,11 +329,57 @@ function normalizePreviewRow(
 
   const numbers = { b2bPrice, costPrice, department, grade, moq, retailPrice, warrantyDays, weightGram };
   const createInput = operation === "create" ? buildCreateInput(raw, numbers, issues) : null;
-  const patchInput = operation === "update" && existing ? buildPatchInput(raw, numbers) : null;
+  const explicitLegacyCompatibilityFields = Boolean(
+    raw.compatibility_models.trim() || raw.model_codes.trim()
+  );
+  const managedCompatibilityWrite = Boolean(
+    operation === "update" && existing?.compatibilityManaged && explicitLegacyCompatibilityFields
+  );
+  if (managedCompatibilityWrite) {
+    issues.push(
+      "现有商品的兼容关系由专用审核管理；不得直接导入 compatibility_models 或 model_codes，请改走兼容审核流程。"
+    );
+  }
+
+  const patchInput = operation === "update" && existing
+    ? buildPatchInput(raw, numbers, managedCompatibilityWrite)
+    : null;
   const changes = existing && patchInput ? productChanges(existing, patchInput) : [];
   if (patchInput && shouldSkipProductImportUpdate(operation, changes.length, issues.length)) {
     operation = "skip";
     warnings.push("没有检测到需要修改的字段");
+  }
+
+  const detectorReview = analyzeProductCompatibilityReview(
+    toCompatibilityReviewProductInput({
+      brand: raw.brand.trim() || existing?.brand || "",
+      compatibleWith: raw.compatibility_models.trim()
+        ? splitProductImportList(raw.compatibility_models)
+        : existing?.compatibleWith ?? [],
+      compatibilityManaged: existing?.compatibilityManaged ?? false,
+      model: raw.model.trim() || existing?.model || "",
+      modelCode: raw.model_code.trim() || existing?.modelCode || undefined,
+      modelCodes: raw.model_codes.trim()
+        ? splitProductImportList(raw.model_codes)
+        : existing?.modelCodes ?? [],
+      name: raw.name.trim() || existing?.name || "",
+    })
+  );
+  const compatibilityReviewEligible =
+    operation !== "skip" &&
+    (operation === "create" || Boolean(patchInput && hasCompatibilityReviewField(patchInput)));
+  const compatibilityReview = compatibilityReviewEligible
+    ? detectorReview
+    : { ...detectorReview, required: false };
+  if (explicitLegacyCompatibilityFields && operation !== "skip" && !managedCompatibilityWrite) {
+    warnings.push(
+      "兼容字段仍按 legacy 商品主资料保存，不会自动建立兼容关系。"
+    );
+  }
+  if (compatibilityReview.required) {
+    warnings.push(
+      `兼容性候选提醒：${compatibilityReview.reasonCodes.join("、") || "需要人工复核"}；${compatibilityReview.signals.join("；") || "请核对标题与结构化兼容字段"}。确认仅表示已人工检查，不会自动建立兼容关系。`
+    );
   }
 
   const requiredPermissions = requiredPermissionsForRow(operation, createInput, patchInput);
@@ -329,6 +393,7 @@ function normalizePreviewRow(
       : operation === "update" ? "ready" : "draft";
 
   return {
+    compatibilityReview,
     changes,
     createInput,
     existing,
@@ -396,7 +461,8 @@ function buildCreateInput(
 
 function buildPatchInput(
   raw: Record<ProductImportColumn, string>,
-  values: ParsedValues
+  values: ParsedValues,
+  suppressCompatibilityFields = false
 ): AdminProductPatchInput {
   const patch: AdminProductPatchInput = { reason: rowReason(raw) };
   assignText(patch, "name", raw.name);
@@ -408,14 +474,14 @@ function buildPatchInput(
   if (values.retailPrice !== undefined) patch.retailPrice = values.retailPrice;
   if (values.costPrice !== undefined) patch.costPrice = values.costPrice;
   if (values.moq !== undefined) patch.moq = values.moq;
-  assignList(patch, "compatibleWith", raw.compatibility_models);
+  if (!suppressCompatibilityFields) assignList(patch, "compatibleWith", raw.compatibility_models);
   assignList(patch, "tags", raw.tags);
   assignText(patch, "vatMode", raw.vat_mode);
   if (values.warrantyDays !== undefined) patch.rmaDays = values.warrantyDays;
   if (values.weightGram !== undefined) patch.weightGram = values.weightGram;
   assignText(patch, "model", raw.model);
   assignText(patch, "modelCode", raw.model_code);
-  assignList(patch, "modelCodes", raw.model_codes);
+  if (!suppressCompatibilityFields) assignList(patch, "modelCodes", raw.model_codes);
   assignText(patch, "batchCode", raw.batch_code);
   assignText(patch, "supplier", raw.supplier);
   return patch;
@@ -557,13 +623,14 @@ export async function buildProductImportPreviewBuffer(preview: ProductImportPrev
     { key: "更新", value: preview.counts.update },
     { key: "跳过", value: preview.counts.skipped },
     { key: "阻断", value: preview.counts.blocked },
+    { key: "兼容性人工复核候选", value: preview.counts.compatibilityReviewRequired },
     { key: "未识别列", value: preview.ignoredHeaders.join("; ") || "无" },
   ]);
   styleHeader(summary.getRow(1), "FF0F766E");
   summary.getCell("B2").font = { bold: true, color: { argb: "FFB91C1C" } };
 
   const products = workbook.addWorksheet("商品预览", { views: [{ state: "frozen", ySplit: 1 }] });
-  const previewColumns = ["source_row", "status", "operation", "sku", "name", "brand", "category", "catalog_department", "b2b_price", "retail_price", "cost_price", "issues", "warnings"];
+  const previewColumns = ["source_row", "status", "operation", "sku", "name", "brand", "category", "catalog_department", "b2b_price", "retail_price", "cost_price", "compatibility_review_required", "compatibility_review_reasons", "compatibility_review_signals", "issues", "warnings"];
   products.columns = previewColumns.map((key) => ({ header: key, key, width: key === "issues" || key === "warnings" ? 60 : 20 }));
   products.addRows(preview.rows.map((row) => ({
     source_row: row.rowNumber,
@@ -577,6 +644,9 @@ export async function buildProductImportPreviewBuffer(preview: ProductImportPrev
     b2b_price: row.normalized.b2b_price,
     retail_price: row.normalized.retail_price,
     cost_price: row.normalized.cost_price,
+    compatibility_review_required: row.compatibilityReview.required ? "yes" : "no",
+    compatibility_review_reasons: row.compatibilityReview.reasonCodes.join("; "),
+    compatibility_review_signals: row.compatibilityReview.signals.join("; "),
     issues: row.issues.join("; "),
     warnings: row.warnings.join("; "),
   })));
@@ -604,6 +674,14 @@ export async function buildProductImportPreviewBuffer(preview: ProductImportPrev
   errors.addRows(preview.rows.flatMap((row) => [
     ...row.issues.map((message) => ({ source_row: row.rowNumber, severity: "blocked", sku: row.sku, message })),
     ...row.warnings.map((message) => ({ source_row: row.rowNumber, severity: "warning", sku: row.sku, message })),
+    ...(row.compatibilityReview.required
+      ? [{
+          source_row: row.rowNumber,
+          severity: "compatibility_review",
+          sku: row.sku,
+          message: `候选兼容性人工复核：${row.compatibilityReview.reasonCodes.join("、") || "需要人工复核"}；证据：${row.compatibilityReview.signals.join("；") || "请核对标题与结构化兼容字段"}`,
+        }]
+      : []),
   ]));
   styleHeader(errors.getRow(1), "FFB91C1C");
 
@@ -661,9 +739,12 @@ function fieldGuideRows() {
 
 async function readSpreadsheetRows(buffer: Buffer, fileName: string): Promise<SpreadsheetRow[]> {
   const extension = fileName.toLowerCase().split(".").pop();
-  if (extension === "csv") {
-    return parseProductImportDelimited(buffer.toString("utf8").replace(/^\uFEFF/, ""))
-      .map((values, index) => ({ rowNumber: index + 1, values }));
+  if (extension === "csv" || extension === "tsv") {
+    const rows = parseProductImportDelimited(buffer.toString("utf8").replace(/^\uFEFF/, ""));
+    if (rows.some((values) => values.length > maxColumns)) {
+      throw new ProductImportError(`CSV/TSV 文件最多允许 ${maxColumns} 列。`);
+    }
+    return rows.map((values, index) => ({ rowNumber: index + 1, values }));
   }
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer);
@@ -683,7 +764,7 @@ async function readSpreadsheetRows(buffer: Buffer, fileName: string): Promise<Sp
 
 function validateFile(file: File) {
   const extension = file.name.toLowerCase().split(".").pop();
-  if (!extension || !allowedExtensions.has(extension)) throw new ProductImportError("请选择 .xlsx 或 .csv 文件。");
+  if (!extension || !allowedExtensions.has(extension)) throw new ProductImportError("请选择 .xlsx、.csv 或 .tsv 文件。");
   if (file.size <= 0 || file.size > maxFileBytes) throw new ProductImportError("文件大小必须在 1 byte 到 5MB 之间。");
 }
 

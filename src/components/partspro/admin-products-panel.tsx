@@ -121,6 +121,11 @@ import {
   sanitizeSupplierText,
   toPublicSku,
 } from "@/lib/partspro-sku";
+import {
+  analyzeProductCompatibilityReview,
+  type ProductCompatibilityReview,
+  toCompatibilityReviewProductInput,
+} from "@/lib/partspro-compatibility-review-guard";
 import { AdminBusyRegion, AdminSkeletonRows } from "./admin-feedback";
 import { AdminProductImportDialog } from "./admin-product-import-dialog";
 import { useI18n } from "./i18n-provider";
@@ -428,7 +433,7 @@ type ProductWritePayload = {
   stock?: number;
   moq: number;
   warehouse?: PartProduct["warehouse"];
-  compatibleWith: string[];
+  compatibleWith?: string[];
   tags: string[];
   model?: string;
   modelCode?: string;
@@ -437,6 +442,11 @@ type ProductWritePayload = {
   supplier?: string;
   imagePath?: string;
   imageAlt?: string;
+};
+
+type ProductCompatibilityReviewConfirmation = {
+  confirmed: true;
+  fingerprint: string;
 };
 
 type ProductUpdateScope = "all" | "base" | "price" | "compatibility";
@@ -812,7 +822,15 @@ const panelText = {
     model: "主型号",
     modelCode: "外部码 / EAN / 型号代码",
     modelCodes: "设备型号代码（独立于适配型号）",
+    managedCompatibilityHint: "该商品已使用规范设备关系；兼容型号与设备型号代码由设备档案统一管理，当前表单只读，保存其他字段时不会回传。",
     managedModelCodesHint: "该商品已使用规范设备关系；型号代码由设备档案统一管理，此处只读。",
+    compatibilityReviewTitle: "兼容性候选需人工复核",
+    compatibilityReviewHelp: "标题中检测到多个品牌或型号。请核对以下候选提示；确认仅表示已人工检查，不会自动建立兼容关系。",
+    compatibilityReviewReasons: "原因",
+    compatibilityReviewEvidence: "当前结构化值",
+    compatibilityReviewSignals: "标题信号",
+    compatibilityReviewConfirm: "我已人工检查此兼容性候选提示",
+    compatibilityReviewRequired: "请先勾选兼容性人工复核确认后再保存。",
     batchCode: "批次",
     supplier: "供应商",
     imagePath: "主图路径",
@@ -1199,7 +1217,15 @@ const panelText = {
     model: "Modello principale",
     modelCode: "Codice esterno / EAN / modello",
     modelCodes: "Codici modello dispositivo (separati dai modelli compatibili)",
+    managedCompatibilityHint: "Questo prodotto usa relazioni dispositivo normalizzate; modelli compatibili e codici dispositivo sono gestiti nella scheda dispositivo, qui sono di sola lettura e non vengono reinviati quando salvi altri campi.",
     managedModelCodesHint: "Questo prodotto usa relazioni dispositivo normalizzate; i codici sono gestiti nella scheda dispositivo e qui sono di sola lettura.",
+    compatibilityReviewTitle: "Verifica manuale candidato compatibilita",
+    compatibilityReviewHelp: "Il titolo contiene piu brand o modelli. Controlla i candidati indicati; la conferma registra solo il controllo manuale e non crea automaticamente relazioni.",
+    compatibilityReviewReasons: "Motivi",
+    compatibilityReviewEvidence: "Valori strutturati attuali",
+    compatibilityReviewSignals: "Segnali del titolo",
+    compatibilityReviewConfirm: "Ho controllato manualmente questo candidato di compatibilita",
+    compatibilityReviewRequired: "Seleziona la conferma della verifica compatibilita prima di salvare.",
     batchCode: "Lotto",
     supplier: "Fornitore",
     imagePath: "Percorso immagine",
@@ -1686,11 +1712,14 @@ export function AdminProductsPanel({
     setDataSource((current) => ({ ...current, syncedAt: formatTimestamp() }));
   }
 
-  async function handleCreateProduct(values: ProductFormValues) {
+  async function handleCreateProduct(
+    values: ProductFormValues,
+    compatibilityReview?: ProductCompatibilityReviewConfirmation
+  ) {
     setIsMutating(true);
 
     try {
-      const saved = await createAdminProduct(values, capabilities);
+      const saved = await createAdminProduct(values, capabilities, compatibilityReview);
       replaceProduct(saved);
       setDataSource((current) => ({
         ...current,
@@ -1719,7 +1748,8 @@ export function AdminProductsPanel({
     sku: string,
     values: ProductFormValues,
     scope: ProductUpdateScope = "all",
-    compatibilityManaged = false
+    compatibilityManaged = false,
+    compatibilityReview?: ProductCompatibilityReviewConfirmation
   ) {
     setIsMutating(true);
 
@@ -1729,7 +1759,8 @@ export function AdminProductsPanel({
         values,
         scope,
         compatibilityManaged,
-        capabilities
+        capabilities,
+        compatibilityReview
       );
       replaceProduct(saved);
       setNotice({
@@ -5284,6 +5315,94 @@ function ProductPagination({
   );
 }
 
+function analyzeProductFormCompatibilityReview(
+  values: ProductFormValues,
+  compatibilityManaged = false
+): ProductCompatibilityReview {
+  return analyzeProductCompatibilityReview(
+    toCompatibilityReviewProductInput({
+      name: values.name,
+      brand: values.brand,
+      model: values.model,
+      modelCode: values.modelCode,
+      modelCodes: splitList(values.modelCodes),
+      compatibleWith: splitList(values.compatibleWith),
+      compatibilityManaged,
+    })
+  );
+}
+
+function productReviewConfirmation(
+  review: ProductCompatibilityReview,
+  confirmedFingerprint: string | null,
+  applies = true
+): ProductCompatibilityReviewConfirmation | undefined {
+  if (!applies || !review.required || confirmedFingerprint !== review.fingerprint) {
+    return undefined;
+  }
+
+  return { confirmed: true, fingerprint: review.fingerprint };
+}
+
+function describeProductCompatibilityValues(values: ProductFormValues) {
+  const entries = [
+    ...splitList(values.compatibleWith),
+    ...splitList(values.modelCodes),
+    ...splitList(values.modelCode),
+  ];
+
+  return [...new Set(entries)].join("；");
+}
+
+function ProductCompatibilityReviewNotice({
+  review,
+  structuredValues,
+  confirmed,
+  text,
+  error,
+  onConfirmedChange,
+}: {
+  review: ProductCompatibilityReview;
+  structuredValues: string;
+  confirmed: boolean;
+  text: typeof panelText.zh | typeof panelText.it;
+  error?: string;
+  onConfirmedChange: (confirmed: boolean) => void;
+}) {
+  if (!review.required) {
+    return null;
+  }
+
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-950" role="alert">
+      <div className="font-black">{text.compatibilityReviewTitle}</div>
+      <p className="mt-1 leading-5">{text.compatibilityReviewHelp}</p>
+      <div className="mt-2 grid gap-1 leading-5 sm:grid-cols-2">
+        <div>
+          <span className="font-bold">{text.compatibilityReviewReasons}: </span>
+          {review.reasonCodes.join("、") || text.none}
+        </div>
+        <div>
+          <span className="font-bold">{text.compatibilityReviewEvidence}: </span>
+          {structuredValues || text.none}
+        </div>
+        <div className="sm:col-span-2">
+          <span className="font-bold">{text.compatibilityReviewSignals}: </span>
+          {review.signals.length > 0 ? review.signals.join("；") : text.none}
+        </div>
+      </div>
+      <label className="mt-2 flex items-start gap-2 font-semibold">
+        <Checkbox
+          checked={confirmed}
+          onCheckedChange={(value) => onConfirmedChange(value === true)}
+        />
+        <span>{text.compatibilityReviewConfirm}</span>
+      </label>
+      {error ? <p className="mt-1 font-bold text-red-700">{error}</p> : null}
+    </div>
+  );
+}
+
 function ProductDrawer({
   mode,
   product,
@@ -5311,12 +5430,16 @@ function ProductDrawer({
   initialEditSku: string | null;
   onInitialEditHandled: () => void;
   onClose: () => void;
-  onCreate: (values: ProductFormValues) => Promise<AdminProductRow | null>;
+  onCreate: (
+    values: ProductFormValues,
+    compatibilityReview?: ProductCompatibilityReviewConfirmation
+  ) => Promise<AdminProductRow | null>;
   onSave: (
     sku: string,
     values: ProductFormValues,
     scope?: ProductUpdateScope,
-    compatibilityManaged?: boolean
+    compatibilityManaged?: boolean,
+    compatibilityReview?: ProductCompatibilityReviewConfirmation
   ) => Promise<AdminProductRow | null>;
   onSaved: (product: AdminProductRow) => void;
   onStockAdjust: (product: AdminProductRow) => void;
@@ -5412,7 +5535,8 @@ function ProductDetails({
     sku: string,
     values: ProductFormValues,
     scope?: ProductUpdateScope,
-    compatibilityManaged?: boolean
+    compatibilityManaged?: boolean,
+    compatibilityReview?: ProductCompatibilityReviewConfirmation
   ) => Promise<AdminProductRow | null>;
   onSaved: (product: AdminProductRow) => void;
   onStockAdjust: () => void;
@@ -5427,6 +5551,8 @@ function ProductDetails({
     isSubmitting: boolean;
     scope: ProductUpdateScope;
   } | null>(null);
+  const [compatibilityReviewConfirmation, setCompatibilityReviewConfirmation] =
+    React.useState<{ sku: string; fingerprint: string } | null>(null);
   const [activeTabState, setActiveTabState] = React.useState({
     sku: product.sku,
     value: "base",
@@ -5437,6 +5563,26 @@ function ProductDetails({
   const editValues = editorState?.sku === product.sku ? editorState.values : productFormDefaults(product);
   const editErrors = editorState?.sku === product.sku ? editorState.errors : {};
   const isSubmittingEdit = editorState?.sku === product.sku ? editorState.isSubmitting : false;
+  const compatibilityReview = React.useMemo(
+    () => analyzeProductFormCompatibilityReview(editValues, Boolean(product.compatibilityManaged)),
+    [editValues, product.compatibilityManaged]
+  );
+  const compatibilityReviewConfirmed =
+    compatibilityReview.required &&
+    compatibilityReviewConfirmation?.sku === product.sku &&
+    compatibilityReviewConfirmation.fingerprint === compatibilityReview.fingerprint;
+  const confirmedReviewFingerprint =
+    compatibilityReviewConfirmation?.sku === product.sku
+      ? compatibilityReviewConfirmation.fingerprint
+      : null;
+  const compatibilityReviewApplies =
+    (editorState?.sku === product.sku ? editorState.scope : productUpdateScopeForTab(activeTab)) !==
+      "price" &&
+    !(
+      Boolean(product.compatibilityManaged) &&
+      (editorState?.sku === product.sku ? editorState.scope : productUpdateScopeForTab(activeTab)) ===
+        "compatibility"
+    );
   const displayName = isEditing ? editValues.name || product.name : product.name;
   const displayCategory = isEditing ? editValues.category || product.category : product.category;
   const displayBrand = isEditing ? editValues.brand || product.brand : product.brand;
@@ -5495,6 +5641,7 @@ function ProductDetails({
         errors: nextErrors,
       };
     });
+    setCompatibilityReviewConfirmation(null);
   }
 
   function startInlineEdit(tabValue = "base") {
@@ -5510,6 +5657,7 @@ function ProductDetails({
       isSubmitting: false,
       scope: productUpdateScopeForTab(tabValue),
     });
+    setCompatibilityReviewConfirmation(null);
     setEditingSku(product.sku);
     onInitialEditHandled();
   }
@@ -5517,6 +5665,7 @@ function ProductDetails({
   function stopInlineEdit() {
     setEditingSku(null);
     setEditorState(null);
+    setCompatibilityReviewConfirmation(null);
     onInitialEditHandled();
   }
 
@@ -5529,17 +5678,22 @@ function ProductDetails({
   }
 
   async function saveInlineEdit() {
+    const scope = editorState?.scope ?? productUpdateScopeForTab(activeTab);
     const nextErrors = validateProductForm(editValues, true, text, capabilities);
+    const reviewRequired = compatibilityReviewApplies && compatibilityReview.required;
+    const reviewErrors: Record<string, string> =
+      reviewRequired && !compatibilityReviewConfirmed
+        ? { compatibilityReview: text.compatibilityReviewRequired }
+        : {};
+    const allErrors = { ...nextErrors, ...reviewErrors };
 
-    if (Object.keys(nextErrors).length > 0) {
+    if (Object.keys(allErrors).length > 0) {
       setEditorState((current) => ({
         sku: product.sku,
         values: current?.sku === product.sku ? current.values : editValues,
-        errors: nextErrors,
+        errors: allErrors,
         isSubmitting: false,
-        scope: current?.sku === product.sku
-          ? current.scope
-          : productUpdateScopeForTab(activeTab),
+        scope: current?.sku === product.sku ? current.scope : scope,
       }));
       return;
     }
@@ -5549,20 +5703,22 @@ function ProductDetails({
       values: current?.sku === product.sku ? current.values : editValues,
       errors: {},
       isSubmitting: true,
-      scope: current?.sku === product.sku
-        ? current.scope
-        : productUpdateScopeForTab(activeTab),
+      scope: current?.sku === product.sku ? current.scope : scope,
     }));
 
     let saved: AdminProductRow | null = null;
 
     try {
-      const scope = editorState?.scope ?? productUpdateScopeForTab(activeTab);
       saved = await onSave(
         product.sku,
         editValues,
         scope,
-        Boolean(product.compatibilityManaged)
+        Boolean(product.compatibilityManaged),
+        productReviewConfirmation(
+          compatibilityReview,
+          confirmedReviewFingerprint,
+          compatibilityReviewApplies
+        )
       );
     } finally {
       if (!saved) {
@@ -5657,6 +5813,23 @@ function ProductDetails({
         </div>
       </section>
 
+      {isEditing && compatibilityReviewApplies && compatibilityReview.required ? (
+        <ProductCompatibilityReviewNotice
+          review={compatibilityReview}
+          structuredValues={describeProductCompatibilityValues(editValues)}
+          confirmed={compatibilityReviewConfirmed}
+          text={text}
+          error={editErrors.compatibilityReview}
+          onConfirmedChange={(confirmed) =>
+            setCompatibilityReviewConfirmation(
+              confirmed
+                ? { sku: product.sku, fingerprint: compatibilityReview.fingerprint }
+                : null
+            )
+          }
+        />
+      ) : null}
+
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
         <div className="max-w-full overflow-x-auto rounded-lg border border-slate-200 bg-white p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <TabsList variant="line" className="grid min-w-[660px] grid-cols-6 bg-transparent">
@@ -5676,7 +5849,11 @@ function ProductDetails({
                   <Button variant="outline" size="xs" className="bg-white" onClick={stopInlineEdit}>
                     {text.cancel}
                   </Button>
-                  <Button size="xs" onClick={() => void saveInlineEdit()} disabled={isSubmittingEdit || isMutating}>
+                  <Button
+                    size="xs"
+                    onClick={() => void saveInlineEdit()}
+                    disabled={isSubmittingEdit || isMutating || (compatibilityReviewApplies && compatibilityReview.required && !compatibilityReviewConfirmed)}
+                  >
                     {isSubmittingEdit || isMutating ? (
                       <Loader2 className="size-3.5 animate-spin" />
                     ) : (
@@ -5802,7 +5979,11 @@ function ProductDetails({
                   <Button variant="outline" size="xs" className="bg-white" onClick={stopInlineEdit}>
                     {text.cancel}
                   </Button>
-                  <Button size="xs" onClick={() => void saveInlineEdit()} disabled={isSubmittingEdit || isMutating}>
+                  <Button
+                    size="xs"
+                    onClick={() => void saveInlineEdit()}
+                    disabled={isSubmittingEdit || isMutating || (compatibilityReviewApplies && compatibilityReview.required && !compatibilityReviewConfirmed)}
+                  >
                     {isSubmittingEdit || isMutating ? (
                       <Loader2 className="size-3.5 animate-spin" />
                     ) : (
@@ -5891,7 +6072,11 @@ function ProductDetails({
                   <Button variant="outline" size="xs" className="bg-white" onClick={stopInlineEdit}>
                     {text.cancel}
                   </Button>
-                  <Button size="xs" onClick={() => void saveInlineEdit()} disabled={isSubmittingEdit || isMutating}>
+                  <Button
+                    size="xs"
+                    onClick={() => void saveInlineEdit()}
+                    disabled={isSubmittingEdit || isMutating || (compatibilityReviewApplies && compatibilityReview.required && !compatibilityReviewConfirmed)}
+                  >
                     {isSubmittingEdit || isMutating ? (
                       <Loader2 className="size-3.5 animate-spin" />
                     ) : (
@@ -5913,8 +6098,14 @@ function ProductDetails({
                   <Textarea
                     value={editValues.compatibleWith}
                     className="min-h-24"
+                    disabled={Boolean(product.compatibilityManaged)}
                     onChange={(event) => setEditValue("compatibleWith", event.target.value)}
                   />
+                  {product.compatibilityManaged ? (
+                    <p className="mt-1 text-xs font-medium text-slate-500">
+                      {text.managedCompatibilityHint}
+                    </p>
+                  ) : null}
                 </EditableDetailItem>
                 <EditableDetailItem label={text.modelCodes}>
                   <Textarea
@@ -5925,7 +6116,7 @@ function ProductDetails({
                   />
                   {product.compatibilityManaged ? (
                     <p className="mt-1 text-xs font-medium text-slate-500">
-                      {text.managedModelCodesHint}
+                      {text.managedCompatibilityHint}
                     </p>
                   ) : null}
                 </EditableDetailItem>
@@ -5983,12 +6174,16 @@ function ProductEditorForm({
   capabilities: ProductCapabilities;
   text: typeof panelText.zh | typeof panelText.it;
   adminText: ReturnType<typeof getAdminDictionary>["admin"];
-  onCreate: (values: ProductFormValues) => Promise<AdminProductRow | null>;
+  onCreate: (
+    values: ProductFormValues,
+    compatibilityReview?: ProductCompatibilityReviewConfirmation
+  ) => Promise<AdminProductRow | null>;
   onSave: (
     sku: string,
     values: ProductFormValues,
     scope?: ProductUpdateScope,
-    compatibilityManaged?: boolean
+    compatibilityManaged?: boolean,
+    compatibilityReview?: ProductCompatibilityReviewConfirmation
   ) => Promise<AdminProductRow | null>;
   onSaved: (product: AdminProductRow) => void;
   onCancel?: () => void;
@@ -6006,11 +6201,32 @@ function ProductEditorForm({
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
   const [createdDraft, setCreatedDraft] = React.useState<AdminProductRow | null>(null);
   const [partialNotice, setPartialNotice] = React.useState<string | null>(null);
+  const [compatibilityReviewFingerprint, setCompatibilityReviewFingerprint] =
+    React.useState<string | null>(null);
   const isManualSku = values.skuMode === "manual";
   const generatedSku = buildProductFormSkuCandidate(values, products);
   const displayedSku = isEdit || isManualSku ? values.sku : generatedSku.sku;
   const externalCodeIsInvalid =
     !isEdit && values.modelCode.trim().length > 0 && !isValidAdminSku(values.modelCode);
+  const compatibilityReviewValues = React.useMemo(
+    () => ({
+      ...values,
+      compatibleWith: values.compatibleWith.trim() || values.model.trim(),
+    }),
+    [values]
+  );
+  const compatibilityReview = React.useMemo(
+    () =>
+      analyzeProductFormCompatibilityReview(
+        compatibilityReviewValues,
+        Boolean(product?.compatibilityManaged)
+      ),
+    [compatibilityReviewValues, product?.compatibilityManaged]
+  );
+  const compatibilityReviewConfirmed =
+    compatibilityReview.required &&
+    compatibilityReviewFingerprint === compatibilityReview.fingerprint;
+  const compatibilityReviewApplies = canEditContent;
 
   React.useEffect(() => {
     return () => {
@@ -6022,6 +6238,7 @@ function ProductEditorForm({
 
   function setValue<K extends keyof ProductFormValues>(key: K, value: ProductFormValues[K]) {
     setValues((current) => ({ ...current, [key]: value }));
+    setCompatibilityReviewFingerprint(null);
     setErrors((current) => {
       const next = { ...current };
       delete next[key];
@@ -6085,11 +6302,17 @@ function ProductEditorForm({
       text,
       capabilities
     );
+    const reviewRequired = compatibilityReviewApplies && compatibilityReview.required;
+    const reviewErrors: Record<string, string> =
+      reviewRequired && !compatibilityReviewConfirmed
+        ? { compatibilityReview: text.compatibilityReviewRequired }
+        : {};
+    const allErrors = { ...nextErrors, ...reviewErrors };
 
-    setErrors(nextErrors);
+    setErrors(allErrors);
     setPartialNotice(null);
 
-    if (Object.keys(nextErrors).length > 0) {
+    if (Object.keys(allErrors).length > 0) {
       return;
     }
 
@@ -6104,11 +6327,23 @@ function ProductEditorForm({
               product.sku,
               submitValues,
               "all",
-              Boolean(product.compatibilityManaged)
+              Boolean(product.compatibilityManaged),
+              productReviewConfirmation(
+                compatibilityReview,
+                compatibilityReviewFingerprint,
+                compatibilityReviewApplies
+              )
             )
           : product;
       } else if (!saved) {
-        saved = await onCreate(submitValues);
+        saved = await onCreate(
+          submitValues,
+          productReviewConfirmation(
+            compatibilityReview,
+            compatibilityReviewFingerprint,
+            compatibilityReviewApplies
+          )
+        );
         if (saved) {
           setCreatedDraft(saved);
         }
@@ -6117,7 +6352,12 @@ function ProductEditorForm({
           saved.sku,
           submitValues,
           "all",
-          Boolean(saved.compatibilityManaged)
+          Boolean(saved.compatibilityManaged),
+          productReviewConfirmation(
+            compatibilityReview,
+            compatibilityReviewFingerprint,
+            compatibilityReviewApplies
+          )
         );
       }
 
@@ -6156,6 +6396,21 @@ function ProductEditorForm({
       <div className="rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 text-sm font-semibold text-slate-700">
         {text.simpleFormHint}
       </div>
+
+      {compatibilityReviewApplies && compatibilityReview.required ? (
+        <ProductCompatibilityReviewNotice
+          review={compatibilityReview}
+          structuredValues={describeProductCompatibilityValues(compatibilityReviewValues)}
+          confirmed={compatibilityReviewConfirmed}
+          text={text}
+          error={errors.compatibilityReview}
+          onConfirmedChange={(confirmed) =>
+            setCompatibilityReviewFingerprint(
+              confirmed ? compatibilityReview.fingerprint : null
+            )
+          }
+        />
+      ) : null}
 
       {capabilities.imageManage && (
         <FormSection title={text.photo} icon={ImageIcon}>
@@ -6309,13 +6564,21 @@ function ProductEditorForm({
                 <Field label={text.modelCode}>
                   <Input className="h-11" value={values.modelCode} onChange={(event) => setValue("modelCode", event.target.value)} />
                 </Field>
-                <Field label={text.compatibility}>
-                  <Textarea value={values.compatibleWith} className="min-h-20" onChange={(event) => setValue("compatibleWith", event.target.value)} />
+                <Field
+                  label={text.compatibility}
+                  hint={product?.compatibilityManaged ? text.managedCompatibilityHint : undefined}
+                >
+                  <Textarea
+                    value={values.compatibleWith}
+                    className="min-h-20"
+                    disabled={Boolean(product?.compatibilityManaged)}
+                    onChange={(event) => setValue("compatibleWith", event.target.value)}
+                  />
                 </Field>
                 <Field label={text.tags}>
                   <Textarea value={values.tags} className="min-h-20" onChange={(event) => setValue("tags", event.target.value)} />
                 </Field>
-                <Field label={text.modelCodes} hint={product?.compatibilityManaged ? text.managedModelCodesHint : undefined}>
+                <Field label={text.modelCodes} hint={product?.compatibilityManaged ? text.managedCompatibilityHint : undefined}>
                   <Textarea value={values.modelCodes} className="min-h-20" disabled={Boolean(product?.compatibilityManaged)} onChange={(event) => setValue("modelCodes", event.target.value)} />
                 </Field>
                 <Field label={text.batchCode}>
@@ -6353,7 +6616,7 @@ function ProductEditorForm({
             {text.cancel}
           </Button>
         )}
-        {(canSaveData || capabilities.imageManage) && <Button className="h-11" type="submit" disabled={isSubmitting || isMutating}>
+        {(canSaveData || capabilities.imageManage) && <Button className="h-11" type="submit" disabled={isSubmitting || isMutating || (compatibilityReviewApplies && compatibilityReview.required && !compatibilityReviewConfirmed)}>
           {isSubmitting || isMutating ? (
             <Loader2 className="size-4 animate-spin" />
           ) : (
@@ -7479,7 +7742,8 @@ async function fetchAdminProductModelGroups(
 
 async function createAdminProduct(
   values: ProductFormValues,
-  capabilities: ProductCapabilities
+  capabilities: ProductCapabilities,
+  compatibilityReview?: ProductCompatibilityReviewConfirmation
 ) {
   const payload = buildProductWritePayload(values, "create", "all", capabilities);
   const response = await fetchAdminWriteResponse(
@@ -7492,7 +7756,10 @@ async function createAdminProduct(
         "Cache-Control": "no-cache",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ product: payload }),
+      body: JSON.stringify({
+        product: payload,
+        ...(compatibilityReview ? { compatibilityReview } : {}),
+      }),
     },
     `POST ${adminProductsEndpoint} failed`
   );
@@ -7505,12 +7772,14 @@ async function updateAdminProduct(
   values: ProductFormValues,
   scope: ProductUpdateScope = "all",
   compatibilityManaged = false,
-  capabilities: ProductCapabilities = buildProductCapabilities([])
+  capabilities: ProductCapabilities = buildProductCapabilities([]),
+  compatibilityReview?: ProductCompatibilityReviewConfirmation
 ) {
   const payload = buildProductWritePayload(values, "update", scope, capabilities);
 
   if (compatibilityManaged) {
     delete payload.modelCodes;
+    delete payload.compatibleWith;
   }
 
   const response = await fetchAdminWriteResponse(
@@ -7523,7 +7792,11 @@ async function updateAdminProduct(
         "Cache-Control": "no-cache",
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ sku, product: payload }),
+      body: JSON.stringify({
+        sku,
+        product: payload,
+        ...(compatibilityReview ? { compatibilityReview } : {}),
+      }),
     },
     `PATCH ${adminProductsEndpoint} failed`
   );

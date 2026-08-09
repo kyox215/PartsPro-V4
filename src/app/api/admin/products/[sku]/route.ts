@@ -9,6 +9,15 @@ import { repositoryErrorResponse, requireAdminApi } from "../../_shared";
 import { toAdminProductDto } from "../_dto";
 import { missingProductPatchPermissions } from "../_permissions";
 import { productPatchSchema } from "../_schemas";
+import {
+  analyzeProductCompatibilityReview,
+  hasCompatibilityReviewField,
+  hasManagedCompatibilityPatch,
+  isCompatibilityReviewConfirmed,
+  mergeCompatibilityReviewProduct,
+  readCompatibilityReviewConfirmation,
+  toCompatibilityReviewProductInput,
+} from "@/lib/partspro-compatibility-review-guard";
 
 export const dynamic = "force-dynamic";
 
@@ -80,9 +89,84 @@ export async function PATCH(request: NextRequest, { params }: ProductParams) {
   }
 
   const { sku } = await params;
+  let decodedSku: string;
 
   try {
-    const result = await updateAdminProduct(decodeURIComponent(sku), parsed.data);
+    decodedSku = decodeURIComponent(sku);
+  } catch (error) {
+    return repositoryErrorResponse(
+      error,
+      "ADMIN_PRODUCT_UPDATE_FAILED",
+      "Product SKU is invalid."
+    );
+  }
+
+  if (hasCompatibilityReviewField(parsed.data)) {
+    const compatibilityReviewConfirmation = readCompatibilityReviewConfirmation(body.data);
+    let current;
+
+    try {
+      const result = await getAdminProduct(decodedSku);
+
+      if (!result.data) {
+        return apiError(404, "ADMIN_PRODUCT_NOT_FOUND", "Product was not found.", {
+          sku,
+        });
+      }
+
+      current = result.data;
+    } catch (error) {
+      return repositoryErrorResponse(
+        error,
+        "ADMIN_PRODUCT_COMPATIBILITY_REVIEW_UNAVAILABLE",
+        "Product compatibility review could not be completed."
+      );
+    }
+
+    let compatibilityReview;
+
+    try {
+      compatibilityReview = analyzeProductCompatibilityReview(
+        mergeCompatibilityReviewProduct(
+          toCompatibilityReviewProductInput(current),
+          parsed.data
+        )
+      );
+    } catch (error) {
+      return repositoryErrorResponse(
+        error,
+        "ADMIN_PRODUCT_COMPATIBILITY_REVIEW_UNAVAILABLE",
+        "Product compatibility review could not be completed."
+      );
+    }
+
+    if (current.compatibilityManaged && hasManagedCompatibilityPatch(parsed.data)) {
+      return apiError(
+        422,
+        "PRODUCT_COMPATIBILITY_MANAGED",
+        "Compatibility-managed products must use the dedicated compatibility review workflow.",
+        { review: compatibilityReview }
+      );
+    }
+
+    if (
+      compatibilityReview.required &&
+      !isCompatibilityReviewConfirmed(
+        compatibilityReview,
+        compatibilityReviewConfirmation
+      )
+    ) {
+      return apiError(
+        422,
+        "PRODUCT_COMPATIBILITY_REVIEW_REQUIRED",
+        "Confirm the compatibility review before updating this product.",
+        { review: compatibilityReview }
+      );
+    }
+  }
+
+  try {
+    const result = await updateAdminProduct(decodedSku, parsed.data);
 
     return NextResponse.json({
       data: toAdminProductDto(result.data),
@@ -136,6 +220,12 @@ export async function DELETE(_request: NextRequest, { params }: ProductParams) {
 function readProductPayload(payload: unknown) {
   if (isRecord(payload) && isRecord(payload.product)) {
     return payload.product;
+  }
+
+  if (isRecord(payload) && Object.prototype.hasOwnProperty.call(payload, "compatibilityReview")) {
+    const product = { ...payload };
+    delete product.compatibilityReview;
+    return product;
   }
 
   return payload;
