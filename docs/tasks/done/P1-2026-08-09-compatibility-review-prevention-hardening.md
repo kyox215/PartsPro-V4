@@ -1,8 +1,8 @@
 # P1-2026-08-09-compatibility-review-prevention-hardening
 
-状态：in_progress
+状态：done
 
-看板目录：now
+看板目录：done
 
 优先级：P1
 
@@ -76,7 +76,7 @@ Next.js 16 App Router 代理、前端体验代理、PartsPro 业务契约代理�
 
 - detector 可以复用已有品牌/机型词典和结构化关系读取，但不会以相似名称、连接器、外观或型号代码自动建立关系。
 - 已核对保存契约：create 仅按 legacy product-master 字段写入；managed 商品的通用兼容字段 patch 被 API/import gate hard-block；本任务不改变专用兼容关系写入权限。
-- 已确认前端采用逐行、可取消、不可静默跳过的人工确认；中/意双语 warning 文案、alert 证据和 checkbox 入口已落地，authenticated 浏览器 smoke 仍受本地登录态限制。
+- 已确认前端采用逐行、可取消、不可静默跳过的人工确认；中/意双语 warning 文案、alert 证据和 checkbox 入口已落地，并通过生产已认证 Chrome smoke。
 - 已确认采用保守标题证据规则（跨品牌/多型号触发，型号代码、年份和网络版本作例外过滤）；detector 20 tests 已覆盖代表样本，不自动放行不确定关系。
 
 ## 工作包
@@ -157,18 +157,19 @@ node --test tests/partspro-product-import-core.test.mjs
 | `npm run build` | passed | Next.js 16.2.6 webpack production build、TypeScript、静态页和 route manifest 全部通过 |
 | `partspro-fullstack-audit` contract scan | passed | 只读扫描完成；当前 Next checkout 无 service/type 文件可供该扫描进一步关联，未执行写入 |
 | Supabase migration / production write | not applicable / not executed | 本任务无 migration、无直接 DB 写入、无 `supabase db push`；既有 RPC inventory/price 残余已在本卡记录 |
-| route-level static review / browser smoke | route static passed; browser blocked | Next 16 Route Handler params/envelope 契约静态复核通过；本地 `http://127.0.0.1:3210/admin` 与 `/login?next=/admin` 加载正常，但浏览器处于未认证 Supabase 会话，未读取或使用凭据，无法进入 authenticated 表单/导入交互 |
-| Vercel publish/smoke | not executed | 未获发布授权；不声称线上已修复 |
+| route-level static review / authenticated production browser smoke | passed | Next 16 Route Handler params/envelope 契约静态复核通过；生产已认证 Chrome smoke 通过：catalog 显示 `20/17944`；SKU `3000000270240` 编辑显示兼容性候选警告，未确认时 save disabled，确认后 enabled，字段变化会 reset confirmation；managed `compatibleWith`/`modelCodes` disabled；新建 Poco C65/Redmi 13C 显示候选 warning 且 save disabled；导入入口显示支持 `xlsx/csv/tsv`（未将其表述为真实文件上传/预览 smoke）；公开商品页显示 Poco C65 与 Redmi 13C；左侧“手机→小米→Redmi→Redmi 13C”存在且筛选命中 SKU `3000000270240`；三个页面 console logs 为空。 |
+| Vercel publish/smoke | passed | 代码 commit `3339a266bf9d991e6bb3bf7e37461291e341f6d5` 已推送；deployment `dpl_2q34kHXQyHCVbV1avxSWR8cdHkrZ` 为 `READY`，aliases 为 `www.partspro.app` 与 `partspro.app`；首页 GET smoke 通过。 |
+| Vercel runtime error scan | passed | selected routes 最近 30 分钟 runtime errors 为 none；未执行数据库写入、库存写入或兼容关系写入。 |
 
 ## 执行记录
 
 - 创建：2026-08-09，建立 compatibility review prevention hardening 任务卡。
 - 批准：2026-08-09，老板“开始规划下一阶段并开始执行”，作为本阶段 warning 规则、人工确认门槛和导入 v1 边界的实施批准；最终兼容关系审批仍需独立 owner-approval。
 - 开始：2026-08-09，进入 in_progress 规划/执行阶段并完成本地实现验证。
-- review：2026-08-09，Next route contract、React 状态/门禁、导入 product-master 边界与 managed 保护完成静态复核；浏览器 smoke 被本地未认证会话阻塞，登录页加载正常且未使用凭据。
-- verified：本地 detector/TSV/API/import/UI 门禁、scoped lint、全量 lint、TypeScript、build 已通过；任务仍保持 in_progress，未宣称发布或关闭。
-- released：未开始。
-- closed：未开始。
+- review：2026-08-09，Next route contract、React 状态/门禁、导入 product-master 边界与 managed 保护完成静态复核；本地未认证会话曾阻塞浏览器 smoke，随后以已认证生产 Chrome 完成表单、目录、筛选和公开商品页 smoke，未读取或保留凭据。
+- verified：本地 detector/TSV/API/import/UI 门禁、scoped lint、全量 lint、TypeScript、build 已通过；生产已认证 Chrome smoke、Vercel READY 与 selected-route runtime error scan 也通过。
+- released：2026-08-09，commit `3339a266bf9d991e6bb3bf7e37461291e341f6d5` 推送到 `main`，Vercel deployment `dpl_2q34kHXQyHCVbV1avxSWR8cdHkrZ` READY，aliases 为 `www.partspro.app` 与 `partspro.app`。
+- closed：2026-08-09，完成定义、代码/生产验证和回滚边界已记录；任务卡迁移至 `docs/tasks/done/`。未新增 migration、未写 DB/库存/兼容关系。
 
 ## 残余风险
 
@@ -180,4 +181,4 @@ node --test tests/partspro-product-import-core.test.mjs
 
 ## 结果
 
-任务卡已将兼容性缺口的预防机制限定为“候选 warning + 人工确认门禁”，并记录 detector 20/20、API/import/UI gate、managed 保护、TSV、TypeScript、lint/build 与 dirty worktree 证据。实现未新增 migration、直接 DB 写入或 Vercel 发布；既有 import create/update RPC 的 inventory/price 残余已按准确契约记录。route 级静态复核通过；浏览器 smoke 已确认登录页链路，但 authenticated 表单/导入交互被本地未认证会话阻塞；任务保持 in_progress。
+任务卡已将兼容性缺口的预防机制限定为“候选 warning + 人工确认门禁”，并记录 detector 20/20、API/import/UI gate、managed 保护、TSV、TypeScript、lint/build、生产已认证 Chrome smoke、Vercel READY 与 runtime error scan 证据。实现未新增 migration、未执行 DB/库存/兼容关系写入；既有 import create/update RPC 的 inventory/price 残余已按准确契约记录。生产 smoke 验证了目录、编辑/新建警告门禁、managed 字段只读、导入入口格式、公开商品页和左侧筛选；未将导入入口检查表述为真实文件上传/预览 smoke。任务已发布并关闭，历史候选兼容关系仍需独立 owner-approval 任务处理。
