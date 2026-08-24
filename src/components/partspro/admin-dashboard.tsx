@@ -23,7 +23,6 @@ import {
   ShoppingBag,
   User,
   UsersRound,
-  Warehouse,
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -80,7 +79,6 @@ const adminPanelValues = [
   "rma",
   "catalog",
   "finance",
-  "inventory",
   "marketplace",
   "support",
   "timeline",
@@ -93,7 +91,6 @@ const navItems = [
   { labelKey: "orders", icon: ClipboardList, panel: "orders" },
   { labelKey: "rma", icon: RotateCcw, panel: "rma" },
   { labelKey: "catalog", icon: Package, panel: "catalog" },
-  { labelKey: "warehouse", icon: Warehouse, panel: "inventory" },
   { labelKey: "marketplace", icon: ShoppingBag, panel: "marketplace" },
   { labelKey: "support", icon: MessageCircle, panel: "support" },
   { labelKey: "accounts", icon: UsersRound, panel: "accounts" },
@@ -156,13 +153,6 @@ const AdminFinancePanel = dynamic(
     import("./admin-finance-panel").then((module) => module.AdminFinancePanel),
   { loading: () => <AdminPanelLoadingFallback /> }
 );
-const AdminInventoryPanel = dynamic(
-  () =>
-    import("./admin-inventory-panel").then(
-      (module) => module.AdminInventoryPanel
-    ),
-  { loading: () => <AdminPanelLoadingFallback /> }
-);
 const AdminActivityTimeline = dynamic(
   () =>
     import("./admin-activity-timeline").then(
@@ -207,7 +197,7 @@ const AdminOverviewDashboard = dynamic<AdminOverviewDashboardProps>(
 );
 
 function isAdminPanelValue(value: string): value is AdminPanelValue {
-  return adminPanelValues.includes(value as AdminPanelValue);
+  return (adminPanelValues as readonly string[]).includes(value);
 }
 
 function adminPanelHref(panel: AdminPanelValue) {
@@ -424,6 +414,19 @@ export function AdminDashboard({
   React.useEffect(() => {
     const requestedPanel = searchParams.get("panel");
 
+    if (requestedPanel === "inventory") {
+      const params = new URLSearchParams(searchParams.toString());
+
+      params.set("panel", "catalog");
+      params.set("catalogView", "sold-shortages");
+      const timeoutId = window.setTimeout(() => {
+        selectPanel("catalog");
+      }, 0);
+      router.replace(`/admin?${params.toString()}`, { scroll: false });
+
+      return () => window.clearTimeout(timeoutId);
+    }
+
     if (requestedPanel && isAdminPanelValue(requestedPanel)) {
       const timeoutId = window.setTimeout(() => {
         selectPanel(requestedPanel);
@@ -431,7 +434,7 @@ export function AdminDashboard({
 
       return () => window.clearTimeout(timeoutId);
     }
-  }, [searchParams, selectPanel]);
+  }, [router, searchParams, selectPanel]);
 
   return (
     <main className="h-dvh overflow-y-auto overflow-x-clip bg-slate-50 text-slate-950">
@@ -471,9 +474,6 @@ export function AdminDashboard({
               </TabsContent>
               <TabsContent value="finance" className="order-4 mt-0 min-w-0">
                 <AdminFinancePanel />
-              </TabsContent>
-              <TabsContent value="inventory" className="order-4 mt-0 min-w-0">
-                <AdminInventoryPanel />
               </TabsContent>
               <TabsContent value="marketplace" className="order-4 mt-0 min-w-0">
                 <AdminCommercePanel permissions={currentPermissions} />

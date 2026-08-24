@@ -3,6 +3,7 @@
 import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
@@ -130,6 +131,14 @@ import { AdminBusyRegion, AdminSkeletonRows } from "./admin-feedback";
 import { AdminProductImportDialog } from "./admin-product-import-dialog";
 import { useI18n } from "./i18n-provider";
 import { PartVisual as ProductVisual } from "./part-visual";
+
+const AdminInventoryPanel = dynamic(
+  () =>
+    import("./admin-inventory-panel").then(
+      (module) => module.AdminInventoryPanel
+    ),
+  { loading: () => <AdminSkeletonRows rows={5} /> }
+);
 
 const adminProductsEndpoint = "/api/admin/products";
 const adminSupplierBatchesEndpoint = "/api/admin/supplier-batches";
@@ -469,6 +478,20 @@ type AdminProductsPanelProps = {
   permissionsLoaded?: boolean;
 };
 
+type ProductWorkspace =
+  | "products"
+  | "batches"
+  | "banners"
+  | "sold-shortages";
+
+function normalizeProductWorkspace(value: string | null): ProductWorkspace {
+  if (value === "batches" || value === "banners" || value === "sold-shortages") {
+    return value;
+  }
+
+  return "products";
+}
+
 type StockAdjustmentPayload = {
   action: StockAdjustmentAction;
   quantity: number;
@@ -510,13 +533,11 @@ const defaultFilters: ProductListFilters = {
 };
 
 function defaultSupplierBatchFilters(): SupplierBatchFilters {
-  const today = formatDateInputValue(new Date());
-
   return {
     batchCode: "",
-    dateFrom: today,
+    dateFrom: "",
     dateMode: "imported",
-    dateTo: today,
+    dateTo: "",
     q: "",
     supplier: "",
     page: 0,
@@ -614,6 +635,7 @@ const panelText = {
     workspaceProducts: "商品目录",
     workspaceBanners: "首页横幅",
     workspaceBatches: "到货批次",
+    workspaceSoldShortages: "近期售出缺货",
     selectedCount: "已选择 {count} 个商品",
     hideSelected: "批量下架",
     sourceStats: "{returned}/{total} 个商品 · {time}",
@@ -1009,6 +1031,7 @@ const panelText = {
     workspaceProducts: "Catalogo prodotti",
     workspaceBanners: "Banner homepage",
     workspaceBatches: "Lotti arrivo",
+    workspaceSoldShortages: "Venduti recenti esauriti",
     selectedCount: "{count} prodotti selezionati",
     hideSelected: "Nascondi selezionati",
     sourceStats: "{returned}/{total} prodotti · {time}",
@@ -1382,8 +1405,9 @@ export function AdminProductsPanel({
   const [drawerInlineEditSku, setDrawerInlineEditSku] = React.useState<string | null>(null);
   const [stockAdjustProduct, setStockAdjustProduct] =
     React.useState<AdminProductRow | null>(null);
-  const [workspace, setWorkspace] =
-    React.useState<"products" | "banners" | "batches">("products");
+  const [workspace, setWorkspace] = React.useState<ProductWorkspace>(() =>
+    normalizeProductWorkspace(searchParams.get("catalogView"))
+  );
   const [batchFilters, setBatchFilters] = React.useState<SupplierBatchFilters>(() =>
     defaultSupplierBatchFilters()
   );
@@ -1397,8 +1421,32 @@ export function AdminProductsPanel({
   const [isLoadingBatchDetail, setIsLoadingBatchDetail] = React.useState(false);
   const [pendingBatchDownload, setPendingBatchDownload] = React.useState<string | null>(null);
   const focusedSku = searchParams.get("sku")?.trim() ?? "";
+  const catalogView = searchParams.get("catalogView");
   const [pendingFocusedSku, setPendingFocusedSku] = React.useState<string | null>(null);
   const lastFocusedSkuRef = React.useRef<string | null>(null);
+
+  React.useEffect(() => {
+    const nextWorkspace = focusedSku
+      ? "products"
+      : normalizeProductWorkspace(catalogView);
+
+    setWorkspace((current) => (current === nextWorkspace ? current : nextWorkspace));
+  }, [catalogView, focusedSku]);
+
+  const syncWorkspaceUrl = React.useCallback(
+    (nextWorkspace: ProductWorkspace) => {
+      const params = new URLSearchParams(searchParams.toString());
+
+      params.set("panel", "catalog");
+      if (nextWorkspace === "products") {
+        params.delete("catalogView");
+      } else {
+        params.set("catalogView", nextWorkspace);
+      }
+      router.replace(`/admin?${params.toString()}`, { scroll: false });
+    },
+    [router, searchParams]
+  );
 
   const clearFocusedSkuParam = React.useCallback(() => {
     const params = new URLSearchParams(searchParams.toString());
@@ -1408,6 +1456,7 @@ export function AdminProductsPanel({
     }
 
     params.set("panel", "catalog");
+    params.delete("catalogView");
     params.delete("sku");
     router.replace(`/admin?${params.toString()}`, { scroll: false });
   }, [router, searchParams]);
@@ -1661,6 +1710,7 @@ export function AdminProductsPanel({
 
   function viewProductsForBatch(batch: AdminSupplierBatchRow) {
     setWorkspace("products");
+    syncWorkspaceUrl("products");
     updateFilters({
       batchCode: batch.batchCode,
       supplier: batch.supplierName ?? "",
@@ -1893,18 +1943,24 @@ export function AdminProductsPanel({
     <section className="min-w-0 space-y-2 sm:space-y-4">
       <Tabs
         value={workspace}
-        onValueChange={(value) =>
-          setWorkspace(value === "banners" ? "banners" : value === "batches" ? "batches" : "products")
-        }
+        onValueChange={(value) => {
+          const nextWorkspace = normalizeProductWorkspace(value);
+
+          setWorkspace(nextWorkspace);
+          syncWorkspaceUrl(nextWorkspace);
+        }}
       >
-        <TabsList className="grid h-auto w-full grid-cols-3 rounded-lg border border-slate-200 bg-white p-1 shadow-[0_8px_22px_rgba(15,23,42,0.04)] sm:w-auto sm:inline-grid">
-          <TabsTrigger value="products" className="rounded-md px-3 py-2 text-xs font-bold">
+        <TabsList className="grid h-auto w-full grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 shadow-[0_8px_22px_rgba(15,23,42,0.04)] sm:w-auto sm:inline-grid sm:grid-cols-4">
+          <TabsTrigger value="products" className="min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
             {text.workspaceProducts}
           </TabsTrigger>
-          <TabsTrigger value="batches" className="rounded-md px-3 py-2 text-xs font-bold">
+          <TabsTrigger value="sold-shortages" className="min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
+            {text.workspaceSoldShortages}
+          </TabsTrigger>
+          <TabsTrigger value="batches" className="min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
             {text.workspaceBatches}
           </TabsTrigger>
-          <TabsTrigger value="banners" className="rounded-md px-3 py-2 text-xs font-bold">
+          <TabsTrigger value="banners" className="min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
             {text.workspaceBanners}
           </TabsTrigger>
         </TabsList>
@@ -2099,6 +2155,10 @@ export function AdminProductsPanel({
             />
             </div>
           </div>
+        </TabsContent>
+
+        <TabsContent value="sold-shortages" className="m-0 pt-2">
+          <AdminInventoryPanel />
         </TabsContent>
 
         <TabsContent value="banners" className="m-0 pt-2">
@@ -2311,16 +2371,16 @@ function SupplierBatchesPanel({
         </div>
       </div>
 
-      <div className="grid gap-2 border-b border-slate-200 bg-slate-50/70 px-3 py-3 lg:grid-cols-[1.2fr_1fr_1fr_1fr_1fr_auto]">
+      <div className="grid grid-cols-2 gap-1.5 border-b border-slate-200 bg-slate-50/70 px-2 py-2 sm:gap-2 sm:px-3 sm:py-3 lg:grid-cols-[1.2fr_1fr_1fr_1fr_1fr_auto]">
         <Input
           value={filters.q}
-          className="h-9 bg-white"
+          className="col-span-2 h-9 bg-white text-sm lg:col-span-1"
           placeholder={copy.searchPlaceholder}
           onChange={(event) => onChange({ q: event.target.value })}
         />
         <Input
           value={filters.supplier}
-          className="h-9 bg-white"
+          className="h-9 bg-white text-sm"
           placeholder={text.supplierFilterPlaceholder}
           onChange={(event) => onChange({ supplier: event.target.value })}
         />
@@ -2334,7 +2394,7 @@ function SupplierBatchesPanel({
           value={filters.dateMode}
           onValueChange={(value) => onChange({ dateMode: value as SupplierBatchDateMode })}
         >
-          <SelectTrigger size="sm" className="h-9 bg-white">
+          <SelectTrigger size="sm" className="h-9 bg-white text-xs sm:text-sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -2345,7 +2405,7 @@ function SupplierBatchesPanel({
             ))}
           </SelectContent>
         </Select>
-        <div className="grid grid-cols-2 gap-2">
+        <div className="col-span-2 grid min-w-0 grid-cols-2 gap-1.5 lg:col-span-1 lg:gap-2">
           <Input
             value={filters.dateFrom}
             aria-label={copy.dateFrom}
@@ -2361,17 +2421,17 @@ function SupplierBatchesPanel({
             onChange={(event) => onChange({ dateTo: event.target.value })}
           />
         </div>
-        <div className="grid grid-cols-4 gap-1">
-          <Button variant="outline" size="xs" className="bg-white px-2" onClick={() => onQuickRange("today")}>
+        <div className="col-span-2 grid grid-cols-4 gap-1 lg:col-span-1">
+          <Button variant="outline" size="xs" className="h-8 bg-white px-1 text-xs sm:px-2" onClick={() => onQuickRange("today")}>
             {copy.quickToday}
           </Button>
-          <Button variant="outline" size="xs" className="bg-white px-2" onClick={() => onQuickRange("7")}>
+          <Button variant="outline" size="xs" className="h-8 bg-white px-1 text-xs sm:px-2" onClick={() => onQuickRange("7")}>
             {copy.quick7}
           </Button>
-          <Button variant="outline" size="xs" className="bg-white px-2" onClick={() => onQuickRange("30")}>
+          <Button variant="outline" size="xs" className="h-8 bg-white px-1 text-xs sm:px-2" onClick={() => onQuickRange("30")}>
             {copy.quick30}
           </Button>
-          <Button variant="outline" size="xs" className="bg-white px-2" onClick={() => onQuickRange("all")}>
+          <Button variant="outline" size="xs" className="h-8 bg-white px-1 text-xs sm:px-2" onClick={() => onQuickRange("all")}>
             {copy.allDates}
           </Button>
         </div>
@@ -2380,23 +2440,23 @@ function SupplierBatchesPanel({
       <div aria-busy={isLoading} aria-live="polite" className="min-w-0">
         {showRefreshBar ? <ProductTableLoadingBar label={copy.loading} /> : null}
         <div className="overflow-x-auto">
-          <Table className="min-w-[1080px]">
+          <Table className="min-w-[980px] lg:min-w-[1080px]">
             <TableHeader className="bg-slate-50 text-xs">
               <TableRow>
-                <TableHead className="w-[18%]">{copy.batch}</TableHead>
-                <TableHead className="w-[16%]">{copy.supplier}</TableHead>
-                <TableHead className="w-[14%]">{copy.quantity}</TableHead>
-                <TableHead className="w-[13%]">{copy.amount}</TableHead>
-                <TableHead className="w-[17%]">{copy.productStatus}</TableHead>
-                <TableHead className="w-[13%]">{copy.verification}</TableHead>
-                <TableHead className="w-[9%] text-right">{text.tableActions}</TableHead>
+                <TableHead className="w-[18%] px-2 py-2 sm:px-3">{copy.batch}</TableHead>
+                <TableHead className="w-[16%] px-2 py-2 sm:px-3">{copy.supplier}</TableHead>
+                <TableHead className="w-[14%] px-2 py-2 sm:px-3">{copy.quantity}</TableHead>
+                <TableHead className="w-[13%] px-2 py-2 sm:px-3">{copy.amount}</TableHead>
+                <TableHead className="w-[17%] px-2 py-2 sm:px-3">{copy.productStatus}</TableHead>
+                <TableHead className="w-[13%] px-2 py-2 sm:px-3">{copy.verification}</TableHead>
+                <TableHead className="w-[9%] px-2 py-2 text-right sm:px-3">{text.tableActions}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {batches.length ? (
                 batches.map((batch) => (
                   <TableRow key={batch.id} className="cursor-pointer" onClick={() => onOpenDetail(batch)}>
-                    <TableCell className="align-top">
+                    <TableCell className="px-2 py-2 align-top sm:px-3">
                       <div className="font-mono text-xs font-black text-slate-950">
                         {batch.batchCode}
                       </div>
@@ -2411,24 +2471,24 @@ function SupplierBatchesPanel({
                         {batch.receivedAt ? <span>{copy.receivedAt}: {formatDateTimeShort(batch.receivedAt)}</span> : null}
                       </div>
                     </TableCell>
-                    <TableCell className="align-top">
+                    <TableCell className="px-2 py-2 align-top sm:px-3">
                       <div className="font-bold text-slate-900">{batch.supplierName ?? text.none}</div>
                       <div className="mt-1 font-mono text-[11px] font-semibold text-slate-500">
                         {batch.supplierCode ?? text.none}
                       </div>
                     </TableCell>
-                    <TableCell className="align-top">
+                    <TableCell className="px-2 py-2 align-top sm:px-3">
                       <BatchMetricLine label={copy.lineCount} value={batch.lineCount} />
                       <BatchMetricLine label={copy.quantity} value={`${batch.lineQtyTotal}/${batch.totalQty}`} />
                       {batch.shortQty > 0 ? (
                         <BatchMetricLine label={copy.shortQty} value={batch.shortQty} tone="warning" />
                       ) : null}
                     </TableCell>
-                    <TableCell className="align-top">
+                    <TableCell className="px-2 py-2 align-top sm:px-3">
                       <BatchMetricLine label={copy.lineTotal} value={formatEuro(batch.lineCostTotal)} />
                       <BatchMetricLine label={copy.totalCost} value={formatEuro(batch.totalCost)} />
                     </TableCell>
-                    <TableCell className="align-top">
+                    <TableCell className="px-2 py-2 align-top sm:px-3">
                       <div className="flex flex-wrap gap-1.5">
                         <Badge className="border border-emerald-200 bg-emerald-50 text-emerald-700">
                           {copy.active} {batch.activeProductCount}
@@ -2448,11 +2508,11 @@ function SupplierBatchesPanel({
                         ) : null}
                       </div>
                     </TableCell>
-                    <TableCell className="align-top">
+                    <TableCell className="px-2 py-2 align-top sm:px-3">
                       <SupplierBatchVerificationBadge batch={batch} text={text} />
                       <SupplierBatchIssueList batch={batch} text={text} />
                     </TableCell>
-                    <TableCell className="align-top text-right" onClick={(event) => event.stopPropagation()}>
+                    <TableCell className="px-2 py-2 align-top text-right sm:px-3" onClick={(event) => event.stopPropagation()}>
                       <div className="flex justify-end gap-1">
                         <Button variant="outline" size="xs" className="bg-white" onClick={() => onOpenDetail(batch)}>
                           <ListChecks className="size-3.5" />
