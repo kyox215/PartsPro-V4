@@ -1,8 +1,8 @@
 # P1-2026-08-25-protective-film-arrival
 
-状态：in_progress
+状态：completed
 
-看板目录：now
+看板目录：done
 
 优先级：P1
 
@@ -152,16 +152,35 @@ npm run build
 | image source/target check | passed | Privacy SHA-256 `f2306bb5...b73db4`、3D SHA-256 `21897a04...de8c` 与源文件一致 |
 | `npm run build` | passed | Next.js 16.2.6 webpack build、TypeScript、18 个静态页面生成和路由收集均通过 |
 
+## 生产交付收尾记录
+
+- prod commit：`8a1b68b7850709f47defacdb6522e54e9f8c45a9`
+- Vercel deployment：`dpl_BtLRAXKbryQDrYME5QTNErSUsNgu`，状态 `READY`
+- batch：`EXTERNAL-20260825-FILM`
+- batch totals：17 products / 18 lines / 360 pieces / 36 boxes / cost EUR 312
+- 3D：160 pieces，cost EUR 0.70，sale EUR 1.50
+- Privacy：200 pieces，cost EUR 1.00，sale EUR 1.60，individual packaging
+- storage hashes：Privacy `f2306bb5...b73db4`；3D `21897a04...de8c`
+- rollback dry-run：PASS，无残留
+- formal verification：PASS
+- `npm verify batch`：OK
+- audits：68
+
 ## 执行记录
 
 - 创建：2026-08-25
-- 批准：待主代理验收
+- 批准：主代理验收完成
 - 开始：2026-08-25
-- review：2026-08-25，本地实现与定向验证完成，待主代理验收
-- verified：未完成
-- released：不适用，本批不发布
-- closed：未完成
+- review：2026-08-25，本地实现与定向验证完成；2026-08-26，收尾验收完成
+- verified：2026-08-26，正式 verification PASS
+- released：2026-08-26，prod commit 与 Vercel deployment READY 已记录
+- closed：2026-08-26
 
 ## 结果
 
-本任务保持 `in_progress`，用于记录本地实现批次。完成后补充交付文件、验证结果、偏离计划、残余风险和生产写库前的独立验证结论。
+本任务已完成并归档。生产交付与批次验证记录已补充；本批未执行新的生产写库操作。
+
+## 残余风险
+
+- shared type image
+- owner-supplied external supplier identity
