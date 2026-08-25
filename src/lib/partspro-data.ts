@@ -330,6 +330,13 @@ export const catalogDepartmentGroups: CatalogDepartmentGroup[] = [
 
 export const categories = [
   { label: "Schermi", value: "Screen", visual: "screen" as const, count: 0 },
+  {
+    label: "Pellicole Protettive",
+    value: "Pellicole Protettive",
+    catalog_department: "phone" as const,
+    visual: "screen" as const,
+    count: 0,
+  },
   { label: "Batterie", value: "Battery", visual: "battery" as const, count: 0 },
   { label: "Back Cover", value: "Back Cover", visual: "cover" as const, count: 0 },
   { label: "Connettori", value: "Port", visual: "port" as const, count: 0 },

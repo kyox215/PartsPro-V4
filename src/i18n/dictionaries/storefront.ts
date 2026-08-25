@@ -44,8 +44,14 @@ const categoryKeys: Record<string, string> = {
   "Flat Cable": "flexCables",
   Fotocamere: "cameras",
   Frame: "frames",
+  "Pellicole Protettive": "protectiveFilms",
+  "Protective Films": "protectiveFilms",
   Schermi: "screens",
   Speaker: "speakers",
+};
+
+const categoryEnglishFallbacks: Record<string, string> = {
+  "Pellicole Protettive": "Protective Films",
 };
 
 const brandKeys: Record<string, string> = {
@@ -122,8 +128,9 @@ const rmaResolutionKeys: Record<string, string> = {
 
 export function categoryLabel(t: StorefrontTranslator, value: string) {
   const key = categoryKeys[value];
+  const fallback = categoryEnglishFallbacks[value] ?? value;
 
-  return key ? tx(t, `storefront.data.categories.${key}`, value) : value;
+  return key ? tx(t, `storefront.data.categories.${key}`, fallback) : fallback;
 }
 
 export function brandLabel(t: StorefrontTranslator, value: string) {
@@ -193,6 +200,7 @@ export const storefrontItIT = {
   "storefront.data.categories.cameras": "Fotocamere",
   "storefront.data.categories.flexCables": "Flat Cable",
   "storefront.data.categories.frames": "Frame",
+  "storefront.data.categories.protectiveFilms": "Pellicole Protettive",
   "storefront.data.categories.ports": "Connettori",
   "storefront.data.categories.screens": "Schermi",
   "storefront.data.categories.speakers": "Speaker",
@@ -1329,6 +1337,7 @@ export const storefrontZhCN = {
   "storefront.data.categories.cameras": "摄像头",
   "storefront.data.categories.flexCables": "排线",
   "storefront.data.categories.frames": "中框",
+  "storefront.data.categories.protectiveFilms": "保护膜",
   "storefront.data.categories.ports": "接口",
   "storefront.data.categories.screens": "屏幕",
   "storefront.data.categories.speakers": "扬声器",

@@ -87,11 +87,16 @@ async function verifyBatch(batchCode) {
     "retail_price",
     "b2b_price",
     "stock_qty",
+    "quality_grade",
     "status",
     "image_path",
   ]);
   const inventory = await readBySkuChunks("inventory_items", candidates, [
     "sku_code",
+    "product_name",
+    "brand",
+    "model",
+    "quality_grade",
     "actual_qty",
     "available_qty",
     "locked_qty",
@@ -136,6 +141,10 @@ async function verifyBatch(batchCode) {
 
     if (!inventoryItem) {
       errors.push(`${label}: inventory item missing`);
+    } else {
+      for (const issue of readInventoryContractIssues(product, inventoryItem)) {
+        errors.push(`${label}: inventory ${issue}`);
+      }
     }
 
     if (String(line.product_status ?? "").toLowerCase() === "active" && product.status !== "active") {
@@ -150,23 +159,27 @@ async function verifyBatch(batchCode) {
       errors.push(`${label}: active product missing image_path`);
     }
 
-    const expectedPrice = Math.ceil(numberValue(product.cost_price) + 5);
+    const expectedPrices = readExpectedPrices(
+      line.metadata,
+      numberValue(product.cost_price)
+    );
     if (
-      numberValue(product.retail_price) !== expectedPrice ||
-      numberValue(product.b2b_price) !== expectedPrice
+      numberValue(product.retail_price) !== expectedPrices.retailPrice ||
+      numberValue(product.b2b_price) !== expectedPrices.b2bPrice
     ) {
-      errors.push(`${label}: price rule failed, expected ${expectedPrice}`);
+      const expectedDescription =
+        expectedPrices.retailPrice === expectedPrices.b2bPrice
+          ? expectedPrices.retailPrice
+          : `retail ${expectedPrices.retailPrice}, b2b ${expectedPrices.b2bPrice}`;
+      errors.push(
+        `${label}: price rule failed, expected ${expectedDescription}`
+      );
     }
 
     if (hasBrandPrefixIssue(product)) {
       errors.push(`${label}: model or compatibility_models contains duplicate brand prefix`);
     }
 
-    if (inventoryItem && numberValue(inventoryItem.actual_qty) < qtyReceived) {
-      warnings.push(
-        `${label}: current actual_qty ${numberValue(inventoryItem.actual_qty)} is below received qty ${qtyReceived}`
-      );
-    }
   }
 
   return {
@@ -259,11 +272,19 @@ function makeAggregatedInventoryMap(rows) {
       actual_qty: 0,
       available_qty: 0,
       locked_qty: 0,
+      identities: [],
     };
 
     current.actual_qty += numberValue(row.actual_qty);
     current.available_qty += numberValue(row.available_qty);
     current.locked_qty += numberValue(row.locked_qty);
+    current.identities.push({
+      sku_code: row.sku_code,
+      product_name: row.product_name,
+      brand: row.brand,
+      model: row.model,
+      quality_grade: row.quality_grade,
+    });
     map.set(sku, current);
   }
 
@@ -296,6 +317,61 @@ function hasBrandPrefixIssue(product) {
   ];
 
   return values.some((value) => String(value ?? "").trim().toLowerCase().startsWith(prefix));
+}
+
+function readInventoryContractIssues(product, inventory) {
+  const issues = [];
+  const actualQty = numberValue(inventory.actual_qty);
+  const availableQty = numberValue(inventory.available_qty);
+  const lockedQty = numberValue(inventory.locked_qty);
+
+  if (actualQty < 0 || availableQty < 0 || lockedQty < 0) {
+    issues.push("contains a negative quantity");
+  }
+
+  if (numberValue(product.stock_qty) !== availableQty) {
+    issues.push(
+      `available_qty ${availableQty} does not match product stock_qty ${numberValue(product.stock_qty)}`
+    );
+  }
+
+  if (actualQty !== availableQty + lockedQty) {
+    issues.push(
+      `actual_qty ${actualQty} does not equal available_qty + locked_qty ${availableQty + lockedQty}`
+    );
+  }
+
+  const expectedIdentity = [
+    product.sku_code,
+    product.name,
+    product.brand,
+    product.model,
+    product.quality_grade,
+  ].map(normalizeInventoryIdentityValue);
+  const identities = Array.isArray(inventory.identities) ? inventory.identities : [];
+  const identityMatches =
+    identities.length > 0 &&
+    identities.every((identity) =>
+      [
+        identity.sku_code,
+        identity.product_name,
+        identity.brand,
+        identity.model,
+        identity.quality_grade,
+      ]
+        .map(normalizeInventoryIdentityValue)
+        .every((value, index) => value === expectedIdentity[index])
+    );
+
+  if (!identityMatches) {
+    issues.push("identity does not match product");
+  }
+
+  return issues;
+}
+
+function normalizeInventoryIdentityValue(value) {
+  return String(value ?? "").trim().toLocaleLowerCase("it-IT");
 }
 
 function printHumanResult(result) {
@@ -362,6 +438,49 @@ function uniqueStrings(values) {
 function numberValue(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : 0;
+}
+
+function readExpectedPrices(metadata, costPrice) {
+  const defaultPrice = Math.ceil(costPrice + 5);
+
+  if (isRecord(metadata) && metadata.price_policy === "explicit_user_price") {
+    const retailPrice = metadataNumber(metadata.expected_retail_price);
+    const b2bPrice = metadataNumber(metadata.expected_b2b_price);
+
+    if (
+      retailPrice !== null &&
+      retailPrice > 0 &&
+      b2bPrice !== null &&
+      b2bPrice > 0
+    ) {
+      return {
+        retailPrice: roundMoney(retailPrice),
+        b2bPrice: roundMoney(b2bPrice),
+      };
+    }
+  }
+
+  return { retailPrice: defaultPrice, b2bPrice: defaultPrice };
+}
+
+function metadataNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number(value);
+
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+function isRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function roundMoney(value) {

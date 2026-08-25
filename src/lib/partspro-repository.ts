@@ -6201,6 +6201,23 @@ type SupplierBatchLineStats = {
   activeMissingImageCount: number;
   priceViolationCount: number;
   modelPrefixIssueCount: number;
+  inventoryMissingCount: number;
+  inventoryMismatchCount: number;
+};
+
+type SupplierBatchInventoryIdentity = {
+  skuCode: string | null;
+  productName: string | null;
+  brand: string | null;
+  model: string | null;
+  qualityGrade: string | null;
+};
+
+type SupplierBatchInventorySummary = {
+  actualQty: number;
+  availableQty: number;
+  lockedQty: number;
+  identities: SupplierBatchInventoryIdentity[];
 };
 
 const emptySupplierBatchLineStats: SupplierBatchLineStats = {
@@ -6216,6 +6233,8 @@ const emptySupplierBatchLineStats: SupplierBatchLineStats = {
   activeMissingImageCount: 0,
   priceViolationCount: 0,
   modelPrefixIssueCount: 0,
+  inventoryMissingCount: 0,
+  inventoryMismatchCount: 0,
 };
 
 type SupplierBatchDateFilterBuilder<T> = {
@@ -6362,7 +6381,7 @@ async function readAdminSupplierBatchDetail(
   const lookupClient = createSupplierBatchLookupClient(client);
   const productsBySku = await readSupplierBatchProducts(lookupClient, lines);
   const inventoryBySku = await readSupplierBatchInventory(lookupClient, lines);
-  const stats = summarizeSupplierBatchLines(lines, productsBySku);
+  const stats = summarizeSupplierBatchLines(lines, productsBySku, inventoryBySku);
   const statsByBatch = new Map([[batchId, stats]]);
   const batch = mapAdminSupplierBatchRow(data, statsByBatch);
 
@@ -7554,6 +7573,7 @@ async function readSupplierBatchLineStats(
   const rows = await readSupplierBatchLines(client, batchIds);
   const lookupClient = createSupplierBatchLookupClient(client);
   const productsBySku = await readSupplierBatchProducts(lookupClient, rows);
+  const inventoryBySku = await readSupplierBatchInventory(lookupClient, rows);
   const rowsByBatch = new Map<string, DbRow[]>();
 
   for (const row of rows) {
@@ -7570,7 +7590,14 @@ async function readSupplierBatchLineStats(
   const stats = new Map<string, SupplierBatchLineStats>();
 
   for (const batchId of batchIds) {
-    stats.set(batchId, summarizeSupplierBatchLines(rowsByBatch.get(batchId) ?? [], productsBySku));
+    stats.set(
+      batchId,
+      summarizeSupplierBatchLines(
+        rowsByBatch.get(batchId) ?? [],
+        productsBySku,
+        inventoryBySku
+      )
+    );
   }
 
   return stats;
@@ -7651,27 +7678,32 @@ async function readSupplierBatchInventory(
   const skuCodes = uniqueDefinedStrings(lines.flatMap(supplierBatchLineSkuCandidates));
 
   if (skuCodes.length === 0) {
-    return new Map<string, { actualQty: number; availableQty: number; lockedQty: number }>();
+    return new Map<string, SupplierBatchInventorySummary>();
   }
 
-  const rows = await readMatchingRows(
-    client,
-    "inventory_items",
-    "sku_code, actual_qty, available_qty, locked_qty",
-    "sku_code",
-    skuCodes,
-    skuCodes.length
-  );
+  const rows: DbRow[] = [];
 
-  if (!rows) {
-    throw new RepositoryWriteError(
-      502,
-      "ADMIN_SUPPLIER_BATCH_INVENTORY_READ_UNAVAILABLE",
-      "Admin supplier batch inventory could not be read from Supabase."
-    );
+  for (let index = 0; index < skuCodes.length; index += 100) {
+    const chunk = skuCodes.slice(index, index + 100);
+    const { data, error } = await client
+      .from("inventory_items")
+      .select(
+        "sku_code, product_name, brand, model, quality_grade, actual_qty, available_qty, locked_qty"
+      )
+      .in("sku_code", chunk);
+
+    if (error || !Array.isArray(data)) {
+      throw new RepositoryWriteError(
+        502,
+        "ADMIN_SUPPLIER_BATCH_INVENTORY_READ_UNAVAILABLE",
+        "Admin supplier batch inventory could not be read from Supabase."
+      );
+    }
+
+    rows.push(...data.map((row) => row as DbRow));
   }
 
-  const inventoryBySku = new Map<string, { actualQty: number; availableQty: number; lockedQty: number }>();
+  const inventoryBySku = new Map<string, SupplierBatchInventorySummary>();
 
   for (const row of rows) {
     const sku = pickString(row, ["sku_code"]);
@@ -7681,10 +7713,22 @@ async function readSupplierBatchInventory(
     }
 
     const key = toSupplierBatchSkuKey(sku);
-    const current = inventoryBySku.get(key) ?? { actualQty: 0, availableQty: 0, lockedQty: 0 };
+    const current = inventoryBySku.get(key) ?? {
+      actualQty: 0,
+      availableQty: 0,
+      lockedQty: 0,
+      identities: [],
+    };
     current.actualQty += pickNumber(row, ["actual_qty"]) ?? 0;
     current.availableQty += pickNumber(row, ["available_qty"]) ?? 0;
     current.lockedQty += pickNumber(row, ["locked_qty"]) ?? 0;
+    current.identities.push({
+      skuCode: sku,
+      productName: pickString(row, ["product_name"]),
+      brand: pickString(row, ["brand"]),
+      model: pickString(row, ["model"]),
+      qualityGrade: pickString(row, ["quality_grade"]),
+    });
     inventoryBySku.set(key, current);
   }
 
@@ -7693,7 +7737,8 @@ async function readSupplierBatchInventory(
 
 function summarizeSupplierBatchLines(
   lines: DbRow[],
-  productsBySku: Map<string, DbRow>
+  productsBySku: Map<string, DbRow>,
+  inventoryBySku: Map<string, SupplierBatchInventorySummary>
 ): SupplierBatchLineStats {
   const stats: SupplierBatchLineStats = { ...emptySupplierBatchLineStats };
   let orderedQtyTotal = 0;
@@ -7703,6 +7748,7 @@ function summarizeSupplierBatchLines(
     const qtyReceived = Math.max(0, Math.trunc(pickNumber(line, ["qty_received"]) ?? 0));
     const orderedQty = readSupplierBatchLineOrderedQty(line);
     const product = readSupplierBatchLineProduct(line, productsBySku);
+    const inventory = readSupplierBatchLineInventory(line, inventoryBySku);
     const productStatus = normalizeCatalogStatusValue(pickString(line, ["product_status"]));
 
     stats.lines += 1;
@@ -7732,7 +7778,11 @@ function summarizeSupplierBatchLines(
     }
 
     if (product) {
-      const productSummary = readSupplierBatchLineProductSummary(product);
+      const productSummary = readSupplierBatchLineProductSummary(
+        product,
+        null,
+        readRecordObject(line.metadata) ?? {}
+      );
       if (productSummary.activeMissingImage) {
         stats.activeMissingImageCount += 1;
       }
@@ -7743,6 +7793,16 @@ function summarizeSupplierBatchLines(
 
       if (productSummary.modelPrefixIssue) {
         stats.modelPrefixIssueCount += 1;
+      }
+
+      if (qtyReceived > 0 && !inventory) {
+        stats.inventoryMissingCount += 1;
+      } else if (
+        qtyReceived > 0 &&
+        inventory &&
+        !isSupplierBatchInventoryConsistent(product, inventory)
+      ) {
+        stats.inventoryMismatchCount += 1;
       }
     }
   }
@@ -7791,8 +7851,20 @@ function buildSupplierBatchVerification(
     issues.push("model_prefix");
   }
 
+  if (stats.inventoryMissingCount > 0) {
+    issues.push("missing_inventory");
+  }
+
+  if (stats.inventoryMismatchCount > 0) {
+    issues.push("inventory_mismatch");
+  }
+
   const status: AdminSupplierBatchVerificationStatus =
-    !quantityMatches || !costMatches || stats.productMissingCount > 0
+    !quantityMatches ||
+    !costMatches ||
+    stats.productMissingCount > 0 ||
+    stats.inventoryMissingCount > 0 ||
+    stats.inventoryMismatchCount > 0
       ? "error"
       : issues.length > 0
         ? "warning"
@@ -7804,7 +7876,7 @@ function buildSupplierBatchVerification(
 function mapAdminSupplierBatchLine(
   row: DbRow,
   productsBySku: Map<string, DbRow>,
-  inventoryBySku: Map<string, { actualQty: number; availableQty: number; lockedQty: number }>
+  inventoryBySku: Map<string, SupplierBatchInventorySummary>
 ): AdminSupplierBatchLine | null {
   const id = pickString(row, ["id"]);
   const lineNo = pickNumber(row, ["line_no"]);
@@ -7816,9 +7888,11 @@ function mapAdminSupplierBatchLine(
   const qtyReceived = Math.max(0, Math.trunc(pickNumber(row, ["qty_received"]) ?? 0));
   const qtyOrdered = readSupplierBatchLineOrderedQty(row);
   const product = readSupplierBatchLineProduct(row, productsBySku);
-  const sku = supplierBatchLineSkuCandidates(row)[0] ?? null;
-  const inventory = sku ? inventoryBySku.get(toSupplierBatchSkuKey(sku)) : null;
-  const productSummary = product ? readSupplierBatchLineProductSummary(product, inventory) : null;
+  const inventory = readSupplierBatchLineInventory(row, inventoryBySku);
+  const metadata = readRecordObject(row.metadata) ?? {};
+  const productSummary = product
+    ? readSupplierBatchLineProductSummary(product, inventory, metadata)
+    : null;
 
   return {
     id,
@@ -7834,7 +7908,7 @@ function mapAdminSupplierBatchLine(
     lineTotal: pickNumber(row, ["line_total"]) ?? 0,
     imageStatus: pickString(row, ["image_status"]) ?? "missing",
     productStatus: normalizeCatalogStatusValue(pickString(row, ["product_status"])),
-    metadata: readRecordObject(row.metadata) ?? {},
+    metadata,
     product: productSummary,
     createdAt: formatPartsProDateTime(pickString(row, ["created_at", "createdAt"])),
     updatedAt: formatPartsProDateTime(pickString(row, ["updated_at", "updatedAt"])),
@@ -7843,7 +7917,8 @@ function mapAdminSupplierBatchLine(
 
 function readSupplierBatchLineProductSummary(
   product: DbRow,
-  inventory?: { actualQty: number; availableQty: number; lockedQty: number } | null
+  inventory?: SupplierBatchInventorySummary | null,
+  lineMetadata: Record<string, unknown> = {}
 ): AdminSupplierBatchLineProduct {
   const sku = pickString(product, ["sku_code"]) ?? "";
   const brand = pickString(product, ["brand"]) ?? "";
@@ -7851,7 +7926,7 @@ function readSupplierBatchLineProductSummary(
   const costPrice = pickNumber(product, ["cost_price"]) ?? 0;
   const retailPrice = pickNumber(product, ["retail_price"]) ?? 0;
   const b2bPrice = pickNumber(product, ["b2b_price"]) ?? 0;
-  const expectedPrice = Math.ceil(costPrice + 5);
+  const expectedPrices = readSupplierBatchExpectedPrices(lineMetadata, costPrice);
   const catalogStatus = normalizeCatalogStatusValue(pickString(product, ["status"]));
   const stockQty = pickNumber(product, ["stock_qty"]) ?? 0;
   const imagePath = pickString(product, ["image_path"]);
@@ -7878,7 +7953,9 @@ function readSupplierBatchLineProductSummary(
     imagePath,
     modelCodes,
     compatibilityModels,
-    priceRuleOk: retailPrice === expectedPrice && b2bPrice === expectedPrice,
+    priceRuleOk:
+      retailPrice === expectedPrices.retailPrice &&
+      b2bPrice === expectedPrices.b2bPrice,
     activeMissingImage: catalogStatus === "active" && !imagePath,
     modelPrefixIssue,
   };
@@ -7897,6 +7974,65 @@ function readSupplierBatchLineProduct(
   }
 
   return null;
+}
+
+function readSupplierBatchLineInventory(
+  line: DbRow,
+  inventoryBySku: Map<string, SupplierBatchInventorySummary>
+) {
+  for (const sku of supplierBatchLineSkuCandidates(line)) {
+    const inventory = inventoryBySku.get(toSupplierBatchSkuKey(sku));
+
+    if (inventory) {
+      return inventory;
+    }
+  }
+
+  return null;
+}
+
+function isSupplierBatchInventoryConsistent(
+  product: DbRow,
+  inventory: SupplierBatchInventorySummary
+) {
+  const stockQty = pickNumber(product, ["stock_qty"]) ?? 0;
+
+  if (
+    inventory.actualQty < 0 ||
+    inventory.availableQty < 0 ||
+    inventory.lockedQty < 0 ||
+    stockQty !== inventory.availableQty ||
+    inventory.actualQty !== inventory.availableQty + inventory.lockedQty
+  ) {
+    return false;
+  }
+
+  const expectedIdentity = [
+    pickString(product, ["sku_code"]),
+    pickString(product, ["name"]),
+    pickString(product, ["brand"]),
+    pickString(product, ["model"]),
+    pickString(product, ["quality_grade"]),
+  ].map(normalizeSupplierBatchIdentityValue);
+
+  return (
+    inventory.identities.length > 0 &&
+    inventory.identities.every((identity) =>
+      [
+        identity.skuCode,
+        identity.productName,
+        identity.brand,
+        identity.model,
+        identity.qualityGrade,
+      ]
+        .map(normalizeSupplierBatchIdentityValue)
+        .every((value, index) => value === expectedIdentity[index])
+    )
+  );
+}
+
+function normalizeSupplierBatchIdentityValue(value: string | null) {
+  return (value ?? "").trim().toLocaleLowerCase("it-IT");
 }
 
 function supplierBatchLineSkuCandidates(line: DbRow) {
@@ -7919,6 +8055,32 @@ function readSupplierBatchLineOrderedQty(line: DbRow) {
     readUnknownNumber(metadata.ordered);
 
   return value === null ? null : Math.max(0, Math.trunc(value));
+}
+
+function readSupplierBatchExpectedPrices(
+  metadata: Record<string, unknown>,
+  costPrice: number
+) {
+  const defaultPrice = Math.ceil(costPrice + 5);
+
+  if (metadata.price_policy === "explicit_user_price") {
+    const retailPrice = readUnknownNumber(metadata.expected_retail_price);
+    const b2bPrice = readUnknownNumber(metadata.expected_b2b_price);
+
+    if (
+      retailPrice !== null &&
+      retailPrice > 0 &&
+      b2bPrice !== null &&
+      b2bPrice > 0
+    ) {
+      return {
+        retailPrice: roundMoney(retailPrice),
+        b2bPrice: roundMoney(b2bPrice),
+      };
+    }
+  }
+
+  return { retailPrice: defaultPrice, b2bPrice: defaultPrice };
 }
 
 function readUnknownNumber(value: unknown) {
@@ -13920,6 +14082,12 @@ function normalizeVisual(value: string): PartVisual {
 }
 
 function inferCategory(value: string) {
+  const normalizedCategory = normalizeCategory(value);
+
+  if (normalizedCategory !== value) {
+    return normalizedCategory;
+  }
+
   const visual = normalizeVisual(value);
   const labels: Record<PartVisual, string> = {
     screen: "Schermi",
@@ -13936,7 +14104,23 @@ function inferCategory(value: string) {
 }
 
 function normalizeCategory(value: string) {
-  const normalized = value.toLowerCase();
+  const normalized = value.trim().toLowerCase();
+  const isBackGlass = /\bback[\s-]?glass\b/.test(normalized);
+
+  if (isBackGlass) {
+    return "Back Cover";
+  }
+
+  if (
+    normalized.includes("pellicol") ||
+    normalized.includes("privacy") ||
+    /protective[\s-]?films?/.test(normalized) ||
+    /screen[\s-]?protector/.test(normalized) ||
+    /tempered[\s-]?glass/.test(normalized) ||
+    /anti[\s-]?spy/.test(normalized)
+  ) {
+    return "Pellicole Protettive";
+  }
 
   if (normalized.includes("screen") || normalized.includes("display")) {
     return "Schermi";
