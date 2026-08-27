@@ -1745,6 +1745,8 @@ export type AdminRmaAction =
   | "mark_received"
   | "restock_return"
   | "mark_scrapped"
+  | "supplier_return"
+  | "mark_replacement_sent"
   | "close";
 
 export type PerformAdminRmaActionInput = {
@@ -1753,9 +1755,11 @@ export type PerformAdminRmaActionInput = {
   batchCode?: string;
   customerVisibleNote?: string;
   internalNote?: string;
+  idempotencyKey?: string;
   quantity?: number;
   reason?: string;
   refundAmount?: number;
+  replacementOrderId?: string;
   requestId: string;
   supplier?: string;
   warehouse?: PartProduct["warehouse"];
@@ -11621,18 +11625,20 @@ async function performAdminRmaActionViaRpc(
   context: SupabaseContext,
   input: PerformAdminRmaActionInput
 ): Promise<RmaRequest | null> {
-  const { data, error } = await context.client.rpc("admin_perform_rma_action", {
+  const { data, error } = await context.client.rpc("admin_perform_rma_action_v3", {
     p_action: input.action,
     p_assigned_to: input.assignedTo ?? null,
     p_batch_code: input.batchCode ?? null,
     p_customer_visible_note: input.customerVisibleNote ?? null,
     p_internal_note: input.internalNote ?? null,
+    p_idempotency_key: input.idempotencyKey ?? null,
     p_location: input.warehouse ?? null,
     p_quantity: input.quantity ?? null,
     p_reason: input.reason ?? null,
     p_refund_amount: input.refundAmount ?? null,
     p_request_id: input.requestId,
     p_supplier: input.supplier ?? null,
+    p_replacement_order_id: input.replacementOrderId ?? null,
   });
 
   if (error) {

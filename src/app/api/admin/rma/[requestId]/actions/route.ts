@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { hasAdminPermission } from "@/lib/partspro-admin-auth";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
+import { adminRmaActionSchema } from "@/lib/partspro-rma-contract";
 import {
   performAdminRmaAction,
   type AdminRmaAction,
@@ -12,28 +13,6 @@ import { repositoryErrorResponse, requireAdminApi } from "../../../_shared";
 export const dynamic = "force-dynamic";
 
 type AdminRmaActionParams = { params: Promise<{ requestId: string }> };
-
-const adminRmaActionSchema = z
-  .object({
-    action: z.enum([
-      "assign",
-      "request_wallet_refund",
-      "mark_received",
-      "restock_return",
-      "mark_scrapped",
-      "close",
-    ]),
-    assignedTo: z.string().uuid().nullable().optional(),
-    batchCode: z.string().trim().max(120).optional(),
-    customerVisibleNote: z.string().trim().max(1000).optional(),
-    internalNote: z.string().trim().max(1000).optional(),
-    quantity: z.coerce.number().int().min(1).max(100000).optional(),
-    reason: z.string().trim().max(1000).optional(),
-    refundAmount: z.coerce.number().positive().max(999999).optional(),
-    supplier: z.string().trim().max(160).optional(),
-    warehouse: z.literal("Milano").optional(),
-  })
-  .strict();
 
 export async function POST(request: NextRequest, { params }: AdminRmaActionParams) {
   const admin = await requireAdminApi();
@@ -87,7 +66,7 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
       meta: {
         action: parsedBody.data.action,
         source: result.source,
-        workflow: "admin_perform_rma_action",
+        workflow: "admin_perform_rma_action_v3",
       },
     });
   } catch (error) {
@@ -104,11 +83,7 @@ function requiredPermissionForAction(action: AdminRmaAction) {
     return ["rma.refund", "wallet_refunds.request"];
   }
 
-  if (action === "restock_return") {
-    return ["product.adjust_stock", "inventory.manage"];
-  }
-
-  if (action === "mark_scrapped") {
+  if (action === "mark_received" || action === "restock_return" || action === "mark_scrapped" || action === "supplier_return") {
     return ["rma.inventory", "product.adjust_stock", "inventory.manage"];
   }
 

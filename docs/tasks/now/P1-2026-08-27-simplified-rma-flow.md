@@ -1,6 +1,6 @@
 # P1-2026-08-27-simplified-rma-flow
 
-状态：proposed
+状态：in_progress
 
 看板目录：now
 
@@ -28,8 +28,9 @@ Task ID：TASK-20260827-01
 
 完成定义分为“规划完成”和“未来实施完成”两层：
 
-1. 本批次：本任务卡经老板/主代理审阅，业务规则、数据契约、状态机、批次、批准门、验收、发布和回滚边界明确；不产生业务代码、migration、远端写入或部署。
-2. 未来实施：客户能从订单行进入并提交符合规则的退货申请；质量/损坏/发错类申请至少有一张图片；图片最多 6 张、单张压缩后不超过 4MB，V1 不支持视频；后台能在六个队列内完成审核、收货、质检、退款/换货和库存处置；客户只看到五个业务阶段；附件、状态、退款、库存和通知均有权限控制与审计证据。
+1. 批次 0：本任务卡经老板/主代理审阅，业务规则、数据契约、状态机、批次、批准门、验收、发布和回滚边界明确。
+2. 当前批次 1：在隔离 worktree 中实现 additive Migration A、共享 RMA 契约、opaque draft/upload/complete/submit Route Handlers、服务端证据校验、admin v3 action ledger 和专项源契约测试；不改客户/后台 UI 或 i18n，不进行远端写入或部署。
+3. 未来实施：客户能从订单行进入并提交符合规则的退货申请；质量/损坏/发错类申请至少有一张图片；图片最多 6 张、单张压缩后不超过 4MB，V1 不支持视频；后台能在六个队列内完成审核、收货、质检、退款/换货和库存处置；客户只看到五个业务阶段；附件、状态、退款、库存和通知均有权限控制与审计证据。
 
 ## 主责部门
 
@@ -182,8 +183,8 @@ refunded | replacement_sent
 ### 客户 API
 
 - `GET /api/rma`：仅返回当前账号的 customer DTO、五阶段状态、可操作订单行、`eligible_until`、上传策略；不能返回内部负责人、钱包请求内部 ID、内部备注或任意存储 path。
-- `POST /api/rma/uploads`（或兼容现有 evidence route）：先签发短期、用户/订单行绑定的 upload ticket；上传后服务端校验并返回 opaque `attachmentId`。
-- `POST /api/rma`：接受 `orderLineId`、数量、原因码、处理方式、补充说明、attachment IDs、`idempotencyKey`；由服务端从订单行推导订单/客户/SKU，事务内完成资格、数量、附件归属和必填证据校验。
+- 当前批次新增 `POST /api/rma/drafts`、`POST /api/rma/drafts/:draftId/uploads`、`POST /api/rma/drafts/:draftId/attachments/:attachmentId/complete`：先签发短期、用户/订单行绑定的 upload ticket；上传后服务端重新读取 Storage 校验并返回 opaque `attachmentId`。旧 multipart evidence route 保留可识别的 426 升级错误，待 UI 批次切换。
+- 当前批次新增 `POST /api/rma/submit`，并让 `POST /api/rma` 进入同一严格 handler：接受 `orderLineId`、数量、原因码、处理方式、补充说明、attachment IDs、`idempotencyKey/draftId`；由服务端从订单行推导订单/客户/SKU，事务内完成资格、数量、附件归属和必填证据校验。旧 path/bucket payload 不兼容时返回可识别升级错误。
 - 所有重试必须幂等；客户端不能用提交的 `orderId/sku/path/signedUrl` 覆盖服务端事实。
 
 ### 后台 API 与权限
@@ -205,15 +206,15 @@ refunded | replacement_sent
 
 ## 范围
 
-- 页面：客户订单详情、`/account`、`/rma`；后台 RMA panel、收货/质检/库存处置工作区。
-- API：客户 RMA/附件接口、后台 RMA 列表/详情/action、通知接口；必要时新增退款/换货关联接口。
-- 数据表/RPC：`rma_requests`、`rma_request_events`、附件记录/Storage、`orders`、`order_lines`、库存表与 movements、钱包退款、通知事件；新增 migration 仅在后续批准后进行。
+- 规划范围页面：客户订单详情、`/account`、`/rma`；后台 RMA panel、收货/质检/库存处置工作区。当前批次不改页面。
+- 当前批次 API：客户 RMA draft/upload/complete/submit、兼容 GET/旧 POST 边界、后台 RMA action v3/legacy wrapper；通知接口和完整 UI 仍属后续批次。
+- 当前批次数据表/RPC：`rma_requests`、`rma_request_events`、`rma_drafts`、`rma_attachments`、`rma_action_executions`、Storage、库存 movement、钱包退款和通知兼容字段；Migration A 仅在隔离分支生成，不应用远端。
 - 文档：本任务卡、后续 ADR、政策确认、runbook、验收记录和风险登记。
 - 外部系统：V1 不接第三方物流/邮件/WhatsApp；支付原路退款可行性、意大利法定政策和税务处理需在上线前确认。
 
 ## 非目标
 
-- 本批不写业务代码，不改现有客户/后台 UI，不创建或修改 Supabase migration，不应用远端数据库，不部署 Vercel。
+- 当前批次 1 只实现服务端契约/API 与 additive Migration A；不改现有客户/后台 UI 或 i18n，不应用远端数据库，不部署 Vercel。
 - V1 不支持视频、自动打印物流标签、第三方承运商 API、自动现金/银行卡退款、自动库存回补或自动批准。
 - 不用 `rmaDays` 削弱 B2C 法定撤回/保修；不把 B2C 和 B2B 规则合并成一个无条件窗口。
 - 不通过客户端 path、service role key、绕过 RLS 或临时权限扩大来实现上传/查看。
@@ -252,10 +253,16 @@ refunded | replacement_sent
 
 ### 规划批次验收
 
-- 本卡位于 `docs/tasks/now/`，状态为 `proposed`，包含范围、非目标、契约、工作包、批准、验收、验证、发布/回滚和残余风险。
+- 本卡位于 `docs/tasks/now/`，状态为 `in_progress`，包含范围、非目标、契约、工作包、批准、验收、验证、发布/回滚和残余风险。
 - 冻结规则明确：一页三块、默认数量 1、六原因、图片规则、最多 6 张/4MB、V1 无视频、退款/换货/钱包三选一、客户五阶段、后台六队列。
 - 明确 B2C 法定撤回/保修与 B2B 商业退货分离，以及上线前意大利政策/法务确认门。
 - 任务卡提交仅包含该文件，主工作区未提交改动未被修改。
+
+### 当前批次 1 验收
+
+- Migration A 只扩展表、约束、Storage 配置和兼容 RPC；新 draft/attachment/action ledger 启用 RLS 且不给客户端直接写，旧 RMA 读取与旧 direct grants 不被撤销。
+- 客户提交使用严格 allowlist 和 opaque attachment ID；服务端绑定登录用户、客户、订单行、累计数量、六原因、六图/4MiB、MIME/魔数/SHA-256 和幂等键。
+- 管理员动作经 `admin_perform_rma_action_v3` 和 legacy wrapper 进入锁定/ledger；收货只记 quarantine，restock 只执行一次，报废/供应商退回不错误扣可售库存，钱包请求使用 `rma_return`。
 
 ### 未来实施验收
 
@@ -284,6 +291,13 @@ git log -1 --oneline
 - 数据库：订单行并发锁、资格窗口、状态转移矩阵、RLS、Storage policy、customer-visible event、退款幂等、库存处置原子性。
 - UI：390/430px、空/错/离线/403/重复提交、it-IT/zh-CN 文案和可访问性。
 
+当前批次 1 自动化集合：
+
+- `node --test tests/rma-contract.test.mjs tests/admin-rma-workflow-contract.test.mjs`
+- `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/tsc' --noEmit --project '<worktree>/tsconfig.json'`（基线 `RouteContext` 错误已记录）
+- `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/eslint' <worktree absolute TS/TSX files>`
+- `git diff --check`
+
 ## 最终验证集合
 
 实现里程碑或发布候选必须按风险执行：
@@ -311,7 +325,7 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 
 ## 禁止事项
 
-- 不在本批次修改业务代码、schema、migration、RLS、Storage policy、权限、生产数据或环境变量。
+- 当前批次不修改客户/后台 UI、i18n、Migration B、生产数据或环境变量；Migration A 和服务端契约/API 仅在隔离 worktree 内实现。
 - 不 push、不部署、不访问或写入远端 Supabase/Vercel。
 - 不把 `rmaDays` 当作意大利法定规则，不向客户承诺未经确认的退款/运费政策。
 - 不在浏览器暴露 service role key，不接受客户端任意 Storage path/bucket/signed URL。
@@ -324,26 +338,32 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 |---|---|---|
 | `git worktree add -b codex/rma-simple-flow-20260827 ... origin/main` | passed | 隔离 worktree 创建成功，基线为 `de2132b51c0df06fae5476aac6bbae53beea958f` |
 | 指定治理/项目/RMA 文档读取 | passed | AGENTS、TASK_FLOW、TEMPLATE、章程、roadmap、风险、决策和两份既有 RMA 任务卡已完整读取 |
-| 本批业务代码/migration/远端写入 | not run | 明确禁止；本批仅提交规划任务卡 |
-| `git diff --check` | passed | 提交前已对唯一暂存文件执行 `git diff --cached --check`，无空白错误 |
+| Next.js 16 Route Handler 与 Server/Client 指南读取 | passed | 写 Route Handler 前读取本地 `node_modules/next/dist/docs/` 对应文档 |
+| Supabase migration 创建 | passed | 使用 `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase migration new rma_simple_flow_expand` 创建 Migration A |
+| 当前批次 1 代码/migration/远端写入 | passed | 仅隔离 worktree 生成服务端契约/API 与 Migration A；未访问/写入 linked Supabase、Vercel、GitHub |
+| `node --test tests/rma-contract.test.mjs tests/admin-rma-workflow-contract.test.mjs` | passed | 9/9 contract tests passed |
+| 主仓库 `node_modules/.bin/eslint` 定向检查 | passed | RMA contract/http/helper、客户/后台 routes、repository 均通过 |
+| 主仓库 `node_modules/.bin/tsc --noEmit --project <worktree>/tsconfig.json` | blocked by baseline | 仅报已有 `src/app/api/admin/restock-requests/[id]/route.ts:17:12 RouteContext`；基线同文件同一错误，未见本批新增诊断 |
+| `git diff --check` | passed | 当前未提交 diff 无空白错误 |
+| Supabase linked/local lint、migration dry-run、build/E2E | skipped by gate | 本批禁止远端/数据库写入；worktree 无需启动本地数据库，按范围不跑完整 build/E2E |
 
 ## 执行记录
 
 - 创建：2026-08-27
-- 批准：pending；本卡等待老板/主代理审阅
+- 批准：2026-08-27；用户已批准本轮开始实现/推送/部署，当前 worker 仍按范围不 push、不部署、不应用远端 migration
 - 开始：2026-08-27
-- review：pending
-- verified：pending；提交前完成文档级验证
+- review：pending；Migration A/RLS/权限/支付/库存需专项守门
+- verified：2026-08-27；contract tests、定向 ESLint、diff check 通过；tsc 受基线 `RouteContext` 错误阻塞
 - released：不适用，本批不发布
 - closed：pending
 
 ## 结果
 
-本批交付一份隔离分支上的简化 RMA V1 规划任务卡。只记录规划和批准门，不声明任何代码、数据库、生产上传、退款或库存功能已经实现；后续实施必须按 WP-00 至 WP-06 分批，经对应业务/工程守门和生产安全门批准后执行。
+当前批次在隔离分支交付 Migration A、服务端 RMA 安全契约/API 和专项源契约测试；不声明远端数据库已应用、不声明 UI 已完成、不声明生产上传/退款/库存已验证。意大利政策、Migration B 危险撤权、linked migration dry-run、Vercel 发布和最终 E2E 仍需专门门禁。
 
 ## 残余风险与后续任务
 
 - 意大利 B2C 撤回/保修、B2B 商业退货、退款方式、运费承担和税务处理尚未由专业人员确认。
 - 当前历史 RMA 状态、附件 JSON、wallet `order_void` 语义和库存处置数据需要迁移前盘点。
-- 当前附件上传、状态机、期限、并发数量、DTO 隔离和通知缺口仍存在；本卡不修复这些问题。
+- 当前批次已收口服务端附件上传/校验、核心状态守卫、并发数量锁、customer DTO 隔离和基础通知事件；客户端三块 UI、法定期限、QC 完整字段、Storage GC、Migration B 和生产联调仍待后续批次。
 - 后续应分别创建政策 ADR、RMA data/RPC migration 任务、图片上传安全任务、后台 QC/库存任务、退款/换货任务和发布观察 runbook。
