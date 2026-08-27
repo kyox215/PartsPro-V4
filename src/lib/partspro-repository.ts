@@ -155,6 +155,9 @@ const publicCatalogPageCacheMaxEntries = 120;
 const customerActivityDedupeWindowMs = 5 * 60 * 1000;
 const maxCustomerCartItems = 100;
 const maxCustomerCartQuantity = 999;
+// Keep each security-definer hydration request below the RPC input cap while
+// avoiding the per-line/per-SKU fan-out that made the batch list unavailable.
+const supplierBatchProductLookupRpcChunkSize = 500;
 let catalogModelGroupsCache:
   | {
       expiresAt: number;
@@ -8244,36 +8247,117 @@ async function readSupplierBatchProducts(
   client: SupabaseServerClient,
   lines: DbRow[]
 ) {
-  const skuCodes = uniqueDefinedStrings(lines.flatMap(supplierBatchLineSkuCandidates));
+  // Preserve the first raw candidate for each public SKU key so the RPC can
+  // apply the same legacy-prefix candidate ordering as admin_get_product.
+  const lookupCodesByKey = new Map<string, string>();
 
-  if (skuCodes.length === 0) {
-    return new Map<string, DbRow>();
+  for (const lookupCode of lines.flatMap(supplierBatchLineSkuCandidates)) {
+    const lookupKey = toSupplierBatchSkuKey(lookupCode);
+
+    if (lookupKey && !lookupCodesByKey.has(lookupKey)) {
+      lookupCodesByKey.set(lookupKey, lookupCode);
+    }
   }
 
-  const rows = await readMatchingRows(
-    client,
-    "products",
-    "sku_code, name, brand, model, model_codes, compatibility_models, category, quality_grade, cost_price, retail_price, b2b_price, weight_gram, stock_qty, stock_status, status, image_path",
-    "sku_code",
-    skuCodes,
-    skuCodes.length
-  );
+  const lookupCodes = Array.from(lookupCodesByKey.values());
 
-  if (!rows) {
-    throw new RepositoryWriteError(
-      502,
-      "ADMIN_SUPPLIER_BATCH_PRODUCTS_READ_UNAVAILABLE",
-      "Admin supplier batch products could not be read from Supabase."
-    );
+  if (lookupCodes.length === 0) {
+    return new Map<string, DbRow>();
   }
 
   const productsBySku = new Map<string, DbRow>();
 
-  for (const row of rows) {
-    const sku = pickString(row, ["sku_code"]);
+  for (
+    let index = 0;
+    index < lookupCodes.length;
+    index += supplierBatchProductLookupRpcChunkSize
+  ) {
+    const chunk = lookupCodes.slice(index, index + supplierBatchProductLookupRpcChunkSize);
+    const requestedKeys = new Set(chunk.map(toSupplierBatchSkuKey));
 
-    if (sku) {
-      productsBySku.set(toSupplierBatchSkuKey(sku), row);
+    try {
+      const { data, error } = await client.rpc("admin_get_supplier_batch_products", {
+        p_sku_codes: chunk,
+      });
+
+      if (error) {
+        throw new RepositoryWriteError(
+          502,
+          "ADMIN_SUPPLIER_BATCH_PRODUCTS_READ_UNAVAILABLE",
+          "Admin supplier batch products could not be read from Supabase.",
+          supabaseErrorDetails(error)
+        );
+      }
+
+      if (!Array.isArray(data)) {
+        throw new RepositoryWriteError(
+          502,
+          "ADMIN_SUPPLIER_BATCH_PRODUCTS_READ_UNAVAILABLE",
+          "Admin supplier batch products could not be read from Supabase.",
+          { responseType: data === null ? "null" : typeof data }
+        );
+      }
+
+      const returnedLookupKeys = new Set<string>();
+
+      for (const value of data) {
+        if (!isDbRow(value)) {
+          throw new RepositoryWriteError(
+            502,
+            "ADMIN_SUPPLIER_BATCH_PRODUCTS_READ_UNAVAILABLE",
+            "Admin supplier batch products could not be read from Supabase.",
+            { responseType: "row" }
+          );
+        }
+
+        const lookupCode = pickString(value, ["lookup_code"]);
+        const skuCode = pickString(value, ["sku_code"]);
+
+        if (!lookupCode || !skuCode) {
+          throw new RepositoryWriteError(
+            502,
+            "ADMIN_SUPPLIER_BATCH_PRODUCTS_READ_UNAVAILABLE",
+            "Admin supplier batch products could not be read from Supabase.",
+            { reason: "missing_lookup_or_sku_code" }
+          );
+        }
+
+        const lookupKey = toSupplierBatchSkuKey(lookupCode);
+        const skuKey = toSupplierBatchSkuKey(skuCode);
+
+        if (!requestedKeys.has(lookupKey)) {
+          throw new RepositoryWriteError(
+            502,
+            "ADMIN_SUPPLIER_BATCH_PRODUCTS_READ_UNAVAILABLE",
+            "Admin supplier batch products could not be read from Supabase.",
+            { reason: "unexpected_lookup_code", lookupCode }
+          );
+        }
+
+        if (returnedLookupKeys.has(lookupKey)) {
+          throw new RepositoryWriteError(
+            502,
+            "ADMIN_SUPPLIER_BATCH_PRODUCTS_READ_UNAVAILABLE",
+            "Admin supplier batch products could not be read from Supabase.",
+            { reason: "duplicate_lookup_code", lookupCode }
+          );
+        }
+
+        returnedLookupKeys.add(lookupKey);
+        productsBySku.set(lookupKey, value);
+        productsBySku.set(skuKey, value);
+      }
+    } catch (error) {
+      if (error instanceof RepositoryWriteError) {
+        throw error;
+      }
+
+      throw new RepositoryWriteError(
+        502,
+        "ADMIN_SUPPLIER_BATCH_PRODUCTS_READ_UNAVAILABLE",
+        "Admin supplier batch products could not be read from Supabase.",
+        supabaseErrorDetails(error)
+      );
     }
   }
 
@@ -8746,33 +8830,84 @@ function hasSupplierBatchModelPrefixIssue(
   return values.some((value) => value?.trim().toLowerCase().startsWith(`${normalizedBrand} `));
 }
 
+async function readAdminProductRow(
+  client: SupabaseServerClient,
+  sku: string,
+  options: {
+    errorCode?: string;
+    errorMessage?: string;
+  } = {}
+): Promise<DbRow | null> {
+  const errorCode = options.errorCode ?? "ADMIN_PRODUCT_READ_UNAVAILABLE";
+  const errorMessage =
+    options.errorMessage ?? "Admin product data could not be read from Supabase.";
+  const candidates = Array.from(
+    new Set(
+      catalogLookupCandidates(sku)
+        .map((candidate) => candidate.trim().toUpperCase())
+        .filter(Boolean)
+    )
+  );
+
+  for (const candidate of candidates) {
+    try {
+      const { data, error } = await client.rpc("admin_get_product", {
+        p_sku_code: candidate,
+      });
+
+      if (error) {
+        throw new RepositoryWriteError(
+          502,
+          errorCode,
+          errorMessage,
+          supabaseErrorDetails(error)
+        );
+      }
+
+      if (data === null || data === undefined) {
+        continue;
+      }
+
+      if (!isDbRow(data)) {
+        throw new RepositoryWriteError(
+          502,
+          errorCode,
+          errorMessage,
+          { responseType: Array.isArray(data) ? "array" : typeof data }
+        );
+      }
+
+      return data;
+    } catch (error) {
+      if (error instanceof RepositoryWriteError) {
+        throw error;
+      }
+
+      throw new RepositoryWriteError(
+        502,
+        errorCode,
+        errorMessage,
+        supabaseErrorDetails(error)
+      );
+    }
+  }
+
+  return null;
+}
+
 async function readAdminProduct(
   client: SupabaseServerClient,
   sku: string
 ): Promise<AdminProduct | null> {
-  for (const candidate of catalogLookupCandidates(sku)) {
-    const { data, error } = await client.rpc("admin_get_product", {
-      p_sku_code: candidate.trim().toUpperCase(),
-    });
+  const row = await readAdminProductRow(client, sku);
+  const product = row ? mapAdminProductRow(row) : null;
 
-    if (error) {
-      throw new RepositoryWriteError(
-        502,
-        "ADMIN_PRODUCT_READ_UNAVAILABLE",
-        "Admin product data could not be read from Supabase.",
-        supabaseErrorDetails(error)
-      );
-    }
-
-    const product = isDbRow(data) ? mapAdminProductRow(data) : null;
-
-    if (product) {
-      const [enrichedProduct] = await enrichAdminProductsWithDeviceCompatibility(
-        client,
-        [product]
-      );
-      return enrichedProduct ?? product;
-    }
+  if (product) {
+    const [enrichedProduct] = await enrichAdminProductsWithDeviceCompatibility(
+      client,
+      [product]
+    );
+    return enrichedProduct ?? product;
   }
 
   return null;

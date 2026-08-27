@@ -19,6 +19,7 @@ import {
   supplierBatchChargeEstimateSchema,
   supplierBatchChargePreviewSchema,
 } from "../src/lib/partspro-supplier-batch-cost-input-schema.mjs";
+import { toPublicSkuCore } from "../src/lib/partspro-sku-core.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relativePath) => readFileSync(path.join(repoRoot, relativePath), "utf8");
@@ -32,6 +33,126 @@ const transportMigrationSource = read(
 const permissionMigrationSource = read(
   "supabase/migrations/20260825202034_revoke_supplier_batch_truncate_privileges.sql"
 );
+const supplierBatchProductsMigrationSource = read(
+  "supabase/migrations/20260827121835_admin_get_supplier_batch_products.sql"
+);
+const supplierBatchProductsStart = repositorySource.indexOf(
+  "async function readSupplierBatchProducts("
+);
+const supplierBatchProductsEnd = repositorySource.indexOf(
+  "\nasync function readSupplierBatchInventory(",
+  supplierBatchProductsStart
+);
+const supplierBatchProductsSource = repositorySource.slice(
+  supplierBatchProductsStart,
+  supplierBatchProductsEnd
+);
+const adminProductRowStart = repositorySource.indexOf(
+  "async function readAdminProductRow("
+);
+const adminProductRowEnd = repositorySource.indexOf(
+  "\nasync function readAdminProduct(",
+  adminProductRowStart
+);
+const adminProductRowSource = repositorySource.slice(adminProductRowStart, adminProductRowEnd);
+
+const supplierBatchLookupRpcChunkSize = 500;
+const supplierBatchLookupInputLimit = 1000;
+
+// This executable oracle deliberately uses the existing shared JS normalizer.
+// The SQL RPC mirrors this candidate order locally so the shared helper stays
+// untouched while the contract test still covers edge-case aliases.
+function referenceCatalogLookupCandidates(value) {
+  const trimmed = value.trim();
+  const publicSku = toPublicSkuCore(trimmed);
+  const candidates = [trimmed, trimmed.toUpperCase(), publicSku];
+
+  if (!/^MOBILAX[-_\s]/i.test(trimmed)) {
+    candidates.push(`MOBILAX-${publicSku}`);
+  }
+
+  return Array.from(new Set(candidates.filter(Boolean)));
+}
+
+function referenceSupplierBatchLookupKey(value) {
+  return toPublicSkuCore(value).toUpperCase();
+}
+
+function referenceDedupeLookupCodes(values) {
+  const codesByKey = new Map();
+
+  for (const value of values) {
+    const key = referenceSupplierBatchLookupKey(value);
+
+    if (key && !codesByKey.has(key)) {
+      codesByKey.set(key, value);
+    }
+  }
+
+  return Array.from(codesByKey.values());
+}
+
+function referenceValidateLookupCodes(values) {
+  if (!Array.isArray(values)) {
+    throw new Error("lookup codes must be an array");
+  }
+
+  if (values.length > supplierBatchLookupInputLimit) {
+    throw new Error("at most 1000 lookup codes");
+  }
+
+  for (const value of values) {
+    if (typeof value !== "string" || value.trim().length === 0) {
+      throw new Error("lookup codes must be non-empty");
+    }
+
+    if (value.trim().length > 128) {
+      throw new Error("lookup codes must be at most 128 characters");
+    }
+  }
+
+  return values.map((value) => value.trim());
+}
+
+function referenceMapSupplierBatchResponse(data, requestedCodes) {
+  if (!Array.isArray(data)) {
+    throw new Error("invalid response");
+  }
+
+  const requestedKeys = new Set(requestedCodes.map(referenceSupplierBatchLookupKey));
+  const returnedLookupKeys = new Set();
+  const productsBySku = new Map();
+
+  for (const row of data) {
+    if (!row || typeof row !== "object" || Array.isArray(row)) {
+      throw new Error("invalid row");
+    }
+
+    const lookupCode = typeof row.lookup_code === "string" ? row.lookup_code.trim() : "";
+    const skuCode = typeof row.sku_code === "string" ? row.sku_code.trim() : "";
+
+    if (!lookupCode || !skuCode) {
+      throw new Error("missing lookup or sku code");
+    }
+
+    const lookupKey = referenceSupplierBatchLookupKey(lookupCode);
+    const skuKey = referenceSupplierBatchLookupKey(skuCode);
+
+    if (!requestedKeys.has(lookupKey)) {
+      throw new Error("unexpected lookup code");
+    }
+
+    if (returnedLookupKeys.has(lookupKey)) {
+      throw new Error("duplicate lookup code");
+    }
+
+    returnedLookupKeys.add(lookupKey);
+    productsBySku.set(lookupKey, row);
+    productsBySku.set(skuKey, row);
+  }
+
+  return productsBySku;
+}
 
 const rpcBatchId = "11111111-1111-4111-8111-111111111111";
 const rpcLineId = "22222222-2222-4222-8222-222222222222";
@@ -378,6 +499,176 @@ test("backend contract keeps fee reads caller-scoped, paginated and RPC-only for
   assert.match(repositorySource, /\.range\(offset, offset \+ 999\)/);
   assert.match(repositorySource, /weight_gram/);
   assert.doesNotMatch(repositorySource, /createSupplierBatchLookupClient/);
+});
+
+test("supplier batch hydration uses the bounded permission-checked batch RPC", () => {
+  assert.ok(supplierBatchProductsStart >= 0);
+  assert.ok(supplierBatchProductsEnd > supplierBatchProductsStart);
+  assert.ok(adminProductRowStart >= 0);
+  assert.ok(adminProductRowEnd > adminProductRowStart);
+  assert.doesNotMatch(supplierBatchProductsSource, /\.from\(["']products["']\)/);
+  assert.doesNotMatch(supplierBatchProductsSource, /readMatchingRows/);
+  assert.match(supplierBatchProductsSource, /const lookupCodesByKey = new Map<string, string>\(\)/);
+  assert.match(supplierBatchProductsSource, /supplierBatchProductLookupRpcChunkSize/);
+  assert.match(
+    supplierBatchProductsSource,
+    /client\.rpc\("admin_get_supplier_batch_products", \{\s*p_sku_codes: chunk/s
+  );
+  assert.match(
+    supplierBatchProductsSource,
+    /const requestedKeys = new Set\(chunk\.map\(toSupplierBatchSkuKey\)\)/
+  );
+  assert.match(
+    supplierBatchProductsSource,
+    /ADMIN_SUPPLIER_BATCH_PRODUCTS_READ_UNAVAILABLE/
+  );
+  assert.match(
+    supplierBatchProductsSource,
+    /productsBySku\.set\(lookupKey, value\)/
+  );
+  assert.match(
+    supplierBatchProductsSource,
+    /productsBySku\.set\(skuKey, value\)/
+  );
+  assert.match(supplierBatchProductsSource, /missing_lookup_or_sku_code/);
+  assert.match(supplierBatchProductsSource, /unexpected_lookup_code/);
+  assert.match(supplierBatchProductsSource, /duplicate_lookup_code/);
+  assert.doesNotMatch(supplierBatchProductsSource, /readAdminProductRow\(client/);
+  assert.doesNotMatch(supplierBatchProductsSource, /supplierBatchProductLookupConcurrency/);
+  assert.match(adminProductRowSource, /catalogLookupCandidates\(sku\)/);
+  assert.match(adminProductRowSource, /client\.rpc\("admin_get_product"/);
+  assert.match(adminProductRowSource, /data === null \|\| data === undefined/);
+  assert.match(adminProductRowSource, /if \(!isDbRow\(data\)\)/);
+  assert.match(adminProductRowSource, /supabaseErrorDetails\(error\)/);
+
+  assert.match(
+    supplierBatchProductsMigrationSource,
+    /create or replace function private\.admin_get_supplier_batch_products\(\s*p_sku_codes text\[\]\s*\)/s
+  );
+  assert.match(supplierBatchProductsMigrationSource, /security definer/);
+  assert.match(supplierBatchProductsMigrationSource, /set search_path = ''/);
+  assert.match(
+    supplierBatchProductsMigrationSource,
+    /perform private\.partspro_assert_admin_product_read\(\)/
+  );
+  assert.match(supplierBatchProductsMigrationSource, /v_input_count > 1000/);
+  assert.match(
+    supplierBatchProductsMigrationSource,
+    /Supplier batch product lookup codes must be non-empty/
+  );
+  assert.match(
+    supplierBatchProductsMigrationSource,
+    /char_length\(btrim\(input\.code\)\) > 128/
+  );
+  assert.match(supplierBatchProductsMigrationSource, /normalized_requested as/);
+  assert.ok(
+    supplierBatchProductsMigrationSource.includes("'\\mMOBILAX\\M[[:space:]_-]*'")
+  );
+  assert.ok(supplierBatchProductsMigrationSource.includes("'[[:space:]]{2,}'"));
+  assert.doesNotMatch(supplierBatchProductsMigrationSource, /private\.partspro_admin_public_sku/);
+  assert.match(supplierBatchProductsMigrationSource, /MOBILAX/);
+  assert.match(
+    supplierBatchProductsMigrationSource,
+    /join public\.products as p on p\.sku_code = c\.value/
+  );
+  for (const field of [
+    "lookup_code",
+    "sku_code",
+    "cost_price",
+    "retail_price",
+    "b2b_price",
+    "weight_gram",
+    "stock_qty",
+    "stock_status",
+  ]) {
+    assert.match(supplierBatchProductsMigrationSource, new RegExp(`'${field}'`));
+  }
+  assert.match(
+    supplierBatchProductsMigrationSource,
+    /revoke all on function private\.admin_get_supplier_batch_products\(text\[\]\)\s+from public, anon, authenticated, service_role;/
+  );
+  assert.match(
+    supplierBatchProductsMigrationSource,
+    /grant execute on function private\.admin_get_supplier_batch_products\(text\[\]\)\s+to authenticated, service_role;/
+  );
+  assert.match(
+    supplierBatchProductsMigrationSource,
+    /revoke all on function public\.admin_get_supplier_batch_products\(text\[\]\)\s+from public, anon, authenticated, service_role;/
+  );
+  assert.match(
+    supplierBatchProductsMigrationSource,
+    /grant execute on function public\.admin_get_supplier_batch_products\(text\[\]\)\s+to authenticated, service_role;/
+  );
+  assert.doesNotMatch(supplierBatchProductsMigrationSource, /grant .* on table public\.products/);
+});
+
+test("supplier batch lookup candidates preserve priority and edge-case normalization", () => {
+  assert.deepEqual(referenceCatalogLookupCandidates("  abc   def  "), [
+    "abc   def",
+    "ABC   DEF",
+    "ABC DEF",
+    "MOBILAX-ABC DEF",
+  ]);
+  assert.equal(toPublicSkuCore("  abc   def  "), "ABC DEF");
+
+  assert.deepEqual(referenceCatalogLookupCandidates("MOBILAX   abc"), [
+    "MOBILAX   abc",
+    "MOBILAX   ABC",
+    "ABC",
+  ]);
+  assert.deepEqual(referenceCatalogLookupCandidates("MOBILAX.ABC"), [
+    "MOBILAX.ABC",
+    ".ABC",
+    "MOBILAX-.ABC",
+  ]);
+  assert.deepEqual(referenceCatalogLookupCandidates("MOBILAX+ABC"), [
+    "MOBILAX+ABC",
+    "+ABC",
+    "MOBILAX-+ABC",
+  ]);
+  assert.deepEqual(referenceCatalogLookupCandidates("MOBILAX_ABC"), [
+    "MOBILAX_ABC",
+  ]);
+});
+
+test("supplier batch lookup bounds, dedupe and response mapping fail closed", () => {
+  assert.deepEqual(
+    referenceDedupeLookupCodes(["ABC", "abc", "MOBILAX ABC", "EAN-1", "EAN-1"]),
+    ["ABC", "EAN-1"]
+  );
+  assert.equal(referenceValidateLookupCodes([]).length, 0);
+  assert.equal(referenceValidateLookupCodes(new Array(1000).fill("SKU")).length, 1000);
+  assert.throws(
+    () => referenceValidateLookupCodes(new Array(1001).fill("SKU")),
+    /at most 1000/
+  );
+  assert.throws(() => referenceValidateLookupCodes(["  "]), /non-empty/);
+  assert.throws(() => referenceValidateLookupCodes(["x".repeat(129)]), /at most 128/);
+
+  assert.equal(referenceMapSupplierBatchResponse([], ["ABC"]).size, 0);
+  assert.throws(() => referenceMapSupplierBatchResponse(null, ["ABC"]), /invalid response/);
+  assert.throws(() => referenceMapSupplierBatchResponse([{}], ["ABC"]), /missing/);
+  assert.throws(
+    () => referenceMapSupplierBatchResponse([{ lookup_code: "OTHER", sku_code: "SKU-1" }], ["ABC"]),
+    /unexpected/
+  );
+  assert.throws(
+    () =>
+      referenceMapSupplierBatchResponse(
+        [
+          { lookup_code: "ABC", sku_code: "SKU-1" },
+          { lookup_code: " abc ", sku_code: "SKU-1" },
+        ],
+        ["ABC"]
+      ),
+    /duplicate/
+  );
+
+  const product = { lookup_code: "EAN-1", sku_code: "SKU-1", cost_price: 4.2 };
+  const productsBySku = referenceMapSupplierBatchResponse([product], ["EAN-1"]);
+  assert.strictEqual(productsBySku.get("EAN-1"), product);
+  assert.strictEqual(productsBySku.get("SKU-1"), product);
+  assert.equal(Math.ceil(581 / supplierBatchLookupRpcChunkSize), 2);
 });
 
 test("routes and schemas freeze permission, strict numeric and stable RPC contracts", () => {
