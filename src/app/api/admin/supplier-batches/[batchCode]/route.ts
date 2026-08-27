@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { apiError } from "@/lib/partspro-api";
 import { getAdminSupplierBatchDetail } from "@/lib/partspro-repository";
 import { repositoryErrorResponse, requireAdminApi } from "../../_shared";
+import { toSupplierBatchDetailDto } from "../_dto";
 
 export const dynamic = "force-dynamic";
 
@@ -30,11 +31,13 @@ export async function GET(_request: NextRequest, { params }: SupplierBatchParams
       });
     }
 
+    const detail = toSupplierBatchDetailDto(result.data);
+
     return NextResponse.json({
-      data: result.data,
+      data: detail,
       meta: {
         source: result.source,
-        lineCount: result.data.lines.length,
+        lineCount: detail.lines.length,
       },
     });
   } catch (error) {

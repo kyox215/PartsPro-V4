@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { listAdminSupplierBatches } from "@/lib/partspro-repository";
 import { parseAdminQuery, repositoryErrorResponse, requireAdminApi } from "../_shared";
+import { toSupplierBatchRowDto } from "./_dto";
 
 export const dynamic = "force-dynamic";
 
@@ -35,7 +36,7 @@ export async function GET(request: NextRequest) {
     const result = await listAdminSupplierBatches(query.data);
 
     return NextResponse.json({
-      data: result.data.batches,
+      data: result.data.batches.map(toSupplierBatchRowDto),
       meta: {
         source: result.source,
         total: result.data.total,

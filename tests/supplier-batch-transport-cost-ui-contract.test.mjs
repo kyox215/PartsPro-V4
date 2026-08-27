@@ -103,6 +103,51 @@ const mutationResultBelongsToCurrent = loadSourceFunction(
   ["isSupplierBatchMutationResultForCurrent"],
   "isSupplierBatchMutationResultForCurrent"
 );
+const mutationReceiptPrefix = `
+const SUPPLIER_BATCH_MUTATION_RECEIPT_KEYS = [
+  "action",
+  "status",
+  "batchId",
+  "batchCode",
+  "chargeId",
+  "idempotencyKey",
+  "payloadFingerprint",
+];`;
+const isMutationReceipt = loadSourceFunction(
+  dialogSource,
+  ["isRecord", "hasExactKeys", "isNonEmptyReceiptString", "isSupplierBatchMutationReceipt"],
+  "isSupplierBatchMutationReceipt",
+  mutationReceiptPrefix
+);
+const isMutationReceiptForCurrent = loadSourceFunction(
+  dialogSource,
+  [
+    "isRecord",
+    "hasExactKeys",
+    "isNonEmptyReceiptString",
+    "isSupplierBatchMutationReceipt",
+    "isSupplierBatchMutationReceiptForCurrent",
+  ],
+  "isSupplierBatchMutationReceiptForCurrent",
+  mutationReceiptPrefix
+);
+const isMutationReceiptEnvelope = loadSourceFunction(
+  dialogSource,
+  [
+    "isRecord",
+    "hasExactKeys",
+    "isNonEmptyReceiptString",
+    "isSupplierBatchMutationReceipt",
+    "isSupplierBatchMutationReceiptEnvelope",
+  ],
+  "isSupplierBatchMutationReceiptEnvelope",
+  mutationReceiptPrefix
+);
+const extractCanonicalMutationReceipt = loadSourceFunction(
+  dialogSource,
+  ["isRecord", "isNonEmptyReceiptString", "extractSupplierBatchMutationReceiptFromCanonicalResult"],
+  "extractSupplierBatchMutationReceiptFromCanonicalResult"
+);
 const classifyMutationReadback = loadSourceFunction(
   dialogSource,
   ["classifySupplierBatchMutationReadback"],
@@ -476,6 +521,285 @@ test("mutation guards require a current preview and matching persisted identity"
   assert.equal(canConfirmCharge(true, "recoverable", true), false);
 });
 
+test("persisted mutation receipts are exact and bind to the original draft", () => {
+  const batchId = "11111111-1111-4111-8111-111111111111";
+  const otherBatchId = "22222222-2222-4222-8222-222222222222";
+  const batchCode = "BATCH-UI";
+  const chargeId = "44444444-4444-4444-8444-444444444444";
+  const otherChargeId = "55555555-5555-4555-8555-555555555555";
+  const idempotencyKey = "idempotency-1";
+  const payloadFingerprint = "fingerprint-1";
+  const estimateReceipt = {
+    action: "estimate",
+    status: "estimated",
+    batchId,
+    batchCode,
+    chargeId,
+    idempotencyKey,
+    payloadFingerprint,
+  };
+  const confirmReceipt = { ...estimateReceipt, action: "confirm", status: "confirmed" };
+  const estimateEnvelope = {
+    outcome: "persisted_readback_required",
+    receipt: estimateReceipt,
+  };
+  const confirmEnvelope = {
+    outcome: "persisted_readback_required",
+    receipt: confirmReceipt,
+  };
+
+  assert.equal(isMutationReceipt(estimateReceipt), true);
+  assert.equal(isMutationReceipt(confirmReceipt), true);
+  assert.equal(isMutationReceiptEnvelope(estimateEnvelope), true);
+  assert.equal(isMutationReceiptEnvelope(confirmEnvelope), true);
+  assert.equal(isMutationReceiptEnvelope({ ...estimateEnvelope, extra: true }), false);
+  assert.equal(isMutationReceiptEnvelope({ outcome: estimateEnvelope.outcome }), false);
+  assert.equal(isMutationReceiptEnvelope({ ...estimateEnvelope, outcome: "success" }), false);
+  assert.equal(isMutationReceiptEnvelope({ ...estimateEnvelope, receipt: { ...estimateReceipt, extra: true } }), false);
+  assert.equal(isMutationReceipt({ ...estimateReceipt, extra: true }), false);
+  for (const field of [
+    "action",
+    "status",
+    "batchId",
+    "batchCode",
+    "chargeId",
+    "idempotencyKey",
+    "payloadFingerprint",
+  ]) {
+    const missing = { ...estimateReceipt };
+    delete missing[field];
+    assert.equal(isMutationReceipt(missing), false, `missing ${field}`);
+  }
+  assert.equal(isMutationReceipt({ ...estimateReceipt, action: "save" }), false);
+  assert.equal(isMutationReceipt({ ...estimateReceipt, status: "preview" }), false);
+  assert.equal(isMutationReceipt({ ...estimateReceipt, chargeId: "" }), false);
+
+  assert.equal(
+    isMutationReceiptForCurrent(
+      estimateReceipt,
+      "estimate",
+      batchId,
+      batchCode,
+      idempotencyKey,
+      payloadFingerprint,
+      null
+    ),
+    true
+  );
+  assert.equal(
+    isMutationReceiptForCurrent(
+      confirmReceipt,
+      "confirm",
+      batchId,
+      batchCode,
+      idempotencyKey,
+      payloadFingerprint,
+      chargeId
+    ),
+    true
+  );
+  assert.equal(
+    isMutationReceiptForCurrent(
+      { ...estimateReceipt, action: "confirm", status: "confirmed" },
+      "estimate",
+      batchId,
+      batchCode,
+      idempotencyKey,
+      payloadFingerprint,
+      null
+    ),
+    false,
+    "action/status mismatch"
+  );
+
+  const mismatches = [
+    ["batchId", { ...estimateReceipt, batchId: otherBatchId }],
+    ["batchCode", { ...estimateReceipt, batchCode: "OTHER" }],
+    ["idempotencyKey", { ...estimateReceipt, idempotencyKey: "other-key" }],
+    ["payloadFingerprint", { ...estimateReceipt, payloadFingerprint: "other-fingerprint" }],
+    ["chargeId", { ...estimateReceipt, chargeId: otherChargeId }],
+  ];
+  for (const [field, candidate] of mismatches) {
+    assert.equal(
+      isMutationReceiptForCurrent(
+        candidate,
+        "estimate",
+        batchId,
+        batchCode,
+        idempotencyKey,
+        payloadFingerprint,
+        chargeId
+      ),
+      false,
+      `${field} mismatch`
+    );
+  }
+  assert.equal(
+    isMutationReceiptForCurrent(
+      { ...confirmReceipt, chargeId: otherChargeId },
+      "confirm",
+      batchId,
+      batchCode,
+      idempotencyKey,
+      payloadFingerprint,
+      chargeId
+    ),
+    false,
+    "confirm chargeId mismatch"
+  );
+  assert.equal(
+    isMutationReceiptForCurrent(
+      { ...confirmReceipt, status: "estimated" },
+      "confirm",
+      batchId,
+      batchCode,
+      idempotencyKey,
+      payloadFingerprint,
+      chargeId
+    ),
+    false,
+    "confirm expected status mismatch"
+  );
+});
+
+test("canonical persisted estimate and confirm results adapt by identity only", () => {
+  const batchId = "11111111-1111-4111-8111-111111111111";
+  const batchCode = "BATCH-UI";
+  const chargeId = "44444444-4444-4444-8444-444444444444";
+  const idempotencyKey = "idempotency-1";
+  const payloadFingerprint = "fingerprint-1";
+
+  const canonical = (action, chargeIdentity = "chargeId") => {
+    const status = action === "confirm" ? "confirmed" : "estimated";
+    const charge = {
+      batchId,
+      batchCode,
+      status,
+      idempotencyKey,
+      payloadFingerprint,
+      amountNetCents: "not-a-money-value",
+      amountGrossCents: -1,
+      ...(chargeIdentity === "id" ? { id: chargeId } : { chargeId }),
+    };
+    return {
+      status,
+      batchId,
+      batchCode,
+      charge,
+      revision: "revision-1",
+      currency: "EUR",
+      amountNetCents: "ignored",
+      amountGrossCents: "ignored",
+      candidateAllocationTotalCents: "ignored",
+      lineProjections: "ignored",
+    };
+  };
+
+  const estimate = extractCanonicalMutationReceipt(canonical("estimate"), "estimate");
+  const confirm = extractCanonicalMutationReceipt(canonical("confirm", "id"), "confirm");
+  const minimalConfirm = extractCanonicalMutationReceipt(
+    {
+      status: "confirmed",
+      batchId,
+      batchCode,
+      charge: { id: chargeId, idempotencyKey, payloadFingerprint },
+    },
+    "confirm"
+  );
+  assert.deepEqual(JSON.parse(JSON.stringify(estimate)), {
+    action: "estimate",
+    status: "estimated",
+    batchId,
+    batchCode,
+    chargeId,
+    idempotencyKey,
+    payloadFingerprint,
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(confirm)), {
+    action: "confirm",
+    status: "confirmed",
+    batchId,
+    batchCode,
+    chargeId,
+    idempotencyKey,
+    payloadFingerprint,
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(minimalConfirm)), {
+    action: "confirm",
+    status: "confirmed",
+    batchId,
+    batchCode,
+    chargeId,
+    idempotencyKey,
+    payloadFingerprint,
+  });
+  assert.equal(
+    isMutationReceiptForCurrent(
+      estimate,
+      "estimate",
+      batchId,
+      batchCode,
+      idempotencyKey,
+      payloadFingerprint,
+      null
+    ),
+    true
+  );
+  assert.equal(
+    isMutationReceiptForCurrent(
+      confirm,
+      "confirm",
+      batchId,
+      batchCode,
+      idempotencyKey,
+      payloadFingerprint,
+      chargeId
+    ),
+    true
+  );
+
+  assert.equal(extractCanonicalMutationReceipt(canonical("estimate"), "confirm"), null);
+  assert.equal(extractCanonicalMutationReceipt({ ...canonical("estimate"), batchId: undefined }, "estimate"), null);
+  assert.equal(extractCanonicalMutationReceipt({ ...canonical("estimate"), batchCode: undefined }, "estimate"), null);
+  assert.equal(extractCanonicalMutationReceipt({ ...canonical("estimate"), status: "confirmed" }, "estimate"), null);
+  assert.equal(extractCanonicalMutationReceipt({ ...canonical("estimate"), charge: null }, "estimate"), null);
+  assert.equal(
+    extractCanonicalMutationReceipt(
+      { ...canonical("estimate"), charge: { ...canonical("estimate").charge, batchCode: "OTHER" } },
+      "estimate"
+    ),
+    null
+  );
+  assert.equal(
+    extractCanonicalMutationReceipt(
+      { ...canonical("estimate"), charge: { ...canonical("estimate").charge, status: "confirmed" } },
+      "estimate"
+    ),
+    null
+  );
+  assert.equal(
+    extractCanonicalMutationReceipt(
+      { ...canonical("estimate"), charge: { ...canonical("estimate").charge, idempotencyKey: "" } },
+      "estimate"
+    ),
+    null
+  );
+  assert.equal(
+    extractCanonicalMutationReceipt(
+      { ...canonical("estimate"), charge: { ...canonical("estimate").charge, payloadFingerprint: undefined } },
+      "estimate"
+    ),
+    null
+  );
+  assert.equal(
+    extractCanonicalMutationReceipt(
+      { ...canonical("estimate"), charge: { ...canonical("estimate").charge, chargeId: "", id: chargeId } },
+      "estimate"
+    ),
+    null
+  );
+});
+
 test("mutation error and readback helpers fail closed on uncertain writes and mismatches", () => {
   assert.equal(classifyMutationError(500, "ADMIN_SUPPLIER_BATCH_COST_CONFIRM_UNAVAILABLE"), "unknown_write");
   assert.equal(classifyMutationError(502, null), "unknown_write");
@@ -664,6 +988,13 @@ test("dialog B2 contract gates mutations on current preview and server readback"
   assert.match(dialogSource, /charges\/estimate/);
   assert.match(dialogSource, /charges\/confirm/);
   assert.match(dialogSource, /normalizeSupplierBatchCostRpcResult\(data\)/);
+  assert.match(dialogSource, /isSupplierBatchMutationReceiptEnvelope\(data\)/);
+  assert.match(dialogSource, /data\.outcome === "persisted_readback_required"/);
+  assert.match(dialogSource, /extractSupplierBatchMutationReceiptFromCanonicalResult\(data, action\)/);
+  assert.match(dialogSource, /looksLikeSupplierBatchCanonicalMutationResult\(data\)/);
+  assert.match(dialogSource, /kind: "invalid_receipt"/);
+  assert.match(dialogSource, /isSupplierBatchMutationReceiptForCurrent/);
+  assert.match(dialogSource, /readbackChargeId/);
   assert.match(dialogSource, /result\.batchId !== detail\.batch\.id/);
   assert.match(dialogSource, /result\.batchCode !== detail\.batch\.batchCode/);
   assert.match(dialogSource, /result\.status !== "preview"/);
@@ -686,7 +1017,7 @@ test("dialog B2 contract gates mutations on current preview and server readback"
   assert.match(dialogSource, /shouldInvalidateSupplierBatchPreviewForMutationError/);
   assert.match(dialogSource, /ADMIN_SUPPLIER_BATCH_COST_RPC_INVALID_RESPONSE/);
   assert.match(dialogSource, /result\.payloadFingerprint !== payloadFingerprint/);
-  assert.match(dialogSource, /setPersistedKnownSuccess\(mutationContext\);[\s\S]{0,180}setPending\("refresh"\)/);
+  assert.match(dialogSource, /setPersistedKnownSuccess\(persistedContext\);[\s\S]{0,180}setPending\("refresh"\)/);
   assert.match(dialogSource, /if \(mutationActiveRef\.current \|\| persistedKnownSuccess !== null \|\| uncertainMutation !== null\) \{\s*return;/);
   assert.match(dialogSource, /READBACK_IDEMPOTENCY_CONFLICT/);
   assert.match(dialogSource, /READBACK_NOT_FOUND/);
@@ -721,6 +1052,22 @@ test("dialog B2 contract gates mutations on current preview and server readback"
   assert.match(dialogSource, /runMutation\("estimate"\)/);
   assert.match(dialogSource, /runMutation\("confirm"\)/);
   assert.match(dialogSource, /if \(openRef\.current\) onOpenChange\(false\)/);
+  assert.match(dialogSource, /if \(mutationResponse\.kind === "receipt"\)/);
+  assert.match(dialogSource, /mutationResponse\.receipt\.chargeId/);
+  const postMutationParser = dialogSource.slice(
+    dialogSource.indexOf("async function postMutation"),
+    dialogSource.indexOf("  type SupplierBatchReadbackFailure")
+  );
+  assert.ok(
+    postMutationParser.indexOf("extractSupplierBatchMutationReceiptFromCanonicalResult(data, action)") <
+      postMutationParser.indexOf("normalizeSupplierBatchCostRpcResult(data)"),
+    "canonical identity adapter must run before the full result normalizer"
+  );
+  const canonicalAdapter = dialogSource.slice(
+    dialogSource.indexOf("export function extractSupplierBatchMutationReceiptFromCanonicalResult"),
+    dialogSource.indexOf("function looksLikeSupplierBatchCanonicalMutationResult")
+  );
+  assert.doesNotMatch(canonicalAdapter, /Cents/);
   const mutationFunction = dialogSource.slice(
     dialogSource.indexOf("async function runMutation"),
     dialogSource.indexOf("async function retryRefresh")
@@ -731,11 +1078,20 @@ test("dialog B2 contract gates mutations on current preview and server readback"
     dialogSource.indexOf("// The mutation response is authoritative enough"),
     dialogSource.indexOf("    } catch (cause) {", dialogSource.indexOf("// The mutation response is authoritative enough"))
   );
-  assert.match(knownSuccessReadback, /setPersistedKnownSuccess\(mutationContext\)/);
+  assert.match(knownSuccessReadback, /setPersistedKnownSuccess\(persistedContext\)/);
   assert.match(knownSuccessReadback, /readback\.outcome === "matched"[\s\S]{0,220}reset\(\)/);
   assert.match(knownSuccessReadback, /READBACK_IDEMPOTENCY_CONFLICT/);
   assert.match(knownSuccessReadback, /READBACK_NOT_FOUND/);
   assert.doesNotMatch(knownSuccessReadback, /setUncertainMutation/);
+
+  const receiptReadback = dialogSource.slice(
+    dialogSource.indexOf('if (mutationResponse.kind === "receipt")'),
+    dialogSource.indexOf("      // The mutation response is authoritative enough")
+  );
+  assert.match(receiptReadback, /isSupplierBatchMutationReceiptForCurrent/);
+  assert.match(receiptReadback, /readbackChargeId: mutationResponse\.receipt\.chargeId/);
+  assert.doesNotMatch(receiptReadback, /postMutation\(/);
+  assert.doesNotMatch(receiptReadback, /runMutation\(/);
 
   const readbackFunction = dialogSource.slice(
     dialogSource.indexOf("async function verifyMutationReadback"),
@@ -752,6 +1108,12 @@ test("dialog B2 contract gates mutations on current preview and server readback"
   assert.match(refreshRetryFunction, /readback\.outcome === "matched"[\s\S]{0,180}reset\(\)/);
   assert.doesNotMatch(refreshRetryFunction, /postMutation\(/);
   assert.doesNotMatch(refreshRetryFunction, /runMutation\(/);
+  assert.match(refreshRetryFunction, /READBACK_IDEMPOTENCY_CONFLICT/);
+  assert.match(refreshRetryFunction, /READBACK_INVALID/);
+  assert.match(refreshRetryFunction, /READBACK_NOT_FOUND/);
+  assert.doesNotMatch(refreshRetryFunction, /setUncertainMutation/);
+  assert.match(dialogSource, /persistedKnownSuccess !== null \|\| uncertainMutation !== null/);
+  assert.match(dialogSource, /if \(!nextOpen && \(mutationActiveRef\.current \|\| mutationPending \|\| persistedKnownSuccess !== null \|\| uncertainMutation !== null\)\)/);
   assert.match(dialogSource, /ADMIN_FORBIDDEN/);
   for (const code of [
     "STALE_REVISION",

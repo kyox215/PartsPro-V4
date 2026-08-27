@@ -887,12 +887,32 @@ type SupplierBatchCostApiError = {
 
 type SupplierBatchMutationAction = "estimate" | "confirm";
 type SupplierBatchPendingAction = "preview" | SupplierBatchMutationAction | "refresh" | null;
+export type SupplierBatchMutationReceipt = {
+  action: SupplierBatchMutationAction;
+  status: "estimated" | "confirmed";
+  batchId: string;
+  batchCode: string;
+  chargeId: string;
+  idempotencyKey: string;
+  payloadFingerprint: string;
+};
 type SupplierBatchMutationContext = {
   action: SupplierBatchMutationAction;
   chargeId: string | null;
   idempotencyKey: string;
   payloadFingerprint: string;
   snapshotKey: string;
+  /** A receipt can identify a newly-created charge when the draft had no chargeId yet. */
+  readbackChargeId?: string;
+};
+
+type SupplierBatchMutationResponse =
+  | { kind: "result"; result: SupplierBatchCostRpcResult }
+  | { kind: "receipt"; receipt: SupplierBatchMutationReceipt }
+  | { kind: "invalid_receipt" };
+type SupplierBatchMutationReceiptEnvelope = {
+  outcome: "persisted_readback_required";
+  receipt: SupplierBatchMutationReceipt;
 };
 
 function readApiErrorCode(payload: unknown): string | null {
@@ -902,6 +922,163 @@ function readApiErrorCode(payload: unknown): string | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const SUPPLIER_BATCH_MUTATION_RECEIPT_KEYS = [
+  "action",
+  "status",
+  "batchId",
+  "batchCode",
+  "chargeId",
+  "idempotencyKey",
+  "payloadFingerprint",
+] as const;
+
+function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  const actualKeys = Object.keys(value);
+  return actualKeys.length === keys.length && keys.every((key) => Object.hasOwn(value, key));
+}
+
+function isNonEmptyReceiptString(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+/**
+ * Recognise the intentionally small persisted-write receipt envelope. Exact
+ * keys make malformed or future-expanded envelopes fail closed before the
+ * normal RPC result parser can interpret them as a success.
+ */
+export function isSupplierBatchMutationReceipt(
+  value: unknown
+): value is SupplierBatchMutationReceipt {
+  if (!isRecord(value) || !hasExactKeys(value, SUPPLIER_BATCH_MUTATION_RECEIPT_KEYS)) {
+    return false;
+  }
+
+  return (
+    (value.action === "estimate" || value.action === "confirm") &&
+    (value.status === "estimated" || value.status === "confirmed") &&
+    isNonEmptyReceiptString(value.batchId) &&
+    isNonEmptyReceiptString(value.batchCode) &&
+    isNonEmptyReceiptString(value.chargeId) &&
+    isNonEmptyReceiptString(value.idempotencyKey) &&
+    isNonEmptyReceiptString(value.payloadFingerprint)
+  );
+}
+
+export function isSupplierBatchMutationReceiptEnvelope(
+  value: unknown
+): value is SupplierBatchMutationReceiptEnvelope {
+  if (!isRecord(value) || !hasExactKeys(value, ["outcome", "receipt"])) {
+    return false;
+  }
+  return value.outcome === "persisted_readback_required" && isSupplierBatchMutationReceipt(value.receipt);
+}
+
+/**
+ * Extract the identity-only receipt from the repository's canonical persisted
+ * RPC result. The result also contains internal monetary fields, but this
+ * adapter deliberately never reads or converts any of them.
+ */
+export function extractSupplierBatchMutationReceiptFromCanonicalResult(
+  value: unknown,
+  action: SupplierBatchMutationAction
+): SupplierBatchMutationReceipt | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const expectedStatus = action === "confirm" ? "confirmed" : "estimated";
+  if (
+    value.status !== expectedStatus ||
+    !isNonEmptyReceiptString(value.batchId) ||
+    !isNonEmptyReceiptString(value.batchCode) ||
+    !isRecord(value.charge) ||
+    (value.charge.status !== undefined && value.charge.status !== expectedStatus) ||
+    (value.charge.batchId !== undefined && value.charge.batchId !== value.batchId) ||
+    (value.charge.batchCode !== undefined && value.charge.batchCode !== value.batchCode)
+  ) {
+    return null;
+  }
+
+  const chargeId = value.charge.chargeId;
+  const legacyChargeId = value.charge.id;
+  if (
+    (chargeId !== undefined && !isNonEmptyReceiptString(chargeId)) ||
+    (legacyChargeId !== undefined && !isNonEmptyReceiptString(legacyChargeId)) ||
+    (chargeId !== undefined && legacyChargeId !== undefined && chargeId !== legacyChargeId)
+  ) {
+    return null;
+  }
+
+  const resolvedChargeId = isNonEmptyReceiptString(chargeId)
+    ? chargeId
+    : isNonEmptyReceiptString(legacyChargeId)
+      ? legacyChargeId
+      : null;
+  const idempotencyKey = value.charge.idempotencyKey;
+  const payloadFingerprint = value.charge.payloadFingerprint;
+  if (
+    resolvedChargeId === null ||
+    !isNonEmptyReceiptString(idempotencyKey) ||
+    !isNonEmptyReceiptString(payloadFingerprint)
+  ) {
+    return null;
+  }
+
+  return {
+    action,
+    status: expectedStatus,
+    batchId: value.batchId,
+    batchCode: value.batchCode,
+    chargeId: resolvedChargeId,
+    idempotencyKey,
+    payloadFingerprint,
+  };
+}
+
+function looksLikeSupplierBatchCanonicalMutationResult(value: unknown): boolean {
+  if (!isRecord(value) || (value.status !== "estimated" && value.status !== "confirmed")) {
+    return false;
+  }
+
+  // Presence checks only distinguish a persisted result from a preview; no
+  // monetary value is read. A malformed candidate must not fall through to
+  // the full DTO normalizer and accidentally become a write success.
+  return (
+    Object.hasOwn(value, "charge") ||
+    Object.hasOwn(value, "lineProjections")
+  );
+}
+
+/**
+ * Match a receipt to the exact draft that produced the POST. A create draft
+ * has no chargeId before persistence, so its server-generated chargeId is
+ * accepted; edits and confirmations for an existing charge must match it.
+ */
+export function isSupplierBatchMutationReceiptForCurrent(
+  receipt: unknown,
+  action: SupplierBatchMutationAction,
+  batchId: string,
+  batchCode: string,
+  idempotencyKey: string,
+  payloadFingerprint: string,
+  chargeId: string | null
+): receipt is SupplierBatchMutationReceipt {
+  if (!isSupplierBatchMutationReceipt(receipt)) {
+    return false;
+  }
+
+  const expectedStatus = action === "confirm" ? "confirmed" : "estimated";
+  return (
+    receipt.action === action &&
+    receipt.status === expectedStatus &&
+    receipt.batchId === batchId &&
+    receipt.batchCode === batchCode &&
+    receipt.idempotencyKey === idempotencyKey &&
+    receipt.payloadFingerprint === payloadFingerprint &&
+    (chargeId === null || receipt.chargeId === chargeId)
+  );
 }
 
 function fieldErrorText(code: string | undefined, text: CostCopy): string | null {
@@ -1132,7 +1309,7 @@ export function SupplierBatchTransportCostDialog({
     action: SupplierBatchMutationAction,
     payload: Record<string, unknown>,
     signal: AbortSignal
-  ): Promise<SupplierBatchCostRpcResult> {
+  ): Promise<SupplierBatchMutationResponse> {
     const endpoint = action === "estimate"
       ? `/api/admin/supplier-batches/${encodeURIComponent(detail.batch.batchCode)}/charges/estimate`
       : `/api/admin/supplier-batches/${encodeURIComponent(detail.batch.batchCode)}/charges/confirm`;
@@ -1163,6 +1340,22 @@ export function SupplierBatchTransportCostDialog({
       } satisfies SupplierBatchCostApiError;
     }
     const data = isRecord(body) && "data" in body ? body.data : null;
+    // A successful write may return only a persistence receipt when the
+    // server cannot safely expose its full mutation DTO. Recognise that
+    // envelope before the full result normalizer; malformed receipts must
+    // remain an unknown-write outcome and must never be treated as success.
+    if (isRecord(data) && data.outcome === "persisted_readback_required") {
+      return isSupplierBatchMutationReceiptEnvelope(data)
+        ? { kind: "receipt", receipt: data.receipt }
+        : { kind: "invalid_receipt" };
+    }
+    const canonicalReceipt = extractSupplierBatchMutationReceiptFromCanonicalResult(data, action);
+    if (canonicalReceipt !== null) {
+      return { kind: "receipt", receipt: canonicalReceipt };
+    }
+    if (looksLikeSupplierBatchCanonicalMutationResult(data)) {
+      return { kind: "invalid_receipt" };
+    }
     let result: SupplierBatchCostRpcResult | null = null;
     try {
       result = normalizeSupplierBatchCostRpcResult(data);
@@ -1172,7 +1365,7 @@ export function SupplierBatchTransportCostDialog({
     if (!result) {
       throw { code: "INVALID_RESPONSE", status: response.status, unknownWrite: true } satisfies SupplierBatchCostApiError;
     }
-    return result;
+    return { kind: "result", result };
   }
 
   type SupplierBatchReadbackFailure = {
@@ -1206,7 +1399,7 @@ export function SupplierBatchTransportCostDialog({
           detail.batch.batchCode,
           context.idempotencyKey,
           context.payloadFingerprint,
-          context.chargeId
+          context.readbackChargeId ?? context.chargeId
         ),
       };
     } catch (cause) {
@@ -1370,10 +1563,36 @@ export function SupplierBatchTransportCostDialog({
     }, 25_000);
 
     try {
-      const result = await postMutation(action, parsed.data, controller.signal);
+      const mutationResponse = await postMutation(action, parsed.data, controller.signal);
       if (requestId !== mutationRequestIdRef.current) return;
-      if (!isSupplierBatchMutationResultForCurrent(
-        result,
+
+      if (mutationResponse.kind === "invalid_receipt") {
+        throw { code: "INVALID_RESPONSE", status: 200, unknownWrite: true } satisfies SupplierBatchCostApiError;
+      }
+
+      let persistedContext = mutationContext;
+      if (mutationResponse.kind === "receipt") {
+        if (!isSupplierBatchMutationReceiptForCurrent(
+          mutationResponse.receipt,
+          action,
+          detail.batch.id,
+          detail.batch.batchCode,
+          idempotencyKey,
+          currentPreview.result.payloadFingerprint,
+          chargeId
+        )) {
+          throw { code: "INVALID_RESPONSE", status: 200, unknownWrite: true } satisfies SupplierBatchCostApiError;
+        }
+        // Preserve the original draft snapshot/key while using the server
+        // charge identity to make the subsequent GET readback exact. This
+        // is especially important for a create estimate, where chargeId was
+        // null before the server persisted the charge.
+        persistedContext = {
+          ...mutationContext,
+          readbackChargeId: mutationResponse.receipt.chargeId,
+        };
+      } else if (!isSupplierBatchMutationResultForCurrent(
+        mutationResponse.result,
         action === "confirm" ? "confirmed" : "estimated",
         detail.batch.id,
         detail.batch.batchCode,
@@ -1387,11 +1606,11 @@ export function SupplierBatchTransportCostDialog({
       // The mutation response is authoritative enough to enter the
       // persisted-known-success state, but only the server detail readback
       // may close the dialog or clear this draft context.
-      setPersistedKnownSuccess(mutationContext);
+      setPersistedKnownSuccess(persistedContext);
       setPending("refresh");
       try {
         if (mutationAbortRef.current === controller) mutationAbortRef.current = null;
-        const readback = await performMutationReadback(requestId, mutationContext);
+        const readback = await performMutationReadback(requestId, persistedContext);
         if (requestId !== mutationRequestIdRef.current) return;
         if (readback.outcome === "matched") {
           mutationActiveRef.current = false;
@@ -1400,16 +1619,16 @@ export function SupplierBatchTransportCostDialog({
           return;
         }
         if (readback.outcome === "idempotency_conflict") {
-          setPersistedKnownSuccess(mutationContext);
+          setPersistedKnownSuccess(persistedContext);
           setErrorCode("READBACK_IDEMPOTENCY_CONFLICT");
           return;
         }
         if (requestId === mutationRequestIdRef.current) {
           if (readback.outcome === "invalid") {
-            setPersistedKnownSuccess(mutationContext);
+            setPersistedKnownSuccess(persistedContext);
             setErrorCode("READBACK_INVALID");
           } else {
-            setPersistedKnownSuccess(mutationContext);
+            setPersistedKnownSuccess(persistedContext);
             setErrorCode("READBACK_NOT_FOUND");
           }
         }
@@ -1417,7 +1636,7 @@ export function SupplierBatchTransportCostDialog({
       } catch (cause) {
         if (requestId === mutationRequestIdRef.current) {
           const failure = cause as SupplierBatchReadbackFailure;
-          setPersistedKnownSuccess(mutationContext);
+          setPersistedKnownSuccess(persistedContext);
           setErrorCode(failure.timedOut ? "REFRESH_TIMEOUT" : "REFRESH_FAILED");
         }
         return;

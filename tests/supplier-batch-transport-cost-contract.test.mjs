@@ -26,6 +26,19 @@ const read = (relativePath) => readFileSync(path.join(repoRoot, relativePath), "
 const repositorySource = read("src/lib/partspro-repository.ts");
 const filesSource = read("src/lib/partspro-supplier-batch-files.ts");
 const clientSchemaSource = read("src/lib/partspro-supplier-batch-cost-input-schema.mjs");
+const supplierBatchListRouteSource = read("src/app/api/admin/supplier-batches/route.ts");
+const supplierBatchDetailRouteSource = read(
+  "src/app/api/admin/supplier-batches/[batchCode]/route.ts"
+);
+const supplierBatchPreviewRouteSource = read(
+  "src/app/api/admin/supplier-batches/[batchCode]/charges/preview/route.ts"
+);
+const supplierBatchEstimateRouteSource = read(
+  "src/app/api/admin/supplier-batches/[batchCode]/charges/estimate/route.ts"
+);
+const supplierBatchConfirmRouteSource = read(
+  "src/app/api/admin/supplier-batches/[batchCode]/charges/confirm/route.ts"
+);
 const exportRouteSource = read("src/app/api/admin/supplier-batches/export/route.ts");
 const transportMigrationSource = read(
   "supabase/migrations/20260825202035_supplier_batch_transport_costs.sql"
@@ -688,6 +701,38 @@ test("routes and schemas freeze permission, strict numeric and stable RPC contra
   assert.match(clientSchemaSource, /\.max\(500\)/);
   assert.match(clientSchemaSource, /capitalizedAmount/);
   assert.match(clientSchemaSource, /unknown/);
+});
+
+test("supplier batch transport routes keep DTO reads separate from raw mutation acknowledgements", () => {
+  assert.match(supplierBatchListRouteSource, /toSupplierBatchRowDto/);
+  assert.match(supplierBatchListRouteSource, /batches\.map\(toSupplierBatchRowDto\)/);
+  assert.match(supplierBatchDetailRouteSource, /toSupplierBatchDetailDto/);
+  assert.match(supplierBatchDetailRouteSource, /data: detail/);
+
+  assert.match(supplierBatchPreviewRouteSource, /assertSupplierBatchCostRpcRequestContext/);
+  assert.match(supplierBatchPreviewRouteSource, /toSupplierBatchCostRpcResultDto/);
+  assert.match(
+    supplierBatchPreviewRouteSource,
+    /requestContext[\s\S]{0,600}previewAdminSupplierBatchCharge\(decodedBatchCode/
+  );
+  assert.match(supplierBatchPreviewRouteSource, /data,\s*meta: \{ source: result\.source \}/);
+
+  for (const [name, source, repositoryFunction] of [
+    ["estimate", supplierBatchEstimateRouteSource, "saveAdminSupplierBatchChargeEstimate"],
+    ["confirm", supplierBatchConfirmRouteSource, "confirmAdminSupplierBatchCharge"],
+  ]) {
+    assert.doesNotMatch(source, /_dto/);
+    assert.doesNotMatch(source, /toSupplierBatchCostRpc/);
+    assert.match(source, /data: result\.data/);
+    assert.equal(
+      (source.match(new RegExp(`${repositoryFunction}\\(`, "g")) ?? []).length,
+      1,
+      `${name} must invoke its mutation repository exactly once`
+    );
+    assert.doesNotMatch(source, /occurredAt/);
+  }
+
+  assert.doesNotMatch(exportRouteSource, /supplier-batches\/_dto|toSupplierBatch.*Dto/);
 });
 
 test("transport migrations preserve P1 ordering and relation-qualified trigger guards", () => {
