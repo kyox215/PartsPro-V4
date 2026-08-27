@@ -177,3 +177,13 @@ git diff --check
 本轮 fresh connector preflight（2026-08-27）仅作生产只读证据：ACL 双证据、RLS/policy、目标对象与冲突、finance 结构、回填模拟、表规模/锁/长事务和 advisors 均已核对如上；未执行任何 DDL/DML、revoke、migration、repair 或部署。connector 证据不能替代 CLI auth、migration list --linked 或 db push --linked --dry-run，任务保持 in_progress，apply 仍为 NO-GO。
 
 已确认生产项目中存在表级权限 P1：`public.supplier_batches` 对 anon/authenticated/service_role 直接授予 TRUNCATE，`public.finance_cost_layers` 对 authenticated/service_role 直接授予 TRUNCATE；两表均为现存对象，relacl 非 NULL，RLS 不保护 TRUNCATE。2026-08-27 已按 CLI 生成本地权限修复草案 `20260825202034_revoke_supplier_batch_truncate_privileges.sql`，只包含目标 anon/authenticated revoke；尚未执行任何远端 revoke、权限 migration apply、远端写入或部署，任务保持 `in_progress` 并位于 `urgent`。该 P1 migration 必须排在 `20260825202035_supplier_batch_transport_costs.sql` 之前；重排后仍需业务/平台负责人确认最小权限处置，再按 Supabase migration 安全门重新进行只读 history/dry-run 与另行批准的 apply。
+
+## 当前 CLI linked dry-run 证据（2026-08-27）
+
+- 持久 Supabase CLI 登录已成功；凭据仅保存在 CLI 用户级存储，未写入仓库、`.env` 或任务卡，也未回显或复制任何 secret。关闭初始 shell 后，在未设置 `SUPABASE_ACCESS_TOKEN` 的新 shell 中完成非敏感认证状态确认。
+- linked target 精确为 `yiuxrjqexlfjtxxrkqvi` / `PartsPro-V4`。
+- `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase migration list --linked` exit 0；remote-only=0；local-only 仅两份，顺序为 `20260825202034_revoke_supplier_batch_truncate_privileges` → `20260825202035_supplier_batch_transport_costs`。
+- `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db push --linked --dry-run` exit 0；dry-run 仅列出上述两份 migration，顺序相同；未执行非 dry-run、apply、repair、push 或 deploy。
+- 当前 migration 技术门为 `GO`；apply 门状态为“技术门GO，等待Owner独立批准”。本证据不表示生产已修复；权限 revoke 与运输 migration 尚未应用，P1 的应用后权限回归仍待 Owner 批准后执行。
+- 本次仅补充任务卡证据；源码、依赖、配置、目标 SQL 和测试未变化，既有定向测试、lint/build 证据可复用，未因文档变更重复运行。
+- 状态说明：前文认证恢复前关于 CLI 未认证、dry-run pending 或 apply `NO-GO` 的记录属于历史快照；当前以本节 exit 0 证据为准，技术门 `GO`，等待 Owner 独立批准，不能据此宣称生产已修复。

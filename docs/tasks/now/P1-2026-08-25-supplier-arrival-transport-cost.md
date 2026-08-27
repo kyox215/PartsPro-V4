@@ -394,3 +394,13 @@ WP-02F 本地 migration 批次不运行 Supabase linked/remote CLI/MCP、migrati
 本轮 fresh connector preflight（2026-08-27）仅作生产只读证据：ACL 双证据、RLS/policy、目标对象与冲突、finance 结构、回填模拟、表规模/锁/长事务和 advisors 均已核对如上；未执行任何 DDL/DML、revoke、migration、repair 或部署。connector 证据不能替代 CLI auth、migration list --linked 或 db push --linked --dry-run，任务保持 in_progress，apply 仍为 NO-GO。
 
 本任务保持 `in_progress`，仍在 `now`。WP-02/03/04 的本地 schema/RPC、后端和后台读写体验实现均已完成并完成独立复审；最终相关合同测试 43/43、全量 `npm run lint` 和 `npm run build` 均通过（Next 16.2.6 webpack、TypeScript、18/18 静态页）。2026-08-27 本地权限修复 migration 已由 `20260827071053` 重排为 `20260825202034`，当前候选顺序为权限 P1 migration → transport migration；两份 migration 均仅作本地待审查草案，未执行远端 revoke 或 apply。已完成 33/33 运输合同测试、目标 ESLint、SQL 静态风险检查和 `git diff --check`，并新增 migration 顺序与 relation-qualified trigger 回归断言。此前 connector/CLI linked 证据早于本次权限 migration 重排，需按新顺序重新进行只读 history/dry-run；apply gate 仍为 `NO-GO`，须先完成 P1 处置决策与验证并取得老板另行批准。真实数据库/RLS/RPC、财务口径、浏览器和发布仍未完成；当前未写远端，migration apply 仍关闭，不宣称生产可用。
+
+## 当前 CLI linked dry-run 证据（2026-08-27）
+
+- 持久 Supabase CLI 登录已成功；凭据仅保存在 CLI 用户级存储，未写入仓库、`.env` 或任务卡，也未回显或复制任何 secret。关闭初始 shell 后，在未设置 `SUPABASE_ACCESS_TOKEN` 的新 shell 中完成非敏感认证状态确认。
+- linked target 精确为 `yiuxrjqexlfjtxxrkqvi` / `PartsPro-V4`。
+- `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase migration list --linked` exit 0；remote-only=0；local-only 仅两份，顺序为 `20260825202034_revoke_supplier_batch_truncate_privileges` → `20260825202035_supplier_batch_transport_costs`。
+- `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db push --linked --dry-run` exit 0；dry-run 仅列出上述两份 migration，顺序相同；未执行非 dry-run、apply、repair、push 或 deploy。
+- 当前 migration 技术门为 `GO`；apply 门状态为“技术门GO，等待Owner独立批准”。本证据不表示生产已修复；两份 migration 尚未应用，真实数据库应用后核对与发布门仍关闭。
+- 本次仅补充任务卡证据；源码、依赖、配置、目标 SQL 和测试未变化，既有定向测试、lint/build 证据可复用，未因文档变更重复运行。
+- 状态说明：前文认证恢复前关于 CLI 未认证、dry-run pending 或 apply `NO-GO` 的记录属于历史快照；当前以本节 exit 0 证据为准，技术门 `GO`，等待 Owner 独立批准，不能据此宣称生产已修复。
