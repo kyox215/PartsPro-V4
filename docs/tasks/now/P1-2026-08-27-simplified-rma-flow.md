@@ -97,7 +97,7 @@ V1 默认原因码：
 
 - `quality_defect`、`shipping_damage`、`wrong_item` 至少上传 1 张图片；建议分别提示缺陷、包装/物流标签、收到商品的照片。对 `policy_scope = statutory_b2c_withdrawal`，法定无理由撤回可不填原因且照片可选；若客户仍选择缺陷/损坏/发错等原因，仍执行对应证据门槛。
 - `not_as_described`、`missing_or_quantity_error` 默认至少 1 张图片，若业务确认可由订单证据替代才允许豁免并记录原因。
-- `withdrawal_no_longer_needed` 图片可选。
+- `withdrawal_no_longer_needed` 仅在明确激活的 `statutory_b2c_withdrawal` 政策下图片可选；当前 PartsPro 章程是 B2B，canonical scope 为 `b2b_commercial`，所以 legacy、warranty 和 B2B（包括“不再需要”）均至少一张图片。法定撤回代码保留但未激活，不能由 retail/wholesale 价格类型推断。
 - 新 draft/ticket/complete/submit 路径最多 6 张图片；V1 新流程不支持视频；每张在客户端压缩后不超过 4MB，服务端仍需重新校验字节、MIME、魔数和 SHA-256。Migration A 不收紧既有 `rma-evidence` bucket，legacy 双协议临时保留 20MB 图片/视频；bucket 收紧留给 Migration B。
 - 移动端提供“拍照”和“从相册选择”；拍照不等于允许绕过服务端校验。
 - 图片必须归属于当前用户、订单行和 RMA 草稿；RMA 创建失败/用户放弃后由清理任务删除未提交对象。
@@ -261,9 +261,9 @@ refunded | replacement_sent
 ### 当前批次 1 验收
 
 - Migration A 只扩展表、约束、兼容 RPC 和关系字段；不修改既有 bucket、不撤销 `rma_requests/events` 旧 direct grants/RLS。新 draft/attachment/action ledger 启用 RLS 且不给客户端直接写；bucket 收紧和最终撤权均留给 Migration B，生产上线前为 NO-GO。
-- 客户新提交使用严格 allowlist、必需 `draftId` 和 opaque attachment ID；服务端绑定登录用户、客户、订单行、可退订单状态、累计数量、六原因、六图/4MiB、MIME/魔数/SHA-256 和幂等键。法定 B2C 撤回分支可不填原因/照片，缺陷类仍需照片；B2B policy scope 独立保留。
+- 客户新提交使用严格 allowlist、必需 `draftId` 和 opaque attachment ID；服务端绑定登录用户、客户、订单行、可退订单状态、累计数量、六原因、六图/4MiB、MIME/魔数/SHA-256 和幂等键。当前 canonical `b2b_commercial` 包括“不再需要”也必须有图片；法定 B2C 分支仅保留为未来经批准配置启用的可选 reason/photo 例外。
 - 旧 multipart evidence 与旧 JSON POST 仅作为严格 owner/bucket/path 过滤的滚动兼容桥；GET 关系表附件返回 opaque ID + 临时签名 URL，无法证明归属的旧 signed URL 不回显。
-- 管理员动作经 `admin_perform_rma_action_v3` 和 legacy wrapper 进入锁定/ledger；review PATCH 仅允许审核转移，收货只记 quarantine，显式 QC 后商业结果与库存处置分轴执行；restock 需明确 batch/location 且只执行一次，报废/供应商退回不错误扣可售库存，钱包请求使用 `rma_return` 并受订单行快照金额上限。
+- 管理员动作经 `admin_perform_rma_action_v3` 和 legacy wrapper 进入锁定/ledger；review PATCH 不能确认退款金额，收货只记 quarantine，显式 QC 后商业结果与库存处置分轴执行；restock 需明确 batch/location 且只执行一次，报废/供应商退回不错误扣可售库存，钱包请求使用 `rma_return` 并受明确批准数量的订单行快照金额上限。
 
 ### 批次 1b 阻断项修正记录（2026-08-28）
 
@@ -272,6 +272,15 @@ refunded | replacement_sent
 - `admin_update_rma_request` 收紧为 `rma.manage` 审核接口，仅允许 `submitted -> under_review -> approved|rejected` 与安全备注；v3 增加 `record_qc`，商业结果与库存处置独立，库存动作不自动关闭；收货只允许 approved，退款/换货/库存处置均需收货和明确 QC。
 - 钱包采用新 `rma_return` 类型，并在请求/批准前按订单行单价快照 × 实收/批准数量 − 已退款 RMA 与整单可退余额双重封顶；不自动原路退款或生成税务 credit note。换货要求不同且已 shipped 的同客户订单、同 SKU/足量并建立唯一关联；restock 缺少明确 batch/location 时拒绝。
 - `policy_scope = statutory_b2c_withdrawal` 独立允许法定 B2C 无理由撤回不填原因/照片；缺陷、损坏、发错等原因仍要求至少一张图，B2B 规则不合并。意大利政策/法务、Migration B 撤权及生产应用仍是上线 NO-GO。
+
+### 批次 1c 复审修正记录（2026-08-28）
+
+- 商业结果数据库级防双赔：`request_wallet_refund` 与 `mark_replacement_sent` 由 RMA 行锁、action ledger 唯一守卫、RMA 钱包唯一索引和 wallet approval BEFORE guard 互斥；钱包被拒后保持 fail-closed，不自动改选换货。review PATCH 保留旧 `refundAmount` 签名但只记录“已忽略”，金额只能由受权限的退款 action 确认。
+- draft/submit 使用同一显式归属函数：普通 customer 必须 active membership，历史 `orders.user_id` 不再授权；employee 只能是 `profiles.account_type = employee` 且绑定本人 `customers.profile_kind = employee_self` 的订单，employee 不复用 membership。新 draft 固定 `policy_scope = b2b_commercial`、`policy_version = partspro-b2b-v1`。
+- 上传配额在用户 advisory lock 内先过期 pending/verified，再计算每草稿 6 张与每用户 24 张活动附件；取消会释放数据库额度并 best-effort 删除 Storage；增加 service-role-only batch GC 函数，生产 cron 仍未启用。
+- 共享可执行规则覆盖 policy×reason×0/1 图、QC/双轴 close、商业互斥和退款上限；submit 保存包含 draft/orderLine/quantity/reason/resolution/note/排序附件 ID 的 fingerprint，draft/submit/action 幂等冲突不依赖裸 23505。
+- inventory disposition 只写 `inventory_disposition`，商业动作与库存终态可独立完成；已收货 RMA 只有在商业终态与库存终态都完成后关闭，QC 成功 exactly-once。替换明确使用实收数量并校验同客户已发货订单同 SKU 足量。
+- 复审补充：legacy POST 也必须带至少一份经过当前用户专属 path/bucket 校验的证据；新/旧附件失败均先取消数据库额度，再 best-effort 删除 Storage。无不可变单价快照的历史 RMA 不允许直接发起钱包退款，需受控人工补建快照或后续迁移方案。
 
 ### 未来实施验收
 
@@ -302,7 +311,7 @@ git log -1 --oneline
 
 当前批次 1 自动化集合：
 
-- `node --test tests/rma-contract.test.mjs tests/admin-rma-workflow-contract.test.mjs`
+- `node --test tests/rma-rules.test.mjs tests/rma-contract.test.mjs tests/admin-rma-workflow-contract.test.mjs`
 - `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/tsc' --noEmit --project '<worktree>/tsconfig.json'`（基线 `RouteContext` 错误已记录）
 - `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/eslint' <worktree absolute TS/TSX files>`
 - `git diff --check`
@@ -350,10 +359,11 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 | Next.js 16 Route Handler 与 Server/Client 指南读取 | passed | 写 Route Handler 前读取本地 `node_modules/next/dist/docs/` 对应文档 |
 | Supabase migration 创建 | passed | 使用 `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase migration new rma_simple_flow_expand` 创建 Migration A |
 | 当前批次 1 代码/migration/远端写入 | passed | 仅隔离 worktree 生成服务端契约/API 与 Migration A；未访问/写入 linked Supabase、Vercel、GitHub |
-| `node --test tests/rma-contract.test.mjs tests/admin-rma-workflow-contract.test.mjs` | passed | 批次 1b 修正后 10/10 contract tests passed |
+| `node --test tests/rma-rules.test.mjs tests/rma-contract.test.mjs tests/admin-rma-workflow-contract.test.mjs` | passed | 批次 1c 共享纯规则与 SQL/API 源契约 14/14 通过 |
 | 主仓库 `node_modules/.bin/eslint` 定向检查 | passed | 批次 1b RMA contract/http/helper、客户/后台 routes、repository 均通过 |
-| 主仓库 `node_modules/.bin/tsc --noEmit --project <worktree>/tsconfig.json` | blocked by baseline | 仅报已有 `src/app/api/admin/restock-requests/[id]/route.ts:17:12 RouteContext`；基线同文件同一错误，未见本批新增诊断 |
-| `git diff --check` | passed | 批次 1b 修正后无空白错误；提交前再复核 |
+| 主仓库 `node_modules/.bin/tsc --noEmit --project <worktree>/tsconfig.json` | blocked by baseline | 仅报已存在的 `src/app/api/admin/restock-requests/[id]/route.ts:17:12 RouteContext` 与 `src/lib/partspro-repository.ts:3277:23 AdminProductStockAdjustmentInput.location`；均在 `992bc9e` 基线复现，未见本批新增诊断 |
+| 主仓库 `node_modules/.bin/eslint` 定向检查 | passed | 本批所有 RMA TS/TSX 受影响文件通过，无输出 |
+| `git diff --check` | passed | 批次 1c 当前 diff 无空白错误 |
 | Supabase linked/local lint、migration dry-run、build/E2E | skipped by gate | 本批禁止远端/数据库写入；worktree 无需启动本地数据库，按范围不跑完整 build/E2E |
 
 ## 执行记录
@@ -362,7 +372,7 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 - 批准：2026-08-27；用户已批准本轮开始实现/推送/部署，当前 worker 仍按范围不 push、不部署、不应用远端 migration
 - 开始：2026-08-27
 - review：pending；Migration A/RLS/权限/支付/库存需专项守门
-- verified：2026-08-28；批次 1b contract tests 10/10、主仓库依赖定向 ESLint、diff check 通过；tsc 既有证据仍受基线 `RouteContext` 错误阻塞，本批 1b 按范围未重复执行
+- verified：2026-08-28；批次 1c 规则/契约 tests 14/14、定向 ESLint、`git diff --check` 通过；tsc 仅剩 `992bc9e` 基线的 `RouteContext` 与 `AdminProductStockAdjustmentInput.location` 两项错误
 - released：不适用，本批不发布
 - closed：pending
 
@@ -374,6 +384,6 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 
 - 意大利 B2C 撤回/保修、B2B 商业退货、退款方式、运费承担和税务处理尚未由专业人员确认。
 - 当前历史 RMA 状态、附件 JSON、wallet `order_void` 语义和库存处置数据需要迁移前盘点。
-- 当前批次已收口服务端附件上传/校验、legacy 双协议隔离、核心状态/QC 守卫、并发数量锁、customer DTO 隔离和基础通知事件；客户端三块 UI、法定期限与 policy 分类、Storage GC、Migration B 危险撤权、生产联调和完整退款/税务确认仍待后续批次。
+- 当前批次已收口服务端附件上传/校验、legacy 双协议隔离、核心状态/QC 守卫、active membership/employee-self 归属、并发数量锁、customer DTO 隔离、商业互斥、双轴关闭、批量 GC 函数和基础通知事件；历史无单价快照 RMA 需人工/迁移补建后才能安全退款。客户端三块 UI、法定期限与 policy 激活、GC 调度、Migration B 危险撤权、生产联调和完整退款/税务确认仍待后续批次。
 - Migration A 保留旧 `rma_requests/events` direct grants/RLS，并未收紧历史 bucket；在新客户端完全切换、兼容读取验证和正式 Migration B 审批前，禁止打开新写流程生产流量。
 - 后续应分别创建政策 ADR、RMA data/RPC migration 任务、图片上传安全任务、后台 QC/库存任务、退款/换货任务和发布观察 runbook。

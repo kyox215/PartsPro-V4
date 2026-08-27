@@ -1,4 +1,10 @@
 import { z } from "zod";
+import {
+  calculateRmaLineRefundCap as calculateRmaLineRefundCapRule,
+  isCommercialOutcomeAvailable as isCommercialOutcomeAvailableRule,
+  isRmaActionAvailable as isRmaActionAvailableRule,
+  reasonRequiresImage as reasonRequiresImageRule,
+} from "@/lib/partspro-rma-rules.mjs";
 
 /**
  * Public RMA contract. Keep this file free of repository/database fields so it
@@ -26,6 +32,8 @@ export const rmaPolicyScopeCodes = [
 ] as const;
 
 export type RmaPolicyScope = (typeof rmaPolicyScopeCodes)[number];
+export const rmaCanonicalPolicyScope = "b2b_commercial" as const;
+export const rmaCanonicalPolicyVersion = "partspro-b2b-v1" as const;
 
 export const rmaResolutionCodes = [
   "replacement",
@@ -209,14 +217,7 @@ export function reasonRequiresImage(
   reasonCode: RmaReasonCode | null | undefined,
   policyScope: RmaPolicyScope = "legacy_unverified"
 ) {
-  if (
-    policyScope === "statutory_b2c_withdrawal" &&
-    (reasonCode === null || reasonCode === undefined || reasonCode === "withdrawal_no_longer_needed")
-  ) {
-    return false;
-  }
-
-  return reasonCode !== "withdrawal_no_longer_needed";
+  return reasonRequiresImageRule(reasonCode, policyScope);
 }
 
 export type RmaCommercialOutcome = "refund_wallet" | "replacement";
@@ -228,30 +229,37 @@ export function isRmaActionAvailable({
   inventoryDisposition = "pending",
   qcStatus = "pending",
   requestedResolution,
+  resolutionAction = null,
   status,
+  receivedAt = null,
 }: {
   action: string;
   inventoryDisposition?: string | null;
   qcStatus?: RmaQcStatus | string | null;
   requestedResolution?: string | null;
+  resolutionAction?: string | null;
+  status: string;
+  receivedAt?: string | null;
+}) {
+  return isRmaActionAvailableRule({
+    action,
+    inventoryDisposition,
+    qcStatus,
+    requestedResolution,
+    resolutionAction,
+    status,
+    receivedAt,
+  });
+}
+
+export function isCommercialOutcomeAvailable(input: {
+  action: string;
+  resolutionAction?: string | null;
+  walletRequestStatus?: string | null;
+  replacementOrderId?: string | null;
   status: string;
 }) {
-  if (action === "mark_received") return status === "approved";
-  if (action === "record_qc") return status === "received";
-
-  const inspectionComplete =
-    status === "received" &&
-    ["passed", "failed", "not_required"].includes(qcStatus ?? "");
-  if (["request_wallet_refund", "mark_replacement_sent", "restock_return", "mark_scrapped", "supplier_return"].includes(action)) {
-    return inspectionComplete;
-  }
-  if (action === "close") {
-    const commercialComplete = ["refunded", "replacement_sent"].includes(status);
-    const inventoryComplete = ["restock", "scrap", "supplier_return"].includes(inventoryDisposition ?? "");
-    return status === "rejected" || status === "closed" || (commercialComplete && (status !== "received" || inventoryComplete));
-  }
-  if (action === "assign") return !["closed", "rejected"].includes(status);
-  return requestedResolution !== "";
+  return isCommercialOutcomeAvailableRule(input);
 }
 
 /**
@@ -270,13 +278,12 @@ export function calculateRmaLineRefundCap({
   approvedQuantity: number;
   unitPriceSnapshot: number;
 }) {
-  const lineGross = Math.max(0, unitPriceSnapshot) * Math.max(0, Math.floor(approvedQuantity));
-  const lineRemaining = Math.max(0, lineGross - Math.max(0, existingRmaRefunds));
-  return Math.max(0, Math.min(roundCents(lineRemaining), roundCents(Math.max(0, orderRefundableBalance))));
-}
-
-function roundCents(value: number) {
-  return Math.round((Number.isFinite(value) ? value : 0) * 100) / 100;
+  return calculateRmaLineRefundCapRule({
+    existingRmaRefunds,
+    orderRefundableBalance,
+    approvedQuantity,
+    unitPriceSnapshot,
+  });
 }
 
 export function customerStageForRmaStatus(status: string): RmaCustomerStage {

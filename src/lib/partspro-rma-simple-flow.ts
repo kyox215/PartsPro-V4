@@ -69,55 +69,83 @@ export async function issueRmaUploadTicket(
   draftId: string,
   input: RmaUploadTicketInput
 ): Promise<RmaUploadTicketDto> {
+  // Fail before the prepare RPC so a missing service-role capability cannot
+  // create an attachment quota row that this request is unable to clean up.
+  if (!isSupabaseServiceRoleConfigured()) {
+    throw new RmaSimpleFlowError(503, "RMA_SERVICE_UNAVAILABLE", "RMA evidence storage is not configured.");
+  }
+
   const { client, user } = await requireAuthenticatedClient();
-  const { data, error } = await client.rpc("rma_prepare_attachment_upload", {
-    p_draft_id: draftId,
-    p_original_name: input.originalName,
-    p_content_type: input.contentType,
-    p_size_bytes: input.sizeBytes,
-  });
+  let attachmentId: string | null = null;
+  let storagePath: string | null = null;
+  let service: ReturnType<typeof createServiceRoleClient> | null = null;
 
-  if (error) {
-    throw mapRpcError(error, "RMA_UPLOAD_TICKET_FAILED", "RMA upload ticket could not be created.");
+  try {
+    const { data, error } = await client.rpc("rma_prepare_attachment_upload", {
+      p_draft_id: draftId,
+      p_original_name: input.originalName,
+      p_content_type: input.contentType,
+      p_size_bytes: input.sizeBytes,
+    });
+
+    if (error) {
+      throw mapRpcError(error, "RMA_UPLOAD_TICKET_FAILED", "RMA upload ticket could not be created.");
+    }
+
+    attachmentId = readUuid(data);
+    if (!attachmentId) {
+      throw new RmaSimpleFlowError(502, "RMA_UPLOAD_TICKET_FAILED", "Attachment id was not returned.");
+    }
+
+    service = requireServiceRoleClient();
+    const { data: attachment, error: attachmentError } = await service
+      .from("rma_attachments")
+      .select("id,storage_path,expires_at")
+      .eq("id", attachmentId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (attachmentError || !isRecord(attachment)) {
+      throw new RmaSimpleFlowError(502, "RMA_UPLOAD_TICKET_FAILED", "Attachment upload metadata was not available.");
+    }
+
+    storagePath = readString(attachment.storage_path);
+    if (!storagePath) {
+      throw new RmaSimpleFlowError(502, "RMA_UPLOAD_TICKET_FAILED", "Attachment storage capability was not created.");
+    }
+
+    const { data: signed, error: signedError } = await service.storage
+      .from(rmaEvidenceBucket)
+      .createSignedUploadUrl(storagePath, { upsert: false });
+
+    if (signedError || !signed?.signedUrl) {
+      throw new RmaSimpleFlowError(502, "RMA_UPLOAD_TICKET_FAILED", "A direct upload URL could not be created.");
+    }
+
+    const expiresAt = readString(attachment.expires_at) ?? new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
+
+    return {
+      attachmentId,
+      expiresAt,
+      uploadUrl: signed.signedUrl,
+    };
+  } catch (error) {
+    if (attachmentId) {
+      await cancelRmaAttachmentAfterTicketFailure(
+        client,
+        draftId,
+        attachmentId,
+        service,
+        storagePath
+      );
+    }
+
+    if (error instanceof RmaSimpleFlowError) {
+      throw error;
+    }
+
+    throw new RmaSimpleFlowError(502, "RMA_UPLOAD_TICKET_FAILED", "RMA upload ticket could not be created.");
   }
-
-  const attachmentId = readUuid(data);
-  if (!attachmentId) {
-    throw new RmaSimpleFlowError(502, "RMA_UPLOAD_TICKET_FAILED", "Attachment id was not returned.");
-  }
-
-  const service = requireServiceRoleClient();
-  const { data: attachment, error: attachmentError } = await service
-    .from("rma_attachments")
-    .select("id,storage_path,expires_at")
-    .eq("id", attachmentId)
-    .eq("user_id", user.id)
-    .maybeSingle();
-
-  if (attachmentError || !isRecord(attachment)) {
-    throw new RmaSimpleFlowError(502, "RMA_UPLOAD_TICKET_FAILED", "Attachment upload metadata was not available.");
-  }
-
-  const storagePath = readString(attachment.storage_path);
-  if (!storagePath) {
-    throw new RmaSimpleFlowError(502, "RMA_UPLOAD_TICKET_FAILED", "Attachment storage capability was not created.");
-  }
-
-  const { data: signed, error: signedError } = await service.storage
-    .from(rmaEvidenceBucket)
-    .createSignedUploadUrl(storagePath, { upsert: false });
-
-  if (signedError || !signed?.signedUrl) {
-    throw new RmaSimpleFlowError(502, "RMA_UPLOAD_TICKET_FAILED", "A direct upload URL could not be created.");
-  }
-
-  const expiresAt = readString(attachment.expires_at) ?? new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString();
-
-  return {
-    attachmentId,
-    expiresAt,
-    uploadUrl: signed.signedUrl,
-  };
 }
 
 export async function completeRmaAttachment(
@@ -290,6 +318,33 @@ function requireServiceRoleClient() {
   }
 
   return createServiceRoleClient();
+}
+
+async function cancelRmaAttachmentAfterTicketFailure(
+  client: Awaited<ReturnType<typeof createClient>>,
+  draftId: string,
+  attachmentId: string,
+  service: ReturnType<typeof createServiceRoleClient> | null,
+  storagePath: string | null
+) {
+  try {
+    await client.rpc("rma_cancel_attachment", {
+      p_attachment_id: attachmentId,
+      p_draft_id: draftId,
+    });
+  } catch {
+    // The maintenance GC function is the fallback if the cancellation RPC
+    // itself is unavailable; never mask the original ticket error.
+  }
+
+  if (service && storagePath) {
+    try {
+      await service.storage.from(rmaEvidenceBucket).remove([storagePath]);
+    } catch {
+      // Storage deletion is compensating cleanup and is intentionally best
+      // effort. The database row remains cancelled and cannot be submitted.
+    }
+  }
 }
 
 async function readDraftDto(userId: string, draftId: string): Promise<RmaDraftDto> {

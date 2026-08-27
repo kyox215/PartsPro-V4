@@ -21,6 +21,7 @@ import {
   RmaSimpleFlowError,
   submitRmaRequest,
 } from "@/lib/partspro-rma-simple-flow";
+import { toCustomerRmaDto } from "@/lib/partspro-rma-customer-dto";
 
 const legacyRmaAttachmentSchema = z
   .object({
@@ -150,6 +151,10 @@ async function handleLegacyRmaSubmit(value: unknown) {
       return apiError(403, "RMA_EVIDENCE_NOT_OWNED", "RMA evidence must be uploaded by this account and belong to its private path.");
     }
 
+    if (attachments.length < 1) {
+      return apiError(422, "RMA_EVIDENCE_REQUIRED", "At least one uploaded image is required for this commercial RMA.");
+    }
+
     const saved = await saveRmaRequest({
       description: parsed.data.description,
       hasPhysicalDamage: parsed.data.hasPhysicalDamage,
@@ -165,10 +170,11 @@ async function handleLegacyRmaSubmit(value: unknown) {
       attachments,
     });
     const signedRequest = await signSingleRmaRequestAttachments(saved.data, account.userId);
+    const customerDto = toCustomerRmaDto(signedRequest);
 
     return NextResponse.json(
       {
-        data: signedRequest,
+        data: customerDto,
         meta: {
           source: saved.source,
           order: { id: selection.order.id, number: selection.order.number },

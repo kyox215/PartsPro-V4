@@ -183,6 +183,11 @@ export type RmaRequest = {
   id: string;
   orderId: string;
   orderLineId?: string;
+  /** Internal owner used to re-authorize legacy evidence per request. */
+  ownerUserId?: string | null;
+  rmaNo?: string | null;
+  eligibleUntil?: string | null;
+  reasonCode?: string | null;
   policyScope?: string;
   sku: string;
   productName: string;
@@ -220,6 +225,8 @@ export type RmaAttachment = {
   bucket?: string;
   contentType?: string;
   name: string;
+  /** Internal-only uploader identity used to authorize relation attachments. */
+  ownerUserId?: string;
   path: string;
   signedUrl?: string;
   size?: number;

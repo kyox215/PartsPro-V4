@@ -9,15 +9,11 @@ import {
 } from "@/lib/partspro-repository";
 import type { RmaRequest } from "@/lib/partspro-data";
 import {
-  customerStageForRmaStatus,
-  rmaAttachmentContentTypes,
-  type CustomerRmaDto,
-} from "@/lib/partspro-rma-contract";
-import {
   hydrateCustomerRmaAttachments,
   signRmaRequestAttachments,
 } from "@/lib/partspro-rma-evidence";
 import { handleRmaSubmit, noStore } from "@/lib/partspro-rma-http";
+import { toCustomerRmaDto } from "@/lib/partspro-rma-customer-dto";
 
 export const dynamic = "force-dynamic";
 
@@ -40,14 +36,18 @@ export async function GET() {
             listCurrentCustomerRmaOrderOptions(),
           ]);
 
-    const hydratedRequests = account.userId
-      ? await hydrateCustomerRmaAttachments(requestsResult.data, account.userId)
-      : requestsResult.data;
     const signedRequests = await signRmaRequestAttachments(
-      hydratedRequests,
+      requestsResult.data,
       account.userId ?? undefined
     );
-    const customerRequests = toCustomerRmaRequests(signedRequests);
+    // Legacy JSON is signed against the request uploader first. The relation
+    // table is then hydrated by authorized request id/company scope; this
+    // avoids applying the viewer's path prefix to another active member's
+    // evidence.
+    const hydratedRequests = account.userId
+      ? await hydrateCustomerRmaAttachments(signedRequests, account.userId)
+      : signedRequests;
+    const customerRequests = toCustomerRmaRequests(hydratedRequests);
 
     return noStore(NextResponse.json({
       data: customerRequests,
@@ -71,60 +71,5 @@ export async function POST(request: NextRequest) {
 }
 
 function toCustomerRmaRequests(requests: RmaRequest[]) {
-  return requests.map(toCustomerRmaRequest);
-}
-
-function toCustomerRmaRequest(request: RmaRequest): CustomerRmaDto {
-  const attachments = (request.attachments ?? []).map((attachment, index) => {
-    const contentType = (rmaAttachmentContentTypes as readonly string[]).includes(
-      attachment.contentType ?? ""
-    )
-      ? (attachment.contentType as CustomerRmaDto["attachments"][number]["contentType"])
-      : "image/jpeg";
-
-    return {
-      attachmentId: attachment.attachmentId ?? `legacy-${request.id}-${index}`,
-      contentType,
-      name: attachment.name,
-      sizeBytes: attachment.size ?? 0,
-      uploadedAt: attachment.uploadedAt ?? null,
-      verifiedAt: null,
-      ...(attachment.signedUrl ? { signedUrl: attachment.signedUrl } : {}),
-    };
-  });
-
-  return {
-    attachments,
-    createdAt: request.createdAt,
-    customerStage: customerStageForRmaStatus(request.status),
-    description: request.description ?? "",
-    eligibleUntil: null,
-    events: (request.events ?? [])
-      .filter((event) => event.metadata?.customer_visible === true)
-      .map((event) => ({
-        createdAt: event.createdAt,
-        eventType: event.eventType,
-        id: event.id,
-        note: event.note,
-        toStatus: event.toStatus ?? null,
-      })),
-    id: request.id,
-    orderId: request.orderId ?? null,
-    orderLineId: request.orderLineId ?? null,
-    policyScope: request.policyScope ?? "legacy_unverified",
-    productName: request.productName,
-    quantity: request.quantity ?? 0,
-    reason: request.reason,
-    reasonCode: request.reason,
-    rmaNo: null,
-    resolution: request.resolution,
-    requestedResolution: request.requestedResolution ?? request.resolution,
-    sku: request.sku,
-    status: request.status,
-    updatedAt: request.updatedAt ?? null,
-    ...(request.customerVisibleNote ? { customerVisibleNote: request.customerVisibleNote } : {}),
-    ...(request.labResult ? { labResult: request.labResult } : {}),
-    ...(request.refundAmount !== undefined ? { refundAmount: request.refundAmount } : {}),
-    ...(request.resolutionNote ? { resolutionNote: request.resolutionNote } : {}),
-  };
+  return requests.map(toCustomerRmaDto);
 }

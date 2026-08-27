@@ -109,7 +109,11 @@ export async function signRmaRequestAttachments(
   return Promise.all(
     requests.map(async (request) => ({
       ...request,
-      attachments: await signRmaAttachments(request.attachments ?? [], supabase, ownerUserId),
+      attachments: await signRmaAttachments(
+        request.attachments ?? [],
+        supabase,
+        request.ownerUserId ?? ownerUserId
+      ),
     }))
   );
 }
@@ -143,8 +147,7 @@ export async function hydrateCustomerRmaAttachments(
   const supabase = createServiceRoleClient();
   const { data } = await supabase
     .from("rma_attachments")
-    .select("id,rma_request_id,original_name,content_type,size_bytes,uploaded_at,verified_at,bucket,storage_path,status")
-    .eq("user_id", ownerUserId)
+    .select("id,rma_request_id,user_id,original_name,content_type,size_bytes,uploaded_at,verified_at,bucket,storage_path,status")
     .in("rma_request_id", requestIds)
     .in("status", ["verified", "committed"]);
 
@@ -155,9 +158,16 @@ export async function hydrateCustomerRmaAttachments(
     const path = typeof row.storage_path === "string" ? row.storage_path : "";
     const bucket = typeof row.bucket === "string" ? row.bucket : "";
     const attachmentId = typeof row.id === "string" ? row.id : "";
+    const uploaderUserId = typeof row.user_id === "string" ? row.user_id : "";
     const name = typeof row.original_name === "string" ? row.original_name : "image";
     const contentType = typeof row.content_type === "string" ? row.content_type : undefined;
-    if (!requestId || !attachmentId || bucket !== rmaEvidenceBucket || !isRmaEvidencePathOwnedByUser(path, ownerUserId)) {
+    if (
+      !requestId ||
+      !attachmentId ||
+      !isUuid(uploaderUserId) ||
+      bucket !== rmaEvidenceBucket ||
+      !isRmaEvidencePathOwnedByUser(path, uploaderUserId)
+    ) {
       continue;
     }
 
@@ -173,6 +183,8 @@ export async function hydrateCustomerRmaAttachments(
       signedUrl: signed?.signedUrl,
       size: typeof row.size_bytes === "number" ? row.size_bytes : undefined,
       uploadedAt: typeof row.uploaded_at === "string" ? row.uploaded_at : undefined,
+      // Internal-only signer hint; the customer DTO never exposes it.
+      ownerUserId: uploaderUserId,
     };
     const existing = byRequestId.get(requestId) ?? [];
     byRequestId.set(requestId, [...existing, attachment]);
@@ -191,12 +203,14 @@ async function signRmaAttachments(
 ) {
   return Promise.all(
     attachments.map(async (attachment) => {
+      const attachmentOwnerUserId = attachment.ownerUserId ?? ownerUserId;
       const safeAttachment = stripSignedUrl(attachment);
       if (
         !safeAttachment.path ||
         safeAttachment.bucket !== rmaEvidenceBucket ||
         !isRmaEvidencePathShapeValid(safeAttachment.path) ||
-        (ownerUserId && !isRmaEvidencePathOwnedByUser(safeAttachment.path, ownerUserId))
+        !attachmentOwnerUserId ||
+        !isRmaEvidencePathOwnedByUser(safeAttachment.path, attachmentOwnerUserId)
       ) {
         return safeAttachment;
       }
@@ -220,6 +234,7 @@ async function signRmaAttachments(
 function stripSignedUrl(attachment: RmaAttachment): RmaAttachment {
   const safeAttachment = { ...attachment };
   delete safeAttachment.signedUrl;
+  delete safeAttachment.ownerUserId;
   return safeAttachment;
 }
 

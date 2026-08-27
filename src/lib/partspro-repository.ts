@@ -11651,12 +11651,20 @@ async function performAdminRmaActionViaRpc(
     const errorDetails = supabaseErrorDetails(error);
     const rawCode = isDbRow(error) ? pickString(error, ["code"]) : null;
     const message = isDbRow(error) ? pickString(error, ["message"]) : null;
-    if (rawCode === "23505" || message?.toLowerCase().includes("idempotency")) {
+    if (message?.toLowerCase().includes("idempotency")) {
       throw new RepositoryWriteError(
         409,
         "RMA_ACTION_IDEMPOTENCY_CONFLICT",
         "The RMA action key was already used with a different payload or result.",
         { message: "RMA action idempotency conflict." }
+      );
+    }
+    if (rawCode === "23505") {
+      throw new RepositoryWriteError(
+        409,
+        "RMA_ACTION_CONFLICT",
+        "The RMA action conflicts with an existing commercial or inventory outcome.",
+        { message: "RMA action conflict." }
       );
     }
     throw new RepositoryWriteError(
@@ -14068,9 +14076,13 @@ function mapRmaRow(
       "Ricambio",
     status: normalizeRmaStatus(pickString(row, ["status"])),
     reason: pickString(row, ["reason", "problem_type"]) ?? "Richiesta assistenza",
+    reasonCode: pickString(row, ["reason_code"]),
     quantity: Math.max(1, Math.trunc(pickNumber(row, ["quantity"]) ?? 1)),
     orderLineId: lineId ?? undefined,
-    policyScope: pickString(row, ["policy_scope"]),
+    ownerUserId: pickString(row, ["user_id"]),
+    rmaNo: pickString(row, ["rma_no"]),
+    eligibleUntil: pickString(row, ["eligible_until"]),
+    policyScope: pickString(row, ["policy_scope"]) ?? undefined,
     createdAt: formatItalianDate(pickString(row, ["created_at", "createdAt"])),
     updatedAt: formatPartsProDateTime(pickString(row, ["updated_at", "updatedAt"])),
     resolution: rmaResolutionSummary(row),

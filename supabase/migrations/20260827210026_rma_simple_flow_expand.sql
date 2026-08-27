@@ -39,8 +39,10 @@ alter table public.rma_requests
   add column if not exists refund_shipping_amount numeric(12, 2),
   add column if not exists unit_price_snapshot numeric(12, 2),
   add column if not exists refund_approved_quantity integer,
+  add column if not exists replacement_quantity integer,
   add column if not exists replacement_order_id uuid references public.orders(id) on delete set null,
-  add column if not exists idempotency_key text;
+  add column if not exists idempotency_key text,
+  add column if not exists submit_payload_fingerprint text;
 
 do $$
 begin
@@ -72,6 +74,28 @@ begin
     alter table public.rma_requests
       add constraint rma_requests_qc_status_check
       check (qc_status in ('pending', 'passed', 'failed', 'not_required'));
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.rma_requests'::regclass
+      and conname = 'rma_requests_replacement_quantity_check'
+  ) then
+    alter table public.rma_requests
+      add constraint rma_requests_replacement_quantity_check
+      check (replacement_quantity is null or (replacement_quantity >= 1 and replacement_quantity <= quantity));
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.rma_requests'::regclass
+      and conname = 'rma_requests_submit_payload_fingerprint_check'
+  ) then
+    alter table public.rma_requests
+      add constraint rma_requests_submit_payload_fingerprint_check
+      check (submit_payload_fingerprint is null or submit_payload_fingerprint ~ '^[a-f0-9]{32,64}$');
   end if;
 
   if not exists (
@@ -344,6 +368,19 @@ create unique index if not exists rma_action_executions_terminal_disposition_uni
   where execution_status = 'succeeded'
     and action in ('restock_return', 'mark_scrapped', 'supplier_return');
 
+-- The action ledger makes commercial settlement and QC exactly-once even when
+-- two admin tabs use different idempotency keys. A replacement and a wallet
+-- outcome can never both succeed for one RMA.
+create unique index if not exists rma_action_executions_commercial_outcome_unique
+  on public.rma_action_executions (rma_request_id)
+  where execution_status = 'succeeded'
+    and action in ('request_wallet_refund', 'mark_replacement_sent');
+
+create unique index if not exists rma_action_executions_qc_unique
+  on public.rma_action_executions (rma_request_id)
+  where execution_status = 'succeeded'
+    and action = 'record_qc';
+
 create index if not exists rma_action_executions_request_idx
   on public.rma_action_executions (rma_request_id, created_at desc);
 
@@ -392,6 +429,12 @@ create index if not exists stock_movements_rma_idx
 create index if not exists notification_events_rma_idx
   on public.notification_events (rma_request_id, created_at desc)
   where rma_request_id is not null;
+
+create unique index if not exists wallet_refund_requests_rma_return_active_unique
+  on public.wallet_refund_requests (rma_request_id)
+  where rma_request_id is not null
+    and request_type = 'rma_return'
+    and status in ('pending', 'approved');
 
 -- Migration A deliberately does not alter storage.buckets. The existing
 -- rma-evidence bucket remains private with its historical 20 MiB image/video
@@ -549,6 +592,66 @@ as $$
   end
 $$;
 
+-- Customer ownership is deliberately explicit and shared by draft + submit.
+-- A normal customer needs an active membership; orders.user_id is only a
+-- historical field and must never grant access. Employees use only their
+-- employee_self profile and never inherit a customer membership.
+create or replace function private.rma_user_can_access_order(
+  p_auth_uid uuid,
+  p_customer_id uuid,
+  p_order_id uuid
+)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = pg_catalog, public, private, pg_temp
+as $$
+declare
+  v_account_type text;
+  v_profile_customer_id uuid;
+begin
+  if p_auth_uid is null or p_customer_id is null or p_order_id is null then
+    return false;
+  end if;
+
+  select coalesce(p.account_type, 'customer'), p.customer_id
+  into v_account_type, v_profile_customer_id
+  from public.profiles as p
+  where p.id = p_auth_uid;
+
+  if v_account_type = 'employee' then
+    return exists (
+      select 1
+      from public.orders as o
+      join public.customers as c on c.id = o.customer_id
+      where o.id = p_order_id
+        and o.customer_id = p_customer_id
+        and c.id = p_customer_id
+        and c.id = v_profile_customer_id
+        and c.user_id = p_auth_uid
+        and c.profile_kind = 'employee_self'
+        and c.status = 'active'
+    );
+  end if;
+
+  return exists (
+    select 1
+    from public.orders as o
+    join public.customers as c on c.id = o.customer_id
+    join public.customer_memberships as cm on cm.customer_id = c.id
+    where o.id = p_order_id
+      and o.customer_id = p_customer_id
+      and c.id = p_customer_id
+      and c.status = 'active'
+      and coalesce(c.profile_kind, 'customer') = 'customer'
+      and cm.user_id = p_auth_uid
+      and cm.status = 'active'
+      and v_account_type = 'customer'
+  );
+end;
+$$;
+
 create or replace function public.rma_create_draft(
   p_order_line_id uuid,
   p_idempotency_key text default null
@@ -579,6 +682,13 @@ begin
 
   if v_idempotency_key is not null and length(v_idempotency_key) not between 8 and 128 then
     raise exception 'Invalid draft idempotency key' using errcode = '23514';
+  end if;
+
+  if v_idempotency_key is not null then
+    perform pg_advisory_xact_lock(hashtextextended(
+      format('rma-draft-user:%s:%s', v_auth_uid, v_idempotency_key),
+      0
+    ));
   end if;
 
   select *
@@ -615,16 +725,7 @@ begin
     raise exception 'RMA is available only for shipped, completed, or delivered orders' using errcode = '23514';
   end if;
 
-  if not (
-    v_order.user_id = v_auth_uid
-    or exists (
-      select 1
-      from public.customer_memberships as cm
-      where cm.customer_id = v_customer_id
-        and cm.user_id = v_auth_uid
-        and cm.status = 'active'
-    )
-  ) then
+  if not private.rma_user_can_access_order(v_auth_uid, v_customer_id, v_order.id) then
     raise exception 'Order line does not belong to the authenticated customer' using errcode = '42501';
   end if;
 
@@ -642,7 +743,7 @@ begin
 
     if v_existing.id is not null then
       if v_existing.order_line_id <> p_order_line_id then
-        raise exception 'Draft idempotency key is bound to another order line' using errcode = '23505';
+        raise exception 'Draft idempotency key is bound to another order line' using errcode = 'P0001';
       end if;
       return v_existing.id;
     end if;
@@ -664,6 +765,7 @@ begin
     order_id,
     order_line_id,
     policy_scope,
+    policy_version,
     idempotency_key
   )
   values (
@@ -671,7 +773,8 @@ begin
     v_customer_id,
     v_order.id,
     v_line.id,
-    'legacy_unverified',
+    'b2b_commercial',
+    'partspro-b2b-v1',
     v_idempotency_key
   )
   returning id into v_draft_id;
@@ -724,6 +827,20 @@ begin
     raise exception 'Invalid RMA image file name' using errcode = '22023';
   end if;
 
+  -- Serialize all open drafts for this user, expire stale rows first, then
+  -- count only active, unexpired attachments. This is the 24-file quota lock.
+  perform pg_advisory_xact_lock(hashtextextended(format('rma-upload-user:%s', v_auth_uid), 0));
+
+  update public.rma_attachments as a
+  set status = 'expired',
+      updated_at = now()
+  from public.rma_drafts as d
+  where d.id = a.draft_id
+    and a.user_id = v_auth_uid
+    and d.status = 'open'
+    and a.status in ('pending', 'verified')
+    and a.expires_at <= now();
+
   select *
   into v_draft
   from public.rma_drafts as d
@@ -743,7 +860,8 @@ begin
   into v_existing_count
   from public.rma_attachments as a
   where a.draft_id = v_draft.id
-    and a.status in ('pending', 'verified', 'committed');
+    and a.status in ('pending', 'verified', 'committed')
+    and a.expires_at > now();
 
   if v_existing_count >= 6 then
     raise exception 'An RMA draft can contain at most six images' using errcode = '22003';
@@ -755,7 +873,8 @@ begin
   join public.rma_drafts as d on d.id = a.draft_id
   where a.user_id = v_auth_uid
     and d.status = 'open'
-    and a.status in ('pending', 'verified', 'committed');
+    and a.status in ('pending', 'verified', 'committed')
+    and a.expires_at > now();
 
   if v_user_active_count >= 24 then
     raise exception 'This account has reached the active RMA image limit' using errcode = '22003';
@@ -830,11 +949,14 @@ begin
     raise exception 'Attachment verification token is required' using errcode = '42501';
   end if;
 
-  select *
+  select a.*
   into v_attachment
   from public.rma_attachments as a
+  join public.rma_drafts as d on d.id = a.draft_id
   where a.id = p_attachment_id
     and a.user_id = v_auth_uid
+    and d.user_id = v_auth_uid
+    and d.status = 'open'
   for update;
 
   if v_attachment.id is null then
@@ -926,6 +1048,50 @@ begin
 end;
 $$;
 
+-- Maintenance-only GC marks stale database rows and returns only the private
+-- paths that a service-role worker may remove from Storage. No browser role
+-- can execute it; scheduling the worker remains a separately gated task.
+create or replace function public.rma_gc_expired_attachments(
+  p_limit integer default 100
+)
+returns table(attachment_id uuid, bucket text, storage_path text)
+language plpgsql
+security definer
+set search_path = pg_catalog, public, private, pg_temp
+as $$
+begin
+  if (select auth.uid()) is not null then
+    raise exception 'RMA attachment GC is maintenance-only' using errcode = '42501';
+  end if;
+
+  if p_limit is null or p_limit < 1 or p_limit > 1000 then
+    raise exception 'Invalid RMA attachment GC limit' using errcode = '22023';
+  end if;
+
+  return query
+  with stale as (
+    select a.id
+    from public.rma_attachments as a
+    join public.rma_drafts as d on d.id = a.draft_id
+    where a.status in ('pending', 'verified')
+      and a.rma_request_id is null
+      and a.expires_at <= now()
+      and d.status in ('open', 'submitted', 'abandoned', 'expired')
+    order by a.expires_at asc, a.created_at asc
+    limit p_limit
+    for update of a skip locked
+  ), marked as (
+    update public.rma_attachments as a
+    set status = 'expired', updated_at = now()
+    from stale
+    where a.id = stale.id
+    returning a.id, a.bucket, a.storage_path
+  )
+  select marked.id, marked.bucket, marked.storage_path
+  from marked;
+end;
+$$;
+
 create or replace function public.rma_submit_request(
   p_draft_id uuid,
   p_order_line_id uuid,
@@ -959,6 +1125,8 @@ declare
   v_resolution text := lower(btrim(coalesce(p_requested_resolution, '')));
   v_note text := nullif(btrim(coalesce(p_note, '')), '');
   v_policy_scope text;
+  v_attachment_fingerprint text;
+  v_payload_fingerprint text;
 begin
   if v_auth_uid is null then
     raise exception 'Authentication required' using errcode = '28000';
@@ -989,6 +1157,39 @@ begin
   elsif length(v_idempotency_key) not between 8 and 128 then
     raise exception 'Invalid RMA idempotency key' using errcode = '23514';
   end if;
+
+  if v_attachment_count <> (
+    select count(distinct attachment_id)::integer
+    from unnest(coalesce(p_attachment_ids, '{}'::uuid[])) as attachment_id
+  ) then
+    raise exception 'RMA attachment IDs must be unique' using errcode = '23514';
+  end if;
+
+  select coalesce(string_agg(attachment_id::text, ',' order by attachment_id::text), '')
+  into v_attachment_fingerprint
+  from (
+    select distinct attachment_id
+    from unnest(coalesce(p_attachment_ids, '{}'::uuid[])) as attachment_id
+  ) as attachment_ids;
+
+  v_payload_fingerprint := md5(concat_ws(
+    chr(31),
+    p_draft_id::text,
+    p_order_line_id::text,
+    p_quantity::text,
+    coalesce(v_reason, ''),
+    v_resolution,
+    coalesce(v_note, ''),
+    v_attachment_fingerprint
+  ));
+
+  -- Serialise same-user retries before reading the idempotency row. This
+  -- converts concurrent duplicate inserts into a deterministic replay or a
+  -- typed payload conflict, never a raw unique-constraint error.
+  perform pg_advisory_xact_lock(hashtextextended(
+    format('rma-submit-user:%s:%s', v_auth_uid, v_idempotency_key),
+    0
+  ));
 
   select *
   into v_draft
@@ -1028,11 +1229,16 @@ begin
   end if;
 
   if v_draft.status = 'submitted' and v_draft.submitted_rma_id is not null then
-    if v_draft.reason_code is distinct from v_reason
-      or v_draft.requested_resolution is distinct from v_resolution
-      or v_draft.note is distinct from coalesce(v_note, '')
+    select *
+    into v_existing
+    from public.rma_requests as r
+    where r.id = v_draft.submitted_rma_id
+    for update;
+
+    if v_existing.id is null
+      or v_existing.submit_payload_fingerprint is distinct from v_payload_fingerprint
     then
-      raise exception 'RMA draft is already submitted with a different payload' using errcode = '23505';
+      raise exception 'RMA draft is already submitted with a different payload' using errcode = 'P0001';
     end if;
     return v_draft.submitted_rma_id;
   end if;
@@ -1045,12 +1251,13 @@ begin
   for update;
 
   if v_existing.id is not null then
-    if v_existing.order_line_id <> p_order_line_id
+    if v_existing.submit_payload_fingerprint is distinct from v_payload_fingerprint
+      or v_existing.order_line_id <> p_order_line_id
       or v_existing.quantity <> p_quantity
       or v_existing.reason_code is distinct from v_reason
       or v_existing.requested_resolution <> v_resolution
     then
-      raise exception 'RMA idempotency key is bound to a different request' using errcode = '23505';
+      raise exception 'RMA idempotency key is bound to a different request' using errcode = 'P0001';
     end if;
     return v_existing.id;
   end if;
@@ -1075,6 +1282,12 @@ begin
     raise exception 'Order not found' using errcode = 'P0002';
   end if;
 
+  if v_draft.order_id is distinct from v_order.id
+    or v_draft.customer_id is distinct from v_order.customer_id
+  then
+    raise exception 'RMA draft ownership snapshot does not match the order line' using errcode = '42501';
+  end if;
+
   v_customer_id := v_order.customer_id;
 
   if v_order.status not in ('shipped', 'completed', 'delivered') then
@@ -1090,16 +1303,7 @@ begin
     raise exception 'Inactive customers cannot submit an RMA' using errcode = '42501';
   end if;
 
-  if not (
-    v_order.user_id = v_auth_uid
-    or exists (
-      select 1
-      from public.customer_memberships as cm
-      where cm.customer_id = v_customer_id
-        and cm.user_id = v_auth_uid
-        and cm.status = 'active'
-    )
-  ) then
+  if not private.rma_user_can_access_order(v_auth_uid, v_customer_id, v_order.id) then
     raise exception 'Order line does not belong to the authenticated customer' using errcode = '42501';
   end if;
 
@@ -1119,17 +1323,21 @@ begin
   where a.id = any(coalesce(p_attachment_ids, '{}'))
     and a.draft_id = v_draft.id
     and a.user_id = v_auth_uid
+    and a.customer_id = v_customer_id
     and a.order_line_id = v_line.id
+    and a.rma_request_id is null
     and a.status = 'verified';
 
   if v_eligible_count <> v_attachment_count then
     raise exception 'Every submitted RMA image must be a verified attachment from this draft' using errcode = '42501';
   end if;
 
-  if not (
-    v_policy_scope = 'statutory_b2c_withdrawal'
-    and (v_reason is null or v_reason = 'withdrawal_no_longer_needed')
-  ) and v_reason is distinct from 'withdrawal_no_longer_needed' and v_attachment_count < 1 then
+  if v_attachment_count < 1
+    and not (
+      v_policy_scope = 'statutory_b2c_withdrawal'
+      and (v_reason is null or v_reason = 'withdrawal_no_longer_needed')
+    )
+  then
     raise exception 'This RMA reason requires at least one verified image' using errcode = '23514';
   end if;
 
@@ -1169,6 +1377,7 @@ begin
     eligible_until,
     unit_price_snapshot,
     idempotency_key,
+    submit_payload_fingerprint,
     attachments,
     customer_visible_note
   )
@@ -1205,10 +1414,14 @@ begin
     v_line.product_name,
     jsonb_build_object('delivery_address', v_order.delivery_address),
     v_policy_scope,
-    null,
+    case
+      when v_policy_scope = 'b2b_commercial' then coalesce(v_draft.policy_version, 'partspro-b2b-v1')
+      else v_draft.policy_version
+    end,
     null,
     v_line.unit_price,
     v_idempotency_key,
+    v_payload_fingerprint,
     coalesce((
       select jsonb_agg(jsonb_build_object(
         'attachment_id', a.id,
@@ -1298,7 +1511,7 @@ begin
     'rma_submitted',
     'RMA submitted',
     format('Your RMA %s was submitted for review.', v_rma_no),
-    format('/rma/%s', v_rma_id),
+    format('/rma?requestId=%s', v_rma_id),
     'rma_requests',
     v_rma_id::text,
     v_rma_id,
@@ -1386,13 +1599,22 @@ begin
     ''
   );
 
+  if p_refund_amount is not null then
+    -- Keep the old RPC signature, but never let review PATCH confirm money.
+    -- The amount is intentionally ignored; only the wallet/refund action can
+    -- establish a payable result after receipt and QC.
+    v_event_note := coalesce(
+      nullif(v_event_note, ''),
+      'Legacy review refund amount ignored; use the authorized refund action.'
+    );
+  end if;
+
   update public.rma_requests
   set status = v_next_status,
       customer_visible_note = coalesce(nullif(btrim(p_customer_visible_note), ''), customer_visible_note),
       internal_note = coalesce(nullif(btrim(p_internal_note), ''), internal_note),
       lab_result = coalesce(nullif(btrim(p_lab_result), ''), lab_result),
       resolution_note = coalesce(nullif(btrim(p_resolution_note), ''), resolution_note),
-      refund_amount = coalesce(p_refund_amount, refund_amount),
       reviewed_at = case when v_next_status in ('under_review', 'approved', 'rejected') then coalesce(reviewed_at, now()) else reviewed_at end,
       reviewed_by = case when v_next_status in ('under_review', 'approved', 'rejected') then v_auth_uid else reviewed_by end,
       updated_at = now()
@@ -1424,7 +1646,7 @@ begin
       jsonb_build_object(
         'customer_visible', v_customer_visible,
         'review_only', true,
-        'refund_amount', p_refund_amount
+        'review_refund_amount_ignored', p_refund_amount is not null
       )
     );
   end if;
@@ -1563,6 +1785,11 @@ begin
     raise exception 'Invalid RMA action idempotency key' using errcode = '23514';
   end if;
 
+  perform pg_advisory_xact_lock(hashtextextended(
+    format('rma-action:%s:%s:%s:%s', v_auth_uid, v_before.id, v_action, v_idempotency_key),
+    0
+  ));
+
   v_payload_fingerprint := md5(concat_ws(
     '|',
     v_action,
@@ -1590,7 +1817,7 @@ begin
 
   if v_execution.id is not null then
     if coalesce(v_execution.payload_fingerprint, '') <> v_payload_fingerprint then
-      raise exception 'RMA action idempotency key was reused with a different payload' using errcode = '23505';
+      raise exception 'RMA action idempotency key was reused with a different payload' using errcode = 'P0001';
     end if;
 
     if v_execution.execution_status = 'succeeded' then
@@ -1619,7 +1846,7 @@ begin
         and e.execution_status = 'succeeded'
     )
   then
-    raise exception 'RMA inventory disposition has already been completed' using errcode = '23505';
+    raise exception 'RMA inventory disposition has already been completed' using errcode = '23514';
   end if;
 
   if v_execution.id is null then
@@ -1642,6 +1869,10 @@ begin
     '{}'::jsonb
   )
     returning * into v_execution;
+  end if;
+
+  if v_action = 'record_qc' and v_before.qc_status <> 'pending' then
+    raise exception 'RMA QC has already been recorded; use an explicit correction action in a future migration' using errcode = '23514';
   end if;
 
   select *
@@ -1672,6 +1903,9 @@ begin
   v_sku_code := coalesce(v_line.sku_code, v_before.sku_code);
 
   if v_action = 'assign' then
+    if v_before.status in ('closed', 'rejected') then
+      raise exception 'Closed or rejected RMAs cannot be assigned' using errcode = '23514';
+    end if;
     v_assigned_to := coalesce(p_assigned_to, v_auth_uid);
     v_event_type := 'assigned';
     v_event_note := coalesce(v_event_note, 'RMA assigned');
@@ -1739,13 +1973,56 @@ begin
       raise exception 'RMA wallet refund requires receipt and an explicit QC result' using errcode = '23514';
     end if;
 
-    v_refund_amount := round(coalesce(nullif(p_refund_amount, 0), nullif(v_before.refund_amount, 0)), 2);
+    if v_before.resolution_action = 'replacement'
+      or v_before.replacement_order_id is not null
+      or v_before.status = 'replacement_sent'
+      or exists (
+        select 1
+        from public.rma_action_executions as e
+        where e.rma_request_id = v_before.id
+          and e.action = 'mark_replacement_sent'
+          and e.execution_status = 'succeeded'
+      )
+    then
+      raise exception 'RMA already has a replacement outcome; wallet refund is not available' using errcode = '23514';
+    end if;
+
+    if v_before.wallet_refund_request_id is not null
+      or exists (
+        select 1
+        from public.wallet_refund_requests as wr
+        where wr.rma_request_id = v_before.id
+          and wr.status in ('pending', 'approved')
+      )
+    then
+      raise exception 'RMA wallet refund request already exists' using errcode = '23514';
+    end if;
+
+    if p_quantity is null then
+      raise exception 'Refund quantity must be explicitly confirmed' using errcode = '23514';
+    end if;
+
+    if v_before.received_quantity is null
+      or p_quantity < 1
+      or p_quantity > v_before.received_quantity
+    then
+      raise exception 'Refund quantity must not exceed received quantity' using errcode = '22003';
+    end if;
+
+    -- The action payload is the only amount authority. A historical
+    -- rma_requests.refund_amount (including a legacy review PATCH value) is
+    -- never silently reused for a payable wallet request.
+    v_refund_amount := round(nullif(p_refund_amount, 0), 2);
     if v_refund_amount is null or v_refund_amount <= 0 then
       raise exception 'Refund amount must be explicitly confirmed before requesting a wallet refund' using errcode = '23514';
     end if;
 
-    v_line_unit_price := coalesce(v_before.unit_price_snapshot, v_line.unit_price, 0);
-    v_line_refund_cap := round(v_line_unit_price * greatest(coalesce(v_before.received_quantity, v_before.quantity), 0), 2);
+    if v_before.unit_price_snapshot is null then
+      raise exception 'RMA has no immutable unit-price snapshot for refund approval' using errcode = '23514';
+    end if;
+    v_line_unit_price := v_before.unit_price_snapshot;
+    v_stock_quantity := p_quantity;
+    v_line_refund_cap := round(v_line_unit_price * v_stock_quantity, 2);
     select coalesce(sum(coalesce(r.refund_net_amount, r.refund_amount, 0)), 0)
     into v_existing_refunded_amount
     from public.rma_requests as r
@@ -1757,10 +2034,6 @@ begin
     v_refundable_amount := least(v_refundable_amount, v_line_refund_cap);
     if v_refund_amount > v_refundable_amount then
       raise exception 'Refund amount exceeds the remaining order-line refundable balance' using errcode = '22003';
-    end if;
-
-    if v_before.wallet_refund_request_id is not null then
-      raise exception 'RMA wallet refund request already exists' using errcode = '23505';
     end if;
 
     insert into public.wallet_refund_requests (
@@ -1791,6 +2064,7 @@ begin
         'source', 'rma_admin_action_v3',
         'rma_request_id', v_before.id,
         'requested_amount', v_refund_amount,
+        'refund_quantity', v_stock_quantity,
         'amount_scope', 'explicit_line_amount_only',
         'tax_and_shipping_included', false
       )
@@ -1868,7 +2142,6 @@ begin
       jsonb_build_object('available_qty_delta', v_stock_quantity, 'disposition', 'restock')
     );
 
-    v_resolution_action := 'return_to_stock';
     v_inventory_disposition := 'restock';
     v_next_status := v_before.status;
     v_event_type := 'stock_adjusted';
@@ -1881,6 +2154,12 @@ begin
 
     if v_before.qc_status not in ('passed', 'failed', 'not_required') then
       raise exception 'RMA inventory disposition requires an explicit QC result' using errcode = '23514';
+    end if;
+
+    if nullif(btrim(coalesce(p_batch_code, '')), '') is null
+      or nullif(btrim(coalesce(p_location, '')), '') is null
+    then
+      raise exception 'Inventory disposition requires an explicit batch code and location' using errcode = '23514';
     end if;
 
     v_stock_quantity := coalesce(p_quantity, coalesce(v_before.received_quantity, v_before.quantity));
@@ -1913,11 +2192,12 @@ begin
       jsonb_build_object(
         'available_qty_delta', 0,
         'disposition', case when v_action = 'mark_scrapped' then 'scrap' else 'supplier_return' end,
+        'batch_code', p_batch_code,
+        'location', p_location,
         'supplier', p_supplier
       )
     );
 
-    v_resolution_action := case when v_action = 'mark_scrapped' then 'scrap' else 'supplier_return' end;
     v_inventory_disposition := case when v_action = 'mark_scrapped' then 'scrap' else 'supplier_return' end;
     v_next_status := v_before.status;
     v_event_type := 'inventory_disposition';
@@ -1928,10 +2208,28 @@ begin
       raise exception 'A shipped replacement order is required' using errcode = '23514';
     end if;
 
+    if v_before.resolution_action = 'refund_wallet'
+      or v_before.wallet_refund_request_id is not null
+      or v_before.status = 'refunded'
+      or exists (
+        select 1
+        from public.wallet_refund_requests as wr
+        where wr.rma_request_id = v_before.id
+          and wr.status in ('pending', 'approved')
+      )
+    then
+      raise exception 'RMA already has a wallet refund outcome; replacement is not available' using errcode = '23514';
+    end if;
+
+    if p_quantity is null then
+      raise exception 'Replacement quantity must be explicitly confirmed' using errcode = '23514';
+    end if;
+
     select *
     into v_replacement_order
     from public.orders as o
-    where o.id = p_replacement_order_id;
+    where o.id = p_replacement_order_id
+    for update;
 
     if v_replacement_order.id is null
       or v_replacement_order.status <> 'shipped'
@@ -1945,17 +2243,26 @@ begin
       raise exception 'Replacement requires receipt and an explicit QC result' using errcode = '23514';
     end if;
 
+    if v_before.received_quantity is null
+      or p_quantity < 1
+      or p_quantity > v_before.received_quantity
+    then
+      raise exception 'Replacement quantity must not exceed received quantity' using errcode = '22003';
+    end if;
+
+    v_stock_quantity := p_quantity;
+
     if v_sku_code is null then
       raise exception 'RMA has no SKU for replacement validation' using errcode = '23503';
     end if;
 
-    select coalesce(sum(ol.quantity), 0)
+    select coalesce(sum(greatest(ol.quantity - coalesce(ol.cancelled_qty, 0), 0)), 0)
     into v_replacement_quantity
     from public.order_lines as ol
     where ol.order_id = v_replacement_order.id
       and ol.sku_code = v_sku_code;
 
-    if v_replacement_quantity < greatest(v_before.quantity, 1) then
+    if v_replacement_quantity < v_stock_quantity then
       raise exception 'Replacement order does not contain enough of the returned SKU' using errcode = '23514';
     end if;
 
@@ -1965,26 +2272,34 @@ begin
       where r.replacement_order_id = v_replacement_order.id
         and r.id <> v_before.id
     ) then
-      raise exception 'Replacement order is already associated with another RMA' using errcode = '23505';
+      raise exception 'Replacement order is already associated with another RMA' using errcode = '23514';
     end if;
 
     v_next_status := 'replacement_sent';
     v_resolution_action := 'replacement';
+    v_replacement_quantity := v_stock_quantity;
     v_event_type := 'replacement_sent';
     v_event_note := coalesce(v_event_note, 'Replacement order shipped');
     v_customer_visible := true;
 
   elsif v_action = 'close' then
-    if v_before.received_at is not null and v_inventory_disposition not in ('restock', 'scrap', 'supplier_return') then
-      raise exception 'Received RMA requires a completed inventory disposition before closing' using errcode = '23514';
-    end if;
-
-    if v_before.status in ('closed', 'rejected') then
+    if v_before.status = 'closed' then
       v_next_status := 'closed';
-    elsif v_before.status not in ('refunded', 'replacement_sent') then
-      raise exception 'RMA cannot be closed in its current state' using errcode = '23514';
+    elsif v_before.status = 'rejected' and v_before.received_at is null then
+      -- A rejected request that never entered the warehouse has no second
+      -- axis to settle.
+      v_next_status := 'closed';
+    elsif v_before.status in ('refunded', 'replacement_sent')
+      and v_before.received_at is not null
+      and v_before.qc_status in ('passed', 'failed', 'not_required')
+      and v_before.resolution_action in ('refund_wallet', 'replacement')
+      and v_inventory_disposition in ('restock', 'scrap', 'supplier_return')
+    then
+      v_next_status := 'closed';
     else
-      v_next_status := 'closed';
+      -- Received RMAs must have both a terminal commercial outcome and a
+      -- terminal inventory disposition before they can close.
+      raise exception 'RMA cannot be closed in its current state' using errcode = '23514';
     end if;
 
     v_event_type := 'closed';
@@ -2026,8 +2341,9 @@ begin
       refund_method = case when v_action = 'request_wallet_refund' then 'wallet_credit' else refund_method end,
       refund_currency = case when v_action = 'request_wallet_refund' then 'EUR' else refund_currency end,
       refund_net_amount = case when v_action = 'request_wallet_refund' then v_refund_amount else refund_net_amount end,
-      refund_approved_quantity = case when v_action = 'request_wallet_refund' then coalesce(v_before.received_quantity, v_before.quantity) else refund_approved_quantity end,
+      refund_approved_quantity = case when v_action = 'request_wallet_refund' then v_stock_quantity else refund_approved_quantity end,
       replacement_order_id = case when v_action = 'mark_replacement_sent' then p_replacement_order_id else replacement_order_id end,
+      replacement_quantity = case when v_action = 'mark_replacement_sent' then v_replacement_quantity else replacement_quantity end,
       updated_at = now()
   where id = v_before.id
   returning * into v_after;
@@ -2062,7 +2378,7 @@ begin
       'inventory_disposition', v_after.inventory_disposition,
       'wallet_refund_request_id', v_after.wallet_refund_request_id,
       'replacement_order_id', v_after.replacement_order_id,
-      'quantity', case when v_action in ('mark_received', 'restock_return', 'mark_scrapped', 'supplier_return') then v_stock_quantity else null end,
+      'quantity', case when v_action in ('mark_received', 'request_wallet_refund', 'mark_replacement_sent', 'restock_return', 'mark_scrapped', 'supplier_return') then v_stock_quantity else null end,
       'tax_and_shipping_included', false
     )
   );
@@ -2089,7 +2405,7 @@ begin
       'rma_status_updated',
       'RMA status updated',
       left(coalesce(v_event_note, format('RMA %s status updated.', coalesce(v_after.rma_no, v_after.id::text))), 240),
-      format('/rma/%s', v_after.id),
+      format('/rma?requestId=%s', v_after.id),
       'rma_requests',
       v_after.id::text,
       v_after.id,
@@ -2128,6 +2444,7 @@ declare
   v_existing_refunded numeric(12, 2);
   v_unit_price numeric(12, 2);
   v_line_cap numeric(12, 2);
+  v_approved_quantity integer;
 begin
   if v_auth_uid is null then
     raise exception 'Authentication required' using errcode = '28000';
@@ -2150,8 +2467,30 @@ begin
     raise exception 'RMA request does not exist for wallet refund approval' using errcode = '23503';
   end if;
 
-  if v_rma.received_at is null or v_rma.qc_status not in ('passed', 'failed', 'not_required') then
-    raise exception 'RMA wallet refund approval requires receipt and an explicit QC result' using errcode = '23514';
+  if v_rma.status <> 'received'
+    or v_rma.received_at is null
+    or v_rma.qc_status not in ('passed', 'failed', 'not_required')
+    or v_rma.resolution_action <> 'refund_wallet'
+    or v_rma.replacement_order_id is not null
+    or v_rma.wallet_refund_request_id is distinct from new.id
+  then
+    raise exception 'Wallet approval is not available for this RMA commercial outcome' using errcode = '23514';
+  end if;
+
+  if nullif(new.metadata ->> 'refund_quantity', '') is not null then
+    if new.metadata ->> 'refund_quantity' !~ '^[1-9][0-9]{0,8}$' then
+      raise exception 'Wallet approval refund quantity metadata is invalid' using errcode = '22023';
+    end if;
+    v_approved_quantity := (new.metadata ->> 'refund_quantity')::integer;
+  else
+    v_approved_quantity := v_rma.refund_approved_quantity;
+  end if;
+  if v_approved_quantity is null
+    or v_rma.received_quantity is null
+    or v_approved_quantity < 1
+    or v_approved_quantity > v_rma.received_quantity
+  then
+    raise exception 'Wallet approval quantity must not exceed received quantity' using errcode = '22003';
   end if;
 
   select *
@@ -2160,7 +2499,10 @@ begin
   where ol.id = v_rma.order_line_id
   for update;
 
-  v_unit_price := coalesce(v_rma.unit_price_snapshot, v_line.unit_price, 0);
+  if v_rma.unit_price_snapshot is null then
+    raise exception 'RMA has no immutable unit-price snapshot for wallet approval' using errcode = '23514';
+  end if;
+  v_unit_price := v_rma.unit_price_snapshot;
   perform pg_advisory_xact_lock(hashtextextended(format('rma-refund-line:%s', coalesce(v_rma.order_line_id, new.order_line_id)), 0));
 
   select coalesce(sum(coalesce(r.refund_net_amount, r.refund_amount, 0)), 0)
@@ -2170,7 +2512,7 @@ begin
     and r.id <> v_rma.id
     and r.status = 'refunded';
 
-  v_line_cap := greatest(round(v_unit_price * greatest(coalesce(v_rma.received_quantity, v_rma.quantity), 0), 2) - coalesce(v_existing_refunded, 0), 0);
+  v_line_cap := greatest(round(v_unit_price * v_approved_quantity, 2) - coalesce(v_existing_refunded, 0), 0);
   if coalesce(new.approved_amount, 0) > v_line_cap then
     raise exception 'Approved wallet refund exceeds the remaining order-line cap' using errcode = '22003';
   end if;
@@ -2199,6 +2541,7 @@ declare
   v_rma public.rma_requests%rowtype;
   v_auth_uid uuid := (select auth.uid());
   v_actor_id uuid := coalesce(new.approved_by, (select auth.uid()));
+  v_approved_quantity integer;
 begin
   if v_auth_uid is null then
     raise exception 'Authentication required' using errcode = '28000';
@@ -2222,13 +2565,30 @@ begin
     return new;
   end if;
 
+  if v_rma.status <> 'received'
+    or v_rma.resolution_action <> 'refund_wallet'
+    or v_rma.replacement_order_id is not null
+    or v_rma.wallet_refund_request_id is distinct from new.id
+  then
+    raise exception 'Wallet approval cannot settle this RMA commercial outcome' using errcode = '23514';
+  end if;
+
+  if nullif(new.metadata ->> 'refund_quantity', '') is not null then
+    if new.metadata ->> 'refund_quantity' !~ '^[1-9][0-9]{0,8}$' then
+      raise exception 'Wallet approval refund quantity metadata is invalid' using errcode = '22023';
+    end if;
+    v_approved_quantity := (new.metadata ->> 'refund_quantity')::integer;
+  else
+    v_approved_quantity := v_rma.refund_approved_quantity;
+  end if;
+
   update public.rma_requests
   set status = 'refunded',
       resolution_action = 'refund_wallet',
       wallet_refund_request_id = new.id,
       refund_amount = new.approved_amount,
       refund_net_amount = new.approved_amount,
-      refund_approved_quantity = coalesce(v_rma.received_quantity, v_rma.quantity),
+      refund_approved_quantity = v_approved_quantity,
       refund_method = 'wallet_credit',
       refund_currency = coalesce(new.currency, 'EUR'),
       resolved_at = coalesce(resolved_at, now()),
@@ -2259,7 +2619,7 @@ begin
       'wallet_refund_request_id', new.id,
       'requested_amount', new.requested_amount,
       'approved_amount', new.approved_amount,
-      'approved_quantity', coalesce(v_rma.received_quantity, v_rma.quantity),
+      'approved_quantity', v_approved_quantity,
       'tax_and_shipping_included', false
     )
   );
@@ -2286,7 +2646,7 @@ begin
       'rma_status_updated',
       'RMA refund approved',
       format('The wallet refund for RMA %s was approved.', coalesce(v_rma.rma_no, v_rma.id::text)),
-      format('/rma/%s', v_rma.id),
+      format('/rma?requestId=%s', v_rma.id),
       'rma_requests',
       v_rma.id::text,
       v_rma.id,
@@ -2359,6 +2719,9 @@ $$;
 revoke all on function private.rma_attachment_extension(text)
   from public, anon, authenticated;
 
+revoke all on function private.rma_user_can_access_order(uuid, uuid, uuid)
+  from public, anon, authenticated;
+
 revoke all on function private.assert_rma_wallet_refund_line_cap()
   from public, anon, authenticated;
 revoke all on function private.sync_rma_wallet_refund_approval()
@@ -2383,6 +2746,11 @@ revoke all on function public.rma_cancel_attachment(uuid, uuid)
   from public, anon;
 grant execute on function public.rma_cancel_attachment(uuid, uuid)
   to authenticated;
+
+revoke all on function public.rma_gc_expired_attachments(integer)
+  from public, anon, authenticated;
+grant execute on function public.rma_gc_expired_attachments(integer)
+  to service_role;
 
 revoke all on function public.rma_submit_request(uuid, uuid, integer, text, text, text, uuid[], text)
   from public, anon;

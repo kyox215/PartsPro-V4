@@ -12,6 +12,8 @@ const http = read("src/lib/partspro-rma-http.ts");
 const helper = read("src/lib/partspro-rma-simple-flow.ts");
 const evidence = read("src/lib/partspro-rma-evidence.ts");
 const customerRoute = read("src/app/api/rma/route.ts");
+const customerDto = read("src/lib/partspro-rma-customer-dto.ts");
+const rules = read("src/lib/partspro-rma-rules.mjs");
 const legacyEvidenceRoute = read("src/app/api/rma/evidence/route.ts");
 const completeRoute = read("src/app/api/rma/drafts/[draftId]/attachments/[attachmentId]/complete/route.ts");
 const migration = read("supabase/migrations/20260827210026_rma_simple_flow_expand.sql");
@@ -54,6 +56,8 @@ test("customer contract freezes six reasons, three resolutions and strict payloa
   assert.match(contract, /reasonRequiresImage/);
   assert.match(contract, /withdrawal_no_longer_needed/);
   assert.match(contract, /statutory_b2c_withdrawal/);
+  assert.match(contract, /rmaCanonicalPolicyScope = "b2b_commercial"/);
+  assert.match(contract, /rmaCanonicalPolicyVersion = "partspro-b2b-v1"/);
 });
 
 test("server upload/complete/submit path is opaque, direct-upload and fail-closed", () => {
@@ -70,9 +74,11 @@ test("server upload/complete/submit path is opaque, direct-upload and fail-close
   assert.match(helper, /p_reason_code: input\.reasonCode \?\? null/);
   assert.match(http, /handleLegacyRmaSubmit/);
   assert.match(http, /normalizeLegacyRmaAttachments/);
+  assert.match(http, /attachments\.length < 1/);
+  assert.match(http, /RMA_EVIDENCE_REQUIRED/);
   assert.match(http, /Cache-Control/);
   assert.match(customerRoute, /handleRmaSubmit/);
-  assert.match(customerRoute, /customerStageForRmaStatus/);
+  assert.match(customerDto, /customerStageForRmaStatus/);
   assert.doesNotMatch(customerRoute, /data:\s*customerRequests[\s\S]*internalNote/);
   assert.match(legacyEvidenceRoute, /maxEvidenceBytes = 20 \* 1024 \* 1024/);
   assert.match(legacyEvidenceRoute, /rma\/\$\{account\.userId\}\/legacy/);
@@ -80,9 +86,14 @@ test("server upload/complete/submit path is opaque, direct-upload and fail-close
   assert.match(legacyEvidenceRoute, /createSignedUrl/);
   assert.match(evidence, /isRmaEvidencePathOwnedByUser/);
   assert.match(evidence, /stripSignedUrl/);
+  assert.match(evidence, /!attachmentOwnerUserId/);
   assert.match(evidence, /storage_path/);
   assert.match(completeRoute, /export async function DELETE/);
   assert.match(completeRoute, /cancelRmaAttachment/);
+  assert.match(http, /const customerDto = toCustomerRmaDto\(signedRequest\)/);
+  assert.match(customerDto, /assignees, notes, wallet ids, inventory fields and storage paths never cross/);
+  assert.doesNotMatch(customerDto, /internalNote|assignedTo|walletRefundRequestId|inventoryDisposition|storagePath/);
+  assert.doesNotMatch(customerRoute, /rma\/\$\{request\.id\}/);
 });
 
 test("Migration A owns isolated draft/attachment/action tables and fixed storage path", () => {
@@ -107,6 +118,11 @@ test("Migration A owns isolated draft/attachment/action tables and fixed storage
   assert.match(migration, /status in \('pending', 'verified', 'committed', 'rejected', 'expired', 'cancelled'\)/);
   assert.match(migration, /when \(new\.request_type <> 'rma_return'\)/);
   assert.match(migration, /RMA draft is no longer open/);
+  assert.match(migration, /rma_gc_expired_attachments/);
+  assert.match(migration, /grant execute on function public\.rma_gc_expired_attachments\(integer\)\s+to service_role/);
+  assert.match(migration, /status in \('pending', 'verified', 'committed'\)\s+and a\.expires_at > now\(\)/);
+  assert.match(migration, /d\.status in \('open', 'submitted', 'abandoned', 'expired'\)/);
+  assert.match(migration, /a\.rma_request_id is null/);
 });
 
 test("RMA RPCs bind auth/ownership, preserve policy uncertainty and use explicit grants", () => {
@@ -135,13 +151,30 @@ test("RMA RPCs bind auth/ownership, preserve policy uncertainty and use explicit
   assert.match(migration, /customer_memberships as cm/);
   assert.match(migration, /v_order\.status not in \('shipped', 'completed', 'delivered'\)/);
   assert.match(migration, /v_customer\.status <> 'active'/);
+  assert.match(migration, /private\.rma_user_can_access_order/);
+  assert.match(migration, /c\.profile_kind = 'employee_self'/);
+  assert.match(migration, /c\.user_id = p_auth_uid/);
+  assert.match(migration, /c\.id = v_profile_customer_id/);
+  assert.match(migration, /cm\.status = 'active'/);
+  assert.match(migration, /v_account_type = 'customer'/);
+  assert.doesNotMatch(migration, /v_order\.user_id = v_auth_uid/);
+  assert.match(migration, /'b2b_commercial',\s+'partspro-b2b-v1'/);
+  assert.match(migration, /rma-submit-user:%s:%s/);
+  assert.match(migration, /submit_payload_fingerprint/);
+  assert.match(migration, /RMA has no immutable unit-price snapshot/);
 });
 
 test("statutory withdrawal and pure safety helpers remain separate from defect evidence", () => {
-  assert.match(contract, /policyScope === "statutory_b2c_withdrawal"/);
+  assert.match(rules, /policyScope === statutoryWithdrawalScope/);
+  assert.match(rules, /reasonCode === "withdrawal_no_longer_needed"/);
   assert.match(contract, /export function isRmaActionAvailable/);
   assert.match(contract, /export function calculateRmaLineRefundCap/);
+  assert.match(contract, /export function isCommercialOutcomeAvailable/);
   assert.match(migration, /reason is required unless the draft is a statutory B2C withdrawal/);
   assert.match(migration, /v_policy_scope = 'statutory_b2c_withdrawal'/);
   assert.match(migration, /unit_price_snapshot/);
+  assert.match(rules, /only scope where a reason and evidence may both be/);
+  assert.match(migration, /v_policy_scope = 'statutory_b2c_withdrawal'/);
+  assert.match(migration, /and \(v_reason is null or v_reason = 'withdrawal_no_longer_needed'\)/);
+  assert.match(migration, /if v_attachment_count < 1/);
 });
