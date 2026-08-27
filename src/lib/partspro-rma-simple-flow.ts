@@ -193,6 +193,49 @@ export async function completeRmaAttachment(
   };
 }
 
+export async function cancelRmaAttachment(
+  draftId: string,
+  attachmentId: string
+) {
+  const { client, user } = await requireAuthenticatedClient();
+  const { data, error } = await client.rpc("rma_cancel_attachment", {
+    p_attachment_id: attachmentId,
+    p_draft_id: draftId,
+  });
+
+  if (error || data !== true) {
+    throw mapRpcError(error, "RMA_ATTACHMENT_CANCEL_FAILED", "RMA attachment could not be cancelled.");
+  }
+
+  // Database cancellation is the source of truth. Storage deletion is a
+  // best-effort compensation and never re-opens a cancelled attachment.
+  const service = requireServiceRoleClient();
+  const { data: attachment } = await service
+    .from("rma_attachments")
+    .select("storage_path,bucket")
+    .eq("id", attachmentId)
+    .eq("draft_id", draftId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  const storagePath = isRecord(attachment) ? readString(attachment.storage_path) : null;
+  const bucket = isRecord(attachment) ? readString(attachment.bucket) : null;
+
+  if (storagePath && bucket === rmaEvidenceBucket) {
+    const { error: removeError } = await service.storage
+      .from(rmaEvidenceBucket)
+      .remove([storagePath]);
+    if (removeError) {
+      throw new RmaSimpleFlowError(
+        502,
+        "RMA_ATTACHMENT_STORAGE_CLEANUP_PENDING",
+        "The attachment was cancelled, but storage cleanup is pending."
+      );
+    }
+  }
+
+  return { attachmentId, status: "cancelled" as const };
+}
+
 export async function submitRmaRequest(
   input: RmaCustomerSubmitInput
 ): Promise<CustomerRmaDto> {
@@ -206,7 +249,9 @@ export async function submitRmaRequest(
     p_draft_id: draftId,
     p_order_line_id: input.orderLineId,
     p_quantity: input.quantity,
-    p_reason_code: input.reasonCode,
+    // PostgREST omits undefined JSON properties. Send an explicit null so a
+    // statutory B2C withdrawal can intentionally omit a reason.
+    p_reason_code: input.reasonCode ?? null,
     p_requested_resolution: input.requestedResolution,
     p_note: input.note ?? null,
     p_attachment_ids: input.attachmentIds,
@@ -265,14 +310,14 @@ async function readDraftDto(userId: string, draftId: string): Promise<RmaDraftDt
     .select("id", { count: "exact", head: true })
     .eq("draft_id", draftId)
     .eq("user_id", userId)
-    .neq("status", "rejected");
+    .in("status", ["pending", "verified", "committed"]);
 
   return {
     attachmentCount: count ?? 0,
     createdAt: readString(draft.created_at) ?? new Date(0).toISOString(),
     id: readString(draft.id) ?? draftId,
     orderLineId: readString(draft.order_line_id) ?? "",
-    policyScope: "legacy_unverified",
+    policyScope: normalizePolicyScope(draft.policy_scope),
     status: normalizeDraftStatus(draft.status),
   };
 }
@@ -332,6 +377,7 @@ async function readCustomerRmaDto(userId: string, rmaId: string): Promise<Custom
     policyScope: readString(row.policy_scope) ?? "legacy_unverified",
     productName: readString(row.product_name_snapshot) ?? readString(row.sku_code) ?? "",
     quantity: readNumber(row.quantity) ?? 0,
+    reason: readString(row.reason_code) ?? readString(row.problem_type) ?? "",
     reasonCode: readString(row.reason_code) ?? readString(row.problem_type) ?? "",
     rmaNo: readString(row.rma_no),
     resolution: readString(row.requested_resolution) ?? "",
@@ -393,6 +439,9 @@ function mapRpcError(
   const row = isRecord(error) ? error : {};
   const rawCode = readString(row.code);
   const message = readString(row.message) ?? fallbackMessage;
+  if (rawCode === "23505" && /idempotency|already submitted|different payload/i.test(message)) {
+    return new RmaSimpleFlowError(409, "RMA_IDEMPOTENCY_CONFLICT", "The RMA submission key was already used with a different payload.");
+  }
   const status = rpcStatus(rawCode);
   return new RmaSimpleFlowError(status, rawCode ? `RMA_${rawCode}` : fallbackCode, message);
 }
@@ -517,5 +566,17 @@ function normalizeDraftStatus(value: unknown): RmaDraftDto["status"] {
       return value;
     default:
       return "open";
+  }
+}
+
+function normalizePolicyScope(value: unknown): RmaDraftDto["policyScope"] {
+  switch (value) {
+    case "statutory_b2c_withdrawal":
+    case "b2c_statutory_withdrawal":
+    case "b2c_warranty":
+    case "b2b_commercial":
+      return value;
+    default:
+      return "legacy_unverified";
   }
 }

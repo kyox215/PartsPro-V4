@@ -15,10 +15,6 @@ const adminRmaStatusSchema = z.enum([
   "under_review",
   "approved",
   "rejected",
-  "received",
-  "replacement_sent",
-  "refunded",
-  "closed",
 ]);
 
 const updateRmaSchema = z
@@ -39,12 +35,9 @@ export async function PATCH(request: NextRequest, { params }: AdminRmaParams) {
     return admin.response;
   }
 
-  if (
-    !hasAdminPermission(admin.authState, "rma.manage") &&
-    !hasAdminPermission(admin.authState, "orders.manage")
-  ) {
+  if (!hasAdminPermission(admin.authState, "rma.manage")) {
     return apiError(403, "ADMIN_PERMISSION_DENIED", "Missing admin permission.", {
-      permission: "rma.manage or orders.manage",
+      permission: "rma.manage",
       role: admin.authState.role,
     });
   }

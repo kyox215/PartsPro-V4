@@ -183,6 +183,7 @@ export type RmaRequest = {
   id: string;
   orderId: string;
   orderLineId?: string;
+  policyScope?: string;
   sku: string;
   productName: string;
   status: RmaStatus;
@@ -215,6 +216,7 @@ export type RmaRequest = {
 };
 
 export type RmaAttachment = {
+  attachmentId?: string;
   bucket?: string;
   contentType?: string;
   name: string;

@@ -29,7 +29,7 @@ Task ID：TASK-20260827-01
 完成定义分为“规划完成”和“未来实施完成”两层：
 
 1. 批次 0：本任务卡经老板/主代理审阅，业务规则、数据契约、状态机、批次、批准门、验收、发布和回滚边界明确。
-2. 当前批次 1：在隔离 worktree 中实现 additive Migration A、共享 RMA 契约、opaque draft/upload/complete/submit Route Handlers、服务端证据校验、admin v3 action ledger 和专项源契约测试；不改客户/后台 UI 或 i18n，不进行远端写入或部署。
+2. 当前批次 1：在隔离 worktree 中实现 additive Migration A、共享 RMA 契约、opaque draft/upload/complete/submit Route Handlers、服务端证据校验、admin v3 action ledger 和专项源契约测试；保留严格守卫的 legacy 双协议桥接，不改客户/后台 UI 或 i18n，不进行远端写入或部署。
 3. 未来实施：客户能从订单行进入并提交符合规则的退货申请；质量/损坏/发错类申请至少有一张图片；图片最多 6 张、单张压缩后不超过 4MB，V1 不支持视频；后台能在六个队列内完成审核、收货、质检、退款/换货和库存处置；客户只看到五个业务阶段；附件、状态、退款、库存和通知均有权限控制与审计证据。
 
 ## 主责部门
@@ -58,7 +58,7 @@ PartsPro 业务契约代理、Next.js 16 App Router 代理、Supabase Migration 
 - 客户页入口和登录边界：`src/app/rma/page.tsx:12-29`。
 - 客户 API 已按订单行反查归属并校验剩余数量：`src/app/api/rma/route.ts:123-163`；但上传附件仍可选：`src/app/api/rma/route.ts:41-55`。
 - 客户界面已有原因/症状/安装/损坏和证据清单，但文件选择没有明确拍照能力，且允许无文件提交：`src/components/partspro/rma-page.tsx:752-800`。
-- 当前上传接口会把文件写入私有 `rma-evidence`，单文件上限 20MB，使用 service role：`src/app/api/rma/evidence/route.ts:17-100`；上传与创建 RMA 分为两个请求，失败可能留下孤儿对象：`src/components/partspro/rma-page.tsx:466-502,1586-1606`。
+- 当前上传接口会把文件写入私有 `rma-evidence`，单文件上限 20MB，使用 service role：`src/app/api/rma/evidence/route.ts:17-100`；上传与创建 RMA 分为两个请求，失败可能留下孤儿对象：`src/components/partspro/rma-page.tsx:466-502,1586-1606`。本批保留该历史图片/视频能力作为临时桥接，新 draft 路径另行强制图片/4MB/6张。
 - 当前附件元数据由客户端提交 path/bucket，签名逻辑只按 bucket 判断：`src/app/api/rma/route.ts:19-55`、`src/lib/partspro-rma-evidence.ts:36-58`；后续实现必须改为服务端 upload ticket/attachment ID，不信任客户端 path。
 - 可售后订单目前只按 `shipped/completed/delivered` 判断，没有执行期限：`src/lib/partspro-repository.ts:11272-11323,14109-14115`；商品虽有 `rmaDays`，但不能代替法律政策或购买时快照：`src/lib/partspro-data.ts:78-114`。
 - 数量是先读取累计值再插入，数据库 trigger 只校验单次数量，存在并发超量风险：`src/lib/partspro-repository.ts:11300-11323`、`supabase/migrations/20260525133225_allow_customer_owned_rma_order_lines.sql:45-102`。
@@ -95,10 +95,10 @@ V1 默认原因码：
 
 ### 图片规则
 
-- `quality_defect`、`shipping_damage`、`wrong_item` 至少上传 1 张图片；建议分别提示缺陷、包装/物流标签、收到商品的照片。
+- `quality_defect`、`shipping_damage`、`wrong_item` 至少上传 1 张图片；建议分别提示缺陷、包装/物流标签、收到商品的照片。对 `policy_scope = statutory_b2c_withdrawal`，法定无理由撤回可不填原因且照片可选；若客户仍选择缺陷/损坏/发错等原因，仍执行对应证据门槛。
 - `not_as_described`、`missing_or_quantity_error` 默认至少 1 张图片，若业务确认可由订单证据替代才允许豁免并记录原因。
 - `withdrawal_no_longer_needed` 图片可选。
-- 最多 6 张图片；V1 不支持视频；每张在客户端压缩后不超过 4MB，服务端仍需重新校验字节、MIME 和魔数。
+- 新 draft/ticket/complete/submit 路径最多 6 张图片；V1 新流程不支持视频；每张在客户端压缩后不超过 4MB，服务端仍需重新校验字节、MIME、魔数和 SHA-256。Migration A 不收紧既有 `rma-evidence` bucket，legacy 双协议临时保留 20MB 图片/视频；bucket 收紧留给 Migration B。
 - 移动端提供“拍照”和“从相册选择”；拍照不等于允许绕过服务端校验。
 - 图片必须归属于当前用户、订单行和 RMA 草稿；RMA 创建失败/用户放弃后由清理任务删除未提交对象。
 
@@ -183,8 +183,8 @@ refunded | replacement_sent
 ### 客户 API
 
 - `GET /api/rma`：仅返回当前账号的 customer DTO、五阶段状态、可操作订单行、`eligible_until`、上传策略；不能返回内部负责人、钱包请求内部 ID、内部备注或任意存储 path。
-- 当前批次新增 `POST /api/rma/drafts`、`POST /api/rma/drafts/:draftId/uploads`、`POST /api/rma/drafts/:draftId/attachments/:attachmentId/complete`：先签发短期、用户/订单行绑定的 upload ticket；上传后服务端重新读取 Storage 校验并返回 opaque `attachmentId`。旧 multipart evidence route 保留可识别的 426 升级错误，待 UI 批次切换。
-- 当前批次新增 `POST /api/rma/submit`，并让 `POST /api/rma` 进入同一严格 handler：接受 `orderLineId`、数量、原因码、处理方式、补充说明、attachment IDs、`idempotencyKey/draftId`；由服务端从订单行推导订单/客户/SKU，事务内完成资格、数量、附件归属和必填证据校验。旧 path/bucket payload 不兼容时返回可识别升级错误。
+- 当前批次新增 `POST /api/rma/drafts`、`POST /api/rma/drafts/:draftId/uploads`、`POST /api/rma/drafts/:draftId/attachments/:attachmentId/complete`：先签发短期、用户/订单行绑定的 upload ticket；上传后服务端重新读取 Storage 校验并返回 opaque `attachmentId`。旧 multipart evidence route 继续严格生成当前用户前缀下的兼容对象，保留 20MB 图片/视频能力，不接受客户端自选 path。
+- 当前批次新增 `POST /api/rma/submit`，并让 `POST /api/rma` 进入同一严格 handler：新协议要求 `draftId`，接受 `orderLineId`、数量、原因码、处理方式、补充说明、attachment IDs、`idempotencyKey`；由服务端从订单行推导订单/客户/SKU，事务内完成资格、数量、附件归属和必填证据校验。`POST /api/rma` 同时仅在识别为旧字段集合时进入严格过滤的 legacy 分支，旧 path/bucket/signedUrl 不作为服务端事实。
 - 所有重试必须幂等；客户端不能用提交的 `orderId/sku/path/signedUrl` 覆盖服务端事实。
 
 ### 后台 API 与权限
@@ -215,7 +215,7 @@ refunded | replacement_sent
 ## 非目标
 
 - 当前批次 1 只实现服务端契约/API 与 additive Migration A；不改现有客户/后台 UI 或 i18n，不应用远端数据库，不部署 Vercel。
-- V1 不支持视频、自动打印物流标签、第三方承运商 API、自动现金/银行卡退款、自动库存回补或自动批准。
+- 新 V1 流程不支持视频（legacy 兼容桥暂保历史图片/视频）；不支持自动打印物流标签、第三方承运商 API、自动现金/银行卡退款、自动库存回补或自动批准。
 - 不用 `rmaDays` 削弱 B2C 法定撤回/保修；不把 B2C 和 B2B 规则合并成一个无条件窗口。
 - 不通过客户端 path、service role key、绕过 RLS 或临时权限扩大来实现上传/查看。
 - 不覆盖主工作区或其他代理的未提交改动。
@@ -226,7 +226,7 @@ refunded | replacement_sent
 - “退款”是否能回原支付方式、是否允许仅钱包、税费/运费由谁承担，需老板、财务和意大利政策/法务确认。
 - 商品是否有序列号/IMEI、质检标准、批次和仓位字段，以及退回件是否已进入实际库存，需仓库库存部确认。
 - 当前历史状态、附件 JSON 和钱包 `order_void` 语义需要迁移映射；不得直接删除历史值。
-- Next.js 16 实施批次修改 Route Handler 或 Server/Client 边界前，必须先阅读当前 worktree `node_modules/next/dist/docs/` 对应官方指南；本批无业务代码，因此不执行该读取或代码验证。
+- 本批修改了 Route Handler、server-only RMA helper 和 Supabase RPC 契约；已先读取主仓库 `node_modules/next/dist/docs/` 中 Next.js 16 Route Handler 与 Server/Client 指南，并执行定向测试/lint。worktree 本身无独立 `node_modules`，不得用 npm install 规避依赖缺失。
 
 ## 工作包
 
@@ -254,15 +254,24 @@ refunded | replacement_sent
 ### 规划批次验收
 
 - 本卡位于 `docs/tasks/now/`，状态为 `in_progress`，包含范围、非目标、契约、工作包、批准、验收、验证、发布/回滚和残余风险。
-- 冻结规则明确：一页三块、默认数量 1、六原因、图片规则、最多 6 张/4MB、V1 无视频、退款/换货/钱包三选一、客户五阶段、后台六队列。
+- 冻结规则明确：一页三块、默认数量 1、六原因、图片规则、最多 6 张/4MB、新 V1 无视频（legacy 桥暂保历史视频）、退款/换货/钱包三选一、客户五阶段、后台六队列。
 - 明确 B2C 法定撤回/保修与 B2B 商业退货分离，以及上线前意大利政策/法务确认门。
 - 任务卡提交仅包含该文件，主工作区未提交改动未被修改。
 
 ### 当前批次 1 验收
 
-- Migration A 只扩展表、约束、Storage 配置和兼容 RPC；新 draft/attachment/action ledger 启用 RLS 且不给客户端直接写，旧 RMA 读取与旧 direct grants 不被撤销。
-- 客户提交使用严格 allowlist 和 opaque attachment ID；服务端绑定登录用户、客户、订单行、累计数量、六原因、六图/4MiB、MIME/魔数/SHA-256 和幂等键。
-- 管理员动作经 `admin_perform_rma_action_v3` 和 legacy wrapper 进入锁定/ledger；收货只记 quarantine，restock 只执行一次，报废/供应商退回不错误扣可售库存，钱包请求使用 `rma_return`。
+- Migration A 只扩展表、约束、兼容 RPC 和关系字段；不修改既有 bucket、不撤销 `rma_requests/events` 旧 direct grants/RLS。新 draft/attachment/action ledger 启用 RLS 且不给客户端直接写；bucket 收紧和最终撤权均留给 Migration B，生产上线前为 NO-GO。
+- 客户新提交使用严格 allowlist、必需 `draftId` 和 opaque attachment ID；服务端绑定登录用户、客户、订单行、可退订单状态、累计数量、六原因、六图/4MiB、MIME/魔数/SHA-256 和幂等键。法定 B2C 撤回分支可不填原因/照片，缺陷类仍需照片；B2B policy scope 独立保留。
+- 旧 multipart evidence 与旧 JSON POST 仅作为严格 owner/bucket/path 过滤的滚动兼容桥；GET 关系表附件返回 opaque ID + 临时签名 URL，无法证明归属的旧 signed URL 不回显。
+- 管理员动作经 `admin_perform_rma_action_v3` 和 legacy wrapper 进入锁定/ledger；review PATCH 仅允许审核转移，收货只记 quarantine，显式 QC 后商业结果与库存处置分轴执行；restock 需明确 batch/location 且只执行一次，报废/供应商退回不错误扣可售库存，钱包请求使用 `rma_return` 并受订单行快照金额上限。
+
+### 批次 1b 阻断项修正记录（2026-08-28）
+
+- 恢复 `/api/rma/evidence` 与旧 `/api/rma` POST 的双协议兼容，旧上传继续使用私有 `rma-evidence` 的历史 20MB 图片/视频能力；服务端只生成当前用户专属前缀，旧 path/bucket/signedUrl 不作为可信事实。客户 GET 优先从 `rma_attachments` 关系表按 owner 查询并返回 opaque ID + 临时签名 URL，无法重新证明归属的旧 signed URL 被移除。
+- 新 submit schema 与实现均要求 `draftId`；草稿只能从 `open` 提交，过期/取消/已关闭草稿不能重新提交。附件失败可调用取消 RPC，释放有效配额，Storage 删除失败保留可观测补偿风险。
+- `admin_update_rma_request` 收紧为 `rma.manage` 审核接口，仅允许 `submitted -> under_review -> approved|rejected` 与安全备注；v3 增加 `record_qc`，商业结果与库存处置独立，库存动作不自动关闭；收货只允许 approved，退款/换货/库存处置均需收货和明确 QC。
+- 钱包采用新 `rma_return` 类型，并在请求/批准前按订单行单价快照 × 实收/批准数量 − 已退款 RMA 与整单可退余额双重封顶；不自动原路退款或生成税务 credit note。换货要求不同且已 shipped 的同客户订单、同 SKU/足量并建立唯一关联；restock 缺少明确 batch/location 时拒绝。
+- `policy_scope = statutory_b2c_withdrawal` 独立允许法定 B2C 无理由撤回不填原因/照片；缺陷、损坏、发错等原因仍要求至少一张图，B2B 规则不合并。意大利政策/法务、Migration B 撤权及生产应用仍是上线 NO-GO。
 
 ### 未来实施验收
 
@@ -341,10 +350,10 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 | Next.js 16 Route Handler 与 Server/Client 指南读取 | passed | 写 Route Handler 前读取本地 `node_modules/next/dist/docs/` 对应文档 |
 | Supabase migration 创建 | passed | 使用 `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase migration new rma_simple_flow_expand` 创建 Migration A |
 | 当前批次 1 代码/migration/远端写入 | passed | 仅隔离 worktree 生成服务端契约/API 与 Migration A；未访问/写入 linked Supabase、Vercel、GitHub |
-| `node --test tests/rma-contract.test.mjs tests/admin-rma-workflow-contract.test.mjs` | passed | 9/9 contract tests passed |
-| 主仓库 `node_modules/.bin/eslint` 定向检查 | passed | RMA contract/http/helper、客户/后台 routes、repository 均通过 |
+| `node --test tests/rma-contract.test.mjs tests/admin-rma-workflow-contract.test.mjs` | passed | 批次 1b 修正后 10/10 contract tests passed |
+| 主仓库 `node_modules/.bin/eslint` 定向检查 | passed | 批次 1b RMA contract/http/helper、客户/后台 routes、repository 均通过 |
 | 主仓库 `node_modules/.bin/tsc --noEmit --project <worktree>/tsconfig.json` | blocked by baseline | 仅报已有 `src/app/api/admin/restock-requests/[id]/route.ts:17:12 RouteContext`；基线同文件同一错误，未见本批新增诊断 |
-| `git diff --check` | passed | 当前未提交 diff 无空白错误 |
+| `git diff --check` | passed | 批次 1b 修正后无空白错误；提交前再复核 |
 | Supabase linked/local lint、migration dry-run、build/E2E | skipped by gate | 本批禁止远端/数据库写入；worktree 无需启动本地数据库，按范围不跑完整 build/E2E |
 
 ## 执行记录
@@ -353,17 +362,18 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 - 批准：2026-08-27；用户已批准本轮开始实现/推送/部署，当前 worker 仍按范围不 push、不部署、不应用远端 migration
 - 开始：2026-08-27
 - review：pending；Migration A/RLS/权限/支付/库存需专项守门
-- verified：2026-08-27；contract tests、定向 ESLint、diff check 通过；tsc 受基线 `RouteContext` 错误阻塞
+- verified：2026-08-28；批次 1b contract tests 10/10、主仓库依赖定向 ESLint、diff check 通过；tsc 既有证据仍受基线 `RouteContext` 错误阻塞，本批 1b 按范围未重复执行
 - released：不适用，本批不发布
 - closed：pending
 
 ## 结果
 
-当前批次在隔离分支交付 Migration A、服务端 RMA 安全契约/API 和专项源契约测试；不声明远端数据库已应用、不声明 UI 已完成、不声明生产上传/退款/库存已验证。意大利政策、Migration B 危险撤权、linked migration dry-run、Vercel 发布和最终 E2E 仍需专门门禁。
+当前批次在隔离分支交付 Migration A、服务端 RMA 安全契约/API、legacy 双协议桥和专项源契约测试；不声明远端数据库已应用、不声明 UI 已完成、不声明生产上传/退款/库存已验证。意大利政策、法定撤回分类、Migration B 危险撤权、linked migration dry-run、Vercel 发布和最终 E2E 仍需专门门禁。
 
 ## 残余风险与后续任务
 
 - 意大利 B2C 撤回/保修、B2B 商业退货、退款方式、运费承担和税务处理尚未由专业人员确认。
 - 当前历史 RMA 状态、附件 JSON、wallet `order_void` 语义和库存处置数据需要迁移前盘点。
-- 当前批次已收口服务端附件上传/校验、核心状态守卫、并发数量锁、customer DTO 隔离和基础通知事件；客户端三块 UI、法定期限、QC 完整字段、Storage GC、Migration B 和生产联调仍待后续批次。
+- 当前批次已收口服务端附件上传/校验、legacy 双协议隔离、核心状态/QC 守卫、并发数量锁、customer DTO 隔离和基础通知事件；客户端三块 UI、法定期限与 policy 分类、Storage GC、Migration B 危险撤权、生产联调和完整退款/税务确认仍待后续批次。
+- Migration A 保留旧 `rma_requests/events` direct grants/RLS，并未收紧历史 bucket；在新客户端完全切换、兼容读取验证和正式 Migration B 审批前，禁止打开新写流程生产流量。
 - 后续应分别创建政策 ADR、RMA data/RPC migration 任务、图片上传安全任务、后台 QC/库存任务、退款/换货任务和发布观察 runbook。

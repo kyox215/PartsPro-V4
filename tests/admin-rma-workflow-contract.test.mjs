@@ -19,6 +19,7 @@ test("admin v3 freezes fine-grained permissions and legacy delegation", () => {
   assert.match(migration, /partspro_has_permission\('rma\.refund'\)/);
   assert.match(migration, /partspro_has_permission\('rma\.inventory'\)/);
   assert.match(migration, /v_action in \('mark_received', 'restock_return', 'mark_scrapped', 'supplier_return'\)/);
+  assert.match(migration, /v_action = 'record_qc'/);
   assert.match(migration, /partspro_has_permission\('orders\.manage'\)/);
   assert.match(migration, /revoke all on function public\.admin_perform_rma_action_v3/);
   assert.match(migration, /grant execute on function public\.admin_perform_rma_action_v3/);
@@ -26,10 +27,12 @@ test("admin v3 freezes fine-grained permissions and legacy delegation", () => {
   assert.match(adminRoute, /adminRmaActionSchema/);
   assert.match(adminRoute, /workflow: "admin_perform_rma_action_v3"/);
   assert.match(repository, /rpc\("admin_perform_rma_action_v3"/);
+  assert.match(repository, /p_location: input\.location \?\? input\.warehouse \?\? null/);
 });
 
 test("action ledger and terminal disposition guard make restock idempotent", () => {
   assert.match(migration, /constraint rma_action_executions_unique_key unique \(rma_request_id, action, idempotency_key\)/);
+  assert.match(migration, /payload_fingerprint/);
   assert.match(migration, /rma_action_executions_terminal_disposition_unique/);
   assert.match(migration, /where execution_status = 'succeeded'[\s\S]*action in \('restock_return', 'mark_scrapped', 'supplier_return'\)/);
   assert.match(migration, /from public\.rma_requests as r\n  where r\.id = p_request_id\n  for update/);
@@ -37,6 +40,7 @@ test("action ledger and terminal disposition guard make restock idempotent", () 
   assert.match(migration, /execution_status = 'succeeded'/);
   assert.match(migration, /execution_status = 'started'/);
   assert.match(migration, /p_idempotency_key text default null/);
+  assert.match(migration, /different payload/);
   assert.match(repository, /idempotencyKey/);
 });
 
@@ -51,6 +55,8 @@ test("receive/restock/disposition preserve quarantine and available-stock invari
   assert.match(migration, /v_inventory_disposition <> 'quarantine'/);
   assert.match(migration, /restock_return', 'mark_scrapped', 'supplier_return'/);
   assert.match(migration, /v_resolution_action := case when v_action = 'mark_scrapped' then 'scrap' else 'supplier_return' end/);
+  assert.match(migration, /Restock requires an explicit batch code and location/);
+  assert.match(migration, /v_next_status := v_before\.status/);
 });
 
 test("wallet, replacement and state guards are explicit", () => {
@@ -62,8 +68,13 @@ test("wallet, replacement and state guards are explicit", () => {
   assert.match(migration, /p_replacement_order_id is null/);
   assert.match(migration, /v_replacement_order\.status <> 'shipped'/);
   assert.match(migration, /v_next_status := 'replacement_sent'/);
-  assert.match(migration, /v_before\.status not in \('approved', 'received'\)/);
+  assert.match(migration, /v_before\.status not in \('received', 'refunded', 'replacement_sent'\)/);
   assert.match(migration, /Received RMA requires a completed inventory disposition/);
+  assert.match(migration, /Approved wallet refund exceeds the remaining order-line cap/);
+  assert.match(migration, /rma_wallet_refund_approval_sync/);
+  assert.match(migration, /Replacement order does not contain enough of the returned SKU/);
+  assert.match(migration, /v_replacement_order\.id = v_order\.id/);
+  assert.match(migration, /Only approved RMAs can be received/);
 });
 
 test("admin DTO remains allowlisted and supports supplier/replacement actions", () => {
@@ -76,6 +87,7 @@ test("admin DTO remains allowlisted and supports supplier/replacement actions", 
     "assign",
     "request_wallet_refund",
     "mark_received",
+    "record_qc",
     "restock_return",
     "mark_scrapped",
     "supplier_return",

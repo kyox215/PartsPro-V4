@@ -1743,6 +1743,7 @@ export type AdminRmaAction =
   | "assign"
   | "request_wallet_refund"
   | "mark_received"
+  | "record_qc"
   | "restock_return"
   | "mark_scrapped"
   | "supplier_return"
@@ -1756,7 +1757,10 @@ export type PerformAdminRmaActionInput = {
   customerVisibleNote?: string;
   internalNote?: string;
   idempotencyKey?: string;
+  location?: string;
   quantity?: number;
+  qcNote?: string;
+  qcStatus?: "passed" | "failed" | "not_required";
   reason?: string;
   refundAmount?: number;
   replacementOrderId?: string;
@@ -3270,7 +3274,7 @@ export async function adjustAdminProductStock(
   const row = await rpcProductRow(context.client, "admin_adjust_product_stock", {
     p_action: input.action,
     p_batch_code: input.batchCode ?? null,
-    p_location: input.warehouse ?? null,
+    p_location: input.location ?? input.warehouse ?? null,
     p_quantity: input.quantity,
     p_reason: input.reason,
     p_sku_code: sourceSku,
@@ -11632,7 +11636,9 @@ async function performAdminRmaActionViaRpc(
     p_customer_visible_note: input.customerVisibleNote ?? null,
     p_internal_note: input.internalNote ?? null,
     p_idempotency_key: input.idempotencyKey ?? null,
-    p_location: input.warehouse ?? null,
+    p_location: input.location ?? input.warehouse ?? null,
+    p_qc_note: input.qcNote ?? null,
+    p_qc_status: input.qcStatus ?? null,
     p_quantity: input.quantity ?? null,
     p_reason: input.reason ?? null,
     p_refund_amount: input.refundAmount ?? null,
@@ -11642,11 +11648,22 @@ async function performAdminRmaActionViaRpc(
   });
 
   if (error) {
+    const errorDetails = supabaseErrorDetails(error);
+    const rawCode = isDbRow(error) ? pickString(error, ["code"]) : null;
+    const message = isDbRow(error) ? pickString(error, ["message"]) : null;
+    if (rawCode === "23505" || message?.toLowerCase().includes("idempotency")) {
+      throw new RepositoryWriteError(
+        409,
+        "RMA_ACTION_IDEMPOTENCY_CONFLICT",
+        "The RMA action key was already used with a different payload or result.",
+        { message: "RMA action idempotency conflict." }
+      );
+    }
     throw new RepositoryWriteError(
       502,
       "RMA_ACTION_RPC_FAILED",
       "Supabase rejected the after-sales workflow action.",
-      supabaseErrorDetails(error)
+      errorDetails
     );
   }
 
@@ -14053,6 +14070,7 @@ function mapRmaRow(
     reason: pickString(row, ["reason", "problem_type"]) ?? "Richiesta assistenza",
     quantity: Math.max(1, Math.trunc(pickNumber(row, ["quantity"]) ?? 1)),
     orderLineId: lineId ?? undefined,
+    policyScope: pickString(row, ["policy_scope"]),
     createdAt: formatItalianDate(pickString(row, ["created_at", "createdAt"])),
     updatedAt: formatPartsProDateTime(pickString(row, ["updated_at", "updatedAt"])),
     resolution: rmaResolutionSummary(row),

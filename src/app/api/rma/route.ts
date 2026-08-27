@@ -14,6 +14,7 @@ import {
   type CustomerRmaDto,
 } from "@/lib/partspro-rma-contract";
 import {
+  hydrateCustomerRmaAttachments,
   signRmaRequestAttachments,
 } from "@/lib/partspro-rma-evidence";
 import { handleRmaSubmit, noStore } from "@/lib/partspro-rma-http";
@@ -39,7 +40,13 @@ export async function GET() {
             listCurrentCustomerRmaOrderOptions(),
           ]);
 
-    const signedRequests = await signRmaRequestAttachments(requestsResult.data);
+    const hydratedRequests = account.userId
+      ? await hydrateCustomerRmaAttachments(requestsResult.data, account.userId)
+      : requestsResult.data;
+    const signedRequests = await signRmaRequestAttachments(
+      hydratedRequests,
+      account.userId ?? undefined
+    );
     const customerRequests = toCustomerRmaRequests(signedRequests);
 
     return noStore(NextResponse.json({
@@ -76,7 +83,7 @@ function toCustomerRmaRequest(request: RmaRequest): CustomerRmaDto {
       : "image/jpeg";
 
     return {
-      attachmentId: `legacy-${request.id}-${index}`,
+      attachmentId: attachment.attachmentId ?? `legacy-${request.id}-${index}`,
       contentType,
       name: attachment.name,
       sizeBytes: attachment.size ?? 0,
@@ -104,9 +111,10 @@ function toCustomerRmaRequest(request: RmaRequest): CustomerRmaDto {
     id: request.id,
     orderId: request.orderId ?? null,
     orderLineId: request.orderLineId ?? null,
-    policyScope: "legacy_unverified",
+    policyScope: request.policyScope ?? "legacy_unverified",
     productName: request.productName,
     quantity: request.quantity ?? 0,
+    reason: request.reason,
     reasonCode: request.reason,
     rmaNo: null,
     resolution: request.resolution,

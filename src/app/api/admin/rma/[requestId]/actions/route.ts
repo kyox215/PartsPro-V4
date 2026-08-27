@@ -83,6 +83,10 @@ function requiredPermissionForAction(action: AdminRmaAction) {
     return ["rma.refund", "wallet_refunds.request"];
   }
 
+  if (action === "record_qc") {
+    return ["rma.manage", "rma.inventory"];
+  }
+
   if (action === "mark_received" || action === "restock_return" || action === "mark_scrapped" || action === "supplier_return") {
     return ["rma.inventory", "product.adjust_stock", "inventory.manage"];
   }
