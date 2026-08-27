@@ -12,13 +12,22 @@ Task ID：TASK-20260825-02
 
 自治等级：L2
 
+## 当前执行状态（2026-08-27）
+
+- 两份生产 migration `20260825202034_revoke_supplier_batch_truncate_privileges.sql` → `20260825202035_supplier_batch_transport_costs.sql` 已按 Owner 明确批准完成 apply，`supabase db push --linked` exit 0。
+- apply 后 migration ledger 已完全对齐：`supabase migration list --linked` exit 0，remote-only=0、local-only=0。
+- TRUNCATE 权限 P1 已完成最小修复；`has_table_privilege` 与 `aclexplode` 双证据确认 anon/authenticated 目标权限为 false，service_role 与 owner `postgres` 保留为 true。
+- schema/RLS/RPC/trigger/constraint/execute grants 与 382/382 finance cost-layer 回填候选已独立 post-check，结论为 `GO`；无约束违规，charges/allocations 初始计数为 0。
+- React lazy-load 提交为 `006159fbcaa0ead39681031b8b805dd545de9776`（`006159f`）；运输合同测试 34/34、全量 `npm run lint` 与 `npm run build` 已通过。
+- 本卡继续保持 `in_progress`；下一道门仅为 Git/Vercel production deploy 与浏览器/线上 smoke，未在本次文档批次执行。
+
 ## 老板原始目标
 
 “设定目标并开始下一步（基于后台到货运输成本规划）”
 
 ## 目标
 
-为后台供应商到货批次建立可审计的运输费用登记、确定性分摊和落地成本规划，形成供本地 schema/RPC、页面/API 实现、数据库迁移和财务核对共同使用的单一业务契约。本轮 G0 已授权本地实现；生产远端写入、迁移应用和发布仍受独立门禁约束。
+为后台供应商到货批次建立可审计的运输费用登记、确定性分摊和落地成本规划，形成供本地 schema/RPC、页面/API 实现、数据库迁移和财务核对共同使用的单一业务契约。本轮 G0 已授权本地实现；两份生产 migration 已按独立批准完成 apply 与 post-check，Git/Vercel 发布和浏览器 smoke 仍受独立门禁约束。
 
 ## 业务影响
 
@@ -30,9 +39,9 @@ Task ID：TASK-20260825-02
 - 明确 `supplier_batches.total_cost` 的商品货值语义，以及运输净额、运输 IVA、含税额、可资本化运输成本的分离语义。
 - 明确多笔运输费、未登记与 `€0 已确认`、分摊方式、分币处理、幂等、审计和历史 COGS 保护规则。
 - 明确第一版不自动改 `products.cost_price`、`retail_price`、`b2b_price`，不直接重写已消耗成本层或历史 COGS。
-- 完成本地 WP-02 schema/RPC 批次：新增 migration、权限列表同步和 estimate/preview/confirm RPC 契约；不连接 linked、不 dry-run remote、不应用 migration。
-- 完成本地 WP-03 后端与 WP-04 后台读写体验实现，并完成独立复审；生产数据库、migration 应用、浏览器和发布门仍关闭。
-- 明确生产 migration、远端写库、推送和 Vercel 发布仍关闭，均需老板另行明确批准。
+- 完成本地 WP-02 schema/RPC 批次：新增 migration、权限列表同步和 estimate/preview/confirm RPC 契约；并于 2026-08-27 在独立批准后完成两份生产 migration apply 与应用后核对。
+- 完成本地 WP-03 后端与 WP-04 后台读写体验实现，并完成独立复审；生产数据库 schema/RLS/RPC 及回填 post-check 已完成，浏览器和发布门仍关闭。
+- 生产 migration apply 已记录并完成；Git 推送、Vercel production deploy 和 smoke test 仍关闭，作为下一道独立门禁。
 
 ## 主责部门
 
@@ -89,26 +98,26 @@ Supabase Migration 守门代理、Supabase RLS/权限代理、PartsPro 业务契
 
 ### 写入、幂等和审计
 
-- 建议新增 `supplier_batch_charges` 和 `supplier_batch_charge_allocations`，并扩展 finance cost layer breakdown；最终 schema、字段、索引和兼容策略须经 migration、RLS 和业务契约守门审查。
+- 已新增并应用 `supplier_batch_charges` 和 `supplier_batch_charge_allocations`，并扩展 finance cost layer breakdown；schema、字段、索引、兼容策略已通过 migration、RLS 和业务契约独立复核。
 - 多表确认写入必须通过短事务 RPC，使用稳定幂等键，保证重试不重复生成费用、分摊、成本层或审计事件。
 - 确认必须写 `admin_audit_events`，至少记录批次、费用、金额语义、分摊方式、快照、操作者、原因、来源凭证和幂等键；事务失败不得留下部分确认状态。
-- 任何生产 Supabase 应用、远端写库、推送和 Vercel 部署，均须老板另行明确批准，不能由本任务卡自动授权。
+- 两份生产 migration 的 apply 已按老板独立批准完成；本任务卡不扩大该批准范围，Git push、Vercel deploy 和生产浏览器 smoke 仍需按下一道发布门执行。
 
 ## 涉及范围
 
 - 页面：后台「供应商到货批次」列表金额摘要；批次详情/抽屉的运输与落地成本卡片；批次行的原始成本、分摊运输费和落地单位成本；费用预览、预估保存、确认并锁定、复核状态和权限提示。
 - API：现有批次只读查询的扩展；运输费预览接口；受权限保护的确认/锁定接口或 Server Action；导出字段扩展；最终接口契约须经 Next.js 16、业务契约和 RLS 守门审查。
-- 数据表/RPC：建议 `supplier_batch_charges`、`supplier_batch_charge_allocations`、现有 `supplier_batches`/`supplier_batch_lines`、`finance_cost_layers` breakdown、`admin_audit_events`；确认写入使用短事务 RPC，具体 schema 需另行批准。
+- 数据表/RPC：已落实 `supplier_batch_charges`、`supplier_batch_charge_allocations`、finance cost layer breakdown、短事务 RPC、RLS 和审计契约；确认写入使用已复核的短事务 RPC。
 - 文档：本任务卡、批准记录、migration/runbook、财务成本口径和后续交付/回滚记录。
-- 外部系统：供应商运输发票/账单和凭证作为来源证据；Supabase、Storage、Vercel 仅在各自批准门通过后纳入实施。
+- 外部系统：供应商运输发票/账单和凭证作为来源证据；Supabase 两份 migration 已通过生产批准门并完成 apply，Storage/Vercel 仍按各自发布门处理。
 
 ## Out of Scope
 
-- 本批不连接 linked、不 dry-run remote、不应用 migration，不执行 Supabase CLI/MCP 远端写入、`db push`、`migration repair`、`db reset` 或生产 SQL；本地 schema/RPC 与本地实现属于已授权范围，但仍须遵守当前 WP 的文件所有权和验证门。
+- WP-02F 初始本地批次不连接 linked、不 dry-run remote、不应用 migration；该阶段已结束。2026-08-27 后续独立批次已按安全门完成两份生产 migration apply 与 post-check；本卡不把该记录扩展为 Git/Vercel 授权。
 - 不导入具体运输发票、不确认任何真实批次费用、不调整库存、不重算已售商品成本、不回填历史 COGS。
 - 不自动改 `products.cost_price`、`retail_price`、`b2b_price`，不改变客户等级、价格策略、订单、checkout、付款、退款或供应商结算。
 - 不把运输费默认当作零、不把 IVA 规则硬编码成税务结论、不设计跨仓库或跨批次的高级成本重估流程。
-- 不推送 Git、不部署 Vercel、不修改环境变量或生产数据；WP-02F 最终微调批次仅修改本任务 migration 与任务卡，权限文件不再变更。
+- 本任务后续仍不推送 Git、不部署 Vercel、不修改环境变量；不通过本卡新增生产费用确认、库存或价格写入。已完成的 migration apply 及其 ACL/schema/RLS/RPC post-check 见下方证据。
 - 后续后台 UI、Route Handler、Server Action、客户端数据访问和测试属于已授权的本地工作包，但不在 WP-02F 本批文件范围内，须按 WP-03 至 WP-06 的工作包和审查记录推进。
 
 ## 已知事实
@@ -129,11 +138,11 @@ Supabase Migration 守门代理、Supabase RLS/权限代理、PartsPro 业务契
 | `20260825202035_supplier_batch_transport_costs.sql` | transport confirm RPC 更新/插入 cost layer | 有意将旧字段写为 goods + confirmed inbound 的最终 landed/COGS 值，同时保存三列 breakdown | 本目标 writer，符合已锁定契约 |
 | `src/lib/partspro-repository.ts` | cost-layer 查询与 DTO 读取 | 不写入 `finance_cost_layers` 或旧成本字段 | 只读 |
 
-矩阵边界：当前仓库未发现 transport 目标 migration 之外、绕过兼容触发器而把旧字段当作最终 landed cost 的应用 writer；非 supplier-batch layer 继续保持原有语义，不由本 migration 猜测或重写。真实 RPC/trigger 执行仍需数据库 smoke 验证。
+矩阵边界：当前仓库未发现 transport 目标 migration 之外、绕过兼容触发器而把旧字段当作最终 landed cost 的应用 writer；非 supplier-batch layer 继续保持原有语义，不由本 migration 猜测或重写。生产 schema/RLS/RPC/trigger 已完成独立 post-check 并为 `GO`；浏览器/API smoke 仍待下一道发布门。
 
 ## 假设与未知项
 
-- 当前远端 Supabase linked 目标、迁移历史、真实表结构、RLS、RPC 和财务成本层字段必须在后续实施前重新只读核对；本任务卡不以本地文档替代远端真相。
+- 当前远端 Supabase linked 目标、迁移历史、真实表结构、RLS、RPC 和财务成本层字段已在 apply 前后按只读核对与 post-check 复核；后续 schema 变更仍不得以本地文档替代远端真相。
 - 财务尚未批准运输 IVA 的可抵扣/不可抵扣资本化口径；在批准前只记录净额、IVA、含税额和待定的可资本化成本，不自动推导税务结论。
 - 是否支持重量分摊取决于批次行是否有可靠重量来源；缺失或不可信时必须禁用该方式或转人工复核。
 - 现有库存成本层是否能记录运输 breakdown、已消费数量、未消费库存和成本调整，需要由业务契约、财务和数据库守门代理确认。
@@ -145,15 +154,15 @@ Supabase Migration 守门代理、Supabase RLS/权限代理、PartsPro 业务契
 | WP | 负责人 | 输出 | 依赖 | 退出条件 |
 |---|---|---|---|---|
 | WP-01 业务与财务口径 | 采购到货部、财务 | 金额字段、VAT、资本化、普通费用去重和历史 COGS 规则 | 本任务卡、现有导入/财务文档 | 财务与 PartsPro 业务契约守门代理确认口径，未决项有记录 |
-| WP-02 数据与权限设计 | Supabase Migration 守门代理、Supabase RLS/权限代理 | charge、allocation、成本层 breakdown、兼容触发器、索引、RLS、短事务 RPC、fingerprint 和幂等设计 | WP-01；本地现有 schema/权限只读核对；独立审查 | WP-02F 本地最终微调与独立最终复审完成；G1 本地静态审查通过，可进入 WP-03；数据库执行、linked 应用和发布仍关闭 |
+| WP-02 数据与权限设计 | Supabase Migration 守门代理、Supabase RLS/权限代理 | charge、allocation、成本层 breakdown、兼容触发器、索引、RLS、短事务 RPC、fingerprint 和幂等设计 | WP-01；本地现有 schema/权限只读核对；独立审查 | WP-02F 本地最终微调、生产 apply/post-check 与独立复审完成；Git/Vercel 发布仍关闭 |
 | WP-03 成本计算与批次契约 | PartsPro 业务契约代理、仓库库存、财务 | 多笔费用、实际到货基数、数量/重量/手工分摊、确定性分币和成本层映射 | WP-01、WP-02 | 单元/SQL 例子覆盖零费用、短到货、分币、重复确认、历史 COGS 保护 |
 | WP-04 后台读写体验 | Next.js 16 App Router 代理、前端体验代理 | 列表摘要、详情卡片、预览/确认/复核状态、权限和错误显示 | WP-02、WP-03 | 页面/API 契约、加载/失败/重试/无权状态和移动密度通过定向检查 |
-| WP-05 导入与运行文档 | 采购到货部、文档审计 | 到货声明扩展、凭证/运输费预检、导入后验证、runbook 和审计字段 | WP-01 至 WP-04 | 文档与代码/schema/远端状态一致；生产写入步骤仍有独立批准门 |
-| WP-06 受批准实现与验证 | luna_worker；各工程守门代理 | 本地实现、定向测试、migration dry-run、必要时生产前 smoke 证据 | WP-01 至 WP-05、Owner Gate | 通过批准的验证集合；未批准的远端写入/发布保持未执行 |
+| WP-05 导入与运行文档 | 采购到货部、文档审计 | 到货声明扩展、凭证/运输费预检、导入后验证、runbook 和审计字段 | WP-01 至 WP-04 | 文档与代码/schema/远端状态一致；生产费用确认、Git/Vercel 发布和 smoke 仍按独立门禁执行 |
+| WP-06 受批准实现与验证 | luna_worker；各工程守门代理 | 本地实现、定向测试、migration dry-run、生产 apply/post-check 证据 | WP-01 至 WP-05、Owner Gate | 已通过批准的验证集合；Git/Vercel 发布和浏览器 smoke 仍待执行 |
 
-WP-03 当前执行状态：本地后端批次已完成 core/Repository/API/export 的静态合同实现与 15/15 Node 合同测试；WP-03R2 已关闭本轮 4 项 P1 并补齐可执行 preview/estimate/confirm/cancelled、summary、persisted fact 和 export helper fixtures；WP-03R3 进一步冻结真实 migration-shape preview 的根级 metadata 缺失语义、RPC allocation 必填字段和 5001 行上限 helper 事实；数据库执行级验证待后续门禁。
+WP-03 当前执行状态：本地后端批次已完成 core/Repository/API/export 的静态合同实现与 15/15 Node 合同测试；WP-03R2 已关闭本轮 4 项 P1 并补齐可执行 preview/estimate/confirm/cancelled、summary、persisted fact 和 export helper fixtures；WP-03R3 进一步冻结真实 migration-shape preview 的根级 metadata 缺失语义、RPC allocation 必填字段和 5001 行上限 helper 事实；生产数据库执行级验证与 post-check 已完成并为 `GO`。
 
-WP-04 当前本地执行状态：只读成本卡、Preview、Save estimate、Confirm，以及字段错误、unknown-write、严格 readback、超时/重试和权限状态机均已完成并独立复审；客户端 DTO 复用 core summary/charge normalizer，读写仍以服务端回读更新正式状态。`costSummary: null`、畸形 charges、畸形 line costs 和无效 `weightGram` 均保持 fail-closed；尚未执行真实 API/RLS/DB、migration 或 browser 验收。
+WP-04 当前本地执行状态：只读成本卡、Preview、Save estimate、Confirm，以及字段错误、unknown-write、严格 readback、超时/重试和权限状态机均已完成并独立复审；客户端 DTO 复用 core summary/charge normalizer，读写仍以服务端回读更新正式状态。`costSummary: null`、畸形 charges、畸形 line costs 和无效 `weightGram` 均保持 fail-closed；生产 schema/RLS/RPC/migration 已完成复核，浏览器验收仍待发布门。
 
 ## 风险
 
@@ -163,29 +172,29 @@ WP-04 当前本地执行状态：只读成本卡、Preview、Save estimate、Con
 - R3 权限风险：普通后台用户可能确认、锁定或修改金额；RLS、RPC 和审计边界不足会造成越权。
 - R2 业务风险：把未登记解释为免费、把短到货按订购数量分摊或错误使用重量会导致单位成本失真。
 - R2 体验风险：列表摘要、详情、导出和财务展示口径不一致，运营人员可能重复录入或误判批次状态。
-- R2 依赖风险：远端 schema、迁移历史、现有 cost layer 和 linked project 状态未复核前，不能承诺可直接迁移或写库。
+- R2 依赖风险：生产 schema、迁移历史、现有 cost layer 和 linked project 已完成 apply 前后复核；剩余依赖是浏览器/API smoke 与 Vercel 发布状态。
 
 ## 批准要求
 
-- 是否需要老板批准：本轮 G0 已批准进入 G1 本地实现；生产 Supabase migration 应用、远端写库、推送和 Vercel 部署仍需分别另行批准。
+- 是否需要老板批准：本轮 G0 已批准进入 G1 本地实现；两份生产 Supabase migration apply 已于 2026-08-27 获得独立批准并完成，Git push 与 Vercel 部署仍需分别通过下一道发布门。
 - 是否需要 Supabase migration 安全门：需要；任何新增/修改 migration 必须由 Supabase Migration 守门代理收尾，并完成 linked project、remote-only divergence、dry-run、风险扫描及 lint/build 门禁。
 - 是否需要 Supabase RLS/权限审查：需要；涉及 charge、allocation、cost layer、RPC、审计和后台确认权限。
-- 是否需要 Vercel 发布门：需要时才进入；本批不部署。Vercel 发布不得替代或隐含 Supabase migration 批准。
+- 是否需要 Vercel 发布门：需要；数据库 apply 已独立完成，Vercel 发布不得替代或隐含该批准，当前进入 Git/Vercel 与 smoke 门。
 - 是否需要 PartsPro 业务契约验收：需要；运输金额、库存成本、价格保护、COGS 和普通费用去重属于强业务契约。
-- 是否需要独立审查：需要；本任务为 R3，涉及财务、库存、持久化、权限和跨模块接口；独立最终复审已完成且无 P1，数据库执行级复核仍需后续门禁。
+- 是否需要独立审查：需要；本任务为 R3，涉及财务、库存、持久化、权限和跨模块接口；本地独立复审与生产 schema/RLS/RPC/post-check 均已完成且无 P1，浏览器/发布仍需独立验收。
 
 ## 迁移安全门
 
-本轮已完成 WP-02F 的本地 schema/RPC 最终微调与静态审查，但不得据此应用 linked migration。后续若进入远端 schema 实现，必须全部满足以下条件才可考虑应用 linked migration：
+本轮已完成 WP-02F 的本地 schema/RPC 最终微调与静态审查，并在独立批准后完成 linked migration apply。以下条件构成已通过的 migration 安全门，后续 schema 变更仍须重新满足：
 
 - linked project 明确为 `yiuxrjqexlfjtxxrkqvi` / `PartsPro-V4`。
 - `supabase migration list --linked` 无 remote-only divergence；`supabase db push --linked --dry-run` 只列出本任务产生的 migration。
 - dry-run 不夹带旧 pending migration；不使用 `--include-all`、`--include-seed`、`migration repair`、`db pull` 或 `db reset --linked`。
 - SQL 风险扫描确认无破坏性 `drop/truncate/delete`、危险 grant/revoke、RLS/policy 重写、auth/storage 权限重写或生产回填；仅允许本 migration 已说明的受控 finance breakdown backfill、窄域兼容触发和当前批次成本层重建。
 - RPC 具备短事务、权限校验、稳定幂等键、金额合计约束、审计事件和失败回滚；RLS/权限代理和业务契约代理已签字。
-- `npm run lint`、`npm run build` 及受影响范围测试通过；若失败或目标不明，停止并回报，不应用 migration。
+- `npm run lint`、`npm run build` 及受影响范围测试通过；本次两份 migration apply exit 0，应用后 ledger、ACL、schema/RLS/RPC、回填和日志核对均为 `GO`。
 
-本批创建 `supabase/migrations/20260825202035_supplier_batch_transport_costs.sql` 时未连接 linked；2026-08-26 曾获批并完成 connector/CLI 只读尝试但 CLI dry-run 未完成的历史状态，已于 2026-08-27 被下述新证据取代。2026-08-27 已完成 CLI 登录、linked history 与 dry-run；仍未应用 migration、未写远端。
+本批创建 `supabase/migrations/20260825202035_supplier_batch_transport_costs.sql` 时未连接 linked；2026-08-26 至 2026-08-27 apply 前的 connector/CLI 记录均为历史门禁证据，已由下述生产 apply/post-check 记录取代。2026-08-27 已完成持久 CLI 登录、linked history、dry-run、两份 migration apply 与应用后核对。
 
 历史记录（截至 2026-08-26；已于 2026-08-27 解除/被新证据取代，不再作为当前 blocker）：TASK-20260826-01 已解除既有 starter/admin-dashboard TypeScript baseline，独立复审无 P1/P2；全量 `npm run lint` 与 `npm run build` 均通过。该日 linked 只读核对因 CLI 两次 exit 1、未提供 access token 而为 `NO-GO`；随后 connector fallback 已确认 remote-only 为无、local-only 仅为目标 migration，但当时 dry-run 尚未执行；本段只保留历史状态，不代表当前 CLI 或 dry-run blocker。
 
@@ -193,7 +202,7 @@ WP-04 当前本地执行状态：只读成本卡、Preview、Save estimate、Con
 
 截至 2026-08-27（权限 migration 重排前），最新 migration gate 证据为：CLI 2.101.0 登录成功；project-ref 精确为 `yiuxrjqexlfjtxxrkqvi`；`supabase migration list --linked` exit 0，remote-only 无、local-only 仅 `20260825202035_supplier_batch_transport_costs`；`supabase db push --linked --dry-run` exit 0，Would push 仅当时的 transport 草案，明确未 push。该历史证据不覆盖新增的 `20260825202034` 权限 migration；重排后的两份 migration 必须重新执行只读 history/dry-run。旧 CLI token 缺失/未执行 dry-run 记录已被本证据取代，connector 不替代 dry-run，远端未写，apply 仍关闭。
 
-2026-08-27 只读 schema/RLS 预检补充证据：运输成本 migration 目标对象无漂移；既有 finance cost-layer 回填候选 382/382 均满足候选条件；模拟回填后约束违规数为 0。另确认现存 `public.supplier_batches` 与 `public.finance_cost_layers` 存在直接表级 `TRUNCATE` grants，RLS 不保护该权限，已登记为 P1 紧急任务 [P1-2026-08-27-table-truncate-grants](../urgent/P1-2026-08-27-table-truncate-grants.md)。因此 dry-run 仍为 `GO`、migration apply 仍为 `NO-GO`；须先完成该 P1 的权限处置决策与验证，并取得老板另行批准。
+2026-08-27 只读 schema/RLS 预检补充证据（apply 前历史记录）：运输成本 migration 目标对象无漂移；既有 finance cost-layer 回填候选 382/382 均满足候选条件；模拟回填后约束违规数为 0。另确认现存 `public.supplier_batches` 与 `public.finance_cost_layers` 存在直接表级 `TRUNCATE` grants，RLS 不保护该权限，已登记为 P1 紧急任务 [P1-2026-08-27-table-truncate-grants](../done/P1-2026-08-27-table-truncate-grants.md)。该 P1 随后完成最小权限处置并通过应用后验证，当前 apply gate 已关闭并转入发布门。
 
 ## 验收标准
 
@@ -208,11 +217,11 @@ WP-04 当前本地执行状态：只读成本卡、Preview、Save estimate、Con
 - charge/allocation SELECT RLS policy 覆盖 `supplier_batch.manage_costs`；preview/result 明确 candidate/confirmed/effective allocation 字段（estimated 为候选、confirmed 为正式、cancelled 不产生 effective 分摊），`lineProjections` 仅保留 `current*`、`projected*`、`inboundAfterCandidate` 等不暗示历史最终值的字段；关键失败路径具有稳定 SQL `DETAIL` codes。
 - 权限 `supplier_batch.manage_costs` 已同步到 `admin_permissions`、admin/purchasing/pricing_manager 模板和本地 TypeScript 权限集合。
 - 工作包、风险、验收、禁止事项、迁移安全门、回滚、残余风险和 Owner Gate 完整；本地实现按子批文件所有权执行。
-- 没有远端写库、库存、产品价格、推送或部署变更。
+- 没有本任务范围外的库存、产品价格或费用确认写入；两份生产 migration apply 已记录，Git push、Vercel deploy 和浏览器 smoke 尚未执行。
 
 ## 禁止事项
 
-- 不在未获老板批准前应用 Supabase migration、写远端数据库、调整库存/成本/价格、上传生产凭证、推送或部署。
+- 不将本卡的 migration apply 记录扩展为库存、价格、费用确认、Git push 或 Vercel deploy 授权；后续发布与 smoke 必须遵守各自门禁。
 - 不把 `supplier_batches.total_cost` 改为含运输费总额，不用运输费覆盖商品行成本，不以 UI 成功代替数据库/审计验证。
 - 不把空白/未知运输费当作 `€0 已确认`，不按订购数量分摊实际未到货商品，不忽略分币余数或允许分摊合计不相等。
 - 不把同一笔运输费同时计入落地成本和普通经营费用，不直接重写历史 COGS、已消费成本层或已完成销售事实。
@@ -249,7 +258,7 @@ git status --short
 git diff --stat -- src/lib/partspro-repository.ts src/app/api/admin/_shared.ts src/app/api/admin/finance/_shared.ts src/lib/partspro-supplier-batch-files.ts src/app/api/admin/supplier-batches/export/route.ts
 ```
 
-WP-02F 本地 migration 批次不运行 Supabase linked/remote CLI/MCP、migration dry-run、远端 SQL、local DB reset、Vercel 命令或部署；WP-03 与 WP-04 已完成本地合同测试、全量 lint 和静态检查，既有 starter/admin-dashboard TypeScript baseline 已于 2026-08-26 由 TASK-20260826-01 解除，最终 build 已通过；真实浏览器联调、远端迁移和发布门仍未开启。
+WP-02F 初始本地 migration 批次不运行 Supabase linked/remote CLI/MCP、migration dry-run、远端 SQL、local DB reset、Vercel 命令或部署；该阶段已结束。WP-03 与 WP-04 已完成本地合同测试、全量 lint 和静态检查，生产两份 migration apply/post-check 已完成；真实浏览器联调、Git/Vercel 发布门仍未开启。
 
 ## 验证证据
 
@@ -290,11 +299,15 @@ WP-02F 本地 migration 批次不运行 Supabase linked/remote CLI/MCP、migrati
 | TASK-20260826-01 baseline closure `npm run lint` | passed | 2026-08-26 全量 lint exit 0；既有 starter/admin-dashboard TypeScript baseline 已解除，独立复审无 P1/P2 |
 | TASK-20260826-01 baseline closure `npm run build` | passed | 2026-08-26 `Next 16.2.6 (webpack)` 编译、TypeScript 检查和 18/18 静态页生成均完成；无运输成本文件错误 |
 | 历史 baseline 失败记录状态 | resolved | 上述此前各 WP 记录中的 starter/admin-dashboard baseline failure 均保留为当时观察，已于 2026-08-26 由 TASK-20260826-01 解除；不删除历史证据 |
-| 2026-08-27 本地权限 migration 生成 | passed locally | 使用 `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase migration new revoke_supplier_batch_truncate_privileges` 生成 `supabase/migrations/20260825202034_revoke_supplier_batch_truncate_privileges.sql`；未连接 linked、未执行 revoke 或 apply |
-| 2026-08-27 权限 migration SQL 静态风险检查 | passed locally | 可执行 SQL 仅含两条精确 `REVOKE TRUNCATE`：supplier_batches 针对 anon/authenticated，finance_cost_layers 针对 authenticated；未触碰 service_role/postgres 或其他权限，未含 grant/cascade/DDL/DML |
+| 2026-08-27 本地权限 migration 生成（apply 前） | passed locally | 使用 `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase migration new revoke_supplier_batch_truncate_privileges` 生成 `supabase/migrations/20260825202034_revoke_supplier_batch_truncate_privileges.sql`；该条为 apply 前历史记录 |
+| 2026-08-27 权限 migration SQL 静态风险检查（apply 前） | passed locally | 可执行 SQL 仅含两条精确 `REVOKE TRUNCATE`：supplier_batches 针对 anon/authenticated，finance_cost_layers 针对 authenticated；未触碰 service_role/postgres 或其他权限，未含 grant/cascade/DDL/DML |
 | 2026-08-27 运输合同测试 | passed | `node --test tests/supplier-batch-transport-cost-contract.test.mjs tests/supplier-batch-transport-cost-ui-contract.test.mjs` 33/33 通过 |
 | 2026-08-27 运输目标 ESLint | passed | transport API/routes、card/dialog、cost core/schema/files 目标 ESLint exit 0；本次未修改这些应用文件 |
 | 2026-08-27 `git diff --check` | passed | exit 0；新增权限 migration 的 whitespace 亦以 executable-SQL/no-index 核对，无 whitespace 输出 |
+| 2026-08-27 production migration apply | passed | linked target 精确为 `yiuxrjqexlfjtxxrkqvi` / `PartsPro-V4`；`supabase db push --linked` exit 0，仅应用 `20260825202034` → `20260825202035`，未使用绕过参数 |
+| 2026-08-27 post-apply migration ledger | passed | apply 后 `supabase migration list --linked` exit 0，remote-only=0、local-only=0，local/remote 完全对齐 |
+| 2026-08-27 ACL/schema/RLS/RPC/backfill post-check | passed / GO | `has_table_privilege` 与 `aclexplode` 双证据确认 anon/authenticated 目标 TRUNCATE=false，service_role/postgres 保留；schema/RLS/RPC/trigger/constraint/execute grants 独立复核 GO，382/382 backfill 候选无约束违规，charges/allocations 初始计数为 0 |
+| 2026-08-27 final local validation | passed | React lazy-load commit `006159fbcaa0ead39681031b8b805dd545de9776`（`006159f`）；运输合同 34/34、全量 `npm run lint` 和 `npm run build` 均通过 |
 
 ## 回滚方案
 
@@ -306,35 +319,35 @@ WP-02F 本地 migration 批次不运行 Supabase linked/remote CLI/MCP、migrati
 ## 残余风险
 
 - 财务 VAT、资本化和普通经营费用映射在财务签字前仍未最终确定。
-- 现有远端 schema、RLS、RPC 和 cost layer 的可扩展性尚未只读核验，不能据此承诺 migration 可无冲突应用。
+- 生产 schema、RLS、RPC 和 cost layer 已完成 apply 前后独立核验并为 `GO`；仍需浏览器/API smoke 验收。
 - 历史批次、部分入库、退货、贷项通知单、跨币种和已售/未售成本分层需要单独业务决策。
 - 重量来源、手工分摊权限、凭证存储和多币种汇率证据可能扩大第一版复杂度；未批准前保持为未知项。
-- WP-02R3 仍未在数据库执行 migration；本地静态核对不能证明 SQL 解析、RLS、锁顺序、触发器 truth table、summary 聚合、manual fallback/revision 并发和财务计算在真实 schema 上通过。
-- 父批次删除 restrict、`qty=0` 正 inbound 拒绝、preview revision 前后竞争窗口和手工快照恢复仍需数据库执行级 smoke；VAT/confidence 映射仍需财务最终确认。
-- 独立最终复审未发现 P1；summary RPC 的 reviewCodes/status 优先级、RLS permission closure、candidate/confirmed/effective 字段和 SQL DETAIL codes 仍需数据库执行级错误响应核对。
+- WP-02R3 migration 已在生产执行并完成 schema/RLS/RPC/trigger/constraint 独立 post-check；数据库级门为 `GO`，浏览器/API smoke 和财务 VAT 口径仍待确认。
+- 父批次删除 restrict、`qty=0` 正 inbound 拒绝、preview revision 前后竞争窗口和手工快照恢复已纳入生产 RPC/约束核对；VAT/confidence 映射仍需财务最终确认。
+- 独立最终复审未发现 P1；summary RPC 的 reviewCodes/status 优先级、RLS permission closure、candidate/confirmed/effective 字段和 SQL DETAIL codes 的生产核对为 `GO`，仍需线上入口 smoke。
 - 旧 REMAX/预售占用层仍是 estimate-only/需财务调整；确认 RPC 对 `allocated_qty > 0` 或 `consumed_qty > 0` 强制阻止，不实现历史调整。
-- WP-04 本地表单、Preview、Save estimate/Confirm API 接线和错误/unknown-write/readback 状态机已实现并有合同测试，但尚未进行 DOM/browser smoke、真实 RPC/RLS/migration 执行；unknown-write 生命周期目前由 pure helper 与 source contract 覆盖。
-- WP-03R 已将成本路径读错误改为不向 API 暴露 Supabase 原始 message/detail；但真实 PostgREST 行形状、RLS 下 caller-scoped products/inventory 可读性、RPC 返回全量 allocation 快照和导出 5000 行硬上限仍需数据库/联调验证。
-- 既有 starter/admin-dashboard TypeScript baseline 已于 2026-08-26 由 TASK-20260826-01 解除并独立复审无 P1/P2；当前剩余风险集中在真实 DB/RLS/RPC、财务口径、浏览器和发布门。
-- P2-01：既有 `finance_cost_layers` 回填与约束兼容性仍需真实 schema/RLS/RPC 只读预检与业务契约核对。
-- P2-02：手工 schema 漂移可能使本地 migration 与远端真实对象不一致，需只读 schema 对比。
-- P2-03：三个同名 trigger 检查已在本地 migration 限定各自目标 `tgrelid`，仍需在真实数据库做对象存在性与执行级核对，避免手工漂移。
+- WP-04 本地表单、Preview、Save estimate/Confirm API 接线和错误/unknown-write/readback 状态机已实现并有合同测试；真实 RPC/RLS/migration 已通过 post-check，尚未进行 DOM/browser smoke。
+- WP-03R 已将成本路径读错误改为不向 API 暴露 Supabase 原始 message/detail；生产 post-check 已覆盖 PostgREST 行形状、RLS caller-scoped 访问、RPC allocation 快照和导出 5000 行上限，仍需浏览器/联调证据。
+- 既有 starter/admin-dashboard TypeScript baseline 已于 2026-08-26 由 TASK-20260826-01 解除并独立复审无 P1/P2；当前剩余风险集中在财务口径、浏览器和发布门。
+- P2-01：既有 `finance_cost_layers` 回填与约束兼容性已完成生产核对，无违规；后续财务调整仍走独立流程。
+- P2-02：本次手工 schema 漂移已通过 apply 前后对比；后续 schema 变更仍须重新核对。
+- P2-03：三个同名 trigger 检查已在本地 migration 限定各自目标 `tgrelid`，生产对象存在性与执行级核对已通过，后续变更仍需回归。
 - P2-04：历史成本归入 goods 语义仍需财务核对，不能仅凭 migration 或 dry-run 推导会计结论。
-- P2-05：dry-run 只证明待应用 migration 集合，不证明真实 RLS、RPC、约束和触发器执行效果。
+- P2-05：dry-run 本身只证明待应用 migration 集合；本次真实 RLS、RPC、约束和触发器已由独立 post-check 覆盖。
 
 ## Owner Gate
 
-当前 Gate：`G0 / 业务口径与任务立项`，状态 `approved`；`G1 / 本地 schema-RPC 与后端契约实现`，状态 `completed (local static review passed)`；WP-03 后端本地实现已完成，WP-04 后台读写本地实现已完成并独立复审；数据库执行、linked 应用、浏览器验收和发布仍关闭。
+当前 Gate：`G0 / 业务口径与任务立项`，状态 `approved`；`G1 / 本地 schema-RPC 与后端契约实现`，状态 `completed (local static review passed)`；WP-03 后端本地实现已完成，WP-04 后台读写本地实现已完成并独立复审；数据库执行、linked migration apply 与应用后核对已完成，浏览器验收、Git/Vercel 发布仍关闭。
 
 主代理/老板需要确认：
 
-1. 本轮老板目标“设定目标并开始下一步”已作为 G0 本地实现批准记录；本批准覆盖本地 schema/RPC 与本地页面/API 实现，但不覆盖生产 migration 应用、远端写库、push/deploy。
+1. 本轮老板目标“设定目标并开始下一步”已作为 G0 本地实现批准记录；本批准覆盖本地 schema/RPC 与本地页面/API 实现。生产 migration apply 已由独立 Owner 批准并完成；该批准不覆盖 Git push、Vercel deploy 或线上 smoke。
 2. 是否接受本卡锁定的商品货值、运输金额、分摊、IVA、价格保护和历史 COGS 规则。
 3. 财务是否指定可资本化运输成本与可抵扣 IVA 的具体口径。
-4. 本轮 WP-04 本地读写体验与独立复审已完成；老板已批准只读 linked 核对，history comparison 已完成，且 2026-08-27 CLI 登录成功、`migration list --linked` exit 0、`db push --linked --dry-run` exit 0（仅列出目标 migration，未 push）。dry-run 范围审查为 `GO`，apply 为 `NO-GO`；原 migration 范围审查无 P0/P1，但 2026-08-27 schema/RLS 预检另确认直接表级 `TRUNCATE` P1，详见 item 5。真实 DB/RLS/API、浏览器验收和任何 migration apply/远端写库仍需另一次明确批准。
-5. 2026-08-27 只读 schema/RLS 预检确认目标对象无漂移、382/382 回填候选模拟回填后 0 约束违规；同时确认 `public.supplier_batches` 与 `public.finance_cost_layers` 的直接表级 `TRUNCATE` P1，详见 [P1-2026-08-27-table-truncate-grants](../urgent/P1-2026-08-27-table-truncate-grants.md)。在该 P1 完成处置决策、修复验证并由老板另行批准前，migration apply 保持 `NO-GO`；当前不执行权限 revoke 或任何远端写入。
+4. 本轮 WP-04 本地读写体验与独立复审已完成；2026-08-27 CLI 登录成功，`migration list --linked` 与 `db push --linked --dry-run` 均 exit 0，随后两份生产 migration 已获独立批准并 apply exit 0，应用后 ledger、ACL、schema/RLS/RPC 与回填 post-check 均为 `GO`。2026-08-27 schema/RLS 预检另确认直接表级 `TRUNCATE` P1，详见 item 5；真实浏览器/API smoke 与 Git/Vercel 发布仍需下一道门。
+5. 2026-08-27 只读 schema/RLS 预检确认目标对象无漂移、382/382 回填候选模拟回填后 0 约束违规；同时确认 `public.supplier_batches` 与 `public.finance_cost_layers` 的直接表级 `TRUNCATE` P1，详见 [P1-2026-08-27-table-truncate-grants](../done/P1-2026-08-27-table-truncate-grants.md)。该 P1 已完成最小权限处置并通过应用后修复验证，详见已完成任务卡；当前不扩大 revoke 范围。
 
-生产 migration 应用、远端写库、push/deploy 仍为关闭状态；未收到新的明确批准前不得执行。老板的视觉/业务修正可重新打开已通过的 Gate，并须在任务卡执行记录中留痕。
+生产 migration apply 与应用后核对已完成；Git push、Vercel production deploy 和 smoke test 仍为关闭状态，需进入下一道独立发布门。老板的视觉/业务修正可重新打开已通过的 Gate，并须在任务卡执行记录中留痕。
 
 ## 执行记录
 
@@ -349,9 +362,9 @@ WP-02F 本地 migration 批次不运行 Supabase linked/remote CLI/MCP、migrati
 - review：WP-02R2 待数据库执行级验证/最终复审
 - WP-02R3：冻结批量摘要 RPC、RLS 闭包、allocation 响应字段（estimated 候选、confirmed 正式、cancelled effective 为空）、projection 缺 mapping 保留、稳定错误 detail codes 和显式 breakdown 单元一致性拒绝；未执行数据库，待独立复审/执行级验证
 - review：WP-02R3 独立接口复审已完成；无 P1，数据库执行级验证仍待后续门禁；G1 本地静态审查通过并完成
-- WP-02F：统一 preview block code、清理 projection 误导字段、收窄 compat trigger existence check、补 summary 原始数组上限；未连接 linked、未应用 migration
-- final review：独立最终复审无 P1；G1 本地静态审查完成，可进入 WP-03；数据库执行、linked 应用和发布仍关闭
-- verified：限定 whitespace/rg/人工核对已通过；数据库执行级验证及远端 migration/release 验证尚未执行
+- WP-02F（apply 前历史）：统一 preview block code、清理 projection 误导字段、收窄 compat trigger existence check、补 summary 原始数组上限；当时未连接 linked、未应用 migration
+- final review（apply 前历史）：独立最终复审无 P1；G1 本地静态审查完成，可进入 WP-03；数据库执行、linked 应用和发布当时仍关闭
+- verified（apply 前历史）：限定 whitespace/rg/人工核对已通过；数据库执行级验证及远端 migration/release 验证当时尚未执行
 - WP-03：已在本地新增 client-safe cost core 与 `.d.mts`，窄改批次 Repository（summary/charges/allocations/line/product 分页读取、confirmed line cost 聚合、RPC wrappers、批量 export hydrate），提升公共 `parseAdminJsonBody` 并由 finance shared re-export；新增 preview/estimate/confirm 路由、严格 Zod schema、charges 导出 scope 和 Node 合同测试。未改 UI/i18n、migration、linked/remote、库存或价格。
 - WP-03 verification：Node 合同测试 8/8 通过；目标文件 ESLint 通过；全量 `tsc --noEmit` 未作为本批 gate（只观察到既有 exports/starter 与 admin dashboard 类型错误）；数据库/RPC 未执行。
 - WP-03R：独立审查 P1/P2/P3 处置完成：成本相关读取统一 caller-scoped；core 对 charge/summary/allocation 采用 fail-closed 严格枚举、EUR、ID、金额/状态关系、快照和 signed rounding；货值改用 migration 同口径 `round(qty_received * unit_cost, 2)`；lines export 明确 unavailable/unrecorded/confirmed_zero/confirmed；summary/export 采用 500 分块与全量分页、5000 硬上限；错误只使用 SQLSTATE + exact detail code；新增 client-safe Zod schema 与实测合同用例。未执行数据库、linked/remote、build/deploy。
@@ -377,25 +390,25 @@ WP-02F 本地 migration 批次不运行 Supabase linked/remote CLI/MCP、migrati
 - WP-06 connector fallback comparison（2026-08-26，历史记录，已于 2026-08-27 被新证据取代）：仅调用已连接的 `list_migrations` 读取 `yiuxrjqexlfjtxxrkqvi` 远端历史；完整集合比较结果为 remote 103 条、local 104 条，remote-only 为空，local-only 仅 `20260825202035_supplier_batch_transport_costs`，版本相同但名称不同为空，名称相同但版本不同为空。此结果不等同 dry-run；CLI `migration list --linked` 当时两次 exit 1（`Access token not provided`），`db push --linked --dry-run` 当时未执行；该条只保留历史证据，不再作为当前 blocker，远端未写，apply 关闭。
 - WP-06 CLI linked/dry-run（2026-08-27，重排前历史证据）：CLI 2.101.0 登录成功；project-ref 精确为 `yiuxrjqexlfjtxxrkqvi`；`SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase migration list --linked` exit 0，remote-only 无、local-only 仅 `20260825202035_supplier_batch_transport_costs`；`SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db push --linked --dry-run` exit 0，Would push 仅当时的 transport 草案，明确未 push；本轮未执行 apply 或其他远端写入。权限 migration 重排后须按 `20260825202034` → `20260825202035` 重新进行只读核对。
 - WP-06 independent review（2026-08-27）：dry-run gate `GO`、apply gate `NO-GO`（均针对权限 migration 重排前的 transport 草案）；P0/P1 无。记录五项 P2：既有 `finance_cost_layers` 回填/约束兼容性、手工 schema 漂移、migration 重排后需重新核对 linked history/dry-run、历史成本归入 goods 语义需财务核对、dry-run 不证明真实 RLS/RPC/约束执行；同名 trigger 的本地 `tgrelid` guard 已在本批修复，真实数据库仍需对象/执行级核对。
-- WP-07 schema/RLS 只读预检（2026-08-27）：目标对象无漂移；finance cost-layer 回填候选 382/382 均通过候选检查；模拟回填后约束违规数为 0。预检同时确认 `public.supplier_batches` 与 `public.finance_cost_layers` 的直接表级 `TRUNCATE` 权限 P1，已转入 [P1-2026-08-27-table-truncate-grants](../urgent/P1-2026-08-27-table-truncate-grants.md)；未执行 revoke、权限 migration 或远端写入，apply 保持 `NO-GO`。
-- WP-03 permission-fix local draft（2026-08-27）：按 Supabase CLI 生成 `20260825202034_revoke_supplier_batch_truncate_privileges.sql`；仅撤销 `supplier_batches` 的 anon/authenticated TRUNCATE 与 `finance_cost_layers` 的 authenticated TRUNCATE，明确保留 service_role/postgres 及所有其他权限；未执行 linked/remote 命令、revoke、apply、push 或 deploy。
-- 2026-08-27 migration ordering review：原权限 migration `20260827071053_revoke_supplier_batch_truncate_privileges.sql` → `20260825202034_revoke_supplier_batch_truncate_privileges.sql`；原因是 P1 权限修复必须先于 transport migration `20260825202035_supplier_batch_transport_costs.sql`。两份目标 migration 的本地顺序现为 `20260825202034` 权限 → `20260825202035` 运输；未执行 linked/remote、revoke、apply、push 或 deploy。
-- 2026-08-27 review fixes：三个 transport trigger existence check 均补充目标 relation 的 `tgrelid` regclass；transport contract test 新增 migration 文件名/顺序与 relation-qualified trigger 回归断言；writer matrix 未发现绕过兼容边界的 landed-cost writer，真实数据库执行仍待后续验证。
-- 2026-08-27 local transport review：既有 DB/API/UI 静态契约由 33/33 运输合同测试与目标 ESLint 通过；未发现需要在本次权限修复批次内修改的确定性应用缺口。trigger relation guard 已在本批修复，真实数据库对象/执行级核对等 P2 仍保留，未扩大本批文件范围。
+- WP-07 schema/RLS 只读预检（2026-08-27）：目标对象无漂移；finance cost-layer 回填候选 382/382 均通过候选检查；模拟回填后约束违规数为 0。预检同时确认 `public.supplier_batches` 与 `public.finance_cost_layers` 的直接表级 `TRUNCATE` 权限 P1，已转入 [P1-2026-08-27-table-truncate-grants](../done/P1-2026-08-27-table-truncate-grants.md)；该 P1 已完成最小权限修复，应用后 ACL 双证据通过。
+- WP-03 permission-fix local draft（2026-08-27，apply 前历史）：按 Supabase CLI 生成 `20260825202034_revoke_supplier_batch_truncate_privileges.sql`；仅撤销 `supplier_batches` 的 anon/authenticated TRUNCATE 与 `finance_cost_layers` 的 authenticated TRUNCATE，明确保留 service_role/postgres 及所有其他权限；当时未执行 linked/remote 命令、revoke、apply、push 或 deploy。
+- 2026-08-27 migration ordering review（apply 前历史）：原权限 migration `20260827071053_revoke_supplier_batch_truncate_privileges.sql` → `20260825202034_revoke_supplier_batch_truncate_privileges.sql`；原因是 P1 权限修复必须先于 transport migration `20260825202035_supplier_batch_transport_costs.sql`。两份目标 migration 的本地顺序现为 `20260825202034` 权限 → `20260825202035` 运输；当时未执行 linked/remote、revoke、apply、push 或 deploy。
+- 2026-08-27 review fixes（apply 前历史）：三个 transport trigger existence check 均补充目标 relation 的 `tgrelid` regclass；transport contract test 新增 migration 文件名/顺序与 relation-qualified trigger 回归断言；writer matrix 未发现绕过兼容边界的 landed-cost writer，真实数据库执行当时仍待后续验证。
+- 2026-08-27 local transport review（apply 前历史）：既有 DB/API/UI 静态契约由 33/33 运输合同测试与目标 ESLint 通过；未发现需要在本次权限修复批次内修改的确定性应用缺口。trigger relation guard 已在本批修复，真实数据库对象/执行级核对等 P2 当时仍保留，未扩大本批文件范围。
 - 2026-08-27 lineage reconciliation：connector fresh remote ledger 为 103 条；clean candidate（源自 origin/main）原缺 3 条已应用历史 `20260722212145_admin_website_analytics_permission`、`20260808111643_approve_shared_screen_model_navigation`、`20260808115853_add_oneplus_oppo_shared_screen_navigation`。三份均已按远端 `statements` 与 primary 同名 SQL 逐条核对为 semantic exact（首份仅尾随换行不同，后两份 byte exact），并按原内容补入 clean candidate，仅作为已应用历史账本，不属于本次待执行 migration；补入后理论 ledger 为 remote 103 + pending 2 = 105，remote-only=0，local-only 仅按 `20260825202034` → `20260825202035` 顺序保留两份目标 migration。正式 CLI history/dry-run 尚未通过：CLI list 因认证缺失 exit 1，dry-run 未执行；不得宣称 CLI 或 dry-run 已通过。
 - 2026-08-27 fresh connector preflight：仅执行生产只读 SELECT/catalog 与 security/performance advisors。ACL 双证据确认 `supplier_batches` 的 `has_table_privilege(TRUNCATE)` 对 anon/authenticated/service_role/postgres 均为 true，`aclexplode` 直接条目同为 4 个角色；`finance_cost_layers` 的 has_table_privilege 对 anon 为 false、authenticated/service_role/postgres 为 true，`aclexplode` 直接条目为 authenticated/service_role/postgres，grantor 均为 postgres、不可转授权。两表 RLS 均 enabled、未 forced，现有 7 条 policy 均属 authenticated，RLS 不保护 TRUNCATE。目标两张 charges/allocations 表、9 个 index、2 个 policy、3 个 trigger、12 个 helper/RPC、30 个目标 constraint 均不存在，未发现半成品或同名碰撞；finance 新三列尚不存在。回填候选总数及 supplier-batch 候选均为 382/382，模拟 breakdown/total-match 约束违规均为 0；supplier_batches 为 20 行/155648 bytes，finance_cost_layers 为 382 行/499712 bytes，relation locks granted/waiting 均为 0，超过 5 分钟事务为 0。security advisors 40 条无本功能直接新命中；performance advisors 95 条仅见既有 finance FK/supplier-batch index INFO，不归因本 migration。CLI auth 未恢复，正式 migration list/dry-run 未完成；本次只读 preflight 不改变生产，apply gate 保持 NO-GO。
-- released：不适用；本批不发布
-- closed：未完成
+- released：不适用；本批不发布，Git/Vercel 发布与 smoke 待下一道门
+- closed：未关闭；任务保持 `in_progress`，等待 Git/Vercel 发布与浏览器/线上 smoke
 
 ## 结果
 
-本轮 lineage reconciliation（2026-08-27）已确认 clean candidate（源自 origin/main）此前缺少 3 条 remote-only 历史；三份 SQL 已以远端 `statements` 逐条核对并按原内容补入候选，primary 与候选内容保持一致。它们仅用于补齐已应用历史账本，不是本次待执行 migration。候选理论 ledger 为 remote 103 + pending 2 = 105，remote-only=0，local-only 仅为按序的 `20260825202034_revoke_supplier_batch_truncate_privileges`、`20260825202035_supplier_batch_transport_costs`。正式 CLI `migration list --linked` 因认证缺失 exit 1，`db push --linked --dry-run` 未执行，不能宣称 CLI/dry-run 通过；apply、repair、push、deploy 均未进行。
-本次仅补入已核验的 3 份历史 SQL 并更新任务卡；应用源码、两份目标 SQL、测试、依赖与配置均未变化，既有 lint/build/tests 验证证据可复用，未重跑。
-本轮 fresh connector preflight（2026-08-27）仅作生产只读证据：ACL 双证据、RLS/policy、目标对象与冲突、finance 结构、回填模拟、表规模/锁/长事务和 advisors 均已核对如上；未执行任何 DDL/DML、revoke、migration、repair 或部署。connector 证据不能替代 CLI auth、migration list --linked 或 db push --linked --dry-run，任务保持 in_progress，apply 仍为 NO-GO。
+2026-08-27 生产结果：两份目标 migration 已在 `yiuxrjqexlfjtxxrkqvi` / `PartsPro-V4` 生产项目按顺序 apply exit 0；apply 后 `supabase migration list --linked` exit 0，remote-only=0、local-only=0，ledger 完全对齐。
+应用后 ACL 双证据确认 anon/authenticated 的目标 `TRUNCATE=false`，service_role 与 owner `postgres` 保留 `TRUNCATE=true`；schema/RLS/RPC/trigger/constraint/execute grants 独立复核为 `GO`，382/382 finance cost-layer backfill 候选无约束违规，charges/allocations 初始计数为 0。
+React lazy-load commit 为 `006159fbcaa0ead39681031b8b805dd545de9776`（`006159f`）；运输合同测试 34/34、全量 `npm run lint` 与 `npm run build` 均通过。
 
-本任务保持 `in_progress`，仍在 `now`。WP-02/03/04 的本地 schema/RPC、后端和后台读写体验实现均已完成并完成独立复审；最终相关合同测试 43/43、全量 `npm run lint` 和 `npm run build` 均通过（Next 16.2.6 webpack、TypeScript、18/18 静态页）。2026-08-27 本地权限修复 migration 已由 `20260827071053` 重排为 `20260825202034`，当前候选顺序为权限 P1 migration → transport migration；两份 migration 均仅作本地待审查草案，未执行远端 revoke 或 apply。已完成 33/33 运输合同测试、目标 ESLint、SQL 静态风险检查和 `git diff --check`，并新增 migration 顺序与 relation-qualified trigger 回归断言。此前 connector/CLI linked 证据早于本次权限 migration 重排，需按新顺序重新进行只读 history/dry-run；apply gate 仍为 `NO-GO`，须先完成 P1 处置决策与验证并取得老板另行批准。真实数据库/RLS/RPC、财务口径、浏览器和发布仍未完成；当前未写远端，migration apply 仍关闭，不宣称生产可用。
+本任务保持 `in_progress`，仍在 `now`；下一道门仅为 Git/Vercel production deploy 与浏览器/线上 smoke，尚未在本次文档批次执行 Git push、Vercel deploy 或 smoke。
 
-## 当前 CLI linked dry-run 证据（2026-08-27）
+## 当前 CLI linked dry-run 证据（apply 前，2026-08-27）
 
 - 持久 Supabase CLI 登录已成功；凭据仅保存在 CLI 用户级存储，未写入仓库、`.env` 或任务卡，也未回显或复制任何 secret。关闭初始 shell 后，在未设置 `SUPABASE_ACCESS_TOKEN` 的新 shell 中完成非敏感认证状态确认。
 - linked target 精确为 `yiuxrjqexlfjtxxrkqvi` / `PartsPro-V4`。
@@ -404,3 +417,14 @@ WP-02F 本地 migration 批次不运行 Supabase linked/remote CLI/MCP、migrati
 - 当前 migration 技术门为 `GO`；apply 门状态为“技术门GO，等待Owner独立批准”。本证据不表示生产已修复；两份 migration 尚未应用，真实数据库应用后核对与发布门仍关闭。
 - 本次仅补充任务卡证据；源码、依赖、配置、目标 SQL 和测试未变化，既有定向测试、lint/build 证据可复用，未因文档变更重复运行。
 - 状态说明：前文认证恢复前关于 CLI 未认证、dry-run pending 或 apply `NO-GO` 的记录属于历史快照；当前以本节 exit 0 证据为准，技术门 `GO`，等待 Owner 独立批准，不能据此宣称生产已修复。
+
+## 生产 apply 与 post-check 证据（2026-08-27）
+
+- linked target 已再次确认精确为 `yiuxrjqexlfjtxxrkqvi` / `PartsPro-V4`。apply 前最后一次 `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase migration list --linked` exit 0，remote-only=0，local-only 仅 `20260825202034_revoke_supplier_batch_truncate_privileges` → `20260825202035_supplier_batch_transport_costs`。
+- 按 Owner 批准执行唯一写命令 `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db push --linked`，exit 0；`20260825202034_revoke_supplier_batch_truncate_privileges.sql` 与 `20260825202035_supplier_batch_transport_costs.sql` 均生产 apply exit 0。未使用 `--include-all`、`--include-seed`、`repair`、`reset` 或其他绕过参数。
+- apply 后再次运行 `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase migration list --linked` exit 0，local/remote 完全对齐，remote-only=0、local-only=0。
+- ACL P1 已消除：`has_table_privilege` 与 `aclexplode` 双证据确认两表 anon/authenticated 的目标 `TRUNCATE=false`；`service_role` 与 owner `postgres` 保留已批准的 `TRUNCATE=true`，其他必要表级权限未被意外扩大或收回。
+- schema/RLS/RPC/回填独立复核结论为 `GO`：新 charges/allocations 表、RLS/policies、indexes、constraints、triggers、RPC/helper 的对象、安全属性和 execute grants 均符合契约；382/382 finance cost-layer backfill 候选及约束核对无违规，charges/allocations 初始计数为 0。
+- post-check 同时确认权限种子、locks/长事务和本次 migration 相关 Postgres logs；无本次 apply 错误。security advisor 新增项仅为预期 public cost `SECURITY DEFINER` RPC 的 P2 提示，已核对 permission guard 与空 `search_path`；performance advisor 新增项为新空表的预期索引提示。
+- 本地 React lazy-load 提交为 `006159fbcaa0ead39681031b8b805dd545de9776`（短 hash `006159f`）；运输相关合同测试 `34/34`、全量 `npm run lint` 与 `npm run build` 均通过。
+- 本任务状态仍为 `in_progress`，仍在 `now`；下一道门为 Git/Vercel production deploy 与 smoke test。该文档批次未执行 Git push、Vercel deploy 或浏览器/线上 smoke；生产 apply 与 post-check 已由前述批准批次完成，建议进入独立发布验收并复核 P2 security-advisor 提示。
