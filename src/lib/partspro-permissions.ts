@@ -45,6 +45,7 @@ export const adminPermissions = [
   "finance.manage",
   "finance.export",
   "finance.cost_reconcile",
+  "supplier_batch.manage_costs",
   "products.read_admin",
   "products.manage",
   "products.pricing",
@@ -140,6 +141,7 @@ export const roleTemplatePermissions: Record<string, Set<string>> = {
     "product.read_admin",
     "product.edit_price",
     "product.edit_cost",
+    "supplier_batch.manage_costs",
   ]),
   purchasing: new Set([
     "panel.catalog",
@@ -148,6 +150,7 @@ export const roleTemplatePermissions: Record<string, Set<string>> = {
     "product.read_admin",
     "product.create_draft",
     "product.edit_content",
+    "supplier_batch.manage_costs",
   ]),
   sales: new Set([
     "panel.orders",

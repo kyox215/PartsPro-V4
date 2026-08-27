@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
+import { apiError } from "@/lib/partspro-api";
 import {
   buildCsvContent,
   buildSupplierBatchExportRows,
@@ -8,10 +9,14 @@ import {
   supplierBatchFileName,
 } from "@/lib/partspro-supplier-batch-files";
 import {
-  getAdminSupplierBatchDetail,
-  listAdminSupplierBatches,
+  getAdminSupplierBatchExportData,
 } from "@/lib/partspro-repository";
-import { parseAdminQuery, repositoryErrorResponse, requireAdminApi } from "../../_shared";
+import {
+  hasSupplierBatchReadPermission,
+  parseAdminQuery,
+  repositoryErrorResponse,
+  requireAdminApi,
+} from "../../_shared";
 
 export const dynamic = "force-dynamic";
 
@@ -23,43 +28,47 @@ const supplierBatchExportQuerySchema = z
     dateTo: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     format: z.enum(["csv", "xlsx"]).default("csv"),
     q: z.string().trim().min(1).max(120).optional(),
-    scope: z.enum(["batches", "lines"]).default("batches"),
+    scope: z.enum(["batches", "lines", "charges"]).default("batches"),
     supplier: z.string().trim().min(1).max(120).optional(),
   })
   .strict();
 
 export async function GET(request: NextRequest) {
-  const admin = await requireAdminApi("product.read_admin");
-
-  if (!admin.ok) {
-    return admin.response;
-  }
-
   const query = parseAdminQuery(request.nextUrl.searchParams, supplierBatchExportQuerySchema);
 
   if (!query.ok) {
     return query.response;
   }
 
+  const admin = await requireAdminApi(
+    query.data.scope === "charges"
+      ? "supplier_batch.manage_costs"
+      : "product.read_admin"
+  );
+
+  if (!admin.ok) {
+    return admin.response;
+  }
+
+  if (!hasSupplierBatchReadPermission(admin.authState)) {
+    return apiError(
+      403,
+      "ADMIN_PERMISSION_DENIED",
+      "A supplier batch read permission is required."
+    );
+  }
+
   const { format, scope, ...filters } = query.data;
 
   try {
-    const list = await listAdminSupplierBatches({
+    const exportData = await getAdminSupplierBatchExportData({
       ...filters,
+      exportScope: scope,
       limit: 500,
       offset: 0,
     });
-    const batches = list.data.batches;
-    const details =
-      scope === "lines"
-        ? (
-            await Promise.all(
-              batches.map((batch) => getAdminSupplierBatchDetail(batch.batchCode))
-            )
-          )
-            .map((result) => result.data)
-            .filter((detail) => detail !== null)
-        : [];
+    const batches = exportData.data.batches;
+    const details = exportData.data.details;
     const exportRows = buildSupplierBatchExportRows(scope, batches, details);
     const body =
       format === "xlsx"

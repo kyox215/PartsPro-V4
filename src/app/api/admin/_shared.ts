@@ -1,9 +1,15 @@
 import { z } from "zod";
-import { apiError, formatZodIssues, readQueryParams } from "@/lib/partspro-api";
+import {
+  apiError,
+  formatZodIssues,
+  readJsonBody,
+  readQueryParams,
+} from "@/lib/partspro-api";
 import {
   getAdminAuthState,
   hasAdminPermission,
 } from "@/lib/partspro-admin-auth";
+import type { AdminAuthState } from "@/lib/partspro-admin-auth";
 import { RepositoryWriteError } from "@/lib/partspro-repository";
 
 export async function requireAdminApi(permission?: string) {
@@ -68,6 +74,36 @@ export function parseAdminQuery<T extends z.ZodObject>(
   return { ok: true, data: result.data };
 }
 
+export async function parseAdminJsonBody<T extends z.ZodTypeAny>(
+  request: Request,
+  schema: T
+): Promise<
+  | { ok: true; data: z.infer<T> }
+  | { ok: false; response: ReturnType<typeof apiError> }
+> {
+  const body = await readJsonBody(request);
+
+  if (!body.ok) {
+    return {
+      ok: false,
+      response: apiError(400, "INVALID_BODY", "Request body must be valid JSON."),
+    };
+  }
+
+  const parsed = schema.safeParse(body.data);
+
+  if (!parsed.success) {
+    return {
+      ok: false,
+      response: apiError(400, "INVALID_BODY", "Request body is invalid.", {
+        issues: formatZodIssues(parsed.error),
+      }),
+    };
+  }
+
+  return { ok: true, data: parsed.data };
+}
+
 export function repositoryErrorResponse(
   error: unknown,
   fallbackCode: string,
@@ -78,6 +114,13 @@ export function repositoryErrorResponse(
   }
 
   return apiError(500, fallbackCode, fallbackMessage);
+}
+
+export function hasSupplierBatchReadPermission(authState: AdminAuthState) {
+  return (
+    hasAdminPermission(authState, "product.read_admin") ||
+    hasAdminPermission(authState, "products.read_admin")
+  );
 }
 
 export function basicCustomerManagementDisabledResponse(feature: string) {

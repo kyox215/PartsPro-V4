@@ -60,6 +60,22 @@ import {
   shippingMethodForDeliveryMethod,
   type DeliveryMethod,
 } from "@/lib/partspro-shipping";
+import {
+  normalizeSupplierBatchCharge,
+  normalizeSupplierBatchChargeAllocation,
+  normalizeSupplierBatchCostRpcResult,
+  normalizeSupplierBatchCostSummary,
+  supplierBatchExportRowCount,
+  summarizeSupplierBatchLineCosts,
+} from "@/lib/partspro-supplier-batch-cost-core.mjs";
+import type {
+  SupplierBatchCharge,
+  SupplierBatchChargeAllocation,
+  SupplierBatchCostRpcResult,
+  SupplierBatchCostSummary,
+  SupplierBatchLineCost,
+  SupplierBatchLineProjection,
+} from "@/lib/partspro-supplier-batch-cost-core.mjs";
 
 type DbRow = Record<string, unknown>;
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -444,6 +460,32 @@ export type AdminSupplier = {
   updatedAt: string;
 };
 
+export type AdminSupplierBatchCostSummary = SupplierBatchCostSummary;
+export type AdminSupplierBatchCharge = SupplierBatchCharge;
+export type AdminSupplierBatchChargeAllocation = SupplierBatchChargeAllocation;
+export type AdminSupplierBatchCostRpcResult = SupplierBatchCostRpcResult;
+export type AdminSupplierBatchLineCost = SupplierBatchLineCost;
+export type AdminSupplierBatchLineProjection = SupplierBatchLineProjection;
+
+export type AdminSupplierBatchChargeInput = {
+  chargeId?: string;
+  idempotencyKey?: string;
+  chargeType: "transport" | "insurance" | "customs" | "handling" | "other";
+  amountNet: number;
+  vatAmount: number;
+  capitalizedAmount: number;
+  currency: "EUR";
+  vatTreatment: "recoverable" | "non_recoverable" | "unknown";
+  allocationMethod: "goods_value" | "received_qty" | "weight" | "manual";
+  carrierName?: string | null;
+  reference?: string | null;
+  occurredAt?: string | null;
+  evidenceUrl?: string | null;
+  notes?: string | null;
+  zeroCostReason?: string | null;
+  manualAllocations?: Array<{ batchLineId: string; amount: number }>;
+};
+
 export type AdminSupplierBatch = {
   id: string;
   batchCode: string;
@@ -474,6 +516,7 @@ export type AdminSupplierBatch = {
   priceViolationCount: number;
   modelPrefixIssueCount: number;
   verification: AdminSupplierBatchVerification;
+  costSummary: AdminSupplierBatchCostSummary | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -490,6 +533,7 @@ export type AdminSupplierBatchQueryInput = {
   offset?: number;
   q?: string;
   supplier?: string;
+  exportScope?: "batches" | "lines" | "charges";
 };
 
 export type AdminSupplierBatchVerification = {
@@ -515,6 +559,7 @@ export type AdminSupplierBatchLineProduct = {
   costPrice: number;
   retailPrice: number;
   b2bPrice: number;
+  weightGram: number | null;
   imagePath: string | null;
   modelCodes: string[];
   compatibilityModels: string[];
@@ -539,6 +584,7 @@ export type AdminSupplierBatchLine = {
   productStatus: AdminCatalogStatus;
   metadata: Record<string, unknown>;
   product: AdminSupplierBatchLineProduct | null;
+  costs: AdminSupplierBatchLineCost | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -546,6 +592,7 @@ export type AdminSupplierBatchLine = {
 export type AdminSupplierBatchDetail = {
   batch: AdminSupplierBatch;
   lines: AdminSupplierBatchLine[];
+  charges: AdminSupplierBatchCharge[];
   verification: AdminSupplierBatchVerification;
 };
 
@@ -2685,6 +2732,204 @@ export async function getAdminSupplierBatchDetail(
     data: detail,
     source: "supabase",
   };
+}
+
+export async function previewAdminSupplierBatchCharge(
+  batchCode: string,
+  input: AdminSupplierBatchChargeInput
+): Promise<RepositoryResult<AdminSupplierBatchCostRpcResult>> {
+  const context = await requireSupabaseContext();
+  const data = await callSupplierBatchCostRpc(
+    context.client,
+    "admin_preview_supplier_batch_charge",
+    batchCode,
+    input
+  );
+
+  return { data, source: "supabase" };
+}
+
+export async function saveAdminSupplierBatchChargeEstimate(
+  batchCode: string,
+  input: AdminSupplierBatchChargeInput
+): Promise<RepositoryResult<AdminSupplierBatchCostRpcResult>> {
+  const context = await requireSupabaseContext();
+  const data = await callSupplierBatchCostRpc(
+    context.client,
+    "admin_save_supplier_batch_charge_estimate",
+    batchCode,
+    input
+  );
+
+  return { data, source: "supabase" };
+}
+
+export async function confirmAdminSupplierBatchCharge(
+  batchCode: string,
+  input: AdminSupplierBatchChargeInput & { revision: string }
+): Promise<RepositoryResult<AdminSupplierBatchCostRpcResult>> {
+  const context = await requireSupabaseContext();
+  const data = await callSupplierBatchCostRpc(
+    context.client,
+    "admin_confirm_supplier_batch_charge",
+    batchCode,
+    input
+  );
+
+  return { data, source: "supabase" };
+}
+
+export async function getAdminSupplierBatchExportData(
+  query: AdminSupplierBatchQueryInput = {}
+): Promise<
+  RepositoryResult<{
+    batches: AdminSupplierBatch[];
+    details: AdminSupplierBatchDetail[];
+  }>
+> {
+  const context = await requireSupabaseContext();
+  const exportPageSize = 500;
+  const exportHardLimit = 5000;
+  const batches: AdminSupplierBatch[] = [];
+  let offset = 0;
+  const exportScope = query.exportScope ?? "batches";
+
+  while (true) {
+    const page = await readAdminSupplierBatches(context.client, {
+      ...query,
+      limit: exportPageSize,
+      offset,
+    });
+    batches.push(...page.batches);
+
+    if (page.fetchedCount < exportPageSize) {
+      break;
+    }
+    offset += page.fetchedCount;
+  }
+
+  const details = exportScope === "batches"
+    ? []
+    : exportScope === "charges"
+      ? await readAdminSupplierBatchChargeDetails(context.client, batches)
+      : await readAdminSupplierBatchDetails(context.client, batches);
+  const rowCount = supplierBatchExportRowCount(exportScope, batches, details);
+
+  if (rowCount === null || rowCount > exportHardLimit) {
+    throw new RepositoryWriteError(
+      413,
+      "ADMIN_SUPPLIER_BATCH_EXPORT_TOO_LARGE",
+      "Supplier batch export is too large. Narrow the filters before exporting."
+    );
+  }
+
+  return {
+    data: { batches, details },
+    source: "supabase",
+  };
+}
+
+type SupplierBatchCostRpcInput = AdminSupplierBatchChargeInput & {
+  revision?: string;
+};
+
+const supplierBatchCostRpcDetailCodes = [
+  "AUTHENTICATION_REQUIRED",
+  "PERMISSION_DENIED",
+  "BATCH_NOT_FOUND",
+  "CHARGE_NOT_FOUND",
+  "IDEMPOTENCY_CONFLICT",
+  "CHARGE_IMMUTABLE",
+  "CHARGE_CANCELLED",
+  "STALE_REVISION",
+  "FINANCIAL_ADJUSTMENT_REQUIRED",
+  "BATCH_IDS_LIMIT_EXCEEDED",
+  "MANUAL_ALLOCATIONS_REQUIRED",
+] as const;
+
+async function callSupplierBatchCostRpc(
+  client: SupabaseServerClient,
+  functionName:
+    | "admin_preview_supplier_batch_charge"
+    | "admin_save_supplier_batch_charge_estimate"
+    | "admin_confirm_supplier_batch_charge",
+  batchCode: string,
+  input: SupplierBatchCostRpcInput
+): Promise<AdminSupplierBatchCostRpcResult> {
+  const { revision, ...chargeInput } = input;
+  const payload = {
+    ...chargeInput,
+    metadata: { source: "admin_supplier_batch_cost_api" },
+  };
+  const rpcArgs =
+    functionName === "admin_preview_supplier_batch_charge"
+      ? { p_batch_code: batchCode, p_payload: payload }
+      : functionName === "admin_save_supplier_batch_charge_estimate"
+        ? {
+            p_batch_code: batchCode,
+            p_payload: payload,
+            p_idempotency_key: input.idempotencyKey ?? null,
+          }
+        : {
+            p_batch_code: batchCode,
+            p_payload: payload,
+            p_revision: revision,
+            p_idempotency_key: input.idempotencyKey ?? null,
+          };
+  const { data, error } = await client.rpc(functionName, rpcArgs);
+
+  if (error) {
+    throw supplierBatchCostRpcError(functionName, error);
+  }
+
+  const normalized = normalizeSupplierBatchCostRpcResult(data);
+
+  if (!normalized) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_SUPPLIER_BATCH_COST_RPC_INVALID_RESPONSE",
+      "Supplier batch cost RPC returned an invalid response."
+    );
+  }
+
+  return normalized;
+}
+
+function supplierBatchCostRpcError(functionName: string, error: unknown) {
+  const errorRow = isDbRow(error) ? error : {};
+  const sqlState = pickString(errorRow, ["code"]);
+  const detailCode = [errorRow.details, errorRow.detail]
+    .find(
+      (value): value is string =>
+        typeof value === "string" &&
+        supplierBatchCostRpcDetailCodes.includes(value.trim() as (typeof supplierBatchCostRpcDetailCodes)[number])
+    )
+    ?.trim();
+  const status =
+    sqlState === "28000"
+      ? 401
+      : sqlState === "42501"
+        ? 403
+        : sqlState === "P0002"
+          ? 404
+          : ["40001", "55000", "23505"].includes(sqlState ?? "")
+            ? 409
+            : ["22023", "23514"].includes(sqlState ?? "")
+              ? 400
+              : 502;
+  const operation =
+    functionName === "admin_preview_supplier_batch_charge"
+      ? "preview"
+      : functionName === "admin_save_supplier_batch_charge_estimate"
+        ? "estimate"
+        : "confirmation";
+
+  return new RepositoryWriteError(
+    status,
+    detailCode ?? "ADMIN_SUPPLIER_BATCH_COST_RPC_FAILED",
+    `Supplier batch cost ${operation} could not be completed.`,
+    detailCode ? { reason: detailCode } : undefined
+  );
 }
 
 export async function getAdminFinanceSummary(
@@ -6298,6 +6543,7 @@ async function readAdminSupplierBatches(
       { count: "exact" }
     )
     .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
     .range(offset, offset + limit - 1);
 
   if (query.batchCode) {
@@ -6331,18 +6577,30 @@ async function readAdminSupplierBatches(
     throw new RepositoryWriteError(
       502,
       "ADMIN_SUPPLIER_BATCHES_READ_UNAVAILABLE",
-      "Admin supplier batch data could not be read from Supabase.",
-      supabaseErrorDetails(error)
+      "Admin supplier batch data could not be read from Supabase."
     );
   }
 
   const rows = Array.isArray(data) ? data.map((row) => row as DbRow) : [];
   const batchIds = rows.map((row) => pickString(row, ["id"])).filter(isDefined);
-  const lineStats = await readSupplierBatchLineStats(client, batchIds);
+  const needsBatchListHydration =
+    query.exportScope === undefined || query.exportScope === "batches";
+  let lineStats: Map<string, SupplierBatchLineStats> = new Map();
+  let costSummaries: Map<string, AdminSupplierBatchCostSummary | null> = new Map();
+
+  if (needsBatchListHydration) {
+    [lineStats, costSummaries] = await Promise.all([
+      readSupplierBatchLineStats(client, batchIds),
+      readSupplierBatchCostSummaries(client, batchIds),
+    ]);
+  }
 
   return {
-    batches: rows.map((row) => mapAdminSupplierBatchRow(row, lineStats)).filter(isDefined),
+    batches: rows
+      .map((row) => mapAdminSupplierBatchRow(row, lineStats, costSummaries))
+      .filter(isDefined),
     total: count ?? rows.length,
+    fetchedCount: rows.length,
   };
 }
 
@@ -6362,8 +6620,7 @@ async function readAdminSupplierBatchDetail(
     throw new RepositoryWriteError(
       502,
       "ADMIN_SUPPLIER_BATCH_READ_UNAVAILABLE",
-      "Admin supplier batch data could not be read from Supabase.",
-      supabaseErrorDetails(error)
+      "Admin supplier batch data could not be read from Supabase."
     );
   }
 
@@ -6378,24 +6635,147 @@ async function readAdminSupplierBatchDetail(
   }
 
   const lines = await readSupplierBatchLines(client, [batchId]);
-  const lookupClient = createSupplierBatchLookupClient(client);
-  const productsBySku = await readSupplierBatchProducts(lookupClient, lines);
-  const inventoryBySku = await readSupplierBatchInventory(lookupClient, lines);
+  const [productsBySku, inventoryBySku, chargeRows, allocations, costSummaries] =
+    await Promise.all([
+      readSupplierBatchProducts(client, lines),
+      readSupplierBatchInventory(client, lines),
+      readSupplierBatchCharges(client, [batchId]),
+      readSupplierBatchChargeAllocations(client, [batchId]),
+      readSupplierBatchCostSummaries(client, [batchId]),
+    ]);
   const stats = summarizeSupplierBatchLines(lines, productsBySku, inventoryBySku);
   const statsByBatch = new Map([[batchId, stats]]);
-  const batch = mapAdminSupplierBatchRow(data, statsByBatch);
+  const batch = mapAdminSupplierBatchRow(data, statsByBatch, costSummaries);
 
   if (!batch) {
     return null;
   }
 
+  const charges = normalizeSupplierBatchChargesOrThrow(chargeRows);
+  normalizeSupplierBatchAllocationsOrThrow(allocations);
+  const confirmedChargeIds = new Set(
+    charges
+      .filter((charge) => charge.status === "confirmed")
+      .map((charge) => charge.chargeId)
+      .filter(isDefined)
+  );
+  const lineCosts = summarizeSupplierBatchLineCosts(
+    lines,
+    allocations.filter((allocation) =>
+      confirmedChargeIds.has(pickString(allocation, ["charge_id", "chargeId"]) ?? "")
+    )
+  );
+  const lineCostsById = new Map(
+    (lineCosts ?? []).map((cost) => [cost.batchLineId, cost])
+  );
+
   return {
     batch,
     lines: lines
-      .map((line) => mapAdminSupplierBatchLine(line, productsBySku, inventoryBySku))
+      .map((line) => mapAdminSupplierBatchLine(line, productsBySku, inventoryBySku, lineCostsById))
       .filter(isDefined),
+    charges,
     verification: batch.verification,
   };
+}
+
+async function readAdminSupplierBatchDetails(
+  client: SupabaseServerClient,
+  batches: AdminSupplierBatch[]
+): Promise<AdminSupplierBatchDetail[]> {
+  if (batches.length === 0) {
+    return [];
+  }
+
+  const batchIds = batches.map((batch) => batch.id);
+  const lines = await readSupplierBatchLines(client, batchIds);
+  const [productsBySku, inventoryBySku, chargeRows, allocations, costSummaries] =
+    await Promise.all([
+      readSupplierBatchProducts(client, lines),
+      readSupplierBatchInventory(client, lines),
+      readSupplierBatchCharges(client, batchIds),
+      readSupplierBatchChargeAllocations(client, batchIds),
+      readSupplierBatchCostSummaries(client, batchIds),
+    ]);
+
+  const linesByBatch = groupSupplierBatchRows(lines, "batch_id");
+  const normalizedCharges = normalizeSupplierBatchChargesOrThrow(chargeRows);
+  normalizeSupplierBatchAllocationsOrThrow(allocations);
+  const allocationsByBatch = groupSupplierBatchRows(allocations, "batch_id");
+  const batchesById = new Map(batches.map((batch) => [batch.id, batch]));
+  const details: AdminSupplierBatchDetail[] = [];
+
+  for (const batch of batches) {
+    const batchLines = linesByBatch.get(batch.id) ?? [];
+    const batchAllocations = allocationsByBatch.get(batch.id) ?? [];
+    const confirmedChargeIds = new Set(
+      normalizedCharges
+        .filter((charge) => charge.status === "confirmed" && charge.batchId === batch.id)
+        .map((charge) => charge.chargeId)
+        .filter(isDefined)
+    );
+    const lineCosts = summarizeSupplierBatchLineCosts(
+      batchLines,
+      batchAllocations.filter((allocation) =>
+        confirmedChargeIds.has(pickString(allocation, ["charge_id", "chargeId"]) ?? "")
+      )
+    );
+    const lineCostsById = new Map(
+      (lineCosts ?? []).map((cost) => [cost.batchLineId, cost])
+    );
+    const mappedCharges = normalizedCharges.filter((charge) => charge.batchId === batch.id);
+    const summary = costSummaries.get(batch.id) ?? null;
+    const mappedBatch = batchesById.get(batch.id);
+
+    if (!mappedBatch) {
+      continue;
+    }
+
+    details.push({
+      batch: summary && mappedBatch.costSummary === null
+        ? { ...mappedBatch, costSummary: summary }
+        : mappedBatch,
+      lines: batchLines
+        .map((line) =>
+          mapAdminSupplierBatchLine(line, productsBySku, inventoryBySku, lineCostsById)
+        )
+        .filter(isDefined),
+      charges: mappedCharges,
+      verification: mappedBatch.verification,
+    });
+  }
+
+  return details;
+}
+
+async function readAdminSupplierBatchChargeDetails(
+  client: SupabaseServerClient,
+  batches: AdminSupplierBatch[]
+): Promise<AdminSupplierBatchDetail[]> {
+  if (batches.length === 0) {
+    return [];
+  }
+
+  const normalizedCharges = normalizeSupplierBatchChargesOrThrow(
+    await readSupplierBatchCharges(
+      client,
+      batches.map((batch) => batch.id)
+    )
+  );
+  const chargesByBatch = new Map<string, AdminSupplierBatchCharge[]>();
+
+  for (const charge of normalizedCharges) {
+    const current = chargesByBatch.get(charge.batchId) ?? [];
+    current.push(charge);
+    chargesByBatch.set(charge.batchId, current);
+  }
+
+  return batches.map((batch) => ({
+    batch,
+    lines: [],
+    charges: chargesByBatch.get(batch.id) ?? [],
+    verification: batch.verification,
+  }));
 }
 
 const adminFinanceReadLimit = 50000;
@@ -7550,18 +7930,6 @@ function normalizeFinanceExpenseCategory(
   return "other";
 }
 
-function createSupplierBatchLookupClient(client: SupabaseServerClient): SupabaseServerClient {
-  if (!isSupabaseServiceRoleConfigured()) {
-    return client;
-  }
-
-  try {
-    return createServiceRoleClient() as unknown as SupabaseServerClient;
-  } catch {
-    return client;
-  }
-}
-
 async function readSupplierBatchLineStats(
   client: SupabaseServerClient,
   batchIds: string[]
@@ -7571,9 +7939,8 @@ async function readSupplierBatchLineStats(
   }
 
   const rows = await readSupplierBatchLines(client, batchIds);
-  const lookupClient = createSupplierBatchLookupClient(client);
-  const productsBySku = await readSupplierBatchProducts(lookupClient, rows);
-  const inventoryBySku = await readSupplierBatchInventory(lookupClient, rows);
+  const productsBySku = await readSupplierBatchProducts(client, rows);
+  const inventoryBySku = await readSupplierBatchInventory(client, rows);
   const rowsByBatch = new Map<string, DbRow[]>();
 
   for (const row of rows) {
@@ -7603,6 +7970,224 @@ async function readSupplierBatchLineStats(
   return stats;
 }
 
+async function readSupplierBatchCostSummaries(
+  client: SupabaseServerClient,
+  batchIds: string[]
+): Promise<Map<string, AdminSupplierBatchCostSummary | null>> {
+  const result = new Map<string, AdminSupplierBatchCostSummary | null>();
+  const uniqueBatchIds = [...new Set(batchIds)];
+
+  for (const batchId of uniqueBatchIds) {
+    result.set(batchId, null);
+  }
+
+  if (uniqueBatchIds.length === 0) {
+    return result;
+  }
+
+  for (let index = 0; index < uniqueBatchIds.length; index += 500) {
+    const chunk = uniqueBatchIds.slice(index, index + 500);
+    const { data, error } = await client.rpc(
+      "admin_list_supplier_batch_cost_summaries",
+      { p_batch_ids: chunk }
+    );
+
+    if (error) {
+      throw new RepositoryWriteError(
+        502,
+        "ADMIN_SUPPLIER_BATCH_COST_SUMMARY_READ_UNAVAILABLE",
+        "Supplier batch cost summaries could not be read from Supabase."
+      );
+    }
+
+    if (!Array.isArray(data)) {
+      throw new RepositoryWriteError(
+        502,
+        "ADMIN_SUPPLIER_BATCH_COST_SUMMARY_INVALID_RESPONSE",
+        "Supplier batch cost summaries returned an invalid response."
+      );
+    }
+
+    const seen = new Set<string>();
+    for (const row of data) {
+      const summary = normalizeSupplierBatchCostSummary(row);
+
+      if (
+        !summary ||
+        !result.has(summary.batchId) ||
+        !chunk.includes(summary.batchId) ||
+        seen.has(summary.batchId)
+      ) {
+        throw new RepositoryWriteError(
+          502,
+          "ADMIN_SUPPLIER_BATCH_COST_SUMMARY_INVALID_RESPONSE",
+          "Supplier batch cost summaries returned malformed data."
+        );
+      }
+      seen.add(summary.batchId);
+      result.set(summary.batchId, summary);
+    }
+
+    if (seen.size !== chunk.length) {
+      throw new RepositoryWriteError(
+        502,
+        "ADMIN_SUPPLIER_BATCH_COST_SUMMARY_INVALID_RESPONSE",
+        "Supplier batch cost summaries were incomplete."
+      );
+    }
+  }
+
+  return result;
+}
+
+async function readSupplierBatchCharges(
+  client: SupabaseServerClient,
+  batchIds: string[]
+): Promise<DbRow[]> {
+  return readSupplierBatchFactRows(
+    client,
+    batchIds,
+    "supplier_batch_charges",
+    "id, batch_id, charge_type, status, amount_net, vat_amount, amount_gross, capitalized_amount, currency, vat_treatment, allocation_method, carrier_name, reference, occurred_at, evidence_url, notes, zero_cost_reason, idempotency_key, payload_fingerprint, manual_allocations_snapshot, created_by, updated_by, confirmed_by, confirmed_at, metadata, created_at, updated_at, supplier_batches!inner(batch_code)",
+    "batch_id, created_at, id"
+  );
+}
+
+async function readSupplierBatchChargeAllocations(
+  client: SupabaseServerClient,
+  batchIds: string[]
+): Promise<DbRow[]> {
+  return readSupplierBatchFactRows(
+    client,
+    batchIds,
+    "supplier_batch_charge_allocations",
+    "id, batch_id, charge_id, batch_line_id, qty_received_snapshot, goods_cost_snapshot, weight_gram_snapshot, basis_value, share_ratio, allocated_amount, allocated_unit_amount, rounding_adjustment, metadata, created_at, updated_at",
+    "batch_id, batch_line_id, charge_id"
+  );
+}
+
+async function readSupplierBatchFactRows(
+  client: SupabaseServerClient,
+  batchIds: string[],
+  table: "supplier_batch_charges" | "supplier_batch_charge_allocations",
+  select: string,
+  orderColumns: string
+): Promise<DbRow[]> {
+  if (batchIds.length === 0) {
+    return [];
+  }
+
+  const rows: DbRow[] = [];
+  const uniqueBatchIds = [...new Set(batchIds)];
+
+  for (let index = 0; index < uniqueBatchIds.length; index += 100) {
+    const chunk = uniqueBatchIds.slice(index, index + 100);
+    let offset = 0;
+
+    while (true) {
+      let request = client
+        .from(table)
+        .select(select)
+        .in("batch_id", chunk);
+
+      for (const orderColumn of orderColumns.split(", ")) {
+        request = request.order(orderColumn.trim(), { ascending: true });
+      }
+
+      const { data, error } = await request.range(offset, offset + 999);
+
+      const pageRows: DbRow[] | null =
+        Array.isArray(data) && data.every(isDbRow)
+          ? (data as unknown as DbRow[])
+          : null;
+
+      if (error || !pageRows) {
+        throw new RepositoryWriteError(
+          502,
+          table === "supplier_batch_charges"
+            ? "ADMIN_SUPPLIER_BATCH_CHARGES_READ_UNAVAILABLE"
+            : "ADMIN_SUPPLIER_BATCH_CHARGE_ALLOCATIONS_READ_UNAVAILABLE",
+          table === "supplier_batch_charges"
+            ? "Supplier batch charges could not be read from Supabase."
+            : "Supplier batch charge allocations could not be read from Supabase.",
+          undefined
+        );
+      }
+
+      rows.push(...pageRows);
+
+      if (pageRows.length < 1000) {
+        break;
+      }
+
+      offset += pageRows.length;
+    }
+  }
+
+  return rows;
+}
+
+function normalizeSupplierBatchChargeRow(row: DbRow): AdminSupplierBatchCharge | null {
+  const supplierBatch = Array.isArray(row.supplier_batches)
+    ? row.supplier_batches[0]
+    : row.supplier_batches;
+  const batchCode = isDbRow(supplierBatch)
+    ? pickString(supplierBatch, ["batch_code", "batchCode"])
+    : null;
+
+  return normalizeSupplierBatchCharge({
+    ...row,
+    batchCode,
+  });
+}
+
+function normalizeSupplierBatchChargesOrThrow(rows: DbRow[]) {
+  const normalized: AdminSupplierBatchCharge[] = [];
+  for (const row of rows) {
+    const charge = normalizeSupplierBatchChargeRow(row);
+    if (!charge || !charge.chargeId) {
+      throw new RepositoryWriteError(
+        502,
+        "ADMIN_SUPPLIER_BATCH_CHARGES_INVALID_RESPONSE",
+        "Supplier batch charges returned malformed data."
+      );
+    }
+    normalized.push(charge);
+  }
+  return normalized;
+}
+
+function normalizeSupplierBatchAllocationsOrThrow(rows: DbRow[]) {
+  for (const row of rows) {
+    const normalized = normalizeSupplierBatchChargeAllocation(row);
+    if (!normalized || !normalized.batchId || !normalized.chargeId) {
+      throw new RepositoryWriteError(
+        502,
+        "ADMIN_SUPPLIER_BATCH_CHARGE_ALLOCATIONS_INVALID_RESPONSE",
+        "Supplier batch charge allocations returned malformed data."
+      );
+    }
+  }
+}
+
+function groupSupplierBatchRows(rows: DbRow[], key: string) {
+  const grouped = new Map<string, DbRow[]>();
+
+  for (const row of rows) {
+    const value = pickString(row, [key]);
+
+    if (!value) {
+      continue;
+    }
+
+    const current = grouped.get(value) ?? [];
+    current.push(row);
+    grouped.set(value, current);
+  }
+
+  return grouped;
+}
+
 async function readSupplierBatchLines(
   client: SupabaseServerClient,
   batchIds: string[]
@@ -7611,24 +8196,48 @@ async function readSupplierBatchLines(
     return [];
   }
 
-  const { data, error } = await client
-    .from("supplier_batch_lines")
-    .select(
-      "id, batch_id, line_no, ean, supplier_sku, sku_code, name, qty_received, unit_cost, line_total, image_status, product_status, metadata, created_at, updated_at"
-    )
-    .in("batch_id", batchIds)
-    .order("line_no", { ascending: true });
+  const rows: DbRow[] = [];
+  const uniqueBatchIds = [...new Set(batchIds)];
 
-  if (error) {
-    throw new RepositoryWriteError(
-      502,
-      "ADMIN_SUPPLIER_BATCH_LINES_READ_UNAVAILABLE",
-      "Admin supplier batch line data could not be read from Supabase.",
-      supabaseErrorDetails(error)
-    );
+  for (let index = 0; index < uniqueBatchIds.length; index += 100) {
+    const chunk = uniqueBatchIds.slice(index, index + 100);
+    let offset = 0;
+
+    while (true) {
+      const { data, error } = await client
+        .from("supplier_batch_lines")
+        .select(
+          "id, batch_id, line_no, ean, supplier_sku, sku_code, name, qty_received, unit_cost, line_total, image_status, product_status, metadata, created_at, updated_at"
+        )
+        .in("batch_id", chunk)
+        .order("batch_id", { ascending: true })
+        .order("line_no", { ascending: true })
+        .order("id", { ascending: true })
+        .range(offset, offset + 999);
+      const pageRows: DbRow[] | null =
+        Array.isArray(data) && data.every(isDbRow)
+          ? (data as DbRow[])
+          : null;
+
+      if (error || !pageRows) {
+        throw new RepositoryWriteError(
+          502,
+          "ADMIN_SUPPLIER_BATCH_LINES_READ_UNAVAILABLE",
+          "Admin supplier batch line data could not be read from Supabase."
+        );
+      }
+
+      rows.push(...pageRows);
+
+      if (pageRows.length < 1000) {
+        break;
+      }
+
+      offset += pageRows.length;
+    }
   }
 
-  return Array.isArray(data) ? data.map((row) => row as DbRow) : [];
+  return rows;
 }
 
 async function readSupplierBatchProducts(
@@ -7644,7 +8253,7 @@ async function readSupplierBatchProducts(
   const rows = await readMatchingRows(
     client,
     "products",
-    "sku_code, name, brand, model, model_codes, compatibility_models, category, quality_grade, cost_price, retail_price, b2b_price, stock_qty, stock_status, status, image_path",
+    "sku_code, name, brand, model, model_codes, compatibility_models, category, quality_grade, cost_price, retail_price, b2b_price, weight_gram, stock_qty, stock_status, status, image_path",
     "sku_code",
     skuCodes,
     skuCodes.length
@@ -7685,22 +8294,33 @@ async function readSupplierBatchInventory(
 
   for (let index = 0; index < skuCodes.length; index += 100) {
     const chunk = skuCodes.slice(index, index + 100);
-    const { data, error } = await client
-      .from("inventory_items")
-      .select(
-        "sku_code, product_name, brand, model, quality_grade, actual_qty, available_qty, locked_qty"
-      )
-      .in("sku_code", chunk);
+    let offset = 0;
 
-    if (error || !Array.isArray(data)) {
-      throw new RepositoryWriteError(
-        502,
-        "ADMIN_SUPPLIER_BATCH_INVENTORY_READ_UNAVAILABLE",
-        "Admin supplier batch inventory could not be read from Supabase."
-      );
+    while (true) {
+      const { data, error } = await client
+        .from("inventory_items")
+        .select(
+          "id, sku_code, product_name, brand, model, quality_grade, actual_qty, available_qty, locked_qty"
+        )
+        .in("sku_code", chunk)
+        .order("sku_code", { ascending: true })
+        .order("id", { ascending: true })
+        .range(offset, offset + 999);
+
+      if (error || !Array.isArray(data) || !data.every(isDbRow)) {
+        throw new RepositoryWriteError(
+          502,
+          "ADMIN_SUPPLIER_BATCH_INVENTORY_READ_UNAVAILABLE",
+          "Admin supplier batch inventory could not be read from Supabase."
+        );
+      }
+
+      rows.push(...(data as DbRow[]));
+      if (data.length < 1000) {
+        break;
+      }
+      offset += data.length;
     }
-
-    rows.push(...data.map((row) => row as DbRow));
   }
 
   const inventoryBySku = new Map<string, SupplierBatchInventorySummary>();
@@ -7876,7 +8496,8 @@ function buildSupplierBatchVerification(
 function mapAdminSupplierBatchLine(
   row: DbRow,
   productsBySku: Map<string, DbRow>,
-  inventoryBySku: Map<string, SupplierBatchInventorySummary>
+  inventoryBySku: Map<string, SupplierBatchInventorySummary>,
+  lineCostsById: Map<string, AdminSupplierBatchLineCost> = new Map()
 ): AdminSupplierBatchLine | null {
   const id = pickString(row, ["id"]);
   const lineNo = pickNumber(row, ["line_no"]);
@@ -7910,6 +8531,7 @@ function mapAdminSupplierBatchLine(
     productStatus: normalizeCatalogStatusValue(pickString(row, ["product_status"])),
     metadata,
     product: productSummary,
+    costs: lineCostsById.get(id) ?? null,
     createdAt: formatPartsProDateTime(pickString(row, ["created_at", "createdAt"])),
     updatedAt: formatPartsProDateTime(pickString(row, ["updated_at", "updatedAt"])),
   };
@@ -7950,6 +8572,7 @@ function readSupplierBatchLineProductSummary(
     costPrice,
     retailPrice,
     b2bPrice,
+    weightGram: readNullableNonNegativeNumber(product, ["weight_gram"]),
     imagePath,
     modelCodes,
     compatibilityModels,
@@ -7959,6 +8582,11 @@ function readSupplierBatchLineProductSummary(
     activeMissingImage: catalogStatus === "active" && !imagePath,
     modelPrefixIssue,
   };
+}
+
+function readNullableNonNegativeNumber(row: DbRow, keys: string[]) {
+  const value = pickNumber(row, keys);
+  return value !== null && value > 0 ? value : null;
 }
 
 function readSupplierBatchLineProduct(
@@ -12428,7 +13056,8 @@ function mapAdminSupplierRow(
 
 function mapAdminSupplierBatchRow(
   row: DbRow,
-  lineStats: Map<string, SupplierBatchLineStats>
+  lineStats: Map<string, SupplierBatchLineStats>,
+  costSummaries: Map<string, AdminSupplierBatchCostSummary | null> = new Map()
 ): AdminSupplierBatch | null {
   const id = pickString(row, ["id"]);
   const batchCode = pickString(row, ["batch_code"]);
@@ -12474,6 +13103,7 @@ function mapAdminSupplierBatchRow(
     priceViolationCount: stats.priceViolationCount,
     modelPrefixIssueCount: stats.modelPrefixIssueCount,
     verification,
+    costSummary: costSummaries.get(id) ?? null,
     createdAt: formatPartsProDateTime(pickString(row, ["created_at", "createdAt"])),
     updatedAt: formatPartsProDateTime(pickString(row, ["updated_at", "updatedAt"])),
   };

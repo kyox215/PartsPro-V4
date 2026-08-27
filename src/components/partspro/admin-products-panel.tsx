@@ -127,10 +127,26 @@ import {
   type ProductCompatibilityReview,
   toCompatibilityReviewProductInput,
 } from "@/lib/partspro-compatibility-review-guard";
+import {
+  normalizeSupplierBatchCharge,
+  normalizeSupplierBatchCostSummary,
+} from "@/lib/partspro-supplier-batch-cost-core.mjs";
+import type {
+  SupplierBatchCharge,
+  SupplierBatchCostSummary,
+  SupplierBatchLineCost,
+} from "@/lib/partspro-supplier-batch-cost-core.mjs";
 import { AdminBusyRegion, AdminSkeletonRows } from "./admin-feedback";
 import { AdminProductImportDialog } from "./admin-product-import-dialog";
 import { useI18n } from "./i18n-provider";
 import { PartVisual as ProductVisual } from "./part-visual";
+import {
+  SupplierBatchCostSummaryCompact,
+  SupplierBatchLineCostCompact,
+  SupplierBatchTransportCostCard,
+  type SupplierBatchCostLanguage,
+} from "./supplier-batch-transport-cost-card";
+import { SupplierBatchTransportCostDialog } from "./supplier-batch-transport-cost-dialog";
 
 const AdminInventoryPanel = dynamic(
   () =>
@@ -201,7 +217,7 @@ type StockAdjustmentAction = (typeof stockAdjustmentActions)[number];
 type SupplierBatchDateMode = "imported" | "received" | "invoice";
 type SupplierBatchVerificationStatus = "ok" | "warning" | "error";
 type SupplierBatchExportFormat = "csv" | "xlsx";
-type SupplierBatchExportScope = "batches" | "lines";
+type SupplierBatchExportScope = "batches" | "lines" | "charges";
 type FilterValue<T extends string> = "all" | T;
 type ProductListFilters = {
   activeRestockOnly: boolean;
@@ -306,6 +322,7 @@ type AdminSupplierBatchRow = {
   priceViolationCount: number;
   modelPrefixIssueCount: number;
   verification: SupplierBatchVerification;
+  costSummary: SupplierBatchCostSummary | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -332,6 +349,7 @@ type AdminSupplierBatchLineProduct = {
   priceRuleOk: boolean;
   activeMissingImage: boolean;
   modelPrefixIssue: boolean;
+  weightGram: number | null;
 };
 
 type AdminSupplierBatchLineRow = {
@@ -349,6 +367,7 @@ type AdminSupplierBatchLineRow = {
   imageStatus: string;
   productStatus: CatalogStatus;
   product: AdminSupplierBatchLineProduct | null;
+  costs: SupplierBatchLineCost | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -356,6 +375,7 @@ type AdminSupplierBatchLineRow = {
 type AdminSupplierBatchDetail = {
   batch: AdminSupplierBatchRow;
   lines: AdminSupplierBatchLineRow[];
+  charges: SupplierBatchCharge[];
   verification: SupplierBatchVerification;
 };
 
@@ -483,6 +503,37 @@ type ProductWorkspace =
   | "batches"
   | "banners"
   | "sold-shortages";
+
+export function resolveSupplierBatchCostPermissions(
+  permissions: readonly string[],
+  permissionsLoaded: boolean
+) {
+  const canRead =
+    permissionsLoaded &&
+    (permissions.includes("products.read_admin") ||
+      permissions.includes("product.read_admin"));
+
+  return {
+    canRead,
+    canManage: canRead && permissions.includes("supplier_batch.manage_costs"),
+  };
+}
+
+export function isSupplierBatchCostSummaryForBatch(
+  summary: Pick<SupplierBatchCostSummary, "batchId" | "batchCode"> | null,
+  batchId: string,
+  batchCode: string
+): boolean {
+  return summary !== null && summary.batchId === batchId && summary.batchCode === batchCode;
+}
+
+export function isSupplierBatchChargeForBatch(
+  charge: Pick<SupplierBatchCharge, "batchId" | "batchCode"> | null,
+  batchId: string,
+  batchCode: string
+): boolean {
+  return charge !== null && charge.batchId === batchId && charge.batchCode === batchCode;
+}
 
 function normalizeProductWorkspace(value: string | null): ProductWorkspace {
   if (value === "batches" || value === "banners" || value === "sold-shortages") {
@@ -1381,6 +1432,17 @@ export function AdminProductsPanel({
     () => buildProductCapabilities(permissionsLoaded ? permissions : []),
     [permissions, permissionsLoaded]
   );
+  const supplierBatchCostLanguage: SupplierBatchCostLanguage = locale
+    .toLowerCase()
+    .startsWith("it")
+    ? "it"
+    : "zh";
+  const supplierBatchCostPermissions = resolveSupplierBatchCostPermissions(
+    permissions,
+    permissionsLoaded
+  );
+  const canReadSupplierBatchCosts = supplierBatchCostPermissions.canRead;
+  const canManageSupplierBatchCosts = supplierBatchCostPermissions.canManage;
   const [filters, setFilters] = React.useState<ProductListFilters>(defaultFilters);
   const [products, setProducts] = React.useState<AdminProductRow[]>([]);
   const [productMetrics, setProductMetrics] =
@@ -1590,6 +1652,11 @@ export function AdminProductsPanel({
           syncedAt: formatTimestamp(),
         }));
         setNotice({ tone: "error", message: formatNoticeError(text.batches.syncError, error) });
+        // The cost dialog awaits this refresh as a write-readback gate. Keep
+        // the normal refresh UX, but let that Promise.all reject on failure.
+        if (options.clearNotice === false) {
+          throw error;
+        }
       } finally {
         if (!signal?.aborted) {
           setIsLoadingBatches(false);
@@ -1597,6 +1664,25 @@ export function AdminProductsPanel({
       }
     },
     [batchFilters, text.batches.syncError]
+  );
+
+  const refreshSupplierBatchCost = React.useCallback(
+    async (batchCode: string, signal?: AbortSignal): Promise<AdminSupplierBatchDetail> => {
+      const [nextDetail] = await Promise.all([
+        fetchAdminSupplierBatchDetail(batchCode, signal),
+        refreshSupplierBatches(signal, { clearNotice: false }),
+      ]);
+
+      if (signal?.aborted) {
+        throw new DOMException("Supplier batch cost refresh was aborted.", "AbortError");
+      }
+
+      setBatchDetail((current) =>
+        current?.batch.batchCode === batchCode ? nextDetail : current
+      );
+      return nextDetail;
+    },
+    [refreshSupplierBatches]
   );
 
   React.useEffect(() => {
@@ -2177,6 +2263,9 @@ export function AdminProductsPanel({
             isLoading={isLoadingBatches}
             pendingDownload={pendingBatchDownload}
             text={text}
+            language={supplierBatchCostLanguage}
+            canReadCosts={canReadSupplierBatchCosts}
+            canManageCosts={canManageSupplierBatchCosts}
             onChange={updateBatchFilters}
             onDownload={downloadSupplierBatchFile}
             onDownloadTemplate={downloadSupplierBatchTemplate}
@@ -2266,7 +2355,11 @@ export function AdminProductsPanel({
         open={isBatchDetailOpen}
         pendingDownload={pendingBatchDownload}
         text={text}
+        language={supplierBatchCostLanguage}
+        canReadCosts={canReadSupplierBatchCosts}
+        canManageCosts={canManageSupplierBatchCosts}
         onDownload={(batch, scope, format) => void downloadSupplierBatchFile(scope, format, batch)}
+        onCostChanged={refreshSupplierBatchCost}
         onOpenChange={(open) => {
           setIsBatchDetailOpen(open);
           if (!open) {
@@ -2286,6 +2379,9 @@ function SupplierBatchesPanel({
   isLoading,
   pendingDownload,
   text,
+  language,
+  canReadCosts,
+  canManageCosts,
   onChange,
   onDownload,
   onDownloadTemplate,
@@ -2300,6 +2396,9 @@ function SupplierBatchesPanel({
   isLoading: boolean;
   pendingDownload: string | null;
   text: typeof panelText.zh | typeof panelText.it;
+  language: SupplierBatchCostLanguage;
+  canReadCosts: boolean;
+  canManageCosts: boolean;
   onChange: (patch: Partial<SupplierBatchFilters>) => void;
   onDownload: (
     scope: SupplierBatchExportScope,
@@ -2363,6 +2462,15 @@ function SupplierBatchesPanel({
             text={copy}
             onDownload={(format) => onDownload("lines", format)}
           />
+          {canManageCosts ? (
+            <BatchDownloadMenu
+              label={language === "it" ? "Esporta costi" : "导出费用"}
+              pendingKeyPrefix="charges"
+              pendingDownload={pendingDownload}
+              text={copy}
+              onDownload={(format) => onDownload("charges", format)}
+            />
+          ) : null}
           <BatchTemplateMenu
             pendingDownload={pendingDownload}
             text={copy}
@@ -2486,7 +2594,7 @@ function SupplierBatchesPanel({
                     </TableCell>
                     <TableCell className="px-2 py-2 align-top sm:px-3">
                       <BatchMetricLine label={copy.lineTotal} value={formatEuro(batch.lineCostTotal)} />
-                      <BatchMetricLine label={copy.totalCost} value={formatEuro(batch.totalCost)} />
+                      <SupplierBatchCostSummaryCompact summary={batch.costSummary} language={language} canReadCosts={canReadCosts} />
                     </TableCell>
                     <TableCell className="px-2 py-2 align-top sm:px-3">
                       <div className="flex flex-wrap gap-1.5">
@@ -2538,6 +2646,12 @@ function SupplierBatchesPanel({
                               <FileSpreadsheet className="size-4" />
                               {copy.exportLines} Excel
                             </DropdownMenuItem>
+                            {canManageCosts ? (
+                              <DropdownMenuItem onClick={() => void onDownload("charges", "csv", batch)}>
+                                <FileText className="size-4" />
+                                {language === "it" ? "Esporta costi CSV" : "导出费用 CSV"}
+                              </DropdownMenuItem>
+                            ) : null}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
@@ -2652,6 +2766,10 @@ function SupplierBatchDetailSheet({
   open,
   pendingDownload,
   text,
+  language,
+  canReadCosts,
+  canManageCosts,
+  onCostChanged,
   onDownload,
   onOpenChange,
   onViewProducts,
@@ -2661,6 +2779,13 @@ function SupplierBatchDetailSheet({
   open: boolean;
   pendingDownload: string | null;
   text: typeof panelText.zh | typeof panelText.it;
+  language: SupplierBatchCostLanguage;
+  canReadCosts: boolean;
+  canManageCosts: boolean;
+  onCostChanged: (
+    batchCode: string,
+    signal?: AbortSignal
+  ) => Promise<AdminSupplierBatchDetail>;
   onDownload: (
     batch: AdminSupplierBatchRow,
     scope: SupplierBatchExportScope,
@@ -2671,9 +2796,13 @@ function SupplierBatchDetailSheet({
 }) {
   const copy = text.batches;
   const batch = detail?.batch;
+  const [isCostDialogOpen, setIsCostDialogOpen] = React.useState(false);
+  const [editingCharge, setEditingCharge] = React.useState<SupplierBatchCharge | null>(null);
+  const canManageSupplierBatchCosts = canReadCosts && canManageCosts;
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <>
+      <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
         className="w-screen max-w-none gap-0 overflow-hidden p-0"
@@ -2737,6 +2866,22 @@ function SupplierBatchDetailSheet({
                 <SupplierBatchIssueList batch={batch} text={text} className="mt-3" />
               </section>
 
+              <SupplierBatchTransportCostCard
+                detail={detail}
+                language={language}
+                canReadCosts={canReadCosts}
+                canManageCosts={canManageCosts}
+                onAddCharge={canManageSupplierBatchCosts ? () => {
+                  setEditingCharge(null);
+                  setIsCostDialogOpen(true);
+                } : undefined}
+                onEditCharge={canManageSupplierBatchCosts ? (charge) => {
+                  setEditingCharge(charge);
+                  setIsCostDialogOpen(true);
+                } : undefined}
+                onExportCharges={canManageSupplierBatchCosts ? (format) => void onDownload(batch, "charges", format) : undefined}
+              />
+
               <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
                 <div className="border-b border-slate-200 px-3 py-2 text-sm font-black text-slate-950">
                   {copy.detail}
@@ -2750,6 +2895,7 @@ function SupplierBatchDetailSheet({
                         <TableHead className="w-[13%]">SKU</TableHead>
                         <TableHead className="w-[12%]">{copy.quantity}</TableHead>
                         <TableHead className="w-[12%]">{copy.amount}</TableHead>
+                        <TableHead className="w-[17%]">{language === "it" ? "Costo sbarcato" : "运输 / 落地成本"}</TableHead>
                         <TableHead className="w-[14%]">{copy.stock}</TableHead>
                         <TableHead className="w-[14%]">{copy.productStatus}</TableHead>
                         <TableHead className="w-[11%]">{copy.issues}</TableHead>
@@ -2789,6 +2935,9 @@ function SupplierBatchDetailSheet({
                               <BatchMetricLine label="line" value={formatEuro(line.lineTotal)} />
                             </TableCell>
                             <TableCell>
+                              <SupplierBatchLineCostCompact costs={line.costs} summary={batch.costSummary} language={language} canReadCosts={canReadCosts} />
+                            </TableCell>
+                            <TableCell>
                               {line.product ? (
                                 <>
                                   <BatchMetricLine label={text.stock} value={line.product.stockQty} />
@@ -2818,7 +2967,7 @@ function SupplierBatchDetailSheet({
                         ))
                       ) : (
                         <TableRow>
-                          <TableCell colSpan={8}>
+                          <TableCell colSpan={9}>
                             <div className="p-8 text-center text-sm font-semibold text-slate-500">
                               {copy.detailEmpty}
                             </div>
@@ -2842,7 +2991,23 @@ function SupplierBatchDetailSheet({
           </Button>
         </SheetFooter>
       </SheetContent>
-    </Sheet>
+      </Sheet>
+      {detail ? (
+        <SupplierBatchTransportCostDialog
+          open={isCostDialogOpen}
+          onOpenChange={(nextOpen) => {
+            setIsCostDialogOpen(nextOpen);
+            if (!nextOpen) setEditingCharge(null);
+          }}
+          detail={detail}
+          charge={editingCharge}
+          language={language}
+          canReadCosts={canReadCosts}
+          canManageCosts={canManageCosts}
+          onCostChanged={onCostChanged}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -7594,12 +7759,13 @@ async function fetchAdminSupplierBatches(
   return parseSupplierBatchesApiPayload(await readJsonResponse(response));
 }
 
-async function fetchAdminSupplierBatchDetail(batchCode: string) {
+async function fetchAdminSupplierBatchDetail(batchCode: string, signal?: AbortSignal) {
   const response = await fetch(
     `${adminSupplierBatchesEndpoint}/${encodeURIComponent(batchCode)}`,
     {
       cache: "no-store",
       headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+      signal,
     }
   );
 
@@ -7990,8 +8156,15 @@ function parseProductsApiPayload(payload: unknown): ProductsApiResult {
 }
 
 function parseSupplierBatchesApiPayload(payload: unknown) {
+  if (!isRecord(payload) || !Array.isArray(payload.data)) {
+    throw new Error("Supplier batch list response is malformed.");
+  }
   const rows = readPayloadDataArray(payload);
-  const batches = rows.map(normalizeSupplierBatchRow).filter(isDefined);
+  const normalizedBatches = rows.map(normalizeSupplierBatchRow);
+  if (normalizedBatches.some((batch) => batch === null)) {
+    throw new Error("Supplier batch list response is malformed.");
+  }
+  const batches = normalizedBatches.filter(isDefined);
   const meta = readProductsMeta(payload);
   const source = readProductsSource(readString(meta.source), batches.length);
   const total = readNumber(meta.total) ?? batches.length;
@@ -8010,16 +8183,31 @@ function normalizeSupplierBatchDetail(value: unknown): AdminSupplierBatchDetail 
   }
 
   const batch = normalizeSupplierBatchRow(value.batch);
-  const lines = Array.isArray(value.lines)
-    ? value.lines.map(normalizeSupplierBatchLineRow).filter(isDefined)
-    : [];
+  const rawLines = Array.isArray(value.lines) ? value.lines : null;
+  const rawCharges = Array.isArray(value.charges) ? value.charges : null;
+  const normalizedLines = rawLines?.map(normalizeSupplierBatchLineRow) ?? null;
+  const normalizedCharges = rawCharges && batch
+    ? rawCharges.map((charge) => normalizeSupplierBatchChargeForBatch(charge, batch))
+    : null;
   const verification = normalizeSupplierBatchVerification(value.verification);
 
-  if (!batch || !verification) {
+  if (
+    !batch ||
+    !verification ||
+    !normalizedLines ||
+    !normalizedCharges ||
+    normalizedLines.some((line) => line === null) ||
+    normalizedCharges.some((charge) => charge === null)
+  ) {
     return null;
   }
 
-  return { batch, lines, verification };
+  return {
+    batch,
+    lines: normalizedLines.filter(isDefined),
+    charges: normalizedCharges.filter(isDefined),
+    verification,
+  };
 }
 
 function normalizeSupplierBatchRow(row: unknown): AdminSupplierBatchRow | null {
@@ -8029,8 +8217,17 @@ function normalizeSupplierBatchRow(row: unknown): AdminSupplierBatchRow | null {
 
   const id = readString(row.id);
   const batchCode = readString(row.batchCode) ?? readString(row.batch_code);
+  const rawCostSummary = row.costSummary ?? row.cost_summary;
+  const costSummary = rawCostSummary === undefined || rawCostSummary === null
+    ? null
+    : normalizeSupplierBatchCostSummary(rawCostSummary);
 
-  if (!id || !batchCode) {
+  if (
+    !id ||
+    !batchCode ||
+    (rawCostSummary !== undefined && rawCostSummary !== null && !costSummary) ||
+    (costSummary !== null && !isSupplierBatchCostSummaryForBatch(costSummary, id, batchCode))
+  ) {
     return null;
   }
 
@@ -8077,9 +8274,20 @@ function normalizeSupplierBatchRow(row: unknown): AdminSupplierBatchRow | null {
       quantityMatches: true,
       status: "ok",
     },
+    costSummary,
     createdAt: readString(row.createdAt) ?? readString(row.created_at) ?? "",
     updatedAt: readString(row.updatedAt) ?? readString(row.updated_at) ?? "",
   };
+}
+
+function normalizeSupplierBatchChargeForBatch(
+  value: unknown,
+  batch: Pick<AdminSupplierBatchRow, "id" | "batchCode">
+): SupplierBatchCharge | null {
+  const charge = normalizeSupplierBatchCharge(value);
+  return charge && isSupplierBatchChargeForBatch(charge, batch.id, batch.batchCode)
+    ? charge
+    : null;
 }
 
 function normalizeSupplierBatchLineRow(row: unknown): AdminSupplierBatchLineRow | null {
@@ -8089,8 +8297,24 @@ function normalizeSupplierBatchLineRow(row: unknown): AdminSupplierBatchLineRow 
 
   const id = readString(row.id);
   const lineNo = readNumber(row.lineNo) ?? readNumber(row.line_no);
+  const rawQtyReceived = row.qtyReceived ?? row.qty_received;
+  const qtyReceived = readNonNegativeInteger(readNumber(rawQtyReceived));
+  const rawCosts = row.costs;
+  const costs = rawCosts === undefined || rawCosts === null
+    ? null
+    : normalizeSupplierBatchLineCost(rawCosts, id, qtyReceived);
+  const rawProduct = row.product;
+  const product = rawProduct === undefined || rawProduct === null
+    ? null
+    : normalizeSupplierBatchLineProduct(rawProduct);
 
-  if (!id || !lineNo) {
+  if (
+    !id ||
+    !lineNo ||
+    qtyReceived === null ||
+    (rawCosts !== undefined && rawCosts !== null && !costs) ||
+    (rawProduct !== undefined && rawProduct !== null && !product)
+  ) {
     return null;
   }
 
@@ -8101,7 +8325,7 @@ function normalizeSupplierBatchLineRow(row: unknown): AdminSupplierBatchLineRow 
     supplierSku: readString(row.supplierSku) ?? readString(row.supplier_sku) ?? null,
     skuCode: readString(row.skuCode) ?? readString(row.sku_code) ?? null,
     name: readString(row.name) ?? "",
-    qtyReceived: readNumber(row.qtyReceived) ?? readNumber(row.qty_received) ?? 0,
+    qtyReceived,
     qtyOrdered: readNumber(row.qtyOrdered) ?? readNumber(row.qty_ordered) ?? null,
     qtyShort: readNumber(row.qtyShort) ?? readNumber(row.qty_short) ?? 0,
     unitCost: readNumber(row.unitCost) ?? readNumber(row.unit_cost) ?? 0,
@@ -8111,7 +8335,8 @@ function normalizeSupplierBatchLineRow(row: unknown): AdminSupplierBatchLineRow 
       normalizeCatalogStatus(row.productStatus) ??
       normalizeCatalogStatus(row.product_status) ??
       "draft",
-    product: normalizeSupplierBatchLineProduct(row.product),
+    product,
+    costs,
     createdAt: readString(row.createdAt) ?? readString(row.created_at) ?? "",
     updatedAt: readString(row.updatedAt) ?? readString(row.updated_at) ?? "",
   };
@@ -8127,6 +8352,13 @@ function normalizeSupplierBatchLineProduct(
   const sku = readString(value.sku);
 
   if (!sku) {
+    return null;
+  }
+
+  const rawWeight = value.weightGram ?? value.weight_gram;
+  const weightGram = readSupplierBatchWeightGram(value);
+
+  if (rawWeight !== undefined && rawWeight !== null && weightGram === null) {
     return null;
   }
 
@@ -8152,7 +8384,143 @@ function normalizeSupplierBatchLineProduct(
     priceRuleOk: readBoolean(value.priceRuleOk) ?? true,
     activeMissingImage: readBoolean(value.activeMissingImage) ?? false,
     modelPrefixIssue: readBoolean(value.modelPrefixIssue) ?? false,
+    weightGram,
   };
+}
+
+function readSupplierBatchWeightGram(value: Record<string, unknown>): number | null {
+  const rawWeight = value.weightGram ?? value.weight_gram;
+
+  if (rawWeight === undefined || rawWeight === null) {
+    return null;
+  }
+
+  const weightGram = readNonNegativeFinite(rawWeight);
+  return weightGram;
+}
+
+function normalizeSupplierBatchLineCost(
+  value: unknown,
+  expectedBatchLineId?: string,
+  expectedQtyReceived?: number | null
+): SupplierBatchLineCost | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const batchLineId = readString(value.batchLineId) ?? readString(value.batch_line_id);
+  const goodsCostCents = readNonNegativeInteger(value.goodsCostCents ?? value.goods_cost_cents);
+  const confirmedInboundCents = readNonNegativeInteger(
+    value.confirmedInboundCents ?? value.confirmed_inbound_cents
+  );
+  const landedLineCostCents = readNonNegativeInteger(
+    value.landedLineCostCents ?? value.landed_line_cost_cents
+  );
+  const goodsUnitCost = readNonNegativeFinite(value.goodsUnitCost ?? value.goods_unit_cost);
+  const rawLandedUnitCost = value.landedUnitCost ?? value.landed_unit_cost;
+  const landedUnitCost = rawLandedUnitCost === null || rawLandedUnitCost === undefined
+    ? null
+    : readNonNegativeFinite(rawLandedUnitCost);
+  const expectedGoodsCostCents = expectedQtyReceived === undefined || expectedQtyReceived === null
+    ? null
+    : roundSupplierBatchGoodsCostToCents(expectedQtyReceived, goodsUnitCost);
+  const expectedLandedUnitCost = expectedQtyReceived !== undefined && expectedQtyReceived !== null && expectedQtyReceived > 0
+    ? roundSupplierBatchUnitCost(landedLineCostCents, expectedQtyReceived)
+    : null;
+  // The core DTO intentionally exposes confirmed inbound as a line amount;
+  // deterministic cent allocation may not divide evenly into a unit amount.
+  // Derive the four-decimal unit for a division/rounding consistency check;
+  // do not require an exact reverse multiplication because cent allocations
+  // are allowed to leave a fractional cent per unit.
+  const expectedConfirmedInboundUnitCost = expectedQtyReceived !== undefined && expectedQtyReceived !== null && expectedQtyReceived > 0
+    ? roundSupplierBatchUnitCost(confirmedInboundCents, expectedQtyReceived)
+    : null;
+  const expectedConfirmedInboundLineCents = expectedConfirmedInboundUnitCost === null || expectedQtyReceived === undefined || expectedQtyReceived === null
+    ? null
+    : expectedConfirmedInboundUnitCost * expectedQtyReceived * 100;
+  const confirmedInboundRoundingToleranceCents = expectedQtyReceived !== undefined && expectedQtyReceived !== null && expectedQtyReceived > 0
+    ? Math.max(0.5, expectedQtyReceived * 0.005)
+    : 0;
+  const confirmedInboundConsistent = expectedQtyReceived === undefined || expectedQtyReceived === null
+    ? true
+    : expectedQtyReceived === 0
+      ? confirmedInboundCents === 0
+      : expectedConfirmedInboundUnitCost !== null &&
+        expectedConfirmedInboundLineCents !== null &&
+        confirmedInboundCents !== null &&
+        Math.abs(expectedConfirmedInboundLineCents - confirmedInboundCents) <= confirmedInboundRoundingToleranceCents + Number.EPSILON;
+  const quantityConsistent = expectedQtyReceived === undefined || expectedQtyReceived === null
+    ? true
+    : expectedQtyReceived === 0
+      ? goodsCostCents === 0 &&
+        confirmedInboundCents === 0 &&
+        landedLineCostCents === 0 &&
+        landedUnitCost === null
+      : expectedGoodsCostCents !== null &&
+        goodsCostCents === expectedGoodsCostCents &&
+        confirmedInboundConsistent &&
+        landedUnitCost !== null &&
+        expectedLandedUnitCost !== null &&
+        landedUnitCost === expectedLandedUnitCost;
+
+  if (
+    !batchLineId ||
+    (expectedBatchLineId !== undefined && batchLineId !== expectedBatchLineId) ||
+    goodsCostCents === null ||
+    confirmedInboundCents === null ||
+    landedLineCostCents === null ||
+    goodsUnitCost === null ||
+    (rawLandedUnitCost !== null && rawLandedUnitCost !== undefined && landedUnitCost === null) ||
+    goodsCostCents > Number.MAX_SAFE_INTEGER - confirmedInboundCents ||
+    landedLineCostCents !== goodsCostCents + confirmedInboundCents ||
+    !quantityConsistent
+  ) {
+    return null;
+  }
+
+  return {
+    batchLineId,
+    goodsCostCents,
+    confirmedInboundCents,
+    landedLineCostCents,
+    goodsUnitCost,
+    landedUnitCost,
+  };
+}
+
+function roundSupplierBatchGoodsCostToCents(qtyReceived: number, unitCost: number | null): number | null {
+  if (unitCost === null) {
+    return null;
+  }
+
+  const value = qtyReceived * unitCost;
+  if (!Number.isFinite(value) || value < 0) {
+    return null;
+  }
+
+  const cents = Math.round((value + Number.EPSILON) * 100);
+  return Number.isSafeInteger(cents) ? cents : null;
+}
+
+function roundSupplierBatchUnitCost(lineCostCents: number | null, qtyReceived: number): number | null {
+  if (lineCostCents === null || qtyReceived <= 0) {
+    return null;
+  }
+
+  const value = lineCostCents / 100 / qtyReceived;
+  if (!Number.isFinite(value) || value < 0) {
+    return null;
+  }
+
+  return Math.round((value + Number.EPSILON) * 10000) / 10000;
+}
+
+function readNonNegativeInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function readNonNegativeFinite(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
 function normalizeSupplierBatchVerification(value: unknown): SupplierBatchVerification | null {
