@@ -146,7 +146,30 @@ import {
   SupplierBatchTransportCostCard,
   type SupplierBatchCostLanguage,
 } from "./supplier-batch-transport-cost-card";
-import { SupplierBatchTransportCostDialog } from "./supplier-batch-transport-cost-dialog";
+
+const SupplierBatchTransportCostDialog = dynamic(
+  () =>
+    import("./supplier-batch-transport-cost-dialog").then(
+      (module) => module.SupplierBatchTransportCostDialog
+    ),
+  {
+    loading: () => <SupplierBatchTransportCostDialogLoading />,
+    ssr: false,
+  }
+);
+
+function SupplierBatchTransportCostDialogLoading() {
+  return (
+    <div
+      aria-label="Loading transport cost dialog"
+      aria-live="polite"
+      className="fixed inset-0 z-50 grid place-items-center bg-slate-950/20 p-3"
+      role="status"
+    >
+      <div className="h-28 w-[min(560px,calc(100vw-1.5rem))] animate-pulse rounded-lg border border-slate-200 bg-white shadow-lg" />
+    </div>
+  );
+}
 
 const AdminInventoryPanel = dynamic(
   () =>
@@ -2992,7 +3015,7 @@ function SupplierBatchDetailSheet({
         </SheetFooter>
       </SheetContent>
       </Sheet>
-      {detail ? (
+      {detail && isCostDialogOpen ? (
         <SupplierBatchTransportCostDialog
           open={isCostDialogOpen}
           onOpenChange={(nextOpen) => {

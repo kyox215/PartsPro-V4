@@ -585,6 +585,49 @@ test("permission and charges-export contract stays read-only in the panel", () =
   assert.doesNotMatch(panelSource, /charges\/(?:preview|estimate|confirm)/);
 });
 
+test("transport cost dialog is lazy and mounts only while open", () => {
+  assert.doesNotMatch(
+    panelSource,
+    /import\s+\{\s*SupplierBatchTransportCostDialog\s*\}\s+from\s+["']\.\/supplier-batch-transport-cost-dialog["']/
+  );
+
+  const dynamicStart = panelSource.indexOf(
+    "const SupplierBatchTransportCostDialog = dynamic("
+  );
+  assert.notEqual(dynamicStart, -1);
+  const dynamicSource = panelSource.slice(
+    dynamicStart,
+    panelSource.indexOf("const adminProductsEndpoint", dynamicStart)
+  );
+  assert.match(dynamicSource, /import\("\.\/supplier-batch-transport-cost-dialog"\)/);
+  assert.match(
+    dynamicSource,
+    /module\)\s*=>\s*module\.SupplierBatchTransportCostDialog/
+  );
+  assert.match(
+    dynamicSource,
+    /loading:\s*\(\)\s*=>\s*<SupplierBatchTransportCostDialogLoading\s*\/>/
+  );
+  assert.match(dynamicSource, /ssr:\s*false/);
+  assert.match(dynamicSource, /role="status"/);
+
+  const mountStart = panelSource.indexOf(
+    "{detail && isCostDialogOpen ? (\n        <SupplierBatchTransportCostDialog"
+  );
+  assert.notEqual(mountStart, -1);
+  const mountEnd = panelSource.indexOf("      ) : null}", mountStart);
+  assert.notEqual(mountEnd, -1);
+  const mountSource = panelSource.slice(mountStart, mountEnd);
+  assert.match(mountSource, /open=\{isCostDialogOpen\}/);
+  assert.match(mountSource, /onOpenChange=\{\(nextOpen\) => \{/);
+  assert.match(mountSource, /setIsCostDialogOpen\(nextOpen\)/);
+  assert.match(mountSource, /if \(!nextOpen\) setEditingCharge\(null\)/);
+  assert.doesNotMatch(
+    panelSource,
+    /\{detail \? \(\s*<SupplierBatchTransportCostDialog/
+  );
+});
+
 test("card exposes compact display components and status-only charge semantics", () => {
   assert.match(cardSource, /export function SupplierBatchCostSummaryCompact/);
   assert.match(cardSource, /export function SupplierBatchLineCostCompact/);
