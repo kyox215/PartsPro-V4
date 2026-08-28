@@ -4,6 +4,7 @@ import type {
   RmaRequest,
 } from "@/lib/partspro-data";
 import {
+  hasExactAdminPermission,
   hasAdminPermission,
   type AdminAuthState,
 } from "@/lib/partspro-admin-auth";
@@ -51,7 +52,7 @@ export function getAdminRmaCapabilities(
     manage: hasAdminPermission(authState, "rma.manage"),
     inventory: hasAdminPermission(authState, "rma.inventory"),
     refund: hasAdminPermission(authState, "rma.refund"),
-    adjustStock: hasAdminPermission(authState, "product.adjust_stock"),
+    adjustStock: hasExactAdminPermission(authState, "product.adjust_stock"),
   };
 }
 

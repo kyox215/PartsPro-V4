@@ -185,6 +185,59 @@ test("RMA RPCs bind auth/ownership, preserve policy uncertainty and use explicit
   }
 });
 
+test("customer-visible RMA events never fall back to internal review text", () => {
+  const reviewStart = migration.indexOf("create or replace function public.admin_update_rma_request");
+  const reviewBody = migration.slice(reviewStart, migration.indexOf("$$;", reviewStart));
+  const v3Start = migration.indexOf("create or replace function public.admin_perform_rma_action_v3");
+  const v3Body = migration.slice(v3Start, migration.indexOf("$$;", v3Start));
+  const v3EventStart = v3Body.indexOf("insert into public.rma_request_events");
+  const v3EventBody = v3Body.slice(v3EventStart);
+  const reviewVisibleBranchStart = reviewBody.indexOf("if v_customer_visible then");
+  const reviewVisibleBranch = reviewBody.slice(
+    reviewVisibleBranchStart,
+    reviewBody.indexOf("else", reviewVisibleBranchStart)
+  );
+
+  assert.match(
+    reviewBody,
+    /v_customer_visible := v_before\.status is distinct from v_next_status[\s\S]*p_customer_visible_note/
+  );
+  assert.doesNotMatch(
+    reviewBody,
+    /v_customer_visible := v_before\.status is distinct from v_next_status[\s\S]{0,160}p_lab_result/
+  );
+  assert.match(reviewBody, /v_event_note := nullif\(btrim\(coalesce\(p_customer_visible_note, ''\)\), ''\)/);
+  assert.match(reviewBody, /v_event_note := coalesce\(v_event_note, 'RMA review status updated\.'/);
+  assert.doesNotMatch(reviewVisibleBranch, /p_resolution_note|p_lab_result|p_internal_note/);
+
+  assert.match(v3Body, /v_event_note text := nullif\(btrim\(p_customer_visible_note\), ''\)/);
+  assert.doesNotMatch(
+    v3Body,
+    /v_event_note text := nullif\(btrim\(coalesce\(p_customer_visible_note, p_reason, p_internal_note/
+  );
+  for (const systemCopy of [
+    "Returned item received into quarantine",
+    "Wallet refund request created",
+    "Replacement order shipped",
+    "RMA closed",
+  ]) {
+    assert.match(v3Body, new RegExp(`v_event_note := coalesce\\(v_event_note, '${systemCopy}'\\)`));
+  }
+  assert.match(v3EventBody, /jsonb_strip_nulls\(jsonb_build_object/);
+  assert.match(v3EventBody, /case when not v_customer_visible then v_after\.wallet_refund_request_id else null end/);
+  assert.match(v3EventBody, /case when not v_customer_visible then v_after\.replacement_order_id else null end/);
+  assert.doesNotMatch(v3EventBody, /p_reason|p_internal_note|p_lab_result|p_resolution_note/);
+});
+
+test("RMA API keeps unavailable reads as typed non-200 errors", () => {
+  assert.match(repository, /function rmaReadUnavailable\(message: string/);
+  assert.match(repository, /new RepositoryWriteError\(503, "RMA_READ_UNAVAILABLE"/);
+  assert.match(repository, /readAdminRmaRequests\(context, query\)/);
+  assert.match(repository, /readAdminRmaRequestById\(context, requestId, options\)/);
+  assert.match(customerRoute, /error instanceof RepositoryWriteError/);
+  assert.match(customerRoute, /apiError\(error\.status, error\.code, error\.message, error\.details\)/);
+});
+
 test("statutory withdrawal and pure safety helpers remain separate from defect evidence", () => {
   assert.match(rules, /policyScope === statutoryWithdrawalScope/);
   assert.match(rules, /reasonCode === "withdrawal_no_longer_needed"/);
@@ -332,6 +385,7 @@ test("Migration B customer shipped RPC and refund preview stay narrow and parity
   const previewStart = finalizeMigration.indexOf("create or replace function public.admin_rma_refund_preview");
   const previewBody = finalizeMigration.slice(previewStart, finalizeMigration.indexOf("$$;", previewStart));
   assert.match(previewBody, /requested_resolution not in \('refund', 'wallet_credit', 'credit_note'\)/);
+  assert.match(previewBody, /resolution_action is not null and v_rma\.resolution_action <> 'refund_wallet'/);
   assert.match(previewBody, /received_at is null/);
   assert.match(previewBody, /received_quantity is distinct from v_rma\.quantity/);
   assert.match(previewBody, /wr\.status <> 'rejected'/);
@@ -342,6 +396,21 @@ test("Migration B customer shipped RPC and refund preview stay narrow and parity
 
   const candidateStart = finalizeMigration.indexOf("create or replace function public.admin_rma_replacement_candidates");
   const candidateBody = finalizeMigration.slice(candidateStart, finalizeMigration.indexOf("$$;", candidateStart));
+  assert.match(candidateBody, /v_rma\.requested_resolution <> 'replacement'/);
+  assert.match(candidateBody, /v_rma\.status <> 'received'/);
+  assert.match(candidateBody, /v_rma\.received_at is null/);
+  assert.match(candidateBody, /v_rma\.received_quantity is distinct from v_rma\.quantity/);
+  assert.match(candidateBody, /v_rma\.qc_status not in \('passed', 'failed', 'not_required'\)/);
+  assert.match(candidateBody, /v_rma\.wallet_refund_request_id is not null/);
+  assert.match(candidateBody, /v_rma\.resolution_action is not null/);
+  assert.match(candidateBody, /v_rma\.replacement_order_id is not null/);
+  assert.match(candidateBody, /e\.action in \('request_wallet_refund', 'mark_replacement_sent'\)/);
+  assert.match(candidateBody, /select \*[\s\S]*into v_line[\s\S]*from public\.order_lines/);
+  assert.match(candidateBody, /select \*[\s\S]*into v_order[\s\S]*from public\.orders/);
+  assert.match(candidateBody, /v_order\.customer_id is null/);
+  assert.match(candidateBody, /v_rma\.customer_id is distinct from v_order\.customer_id/);
+  assert.match(candidateBody, /v_customer_id := v_order\.customer_id/);
+  assert.doesNotMatch(candidateBody, /v_customer_id := v_rma\.customer_id/);
   assert.match(candidateBody, /other_rma\.replacement_order_id = o\.id/);
   assert.doesNotMatch(candidateBody, /other_rma\.status <> 'rejected'/);
 });

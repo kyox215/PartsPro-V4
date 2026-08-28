@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { hasAdminPermission } from "@/lib/partspro-admin-auth";
+import {
+  hasAdminPermission,
+  hasExactAdminPermission,
+} from "@/lib/partspro-admin-auth";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
 import { adminRmaActionSchema } from "@/lib/partspro-rma-contract";
 import {
@@ -58,7 +61,7 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
   // inventory alias and letting the database reject the request later.
   const permissionGranted =
     parsedBody.data.action === "restock_return"
-      ? hasAdminPermission(admin.authState, "product.adjust_stock")
+      ? hasExactAdminPermission(admin.authState, "product.adjust_stock")
       : permission.some((item) => hasAdminPermission(admin.authState, item));
 
   if (!permissionGranted) {

@@ -716,6 +716,8 @@ as $$
 declare
   v_auth_uid uuid := (select auth.uid());
   v_rma public.rma_requests%rowtype;
+  v_line public.order_lines%rowtype;
+  v_order public.orders%rowtype;
   v_customer_id uuid;
   v_sku_code text;
   v_original_order_id uuid;
@@ -741,20 +743,77 @@ begin
     raise exception 'RMA request not found' using errcode = 'P0002';
   end if;
 
-  v_customer_id := v_rma.customer_id;
-  v_sku_code := v_rma.sku_code;
-  select ol.order_id
-  into v_original_order_id
+  -- Candidate visibility must be exactly as strict as the v3 replacement
+  -- action. Do not show a row that the action would reject, including
+  -- malformed receipt/QC axes, an existing wallet/replacement outcome, or a
+  -- successful commercial action hidden behind a legacy projection.
+  if v_rma.requested_resolution <> 'replacement'
+    or v_rma.status <> 'received'
+    or v_rma.quantity is null
+    or v_rma.quantity < 1
+    or v_rma.received_at is null
+    or v_rma.received_quantity is distinct from v_rma.quantity
+    or v_rma.qc_status not in ('passed', 'failed', 'not_required')
+    or v_rma.wallet_refund_request_id is not null
+    or v_rma.resolution_action is not null
+    or v_rma.replacement_order_id is not null
+    or exists (
+      select 1
+      from public.wallet_refund_requests as wr
+      where wr.rma_request_id = v_rma.id
+        and wr.status in ('pending', 'approved')
+    )
+    or exists (
+      select 1
+      from public.rma_action_executions as e
+      where e.rma_request_id = v_rma.id
+        and e.action in ('request_wallet_refund', 'mark_replacement_sent')
+        and e.execution_status = 'succeeded'
+    )
+  then
+    return;
+  end if;
+
+  -- Resolve the source order exactly as v3 does: an existing order line wins,
+  -- then legacy order_id/order_no fallbacks are considered only when the line
+  -- is unavailable. Never trust a stale RMA customer_id without the source
+  -- order row; a NULL legacy customer_id is allowed only after that row proves
+  -- the customer scope.
+  select *
+  into v_line
   from public.order_lines as ol
   where ol.id = v_rma.order_line_id;
-  -- Match the v3 action's line-first order resolution for malformed legacy
-  -- rows. The fallback is only for rows whose order line is unavailable.
-  v_original_order_id := coalesce(v_original_order_id, v_rma.order_id);
 
-  if v_customer_id is null
-    or v_sku_code is null
-    or v_rma.quantity is null
-    or v_original_order_id is null
+  if v_line.id is not null then
+    v_original_order_id := v_line.order_id;
+  elsif v_rma.order_id is not null then
+    v_original_order_id := v_rma.order_id;
+  elsif nullif(btrim(coalesce(v_rma.order_no, '')), '') is not null then
+    select o.id
+    into v_original_order_id
+    from public.orders as o
+    where o.order_no = v_rma.order_no;
+  end if;
+
+  select *
+  into v_order
+  from public.orders as o
+  where o.id = v_original_order_id;
+
+  if v_order.id is null
+    or v_order.customer_id is null
+    or (
+      v_rma.customer_id is not null
+      and v_rma.customer_id is distinct from v_order.customer_id
+    )
+  then
+    return;
+  end if;
+
+  v_customer_id := v_order.customer_id;
+  v_sku_code := coalesce(v_line.sku_code, v_rma.sku_code);
+
+  if v_sku_code is null
   then
     return;
   end if;

@@ -487,7 +487,7 @@ test("server workbench routes expose only the canonical queues and server projec
   assert.match(adminDto, /hasAdminPermission\(authState, "rma\.manage"\)/);
   assert.match(adminDto, /hasAdminPermission\(authState, "rma\.inventory"\)/);
   assert.match(adminDto, /hasAdminPermission\(authState, "rma\.refund"\)/);
-  assert.match(adminDto, /hasAdminPermission\(authState, "product\.adjust_stock"\)/);
+  assert.match(adminDto, /hasExactAdminPermission\(authState, "product\.adjust_stock"\)/);
 
   const attachmentMapper = adminDto.slice(
     adminDto.indexOf("function toAdminAttachmentDto"),

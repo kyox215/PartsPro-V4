@@ -9,6 +9,8 @@ const read = (relativePath) => readFileSync(join(repoRoot, relativePath), "utf8"
 
 const migration = read("supabase/migrations/20260827210026_rma_simple_flow_expand.sql");
 const adminRoute = read("src/app/api/admin/rma/[requestId]/actions/route.ts");
+const adminAuth = read("src/lib/partspro-admin-auth.ts");
+const adminDto = read("src/lib/partspro-rma-admin-dto.ts");
 const repository = read("src/lib/partspro-repository.ts");
 
 test("admin v3 freezes fine-grained permissions and legacy delegation", () => {
@@ -26,6 +28,13 @@ test("admin v3 freezes fine-grained permissions and legacy delegation", () => {
   assert.match(migration, /create or replace function public\.admin_perform_rma_action\([\s\S]*?v_auth_uid uuid := \(select auth\.uid\(\)\)/);
   assert.match(adminRoute, /adminRmaActionSchema/);
   assert.match(adminRoute, /action === "restock_return"[\s\S]*?product\.adjust_stock/);
+  assert.match(adminRoute, /hasExactAdminPermission\(admin\.authState, "product\.adjust_stock"\)/);
+  assert.match(adminDto, /hasExactAdminPermission\(authState, "product\.adjust_stock"\)/);
+  assert.doesNotMatch(adminDto, /adjustStock:\s*hasAdminPermission/);
+  assert.match(
+    adminAuth,
+    /export function hasExactAdminPermission[\s\S]*authState\.permissions\.includes\(permission\)/
+  );
   assert.match(adminRoute, /workflow: "admin_perform_rma_action_v3"/);
   assert.match(repository, /rpc\("admin_perform_rma_action_v3"/);
   assert.match(repository, /p_location: input\.warehouse \?\? null/);
@@ -120,6 +129,10 @@ test("wallet, replacement and state guards are explicit", () => {
   assert.match(migration, /action_payload_fingerprint/);
   assert.doesNotMatch(migration, /on conflict \(idempotency_key\) do update/);
   assert.match(migration, /v_refund_request\.status <> 'rejected'/);
+  assert.match(
+    migration,
+    /v_before\.resolution_action is not null[\s\S]*v_before\.resolution_action <> 'refund_wallet'/
+  );
   assert.match(migration, /Only pending RMA attachments can be cancelled/);
   assert.match(migration, /refund_quantity/);
   assert.match(migration, /replacement_quantity/);

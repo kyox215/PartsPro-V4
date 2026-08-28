@@ -144,6 +144,36 @@ test("legacy commercial terminal states may receive a QC-only repair", () => {
   );
 });
 
+test("wallet settlement rejects every non-wallet resolution action", () => {
+  const base = {
+    action: "request_wallet_refund",
+    status: "received",
+    quantity: 1,
+    receivedQuantity: 1,
+    receivedAt: "2026-08-28T10:00:00.000Z",
+    qcStatus: "passed",
+    requestedResolution: "refund",
+    walletRequestStatus: "rejected",
+  };
+
+  assert.equal(
+    isRmaActionAvailable({ ...base, resolutionAction: null }),
+    true
+  );
+  assert.equal(
+    isRmaActionAvailable({ ...base, resolutionAction: "refund_wallet" }),
+    true
+  );
+
+  for (const resolutionAction of ["replacement", "credit_note", "no_fault", "unknown"]) {
+    assert.equal(
+      isRmaActionAvailable({ ...base, resolutionAction }),
+      false,
+      `${resolutionAction} must not be treated as a wallet outcome`
+    );
+  }
+});
+
 test("close requires complete quantity at every required RMA stage", () => {
   const base = {
     action: "close",

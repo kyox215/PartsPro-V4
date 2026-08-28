@@ -1647,27 +1647,11 @@ begin
     raise exception 'Invalid RMA review transition from % to %', v_before.status, v_next_status using errcode = '23514';
   end if;
 
+  -- Only an explicit customer-visible note may enter a customer-visible
+  -- event. Lab results, resolution notes and staff notes remain internal
+  -- fields (or a non-customer audit event) and never become public copy.
   v_customer_visible := v_before.status is distinct from v_next_status
-    or nullif(btrim(coalesce(p_customer_visible_note, '')), '') is not null
-    or nullif(btrim(coalesce(p_lab_result, '')), '') is not null
-    or nullif(btrim(coalesce(p_resolution_note, '')), '') is not null;
-  v_event_note := coalesce(
-    nullif(btrim(coalesce(p_customer_visible_note, '')), ''),
-    nullif(btrim(coalesce(p_resolution_note, '')), ''),
-    nullif(btrim(coalesce(p_lab_result, '')), ''),
-    nullif(btrim(coalesce(p_internal_note, '')), ''),
-    ''
-  );
-
-  if p_refund_amount is not null then
-    -- Keep the old RPC signature, but never let review PATCH confirm money.
-    -- The amount is intentionally ignored; only the wallet/refund action can
-    -- establish a payable result after receipt and QC.
-    v_event_note := coalesce(
-      nullif(v_event_note, ''),
-      'Legacy review refund amount ignored; use the authorized refund action.'
-    );
-  end if;
+    or nullif(btrim(coalesce(p_customer_visible_note, '')), '') is not null;
 
   update public.rma_requests
   set status = v_next_status,
@@ -1682,9 +1666,26 @@ begin
   returning * into v_after;
 
   if v_before.status is distinct from v_after.status
-    or v_event_note <> ''
+    or nullif(btrim(coalesce(p_customer_visible_note, '')), '') is not null
+    or nullif(btrim(coalesce(p_lab_result, '')), '') is not null
+    or nullif(btrim(coalesce(p_resolution_note, '')), '') is not null
+    or nullif(btrim(coalesce(p_internal_note, '')), '') is not null
     or p_refund_amount is not null
   then
+    v_event_note := nullif(btrim(coalesce(p_customer_visible_note, '')), '');
+    if v_customer_visible then
+      v_event_note := coalesce(v_event_note, 'RMA review status updated.');
+    else
+      v_event_note := coalesce(
+        nullif(btrim(coalesce(p_internal_note, p_resolution_note, p_lab_result, '')), ''),
+        case
+          when p_refund_amount is not null
+            then 'Legacy review refund amount ignored; use the authorized refund action.'
+          else 'RMA internal review updated.'
+        end
+      );
+    end if;
+
     insert into public.rma_request_events (
       rma_request_id,
       actor_id,
@@ -1759,7 +1760,9 @@ declare
   v_resolution_action text;
   v_inventory_disposition text;
   v_event_type text := 'action_completed';
-  v_event_note text := nullif(btrim(coalesce(p_customer_visible_note, p_reason, p_internal_note, '')), '');
+  -- This value is the customer channel only. Internal reason/note values are
+  -- never allowed to become visible event copy through initialization.
+  v_event_note text := nullif(btrim(p_customer_visible_note), '');
   v_customer_visible boolean := false;
   v_refund_amount numeric(12, 2);
   v_refundable_amount numeric(12, 2);
@@ -2118,6 +2121,12 @@ begin
       or v_before.qc_status not in ('passed', 'failed', 'not_required')
     then
       raise exception 'RMA wallet refund requires receipt and an explicit QC result' using errcode = '23514';
+    end if;
+
+    if v_before.resolution_action is not null
+      and v_before.resolution_action <> 'refund_wallet'
+    then
+      raise exception 'Wallet refund does not match the existing RMA commercial outcome' using errcode = '23514';
     end if;
 
     if v_before.resolution_action = 'replacement'
@@ -2647,15 +2656,15 @@ begin
     v_action,
     v_idempotency_key,
     v_execution.id,
-    jsonb_build_object(
+    jsonb_strip_nulls(jsonb_build_object(
       'action', v_action,
       'customer_visible', v_customer_visible,
-      'inventory_disposition', v_after.inventory_disposition,
-      'wallet_refund_request_id', v_after.wallet_refund_request_id,
-      'replacement_order_id', v_after.replacement_order_id,
+      'inventory_disposition', case when not v_customer_visible then v_after.inventory_disposition else null end,
+      'wallet_refund_request_id', case when not v_customer_visible then v_after.wallet_refund_request_id else null end,
+      'replacement_order_id', case when not v_customer_visible then v_after.replacement_order_id else null end,
       'quantity', case when v_action in ('mark_received', 'request_wallet_refund', 'mark_replacement_sent', 'restock_return', 'mark_scrapped', 'supplier_return') then v_stock_quantity else null end,
       'tax_and_shipping_included', false
-    )
+    ))
   );
 
   if v_customer_visible and v_after.user_id is not null then

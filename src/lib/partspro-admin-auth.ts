@@ -175,6 +175,18 @@ export function hasAdminPermission(
   return permissionAliases(permission).some((alias) => permissions.has(alias));
 }
 
+/**
+ * Check a capability without the compatibility aliases used by legacy admin
+ * routes. High-impact actions whose database RPC requires one exact
+ * permission must use this helper so an alias cannot pass the API gate.
+ */
+export function hasExactAdminPermission(
+  authState: AdminAuthState,
+  permission: string
+) {
+  return authState.allowed && authState.permissions.includes(permission);
+}
+
 function normalizeEmail(email: string | null | undefined) {
   return email?.trim().toLowerCase() ?? "";
 }
