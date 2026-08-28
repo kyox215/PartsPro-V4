@@ -309,6 +309,13 @@ refunded | replacement_sent
 - 客户端编排严格使用新 opaque 协议：创建 draft、逐张领取 ticket、以 `FormData(cacheControl=3600, 空字段名文件)` 对签名 URL `PUT`（`x-upsert:false`）、对实际 Blob 计算 SHA-256、调用 complete，再以显式 allowlist payload 提交 `/api/rma/submit`；每张图片的 ticket 流程最多自动重试一次，失败 ticket best-effort DELETE，最终 payload 不包含 bucket/path/signed URL/order/SKU。
 - 新增 `tests/rma-upload-client.test.mjs`，实际覆盖六张上限、MIME/视频拒绝、4MB/HEIC 边界、SHA-256、FormData/header、complete、重试与补偿删除、opaque payload 和 legacy endpoint 排除。尚未改动 `rma-page.tsx` 或其它客户 UI；浏览器 canvas/真实 Storage 签名上传仍留后续 UI/预览门禁。
 
+### 批次 2b 客户一页式 RMA 接线（2026-08-28）
+
+- `rma-page.tsx` 已替换旧五步/技术检查清单，收敛为订单与商品、原因与处理、照片记录三个块；仅使用共享六原因，并只展示 `replacement` 与 PartsPro `wallet_credit` 两种当前可兑现选择。数量默认 1，剩余数量大于 1 才显示紧凑选择器；`?order=`、`?line=` 自动选中，`?requestId=` 聚焦并高亮历史申请。
+- 拍照/相册各自使用隐藏 input（`capture=environment`、`multiple`），仅接受图片；最多 6 张、缩略图/单张删除、上传进度/重试/验证状态和对象 URL 清理均在客户端完成。无照片、B2B“不再需要”无简短说明、订单行或数量无效时不可提交；无确认弹窗，不调用 legacy evidence endpoint，不展示视频或内部状态。
+- 单次提交接入 2a `submitRmaWithAttachments`，失败保留本地预览；成功使用安全 `CustomerRmaDto` prepend 最近申请并扣减本地可退数量，客户历史只展示五阶段和关系附件临时链接。现有 storefront locale 仅含 `it-IT`/`zh-CN`，本批文案已补齐两者；英文 locale 尚未存在，需后续单独国际化批次确认。
+- UI contract 测试覆盖三块、query 参数、camera/gallery、无视频/legacy、一次提交、无确认 modal 和安全 DTO。真实浏览器 canvas/HEIC 解码、移动端相机权限、CORS signed PUT、网络离线重试及端到端 RMA 结果仍未验证。
+
 ### 未来实施验收
 
 - 客户只能从有权限的真实订单行进入；服务端拒绝越权订单行、过期政策和并发超量。
@@ -406,6 +413,14 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 | `/Users/kyox215/Documents/partspro v4/node_modules/.bin/eslint src/lib/partspro-rma-upload-client.mjs src/lib/partspro-rma-contract.ts src/i18n/dictionaries/storefront.ts tests/rma-upload-client.test.mjs` | passed | 批次 2a 定向 ESLint 无输出 |
 | `/Users/kyox215/Documents/partspro v4/node_modules/.bin/tsc --noEmit --incremental false --project <worktree>/tsconfig.json` | blocked by baseline | 仅剩既有 `src/app/api/admin/restock-requests/[id]/route.ts(17,12): Cannot find name 'RouteContext'`，无本批新增诊断 |
 | `git diff --check` | passed | 批次 2a utility/test/contract/i18n 当前差异无空白错误 |
+| `node --test tests/rma-customer-ui-contract.test.mjs tests/rma-upload-client.test.mjs` | passed | 批次 2b UI 静态契约与上传编排 10/10 通过 |
+| `/Users/kyox215/Documents/partspro v4/node_modules/.bin/eslint src/components/partspro/rma-page.tsx src/app/rma/page.tsx src/i18n/dictionaries/storefront.ts` | passed | 批次 2b 客户页、路由参数和中意文案定向 ESLint 无输出 |
+| `/Users/kyox215/Documents/partspro v4/node_modules/.bin/tsc --noEmit --incremental false --project <worktree>/tsconfig.json` | blocked by baseline | 仅剩既有 `src/app/api/admin/restock-requests/[id]/route.ts(17,12): Cannot find name 'RouteContext'`，2b 无新增诊断 |
+| `git diff --check` | passed | 批次 2b 客户页、路由、i18n 和测试当前差异无空白错误 |
+| `node --test tests/rma-customer-ui-contract.test.mjs tests/rma-upload-client.test.mjs tests/rma-rules.test.mjs tests/rma-contract.test.mjs tests/admin-rma-workflow-contract.test.mjs tests/storefront-i18n-contract.test.mjs` | passed | 2b 收口复跑 31/31 通过 |
+| `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/eslint' src/components/partspro/rma-page.tsx src/app/rma/page.tsx src/i18n/dictionaries/storefront.ts src/lib/partspro-rma-upload-client.mjs tests/rma-customer-ui-contract.test.mjs tests/rma-upload-client.test.mjs` | passed | 正确引用主仓库 ESLint 二进制，无输出；首次未加引号的路径解析失败不属于代码错误 |
+| `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/tsc' --noEmit --incremental false --project tsconfig.json` | blocked by baseline | 仅有既有 `src/app/api/admin/restock-requests/[id]/route.ts(17,12): Cannot find name 'RouteContext'` |
+| `git diff --check` | passed | 2b 收口复跑无空白错误 |
 | `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase status` | blocked by local environment | Docker daemon 不可用；无本地 PostgreSQL/Supabase，双事务并发 trigger 验证留最终本地数据库门禁；未访问远端 |
 | Supabase linked/local lint、migration dry-run、build/E2E | skipped by gate | 本批禁止远端/数据库写入；worktree 无需启动本地数据库，按范围不跑完整 build/E2E |
 

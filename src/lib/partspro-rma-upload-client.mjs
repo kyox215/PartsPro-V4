@@ -31,11 +31,7 @@ const extensionContentTypes = new Map([
 ]);
 
 /**
- * @typedef {Object} RmaImageFileLike
- * @property {string=} name
- * @property {string=} type
- * @property {number=} size
- * @property {number=} lastModified
+ * @typedef {Blob & {name?: string, type?: string, size?: number, lastModified?: number}} RmaImageFileLike
  */
 
 /** @typedef {{file: RmaImageFileLike, reason: string}} RmaRejectedImage */
@@ -548,6 +544,13 @@ export async function submitRmaWithAttachments({
     }
 
     if (lastError) {
+      // A partially verified draft must be reusable after a failed image. The
+      // server quota counts verified attachments, so release earlier images
+      // before returning while keeping the user's local previews intact.
+      for (const attachmentId of attachmentIds) {
+        await cancelFailedRmaTicket(fetchImpl, draftId, attachmentId);
+      }
+      attachmentIds.length = 0;
       if (lastError instanceof RmaUploadClientError) {
         lastError.draftId = draftId;
         lastError.attachmentIds = [...attachmentIds];

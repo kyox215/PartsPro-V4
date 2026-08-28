@@ -1,0 +1,90 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import test from "node:test";
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const read = (relativePath) => readFileSync(join(repoRoot, relativePath), "utf8");
+const page = read("src/app/rma/page.tsx");
+const component = read("src/components/partspro/rma-page.tsx");
+const uploadClient = read("src/lib/partspro-rma-upload-client.mjs");
+
+test("customer RMA page passes order, line and request query selections through the server page", () => {
+  assert.match(page, /params\.order/);
+  assert.match(page, /params\.line/);
+  assert.match(page, /params\.requestId/);
+  assert.match(page, /initialOrderLineId/);
+  assert.match(page, /initialRequestId/);
+  assert.match(component, /initialOrderLineId/);
+  assert.match(component, /initialRequestId/);
+  assert.match(component, /scrollIntoView/);
+});
+
+test("customer UI is a responsive three-block photo-first flow", () => {
+  assert.equal((component.match(/<RmaStep\b/g) ?? []).length, 3);
+  for (const number of ["1", "2", "3"]) {
+    assert.match(component, new RegExp(`number="${number}"`));
+  }
+  assert.match(component, /rmaReasonCodes/);
+  for (const reason of [
+    "quality_defect",
+    "shipping_damage",
+    "not_as_described",
+    "wrong_item",
+    "missing_or_quantity_error",
+    "withdrawal_no_longer_needed",
+  ]) {
+    assert.match(component, new RegExp(reason));
+  }
+  assert.match(component, /rmaResolutionCodes/);
+  assert.match(component, /wallet_credit/);
+  assert.match(component, /rmaMaxAttachments/);
+  assert.match(component, /remainingQuantity/);
+  assert.match(component, /value=\{form\.quantity\}/);
+});
+
+test("camera and gallery controls expose only supported image inputs", () => {
+  assert.match(component, /id="rma-camera"/);
+  assert.match(component, /accept="image\/\*"[\s\S]*capture="environment"/);
+  assert.match(component, /id="rma-gallery"/);
+  assert.match(component, /id="rma-gallery"[\s\S]*accept="image\/\*"[\s\S]*multiple/);
+  assert.match(component, /selectRmaImageFiles/);
+  assert.match(component, /URL\.createObjectURL/);
+  assert.match(component, /URL\.revokeObjectURL/);
+  assert.match(component, /onProgress/);
+  assert.match(component, /disabled=\{isSubmitting/);
+  assert.doesNotMatch(component, /\/api\/rma\/evidence/);
+  assert.doesNotMatch(component, /<video|video\//i);
+  assert.doesNotMatch(component, /evidenceChecklist|technical|problemCategories/);
+});
+
+test("customer submit uses the new upload orchestrator and safe DTO history", () => {
+  assert.match(component, /submitRmaWithAttachments/);
+  assert.match(component, /CustomerRmaDto/);
+  assert.match(component, /draftIdempotencyKey/);
+  assert.match(component, /submitIdempotencyKey/);
+  assert.match(component, /rmaNo \?\? savedRequest\.id/);
+  assert.match(component, /customerStage/);
+  assert.match(component, /rmaCustomerStageLabel/);
+  assert.match(component, /request\.attachments/);
+  assert.doesNotMatch(component, /type RmaRequest\b|import[^;]*RmaRequest/);
+  assert.doesNotMatch(component, /request\.status/);
+  assert.match(uploadClient, /\/api\/rma\/drafts/);
+  assert.match(uploadClient, /\/api\/rma\/submit/);
+  assert.match(uploadClient, /method: "PUT"/);
+  assert.match(uploadClient, /cacheControl/);
+  assert.match(uploadClient, /sha256Hex/);
+  assert.match(uploadClient, /\/complete/);
+  assert.match(uploadClient, /method: "DELETE"/);
+});
+
+test("customer UI has no confirmation modal and final request remains opaque", () => {
+  assert.doesNotMatch(component, /Dialog|window\.confirm|confirm\(/);
+  const submitStart = uploadClient.indexOf("export function buildRmaSubmitPayload");
+  const submitEnd = uploadClient.indexOf("export async function submitRmaWithAttachments");
+  const payloadHelper = uploadClient.slice(submitStart, submitEnd);
+  for (const forbidden of ["bucket", "path", "signedUrl", "uploadUrl", "orderId", "sku"]) {
+    assert.doesNotMatch(payloadHelper, new RegExp(`\\b${forbidden}\\b`));
+  }
+});
