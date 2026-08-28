@@ -14,59 +14,86 @@ const repositorySource = readFileSync(
   path.join(repoRoot, "src/lib/partspro-repository.ts"),
   "utf8"
 );
+const supplierBatchMigrationSource = readFileSync(
+  path.join(
+    repoRoot,
+    "supabase/migrations/20260827183609_supplier_arrival_cost_v2_currency_fx_permissions.sql"
+  ),
+  "utf8"
+);
 const verifierPrices = loadVerifierPriceHelper();
-const repositoryPrices = loadRepositoryPriceHelper();
+const repositoryProductSummary = loadRepositoryProductSummary();
 
-for (const [label, readExpectedPrices] of [
-  ["CLI", verifierPrices],
-  ["repository", repositoryPrices],
-]) {
-  test(`${label} honors complete positive explicit user prices`, () => {
-    assert.deepEqual(
-      { ...readExpectedPrices(explicitPrices(1.5, 1.6), 0.7) },
-      { retailPrice: 1.5, b2bPrice: 1.6 }
-    );
+test("CLI keeps the explicit-price fallback used by integrity verification", () => {
+  assert.deepEqual(
+    { ...verifierPrices(explicitPrices(1.5, 1.6), 0.7) },
+    { retailPrice: 1.5, b2bPrice: 1.6 }
+  );
+  assert.deepEqual(
+    { ...verifierPrices({ price_policy: "explicit_user_price", expected_retail_price: 1.5 }, 0.7) },
+    { retailPrice: 6, b2bPrice: 6 }
+  );
+  assert.deepEqual({ ...verifierPrices(explicitPrices(0, 1.6), 1.25) }, {
+    retailPrice: 7,
+    b2bPrice: 7,
   });
+  assert.deepEqual({ ...verifierPrices(explicitPrices(1.5, -1), 1.25) }, {
+    retailPrice: 7,
+    b2bPrice: 7,
+  });
+  assert.deepEqual({ ...verifierPrices({}, 1.25) }, {
+    retailPrice: 7,
+    b2bPrice: 7,
+  });
+  assert.deepEqual(
+    { ...verifierPrices({ expected_retail_price: 1.5, expected_b2b_price: 1.6 }, 0.7) },
+    { retailPrice: 6, b2bPrice: 6 }
+  );
+});
 
-  test(`${label} falls back when an explicit price field is missing`, () => {
-    assert.deepEqual(
-      {
-        ...readExpectedPrices(
-          { price_policy: "explicit_user_price", expected_retail_price: 1.5 },
-          0.7
-        ),
-      },
-      { retailPrice: 6, b2bPrice: 6 }
-    );
-  });
+test("v2 projection computes price_rule_ok and repository maps the real RPC field", () => {
+  const projection = extractSqlSection(
+    supplierBatchMigrationSource,
+    "create or replace function private.admin_get_supplier_batch_products_v2(",
+    "create or replace function public.admin_get_supplier_batch_products_v2("
+  );
 
-  test(`${label} rejects zero and negative explicit prices`, () => {
-    assert.deepEqual(
-      { ...readExpectedPrices(explicitPrices(0, 1.6), 1.25) },
-      { retailPrice: 7, b2bPrice: 7 }
-    );
-    assert.deepEqual(
-      { ...readExpectedPrices(explicitPrices(1.5, -1), 1.25) },
-      { retailPrice: 7, b2bPrice: 7 }
-    );
-  });
+  assert.match(
+    projection,
+    /\(product\.retail_price > 0\s+and\s+product\.b2b_price > 0\s+and\s+product\.retail_price >= product\.b2b_price\)\s+as price_rule_ok/
+  );
+  assert.match(projection, /'price_rule_ok',\s*price_rule_ok/);
+  assert.match(
+    repositorySource,
+    /client\.rpc\("admin_get_supplier_batch_products_v2",\s*\{\s*p_sku_codes:/s
+  );
+  assert.match(
+    repositorySource,
+    /priceRuleOk: product\.price_rule_ok === true \|\| product\.priceRuleOk === true/
+  );
+  assert.match(repositorySource, /if \(!productSummary\.priceRuleOk\)/);
 
-  test(`${label} keeps ceil(cost + 5) without a valid explicit policy`, () => {
-    assert.deepEqual({ ...readExpectedPrices({}, 1.25) }, {
-      retailPrice: 7,
-      b2bPrice: 7,
-    });
-    assert.deepEqual(
-      {
-        ...readExpectedPrices(
-          { expected_retail_price: 1.5, expected_b2b_price: 1.6 },
-          0.7
-        ),
-      },
-      { retailPrice: 6, b2bPrice: 6 }
-    );
-  });
-}
+  const product = {
+    sku_code: "FILM-001",
+    name: "Privacy Glass",
+    brand: "PartsPro",
+    model: "iPhone 15",
+    status: "active",
+    stock_qty: 2,
+    price_rule_ok: true,
+  };
+
+  assert.equal(repositoryProductSummary(product).priceRuleOk, true);
+  assert.equal(
+    repositoryProductSummary({ ...product, price_rule_ok: false }).priceRuleOk,
+    false
+  );
+  assert.equal(
+    repositoryProductSummary({ ...product, price_rule_ok: "true" }).priceRuleOk,
+    false,
+    "the mapper must not trust a non-boolean RPC value"
+  );
+});
 
 test("category fallback recognizes protective-film names", () => {
   const { inferCategory, normalizeCategory } = loadRepositoryCategoryHelpers();
@@ -142,26 +169,75 @@ function loadVerifierPriceHelper() {
   );
 }
 
-function loadRepositoryPriceHelper() {
+function loadRepositoryProductSummary() {
   const source = [
-    extractFunction(repositorySource, "readSupplierBatchExpectedPrices"),
-    extractFunction(repositorySource, "readUnknownNumber"),
-    extractFunction(repositorySource, "roundMoney"),
+    extractFunction(repositorySource, "readSupplierBatchLineProductSummary"),
+    extractFunction(repositorySource, "readNullableNonNegativeNumber"),
+    extractFunction(repositorySource, "normalizeCatalogStatusValue"),
+    extractFunction(repositorySource, "hasSupplierBatchModelPrefixIssue"),
+    extractFunction(repositorySource, "pickString"),
+    extractFunction(repositorySource, "pickNumber"),
+    extractFunction(repositorySource, "readStringArray"),
+    extractFunction(repositorySource, "sanitizeSupplierStringArray"),
+    extractFunction(repositorySource, "normalizeStockStatus"),
   ]
     .join("\n")
     .replace(
-      /metadata: Record<string, unknown>,\s*costPrice: number/,
-      "metadata, costPrice"
+      "function readSupplierBatchLineProductSummary(\n  product: DbRow,\n  inventory?: SupplierBatchInventorySummary | null\n): AdminSupplierBatchLineProduct {",
+      "function readSupplierBatchLineProductSummary(\n  product,\n  inventory = null\n) {"
     )
-    .replace("function readUnknownNumber(value: unknown)", "function readUnknownNumber(value)")
-    .replace("function roundMoney(value: number)", "function roundMoney(value)");
-  const context = {};
+    .replace(
+      "function readNullableNonNegativeNumber(row: DbRow, keys: string[]) {",
+      "function readNullableNonNegativeNumber(row, keys) {"
+    )
+    .replace(
+      "function normalizeCatalogStatusValue(value: string | null): AdminCatalogStatus {",
+      "function normalizeCatalogStatusValue(value) {"
+    )
+    .replace(
+      "function hasSupplierBatchModelPrefixIssue(\n  brand: string,\n  values: Array<string | null | undefined>\n) {",
+      "function hasSupplierBatchModelPrefixIssue(\n  brand,\n  values\n) {"
+    )
+    .replace(
+      "function pickString(row: DbRow | null | undefined, keys: string[]) {",
+      "function pickString(row, keys) {"
+    )
+    .replace(
+      "function pickNumber(row: DbRow | null | undefined, keys: string[]) {",
+      "function pickNumber(row, keys) {"
+    )
+    .replace(
+      "function readStringArray(row: DbRow, keys: string[]) {",
+      "function readStringArray(row, keys) {"
+    )
+    .replace(
+      "function sanitizeSupplierStringArray(values: string[]) {",
+      "function sanitizeSupplierStringArray(values) {"
+    )
+    .replace(
+      "function normalizeStockStatus(value: string | null, stock: number): StockStatus {",
+      "function normalizeStockStatus(value, stock) {"
+    )
+    .replace("const values: string[] = [];", "const values = [];");
+  const context = {
+    sanitizeSupplierText(value) {
+      return typeof value === "string" ? value.trim() : "";
+    },
+  };
 
   vm.runInNewContext(
-    `${source}\nglobalThis.result = readSupplierBatchExpectedPrices;`,
+    `${source}\nglobalThis.result = readSupplierBatchLineProductSummary;`,
     context
   );
   return context.result;
+}
+
+function extractSqlSection(source, startMarker, endMarker) {
+  const start = source.indexOf(startMarker);
+  assert.notEqual(start, -1, `${startMarker} SQL section was not found`);
+  const end = source.indexOf(endMarker, start);
+  assert.notEqual(end, -1, `${endMarker} SQL section boundary was not found`);
+  return source.slice(start, end);
 }
 
 function loadRepositoryCategoryHelpers() {
