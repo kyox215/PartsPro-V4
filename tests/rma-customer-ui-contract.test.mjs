@@ -78,6 +78,10 @@ test("customer submit uses the new upload orchestrator and safe DTO history", ()
   assert.match(component, /cancelRmaUploadCheckpoint/);
   assert.match(component, /onCheckpoint: handleUploadCheckpoint/);
   assert.match(component, /checkpoint: uploadCheckpointRef\.current/);
+  assert.match(component, /isAbandoningCheckpoint/);
+  assert.match(component, /storefront\.rma\.upload\.confirmSubmit/);
+  assert.match(component, /storefront\.rma\.upload\.abandonRestart/);
+  assert.match(component, /storefront\.rma\.upload\.cleanupHint/);
   assert.match(component, /rmaNo \?\? savedRequest\.id/);
   assert.match(component, /request\.orderNumber/);
   assert.doesNotMatch(component, /request\.orderId/);
@@ -93,6 +97,8 @@ test("customer submit uses the new upload orchestrator and safe DTO history", ()
   assert.match(uploadClient, /sha256Hex/);
   assert.match(uploadClient, /\/complete/);
   assert.match(uploadClient, /method: "DELETE"/);
+  assert.match(uploadClient, /phase === "abandoning"/);
+  assert.match(uploadClient, /RMA_UPLOAD_ABANDONED/);
 });
 
 test("customer UI has no confirmation modal and final request remains opaque", () => {

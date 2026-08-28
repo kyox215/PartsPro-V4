@@ -323,6 +323,13 @@ refunded | replacement_sent
 - 页面用同步 `submittingRef` 防止 React state flush 前双击，checkpoint 或提交期间锁定订单、商品、数量、原因、处理方式、备注、相机/相册和删除入口；“不再需要”备注改为可选，B2B 仍按照片规则处理。Customer DTO 明确增加安全 `orderNumber`，canonical flow 通过同 customer 的订单行读取，legacy DTO 使用既有展示 `orderId` 兼容。
 - 2c 测试实际使用内存 fetch mock 覆盖响应丢失只提交、5+1 图片恢复、DELETE 500 后零新 ticket、取消清理、双协议安全边界和 orderNumber 源契约。浏览器刷新后的 File 会话恢复、跨标签并发、真实 Storage/CORS 与移动端相机仍留最终门禁。
 
+### 批次 2d 客户上传放弃清理单向状态（2026-08-28）
+
+- checkpoint 新增 `phase = active | abandoning`。一旦客户选择重新开始，先清空本地 final payload，再把已验证/待取消 attachment ID 进入清理队列；因此即使服务端此前已成功提交，旧 payload 也不会在“重新开始”路径被重放。
+- `abandoning` checkpoint 的所有重试只允许继续 opaque attachment DELETE；任一 DELETE 非 2xx 时保留未清理 ID 并停止，不创建新 draft、不领取 ticket、不 PUT、不 complete、也不 POST `/api/rma/submit`。只有全部清理成功才回调清空 checkpoint；下一次提交才是全新的上传流程。
+- 客户页在存在 final payload 时把“确认提交”作为推荐恢复动作，并明确提示“重新开始”会放弃恢复并启动清理；清理未完成时按钮改为“继续清理”，避免把清理失败误导成普通重试。意大利语/中文文案同步补齐。
+- 新增实际内存 fetch 回归测试覆盖 DELETE `204 -> 500 -> 再次提交`：第二次只继续清理、绝不调用 submit/draft/upload，清理成功后才允许清空恢复状态。真实刷新/跨标签持久化、浏览器/Storage/CORS 和移动端相机仍留最终门禁。
+
 ### 未来实施验收
 
 - 客户只能从有权限的真实订单行进入；服务端拒绝越权订单行、过期政策和并发超量。
@@ -434,6 +441,11 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 | `git diff --check` | passed | 2c 当前变更无空白错误 |
 | `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase status` | blocked by local environment | Docker daemon 不可用；无本地 PostgreSQL/Supabase，双事务并发 trigger 验证留最终本地数据库门禁；未访问远端 |
 | Supabase linked/local lint、migration dry-run、build/E2E | skipped by gate | 本批禁止远端/数据库写入；worktree 无需启动本地数据库，按范围不跑完整 build/E2E |
+| `node --test tests/rma-upload-client.test.mjs` | passed | 批次 2d abandonment 单向清理与既有上传编排 10/10 通过，含 DELETE `204 -> 500 -> retry` 且无 submit/draft/upload |
+| `node --test tests/rma-upload-client.test.mjs tests/rma-customer-ui-contract.test.mjs tests/rma-rules.test.mjs tests/rma-contract.test.mjs tests/admin-rma-workflow-contract.test.mjs tests/storefront-i18n-contract.test.mjs` | passed | 批次 2d 最终相关集合 37/37 通过 |
+| `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/eslint' src/components/partspro/rma-page.tsx src/lib/partspro-rma-upload-client.mjs src/i18n/dictionaries/storefront.ts tests/rma-upload-client.test.mjs tests/rma-customer-ui-contract.test.mjs` | passed | 批次 2d 客户页、上传客户端、i18n 和测试定向 ESLint 无输出 |
+| `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/tsc' --noEmit --incremental false --project tsconfig.json` | blocked by baseline | 仅有既有 `src/app/api/admin/restock-requests/[id]/route.ts(17,12): Cannot find name 'RouteContext'`；2d phase 类型未引入新增诊断 |
+| `git diff --check` | passed | 批次 2d 当前差异无空白错误 |
 
 ## 执行记录
 
@@ -441,7 +453,7 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 - 批准：2026-08-27；用户已批准本轮开始实现/推送/部署，当前 worker 仍按范围不 push、不部署、不应用远端 migration
 - 开始：2026-08-27
 - review：pending；Migration A/RLS/权限/支付/库存需专项守门
-- verified：2026-08-28；批次 1f close 规则/SQL guard/admin DTO tests 18/18、定向 ESLint、`git diff --check` 通过；`tsc --noEmit --incremental false` 仅剩基线 `RouteContext`；本地 Docker 不可用，wallet/replacement 关系和数据库 close 行为待最终门禁
+- verified：2026-08-28；批次 1f close 规则/SQL guard/admin DTO tests 18/18、批次 2d 客户上传 abandonment 相关集合 37/37、定向 ESLint、`git diff --check` 通过；`tsc --noEmit --incremental false` 仅剩基线 `RouteContext`；本地 Docker 不可用，wallet/replacement 关系、数据库 close 行为和真实浏览器上传仍待最终门禁
 - released：不适用，本批不发布
 - closed：pending
 

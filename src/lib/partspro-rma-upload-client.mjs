@@ -43,6 +43,7 @@ const extensionContentTypes = new Map([
  * final allowlisted submit payload; it never contains Storage paths or URLs.
  * @typedef {Object} RmaUploadCheckpoint
  * @property {1} version
+ * @property {"active"|"abandoning"} phase
  * @property {string|null} draftId
  * @property {Record<string, string>} verifiedAttachmentIds
  * @property {string[]} pendingCancellationIds
@@ -527,6 +528,7 @@ export function rmaUploadInputFingerprint({
 function cloneRmaUploadCheckpoint(checkpoint) {
   return {
     version: 1,
+    phase: checkpoint.phase,
     draftId: checkpoint.draftId,
     verifiedAttachmentIds: { ...checkpoint.verifiedAttachmentIds },
     pendingCancellationIds: [...checkpoint.pendingCancellationIds],
@@ -548,6 +550,7 @@ function normalizeRmaUploadCheckpoint(value) {
     throw new RmaUploadClientError("INVALID_CHECKPOINT", "The saved RMA upload state is invalid. Restart the upload.");
   }
 
+  const phase = value.phase === "abandoning" ? "abandoning" : "active";
   const verifiedAttachmentIds = isRecord(value.verifiedAttachmentIds)
     ? Object.fromEntries(
         Object.entries(value.verifiedAttachmentIds).filter(
@@ -560,7 +563,9 @@ function normalizeRmaUploadCheckpoint(value) {
     : [];
   const draftId = typeof value.draftId === "string" && value.draftId.trim() ? value.draftId : null;
   const inputFingerprint = typeof value.inputFingerprint === "string" ? value.inputFingerprint : "";
-  const payload = value.payload === null || value.payload === undefined
+  const payload = phase === "abandoning"
+    ? null
+    : value.payload === null || value.payload === undefined
     ? null
     : isRecord(value.payload)
       ? { ...value.payload }
@@ -572,12 +577,30 @@ function normalizeRmaUploadCheckpoint(value) {
 
   return {
     version: 1,
+    phase,
     draftId,
     verifiedAttachmentIds,
     pendingCancellationIds,
     inputFingerprint,
     payload,
   };
+}
+
+/**
+ * Move a checkpoint into the one-way cleanup phase. Clearing payload before
+ * the first DELETE prevents a later retry from replaying a request that the
+ * server may already have committed.
+ * @param {RmaUploadCheckpoint} checkpoint
+ */
+function queueCheckpointAbandonment(checkpoint) {
+  checkpoint.phase = "abandoning";
+  checkpoint.payload = null;
+  checkpoint.pendingCancellationIds = [
+    ...new Set([
+      ...checkpoint.pendingCancellationIds,
+      ...Object.values(checkpoint.verifiedAttachmentIds),
+    ]),
+  ];
 }
 
 /**
@@ -674,16 +697,9 @@ export async function cancelRmaUploadCheckpoint({
     throw new RmaUploadClientError("INVALID_CHECKPOINT", "The saved RMA upload state has no draft. Restart the upload.");
   }
 
-  const attachmentIds = new Set([
-    ...Object.values(normalized.verifiedAttachmentIds),
-    ...normalized.pendingCancellationIds,
-  ]);
-  normalized.pendingCancellationIds = [...attachmentIds];
+  queueCheckpointAbandonment(normalized);
   emitRmaUploadCheckpoint(onCheckpoint, normalized);
   await settlePendingCancellations(normalized, fetchImpl, onCheckpoint);
-  normalized.verifiedAttachmentIds = {};
-  normalized.payload = null;
-  normalized.draftId = null;
   emitRmaUploadCheckpoint(onCheckpoint, null);
   return null;
 }
@@ -720,6 +736,21 @@ export async function submitRmaWithAttachments({
     files: selectedFiles,
   };
 
+  if (checkpoint?.phase === "abandoning") {
+    // Abandonment is one-way: never inspect or replay a final payload once
+    // cleanup has started. A retry may only finish the outstanding DELETEs.
+    queueCheckpointAbandonment(checkpoint);
+    emitRmaUploadCheckpoint(onCheckpoint, checkpoint);
+    if (checkpoint.draftId) {
+      await settlePendingCancellations(checkpoint, fetchImpl, onCheckpoint);
+    }
+    emitRmaUploadCheckpoint(onCheckpoint, null);
+    throw new RmaUploadClientError(
+      "RMA_UPLOAD_ABANDONED",
+      "The previous RMA upload was abandoned after cleanup. Start a new upload."
+    );
+  }
+
   if (checkpoint?.payload) {
     assertCheckpointMatchesInput(checkpoint, input);
     return submitCheckpointPayload({ checkpoint, fetchImpl, onCheckpoint });
@@ -741,6 +772,7 @@ export async function submitRmaWithAttachments({
 
   const uploadCheckpoint = checkpoint ?? {
     version: 1,
+    phase: "active",
     draftId: null,
     verifiedAttachmentIds: {},
     pendingCancellationIds: [],

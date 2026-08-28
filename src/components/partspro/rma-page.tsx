@@ -150,6 +150,7 @@ type RmaUploadCheckpoint = {
   payload: Record<string, unknown> | null;
   pendingCancellationIds: string[];
   verifiedAttachmentIds: Record<string, string>;
+  phase: "active" | "abandoning";
   version: 1;
 };
 
@@ -296,6 +297,8 @@ export function RmaPage({
   const quantityIsValid = Boolean(selectedLine && quantityOptions.includes(form.quantity));
   const canSubmit = Boolean(selectedLine && quantityIsValid && images.length > 0);
   const isSubmitting = submitState.status === "loading";
+  const hasFinalCheckpoint = Boolean(uploadCheckpoint?.payload);
+  const isAbandoningCheckpoint = uploadCheckpoint?.phase === "abandoning";
   const controlsLocked = isSubmitting || uploadCheckpoint !== null || isRestartingUpload;
 
   function areRmaControlsLocked() {
@@ -893,12 +896,20 @@ export function RmaPage({
                 {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
                 {isSubmitting
                   ? tx(t, "storefront.rma.submit.buttonLoading", "Invio assistenza...")
-                  : tx(t, "storefront.rma.submit.button", "Invia richiesta assistenza")}
+                  : isAbandoningCheckpoint
+                    ? tx(t, "storefront.rma.upload.continueCleanup", "Continua pulizia")
+                    : hasFinalCheckpoint
+                      ? tx(t, "storefront.rma.upload.confirmSubmit", "Conferma invio")
+                      : tx(t, "storefront.rma.submit.button", "Invia richiesta assistenza")}
               </Button>
               {uploadCheckpoint && !isSubmitting ? (
                 <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-xs leading-5 text-amber-900">
-                    {tx(t, "storefront.rma.upload.resumeHint", "Lo stato del caricamento è conservato. Ritenta l'invio oppure ricomincia per cancellare i dati temporanei.")}
+                    {isAbandoningCheckpoint
+                      ? tx(t, "storefront.rma.upload.cleanupHint", "La pulizia precedente deve terminare. Il vecchio invio non verrà ripetuto.")
+                      : hasFinalCheckpoint
+                        ? tx(t, "storefront.rma.upload.abandonHint", "La richiesta potrebbe essere già stata registrata: conferma l'invio per riprovare in sicurezza. Ricominciare abbandona il recupero e avvia la pulizia.")
+                        : tx(t, "storefront.rma.upload.resumeHint", "Lo stato del caricamento è conservato. Ritenta l'invio oppure ricomincia per cancellare i dati temporanei.")}
                   </p>
                   <Button
                     type="button"
@@ -907,7 +918,13 @@ export function RmaPage({
                     disabled={isRestartingUpload}
                     onClick={() => void restartRmaUpload()}
                   >
-                    {isRestartingUpload ? tx(t, "storefront.rma.upload.restartingShort", "Pulizia...") : tx(t, "storefront.rma.upload.restart", "Ricomincia upload")}
+                    {isRestartingUpload
+                      ? tx(t, "storefront.rma.upload.restartingShort", "Pulizia...")
+                      : isAbandoningCheckpoint
+                        ? tx(t, "storefront.rma.upload.continueCleanup", "Continua pulizia")
+                        : hasFinalCheckpoint
+                          ? tx(t, "storefront.rma.upload.abandonRestart", "Abbandona recupero e ricomincia")
+                          : tx(t, "storefront.rma.upload.restart", "Ricomincia upload")}
                   </Button>
                 </div>
               ) : null}

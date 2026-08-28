@@ -11,6 +11,7 @@ import {
   isRmaImageSizeAllowed,
   prepareRmaImage,
   rmaImageIdentity,
+  rmaUploadInputFingerprint,
   rmaAttachmentContentTypes,
   rmaMaxAttachmentBytes,
   rmaMaxAttachments,
@@ -427,6 +428,95 @@ test("checkpoint restart preserves only unresolved cancellations after a non-2xx
   assert.equal(checkpoints.at(-1), null);
 });
 
+test("abandoning checkpoint never replays final payload after DELETE 204 then 500", async () => {
+  const fileA = imageFile("abandon-a.jpg", "image/jpeg", "abandon-a");
+  const fileB = imageFile("abandon-b.jpg", "image/jpeg", "abandon-b");
+  const checkpoint = {
+    version: 1,
+    phase: "active",
+    draftId: "draft-abandon",
+    verifiedAttachmentIds: {
+      [rmaImageIdentity(fileA)]: "attachment-a",
+      [rmaImageIdentity(fileB)]: "attachment-b",
+    },
+    pendingCancellationIds: [],
+    inputFingerprint: rmaUploadInputFingerprint({
+      orderLineId: "line-abandon",
+      quantity: 1,
+      reasonCode: "wrong_item",
+      requestedResolution: "replacement",
+      files: [fileA, fileB],
+    }),
+    payload: {
+      draftId: "draft-abandon",
+      orderLineId: "line-abandon",
+      quantity: 1,
+      reasonCode: "wrong_item",
+      requestedResolution: "replacement",
+      attachmentIds: ["attachment-a", "attachment-b"],
+      idempotencyKey: "submit-abandon",
+    },
+  };
+  const calls = [];
+  const checkpoints = [];
+  let cleanupAttempt = 0;
+
+  await assert.rejects(
+    cancelRmaUploadCheckpoint({
+      checkpoint,
+      fetchImpl: async (input, init = {}) => {
+        const url = String(input);
+        calls.push({ url, init });
+        assert.equal(init.method, "DELETE");
+        cleanupAttempt += 1;
+        return new Response(null, { status: cleanupAttempt === 2 ? 500 : 204 });
+      },
+      onCheckpoint: (next) => checkpoints.push(next),
+    }),
+    (error) => error?.code === "RMA_ATTACHMENT_CANCEL_FAILED"
+  );
+
+  const abandoned = checkpoints.at(-1);
+  assert.equal(abandoned.phase, "abandoning");
+  assert.equal(abandoned.payload, null);
+  assert.deepEqual(abandoned.pendingCancellationIds, ["attachment-b"]);
+  assert.deepEqual(abandoned.verifiedAttachmentIds, {
+    [rmaImageIdentity(fileB)]: "attachment-b",
+  });
+
+  const callsBeforeResume = calls.length;
+  await assert.rejects(
+    submitRmaWithAttachments({
+      orderLineId: "line-abandon",
+      quantity: 1,
+      reasonCode: "wrong_item",
+      requestedResolution: "replacement",
+      files: [fileA, fileB],
+      idempotencyKey: "submit-abandon",
+      checkpoint: abandoned,
+      fetchImpl: async (input, init = {}) => {
+        const url = String(input);
+        calls.push({ url, init });
+        if (url.endsWith("/complete") && init.method === "DELETE") {
+          return new Response(null, { status: 204 });
+        }
+        throw new Error(`abandonment must not start a new request: ${init.method} ${url}`);
+      },
+      onCheckpoint: (next) => checkpoints.push(next),
+    }),
+    (error) => error?.code === "RMA_UPLOAD_ABANDONED"
+  );
+
+  const cleanupOnlyCalls = calls.slice(callsBeforeResume);
+  assert.equal(cleanupOnlyCalls.length, 1);
+  assert.equal(cleanupOnlyCalls[0].init.method, "DELETE");
+  assert.equal(cleanupOnlyCalls.some(({ url }) => url === "/api/rma/submit"), false);
+  assert.equal(cleanupOnlyCalls.some(({ url }) => url === "/api/rma/drafts"), false);
+  assert.equal(cleanupOnlyCalls.some(({ url }) => url.includes("/uploads")), false);
+  assert.equal(cleanupOnlyCalls.some(({ url }) => url.endsWith("/complete") && url.includes("attachment-b")), true);
+  assert.equal(checkpoints.at(-1), null);
+});
+
 test("submit payload helper is explicit and the client never references legacy evidence or video", () => {
   const payload = buildRmaSubmitPayload({
     draftId: "draft-1",
@@ -452,6 +542,8 @@ test("submit payload helper is explicit and the client never references legacy e
   assert.doesNotMatch(source, /video\//i);
   assert.match(source, /verifiedAttachmentIds/);
   assert.match(source, /pendingCancellationIds/);
+  assert.match(source, /phase === "abandoning"/);
+  assert.match(source, /RMA_UPLOAD_ABANDONED/);
   assert.match(source, /onCheckpoint/);
   assert.match(source, /return response\.ok/);
 });
