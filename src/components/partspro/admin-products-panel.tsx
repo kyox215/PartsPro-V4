@@ -3350,7 +3350,7 @@ function SupplierBatchMobileFiltersSheet({
             <div className="min-w-0">
               <SheetTitle className="text-base font-black">{copy.mobileFiltersTitle}</SheetTitle>
               <SheetDescription className="mt-1 text-xs font-semibold leading-4">
-                {copy.mobileFiltersDescription} {formatAdminMessage(copy.filterCount, { count: draftFilterCount })}
+                {copy.mobileFiltersDescription}
               </SheetDescription>
             </div>
             <SheetClose asChild>
@@ -3397,7 +3397,7 @@ function SupplierBatchMobileFiltersSheet({
                   value={draftFilters.dateMode}
                   onValueChange={(value) => updateDraft({ dateMode: value as SupplierBatchDateMode })}
                 >
-                  <SelectTrigger id="supplier-batch-mobile-date-mode" className="mt-1 h-11 w-full bg-white text-base">
+                  <SelectTrigger id="supplier-batch-mobile-date-mode" className="mt-1 h-11 min-h-11 w-full bg-white text-base">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -3443,7 +3443,7 @@ function SupplierBatchMobileFiltersSheet({
                   value={draftFilters.currency}
                   onValueChange={(value) => updateDraft({ currency: value as SupplierBatchFilters["currency"] })}
                 >
-                  <SelectTrigger id="supplier-batch-mobile-currency" className="mt-1 h-11 w-full bg-white text-base">
+                  <SelectTrigger id="supplier-batch-mobile-currency" className="mt-1 h-11 min-h-11 w-full bg-white text-base">
                     <SelectValue placeholder={copy.allCurrencies} />
                   </SelectTrigger>
                   <SelectContent>
@@ -3460,7 +3460,7 @@ function SupplierBatchMobileFiltersSheet({
                   value={draftFilters.costStatus}
                   onValueChange={(value) => updateDraft({ costStatus: value as SupplierBatchFilters["costStatus"] })}
                 >
-                  <SelectTrigger id="supplier-batch-mobile-cost-status" className="mt-1 h-11 w-full bg-white text-base">
+                  <SelectTrigger id="supplier-batch-mobile-cost-status" className="mt-1 h-11 min-h-11 w-full bg-white text-base">
                     <SelectValue placeholder={copy.costStatus} />
                   </SelectTrigger>
                   <SelectContent>
@@ -3477,7 +3477,7 @@ function SupplierBatchMobileFiltersSheet({
                   value={draftFilters.chargeType}
                   onValueChange={(value) => updateDraft({ chargeType: value as SupplierBatchFilters["chargeType"] })}
                 >
-                  <SelectTrigger id="supplier-batch-mobile-charge-type" className="mt-1 h-11 w-full bg-white text-base">
+                  <SelectTrigger id="supplier-batch-mobile-charge-type" className="mt-1 h-11 min-h-11 w-full bg-white text-base">
                     <SelectValue placeholder={copy.chargeType} />
                   </SelectTrigger>
                   <SelectContent>
@@ -3494,7 +3494,7 @@ function SupplierBatchMobileFiltersSheet({
                   value={draftFilters.vatTreatment}
                   onValueChange={(value) => updateDraft({ vatTreatment: value as SupplierBatchFilters["vatTreatment"] })}
                 >
-                  <SelectTrigger id="supplier-batch-mobile-vat" className="mt-1 h-11 w-full bg-white text-base">
+                  <SelectTrigger id="supplier-batch-mobile-vat" className="mt-1 h-11 min-h-11 w-full bg-white text-base">
                     <SelectValue placeholder={copy.vatTreatment} />
                   </SelectTrigger>
                   <SelectContent>
@@ -3511,7 +3511,7 @@ function SupplierBatchMobileFiltersSheet({
                   value={draftFilters.hasTransport}
                   onValueChange={(value) => updateDraft({ hasTransport: value as SupplierBatchFilters["hasTransport"] })}
                 >
-                  <SelectTrigger id="supplier-batch-mobile-transport" className="mt-1 h-11 w-full bg-white text-base">
+                  <SelectTrigger id="supplier-batch-mobile-transport" className="mt-1 h-11 min-h-11 w-full bg-white text-base">
                     <SelectValue placeholder={copy.hasTransport} />
                   </SelectTrigger>
                   <SelectContent>
