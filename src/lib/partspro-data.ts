@@ -56,6 +56,7 @@ export type RmaInventoryDisposition =
   | "restock"
   | "scrap"
   | "supplier_return";
+export type RmaWalletRefundStatus = "pending" | "approved" | "rejected" | "cancelled";
 export type CustomerType = "retail" | "wholesale";
 export type CustomerAssignmentStatus =
   | "needs_review"
@@ -183,6 +184,14 @@ export type RmaRequest = {
   id: string;
   orderId: string;
   orderLineId?: string;
+  /** Internal owner used to re-authorize legacy evidence per request. */
+  ownerUserId?: string | null;
+  /** Internal customer scope used to bind canonical evidence rows. */
+  customerId?: string | null;
+  rmaNo?: string | null;
+  eligibleUntil?: string | null;
+  reasonCode?: string | null;
+  policyScope?: string;
   sku: string;
   productName: string;
   status: RmaStatus;
@@ -196,17 +205,35 @@ export type RmaRequest = {
   attachments?: RmaAttachment[];
   events?: RmaEvent[];
   customerName?: string;
+  /** Repository/admin order identifier; customer DTOs sanitize to order number. */
+  orderNumber?: string | null;
   customerVisibleNote?: string;
   assignedAt?: string | null;
   assignedBy?: string | null;
   assignedTo?: string | null;
   closedAt?: string | null;
+  /** Customer-declared return shipment timestamp and optional carrier data. */
+  customerShippedAt?: string | null;
+  returnCarrier?: string | null;
+  returnTrackingCode?: string | null;
   dueAt?: string | null;
   internalNote?: string;
   inventoryDisposition?: RmaInventoryDisposition;
   labResult?: string;
   refundAmount?: number;
   resolutionAction?: RmaResolutionAction | null;
+  /** Admin-only workflow progress; omitted by the customer DTO. */
+  receivedQuantity?: number | null;
+  /** Quantity actually settled by the selected refund or replacement outcome. */
+  resolutionQuantity?: number | null;
+  /** Quantity handled by the terminal inventory disposition. */
+  inventoryDispositionQuantity?: number | null;
+  /** Admin-only QC result; omitted by the customer DTO. */
+  qcStatus?: "pending" | "passed" | "failed" | "not_required" | null;
+  /** Admin-only replacement linkage; omitted by the customer DTO. */
+  replacementOrderId?: string | null;
+  /** Admin-only linked wallet request state; omitted by the customer DTO. */
+  walletRefundStatus?: RmaWalletRefundStatus | null;
   reviewedAt?: string | null;
   receivedAt?: string | null;
   resolvedAt?: string | null;
@@ -215,9 +242,12 @@ export type RmaRequest = {
 };
 
 export type RmaAttachment = {
+  attachmentId?: string;
   bucket?: string;
   contentType?: string;
   name: string;
+  /** Internal-only uploader identity used to authorize relation attachments. */
+  ownerUserId?: string;
   path: string;
   signedUrl?: string;
   size?: number;

@@ -3,23 +3,42 @@ import { z } from "zod";
 import { hasAdminPermission } from "@/lib/partspro-admin-auth";
 import { apiError } from "@/lib/partspro-api";
 import { listAdminRmaRequests } from "@/lib/partspro-repository";
-import { signRmaRequestAttachments } from "@/lib/partspro-rma-evidence";
+import {
+  RmaEvidenceReadError,
+  hydrateCustomerRmaAttachments,
+  signRmaRequestAttachments,
+} from "@/lib/partspro-rma-evidence";
+import {
+  countAdminRmaQueues,
+  getAdminRmaCapabilities,
+  toAdminRmaDto,
+} from "@/lib/partspro-rma-admin-dto";
 import { parseAdminQuery, repositoryErrorResponse, requireAdminApi } from "../_shared";
 
 export const dynamic = "force-dynamic";
 
 const adminRmaStatusSchema = z.enum([
   "submitted",
+  "requested",
   "under_review",
   "approved",
   "rejected",
   "received",
+  "return_in_transit",
   "replacement_sent",
+  "replaced",
   "refunded",
   "closed",
 ]);
 
 const adminRmaQueueSchema = z.enum([
+  "review",
+  "awaiting_return",
+  "receiving",
+  "qc",
+  "resolution",
+  "inventory_close",
+  "archive",
   "mine",
   "needs_inventory",
   "needs_refund",
@@ -59,21 +78,55 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const result = await listAdminRmaRequests(query.data);
+    const [result, countResult] = await Promise.all([
+      listAdminRmaRequests(query.data),
+      listAdminRmaRequests({
+        limit: 200,
+        offset: 0,
+        q: query.data.q,
+        status: query.data.status,
+      }),
+    ]);
     const signedRequests = await signRmaRequestAttachments(result.data.requests);
+    // Canonical opaque attachments live in the relation table; hydrate them
+    // with service-role signing before the admin allowlist mapper strips path
+    // and uploader metadata.
+    const hydratedRequests = await hydrateCustomerRmaAttachments(
+      signedRequests,
+      admin.authState.userId
+    );
+    const capabilities = getAdminRmaCapabilities(admin.authState);
+    const data = hydratedRequests.map((request) =>
+      toAdminRmaDto(request, capabilities)
+    );
+    const countsComplete =
+      countResult.data.totalIsExact &&
+      countResult.data.total <= 200 &&
+      countResult.data.total === countResult.data.requests.length;
 
     return NextResponse.json({
-      data: signedRequests,
+      data,
       meta: {
         limit: query.data.limit,
         offset: query.data.offset,
-        returned: signedRequests.length,
+        returned: data.length,
         source: result.source,
         total: result.data.total,
+        totalIsExact: result.data.totalIsExact,
+        hasMore: result.data.hasMore,
+        lowerBound: result.data.lowerBound,
+        // Counts intentionally use an independent, queue-less 200-row read;
+        // the page query may be scoped to one selected queue and must not make
+        // every other queue appear empty.
+        queueCounts: countAdminRmaQueues(countResult.data.requests, capabilities),
+        countsComplete,
         workflow: "rma_requests -> rma_request_events -> private evidence",
       },
     });
   } catch (error) {
+    if (error instanceof RmaEvidenceReadError) {
+      return apiError(error.status, error.code, error.message, error.details);
+    }
     return repositoryErrorResponse(
       error,
       "ADMIN_RMA_UNAVAILABLE",

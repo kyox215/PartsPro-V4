@@ -46,6 +46,7 @@ import {
   type RmaOrderOption,
   type RmaResolutionAction,
   type RmaStatus,
+  type RmaWalletRefundStatus,
   type StockStatus,
 } from "@/lib/partspro-data";
 import {
@@ -60,6 +61,11 @@ import {
   shippingMethodForDeliveryMethod,
   type DeliveryMethod,
 } from "@/lib/partspro-shipping";
+import {
+  assertRmaWorkflowReady,
+  RmaWorkflowNotReadyError,
+} from "@/lib/partspro-rma-workflow-readiness";
+import { projectAdminRmaWorkflow } from "@/lib/partspro-rma-workflow-rules";
 import {
   normalizeSupplierBatchCharge,
   normalizeSupplierBatchChargeAllocation,
@@ -142,6 +148,10 @@ export class RepositoryWriteError extends Error {
     super(message);
     this.name = "RepositoryWriteError";
   }
+}
+
+function rmaReadUnavailable(message: string, details?: unknown) {
+  return new RepositoryWriteError(503, "RMA_READ_UNAVAILABLE", message, details);
 }
 
 export type RepositoryResult<T> = {
@@ -1747,15 +1757,25 @@ export type SaveRmaInput = {
 
 export type AdminRmaStatusFilter =
   | "submitted"
+  | "requested"
   | "under_review"
   | "approved"
   | "rejected"
   | "received"
+  | "return_in_transit"
   | "replacement_sent"
+  | "replaced"
   | "refunded"
   | "closed";
 
 export type AdminRmaQueueFilter =
+  | "review"
+  | "awaiting_return"
+  | "receiving"
+  | "qc"
+  | "resolution"
+  | "inventory_close"
+  | "archive"
   | "mine"
   | "needs_inventory"
   | "needs_refund"
@@ -1773,6 +1793,35 @@ export type AdminRmaQuery = {
 export type AdminRmaPage = {
   requests: RmaRequest[];
   total: number;
+  totalIsExact: boolean;
+  hasMore: boolean;
+  lowerBound: number | null;
+};
+
+export type AdminRmaRefundPreview = {
+  available: boolean;
+  blockedReason?: "missing_unit_price_snapshot" | "wallet_balance_exhausted" | "invalid_snapshot";
+  currency: string;
+  maxRefundAmount: number;
+  quantity: number;
+  taxAndShippingIncluded: false;
+};
+
+export type AdminRmaReplacementCandidate = {
+  id: string;
+  orderNumber: string;
+  quantity: number;
+  shippedAt: string | null;
+};
+
+export type AdminRmaDetail = {
+  request: RmaRequest;
+  refundPreview: AdminRmaRefundPreview | null;
+  replacementCandidates: AdminRmaReplacementCandidate[];
+};
+
+export type AdminRmaDetailOptions = {
+  includeRefundPreview?: boolean;
 };
 
 export type UpdateAdminRmaInput = {
@@ -1786,11 +1835,17 @@ export type UpdateAdminRmaInput = {
 };
 
 export type AdminRmaAction =
+  | "start_review"
+  | "approve"
+  | "reject"
   | "assign"
   | "request_wallet_refund"
   | "mark_received"
+  | "record_qc"
   | "restock_return"
   | "mark_scrapped"
+  | "supplier_return"
+  | "mark_replacement_sent"
   | "close";
 
 export type PerformAdminRmaActionInput = {
@@ -1799,9 +1854,14 @@ export type PerformAdminRmaActionInput = {
   batchCode?: string;
   customerVisibleNote?: string;
   internalNote?: string;
+  idempotencyKey?: string;
+  location?: string;
   quantity?: number;
+  qcNote?: string;
+  qcStatus?: "passed" | "failed" | "not_required";
   reason?: string;
   refundAmount?: number;
+  replacementOrderId?: string;
   requestId: string;
   supplier?: string;
   warehouse?: PartProduct["warehouse"];
@@ -5798,89 +5858,154 @@ export async function saveOrder(input: SaveOrderInput): Promise<RepositoryResult
 }
 
 export async function listRmaRequests(): Promise<RepositoryResult<RmaRequest[]>> {
-  const supabaseResult = await withSupabase(readRmaRequests);
-  return supabaseResult ?? emptyResult([], "No local after-sales requests are available.");
+  // The legacy generic reader used to return every RMA row.  Keep this
+  // compatibility export scoped to the same active customer/employee-self
+  // boundary as the current API so a caller cannot bypass the strict RMA
+  // customer helpers simply by using the older repository name.
+  return readCurrentRmaResult(
+    readRmaRequests,
+    [],
+    "Supabase after-sales requests could not be read.",
+    "Supabase is not configured; no after-sales requests are available."
+  );
 }
 
 export async function listAdminRmaRequests(
   query: AdminRmaQuery = {}
 ): Promise<RepositoryResult<AdminRmaPage>> {
-  const supabaseResult = await withSupabase((context) =>
-    readAdminRmaRequests(context, query)
-  );
+  const context = await getSupabaseContext();
+  if (context) {
+    await ensureRmaWorkflowReady(context);
+    const data = await readAdminRmaRequests(context, query);
+    if (data) {
+      return { data, source: "supabase" };
+    }
 
-  return (
-    supabaseResult ??
-    emptyResult(
-      { requests: [], total: 0 },
-      isSupabaseConfigured()
-        ? "Supabase admin after-sales requests could not be read."
-        : "Supabase is not configured; no admin after-sales requests are available."
-    )
+    throw rmaReadUnavailable(
+      "Supabase admin after-sales requests returned no readable result."
+    );
+  }
+
+  if (isSupabaseConfigured()) {
+    throw rmaReadUnavailable(
+      "Supabase admin after-sales requests could not be authenticated."
+    );
+  }
+
+  return emptyResult(
+    {
+      requests: [],
+      total: 0,
+      totalIsExact: false,
+      hasMore: false,
+      lowerBound: 0,
+    },
+    isSupabaseConfigured()
+      ? "Supabase admin after-sales requests could not be read."
+      : "Supabase is not configured; no admin after-sales requests are available."
+  );
+}
+
+export async function getAdminRmaRequest(
+  requestId: string,
+  options: AdminRmaDetailOptions = {}
+): Promise<RepositoryResult<AdminRmaDetail | null>> {
+  // Detail hydration includes security-definer previews/candidates.  Keep
+  // typed RPC failures visible to the route instead of letting the generic
+  // best-effort reader turn a permission or migration outage into an empty
+  // detail response.
+  const context = await getSupabaseContext();
+  if (context) {
+    await ensureRmaWorkflowReady(context);
+    return {
+      data: await readAdminRmaRequestById(context, requestId, options),
+      source: "supabase",
+    };
+  }
+
+  if (isSupabaseConfigured()) {
+    throw rmaReadUnavailable(
+      "Supabase admin after-sales request could not be authenticated."
+    );
+  }
+
+  return emptyResult(
+    null,
+    isSupabaseConfigured()
+      ? "Supabase admin after-sales request could not be read."
+      : "Supabase is not configured; no admin after-sales request is available."
+  );
+}
+
+export async function getAdminRmaRefundPreview(
+  requestId: string
+): Promise<RepositoryResult<AdminRmaRefundPreview | null>> {
+  // This helper is intentionally not wrapped in withSupabase: an RPC error
+  // must reach repositoryErrorResponse as a stable fail-closed error.
+  const context = await getSupabaseContext();
+  if (context) {
+    await ensureRmaWorkflowReady(context);
+    return {
+      data: await readAdminRmaRefundPreview(context.client, requestId),
+      source: "supabase",
+    };
+  }
+
+  if (isSupabaseConfigured()) {
+    throw rmaReadUnavailable(
+      "Supabase RMA refund preview could not be authenticated."
+    );
+  }
+
+  return emptyResult(
+    null,
+    isSupabaseConfigured()
+      ? "Supabase RMA refund preview could not be read."
+      : "Supabase is not configured; no RMA refund preview is available."
   );
 }
 
 export async function listCurrentCustomerRmaRequests(): Promise<
   RepositoryResult<RmaRequest[]>
 > {
-  const supabaseResult = await withSupabase(readCurrentCustomerRmaRequests);
-
-  return (
-    supabaseResult ??
-    emptyResult(
-      [],
-      isSupabaseConfigured()
-        ? "Supabase customer after-sales requests could not be read."
-        : "Supabase is not configured; no customer after-sales requests are available."
-    )
+  return readCurrentRmaResult(
+    readCurrentCustomerRmaRequests,
+    [],
+    "Supabase customer after-sales requests could not be read.",
+    "Supabase is not configured; no customer after-sales requests are available."
   );
 }
 
 export async function listCurrentEmployeeSelfRmaRequests(): Promise<
   RepositoryResult<RmaRequest[]>
 > {
-  const supabaseResult = await withSupabase(readCurrentEmployeeSelfRmaRequests);
-
-  return (
-    supabaseResult ??
-    emptyResult(
-      [],
-      isSupabaseConfigured()
-        ? "Supabase employee self after-sales requests could not be read."
-        : "Supabase is not configured; no employee self after-sales requests are available."
-    )
+  return readCurrentRmaResult(
+    readCurrentEmployeeSelfRmaRequests,
+    [],
+    "Supabase employee self after-sales requests could not be read.",
+    "Supabase is not configured; no employee self after-sales requests are available."
   );
 }
 
 export async function listCurrentCustomerRmaOrderOptions(): Promise<
   RepositoryResult<RmaOrderOption[]>
 > {
-  const supabaseResult = await withSupabase(readCurrentCustomerRmaOrderOptions);
-
-  return (
-    supabaseResult ??
-    emptyResult(
-      [],
-      isSupabaseConfigured()
-        ? "Supabase customer after-sales order options could not be read."
-        : "Supabase is not configured; no customer after-sales order options are available."
-    )
+  return readCurrentRmaResult(
+    readCurrentCustomerRmaOrderOptions,
+    [],
+    "Supabase customer after-sales order options could not be read.",
+    "Supabase is not configured; no customer after-sales order options are available."
   );
 }
 
 export async function listCurrentEmployeeSelfRmaOrderOptions(): Promise<
   RepositoryResult<RmaOrderOption[]>
 > {
-  const supabaseResult = await withSupabase(readCurrentEmployeeSelfRmaOrderOptions);
-
-  return (
-    supabaseResult ??
-    emptyResult(
-      [],
-      isSupabaseConfigured()
-        ? "Supabase employee self after-sales order options could not be read."
-        : "Supabase is not configured; no employee self after-sales order options are available."
-    )
+  return readCurrentRmaResult(
+    readCurrentEmployeeSelfRmaOrderOptions,
+    [],
+    "Supabase employee self after-sales order options could not be read.",
+    "Supabase is not configured; no employee self after-sales order options are available."
   );
 }
 
@@ -5919,6 +6044,7 @@ export async function updateAdminRmaRequest(
   }
 
   const context = await requireSupabaseContext();
+  await ensureRmaWorkflowReady(context);
   const request = await updateAdminRmaRequestViaRpc(context, input);
 
   if (!request) {
@@ -5944,7 +6070,10 @@ export async function performAdminRmaAction(
   }
 
   const context = await requireSupabaseContext();
-  const request = await performAdminRmaActionViaRpc(context, input);
+  await ensureRmaWorkflowReady(context);
+  const request = isReviewRmaAction(input.action)
+    ? await performAdminRmaReviewActionViaRpc(context, input)
+    : await performAdminRmaActionViaRpc(context, input);
 
   if (!request) {
     throw new RepositoryWriteError(
@@ -5959,6 +6088,10 @@ export async function performAdminRmaAction(
   }
 
   return { data: request, source: "supabase" };
+}
+
+function isReviewRmaAction(action: AdminRmaAction) {
+  return action === "start_review" || action === "approve" || action === "reject";
 }
 
 export async function saveB2BApplication(
@@ -6019,6 +6152,43 @@ async function withSupabaseResult<T>(
   }
 }
 
+/**
+ * Customer RMA reads are part of the Migration-B contract. Do not route them
+ * through the legacy best-effort reader: swallowing a missing capability or
+ * service-role read would turn a deployment gap into a misleading empty 200.
+ */
+async function readCurrentRmaResult<T>(
+  reader: (context: SupabaseContext) => Promise<T | null>,
+  fallbackData: T,
+  configuredWarning: string,
+  unconfiguredWarning: string
+): Promise<RepositoryResult<T>> {
+  const context = await getSupabaseContext();
+
+  if (context) {
+    await ensureRmaWorkflowReady(context);
+    const data = await reader(context);
+    if (data !== null) {
+      return { data, source: "supabase" };
+    }
+
+    throw rmaReadUnavailable(
+      "Supabase after-sales data returned no readable result."
+    );
+  }
+
+  if (isSupabaseConfigured()) {
+    throw rmaReadUnavailable(
+      "Supabase after-sales data could not be authenticated."
+    );
+  }
+
+  return emptyResult(
+    fallbackData,
+    isSupabaseConfigured() ? configuredWarning : unconfiguredWarning
+  );
+}
+
 async function getSupabaseContext(): Promise<SupabaseContext | null> {
   if (!isSupabaseConfigured()) {
     return null;
@@ -6038,6 +6208,36 @@ async function getSupabaseContext(): Promise<SupabaseContext | null> {
     return { client, userId: user.id };
   } catch {
     return null;
+  }
+}
+
+function requireRmaServiceClient(): SupabaseServerClient {
+  if (!isSupabaseServiceRoleConfigured()) {
+    throw new RepositoryWriteError(
+      503,
+      "RMA_SERVICE_UNAVAILABLE",
+      "The server-side RMA data service is not configured."
+    );
+  }
+
+  return createServiceRoleClient() as unknown as SupabaseServerClient;
+}
+
+async function ensureRmaWorkflowReady(context: SupabaseContext) {
+  const notReadyCode = "RMA_WORKFLOW_NOT_READY" as const;
+  try {
+    await assertRmaWorkflowReady(context.client);
+  } catch (error) {
+    if (error instanceof RmaWorkflowNotReadyError) {
+      throw new RepositoryWriteError(
+        error.status,
+        notReadyCode,
+        error.message,
+        { capability: "rma_workflow_capabilities" }
+      );
+    }
+
+    throw error;
   }
 }
 
@@ -10486,6 +10686,7 @@ async function readAdminCustomerRmas(
   client: SupabaseServerClient,
   orders: AdminCustomerOrderSummary[]
 ): Promise<AdminCustomerRmaSummary[]> {
+  const rmaClient = requireRmaServiceClient();
   const orderIds = orders.map((order) => order.id);
 
   if (orderIds.length === 0) {
@@ -10503,7 +10704,7 @@ async function readAdminCustomerRmas(
   const ordersById = new Map(orders.map((order) => [order.id, order]));
 
   try {
-    const { data, error } = await client
+    const { data, error } = await rmaClient
       .from("rma_requests")
       .select("*")
       .in("order_line_id", lineIds)
@@ -10612,6 +10813,106 @@ async function readCurrentCustomerId(
   }
 }
 
+/**
+ * RMA reads use a stricter linkage rule than legacy commerce compatibility:
+ * only an active customer_memberships row can authorize a customer scope.
+ * Historical customers.user_id, email matches, and a stale profiles.customer_id
+ * are deliberately not enough for after-sales data.
+ */
+async function readStrictRmaCustomerId(
+  client: SupabaseServerClient,
+  userId: string
+): Promise<string | null> {
+  try {
+    const { data: profile, error: profileError } = await client
+      .from("profiles")
+      .select("account_type, customer_id")
+      .eq("id", userId)
+      .maybeSingle();
+
+    if (profileError) {
+      throw rmaReadUnavailable(
+        "Supabase account profile could not be read for the after-sales scope.",
+        supabaseErrorDetails(profileError)
+      );
+    }
+
+    if (!isDbRow(profile) || pickString(profile, ["account_type"]) === "employee") {
+      return null;
+    }
+
+    const { data: membershipRows, error: membershipError } = await client
+      .from("customer_memberships")
+      .select("customer_id, created_at, updated_at")
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .limit(50);
+
+    if (membershipError) {
+      throw rmaReadUnavailable(
+        "Supabase customer memberships could not be read for the after-sales scope.",
+        supabaseErrorDetails(membershipError)
+      );
+    }
+
+    if (!Array.isArray(membershipRows)) {
+      return null;
+    }
+
+    const customerIds = uniqueDefinedStrings(
+      membershipRows
+        .filter(isDbRow)
+        .map((row) => pickString(row, ["customer_id"]))
+    );
+    if (customerIds.length === 0) {
+      return null;
+    }
+
+    const { data: customerRows, error: customerError } = await client
+      .from("customers")
+      .select("id,status,profile_kind,created_at,updated_at")
+      .in("id", customerIds)
+      .eq("status", "active");
+
+    if (customerError) {
+      throw rmaReadUnavailable(
+        "Supabase customer records could not be read for the after-sales scope.",
+        supabaseErrorDetails(customerError)
+      );
+    }
+
+    if (!Array.isArray(customerRows)) {
+      return null;
+    }
+
+    const eligibleRows = customerRows
+      .filter(isDbRow)
+      .filter((row) => (pickString(row, ["profile_kind"]) ?? "customer") === "customer");
+    const profileCustomerId = pickString(profile, ["customer_id"]);
+    const preferred = eligibleRows.find(
+      (row) => pickString(row, ["id"]) === profileCustomerId
+    );
+
+    if (preferred) {
+      return pickString(preferred, ["id"]);
+    }
+
+    return eligibleRows
+      .sort((left, right) => timestampFromIso(pickString(right, ["updated_at"])) - timestampFromIso(pickString(left, ["updated_at"])))
+      .map((row) => pickString(row, ["id"]))
+      .find(isDefined) ?? null;
+  } catch (error) {
+    if (error instanceof RepositoryWriteError) {
+      throw error;
+    }
+
+    throw rmaReadUnavailable(
+      "Supabase customer scope could not be resolved for after-sales data.",
+      supabaseErrorDetails(error)
+    );
+  }
+}
+
 async function readCurrentEmployeeSelfCustomerId(
   client: SupabaseServerClient,
   userId: string
@@ -10639,7 +10940,12 @@ async function readCurrentEmployeeSelfCustomerId(
         adminCustomerSelect
       );
 
-      if (row && normalizeCustomerProfileKind(pickString(row, ["profile_kind"])) === "employee_self") {
+      if (
+        row &&
+        normalizeCustomerProfileKind(pickString(row, ["profile_kind"])) === "employee_self" &&
+        pickString(row, ["status"]) === "active" &&
+        pickString(row, ["user_id"]) === userId
+      ) {
         return profileCustomerId;
       }
     }
@@ -10649,6 +10955,7 @@ async function readCurrentEmployeeSelfCustomerId(
       .select("id")
       .eq("user_id", userId)
       .eq("profile_kind", "employee_self")
+      .eq("status", "active")
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -12040,7 +12347,8 @@ async function readCustomerWallet(
 async function readCustomerOrderRows(
   client: SupabaseServerClient,
   customerId: string,
-  limit = 200
+  limit = 200,
+  options: { failClosed?: boolean } = {}
 ) {
   try {
     const { data, error } = await client
@@ -12052,11 +12360,29 @@ async function readCustomerOrderRows(
     const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
 
     if (error || !rows) {
+      if (options.failClosed) {
+        throw rmaReadUnavailable(
+          "Supabase customer orders could not be read for the after-sales scope.",
+          supabaseErrorDetails(error)
+        );
+      }
+
       return null;
     }
 
     return rows;
-  } catch {
+  } catch (error) {
+    if (options.failClosed) {
+      if (error instanceof RepositoryWriteError) {
+        throw error;
+      }
+
+      throw rmaReadUnavailable(
+        "Supabase customer orders could not be read for the after-sales scope.",
+        supabaseErrorDetails(error)
+      );
+    }
+
     return null;
   }
 }
@@ -12144,7 +12470,7 @@ async function readOrderSummaries(context: SupabaseContext) {
 async function readCurrentCustomerRmaRequests(
   context: SupabaseContext
 ): Promise<RmaRequest[] | null> {
-  const customerId = await readCurrentCustomerId(context.client, context.userId);
+  const customerId = await readStrictRmaCustomerId(context.client, context.userId);
 
   if (!customerId) {
     return [];
@@ -12157,19 +12483,48 @@ async function readAdminRmaRequests(
   context: SupabaseContext,
   query: AdminRmaQuery
 ): Promise<AdminRmaPage | null> {
+  const rmaClient = requireRmaServiceClient();
   const limit = Math.min(Math.max(Math.trunc(query.limit ?? 50), 1), 200);
   const offset = Math.max(Math.trunc(query.offset ?? 0), 0);
   const search = query.q?.trim();
-  let request = context.client
+  let request = rmaClient
     .from("rma_requests")
     .select("*", { count: "exact" })
     .order("created_at", { ascending: false });
 
-  if (query.status) {
+  if (query.status === "return_in_transit") {
+    request = request.eq("status", "approved").not("customer_shipped_at", "is", null);
+  } else if (query.status) {
     request = request.eq("status", query.status);
   }
 
-  if (query.queue === "mine") {
+  if (query.queue === "review") {
+    request = request.in("status", ["submitted", "requested", "under_review", "rejected"]);
+  } else if (query.queue === "awaiting_return") {
+    request = request.eq("status", "approved").is("customer_shipped_at", null);
+  } else if (query.queue === "receiving") {
+    request = request.eq("status", "approved").not("customer_shipped_at", "is", null);
+  } else if (query.queue === "qc") {
+    request = request
+      .in("status", ["received", "refunded", "replacement_sent", "replaced"])
+      .or("qc_status.eq.pending,qc_status.is.null")
+      .not("received_at", "is", null)
+      .not("received_quantity", "is", null);
+  } else if (query.queue === "resolution") {
+    request = request
+      .eq("status", "received")
+      .in("qc_status", ["passed", "failed", "not_required"])
+      .not("received_at", "is", null)
+      .not("received_quantity", "is", null);
+  } else if (query.queue === "inventory_close") {
+    request = request
+      .in("status", ["refunded", "replacement_sent", "replaced"])
+      .in("qc_status", ["passed", "failed", "not_required"])
+      .not("received_at", "is", null)
+      .not("received_quantity", "is", null);
+  } else if (query.queue === "archive") {
+    request = request.in("status", ["closed", "rejected"]);
+  } else if (query.queue === "mine") {
     request = request.eq("assigned_to", context.userId);
   } else if (query.queue === "unassigned") {
     request = request.is("assigned_to", null);
@@ -12179,12 +12534,12 @@ async function readAdminRmaRequests(
       .or("resolution_action.eq.refund_wallet,requested_resolution.eq.refund");
   } else if (query.queue === "needs_inventory") {
     request = request
-      .in("status", ["approved", "received", "refunded"])
+      .in("status", ["approved", "received", "refunded", "replacement_sent", "replaced"])
       .in("inventory_disposition", ["pending", "quarantine"]);
   } else if (query.queue === "overdue") {
     request = request
       .lt("due_at", new Date().toISOString())
-      .not("status", "in", "(closed,refunded,rejected,replacement_sent)");
+      .not("status", "in", "(closed,refunded,rejected,replacement_sent,replaced)");
   }
 
   if (search) {
@@ -12199,32 +12554,329 @@ async function readAdminRmaRequests(
     );
   }
 
-  const { data, error, count } = await request.range(offset, offset + limit - 1);
-  const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
+  const queueScoped = isProjectionQueueFilter(query.queue);
+  const scanBatchSize = Math.min(200, Math.max(50, limit));
+  const scanCap = Math.min(
+    2000,
+    Math.max(offset + limit, limit * 8, 200)
+  );
+  const targetProjectionCount = offset + limit;
+  let scanOffset = queueScoped ? 0 : offset;
+  let count: number | null = null;
+  let scannedRows: DbRow[] = [];
+  let mappedRequests: RmaRequest[] = [];
+  let scanExhausted = !queueScoped;
 
-  if (error || !rows) {
-    return null;
+  // The SQL predicates above are deliberately shallow for index-friendly
+  // pagination. Queue projection is the authoritative workflow filter, so a
+  // queue read scans bounded raw batches from the beginning and applies the
+  // requested offset only after projection. This prevents a sparse first raw
+  // page from hiding later actionable rows while keeping a hard upper bound
+  // on work when historical rows are contradictory.
+  while (true) {
+    const { data, error, count: batchCount } = await request.range(
+      scanOffset,
+      scanOffset + scanBatchSize - 1
+    );
+    const rawRows = Array.isArray(data) ? (data as unknown[]) : null;
+    const rows = rawRows?.filter(isDbRow) ?? null;
+
+    if (error || !rawRows || !rows || rawRows.length !== rows.length) {
+      throw rmaReadUnavailable(
+        "Supabase RMA requests could not be read for the admin queue.",
+        supabaseErrorDetails(error)
+      );
+    }
+
+    count = batchCount;
+    scannedRows = [...scannedRows, ...rows];
+    mappedRequests = await hydrateAdminRmaRows(context, rmaClient, scannedRows);
+
+    if (!queueScoped) {
+      break;
+    }
+
+    const projectedCount = mappedRequests.filter(
+      (requestRow) =>
+        projectAdminRmaWorkflow(requestRow, allRmaCapabilities).workflowQueue === query.queue
+    ).length;
+    const batchRawExhausted =
+      rows.length < scanBatchSize ||
+      (batchCount !== null && batchCount !== undefined && scannedRows.length >= batchCount);
+    const scanCapped = scannedRows.length >= scanCap;
+    scanExhausted = batchRawExhausted;
+
+    if (
+      projectedCount >= targetProjectionCount ||
+      batchRawExhausted ||
+      scanCapped
+    ) {
+      break;
+    }
+
+    scanOffset += rows.length;
   }
 
+  const projectedRequests = queueScoped
+    ? mappedRequests.filter(
+        (requestRow) =>
+          projectAdminRmaWorkflow(requestRow, allRmaCapabilities).workflowQueue === query.queue
+      )
+    : mappedRequests;
+  const requests = queueScoped
+    ? projectedRequests.slice(offset, offset + limit)
+    : projectedRequests;
+  const totalIsExact = queueScoped ? scanExhausted : count !== null && count !== undefined;
+  const total = queueScoped ? projectedRequests.length : count ?? requests.length;
+
+  return {
+    requests,
+    total,
+    totalIsExact,
+    hasMore: totalIsExact
+      ? offset + requests.length < total
+      : true,
+    lowerBound: totalIsExact ? null : total,
+  };
+}
+
+async function hydrateAdminRmaRows(
+  context: SupabaseContext,
+  rmaClient: SupabaseServerClient,
+  rows: DbRow[]
+): Promise<RmaRequest[]> {
   const lineIds = uniqueDefinedStrings(
     rows.map((row) => pickString(row, ["order_line_id", "order_item_id", "line_id"]))
   );
   const lineRows = await readOrderLineRowsForLineIds(context.client, lineIds);
+  const linesById = mapRowsById(lineRows);
+  const orderRows = await readOrderRowsForRmaRows(context.client, rows, lineRows);
+  const ordersById = mapRowsById(orderRows);
+  const requestIds = uniqueDefinedStrings(rows.map((row) => pickString(row, ["id"])));
+  const eventsByRequestId = await readRmaEventsByRequestId(rmaClient, requestIds);
+  const walletRefundStatusesByRequestId =
+    await readRmaWalletRefundStatusesByRequestId(rmaClient, requestIds);
+  const mappedRequests = rows.map((row) =>
+    mapRmaRow(
+      row,
+      linesById,
+      eventsByRequestId,
+      ordersById,
+      walletRefundStatusesByRequestId
+    )
+  );
+
+  if (mappedRequests.some((requestRow) => !requestRow)) {
+    throw rmaReadUnavailable(
+      "Supabase returned an invalid RMA row for the admin queue."
+    );
+  }
+
+  return mappedRequests.filter(isDefined);
+}
+
+const allRmaCapabilities = {
+  manage: true,
+  inventory: true,
+  refund: true,
+  adjustStock: true,
+} as const;
+
+function isProjectionQueueFilter(
+  queue: AdminRmaQuery["queue"]
+): queue is
+  | "review"
+  | "awaiting_return"
+  | "receiving"
+  | "qc"
+  | "resolution"
+  | "inventory_close"
+  | "archive" {
+  return (
+    queue === "review" ||
+    queue === "awaiting_return" ||
+    queue === "receiving" ||
+    queue === "qc" ||
+    queue === "resolution" ||
+    queue === "inventory_close" ||
+    queue === "archive"
+  );
+}
+
+async function readAdminRmaRequestById(
+  context: SupabaseContext,
+  requestId: string,
+  options: AdminRmaDetailOptions
+): Promise<AdminRmaDetail | null> {
+  const rmaClient = requireRmaServiceClient();
+  const { data, error } = await rmaClient
+    .from("rma_requests")
+    .select("*")
+    .eq("id", requestId)
+    .maybeSingle();
+
+  if (error) {
+    throw rmaReadUnavailable(
+      "Supabase RMA request could not be read for the admin detail.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  if (data === null) {
+    return null;
+  }
+
+  if (!isDbRow(data)) {
+    throw rmaReadUnavailable(
+      "Supabase returned an invalid RMA row for the admin detail."
+    );
+  }
+
+  const lineId = pickString(data, ["order_line_id", "order_item_id", "line_id"]);
+  const lineRows = await readOrderLineRowsForLineIds(
+    context.client,
+    lineId ? [lineId] : []
+  );
   const linesById = mapRowsById(lineRows ?? []);
-  const orderRows = await readOrderRowsForRmaRows(context.client, rows, lineRows ?? []);
+  const orderRows = await readOrderRowsForRmaRows(
+    context.client,
+    [data],
+    lineRows ?? []
+  );
   const ordersById = mapRowsById(orderRows ?? []);
   const eventsByRequestId = await readRmaEventsByRequestId(
-    context.client,
-    uniqueDefinedStrings(rows.map((row) => pickString(row, ["id"])))
+    rmaClient,
+    [requestId]
   );
-  const requests = rows
-    .map((row) => mapRmaRow(row, linesById, eventsByRequestId, ordersById))
-    .filter(isDefined);
+  const walletRefundStatusesByRequestId =
+    await readRmaWalletRefundStatusesByRequestId(rmaClient, [requestId]);
+  const request = mapRmaRow(
+    data,
+    linesById,
+    eventsByRequestId,
+    ordersById,
+    walletRefundStatusesByRequestId
+  );
+
+  if (!request) {
+    throw rmaReadUnavailable(
+      "Supabase returned an invalid RMA result for the admin detail."
+    );
+  }
+
+  const [refundPreview, replacementCandidates] = await Promise.all([
+    options.includeRefundPreview
+      ? readAdminRmaRefundPreview(context.client, requestId)
+      : Promise.resolve(null),
+    readAdminRmaReplacementCandidates(context.client, requestId),
+  ]);
+
+  return { request, refundPreview, replacementCandidates };
+}
+
+async function readAdminRmaRefundPreview(
+  client: SupabaseServerClient,
+  requestId: string
+): Promise<AdminRmaRefundPreview | null> {
+  const { data, error } = await client.rpc("admin_rma_refund_preview", {
+    p_request_id: requestId,
+  });
+
+  if (error) {
+    throw new RepositoryWriteError(
+      supabaseRpcStatus(error),
+      "ADMIN_RMA_REFUND_PREVIEW_FAILED",
+      "Supabase could not calculate the RMA refund preview.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const row = Array.isArray(data) ? data.find(isDbRow) : data;
+  if (!isDbRow(row)) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_RMA_REFUND_PREVIEW_RESULT_INVALID",
+      "Supabase returned an invalid RMA refund preview."
+    );
+  }
+
+  const currency = pickString(row, ["currency"]) ?? "EUR";
+  const maxRefundAmount = pickNumber(row, ["max_refund_amount", "maxRefundAmount"]);
+  const quantity = pickNumber(row, ["quantity"]);
+  const available = row.available === false ? false : maxRefundAmount !== null;
+  const blockedReason = pickString(row, ["blocked_reason", "blockedReason"]);
+
+  if (maxRefundAmount === null || quantity === null) {
+    return {
+      available: false,
+      ...(blockedReason ? { blockedReason: normalizeRefundPreviewBlockedReason(blockedReason) } : {}),
+      currency,
+      maxRefundAmount: 0,
+      quantity: 0,
+      taxAndShippingIncluded: false,
+    };
+  }
 
   return {
-    requests,
-    total: count ?? requests.length,
+    available,
+    ...(blockedReason ? { blockedReason: normalizeRefundPreviewBlockedReason(blockedReason) } : {}),
+    currency,
+    maxRefundAmount: Math.max(0, maxRefundAmount),
+    quantity: Math.max(0, Math.trunc(quantity)),
+    taxAndShippingIncluded: false,
   };
+}
+
+async function readAdminRmaReplacementCandidates(
+  client: SupabaseServerClient,
+  requestId: string
+): Promise<AdminRmaReplacementCandidate[]> {
+  const { data, error } = await client.rpc("admin_rma_replacement_candidates", {
+    p_request_id: requestId,
+  });
+
+  if (error) {
+    throw new RepositoryWriteError(
+      supabaseRpcStatus(error),
+      "ADMIN_RMA_REPLACEMENT_CANDIDATES_FAILED",
+      "Supabase could not calculate RMA replacement candidates.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  if (!Array.isArray(data)) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_RMA_REPLACEMENT_CANDIDATES_RESULT_INVALID",
+      "Supabase returned invalid RMA replacement candidates."
+    );
+  }
+
+  return data
+    .filter(isDbRow)
+    .map((row) => {
+      const id = pickString(row, ["id", "order_id"]);
+      const orderNumber = pickString(row, ["order_number", "order_no"]);
+      const quantity = pickNumber(row, ["quantity"]);
+      if (!id || !orderNumber || quantity === null) {
+        return null;
+      }
+      return {
+        id,
+        orderNumber,
+        quantity: Math.max(0, Math.trunc(quantity)),
+        shippedAt: pickString(row, ["shipped_at", "shippedAt"]),
+      } satisfies AdminRmaReplacementCandidate;
+    })
+    .filter(isDefined);
+}
+
+function normalizeRefundPreviewBlockedReason(
+  value: string
+): AdminRmaRefundPreview["blockedReason"] {
+  if (value === "wallet_balance_exhausted") return value;
+  if (value === "invalid_snapshot") return value;
+  return "missing_unit_price_snapshot";
 }
 
 async function readCurrentEmployeeSelfRmaRequests(
@@ -12246,7 +12898,7 @@ async function readCurrentEmployeeSelfRmaRequests(
 async function readCurrentCustomerRmaOrderOptions(
   context: SupabaseContext
 ): Promise<RmaOrderOption[] | null> {
-  const customerId = await readCurrentCustomerId(context.client, context.userId);
+  const customerId = await readStrictRmaCustomerId(context.client, context.userId);
 
   if (!customerId) {
     return [];
@@ -12271,11 +12923,88 @@ async function readCurrentEmployeeSelfRmaOrderOptions(
   return readRmaOrderOptionsForCustomer(context, customerId);
 }
 
+type RmaCustomerReadScope = {
+  customerId: string;
+  orderIds: ReadonlySet<string>;
+  orderNumbers: ReadonlySet<string>;
+  lineIds: ReadonlySet<string>;
+  orderIdByNumber: ReadonlyMap<string, string>;
+  lineOrderIdById: ReadonlyMap<string, string>;
+};
+
+/**
+ * Keep legacy RMA rows scoped to the active customer's order graph. A
+ * historical row may not have customer_id, but an order/order-line link must
+ * still resolve to exactly one authorized order. Any populated foreign or
+ * contradictory link fails closed, even when another link is valid.
+ */
+function isRmaRowWithinCustomerScope(
+  row: DbRow | null | undefined,
+  scope: RmaCustomerReadScope
+) {
+  if (!row || !scope.customerId) {
+    return false;
+  }
+
+  const rowCustomerId = pickString(row, ["customer_id"]);
+  if (rowCustomerId !== null && rowCustomerId !== scope.customerId) {
+    return false;
+  }
+
+  const rowOrderId = pickString(row, ["order_id"]);
+  const rowOrderNo = pickString(row, ["order_no"]);
+  const rowLineId = pickString(row, ["order_line_id"]);
+  const resolvedOrderIds: string[] = [];
+
+  if (rowOrderId) {
+    const resolvedOrderId = scope.orderIds.has(rowOrderId)
+      ? rowOrderId
+      : scope.orderIdByNumber.get(rowOrderId) ?? null;
+
+    if (!resolvedOrderId) {
+      return false;
+    }
+
+    resolvedOrderIds.push(resolvedOrderId);
+  }
+
+  if (rowOrderNo) {
+    if (!scope.orderNumbers.has(rowOrderNo)) {
+      return false;
+    }
+
+    const resolvedOrderId = scope.orderIdByNumber.get(rowOrderNo);
+    if (!resolvedOrderId) {
+      return false;
+    }
+
+    resolvedOrderIds.push(resolvedOrderId);
+  }
+
+  if (rowLineId) {
+    if (!scope.lineIds.has(rowLineId)) {
+      return false;
+    }
+
+    const resolvedOrderId = scope.lineOrderIdById.get(rowLineId);
+    if (!resolvedOrderId) {
+      return false;
+    }
+
+    resolvedOrderIds.push(resolvedOrderId);
+  }
+
+  return new Set(resolvedOrderIds).size === 1;
+}
+
 async function readRmaRequestsForCustomer(
   context: SupabaseContext,
   customerId: string
 ): Promise<RmaRequest[] | null> {
-  const orderRows = await readCustomerOrderRows(context.client, customerId);
+  const rmaClient = requireRmaServiceClient();
+  const orderRows = await readCustomerOrderRows(context.client, customerId, 200, {
+    failClosed: true,
+  });
 
   if (!orderRows) {
     return null;
@@ -12283,23 +13012,63 @@ async function readRmaRequestsForCustomer(
 
   const orderIds = uniqueDefinedStrings(orderRows.map((row) => pickString(row, ["id"])));
   const orderNos = uniqueDefinedStrings(orderRows.map((row) => pickString(row, ["order_no"])));
-  const lineRows = await readOrderLineRowsForOrderIds(context.client, orderIds);
+  const lineRows = await readOrderLineRowsForOrderIds(context.client, orderIds, {
+    failClosed: true,
+  });
   const orderIdSet = new Set(orderIds);
   const orderNoSet = new Set(orderNos);
+  const orderIdByNumber = new Map<string, string>();
+  const ambiguousOrderNumbers = new Set<string>();
+
+  for (const order of orderRows) {
+    const orderId = pickString(order, ["id"]);
+    const orderNo = pickString(order, ["order_no"]);
+
+    if (!orderId || !orderNo) {
+      continue;
+    }
+
+    if (ambiguousOrderNumbers.has(orderNo)) {
+      continue;
+    }
+
+    const existingOrderId = orderIdByNumber.get(orderNo);
+    if (existingOrderId && existingOrderId !== orderId) {
+      // Duplicate display numbers are ambiguous. Do not let a legacy RMA
+      // resolve through an order_no unless the relationship is unique.
+      orderIdByNumber.delete(orderNo);
+      ambiguousOrderNumbers.add(orderNo);
+      continue;
+    }
+
+    orderIdByNumber.set(orderNo, orderId);
+  }
+
   const linesById = new Map<string, DbRow>();
+  const lineOrderIdById = new Map<string, string>();
 
   for (const line of lineRows ?? []) {
     const id = pickString(line, ["id", "line_id", "order_item_id"]);
-    if (id) {
-      linesById.set(id, line);
+    const rawOrderId = pickString(line, ["order_id", "orderId"]);
+    const orderId = rawOrderId
+      ? orderIdSet.has(rawOrderId)
+        ? rawOrderId
+        : orderIdByNumber.get(rawOrderId) ?? null
+      : null;
+
+    if (!id || !orderId) {
+      continue;
     }
+
+    linesById.set(id, line);
+    lineOrderIdById.set(id, orderId);
   }
 
   const lineIds = [...linesById.keys()];
   const lineIdSet = new Set(lineIds);
   const rmaRowsById = new Map<string, DbRow>();
 
-  for (const row of await readRmaRowsByColumn(context.client, "user_id", context.userId)) {
+  for (const row of await readRmaRowsByColumn(rmaClient, "user_id", context.userId)) {
     const rowOrderNo = pickString(row, ["order_no", "order_id"]);
     const rowLineId = pickString(row, ["order_line_id"]);
 
@@ -12316,41 +13085,64 @@ async function readRmaRequestsForCustomer(
     }
   }
 
-  for (const row of await readRmaRowsForValues(context.client, "order_no", orderNos)) {
+  for (const row of await readRmaRowsForValues(rmaClient, "order_no", orderNos)) {
     const id = pickString(row, ["id"]);
     if (id) {
       rmaRowsById.set(id, row);
     }
   }
 
-  for (const row of await readRmaRowsForValues(context.client, "order_id", orderIds)) {
+  for (const row of await readRmaRowsForValues(rmaClient, "order_id", orderIds)) {
     const id = pickString(row, ["id"]);
     if (id) {
       rmaRowsById.set(id, row);
     }
   }
 
-  for (const row of await readRmaRowsForValues(context.client, "order_line_id", lineIds)) {
+  for (const row of await readRmaRowsForValues(rmaClient, "order_line_id", lineIds)) {
     const id = pickString(row, ["id"]);
     if (id) {
       rmaRowsById.set(id, row);
     }
   }
 
-  const rmaRows = [...rmaRowsById.values()];
+  const rmaReadScope: RmaCustomerReadScope = {
+    customerId,
+    orderIds: orderIdSet,
+    orderNumbers: orderNoSet,
+    lineIds: lineIdSet,
+    orderIdByNumber,
+    lineOrderIdById,
+  };
+  const rmaRows = [...rmaRowsById.values()].filter((row) =>
+    isRmaRowWithinCustomerScope(row, rmaReadScope)
+  );
   const eventsByRequestId = await readRmaEventsByRequestId(
-    context.client,
+    rmaClient,
     uniqueDefinedStrings(rmaRows.map((row) => pickString(row, ["id"])))
   );
 
-  return rmaRows.map((row) => mapRmaRow(row, linesById, eventsByRequestId)).filter(isDefined);
+  const mappedRequests = rmaRows.map((row) =>
+    mapRmaRow(row, linesById, eventsByRequestId)
+  );
+
+  if (mappedRequests.some((requestRow) => !requestRow)) {
+    throw rmaReadUnavailable(
+      "Supabase returned an invalid RMA row for the customer scope."
+    );
+  }
+
+  return mappedRequests.filter(isDefined);
 }
 
 async function readRmaOrderOptionsForCustomer(
   context: SupabaseContext,
   customerId: string
 ): Promise<RmaOrderOption[] | null> {
-  const orderRows = await readCustomerOrderRows(context.client, customerId);
+  const rmaClient = requireRmaServiceClient();
+  const orderRows = await readCustomerOrderRows(context.client, customerId, 200, {
+    failClosed: true,
+  });
 
   if (!orderRows) {
     return null;
@@ -12363,7 +13155,9 @@ async function readRmaOrderOptionsForCustomer(
     return [];
   }
 
-  const lineRows = await readOrderLineRowsForOrderIds(context.client, orderIds);
+  const lineRows = await readOrderLineRowsForOrderIds(context.client, orderIds, {
+    failClosed: true,
+  });
 
   if (!lineRows) {
     return null;
@@ -12374,7 +13168,7 @@ async function readRmaOrderOptionsForCustomer(
   const lineIds = uniqueDefinedStrings(
     lineRows.map((line) => pickString(line, ["id", "line_id", "order_item_id"]))
   );
-  const rmaRows = await readRmaRowsForValues(context.client, "order_line_id", lineIds);
+  const rmaRows = await readRmaRowsForValues(rmaClient, "order_line_id", lineIds);
   const requestedQuantityByLineId = sumRmaRequestedQuantitiesByLineId(rmaRows);
   const eligibleOrderIdSet = new Set(orderIds);
   const linesByOrderId = new Map<string, RmaOrderOption["lines"]>();
@@ -12424,28 +13218,19 @@ async function readRmaOrderOptionsForCustomer(
 }
 
 async function readRmaRequests(context: SupabaseContext) {
-  const rmaRows = await readRows(context.client, "rma_requests");
+  const customerId = await readStrictRmaCustomerId(context.client, context.userId);
+  const employeeSelfCustomerId = customerId
+    ? null
+    : await readCurrentEmployeeSelfCustomerId(context.client, context.userId);
 
-  if (!rmaRows) {
-    return null;
+  if (!customerId && !employeeSelfCustomerId) {
+    return [];
   }
 
-  const lineRows = (await readRows(context.client, "order_lines")) ?? (await readRows(context.client, "order_items"));
-  const linesById = new Map<string, DbRow>();
-
-  for (const line of lineRows ?? []) {
-    const id = pickString(line, ["id", "line_id", "order_item_id"]);
-    if (id) {
-      linesById.set(id, line);
-    }
-  }
-
-  const eventsByRequestId = await readRmaEventsByRequestId(
-    context.client,
-    uniqueDefinedStrings(rmaRows.map((row) => pickString(row, ["id"])))
-  );
-
-  return rmaRows.map((row) => mapRmaRow(row, linesById, eventsByRequestId)).filter(isDefined);
+  const scopedCustomerId = customerId ?? employeeSelfCustomerId;
+  return scopedCustomerId
+    ? readRmaRequestsForCustomer(context, scopedCustomerId)
+    : [];
 }
 
 async function insertOrder(context: SupabaseContext, input: SaveOrderInput): Promise<SavedOrder | null> {
@@ -12691,26 +13476,57 @@ async function performAdminRmaActionViaRpc(
   context: SupabaseContext,
   input: PerformAdminRmaActionInput
 ): Promise<RmaRequest | null> {
-  const { data, error } = await context.client.rpc("admin_perform_rma_action", {
+  const { data, error } = await context.client.rpc("admin_perform_rma_action_v3", {
     p_action: input.action,
     p_assigned_to: input.assignedTo ?? null,
     p_batch_code: input.batchCode ?? null,
     p_customer_visible_note: input.customerVisibleNote ?? null,
     p_internal_note: input.internalNote ?? null,
-    p_location: input.warehouse ?? null,
+    p_idempotency_key: input.idempotencyKey ?? null,
+    p_location: input.location ?? input.warehouse ?? null,
+    p_qc_note: input.qcNote ?? null,
+    p_qc_status: input.qcStatus ?? null,
     p_quantity: input.quantity ?? null,
     p_reason: input.reason ?? null,
     p_refund_amount: input.refundAmount ?? null,
     p_request_id: input.requestId,
     p_supplier: input.supplier ?? null,
+    p_replacement_order_id: input.replacementOrderId ?? null,
   });
 
   if (error) {
+    const errorDetails = supabaseErrorDetails(error);
+    const rawCode = isDbRow(error) ? pickString(error, ["code"]) : null;
+    const message = isDbRow(error) ? pickString(error, ["message"]) : null;
+    if (message?.toLowerCase().includes("idempotency")) {
+      throw new RepositoryWriteError(
+        409,
+        "RMA_ACTION_IDEMPOTENCY_CONFLICT",
+        "The RMA action key was already used with a different payload or result.",
+        { message: "RMA action idempotency conflict." }
+      );
+    }
+    if (rawCode === "P0001") {
+      throw new RepositoryWriteError(
+        409,
+        "RMA_ACTION_IDEMPOTENCY_CONFLICT",
+        "The RMA action key was already used with a different payload or result.",
+        { message: "RMA action idempotency conflict." }
+      );
+    }
+    if (rawCode === "23505") {
+      throw new RepositoryWriteError(
+        409,
+        "RMA_ACTION_CONFLICT",
+        "The RMA action conflicts with an existing commercial or inventory outcome.",
+        { message: "RMA action conflict." }
+      );
+    }
     throw new RepositoryWriteError(
       502,
       "RMA_ACTION_RPC_FAILED",
       "Supabase rejected the after-sales workflow action.",
-      supabaseErrorDetails(error)
+      errorDetails
     );
   }
 
@@ -12723,10 +13539,40 @@ async function performAdminRmaActionViaRpc(
   return mapRmaRpcRow(context, row);
 }
 
+async function performAdminRmaReviewActionViaRpc(
+  context: SupabaseContext,
+  input: PerformAdminRmaActionInput
+): Promise<RmaRequest | null> {
+  const { data, error } = await context.client.rpc("admin_perform_rma_review_action", {
+    p_action: input.action,
+    p_customer_visible_note: input.customerVisibleNote ?? null,
+    p_internal_note: input.internalNote ?? null,
+    p_idempotency_key: input.idempotencyKey ?? null,
+    p_request_id: input.requestId,
+  });
+
+  if (error) {
+    throw new RepositoryWriteError(
+      502,
+      "RMA_REVIEW_ACTION_RPC_FAILED",
+      "Supabase rejected the after-sales review action.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const row = Array.isArray(data) ? data.find(isDbRow) : data;
+  if (!isDbRow(row)) {
+    return null;
+  }
+
+  return mapRmaRpcRow(context, row);
+}
+
 async function mapRmaRpcRow(
   context: SupabaseContext,
   row: DbRow
 ): Promise<RmaRequest | null> {
+  const rmaClient = requireRmaServiceClient();
   const lineId = pickString(row, ["order_line_id", "order_item_id", "line_id"]);
   const lineRows = await readOrderLineRowsForLineIds(
     context.client,
@@ -12737,11 +13583,21 @@ async function mapRmaRpcRow(
   const ordersById = mapRowsById(orderRows ?? []);
   const requestId = pickString(row, ["id"]);
   const eventsByRequestId = await readRmaEventsByRequestId(
-    context.client,
+    rmaClient,
+    requestId ? [requestId] : []
+  );
+  const walletRefundStatusesByRequestId = await readRmaWalletRefundStatusesByRequestId(
+    rmaClient,
     requestId ? [requestId] : []
   );
 
-  return mapRmaRow(row, linesById, eventsByRequestId, ordersById);
+  return mapRmaRow(
+    row,
+    linesById,
+    eventsByRequestId,
+    ordersById,
+    walletRefundStatusesByRequestId
+  );
 }
 
 async function insertB2BApplication(
@@ -12998,12 +13854,22 @@ async function readRmaRowsForValues(
     const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
 
     if (error || !rows) {
-      return [];
+      throw rmaReadUnavailable(
+        "Supabase RMA requests could not be read for the requested scope.",
+        supabaseErrorDetails(error)
+      );
     }
 
     return rows;
-  } catch {
-    return [];
+  } catch (error) {
+    if (error instanceof RepositoryWriteError) {
+      throw error;
+    }
+
+    throw rmaReadUnavailable(
+      "Supabase RMA requests could not be read for the requested scope.",
+      supabaseErrorDetails(error)
+    );
   }
 }
 
@@ -13025,12 +13891,22 @@ async function readOrderLineRowsForLineIds(
     const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
 
     if (error || !rows) {
-      return [];
+      throw rmaReadUnavailable(
+        "Supabase order lines could not be read for the RMA request.",
+        supabaseErrorDetails(error)
+      );
     }
 
     return rows;
-  } catch {
-    return [];
+  } catch (error) {
+    if (error instanceof RepositoryWriteError) {
+      throw error;
+    }
+
+    throw rmaReadUnavailable(
+      "Supabase order lines could not be read for the RMA request.",
+      supabaseErrorDetails(error)
+    );
   }
 }
 
@@ -13048,14 +13924,14 @@ async function readOrderRowsForRmaRows(
   );
   const rowsById = new Map<string, DbRow>();
 
-  for (const row of await readRowsForColumnValues(client, "orders", "id", orderIds)) {
+  for (const row of await readRmaRowsForColumnValuesStrict(client, "orders", "id", orderIds)) {
     const id = pickString(row, ["id"]);
     if (id) {
       rowsById.set(id, row);
     }
   }
 
-  for (const row of await readRowsForColumnValues(client, "orders", "order_no", orderNos)) {
+  for (const row of await readRmaRowsForColumnValuesStrict(client, "orders", "order_no", orderNos)) {
     const id = pickString(row, ["id"]);
     if (id) {
       rowsById.set(id, row);
@@ -13069,7 +13945,7 @@ async function readRmaEventsByRequestId(
   client: SupabaseServerClient,
   requestIds: string[]
 ) {
-  const rows = await readRowsForColumnValues(
+  const rows = await readRmaRowsForColumnValuesStrict(
     client,
     "rma_request_events",
     "rma_request_id",
@@ -13100,7 +13976,7 @@ async function readRmaEventsByRequestId(
   return eventsByRequestId;
 }
 
-async function readRowsForColumnValues(
+async function readRmaRowsForColumnValuesStrict(
   client: SupabaseServerClient,
   table: string,
   column: string,
@@ -13121,13 +13997,78 @@ async function readRowsForColumnValues(
     const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
 
     if (error || !rows) {
-      return [];
+      throw rmaReadUnavailable(
+        `Supabase ${table} rows could not be read for the RMA request.`,
+        supabaseErrorDetails(error)
+      );
     }
 
     return rows;
-  } catch {
-    return [];
+  } catch (error) {
+    if (error instanceof RepositoryWriteError) {
+      throw error;
+    }
+
+    throw rmaReadUnavailable(
+      `Supabase ${table} rows could not be read for the RMA request.`,
+      supabaseErrorDetails(error)
+    );
   }
+}
+
+/**
+ * Hydrate the newest canonical RMA wallet request in one query for the admin
+ * list/detail mapper. The customer DTO never receives this admin-only state.
+ * A missing relation or query failure is a deployment/readiness error; it must
+ * not look like a request with no wallet status because that can make a
+ * commercial action appear available.
+ */
+async function readRmaWalletRefundStatusesByRequestId(
+  client: SupabaseServerClient,
+  requestIds: string[]
+): Promise<Map<string, RmaWalletRefundStatus>> {
+  const candidates = uniqueDefinedStrings(requestIds);
+  const statuses = new Map<string, RmaWalletRefundStatus>();
+
+  if (candidates.length === 0) {
+    return statuses;
+  }
+
+  try {
+    const { data, error } = await client
+      .from("wallet_refund_requests")
+      .select("rma_request_id, status, requested_at")
+      .in("rma_request_id", candidates)
+      .order("requested_at", { ascending: false });
+    const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
+
+    if (error || !rows) {
+      throw rmaReadUnavailable(
+        "Supabase wallet refund statuses could not be read for the RMA request.",
+        supabaseErrorDetails(error)
+      );
+    }
+
+    for (const row of rows) {
+      const requestId = pickString(row, ["rma_request_id"]);
+      const status = normalizeRmaWalletRefundStatus(pickString(row, ["status"]));
+
+      if (requestId && status && !statuses.has(requestId)) {
+        statuses.set(requestId, status);
+      }
+    }
+  } catch (error) {
+    if (error instanceof RepositoryWriteError) {
+      throw error;
+    }
+
+    throw rmaReadUnavailable(
+      "Supabase wallet refund statuses could not be read for the RMA request.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  return statuses;
 }
 
 function mapRowsById(rows: DbRow[]) {
@@ -13145,7 +14086,8 @@ function mapRowsById(rows: DbRow[]) {
 
 async function readOrderLineRowsForOrderIds(
   client: SupabaseServerClient,
-  orderIds: string[]
+  orderIds: string[],
+  options: { failClosed?: boolean } = {}
 ) {
   if (orderIds.length === 0) {
     return [];
@@ -13161,11 +14103,29 @@ async function readOrderLineRowsForOrderIds(
       : null;
 
     if (error || !rows) {
+      if (options.failClosed) {
+        throw rmaReadUnavailable(
+          "Supabase order lines could not be read for the after-sales scope.",
+          supabaseErrorDetails(error)
+        );
+      }
+
       return null;
     }
 
     return rows;
-  } catch {
+  } catch (error) {
+    if (options.failClosed) {
+      if (error instanceof RepositoryWriteError) {
+        throw error;
+      }
+
+      throw rmaReadUnavailable(
+        "Supabase order lines could not be read for the after-sales scope.",
+        supabaseErrorDetails(error)
+      );
+    }
+
     return null;
   }
 }
@@ -15096,7 +16056,8 @@ function mapRmaRow(
   row: DbRow,
   linesById: Map<string, DbRow>,
   eventsByRequestId: Map<string, RmaEvent[]> = new Map(),
-  ordersById: Map<string, DbRow> = new Map()
+  ordersById: Map<string, DbRow> = new Map(),
+  walletRefundStatusesByRequestId: Map<string, RmaWalletRefundStatus> = new Map()
 ): RmaRequest | null {
   const id = pickString(row, ["id", "rma_id", "request_id"]);
   const lineId = pickString(row, ["order_line_id", "order_item_id", "line_id"]);
@@ -15110,9 +16071,30 @@ function mapRmaRow(
     pickString(row, ["order_no", "order_number", "order_id", "orderId"]) ??
     pickString(orderRow, ["order_no", "order_number", "id"]) ??
     lineOrderId;
+  const orderNumber =
+    pickString(row, ["order_no", "order_number"]) ??
+    pickString(orderRow, ["order_no", "order_number"]);
 
   if (!id || !orderId) {
     return null;
+  }
+
+  const status = normalizeRmaStatus(pickString(row, ["status"]));
+  const resolutionAction = normalizeRmaResolutionAction(
+    pickString(row, ["resolution_action"])
+  );
+  const walletRefundStatus =
+    walletRefundStatusesByRequestId.get(id) ??
+    normalizeRmaWalletRefundStatus(pickString(row, ["wallet_refund_status"]));
+  let resolutionQuantity = null;
+
+  if (resolutionAction === "refund_wallet" || (!resolutionAction && status === "refunded")) {
+    resolutionQuantity = pickNumber(row, ["refund_approved_quantity"]);
+  } else if (
+    resolutionAction === "replacement" ||
+    (!resolutionAction && (status === "replacement_sent" || status === "replaced"))
+  ) {
+    resolutionQuantity = pickNumber(row, ["replacement_quantity"]);
   }
 
   const sku =
@@ -15127,10 +16109,16 @@ function mapRmaRow(
       pickString(row, ["product_name", "name"]) ??
       (line ? pickString(line, ["product_name", "name_snapshot", "name"]) : null) ??
       "Ricambio",
-    status: normalizeRmaStatus(pickString(row, ["status"])),
+    status,
     reason: pickString(row, ["reason", "problem_type"]) ?? "Richiesta assistenza",
+    reasonCode: pickString(row, ["reason_code"]),
     quantity: Math.max(1, Math.trunc(pickNumber(row, ["quantity"]) ?? 1)),
     orderLineId: lineId ?? undefined,
+    ownerUserId: pickString(row, ["user_id"]),
+    customerId: pickString(row, ["customer_id"]),
+    rmaNo: pickString(row, ["rma_no"]),
+    eligibleUntil: pickString(row, ["eligible_until"]),
+    policyScope: pickString(row, ["policy_scope"]) ?? undefined,
     createdAt: formatItalianDate(pickString(row, ["created_at", "createdAt"])),
     updatedAt: formatPartsProDateTime(pickString(row, ["updated_at", "updatedAt"])),
     resolution: rmaResolutionSummary(row),
@@ -15141,11 +16129,15 @@ function mapRmaRow(
       pickString(row, ["customer_name", "company_name"]) ??
       pickString(orderRow, ["customer_name", "company_name"]) ??
       undefined,
+    orderNumber,
     customerVisibleNote: pickString(row, ["customer_visible_note"]) ?? undefined,
     assignedAt: pickString(row, ["assigned_at"]),
     assignedBy: pickString(row, ["assigned_by"]),
     assignedTo: pickString(row, ["assigned_to"]),
     closedAt: pickString(row, ["closed_at"]),
+    customerShippedAt: pickString(row, ["customer_shipped_at"]),
+    returnCarrier: pickString(row, ["return_carrier"]),
+    returnTrackingCode: pickString(row, ["return_tracking_code"]),
     dueAt: pickString(row, ["due_at"]),
     internalNote: pickString(row, ["internal_note"]) ?? undefined,
     inventoryDisposition: normalizeRmaInventoryDisposition(
@@ -15153,9 +16145,13 @@ function mapRmaRow(
     ),
     labResult: pickString(row, ["lab_result"]) ?? undefined,
     refundAmount: pickNumber(row, ["refund_amount"]) ?? 0,
-    resolutionAction: normalizeRmaResolutionAction(
-      pickString(row, ["resolution_action"])
-    ),
+    resolutionAction,
+    receivedQuantity: pickNumber(row, ["received_quantity"]),
+    resolutionQuantity,
+    inventoryDispositionQuantity: pickNumber(row, ["inventory_disposition_quantity"]),
+    qcStatus: normalizeRmaQcStatus(pickString(row, ["qc_status"])),
+    replacementOrderId: pickString(row, ["replacement_order_id"]),
+    walletRefundStatus,
     reviewedAt: pickString(row, ["reviewed_at"]),
     receivedAt: pickString(row, ["received_at"]),
     resolvedAt: pickString(row, ["resolved_at"]),
@@ -15229,12 +16225,11 @@ function isRmaQuantityConsumingStatus(status: string | null) {
 }
 
 function rmaResolutionSummary(row: DbRow) {
-  const explicitResolution = pickString(row, [
-    "resolution",
-    "resolution_note",
-    "customer_visible_note",
-    "lab_result",
-  ]);
+  // Resolution notes, lab results, and customer-visible notes are separate
+  // fields. They are never a fallback for the canonical resolution summary:
+  // doing so would make an internal/admin note appear as the customer's
+  // requested resolution through the shared RMA mapper.
+  const explicitResolution = pickString(row, ["resolution"]);
 
   if (explicitResolution) {
     return explicitResolution;
@@ -16203,6 +17198,31 @@ function normalizeRmaStatus(value: string | null): RmaStatus {
   }
 
   return "submitted";
+}
+
+function normalizeRmaQcStatus(
+  value: string | null
+): "pending" | "passed" | "failed" | "not_required" {
+  if (value === "passed" || value === "failed" || value === "not_required") {
+    return value;
+  }
+
+  return "pending";
+}
+
+function normalizeRmaWalletRefundStatus(
+  value: string | null
+): RmaWalletRefundStatus | null {
+  if (
+    value === "pending" ||
+    value === "approved" ||
+    value === "rejected" ||
+    value === "cancelled"
+  ) {
+    return value;
+  }
+
+  return null;
 }
 
 function normalizeRmaResolutionAction(

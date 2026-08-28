@@ -25,6 +25,8 @@ export default async function Page({
     <RmaPage
       initialAccountAccess={toStoreHeaderAccountAccess(account)}
       initialOrderId={readSingleParam(params.order)}
+      initialOrderLineId={readSingleParam(params.line)}
+      initialRequestId={readSingleParam(params.requestId)}
     />
   );
 }
