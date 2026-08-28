@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiError } from "@/lib/partspro-api";
-import { confirmAdminSupplierBatchCharge } from "@/lib/partspro-repository";
+import { confirmAdminSupplierBatchChargeV2 } from "@/lib/partspro-repository";
 import {
   hasSupplierBatchReadPermission,
+  hasSupplierBatchCostPermission,
   parseAdminJsonBody,
   repositoryErrorResponse,
   requireAdminApi,
 } from "../../../../_shared";
-import { supplierBatchChargeConfirmSchema } from "../_schemas";
+import { supplierBatchChargeV2ConfirmSchema } from "../_schemas";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,9 @@ type SupplierBatchChargeParams = {
 };
 
 export async function POST(request: NextRequest, { params }: SupplierBatchChargeParams) {
-  const admin = await requireAdminApi("supplier_batch.manage_costs");
+  // Legacy supplier_batch.manage_costs is intentionally not a confirmation
+  // capability; V2 confirmation requires the dedicated confirm permission.
+  const admin = await requireAdminApi();
 
   if (!admin.ok) {
     return admin.response;
@@ -30,7 +33,11 @@ export async function POST(request: NextRequest, { params }: SupplierBatchCharge
     );
   }
 
-  const body = await parseAdminJsonBody(request, supplierBatchChargeConfirmSchema);
+  if (!hasSupplierBatchCostPermission(admin.authState, "confirm")) {
+    return apiError(403, "ADMIN_PERMISSION_DENIED", "Supplier batch confirmation permission is required.");
+  }
+
+  const body = await parseAdminJsonBody(request, supplierBatchChargeV2ConfirmSchema);
 
   if (!body.ok) {
     return body.response;
@@ -44,7 +51,7 @@ export async function POST(request: NextRequest, { params }: SupplierBatchCharge
   }
 
   try {
-    const result = await confirmAdminSupplierBatchCharge(decodedBatchCode, body.data);
+    const result = await confirmAdminSupplierBatchChargeV2(decodedBatchCode, body.data);
     return NextResponse.json({
       data: result.data,
       meta: { source: result.source },

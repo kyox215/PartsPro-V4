@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiError } from "@/lib/partspro-api";
 import { getAdminSupplierBatchDetail } from "@/lib/partspro-repository";
-import { repositoryErrorResponse, requireAdminApi } from "../../_shared";
+import {
+  hasSupplierBatchAuditPermission,
+  hasSupplierBatchHistoryPermission,
+  hasSupplierBatchReadPermission,
+  repositoryErrorResponse,
+  requireAdminApi,
+} from "../../_shared";
 import { toSupplierBatchDetailDto } from "../_dto";
 
 export const dynamic = "force-dynamic";
@@ -9,10 +15,14 @@ export const dynamic = "force-dynamic";
 type SupplierBatchParams = { params: Promise<{ batchCode: string }> };
 
 export async function GET(_request: NextRequest, { params }: SupplierBatchParams) {
-  const admin = await requireAdminApi("product.read_admin");
+  const admin = await requireAdminApi();
 
   if (!admin.ok) {
     return admin.response;
+  }
+
+  if (!hasSupplierBatchReadPermission(admin.authState)) {
+    return apiError(403, "ADMIN_PERMISSION_DENIED", "A supplier batch read permission is required.");
   }
 
   const { batchCode } = await params;
@@ -23,7 +33,11 @@ export async function GET(_request: NextRequest, { params }: SupplierBatchParams
   }
 
   try {
-    const result = await getAdminSupplierBatchDetail(decodedBatchCode);
+    const canReadHistory = hasSupplierBatchHistoryPermission(admin.authState);
+    const result = await getAdminSupplierBatchDetail(decodedBatchCode, {
+      includeHistory: canReadHistory,
+      includeAudit: false,
+    });
 
     if (!result.data) {
       return apiError(404, "ADMIN_SUPPLIER_BATCH_NOT_FOUND", "Supplier batch was not found.", {
@@ -31,7 +45,9 @@ export async function GET(_request: NextRequest, { params }: SupplierBatchParams
       });
     }
 
-    const detail = toSupplierBatchDetailDto(result.data);
+    const detail = toSupplierBatchDetailDto(result.data, {
+      includeSensitiveAudit: hasSupplierBatchAuditPermission(admin.authState),
+    });
 
     return NextResponse.json({
       data: detail,

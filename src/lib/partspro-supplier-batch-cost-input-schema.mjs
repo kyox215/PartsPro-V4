@@ -110,3 +110,132 @@ export const supplierBatchChargeConfirmSchema = baseChargeObject()
       context.addIssue({ code: "custom", path: ["vatTreatment"], message: "UNKNOWN_VAT_NOT_ALLOWED_ON_CONFIRM" });
     }
   });
+
+// V2 keeps the legacy EUR schema above intact for old callers while exposing
+// an explicit original-currency/immutable-FX contract for new API routes.
+const supplierBatchCurrencySchema = z.enum(["EUR", "USD", "CNY"]);
+const fxRateSchema = z
+  .number()
+  .finite()
+  .min(0.000001)
+  .max(1_000_000)
+  .refine((value) => {
+    const text = String(value);
+    if (/[eE]/.test(text)) {
+      return false;
+    }
+    return (text.split(".")[1] ?? "").length <= 12;
+  }, {
+    message: "FX rates must have at most twelve decimal places.",
+  });
+const fxDateSchema = z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/);
+const fxSourceSchema = z.string().trim().min(1).max(200);
+const optionalFxEvidenceUrlSchema = evidenceUrlSchema.optional();
+
+function refineV2FxContract(value, context) {
+  const hasRate = value.fxRateToEur !== undefined;
+  const hasDate = value.fxRateDate !== undefined;
+  const hasSource = value.fxRateSource !== undefined;
+  const hasEvidence = value.fxEvidenceUrl !== undefined;
+  if (value.currency === "EUR") {
+    if ((hasRate || hasDate || hasSource || hasEvidence) && (!hasRate || !hasDate || !hasSource)) {
+      context.addIssue({
+        code: "custom",
+        path: ["fxRateToEur"],
+        message: "EUR_FX_SNAPSHOT_INCOMPLETE",
+      });
+    }
+    if (hasRate && Math.abs(value.fxRateToEur - 1) > 1e-12) {
+      context.addIssue({ code: "custom", path: ["fxRateToEur"], message: "EUR_FX_RATE_MUST_BE_ONE" });
+    }
+    return;
+  }
+  if (!hasRate || !hasDate || !hasSource) {
+    context.addIssue({ code: "custom", path: ["fxRateToEur"], message: "NON_EUR_FX_SNAPSHOT_REQUIRED" });
+  }
+  if (hasEvidence && value.fxEvidenceUrl === null) {
+    context.addIssue({ code: "custom", path: ["fxEvidenceUrl"], message: "FX_EVIDENCE_URL_REQUIRED_OR_OMIT" });
+  }
+}
+
+function refineV2BatchValuationFx(value, context) {
+  const hasRate = value.batchGoodsValueFxRateToEur !== undefined;
+  const hasDate = value.batchGoodsValueFxDate !== undefined;
+  const hasSource = value.batchGoodsValueFxSource !== undefined;
+  const hasEvidence = value.batchGoodsValueFxEvidenceUrl !== undefined;
+  if ((hasRate || hasDate || hasSource || hasEvidence) && (!hasRate || !hasDate || !hasSource)) {
+    context.addIssue({ code: "custom", path: ["batchGoodsValueFxRateToEur"], message: "BATCH_FX_SNAPSHOT_INCOMPLETE" });
+  }
+  if (value.batchGoodsValueFxEvidenceUrl === null) {
+    context.addIssue({ code: "custom", path: ["batchGoodsValueFxEvidenceUrl"], message: "BATCH_FX_EVIDENCE_URL_REQUIRED_OR_OMIT" });
+  }
+}
+
+function baseV2ChargeObject() {
+  return z
+    .object({
+      allocationMethod: allocationMethodSchema,
+      amountNet: moneySchema,
+      capitalizedAmount: moneySchema,
+      carrierName: nullableTextSchema(200),
+      chargeId: canonicalUuidSchema.optional(),
+      chargeType: chargeTypeSchema,
+      currency: supplierBatchCurrencySchema,
+      evidenceUrl: evidenceUrlSchema.nullable().optional(),
+      fxEvidenceUrl: optionalFxEvidenceUrlSchema,
+      fxRateDate: fxDateSchema.optional(),
+      fxRateSource: fxSourceSchema.optional(),
+      fxRateToEur: fxRateSchema.optional(),
+      idempotencyKey: z.string().trim().min(8).max(200).optional(),
+      manualAllocations: z.array(manualAllocationSchema).max(500).optional(),
+      notes: nullableTextSchema(2000),
+      occurredAt: z.string().trim().max(80).datetime().nullable().optional(),
+      reference: nullableTextSchema(200),
+      vatAmount: moneySchema,
+      vatTreatment: vatTreatmentSchema,
+      zeroCostReason: nullableTextSchema(500),
+      batchGoodsValueFxRateToEur: fxRateSchema.optional(),
+      batchGoodsValueFxDate: fxDateSchema.optional(),
+      batchGoodsValueFxSource: fxSourceSchema.optional(),
+      batchGoodsValueFxEvidenceUrl: optionalFxEvidenceUrlSchema,
+    })
+    .strict()
+    .superRefine((value, context) => {
+      refineBaseCharge(value, context);
+      refineV2FxContract(value, context);
+      refineV2BatchValuationFx(value, context);
+    });
+}
+
+export const supplierBatchChargeV2PreviewSchema = baseV2ChargeObject();
+export const supplierBatchChargeV2EstimateSchema = baseV2ChargeObject().and(
+  z.object({ idempotencyKey: z.string().trim().min(8).max(200) }).strict()
+);
+export const supplierBatchChargeV2ConfirmSchema = baseV2ChargeObject()
+  .and(
+    z.object({
+      idempotencyKey: z.string().trim().min(8).max(200),
+      revision: z.string().trim().min(1).max(256),
+      previewFingerprint: z.string().trim().min(16).max(256),
+    }).strict()
+  )
+  .superRefine((value, context) => {
+    if (value.vatTreatment === "unknown") {
+      context.addIssue({ code: "custom", path: ["vatTreatment"], message: "UNKNOWN_VAT_NOT_ALLOWED_ON_CONFIRM" });
+    }
+  });
+export const supplierBatchChargeV2CancelSchema = z.object({
+  chargeId: canonicalUuidSchema,
+  reason: z.string().trim().min(1).max(1000),
+  idempotencyKey: z.string().trim().min(8).max(200),
+}).strict();
+export const supplierBatchChargeV2CorrectSchema = baseV2ChargeObject()
+  .and(
+    z.object({
+      chargeId: canonicalUuidSchema,
+      correctionReason: z.string().trim().min(1).max(1000),
+      idempotencyKey: z.string().trim().min(8).max(200),
+      revision: z.string().trim().min(1).max(256),
+      previewFingerprint: z.string().trim().min(16).max(256),
+    }).strict()
+  );

@@ -12,6 +12,8 @@ import {
   getAdminSupplierBatchExportData,
 } from "@/lib/partspro-repository";
 import {
+  hasSupplierBatchCostPermission,
+  hasSupplierBatchHistoryPermission,
   hasSupplierBatchReadPermission,
   parseAdminQuery,
   repositoryErrorResponse,
@@ -30,6 +32,13 @@ const supplierBatchExportQuerySchema = z
     q: z.string().trim().min(1).max(120).optional(),
     scope: z.enum(["batches", "lines", "charges"]).default("batches"),
     supplier: z.string().trim().min(1).max(120).optional(),
+    currency: z.enum(["EUR", "USD", "CNY"]).optional(),
+    costStatus: z.enum(["unrecorded", "estimated", "confirmed_zero", "confirmed", "needs_review"]).optional(),
+    chargeType: z.enum(["transport", "insurance", "customs", "handling", "other"]).optional(),
+    vatTreatment: z.enum(["recoverable", "non_recoverable", "unknown"]).optional(),
+    hasTransport: z.enum(["with", "without"]).optional(),
+    hasTransportCost: z.enum(["with", "without"]).optional(),
+    sort: z.enum(["updated_desc", "received_desc", "amount_desc", "supplier"]).default("updated_desc"),
   })
   .strict();
 
@@ -40,11 +49,9 @@ export async function GET(request: NextRequest) {
     return query.response;
   }
 
-  const admin = await requireAdminApi(
-    query.data.scope === "charges"
-      ? "supplier_batch.manage_costs"
-      : "product.read_admin"
-  );
+  const { format, scope, ...filters } = query.data;
+
+  const admin = await requireAdminApi();
 
   if (!admin.ok) {
     return admin.response;
@@ -58,13 +65,31 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const { format, scope, ...filters } = query.data;
+  // Every export scope carries financial or inventory facts.  Keep the
+  // dedicated export capability as the single gate; read/product permissions
+  // alone must never permit a file download.
+  if (!hasSupplierBatchCostPermission(admin.authState, "export")) {
+    return apiError(403, "ADMIN_PERMISSION_DENIED", "Supplier batch export permission is required.");
+  }
+
+  // Charge exports include allocations and the canonical history stream.  A
+  // product reader with export alone must not reach a path that hydrates the
+  // history RPC and then fails downstream with a less useful 403.
+  if (scope === "charges" && !hasSupplierBatchHistoryPermission(admin.authState)) {
+    return apiError(
+      403,
+      "ADMIN_PERMISSION_DENIED",
+      "Supplier batch cost read permission is required for charge exports."
+    );
+  }
 
   try {
     const exportData = await getAdminSupplierBatchExportData({
       ...filters,
       exportScope: scope,
-      limit: 500,
+      // The repository probes hard-limit + 1 before hydrating details and
+      // returns a stable 413 when the filtered scope is too large.
+      limit: 5001,
       offset: 0,
     });
     const batches = exportData.data.batches;

@@ -10,6 +10,9 @@ import {
   supplierBatchChargeConfirmSchema,
   supplierBatchChargeEstimateSchema,
   supplierBatchChargePreviewSchema,
+  supplierBatchChargeV2ConfirmSchema,
+  supplierBatchChargeV2CorrectSchema,
+  supplierBatchChargeV2PreviewSchema,
 } from "../src/lib/partspro-supplier-batch-cost-input-schema.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -52,11 +55,39 @@ const normalizeLineCost = loadSourceFunction(
     "roundSupplierBatchGoodsCostToCents",
     "roundSupplierBatchUnitCost",
     "readNonNegativeInteger",
+    "readNullableNonNegativeInteger",
     "readNonNegativeFinite",
+    "readNumber",
+    "readBoolean",
     "readString",
     "isRecord",
   ],
-  "normalizeSupplierBatchLineCost"
+  "normalizeSupplierBatchLineCost",
+  `
+function readSupplierBatchMoneyCents(value, centsKeys, decimalKeys = []) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value;
+  const readNumber = (candidate) => {
+    if (typeof candidate === "number" && Number.isFinite(candidate)) return candidate;
+    if (typeof candidate === "string" && candidate.trim() !== "") {
+      const parsed = Number(candidate);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  };
+  for (const key of centsKeys) {
+    const cents = readNumber(record[key]);
+    if (cents !== null && Number.isSafeInteger(cents)) return cents;
+  }
+  for (const key of decimalKeys) {
+    const decimal = readNumber(record[key]);
+    if (decimal !== null) {
+      const rounded = Math.round((decimal + Number.EPSILON) * 100);
+      if (Number.isSafeInteger(rounded)) return rounded;
+    }
+  }
+  return null;
+}`
 );
 const parseMoney = loadSourceFunction(
   dialogSource,
@@ -65,8 +96,17 @@ const parseMoney = loadSourceFunction(
 );
 const dateTimeToIso = loadSourceFunction(
   dialogSource,
-  ["supplierBatchDateTimeLocalToIso"],
+  [
+    "supplierBatchRomeOffsetMilliseconds",
+    "supplierBatchRomeDateTimeMatches",
+    "supplierBatchDateTimeLocalToIso",
+  ],
   "supplierBatchDateTimeLocalToIso"
+);
+const dateTimeFromIso = loadSourceFunction(
+  dialogSource,
+  ["supplierBatchDateTimeLocalFromIso"],
+  "supplierBatchDateTimeLocalFromIso"
 );
 const evidenceUrlAllowed = loadSourceFunction(
   dialogSource,
@@ -76,7 +116,17 @@ const evidenceUrlAllowed = loadSourceFunction(
 const formatUnitCost = loadSourceFunction(
   cardSource,
   ["formatSupplierBatchUnitCost"],
-  "formatSupplierBatchUnitCost"
+  "formatSupplierBatchUnitCost",
+  `
+function formatSupplierBatchUnitMoney(value, currency, locale) {
+  if (value === null || !Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 4,
+    maximumFractionDigits: 4,
+  }).format(value);
+}`
 );
 const formatLineLabel = loadSourceFunction(
   dialogSource,
@@ -92,6 +142,11 @@ const canConfirmCharge = loadSourceFunction(
   dialogSource,
   ["canConfirmSupplierBatchCharge"],
   "canConfirmSupplierBatchCharge"
+);
+const canCorrectCharge = loadSourceFunction(
+  dialogSource,
+  ["canCorrectSupplierBatchCharge"],
+  "canCorrectSupplierBatchCharge"
 );
 const previewIsCurrent = loadSourceFunction(
   dialogSource,
@@ -153,6 +208,26 @@ const classifyMutationReadback = loadSourceFunction(
   ["classifySupplierBatchMutationReadback"],
   "classifySupplierBatchMutationReadback"
 );
+const isCorrectionReceipt = loadSourceFunction(
+  dialogSource,
+  ["isRecord", "isNonEmptyReceiptString", "isSupplierBatchCorrectionReceipt"],
+  "isSupplierBatchCorrectionReceipt"
+);
+const isCorrectionReceiptForCurrent = loadSourceFunction(
+  dialogSource,
+  ["isRecord", "isNonEmptyReceiptString", "isSupplierBatchCorrectionReceipt", "isSupplierBatchCorrectionReceiptForCurrent"],
+  "isSupplierBatchCorrectionReceiptForCurrent"
+);
+const classifyCorrectionReadback = loadSourceFunction(
+  dialogSource,
+  ["isRecord", "isNonEmptyReceiptString", "isSupplierBatchCorrectionReceipt", "dedupeSupplierBatchHistory", "readSupplierBatchChargeCorrectionLinks", "classifySupplierBatchCorrectionReadback"],
+  "classifySupplierBatchCorrectionReadback"
+);
+const classifyCorrectionReadbackByContext = loadSourceFunction(
+  dialogSource,
+  ["isRecord", "dedupeSupplierBatchHistory", "readSupplierBatchChargeCorrectionLinks", "classifySupplierBatchCorrectionReadbackByContext"],
+  "classifySupplierBatchCorrectionReadbackByContext"
+);
 const isTrustedMutationErrorCode = loadSourceFunction(
   dialogSource,
   ["isSupplierBatchMutationErrorCodeTrusted"],
@@ -192,6 +267,7 @@ const buildPayload = loadSourceFunction(
   dialogSource,
   [
     "parseSupplierBatchMoneyInput",
+    "parseSupplierBatchFxRateInput",
     "supplierBatchDateTimeLocalToIso",
     "isSupplierBatchEvidenceUrl",
     "getSupplierBatchManualLines",
@@ -199,7 +275,11 @@ const buildPayload = loadSourceFunction(
     "buildSupplierBatchChargePayload",
   ],
   "buildSupplierBatchChargePayload",
-  "const MAX_MANUAL_ROWS = 500;"
+  `
+const MAX_MANUAL_ROWS = 500;
+function normalizeSupplierBatchCurrency(value) {
+  return value === "USD" || value === "CNY" ? value : "EUR";
+}`
 );
 const mapCostError = loadSourceFunction(
   dialogSource,
@@ -263,7 +343,7 @@ test("display helper labels estimated projected landing separately from confirme
   assert.equal(mixed.projectedLandedCents, 10900);
 });
 
-test("ownership and permission helpers reject cross-batch data and manage-only access", () => {
+test("ownership and permission helpers reject cross-batch data and enforce the five capability matrix", () => {
   const batchId = "11111111-1111-4111-8111-111111111111";
   const batchCode = "BATCH-UI";
   const summary = { batchId, batchCode };
@@ -276,16 +356,120 @@ test("ownership and permission helpers reject cross-batch data and manage-only a
   assert.equal(chargeBelongsToBatch({ ...charge, batchCode: "OTHER" }, batchId, batchCode), false);
   assert.equal(chargeBelongsToBatch({ ...charge, batchId: "22222222-2222-4222-8222-222222222222" }, batchId, batchCode), false);
 
-  assertPermissionState([], true, false, false);
-  assertPermissionState(["supplier_batch.manage_costs"], true, false, false);
-  assertPermissionState(["products.read_admin"], true, true, false);
-  assertPermissionState(["products.read_admin", "supplier_batch.manage_costs"], true, true, true);
-  assertPermissionState(["products.read_admin", "supplier_batch.manage_costs"], false, false, false);
+  assertPermissionState([], true, {
+    canRead: false,
+    canEstimate: false,
+    canConfirm: false,
+    canCorrect: false,
+    canExport: false,
+    canManage: false,
+  });
+  assertPermissionState(["supplier_batch.manage_costs"], true, {
+    canRead: false,
+    canEstimate: false,
+    canConfirm: false,
+    canCorrect: false,
+    canExport: false,
+    canManage: false,
+  });
+  for (const readPermission of [
+    "products.read_admin",
+    "product.read_admin",
+  ]) {
+    assertPermissionState([readPermission], true, {
+      canRead: true,
+      canEstimate: false,
+      canConfirm: false,
+      canCorrect: false,
+      canExport: false,
+      canManage: false,
+    });
+  }
+  assertPermissionState(["supplier_batch.read"], true, {
+    canRead: false,
+    canReadHistory: true,
+    canEstimate: false,
+    canConfirm: false,
+    canCorrect: false,
+    canExport: false,
+    canManage: false,
+  });
+  for (const unrelatedPermission of ["finance.read", "finance.cost_reconcile", "finance.export"]) {
+    assertPermissionState([unrelatedPermission], true, {
+      canRead: false,
+      canEstimate: false,
+      canConfirm: false,
+      canCorrect: false,
+      canExport: false,
+      canManage: false,
+    });
+  }
+  assertPermissionState(["products.read_admin", "supplier_batch.estimate"], true, {
+    canRead: true,
+    canEstimate: true,
+    canConfirm: false,
+    canCorrect: false,
+    canExport: false,
+    canManage: true,
+  });
+  assertPermissionState(["products.read_admin", "supplier_batch.manage_costs"], true, {
+    canRead: true,
+    canEstimate: true,
+    canConfirm: false,
+    canCorrect: false,
+    canExport: false,
+    canManage: true,
+  });
+  assertPermissionState(["products.read_admin", "supplier_batch.confirm", "supplier_batch.correct"], true, {
+    canRead: true,
+    canEstimate: false,
+    canConfirm: true,
+    canCorrect: true,
+    canExport: false,
+    canManage: false,
+  });
+  assertPermissionState(["products.read_admin", "supplier_batch.export"], true, {
+    canRead: true,
+    canEstimate: false,
+    canConfirm: false,
+    canCorrect: false,
+    canExport: true,
+    canManage: false,
+  });
+  assertPermissionState([
+    "products.read_admin",
+    "supplier_batch.manage_costs",
+    "supplier_batch.confirm",
+    "supplier_batch.correct",
+    "supplier_batch.export",
+  ], true, {
+    canRead: true,
+    canEstimate: true,
+    canConfirm: true,
+    canCorrect: true,
+    canExport: true,
+    canManage: true,
+  });
+  assertPermissionState([
+    "products.read_admin",
+    "supplier_batch.estimate",
+    "supplier_batch.confirm",
+    "supplier_batch.correct",
+    "supplier_batch.export",
+  ], false, {
+    canRead: false,
+    canEstimate: false,
+    canConfirm: false,
+    canCorrect: false,
+    canExport: false,
+    canManage: false,
+  });
 });
 
 test("line cost parser enforces the current quantity and landed arithmetic", () => {
   const valid = {
     batchLineId: "line-a",
+    originalCurrencyComparable: true,
     goodsCostCents: 300,
     confirmedInboundCents: 25,
     landedLineCostCents: 325,
@@ -330,7 +514,9 @@ test("form helpers keep blank money distinct from zero and enforce decimal input
   assert.equal(parseMoney("-1").error, "format");
   assert.equal(dateTimeToIso("").value, null);
   assert.equal(dateTimeToIso("not-a-date").error, "invalid");
-  assert.match(dateTimeToIso("2026-08-25T12:00").value, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(dateTimeToIso("2026-08-25T12:00").value, "2026-08-25T10:00:00.000Z");
+  assert.equal(dateTimeToIso("2026-03-29T02:30").error, "invalid");
+  assert.equal(dateTimeFromIso("2026-08-25T10:00:00.000Z"), "2026-08-25T12:00");
 });
 
 test("evidence URL protocol and derived unit formatting are fail-closed and precise", () => {
@@ -391,6 +577,11 @@ test("payload helper preserves zero reason, manual sums, edit identity and actua
     vatAmount: "0",
     vatTreatment: "unknown",
     zeroCostReason: "",
+    currency: "EUR",
+    fxRateToEur: "1",
+    fxRateDate: "2026-08-25",
+    fxRateSource: "EUR base",
+    correctionReason: "",
   };
   const blank = buildPayload(form, {}, lines, "create", "idempotency-1");
   assert.equal(blank.payload, null);
@@ -400,6 +591,7 @@ test("payload helper preserves zero reason, manual sums, edit identity and actua
   const valid = buildPayload({ ...form, zeroCostReason: "free shipment" }, {}, lines, "create", "idempotency-1");
   assert.ok(valid.payload);
   assert.equal(supplierBatchChargePreviewSchema.safeParse(valid.payload).success, true);
+  assert.equal(supplierBatchChargeV2PreviewSchema.safeParse(valid.payload).success, true);
   assert.equal(valid.payload.amountNet, 1.25);
   assert.equal(valid.payload.vatAmount, 0);
   assert.equal(valid.payload.currency, "EUR");
@@ -426,6 +618,57 @@ test("payload helper preserves zero reason, manual sums, edit identity and actua
   assert.equal(supplierBatchChargeConfirmSchema.safeParse(confirm.payload).success, true);
   assert.equal(confirm.payload.revision, "revision-1");
   assert.equal(supplierBatchChargeEstimateSchema.safeParse(confirm.payload).success, false);
+  assert.equal(supplierBatchChargeV2ConfirmSchema.safeParse(confirm.payload).success, false);
+  const v2Confirm = buildPayload(
+    mutationForm,
+    {},
+    lines,
+    "create",
+    "idempotency-1",
+    "revision-1",
+    undefined,
+    "preview-fingerprint-123456"
+  );
+  assert.ok(v2Confirm.payload);
+  assert.equal(supplierBatchChargeV2ConfirmSchema.safeParse(v2Confirm.payload).success, true);
+
+  const usdMissingFx = buildPayload(
+    {
+      ...form,
+      currency: "USD",
+      fxRateToEur: "",
+      fxRateDate: "",
+      fxRateSource: "",
+      zeroCostReason: "free shipment",
+    },
+    {},
+    lines,
+    "create",
+    "idempotency-usd"
+  );
+  assert.equal(usdMissingFx.payload, null);
+  assert.equal(usdMissingFx.fieldErrors.fxRateToEur, "required");
+  assert.equal(usdMissingFx.fieldErrors.fxRateDate, "invalid");
+  assert.equal(usdMissingFx.fieldErrors.fxRateSource, "required");
+
+  const usd = buildPayload(
+    {
+      ...form,
+      currency: "USD",
+      fxRateToEur: "0.92",
+      fxRateDate: "2026-08-25",
+      fxRateSource: "ECB snapshot",
+      zeroCostReason: "free shipment",
+    },
+    {},
+    lines,
+    "create",
+    "idempotency-usd"
+  );
+  assert.ok(usd.payload);
+  assert.equal(usd.payload.currency, "USD");
+  assert.equal(usd.payload.fxRateToEur, 0.92);
+  assert.equal(supplierBatchChargeV2PreviewSchema.safeParse(usd.payload).success, true);
 
   const manual = buildPayload(
     { ...form, allocationMethod: "manual", capitalizedAmount: "2", zeroCostReason: "" },
@@ -450,6 +693,25 @@ test("payload helper preserves zero reason, manual sums, edit identity and actua
   assert.equal(manualOk.payload.revision, "revision-1");
   assert.equal(supplierBatchChargeEstimateSchema.safeParse(manualOk.payload).success, false);
   assert.equal(supplierBatchChargeConfirmSchema.safeParse(manualOk.payload).success, false);
+
+  const correction = buildPayload(
+    {
+      ...mutationForm,
+      correctionReason: "Invoice correction",
+    },
+    {},
+    lines,
+    "correction",
+    "idempotency-correction",
+    "revision-2",
+    "44444444-4444-4444-8444-444444444444",
+    "preview-fingerprint-123456",
+    true
+  );
+  assert.ok(correction.payload);
+  assert.equal(correction.payload.chargeId, "44444444-4444-4444-8444-444444444444");
+  assert.equal(correction.payload.correctionReason, "Invoice correction");
+  assert.equal(supplierBatchChargeV2CorrectSchema.safeParse(correction.payload).success, true);
 });
 
 test("form fingerprint and stable error mapping support preview invalidation without leaking raw errors", () => {
@@ -519,6 +781,174 @@ test("mutation guards require a current preview and matching persisted identity"
   assert.equal(canConfirmCharge(false, "recoverable", false), false);
   assert.equal(canConfirmCharge(true, "unknown", false), false);
   assert.equal(canConfirmCharge(true, "recoverable", true), false);
+  assert.equal(canCorrectCharge(true, "recoverable", true, "FINANCE_ADJUSTMENT_REQUIRED"), true);
+  assert.equal(canCorrectCharge(true, "recoverable", true, "BATCH_FX_RATE_REQUIRED"), false);
+  assert.equal(canCorrectCharge(true, "unknown", true, "FINANCE_ADJUSTMENT_REQUIRED"), false);
+});
+
+test("dedicated correction receipts distinguish applied replacement from pending finance adjustment", () => {
+  const batchId = "batch-id";
+  const batchCode = "BATCH-UI";
+  const originalChargeId = "44444444-4444-4444-8444-444444444444";
+  const replacementChargeId = "55555555-5555-4555-8555-555555555555";
+  const correctionId = "66666666-6666-4666-8666-666666666666";
+  const idempotencyKey = "correction-key";
+  const previewFingerprint = "correction-fingerprint";
+  const payloadFingerprint = "replacement-payload-fingerprint";
+  const revision = "revision-1";
+  const applied = {
+    status: "corrected",
+    correctionId,
+    originalChargeId,
+    replacementChargeId,
+    batchCode,
+    idempotencyKey,
+    previewFingerprint,
+    revision,
+    financeAdjustmentRequired: false,
+    replacement: {
+      status: "confirmed",
+      batchCode,
+      charge: { chargeId: replacementChargeId },
+    },
+  };
+  const pending = {
+    status: "pending_finance_adjustment",
+    correctionId,
+    originalChargeId,
+    replacementChargeId: null,
+    batchCode,
+    idempotencyKey,
+    previewFingerprint,
+    revision,
+    financeAdjustmentRequired: true,
+    replacement: null,
+  };
+
+  assert.equal(isCorrectionReceipt(applied), true);
+  assert.equal(isCorrectionReceipt(pending), true);
+  assert.equal(isCorrectionReceipt({ ...pending, replacementChargeId: replacementChargeId }), false);
+  assert.equal(
+    isCorrectionReceiptForCurrent(applied, batchCode, originalChargeId, idempotencyKey, previewFingerprint, revision),
+    true
+  );
+  assert.equal(
+    isCorrectionReceiptForCurrent({ ...applied, revision: "stale" }, batchCode, originalChargeId, idempotencyKey, previewFingerprint, revision),
+    false
+  );
+
+  const appliedDetail = {
+    batch: { id: batchId, batchCode },
+    charges: [{
+      batchId,
+      batchCode,
+      chargeId: replacementChargeId,
+      status: "confirmed",
+      idempotencyKey,
+      payloadFingerprint: previewFingerprint,
+      metadata: {
+        correctionOriginalChargeId: originalChargeId,
+        correctionId,
+      },
+      correction: {
+        originalChargeId,
+        replacementChargeId,
+        correctionId,
+        status: "applied",
+        financeAdjustmentRequired: false,
+      },
+    }],
+    history: [],
+  };
+  assert.equal(classifyCorrectionReadback(appliedDetail, applied), "matched");
+  assert.equal(
+    classifyCorrectionReadback(
+      { ...appliedDetail, charges: [] },
+      applied
+    ),
+    "not_found"
+  );
+
+  const pendingDetail = {
+    batch: { id: batchId, batchCode },
+    charges: [{ batchId, batchCode, chargeId: originalChargeId, status: "confirmed" }],
+    history: [{
+      batchId,
+      batchCode,
+      status: "pending_finance_adjustment",
+      correctionId,
+    links: { originalChargeId, replacementChargeId: null, correctionId },
+    idempotencyKey,
+    payloadFingerprint: previewFingerprint,
+  }],
+  };
+  assert.equal(classifyCorrectionReadback(pendingDetail, pending), "correction_pending");
+  assert.equal(
+    classifyCorrectionReadback(
+      { ...pendingDetail, history: [] },
+      pending
+    ),
+    "not_found"
+  );
+
+  const uncertainContext = {
+    batch: { id: "batch-id", batchCode },
+    charges: [{
+      batchId: "batch-id",
+      batchCode,
+      chargeId: replacementChargeId,
+      status: "confirmed",
+      idempotencyKey,
+      payloadFingerprint,
+      metadata: {
+        correctionOriginalChargeId: originalChargeId,
+        correctionId,
+      },
+    }],
+    history: [],
+  };
+  assert.equal(
+    classifyCorrectionReadbackByContext(
+      uncertainContext,
+      batchCode,
+      originalChargeId,
+      idempotencyKey,
+      payloadFingerprint
+    ),
+    "not_found"
+  );
+  assert.equal(
+    classifyCorrectionReadbackByContext(
+      {
+        ...uncertainContext,
+        charges: [],
+        history: [{
+          batchId: "batch-id",
+          batchCode,
+          status: "pending_finance_adjustment",
+          correctionOfChargeId: originalChargeId,
+          correctionId,
+          idempotencyKey,
+          payloadFingerprint,
+        }],
+      },
+      batchCode,
+      originalChargeId,
+      idempotencyKey,
+      payloadFingerprint
+    ),
+    "correction_pending"
+  );
+  assert.equal(
+    classifyCorrectionReadbackByContext(
+      uncertainContext,
+      batchCode,
+      originalChargeId,
+      idempotencyKey,
+      "different-fingerprint"
+    ),
+    "not_found"
+  );
 });
 
 test("persisted mutation receipts are exact and bind to the original draft", () => {
@@ -887,26 +1317,80 @@ test("client DTO contract is fail-closed for cost summary, charges, line costs a
   assert.match(panelSource, /expectedQtyReceived === 0/);
   assert.match(panelSource, /landedUnitCost === expectedLandedUnitCost/);
   assert.match(panelSource, /weightGram/);
+  assert.match(panelSource, /formatSupplierBatchLineLandedCost/);
+  assert.match(panelSource, /originalComparable \? costs\.landedLineCostCents : costs\.landedLineCostEurCents/);
+  assert.match(panelSource, /originalComparable \? batchCurrency : "EUR"/);
   assert.match(panelSource, /rawWeight[\s\S]{0,260}weightGram === null/);
 });
 
-test("permission and charges-export contract stays read-only in the panel", () => {
+test("permission and charges-export contract stays explicit in the panel", () => {
   assert.match(panelSource, /resolveSupplierBatchCostPermissions\(\s*permissions,\s*permissionsLoaded\s*\)/);
   assert.match(panelSource, /const canManageSupplierBatchCosts = supplierBatchCostPermissions\.canManage/);
-  assert.match(panelSource, /canManage: canRead && permissions\.includes\("supplier_batch\.manage_costs"\)/);
+  assert.match(panelSource, /canRead|supplier_batch\.read/);
+  assert.match(panelSource, /canEstimateCosts/);
+  assert.match(panelSource, /canConfirmCosts/);
+  assert.match(panelSource, /canCorrectCosts/);
+  assert.match(panelSource, /canExportCosts/);
+  assert.match(panelSource, /supplier_batch\.manage_costs/);
   assert.match(panelSource, /type SupplierBatchExportScope = "batches" \| "lines" \| "charges"/);
   assert.match(panelSource, /onDownload\("charges",/);
-  assert.match(panelSource, /canManageCosts \? \(/);
+  assert.match(panelSource, /onAddCharge=\{(?:canManageSupplierBatchCosts|canEstimateSupplierBatchCosts)\s*\?/);
+  assert.match(panelSource, /canCancelCosts/);
+  assert.match(panelSource, /charges\/cancel/);
+  assert.match(panelSource, /onCorrectCharge/);
   assert.match(panelSource, /SupplierBatchTransportCostCard/);
   assert.match(panelSource, /onExportCharges=/);
   assert.match(panelSource, /onCostChanged=\{refreshSupplierBatchCost\}/);
-  assert.match(panelSource, /const refreshSupplierBatchCost = React\.useCallback\([\s\S]{0,700}Promise<AdminSupplierBatchDetail>[\s\S]{0,200}Promise\.all\([\s\S]{0,240}fetchAdminSupplierBatchDetail\(batchCode, signal\)[\s\S]{0,240}refreshSupplierBatches\(signal, \{ clearNotice: false \}\)/);
-  assert.match(panelSource, /async function fetchAdminSupplierBatchDetail\(batchCode: string, signal\?: AbortSignal\)/);
+  assert.match(panelSource, /const canEstimateSupplierBatchCosts = supplierBatchCostPermissions\.canEstimate/);
+  assert.match(panelSource, /const canConfirmSupplierBatchCosts = supplierBatchCostPermissions\.canConfirm/);
+  assert.match(panelSource, /const canCorrectSupplierBatchCosts = supplierBatchCostPermissions\.canCorrect/);
+  assert.match(panelSource, /const canExportSupplierBatchCosts = supplierBatchCostPermissions\.canExport/);
+  assert.match(panelSource, /const canCancelSupplierBatchCosts = canEstimateSupplierBatchCosts/);
+  assert.match(panelSource, /canEstimateCosts=\{canEstimateSupplierBatchCosts\}/);
+  assert.match(panelSource, /canCancelCosts=\{canCancelSupplierBatchCosts\}/);
+  assert.match(panelSource, /canConfirmCosts=\{canConfirmSupplierBatchCosts\}/);
+  assert.match(panelSource, /canCorrectCosts=\{canCorrectSupplierBatchCosts\}/);
+  assert.match(panelSource, /canExportCosts=\{canExportSupplierBatchCosts\}/);
+  assert.match(panelSource, /const refreshSupplierBatchCost = React\.useCallback\([\s\S]{0,700}Promise<AdminSupplierBatchDetail>[\s\S]{0,200}Promise\.all\([\s\S]{0,240}fetchAdminSupplierBatchDetail\(batchCode, canReadSupplierBatchHistory, signal\)[\s\S]{0,240}refreshSupplierBatches\(signal, \{ clearNotice: false \}\)/);
+  assert.match(panelSource, /async function fetchAdminSupplierBatchDetail\(\s*batchCode: string,\s*canReadHistory = false,\s*signal\?: AbortSignal\s*\)/);
   assert.match(panelSource, /fetch\([\s\S]{0,260}signal,\s*\}\s*\)/);
   assert.match(panelSource, /return nextDetail/);
   assert.match(panelSource, /if \(options\.clearNotice === false\) \{\s*throw error;/);
-  assert.match(panelSource, /canManageSupplierBatchCosts \? \(format\) => void onDownload\(batch, "charges", format\)/);
+  assert.match(panelSource, /canExportCosts && canReadHistory \? \(format\) => void onDownload\(batch, "charges", format\)/);
   assert.doesNotMatch(panelSource, /charges\/(?:preview|estimate|confirm)/);
+});
+
+test("supplier batch filters use namespaced URL state and strict API keys", () => {
+  for (const key of [
+    "batchQ",
+    "batchSupplier",
+    "batchCurrency",
+    "batchCostStatus",
+    "batchChargeType",
+    "batchVatTreatment",
+    "batchHasTransport",
+    "batchSort",
+  ]) {
+    assert.match(panelSource, new RegExp(`searchParams\\.get\\("${key}"\\)`));
+    assert.match(panelSource, new RegExp(`setOrDelete\\("${key}"`));
+  }
+
+  const searchParamsStart = panelSource.indexOf("function supplierBatchSearchParams(");
+  assert.notEqual(searchParamsStart, -1);
+  const searchParamsSource = panelSource.slice(searchParamsStart, panelSource.indexOf("\n}\n\nasync function downloadResponseBlob", searchParamsStart));
+  for (const key of [
+    'params.set("q", filters.q.trim())',
+    'params.set("supplier", filters.supplier.trim())',
+    'params.set("currency", filters.currency)',
+    'params.set("costStatus", filters.costStatus)',
+    'params.set("chargeType", filters.chargeType)',
+    'params.set("vatTreatment", filters.vatTreatment)',
+    'params.set("hasTransport", filters.hasTransport)',
+    'params.set("sort", filters.sort)',
+  ]) {
+    assert.match(searchParamsSource, new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  assert.doesNotMatch(searchParamsSource, /batchQ|batchSupplier|batchCurrency|batchCostStatus|batchChargeType|batchVatTreatment|batchHasTransport|batchSort/);
 });
 
 test("transport cost dialog is lazy and mounts only while open", () => {
@@ -956,7 +1440,7 @@ test("card exposes compact display components and status-only charge semantics",
   assert.match(cardSource, /export function SupplierBatchCostSummaryCompact/);
   assert.match(cardSource, /export function SupplierBatchLineCostCompact/);
   assert.match(cardSource, /export function SupplierBatchTransportCostCard/);
-  assert.match(cardSource, /charge\.status === "estimated"[\s\S]{0,100}canManage[\s\S]{0,100}copy\.editableCharge[\s\S]{0,100}copy\.estimatedCharge/);
+  assert.match(cardSource, /charge\.status === "estimated"[\s\S]{0,140}canEstimate[\s\S]{0,120}copy\.editableCharge[\s\S]{0,100}copy\.estimatedCharge/);
   assert.match(cardSource, /SupplierBatchCostExportMenu/);
   assert.match(cardSource, /onExport\("csv"\)/);
   assert.match(cardSource, /onExport\("xlsx"\)/);
@@ -966,10 +1450,19 @@ test("card exposes compact display components and status-only charge semantics",
   assert.doesNotMatch(cardSource, /supplier_batch\.manage_costs/);
   assert.match(cardSource, /onAddCharge/);
   assert.match(cardSource, /onEditCharge/);
-  assert.match(cardSource, /charge\.status === "estimated" && canManage/);
+  assert.match(cardSource, /charge\.status === "estimated" && canEstimateCosts/);
+  assert.match(cardSource, /onCancelCharge/);
+  assert.match(cardSource, /onCorrectCharge/);
+  assert.match(cardSource, /isSupplierBatchCorrectionReplacement/);
+  assert.match(cardSource, /correctionApplied/);
+  assert.match(cardSource, /correctionPending/);
+  assert.match(cardSource, /entry\.links\?\.originalChargeId/);
+  assert.match(cardSource, /entry\.links\?\.replacementChargeId/);
+  assert.match(cardSource, /copy\.correctionLink/);
+  assert.match(cardSource, /canExportCosts/);
   assert.match(cardSource, /export function formatSupplierBatchUnitCost/);
-  assert.match(cardSource, /formatSupplierBatchUnitCost\(costs\.landedUnitCost, language\)/);
-  assert.match(dialogSource, /formatSupplierBatchUnitCost\(line\.currentLandedUnitCost, language\)/);
+  assert.match(cardSource, /formatSupplierBatchUnitMoney\(costs\.landedUnitCost, display\.currency/);
+  assert.match(dialogSource, /formatPreviewLineUnit\(line, line\.currentLandedUnitCost, line\.currentLandedUnitCostEur, language, previewCurrency\)/);
   assert.doesNotMatch(dialogSource, /export function formatSupplierBatchUnitCost/);
 
   const compactSource = cardSource.slice(
@@ -981,12 +1474,40 @@ test("card exposes compact display components and status-only charge semantics",
 });
 
 test("dialog B2 contract gates mutations on current preview and server readback", () => {
-  assert.match(dialogSource, /supplierBatchChargePreviewSchema\.safeParse/);
-  assert.match(dialogSource, /supplierBatchChargeEstimateSchema\.safeParse\(payload\)/);
-  assert.match(dialogSource, /supplierBatchChargeConfirmSchema\.safeParse\(payload\)/);
+  assert.match(dialogSource, /supplierBatchChargePreviewSchemaV2\.safeParse\(payload\)/);
+  assert.match(dialogSource, /supplierBatchChargeEstimateSchemaV2\.safeParse\(payload\)/);
+  assert.match(dialogSource, /supplierBatchChargeConfirmSchemaV2\.safeParse\(payload\)/);
+  assert.match(dialogSource, /supplierBatchChargeCorrectSchemaV2\.safeParse\(payload\)/);
   assert.match(dialogSource, /charges\/preview/);
   assert.match(dialogSource, /charges\/estimate/);
   assert.match(dialogSource, /charges\/confirm/);
+  assert.match(dialogSource, /charges\/correct/);
+  assert.match(dialogSource, /mode=correction/);
+  assert.match(dialogSource, /normalizeSupplierBatchCorrectionReceipt/);
+  assert.match(dialogSource, /kind: "correction_receipt"/);
+  assert.match(dialogSource, /isSupplierBatchCorrectionReceiptForCurrent/);
+  assert.match(dialogSource, /classifySupplierBatchCorrectionReadback/);
+  assert.match(dialogSource, /classifySupplierBatchCorrectionReadbackByContext/);
+  assert.match(dialogSource, /correction_pending/);
+  assert.match(dialogSource, /canCorrectSupplierBatchCharge/);
+  assert.match(dialogSource, /replacementChargeId/);
+  assert.match(dialogSource, /correctionPending/);
+  assert.match(dialogSource, /correctionCurrentAllocation/);
+  assert.match(dialogSource, /correctionCandidateAllocation/);
+  assert.match(dialogSource, /correctionCurrentLandedLine/);
+  assert.match(dialogSource, /correctionProjectedLandedLine/);
+  assert.match(dialogSource, /correctionOtherTotal/);
+  assert.match(dialogSource, /correctionBeforeTotal/);
+  assert.match(dialogSource, /correctionAfterTotal/);
+  assert.match(dialogSource, /correctionCostDelta/);
+  assert.match(dialogSource, /formatCorrectionPreviewEurCents/);
+  assert.match(dialogSource, /formatCorrectionPreviewLineCents/);
+  assert.match(dialogSource, /formatPreviewLineCents/);
+  assert.match(dialogSource, /formatPreviewLineUnit/);
+  assert.match(dialogSource, /line\.originalCurrencyComparable === false/);
+  assert.match(dialogSource, /formatSupplierBatchCents\(eurCents, "EUR"/);
+  assert.doesNotMatch(dialogSource, /已排除原费用/);
+  assert.doesNotMatch(dialogSource, /costo originale escluso/);
   assert.match(dialogSource, /normalizeSupplierBatchCostRpcResult\(data\)/);
   assert.match(dialogSource, /isSupplierBatchMutationReceiptEnvelope\(data\)/);
   assert.match(dialogSource, /data\.outcome === "persisted_readback_required"/);
@@ -1031,7 +1552,7 @@ test("dialog B2 contract gates mutations on current preview and server readback"
   assert.match(dialogSource, /signal/);
   assert.match(dialogSource, /25_000/);
   assert.match(dialogSource, /window\.clearTimeout\(timeoutId\)/);
-  assert.match(dialogSource, /pending === "estimate" \|\| pending === "confirm" \|\| pending === "refresh"/);
+  assert.match(dialogSource, /pending === "estimate" \|\| pending === "confirm" \|\| pending === "correct" \|\| pending === "refresh"/);
   assert.match(dialogSource, /persistedKnownSuccess !== null \|\| uncertainMutation !== null/);
   assert.match(dialogSource, /setFieldErrors\(\{\}\)/);
   assert.match(dialogSource, /formatSupplierBatchCostLineLabel/);
@@ -1040,6 +1561,11 @@ test("dialog B2 contract gates mutations on current preview and server readback"
   assert.match(dialogSource, /buildSupplierBatchFieldAriaDescribedBy/);
   assert.match(dialogSource, /chargeIsReadOnly/);
   assert.match(dialogSource, /charge\.status !== "estimated"/);
+  assert.match(dialogSource, /mode === "correction"/);
+  assert.match(dialogSource, /correctionReason/);
+  assert.match(dialogSource, /canCorrectCosts/);
+  assert.match(dialogSource, /aria-modal=\{true\}/);
+  assert.match(dialogSource, /draftGuard/);
   assert.match(dialogSource, /line\.lineNo/);
   assert.match(dialogSource, /line\.skuCode/);
   assert.doesNotMatch(dialogSource, /line\.id\.slice/);
@@ -1051,8 +1577,10 @@ test("dialog B2 contract gates mutations on current preview and server readback"
   assert.match(dialogSource, /WEIGHT_REQUIRED_FOR_ESTIMATE/);
   assert.match(dialogSource, /runMutation\("estimate"\)/);
   assert.match(dialogSource, /runMutation\("confirm"\)/);
+  assert.match(dialogSource, /runMutation\("correct"\)/);
   assert.match(dialogSource, /if \(openRef\.current\) onOpenChange\(false\)/);
   assert.match(dialogSource, /if \(mutationResponse\.kind === "receipt"\)/);
+  assert.match(dialogSource, /if \(mutationResponse\.kind === "correction_receipt"\)/);
   assert.match(dialogSource, /mutationResponse\.receipt\.chargeId/);
   const postMutationParser = dialogSource.slice(
     dialogSource.indexOf("async function postMutation"),
@@ -1079,7 +1607,7 @@ test("dialog B2 contract gates mutations on current preview and server readback"
     dialogSource.indexOf("    } catch (cause) {", dialogSource.indexOf("// The mutation response is authoritative enough"))
   );
   assert.match(knownSuccessReadback, /setPersistedKnownSuccess\(persistedContext\)/);
-  assert.match(knownSuccessReadback, /readback\.outcome === "matched"[\s\S]{0,220}reset\(\)/);
+  assert.match(knownSuccessReadback, /readback\.outcome === "matched" \|\| readback\.outcome === "correction_pending"[\s\S]{0,220}reset\(\)/);
   assert.match(knownSuccessReadback, /READBACK_IDEMPOTENCY_CONFLICT/);
   assert.match(knownSuccessReadback, /READBACK_NOT_FOUND/);
   assert.doesNotMatch(knownSuccessReadback, /setUncertainMutation/);
@@ -1105,7 +1633,7 @@ test("dialog B2 contract gates mutations on current preview and server readback"
     dialogSource.indexOf("function handleOpenChange")
   );
   assert.match(refreshRetryFunction, /performMutationReadback\(requestId, context\)/);
-  assert.match(refreshRetryFunction, /readback\.outcome === "matched"[\s\S]{0,180}reset\(\)/);
+  assert.match(refreshRetryFunction, /readback\.outcome === "matched" \|\| readback\.outcome === "correction_pending"[\s\S]{0,180}reset\(\)/);
   assert.doesNotMatch(refreshRetryFunction, /postMutation\(/);
   assert.doesNotMatch(refreshRetryFunction, /runMutation\(/);
   assert.match(refreshRetryFunction, /READBACK_IDEMPOTENCY_CONFLICT/);
@@ -1175,10 +1703,11 @@ function loadSourceFunction(source, names, entryPoint, prefix = "") {
   return context.result;
 }
 
-function assertPermissionState(permissions, permissionsLoaded, canRead, canManage) {
+function assertPermissionState(permissions, permissionsLoaded, expected) {
   const actual = resolvePermissions(permissions, permissionsLoaded);
-  assert.equal(actual.canRead, canRead);
-  assert.equal(actual.canManage, canManage);
+  for (const [capability, value] of Object.entries(expected)) {
+    assert.equal(actual[capability], value, `${capability} should match for ${permissions.join(", ") || "no permissions"}`);
+  }
 }
 
 function extractFunction(source, name) {

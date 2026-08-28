@@ -14,6 +14,18 @@ export const adminPanelPermissions = {
 
 export const CUSTOMER_MANAGE_LEVEL_PERMISSION = "customers.manage_level";
 
+// V2 uses these fine-grained capabilities at the API/RPC boundary. The
+// legacy manage_costs permission remains defined below for compatibility;
+// role assignment is intentionally performed by the guarded migration.
+export const supplierBatchCostPermissions = {
+  read: "supplier_batch.read",
+  estimate: "supplier_batch.estimate",
+  confirm: "supplier_batch.confirm",
+  correct: "supplier_batch.correct",
+  export: "supplier_batch.export",
+  legacyManage: "supplier_batch.manage_costs",
+} as const;
+
 export const adminPermissions = [
   "panel.orders",
   "panel.accounts",
@@ -45,6 +57,11 @@ export const adminPermissions = [
   "finance.manage",
   "finance.export",
   "finance.cost_reconcile",
+  "supplier_batch.read",
+  "supplier_batch.estimate",
+  "supplier_batch.confirm",
+  "supplier_batch.correct",
+  "supplier_batch.export",
   "supplier_batch.manage_costs",
   "products.read_admin",
   "products.manage",

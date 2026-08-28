@@ -45,7 +45,10 @@ test("summary, charge, allocation and projection DTOs round-trip integer cents",
 
   assert.equal(summaryDto.goodsValue, 100);
   assert.equal(normalizeSupplierBatchCostSummary(summaryDto)?.goodsValueCents, 10000);
-  assert.deepEqual(normalizeSupplierBatchCharge(chargeDto), charge);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(normalizeSupplierBatchCharge(chargeDto))),
+    JSON.parse(JSON.stringify(charge))
+  );
   assert.equal(normalizeSupplierBatchRpcAllocation(allocationDto)?.allocatedAmountCents, 10000);
   assert.equal(
     normalizeSupplierBatchRpcAllocation(rpcDto.allocations[0])?.allocatedAmountCents,
@@ -168,6 +171,22 @@ test("DTOs do not leak mixed internal money keys while line costs remain the exp
   assert.equal(Object.hasOwn(allocation, "landedLineCostCents"), false);
   assert.equal(Object.hasOwn(allocation, "allocatedAmountCents"), false);
   assertNoCentsKeys(wire);
+});
+
+test("charge DTO strips correction state and relationship metadata", () => {
+  const charge = makeCharge("confirmed");
+  charge.metadata = {
+    source: "test",
+    correctionStatus: "applied",
+    correctionFingerprint: "secret-correction-fingerprint",
+    originalChargeId: ids.charge,
+    replacementChargeId: ids.charge,
+  };
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(dto.toSupplierBatchChargeDto(charge).metadata)),
+    { source: "test" }
+  );
 });
 
 function loadDtoModule() {

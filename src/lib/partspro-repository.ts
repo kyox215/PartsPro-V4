@@ -65,14 +65,19 @@ import {
   normalizeSupplierBatchChargeAllocation,
   normalizeSupplierBatchCostRpcResult,
   normalizeSupplierBatchCostSummary,
+  normalizeSupplierBatchCorrectionReceipt,
+  resolveSupplierBatchEffectiveChargeIds,
   supplierBatchExportRowCount,
   summarizeSupplierBatchLineCosts,
 } from "@/lib/partspro-supplier-batch-cost-core.mjs";
 import type {
+  SupplierBatchCurrency,
   SupplierBatchCharge,
   SupplierBatchChargeAllocation,
   SupplierBatchCostRpcResult,
   SupplierBatchCostSummary,
+  SupplierBatchCorrectionPreviewTotals,
+  SupplierBatchCorrectionResult,
   SupplierBatchLineCost,
   SupplierBatchLineProjection,
 } from "@/lib/partspro-supplier-batch-cost-core.mjs";
@@ -464,9 +469,28 @@ export type AdminSupplier = {
 };
 
 export type AdminSupplierBatchCostSummary = SupplierBatchCostSummary;
-export type AdminSupplierBatchCharge = SupplierBatchCharge;
-export type AdminSupplierBatchChargeAllocation = SupplierBatchChargeAllocation;
+export type AdminSupplierBatchChargeAllocation = SupplierBatchChargeAllocation & {
+  /** Persisted rows carry the resolved charge/batch currency context. */
+  currency?: string | null;
+};
+export type AdminSupplierBatchCharge = SupplierBatchCharge & {
+  allocations?: AdminSupplierBatchChargeAllocation[];
+  /** True only for the charge version used in effective landed-cost totals. */
+  effective?: boolean;
+  /** Applied corrections supersede the original physical charge row. */
+  superseded?: boolean;
+  /** Canonical correction linkage for audit/action gating. */
+  correction?: {
+    correctionId: string | null;
+    originalChargeId: string | null;
+    replacementChargeId: string | null;
+    status: string | null;
+    financeAdjustmentRequired: boolean | null;
+  } | null;
+};
 export type AdminSupplierBatchCostRpcResult = SupplierBatchCostRpcResult;
+export type AdminSupplierBatchCorrectionPreviewTotals = SupplierBatchCorrectionPreviewTotals;
+export type AdminSupplierBatchCorrectionResult = SupplierBatchCorrectionResult;
 export type AdminSupplierBatchLineCost = SupplierBatchLineCost;
 export type AdminSupplierBatchLineProjection = SupplierBatchLineProjection;
 
@@ -477,7 +501,7 @@ export type AdminSupplierBatchChargeInput = {
   amountNet: number;
   vatAmount: number;
   capitalizedAmount: number;
-  currency: "EUR";
+  currency: SupplierBatchCurrency;
   vatTreatment: "recoverable" | "non_recoverable" | "unknown";
   allocationMethod: "goods_value" | "received_qty" | "weight" | "manual";
   carrierName?: string | null;
@@ -487,6 +511,16 @@ export type AdminSupplierBatchChargeInput = {
   notes?: string | null;
   zeroCostReason?: string | null;
   manualAllocations?: Array<{ batchLineId: string; amount: number }>;
+  fxRateToEur?: number;
+  fxRateDate?: string;
+  fxRateSource?: string;
+  fxEvidenceUrl?: string;
+  batchGoodsValueFxRateToEur?: number;
+  batchGoodsValueFxDate?: string;
+  batchGoodsValueFxSource?: string;
+  batchGoodsValueFxEvidenceUrl?: string;
+  previewFingerprint?: string;
+  correctionReason?: string;
 };
 
 export type AdminSupplierBatch = {
@@ -520,6 +554,12 @@ export type AdminSupplierBatch = {
   modelPrefixIssueCount: number;
   verification: AdminSupplierBatchVerification;
   costSummary: AdminSupplierBatchCostSummary | null;
+  /** Batch-level goods valuation snapshot, independent from charge FX. */
+  goodsValueEur?: number | null;
+  goodsValueFxRateToEur?: number | null;
+  goodsValueFxDate?: string | null;
+  goodsValueFxSource?: string | null;
+  goodsValueFxEvidenceUrl?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -529,13 +569,20 @@ export type AdminSupplierBatchVerificationStatus = "ok" | "warning" | "error";
 
 export type AdminSupplierBatchQueryInput = {
   batchCode?: string;
+  chargeType?: SupplierBatchCharge["chargeType"];
+  costStatus?: SupplierBatchCostSummary["costStatus"];
+  currency?: SupplierBatchCurrency;
   dateFrom?: string;
   dateMode?: AdminSupplierBatchDateMode;
   dateTo?: string;
+  hasTransport?: "with" | "without";
+  hasTransportCost?: "with" | "without";
   limit?: number;
   offset?: number;
   q?: string;
+  sort?: "updated_desc" | "received_desc" | "amount_desc" | "supplier";
   supplier?: string;
+  vatTreatment?: SupplierBatchCharge["vatTreatment"];
   exportScope?: "batches" | "lines" | "charges";
 };
 
@@ -559,9 +606,6 @@ export type AdminSupplierBatchLineProduct = {
   actualQty: number;
   availableQty: number;
   lockedQty: number;
-  costPrice: number;
-  retailPrice: number;
-  b2bPrice: number;
   weightGram: number | null;
   imagePath: string | null;
   modelCodes: string[];
@@ -596,6 +640,8 @@ export type AdminSupplierBatchDetail = {
   batch: AdminSupplierBatch;
   lines: AdminSupplierBatchLine[];
   charges: AdminSupplierBatchCharge[];
+  allocations?: AdminSupplierBatchChargeAllocation[];
+  history?: AdminSupplierBatchCostHistoryEntry[];
   verification: AdminSupplierBatchVerification;
 };
 
@@ -2726,10 +2772,14 @@ export async function listAdminSupplierBatches(
 }
 
 export async function getAdminSupplierBatchDetail(
-  batchCode: string
+  batchCode: string,
+  options: {
+    includeHistory?: boolean;
+    includeAudit?: boolean;
+  } = {}
 ): Promise<RepositoryResult<AdminSupplierBatchDetail | null>> {
   const context = await requireSupabaseContext();
-  const detail = await readAdminSupplierBatchDetail(context.client, batchCode);
+  const detail = await readAdminSupplierBatchDetail(context.client, batchCode, options);
 
   return {
     data: detail,
@@ -2737,49 +2787,370 @@ export async function getAdminSupplierBatchDetail(
   };
 }
 
-export async function previewAdminSupplierBatchCharge(
+export async function previewAdminSupplierBatchChargeV2(
   batchCode: string,
   input: AdminSupplierBatchChargeInput
 ): Promise<RepositoryResult<AdminSupplierBatchCostRpcResult>> {
   const context = await requireSupabaseContext();
-  const data = await callSupplierBatchCostRpc(
+  const data = await callSupplierBatchCostRpcV2(
     context.client,
-    "admin_preview_supplier_batch_charge",
+    "admin_preview_supplier_batch_charge_v2",
     batchCode,
     input
   );
-
   return { data, source: "supabase" };
 }
 
-export async function saveAdminSupplierBatchChargeEstimate(
+/**
+ * Correction preview has a separate permission-checked SQL contract.  Keep
+ * it out of the ordinary V2 preview wrapper so a correction can never fall
+ * through to the create/estimate RPC during a rolling deployment.
+ */
+export async function previewAdminSupplierBatchChargeCorrectionV2(
   batchCode: string,
-  input: AdminSupplierBatchChargeInput
+  input: AdminSupplierBatchChargeInput & {
+    chargeId: string;
+    correctionReason?: string;
+    revision?: string;
+    previewFingerprint?: string;
+  }
 ): Promise<RepositoryResult<AdminSupplierBatchCostRpcResult>> {
   const context = await requireSupabaseContext();
-  const data = await callSupplierBatchCostRpc(
+  const data = await callSupplierBatchCorrectionPreviewRpc(
     context.client,
-    "admin_save_supplier_batch_charge_estimate",
     batchCode,
     input
   );
-
   return { data, source: "supabase" };
 }
 
-export async function confirmAdminSupplierBatchCharge(
+export async function saveAdminSupplierBatchChargeEstimateV2(
   batchCode: string,
-  input: AdminSupplierBatchChargeInput & { revision: string }
+  input: AdminSupplierBatchChargeInput & { idempotencyKey: string }
 ): Promise<RepositoryResult<AdminSupplierBatchCostRpcResult>> {
   const context = await requireSupabaseContext();
-  const data = await callSupplierBatchCostRpc(
+  const data = await callSupplierBatchCostRpcV2(
     context.client,
-    "admin_confirm_supplier_batch_charge",
+    "admin_save_supplier_batch_charge_estimate_v2",
     batchCode,
     input
   );
-
   return { data, source: "supabase" };
+}
+
+export async function confirmAdminSupplierBatchChargeV2(
+  batchCode: string,
+  input: AdminSupplierBatchChargeInput & {
+    idempotencyKey: string;
+    revision: string;
+    previewFingerprint: string;
+  }
+): Promise<RepositoryResult<AdminSupplierBatchCostRpcResult>> {
+  const context = await requireSupabaseContext();
+  const data = await callSupplierBatchCostRpcV2(
+    context.client,
+    "admin_confirm_supplier_batch_charge_v2",
+    batchCode,
+    input
+  );
+  return { data, source: "supabase" };
+}
+
+export async function cancelAdminSupplierBatchChargeV2(
+  batchCode: string,
+  input: { chargeId: string; reason: string; idempotencyKey: string }
+): Promise<RepositoryResult<AdminSupplierBatchCostRpcResult>> {
+  const context = await requireSupabaseContext();
+  const data = await callSupplierBatchCostRpcV2(
+    context.client,
+    "admin_cancel_supplier_batch_charge_v2",
+    batchCode,
+    input
+  );
+  return { data, source: "supabase" };
+}
+
+export async function correctAdminSupplierBatchChargeV2(
+  batchCode: string,
+  input: AdminSupplierBatchChargeInput & {
+    chargeId: string;
+    correctionReason?: string;
+    idempotencyKey: string;
+    revision: string;
+    previewFingerprint: string;
+  }
+): Promise<RepositoryResult<AdminSupplierBatchCorrectionResult>> {
+  const context = await requireSupabaseContext();
+  const data = await callSupplierBatchCostRpcV2(
+    context.client,
+    "admin_correct_supplier_batch_charge_v2",
+    batchCode,
+    input
+  );
+  return { data, source: "supabase" };
+}
+
+export type AdminSupplierBatchCostHistoryEntry = {
+  eventId: string;
+  batchId: string;
+  batchCode: string;
+  chargeId: string | null;
+  correctionId: string | null;
+  linkedChargeId: string | null;
+  links: {
+    originalChargeId: string | null;
+    replacementChargeId: string | null;
+    correctionId: string | null;
+  } | null;
+  eventType: string;
+  status: string;
+  financeAdjustmentRequired: boolean | null;
+  reason: string | null;
+  actorId: string | null;
+  actorEmail: string | null;
+  actorRole: string | null;
+  revision: string | null;
+  idempotencyKey: string | null;
+  payloadFingerprint: string | null;
+  effective?: boolean;
+  superseded?: boolean;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  createdAt: string;
+  metadata: Record<string, unknown>;
+};
+
+export async function listAdminSupplierBatchCostHistoryV2(
+  batchCode: string
+): Promise<RepositoryResult<AdminSupplierBatchCostHistoryEntry[]>> {
+  const context = await requireSupabaseContext();
+  const data = await readSupplierBatchCostHistory(context.client, batchCode);
+  return {
+    data,
+    source: "supabase",
+  };
+}
+
+async function readSupplierBatchCostHistory(
+  client: SupabaseServerClient,
+  batchCode: string
+): Promise<AdminSupplierBatchCostHistoryEntry[]> {
+  const { data, error } = await client.rpc(
+    "admin_list_supplier_batch_cost_history_v2",
+    { p_batch_code: batchCode }
+  );
+  if (error) {
+    throw supplierBatchCostRpcError("admin_list_supplier_batch_cost_history_v2", error);
+  }
+  if (!Array.isArray(data)) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_SUPPLIER_BATCH_COST_HISTORY_INVALID_RESPONSE",
+      "Supplier batch cost history returned an invalid response."
+    );
+  }
+  return dedupeSupplierBatchCostHistory(data.map(normalizeSupplierBatchCostHistoryRow));
+}
+
+/** Keep one canonical event per event id when history/audit projections overlap. */
+function dedupeSupplierBatchCostHistory(
+  entries: readonly AdminSupplierBatchCostHistoryEntry[]
+): AdminSupplierBatchCostHistoryEntry[] {
+  const seen = new Set<string>();
+  return entries.filter((entry) => {
+    const key = entry.eventId || [
+      entry.correctionId ?? "",
+      entry.chargeId ?? "",
+      entry.eventType,
+      entry.createdAt,
+      entry.status,
+    ].join("|");
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
+function supplierBatchCorrectionHistoryEntries(
+  history: readonly AdminSupplierBatchCostHistoryEntry[]
+) {
+  return history.filter((entry) => {
+    const eventType = entry.eventType.toLowerCase();
+    return Boolean(
+      entry.correctionId ||
+        entry.links?.originalChargeId ||
+        entry.links?.replacementChargeId ||
+        eventType.includes("correct") ||
+        eventType.includes("correction")
+    );
+  });
+}
+
+function resolveEffectiveSupplierBatchChargeIdsOrThrow(
+  charges: readonly AdminSupplierBatchCharge[],
+  history: readonly AdminSupplierBatchCostHistoryEntry[]
+) {
+  const correctionEntries = supplierBatchCorrectionHistoryEntries(history);
+  const effectiveIds = resolveSupplierBatchEffectiveChargeIds(
+    [...charges],
+    correctionEntries.map((entry) => ({
+      ...entry,
+      originalChargeId:
+        entry.links?.originalChargeId ?? entry.chargeId,
+      replacementChargeId: entry.links?.replacementChargeId ?? null,
+      status: entry.status,
+    }))
+  );
+  if (!effectiveIds) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_SUPPLIER_BATCH_EFFECTIVE_CHARGES_INVALID_RESPONSE",
+      "Supplier batch correction links returned malformed data."
+    );
+  }
+  return new Set(effectiveIds);
+}
+
+type SupplierBatchChargeEffectiveFlags = {
+  effective: boolean;
+  superseded: boolean;
+};
+
+async function readSupplierBatchChargeEffectiveFlags(
+  client: SupabaseServerClient,
+  chargeIds: readonly string[]
+): Promise<Map<string, SupplierBatchChargeEffectiveFlags>> {
+  const uniqueChargeIds = [...new Set(chargeIds.filter((value) => value.trim() !== ""))];
+  const result = new Map<string, SupplierBatchChargeEffectiveFlags>();
+  if (uniqueChargeIds.length === 0) {
+    return result;
+  }
+
+  const { data, error } = await client.rpc(
+    "admin_list_supplier_batch_charge_effective_flags_v2",
+    { p_charge_ids: uniqueChargeIds }
+  );
+  if (error) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_SUPPLIER_BATCH_EFFECTIVE_CHARGES_READ_UNAVAILABLE",
+      "Supplier batch effective charge flags could not be read from Supabase."
+    );
+  }
+  if (!Array.isArray(data)) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_SUPPLIER_BATCH_EFFECTIVE_CHARGES_INVALID_RESPONSE",
+      "Supplier batch effective charge flags returned an invalid response."
+    );
+  }
+
+  const requested = new Set(uniqueChargeIds);
+  for (const value of data) {
+    if (!isDbRow(value)) {
+      throw new RepositoryWriteError(
+        502,
+        "ADMIN_SUPPLIER_BATCH_EFFECTIVE_CHARGES_INVALID_RESPONSE",
+        "Supplier batch effective charge flags returned malformed data."
+      );
+    }
+    const chargeId = pickString(value, ["chargeId", "charge_id"]);
+    const effective = value.effective;
+    const superseded = value.superseded;
+    if (
+      !chargeId ||
+      !requested.has(chargeId) ||
+      typeof effective !== "boolean" ||
+      typeof superseded !== "boolean" ||
+      result.has(chargeId)
+    ) {
+      throw new RepositoryWriteError(
+        502,
+        "ADMIN_SUPPLIER_BATCH_EFFECTIVE_CHARGES_INVALID_RESPONSE",
+        "Supplier batch effective charge flags returned malformed data."
+      );
+    }
+    result.set(chargeId, { effective, superseded });
+  }
+
+  // A missing row is ambiguous under a SECURITY DEFINER read and must not be
+  // treated as an effective charge. Fail closed rather than reintroducing the
+  // old metadata-based correction link fallback.
+  if (result.size !== requested.size) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_SUPPLIER_BATCH_EFFECTIVE_CHARGES_INVALID_RESPONSE",
+      "Supplier batch effective charge flags were incomplete."
+    );
+  }
+  return result;
+}
+
+function resolveEffectiveSupplierBatchChargeIdsFromFlagsOrThrow(
+  charges: readonly AdminSupplierBatchCharge[],
+  flags: ReadonlyMap<string, SupplierBatchChargeEffectiveFlags>
+) {
+  const effectiveIds: string[] = [];
+  for (const charge of charges) {
+    const flag = flags.get(charge.chargeId);
+    if (!flag) {
+      throw new RepositoryWriteError(
+        502,
+        "ADMIN_SUPPLIER_BATCH_EFFECTIVE_CHARGES_INVALID_RESPONSE",
+        "Supplier batch effective charge flags were incomplete."
+      );
+    }
+    if (flag.effective && charge.status === "confirmed") {
+      effectiveIds.push(charge.chargeId);
+    }
+  }
+  return new Set(effectiveIds);
+}
+
+function decorateSupplierBatchCharges(
+  charges: readonly AdminSupplierBatchCharge[],
+  history: readonly AdminSupplierBatchCostHistoryEntry[],
+  effectiveIds: ReadonlySet<string>,
+  flags?: ReadonlyMap<string, SupplierBatchChargeEffectiveFlags>
+) {
+  const correctionEntries = supplierBatchCorrectionHistoryEntries(history);
+  return charges.map((charge) => {
+    const linksEntry = [...correctionEntries]
+      .reverse()
+      .find((entry) => {
+        const links = entry.links;
+        return Boolean(
+          (links?.originalChargeId && links.originalChargeId === charge.chargeId) ||
+            (links?.replacementChargeId && links.replacementChargeId === charge.chargeId) ||
+            entry.chargeId === charge.chargeId ||
+            entry.linkedChargeId === charge.chargeId
+        );
+      });
+    const links = linksEntry?.links ?? null;
+    const effective = charge.status === "confirmed" && effectiveIds.has(charge.chargeId);
+    const superseded = flags?.get(charge.chargeId)?.superseded === true || (
+      charge.status === "confirmed" &&
+      !effective &&
+      links?.originalChargeId === charge.chargeId &&
+      Boolean(links.replacementChargeId)
+    );
+    return {
+      ...charge,
+      effective,
+      superseded,
+      correction: linksEntry
+        ? {
+            correctionId: linksEntry.correctionId ?? links?.correctionId ?? null,
+            originalChargeId: links?.originalChargeId ?? null,
+            replacementChargeId: links?.replacementChargeId ?? null,
+            status: linksEntry.status,
+            financeAdjustmentRequired: linksEntry.financeAdjustmentRequired,
+          }
+        : null,
+    };
+  });
 }
 
 export async function getAdminSupplierBatchExportData(
@@ -2791,31 +3162,40 @@ export async function getAdminSupplierBatchExportData(
   }>
 > {
   const context = await requireSupabaseContext();
-  const exportPageSize = 500;
   const exportHardLimit = 5000;
-  const batches: AdminSupplierBatch[] = [];
-  let offset = 0;
+  const exportProbeLimit = exportHardLimit + 1;
   const exportScope = query.exportScope ?? "batches";
-
-  while (true) {
-    const page = await readAdminSupplierBatches(context.client, {
-      ...query,
-      limit: exportPageSize,
-      offset,
-    });
-    batches.push(...page.batches);
-
-    if (page.fetchedCount < exportPageSize) {
-      break;
-    }
-    offset += page.fetchedCount;
+  // A single hard-limit + 1 probe keeps export bounded before any detail
+  // hydration.  The old page loop could read arbitrary pages and only then
+  // discover that the final file was too large.
+  const page = await readAdminSupplierBatches(context.client, {
+    ...query,
+    exportScope,
+    limit: exportProbeLimit,
+    offset: 0,
+  });
+  if (page.fetchedCount > exportHardLimit) {
+    throw new RepositoryWriteError(
+      413,
+      "ADMIN_SUPPLIER_BATCH_EXPORT_TOO_LARGE",
+      "Supplier batch export is too large. Narrow the filters before exporting."
+    );
   }
+  const batches = page.batches;
 
   const details = exportScope === "batches"
     ? []
     : exportScope === "charges"
-      ? await readAdminSupplierBatchChargeDetails(context.client, batches)
-      : await readAdminSupplierBatchDetails(context.client, batches);
+      ? batches.length > 250
+        ? (() => {
+            throw new RepositoryWriteError(
+              413,
+              "ADMIN_SUPPLIER_BATCH_CHARGE_EXPORT_HISTORY_TOO_LARGE",
+              "Charge export history is too large. Narrow the filters before exporting."
+            );
+          })()
+        : await readAdminSupplierBatchChargeDetails(context.client, batches)
+      : await readAdminSupplierBatchDetails(context.client, batches, false);
   const rowCount = supplierBatchExportRowCount(exportScope, batches, details);
 
   if (rowCount === null || rowCount > exportHardLimit) {
@@ -2832,10 +3212,6 @@ export async function getAdminSupplierBatchExportData(
   };
 }
 
-type SupplierBatchCostRpcInput = AdminSupplierBatchChargeInput & {
-  revision?: string;
-};
-
 const supplierBatchCostRpcDetailCodes = [
   "AUTHENTICATION_REQUIRED",
   "PERMISSION_DENIED",
@@ -2844,58 +3220,273 @@ const supplierBatchCostRpcDetailCodes = [
   "IDEMPOTENCY_CONFLICT",
   "CHARGE_IMMUTABLE",
   "CHARGE_CANCELLED",
+  "CANCELLATION_REASON_REQUIRED",
+  "IDEMPOTENCY_KEY_REQUIRED",
   "STALE_REVISION",
   "FINANCIAL_ADJUSTMENT_REQUIRED",
   "BATCH_IDS_LIMIT_EXCEEDED",
   "MANUAL_ALLOCATIONS_REQUIRED",
+  "STALE_PREVIEW",
+  "CORRECTION_REASON_REQUIRED",
+  "CORRECTION_NOT_ALLOWED",
+  "CORRECTION_ALREADY_EXISTS",
+  "CORRECTION_REPLACEMENT_MANAGED",
+  "CHARGE_IDEMPOTENCY_MISMATCH",
+  "IDEMPOTENCY_KEY_MISMATCH",
+  "FINANCE_ADJUSTMENT_REQUIRED",
+  "BATCH_FX_RATE_REQUIRED",
+  "BATCH_FX_SNAPSHOT_IMMUTABLE",
+  "BATCH_FX_SNAPSHOT_INCOMPLETE",
+  "BATCH_FX_DIRECT_UPDATE_FORBIDDEN",
+  "ALLOCATION_TOTAL_MISMATCH",
+  "ALLOCATION_EUR_TOTAL_MISMATCH",
+  "SUPPLIER_BATCH_COST_OVERFLOW",
+  "PRODUCT_LOOKUP_LIMIT_EXCEEDED",
+  "PRODUCT_LOOKUP_INVALID",
+  "SUPPLIER_BATCH_CONFIRMED_IMMUTABLE",
+  "SUPPLIER_BATCH_LINE_CONFIRMED_IMMUTABLE",
+  "UNKNOWN_VAT_NOT_ALLOWED",
 ] as const;
 
-async function callSupplierBatchCostRpc(
+type SupplierBatchCostRpcV2Name =
+  | "admin_preview_supplier_batch_charge_v2"
+  | "admin_save_supplier_batch_charge_estimate_v2"
+  | "admin_confirm_supplier_batch_charge_v2"
+  | "admin_cancel_supplier_batch_charge_v2"
+  | "admin_correct_supplier_batch_charge_v2";
+
+type SupplierBatchCostRpcV2Result =
+  | AdminSupplierBatchCostRpcResult
+  | AdminSupplierBatchCorrectionResult;
+
+type SupplierBatchCostRpcV2MutationName = Exclude<
+  SupplierBatchCostRpcV2Name,
+  "admin_correct_supplier_batch_charge_v2"
+>;
+
+async function callSupplierBatchCostRpcV2(
   client: SupabaseServerClient,
-  functionName:
-    | "admin_preview_supplier_batch_charge"
-    | "admin_save_supplier_batch_charge_estimate"
-    | "admin_confirm_supplier_batch_charge",
+  functionName: SupplierBatchCostRpcV2MutationName,
   batchCode: string,
-  input: SupplierBatchCostRpcInput
-): Promise<AdminSupplierBatchCostRpcResult> {
-  const { revision, ...chargeInput } = input;
+  input: Record<string, unknown>
+): Promise<AdminSupplierBatchCostRpcResult>;
+
+async function callSupplierBatchCostRpcV2(
+  client: SupabaseServerClient,
+  functionName: "admin_correct_supplier_batch_charge_v2",
+  batchCode: string,
+  input: Record<string, unknown>
+): Promise<AdminSupplierBatchCorrectionResult>;
+
+async function callSupplierBatchCostRpcV2(
+  client: SupabaseServerClient,
+  functionName: SupplierBatchCostRpcV2Name,
+  batchCode: string,
+  input: Record<string, unknown>
+): Promise<SupplierBatchCostRpcV2Result> {
+  const {
+    revision,
+    chargeId,
+    reason,
+    correctionReason,
+    idempotencyKey,
+    previewFingerprint,
+    ...chargeInput
+  } = input;
   const payload = {
     ...chargeInput,
-    metadata: { source: "admin_supplier_batch_cost_api" },
+    // Keep the persisted charge identity and idempotency key in the payload
+    // as well as the dedicated RPC arguments.  The V2 SQL parser binds both
+    // layers; stripping chargeId here made edit/correction requests look like
+    // creates during a rolling deployment.
+    ...(chargeId === undefined ? {} : { chargeId }),
+    ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+    metadata: { source: "admin_supplier_batch_cost_v2_api" },
   };
   const rpcArgs =
-    functionName === "admin_preview_supplier_batch_charge"
+    functionName === "admin_preview_supplier_batch_charge_v2"
       ? { p_batch_code: batchCode, p_payload: payload }
-      : functionName === "admin_save_supplier_batch_charge_estimate"
+      : functionName === "admin_save_supplier_batch_charge_estimate_v2"
         ? {
             p_batch_code: batchCode,
             p_payload: payload,
-            p_idempotency_key: input.idempotencyKey ?? null,
+            p_idempotency_key: idempotencyKey ?? null,
           }
-        : {
-            p_batch_code: batchCode,
-            p_payload: payload,
-            p_revision: revision,
-            p_idempotency_key: input.idempotencyKey ?? null,
-          };
+        : functionName === "admin_confirm_supplier_batch_charge_v2"
+          ? {
+              p_batch_code: batchCode,
+              p_payload: payload,
+              p_revision: revision ?? null,
+              p_preview_fingerprint: previewFingerprint ?? null,
+              p_idempotency_key: idempotencyKey ?? null,
+            }
+          : functionName === "admin_cancel_supplier_batch_charge_v2"
+            ? {
+                p_batch_code: batchCode,
+                p_charge_id: chargeId ?? null,
+                p_reason: reason ?? null,
+                p_idempotency_key: idempotencyKey ?? null,
+              }
+            : {
+                p_batch_code: batchCode,
+                p_charge_id: chargeId ?? null,
+                p_payload: payload,
+                p_correction_reason: correctionReason ?? null,
+                p_revision: revision ?? null,
+                p_preview_fingerprint: previewFingerprint ?? null,
+                p_idempotency_key: idempotencyKey ?? null,
+              };
   const { data, error } = await client.rpc(functionName, rpcArgs);
-
   if (error) {
     throw supplierBatchCostRpcError(functionName, error);
   }
 
-  const normalized = normalizeSupplierBatchCostRpcResult(data);
+  if (functionName === "admin_correct_supplier_batch_charge_v2") {
+    const correction = normalizeSupplierBatchCorrectionReceipt(data);
+    if (!correction) {
+      throw new RepositoryWriteError(
+        502,
+        "ADMIN_SUPPLIER_BATCH_CORRECTION_RPC_INVALID_RESPONSE",
+        "Supplier batch correction RPC returned an invalid receipt."
+      );
+    }
+    return correction;
+  }
 
+  const normalized = normalizeSupplierBatchCostRpcResult(data);
   if (!normalized) {
     throw new RepositoryWriteError(
       502,
-      "ADMIN_SUPPLIER_BATCH_COST_RPC_INVALID_RESPONSE",
-      "Supplier batch cost RPC returned an invalid response."
+      "ADMIN_SUPPLIER_BATCH_COST_V2_RPC_INVALID_RESPONSE",
+      "Supplier batch cost V2 RPC returned an invalid response."
+    );
+  }
+  return normalized;
+}
+
+async function callSupplierBatchCorrectionPreviewRpc(
+  client: SupabaseServerClient,
+  batchCode: string,
+  input: AdminSupplierBatchChargeInput & {
+    chargeId: string;
+    correctionReason?: string;
+    revision?: string;
+    previewFingerprint?: string;
+  }
+): Promise<AdminSupplierBatchCostRpcResult> {
+  const {
+    chargeId,
+    correctionReason,
+    idempotencyKey,
+    ...chargeInput
+  } = input;
+  const payload = {
+    ...chargeInput,
+    chargeId,
+    ...(correctionReason === undefined ? {} : { correctionReason }),
+    ...(idempotencyKey === undefined ? {} : { idempotencyKey }),
+    metadata: { source: "admin_supplier_batch_cost_v2_api" },
+  };
+  const { data, error } = await client.rpc(
+    "admin_preview_supplier_batch_charge_correction_v2",
+    {
+      p_batch_code: batchCode,
+      p_payload: payload,
+    }
+  );
+  if (error) {
+    throw supplierBatchCostRpcError(
+      "admin_preview_supplier_batch_charge_correction_v2",
+      error
     );
   }
 
+  const normalized = normalizeSupplierBatchCostRpcResult(data);
+  if (!normalized) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_SUPPLIER_BATCH_CORRECTION_PREVIEW_INVALID_RESPONSE",
+      "Supplier batch correction preview returned an invalid response."
+    );
+  }
   return normalized;
+}
+
+function normalizeSupplierBatchCostHistoryRow(value: unknown): AdminSupplierBatchCostHistoryEntry {
+  if (!isDbRow(value)) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_SUPPLIER_BATCH_COST_HISTORY_INVALID_ROW",
+      "Supplier batch cost history returned an invalid row."
+    );
+  }
+  const eventId = pickString(value, ["eventId", "event_id"]);
+  const batchId = pickString(value, ["batchId", "batch_id"]);
+  const batchCode = pickString(value, ["batchCode", "batch_code"]);
+  const eventType = pickString(value, ["eventType", "event_type"]);
+  const status = pickString(value, ["status"]);
+  const createdAt = pickString(value, ["createdAt", "created_at"]);
+  if (!eventId || !batchId || !batchCode || !eventType || !status || !createdAt) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_SUPPLIER_BATCH_COST_HISTORY_INVALID_ROW",
+      "Supplier batch cost history returned an invalid row."
+    );
+  }
+  const metadata = isDbRow(value.metadata) ? value.metadata : {};
+  const rawLinks = isDbRow(value.links) ? value.links : null;
+  const links = rawLinks
+    ? {
+        originalChargeId: pickString(rawLinks, ["originalChargeId", "original_charge_id"]),
+        replacementChargeId: pickString(rawLinks, ["replacementChargeId", "replacement_charge_id"]),
+        correctionId: pickString(rawLinks, ["correctionId", "correction_id"]),
+      }
+    : null;
+  const financeAdjustmentRequired =
+    typeof value.financeAdjustmentRequired === "boolean"
+      ? value.financeAdjustmentRequired
+      : typeof value.finance_adjustment_required === "boolean"
+        ? value.finance_adjustment_required
+        : typeof metadata.financeAdjustmentRequired === "boolean"
+          ? metadata.financeAdjustmentRequired
+          : typeof metadata.finance_adjustment_required === "boolean"
+            ? metadata.finance_adjustment_required
+            : null;
+  return {
+    eventId,
+    batchId,
+    batchCode,
+    chargeId: pickString(value, ["chargeId", "charge_id"]),
+    correctionId: pickString(value, ["correctionId", "correction_id"]),
+    linkedChargeId: pickString(value, ["linkedChargeId", "linked_charge_id"]),
+    links,
+    eventType,
+    status,
+    financeAdjustmentRequired,
+    reason: pickString(value, ["reason"]),
+    actorId: pickString(value, ["actorId", "actor_id"]),
+    actorEmail: pickString(value, ["actorEmail", "actor_email"]),
+    actorRole: pickString(value, ["actorRole", "actor_role"]),
+    revision: pickString(value, ["revision"]),
+    idempotencyKey: pickString(value, ["idempotencyKey", "idempotency_key"]),
+    payloadFingerprint: pickString(value, ["payloadFingerprint", "payload_fingerprint"]),
+    effective:
+      typeof value.effective === "boolean"
+        ? value.effective
+        : typeof metadata.effective === "boolean"
+          ? metadata.effective
+          : undefined,
+    superseded:
+      typeof value.superseded === "boolean"
+        ? value.superseded
+        : typeof metadata.superseded === "boolean"
+          ? metadata.superseded
+          : undefined,
+    before: isDbRow(value.before) ? value.before : null,
+    after: isDbRow(value.after) ? value.after : null,
+    createdAt,
+    metadata,
+  };
 }
 
 function supplierBatchCostRpcError(functionName: string, error: unknown) {
@@ -2917,15 +3508,18 @@ function supplierBatchCostRpcError(functionName: string, error: unknown) {
           ? 404
           : ["40001", "55000", "23505"].includes(sqlState ?? "")
             ? 409
-            : ["22023", "23514"].includes(sqlState ?? "")
+            : ["22023", "23514", "22003"].includes(sqlState ?? "")
               ? 400
               : 502;
-  const operation =
-    functionName === "admin_preview_supplier_batch_charge"
-      ? "preview"
-      : functionName === "admin_save_supplier_batch_charge_estimate"
-        ? "estimate"
-        : "confirmation";
+  const operation = functionName.includes("preview")
+    ? "preview"
+    : functionName.includes("estimate")
+      ? "estimate"
+      : functionName.includes("correct")
+        ? "correction"
+        : functionName.includes("cancel")
+          ? "cancellation"
+          : "confirmation";
 
   return new RepositoryWriteError(
     status,
@@ -6533,21 +7127,39 @@ function sanitizePostgrestLikeTerm(value: string) {
   return value.trim().replace(/[%,]/g, "");
 }
 
+const supplierBatchFilterReadLimit = 5000;
+const supplierBatchExportProbeLimit = supplierBatchFilterReadLimit + 1;
+
 async function readAdminSupplierBatches(
   client: SupabaseServerClient,
   query: AdminSupplierBatchQueryInput
 ) {
-  const limit = Math.min(Math.max(query.limit ?? 50, 1), 500);
+  const limit = Math.min(
+    Math.max(query.limit ?? 50, 1),
+    query.exportScope === undefined ? 500 : supplierBatchExportProbeLimit
+  );
   const offset = Math.max(query.offset ?? 0, 0);
+  const needsChargeFilter = supplierBatchQueryNeedsChargeFiltering(query);
+  const needsDerivedFilter = supplierBatchQueryNeedsDerivedFiltering(query);
+  const needsBatchListHydration =
+    query.exportScope === undefined || query.exportScope === "batches";
+  // Derived cost/charge filters cannot be applied before hydration. Read a
+  // bounded candidate set, filter/sort it in memory, then hydrate only the
+  // requested page so a filter never causes an unbounded product lookup.
+  const requestOffset = needsDerivedFilter ? 0 : offset;
+  const requestLimit = needsDerivedFilter
+    ? supplierBatchExportProbeLimit
+    : limit;
+  const primarySort = query.sort ?? "updated_desc";
   let request = client
     .from("supplier_batches")
     .select(
-      "id, batch_code, supplier_id, invoice_no, order_no, invoice_date, received_at, total_qty, total_cost, currency, vat_mode, tags, source_file_name, metadata, created_at, updated_at, suppliers!inner(code, name, display_label)",
+      "id, batch_code, supplier_id, invoice_no, order_no, invoice_date, received_at, total_qty, total_cost, currency, goods_value_eur, goods_value_fx_rate_to_eur, goods_value_fx_date, goods_value_fx_source, goods_value_fx_evidence_url, vat_mode, tags, source_file_name, metadata, created_at, updated_at, suppliers!inner(code, name, display_label)",
       { count: "exact" }
     )
-    .order("created_at", { ascending: false })
+    .order(primarySort === "updated_desc" ? "updated_at" : "created_at", { ascending: false })
     .order("id", { ascending: false })
-    .range(offset, offset + limit - 1);
+    .range(requestOffset, requestOffset + requestLimit - 1);
 
   if (query.batchCode) {
     request = request.ilike("batch_code", `%${sanitizePostgrestLikeTerm(query.batchCode)}%`);
@@ -6572,6 +7184,10 @@ async function readAdminSupplierBatches(
     }
   }
 
+  if (query.currency) {
+    request = request.eq("currency", query.currency);
+  }
+
   request = applySupplierBatchDateFilters(request, query);
 
   const { data, error, count } = await request;
@@ -6585,17 +7201,138 @@ async function readAdminSupplierBatches(
   }
 
   const rows = Array.isArray(data) ? data.map((row) => row as DbRow) : [];
+  // For a direct export query the exact count is authoritative and can be
+  // rejected before line/product/cost hydration. Derived filters are checked
+  // after their bounded candidate set is evaluated below.
+  if (
+    query.exportScope !== undefined &&
+    !needsDerivedFilter &&
+    ((count !== null && count > supplierBatchFilterReadLimit) ||
+      rows.length > supplierBatchFilterReadLimit)
+  ) {
+    throw new RepositoryWriteError(
+      413,
+      "ADMIN_SUPPLIER_BATCH_EXPORT_TOO_LARGE",
+      "Supplier batch export is too large. Narrow the filters before exporting."
+    );
+  }
+  if (
+    needsDerivedFilter &&
+    ((count !== null && count > supplierBatchFilterReadLimit) ||
+      rows.length > supplierBatchFilterReadLimit)
+  ) {
+    throw new RepositoryWriteError(
+      413,
+      query.exportScope === undefined
+        ? "ADMIN_SUPPLIER_BATCH_FILTER_TOO_LARGE"
+        : "ADMIN_SUPPLIER_BATCH_EXPORT_TOO_LARGE",
+      query.exportScope === undefined
+        ? "Supplier batch filters match too many rows. Narrow the filters before retrying."
+        : "Supplier batch export is too large. Narrow the filters before retrying."
+    );
+  }
   const batchIds = rows.map((row) => pickString(row, ["id"])).filter(isDefined);
-  const needsBatchListHydration =
-    query.exportScope === undefined || query.exportScope === "batches";
   let lineStats: Map<string, SupplierBatchLineStats> = new Map();
   let costSummaries: Map<string, AdminSupplierBatchCostSummary | null> = new Map();
+  let chargeRows: DbRow[] = [];
 
-  if (needsBatchListHydration) {
+  if (!needsDerivedFilter && needsBatchListHydration) {
     [lineStats, costSummaries] = await Promise.all([
       readSupplierBatchLineStats(client, batchIds),
       readSupplierBatchCostSummaries(client, batchIds),
     ]);
+  }
+
+  if (needsDerivedFilter) {
+    const needsCostSummary = needsBatchListHydration || query.costStatus !== undefined;
+    const [nextCostSummaries, nextChargeRows] = await Promise.all([
+      needsCostSummary
+        ? readSupplierBatchCostSummaries(client, batchIds)
+        : Promise.resolve(new Map<string, AdminSupplierBatchCostSummary | null>()),
+      needsChargeFilter
+        ? readSupplierBatchCharges(client, batchIds)
+        : Promise.resolve([] as DbRow[]),
+    ]);
+    costSummaries = nextCostSummaries;
+    chargeRows = nextChargeRows;
+
+    const chargesByBatch = new Map<string, AdminSupplierBatchCharge[]>();
+    if (needsChargeFilter) {
+      const normalizedChargeRows = normalizeSupplierBatchChargesOrThrow(chargeRows);
+      const effectiveFlags = await readSupplierBatchChargeEffectiveFlags(
+        client,
+        normalizedChargeRows.map((charge) => charge.chargeId)
+      );
+      const chargesByBatchRaw = new Map<string, AdminSupplierBatchCharge[]>();
+      for (const charge of normalizedChargeRows) {
+        const current = chargesByBatchRaw.get(charge.batchId) ?? [];
+        current.push(charge);
+        chargesByBatchRaw.set(charge.batchId, current);
+      }
+      for (const [batchId, rawCharges] of chargesByBatchRaw) {
+        const effectiveIds = resolveEffectiveSupplierBatchChargeIdsFromFlagsOrThrow(
+          rawCharges,
+          effectiveFlags
+        );
+        const effectiveCharges = decorateSupplierBatchCharges(
+          rawCharges,
+          [],
+          effectiveIds,
+          effectiveFlags
+        );
+        for (const charge of effectiveCharges) {
+          const current = chargesByBatch.get(batchId) ?? [];
+          current.push(charge);
+          chargesByBatch.set(batchId, current);
+        }
+      }
+    }
+
+    const filteredRows = rows.filter((row) => {
+      const batchId = pickString(row, ["id"]);
+      if (!batchId) {
+        return false;
+      }
+
+      if (query.costStatus && costSummaries.get(batchId)?.costStatus !== query.costStatus) {
+        return false;
+      }
+
+      const activeCharges = (chargesByBatch.get(batchId) ?? []).filter(
+        (charge) => charge.status !== "cancelled" && charge.superseded !== true
+      );
+      if (query.chargeType && !activeCharges.some((charge) => charge.chargeType === query.chargeType)) {
+        return false;
+      }
+      if (query.vatTreatment && !activeCharges.some((charge) => charge.vatTreatment === query.vatTreatment)) {
+        return false;
+      }
+      const transportFilter = query.hasTransport ?? query.hasTransportCost;
+      if (transportFilter === "with" && !activeCharges.some((charge) => charge.chargeType === "transport")) {
+        return false;
+      }
+      if (transportFilter === "without" && activeCharges.some((charge) => charge.chargeType === "transport")) {
+        return false;
+      }
+      return true;
+    });
+
+    const sortedRows = [...filteredRows].sort((left, right) =>
+      compareSupplierBatchRows(left, right, query.sort ?? "updated_desc")
+    );
+    const pageRows = sortedRows.slice(offset, offset + limit);
+    const pageBatchIds = pageRows.map((row) => pickString(row, ["id"])).filter(isDefined);
+    if (needsBatchListHydration) {
+      lineStats = await readSupplierBatchLineStats(client, pageBatchIds);
+    }
+
+    return {
+      batches: pageRows
+        .map((row) => mapAdminSupplierBatchRow(row, lineStats, costSummaries))
+        .filter(isDefined),
+      total: filteredRows.length,
+      fetchedCount: pageRows.length,
+    };
   }
 
   return {
@@ -6607,14 +7344,80 @@ async function readAdminSupplierBatches(
   };
 }
 
+function supplierBatchQueryNeedsChargeFiltering(query: AdminSupplierBatchQueryInput) {
+  return (
+    query.chargeType !== undefined ||
+    query.vatTreatment !== undefined ||
+    query.hasTransport !== undefined ||
+    query.hasTransportCost !== undefined
+  );
+}
+
+function supplierBatchQueryNeedsDerivedFiltering(query: AdminSupplierBatchQueryInput) {
+  return (
+    query.costStatus !== undefined ||
+    supplierBatchQueryNeedsChargeFiltering(query) ||
+    (query.sort !== undefined && query.sort !== "updated_desc")
+  );
+}
+
+function compareSupplierBatchRows(
+  left: DbRow,
+  right: DbRow,
+  sort: NonNullable<AdminSupplierBatchQueryInput["sort"]>
+) {
+  if (sort === "amount_desc") {
+    const leftAmount = pickNumber(left, ["goods_value_eur"]);
+    const rightAmount = pickNumber(right, ["goods_value_eur"]);
+    if (leftAmount === null || rightAmount === null) {
+      if (leftAmount === null && rightAmount !== null) return 1;
+      if (leftAmount !== null && rightAmount === null) return -1;
+    }
+    const amountDifference = (rightAmount ?? 0) - (leftAmount ?? 0);
+    if (amountDifference !== 0) {
+      return amountDifference;
+    }
+  } else if (sort === "supplier") {
+    const leftSupplier = readSupplierJoin(left.suppliers).displayLabel ?? "";
+    const rightSupplier = readSupplierJoin(right.suppliers).displayLabel ?? "";
+    const supplierDifference = leftSupplier.localeCompare(rightSupplier, "it", {
+      sensitivity: "base",
+      numeric: true,
+    });
+    if (supplierDifference !== 0) {
+      return supplierDifference;
+    }
+  } else if (sort === "received_desc") {
+    const leftReceived = pickString(left, ["received_at"]) ?? "";
+    const rightReceived = pickString(right, ["received_at"]) ?? "";
+    if (leftReceived !== rightReceived) {
+      if (!leftReceived) return 1;
+      if (!rightReceived) return -1;
+      return rightReceived.localeCompare(leftReceived);
+    }
+  } else {
+    const leftUpdated = pickString(left, ["updated_at"]) ?? "";
+    const rightUpdated = pickString(right, ["updated_at"]) ?? "";
+    if (leftUpdated !== rightUpdated) {
+      return rightUpdated.localeCompare(leftUpdated);
+    }
+  }
+
+  return (pickString(right, ["id"]) ?? "").localeCompare(pickString(left, ["id"]) ?? "");
+}
+
 async function readAdminSupplierBatchDetail(
   client: SupabaseServerClient,
-  batchCode: string
+  batchCode: string,
+  options: {
+    includeHistory?: boolean;
+    includeAudit?: boolean;
+  } = {}
 ): Promise<AdminSupplierBatchDetail | null> {
   const { data, error } = await client
     .from("supplier_batches")
     .select(
-      "id, batch_code, supplier_id, invoice_no, order_no, invoice_date, received_at, total_qty, total_cost, currency, vat_mode, tags, source_file_name, metadata, created_at, updated_at, suppliers!inner(code, name, display_label)"
+      "id, batch_code, supplier_id, invoice_no, order_no, invoice_date, received_at, total_qty, total_cost, currency, goods_value_eur, goods_value_fx_rate_to_eur, goods_value_fx_date, goods_value_fx_source, goods_value_fx_evidence_url, vat_mode, tags, source_file_name, metadata, created_at, updated_at, suppliers!inner(code, name, display_label)"
     )
     .eq("batch_code", batchCode)
     .maybeSingle();
@@ -6638,13 +7441,17 @@ async function readAdminSupplierBatchDetail(
   }
 
   const lines = await readSupplierBatchLines(client, [batchId]);
-  const [productsBySku, inventoryBySku, chargeRows, allocations, costSummaries] =
+  const includeHistory = options.includeHistory === true;
+  const [productsBySku, inventoryBySku, chargeRows, allocations, costSummaries, history] =
     await Promise.all([
       readSupplierBatchProducts(client, lines),
       readSupplierBatchInventory(client, lines),
       readSupplierBatchCharges(client, [batchId]),
       readSupplierBatchChargeAllocations(client, [batchId]),
       readSupplierBatchCostSummaries(client, [batchId]),
+      includeHistory
+        ? readSupplierBatchCostHistory(client, batchCode)
+        : Promise.resolve([] as AdminSupplierBatchCostHistoryEntry[]),
     ]);
   const stats = summarizeSupplierBatchLines(lines, productsBySku, inventoryBySku);
   const statsByBatch = new Map([[batchId, stats]]);
@@ -6655,36 +7462,73 @@ async function readAdminSupplierBatchDetail(
   }
 
   const charges = normalizeSupplierBatchChargesOrThrow(chargeRows);
-  normalizeSupplierBatchAllocationsOrThrow(allocations);
-  const confirmedChargeIds = new Set(
+  const historyRows = includeHistory ? dedupeSupplierBatchCostHistory(history) : [];
+  const effectiveFlags = includeHistory
+    ? null
+    : await readSupplierBatchChargeEffectiveFlags(
+        client,
+        charges.map((charge) => charge.chargeId)
+      );
+  const effectiveChargeIds = includeHistory
+    ? resolveEffectiveSupplierBatchChargeIdsOrThrow(charges, historyRows)
+    : resolveEffectiveSupplierBatchChargeIdsFromFlagsOrThrow(charges, effectiveFlags!);
+  const normalizedAllocations = normalizeSupplierBatchAllocationsOrThrow(
+    allocations,
+    batch.currency,
     charges
-      .filter((charge) => charge.status === "confirmed")
-      .map((charge) => charge.chargeId)
-      .filter(isDefined)
   );
   const lineCosts = summarizeSupplierBatchLineCosts(
     lines,
-    allocations.filter((allocation) =>
-      confirmedChargeIds.has(pickString(allocation, ["charge_id", "chargeId"]) ?? "")
-    )
+    normalizedAllocations.filter((allocation) => effectiveChargeIds.has(allocation.chargeId))
+  );
+  const contextualAllocations = addSupplierBatchAllocationContext(
+    batch.currency,
+    charges,
+    normalizedAllocations
+  );
+  const confirmedContextualAllocations = contextualAllocations.filter((allocation) =>
+    effectiveChargeIds.has(allocation.chargeId)
+  );
+  const lineCostsWithEur = enrichSupplierBatchLineCostsWithEur(
+    lineCosts,
+    lines,
+    confirmedContextualAllocations,
+    batch.currency,
+    batch.goodsValueFxRateToEur
   );
   const lineCostsById = new Map(
-    (lineCosts ?? []).map((cost) => [cost.batchLineId, cost])
+    (lineCostsWithEur ?? []).map((cost) => [cost.batchLineId, cost])
   );
+  const chargesWithAllocations = decorateSupplierBatchCharges(
+    charges,
+    includeHistory ? historyRows : [],
+    effectiveChargeIds,
+    effectiveFlags ?? undefined
+  ).map((charge) => ({
+    ...charge,
+    allocations: contextualAllocations.filter(
+      (allocation) =>
+        allocation.batchId === charge.batchId &&
+        allocation.chargeId === charge.chargeId
+    ),
+  }));
 
   return {
     batch,
     lines: lines
       .map((line) => mapAdminSupplierBatchLine(line, productsBySku, inventoryBySku, lineCostsById))
       .filter(isDefined),
-    charges,
+    charges: chargesWithAllocations,
+    allocations: contextualAllocations,
+    history: historyRows,
     verification: batch.verification,
   };
 }
 
 async function readAdminSupplierBatchDetails(
   client: SupabaseServerClient,
-  batches: AdminSupplierBatch[]
+  batches: AdminSupplierBatch[],
+  includeHistory = true
 ): Promise<AdminSupplierBatchDetail[]> {
   if (batches.length === 0) {
     return [];
@@ -6703,30 +7547,74 @@ async function readAdminSupplierBatchDetails(
 
   const linesByBatch = groupSupplierBatchRows(lines, "batch_id");
   const normalizedCharges = normalizeSupplierBatchChargesOrThrow(chargeRows);
-  normalizeSupplierBatchAllocationsOrThrow(allocations);
-  const allocationsByBatch = groupSupplierBatchRows(allocations, "batch_id");
+  const effectiveFlags = includeHistory
+    ? null
+    : await readSupplierBatchChargeEffectiveFlags(
+        client,
+        normalizedCharges.map((charge) => charge.chargeId)
+      );
+  const batchCurrencies = new Map(batches.map((batch) => [batch.id, batch.currency]));
+  const normalizedAllocations = normalizeSupplierBatchAllocationsOrThrow(
+    allocations,
+    batchCurrencies,
+    normalizedCharges
+  );
+  const allocationsByBatch = groupSupplierBatchAllocations(normalizedAllocations);
+  const historiesByBatch = includeHistory
+    ? await readSupplierBatchCostHistories(client, batches)
+    : new Map<string, AdminSupplierBatchCostHistoryEntry[]>();
   const batchesById = new Map(batches.map((batch) => [batch.id, batch]));
   const details: AdminSupplierBatchDetail[] = [];
 
   for (const batch of batches) {
     const batchLines = linesByBatch.get(batch.id) ?? [];
     const batchAllocations = allocationsByBatch.get(batch.id) ?? [];
-    const confirmedChargeIds = new Set(
-      normalizedCharges
-        .filter((charge) => charge.status === "confirmed" && charge.batchId === batch.id)
-        .map((charge) => charge.chargeId)
-        .filter(isDefined)
-    );
+    const mappedChargesRaw = normalizedCharges.filter((charge) => charge.batchId === batch.id);
+    const history = includeHistory
+      ? dedupeSupplierBatchCostHistory(historiesByBatch.get(batch.batchCode) ?? [])
+      : [];
+    const effectiveChargeIds = includeHistory
+      ? resolveEffectiveSupplierBatchChargeIdsOrThrow(mappedChargesRaw, history)
+      : resolveEffectiveSupplierBatchChargeIdsFromFlagsOrThrow(
+          mappedChargesRaw,
+          effectiveFlags!
+        );
     const lineCosts = summarizeSupplierBatchLineCosts(
       batchLines,
       batchAllocations.filter((allocation) =>
-        confirmedChargeIds.has(pickString(allocation, ["charge_id", "chargeId"]) ?? "")
+        effectiveChargeIds.has(allocation.chargeId)
       )
     );
-    const lineCostsById = new Map(
-      (lineCosts ?? []).map((cost) => [cost.batchLineId, cost])
+    const contextualBatchAllocations = addSupplierBatchAllocationContext(
+      batch.currency,
+      mappedChargesRaw,
+      batchAllocations
     );
-    const mappedCharges = normalizedCharges.filter((charge) => charge.batchId === batch.id);
+    const confirmedContextualAllocations = contextualBatchAllocations.filter((allocation) =>
+      effectiveChargeIds.has(allocation.chargeId)
+    );
+    const lineCostsWithEur = enrichSupplierBatchLineCostsWithEur(
+      lineCosts,
+      batchLines,
+      confirmedContextualAllocations,
+      batch.currency,
+      batch.goodsValueFxRateToEur
+    );
+    const lineCostsById = new Map(
+      (lineCostsWithEur ?? []).map((cost) => [cost.batchLineId, cost])
+    );
+    const mappedCharges = decorateSupplierBatchCharges(
+      mappedChargesRaw,
+      includeHistory ? history : [],
+      effectiveChargeIds,
+      effectiveFlags ?? undefined
+    )
+      .map((charge) => ({
+        ...charge,
+        allocations: contextualBatchAllocations.filter(
+          (allocation) => allocation.chargeId === charge.chargeId
+        ),
+      }));
     const summary = costSummaries.get(batch.id) ?? null;
     const mappedBatch = batchesById.get(batch.id);
 
@@ -6744,6 +7632,8 @@ async function readAdminSupplierBatchDetails(
         )
         .filter(isDefined),
       charges: mappedCharges,
+      allocations: contextualBatchAllocations,
+      history,
       verification: mappedBatch.verification,
     });
   }
@@ -6765,6 +7655,17 @@ async function readAdminSupplierBatchChargeDetails(
       batches.map((batch) => batch.id)
     )
   );
+  const batchCurrencyById = new Map(batches.map((batch) => [batch.id, batch.currency]));
+  const normalizedAllocations = normalizeSupplierBatchAllocationsOrThrow(
+    await readSupplierBatchChargeAllocations(
+      client,
+      batches.map((batch) => batch.id)
+    ),
+    batchCurrencyById,
+    normalizedCharges
+  );
+  const allocationsByBatch = groupSupplierBatchAllocations(normalizedAllocations);
+  const historiesByBatch = await readSupplierBatchCostHistories(client, batches);
   const chargesByBatch = new Map<string, AdminSupplierBatchCharge[]>();
 
   for (const charge of normalizedCharges) {
@@ -6773,12 +7674,38 @@ async function readAdminSupplierBatchChargeDetails(
     chargesByBatch.set(charge.batchId, current);
   }
 
-  return batches.map((batch) => ({
-    batch,
-    lines: [],
-    charges: chargesByBatch.get(batch.id) ?? [],
-    verification: batch.verification,
-  }));
+  return batches.map((batch) => {
+    const batchAllocations = allocationsByBatch.get(batch.id) ?? [];
+    const batchCharges = chargesByBatch.get(batch.id) ?? [];
+    const history = dedupeSupplierBatchCostHistory(historiesByBatch.get(batch.batchCode) ?? []);
+    const effectiveChargeIds = resolveEffectiveSupplierBatchChargeIdsOrThrow(
+      batchCharges,
+      history
+    );
+    const contextualBatchAllocations = addSupplierBatchAllocationContext(
+      batch.currency,
+      batchCharges,
+      batchAllocations
+    );
+    const effectiveCharges = decorateSupplierBatchCharges(
+      batchCharges,
+      history,
+      effectiveChargeIds
+    );
+    return {
+      batch,
+      lines: [],
+      charges: effectiveCharges.map((charge) => ({
+        ...charge,
+        allocations: contextualBatchAllocations.filter(
+          (allocation) => allocation.chargeId === charge.chargeId
+        ),
+      })),
+      allocations: contextualBatchAllocations,
+      history,
+      verification: batch.verification,
+    };
+  });
 }
 
 const adminFinanceReadLimit = 50000;
@@ -6912,7 +7839,7 @@ async function readAdminFinanceDataSet(
       readRowsStrict(
         client,
         "supplier_batches",
-        "id, batch_code, supplier_id, invoice_no, order_no, invoice_date, received_at, total_qty, total_cost, currency, vat_mode, tags, source_file_name, metadata, created_at, updated_at",
+        "id, batch_code, supplier_id, invoice_no, order_no, invoice_date, received_at, total_qty, total_cost, currency, goods_value_eur, goods_value_fx_rate_to_eur, goods_value_fx_date, goods_value_fx_source, goods_value_fx_evidence_url, vat_mode, tags, source_file_name, metadata, created_at, updated_at",
         adminFinanceReadLimit
       ),
       readRowsStrict(
@@ -7990,10 +8917,20 @@ async function readSupplierBatchCostSummaries(
 
   for (let index = 0; index < uniqueBatchIds.length; index += 500) {
     const chunk = uniqueBatchIds.slice(index, index + 500);
-    const { data, error } = await client.rpc(
-      "admin_list_supplier_batch_cost_summaries",
+    let { data, error } = await client.rpc(
+      "admin_list_supplier_batch_cost_summaries_v2",
       { p_batch_ids: chunk }
     );
+
+    // Keep reads compatible with a rolling deployment where the application
+    // is upgraded before the additive V2 migration. Only an unknown-function
+    // response may fall back; permission/data errors must remain visible.
+    if (error && isDbRow(error) && pickString(error, ["code"]) === "42883") {
+      ({ data, error } = await client.rpc(
+        "admin_list_supplier_batch_cost_summaries",
+        { p_batch_ids: chunk }
+      ));
+    }
 
     if (error) {
       throw new RepositoryWriteError(
@@ -8051,7 +8988,7 @@ async function readSupplierBatchCharges(
     client,
     batchIds,
     "supplier_batch_charges",
-    "id, batch_id, charge_type, status, amount_net, vat_amount, amount_gross, capitalized_amount, currency, vat_treatment, allocation_method, carrier_name, reference, occurred_at, evidence_url, notes, zero_cost_reason, idempotency_key, payload_fingerprint, manual_allocations_snapshot, created_by, updated_by, confirmed_by, confirmed_at, metadata, created_at, updated_at, supplier_batches!inner(batch_code)",
+    "id, batch_id, charge_type, status, amount_net, vat_amount, amount_gross, capitalized_amount, currency, base_currency, fx_rate_to_eur, fx_rate_date, fx_rate_source, fx_evidence_url, amount_net_eur, vat_amount_eur, amount_gross_eur, capitalized_amount_eur, vat_treatment, allocation_method, carrier_name, reference, occurred_at, evidence_url, notes, zero_cost_reason, idempotency_key, payload_fingerprint, manual_allocations_snapshot, created_by, updated_by, confirmed_by, confirmed_at, metadata, created_at, updated_at, supplier_batches!inner(batch_code)",
     "batch_id, created_at, id"
   );
 }
@@ -8064,7 +9001,7 @@ async function readSupplierBatchChargeAllocations(
     client,
     batchIds,
     "supplier_batch_charge_allocations",
-    "id, batch_id, charge_id, batch_line_id, qty_received_snapshot, goods_cost_snapshot, weight_gram_snapshot, basis_value, share_ratio, allocated_amount, allocated_unit_amount, rounding_adjustment, metadata, created_at, updated_at",
+    "id, batch_id, charge_id, batch_line_id, qty_received_snapshot, goods_cost_snapshot, goods_cost_snapshot_eur, weight_gram_snapshot, basis_value, share_ratio, allocated_amount, allocated_amount_eur, allocated_unit_amount, allocated_unit_amount_eur, landed_line_cost, landed_line_cost_eur, landed_unit_cost, landed_unit_cost_eur, rounding_adjustment, rounding_adjustment_eur, metadata, created_at, updated_at",
     "batch_id, batch_line_id, charge_id"
   );
 }
@@ -8160,9 +9097,39 @@ function normalizeSupplierBatchChargesOrThrow(rows: DbRow[]) {
   return normalized;
 }
 
-function normalizeSupplierBatchAllocationsOrThrow(rows: DbRow[]) {
+function normalizeSupplierBatchAllocationsOrThrow(
+  rows: DbRow[],
+  batchCurrency?: string | ReadonlyMap<string, string>,
+  charges: readonly Pick<AdminSupplierBatchCharge, "chargeId" | "currency">[] = []
+) {
+  const chargeCurrencies = new Map(charges.map((charge) => [charge.chargeId, charge.currency]));
+  const normalizedAllocations: AdminSupplierBatchChargeAllocation[] = [];
   for (const row of rows) {
-    const normalized = normalizeSupplierBatchChargeAllocation(row);
+    const batchId = pickString(row, ["batch_id", "batchId"]);
+    const batchCurrencyValue =
+      typeof batchCurrency === "string"
+        ? batchCurrency
+        : batchId
+          ? batchCurrency?.get(batchId)
+          : undefined;
+    const normalizedBatchCurrency = batchCurrencyValue?.toUpperCase() ?? null;
+    const chargeId = pickString(row, ["charge_id", "chargeId"]);
+    const chargeCurrency = chargeId ? chargeCurrencies.get(chargeId) ?? null : null;
+    const resolvedCurrency = chargeCurrency ?? normalizedBatchCurrency;
+    const originalCurrencyComparable = Boolean(
+      chargeCurrency &&
+        normalizedBatchCurrency &&
+        chargeCurrency.toUpperCase() === normalizedBatchCurrency
+    );
+    const normalized = normalizeSupplierBatchChargeAllocation({
+      ...row,
+      // Context is injected before the core normalizer so legacy persisted
+      // allocations can derive their missing landed fields safely. An
+      // unknown charge is explicitly non-comparable rather than assumed to
+      // share the batch currency.
+      currency: resolvedCurrency,
+      originalCurrencyComparable,
+    });
     if (!normalized || !normalized.batchId || !normalized.chargeId) {
       throw new RepositoryWriteError(
         502,
@@ -8170,7 +9137,13 @@ function normalizeSupplierBatchAllocationsOrThrow(rows: DbRow[]) {
         "Supplier batch charge allocations returned malformed data."
       );
     }
+    normalizedAllocations.push({
+      ...normalized,
+      currency: resolvedCurrency ?? undefined,
+      originalCurrencyComparable,
+    });
   }
+  return normalizedAllocations;
 }
 
 function groupSupplierBatchRows(rows: DbRow[], key: string) {
@@ -8189,6 +9162,149 @@ function groupSupplierBatchRows(rows: DbRow[], key: string) {
   }
 
   return grouped;
+}
+
+function groupSupplierBatchAllocations(
+  allocations: AdminSupplierBatchChargeAllocation[]
+) {
+  const grouped = new Map<string, AdminSupplierBatchChargeAllocation[]>();
+  for (const allocation of allocations) {
+    const current = grouped.get(allocation.batchId) ?? [];
+    current.push(allocation);
+    grouped.set(allocation.batchId, current);
+  }
+  return grouped;
+}
+
+function addSupplierBatchAllocationContext(
+  batchCurrency: string,
+  charges: readonly Pick<AdminSupplierBatchCharge, "chargeId" | "currency">[],
+  allocations: readonly AdminSupplierBatchChargeAllocation[]
+) {
+  const chargeCurrencies = new Map(charges.map((charge) => [charge.chargeId, charge.currency]));
+  return allocations.map((allocation) => {
+    const chargeCurrency = chargeCurrencies.get(allocation.chargeId) ?? batchCurrency;
+    const knownCharge = chargeCurrencies.has(allocation.chargeId);
+    return {
+      ...allocation,
+      currency: chargeCurrency,
+      // The core keeps this fact in projections; retaining it here prevents
+      // mixed-currency consumers from treating original amounts as additive.
+      originalCurrencyComparable:
+        allocation.originalCurrencyComparable ??
+        (knownCharge && chargeCurrency.toUpperCase() === batchCurrency.toUpperCase()),
+    };
+  });
+}
+
+/**
+ * Keep line-level display/export values in the EUR base currency when the
+ * batch contains non-EUR or mixed-currency costs.  The core line-cost helper
+ * intentionally returns the original batch currency; this adapter adds only
+ * derived EUR values and never rewrites those immutable original amounts.
+ */
+function enrichSupplierBatchLineCostsWithEur(
+  lineCosts: AdminSupplierBatchLineCost[] | null,
+  lines: readonly DbRow[],
+  allocations: readonly (AdminSupplierBatchChargeAllocation & {
+    currency?: string | null;
+  })[],
+  batchCurrency: string,
+  goodsFxRateToEur?: number | null
+) {
+  if (!lineCosts) {
+    return null;
+  }
+
+  const allocationByLine = new Map<string, (typeof allocations[number])[]>();
+  for (const allocation of allocations) {
+    const lineId = allocation.batchLineId;
+    const current = allocationByLine.get(lineId) ?? [];
+    current.push(allocation);
+    allocationByLine.set(lineId, current);
+  }
+
+  const normalizedBatchCurrency = batchCurrency.toUpperCase();
+  const goodsToEurCents = (cents: number) => {
+    if (normalizedBatchCurrency === "EUR") {
+      return cents;
+    }
+    if (typeof goodsFxRateToEur !== "number" || !Number.isFinite(goodsFxRateToEur)) {
+      return null;
+    }
+    const converted = Math.round(cents * goodsFxRateToEur);
+    return Number.isSafeInteger(converted) ? converted : null;
+  };
+  const qtyByLine = new Map(
+    lines
+      .map((line) => [pickString(line, ["id"]), Math.max(0, Math.trunc(pickNumber(line, ["qty_received"]) ?? 0))] as const)
+      .filter((entry): entry is [string, number] => Boolean(entry[0]))
+  );
+
+  return lineCosts.map((cost) => {
+    const lineAllocations = allocationByLine.get(cost.batchLineId) ?? [];
+    const goodsCostEurCents = goodsToEurCents(cost.goodsCostCents);
+    let confirmedInboundEurCents: number | null = 0;
+    for (const allocation of lineAllocations) {
+      const allocationCurrency = (allocation.currency ?? batchCurrency).toUpperCase();
+      const allocationEur = allocation.allocatedAmountEurCents;
+      if (typeof allocationEur === "number" && Number.isSafeInteger(allocationEur)) {
+        confirmedInboundEurCents += allocationEur;
+      } else if (allocationCurrency === "EUR") {
+        confirmedInboundEurCents += allocation.allocatedAmountCents;
+      } else {
+        confirmedInboundEurCents = null;
+        break;
+      }
+    }
+    const landedLineCostEurCents = goodsCostEurCents === null || confirmedInboundEurCents === null
+      ? null
+      : goodsCostEurCents + confirmedInboundEurCents;
+    const qty = qtyByLine.get(cost.batchLineId) ?? 0;
+    const originalCurrencyComparable =
+      cost.originalCurrencyComparable === true &&
+      lineAllocations.every(
+        (allocation) =>
+          allocation.originalCurrencyComparable === true &&
+          (allocation.currency ?? batchCurrency).toUpperCase() === normalizedBatchCurrency
+      );
+    return {
+      ...cost,
+      goodsCostEurCents,
+      confirmedInboundEurCents,
+      landedLineCostEurCents,
+      landedUnitCostEur: qty > 0 && landedLineCostEurCents !== null
+        ? Math.round((landedLineCostEurCents / 100 / qty) * 10000) / 10000
+        : null,
+      originalCurrencyComparable,
+    } as AdminSupplierBatchLineCost;
+  });
+}
+
+/**
+ * History is currently exposed by a batch-code RPC rather than a bulk RPC.
+ * Keep export reads bounded and avoid a 5000-request waterfall by limiting
+ * concurrent calls to a small, fixed window.
+ */
+async function readSupplierBatchCostHistories(
+  client: SupabaseServerClient,
+  batches: readonly Pick<AdminSupplierBatch, "id" | "batchCode">[]
+) {
+  const histories = new Map<string, AdminSupplierBatchCostHistoryEntry[]>();
+  const concurrency = 20;
+  for (let index = 0; index < batches.length; index += concurrency) {
+    const chunk = batches.slice(index, index + concurrency);
+    const rows = await Promise.all(
+      chunk.map(async (batch) => [
+        batch.batchCode,
+        await readSupplierBatchCostHistory(client, batch.batchCode),
+      ] as const)
+    );
+    for (const [batchCode, history] of rows) {
+      histories.set(batchCode, history);
+    }
+  }
+  return histories;
 }
 
 async function readSupplierBatchLines(
@@ -8248,7 +9364,8 @@ async function readSupplierBatchProducts(
   lines: DbRow[]
 ) {
   // Preserve the first raw candidate for each public SKU key so the RPC can
-  // apply the same legacy-prefix candidate ordering as admin_get_product.
+  // apply the same legacy-prefix candidate ordering as the permission-checked
+  // supplier-batch V2 product RPC.
   const lookupCodesByKey = new Map<string, string>();
 
   for (const lookupCode of lines.flatMap(supplierBatchLineSkuCandidates)) {
@@ -8276,7 +9393,7 @@ async function readSupplierBatchProducts(
     const requestedKeys = new Set(chunk.map(toSupplierBatchSkuKey));
 
     try {
-      const { data, error } = await client.rpc("admin_get_supplier_batch_products", {
+      const { data, error } = await client.rpc("admin_get_supplier_batch_products_v2", {
         p_sku_codes: chunk,
       });
 
@@ -8285,7 +9402,7 @@ async function readSupplierBatchProducts(
           502,
           "ADMIN_SUPPLIER_BATCH_PRODUCTS_READ_UNAVAILABLE",
           "Admin supplier batch products could not be read from Supabase.",
-          supabaseErrorDetails(error)
+          { reason: "rpc_failed" }
         );
       }
 
@@ -8330,7 +9447,7 @@ async function readSupplierBatchProducts(
             502,
             "ADMIN_SUPPLIER_BATCH_PRODUCTS_READ_UNAVAILABLE",
             "Admin supplier batch products could not be read from Supabase.",
-            { reason: "unexpected_lookup_code", lookupCode }
+            { reason: "unexpected_lookup_code" }
           );
         }
 
@@ -8339,7 +9456,7 @@ async function readSupplierBatchProducts(
             502,
             "ADMIN_SUPPLIER_BATCH_PRODUCTS_READ_UNAVAILABLE",
             "Admin supplier batch products could not be read from Supabase.",
-            { reason: "duplicate_lookup_code", lookupCode }
+            { reason: "duplicate_lookup_code" }
           );
         }
 
@@ -8356,7 +9473,7 @@ async function readSupplierBatchProducts(
         502,
         "ADMIN_SUPPLIER_BATCH_PRODUCTS_READ_UNAVAILABLE",
         "Admin supplier batch products could not be read from Supabase.",
-        supabaseErrorDetails(error)
+        { reason: "rpc_failed" }
       );
     }
   }
@@ -8484,8 +9601,7 @@ function summarizeSupplierBatchLines(
     if (product) {
       const productSummary = readSupplierBatchLineProductSummary(
         product,
-        null,
-        readRecordObject(line.metadata) ?? {}
+        null
       );
       if (productSummary.activeMissingImage) {
         stats.activeMissingImageCount += 1;
@@ -8596,7 +9712,7 @@ function mapAdminSupplierBatchLine(
   const inventory = readSupplierBatchLineInventory(row, inventoryBySku);
   const metadata = readRecordObject(row.metadata) ?? {};
   const productSummary = product
-    ? readSupplierBatchLineProductSummary(product, inventory, metadata)
+    ? readSupplierBatchLineProductSummary(product, inventory)
     : null;
 
   return {
@@ -8623,16 +9739,11 @@ function mapAdminSupplierBatchLine(
 
 function readSupplierBatchLineProductSummary(
   product: DbRow,
-  inventory?: SupplierBatchInventorySummary | null,
-  lineMetadata: Record<string, unknown> = {}
+  inventory?: SupplierBatchInventorySummary | null
 ): AdminSupplierBatchLineProduct {
   const sku = pickString(product, ["sku_code"]) ?? "";
   const brand = pickString(product, ["brand"]) ?? "";
   const model = pickString(product, ["model"]);
-  const costPrice = pickNumber(product, ["cost_price"]) ?? 0;
-  const retailPrice = pickNumber(product, ["retail_price"]) ?? 0;
-  const b2bPrice = pickNumber(product, ["b2b_price"]) ?? 0;
-  const expectedPrices = readSupplierBatchExpectedPrices(lineMetadata, costPrice);
   const catalogStatus = normalizeCatalogStatusValue(pickString(product, ["status"]));
   const stockQty = pickNumber(product, ["stock_qty"]) ?? 0;
   const imagePath = pickString(product, ["image_path"]);
@@ -8653,16 +9764,11 @@ function readSupplierBatchLineProductSummary(
     actualQty: inventory?.actualQty ?? stockQty,
     availableQty: inventory?.availableQty ?? stockQty,
     lockedQty: inventory?.lockedQty ?? 0,
-    costPrice,
-    retailPrice,
-    b2bPrice,
     weightGram: readNullableNonNegativeNumber(product, ["weight_gram"]),
     imagePath,
     modelCodes,
     compatibilityModels,
-    priceRuleOk:
-      retailPrice === expectedPrices.retailPrice &&
-      b2bPrice === expectedPrices.b2bPrice,
+    priceRuleOk: product.price_rule_ok === true || product.priceRuleOk === true,
     activeMissingImage: catalogStatus === "active" && !imagePath,
     modelPrefixIssue,
   };
@@ -8767,32 +9873,6 @@ function readSupplierBatchLineOrderedQty(line: DbRow) {
     readUnknownNumber(metadata.ordered);
 
   return value === null ? null : Math.max(0, Math.trunc(value));
-}
-
-function readSupplierBatchExpectedPrices(
-  metadata: Record<string, unknown>,
-  costPrice: number
-) {
-  const defaultPrice = Math.ceil(costPrice + 5);
-
-  if (metadata.price_policy === "explicit_user_price") {
-    const retailPrice = readUnknownNumber(metadata.expected_retail_price);
-    const b2bPrice = readUnknownNumber(metadata.expected_b2b_price);
-
-    if (
-      retailPrice !== null &&
-      retailPrice > 0 &&
-      b2bPrice !== null &&
-      b2bPrice > 0
-    ) {
-      return {
-        retailPrice: roundMoney(retailPrice),
-        b2bPrice: roundMoney(b2bPrice),
-      };
-    }
-  }
-
-  return { retailPrice: defaultPrice, b2bPrice: defaultPrice };
 }
 
 function readUnknownNumber(value: unknown) {
@@ -13221,6 +14301,20 @@ function mapAdminSupplierBatchRow(
     totalQty,
     totalCost,
     currency: pickString(row, ["currency"]) ?? "EUR",
+    goodsValueEur: pickNumber(row, ["goods_value_eur", "goodsValueEur"]),
+    goodsValueFxRateToEur: pickNumber(row, [
+      "goods_value_fx_rate_to_eur",
+      "goodsValueFxRateToEur",
+    ]),
+    goodsValueFxDate: pickString(row, ["goods_value_fx_date", "goodsValueFxDate"]),
+    goodsValueFxSource: pickString(row, [
+      "goods_value_fx_source",
+      "goodsValueFxSource",
+    ]),
+    goodsValueFxEvidenceUrl: pickString(row, [
+      "goods_value_fx_evidence_url",
+      "goodsValueFxEvidenceUrl",
+    ]),
     vatMode: pickString(row, ["vat_mode"]) ?? "IVA esclusa",
     tags: sanitizeSupplierStringArray(readStringArray(row, ["tags"])),
     sourceFileName: pickString(row, ["source_file_name"]),

@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { listAdminSupplierBatches } from "@/lib/partspro-repository";
-import { parseAdminQuery, repositoryErrorResponse, requireAdminApi } from "../_shared";
+import {
+  hasSupplierBatchReadPermission,
+  parseAdminQuery,
+  repositoryErrorResponse,
+  requireAdminApi,
+} from "../_shared";
+import { apiError } from "@/lib/partspro-api";
 import { toSupplierBatchRowDto } from "./_dto";
 
 export const dynamic = "force-dynamic";
@@ -16,14 +22,27 @@ const supplierBatchQuerySchema = z
     offset: z.coerce.number().int().min(0).max(5000).default(0),
     q: z.string().trim().min(1).max(120).optional(),
     supplier: z.string().trim().min(1).max(120).optional(),
+    currency: z.enum(["EUR", "USD", "CNY"]).optional(),
+    costStatus: z.enum(["unrecorded", "estimated", "confirmed_zero", "confirmed", "needs_review"]).optional(),
+    chargeType: z.enum(["transport", "insurance", "customs", "handling", "other"]).optional(),
+    vatTreatment: z.enum(["recoverable", "non_recoverable", "unknown"]).optional(),
+    hasTransport: z.enum(["with", "without"]).optional(),
+    // UI v2 uses the explicit name; keep the original query key as a
+    // compatibility alias while both clients roll forward.
+    hasTransportCost: z.enum(["with", "without"]).optional(),
+    sort: z.enum(["updated_desc", "received_desc", "amount_desc", "supplier"]).default("updated_desc"),
   })
   .strict();
 
 export async function GET(request: NextRequest) {
-  const admin = await requireAdminApi("product.read_admin");
+  const admin = await requireAdminApi();
 
   if (!admin.ok) {
     return admin.response;
+  }
+
+  if (!hasSupplierBatchReadPermission(admin.authState)) {
+    return apiError(403, "ADMIN_PERMISSION_DENIED", "A supplier batch read permission is required.");
   }
 
   const query = parseAdminQuery(request.nextUrl.searchParams, supplierBatchQuerySchema);
@@ -33,7 +52,10 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const result = await listAdminSupplierBatches(query.data);
+    const result = await listAdminSupplierBatches({
+      ...query.data,
+      hasTransport: query.data.hasTransport ?? query.data.hasTransportCost,
+    });
 
     return NextResponse.json({
       data: result.data.batches.map(toSupplierBatchRowDto),
