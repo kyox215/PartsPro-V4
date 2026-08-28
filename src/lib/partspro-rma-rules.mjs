@@ -110,17 +110,27 @@ export function isCommercialOutcomeAvailable({
  * Refund cap is line-scoped: immutable unit price x approved quantity, less
  * prior RMA refunds, then limited by the order wallet balance.
  *
- * @param {{existingRmaRefunds:number,orderRefundableBalance:number,approvedQuantity:number,unitPriceSnapshot:number}} input
+ * @param {{existingRmaRefunds:number,orderRefundableBalance:number,approvedQuantity:number,orderLineEligibleQuantity:number,unitPriceSnapshot:number}} input
  */
 export function calculateRmaLineRefundCap({
   existingRmaRefunds,
   orderRefundableBalance,
   approvedQuantity,
+  orderLineEligibleQuantity,
   unitPriceSnapshot,
 }) {
-  const lineGross = Math.max(0, unitPriceSnapshot) * Math.max(0, Math.floor(approvedQuantity));
-  const lineRemaining = Math.max(0, lineGross - Math.max(0, existingRmaRefunds));
-  return Math.max(0, Math.min(roundCents(lineRemaining), roundCents(Math.max(0, orderRefundableBalance))));
+  const unitPrice = Math.max(0, unitPriceSnapshot);
+  const rmaGross = unitPrice * Math.max(0, Math.floor(approvedQuantity));
+  const orderLineGross = unitPrice * Math.max(0, Math.floor(orderLineEligibleQuantity));
+  const lineRemaining = Math.max(0, orderLineGross - Math.max(0, existingRmaRefunds));
+  return Math.max(
+    0,
+    Math.min(
+      roundCents(rmaGross),
+      roundCents(lineRemaining),
+      roundCents(Math.max(0, orderRefundableBalance))
+    )
+  );
 }
 
 function roundCents(value) {

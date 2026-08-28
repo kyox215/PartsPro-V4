@@ -27,7 +27,7 @@ test("admin v3 freezes fine-grained permissions and legacy delegation", () => {
   assert.match(adminRoute, /adminRmaActionSchema/);
   assert.match(adminRoute, /workflow: "admin_perform_rma_action_v3"/);
   assert.match(repository, /rpc\("admin_perform_rma_action_v3"/);
-  assert.match(repository, /p_location: input\.location \?\? input\.warehouse \?\? null/);
+  assert.match(repository, /p_location: input\.warehouse \?\? null/);
 });
 
 test("action ledger and terminal disposition guard make restock idempotent", () => {
@@ -45,6 +45,7 @@ test("action ledger and terminal disposition guard make restock idempotent", () 
   assert.match(migration, /rma_action_executions_qc_unique/);
   assert.match(migration, /rma-action:%s:%s:%s:%s/);
   assert.match(repository, /idempotencyKey/);
+  assert.match(repository, /rawCode === "P0001"/);
 });
 
 test("receive/restock/disposition preserve quarantine and available-stock invariants", () => {
@@ -64,6 +65,10 @@ test("receive/restock/disposition preserve quarantine and available-stock invari
   assert.match(migration, /Restock requires an explicit batch code and location/);
   assert.match(migration, /Inventory disposition requires an explicit batch code and location/);
   assert.match(migration, /v_next_status := v_before\.status/);
+  assert.match(migration, /rma_requests_inventory_disposition_quantity/);
+  assert.match(migration, /RMA V1 actions must process the complete RMA quantity/);
+  assert.match(migration, /complete RMA quantity to be received/);
+  assert.match(migration, /inventory_disposition_quantity = v_before\.quantity/);
 });
 
 test("wallet, replacement and state guards are explicit", () => {
@@ -87,9 +92,14 @@ test("wallet, replacement and state guards are explicit", () => {
   assert.match(migration, /Wallet approval is not available for this RMA commercial outcome/);
   assert.match(migration, /RMA already has a replacement outcome/);
   assert.match(migration, /RMA already has a wallet refund outcome/);
+  assert.match(migration, /rma_order_line_returnable_quantity/);
+  assert.match(migration, /order-line returnable quantity/);
+  assert.match(migration, /rma-refund-line:%s/);
+  assert.match(migration, /v_order_refundable_amount/);
+  assert.match(migration, /v_rma\.received_quantity is distinct from v_rma\.quantity/);
   assert.match(migration, /Closed or rejected RMAs cannot be assigned/);
-  assert.match(migration, /Refund quantity must not exceed received quantity/);
-  assert.match(migration, /Replacement quantity must not exceed received quantity/);
+  assert.match(migration, /Refund requires the complete RMA quantity to be received/);
+  assert.match(migration, /Replacement requires the complete RMA quantity to be received/);
   assert.match(migration, /refund_quantity/);
   assert.match(migration, /replacement_quantity/);
   assert.match(migration, /rma\?requestId=%s/);
@@ -122,4 +132,17 @@ test("admin DTO remains allowlisted and supports supplier/replacement actions", 
   assert.match(adminRoute, /rma\.inventory/);
   assert.match(migration, /Legacy review refund amount ignored/);
   assert.match(migration, /review_refund_amount_ignored/);
+});
+
+test("historical RMA trigger and INSERT policies use the shared owner and net quantity guards", () => {
+  assert.match(migration, /create or replace function private\.enforce_rma_order_line\(\)/);
+  assert.match(migration, /private\.rma_user_can_access_order\(v_auth_uid, v_order_customer_id, v_order_id\)/);
+  assert.match(migration, /v_returnable_quantity := private\.rma_order_line_returnable_quantity\(new\.order_line_id\)/);
+  assert.match(migration, /drop policy if exists "partspro_rma_self_submit"/);
+  assert.match(migration, /drop policy if exists "partspro_rma_insert_order_line_guard"/);
+  assert.match(migration, /cm\.status = 'active'/);
+  assert.match(migration, /c\.profile_kind = 'employee_self'/);
+  assert.match(migration, /p\.account_type = 'employee'/);
+  assert.match(migration, /p\.customer_id = c\.id/);
+  assert.doesNotMatch(migration, /v_order_user_id = v_auth_uid/);
 });

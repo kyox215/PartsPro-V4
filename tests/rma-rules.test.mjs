@@ -85,6 +85,7 @@ test("line refund cap uses approved quantity, prior refunds and order balance", 
     calculateRmaLineRefundCap({
       unitPriceSnapshot: 12.5,
       approvedQuantity: 2,
+      orderLineEligibleQuantity: 2,
       existingRmaRefunds: 5,
       orderRefundableBalance: 100,
     }),
@@ -94,10 +95,21 @@ test("line refund cap uses approved quantity, prior refunds and order balance", 
     calculateRmaLineRefundCap({
       unitPriceSnapshot: 12.5,
       approvedQuantity: 4,
+      orderLineEligibleQuantity: 4,
       existingRmaRefunds: 0,
       orderRefundableBalance: 20,
     }),
     20
+  );
+  assert.equal(
+    calculateRmaLineRefundCap({
+      unitPriceSnapshot: 10,
+      approvedQuantity: 1,
+      orderLineEligibleQuantity: 2,
+      existingRmaRefunds: 10,
+      orderRefundableBalance: 100,
+    }),
+    10
   );
 });
 

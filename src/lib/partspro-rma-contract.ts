@@ -271,17 +271,20 @@ export function calculateRmaLineRefundCap({
   existingRmaRefunds,
   orderRefundableBalance,
   approvedQuantity,
+  orderLineEligibleQuantity,
   unitPriceSnapshot,
 }: {
   existingRmaRefunds: number;
   orderRefundableBalance: number;
   approvedQuantity: number;
+  orderLineEligibleQuantity: number;
   unitPriceSnapshot: number;
 }) {
   return calculateRmaLineRefundCapRule({
     existingRmaRefunds,
     orderRefundableBalance,
     approvedQuantity,
+    orderLineEligibleQuantity,
     unitPriceSnapshot,
   });
 }

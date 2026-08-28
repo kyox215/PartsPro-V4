@@ -3274,7 +3274,7 @@ export async function adjustAdminProductStock(
   const row = await rpcProductRow(context.client, "admin_adjust_product_stock", {
     p_action: input.action,
     p_batch_code: input.batchCode ?? null,
-    p_location: input.location ?? input.warehouse ?? null,
+    p_location: input.warehouse ?? null,
     p_quantity: input.quantity,
     p_reason: input.reason,
     p_sku_code: sourceSku,
@@ -11652,6 +11652,14 @@ async function performAdminRmaActionViaRpc(
     const rawCode = isDbRow(error) ? pickString(error, ["code"]) : null;
     const message = isDbRow(error) ? pickString(error, ["message"]) : null;
     if (message?.toLowerCase().includes("idempotency")) {
+      throw new RepositoryWriteError(
+        409,
+        "RMA_ACTION_IDEMPOTENCY_CONFLICT",
+        "The RMA action key was already used with a different payload or result.",
+        { message: "RMA action idempotency conflict." }
+      );
+    }
+    if (rawCode === "P0001") {
       throw new RepositoryWriteError(
         409,
         "RMA_ACTION_IDEMPOTENCY_CONFLICT",

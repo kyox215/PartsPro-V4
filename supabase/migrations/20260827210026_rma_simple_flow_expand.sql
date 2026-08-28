@@ -40,6 +40,7 @@ alter table public.rma_requests
   add column if not exists unit_price_snapshot numeric(12, 2),
   add column if not exists refund_approved_quantity integer,
   add column if not exists replacement_quantity integer,
+  add column if not exists inventory_disposition_quantity integer,
   add column if not exists replacement_order_id uuid references public.orders(id) on delete set null,
   add column if not exists idempotency_key text,
   add column if not exists submit_payload_fingerprint text;
@@ -129,6 +130,20 @@ begin
     alter table public.rma_requests
       add constraint rma_requests_refund_method_check
       check (refund_method is null or refund_method in ('original_payment', 'wallet_credit', 'credit_note'));
+  end if;
+
+  if not exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.rma_requests'::regclass
+      and conname = 'rma_requests_inventory_disposition_quantity_check'
+  ) then
+    alter table public.rma_requests
+      add constraint rma_requests_inventory_disposition_quantity_check
+      check (
+        inventory_disposition_quantity is null
+        or (inventory_disposition_quantity >= 1 and inventory_disposition_quantity <= quantity)
+      );
   end if;
 
   if not exists (
@@ -575,6 +590,8 @@ comment on column public.rma_requests.policy_scope is
   'Policy family only; legacy_unverified never rejects a request by an unconfirmed product-day setting.';
 comment on column public.rma_requests.eligible_until is
   'Nullable until Italian B2C/B2B policy is approved; not enforced for legacy_unverified.';
+comment on column public.rma_requests.inventory_disposition_quantity is
+  'V1 records one complete inventory disposition per RMA; split quantity ledgers are deferred.';
 
 create or replace function private.rma_attachment_extension(p_content_type text)
 returns text
@@ -590,6 +607,29 @@ as $$
     when 'image/heif' then 'heif'
     else null
   end
+$$;
+
+-- The order-line returnable quantity is one shared compatibility rule. Older
+-- shipped rows may have fulfilled_qty = 0, so they fall back to the net
+-- ordered quantity; once fulfillment is recorded, never exceed that amount.
+create or replace function private.rma_order_line_returnable_quantity(
+  p_order_line_id uuid
+)
+returns integer
+language sql
+stable
+security definer
+set search_path = pg_catalog, public, private, pg_temp
+as $$
+  select case
+    when coalesce(ol.fulfilled_qty, 0) > 0 then least(
+      greatest(coalesce(ol.quantity, 0) - coalesce(ol.cancelled_qty, 0), 0),
+      coalesce(ol.fulfilled_qty, 0)
+    )
+    else greatest(coalesce(ol.quantity, 0) - coalesce(ol.cancelled_qty, 0), 0)
+  end
+  from public.order_lines as ol
+  where ol.id = p_order_line_id
 $$;
 
 -- Customer ownership is deliberately explicit and shared by draft + submit.
@@ -1121,6 +1161,7 @@ declare
   v_attachment_count integer := coalesce(array_length(p_attachment_ids, 1), 0);
   v_requested_count integer;
   v_eligible_count integer;
+  v_order_line_returnable_quantity integer;
   v_reason text := nullif(lower(btrim(coalesce(p_reason_code, ''))), '');
   v_resolution text := lower(btrim(coalesce(p_requested_resolution, '')));
   v_note text := nullif(btrim(coalesce(p_note, '')), '');
@@ -1307,13 +1348,21 @@ begin
     raise exception 'Order line does not belong to the authenticated customer' using errcode = '42501';
   end if;
 
+  -- v_line is already locked above. Use the same net quantity helper as the
+  -- historical trigger and refund guards so fulfilled/cancelled lines cannot
+  -- drift into a different RMA eligibility calculation.
+  v_order_line_returnable_quantity := private.rma_order_line_returnable_quantity(v_line.id);
+  if coalesce(v_order_line_returnable_quantity, 0) < 1 then
+    raise exception 'No quantity remains eligible for this order line' using errcode = '22003';
+  end if;
+
   select coalesce(sum(r.quantity), 0)
   into v_requested_count
   from public.rma_requests as r
   where r.order_line_id = v_line.id
     and r.status <> 'rejected';
 
-  if p_quantity + v_requested_count > v_line.quantity then
+  if p_quantity + v_requested_count > v_order_line_returnable_quantity then
     raise exception 'RMA quantity exceeds the remaining order-line quantity' using errcode = '22003';
   end if;
 
@@ -1705,6 +1754,7 @@ declare
   v_line_unit_price numeric(12, 2);
   v_line_refund_cap numeric(12, 2);
   v_existing_refunded_amount numeric(12, 2);
+  v_order_line_returnable_quantity integer;
   v_stock_quantity integer;
   v_replacement_quantity integer;
   v_sku_code text;
@@ -1776,6 +1826,20 @@ begin
     raise exception 'RMA request not found' using errcode = 'P0002';
   end if;
 
+  if v_action in (
+    'mark_received',
+    'request_wallet_refund',
+    'restock_return',
+    'mark_scrapped',
+    'supplier_return',
+    'mark_replacement_sent'
+  ) then
+    if p_quantity is not null and p_quantity <> v_before.quantity then
+      raise exception 'RMA V1 actions must process the complete RMA quantity' using errcode = '22003';
+    end if;
+    v_stock_quantity := v_before.quantity;
+  end if;
+
   v_idempotency_key := coalesce(
     v_idempotency_key,
     format('legacy:%s:%s', v_action, v_before.id)
@@ -1798,7 +1862,14 @@ begin
     coalesce(p_internal_note, ''),
     coalesce(p_reason, ''),
     coalesce(p_refund_amount::text, ''),
-    coalesce(p_quantity::text, ''),
+    coalesce(
+      p_quantity::text,
+      case
+        when v_action in ('mark_received', 'request_wallet_refund', 'restock_return', 'mark_scrapped', 'supplier_return', 'mark_replacement_sent')
+          then v_before.quantity::text
+        else ''
+      end
+    ),
     coalesce(p_batch_code, ''),
     coalesce(p_supplier, ''),
     coalesce(p_location, ''),
@@ -1878,23 +1949,27 @@ begin
   select *
   into v_line
   from public.order_lines as ol
-  where ol.id = v_before.order_line_id;
+  where ol.id = v_before.order_line_id
+  for update;
 
   if v_line.id is not null then
     select *
     into v_order
     from public.orders as o
-    where o.id = v_line.order_id;
+    where o.id = v_line.order_id
+    for update;
   elsif v_before.order_id is not null then
     select *
     into v_order
     from public.orders as o
-    where o.id = v_before.order_id;
+    where o.id = v_before.order_id
+    for update;
   elsif nullif(btrim(coalesce(v_before.order_no, '')), '') is not null then
     select *
     into v_order
     from public.orders as o
-    where o.order_no = v_before.order_no;
+    where o.order_no = v_before.order_no
+    for update;
   end if;
 
   v_next_status := v_before.status;
@@ -1928,8 +2003,8 @@ begin
       raise exception 'Only approved RMAs can be received' using errcode = '23514';
     end if;
 
-    v_stock_quantity := coalesce(p_quantity, v_before.quantity);
-    if v_stock_quantity < 1 or v_stock_quantity > v_before.quantity then
+    v_stock_quantity := v_before.quantity;
+    if v_stock_quantity < 1 or v_stock_quantity <> v_before.quantity then
       raise exception 'Invalid received RMA quantity' using errcode = '23514';
     end if;
 
@@ -1998,15 +2073,10 @@ begin
       raise exception 'RMA wallet refund request already exists' using errcode = '23514';
     end if;
 
-    if p_quantity is null then
-      raise exception 'Refund quantity must be explicitly confirmed' using errcode = '23514';
-    end if;
-
     if v_before.received_quantity is null
-      or p_quantity < 1
-      or p_quantity > v_before.received_quantity
+      or v_before.received_quantity <> v_before.quantity
     then
-      raise exception 'Refund quantity must not exceed received quantity' using errcode = '22003';
+      raise exception 'Refund requires the complete RMA quantity to be received' using errcode = '22003';
     end if;
 
     -- The action payload is the only amount authority. A historical
@@ -2021,15 +2091,31 @@ begin
       raise exception 'RMA has no immutable unit-price snapshot for refund approval' using errcode = '23514';
     end if;
     v_line_unit_price := v_before.unit_price_snapshot;
-    v_stock_quantity := p_quantity;
+    v_stock_quantity := v_before.quantity;
+    v_order_line_returnable_quantity := private.rma_order_line_returnable_quantity(v_before.order_line_id);
+    if coalesce(v_order_line_returnable_quantity, 0) < v_stock_quantity then
+      raise exception 'Refund quantity exceeds the order-line returnable quantity' using errcode = '22003';
+    end if;
+    perform pg_advisory_xact_lock(hashtextextended(
+      format('rma-refund-line:%s', v_before.order_line_id),
+      0
+    ));
     v_line_refund_cap := round(v_line_unit_price * v_stock_quantity, 2);
     select coalesce(sum(coalesce(r.refund_net_amount, r.refund_amount, 0)), 0)
     into v_existing_refunded_amount
     from public.rma_requests as r
     where r.order_line_id = v_before.order_line_id
       and r.id <> v_before.id
-      and r.status = 'refunded';
-    v_line_refund_cap := greatest(v_line_refund_cap - coalesce(v_existing_refunded_amount, 0), 0);
+      and r.status in ('refunded', 'closed')
+      and coalesce(r.refund_net_amount, r.refund_amount, 0) > 0;
+    v_line_refund_cap := least(
+      v_line_refund_cap,
+      greatest(
+        round(v_line_unit_price * v_order_line_returnable_quantity, 2)
+          - coalesce(v_existing_refunded_amount, 0),
+        0
+      )
+    );
     v_refundable_amount := coalesce(private.order_wallet_refundable_amount(v_order.id), 0);
     v_refundable_amount := least(v_refundable_amount, v_line_refund_cap);
     if v_refund_amount > v_refundable_amount then
@@ -2088,6 +2174,10 @@ begin
       raise exception 'RMA inventory disposition requires an explicit QC result' using errcode = '23514';
     end if;
 
+    if v_before.received_quantity is distinct from v_before.quantity then
+      raise exception 'RMA inventory disposition requires the complete RMA quantity to be received' using errcode = '22003';
+    end if;
+
     if nullif(btrim(coalesce(p_batch_code, '')), '') is null
       or nullif(btrim(coalesce(p_location, '')), '') is null
     then
@@ -2098,8 +2188,8 @@ begin
       raise exception 'Restock requires product.adjust_stock permission' using errcode = '42501';
     end if;
 
-    v_stock_quantity := coalesce(p_quantity, coalesce(v_before.received_quantity, v_before.quantity));
-    if v_stock_quantity < 1 or v_stock_quantity > coalesce(v_before.received_quantity, v_before.quantity) then
+    v_stock_quantity := v_before.quantity;
+    if v_stock_quantity < 1 or v_stock_quantity <> v_before.quantity then
       raise exception 'Invalid RMA restock quantity' using errcode = '23514';
     end if;
 
@@ -2156,14 +2246,18 @@ begin
       raise exception 'RMA inventory disposition requires an explicit QC result' using errcode = '23514';
     end if;
 
+    if v_before.received_quantity is distinct from v_before.quantity then
+      raise exception 'RMA inventory disposition requires the complete RMA quantity to be received' using errcode = '22003';
+    end if;
+
     if nullif(btrim(coalesce(p_batch_code, '')), '') is null
       or nullif(btrim(coalesce(p_location, '')), '') is null
     then
       raise exception 'Inventory disposition requires an explicit batch code and location' using errcode = '23514';
     end if;
 
-    v_stock_quantity := coalesce(p_quantity, coalesce(v_before.received_quantity, v_before.quantity));
-    if v_stock_quantity < 1 or v_stock_quantity > coalesce(v_before.received_quantity, v_before.quantity) then
+    v_stock_quantity := v_before.quantity;
+    if v_stock_quantity < 1 or v_stock_quantity <> v_before.quantity then
       raise exception 'Invalid RMA disposition quantity' using errcode = '23514';
     end if;
 
@@ -2221,10 +2315,6 @@ begin
       raise exception 'RMA already has a wallet refund outcome; replacement is not available' using errcode = '23514';
     end if;
 
-    if p_quantity is null then
-      raise exception 'Replacement quantity must be explicitly confirmed' using errcode = '23514';
-    end if;
-
     select *
     into v_replacement_order
     from public.orders as o
@@ -2243,14 +2333,12 @@ begin
       raise exception 'Replacement requires receipt and an explicit QC result' using errcode = '23514';
     end if;
 
-    if v_before.received_quantity is null
-      or p_quantity < 1
-      or p_quantity > v_before.received_quantity
+    if v_before.received_quantity is distinct from v_before.quantity
     then
-      raise exception 'Replacement quantity must not exceed received quantity' using errcode = '22003';
+      raise exception 'Replacement requires the complete RMA quantity to be received' using errcode = '22003';
     end if;
 
-    v_stock_quantity := p_quantity;
+    v_stock_quantity := v_before.quantity;
 
     if v_sku_code is null then
       raise exception 'RMA has no SKU for replacement validation' using errcode = '23503';
@@ -2291,9 +2379,15 @@ begin
       v_next_status := 'closed';
     elsif v_before.status in ('refunded', 'replacement_sent')
       and v_before.received_at is not null
+      and v_before.received_quantity = v_before.quantity
       and v_before.qc_status in ('passed', 'failed', 'not_required')
       and v_before.resolution_action in ('refund_wallet', 'replacement')
       and v_inventory_disposition in ('restock', 'scrap', 'supplier_return')
+      and v_before.inventory_disposition_quantity = v_before.quantity
+      and (
+        (v_before.status = 'refunded' and v_before.refund_approved_quantity = v_before.quantity)
+        or (v_before.status = 'replacement_sent' and v_before.replacement_quantity = v_before.quantity)
+      )
     then
       v_next_status := 'closed';
     else
@@ -2344,6 +2438,10 @@ begin
       refund_approved_quantity = case when v_action = 'request_wallet_refund' then v_stock_quantity else refund_approved_quantity end,
       replacement_order_id = case when v_action = 'mark_replacement_sent' then p_replacement_order_id else replacement_order_id end,
       replacement_quantity = case when v_action = 'mark_replacement_sent' then v_replacement_quantity else replacement_quantity end,
+      inventory_disposition_quantity = case
+        when v_action in ('restock_return', 'mark_scrapped', 'supplier_return') then v_stock_quantity
+        else inventory_disposition_quantity
+      end,
       updated_at = now()
   where id = v_before.id
   returning * into v_after;
@@ -2441,9 +2539,12 @@ declare
   v_auth_uid uuid := (select auth.uid());
   v_rma public.rma_requests%rowtype;
   v_line public.order_lines%rowtype;
+  v_order public.orders%rowtype;
   v_existing_refunded numeric(12, 2);
   v_unit_price numeric(12, 2);
   v_line_cap numeric(12, 2);
+  v_order_refundable_amount numeric(12, 2);
+  v_order_line_returnable_quantity integer;
   v_approved_quantity integer;
 begin
   if v_auth_uid is null then
@@ -2487,10 +2588,11 @@ begin
   end if;
   if v_approved_quantity is null
     or v_rma.received_quantity is null
+    or v_rma.received_quantity is distinct from v_rma.quantity
     or v_approved_quantity < 1
-    or v_approved_quantity > v_rma.received_quantity
+    or v_approved_quantity <> v_rma.quantity
   then
-    raise exception 'Wallet approval quantity must not exceed received quantity' using errcode = '22003';
+    raise exception 'Wallet approval requires the complete RMA quantity to be received and approved' using errcode = '22003';
   end if;
 
   select *
@@ -2499,20 +2601,45 @@ begin
   where ol.id = v_rma.order_line_id
   for update;
 
+  select *
+  into v_order
+  from public.orders as o
+  where o.id = v_line.order_id
+  for update;
+
+  if v_order.id is null then
+    raise exception 'Order does not exist for wallet refund approval' using errcode = '23503';
+  end if;
+
   if v_rma.unit_price_snapshot is null then
     raise exception 'RMA has no immutable unit-price snapshot for wallet approval' using errcode = '23514';
   end if;
   v_unit_price := v_rma.unit_price_snapshot;
   perform pg_advisory_xact_lock(hashtextextended(format('rma-refund-line:%s', coalesce(v_rma.order_line_id, new.order_line_id)), 0));
 
+  v_order_line_returnable_quantity := private.rma_order_line_returnable_quantity(v_rma.order_line_id);
+  if coalesce(v_order_line_returnable_quantity, 0) < v_approved_quantity then
+    raise exception 'Approved wallet refund quantity exceeds the order-line returnable quantity' using errcode = '22003';
+  end if;
+
   select coalesce(sum(coalesce(r.refund_net_amount, r.refund_amount, 0)), 0)
   into v_existing_refunded
   from public.rma_requests as r
   where r.order_line_id = v_rma.order_line_id
     and r.id <> v_rma.id
-    and r.status = 'refunded';
+    and r.status in ('refunded', 'closed')
+    and coalesce(r.refund_net_amount, r.refund_amount, 0) > 0;
 
-  v_line_cap := greatest(round(v_unit_price * v_approved_quantity, 2) - coalesce(v_existing_refunded, 0), 0);
+  v_line_cap := least(
+    round(v_unit_price * v_approved_quantity, 2),
+    greatest(
+      round(v_unit_price * v_order_line_returnable_quantity, 2)
+        - coalesce(v_existing_refunded, 0),
+      0
+    )
+  );
+  v_order_refundable_amount := coalesce(private.order_wallet_refundable_amount(v_order.id), 0);
+  v_line_cap := least(v_line_cap, v_order_refundable_amount);
   if coalesce(new.approved_amount, 0) > v_line_cap then
     raise exception 'Approved wallet refund exceeds the remaining order-line cap' using errcode = '22003';
   end if;
@@ -2837,3 +2964,243 @@ grant execute on function public.admin_perform_rma_action(
   text,
   text
 ) to authenticated;
+
+-- Keep the historical direct-write trigger on the same ownership and net
+-- quantity source as the new draft/submit RPCs. The trigger name/signature is
+-- defined by 20260524133225_harden_partspro_relations.sql and is replaced here
+-- without removing its existing grant or trigger.
+create or replace function private.enforce_rma_order_line()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public, private, pg_temp
+as $$
+declare
+  v_line_qty integer;
+  v_returnable_quantity integer;
+  v_order_id uuid;
+  v_order_customer_id uuid;
+  v_order_no text;
+  v_sku_code text;
+  v_auth_uid uuid := (select auth.uid());
+  v_is_staff boolean := (select private.is_staff());
+begin
+  if new.order_line_id is null then
+    raise exception 'RMA request must reference an order line' using errcode = '23502';
+  end if;
+
+  select
+    ol.quantity,
+    o.id,
+    o.customer_id,
+    o.order_no,
+    ol.sku_code
+  into
+    v_line_qty,
+    v_order_id,
+    v_order_customer_id,
+    v_order_no,
+    v_sku_code
+  from public.order_lines as ol
+  join public.orders as o on o.id = ol.order_id
+  where ol.id = new.order_line_id
+  for update;
+
+  if v_line_qty is null then
+    raise exception 'RMA order line does not exist' using errcode = '23503';
+  end if;
+
+  if new.quantity is null or new.quantity <= 0 then
+    raise exception 'RMA quantity must be positive' using errcode = '23514';
+  end if;
+
+  v_returnable_quantity := private.rma_order_line_returnable_quantity(new.order_line_id);
+  if v_returnable_quantity is null or new.quantity > v_returnable_quantity then
+    raise exception 'RMA quantity cannot exceed the order-line returnable quantity' using errcode = '23514';
+  end if;
+
+  if new.attachments is null then
+    new.attachments := '[]'::jsonb;
+  end if;
+
+  if jsonb_typeof(new.attachments) <> 'array' then
+    raise exception 'RMA attachments must be a JSON array' using errcode = '23514';
+  end if;
+
+  if new.order_id is null then
+    new.order_id := v_order_id;
+  elsif new.order_id is distinct from v_order_id then
+    raise exception 'RMA order_id must match the referenced order line' using errcode = '23514';
+  end if;
+
+  if new.customer_id is null then
+    new.customer_id := v_order_customer_id;
+  elsif new.customer_id is distinct from v_order_customer_id then
+    raise exception 'RMA customer_id must match the referenced order line' using errcode = '23514';
+  end if;
+
+  if new.order_no is null or btrim(new.order_no) = '' then
+    new.order_no := v_order_no;
+  elsif new.order_no <> v_order_no then
+    raise exception 'RMA order_no must match the referenced order line' using errcode = '23514';
+  end if;
+
+  if new.sku_code is null or btrim(new.sku_code) = '' then
+    new.sku_code := v_sku_code;
+  elsif new.sku_code <> v_sku_code then
+    raise exception 'RMA sku_code must match the referenced order line' using errcode = '23514';
+  end if;
+
+  if not v_is_staff then
+    if v_auth_uid is null then
+      raise exception 'Authentication required' using errcode = '28000';
+    end if;
+
+    if not private.rma_user_can_access_order(v_auth_uid, v_order_customer_id, v_order_id) then
+      raise exception 'RMA order line is not owned by the authenticated customer' using errcode = '42501';
+    end if;
+
+    new.user_id := coalesce(new.user_id, v_auth_uid);
+    if new.user_id is distinct from v_auth_uid then
+      raise exception 'RMA user_id must match current user' using errcode = '42501';
+    end if;
+
+    new.status := coalesce(new.status, 'submitted');
+    if new.status <> 'submitted' then
+      raise exception 'Buyers can only submit new RMA requests' using errcode = '42501';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+-- Replace both historical INSERT policies while retaining the original grants.
+-- The shared helper contains the explicit ordinary-membership and
+-- employee-self branches, so orders.user_id/current_customer_id cannot act as
+-- a fallback owner proof.
+drop policy if exists "partspro_rma_self_submit" on public.rma_requests;
+create policy "partspro_rma_self_submit"
+on public.rma_requests
+for insert
+to authenticated
+with check (
+  (select private.is_staff())
+  or (
+    user_id = (select auth.uid())
+    and status = 'submitted'
+    and order_line_id is not null
+    and exists (
+      select 1
+      from public.order_lines as ol
+      join public.orders as o on o.id = ol.order_id
+      join public.customers as c on c.id = o.customer_id
+      where ol.id = rma_requests.order_line_id
+        and (rma_requests.customer_id is null or rma_requests.customer_id = o.customer_id)
+        and rma_requests.quantity <= case
+          when coalesce(ol.fulfilled_qty, 0) > 0 then least(
+            greatest(coalesce(ol.quantity, 0) - coalesce(ol.cancelled_qty, 0), 0),
+            coalesce(ol.fulfilled_qty, 0)
+          )
+          else greatest(coalesce(ol.quantity, 0) - coalesce(ol.cancelled_qty, 0), 0)
+        end
+        and (
+          (
+            exists (
+              select 1
+              from public.profiles as p
+              where p.id = (select auth.uid())
+                and coalesce(p.account_type, 'customer') = 'customer'
+            )
+            and c.status = 'active'
+            and coalesce(c.profile_kind, 'customer') = 'customer'
+            and exists (
+              select 1
+              from public.customer_memberships as cm
+              where cm.customer_id = c.id
+                and cm.user_id = (select auth.uid())
+                and cm.status = 'active'
+            )
+          )
+          or (
+            exists (
+              select 1
+              from public.profiles as p
+              where p.id = (select auth.uid())
+                and p.account_type = 'employee'
+                and p.customer_id = c.id
+            )
+            and c.user_id = (select auth.uid())
+            and c.status = 'active'
+            and c.profile_kind = 'employee_self'
+          )
+        )
+    )
+  )
+);
+
+drop policy if exists "partspro_rma_insert_order_line_guard" on public.rma_requests;
+create policy "partspro_rma_insert_order_line_guard"
+on public.rma_requests
+as restrictive
+for insert
+to authenticated
+with check (
+  (select private.is_staff())
+  or (
+    user_id = (select auth.uid())
+    and status = 'submitted'
+    and order_line_id is not null
+    and exists (
+      select 1
+      from public.order_lines as ol
+      join public.orders as o on o.id = ol.order_id
+      join public.customers as c on c.id = o.customer_id
+      where ol.id = rma_requests.order_line_id
+        and (rma_requests.customer_id is null or rma_requests.customer_id = o.customer_id)
+        and rma_requests.quantity <= case
+          when coalesce(ol.fulfilled_qty, 0) > 0 then least(
+            greatest(coalesce(ol.quantity, 0) - coalesce(ol.cancelled_qty, 0), 0),
+            coalesce(ol.fulfilled_qty, 0)
+          )
+          else greatest(coalesce(ol.quantity, 0) - coalesce(ol.cancelled_qty, 0), 0)
+        end
+        and (
+          (
+            exists (
+              select 1
+              from public.profiles as p
+              where p.id = (select auth.uid())
+                and coalesce(p.account_type, 'customer') = 'customer'
+            )
+            and c.status = 'active'
+            and coalesce(c.profile_kind, 'customer') = 'customer'
+            and exists (
+              select 1
+              from public.customer_memberships as cm
+              where cm.customer_id = c.id
+                and cm.user_id = (select auth.uid())
+                and cm.status = 'active'
+            )
+          )
+          or (
+            exists (
+              select 1
+              from public.profiles as p
+              where p.id = (select auth.uid())
+                and p.account_type = 'employee'
+                and p.customer_id = c.id
+            )
+            and c.user_id = (select auth.uid())
+            and c.status = 'active'
+            and c.profile_kind = 'employee_self'
+          )
+        )
+    )
+  )
+);
+
+revoke all on function private.rma_order_line_returnable_quantity(uuid)
+  from public, anon, authenticated;
+revoke all on function private.enforce_rma_order_line()
+  from public, anon, authenticated;

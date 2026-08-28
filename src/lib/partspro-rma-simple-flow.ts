@@ -327,22 +327,39 @@ async function cancelRmaAttachmentAfterTicketFailure(
   service: ReturnType<typeof createServiceRoleClient> | null,
   storagePath: string | null
 ) {
+  let cancellationError: unknown = null;
   try {
-    await client.rpc("rma_cancel_attachment", {
+    const { error } = await client.rpc("rma_cancel_attachment", {
       p_attachment_id: attachmentId,
       p_draft_id: draftId,
     });
+    cancellationError = error;
   } catch {
+    cancellationError = new Error("RMA attachment cancellation RPC failed");
+  }
+
+  if (cancellationError) {
     // The maintenance GC function is the fallback if the cancellation RPC
-    // itself is unavailable; never mask the original ticket error.
+    // itself is unavailable; never mask the original ticket error. Keep a
+    // structured server-side signal so operators can find orphaned rows.
+    console.error("RMA attachment ticket compensation could not cancel the database row", {
+      attachmentId,
+      draftId,
+      error: cancellationError instanceof Error ? cancellationError.message : "rpc_error",
+    });
   }
 
   if (service && storagePath) {
     try {
       await service.storage.from(rmaEvidenceBucket).remove([storagePath]);
-    } catch {
+    } catch (error) {
       // Storage deletion is compensating cleanup and is intentionally best
       // effort. The database row remains cancelled and cannot be submitted.
+      console.error("RMA attachment ticket compensation could not remove storage object", {
+        attachmentId,
+        draftId,
+        error: error instanceof Error ? error.message : "storage_error",
+      });
     }
   }
 }
@@ -494,7 +511,7 @@ function mapRpcError(
   const row = isRecord(error) ? error : {};
   const rawCode = readString(row.code);
   const message = readString(row.message) ?? fallbackMessage;
-  if (rawCode === "23505" && /idempotency|already submitted|different payload/i.test(message)) {
+  if (rawCode === "P0001" || (rawCode === "23505" && /idempotency|already submitted|different payload/i.test(message))) {
     return new RmaSimpleFlowError(409, "RMA_IDEMPOTENCY_CONFLICT", "The RMA submission key was already used with a different payload.");
   }
   const status = rpcStatus(rawCode);

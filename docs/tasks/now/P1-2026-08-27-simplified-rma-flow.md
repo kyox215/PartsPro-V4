@@ -282,6 +282,13 @@ refunded | replacement_sent
 - inventory disposition 只写 `inventory_disposition`，商业动作与库存终态可独立完成；已收货 RMA 只有在商业终态与库存终态都完成后关闭，QC 成功 exactly-once。替换明确使用实收数量并校验同客户已发货订单同 SKU 足量。
 - 复审补充：legacy POST 也必须带至少一份经过当前用户专属 path/bucket 校验的证据；新/旧附件失败均先取消数据库额度，再 best-effort 删除 Storage。无不可变单价快照的历史 RMA 不允许直接发起钱包退款，需受控人工补建快照或后续迁移方案。
 
+### 批次 1d 最后核心修正（2026-08-28）
+
+- 历史 `partspro_rma_order_line_guard` 使用的 `private.enforce_rma_order_line()` 已在 Migration A 中 `CREATE OR REPLACE`，订单归属与 legacy INSERT policies 统一调用 `private.rma_user_can_access_order`；净数量统一调用 `private.rma_order_line_returnable_quantity`。普通 customer 仅 active membership，employee 仅 employee-self 分支，历史 `orders.user_id` 不再构成授权。
+- V1 不支持拆分商业/库存 ledger：收货、退款、换货、restock、scrap、supplier_return 省略数量时取完整 RMA 数量，传部分数量直接拒绝；close 复核完整 received/commercial/inventory 数量。部分收货和拆分处置留待未来数量 ledger，本版本 fail-closed。
+- 退款上限统一为 `min(本 RMA 批准数量×不可变单价, 订单行净可退数量×单价−历史该行退款, 整单剩余可退余额)`，submit、退款请求和 wallet approval BEFORE guard 均在订单行锁/行 advisory lock 下使用同一净数量 helper；`P0001` 幂等 payload 冲突映射为 409。
+- ticket 失败补偿现在检查 `rma_cancel_attachment` 的 `{ error }` 并输出服务端可观察信号；原始上传错误不被清理失败覆盖，孤儿由受门禁 GC 兜底。修复旧库存调整函数错误访问不存在的 `input.location`，RMA action 仍保留独立 location。
+
 ### 未来实施验收
 
 - 客户只能从有权限的真实订单行进入；服务端拒绝越权订单行、过期政策和并发超量。
@@ -312,7 +319,7 @@ git log -1 --oneline
 当前批次 1 自动化集合：
 
 - `node --test tests/rma-rules.test.mjs tests/rma-contract.test.mjs tests/admin-rma-workflow-contract.test.mjs`
-- `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/tsc' --noEmit --project '<worktree>/tsconfig.json'`（基线 `RouteContext` 错误已记录）
+- `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/tsc' --noEmit --incremental false --project '<worktree>/tsconfig.json'`（当前仅剩基线 `RouteContext` 错误）
 - `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/eslint' <worktree absolute TS/TSX files>`
 - `git diff --check`
 
@@ -361,9 +368,12 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 | 当前批次 1 代码/migration/远端写入 | passed | 仅隔离 worktree 生成服务端契约/API 与 Migration A；未访问/写入 linked Supabase、Vercel、GitHub |
 | `node --test tests/rma-rules.test.mjs tests/rma-contract.test.mjs tests/admin-rma-workflow-contract.test.mjs` | passed | 批次 1c 共享纯规则与 SQL/API 源契约 14/14 通过 |
 | 主仓库 `node_modules/.bin/eslint` 定向检查 | passed | 批次 1b RMA contract/http/helper、客户/后台 routes、repository 均通过 |
-| 主仓库 `node_modules/.bin/tsc --noEmit --project <worktree>/tsconfig.json` | blocked by baseline | 仅报已存在的 `src/app/api/admin/restock-requests/[id]/route.ts:17:12 RouteContext` 与 `src/lib/partspro-repository.ts:3277:23 AdminProductStockAdjustmentInput.location`；均在 `992bc9e` 基线复现，未见本批新增诊断 |
+| 主仓库 `node_modules/.bin/tsc --noEmit --incremental false --project <worktree>/tsconfig.json` | blocked by baseline | 1d 复跑仅报既有 `src/app/api/admin/restock-requests/[id]/route.ts:17:12 RouteContext`；`AdminProductStockAdjustmentInput.location` 已修复且无新增诊断 |
 | 主仓库 `node_modules/.bin/eslint` 定向检查 | passed | 本批所有 RMA TS/TSX 受影响文件通过，无输出 |
 | `git diff --check` | passed | 批次 1c 当前 diff 无空白错误 |
+| `node --test tests/rma-rules.test.mjs tests/rma-contract.test.mjs tests/admin-rma-workflow-contract.test.mjs` | passed | 批次 1d 纯规则与 SQL/API 源契约 16/16 通过 |
+| 主仓库 `node_modules/.bin/eslint` 定向检查 | passed | 批次 1d 修改的 repository、RMA contract、RMA simple-flow 通过 |
+| `git diff --check` | passed | 批次 1d 当前 diff 无空白错误 |
 | Supabase linked/local lint、migration dry-run、build/E2E | skipped by gate | 本批禁止远端/数据库写入；worktree 无需启动本地数据库，按范围不跑完整 build/E2E |
 
 ## 执行记录
@@ -372,7 +382,7 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 - 批准：2026-08-27；用户已批准本轮开始实现/推送/部署，当前 worker 仍按范围不 push、不部署、不应用远端 migration
 - 开始：2026-08-27
 - review：pending；Migration A/RLS/权限/支付/库存需专项守门
-- verified：2026-08-28；批次 1c 规则/契约 tests 14/14、定向 ESLint、`git diff --check` 通过；tsc 仅剩 `992bc9e` 基线的 `RouteContext` 与 `AdminProductStockAdjustmentInput.location` 两项错误
+- verified：2026-08-28；批次 1c 规则/契约 tests 14/14；批次 1d 规则/契约 tests 16/16、定向 ESLint、`git diff --check` 通过；`tsc --noEmit --incremental false` 仅剩基线 `RouteContext`
 - released：不适用，本批不发布
 - closed：pending
 
@@ -384,6 +394,7 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 
 - 意大利 B2C 撤回/保修、B2B 商业退货、退款方式、运费承担和税务处理尚未由专业人员确认。
 - 当前历史 RMA 状态、附件 JSON、wallet `order_void` 语义和库存处置数据需要迁移前盘点。
-- 当前批次已收口服务端附件上传/校验、legacy 双协议隔离、核心状态/QC 守卫、active membership/employee-self 归属、并发数量锁、customer DTO 隔离、商业互斥、双轴关闭、批量 GC 函数和基础通知事件；历史无单价快照 RMA 需人工/迁移补建后才能安全退款。客户端三块 UI、法定期限与 policy 激活、GC 调度、Migration B 危险撤权、生产联调和完整退款/税务确认仍待后续批次。
+- 当前批次已收口服务端附件上传/校验、legacy 双协议隔离、核心状态/QC 守卫、active membership/employee-self 归属、并发数量锁、统一订单行净可退数量、V1 完整数量闭环、customer DTO 隔离、商业互斥、双轴关闭、批量 GC 函数和基础通知事件；历史无单价快照 RMA 需人工/迁移补建后才能安全退款。客户端三块 UI、法定期限与 policy 激活、GC 调度、Migration B 危险撤权、生产联调和完整退款/税务确认仍待后续批次。
+- V1 明确拒绝部分收货/部分退款/部分库存处置；未来若需拆分，必须新增数量 ledger、库存批次分配和逐行退款对账，不得只放宽当前 action 参数。
 - Migration A 保留旧 `rma_requests/events` direct grants/RLS，并未收紧历史 bucket；在新客户端完全切换、兼容读取验证和正式 Migration B 审批前，禁止打开新写流程生产流量。
 - 后续应分别创建政策 ADR、RMA data/RPC migration 任务、图片上传安全任务、后台 QC/库存任务、退款/换货任务和发布观察 runbook。

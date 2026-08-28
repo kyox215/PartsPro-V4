@@ -123,6 +123,10 @@ test("Migration A owns isolated draft/attachment/action tables and fixed storage
   assert.match(migration, /status in \('pending', 'verified', 'committed'\)\s+and a\.expires_at > now\(\)/);
   assert.match(migration, /d\.status in \('open', 'submitted', 'abandoned', 'expired'\)/);
   assert.match(migration, /a\.rma_request_id is null/);
+  assert.match(migration, /rma_order_line_returnable_quantity/);
+  assert.match(migration, /fulfilled_qty/);
+  assert.match(migration, /fulfilled_qty = 0/);
+  assert.match(migration, /rma_requests_inventory_disposition_quantity_check/);
 });
 
 test("RMA RPCs bind auth/ownership, preserve policy uncertainty and use explicit grants", () => {
@@ -162,6 +166,10 @@ test("RMA RPCs bind auth/ownership, preserve policy uncertainty and use explicit
   assert.match(migration, /rma-submit-user:%s:%s/);
   assert.match(migration, /submit_payload_fingerprint/);
   assert.match(migration, /RMA has no immutable unit-price snapshot/);
+  assert.match(migration, /v_order_line_returnable_quantity := private\.rma_order_line_returnable_quantity/);
+  assert.match(migration, /create or replace function private\.enforce_rma_order_line\(\)/);
+  assert.match(migration, /drop policy if exists "partspro_rma_self_submit"/);
+  assert.match(contract, /orderLineEligibleQuantity/);
 });
 
 test("statutory withdrawal and pure safety helpers remain separate from defect evidence", () => {
@@ -177,4 +185,16 @@ test("statutory withdrawal and pure safety helpers remain separate from defect e
   assert.match(migration, /v_policy_scope = 'statutory_b2c_withdrawal'/);
   assert.match(migration, /and \(v_reason is null or v_reason = 'withdrawal_no_longer_needed'\)/);
   assert.match(migration, /if v_attachment_count < 1/);
+});
+
+test("V1 processing is whole-RMA and idempotency conflicts remain typed", () => {
+  assert.match(migration, /RMA V1 actions must process the complete RMA quantity/);
+  assert.match(migration, /p_quantity is not null and p_quantity <> v_before\.quantity/);
+  assert.match(migration, /received_quantity is distinct from v_before\.quantity/);
+  assert.match(migration, /inventory_disposition_quantity = v_before\.quantity/);
+  assert.match(migration, /v_before\.refund_approved_quantity = v_before\.quantity/);
+  assert.match(migration, /v_before\.replacement_quantity = v_before\.quantity/);
+  assert.match(helper, /rawCode === "P0001"/);
+  assert.match(helper, /RMA attachment ticket compensation could not cancel/);
+  assert.match(helper, /const \{ error \} = await client\.rpc\("rma_cancel_attachment"/);
 });
