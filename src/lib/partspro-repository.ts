@@ -46,6 +46,7 @@ import {
   type RmaOrderOption,
   type RmaResolutionAction,
   type RmaStatus,
+  type RmaWalletRefundStatus,
   type StockStatus,
 } from "@/lib/partspro-data";
 import {
@@ -11155,8 +11156,20 @@ async function readAdminRmaRequests(
     context.client,
     uniqueDefinedStrings(rows.map((row) => pickString(row, ["id"])))
   );
+  const walletRefundStatusesByRequestId = await readRmaWalletRefundStatusesByRequestId(
+    context.client,
+    uniqueDefinedStrings(rows.map((row) => pickString(row, ["id"])))
+  );
   const requests = rows
-    .map((row) => mapRmaRow(row, linesById, eventsByRequestId, ordersById))
+    .map((row) =>
+      mapRmaRow(
+        row,
+        linesById,
+        eventsByRequestId,
+        ordersById,
+        walletRefundStatusesByRequestId
+      )
+    )
     .filter(isDefined);
 
   return {
@@ -11709,8 +11722,18 @@ async function mapRmaRpcRow(
     context.client,
     requestId ? [requestId] : []
   );
+  const walletRefundStatusesByRequestId = await readRmaWalletRefundStatusesByRequestId(
+    context.client,
+    requestId ? [requestId] : []
+  );
 
-  return mapRmaRow(row, linesById, eventsByRequestId, ordersById);
+  return mapRmaRow(
+    row,
+    linesById,
+    eventsByRequestId,
+    ordersById,
+    walletRefundStatusesByRequestId
+  );
 }
 
 async function insertB2BApplication(
@@ -12067,6 +12090,51 @@ async function readRmaEventsByRequestId(
   }
 
   return eventsByRequestId;
+}
+
+/**
+ * Hydrate the newest canonical RMA wallet request in one query for the admin
+ * list/detail mapper. The customer DTO never receives this admin-only state.
+ * Migration A keeps legacy wallet tables intact, so a missing relation or a
+ * pre-migration row simply maps to null rather than widening the payload.
+ */
+async function readRmaWalletRefundStatusesByRequestId(
+  client: SupabaseServerClient,
+  requestIds: string[]
+): Promise<Map<string, RmaWalletRefundStatus>> {
+  const candidates = uniqueDefinedStrings(requestIds);
+  const statuses = new Map<string, RmaWalletRefundStatus>();
+
+  if (candidates.length === 0) {
+    return statuses;
+  }
+
+  try {
+    const { data, error } = await client
+      .from("wallet_refund_requests")
+      .select("rma_request_id, status, requested_at")
+      .in("rma_request_id", candidates)
+      .order("requested_at", { ascending: false });
+    const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
+
+    if (error || !rows) {
+      return statuses;
+    }
+
+    for (const row of rows) {
+      const requestId = pickString(row, ["rma_request_id"]);
+      const status = normalizeRmaWalletRefundStatus(pickString(row, ["status"]));
+
+      if (requestId && status && !statuses.has(requestId)) {
+        statuses.set(requestId, status);
+      }
+    }
+  } catch {
+    // The relation is additive in Migration A. Preserve the existing admin
+    // list if an older deployment does not expose the new relation yet.
+  }
+
+  return statuses;
 }
 
 async function readRowsForColumnValues(
@@ -14051,7 +14119,8 @@ function mapRmaRow(
   row: DbRow,
   linesById: Map<string, DbRow>,
   eventsByRequestId: Map<string, RmaEvent[]> = new Map(),
-  ordersById: Map<string, DbRow> = new Map()
+  ordersById: Map<string, DbRow> = new Map(),
+  walletRefundStatusesByRequestId: Map<string, RmaWalletRefundStatus> = new Map()
 ): RmaRequest | null {
   const id = pickString(row, ["id", "rma_id", "request_id"]);
   const lineId = pickString(row, ["order_line_id", "order_item_id", "line_id"]);
@@ -14074,6 +14143,9 @@ function mapRmaRow(
   const resolutionAction = normalizeRmaResolutionAction(
     pickString(row, ["resolution_action"])
   );
+  const walletRefundStatus =
+    walletRefundStatusesByRequestId.get(id) ??
+    normalizeRmaWalletRefundStatus(pickString(row, ["wallet_refund_status"]));
   let resolutionQuantity = null;
 
   if (resolutionAction === "refund_wallet" || (!resolutionAction && status === "refunded")) {
@@ -14132,6 +14204,9 @@ function mapRmaRow(
     receivedQuantity: pickNumber(row, ["received_quantity"]),
     resolutionQuantity,
     inventoryDispositionQuantity: pickNumber(row, ["inventory_disposition_quantity"]),
+    qcStatus: normalizeRmaQcStatus(pickString(row, ["qc_status"])),
+    replacementOrderId: pickString(row, ["replacement_order_id"]),
+    walletRefundStatus,
     reviewedAt: pickString(row, ["reviewed_at"]),
     receivedAt: pickString(row, ["received_at"]),
     resolvedAt: pickString(row, ["resolved_at"]),
@@ -15179,6 +15254,31 @@ function normalizeRmaStatus(value: string | null): RmaStatus {
   }
 
   return "submitted";
+}
+
+function normalizeRmaQcStatus(
+  value: string | null
+): "pending" | "passed" | "failed" | "not_required" {
+  if (value === "passed" || value === "failed" || value === "not_required") {
+    return value;
+  }
+
+  return "pending";
+}
+
+function normalizeRmaWalletRefundStatus(
+  value: string | null
+): RmaWalletRefundStatus | null {
+  if (
+    value === "pending" ||
+    value === "approved" ||
+    value === "rejected" ||
+    value === "cancelled"
+  ) {
+    return value;
+  }
+
+  return null;
 }
 
 function normalizeRmaResolutionAction(

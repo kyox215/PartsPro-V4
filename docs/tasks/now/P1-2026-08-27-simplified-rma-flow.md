@@ -296,6 +296,13 @@ refunded | replacement_sent
 - JS/TS 共享 `isRmaActionAvailable` 现在要求收货、商业结果和库存处置在各自需要的阶段达到完整 RMA 数量；close 同时校验完整数量、QC、双轴终态和退款/换货互斥。纯行为测试覆盖收货、退款结果、换货结果和库存处置的部分/全量数量矩阵。
 - 本批未连接本地或远端 PostgreSQL/Supabase，也未应用 migration；双事务并发 trigger 验证留给最终本地数据库门禁。生产仍 NO-GO，Migration B 撤权、兼容直写切换和数据库链路验证不得提前打开。
 
+### 批次 1f close 契约收口（2026-08-28）
+
+- close 的可执行规则现在明确要求 `receivedAt`/`received_at` 非空；终态 status 或完整数量不能单独证明已经收货。已收货 RMA 的退款完成条件同时要求 `status=refunded`、`resolution_action=refund_wallet`、完整退款数量、同一 RMA 的 `rma_return` wallet request 已批准且没有 replacement order；pending/rejected wallet 请求不能关闭。
+- replacement 完成条件同时要求 `status=replacement_sent`、`resolution_action=replacement`、完整替换数量、已关联不同的 replacement order 且没有 wallet refund request；退款和换货混合状态、缺 linkage 或缺明确收货时间均 fail-closed。未收货 rejected 的既有终止关闭例外仍保留，不把它当作已收货流程。
+- 后台 `RmaRequest` 与 mapper 输出最小 admin-only `qcStatus`、`replacementOrderId`、`walletRefundStatus`；admin 列表和 RPC 详情通过一次按 RMA ID 批量查询读取 `wallet_refund_requests` 状态，客户 DTO 继续不暴露这些字段及其他内部字段，避免 N+1 与信息越界。
+- Migration A close guard 与 JS 规则成对收紧；未修改客户/后台 UI、未撤权、未收紧历史 bucket，生产仍 NO-GO。wallet 状态关系/替换单状态的实际数据库验证留给本地 PostgreSQL/linked 安全门。
+
 ### 未来实施验收
 
 - 客户只能从有权限的真实订单行进入；服务端拒绝越权订单行、过期政策和并发超量。
@@ -385,6 +392,10 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 | `/Users/kyox215/Documents/partspro v4/node_modules/.bin/eslint <本批 RMA TS/MJS 文件>` | passed | 批次 1e 定向 ESLint 无输出 |
 | `/Users/kyox215/Documents/partspro v4/node_modules/.bin/tsc --noEmit --incremental false --project <worktree>/tsconfig.json` | blocked by baseline | 仅有既有 `src/app/api/admin/restock-requests/[id]/route.ts:17:12 RouteContext`；本批无新增 TypeScript 诊断 |
 | `git diff --check` | passed | 批次 1e 当前 diff 无空白错误 |
+| `node --test tests/rma-rules.test.mjs tests/rma-contract.test.mjs tests/admin-rma-workflow-contract.test.mjs` | passed | 批次 1f close 规则、wallet/replacement linkage 反例与 SQL close 静态契约 18/18 通过 |
+| `/Users/kyox215/Documents/partspro v4/node_modules/.bin/eslint <1f RMA data/repository/contract/rules/tests>` | passed | 定向 ESLint 无输出 |
+| `/Users/kyox215/Documents/partspro v4/node_modules/.bin/tsc --noEmit --incremental false --project <worktree>/tsconfig.json` | blocked by baseline | 仅报既有 `src/app/api/admin/restock-requests/[id]/route.ts(17,12): Cannot find name 'RouteContext'`；1f 未引入新增诊断 |
+| `git diff --check` | passed | 1f 当前差异无空白错误 |
 | `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase status` | blocked by local environment | Docker daemon 不可用；无本地 PostgreSQL/Supabase，双事务并发 trigger 验证留最终本地数据库门禁；未访问远端 |
 | Supabase linked/local lint、migration dry-run、build/E2E | skipped by gate | 本批禁止远端/数据库写入；worktree 无需启动本地数据库，按范围不跑完整 build/E2E |
 
@@ -394,7 +405,7 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 - 批准：2026-08-27；用户已批准本轮开始实现/推送/部署，当前 worker 仍按范围不 push、不部署、不应用远端 migration
 - 开始：2026-08-27
 - review：pending；Migration A/RLS/权限/支付/库存需专项守门
-- verified：2026-08-28；批次 1e 规则/历史 trigger/后台 DTO tests 18/18、定向 ESLint、`git diff --check` 通过；`tsc --noEmit --incremental false` 仅剩基线 `RouteContext`；本地 Docker 不可用，双事务数据库验证待最终门禁
+- verified：2026-08-28；批次 1f close 规则/SQL guard/admin DTO tests 18/18、定向 ESLint、`git diff --check` 通过；`tsc --noEmit --incremental false` 仅剩基线 `RouteContext`；本地 Docker 不可用，wallet/replacement 关系和数据库 close 行为待最终门禁
 - released：不适用，本批不发布
 - closed：pending
 
@@ -406,7 +417,7 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 
 - 意大利 B2C 撤回/保修、B2B 商业退货、退款方式、运费承担和税务处理尚未由专业人员确认。
 - 当前历史 RMA 状态、附件 JSON、wallet `order_void` 语义和库存处置数据需要迁移前盘点。
-- 当前批次已收口服务端附件上传/校验、legacy 双协议隔离、核心状态/QC 守卫、active membership/employee-self 归属、并发数量锁、统一订单行净可退数量、V1 完整数量闭环、customer DTO 隔离、商业互斥、双轴关闭、批量 GC 函数和基础通知事件；历史无单价快照 RMA 需人工/迁移补建后才能安全退款。客户端三块 UI、法定期限与 policy 激活、GC 调度、Migration B 危险撤权、生产联调和完整退款/税务确认仍待后续批次。
+- 当前批次已收口服务端附件上传/校验、legacy 双协议隔离、核心状态/QC 守卫、active membership/employee-self 归属、并发数量锁、统一订单行净可退数量、V1 完整数量闭环、customer DTO 隔离、商业互斥、双轴关闭、显式收货时间、approved wallet/replacement linkage close guard、批量 GC 函数和基础通知事件；历史无单价快照 RMA 需人工/迁移补建后才能安全退款。客户端三块 UI、法定期限与 policy 激活、GC 调度、Migration B 危险撤权、生产联调和完整退款/税务确认仍待后续批次。
 - V1 明确拒绝部分收货/部分退款/部分库存处置；未来若需拆分，必须新增数量 ledger、库存批次分配和逐行退款对账，不得只放宽当前 action 参数。
 - Migration A 保留旧 `rma_requests/events` direct grants/RLS，并未收紧历史 bucket；在新客户端完全切换、兼容读取验证和正式 Migration B 审批前，禁止打开新写流程生产流量。
 - 后续应分别创建政策 ADR、RMA data/RPC migration 任务、图片上传安全任务、后台 QC/库存任务、退款/换货任务和发布观察 runbook。

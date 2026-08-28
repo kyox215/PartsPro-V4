@@ -82,7 +82,14 @@ test("wallet, replacement and state guards are explicit", () => {
   assert.match(migration, /v_next_status := 'replacement_sent'/);
   assert.match(migration, /v_before\.status not in \('received', 'refunded', 'replacement_sent'\)/);
   assert.match(migration, /Received RMAs must have both a terminal commercial outcome/);
-  assert.match(migration, /v_before\.resolution_action in \('refund_wallet', 'replacement'\)/);
+  assert.match(migration, /v_before\.received_at is not null/);
+  assert.match(migration, /v_before\.status = 'refunded'[\s\S]*?v_before\.resolution_action = 'refund_wallet'/);
+  assert.match(migration, /v_before\.status = 'replacement_sent'[\s\S]*?v_before\.resolution_action = 'replacement'/);
+  assert.match(migration, /wr\.status = 'approved'/);
+  assert.match(migration, /v_before\.replacement_order_id is null/);
+  assert.match(migration, /v_before\.replacement_order_id is not null/);
+  assert.match(migration, /v_before\.wallet_refund_request_id is null/);
+  assert.match(migration, /wr\.request_type = 'rma_return'/);
   assert.match(migration, /Approved wallet refund exceeds the remaining order-line cap/);
   assert.match(migration, /rma_wallet_refund_approval_sync/);
   assert.match(migration, /Replacement order does not contain enough of the returned SKU/);
@@ -142,9 +149,19 @@ test("admin DTO remains allowlisted and supports supplier/replacement actions", 
     assert.match(data, new RegExp(`${field}\\?: number \\| null`));
     assert.match(repository, new RegExp(`${field}`));
   }
+  assert.match(data, /qcStatus\?: "pending" \| "passed" \| "failed" \| "not_required" \| null/);
+  assert.match(data, /replacementOrderId\?: string \| null/);
+  assert.match(data, /walletRefundStatus\?: RmaWalletRefundStatus \| null/);
+  assert.match(repository, /qcStatus: normalizeRmaQcStatus/);
+  assert.match(repository, /replacementOrderId: pickString/);
+  assert.match(repository, /walletRefundStatus/);
+  assert.match(repository, /readRmaWalletRefundStatusesByRequestId/);
+  assert.match(repository, /from\("wallet_refund_requests"\)/);
+  assert.match(repository, /select\("rma_request_id, status, requested_at"\)/);
   assert.match(repository, /refund_approved_quantity/);
   assert.match(repository, /replacement_quantity/);
   assert.doesNotMatch(customerDto, /receivedQuantity|resolutionQuantity|inventoryDispositionQuantity/);
+  assert.doesNotMatch(customerDto, /qcStatus|replacementOrderId|walletRefundStatus/);
 });
 
 test("historical RMA trigger and INSERT policies use the shared owner and net quantity guards", () => {

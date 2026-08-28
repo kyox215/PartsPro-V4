@@ -76,7 +76,7 @@ export function isRmaActionAvailable(input) {
     Boolean(receivedAt) ||
     (Number.isInteger(receivedQuantity) && receivedQuantity > 0) ||
     ["received", "refunded", "replacement_sent"].includes(status);
-  const received = receivedComplete && hasReceived;
+  const received = receivedComplete && Boolean(receivedAt);
   const inspectionComplete =
     received && ["passed", "failed", "not_required"].includes(qcStatus ?? "");
 
@@ -128,7 +128,7 @@ export function isRmaActionAvailable(input) {
       resolutionAction === "refund_wallet" &&
       resolutionComplete &&
       replacementOrderId === null &&
-      walletRequestStatus === null;
+      walletRequestStatus === "approved";
     const replacementComplete =
       status === "replacement_sent" &&
       resolutionAction === "replacement" &&

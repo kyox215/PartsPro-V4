@@ -2381,12 +2381,36 @@ begin
       and v_before.received_at is not null
       and v_before.received_quantity = v_before.quantity
       and v_before.qc_status in ('passed', 'failed', 'not_required')
-      and v_before.resolution_action in ('refund_wallet', 'replacement')
       and v_inventory_disposition in ('restock', 'scrap', 'supplier_return')
       and v_before.inventory_disposition_quantity = v_before.quantity
       and (
-        (v_before.status = 'refunded' and v_before.refund_approved_quantity = v_before.quantity)
-        or (v_before.status = 'replacement_sent' and v_before.replacement_quantity = v_before.quantity)
+        (
+          v_before.status = 'refunded'
+          and v_before.resolution_action = 'refund_wallet'
+          and v_before.refund_approved_quantity = v_before.quantity
+          and v_before.replacement_order_id is null
+          and exists (
+            select 1
+            from public.wallet_refund_requests as wr
+            where wr.id = v_before.wallet_refund_request_id
+              and wr.rma_request_id = v_before.id
+              and wr.request_type = 'rma_return'
+              and wr.status = 'approved'
+          )
+        )
+        or (
+          v_before.status = 'replacement_sent'
+          and v_before.resolution_action = 'replacement'
+          and v_before.replacement_quantity = v_before.quantity
+          and v_before.replacement_order_id is not null
+          and v_before.wallet_refund_request_id is null
+          and not exists (
+            select 1
+            from public.wallet_refund_requests as wr
+            where wr.rma_request_id = v_before.id
+              and wr.request_type = 'rma_return'
+          )
+        )
       )
     then
       v_next_status := 'closed';

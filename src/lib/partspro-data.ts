@@ -56,6 +56,7 @@ export type RmaInventoryDisposition =
   | "restock"
   | "scrap"
   | "supplier_return";
+export type RmaWalletRefundStatus = "pending" | "approved" | "rejected" | "cancelled";
 export type CustomerType = "retail" | "wholesale";
 export type CustomerAssignmentStatus =
   | "needs_review"
@@ -219,6 +220,12 @@ export type RmaRequest = {
   resolutionQuantity?: number | null;
   /** Quantity handled by the terminal inventory disposition. */
   inventoryDispositionQuantity?: number | null;
+  /** Admin-only QC result; omitted by the customer DTO. */
+  qcStatus?: "pending" | "passed" | "failed" | "not_required" | null;
+  /** Admin-only replacement linkage; omitted by the customer DTO. */
+  replacementOrderId?: string | null;
+  /** Admin-only linked wallet request state; omitted by the customer DTO. */
+  walletRefundStatus?: RmaWalletRefundStatus | null;
   reviewedAt?: string | null;
   receivedAt?: string | null;
   resolvedAt?: string | null;
