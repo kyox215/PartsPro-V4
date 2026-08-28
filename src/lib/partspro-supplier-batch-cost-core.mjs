@@ -1050,8 +1050,19 @@ export function normalizeSupplierBatchCostRpcResult(value) {
     : typeof correctionPreviewRaw === "boolean"
       ? correctionPreviewRaw
       : null;
-  const correctionTotalsProvided = hasAnyField(value, ["correctionTotals", "correction_totals"]);
-  const correctionTotalsRaw = value.correctionTotals ?? value.correction_totals;
+  // A correction preview must carry a totals object, while an ordinary
+  // preview may explicitly carry `correctionTotals: null`. Preserve the
+  // canonical camel-case property's own value (including null) before
+  // falling back to the snake-case wire alias; nullish coalescing here would
+  // erase that distinction and reject valid ordinary previews.
+  const correctionTotalsHasCamelCase = Object.hasOwn(value, "correctionTotals");
+  const correctionTotalsHasSnakeCase = Object.hasOwn(value, "correction_totals");
+  const correctionTotalsProvided = correctionTotalsHasCamelCase || correctionTotalsHasSnakeCase;
+  const correctionTotalsRaw = correctionTotalsHasCamelCase
+    ? value.correctionTotals
+    : correctionTotalsHasSnakeCase
+      ? value.correction_totals
+      : undefined;
   const correctionTotals = correctionTotalsRaw === null || correctionTotalsRaw === undefined
     ? null
     : normalizeSupplierBatchCorrectionPreviewTotals(correctionTotalsRaw);
