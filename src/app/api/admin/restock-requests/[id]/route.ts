@@ -14,7 +14,7 @@ const updateRestockRequestSchema = z
 
 export async function PATCH(
   request: NextRequest,
-  context: RouteContext<"/api/admin/restock-requests/[id]">
+  context: { params: Promise<{ id: string }> }
 ) {
   const admin = await requireAdminApi("product.read_admin");
 
