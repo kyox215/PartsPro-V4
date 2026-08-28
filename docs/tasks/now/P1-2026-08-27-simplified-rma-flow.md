@@ -330,6 +330,13 @@ refunded | replacement_sent
 - 客户页在存在 final payload 时把“确认提交”作为推荐恢复动作，并明确提示“重新开始”会放弃恢复并启动清理；清理未完成时按钮改为“继续清理”，避免把清理失败误导成普通重试。意大利语/中文文案同步补齐。
 - 新增实际内存 fetch 回归测试覆盖 DELETE `204 -> 500 -> 再次提交`：第二次只继续清理、绝不调用 submit/draft/upload，清理成功后才允许清空恢复状态。真实刷新/跨标签持久化、浏览器/Storage/CORS 和移动端相机仍留最终门禁。
 
+### 批次 2e 后台 RMA 队列派生（2026-08-28）
+
+- 新增 canonical `partspro-rma-workflow-rules.mjs` 与严格 TypeScript wrapper；服务端统一派生 `review`、`awaiting_return`、`receiving`、`qc`、`resolution`、`inventory_close`、`archive` 七个队列和固定动作码。
+- 动作按明确的 `manage`、`inventory`、`refund`、`adjustStock` 能力过滤；收货、质检、退款/换货、库存处置和关闭复用 `isRmaActionAvailable`，`assign` 仅在未分配时可选且永不推荐，钱包 pending 保持等待并不自动改选。
+- 对缺少 `receivedAt`、完整收货数量或 QC 的历史记录 fail-closed，落到最早安全队列并隐藏下游动作；库存 quarantine/未处分提供 `choose_inventory_disposition` 伪推荐，终态处分且底层 close 合法时才推荐关闭。未连接 PostgreSQL/Supabase，真实 RPC/RLS/并发和后台 E2E 仍留后续门禁。
+- `tests/rma-admin-workflow.test.mjs` 覆盖七队列、权限矩阵、钱包 pending、库存三选、close/archive、assign 和历史异常；本批只修改 canonical 规则、wrapper、测试与本任务卡。
+
 ### 未来实施验收
 
 - 客户只能从有权限的真实订单行进入；服务端拒绝越权订单行、过期政策和并发超量。
@@ -446,6 +453,10 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 | `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/eslint' src/components/partspro/rma-page.tsx src/lib/partspro-rma-upload-client.mjs src/i18n/dictionaries/storefront.ts tests/rma-upload-client.test.mjs tests/rma-customer-ui-contract.test.mjs` | passed | 批次 2d 客户页、上传客户端、i18n 和测试定向 ESLint 无输出 |
 | `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/tsc' --noEmit --incremental false --project tsconfig.json` | blocked by baseline | 仅有既有 `src/app/api/admin/restock-requests/[id]/route.ts(17,12): Cannot find name 'RouteContext'`；2d phase 类型未引入新增诊断 |
 | `git diff --check` | passed | 批次 2d 当前差异无空白错误 |
+| `node --test tests/rma-admin-workflow.test.mjs tests/rma-rules.test.mjs` | passed | 批次 2e 后台七队列、权限/推荐、钱包 pending、库存三选、close/archive 与共享底层规则 29/29 通过 |
+| `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/eslint' src/lib/partspro-rma-workflow-rules.mjs src/lib/partspro-rma-workflow-rules.ts tests/rma-admin-workflow.test.mjs` | passed | 批次 2e canonical MJS、TypeScript wrapper 与行为测试定向 ESLint 无输出 |
+| `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/tsc' --noEmit --incremental false --project tsconfig.json` | blocked by baseline | 仅报既有 `src/app/api/admin/restock-requests/[id]/route.ts(17,12): Cannot find name 'RouteContext'`，本批无新增诊断 |
+| `git diff --check` | passed | 批次 2e 规则、wrapper、测试和任务卡无空白错误 |
 
 ## 执行记录
 
