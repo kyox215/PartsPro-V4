@@ -55,6 +55,9 @@ const permissionMigrationSource = read(
 const supplierBatchProductsMigrationSource = read(
   "supabase/migrations/20260827121835_admin_get_supplier_batch_products.sql"
 );
+const supplierBatchCostV1CleanupMigrationSource = read(
+  "supabase/migrations/20260828085611_supplier_batch_cost_v1_rpc_cleanup.sql"
+);
 const supplierBatchProductsStart = repositorySource.indexOf(
   "async function readSupplierBatchProducts("
 );
@@ -604,6 +607,36 @@ test("backend contract keeps fee reads caller-scoped, paginated and RPC-only for
   assert.match(repositorySource, /\.range\(offset, offset \+ 999\)/);
   assert.match(repositorySource, /weight_gram/);
   assert.doesNotMatch(repositorySource, /createSupplierBatchLookupClient/);
+});
+
+test("V1 supplier-batch RPC cleanup revokes exactly five legacy public entry points", () => {
+  const expectedRevokes = [
+    "public.admin_preview_supplier_batch_charge(text, jsonb)",
+    "public.admin_save_supplier_batch_charge_estimate(text, jsonb, text)",
+    "public.admin_confirm_supplier_batch_charge(text, jsonb, text, text)",
+    "public.admin_get_supplier_batch_products(text[])",
+    "public.admin_list_supplier_batch_cost_summaries(uuid[])",
+  ];
+  const actualRevokes = [
+    ...supplierBatchCostV1CleanupMigrationSource.matchAll(
+      /revoke execute on function ([^;]+?)\s+from public, anon, authenticated, service_role;/g
+    ),
+  ].map((match) => match[1].replace(/\s+/g, " ").trim());
+
+  assert.deepEqual(actualRevokes, expectedRevokes);
+  assert.equal(actualRevokes.length, 5);
+  assert.doesNotMatch(supplierBatchCostV1CleanupMigrationSource, /admin_[a-z0-9_]+_v2/);
+  assert.doesNotMatch(supplierBatchCostV1CleanupMigrationSource, /revoke all/i);
+
+  for (const legacyName of [
+    "admin_preview_supplier_batch_charge",
+    "admin_save_supplier_batch_charge_estimate",
+    "admin_confirm_supplier_batch_charge",
+    "admin_get_supplier_batch_products",
+    "admin_list_supplier_batch_cost_summaries",
+  ]) {
+    assert.doesNotMatch(repositorySource, new RegExp(`["']${legacyName}["']`));
+  }
 });
 
 test("supplier batch hydration uses the bounded permission-checked batch RPC", () => {
