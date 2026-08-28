@@ -400,12 +400,19 @@ test("Migration B customer shipped RPC and refund preview stay narrow and parity
   assert.match(shippedBody, /private\.rma_canonical_source_facts\(v_before\.id\)/);
   assert.match(shippedBody, /v_source_customer_id/);
   assert.match(shippedBody, /rma_user_can_access_order\([\s\S]*v_source_customer_id,[\s\S]*v_source_order_id/);
-  assert.match(shippedBody, /customer_id = coalesce\(customer_id, v_source_customer_id\)/);
-  assert.match(shippedBody, /order_line_id = coalesce\(order_line_id, v_source_order_line_id\)/);
-  assert.match(shippedBody, /order_no = coalesce\(order_no, v_source_order_no\)/);
+  assert.match(shippedBody, /set customer_shipped_at = now\(\)/);
+  for (const protectedColumn of ["customer_id", "order_id", "order_line_id", "order_no", "sku_code"]) {
+    assert.doesNotMatch(
+      shippedBody,
+      new RegExp(`\\n\\s+${protectedColumn}\\s*=`),
+      `customer shipment must not write protected canonical column ${protectedColumn}`
+    );
+  }
 
   const previewStart = finalizeMigration.indexOf("create or replace function public.admin_rma_refund_preview");
   const previewBody = finalizeMigration.slice(previewStart, finalizeMigration.indexOf("$$;", previewStart));
+  assert.match(previewBody, /v_rma\.refund_currency is not null[\s\S]*btrim\(v_rma\.refund_currency\) <> 'EUR'/);
+  assert.match(previewBody, /return query select false, 'invalid_snapshot', 'EUR'/);
   assert.match(previewBody, /requested_resolution not in \('refund', 'wallet_credit', 'credit_note'\)/);
   assert.match(previewBody, /resolution_action is not null and v_rma\.resolution_action <> 'refund_wallet'/);
   assert.match(previewBody, /received_at is null/);
@@ -429,6 +436,8 @@ test("Migration B customer shipped RPC and refund preview stay narrow and parity
   assert.match(candidateBody, /v_rma\.wallet_refund_request_id is not null/);
   assert.match(candidateBody, /v_rma\.resolution_action is not null/);
   assert.match(candidateBody, /v_rma\.replacement_order_id is not null/);
+  assert.match(candidateBody, /wr\.request_type is distinct from 'rma_return'/);
+  assert.match(candidateBody, /wr\.status <> 'rejected'/);
   assert.match(candidateBody, /e\.action in \('request_wallet_refund', 'mark_replacement_sent'\)/);
   assert.match(candidateBody, /private\.rma_canonical_source_facts\(v_rma\.id\)/);
   assert.match(candidateBody, /v_source_order_line_id/);
@@ -455,4 +464,14 @@ test("Migration B customer shipped RPC and refund preview stay narrow and parity
   const v3Body = migration.slice(v3Start, migration.indexOf("$$;", v3Start));
   assert.match(v3Body, /private\.rma_canonical_source_facts\(v_before\.id\)/);
   assert.match(v3Body, /RMA canonical source facts are invalid/);
+
+  const walletActionStart = v3Body.indexOf("elsif v_action = 'request_wallet_refund'");
+  const walletActionBody = v3Body.slice(walletActionStart, v3Body.indexOf("elsif v_action = 'restock_return'", walletActionStart));
+  assert.match(walletActionBody, /v_before\.refund_currency is not null[\s\S]*btrim\(v_before\.refund_currency\) <> 'EUR'/);
+
+  const replacementActionStart = v3Body.indexOf("elsif v_action = 'mark_replacement_sent'");
+  const replacementActionBody = v3Body.slice(replacementActionStart, v3Body.indexOf("elsif v_action = 'close'", replacementActionStart));
+  assert.match(replacementActionBody, /wr\.request_type is distinct from 'rma_return'/);
+  assert.match(replacementActionBody, /wr\.status <> 'rejected'/);
+  assert.match(replacementActionBody, /e\.action = 'request_wallet_refund'[\s\S]*e\.execution_status = 'succeeded'/);
 });

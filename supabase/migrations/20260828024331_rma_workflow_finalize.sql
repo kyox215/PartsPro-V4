@@ -331,12 +331,11 @@ begin
   end if;
 
   update public.rma_requests
-  set customer_id = coalesce(customer_id, v_source_customer_id),
-      order_id = coalesce(order_id, v_source_order_id),
-      order_line_id = coalesce(order_line_id, v_source_order_line_id),
-      order_no = coalesce(order_no, v_source_order_no),
-      sku_code = coalesce(sku_code, v_source_sku_code),
-      customer_shipped_at = now(),
+  -- Canonical order/customer columns are protected by the RMA relation
+  -- trigger. They have already been resolved and checked above, but must not
+  -- be written here: a valid active member may differ from rma_requests.user_id
+  -- and the trigger intentionally rejects that cross-account UPDATE shape.
+  set customer_shipped_at = now(),
       return_carrier = v_carrier,
       return_tracking_code = v_tracking,
       updated_at = now()
@@ -622,6 +621,16 @@ begin
     raise exception 'RMA request not found' using errcode = 'P0002';
   end if;
 
+  -- NULL is the only legacy compatibility value. Every non-NULL currency is
+  -- canonicalized strictly to EUR so preview and the v3 wallet action cannot
+  -- disagree about what amount is payable.
+  if v_rma.refund_currency is not null
+    and btrim(v_rma.refund_currency) <> 'EUR'
+  then
+    return query select false, 'invalid_snapshot', 'EUR', 0::numeric, coalesce(v_rma.quantity, 0), false;
+    return;
+  end if;
+
   -- Keep preview availability exactly aligned with the v3 wallet-refund
   -- action. A preview is not a promise to pay: it must fail closed for a
   -- mismatched requested resolution, an existing replacement/wallet outcome,
@@ -821,8 +830,11 @@ begin
       select 1
       from public.wallet_refund_requests as wr
       where wr.rma_request_id = v_rma.id
-        and wr.status in ('pending', 'approved')
-    )
+        and (
+          wr.request_type is distinct from 'rma_return'
+          or wr.status <> 'rejected'
+        )
+      )
     or exists (
       select 1
       from public.rma_action_executions as e

@@ -2253,6 +2253,15 @@ begin
       raise exception 'RMA order could not be resolved for wallet refund' using errcode = '23503';
     end if;
 
+    -- NULL remains a legacy compatibility value and is written back as EUR.
+    -- Any existing non-EUR value is an invalid snapshot and must never be
+    -- silently overwritten by a payable wallet action.
+    if v_before.refund_currency is not null
+      and btrim(v_before.refund_currency) <> 'EUR'
+    then
+      raise exception 'RMA wallet refund currency must be EUR' using errcode = '23514';
+    end if;
+
     if v_before.requested_resolution not in ('refund', 'wallet_credit', 'credit_note') then
       raise exception 'Wallet refund does not match the requested RMA resolution' using errcode = '23514';
     end if;
@@ -2606,7 +2615,17 @@ begin
         select 1
         from public.wallet_refund_requests as wr
         where wr.rma_request_id = v_before.id
-          and wr.status in ('pending', 'approved')
+          and (
+            wr.request_type is distinct from 'rma_return'
+            or wr.status <> 'rejected'
+          )
+      )
+      or exists (
+        select 1
+        from public.rma_action_executions as e
+        where e.rma_request_id = v_before.id
+          and e.action = 'request_wallet_refund'
+          and e.execution_status = 'succeeded'
       )
     then
       raise exception 'RMA already has a wallet refund outcome; replacement is not available' using errcode = '23514';
@@ -3020,6 +3039,12 @@ begin
 
   if v_rma.id is null then
     return new;
+  end if;
+
+  if (v_rma.refund_currency is not null and btrim(v_rma.refund_currency) <> 'EUR')
+    or (new.currency is not null and btrim(new.currency) <> 'EUR')
+  then
+    raise exception 'Wallet approval currency must be EUR' using errcode = '23514';
   end if;
 
   if v_rma.status <> 'received'
