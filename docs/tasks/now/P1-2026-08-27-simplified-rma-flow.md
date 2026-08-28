@@ -316,6 +316,13 @@ refunded | replacement_sent
 - 单次提交接入 2a `submitRmaWithAttachments`，失败保留本地预览；成功使用安全 `CustomerRmaDto` prepend 最近申请并扣减本地可退数量，客户历史只展示五阶段和关系附件临时链接。现有 storefront locale 仅含 `it-IT`/`zh-CN`，本批文案已补齐两者；英文 locale 尚未存在，需后续单独国际化批次确认。
 - UI contract 测试覆盖三块、query 参数、camera/gallery、无视频/legacy、一次提交、无确认 modal 和安全 DTO。真实浏览器 canvas/HEIC 解码、移动端相机权限、CORS signed PUT、网络离线重试及端到端 RMA 结果仍未验证。
 
+### 批次 2c 客户上传恢复与订单显示（2026-08-28）
+
+- 上传客户端新增内存 checkpoint/resume：保存 draft、按图片 identity 的 verified attachment IDs、待确认取消 ticket IDs 和最终 opaque submit payload；最终提交响应丢失时重试只调用 `/api/rma/submit`，不重复创建 draft、ticket 或 complete。
+- 失败 ticket 的 DELETE 必须确认 `response.ok`；恢复时先逐个完成待取消动作，取消失败则停止并不发新 ticket。部分图片成功会跳过已 verified 图片；另提供无确认弹窗的安全“重新开始上传”路径，只有全部取消成功才清空 checkpoint。
+- 页面用同步 `submittingRef` 防止 React state flush 前双击，checkpoint 或提交期间锁定订单、商品、数量、原因、处理方式、备注、相机/相册和删除入口；“不再需要”备注改为可选，B2B 仍按照片规则处理。Customer DTO 明确增加安全 `orderNumber`，canonical flow 通过同 customer 的订单行读取，legacy DTO 使用既有展示 `orderId` 兼容。
+- 2c 测试实际使用内存 fetch mock 覆盖响应丢失只提交、5+1 图片恢复、DELETE 500 后零新 ticket、取消清理、双协议安全边界和 orderNumber 源契约。浏览器刷新后的 File 会话恢复、跨标签并发、真实 Storage/CORS 与移动端相机仍留最终门禁。
+
 ### 未来实施验收
 
 - 客户只能从有权限的真实订单行进入；服务端拒绝越权订单行、过期政策和并发超量。
@@ -421,6 +428,10 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 | `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/eslint' src/components/partspro/rma-page.tsx src/app/rma/page.tsx src/i18n/dictionaries/storefront.ts src/lib/partspro-rma-upload-client.mjs tests/rma-customer-ui-contract.test.mjs tests/rma-upload-client.test.mjs` | passed | 正确引用主仓库 ESLint 二进制，无输出；首次未加引号的路径解析失败不属于代码错误 |
 | `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/tsc' --noEmit --incremental false --project tsconfig.json` | blocked by baseline | 仅有既有 `src/app/api/admin/restock-requests/[id]/route.ts(17,12): Cannot find name 'RouteContext'` |
 | `git diff --check` | passed | 2b 收口复跑无空白错误 |
+| `node --test tests/rma-upload-client.test.mjs tests/rma-customer-ui-contract.test.mjs tests/rma-rules.test.mjs tests/rma-contract.test.mjs tests/admin-rma-workflow-contract.test.mjs tests/storefront-i18n-contract.test.mjs` | passed | 批次 2c 上传恢复、DTO/UI 与既有 RMA/i18n 契约全套通过；包含响应丢失只 `/submit`、5+1 断点恢复、DELETE 非 2xx、备注可选和 orderNumber 契约 |
+| `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/eslint' <2c RMA client/page/DTO/contract/i18n/test files>` | passed | 2c 定向 ESLint 无输出；React 事件入口使用同步 ref guard，render 仅读取 state |
+| `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/tsc' --noEmit --incremental false --project tsconfig.json` | blocked by baseline | 2c 仅剩既有 `src/app/api/admin/restock-requests/[id]/route.ts(17,12): Cannot find name 'RouteContext'`，无新增诊断 |
+| `git diff --check` | passed | 2c 当前变更无空白错误 |
 | `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase status` | blocked by local environment | Docker daemon 不可用；无本地 PostgreSQL/Supabase，双事务并发 trigger 验证留最终本地数据库门禁；未访问远端 |
 | Supabase linked/local lint、migration dry-run、build/E2E | skipped by gate | 本批禁止远端/数据库写入；worktree 无需启动本地数据库，按范围不跑完整 build/E2E |
 

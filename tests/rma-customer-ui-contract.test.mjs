@@ -9,6 +9,9 @@ const read = (relativePath) => readFileSync(join(repoRoot, relativePath), "utf8"
 const page = read("src/app/rma/page.tsx");
 const component = read("src/components/partspro/rma-page.tsx");
 const uploadClient = read("src/lib/partspro-rma-upload-client.mjs");
+const customerContract = read("src/lib/partspro-rma-contract.ts");
+const customerDto = read("src/lib/partspro-rma-customer-dto.ts");
+const simpleFlow = read("src/lib/partspro-rma-simple-flow.ts");
 
 test("customer RMA page passes order, line and request query selections through the server page", () => {
   assert.match(page, /params\.order/);
@@ -42,6 +45,9 @@ test("customer UI is a responsive three-block photo-first flow", () => {
   assert.match(component, /rmaMaxAttachments/);
   assert.match(component, /remainingQuantity/);
   assert.match(component, /value=\{form\.quantity\}/);
+  assert.doesNotMatch(component, /noteRequired/);
+  assert.doesNotMatch(component, /storefront\.rma\.note\.required/);
+  assert.match(component, /canSubmit = Boolean\(selectedLine && quantityIsValid && images\.length > 0\)/);
 });
 
 test("camera and gallery controls expose only supported image inputs", () => {
@@ -53,7 +59,12 @@ test("camera and gallery controls expose only supported image inputs", () => {
   assert.match(component, /URL\.createObjectURL/);
   assert.match(component, /URL\.revokeObjectURL/);
   assert.match(component, /onProgress/);
-  assert.match(component, /disabled=\{isSubmitting/);
+  assert.match(component, /submittingRef/);
+  assert.match(component, /if \(submittingRef\.current\)/);
+  assert.match(component, /areRmaControlsLocked/);
+  assert.match(component, /controlsLocked/);
+  assert.match(component, /disabled=\{controlsLocked/);
+  assert.equal((component.match(/submitRmaWithAttachments\(/g) ?? []).length, 1);
   assert.doesNotMatch(component, /\/api\/rma\/evidence/);
   assert.doesNotMatch(component, /<video|video\//i);
   assert.doesNotMatch(component, /evidenceChecklist|technical|problemCategories/);
@@ -64,7 +75,12 @@ test("customer submit uses the new upload orchestrator and safe DTO history", ()
   assert.match(component, /CustomerRmaDto/);
   assert.match(component, /draftIdempotencyKey/);
   assert.match(component, /submitIdempotencyKey/);
+  assert.match(component, /cancelRmaUploadCheckpoint/);
+  assert.match(component, /onCheckpoint: handleUploadCheckpoint/);
+  assert.match(component, /checkpoint: uploadCheckpointRef\.current/);
   assert.match(component, /rmaNo \?\? savedRequest\.id/);
+  assert.match(component, /request\.orderNumber/);
+  assert.doesNotMatch(component, /request\.orderId/);
   assert.match(component, /customerStage/);
   assert.match(component, /rmaCustomerStageLabel/);
   assert.match(component, /request\.attachments/);
@@ -87,4 +103,12 @@ test("customer UI has no confirmation modal and final request remains opaque", (
   for (const forbidden of ["bucket", "path", "signedUrl", "uploadUrl", "orderId", "sku"]) {
     assert.doesNotMatch(payloadHelper, new RegExp(`\\b${forbidden}\\b`));
   }
+});
+
+test("customer DTO exposes a safe order number and the canonical flow resolves it by customer-owned order", () => {
+  assert.match(customerContract, /orderNumber: string \| null/);
+  assert.match(customerDto, /orderNumber: request\.orderNumber \?\? request\.orderId \?\? null/);
+  assert.match(simpleFlow, /select\("id,rma_no,order_id,order_no,customer_id/);
+  assert.match(simpleFlow, /\.from\("orders"\)[\s\S]*\.select\("id,order_no"\)[\s\S]*\.eq\("id", orderId\)[\s\S]*\.eq\("customer_id", customerId\)/);
+  assert.match(simpleFlow, /orderNumber,/);
 });

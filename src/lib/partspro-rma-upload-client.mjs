@@ -34,6 +34,24 @@ const extensionContentTypes = new Map([
  * @typedef {Blob & {name?: string, type?: string, size?: number, lastModified?: number}} RmaImageFileLike
  */
 
+/**
+ * @typedef {Record<string, unknown>} RmaSubmitPayload
+ */
+
+/**
+ * A browser-memory checkpoint. It contains only opaque attachment IDs and the
+ * final allowlisted submit payload; it never contains Storage paths or URLs.
+ * @typedef {Object} RmaUploadCheckpoint
+ * @property {1} version
+ * @property {string|null} draftId
+ * @property {Record<string, string>} verifiedAttachmentIds
+ * @property {string[]} pendingCancellationIds
+ * @property {string} inputFingerprint
+ * @property {RmaSubmitPayload|null} payload
+ */
+
+/** @typedef {(checkpoint: RmaUploadCheckpoint|null) => void} RmaCheckpointCallback */
+
 /** @typedef {{file: RmaImageFileLike, reason: string}} RmaRejectedImage */
 
 /**
@@ -478,9 +496,203 @@ export function buildRmaSubmitPayload({
 }
 
 /**
+ * Build a stable browser-only binding for a checkpoint. File contents are not
+ * persisted; the selected file identity and form values are enough to prevent
+ * a resumed upload from silently attaching evidence to a changed request.
+ * @param {{orderLineId:string,quantity:number,reasonCode?:string|null,requestedResolution:string,note?:string|null,files?:RmaImageFileLike[]}} input
+ * @returns {string}
+ */
+export function rmaUploadInputFingerprint({
+  orderLineId,
+  quantity,
+  reasonCode = null,
+  requestedResolution,
+  note = null,
+  files = [],
+}) {
+  return JSON.stringify({
+    attachmentIdentities: files.map(rmaImageIdentity).sort(),
+    note: note?.trim() || "",
+    orderLineId,
+    quantity,
+    reasonCode: reasonCode || null,
+    requestedResolution,
+  });
+}
+
+/**
+ * @param {RmaUploadCheckpoint} checkpoint
+ * @returns {RmaUploadCheckpoint}
+ */
+function cloneRmaUploadCheckpoint(checkpoint) {
+  return {
+    version: 1,
+    draftId: checkpoint.draftId,
+    verifiedAttachmentIds: { ...checkpoint.verifiedAttachmentIds },
+    pendingCancellationIds: [...checkpoint.pendingCancellationIds],
+    inputFingerprint: checkpoint.inputFingerprint,
+    payload: checkpoint.payload ? { ...checkpoint.payload } : null,
+  };
+}
+
+/**
+ * @param {unknown} value
+ * @returns {RmaUploadCheckpoint|null}
+ */
+function normalizeRmaUploadCheckpoint(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (!isRecord(value) || value.version !== 1) {
+    throw new RmaUploadClientError("INVALID_CHECKPOINT", "The saved RMA upload state is invalid. Restart the upload.");
+  }
+
+  const verifiedAttachmentIds = isRecord(value.verifiedAttachmentIds)
+    ? Object.fromEntries(
+        Object.entries(value.verifiedAttachmentIds).filter(
+          ([identity, attachmentId]) => identity && typeof attachmentId === "string" && attachmentId.trim()
+        )
+      )
+    : {};
+  const pendingCancellationIds = Array.isArray(value.pendingCancellationIds)
+    ? value.pendingCancellationIds.filter((attachmentId) => typeof attachmentId === "string" && attachmentId.trim())
+    : [];
+  const draftId = typeof value.draftId === "string" && value.draftId.trim() ? value.draftId : null;
+  const inputFingerprint = typeof value.inputFingerprint === "string" ? value.inputFingerprint : "";
+  const payload = value.payload === null || value.payload === undefined
+    ? null
+    : isRecord(value.payload)
+      ? { ...value.payload }
+      : null;
+
+  if (!draftId && (Object.keys(verifiedAttachmentIds).length > 0 || pendingCancellationIds.length > 0 || payload)) {
+    throw new RmaUploadClientError("INVALID_CHECKPOINT", "The saved RMA upload state has no draft. Restart the upload.");
+  }
+
+  return {
+    version: 1,
+    draftId,
+    verifiedAttachmentIds,
+    pendingCancellationIds,
+    inputFingerprint,
+    payload,
+  };
+}
+
+/**
+ * @param {RmaCheckpointCallback|undefined} onCheckpoint
+ * @param {RmaUploadCheckpoint|null} checkpoint
+ */
+function emitRmaUploadCheckpoint(onCheckpoint, checkpoint) {
+  onCheckpoint?.(checkpoint ? cloneRmaUploadCheckpoint(checkpoint) : null);
+}
+
+/**
+ * @param {RmaUploadCheckpoint} checkpoint
+ * @param {{orderLineId:string,quantity:number,reasonCode?:string|null,requestedResolution:string,note?:string|null,files?:RmaImageFileLike[]}} input
+ */
+function assertCheckpointMatchesInput(checkpoint, input) {
+  if (!checkpoint.inputFingerprint || input.files?.length === 0) {
+    return;
+  }
+
+  if (checkpoint.inputFingerprint !== rmaUploadInputFingerprint(input)) {
+    throw new RmaUploadClientError(
+      "CHECKPOINT_INPUT_MISMATCH",
+      "The selected order, reason, or photos changed. Restart the upload before submitting."
+    );
+  }
+}
+
+/**
+ * @param {RmaFetch} fetchImpl
+ * @param {string} draftId
+ * @param {string} attachmentId
+ * @returns {Promise<boolean>}
+ */
+async function cancelRmaTicket(fetchImpl, draftId, attachmentId) {
+  try {
+    const response = await fetchImpl(`/api/rma/drafts/${draftId}/attachments/${attachmentId}/complete`, {
+      method: "DELETE",
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Confirm all previously failed ticket cancellations before issuing another
+ * ticket. A failed cancellation stops the resume before any new upload.
+ * @param {RmaUploadCheckpoint} checkpoint
+ * @param {RmaFetch} fetchImpl
+ * @param {RmaCheckpointCallback|undefined} onCheckpoint
+ */
+async function settlePendingCancellations(checkpoint, fetchImpl, onCheckpoint) {
+  for (const attachmentId of [...checkpoint.pendingCancellationIds]) {
+    const cancelled = await cancelRmaTicket(fetchImpl, checkpoint.draftId, attachmentId);
+    if (!cancelled) {
+      emitRmaUploadCheckpoint(onCheckpoint, checkpoint);
+      throw new RmaUploadClientError(
+        "RMA_ATTACHMENT_CANCEL_FAILED",
+        "A previous upload could not be cancelled. Try again before uploading another image."
+      );
+    }
+
+    checkpoint.pendingCancellationIds = checkpoint.pendingCancellationIds.filter(
+      (pendingId) => pendingId !== attachmentId
+    );
+    for (const [identity, verifiedId] of Object.entries(checkpoint.verifiedAttachmentIds)) {
+      if (verifiedId === attachmentId) {
+        delete checkpoint.verifiedAttachmentIds[identity];
+      }
+    }
+    emitRmaUploadCheckpoint(onCheckpoint, checkpoint);
+  }
+}
+
+/**
+ * Safely abandon a resumable upload. The checkpoint is cleared only after all
+ * verified or pending attachment rows have confirmed cancellation (2xx).
+ * @param {{checkpoint:RmaUploadCheckpoint,fetchImpl?:RmaFetch,onCheckpoint?:RmaCheckpointCallback}} input
+ * @returns {Promise<null>}
+ */
+export async function cancelRmaUploadCheckpoint({
+  checkpoint,
+  fetchImpl = globalThis.fetch.bind(globalThis),
+  onCheckpoint,
+}) {
+  const normalized = normalizeRmaUploadCheckpoint(checkpoint);
+  if (!normalized) {
+    onCheckpoint?.(null);
+    return null;
+  }
+
+  if (!normalized.draftId) {
+    emitRmaUploadCheckpoint(onCheckpoint, normalized);
+    throw new RmaUploadClientError("INVALID_CHECKPOINT", "The saved RMA upload state has no draft. Restart the upload.");
+  }
+
+  const attachmentIds = new Set([
+    ...Object.values(normalized.verifiedAttachmentIds),
+    ...normalized.pendingCancellationIds,
+  ]);
+  normalized.pendingCancellationIds = [...attachmentIds];
+  emitRmaUploadCheckpoint(onCheckpoint, normalized);
+  await settlePendingCancellations(normalized, fetchImpl, onCheckpoint);
+  normalized.verifiedAttachmentIds = {};
+  normalized.payload = null;
+  normalized.draftId = null;
+  emitRmaUploadCheckpoint(onCheckpoint, null);
+  return null;
+}
+
+/**
  * Create a draft, upload/verify every image and finally submit opaque IDs.
  * Each image retries its complete ticket flow once; every failed ticket is
  * cancelled best-effort before the original error is rethrown.
+ * @param {{orderLineId:string,quantity:number,reasonCode?:string|null,requestedResolution:string,note?:string|null,files:RmaImageFileLike[],idempotencyKey:string,draftIdempotencyKey?:string,checkpoint?:RmaUploadCheckpoint|null,fetchImpl?:RmaFetch,onProgress?:(progress:RmaUploadProgress)=>void,onCheckpoint?:RmaCheckpointCallback,prepareImage?:typeof prepareRmaImage}} input
  */
 export async function submitRmaWithAttachments({
   orderLineId,
@@ -491,38 +703,100 @@ export async function submitRmaWithAttachments({
   files,
   idempotencyKey,
   draftIdempotencyKey = idempotencyKey,
+  checkpoint: inputCheckpoint = null,
   fetchImpl = globalThis.fetch.bind(globalThis),
   onProgress,
+  onCheckpoint,
   prepareImage = prepareRmaImage,
 }) {
-  if (!Array.isArray(files) || files.length < 1 || files.length > rmaMaxAttachments) {
+  const checkpoint = normalizeRmaUploadCheckpoint(inputCheckpoint);
+  const selectedFiles = Array.isArray(files) ? files : [];
+  const input = {
+    orderLineId,
+    quantity,
+    reasonCode,
+    requestedResolution,
+    note,
+    files: selectedFiles,
+  };
+
+  if (checkpoint?.payload) {
+    assertCheckpointMatchesInput(checkpoint, input);
+    return submitCheckpointPayload({ checkpoint, fetchImpl, onCheckpoint });
+  }
+
+  if (selectedFiles.length < 1 || selectedFiles.length > rmaMaxAttachments) {
     throw new RmaUploadClientError("INVALID_IMAGE_COUNT", `Choose between 1 and ${rmaMaxAttachments} images.`);
   }
 
-  for (const file of files) {
+  for (const file of selectedFiles) {
     if (!isRmaImageFile(file)) {
       throw new RmaUploadClientError("UNSUPPORTED_IMAGE", "Only JPEG, PNG, WebP, HEIC or HEIF images are supported.");
     }
   }
 
-  const draftResponse = await fetchImpl("/api/rma/drafts", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ orderLineId, idempotencyKey: draftIdempotencyKey }),
-  });
-  const draftBody = await assertResponse(draftResponse, "The RMA draft could not be created.");
-  const draft = readData(draftBody);
-  const draftId = readRequiredString(draft.id);
+  if (checkpoint) {
+    assertCheckpointMatchesInput(checkpoint, input);
+  }
+
+  const uploadCheckpoint = checkpoint ?? {
+    version: 1,
+    draftId: null,
+    verifiedAttachmentIds: {},
+    pendingCancellationIds: [],
+    inputFingerprint: rmaUploadInputFingerprint(input),
+    payload: null,
+  };
+  if (!uploadCheckpoint.inputFingerprint) {
+    uploadCheckpoint.inputFingerprint = rmaUploadInputFingerprint(input);
+  }
+
+  let draftId = uploadCheckpoint.draftId;
+  if (!draftId) {
+    let draftBody;
+    try {
+      const draftResponse = await fetchImpl("/api/rma/drafts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ orderLineId, idempotencyKey: draftIdempotencyKey }),
+      });
+      draftBody = await assertResponse(draftResponse, "The RMA draft could not be created.");
+      const draft = readData(draftBody);
+      draftId = readRequiredString(draft.id);
+    } catch (error) {
+      throw attachRmaUploadError(error, {
+        code: "RMA_DRAFT_CREATE_FAILED",
+        message: "The RMA draft could not be created.",
+        checkpoint: uploadCheckpoint,
+      });
+    }
+    uploadCheckpoint.draftId = draftId;
+    emitRmaUploadCheckpoint(onCheckpoint, uploadCheckpoint);
+  }
+
+  await settlePendingCancellations(uploadCheckpoint, fetchImpl, onCheckpoint);
+
   /** @type {string[]} */
   const attachmentIds = [];
 
-  for (let index = 0; index < files.length; index += 1) {
-    const file = files[index];
+  for (let index = 0; index < selectedFiles.length; index += 1) {
+    const file = selectedFiles[index];
+    const identity = rmaImageIdentity(file);
+    const verifiedAttachmentId = uploadCheckpoint.verifiedAttachmentIds[identity];
+    if (verifiedAttachmentId) {
+      attachmentIds.push(verifiedAttachmentId);
+      continue;
+    }
+
     let lastError;
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
+      // A prior failed ticket must be confirmed cancelled before another
+      // ticket can be issued, otherwise a retry would consume quota forever.
+      await settlePendingCancellations(uploadCheckpoint, fetchImpl, onCheckpoint);
+
       if (attempt > 0) {
-        onProgress?.({ index, total: files.length, status: "retrying", name: file.name || "image" });
+        onProgress?.({ index, total: selectedFiles.length, status: "retrying", name: file.name || "image" });
       }
 
       try {
@@ -530,32 +804,39 @@ export async function submitRmaWithAttachments({
           draftId,
           file,
           index,
-          total: files.length,
+          total: selectedFiles.length,
           fetchImpl,
           onProgress,
           prepareImage,
         });
         attachmentIds.push(attachmentId);
+        uploadCheckpoint.verifiedAttachmentIds[identity] = attachmentId;
+        emitRmaUploadCheckpoint(onCheckpoint, uploadCheckpoint);
         lastError = undefined;
         break;
       } catch (error) {
+        const errorRecord = isRecord(error) ? error : null;
+        const failedAttachmentId = errorRecord && typeof errorRecord.attachmentId === "string"
+          ? errorRecord.attachmentId
+          : null;
+        if (failedAttachmentId && errorRecord?.cancellationConfirmed !== true) {
+          if (!uploadCheckpoint.pendingCancellationIds.includes(failedAttachmentId)) {
+            uploadCheckpoint.pendingCancellationIds.push(failedAttachmentId);
+          }
+        }
+        emitRmaUploadCheckpoint(onCheckpoint, uploadCheckpoint);
         lastError = error;
       }
     }
 
     if (lastError) {
-      // A partially verified draft must be reusable after a failed image. The
-      // server quota counts verified attachments, so release earlier images
-      // before returning while keeping the user's local previews intact.
-      for (const attachmentId of attachmentIds) {
-        await cancelFailedRmaTicket(fetchImpl, draftId, attachmentId);
-      }
-      attachmentIds.length = 0;
-      if (lastError instanceof RmaUploadClientError) {
-        lastError.draftId = draftId;
-        lastError.attachmentIds = [...attachmentIds];
-      }
-      throw lastError;
+      throw attachRmaUploadError(lastError, {
+        code: "RMA_IMAGE_UPLOAD_FAILED",
+        message: "The image upload failed.",
+        checkpoint: uploadCheckpoint,
+        draftId,
+        attachmentIds,
+      });
     }
   }
 
@@ -569,29 +850,74 @@ export async function submitRmaWithAttachments({
     attachmentIds,
     idempotencyKey,
   });
-  let submitBody;
+  uploadCheckpoint.payload = payload;
+  emitRmaUploadCheckpoint(onCheckpoint, uploadCheckpoint);
+  return submitCheckpointPayload({ checkpoint: uploadCheckpoint, fetchImpl, onCheckpoint });
+}
+
+/**
+ * @param {{checkpoint:RmaUploadCheckpoint,fetchImpl:RmaFetch,onCheckpoint?:RmaCheckpointCallback}} input
+ */
+async function submitCheckpointPayload({ checkpoint, fetchImpl, onCheckpoint }) {
+  const payload = checkpoint.payload;
+  if (!payload) {
+    throw new RmaUploadClientError("INVALID_CHECKPOINT", "The saved RMA upload has no final payload. Restart the upload.");
+  }
+
+  const draftId = checkpoint.draftId ?? (typeof payload.draftId === "string" ? payload.draftId : "");
+  const attachmentIds = Array.isArray(payload.attachmentIds)
+    ? payload.attachmentIds.filter((attachmentId) => typeof attachmentId === "string")
+    : [];
+
   try {
     const submitResponse = await fetchImpl("/api/rma/submit", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
-    submitBody = await assertResponse(submitResponse, "The RMA request could not be submitted.");
+    const submitBody = await assertResponse(submitResponse, "The RMA request could not be submitted.");
+    const data = readData(submitBody);
+    emitRmaUploadCheckpoint(onCheckpoint, null);
+    return {
+      data,
+      draftId,
+      attachmentIds,
+      payload,
+      checkpoint: null,
+    };
   } catch (error) {
-    if (error instanceof RmaUploadClientError) {
-      error.draftId = draftId;
-      error.attachmentIds = [...attachmentIds];
-      error.payload = payload;
-    }
-    throw error;
+    throw attachRmaUploadError(error, {
+      code: "RMA_SUBMIT_FAILED",
+      message: "The RMA request could not be submitted.",
+      checkpoint,
+      draftId,
+      attachmentIds,
+      payload,
+    });
   }
+}
 
-  return {
-    data: readData(submitBody),
-    draftId,
-    attachmentIds,
-    payload,
-  };
+/**
+ * @param {unknown} error
+ * @param {{code:string,message:string,checkpoint?:RmaUploadCheckpoint,draftId?:string,attachmentIds?:string[],payload?:RmaSubmitPayload}} details
+ */
+function attachRmaUploadError(error, details) {
+  const result = error instanceof RmaUploadClientError
+    ? error
+    : new RmaUploadClientError(details.code, details.message, error);
+  if (details.draftId) {
+    result.draftId = details.draftId;
+  }
+  if (details.attachmentIds) {
+    result.attachmentIds = [...details.attachmentIds];
+  }
+  if (details.payload) {
+    result.payload = details.payload;
+  }
+  if (details.checkpoint) {
+    result.checkpoint = cloneRmaUploadCheckpoint(details.checkpoint);
+  }
+  return result;
 }
 
 /**
@@ -606,7 +932,6 @@ async function uploadOneRmaImage({ draftId, file, index, total, fetchImpl, onPro
   }
 
   let attachmentId = null;
-  let originalError;
 
   try {
     const ticketResponse = await fetchImpl(`/api/rma/drafts/${draftId}/uploads`, {
@@ -656,13 +981,16 @@ async function uploadOneRmaImage({ draftId, file, index, total, fetchImpl, onPro
     await assertResponse(completeResponse, "The image upload could not be verified.");
     return attachmentId;
   } catch (error) {
-    originalError = error;
-    await cancelFailedRmaTicket(fetchImpl, draftId, attachmentId);
+    const cancellationConfirmed = await cancelFailedRmaTicket(fetchImpl, draftId, attachmentId);
+    const result = error instanceof RmaUploadClientError
+      ? error
+      : new RmaUploadClientError("RMA_IMAGE_UPLOAD_FAILED", "The image upload failed.", error);
+    if (attachmentId) {
+      result.attachmentId = attachmentId;
+      result.cancellationConfirmed = cancellationConfirmed;
+    }
+    throw result;
   }
-
-  throw originalError instanceof RmaUploadClientError
-    ? originalError
-    : new RmaUploadClientError("RMA_IMAGE_UPLOAD_FAILED", "The image upload failed.", originalError);
 }
 
 /**
@@ -672,15 +1000,17 @@ async function uploadOneRmaImage({ draftId, file, index, total, fetchImpl, onPro
  */
 async function cancelFailedRmaTicket(fetchImpl, draftId, attachmentId) {
   if (!attachmentId) {
-    return;
+    return true;
   }
 
   try {
-    await fetchImpl(`/api/rma/drafts/${draftId}/attachments/${attachmentId}/complete`, {
+    const response = await fetchImpl(`/api/rma/drafts/${draftId}/attachments/${attachmentId}/complete`, {
       method: "DELETE",
     });
+    return response.ok;
   } catch {
     // Cancellation is best-effort. The original upload/verification error is
     // more actionable and the server-side GC remains the final backstop.
+    return false;
   }
 }

@@ -203,6 +203,8 @@ export type RmaRequest = {
   attachments?: RmaAttachment[];
   events?: RmaEvent[];
   customerName?: string;
+  /** Customer-visible order number; internal UUID remains orderId only. */
+  orderNumber?: string | null;
   customerVisibleNote?: string;
   assignedAt?: string | null;
   assignedBy?: string | null;

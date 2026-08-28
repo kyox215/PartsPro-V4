@@ -194,6 +194,8 @@ export type CustomerRmaDto = {
   }>;
   id: string;
   orderId: string | null;
+  /** Customer-visible order number; never use the internal order UUID in UI. */
+  orderNumber: string | null;
   orderLineId: string | null;
   policyScope: string;
   productName: string;

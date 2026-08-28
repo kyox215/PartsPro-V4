@@ -40,6 +40,7 @@ import {
   type RmaResolutionCode,
 } from "@/lib/partspro-rma-contract";
 import {
+  cancelRmaUploadCheckpoint,
   rmaMaxAttachments,
   rmaImageIdentity,
   selectRmaImageFiles,
@@ -143,6 +144,15 @@ type LocalRmaImage = {
   status: "error" | "preparing" | "ready" | "retrying" | "uploading" | "verifying";
 };
 
+type RmaUploadCheckpoint = {
+  draftId: string | null;
+  inputFingerprint: string;
+  payload: Record<string, unknown> | null;
+  pendingCancellationIds: string[];
+  verifiedAttachmentIds: Record<string, string>;
+  version: 1;
+};
+
 type RmaImageRejectReason =
   | "duplicate_image"
   | "heic_image_over_4mb"
@@ -189,6 +199,10 @@ export function RmaPage({
   const imageIndexRef = React.useRef<number | null>(null);
   const imagesRef = React.useRef<LocalRmaImage[]>([]);
   const initialSelectionAppliedRef = React.useRef(false);
+  const submittingRef = React.useRef(false);
+  const uploadCheckpointRef = React.useRef<RmaUploadCheckpoint | null>(null);
+  const [uploadCheckpoint, setUploadCheckpoint] = React.useState<RmaUploadCheckpoint | null>(null);
+  const [isRestartingUpload, setIsRestartingUpload] = React.useState(false);
 
   React.useEffect(() => {
     imagesRef.current = images;
@@ -222,11 +236,14 @@ export function RmaPage({
           : [];
         setRecentRequests(requests);
         setOrderOptions(orders);
-        setForm((current) =>
-          initialSelectionAppliedRef.current
+        setForm((current) => {
+          if (uploadCheckpointRef.current) {
+            return current;
+          }
+          return initialSelectionAppliedRef.current
             ? sanitizeFormSelection(current, orders)
-            : applyInitialOrderSelection(current, orders, initialOrderId, initialOrderLineId)
-        );
+            : applyInitialOrderSelection(current, orders, initialOrderId, initialOrderLineId);
+        });
         initialSelectionAppliedRef.current = true;
       } catch (error) {
         if (active) {
@@ -276,12 +293,24 @@ export function RmaPage({
     () => createQuantityOptions(selectedLine?.remainingQuantity ?? 0),
     [selectedLine]
   );
-  const noteRequired = form.reasonCode === "withdrawal_no_longer_needed";
   const quantityIsValid = Boolean(selectedLine && quantityOptions.includes(form.quantity));
-  const canSubmit = Boolean(selectedLine && quantityIsValid && images.length > 0 && (!noteRequired || form.note.trim().length >= 4));
+  const canSubmit = Boolean(selectedLine && quantityIsValid && images.length > 0);
   const isSubmitting = submitState.status === "loading";
+  const controlsLocked = isSubmitting || uploadCheckpoint !== null || isRestartingUpload;
+
+  function areRmaControlsLocked() {
+    return controlsLocked || submittingRef.current || uploadCheckpointRef.current !== null;
+  }
+
+  function handleUploadCheckpoint(nextCheckpoint: RmaUploadCheckpoint | null) {
+    uploadCheckpointRef.current = nextCheckpoint;
+    setUploadCheckpoint(nextCheckpoint);
+  }
 
   function resetSubmitForChange() {
+    if (areRmaControlsLocked()) {
+      return;
+    }
     if (submitState.status === "error" || submitState.status === "success") {
       setSubmitState({
         status: "idle",
@@ -294,11 +323,17 @@ export function RmaPage({
   }
 
   function updateForm<Key extends keyof RmaFormState>(key: Key, value: RmaFormState[Key]) {
+    if (areRmaControlsLocked()) {
+      return;
+    }
     setForm((current) => ({ ...current, [key]: value }));
     resetSubmitForChange();
   }
 
   function updateOrder(orderId: string) {
+    if (areRmaControlsLocked()) {
+      return;
+    }
     const order = orderOptions.find((item) => item.id === orderId);
     const firstLine = order?.lines.length === 1 ? order.lines[0] : null;
     setForm((current) => ({
@@ -311,17 +346,23 @@ export function RmaPage({
   }
 
   function updateOrderLine(orderLineId: string) {
+    if (areRmaControlsLocked()) {
+      return;
+    }
     setForm((current) => ({ ...current, orderLineId, quantity: "1" }));
     resetSubmitForChange();
   }
 
   function clearOrder() {
+    if (areRmaControlsLocked()) {
+      return;
+    }
     setForm((current) => ({ ...current, orderId: "", orderLineId: "", quantity: "1" }));
     resetSubmitForChange();
   }
 
   function addImageFiles(fileList: FileList | null) {
-    if (!fileList || isSubmitting) {
+    if (!fileList || areRmaControlsLocked()) {
       return;
     }
 
@@ -359,7 +400,7 @@ export function RmaPage({
 
   function removeImage(imageId: string) {
     const image = images.find((item) => item.id === imageId);
-    if (!image || isSubmitting) {
+    if (!image || areRmaControlsLocked()) {
       return;
     }
     URL.revokeObjectURL(image.previewUrl);
@@ -368,8 +409,52 @@ export function RmaPage({
     resetSubmitForChange();
   }
 
+  async function restartRmaUpload() {
+    const checkpoint = uploadCheckpointRef.current;
+    if (!checkpoint || isSubmitting || isRestartingUpload) {
+      return;
+    }
+
+    setIsRestartingUpload(true);
+    setSubmitState({
+      status: "loading",
+      message: tx(t, "storefront.rma.upload.restarting", "Pulizia dello stato di caricamento..."),
+    });
+    try {
+      await cancelRmaUploadCheckpoint({
+        checkpoint,
+        onCheckpoint: handleUploadCheckpoint,
+      });
+      for (const image of imagesRef.current) {
+        URL.revokeObjectURL(image.previewUrl);
+      }
+      setImages([]);
+      setImageError(null);
+      setUploadProgress(null);
+      draftIdempotencyKeyRef.current = null;
+      submitIdempotencyKeyRef.current = null;
+      setSubmitState({
+        status: "idle",
+        message: tx(t, "storefront.rma.submit.changed", "修改已准备好，可以再次提交。"),
+      });
+    } catch (error) {
+      setSubmitState({
+        status: "error",
+        message: error instanceof Error
+          ? error.message
+          : tx(t, "storefront.rma.upload.restartError", "无法清理上传状态，请稍后重试。"),
+      });
+    } finally {
+      setIsRestartingUpload(false);
+    }
+  }
+
   async function submitRma(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (submittingRef.current) {
+      return;
+    }
 
     if (!selectedLine) {
       setSubmitState({
@@ -396,14 +481,7 @@ export function RmaPage({
       return;
     }
 
-    if (noteRequired && form.note.trim().length < 4) {
-      setSubmitState({
-        status: "error",
-        message: tx(t, "storefront.rma.note.required", "Aggiungi una breve spiegazione per questo motivo."),
-      });
-      return;
-    }
-
+    submittingRef.current = true;
     const quantity = Number(form.quantity);
     const draftIdempotencyKey = draftIdempotencyKeyRef.current ?? createClientId("rma-draft");
     const submitIdempotencyKey = submitIdempotencyKeyRef.current ?? createClientId("rma-submit");
@@ -426,6 +504,8 @@ export function RmaPage({
         files: images.map((image) => image.file),
         idempotencyKey: submitIdempotencyKey,
         draftIdempotencyKey,
+        checkpoint: uploadCheckpointRef.current,
+        onCheckpoint: handleUploadCheckpoint,
         onProgress: ({ index, total, status }: {
           index: number;
           status: LocalRmaImage["status"];
@@ -489,7 +569,9 @@ export function RmaPage({
       });
     } catch (error) {
       const activeImageIndex = imageIndexRef.current;
-      if (activeImageIndex !== null) {
+      const clientError = error as Partial<RmaUploadClientError>;
+      const isImageError = clientError.code?.startsWith("IMAGE") || clientError.code === "UNSUPPORTED_IMAGE";
+      if (activeImageIndex !== null && isImageError) {
         setImages((current) =>
           current.map((image, index) =>
             index === activeImageIndex ? { ...image, status: "error" } : image
@@ -499,14 +581,15 @@ export function RmaPage({
       const message = error instanceof Error
         ? error.message
         : tx(t, "storefront.rma.submit.error", "Errore durante l'invio della richiesta.");
-      const clientError = error as Partial<RmaUploadClientError>;
       setImageError(
-        clientError.code?.startsWith("IMAGE") || clientError.code === "UNSUPPORTED_IMAGE"
+        isImageError
           ? message
           : null
       );
       setUploadProgress(null);
       setSubmitState({ status: "error", message });
+    } finally {
+      submittingRef.current = false;
     }
   }
 
@@ -554,7 +637,7 @@ export function RmaPage({
                   <LoadingBox text={tx(t, "storefront.rma.order.loading", "Caricamento ordini...")} />
                 ) : selectedOrder ? (
                   <div className="space-y-3">
-                    <SelectedOrderSummary order={selectedOrder} t={t} onChange={clearOrder} />
+                    <SelectedOrderSummary order={selectedOrder} t={t} onChange={clearOrder} disabled={controlsLocked} />
                     <div className="space-y-2">
                       <div className="flex items-center justify-between gap-3">
                         <Label>{tx(t, "storefront.rma.order.chooseLine", "Scegli il ricambio")}</Label>
@@ -572,6 +655,7 @@ export function RmaPage({
                             selected={line.id === form.orderLineId}
                             t={t}
                             onSelect={() => updateOrderLine(line.id)}
+                            disabled={controlsLocked}
                           />
                         ))}
                       </div>
@@ -594,7 +678,7 @@ export function RmaPage({
                             <Select
                               value={form.quantity}
                               onValueChange={(value) => updateForm("quantity", value)}
-                              disabled={isSubmitting}
+                              disabled={controlsLocked}
                             >
                               <SelectTrigger id="rma-quantity" className="w-full bg-white">
                                 <SelectValue />
@@ -621,7 +705,7 @@ export function RmaPage({
                 ) : (
                   <div className="grid gap-2 md:grid-cols-2">
                     {orderOptions.map((order) => (
-                      <OrderOptionCard key={order.id} order={order} t={t} onSelect={() => updateOrder(order.id)} />
+                      <OrderOptionCard key={order.id} order={order} t={t} onSelect={() => updateOrder(order.id)} disabled={controlsLocked} />
                     ))}
                   </div>
                 )}
@@ -639,7 +723,7 @@ export function RmaPage({
                         key={reason.value}
                         selected={form.reasonCode === reason.value}
                         value={reason.value}
-                        disabled={isSubmitting}
+                        disabled={controlsLocked}
                         onSelect={() => updateForm("reasonCode", reason.value)}
                       >
                         {tx(t, reason.key, reason.fallback)}
@@ -655,7 +739,7 @@ export function RmaPage({
                         key={resolution.value}
                         selected={form.requestedResolution === resolution.value}
                         value={resolution.value}
-                        disabled={isSubmitting}
+                        disabled={controlsLocked}
                         onSelect={() => updateForm("requestedResolution", resolution.value)}
                       >
                         {tx(t, resolution.key, resolution.fallback)}
@@ -667,38 +751,30 @@ export function RmaPage({
                   </p>
                 </Field>
 
-                {noteRequired ? (
-                  <Field label={tx(t, "storefront.rma.note.label", "Nota aggiuntiva (obbligatoria per questo motivo)")} htmlFor="rma-note">
+                <details
+                  open={form.reasonCode === "withdrawal_no_longer_needed"}
+                  className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"
+                >
+                  <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+                    {tx(t, "storefront.rma.note.add", "Aggiungi una nota (opzionale)")}
+                  </summary>
+                  <div className="mt-3">
                     <Textarea
                       id="rma-note"
                       value={form.note}
                       onChange={(event) => updateForm("note", event.target.value)}
-                      disabled={isSubmitting}
+                      disabled={controlsLocked}
                       maxLength={2000}
                       placeholder={tx(t, "storefront.rma.note.placeholder", "Aggiungi una breve spiegazione...")}
                       aria-describedby="rma-note-hint"
                     />
-                    <p id="rma-note-hint" className="text-xs text-slate-500">
-                      {tx(t, "storefront.rma.note.withdrawalHint", "Aggiungi una breve spiegazione, senza dati di pagamento.")}
-                    </p>
-                  </Field>
-                ) : (
-                  <details className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-                    <summary className="cursor-pointer text-sm font-semibold text-slate-700">
-                      {tx(t, "storefront.rma.note.add", "Aggiungi una nota (opzionale)")}
-                    </summary>
-                    <div className="mt-3">
-                      <Textarea
-                        id="rma-note"
-                        value={form.note}
-                        onChange={(event) => updateForm("note", event.target.value)}
-                        disabled={isSubmitting}
-                        maxLength={2000}
-                        placeholder={tx(t, "storefront.rma.note.placeholder", "Aggiungi una breve spiegazione...")}
-                      />
-                    </div>
-                  </details>
-                )}
+                    {form.reasonCode === "withdrawal_no_longer_needed" ? (
+                      <p id="rma-note-hint" className="text-xs text-slate-500">
+                        {tx(t, "storefront.rma.note.withdrawalHint", "Puoi aggiungere una breve spiegazione, senza dati di pagamento.")}
+                      </p>
+                    ) : null}
+                  </div>
+                </details>
               </RmaStep>
 
               <RmaStep
@@ -710,8 +786,12 @@ export function RmaPage({
                   <Button
                     type="button"
                     variant="secondary"
-                    disabled={isSubmitting || images.length >= rmaMaxAttachments}
-                    onClick={() => cameraInputRef.current?.click()}
+                    disabled={controlsLocked || images.length >= rmaMaxAttachments}
+                    onClick={() => {
+                      if (!areRmaControlsLocked()) {
+                        cameraInputRef.current?.click();
+                      }
+                    }}
                   >
                     <Camera className="size-4" />
                     {tx(t, "storefront.rma.image.camera", "Scatta foto")}
@@ -719,8 +799,12 @@ export function RmaPage({
                   <Button
                     type="button"
                     variant="outline"
-                    disabled={isSubmitting || images.length >= rmaMaxAttachments}
-                    onClick={() => galleryInputRef.current?.click()}
+                    disabled={controlsLocked || images.length >= rmaMaxAttachments}
+                    onClick={() => {
+                      if (!areRmaControlsLocked()) {
+                        galleryInputRef.current?.click();
+                      }
+                    }}
                   >
                     <Upload className="size-4" />
                     {tx(t, "storefront.rma.image.gallery", "Scegli dalla galleria")}
@@ -732,6 +816,7 @@ export function RmaPage({
                     type="file"
                     accept="image/*"
                     capture="environment"
+                    disabled={controlsLocked}
                     onChange={(event) => addImageFiles(event.target.files)}
                   />
                   <input
@@ -741,6 +826,7 @@ export function RmaPage({
                     type="file"
                     accept="image/*"
                     multiple
+                    disabled={controlsLocked}
                     onChange={(event) => addImageFiles(event.target.files)}
                   />
                 </div>
@@ -769,7 +855,7 @@ export function RmaPage({
                           type="button"
                           className="grid size-6 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-slate-200 hover:text-slate-950"
                           aria-label={txFormat(t, "storefront.rma.image.remove", "Rimuovi foto {name}", { name: image.file.name })}
-                          disabled={isSubmitting}
+                          disabled={controlsLocked}
                           onClick={() => removeImage(image.id)}
                         >
                           <X className="size-3.5" />
@@ -802,13 +888,29 @@ export function RmaPage({
               <Button
                 type="submit"
                 className="h-11 w-full"
-                disabled={isSubmitting || !canSubmit}
+                disabled={isSubmitting || isRestartingUpload || !canSubmit}
               >
                 {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
                 {isSubmitting
                   ? tx(t, "storefront.rma.submit.buttonLoading", "Invio assistenza...")
                   : tx(t, "storefront.rma.submit.button", "Invia richiesta assistenza")}
               </Button>
+              {uploadCheckpoint && !isSubmitting ? (
+                <div className="flex flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-xs leading-5 text-amber-900">
+                    {tx(t, "storefront.rma.upload.resumeHint", "Lo stato del caricamento è conservato. Ritenta l'invio oppure ricomincia per cancellare i dati temporanei.")}
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isRestartingUpload}
+                    onClick={() => void restartRmaUpload()}
+                  >
+                    {isRestartingUpload ? tx(t, "storefront.rma.upload.restartingShort", "Pulizia...") : tx(t, "storefront.rma.upload.restart", "Ricomincia upload")}
+                  </Button>
+                </div>
+              ) : null}
               <RmaSubmitStatus state={submitState} t={t} />
             </CardContent>
           </form>
@@ -925,10 +1027,12 @@ function ChoiceButton({
 }
 
 function SelectedOrderSummary({
+  disabled,
   onChange,
   order,
   t,
 }: {
+  disabled?: boolean;
   onChange: () => void;
   order: RmaOrderOption;
   t: StorefrontTranslator;
@@ -944,7 +1048,7 @@ function SelectedOrderSummary({
           </div>
         </div>
       </div>
-      <Button type="button" variant="outline" size="sm" onClick={onChange}>
+      <Button type="button" variant="outline" size="sm" onClick={onChange} disabled={disabled}>
         {tx(t, "storefront.rma.order.change", "Cambia ordine")}
       </Button>
     </div>
@@ -952,10 +1056,12 @@ function SelectedOrderSummary({
 }
 
 function OrderOptionCard({
+  disabled,
   onSelect,
   order,
   t,
 }: {
+  disabled?: boolean;
   onSelect: () => void;
   order: RmaOrderOption;
   t: StorefrontTranslator;
@@ -963,7 +1069,8 @@ function OrderOptionCard({
   return (
     <button
       type="button"
-      className="flex min-h-20 items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left transition hover:border-primary/40 hover:bg-primary/5 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
+      disabled={disabled}
+      className="flex min-h-20 items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left transition hover:border-primary/40 hover:bg-primary/5 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60"
       onClick={onSelect}
     >
       <span className="flex min-w-0 items-center gap-3">
@@ -981,11 +1088,13 @@ function OrderOptionCard({
 }
 
 function ProductOptionCard({
+  disabled,
   line,
   onSelect,
   selected,
   t,
 }: {
+  disabled?: boolean;
   line: RmaOrderLineOption;
   onSelect: () => void;
   selected: boolean;
@@ -994,9 +1103,10 @@ function ProductOptionCard({
   return (
     <button
       type="button"
+      disabled={disabled}
       aria-pressed={selected}
       className={cn(
-        "flex min-h-20 items-center gap-3 rounded-lg border p-2.5 text-left transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40",
+        "flex min-h-20 items-center gap-3 rounded-lg border p-2.5 text-left transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60",
         selected ? "border-primary bg-primary/5 ring-1 ring-primary/20" : "border-slate-200 bg-white hover:border-primary/40"
       )}
       onClick={onSelect}
@@ -1103,7 +1213,7 @@ function RmaRequestCard({
         </Badge>
       </div>
       <div className="grid gap-2 text-sm text-slate-600 sm:grid-cols-3">
-        <div><span className="font-semibold">{tx(t, "storefront.rma.result.order", "Ordine")}: </span>{request.orderId ?? "—"}</div>
+        <div><span className="font-semibold">{tx(t, "storefront.rma.result.order", "Ordine")}: </span>{request.orderNumber ?? "—"}</div>
         <div><span className="font-semibold">{tx(t, "storefront.rma.reason.label", "Motivo")}: </span>{rmaReasonLabel(t, request.reasonCode)}</div>
         <div><span className="font-semibold">{tx(t, "storefront.rma.resolution.label", "Soluzione")}: </span>{rmaResolutionLabel(t, request.requestedResolution)}</div>
       </div>

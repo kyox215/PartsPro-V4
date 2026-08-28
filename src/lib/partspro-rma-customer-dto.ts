@@ -47,6 +47,9 @@ export function toCustomerRmaDto(request: RmaRequest): CustomerRmaDto {
       })),
     id: request.id,
     orderId: request.orderId ?? null,
+    // Legacy requests only have the already-safe display value in orderId;
+    // the canonical server flow supplies the order number separately.
+    orderNumber: request.orderNumber ?? request.orderId ?? null,
     orderLineId: request.orderLineId ?? null,
     policyScope: request.policyScope ?? "legacy_unverified",
     productName: request.productName,

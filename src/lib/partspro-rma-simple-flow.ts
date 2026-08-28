@@ -398,7 +398,7 @@ async function readCustomerRmaDto(userId: string, rmaId: string): Promise<Custom
   const service = requireServiceRoleClient();
   const { data: row, error } = await service
     .from("rma_requests")
-    .select("id,rma_no,order_id,order_line_id,sku_code,product_name_snapshot,description,quantity,status,reason_code,problem_type,requested_resolution,policy_scope,eligible_until,created_at,updated_at")
+    .select("id,rma_no,order_id,order_no,customer_id,order_line_id,sku_code,product_name_snapshot,description,quantity,status,reason_code,problem_type,requested_resolution,policy_scope,eligible_until,created_at,updated_at")
     .eq("id", rmaId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -406,6 +406,8 @@ async function readCustomerRmaDto(userId: string, rmaId: string): Promise<Custom
   if (error || !isRecord(row)) {
     throw new RmaSimpleFlowError(404, "RMA_NOT_FOUND", "RMA request was not found.");
   }
+
+  const orderNumber = await readCustomerOrderNumber(service, row);
 
   const { data: attachmentRows } = await service
     .from("rma_attachments")
@@ -445,6 +447,7 @@ async function readCustomerRmaDto(userId: string, rmaId: string): Promise<Custom
       .filter((event) => event.id.length > 0),
     id: readString(row.id) ?? rmaId,
     orderId: readString(row.order_id),
+    orderNumber,
     orderLineId: readString(row.order_line_id),
     policyScope: readString(row.policy_scope) ?? "legacy_unverified",
     productName: readString(row.product_name_snapshot) ?? readString(row.sku_code) ?? "",
@@ -458,6 +461,33 @@ async function readCustomerRmaDto(userId: string, rmaId: string): Promise<Custom
     status: readString(row.status) ?? "submitted",
     updatedAt: readString(row.updated_at),
   };
+}
+
+/**
+ * Resolve the customer-facing order number through the authorized order row.
+ * The RMA is already scoped to the authenticated user; matching customer_id
+ * here prevents a service-role lookup from ever widening that boundary.
+ */
+async function readCustomerOrderNumber(
+  service: ReturnType<typeof createServiceRoleClient>,
+  row: JsonRecord
+) {
+  const fallback = readString(row.order_no);
+  const orderId = readString(row.order_id);
+  const customerId = readString(row.customer_id);
+
+  if (!orderId || !customerId) {
+    return fallback;
+  }
+
+  const { data: order } = await service
+    .from("orders")
+    .select("id,order_no")
+    .eq("id", orderId)
+    .eq("customer_id", customerId)
+    .maybeSingle();
+
+  return isRecord(order) ? readString(order.order_no) ?? fallback : fallback;
 }
 
 async function toCustomerAttachmentDto(
