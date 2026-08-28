@@ -1089,16 +1089,18 @@ begin
     v_terms.amount_net, v_terms.vat_amount, v_terms.amount_gross
   );
   v_allocation_total_eur := private.supplier_batch_v2_allocation_total(v_allocations, 'allocatedAmountEur');
-  if round(v_allocation_total_eur, 2) <> case
-    when v_terms.capitalized_amount = v_terms.amount_gross
-      then round(v_terms.amount_net * v_terms.fx_rate_to_eur, 2)
-        + round(v_terms.vat_amount * v_terms.fx_rate_to_eur, 2)
-    else least(
-      round(v_terms.capitalized_amount * v_terms.fx_rate_to_eur, 2),
-      round(v_terms.amount_net * v_terms.fx_rate_to_eur, 2)
-        + round(v_terms.vat_amount * v_terms.fx_rate_to_eur, 2)
-    )
-  end then
+  if round(v_allocation_total_eur, 2) <> (
+    case
+      when v_terms.capitalized_amount = v_terms.amount_gross
+        then round(v_terms.amount_net * v_terms.fx_rate_to_eur, 2)
+          + round(v_terms.vat_amount * v_terms.fx_rate_to_eur, 2)
+      else least(
+        round(v_terms.capitalized_amount * v_terms.fx_rate_to_eur, 2),
+        round(v_terms.amount_net * v_terms.fx_rate_to_eur, 2)
+          + round(v_terms.vat_amount * v_terms.fx_rate_to_eur, 2)
+      )
+    end
+  ) then
     raise exception 'EUR allocation total must equal the converted capitalized amount'
       using errcode = '23514', detail = 'ALLOCATION_EUR_TOTAL_MISMATCH';
   end if;
@@ -2951,7 +2953,7 @@ declare
   v_fx_rate_date date;
   v_fx_rate_source text;
   v_fx_evidence_url text;
-  v_batch_goods_fx_rate numeric;
+  v_batch_goods_fx_rate_to_eur numeric;
   v_batch_goods_fx_date date;
   v_batch_goods_fx_source text;
   v_batch_goods_fx_evidence_url text;
