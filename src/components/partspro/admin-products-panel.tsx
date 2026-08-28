@@ -134,7 +134,6 @@ import {
 import type {
   SupplierBatchCharge,
   SupplierBatchCostSummary,
-  SupplierBatchLineCost,
 } from "@/lib/partspro-supplier-batch-cost-core.mjs";
 import { AdminBusyRegion, AdminSkeletonRows } from "./admin-feedback";
 import { AdminProductImportDialog } from "./admin-product-import-dialog";
@@ -144,8 +143,23 @@ import {
   SupplierBatchCostSummaryCompact,
   SupplierBatchLineCostCompact,
   SupplierBatchTransportCostCard,
+  type SupplierBatchChargeView,
+  type SupplierBatchAllocationView,
+  type SupplierBatchCostSummaryView,
+  type SupplierBatchLineCostView,
+  type SupplierBatchHistoryEntry,
   type SupplierBatchCostLanguage,
 } from "./supplier-batch-transport-cost-card";
+import {
+  formatSupplierBatchCents,
+  formatSupplierBatchDateTime,
+  formatSupplierBatchMoney,
+  normalizeSupplierBatchCurrency,
+  readSupplierBatchMoneyCents,
+  SUPPLIER_BATCH_CURRENCIES,
+  type SupplierBatchCurrency,
+} from "@/lib/partspro-supplier-batch-money";
+import type { SupplierBatchChargeDialogMode } from "./supplier-batch-transport-cost-dialog";
 
 const SupplierBatchTransportCostDialog = dynamic(
   () =>
@@ -241,6 +255,10 @@ type SupplierBatchDateMode = "imported" | "received" | "invoice";
 type SupplierBatchVerificationStatus = "ok" | "warning" | "error";
 type SupplierBatchExportFormat = "csv" | "xlsx";
 type SupplierBatchExportScope = "batches" | "lines" | "charges";
+type SupplierBatchSort = "updated_desc" | "received_desc" | "amount_desc" | "supplier";
+type SupplierBatchCostStatusFilter = SupplierBatchCostSummary["costStatus"];
+type SupplierBatchChargeTypeFilter = SupplierBatchCharge["chargeType"];
+type SupplierBatchVatTreatmentFilter = SupplierBatchCharge["vatTreatment"];
 type FilterValue<T extends string> = "all" | T;
 type ProductListFilters = {
   activeRestockOnly: boolean;
@@ -261,11 +279,17 @@ type ProductListFilters = {
 
 type SupplierBatchFilters = {
   batchCode: string;
+  chargeType: FilterValue<SupplierBatchChargeTypeFilter>;
+  costStatus: FilterValue<SupplierBatchCostStatusFilter>;
+  currency: FilterValue<SupplierBatchCurrency>;
   dateFrom: string;
   dateMode: SupplierBatchDateMode;
   dateTo: string;
+  hasTransport: "all" | "with" | "without";
   q: string;
+  sort: SupplierBatchSort;
   supplier: string;
+  vatTreatment: FilterValue<SupplierBatchVatTreatmentFilter>;
   page: number;
   pageSize: number;
 };
@@ -345,7 +369,12 @@ type AdminSupplierBatchRow = {
   priceViolationCount: number;
   modelPrefixIssueCount: number;
   verification: SupplierBatchVerification;
-  costSummary: SupplierBatchCostSummary | null;
+  costSummary: SupplierBatchCostSummaryView | null;
+  goodsValueEur?: number | null;
+  goodsValueFxRateToEur?: number | null;
+  goodsValueFxDate?: string | null;
+  goodsValueFxSource?: string | null;
+  goodsValueFxEvidenceUrl?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -363,9 +392,6 @@ type AdminSupplierBatchLineProduct = {
   actualQty: number;
   availableQty: number;
   lockedQty: number;
-  costPrice: number;
-  retailPrice: number;
-  b2bPrice: number;
   imagePath: string | null;
   modelCodes: string[];
   compatibilityModels: string[];
@@ -390,7 +416,7 @@ type AdminSupplierBatchLineRow = {
   imageStatus: string;
   productStatus: CatalogStatus;
   product: AdminSupplierBatchLineProduct | null;
-  costs: SupplierBatchLineCost | null;
+  costs: SupplierBatchLineCostView | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -398,8 +424,10 @@ type AdminSupplierBatchLineRow = {
 type AdminSupplierBatchDetail = {
   batch: AdminSupplierBatchRow;
   lines: AdminSupplierBatchLineRow[];
-  charges: SupplierBatchCharge[];
+  charges: SupplierBatchChargeView[];
   verification: SupplierBatchVerification;
+  allocations?: SupplierBatchAllocationView[];
+  history?: SupplierBatchHistoryEntry[];
 };
 
 type ProductMetrics = {
@@ -535,10 +563,25 @@ export function resolveSupplierBatchCostPermissions(
     permissionsLoaded &&
     (permissions.includes("products.read_admin") ||
       permissions.includes("product.read_admin"));
+  const canReadHistory =
+    permissionsLoaded && permissions.includes("supplier_batch.read");
+  const canEstimate =
+    canRead &&
+    (permissions.includes("supplier_batch.estimate") ||
+      permissions.includes("supplier_batch.manage_costs"));
+  const canConfirm = canRead && permissions.includes("supplier_batch.confirm");
+  const canCorrect = canRead && permissions.includes("supplier_batch.correct");
+  const canExport = canRead && permissions.includes("supplier_batch.export");
 
   return {
     canRead,
-    canManage: canRead && permissions.includes("supplier_batch.manage_costs"),
+    canReadHistory,
+    canEstimate,
+    canConfirm,
+    canCorrect,
+    canExport,
+    // Compatibility alias: manage_costs only grants the estimate workflow.
+    canManage: canEstimate,
   };
 }
 
@@ -609,13 +652,48 @@ const defaultFilters: ProductListFilters = {
 function defaultSupplierBatchFilters(): SupplierBatchFilters {
   return {
     batchCode: "",
+    chargeType: "all",
+    costStatus: "all",
+    currency: "all",
     dateFrom: "",
     dateMode: "imported",
     dateTo: "",
+    hasTransport: "all",
     q: "",
+    sort: "updated_desc",
     supplier: "",
+    vatTreatment: "all",
     page: 0,
     pageSize: 20,
+  };
+}
+
+function parseSupplierBatchFilterValue<T extends string>(
+  value: string | null,
+  allowed: readonly T[]
+): FilterValue<T> {
+  return value && (allowed as readonly string[]).includes(value) ? value as T : "all";
+}
+
+function supplierBatchFiltersFromSearchParams(searchParams: URLSearchParams): SupplierBatchFilters {
+  const defaults = defaultSupplierBatchFilters();
+  const page = Number.parseInt(searchParams.get("batchPage") ?? "0", 10);
+  return {
+    ...defaults,
+    batchCode: searchParams.get("batchCode") ?? "",
+    chargeType: parseSupplierBatchFilterValue(searchParams.get("batchChargeType"), ["transport", "insurance", "customs", "handling", "other"]),
+    costStatus: parseSupplierBatchFilterValue(searchParams.get("batchCostStatus"), ["unrecorded", "estimated", "confirmed_zero", "confirmed", "needs_review"]),
+    currency: parseSupplierBatchFilterValue(searchParams.get("batchCurrency"), SUPPLIER_BATCH_CURRENCIES),
+    dateFrom: searchParams.get("batchDateFrom") ?? searchParams.get("dateFrom") ?? "",
+    dateMode: (searchParams.get("batchDateMode") ?? searchParams.get("dateMode")) === "received" || (searchParams.get("batchDateMode") ?? searchParams.get("dateMode")) === "invoice" ? (searchParams.get("batchDateMode") ?? searchParams.get("dateMode")) as SupplierBatchDateMode : "imported",
+    dateTo: searchParams.get("batchDateTo") ?? searchParams.get("dateTo") ?? "",
+    hasTransport: searchParams.get("batchHasTransport") === "with" || searchParams.get("batchHasTransport") === "without" ? searchParams.get("batchHasTransport") as "with" | "without" : "all",
+    q: searchParams.get("batchQ") ?? "",
+    sort: searchParams.get("batchSort") === "received_desc" || searchParams.get("batchSort") === "amount_desc" || searchParams.get("batchSort") === "supplier" ? searchParams.get("batchSort") as SupplierBatchSort : "updated_desc",
+    supplier: searchParams.get("batchSupplier") ?? "",
+    vatTreatment: parseSupplierBatchFilterValue(searchParams.get("batchVatTreatment"), ["recoverable", "non_recoverable", "unknown"]),
+    page: Number.isSafeInteger(page) && page >= 0 ? page : 0,
+    pageSize: defaults.pageSize,
   };
 }
 
@@ -796,6 +874,39 @@ const panelText = {
         invoice: "发票日期",
       } satisfies Record<SupplierBatchDateMode, string>,
       dateTo: "结束日期",
+      currency: "币种",
+      allCurrencies: "全部币种",
+      costStatus: "成本状态",
+      costStatusLabels: {
+        unrecorded: "未登记",
+        estimated: "预估",
+        confirmed_zero: "已确认 €0",
+        confirmed: "已确认",
+        needs_review: "需复核",
+      } satisfies Record<SupplierBatchCostStatusFilter, string>,
+      chargeType: "费用类型",
+      chargeTypeLabels: {
+        transport: "运输",
+        insurance: "保险",
+        customs: "关税",
+        handling: "处理费",
+        other: "其他",
+      } satisfies Record<SupplierBatchChargeTypeFilter, string>,
+      vatTreatment: "IVA 处理",
+      vatTreatmentLabels: {
+        recoverable: "可抵扣",
+        non_recoverable: "不可抵扣",
+        unknown: "未知",
+      } satisfies Record<SupplierBatchVatTreatmentFilter, string>,
+      hasTransport: "运输费",
+      hasTransportLabels: { all: "全部", with: "已有费用", without: "未登记" },
+      sort: "排序",
+      sortLabels: {
+        updated_desc: "最近更新",
+        received_desc: "到货日期",
+        amount_desc: "金额从高到低",
+        supplier: "供应商",
+      } satisfies Record<SupplierBatchSort, string>,
       detail: "到货明细",
       detailEmpty: "暂无批次明细。",
       downloadCsv: "CSV",
@@ -830,6 +941,10 @@ const panelText = {
       stock: "当前库存",
       supplier: "供应商",
       syncError: "到货批次暂时不可用。",
+      syncPermissionError: "没有权限读取到货成本。",
+      syncNetworkError: "网络或服务暂时不可用，请重试。",
+      syncContractError: "服务返回格式异常，页面保留上次数据。",
+      retry: "重试读取",
       syncSuccess: "到货批次已同步。",
       templateCsv: "CSV 模板",
       templateXlsx: "Excel 模板",
@@ -1192,6 +1307,39 @@ const panelText = {
         invoice: "Fattura",
       } satisfies Record<SupplierBatchDateMode, string>,
       dateTo: "A",
+      currency: "Valuta",
+      allCurrencies: "Tutte le valute",
+      costStatus: "Stato costi",
+      costStatusLabels: {
+        unrecorded: "Non registrato",
+        estimated: "Stimato",
+        confirmed_zero: "Confermato €0",
+        confirmed: "Confermato",
+        needs_review: "Da verificare",
+      } satisfies Record<SupplierBatchCostStatusFilter, string>,
+      chargeType: "Tipo costo",
+      chargeTypeLabels: {
+        transport: "Trasporto",
+        insurance: "Assicurazione",
+        customs: "Dogana",
+        handling: "Gestione",
+        other: "Altro",
+      } satisfies Record<SupplierBatchChargeTypeFilter, string>,
+      vatTreatment: "Trattamento IVA",
+      vatTreatmentLabels: {
+        recoverable: "Recuperabile",
+        non_recoverable: "Non recuperabile",
+        unknown: "Sconosciuto",
+      } satisfies Record<SupplierBatchVatTreatmentFilter, string>,
+      hasTransport: "Trasporto",
+      hasTransportLabels: { all: "Tutti", with: "Con costo", without: "Non registrato" },
+      sort: "Ordina",
+      sortLabels: {
+        updated_desc: "Ultimo aggiornamento",
+        received_desc: "Data arrivo",
+        amount_desc: "Importo decrescente",
+        supplier: "Fornitore",
+      } satisfies Record<SupplierBatchSort, string>,
       detail: "Dettaglio arrivo",
       detailEmpty: "Nessuna riga per questo lotto.",
       downloadCsv: "CSV",
@@ -1226,6 +1374,10 @@ const panelText = {
       stock: "Stock attuale",
       supplier: "Fornitore",
       syncError: "Lotti arrivo non disponibili.",
+      syncPermissionError: "Non hai il permesso di leggere i costi arrivo.",
+      syncNetworkError: "Rete o servizio non disponibili; riprova.",
+      syncContractError: "Formato risposta non valido; dati precedenti mantenuti.",
+      retry: "Riprova lettura",
       syncSuccess: "Lotti arrivo sincronizzati.",
       templateCsv: "Template CSV",
       templateXlsx: "Template Excel",
@@ -1465,6 +1617,12 @@ export function AdminProductsPanel({
     permissionsLoaded
   );
   const canReadSupplierBatchCosts = supplierBatchCostPermissions.canRead;
+  const canReadSupplierBatchHistory = supplierBatchCostPermissions.canReadHistory;
+  const canEstimateSupplierBatchCosts = supplierBatchCostPermissions.canEstimate;
+  const canCancelSupplierBatchCosts = canEstimateSupplierBatchCosts;
+  const canConfirmSupplierBatchCosts = supplierBatchCostPermissions.canConfirm;
+  const canCorrectSupplierBatchCosts = supplierBatchCostPermissions.canCorrect;
+  const canExportSupplierBatchCosts = supplierBatchCostPermissions.canExport;
   const canManageSupplierBatchCosts = supplierBatchCostPermissions.canManage;
   const [filters, setFilters] = React.useState<ProductListFilters>(defaultFilters);
   const [products, setProducts] = React.useState<AdminProductRow[]>([]);
@@ -1494,7 +1652,7 @@ export function AdminProductsPanel({
     normalizeProductWorkspace(searchParams.get("catalogView"))
   );
   const [batchFilters, setBatchFilters] = React.useState<SupplierBatchFilters>(() =>
-    defaultSupplierBatchFilters()
+    supplierBatchFiltersFromSearchParams(searchParams)
   );
   const [supplierBatches, setSupplierBatches] = React.useState<AdminSupplierBatchRow[]>([]);
   const [batchDataSource, setBatchDataSource] = React.useState<SupplierBatchDataSource>(
@@ -1502,6 +1660,8 @@ export function AdminProductsPanel({
   );
   const [isLoadingBatches, setIsLoadingBatches] = React.useState(false);
   const [batchDetail, setBatchDetail] = React.useState<AdminSupplierBatchDetail | null>(null);
+  const [batchDetailTarget, setBatchDetailTarget] = React.useState<AdminSupplierBatchRow | null>(null);
+  const [batchDetailError, setBatchDetailError] = React.useState<string | null>(null);
   const [isBatchDetailOpen, setIsBatchDetailOpen] = React.useState(false);
   const [isLoadingBatchDetail, setIsLoadingBatchDetail] = React.useState(false);
   const [pendingBatchDownload, setPendingBatchDownload] = React.useState<string | null>(null);
@@ -1517,6 +1677,43 @@ export function AdminProductsPanel({
 
     setWorkspace((current) => (current === nextWorkspace ? current : nextWorkspace));
   }, [catalogView, focusedSku]);
+
+  React.useEffect(() => {
+    if (workspace !== "batches") {
+      return;
+    }
+
+    const params = new URLSearchParams(searchParams.toString());
+    const setOrDelete = (key: string, value: string) => {
+      if (value) {
+        params.set(key, value);
+      } else {
+        params.delete(key);
+      }
+    };
+    // Keep batch filters self-contained in shareable URLs.  Delete the legacy
+    // unscoped date keys after reading them once for backwards compatibility.
+    params.delete("dateMode");
+    params.delete("dateFrom");
+    params.delete("dateTo");
+    setOrDelete("batchQ", batchFilters.q.trim());
+    setOrDelete("batchSupplier", batchFilters.supplier.trim());
+    setOrDelete("batchCode", batchFilters.batchCode.trim());
+    setOrDelete("batchDateMode", batchFilters.dateMode === "imported" ? "" : batchFilters.dateMode);
+    setOrDelete("batchDateFrom", batchFilters.dateFrom);
+    setOrDelete("batchDateTo", batchFilters.dateTo);
+    setOrDelete("batchCurrency", batchFilters.currency === "all" ? "" : batchFilters.currency);
+    setOrDelete("batchCostStatus", batchFilters.costStatus === "all" ? "" : batchFilters.costStatus);
+    setOrDelete("batchChargeType", batchFilters.chargeType === "all" ? "" : batchFilters.chargeType);
+    setOrDelete("batchVatTreatment", batchFilters.vatTreatment === "all" ? "" : batchFilters.vatTreatment);
+    setOrDelete("batchHasTransport", batchFilters.hasTransport === "all" ? "" : batchFilters.hasTransport);
+    setOrDelete("batchSort", batchFilters.sort === "updated_desc" ? "" : batchFilters.sort);
+    setOrDelete("batchPage", batchFilters.page === 0 ? "" : String(batchFilters.page));
+    const current = searchParams.toString();
+    if (params.toString() !== current) {
+      router.replace(`/admin?${params.toString()}`, { scroll: false });
+    }
+  }, [batchFilters, router, searchParams, workspace]);
 
   const syncWorkspaceUrl = React.useCallback(
     (nextWorkspace: ProductWorkspace) => {
@@ -1692,7 +1889,7 @@ export function AdminProductsPanel({
   const refreshSupplierBatchCost = React.useCallback(
     async (batchCode: string, signal?: AbortSignal): Promise<AdminSupplierBatchDetail> => {
       const [nextDetail] = await Promise.all([
-        fetchAdminSupplierBatchDetail(batchCode, signal),
+        fetchAdminSupplierBatchDetail(batchCode, canReadSupplierBatchHistory, signal),
         refreshSupplierBatches(signal, { clearNotice: false }),
       ]);
 
@@ -1705,7 +1902,7 @@ export function AdminProductsPanel({
       );
       return nextDetail;
     },
-    [refreshSupplierBatches]
+    [canReadSupplierBatchHistory, refreshSupplierBatches]
   );
 
   React.useEffect(() => {
@@ -1728,7 +1925,7 @@ export function AdminProductsPanel({
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
       void refreshSupplierBatches(controller.signal);
-    }, 180);
+    }, 320);
 
     return () => {
       controller.abort();
@@ -1804,13 +2001,20 @@ export function AdminProductsPanel({
   }
 
   async function openBatchDetail(batch: AdminSupplierBatchRow) {
+    setBatchDetailTarget(batch);
     setIsBatchDetailOpen(true);
     setIsLoadingBatchDetail(true);
+    setBatchDetailError(null);
 
     try {
-      const detail = await fetchAdminSupplierBatchDetail(batch.batchCode);
+      const detail = await fetchAdminSupplierBatchDetail(
+        batch.batchCode,
+        canReadSupplierBatchHistory
+      );
       setBatchDetail(detail);
+      setBatchDetailError(null);
     } catch (error) {
+      setBatchDetailError(getErrorMessage(error));
       setNotice({ tone: "error", message: formatNoticeError(text.batches.syncError, error) });
     } finally {
       setIsLoadingBatchDetail(false);
@@ -2289,6 +2493,11 @@ export function AdminProductsPanel({
             language={supplierBatchCostLanguage}
             canReadCosts={canReadSupplierBatchCosts}
             canManageCosts={canManageSupplierBatchCosts}
+            canEstimateCosts={canEstimateSupplierBatchCosts}
+            canCancelCosts={canCancelSupplierBatchCosts}
+            canConfirmCosts={canConfirmSupplierBatchCosts}
+            canCorrectCosts={canCorrectSupplierBatchCosts}
+            canExportCosts={canExportSupplierBatchCosts}
             onChange={updateBatchFilters}
             onDownload={downloadSupplierBatchFile}
             onDownloadTemplate={downloadSupplierBatchTemplate}
@@ -2373,6 +2582,8 @@ export function AdminProductsPanel({
       />
 
       <SupplierBatchDetailSheet
+        batchTarget={batchDetailTarget}
+        error={batchDetailError}
         detail={batchDetail}
         isLoading={isLoadingBatchDetail}
         open={isBatchDetailOpen}
@@ -2380,14 +2591,25 @@ export function AdminProductsPanel({
         text={text}
         language={supplierBatchCostLanguage}
         canReadCosts={canReadSupplierBatchCosts}
+        canReadHistory={canReadSupplierBatchHistory}
         canManageCosts={canManageSupplierBatchCosts}
+        canEstimateCosts={canEstimateSupplierBatchCosts}
+        canCancelCosts={canCancelSupplierBatchCosts}
+        canConfirmCosts={canConfirmSupplierBatchCosts}
+        canCorrectCosts={canCorrectSupplierBatchCosts}
+        canExportCosts={canExportSupplierBatchCosts}
         onDownload={(batch, scope, format) => void downloadSupplierBatchFile(scope, format, batch)}
         onCostChanged={refreshSupplierBatchCost}
         onOpenChange={(open) => {
           setIsBatchDetailOpen(open);
           if (!open) {
             setBatchDetail(null);
+            setBatchDetailTarget(null);
+            setBatchDetailError(null);
           }
+        }}
+        onRetry={() => {
+          if (batchDetailTarget) void openBatchDetail(batchDetailTarget);
         }}
         onViewProducts={viewProductsForBatch}
       />
@@ -2404,7 +2626,7 @@ function SupplierBatchesPanel({
   text,
   language,
   canReadCosts,
-  canManageCosts,
+  canExportCosts = false,
   onChange,
   onDownload,
   onDownloadTemplate,
@@ -2422,6 +2644,11 @@ function SupplierBatchesPanel({
   language: SupplierBatchCostLanguage;
   canReadCosts: boolean;
   canManageCosts: boolean;
+  canEstimateCosts?: boolean;
+  canCancelCosts?: boolean;
+  canConfirmCosts?: boolean;
+  canCorrectCosts?: boolean;
+  canExportCosts?: boolean;
   onChange: (patch: Partial<SupplierBatchFilters>) => void;
   onDownload: (
     scope: SupplierBatchExportScope,
@@ -2471,28 +2698,30 @@ function SupplierBatchesPanel({
             <RefreshCw className={cn("size-4", isLoading && "animate-spin")} />
             {text.sync}
           </Button>
-          <BatchDownloadMenu
-            label={copy.exportBatches}
-            pendingKeyPrefix="batches"
-            pendingDownload={pendingDownload}
-            text={copy}
-            onDownload={(format) => onDownload("batches", format)}
-          />
-          <BatchDownloadMenu
-            label={copy.exportLines}
-            pendingKeyPrefix="lines"
-            pendingDownload={pendingDownload}
-            text={copy}
-            onDownload={(format) => onDownload("lines", format)}
-          />
-          {canManageCosts ? (
-            <BatchDownloadMenu
-              label={language === "it" ? "Esporta costi" : "导出费用"}
-              pendingKeyPrefix="charges"
-              pendingDownload={pendingDownload}
-              text={copy}
-              onDownload={(format) => onDownload("charges", format)}
-            />
+          {canExportCosts ? (
+            <>
+              <BatchDownloadMenu
+                label={copy.exportBatches}
+                pendingKeyPrefix="batches"
+                pendingDownload={pendingDownload}
+                text={copy}
+                onDownload={(format) => onDownload("batches", format)}
+              />
+              <BatchDownloadMenu
+                label={copy.exportLines}
+                pendingKeyPrefix="lines"
+                pendingDownload={pendingDownload}
+                text={copy}
+                onDownload={(format) => onDownload("lines", format)}
+              />
+              <BatchDownloadMenu
+                label={language === "it" ? "Esporta costi" : "导出费用"}
+                pendingKeyPrefix="charges"
+                pendingDownload={pendingDownload}
+                text={copy}
+                onDownload={(format) => onDownload("charges", format)}
+              />
+            </>
           ) : null}
           <BatchTemplateMenu
             pendingDownload={pendingDownload}
@@ -2501,6 +2730,20 @@ function SupplierBatchesPanel({
           />
         </div>
       </div>
+
+      {dataSource.error ? (
+        <div className="flex flex-wrap items-start gap-2 border-b border-red-200 bg-red-50 px-3 py-3 text-sm text-red-800" role="alert">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <div className="min-w-0 flex-1">
+            <div className="font-semibold">{supplierBatchDataErrorLabel(dataSource.error, copy)}</div>
+            <div className="mt-1 break-words text-xs">{dataSource.error}</div>
+          </div>
+          <Button variant="outline" size="sm" className="bg-white" onClick={onRefresh} disabled={isLoading}>
+            {isLoading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+            {copy.retry}
+          </Button>
+        </div>
+      ) : null}
 
       <div className="grid grid-cols-2 gap-1.5 border-b border-slate-200 bg-slate-50/70 px-2 py-2 sm:gap-2 sm:px-3 sm:py-3 lg:grid-cols-[1.2fr_1fr_1fr_1fr_1fr_auto]">
         <Input
@@ -2552,6 +2795,46 @@ function SupplierBatchesPanel({
             onChange={(event) => onChange({ dateTo: event.target.value })}
           />
         </div>
+        <Select value={filters.currency} onValueChange={(value) => onChange({ currency: value as SupplierBatchFilters["currency"] })}>
+          <SelectTrigger size="sm" className="h-9 bg-white text-xs sm:text-sm" aria-label={copy.currency}><SelectValue placeholder={copy.allCurrencies} /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{copy.allCurrencies}</SelectItem>
+            {SUPPLIER_BATCH_CURRENCIES.map((currency) => <SelectItem key={currency} value={currency}>{currency}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={filters.costStatus} onValueChange={(value) => onChange({ costStatus: value as SupplierBatchFilters["costStatus"] })}>
+          <SelectTrigger size="sm" className="h-9 bg-white text-xs sm:text-sm" aria-label={copy.costStatus}><SelectValue placeholder={copy.costStatus} /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{copy.costStatus}</SelectItem>
+            {(Object.keys(copy.costStatusLabels) as SupplierBatchCostStatusFilter[]).map((status) => <SelectItem key={status} value={status}>{copy.costStatusLabels[status]}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={filters.chargeType} onValueChange={(value) => onChange({ chargeType: value as SupplierBatchFilters["chargeType"] })}>
+          <SelectTrigger size="sm" className="h-9 bg-white text-xs sm:text-sm" aria-label={copy.chargeType}><SelectValue placeholder={copy.chargeType} /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{copy.chargeType}</SelectItem>
+            {(Object.keys(copy.chargeTypeLabels) as SupplierBatchChargeTypeFilter[]).map((type) => <SelectItem key={type} value={type}>{copy.chargeTypeLabels[type]}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={filters.vatTreatment} onValueChange={(value) => onChange({ vatTreatment: value as SupplierBatchFilters["vatTreatment"] })}>
+          <SelectTrigger size="sm" className="h-9 bg-white text-xs sm:text-sm" aria-label={copy.vatTreatment}><SelectValue placeholder={copy.vatTreatment} /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">{copy.vatTreatment}</SelectItem>
+            {(Object.keys(copy.vatTreatmentLabels) as SupplierBatchVatTreatmentFilter[]).map((treatment) => <SelectItem key={treatment} value={treatment}>{copy.vatTreatmentLabels[treatment]}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={filters.hasTransport} onValueChange={(value) => onChange({ hasTransport: value as SupplierBatchFilters["hasTransport"] })}>
+          <SelectTrigger size="sm" className="h-9 bg-white text-xs sm:text-sm" aria-label={copy.hasTransport}><SelectValue placeholder={copy.hasTransport} /></SelectTrigger>
+          <SelectContent>
+            {(Object.keys(copy.hasTransportLabels) as Array<SupplierBatchFilters["hasTransport"]>).map((value) => <SelectItem key={value} value={value}>{copy.hasTransportLabels[value]}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <Select value={filters.sort} onValueChange={(value) => onChange({ sort: value as SupplierBatchSort })}>
+          <SelectTrigger size="sm" className="h-9 bg-white text-xs sm:text-sm" aria-label={copy.sort}><SelectValue placeholder={copy.sort} /></SelectTrigger>
+          <SelectContent>
+            {(Object.keys(copy.sortLabels) as SupplierBatchSort[]).map((sort) => <SelectItem key={sort} value={sort}>{copy.sortLabels[sort]}</SelectItem>)}
+          </SelectContent>
+        </Select>
         <div className="col-span-2 grid grid-cols-4 gap-1 lg:col-span-1">
           <Button variant="outline" size="xs" className="h-8 bg-white px-1 text-xs sm:px-2" onClick={() => onQuickRange("today")}>
             {copy.quickToday}
@@ -2571,7 +2854,7 @@ function SupplierBatchesPanel({
       <div aria-busy={isLoading} aria-live="polite" className="min-w-0">
         {showRefreshBar ? <ProductTableLoadingBar label={copy.loading} /> : null}
         <div className="overflow-x-auto">
-          <Table className="min-w-[980px] lg:min-w-[1080px]">
+          <Table className="hidden min-w-[980px] lg:min-w-[1080px] sm:table">
             <TableHeader className="bg-slate-50 text-xs">
               <TableRow>
                 <TableHead className="w-[18%] px-2 py-2 sm:px-3">{copy.batch}</TableHead>
@@ -2616,7 +2899,7 @@ function SupplierBatchesPanel({
                       ) : null}
                     </TableCell>
                     <TableCell className="px-2 py-2 align-top sm:px-3">
-                      <BatchMetricLine label={copy.lineTotal} value={formatEuro(batch.lineCostTotal)} />
+                      <BatchMetricLine label={copy.lineTotal} value={formatSupplierBatchMoney(batch.lineCostTotal, batch.currency, language === "it" ? "it-IT" : "zh-CN")} />
                       <SupplierBatchCostSummaryCompact summary={batch.costSummary} language={language} canReadCosts={canReadCosts} />
                     </TableCell>
                     <TableCell className="px-2 py-2 align-top sm:px-3">
@@ -2669,7 +2952,7 @@ function SupplierBatchesPanel({
                               <FileSpreadsheet className="size-4" />
                               {copy.exportLines} Excel
                             </DropdownMenuItem>
-                            {canManageCosts ? (
+                            {canExportCosts ? (
                               <DropdownMenuItem onClick={() => void onDownload("charges", "csv", batch)}>
                                 <FileText className="size-4" />
                                 {language === "it" ? "Esporta costi CSV" : "导出费用 CSV"}
@@ -2699,6 +2982,31 @@ function SupplierBatchesPanel({
             </TableBody>
           </Table>
         </div>
+        <div className="space-y-2 p-2 sm:hidden">
+          {batches.length ? batches.map((batch) => (
+            <article key={`mobile-${batch.id}`} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <button type="button" className="min-w-0 text-left" onClick={() => onOpenDetail(batch)}>
+                  <div className="break-all font-mono text-xs font-black text-slate-950">{batch.batchCode}</div>
+                  <div className="mt-1 text-xs font-semibold text-slate-600">{batch.supplierName ?? text.none}</div>
+                </button>
+                <SupplierBatchVerificationBadge batch={batch} text={text} />
+              </div>
+              <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                <BatchMobileField label={copy.quantity} value={`${batch.lineQtyTotal}/${batch.totalQty}`} />
+                <BatchMobileField label={copy.lineCount} value={String(batch.lineCount)} />
+                <BatchMobileField label={copy.lineTotal} value={formatSupplierBatchMoney(batch.lineCostTotal, batch.currency, language === "it" ? "it-IT" : "zh-CN")} />
+                <BatchMobileField label={copy.productStatus} value={`${copy.active} ${batch.activeProductCount} · ${copy.draft} ${batch.draftProductCount}`} />
+                <BatchMobileField label={copy.receivedAt} value={batch.receivedAt ? formatSupplierBatchDateTime(batch.receivedAt, language === "it" ? "it-IT" : "zh-CN") : text.none} />
+                <BatchMobileField label={copy.amount} value={batch.costSummary ? batch.costSummary.costStatus : "—"} />
+              </dl>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" className="bg-white" onClick={() => onOpenDetail(batch)}>{copy.openDetail}</Button>
+                <Button variant="ghost" size="sm" onClick={() => onViewProducts(batch)}>{copy.viewProducts}</Button>
+              </div>
+            </article>
+          )) : !isLoading ? <div className="p-6 text-center text-sm font-semibold text-slate-500">{copy.empty}</div> : null}
+        </div>
       </div>
 
       <SupplierBatchPagination
@@ -2710,6 +3018,29 @@ function SupplierBatchesPanel({
         onChange={onChange}
       />
     </section>
+  );
+}
+
+function supplierBatchDataErrorLabel(
+  error: string,
+  copy: (typeof panelText.zh | typeof panelText.it)["batches"]
+): string {
+  const value = error.toUpperCase();
+  if (value.includes("PERMISSION") || value.includes("FORBIDDEN") || value.includes("UNAUTHORIZED") || value.includes("401") || value.includes("403")) {
+    return copy.syncPermissionError;
+  }
+  if (value.includes("MALFORMED") || value.includes("CONTRACT") || value.includes("INVALID_RESPONSE")) {
+    return copy.syncContractError;
+  }
+  return copy.syncNetworkError;
+}
+
+function BatchMobileField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-[11px] text-slate-500">{label}</dt>
+      <dd className="truncate font-semibold text-slate-900">{value}</dd>
+    </div>
   );
 }
 
@@ -2784,6 +3115,8 @@ function BatchTemplateMenu({
 }
 
 function SupplierBatchDetailSheet({
+  batchTarget,
+  error,
   detail,
   isLoading,
   open,
@@ -2791,12 +3124,21 @@ function SupplierBatchDetailSheet({
   text,
   language,
   canReadCosts,
+  canReadHistory = false,
   canManageCosts,
+  canEstimateCosts = canManageCosts,
+  canCancelCosts = false,
+  canConfirmCosts = false,
+  canCorrectCosts = false,
+  canExportCosts = false,
   onCostChanged,
   onDownload,
   onOpenChange,
+  onRetry,
   onViewProducts,
 }: {
+  batchTarget: AdminSupplierBatchRow | null;
+  error: string | null;
   detail: AdminSupplierBatchDetail | null;
   isLoading: boolean;
   open: boolean;
@@ -2804,7 +3146,13 @@ function SupplierBatchDetailSheet({
   text: typeof panelText.zh | typeof panelText.it;
   language: SupplierBatchCostLanguage;
   canReadCosts: boolean;
+  canReadHistory?: boolean;
   canManageCosts: boolean;
+  canEstimateCosts?: boolean;
+  canCancelCosts?: boolean;
+  canConfirmCosts?: boolean;
+  canCorrectCosts?: boolean;
+  canExportCosts?: boolean;
   onCostChanged: (
     batchCode: string,
     signal?: AbortSignal
@@ -2815,13 +3163,122 @@ function SupplierBatchDetailSheet({
     format: SupplierBatchExportFormat
   ) => void;
   onOpenChange: (open: boolean) => void;
+  onRetry: () => void;
   onViewProducts: (batch: AdminSupplierBatchRow) => void;
 }) {
   const copy = text.batches;
   const batch = detail?.batch;
   const [isCostDialogOpen, setIsCostDialogOpen] = React.useState(false);
-  const [editingCharge, setEditingCharge] = React.useState<SupplierBatchCharge | null>(null);
-  const canManageSupplierBatchCosts = canReadCosts && canManageCosts;
+  const [editingCharge, setEditingCharge] = React.useState<SupplierBatchChargeView | null>(null);
+  const [costDialogMode, setCostDialogMode] = React.useState<SupplierBatchChargeDialogMode>("create");
+  const [cancelTarget, setCancelTarget] = React.useState<SupplierBatchChargeView | null>(null);
+  const [cancelReason, setCancelReason] = React.useState("");
+  const [cancelError, setCancelError] = React.useState<string | null>(null);
+  const [isCancelling, setIsCancelling] = React.useState(false);
+  const cancelIdempotencyKeyRef = React.useRef<string | null>(null);
+  const canManageSupplierBatchCosts = canReadCosts && canEstimateCosts;
+
+  const cancelCopy = language === "it"
+    ? {
+        title: "Annulla costo stimato",
+        description: "L'annullamento conserva la traccia storica. Indica un motivo prima di procedere.",
+        reason: "Motivo annullamento",
+        reasonHelp: "Obbligatorio; non usare questa azione per correggere un costo confermato.",
+        action: "Annulla stima",
+        submitting: "Annullamento...",
+        readback: "Operazione inviata, ma la rilettura non conferma ancora l'annullamento.",
+        invalidResponse: "La risposta del servizio non è verificabile; aggiorna il dettaglio prima di riprovare.",
+      }
+    : {
+        title: "取消预估费用",
+        description: "取消会保留历史记录。请先填写取消理由再继续。",
+        reason: "取消理由",
+        reasonHelp: "必填；已确认费用请使用独立的纠错流程。",
+        action: "取消预估",
+        submitting: "正在取消...",
+        readback: "请求已提交，但回读暂未确认取消状态。",
+        invalidResponse: "服务返回无法核对；请先刷新详情再重试。",
+      };
+
+  function openCreateChargeDialog() {
+    setEditingCharge(null);
+    setCostDialogMode("create");
+    setIsCostDialogOpen(true);
+  }
+
+  function openEditChargeDialog(charge: SupplierBatchChargeView) {
+    setEditingCharge(charge);
+    setCostDialogMode("edit");
+    setIsCostDialogOpen(true);
+  }
+
+  function openCorrectionDialog(charge: SupplierBatchChargeView) {
+    setEditingCharge(charge);
+    setCostDialogMode("correction");
+    setIsCostDialogOpen(true);
+  }
+
+  function openCancelDialog(charge: SupplierBatchChargeView) {
+    if (!canCancelCosts) return;
+    setCancelTarget(charge);
+    setCancelReason("");
+    setCancelError(null);
+    cancelIdempotencyKeyRef.current = null;
+  }
+
+  async function submitCancelCharge() {
+    if (!canCancelCosts || !batch || !cancelTarget || isCancelling) return;
+    const reason = cancelReason.trim();
+    if (!reason) {
+      setCancelError(cancelCopy.reasonHelp);
+      return;
+    }
+    const idempotencyKey = cancelIdempotencyKeyRef.current ?? (() => {
+      const randomUUID = globalThis.crypto?.randomUUID;
+      const generated = typeof randomUUID === "function"
+        ? randomUUID.call(globalThis.crypto)
+        : `cancel-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      cancelIdempotencyKeyRef.current = generated;
+      return generated;
+    })();
+    setIsCancelling(true);
+    setCancelError(null);
+    try {
+      const endpoint = `${adminSupplierBatchesEndpoint}/${encodeURIComponent(batch.batchCode)}/charges/cancel`;
+      const response = await fetchAdminWriteResponse(
+        endpoint,
+        {
+          method: "POST",
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          cache: "no-store",
+          body: JSON.stringify({
+            chargeId: cancelTarget.chargeId,
+            reason,
+            idempotencyKey,
+          }),
+        },
+        `POST ${endpoint}`
+      );
+      const payload = await readJsonResponse(response);
+      if (!isRecord(payload) || !Object.hasOwn(payload, "data")) {
+        throw new Error(cancelCopy.invalidResponse);
+      }
+      const nextDetail = await onCostChanged(batch.batchCode);
+      const cancelled = nextDetail.charges.some(
+        (charge) => charge.chargeId === cancelTarget.chargeId && charge.status === "cancelled"
+      );
+      if (!cancelled) {
+        throw new Error(cancelCopy.readback);
+      }
+      setCancelTarget(null);
+      setCancelReason("");
+      cancelIdempotencyKeyRef.current = null;
+    } catch (error) {
+      setCancelError(getErrorMessage(error));
+    } finally {
+      setIsCancelling(false);
+    }
+  }
 
   return (
     <>
@@ -2836,12 +3293,22 @@ function SupplierBatchDetailSheet({
             {copy.detail}
           </SheetTitle>
           <SheetDescription className="break-all">
-            {batch?.batchCode ?? text.loading}
+            {batch?.batchCode ?? batchTarget?.batchCode ?? text.loading}
           </SheetDescription>
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-3 lg:p-4">
           {isLoading ? (
             <AdminSkeletonRows rows={8} />
+          ) : error ? (
+            <div className="flex min-h-48 flex-col items-center justify-center gap-3 rounded-lg border border-red-200 bg-red-50 p-6 text-center text-sm text-red-800" role="alert">
+              <AlertTriangle className="size-5" />
+              <p className="max-w-xl break-words">{supplierBatchDataErrorLabel(error, copy)}</p>
+              <p className="max-w-xl break-words text-xs">{error}</p>
+              <Button variant="outline" className="bg-white" onClick={onRetry}>
+                <RefreshCw className="size-4" />
+                {copy.retry}
+              </Button>
+            </div>
           ) : batch && detail ? (
             <div className="space-y-3">
               <section className="rounded-lg border border-slate-200 bg-white p-3">
@@ -2862,28 +3329,30 @@ function SupplierBatchDetailSheet({
                       <Package className="size-4" />
                       {copy.viewProducts}
                     </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="bg-white"
-                      disabled={pendingDownload === `lines:xlsx:${batch.batchCode}`}
-                      onClick={() => onDownload(batch, "lines", "xlsx")}
-                    >
-                      {pendingDownload === `lines:xlsx:${batch.batchCode}` ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <FileSpreadsheet className="size-4" />
-                      )}
-                      {copy.exportLines}
-                    </Button>
+                    {canExportCosts ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="bg-white"
+                        disabled={pendingDownload === `lines:xlsx:${batch.batchCode}`}
+                        onClick={() => onDownload(batch, "lines", "xlsx")}
+                      >
+                        {pendingDownload === `lines:xlsx:${batch.batchCode}` ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <FileSpreadsheet className="size-4" />
+                        )}
+                        {copy.exportLines}
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
                   <DetailItem label={copy.lineCount} value={batch.lineCount} />
                   <DetailItem label={copy.quantity} value={`${batch.lineQtyTotal}/${batch.totalQty}`} />
                   <DetailItem label={copy.shortQty} value={batch.shortQty} />
-                  <DetailItem label={copy.lineTotal} value={formatEuro(batch.lineCostTotal)} />
-                  <DetailItem label={copy.totalCost} value={formatEuro(batch.totalCost)} />
+                  <DetailItem label={copy.lineTotal} value={formatSupplierBatchMoney(batch.lineCostTotal, batch.currency, language === "it" ? "it-IT" : "zh-CN")} />
+                  <DetailItem label={copy.totalCost} value={formatSupplierBatchMoney(batch.totalCost, batch.currency, language === "it" ? "it-IT" : "zh-CN")} />
                   <DetailItem label={copy.imageMissing} value={batch.missingImageCount + batch.activeMissingImageCount} />
                 </div>
                 <SupplierBatchIssueList batch={batch} text={text} className="mt-3" />
@@ -2893,23 +3362,27 @@ function SupplierBatchDetailSheet({
                 detail={detail}
                 language={language}
                 canReadCosts={canReadCosts}
+                canReadHistory={canReadHistory}
                 canManageCosts={canManageCosts}
-                onAddCharge={canManageSupplierBatchCosts ? () => {
-                  setEditingCharge(null);
-                  setIsCostDialogOpen(true);
-                } : undefined}
-                onEditCharge={canManageSupplierBatchCosts ? (charge) => {
-                  setEditingCharge(charge);
-                  setIsCostDialogOpen(true);
-                } : undefined}
-                onExportCharges={canManageSupplierBatchCosts ? (format) => void onDownload(batch, "charges", format) : undefined}
+                onAddCharge={canManageSupplierBatchCosts ? openCreateChargeDialog : undefined}
+                onEditCharge={canManageSupplierBatchCosts ? openEditChargeDialog : undefined}
+                // Charge exports include the canonical history stream, so the
+                // UI mirrors the API gate and requires the dedicated
+                // supplier_batch.read capability in addition to export.
+                onExportCharges={canExportCosts && canReadHistory ? (format) => void onDownload(batch, "charges", format) : undefined}
+                onCancelCharge={canCancelCosts ? openCancelDialog : undefined}
+                onCorrectCharge={canCorrectCosts ? openCorrectionDialog : undefined}
+                canEstimateCosts={canEstimateCosts}
+                canConfirmCosts={canConfirmCosts}
+                canCorrectCosts={canCorrectCosts}
+                canExportCosts={canExportCosts && canReadHistory}
               />
 
               <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
                 <div className="border-b border-slate-200 px-3 py-2 text-sm font-black text-slate-950">
                   {copy.detail}
                 </div>
-                <div className="overflow-x-auto">
+                <div className="hidden overflow-x-auto sm:block">
                   <Table className="min-w-[1180px]">
                     <TableHeader className="bg-slate-50 text-xs">
                       <TableRow>
@@ -2954,8 +3427,8 @@ function SupplierBatchDetailSheet({
                               ) : null}
                             </TableCell>
                             <TableCell>
-                              <BatchMetricLine label="unit" value={formatEuro(line.unitCost)} />
-                              <BatchMetricLine label="line" value={formatEuro(line.lineTotal)} />
+                              <BatchMetricLine label="unit" value={formatSupplierBatchMoney(line.unitCost, batch.currency, language === "it" ? "it-IT" : "zh-CN")} />
+                              <BatchMetricLine label="line" value={formatSupplierBatchMoney(line.lineTotal, batch.currency, language === "it" ? "it-IT" : "zh-CN")} />
                             </TableCell>
                             <TableCell>
                               <SupplierBatchLineCostCompact costs={line.costs} summary={batch.costSummary} language={language} canReadCosts={canReadCosts} />
@@ -3000,6 +3473,26 @@ function SupplierBatchDetailSheet({
                     </TableBody>
                   </Table>
                 </div>
+                <div className="space-y-2 p-2 sm:hidden">
+                  {detail.lines.length ? detail.lines.map((line) => (
+                    <article key={`mobile-line-${line.id}`} className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-bold text-slate-950">#{line.lineNo} · {line.name}</div>
+                          <div className="mt-1 break-all font-mono text-[11px] text-slate-500">{line.skuCode ?? line.ean ?? text.none}</div>
+                        </div>
+                        <Badge className={catalogStatusBadgeClass(line.product?.catalogStatus ?? line.productStatus)}>{line.product?.catalogStatus ?? line.productStatus}</Badge>
+                      </div>
+                      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
+                        <BatchMobileField label={copy.quantity} value={`${line.qtyReceived}${line.qtyOrdered !== null ? ` / ${line.qtyOrdered}` : ""}`} />
+                        <BatchMobileField label={copy.amount} value={formatSupplierBatchMoney(line.lineTotal, batch.currency, language === "it" ? "it-IT" : "zh-CN")} />
+                        <BatchMobileField label={copy.stock} value={line.product ? String(line.product.stockQty) : text.none} />
+                        <BatchMobileField label={language === "it" ? "Costo sbarcato" : "落地成本"} value={formatSupplierBatchLineLandedCost(line.costs, batch.currency, batch.costSummary, language === "it" ? "it-IT" : "zh-CN")} />
+                      </dl>
+                      <div className="mt-2"><SupplierBatchLineIssueBadges line={line} text={text} /></div>
+                    </article>
+                  )) : <div className="p-6 text-center text-sm font-semibold text-slate-500">{copy.detailEmpty}</div>}
+                </div>
               </section>
             </div>
           ) : (
@@ -3024,12 +3517,82 @@ function SupplierBatchDetailSheet({
           }}
           detail={detail}
           charge={editingCharge}
+          mode={costDialogMode}
           language={language}
           canReadCosts={canReadCosts}
           canManageCosts={canManageCosts}
+          canEstimateCosts={canEstimateCosts}
+          canCorrectCosts={canCorrectCosts}
+          canConfirmCosts={canConfirmCosts}
           onCostChanged={onCostChanged}
         />
       ) : null}
+      <Dialog
+        open={cancelTarget !== null}
+        onOpenChange={(nextOpen) => {
+          if (nextOpen || isCancelling) return;
+          setCancelTarget(null);
+          setCancelReason("");
+          setCancelError(null);
+          cancelIdempotencyKeyRef.current = null;
+        }}
+      >
+        <DialogContent aria-modal={true} className="w-[calc(100vw-1rem)] max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{cancelCopy.title}</DialogTitle>
+            <DialogDescription>{cancelCopy.description}</DialogDescription>
+          </DialogHeader>
+          {cancelTarget ? (
+            <div className="space-y-3">
+              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <div className="font-mono font-bold">{cancelTarget.chargeId}</div>
+                <div className="mt-1">
+                  {formatSupplierBatchCents(
+                    cancelTarget.capitalizedAmountCents,
+                    cancelTarget.currency,
+                    language === "it" ? "it-IT" : "zh-CN"
+                  )}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="supplier-batch-cancel-reason">{cancelCopy.reason}</Label>
+                <Textarea
+                  id="supplier-batch-cancel-reason"
+                  value={cancelReason}
+                  onChange={(event) => {
+                    setCancelReason(event.target.value);
+                    setCancelError(null);
+                  }}
+                  placeholder={cancelCopy.reasonHelp}
+                  aria-invalid={Boolean(cancelError)}
+                  disabled={isCancelling}
+                />
+                <p className="text-xs text-slate-500">{cancelCopy.reasonHelp}</p>
+                {cancelError ? <p className="text-xs font-semibold text-red-700" role="alert">{cancelError}</p> : null}
+              </div>
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCancelTarget(null)}
+              disabled={isCancelling}
+            >
+              {text.close}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => void submitCancelCharge()}
+              disabled={isCancelling || !cancelReason.trim() || !canCancelCosts}
+            >
+              {isCancelling ? <Loader2 className="size-4 animate-spin" /> : null}
+              {isCancelling ? cancelCopy.submitting : cancelCopy.action}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -7771,18 +8334,29 @@ async function fetchAdminSupplierBatches(
   });
 
   if (!response.ok) {
-    throw new Error(
-      await readApiErrorMessage(
-        response,
-        `GET ${adminSupplierBatchesEndpoint} responded ${response.status}`
-      )
+    throw await readApiError(
+      response,
+      `GET ${adminSupplierBatchesEndpoint} responded ${response.status}`
     );
   }
 
-  return parseSupplierBatchesApiPayload(await readJsonResponse(response));
+  try {
+    return parseSupplierBatchesApiPayload(await readJsonResponse(response));
+  } catch (error) {
+    throw new AdminApiError(
+      200,
+      "SUPPLIER_BATCH_CONTRACT_INVALID",
+      error instanceof Error ? error.message : "Supplier batch list response is malformed.",
+      undefined
+    );
+  }
 }
 
-async function fetchAdminSupplierBatchDetail(batchCode: string, signal?: AbortSignal) {
+async function fetchAdminSupplierBatchDetail(
+  batchCode: string,
+  canReadHistory = false,
+  signal?: AbortSignal
+) {
   const response = await fetch(
     `${adminSupplierBatchesEndpoint}/${encodeURIComponent(batchCode)}`,
     {
@@ -7807,7 +8381,39 @@ async function fetchAdminSupplierBatchDetail(batchCode: string, signal?: AbortSi
     throw new Error("Supplier batch detail response is incomplete.");
   }
 
-  return detail;
+  if (!canReadHistory) {
+    return { ...detail, history: [] };
+  }
+
+  // History is a separately permissioned/read-optimized endpoint. Fetch it
+  // once when the detail DTO does not already embed it; a history outage must
+  // not hide the usable batch/charge detail or trigger an unbounded retry loop.
+  if (detail.history !== undefined) {
+    return detail;
+  }
+  try {
+    const history = await fetchAdminSupplierBatchCostHistory(batchCode, signal);
+    return { ...detail, history };
+  } catch {
+    return { ...detail, history: [] };
+  }
+}
+
+async function fetchAdminSupplierBatchCostHistory(
+  batchCode: string,
+  signal?: AbortSignal
+): Promise<SupplierBatchHistoryEntry[]> {
+  const endpoint = `${adminSupplierBatchesEndpoint}/${encodeURIComponent(batchCode)}/charges/history`;
+  const response = await fetch(endpoint, {
+    cache: "no-store",
+    headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+    signal,
+  });
+  if (!response.ok) {
+    throw await readApiError(response, `GET ${endpoint} responded ${response.status}`);
+  }
+  const rows = readPayloadDataArray(await readJsonResponse(response));
+  return rows.map(normalizeSupplierBatchHistoryEntry).filter(isDefined);
 }
 
 async function downloadSupplierBatchExport(
@@ -7886,6 +8492,30 @@ function supplierBatchSearchParams(filters: SupplierBatchFilters) {
 
   if (filters.dateTo) {
     params.set("dateTo", filters.dateTo);
+  }
+
+  if (filters.currency !== "all") {
+    params.set("currency", filters.currency);
+  }
+
+  if (filters.costStatus !== "all") {
+    params.set("costStatus", filters.costStatus);
+  }
+
+  if (filters.chargeType !== "all") {
+    params.set("chargeType", filters.chargeType);
+  }
+
+  if (filters.vatTreatment !== "all") {
+    params.set("vatTreatment", filters.vatTreatment);
+  }
+
+  if (filters.hasTransport !== "all") {
+    params.set("hasTransport", filters.hasTransport);
+  }
+
+  if (filters.sort !== "updated_desc") {
+    params.set("sort", filters.sort);
   }
 
   return params;
@@ -8208,10 +8838,20 @@ function normalizeSupplierBatchDetail(value: unknown): AdminSupplierBatchDetail 
   const batch = normalizeSupplierBatchRow(value.batch);
   const rawLines = Array.isArray(value.lines) ? value.lines : null;
   const rawCharges = Array.isArray(value.charges) ? value.charges : null;
+  const rawAllocations = value.allocations === undefined
+    ? undefined
+    : Array.isArray(value.allocations) ? value.allocations : null;
+  const rawHistory = value.history === undefined
+    ? undefined
+    : Array.isArray(value.history) ? value.history : null;
   const normalizedLines = rawLines?.map(normalizeSupplierBatchLineRow) ?? null;
   const normalizedCharges = rawCharges && batch
     ? rawCharges.map((charge) => normalizeSupplierBatchChargeForBatch(charge, batch))
     : null;
+  const normalizedAllocations = rawAllocations?.map((allocation) => normalizeSupplierBatchAllocation(allocation, batch?.currency)) ?? null;
+  const normalizedHistory = rawHistory
+    ? dedupeSupplierBatchHistoryEntries(rawHistory.map(normalizeSupplierBatchHistoryEntry))
+    : undefined;
   const verification = normalizeSupplierBatchVerification(value.verification);
 
   if (
@@ -8220,7 +8860,12 @@ function normalizeSupplierBatchDetail(value: unknown): AdminSupplierBatchDetail 
     !normalizedLines ||
     !normalizedCharges ||
     normalizedLines.some((line) => line === null) ||
-    normalizedCharges.some((charge) => charge === null)
+    normalizedCharges.some((charge) => charge === null) ||
+    rawAllocations === null ||
+    rawHistory === null ||
+    normalizedAllocations?.some((allocation) => allocation === null) ||
+    normalizedHistory?.some((entry) => entry === null) ||
+    normalizedHistory === null
   ) {
     return null;
   }
@@ -8230,7 +8875,184 @@ function normalizeSupplierBatchDetail(value: unknown): AdminSupplierBatchDetail 
     lines: normalizedLines.filter(isDefined),
     charges: normalizedCharges.filter(isDefined),
     verification,
+    ...(normalizedAllocations
+      ? { allocations: normalizedAllocations.filter(isDefined) }
+      : {}),
+    ...(normalizedHistory
+      ? { history: normalizedHistory.filter(isDefined) }
+      : {}),
   };
+}
+
+function normalizeSupplierBatchAllocation(
+  value: unknown,
+  batchCurrency: string | null | undefined = "EUR"
+): SupplierBatchAllocationView | null {
+  if (!isRecord(value)) return null;
+  const batchLineId = readString(value.batchLineId) ?? readString(value.batch_line_id);
+  const rawCurrency = readString(value.currency) ?? readString(value.currencyCode) ?? readString(value.currency_code);
+  const fallbackCurrency = normalizeSupplierBatchCurrency(batchCurrency);
+  const currency = rawCurrency ? rawCurrency.toUpperCase() : fallbackCurrency;
+  if (!(SUPPLIER_BATCH_CURRENCIES as readonly string[]).includes(currency)) {
+    return null;
+  }
+  const allocatedAmountCents = readSupplierBatchMoneyCents(
+    value,
+    ["allocatedAmountCents", "allocated_amount_cents"],
+    ["allocatedAmount", "allocated_amount"]
+  );
+  if (!batchLineId || allocatedAmountCents === null || !Number.isSafeInteger(allocatedAmountCents) || allocatedAmountCents < 0) {
+    return null;
+  }
+  const goodsCostSnapshotCents = readSupplierBatchMoneyCents(
+    value,
+    ["goodsCostSnapshotCents", "goods_cost_snapshot_cents"],
+    ["goodsCostSnapshot", "goods_cost_snapshot"]
+  );
+  const goodsCostSnapshotEurCents = readSupplierBatchMoneyCents(
+    value,
+    ["goodsCostSnapshotEurCents", "goods_cost_snapshot_eur_cents"],
+    ["goodsCostSnapshotEur", "goods_cost_snapshot_eur"]
+  );
+  const allocatedAmountEurCents = readSupplierBatchMoneyCents(
+    value,
+    ["allocatedAmountEurCents", "allocated_amount_eur_cents"],
+    ["allocatedAmountEur", "allocated_amount_eur"]
+  );
+  const landedLineCostCents = readSupplierBatchMoneyCents(
+    value,
+    ["landedLineCostCents", "landed_line_cost_cents"],
+    ["landedLineCost", "landed_line_cost"]
+  );
+  const landedLineCostEurCents = readSupplierBatchMoneyCents(
+    value,
+    ["landedLineCostEurCents", "landed_line_cost_eur_cents"],
+    ["landedLineCostEur", "landed_line_cost_eur"]
+  );
+  const roundingAdjustmentEurCents = readSupplierBatchMoneyCents(
+    value,
+    ["roundingAdjustmentEurCents", "rounding_adjustment_eur_cents"],
+    ["roundingAdjustmentEur", "rounding_adjustment_eur"]
+  );
+  const qtyReceivedSnapshot = readNumber(value.qtyReceivedSnapshot) ?? readNumber(value.qty_received_snapshot);
+  const weightGramSnapshot = readNumber(value.weightGramSnapshot) ?? readNumber(value.weight_gram_snapshot);
+  const allocatedUnitAmount = readNumber(value.allocatedUnitAmount) ?? readNumber(value.allocated_unit_amount);
+  const allocatedUnitAmountEur = readNumber(value.allocatedUnitAmountEur) ?? readNumber(value.allocated_unit_amount_eur);
+  const landedUnitCost = readNumber(value.landedUnitCost) ?? readNumber(value.landed_unit_cost);
+  const landedUnitCostEur = readNumber(value.landedUnitCostEur) ?? readNumber(value.landed_unit_cost_eur);
+  const basisValue = readNumber(value.basisValue) ?? readNumber(value.basis_value);
+  const shareRatio = readNumber(value.shareRatio) ?? readNumber(value.share_ratio);
+  const originalCurrencyComparable = readBoolean(value.originalCurrencyComparable) ?? readBoolean(value.original_currency_comparable);
+  const baseAllocatedAmountCents = readSupplierBatchMoneyCents(
+    value,
+    ["baseAllocatedAmountCents", "base_allocated_amount_cents"],
+    ["baseAllocatedAmount", "base_allocated_amount", "allocatedAmountEur", "allocated_amount_eur"]
+  );
+  const roundingAdjustmentCents = readSupplierBatchMoneyCents(
+    value,
+    ["roundingAdjustmentCents", "rounding_adjustment_cents"],
+    ["roundingAdjustment", "rounding_adjustment"]
+  ) ?? 0;
+  return {
+    allocationId: readString(value.allocationId) ?? readString(value.allocation_id) ?? null,
+    chargeId: readString(value.chargeId) ?? readString(value.charge_id) ?? null,
+    batchLineId,
+    currency,
+    lineNo: readNumber(value.lineNo) ?? readNumber(value.line_no) ?? null,
+    skuCode: readString(value.skuCode) ?? readString(value.sku_code) ?? null,
+    allocatedAmountCents,
+    allocatedAmount: readNumber(value.allocatedAmount) ?? readNumber(value.allocated_amount) ?? allocatedAmountCents / 100,
+    baseAllocatedAmountCents,
+    baseAllocatedAmount: readNumber(value.baseAllocatedAmount) ?? readNumber(value.base_allocated_amount) ?? readNumber(value.allocatedAmountEur) ?? readNumber(value.allocated_amount_eur) ?? (baseAllocatedAmountCents === null ? null : baseAllocatedAmountCents / 100),
+    goodsCostSnapshotCents,
+    goodsCostSnapshot: readNumber(value.goodsCostSnapshot) ?? readNumber(value.goods_cost_snapshot) ?? (goodsCostSnapshotCents === null ? null : goodsCostSnapshotCents / 100),
+    goodsCostSnapshotEurCents,
+    allocatedAmountEurCents,
+    allocatedUnitAmount,
+    allocatedUnitAmountEur,
+    basisValue,
+    shareRatio,
+    weightGramSnapshot,
+    qtyReceivedSnapshot,
+    landedLineCostCents,
+    landedLineCost: readNumber(value.landedLineCost) ?? readNumber(value.landed_line_cost) ?? (landedLineCostCents === null ? null : landedLineCostCents / 100),
+    landedLineCostEurCents,
+    landedUnitCost,
+    landedUnitCostEur,
+    roundingAdjustmentCents: Number.isSafeInteger(roundingAdjustmentCents) ? roundingAdjustmentCents : 0,
+    roundingAdjustmentEurCents,
+    // Missing comparability is unsafe: only an explicit true may be added in
+    // the original currency. EUR/base fields remain the authoritative fallback.
+    originalCurrencyComparable: originalCurrencyComparable ?? false,
+    roundingAdjustment: readNumber(value.roundingAdjustment) ?? readNumber(value.rounding_adjustment) ?? roundingAdjustmentCents / 100,
+    createdAt: readString(value.createdAt) ?? readString(value.created_at) ?? null,
+    updatedAt: readString(value.updatedAt) ?? readString(value.updated_at) ?? null,
+    metadata: isRecord(value.metadata) ? value.metadata : undefined,
+  };
+}
+
+function normalizeSupplierBatchHistoryEntry(value: unknown): SupplierBatchHistoryEntry | null {
+  if (!isRecord(value)) return null;
+  const id = readString(value.id) ?? readString(value.eventId) ?? readString(value.event_id);
+  const action = readString(value.action) ?? readString(value.eventType) ?? readString(value.event_type);
+  const status = readString(value.status);
+  const createdAt = readString(value.createdAt) ?? readString(value.created_at);
+  if (!id && !action && !status && !createdAt) return null;
+  const rawLinks = isRecord(value.links) ? value.links : null;
+  const rawMetadata = isRecord(value.metadata) ? value.metadata : null;
+  return {
+    id: id ?? null,
+    batchId: readString(value.batchId) ?? readString(value.batch_id) ?? null,
+    batchCode: readString(value.batchCode) ?? readString(value.batch_code) ?? null,
+    action: action ?? null,
+    eventType: readString(value.eventType) ?? readString(value.event_type) ?? action ?? null,
+    status: status ?? null,
+    reason: readString(value.reason) ?? null,
+    actorId: readString(value.actorId) ?? readString(value.actor_id) ?? null,
+    actorName: readString(value.actorName) ?? readString(value.actor_name) ?? null,
+    actorEmail: readString(value.actorEmail) ?? readString(value.actor_email) ?? null,
+    actorRole: readString(value.actorRole) ?? readString(value.actor_role) ?? null,
+    revision: readString(value.revision) ?? null,
+    idempotencyKey: readString(value.idempotencyKey) ?? readString(value.idempotency_key) ?? null,
+    payloadFingerprint: readString(value.payloadFingerprint) ?? readString(value.payload_fingerprint) ?? null,
+    effective: readBoolean(value.effective),
+    superseded: readBoolean(value.superseded),
+    before: isRecord(value.before) ? value.before : null,
+    after: isRecord(value.after) ? value.after : null,
+    createdAt: createdAt ?? null,
+    chargeId: readString(value.chargeId) ?? readString(value.charge_id) ?? null,
+    correctionId: readString(value.correctionId) ?? readString(value.correction_id) ?? null,
+    correctionOfChargeId: readString(value.correctionOfChargeId) ?? readString(value.correction_of_charge_id) ?? null,
+    linkedChargeId: readString(value.linkedChargeId) ?? readString(value.linked_charge_id) ?? null,
+    links: rawLinks
+      ? {
+          originalChargeId: readString(rawLinks.originalChargeId) ?? readString(rawLinks.original_charge_id) ?? null,
+          replacementChargeId: readString(rawLinks.replacementChargeId) ?? readString(rawLinks.replacement_charge_id) ?? null,
+          correctionId: readString(rawLinks.correctionId) ?? readString(rawLinks.correction_id) ?? null,
+        }
+      : null,
+    financeAdjustmentRequired: readBoolean(value.financeAdjustmentRequired) ?? readBoolean(value.finance_adjustment_required) ?? (rawMetadata ? readBoolean(rawMetadata.financeAdjustmentRequired) ?? readBoolean(rawMetadata.finance_adjustment_required) ?? null : null),
+    metadata: rawMetadata,
+  };
+}
+
+function dedupeSupplierBatchHistoryEntries(
+  entries: Array<SupplierBatchHistoryEntry | null>
+) {
+  const seen = new Set<string>();
+  return entries.filter((entry) => {
+    if (!entry) return true;
+    const key = entry.id || [
+      entry.correctionId ?? "",
+      entry.chargeId ?? "",
+      entry.eventType ?? entry.action ?? "",
+      entry.createdAt ?? "",
+      entry.status ?? "",
+    ].join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function normalizeSupplierBatchRow(row: unknown): AdminSupplierBatchRow | null {
@@ -8240,6 +9062,8 @@ function normalizeSupplierBatchRow(row: unknown): AdminSupplierBatchRow | null {
 
   const id = readString(row.id);
   const batchCode = readString(row.batchCode) ?? readString(row.batch_code);
+  const rawCurrency = readString(row.currency);
+  const currency = normalizeSupplierBatchCurrency(rawCurrency);
   const rawCostSummary = row.costSummary ?? row.cost_summary;
   const costSummary = rawCostSummary === undefined || rawCostSummary === null
     ? null
@@ -8248,6 +9072,7 @@ function normalizeSupplierBatchRow(row: unknown): AdminSupplierBatchRow | null {
   if (
     !id ||
     !batchCode ||
+    (rawCurrency !== undefined && !["EUR", "USD", "CNY"].includes(rawCurrency.toUpperCase())) ||
     (rawCostSummary !== undefined && rawCostSummary !== null && !costSummary) ||
     (costSummary !== null && !isSupplierBatchCostSummaryForBatch(costSummary, id, batchCode))
   ) {
@@ -8265,7 +9090,7 @@ function normalizeSupplierBatchRow(row: unknown): AdminSupplierBatchRow | null {
     receivedAt: readString(row.receivedAt) ?? readString(row.received_at) ?? null,
     totalQty: readNumber(row.totalQty) ?? readNumber(row.total_qty) ?? 0,
     totalCost: readNumber(row.totalCost) ?? readNumber(row.total_cost) ?? 0,
-    currency: readString(row.currency) ?? "EUR",
+    currency,
     vatMode: readString(row.vatMode) ?? readString(row.vat_mode) ?? "IVA esclusa",
     sourceFileName: readString(row.sourceFileName) ?? readString(row.source_file_name) ?? null,
     orderedQty: readNumber(row.orderedQty) ?? readNumber(row.ordered_qty) ?? null,
@@ -8298,6 +9123,11 @@ function normalizeSupplierBatchRow(row: unknown): AdminSupplierBatchRow | null {
       status: "ok",
     },
     costSummary,
+    goodsValueEur: readNumber(row.goodsValueEur) ?? readNumber(row.goods_value_eur) ?? null,
+    goodsValueFxRateToEur: readNumber(row.goodsValueFxRateToEur) ?? readNumber(row.goods_value_fx_rate_to_eur) ?? null,
+    goodsValueFxDate: readString(row.goodsValueFxDate) ?? readString(row.goods_value_fx_date) ?? null,
+    goodsValueFxSource: readString(row.goodsValueFxSource) ?? readString(row.goods_value_fx_source) ?? null,
+    goodsValueFxEvidenceUrl: readString(row.goodsValueFxEvidenceUrl) ?? readString(row.goods_value_fx_evidence_url) ?? null,
     createdAt: readString(row.createdAt) ?? readString(row.created_at) ?? "",
     updatedAt: readString(row.updatedAt) ?? readString(row.updated_at) ?? "",
   };
@@ -8305,12 +9135,91 @@ function normalizeSupplierBatchRow(row: unknown): AdminSupplierBatchRow | null {
 
 function normalizeSupplierBatchChargeForBatch(
   value: unknown,
-  batch: Pick<AdminSupplierBatchRow, "id" | "batchCode">
-): SupplierBatchCharge | null {
+  batch: Pick<AdminSupplierBatchRow, "id" | "batchCode" | "currency">
+): SupplierBatchChargeView | null {
   const charge = normalizeSupplierBatchCharge(value);
-  return charge && isSupplierBatchChargeForBatch(charge, batch.id, batch.batchCode)
-    ? charge
-    : null;
+  if (!charge || !isSupplierBatchChargeForBatch(charge, batch.id, batch.batchCode)) {
+    return null;
+  }
+  if (!isRecord(value)) {
+    return charge;
+  }
+  const rawAllocations = value.allocations;
+  const normalizedAllocations = rawAllocations === undefined
+    ? undefined
+    : Array.isArray(rawAllocations)
+      ? rawAllocations.map((allocation) => normalizeSupplierBatchAllocation(allocation, batch.currency))
+      : null;
+  if (normalizedAllocations === null || (normalizedAllocations !== undefined && normalizedAllocations.some((allocation) => allocation === null))) {
+    return null;
+  }
+  const rawCorrection = isRecord(value.correction) ? value.correction : null;
+  return {
+    ...charge,
+    currency: readString(value.currency) ?? charge.currency,
+    fxRateToEur: readNumber(value.fxRateToEur) ?? readNumber(value.fx_rate_to_eur) ?? null,
+    fxRateDate: readString(value.fxRateDate) ?? readString(value.fx_rate_date) ?? null,
+    fxRateSource: readString(value.fxRateSource) ?? readString(value.fx_rate_source) ?? null,
+    fxEvidenceUrl: readString(value.fxEvidenceUrl) ?? readString(value.fx_evidence_url) ?? null,
+    baseAmountNetCents: readSupplierBatchMoneyCents(
+      value,
+      ["baseAmountNetCents", "base_amount_net_cents", "amountNetEurCents", "amount_net_eur_cents"],
+      ["baseAmountNet", "base_amount_net", "amountNetEur", "amount_net_eur"]
+    ),
+    baseVatAmountCents: readSupplierBatchMoneyCents(
+      value,
+      ["baseVatAmountCents", "base_vat_amount_cents", "vatAmountEurCents", "vat_amount_eur_cents"],
+      ["baseVatAmount", "base_vat_amount", "vatAmountEur", "vat_amount_eur"]
+    ),
+    baseAmountGrossCents: readSupplierBatchMoneyCents(
+      value,
+      ["baseAmountGrossCents", "base_amount_gross_cents", "amountGrossEurCents", "amount_gross_eur_cents"],
+      ["baseAmountGross", "base_amount_gross", "amountGrossEur", "amount_gross_eur"]
+    ),
+    baseCapitalizedAmountCents: readSupplierBatchMoneyCents(
+      value,
+      ["baseCapitalizedAmountCents", "base_capitalized_amount_cents", "capitalizedAmountEurCents", "capitalized_amount_eur_cents"],
+      ["baseCapitalizedAmount", "base_capitalized_amount", "capitalizedAmountEur", "capitalized_amount_eur"]
+    ),
+    amountNetEurCents: readSupplierBatchMoneyCents(
+      value,
+      ["amountNetEurCents", "amount_net_eur_cents"],
+      ["amountNetEur", "amount_net_eur"]
+    ),
+    vatAmountEurCents: readSupplierBatchMoneyCents(
+      value,
+      ["vatAmountEurCents", "vat_amount_eur_cents"],
+      ["vatAmountEur", "vat_amount_eur"]
+    ),
+    amountGrossEurCents: readSupplierBatchMoneyCents(
+      value,
+      ["amountGrossEurCents", "amount_gross_eur_cents"],
+      ["amountGrossEur", "amount_gross_eur"]
+    ),
+    capitalizedAmountEurCents: readSupplierBatchMoneyCents(
+      value,
+      ["capitalizedAmountEurCents", "capitalized_amount_eur_cents"],
+      ["capitalizedAmountEur", "capitalized_amount_eur"]
+    ),
+    revision: readString(value.revision) ?? null,
+    effective: readBoolean(value.effective) ?? undefined,
+    superseded: readBoolean(value.superseded) ?? undefined,
+    correction: rawCorrection
+      ? {
+          correctionId: readString(rawCorrection.correctionId) ?? readString(rawCorrection.correction_id) ?? null,
+          originalChargeId: readString(rawCorrection.originalChargeId) ?? readString(rawCorrection.original_charge_id) ?? null,
+          replacementChargeId: readString(rawCorrection.replacementChargeId) ?? readString(rawCorrection.replacement_charge_id) ?? null,
+          status: readString(rawCorrection.status) ?? null,
+          financeAdjustmentRequired:
+            readBoolean(rawCorrection.financeAdjustmentRequired) ??
+            readBoolean(rawCorrection.finance_adjustment_required) ??
+            null,
+        }
+      : null,
+    ...(normalizedAllocations === undefined
+      ? {}
+      : { allocations: normalizedAllocations.filter(isDefined) }),
+  };
 }
 
 function normalizeSupplierBatchLineRow(row: unknown): AdminSupplierBatchLineRow | null {
@@ -8398,13 +9307,10 @@ function normalizeSupplierBatchLineProduct(
     actualQty: readNumber(value.actualQty) ?? 0,
     availableQty: readNumber(value.availableQty) ?? 0,
     lockedQty: readNumber(value.lockedQty) ?? 0,
-    costPrice: readNumber(value.costPrice) ?? 0,
-    retailPrice: readNumber(value.retailPrice) ?? 0,
-    b2bPrice: readNumber(value.b2bPrice) ?? 0,
     imagePath: readString(value.imagePath) ?? null,
     modelCodes: readStringArray(value.modelCodes) ?? [],
     compatibilityModels: readStringArray(value.compatibilityModels) ?? [],
-    priceRuleOk: readBoolean(value.priceRuleOk) ?? true,
+    priceRuleOk: readBoolean(value.priceRuleOk) ?? false,
     activeMissingImage: readBoolean(value.activeMissingImage) ?? false,
     modelPrefixIssue: readBoolean(value.modelPrefixIssue) ?? false,
     weightGram,
@@ -8426,19 +9332,25 @@ function normalizeSupplierBatchLineCost(
   value: unknown,
   expectedBatchLineId?: string,
   expectedQtyReceived?: number | null
-): SupplierBatchLineCost | null {
+): SupplierBatchLineCostView | null {
   if (!isRecord(value)) {
     return null;
   }
 
   const batchLineId = readString(value.batchLineId) ?? readString(value.batch_line_id);
+  const originalCurrencyComparable =
+    readBoolean(value.originalCurrencyComparable) ??
+    readBoolean(value.original_currency_comparable) ??
+    false;
   const goodsCostCents = readNonNegativeInteger(value.goodsCostCents ?? value.goods_cost_cents);
-  const confirmedInboundCents = readNonNegativeInteger(
-    value.confirmedInboundCents ?? value.confirmed_inbound_cents
-  );
-  const landedLineCostCents = readNonNegativeInteger(
-    value.landedLineCostCents ?? value.landed_line_cost_cents
-  );
+  const rawConfirmedInboundCents = value.confirmedInboundCents ?? value.confirmed_inbound_cents;
+  const confirmedInboundCents = originalCurrencyComparable
+    ? readNonNegativeInteger(rawConfirmedInboundCents)
+    : readNullableNonNegativeInteger(rawConfirmedInboundCents);
+  const rawLandedLineCostCents = value.landedLineCostCents ?? value.landed_line_cost_cents;
+  const landedLineCostCents = originalCurrencyComparable
+    ? readNonNegativeInteger(rawLandedLineCostCents)
+    : readNullableNonNegativeInteger(rawLandedLineCostCents);
   const goodsUnitCost = readNonNegativeFinite(value.goodsUnitCost ?? value.goods_unit_cost);
   const rawLandedUnitCost = value.landedUnitCost ?? value.landed_unit_cost;
   const landedUnitCost = rawLandedUnitCost === null || rawLandedUnitCost === undefined
@@ -8466,6 +9378,8 @@ function normalizeSupplierBatchLineCost(
     : 0;
   const confirmedInboundConsistent = expectedQtyReceived === undefined || expectedQtyReceived === null
     ? true
+    : !originalCurrencyComparable
+      ? confirmedInboundCents === null
     : expectedQtyReceived === 0
       ? confirmedInboundCents === 0
       : expectedConfirmedInboundUnitCost !== null &&
@@ -8474,6 +9388,12 @@ function normalizeSupplierBatchLineCost(
         Math.abs(expectedConfirmedInboundLineCents - confirmedInboundCents) <= confirmedInboundRoundingToleranceCents + Number.EPSILON;
   const quantityConsistent = expectedQtyReceived === undefined || expectedQtyReceived === null
     ? true
+    : !originalCurrencyComparable
+      ? expectedGoodsCostCents !== null &&
+        goodsCostCents === expectedGoodsCostCents &&
+        confirmedInboundCents === null &&
+        landedLineCostCents === null &&
+        landedUnitCost === null
     : expectedQtyReceived === 0
       ? goodsCostCents === 0 &&
         confirmedInboundCents === 0 &&
@@ -8490,12 +9410,20 @@ function normalizeSupplierBatchLineCost(
     !batchLineId ||
     (expectedBatchLineId !== undefined && batchLineId !== expectedBatchLineId) ||
     goodsCostCents === null ||
-    confirmedInboundCents === null ||
-    landedLineCostCents === null ||
+    (originalCurrencyComparable && confirmedInboundCents === null) ||
+    (originalCurrencyComparable && landedLineCostCents === null) ||
     goodsUnitCost === null ||
     (rawLandedUnitCost !== null && rawLandedUnitCost !== undefined && landedUnitCost === null) ||
-    goodsCostCents > Number.MAX_SAFE_INTEGER - confirmedInboundCents ||
-    landedLineCostCents !== goodsCostCents + confirmedInboundCents ||
+    (!originalCurrencyComparable &&
+      (confirmedInboundCents !== null || landedLineCostCents !== null || landedUnitCost !== null)) ||
+    (originalCurrencyComparable &&
+      confirmedInboundCents !== null &&
+      landedLineCostCents !== null &&
+      goodsCostCents > Number.MAX_SAFE_INTEGER - confirmedInboundCents) ||
+    (originalCurrencyComparable &&
+      confirmedInboundCents !== null &&
+      landedLineCostCents !== null &&
+      landedLineCostCents !== goodsCostCents + confirmedInboundCents) ||
     !quantityConsistent
   ) {
     return null;
@@ -8508,7 +9436,44 @@ function normalizeSupplierBatchLineCost(
     landedLineCostCents,
     goodsUnitCost,
     landedUnitCost,
+    goodsCostEurCents: readSupplierBatchMoneyCents(
+      value,
+      ["goodsCostEurCents", "goods_cost_eur_cents"],
+      ["goodsCostEur", "goods_cost_eur"]
+    ),
+    confirmedInboundEurCents: readSupplierBatchMoneyCents(
+      value,
+      ["confirmedInboundEurCents", "confirmed_inbound_eur_cents"],
+      ["confirmedInboundEur", "confirmed_inbound_eur"]
+    ),
+    landedLineCostEurCents: readSupplierBatchMoneyCents(
+      value,
+      ["landedLineCostEurCents", "landed_line_cost_eur_cents"],
+      ["landedLineCostEur", "landed_line_cost_eur"]
+    ),
+    landedUnitCostEur: readNumber(value.landedUnitCostEur) ?? readNumber(value.landed_unit_cost_eur) ?? null,
+    originalCurrencyComparable,
   };
+}
+
+function formatSupplierBatchLineLandedCost(
+  costs: SupplierBatchLineCostView | null,
+  batchCurrency: string,
+  summary: SupplierBatchCostSummaryView | null,
+  locale: string
+) {
+  if (!costs) {
+    return "—";
+  }
+
+  const originalComparable =
+    costs.originalCurrencyComparable === true &&
+    summary?.originalTotalsComparable !== false;
+  return formatSupplierBatchCents(
+    originalComparable ? costs.landedLineCostCents : costs.landedLineCostEurCents,
+    originalComparable ? batchCurrency : "EUR",
+    locale
+  );
 }
 
 function roundSupplierBatchGoodsCostToCents(qtyReceived: number, unitCost: number | null): number | null {
@@ -8540,6 +9505,10 @@ function roundSupplierBatchUnitCost(lineCostCents: number | null, qtyReceived: n
 
 function readNonNegativeInteger(value: unknown): number | null {
   return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : null;
+}
+
+function readNullableNonNegativeInteger(value: unknown): number | null {
+  return value === null || value === undefined ? null : readNonNegativeInteger(value);
 }
 
 function readNonNegativeFinite(value: unknown): number | null {

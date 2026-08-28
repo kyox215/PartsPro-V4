@@ -17,6 +17,8 @@ type ExportColumn = {
   width?: number;
 };
 
+type SupplierBatchExportDetail = AdminSupplierBatchDetail;
+
 const supplierBatchColumns: ExportColumn[] = [
   { header: "batch_code", key: "batch_code", width: 18 },
   { header: "supplier_code", key: "supplier_code", width: 16 },
@@ -34,6 +36,23 @@ const supplierBatchColumns: ExportColumn[] = [
   { header: "total_cost", key: "total_cost", width: 12 },
   { header: "line_cost_total", key: "line_cost_total", width: 14 },
   { header: "currency", key: "currency", width: 10 },
+  { header: "base_currency", key: "base_currency", width: 14 },
+  { header: "goods_value_eur", key: "goods_value_eur", width: 18 },
+  { header: "estimated_net_eur", key: "estimated_net_eur", width: 18 },
+  { header: "estimated_vat_eur", key: "estimated_vat_eur", width: 18 },
+  { header: "estimated_gross_eur", key: "estimated_gross_eur", width: 20 },
+  { header: "estimated_capitalized_eur", key: "estimated_capitalized_eur", width: 26 },
+  { header: "confirmed_net_eur", key: "confirmed_net_eur", width: 18 },
+  { header: "confirmed_vat_eur", key: "confirmed_vat_eur", width: 18 },
+  { header: "confirmed_gross_eur", key: "confirmed_gross_eur", width: 20 },
+  { header: "confirmed_capitalized_eur", key: "confirmed_capitalized_eur", width: 26 },
+  { header: "confirmed_landed_total_eur", key: "confirmed_landed_total_eur", width: 28 },
+  { header: "projected_landed_total_eur", key: "projected_landed_total_eur", width: 28 },
+  { header: "fx_rate_to_eur", key: "fx_rate_to_eur", width: 16 },
+  { header: "fx_rate_date", key: "fx_rate_date", width: 16 },
+  { header: "fx_rate_source", key: "fx_rate_source", width: 24 },
+  { header: "fx_evidence_url", key: "fx_evidence_url", width: 42 },
+  { header: "fx_status", key: "fx_status", width: 18 },
   { header: "vat_mode", key: "vat_mode", width: 18 },
   { header: "active_products", key: "active_products", width: 14 },
   { header: "draft_products", key: "draft_products", width: 14 },
@@ -76,12 +95,19 @@ const supplierBatchLineColumns: ExportColumn[] = [
   { header: "qty_short", key: "qty_short", width: 12 },
   { header: "unit_cost", key: "unit_cost", width: 12 },
   { header: "line_total", key: "line_total", width: 12 },
+  { header: "currency", key: "currency", width: 10 },
+  { header: "base_currency", key: "base_currency", width: 14 },
   { header: "weight_gram", key: "weight_gram", width: 14 },
   { header: "cost_status", key: "cost_status", width: 18 },
   { header: "goods_cost", key: "goods_cost", width: 14 },
   { header: "confirmed_inbound", key: "confirmed_inbound", width: 18 },
   { header: "landed_line_cost", key: "landed_line_cost", width: 18 },
   { header: "landed_unit_cost", key: "landed_unit_cost", width: 18 },
+  { header: "goods_cost_eur", key: "goods_cost_eur", width: 18 },
+  { header: "confirmed_inbound_eur", key: "confirmed_inbound_eur", width: 22 },
+  { header: "landed_line_cost_eur", key: "landed_line_cost_eur", width: 22 },
+  { header: "landed_unit_cost_eur", key: "landed_unit_cost_eur", width: 22 },
+  { header: "original_currency_comparable", key: "original_currency_comparable", width: 28 },
   { header: "image_status", key: "image_status", width: 14 },
   { header: "product_status", key: "product_status", width: 14 },
   { header: "current_stock_qty", key: "current_stock_qty", width: 16 },
@@ -97,12 +123,23 @@ const supplierBatchChargeColumns: ExportColumn[] = [
   { header: "batch_code", key: "batch_code", width: 18 },
   { header: "charge_id", key: "charge_id", width: 38 },
   { header: "charge_status", key: "charge_status", width: 16 },
+  { header: "effective", key: "effective", width: 12 },
+  { header: "superseded", key: "superseded", width: 14 },
   { header: "charge_type", key: "charge_type", width: 16 },
   { header: "amount_net", key: "amount_net", width: 16 },
   { header: "vat_amount", key: "vat_amount", width: 16 },
   { header: "amount_gross", key: "amount_gross", width: 18 },
   { header: "capitalized_amount", key: "capitalized_amount", width: 22 },
   { header: "currency", key: "currency", width: 10 },
+  { header: "base_currency", key: "base_currency", width: 14 },
+  { header: "amount_net_eur", key: "amount_net_eur", width: 18 },
+  { header: "vat_amount_eur", key: "vat_amount_eur", width: 18 },
+  { header: "amount_gross_eur", key: "amount_gross_eur", width: 20 },
+  { header: "capitalized_amount_eur", key: "capitalized_amount_eur", width: 26 },
+  { header: "fx_rate_to_eur", key: "fx_rate_to_eur", width: 16 },
+  { header: "fx_rate_date", key: "fx_rate_date", width: 16 },
+  { header: "fx_rate_source", key: "fx_rate_source", width: 24 },
+  { header: "fx_evidence_url", key: "fx_evidence_url", width: 42 },
   { header: "vat_treatment", key: "vat_treatment", width: 20 },
   { header: "allocation_method", key: "allocation_method", width: 20 },
   { header: "carrier_name", key: "carrier_name", width: 22 },
@@ -112,6 +149,26 @@ const supplierBatchChargeColumns: ExportColumn[] = [
   { header: "notes", key: "notes", width: 36 },
   { header: "zero_cost_reason", key: "zero_cost_reason", width: 28 },
   { header: "payload_fingerprint", key: "payload_fingerprint", width: 70 },
+  { header: "idempotency_key", key: "idempotency_key", width: 42 },
+  { header: "revision", key: "revision", width: 36 },
+  { header: "created_by", key: "created_by", width: 38 },
+  { header: "updated_by", key: "updated_by", width: 38 },
+  { header: "confirmed_by", key: "confirmed_by", width: 38 },
+  { header: "confirmed_at", key: "confirmed_at", width: 22 },
+  { header: "correction_of_charge_id", key: "correction_of_charge_id", width: 38 },
+  { header: "corrected_by_charge_id", key: "corrected_by_charge_id", width: 38 },
+  { header: "allocation_count", key: "allocation_count", width: 18 },
+  { header: "allocation_total", key: "allocation_total", width: 20 },
+  { header: "allocation_total_eur", key: "allocation_total_eur", width: 24 },
+  { header: "audit_linked_charge_id", key: "audit_linked_charge_id", width: 38 },
+  { header: "audit_event_count", key: "audit_event_count", width: 18 },
+  { header: "last_audit_at", key: "last_audit_at", width: 22 },
+  { header: "correction_id", key: "correction_id", width: 38 },
+  { header: "correction_status", key: "correction_status", width: 28 },
+  { header: "correction_original_charge_id", key: "correction_original_charge_id", width: 38 },
+  { header: "correction_replacement_charge_id", key: "correction_replacement_charge_id", width: 40 },
+  { header: "correction_finance_adjustment_required", key: "correction_finance_adjustment_required", width: 34 },
+  { header: "correction_links", key: "correction_links", width: 70 },
 ];
 
 export const supplierBatchTemplateColumns = [
@@ -189,7 +246,7 @@ const templateExampleRow: ExportRow = {
 export function buildSupplierBatchExportRows(
   scope: SupplierBatchExportScope,
   batches: AdminSupplierBatch[],
-  details: AdminSupplierBatchDetail[] = []
+  details: SupplierBatchExportDetail[] = []
 ) {
   if (scope === "lines") {
     return {
@@ -205,7 +262,7 @@ export function buildSupplierBatchExportRows(
     return {
       columns: supplierBatchChargeColumns,
       rows: details.flatMap((detail) =>
-        detail.charges.map((charge) => supplierBatchChargeExportRow(detail.batch, charge))
+        detail.charges.map((charge) => supplierBatchChargeExportRow(detail.batch, charge, detail))
       ),
       sheetName: "Batch Charges",
     };
@@ -297,6 +354,7 @@ function addWorksheet(
 
 function supplierBatchExportRow(batch: AdminSupplierBatch): ExportRow {
   const summary = batch.costSummary;
+  const summaryRecord = exportRecord(summary);
   const costUnavailable = summary === null;
   const costRecorded = summary !== null && summary.costStatus !== "unrecorded";
 
@@ -317,6 +375,29 @@ function supplierBatchExportRow(batch: AdminSupplierBatch): ExportRow {
     total_cost: batch.totalCost,
     line_cost_total: batch.lineCostTotal,
     currency: batch.currency,
+    base_currency: exportField(summaryRecord, ["baseCurrency", "base_currency"]) ?? "EUR",
+    goods_value_eur: exportMoneyField(summaryRecord, ["goodsValueEur", "goods_value_eur", "goodsValueEurCents", "goods_value_eur_cents"]) !== ""
+      ? exportMoneyField(summaryRecord, ["goodsValueEur", "goods_value_eur", "goodsValueEurCents", "goods_value_eur_cents"])
+      : batch.goodsValueEur ?? "",
+    estimated_net_eur: exportMoneyField(summaryRecord, ["estimatedNetEur", "estimated_net_eur", "estimatedNetEurCents", "estimated_net_eur_cents"]),
+    estimated_vat_eur: exportMoneyField(summaryRecord, ["estimatedVatEur", "estimated_vat_eur", "estimatedVatEurCents", "estimated_vat_eur_cents"]),
+    estimated_gross_eur: exportMoneyField(summaryRecord, ["estimatedGrossEur", "estimated_gross_eur", "estimatedGrossEurCents", "estimated_gross_eur_cents"]),
+    estimated_capitalized_eur: exportMoneyField(summaryRecord, ["estimatedCapitalizedEur", "estimated_capitalized_eur", "estimatedCapitalizedEurCents", "estimated_capitalized_eur_cents"]),
+    confirmed_net_eur: exportMoneyField(summaryRecord, ["confirmedNetEur", "confirmed_net_eur", "confirmedNetEurCents", "confirmed_net_eur_cents"]),
+    confirmed_vat_eur: exportMoneyField(summaryRecord, ["confirmedVatEur", "confirmed_vat_eur", "confirmedVatEurCents", "confirmed_vat_eur_cents"]),
+    confirmed_gross_eur: exportMoneyField(summaryRecord, ["confirmedGrossEur", "confirmed_gross_eur", "confirmedGrossEurCents", "confirmed_gross_eur_cents"]),
+    confirmed_capitalized_eur: exportMoneyField(summaryRecord, ["confirmedCapitalizedEur", "confirmed_capitalized_eur", "confirmedCapitalizedEurCents", "confirmed_capitalized_eur_cents"]),
+    confirmed_landed_total_eur: exportMoneyField(summaryRecord, ["confirmedLandedTotalEur", "confirmed_landed_total_eur", "confirmedLandedTotalEurCents", "confirmed_landed_total_eur_cents"]),
+    projected_landed_total_eur: exportMoneyField(summaryRecord, ["projectedLandedTotalEur", "projected_landed_total_eur", "projectedLandedTotalEurCents", "projected_landed_total_eur_cents"]),
+    fx_rate_to_eur: exportField(summaryRecord, ["goodsValueFxRateToEur", "goods_value_fx_rate_to_eur"]) ?? batch.goodsValueFxRateToEur,
+    fx_rate_date: exportField(summaryRecord, ["goodsValueFxDate", "goods_value_fx_date"]) ?? batch.goodsValueFxDate,
+    fx_rate_source: exportField(summaryRecord, ["goodsValueFxSource", "goods_value_fx_source"]) ?? batch.goodsValueFxSource,
+    fx_evidence_url: exportField(summaryRecord, ["goodsValueFxEvidenceUrl", "goods_value_fx_evidence_url"]) ?? batch.goodsValueFxEvidenceUrl,
+    fx_status: summary === null || normalizeExportCurrency(batch.currency) === "EUR"
+      ? "not_required"
+      : exportField(summaryRecord, ["baseFxAvailable", "base_fx_available"]) === true
+        ? "available"
+        : "pending",
     vat_mode: batch.vatMode,
     active_products: batch.activeProductCount,
     draft_products: batch.draftProductCount,
@@ -358,8 +439,11 @@ function supplierBatchLineExportRow(
   line: AdminSupplierBatchLine
 ): ExportRow {
   const summary = batch.costSummary;
+  const lineCostsRecord = exportRecord(line.costs);
   const costStatus = summary === null ? "unavailable" : summary.costStatus;
   const hasConfirmedCosts = summary !== null && summary.confirmedCount > 0;
+  const originalCurrencyComparable =
+    exportField(lineCostsRecord, ["originalCurrencyComparable", "original_currency_comparable"]) === true;
 
   return {
     batch_code: batch.batchCode,
@@ -376,18 +460,29 @@ function supplierBatchLineExportRow(
     qty_short: line.qtyShort,
     unit_cost: line.unitCost,
     line_total: line.lineTotal,
+    currency: batch.currency,
+    base_currency: "EUR",
     weight_gram: line.product?.weightGram,
     cost_status: costStatus,
-    goods_cost: line.costs ? centsToExportValue(line.costs.goodsCostCents) : "",
+    goods_cost: originalCurrencyComparable && line.costs
+      ? centsToExportValue(line.costs.goodsCostCents)
+      : "",
     confirmed_inbound: hasConfirmedCosts && line.costs
+      && originalCurrencyComparable
       ? centsToExportValue(line.costs.confirmedInboundCents)
       : "",
     landed_line_cost: hasConfirmedCosts && line.costs
+      && originalCurrencyComparable
       ? centsToExportValue(line.costs.landedLineCostCents)
       : "",
-    landed_unit_cost: hasConfirmedCosts && line.costs
+    landed_unit_cost: hasConfirmedCosts && line.costs && originalCurrencyComparable
       ? line.costs.landedUnitCost ?? ""
       : "",
+    goods_cost_eur: exportMoneyField(lineCostsRecord, ["goodsCostEur", "goods_cost_eur", "goodsCostEurCents", "goods_cost_eur_cents"]),
+    confirmed_inbound_eur: exportMoneyField(lineCostsRecord, ["confirmedInboundEur", "confirmed_inbound_eur", "confirmedInboundEurCents", "confirmed_inbound_eur_cents"]),
+    landed_line_cost_eur: exportMoneyField(lineCostsRecord, ["landedLineCostEur", "landed_line_cost_eur", "landedLineCostEurCents", "landed_line_cost_eur_cents"]),
+    landed_unit_cost_eur: exportField(lineCostsRecord, ["landedUnitCostEur", "landed_unit_cost_eur"]),
+    original_currency_comparable: originalCurrencyComparable,
     image_status: line.imageStatus,
     product_status: line.productStatus,
     current_stock_qty: line.product?.stockQty,
@@ -402,18 +497,105 @@ function supplierBatchLineExportRow(
 
 function supplierBatchChargeExportRow(
   batch: AdminSupplierBatch,
-  charge: AdminSupplierBatchCharge
+  charge: AdminSupplierBatchCharge,
+  detail?: SupplierBatchExportDetail
 ): ExportRow {
+  const chargeRecord = exportRecord(charge);
+  const chargeAllocations = Array.isArray(chargeRecord.allocations)
+    ? chargeRecord.allocations
+    : detail?.allocations?.filter((allocation) => {
+        const allocationChargeId = exportField(allocation, ["chargeId", "charge_id"]);
+        return allocationChargeId === charge.chargeId;
+      }) ?? [];
+  // Detail exposes one canonical, permission-filtered history stream. Keep a
+  // defensive event-id dedupe here for callers holding an older DTO shape.
+  const history = dedupeExportHistory(detail?.history ?? []);
+  const relatedHistory = history.filter((entry) => {
+    const historyChargeId = exportField(entry, ["chargeId", "charge_id"]);
+    const links = exportRecord(entry.links);
+    const originalChargeId = exportField(links, ["originalChargeId", "original_charge_id"]);
+    const replacementChargeId = exportField(links, ["replacementChargeId", "replacement_charge_id"]);
+    return historyChargeId === charge.chargeId ||
+      originalChargeId === charge.chargeId ||
+      replacementChargeId === charge.chargeId;
+  });
+  const originalCurrencyComparable = chargeAllocations.length > 0 && chargeAllocations.every(
+    (allocation) => exportField(exportRecord(allocation), [
+      "originalCurrencyComparable",
+      "original_currency_comparable",
+    ]) === true
+  );
+  const allocationTotals = chargeAllocations.reduce(
+    (totals, allocation) => {
+      const amount = exportNumberField(allocation, ["allocatedAmount", "allocated_amount"]);
+      const amountEur = exportNumberField(allocation, [
+        "baseAllocatedAmount",
+        "base_allocated_amount",
+        "allocatedAmountEur",
+        "allocated_amount_eur",
+      ]);
+      return {
+        original: !originalCurrencyComparable || totals.original === null || amount === null
+          ? null
+          : totals.original + amount,
+        eur: totals.eur === null || amountEur === null
+          ? null
+          : totals.eur + amountEur,
+      };
+    },
+    {
+      original: originalCurrencyComparable ? 0 : null,
+      eur: chargeAllocations.length > 0 ? 0 : null,
+    }
+  );
+  const lastAuditAt = relatedHistory
+    .map((entry) => exportField(entry, ["createdAt", "created_at"]))
+    .filter((value): value is string => typeof value === "string")
+    .sort()
+    .at(-1);
+  const correctionHistory = [...relatedHistory].reverse().find((entry) => {
+    const status = exportField(entry, ["status"]);
+    const correctionId = exportField(entry, ["correctionId", "correction_id"]);
+    const links = exportRecord(entry.links);
+    return correctionId !== undefined ||
+      exportField(links, ["correctionId", "correction_id"]) !== undefined ||
+      status === "corrected" ||
+      status === "applied" ||
+      status === "pending_finance_adjustment";
+  }) ?? {};
+  const correctionHistoryRecord = exportRecord(correctionHistory);
+  const correctionLinks = exportRecord(correctionHistoryRecord.links);
+  const correctionId = exportField(correctionHistoryRecord, ["correctionId", "correction_id"]) ??
+    exportField(correctionLinks, ["correctionId", "correction_id"]);
+  const correctionStatus = exportField(correctionHistoryRecord, ["status"]);
+  const correctionOriginalChargeId = exportField(correctionLinks, ["originalChargeId", "original_charge_id"]) ??
+    exportField(correctionHistoryRecord, ["correctionOfChargeId", "correction_of_charge_id"]) ??
+    exportField(chargeRecord, ["correctionOriginalChargeId", "correction_original_charge_id", "correctionOfChargeId", "correction_of_charge_id"]);
+  const correctionReplacementChargeId = exportField(correctionLinks, ["replacementChargeId", "replacement_charge_id"]) ??
+    exportField(correctionHistoryRecord, ["linkedChargeId", "linked_charge_id"]) ??
+    exportField(chargeRecord, ["correctedByChargeId", "corrected_by_charge_id"]);
+
   return {
     batch_code: batch.batchCode,
     charge_id: charge.chargeId,
     charge_status: charge.status,
+    effective: charge.effective ?? "",
+    superseded: charge.superseded ?? "",
     charge_type: charge.chargeType,
     amount_net: centsToExportValue(charge.amountNetCents),
     vat_amount: centsToExportValue(charge.vatAmountCents),
     amount_gross: centsToExportValue(charge.amountGrossCents),
     capitalized_amount: centsToExportValue(charge.capitalizedAmountCents),
     currency: charge.currency,
+    base_currency: exportField(chargeRecord, ["baseCurrency", "base_currency"]) ?? "EUR",
+    amount_net_eur: exportMoneyField(chargeRecord, ["amountNetEur", "amount_net_eur", "amountNetEurCents", "amount_net_eur_cents"]),
+    vat_amount_eur: exportMoneyField(chargeRecord, ["vatAmountEur", "vat_amount_eur", "vatAmountEurCents", "vat_amount_eur_cents"]),
+    amount_gross_eur: exportMoneyField(chargeRecord, ["amountGrossEur", "amount_gross_eur", "amountGrossEurCents", "amount_gross_eur_cents"]),
+    capitalized_amount_eur: exportMoneyField(chargeRecord, ["capitalizedAmountEur", "capitalized_amount_eur", "capitalizedAmountEurCents", "capitalized_amount_eur_cents"]),
+    fx_rate_to_eur: exportField(chargeRecord, ["fxRateToEur", "fx_rate_to_eur"]),
+    fx_rate_date: exportField(chargeRecord, ["fxRateDate", "fx_rate_date"]),
+    fx_rate_source: exportField(chargeRecord, ["fxRateSource", "fx_rate_source"]),
+    fx_evidence_url: exportField(chargeRecord, ["fxEvidenceUrl", "fx_evidence_url"]),
     vat_treatment: charge.vatTreatment,
     allocation_method: charge.allocationMethod,
     carrier_name: charge.carrierName,
@@ -422,12 +604,113 @@ function supplierBatchChargeExportRow(
     evidence_url: charge.evidenceUrl,
     notes: charge.notes,
     zero_cost_reason: charge.zeroCostReason,
+    idempotency_key: charge.idempotencyKey,
     payload_fingerprint: charge.payloadFingerprint,
+    revision: exportField(chargeRecord, ["revision"]),
+    created_by: charge.createdBy,
+    updated_by: charge.updatedBy,
+    confirmed_by: charge.confirmedBy,
+    confirmed_at: charge.confirmedAt,
+    correction_of_charge_id: exportField(chargeRecord, ["correctionOfChargeId", "correction_of_charge_id", "correctionId", "correction_id"]),
+    corrected_by_charge_id: exportField(chargeRecord, ["correctedByChargeId", "corrected_by_charge_id"]),
+    allocation_count: chargeAllocations.length,
+    allocation_total: allocationTotals.original === null ? "" : Number(allocationTotals.original.toFixed(2)),
+    allocation_total_eur: allocationTotals.eur === null ? "" : Number(allocationTotals.eur.toFixed(2)),
+    audit_linked_charge_id: exportField(relatedHistory.at(-1) ?? {}, ["linkedChargeId", "linked_charge_id", "correctionId", "correction_id"]),
+    audit_event_count: relatedHistory.length,
+    last_audit_at: lastAuditAt ?? "",
+    correction_id: correctionId ?? "",
+    correction_status: correctionStatus ?? "",
+    correction_original_charge_id: correctionOriginalChargeId ?? "",
+    correction_replacement_charge_id: correctionReplacementChargeId ?? "",
+    correction_finance_adjustment_required: exportField(correctionHistory, ["financeAdjustmentRequired", "finance_adjustment_required"]) ?? "",
+    correction_links: Object.keys(correctionLinks).length > 0 ? JSON.stringify(correctionLinks) : "",
   };
 }
 
-function centsToExportValue(cents: number) {
-  return Number((cents / 100).toFixed(2));
+function exportRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function dedupeExportHistory(
+  entries: readonly unknown[]
+): Record<string, unknown>[] {
+  const records = entries.map(exportRecord);
+  const seen = new Set<string>();
+  return records.filter((entry) => {
+    const eventId = exportField(entry, ["eventId", "event_id", "id"]);
+    const correctionId = exportField(entry, ["correctionId", "correction_id"]);
+    const chargeId = exportField(entry, ["chargeId", "charge_id"]);
+    const key = eventId ?? [
+      correctionId ?? "",
+      chargeId ?? "",
+      exportField(entry, ["eventType", "event_type", "action"]) ?? "",
+      exportField(entry, ["createdAt", "created_at"]) ?? "",
+      exportField(entry, ["status"]) ?? "",
+    ].join("|");
+    if (seen.has(String(key))) {
+      return false;
+    }
+    seen.add(String(key));
+    return true;
+  });
+}
+
+function exportField(
+  record: Record<string, unknown>,
+  keys: readonly string[]
+): ExportValue {
+  for (const key of keys) {
+    const value = record[key];
+    if (
+      value === null ||
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function exportNumberField(
+  record: Record<string, unknown>,
+  keys: readonly string[]
+): number | null {
+  const value = exportField(record, keys);
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value.replace(",", "."));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function exportMoneyField(
+  record: Record<string, unknown>,
+  keys: readonly string[]
+): ExportValue {
+  const value = exportNumberField(record, keys);
+  if (value === null) {
+    return "";
+  }
+  // Decimal wire fields are already in EUR. Legacy internal cents aliases are
+  // converted only when the key explicitly carries a cents suffix.
+  const centsKey = keys.find((key) => key.toLowerCase().includes("cents") && record[key] !== undefined);
+  return centsKey ? centsToExportValue(value) : Number(value.toFixed(2));
+}
+
+function normalizeExportCurrency(value: unknown) {
+  return typeof value === "string" ? value.trim().toUpperCase() : "EUR";
+}
+
+function centsToExportValue(cents: number | null | undefined): number | "" {
+  return cents === null || cents === undefined ? "" : Number((cents / 100).toFixed(2));
 }
 
 function csvEscape(value: ExportValue) {

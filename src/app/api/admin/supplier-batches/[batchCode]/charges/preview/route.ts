@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiError } from "@/lib/partspro-api";
-import { previewAdminSupplierBatchCharge } from "@/lib/partspro-repository";
+import {
+  previewAdminSupplierBatchChargeCorrectionV2,
+  previewAdminSupplierBatchChargeV2,
+} from "@/lib/partspro-repository";
 import {
   assertSupplierBatchCostRpcRequestContext,
   toSupplierBatchCostRpcResultDto,
@@ -8,11 +11,12 @@ import {
 } from "../../../_dto";
 import {
   hasSupplierBatchReadPermission,
+  hasSupplierBatchCostPermission,
   parseAdminJsonBody,
   repositoryErrorResponse,
   requireAdminApi,
 } from "../../../../_shared";
-import { supplierBatchChargePreviewSchema } from "../_schemas";
+import { supplierBatchChargeV2PreviewSchema } from "../_schemas";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +25,9 @@ type SupplierBatchChargeParams = {
 };
 
 export async function POST(request: NextRequest, { params }: SupplierBatchChargeParams) {
-  const admin = await requireAdminApi("supplier_batch.manage_costs");
+  // Legacy supplier_batch.manage_costs remains an estimate compatibility
+  // mapping; V2 preview uses the dedicated estimate capability.
+  const admin = await requireAdminApi();
 
   if (!admin.ok) {
     return admin.response;
@@ -35,10 +41,33 @@ export async function POST(request: NextRequest, { params }: SupplierBatchCharge
     );
   }
 
-  const body = await parseAdminJsonBody(request, supplierBatchChargePreviewSchema);
+  const previewMode = request.nextUrl.searchParams.get("mode");
+  if (previewMode !== null && previewMode !== "correction") {
+    return apiError(400, "INVALID_SUPPLIER_BATCH_PREVIEW_MODE", "Supplier batch preview mode is invalid.");
+  }
+  const isCorrectionPreview = previewMode === "correction";
+  if (!hasSupplierBatchCostPermission(admin.authState, isCorrectionPreview ? "correct" : "estimate")) {
+    return apiError(
+      403,
+      "ADMIN_PERMISSION_DENIED",
+      isCorrectionPreview
+        ? "Supplier batch correction permission is required."
+        : "Supplier batch estimate permission is required."
+    );
+  }
+
+  const body = await parseAdminJsonBody(request, supplierBatchChargeV2PreviewSchema);
 
   if (!body.ok) {
     return body.response;
+  }
+
+  if (isCorrectionPreview && !body.data.chargeId) {
+    return apiError(
+      400,
+      "CHARGE_ID_REQUIRED",
+      "A confirmed supplier batch charge is required for correction preview."
+    );
   }
 
   const { batchCode } = await params;
@@ -60,6 +89,14 @@ export async function POST(request: NextRequest, { params }: SupplierBatchCharge
     evidenceUrl: body.data.evidenceUrl,
     notes: body.data.notes,
     zeroCostReason: body.data.zeroCostReason,
+    fxRateToEur: body.data.fxRateToEur,
+    fxRateDate: body.data.fxRateDate,
+    fxRateSource: body.data.fxRateSource,
+    fxEvidenceUrl: body.data.fxEvidenceUrl,
+    batchGoodsValueFxRateToEur: body.data.batchGoodsValueFxRateToEur,
+    batchGoodsValueFxDate: body.data.batchGoodsValueFxDate,
+    batchGoodsValueFxSource: body.data.batchGoodsValueFxSource,
+    batchGoodsValueFxEvidenceUrl: body.data.batchGoodsValueFxEvidenceUrl,
   };
 
   try {
@@ -73,7 +110,14 @@ export async function POST(request: NextRequest, { params }: SupplierBatchCharge
   }
 
   try {
-    const result = await previewAdminSupplierBatchCharge(decodedBatchCode, body.data);
+    // Correction previews stay on their dedicated permission-checked V2 RPC;
+    // they must never fall through to the ordinary estimate preview.
+    const result = isCorrectionPreview
+      ? await previewAdminSupplierBatchChargeCorrectionV2(decodedBatchCode, {
+          ...body.data,
+          chargeId: body.data.chargeId!,
+        })
+      : await previewAdminSupplierBatchChargeV2(decodedBatchCode, body.data);
     const data = toSupplierBatchCostRpcResultDto(result.data, requestContext);
 
     return NextResponse.json({

@@ -9,6 +9,7 @@ import {
   getAdminAuthState,
   hasAdminPermission,
 } from "@/lib/partspro-admin-auth";
+import { supplierBatchCostPermissions } from "@/lib/partspro-permissions";
 import type { AdminAuthState } from "@/lib/partspro-admin-auth";
 import { RepositoryWriteError } from "@/lib/partspro-repository";
 
@@ -120,6 +121,42 @@ export function hasSupplierBatchReadPermission(authState: AdminAuthState) {
   return (
     hasAdminPermission(authState, "product.read_admin") ||
     hasAdminPermission(authState, "products.read_admin")
+  );
+}
+
+/** Cost history and correction-link projections are deliberately narrower than
+ * the base catalog/batch reader.  A product reader may enumerate batches and
+ * see non-audit cost status, but only the dedicated supplier-batch reader may
+ * invoke the history RPC. */
+export function hasSupplierBatchHistoryPermission(authState: AdminAuthState) {
+  return hasAdminPermission(authState, supplierBatchCostPermissions.read);
+}
+
+/** V2 formal actions use dedicated capabilities; legacy manage_costs is not
+ * accepted for irreversible confirmation or correction. */
+export function hasSupplierBatchCostPermission(
+  authState: AdminAuthState,
+  operation: "read" | "estimate" | "confirm" | "correct" | "export"
+) {
+  if (operation === "read") {
+    return hasSupplierBatchReadPermission(authState);
+  }
+  if (operation === "estimate") {
+    return (
+      hasAdminPermission(authState, supplierBatchCostPermissions.estimate) ||
+      hasAdminPermission(authState, supplierBatchCostPermissions.legacyManage)
+    );
+  }
+  return hasAdminPermission(authState, supplierBatchCostPermissions[operation]);
+}
+
+/** Audit actor and before/after projections require an explicit reconciliation
+ * or export capability; ordinary catalog readers receive status/history links
+ * without sensitive audit payloads. */
+export function hasSupplierBatchAuditPermission(authState: AdminAuthState) {
+  return (
+    hasAdminPermission(authState, "finance.cost_reconcile") ||
+    hasAdminPermission(authState, supplierBatchCostPermissions.export)
   );
 }
 

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   normalizeSupplierBatchCostRpcResult,
   normalizeSupplierBatchCostSummary,
+  normalizeSupplierBatchCorrectionReceipt,
   normalizeSupplierBatchChargeAllocation,
   normalizeSupplierBatchCharge,
   normalizeSupplierBatchLineProjection,
@@ -24,6 +25,7 @@ import { toPublicSkuCore } from "../src/lib/partspro-sku-core.mjs";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relativePath) => readFileSync(path.join(repoRoot, relativePath), "utf8");
 const repositorySource = read("src/lib/partspro-repository.ts");
+const adminSharedSource = read("src/app/api/admin/_shared.ts");
 const filesSource = read("src/lib/partspro-supplier-batch-files.ts");
 const clientSchemaSource = read("src/lib/partspro-supplier-batch-cost-input-schema.mjs");
 const supplierBatchListRouteSource = read("src/app/api/admin/supplier-batches/route.ts");
@@ -39,7 +41,11 @@ const supplierBatchEstimateRouteSource = read(
 const supplierBatchConfirmRouteSource = read(
   "src/app/api/admin/supplier-batches/[batchCode]/charges/confirm/route.ts"
 );
+const supplierBatchCorrectRouteSource = read(
+  "src/app/api/admin/supplier-batches/[batchCode]/charges/correct/route.ts"
+);
 const exportRouteSource = read("src/app/api/admin/supplier-batches/export/route.ts");
+const exportFilesSource = read("src/lib/partspro-supplier-batch-files.ts");
 const transportMigrationSource = read(
   "supabase/migrations/20260825202035_supplier_batch_transport_costs.sql"
 );
@@ -193,6 +199,7 @@ function rpcAllocation({
     allocatedUnitAmount: amount / qty,
     landedLineCost: goodsCost + amount,
     landedUnitCost: (goodsCost + amount) / qty,
+    originalCurrencyComparable: true,
     roundingAdjustment: 0,
     ...(metadata === undefined ? {} : { metadata }),
   };
@@ -250,7 +257,7 @@ function rpcResult(status, overrides = {}) {
     payloadFingerprint: "fingerprint-1",
     ...(status === "preview"
       ? {}
-      : { metadata: { source: "admin_supplier_batch_cost_api" } }),
+      : { metadata: { source: "admin_supplier_batch_cost_v2_api" } }),
     candidateAllocationTotal: status === "confirmed" || status === "cancelled" ? 0 : 10,
     candidateAllocations: status === "confirmed" || status === "cancelled" ? [] : [allocation],
     confirmedAllocationTotal: status === "confirmed" ? 10 : 0,
@@ -340,12 +347,12 @@ test("RPC preview, estimate, confirmed and cancelled fixtures preserve allocatio
 
   const estimate = normalizeSupplierBatchCostRpcResult(rpcResult("estimated"));
   assert.ok(estimate?.charge);
-  assert.equal(estimate?.metadata?.source, "admin_supplier_batch_cost_api");
+  assert.equal(estimate?.metadata?.source, "admin_supplier_batch_cost_v2_api");
 
   const confirmed = normalizeSupplierBatchCostRpcResult(rpcResult("confirmed"));
   assert.ok(confirmed?.charge);
   assert.equal(confirmed?.charge?.status, "confirmed");
-  assert.equal(confirmed?.metadata?.source, "admin_supplier_batch_cost_api");
+  assert.equal(confirmed?.metadata?.source, "admin_supplier_batch_cost_v2_api");
 
   const swappedProjection = rpcResult("preview", {
     candidateAllocations: [
@@ -454,6 +461,7 @@ test("multiple confirmed allocations are cumulatively reflected per line", () =>
         allocated_amount: 0.5,
         allocated_unit_amount: 0.25,
         rounding_adjustment: 0,
+        original_currency_comparable: true,
         metadata: {},
       },
       {
@@ -469,6 +477,7 @@ test("multiple confirmed allocations are cumulatively reflected per line", () =>
         allocated_amount: 0.25,
         allocated_unit_amount: 0.125,
         rounding_adjustment: -0.01,
+        original_currency_comparable: true,
         metadata: {},
       },
     ]
@@ -482,6 +491,7 @@ test("multiple confirmed allocations are cumulatively reflected per line", () =>
       landedLineCostCents: 675,
       goodsUnitCost: 3,
       landedUnitCost: 3.375,
+      originalCurrencyComparable: true,
     },
     {
       batchLineId: "66666666-6666-4666-8666-666666666666",
@@ -490,14 +500,49 @@ test("multiple confirmed allocations are cumulatively reflected per line", () =>
       landedLineCostCents: 0,
       goodsUnitCost: 4,
       landedUnitCost: null,
+      originalCurrencyComparable: true,
     },
   ]);
+});
+
+test("mixed or unknown allocation currency context never sums original landed cents", () => {
+  const costs = summarizeSupplierBatchLineCosts(
+    [{ id: "33333333-3333-4333-8333-333333333333", qty_received: 2, unit_cost: 3, line_total: 6 }],
+    [{
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      batch_id: "44444444-4444-4444-8444-444444444444",
+      charge_id: "55555555-5555-4555-8555-555555555555",
+      batch_line_id: "33333333-3333-4333-8333-333333333333",
+      qty_received_snapshot: 2,
+      goods_cost_snapshot: 6,
+      weight_gram_snapshot: 0,
+      basis_value: 6,
+      share_ratio: 1,
+      allocated_amount: 1,
+      allocated_unit_amount: 0.5,
+      landed_line_cost: null,
+      landed_unit_cost: null,
+      rounding_adjustment: 0,
+      original_currency_comparable: false,
+      metadata: {},
+    }]
+  );
+
+  assert.deepEqual(costs?.[0], {
+    batchLineId: "33333333-3333-4333-8333-333333333333",
+    goodsCostCents: 600,
+    confirmedInboundCents: null,
+    landedLineCostCents: null,
+    goodsUnitCost: 3,
+    landedUnitCost: null,
+    originalCurrencyComparable: false,
+  });
 });
 
 test("backend contract keeps fee reads caller-scoped, paginated and RPC-only for writes", () => {
   assert.match(repositorySource, /admin_list_supplier_batch_cost_summaries/);
   assert.match(repositorySource, /client\.rpc\(functionName, rpcArgs\)/);
-  assert.match(repositorySource, /metadata: \{ source: "admin_supplier_batch_cost_api" \}/);
+  assert.match(repositorySource, /metadata: \{ source: "admin_supplier_batch_cost_v2_api" \}/);
   assert.match(repositorySource, /FINANCIAL_ADJUSTMENT_REQUIRED/);
   assert.match(repositorySource, /IDEMPOTENCY_CONFLICT/);
   assert.match(repositorySource, /Supplier batch cost \$\{operation\} could not be completed/);
@@ -507,7 +552,7 @@ test("backend contract keeps fee reads caller-scoped, paginated and RPC-only for
   assert.match(repositorySource, /readAdminSupplierBatchChargeDetails/);
   assert.match(repositorySource, /supplierBatchExportRowCount/);
   assert.match(repositorySource, /needsBatchListHydration/);
-  assert.match(repositorySource, /page\.fetchedCount < exportPageSize/);
+  assert.match(repositorySource, /rows\.length > supplierBatchFilterReadLimit/);
   assert.match(repositorySource, /for \(let index = 0; index < uniqueBatchIds\.length; index \+= 100\)/);
   assert.match(repositorySource, /\.range\(offset, offset \+ 999\)/);
   assert.match(repositorySource, /weight_gram/);
@@ -521,11 +566,13 @@ test("supplier batch hydration uses the bounded permission-checked batch RPC", (
   assert.ok(adminProductRowEnd > adminProductRowStart);
   assert.doesNotMatch(supplierBatchProductsSource, /\.from\(["']products["']\)/);
   assert.doesNotMatch(supplierBatchProductsSource, /readMatchingRows/);
+  assert.doesNotMatch(supplierBatchProductsSource, /supabaseErrorDetails\(error\)/);
+  assert.match(supplierBatchProductsSource, /reason: "rpc_failed"/);
   assert.match(supplierBatchProductsSource, /const lookupCodesByKey = new Map<string, string>\(\)/);
   assert.match(supplierBatchProductsSource, /supplierBatchProductLookupRpcChunkSize/);
   assert.match(
     supplierBatchProductsSource,
-    /client\.rpc\("admin_get_supplier_batch_products", \{\s*p_sku_codes: chunk/s
+    /client\.rpc\("admin_get_supplier_batch_products_v2", \{\s*p_sku_codes: chunk/s
   );
   assert.match(
     supplierBatchProductsSource,
@@ -685,12 +732,17 @@ test("supplier batch lookup bounds, dedupe and response mapping fail closed", ()
 });
 
 test("routes and schemas freeze permission, strict numeric and stable RPC contracts", () => {
-  for (const route of ["preview", "estimate", "confirm"]) {
+  for (const [route, operation] of [
+    ["preview", "estimate"],
+    ["estimate", "estimate"],
+    ["confirm", "confirm"],
+  ]) {
     const source = read(
       `src/app/api/admin/supplier-batches/[batchCode]/charges/${route}/route.ts`
     );
     assert.match(source, /force-dynamic/);
-    assert.match(source, /supplier_batch\.manage_costs/);
+    assert.match(source, /hasSupplierBatchCostPermission/);
+    assert.match(source, new RegExp(`hasSupplierBatchCostPermission[\\s\\S]{0,260}"${operation}"`));
     assert.match(source, /parseAdminJsonBody/);
     assert.match(source, /hasSupplierBatchReadPermission/);
   }
@@ -701,6 +753,24 @@ test("routes and schemas freeze permission, strict numeric and stable RPC contra
   assert.match(clientSchemaSource, /\.max\(500\)/);
   assert.match(clientSchemaSource, /capitalizedAmount/);
   assert.match(clientSchemaSource, /unknown/);
+  assert.match(adminSharedSource, /operation: "read" \| "estimate" \| "confirm" \| "correct" \| "export"/);
+  assert.match(
+    adminSharedSource,
+    /operation === "estimate"[\s\S]{0,260}supplierBatchCostPermissions\.legacyManage/
+  );
+  assert.match(
+    adminSharedSource,
+    /operation === "read"[\s\S]{0,120}hasSupplierBatchReadPermission/
+  );
+  assert.doesNotMatch(
+    adminSharedSource,
+    /operation === "(?:confirm|correct|export)"[\s\S]{0,260}legacyManage/
+  );
+  assert.match(supplierBatchPreviewRouteSource, /previewMode/);
+  assert.match(supplierBatchPreviewRouteSource, /isCorrectionPreview \? "correct" : "estimate"/);
+  assert.match(supplierBatchPreviewRouteSource, /previewMode === "correction"/);
+  assert.match(supplierBatchCorrectRouteSource, /hasSupplierBatchCostPermission[\s\S]{0,220}"correct"/);
+  assert.match(supplierBatchCorrectRouteSource, /toSupplierBatchCorrectionReceiptDto/);
 });
 
 test("supplier batch transport routes keep DTO reads separate from raw mutation acknowledgements", () => {
@@ -713,13 +783,13 @@ test("supplier batch transport routes keep DTO reads separate from raw mutation 
   assert.match(supplierBatchPreviewRouteSource, /toSupplierBatchCostRpcResultDto/);
   assert.match(
     supplierBatchPreviewRouteSource,
-    /requestContext[\s\S]{0,600}previewAdminSupplierBatchCharge\(decodedBatchCode/
+    /requestContext[\s\S]{0,1200}previewAdminSupplierBatchChargeV2\(decodedBatchCode/
   );
   assert.match(supplierBatchPreviewRouteSource, /data,\s*meta: \{ source: result\.source \}/);
 
   for (const [name, source, repositoryFunction] of [
-    ["estimate", supplierBatchEstimateRouteSource, "saveAdminSupplierBatchChargeEstimate"],
-    ["confirm", supplierBatchConfirmRouteSource, "confirmAdminSupplierBatchCharge"],
+    ["estimate", supplierBatchEstimateRouteSource, "saveAdminSupplierBatchChargeEstimateV2"],
+    ["confirm", supplierBatchConfirmRouteSource, "confirmAdminSupplierBatchChargeV2"],
   ]) {
     assert.doesNotMatch(source, /_dto/);
     assert.doesNotMatch(source, /toSupplierBatchCostRpc/);
@@ -733,6 +803,53 @@ test("supplier batch transport routes keep DTO reads separate from raw mutation 
   }
 
   assert.doesNotMatch(exportRouteSource, /supplier-batches\/_dto|toSupplierBatch.*Dto/);
+});
+
+test("correction receipt and detail/export history contracts preserve identity links without treating pending as a charge result", () => {
+  const batchCode = "BATCH-RPC";
+  const correctionId = "66666666-6666-4666-8666-666666666666";
+  const originalChargeId = "55555555-5555-4555-8555-555555555555";
+  const replacementChargeId = "77777777-7777-4777-8777-777777777777";
+  const persisted = rpcResult("confirmed", {
+    batchCode,
+    chargeId: replacementChargeId,
+  });
+  const applied = {
+    status: "corrected",
+    correctionId,
+    originalChargeId,
+    replacementChargeId,
+    batchCode,
+    idempotencyKey: "correction-key",
+    previewFingerprint: "fingerprint-1",
+    revision: "revision-1",
+    financeAdjustmentRequired: false,
+    replacement: persisted,
+  };
+  const pending = {
+    status: "pending_finance_adjustment",
+    correctionId,
+    originalChargeId,
+    replacementChargeId: null,
+    batchCode,
+    idempotencyKey: "correction-key",
+    previewFingerprint: "fingerprint-1",
+    revision: "revision-1",
+    financeAdjustmentRequired: true,
+    replacement: null,
+  };
+  assert.ok(normalizeSupplierBatchCorrectionReceipt(applied));
+  assert.ok(normalizeSupplierBatchCorrectionReceipt(pending));
+  assert.equal(normalizeSupplierBatchCorrectionReceipt({ ...pending, replacementChargeId }), null);
+  assert.match(repositorySource, /normalizeSupplierBatchCorrectionReceipt\(data\)/);
+  assert.match(repositorySource, /ADMIN_SUPPLIER_BATCH_CORRECTION_RPC_INVALID_RESPONSE/);
+  assert.match(repositorySource, /links:/);
+  assert.match(repositorySource, /financeAdjustmentRequired/);
+  assert.match(exportFilesSource, /correction_original_charge_id/);
+  assert.match(exportFilesSource, /correction_replacement_charge_id/);
+  assert.match(exportFilesSource, /correction_links/);
+  assert.match(exportFilesSource, /detail\?\.history/);
+  assert.doesNotMatch(exportFilesSource, /detail\?\.corrections/);
 });
 
 test("transport migrations preserve P1 ordering and relation-qualified trigger guards", () => {
@@ -782,8 +899,42 @@ test("export keeps unrecorded amounts blank, confirmed zero as zero, and avoids 
   assert.match(filesSource, /detail\.charges\.map/);
   assert.match(filesSource, /weightGram/);
   assert.match(filesSource, /cost_status/);
+  assert.match(filesSource, /totals\.eur === null \|\| amountEur === null/);
+  assert.match(filesSource, /allocation_total_eur: allocationTotals\.eur === null \? ""/);
   assert.match(exportRouteSource, /getAdminSupplierBatchExportData/);
   assert.doesNotMatch(exportRouteSource, /Promise\.all\(\s*batches\.map/);
+});
+
+test("supplier batch list exposes bounded currency, cost, charge, and sort filters", () => {
+  assert.match(supplierBatchListRouteSource, /currency: z\.enum\(\["EUR", "USD", "CNY"\]\)/);
+  assert.match(
+    supplierBatchListRouteSource,
+    /costStatus: z\.enum\(\["unrecorded", "estimated", "confirmed_zero", "confirmed", "needs_review"\]\)/
+  );
+  assert.match(
+    supplierBatchListRouteSource,
+    /chargeType: z\.enum\(\["transport", "insurance", "customs", "handling", "other"\]\)/
+  );
+  assert.match(
+    supplierBatchListRouteSource,
+    /vatTreatment: z\.enum\(\["recoverable", "non_recoverable", "unknown"\]\)/
+  );
+  assert.match(supplierBatchListRouteSource, /hasTransport: z\.enum\(\["with", "without"\]\)/);
+  assert.match(
+    supplierBatchListRouteSource,
+    /sort: z\.enum\(\["updated_desc", "received_desc", "amount_desc", "supplier"\]\)/
+  );
+  assert.match(
+    supplierBatchListRouteSource,
+    /hasTransport: query\.data\.hasTransport \?\? query\.data\.hasTransportCost/
+  );
+  assert.match(repositorySource, /const supplierBatchFilterReadLimit = 5000/);
+  assert.match(repositorySource, /ADMIN_SUPPLIER_BATCH_FILTER_TOO_LARGE/);
+  assert.match(repositorySource, /request\.eq\("currency", query\.currency\)/);
+  assert.match(repositorySource, /supplierBatchQueryNeedsChargeFiltering/);
+  assert.match(repositorySource, /supplierBatchQueryNeedsDerivedFiltering/);
+  assert.match(repositorySource, /compareSupplierBatchRows/);
+  assert.match(repositorySource, /query\.hasTransport \?\? query\.hasTransportCost/);
 });
 
 test("client-safe schema rejects unsafe enums, non-EUR, missing IDs and bad manual rows", () => {

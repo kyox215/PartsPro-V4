@@ -30,28 +30,35 @@ import {
 } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { formatEuro } from "@/lib/partspro-data";
+import {
+  formatSupplierBatchCents,
+  formatSupplierBatchDualCents,
+  normalizeSupplierBatchCurrency,
+  readSupplierBatchMoneyCents,
+  SUPPLIER_BATCH_CURRENCIES,
+  type SupplierBatchCurrency,
+} from "@/lib/partspro-supplier-batch-money";
 import {
   normalizeSupplierBatchCostRpcResult,
+  normalizeSupplierBatchCorrectionReceipt,
   type SupplierBatchAllocationMethod,
   type SupplierBatchCharge,
   type SupplierBatchChargeType,
   type SupplierBatchCostRpcResult,
   type SupplierBatchCostRpcPreviewResult,
+  type SupplierBatchCorrectionResult,
   type SupplierBatchVatTreatment,
 } from "@/lib/partspro-supplier-batch-cost-core.mjs";
-import {
-  supplierBatchChargeConfirmSchema,
-  supplierBatchChargeEstimateSchema,
-  supplierBatchChargePreviewSchema,
-} from "@/lib/partspro-supplier-batch-cost-input-schema.mjs";
+import * as supplierBatchChargeSchemaModule from "@/lib/partspro-supplier-batch-cost-input-schema.mjs";
 import {
   formatSupplierBatchUnitCost,
   type SupplierBatchCostDetail,
+  type SupplierBatchChargeView,
   type SupplierBatchCostLanguage,
+  type SupplierBatchHistoryEntry,
 } from "./supplier-batch-transport-cost-card";
 
-export type SupplierBatchChargeDialogMode = "create" | "edit";
+export type SupplierBatchChargeDialogMode = "create" | "edit" | "correction";
 
 export type SupplierBatchChargeFormValues = {
   allocationMethod: SupplierBatchAllocationMethod;
@@ -59,6 +66,7 @@ export type SupplierBatchChargeFormValues = {
   capitalizedAmount: string;
   carrierName: string;
   chargeType: SupplierBatchChargeType;
+  correctionReason: string;
   evidenceUrl: string;
   notes: string;
   occurredAt: string;
@@ -66,12 +74,26 @@ export type SupplierBatchChargeFormValues = {
   vatAmount: string;
   vatTreatment: SupplierBatchVatTreatment;
   zeroCostReason: string;
+  currency: SupplierBatchCurrency;
+  fxRateToEur: string;
+  fxRateDate: string;
+  fxRateSource: string;
+  fxEvidenceUrl: string;
+  batchGoodsValueFxRateToEur: string;
+  batchGoodsValueFxDate: string;
+  batchGoodsValueFxSource: string;
+  batchGoodsValueFxEvidenceUrl: string;
 };
 
 export type SupplierBatchMoneyParseResult = {
   cents: number | null;
   error: "format" | "required" | null;
   value: number | null;
+};
+
+export type SupplierBatchFxRateParseResult = {
+  value: number | null;
+  error: "format" | "required" | "invalid" | null;
 };
 
 export type SupplierBatchDateTimeLocalResult = {
@@ -123,6 +145,36 @@ const VAT_TREATMENTS: readonly SupplierBatchVatTreatment[] = [
 ];
 const MAX_MANUAL_ROWS = 500;
 
+type SupplierBatchSchemaLike = {
+  safeParse: (value: unknown) =>
+    | { success: true; data: Record<string, unknown> }
+    | { success: false; error: { issues: readonly SupplierBatchSchemaFieldIssue[] } };
+};
+
+/*
+ * Keep the client compatible with the legacy declaration file while the V2
+ * runtime schema adds original-currency and immutable-FX fields. The backend
+ * worker owns the generated declaration; reading the V2 exports by key lets
+ * this UI compile against either side of that hand-off and still fail closed
+ * when a schema is unavailable.
+ */
+const supplierBatchSchemaExports = supplierBatchChargeSchemaModule as unknown as Record<
+  string,
+  SupplierBatchSchemaLike | undefined
+>;
+const supplierBatchChargePreviewSchemaV2 =
+  supplierBatchSchemaExports.supplierBatchChargeV2PreviewSchema ??
+  (supplierBatchChargeSchemaModule.supplierBatchChargePreviewSchema as unknown as SupplierBatchSchemaLike);
+const supplierBatchChargeEstimateSchemaV2 =
+  supplierBatchSchemaExports.supplierBatchChargeV2EstimateSchema ??
+  (supplierBatchChargeSchemaModule.supplierBatchChargeEstimateSchema as unknown as SupplierBatchSchemaLike);
+const supplierBatchChargeConfirmSchemaV2 =
+  supplierBatchSchemaExports.supplierBatchChargeV2ConfirmSchema ??
+  (supplierBatchChargeSchemaModule.supplierBatchChargeConfirmSchema as unknown as SupplierBatchSchemaLike);
+const supplierBatchChargeCorrectSchemaV2 =
+  supplierBatchSchemaExports.supplierBatchChargeV2CorrectSchema ??
+  supplierBatchChargeConfirmSchemaV2;
+
 const copy = {
   zh: {
     title: "登记运输 / 到货费用",
@@ -134,6 +186,50 @@ const copy = {
     gross: "含税额（自动）",
     capitalizedAmount: "资本化金额",
     currency: "币种",
+    currencyHelp: "金额按原币录入；EUR 本位币会由服务端按快照计算。",
+    fxRateToEur: "汇率（原币 → EUR）",
+    fxRateDate: "汇率日期",
+    fxRateSource: "汇率来源",
+    fxEvidenceUrl: "费用汇率证据 URL",
+    fxRequired: "USD/CNY 必须填写汇率、日期和来源。",
+    fxRateHelp: "例如 1 USD = 0.92 EUR；请使用最多 12 位小数。",
+    fxRateInvalid: "汇率必须是大于 0 的数字。",
+    fxDateInvalid: "请填写有效的汇率日期。",
+    fxSourceInvalid: "请填写汇率来源。",
+    fxEvidenceHelp: "可选；仅支持 http:// 或 https:// 链接。",
+    goodsFxSnapshot: "商品货值汇率快照（批次）",
+    goodsFxRateToEur: "商品货值汇率（原币 → EUR）",
+    goodsFxDate: "商品货值汇率日期",
+    goodsFxSource: "商品货值汇率来源",
+    goodsFxEvidenceUrl: "商品货值汇率证据 URL",
+    goodsFxRequired: "非 EUR 批次必须填写商品货值汇率、日期和来源；证据 URL 可选。",
+    goodsFxLocked: "批次货值汇率快照已保存，只读不可修改。",
+    amountHelp: "支持 1.23 或 1,23；不要输入千位分隔符。",
+    vatPresets: "常用税率",
+    vatPresetHelp: "辅助计算 IVA，提交时仍保存明确金额。",
+    timezone: "时区 Europe/Rome",
+    previewSummary: "预览对账",
+    capitalized: "资本化",
+    candidateTotal: "候选分摊",
+    difference: "差额",
+    currentConfirmed: "当前已确认",
+    projectedTotal: "预计落地",
+    rounding: "分摊舍入差额",
+    correctionOtherTotal: "其他有效费用（不含原费用）",
+    correctionBeforeTotal: "纠正前总成本（含原费用）",
+    correctionReplacement: "替代新费用",
+    correctionAfterTotal: "纠正后总成本",
+    correctionCostDelta: "纠正成本变化（后−前）",
+    validRows: "有效行",
+    missingRows: "缺失行",
+    confirmSummaryTitle: "确认正式成本",
+    confirmSummaryDescription: "确认后记录将成为不可变事实；后续只能走纠错/冲正流程。请再次核对以下摘要。",
+    confirmProceed: "确认并提交正式成本",
+    confirmBack: "返回修改",
+    draftGuardTitle: "存在未保存草稿",
+    draftGuardDescription: "关闭将丢弃当前未保存字段和预览结果。",
+    draftGuardKeep: "继续编辑",
+    draftGuardDiscard: "丢弃并关闭",
     vatTreatment: "IVA 处理",
     allocationMethod: "分摊方式",
     carrierName: "承运商",
@@ -147,6 +243,13 @@ const copy = {
     manual: "手工分摊",
     preview: "预览分摊",
     cancel: "取消",
+    correctionReason: "纠错理由",
+    correctionReasonHelp: "正式成本不可直接修改；请填写本次纠错/冲正的业务理由。",
+    correctionTitle: "纠错正式成本",
+    correctionDescription: "纠错会保留原记录并建立关联链；请核对新金额和理由后提交。",
+    correctionProceed: "确认提交纠错",
+    correctionApplied: "冲正已应用；替代记录已建立。",
+    correctionPending: "已提交纠错，待财务调整；历史成本未修改。",
     close: "关闭",
     noManage: "当前账号没有成本管理权限，表单不可用。",
     nonEstimatedCharge: "已确认或已取消的费用不可编辑；当前仅允许编辑预估费用。",
@@ -185,6 +288,12 @@ const copy = {
     projectedLandedLine: "预计落地行",
     currentLandedUnit: "当前落地单价",
     projectedLandedUnit: "预计落地单价",
+    correctionCurrentAllocation: "其他有效分摊（不含原费用）",
+    correctionCandidateAllocation: "替代费用分摊",
+    correctionCurrentLandedLine: "其他有效落地行（不含原费用）",
+    correctionProjectedLandedLine: "替代后有效落地行",
+    correctionCurrentLandedUnit: "其他有效落地单价",
+    correctionProjectedLandedUnit: "替代后有效落地单价",
     line: "行",
     sku: "SKU",
     productName: "商品",
@@ -224,6 +333,50 @@ const copy = {
     gross: "Lordo (automatico)",
     capitalizedAmount: "Importo capitalizzato",
     currency: "Valuta",
+    currencyHelp: "Inserisci gli importi nella valuta originale; la base EUR usa lo snapshot del server.",
+    fxRateToEur: "Cambio (valuta → EUR)",
+    fxRateDate: "Data cambio",
+    fxRateSource: "Fonte cambio",
+    fxEvidenceUrl: "URL evidenza cambio costo",
+    fxRequired: "Per USD/CNY servono cambio, data e fonte.",
+    fxRateHelp: "Esempio: 1 USD = 0,92 EUR; sono accettate fino a 12 cifre decimali.",
+    fxRateInvalid: "Il cambio deve essere un numero maggiore di 0.",
+    fxDateInvalid: "Inserisci una data cambio valida.",
+    fxSourceInvalid: "Inserisci la fonte del cambio.",
+    fxEvidenceHelp: "Facoltativo; sono supportati solo link http:// o https://.",
+    goodsFxSnapshot: "Snapshot cambio valore merce (lotto)",
+    goodsFxRateToEur: "Cambio valore merce (valuta → EUR)",
+    goodsFxDate: "Data cambio valore merce",
+    goodsFxSource: "Fonte cambio valore merce",
+    goodsFxEvidenceUrl: "URL evidenza cambio valore merce",
+    goodsFxRequired: "Per un lotto non EUR servono cambio, data e fonte del valore merce; URL evidenza facoltativo.",
+    goodsFxLocked: "Lo snapshot del cambio del valore merce è salvato e non modificabile.",
+    amountHelp: "Sono validi 1.23 o 1,23; non usare separatori delle migliaia.",
+    vatPresets: "Aliquote comuni",
+    vatPresetHelp: "Aiuto per calcolare IVA; l'importo esplicito resta quello inviato.",
+    timezone: "Fuso Europe/Rome",
+    previewSummary: "Riconciliazione anteprima",
+    capitalized: "Capitalizzato",
+    candidateTotal: "Totale candidato",
+    difference: "Differenza",
+    currentConfirmed: "Confermato attuale",
+    projectedTotal: "Sbarcato previsto",
+    rounding: "Differenza arrotondamento ripartizione",
+    correctionOtherTotal: "Altri costi effettivi (escluso l'originale)",
+    correctionBeforeTotal: "Totale prima della rettifica (originale incluso)",
+    correctionReplacement: "Nuovo costo sostitutivo",
+    correctionAfterTotal: "Totale dopo la rettifica",
+    correctionCostDelta: "Variazione costo rettifica (dopo−prima)",
+    validRows: "Righe valide",
+    missingRows: "Righe mancanti",
+    confirmSummaryTitle: "Conferma costo definitivo",
+    confirmSummaryDescription: "Dopo la conferma il record è immutabile; per correggerlo serve una rettifica/controstorno. Ricontrolla il riepilogo.",
+    confirmProceed: "Conferma e invia costo",
+    confirmBack: "Torna alla modifica",
+    draftGuardTitle: "Bozza non salvata",
+    draftGuardDescription: "La chiusura elimina i campi non salvati e l'anteprima.",
+    draftGuardKeep: "Continua modifica",
+    draftGuardDiscard: "Scarta e chiudi",
     vatTreatment: "Trattamento IVA",
     allocationMethod: "Metodo ripartizione",
     carrierName: "Vettore",
@@ -237,6 +390,13 @@ const copy = {
     manual: "Ripartizione manuale",
     preview: "Anteprima ripartizione",
     cancel: "Annulla",
+    correctionReason: "Motivo rettifica",
+    correctionReasonHelp: "Il costo confermato non si modifica direttamente; indica il motivo operativo della rettifica.",
+    correctionTitle: "Rettifica costo confermato",
+    correctionDescription: "La rettifica conserva il record originale e crea una catena collegata; controlla importi e motivo.",
+    correctionProceed: "Conferma rettifica",
+    correctionApplied: "Rettifica applicata; il record sostitutivo è stato creato.",
+    correctionPending: "Rettifica inviata, adeguamento finanziario richiesto; lo storico non è stato modificato.",
     close: "Chiudi",
     noManage: "L'account non dispone del permesso di gestione costi; il modulo è disabilitato.",
     nonEstimatedCharge: "Un costo confermato o annullato non è modificabile; solo le stime possono essere modificate.",
@@ -275,6 +435,12 @@ const copy = {
     projectedLandedLine: "Riga sbarcata prevista",
     currentLandedUnit: "Unitario sbarcato attuale",
     projectedLandedUnit: "Unitario sbarcato previsto",
+    correctionCurrentAllocation: "Altra ripartizione effettiva (originale escluso)",
+    correctionCandidateAllocation: "Ripartizione del costo sostitutivo",
+    correctionCurrentLandedLine: "Altra riga sbarcata effettiva (originale escluso)",
+    correctionProjectedLandedLine: "Riga sbarcata effettiva dopo la sostituzione",
+    correctionCurrentLandedUnit: "Altro unitario sbarcato effettivo",
+    correctionProjectedLandedUnit: "Unitario sbarcato effettivo dopo la sostituzione",
     line: "Riga",
     sku: "SKU",
     productName: "Prodotto",
@@ -341,9 +507,14 @@ export function formatSupplierBatchCostLineLabel(
 export function isSupplierBatchChargeFormEditable(
   charge: Pick<SupplierBatchCharge, "status"> | null,
   canReadCosts: boolean,
-  canManageCosts: boolean
+  canManageCosts: boolean,
+  mode: SupplierBatchChargeDialogMode = "edit"
 ): boolean {
-  return canReadCosts && canManageCosts && (charge === null || charge.status === "estimated");
+  return canReadCosts && canManageCosts && (
+    charge === null ||
+    charge.status === "estimated" ||
+    (mode === "correction" && charge.status === "confirmed")
+  );
 }
 
 export function canConfirmSupplierBatchCharge(
@@ -352,6 +523,25 @@ export function canConfirmSupplierBatchCharge(
   confirmationBlocked: boolean | null | undefined
 ): boolean {
   return previewCurrent && vatTreatment !== "unknown" && confirmationBlocked !== true;
+}
+
+/**
+ * A consumed finance layer blocks ordinary confirmation but does not block a
+ * correction request. The dedicated correction RPC returns a pending-finance
+ * receipt in that case, so the client must not pre-empt that server decision.
+ * Other safety blocks (unknown IVA, missing batch FX, stale/invalid preview)
+ * remain client-side gates.
+ */
+export function canCorrectSupplierBatchCharge(
+  previewCurrent: boolean,
+  vatTreatment: SupplierBatchVatTreatment,
+  confirmationBlocked: boolean | null | undefined,
+  confirmationBlockCode: string | null | undefined
+): boolean {
+  if (!previewCurrent || vatTreatment === "unknown") return false;
+  if (confirmationBlocked !== true) return true;
+  return confirmationBlockCode === "FINANCIAL_ADJUSTMENT_REQUIRED" ||
+    confirmationBlockCode === "FINANCE_ADJUSTMENT_REQUIRED";
 }
 
 export function isSupplierBatchMutationResultForCurrent(
@@ -386,9 +576,34 @@ export function isSupplierBatchMutationResultForCurrent(
 
 export type SupplierBatchMutationReadbackOutcome =
   | "matched"
+  | "correction_pending"
   | "not_found"
   | "idempotency_conflict"
   | "invalid";
+
+function dedupeSupplierBatchHistory(
+  entries: readonly SupplierBatchHistoryEntry[]
+): SupplierBatchHistoryEntry[] {
+  const seen = new Set<string>();
+  return entries.filter((entry) => {
+    const key = entry.id || [
+      entry.correctionId ?? "",
+      entry.chargeId ?? "",
+      entry.eventType ?? entry.action ?? "",
+      entry.createdAt ?? "",
+      entry.status ?? "",
+    ].join("|");
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function readSupplierBatchChargeCorrectionLinks(charge: SupplierBatchChargeView) {
+  // Correction links are projected only by the permission-checked history
+  // path. Persisted charge metadata is deliberately not an authority here.
+  return charge.correction ?? null;
+}
 
 /**
  * Match a server-read charge to the exact mutation draft that produced it.
@@ -437,6 +652,139 @@ export function classifySupplierBatchMutationReadback(
   return expectedCharge ? "matched" : "not_found";
 }
 
+/**
+ * Correction readback deliberately uses the replacement identity for an
+ * applied receipt. A consumed layer has no replacement yet; its successful
+ * readback is the history event carrying the pending-finance status. Neither
+ * branch is allowed to fall through to the ordinary charge matcher.
+ */
+export function classifySupplierBatchCorrectionReadback(
+  detail: Pick<SupplierBatchCostDetail, "batch" | "charges" | "history"> | null,
+  receipt: SupplierBatchCorrectionReceipt
+): SupplierBatchMutationReadbackOutcome {
+  if (
+    detail === null ||
+    detail.batch.batchCode !== receipt.batchCode ||
+    !isSupplierBatchCorrectionReceipt(receipt)
+  ) {
+    return "invalid";
+  }
+
+  if (receipt.status === "corrected") {
+    const replacement = detail.charges.find(
+      (charge) =>
+        charge.batchId === detail.batch.id &&
+        charge.batchCode === receipt.batchCode &&
+        charge.chargeId === receipt.replacementChargeId &&
+        charge.idempotencyKey === receipt.idempotencyKey &&
+        charge.payloadFingerprint === receipt.previewFingerprint
+    );
+    if (!replacement) return "not_found";
+    if (replacement.status !== "confirmed") return "not_found";
+    const links = readSupplierBatchChargeCorrectionLinks(replacement);
+    if (
+      !links ||
+      links.originalChargeId !== receipt.originalChargeId ||
+      links.replacementChargeId !== receipt.replacementChargeId ||
+      links.correctionId !== receipt.correctionId ||
+      replacement.idempotencyKey !== receipt.idempotencyKey ||
+      replacement.payloadFingerprint !== receipt.previewFingerprint
+    ) {
+      return "idempotency_conflict";
+    }
+    return "matched";
+  }
+
+  const history = dedupeSupplierBatchHistory(detail.history ?? []);
+  const pendingEvent = history.some((entry) => {
+    const links = entry.links;
+    const originalChargeId = links?.originalChargeId ?? entry.correctionOfChargeId ?? null;
+    const eventCorrectionId = links?.correctionId ?? entry.correctionId ?? null;
+    const replacementChargeId = links?.replacementChargeId ?? null;
+    return (
+      entry.batchId === detail.batch.id &&
+      entry.batchCode === receipt.batchCode &&
+      entry.status?.trim().toLowerCase() === "pending_finance_adjustment" &&
+      eventCorrectionId === receipt.correctionId &&
+      originalChargeId === receipt.originalChargeId &&
+      replacementChargeId === null &&
+      entry.idempotencyKey === receipt.idempotencyKey &&
+      entry.payloadFingerprint === receipt.previewFingerprint
+    );
+  });
+  return pendingEvent ? "correction_pending" : "not_found";
+}
+
+/**
+ * A correction request can time out after the database has committed, before
+ * the dedicated receipt reaches the browser.  In that case there is no
+ * correctionId to use for the strict receipt matcher.  Read back only the
+ * original-charge relationship plus the same idempotency/fingerprint pair;
+ * never fall through to the ordinary estimate/confirm matcher, which would
+ * treat a pending correction as an unknown confirmed charge.
+ */
+export function classifySupplierBatchCorrectionReadbackByContext(
+  detail: Pick<SupplierBatchCostDetail, "batch" | "charges" | "history"> | null,
+  batchCode: string,
+  originalChargeId: string,
+  idempotencyKey: string,
+  payloadFingerprint: string
+): SupplierBatchMutationReadbackOutcome {
+  if (
+    detail === null ||
+    detail.batch.batchCode !== batchCode ||
+    !batchCode.trim() ||
+    !originalChargeId.trim() ||
+    !idempotencyKey.trim() ||
+    !payloadFingerprint.trim()
+  ) {
+    return "invalid";
+  }
+
+  const replacementCandidates = detail.charges.filter((charge) => {
+    const correction = readSupplierBatchChargeCorrectionLinks(charge);
+    return (
+      charge.batchId === detail.batch.id &&
+      charge.batchCode === batchCode &&
+      charge.status === "confirmed" &&
+      correction?.originalChargeId === originalChargeId &&
+      charge.idempotencyKey === idempotencyKey
+    );
+  });
+  if (replacementCandidates.length > 1) {
+    return "invalid";
+  }
+  if (replacementCandidates.length === 1) {
+    return replacementCandidates[0]?.payloadFingerprint === payloadFingerprint
+      ? "matched"
+      : "idempotency_conflict";
+  }
+
+  const history = dedupeSupplierBatchHistory(detail.history ?? []);
+  const pendingCandidates = history.filter((entry) => {
+    const links = entry.links;
+    const linkedOriginalChargeId =
+      links?.originalChargeId ??
+      entry.correctionOfChargeId ??
+      null;
+    return (
+      entry.batchId === detail.batch.id &&
+      entry.batchCode === batchCode &&
+      entry.status?.trim().toLowerCase() === "pending_finance_adjustment" &&
+      linkedOriginalChargeId === originalChargeId &&
+      entry.idempotencyKey === idempotencyKey &&
+      entry.payloadFingerprint === payloadFingerprint
+    );
+  });
+  if (pendingCandidates.length > 1) {
+    return "invalid";
+  }
+  if (pendingCandidates.length === 1) {
+    return "correction_pending";
+  }
+  return "not_found";
+}
+
 export function isSupplierBatchMutationErrorCodeTrusted(code: unknown): boolean {
   const key = typeof code === "string" ? code.trim().toUpperCase() : "";
   return [
@@ -453,8 +801,32 @@ export function isSupplierBatchMutationErrorCodeTrusted(code: unknown): boolean 
     "IDEMPOTENCY_CONFLICT",
     "CHARGE_IMMUTABLE",
     "CHARGE_CANCELLED",
+    "CANCELLATION_REASON_REQUIRED",
+    "CHARGE_IDEMPOTENCY_MISMATCH",
+    "IDEMPOTENCY_KEY_MISMATCH",
+    "IDEMPOTENCY_KEY_REQUIRED",
+    "CORRECTION_NOT_ALLOWED",
+    "CORRECTION_ALREADY_EXISTS",
+    "CORRECTION_REPLACEMENT_MANAGED",
+    "CORRECTION_REASON_REQUIRED",
+    "STALE_PREVIEW",
     "STALE_REVISION",
     "FINANCIAL_ADJUSTMENT_REQUIRED",
+    "FINANCE_ADJUSTMENT_REQUIRED",
+    "BATCH_FX_SNAPSHOT_IMMUTABLE",
+    "BATCH_FX_DIRECT_UPDATE_FORBIDDEN",
+    "ALLOCATION_TOTAL_MISMATCH",
+    "ALLOCATION_EUR_TOTAL_MISMATCH",
+    "SUPPLIER_BATCH_COST_OVERFLOW",
+    "SUPPLIER_BATCH_CONFIRMED_IMMUTABLE",
+    "SUPPLIER_BATCH_LINE_CONFIRMED_IMMUTABLE",
+    "UNKNOWN_VAT_NOT_ALLOWED",
+    "BATCH_FX_RATE_REQUIRED",
+    "BATCH_FX_SNAPSHOT_INCOMPLETE",
+    "FX_RATE_REQUIRED",
+    "FX_SNAPSHOT_REQUIRED",
+    "NON_EUR_FX_SNAPSHOT_REQUIRED",
+    "FX_EVIDENCE_URL_REQUIRED_OR_OMIT",
     "MANUAL_ALLOCATIONS_REQUIRED",
     "MANUAL_ALLOCATIONS_SUM_MUST_EQUAL_CAPITALIZED",
     "MANUAL_ALLOCATIONS_IDS_MUST_BE_UNIQUE",
@@ -465,6 +837,7 @@ export function isSupplierBatchMutationErrorCodeTrusted(code: unknown): boolean 
     "ADMIN_SUPPLIER_BATCH_COST_PREVIEW_UNAVAILABLE",
     "ADMIN_SUPPLIER_BATCH_COST_ESTIMATE_UNAVAILABLE",
     "ADMIN_SUPPLIER_BATCH_COST_CONFIRM_UNAVAILABLE",
+    "ADMIN_SUPPLIER_BATCH_COST_CORRECTION_UNAVAILABLE",
   ].includes(key);
 }
 
@@ -488,6 +861,7 @@ export function classifySupplierBatchMutationError(
 export function shouldInvalidateSupplierBatchPreviewForMutationError(code: unknown): boolean {
   const key = typeof code === "string" ? code.trim().toUpperCase() : "";
   return new Set([
+    "STALE_PREVIEW",
     "STALE_REVISION",
     "FINANCIAL_ADJUSTMENT_REQUIRED",
     "IDEMPOTENCY_CONFLICT",
@@ -495,6 +869,9 @@ export function shouldInvalidateSupplierBatchPreviewForMutationError(code: unkno
     "CHARGE_CANCELLED",
     "CHARGE_NOT_FOUND",
     "BATCH_NOT_FOUND",
+    "BATCH_FX_RATE_REQUIRED",
+    "FX_RATE_REQUIRED",
+    "FX_SNAPSHOT_REQUIRED",
   ]).has(key);
 }
 
@@ -534,16 +911,69 @@ export function parseSupplierBatchMoneyInput(input: string): SupplierBatchMoneyP
   return { cents, error: null, value: cents / 100 };
 }
 
+export function parseSupplierBatchFxRateInput(input: string): SupplierBatchFxRateParseResult {
+  const trimmed = input.trim().replace(",", ".");
+  if (!trimmed) {
+    return { value: null, error: "required" };
+  }
+  if (!/^(?:0|[1-9]\d*)(?:\.\d{1,12})?$/.test(trimmed)) {
+    return { value: null, error: "format" };
+  }
+  const value = Number(trimmed);
+  if (!Number.isFinite(value) || value < 0.000001 || value > 1_000_000) {
+    return { value: null, error: "invalid" };
+  }
+  return { value, error: null };
+}
+
 export function supplierBatchDateTimeLocalToIso(input: string): SupplierBatchDateTimeLocalResult {
   const trimmed = input.trim();
   if (!trimmed) {
     return { error: null, value: null };
   }
 
-  const date = new Date(trimmed);
-  return Number.isNaN(date.getTime())
-    ? { error: "invalid", value: null }
-    : { error: null, value: date.toISOString() };
+  // `datetime-local` has no offset. Interpret the value in the business
+  // timezone instead of the browser timezone so a user travelling outside
+  // Italy cannot silently shift an arrival cost's occurredAt timestamp.
+  const match = /^(\d{4})-(\d{2})-(\d{2})T([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$/.exec(trimmed);
+  if (!match) {
+    return { error: "invalid", value: null };
+  }
+
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText = "0"] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const wallClockMs = Date.UTC(year, month - 1, day, hour, minute, second);
+  const wallClockDate = new Date(wallClockMs);
+  if (
+    Number.isNaN(wallClockDate.getTime()) ||
+    wallClockDate.getUTCFullYear() !== year ||
+    wallClockDate.getUTCMonth() !== month - 1 ||
+    wallClockDate.getUTCDate() !== day ||
+    wallClockDate.getUTCHours() !== hour ||
+    wallClockDate.getUTCMinutes() !== minute ||
+    wallClockDate.getUTCSeconds() !== second
+  ) {
+    return { error: "invalid", value: null };
+  }
+
+  const initialOffsetMs = supplierBatchRomeOffsetMilliseconds(wallClockDate);
+  let date = new Date(wallClockMs - initialOffsetMs);
+  // Re-evaluate after applying the offset to handle the two DST transition
+  // edges. A nonexistent local wall-clock time is rejected below rather than
+  // being silently normalised to a different time.
+  const correctedOffsetMs = supplierBatchRomeOffsetMilliseconds(date);
+  if (correctedOffsetMs !== initialOffsetMs) {
+    date = new Date(wallClockMs - correctedOffsetMs);
+  }
+
+  return supplierBatchRomeDateTimeMatches(date, year, month, day, hour, minute, second)
+    ? { error: null, value: date.toISOString() }
+    : { error: "invalid", value: null };
 }
 
 export function supplierBatchDateTimeLocalFromIso(input: string | null): string {
@@ -556,8 +986,89 @@ export function supplierBatchDateTimeLocalFromIso(input: string | null): string 
     return "";
   }
 
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Europe/Rome",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(date).replace(" ", "T");
+}
+
+function supplierBatchRomeOffsetMilliseconds(date: Date): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Rome",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)])
+  ) as Record<string, number>;
+  const localAsUtcMs = Date.UTC(
+    values.year,
+    values.month - 1,
+    values.day,
+    values.hour,
+    values.minute,
+    values.second
+  );
+  return localAsUtcMs - date.getTime();
+}
+
+function supplierBatchRomeDateTimeMatches(
+  date: Date,
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second: number
+): boolean {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Rome",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const values = Object.fromEntries(
+    parts
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)])
+  ) as Record<string, number>;
+  return (
+    values.year === year &&
+    values.month === month &&
+    values.day === day &&
+    values.hour === hour &&
+    values.minute === minute &&
+    values.second === second
+  );
+}
+
+export function supplierBatchCurrentDateTimeLocal(): string {
+  const formatter = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "Europe/Rome",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  return formatter.format(new Date()).replace(" ", "T");
 }
 
 export function getSupplierBatchManualLines(
@@ -633,22 +1144,52 @@ export function isSupplierBatchPreviewCurrent(
 }
 
 export function createSupplierBatchChargeForm(
-  charge: SupplierBatchCharge | null,
-  lines: readonly SupplierBatchCostLineLike[]
+  charge: SupplierBatchChargeView | null,
+  lines: readonly SupplierBatchCostLineLike[],
+  batch?: Pick<SupplierBatchCostDetail["batch"],
+    "currency" | "goodsValueFxRateToEur" | "goodsValueFxDate" | "goodsValueFxSource" | "goodsValueFxEvidenceUrl">
 ): SupplierBatchChargeFormResult {
+  const chargeRecord = charge as (SupplierBatchChargeView & Record<string, unknown>) | null;
+  const batchRecord = batch as (Pick<SupplierBatchCostDetail["batch"],
+    "currency" | "goodsValueFxRateToEur" | "goodsValueFxDate" | "goodsValueFxSource" | "goodsValueFxEvidenceUrl"> & Record<string, unknown>) | undefined;
+  const currency = normalizeSupplierBatchCurrency(chargeRecord?.currency);
+  const batchCurrency = normalizeSupplierBatchCurrency(batchRecord?.currency);
+  const fxRate = chargeRecord?.fxRateToEur;
   const form: SupplierBatchChargeFormValues = {
     allocationMethod: charge?.allocationMethod ?? "goods_value",
     amountNet: charge ? formatCentsForInput(charge.amountNetCents) : "",
     capitalizedAmount: charge ? formatCentsForInput(charge.capitalizedAmountCents) : "",
     carrierName: charge?.carrierName ?? "",
     chargeType: charge?.chargeType ?? "transport",
+    correctionReason: "",
     evidenceUrl: charge?.evidenceUrl ?? "",
     notes: charge?.notes ?? "",
-    occurredAt: supplierBatchDateTimeLocalFromIso(charge?.occurredAt ?? null),
+    occurredAt: charge
+      ? supplierBatchDateTimeLocalFromIso(charge.occurredAt ?? null)
+      : supplierBatchCurrentDateTimeLocal(),
     reference: charge?.reference ?? "",
     vatAmount: charge ? formatCentsForInput(charge.vatAmountCents) : "",
     vatTreatment: charge?.vatTreatment ?? "unknown",
     zeroCostReason: charge?.zeroCostReason ?? "",
+    currency,
+    fxRateToEur: typeof fxRate === "number" && Number.isFinite(fxRate) ? String(fxRate) : currency === "EUR" ? "1" : "",
+    fxRateDate: typeof chargeRecord?.fxRateDate === "string" ? chargeRecord.fxRateDate.slice(0, 10) : currency === "EUR" ? supplierBatchCurrentDateTimeLocal().slice(0, 10) : "",
+    fxRateSource: typeof chargeRecord?.fxRateSource === "string" ? chargeRecord.fxRateSource : currency === "EUR" ? "EUR base" : "",
+    fxEvidenceUrl: typeof chargeRecord?.fxEvidenceUrl === "string" ? chargeRecord.fxEvidenceUrl : "",
+    batchGoodsValueFxRateToEur: batchCurrency === "EUR"
+      ? ""
+      : typeof batchRecord?.goodsValueFxRateToEur === "number" && Number.isFinite(batchRecord.goodsValueFxRateToEur)
+        ? String(batchRecord.goodsValueFxRateToEur)
+        : "",
+    batchGoodsValueFxDate: batchCurrency === "EUR"
+      ? ""
+      : typeof batchRecord?.goodsValueFxDate === "string" ? batchRecord.goodsValueFxDate.slice(0, 10) : "",
+    batchGoodsValueFxSource: batchCurrency === "EUR"
+      ? ""
+      : typeof batchRecord?.goodsValueFxSource === "string" ? batchRecord.goodsValueFxSource : "",
+    batchGoodsValueFxEvidenceUrl: batchCurrency === "EUR"
+      ? ""
+      : typeof batchRecord?.goodsValueFxEvidenceUrl === "string" ? batchRecord.goodsValueFxEvidenceUrl : "",
   };
   const snapshot = new Map(
     (charge?.manualAllocationsSnapshot ?? []).map((row) => [row.batchLineId, row.amountCents])
@@ -668,12 +1209,25 @@ export function buildSupplierBatchChargePayload(
   mode: SupplierBatchChargeDialogMode,
   idempotencyKey: string,
   revision?: string,
-  chargeId?: string
+  chargeId?: string,
+  previewFingerprint?: string,
+  includeCorrectionReason = false,
+  batchCurrencyInput?: SupplierBatchCurrency
 ): SupplierBatchChargePayloadBuildResult {
   const fieldErrors: Record<string, string> = {};
   const amountNet = parseSupplierBatchMoneyInput(form.amountNet);
   const vatAmount = parseSupplierBatchMoneyInput(form.vatAmount);
   const capitalizedAmount = parseSupplierBatchMoneyInput(form.capitalizedAmount);
+  const currency = normalizeSupplierBatchCurrency(form.currency);
+  const fxRate = parseSupplierBatchFxRateInput(form.fxRateToEur);
+  // Older callers only supplied the charge currency.  They represent the
+  // legacy EUR-batch contract; the dialog passes the actual batch currency
+  // explicitly so non-EUR goods FX cannot be silently skipped.
+  const batchCurrency = normalizeSupplierBatchCurrency(batchCurrencyInput ?? "EUR");
+  // Keep older EUR drafts/fixtures compatible while the non-EUR goods FX
+  // snapshot fields roll out.  The batch currency gate below decides whether
+  // this parsed value is required.
+  const batchGoodsFxRate = parseSupplierBatchFxRateInput(form.batchGoodsValueFxRateToEur ?? "");
 
   for (const [field, parsed] of [
     ["amountNet", amountNet],
@@ -686,6 +1240,20 @@ export function buildSupplierBatchChargePayload(
 
   if (supplierBatchDateTimeLocalToIso(form.occurredAt).error === "invalid") {
     fieldErrors.occurredAt = "invalid";
+  }
+  if (currency !== "EUR") {
+    if (fxRate.error === "required") fieldErrors.fxRateToEur = "required";
+    if (fxRate.error === "format" || fxRate.error === "invalid") fieldErrors.fxRateToEur = "invalid";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(form.fxRateDate.trim())) fieldErrors.fxRateDate = "invalid";
+    if (!form.fxRateSource.trim()) fieldErrors.fxRateSource = "required";
+    if (!isSupplierBatchEvidenceUrl(form.fxEvidenceUrl ?? "")) fieldErrors.fxEvidenceUrl = "protocol";
+  }
+  if (batchCurrency !== "EUR") {
+    if (batchGoodsFxRate.error === "required") fieldErrors.batchGoodsValueFxRateToEur = "required";
+    if (batchGoodsFxRate.error === "format" || batchGoodsFxRate.error === "invalid") fieldErrors.batchGoodsValueFxRateToEur = "invalid";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test((form.batchGoodsValueFxDate ?? "").trim())) fieldErrors.batchGoodsValueFxDate = "invalid";
+    if (!(form.batchGoodsValueFxSource ?? "").trim()) fieldErrors.batchGoodsValueFxSource = "required";
+    if (!isSupplierBatchEvidenceUrl(form.batchGoodsValueFxEvidenceUrl ?? "")) fieldErrors.batchGoodsValueFxEvidenceUrl = "protocol";
   }
   if (!isSupplierBatchEvidenceUrl(form.evidenceUrl)) {
     fieldErrors.evidenceUrl = "protocol";
@@ -703,6 +1271,14 @@ export function buildSupplierBatchChargePayload(
       if (manual.differenceCents !== 0) fieldErrors.manualAllocations = "sum";
     }
   }
+  if (mode === "correction") {
+    if (!chargeId) fieldErrors.chargeId = "required";
+    if (includeCorrectionReason && !form.correctionReason.trim()) {
+      fieldErrors.correctionReason = "required";
+    }
+    if (includeCorrectionReason && !revision) fieldErrors.revision = "required";
+    if (includeCorrectionReason && !previewFingerprint) fieldErrors.previewFingerprint = "required";
+  }
   if (capitalizedAmount.cents === 0 && !form.zeroCostReason.trim()) {
     fieldErrors.zeroCostReason = "required";
   }
@@ -718,7 +1294,7 @@ export function buildSupplierBatchChargePayload(
     capitalizedAmount: capitalizedAmount.value,
     carrierName: form.carrierName.trim() || null,
     chargeType: form.chargeType,
-    currency: "EUR",
+    currency,
     evidenceUrl: form.evidenceUrl.trim() || null,
     idempotencyKey: idempotencyKey.trim(),
     notes: form.notes.trim() || null,
@@ -729,11 +1305,37 @@ export function buildSupplierBatchChargePayload(
     zeroCostReason: form.zeroCostReason.trim() || null,
   };
 
+  if (currency !== "EUR") {
+    payload.fxRateToEur = fxRate.value;
+    payload.fxRateDate = form.fxRateDate.trim();
+    payload.fxRateSource = form.fxRateSource.trim();
+    if ((form.fxEvidenceUrl ?? "").trim()) payload.fxEvidenceUrl = form.fxEvidenceUrl.trim();
+  }
+
+  if (batchCurrency !== "EUR") {
+    payload.batchGoodsValueFxRateToEur = batchGoodsFxRate.value;
+    payload.batchGoodsValueFxDate = (form.batchGoodsValueFxDate ?? "").trim();
+    payload.batchGoodsValueFxSource = (form.batchGoodsValueFxSource ?? "").trim();
+    if ((form.batchGoodsValueFxEvidenceUrl ?? "").trim()) {
+      payload.batchGoodsValueFxEvidenceUrl = form.batchGoodsValueFxEvidenceUrl.trim();
+    }
+  }
+
   if (mode === "edit" && chargeId) {
     // Keep the persisted identity in every preview/save/confirm payload.
     payload.chargeId = chargeId;
   }
-  if (revision !== undefined) payload.revision = revision;
+  if (mode === "correction" && chargeId) {
+    // A correction previews against the immutable confirmed charge identity.
+    payload.chargeId = chargeId;
+  }
+  if (revision !== undefined) {
+    payload.revision = revision;
+    if (previewFingerprint !== undefined) payload.previewFingerprint = previewFingerprint;
+  }
+  if (mode === "correction" && includeCorrectionReason) {
+    payload.correctionReason = form.correctionReason.trim();
+  }
   if (form.allocationMethod === "manual") {
     const manual = summarizeSupplierBatchManualAllocations(lines, manualAmounts, form.capitalizedAmount);
     payload.manualAllocations = manual.rows.map((row) => ({
@@ -755,9 +1357,41 @@ export function mapSupplierBatchCostErrorCode(
       zh: "批次数据已变化，请重新预览后再试。",
       it: "I dati del lotto sono cambiati; esegui una nuova anteprima.",
     },
+    STALE_PREVIEW: {
+      zh: "预览已过期，请重新预览后再试。",
+      it: "L'anteprima è scaduta; esegui una nuova anteprima.",
+    },
     FINANCIAL_ADJUSTMENT_REQUIRED: {
       zh: "已有成本层需要财务调整，暂不能确认。",
       it: "Serve una rettifica finanziaria prima della conferma.",
+    },
+    FINANCE_ADJUSTMENT_REQUIRED: {
+      zh: "已有成本层需要财务调整；纠错提交后将进入待财务调整。",
+      it: "Serve un adeguamento finanziario; la rettifica resta in attesa dell'intervento contabile.",
+    },
+    BATCH_FX_RATE_REQUIRED: {
+      zh: "批次商品货值缺少独立 EUR 汇率，暂不能确认。",
+      it: "Manca il cambio EUR indipendente del valore merce; conferma bloccata.",
+    },
+    BATCH_FX_SNAPSHOT_INCOMPLETE: {
+      zh: "批次商品货值汇率快照需同时填写汇率、日期和来源。",
+      it: "Lo snapshot del valore merce richiede cambio, data e fonte.",
+    },
+    NON_EUR_FX_SNAPSHOT_REQUIRED: {
+      zh: "非 EUR 费用必须提供完整汇率快照。",
+      it: "Per un costo non EUR serve uno snapshot cambio completo.",
+    },
+    FX_EVIDENCE_URL_REQUIRED_OR_OMIT: {
+      zh: "汇率证据 URL 为空时请留空，不要提交 null。",
+      it: "Lascia vuoto l'URL evidenza cambio invece di inviare null.",
+    },
+    FX_RATE_REQUIRED: {
+      zh: "非 EUR 费用必须提供有效的 EUR 汇率快照。",
+      it: "Per una valuta diversa da EUR serve uno snapshot cambio valido.",
+    },
+    FX_SNAPSHOT_REQUIRED: {
+      zh: "汇率日期和来源必须完整。",
+      it: "Data e fonte del cambio sono obbligatorie.",
     },
     IDEMPOTENCY_CONFLICT: {
       zh: "该幂等键对应的内容不同，请关闭后重新建立草稿。",
@@ -770,6 +1404,70 @@ export function mapSupplierBatchCostErrorCode(
     CHARGE_CANCELLED: {
       zh: "该费用已取消，不能继续操作。",
       it: "Questo costo è annullato e non può essere modificato.",
+    },
+    CANCELLATION_REASON_REQUIRED: {
+      zh: "取消预估费用必须填写原因。",
+      it: "Per annullare la stima è obbligatorio indicare il motivo.",
+    },
+    CHARGE_IDEMPOTENCY_MISMATCH: {
+      zh: "费用身份与幂等键不匹配，未重复提交。",
+      it: "L'identità del costo non corrisponde alla chiave idempotente; nessun nuovo invio.",
+    },
+    IDEMPOTENCY_KEY_MISMATCH: {
+      zh: "幂等键与当前请求不匹配，未重复提交。",
+      it: "La chiave idempotente non corrisponde alla richiesta corrente; nessun nuovo invio.",
+    },
+    IDEMPOTENCY_KEY_REQUIRED: {
+      zh: "该操作必须提供幂等键。",
+      it: "Questa operazione richiede una chiave idempotente.",
+    },
+    CORRECTION_NOT_ALLOWED: {
+      zh: "该费用当前不允许纠错。",
+      it: "Questo costo non può essere rettificato in questo stato.",
+    },
+    CORRECTION_ALREADY_EXISTS: {
+      zh: "该费用已有纠错记录，请查看历史。",
+      it: "Questo costo ha già una rettifica; controlla lo storico.",
+    },
+    CORRECTION_REPLACEMENT_MANAGED: {
+      zh: "替代记录不能再次作为普通费用操作。",
+      it: "Il record sostitutivo non può essere gestito come un costo ordinario.",
+    },
+    CORRECTION_REASON_REQUIRED: {
+      zh: "纠错理由不能为空。",
+      it: "Il motivo della rettifica è obbligatorio.",
+    },
+    BATCH_FX_SNAPSHOT_IMMUTABLE: {
+      zh: "批次商品货值汇率快照不可修改。",
+      it: "Lo snapshot cambio del valore merce non può essere modificato.",
+    },
+    BATCH_FX_DIRECT_UPDATE_FORBIDDEN: {
+      zh: "批次汇率只能通过受控成本流程更新。",
+      it: "Il cambio del lotto può essere aggiornato solo tramite il flusso costi autorizzato.",
+    },
+    ALLOCATION_TOTAL_MISMATCH: {
+      zh: "分摊合计与资本化金额不一致。",
+      it: "Il totale delle allocazioni non coincide con l'importo capitalizzato.",
+    },
+    ALLOCATION_EUR_TOTAL_MISMATCH: {
+      zh: "EUR 分摊合计与资本化金额不一致。",
+      it: "Il totale delle allocazioni EUR non coincide con l'importo capitalizzato.",
+    },
+    SUPPLIER_BATCH_COST_OVERFLOW: {
+      zh: "成本金额超过系统可安全保存的上限。",
+      it: "L'importo del costo supera il limite sicuro di salvataggio.",
+    },
+    SUPPLIER_BATCH_CONFIRMED_IMMUTABLE: {
+      zh: "已有正式成本的批次不可直接修改货币或总成本。",
+      it: "Un lotto con costi confermati non può modificare direttamente valuta o totale.",
+    },
+    SUPPLIER_BATCH_LINE_CONFIRMED_IMMUTABLE: {
+      zh: "已有正式成本的到货行不可直接修改。",
+      it: "Una riga di arrivo con costi confermati non può essere modificata direttamente.",
+    },
+    UNKNOWN_VAT_NOT_ALLOWED: {
+      zh: "IVA 未确定，不能执行此正式成本操作。",
+      it: "L'IVA non è definita; l'operazione sul costo definitivo non è consentita.",
     },
     CHARGE_NOT_FOUND: {
       zh: "费用记录不存在，请重新读取批次。",
@@ -847,6 +1545,10 @@ export function mapSupplierBatchCostErrorCode(
       zh: "正式成本暂不能确认，请重试。",
       it: "Il costo non può essere confermato; riprova.",
     },
+    ADMIN_SUPPLIER_BATCH_COST_CORRECTION_UNAVAILABLE: {
+      zh: "纠错暂不能提交，请重试。",
+      it: "La rettifica non può essere inviata; riprova.",
+    },
     ADMIN_SUPPLIER_BATCH_COST_RPC_INVALID_RESPONSE: {
       zh: "服务返回的数据无法通过校验，未更新页面成本。",
       it: "La risposta del servizio non supera i controlli; i costi visualizzati non sono stati aggiornati.",
@@ -885,7 +1587,7 @@ type SupplierBatchCostApiError = {
   status: number;
 };
 
-type SupplierBatchMutationAction = "estimate" | "confirm";
+type SupplierBatchMutationAction = "estimate" | "confirm" | "correct";
 type SupplierBatchPendingAction = "preview" | SupplierBatchMutationAction | "refresh" | null;
 export type SupplierBatchMutationReceipt = {
   action: SupplierBatchMutationAction;
@@ -896,6 +1598,7 @@ export type SupplierBatchMutationReceipt = {
   idempotencyKey: string;
   payloadFingerprint: string;
 };
+export type SupplierBatchCorrectionReceipt = SupplierBatchCorrectionResult;
 type SupplierBatchMutationContext = {
   action: SupplierBatchMutationAction;
   chargeId: string | null;
@@ -904,11 +1607,13 @@ type SupplierBatchMutationContext = {
   snapshotKey: string;
   /** A receipt can identify a newly-created charge when the draft had no chargeId yet. */
   readbackChargeId?: string;
+  correctionReceipt?: SupplierBatchCorrectionReceipt;
 };
 
 type SupplierBatchMutationResponse =
   | { kind: "result"; result: SupplierBatchCostRpcResult }
   | { kind: "receipt"; receipt: SupplierBatchMutationReceipt }
+  | { kind: "correction_receipt"; receipt: SupplierBatchCorrectionReceipt }
   | { kind: "invalid_receipt" };
 type SupplierBatchMutationReceiptEnvelope = {
   outcome: "persisted_readback_required";
@@ -956,7 +1661,7 @@ export function isSupplierBatchMutationReceipt(
   }
 
   return (
-    (value.action === "estimate" || value.action === "confirm") &&
+    (value.action === "estimate" || value.action === "confirm" || value.action === "correct") &&
     (value.status === "estimated" || value.status === "confirmed") &&
     isNonEmptyReceiptString(value.batchId) &&
     isNonEmptyReceiptString(value.batchCode) &&
@@ -988,7 +1693,7 @@ export function extractSupplierBatchMutationReceiptFromCanonicalResult(
     return null;
   }
 
-  const expectedStatus = action === "confirm" ? "confirmed" : "estimated";
+  const expectedStatus = action === "confirm" || action === "correct" ? "confirmed" : "estimated";
   if (
     value.status !== expectedStatus ||
     !isNonEmptyReceiptString(value.batchId) ||
@@ -1069,7 +1774,7 @@ export function isSupplierBatchMutationReceiptForCurrent(
     return false;
   }
 
-  const expectedStatus = action === "confirm" ? "confirmed" : "estimated";
+  const expectedStatus = action === "confirm" || action === "correct" ? "confirmed" : "estimated";
   return (
     receipt.action === action &&
     receipt.status === expectedStatus &&
@@ -1078,6 +1783,68 @@ export function isSupplierBatchMutationReceiptForCurrent(
     receipt.idempotencyKey === idempotencyKey &&
     receipt.payloadFingerprint === payloadFingerprint &&
     (chargeId === null || receipt.chargeId === chargeId)
+  );
+}
+
+/**
+ * Keep the correction receipt a separate success contract.  The server-side
+ * core normalizer validates the wire shape before this helper is called; this
+ * guard then verifies the identity binding required by the current draft.
+ */
+export function isSupplierBatchCorrectionReceipt(
+  value: unknown
+): value is SupplierBatchCorrectionReceipt {
+  if (!isRecord(value)) return false;
+  const status = value.status;
+  if (status !== "corrected" && status !== "pending_finance_adjustment") {
+    return false;
+  }
+  if (
+    !isNonEmptyReceiptString(value.correctionId) ||
+    !isNonEmptyReceiptString(value.originalChargeId) ||
+    !isNonEmptyReceiptString(value.batchCode) ||
+    !isNonEmptyReceiptString(value.idempotencyKey) ||
+    !isNonEmptyReceiptString(value.previewFingerprint) ||
+    !isNonEmptyReceiptString(value.revision) ||
+    typeof value.financeAdjustmentRequired !== "boolean" ||
+    !("replacement" in value)
+  ) {
+    return false;
+  }
+
+  if (status === "pending_finance_adjustment") {
+    return value.financeAdjustmentRequired === true &&
+      value.replacementChargeId === null &&
+      value.replacement === null;
+  }
+
+  const replacement = value.replacement;
+  return (
+    value.financeAdjustmentRequired === false &&
+    isNonEmptyReceiptString(value.replacementChargeId) &&
+    isRecord(replacement) &&
+    replacement.status === "confirmed" &&
+    replacement.batchCode === value.batchCode &&
+    isRecord(replacement.charge) &&
+    replacement.charge.chargeId === value.replacementChargeId
+  );
+}
+
+export function isSupplierBatchCorrectionReceiptForCurrent(
+  receipt: unknown,
+  batchCode: string,
+  originalChargeId: string,
+  idempotencyKey: string,
+  previewFingerprint: string,
+  revision: string
+): receipt is SupplierBatchCorrectionReceipt {
+  if (!isSupplierBatchCorrectionReceipt(receipt)) return false;
+  return (
+    receipt.batchCode === batchCode &&
+    receipt.originalChargeId === originalChargeId &&
+    receipt.idempotencyKey === idempotencyKey &&
+    receipt.previewFingerprint === previewFingerprint &&
+    receipt.revision === revision
   );
 }
 
@@ -1091,8 +1858,107 @@ function fieldErrorText(code: string | undefined, text: CostCopy): string | null
   return text.invalid;
 }
 
-function formatCents(cents: number | null): string {
-  return cents === null ? "—" : formatEuro(cents / 100);
+function formatCents(
+  cents: number | null,
+  currency: string | null | undefined = "EUR",
+  language: SupplierBatchCostLanguage = "zh"
+): string {
+  return formatSupplierBatchCents(cents, currency, language === "it" ? "it-IT" : "zh-CN");
+}
+
+function previewCents(
+  result: SupplierBatchCostRpcPreviewResult,
+  centsKeys: readonly string[],
+  decimalKeys: readonly string[] = []
+): number | null {
+  return readSupplierBatchMoneyCents(result, centsKeys, decimalKeys);
+}
+
+function previewBaseCents(
+  result: SupplierBatchCostRpcPreviewResult,
+  keys: readonly string[]
+): number | null {
+  return readSupplierBatchMoneyCents(result, keys);
+}
+
+function formatPreviewAmount(
+  result: SupplierBatchCostRpcPreviewResult,
+  cents: number | null,
+  baseCents: number | null,
+  language: SupplierBatchCostLanguage
+): string {
+  const resultRecord = result as unknown as Record<string, unknown>;
+  const currency = normalizeSupplierBatchCurrency(resultRecord.currency);
+  return formatSupplierBatchDualCents(
+    cents,
+    currency,
+    currency === "EUR" ? null : baseCents,
+    language === "it" ? "it-IT" : "zh-CN"
+  );
+}
+
+function formatCorrectionPreviewEurCents(
+  cents: number | null | undefined,
+  language: SupplierBatchCostLanguage
+): string {
+  return formatSupplierBatchCents(
+    cents,
+    "EUR",
+    language === "it" ? "it-IT" : "zh-CN"
+  );
+}
+
+function formatCorrectionPreviewLineCents(
+  line: SupplierBatchCostRpcPreviewResult["lineProjections"][number],
+  key: keyof Pick<
+    SupplierBatchCostRpcPreviewResult["lineProjections"][number],
+    | "currentAllocationEurCents"
+    | "candidateAllocationEurCents"
+    | "currentLandedLineCostEurCents"
+    | "projectedLandedLineCostEurCents"
+  >,
+  language: SupplierBatchCostLanguage
+): string {
+  return formatCorrectionPreviewEurCents(line[key], language);
+}
+
+function formatCorrectionPreviewLineUnit(
+  line: SupplierBatchCostRpcPreviewResult["lineProjections"][number],
+  key: keyof Pick<
+    SupplierBatchCostRpcPreviewResult["lineProjections"][number],
+    "currentLandedUnitCostEur" | "projectedLandedUnitCostEur"
+  >,
+  language: SupplierBatchCostLanguage
+): string {
+  return formatSupplierBatchUnitCost(line[key], language, "EUR");
+}
+
+function formatPreviewLineCents(
+  result: SupplierBatchCostRpcPreviewResult,
+  line: SupplierBatchCostRpcPreviewResult["lineProjections"][number],
+  originalCents: number | null,
+  eurCents: number | null,
+  language: SupplierBatchCostLanguage
+): string {
+  // Original-currency landed values are not comparable when a batch contains
+  // mixed/unknown allocation currencies.  The EUR projection is the only
+  // authoritative display in that case, including ordinary (non-correction)
+  // previews.
+  return line.originalCurrencyComparable === false
+    ? formatSupplierBatchCents(eurCents, "EUR", language === "it" ? "it-IT" : "zh-CN")
+    : formatPreviewAmount(result, originalCents, null, language);
+}
+
+function formatPreviewLineUnit(
+  line: SupplierBatchCostRpcPreviewResult["lineProjections"][number],
+  originalUnit: number | null,
+  eurUnit: number | null,
+  language: SupplierBatchCostLanguage,
+  currency: SupplierBatchCurrency
+): string {
+  return line.originalCurrencyComparable === false
+    ? formatSupplierBatchUnitCost(eurUnit, language, "EUR")
+    : formatSupplierBatchUnitCost(originalUnit, language, currency);
 }
 
 function reviewReason(result: SupplierBatchCostRpcPreviewResult, language: SupplierBatchCostLanguage): string | null {
@@ -1106,18 +1972,26 @@ function reviewReason(result: SupplierBatchCostRpcPreviewResult, language: Suppl
 export function SupplierBatchTransportCostDialog({
   canManageCosts,
   canReadCosts,
+  canEstimateCosts = canManageCosts,
+  canConfirmCosts = false,
+  canCorrectCosts = false,
   charge,
   detail,
   language,
+  mode = "create",
   onCostChanged,
   onOpenChange,
   open,
 }: {
   canManageCosts: boolean;
   canReadCosts: boolean;
-  charge: SupplierBatchCharge | null;
+  canEstimateCosts?: boolean;
+  canConfirmCosts?: boolean;
+  canCorrectCosts?: boolean;
+  charge: SupplierBatchChargeView | null;
   detail: SupplierBatchCostDetail;
   language: SupplierBatchCostLanguage;
+  mode?: SupplierBatchChargeDialogMode;
   /** Re-reads the server-owned batch detail/list after a successful mutation. */
   onCostChanged: (
     batchCode: string,
@@ -1127,14 +2001,25 @@ export function SupplierBatchTransportCostDialog({
   open: boolean;
 }) {
   const text = copy[language];
-  const dualPermission = canReadCosts && canManageCosts;
-  const chargeIsReadOnly = charge !== null && charge.status !== "estimated";
-  const canUseForm = isSupplierBatchChargeFormEditable(charge, canReadCosts, canManageCosts);
+  // Preserve the pre-V2 call contract: a supplied charge without an explicit
+  // mode is still an editable estimate. Confirmed charges must opt into the
+  // dedicated correction flow explicitly.
+  const resolvedMode: SupplierBatchChargeDialogMode = mode === "create" && charge ? "edit" : mode;
+  const isCorrectionMode = resolvedMode === "correction";
+  const canPerformFormAction = canReadCosts && (isCorrectionMode ? canCorrectCosts : canEstimateCosts);
+  const dualPermission = canPerformFormAction;
+  const chargeIsReadOnly = charge !== null && charge.status !== "estimated" && !isCorrectionMode;
+  const canUseForm = isSupplierBatchChargeFormEditable(
+    charge,
+    canReadCosts,
+    isCorrectionMode ? canCorrectCosts : canEstimateCosts,
+    resolvedMode
+  );
   const lines = React.useMemo(() => detail.lines, [detail.lines]);
   const manualLines = React.useMemo(() => getSupplierBatchManualLines(lines), [lines]);
   const missingWeightCount = React.useMemo(() => getSupplierBatchMissingWeightCount(lines), [lines]);
-  const [form, setForm] = React.useState<SupplierBatchChargeFormValues>(() => createSupplierBatchChargeForm(charge, lines).form);
-  const [manualAmounts, setManualAmounts] = React.useState<Record<string, string>>(() => createSupplierBatchChargeForm(charge, lines).manualAmounts);
+  const [form, setForm] = React.useState<SupplierBatchChargeFormValues>(() => createSupplierBatchChargeForm(charge, lines, detail.batch).form);
+  const [manualAmounts, setManualAmounts] = React.useState<Record<string, string>>(() => createSupplierBatchChargeForm(charge, lines, detail.batch).manualAmounts);
   const [idempotencyKey, setIdempotencyKey] = React.useState("");
   const [previewState, setPreviewState] = React.useState<{
     result: SupplierBatchCostRpcPreviewResult;
@@ -1145,6 +2030,9 @@ export function SupplierBatchTransportCostDialog({
   const [pending, setPending] = React.useState<SupplierBatchPendingAction>(null);
   const [persistedKnownSuccess, setPersistedKnownSuccess] = React.useState<SupplierBatchMutationContext | null>(null);
   const [uncertainMutation, setUncertainMutation] = React.useState<SupplierBatchMutationContext | null>(null);
+  const [confirmDialogOpen, setConfirmDialogOpen] = React.useState(false);
+  const [closeGuardOpen, setCloseGuardOpen] = React.useState(false);
+  const [draftDirty, setDraftDirty] = React.useState(false);
   const previewAbortRef = React.useRef<AbortController | null>(null);
   const previewRequestIdRef = React.useRef(0);
   const mutationRequestIdRef = React.useRef(0);
@@ -1152,6 +2040,7 @@ export function SupplierBatchTransportCostDialog({
   const mutationAbortRef = React.useRef<AbortController | null>(null);
   const initialisedRef = React.useRef<string | null>(null);
   const openRef = React.useRef(open);
+  const confirmGateRef = React.useRef(false);
   const chargeId = charge?.chargeId ?? null;
   const manualSummary = React.useMemo(
     () => summarizeSupplierBatchManualAllocations(lines, manualAmounts, form.capitalizedAmount),
@@ -1167,7 +2056,7 @@ export function SupplierBatchTransportCostDialog({
 
   const reset = React.useCallback(() => {
     invalidatePreviewRequest();
-    setForm(createSupplierBatchChargeForm(null, []).form);
+    setForm(createSupplierBatchChargeForm(null, [], detail.batch).form);
     setManualAmounts({});
     setIdempotencyKey("");
     setPreviewState(null);
@@ -1176,7 +2065,11 @@ export function SupplierBatchTransportCostDialog({
     setPending(null);
     setPersistedKnownSuccess(null);
     setUncertainMutation(null);
-  }, [invalidatePreviewRequest]);
+    setConfirmDialogOpen(false);
+    setCloseGuardOpen(false);
+    setDraftDirty(false);
+    confirmGateRef.current = false;
+  }, [detail.batch, invalidatePreviewRequest]);
 
   React.useEffect(() => {
     if (!open) {
@@ -1198,6 +2091,7 @@ export function SupplierBatchTransportCostDialog({
     const initKey = [
       detail.batch.id,
       detail.batch.batchCode,
+      resolvedMode,
       chargeId ?? "create",
       charge?.status ?? "new",
       charge?.idempotencyKey ?? "draft",
@@ -1206,7 +2100,7 @@ export function SupplierBatchTransportCostDialog({
     if (initialisedRef.current === initKey) return;
     initialisedRef.current = initKey;
     invalidatePreviewRequest();
-    const next = createSupplierBatchChargeForm(charge, lines);
+    const next = createSupplierBatchChargeForm(charge, lines, detail.batch);
     const timeoutId = window.setTimeout(() => {
       if (!open || initialisedRef.current !== initKey) return;
       setForm(next.form);
@@ -1214,6 +2108,8 @@ export function SupplierBatchTransportCostDialog({
       setPreviewState(null);
       setFieldErrors({});
       setErrorCode(null);
+      setDraftDirty(false);
+      setConfirmDialogOpen(false);
       try {
         setIdempotencyKey(charge?.idempotencyKey ?? createSupplierBatchIdempotencyKey());
       } catch {
@@ -1222,7 +2118,7 @@ export function SupplierBatchTransportCostDialog({
       }
     }, 0);
     return () => window.clearTimeout(timeoutId);
-  }, [charge, chargeId, detail.batch.batchCode, detail.batch.id, invalidatePreviewRequest, lines, open, persistedKnownSuccess, reset, uncertainMutation]);
+  }, [charge, chargeId, detail.batch, detail.batch.batchCode, detail.batch.id, invalidatePreviewRequest, lines, open, persistedKnownSuccess, reset, resolvedMode, uncertainMutation]);
 
   React.useEffect(() => () => {
     invalidatePreviewRequest();
@@ -1238,6 +2134,33 @@ export function SupplierBatchTransportCostDialog({
 
   function updateField<K extends keyof SupplierBatchChargeFormValues>(field: K, value: SupplierBatchChargeFormValues[K]) {
     setForm((current) => ({ ...current, [field]: value }));
+    setDraftDirty(true);
+    previewRequestIdRef.current += 1;
+    setPreviewState(null);
+    setErrorCode(null);
+    setFieldErrors({});
+  }
+
+  function updateCurrency(value: string) {
+    const nextCurrency = normalizeSupplierBatchCurrency(value);
+    setForm((current) => ({
+      ...current,
+      currency: nextCurrency,
+      ...(nextCurrency === "EUR"
+        ? {
+            fxRateToEur: "1",
+            fxRateDate: supplierBatchCurrentDateTimeLocal().slice(0, 10),
+            fxRateSource: "EUR base",
+            fxEvidenceUrl: "",
+          }
+        : {
+            fxRateToEur: "",
+            fxRateDate: "",
+            fxRateSource: "",
+            fxEvidenceUrl: "",
+          }),
+    }));
+    setDraftDirty(true);
     previewRequestIdRef.current += 1;
     setPreviewState(null);
     setErrorCode(null);
@@ -1246,21 +2169,25 @@ export function SupplierBatchTransportCostDialog({
 
   function updateManualAmount(lineId: string, value: string) {
     setManualAmounts((current) => ({ ...current, [lineId]: value }));
+    setDraftDirty(true);
     previewRequestIdRef.current += 1;
     setPreviewState(null);
     setErrorCode(null);
     setFieldErrors({});
   }
 
-  function preparePayload(revision?: string) {
+  function preparePayload(revision?: string, includeCorrectionReason = false) {
     const built = buildSupplierBatchChargePayload(
       form,
       manualAmounts,
       lines,
-      charge ? "edit" : "create",
+      resolvedMode,
       idempotencyKey,
       revision,
-      chargeId ?? undefined
+      chargeId ?? undefined,
+      previewState?.result.payloadFingerprint,
+      includeCorrectionReason,
+      normalizeSupplierBatchCurrency(detail.batch.currency)
     );
     const nextFieldErrors = { ...built.fieldErrors };
     if (Object.keys(nextFieldErrors).length > 0 || !built.payload) {
@@ -1275,7 +2202,7 @@ export function SupplierBatchTransportCostDialog({
     payload: Record<string, unknown>,
     signal: AbortSignal
   ): Promise<SupplierBatchCostRpcPreviewResult> {
-    const endpoint = `/api/admin/supplier-batches/${encodeURIComponent(detail.batch.batchCode)}/charges/preview`;
+    const endpoint = `/api/admin/supplier-batches/${encodeURIComponent(detail.batch.batchCode)}/charges/preview${isCorrectionMode ? "?mode=correction" : ""}`;
     let response: Response;
     let body: unknown;
     try {
@@ -1312,7 +2239,9 @@ export function SupplierBatchTransportCostDialog({
   ): Promise<SupplierBatchMutationResponse> {
     const endpoint = action === "estimate"
       ? `/api/admin/supplier-batches/${encodeURIComponent(detail.batch.batchCode)}/charges/estimate`
-      : `/api/admin/supplier-batches/${encodeURIComponent(detail.batch.batchCode)}/charges/confirm`;
+      : action === "confirm"
+        ? `/api/admin/supplier-batches/${encodeURIComponent(detail.batch.batchCode)}/charges/confirm`
+        : `/api/admin/supplier-batches/${encodeURIComponent(detail.batch.batchCode)}/charges/correct`;
     let response: Response;
     let body: unknown;
     try {
@@ -1340,6 +2269,18 @@ export function SupplierBatchTransportCostDialog({
       } satisfies SupplierBatchCostApiError;
     }
     const data = isRecord(body) && "data" in body ? body.data : null;
+    if (action === "correct") {
+      // Corrections have a dedicated two-branch receipt.  Normalize it before
+      // any ordinary persisted-result adapter so a pending finance adjustment
+      // cannot be mistaken for a confirmed replacement or an unknown write.
+      const correctionData = isRecord(data) && data.outcome === "persisted_readback_required"
+        ? data.receipt
+        : data;
+      const correctionReceipt = normalizeSupplierBatchCorrectionReceipt(correctionData);
+      return correctionReceipt
+        ? { kind: "correction_receipt", receipt: correctionReceipt }
+        : { kind: "invalid_receipt" };
+    }
     // A successful write may return only a persistence receipt when the
     // server cannot safely expose its full mutation DTO. Recognise that
     // envelope before the full result normalizer; malformed receipts must
@@ -1390,17 +2331,28 @@ export function SupplierBatchTransportCostDialog({
       if (requestId !== mutationRequestIdRef.current) {
         throw { cause: new Error("Stale supplier batch readback."), timedOut: false } satisfies SupplierBatchReadbackFailure;
       }
+      const outcome = context.action === "correct"
+        ? context.correctionReceipt
+          ? classifySupplierBatchCorrectionReadback(nextDetail, context.correctionReceipt)
+          : classifySupplierBatchCorrectionReadbackByContext(
+              nextDetail,
+              detail.batch.batchCode,
+              context.chargeId ?? "",
+              context.idempotencyKey,
+              context.payloadFingerprint
+            )
+        : classifySupplierBatchMutationReadback(
+            nextDetail,
+            context.action === "confirm" ? "confirmed" : "estimated",
+            detail.batch.id,
+            detail.batch.batchCode,
+            context.idempotencyKey,
+            context.payloadFingerprint,
+            context.readbackChargeId ?? context.chargeId
+          );
       return {
         detail: nextDetail,
-        outcome: classifySupplierBatchMutationReadback(
-          nextDetail,
-          context.action === "confirm" ? "confirmed" : "estimated",
-          detail.batch.id,
-          detail.batch.batchCode,
-          context.idempotencyKey,
-          context.payloadFingerprint,
-          context.readbackChargeId ?? context.chargeId
-        ),
+        outcome,
       };
     } catch (cause) {
       if (isRecord(cause) && "timedOut" in cause && typeof cause.timedOut === "boolean") {
@@ -1433,7 +2385,7 @@ export function SupplierBatchTransportCostDialog({
       return;
     }
     const snapshotKey = supplierBatchChargeFormFingerprint(form, manualAmounts, chargeId, idempotencyKey);
-    const parsed = supplierBatchChargePreviewSchema.safeParse(payload);
+    const parsed = supplierBatchChargePreviewSchemaV2.safeParse(payload);
     if (!parsed.success) {
       setFieldErrors(mapSupplierBatchSchemaIssues(parsed.error.issues));
       setErrorCode("INVALID_REQUEST_BODY");
@@ -1467,7 +2419,7 @@ export function SupplierBatchTransportCostDialog({
     }
   }
 
-  async function runMutation(action: SupplierBatchMutationAction) {
+  async function runMutation(action: SupplierBatchMutationAction, bypassConfirmGate = false) {
     if (
       !canUseForm ||
       pending !== null ||
@@ -1475,6 +2427,15 @@ export function SupplierBatchTransportCostDialog({
       mutationActiveRef.current ||
       (uncertainMutation !== null && uncertainMutation.action !== action)
     ) {
+      return;
+    }
+
+    if (action === "confirm" && !canConfirmCosts) {
+      setErrorCode("ADMIN_FORBIDDEN");
+      return;
+    }
+    if (action === "correct" && !canCorrectCosts) {
+      setErrorCode("ADMIN_FORBIDDEN");
       return;
     }
 
@@ -1513,36 +2474,55 @@ export function SupplierBatchTransportCostDialog({
       setErrorCode("PREVIEW_REQUIRED");
       return;
     }
-    if (
-      action === "confirm" &&
-      !canConfirmSupplierBatchCharge(
-        true,
-        form.vatTreatment,
-        currentPreview.result.confirmationBlocked
-      )
-    ) {
+    const previewAllowsAction = action === "correct"
+      ? canCorrectSupplierBatchCharge(
+          true,
+          form.vatTreatment,
+          currentPreview.result.confirmationBlocked,
+          currentPreview.result.confirmationBlockCode
+        )
+      : action === "confirm"
+        ? canConfirmSupplierBatchCharge(
+            true,
+            form.vatTreatment,
+            currentPreview.result.confirmationBlocked
+          )
+        : true;
+    if ((action === "confirm" || action === "correct") && !previewAllowsAction) {
       setErrorCode(
         form.vatTreatment === "unknown"
           ? "CONFIRM_VAT_REQUIRED"
-          : "FINANCIAL_ADJUSTMENT_REQUIRED"
+          : currentPreview.result.confirmationBlockCode ?? "FINANCIAL_ADJUSTMENT_REQUIRED"
       );
       return;
     }
+
+    if ((action === "confirm" || action === "correct") && !bypassConfirmGate && !confirmGateRef.current) {
+      setConfirmDialogOpen(true);
+      return;
+    }
+    confirmGateRef.current = false;
 
     mutationActiveRef.current = true;
     setPending(action);
     setErrorCode(null);
     setFieldErrors({});
     setUncertainMutation(null);
-    const payload = preparePayload(action === "confirm" ? currentPreview.result.revision : undefined);
+    const finalMutation = action === "confirm" || action === "correct";
+    const payload = preparePayload(
+      finalMutation ? currentPreview.result.revision : undefined,
+      action === "correct"
+    );
     if (!payload) {
       mutationActiveRef.current = false;
       setPending(null);
       return;
     }
     const parsed = action === "confirm"
-      ? supplierBatchChargeConfirmSchema.safeParse(payload)
-      : supplierBatchChargeEstimateSchema.safeParse(payload);
+      ? supplierBatchChargeConfirmSchemaV2.safeParse(payload)
+      : action === "correct"
+        ? supplierBatchChargeCorrectSchemaV2.safeParse(payload)
+        : supplierBatchChargeEstimateSchemaV2.safeParse(payload);
     if (!parsed.success) {
       setFieldErrors(mapSupplierBatchSchemaIssues(parsed.error.issues));
       setErrorCode("INVALID_REQUEST_BODY");
@@ -1571,7 +2551,25 @@ export function SupplierBatchTransportCostDialog({
       }
 
       let persistedContext = mutationContext;
-      if (mutationResponse.kind === "receipt") {
+      if (mutationResponse.kind === "correction_receipt") {
+        if (!isSupplierBatchCorrectionReceiptForCurrent(
+          mutationResponse.receipt,
+          detail.batch.batchCode,
+          chargeId ?? "",
+          idempotencyKey,
+          currentPreview.result.payloadFingerprint,
+          currentPreview.result.revision
+        )) {
+          throw { code: "INVALID_RESPONSE", status: 200, unknownWrite: true } satisfies SupplierBatchCostApiError;
+        }
+        persistedContext = {
+          ...mutationContext,
+          correctionReceipt: mutationResponse.receipt,
+          ...(mutationResponse.receipt.replacementChargeId
+            ? { readbackChargeId: mutationResponse.receipt.replacementChargeId }
+            : {}),
+        };
+      } else if (mutationResponse.kind === "receipt") {
         if (!isSupplierBatchMutationReceiptForCurrent(
           mutationResponse.receipt,
           action,
@@ -1591,9 +2589,9 @@ export function SupplierBatchTransportCostDialog({
           ...mutationContext,
           readbackChargeId: mutationResponse.receipt.chargeId,
         };
-      } else if (!isSupplierBatchMutationResultForCurrent(
+      } else if (mutationResponse.kind === "result" && !isSupplierBatchMutationResultForCurrent(
         mutationResponse.result,
-        action === "confirm" ? "confirmed" : "estimated",
+        action === "confirm" || action === "correct" ? "confirmed" : "estimated",
         detail.batch.id,
         detail.batch.batchCode,
         idempotencyKey,
@@ -1612,7 +2610,7 @@ export function SupplierBatchTransportCostDialog({
         if (mutationAbortRef.current === controller) mutationAbortRef.current = null;
         const readback = await performMutationReadback(requestId, persistedContext);
         if (requestId !== mutationRequestIdRef.current) return;
-        if (readback.outcome === "matched") {
+        if (readback.outcome === "matched" || readback.outcome === "correction_pending") {
           mutationActiveRef.current = false;
           reset();
           if (openRef.current) onOpenChange(false);
@@ -1701,7 +2699,7 @@ export function SupplierBatchTransportCostDialog({
     try {
       const readback = await performMutationReadback(requestId, context);
       if (requestId !== mutationRequestIdRef.current) return;
-      if (readback.outcome === "matched") {
+      if (readback.outcome === "matched" || readback.outcome === "correction_pending") {
         mutationActiveRef.current = false;
         reset();
         if (openRef.current) onOpenChange(false);
@@ -1738,7 +2736,7 @@ export function SupplierBatchTransportCostDialog({
     try {
       const readback = await performMutationReadback(requestId, context);
       if (requestId !== mutationRequestIdRef.current) return;
-      if (readback.outcome === "matched") {
+      if (readback.outcome === "matched" || readback.outcome === "correction_pending") {
         mutationActiveRef.current = false;
         reset();
         if (openRef.current) onOpenChange(false);
@@ -1767,15 +2765,42 @@ export function SupplierBatchTransportCostDialog({
   }
 
   function handleOpenChange(nextOpen: boolean) {
-    const mutationPending = pending === "estimate" || pending === "confirm" || pending === "refresh";
+    const mutationPending = pending === "estimate" || pending === "confirm" || pending === "correct" || pending === "refresh";
     if (!nextOpen && (mutationActiveRef.current || mutationPending || persistedKnownSuccess !== null || uncertainMutation !== null)) {
       return;
     }
     if (!nextOpen) {
+      if (draftDirty) {
+        setCloseGuardOpen(true);
+        return;
+      }
       initialisedRef.current = null;
       reset();
     }
     onOpenChange(nextOpen);
+  }
+
+  function requestConfirm() {
+    if (!canConfirmCosts) {
+      setErrorCode("ADMIN_FORBIDDEN");
+      return;
+    }
+    void runMutation("confirm");
+  }
+
+  function requestCorrection() {
+    if (!canCorrectCosts) {
+      setErrorCode("ADMIN_FORBIDDEN");
+      return;
+    }
+    void runMutation("correct");
+  }
+
+  function discardDraftAndClose() {
+    setCloseGuardOpen(false);
+    initialisedRef.current = null;
+    reset();
+    onOpenChange(false);
   }
 
   const currentSnapshotKey = supplierBatchChargeFormFingerprint(
@@ -1794,6 +2819,7 @@ export function SupplierBatchTransportCostDialog({
     persistedKnownSuccess === null &&
     uncertainMutation === null;
   const canConfirm = canUseForm &&
+    canConfirmCosts &&
     pending === null &&
     persistedKnownSuccess === null &&
     uncertainMutation === null &&
@@ -1801,6 +2827,19 @@ export function SupplierBatchTransportCostDialog({
       previewCurrent,
       form.vatTreatment,
       previewState?.result.confirmationBlocked
+    );
+  const canCorrect = isCorrectionMode &&
+    canUseForm &&
+    canCorrectCosts &&
+    pending === null &&
+    persistedKnownSuccess === null &&
+    uncertainMutation === null &&
+    form.correctionReason.trim().length > 0 &&
+    canCorrectSupplierBatchCharge(
+      previewCurrent,
+      form.vatTreatment,
+      previewState?.result.confirmationBlocked,
+      previewState?.result.confirmationBlockCode
     );
 
   const grossCents = (() => {
@@ -1810,6 +2849,18 @@ export function SupplierBatchTransportCostDialog({
       ? amountNet.cents + vatAmount.cents
       : null;
   })();
+  const formCurrency = normalizeSupplierBatchCurrency(form.currency);
+  const batchCurrency = normalizeSupplierBatchCurrency(detail.batch.currency);
+  const batchGoodsFxSnapshotLocked = batchCurrency !== "EUR" && [
+    detail.batch.goodsValueEur,
+    detail.batch.goodsValueFxRateToEur,
+    detail.batch.goodsValueFxDate,
+    detail.batch.goodsValueFxSource,
+    detail.batch.goodsValueFxEvidenceUrl,
+  ].some((value) => value !== null && value !== undefined && value !== "");
+  const previewCurrency = normalizeSupplierBatchCurrency(
+    (previewState?.result as unknown as Record<string, unknown> | null)?.currency ?? formCurrency
+  );
   const errorMessage = errorCode === "NETWORK_ERROR"
     ? text.networkError
     : errorCode === "PREVIEW_TIMEOUT"
@@ -1847,11 +2898,12 @@ export function SupplierBatchTransportCostDialog({
   const actionDisabled = !canUseForm || pending !== null || persistedKnownSuccess !== null || uncertainMutation !== null;
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="flex max-h-[94dvh] w-[calc(100vw-1rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:w-[calc(100vw-2rem)]">
+    <>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent aria-modal={true} className="flex max-h-[94dvh] w-[calc(100vw-1rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:w-[calc(100vw-2rem)]">
         <DialogHeader className="border-b border-slate-200 px-4 py-4 sm:px-6">
-          <DialogTitle>{charge ? text.editTitle : text.title}</DialogTitle>
-          <DialogDescription>{text.description}</DialogDescription>
+          <DialogTitle>{isCorrectionMode ? text.correctionTitle : charge ? text.editTitle : text.title}</DialogTitle>
+          <DialogDescription>{isCorrectionMode ? text.correctionDescription : text.description}</DialogDescription>
         </DialogHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
@@ -1901,11 +2953,19 @@ export function SupplierBatchTransportCostDialog({
                     <SelectContent>{CHARGE_TYPES.map((value) => <SelectItem key={value} value={value}>{text.typeLabels[value]}</SelectItem>)}</SelectContent>
                   </Select>
                 </Field>
-                <Field id="amount-net" label={text.amountNet} error={fieldErrorText(fieldErrors.amountNet, text)}>
-                  <Input id="amount-net" inputMode="decimal" value={form.amountNet} onChange={(event) => updateField("amountNet", event.target.value)} aria-invalid={Boolean(fieldErrors.amountNet)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("amount-net", Boolean(fieldErrors.amountNet))} disabled={actionDisabled} />
+                <Field id="amount-net" label={text.amountNet} error={fieldErrorText(fieldErrors.amountNet, text)} description={text.amountHelp}>
+                  <Input id="amount-net" inputMode="decimal" value={form.amountNet} onChange={(event) => updateField("amountNet", event.target.value)} aria-invalid={Boolean(fieldErrors.amountNet)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("amount-net", Boolean(fieldErrors.amountNet), true)} disabled={actionDisabled} />
                 </Field>
-                <Field id="vat-amount" label={text.vatAmount} error={fieldErrorText(fieldErrors.vatAmount, text)}>
-                  <Input id="vat-amount" inputMode="decimal" value={form.vatAmount} onChange={(event) => updateField("vatAmount", event.target.value)} aria-invalid={Boolean(fieldErrors.vatAmount)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("vat-amount", Boolean(fieldErrors.vatAmount))} disabled={actionDisabled} />
+                <Field id="vat-amount" label={text.vatAmount} error={fieldErrorText(fieldErrors.vatAmount, text)} description={text.vatPresetHelp}>
+                  <Input id="vat-amount" inputMode="decimal" value={form.vatAmount} onChange={(event) => updateField("vatAmount", event.target.value)} aria-invalid={Boolean(fieldErrors.vatAmount)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("vat-amount", Boolean(fieldErrors.vatAmount), true)} disabled={actionDisabled} />
+                  <div className="flex flex-wrap gap-1" aria-label={text.vatPresets}>
+                    {[0, 10, 22].map((rate) => (
+                      <Button key={rate} type="button" size="xs" variant="ghost" className="h-6 px-1.5 text-[11px]" disabled={actionDisabled || parseSupplierBatchMoneyInput(form.amountNet).value === null} onClick={() => {
+                        const net = parseSupplierBatchMoneyInput(form.amountNet).value ?? 0;
+                        updateField("vatAmount", (net * rate / 100).toFixed(2));
+                      }}>{rate}%</Button>
+                    ))}
+                  </div>
                 </Field>
                 <Field id="gross" label={text.gross}>
                   <Input id="gross" value={grossCents === null ? "—" : formatCents(grossCents)} readOnly tabIndex={-1} />
@@ -1913,7 +2973,50 @@ export function SupplierBatchTransportCostDialog({
                 <Field id="capitalized-amount" label={text.capitalizedAmount} error={fieldErrorText(fieldErrors.capitalizedAmount, text)}>
                   <Input id="capitalized-amount" inputMode="decimal" value={form.capitalizedAmount} onChange={(event) => updateField("capitalizedAmount", event.target.value)} aria-invalid={Boolean(fieldErrors.capitalizedAmount)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("capitalized-amount", Boolean(fieldErrors.capitalizedAmount))} disabled={actionDisabled} />
                 </Field>
-                <Field id="currency" label={text.currency}><Input id="currency" value="EUR" readOnly tabIndex={-1} /></Field>
+                <Field id="currency" label={text.currency} description={text.currencyHelp}>
+                  <Select value={formCurrency} onValueChange={updateCurrency} disabled={actionDisabled}>
+                    <SelectTrigger id="currency" aria-label={text.currency}><SelectValue /></SelectTrigger>
+                    <SelectContent>{SUPPLIER_BATCH_CURRENCIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
+                  </Select>
+                </Field>
+                {formCurrency !== "EUR" ? (
+                  <>
+                    <Field id="fx-rate-to-eur" label={text.fxRateToEur} error={fieldErrorText(fieldErrors.fxRateToEur, text)} description={text.fxRateHelp}>
+                      <Input id="fx-rate-to-eur" inputMode="decimal" value={form.fxRateToEur} onChange={(event) => updateField("fxRateToEur", event.target.value)} aria-invalid={Boolean(fieldErrors.fxRateToEur)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("fx-rate-to-eur", Boolean(fieldErrors.fxRateToEur), true)} disabled={actionDisabled} />
+                    </Field>
+                    <Field id="fx-rate-date" label={text.fxRateDate} error={fieldErrorText(fieldErrors.fxRateDate, text)}>
+                      <Input id="fx-rate-date" type="date" value={form.fxRateDate} onChange={(event) => updateField("fxRateDate", event.target.value)} aria-invalid={Boolean(fieldErrors.fxRateDate)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("fx-rate-date", Boolean(fieldErrors.fxRateDate))} disabled={actionDisabled} />
+                    </Field>
+                    <Field id="fx-rate-source" label={text.fxRateSource} error={fieldErrorText(fieldErrors.fxRateSource, text)}>
+                      <Input id="fx-rate-source" value={form.fxRateSource} onChange={(event) => updateField("fxRateSource", event.target.value)} aria-invalid={Boolean(fieldErrors.fxRateSource)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("fx-rate-source", Boolean(fieldErrors.fxRateSource))} disabled={actionDisabled} />
+                    </Field>
+                    <Field id="fx-evidence-url" label={text.fxEvidenceUrl} error={fieldErrorText(fieldErrors.fxEvidenceUrl, text)} description={text.fxEvidenceHelp}>
+                      <Input id="fx-evidence-url" type="url" value={form.fxEvidenceUrl} onChange={(event) => updateField("fxEvidenceUrl", event.target.value)} aria-invalid={Boolean(fieldErrors.fxEvidenceUrl)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("fx-evidence-url", Boolean(fieldErrors.fxEvidenceUrl), true)} disabled={actionDisabled} />
+                    </Field>
+                  </>
+                ) : null}
+                {normalizeSupplierBatchCurrency(detail.batch.currency) !== "EUR" ? (
+                  <section className="col-span-full rounded-lg border border-indigo-200 bg-indigo-50/60 p-3" aria-label={text.goodsFxSnapshot}>
+                    <div className="mb-2">
+                      <h3 className="text-sm font-bold text-slate-950">{text.goodsFxSnapshot}</h3>
+                      <p className="mt-1 text-xs text-slate-600">{batchGoodsFxSnapshotLocked ? text.goodsFxLocked : text.goodsFxRequired}</p>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      <Field id="batch-goods-fx-rate-to-eur" label={text.goodsFxRateToEur} error={fieldErrorText(fieldErrors.batchGoodsValueFxRateToEur, text)}>
+                        <Input id="batch-goods-fx-rate-to-eur" inputMode="decimal" value={form.batchGoodsValueFxRateToEur} onChange={(event) => updateField("batchGoodsValueFxRateToEur", event.target.value)} aria-invalid={Boolean(fieldErrors.batchGoodsValueFxRateToEur)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("batch-goods-fx-rate-to-eur", Boolean(fieldErrors.batchGoodsValueFxRateToEur))} disabled={actionDisabled || batchGoodsFxSnapshotLocked} />
+                      </Field>
+                      <Field id="batch-goods-fx-date" label={text.goodsFxDate} error={fieldErrorText(fieldErrors.batchGoodsValueFxDate, text)}>
+                        <Input id="batch-goods-fx-date" type="date" value={form.batchGoodsValueFxDate} onChange={(event) => updateField("batchGoodsValueFxDate", event.target.value)} aria-invalid={Boolean(fieldErrors.batchGoodsValueFxDate)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("batch-goods-fx-date", Boolean(fieldErrors.batchGoodsValueFxDate))} disabled={actionDisabled || batchGoodsFxSnapshotLocked} />
+                      </Field>
+                      <Field id="batch-goods-fx-source" label={text.goodsFxSource} error={fieldErrorText(fieldErrors.batchGoodsValueFxSource, text)}>
+                        <Input id="batch-goods-fx-source" value={form.batchGoodsValueFxSource} onChange={(event) => updateField("batchGoodsValueFxSource", event.target.value)} aria-invalid={Boolean(fieldErrors.batchGoodsValueFxSource)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("batch-goods-fx-source", Boolean(fieldErrors.batchGoodsValueFxSource))} disabled={actionDisabled || batchGoodsFxSnapshotLocked} />
+                      </Field>
+                      <Field id="batch-goods-fx-evidence-url" label={text.goodsFxEvidenceUrl} error={fieldErrorText(fieldErrors.batchGoodsValueFxEvidenceUrl, text)} description={text.fxEvidenceHelp}>
+                        <Input id="batch-goods-fx-evidence-url" type="url" value={form.batchGoodsValueFxEvidenceUrl} onChange={(event) => updateField("batchGoodsValueFxEvidenceUrl", event.target.value)} aria-invalid={Boolean(fieldErrors.batchGoodsValueFxEvidenceUrl)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("batch-goods-fx-evidence-url", Boolean(fieldErrors.batchGoodsValueFxEvidenceUrl), true)} disabled={actionDisabled || batchGoodsFxSnapshotLocked} />
+                      </Field>
+                    </div>
+                  </section>
+                ) : null}
                 <Field id="vat-treatment" label={text.vatTreatment} error={fieldErrorText(fieldErrors.vatTreatment, text)}>
                   <Select value={form.vatTreatment} onValueChange={(value) => updateField("vatTreatment", value as SupplierBatchVatTreatment)} disabled={actionDisabled}>
                     <SelectTrigger id="vat-treatment" aria-label={text.vatTreatment} aria-invalid={Boolean(fieldErrors.vatTreatment)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("vat-treatment", Boolean(fieldErrors.vatTreatment))}><SelectValue /></SelectTrigger>
@@ -1928,9 +3031,24 @@ export function SupplierBatchTransportCostDialog({
                 </Field>
                 <Field id="carrier-name" label={text.carrierName} error={fieldErrorText(fieldErrors.carrierName, text)}><Input id="carrier-name" value={form.carrierName} onChange={(event) => updateField("carrierName", event.target.value)} aria-invalid={Boolean(fieldErrors.carrierName)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("carrier-name", Boolean(fieldErrors.carrierName))} disabled={actionDisabled} /></Field>
                 <Field id="reference" label={text.reference} error={fieldErrorText(fieldErrors.reference, text)}><Input id="reference" value={form.reference} onChange={(event) => updateField("reference", event.target.value)} aria-invalid={Boolean(fieldErrors.reference)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("reference", Boolean(fieldErrors.reference))} disabled={actionDisabled} /></Field>
-                <Field id="occurred-at" label={text.occurredAt} error={fieldErrorText(fieldErrors.occurredAt, text)}><Input id="occurred-at" type="datetime-local" value={form.occurredAt} onChange={(event) => updateField("occurredAt", event.target.value)} aria-invalid={Boolean(fieldErrors.occurredAt)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("occurred-at", Boolean(fieldErrors.occurredAt))} disabled={actionDisabled} /></Field>
+                <Field id="occurred-at" label={text.occurredAt} error={fieldErrorText(fieldErrors.occurredAt, text)} description={text.timezone}><Input id="occurred-at" type="datetime-local" value={form.occurredAt} onChange={(event) => updateField("occurredAt", event.target.value)} aria-invalid={Boolean(fieldErrors.occurredAt)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("occurred-at", Boolean(fieldErrors.occurredAt), true)} disabled={actionDisabled} /></Field>
                 <Field id="evidence-url" label={text.evidenceUrl} error={fieldErrorText(fieldErrors.evidenceUrl, text)}><Input id="evidence-url" type="url" value={form.evidenceUrl} onChange={(event) => updateField("evidenceUrl", event.target.value)} aria-invalid={Boolean(fieldErrors.evidenceUrl)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("evidence-url", Boolean(fieldErrors.evidenceUrl))} disabled={actionDisabled} /></Field>
               </div>
+
+              {isCorrectionMode ? (
+                <section className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <Field id="correction-reason" label={text.correctionReason} error={fieldErrorText(fieldErrors.correctionReason, text)} description={text.correctionReasonHelp}>
+                    <Textarea
+                      id="correction-reason"
+                      value={form.correctionReason}
+                      onChange={(event) => updateField("correctionReason", event.target.value)}
+                      aria-invalid={Boolean(fieldErrors.correctionReason)}
+                      aria-describedby={buildSupplierBatchFieldAriaDescribedBy("correction-reason", Boolean(fieldErrors.correctionReason), true)}
+                      disabled={actionDisabled}
+                    />
+                  </Field>
+                </section>
+              ) : null}
 
               <div className="mt-3 grid gap-3 md:grid-cols-2">
                 <Field id="zero-cost-reason" label={text.zeroCostReason} error={fieldErrorText(fieldErrors.zeroCostReason, text)} description={text.zeroCostHelp}>
@@ -1990,20 +3108,48 @@ export function SupplierBatchTransportCostDialog({
                     {previewState.result.confirmationBlocked ? <Badge className="border border-amber-200 bg-amber-50 text-amber-700">{text.review}</Badge> : null}
                   </div>
                   {review ? <p className="mt-2 text-xs font-semibold text-amber-800">{review}</p> : null}
+                  {isCorrectionMode &&
+                  (previewState.result.confirmationBlockCode === "FINANCIAL_ADJUSTMENT_REQUIRED" ||
+                    previewState.result.confirmationBlockCode === "FINANCE_ADJUSTMENT_REQUIRED") ? (
+                    <p className="mt-2 text-xs font-semibold text-amber-800">{text.correctionPending}</p>
+                  ) : null}
                   {form.vatTreatment === "unknown" ? <p className="mt-2 text-xs font-semibold text-amber-800">{text.confirmVatRequired}</p> : null}
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label={text.previewSummary}>
+                    {isCorrectionMode && previewState.result.correctionTotals ? (
+                      <>
+                        <PreviewMetric label={text.correctionOtherTotal} value={formatCorrectionPreviewEurCents(previewState.result.correctionTotals.otherEffectiveCostEurCents, language)} />
+                        <PreviewMetric label={text.correctionBeforeTotal} value={formatCorrectionPreviewEurCents(previewState.result.correctionTotals.beforeTotalEurCents, language)} />
+                        <PreviewMetric label={text.correctionReplacement} value={formatCorrectionPreviewEurCents(previewState.result.correctionTotals.replacementChargeEurCents, language)} />
+                        <PreviewMetric label={text.correctionAfterTotal} value={formatCorrectionPreviewEurCents(previewState.result.correctionTotals.afterTotalEurCents, language)} />
+                        <PreviewMetric label={text.correctionCostDelta} value={formatCorrectionPreviewEurCents(previewState.result.correctionTotals.costDeltaEurCents, language)} />
+                        <PreviewMetric label={text.rounding} value={formatPreviewAmount(previewState.result, previewCents(previewState.result, ["roundingAdjustmentCents", "rounding_adjustment_cents"], ["roundingAdjustment"]), previewBaseCents(previewState.result, ["roundingAdjustmentBaseCents"]), language)} />
+                      </>
+                    ) : (
+                      <>
+                        <PreviewMetric label={text.capitalized} value={formatPreviewAmount(previewState.result, previewCents(previewState.result, ["capitalizedAmountCents", "capitalized_amount_cents"], ["capitalizedAmount"]), previewBaseCents(previewState.result, ["baseCapitalizedAmountCents", "capitalizedAmountBaseCents"]), language)} />
+                        <PreviewMetric label={text.candidateTotal} value={formatPreviewAmount(previewState.result, previewCents(previewState.result, ["candidateAllocationTotalCents", "candidate_allocation_total_cents"], ["candidateAllocationTotal"]), previewBaseCents(previewState.result, ["candidateAllocationTotalBaseCents", "baseCandidateAllocationTotalCents"]), language)} />
+                        <PreviewMetric label={text.currentConfirmed} value={formatPreviewAmount(previewState.result, previewCents(previewState.result, ["confirmedAllocationTotalCents", "confirmed_allocation_total_cents"], ["confirmedAllocationTotal"]), previewBaseCents(previewState.result, ["baseConfirmedAllocationTotalCents"]), language)} />
+                        <PreviewMetric label={text.projectedTotal} value={formatPreviewAmount(previewState.result, previewCents(previewState.result, ["allocationTotalCents", "allocation_total_cents"], ["allocationTotal"]), previewBaseCents(previewState.result, ["allocationTotalBaseCents", "baseAllocationTotalCents"]), language)} />
+                        <PreviewMetric label={text.difference} value={formatPreviewAmount(previewState.result, previewCents(previewState.result, ["candidateAllocationDifferenceCents", "candidate_allocation_difference_cents"], ["candidateAllocationDifference"]), previewBaseCents(previewState.result, ["candidateAllocationDifferenceBaseCents"]), language)} />
+                        <PreviewMetric label={text.rounding} value={formatPreviewAmount(previewState.result, previewCents(previewState.result, ["roundingAdjustmentCents", "rounding_adjustment_cents"], ["roundingAdjustment"]), previewBaseCents(previewState.result, ["roundingAdjustmentBaseCents"]), language)} />
+                      </>
+                    )}
+                    <PreviewMetric label={text.validRows} value={String(previewState.result.lineProjections.length)} />
+                    <PreviewMetric label={text.missingRows} value={String(missingWeightCount)} />
+                  </div>
                   <div className="mt-3 overflow-x-auto">
                     <Table className="min-w-[950px] text-xs">
-                      <TableHeader><TableRow><TableHead>{text.line}</TableHead><TableHead>{text.sku}</TableHead><TableHead>{text.currentAllocation}</TableHead><TableHead>{text.candidateAllocation}</TableHead><TableHead>{text.currentLandedLine}</TableHead><TableHead>{text.projectedLandedLine}</TableHead><TableHead>{text.currentLandedUnit}</TableHead><TableHead>{text.projectedLandedUnit}</TableHead></TableRow></TableHeader>
+                      <TableHeader><TableRow><TableHead>{text.line}</TableHead><TableHead>{text.sku}</TableHead><TableHead>{isCorrectionMode ? text.correctionCurrentAllocation : text.currentAllocation}</TableHead><TableHead>{isCorrectionMode ? text.correctionCandidateAllocation : text.candidateAllocation}</TableHead><TableHead>{isCorrectionMode ? text.correctionCurrentLandedLine : text.currentLandedLine}</TableHead><TableHead>{isCorrectionMode ? text.correctionProjectedLandedLine : text.projectedLandedLine}</TableHead><TableHead>{isCorrectionMode ? text.correctionCurrentLandedUnit : text.currentLandedUnit}</TableHead><TableHead>{isCorrectionMode ? text.correctionProjectedLandedUnit : text.projectedLandedUnit}</TableHead></TableRow></TableHeader>
                       <TableBody>{previewState.result.lineProjections.map((line) => (
                         <TableRow key={line.batchLineId}>
                           <TableCell className="font-mono">{line.lineNo}</TableCell>
                           <TableCell className="font-mono">{line.skuCode ?? "—"}</TableCell>
-                          <TableCell>{formatCents(line.currentAllocationCents)}</TableCell>
-                          <TableCell>{formatCents(line.candidateAllocationCents)}</TableCell>
-                          <TableCell>{formatCents(line.currentLandedLineCostCents)}</TableCell>
-                          <TableCell>{formatCents(line.projectedLandedLineCostCents)}</TableCell>
-                          <TableCell>{formatSupplierBatchUnitCost(line.currentLandedUnitCost, language)}</TableCell>
-                          <TableCell>{formatSupplierBatchUnitCost(line.projectedLandedUnitCost, language)}</TableCell>
+                          <TableCell>{isCorrectionMode ? formatCorrectionPreviewLineCents(line, "currentAllocationEurCents", language) : formatPreviewLineCents(previewState.result, line, line.currentAllocationCents, line.currentAllocationEurCents, language)}</TableCell>
+                          <TableCell>{isCorrectionMode ? formatCorrectionPreviewLineCents(line, "candidateAllocationEurCents", language) : formatPreviewLineCents(previewState.result, line, line.candidateAllocationCents, line.candidateAllocationEurCents, language)}</TableCell>
+                          <TableCell>{isCorrectionMode ? formatCorrectionPreviewLineCents(line, "currentLandedLineCostEurCents", language) : formatPreviewLineCents(previewState.result, line, line.currentLandedLineCostCents, line.currentLandedLineCostEurCents, language)}</TableCell>
+                          <TableCell>{isCorrectionMode ? formatCorrectionPreviewLineCents(line, "projectedLandedLineCostEurCents", language) : formatPreviewLineCents(previewState.result, line, line.projectedLandedLineCostCents, line.projectedLandedLineCostEurCents, language)}</TableCell>
+                          <TableCell>{isCorrectionMode ? formatCorrectionPreviewLineUnit(line, "currentLandedUnitCostEur", language) : formatPreviewLineUnit(line, line.currentLandedUnitCost, line.currentLandedUnitCostEur, language, previewCurrency)}</TableCell>
+                          <TableCell>{isCorrectionMode ? formatCorrectionPreviewLineUnit(line, "projectedLandedUnitCostEur", language) : formatPreviewLineUnit(line, line.projectedLandedUnitCost, line.projectedLandedUnitCostEur, language, previewCurrency)}</TableCell>
                         </TableRow>
                       ))}</TableBody>
                     </Table>
@@ -2019,7 +3165,7 @@ export function SupplierBatchTransportCostDialog({
           <Button
             variant="outline"
             onClick={() => handleOpenChange(false)}
-            disabled={pending === "estimate" || pending === "confirm" || pending === "refresh" || persistedKnownSuccess !== null || uncertainMutation !== null}
+            disabled={pending === "estimate" || pending === "confirm" || pending === "correct" || pending === "refresh" || persistedKnownSuccess !== null || uncertainMutation !== null}
           >
             {dualPermission ? text.cancel : text.close}
           </Button>
@@ -2031,21 +3177,82 @@ export function SupplierBatchTransportCostDialog({
               </Button>
               {previewState ? (
                 <>
-                  <Button variant="outline" onClick={() => void runMutation("estimate")} disabled={!canSaveEstimate}>
-                    {pending === "estimate" ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-                    {text.saveEstimate}
-                  </Button>
-                  <Button variant="destructive" onClick={() => void runMutation("confirm")} disabled={!canConfirm}>
-                    {pending === "confirm" ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-                    {text.confirm}
-                  </Button>
+                  {isCorrectionMode ? (
+                    <Button variant="destructive" onClick={requestCorrection} disabled={!canCorrect}>
+                      {pending === "correct" ? <Loader2 className="size-4 animate-spin" /> : <ShieldAlert className="size-4" />}
+                      {text.correctionProceed}
+                    </Button>
+                  ) : (
+                    <>
+                      <Button variant="outline" onClick={() => void runMutation("estimate")} disabled={!canSaveEstimate}>
+                        {pending === "estimate" ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+                        {text.saveEstimate}
+                      </Button>
+                      <Button variant="destructive" onClick={requestConfirm} disabled={!canConfirm}>
+                        {pending === "confirm" ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                        {text.confirm}
+                      </Button>
+                    </>
+                  )}
                 </>
               ) : null}
             </>
           ) : null}
         </DialogFooter>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+      <Dialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
+      <DialogContent aria-modal={true} className="w-[calc(100vw-1rem)] max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{isCorrectionMode ? text.correctionTitle : text.confirmSummaryTitle}</DialogTitle>
+          <DialogDescription>{isCorrectionMode ? text.correctionDescription : text.confirmSummaryDescription}</DialogDescription>
+        </DialogHeader>
+        {previewState ? (
+          <div className="grid gap-2 sm:grid-cols-2" aria-label={text.previewSummary}>
+            {isCorrectionMode && previewState.result.correctionTotals ? (
+              <>
+                <PreviewMetric label={text.correctionBeforeTotal} value={formatCorrectionPreviewEurCents(previewState.result.correctionTotals.beforeTotalEurCents, language)} />
+                <PreviewMetric label={text.correctionReplacement} value={formatCorrectionPreviewEurCents(previewState.result.correctionTotals.replacementChargeEurCents, language)} />
+                <PreviewMetric label={text.correctionAfterTotal} value={formatCorrectionPreviewEurCents(previewState.result.correctionTotals.afterTotalEurCents, language)} />
+                <PreviewMetric label={text.correctionCostDelta} value={formatCorrectionPreviewEurCents(previewState.result.correctionTotals.costDeltaEurCents, language)} />
+                <PreviewMetric label={text.rounding} value={formatPreviewAmount(previewState.result, previewCents(previewState.result, ["roundingAdjustmentCents"], ["roundingAdjustment"]), previewBaseCents(previewState.result, ["baseRoundingAdjustmentCents"]), language)} />
+              </>
+            ) : (
+              <>
+                <PreviewMetric label={text.capitalized} value={formatPreviewAmount(previewState.result, previewCents(previewState.result, ["capitalizedAmountCents"], ["capitalizedAmount"]), previewBaseCents(previewState.result, ["baseCapitalizedAmountCents"]), language)} />
+                <PreviewMetric label={text.candidateTotal} value={formatPreviewAmount(previewState.result, previewCents(previewState.result, ["candidateAllocationTotalCents"], ["candidateAllocationTotal"]), previewBaseCents(previewState.result, ["candidateAllocationTotalBaseCents"]), language)} />
+                <PreviewMetric label={text.difference} value={formatPreviewAmount(previewState.result, previewCents(previewState.result, ["candidateAllocationDifferenceCents"], ["candidateAllocationDifference"]), previewBaseCents(previewState.result, ["candidateAllocationDifferenceBaseCents"]), language)} />
+                <PreviewMetric label={text.projectedTotal} value={formatPreviewAmount(previewState.result, previewCents(previewState.result, ["allocationTotalCents"], ["allocationTotal"]), previewBaseCents(previewState.result, ["allocationTotalBaseCents"]), language)} />
+              </>
+            )}
+          </div>
+        ) : null}
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setConfirmDialogOpen(false)}>{text.confirmBack}</Button>
+          <Button type="button" variant="destructive" disabled={(isCorrectionMode ? !canCorrect : !canConfirm) || pending !== null} onClick={() => {
+            confirmGateRef.current = true;
+            setConfirmDialogOpen(false);
+            void runMutation(isCorrectionMode ? "correct" : "confirm", true);
+          }}>
+            {pending === "confirm" || pending === "correct" ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+            {isCorrectionMode ? text.correctionProceed : text.confirmProceed}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+      </Dialog>
+      <Dialog open={closeGuardOpen} onOpenChange={setCloseGuardOpen}>
+      <DialogContent aria-modal={true} className="w-[calc(100vw-1rem)] max-w-md">
+        <DialogHeader>
+          <DialogTitle>{text.draftGuardTitle}</DialogTitle>
+          <DialogDescription>{text.draftGuardDescription}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setCloseGuardOpen(false)}>{text.draftGuardKeep}</Button>
+          <Button type="button" variant="destructive" onClick={discardDraftAndClose}>{text.draftGuardDiscard}</Button>
+        </DialogFooter>
+      </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -2068,6 +3275,15 @@ function Field({
       {children}
       {description ? <p id={id ? `${id}-description` : undefined} className="text-[11px] text-slate-500">{description}</p> : null}
       {error ? <p id={id ? `${id}-error` : undefined} className="text-[11px] font-semibold text-red-700" role="alert">{error}</p> : null}
+    </div>
+  );
+}
+
+function PreviewMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-md border border-blue-100 bg-white/80 p-2">
+      <div className="text-[11px] font-semibold text-slate-500">{label}</div>
+      <div className="mt-1 text-sm font-black text-slate-950">{value}</div>
     </div>
   );
 }
