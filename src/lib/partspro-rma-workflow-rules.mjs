@@ -369,9 +369,14 @@ function deriveWorkflowQueue(state, safetyIssue) {
 
   // These are the first safe queues for historical records that have already
   // moved beyond receipt but lack the evidence needed for QC.
+  const hasCompleteReceipt =
+    Boolean(state.receivedAt) &&
+    state.receivedQuantity !== null &&
+    state.receivedQuantity === state.quantity;
   if (
+    hasCompleteReceipt &&
     (state.status === "received" || commercialTerminalStatuses.has(state.status)) &&
-    (safetyIssue === "missing_qc_status" || safetyIssue === "waiting_qc")
+    (!state.hasQcStatus || state.qcStatus === "pending")
   ) {
     return "qc";
   }
@@ -433,14 +438,18 @@ function detectWorkflowSafetyIssue(state) {
   }
 
   if (state.status === "received") {
-    if (!state.hasQcStatus) return "missing_qc_status";
-    if (state.qcStatus === "pending" || completedQcStatuses.has(state.qcStatus)) return null;
+    // `record_qc` is also the controlled repair for historical rows whose
+    // QC column is null. Treat null as pending only after the dual-axis
+    // receipt checks above have passed.
+    if (!state.hasQcStatus || state.qcStatus === "pending" || completedQcStatuses.has(state.qcStatus)) return null;
     return "invalid_state";
   }
 
   if (commercialTerminalStatuses.has(state.status)) {
-    if (!state.hasQcStatus) return "missing_qc_status";
-    if (state.qcStatus === "pending") return "waiting_qc";
+    // Legacy refunded/replacement rows may have a pending/null QC axis. They
+    // remain eligible for the QC-only repair; commercial validation resumes
+    // after QC is recorded and never changes the commercial outcome here.
+    if (!state.hasQcStatus || state.qcStatus === "pending") return null;
     if (!completedQcStatuses.has(state.qcStatus)) return "invalid_state";
 
     if (state.status === "refunded") {
@@ -520,7 +529,7 @@ function isWorkflowActionAvailable(action, state, queue) {
     case "record_qc":
       return (
         queue === "qc" &&
-        state.qcStatus === "pending" &&
+        (!state.hasQcStatus || state.qcStatus === "pending") &&
         (capabilities.manage || capabilities.inventory) &&
         sharedActionGuard(action, state)
       );

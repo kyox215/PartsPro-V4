@@ -69,13 +69,14 @@ export function isRmaActionAvailable(input) {
 
   if (action === "mark_received") return status === "approved";
   if (action === "record_qc") {
-    return status === "received" && receivedComplete && qcStatus === "pending";
+    return (
+      ["received", "refunded", "replacement_sent", "replaced"].includes(status) &&
+      receivedComplete &&
+      Boolean(receivedAt) &&
+      qcStatus === "pending"
+    );
   }
 
-  const hasReceived =
-    Boolean(receivedAt) ||
-    (Number.isInteger(receivedQuantity) && receivedQuantity > 0) ||
-    ["received", "refunded", "replacement_sent"].includes(status);
   const received = receivedComplete && Boolean(receivedAt);
   const inspectionComplete =
     received && ["passed", "failed", "not_required"].includes(qcStatus ?? "");
@@ -84,7 +85,8 @@ export function isRmaActionAvailable(input) {
     return (
       status === "received" &&
       inspectionComplete &&
-      resolutionAction !== "replacement" &&
+      ["refund", "wallet_credit", "credit_note"].includes(requestedResolution) &&
+      (resolutionAction === null || resolutionAction === "refund_wallet") &&
       isCommercialOutcomeAvailable({
         action,
         resolutionAction,
@@ -99,6 +101,7 @@ export function isRmaActionAvailable(input) {
     return (
       status === "received" &&
       inspectionComplete &&
+      requestedResolution === "replacement" &&
       resolutionAction !== "refund_wallet" &&
       isCommercialOutcomeAvailable({
         action,
@@ -112,7 +115,7 @@ export function isRmaActionAvailable(input) {
 
   if (["restock_return", "mark_scrapped", "supplier_return"].includes(action)) {
     return (
-      ["received", "refunded", "replacement_sent"].includes(status) &&
+      ["received", "refunded", "replacement_sent", "replaced"].includes(status) &&
       receivedComplete &&
       inspectionComplete &&
       inventoryDisposition === "quarantine"
@@ -121,7 +124,11 @@ export function isRmaActionAvailable(input) {
 
   if (action === "close") {
     if (status === "closed") return true;
-    if (status === "rejected" && !hasReceived) return true;
+    if (
+      status === "rejected" &&
+      !receivedAt &&
+      (!Number.isInteger(receivedQuantity) || receivedQuantity === 0)
+    ) return true;
 
     const refundComplete =
       status === "refunded" &&
@@ -130,7 +137,7 @@ export function isRmaActionAvailable(input) {
       replacementOrderId === null &&
       walletRequestStatus === "approved";
     const replacementComplete =
-      status === "replacement_sent" &&
+      ["replacement_sent", "replaced"].includes(status) &&
       resolutionAction === "replacement" &&
       resolutionComplete &&
       Boolean(replacementOrderId) &&
@@ -153,8 +160,9 @@ export function isRmaActionAvailable(input) {
 }
 
 /**
- * A single RMA can settle commercially only once. A pending wallet request is
- * already a reservation and therefore blocks a replacement race as well.
+ * A single RMA can settle commercially only once. A pending/approved wallet
+ * request is already a reservation and blocks a replacement race; a rejected
+ * wallet attempt is retained for audit but may be retried with a new key.
  *
  * @param {{action:string,resolutionAction?:string|null,walletRequestStatus?:string|null,replacementOrderId?:string|null,status:string}} input
  */
@@ -165,11 +173,31 @@ export function isCommercialOutcomeAvailable({
   replacementOrderId = null,
   status,
 }) {
-  const hasWalletOutcome = Boolean(walletRequestStatus) || resolutionAction === "refund_wallet" || status === "refunded";
-  const hasReplacementOutcome = Boolean(replacementOrderId) || resolutionAction === "replacement" || status === "replacement_sent";
+  const hasActiveWalletRequest = ["pending", "approved"].includes(walletRequestStatus ?? "");
+  const hasWalletOutcome =
+    hasActiveWalletRequest ||
+    (resolutionAction === "refund_wallet" && walletRequestStatus !== "rejected") ||
+    status === "refunded";
+  const hasReplacementOutcome =
+    Boolean(replacementOrderId) ||
+    resolutionAction === "replacement" ||
+    ["replacement_sent", "replaced"].includes(status);
 
-  if (action === "request_wallet_refund") return !hasReplacementOutcome && !hasWalletOutcome;
-  if (action === "mark_replacement_sent") return !hasReplacementOutcome && !hasWalletOutcome;
+  if (action === "request_wallet_refund") {
+    return (
+      !hasReplacementOutcome &&
+      !hasWalletOutcome &&
+      (walletRequestStatus === null || walletRequestStatus === "rejected") &&
+      (resolutionAction === null ||
+        (resolutionAction === "refund_wallet" && walletRequestStatus === "rejected"))
+    );
+  }
+  // A rejected wallet attempt remains a commercial decision for this RMA.
+  // V1 recovery may retry the same wallet action with a new key, but it must
+  // never silently switch that RMA to a replacement outcome.
+  if (action === "mark_replacement_sent") {
+    return !hasReplacementOutcome && !hasWalletOutcome && walletRequestStatus === null;
+  }
   return true;
 }
 

@@ -201,6 +201,23 @@ test("wallet pending blocks both commercial outcomes and never recommends one", 
   assert.equal(result.blockedReason, "waiting_wallet_approval");
 });
 
+test("a rejected wallet attempt returns to resolution and can be retried", () => {
+  const result = projectAdminRmaWorkflow(
+    {
+      ...received,
+      requestedResolution: "wallet_credit",
+      resolutionAction: "refund_wallet",
+      walletRequestStatus: "rejected",
+    },
+    refund
+  );
+
+  assert.equal(result.workflowQueue, "resolution");
+  assert.deepEqual(result.availableActions, ["request_wallet_refund"]);
+  assert.equal(result.recommendedAction, "request_wallet_refund");
+  assert.equal(result.blockedReason, null);
+});
+
 test("inventory_close offers the three quarantine dispositions with separate permissions", () => {
   const quarantine = { ...refunded, inventoryDisposition: "quarantine" };
   const inventoryResult = projectAdminRmaWorkflow(quarantine, inventory);
@@ -257,6 +274,35 @@ test("replacement_sent is also an inventory_close commercial terminal", () => {
   assert.equal(result.workflowQueue, "inventory_close");
   assert.deepEqual(result.availableActions, ["mark_scrapped", "supplier_return"]);
   assert.equal(result.recommendedAction, "choose_inventory_disposition");
+});
+
+test("legacy replaced is the same replacement terminal for QC repair and close", () => {
+  const legacyReplaced = {
+    ...received,
+    status: "replaced",
+    qcStatus: "pending",
+    resolutionQuantity: 2,
+    resolutionAction: "replacement",
+    replacementOrderId: "replacement-order-1",
+  };
+  const pendingQc = projectAdminRmaWorkflow(
+    legacyReplaced,
+    inventory
+  );
+  assert.equal(pendingQc.workflowQueue, "qc");
+  assert.deepEqual(pendingQc.availableActions, ["record_qc"]);
+
+  const settled = projectAdminRmaWorkflow(
+    {
+      ...legacyReplaced,
+      qcStatus: "passed",
+      inventoryDisposition: "restock",
+      inventoryDispositionQuantity: 2,
+    },
+    allCapabilities
+  );
+  assert.equal(settled.workflowQueue, "inventory_close");
+  assert.equal(settled.availableActions.includes("close"), true);
 });
 
 test("inventory and adjustment permissions are independent", () => {
@@ -340,16 +386,16 @@ test("partial received quantity routes history to review and prevents QC or comm
   assert.equal(result.blockedReason, "partial_received_quantity");
 });
 
-test("missing QC status is routed to the QC safety queue but cannot invoke the underlying guard", () => {
+test("missing QC status is routed to the QC repair queue and can invoke the guarded repair", () => {
   const result = projectAdminRmaWorkflow(
     { ...received, qcStatus: undefined },
     allCapabilities
   );
 
   assert.equal(result.workflowQueue, "qc");
-  assert.deepEqual(result.availableActions, []);
-  assert.equal(result.recommendedAction, null);
-  assert.equal(result.blockedReason, "missing_qc_status");
+  assert.deepEqual(result.availableActions, ["assign", "record_qc"]);
+  assert.equal(result.recommendedAction, "record_qc");
+  assert.equal(result.blockedReason, null);
 });
 
 test("invalid and incomplete terminal settlement states fail closed", () => {
@@ -430,6 +476,8 @@ test("server workbench routes expose only the canonical queues and server projec
   assert.doesNotMatch(repository, /admin_rma_replacement_candidates[\s\S]*if \(error \|\| !Array\.isArray\(data\)\) \{\s*return \[\]/);
   assert.match(repository, /data: await readAdminRmaRequestById\(context, requestId, options\)/);
   assert.match(repository, /data: await readAdminRmaRefundPreview\(context\.client, requestId\)/);
+  assert.match(repository, /projectAdminRmaWorkflow\(requestRow, allRmaCapabilities\)/);
+  assert.match(repository, /totalIsExact:[\s\S]*!queueScoped/);
   assert.match(adminDetailRoute, /export async function GET/);
   assert.match(adminDetailRoute, /replacementCandidates/);
   assert.match(adminDetailRoute, /refundPreview/);
@@ -493,9 +541,11 @@ test("Migration B contains the guarded review, shipped, preview, candidate and r
   for (const mime of ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]) {
     assert.match(migration, new RegExp(`'${mime}'`));
   }
-  assert.match(migration, /revoke insert, update on public\.rma_requests/);
-  assert.match(migration, /revoke insert on public\.rma_request_events/);
+  assert.match(migration, /revoke select, insert, update on public\.rma_requests/);
+  assert.match(migration, /revoke select, insert on public\.rma_request_events/);
   assert.match(migration, /drop policy if exists "partspro_rma_self_submit"/);
+  assert.match(migration, /drop policy if exists "partspro_rma_self_or_staff_read"/);
+  assert.match(migration, /drop policy if exists "partspro_rma_events_read"/);
   assert.match(migration, /drop policy if exists "partspro_rma_events_staff_insert"/);
   assert.match(migration, /auto_claim_rma_first_action/);
   assert.match(migration, /notify_rma_review_status_change/);
@@ -514,7 +564,7 @@ test("Migration B contains the guarded review, shipped, preview, candidate and r
   assert.match(migration, /o\.id is distinct from v_original_order_id/);
   assert.match(migration, /other_rma\.replacement_order_id = o\.id/);
   assert.match(migration, /other_rma\.id <> v_rma\.id/);
-  assert.match(migration, /other_rma\.status <> 'rejected'/);
+  assert.doesNotMatch(migration, /other_rma\.status <> 'rejected'/);
   assert.match(migration, /set search_path = pg_catalog, public, private, pg_temp/);
   assert.match(migration, /RMA_CLIENT_UPGRADE_REQUIRED/);
 });

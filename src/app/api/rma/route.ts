@@ -6,6 +6,7 @@ import {
   listCurrentCustomerRmaRequests,
   listCurrentEmployeeSelfRmaOrderOptions,
   listCurrentEmployeeSelfRmaRequests,
+  RepositoryWriteError,
 } from "@/lib/partspro-repository";
 import type { RmaRequest } from "@/lib/partspro-data";
 import {
@@ -61,7 +62,10 @@ export async function GET() {
         warnings: [requestsResult.warning, orderOptionsResult.warning].filter(Boolean),
       },
     }));
-  } catch {
+  } catch (error) {
+    if (error instanceof RepositoryWriteError) {
+      return noStore(apiError(error.status, error.code, error.message, error.details));
+    }
     return apiError(500, "RMA_UNAVAILABLE", "After-sales request data is temporarily unavailable.");
   }
 }

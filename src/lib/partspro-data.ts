@@ -186,6 +186,8 @@ export type RmaRequest = {
   orderLineId?: string;
   /** Internal owner used to re-authorize legacy evidence per request. */
   ownerUserId?: string | null;
+  /** Internal customer scope used to bind canonical evidence rows. */
+  customerId?: string | null;
   rmaNo?: string | null;
   eligibleUntil?: string | null;
   reasonCode?: string | null;
@@ -203,7 +205,7 @@ export type RmaRequest = {
   attachments?: RmaAttachment[];
   events?: RmaEvent[];
   customerName?: string;
-  /** Customer-visible order number; internal UUID remains orderId only. */
+  /** Repository/admin order identifier; customer DTOs sanitize to order number. */
   orderNumber?: string | null;
   customerVisibleNote?: string;
   assignedAt?: string | null;

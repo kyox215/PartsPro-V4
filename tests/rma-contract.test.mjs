@@ -3,6 +3,10 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import {
+  normalizeCustomerOrderNumber,
+  toCustomerRmaPrivacySafeFields,
+} from "../src/lib/partspro-rma-customer-order.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relativePath) => readFileSync(join(repoRoot, relativePath), "utf8");
@@ -17,6 +21,9 @@ const rules = read("src/lib/partspro-rma-rules.mjs");
 const legacyEvidenceRoute = read("src/app/api/rma/evidence/route.ts");
 const completeRoute = read("src/app/api/rma/drafts/[draftId]/attachments/[attachmentId]/complete/route.ts");
 const migration = read("supabase/migrations/20260827210026_rma_simple_flow_expand.sql");
+const finalizeMigration = read("supabase/migrations/20260828024331_rma_workflow_finalize.sql");
+const repository = read("src/lib/partspro-repository.ts");
+const readiness = read("src/lib/partspro-rma-workflow-readiness.ts");
 
 test("customer contract freezes six reasons, three resolutions and strict payload allowlists", () => {
   for (const reason of [
@@ -216,4 +223,106 @@ test("V1 processing is whole-RMA and idempotency conflicts remain typed", () => 
   assert.match(helper, /rawCode === "P0001"/);
   assert.match(helper, /RMA attachment ticket compensation could not cancel/);
   assert.match(helper, /const \{ error \} = await client\.rpc\("rma_cancel_attachment"/);
+});
+
+test("customer RMA DTO order aliases reject internal UUIDs at runtime", () => {
+  assert.equal(
+    normalizeCustomerOrderNumber("11111111-1111-4111-8111-111111111111"),
+    null
+  );
+  assert.equal(
+    normalizeCustomerOrderNumber("11111111-1111-7111-8111-111111111111"),
+    null,
+    "newer UUID versions must not cross the customer order-number boundary"
+  );
+  assert.equal(
+    normalizeCustomerOrderNumber("00000000-0000-0000-0000-000000000000"),
+    null,
+    "nil UUIDs are still internal identifiers"
+  );
+  assert.equal(normalizeCustomerOrderNumber("ORD-2026-0007"), "ORD-2026-0007");
+  assert.equal(normalizeCustomerOrderNumber("  ORD-2026-0008  "), "ORD-2026-0008");
+  assert.equal(normalizeCustomerOrderNumber(null), null);
+  assert.match(customerDto, /orderId: privacySafeFields\.orderId/);
+  assert.match(customerDto, /orderNumber: privacySafeFields\.orderNumber/);
+  const safe = toCustomerRmaPrivacySafeFields({
+    orderId: "11111111-1111-4111-8111-111111111111",
+    orderNumber: " ORD-2026-0008 ",
+    requestedResolution: "refund",
+    resolution: "INTERNAL SUMMARY MUST NOT CROSS",
+    customerVisibleNote: "Public note",
+    labResult: "SECRET LAB RESULT",
+    resolutionNote: "SECRET INTERNAL NOTE",
+    refundAmount: 999,
+    orderLineId: "22222222-2222-4222-8222-222222222222",
+  });
+  assert.deepEqual(safe.orderId, "ORD-2026-0008");
+  assert.deepEqual(safe.orderNumber, "ORD-2026-0008");
+  assert.deepEqual(safe.requestedResolution, "refund");
+  assert.deepEqual(safe.customerVisibleNote, "Public note");
+  for (const forbidden of ["labResult", "resolutionNote", "refundAmount", "orderLineId"]) {
+    assert.equal(Object.hasOwn(safe, forbidden), false, `${forbidden} must stay internal`);
+  }
+  assert.equal(Object.values(safe).includes("11111111-1111-4111-8111-111111111111"), false);
+});
+
+test("customer DTO does not derive requested resolution from internal summaries", () => {
+  const safe = toCustomerRmaPrivacySafeFields({
+    orderId: "ORD-2026-0009",
+    resolution: "SECRET INTERNAL STATUS",
+    resolutionNote: "SECRET",
+    labResult: "SECRET",
+    refundAmount: 42,
+  });
+
+  assert.equal(safe.orderId, "ORD-2026-0009");
+  assert.equal(safe.requestedResolution, "");
+  assert.equal(Object.hasOwn(safe, "resolution"), false);
+});
+
+test("Migration B closes direct RMA table reads and exposes only a readiness probe", () => {
+  assert.match(
+    finalizeMigration,
+    /revoke select, insert, update on public\.rma_requests from public, anon, authenticated/
+  );
+  assert.match(
+    finalizeMigration,
+    /revoke select, insert on public\.rma_request_events from public, anon, authenticated/
+  );
+  assert.match(finalizeMigration, /drop policy if exists "partspro_rma_self_or_staff_read"/);
+  assert.match(finalizeMigration, /drop policy if exists "partspro_rma_events_read"/);
+  assert.doesNotMatch(finalizeMigration, /grant select on public\.rma_requests to authenticated/);
+  assert.doesNotMatch(finalizeMigration, /grant select on public\.rma_request_events to authenticated/);
+  assert.match(finalizeMigration, /grant select on public\.rma_requests to service_role/);
+  assert.match(finalizeMigration, /grant select on public\.rma_request_events to service_role/);
+  assert.match(finalizeMigration, /create or replace function public\.rma_workflow_capabilities\(\)/);
+  assert.match(finalizeMigration, /'rma-workflow-b1'/);
+  assert.match(readiness, /RMA_WORKFLOW_NOT_READY/);
+  assert.match(repository, /assertRmaWorkflowReady\(context\.client\)/);
+});
+
+test("Migration B customer shipped RPC and refund preview stay narrow and parity-guarded", () => {
+  const shippedStart = finalizeMigration.indexOf("create function public.rma_mark_customer_shipped");
+  const shippedBody = finalizeMigration.slice(shippedStart, finalizeMigration.indexOf("$$;", shippedStart));
+  assert.notEqual(shippedStart, -1);
+  assert.match(shippedBody, /returns table\(/);
+  assert.doesNotMatch(shippedBody, /returns public\.rma_requests/);
+  assert.match(shippedBody, /request_id uuid/);
+  assert.match(shippedBody, /return query select/);
+
+  const previewStart = finalizeMigration.indexOf("create or replace function public.admin_rma_refund_preview");
+  const previewBody = finalizeMigration.slice(previewStart, finalizeMigration.indexOf("$$;", previewStart));
+  assert.match(previewBody, /requested_resolution not in \('refund', 'wallet_credit', 'credit_note'\)/);
+  assert.match(previewBody, /received_at is null/);
+  assert.match(previewBody, /received_quantity is distinct from v_rma\.quantity/);
+  assert.match(previewBody, /wr\.status <> 'rejected'/);
+  assert.match(previewBody, /linked\.status = 'rejected'/);
+  assert.match(previewBody, /coalesce\(r\.refund_net_amount, r\.refund_amount, 0\) > 0/);
+  assert.match(previewBody, /v_rma\.qc_status not in \('passed', 'failed', 'not_required'\)/);
+  assert.match(previewBody, /v_rma\.replacement_order_id is not null/);
+
+  const candidateStart = finalizeMigration.indexOf("create or replace function public.admin_rma_replacement_candidates");
+  const candidateBody = finalizeMigration.slice(candidateStart, finalizeMigration.indexOf("$$;", candidateStart));
+  assert.match(candidateBody, /other_rma\.replacement_order_id = o\.id/);
+  assert.doesNotMatch(candidateBody, /other_rma\.status <> 'rejected'/);
 });

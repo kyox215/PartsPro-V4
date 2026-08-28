@@ -36,16 +36,45 @@ set public = excluded.public,
     file_size_limit = excluded.file_size_limit,
     allowed_mime_types = excluded.allowed_mime_types;
 
--- Once the draft/submit and RPC action paths are live, browser roles retain
--- authorized reads but cannot insert or mutate RMA rows/events directly.
-revoke insert, update on public.rma_requests from public, anon, authenticated;
-revoke insert on public.rma_request_events from public, anon, authenticated;
-grant select on public.rma_requests to authenticated;
-grant select on public.rma_request_events to authenticated;
+-- Once the draft/submit and RPC action paths are live, browser roles cannot
+-- read, insert, or mutate RMA rows/events directly. All customer and staff
+-- reads go through server-owned routes (service role after server-side scope
+-- checks); all writes go through guarded RPCs. Revoking SELECT is required in
+-- addition to dropping the historical policies because RLS cannot redact
+-- sensitive columns from a table response.
+revoke select, insert, update on public.rma_requests from public, anon, authenticated;
+revoke select, insert on public.rma_request_events from public, anon, authenticated;
+-- The server-owned repository reads these tables with the service role after
+-- performing the user/employee scope checks. Grant the minimum read
+-- capability explicitly instead of relying on a platform-default role ACL.
+grant select on public.rma_requests to service_role;
+grant select on public.rma_request_events to service_role;
 
 drop policy if exists "partspro_rma_self_submit" on public.rma_requests;
 drop policy if exists "partspro_rma_insert_order_line_guard" on public.rma_requests;
+drop policy if exists "partspro_rma_self_or_staff_read" on public.rma_requests;
+drop policy if exists "partspro_rma_events_read" on public.rma_request_events;
 drop policy if exists "partspro_rma_events_staff_insert" on public.rma_request_events;
+
+-- The capability RPC is intentionally a no-data readiness probe. New server
+-- code uses it before any Migration-B-only read/action path, so an A -> code
+-- -> B rollout returns a stable 503 instead of a generic 500/502 or a partly
+-- executable UI.
+create or replace function public.rma_workflow_capabilities()
+returns table(
+  ready boolean,
+  contract_version text
+)
+language sql
+stable
+security definer
+set search_path = pg_catalog, public, private, pg_temp
+as $$
+  select true, 'rma-workflow-b1'::text;
+$$;
+
+revoke all on function public.rma_workflow_capabilities() from public, anon;
+grant execute on function public.rma_workflow_capabilities() to authenticated;
 
 -- First action claim is a small trigger around the existing v3 RPC. It does
 -- not copy the action implementation: the RPC remains the state/stock/money
@@ -200,12 +229,21 @@ create trigger rma_review_status_notification
 -- active customer membership/employee-self helper, not merely user_id, so a
 -- current member can act for the same customer while cross-account requests
 -- remain invisible. The row lock and existing timestamp make retries safe.
-create or replace function public.rma_mark_customer_shipped(
+-- The return contract is deliberately narrow: the browser never receives a
+-- full public.rma_requests row from this RPC.
+drop function if exists public.rma_mark_customer_shipped(uuid, text, text);
+create function public.rma_mark_customer_shipped(
   p_request_id uuid,
   p_return_carrier text default null,
   p_return_tracking_code text default null
 )
-returns public.rma_requests
+returns table(
+  request_id uuid,
+  status text,
+  customer_shipped_at timestamptz,
+  return_carrier text,
+  return_tracking_code text
+)
 language plpgsql
 security definer
 set search_path = pg_catalog, public, private, pg_temp
@@ -252,7 +290,13 @@ begin
   if v_before.customer_shipped_at is not null then
     -- Once the declaration exists, retries remain idempotent even if staff
     -- has already received the parcel and advanced the RMA status.
-    return v_before;
+    return query select
+      v_before.id,
+      v_before.status,
+      v_before.customer_shipped_at,
+      v_before.return_carrier,
+      v_before.return_tracking_code;
+    return;
   end if;
 
   if v_before.status <> 'approved' then
@@ -295,7 +339,12 @@ begin
     )
   );
 
-  return v_after;
+  return query select
+    v_after.id,
+    v_after.status,
+    v_after.customer_shipped_at,
+    v_after.return_carrier,
+    v_after.return_tracking_code;
 end;
 $$;
 
@@ -389,7 +438,11 @@ begin
       raise exception 'RMA review idempotency key was reused with a different payload' using errcode = 'P0001';
     end if;
     if v_execution.execution_status = 'succeeded' then
-      return v_before;
+      select *
+      into v_after
+      from public.rma_requests as r
+      where r.id = v_before.id;
+      return v_after;
     end if;
     if v_execution.execution_status = 'started' then
       raise exception 'RMA review action is already executing' using errcode = '55P03';
@@ -532,6 +585,53 @@ begin
     raise exception 'RMA request not found' using errcode = 'P0002';
   end if;
 
+  -- Keep preview availability exactly aligned with the v3 wallet-refund
+  -- action. A preview is not a promise to pay: it must fail closed for a
+  -- mismatched requested resolution, an existing replacement/wallet outcome,
+  -- incomplete receipt, missing receipt timestamp, pending wallet request,
+  -- or missing QC result.
+  if v_rma.requested_resolution not in ('refund', 'wallet_credit', 'credit_note')
+    or (v_rma.resolution_action is not null and v_rma.resolution_action <> 'refund_wallet')
+    or v_rma.replacement_order_id is not null
+    or v_rma.status in ('refunded', 'replacement_sent', 'replaced')
+    or exists (
+      select 1
+      from public.rma_action_executions as e
+      where e.rma_request_id = v_rma.id
+        and e.action = 'mark_replacement_sent'
+        and e.execution_status = 'succeeded'
+    )
+  then
+    return query select false, 'invalid_snapshot', coalesce(v_rma.refund_currency, 'EUR'), 0::numeric, coalesce(v_rma.quantity, 0), false;
+    return;
+  end if;
+
+  if v_rma.status <> 'received'
+    or v_rma.received_at is null
+    or v_rma.qc_status not in ('passed', 'failed', 'not_required')
+    or v_rma.received_quantity is distinct from v_rma.quantity
+    or (
+      v_rma.wallet_refund_request_id is not null
+      and not exists (
+        select 1
+        from public.wallet_refund_requests as linked
+        where linked.id = v_rma.wallet_refund_request_id
+          and linked.rma_request_id = v_rma.id
+          and linked.request_type = 'rma_return'
+          and linked.status = 'rejected'
+      )
+    )
+    or exists (
+      select 1
+      from public.wallet_refund_requests as wr
+      where wr.rma_request_id = v_rma.id
+        and wr.status <> 'rejected'
+    )
+  then
+    return query select false, 'invalid_snapshot', coalesce(v_rma.refund_currency, 'EUR'), 0::numeric, coalesce(v_rma.quantity, 0), false;
+    return;
+  end if;
+
   if v_rma.unit_price_snapshot is null
     or v_rma.quantity is null
     or v_rma.quantity < 1
@@ -546,7 +646,10 @@ begin
 
   select * into v_order
   from public.orders as o
-  where o.id = coalesce(v_rma.order_id, v_line.order_id);
+  -- The line is the canonical commercial scope. Legacy order_id values can
+  -- be stale or malformed; using them first would make preview amounts drift
+  -- from the v3 action, which locks and resolves the order through the line.
+  where o.id = v_line.order_id;
 
   if v_line.id is null or v_order.id is null then
     return query select false, 'invalid_snapshot', coalesce(v_rma.refund_currency, 'EUR'), 0::numeric, 0, false;
@@ -564,7 +667,8 @@ begin
   from public.rma_requests as r
   where r.order_line_id = v_rma.order_line_id
     and r.id <> v_rma.id
-    and r.status in ('refunded', 'closed');
+    and r.status in ('refunded', 'closed')
+    and coalesce(r.refund_net_amount, r.refund_amount, 0) > 0;
 
   v_wallet_balance := coalesce(private.order_wallet_refundable_amount(v_order.id), 0);
   v_max := greatest(
@@ -593,8 +697,9 @@ grant execute on function public.admin_rma_refund_preview(uuid)
 
 -- Replacement candidates are selected server-side so staff never copies a
 -- UUID. A candidate belongs to the same customer, is a different shipped
--- order, contains enough of the RMA SKU, and has not already been associated
--- with another non-rejected RMA.
+-- order, contains enough of the RMA SKU, and has never been associated with
+-- another RMA. This matches the v3 action and the unique index: any non-null
+-- replacement_order_id is a conflict, including legacy/rejected rows.
 create or replace function public.admin_rma_replacement_candidates(
   p_request_id uuid
 )
@@ -642,7 +747,9 @@ begin
   into v_original_order_id
   from public.order_lines as ol
   where ol.id = v_rma.order_line_id;
-  v_original_order_id := coalesce(v_rma.order_id, v_original_order_id);
+  -- Match the v3 action's line-first order resolution for malformed legacy
+  -- rows. The fallback is only for rows whose order line is unavailable.
+  v_original_order_id := coalesce(v_original_order_id, v_rma.order_id);
 
   if v_customer_id is null
     or v_sku_code is null
@@ -677,7 +784,6 @@ begin
       from public.rma_requests as other_rma
       where other_rma.id <> v_rma.id
         and other_rma.replacement_order_id = o.id
-        and other_rma.status <> 'rejected'
     )
   group by o.id, o.order_no, shipped_event.shipped_at, o.updated_at
   having sum(greatest(ol.quantity - coalesce(ol.cancelled_qty, 0), 0)) >= v_rma.quantity

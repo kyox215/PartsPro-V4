@@ -18,13 +18,14 @@ test("admin v3 freezes fine-grained permissions and legacy delegation", () => {
   assert.match(migration, /partspro_has_permission\('rma\.manage'\)/);
   assert.match(migration, /partspro_has_permission\('rma\.refund'\)/);
   assert.match(migration, /partspro_has_permission\('rma\.inventory'\)/);
-  assert.match(migration, /v_action in \('mark_received', 'restock_return', 'mark_scrapped', 'supplier_return'\)/);
+  assert.match(migration, /v_action = 'restock_return'[\s\S]*?partspro_has_permission\('product\.adjust_stock'\)/);
   assert.match(migration, /v_action = 'record_qc'/);
   assert.match(migration, /partspro_has_permission\('orders\.manage'\)/);
   assert.match(migration, /revoke all on function public\.admin_perform_rma_action_v3/);
   assert.match(migration, /grant execute on function public\.admin_perform_rma_action_v3/);
   assert.match(migration, /create or replace function public\.admin_perform_rma_action\([\s\S]*?v_auth_uid uuid := \(select auth\.uid\(\)\)/);
   assert.match(adminRoute, /adminRmaActionSchema/);
+  assert.match(adminRoute, /action === "restock_return"[\s\S]*?product\.adjust_stock/);
   assert.match(adminRoute, /workflow: "admin_perform_rma_action_v3"/);
   assert.match(repository, /rpc\("admin_perform_rma_action_v3"/);
   assert.match(repository, /p_location: input\.warehouse \?\? null/);
@@ -41,7 +42,9 @@ test("action ledger and terminal disposition guard make restock idempotent", () 
   assert.match(migration, /execution_status = 'started'/);
   assert.match(migration, /p_idempotency_key text default null/);
   assert.match(migration, /different payload/);
-  assert.match(migration, /rma_action_executions_commercial_outcome_unique/);
+  assert.match(migration, /drop index if exists public\.rma_action_executions_commercial_outcome_unique/);
+  assert.match(migration, /rma_action_executions_replacement_outcome_unique/);
+  assert.doesNotMatch(migration, /create unique index if not exists rma_action_executions_commercial_outcome_unique/);
   assert.match(migration, /rma_action_executions_qc_unique/);
   assert.match(migration, /rma-action:%s:%s:%s:%s/);
   assert.match(repository, /idempotencyKey/);
@@ -72,7 +75,7 @@ test("receive/restock/disposition preserve quarantine and available-stock invari
 });
 
 test("wallet, replacement and state guards are explicit", () => {
-  assert.match(migration, /request_type,\n      requested_amount/);
+  assert.match(migration, /request_type,\s+requested_amount/);
   assert.match(migration, /'rma_return'/);
   assert.match(migration, /tax_and_shipping_included', false/);
   assert.match(migration, /Refund amount must be explicitly confirmed/);
@@ -80,11 +83,11 @@ test("wallet, replacement and state guards are explicit", () => {
   assert.match(migration, /p_replacement_order_id is null/);
   assert.match(migration, /v_replacement_order\.status <> 'shipped'/);
   assert.match(migration, /v_next_status := 'replacement_sent'/);
-  assert.match(migration, /v_before\.status not in \('received', 'refunded', 'replacement_sent'\)/);
+  assert.match(migration, /v_before\.status not in \('received', 'refunded', 'replacement_sent', 'replaced'\)/);
   assert.match(migration, /Received RMAs must have both a terminal commercial outcome/);
   assert.match(migration, /v_before\.received_at is not null/);
   assert.match(migration, /v_before\.status = 'refunded'[\s\S]*?v_before\.resolution_action = 'refund_wallet'/);
-  assert.match(migration, /v_before\.status = 'replacement_sent'[\s\S]*?v_before\.resolution_action = 'replacement'/);
+  assert.match(migration, /v_before\.status in \('replacement_sent', 'replaced'\)[\s\S]*?v_before\.resolution_action = 'replacement'/);
   assert.match(migration, /wr\.status = 'approved'/);
   assert.match(migration, /v_before\.replacement_order_id is null/);
   assert.match(migration, /v_before\.replacement_order_id is not null/);
@@ -107,6 +110,17 @@ test("wallet, replacement and state guards are explicit", () => {
   assert.match(migration, /Closed or rejected RMAs cannot be assigned/);
   assert.match(migration, /Refund requires the complete RMA quantity to be received/);
   assert.match(migration, /Replacement requires the complete RMA quantity to be received/);
+  assert.match(migration, /RMA assignment is limited to the authenticated staff member/);
+  assert.match(migration, /RMA is already assigned; reassign requires a separate explicit action/);
+  assert.match(migration, /RMA QC has already been recorded/);
+  assert.match(migration, /v_before\.status not in \('received', 'refunded', 'replacement_sent', 'replaced'\)/);
+  assert.match(migration, /v_action = 'close' and v_before\.status = 'closed'/);
+  assert.match(migration, /no_op/);
+  assert.match(migration, /v_before\.status = 'rejected'[\s\S]*coalesce\(v_before\.received_quantity, 0\) = 0/);
+  assert.match(migration, /action_payload_fingerprint/);
+  assert.doesNotMatch(migration, /on conflict \(idempotency_key\) do update/);
+  assert.match(migration, /v_refund_request\.status <> 'rejected'/);
+  assert.match(migration, /Only pending RMA attachments can be cancelled/);
   assert.match(migration, /refund_quantity/);
   assert.match(migration, /replacement_quantity/);
   assert.match(migration, /rma\?requestId=%s/);
@@ -175,4 +189,18 @@ test("historical RMA trigger and INSERT policies use the shared owner and net qu
   assert.match(migration, /p\.account_type = 'employee'/);
   assert.match(migration, /p\.customer_id = c\.id/);
   assert.doesNotMatch(migration, /v_order_user_id = v_auth_uid/);
+});
+
+test("service reads and readiness fail closed after Migration B revokes browser table SELECT", () => {
+  const finalizeMigration = read("supabase/migrations/20260828024331_rma_workflow_finalize.sql");
+  assert.match(finalizeMigration, /revoke select, insert, update on public\.rma_requests from public, anon, authenticated/);
+  assert.match(finalizeMigration, /revoke select, insert on public\.rma_request_events from public, anon, authenticated/);
+  assert.match(repository, /requireRmaServiceClient\(\)/);
+  assert.match(repository, /from\("rma_requests"\)/);
+  assert.match(repository, /"rma_request_events"/);
+  assert.match(repository, /assertRmaWorkflowReady\(context\.client\)/);
+  assert.match(repository, /readStrictRmaCustomerId/);
+  assert.match(repository, /customer_memberships/);
+  assert.match(repository, /\.eq\("status", "active"\)/);
+  assert.match(repository, /RMA_WORKFLOW_NOT_READY/);
 });

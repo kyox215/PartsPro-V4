@@ -20,6 +20,12 @@ import {
   type RmaCustomerSubmitInput,
   type RmaCustomerShippedInput,
 } from "@/lib/partspro-rma-contract";
+import {
+  assertRmaWorkflowReady,
+  RmaWorkflowNotReadyError,
+} from "@/lib/partspro-rma-workflow-readiness";
+import { isRmaEvidencePathOwnedByUser } from "@/lib/partspro-rma-evidence";
+import { normalizeCustomerOrderNumber } from "@/lib/partspro-rma-customer-order.mjs";
 
 const rmaEvidenceBucket = "rma-evidence";
 const rmaEvidenceSignedUrlTtlSeconds = 15 * 60;
@@ -44,6 +50,7 @@ export async function createRmaDraft(
   input: RmaDraftCreateInput
 ): Promise<RmaDraftDto> {
   const { client, user } = await requireAuthenticatedClient();
+  await ensureRmaSimpleFlowReady(client);
   const { data, error } = await client.rpc("rma_create_draft", {
     p_order_line_id: input.orderLineId,
     p_idempotency_key: input.idempotencyKey ?? null,
@@ -62,7 +69,8 @@ export async function createRmaDraft(
 }
 
 export async function readRmaDraft(draftId: string): Promise<RmaDraftDto> {
-  const { user } = await requireAuthenticatedClient();
+  const { client, user } = await requireAuthenticatedClient();
+  await ensureRmaSimpleFlowReady(client);
   return readDraftDto(user.id, draftId);
 }
 
@@ -70,16 +78,10 @@ export async function issueRmaUploadTicket(
   draftId: string,
   input: RmaUploadTicketInput
 ): Promise<RmaUploadTicketDto> {
-  // Fail before the prepare RPC so a missing service-role capability cannot
-  // create an attachment quota row that this request is unable to clean up.
-  if (!isSupabaseServiceRoleConfigured()) {
-    throw new RmaSimpleFlowError(503, "RMA_SERVICE_UNAVAILABLE", "RMA evidence storage is not configured.");
-  }
-
   const { client, user } = await requireAuthenticatedClient();
   let attachmentId: string | null = null;
   let storagePath: string | null = null;
-  let service: ReturnType<typeof createServiceRoleClient> | null = null;
+  let service: ReturnType<typeof createServiceRoleClient> | null = await ensureRmaSimpleFlowReady(client);
 
   try {
     const { data, error } = await client.rpc("rma_prepare_attachment_upload", {
@@ -155,10 +157,10 @@ export async function completeRmaAttachment(
   draftId?: string
 ) {
   const { client, user } = await requireAuthenticatedClient();
-  const service = requireServiceRoleClient();
+  const service = await ensureRmaSimpleFlowReady(client);
   const { data: attachment, error: attachmentError } = await service
     .from("rma_attachments")
-    .select("id,bucket,storage_path,verification_token,content_type,size_bytes,status,expires_at")
+    .select("id,bucket,storage_path,verification_token,content_type,size_bytes,status,sha256,expires_at")
     .eq("id", attachmentId)
     .eq("user_id", user.id)
     .eq("draft_id", draftId ?? "")
@@ -172,9 +174,39 @@ export async function completeRmaAttachment(
   const verificationToken = readString(attachment.verification_token);
   const expectedContentType = readString(attachment.content_type);
   const expectedSize = readNumber(attachment.size_bytes);
+  const attachmentStatus = readString(attachment.status);
+  const persistedSha256 = readString(attachment.sha256)?.toLowerCase();
 
   if (!storagePath || !verificationToken || !expectedContentType || expectedSize === null) {
     throw new RmaSimpleFlowError(502, "RMA_ATTACHMENT_INVALID", "RMA attachment metadata is invalid.");
+  }
+
+  // A verified/committed row is immutable. A matching hash is a safe replay
+  // and can use the idempotent RPC without touching Storage; a mismatched
+  // retry is a conflict and must never enter the automatic cancellation path.
+  if (attachmentStatus === "verified" || attachmentStatus === "committed") {
+    if (!persistedSha256 || persistedSha256 !== input.sha256.toLowerCase()) {
+      throw new RmaSimpleFlowError(
+        409,
+        "RMA_ATTACHMENT_ALREADY_VERIFIED",
+        "This RMA attachment was already verified with a different hash."
+      );
+    }
+
+    const { data, error } = await client.rpc("rma_complete_attachment", {
+      p_attachment_id: attachmentId,
+      p_sha256: persistedSha256,
+      p_size_bytes: expectedSize,
+      p_verification_token: verificationToken,
+    });
+    if (error || data !== true) {
+      throw mapRpcError(error, "RMA_ATTACHMENT_VERIFY_FAILED", "RMA attachment could not be verified.");
+    }
+
+    return {
+      attachmentId,
+      status: "verified" as const,
+    };
   }
 
   const { data: file, error: downloadError } = await service.storage
@@ -227,6 +259,7 @@ export async function cancelRmaAttachment(
   attachmentId: string
 ) {
   const { client, user } = await requireAuthenticatedClient();
+  const service = await ensureRmaSimpleFlowReady(client);
   const { data, error } = await client.rpc("rma_cancel_attachment", {
     p_attachment_id: attachmentId,
     p_draft_id: draftId,
@@ -238,7 +271,6 @@ export async function cancelRmaAttachment(
 
   // Database cancellation is the source of truth. Storage deletion is a
   // best-effort compensation and never re-opens a cancelled attachment.
-  const service = requireServiceRoleClient();
   const { data: attachment } = await service
     .from("rma_attachments")
     .select("storage_path,bucket")
@@ -274,6 +306,7 @@ export async function submitRmaRequest(
   }
 
   const { client, user } = await requireAuthenticatedClient();
+  await ensureRmaSimpleFlowReady(client);
   const { data, error } = await client.rpc("rma_submit_request", {
     p_draft_id: draftId,
     p_order_line_id: input.orderLineId,
@@ -304,6 +337,7 @@ export async function markRmaShipped(
   input: RmaCustomerShippedInput
 ): Promise<CustomerRmaDto> {
   const { client, user } = await requireAuthenticatedClient();
+  await ensureRmaSimpleFlowReady(client);
   const { error } = await client.rpc("rma_mark_customer_shipped", {
     p_request_id: requestId,
     p_return_carrier: input.carrier ?? null,
@@ -340,6 +374,29 @@ function requireServiceRoleClient() {
   }
 
   return createServiceRoleClient();
+}
+
+/**
+ * Every secure RMA write is followed by a server-role hydration read. Probe
+ * both capabilities before the write so an A-only or misconfigured rollout
+ * cannot commit a row and then fail while constructing the response.
+ */
+async function ensureRmaSimpleFlowReady(
+  client: Awaited<ReturnType<typeof createClient>>
+) {
+  const service = requireServiceRoleClient();
+
+  try {
+    await assertRmaWorkflowReady(client);
+  } catch (error) {
+    if (error instanceof RmaWorkflowNotReadyError) {
+      throw new RmaSimpleFlowError(error.status, error.code, error.message);
+    }
+
+    throw error;
+  }
+
+  return service;
 }
 
 async function cancelRmaAttachmentAfterTicketFailure(
@@ -424,7 +481,7 @@ async function readCustomerRmaDto(
   const service = requireServiceRoleClient();
   let requestQuery = service
     .from("rma_requests")
-    .select("id,rma_no,order_id,order_no,customer_id,order_line_id,sku_code,product_name_snapshot,description,quantity,status,reason_code,problem_type,requested_resolution,policy_scope,eligible_until,customer_shipped_at,return_carrier,return_tracking_code,created_at,updated_at")
+    .select("id,rma_no,order_id,order_no,customer_id,user_id,order_line_id,sku_code,product_name_snapshot,description,quantity,status,reason_code,problem_type,requested_resolution,policy_scope,eligible_until,customer_shipped_at,return_carrier,return_tracking_code,customer_visible_note,created_at,updated_at")
     .eq("id", rmaId);
 
   if (!options.allowCustomerMember) {
@@ -437,14 +494,19 @@ async function readCustomerRmaDto(
     throw new RmaSimpleFlowError(404, "RMA_NOT_FOUND", "RMA request was not found.");
   }
 
-  const orderNumber = await readCustomerOrderNumber(service, row);
+  const orderNumber = normalizeCustomerOrderNumber(await readCustomerOrderNumber(service, row));
+  // `order_id` is an internal UUID. Keep the legacy alias only as a
+  // customer-visible order number after the server has resolved and checked
+  // the business order number above; never return the UUID to the browser.
   const status = readString(row.status) ?? "submitted";
   const customerShippedAt = readString(row.customer_shipped_at);
 
   let attachmentQuery = service
     .from("rma_attachments")
-    .select("id,original_name,content_type,size_bytes,uploaded_at,verified_at,bucket,storage_path,status")
-    .eq("rma_request_id", rmaId);
+    .select("id,user_id,customer_id,order_line_id,original_name,content_type,size_bytes,uploaded_at,verified_at,committed_at,bucket,storage_path,status")
+    .eq("rma_request_id", rmaId)
+    .eq("status", "committed")
+    .not("verified_at", "is", null);
 
   if (!options.allowCustomerMember) {
     attachmentQuery = attachmentQuery.eq("user_id", userId);
@@ -459,14 +521,23 @@ async function readCustomerRmaDto(
     .eq("customer_visible", true)
     .order("created_at", { ascending: true });
 
+  const requestUserId = readString(row.user_id);
+  const requestCustomerId = readString(row.customer_id);
+  const requestOrderLineId = readString(row.order_line_id);
   const attachments = await Promise.all(
     (Array.isArray(attachmentRows) ? attachmentRows : [])
       .filter(isRecord)
+      .filter((attachment) => isCustomerAttachmentBoundToRequest(
+        attachment,
+        requestUserId,
+        requestCustomerId,
+        requestOrderLineId
+      ))
       .map((attachment) => toCustomerAttachmentDto(service, attachment))
   );
 
   return {
-    attachments,
+    attachments: attachments.filter((attachment): attachment is CustomerRmaAttachmentDto => attachment !== null),
     createdAt: readString(row.created_at) ?? new Date(0).toISOString(),
     customerStage: status === "approved" && customerShippedAt
       ? "return_in_transit"
@@ -484,9 +555,8 @@ async function readCustomerRmaDto(
       }))
       .filter((event) => event.id.length > 0),
     id: readString(row.id) ?? rmaId,
-    orderId: readString(row.order_id),
+    orderId: orderNumber,
     orderNumber,
-    orderLineId: readString(row.order_line_id),
     policyScope: readString(row.policy_scope) ?? "legacy_unverified",
     productName: readString(row.product_name_snapshot) ?? readString(row.sku_code) ?? "",
     quantity: readNumber(row.quantity) ?? 0,
@@ -506,6 +576,9 @@ async function readCustomerRmaDto(
       : {}),
     ...(readString(row.return_tracking_code)
       ? { tracking: readString(row.return_tracking_code) as string }
+      : {}),
+    ...(readString(row.customer_visible_note)
+      ? { customerVisibleNote: readString(row.customer_visible_note) as string }
       : {}),
   };
 }
@@ -540,7 +613,7 @@ async function readCustomerOrderNumber(
 async function toCustomerAttachmentDto(
   service: ReturnType<typeof createServiceRoleClient>,
   row: JsonRecord
-): Promise<CustomerRmaAttachmentDto> {
+): Promise<CustomerRmaAttachmentDto | null> {
   const attachmentId = readString(row.id) ?? "";
   const contentType = normalizeContentType(readString(row.content_type));
   const name = readString(row.original_name) ?? "image";
@@ -558,15 +631,16 @@ async function toCustomerAttachmentDto(
     signedUrl = data?.signedUrl;
   }
 
-  if (!attachmentId || !isRmaAttachmentContentType(contentType)) {
-    return {
-      attachmentId,
-      contentType: "image/jpeg",
-      name,
-      sizeBytes,
-      uploadedAt,
-      verifiedAt,
-    };
+  if (
+    !attachmentId ||
+    !isRmaAttachmentContentType(contentType) ||
+    !storagePath ||
+    bucket !== rmaEvidenceBucket ||
+    !signedUrl ||
+    !verifiedAt ||
+    !Number.isFinite(Date.parse(verifiedAt))
+  ) {
+    return null;
   }
 
   return {
@@ -580,6 +654,38 @@ async function toCustomerAttachmentDto(
   };
 }
 
+function isCustomerAttachmentBoundToRequest(
+  attachment: JsonRecord,
+  requestUserId: string | null,
+  requestCustomerId: string | null,
+  requestOrderLineId: string | null
+) {
+  const uploaderUserId = readString(attachment.user_id);
+  const customerId = readString(attachment.customer_id);
+  const orderLineId = readString(attachment.order_line_id);
+  const bucket = readString(attachment.bucket);
+  const path = readString(attachment.storage_path);
+  const verifiedAt = readString(attachment.verified_at);
+  const committedAt = readString(attachment.committed_at);
+
+  return Boolean(
+    requestUserId &&
+      requestCustomerId &&
+      requestOrderLineId &&
+      uploaderUserId &&
+      uploaderUserId === requestUserId &&
+      customerId === requestCustomerId &&
+      orderLineId === requestOrderLineId &&
+      bucket === rmaEvidenceBucket &&
+      path &&
+      isRmaEvidencePathOwnedByUser(path, uploaderUserId) &&
+      verifiedAt &&
+      Number.isFinite(Date.parse(verifiedAt)) &&
+      committedAt &&
+      Number.isFinite(Date.parse(committedAt))
+  );
+}
+
 function mapRpcError(
   error: unknown,
   fallbackCode: string,
@@ -590,6 +696,16 @@ function mapRpcError(
   const message = readString(row.message) ?? fallbackMessage;
   if (rawCode === "P0001" || (rawCode === "23505" && /idempotency|already submitted|different payload/i.test(message))) {
     return new RmaSimpleFlowError(409, "RMA_IDEMPOTENCY_CONFLICT", "The RMA submission key was already used with a different payload.");
+  }
+  // A concurrent completion can observe the row after another request has
+  // verified it. Treat that immutable-state race as a conflict so the route
+  // does not enter its 422-only pending-ticket cancellation compensation.
+  if (rawCode === "23514" && /not awaiting verification|already verified/i.test(message)) {
+    return new RmaSimpleFlowError(
+      409,
+      "RMA_ATTACHMENT_ALREADY_VERIFIED",
+      "This RMA attachment was already verified with a different upload state."
+    );
   }
   const status = rpcStatus(rawCode);
   return new RmaSimpleFlowError(status, rawCode ? `RMA_${rawCode}` : fallbackCode, message);

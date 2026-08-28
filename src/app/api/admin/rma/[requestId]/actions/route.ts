@@ -53,9 +53,15 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
 
   const permission = requiredPermissionForAction(parsedBody.data.action);
 
-  if (
-    !permission.some((item) => hasAdminPermission(admin.authState, item))
-  ) {
+  // Restocking invokes the exact product-stock RPC. Its API gate must use the
+  // same canonical permission, rather than accepting the broader RMA
+  // inventory alias and letting the database reject the request later.
+  const permissionGranted =
+    parsedBody.data.action === "restock_return"
+      ? hasAdminPermission(admin.authState, "product.adjust_stock")
+      : permission.some((item) => hasAdminPermission(admin.authState, item));
+
+  if (!permissionGranted) {
     return apiError(403, "ADMIN_PERMISSION_DENIED", "Missing admin permission.", {
       permission: permission.join(" or "),
       role: admin.authState.role,
@@ -110,7 +116,11 @@ function requiredPermissionForAction(action: AdminRmaAction) {
     return ["rma.manage", "rma.inventory"];
   }
 
-  if (action === "mark_received" || action === "restock_return" || action === "mark_scrapped" || action === "supplier_return") {
+  if (action === "restock_return") {
+    return ["product.adjust_stock"];
+  }
+
+  if (action === "mark_received" || action === "mark_scrapped" || action === "supplier_return") {
     return ["rma.inventory", "product.adjust_stock", "inventory.manage"];
   }
 

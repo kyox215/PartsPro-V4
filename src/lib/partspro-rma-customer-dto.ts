@@ -4,6 +4,7 @@ import {
   rmaAttachmentContentTypes,
   type CustomerRmaDto,
 } from "@/lib/partspro-rma-contract";
+import { toCustomerRmaPrivacySafeFields } from "@/lib/partspro-rma-customer-order.mjs";
 
 /**
  * One customer DTO for both the new and legacy POST/GET paths. Internal
@@ -12,6 +13,7 @@ import {
  * and a short-lived signed URL.
  */
 export function toCustomerRmaDto(request: RmaRequest): CustomerRmaDto {
+  const privacySafeFields = toCustomerRmaPrivacySafeFields(request);
   const isReturnInTransit =
     request.status === "approved" && Boolean(request.customerShippedAt);
   const attachments = (request.attachments ?? []).map((attachment, index) => {
@@ -51,28 +53,27 @@ export function toCustomerRmaDto(request: RmaRequest): CustomerRmaDto {
         toStatus: event.toStatus ?? null,
       })),
     id: request.id,
-    orderId: request.orderId ?? null,
-    // Legacy requests only have the already-safe display value in orderId;
-    // the canonical server flow supplies the order number separately.
-    orderNumber: request.orderNumber ?? request.orderId ?? null,
-    orderLineId: request.orderLineId ?? null,
+    orderId: privacySafeFields.orderId,
+    // The legacy source mapping was `orderNumber: request.orderNumber ?? request.orderId ?? null`;
+    // normalizeCustomerOrderNumber is applied inside privacySafeFields before
+    // either alias reaches this DTO, so a database UUID can never cross it.
+    orderNumber: privacySafeFields.orderNumber,
     policyScope: request.policyScope ?? "legacy_unverified",
     productName: request.productName,
     quantity: request.quantity ?? 0,
     reason: request.reasonCode ?? request.reason,
     reasonCode: request.reasonCode ?? request.reason,
     rmaNo: request.rmaNo ?? null,
-    resolution: request.resolution,
-    requestedResolution: request.requestedResolution ?? request.resolution,
+    resolution: privacySafeFields.requestedResolution,
+    requestedResolution: privacySafeFields.requestedResolution,
     sku: request.sku,
     status: request.status,
     updatedAt: request.updatedAt ?? null,
     canMarkShipped: request.status === "approved" && !request.customerShippedAt,
     ...(request.returnCarrier ? { carrier: request.returnCarrier } : {}),
     ...(request.returnTrackingCode ? { tracking: request.returnTrackingCode } : {}),
-    ...(request.customerVisibleNote ? { customerVisibleNote: request.customerVisibleNote } : {}),
-    ...(request.labResult ? { labResult: request.labResult } : {}),
-    ...(request.refundAmount !== undefined ? { refundAmount: request.refundAmount } : {}),
-    ...(request.resolutionNote ? { resolutionNote: request.resolutionNote } : {}),
+    ...(privacySafeFields.customerVisibleNote
+      ? { customerVisibleNote: privacySafeFields.customerVisibleNote }
+      : {}),
   };
 }

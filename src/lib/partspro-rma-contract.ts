@@ -208,7 +208,6 @@ export type CustomerRmaDto = {
   orderId: string | null;
   /** Customer-visible order number; never use the internal order UUID in UI. */
   orderNumber: string | null;
-  orderLineId: string | null;
   policyScope: string;
   productName: string;
   quantity: number;
@@ -225,9 +224,6 @@ export type CustomerRmaDto = {
   tracking?: string;
   canMarkShipped: boolean;
   customerVisibleNote?: string;
-  labResult?: string;
-  refundAmount?: number;
-  resolutionNote?: string;
 };
 
 export function reasonRequiresImage(
@@ -336,6 +332,7 @@ export function customerStageForRmaStatus(status: string): RmaCustomerStage {
     case "received":
       return "resolution";
     case "replacement_sent":
+    case "replaced":
     case "refunded":
     case "closed":
       return "completed";

@@ -9,6 +9,8 @@ import {
 export const rmaEvidenceBucket = "rma-evidence";
 export const rmaEvidenceSignedUrlTtlSeconds = 15 * 60;
 
+type JsonRecord = Record<string, unknown>;
+
 const uuidSegment = "[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const legacyEvidenceExtension = "(?:jpg|jpeg|png|webp|heic|heif|mp4|mov)";
 
@@ -145,11 +147,62 @@ export async function hydrateCustomerRmaAttachments(
   }
 
   const supabase = createServiceRoleClient();
-  const { data } = await supabase
+  const { data: requestRows, error: requestError } = await supabase
+    .from("rma_requests")
+    .select("id,user_id,customer_id,order_line_id")
+    .in("id", requestIds);
+
+  if (requestError || !Array.isArray(requestRows)) {
+    // Do not append or expose canonical relation rows when their request
+    // binding cannot be verified. Legacy JSON attachments remain untouched.
+    return requests;
+  }
+
+  const requestById = new Map<string, JsonRecord>(
+    requestRows
+      .filter(isRecord)
+      .map((row): [string, JsonRecord] => [typeof row.id === "string" ? row.id : "", row])
+      .filter(([id]) => id.length > 0)
+  );
+  const customerIds = [...new Set(
+    requestRows
+      .filter(isRecord)
+      .map((row) => (typeof row.customer_id === "string" ? row.customer_id : ""))
+      .filter((id) => id.length > 0)
+  )];
+
+  if (customerIds.length === 0) {
+    return requests;
+  }
+
+  const { data: customerRows, error: customerError } = await supabase
+    .from("customers")
+    .select("id,status,profile_kind")
+    .in("id", customerIds)
+    .eq("status", "active");
+
+  if (customerError || !Array.isArray(customerRows)) {
+    return requests;
+  }
+
+  const activeCustomerIds = new Set(
+    customerRows
+      .filter(isRecord)
+      .filter((row) => row.profile_kind === "customer" || row.profile_kind === "employee_self" || row.profile_kind == null)
+      .map((row) => (typeof row.id === "string" ? row.id : ""))
+      .filter((id) => id.length > 0)
+  );
+
+  const { data, error } = await supabase
     .from("rma_attachments")
-    .select("id,rma_request_id,user_id,original_name,content_type,size_bytes,uploaded_at,verified_at,bucket,storage_path,status")
+    .select("id,rma_request_id,user_id,customer_id,order_line_id,original_name,content_type,size_bytes,uploaded_at,verified_at,committed_at,bucket,storage_path,status")
     .in("rma_request_id", requestIds)
-    .in("status", ["verified", "committed"]);
+    .eq("status", "committed")
+    .not("verified_at", "is", null);
+
+  if (error) {
+    return requests;
+  }
 
   const byRequestId = new Map<string, RmaAttachment[]>();
   for (const row of Array.isArray(data) ? data : []) {
@@ -159,28 +212,50 @@ export async function hydrateCustomerRmaAttachments(
     const bucket = typeof row.bucket === "string" ? row.bucket : "";
     const attachmentId = typeof row.id === "string" ? row.id : "";
     const uploaderUserId = typeof row.user_id === "string" ? row.user_id : "";
+    const customerId = typeof row.customer_id === "string" ? row.customer_id : "";
+    const orderLineId = typeof row.order_line_id === "string" ? row.order_line_id : "";
     const name = typeof row.original_name === "string" ? row.original_name : "image";
     const contentType = typeof row.content_type === "string" ? row.content_type : undefined;
+    const verifiedAt = typeof row.verified_at === "string" ? row.verified_at : "";
+    const committedAt = typeof row.committed_at === "string" ? row.committed_at : "";
+    const request = requestById.get(requestId);
+    const requestUserId = request && typeof request.user_id === "string" ? request.user_id : "";
+    const requestCustomerId = request && typeof request.customer_id === "string" ? request.customer_id : "";
+    const requestOrderLineId = request && typeof request.order_line_id === "string" ? request.order_line_id : "";
     if (
       !requestId ||
-      !attachmentId ||
+      !request ||
+      !isUuid(attachmentId) ||
       !isUuid(uploaderUserId) ||
+      uploaderUserId !== requestUserId ||
+      !customerId ||
+      customerId !== requestCustomerId ||
+      !activeCustomerIds.has(customerId) ||
+      !orderLineId ||
+      orderLineId !== requestOrderLineId ||
       bucket !== rmaEvidenceBucket ||
-      !isRmaEvidencePathOwnedByUser(path, uploaderUserId)
+      !isRmaEvidencePathOwnedByUser(path, uploaderUserId) ||
+      !isValidVerificationTimestamp(verifiedAt) ||
+      !isValidVerificationTimestamp(committedAt)
     ) {
       continue;
     }
 
-    const { data: signed } = await supabase.storage
+    const { data: signed, error: signedError } = await supabase.storage
       .from(rmaEvidenceBucket)
       .createSignedUrl(path, rmaEvidenceSignedUrlTtlSeconds);
+    if (signedError || !signed?.signedUrl) {
+      // A committed row without a valid signed capability is not a
+      // customer-visible attachment. Do not leak its metadata as a fallback.
+      continue;
+    }
     const attachment: RmaAttachment = {
       attachmentId,
       bucket,
       contentType,
       name,
       path,
-      signedUrl: signed?.signedUrl,
+      signedUrl: signed.signedUrl,
       size: typeof row.size_bytes === "number" ? row.size_bytes : undefined,
       uploadedAt: typeof row.uploaded_at === "string" ? row.uploaded_at : undefined,
       // Internal-only signer hint; the customer DTO never exposes it.
@@ -244,4 +319,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function isValidVerificationTimestamp(value: string) {
+  return value.length > 0 && Number.isFinite(Date.parse(value));
 }

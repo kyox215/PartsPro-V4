@@ -35,6 +35,7 @@ test("two-axis action availability requires QC and keeps inventory independent",
       receivedQuantity: 2,
       receivedAt: "2026-08-28T10:00:00.000Z",
       qcStatus: "passed",
+      requestedResolution: "wallet_credit",
       inventoryDisposition: "quarantine",
     }),
     true
@@ -102,6 +103,45 @@ test("two-axis action availability requires QC and keeps inventory independent",
     isRmaActionAvailable({ action: "close", status: "rejected" }),
     true
   );
+  assert.equal(
+    isRmaActionAvailable({
+      action: "close",
+      status: "rejected",
+      receivedQuantity: 1,
+    }),
+    false,
+    "rejected RMAs with received quantity evidence cannot bypass settlement"
+  );
+});
+
+test("legacy commercial terminal states may receive a QC-only repair", () => {
+  for (const status of ["received", "refunded", "replacement_sent", "replaced"]) {
+    assert.equal(
+      isRmaActionAvailable({
+        action: "record_qc",
+        status,
+        quantity: 2,
+        receivedQuantity: 2,
+        receivedAt: "2026-08-28T10:00:00.000Z",
+        qcStatus: "pending",
+      }),
+      true,
+      `${status} should allow a guarded QC repair`
+    );
+  }
+
+  assert.equal(
+    isRmaActionAvailable({
+      action: "record_qc",
+      status: "refunded",
+      quantity: 2,
+      receivedQuantity: 2,
+      receivedAt: null,
+      qcStatus: "pending",
+    }),
+    false,
+    "QC repair requires both receipt axes"
+  );
 });
 
 test("close requires complete quantity at every required RMA stage", () => {
@@ -152,6 +192,12 @@ test("close requires complete quantity at every required RMA stage", () => {
     isRmaActionAvailable(replacement),
     true,
     "replacement complete quantity may close the RMA"
+  );
+
+  assert.equal(
+    isRmaActionAvailable({ ...replacement, status: "replaced" }),
+    true,
+    "legacy replaced is a replacement_sent-compatible close state"
   );
 
   assert.equal(
@@ -276,8 +322,16 @@ test("commercial outcome rule fails closed across refund/replacement interleavin
     }),
     false
   );
-  // A rejected wallet request remains fail-closed until an explicit future
-  // reselection contract exists.
+  assert.equal(
+    isCommercialOutcomeAvailable({
+      ...cleanReceived,
+      action: "request_wallet_refund",
+      resolutionAction: "refund_wallet",
+      walletRequestStatus: "rejected",
+    }),
+    true,
+    "a rejected wallet attempt may be retried with a new key"
+  );
   assert.equal(
     isCommercialOutcomeAvailable({
       ...cleanReceived,

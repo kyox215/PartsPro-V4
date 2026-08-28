@@ -383,13 +383,17 @@ create unique index if not exists rma_action_executions_terminal_disposition_uni
   where execution_status = 'succeeded'
     and action in ('restock_return', 'mark_scrapped', 'supplier_return');
 
--- The action ledger makes commercial settlement and QC exactly-once even when
--- two admin tabs use different idempotency keys. A replacement and a wallet
--- outcome can never both succeed for one RMA.
-create unique index if not exists rma_action_executions_commercial_outcome_unique
+-- Replacement settlement is exactly-once even when two admin tabs use
+-- different idempotency keys. Wallet requests deliberately do not share this
+-- unique index: a rejected wallet attempt may be retried with a new key after
+-- the old rejected row is retained for auditability. The RMA row lock,
+-- requested-resolution guard, active-wallet unique index, and payload checks
+-- still prevent concurrent or cross-outcome settlement.
+drop index if exists public.rma_action_executions_commercial_outcome_unique;
+create unique index if not exists rma_action_executions_replacement_outcome_unique
   on public.rma_action_executions (rma_request_id)
   where execution_status = 'succeeded'
-    and action in ('request_wallet_refund', 'mark_replacement_sent');
+    and action = 'mark_replacement_sent';
 
 create unique index if not exists rma_action_executions_qc_unique
   on public.rma_action_executions (rma_request_id)
@@ -1073,16 +1077,23 @@ begin
     raise exception 'RMA attachment not found' using errcode = 'P0002';
   end if;
 
-  if v_attachment.status = 'committed' then
-    raise exception 'Committed RMA attachments cannot be cancelled' using errcode = '23514';
+  -- Automatic verification-failure compensation may only release a pending
+  -- ticket. Verified/committed evidence is immutable and must never be
+  -- cancelled or deleted as a side effect of a repeated/mismatched complete
+  -- request. An already-cancelled pending ticket remains idempotent.
+  if v_attachment.status = 'cancelled' then
+    return true;
   end if;
 
-  if v_attachment.status <> 'cancelled' then
-    update public.rma_attachments
-    set status = 'cancelled',
-        updated_at = now()
-    where id = v_attachment.id;
+  if v_attachment.status <> 'pending' then
+    raise exception 'Only pending RMA attachments can be cancelled' using errcode = '23514';
   end if;
+
+  update public.rma_attachments
+  set status = 'cancelled',
+      updated_at = now()
+  where id = v_attachment.id
+    and status = 'pending';
 
   return true;
 end;
@@ -1742,6 +1753,7 @@ declare
   v_order public.orders%rowtype;
   v_replacement_order public.orders%rowtype;
   v_refund_request public.wallet_refund_requests%rowtype;
+  v_wallet_idempotency_key text;
   v_assigned_to uuid;
   v_next_status text;
   v_resolution_action text;
@@ -1799,7 +1811,11 @@ begin
     ) then
       raise exception 'RMA QC permission required' using errcode = '42501';
     end if;
-  elsif v_action in ('mark_received', 'restock_return', 'mark_scrapped', 'supplier_return') then
+  elsif v_action = 'restock_return' then
+    if not coalesce((select private.partspro_has_permission('product.adjust_stock')), false) then
+      raise exception 'RMA restock requires product.adjust_stock permission' using errcode = '42501';
+    end if;
+  elsif v_action in ('mark_received', 'mark_scrapped', 'supplier_return') then
     if not (
       coalesce((select private.partspro_has_permission('rma.inventory')), false)
       or coalesce((select private.partspro_has_permission('product.adjust_stock')), false)
@@ -1892,7 +1908,14 @@ begin
     end if;
 
     if v_execution.execution_status = 'succeeded' then
-      return v_before;
+      -- The action ledger is idempotent, but the row may have advanced after
+      -- the original call (for example, wallet approval). Return the current
+      -- snapshot rather than replaying a stale pre-action row.
+      select *
+      into v_after
+      from public.rma_requests as r
+      where r.id = v_before.id;
+      return v_after;
     end if;
 
     if v_execution.execution_status = 'started' then
@@ -1942,7 +1965,28 @@ begin
     returning * into v_execution;
   end if;
 
-  if v_action = 'record_qc' and v_before.qc_status <> 'pending' then
+  -- Closing an already closed RMA is a safe ledger no-op. A new key still
+  -- gets a succeeded ledger row for auditability, but never rewrites the RMA
+  -- or emits another customer-visible event/notification. A retry with the
+  -- same key is handled by the succeeded-ledger return above.
+  if v_action = 'close' and v_before.status = 'closed' then
+    update public.rma_action_executions
+    set execution_status = 'succeeded',
+        result = jsonb_build_object(
+          'rma_request_id', v_before.id,
+          'status', v_before.status,
+          'no_op', true
+        ),
+        updated_at = now()
+    where id = v_execution.id;
+    select *
+    into v_after
+    from public.rma_requests as r
+    where r.id = v_before.id;
+    return v_after;
+  end if;
+
+  if v_action = 'record_qc' and coalesce(v_before.qc_status, 'pending') <> 'pending' then
     raise exception 'RMA QC has already been recorded; use an explicit correction action in a future migration' using errcode = '23514';
   end if;
 
@@ -1981,13 +2025,32 @@ begin
     if v_before.status in ('closed', 'rejected') then
       raise exception 'Closed or rejected RMAs cannot be assigned' using errcode = '23514';
     end if;
-    v_assigned_to := coalesce(p_assigned_to, v_auth_uid);
+    if v_before.assigned_to is not null then
+      raise exception 'RMA is already assigned; reassign requires a separate explicit action' using errcode = '23514';
+    end if;
+    -- The current workflow only supports self-claim. Never let a caller
+    -- assign an arbitrary customer, inactive employee, or stale profile UUID
+    -- through this privileged RPC.
+    if p_assigned_to is not null and p_assigned_to <> v_auth_uid then
+      raise exception 'RMA assignment is limited to the authenticated staff member' using errcode = '42501';
+    end if;
+    v_assigned_to := v_auth_uid;
     v_event_type := 'assigned';
     v_event_note := coalesce(v_event_note, 'RMA assigned');
 
   elsif v_action = 'record_qc' then
-    if v_before.status <> 'received' then
+    -- Historical terminal rows can be commercially settled while their QC
+    -- column remained pending. Repair only the QC axis; this branch never
+    -- changes status, refund/replacement fields, inventory disposition, or
+    -- any other commercial result.
+    if v_before.status not in ('received', 'refunded', 'replacement_sent', 'replaced') then
       raise exception 'QC can only be recorded after the RMA is received' using errcode = '23514';
+    end if;
+
+    if v_before.received_at is null
+      or v_before.received_quantity is distinct from v_before.quantity
+    then
+      raise exception 'QC requires a recorded receipt timestamp and the complete RMA quantity' using errcode = '22003';
     end if;
 
     if v_qc_status not in ('passed', 'failed', 'not_required') then
@@ -2044,13 +2107,22 @@ begin
       raise exception 'RMA order could not be resolved for wallet refund' using errcode = '23503';
     end if;
 
-    if v_before.status <> 'received' or v_before.qc_status not in ('passed', 'failed', 'not_required') then
+    if v_before.requested_resolution not in ('refund', 'wallet_credit', 'credit_note') then
+      raise exception 'Wallet refund does not match the requested RMA resolution' using errcode = '23514';
+    end if;
+
+    v_wallet_idempotency_key := concat('rma-return:', v_before.id::text, ':', v_idempotency_key);
+
+    if v_before.status <> 'received'
+      or v_before.received_at is null
+      or v_before.qc_status not in ('passed', 'failed', 'not_required')
+    then
       raise exception 'RMA wallet refund requires receipt and an explicit QC result' using errcode = '23514';
     end if;
 
     if v_before.resolution_action = 'replacement'
       or v_before.replacement_order_id is not null
-      or v_before.status = 'replacement_sent'
+      or v_before.status in ('refunded', 'replacement_sent', 'replaced')
       or exists (
         select 1
         from public.rma_action_executions as e
@@ -2062,13 +2134,39 @@ begin
       raise exception 'RMA already has a replacement outcome; wallet refund is not available' using errcode = '23514';
     end if;
 
-    if v_before.wallet_refund_request_id is not null
-      or exists (
-        select 1
-        from public.wallet_refund_requests as wr
-        where wr.rma_request_id = v_before.id
-          and wr.status in ('pending', 'approved')
-      )
+    -- A rejected wallet attempt is a recoverable operational failure. Keep
+    -- that row and allow one new pending attempt with a new action key; every
+    -- other historical wallet state remains a hard conflict. Lock all linked
+    -- rows before deciding so two retrying staff tabs cannot create active
+    -- requests concurrently.
+    v_refund_request := null;
+    if v_before.wallet_refund_request_id is not null then
+      select *
+      into v_refund_request
+      from public.wallet_refund_requests as wr
+      where wr.id = v_before.wallet_refund_request_id
+      for update;
+
+      if v_refund_request.id is null
+        or v_refund_request.rma_request_id is distinct from v_before.id
+        or v_refund_request.request_type <> 'rma_return'
+      then
+        raise exception 'RMA wallet refund link is invalid' using errcode = '23514';
+      end if;
+    end if;
+
+    if exists (
+      select 1
+      from public.wallet_refund_requests as wr
+      where wr.rma_request_id = v_before.id
+        and wr.status <> 'rejected'
+        and wr.idempotency_key <> v_wallet_idempotency_key
+    ) then
+      raise exception 'RMA wallet refund request already exists' using errcode = '23514';
+    end if;
+
+    if v_refund_request.id is not null
+      and v_refund_request.status <> 'rejected'
     then
       raise exception 'RMA wallet refund request already exists' using errcode = '23514';
     end if;
@@ -2122,42 +2220,67 @@ begin
       raise exception 'Refund amount exceeds the remaining order-line refundable balance' using errcode = '22003';
     end if;
 
-    insert into public.wallet_refund_requests (
-      customer_id,
-      order_id,
-      order_line_id,
-      request_type,
-      requested_amount,
-      reason,
-      requested_by,
-      idempotency_key,
-      rma_request_id,
-      rma_action_execution_id,
-      metadata
-    )
-    values (
-      v_order.customer_id,
-      v_order.id,
-      v_before.order_line_id,
-      'rma_return',
-      v_refund_amount,
-      coalesce(nullif(btrim(p_reason), ''), 'RMA wallet refund'),
-      v_auth_uid,
-      concat('rma-return:', v_before.id::text, ':', v_idempotency_key),
-      v_before.id,
-      v_execution.id,
-      jsonb_build_object(
-        'source', 'rma_admin_action_v3',
-        'rma_request_id', v_before.id,
-        'requested_amount', v_refund_amount,
-        'refund_quantity', v_stock_quantity,
-        'amount_scope', 'explicit_line_amount_only',
-        'tax_and_shipping_included', false
+    -- Never use ON CONFLICT ... DO UPDATE for a money request. Lock an
+    -- existing row and require a complete scope/amount/fingerprint match;
+    -- otherwise the same key is a fail-closed conflict and cannot rewrite
+    -- the RMA link or requested amount.
+    select *
+    into v_refund_request
+    from public.wallet_refund_requests as wr
+    where wr.idempotency_key = v_wallet_idempotency_key
+    for update;
+
+    if v_refund_request.id is not null then
+      if v_refund_request.request_type <> 'rma_return'
+        or v_refund_request.rma_request_id is distinct from v_before.id
+        or v_refund_request.order_line_id is distinct from v_before.order_line_id
+        or v_refund_request.order_id is distinct from v_order.id
+        or v_refund_request.customer_id is distinct from v_order.customer_id
+        or v_refund_request.requested_amount is distinct from v_refund_amount
+        or coalesce(v_refund_request.currency, 'EUR') <> 'EUR'
+        or coalesce(v_refund_request.metadata ->> 'action_payload_fingerprint', '') <> v_payload_fingerprint
+      then
+        raise exception 'Wallet refund idempotency key conflicts with a different payload or order scope' using errcode = 'P0001';
+      end if;
+    else
+      insert into public.wallet_refund_requests (
+        customer_id,
+        order_id,
+        order_line_id,
+        request_type,
+        requested_amount,
+        currency,
+        reason,
+        requested_by,
+        idempotency_key,
+        rma_request_id,
+        rma_action_execution_id,
+        metadata
       )
-    )
-    on conflict (idempotency_key) do update
-      set updated_at = public.wallet_refund_requests.updated_at
-    returning * into v_refund_request;
+      values (
+        v_order.customer_id,
+        v_order.id,
+        v_before.order_line_id,
+        'rma_return',
+        v_refund_amount,
+        'EUR',
+        coalesce(nullif(btrim(p_reason), ''), 'RMA wallet refund'),
+        v_auth_uid,
+        v_wallet_idempotency_key,
+        v_before.id,
+        v_execution.id,
+        jsonb_build_object(
+          'source', 'rma_admin_action_v3',
+          'rma_request_id', v_before.id,
+          'requested_amount', v_refund_amount,
+          'refund_quantity', v_stock_quantity,
+          'amount_scope', 'explicit_line_amount_only',
+          'tax_and_shipping_included', false,
+          'action_payload_fingerprint', v_payload_fingerprint
+        )
+      )
+      returning * into v_refund_request;
+    end if;
 
     v_next_status := v_before.status;
     v_resolution_action := 'refund_wallet';
@@ -2166,8 +2289,12 @@ begin
     v_customer_visible := true;
 
   elsif v_action = 'restock_return' then
-    if v_before.status not in ('received', 'refunded', 'replacement_sent') or v_inventory_disposition <> 'quarantine' then
+    if v_before.status not in ('received', 'refunded', 'replacement_sent', 'replaced') or v_inventory_disposition <> 'quarantine' then
       raise exception 'RMA must be received and quarantined before restock' using errcode = '23514';
+    end if;
+
+    if v_before.received_at is null then
+      raise exception 'RMA inventory disposition requires a recorded receipt timestamp' using errcode = '23514';
     end if;
 
     if v_before.qc_status not in ('passed', 'failed', 'not_required') then
@@ -2238,8 +2365,12 @@ begin
     v_event_note := coalesce(v_event_note, 'Returned item restocked once');
 
   elsif v_action in ('mark_scrapped', 'supplier_return') then
-    if v_before.status not in ('received', 'refunded', 'replacement_sent') or v_inventory_disposition <> 'quarantine' then
+    if v_before.status not in ('received', 'refunded', 'replacement_sent', 'replaced') or v_inventory_disposition <> 'quarantine' then
       raise exception 'RMA must be received and quarantined before inventory disposition' using errcode = '23514';
+    end if;
+
+    if v_before.received_at is null then
+      raise exception 'RMA inventory disposition requires a recorded receipt timestamp' using errcode = '23514';
     end if;
 
     if v_before.qc_status not in ('passed', 'failed', 'not_required') then
@@ -2302,6 +2433,20 @@ begin
       raise exception 'A shipped replacement order is required' using errcode = '23514';
     end if;
 
+    if v_before.requested_resolution <> 'replacement' then
+      raise exception 'Replacement does not match the requested RMA resolution' using errcode = '23514';
+    end if;
+
+    -- A successful replacement action is exactly-once. A retry with the same
+    -- idempotency key already returned above; any other key must not reuse or
+    -- overwrite an existing commercial outcome or replacement association.
+    if v_before.replacement_order_id is not null
+      or v_before.resolution_action is not null
+      or v_before.status in ('replacement_sent', 'replaced')
+    then
+      raise exception 'RMA already has a replacement outcome; use the original idempotency key to retry' using errcode = '23514';
+    end if;
+
     if v_before.resolution_action = 'refund_wallet'
       or v_before.wallet_refund_request_id is not null
       or v_before.status = 'refunded'
@@ -2329,7 +2474,10 @@ begin
       raise exception 'Replacement order must be different, belong to the same customer, and be shipped' using errcode = '23514';
     end if;
 
-    if v_before.status <> 'received' or v_before.qc_status not in ('passed', 'failed', 'not_required') then
+    if v_before.status <> 'received'
+      or v_before.received_at is null
+      or v_before.qc_status not in ('passed', 'failed', 'not_required')
+    then
       raise exception 'Replacement requires receipt and an explicit QC result' using errcode = '23514';
     end if;
 
@@ -2373,11 +2521,14 @@ begin
   elsif v_action = 'close' then
     if v_before.status = 'closed' then
       v_next_status := 'closed';
-    elsif v_before.status = 'rejected' and v_before.received_at is null then
+    elsif v_before.status = 'rejected'
+      and v_before.received_at is null
+      and coalesce(v_before.received_quantity, 0) = 0
+    then
       -- A rejected request that never entered the warehouse has no second
       -- axis to settle.
       v_next_status := 'closed';
-    elsif v_before.status in ('refunded', 'replacement_sent')
+    elsif v_before.status in ('refunded', 'replacement_sent', 'replaced')
       and v_before.received_at is not null
       and v_before.received_quantity = v_before.quantity
       and v_before.qc_status in ('passed', 'failed', 'not_required')
@@ -2399,7 +2550,7 @@ begin
           )
         )
         or (
-          v_before.status = 'replacement_sent'
+          v_before.status in ('replacement_sent', 'replaced')
           and v_before.resolution_action = 'replacement'
           and v_before.replacement_quantity = v_before.quantity
           and v_before.replacement_order_id is not null
@@ -2437,6 +2588,7 @@ begin
         else reviewed_at
       end,
       reviewed_by = case
+        when v_action = 'record_qc' then reviewed_by
         when v_action <> 'assign' then v_auth_uid
         else reviewed_by
       end,
@@ -2448,7 +2600,8 @@ begin
       qc_by = case when v_action = 'record_qc' then v_auth_uid else qc_by end,
       qc_at = case when v_action = 'record_qc' then now() else qc_at end,
       resolved_at = case
-        when v_next_status in ('replacement_sent', 'refunded', 'closed', 'rejected') then coalesce(resolved_at, now())
+        when v_action = 'record_qc' then resolved_at
+        when v_next_status in ('replacement_sent', 'refunded', 'replaced', 'closed', 'rejected') then coalesce(resolved_at, now())
         else resolved_at
       end,
       closed_at = case when v_next_status = 'closed' then coalesce(closed_at, now()) else closed_at end,
@@ -2595,6 +2748,7 @@ begin
   if v_rma.status <> 'received'
     or v_rma.received_at is null
     or v_rma.qc_status not in ('passed', 'failed', 'not_required')
+    or v_rma.requested_resolution not in ('refund', 'wallet_credit', 'credit_note')
     or v_rma.resolution_action <> 'refund_wallet'
     or v_rma.replacement_order_id is not null
     or v_rma.wallet_refund_request_id is distinct from new.id
@@ -2717,6 +2871,10 @@ begin
   end if;
 
   if v_rma.status <> 'received'
+    or v_rma.received_at is null
+    or v_rma.received_quantity is distinct from v_rma.quantity
+    or v_rma.qc_status not in ('passed', 'failed', 'not_required')
+    or v_rma.requested_resolution not in ('refund', 'wallet_credit', 'credit_note')
     or v_rma.resolution_action <> 'refund_wallet'
     or v_rma.replacement_order_id is not null
     or v_rma.wallet_refund_request_id is distinct from new.id
@@ -2731,6 +2889,13 @@ begin
     v_approved_quantity := (new.metadata ->> 'refund_quantity')::integer;
   else
     v_approved_quantity := v_rma.refund_approved_quantity;
+  end if;
+
+  if v_approved_quantity is null
+    or v_approved_quantity < 1
+    or v_approved_quantity <> v_rma.quantity
+  then
+    raise exception 'Wallet approval requires the complete RMA quantity to be received and approved' using errcode = '22003';
   end if;
 
   update public.rma_requests
