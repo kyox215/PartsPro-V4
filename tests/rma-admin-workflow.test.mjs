@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   projectAdminRmaWorkflow,
   rmaWorkflowActionCodes,
   rmaWorkflowQueueCodes,
 } from "../src/lib/partspro-rma-workflow-rules.mjs";
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
+const read = (relativePath) => readFileSync(join(repoRoot, relativePath), "utf8");
 
 const manage = { manage: true };
 const inventory = { inventory: true };
@@ -103,7 +109,9 @@ test("approved without shipment waits for the customer return", () => {
   );
 
   assert.equal(result.workflowQueue, "awaiting_return");
-  assert.deepEqual(result.availableActions, []);
+  // Store inventory staff may use the direct-receive fallback, but it is a
+  // secondary action while the customer shipment declaration is missing.
+  assert.deepEqual(result.availableActions, ["mark_received"]);
   assert.equal(result.recommendedAction, null);
   assert.equal(result.blockedReason, "waiting_customer_return");
 });
@@ -388,4 +396,125 @@ test("snake-case DTO aliases are normalized without widening capability permissi
   assert.equal(result.workflowQueue, "resolution");
   assert.deepEqual(result.availableActions, ["request_wallet_refund"]);
   assert.equal(result.recommendedAction, "request_wallet_refund");
+});
+
+test("server workbench routes expose only the canonical queues and server projection", () => {
+  const adminListRoute = read("src/app/api/admin/rma/route.ts");
+  const adminDetailRoute = read("src/app/api/admin/rma/[requestId]/route.ts");
+  const adminActionRoute = read("src/app/api/admin/rma/[requestId]/actions/route.ts");
+  const adminDto = read("src/lib/partspro-rma-admin-dto.ts");
+
+  for (const queue of [
+    "review",
+    "awaiting_return",
+    "receiving",
+    "qc",
+    "resolution",
+    "inventory_close",
+    "archive",
+  ]) {
+    assert.match(adminListRoute, new RegExp(`\\"${queue}\\"`));
+  }
+  assert.match(adminListRoute, /queueCounts/);
+  assert.match(adminListRoute, /countsComplete/);
+  assert.match(adminListRoute, /listAdminRmaRequests\(\{[\s\S]*limit: 200[\s\S]*offset: 0[\s\S]*q: query\.data\.q[\s\S]*status: query\.data\.status/);
+  assert.match(adminListRoute, /queueCounts: countAdminRmaQueues\(countResult\.data\.requests/);
+  assert.doesNotMatch(adminListRoute, /queueCounts: countAdminRmaQueues\(hydratedRequests/);
+  assert.match(adminListRoute, /getAdminRmaCapabilities/);
+  assert.match(adminListRoute, /toAdminRmaDto/);
+  const repository = read("src/lib/partspro-repository.ts");
+  assert.match(repository, /ADMIN_RMA_REFUND_PREVIEW_FAILED/);
+  assert.match(repository, /ADMIN_RMA_REPLACEMENT_CANDIDATES_FAILED/);
+  assert.match(repository, /throw new RepositoryWriteError\([\s\S]*supabaseRpcStatus\(error\)/);
+  assert.doesNotMatch(repository, /admin_rma_refund_preview[\s\S]*if \(error\) \{\s*return null/);
+  assert.doesNotMatch(repository, /admin_rma_replacement_candidates[\s\S]*if \(error \|\| !Array\.isArray\(data\)\) \{\s*return \[\]/);
+  assert.match(repository, /data: await readAdminRmaRequestById\(context, requestId, options\)/);
+  assert.match(repository, /data: await readAdminRmaRefundPreview\(context\.client, requestId\)/);
+  assert.match(adminDetailRoute, /export async function GET/);
+  assert.match(adminDetailRoute, /replacementCandidates/);
+  assert.match(adminDetailRoute, /refundPreview/);
+  assert.match(adminActionRoute, /admin_perform_rma_review_action/);
+  assert.match(adminActionRoute, /start_review/);
+  assert.match(adminDto, /projectAdminRmaWorkflow/);
+  assert.match(adminDto, /hasAdminPermission\(authState, "rma\.manage"\)/);
+  assert.match(adminDto, /hasAdminPermission\(authState, "rma\.inventory"\)/);
+  assert.match(adminDto, /hasAdminPermission\(authState, "rma\.refund"\)/);
+  assert.match(adminDto, /hasAdminPermission\(authState, "product\.adjust_stock"\)/);
+
+  const attachmentMapper = adminDto.slice(
+    adminDto.indexOf("function toAdminAttachmentDto"),
+    adminDto.indexOf("function toAdminEventDto")
+  );
+  assert.doesNotMatch(attachmentMapper, /path|ownerUserId|bucket/);
+});
+
+test("queue counts stay global when the page is filtered to review", () => {
+  const scopedRows = [
+    { status: "submitted", quantity: 1 },
+    { status: "approved", quantity: 1 },
+    { status: "approved", quantity: 1, customerShippedAt: "2026-08-28T09:00:00.000Z" },
+  ];
+  const counts = Object.fromEntries(rmaWorkflowQueueCodes.map((queue) => [queue, 0]));
+
+  for (const row of scopedRows) {
+    counts[projectAdminRmaWorkflow(row, inventory).workflowQueue] += 1;
+  }
+
+  assert.equal(counts.review, 1);
+  assert.equal(counts.awaiting_return, 1);
+  assert.equal(counts.receiving, 1);
+});
+
+test("customer shipped contract is one-click, idempotent and safe for the DTO", () => {
+  const shippedRoute = read("src/app/api/rma/[requestId]/shipped/route.ts");
+  const helper = read("src/lib/partspro-rma-simple-flow.ts");
+  const customerDto = read("src/lib/partspro-rma-customer-dto.ts");
+  const contract = read("src/lib/partspro-rma-contract.ts");
+
+  assert.match(shippedRoute, /rmaCustomerShippedSchema/);
+  assert.match(shippedRoute, /markRmaShipped/);
+  assert.match(shippedRoute, /let payload: unknown = \{\}/);
+  assert.match(shippedRoute, /request\.text\(\)/);
+  assert.match(helper, /rma_mark_customer_shipped/);
+  assert.match(helper, /p_return_carrier/);
+  assert.match(helper, /p_return_tracking_code/);
+  assert.match(contract, /rmaCustomerShippedSchema/);
+  assert.match(customerDto, /customerShippedAt/);
+  assert.match(customerDto, /canMarkShipped/);
+  assert.match(customerDto, /request\.status === "approved"[\s\S]*return_in_transit/);
+  assert.match(helper, /status === "approved" && customerShippedAt[\s\S]*return_in_transit/);
+  assert.match(customerDto, /return_in_transit/);
+});
+
+test("Migration B contains the guarded review, shipped, preview, candidate and revoke contracts", () => {
+  const migration = read("supabase/migrations/20260828024331_rma_workflow_finalize.sql");
+
+  assert.match(migration, /file_size_limit,[\s\S]*4194304/);
+  for (const mime of ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]) {
+    assert.match(migration, new RegExp(`'${mime}'`));
+  }
+  assert.match(migration, /revoke insert, update on public\.rma_requests/);
+  assert.match(migration, /revoke insert on public\.rma_request_events/);
+  assert.match(migration, /drop policy if exists "partspro_rma_self_submit"/);
+  assert.match(migration, /drop policy if exists "partspro_rma_events_staff_insert"/);
+  assert.match(migration, /auto_claim_rma_first_action/);
+  assert.match(migration, /notify_rma_review_status_change/);
+  assert.match(migration, /admin_perform_rma_review_action/);
+  assert.match(migration, /partspro_has_permission\('rma\.manage'\)[\s\S]*partspro_has_permission\('orders\.manage'\)/);
+  assert.match(migration, /partspro_has_permission\('rma\.read'\)[\s\S]*partspro_has_permission\('orders\.read'\)/);
+  assert.match(migration, /partspro_has_permission\('rma\.refund'\)[\s\S]*partspro_has_permission\('wallet_refunds\.request'\)/);
+  assert.match(migration, /rma_mark_customer_shipped/);
+  assert.match(migration, /for update/);
+  assert.match(migration, /customer_shipped_at/);
+  assert.match(migration, /admin_rma_refund_preview/);
+  assert.match(migration, /unit_price_snapshot/);
+  assert.match(migration, /tax_and_shipping_included boolean/);
+  assert.match(migration, /admin_rma_replacement_candidates/);
+  assert.match(migration, /o\.status = 'shipped'/);
+  assert.match(migration, /o\.id is distinct from v_original_order_id/);
+  assert.match(migration, /other_rma\.replacement_order_id = o\.id/);
+  assert.match(migration, /other_rma\.id <> v_rma\.id/);
+  assert.match(migration, /other_rma\.status <> 'rejected'/);
+  assert.match(migration, /set search_path = pg_catalog, public, private, pg_temp/);
+  assert.match(migration, /RMA_CLIENT_UPGRADE_REQUIRED/);
 });

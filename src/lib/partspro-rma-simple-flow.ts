@@ -18,6 +18,7 @@ import {
   type RmaUploadTicketDto,
   type RmaUploadTicketInput,
   type RmaCustomerSubmitInput,
+  type RmaCustomerShippedInput,
 } from "@/lib/partspro-rma-contract";
 
 const rmaEvidenceBucket = "rma-evidence";
@@ -298,6 +299,27 @@ export async function submitRmaRequest(
   return readCustomerRmaDto(user.id, rmaId);
 }
 
+export async function markRmaShipped(
+  requestId: string,
+  input: RmaCustomerShippedInput
+): Promise<CustomerRmaDto> {
+  const { client, user } = await requireAuthenticatedClient();
+  const { error } = await client.rpc("rma_mark_customer_shipped", {
+    p_request_id: requestId,
+    p_return_carrier: input.carrier ?? null,
+    p_return_tracking_code: input.tracking ?? null,
+  });
+
+  if (error) {
+    throw mapRpcError(error, "RMA_SHIPPED_FAILED", "The return shipment could not be recorded.");
+  }
+
+  // The RPC has already checked active membership/employee-self ownership.
+  // Allow that same customer to receive the canonical result even when a
+  // different active member originally submitted the RMA.
+  return readCustomerRmaDto(user.id, requestId, { allowCustomerMember: true });
+}
+
 async function requireAuthenticatedClient() {
   const client = await createClient();
   const {
@@ -394,27 +416,41 @@ async function readDraftDto(userId: string, draftId: string): Promise<RmaDraftDt
   };
 }
 
-async function readCustomerRmaDto(userId: string, rmaId: string): Promise<CustomerRmaDto> {
+async function readCustomerRmaDto(
+  userId: string,
+  rmaId: string,
+  options: { allowCustomerMember?: boolean } = {}
+): Promise<CustomerRmaDto> {
   const service = requireServiceRoleClient();
-  const { data: row, error } = await service
+  let requestQuery = service
     .from("rma_requests")
-    .select("id,rma_no,order_id,order_no,customer_id,order_line_id,sku_code,product_name_snapshot,description,quantity,status,reason_code,problem_type,requested_resolution,policy_scope,eligible_until,created_at,updated_at")
-    .eq("id", rmaId)
-    .eq("user_id", userId)
-    .maybeSingle();
+    .select("id,rma_no,order_id,order_no,customer_id,order_line_id,sku_code,product_name_snapshot,description,quantity,status,reason_code,problem_type,requested_resolution,policy_scope,eligible_until,customer_shipped_at,return_carrier,return_tracking_code,created_at,updated_at")
+    .eq("id", rmaId);
+
+  if (!options.allowCustomerMember) {
+    requestQuery = requestQuery.eq("user_id", userId);
+  }
+
+  const { data: row, error } = await requestQuery.maybeSingle();
 
   if (error || !isRecord(row)) {
     throw new RmaSimpleFlowError(404, "RMA_NOT_FOUND", "RMA request was not found.");
   }
 
   const orderNumber = await readCustomerOrderNumber(service, row);
+  const status = readString(row.status) ?? "submitted";
+  const customerShippedAt = readString(row.customer_shipped_at);
 
-  const { data: attachmentRows } = await service
+  let attachmentQuery = service
     .from("rma_attachments")
     .select("id,original_name,content_type,size_bytes,uploaded_at,verified_at,bucket,storage_path,status")
-    .eq("rma_request_id", rmaId)
-    .eq("user_id", userId)
-    .order("created_at", { ascending: true });
+    .eq("rma_request_id", rmaId);
+
+  if (!options.allowCustomerMember) {
+    attachmentQuery = attachmentQuery.eq("user_id", userId);
+  }
+
+  const { data: attachmentRows } = await attachmentQuery.order("created_at", { ascending: true });
 
   const { data: eventRows } = await service
     .from("rma_request_events")
@@ -432,7 +468,9 @@ async function readCustomerRmaDto(userId: string, rmaId: string): Promise<Custom
   return {
     attachments,
     createdAt: readString(row.created_at) ?? new Date(0).toISOString(),
-    customerStage: customerStageForRmaStatus(readString(row.status) ?? "submitted"),
+    customerStage: status === "approved" && customerShippedAt
+      ? "return_in_transit"
+      : customerStageForRmaStatus(status),
     description: readString(row.description) ?? "",
     eligibleUntil: readString(row.eligible_until),
     events: (Array.isArray(eventRows) ? eventRows : [])
@@ -458,8 +496,17 @@ async function readCustomerRmaDto(userId: string, rmaId: string): Promise<Custom
     resolution: readString(row.requested_resolution) ?? "",
     requestedResolution: readString(row.requested_resolution) ?? "",
     sku: readString(row.sku_code) ?? "",
-    status: readString(row.status) ?? "submitted",
+    status,
     updatedAt: readString(row.updated_at),
+    customerShippedAt,
+    canMarkShipped:
+      status === "approved" && !customerShippedAt,
+    ...(readString(row.return_carrier)
+      ? { carrier: readString(row.return_carrier) as string }
+      : {}),
+    ...(readString(row.return_tracking_code)
+      ? { tracking: readString(row.return_tracking_code) as string }
+      : {}),
   };
 }
 

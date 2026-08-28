@@ -210,6 +210,10 @@ export type RmaRequest = {
   assignedBy?: string | null;
   assignedTo?: string | null;
   closedAt?: string | null;
+  /** Customer-declared return shipment timestamp and optional carrier data. */
+  customerShippedAt?: string | null;
+  returnCarrier?: string | null;
+  returnTrackingCode?: string | null;
   dueAt?: string | null;
   internalNote?: string;
   inventoryDisposition?: RmaInventoryDisposition;

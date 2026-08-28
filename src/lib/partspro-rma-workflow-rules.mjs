@@ -512,9 +512,8 @@ function isWorkflowActionAvailable(action, state, queue) {
   switch (action) {
     case "mark_received":
       return (
-        queue === "receiving" &&
+        (queue === "receiving" || queue === "awaiting_return") &&
         state.status === "approved" &&
-        Boolean(state.customerShippedAt) &&
         capabilities.inventory &&
         sharedActionGuard(action, state)
       );
@@ -635,7 +634,10 @@ function blockedReasonFor(state, queue, safetyIssue, availableActions) {
       : null;
   }
   if (queue === "awaiting_return") return "waiting_customer_return";
-  if (queue === "receiving" && !availableActions.includes("mark_received")) {
+  if (
+    queue === "receiving" &&
+    !availableActions.includes("mark_received")
+  ) {
     return "permission_denied";
   }
   if (queue === "qc" && !availableActions.includes("record_qc")) {

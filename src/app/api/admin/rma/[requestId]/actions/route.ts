@@ -7,10 +7,19 @@ import {
   performAdminRmaAction,
   type AdminRmaAction,
 } from "@/lib/partspro-repository";
-import { signSingleRmaRequestAttachments } from "@/lib/partspro-rma-evidence";
+import {
+  hydrateCustomerRmaAttachments,
+  signSingleRmaRequestAttachments,
+} from "@/lib/partspro-rma-evidence";
+import {
+  getAdminRmaCapabilities,
+  toAdminRmaDto,
+} from "@/lib/partspro-rma-admin-dto";
 import { repositoryErrorResponse, requireAdminApi } from "../../../_shared";
 
 export const dynamic = "force-dynamic";
+
+// Non-review actions retain the v3 response contract: workflow: "admin_perform_rma_action_v3".
 
 type AdminRmaActionParams = { params: Promise<{ requestId: string }> };
 
@@ -60,13 +69,23 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
       requestId: parsedRequestId.data,
     });
     const signedRequest = await signSingleRmaRequestAttachments(result.data);
+    const [hydratedRequest] = await hydrateCustomerRmaAttachments(
+      [signedRequest],
+      admin.authState.userId
+    );
+    const capabilities = getAdminRmaCapabilities(admin.authState);
 
     return NextResponse.json({
-      data: signedRequest,
+      data: toAdminRmaDto(hydratedRequest ?? signedRequest, capabilities),
       meta: {
         action: parsedBody.data.action,
         source: result.source,
-        workflow: "admin_perform_rma_action_v3",
+        workflow:
+          parsedBody.data.action === "start_review" ||
+          parsedBody.data.action === "approve" ||
+          parsedBody.data.action === "reject"
+            ? "admin_perform_rma_review_action"
+            : "admin_perform_rma_action_v3",
       },
     });
   } catch (error) {
@@ -79,6 +98,10 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
 }
 
 function requiredPermissionForAction(action: AdminRmaAction) {
+  if (action === "start_review" || action === "approve" || action === "reject") {
+    return ["rma.manage"];
+  }
+
   if (action === "request_wallet_refund") {
     return ["rma.refund", "wallet_refunds.request"];
   }

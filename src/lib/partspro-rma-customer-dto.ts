@@ -12,6 +12,8 @@ import {
  * and a short-lived signed URL.
  */
 export function toCustomerRmaDto(request: RmaRequest): CustomerRmaDto {
+  const isReturnInTransit =
+    request.status === "approved" && Boolean(request.customerShippedAt);
   const attachments = (request.attachments ?? []).map((attachment, index) => {
     const contentType = (rmaAttachmentContentTypes as readonly string[]).includes(
       attachment.contentType ?? ""
@@ -33,7 +35,10 @@ export function toCustomerRmaDto(request: RmaRequest): CustomerRmaDto {
   return {
     attachments,
     createdAt: request.createdAt,
-    customerStage: customerStageForRmaStatus(request.status),
+    customerShippedAt: request.customerShippedAt ?? null,
+    customerStage: isReturnInTransit
+      ? "return_in_transit"
+      : customerStageForRmaStatus(request.status),
     description: request.description ?? "",
     eligibleUntil: request.eligibleUntil ?? null,
     events: (request.events ?? [])
@@ -62,6 +67,9 @@ export function toCustomerRmaDto(request: RmaRequest): CustomerRmaDto {
     sku: request.sku,
     status: request.status,
     updatedAt: request.updatedAt ?? null,
+    canMarkShipped: request.status === "approved" && !request.customerShippedAt,
+    ...(request.returnCarrier ? { carrier: request.returnCarrier } : {}),
+    ...(request.returnTrackingCode ? { tracking: request.returnTrackingCode } : {}),
     ...(request.customerVisibleNote ? { customerVisibleNote: request.customerVisibleNote } : {}),
     ...(request.labResult ? { labResult: request.labResult } : {}),
     ...(request.refundAmount !== undefined ? { refundAmount: request.refundAmount } : {}),

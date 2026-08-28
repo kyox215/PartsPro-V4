@@ -1702,15 +1702,25 @@ export type SaveRmaInput = {
 
 export type AdminRmaStatusFilter =
   | "submitted"
+  | "requested"
   | "under_review"
   | "approved"
   | "rejected"
   | "received"
+  | "return_in_transit"
   | "replacement_sent"
+  | "replaced"
   | "refunded"
   | "closed";
 
 export type AdminRmaQueueFilter =
+  | "review"
+  | "awaiting_return"
+  | "receiving"
+  | "qc"
+  | "resolution"
+  | "inventory_close"
+  | "archive"
   | "mine"
   | "needs_inventory"
   | "needs_refund"
@@ -1728,6 +1738,33 @@ export type AdminRmaQuery = {
 export type AdminRmaPage = {
   requests: RmaRequest[];
   total: number;
+  totalIsExact: boolean;
+};
+
+export type AdminRmaRefundPreview = {
+  available: boolean;
+  blockedReason?: "missing_unit_price_snapshot" | "wallet_balance_exhausted" | "invalid_snapshot";
+  currency: string;
+  maxRefundAmount: number;
+  quantity: number;
+  taxAndShippingIncluded: false;
+};
+
+export type AdminRmaReplacementCandidate = {
+  id: string;
+  orderNumber: string;
+  quantity: number;
+  shippedAt: string | null;
+};
+
+export type AdminRmaDetail = {
+  request: RmaRequest;
+  refundPreview: AdminRmaRefundPreview | null;
+  replacementCandidates: AdminRmaReplacementCandidate[];
+};
+
+export type AdminRmaDetailOptions = {
+  includeRefundPreview?: boolean;
 };
 
 export type UpdateAdminRmaInput = {
@@ -1741,6 +1778,9 @@ export type UpdateAdminRmaInput = {
 };
 
 export type AdminRmaAction =
+  | "start_review"
+  | "approve"
+  | "reject"
   | "assign"
   | "request_wallet_refund"
   | "mark_received"
@@ -5227,11 +5267,56 @@ export async function listAdminRmaRequests(
   return (
     supabaseResult ??
     emptyResult(
-      { requests: [], total: 0 },
+      { requests: [], total: 0, totalIsExact: false },
       isSupabaseConfigured()
         ? "Supabase admin after-sales requests could not be read."
         : "Supabase is not configured; no admin after-sales requests are available."
     )
+  );
+}
+
+export async function getAdminRmaRequest(
+  requestId: string,
+  options: AdminRmaDetailOptions = {}
+): Promise<RepositoryResult<AdminRmaDetail | null>> {
+  // Detail hydration includes security-definer previews/candidates.  Keep
+  // typed RPC failures visible to the route instead of letting the generic
+  // best-effort reader turn a permission or migration outage into an empty
+  // detail response.
+  const context = await getSupabaseContext();
+  if (context) {
+    return {
+      data: await readAdminRmaRequestById(context, requestId, options),
+      source: "supabase",
+    };
+  }
+
+  return emptyResult(
+    null,
+    isSupabaseConfigured()
+      ? "Supabase admin after-sales request could not be read."
+      : "Supabase is not configured; no admin after-sales request is available."
+  );
+}
+
+export async function getAdminRmaRefundPreview(
+  requestId: string
+): Promise<RepositoryResult<AdminRmaRefundPreview | null>> {
+  // This helper is intentionally not wrapped in withSupabase: an RPC error
+  // must reach repositoryErrorResponse as a stable fail-closed error.
+  const context = await getSupabaseContext();
+  if (context) {
+    return {
+      data: await readAdminRmaRefundPreview(context.client, requestId),
+      source: "supabase",
+    };
+  }
+
+  return emptyResult(
+    null,
+    isSupabaseConfigured()
+      ? "Supabase RMA refund preview could not be read."
+      : "Supabase is not configured; no RMA refund preview is available."
   );
 }
 
@@ -5359,7 +5444,9 @@ export async function performAdminRmaAction(
   }
 
   const context = await requireSupabaseContext();
-  const request = await performAdminRmaActionViaRpc(context, input);
+  const request = isReviewRmaAction(input.action)
+    ? await performAdminRmaReviewActionViaRpc(context, input)
+    : await performAdminRmaActionViaRpc(context, input);
 
   if (!request) {
     throw new RepositoryWriteError(
@@ -5374,6 +5461,10 @@ export async function performAdminRmaAction(
   }
 
   return { data: request, source: "supabase" };
+}
+
+function isReviewRmaAction(action: AdminRmaAction) {
+  return action === "start_review" || action === "approve" || action === "reject";
 }
 
 export async function saveB2BApplication(
@@ -11104,11 +11195,31 @@ async function readAdminRmaRequests(
     .select("*", { count: "exact" })
     .order("created_at", { ascending: false });
 
-  if (query.status) {
+  if (query.status === "return_in_transit") {
+    request = request.eq("status", "approved").not("customer_shipped_at", "is", null);
+  } else if (query.status) {
     request = request.eq("status", query.status);
   }
 
-  if (query.queue === "mine") {
+  if (query.queue === "review") {
+    request = request.in("status", ["submitted", "requested", "under_review"]);
+  } else if (query.queue === "awaiting_return") {
+    request = request.eq("status", "approved").is("customer_shipped_at", null);
+  } else if (query.queue === "receiving") {
+    request = request.eq("status", "approved").not("customer_shipped_at", "is", null);
+  } else if (query.queue === "qc") {
+    request = request
+      .in("status", ["received", "refunded", "replacement_sent", "replaced"])
+      .or("qc_status.eq.pending,qc_status.is.null");
+  } else if (query.queue === "resolution") {
+    request = request
+      .eq("status", "received")
+      .in("qc_status", ["passed", "failed", "not_required"]);
+  } else if (query.queue === "inventory_close") {
+    request = request.in("status", ["refunded", "replacement_sent", "replaced"]);
+  } else if (query.queue === "archive") {
+    request = request.in("status", ["closed", "rejected"]);
+  } else if (query.queue === "mine") {
     request = request.eq("assigned_to", context.userId);
   } else if (query.queue === "unassigned") {
     request = request.is("assigned_to", null);
@@ -11175,7 +11286,168 @@ async function readAdminRmaRequests(
   return {
     requests,
     total: count ?? requests.length,
+    totalIsExact: count !== null && count !== undefined,
   };
+}
+
+async function readAdminRmaRequestById(
+  context: SupabaseContext,
+  requestId: string,
+  options: AdminRmaDetailOptions
+): Promise<AdminRmaDetail | null> {
+  const { data, error } = await context.client
+    .from("rma_requests")
+    .select("*")
+    .eq("id", requestId)
+    .maybeSingle();
+
+  if (error || !isDbRow(data)) {
+    return null;
+  }
+
+  const lineId = pickString(data, ["order_line_id", "order_item_id", "line_id"]);
+  const lineRows = await readOrderLineRowsForLineIds(
+    context.client,
+    lineId ? [lineId] : []
+  );
+  const linesById = mapRowsById(lineRows ?? []);
+  const orderRows = await readOrderRowsForRmaRows(
+    context.client,
+    [data],
+    lineRows ?? []
+  );
+  const ordersById = mapRowsById(orderRows ?? []);
+  const eventsByRequestId = await readRmaEventsByRequestId(
+    context.client,
+    [requestId]
+  );
+  const walletRefundStatusesByRequestId =
+    await readRmaWalletRefundStatusesByRequestId(context.client, [requestId]);
+  const request = mapRmaRow(
+    data,
+    linesById,
+    eventsByRequestId,
+    ordersById,
+    walletRefundStatusesByRequestId
+  );
+
+  if (!request) {
+    return null;
+  }
+
+  const [refundPreview, replacementCandidates] = await Promise.all([
+    options.includeRefundPreview
+      ? readAdminRmaRefundPreview(context.client, requestId)
+      : Promise.resolve(null),
+    readAdminRmaReplacementCandidates(context.client, requestId),
+  ]);
+
+  return { request, refundPreview, replacementCandidates };
+}
+
+async function readAdminRmaRefundPreview(
+  client: SupabaseServerClient,
+  requestId: string
+): Promise<AdminRmaRefundPreview | null> {
+  const { data, error } = await client.rpc("admin_rma_refund_preview", {
+    p_request_id: requestId,
+  });
+
+  if (error) {
+    throw new RepositoryWriteError(
+      supabaseRpcStatus(error),
+      "ADMIN_RMA_REFUND_PREVIEW_FAILED",
+      "Supabase could not calculate the RMA refund preview.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const row = Array.isArray(data) ? data.find(isDbRow) : data;
+  if (!isDbRow(row)) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_RMA_REFUND_PREVIEW_RESULT_INVALID",
+      "Supabase returned an invalid RMA refund preview."
+    );
+  }
+
+  const currency = pickString(row, ["currency"]) ?? "EUR";
+  const maxRefundAmount = pickNumber(row, ["max_refund_amount", "maxRefundAmount"]);
+  const quantity = pickNumber(row, ["quantity"]);
+  const available = row.available === false ? false : maxRefundAmount !== null;
+  const blockedReason = pickString(row, ["blocked_reason", "blockedReason"]);
+
+  if (maxRefundAmount === null || quantity === null) {
+    return {
+      available: false,
+      ...(blockedReason ? { blockedReason: normalizeRefundPreviewBlockedReason(blockedReason) } : {}),
+      currency,
+      maxRefundAmount: 0,
+      quantity: 0,
+      taxAndShippingIncluded: false,
+    };
+  }
+
+  return {
+    available,
+    ...(blockedReason ? { blockedReason: normalizeRefundPreviewBlockedReason(blockedReason) } : {}),
+    currency,
+    maxRefundAmount: Math.max(0, maxRefundAmount),
+    quantity: Math.max(0, Math.trunc(quantity)),
+    taxAndShippingIncluded: false,
+  };
+}
+
+async function readAdminRmaReplacementCandidates(
+  client: SupabaseServerClient,
+  requestId: string
+): Promise<AdminRmaReplacementCandidate[]> {
+  const { data, error } = await client.rpc("admin_rma_replacement_candidates", {
+    p_request_id: requestId,
+  });
+
+  if (error) {
+    throw new RepositoryWriteError(
+      supabaseRpcStatus(error),
+      "ADMIN_RMA_REPLACEMENT_CANDIDATES_FAILED",
+      "Supabase could not calculate RMA replacement candidates.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  if (!Array.isArray(data)) {
+    throw new RepositoryWriteError(
+      502,
+      "ADMIN_RMA_REPLACEMENT_CANDIDATES_RESULT_INVALID",
+      "Supabase returned invalid RMA replacement candidates."
+    );
+  }
+
+  return data
+    .filter(isDbRow)
+    .map((row) => {
+      const id = pickString(row, ["id", "order_id"]);
+      const orderNumber = pickString(row, ["order_number", "order_no"]);
+      const quantity = pickNumber(row, ["quantity"]);
+      if (!id || !orderNumber || quantity === null) {
+        return null;
+      }
+      return {
+        id,
+        orderNumber,
+        quantity: Math.max(0, Math.trunc(quantity)),
+        shippedAt: pickString(row, ["shipped_at", "shippedAt"]),
+      } satisfies AdminRmaReplacementCandidate;
+    })
+    .filter(isDefined);
+}
+
+function normalizeRefundPreviewBlockedReason(
+  value: string
+): AdminRmaRefundPreview["blockedReason"] {
+  if (value === "wallet_balance_exhausted") return value;
+  if (value === "invalid_snapshot") return value;
+  return "missing_unit_price_snapshot";
 }
 
 async function readCurrentEmployeeSelfRmaRequests(
@@ -11698,6 +11970,35 @@ async function performAdminRmaActionViaRpc(
 
   const row = Array.isArray(data) ? data.find(isDbRow) : data;
 
+  if (!isDbRow(row)) {
+    return null;
+  }
+
+  return mapRmaRpcRow(context, row);
+}
+
+async function performAdminRmaReviewActionViaRpc(
+  context: SupabaseContext,
+  input: PerformAdminRmaActionInput
+): Promise<RmaRequest | null> {
+  const { data, error } = await context.client.rpc("admin_perform_rma_review_action", {
+    p_action: input.action,
+    p_customer_visible_note: input.customerVisibleNote ?? null,
+    p_internal_note: input.internalNote ?? null,
+    p_idempotency_key: input.idempotencyKey ?? null,
+    p_request_id: input.requestId,
+  });
+
+  if (error) {
+    throw new RepositoryWriteError(
+      502,
+      "RMA_REVIEW_ACTION_RPC_FAILED",
+      "Supabase rejected the after-sales review action.",
+      supabaseErrorDetails(error)
+    );
+  }
+
+  const row = Array.isArray(data) ? data.find(isDbRow) : data;
   if (!isDbRow(row)) {
     return null;
   }
@@ -14193,6 +14494,9 @@ function mapRmaRow(
     assignedBy: pickString(row, ["assigned_by"]),
     assignedTo: pickString(row, ["assigned_to"]),
     closedAt: pickString(row, ["closed_at"]),
+    customerShippedAt: pickString(row, ["customer_shipped_at"]),
+    returnCarrier: pickString(row, ["return_carrier"]),
+    returnTrackingCode: pickString(row, ["return_tracking_code"]),
     dueAt: pickString(row, ["due_at"]),
     internalNote: pickString(row, ["internal_note"]) ?? undefined,
     inventoryDisposition: normalizeRmaInventoryDisposition(

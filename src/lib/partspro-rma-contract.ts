@@ -118,6 +118,14 @@ export const rmaCustomerSubmitSchema = z
   .strict();
 
 export type RmaCustomerSubmitInput = z.infer<typeof rmaCustomerSubmitSchema>;
+export const rmaCustomerShippedSchema = z
+  .object({
+    carrier: z.string().trim().max(120).optional(),
+    tracking: z.string().trim().max(160).optional(),
+  })
+  .strict();
+
+export type RmaCustomerShippedInput = z.infer<typeof rmaCustomerShippedSchema>;
 export type RmaDraftCreateInput = z.infer<typeof rmaDraftCreateSchema>;
 export type RmaUploadTicketInput = z.infer<typeof rmaUploadTicketSchema>;
 export type RmaCompleteAttachmentInput = z.infer<typeof rmaCompleteAttachmentSchema>;
@@ -125,6 +133,9 @@ export type RmaCompleteAttachmentInput = z.infer<typeof rmaCompleteAttachmentSch
 export const adminRmaActionSchema = z
   .object({
     action: z.enum([
+      "start_review",
+      "approve",
+      "reject",
       "assign",
       "request_wallet_refund",
       "mark_received",
@@ -182,6 +193,7 @@ export type CustomerRmaAttachmentDto = {
 export type CustomerRmaDto = {
   attachments: CustomerRmaAttachmentDto[];
   createdAt: string;
+  customerShippedAt: string | null;
   customerStage: RmaCustomerStage;
   description: string;
   eligibleUntil: string | null;
@@ -209,6 +221,9 @@ export type CustomerRmaDto = {
   sku: string;
   status: string;
   updatedAt: string | null;
+  carrier?: string;
+  tracking?: string;
+  canMarkShipped: boolean;
   customerVisibleNote?: string;
   labResult?: string;
   refundAmount?: number;
@@ -313,6 +328,8 @@ export function calculateRmaLineRefundCap({
 
 export function customerStageForRmaStatus(status: string): RmaCustomerStage {
   switch (status) {
+    case "return_in_transit":
+      return "return_in_transit";
     case "under_review":
     case "approved":
       return "under_review";

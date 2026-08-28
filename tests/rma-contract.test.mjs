@@ -60,7 +60,7 @@ test("customer contract freezes six reasons, three resolutions and strict payloa
   assert.match(contract, /rmaCanonicalPolicyVersion = "partspro-b2b-v1"/);
 });
 
-test("server upload/complete/submit path is opaque, direct-upload and fail-closed", () => {
+test("server upload/complete/submit path is opaque and legacy writes require upgrade", () => {
   assert.match(helper, /createSignedUploadUrl\(storagePath/);
   assert.match(helper, /uploadUrl: signed\.signedUrl/);
   assert.doesNotMatch(helper, /return \{[^}]*storagePath/);
@@ -73,24 +73,22 @@ test("server upload/complete/submit path is opaque, direct-upload and fail-close
   assert.match(helper, /RMA_DRAFT_REQUIRED/);
   assert.match(helper, /p_reason_code: input\.reasonCode \?\? null/);
   assert.match(http, /handleLegacyRmaSubmit/);
-  assert.match(http, /normalizeLegacyRmaAttachments/);
-  assert.match(http, /attachments\.length < 1/);
-  assert.match(http, /RMA_EVIDENCE_REQUIRED/);
+  assert.match(http, /RMA_CLIENT_UPGRADE_REQUIRED/);
+  assert.match(http, /410/);
+  assert.doesNotMatch(http, /normalizeLegacyRmaAttachments|attachments\.length < 1|RMA_EVIDENCE_REQUIRED/);
   assert.match(http, /Cache-Control/);
   assert.match(customerRoute, /handleRmaSubmit/);
   assert.match(customerDto, /customerStageForRmaStatus/);
   assert.doesNotMatch(customerRoute, /data:\s*customerRequests[\s\S]*internalNote/);
-  assert.match(legacyEvidenceRoute, /maxEvidenceBytes = 20 \* 1024 \* 1024/);
-  assert.match(legacyEvidenceRoute, /rma\/\$\{account\.userId\}\/legacy/);
-  assert.match(legacyEvidenceRoute, /video\/mp4/);
-  assert.match(legacyEvidenceRoute, /createSignedUrl/);
+  assert.match(legacyEvidenceRoute, /RMA_CLIENT_UPGRADE_REQUIRED/);
+  assert.match(legacyEvidenceRoute, /410/);
+  assert.doesNotMatch(legacyEvidenceRoute, /maxEvidenceBytes|video\/mp4|createSignedUrl|\.storage/);
   assert.match(evidence, /isRmaEvidencePathOwnedByUser/);
   assert.match(evidence, /stripSignedUrl/);
   assert.match(evidence, /!attachmentOwnerUserId/);
   assert.match(evidence, /storage_path/);
   assert.match(completeRoute, /export async function DELETE/);
   assert.match(completeRoute, /cancelRmaAttachment/);
-  assert.match(http, /const customerDto = toCustomerRmaDto\(signedRequest\)/);
   assert.match(customerDto, /assignees, notes, wallet ids, inventory fields and storage paths never cross/);
   assert.doesNotMatch(customerDto, /internalNote|assignedTo|walletRefundRequestId|inventoryDisposition|storagePath/);
   assert.doesNotMatch(customerRoute, /rma\/\$\{request\.id\}/);
