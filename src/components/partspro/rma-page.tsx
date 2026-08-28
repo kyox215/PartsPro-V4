@@ -152,6 +152,11 @@ type ShippingNotice = {
   tone: "error" | "success";
 };
 
+const EMPTY_SHIPPING_DRAFT: Readonly<ShippingDraft> = Object.freeze({
+  carrier: "",
+  tracking: "",
+});
+
 type LocalRmaImage = {
   file: File;
   id: string;
@@ -636,7 +641,7 @@ export function RmaPage({
     const body = Object.keys(shippingDetails).length > 0 ? JSON.stringify(shippingDetails) : "{}";
 
     try {
-      const response = await fetch(`/api/rma/${request.id}/shipped`, {
+      const response = await fetch(`/api/rma/${encodeURIComponent(request.id)}/shipped`, {
         method: "POST",
         headers: {
           Accept: "application/json",
@@ -1042,7 +1047,7 @@ export function RmaPage({
                 onMarkShipped={() => void markRequestShipped(request)}
                 onShippingDraftChange={(key, value) => updateShippingDraft(request.id, key, value)}
                 shippingBusy={Boolean(shippingBusy[request.id])}
-                shippingDraft={shippingDrafts[request.id] ?? { carrier: "", tracking: "" }}
+                shippingDraft={shippingDrafts[request.id] ?? EMPTY_SHIPPING_DRAFT}
                 shippingNotice={shippingNotices[request.id]}
                 t={t}
               />

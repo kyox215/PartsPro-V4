@@ -22,6 +22,9 @@ test("admin panel exposes six active server queues and a secondary archive entry
   }
   assert.match(panel, /ACTIVE_QUEUE_TABS/);
   assert.match(panel, /role="tablist"/);
+  assert.match(panel, /<div key=\{request\.id\} role="listitem">/);
+  assert.match(panel, /<button[\s\S]*aria-current=\{selectedId === request\.id/);
+  assert.doesNotMatch(panel, /<button[^>]*role="listitem"/);
   assert.match(panel, /queueCounts/);
   assert.match(panel, /countsComplete/);
   assert.match(panel, /`≥\$\{/);

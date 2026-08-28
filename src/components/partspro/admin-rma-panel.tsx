@@ -632,32 +632,32 @@ export function AdminRmaPanel() {
                   </div>
                 ) : (
                   requests.map((request) => (
-                    <button
-                      key={request.id}
-                      type="button"
-                      role="listitem"
-                      aria-current={selectedId === request.id ? "true" : undefined}
-                      className={cn(
-                        "w-full rounded-lg border p-3 text-left transition hover:border-primary/30 hover:bg-primary/5 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40",
-                        selectedId === request.id
-                          ? "border-primary/40 bg-primary/8"
-                          : "border-slate-200 bg-white"
-                      )}
-                      onClick={() => setSelectedId(request.id)}
-                    >
-                      <div className="flex min-w-0 items-center gap-2">
-                        <span className="min-w-0 flex-1 truncate font-mono text-xs font-black">
-                          {request.rmaNo ?? copy.rma}
-                        </span>
-                        <Badge className="border border-primary/20 bg-primary/5 text-primary">
-                          {queueLabel(request.workflowQueue, isZh)}
-                        </Badge>
-                      </div>
-                      <div className="mt-2 truncate text-sm font-black text-slate-900">{request.productName}</div>
-                      <div className="mt-1 truncate text-xs font-semibold text-slate-500">
-                        {request.sku} · {request.orderNumber ?? "—"} · {completeQuantity(request)}
-                      </div>
-                    </button>
+                    <div key={request.id} role="listitem">
+                      <button
+                        type="button"
+                        aria-current={selectedId === request.id ? "true" : undefined}
+                        className={cn(
+                          "w-full rounded-lg border p-3 text-left transition hover:border-primary/30 hover:bg-primary/5 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40",
+                          selectedId === request.id
+                            ? "border-primary/40 bg-primary/8"
+                            : "border-slate-200 bg-white"
+                        )}
+                        onClick={() => setSelectedId(request.id)}
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="min-w-0 flex-1 truncate font-mono text-xs font-black">
+                            {request.rmaNo ?? copy.rma}
+                          </span>
+                          <Badge className="border border-primary/20 bg-primary/5 text-primary">
+                            {queueLabel(request.workflowQueue, isZh)}
+                          </Badge>
+                        </div>
+                        <div className="mt-2 truncate text-sm font-black text-slate-900">{request.productName}</div>
+                        <div className="mt-1 truncate text-xs font-semibold text-slate-500">
+                          {request.sku} · {request.orderNumber ?? "—"} · {completeQuantity(request)}
+                        </div>
+                      </button>
+                    </div>
                   ))
                 )}
               </div>

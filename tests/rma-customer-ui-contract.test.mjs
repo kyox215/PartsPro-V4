@@ -115,7 +115,7 @@ test("customer can mark an approved request shipped in one tap with optional log
   assert.match(component, /shippingPendingRef/);
   assert.match(component, /shippingPendingRef\.current\.has\(request\.id\)/);
   assert.match(component, /method: "POST"/);
-  assert.match(component, /\/api\/rma\/\$\{request\.id\}\/shipped/);
+  assert.match(component, /\/api\/rma\/\$\{encodeURIComponent\(request\.id\)\}\/shipped/);
   assert.match(component, /Object\.keys\(shippingDetails\)\.length > 0 \? JSON\.stringify\(shippingDetails\) : "\{\}"/);
   assert.match(component, /canMarkShipped/);
   assert.match(component, /storefront\.rma\.shipped\.button/);
@@ -125,6 +125,8 @@ test("customer can mark an approved request shipped in one tap with optional log
   assert.match(component, /setRecentRequests\(\(current\) =>[\s\S]*current\.map\(\(item\) => \(item\.id === savedRequest\.id \? savedRequest : item\)\)/);
   assert.match(component, /customerShippedAt/);
   assert.match(component, /shippingNotice\.tone === "error"/);
+  assert.match(component, /const EMPTY_SHIPPING_DRAFT: Readonly<ShippingDraft>/);
+  assert.match(component, /shippingDrafts\[request\.id\] \?\? EMPTY_SHIPPING_DRAFT/);
   assert.doesNotMatch(component, /Dialog|window\.confirm|confirm\(/);
 });
 
