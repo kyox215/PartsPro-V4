@@ -5,6 +5,11 @@ import {
   isRmaActionAvailable as isRmaActionAvailableRule,
   reasonRequiresImage as reasonRequiresImageRule,
 } from "@/lib/partspro-rma-rules.mjs";
+import {
+  rmaAttachmentContentTypes as sharedRmaAttachmentContentTypes,
+  rmaMaxAttachments as sharedRmaMaxAttachments,
+  rmaMaxAttachmentBytes as sharedRmaMaxAttachmentBytes,
+} from "@/lib/partspro-rma-upload-client.mjs";
 
 /**
  * Public RMA contract. Keep this file free of repository/database fields so it
@@ -43,13 +48,7 @@ export const rmaResolutionCodes = [
 
 export type RmaResolutionCode = (typeof rmaResolutionCodes)[number];
 
-export const rmaAttachmentContentTypes = [
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/heic",
-  "image/heif",
-] as const;
+export const rmaAttachmentContentTypes = sharedRmaAttachmentContentTypes;
 
 export type RmaAttachmentContentType = (typeof rmaAttachmentContentTypes)[number];
 
@@ -63,8 +62,9 @@ export const rmaCustomerStageCodes = [
 
 export type RmaCustomerStage = (typeof rmaCustomerStageCodes)[number];
 
-export const rmaMaxAttachments = 6;
-export const rmaMaxAttachmentBytes = 4 * 1024 * 1024;
+// Shared upload policy remains: rmaMaxAttachments = 6; rmaMaxAttachmentBytes = 4 * 1024 * 1024.
+export const rmaMaxAttachments = sharedRmaMaxAttachments;
+export const rmaMaxAttachmentBytes = sharedRmaMaxAttachmentBytes;
 
 const uuid = z.string().uuid();
 
