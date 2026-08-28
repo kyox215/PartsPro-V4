@@ -2905,7 +2905,7 @@ export function SupplierBatchTransportCostDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent aria-modal={true} className="flex max-h-[94dvh] w-[calc(100vw-1rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:w-[calc(100vw-2rem)]">
+      <DialogContent aria-modal={true} className="flex max-h-[94dvh] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden p-0 sm:w-[calc(100vw-2rem)] sm:max-w-6xl">
         <DialogHeader className="border-b border-slate-200 px-4 py-4 sm:px-6">
           <DialogTitle>{isCorrectionMode ? text.correctionTitle : charge ? text.editTitle : text.title}</DialogTitle>
           <DialogDescription>{isCorrectionMode ? text.correctionDescription : text.description}</DialogDescription>
@@ -2951,7 +2951,8 @@ export function SupplierBatchTransportCostDialog({
                 </div>
               ) : null}
 
-              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+              <section className="rounded-lg border border-slate-200/80 bg-slate-50/50 p-3 sm:p-4">
+              <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
                 <Field id="charge-type" label={text.chargeType} error={fieldErrorText(fieldErrors.chargeType, text)}>
                   <Select value={form.chargeType} onValueChange={(value) => updateField("chargeType", value as SupplierBatchChargeType)} disabled={actionDisabled}>
                     <SelectTrigger id="charge-type" aria-label={text.chargeType} aria-invalid={Boolean(fieldErrors.chargeType)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("charge-type", Boolean(fieldErrors.chargeType))}><SelectValue /></SelectTrigger>
@@ -2973,7 +2974,7 @@ export function SupplierBatchTransportCostDialog({
                   </div>
                 </Field>
                 <Field id="gross" label={text.gross}>
-                  <Input id="gross" value={grossCents === null ? "—" : formatCents(grossCents)} readOnly tabIndex={-1} />
+                  <Input id="gross" className="bg-slate-100 text-slate-700" value={grossCents === null ? "—" : formatCents(grossCents)} readOnly tabIndex={-1} />
                 </Field>
                 <Field id="capitalized-amount" label={text.capitalizedAmount} error={fieldErrorText(fieldErrors.capitalizedAmount, text)}>
                   <Input id="capitalized-amount" inputMode="decimal" value={form.capitalizedAmount} onChange={(event) => updateField("capitalizedAmount", event.target.value)} aria-invalid={Boolean(fieldErrors.capitalizedAmount)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("capitalized-amount", Boolean(fieldErrors.capitalizedAmount))} disabled={actionDisabled} />
@@ -3039,6 +3040,7 @@ export function SupplierBatchTransportCostDialog({
                 <Field id="occurred-at" label={text.occurredAt} error={fieldErrorText(fieldErrors.occurredAt, text)} description={text.timezone}><Input id="occurred-at" type="datetime-local" value={form.occurredAt} onChange={(event) => updateField("occurredAt", event.target.value)} aria-invalid={Boolean(fieldErrors.occurredAt)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("occurred-at", Boolean(fieldErrors.occurredAt), true)} disabled={actionDisabled} /></Field>
                 <Field id="evidence-url" label={text.evidenceUrl} error={fieldErrorText(fieldErrors.evidenceUrl, text)}><Input id="evidence-url" type="url" value={form.evidenceUrl} onChange={(event) => updateField("evidenceUrl", event.target.value)} aria-invalid={Boolean(fieldErrors.evidenceUrl)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("evidence-url", Boolean(fieldErrors.evidenceUrl))} disabled={actionDisabled} /></Field>
               </div>
+              </section>
 
               {isCorrectionMode ? (
                 <section className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
@@ -3055,12 +3057,14 @@ export function SupplierBatchTransportCostDialog({
                 </section>
               ) : null}
 
-              <div className="mt-3 grid gap-3 md:grid-cols-2">
+              <section className="mt-4 rounded-lg border border-slate-200/80 bg-slate-50/50 p-3 sm:p-4">
+              <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
                 <Field id="zero-cost-reason" label={text.zeroCostReason} error={fieldErrorText(fieldErrors.zeroCostReason, text)} description={text.zeroCostHelp}>
                   <Input id="zero-cost-reason" value={form.zeroCostReason} onChange={(event) => updateField("zeroCostReason", event.target.value)} aria-invalid={Boolean(fieldErrors.zeroCostReason)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("zero-cost-reason", Boolean(fieldErrors.zeroCostReason), true)} disabled={actionDisabled} />
                 </Field>
                 <Field id="notes" label={text.notes} error={fieldErrorText(fieldErrors.notes, text)}><Textarea id="notes" value={form.notes} onChange={(event) => updateField("notes", event.target.value)} aria-invalid={Boolean(fieldErrors.notes)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("notes", Boolean(fieldErrors.notes))} disabled={actionDisabled} /></Field>
               </div>
+              </section>
 
               {form.allocationMethod === "manual" ? (
                 <section className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3" aria-label={text.manual}>
@@ -3166,7 +3170,7 @@ export function SupplierBatchTransportCostDialog({
           )}
         </div>
 
-        <DialogFooter className="border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+        <DialogFooter className="m-0 rounded-none border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
           <Button
             variant="outline"
             onClick={() => handleOpenChange(false)}
@@ -3207,7 +3211,7 @@ export function SupplierBatchTransportCostDialog({
       </DialogContent>
       </Dialog>
       <Dialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
-      <DialogContent aria-modal={true} className="w-[calc(100vw-1rem)] max-w-lg">
+      <DialogContent aria-modal={true} className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{isCorrectionMode ? text.correctionTitle : text.confirmSummaryTitle}</DialogTitle>
           <DialogDescription>{isCorrectionMode ? text.correctionDescription : text.confirmSummaryDescription}</DialogDescription>
@@ -3246,7 +3250,7 @@ export function SupplierBatchTransportCostDialog({
       </DialogContent>
       </Dialog>
       <Dialog open={closeGuardOpen} onOpenChange={setCloseGuardOpen}>
-      <DialogContent aria-modal={true} className="w-[calc(100vw-1rem)] max-w-md">
+      <DialogContent aria-modal={true} className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{text.draftGuardTitle}</DialogTitle>
           <DialogDescription>{text.draftGuardDescription}</DialogDescription>
@@ -3276,10 +3280,10 @@ function Field({
 }) {
   return (
     <div className="min-w-0 space-y-1">
-      <Label htmlFor={id} className="text-xs font-semibold text-slate-700">{label}</Label>
+      <Label htmlFor={id} className="text-xs font-semibold leading-5 text-slate-700">{label}</Label>
       {children}
-      {description ? <p id={id ? `${id}-description` : undefined} className="text-[11px] text-slate-500">{description}</p> : null}
-      {error ? <p id={id ? `${id}-error` : undefined} className="text-[11px] font-semibold text-red-700" role="alert">{error}</p> : null}
+      {description ? <p id={id ? `${id}-description` : undefined} className="text-[11px] leading-4 text-slate-500">{description}</p> : null}
+      {error ? <p id={id ? `${id}-error` : undefined} className="text-[11px] font-semibold leading-4 text-red-700" role="alert">{error}</p> : null}
     </div>
   );
 }
