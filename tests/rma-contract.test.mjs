@@ -23,6 +23,7 @@ const legacyEvidenceRoute = read("src/app/api/rma/evidence/route.ts");
 const completeRoute = read("src/app/api/rma/drafts/[draftId]/attachments/[attachmentId]/complete/route.ts");
 const migration = read("supabase/migrations/20260828092046_rma_simple_flow_expand.sql");
 const finalizeMigration = read("supabase/migrations/20260828092050_rma_workflow_finalize.sql");
+const aclLockdownMigration = read("supabase/migrations/20260828095944_rma_acl_lockdown.sql");
 const repository = read("src/lib/partspro-repository.ts");
 const readiness = read("src/lib/partspro-rma-workflow-readiness.ts");
 
@@ -474,4 +475,48 @@ test("Migration B customer shipped RPC and refund preview stay narrow and parity
   assert.match(replacementActionBody, /wr\.request_type is distinct from 'rma_return'/);
   assert.match(replacementActionBody, /wr\.status <> 'rejected'/);
   assert.match(replacementActionBody, /e\.action = 'request_wallet_refund'[\s\S]*e\.execution_status = 'succeeded'/);
+});
+
+test("RMA ACL hotfix revokes only direct client privileges", () => {
+  // Strip comments before checking the contract so a statement cannot be
+  // satisfied by a comment that merely repeats the intended SQL.
+  const aclSql = aclLockdownMigration
+    .replace(/--[^\n]*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  for (const table of [
+    "rma_requests",
+    "rma_request_events",
+    "rma_drafts",
+    "rma_attachments",
+    "rma_action_executions",
+  ]) {
+    assert.match(
+      aclSql,
+      new RegExp(`revoke all privileges on table public\\.${table} from anon, authenticated;`, "i"),
+      `${table} must be inaccessible to browser roles`
+    );
+  }
+
+  assert.match(
+    aclSql,
+    /revoke all privileges on sequence public\.rma_request_no_seq from anon, authenticated;/i
+  );
+
+  for (const functionName of [
+    "record_rma_request_created_event",
+    "sync_rma_wallet_refund_status",
+  ]) {
+    assert.match(
+      aclSql,
+      new RegExp(`revoke execute on function private\\.${functionName}\\(\\) from public, anon, authenticated;`, "i"),
+      `${functionName} must not be a public callable function`
+    );
+  }
+
+  // The hotfix must not change service_role access, RLS/policies, function
+  // bodies, or any data. This assertion also keeps the migration minimal.
+  assert.doesNotMatch(aclSql, /service_role/i);
+  assert.doesNotMatch(aclSql, /\b(alter|create|drop|update|delete|insert|grant)\b/i);
 });

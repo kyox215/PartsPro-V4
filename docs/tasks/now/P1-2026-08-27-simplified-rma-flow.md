@@ -354,6 +354,11 @@ refunded | replacement_sent
 - 新增 `tests/rma-admin-ui-contract.test.mjs` 并扩展 customer UI contract，覆盖队列/count honesty、服务端动作、退款/替换候选、完整数量、照片缩略图、一键寄回和无确认弹窗；真实浏览器视觉、相机权限、signed PUT/CORS 和后台 E2E 仍未验证。
 - 本批未写入 linked Supabase、未 push、未部署；TypeScript 检查仍仅报既有 `RouteContext` 基线错误。
 
+### 批次 4a 生产后 RMA ACL 收口候选（2026-08-28）
+
+- 新增候选 migration `supabase/migrations/20260828095944_rma_acl_lockdown.sql`，仅撤销 `anon`/`authenticated` 对五张 RMA 表和 `rma_request_no_seq` 的直接权限，并撤销两个私有 zero-arg trigger function 对 `PUBLIC`/浏览器角色的 EXECUTE；不修改 RLS、policy、函数定义、service_role 权限或数据。
+- 候选 migration 尚未应用到 linked Supabase；需通过 migration list、仅本 migration 的 dry-run、权限/grant probe 和专项批准后独立应用，任务状态保持 `in_progress`，不得据此声明生产已收口。
+
 ### 未来实施验收
 
 - 客户只能从有权限的真实订单行进入；服务端拒绝越权订单行、过期政策和并发超量。
