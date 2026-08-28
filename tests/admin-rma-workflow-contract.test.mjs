@@ -7,7 +7,7 @@ import test from "node:test";
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relativePath) => readFileSync(join(repoRoot, relativePath), "utf8");
 
-const migration = read("supabase/migrations/20260827210026_rma_simple_flow_expand.sql");
+const migration = read("supabase/migrations/20260828092046_rma_simple_flow_expand.sql");
 const adminRoute = read("src/app/api/admin/rma/[requestId]/actions/route.ts");
 const adminAuth = read("src/lib/partspro-admin-auth.ts");
 const adminDto = read("src/lib/partspro-rma-admin-dto.ts");
@@ -205,7 +205,7 @@ test("historical RMA trigger and INSERT policies use the shared owner and net qu
 });
 
 test("service reads and readiness fail closed after Migration B revokes browser table SELECT", () => {
-  const finalizeMigration = read("supabase/migrations/20260828024331_rma_workflow_finalize.sql");
+  const finalizeMigration = read("supabase/migrations/20260828092050_rma_workflow_finalize.sql");
   assert.match(finalizeMigration, /revoke select, insert, update on public\.rma_requests from public, anon, authenticated/);
   assert.match(finalizeMigration, /revoke select, insert on public\.rma_request_events from public, anon, authenticated/);
   assert.match(repository, /requireRmaServiceClient\(\)/);

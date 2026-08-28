@@ -535,7 +535,7 @@ test("customer shipped contract is one-click, idempotent and safe for the DTO", 
 });
 
 test("Migration B contains the guarded review, shipped, preview, candidate and revoke contracts", () => {
-  const migration = read("supabase/migrations/20260828024331_rma_workflow_finalize.sql");
+  const migration = read("supabase/migrations/20260828092050_rma_workflow_finalize.sql");
 
   assert.match(migration, /file_size_limit,[\s\S]*4194304/);
   for (const mime of ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"]) {

@@ -343,7 +343,7 @@ refunded | replacement_sent
 - 后台附件和事件经过 allowlist，附件只保留 opaque ID、必要元数据和短期 signed URL，不回传 Storage path、owner 或事件 metadata；详情增加 staff-only 退款预览及服务端筛选的 `replacementCandidates`（同客户、不同原订单、已发货、同 SKU 足量且未被其他 RMA 关联）。
 - review 动作 `start_review`/`approve`/`reject` 分流到 review-only RPC，其余动作继续走 v3；PATCH 仍受数据库审核状态守卫。Migration B 候选以最小 trigger 自动认领首个真实审核/收货/QC/退款/换货/库存/关闭动作，并只为审核状态变化生成客户通知，避免复制 v3 终态通知。
 - 客户新增 `POST /api/rma/:requestId/shipped` 与行锁幂等 RPC；carrier/tracking 可选，只有当前 active member 或 employee-self 能对 approved RMA 生效，写 `customer_shipped_at` 和 customer-visible event，客户阶段显示 `return_in_transit`。未声明寄回时库存员工仍可用次要 `mark_received`，寄回后 receiving 队列推荐收货。
-- 新增 Migration B 候选 `supabase/migrations/20260828024331_rma_workflow_finalize.sql`：切换后关闭 legacy POST/evidence 写协议、撤销浏览器 direct insert/update、保留授权读取、私有 evidence bucket 收紧为 4MiB/JPG/PNG/WebP/HEIC/HEIF（不删历史对象），并对新增函数显式 search_path、revoke public/anon 后最小 grant。本候选未连接/应用，仍需 linked dry-run、权限专项审查和老板确认。
+- 新增 Migration B 候选 `supabase/migrations/20260828092050_rma_workflow_finalize.sql`：切换后关闭 legacy POST/evidence 写协议、撤销浏览器 direct insert/update、保留授权读取、私有 evidence bucket 收紧为 4MiB/JPG/PNG/WebP/HEIC/HEIF（不删历史对象），并对新增函数显式 search_path、revoke public/anon 后最小 grant。本候选未连接/应用，仍需 linked dry-run、权限专项审查和老板确认。
 - 本批未修改客户/后台 UI，未写入 linked Supabase/Vercel。`node --test tests/rma-admin-workflow.test.mjs tests/rma-rules.test.mjs` 33/33、相关 RMA contract/admin-contract 12/12；受影响 TS/MJS 定向 ESLint 和 `git diff --check` 通过。`tsc --noEmit --incremental false` 仍只报既有 `src/app/api/admin/restock-requests/[id]/route.ts:17:12 RouteContext`。
 
 ### 批次 4 客户与后台 RMA 工作台 UI（2026-08-28）

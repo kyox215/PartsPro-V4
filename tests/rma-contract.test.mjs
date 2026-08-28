@@ -21,8 +21,8 @@ const customerDto = read("src/lib/partspro-rma-customer-dto.ts");
 const rules = read("src/lib/partspro-rma-rules.mjs");
 const legacyEvidenceRoute = read("src/app/api/rma/evidence/route.ts");
 const completeRoute = read("src/app/api/rma/drafts/[draftId]/attachments/[attachmentId]/complete/route.ts");
-const migration = read("supabase/migrations/20260827210026_rma_simple_flow_expand.sql");
-const finalizeMigration = read("supabase/migrations/20260828024331_rma_workflow_finalize.sql");
+const migration = read("supabase/migrations/20260828092046_rma_simple_flow_expand.sql");
+const finalizeMigration = read("supabase/migrations/20260828092050_rma_workflow_finalize.sql");
 const repository = read("src/lib/partspro-repository.ts");
 const readiness = read("src/lib/partspro-rma-workflow-readiness.ts");
 
