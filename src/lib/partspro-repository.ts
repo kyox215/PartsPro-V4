@@ -8917,20 +8917,10 @@ async function readSupplierBatchCostSummaries(
 
   for (let index = 0; index < uniqueBatchIds.length; index += 500) {
     const chunk = uniqueBatchIds.slice(index, index + 500);
-    let { data, error } = await client.rpc(
+    const { data, error } = await client.rpc(
       "admin_list_supplier_batch_cost_summaries_v2",
       { p_batch_ids: chunk }
     );
-
-    // Keep reads compatible with a rolling deployment where the application
-    // is upgraded before the additive V2 migration. Only an unknown-function
-    // response may fall back; permission/data errors must remain visible.
-    if (error && isDbRow(error) && pickString(error, ["code"]) === "42883") {
-      ({ data, error } = await client.rpc(
-        "admin_list_supplier_batch_cost_summaries",
-        { p_batch_ids: chunk }
-      ));
-    }
 
     if (error) {
       throw new RepositoryWriteError(

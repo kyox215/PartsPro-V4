@@ -74,6 +74,17 @@ const adminProductRowEnd = repositorySource.indexOf(
   adminProductRowStart
 );
 const adminProductRowSource = repositorySource.slice(adminProductRowStart, adminProductRowEnd);
+const supplierBatchCostSummariesStart = repositorySource.indexOf(
+  "async function readSupplierBatchCostSummaries("
+);
+const supplierBatchCostSummariesEnd = repositorySource.indexOf(
+  "\nasync function readSupplierBatchCharges(",
+  supplierBatchCostSummariesStart
+);
+const supplierBatchCostSummariesSource = repositorySource.slice(
+  supplierBatchCostSummariesStart,
+  supplierBatchCostSummariesEnd
+);
 
 const supplierBatchLookupRpcChunkSize = 500;
 const supplierBatchLookupInputLimit = 1000;
@@ -561,7 +572,22 @@ test("mixed or unknown allocation currency context never sums original landed ce
 });
 
 test("backend contract keeps fee reads caller-scoped, paginated and RPC-only for writes", () => {
-  assert.match(repositorySource, /admin_list_supplier_batch_cost_summaries/);
+  assert.match(
+    supplierBatchCostSummariesSource,
+    /client\.rpc\(\s*"admin_list_supplier_batch_cost_summaries_v2"/
+  );
+  assert.doesNotMatch(
+    supplierBatchCostSummariesSource,
+    /["']admin_list_supplier_batch_cost_summaries["']/
+  );
+  assert.match(
+    supplierBatchCostSummariesSource,
+    /if \(error\) \{[\s\S]{0,500}ADMIN_SUPPLIER_BATCH_COST_SUMMARY_READ_UNAVAILABLE/
+  );
+  assert.match(
+    supplierBatchCostSummariesSource,
+    /throw new RepositoryWriteError\(\s*502,\s*"ADMIN_SUPPLIER_BATCH_COST_SUMMARY_READ_UNAVAILABLE"/
+  );
   assert.match(repositorySource, /client\.rpc\(functionName, rpcArgs\)/);
   assert.match(repositorySource, /metadata: \{ source: "admin_supplier_batch_cost_v2_api" \}/);
   assert.match(repositorySource, /FINANCIAL_ADJUSTMENT_REQUIRED/);
