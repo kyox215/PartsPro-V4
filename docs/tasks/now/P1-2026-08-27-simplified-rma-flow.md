@@ -346,6 +346,14 @@ refunded | replacement_sent
 - 新增 Migration B 候选 `supabase/migrations/20260828024331_rma_workflow_finalize.sql`：切换后关闭 legacy POST/evidence 写协议、撤销浏览器 direct insert/update、保留授权读取、私有 evidence bucket 收紧为 4MiB/JPG/PNG/WebP/HEIC/HEIF（不删历史对象），并对新增函数显式 search_path、revoke public/anon 后最小 grant。本候选未连接/应用，仍需 linked dry-run、权限专项审查和老板确认。
 - 本批未修改客户/后台 UI，未写入 linked Supabase/Vercel。`node --test tests/rma-admin-workflow.test.mjs tests/rma-rules.test.mjs` 33/33、相关 RMA contract/admin-contract 12/12；受影响 TS/MJS 定向 ESLint 和 `git diff --check` 通过。`tsc --noEmit --incremental false` 仍只报既有 `src/app/api/admin/restock-requests/[id]/route.ts:17:12 RouteContext`。
 
+### 批次 4 客户与后台 RMA 工作台 UI（2026-08-28）
+
+- 后台面板默认展示六个服务端队列 tab（`review`、`awaiting_return`、`receiving`、`qc`、`resolution`、`inventory_close`），`archive` 作为历史入口；队列徽标直接使用 `queueCounts`，`countsComplete=false` 时显示“至少”并保留不完整提示，不按当前分页重算。搜索输入 260ms 防抖，点击记录后再读取 exact detail。
+- 后台详情只突出服务端 `recommendedAction`，其余动作由 `availableActions` 过滤；`assign` 收入高级区且永不推荐，拒绝/QC/退款/替换/库存处置使用聚焦对话，动作统一 POST `/actions`、同步 ref 防双击并携带幂等键和完整数量。退款预览缺失时禁用，替换只显示服务端候选订单号，附件只用 signed URL 缩略图。
+- 客户历史申请在 `canMarkShipped` 时提供无需确认弹窗的一键“我已寄回/Ho spedito il reso”，物流信息可选；按申请同步 ref 防重复提交，成功原位更新安全 DTO 并显示寄回时间/物流，错误保留重试。received/refunded/closed 等后续阶段不显示寄回按钮。
+- 新增 `tests/rma-admin-ui-contract.test.mjs` 并扩展 customer UI contract，覆盖队列/count honesty、服务端动作、退款/替换候选、完整数量、照片缩略图、一键寄回和无确认弹窗；真实浏览器视觉、相机权限、signed PUT/CORS 和后台 E2E 仍未验证。
+- 本批未写入 linked Supabase、未 push、未部署；TypeScript 检查仍仅报既有 `RouteContext` 基线错误。
+
 ### 未来实施验收
 
 - 客户只能从有权限的真实订单行进入；服务端拒绝越权订单行、过期政策和并发超量。
@@ -407,7 +415,7 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 
 ## 禁止事项
 
-- 本批不修改客户/后台 UI、i18n、生产数据或环境变量；Migration B 仅生成候选 SQL，不应用、不撤回线上权限。所有服务端契约/API 和候选 migration 仅在隔离 worktree 内实现。
+- Migration B 仅生成候选 SQL，不应用、不撤回线上权限；所有服务端契约/API、候选 migration 和本批 UI 仅在隔离 worktree 内实现，不写生产数据或环境变量。
 - 不 push、不部署、不访问或写入远端 Supabase/Vercel。
 - 不把 `rmaDays` 当作意大利法定规则，不向客户承诺未经确认的退款/运费政策。
 - 不在浏览器暴露 service role key，不接受客户端任意 Storage path/bucket/signed URL。
@@ -466,6 +474,11 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 | `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/eslint' src/lib/partspro-rma-workflow-rules.mjs src/lib/partspro-rma-workflow-rules.ts tests/rma-admin-workflow.test.mjs` | passed | 批次 2e canonical MJS、TypeScript wrapper 与行为测试定向 ESLint 无输出 |
 | `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/tsc' --noEmit --incremental false --project tsconfig.json` | blocked by baseline | 仅报既有 `src/app/api/admin/restock-requests/[id]/route.ts(17,12): Cannot find name 'RouteContext'`，本批无新增诊断 |
 | `git diff --check` | passed | 批次 2e 规则、wrapper、测试和任务卡无空白错误 |
+| `node --test tests/rma-admin-ui-contract.test.mjs tests/rma-customer-ui-contract.test.mjs` | passed | 批次 4 后台/客户 UI contract 11/11 通过，覆盖六队列、计数诚实、动作入口、退款/候选、缩略图、一键寄回和重试 |
+| `node --test tests/rma-admin-workflow.test.mjs tests/rma-rules.test.mjs tests/rma-contract.test.mjs tests/admin-rma-workflow-contract.test.mjs tests/rma-upload-client.test.mjs tests/rma-customer-ui-contract.test.mjs tests/rma-admin-ui-contract.test.mjs` | passed | 批次 4 相关 RMA 行为、SQL/API、上传和 UI 集合 66/66 通过 |
+| `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/eslint' src/components/partspro/admin-rma-panel.tsx src/components/partspro/rma-page.tsx src/i18n/dictionaries/storefront.ts tests/rma-admin-ui-contract.test.mjs tests/rma-customer-ui-contract.test.mjs` | passed | 批次 4 受影响 UI、i18n 和 contract 测试定向 ESLint 无输出 |
+| `'/Users/kyox215/Documents/partspro v4/node_modules/.bin/tsc' --noEmit --incremental false --project tsconfig.json` | blocked by baseline | 仅报既有 `src/app/api/admin/restock-requests/[id]/route.ts:17:12 RouteContext`，本批 UI 无新增诊断 |
+| `git diff --check` | passed | 批次 4 UI、i18n、测试和任务卡无空白错误 |
 
 ## 执行记录
 
@@ -473,19 +486,19 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 - 批准：2026-08-27；用户已批准本轮开始实现/推送/部署，当前 worker 仍按范围不 push、不部署、不应用远端 migration
 - 开始：2026-08-27
 - review：pending；Migration A/RLS/权限/支付/库存需专项守门
-- verified：2026-08-28；批次 3 工作台/客户 shipped/Migration B 源契约集合 `33/33 + 12/12`、定向 ESLint、`git diff --check` 通过；`tsc --noEmit --incremental false` 仅剩基线 `RouteContext`；本地 Docker 不可用，Migration B linked dry-run、wallet/replacement 关系、数据库触发器并发、真实浏览器与后台 E2E 仍待最终门禁
+- verified：2026-08-28；批次 3 工作台/客户 shipped/Migration B 源契约及批次 4 UI 集合 `66/66`、定向 ESLint、`git diff --check` 通过；`tsc --noEmit --incremental false` 仅剩基线 `RouteContext`；本地 Docker 不可用，Migration B linked dry-run、wallet/replacement 关系、数据库触发器并发、真实浏览器与后台 E2E 仍待最终门禁
 - released：不适用，本批不发布
 - closed：pending
 
 ## 结果
 
-当前批次在隔离分支继续交付服务端 RMA 工作台 DTO/队列查询、review action dispatch、客户一键寄回、精确退款预览、replacement candidate 读取和 Migration B 候选；不声明远端数据库已应用、不声明 UI 已完成、不声明生产上传/退款/库存已验证。意大利政策、法定撤回分类、Migration B 危险撤权、linked migration dry-run、Vercel 发布和最终 E2E 仍需专门门禁。
+当前批次在隔离分支交付服务端 RMA 工作台契约、客户一键寄回、精确退款预览、replacement candidate 读取、Migration B 候选及客户/后台工作台 UI；不声明远端数据库已应用、不声明生产上传/退款/库存或真实浏览器流程已验证。意大利政策、法定撤回分类、Migration B 危险撤权、linked migration dry-run、Vercel 发布和最终 E2E 仍需专门门禁。
 
 ## 残余风险与后续任务
 
 - 意大利 B2C 撤回/保修、B2B 商业退货、退款方式、运费承担和税务处理尚未由专业人员确认。
 - 当前历史 RMA 状态、附件 JSON、wallet `order_void` 语义和库存处置数据需要迁移前盘点。
-- 当前批次已收口服务端附件上传/校验、legacy 双协议隔离、核心状态/QC 守卫、active membership/employee-self 归属、并发数量锁、统一订单行净可退数量、V1 完整数量闭环、customer DTO 隔离、商业互斥、双轴关闭、显式收货时间、approved wallet/replacement linkage close guard、批量 GC 函数和基础通知事件；历史无单价快照 RMA 需人工/迁移补建后才能安全退款。客户端三块 UI、法定期限与 policy 激活、GC 调度、Migration B 危险撤权、生产联调和完整退款/税务确认仍待后续批次。
+- 当前批次已收口服务端附件上传/校验、legacy 双协议隔离、核心状态/QC 守卫、active membership/employee-self 归属、并发数量锁、统一订单行净可退数量、V1 完整数量闭环、customer DTO 隔离、商业互斥、双轴关闭、显式收货时间、approved wallet/replacement linkage close guard、批量 GC 函数和基础通知事件，并交付客户三块 UI、后台队列/动作 UI 与一键寄回 UI；历史无单价快照 RMA 需人工/迁移补建后才能安全退款。真实浏览器视觉/相机/Storage/CORS、法定期限与 policy 激活、GC 调度、Migration B 危险撤权、生产联调和完整退款/税务确认仍待后续批次。
 - V1 明确拒绝部分收货/部分退款/部分库存处置；未来若需拆分，必须新增数量 ledger、库存批次分配和逐行退款对账，不得只放宽当前 action 参数。
 - Migration A 保留旧 `rma_requests/events` direct grants/RLS，并未收紧历史 bucket；在新客户端完全切换、兼容读取验证和正式 Migration B 审批前，禁止打开新写流程生产流量。
 - Migration B 仍是危险权限/Storage 收口候选，需在 linked 目标明确且无旧 pending migration 夹带时 dry-run；真实 PostgreSQL 需验证首动作自动认领、review 通知不重复、客户 active-member 隔离、shipped 幂等、退款余额/订单行上限和 replacement candidate 排除条件。

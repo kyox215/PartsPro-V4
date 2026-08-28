@@ -131,11 +131,26 @@ type RmaIndexResponse = {
   };
 };
 
+type RmaShippedResponse = {
+  data?: CustomerRmaDto;
+  error?: { message?: string };
+};
+
 type RmaSubmitState =
   | { message: string; status: "idle" }
   | { message: string; status: "loading" }
   | { message: string; request: CustomerRmaDto; status: "success" }
   | { message: string; status: "error" };
+
+type ShippingDraft = {
+  carrier: string;
+  tracking: string;
+};
+
+type ShippingNotice = {
+  message: string;
+  tone: "error" | "success";
+};
 
 type LocalRmaImage = {
   file: File;
@@ -204,6 +219,10 @@ export function RmaPage({
   const uploadCheckpointRef = React.useRef<RmaUploadCheckpoint | null>(null);
   const [uploadCheckpoint, setUploadCheckpoint] = React.useState<RmaUploadCheckpoint | null>(null);
   const [isRestartingUpload, setIsRestartingUpload] = React.useState(false);
+  const shippingPendingRef = React.useRef<Set<string>>(new Set());
+  const [shippingBusy, setShippingBusy] = React.useState<Record<string, boolean>>({});
+  const [shippingDrafts, setShippingDrafts] = React.useState<Record<string, ShippingDraft>>({});
+  const [shippingNotices, setShippingNotices] = React.useState<Record<string, ShippingNotice>>({});
 
   React.useEffect(() => {
     imagesRef.current = images;
@@ -596,6 +615,79 @@ export function RmaPage({
     }
   }
 
+  async function markRequestShipped(request: CustomerRmaDto) {
+    if (!request.canMarkShipped || shippingPendingRef.current.has(request.id)) {
+      return;
+    }
+
+    shippingPendingRef.current.add(request.id);
+    setShippingBusy((current) => ({ ...current, [request.id]: true }));
+    setShippingNotices((current) => {
+      const next = { ...current };
+      delete next[request.id];
+      return next;
+    });
+
+    const draft = shippingDrafts[request.id];
+    const shippingDetails = {
+      ...(draft?.carrier.trim() ? { carrier: draft.carrier.trim() } : {}),
+      ...(draft?.tracking.trim() ? { tracking: draft.tracking.trim() } : {}),
+    };
+    const body = Object.keys(shippingDetails).length > 0 ? JSON.stringify(shippingDetails) : "{}";
+
+    try {
+      const response = await fetch(`/api/rma/${request.id}/shipped`, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        credentials: "same-origin",
+        body,
+      });
+      const payload = (await response.json().catch(() => null)) as RmaShippedResponse | null;
+      const savedRequest = payload?.data;
+      if (!response.ok || !savedRequest) {
+        throw new Error(readApiError(payload) ?? tx(t, "storefront.rma.shipped.error", "Non è stato possibile registrare la spedizione. Riprova."));
+      }
+
+      setRecentRequests((current) =>
+        current.map((item) => (item.id === savedRequest.id ? savedRequest : item))
+      );
+      setShippingNotices((current) => ({
+        ...current,
+        [request.id]: {
+          message: tx(t, "storefront.rma.shipped.success", "Reso segnato come spedito."),
+          tone: "success",
+        },
+      }));
+    } catch (error) {
+      setShippingNotices((current) => ({
+        ...current,
+        [request.id]: {
+          message: error instanceof Error
+            ? error.message
+            : tx(t, "storefront.rma.shipped.error", "Non è stato possibile registrare la spedizione. Riprova."),
+          tone: "error",
+        },
+      }));
+    } finally {
+      shippingPendingRef.current.delete(request.id);
+      setShippingBusy((current) => ({ ...current, [request.id]: false }));
+    }
+  }
+
+  function updateShippingDraft(requestId: string, key: keyof ShippingDraft, value: string) {
+    setShippingDrafts((current) => ({
+      ...current,
+      [requestId]: {
+        carrier: current[requestId]?.carrier ?? "",
+        tracking: current[requestId]?.tracking ?? "",
+        [key]: value,
+      },
+    }));
+  }
+
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
       <StoreHeader initialAccountAccess={initialAccountAccess} />
@@ -947,6 +1039,11 @@ export function RmaPage({
                 key={request.id}
                 request={request}
                 highlighted={request.id === initialRequestId}
+                onMarkShipped={() => void markRequestShipped(request)}
+                onShippingDraftChange={(key, value) => updateShippingDraft(request.id, key, value)}
+                shippingBusy={Boolean(shippingBusy[request.id])}
+                shippingDraft={shippingDrafts[request.id] ?? { carrier: "", tracking: "" }}
+                shippingNotice={shippingNotices[request.id]}
                 t={t}
               />
             ))}
@@ -1203,11 +1300,21 @@ function RmaSubmitStatus({
 
 function RmaRequestCard({
   highlighted,
+  onMarkShipped,
+  onShippingDraftChange,
   request,
+  shippingBusy,
+  shippingDraft,
+  shippingNotice,
   t,
 }: {
   highlighted: boolean;
+  onMarkShipped: () => void;
+  onShippingDraftChange: (key: keyof ShippingDraft, value: string) => void;
   request: CustomerRmaDto;
+  shippingBusy: boolean;
+  shippingDraft: ShippingDraft;
+  shippingNotice?: ShippingNotice;
   t: StorefrontTranslator;
 }) {
   return (
@@ -1235,6 +1342,66 @@ function RmaRequestCard({
         <div><span className="font-semibold">{tx(t, "storefront.rma.resolution.label", "Soluzione")}: </span>{rmaResolutionLabel(t, request.requestedResolution)}</div>
       </div>
       {request.customerVisibleNote ? <p className="text-sm leading-6 text-slate-600">{request.customerVisibleNote}</p> : null}
+      {request.customerShippedAt ? (
+        <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm font-semibold text-primary">
+          {txFormat(t, "storefront.rma.shipped.time", "Spedito il {date}", { date: formatCustomerDateTime(request.customerShippedAt) })}
+          {request.carrier || request.tracking ? (
+            <div className="mt-1 text-xs font-normal text-slate-600">
+              {[request.carrier, request.tracking].filter(Boolean).join(" · ")}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {request.canMarkShipped ? (
+        <div className="space-y-2 rounded-lg border border-primary/20 bg-primary/5 p-3">
+          <details>
+            <summary className="cursor-pointer text-sm font-semibold text-slate-700">
+              {tx(t, "storefront.rma.shipped.details", "Aggiungi dati di spedizione (opzionale)")}
+            </summary>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label className="space-y-1 text-xs font-semibold text-slate-600">
+                <span>{tx(t, "storefront.rma.shipped.carrier", "Corriere (opzionale)")}</span>
+                <input
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
+                  value={shippingDraft.carrier}
+                  onChange={(event) => onShippingDraftChange("carrier", event.target.value)}
+                />
+              </label>
+              <label className="space-y-1 text-xs font-semibold text-slate-600">
+                <span>{tx(t, "storefront.rma.shipped.tracking", "Tracking (opzionale)")}</span>
+                <input
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-normal outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
+                  value={shippingDraft.tracking}
+                  onChange={(event) => onShippingDraftChange("tracking", event.target.value)}
+                />
+              </label>
+            </div>
+          </details>
+          <p className="text-xs text-slate-600">
+            {tx(t, "storefront.rma.shipped.hint", "Corriere e tracking non sono necessari: puoi confermare con un tocco.")}
+          </p>
+          <Button type="button" className="w-full sm:w-auto" disabled={shippingBusy} aria-busy={shippingBusy} onClick={onMarkShipped}>
+            {shippingBusy ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
+            {shippingBusy
+              ? tx(t, "storefront.rma.shipped.loading", "Registrazione...")
+              : tx(t, "storefront.rma.shipped.button", "Ho spedito il reso")}
+          </Button>
+          {shippingNotice ? (
+            <div
+              className={cn(
+                "rounded-md border p-2 text-sm font-semibold",
+                shippingNotice.tone === "success"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : "border-red-200 bg-red-50 text-red-700"
+              )}
+              role={shippingNotice.tone === "error" ? "alert" : "status"}
+              aria-live="polite"
+            >
+              {shippingNotice.message}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {request.attachments.length > 0 ? (
         <div className="flex flex-wrap gap-2" aria-label={tx(t, "storefront.rma.image.title", "Foto della richiesta")}>
           {request.attachments.map((attachment) => (
@@ -1264,6 +1431,14 @@ function RmaRequestCard({
 
 function formatQuantity(quantity: number, t: StorefrontTranslator) {
   return `${quantity} ${tx(t, "storefront.common.pieces", "pezzi")}`;
+}
+
+function formatCustomerDateTime(value: string) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return value;
+  }
+  return new Intl.DateTimeFormat("it-IT", { dateStyle: "medium", timeStyle: "short" }).format(new Date(timestamp));
 }
 
 function imageRejectMessage(t: StorefrontTranslator, reason: RmaImageRejectReason) {

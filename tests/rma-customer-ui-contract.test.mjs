@@ -111,6 +111,23 @@ test("customer UI has no confirmation modal and final request remains opaque", (
   }
 });
 
+test("customer can mark an approved request shipped in one tap with optional logistics", () => {
+  assert.match(component, /shippingPendingRef/);
+  assert.match(component, /shippingPendingRef\.current\.has\(request\.id\)/);
+  assert.match(component, /method: "POST"/);
+  assert.match(component, /\/api\/rma\/\$\{request\.id\}\/shipped/);
+  assert.match(component, /Object\.keys\(shippingDetails\)\.length > 0 \? JSON\.stringify\(shippingDetails\) : "\{\}"/);
+  assert.match(component, /canMarkShipped/);
+  assert.match(component, /storefront\.rma\.shipped\.button/);
+  assert.match(component, /storefront\.rma\.shipped\.details/);
+  assert.match(component, /storefront\.rma\.shipped\.carrier/);
+  assert.match(component, /storefront\.rma\.shipped\.tracking/);
+  assert.match(component, /setRecentRequests\(\(current\) =>[\s\S]*current\.map\(\(item\) => \(item\.id === savedRequest\.id \? savedRequest : item\)\)/);
+  assert.match(component, /customerShippedAt/);
+  assert.match(component, /shippingNotice\.tone === "error"/);
+  assert.doesNotMatch(component, /Dialog|window\.confirm|confirm\(/);
+});
+
 test("customer DTO exposes a safe order number and the canonical flow resolves it by customer-owned order", () => {
   assert.match(customerContract, /orderNumber: string \| null/);
   assert.match(customerDto, /orderNumber: request\.orderNumber \?\? request\.orderId \?\? null/);
