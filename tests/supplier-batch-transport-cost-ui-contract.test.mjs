@@ -1439,6 +1439,32 @@ test("transport cost dialog is lazy and mounts only while open", () => {
   );
 });
 
+test("transport cost dialogs keep intentional responsive widths and field panels", () => {
+  const dialogContentClasses = [...dialogSource.matchAll(
+    /<DialogContent aria-modal=\{true\} className="([^"]+)">/g
+  )].map((match) => match[1]);
+  assert.equal(dialogContentClasses.length, 3);
+
+  const [mainDialogClass, confirmDialogClass, closeGuardClass] = dialogContentClasses;
+  assert.match(mainDialogClass, /w-\[calc\(100vw-1rem\)\]/);
+  assert.match(mainDialogClass, /sm:w-\[calc\(100vw-2rem\)\]/);
+  assert.match(mainDialogClass, /sm:max-w-6xl/);
+  assert.doesNotMatch(mainDialogClass, /sm:max-w-sm/);
+  assert.match(mainDialogClass, /max-h-\[94dvh\]/);
+  assert.match(mainDialogClass, /overflow-hidden/);
+  assert.match(confirmDialogClass, /sm:max-w-lg/);
+  assert.match(closeGuardClass, /sm:max-w-md/);
+  assert.match(dialogSource, /<section className="rounded-lg border border-slate-200\/80 bg-slate-50\/50 p-3 sm:p-4">/);
+  assert.match(dialogSource, /<div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">/);
+  assert.match(dialogSource, /<section className="mt-4 rounded-lg border border-slate-200\/80 bg-slate-50\/50 p-3 sm:p-4">/);
+  assert.match(dialogSource, /<div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">/);
+  assert.match(dialogSource, /<DialogFooter className="m-0 rounded-none border-t/);
+  assert.match(dialogSource, /className="bg-slate-100 text-slate-700" value=\{grossCents/);
+  assert.match(dialogSource, /text-xs font-semibold leading-5 text-slate-700/);
+  assert.match(dialogSource, /text-\[11px\] leading-4 text-slate-500/);
+  assert.match(dialogSource, /text-\[11px\] font-semibold leading-4 text-red-700/);
+});
+
 test("card exposes compact display components and status-only charge semantics", () => {
   assert.match(cardSource, /export function SupplierBatchCostSummaryCompact/);
   assert.match(cardSource, /export function SupplierBatchLineCostCompact/);
