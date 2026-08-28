@@ -31,6 +31,8 @@ test("two-axis action availability requires QC and keeps inventory independent",
     isRmaActionAvailable({
       action: "request_wallet_refund",
       status: "received",
+      quantity: 2,
+      receivedQuantity: 2,
       qcStatus: "passed",
       inventoryDisposition: "quarantine",
     }),
@@ -40,6 +42,8 @@ test("two-axis action availability requires QC and keeps inventory independent",
     isRmaActionAvailable({
       action: "restock_return",
       status: "refunded",
+      quantity: 2,
+      receivedQuantity: 2,
       qcStatus: "passed",
       inventoryDisposition: "quarantine",
     }),
@@ -49,6 +53,11 @@ test("two-axis action availability requires QC and keeps inventory independent",
     isRmaActionAvailable({
       action: "close",
       status: "refunded",
+      quantity: 2,
+      receivedQuantity: 2,
+      resolutionQuantity: 2,
+      inventoryDispositionQuantity: 2,
+      resolutionAction: "refund_wallet",
       qcStatus: "passed",
       inventoryDisposition: "quarantine",
     }),
@@ -58,6 +67,11 @@ test("two-axis action availability requires QC and keeps inventory independent",
     isRmaActionAvailable({
       action: "close",
       status: "refunded",
+      quantity: 2,
+      receivedQuantity: 2,
+      resolutionQuantity: 2,
+      inventoryDispositionQuantity: 2,
+      resolutionAction: "refund_wallet",
       qcStatus: "passed",
       inventoryDisposition: "restock",
       receivedAt: "2026-08-28T10:00:00.000Z",
@@ -68,6 +82,11 @@ test("two-axis action availability requires QC and keeps inventory independent",
     isRmaActionAvailable({
       action: "close",
       status: "refunded",
+      quantity: 2,
+      receivedQuantity: 2,
+      resolutionQuantity: 2,
+      inventoryDispositionQuantity: 2,
+      resolutionAction: "refund_wallet",
       qcStatus: "pending",
       inventoryDisposition: "restock",
       receivedAt: "2026-08-28T10:00:00.000Z",
@@ -77,6 +96,89 @@ test("two-axis action availability requires QC and keeps inventory independent",
   assert.equal(
     isRmaActionAvailable({ action: "close", status: "rejected" }),
     true
+  );
+});
+
+test("close requires complete quantity at every required RMA stage", () => {
+  const base = {
+    action: "close",
+    quantity: 2,
+    receivedQuantity: 2,
+    resolutionQuantity: 2,
+    inventoryDispositionQuantity: 2,
+    status: "refunded",
+    resolutionAction: "refund_wallet",
+    qcStatus: "passed",
+    inventoryDisposition: "restock",
+    receivedAt: "2026-08-28T10:00:00.000Z",
+  };
+
+  for (const [label, field] of [
+    ["received", "receivedQuantity"],
+    ["refund resolution", "resolutionQuantity"],
+    ["inventory disposition", "inventoryDispositionQuantity"],
+  ]) {
+    assert.equal(
+      isRmaActionAvailable({ ...base, [field]: 1 }),
+      false,
+      `${label} partial quantity must not close the RMA`
+    );
+    assert.equal(
+      isRmaActionAvailable({ ...base, [field]: 2 }),
+      true,
+      `${label} complete quantity may close the RMA`
+    );
+  }
+
+  const replacement = {
+    ...base,
+    status: "replacement_sent",
+    resolutionAction: "replacement",
+    replacementOrderId: "replacement-order-1",
+    walletRequestStatus: null,
+  };
+  assert.equal(
+    isRmaActionAvailable({ ...replacement, resolutionQuantity: 1 }),
+    false,
+    "replacement partial quantity must not close the RMA"
+  );
+  assert.equal(
+    isRmaActionAvailable(replacement),
+    true,
+    "replacement complete quantity may close the RMA"
+  );
+});
+
+test("close keeps refund and replacement outcomes mutually exclusive", () => {
+  const complete = {
+    action: "close",
+    quantity: 1,
+    receivedQuantity: 1,
+    resolutionQuantity: 1,
+    inventoryDispositionQuantity: 1,
+    qcStatus: "passed",
+    inventoryDisposition: "scrap",
+    receivedAt: "2026-08-28T10:00:00.000Z",
+  };
+
+  assert.equal(
+    isRmaActionAvailable({
+      ...complete,
+      status: "refunded",
+      resolutionAction: "refund_wallet",
+      replacementOrderId: "replacement-order-1",
+    }),
+    false
+  );
+  assert.equal(
+    isRmaActionAvailable({
+      ...complete,
+      status: "replacement_sent",
+      resolutionAction: "replacement",
+      replacementOrderId: "replacement-order-1",
+      walletRequestStatus: "approved",
+    }),
+    false
   );
 });
 

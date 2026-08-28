@@ -2978,6 +2978,8 @@ as $$
 declare
   v_line_qty integer;
   v_returnable_quantity integer;
+  v_existing_requested_quantity integer;
+  v_current_rma_id uuid;
   v_order_id uuid;
   v_order_customer_id uuid;
   v_order_no text;
@@ -2985,6 +2987,10 @@ declare
   v_auth_uid uuid := (select auth.uid());
   v_is_staff boolean := (select private.is_staff());
 begin
+  if tg_op = 'UPDATE' then
+    v_current_rma_id := old.id;
+  end if;
+
   if new.order_line_id is null then
     raise exception 'RMA request must reference an order line' using errcode = '23502';
   end if;
@@ -3015,7 +3021,20 @@ begin
   end if;
 
   v_returnable_quantity := private.rma_order_line_returnable_quantity(new.order_line_id);
-  if v_returnable_quantity is null or new.quantity > v_returnable_quantity then
+  select coalesce(sum(greatest(r.quantity, 0)), 0)
+  into v_existing_requested_quantity
+  from public.rma_requests as r
+  where r.order_line_id = new.order_line_id
+    and r.status <> 'rejected'
+    and r.id is distinct from v_current_rma_id
+    and r.id is distinct from new.id;
+
+  if v_returnable_quantity is null
+    or (
+      coalesce(new.status, 'submitted') <> 'rejected'
+      and coalesce(v_existing_requested_quantity, 0) + new.quantity > v_returnable_quantity
+    )
+  then
     raise exception 'RMA quantity cannot exceed the order-line returnable quantity' using errcode = '23514';
   end if;
 

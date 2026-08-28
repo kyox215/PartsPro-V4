@@ -223,30 +223,50 @@ export function reasonRequiresImage(
 export type RmaCommercialOutcome = "refund_wallet" | "replacement";
 export type RmaQcStatus = "pending" | "passed" | "failed" | "not_required";
 
-/** Pure action guard shared by contract tests and future queue clients. */
-export function isRmaActionAvailable({
-  action,
-  inventoryDisposition = "pending",
-  qcStatus = "pending",
-  requestedResolution,
-  resolutionAction = null,
-  status,
-  receivedAt = null,
-}: {
+export type RmaActionAvailabilityInput = {
   action: string;
   inventoryDisposition?: string | null;
   qcStatus?: RmaQcStatus | string | null;
   requestedResolution?: string | null;
   resolutionAction?: string | null;
+  walletRequestStatus?: string | null;
+  replacementOrderId?: string | null;
   status: string;
+  quantity?: number | null;
+  receivedQuantity?: number | null;
+  resolutionQuantity?: number | null;
+  inventoryDispositionQuantity?: number | null;
   receivedAt?: string | null;
-}) {
+};
+
+/** Pure action guard shared by contract tests and future queue clients. */
+export function isRmaActionAvailable({
+  action,
+  quantity = null,
+  receivedQuantity = null,
+  resolutionQuantity = null,
+  inventoryDispositionQuantity = null,
+  inventoryDisposition = "pending",
+  qcStatus = "pending",
+  requestedResolution,
+  resolutionAction = null,
+  walletRequestStatus = null,
+  replacementOrderId = null,
+  status,
+  receivedAt = null,
+}: RmaActionAvailabilityInput) {
   return isRmaActionAvailableRule({
     action,
+    quantity,
+    receivedQuantity,
+    resolutionQuantity,
+    inventoryDispositionQuantity,
     inventoryDisposition,
     qcStatus,
     requestedResolution,
     resolutionAction,
+    walletRequestStatus,
+    replacementOrderId,
     status,
     receivedAt,
   });

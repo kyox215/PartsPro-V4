@@ -213,6 +213,12 @@ export type RmaRequest = {
   labResult?: string;
   refundAmount?: number;
   resolutionAction?: RmaResolutionAction | null;
+  /** Admin-only workflow progress; omitted by the customer DTO. */
+  receivedQuantity?: number | null;
+  /** Quantity actually settled by the selected refund or replacement outcome. */
+  resolutionQuantity?: number | null;
+  /** Quantity handled by the terminal inventory disposition. */
+  inventoryDispositionQuantity?: number | null;
   reviewedAt?: string | null;
   receivedAt?: string | null;
   resolvedAt?: string | null;

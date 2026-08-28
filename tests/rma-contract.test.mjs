@@ -170,6 +170,14 @@ test("RMA RPCs bind auth/ownership, preserve policy uncertainty and use explicit
   assert.match(migration, /create or replace function private\.enforce_rma_order_line\(\)/);
   assert.match(migration, /drop policy if exists "partspro_rma_self_submit"/);
   assert.match(contract, /orderLineEligibleQuantity/);
+  for (const field of [
+    "quantity\\?: number \\| null",
+    "receivedQuantity\\?: number \\| null",
+    "resolutionQuantity\\?: number \\| null",
+    "inventoryDispositionQuantity\\?: number \\| null",
+  ]) {
+    assert.match(contract, new RegExp(field));
+  }
 });
 
 test("statutory withdrawal and pure safety helpers remain separate from defect evidence", () => {
@@ -188,6 +196,19 @@ test("statutory withdrawal and pure safety helpers remain separate from defect e
 });
 
 test("V1 processing is whole-RMA and idempotency conflicts remain typed", () => {
+  const triggerStart = migration.indexOf("create or replace function private.enforce_rma_order_line()");
+  assert.notEqual(triggerStart, -1);
+  const trigger = migration.slice(triggerStart, migration.indexOf("$$;", triggerStart));
+  assert.match(trigger, /if tg_op = 'UPDATE' then/);
+  assert.match(trigger, /v_current_rma_id uuid/);
+  assert.match(trigger, /from public\.rma_requests as r/);
+  assert.match(trigger, /r\.order_line_id = new\.order_line_id/);
+  assert.match(trigger, /r\.status <> 'rejected'/);
+  assert.match(trigger, /r\.id is distinct from v_current_rma_id/);
+  assert.match(trigger, /r\.id is distinct from new\.id/);
+  assert.match(trigger, /coalesce\(new\.status, 'submitted'\) <> 'rejected'/);
+  assert.match(trigger, /coalesce\(v_existing_requested_quantity, 0\) \+ new\.quantity > v_returnable_quantity/);
+  assert.match(trigger, /where ol\.id = new\.order_line_id[\s\S]*for update/);
   assert.match(migration, /RMA V1 actions must process the complete RMA quantity/);
   assert.match(migration, /p_quantity is not null and p_quantity <> v_before\.quantity/);
   assert.match(migration, /received_quantity is distinct from v_before\.quantity/);

@@ -24,10 +24,16 @@ export function reasonRequiresImage(reasonCode, policyScope = "legacy_unverified
 /**
  * @typedef {{
  *   action: string,
+ *   quantity?: number|null,
+ *   receivedQuantity?: number|null,
+ *   resolutionQuantity?: number|null,
+ *   inventoryDispositionQuantity?: number|null,
  *   inventoryDisposition?: string|null,
  *   qcStatus?: string|null,
  *   requestedResolution?: string|null,
  *   resolutionAction?: string|null,
+ *   walletRequestStatus?: string|null,
+ *   replacementOrderId?: string|null,
  *   status: string,
  *   receivedAt?: string|null
  * }} RmaActionAvailabilityInput
@@ -41,32 +47,73 @@ export function reasonRequiresImage(reasonCode, policyScope = "legacy_unverified
 export function isRmaActionAvailable(input) {
   const {
     action,
+    quantity = null,
+    receivedQuantity = null,
+    resolutionQuantity = null,
+    inventoryDispositionQuantity = null,
     inventoryDisposition = "pending",
     qcStatus = "pending",
     requestedResolution,
     resolutionAction = null,
+    walletRequestStatus = null,
+    replacementOrderId = null,
     status,
     receivedAt = null,
   } = input;
 
-  if (action === "mark_received") return status === "approved";
-  if (action === "record_qc") return status === "received" && qcStatus === "pending";
+  const totalQuantity = Number.isInteger(quantity) && quantity > 0 ? quantity : null;
+  const hasCompleteQuantity = (value) => totalQuantity !== null && value === totalQuantity;
+  const receivedComplete = hasCompleteQuantity(receivedQuantity);
+  const resolutionComplete = hasCompleteQuantity(resolutionQuantity);
+  const inventoryComplete = hasCompleteQuantity(inventoryDispositionQuantity);
 
-  const received = Boolean(receivedAt) || ["received", "refunded", "replacement_sent"].includes(status);
+  if (action === "mark_received") return status === "approved";
+  if (action === "record_qc") {
+    return status === "received" && receivedComplete && qcStatus === "pending";
+  }
+
+  const hasReceived =
+    Boolean(receivedAt) ||
+    (Number.isInteger(receivedQuantity) && receivedQuantity > 0) ||
+    ["received", "refunded", "replacement_sent"].includes(status);
+  const received = receivedComplete && hasReceived;
   const inspectionComplete =
     received && ["passed", "failed", "not_required"].includes(qcStatus ?? "");
 
   if (action === "request_wallet_refund") {
-    return status === "received" && inspectionComplete && resolutionAction !== "replacement";
+    return (
+      status === "received" &&
+      inspectionComplete &&
+      resolutionAction !== "replacement" &&
+      isCommercialOutcomeAvailable({
+        action,
+        resolutionAction,
+        walletRequestStatus,
+        replacementOrderId,
+        status,
+      })
+    );
   }
 
   if (action === "mark_replacement_sent") {
-    return status === "received" && inspectionComplete && resolutionAction !== "refund_wallet";
+    return (
+      status === "received" &&
+      inspectionComplete &&
+      resolutionAction !== "refund_wallet" &&
+      isCommercialOutcomeAvailable({
+        action,
+        resolutionAction,
+        walletRequestStatus,
+        replacementOrderId,
+        status,
+      })
+    );
   }
 
   if (["restock_return", "mark_scrapped", "supplier_return"].includes(action)) {
     return (
       ["received", "refunded", "replacement_sent"].includes(status) &&
+      receivedComplete &&
       inspectionComplete &&
       inventoryDisposition === "quarantine"
     );
@@ -74,11 +121,31 @@ export function isRmaActionAvailable(input) {
 
   if (action === "close") {
     if (status === "closed") return true;
-    if (status === "rejected" && !received) return true;
+    if (status === "rejected" && !hasReceived) return true;
 
-    const commercialComplete = ["refunded", "replacement_sent"].includes(status);
-    const inventoryComplete = ["restock", "scrap", "supplier_return"].includes(inventoryDisposition ?? "");
-    return received && inspectionComplete && commercialComplete && inventoryComplete;
+    const refundComplete =
+      status === "refunded" &&
+      resolutionAction === "refund_wallet" &&
+      resolutionComplete &&
+      replacementOrderId === null &&
+      walletRequestStatus === null;
+    const replacementComplete =
+      status === "replacement_sent" &&
+      resolutionAction === "replacement" &&
+      resolutionComplete &&
+      Boolean(replacementOrderId) &&
+      walletRequestStatus === null;
+    const commercialComplete = refundComplete || replacementComplete;
+    const inventoryTerminal = ["restock", "scrap", "supplier_return"].includes(
+      inventoryDisposition ?? ""
+    );
+    return (
+      received &&
+      inspectionComplete &&
+      commercialComplete &&
+      inventoryTerminal &&
+      inventoryComplete
+    );
   }
 
   if (action === "assign") return !["closed", "rejected"].includes(status);

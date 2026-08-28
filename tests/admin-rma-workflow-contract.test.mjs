@@ -108,6 +108,8 @@ test("wallet, replacement and state guards are explicit", () => {
 
 test("admin DTO remains allowlisted and supports supplier/replacement actions", () => {
   const contract = read("src/lib/partspro-rma-contract.ts");
+  const data = read("src/lib/partspro-data.ts");
+  const customerDto = read("src/lib/partspro-rma-customer-dto.ts");
   const adminSchema = contract.slice(
     contract.indexOf("export const adminRmaActionSchema"),
     contract.indexOf("export type AdminRmaActionInput")
@@ -132,6 +134,17 @@ test("admin DTO remains allowlisted and supports supplier/replacement actions", 
   assert.match(adminRoute, /rma\.inventory/);
   assert.match(migration, /Legacy review refund amount ignored/);
   assert.match(migration, /review_refund_amount_ignored/);
+  for (const field of [
+    "receivedQuantity",
+    "resolutionQuantity",
+    "inventoryDispositionQuantity",
+  ]) {
+    assert.match(data, new RegExp(`${field}\\?: number \\| null`));
+    assert.match(repository, new RegExp(`${field}`));
+  }
+  assert.match(repository, /refund_approved_quantity/);
+  assert.match(repository, /replacement_quantity/);
+  assert.doesNotMatch(customerDto, /receivedQuantity|resolutionQuantity|inventoryDispositionQuantity/);
 });
 
 test("historical RMA trigger and INSERT policies use the shared owner and net quantity guards", () => {

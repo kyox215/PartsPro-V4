@@ -14070,6 +14070,21 @@ function mapRmaRow(
     return null;
   }
 
+  const status = normalizeRmaStatus(pickString(row, ["status"]));
+  const resolutionAction = normalizeRmaResolutionAction(
+    pickString(row, ["resolution_action"])
+  );
+  let resolutionQuantity = null;
+
+  if (resolutionAction === "refund_wallet" || (!resolutionAction && status === "refunded")) {
+    resolutionQuantity = pickNumber(row, ["refund_approved_quantity"]);
+  } else if (
+    resolutionAction === "replacement" ||
+    (!resolutionAction && status === "replacement_sent")
+  ) {
+    resolutionQuantity = pickNumber(row, ["replacement_quantity"]);
+  }
+
   const sku =
     pickString(row, ["sku", "sku_code", "sku_snapshot"]) ??
     (line ? pickString(line, ["sku", "sku_code", "sku_snapshot"]) : null);
@@ -14082,7 +14097,7 @@ function mapRmaRow(
       pickString(row, ["product_name", "name"]) ??
       (line ? pickString(line, ["product_name", "name_snapshot", "name"]) : null) ??
       "Ricambio",
-    status: normalizeRmaStatus(pickString(row, ["status"])),
+    status,
     reason: pickString(row, ["reason", "problem_type"]) ?? "Richiesta assistenza",
     reasonCode: pickString(row, ["reason_code"]),
     quantity: Math.max(1, Math.trunc(pickNumber(row, ["quantity"]) ?? 1)),
@@ -14113,9 +14128,10 @@ function mapRmaRow(
     ),
     labResult: pickString(row, ["lab_result"]) ?? undefined,
     refundAmount: pickNumber(row, ["refund_amount"]) ?? 0,
-    resolutionAction: normalizeRmaResolutionAction(
-      pickString(row, ["resolution_action"])
-    ),
+    resolutionAction,
+    receivedQuantity: pickNumber(row, ["received_quantity"]),
+    resolutionQuantity,
+    inventoryDispositionQuantity: pickNumber(row, ["inventory_disposition_quantity"]),
     reviewedAt: pickString(row, ["reviewed_at"]),
     receivedAt: pickString(row, ["received_at"]),
     resolvedAt: pickString(row, ["resolved_at"]),

@@ -289,6 +289,13 @@ refunded | replacement_sent
 - 退款上限统一为 `min(本 RMA 批准数量×不可变单价, 订单行净可退数量×单价−历史该行退款, 整单剩余可退余额)`，submit、退款请求和 wallet approval BEFORE guard 均在订单行锁/行 advisory lock 下使用同一净数量 helper；`P0001` 幂等 payload 冲突映射为 409。
 - ticket 失败补偿现在检查 `rma_cancel_attachment` 的 `{ error }` 并输出服务端可观察信号；原始上传错误不被清理失败覆盖，孤儿由受门禁 GC 兜底。修复旧库存调整函数错误访问不存在的 `input.location`，RMA action 仍保留独立 location。
 
+### 批次 1e P1 收口（2026-08-28）
+
+- 历史 `private.enforce_rma_order_line()` 在锁定订单行后累计同一订单行所有非 `rejected` RMA；新建时计入已有请求，更新时排除 OLD/NEW 自身，统一与 `private.rma_order_line_returnable_quantity()` 比较，因此 legacy direct INSERT 也不能绕过多 RMA 数量上限，并保留现有 owner/归属校验。
+- 后台 `RmaRequest`/mapper 仅新增必要的流程数量快照：RMA 总量、已收货量、按实际退款或换货结果择一的 `resolutionQuantity`、库存终态处置量。客户 DTO 仍显式 allowlist，不暴露这些后台数量或任何内部字段。
+- JS/TS 共享 `isRmaActionAvailable` 现在要求收货、商业结果和库存处置在各自需要的阶段达到完整 RMA 数量；close 同时校验完整数量、QC、双轴终态和退款/换货互斥。纯行为测试覆盖收货、退款结果、换货结果和库存处置的部分/全量数量矩阵。
+- 本批未连接本地或远端 PostgreSQL/Supabase，也未应用 migration；双事务并发 trigger 验证留给最终本地数据库门禁。生产仍 NO-GO，Migration B 撤权、兼容直写切换和数据库链路验证不得提前打开。
+
 ### 未来实施验收
 
 - 客户只能从有权限的真实订单行进入；服务端拒绝越权订单行、过期政策和并发超量。
@@ -374,6 +381,11 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 | `node --test tests/rma-rules.test.mjs tests/rma-contract.test.mjs tests/admin-rma-workflow-contract.test.mjs` | passed | 批次 1d 纯规则与 SQL/API 源契约 16/16 通过 |
 | 主仓库 `node_modules/.bin/eslint` 定向检查 | passed | 批次 1d 修改的 repository、RMA contract、RMA simple-flow 通过 |
 | `git diff --check` | passed | 批次 1d 当前 diff 无空白错误 |
+| `node --test tests/rma-rules.test.mjs tests/rma-contract.test.mjs tests/admin-rma-workflow-contract.test.mjs` | passed | 批次 1e 规则、历史 trigger SQL 契约和后台 DTO 源契约 18/18 通过；包含收货/退款/换货/库存处置部分与全量 close 行为 |
+| `/Users/kyox215/Documents/partspro v4/node_modules/.bin/eslint <本批 RMA TS/MJS 文件>` | passed | 批次 1e 定向 ESLint 无输出 |
+| `/Users/kyox215/Documents/partspro v4/node_modules/.bin/tsc --noEmit --incremental false --project <worktree>/tsconfig.json` | blocked by baseline | 仅有既有 `src/app/api/admin/restock-requests/[id]/route.ts:17:12 RouteContext`；本批无新增 TypeScript 诊断 |
+| `git diff --check` | passed | 批次 1e 当前 diff 无空白错误 |
+| `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase status` | blocked by local environment | Docker daemon 不可用；无本地 PostgreSQL/Supabase，双事务并发 trigger 验证留最终本地数据库门禁；未访问远端 |
 | Supabase linked/local lint、migration dry-run、build/E2E | skipped by gate | 本批禁止远端/数据库写入；worktree 无需启动本地数据库，按范围不跑完整 build/E2E |
 
 ## 执行记录
@@ -382,7 +394,7 @@ SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db lint --linked --schema 
 - 批准：2026-08-27；用户已批准本轮开始实现/推送/部署，当前 worker 仍按范围不 push、不部署、不应用远端 migration
 - 开始：2026-08-27
 - review：pending；Migration A/RLS/权限/支付/库存需专项守门
-- verified：2026-08-28；批次 1c 规则/契约 tests 14/14；批次 1d 规则/契约 tests 16/16、定向 ESLint、`git diff --check` 通过；`tsc --noEmit --incremental false` 仅剩基线 `RouteContext`
+- verified：2026-08-28；批次 1e 规则/历史 trigger/后台 DTO tests 18/18、定向 ESLint、`git diff --check` 通过；`tsc --noEmit --incremental false` 仅剩基线 `RouteContext`；本地 Docker 不可用，双事务数据库验证待最终门禁
 - released：不适用，本批不发布
 - closed：pending
 
