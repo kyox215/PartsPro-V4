@@ -24,6 +24,10 @@ const panelSource = readFileSync(
   path.join(repoRoot, "src/components/partspro/admin-products-panel.tsx"),
   "utf8"
 );
+const supportSource = readFileSync(
+  path.join(repoRoot, "src/components/partspro/support-widget.tsx"),
+  "utf8"
+);
 const dialogSource = readFileSync(
   path.join(repoRoot, "src/components/partspro/supplier-batch-transport-cost-dialog.tsx"),
   "utf8"
@@ -1394,6 +1398,37 @@ test("supplier batch filters use namespaced URL state and strict API keys", () =
     assert.match(searchParamsSource, new RegExp(key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
   assert.doesNotMatch(searchParamsSource, /batchQ|batchSupplier|batchCurrency|batchCostStatus|batchChargeType|batchVatTreatment|batchHasTransport|batchSort/);
+});
+
+test("supplier batch mobile UI keeps advanced filters in an applied Sheet", () => {
+  assert.match(panelSource, /group-data-horizontal\/tabs:h-auto[\s\S]{0,180}grid-cols-2[\s\S]{0,180}sm:grid-cols-4/);
+  assert.match(panelSource, /className="hidden flex-wrap gap-2 sm:flex"/);
+  assert.match(panelSource, /className="flex w-full gap-2 sm:hidden"/);
+  assert.match(panelSource, /<BatchMobileExportMenu[\s\S]{0,420}onDownloadTemplate={onDownloadTemplate}/);
+  assert.match(panelSource, /className="h-11 w-full bg-white text-base"/);
+  assert.match(panelSource, /formatAdminMessage\(copy\.filterCount, \{ count: activeFilterCount \}\)/);
+  assert.match(panelSource, /<SupplierBatchMobileFiltersSheet/);
+  assert.match(panelSource, /onApply={onChange}/);
+  assert.match(panelSource, /function SupplierBatchMobileFiltersSheet\(/);
+  assert.match(panelSource, /showCloseButton={false}/);
+  assert.match(panelSource, /side="bottom"/);
+  assert.match(panelSource, /min-h-11[^\n]*text-base/);
+  assert.match(panelSource, /\{copy\.dateFrom\}[\s\S]{0,180}id="supplier-batch-mobile-date-from"/);
+  assert.match(panelSource, /\{copy\.dateTo\}[\s\S]{0,180}id="supplier-batch-mobile-date-to"/);
+  assert.match(panelSource, /setDraftFilters\(defaultSupplierBatchFilters\(\)\)/);
+  assert.match(panelSource, /onApply\(draftFilters\);\s*onOpenChange\(false\)/);
+  assert.match(panelSource, /copy\.clearFilters/);
+  assert.match(panelSource, /line-clamp-2 break-words[^\n]*\[overflow-wrap:anywhere\]/);
+  assert.match(panelSource, /label=\{copy\.costStatus\}[\s\S]{0,260}copy\.costStatusLabels\[batch\.costSummary\.costStatus\]/);
+});
+
+test("support widget fails closed on admin client navigations", () => {
+  assert.match(supportSource, /import { usePathname } from "next\/navigation"/);
+  assert.match(supportSource, /const pathname = usePathname\(\)/);
+  assert.match(supportSource, /pathname === "\/admin" \|\| pathname\.startsWith\("\/admin\/"\)/);
+  assert.match(supportSource, /const shouldRender = scope === "storefront" && !isAdminPath/);
+  assert.match(supportSource, /useSupportActionBarOffset\(shouldRender\)/);
+  assert.match(supportSource, /if \(!shouldRender\) \{\s*return null/);
 });
 
 test("transport cost dialog is lazy and mounts only while open", () => {

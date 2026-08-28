@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
+import { usePathname } from "next/navigation";
 import { Headphones, Loader2, MessageCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "./i18n-provider";
@@ -34,9 +35,12 @@ const supportWidgetCopy = {
 
 export function SupportWidget() {
   const { locale, scope } = useI18n();
+  const pathname = usePathname();
+  const isAdminPath = pathname === "/admin" || pathname.startsWith("/admin/");
+  const shouldRender = scope === "storefront" && !isAdminPath;
   const copy = locale === "zh-CN" ? supportWidgetCopy.zh : supportWidgetCopy.it;
   const [open, setOpen] = React.useState(false);
-  const actionBarOffset = useSupportActionBarOffset(scope === "storefront");
+  const actionBarOffset = useSupportActionBarOffset(shouldRender);
   const widgetBottom =
     actionBarOffset > 0
       ? `${actionBarOffset + 12}px`
@@ -53,10 +57,11 @@ export function SupportWidget() {
   };
 
   React.useEffect(() => {
-    if (
-      scope !== "storefront" ||
-      new URLSearchParams(window.location.search).get("support") !== "open"
-    ) {
+    if (!shouldRender) {
+      return;
+    }
+
+    if (new URLSearchParams(window.location.search).get("support") !== "open") {
       return;
     }
 
@@ -65,9 +70,9 @@ export function SupportWidget() {
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [scope]);
+  }, [pathname, scope, shouldRender]);
 
-  if (scope !== "storefront") {
+  if (!shouldRender) {
     return null;
   }
 

@@ -68,6 +68,7 @@ import {
 } from "@/components/ui/select";
 import {
   Sheet,
+  SheetClose,
   SheetContent,
   SheetDescription,
   SheetFooter,
@@ -863,8 +864,10 @@ const panelText = {
     batches: {
       active: "上架",
       allDates: "全部",
+      applyFilters: "应用筛选",
       amount: "金额",
       batch: "批次",
+      clearFilters: "清除全部",
       costMismatch: "金额不一致",
       dateFrom: "开始日期",
       dateMode: "日期口径",
@@ -916,6 +919,11 @@ const panelText = {
       empty: "没有匹配的到货批次。",
       exportBatches: "导出批次",
       exportLines: "导出明细",
+      exportMore: "导出 / 更多",
+      filterCount: "筛选 {count}",
+      activeFilters: "已选条件",
+      mobileFiltersTitle: "筛选到货批次",
+      mobileFiltersDescription: "选择供应商、日期和成本条件后统一应用。",
       imageMissing: "缺图",
       importedAt: "录入时间",
       invoice: "发票",
@@ -1296,8 +1304,10 @@ const panelText = {
     batches: {
       active: "Attivi",
       allDates: "Tutto",
+      applyFilters: "Applica filtri",
       amount: "Importo",
       batch: "Lotto",
+      clearFilters: "Azzera filtri",
       costMismatch: "Importo non torna",
       dateFrom: "Da",
       dateMode: "Data",
@@ -1349,6 +1359,11 @@ const panelText = {
       empty: "Nessun lotto arrivo trovato.",
       exportBatches: "Esporta lotti",
       exportLines: "Esporta righe",
+      exportMore: "Esporta / altro",
+      filterCount: "Filtri {count}",
+      activeFilters: "Filtri attivi",
+      mobileFiltersTitle: "Filtra lotti arrivo",
+      mobileFiltersDescription: "Seleziona fornitore, date e costi; applica tutto insieme.",
       imageMissing: "Senza foto",
       importedAt: "Inserito",
       invoice: "Fattura",
@@ -2263,7 +2278,7 @@ export function AdminProductsPanel({
           syncWorkspaceUrl(nextWorkspace);
         }}
       >
-        <TabsList className="grid h-auto w-full grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 shadow-[0_8px_22px_rgba(15,23,42,0.04)] sm:w-auto sm:inline-grid sm:grid-cols-4">
+        <TabsList className="group-data-horizontal/tabs:h-auto grid h-auto w-full grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 shadow-[0_8px_22px_rgba(15,23,42,0.04)] sm:w-auto sm:inline-grid sm:grid-cols-4">
           <TabsTrigger value="products" className="min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
             {text.workspaceProducts}
           </TabsTrigger>
@@ -2664,6 +2679,8 @@ function SupplierBatchesPanel({
   const copy = text.batches;
   const pageCount = Math.max(1, Math.ceil(dataSource.total / filters.pageSize));
   const showRefreshBar = isLoading && batches.length > 0;
+  const [isMobileFiltersOpen, setIsMobileFiltersOpen] = React.useState(false);
+  const activeFilterCount = countSupplierBatchFilters(filters);
 
   return (
     <section className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
@@ -2687,7 +2704,7 @@ function SupplierBatchesPanel({
               : text.sourcePending}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="hidden flex-wrap gap-2 sm:flex">
           <Button
             variant="outline"
             size="sm"
@@ -2729,6 +2746,25 @@ function SupplierBatchesPanel({
             onDownload={onDownloadTemplate}
           />
         </div>
+        <div className="flex w-full gap-2 sm:hidden">
+          <Button
+            variant="outline"
+            className="min-h-11 flex-1 bg-white"
+            onClick={onRefresh}
+            disabled={isLoading}
+          >
+            <RefreshCw className={cn("size-4", isLoading && "animate-spin")} />
+            {text.sync}
+          </Button>
+          <BatchMobileExportMenu
+            canExportCosts={canExportCosts}
+            language={language}
+            pendingDownload={pendingDownload}
+            text={copy}
+            onDownload={onDownload}
+            onDownloadTemplate={onDownloadTemplate}
+          />
+        </div>
       </div>
 
       {dataSource.error ? (
@@ -2745,7 +2781,59 @@ function SupplierBatchesPanel({
         </div>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-1.5 border-b border-slate-200 bg-slate-50/70 px-2 py-2 sm:gap-2 sm:px-3 sm:py-3 lg:grid-cols-[1.2fr_1fr_1fr_1fr_1fr_auto]">
+      <div className="border-b border-slate-200 bg-slate-50/70 px-3 py-3 sm:hidden">
+        <Input
+          value={filters.q}
+          className="h-11 w-full bg-white text-base"
+          placeholder={copy.searchPlaceholder}
+          onChange={(event) => onChange({ q: event.target.value })}
+        />
+        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
+          <Button
+            variant="outline"
+            className="min-h-11 min-w-0 bg-white px-2 text-sm"
+            onClick={() => setIsMobileFiltersOpen(true)}
+          >
+            <SlidersHorizontal className="size-4 shrink-0" />
+            <span className="truncate">
+              {formatAdminMessage(copy.filterCount, { count: activeFilterCount })}
+            </span>
+          </Button>
+          <Select value={filters.sort} onValueChange={(value) => onChange({ sort: value as SupplierBatchSort })}>
+            <SelectTrigger className="h-11 w-full min-w-0 bg-white text-base" aria-label={copy.sort}>
+              <SelectValue placeholder={copy.sort} />
+            </SelectTrigger>
+            <SelectContent>
+              {(Object.keys(copy.sortLabels) as SupplierBatchSort[]).map((sort) => (
+                <SelectItem key={sort} value={sort} className="min-h-11 text-base">
+                  {copy.sortLabels[sort]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="mt-2 grid grid-cols-4 gap-1.5">
+          <Button variant="outline" className="min-h-11 min-w-0 bg-white px-1 text-xs" onClick={() => onQuickRange("today")}>
+            {copy.quickToday}
+          </Button>
+          <Button variant="outline" className="min-h-11 min-w-0 bg-white px-1 text-xs" onClick={() => onQuickRange("7")}>
+            {copy.quick7}
+          </Button>
+          <Button variant="outline" className="min-h-11 min-w-0 bg-white px-1 text-xs" onClick={() => onQuickRange("30")}>
+            {copy.quick30}
+          </Button>
+          <Button variant="outline" className="min-h-11 min-w-0 bg-white px-1 text-xs" onClick={() => onQuickRange("all")}>
+            {copy.allDates}
+          </Button>
+        </div>
+        <SupplierBatchActiveFilterSummary
+          filters={filters}
+          copy={copy}
+          onClear={() => onChange(defaultSupplierBatchFilters())}
+        />
+      </div>
+
+      <div className="hidden grid-cols-2 gap-1.5 border-b border-slate-200 bg-slate-50/70 px-2 py-2 sm:grid sm:gap-2 sm:px-3 sm:py-3 lg:grid-cols-[1.2fr_1fr_1fr_1fr_1fr_auto]">
         <Input
           value={filters.q}
           className="col-span-2 h-9 bg-white text-sm lg:col-span-1"
@@ -2850,6 +2938,18 @@ function SupplierBatchesPanel({
           </Button>
         </div>
       </div>
+
+      <SupplierBatchMobileFiltersSheet
+        key={isMobileFiltersOpen ? "open" : "closed"}
+        open={isMobileFiltersOpen}
+        filters={filters}
+        copy={copy}
+        supplierPlaceholder={text.supplierFilterPlaceholder}
+        batchPlaceholder={text.batchFilterPlaceholder}
+        closeLabel={text.close}
+        onOpenChange={setIsMobileFiltersOpen}
+        onApply={onChange}
+      />
 
       <div aria-busy={isLoading} aria-live="polite" className="min-w-0">
         {showRefreshBar ? <ProductTableLoadingBar label={copy.loading} /> : null}
@@ -2987,7 +3087,7 @@ function SupplierBatchesPanel({
             <article key={`mobile-${batch.id}`} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <button type="button" className="min-w-0 text-left" onClick={() => onOpenDetail(batch)}>
-                  <div className="break-all font-mono text-xs font-black text-slate-950">{batch.batchCode}</div>
+                  <div className="line-clamp-2 break-words font-mono text-xs font-black text-slate-950 [overflow-wrap:anywhere]">{batch.batchCode}</div>
                   <div className="mt-1 text-xs font-semibold text-slate-600">{batch.supplierName ?? text.none}</div>
                 </button>
                 <SupplierBatchVerificationBadge batch={batch} text={text} />
@@ -2998,11 +3098,14 @@ function SupplierBatchesPanel({
                 <BatchMobileField label={copy.lineTotal} value={formatSupplierBatchMoney(batch.lineCostTotal, batch.currency, language === "it" ? "it-IT" : "zh-CN")} />
                 <BatchMobileField label={copy.productStatus} value={`${copy.active} ${batch.activeProductCount} · ${copy.draft} ${batch.draftProductCount}`} />
                 <BatchMobileField label={copy.receivedAt} value={batch.receivedAt ? formatSupplierBatchDateTime(batch.receivedAt, language === "it" ? "it-IT" : "zh-CN") : text.none} />
-                <BatchMobileField label={copy.amount} value={batch.costSummary ? batch.costSummary.costStatus : "—"} />
+                <BatchMobileField
+                  label={copy.costStatus}
+                  value={batch.costSummary ? copy.costStatusLabels[batch.costSummary.costStatus] : copy.costStatusLabels.unrecorded}
+                />
               </dl>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" className="bg-white" onClick={() => onOpenDetail(batch)}>{copy.openDetail}</Button>
-                <Button variant="ghost" size="sm" onClick={() => onViewProducts(batch)}>{copy.viewProducts}</Button>
+                <Button variant="outline" size="sm" className="h-11 min-h-11 bg-white" onClick={() => onOpenDetail(batch)}>{copy.openDetail}</Button>
+                <Button variant="ghost" size="sm" className="h-11 min-h-11" onClick={() => onViewProducts(batch)}>{copy.viewProducts}</Button>
               </div>
             </article>
           )) : !isLoading ? <div className="p-6 text-center text-sm font-semibold text-slate-500">{copy.empty}</div> : null}
@@ -3033,6 +3136,406 @@ function supplierBatchDataErrorLabel(
     return copy.syncContractError;
   }
   return copy.syncNetworkError;
+}
+
+function countSupplierBatchFilters(filters: SupplierBatchFilters): number {
+  return [
+    Boolean(filters.q.trim()),
+    Boolean(filters.supplier.trim()),
+    Boolean(filters.batchCode.trim()),
+    filters.dateMode !== "imported" || Boolean(filters.dateFrom || filters.dateTo),
+    filters.currency !== "all",
+    filters.costStatus !== "all",
+    filters.chargeType !== "all",
+    filters.vatTreatment !== "all",
+    filters.hasTransport !== "all",
+  ].filter(Boolean).length;
+}
+
+function getSupplierBatchActiveFilterLabels(
+  filters: SupplierBatchFilters,
+  copy: (typeof panelText.zh | typeof panelText.it)["batches"]
+): string[] {
+  const labels: string[] = [];
+
+  if (filters.q.trim()) labels.push(`${copy.searchPlaceholder}: ${filters.q.trim()}`);
+  if (filters.supplier.trim()) labels.push(`${copy.supplier}: ${filters.supplier.trim()}`);
+  if (filters.batchCode.trim()) labels.push(`${copy.batch}: ${filters.batchCode.trim()}`);
+  if (filters.dateMode !== "imported" || filters.dateFrom || filters.dateTo) {
+    const dateRange = `${filters.dateFrom || "—"} → ${filters.dateTo || "—"}`;
+    labels.push(`${copy.dateMode}: ${copy.dateModeLabels[filters.dateMode]} · ${dateRange}`);
+  }
+  if (filters.currency !== "all") labels.push(`${copy.currency}: ${filters.currency}`);
+  if (filters.costStatus !== "all") {
+    labels.push(`${copy.costStatus}: ${copy.costStatusLabels[filters.costStatus]}`);
+  }
+  if (filters.chargeType !== "all") {
+    labels.push(`${copy.chargeType}: ${copy.chargeTypeLabels[filters.chargeType]}`);
+  }
+  if (filters.vatTreatment !== "all") {
+    labels.push(`${copy.vatTreatment}: ${copy.vatTreatmentLabels[filters.vatTreatment]}`);
+  }
+  if (filters.hasTransport !== "all") {
+    labels.push(`${copy.hasTransport}: ${copy.hasTransportLabels[filters.hasTransport]}`);
+  }
+
+  return labels;
+}
+
+function SupplierBatchActiveFilterSummary({
+  filters,
+  copy,
+  onClear,
+}: {
+  filters: SupplierBatchFilters;
+  copy: (typeof panelText.zh | typeof panelText.it)["batches"];
+  onClear: () => void;
+}) {
+  const labels = getSupplierBatchActiveFilterLabels(filters, copy);
+
+  if (labels.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-primary/15 bg-primary/5 p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-black text-primary">{copy.activeFilters}</span>
+        <button
+          type="button"
+          className="min-h-11 shrink-0 rounded-md px-2 text-xs font-bold text-primary underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={onClear}
+        >
+          {copy.clearFilters}
+        </button>
+      </div>
+      <div className="mt-2 flex min-w-0 flex-wrap gap-1.5">
+        {labels.map((label) => (
+          <span
+            key={label}
+            className="max-w-full rounded-md border border-primary/15 bg-white px-2 py-1 text-xs font-semibold leading-4 text-slate-700 [overflow-wrap:anywhere]"
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BatchMobileExportMenu({
+  canExportCosts,
+  language,
+  pendingDownload,
+  text,
+  onDownload,
+  onDownloadTemplate,
+}: {
+  canExportCosts: boolean;
+  language: SupplierBatchCostLanguage;
+  pendingDownload: string | null;
+  text: (typeof panelText.zh | typeof panelText.it)["batches"];
+  onDownload: (
+    scope: SupplierBatchExportScope,
+    format: SupplierBatchExportFormat
+  ) => Promise<void>;
+  onDownloadTemplate: (format: SupplierBatchExportFormat) => Promise<void>;
+}) {
+  const pending = Boolean(pendingDownload);
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          className="min-h-11 min-w-0 flex-1 bg-white px-2"
+          disabled={pending}
+        >
+          {pending ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
+          <span className="truncate">{text.exportMore}</span>
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-56">
+        <DropdownMenuItem className="min-h-11 text-base" onClick={() => void onDownload("batches", "csv")}>
+          <FileText className="size-4" />
+          {text.exportBatches} CSV
+        </DropdownMenuItem>
+        <DropdownMenuItem className="min-h-11 text-base" onClick={() => void onDownload("batches", "xlsx")}>
+          <FileSpreadsheet className="size-4" />
+          {text.exportBatches} Excel
+        </DropdownMenuItem>
+        <DropdownMenuItem className="min-h-11 text-base" onClick={() => void onDownload("lines", "csv")}>
+          <FileText className="size-4" />
+          {text.exportLines} CSV
+        </DropdownMenuItem>
+        <DropdownMenuItem className="min-h-11 text-base" onClick={() => void onDownload("lines", "xlsx")}>
+          <FileSpreadsheet className="size-4" />
+          {text.exportLines} Excel
+        </DropdownMenuItem>
+        {canExportCosts ? (
+          <>
+            <DropdownMenuItem className="min-h-11 text-base" onClick={() => void onDownload("charges", "csv")}>
+              <FileText className="size-4" />
+              {language === "it" ? "Esporta costi CSV" : "导出费用 CSV"}
+            </DropdownMenuItem>
+            <DropdownMenuItem className="min-h-11 text-base" onClick={() => void onDownload("charges", "xlsx")}>
+              <FileSpreadsheet className="size-4" />
+              {language === "it" ? "Esporta costi Excel" : "导出费用 Excel"}
+            </DropdownMenuItem>
+          </>
+        ) : null}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem className="min-h-11 text-base" onClick={() => void onDownloadTemplate("csv")}>
+          <FileText className="size-4" />
+          {text.downloadTemplate} CSV
+        </DropdownMenuItem>
+        <DropdownMenuItem className="min-h-11 text-base" onClick={() => void onDownloadTemplate("xlsx")}>
+          <FileSpreadsheet className="size-4" />
+          {text.downloadTemplate} Excel
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function SupplierBatchMobileFiltersSheet({
+  open,
+  filters,
+  copy,
+  supplierPlaceholder,
+  batchPlaceholder,
+  closeLabel,
+  onOpenChange,
+  onApply,
+}: {
+  open: boolean;
+  filters: SupplierBatchFilters;
+  copy: (typeof panelText.zh | typeof panelText.it)["batches"];
+  supplierPlaceholder: string;
+  batchPlaceholder: string;
+  closeLabel: string;
+  onOpenChange: (open: boolean) => void;
+  onApply: (patch: Partial<SupplierBatchFilters>) => void;
+}) {
+  const [draftFilters, setDraftFilters] = React.useState(filters);
+
+  function updateDraft(patch: Partial<SupplierBatchFilters>) {
+    setDraftFilters((current) => ({
+      ...current,
+      ...patch,
+      page: 0,
+    }));
+  }
+
+  function resetDraft() {
+    setDraftFilters(defaultSupplierBatchFilters());
+  }
+
+  function applyDraft() {
+    onApply(draftFilters);
+    onOpenChange(false);
+  }
+
+  const draftFilterCount = countSupplierBatchFilters(draftFilters);
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="bottom"
+        showCloseButton={false}
+        className="max-h-[min(90dvh,720px)] gap-0 overflow-hidden rounded-t-2xl p-0 pb-[env(safe-area-inset-bottom)]"
+      >
+        <SheetHeader className="border-b border-slate-200 bg-white p-3 pr-14">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <SheetTitle className="text-base font-black">{copy.mobileFiltersTitle}</SheetTitle>
+              <SheetDescription className="mt-1 text-xs font-semibold leading-4">
+                {copy.mobileFiltersDescription} {formatAdminMessage(copy.filterCount, { count: draftFilterCount })}
+              </SheetDescription>
+            </div>
+            <SheetClose asChild>
+              <Button variant="ghost" size="icon-lg" aria-label={closeLabel}>
+                <XCircle className="size-5" />
+              </Button>
+            </SheetClose>
+          </div>
+        </SheetHeader>
+
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-3">
+          <section className="rounded-lg border border-slate-200 bg-white p-3">
+            <h3 className="text-xs font-black uppercase tracking-wide text-slate-600">{copy.batch}</h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div className="min-w-0">
+                <Label htmlFor="supplier-batch-mobile-supplier" className="text-xs font-bold">{copy.supplier}</Label>
+                <Input
+                  id="supplier-batch-mobile-supplier"
+                  value={draftFilters.supplier}
+                  className="mt-1 h-11 min-h-11 bg-white text-base"
+                  placeholder={supplierPlaceholder}
+                  onChange={(event) => updateDraft({ supplier: event.target.value })}
+                />
+              </div>
+              <div className="min-w-0">
+                <Label htmlFor="supplier-batch-mobile-code" className="text-xs font-bold">{copy.batch}</Label>
+                <Input
+                  id="supplier-batch-mobile-code"
+                  value={draftFilters.batchCode}
+                  className="mt-1 h-11 min-h-11 bg-white font-mono text-base"
+                  placeholder={batchPlaceholder}
+                  onChange={(event) => updateDraft({ batchCode: event.target.value })}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+            <h3 className="text-xs font-black uppercase tracking-wide text-slate-600">{copy.dateMode}</h3>
+            <div className="mt-3 space-y-3">
+              <div>
+                <Label htmlFor="supplier-batch-mobile-date-mode" className="text-xs font-bold">{copy.dateMode}</Label>
+                <Select
+                  value={draftFilters.dateMode}
+                  onValueChange={(value) => updateDraft({ dateMode: value as SupplierBatchDateMode })}
+                >
+                  <SelectTrigger id="supplier-batch-mobile-date-mode" className="mt-1 h-11 w-full bg-white text-base">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(["imported", "received", "invoice"] as const).map((mode) => (
+                      <SelectItem key={mode} value={mode} className="min-h-11 text-base">
+                        {copy.dateModeLabels[mode]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="supplier-batch-mobile-date-from" className="text-xs font-bold">{copy.dateFrom}</Label>
+                  <Input
+                    id="supplier-batch-mobile-date-from"
+                    value={draftFilters.dateFrom}
+                    className="mt-1 h-11 min-h-11 w-full bg-white text-base"
+                    type="date"
+                    onChange={(event) => updateDraft({ dateFrom: event.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="supplier-batch-mobile-date-to" className="text-xs font-bold">{copy.dateTo}</Label>
+                  <Input
+                    id="supplier-batch-mobile-date-to"
+                    value={draftFilters.dateTo}
+                    className="mt-1 h-11 min-h-11 w-full bg-white text-base"
+                    type="date"
+                    onChange={(event) => updateDraft({ dateTo: event.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+            <h3 className="text-xs font-black uppercase tracking-wide text-slate-600">{copy.costStatus}</h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="supplier-batch-mobile-currency" className="text-xs font-bold">{copy.currency}</Label>
+                <Select
+                  value={draftFilters.currency}
+                  onValueChange={(value) => updateDraft({ currency: value as SupplierBatchFilters["currency"] })}
+                >
+                  <SelectTrigger id="supplier-batch-mobile-currency" className="mt-1 h-11 w-full bg-white text-base">
+                    <SelectValue placeholder={copy.allCurrencies} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="min-h-11 text-base">{copy.allCurrencies}</SelectItem>
+                    {SUPPLIER_BATCH_CURRENCIES.map((currency) => (
+                      <SelectItem key={currency} value={currency} className="min-h-11 text-base">{currency}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="supplier-batch-mobile-cost-status" className="text-xs font-bold">{copy.costStatus}</Label>
+                <Select
+                  value={draftFilters.costStatus}
+                  onValueChange={(value) => updateDraft({ costStatus: value as SupplierBatchFilters["costStatus"] })}
+                >
+                  <SelectTrigger id="supplier-batch-mobile-cost-status" className="mt-1 h-11 w-full bg-white text-base">
+                    <SelectValue placeholder={copy.costStatus} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="min-h-11 text-base">{copy.costStatus}</SelectItem>
+                    {(Object.keys(copy.costStatusLabels) as SupplierBatchCostStatusFilter[]).map((status) => (
+                      <SelectItem key={status} value={status} className="min-h-11 text-base">{copy.costStatusLabels[status]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="supplier-batch-mobile-charge-type" className="text-xs font-bold">{copy.chargeType}</Label>
+                <Select
+                  value={draftFilters.chargeType}
+                  onValueChange={(value) => updateDraft({ chargeType: value as SupplierBatchFilters["chargeType"] })}
+                >
+                  <SelectTrigger id="supplier-batch-mobile-charge-type" className="mt-1 h-11 w-full bg-white text-base">
+                    <SelectValue placeholder={copy.chargeType} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="min-h-11 text-base">{copy.chargeType}</SelectItem>
+                    {(Object.keys(copy.chargeTypeLabels) as SupplierBatchChargeTypeFilter[]).map((type) => (
+                      <SelectItem key={type} value={type} className="min-h-11 text-base">{copy.chargeTypeLabels[type]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="supplier-batch-mobile-vat" className="text-xs font-bold">{copy.vatTreatment}</Label>
+                <Select
+                  value={draftFilters.vatTreatment}
+                  onValueChange={(value) => updateDraft({ vatTreatment: value as SupplierBatchFilters["vatTreatment"] })}
+                >
+                  <SelectTrigger id="supplier-batch-mobile-vat" className="mt-1 h-11 w-full bg-white text-base">
+                    <SelectValue placeholder={copy.vatTreatment} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all" className="min-h-11 text-base">{copy.vatTreatment}</SelectItem>
+                    {(Object.keys(copy.vatTreatmentLabels) as SupplierBatchVatTreatmentFilter[]).map((treatment) => (
+                      <SelectItem key={treatment} value={treatment} className="min-h-11 text-base">{copy.vatTreatmentLabels[treatment]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="sm:col-span-2">
+                <Label htmlFor="supplier-batch-mobile-transport" className="text-xs font-bold">{copy.hasTransport}</Label>
+                <Select
+                  value={draftFilters.hasTransport}
+                  onValueChange={(value) => updateDraft({ hasTransport: value as SupplierBatchFilters["hasTransport"] })}
+                >
+                  <SelectTrigger id="supplier-batch-mobile-transport" className="mt-1 h-11 w-full bg-white text-base">
+                    <SelectValue placeholder={copy.hasTransport} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(Object.keys(copy.hasTransportLabels) as Array<SupplierBatchFilters["hasTransport"]>).map((value) => (
+                      <SelectItem key={value} value={value} className="min-h-11 text-base">{copy.hasTransportLabels[value]}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <SheetFooter className="flex-row justify-between border-t border-slate-200 bg-white p-3">
+          <Button variant="outline" className="min-h-11 flex-1 bg-white" onClick={resetDraft}>
+            {copy.clearFilters}
+          </Button>
+          <Button className="min-h-11 flex-1" onClick={applyDraft}>
+            {formatAdminMessage(copy.applyFilters, { count: draftFilterCount })}
+          </Button>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
+  );
 }
 
 function BatchMobileField({ label, value }: { label: string; value: string }) {
