@@ -138,6 +138,7 @@ export async function issueRmaUploadTicket(
         client,
         draftId,
         attachmentId,
+        user.id,
         service,
         storagePath
       );
@@ -403,43 +404,96 @@ async function cancelRmaAttachmentAfterTicketFailure(
   client: Awaited<ReturnType<typeof createClient>>,
   draftId: string,
   attachmentId: string,
+  userId: string,
   service: ReturnType<typeof createServiceRoleClient> | null,
   storagePath: string | null
 ) {
-  let cancellationError: unknown = null;
+  let cancellationSucceeded = false;
   try {
-    const { error } = await client.rpc("rma_cancel_attachment", {
+    const { data, error } = await client.rpc("rma_cancel_attachment", {
       p_attachment_id: attachmentId,
       p_draft_id: draftId,
     });
-    cancellationError = error;
+    cancellationSucceeded = !error && data === true;
   } catch {
-    cancellationError = new Error("RMA attachment cancellation RPC failed");
+    cancellationSucceeded = false;
   }
 
-  if (cancellationError) {
+  if (!cancellationSucceeded) {
     // The maintenance GC function is the fallback if the cancellation RPC
     // itself is unavailable; never mask the original ticket error. Keep a
     // structured server-side signal so operators can find orphaned rows.
     console.error("RMA attachment ticket compensation could not cancel the database row", {
       attachmentId,
       draftId,
-      error: cancellationError instanceof Error ? cancellationError.message : "rpc_error",
+      error: "rpc_error",
     });
+    return;
   }
 
-  if (service && storagePath) {
-    try {
-      await service.storage.from(rmaEvidenceBucket).remove([storagePath]);
-    } catch (error) {
-      // Storage deletion is compensating cleanup and is intentionally best
-      // effort. The database row remains cancelled and cannot be submitted.
-      console.error("RMA attachment ticket compensation could not remove storage object", {
-        attachmentId,
-        draftId,
-        error: error instanceof Error ? error.message : "storage_error",
-      });
+  // A successful cancellation RPC is not enough to authorize object
+  // deletion. Re-read through the service role and prove that the row still
+  // refers to this user's draft, the exact ticket path and the fixed private
+  // bucket, and that the row is cancelled. A concurrent complete can win the
+  // row lock and move the attachment to verified/committed; in that case the
+  // evidence is immutable and must be left for retention/GC handling.
+  if (!service || !storagePath) {
+    console.error("RMA attachment ticket compensation could not verify storage cleanup", {
+      attachmentId,
+      draftId,
+      error: "verification_unavailable",
+    });
+    return;
+  }
+
+  let attachment: unknown = null;
+  let attachmentReadError: unknown = null;
+  try {
+    const result = await service
+      .from("rma_attachments")
+      .select("id,user_id,draft_id,status,bucket,storage_path")
+      .eq("id", attachmentId)
+      .maybeSingle();
+    attachment = result.data;
+    attachmentReadError = result.error;
+  } catch {
+    attachmentReadError = new Error("attachment verification failed");
+  }
+
+  const canRemoveStorage =
+    !attachmentReadError &&
+    isRecord(attachment) &&
+    readString(attachment.id) === attachmentId &&
+    readString(attachment.user_id) === userId &&
+    readString(attachment.draft_id) === draftId &&
+    readString(attachment.bucket) === rmaEvidenceBucket &&
+    readString(attachment.storage_path) === storagePath &&
+    readString(attachment.status) === "cancelled";
+
+  if (!canRemoveStorage) {
+    console.error("RMA attachment ticket compensation skipped uncertain storage cleanup", {
+      attachmentId,
+      draftId,
+      error: "attachment_state_mismatch",
+    });
+    return;
+  }
+
+  try {
+    const { error: removeError } = await service.storage
+      .from(rmaEvidenceBucket)
+      .remove([storagePath]);
+    if (removeError) {
+      throw removeError;
     }
+  } catch (error) {
+    // Storage deletion is compensating cleanup and is intentionally best
+    // effort. The database row remains cancelled and cannot be submitted.
+    console.error("RMA attachment ticket compensation could not remove storage object", {
+      attachmentId,
+      draftId,
+      error: error instanceof Error ? error.message : "storage_error",
+    });
   }
 }
 

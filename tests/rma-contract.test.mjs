@@ -221,8 +221,27 @@ test("V1 processing is whole-RMA and idempotency conflicts remain typed", () => 
   assert.match(migration, /v_before\.refund_approved_quantity = v_before\.quantity/);
   assert.match(migration, /v_before\.replacement_quantity = v_before\.quantity/);
   assert.match(helper, /rawCode === "P0001"/);
-  assert.match(helper, /RMA attachment ticket compensation could not cancel/);
-  assert.match(helper, /const \{ error \} = await client\.rpc\("rma_cancel_attachment"/);
+  const cleanupStart = helper.indexOf("async function cancelRmaAttachmentAfterTicketFailure");
+  const cleanup = helper.slice(cleanupStart, helper.indexOf("async function readDraftDto", cleanupStart));
+  assert.notEqual(cleanupStart, -1, "ticket compensation helper must remain explicit and auditable");
+  assert.match(cleanup, /RMA attachment ticket compensation could not cancel/);
+  assert.match(cleanup, /const \{ data, error \} = await client\.rpc\("rma_cancel_attachment"/);
+  assert.match(cleanup, /cancellationSucceeded = !error && data === true/);
+  assert.match(
+    cleanup,
+    /if \(!cancellationSucceeded\) \{[\s\S]*?return;[\s\S]*?\n  \}\n\n  \/\/ A successful cancellation RPC is not enough/
+  );
+  assert.match(cleanup, /select\("id,user_id,draft_id,status,bucket,storage_path"\)/);
+  assert.match(cleanup, /readString\(attachment\.user_id\) === userId/);
+  assert.match(cleanup, /readString\(attachment\.draft_id\) === draftId/);
+  assert.match(cleanup, /readString\(attachment\.bucket\) === rmaEvidenceBucket/);
+  assert.match(cleanup, /readString\(attachment\.storage_path\) === storagePath/);
+  assert.match(cleanup, /readString\(attachment\.status\) === "cancelled"/);
+  assert.match(cleanup, /if \(!canRemoveStorage\) \{[\s\S]*?return;/);
+  const verifiedGuardIndex = cleanup.indexOf('readString(attachment.status) === "cancelled"');
+  const removeIndex = cleanup.indexOf(".remove([storagePath])");
+  assert.ok(verifiedGuardIndex >= 0 && verifiedGuardIndex < removeIndex, "verified/committed rows must be rejected before remove");
+  assert.match(cleanup, /const \{ error: removeError \} = await service\.storage/);
 });
 
 test("customer RMA DTO order aliases reject internal UUIDs at runtime", () => {
