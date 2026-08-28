@@ -4,6 +4,7 @@ import { hasAdminPermission } from "@/lib/partspro-admin-auth";
 import { apiError } from "@/lib/partspro-api";
 import { listAdminRmaRequests } from "@/lib/partspro-repository";
 import {
+  RmaEvidenceReadError,
   hydrateCustomerRmaAttachments,
   signRmaRequestAttachments,
 } from "@/lib/partspro-rma-evidence";
@@ -111,6 +112,9 @@ export async function GET(request: NextRequest) {
         returned: data.length,
         source: result.source,
         total: result.data.total,
+        totalIsExact: result.data.totalIsExact,
+        hasMore: result.data.hasMore,
+        lowerBound: result.data.lowerBound,
         // Counts intentionally use an independent, queue-less 200-row read;
         // the page query may be scoped to one selected queue and must not make
         // every other queue appear empty.
@@ -120,6 +124,9 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
+    if (error instanceof RmaEvidenceReadError) {
+      return apiError(error.status, error.code, error.message, error.details);
+    }
     return repositoryErrorResponse(
       error,
       "ADMIN_RMA_UNAVAILABLE",

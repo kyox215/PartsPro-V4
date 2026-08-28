@@ -125,7 +125,9 @@ test("admin workflow queues over-fetch before applying the projection offset", (
   assert.match(repository, /const scanCap = Math\.min\(\s*2000/);
   assert.match(repository, /while \(true\) \{[\s\S]*?request\.range\(\s*scanOffset/);
   assert.match(repository, /projectedRequests\.slice\(offset, offset \+ limit\)/);
-  assert.match(repository, /totalIsExact:\s*!queueScoped/);
+  assert.match(repository, /const totalIsExact = queueScoped \? scanExhausted/);
+  assert.match(repository, /hasMore:/);
+  assert.match(repository, /lowerBound:/);
 });
 
 function loadRepositoryScopeHelper() {

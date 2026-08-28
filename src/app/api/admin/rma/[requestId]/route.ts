@@ -7,6 +7,7 @@ import {
   updateAdminRmaRequest,
 } from "@/lib/partspro-repository";
 import {
+  RmaEvidenceReadError,
   hydrateCustomerRmaAttachments,
   signSingleRmaRequestAttachments,
 } from "@/lib/partspro-rma-evidence";
@@ -93,6 +94,9 @@ export async function GET(request: NextRequest, { params }: AdminRmaParams) {
       },
     });
   } catch (error) {
+    if (error instanceof RmaEvidenceReadError) {
+      return apiError(error.status, error.code, error.message, error.details);
+    }
     return repositoryErrorResponse(
       error,
       "ADMIN_RMA_UNAVAILABLE",
@@ -156,6 +160,9 @@ export async function PATCH(request: NextRequest, { params }: AdminRmaParams) {
       },
     });
   } catch (error) {
+    if (error instanceof RmaEvidenceReadError) {
+      return apiError(error.status, error.code, error.message, error.details);
+    }
     return repositoryErrorResponse(
       error,
       "ADMIN_RMA_UPDATE_FAILED",

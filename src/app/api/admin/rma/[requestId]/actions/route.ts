@@ -11,6 +11,7 @@ import {
   type AdminRmaAction,
 } from "@/lib/partspro-repository";
 import {
+  RmaEvidenceReadError,
   hydrateCustomerRmaAttachments,
   signSingleRmaRequestAttachments,
 } from "@/lib/partspro-rma-evidence";
@@ -98,6 +99,9 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
       },
     });
   } catch (error) {
+    if (error instanceof RmaEvidenceReadError) {
+      return apiError(error.status, error.code, error.message, error.details);
+    }
     return repositoryErrorResponse(
       error,
       "ADMIN_RMA_ACTION_FAILED",

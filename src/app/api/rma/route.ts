@@ -10,6 +10,7 @@ import {
 } from "@/lib/partspro-repository";
 import type { RmaRequest } from "@/lib/partspro-data";
 import {
+  RmaEvidenceReadError,
   hydrateCustomerRmaAttachments,
   signRmaRequestAttachments,
 } from "@/lib/partspro-rma-evidence";
@@ -63,6 +64,9 @@ export async function GET() {
       },
     }));
   } catch (error) {
+    if (error instanceof RmaEvidenceReadError) {
+      return noStore(apiError(error.status, error.code, error.message, error.details));
+    }
     if (error instanceof RepositoryWriteError) {
       return noStore(apiError(error.status, error.code, error.message, error.details));
     }

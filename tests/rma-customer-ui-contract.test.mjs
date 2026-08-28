@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { toCustomerRmaPrivacySafeFields } from "../src/lib/partspro-rma-customer-order.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relativePath) => readFileSync(join(repoRoot, relativePath), "utf8");
@@ -84,7 +85,6 @@ test("customer submit uses the new upload orchestrator and safe DTO history", ()
   assert.match(component, /storefront\.rma\.upload\.cleanupHint/);
   assert.match(component, /rmaNo \?\? savedRequest\.id/);
   assert.match(component, /request\.orderNumber/);
-  assert.doesNotMatch(component, /request\.orderId/);
   assert.match(component, /customerStage/);
   assert.match(component, /rmaCustomerStageLabel/);
   assert.match(component, /request\.attachments/);
@@ -132,8 +132,31 @@ test("customer can mark an approved request shipped in one tap with optional log
 
 test("customer DTO exposes a safe order number and the canonical flow resolves it by customer-owned order", () => {
   assert.match(customerContract, /orderNumber: string \| null/);
-  assert.match(customerDto, /orderNumber: request\.orderNumber \?\? request\.orderId \?\? null/);
+  assert.match(customerDto, /orderId: privacySafeFields\.orderId/);
+  assert.match(customerDto, /orderNumber: privacySafeFields\.orderNumber/);
   assert.match(simpleFlow, /select\("id,rma_no,order_id,order_no,customer_id/);
   assert.match(simpleFlow, /\.from\("orders"\)[\s\S]*\.select\("id,order_no"\)[\s\S]*\.eq\("id", orderId\)[\s\S]*\.eq\("customer_id", customerId\)/);
   assert.match(simpleFlow, /orderNumber,/);
+
+  const safe = toCustomerRmaPrivacySafeFields({
+    orderNumber: "ORD-2026-0010",
+    orderId: "11111111-1111-4111-8111-111111111111",
+    requestedResolution: "replacement",
+    labResult: "internal-only",
+    resolutionNote: "internal-only",
+    refundAmount: 99,
+  });
+
+  assert.deepEqual(safe.orderId, "ORD-2026-0010");
+  assert.deepEqual(safe.orderNumber, "ORD-2026-0010");
+  assert.deepEqual(safe.requestedResolution, "replacement");
+  assert.equal(Object.hasOwn(safe, "labResult"), false);
+  assert.equal(Object.hasOwn(safe, "resolutionNote"), false);
+  assert.equal(Object.hasOwn(safe, "refundAmount"), false);
+
+  const uuidOnly = toCustomerRmaPrivacySafeFields({
+    orderId: "11111111-1111-4111-8111-111111111111",
+  });
+  assert.equal(uuidOnly.orderId, null);
+  assert.equal(uuidOnly.orderNumber, null);
 });

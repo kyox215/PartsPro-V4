@@ -11,6 +11,22 @@ export const rmaEvidenceSignedUrlTtlSeconds = 15 * 60;
 
 type JsonRecord = Record<string, unknown>;
 
+export class RmaEvidenceReadError extends Error {
+  readonly status = 503;
+  readonly code = "RMA_READ_UNAVAILABLE";
+  readonly details?: unknown;
+
+  constructor(message: string, details?: unknown) {
+    super(message);
+    this.name = "RmaEvidenceReadError";
+    this.details = details;
+  }
+}
+
+function rmaEvidenceReadUnavailable(message: string, details?: unknown) {
+  return new RmaEvidenceReadError(message, details);
+}
+
 const uuidSegment = "[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}";
 const legacyEvidenceExtension = "(?:jpg|jpeg|png|webp|heic|heif|mp4|mov)";
 
@@ -96,17 +112,25 @@ export async function signRmaRequestAttachments(
   requests: RmaRequest[],
   ownerUserId?: string
 ): Promise<RmaRequest[]> {
-  if (!isSupabaseServiceRoleConfigured()) {
-    // Never echo a persisted/client-provided signed URL when the server
-    // cannot re-authorize it. The opaque attachment record remains readable,
-    // but no download capability is returned.
-    return requests.map((request) => ({
-      ...request,
-      attachments: (request.attachments ?? []).map(stripSignedUrl),
-    }));
+  if (requests.length === 0) {
+    return requests;
   }
 
-  const supabase = createServiceRoleClient();
+  if (!isSupabaseServiceRoleConfigured()) {
+    throw rmaEvidenceReadUnavailable(
+      "RMA evidence signing is unavailable because the server storage service is not configured."
+    );
+  }
+
+  let supabase: ReturnType<typeof createServiceRoleClient>;
+  try {
+    supabase = createServiceRoleClient();
+  } catch (error) {
+    throw rmaEvidenceReadUnavailable(
+      "RMA evidence signing is unavailable because the server storage service could not be initialized.",
+      error
+    );
+  }
 
   return Promise.all(
     requests.map(async (request) => ({
@@ -137,8 +161,18 @@ export async function hydrateCustomerRmaAttachments(
   requests: RmaRequest[],
   ownerUserId: string
 ): Promise<RmaRequest[]> {
-  if (!isSupabaseServiceRoleConfigured() || requests.length === 0 || !isUuid(ownerUserId)) {
+  if (requests.length === 0) {
     return requests;
+  }
+
+  if (!isSupabaseServiceRoleConfigured()) {
+    throw rmaEvidenceReadUnavailable(
+      "RMA evidence hydration is unavailable because the server storage service is not configured."
+    );
+  }
+
+  if (!isUuid(ownerUserId)) {
+    throw rmaEvidenceReadUnavailable("RMA evidence hydration requires a valid owner identity.");
   }
 
   const requestIds = requests.map((request) => request.id).filter(isUuid);
@@ -146,16 +180,31 @@ export async function hydrateCustomerRmaAttachments(
     return requests;
   }
 
-  const supabase = createServiceRoleClient();
+  let supabase: ReturnType<typeof createServiceRoleClient>;
+  try {
+    supabase = createServiceRoleClient();
+  } catch (error) {
+    throw rmaEvidenceReadUnavailable(
+      "RMA evidence hydration is unavailable because the server storage service could not be initialized.",
+      error
+    );
+  }
   const { data: requestRows, error: requestError } = await supabase
     .from("rma_requests")
     .select("id,user_id,customer_id,order_line_id")
     .in("id", requestIds);
 
-  if (requestError || !Array.isArray(requestRows)) {
-    // Do not append or expose canonical relation rows when their request
-    // binding cannot be verified. Legacy JSON attachments remain untouched.
-    return requests;
+  if (requestError) {
+    throw rmaEvidenceReadUnavailable(
+      "Supabase RMA request bindings could not be read for evidence hydration.",
+      requestError
+    );
+  }
+
+  if (!Array.isArray(requestRows) || requestRows.some((row) => !isRecord(row))) {
+    throw rmaEvidenceReadUnavailable(
+      "Supabase returned an invalid RMA request binding result."
+    );
   }
 
   const requestById = new Map<string, JsonRecord>(
@@ -164,15 +213,43 @@ export async function hydrateCustomerRmaAttachments(
       .map((row): [string, JsonRecord] => [typeof row.id === "string" ? row.id : "", row])
       .filter(([id]) => id.length > 0)
   );
+
+  if (requestIds.some((requestId) => !requestById.has(requestId))) {
+    throw rmaEvidenceReadUnavailable(
+      "Supabase did not return every canonical RMA request binding required for evidence hydration."
+    );
+  }
+
+  const canonicalRequestIds = requestRows
+    .filter((row) =>
+      typeof row.id === "string" &&
+      isUuid(row.id as string) &&
+      typeof row.user_id === "string" &&
+      isUuid(row.user_id as string) &&
+      typeof row.customer_id === "string" &&
+      isUuid(row.customer_id as string) &&
+      typeof row.order_line_id === "string" &&
+      isUuid(row.order_line_id as string)
+    )
+    .map((row) => row.id as string);
+
+  // A historical row without a canonical customer/order-line relation has no
+  // relation-table evidence to hydrate. Leave its legacy JSON attachments to
+  // the compatibility signer; any canonical relation must pass all checks.
+  if (canonicalRequestIds.length === 0) {
+    return requests;
+  }
+
   const customerIds = [...new Set(
     requestRows
-      .filter(isRecord)
-      .map((row) => (typeof row.customer_id === "string" ? row.customer_id : ""))
-      .filter((id) => id.length > 0)
+      .filter((row) => canonicalRequestIds.includes(row.id as string))
+      .map((row) => row.customer_id as string)
   )];
 
   if (customerIds.length === 0) {
-    return requests;
+    throw rmaEvidenceReadUnavailable(
+      "Supabase returned canonical RMA requests without customer bindings."
+    );
   }
 
   const { data: customerRows, error: customerError } = await supabase
@@ -181,8 +258,15 @@ export async function hydrateCustomerRmaAttachments(
     .in("id", customerIds)
     .eq("status", "active");
 
-  if (customerError || !Array.isArray(customerRows)) {
-    return requests;
+  if (customerError) {
+    throw rmaEvidenceReadUnavailable(
+      "Supabase customer bindings could not be read for evidence hydration.",
+      customerError
+    );
+  }
+
+  if (!Array.isArray(customerRows) || customerRows.some((row) => !isRecord(row))) {
+    throw rmaEvidenceReadUnavailable("Supabase returned an invalid customer binding result.");
   }
 
   const activeCustomerIds = new Set(
@@ -193,20 +277,39 @@ export async function hydrateCustomerRmaAttachments(
       .filter((id) => id.length > 0)
   );
 
+  if (customerIds.some((customerId) => !activeCustomerIds.has(customerId))) {
+    throw rmaEvidenceReadUnavailable(
+      "Supabase returned an inactive or missing customer binding for RMA evidence."
+    );
+  }
+
   const { data, error } = await supabase
     .from("rma_attachments")
     .select("id,rma_request_id,user_id,customer_id,order_line_id,original_name,content_type,size_bytes,uploaded_at,verified_at,committed_at,bucket,storage_path,status")
-    .in("rma_request_id", requestIds)
+    .in("rma_request_id", canonicalRequestIds)
     .eq("status", "committed")
     .not("verified_at", "is", null);
 
   if (error) {
-    return requests;
+    throw rmaEvidenceReadUnavailable(
+      "Supabase RMA attachment relations could not be read.",
+      error
+    );
+  }
+
+  if (!Array.isArray(data)) {
+    throw rmaEvidenceReadUnavailable(
+      "Supabase returned an invalid RMA attachment relation result."
+    );
   }
 
   const byRequestId = new Map<string, RmaAttachment[]>();
-  for (const row of Array.isArray(data) ? data : []) {
-    if (!isRecord(row)) continue;
+  for (const row of data) {
+    if (!isRecord(row)) {
+      throw rmaEvidenceReadUnavailable(
+        "Supabase returned an invalid RMA attachment relation row."
+      );
+    }
     const requestId = typeof row.rma_request_id === "string" ? row.rma_request_id : "";
     const path = typeof row.storage_path === "string" ? row.storage_path : "";
     const bucket = typeof row.bucket === "string" ? row.bucket : "";
@@ -218,6 +321,7 @@ export async function hydrateCustomerRmaAttachments(
     const contentType = typeof row.content_type === "string" ? row.content_type : undefined;
     const verifiedAt = typeof row.verified_at === "string" ? row.verified_at : "";
     const committedAt = typeof row.committed_at === "string" ? row.committed_at : "";
+    const status = typeof row.status === "string" ? row.status : "";
     const request = requestById.get(requestId);
     const requestUserId = request && typeof request.user_id === "string" ? request.user_id : "";
     const requestCustomerId = request && typeof request.customer_id === "string" ? request.customer_id : "";
@@ -233,21 +337,25 @@ export async function hydrateCustomerRmaAttachments(
       !activeCustomerIds.has(customerId) ||
       !orderLineId ||
       orderLineId !== requestOrderLineId ||
+      status !== "committed" ||
       bucket !== rmaEvidenceBucket ||
       !isRmaEvidencePathOwnedByUser(path, uploaderUserId) ||
       !isValidVerificationTimestamp(verifiedAt) ||
       !isValidVerificationTimestamp(committedAt)
     ) {
-      continue;
+      throw rmaEvidenceReadUnavailable(
+        "Supabase returned an RMA attachment outside its canonical request scope."
+      );
     }
 
     const { data: signed, error: signedError } = await supabase.storage
       .from(rmaEvidenceBucket)
       .createSignedUrl(path, rmaEvidenceSignedUrlTtlSeconds);
     if (signedError || !signed?.signedUrl) {
-      // A committed row without a valid signed capability is not a
-      // customer-visible attachment. Do not leak its metadata as a fallback.
-      continue;
+      throw rmaEvidenceReadUnavailable(
+        "Supabase could not create a signed URL for a canonical RMA attachment.",
+        signedError
+      );
     }
     const attachment: RmaAttachment = {
       attachmentId,
@@ -280,6 +388,7 @@ async function signRmaAttachments(
     attachments.map(async (attachment) => {
       const attachmentOwnerUserId = attachment.ownerUserId ?? ownerUserId;
       const safeAttachment = stripSignedUrl(attachment);
+      const isCanonicalAttachment = Boolean(safeAttachment.attachmentId);
       if (
         !safeAttachment.path ||
         safeAttachment.bucket !== rmaEvidenceBucket ||
@@ -287,6 +396,11 @@ async function signRmaAttachments(
         !attachmentOwnerUserId ||
         !isRmaEvidencePathOwnedByUser(safeAttachment.path, attachmentOwnerUserId)
       ) {
+        if (isCanonicalAttachment) {
+          throw rmaEvidenceReadUnavailable(
+            "Supabase returned an invalid canonical RMA attachment capability."
+          );
+        }
         return safeAttachment;
       }
 
@@ -295,6 +409,12 @@ async function signRmaAttachments(
         .createSignedUrl(safeAttachment.path, rmaEvidenceSignedUrlTtlSeconds);
 
       if (error || !data?.signedUrl) {
+        if (isCanonicalAttachment) {
+          throw rmaEvidenceReadUnavailable(
+            "Supabase could not create a signed URL for a canonical RMA attachment.",
+            error
+          );
+        }
         return safeAttachment;
       }
 

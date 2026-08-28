@@ -16,6 +16,7 @@ const http = read("src/lib/partspro-rma-http.ts");
 const helper = read("src/lib/partspro-rma-simple-flow.ts");
 const evidence = read("src/lib/partspro-rma-evidence.ts");
 const customerRoute = read("src/app/api/rma/route.ts");
+const adminRmaRoute = read("src/app/api/admin/rma/route.ts");
 const customerDto = read("src/lib/partspro-rma-customer-dto.ts");
 const rules = read("src/lib/partspro-rma-rules.mjs");
 const legacyEvidenceRoute = read("src/app/api/rma/evidence/route.ts");
@@ -236,6 +237,21 @@ test("RMA API keeps unavailable reads as typed non-200 errors", () => {
   assert.match(repository, /readAdminRmaRequestById\(context, requestId, options\)/);
   assert.match(customerRoute, /error instanceof RepositoryWriteError/);
   assert.match(customerRoute, /apiError\(error\.status, error\.code, error\.message, error\.details\)/);
+  assert.match(helper, /function rmaReadUnavailable\(message: string/);
+  assert.match(helper, /if \(error\) \{[\s\S]*RMA request could not be read/);
+  assert.match(helper, /if \(attachmentError\) \{[\s\S]*RMA attachments could not be read/);
+  assert.match(helper, /if \(eventError\) \{[\s\S]*RMA customer events could not be read/);
+  assert.match(helper, /requireCanonicalState/);
+  assert.match(helper, /RMA_READ_UNAVAILABLE/);
+  assert.match(evidence, /class RmaEvidenceReadError/);
+  assert.match(evidence, /RMA_READ_UNAVAILABLE/);
+  assert.match(evidence, /canonical RMA attachment/);
+  assert.match(evidence, /status !== "committed"/);
+  assert.match(helper, /status === "committed"/);
+  assert.match(customerRoute, /RmaEvidenceReadError/);
+  assert.match(adminRmaRoute, /totalIsExact: result\.data\.totalIsExact/);
+  assert.match(adminRmaRoute, /hasMore: result\.data\.hasMore/);
+  assert.match(adminRmaRoute, /lowerBound: result\.data\.lowerBound/);
 });
 
 test("statutory withdrawal and pure safety helpers remain separate from defect evidence", () => {
@@ -381,6 +397,12 @@ test("Migration B customer shipped RPC and refund preview stay narrow and parity
   assert.doesNotMatch(shippedBody, /returns public\.rma_requests/);
   assert.match(shippedBody, /request_id uuid/);
   assert.match(shippedBody, /return query select/);
+  assert.match(shippedBody, /private\.rma_canonical_source_facts\(v_before\.id\)/);
+  assert.match(shippedBody, /v_source_customer_id/);
+  assert.match(shippedBody, /rma_user_can_access_order\([\s\S]*v_source_customer_id,[\s\S]*v_source_order_id/);
+  assert.match(shippedBody, /customer_id = coalesce\(customer_id, v_source_customer_id\)/);
+  assert.match(shippedBody, /order_line_id = coalesce\(order_line_id, v_source_order_line_id\)/);
+  assert.match(shippedBody, /order_no = coalesce\(order_no, v_source_order_no\)/);
 
   const previewStart = finalizeMigration.indexOf("create or replace function public.admin_rma_refund_preview");
   const previewBody = finalizeMigration.slice(previewStart, finalizeMigration.indexOf("$$;", previewStart));
@@ -393,6 +415,9 @@ test("Migration B customer shipped RPC and refund preview stay narrow and parity
   assert.match(previewBody, /coalesce\(r\.refund_net_amount, r\.refund_amount, 0\) > 0/);
   assert.match(previewBody, /v_rma\.qc_status not in \('passed', 'failed', 'not_required'\)/);
   assert.match(previewBody, /v_rma\.replacement_order_id is not null/);
+  assert.match(previewBody, /private\.rma_canonical_source_facts\(v_rma\.id\)/);
+  assert.match(previewBody, /v_source_order_line_id/);
+  assert.match(previewBody, /v_source_customer_id/);
 
   const candidateStart = finalizeMigration.indexOf("create or replace function public.admin_rma_replacement_candidates");
   const candidateBody = finalizeMigration.slice(candidateStart, finalizeMigration.indexOf("$$;", candidateStart));
@@ -405,12 +430,29 @@ test("Migration B customer shipped RPC and refund preview stay narrow and parity
   assert.match(candidateBody, /v_rma\.resolution_action is not null/);
   assert.match(candidateBody, /v_rma\.replacement_order_id is not null/);
   assert.match(candidateBody, /e\.action in \('request_wallet_refund', 'mark_replacement_sent'\)/);
-  assert.match(candidateBody, /select \*[\s\S]*into v_line[\s\S]*from public\.order_lines/);
-  assert.match(candidateBody, /select \*[\s\S]*into v_order[\s\S]*from public\.orders/);
-  assert.match(candidateBody, /v_order\.customer_id is null/);
-  assert.match(candidateBody, /v_rma\.customer_id is distinct from v_order\.customer_id/);
-  assert.match(candidateBody, /v_customer_id := v_order\.customer_id/);
+  assert.match(candidateBody, /private\.rma_canonical_source_facts\(v_rma\.id\)/);
+  assert.match(candidateBody, /v_source_order_line_id/);
+  assert.match(candidateBody, /v_source_customer_id/);
+  assert.match(candidateBody, /v_customer_id := v_source_customer_id/);
   assert.doesNotMatch(candidateBody, /v_customer_id := v_rma\.customer_id/);
   assert.match(candidateBody, /other_rma\.replacement_order_id = o\.id/);
   assert.doesNotMatch(candidateBody, /other_rma\.status <> 'rejected'/);
+
+  const sourceHelperStart = migration.indexOf("create or replace function private.rma_canonical_source_facts");
+  const sourceHelperBody = migration.slice(sourceHelperStart, migration.indexOf("$$;", sourceHelperStart));
+  assert.match(sourceHelperBody, /from public\.order_lines as ol/);
+  assert.match(sourceHelperBody, /from public\.orders as o/);
+  for (const conflict of [
+    /v_rma\.customer_id is distinct from v_order\.customer_id/,
+    /v_rma\.order_id is distinct from v_order\.id/,
+    /v_rma\.order_no is distinct from v_order\.order_no/,
+    /v_rma\.sku_code is distinct from v_line\.sku_code/,
+  ]) {
+    assert.match(sourceHelperBody, conflict);
+  }
+
+  const v3Start = migration.indexOf("create or replace function public.admin_perform_rma_action_v3");
+  const v3Body = migration.slice(v3Start, migration.indexOf("$$;", v3Start));
+  assert.match(v3Body, /private\.rma_canonical_source_facts\(v_before\.id\)/);
+  assert.match(v3Body, /RMA canonical source facts are invalid/);
 });

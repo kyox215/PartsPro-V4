@@ -1748,6 +1748,8 @@ export type AdminRmaPage = {
   requests: RmaRequest[];
   total: number;
   totalIsExact: boolean;
+  hasMore: boolean;
+  lowerBound: number | null;
 };
 
 export type AdminRmaRefundPreview = {
@@ -5297,7 +5299,13 @@ export async function listAdminRmaRequests(
   }
 
   return emptyResult(
-    { requests: [], total: 0, totalIsExact: false },
+    {
+      requests: [],
+      total: 0,
+      totalIsExact: false,
+      hasMore: false,
+      lowerBound: 0,
+    },
     isSupabaseConfigured()
       ? "Supabase admin after-sales requests could not be read."
       : "Supabase is not configured; no admin after-sales requests are available."
@@ -11487,6 +11495,7 @@ async function readAdminRmaRequests(
   let count: number | null = null;
   let scannedRows: DbRow[] = [];
   let mappedRequests: RmaRequest[] = [];
+  let scanExhausted = !queueScoped;
 
   // The SQL predicates above are deliberately shallow for index-friendly
   // pagination. Queue projection is the authoritative workflow filter, so a
@@ -11521,14 +11530,15 @@ async function readAdminRmaRequests(
       (requestRow) =>
         projectAdminRmaWorkflow(requestRow, allRmaCapabilities).workflowQueue === query.queue
     ).length;
-    const rawExhausted =
+    const batchRawExhausted =
       rows.length < scanBatchSize ||
       (batchCount !== null && batchCount !== undefined && scannedRows.length >= batchCount);
     const scanCapped = scannedRows.length >= scanCap;
+    scanExhausted = batchRawExhausted;
 
     if (
       projectedCount >= targetProjectionCount ||
-      rawExhausted ||
+      batchRawExhausted ||
       scanCapped
     ) {
       break;
@@ -11546,12 +11556,17 @@ async function readAdminRmaRequests(
   const requests = queueScoped
     ? projectedRequests.slice(offset, offset + limit)
     : projectedRequests;
+  const totalIsExact = queueScoped ? scanExhausted : count !== null && count !== undefined;
+  const total = queueScoped ? projectedRequests.length : count ?? requests.length;
 
   return {
     requests,
-    total: queueScoped ? projectedRequests.length : count ?? requests.length,
-    totalIsExact:
-      !queueScoped && count !== null && count !== undefined,
+    total,
+    totalIsExact,
+    hasMore: totalIsExact
+      ? offset + requests.length < total
+      : true,
+    lowerBound: totalIsExact ? null : total,
   };
 }
 

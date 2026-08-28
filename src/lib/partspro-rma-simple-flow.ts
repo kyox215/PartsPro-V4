@@ -46,6 +46,10 @@ export class RmaSimpleFlowError extends Error {
   }
 }
 
+function rmaReadUnavailable(message: string, details?: unknown) {
+  return new RmaSimpleFlowError(503, "RMA_READ_UNAVAILABLE", message, details);
+}
+
 export async function createRmaDraft(
   input: RmaDraftCreateInput
 ): Promise<RmaDraftDto> {
@@ -330,7 +334,7 @@ export async function submitRmaRequest(
     throw new RmaSimpleFlowError(502, "RMA_SUBMIT_FAILED", "RMA request id was not returned.");
   }
 
-  return readCustomerRmaDto(user.id, rmaId);
+  return readCustomerRmaDto(user.id, rmaId, { requireCanonicalState: true });
 }
 
 export async function markRmaShipped(
@@ -374,7 +378,14 @@ function requireServiceRoleClient() {
     throw new RmaSimpleFlowError(503, "RMA_SERVICE_UNAVAILABLE", "RMA evidence storage is not configured.");
   }
 
-  return createServiceRoleClient();
+  try {
+    return createServiceRoleClient();
+  } catch (error) {
+    throw rmaReadUnavailable(
+      "RMA evidence service could not be initialized.",
+      error
+    );
+  }
 }
 
 /**
@@ -506,16 +517,34 @@ async function readDraftDto(userId: string, draftId: string): Promise<RmaDraftDt
     .eq("user_id", userId)
     .maybeSingle();
 
-  if (error || !isRecord(draft)) {
+  if (error) {
+    throw rmaReadUnavailable(
+      "Supabase RMA draft could not be read.",
+      error
+    );
+  }
+
+  if (draft === null) {
     throw new RmaSimpleFlowError(404, "RMA_DRAFT_NOT_FOUND", "RMA draft was not found.");
   }
 
-  const { count } = await service
+  if (!isRecord(draft)) {
+    throw rmaReadUnavailable("Supabase returned an invalid RMA draft row.");
+  }
+
+  const { count, error: attachmentCountError } = await service
     .from("rma_attachments")
     .select("id", { count: "exact", head: true })
     .eq("draft_id", draftId)
     .eq("user_id", userId)
     .in("status", ["pending", "verified", "committed"]);
+
+  if (attachmentCountError || count === null) {
+    throw rmaReadUnavailable(
+      "Supabase RMA attachment count could not be read.",
+      attachmentCountError
+    );
+  }
 
   return {
     attachmentCount: count ?? 0,
@@ -530,7 +559,10 @@ async function readDraftDto(userId: string, draftId: string): Promise<RmaDraftDt
 async function readCustomerRmaDto(
   userId: string,
   rmaId: string,
-  options: { allowCustomerMember?: boolean } = {}
+  options: {
+    allowCustomerMember?: boolean;
+    requireCanonicalState?: boolean;
+  } = {}
 ): Promise<CustomerRmaDto> {
   const service = requireServiceRoleClient();
   let requestQuery = service
@@ -544,8 +576,19 @@ async function readCustomerRmaDto(
 
   const { data: row, error } = await requestQuery.maybeSingle();
 
-  if (error || !isRecord(row)) {
+  if (error) {
+    throw rmaReadUnavailable(
+      "Supabase RMA request could not be read.",
+      error
+    );
+  }
+
+  if (row === null) {
     throw new RmaSimpleFlowError(404, "RMA_NOT_FOUND", "RMA request was not found.");
+  }
+
+  if (!isRecord(row)) {
+    throw rmaReadUnavailable("Supabase returned an invalid RMA request row.");
   }
 
   const orderNumber = normalizeCustomerOrderNumber(await readCustomerOrderNumber(service, row));
@@ -566,48 +609,102 @@ async function readCustomerRmaDto(
     attachmentQuery = attachmentQuery.eq("user_id", userId);
   }
 
-  const { data: attachmentRows } = await attachmentQuery.order("created_at", { ascending: true });
+  const { data: attachmentRows, error: attachmentError } = await attachmentQuery.order("created_at", { ascending: true });
 
-  const { data: eventRows } = await service
+  if (attachmentError) {
+    throw rmaReadUnavailable(
+      "Supabase RMA attachments could not be read.",
+      attachmentError
+    );
+  }
+
+  if (!Array.isArray(attachmentRows)) {
+    throw rmaReadUnavailable("Supabase returned an invalid RMA attachment result.");
+  }
+
+  const { data: eventRows, error: eventError } = await service
     .from("rma_request_events")
     .select("id,event_type,note,to_status,created_at")
     .eq("rma_request_id", rmaId)
     .eq("customer_visible", true)
     .order("created_at", { ascending: true });
 
+  if (eventError) {
+    throw rmaReadUnavailable(
+      "Supabase RMA customer events could not be read.",
+      eventError
+    );
+  }
+
+  if (!Array.isArray(eventRows)) {
+    throw rmaReadUnavailable("Supabase returned an invalid RMA event result.");
+  }
+
+  if (attachmentRows.some((attachment) => !isRecord(attachment))) {
+    throw rmaReadUnavailable("Supabase returned an invalid RMA attachment row.");
+  }
+
+  if (eventRows.some((event) => !isRecord(event))) {
+    throw rmaReadUnavailable("Supabase returned an invalid RMA event row.");
+  }
+
   const requestUserId = readString(row.user_id);
   const requestCustomerId = readString(row.customer_id);
   const requestOrderLineId = readString(row.order_line_id);
   const attachments = await Promise.all(
-    (Array.isArray(attachmentRows) ? attachmentRows : [])
-      .filter(isRecord)
-      .filter((attachment) => isCustomerAttachmentBoundToRequest(
+    attachmentRows.map(async (attachment) => {
+      if (!isCustomerAttachmentBoundToRequest(
         attachment,
         requestUserId,
         requestCustomerId,
         requestOrderLineId
-      ))
-      .map((attachment) => toCustomerAttachmentDto(service, attachment))
+      )) {
+        throw rmaReadUnavailable(
+          "Supabase returned an RMA attachment outside the request scope."
+        );
+      }
+
+      return toCustomerAttachmentDto(service, attachment);
+    })
   );
 
+  const customerEvents = eventRows.map((event) => {
+    const id = readString(event.id);
+    if (!id) {
+      throw rmaReadUnavailable("Supabase returned an RMA event without an id.");
+    }
+
+    return {
+      createdAt: readString(event.created_at) ?? new Date(0).toISOString(),
+      eventType: readString(event.event_type) ?? "event",
+      id,
+      note: readString(event.note) ?? undefined,
+      toStatus: readString(event.to_status),
+    };
+  });
+
+  if (options.requireCanonicalState) {
+    const policyScope = readString(row.policy_scope);
+    const attachmentRequired =
+      policyScope !== "statutory_b2c_withdrawal" &&
+      policyScope !== "b2c_statutory_withdrawal";
+
+    if ((attachmentRequired && attachments.length === 0) || customerEvents.length === 0) {
+      throw rmaReadUnavailable(
+        "Supabase returned an incomplete canonical RMA result."
+      );
+    }
+  }
+
   return {
-    attachments: attachments.filter((attachment): attachment is CustomerRmaAttachmentDto => attachment !== null),
+    attachments,
     createdAt: readString(row.created_at) ?? new Date(0).toISOString(),
     customerStage: status === "approved" && customerShippedAt
       ? "return_in_transit"
       : customerStageForRmaStatus(status),
     description: readString(row.description) ?? "",
     eligibleUntil: readString(row.eligible_until),
-    events: (Array.isArray(eventRows) ? eventRows : [])
-      .filter(isRecord)
-      .map((event) => ({
-        createdAt: readString(event.created_at) ?? new Date(0).toISOString(),
-        eventType: readString(event.event_type) ?? "event",
-        id: readString(event.id) ?? "",
-        note: readString(event.note) ?? undefined,
-        toStatus: readString(event.to_status),
-      }))
-      .filter((event) => event.id.length > 0),
+    events: customerEvents,
     id: readString(row.id) ?? rmaId,
     orderId: orderNumber,
     orderNumber,
@@ -651,23 +748,42 @@ async function readCustomerOrderNumber(
   const customerId = readString(row.customer_id);
 
   if (!orderId || !customerId) {
+    // Historical rows without a canonical order/customer relation retain the
+    // persisted display number as a narrowly-scoped compatibility fallback.
     return fallback;
   }
 
-  const { data: order } = await service
+  const { data: order, error } = await service
     .from("orders")
     .select("id,order_no")
     .eq("id", orderId)
     .eq("customer_id", customerId)
     .maybeSingle();
 
-  return isRecord(order) ? readString(order.order_no) ?? fallback : fallback;
+  if (error) {
+    throw rmaReadUnavailable(
+      "Supabase source order could not be read for the RMA request.",
+      error
+    );
+  }
+
+  if (order === null) {
+    throw rmaReadUnavailable(
+      "Supabase source order could not be resolved for the RMA request."
+    );
+  }
+
+  if (!isRecord(order)) {
+    throw rmaReadUnavailable("Supabase returned an invalid source order row.");
+  }
+
+  return readString(order.order_no) ?? fallback;
 }
 
 async function toCustomerAttachmentDto(
   service: ReturnType<typeof createServiceRoleClient>,
   row: JsonRecord
-): Promise<CustomerRmaAttachmentDto | null> {
+): Promise<CustomerRmaAttachmentDto> {
   const attachmentId = readString(row.id) ?? "";
   const contentType = normalizeContentType(readString(row.content_type));
   const name = readString(row.original_name) ?? "image";
@@ -676,25 +792,35 @@ async function toCustomerAttachmentDto(
   const verifiedAt = readString(row.verified_at);
   const storagePath = readString(row.storage_path);
   const bucket = readString(row.bucket) ?? rmaEvidenceBucket;
-  let signedUrl: string | undefined;
 
-  if (storagePath && bucket === rmaEvidenceBucket) {
-    const { data } = await service.storage
+  if (!storagePath || bucket !== rmaEvidenceBucket) {
+    throw rmaReadUnavailable(
+      "Supabase returned an invalid canonical RMA attachment capability."
+    );
+  }
+
+  const { data, error } = await service.storage
       .from(rmaEvidenceBucket)
       .createSignedUrl(storagePath, rmaEvidenceSignedUrlTtlSeconds);
-    signedUrl = data?.signedUrl;
+
+  if (error || !data?.signedUrl) {
+    throw rmaReadUnavailable(
+      "Supabase could not create a signed URL for the canonical RMA attachment.",
+      error
+    );
   }
+  const signedUrl = data.signedUrl;
 
   if (
     !attachmentId ||
     !isRmaAttachmentContentType(contentType) ||
-    !storagePath ||
-    bucket !== rmaEvidenceBucket ||
     !signedUrl ||
     !verifiedAt ||
     !Number.isFinite(Date.parse(verifiedAt))
   ) {
-    return null;
+    throw rmaReadUnavailable(
+      "Supabase returned invalid canonical RMA attachment metadata."
+    );
   }
 
   return {
@@ -704,7 +830,7 @@ async function toCustomerAttachmentDto(
     sizeBytes,
     uploadedAt,
     verifiedAt,
-    ...(signedUrl ? { signedUrl } : {}),
+    signedUrl,
   };
 }
 
@@ -721,6 +847,7 @@ function isCustomerAttachmentBoundToRequest(
   const path = readString(attachment.storage_path);
   const verifiedAt = readString(attachment.verified_at);
   const committedAt = readString(attachment.committed_at);
+  const status = readString(attachment.status);
 
   return Boolean(
     requestUserId &&
@@ -730,6 +857,7 @@ function isCustomerAttachmentBoundToRequest(
       uploaderUserId === requestUserId &&
       customerId === requestCustomerId &&
       orderLineId === requestOrderLineId &&
+      status === "committed" &&
       bucket === rmaEvidenceBucket &&
       path &&
       isRmaEvidencePathOwnedByUser(path, uploaderUserId) &&

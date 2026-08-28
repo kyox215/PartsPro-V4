@@ -252,6 +252,11 @@ declare
   v_auth_uid uuid := (select auth.uid());
   v_before public.rma_requests%rowtype;
   v_after public.rma_requests%rowtype;
+  v_source_order_id uuid;
+  v_source_order_line_id uuid;
+  v_source_customer_id uuid;
+  v_source_order_no text;
+  v_source_sku_code text;
   v_carrier text := nullif(btrim(coalesce(p_return_carrier, '')), '');
   v_tracking text := nullif(btrim(coalesce(p_return_tracking_code, '')), '');
 begin
@@ -279,10 +284,32 @@ begin
     raise exception 'RMA request not found' using errcode = 'P0002';
   end if;
 
+  select
+    source_order_id,
+    source_order_line_id,
+    source_customer_id,
+    source_order_no,
+    source_sku_code
+  into
+    v_source_order_id,
+    v_source_order_line_id,
+    v_source_customer_id,
+    v_source_order_no,
+    v_source_sku_code
+  from private.rma_canonical_source_facts(v_before.id);
+
+  if v_source_order_id is null
+    or v_source_order_line_id is null
+    or v_source_customer_id is null
+    or v_source_sku_code is null
+  then
+    raise exception 'RMA canonical source facts are invalid' using errcode = '23514';
+  end if;
+
   if not private.rma_user_can_access_order(
     v_auth_uid,
-    v_before.customer_id,
-    v_before.order_id
+    v_source_customer_id,
+    v_source_order_id
   ) then
     raise exception 'RMA request is not owned by the authenticated customer' using errcode = '42501';
   end if;
@@ -304,7 +331,12 @@ begin
   end if;
 
   update public.rma_requests
-  set customer_shipped_at = now(),
+  set customer_id = coalesce(customer_id, v_source_customer_id),
+      order_id = coalesce(order_id, v_source_order_id),
+      order_line_id = coalesce(order_line_id, v_source_order_line_id),
+      order_no = coalesce(order_no, v_source_order_no),
+      sku_code = coalesce(sku_code, v_source_sku_code),
+      customer_shipped_at = now(),
       return_carrier = v_carrier,
       return_tracking_code = v_tracking,
       updated_at = now()
@@ -560,6 +592,11 @@ declare
   v_existing_refunds numeric(12, 2) := 0;
   v_wallet_balance numeric(12, 2) := 0;
   v_max numeric(12, 2) := 0;
+  v_source_order_id uuid;
+  v_source_order_line_id uuid;
+  v_source_customer_id uuid;
+  v_source_order_no text;
+  v_source_sku_code text;
 begin
   if v_auth_uid is null then
     raise exception 'Authentication required' using errcode = '28000';
@@ -640,16 +677,36 @@ begin
     return;
   end if;
 
+  select
+    source_order_id,
+    source_order_line_id,
+    source_customer_id,
+    source_order_no,
+    source_sku_code
+  into
+    v_source_order_id,
+    v_source_order_line_id,
+    v_source_customer_id,
+    v_source_order_no,
+    v_source_sku_code
+  from private.rma_canonical_source_facts(v_rma.id);
+
+  if v_source_order_id is null
+    or v_source_order_line_id is null
+    or v_source_customer_id is null
+    or v_source_sku_code is null
+  then
+    return query select false, 'invalid_snapshot', coalesce(v_rma.refund_currency, 'EUR'), 0::numeric, 0, false;
+    return;
+  end if;
+
   select * into v_line
   from public.order_lines as ol
-  where ol.id = v_rma.order_line_id;
+  where ol.id = v_source_order_line_id;
 
   select * into v_order
   from public.orders as o
-  -- The line is the canonical commercial scope. Legacy order_id values can
-  -- be stale or malformed; using them first would make preview amounts drift
-  -- from the v3 action, which locks and resolves the order through the line.
-  where o.id = v_line.order_id;
+  where o.id = v_source_order_id;
 
   if v_line.id is null or v_order.id is null then
     return query select false, 'invalid_snapshot', coalesce(v_rma.refund_currency, 'EUR'), 0::numeric, 0, false;
@@ -716,11 +773,14 @@ as $$
 declare
   v_auth_uid uuid := (select auth.uid());
   v_rma public.rma_requests%rowtype;
-  v_line public.order_lines%rowtype;
-  v_order public.orders%rowtype;
   v_customer_id uuid;
   v_sku_code text;
   v_original_order_id uuid;
+  v_source_order_id uuid;
+  v_source_order_line_id uuid;
+  v_source_customer_id uuid;
+  v_source_order_no text;
+  v_source_sku_code text;
 begin
   if v_auth_uid is null then
     raise exception 'Authentication required' using errcode = '28000';
@@ -774,49 +834,31 @@ begin
     return;
   end if;
 
-  -- Resolve the source order exactly as v3 does: an existing order line wins,
-  -- then legacy order_id/order_no fallbacks are considered only when the line
-  -- is unavailable. Never trust a stale RMA customer_id without the source
-  -- order row; a NULL legacy customer_id is allowed only after that row proves
-  -- the customer scope.
-  select *
-  into v_line
-  from public.order_lines as ol
-  where ol.id = v_rma.order_line_id;
+  select
+    source_order_id,
+    source_order_line_id,
+    source_customer_id,
+    source_order_no,
+    source_sku_code
+  into
+    v_source_order_id,
+    v_source_order_line_id,
+    v_source_customer_id,
+    v_source_order_no,
+    v_source_sku_code
+  from private.rma_canonical_source_facts(v_rma.id);
 
-  if v_line.id is not null then
-    v_original_order_id := v_line.order_id;
-  elsif v_rma.order_id is not null then
-    v_original_order_id := v_rma.order_id;
-  elsif nullif(btrim(coalesce(v_rma.order_no, '')), '') is not null then
-    select o.id
-    into v_original_order_id
-    from public.orders as o
-    where o.order_no = v_rma.order_no;
-  end if;
-
-  select *
-  into v_order
-  from public.orders as o
-  where o.id = v_original_order_id;
-
-  if v_order.id is null
-    or v_order.customer_id is null
-    or (
-      v_rma.customer_id is not null
-      and v_rma.customer_id is distinct from v_order.customer_id
-    )
+  if v_source_order_id is null
+    or v_source_order_line_id is null
+    or v_source_customer_id is null
+    or v_source_sku_code is null
   then
     return;
   end if;
 
-  v_customer_id := v_order.customer_id;
-  v_sku_code := coalesce(v_line.sku_code, v_rma.sku_code);
-
-  if v_sku_code is null
-  then
-    return;
-  end if;
+  v_original_order_id := v_source_order_id;
+  v_customer_id := v_source_customer_id;
+  v_sku_code := v_source_sku_code;
 
   return query
   select

@@ -696,6 +696,97 @@ begin
 end;
 $$;
 
+-- Resolve one canonical source line/order/customer/SKU tuple for every
+-- commercial RMA action and preview. Legacy rows may have NULL denormalized
+-- fields, but any populated field that contradicts the source facts is
+-- invalid and must never be used for ownership, pricing, or replacement
+-- selection.
+create or replace function private.rma_canonical_source_facts(
+  p_request_id uuid
+)
+returns table(
+  source_order_id uuid,
+  source_order_line_id uuid,
+  source_customer_id uuid,
+  source_order_no text,
+  source_sku_code text
+)
+language plpgsql
+stable
+security definer
+set search_path = pg_catalog, public, private, pg_temp
+as $$
+declare
+  v_rma public.rma_requests%rowtype;
+  v_line public.order_lines%rowtype;
+  v_order public.orders%rowtype;
+begin
+  if p_request_id is null then
+    return;
+  end if;
+
+  select * into v_rma
+  from public.rma_requests as r
+  where r.id = p_request_id;
+
+  if v_rma.id is null then
+    return;
+  end if;
+
+  -- The new RMA protocol is line-first. A missing line is not repairable by
+  -- trusting a denormalized order_id/order_no copied onto the RMA row.
+  select * into v_line
+  from public.order_lines as ol
+  where ol.id = v_rma.order_line_id;
+
+  if v_line.id is null or v_line.order_id is null or v_line.sku_code is null then
+    return;
+  end if;
+
+  select * into v_order
+  from public.orders as o
+  where o.id = v_line.order_id;
+
+  if v_order.id is null or v_order.customer_id is null then
+    return;
+  end if;
+
+  if v_rma.customer_id is not null
+    and v_rma.customer_id is distinct from v_order.customer_id
+  then
+    return;
+  end if;
+
+  if v_rma.order_id is not null
+    and v_rma.order_id is distinct from v_order.id
+  then
+    return;
+  end if;
+
+  if nullif(btrim(coalesce(v_rma.order_no, '')), '') is not null
+    and v_rma.order_no is distinct from v_order.order_no
+  then
+    return;
+  end if;
+
+  if v_rma.sku_code is not null
+    and v_rma.sku_code is distinct from v_line.sku_code
+  then
+    return;
+  end if;
+
+  return query select
+    v_order.id,
+    v_line.id,
+    v_order.customer_id,
+    v_order.order_no,
+    v_line.sku_code;
+end;
+$$;
+
+revoke all on function private.rma_canonical_source_facts(uuid)
+  from public, anon, authenticated;
+
 create or replace function public.rma_create_draft(
   p_order_line_id uuid,
   p_idempotency_key text default null
@@ -1754,6 +1845,11 @@ declare
   v_order public.orders%rowtype;
   v_replacement_order public.orders%rowtype;
   v_refund_request public.wallet_refund_requests%rowtype;
+  v_source_order_id uuid;
+  v_source_order_line_id uuid;
+  v_source_customer_id uuid;
+  v_source_order_no text;
+  v_source_sku_code text;
   v_wallet_idempotency_key text;
   v_assigned_to uuid;
   v_next_status text;
@@ -1843,6 +1939,37 @@ begin
 
   if v_before.id is null then
     raise exception 'RMA request not found' using errcode = 'P0002';
+  end if;
+
+  if v_action in (
+    'mark_received',
+    'request_wallet_refund',
+    'restock_return',
+    'mark_scrapped',
+    'supplier_return',
+    'mark_replacement_sent'
+  ) then
+    select
+      source_order_id,
+      source_order_line_id,
+      source_customer_id,
+      source_order_no,
+      source_sku_code
+    into
+      v_source_order_id,
+      v_source_order_line_id,
+      v_source_customer_id,
+      v_source_order_no,
+      v_source_sku_code
+    from private.rma_canonical_source_facts(v_before.id);
+
+    if v_source_order_id is null
+      or v_source_order_line_id is null
+      or v_source_customer_id is null
+      or v_source_sku_code is null
+    then
+      raise exception 'RMA canonical source facts are invalid' using errcode = '23514';
+    end if;
   end if;
 
   if v_action in (
@@ -2023,6 +2150,22 @@ begin
   v_resolution_action := v_before.resolution_action;
   v_inventory_disposition := coalesce(v_before.inventory_disposition, 'pending');
   v_sku_code := coalesce(v_line.sku_code, v_before.sku_code);
+
+  if v_action in (
+    'mark_received',
+    'request_wallet_refund',
+    'restock_return',
+    'mark_scrapped',
+    'supplier_return',
+    'mark_replacement_sent'
+  ) and (
+    v_line.id is distinct from v_source_order_line_id
+    or v_order.id is distinct from v_source_order_id
+    or v_order.customer_id is distinct from v_source_customer_id
+    or v_sku_code is distinct from v_source_sku_code
+  ) then
+    raise exception 'RMA canonical source facts changed during action validation' using errcode = '23514';
+  end if;
 
   if v_action = 'assign' then
     if v_before.status in ('closed', 'rejected') then
