@@ -1439,7 +1439,7 @@ test("transport cost dialog is lazy and mounts only while open", () => {
   );
 });
 
-test("transport cost dialogs keep intentional responsive widths and field panels", () => {
+test("transport cost dialog keeps intentional responsive widths and the simplified three-step flow", () => {
   const dialogContentClasses = [...dialogSource.matchAll(
     /<DialogContent aria-modal=\{true\} className="([^"]+)">/g
   )].map((match) => match[1]);
@@ -1454,10 +1454,54 @@ test("transport cost dialogs keep intentional responsive widths and field panels
   assert.match(mainDialogClass, /overflow-hidden/);
   assert.match(confirmDialogClass, /sm:max-w-lg/);
   assert.match(closeGuardClass, /sm:max-w-md/);
-  assert.match(dialogSource, /<section className="rounded-lg border border-slate-200\/80 bg-slate-50\/50 p-3 sm:p-4">/);
+  assert.match(dialogSource, /<section className="rounded-lg border border-slate-200\/80 bg-slate-50\/50 p-3 sm:p-4" aria-labelledby="supplier-cost-step-1">/);
   assert.match(dialogSource, /<div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">/);
-  assert.match(dialogSource, /<section className="mt-4 rounded-lg border border-slate-200\/80 bg-slate-50\/50 p-3 sm:p-4">/);
-  assert.match(dialogSource, /<div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">/);
+  assert.match(dialogSource, /<section className="mt-4 rounded-lg border border-slate-200\/80 bg-white p-3 sm:p-4" aria-labelledby="supplier-cost-step-2">/);
+  assert.match(dialogSource, /<div className="grid grid-cols-1 gap-x-4 gap-y-4 lg:grid-cols-3">/);
+  assert.match(dialogSource, /<details[\s\S]{0,180}open=\{advancedOpen \|\| hasAdvancedFieldErrors\}[\s\S]{0,180}onToggle=\{\(event\) => setAdvancedOpen\(event\.currentTarget\.open\)\}/);
+  assert.match(dialogSource, /<summary className="cursor-pointer list-none/);
+  assert.match(dialogSource, /id="supplier-cost-step-1"[\s\S]{0,180}\{text\.step1Title\}/);
+  assert.match(dialogSource, /id="supplier-cost-step-2"[\s\S]{0,180}\{text\.step2Title\}/);
+  assert.match(dialogSource, /\{text\.step3Title\}/);
+  assert.match(dialogSource, /step1Title: "1\. 填写账单"/);
+  assert.match(dialogSource, /step2Title: "2\. 确认计入商品成本"/);
+  assert.match(dialogSource, /step3Title: "3\. 补充凭证（选填）"/);
+  assert.match(dialogSource, /step1Title: "1\. Inserisci la fattura"/);
+  assert.match(dialogSource, /step2Title: "2\. Conferma il costo della merce"/);
+  assert.match(dialogSource, /step3Title: "3\. Dati aggiuntivi \(facoltativi\)"/);
+  assert.match(dialogSource, /amountNet: "未税金额"/);
+  assert.match(dialogSource, /gross: "含税总额（自动）"/);
+  assert.match(dialogSource, /capitalizedAmount: "计入商品成本"/);
+  assert.match(dialogSource, /vatTreatment: "税额能否抵扣"/);
+  assert.match(dialogSource, /allocationMethod: "怎么分到商品"/);
+  assert.match(dialogSource, /amountNet: "Importo netto"/);
+  assert.match(dialogSource, /gross: "Totale lordo \(automatico\)"/);
+  assert.match(dialogSource, /capitalizedAmount: "Costo incluso nella merce"/);
+  assert.match(dialogSource, /vatTreatment: "IVA recuperabile\?"/);
+  assert.match(dialogSource, /allocationMethod: "Come ripartire sui prodotti"/);
+  assert.match(dialogSource, /\{text\.useNetAmount\}/);
+  assert.match(dialogSource, /\{text\.useGrossAmount\}/);
+  assert.match(dialogSource, /if \(parsedAmountNet\.cents !== null\) updateField\("capitalizedAmount", formatCentsForInput\(parsedAmountNet\.cents\)\)/);
+  assert.match(dialogSource, /if \(grossCents !== null\) updateField\("capitalizedAmount", formatCentsForInput\(grossCents\)\)/);
+  assert.match(dialogSource, /disabled=\{actionDisabled \|\| !canUseNetAmount\}/);
+  assert.match(dialogSource, /disabled=\{actionDisabled \|\| !canUseGrossAmount\}/);
+  assert.match(dialogSource, /const showZeroCostReason = parsedCapitalizedAmount\.cents === 0 \|\| Boolean\(fieldErrors\.zeroCostReason\)/);
+  assert.match(dialogSource, /\{showZeroCostReason \? \(/);
+  assert.match(dialogSource, /const \[advancedOpen, setAdvancedOpen\] = React\.useState\(false\)/);
+  assert.match(dialogSource, /const hasAdvancedFieldErrors = \["carrierName", "reference", "occurredAt", "evidenceUrl", "notes"\]/);
+  assert.match(dialogSource, /isCorrectionMode \|\|[\s\S]{0,160}next\.form\.carrierName\.trim\(\)/);
+  assert.match(dialogSource, /\["carrierName", "reference", "occurredAt", "evidenceUrl", "notes"\]/);
+  assert.match(dialogSource, /\{text\.capitalizedHelp\}/);
+  assert.match(dialogSource, /不改变售价和库存/);
+  assert.match(dialogSource, /non-EUR/);
+  assert.match(dialogSource, /id="carrier-name"/);
+  assert.match(dialogSource, /id="reference"/);
+  assert.match(dialogSource, /id="occurred-at"/);
+  assert.match(dialogSource, /id="evidence-url"/);
+  assert.match(dialogSource, /id="notes"/);
+  assert.match(dialogSource, /\{text\.nextStep\}/);
+  assert.match(dialogSource, /nextStep: "下一步：查看分摊结果"/);
+  assert.match(dialogSource, /nextStep: "Avanti: verifica ripartizione"/);
   assert.match(dialogSource, /<DialogFooter className="m-0 rounded-none border-t/);
   assert.match(dialogSource, /className="bg-slate-100 text-slate-700" value=\{grossCents/);
   assert.match(dialogSource, /text-xs font-semibold leading-5 text-slate-700/);

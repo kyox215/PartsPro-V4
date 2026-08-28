@@ -179,12 +179,21 @@ const copy = {
   zh: {
     title: "登记运输 / 到货费用",
     editTitle: "编辑预估费用",
-    description: "先预览分摊结果，再保存预估或确认正式成本。关闭后本次未保存草稿不会保留。",
+    description: "填写账单金额，确认计入商品成本的金额，再预览每个商品的分摊。预览不会保存数据。关闭后本次未保存草稿不会保留。",
+    step1Title: "1. 填写账单",
+    step1Description: "先录入供应商账单上的金额和币种。",
+    step2Title: "2. 确认计入商品成本",
+    step2Description: "选择真正要分摊到商品落地成本的金额和方式。",
+    step3Title: "3. 补充凭证（选填）",
+    step3Description: "需要时再展开，补充承运商、单号和凭证。",
     chargeType: "费用类型",
-    amountNet: "净额",
+    amountNet: "未税金额",
     vatAmount: "IVA",
-    gross: "含税额（自动）",
-    capitalizedAmount: "资本化金额",
+    gross: "含税总额（自动）",
+    capitalizedAmount: "计入商品成本",
+    capitalizedHelp: "此金额会计入商品落地成本，不改变售价和库存。",
+    useNetAmount: "使用未税金额",
+    useGrossAmount: "使用含税总额",
     currency: "币种",
     currencyHelp: "金额按原币录入；EUR 本位币会由服务端按快照计算。",
     fxRateToEur: "汇率（原币 → EUR）",
@@ -230,8 +239,8 @@ const copy = {
     draftGuardDescription: "关闭将丢弃当前未保存字段和预览结果。",
     draftGuardKeep: "继续编辑",
     draftGuardDiscard: "丢弃并关闭",
-    vatTreatment: "IVA 处理",
-    allocationMethod: "分摊方式",
+    vatTreatment: "税额能否抵扣",
+    allocationMethod: "怎么分到商品",
     carrierName: "承运商",
     reference: "参考号",
     occurredAt: "发生时间",
@@ -242,6 +251,7 @@ const copy = {
     zeroCostHelp: "资本化金额为 0 时必填。",
     manual: "手工分摊",
     preview: "预览分摊",
+    nextStep: "下一步：查看分摊结果",
     cancel: "取消",
     correctionReason: "纠错理由",
     correctionReasonHelp: "正式成本不可直接修改；请填写本次纠错/冲正的业务理由。",
@@ -326,12 +336,21 @@ const copy = {
   it: {
     title: "Registra costo trasporto / arrivo",
     editTitle: "Modifica costo stimato",
-    description: "Esegui l'anteprima, poi salva la stima o conferma il costo definitivo. La bozza non salvata si perde alla chiusura.",
+    description: "Inserisci l'importo della fattura, conferma quanto va nel costo della merce e verifica la ripartizione per ogni prodotto. L'anteprima non salva dati. La bozza non salvata si perde alla chiusura.",
+    step1Title: "1. Inserisci la fattura",
+    step1Description: "Inserisci prima importo e valuta riportati sulla fattura del fornitore.",
+    step2Title: "2. Conferma il costo della merce",
+    step2Description: "Scegli l'importo e il criterio da includere nel costo sbarcato dei prodotti.",
+    step3Title: "3. Dati aggiuntivi (facoltativi)",
+    step3Description: "Apri solo se servono vettore, riferimento o documenti.",
     chargeType: "Tipo costo",
-    amountNet: "Netto",
+    amountNet: "Importo netto",
     vatAmount: "IVA",
-    gross: "Lordo (automatico)",
-    capitalizedAmount: "Importo capitalizzato",
+    gross: "Totale lordo (automatico)",
+    capitalizedAmount: "Costo incluso nella merce",
+    capitalizedHelp: "Questo importo entra nel costo sbarcato dei prodotti; non cambia prezzi di vendita o disponibilità.",
+    useNetAmount: "Usa importo netto",
+    useGrossAmount: "Usa totale lordo",
     currency: "Valuta",
     currencyHelp: "Inserisci gli importi nella valuta originale; la base EUR usa lo snapshot del server.",
     fxRateToEur: "Cambio (valuta → EUR)",
@@ -377,8 +396,8 @@ const copy = {
     draftGuardDescription: "La chiusura elimina i campi non salvati e l'anteprima.",
     draftGuardKeep: "Continua modifica",
     draftGuardDiscard: "Scarta e chiudi",
-    vatTreatment: "Trattamento IVA",
-    allocationMethod: "Metodo ripartizione",
+    vatTreatment: "IVA recuperabile?",
+    allocationMethod: "Come ripartire sui prodotti",
     carrierName: "Vettore",
     reference: "Riferimento",
     occurredAt: "Data e ora",
@@ -389,6 +408,7 @@ const copy = {
     zeroCostHelp: "Obbligatorio quando l'importo capitalizzato è 0.",
     manual: "Ripartizione manuale",
     preview: "Anteprima ripartizione",
+    nextStep: "Avanti: verifica ripartizione",
     cancel: "Annulla",
     correctionReason: "Motivo rettifica",
     correctionReasonHelp: "Il costo confermato non si modifica direttamente; indica il motivo operativo della rettifica.",
@@ -2038,6 +2058,7 @@ export function SupplierBatchTransportCostDialog({
   const [confirmDialogOpen, setConfirmDialogOpen] = React.useState(false);
   const [closeGuardOpen, setCloseGuardOpen] = React.useState(false);
   const [draftDirty, setDraftDirty] = React.useState(false);
+  const [advancedOpen, setAdvancedOpen] = React.useState(false);
   const previewAbortRef = React.useRef<AbortController | null>(null);
   const previewRequestIdRef = React.useRef(0);
   const mutationRequestIdRef = React.useRef(0);
@@ -2073,6 +2094,7 @@ export function SupplierBatchTransportCostDialog({
     setConfirmDialogOpen(false);
     setCloseGuardOpen(false);
     setDraftDirty(false);
+    setAdvancedOpen(false);
     confirmGateRef.current = false;
   }, [detail.batch, invalidatePreviewRequest]);
 
@@ -2114,6 +2136,13 @@ export function SupplierBatchTransportCostDialog({
       setFieldErrors({});
       setErrorCode(null);
       setDraftDirty(false);
+      setAdvancedOpen(Boolean(
+        isCorrectionMode ||
+        next.form.carrierName.trim() ||
+        next.form.reference.trim() ||
+        next.form.evidenceUrl.trim() ||
+        next.form.notes.trim()
+      ));
       setConfirmDialogOpen(false);
       try {
         setIdempotencyKey(charge?.idempotencyKey ?? createSupplierBatchIdempotencyKey());
@@ -2123,7 +2152,7 @@ export function SupplierBatchTransportCostDialog({
       }
     }, 0);
     return () => window.clearTimeout(timeoutId);
-  }, [charge, chargeId, detail.batch, detail.batch.batchCode, detail.batch.id, invalidatePreviewRequest, lines, open, persistedKnownSuccess, reset, resolvedMode, uncertainMutation]);
+  }, [charge, chargeId, detail.batch, detail.batch.batchCode, detail.batch.id, invalidatePreviewRequest, isCorrectionMode, lines, open, persistedKnownSuccess, reset, resolvedMode, uncertainMutation]);
 
   React.useEffect(() => () => {
     invalidatePreviewRequest();
@@ -2847,13 +2876,16 @@ export function SupplierBatchTransportCostDialog({
       previewState?.result.confirmationBlockCode
     );
 
-  const grossCents = (() => {
-    const amountNet = parseSupplierBatchMoneyInput(form.amountNet);
-    const vatAmount = parseSupplierBatchMoneyInput(form.vatAmount);
-    return amountNet.cents !== null && vatAmount.cents !== null
-      ? amountNet.cents + vatAmount.cents
-      : null;
-  })();
+  const parsedAmountNet = parseSupplierBatchMoneyInput(form.amountNet);
+  const parsedVatAmount = parseSupplierBatchMoneyInput(form.vatAmount);
+  const parsedCapitalizedAmount = parseSupplierBatchMoneyInput(form.capitalizedAmount);
+  const grossCents = parsedAmountNet.cents !== null && parsedVatAmount.cents !== null
+    ? parsedAmountNet.cents + parsedVatAmount.cents
+    : null;
+  const showZeroCostReason = parsedCapitalizedAmount.cents === 0 || Boolean(fieldErrors.zeroCostReason);
+  const canUseNetAmount = parsedAmountNet.cents !== null;
+  const canUseGrossAmount = grossCents !== null;
+  const hasAdvancedFieldErrors = ["carrierName", "reference", "occurredAt", "evidenceUrl", "notes"].some((field) => Boolean(fieldErrors[field]));
   const formCurrency = normalizeSupplierBatchCurrency(form.currency);
   const batchCurrency = normalizeSupplierBatchCurrency(detail.batch.currency);
   const batchGoodsFxSnapshotLocked = batchCurrency !== "EUR" && [
@@ -2951,95 +2983,119 @@ export function SupplierBatchTransportCostDialog({
                 </div>
               ) : null}
 
-              <section className="rounded-lg border border-slate-200/80 bg-slate-50/50 p-3 sm:p-4">
-              <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
-                <Field id="charge-type" label={text.chargeType} error={fieldErrorText(fieldErrors.chargeType, text)}>
-                  <Select value={form.chargeType} onValueChange={(value) => updateField("chargeType", value as SupplierBatchChargeType)} disabled={actionDisabled}>
-                    <SelectTrigger id="charge-type" aria-label={text.chargeType} aria-invalid={Boolean(fieldErrors.chargeType)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("charge-type", Boolean(fieldErrors.chargeType))}><SelectValue /></SelectTrigger>
-                    <SelectContent>{CHARGE_TYPES.map((value) => <SelectItem key={value} value={value}>{text.typeLabels[value]}</SelectItem>)}</SelectContent>
-                  </Select>
-                </Field>
-                <Field id="amount-net" label={text.amountNet} error={fieldErrorText(fieldErrors.amountNet, text)} description={text.amountHelp}>
-                  <Input id="amount-net" inputMode="decimal" value={form.amountNet} onChange={(event) => updateField("amountNet", event.target.value)} aria-invalid={Boolean(fieldErrors.amountNet)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("amount-net", Boolean(fieldErrors.amountNet), true)} disabled={actionDisabled} />
-                </Field>
-                <Field id="vat-amount" label={text.vatAmount} error={fieldErrorText(fieldErrors.vatAmount, text)} description={text.vatPresetHelp}>
-                  <Input id="vat-amount" inputMode="decimal" value={form.vatAmount} onChange={(event) => updateField("vatAmount", event.target.value)} aria-invalid={Boolean(fieldErrors.vatAmount)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("vat-amount", Boolean(fieldErrors.vatAmount), true)} disabled={actionDisabled} />
-                  <div className="flex flex-wrap gap-1" aria-label={text.vatPresets}>
-                    {[0, 10, 22].map((rate) => (
-                      <Button key={rate} type="button" size="xs" variant="ghost" className="h-6 px-1.5 text-[11px]" disabled={actionDisabled || parseSupplierBatchMoneyInput(form.amountNet).value === null} onClick={() => {
-                        const net = parseSupplierBatchMoneyInput(form.amountNet).value ?? 0;
-                        updateField("vatAmount", (net * rate / 100).toFixed(2));
-                      }}>{rate}%</Button>
-                    ))}
+              <section className="rounded-lg border border-slate-200/80 bg-slate-50/50 p-3 sm:p-4" aria-labelledby="supplier-cost-step-1">
+                <div className="mb-4">
+                  <h3 id="supplier-cost-step-1" className="text-sm font-bold text-slate-950">{text.step1Title}</h3>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">{text.step1Description}</p>
+                </div>
+                <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <Field id="charge-type" label={text.chargeType} error={fieldErrorText(fieldErrors.chargeType, text)}>
+                    <Select value={form.chargeType} onValueChange={(value) => updateField("chargeType", value as SupplierBatchChargeType)} disabled={actionDisabled}>
+                      <SelectTrigger id="charge-type" aria-label={text.chargeType} aria-invalid={Boolean(fieldErrors.chargeType)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("charge-type", Boolean(fieldErrors.chargeType))}><SelectValue /></SelectTrigger>
+                      <SelectContent>{CHARGE_TYPES.map((value) => <SelectItem key={value} value={value}>{text.typeLabels[value]}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </Field>
+                  <Field id="amount-net" label={text.amountNet} error={fieldErrorText(fieldErrors.amountNet, text)} description={text.amountHelp}>
+                    <Input id="amount-net" inputMode="decimal" value={form.amountNet} onChange={(event) => updateField("amountNet", event.target.value)} aria-invalid={Boolean(fieldErrors.amountNet)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("amount-net", Boolean(fieldErrors.amountNet), true)} disabled={actionDisabled} />
+                  </Field>
+                  <Field id="vat-amount" label={text.vatAmount} error={fieldErrorText(fieldErrors.vatAmount, text)} description={text.vatPresetHelp}>
+                    <Input id="vat-amount" inputMode="decimal" value={form.vatAmount} onChange={(event) => updateField("vatAmount", event.target.value)} aria-invalid={Boolean(fieldErrors.vatAmount)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("vat-amount", Boolean(fieldErrors.vatAmount), true)} disabled={actionDisabled} />
+                    <div className="flex flex-wrap gap-1" aria-label={text.vatPresets}>
+                      {[0, 10, 22].map((rate) => (
+                        <Button key={rate} type="button" size="xs" variant="ghost" className="h-6 px-1.5 text-[11px]" disabled={actionDisabled || parsedAmountNet.value === null} onClick={() => {
+                          const net = parsedAmountNet.value ?? 0;
+                          updateField("vatAmount", (net * rate / 100).toFixed(2));
+                        }}>{rate}%</Button>
+                      ))}
+                    </div>
+                  </Field>
+                  <Field id="gross" label={text.gross}>
+                    <Input id="gross" className="bg-slate-100 text-slate-700" value={grossCents === null ? "—" : formatCents(grossCents)} readOnly tabIndex={-1} />
+                  </Field>
+                  <Field id="currency" label={text.currency} description={text.currencyHelp}>
+                    <Select value={formCurrency} onValueChange={updateCurrency} disabled={actionDisabled}>
+                      <SelectTrigger id="currency" aria-label={text.currency}><SelectValue /></SelectTrigger>
+                      <SelectContent>{SUPPLIER_BATCH_CURRENCIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </Field>
+                  {formCurrency !== "EUR" ? (
+                    <>
+                      <Field id="fx-rate-to-eur" label={text.fxRateToEur} error={fieldErrorText(fieldErrors.fxRateToEur, text)} description={text.fxRateHelp}>
+                        <Input id="fx-rate-to-eur" inputMode="decimal" value={form.fxRateToEur} onChange={(event) => updateField("fxRateToEur", event.target.value)} aria-invalid={Boolean(fieldErrors.fxRateToEur)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("fx-rate-to-eur", Boolean(fieldErrors.fxRateToEur), true)} disabled={actionDisabled} />
+                      </Field>
+                      <Field id="fx-rate-date" label={text.fxRateDate} error={fieldErrorText(fieldErrors.fxRateDate, text)}>
+                        <Input id="fx-rate-date" type="date" value={form.fxRateDate} onChange={(event) => updateField("fxRateDate", event.target.value)} aria-invalid={Boolean(fieldErrors.fxRateDate)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("fx-rate-date", Boolean(fieldErrors.fxRateDate))} disabled={actionDisabled} />
+                      </Field>
+                      <Field id="fx-rate-source" label={text.fxRateSource} error={fieldErrorText(fieldErrors.fxRateSource, text)}>
+                        <Input id="fx-rate-source" value={form.fxRateSource} onChange={(event) => updateField("fxRateSource", event.target.value)} aria-invalid={Boolean(fieldErrors.fxRateSource)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("fx-rate-source", Boolean(fieldErrors.fxRateSource))} disabled={actionDisabled} />
+                      </Field>
+                      <Field id="fx-evidence-url" label={text.fxEvidenceUrl} error={fieldErrorText(fieldErrors.fxEvidenceUrl, text)} description={text.fxEvidenceHelp}>
+                        <Input id="fx-evidence-url" type="url" value={form.fxEvidenceUrl} onChange={(event) => updateField("fxEvidenceUrl", event.target.value)} aria-invalid={Boolean(fieldErrors.fxEvidenceUrl)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("fx-evidence-url", Boolean(fieldErrors.fxEvidenceUrl), true)} disabled={actionDisabled} />
+                      </Field>
+                    </>
+                  ) : null}
+                  {normalizeSupplierBatchCurrency(detail.batch.currency) !== "EUR" ? (
+                    <section className="col-span-full rounded-lg border border-indigo-200 bg-indigo-50/60 p-3" aria-label={text.goodsFxSnapshot}>
+                      <div className="mb-2">
+                        <h4 className="text-sm font-bold text-slate-950">{text.goodsFxSnapshot}</h4>
+                        <p className="mt-1 text-xs text-slate-600">{batchGoodsFxSnapshotLocked ? text.goodsFxLocked : text.goodsFxRequired}</p>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                        <Field id="batch-goods-fx-rate-to-eur" label={text.goodsFxRateToEur} error={fieldErrorText(fieldErrors.batchGoodsValueFxRateToEur, text)}>
+                          <Input id="batch-goods-fx-rate-to-eur" inputMode="decimal" value={form.batchGoodsValueFxRateToEur} onChange={(event) => updateField("batchGoodsValueFxRateToEur", event.target.value)} aria-invalid={Boolean(fieldErrors.batchGoodsValueFxRateToEur)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("batch-goods-fx-rate-to-eur", Boolean(fieldErrors.batchGoodsValueFxRateToEur))} disabled={actionDisabled || batchGoodsFxSnapshotLocked} />
+                        </Field>
+                        <Field id="batch-goods-fx-date" label={text.goodsFxDate} error={fieldErrorText(fieldErrors.batchGoodsValueFxDate, text)}>
+                          <Input id="batch-goods-fx-date" type="date" value={form.batchGoodsValueFxDate} onChange={(event) => updateField("batchGoodsValueFxDate", event.target.value)} aria-invalid={Boolean(fieldErrors.batchGoodsValueFxDate)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("batch-goods-fx-date", Boolean(fieldErrors.batchGoodsValueFxDate))} disabled={actionDisabled || batchGoodsFxSnapshotLocked} />
+                        </Field>
+                        <Field id="batch-goods-fx-source" label={text.goodsFxSource} error={fieldErrorText(fieldErrors.batchGoodsValueFxSource, text)}>
+                          <Input id="batch-goods-fx-source" value={form.batchGoodsValueFxSource} onChange={(event) => updateField("batchGoodsValueFxSource", event.target.value)} aria-invalid={Boolean(fieldErrors.batchGoodsValueFxSource)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("batch-goods-fx-source", Boolean(fieldErrors.batchGoodsValueFxSource))} disabled={actionDisabled || batchGoodsFxSnapshotLocked} />
+                        </Field>
+                        <Field id="batch-goods-fx-evidence-url" label={text.goodsFxEvidenceUrl} error={fieldErrorText(fieldErrors.batchGoodsValueFxEvidenceUrl, text)} description={text.fxEvidenceHelp}>
+                          <Input id="batch-goods-fx-evidence-url" type="url" value={form.batchGoodsValueFxEvidenceUrl} onChange={(event) => updateField("batchGoodsValueFxEvidenceUrl", event.target.value)} aria-invalid={Boolean(fieldErrors.batchGoodsValueFxEvidenceUrl)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("batch-goods-fx-evidence-url", Boolean(fieldErrors.batchGoodsValueFxEvidenceUrl), true)} disabled={actionDisabled || batchGoodsFxSnapshotLocked} />
+                        </Field>
+                      </div>
+                    </section>
+                  ) : null}
+                </div>
+              </section>
+
+              <section className="mt-4 rounded-lg border border-slate-200/80 bg-white p-3 sm:p-4" aria-labelledby="supplier-cost-step-2">
+                <div className="mb-4">
+                  <h3 id="supplier-cost-step-2" className="text-sm font-bold text-slate-950">{text.step2Title}</h3>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">{text.step2Description}</p>
+                </div>
+                <div className="grid grid-cols-1 gap-x-4 gap-y-4 lg:grid-cols-3">
+                  <Field id="capitalized-amount" label={text.capitalizedAmount} error={fieldErrorText(fieldErrors.capitalizedAmount, text)} description={text.capitalizedHelp}>
+                    <Input id="capitalized-amount" inputMode="decimal" value={form.capitalizedAmount} onChange={(event) => updateField("capitalizedAmount", event.target.value)} aria-invalid={Boolean(fieldErrors.capitalizedAmount)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("capitalized-amount", Boolean(fieldErrors.capitalizedAmount), true)} disabled={actionDisabled} />
+                    <div className="flex flex-wrap gap-1.5 pt-1" aria-label={text.capitalizedAmount}>
+                      <Button type="button" size="xs" variant="outline" className="h-7 text-[11px]" disabled={actionDisabled || !canUseNetAmount} onClick={() => {
+                        if (parsedAmountNet.cents !== null) updateField("capitalizedAmount", formatCentsForInput(parsedAmountNet.cents));
+                      }}>{text.useNetAmount}</Button>
+                      <Button type="button" size="xs" variant="outline" className="h-7 text-[11px]" disabled={actionDisabled || !canUseGrossAmount} onClick={() => {
+                        if (grossCents !== null) updateField("capitalizedAmount", formatCentsForInput(grossCents));
+                      }}>{text.useGrossAmount}</Button>
+                    </div>
+                  </Field>
+                  <Field id="vat-treatment" label={text.vatTreatment} error={fieldErrorText(fieldErrors.vatTreatment, text)}>
+                    <Select value={form.vatTreatment} onValueChange={(value) => updateField("vatTreatment", value as SupplierBatchVatTreatment)} disabled={actionDisabled}>
+                      <SelectTrigger id="vat-treatment" aria-label={text.vatTreatment} aria-invalid={Boolean(fieldErrors.vatTreatment)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("vat-treatment", Boolean(fieldErrors.vatTreatment))}><SelectValue /></SelectTrigger>
+                      <SelectContent>{VAT_TREATMENTS.map((value) => <SelectItem key={value} value={value}>{text.vatLabels[value]}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </Field>
+                  <Field id="allocation-method" label={text.allocationMethod} error={fieldErrorText(fieldErrors.allocationMethod, text)} description={manualLimitExceeded && form.allocationMethod !== "manual" ? text.manualLimit : undefined}>
+                    <Select value={form.allocationMethod} onValueChange={(value) => updateField("allocationMethod", value as SupplierBatchAllocationMethod)} disabled={actionDisabled}>
+                      <SelectTrigger id="allocation-method" aria-label={text.allocationMethod} aria-invalid={Boolean(fieldErrors.allocationMethod)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("allocation-method", Boolean(fieldErrors.allocationMethod), manualLimitExceeded && form.allocationMethod !== "manual")}><SelectValue /></SelectTrigger>
+                      <SelectContent>{ALLOCATION_METHODS.map((value) => <SelectItem key={value} value={value} disabled={value === "manual" && manualLimitExceeded}>{text.allocationLabels[value]}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </Field>
+                </div>
+                {showZeroCostReason ? (
+                  <div className="mt-4 max-w-xl">
+                    <Field id="zero-cost-reason" label={text.zeroCostReason} error={fieldErrorText(fieldErrors.zeroCostReason, text)} description={text.zeroCostHelp}>
+                      <Input id="zero-cost-reason" value={form.zeroCostReason} onChange={(event) => updateField("zeroCostReason", event.target.value)} aria-invalid={Boolean(fieldErrors.zeroCostReason)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("zero-cost-reason", Boolean(fieldErrors.zeroCostReason), true)} disabled={actionDisabled} />
+                    </Field>
                   </div>
-                </Field>
-                <Field id="gross" label={text.gross}>
-                  <Input id="gross" className="bg-slate-100 text-slate-700" value={grossCents === null ? "—" : formatCents(grossCents)} readOnly tabIndex={-1} />
-                </Field>
-                <Field id="capitalized-amount" label={text.capitalizedAmount} error={fieldErrorText(fieldErrors.capitalizedAmount, text)}>
-                  <Input id="capitalized-amount" inputMode="decimal" value={form.capitalizedAmount} onChange={(event) => updateField("capitalizedAmount", event.target.value)} aria-invalid={Boolean(fieldErrors.capitalizedAmount)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("capitalized-amount", Boolean(fieldErrors.capitalizedAmount))} disabled={actionDisabled} />
-                </Field>
-                <Field id="currency" label={text.currency} description={text.currencyHelp}>
-                  <Select value={formCurrency} onValueChange={updateCurrency} disabled={actionDisabled}>
-                    <SelectTrigger id="currency" aria-label={text.currency}><SelectValue /></SelectTrigger>
-                    <SelectContent>{SUPPLIER_BATCH_CURRENCIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
-                  </Select>
-                </Field>
-                {formCurrency !== "EUR" ? (
-                  <>
-                    <Field id="fx-rate-to-eur" label={text.fxRateToEur} error={fieldErrorText(fieldErrors.fxRateToEur, text)} description={text.fxRateHelp}>
-                      <Input id="fx-rate-to-eur" inputMode="decimal" value={form.fxRateToEur} onChange={(event) => updateField("fxRateToEur", event.target.value)} aria-invalid={Boolean(fieldErrors.fxRateToEur)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("fx-rate-to-eur", Boolean(fieldErrors.fxRateToEur), true)} disabled={actionDisabled} />
-                    </Field>
-                    <Field id="fx-rate-date" label={text.fxRateDate} error={fieldErrorText(fieldErrors.fxRateDate, text)}>
-                      <Input id="fx-rate-date" type="date" value={form.fxRateDate} onChange={(event) => updateField("fxRateDate", event.target.value)} aria-invalid={Boolean(fieldErrors.fxRateDate)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("fx-rate-date", Boolean(fieldErrors.fxRateDate))} disabled={actionDisabled} />
-                    </Field>
-                    <Field id="fx-rate-source" label={text.fxRateSource} error={fieldErrorText(fieldErrors.fxRateSource, text)}>
-                      <Input id="fx-rate-source" value={form.fxRateSource} onChange={(event) => updateField("fxRateSource", event.target.value)} aria-invalid={Boolean(fieldErrors.fxRateSource)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("fx-rate-source", Boolean(fieldErrors.fxRateSource))} disabled={actionDisabled} />
-                    </Field>
-                    <Field id="fx-evidence-url" label={text.fxEvidenceUrl} error={fieldErrorText(fieldErrors.fxEvidenceUrl, text)} description={text.fxEvidenceHelp}>
-                      <Input id="fx-evidence-url" type="url" value={form.fxEvidenceUrl} onChange={(event) => updateField("fxEvidenceUrl", event.target.value)} aria-invalid={Boolean(fieldErrors.fxEvidenceUrl)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("fx-evidence-url", Boolean(fieldErrors.fxEvidenceUrl), true)} disabled={actionDisabled} />
-                    </Field>
-                  </>
                 ) : null}
-                {normalizeSupplierBatchCurrency(detail.batch.currency) !== "EUR" ? (
-                  <section className="col-span-full rounded-lg border border-indigo-200 bg-indigo-50/60 p-3" aria-label={text.goodsFxSnapshot}>
-                    <div className="mb-2">
-                      <h3 className="text-sm font-bold text-slate-950">{text.goodsFxSnapshot}</h3>
-                      <p className="mt-1 text-xs text-slate-600">{batchGoodsFxSnapshotLocked ? text.goodsFxLocked : text.goodsFxRequired}</p>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                      <Field id="batch-goods-fx-rate-to-eur" label={text.goodsFxRateToEur} error={fieldErrorText(fieldErrors.batchGoodsValueFxRateToEur, text)}>
-                        <Input id="batch-goods-fx-rate-to-eur" inputMode="decimal" value={form.batchGoodsValueFxRateToEur} onChange={(event) => updateField("batchGoodsValueFxRateToEur", event.target.value)} aria-invalid={Boolean(fieldErrors.batchGoodsValueFxRateToEur)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("batch-goods-fx-rate-to-eur", Boolean(fieldErrors.batchGoodsValueFxRateToEur))} disabled={actionDisabled || batchGoodsFxSnapshotLocked} />
-                      </Field>
-                      <Field id="batch-goods-fx-date" label={text.goodsFxDate} error={fieldErrorText(fieldErrors.batchGoodsValueFxDate, text)}>
-                        <Input id="batch-goods-fx-date" type="date" value={form.batchGoodsValueFxDate} onChange={(event) => updateField("batchGoodsValueFxDate", event.target.value)} aria-invalid={Boolean(fieldErrors.batchGoodsValueFxDate)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("batch-goods-fx-date", Boolean(fieldErrors.batchGoodsValueFxDate))} disabled={actionDisabled || batchGoodsFxSnapshotLocked} />
-                      </Field>
-                      <Field id="batch-goods-fx-source" label={text.goodsFxSource} error={fieldErrorText(fieldErrors.batchGoodsValueFxSource, text)}>
-                        <Input id="batch-goods-fx-source" value={form.batchGoodsValueFxSource} onChange={(event) => updateField("batchGoodsValueFxSource", event.target.value)} aria-invalid={Boolean(fieldErrors.batchGoodsValueFxSource)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("batch-goods-fx-source", Boolean(fieldErrors.batchGoodsValueFxSource))} disabled={actionDisabled || batchGoodsFxSnapshotLocked} />
-                      </Field>
-                      <Field id="batch-goods-fx-evidence-url" label={text.goodsFxEvidenceUrl} error={fieldErrorText(fieldErrors.batchGoodsValueFxEvidenceUrl, text)} description={text.fxEvidenceHelp}>
-                        <Input id="batch-goods-fx-evidence-url" type="url" value={form.batchGoodsValueFxEvidenceUrl} onChange={(event) => updateField("batchGoodsValueFxEvidenceUrl", event.target.value)} aria-invalid={Boolean(fieldErrors.batchGoodsValueFxEvidenceUrl)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("batch-goods-fx-evidence-url", Boolean(fieldErrors.batchGoodsValueFxEvidenceUrl), true)} disabled={actionDisabled || batchGoodsFxSnapshotLocked} />
-                      </Field>
-                    </div>
-                  </section>
-                ) : null}
-                <Field id="vat-treatment" label={text.vatTreatment} error={fieldErrorText(fieldErrors.vatTreatment, text)}>
-                  <Select value={form.vatTreatment} onValueChange={(value) => updateField("vatTreatment", value as SupplierBatchVatTreatment)} disabled={actionDisabled}>
-                    <SelectTrigger id="vat-treatment" aria-label={text.vatTreatment} aria-invalid={Boolean(fieldErrors.vatTreatment)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("vat-treatment", Boolean(fieldErrors.vatTreatment))}><SelectValue /></SelectTrigger>
-                    <SelectContent>{VAT_TREATMENTS.map((value) => <SelectItem key={value} value={value}>{text.vatLabels[value]}</SelectItem>)}</SelectContent>
-                  </Select>
-                </Field>
-                <Field id="allocation-method" label={text.allocationMethod} error={fieldErrorText(fieldErrors.allocationMethod, text)} description={manualLimitExceeded && form.allocationMethod !== "manual" ? text.manualLimit : undefined}>
-                  <Select value={form.allocationMethod} onValueChange={(value) => updateField("allocationMethod", value as SupplierBatchAllocationMethod)} disabled={actionDisabled}>
-                    <SelectTrigger id="allocation-method" aria-label={text.allocationMethod} aria-invalid={Boolean(fieldErrors.allocationMethod)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("allocation-method", Boolean(fieldErrors.allocationMethod), manualLimitExceeded && form.allocationMethod !== "manual")}><SelectValue /></SelectTrigger>
-                    <SelectContent>{ALLOCATION_METHODS.map((value) => <SelectItem key={value} value={value} disabled={value === "manual" && manualLimitExceeded}>{text.allocationLabels[value]}</SelectItem>)}</SelectContent>
-                  </Select>
-                </Field>
-                <Field id="carrier-name" label={text.carrierName} error={fieldErrorText(fieldErrors.carrierName, text)}><Input id="carrier-name" value={form.carrierName} onChange={(event) => updateField("carrierName", event.target.value)} aria-invalid={Boolean(fieldErrors.carrierName)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("carrier-name", Boolean(fieldErrors.carrierName))} disabled={actionDisabled} /></Field>
-                <Field id="reference" label={text.reference} error={fieldErrorText(fieldErrors.reference, text)}><Input id="reference" value={form.reference} onChange={(event) => updateField("reference", event.target.value)} aria-invalid={Boolean(fieldErrors.reference)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("reference", Boolean(fieldErrors.reference))} disabled={actionDisabled} /></Field>
-                <Field id="occurred-at" label={text.occurredAt} error={fieldErrorText(fieldErrors.occurredAt, text)} description={text.timezone}><Input id="occurred-at" type="datetime-local" value={form.occurredAt} onChange={(event) => updateField("occurredAt", event.target.value)} aria-invalid={Boolean(fieldErrors.occurredAt)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("occurred-at", Boolean(fieldErrors.occurredAt), true)} disabled={actionDisabled} /></Field>
-                <Field id="evidence-url" label={text.evidenceUrl} error={fieldErrorText(fieldErrors.evidenceUrl, text)}><Input id="evidence-url" type="url" value={form.evidenceUrl} onChange={(event) => updateField("evidenceUrl", event.target.value)} aria-invalid={Boolean(fieldErrors.evidenceUrl)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("evidence-url", Boolean(fieldErrors.evidenceUrl))} disabled={actionDisabled} /></Field>
-              </div>
               </section>
 
               {isCorrectionMode ? (
@@ -3057,14 +3113,25 @@ export function SupplierBatchTransportCostDialog({
                 </section>
               ) : null}
 
-              <section className="mt-4 rounded-lg border border-slate-200/80 bg-slate-50/50 p-3 sm:p-4">
-              <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
-                <Field id="zero-cost-reason" label={text.zeroCostReason} error={fieldErrorText(fieldErrors.zeroCostReason, text)} description={text.zeroCostHelp}>
-                  <Input id="zero-cost-reason" value={form.zeroCostReason} onChange={(event) => updateField("zeroCostReason", event.target.value)} aria-invalid={Boolean(fieldErrors.zeroCostReason)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("zero-cost-reason", Boolean(fieldErrors.zeroCostReason), true)} disabled={actionDisabled} />
-                </Field>
-                <Field id="notes" label={text.notes} error={fieldErrorText(fieldErrors.notes, text)}><Textarea id="notes" value={form.notes} onChange={(event) => updateField("notes", event.target.value)} aria-invalid={Boolean(fieldErrors.notes)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("notes", Boolean(fieldErrors.notes))} disabled={actionDisabled} /></Field>
-              </div>
-              </section>
+              <details
+                className="mt-4 rounded-lg border border-slate-200/80 bg-slate-50/50 p-3 sm:p-4"
+                open={advancedOpen || hasAdvancedFieldErrors}
+                onToggle={(event) => setAdvancedOpen(event.currentTarget.open)}
+              >
+                <summary className="cursor-pointer list-none rounded-md outline-none focus-visible:ring-2 focus-visible:ring-slate-400">
+                  <span className="text-sm font-bold text-slate-950">{text.step3Title}</span>
+                  <span className="mt-1 block text-xs leading-5 text-slate-600">{text.step3Description}</span>
+                </summary>
+                <div className="mt-4 grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-4">
+                  <Field id="carrier-name" label={text.carrierName} error={fieldErrorText(fieldErrors.carrierName, text)}><Input id="carrier-name" value={form.carrierName} onChange={(event) => updateField("carrierName", event.target.value)} aria-invalid={Boolean(fieldErrors.carrierName)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("carrier-name", Boolean(fieldErrors.carrierName))} disabled={actionDisabled} /></Field>
+                  <Field id="reference" label={text.reference} error={fieldErrorText(fieldErrors.reference, text)}><Input id="reference" value={form.reference} onChange={(event) => updateField("reference", event.target.value)} aria-invalid={Boolean(fieldErrors.reference)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("reference", Boolean(fieldErrors.reference))} disabled={actionDisabled} /></Field>
+                  <Field id="occurred-at" label={text.occurredAt} error={fieldErrorText(fieldErrors.occurredAt, text)} description={text.timezone}><Input id="occurred-at" type="datetime-local" value={form.occurredAt} onChange={(event) => updateField("occurredAt", event.target.value)} aria-invalid={Boolean(fieldErrors.occurredAt)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("occurred-at", Boolean(fieldErrors.occurredAt), true)} disabled={actionDisabled} /></Field>
+                  <Field id="evidence-url" label={text.evidenceUrl} error={fieldErrorText(fieldErrors.evidenceUrl, text)}><Input id="evidence-url" type="url" value={form.evidenceUrl} onChange={(event) => updateField("evidenceUrl", event.target.value)} aria-invalid={Boolean(fieldErrors.evidenceUrl)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("evidence-url", Boolean(fieldErrors.evidenceUrl))} disabled={actionDisabled} /></Field>
+                  <div className="sm:col-span-2 lg:col-span-2">
+                    <Field id="notes" label={text.notes} error={fieldErrorText(fieldErrors.notes, text)}><Textarea id="notes" value={form.notes} onChange={(event) => updateField("notes", event.target.value)} aria-invalid={Boolean(fieldErrors.notes)} aria-describedby={buildSupplierBatchFieldAriaDescribedBy("notes", Boolean(fieldErrors.notes))} disabled={actionDisabled} /></Field>
+                  </div>
+                </div>
+              </details>
 
               {form.allocationMethod === "manual" ? (
                 <section className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3" aria-label={text.manual}>
@@ -3182,7 +3249,7 @@ export function SupplierBatchTransportCostDialog({
             <>
               <Button variant="outline" onClick={() => void runPreview()} disabled={actionDisabled}>
                 {pending === "preview" ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
-                {text.preview}
+                {text.nextStep}
               </Button>
               {previewState ? (
                 <>
