@@ -744,6 +744,8 @@ test("form fingerprint and stable error mapping support preview invalidation wit
   assert.match(mapCostError("ADMIN_FORBIDDEN", "it"), /autorizzato/);
   assert.match(mapCostError("AUTHENTICATION_REQUIRED", "it"), /sessione/);
   assert.match(mapCostError("ADMIN_SUPPLIER_BATCH_COST_RPC_INVALID_RESPONSE", "zh"), /无法通过校验/);
+  assert.match(mapCostError("ADMIN_SUPPLIER_BATCH_COST_V2_RPC_INVALID_RESPONSE", "zh"), /未写入成本/);
+  assert.match(mapCostError("ADMIN_SUPPLIER_BATCH_COST_V2_RPC_INVALID_RESPONSE", "it"), /nessun costo è stato scritto/);
   assert.doesNotMatch(mapCostError("UNSAFE_RAW_DB_STRING", "zh"), /UNSAFE_RAW_DB_STRING/);
 });
 
@@ -1235,6 +1237,7 @@ test("mutation error and readback helpers fail closed on uncertain writes and mi
   assert.equal(classifyMutationError(502, null), "unknown_write");
   assert.equal(classifyMutationError(400, null), "unknown_write");
   assert.equal(classifyMutationError(400, "ADMIN_SUPPLIER_BATCH_COST_RPC_INVALID_RESPONSE"), "unknown_write");
+  assert.equal(classifyMutationError(400, "ADMIN_SUPPLIER_BATCH_COST_V2_RPC_INVALID_RESPONSE"), "unknown_write");
   assert.equal(classifyMutationError(400, "INVALID_BODY"), "known_rejection");
   assert.equal(classifyMutationError(400, "BATCH_IDS_LIMIT_EXCEEDED"), "known_rejection");
   assert.equal(classifyMutationError(409, "STALE_REVISION"), "known_rejection");

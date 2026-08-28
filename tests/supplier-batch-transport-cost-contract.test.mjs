@@ -392,6 +392,27 @@ test("RPC preview, estimate, confirmed and cancelled fixtures preserve allocatio
   });
   assert.equal(normalizeSupplierBatchCostRpcResult(malformedPreviewMetadata), null);
 
+  const ordinaryPreviewWithExplicitNoCorrection = normalizeSupplierBatchCostRpcResult(
+    rpcResult("preview", {
+      correctionPreview: false,
+      correctionTotals: null,
+    })
+  );
+  assert.ok(ordinaryPreviewWithExplicitNoCorrection);
+  assert.equal(ordinaryPreviewWithExplicitNoCorrection.correctionPreview, false);
+  assert.equal(Object.hasOwn(ordinaryPreviewWithExplicitNoCorrection, "correctionTotals"), false);
+
+  assert.equal(
+    normalizeSupplierBatchCostRpcResult(
+      rpcResult("preview", {
+        correctionPreview: true,
+        correctionTotals: null,
+      })
+    ),
+    null,
+    "correction previews must reject an explicit null totals object"
+  );
+
   for (const field of ["lineNo", "weightGramSnapshot", "landedLineCost", "landedUnitCost"]) {
     const allocation = rpcAllocation();
     delete allocation[field];

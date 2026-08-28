@@ -849,7 +849,8 @@ export function classifySupplierBatchMutationError(
   if (
     status < 400 ||
     status >= 500 ||
-    key === "ADMIN_SUPPLIER_BATCH_COST_RPC_INVALID_RESPONSE"
+    key === "ADMIN_SUPPLIER_BATCH_COST_RPC_INVALID_RESPONSE" ||
+    key === "ADMIN_SUPPLIER_BATCH_COST_V2_RPC_INVALID_RESPONSE"
   ) {
     return "unknown_write";
   }
@@ -1552,6 +1553,10 @@ export function mapSupplierBatchCostErrorCode(
     ADMIN_SUPPLIER_BATCH_COST_RPC_INVALID_RESPONSE: {
       zh: "服务返回的数据无法通过校验，未更新页面成本。",
       it: "La risposta del servizio non supera i controlli; i costi visualizzati non sono stati aggiornati.",
+    },
+    ADMIN_SUPPLIER_BATCH_COST_V2_RPC_INVALID_RESPONSE: {
+      zh: "成本服务返回的数据无法通过校验；未写入成本，请检查后重新预览。",
+      it: "La risposta del servizio costi non supera i controlli; nessun costo è stato scritto. Controlla e riprova l'anteprima.",
     },
   };
   return messages[key]?.[language] ?? (language === "it" ? "Errore costi non riconosciuto; riprova." : "未知成本错误，请稍后重试。");
