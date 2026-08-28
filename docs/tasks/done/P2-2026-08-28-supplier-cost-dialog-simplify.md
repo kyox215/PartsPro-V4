@@ -1,6 +1,6 @@
 # P2-2026-08-28-supplier-cost-dialog-simplify
 
-状态：verified
+状态：closed
 
 看板目录：done
 
@@ -127,6 +127,32 @@ git diff --check
 | `npm run build` | passed | Next.js 16.2.6 webpack production build |
 | `git diff --check` | passed | no whitespace errors |
 
+## 生产发布与线上核对
+
+- implementation commit：`dd222cc3e765c8922e3a3a609a450e477ab44c3d`
+- implementation deployment：`dpl_9ETsRQQVauR8onPsHvvES5fT1yaJ`
+- deployment URL：`https://parts-pro-v4-8oncxr4s2-kyox120-9295s-projects.vercel.app`
+- target/source/state：`production` / `git` / `READY`
+- aliases：`www.partspro.app`、`partspro.app` 及对应 Vercel aliases
+- Vercel deployment 时间：created `1787916470774`；building `1787916471871`；ready `1787916540321`
+
+### Vercel observability（只读）
+
+- exact deployment 查询窗口：`2026-08-28T11:29:00Z`–`2026-08-28T11:39:30Z`（Europe/Rome 13:29–13:39:30）。
+- 相关请求：`GET /api/admin/supplier-batches` 在 `11:36:17Z` 返回 `200`；`GET /api/admin/supplier-batches/CVQY8D5SA8O` 在 `11:33:28Z`、`11:36:33Z` 返回 `200`。
+- 4xx 查询和 5xx 查询均由 Vercel 返回“没有符合条件的日志”；error/warning/fatal 查询也返回“没有符合条件的日志”。不将平台结果推断为数量统计。
+- `vercel_get_runtime_errors` 在同一窗口、列表/详情路由筛选下返回“未发现 runtime errors”。
+
+### 生产浏览器 smoke（无写入）
+
+- 登录态 Chrome 通过新开首页再进入后台，确认加载新生产资源；到货批次显示 `20/20`，有 20 个详情按钮。
+- 最近 Mobilax 批次详情与“添加费用”正常打开。viewport `1437x771`；主 dialog `1152x725`，scrollHeight `725`；Step 1/Step 2 可见。
+- Step 3 `details` 默认收起，承运商字段隐藏；zero-cost reason 初始不存在；“下一步：查看分摊结果”可见。
+- 填入未税 `100`，点击 `22%` 得 IVA `22.00`、含税 `€122.00`；显式点击“使用含税总额”后计入商品成本为 `122`，zero-cost reason 仍隐藏。
+- 展开 Step 3 后承运商、参考号、备注可见；将计入商品成本改为 `0` 后 zero-cost reason 可见。随后恢复 `122`，收起 Step 3，取消并通过“丢弃并关闭”清除草稿；最终全部 dialog 为 `0`。
+- Chrome dev logs：`errors/warnings=[]`。本次没有截图（当前 Chrome 不支持 element screenshot），不以截图作为证据。
+- 从未点击 Preview、保存估算、确认正式成本或更正；未产生财务写入。
+
 ## 执行记录
 
 - 创建：2026-08-28，基于 origin/main `3403a37bf002c55871e845b5cfc7844e2b898de9`
@@ -134,9 +160,9 @@ git diff --check
 - 开始：2026-08-28
 - review：2026-08-28，主组件、契约测试、财务字段边界复核通过
 - verified：2026-08-28，局部/发布候选验证全部通过
-- released：pending，待父代理执行 main push 与 Vercel production 发布门
-- closed：pending
+- released：2026-08-28，`dd222cc3e765c8922e3a3a609a450e477ab44c3d` 已推送 main；`dpl_9ETsRQQVauR8onPsHvvES5fT1yaJ` production READY，aliases 已核对
+- closed：2026-08-28，文档收尾提交已生成（最终 SHA 见发布门记录）
 
 ## 结果
 
-已完成三步式到货费用 UI 简化与契约测试扩充。仅修改指定组件、UI 契约测试和本任务卡；无 API、数据库、migration、Supabase 或财务数据变更。未启动独立审查代理（单组件 UI 调整，按 R2 轻量策略由实现代理自检并由主代理终审）；未做哈希检查（普通源码/样式修改不需要）。当前候选已通过 build/lint/typecheck，待发布门完成 main push、Vercel READY 和线上 smoke。
+已完成三步式到货费用 UI 简化与契约测试扩充。实现提交只修改指定组件、UI 契约测试和本任务卡；无 API、数据库、migration、Supabase 或财务数据变更。未启动独立审查代理（单组件 UI 调整，按 R2 轻量策略由实现代理自检并由主代理终审）；未做哈希检查（普通源码/样式修改不需要）。代码已推送 main 并部署到 Vercel production，线上 UI smoke 通过。残余风险：本次是 UI-only 发布，生产 smoke 明确未执行 Preview、保存估算、确认正式成本或更正，因此未进行财务写入型 E2E，也未做生产数据库 invariants SQL 核对；金额、IVA、币种/FX、分摊和写入流程复用了已验证的既有契约。
