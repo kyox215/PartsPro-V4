@@ -5,6 +5,7 @@ import {
   isCommercialOutcomeAvailable,
   isRmaActionAvailable,
   reasonRequiresImage,
+  rmaRequestConsumesReturnQuantity,
 } from "../src/lib/partspro-rma-rules.mjs";
 
 test("evidence rule is scope-aware: only active statutory withdrawal may omit a photo", () => {
@@ -24,6 +25,27 @@ test("evidence rule is scope-aware: only active statutory withdrawal may omit a 
       assert.equal(required, expected, `${scope}/${reason ?? "empty"}`);
     }
   }
+});
+
+test("rejected archive closure keeps the order-line quantity reusable", () => {
+  assert.equal(rmaRequestConsumesReturnQuantity({ status: "rejected" }), false);
+  assert.equal(
+    rmaRequestConsumesReturnQuantity({
+      status: "closed",
+      receivedAt: null,
+      resolutionAction: null,
+    }),
+    false
+  );
+  assert.equal(
+    rmaRequestConsumesReturnQuantity({
+      status: "closed",
+      receivedAt: "2026-08-28T10:00:00.000Z",
+      resolutionAction: "replacement",
+    }),
+    true
+  );
+  assert.equal(rmaRequestConsumesReturnQuantity({ status: "refunded" }), true);
 });
 
 test("two-axis action availability requires QC and keeps inventory independent", () => {

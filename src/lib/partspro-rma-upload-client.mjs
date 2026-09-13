@@ -414,6 +414,8 @@ export class RmaUploadClientError extends Error {
     super(message, cause === undefined ? undefined : { cause });
     this.name = "RmaUploadClientError";
     this.code = code;
+    /** @type {number|null} */
+    this.status = null;
     this.cause = cause;
   }
 }
@@ -433,15 +435,32 @@ async function readResponseBody(response) {
 
 /**
  * @param {Response} response
+ * @param {unknown} body
  * @param {string} fallback
+ * @param {string=} fallbackCode
  */
-async function assertResponse(response, fallback) {
+function createRmaResponseError(response, body, fallback, fallbackCode = `HTTP_${response.status}`) {
+  const apiError = isRecord(body) && isRecord(body.error) ? body.error : null;
+  const code = typeof apiError?.code === "string" && apiError.code.trim()
+    ? apiError.code
+    : fallbackCode;
+  const message = typeof apiError?.message === "string" && apiError.message.trim()
+    ? apiError.message
+    : fallback;
+  const error = new RmaUploadClientError(code, message);
+  error.status = response.status;
+  return error;
+}
+
+/**
+ * @param {Response} response
+ * @param {string} fallback
+ * @param {string=} fallbackCode
+ */
+async function assertResponse(response, fallback, fallbackCode) {
   const body = await readResponseBody(response);
   if (!response.ok) {
-    const message = isRecord(body) && isRecord(body.error) && typeof body.error.message === "string"
-      ? body.error.message
-      : fallback;
-    throw new RmaUploadClientError(`HTTP_${response.status}`, message);
+    throw createRmaResponseError(response, body, fallback, fallbackCode);
   }
   return body;
 }
@@ -595,12 +614,6 @@ function normalizeRmaUploadCheckpoint(value) {
 function queueCheckpointAbandonment(checkpoint) {
   checkpoint.phase = "abandoning";
   checkpoint.payload = null;
-  checkpoint.pendingCancellationIds = [
-    ...new Set([
-      ...checkpoint.pendingCancellationIds,
-      ...Object.values(checkpoint.verifiedAttachmentIds),
-    ]),
-  ];
 }
 
 /**
@@ -654,6 +667,14 @@ async function cancelRmaTicket(fetchImpl, draftId, attachmentId) {
  */
 async function settlePendingCancellations(checkpoint, fetchImpl, onCheckpoint) {
   for (const attachmentId of [...checkpoint.pendingCancellationIds]) {
+    // Single-ticket compensation is pending-only. A verified attachment can
+    // only be released by explicitly abandoning its whole draft.
+    if (Object.values(checkpoint.verifiedAttachmentIds).includes(attachmentId)) {
+      throw new RmaUploadClientError(
+        "RMA_ATTACHMENT_CANCEL_FAILED",
+        "A verified image cannot be cancelled individually. Restart the upload to abandon the draft."
+      );
+    }
     const cancelled = await cancelRmaTicket(fetchImpl, checkpoint.draftId, attachmentId);
     if (!cancelled) {
       emitRmaUploadCheckpoint(onCheckpoint, checkpoint);
@@ -666,18 +687,14 @@ async function settlePendingCancellations(checkpoint, fetchImpl, onCheckpoint) {
     checkpoint.pendingCancellationIds = checkpoint.pendingCancellationIds.filter(
       (pendingId) => pendingId !== attachmentId
     );
-    for (const [identity, verifiedId] of Object.entries(checkpoint.verifiedAttachmentIds)) {
-      if (verifiedId === attachmentId) {
-        delete checkpoint.verifiedAttachmentIds[identity];
-      }
-    }
     emitRmaUploadCheckpoint(onCheckpoint, checkpoint);
   }
 }
 
 /**
- * Safely abandon a resumable upload. The checkpoint is cleared only after all
- * verified or pending attachment rows have confirmed cancellation (2xx).
+ * Safely abandon a resumable upload. The checkpoint is cleared only after the
+ * server confirms whole-draft abandonment (2xx), including verified images,
+ * or confirms that the request was already submitted and cannot be abandoned.
  * @param {{checkpoint:RmaUploadCheckpoint,fetchImpl?:RmaFetch,onCheckpoint?:RmaCheckpointCallback}} input
  * @returns {Promise<null>}
  */
@@ -699,7 +716,25 @@ export async function cancelRmaUploadCheckpoint({
 
   queueCheckpointAbandonment(normalized);
   emitRmaUploadCheckpoint(onCheckpoint, normalized);
-  await settlePendingCancellations(normalized, fetchImpl, onCheckpoint);
+  try {
+    const response = await fetchImpl(`/api/rma/drafts/${encodeURIComponent(normalized.draftId)}`, {
+      method: "DELETE",
+    });
+    await assertResponse(response, "The RMA draft could not be abandoned.", "RMA_DRAFT_ABANDON_FAILED");
+  } catch (error) {
+    if (error instanceof RmaUploadClientError && error.code === "RMA_DRAFT_ALREADY_SUBMITTED") {
+      // Submission is terminal too. Drop recovery before notifying the UI;
+      // never replay its payload or keep retrying an impossible abandonment.
+      emitRmaUploadCheckpoint(onCheckpoint, null);
+      throw error;
+    }
+    throw attachRmaUploadError(error, {
+      code: "RMA_DRAFT_ABANDON_FAILED",
+      message: "The RMA draft could not be abandoned. Try again to finish cleanup.",
+      checkpoint: normalized,
+      draftId: normalized.draftId,
+    });
+  }
   emitRmaUploadCheckpoint(onCheckpoint, null);
   return null;
 }
@@ -738,13 +773,8 @@ export async function submitRmaWithAttachments({
 
   if (checkpoint?.phase === "abandoning") {
     // Abandonment is one-way: never inspect or replay a final payload once
-    // cleanup has started. A retry may only finish the outstanding DELETEs.
-    queueCheckpointAbandonment(checkpoint);
-    emitRmaUploadCheckpoint(onCheckpoint, checkpoint);
-    if (checkpoint.draftId) {
-      await settlePendingCancellations(checkpoint, fetchImpl, onCheckpoint);
-    }
-    emitRmaUploadCheckpoint(onCheckpoint, null);
+    // cleanup has started. A retry may only finish the whole-draft DELETE.
+    await cancelRmaUploadCheckpoint({ checkpoint, fetchImpl, onCheckpoint });
     throw new RmaUploadClientError(
       "RMA_UPLOAD_ABANDONED",
       "The previous RMA upload was abandoned after cleanup. Start a new upload."
@@ -980,7 +1010,7 @@ async function uploadOneRmaImage({ draftId, file, index, total, fetchImpl, onPro
       if (isRecord(ticketBody) && isRecord(ticketBody.data) && typeof ticketBody.data.attachmentId === "string") {
         attachmentId = ticketBody.data.attachmentId;
       }
-      throw new RmaUploadClientError(`HTTP_${ticketResponse.status}`, "The image upload ticket could not be created.");
+      throw createRmaResponseError(ticketResponse, ticketBody, "The image upload ticket could not be created.");
     }
 
     const ticket = readData(ticketBody);
@@ -997,7 +1027,7 @@ async function uploadOneRmaImage({ draftId, file, index, total, fetchImpl, onPro
       body: formData,
     });
     if (!uploadResponse.ok) {
-      throw new RmaUploadClientError(`HTTP_${uploadResponse.status}`, "The image could not be uploaded.");
+      throw createRmaResponseError(uploadResponse, await readResponseBody(uploadResponse), "The image could not be uploaded.");
     }
 
     onProgress?.({ index, total, status: "verifying", name: file.name || "image" });

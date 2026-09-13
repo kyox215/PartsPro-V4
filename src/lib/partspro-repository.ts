@@ -65,6 +65,7 @@ import {
   assertRmaWorkflowReady,
   RmaWorkflowNotReadyError,
 } from "@/lib/partspro-rma-workflow-readiness";
+import { rmaRequestConsumesReturnQuantity } from "@/lib/partspro-rma-rules.mjs";
 import { projectAdminRmaWorkflow } from "@/lib/partspro-rma-workflow-rules";
 import {
   normalizeSupplierBatchCharge,
@@ -16207,7 +16208,14 @@ function sumRmaRequestedQuantitiesByLineId(rows: DbRow[]) {
   for (const row of rows) {
     const lineId = pickString(row, ["order_line_id", "order_item_id", "line_id"]);
 
-    if (!lineId || !isRmaQuantityConsumingStatus(pickString(row, ["status"]))) {
+    if (
+      !lineId ||
+      !rmaRequestConsumesReturnQuantity({
+        status: pickString(row, ["status"]),
+        receivedAt: pickString(row, ["received_at"]),
+        resolutionAction: pickString(row, ["resolution_action"]),
+      })
+    ) {
       continue;
     }
 
@@ -16218,10 +16226,6 @@ function sumRmaRequestedQuantitiesByLineId(rows: DbRow[]) {
   }
 
   return quantities;
-}
-
-function isRmaQuantityConsumingStatus(status: string | null) {
-  return status !== "rejected";
 }
 
 function rmaResolutionSummary(row: DbRow) {

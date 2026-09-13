@@ -365,70 +365,134 @@ test("resume retains five verified images, settles a failed ticket, and uploads 
   assert.equal(checkpoints.at(-1), null);
 });
 
-test("explicit checkpoint restart cancels every opaque attachment before clearing state", async () => {
+test("explicit restart abandons the draft once after images are verified and only then clears state", async () => {
   const calls = [];
-  const checkpoint = {
-    version: 1,
-    draftId: "draft-restart",
-    verifiedAttachmentIds: { first: "attachment-first", second: "attachment-second" },
-    pendingCancellationIds: ["attachment-pending"],
-    inputFingerprint: "fingerprint",
-    payload: null,
+  const checkpoints = [];
+  const server = { draftStatus: "open", attachments: new Map() };
+  const fetchImpl = async (input, init = {}) => {
+    const url = String(input);
+    calls.push({ url, init });
+    if (url === "/api/rma/drafts" && init.method === "POST") {
+      return Response.json({ data: { id: "draft-restart" } }, { status: 201 });
+    }
+    if (url === "/api/rma/drafts/draft-restart/uploads" && init.method === "POST") {
+      const attachmentId = `attachment-${server.attachments.size + 1}`;
+      server.attachments.set(attachmentId, "pending");
+      return Response.json({ data: { attachmentId, uploadUrl: `https://storage.test/${attachmentId}` } }, { status: 201 });
+    }
+    if (url.startsWith("https://storage.test/") && init.method === "PUT") {
+      return new Response(null, { status: 200 });
+    }
+    if (url.endsWith("/complete") && init.method === "POST") {
+      const attachmentId = url.split("/").at(-2);
+      assert.equal(server.attachments.get(attachmentId), "pending");
+      server.attachments.set(attachmentId, "verified");
+      return Response.json({ data: { attachmentId, status: "verified" } });
+    }
+    if (url === "/api/rma/submit" && init.method === "POST") {
+      return Response.json({ error: { code: "RMA_SUBMIT_FAILED", message: "Temporary submit outage." } }, { status: 503 });
+    }
+    if (url === "/api/rma/drafts/draft-restart" && init.method === "DELETE") {
+      assert.equal(checkpoints.at(-1).phase, "abandoning");
+      assert.equal(checkpoints.at(-1).payload, null);
+      assert.equal(checkpoints.includes(null), false, "checkpoint must survive until server confirmation");
+      server.draftStatus = "abandoned";
+      for (const attachmentId of server.attachments.keys()) {
+        server.attachments.set(attachmentId, "cancelled");
+      }
+      return new Response(null, { status: 204 });
+    }
+    assert.fail(`unexpected request, including individual verified cancellation: ${init.method} ${url}`);
   };
-  const cleared = [];
+
+  await assert.rejects(submitRmaWithAttachments({
+    orderLineId: "line-restart",
+    quantity: 1,
+    requestedResolution: "replacement",
+    files: [imageFile("first.jpg"), imageFile("second.jpg")],
+    idempotencyKey: "submit-restart",
+    fetchImpl,
+    prepareImage: async (file) => file,
+    onCheckpoint: (next) => checkpoints.push(next),
+  }), (error) => error.code === "RMA_SUBMIT_FAILED" && error.status === 503 && error.message === "Temporary submit outage.");
+
+  const checkpoint = checkpoints.at(-1);
+  assert.equal(Object.keys(checkpoint.verifiedAttachmentIds).length, 2);
+  assert.ok(checkpoint.payload);
+  assert.deepEqual([...server.attachments.values()], ["verified", "verified"]);
+  const callsBeforeAbandonment = calls.length;
   const result = await cancelRmaUploadCheckpoint({
     checkpoint,
-    fetchImpl: async (input, init = {}) => {
-      calls.push({ url: String(input), init });
-      return new Response(null, { status: 204 });
-    },
-    onCheckpoint: (next) => cleared.push(next),
+    fetchImpl,
+    onCheckpoint: (next) => checkpoints.push(next),
   });
 
   assert.equal(result, null);
-  assert.equal(calls.length, 3);
-  assert.equal(calls.every(({ init }) => init.method === "DELETE"), true);
-  assert.equal(cleared.at(-1), null);
+  assert.deepEqual(calls.slice(callsBeforeAbandonment), [{ url: "/api/rma/drafts/draft-restart", init: { method: "DELETE" } }]);
+  assert.equal(server.draftStatus, "abandoned");
+  assert.deepEqual([...server.attachments.values()], ["cancelled", "cancelled"]);
+  assert.equal(checkpoints.at(-1), null);
 });
 
-test("checkpoint restart preserves only unresolved cancellations after a non-2xx response", async () => {
+test("draft abandonment preserves checkpoint after 503 and retries only the same draft DELETE", async () => {
   const checkpoint = {
     version: 1,
     draftId: "draft-restart-partial",
     verifiedAttachmentIds: { first: "attachment-first", second: "attachment-second" },
-    pendingCancellationIds: [],
+    pendingCancellationIds: ["attachment-pending"],
     inputFingerprint: "fingerprint",
-    payload: null,
+    payload: { draftId: "draft-restart-partial", idempotencyKey: "must-not-replay" },
   };
   let attempt = 0;
+  let serverDraftStatus = "open";
   const checkpoints = [];
+  const fetchImpl = async (input, init = {}) => {
+    assert.equal(String(input), "/api/rma/drafts/draft-restart-partial");
+    assert.equal(init.method, "DELETE");
+    assert.equal(checkpoints.at(-1).phase, "abandoning");
+    assert.equal(checkpoints.at(-1).payload, null);
+    attempt += 1;
+    if (attempt === 1) {
+      return Response.json({ error: { code: "RMA_DRAFT_CLEANUP_PENDING", message: "Storage cleanup is temporarily unavailable." } }, { status: 503 });
+    }
+    serverDraftStatus = "abandoned";
+    return new Response(null, { status: 204 });
+  };
 
   await assert.rejects(
     cancelRmaUploadCheckpoint({
       checkpoint,
-      fetchImpl: async (input, init = {}) => {
-        assert.equal(init.method, "DELETE");
-        attempt += 1;
-        return new Response(null, { status: attempt === 2 ? 500 : 204 });
-      },
+      fetchImpl,
       onCheckpoint: (next) => checkpoints.push(next),
     }),
-    (error) => error?.code === "RMA_ATTACHMENT_CANCEL_FAILED"
+    (error) => {
+      assert.equal(error.code, "RMA_DRAFT_CLEANUP_PENDING");
+      assert.equal(error.message, "Storage cleanup is temporarily unavailable.");
+      assert.equal(error.status, 503);
+      assert.equal(error.checkpoint.phase, "abandoning");
+      assert.equal(error.checkpoint.payload, null);
+      return true;
+    }
   );
 
   const unresolved = checkpoints.at(-1);
-  assert.deepEqual(unresolved.pendingCancellationIds, ["attachment-second"]);
-  assert.deepEqual(unresolved.verifiedAttachmentIds, { second: "attachment-second" });
+  assert.equal(attempt, 1);
+  assert.equal(serverDraftStatus, "open");
+  assert.equal(checkpoints.includes(null), false);
+  assert.deepEqual(unresolved.pendingCancellationIds, checkpoint.pendingCancellationIds);
+  assert.deepEqual(unresolved.verifiedAttachmentIds, checkpoint.verifiedAttachmentIds);
 
   await cancelRmaUploadCheckpoint({
     checkpoint: unresolved,
-    fetchImpl: async () => new Response(null, { status: 204 }),
+    fetchImpl,
     onCheckpoint: (next) => checkpoints.push(next),
   });
+  assert.equal(attempt, 2);
+  assert.equal(serverDraftStatus, "abandoned");
   assert.equal(checkpoints.at(-1), null);
 });
 
-test("abandoning checkpoint never replays final payload after DELETE 204 then 500", async () => {
+test("abandoning checkpoint only retries draft DELETE after its success response is lost", async () => {
   const fileA = imageFile("abandon-a.jpg", "image/jpeg", "abandon-a");
   const fileB = imageFile("abandon-b.jpg", "image/jpeg", "abandon-b");
   const checkpoint = {
@@ -459,7 +523,7 @@ test("abandoning checkpoint never replays final payload after DELETE 204 then 50
   };
   const calls = [];
   const checkpoints = [];
-  let cleanupAttempt = 0;
+  let serverDraftStatus = "open";
 
   await assert.rejects(
     cancelRmaUploadCheckpoint({
@@ -467,22 +531,23 @@ test("abandoning checkpoint never replays final payload after DELETE 204 then 50
       fetchImpl: async (input, init = {}) => {
         const url = String(input);
         calls.push({ url, init });
+        assert.equal(url, "/api/rma/drafts/draft-abandon");
         assert.equal(init.method, "DELETE");
-        cleanupAttempt += 1;
-        return new Response(null, { status: cleanupAttempt === 2 ? 500 : 204 });
+        serverDraftStatus = "abandoned";
+        throw new TypeError("The successful DELETE response was lost.");
       },
       onCheckpoint: (next) => checkpoints.push(next),
     }),
-    (error) => error?.code === "RMA_ATTACHMENT_CANCEL_FAILED"
+    (error) => error?.code === "RMA_DRAFT_ABANDON_FAILED" && error.checkpoint?.phase === "abandoning"
   );
 
   const abandoned = checkpoints.at(-1);
   assert.equal(abandoned.phase, "abandoning");
   assert.equal(abandoned.payload, null);
-  assert.deepEqual(abandoned.pendingCancellationIds, ["attachment-b"]);
-  assert.deepEqual(abandoned.verifiedAttachmentIds, {
-    [rmaImageIdentity(fileB)]: "attachment-b",
-  });
+  assert.deepEqual(abandoned.pendingCancellationIds, []);
+  assert.deepEqual(abandoned.verifiedAttachmentIds, checkpoint.verifiedAttachmentIds);
+  assert.equal(serverDraftStatus, "abandoned");
+  assert.equal(checkpoints.includes(null), false);
 
   const callsBeforeResume = calls.length;
   await assert.rejects(
@@ -497,7 +562,8 @@ test("abandoning checkpoint never replays final payload after DELETE 204 then 50
       fetchImpl: async (input, init = {}) => {
         const url = String(input);
         calls.push({ url, init });
-        if (url.endsWith("/complete") && init.method === "DELETE") {
+        if (url === "/api/rma/drafts/draft-abandon" && init.method === "DELETE") {
+          assert.equal(serverDraftStatus, "abandoned");
           return new Response(null, { status: 204 });
         }
         throw new Error(`abandonment must not start a new request: ${init.method} ${url}`);
@@ -513,8 +579,215 @@ test("abandoning checkpoint never replays final payload after DELETE 204 then 50
   assert.equal(cleanupOnlyCalls.some(({ url }) => url === "/api/rma/submit"), false);
   assert.equal(cleanupOnlyCalls.some(({ url }) => url === "/api/rma/drafts"), false);
   assert.equal(cleanupOnlyCalls.some(({ url }) => url.includes("/uploads")), false);
-  assert.equal(cleanupOnlyCalls.some(({ url }) => url.endsWith("/complete") && url.includes("attachment-b")), true);
+  assert.equal(cleanupOnlyCalls[0].url, "/api/rma/drafts/draft-abandon");
+  assert.equal(cleanupOnlyCalls.some(({ url }) => url.endsWith("/complete")), false);
   assert.equal(checkpoints.at(-1), null);
+});
+
+test("a committed submission with a lost response clears recovery when abandonment confirms already submitted", async () => {
+  const calls = [];
+  const checkpoints = [];
+  const server = { draftStatus: "open", attachmentStatus: "pending", submissions: 0 };
+  const fetchImpl = async (input, init = {}) => {
+    const url = String(input);
+    calls.push({ url, init });
+    if (url === "/api/rma/drafts" && init.method === "POST") {
+      return Response.json({ data: { id: "draft-committed" } }, { status: 201 });
+    }
+    if (url.endsWith("/uploads") && init.method === "POST") {
+      return Response.json({ data: { attachmentId: "attachment-committed", uploadUrl: "https://storage.test/committed" } }, { status: 201 });
+    }
+    if (url === "https://storage.test/committed" && init.method === "PUT") {
+      return new Response(null, { status: 200 });
+    }
+    if (url.endsWith("/complete") && init.method === "POST") {
+      server.attachmentStatus = "verified";
+      return Response.json({ data: { attachmentId: "attachment-committed", status: "verified" } });
+    }
+    if (url === "/api/rma/submit" && init.method === "POST") {
+      server.draftStatus = "submitted";
+      server.attachmentStatus = "committed";
+      server.submissions += 1;
+      throw new TypeError("The successful submission response was lost.");
+    }
+    if (url === "/api/rma/drafts/draft-committed" && init.method === "DELETE") {
+      assert.equal(server.draftStatus, "submitted");
+      return Response.json({ error: { code: "RMA_DRAFT_ALREADY_SUBMITTED", message: "The RMA request was already submitted." } }, { status: 409 });
+    }
+    assert.fail(`a committed attachment must not be cancelled: ${init.method} ${url}`);
+  };
+
+  await assert.rejects(submitRmaWithAttachments({
+    orderLineId: "line-committed",
+    quantity: 1,
+    requestedResolution: "replacement",
+    files: [imageFile("committed.jpg")],
+    idempotencyKey: "submit-committed",
+    fetchImpl,
+    prepareImage: async (file) => file,
+    onCheckpoint: (next) => checkpoints.push(next),
+  }), (error) => error.code === "RMA_SUBMIT_FAILED");
+  const uncertainCheckpoint = checkpoints.at(-1);
+  assert.ok(uncertainCheckpoint.payload);
+  assert.equal(server.submissions, 1);
+  const callsBeforeAbandonment = calls.length;
+
+  await assert.rejects(cancelRmaUploadCheckpoint({
+    checkpoint: uncertainCheckpoint,
+    fetchImpl,
+    onCheckpoint: (next) => checkpoints.push(next),
+  }), (error) => {
+    assert.equal(checkpoints.at(-1), null, "recovery must be cleared before the error reaches the UI");
+    assert.equal(error.code, "RMA_DRAFT_ALREADY_SUBMITTED");
+    assert.equal(error.status, 409);
+    assert.equal(error.message, "The RMA request was already submitted.");
+    assert.equal(error.checkpoint, undefined);
+    assert.equal(error.payload, undefined);
+    return true;
+  });
+
+  assert.equal(checkpoints.at(-2).phase, "abandoning");
+  assert.equal(checkpoints.at(-2).payload, null);
+  assert.deepEqual(calls.slice(callsBeforeAbandonment), [{ url: "/api/rma/drafts/draft-committed", init: { method: "DELETE" } }]);
+  assert.equal(server.attachmentStatus, "committed");
+  assert.equal(server.submissions, 1);
+  await cancelRmaUploadCheckpoint({ checkpoint: checkpoints.at(-1), fetchImpl });
+  assert.equal(calls.length, callsBeforeAbandonment + 1, "cleared recovery cannot repeat the draft DELETE");
+});
+
+test("abandoning recovery clears only the dedicated already-submitted conflict and retains other 409s", async () => {
+  for (const code of ["RMA_DRAFT_ALREADY_SUBMITTED", "RMA_IDEMPOTENCY_CONFLICT"]) {
+    const checkpoints = [];
+    const calls = [];
+    const checkpoint = {
+      version: 1,
+      phase: "abandoning",
+      draftId: "draft-conflict",
+      verifiedAttachmentIds: { first: "attachment-first" },
+      pendingCancellationIds: [],
+      inputFingerprint: "",
+      payload: { draftId: "draft-conflict", idempotencyKey: "must-never-replay" },
+    };
+    await assert.rejects(submitRmaWithAttachments({
+      orderLineId: "line-conflict",
+      quantity: 1,
+      requestedResolution: "replacement",
+      files: [],
+      idempotencyKey: "must-never-replay",
+      checkpoint,
+      fetchImpl: async (input, init = {}) => {
+        calls.push({ url: String(input), init });
+        assert.equal(String(input), "/api/rma/drafts/draft-conflict");
+        assert.equal(init.method, "DELETE");
+        return Response.json({ error: { code, message: "Conflict details." } }, { status: 409 });
+      },
+      onCheckpoint: (next) => checkpoints.push(next),
+    }), (error) => {
+      assert.equal(error.code, code);
+      assert.equal(error.status, 409);
+      if (code === "RMA_DRAFT_ALREADY_SUBMITTED") {
+        assert.equal(checkpoints.at(-1), null);
+        assert.equal(error.checkpoint, undefined);
+      } else {
+        assert.equal(checkpoints.includes(null), false);
+        assert.equal(error.checkpoint.phase, "abandoning");
+        assert.equal(error.checkpoint.payload, null);
+        assert.deepEqual(error.checkpoint.verifiedAttachmentIds, checkpoint.verifiedAttachmentIds);
+      }
+      return true;
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(checkpoints.filter(Boolean).every((next) => next.payload === null), true);
+  }
+});
+
+test("failed ticket body preserves code, message and HTTP status while compensation stays attachment-scoped", async () => {
+  const calls = [];
+  const attachments = new Map();
+  let ticketAttempt = 0;
+  const checkpoints = [];
+  const fetchImpl = async (input, init = {}) => {
+    const url = String(input);
+    calls.push({ url, init });
+    if (url === "/api/rma/drafts" && init.method === "POST") {
+      return Response.json({ data: { id: "draft-ticket-failure" } }, { status: 201 });
+    }
+    if (url === "/api/rma/drafts/draft-ticket-failure/uploads" && init.method === "POST") {
+      ticketAttempt += 1;
+      const attachmentId = `failed-ticket-${ticketAttempt}`;
+      attachments.set(attachmentId, "pending");
+      return Response.json({
+        error: { code: "RMA_UPLOAD_TICKET_FAILED", message: "The upload storage capability could not be created." },
+        data: { attachmentId },
+      }, { status: 503 });
+    }
+    if (url.endsWith("/complete") && init.method === "DELETE") {
+      const attachmentId = url.split("/").at(-2);
+      assert.equal(attachments.get(attachmentId), "pending");
+      attachments.set(attachmentId, "cancelled");
+      return new Response(null, { status: 204 });
+    }
+    assert.fail(`ticket failure must not upload, submit or abandon its draft: ${init.method} ${url}`);
+  };
+
+  await assert.rejects(submitRmaWithAttachments({
+    orderLineId: "line-ticket-failure",
+    quantity: 1,
+    requestedResolution: "replacement",
+    files: [imageFile("ticket.jpg")],
+    idempotencyKey: "submit-ticket-failure",
+    fetchImpl,
+    prepareImage: async (file) => file,
+    onCheckpoint: (next) => checkpoints.push(next),
+  }), (error) => {
+    assert.equal(error.code, "RMA_UPLOAD_TICKET_FAILED");
+    assert.equal(error.message, "The upload storage capability could not be created.");
+    assert.equal(error.status, 503);
+    assert.equal(error.cancellationConfirmed, true);
+    assert.equal(error.checkpoint.draftId, "draft-ticket-failure");
+    assert.equal(error.checkpoint.phase, "active");
+    assert.deepEqual(error.checkpoint.pendingCancellationIds, []);
+    return true;
+  });
+
+  assert.equal(ticketAttempt, 2);
+  assert.deepEqual([...attachments.values()], ["cancelled", "cancelled"]);
+  assert.equal(calls.filter(({ init }) => init.method === "DELETE").length, 2);
+  assert.notEqual(checkpoints.at(-1), null);
+});
+
+test("draft API errors preserve structured authentication errors", async () => {
+  await assert.rejects(submitRmaWithAttachments({
+    orderLineId: "line-auth",
+    quantity: 1,
+    requestedResolution: "replacement",
+    files: [imageFile("auth.jpg")],
+    idempotencyKey: "submit-auth",
+    fetchImpl: async () => Response.json({ error: { code: "LOGIN_REQUIRED", message: "A valid login is required." } }, { status: 401 }),
+  }), (error) => error.code === "LOGIN_REQUIRED" && error.status === 401 && error.message === "A valid login is required.");
+});
+
+test("automatic pending compensation never sends DELETE for a known verified attachment", async () => {
+  const file = imageFile("verified.jpg");
+  const checkpoint = {
+    version: 1,
+    phase: "active",
+    draftId: "draft-verified",
+    verifiedAttachmentIds: { [rmaImageIdentity(file)]: "attachment-verified" },
+    pendingCancellationIds: ["attachment-verified"],
+    inputFingerprint: "",
+    payload: null,
+  };
+  await assert.rejects(submitRmaWithAttachments({
+    orderLineId: "line-verified",
+    quantity: 1,
+    requestedResolution: "replacement",
+    files: [file],
+    idempotencyKey: "submit-verified",
+    checkpoint,
+    fetchImpl: async () => assert.fail("known verified attachments must not use ticket compensation"),
+  }), (error) => error.code === "RMA_ATTACHMENT_CANCEL_FAILED");
+  assert.deepEqual(checkpoint.verifiedAttachmentIds, { [rmaImageIdentity(file)]: "attachment-verified" });
 });
 
 test("submit payload helper is explicit and the client never references legacy evidence or video", () => {

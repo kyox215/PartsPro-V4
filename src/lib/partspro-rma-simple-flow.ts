@@ -54,7 +54,7 @@ export async function createRmaDraft(
   input: RmaDraftCreateInput
 ): Promise<RmaDraftDto> {
   const { client, user } = await requireAuthenticatedClient();
-  await ensureRmaSimpleFlowReady(client);
+  const service = await ensureRmaSimpleFlowReady(client);
   const { data, error } = await client.rpc("rma_create_draft", {
     p_order_line_id: input.orderLineId,
     p_idempotency_key: input.idempotencyKey ?? null,
@@ -69,7 +69,9 @@ export async function createRmaDraft(
     throw new RmaSimpleFlowError(502, "RMA_DRAFT_CREATE_FAILED", "RMA draft id was not returned.");
   }
 
-  return readDraftDto(user.id, draftId);
+  const draft = await readDraftDto(user.id, draftId);
+  await cleanupExpiredRmaEvidenceForUser(service, user.id);
+  return draft;
 }
 
 export async function readRmaDraft(draftId: string): Promise<RmaDraftDto> {
@@ -300,6 +302,147 @@ export async function cancelRmaAttachment(
   }
 
   return { attachmentId, status: "cancelled" as const };
+}
+
+export async function abandonRmaDraft(draftId: string) {
+  const { client, user } = await requireAuthenticatedClient();
+  const service = await ensureRmaSimpleFlowReady(client);
+  const { data, error } = await client.rpc("rma_abandon_draft", {
+    p_draft_id: draftId,
+  });
+
+  if (error || data !== true) {
+    throw mapRpcError(error, "RMA_DRAFT_ABANDON_FAILED", "RMA draft could not be abandoned.");
+  }
+
+  // The database transition is authoritative and idempotent. Query only the
+  // authenticated owner's terminal, uncommitted rows before deleting objects;
+  // a retry after a lost response can therefore finish Storage cleanup safely.
+  const { data: attachments, error: attachmentError } = await service
+    .from("rma_attachments")
+    .select("bucket,storage_path,status")
+    .eq("draft_id", draftId)
+    .eq("user_id", user.id)
+    .is("rma_request_id", null)
+    .in("status", ["cancelled", "expired"]);
+
+  if (attachmentError || !Array.isArray(attachments)) {
+    throw new RmaSimpleFlowError(
+      502,
+      "RMA_DRAFT_STORAGE_CLEANUP_PENDING",
+      "The draft was abandoned, but evidence cleanup is still pending."
+    );
+  }
+
+  const expectedPrefix = `rma/${user.id}/${draftId}/`.toLowerCase();
+  const storagePaths: string[] = [];
+  for (const attachment of attachments) {
+    const bucket = isRecord(attachment) ? readString(attachment.bucket) : null;
+    const storagePath = isRecord(attachment) ? readString(attachment.storage_path) : null;
+
+    if (
+      !storagePath ||
+      bucket !== rmaEvidenceBucket ||
+      !storagePath.toLowerCase().startsWith(expectedPrefix) ||
+      !isRmaEvidencePathOwnedByUser(storagePath, user.id)
+    ) {
+      throw new RmaSimpleFlowError(
+        502,
+        "RMA_DRAFT_STORAGE_CLEANUP_PENDING",
+        "The draft was abandoned, but evidence cleanup is still pending."
+      );
+    }
+
+    storagePaths.push(storagePath);
+  }
+
+  if (storagePaths.length > 0) {
+    const { error: removeError } = await service.storage
+      .from(rmaEvidenceBucket)
+      .remove(storagePaths);
+    if (removeError) {
+      throw new RmaSimpleFlowError(
+        502,
+        "RMA_DRAFT_STORAGE_CLEANUP_PENDING",
+        "The draft was abandoned, but evidence cleanup is still pending."
+      );
+    }
+  }
+
+  return { draftId, status: "abandoned" as const };
+}
+
+async function cleanupExpiredRmaEvidenceForUser(
+  service: ReturnType<typeof createServiceRoleClient>,
+  userId: string
+) {
+  try {
+    const { data: attachments, error } = await service
+      .from("rma_attachments")
+      .select("id,bucket,storage_path,expires_at")
+      .eq("user_id", userId)
+      .eq("status", "expired")
+      .is("rma_request_id", null)
+      .lte("expires_at", new Date().toISOString())
+      .order("expires_at", { ascending: true })
+      .limit(25);
+
+    if (error || !Array.isArray(attachments)) {
+      console.error("Expired RMA evidence cleanup query failed", {
+        error: error?.message ?? "invalid_result",
+      });
+      return;
+    }
+
+    const cleanups: Array<{ id: string; path: string }> = [];
+    for (const attachment of attachments) {
+      const id = isRecord(attachment) ? readUuid(attachment.id) : null;
+      const bucket = isRecord(attachment) ? readString(attachment.bucket) : null;
+      const path = isRecord(attachment) ? readString(attachment.storage_path) : null;
+      if (
+        id &&
+        bucket === rmaEvidenceBucket &&
+        path &&
+        isRmaEvidencePathOwnedByUser(path, userId)
+      ) {
+        cleanups.push({ id, path });
+      }
+    }
+
+    if (cleanups.length === 0) {
+      return;
+    }
+
+    const { error: removeError } = await service.storage
+      .from(rmaEvidenceBucket)
+      .remove(cleanups.map(({ path }) => path));
+    if (removeError) {
+      console.error("Expired RMA evidence Storage cleanup failed", {
+        count: cleanups.length,
+        error: removeError.message,
+      });
+      return;
+    }
+
+    const { error: acknowledgeError } = await service.rpc(
+      "rma_acknowledge_attachment_cleanup",
+      { p_attachment_ids: cleanups.map(({ id }) => id) }
+    );
+    if (acknowledgeError) {
+      // Storage removal is idempotent. Keeping the expired rows makes a later
+      // draft creation or maintenance pass safely retry the acknowledgement.
+      console.error("Expired RMA evidence cleanup acknowledgement failed", {
+        count: cleanups.length,
+        error: acknowledgeError.message,
+      });
+    }
+  } catch (error) {
+    // Draft creation is the customer-critical path. Cleanup is opportunistic
+    // and remains retryable through the service-role maintenance RPC.
+    console.error("Expired RMA evidence cleanup deferred", {
+      error: error instanceof Error ? error.message : "cleanup_error",
+    });
+  }
 }
 
 export async function submitRmaRequest(
@@ -887,6 +1030,17 @@ function mapRpcError(
       409,
       "RMA_ATTACHMENT_ALREADY_VERIFIED",
       "This RMA attachment was already verified with a different upload state."
+    );
+  }
+  // A submit response can be lost after the database committed the request.
+  // A later explicit restart must distinguish that durable success from a
+  // retryable cleanup failure so the browser can discard its stale checkpoint
+  // without deleting committed evidence or remaining locked forever.
+  if (rawCode === "23514" && /submitted RMA draft cannot be abandoned/i.test(message)) {
+    return new RmaSimpleFlowError(
+      409,
+      "RMA_DRAFT_ALREADY_SUBMITTED",
+      "This RMA draft was already submitted. Check the recent requests before trying again."
     );
   }
   const status = rpcStatus(rawCode);

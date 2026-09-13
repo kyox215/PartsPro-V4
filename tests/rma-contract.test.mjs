@@ -21,9 +21,11 @@ const customerDto = read("src/lib/partspro-rma-customer-dto.ts");
 const rules = read("src/lib/partspro-rma-rules.mjs");
 const legacyEvidenceRoute = read("src/app/api/rma/evidence/route.ts");
 const completeRoute = read("src/app/api/rma/drafts/[draftId]/attachments/[attachmentId]/complete/route.ts");
+const draftRoute = read("src/app/api/rma/drafts/[draftId]/route.ts");
 const migration = read("supabase/migrations/20260828092046_rma_simple_flow_expand.sql");
 const finalizeMigration = read("supabase/migrations/20260828092050_rma_workflow_finalize.sql");
 const aclLockdownMigration = read("supabase/migrations/20260828095944_rma_acl_lockdown.sql");
+const repairMigration = read("supabase/migrations/20260913185143_repair_rma_end_to_end_closure.sql");
 const repository = read("src/lib/partspro-repository.ts");
 const readiness = read("src/lib/partspro-rma-workflow-readiness.ts");
 
@@ -101,6 +103,74 @@ test("server upload/complete/submit path is opaque and legacy writes require upg
   assert.match(customerDto, /assignees, notes, wallet ids, inventory fields and storage paths never cross/);
   assert.doesNotMatch(customerDto, /internalNote|assignedTo|walletRefundRequestId|inventoryDisposition|storagePath/);
   assert.doesNotMatch(customerRoute, /rma\/\$\{request\.id\}/);
+});
+
+test("RMA closure repair fixes tickets, draft abandonment, access replay and internal ledger exposure", () => {
+  assert.match(
+    repairMigration,
+    /storage_path ~ '\^rma\/[\s\S]*\{36\}\[\.\]\(jpg\|png\|webp\|heic\|heif\)\$'/
+  );
+  assert.match(repairMigration, /create or replace function public\.rma_abandon_draft/);
+  assert.match(repairMigration, /a\.status in \('pending', 'verified'\)/);
+  assert.match(repairMigration, /a\.status = 'committed'/);
+  assert.match(repairMigration, /A submitted RMA draft cannot be abandoned/);
+  assert.match(repairMigration, /a\.status in \('pending', 'verified', 'cancelled', 'expired'\)/);
+  assert.match(repairMigration, /for v_stale_draft_id in[\s\S]*for update of d[\s\S]*update public\.rma_attachments/);
+  assert.match(repairMigration, /for v_draft_id in/);
+  assert.match(repairMigration, /for update of d skip locked/);
+  assert.match(repairMigration, /create or replace function public\.rma_acknowledge_attachment_cleanup/);
+  assert.match(repairMigration, /a\.rma_request_id is null[\s\S]*a\.status = 'expired'/);
+  assert.match(repairMigration, /now\(\) - interval '24 hours'/);
+  assert.match(repairMigration, /format\('rma-draft-user:%s', v_auth_uid\)/);
+
+  const submitWrapperStart = repairMigration.indexOf("create function public.rma_submit_request(");
+  const submitWrapper = repairMigration.slice(
+    submitWrapperStart,
+    repairMigration.indexOf("$$;", submitWrapperStart)
+  );
+  assert.notEqual(submitWrapperStart, -1);
+  assert.ok(
+    submitWrapper.indexOf("private.rma_user_can_access_order") <
+      submitWrapper.indexOf("private.rma_submit_request_v1_impl"),
+    "current customer access must be checked before any submit replay"
+  );
+  assert.match(repairMigration, /private\.rma_request_consumes_return_quantity/);
+  assert.match(repairMigration, /Unexpected rma_submit_request quantity predicate/);
+  assert.match(repairMigration, /Unexpected enforce_rma_order_line quantity predicate/);
+  assert.match(
+    repairMigration,
+    /rma_request_consumes_return_quantity\(new\.status, new\.received_at, new\.resolution_action\)/
+  );
+  assert.match(repairMigration, /length\(v_definition\) - length\(replace\(/);
+
+  assert.match(helper, /export async function abandonRmaDraft/);
+  assert.match(helper, /rpc\("rma_abandon_draft"/);
+  assert.match(helper, /\.eq\("draft_id", draftId\)/);
+  assert.match(helper, /\.is\("rma_request_id", null\)/);
+  assert.match(helper, /RMA_DRAFT_STORAGE_CLEANUP_PENDING/);
+  assert.match(helper, /cleanupExpiredRmaEvidenceForUser/);
+  assert.match(helper, /rma_acknowledge_attachment_cleanup/);
+  assert.match(draftRoute, /export async function DELETE/);
+  assert.match(draftRoute, /abandonRmaDraft/);
+  assert.match(helper, /RMA_DRAFT_ALREADY_SUBMITTED/);
+
+  assert.match(repairMigration, /t\.id = new\.wallet_transaction_id/);
+  assert.match(repairMigration, /t\.amount = new\.approved_amount/);
+  assert.match(repairMigration, /wallet_refund_request_id' = new\.id::text/);
+  assert.match(
+    repairMigration,
+    /order_wallet_refundable_amount\(v_order\.id\)[\s\S]*\+ v_current_wallet_credit/
+  );
+  assert.match(
+    repairMigration,
+    /drop policy if exists "partspro_stock_movements_staff_or_customer_read"/
+  );
+  assert.match(repairMigration, /create policy "partspro_stock_movements_staff_read"/);
+  assert.match(repairMigration, /using \(\(select private\.is_staff\(\)\)\)/);
+  assert.doesNotMatch(
+    repairMigration.slice(repairMigration.indexOf('create policy "partspro_stock_movements_staff_read"')),
+    /current_customer_id\(\)/
+  );
 });
 
 test("Migration A owns isolated draft/attachment/action tables and fixed storage path", () => {

@@ -22,6 +22,24 @@ export function reasonRequiresImage(reasonCode, policyScope = "legacy_unverified
 }
 
 /**
+ * A rejected request releases the line quantity. Closing that rejection is an
+ * archive operation, not a physical return, so it must keep the same release.
+ * Genuine closed returns always have receipt evidence or a commercial result.
+ *
+ * @param {{status?:string|null,receivedAt?:string|null,resolutionAction?:string|null}} input
+ */
+export function rmaRequestConsumesReturnQuantity({
+  status = null,
+  receivedAt = null,
+  resolutionAction = null,
+}) {
+  return !(
+    status === "rejected" ||
+    (status === "closed" && !receivedAt && !resolutionAction)
+  );
+}
+
+/**
  * @typedef {{
  *   action: string,
  *   quantity?: number|null,

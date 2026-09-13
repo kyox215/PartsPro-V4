@@ -45,10 +45,10 @@ import {
   rmaImageIdentity,
   selectRmaImageFiles,
   submitRmaWithAttachments,
-  type RmaUploadClientError,
 } from "@/lib/partspro-rma-upload-client.mjs";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import { cn } from "@/lib/utils";
+import type { Locale } from "@/i18n/config";
 import {
   orderStatusLabel,
   rmaCustomerStageLabel,
@@ -58,7 +58,7 @@ import {
   txFormat,
   type StorefrontTranslator,
 } from "@/i18n/dictionaries/storefront";
-import { useT } from "./i18n-provider";
+import { useI18n } from "./i18n-provider";
 import { StoreHeader } from "./store-header";
 
 type RmaResolutionChoice = Extract<RmaResolutionCode, "replacement" | "wallet_credit">;
@@ -139,6 +139,7 @@ type RmaShippedResponse = {
 type RmaSubmitState =
   | { message: string; status: "idle" }
   | { message: string; status: "loading" }
+  | { message: string; status: "submitted" }
   | { message: string; request: CustomerRmaDto; status: "success" }
   | { message: string; status: "error" };
 
@@ -200,13 +201,14 @@ export function RmaPage({
   initialOrderLineId?: string;
   initialRequestId?: string;
 }) {
-  const t = useT();
+  const { t, locale } = useI18n();
   const [form, setForm] = React.useState<RmaFormState>(initialForm);
   const [images, setImages] = React.useState<LocalRmaImage[]>([]);
   const [recentRequests, setRecentRequests] = React.useState<CustomerRmaDto[]>([]);
   const [orderOptions, setOrderOptions] = React.useState<RmaOrderOption[]>([]);
   const [dataLoading, setDataLoading] = React.useState(true);
   const [dataError, setDataError] = React.useState<string | null>(null);
+  const [rmaDataRevision, setRmaDataRevision] = React.useState(0);
   const [imageError, setImageError] = React.useState<string | null>(null);
   const [submitState, setSubmitState] = React.useState<RmaSubmitState>({
     status: "idle",
@@ -286,7 +288,7 @@ export function RmaPage({
     return () => {
       active = false;
     };
-  }, [initialOrderId, initialOrderLineId]);
+  }, [initialOrderId, initialOrderLineId, rmaDataRevision]);
 
   React.useEffect(() => {
     if (dataLoading || !initialRequestId) {
@@ -334,11 +336,38 @@ export function RmaPage({
     setUploadCheckpoint(nextCheckpoint);
   }
 
+  function recoverAlreadySubmittedRma(error: unknown) {
+    if (!isRecord(error) || error.code !== "RMA_DRAFT_ALREADY_SUBMITTED") {
+      return false;
+    }
+
+    handleUploadCheckpoint(null);
+    for (const image of imagesRef.current) {
+      URL.revokeObjectURL(image.previewUrl);
+    }
+    imagesRef.current = [];
+    setImages([]);
+    setImageError(null);
+    setUploadProgress(null);
+    imageIndexRef.current = null;
+    draftIdempotencyKeyRef.current = null;
+    submitIdempotencyKeyRef.current = null;
+    // Hide stale refundable quantities until the authoritative index reloads.
+    setOrderOptions([]);
+    setDataLoading(true);
+    setRmaDataRevision((current) => current + 1);
+    setSubmitState({
+      status: "submitted",
+      message: rmaUploadErrorMessage(error, t, locale),
+    });
+    return true;
+  }
+
   function resetSubmitForChange() {
     if (areRmaControlsLocked()) {
       return;
     }
-    if (submitState.status === "error" || submitState.status === "success") {
+    if (submitState.status === "error" || submitState.status === "success" || submitState.status === "submitted") {
       setSubmitState({
         status: "idle",
         message: tx(t, "storefront.rma.submit.changed", "修改已准备好，可以再次提交。"),
@@ -465,11 +494,12 @@ export function RmaPage({
         message: tx(t, "storefront.rma.submit.changed", "修改已准备好，可以再次提交。"),
       });
     } catch (error) {
+      if (recoverAlreadySubmittedRma(error)) {
+        return;
+      }
       setSubmitState({
         status: "error",
-        message: error instanceof Error
-          ? error.message
-          : tx(t, "storefront.rma.upload.restartError", "无法清理上传状态，请稍后重试。"),
+        message: rmaUploadErrorMessage(error, t, locale, "abandon"),
       });
     } finally {
       setIsRestartingUpload(false);
@@ -595,9 +625,12 @@ export function RmaPage({
         request: savedRequest,
       });
     } catch (error) {
+      if (recoverAlreadySubmittedRma(error)) {
+        return;
+      }
       const activeImageIndex = imageIndexRef.current;
-      const clientError = error as Partial<RmaUploadClientError>;
-      const isImageError = clientError.code?.startsWith("IMAGE") || clientError.code === "UNSUPPORTED_IMAGE";
+      const code = isRecord(error) && typeof error.code === "string" ? error.code : "";
+      const isImageError = code.startsWith("IMAGE") || ["UNSUPPORTED_IMAGE", "EMPTY_IMAGE", "HEIC_TOO_LARGE"].includes(code);
       if (activeImageIndex !== null && isImageError) {
         setImages((current) =>
           current.map((image, index) =>
@@ -605,9 +638,7 @@ export function RmaPage({
           )
         );
       }
-      const message = error instanceof Error
-        ? error.message
-        : tx(t, "storefront.rma.submit.error", "Errore durante l'invio della richiesta.");
+      const message = rmaUploadErrorMessage(error, t, locale);
       setImageError(
         isImageError
           ? message
@@ -1273,12 +1304,13 @@ function RmaSubmitStatus({
   if (state.status === "idle") {
     return <div className="text-xs text-slate-500" aria-live="polite">{state.message}</div>;
   }
+  const isSuccess = state.status === "success" || state.status === "submitted";
 
   return (
     <div
       className={cn(
         "rounded-lg border p-3 text-sm font-semibold",
-        state.status === "success"
+        isSuccess
           ? "border-emerald-200 bg-emerald-50 text-emerald-900"
           : state.status === "error"
             ? "border-amber-200 bg-amber-50 text-amber-900"
@@ -1288,7 +1320,7 @@ function RmaSubmitStatus({
       aria-live="polite"
     >
       <div className="flex items-start gap-2">
-        {state.status === "success" ? <CheckCircle2 className="mt-0.5 size-4 shrink-0" /> : null}
+        {isSuccess ? <CheckCircle2 className="mt-0.5 size-4 shrink-0" /> : null}
         {state.status === "error" ? <AlertTriangle className="mt-0.5 size-4 shrink-0" /> : null}
         <div>
           <div>{state.message}</div>
@@ -1489,6 +1521,57 @@ function createQuantityOptions(remainingQuantity: number) {
 function createClientId(prefix: string) {
   const randomUuid = globalThis.crypto?.randomUUID?.();
   return `${prefix}-${randomUuid ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+}
+
+function rmaUploadErrorMessage(
+  error: unknown,
+  t: StorefrontTranslator,
+  locale: Locale,
+  action: "submit" | "abandon" = "submit"
+) {
+  const code = isRecord(error) && typeof error.code === "string" ? error.code : "";
+  const status = isRecord(error) && typeof error.status === "number" ? error.status : null;
+  const message = (key: string, chinese: string, italian: string) =>
+    tx(t, key, locale === "zh-CN" ? chinese : italian);
+
+  if (code === "RMA_DRAFT_ALREADY_SUBMITTED") {
+    return message("storefront.rma.upload.alreadySubmitted", "申请已提交，请查看最近申请，无需重新上传。", "La richiesta è già stata inviata. Controlla le richieste recenti: non occorre caricare di nuovo le foto.");
+  }
+  if (code === "LOGIN_REQUIRED" || status === 401) {
+    return message("storefront.rma.upload.loginRequired", "登录已失效，请重新登录后重试。", "La sessione è scaduta. Accedi di nuovo e riprova.");
+  }
+  if (status === 403) {
+    return message("storefront.rma.upload.notAllowed", "暂时无法为此订单办理售后，请联系客服。", "Non è possibile procedere con il reso per questo ordine. Contatta l'assistenza.");
+  }
+  if (status === 409) {
+    return message("storefront.rma.upload.stateChanged", "申请状态已变化，请先查看最近的申请；如仍无法继续，请联系客服。", "Lo stato della richiesta è cambiato. Controlla le richieste recenti; se non riesci a proseguire, contatta l'assistenza.");
+  }
+  if (action === "abandon" || code === "RMA_DRAFT_ABANDON_FAILED") {
+    return message("storefront.rma.upload.restartError", "无法清理上传状态，请重试。", "Impossibile pulire lo stato del caricamento. Riprova.");
+  }
+  if (code === "RMA_UPLOAD_ABANDONED") {
+    return message("storefront.rma.upload.abandoned", "上次上传已放弃，请重新选择照片后提交。", "Il caricamento precedente è stato annullato. Seleziona nuovamente le foto e invia la richiesta.");
+  }
+  if (["INVALID_CHECKPOINT", "CHECKPOINT_INPUT_MISMATCH", "RMA_ATTACHMENT_CANCEL_FAILED"].includes(code)) {
+    return message("storefront.rma.upload.restartRequired", "上次上传无法继续，请选择“重新开始上传”后重试。", "Il caricamento precedente non può continuare. Seleziona «Ricomincia upload» e riprova.");
+  }
+  if (["IMAGE_TOO_LARGE", "HEIC_TOO_LARGE", "IMAGE_COMPRESSION_UNAVAILABLE"].includes(code)) {
+    return message("storefront.rma.image.tooLarge", "该照片超过 4 MB，且无法压缩。", "Questa foto supera il limite di 4 MB e non può essere compressa.");
+  }
+  if (["UNSUPPORTED_IMAGE", "EMPTY_IMAGE", "INVALID_IMAGE_COUNT"].includes(code)) {
+    return message("storefront.rma.upload.imageSelectionError", "请选择 1 至 6 张有效照片，支持 JPG、PNG、WebP、HEIC 或 HEIF。", "Scegli da 1 a 6 foto valide in formato JPG, PNG, WebP, HEIC o HEIF.");
+  }
+  if (code === "SHA256_UNAVAILABLE") {
+    return message("storefront.rma.upload.browserUnsupported", "此浏览器无法验证照片，请使用更新的浏览器重试。", "Questo browser non può verificare le foto. Riprova con un browser aggiornato.");
+  }
+  if (code.startsWith("RMA_ATTACHMENT_") && status === 422) {
+    return message("storefront.rma.upload.imageVerificationError", "照片验证失败，请重新开始上传并选择其他照片。", "La verifica della foto non è riuscita. Ricomincia il caricamento e scegli un'altra foto.");
+  }
+  if ((status !== null && status >= 500) || ["RMA_UPLOAD_TICKET_FAILED", "RMA_SERVICE_UNAVAILABLE"].includes(code)) {
+    return message("storefront.rma.upload.serviceError", "售后上传服务暂时不可用，请稍后在本页重试。", "Il servizio di caricamento resi non è disponibile al momento. Riprova tra poco da questa pagina.");
+  }
+  // Keep server diagnostics on the error object, never render them as customer copy.
+  return message("storefront.rma.upload.requestError", "暂时无法完成售后申请，请重试；如仍失败，请联系客服。", "Non è stato possibile completare la richiesta di reso. Riprova; se il problema persiste, contatta l'assistenza.");
 }
 
 function readApiError(payload: unknown) {
