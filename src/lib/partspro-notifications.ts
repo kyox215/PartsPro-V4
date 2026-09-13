@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
 import webpush, { type PushSubscription as WebPushSubscription } from "web-push";
 import {
   adminPermissions,
@@ -13,6 +14,16 @@ import { getPartsProSiteUrl } from "@/lib/partspro-site-url";
 
 type NotificationDbClient = ReturnType<typeof createServiceRoleClient>;
 type DbRow = Record<string, unknown>;
+type PushNotificationOutcome =
+  | "delivered"
+  | "failed"
+  | "not_configured"
+  | "not_subscribed"
+  | "partial";
+
+export type RmaNotificationPushStatus =
+  | PushNotificationOutcome
+  | "not_applicable";
 
 const bootstrapAdminEmails = new Set(
   (process.env.PARTSPRO_ADMIN_EMAILS ?? "kyox120@gmail.com")
@@ -37,6 +48,9 @@ export type NotificationEventType =
   | "new_order"
   | "order_status_updated"
   | "order_shipping_updated"
+  | "rma_action_required"
+  | "rma_status_updated"
+  | "rma_submitted"
   | "support_customer_message"
   | "support_staff_reply"
   | "support_assigned";
@@ -58,6 +72,7 @@ export type NotificationEventDto = {
   id: string;
   payload: Record<string, unknown>;
   readAt: string | null;
+  sourceAction: string | null;
   targetPath: string;
   title: string;
 };
@@ -172,7 +187,7 @@ export async function listNotificationEvents(input: {
   const [eventsResult, unreadResult] = await Promise.all([
     client
       .from("notification_events")
-      .select("id, audience, body, created_at, event_type, payload, read_at, target_path, title")
+      .select("id, audience, body, created_at, event_type, payload, read_at, source_action, target_path, title")
       .eq("recipient_user_id", input.userId)
       .order("created_at", { ascending: false })
       .limit(input.limit),
@@ -422,6 +437,164 @@ export async function notifySupportAssigned(input: {
   });
 }
 
+/**
+ * RMA status events are created durably inside the database transaction that
+ * changes the workflow. Claim and deliver that existing event here instead
+ * of creating a second notification in the API route. Browser push remains a
+ * best-effort, at-most-once side effect; the conditional claim prevents API
+ * retries and concurrent tabs from sending duplicate pushes.
+ */
+export async function deliverPendingRmaNotifications(input: {
+  requestId: string;
+  sourceAction: string;
+  status?: string | null;
+}) {
+  const client = getNotificationClient();
+  let eventCount = 0;
+  let pushDeliveredCount = 0;
+  let pushFailedCount = 0;
+  const outcomes: PushNotificationOutcome[] = [];
+  const batchSize = 20;
+
+  while (true) {
+    let request = client
+      .from("notification_events")
+      .select("*")
+      .eq("rma_request_id", input.requestId)
+      .eq("source_action", input.sourceAction)
+      .is("push_attempted_at", null)
+      .order("created_at", { ascending: true })
+      .limit(batchSize);
+
+    if (input.status) {
+      request = request.contains("payload", { status: input.status });
+    }
+
+    const { data, error } = await request;
+
+    if (error) {
+      throw new NotificationServiceError(
+        502,
+        "RMA_NOTIFICATION_READ_FAILED",
+        "Pending RMA notifications could not be read.",
+        error
+      );
+    }
+
+    const events = readRows(data);
+    if (events.length === 0) {
+      break;
+    }
+
+    for (const event of events) {
+      const eventId = readRequiredString(event.id, "notification.id");
+      const { data: claimedEvent, error: claimError } = await client
+        .from("notification_events")
+        .update({ push_attempted_at: new Date().toISOString() })
+        .eq("id", eventId)
+        .is("push_attempted_at", null)
+        .select("*")
+        .maybeSingle();
+
+      if (claimError) {
+        throw new NotificationServiceError(
+          502,
+          "RMA_NOTIFICATION_CLAIM_FAILED",
+          "Pending RMA notification could not be claimed.",
+          claimError
+        );
+      }
+
+      if (!isRecord(claimedEvent)) {
+        continue;
+      }
+
+      const result = await pushNotificationEvent(client, claimedEvent);
+      eventCount += 1;
+      pushDeliveredCount += result.delivered;
+      pushFailedCount += result.failed;
+      outcomes.push(result.outcome);
+    }
+  }
+
+  return {
+    eventCount,
+    pushDeliveredCount,
+    pushFailedCount,
+    pushStatus: summarizePushNotificationOutcomes(outcomes),
+  };
+}
+
+/**
+ * The customer shipment RPC is idempotent but does not create a staff
+ * notification. Deterministic per-recipient IDs make the application-side
+ * notification equally idempotent, then the shared pending-delivery claim
+ * handles response loss and concurrent retries.
+ */
+export async function notifyRmaCustomerShipped(input: {
+  requestId: string;
+  rmaNo?: string | null;
+}) {
+  const recipients = await listStaffRecipients([
+    "rma.inventory",
+    "product.adjust_stock",
+    "inventory.manage",
+    "rma.manage",
+    "orders.manage",
+  ]);
+
+  if (recipients.length === 0) {
+    return {
+      eventCount: 0,
+      pushDeliveredCount: 0,
+      pushFailedCount: 0,
+      pushStatus: "not_applicable" as const,
+    };
+  }
+
+  const client = getNotificationClient();
+  const sourceAction = "customer_mark_shipped";
+  const rows = [...new Set(recipients)].map((recipientUserId) => ({
+    id: deterministicNotificationUuid(
+      `rma:${input.requestId}:${sourceAction}:${recipientUserId}`
+    ),
+    actor_user_id: null,
+    audience: "staff",
+    body: "客户已确认寄出退回商品，请在到货后登记收货。",
+    event_type: "rma_action_required",
+    payload: {
+      action: "mark_received",
+      rmaNo: input.rmaNo ?? null,
+      status: "return_in_transit",
+    },
+    recipient_user_id: recipientUserId,
+    rma_request_id: input.requestId,
+    source_action: sourceAction,
+    source_id: input.requestId,
+    source_table: "rma_requests",
+    target_path: "/admin?panel=rma",
+    title: "客户已寄回售后商品",
+  }));
+  const { error } = await client
+    .from("notification_events")
+    .upsert(rows, { ignoreDuplicates: true, onConflict: "id" });
+
+  if (error) {
+    throw new NotificationServiceError(
+      502,
+      "RMA_STAFF_NOTIFICATION_CREATE_FAILED",
+      "The RMA receiving notification could not be created.",
+      error
+    );
+  }
+
+  return deliverPendingRmaNotifications({
+    requestId: input.requestId,
+    sourceAction,
+    status: "return_in_transit",
+  });
+}
+
 async function createAndPushNotifications(input: {
   actorUserId?: string | null;
   audience: NotificationAudience;
@@ -493,7 +666,7 @@ async function pushNotificationEvent(client: NotificationDbClient, event: DbRow)
 
   if (!config.configured || !config.publicKey || !configuredPrivateKey) {
     await updateNotificationPushCounters(client, eventId, 0, 0);
-    return { delivered: 0, failed: 0 };
+    return { delivered: 0, failed: 0, outcome: "not_configured" as const };
   }
 
   webpush.setVapidDetails(
@@ -515,13 +688,14 @@ async function pushNotificationEvent(client: NotificationDbClient, event: DbRow)
       message: error.message,
     });
     await updateNotificationPushCounters(client, eventId, 0, 0);
-    return { delivered: 0, failed: 0 };
+    return { delivered: 0, failed: 0, outcome: "failed" as const };
   }
 
+  const subscriptions = readRows(data);
   let delivered = 0;
   let failed = 0;
 
-  for (const subscription of readRows(data)) {
+  for (const subscription of subscriptions) {
     try {
       await webpush.sendNotification(
         toWebPushSubscription(subscription),
@@ -544,7 +718,54 @@ async function pushNotificationEvent(client: NotificationDbClient, event: DbRow)
 
   await updateNotificationPushCounters(client, eventId, delivered, failed);
 
-  return { delivered, failed };
+  return {
+    delivered,
+    failed,
+    outcome: pushNotificationOutcome({ delivered, failed, subscriptions: subscriptions.length }),
+  };
+}
+
+function pushNotificationOutcome(input: {
+  delivered: number;
+  failed: number;
+  subscriptions: number;
+}): PushNotificationOutcome {
+  if (input.subscriptions === 0) {
+    return "not_subscribed";
+  }
+  if (input.delivered > 0 && input.failed > 0) {
+    return "partial";
+  }
+  if (input.delivered > 0) {
+    return "delivered";
+  }
+  return "failed";
+}
+
+function summarizePushNotificationOutcomes(
+  outcomes: PushNotificationOutcome[]
+): RmaNotificationPushStatus {
+  if (outcomes.length === 0) {
+    return "not_applicable";
+  }
+
+  const unique = new Set(outcomes);
+  if (unique.size === 1) {
+    return outcomes[0] ?? "not_applicable";
+  }
+  if (unique.has("partial")) {
+    return "partial";
+  }
+  if (unique.has("failed")) {
+    return unique.has("delivered") ? "partial" : "failed";
+  }
+  if (unique.has("delivered")) {
+    return "partial";
+  }
+  if (unique.has("not_subscribed")) {
+    return "not_subscribed";
+  }
+  return "not_configured";
 }
 
 async function listStaffRecipients(requiredPermissions: string[]) {
@@ -683,10 +904,11 @@ function isStaffProfile(profile: DbRow) {
 function toPushPayload(event: DbRow) {
   const targetPath = readString(event.target_path) ?? "/";
   const targetUrl = new URL(targetPath, getPartsProSiteUrl()).toString();
+  const rmaCopy = rmaPushCopy(event);
 
   return {
     badge: "/pwa/badge-96.png",
-    body: readString(event.body) ?? "PartsPro 有新的通知。",
+    body: rmaCopy?.body ?? readString(event.body) ?? "PartsPro 有新的通知。",
     data: {
       notificationId: readString(event.id),
       targetPath,
@@ -694,7 +916,57 @@ function toPushPayload(event: DbRow) {
     },
     icon: "/pwa/icon-192.png",
     tag: readString(event.id) ?? undefined,
-    title: readString(event.title) ?? "PartsPro",
+    title: rmaCopy?.title ?? readString(event.title) ?? "PartsPro",
+  };
+}
+
+function rmaPushCopy(event: DbRow) {
+  const eventType = readString(event.event_type);
+  const audience = readString(event.audience);
+  const payload = isRecord(event.payload) ? event.payload : {};
+  const status = readString(payload.status);
+  const action = readString(payload.action);
+  const sourceAction = readString(event.source_action);
+
+  if (eventType === "rma_action_required" && audience === "staff" && action === "mark_received") {
+    return {
+      body: "客户已确认寄出退回商品，请在到货后登记收货。",
+      title: "客户已寄回售后商品",
+    };
+  }
+
+  if (eventType === "rma_submitted" && audience === "customer") {
+    return {
+      body: "La richiesta di reso è stata inviata ed è in attesa di verifica.",
+      title: "Richiesta di reso inviata",
+    };
+  }
+
+  if (eventType !== "rma_status_updated" || audience !== "customer") {
+    return null;
+  }
+
+  if (sourceAction === "request_wallet_refund") {
+    return {
+      body: "La richiesta di rimborso wallet è stata creata ed è in attesa di approvazione.",
+      title: "Rimborso RMA richiesto",
+    };
+  }
+
+  const bodies: Record<string, string> = {
+    approved:
+      "La richiesta RMA è approvata. Apri Resi; se mancano indirizzo o modalità di restituzione, contatta prima l'assistenza. Conferma “Ho spedito il reso” solo dopo la spedizione.",
+    closed: "La pratica RMA è stata chiusa.",
+    received: "Il prodotto restituito è stato ricevuto ed è in controllo.",
+    refunded: "Il rimborso wallet della pratica RMA è stato approvato.",
+    rejected: "La richiesta RMA è stata rifiutata. Apri Assistenza per i dettagli.",
+    replacement_sent: "La sostituzione collegata alla pratica RMA è stata spedita.",
+    under_review: "La richiesta RMA è ora in verifica.",
+  };
+
+  return {
+    body: (status && bodies[status]) || "Lo stato della richiesta RMA è stato aggiornato.",
+    title: "Stato reso aggiornato",
   };
 }
 
@@ -782,6 +1054,7 @@ function toNotificationEventDto(row: DbRow): NotificationEventDto {
     id: readRequiredString(row.id, "notification.id"),
     payload: isRecord(row.payload) ? row.payload : {},
     readAt: readString(row.read_at),
+    sourceAction: readString(row.source_action),
     targetPath: readString(row.target_path) ?? "/",
     title: readString(row.title) ?? "PartsPro",
   };
@@ -794,6 +1067,9 @@ function toNotificationEventType(value: string | null): NotificationEventType {
     case "new_order":
     case "order_status_updated":
     case "order_shipping_updated":
+    case "rma_action_required":
+    case "rma_status_updated":
+    case "rma_submitted":
     case "support_customer_message":
     case "support_staff_reply":
     case "support_assigned":
@@ -801,6 +1077,14 @@ function toNotificationEventType(value: string | null): NotificationEventType {
     default:
       return "customer_test";
   }
+}
+
+function deterministicNotificationUuid(value: string) {
+  const chars = createHash("sha256").update(value).digest("hex").slice(0, 32).split("");
+  chars[12] = "5";
+  chars[16] = ((Number.parseInt(chars[16] ?? "0", 16) & 0x3) | 0x8).toString(16);
+  const hex = chars.join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
 function readWebPushStatusCode(error: unknown) {

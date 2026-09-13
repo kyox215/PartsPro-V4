@@ -5,6 +5,7 @@ import Image from "next/image";
 import {
   CheckCircle2,
   ChevronRight,
+  Clock3,
   ExternalLink,
   FileImage,
   Loader2,
@@ -49,7 +50,8 @@ type ActionCode = RmaWorkflowAction;
 type Recommendation = RmaWorkflowRecommendation;
 type QcStatus = "passed" | "failed" | "not_required";
 type InventoryAction = "restock_return" | "mark_scrapped" | "supplier_return";
-type ActionDialog = "reject" | "qc" | "refund" | "replacement" | "inventory" | null;
+type ActionDialog = "receive" | "reject" | "qc" | "refund" | "replacement" | "inventory" | null;
+type DirectReceiptRequest = Pick<AdminRmaDto, "id" | "rmaNo" | "productName" | "quantity">;
 
 type RefundPreview = {
   available: boolean;
@@ -135,7 +137,7 @@ const rmaCopy = {
       assign: "Assegna a me",
       close: "Chiudi pratica",
       markReceived: "Ricevuto",
-      markReceivedFallback: "Ricevuto direttamente in negozio",
+      markReceivedFallback: "Merce già ricevuta in negozio / magazzino",
       recordQc: "Registra controllo",
       reject: "Rifiuta",
       requestRefund: "Richiedi rimborso wallet",
@@ -152,10 +154,15 @@ const rmaCopy = {
     batchCode: "Lotto",
     blocked: "Bloccato",
     cancel: "Annulla",
+    confirmReceived: "Conferma merce ricevuta",
     countsIncomplete: "Conteggi parziali: almeno il numero di richieste caricate.",
     customer: "Cliente",
     customerVisibleReason: "Motivo visibile al cliente",
     detailLoading: "Caricamento dettaglio...",
+    directReceipt: "Consegna diretta in negozio o magazzino",
+    directReceiptDescription: "Usa questa opzione solo se tutta la merce della richiesta è già arrivata. Se il cliente ha solo confermato la spedizione o il pacco è ancora in viaggio, attendi la consegna.",
+    directReceiptConfirmation: "Confermi di aver ricevuto fisicamente tutti gli articoli e l'intera quantità indicata? Questa operazione registra la ricezione, ma non approva il controllo qualità e non rimette la merce a stock.",
+    directReceiptChanged: "La richiesta o le azioni consentite sono cambiate. Chiudi questa finestra e verifica il dettaglio aggiornato prima di confermare.",
     emptyDetail: "Seleziona una richiesta per caricare il dettaglio esatto.",
     emptyQueue: "Nessuna richiesta in questa coda.",
     events: "Cronologia",
@@ -196,7 +203,33 @@ const rmaCopy = {
     title: "RMA e resi",
     unassigned: "Azioni avanzate",
     updated: "La coda e il dettaglio sono stati aggiornati.",
+    waiting: "In attesa",
+    waitingCustomerReturn: "In attesa del reso del cliente",
+    workflowComplete: "Pratica conclusa",
+    workflowCompleteDescription: "Non sono richieste altre operazioni per questa pratica.",
+    unknownBlocker: "Non è possibile proseguire con i dati attuali. Aggiorna il dettaglio; se il problema persiste, chiedi una verifica al responsabile.",
     workflow: "Prossimo passo consigliato",
+    reasons: {
+      waiting_customer_return: "La richiesta è approvata. Attendi che il cliente restituisca la merce o confermi di averla spedita dalla propria area RMA. È una normale fase di attesa, non un errore.",
+      waiting_wallet_approval: "La richiesta di rimborso wallet è in attesa di approvazione. Non inviare una seconda richiesta.",
+      waiting_qc: "Attendi la registrazione del risultato del controllo qualità.",
+      missing_requested_resolution: "Manca il tipo di soluzione richiesta. Chiedi al responsabile di verificare la pratica.",
+      missing_received_at: "Manca la conferma di ricezione. Verifica l'arrivo della merce e la registrazione con il magazzino.",
+      missing_received_quantity: "Manca la quantità ricevuta. Verifica la registrazione con il magazzino.",
+      partial_received_quantity: "La quantità ricevuta non corrisponde all'intera richiesta. Verifica la consegna con il magazzino prima di proseguire.",
+      missing_qc_status: "Manca un risultato valido del controllo qualità. Chiedi al responsabile di verificarlo.",
+      missing_resolution_quantity: "Manca la quantità associata al rimborso o alla sostituzione. Chiedi una verifica al responsabile.",
+      partial_resolution_quantity: "Il rimborso o la sostituzione non copre l'intera quantità richiesta. Chiedi una verifica al responsabile.",
+      missing_inventory_disposition: "Manca la disposizione della merce. Verifica la registrazione con il magazzino.",
+      missing_inventory_quantity: "Manca la quantità della disposizione stock. Verifica la registrazione con il magazzino.",
+      partial_inventory_disposition_quantity: "La disposizione stock non copre l'intera quantità richiesta. Verifica la registrazione con il magazzino.",
+      missing_replacement_order: "Manca l'ordine sostitutivo collegato. Chiedi al responsabile di verificare l'ordine e la spedizione.",
+      permission_denied: "Il tuo account non dispone del permesso necessario per il prossimo passo. Chiedi a un responsabile autorizzato di intervenire.",
+      invalid_state: "Lo stato della pratica non è coerente con i dati registrati. Aggiorna il dettaglio e chiedi una verifica al responsabile.",
+      missing_unit_price_snapshot: "Manca il prezzo unitario registrato nell'ordine. Chiedi una verifica al responsabile prima di richiedere il rimborso.",
+      wallet_balance_exhausted: "Non resta alcun importo rimborsabile sul wallet per questo ordine. Verifica i rimborsi già registrati.",
+      invalid_snapshot: "I dati registrati nell'ordine non consentono di calcolare un rimborso sicuro. Chiedi una verifica al responsabile.",
+    },
   },
   zh: {
     action: {
@@ -204,7 +237,7 @@ const rmaCopy = {
       assign: "分配给我",
       close: "关闭售后",
       markReceived: "标记收货",
-      markReceivedFallback: "门店已直接收到",
+      markReceivedFallback: "门店／仓库已收到商品",
       recordQc: "记录质检",
       reject: "拒绝",
       requestRefund: "申请钱包退款",
@@ -221,10 +254,15 @@ const rmaCopy = {
     batchCode: "批次",
     blocked: "已阻塞",
     cancel: "取消",
+    confirmReceived: "确认商品已收齐",
     countsIncomplete: "计数不完整：显示的是已加载记录的至少数量。",
     customer: "客户",
     customerVisibleReason: "客户可见原因",
     detailLoading: "正在加载精确详情...",
+    directReceipt: "门店或仓库直接收货",
+    directReceiptDescription: "仅当本申请的全部商品已实际到达门店或仓库时使用。客户仅确认寄出，或包裹仍在运输中时，请继续等待送达。",
+    directReceiptConfirmation: "请确认已实际收到下列商品及完整数量。此操作只记录收货，不会自动通过质检，也不会回补库存。",
+    directReceiptChanged: "申请或可用操作已变化。请关闭此窗口，核对最新详情后再确认。",
     emptyDetail: "选择一条申请以加载精确详情。",
     emptyQueue: "当前队列没有售后申请。",
     events: "时间线",
@@ -265,7 +303,33 @@ const rmaCopy = {
     title: "RMA 售后",
     unassigned: "高级操作",
     updated: "队列和详情已刷新。",
+    waiting: "等待中",
+    waitingCustomerReturn: "等待客户寄回",
+    workflowComplete: "处理已完成",
+    workflowCompleteDescription: "此申请无需继续操作。",
+    unknownBlocker: "当前资料暂不支持继续操作。请刷新详情；若仍无法继续，请联系负责人核查。",
     workflow: "服务端建议下一步",
+    reasons: {
+      waiting_customer_return: "申请已批准，等待客户寄回商品，或在售后页面确认已寄出。这是正常等待阶段，并非系统异常。",
+      waiting_wallet_approval: "钱包退款申请正在等待审批，请勿重复发起退款。",
+      waiting_qc: "等待登记质量检查结果。",
+      missing_requested_resolution: "缺少申请的处理方式，请联系负责人核查。",
+      missing_received_at: "缺少收货确认，请与仓库核对商品是否到达及收货记录。",
+      missing_received_quantity: "缺少收货数量，请与仓库核对收货记录。",
+      partial_received_quantity: "收货数量与本申请的完整数量不一致，请先与仓库核对实际到货情况。",
+      missing_qc_status: "缺少有效的质检结果，请联系负责人核查。",
+      missing_resolution_quantity: "缺少退款或换货对应的数量，请联系负责人核查。",
+      partial_resolution_quantity: "退款或换货尚未覆盖本申请的完整数量，请联系负责人核查。",
+      missing_inventory_disposition: "缺少库存处置记录，请与仓库核对。",
+      missing_inventory_quantity: "缺少库存处置数量，请与仓库核对记录。",
+      partial_inventory_disposition_quantity: "库存处置尚未覆盖本申请的完整数量，请与仓库核对。",
+      missing_replacement_order: "缺少关联的替换订单，请联系负责人核对订单及发货情况。",
+      permission_denied: "当前账号没有执行下一步所需的权限，请由具备权限的负责人继续处理。",
+      invalid_state: "申请状态与已有记录不一致，请刷新详情并联系负责人核查。",
+      missing_unit_price_snapshot: "缺少订单成交单价记录，请先联系负责人核查，再申请退款。",
+      wallet_balance_exhausted: "此订单已无可退的钱包金额，请核对已有退款记录。",
+      invalid_snapshot: "订单记录暂不支持安全计算退款金额，请联系负责人核查。",
+    },
   },
 };
 
@@ -287,6 +351,7 @@ export function AdminRmaPanel() {
   const [pendingAction, setPendingAction] = React.useState<ActionCode | null>(null);
   const [notice, setNotice] = React.useState<Notice | null>(null);
   const [actionDialog, setActionDialog] = React.useState<ActionDialog>(null);
+  const [directReceiptRequest, setDirectReceiptRequest] = React.useState<DirectReceiptRequest | null>(null);
   const [rejectReason, setRejectReason] = React.useState("");
   const [qcStatus, setQcStatus] = React.useState<QcStatus>("passed");
   const [qcNote, setQcNote] = React.useState("");
@@ -418,6 +483,17 @@ export function AdminRmaPanel() {
     if (!selectedRequest) {
       return;
     }
+    if (nextDialog === "receive") {
+      if (isDetailLoading || !canReceiveDirectly(selectedRequest)) {
+        return;
+      }
+      setDirectReceiptRequest({
+        id: selectedRequest.id,
+        rmaNo: selectedRequest.rmaNo,
+        productName: selectedRequest.productName,
+        quantity: selectedRequest.quantity,
+      });
+    }
     const detailForSelection = selectedDetail?.id === selectedId ? selectedDetail : null;
     setActionDialog(nextDialog);
     if (nextDialog === "reject") {
@@ -447,7 +523,9 @@ export function AdminRmaPanel() {
   }
 
   function triggerAction(action: ActionCode) {
-    if (action === "reject") {
+    if (action === "mark_received" && canReceiveDirectly(selectedRequest)) {
+      openActionDialog("receive");
+    } else if (action === "reject") {
       openActionDialog("reject");
     } else if (action === "record_qc") {
       openActionDialog("qc");
@@ -460,6 +538,13 @@ export function AdminRmaPanel() {
     } else {
       void runAction(action);
     }
+  }
+
+  function confirmDirectReceipt() {
+    if (isDetailLoading || !canConfirmDirectReceipt(selectedRequest, directReceiptRequest)) {
+      return;
+    }
+    void runAction("mark_received");
   }
 
   async function runAction(action: ActionCode, fields: ActionFields = {}) {
@@ -521,9 +606,11 @@ export function AdminRmaPanel() {
     }
   }
 
+  const showDirectReceipt = canReceiveDirectly(selectedRequest);
   const availableSecondaryActions = selectedRequest
     ? selectedRequest.availableActions.filter(
-        (action) => action !== selectedRequest.recommendedAction && action !== "assign"
+        (action) => action !== selectedRequest.recommendedAction && action !== "assign" &&
+          !(showDirectReceipt && action === "mark_received")
       )
     : [];
   const allowedInventoryActions = selectedRequest ? inventoryActionsFor(selectedRequest) : [];
@@ -693,12 +780,12 @@ export function AdminRmaPanel() {
                   </div>
                 </div>
 
-                <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-                  <div className="flex items-start gap-2">
-                    <ShieldAlert className="mt-0.5 size-5 shrink-0 text-primary" />
-                    <div className="min-w-0 flex-1">
-                      <div className="text-xs font-black uppercase text-primary">{copy.workflow}</div>
-                      {selectedRequest.recommendedAction ? (
+                {selectedRequest.recommendedAction ? (
+                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+                    <div className="flex items-start gap-2">
+                      <ShieldAlert className="mt-0.5 size-5 shrink-0 text-primary" />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-black uppercase text-primary">{copy.workflow}</div>
                         <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div>
                             <div className="font-black text-slate-900">
@@ -710,7 +797,7 @@ export function AdminRmaPanel() {
                           </div>
                           <Button
                             type="button"
-                            className="w-full sm:w-auto"
+                            className="h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto"
                             disabled={Boolean(pendingAction)}
                             onClick={() =>
                               selectedRequest.recommendedAction === "choose_inventory_disposition"
@@ -726,15 +813,34 @@ export function AdminRmaPanel() {
                             {recommendationLabel(selectedRequest.recommendedAction, copy)}
                           </Button>
                         </div>
-                      ) : (
-                        <div className="mt-2 text-sm font-semibold text-amber-800">
-                          <span className="font-black">{copy.blocked}:</span>{" "}
-                          {selectedRequest.blockedReason ?? copy.noPreview}
-                        </div>
-                      )}
+                      </div>
                     </div>
                   </div>
-                </div>
+                ) : (
+                  <WorkflowNotice notice={workflowNoticeFor(selectedRequest, copy)}>
+                    {showDirectReceipt ? (
+                      <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+                        <h4 className="text-sm font-black text-slate-900">{copy.directReceipt}</h4>
+                        <p id="rma-direct-receipt-hint" className="mt-1 text-sm leading-relaxed text-slate-600">
+                          {copy.directReceiptDescription}
+                        </p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="mt-3 h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto"
+                          data-rma-action="mark_received"
+                          aria-describedby="rma-direct-receipt-hint"
+                          aria-haspopup="dialog"
+                          disabled={Boolean(pendingAction) || isDetailLoading}
+                          onClick={() => triggerAction("mark_received")}
+                        >
+                          <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />
+                          {copy.action.markReceivedFallback}
+                        </Button>
+                      </div>
+                    ) : null}
+                  </WorkflowNotice>
+                )}
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <DetailBlock title={copy.noteSummary}>
@@ -844,6 +950,35 @@ export function AdminRmaPanel() {
         </div>
       </section>
 
+      <Dialog open={actionDialog === "receive"} onOpenChange={(open) => !open && setActionDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{copy.confirmReceived}</DialogTitle>
+            <DialogDescription>{copy.directReceiptConfirmation}</DialogDescription>
+          </DialogHeader>
+          <div className="min-w-0 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+            <div className="break-words font-black">{directReceiptRequest?.rmaNo ?? copy.rma}</div>
+            <div className="break-words">{directReceiptRequest?.productName}</div>
+            <div className="font-semibold">{copy.quantity}: {directReceiptRequest ? completeQuantity(directReceiptRequest) : "—"}</div>
+          </div>
+          {!canConfirmDirectReceipt(selectedRequest, directReceiptRequest) ? (
+            <p className="text-sm font-semibold text-amber-800" role="alert">{copy.directReceiptChanged}</p>
+          ) : null}
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={Boolean(pendingAction)} onClick={() => setActionDialog(null)}>{copy.cancel}</Button>
+            <Button
+              type="button"
+              className="h-auto min-h-11 whitespace-normal py-2"
+              disabled={!canConfirmDirectReceipt(selectedRequest, directReceiptRequest) || isDetailLoading || Boolean(pendingAction)}
+              onClick={confirmDirectReceipt}
+            >
+              {pendingAction === "mark_received" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="size-4" aria-hidden="true" />}
+              {copy.confirmReceived}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={actionDialog === "reject"} onOpenChange={(open) => !open && setActionDialog(null)}>
         <DialogContent>
           <DialogHeader>
@@ -929,7 +1064,7 @@ export function AdminRmaPanel() {
             ) : (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900" role="alert">
                 <div>{copy.noPreview}</div>
-                <div className="mt-1 text-xs">{refundPreview?.blockedReason ?? copy.previewBlocked}</div>
+                <div className="mt-1 text-xs">{rmaReasonLabel(refundPreview?.blockedReason, copy)}</div>
               </div>
             )}
             <div className="space-y-2">
@@ -1006,7 +1141,7 @@ export function AdminRmaPanel() {
           </DialogHeader>
           {allowedInventoryActions.length === 0 ? (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900" role="alert">
-              {selectedRequest?.blockedReason ?? copy.blocked}
+              {rmaReasonLabel(selectedRequest?.blockedReason, copy)}
             </div>
           ) : (
             <div className="space-y-3">
@@ -1096,6 +1231,81 @@ export function AdminRmaPanel() {
 
 type Copy = (typeof rmaCopy)["it"] | (typeof rmaCopy)["zh"];
 type QueueCounts = Record<QueueTab, number>;
+type WorkflowNoticeState = {
+  tone: "waiting" | "blocked" | "complete";
+  title: string;
+  message: string;
+};
+
+function rmaReasonLabel(reason: string | null | undefined, copy: Copy): string {
+  return reason && Object.hasOwn(copy.reasons, reason)
+    ? copy.reasons[reason as keyof Copy["reasons"]]
+    : copy.unknownBlocker;
+}
+
+function workflowNoticeFor(
+  request: Pick<AdminRmaDto, "blockedReason" | "workflowQueue">,
+  copy: Copy
+): WorkflowNoticeState {
+  const reason = request.blockedReason;
+  if (reason === "waiting_customer_return" || reason === "waiting_wallet_approval" || reason === "waiting_qc") {
+    return {
+      tone: "waiting",
+      title: reason === "waiting_customer_return" ? copy.waitingCustomerReturn : copy.waiting,
+      message: rmaReasonLabel(reason, copy),
+    };
+  }
+  if (!reason && request.workflowQueue === "archive") {
+    return { tone: "complete", title: copy.workflowComplete, message: copy.workflowCompleteDescription };
+  }
+  return { tone: "blocked", title: copy.blocked, message: rmaReasonLabel(reason, copy) };
+}
+
+function canReceiveDirectly(request: AdminRmaDto | null): boolean {
+  return Boolean(
+    request &&
+    request.workflowQueue === "awaiting_return" &&
+    request.blockedReason === "waiting_customer_return" &&
+    !request.recommendedAction &&
+    request.availableActions.includes("mark_received")
+  );
+}
+
+function canConfirmDirectReceipt(request: AdminRmaDto | null, confirmation: DirectReceiptRequest | null): boolean {
+  return Boolean(
+    request && confirmation &&
+    request.id === confirmation.id &&
+    completeQuantity(request) === completeQuantity(confirmation) &&
+    canReceiveDirectly(request)
+  );
+}
+
+function WorkflowNotice({ notice, children }: { notice: WorkflowNoticeState; children?: React.ReactNode }) {
+  const Icon = notice.tone === "waiting" ? Clock3 : notice.tone === "complete" ? CheckCircle2 : ShieldAlert;
+  return (
+    <div
+      className={cn(
+        "min-w-0 rounded-xl border p-4",
+        notice.tone === "waiting"
+          ? "border-sky-200 bg-sky-50 text-sky-900"
+          : notice.tone === "complete"
+            ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+            : "border-amber-200 bg-amber-50 text-amber-900"
+      )}
+      role={notice.tone === "blocked" ? "alert" : "status"}
+      aria-live="polite"
+    >
+      <div className="flex items-start gap-3">
+        <Icon className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
+        <div className="min-w-0 flex-1 break-words">
+          <h4 className="text-sm font-black">{notice.title}</h4>
+          <p className="mt-1 text-sm leading-relaxed">{notice.message}</p>
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function emptyQueueCounts(): QueueCounts {
   return {

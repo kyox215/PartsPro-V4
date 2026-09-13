@@ -6,6 +6,10 @@ import {
   RmaSimpleFlowError,
 } from "@/lib/partspro-rma-simple-flow";
 import { rmaCustomerShippedSchema } from "@/lib/partspro-rma-contract";
+import {
+  notifyRmaCustomerShipped,
+  type RmaNotificationPushStatus,
+} from "@/lib/partspro-notifications";
 
 export const dynamic = "force-dynamic";
 
@@ -36,9 +40,35 @@ export async function POST(request: Request, { params }: ShippedParams) {
 
   try {
     const data = await markRmaShipped(requestId, parsed.data);
+    let notification: RmaNotificationPushStatus = "not_applicable";
+    let notificationWarning: string | undefined;
+
+    if (data.status === "approved" && data.customerShippedAt) {
+      try {
+        const delivery = await notifyRmaCustomerShipped({
+          requestId,
+          rmaNo: data.rmaNo,
+        });
+        notification = delivery.pushStatus;
+        notificationWarning = pushDeliveryWarning(notification);
+      } catch (error) {
+        notification = "failed";
+        notificationWarning = "RMA receiving notification processing failed.";
+        console.error("[rma:customer-shipped] notification failed", {
+          message: error instanceof Error ? error.message : String(error),
+          requestId,
+        });
+      }
+    }
+
     return noStore(NextResponse.json({
       data,
-      meta: { flow: "rma_simple_v1", idempotent: true },
+      meta: {
+        flow: "rma_simple_v1",
+        idempotent: true,
+        notification,
+        notificationWarning,
+      },
     }));
   } catch (error) {
     if (error instanceof RmaSimpleFlowError) {
@@ -51,4 +81,10 @@ export async function POST(request: Request, { params }: ShippedParams) {
 function noStore(response: NextResponse) {
   response.headers.set("Cache-Control", "private, no-store, max-age=0");
   return response;
+}
+
+function pushDeliveryWarning(status: RmaNotificationPushStatus) {
+  return status === "failed" || status === "partial"
+    ? "The staff notification was recorded, but browser push delivery was incomplete."
+    : undefined;
 }

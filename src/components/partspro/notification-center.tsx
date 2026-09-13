@@ -31,11 +31,14 @@ import { useI18n } from "./i18n-provider";
 type NotificationAudience = "customer" | "staff";
 
 type NotificationItem = {
+  audience: NotificationAudience | null;
   body: string;
   createdAt: string;
   eventType: string;
   id: string;
+  payload: Record<string, unknown>;
   readAt: string | null;
+  sourceAction: string | null;
   targetPath: string;
   title: string;
 };
@@ -537,12 +540,14 @@ export function NotificationCenter({
               </div>
             ) : (
               <div className="space-y-1">
-                {items.map((item) => (
+                {items.map((item) => {
+                  const content = notificationContent(item, locale);
+                  return (
                   <button
                     key={item.id}
                     type="button"
                     className={cn(
-                      "w-full rounded-md border px-2.5 py-2 text-left transition hover:border-primary/40 hover:bg-primary/5",
+                      "w-full rounded-md border px-2.5 py-2 text-left transition hover:border-primary/40 hover:bg-primary/5 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40",
                       item.readAt
                         ? "border-slate-200 bg-white"
                         : "border-primary/20 bg-primary/5"
@@ -552,8 +557,8 @@ export function NotificationCenter({
                     }}
                   >
                     <div className="flex min-w-0 items-start justify-between gap-2">
-                      <p className="line-clamp-1 text-xs font-black text-slate-950">
-                        {notificationTitle(item, locale)}
+                      <p className="min-w-0 break-words text-xs font-black text-slate-950">
+                        {content.title}
                       </p>
                       {item.readAt ? (
                         <Check className="mt-0.5 size-3 shrink-0 text-emerald-600" />
@@ -561,14 +566,15 @@ export function NotificationCenter({
                         <span className="mt-1 size-2 shrink-0 rounded-full bg-primary" />
                       )}
                     </div>
-                    <p className="mt-1 line-clamp-2 text-xs font-semibold leading-5 text-slate-600">
-                      {item.body}
+                    <p className={cn("mt-1 break-words text-xs font-semibold leading-5 text-slate-600", !content.isRma && "line-clamp-2")}>
+                      {content.body}
                     </p>
                     <p className="mt-1 text-[11px] font-semibold text-slate-400">
                       {formatNotificationTime(item.createdAt)}
                     </p>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -805,22 +811,116 @@ function readNotification(value: unknown): NotificationItem | null {
   }
 
   return {
+    audience: value.audience === "customer" || value.audience === "staff" ? value.audience : null,
     body: typeof value.body === "string" ? value.body : "",
     createdAt: typeof value.createdAt === "string" ? value.createdAt : new Date().toISOString(),
     eventType: typeof value.eventType === "string" ? value.eventType : "",
     id: value.id,
+    payload: isRecord(value.payload) ? value.payload : {},
     readAt: typeof value.readAt === "string" ? value.readAt : null,
+    sourceAction: typeof value.sourceAction === "string" ? value.sourceAction : null,
     targetPath: typeof value.targetPath === "string" ? value.targetPath : "/",
     title: typeof value.title === "string" ? value.title : "PartsPro",
   };
 }
 
-function notificationTitle(item: NotificationItem, locale: string) {
-  if (item.eventType === "new_order") {
-    return locale === "zh-CN" ? "新订单" : "Nuovo ordine";
+function notificationContent(item: NotificationItem, locale: string) {
+  const rma = rmaNotificationCopy(item, locale);
+  if (rma) {
+    return { ...rma, isRma: true };
   }
 
-  return item.title;
+  return {
+    title: item.eventType === "new_order" ? (locale === "zh-CN" ? "新订单" : "Nuovo ordine") : item.title,
+    body: item.body,
+    isRma: false,
+  };
+}
+
+function rmaNotificationCopy(item: NotificationItem, locale: string) {
+  if (item.audience !== "customer" && item.audience !== "staff") {
+    return null;
+  }
+  const isZh = locale === "zh-CN";
+  const isStaff = item.audience === "staff";
+  const rmaNo = typeof item.payload.rma_no === "string"
+    ? item.payload.rma_no.trim()
+    : typeof item.payload.rmaNo === "string" ? item.payload.rmaNo.trim() : "";
+  const withReference = (body: string) => rmaNo ? `${rmaNo} · ${body}` : body;
+
+  if (item.eventType === "rma_submitted") {
+    return {
+      title: isStaff ? (isZh ? "新的售后申请" : "Nuova richiesta di reso") : (isZh ? "售后申请已提交" : "Richiesta di reso inviata"),
+      body: withReference(isStaff
+        ? (isZh ? "客户提交了售后申请，请进入后台售后审核。" : "Il cliente ha inviato una richiesta di reso. Apri la sezione RMA in amministrazione per verificarla.")
+        : (isZh ? "售后申请已提交，正在等待审核。进入售后页面可查看进度。" : "La richiesta di reso è stata inviata ed è in attesa di verifica. Apri la pagina Resi per seguirne lo stato.")),
+    };
+  }
+
+  if (item.eventType === "rma_action_required") {
+    if (!isStaff || item.payload.action !== "mark_received") {
+      return null;
+    }
+    return {
+      title: isZh ? "客户已确认寄回商品" : "Il cliente ha confermato la spedizione del reso",
+      body: withReference(isZh
+        ? "客户已确认寄出退回商品。请等待实物到达，收到完整商品后再进入后台登记收货。"
+        : "Il cliente ha confermato di aver spedito il reso. Attendi l'arrivo della merce e registra la ricezione in amministrazione solo dopo aver ricevuto l'intera quantità."),
+    };
+  }
+
+  if (item.eventType !== "rma_status_updated") {
+    return null;
+  }
+  if (!isStaff && item.sourceAction === "request_wallet_refund") {
+    return {
+      title: isZh ? "钱包退款等待审核" : "Rimborso wallet in attesa di approvazione",
+      body: withReference(isZh
+        ? "退款申请已创建，等待审核。请勿重复申请；审批结果可在售后页面查看。"
+        : "La richiesta di rimborso è stata creata ed è in attesa di approvazione. Non inviare una seconda richiesta; puoi seguire l'esito nella pagina Resi."),
+    };
+  }
+  const status = typeof item.payload.status === "string" ? item.payload.status : "";
+  const bodies: Record<string, string> = isZh ? {
+    submitted: "售后申请已提交，正在等待审核。",
+    requested: "售后申请已提交，正在等待审核。",
+    under_review: "售后申请正在审核中。",
+    approved: isStaff
+      ? "售后申请已批准，等待客户寄回商品或确认已寄出。"
+      : "售后申请已批准。请进入售后页面（/rma）查看；若尚未收到寄回方式或地址，请先联系客服确认。实际寄出后再点击“我已寄回”。",
+    rejected: "售后申请未获批准，请进入售后页面查看原因和详情。",
+    return_in_transit: isStaff
+      ? "客户已确认寄出退回商品，请在实物到达后登记收货。"
+      : "已记录您寄回商品的确认，正在等待门店或仓库收货。",
+    received: "退回商品已收到，请进入售后页面查看检查与处理进度。",
+    refunded: "此售后的钱包退款已批准，请查看钱包记录。",
+    replacement_sent: "此售后的替换商品已发出，请进入售后页面查看详情。",
+    replaced: "此售后的替换商品已发出，请进入售后页面查看详情。",
+    closed: "此售后申请已关闭，请进入售后页面查看处理记录。",
+  } : {
+    submitted: "La richiesta di reso è stata inviata ed è in attesa di verifica.",
+    requested: "La richiesta di reso è stata inviata ed è in attesa di verifica.",
+    under_review: "La richiesta di reso è in verifica.",
+    approved: isStaff
+      ? "La richiesta di reso è approvata. Attendi che il cliente restituisca la merce o confermi la spedizione."
+      : "La richiesta di reso è approvata. Apri la pagina Resi (/rma). Se non hai ancora ricevuto modalità e indirizzo per il reso, contatta prima l'assistenza. Dopo aver spedito la merce, conferma “Ho spedito il reso”.",
+    rejected: "La richiesta di reso non è stata approvata. Apri la pagina Resi per il motivo e i dettagli.",
+    return_in_transit: isStaff
+      ? "Il cliente ha confermato la spedizione del reso. Registra la ricezione solo dopo l'arrivo della merce."
+      : "La conferma di spedizione del reso è registrata. Siamo in attesa della consegna in negozio o magazzino.",
+    received: "La merce restituita è stata ricevuta. Apri la pagina Resi per seguire i controlli e la gestione.",
+    refunded: "Il rimborso wallet per questo reso è stato approvato. Controlla i movimenti del wallet.",
+    replacement_sent: "La merce sostitutiva è stata spedita. Apri la pagina Resi per i dettagli.",
+    replaced: "La merce sostitutiva è stata spedita. Apri la pagina Resi per i dettagli.",
+    closed: "La pratica di reso è stata chiusa. Apri la pagina Resi per consultare lo storico.",
+  };
+  if (!Object.hasOwn(bodies, status)) {
+    return null;
+  }
+  return {
+    title: isZh ? "售后状态更新" : "Stato del reso aggiornato",
+    body: withReference(bodies[status]),
+  };
 }
 
 function detectBrowser() {

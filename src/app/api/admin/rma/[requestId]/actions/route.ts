@@ -19,6 +19,10 @@ import {
   getAdminRmaCapabilities,
   toAdminRmaDto,
 } from "@/lib/partspro-rma-admin-dto";
+import {
+  deliverPendingRmaNotifications,
+  type RmaNotificationPushStatus,
+} from "@/lib/partspro-notifications";
 import { repositoryErrorResponse, requireAdminApi } from "../../../_shared";
 
 export const dynamic = "force-dynamic";
@@ -78,6 +82,29 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
       action: parsedBody.data.action as AdminRmaAction,
       requestId: parsedRequestId.data,
     });
+    let notification: RmaNotificationPushStatus = "not_applicable";
+    let notificationWarning: string | undefined;
+
+    try {
+      const delivery = await deliverPendingRmaNotifications({
+        requestId: parsedRequestId.data,
+        sourceAction: isReviewAction(parsedBody.data.action)
+          ? "review_status_change"
+          : parsedBody.data.action,
+        status: result.data.status,
+      });
+      notification = delivery.pushStatus;
+      notificationWarning = pushDeliveryWarning(notification);
+    } catch (error) {
+      notification = "failed";
+      notificationWarning = "RMA notification processing failed.";
+      console.error("[admin:rma:action] notification failed", {
+        action: parsedBody.data.action,
+        message: error instanceof Error ? error.message : String(error),
+        requestId: parsedRequestId.data,
+      });
+    }
+
     const signedRequest = await signSingleRmaRequestAttachments(result.data);
     const [hydratedRequest] = await hydrateCustomerRmaAttachments(
       [signedRequest],
@@ -89,11 +116,11 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
       data: toAdminRmaDto(hydratedRequest ?? signedRequest, capabilities),
       meta: {
         action: parsedBody.data.action,
+        notification,
+        notificationWarning,
         source: result.source,
         workflow:
-          parsedBody.data.action === "start_review" ||
-          parsedBody.data.action === "approve" ||
-          parsedBody.data.action === "reject"
+          isReviewAction(parsedBody.data.action)
             ? "admin_perform_rma_review_action"
             : "admin_perform_rma_action_v3",
       },
@@ -108,6 +135,16 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
       "Admin after-sales action could not be processed."
     );
   }
+}
+
+function isReviewAction(action: AdminRmaAction) {
+  return action === "start_review" || action === "approve" || action === "reject";
+}
+
+function pushDeliveryWarning(status: RmaNotificationPushStatus) {
+  return status === "failed" || status === "partial"
+    ? "The in-app notification was recorded, but browser push delivery was incomplete."
+    : undefined;
 }
 
 function requiredPermissionForAction(action: AdminRmaAction) {

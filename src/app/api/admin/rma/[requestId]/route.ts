@@ -15,6 +15,10 @@ import {
   getAdminRmaCapabilities,
   toAdminRmaDto,
 } from "@/lib/partspro-rma-admin-dto";
+import {
+  deliverPendingRmaNotifications,
+  type RmaNotificationPushStatus,
+} from "@/lib/partspro-notifications";
 import { repositoryErrorResponse, requireAdminApi } from "../../_shared";
 
 export const dynamic = "force-dynamic";
@@ -145,6 +149,26 @@ export async function PATCH(request: NextRequest, { params }: AdminRmaParams) {
       requestId: parsedParams.data,
       ...parsedBody.data,
     });
+    let notification: RmaNotificationPushStatus = "not_applicable";
+    let notificationWarning: string | undefined;
+
+    try {
+      const delivery = await deliverPendingRmaNotifications({
+        requestId: parsedParams.data,
+        sourceAction: "review_status_change",
+        status: result.data.status,
+      });
+      notification = delivery.pushStatus;
+      notificationWarning = pushDeliveryWarning(notification);
+    } catch (error) {
+      notification = "failed";
+      notificationWarning = "RMA notification processing failed.";
+      console.error("[admin:rma:patch] notification failed", {
+        message: error instanceof Error ? error.message : String(error),
+        requestId: parsedParams.data,
+      });
+    }
+
     const signedRequest = await signSingleRmaRequestAttachments(result.data);
     const [hydratedRequest] = await hydrateCustomerRmaAttachments(
       [signedRequest],
@@ -155,6 +179,8 @@ export async function PATCH(request: NextRequest, { params }: AdminRmaParams) {
     return NextResponse.json({
       data: toAdminRmaDto(hydratedRequest ?? signedRequest, capabilities),
       meta: {
+        notification,
+        notificationWarning,
         source: result.source,
         workflow: "admin_update_rma_request",
       },
@@ -169,4 +195,10 @@ export async function PATCH(request: NextRequest, { params }: AdminRmaParams) {
       "Admin after-sales request could not be updated."
     );
   }
+}
+
+function pushDeliveryWarning(status: RmaNotificationPushStatus) {
+  return status === "failed" || status === "partial"
+    ? "The in-app notification was recorded, but browser push delivery was incomplete."
+    : undefined;
 }

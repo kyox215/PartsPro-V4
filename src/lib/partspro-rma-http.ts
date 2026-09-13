@@ -5,6 +5,10 @@ import {
   RmaSimpleFlowError,
   submitRmaRequest,
 } from "@/lib/partspro-rma-simple-flow";
+import {
+  deliverPendingRmaNotifications,
+  type RmaNotificationPushStatus,
+} from "@/lib/partspro-notifications";
 
 export async function handleRmaSubmit(request: Request) {
   const body = await readJsonBody(request);
@@ -28,12 +32,33 @@ export async function handleRmaSubmit(request: Request) {
 
   try {
     const data = await submitRmaRequest(parsed.data);
+    let notification: RmaNotificationPushStatus = "not_applicable";
+    let notificationWarning: string | undefined;
+
+    try {
+      const delivery = await deliverPendingRmaNotifications({
+        requestId: data.id,
+        sourceAction: "customer_submit",
+      });
+      notification = delivery.pushStatus;
+      notificationWarning = pushDeliveryWarning(notification);
+    } catch (error) {
+      notification = "failed";
+      notificationWarning = "RMA submission notification processing failed.";
+      console.error("[rma:submit] notification failed", {
+        message: error instanceof Error ? error.message : String(error),
+        requestId: data.id,
+      });
+    }
+
     return noStore(
       NextResponse.json(
         {
           data,
           meta: {
             flow: "rma_simple_v1",
+            notification,
+            notificationWarning,
             policyScope: data.policyScope,
             uploadPolicy: "photos_only_v1",
           },
@@ -63,4 +88,10 @@ async function handleLegacyRmaSubmit() {
 export function noStore(response: NextResponse) {
   response.headers.set("Cache-Control", "private, no-store, max-age=0");
   return response;
+}
+
+function pushDeliveryWarning(status: RmaNotificationPushStatus) {
+  return status === "failed" || status === "partial"
+    ? "The in-app notification was recorded, but browser push delivery was incomplete."
+    : undefined;
 }

@@ -313,6 +313,7 @@ export type AdminWalletRefund = {
   orderLineId: string | null;
   orderNo: string | null;
   reason: string;
+  rmaRequestId: string | null;
   requestType: string;
   requestedAt: string;
   requestedBy: string | null;
@@ -15855,6 +15856,7 @@ function mapAdminWalletRefundRow(row: DbRow): AdminWalletRefund | null {
     orderLineId: pickString(row, ["order_line_id", "orderLineId"]),
     orderNo: pickString(row, ["order_no", "order_number", "reference"]),
     reason: pickString(row, ["reason", "note"]) ?? "",
+    rmaRequestId: pickString(row, ["rma_request_id", "rmaRequestId"]),
     requestType: pickString(row, ["request_type", "requestType", "type"]) ?? "",
     requestedAt:
       pickString(row, ["requested_at", "submitted_at", "created_at"]) ?? "",

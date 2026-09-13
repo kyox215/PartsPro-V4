@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
+import {
+  deliverPendingRmaNotifications,
+  type RmaNotificationPushStatus,
+} from "@/lib/partspro-notifications";
 import { approveAdminWalletRefundRequest } from "@/lib/partspro-repository";
 import { repositoryErrorResponse, requireAdminApi } from "../../_shared";
 
@@ -47,10 +51,36 @@ export async function PATCH(request: NextRequest, { params }: WalletRefundParams
       note: parsed.data.note,
       refundId: decodeURIComponent(refundId),
     });
+    const rmaRequestId = readRmaRequestId(result.data);
+    let notification: RmaNotificationPushStatus = "not_applicable";
+    let notificationWarning: string | undefined;
+
+    if (rmaRequestId) {
+      try {
+        const delivery = await deliverPendingRmaNotifications({
+          requestId: rmaRequestId,
+          sourceAction: "wallet_refund_approved",
+          status: "refunded",
+        });
+        notification = delivery.pushStatus;
+        notificationWarning = pushDeliveryWarning(notification);
+      } catch (error) {
+        notification = "failed";
+        notificationWarning = "RMA refund notification processing failed.";
+        console.error("[admin:wallet-refund] RMA notification failed", {
+          message: error instanceof Error ? error.message : String(error),
+          requestId: rmaRequestId,
+        });
+      }
+    }
 
     return NextResponse.json({
       data: result.data,
-      meta: { source: result.source },
+      meta: {
+        notification,
+        notificationWarning,
+        source: result.source,
+      },
     });
   } catch (error) {
     return repositoryErrorResponse(
@@ -59,4 +89,22 @@ export async function PATCH(request: NextRequest, { params }: WalletRefundParams
       "Wallet refund request could not be reviewed."
     );
   }
+}
+
+function readRmaRequestId(refund: {
+  requestType: string;
+  rmaRequestId: string | null;
+}) {
+  if (refund.requestType !== "rma_return") {
+    return null;
+  }
+
+  const parsed = z.string().uuid().safeParse(refund.rmaRequestId);
+  return parsed.success ? parsed.data : null;
+}
+
+function pushDeliveryWarning(status: RmaNotificationPushStatus) {
+  return status === "failed" || status === "partial"
+    ? "The in-app notification was recorded, but browser push delivery was incomplete."
+    : undefined;
 }
