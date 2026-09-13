@@ -1,8 +1,8 @@
 # P1-2026-09-13-rma-waiting-return-closure
 
-状态：ready_for_release
+状态：done
 
-看板目录：urgent
+看板目录：done
 
 优先级：P1
 
@@ -129,7 +129,9 @@ git diff --check
 | `npm run build` | passed | Next.js 16.2.6 production build、TypeScript 和静态页面生成通过 |
 | migration 边界核对 | passed | 本任务未新增或修改 `supabase/migrations/*.sql`，无需也未执行 linked db push |
 | PartsPro 业务契约独立审查 | passed | 最终复核无阻塞问题；浏览器 push 明确保持 best-effort，不影响数据库内通知和业务状态提交 |
-| Vercel production smoke | pending |  |
+| Vercel production deployment | passed | commit `ae532874a1cf9aa1ee74c726572d1e5d04bd7812`；deployment `dpl_J9Uorqmp7hjw1sYJ7o3AqCbfV1yi` 为 READY，custom aliases 已绑定 |
+| Vercel production smoke | passed | `/` 200 且包含目标 deployment marker；通知配置 200/configured；客户和后台 RMA API 匿名访问均 401；RMA 深链匿名访问进入 `/login` 并保留 `/rma` 返回路径 |
+| Vercel runtime errors | passed | 目标 RMA、通知及页面路由最近 15 分钟无 runtime error cluster |
 
 ## 执行记录
 
@@ -138,9 +140,9 @@ git diff --check
 - 开始：2026-09-13
 - review：2026-09-13，业务契约独立审查通过，无阻塞问题。
 - verified：2026-09-13，RMA 113/113、storefront 6/6、全量 lint/build、diff check 通过。
-- released：
-- closed：
+- released：2026-09-13，`ae53287` 已推送 `main`，对应 Vercel production deployment READY。
+- closed：2026-09-13，生产只读 smoke 与运行时错误检查通过；未修改真实售后业务数据。
 
 ## 结果
 
-发布候选已验证。截图状态确认为正常等待客户动作，不是数据库损坏；后台现按“等待客户寄回”呈现，受权员工可在实物完整到达后经二次确认登记直接收货。客户提交、审批、寄出、收货、质检、退款/换货、库存处置和关闭各阶段的数据库内通知与浏览器 push 分发路径已补齐；push 未订阅或投递失败不会回滚已提交的业务动作。等待推送、Vercel production READY 与只读 smoke 后关闭任务。
+已完成并发布。截图状态确认为正常等待客户动作，不是数据库损坏；后台现按“等待客户寄回”呈现，受权员工可在实物完整到达后经二次确认登记直接收货。客户提交、审批、寄出、收货、质检、退款/换货、库存处置和关闭各阶段的数据库内通知与浏览器 push 分发路径已补齐；push 未订阅或投递失败不会回滚已提交的业务动作。当前截图客户没有有效浏览器 push 订阅，仍会收到数据库内通知；启用浏览器通知后才具备 push 投递条件。生产部署、匿名权限边界、RMA 深链和相关运行时错误检查均通过，且未写入真实售后业务数据。
