@@ -1,8 +1,8 @@
 # P1-2026-09-13-rma-closure-repair
 
-状态：in_progress
+状态：done
 
-看板目录：urgent
+看板目录：done
 
 优先级：P1
 
@@ -131,6 +131,9 @@ git diff --check
 | `supabase db push --linked` | pass | 老板明确批准后已应用；远端历史已记录 `20260913185143` 且再次完全对齐 |
 | 生产迁移后只读断言 | pass | 10/10；实际线上约束、wrapper 顺序、private ACL、GC/ack、钱包校验和库存 policy 均符合候选定义 |
 | Supabase security/performance advisors | pass with existing advisories | 未发现本次 migration 的阻塞项；RMA RPC-only 表和受保护 customer RPC 的通用提示已复核，索引提示为既有性能债务 |
+| GitHub main | pass | 非强制快进 `ddf1e13..785c1f2`；生产代码提交为 `785c1f2df1113aa363700126b2c1b130fe5a0867` |
+| Vercel Git production deployment | pass | `dpl_Cc9WvqyRvqj6u1rZtpc9sTsPcZaC` 在 Node 24 构建为 `READY`，提交 SHA 精确匹配，`partspro.app` / `www.partspro.app` alias 无错误 |
+| 生产只读 smoke | pass | `/rma` 已登录页加载订单、可退数量与最近申请；客户/后台未登录 API 均为 401；浏览器控制台和部署 runtime 无 error/warning |
 
 ## 执行记录
 
@@ -139,9 +142,11 @@ git diff --check
 - 开始：2026-09-13
 - review：独立 RMA 守门审查已完成首轮
 - verified：本地、线上 schema 隔离重放、linked 核对、生产应用后断言与 advisors 均已完成
-- released：待完成
-- closed：待完成
+- released：2026-09-13，Supabase migration、GitHub main 与 Vercel 生产部署均已完成
+- closed：2026-09-13
 
 ## 结果
 
-待实现、验证与发布后补充。
+已修复图片票据路径约束、草稿放弃与失联重试、过期证据 GC、撤销会员后的幂等重放、拒绝关单数量、钱包退款重复扣减及库存流水客户可见性等闭环缺陷。生产 migration、代码推送、Vercel 部署和不写业务数据的 smoke 均已完成。
+
+残余说明：本任务未获授权创建生产测试草稿、上传照片、提交申请或执行真实退款/库存动作，因此没有把只读 smoke 表述为生产写入 E2E；这些路径由 91 项 RMA 测试、线上 schema 重放、并发验证和迁移后定义断言覆盖。
