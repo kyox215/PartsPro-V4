@@ -14,13 +14,11 @@ type Shelf = { products: PartProduct[]; total: number };
 // its own in-flight request so a slow shelf never holds back the other sections.
 const publicShelves = new Map<ShelfKind, { expiresAt: number; data: Shelf }>();
 const publicRequests = new Map<ShelfKind, Promise<Shelf>>();
-let bannerCache: { expiresAt: number; data: Awaited<ReturnType<typeof listActiveHomeBanners>> } | undefined;
-let bannerRequest: ReturnType<typeof listActiveHomeBanners> | undefined;
 
 export default async function Home() {
   const accountPromise = getCurrentAccountContext();
   const groupsPromise = listCatalogDepartmentGroups();
-  const bannersPromise = readBanners();
+  const bannersPromise = listActiveHomeBanners();
   const shelves = Object.fromEntries(
     (["remax", "hot", "new", "stocked"] as const).map((kind) => [kind, accountPromise.then((account) => readShelf(kind, account))])
   ) as Record<ShelfKind, Promise<Shelf>>;
@@ -94,12 +92,4 @@ async function fetchShelf(kind: ShelfKind, buyerCustomerId: string | undefined, 
     ? await pageHotCatalogProducts({ limit }, options)
     : await pageCatalogProducts({ limit, offset: 0, sort: kind === "new" ? "created_desc" : "stock_desc", ...(kind === "stocked" ? { minStock: 1 } : {}) }, options);
   return result.data;
-}
-
-function readBanners() {
-  if (bannerCache && bannerCache.expiresAt > Date.now()) return Promise.resolve(bannerCache.data);
-  return bannerRequest ??= listActiveHomeBanners().then((data) => {
-    bannerCache = { data, expiresAt: Date.now() + 30_000 };
-    return data;
-  }).finally(() => { bannerRequest = undefined; });
 }

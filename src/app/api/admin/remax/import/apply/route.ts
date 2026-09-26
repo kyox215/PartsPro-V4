@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { invalidatePublicNavigationCache } from "@/lib/partspro-public-cache";
 import { apiError } from "@/lib/partspro-api";
 import { hasAdminPermission } from "@/lib/partspro-admin-auth";
 import {
@@ -66,7 +67,9 @@ export async function POST(request: Request) {
       });
     }
 
-    return NextResponse.json({ data: await importAdminRemaxBatch(preview.payload) });
+    const data = await importAdminRemaxBatch(preview.payload);
+    invalidatePublicNavigationCache();
+    return NextResponse.json({ data });
   } catch (error) {
     if (error instanceof RemaxImportError) {
       return apiError(400, "INVALID_REMAX_IMPORT", error.message, error.details);

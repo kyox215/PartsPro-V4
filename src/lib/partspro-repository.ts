@@ -5,6 +5,8 @@ import {
   isSupabaseServiceRoleConfigured,
 } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { createPublicReadClient } from "@/lib/supabase/public";
+import { createCachedPublicRead, invalidatePublicBannersCache, invalidatePublicNavigationCache, publicBannersTag, publicNavigationTag } from "@/lib/partspro-public-cache";
 import {
   readLinkedCustomerId,
   readLinkedCustomerRow,
@@ -183,15 +185,10 @@ let catalogModelGroupsCache:
   | null = null;
 let catalogModelGroupsRequest: Promise<RepositoryResult<DeviceModelGroup[]>> | null =
   null;
-let catalogDepartmentGroupsCache:
-  | {
-      expiresAt: number;
-      result: RepositoryResult<CatalogDepartmentGroup[]>;
-    }
-  | null = null;
-let catalogDepartmentGroupsRequest: Promise<
-  RepositoryResult<CatalogDepartmentGroup[]>
-> | null = null;
+const readCachedPublicDepartments = createCachedPublicRead(publicNavigationTag, 60, readPublicCatalogDepartmentGroups);
+// RLS hides future banners. Do not serve a banner result older than 30 seconds;
+// expiry is also checked outside the cache on every render.
+const readCachedPublicBannerRows = createCachedPublicRead(publicBannersTag, 30, readPublicHomeBannerRows, { requireFresh: true });
 
 export type CatalogCategoryCountSummary = {
   categoryCounts: Record<string, number | undefined>;
@@ -1936,8 +1933,11 @@ export async function listCatalogProductsBySkus(
   );
 }
 
+type CatalogProductDetailOptions = { includeBuyerPrices?: boolean };
+
 export async function getCatalogProductBySkuOrSlug(
-  value: string
+  value: string,
+  options: CatalogProductDetailOptions = {}
 ): Promise<RepositoryResult<RepositoryPartProduct | null>> {
   const lookup = value.trim();
 
@@ -1945,12 +1945,12 @@ export async function getCatalogProductBySkuOrSlug(
     return emptyResult(null, "Product identifier is empty.");
   }
 
-  const supabaseResult = await withSupabaseResult((context) =>
-    readCatalogProductBySkuOrSlug(context.client, lookup)
+  const supabaseResult = options.includeBuyerPrices === false ? null : await withSupabaseResult((context) =>
+    readCatalogProductBySkuOrSlug(context.client, lookup, options)
   );
   const publicSupabaseResult =
     supabaseResult?.data === undefined || supabaseResult.data === null
-      ? await readPublicCatalogProduct(lookup)
+      ? await readPublicCatalogProduct(lookup, options)
       : null;
   const directResult = supabaseResult?.data ? supabaseResult : publicSupabaseResult;
 
@@ -1959,7 +1959,9 @@ export async function getCatalogProductBySkuOrSlug(
   }
 
   if (shouldFallbackToCatalogSlugLookup(lookup)) {
-    const catalog = await listCatalogProducts();
+    const catalog = options.includeBuyerPrices === false
+      ? await readPublicCatalogProducts(options) ?? emptyResult<RepositoryPartProduct[]>([])
+      : await listCatalogProducts();
     const legacyProduct =
       catalog.data.find((item) => item.sku === lookup.toUpperCase() || item.slug === lookup) ??
       null;
@@ -2016,7 +2018,12 @@ export async function pageHotCatalogProducts(
 export async function listActiveHomeBanners(
   limit = 8
 ): Promise<RepositoryResult<HomeBanner[]>> {
-  const supabaseResult = await readPublicHomeBanners(limit);
+  const rows = await readCachedPublicBannerRows();
+  const supabaseResult: RepositoryResult<HomeBanner[]> | null = rows === null ? null : {
+    data: rows.filter((row) => isActivePublicBanner(row)).map(mapHomeBannerRow).filter(isDefined)
+      .slice(0, Math.min(8, Math.max(1, Math.trunc(limit)))),
+    source: "supabase",
+  };
 
   return (
     supabaseResult ??
@@ -2081,6 +2088,7 @@ export async function createAdminHomeBanner(
     );
   }
 
+  invalidatePublicBannersCache();
   return { data: banner, source: "supabase" };
 }
 
@@ -2113,6 +2121,7 @@ export async function updateAdminHomeBanner(
     );
   }
 
+  invalidatePublicBannersCache();
   return { data: banner, source: "supabase" };
 }
 
@@ -2142,6 +2151,7 @@ export async function deleteAdminHomeBanner(
     );
   }
 
+  invalidatePublicBannersCache();
   return { data: { id }, source: "supabase" };
 }
 
@@ -2179,32 +2189,7 @@ export async function listCatalogModelGroups(): Promise<
 export async function listCatalogDepartmentGroups(): Promise<
   RepositoryResult<CatalogDepartmentGroup[]>
 > {
-  const now = Date.now();
-
-  if (catalogDepartmentGroupsCache && catalogDepartmentGroupsCache.expiresAt > now) {
-    return catalogDepartmentGroupsCache.result;
-  }
-
-  if (catalogDepartmentGroupsRequest) {
-    return catalogDepartmentGroupsRequest;
-  }
-
-  catalogDepartmentGroupsRequest = readCatalogDepartmentGroupsUncached().then((result) => {
-    const ttl =
-      result.source === "supabase" && !result.warning
-        ? catalogModelGroupsCacheTtlMs
-        : catalogModelGroupsWarningCacheTtlMs;
-
-    catalogDepartmentGroupsCache = {
-      expiresAt: Date.now() + ttl,
-      result,
-    };
-    catalogDepartmentGroupsRequest = null;
-
-    return result;
-  });
-
-  return catalogDepartmentGroupsRequest;
+  return readCatalogDepartmentGroupsUncached();
 }
 
 export async function getCatalogCategoryCounts(): Promise<
@@ -2274,7 +2259,7 @@ async function readCatalogModelGroupsUncached(): Promise<
 async function readCatalogDepartmentGroupsUncached(): Promise<
   RepositoryResult<CatalogDepartmentGroup[]>
 > {
-  const supabaseResult = await readPublicCatalogDepartmentGroups();
+  const supabaseResult = await readCachedPublicDepartments();
 
   return (
     supabaseResult ??
@@ -2391,14 +2376,14 @@ async function readPublicCatalogCategoryCounts(): Promise<
   }
 }
 
-async function readPublicCatalogProducts(): Promise<RepositoryResult<RepositoryPartProduct[]> | null> {
+async function readPublicCatalogProducts(options: CatalogProductDetailOptions = {}): Promise<RepositoryResult<RepositoryPartProduct[]> | null> {
   if (!isSupabaseConfigured()) {
     return null;
   }
 
   try {
-    const client = await createClient();
-    const data = await readCatalogProducts({ client, userId: "" });
+    const client = options.includeBuyerPrices === false ? createPublicReadClient() : await createClient();
+    const data = await readCatalogProducts({ client, userId: "" }, options);
     return data === null ? null : { data, source: "supabase" };
   } catch {
     return null;
@@ -2479,36 +2464,24 @@ async function readPublicHotCatalogProductPage(
   }
 }
 
-async function readPublicHomeBanners(
-  limit: number
-): Promise<RepositoryResult<HomeBanner[]> | null> {
-  if (!isSupabaseConfigured()) {
-    return null;
-  }
+async function readPublicHomeBannerRows(client: SupabaseServerClient): Promise<DbRow[] | null> {
+  const { data, error } = await client
+    .from("homepage_banners")
+    .select(homeBannerSelect)
+    .is("deleted_at", null)
+    .eq("is_active", true)
+    .order("position", { ascending: true })
+    .order("created_at", { ascending: false })
+    .limit(8);
+  return error || !Array.isArray(data) ? null : data.filter(isDbRow);
+}
 
-  try {
-    const client = await createClient();
-    const bannerLimit = Math.min(8, Math.max(1, Math.trunc(limit)));
-    const { data, error } = await client
-      .from("homepage_banners")
-      .select(homeBannerSelect)
-      .is("deleted_at", null)
-      .eq("is_active", true)
-      .order("position", { ascending: true })
-      .order("created_at", { ascending: false })
-      .limit(bannerLimit);
-
-    if (error || !Array.isArray(data)) {
-      return null;
-    }
-
-    return {
-      data: data.filter(isDbRow).map(mapHomeBannerRow).filter(isDefined),
-      source: "supabase",
-    };
-  } catch {
-    return null;
-  }
+function isActivePublicBanner(row: DbRow, now = Date.now()) {
+  const startsAt = pickString(row, ["starts_at"]);
+  const endsAt = pickString(row, ["ends_at"]);
+  return row.is_active === true && !row.deleted_at &&
+    (!startsAt || Date.parse(startsAt) <= now) &&
+    (!endsAt || Date.parse(endsAt) > now);
 }
 
 async function readPublicCatalogProductPage(
@@ -2654,11 +2627,10 @@ function clearPublicCatalogPageCache() {
   publicCatalogPageRequests.clear();
   catalogModelGroupsCache = null;
   catalogModelGroupsRequest = null;
-  catalogDepartmentGroupsCache = null;
-  catalogDepartmentGroupsRequest = null;
+  invalidatePublicNavigationCache();
 }
 
-async function readPublicCatalogDepartmentGroups(): Promise<
+async function readPublicCatalogDepartmentGroups(client: SupabaseServerClient): Promise<
   RepositoryResult<CatalogDepartmentGroup[]> | null
 > {
   if (!isSupabaseConfigured()) {
@@ -2666,7 +2638,6 @@ async function readPublicCatalogDepartmentGroups(): Promise<
   }
 
   try {
-    const client = await createClient();
     const modelOptionRows = await readRows(
       client,
       "catalog_model_options",
@@ -2767,15 +2738,16 @@ async function readCatalogModelGroupsFromProducts(
 }
 
 async function readPublicCatalogProduct(
-  value: string
+  value: string,
+  options: CatalogProductDetailOptions = {}
 ): Promise<RepositoryResult<RepositoryPartProduct | null> | null> {
   if (!isSupabaseConfigured()) {
     return null;
   }
 
   try {
-    const client = await createClient();
-    const data = await readCatalogProductBySkuOrSlug(client, value);
+    const client = options.includeBuyerPrices === false ? createPublicReadClient() : await createClient();
+    const data = await readCatalogProductBySkuOrSlug(client, value, options);
     return { data, source: "supabase" };
   } catch {
     return null;
@@ -6261,8 +6233,8 @@ async function requireSupabaseContext(): Promise<SupabaseContext> {
   return context;
 }
 
-async function readCatalogProducts(context: SupabaseContext) {
-  const catalogViewRows = await readCatalogProductViews(context.client);
+async function readCatalogProducts(context: SupabaseContext, options: CatalogProductDetailOptions = {}) {
+  const catalogViewRows = await readCatalogProductViews(context.client, options);
 
   if (catalogViewRows) {
     return catalogViewRows.map(mapProductRow).filter(isDefined);
@@ -6272,7 +6244,7 @@ async function readCatalogProducts(context: SupabaseContext) {
     (await readRows(
       context.client,
       "products",
-      "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at"
+      "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, quality_grade, stock_status, moq, retail_price, b2b_price, vat_mode, warranty_days, stock_qty, location, compatibility_models, highlights, status, updated_at, image_path, image_alt, gallery_image_paths"
     )) ?? (await readRows(context.client, "products"));
 
   if (productRows) {
@@ -6346,9 +6318,10 @@ async function readCatalogProductsBySkus(
 
 async function readCatalogProductBySkuOrSlug(
   client: SupabaseServerClient,
-  value: string
+  value: string,
+  options: CatalogProductDetailOptions = {}
 ): Promise<RepositoryPartProduct | null> {
-  const viewProduct = await readCatalogProductFromViews(client, value);
+  const viewProduct = await readCatalogProductFromViews(client, value, options);
 
   if (viewProduct) {
     return viewProduct;
@@ -6625,12 +6598,14 @@ function orderProductsByRequestedSkus(
   });
 }
 
-async function readCatalogProductViews(client: SupabaseServerClient) {
+async function readCatalogProductViews(client: SupabaseServerClient, options: CatalogProductDetailOptions = {}) {
   const summaryRows = await readRows(client, "catalog_public_summary");
 
   if (!summaryRows) {
     return null;
   }
+
+  if (options.includeBuyerPrices === false) return summaryRows;
 
   const priceRows = await readRows(client, "catalog_buyer_prices");
   const priceRowsById = new Map<string, DbRow>();
@@ -6662,7 +6637,8 @@ async function readCatalogProductViews(client: SupabaseServerClient) {
 
 async function readCatalogProductFromViews(
   client: SupabaseServerClient,
-  value: string
+  value: string,
+  options: CatalogProductDetailOptions = {}
 ): Promise<RepositoryPartProduct | null> {
   const summaryRows = await readMatchingRows(
     client,
@@ -6677,6 +6653,8 @@ async function readCatalogProductFromViews(
   if (!summaryRow) {
     return null;
   }
+
+  if (options.includeBuyerPrices === false) return mapProductRow(summaryRow);
 
   const id = pickString(summaryRow, ["id"]);
   const sku = pickString(summaryRow, ["sku_code", "sku"]);

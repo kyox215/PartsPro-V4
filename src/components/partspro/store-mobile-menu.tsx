@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition, type FormEvent } from "react";
+import { useRef, useState, useTransition, type FormEvent, type ReactElement } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown, Grid3X3, Home, Menu, Search } from "lucide-react";
+import { ChevronDown, Grid3X3, Home, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -36,25 +36,29 @@ const storeMobileNavItems = [
 
 export type StoreMobileMenuProps = {
   assistedCompanyId?: string | null;
-  className?: string;
   departmentGroups?: readonly CatalogDepartmentGroup[];
   onCatalogSelect?: (selection: CatalogSelection) => void;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
   prefetchCatalogLinks?: boolean;
   selectedCatalog?: CatalogSelection;
+  trigger: ReactElement;
 };
 
 export function StoreMobileMenu({
   assistedCompanyId,
-  className,
   departmentGroups,
   onCatalogSelect,
+  onOpenChange,
+  open,
   prefetchCatalogLinks = false,
   selectedCatalog,
+  trigger,
 }: StoreMobileMenuProps) {
   const t = useT();
   const pathname = usePathname();
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const contentRef = useRef<HTMLDivElement>(null);
   const [isSearchPending, startSearchTransition] = useTransition();
   const [catalogOpen, setCatalogOpen] = useState(() => pathname.startsWith("/catalogo"));
   const catalogSearchValue = selectedCatalog?.searchQuery ?? selectedCatalog?.model ?? "";
@@ -81,7 +85,7 @@ export function StoreMobileMenu({
       : expandedBrandKeyOverride;
 
   function handleOpenChange(nextOpen: boolean) {
-    setOpen(nextOpen);
+    onOpenChange(nextOpen);
 
     if (nextOpen && catalogActive) {
       setCatalogOpen(true);
@@ -96,7 +100,7 @@ export function StoreMobileMenu({
   }
 
   function closeMenu() {
-    setOpen(false);
+    onOpenChange(false);
     setExpandedDepartmentOverride(undefined);
     setExpandedBrandKeyOverride(undefined);
   }
@@ -144,21 +148,15 @@ export function StoreMobileMenu({
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetTrigger asChild>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon-sm"
-          className={cn("bg-white shadow-sm lg:hidden", className)}
-          aria-label={tx(t, "storefront.header.openMenu", "Apri menu")}
-        >
-          <Menu className="size-4" />
-        </Button>
+        {trigger}
       </SheetTrigger>
       <SheetContent
+        ref={contentRef}
         side="left"
         className="flex h-dvh w-[min(86vw,320px)] max-w-[320px] gap-0 overflow-hidden border-r bg-white p-0 text-slate-950"
         onOpenAutoFocus={(event) => {
           event.preventDefault();
+          contentRef.current?.focus();
         }}
       >
         <SheetHeader className="border-b px-4 py-3 pr-12 text-left">

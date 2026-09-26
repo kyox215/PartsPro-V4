@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/partspro-api";
 import { ProductImportError } from "@/lib/partspro-product-import";
+import { invalidatePublicNavigationCache } from "@/lib/partspro-public-cache";
 import {
   applyAdminProductImport,
   previewAdminProductImport,
@@ -94,6 +95,7 @@ export async function POST(request: Request) {
     }
 
     const result = await applyAdminProductImport(preview);
+    if (result.applied.length > 0) invalidatePublicNavigationCache();
     return NextResponse.json(
       { data: result },
       { status: result.failures.length > 0 ? 207 : 200 }

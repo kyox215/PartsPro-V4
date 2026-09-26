@@ -1,14 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useRef, type ReactElement } from "react";
 import {
-  ChevronDown,
   LayoutDashboard,
   LogOut,
   User,
 } from "lucide-react";
 import { signOut } from "@/app/login/actions";
-import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,25 +23,30 @@ export type StoreAccountDropdownProps = {
   access: StoreHeaderAccountAccess;
   accountLabel: string;
   adminLabel: string;
-  compact?: boolean;
-  label: string;
+  focusFirstItem?: boolean;
   logoutLabel: string;
   menuLabel: string;
   onSignOut?: () => void;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
   staffLabel: string;
+  trigger: ReactElement;
 };
 
 export function StoreAccountDropdown({
   access,
   accountLabel,
   adminLabel,
-  compact = false,
-  label,
+  focusFirstItem = false,
   logoutLabel,
   menuLabel,
   onSignOut,
+  onOpenChange,
+  open,
   staffLabel,
+  trigger,
 }: StoreAccountDropdownProps) {
+  const firstItemRef = useRef<HTMLAnchorElement>(null);
   function handleSignOut() {
     onSignOut?.();
   }
@@ -55,21 +59,20 @@ export function StoreAccountDropdown({
       accountDisplay?.trim().toLocaleLowerCase();
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
-        <Button
-          type="button"
-          variant={compact ? "outline" : "ghost"}
-          size={compact ? "icon" : "default"}
-          aria-label={label}
-          className={compact ? "bg-white shadow-sm lg:hidden" : "shrink-0"}
-        >
-          <User className="size-4" />
-          {!compact && <span>{label}</span>}
-          {!compact && <ChevronDown className="size-4 text-slate-400" />}
-        </Button>
+        {trigger}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent
+        align="end"
+        className="w-56"
+        onFocus={(event) => {
+          // The first key event can precede loading Radix's keyboard handling.
+          if (focusFirstItem && event.target === event.currentTarget) {
+            firstItemRef.current?.focus();
+          }
+        }}
+      >
         <DropdownMenuLabel className="flex flex-col gap-0.5">
           <span>{menuLabel}</span>
           {access.authenticated && accountDisplay ? (
@@ -94,7 +97,7 @@ export function StoreAccountDropdown({
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuItem asChild className="h-9 cursor-pointer">
-          <Link href="/account">
+          <Link ref={firstItemRef} href="/account">
             <User className="size-4" />
             <span className="min-w-0 flex-1 truncate">{accountLabel}</span>
             <RoutePendingIndicator className="size-3 text-primary" />
