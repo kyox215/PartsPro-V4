@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildOverviewModel, type OverviewOrder, type OverviewProduct } from "@/lib/partspro-overview-model";
 import {
   listAdminOrders,
   listAdminProducts,
@@ -20,7 +21,7 @@ type OverviewDomainResult<T> = {
   total: number;
 };
 
-export async function GET() {
+export async function GET(request: Request) {
   const admin = await requireAdminApi();
 
   if (!admin.ok) {
@@ -33,21 +34,52 @@ export async function GET() {
   ]);
   const errors = [ordersResult.error, productsResult.error].filter(Boolean);
 
+  const params = new URL(request.url).searchParams;
+  const compact = params.get("view") === "compact";
+  const range = params.get("range");
+  const rangeDays = range === "30" ? 30 : range === "90" ? 90 : 7;
+  const requestedZone = params.get("timeZone") ?? "UTC";
+  let timeZone = "UTC";
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: requestedZone });
+    timeZone = requestedZone;
+  } catch {
+    // An invalid client zone cannot change the calendar calculation.
+  }
+  const requestedAnchor = params.get("anchor");
+  const parsedAnchor = requestedAnchor ? new Date(requestedAnchor) : new Date();
+  const anchor = Number.isNaN(parsedAnchor.getTime()) ? new Date() : parsedAnchor;
+  const meta = {
+    errors,
+    orderSource: ordersResult.source,
+    orderTotal: ordersResult.total,
+    ordersReturned: ordersResult.returned,
+    productSource: productsResult.source,
+    productTotal: productsResult.total,
+    productsReturned: productsResult.returned,
+    source: "admin_overview",
+  };
+
+  if (compact) {
+    const model = buildOverviewModel(
+      ordersResult.data as OverviewOrder[],
+      productsResult.data.map((product): OverviewProduct => ({
+        ...product,
+        status: product.stockStatus,
+      })),
+      rangeDays,
+      anchor,
+      timeZone,
+    );
+    return NextResponse.json({ data: { model }, meta: { ...meta, sampleLimit: 100 } });
+  }
+
   return NextResponse.json({
     data: {
       orders: ordersResult.data,
       products: productsResult.data,
     },
-    meta: {
-      errors,
-      orderSource: ordersResult.source,
-      orderTotal: ordersResult.total,
-      ordersReturned: ordersResult.returned,
-      productSource: productsResult.source,
-      productTotal: productsResult.total,
-      productsReturned: productsResult.returned,
-      source: "admin_overview",
-    },
+    meta,
   });
 }
 

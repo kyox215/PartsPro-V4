@@ -1,0 +1,22 @@
+# Runtime source and public assets are deployed; local data and tooling are not.
+/.git
+.env*
+/.vercel
+/.next
+/node_modules
+/.codex-tmp
+/.codex-worktrees
+/.ai-company
+/exports
+/outputs
+/docs
+/supabase
+/scripts
+/tests
+/AGENTS.md
+/CLAUDE.md
+/README*.md
+*.tsbuildinfo
+*.log
+*.pem
+.DS_Store

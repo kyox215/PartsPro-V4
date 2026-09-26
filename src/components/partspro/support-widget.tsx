@@ -40,7 +40,9 @@ export function SupportWidget() {
   const shouldRender = scope === "storefront" && !isAdminPath;
   const copy = locale === "zh-CN" ? supportWidgetCopy.zh : supportWidgetCopy.it;
   const [open, setOpen] = React.useState(false);
-  const actionBarOffset = useSupportActionBarOffset(shouldRender);
+  const actionBarOffset = useSupportActionBarOffset(
+    shouldRender && (pathname === "/carrello" || pathname === "/checkout")
+  );
   const widgetBottom =
     actionBarOffset > 0
       ? `${actionBarOffset + 12}px`
@@ -146,6 +148,8 @@ function useSupportActionBarOffset(enabled: boolean) {
     }
 
     let animationFrame = 0;
+    const mobile = window.matchMedia("(max-width: 1023px)");
+    const observedBars = new Set<HTMLElement>();
     const resizeObserver =
       typeof ResizeObserver === "undefined" ? null : new ResizeObserver(scheduleUpdate);
 
@@ -156,10 +160,19 @@ function useSupportActionBarOffset(enabled: boolean) {
     }
 
     function measureOffset() {
-      resizeObserver?.disconnect();
+      const bars = mobile.matches ? getActionBars() : [];
+      for (const element of observedBars) {
+        if (!bars.includes(element)) {
+          resizeObserver?.unobserve(element);
+          observedBars.delete(element);
+        }
+      }
       const viewportHeight = window.innerHeight;
-      const nextOffset = getActionBars().reduce((maxOffset, element) => {
-        resizeObserver?.observe(element);
+      const nextOffset = bars.reduce((maxOffset, element) => {
+        if (!observedBars.has(element)) {
+          resizeObserver?.observe(element);
+          observedBars.add(element);
+        }
 
         const style = window.getComputedStyle(element);
         const rect = element.getBoundingClientRect();
@@ -187,23 +200,38 @@ function useSupportActionBarOffset(enabled: boolean) {
       animationFrame = window.requestAnimationFrame(measureOffset);
     }
 
-    const mutationObserver = new MutationObserver(scheduleUpdate);
-
-    mutationObserver.observe(document.body, {
-      childList: true,
-      subtree: true,
+    const mutationObserver = new MutationObserver((records) => {
+      const changedBars = records.some((record) =>
+        [...record.addedNodes, ...record.removedNodes].some((node) =>
+          node instanceof Element && (
+            node.matches(SUPPORT_ACTION_BAR_SELECTOR) ||
+            node.querySelector(SUPPORT_ACTION_BAR_SELECTOR)
+          )
+        )
+      );
+      if (changedBars) scheduleUpdate();
     });
+
+    function updateBreakpoint() {
+      mutationObserver.disconnect();
+      if (mobile.matches) {
+        mutationObserver.observe(document.body, { childList: true, subtree: true });
+      }
+      scheduleUpdate();
+    }
 
     window.addEventListener("resize", scheduleUpdate);
     window.addEventListener("orientationchange", scheduleUpdate);
     window.visualViewport?.addEventListener("resize", scheduleUpdate);
     window.visualViewport?.addEventListener("scroll", scheduleUpdate);
-    scheduleUpdate();
+    mobile.addEventListener("change", updateBreakpoint);
+    updateBreakpoint();
 
     return () => {
       window.cancelAnimationFrame(animationFrame);
       mutationObserver.disconnect();
       resizeObserver?.disconnect();
+      mobile.removeEventListener("change", updateBreakpoint);
       window.removeEventListener("resize", scheduleUpdate);
       window.removeEventListener("orientationchange", scheduleUpdate);
       window.visualViewport?.removeEventListener("resize", scheduleUpdate);

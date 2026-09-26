@@ -1,4 +1,4 @@
-import Image from "next/image";
+import Image from "./optimized-image";
 import { cn } from "@/lib/utils";
 
 export const PARTSPRO_MAIN_LOGO_SRC = "/brand/partspro-main-logo.png";
@@ -26,7 +26,7 @@ export function PartsProLogo({
           "size-11 shrink-0 overflow-hidden rounded-[14px] bg-transparent object-cover shadow-[0_12px_30px_rgba(59,91,255,0.24)] ring-1 ring-white/70",
           compact && "size-10 rounded-[13px]"
         )}
-        unoptimized
+        loading="eager"
       />
       {!compact && (
         <div className="leading-none">
