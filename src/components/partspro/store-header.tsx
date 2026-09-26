@@ -2,19 +2,13 @@
 
 import { useEffect, useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
-import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import {
-  Menu,
-  Search,
-  User,
-} from "lucide-react";
+import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CatalogDepartmentGroup } from "@/lib/partspro-data";
 import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
-import { cn } from "@/lib/utils";
 import type { CatalogSelection } from "./catalog-brand-tree";
 import { PartsProLogo } from "./logo";
 import { LanguageSwitcher } from "./language-switcher";
@@ -22,9 +16,8 @@ import {
   DelayedPendingIndicator,
   RoutePendingIndicator,
 } from "./pending-feedback";
-import type { StoreAccountDropdownProps } from "./store-account-dropdown";
 import { StoreCartButton } from "./store-cart-button";
-import type { StoreMobileMenuProps } from "./store-mobile-menu";
+import { StoreDeferredAccountMenu, StoreDeferredMobileMenu } from "./store-deferred-menus";
 import { useT } from "./i18n-provider";
 import { tx } from "@/i18n/dictionaries/storefront";
 
@@ -48,25 +41,6 @@ const loadingAccountAccess: AccountAccessState = {
   role: null,
   status: "loading",
 };
-
-const StoreAccountDropdown = dynamic<StoreAccountDropdownProps>(
-  () =>
-    import("./store-account-dropdown").then(
-      (module) => module.StoreAccountDropdown
-    ),
-  {
-    loading: () => <AccountDropdownFallback />,
-    ssr: false,
-  }
-);
-
-const StoreMobileMenu = dynamic<StoreMobileMenuProps>(
-  () => import("./store-mobile-menu").then((module) => module.StoreMobileMenu),
-  {
-    loading: () => <StoreMobileMenuFallback />,
-    ssr: false,
-  }
-);
 
 export function StoreHeader({
   assistedCompanyId,
@@ -172,7 +146,7 @@ export function StoreHeader({
     <>
       <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200/80 bg-white/90 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl">
         <div className="mx-auto flex h-14 w-full max-w-[1500px] items-center gap-2 px-3 sm:h-16 sm:gap-3 sm:px-4">
-          <StoreMobileMenu
+          <StoreDeferredMobileMenu
             assistedCompanyId={assistedCompanyId}
             departmentGroups={departmentGroups}
             onCatalogSelect={onCatalogSelect}
@@ -237,66 +211,25 @@ export function StoreHeader({
 
           <LanguageSwitcher compact className="hidden md:inline-flex" />
 
-          <nav className="hidden items-center gap-1 lg:flex">
-            <StoreAccountDropdown
-              access={accountAccess}
-              label={tx(t, "nav.account", "Account")}
-              menuLabel={tx(t, "storefront.account.menuLabel", "Area account")}
-              accountLabel={tx(t, "storefront.account.openAccount", "Centro personale")}
-              adminLabel={tx(t, "storefront.account.openAdmin", "Pannello admin")}
-              logoutLabel={tx(t, "storefront.account.signOut", "Esci")}
-              staffLabel={tx(t, "storefront.account.staffRole", "Accesso staff")}
-            />
-          </nav>
+          <StoreDeferredAccountMenu
+            access={accountAccess}
+            label={tx(t, "nav.account", "Account")}
+            triggerLabel={tx(t, "storefront.header.openAccount", "Apri centro personale")}
+            menuLabel={tx(t, "storefront.account.menuLabel", "Area account")}
+            accountLabel={tx(t, "storefront.account.openAccount", "Centro personale")}
+            adminLabel={tx(t, "storefront.account.openAdmin", "Pannello admin")}
+            logoutLabel={tx(t, "storefront.account.signOut", "Esci")}
+            staffLabel={tx(t, "storefront.account.staffRole", "Accesso staff")}
+          />
 
           <StoreCartButton
             ariaLabel={tx(t, "storefront.header.openCart", "Apri carrello")}
             href={hrefWithAssistedCompanyId("/carrello", assistedCompanyId)}
             label={tx(t, "nav.cart", "Carrello")}
           />
-          <StoreAccountDropdown
-            access={accountAccess}
-            accountLabel={tx(t, "storefront.account.openAccount", "Centro personale")}
-            adminLabel={tx(t, "storefront.account.openAdmin", "Pannello admin")}
-            compact
-            label={tx(t, "storefront.header.openAccount", "Apri centro personale")}
-            logoutLabel={tx(t, "storefront.account.signOut", "Esci")}
-            menuLabel={tx(t, "storefront.account.menuLabel", "Area account")}
-            staffLabel={tx(t, "storefront.account.staffRole", "Accesso staff")}
-          />
         </div>
       </header>
       <div aria-hidden="true" className="h-14 sm:h-16" />
     </>
-  );
-}
-
-function StoreMobileMenuFallback({ className }: { className?: string }) {
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="icon-sm"
-      className={cn("bg-white shadow-sm lg:hidden", className)}
-      aria-label="Apri menu"
-      disabled
-    >
-      <Menu className="size-4" />
-    </Button>
-  );
-}
-
-function AccountDropdownFallback() {
-  return (
-    <Button
-      type="button"
-      variant="outline"
-      size="icon"
-      aria-label="Account"
-      className="bg-white shadow-sm lg:hidden"
-      disabled
-    >
-      <User className="size-4" />
-    </Button>
   );
 }

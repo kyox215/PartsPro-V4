@@ -43,7 +43,7 @@ export default async function Page({
   const assistedProduct = productResult?.data[0] ?? null;
   const fallbackProductResult = assistedProduct
     ? null
-    : await getCatalogProductBySkuOrSlug(decodedSku);
+    : await getCatalogProductBySkuOrSlug(decodedSku, { includeBuyerPrices: account.authenticated });
   const rawProduct = assistedProduct ?? fallbackProductResult?.data ?? null;
 
   if (!rawProduct) {

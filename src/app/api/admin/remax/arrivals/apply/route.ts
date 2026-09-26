@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { invalidatePublicNavigationCache } from "@/lib/partspro-public-cache";
 import { z } from "zod";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
 import { receiveAdminRemaxArrival } from "@/lib/partspro-remax-repository";
@@ -29,7 +30,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    return NextResponse.json({ data: await receiveAdminRemaxArrival(parsed.data) });
+    const data = await receiveAdminRemaxArrival(parsed.data);
+    invalidatePublicNavigationCache();
+    return NextResponse.json({ data });
   } catch (error) {
     return repositoryErrorResponse(
       error,
