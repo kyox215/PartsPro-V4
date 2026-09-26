@@ -1,4 +1,5 @@
 import { cookies, headers } from "next/headers";
+import { cache } from "react";
 import {
   defaultLocaleByScope,
   isLocale,
@@ -17,7 +18,7 @@ export type RequestI18n = {
   scope: LocaleScope;
 };
 
-export async function getRequestI18n(): Promise<RequestI18n> {
+export const getRequestI18n = cache(async (): Promise<RequestI18n> => {
   const headerStore = await headers();
   const cookieStore = await cookies();
   const pathname = headerStore.get("x-partspro-pathname") ?? "/";
@@ -32,4 +33,4 @@ export async function getRequestI18n(): Promise<RequestI18n> {
     : cookieLocale ?? defaultLocaleByScope[scope];
 
   return { locale, scope };
-}
+});

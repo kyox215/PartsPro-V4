@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { readLinkedCustomerRow } from "@/lib/partspro-customer-linkage";
 import {
   calculateProductTierPrice,
@@ -137,7 +138,14 @@ export async function ensureCurrentUserAccount() {
   return user;
 }
 
+// React cache is scoped to a server render, never shared between customers.
+const readAccountContext = cache(() => loadAccountContext());
+
 export async function getCurrentAccountContext(options: { ensure?: boolean } = {}) {
+  return options.ensure ? loadAccountContext(options) : readAccountContext();
+}
+
+async function loadAccountContext(options: { ensure?: boolean } = {}) {
   if (!isSupabaseConfigured()) {
     return anonymousAccountContext;
   }

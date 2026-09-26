@@ -1,3 +1,4 @@
+import { applyOrderListFilters, orderListSelect } from "@/lib/partspro-order-list-filters.mjs";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import {
   createServiceRoleClient,
@@ -1289,7 +1290,10 @@ export type AdminOrderQueryInput = {
   dateTo?: string;
   limit: number;
   offset: number;
-  paymentStatus?: AdminPaymentStatus;
+  paymentStatus?: AdminPaymentStatus | "open";
+  view?: "payments" | "shipping";
+  stockRisk?: "risk" | "clear" | "low" | "blocked" | "unknown";
+  reservation?: "overdue";
   q?: string;
   sort: "operations_queue" | "date_desc" | "date_asc" | "total_desc" | "total_asc";
   status?: AdminOrderDbStatus;
@@ -11125,7 +11129,7 @@ async function readAdminOrderPage(
   try {
     let request = client
       .from("orders")
-      .select(adminOrderListSelect, { count: "exact" })
+      .select(orderListSelect(adminOrderListSelect, query), { count: "exact" })
       .is("soft_deleted_at", null);
 
     if (query.customerId) {
@@ -11140,19 +11144,13 @@ async function readAdminOrderPage(
       request = request.lte("created_at", `${query.dateTo}T23:59:59.999Z`);
     }
 
-    if (query.paymentStatus) {
-      request = request.eq("payment_status", query.paymentStatus);
-    }
+    request = applyOrderListFilters(request, query);
 
     if (query.q) {
       const search = sanitizePostgrestSearchTerm(query.q);
       request = request.or(
         `order_no.ilike.%${search}%,customer_name.ilike.%${search}%,staff_note.ilike.%${search}%`
       );
-    }
-
-    if (query.status) {
-      request = request.eq("status", query.status);
     }
 
     switch (query.sort) {

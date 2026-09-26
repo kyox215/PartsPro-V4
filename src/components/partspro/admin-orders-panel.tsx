@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
+import { createLatestRequest } from "@/lib/latest-request.mjs";
+import Image from "./optimized-image";
 import {
   AlertTriangle,
   ArrowRight,
@@ -423,6 +424,7 @@ export function AdminOrdersPanel({
 }: {
   focusOrderId?: string;
 } = {}) {
+  const { locale } = useI18n();
   const text = useAdminText();
   const labels = React.useMemo(() => buildOrderLabels(text), [text]);
   const [orders, setOrders] = React.useState<AdminOrder[]>([]);
@@ -497,7 +499,7 @@ export function AdminOrdersPanel({
         ? currentOrders.map((item) =>
             item.id === order.id ? mergeOrderSummary(item, order) : item
           )
-        : [order, ...currentOrders];
+        : currentOrders;
 
       return sortOrdersForOperationsQueue(nextOrders);
     });
@@ -569,17 +571,32 @@ export function AdminOrdersPanel({
     [adminSession, text, upsertOrder]
   );
 
+  const ordersRequestRef = React.useRef(createLatestRequest());
+  React.useEffect(() => {
+    const requests = ordersRequestRef.current;
+    return () => requests.cancel();
+  }, []);
+
   const refreshOrders = React.useCallback(
     async (signal?: AbortSignal) => {
+      const request = ordersRequestRef.current.begin();
+      const requestSignal = signal ? AbortSignal.any([signal, request.signal]) : request.signal;
       setIsLoadingOrders(true);
 
       try {
         const result = await fetchOrdersFromApi({
-          signal,
+          signal: requestSignal,
+          page,
+          limit: pageSize,
+          stockRisk: stockRiskFilter === "all" ? undefined : stockRiskFilter,
+          reservation: reservationFilter === "all" ? undefined : reservationFilter,
+          status: statusFilter === "all" ? undefined : statusFilter,
+          paymentStatus: paymentFilter === "all" ? undefined : paymentFilter,
+          view: viewMode === "orders" ? undefined : viewMode,
         });
         const sortedOrders = sortOrdersForOperationsQueue(result.orders);
 
-        if (signal?.aborted) {
+        if (!request.isCurrent() || requestSignal.aborted) {
           return;
         }
 
@@ -598,7 +615,7 @@ export function AdminOrdersPanel({
         );
         setNotice(null);
       } catch (error) {
-        if (signal?.aborted) {
+        if (!request.isCurrent() || requestSignal.aborted) {
           return;
         }
 
@@ -615,12 +632,12 @@ export function AdminOrdersPanel({
           message,
         });
       } finally {
-        if (!signal?.aborted) {
+        if (request.isCurrent() && !requestSignal.aborted) {
           setIsLoadingOrders(false);
         }
       }
     },
-    [text]
+    [page, paymentFilter, reservationFilter, statusFilter, stockRiskFilter, text, viewMode]
   );
 
   React.useEffect(() => {
@@ -694,15 +711,13 @@ export function AdminOrdersPanel({
       }),
     [orders, paymentFilter, reservationFilter, statusFilter, stockRiskFilter, viewMode]
   );
-  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
+  const totalFiltered = dataSource.total;
+  const totalPages = Math.max(1, Math.min(5001, Math.ceil(totalFiltered / pageSize)));
   const currentPage = Math.min(page, totalPages);
-  const visibleOrders = filteredOrders.slice(
-    (currentPage - 1) * pageSize,
-    currentPage * pageSize
-  );
+  const visibleOrders = filteredOrders;
   const selectedOrderIsVisible =
     selectedOrderId.length > 0 &&
-    filteredOrders.some((order) => order.id === selectedOrderId);
+    (filteredOrders.some((order) => order.id === selectedOrderId) || selectedOrderId === focusOrderId);
   const selectedOrder =
     selectedOrderIsVisible && selectedOrderId
       ? detailsById[selectedOrderId] ??
@@ -1253,6 +1268,12 @@ export function AdminOrdersPanel({
         />
       </div>
 
+      <p className="text-xs text-slate-500">
+        {locale.startsWith("it")
+          ? "Indicatori e conteggi calcolati sugli ordini della pagina corrente."
+          : "指标和流程数量基于当前页订单。"}
+      </p>
+
       <Card className="gap-0 rounded-md border-slate-200 bg-white py-0 shadow-[0_10px_26px_rgba(15,23,42,0.045)]">
         <CardHeader className="gap-2 border-b border-slate-200/80 px-3 py-2.5">
           <div className="flex min-w-0 flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
@@ -1281,7 +1302,10 @@ export function AdminOrdersPanel({
             <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center xl:justify-end">
               <Tabs
                 value={viewMode}
-                onValueChange={(value) => setViewMode(value as ViewMode)}
+                onValueChange={(value) => {
+                  setPage(1);
+                  setViewMode(value as ViewMode);
+                }}
                 className="w-full sm:w-auto"
               >
                 <TabsList className="grid h-8 w-full grid-cols-3 bg-slate-100 sm:w-auto">
@@ -1365,7 +1389,7 @@ export function AdminOrdersPanel({
                   pendingActionKey={pendingOrderAction}
                   selectedOrderId={selectedOrder?.id ?? ""}
                   text={text}
-                  totalFiltered={filteredOrders.length}
+                  totalFiltered={totalFiltered}
                   totalPages={totalPages}
                   viewMode={viewMode}
                   onNextPage={() => setPage((current) => Math.min(totalPages, current + 1))}
@@ -5837,20 +5861,41 @@ function EmptyState({ text }: { text: AdminText }) {
 
 async function fetchOrdersFromApi({
   signal,
+  page,
+  limit,
   status,
+  paymentStatus,
+  view,
+  stockRisk,
+  reservation,
 }: {
   signal?: AbortSignal;
+  stockRisk?: Exclude<StockRiskFilterValue, "all">;
+  reservation?: "overdue";
+  page: number;
+  limit: number;
   status?: OrderDbStatus;
+  paymentStatus?: Exclude<PaymentFilterValue, "all">;
+  view?: Exclude<ViewMode, "orders">;
 }): Promise<OrdersApiResult> {
   const params = new URLSearchParams({
-    limit: "100",
-    offset: "0",
+    limit: String(limit),
+    offset: String((page - 1) * limit),
     sort: "operations_queue",
   });
 
   if (status) {
     params.set("status", status);
   }
+  if (paymentStatus) {
+    params.set("paymentStatus", paymentStatus);
+  }
+  if (view) {
+    params.set("view", view);
+  }
+
+  if (stockRisk) params.set("stockRisk", stockRisk);
+  if (reservation) params.set("reservation", reservation);
 
   const response = await fetch(`/api/admin/orders?${params.toString()}`, {
     cache: "no-store",

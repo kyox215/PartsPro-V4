@@ -1,5 +1,7 @@
 "use client";
 
+import { createLatestRequest } from "@/lib/latest-request.mjs";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -190,7 +192,7 @@ function CatalogPageContent({
   );
   const shouldUseCatalogPageCache = !showWholesalePrice;
   const catalogPageCacheRef = useRef(
-    new Map<string, { products: PartProduct[]; total: number }>([
+    new Map<string, { products: PartProduct[]; total: number; expiresAt: number }>([
       [
         buildCatalogApiPath(
           {
@@ -206,13 +208,18 @@ function CatalogPageContent({
           assistedCompanyId
         ),
         {
+          expiresAt: Date.now() + 30_000,
           products: initialProducts,
           total: initialFilteredTotal,
         },
       ],
     ])
   );
-  const catalogRequestRef = useRef<AbortController | null>(null);
+  const catalogRequestRef = useRef(createLatestRequest());
+  useEffect(() => {
+    const requests = catalogRequestRef.current;
+    return () => requests.cancel();
+  }, []);
   const departmentGroups = useMemo(
     () =>
       initialDepartmentGroups?.length
@@ -258,16 +265,12 @@ function CatalogPageContent({
       const cachedPage = shouldUseCatalogPageCache
         ? catalogPageCacheRef.current.get(apiPath)
         : undefined;
-      const tracksLatestRequest = offset === 0;
-
-      if (tracksLatestRequest) {
-        catalogRequestRef.current?.abort();
-      }
+      const request = catalogRequestRef.current.begin();
 
       setCatalogError(null);
       setCatalogLoadState(offset > 0 ? "loading-more" : "loading");
 
-      if (cachedPage) {
+      if (cachedPage && cachedPage.expiresAt > Date.now()) {
         setFilteredTotal(cachedPage.total);
         setProducts((currentProducts) =>
           offset > 0 ? [...currentProducts, ...cachedPage.products] : cachedPage.products
@@ -276,17 +279,14 @@ function CatalogPageContent({
         return;
       }
 
-      const controller = new AbortController();
-
-      if (tracksLatestRequest) {
-        catalogRequestRef.current = controller;
-      }
 
       try {
         const response = await fetch(apiPath, {
           cache: "no-store",
-          signal: controller.signal,
+          signal: request.signal,
         });
+
+        if (!request.isCurrent()) return;
 
         if (!response.ok) {
           setCatalogError("network");
@@ -297,11 +297,13 @@ function CatalogPageContent({
           data?: PartProduct[];
           meta?: { total?: number };
         };
+        if (!request.isCurrent()) return;
         const nextProducts = payload.data ?? [];
         const nextTotal = payload.meta?.total ?? nextProducts.length;
 
         if (shouldUseCatalogPageCache) {
           rememberCatalogPage(catalogPageCacheRef.current, apiPath, {
+            expiresAt: Date.now() + 30_000,
             products: nextProducts,
             total: nextTotal,
           });
@@ -313,15 +315,12 @@ function CatalogPageContent({
         );
         setCatalogError(null);
       } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") {
+        if (!request.isCurrent() || (error instanceof Error && error.name === "AbortError")) {
           return;
         }
         setCatalogError("network");
       } finally {
-        if (!tracksLatestRequest || catalogRequestRef.current === controller) {
-          if (tracksLatestRequest) {
-            catalogRequestRef.current = null;
-          }
+        if (request.isCurrent()) {
           setCatalogLoadState("idle");
         }
       }
@@ -374,7 +373,7 @@ function CatalogPageContent({
 
   const hiddenProductCount = Math.max(filteredTotal - products.length, 0);
   const catalogReplacing = catalogLoadState === "loading";
-  const showCatalogPendingHint = useDelayedVisible(catalogReplacing, 120);
+  const showCatalogPendingHint = useDelayedVisible(catalogReplacing, 80);
   const showCatalogSkeleton = useDelayedVisible(catalogReplacing, 300);
   const accountGateCopy =
     !assistedCompanyId && isCustomerActionRequiredReason(priceGateReason)
@@ -882,9 +881,9 @@ function buildCatalogApiPath(
 }
 
 function rememberCatalogPage(
-  cache: Map<string, { products: PartProduct[]; total: number }>,
+  cache: Map<string, { products: PartProduct[]; total: number; expiresAt: number }>,
   key: string,
-  page: { products: PartProduct[]; total: number }
+  page: { products: PartProduct[]; total: number; expiresAt: number }
 ) {
   cache.set(key, page);
 

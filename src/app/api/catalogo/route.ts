@@ -46,6 +46,7 @@ const noStoreHeaders = {
 };
 
 export async function GET(request: NextRequest) {
+  const startedAt = performance.now();
   try {
     const parsedParams = readQueryParams(request.nextUrl.searchParams, allowedQueryKeys);
 
@@ -61,7 +62,9 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    const authStartedAt = performance.now();
     const account = await getCurrentAccountContext();
+    const authDuration = performance.now() - authStartedAt;
     const { companyId, ...catalogQuery } = result.data;
     const delegatedCheckout = canDelegateCheckout(account);
     const employeeSelfCustomerId =
@@ -83,6 +86,7 @@ export async function GET(request: NextRequest) {
     const canUseCatalogCart = canUseStorefrontCart(account, assistedCustomerId);
     const showPrice = account.canViewPrices || Boolean(buyerCustomerId);
     const visibilityReason = priceVisibilityReason(account);
+    const catalogStartedAt = performance.now();
     const repositoryResult = await pageCatalogProducts(catalogQuery, {
       buyerCustomerId,
       includeBuyerPrices: showPrice,
@@ -108,7 +112,10 @@ export async function GET(request: NextRequest) {
           vatMode: "tax_included_shipping_only",
         },
       },
-      { headers: noStoreHeaders }
+      { headers: {
+        ...noStoreHeaders,
+        "Server-Timing": `auth;dur=${authDuration.toFixed(1)},catalog;dur=${(performance.now() - catalogStartedAt).toFixed(1)},total;dur=${(performance.now() - startedAt).toFixed(1)}`,
+      } }
     );
   } catch {
     return apiError(500, "CATALOG_UNAVAILABLE", "Catalog data is temporarily unavailable.");

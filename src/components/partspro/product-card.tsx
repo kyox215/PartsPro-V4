@@ -2,8 +2,8 @@
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import Image from "next/image";
-import Link from "next/link";
+import Image from "./optimized-image";
+import { IntentLink as Link } from "./intent-link";
 import {
   AlertTriangle,
   CalendarClock,

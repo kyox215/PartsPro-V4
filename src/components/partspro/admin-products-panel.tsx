@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
+import Image from "@/components/partspro/optimized-image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -1654,7 +1654,8 @@ export function AdminProductsPanel({
   const [isMutating, setIsMutating] = React.useState(false);
   const [pendingProductActionKey, setPendingProductActionKey] =
     React.useState<string | null>(null);
-  const [isLoadingModelGroups, setIsLoadingModelGroups] = React.useState(true);
+  const [isLoadingModelGroups, setIsLoadingModelGroups] = React.useState(false);
+  const modelGroupsLoadedRef = React.useRef(false);
   const [isRestockDialogOpen, setIsRestockDialogOpen] = React.useState(false);
   const [isProductImportOpen, setIsProductImportOpen] = React.useState(false);
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = React.useState(false);
@@ -1921,6 +1922,10 @@ export function AdminProductsPanel({
   );
 
   React.useEffect(() => {
+    if (workspace !== "products") {
+      return;
+    }
+
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
       void refreshProducts(controller.signal);
@@ -1930,7 +1935,7 @@ export function AdminProductsPanel({
       controller.abort();
       window.clearTimeout(timeoutId);
     };
-  }, [refreshProducts]);
+  }, [refreshProducts, workspace]);
 
   React.useEffect(() => {
     if (workspace !== "batches") {
@@ -1940,7 +1945,7 @@ export function AdminProductsPanel({
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
       void refreshSupplierBatches(controller.signal);
-    }, 320);
+    }, 180);
 
     return () => {
       controller.abort();
@@ -1949,12 +1954,23 @@ export function AdminProductsPanel({
   }, [refreshSupplierBatches, workspace]);
 
   React.useEffect(() => {
+    if ((workspace !== "products" && workspace !== "banners") || modelGroupsLoadedRef.current) {
+      return;
+    }
+
     const controller = new AbortController();
+
+    queueMicrotask(() => {
+      if (!controller.signal.aborted) {
+        setIsLoadingModelGroups(true);
+      }
+    });
 
     fetchAdminProductModelGroups(controller.signal)
       .then((result) => {
         if (!controller.signal.aborted) {
           setModelGroups(result.modelGroups);
+          modelGroupsLoadedRef.current = true;
         }
       })
       .catch(() => {
@@ -1969,7 +1985,7 @@ export function AdminProductsPanel({
       });
 
     return () => controller.abort();
-  }, []);
+  }, [workspace]);
 
   const refreshProductsQuietly = React.useCallback(() => {
     void refreshProducts(undefined, { clearNotice: false });

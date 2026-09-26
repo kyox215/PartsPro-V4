@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import Link from "next/link";
+import { IntentLink as Link } from "./intent-link";
 import { ChevronDown } from "lucide-react";
 import {
   catalogDepartmentGroups as fallbackCatalogDepartmentGroups,

@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
+import { productImageRemotePatterns } from "./src/lib/partspro-image-policy.mjs";
 
-const supabaseImageHostname = new URL(
-  process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://yiuxrjqexlfjtxxrkqvi.supabase.co"
-).hostname;
+const supabaseImageUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://yiuxrjqexlfjtxxrkqvi.supabase.co";
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
@@ -32,20 +32,10 @@ const nextConfig: NextConfig = {
     ];
   },
   images: {
-    unoptimized: true,
+    formats: ["image/webp"],
+    minimumCacheTTL: 300,
     qualities: [55, 72, 75, 88],
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: supabaseImageHostname,
-        pathname: "/storage/v1/object/public/product-images/**",
-      },
-      {
-        protocol: "https",
-        hostname: "apiv2.mobilax.fr",
-        pathname: "/v1.0/assets/images/products/id-image/**",
-      },
-    ],
+    remotePatterns: productImageRemotePatterns(supabaseImageUrl),
   },
   turbopack: {
     root: process.cwd(),

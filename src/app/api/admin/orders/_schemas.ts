@@ -27,14 +27,17 @@ export const orderQuerySchema = z
     customerId: z.string().trim().uuid().optional(),
     dateFrom: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     dateTo: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-    paymentStatus: z.enum(adminPaymentStatuses).optional(),
+    paymentStatus: z.enum([...adminPaymentStatuses, "open"] as const).optional(),
     q: z.string().trim().min(2).max(100).optional(),
     sort: z
       .enum(["operations_queue", "date_desc", "date_asc", "total_desc", "total_asc"])
       .default("operations_queue"),
     status: z.enum(adminOrderDbStatuses).optional(),
+    view: z.enum(["payments", "shipping"]).optional(),
+    stockRisk: z.enum(["risk", "clear", "low", "blocked", "unknown"]).optional(),
+    reservation: z.literal("overdue").optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
-    offset: z.coerce.number().int().min(0).max(5000).default(0),
+    offset: z.coerce.number().int().min(0).max(100000).default(0),
   })
   .strict();
 

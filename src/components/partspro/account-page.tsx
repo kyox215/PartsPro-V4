@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
+import Image from "./optimized-image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -55,8 +55,13 @@ import type { AccountCustomerProfile, CustomerWallet } from "@/lib/partspro-repo
 import type { ItalyCapLookupResult } from "@/lib/italy-cap-lookup";
 import { NotificationCenter } from "./notification-center";
 import { StoreHeader } from "./store-header";
+import { useT } from "./i18n-provider";
+
+import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 
 type AccountPageProps = {
+  loadedSection?: AccountSectionId;
+  initialAccountAccess?: StoreHeaderAccountAccess;
   accountType?: "customer" | "employee" | null;
   company?: CompanyProfile | null;
   customerProfile?: AccountCustomerProfile | null;
@@ -190,6 +195,8 @@ const orderFilters: Array<{
 ];
 
 export function AccountPage({
+  loadedSection = "overview",
+  initialAccountAccess,
   accountType = "customer",
   company = null,
   customerProfile = null,
@@ -200,14 +207,16 @@ export function AccountPage({
   wallet = { balance: 0, currency: "EUR", transactions: [] },
   userEmail,
 }: AccountPageProps) {
+  const t = useT();
   const router = useRouter();
+  const [sectionPending, startSectionTransition] = React.useTransition();
   const searchParams = useSearchParams();
   const [activeFilter, setActiveFilter] = React.useState<OrderFilterId>("all");
   const [orderDetail, setOrderDetail] = React.useState<AccountOrderDetail | null>(null);
   const [orderDetailError, setOrderDetailError] = React.useState<string | null>(null);
   const [orderDetailLoading, setOrderDetailLoading] = React.useState(false);
   const [orderDetailOpen, setOrderDetailOpen] = React.useState(false);
-  const [activeSection, setActiveSection] = React.useState<AccountSectionId>("overview");
+  const [activeSection, setActiveSection] = React.useState<AccountSectionId>(loadedSection);
   const [savedProfile, setSavedProfile] = React.useState<AccountCustomerProfile | null>(null);
   const profile =
     savedProfile && (!customerProfile || savedProfile.id === customerProfile.id)
@@ -246,12 +255,9 @@ export function AccountPage({
   }, []);
 
   React.useEffect(() => {
-    const requestedSection = searchParams.get("section");
     const requestedOrderId = searchParams.get("orderId");
     const timeoutId = window.setTimeout(() => {
-      if (isAccountSectionId(requestedSection)) {
-        setActiveSection(requestedSection);
-      }
+      setActiveSection(loadedSection);
 
       if (!requestedOrderId) {
         return;
@@ -266,7 +272,15 @@ export function AccountPage({
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [openOrderDetail, orderSummaries, searchParams]);
+  }, [loadedSection, openOrderDetail, orderSummaries, searchParams]);
+
+  function changeSection(section: AccountSectionId) {
+    setActiveSection(section);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("section", section);
+    params.delete("orderId");
+    startSectionTransition(() => router.replace(`/account?${params}`, { scroll: false }));
+  }
 
   function handleProfileSaved(nextProfile: AccountCustomerProfile) {
     setSavedProfile(nextProfile);
@@ -275,14 +289,14 @@ export function AccountPage({
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-slate-100 text-slate-950">
-      <StoreHeader />
+      <StoreHeader initialAccountAccess={initialAccountAccess} />
       <div className="mx-auto max-w-[1180px] space-y-2 px-2 py-2 md:px-3 lg:space-y-3">
         <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
           <AccountSectionNav
             activeSection={activeSection}
             orderSummaries={orderSummaries}
             rmaRequests={rmaRequests}
-            onSectionChange={setActiveSection}
+            onSectionChange={changeSection}
           />
           <NotificationCenter
             audience={isEmployeeAccount ? "staff" : "customer"}
@@ -304,7 +318,12 @@ export function AccountPage({
           </div>
         ) : null}
 
-        <section className="min-w-0">
+        <section className="min-w-0" aria-busy={sectionPending || loadedSection !== activeSection}>
+          {sectionPending || loadedSection !== activeSection ? (
+            <div role="status" className="flex min-h-48 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-500">
+              <Loader2 className="size-4 animate-spin" />{t("common.loading")}
+            </div>
+          ) : <>
           {activeSection === "overview" ? (
             <AccountSummaryPanel
               company={company}
@@ -335,6 +354,7 @@ export function AccountPage({
           {activeSection === "service" ? (
             <ServiceSection orderSummaries={orderSummaries} rmaRequests={rmaRequests} />
           ) : null}
+          </>}
         </section>
 
         <Dialog open={orderDetailOpen} onOpenChange={setOrderDetailOpen}>
@@ -653,14 +673,6 @@ function AccountSectionNav({
   );
 }
 
-function isAccountSectionId(value: string | null): value is AccountSectionId {
-  return (
-    value === "overview" ||
-    value === "wallet" ||
-    value === "orders" ||
-    value === "service"
-  );
-}
 
 function WalletSection({ wallet }: { wallet: CustomerWallet }) {
   const recentTransactions = wallet.transactions.slice(0, 8);

@@ -30,7 +30,7 @@ export function useDelayedVisible(active: boolean, delayMs = 120) {
 
 export function DelayedPendingIndicator({
   className,
-  delayMs = 120,
+  delayMs = 80,
   label,
   pending,
 }: DelayedPendingIndicatorProps) {

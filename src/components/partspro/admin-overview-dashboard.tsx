@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
+import Image from "./optimized-image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import {
@@ -44,6 +44,7 @@ import {
   type AdminText,
 } from "@/i18n/dictionaries/admin";
 import { formatEuro, type StockStatus } from "@/lib/partspro-data";
+import { buildOverviewModel, type OverviewModel } from "@/lib/partspro-overview-model";
 import { cn } from "@/lib/utils";
 import { AdminBusyRegion } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
@@ -76,140 +77,25 @@ type AdminInventoryMixChartProps = {
 };
 
 type DashboardRange = (typeof dashboardRanges)[number];
-type OrderStatus = (typeof orderStatuses)[number];
-type PaymentStatus = "unpaid" | "authorized" | "paid" | "refunded";
-type CatalogStatus = "active" | "draft" | "hidden" | "blocked";
-type RiskLevel = "urgent" | "watch" | "ok";
-
-type DashboardOrderLine = {
-  sku: string;
-  name: string;
-  quantity: number;
-  lineTotal: number;
-};
-
-type DashboardOrder = {
-  id: string;
-  company: string;
-  createdAt: string;
-  items: number;
-  lines: DashboardOrderLine[];
-  paymentStatus: PaymentStatus;
-  status: OrderStatus;
-  total: number;
-};
-
-type DashboardProduct = {
-  sku: string;
-  name: string;
-  brand: string;
-  category: string;
-  catalogStatus: CatalogStatus;
-  galleryImagePaths: string[];
-  galleryImageUrls: string[];
-  imageAlt?: string;
-  imagePath?: string;
-  imageUrl?: string;
-  lockedQty: number;
-  price: number;
-  status: StockStatus;
-  stock: number;
-  availableQty: number;
-  updatedAt: string;
-};
 
 type DashboardSnapshot = {
   error: string | null;
   isLoading: boolean;
+  model: OverviewModel | null;
+  modelRange: DashboardRange | null;
   orderSource: string;
   orderTotal: number;
-  orders: DashboardOrder[];
   ordersReturned: number;
   productSource: string;
   productTotal: number;
-  products: DashboardProduct[];
   productsReturned: number;
   syncedAt: string | null;
 };
 
-type SalesTrendPoint = {
-  day: string;
-  key: string;
-  orders: number;
-  pieces: number;
-  sales: number;
-};
-
-type InventoryMixPoint = {
-  fill: string;
-  key: StockStatus;
-  label: string;
-  value: number;
-};
-
-type PipelinePoint = {
-  count: number;
-  key: OrderStatus;
-  revenue: number;
-};
-
-type HotSkuRow = {
-  availableQty: number | null;
-  name: string;
-  quantity: number;
-  revenue: number;
-  sku: string;
-};
-
-type HotStockAlert = {
-  availableQty: number;
-  coverageDays: number | null;
-  galleryImagePaths: string[];
-  galleryImageUrls: string[];
-  imageAlt?: string;
-  imagePath?: string;
-  imageUrl?: string;
-  name: string;
-  risk: RiskLevel;
-  sku: string;
-  sold7d: number;
-  stock: number;
-};
-
-type DashboardModel = {
-  activeSku: number;
-  averageOrder7d: number;
-  catalogHealth: {
-    active: number;
-    blocked: number;
-    completion: number;
-    draft: number;
-    hidden: number;
-    missingImage: number;
-    missingPrice: number;
-  };
-  fulfillmentQueue: number;
-  hotSku: HotSkuRow[];
-  hotStockAlerts: HotStockAlert[];
-  inventoryMix: InventoryMixPoint[];
-  inventoryTotals: {
-    available: number;
-    inStock: number;
-    locked: number;
-    lowStock: number;
-    outOfStock: number;
-  };
-  paidOrders7d: number;
-  pendingPayments: number;
-  pipeline: PipelinePoint[];
-  previousSales7d: number;
-  sales7d: number;
-  salesTrend: SalesTrendPoint[];
-  stockAlerts: number;
-  todayOrders: number;
-  uniqueCustomers: number;
-  yesterdayOrders: number;
-};
+type DashboardModel = OverviewModel;
+type SalesTrendPoint = DashboardModel["salesTrend"][number];
+type InventoryMixPoint = DashboardModel["inventoryMix"][number];
+type HotStockAlert = DashboardModel["hotStockAlerts"][number];
 
 type MetricCard = {
   detail: string;
@@ -220,25 +106,7 @@ type MetricCard = {
 };
 
 const dashboardRanges = ["7", "30", "90"] as const;
-const orderStatuses = [
-  "submitted",
-  "accepted",
-  "picking",
-  "packed",
-  "shipped",
-  "completed",
-  "cancelled",
-] as const;
-const stockStatuses = ["In Stock", "Low Stock", "Out of Stock"] as const;
-const catalogStatuses = ["active", "draft", "hidden", "blocked"] as const;
 const productImagesBucket = "product-images";
-const fulfillmentQueueStatuses = new Set<OrderStatus>([
-  "submitted",
-  "accepted",
-  "picking",
-  "packed",
-  "shipped",
-]);
 const cardClass =
   "min-w-0 rounded-lg border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.045)]";
 
@@ -271,11 +139,10 @@ export function AdminOverviewDashboard({
   const text = getAdminDictionary(locale).admin;
   const copy = text.dashboard.overview;
   const [salesRange, setSalesRange] = React.useState<DashboardRange>("7");
-  const { refresh, snapshot } = useDashboardSnapshot();
-  const model = React.useMemo(
-    () => buildDashboardModel(snapshot, Number(salesRange)),
-    [salesRange, snapshot]
-  );
+  const { refresh, snapshot } = useDashboardSnapshot(salesRange);
+  const model = snapshot.modelRange === salesRange && snapshot.model
+    ? snapshot.model
+    : buildOverviewModel([], [], Number(salesRange) as 7 | 30 | 90, new Date(), "UTC");
   const metrics = React.useMemo<MetricCard[]>(
     () => [
       {
@@ -340,7 +207,7 @@ export function AdminOverviewDashboard({
         </div>
       ) : null}
 
-      {snapshot.isLoading && !snapshot.syncedAt ? (
+      {(snapshot.isLoading && !snapshot.syncedAt) || snapshot.modelRange !== salesRange ? (
         <OverviewDashboardSkeleton />
       ) : (
         <AdminBusyRegion
@@ -1025,7 +892,7 @@ function ChartPlaceholder({ compact = false }: { compact?: boolean }) {
   );
 }
 
-function useDashboardSnapshot() {
+function useDashboardSnapshot(range: DashboardRange) {
   const [reloadIndex, setReloadIndex] = React.useState(0);
   const [snapshot, setSnapshot] = React.useState<DashboardSnapshot>(() => ({
     ...emptyDashboardSnapshot(),
@@ -1034,8 +901,7 @@ function useDashboardSnapshot() {
 
   React.useEffect(() => {
     const controller = new AbortController();
-
-    void fetchDashboardOverview(controller.signal)
+    void fetchDashboardOverview(controller.signal, range)
       .then((overview) => {
         if (controller.signal.aborted) {
           return;
@@ -1047,11 +913,11 @@ function useDashboardSnapshot() {
           isLoading: false,
           orderSource: overview.orderSource,
           orderTotal: overview.orderTotal,
-          orders: overview.orders,
+          model: overview.model,
+          modelRange: range,
           ordersReturned: overview.ordersReturned,
           productSource: overview.productSource,
           productTotal: overview.productTotal,
-          products: overview.products,
           productsReturned: overview.productsReturned,
           syncedAt: new Date().toISOString(),
         }));
@@ -1065,6 +931,8 @@ function useDashboardSnapshot() {
           ...current,
           error: readErrorMessage(error),
           isLoading: false,
+          model: current.modelRange === range ? current.model : null,
+          modelRange: range,
           syncedAt: new Date().toISOString(),
         }));
       });
@@ -1072,7 +940,7 @@ function useDashboardSnapshot() {
     return () => {
       controller.abort();
     };
-  }, [reloadIndex]);
+  }, [reloadIndex, range]);
 
   return {
     refresh: React.useCallback(() => {
@@ -1087,386 +955,36 @@ function useDashboardSnapshot() {
   };
 }
 
-async function fetchDashboardOverview(signal: AbortSignal) {
-  const response = await fetch("/api/admin/overview", {
+async function fetchDashboardOverview(signal: AbortSignal, range: DashboardRange) {
+  const params = new URLSearchParams({
+    view: "compact",
+    range,
+    anchor: new Date().toISOString(),
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+  });
+  const response = await fetch(`/api/admin/overview?${params}`, {
     cache: "no-store",
     headers: { Accept: "application/json", "Cache-Control": "no-cache" },
     signal,
   });
-
   if (!response.ok) {
     throw new Error(`GET /api/admin/overview ${response.status}`);
   }
-
   const payload = (await response.json()) as unknown;
   const meta = readMeta(payload);
   const data = isRecord(payload) && isRecord(payload.data) ? payload.data : {};
-  const orders = (readArrayPayload(data, ["orders"]) ?? [])
-    .map(normalizeDashboardOrder)
-    .filter(isDefined);
-  const products = (readArrayPayload(data, ["products"]) ?? [])
-    .map(normalizeDashboardProduct)
-    .filter(isDefined);
-  const errors = readStringArray(meta.errors) ?? [];
-
+  if (!isRecord(data.model)) {
+    throw new Error("Admin overview compact model is unavailable.");
+  }
   return {
-    errors,
+    errors: readStringArray(meta.errors) ?? [],
+    model: data.model as OverviewModel,
     orderSource: readString(meta.orderSource) ?? "empty",
-    orderTotal: readNumber(meta.orderTotal) ?? orders.length,
-    orders,
-    ordersReturned: readNumber(meta.ordersReturned) ?? orders.length,
-    products,
-    productsReturned: readNumber(meta.productsReturned) ?? products.length,
+    orderTotal: readNumber(meta.orderTotal) ?? 0,
+    ordersReturned: readNumber(meta.ordersReturned) ?? 0,
     productSource: readString(meta.productSource) ?? "empty",
-    productTotal: readNumber(meta.productTotal) ?? products.length,
-  };
-}
-
-function buildDashboardModel(snapshot: DashboardSnapshot, salesRange: number): DashboardModel {
-  const now = new Date();
-  const todayKey = dateKey(now);
-  const yesterdayKey = dateKey(addDays(now, -1));
-  const orders = snapshot.orders;
-  const products = snapshot.products;
-  const ordersToday = orders.filter((order) => dateKey(parseDate(order.createdAt)) === todayKey);
-  const ordersYesterday = orders.filter(
-    (order) => dateKey(parseDate(order.createdAt)) === yesterdayKey
-  );
-  const paidOrders = orders.filter(isPaidOrder);
-  const sales7dWindow = buildWindow(now, 7);
-  const previousSales7dWindow = buildWindow(addDays(now, -7), 7);
-  const recentPaidOrders = paidOrders.filter((order) =>
-    sales7dWindow.has(dateKey(parseDate(order.createdAt)))
-  );
-  const previousPaidOrders = paidOrders.filter((order) =>
-    previousSales7dWindow.has(dateKey(parseDate(order.createdAt)))
-  );
-  const sales7d = sumBy(recentPaidOrders, (order) => order.total);
-  const previousSales7d = sumBy(previousPaidOrders, (order) => order.total);
-  const salesBySku = buildSkuSales(recentPaidOrders);
-  const productBySku = new Map(products.map((product) => [product.sku.toLowerCase(), product]));
-  const hotStockAlerts = buildHotStockAlerts(products, salesBySku);
-  const hotSku = buildHotSkuRows(salesBySku, productBySku);
-  const inStock = products.filter((product) => product.status === "In Stock").length;
-  const lowStock = products.filter((product) => product.status === "Low Stock").length;
-  const outOfStock = products.filter((product) => product.status === "Out of Stock").length;
-  const active = products.filter((product) => product.catalogStatus === "active").length;
-  const draft = products.filter((product) => product.catalogStatus === "draft").length;
-  const hidden = products.filter((product) => product.catalogStatus === "hidden").length;
-  const blocked = products.filter((product) => product.catalogStatus === "blocked").length;
-  const missingImage = products.filter((product) => !product.imageUrl).length;
-  const missingPrice = products.filter((product) => product.price <= 0).length;
-  const completion = products.length
-    ? Math.round(
-        ((active + (products.length - missingImage) + (products.length - missingPrice)) /
-          (products.length * 3)) *
-          100
-      )
-    : 0;
-
-  return {
-    activeSku: active || products.filter((product) => product.stock > 0).length,
-    averageOrder7d: recentPaidOrders.length > 0 ? sales7d / recentPaidOrders.length : 0,
-    catalogHealth: {
-      active,
-      blocked,
-      completion,
-      draft,
-      hidden,
-      missingImage,
-      missingPrice,
-    },
-    fulfillmentQueue: orders.filter((order) => fulfillmentQueueStatuses.has(order.status)).length,
-    hotSku,
-    hotStockAlerts,
-    inventoryMix: [
-      { fill: "#16a34a", key: "In Stock", label: "In Stock", value: inStock },
-      { fill: "#f59e0b", key: "Low Stock", label: "Low Stock", value: lowStock },
-      { fill: "#ef4444", key: "Out of Stock", label: "Out of Stock", value: outOfStock },
-    ],
-    inventoryTotals: {
-      available: sumBy(products, (product) => product.availableQty),
-      inStock,
-      locked: sumBy(products, (product) => product.lockedQty),
-      lowStock,
-      outOfStock,
-    },
-    paidOrders7d: recentPaidOrders.length,
-    pendingPayments: orders.filter(
-      (order) => order.paymentStatus !== "paid" && order.status !== "cancelled"
-    ).length,
-    pipeline: orderStatuses.map((status) => {
-      const statusOrders = orders.filter((order) => order.status === status);
-
-      return {
-        count: statusOrders.length,
-        key: status,
-        revenue: sumBy(statusOrders, (order) => order.total),
-      };
-    }),
-    previousSales7d,
-    sales7d,
-    salesTrend: buildSalesTrend(paidOrders, salesRange, now),
-    stockAlerts: lowStock + outOfStock,
-    todayOrders: ordersToday.length,
-    uniqueCustomers: new Set(orders.map((order) => order.company).filter(Boolean)).size,
-    yesterdayOrders: ordersYesterday.length,
-  };
-}
-
-function buildSalesTrend(orders: DashboardOrder[], rangeDays: number, anchor: Date) {
-  const days = Array.from({ length: rangeDays }, (_, index) =>
-    addDays(anchor, index - rangeDays + 1)
-  );
-  const buckets = new Map(
-    days.map((day) => [
-      dateKey(day),
-      {
-        day: formatDayLabel(day),
-        key: dateKey(day),
-        orders: 0,
-        pieces: 0,
-        sales: 0,
-      } satisfies SalesTrendPoint,
-    ])
-  );
-
-  for (const order of orders) {
-    const bucket = buckets.get(dateKey(parseDate(order.createdAt)));
-
-    if (!bucket) {
-      continue;
-    }
-
-    bucket.orders += 1;
-    bucket.pieces += order.items;
-    bucket.sales += order.total;
-  }
-
-  return Array.from(buckets.values());
-}
-
-function buildSkuSales(orders: DashboardOrder[]) {
-  const sales = new Map<
-    string,
-    { name: string; orderIds: Set<string>; quantity: number; revenue: number; sku: string }
-  >();
-
-  for (const order of orders) {
-    for (const line of order.lines) {
-      const key = line.sku.toLowerCase();
-      const current =
-        sales.get(key) ??
-        {
-          name: line.name,
-          orderIds: new Set<string>(),
-          quantity: 0,
-          revenue: 0,
-          sku: line.sku,
-        };
-
-      current.orderIds.add(order.id);
-      current.quantity += line.quantity;
-      current.revenue += line.lineTotal;
-      sales.set(key, current);
-    }
-  }
-
-  return sales;
-}
-
-function buildHotStockAlerts(
-  products: DashboardProduct[],
-  salesBySku: ReturnType<typeof buildSkuSales>
-) {
-  return products
-    .map((product) => {
-      const sales = salesBySku.get(product.sku.toLowerCase());
-      const sold7d = sales?.quantity ?? 0;
-      const velocity = sold7d / 7;
-      const coverageDays = velocity > 0 ? product.availableQty / velocity : null;
-      const risk = stockRisk(product, sold7d, coverageDays);
-      const score =
-        (risk === "urgent" ? 1000 : risk === "watch" ? 500 : 0) +
-        sold7d * 12 -
-        product.availableQty;
-
-      return {
-        alert: {
-          availableQty: product.availableQty,
-          coverageDays,
-          galleryImagePaths: product.galleryImagePaths,
-          galleryImageUrls: product.galleryImageUrls,
-          imageAlt: product.imageAlt,
-          imagePath: product.imagePath,
-          imageUrl: product.imageUrl,
-          name: product.name,
-          risk,
-          sku: product.sku,
-          sold7d,
-          stock: product.stock,
-        },
-        score,
-      };
-    })
-    .filter(({ alert }) => alert.risk !== "ok")
-    .sort((left, right) => right.score - left.score)
-    .slice(0, 5)
-    .map(({ alert }) => alert);
-}
-
-function buildHotSkuRows(
-  salesBySku: ReturnType<typeof buildSkuSales>,
-  productBySku: Map<string, DashboardProduct>
-) {
-  return Array.from(salesBySku.values())
-    .sort((left, right) => right.quantity - left.quantity || right.revenue - left.revenue)
-    .slice(0, 5)
-    .map((item) => {
-      const product = productBySku.get(item.sku.toLowerCase());
-
-      return {
-        availableQty: product?.availableQty ?? null,
-        name: product?.name ?? item.name,
-        quantity: item.quantity,
-        revenue: item.revenue,
-        sku: item.sku,
-      };
-    });
-}
-
-function normalizeDashboardOrder(row: unknown): DashboardOrder | null {
-  if (!isRecord(row)) {
-    return null;
-  }
-
-  const customer = isRecord(row.customer) ? row.customer : null;
-  const totals = isRecord(row.totals) ? row.totals : null;
-  const id = readString(readRecordValue(row, ["id", "number", "orderNo", "order_no"]));
-
-  if (!id) {
-    return null;
-  }
-
-  const status = normalizeOrderStatus(
-    readRecordValue(row, ["status", "orderStatus", "order_status"])
-  );
-  const lines = (readArrayPayload(row, ["lines", "orderLines", "items"]) ?? [])
-    .map(normalizeDashboardOrderLine)
-    .filter(isDefined);
-  const items =
-    readNumber(readRecordValue(row, ["items", "itemCount", "items_count"])) ??
-    sumBy(lines, (line) => line.quantity);
-
-  return {
-    company:
-      readString(row.company) ??
-      readString(readRecordValue(customer, ["name", "companyName", "company_name"])) ??
-      "Customer",
-    createdAt:
-      readString(readRecordValue(row, ["createdAt", "created_at", "orderedAt", "date"])) ??
-      "",
-    id,
-    items,
-    lines,
-    paymentStatus: normalizePaymentStatus(
-      readRecordValue(row, ["paymentStatus", "payment_status"]),
-      status
-    ),
-    status,
-    total: readMoney(
-      readRecordValue(row, ["total", "totalAmount", "total_amount", "grandTotal"]) ??
-        readRecordValue(totals, ["total", "gross", "grandTotal", "grand_total"])
-    ),
-  };
-}
-
-function normalizeDashboardOrderLine(row: unknown): DashboardOrderLine | null {
-  if (!isRecord(row)) {
-    return null;
-  }
-
-  const product = isRecord(row.product) ? row.product : null;
-  const sku =
-    readString(readRecordValue(row, ["sku", "productSku", "product_sku"])) ??
-    readString(readRecordValue(product, ["sku"]));
-  const quantity =
-    readNumber(readRecordValue(row, ["quantity", "qty"])) ??
-    readNumber(readRecordValue(row, ["items"])) ??
-    0;
-
-  if (!sku || quantity <= 0) {
-    return null;
-  }
-
-  const lineTotal = readMoney(readRecordValue(row, ["lineTotal", "line_total", "total"]));
-  const unitPrice = readMoney(readRecordValue(row, ["unitPrice", "unit_price", "price"]));
-
-  return {
-    lineTotal: lineTotal > 0 ? lineTotal : unitPrice * quantity,
-    name:
-      readString(readRecordValue(row, ["name", "productName", "product_name"])) ??
-      readString(readRecordValue(product, ["name"])) ??
-      sku,
-    quantity,
-    sku,
-  };
-}
-
-function normalizeDashboardProduct(row: unknown): DashboardProduct | null {
-  if (!isRecord(row)) {
-    return null;
-  }
-
-  const sku = readString(row.sku) ?? readString(row.sku_code);
-
-  if (!sku) {
-    return null;
-  }
-
-  const stock =
-    readNumber(row.stockQty) ??
-    readNumber(row.stock_qty) ??
-    readNumber(row.stock) ??
-    readNumber(row.availableQty) ??
-    0;
-  const availableQty =
-    readNumber(row.availableQty) ??
-    readNumber(row.available_qty) ??
-    Math.max(0, stock - (readNumber(row.lockedQty) ?? readNumber(row.locked_qty) ?? 0));
-  const lockedQty = readNumber(row.lockedQty) ?? readNumber(row.locked_qty) ?? 0;
-  const status =
-    normalizeStockStatus(row.stockStatus) ??
-    normalizeStockStatus(row.stock_status) ??
-    stockStatusFromStock(stock);
-
-  return {
-    availableQty,
-    brand: readString(row.brand) ?? "OEM",
-    catalogStatus:
-      normalizeCatalogStatus(row.catalogStatus) ??
-      normalizeCatalogStatus(row.catalog_status) ??
-      normalizeCatalogStatus(row.status) ??
-      "draft",
-    category: readString(row.category) ?? "Ricambi",
-    galleryImagePaths:
-      readStringArray(row.galleryImagePaths) ??
-      readStringArray(row.gallery_image_paths) ??
-      [],
-    galleryImageUrls:
-      readStringArray(row.galleryImageUrls) ??
-      readStringArray(row.gallery_image_urls) ??
-      [],
-    imageAlt: readString(row.imageAlt) ?? readString(row.image_alt),
-    imagePath: readString(row.imagePath) ?? readString(row.image_path),
-    imageUrl: readString(row.imageUrl) ?? readString(row.image_url),
-    lockedQty,
-    name: readString(row.name) ?? sku,
-    price: readNumber(row.b2bPrice) ?? readNumber(row.b2b_price) ?? readNumber(row.price) ?? 0,
-    sku,
-    status,
-    stock,
-    updatedAt: readString(row.updatedAt) ?? readString(row.updated_at) ?? "",
+    productTotal: readNumber(meta.productTotal) ?? 0,
+    productsReturned: readNumber(meta.productsReturned) ?? 0,
   };
 }
 
@@ -1476,102 +994,18 @@ function emptyDashboardSnapshot(): DashboardSnapshot {
     isLoading: false,
     orderSource: "empty",
     orderTotal: 0,
-    orders: [],
+    model: null,
+    modelRange: null,
     ordersReturned: 0,
     productSource: "empty",
     productTotal: 0,
-    products: [],
     productsReturned: 0,
     syncedAt: null,
   };
 }
 
-function stockRisk(
-  product: DashboardProduct,
-  sold7d: number,
-  coverageDays: number | null
-): RiskLevel {
-  if (product.availableQty <= 0 || product.stock <= 0) {
-    return "urgent";
-  }
-
-  if (coverageDays !== null && coverageDays <= 3) {
-    return "urgent";
-  }
-
-  if (
-    product.status === "Low Stock" ||
-    product.availableQty <= 8 ||
-    sold7d >= 5 ||
-    (coverageDays !== null && coverageDays <= 10)
-  ) {
-    return "watch";
-  }
-
-  return "ok";
-}
-
-function isPaidOrder(order: DashboardOrder) {
-  return order.paymentStatus === "paid";
-}
-
 function isDashboardRange(value: string): value is DashboardRange {
   return dashboardRanges.includes(value as DashboardRange);
-}
-
-function normalizeOrderStatus(value: unknown): OrderStatus {
-  if (orderStatuses.includes(value as OrderStatus)) {
-    return value as OrderStatus;
-  }
-
-  if (value === "paid") {
-    return "accepted";
-  }
-
-  if (value === "delivered") {
-    return "completed";
-  }
-
-  return "submitted";
-}
-
-function normalizePaymentStatus(value: unknown, status: OrderStatus): PaymentStatus {
-  if (value === "paid") {
-    return "paid";
-  }
-
-  if (value === "authorized") {
-    return "authorized";
-  }
-
-  if (value === "refunded" || value === "failed") {
-    return "refunded";
-  }
-
-  void status;
-  return "unpaid";
-}
-
-function normalizeStockStatus(value: unknown): StockStatus | null {
-  const status = readString(value);
-  return stockStatuses.find((item) => item === status) ?? null;
-}
-
-function normalizeCatalogStatus(value: unknown): CatalogStatus | null {
-  const status = readString(value);
-  return catalogStatuses.find((item) => item === status) ?? null;
-}
-
-function stockStatusFromStock(stock: number): StockStatus {
-  if (stock <= 0) {
-    return "Out of Stock";
-  }
-
-  if (stock <= 10) {
-    return "Low Stock";
-  }
-
-  return "In Stock";
 }
 
 function stockStatusLabel(
@@ -1593,35 +1027,6 @@ function readMeta(payload: unknown) {
   return isRecord(payload) && isRecord(payload.meta) ? payload.meta : {};
 }
 
-function readArrayPayload(record: Record<string, unknown>, keys: string[]) {
-  for (const key of keys) {
-    const value = record[key];
-
-    if (Array.isArray(value)) {
-      return value;
-    }
-  }
-
-  return null;
-}
-
-function readRecordValue(
-  record: Record<string, unknown> | null | undefined,
-  keys: string[]
-) {
-  if (!record) {
-    return undefined;
-  }
-
-  for (const key of keys) {
-    if (record[key] !== undefined && record[key] !== null) {
-      return record[key];
-    }
-  }
-
-  return undefined;
-}
-
 function readString(value: unknown) {
   if (typeof value === "string" && value.trim().length > 0) {
     return value.trim();
@@ -1639,7 +1044,7 @@ function readStringArray(value: unknown) {
     return undefined;
   }
 
-  return value.map(readString).filter(isDefined);
+  return value.map(readString).filter((item): item is string => item !== undefined);
 }
 
 function isNonEmptyString(value: string | undefined): value is string {
@@ -1657,28 +1062,6 @@ function readNumber(value: unknown) {
   }
 
   return undefined;
-}
-
-function readMoney(value: unknown) {
-  const direct = readNumber(value);
-
-  if (direct !== undefined) {
-    return direct;
-  }
-
-  if (!isRecord(value)) {
-    return 0;
-  }
-
-  const amount = readNumber(value.amount);
-
-  if (amount !== undefined) {
-    return amount;
-  }
-
-  const cents = readNumber(value.cents);
-
-  return cents !== undefined ? cents / 100 : 0;
 }
 
 function readErrorMessage(error: unknown) {
@@ -1717,39 +1100,6 @@ function formatTime(value: string, locale: string) {
   }).format(date);
 }
 
-function formatDayLabel(date: Date) {
-  return `${date.getMonth() + 1}/${date.getDate()}`;
-}
-
-function parseDate(value: string) {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? new Date(0) : date;
-}
-
-function dateKey(date: Date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-}
-
-function addDays(date: Date, days: number) {
-  const next = new Date(date);
-  next.setDate(next.getDate() + days);
-  return next;
-}
-
-function buildWindow(anchor: Date, days: number) {
-  return new Set(
-    Array.from({ length: days }, (_, index) => dateKey(addDays(anchor, index - days + 1)))
-  );
-}
-
-function sumBy<T>(items: T[], readValue: (item: T) => number) {
-  return items.reduce((total, item) => total + readValue(item), 0);
-}
-
 function metricToneClass(tone: MetricCard["tone"]) {
   switch (tone) {
     case "green":
@@ -1770,8 +1120,4 @@ function metricToneClass(tone: MetricCard["tone"]) {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isDefined<T>(value: T | null | undefined): value is T {
-  return value !== null && value !== undefined;
 }

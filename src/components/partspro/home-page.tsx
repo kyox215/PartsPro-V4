@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import Image from "next/image";
+import { useRef, useState, type ReactNode } from "react";
+import Image from "./optimized-image";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -38,50 +38,37 @@ import { RoutePendingIndicator } from "./pending-feedback";
 import { ProductCard } from "./product-card";
 
 type HomePageProps = {
-  cartAccess?: StorefrontCartAccess;
-  catalogTotal?: number;
-  departmentGroups?: readonly CatalogDepartmentGroup[];
-  homeBanners?: HomeBanner[];
-  hotProducts?: PartProduct[];
-  initialAccountAccess?: StoreHeaderAccountAccess;
-  newProducts?: PartProduct[];
-  priceGateReason?: PriceVisibilityReason;
-  remaxPreorderProducts?: PartProduct[];
-  showPrices?: boolean;
-  stockedProducts?: PartProduct[];
+  departmentGroups: readonly CatalogDepartmentGroup[];
+  initialAccountAccess: StoreHeaderAccountAccess;
+  banner: ReactNode;
+  children: ReactNode;
 };
 
-export function HomePage({
-  cartAccess = { allowed: false, missingFields: [], reason: "login_required" },
-  catalogTotal = 0,
-  departmentGroups = [],
-  homeBanners = [],
-  hotProducts = [],
-  initialAccountAccess,
-  newProducts = [],
-  priceGateReason = "login_required",
-  remaxPreorderProducts = [],
-  showPrices = false,
-  stockedProducts = [],
-}: HomePageProps) {
-  const t = useT();
-
+export function HomePage({ departmentGroups, initialAccountAccess, banner, children }: HomePageProps) {
   return (
     <main className="min-h-screen overflow-x-clip bg-[#f4f6fa] text-slate-950">
-      <StoreHeader
-        departmentGroups={departmentGroups}
-        initialAccountAccess={initialAccountAccess}
-        prefetchCatalogLinks
-      />
+      <StoreHeader departmentGroups={departmentGroups} initialAccountAccess={initialAccountAccess} prefetchCatalogLinks />
       <div className="mx-auto grid w-full max-w-[1500px] min-w-0 grid-cols-[minmax(0,1fr)] gap-3 px-2 py-3 sm:gap-4 sm:px-4 sm:py-4 lg:grid-cols-[230px_minmax(0,1fr)]">
         <CategorySidebar departmentGroups={departmentGroups} />
         <div className="min-w-0 space-y-4">
-          <HomeBannerCarousel
-            banners={homeBanners}
-            catalogTotal={catalogTotal}
-            catalogBrandCount={countCatalogBrands(departmentGroups)}
-          />
-          {remaxPreorderProducts.length > 0 ? (
+          {banner}
+          {children}
+        </div>
+      </div>
+    </main>
+  );
+}
+
+export function HomeProductShelf({ kind, products, cartAccess, priceGateReason, showPrices }: {
+  kind: "remax" | "hot" | "new" | "stocked";
+  products: PartProduct[];
+  cartAccess: StorefrontCartAccess;
+  priceGateReason: PriceVisibilityReason;
+  showPrices: boolean;
+}) {
+  const t = useT();
+  return (<>
+          {kind === "remax" && products.length > 0 ? (
             <ProductShelf
               actionHref="/catalogo?department=general_merchandise&brand=REMAX"
               actionLabel={tx(t, "storefront.home.common.viewAll", "Vedi tutto")}
@@ -93,13 +80,14 @@ export function HomePage({
               id="remax-preorders"
               cartAccess={cartAccess}
               priceGateReason={priceGateReason}
-              products={remaxPreorderProducts}
+              products={products}
               showPrices={showPrices}
               titleKey="storefront.home.remax.title"
               titleFallback="REMAX · Prenota i prossimi arrivi"
               tone="preorder"
             />
           ) : null}
+          {kind === "hot" ? (
           <ProductShelf
             actionHref="/catalogo?minStock=1"
             actionLabel={tx(t, "storefront.home.common.viewAll", "Vedi tutto")}
@@ -111,11 +99,13 @@ export function HomePage({
             id="hot-products"
             cartAccess={cartAccess}
             priceGateReason={priceGateReason}
-            products={hotProducts}
+            products={products}
             showPrices={showPrices}
             titleKey="storefront.home.hot.title"
             titleFallback="Prodotti più richiesti"
           />
+          ) : null}
+          {kind === "new" ? (
           <ProductShelf
             actionHref="/catalogo"
             actionLabel={tx(t, "storefront.home.common.viewAll", "Vedi tutto")}
@@ -127,11 +117,13 @@ export function HomePage({
             id="new-products"
             cartAccess={cartAccess}
             priceGateReason={priceGateReason}
-            products={newProducts}
+            products={products}
             showPrices={showPrices}
             titleKey="storefront.home.new.title"
             titleFallback="Nuovi prodotti"
           />
+          ) : null}
+          {kind === "stocked" ? (
           <ProductShelf
             actionHref="/catalogo?minStock=1"
             actionLabel={tx(t, "storefront.home.products.action", "Disponibili ora")}
@@ -143,14 +135,24 @@ export function HomePage({
             id="stocked-products"
             cartAccess={cartAccess}
             priceGateReason={priceGateReason}
-            products={stockedProducts}
+            products={products}
             showPrices={showPrices}
             titleKey="storefront.home.products.title"
             titleFallback="Ricambi disponibili ora"
           />
-        </div>
+          ) : null}
+  </>);
+}
+
+export function HomeShelfLoading() {
+  const t = useT();
+  return (
+    <section aria-busy="true" aria-label={t("common.loading")} className="space-y-2">
+      <div className="h-10 w-60 rounded-lg bg-slate-200 motion-safe:animate-pulse" />
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => <div key={index} className="h-36 rounded-lg border border-slate-200 bg-white sm:h-72 motion-safe:animate-pulse" />)}
       </div>
-    </main>
+    </section>
   );
 }
 
@@ -195,14 +197,14 @@ function CategorySidebar({
   );
 }
 
-function HomeBannerCarousel({
+export function HomeBannerCarousel({
   banners,
   catalogBrandCount,
   catalogTotal,
 }: {
   banners: HomeBanner[];
   catalogBrandCount: number;
-  catalogTotal: number;
+  catalogTotal: ReactNode;
 }) {
   const t = useT();
   const [activeIndex, setActiveIndex] = useState(0);
@@ -322,7 +324,7 @@ function CuttingMachinePoster({
   catalogTotal,
 }: {
   catalogBrandCount: number;
-  catalogTotal: number;
+  catalogTotal: ReactNode;
 }) {
   const t = useT();
   const stats = [
@@ -370,7 +372,7 @@ function CuttingMachinePoster({
               </Link>
             </Button>
             <div className="text-xs font-bold text-slate-500">
-              {catalogTotal.toLocaleString()} SKU · {catalogBrandCount || "8+"} brand
+              {catalogTotal} SKU · {catalogBrandCount || "8+"} brand
             </div>
           </div>
         </div>
@@ -391,12 +393,6 @@ function CuttingMachinePoster({
       </div>
     </section>
   );
-}
-
-function countCatalogBrands(groups: readonly CatalogDepartmentGroup[]) {
-  return new Set(
-    groups.flatMap((group) => group.brands.map((brand) => brand.brand))
-  ).size;
 }
 
 function ProductShelf({
@@ -452,12 +448,11 @@ function ProductShelf({
       />
       {products.length > 0 ? (
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          {products.map((product, index) => (
+          {products.map((product) => (
             <ProductCard
               key={`${id}-${product.sku}`}
               cartAccess={cartAccess}
               priceGateReason={priceGateReason}
-              priorityImage={index < 4}
               product={product}
               showWholesalePrice={showPrices}
             />

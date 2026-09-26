@@ -180,8 +180,8 @@ export function AdminFinancePanel() {
   const [summary, setSummary] = React.useState<FinanceSummary>(emptySummary);
   const [ledgerRows, setLedgerRows] = React.useState<FinanceLedgerRow[]>([]);
   const [allocations, setAllocations] = React.useState<FinanceAllocation[]>([]);
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState({ summary: true, ledger: true, cogs: true });
+  const [errors, setErrors] = React.useState<Partial<Record<"summary" | "ledger" | "cogs", string>>>({});
   const [reloadKey, setReloadKey] = React.useState(0);
 
   React.useEffect(() => {
@@ -190,56 +190,59 @@ export function AdminFinancePanel() {
 
     queueMicrotask(() => {
       if (!controller.signal.aborted) {
-        setIsLoading(true);
-        setError(null);
+        setLoading({ summary: true, ledger: true, cogs: true });
+        setErrors({});
+        setSummary(emptySummary);
+        setLedgerRows([]);
+        setAllocations([]);
       }
     });
 
-    Promise.all([
-      fetch(`/api/admin/finance/summary?${params}`, {
-        cache: "no-store",
-        headers: { Accept: "application/json" },
-        signal: controller.signal,
-      }),
-      fetch(`/api/admin/finance/ledger?${params}`, {
-        cache: "no-store",
-        headers: { Accept: "application/json" },
-        signal: controller.signal,
-      }),
-      fetch(`/api/admin/finance/cogs?${params}`, {
-        cache: "no-store",
-        headers: { Accept: "application/json" },
-        signal: controller.signal,
-      }),
-    ])
-      .then(async ([summaryResponse, ledgerResponse, cogsResponse]) => {
-        if (!summaryResponse.ok || !ledgerResponse.ok || !cogsResponse.ok) {
+    async function loadSection<T>(
+      section: "summary" | "ledger" | "cogs",
+      update: (payload: T) => void
+    ) {
+      try {
+        const response = await fetch(`/api/admin/finance/${section}?${params}`, {
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+          signal: controller.signal,
+        });
+        if (!response.ok) {
           throw new Error(copy.loadError);
         }
-
-        const summaryPayload = (await summaryResponse.json()) as ApiItemResponse<FinanceSummary>;
-        const ledgerPayload = (await ledgerResponse.json()) as ApiListResponse<FinanceLedgerRow>;
-        const cogsPayload = (await cogsResponse.json()) as ApiListResponse<FinanceAllocation>;
-
-        setSummary(summaryPayload.data ?? emptySummary);
-        setLedgerRows(Array.isArray(ledgerPayload.data) ? ledgerPayload.data : []);
-        setAllocations(Array.isArray(cogsPayload.data) ? cogsPayload.data : []);
-      })
-      .catch((fetchError: unknown) => {
-        if (controller.signal.aborted) {
-          return;
-        }
-
-        setError(fetchError instanceof Error ? fetchError.message : copy.loadError);
-      })
-      .finally(() => {
+        const payload = (await response.json()) as T;
         if (!controller.signal.aborted) {
-          setIsLoading(false);
+          update(payload);
         }
-      });
+      } catch (fetchError) {
+        if (!controller.signal.aborted) {
+          setErrors((current) => ({
+            ...current,
+            [section]: fetchError instanceof Error ? fetchError.message : copy.loadError,
+          }));
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading((current) => ({ ...current, [section]: false }));
+        }
+      }
+    }
+
+    void loadSection<ApiItemResponse<FinanceSummary>>("summary", (payload) => {
+      setSummary(payload.data ?? emptySummary);
+    });
+    void loadSection<ApiListResponse<FinanceLedgerRow>>("ledger", (payload) => {
+      setLedgerRows(Array.isArray(payload.data) ? payload.data : []);
+    });
+    void loadSection<ApiListResponse<FinanceAllocation>>("cogs", (payload) => {
+      setAllocations(Array.isArray(payload.data) ? payload.data : []);
+    });
 
     return () => controller.abort();
   }, [copy.loadError, filters, reloadKey]);
+
+  const isLoading = loading.summary || loading.ledger || loading.cogs;
 
   const exportCsvHref = `/api/admin/finance/export?${buildFinanceParams(filters, "csv")}`;
   const exportXlsxHref = `/api/admin/finance/export?${buildFinanceParams(filters, "xlsx")}`;
@@ -283,9 +286,9 @@ export function AdminFinancePanel() {
         <FinanceFiltersBar filters={filters} setFilters={setFilters} copy={copy} />
       </div>
 
-      {error ? (
+      {Object.keys(errors).length > 0 ? (
         <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">
-          {error}
+          {Object.entries(errors).map(([section, message]) => `${section}: ${message}`).join("; ")}
         </div>
       ) : null}
 
@@ -299,6 +302,11 @@ export function AdminFinancePanel() {
         </TabsList>
 
         <TabsContent value="overview" className="mt-3 min-w-0">
+          {loading.summary || errors.summary ? (
+            <div role="status" aria-busy={loading.summary} className="rounded-lg border border-slate-200 bg-white p-8 text-sm font-semibold text-slate-500">
+              {loading.summary ? copy.loading : errors.summary}
+            </div>
+          ) : <>
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             <MetricCard icon={TrendingUp} label={copy.salesNet} value={formatMoney(summary.salesNet, locale)} />
             <MetricCard icon={Scale} label="COGS" value={formatMoney(summary.cogsNet, locale)} />
@@ -348,21 +356,22 @@ export function AdminFinancePanel() {
               </CardContent>
             </Card>
           </div>
+          </>}
         </TabsContent>
 
         <TabsContent value="margin" className="mt-3 min-w-0">
           <FinanceTable
             copy={copy}
-            isLoading={isLoading}
+            isLoading={loading.ledger}
             rows={ledgerRows.filter((row) => row.type === "sale" || row.type === "cogs" || row.type === "receivable")}
           />
-          <CogsTable allocations={allocations} copy={copy} isLoading={isLoading} locale={locale} />
+          <CogsTable allocations={allocations} copy={copy} isLoading={loading.cogs} locale={locale} />
         </TabsContent>
 
         <TabsContent value="purchases" className="mt-3 min-w-0">
           <FinanceTable
             copy={copy}
-            isLoading={isLoading}
+            isLoading={loading.ledger}
             rows={ledgerRows.filter((row) => row.type === "purchase" || row.type === "supplier_payment")}
           />
         </TabsContent>
@@ -370,7 +379,7 @@ export function AdminFinancePanel() {
         <TabsContent value="expenses" className="mt-3 min-w-0">
           <FinanceTable
             copy={copy}
-            isLoading={isLoading}
+            isLoading={loading.ledger}
             rows={ledgerRows.filter((row) => row.type === "expense")}
           />
         </TabsContent>

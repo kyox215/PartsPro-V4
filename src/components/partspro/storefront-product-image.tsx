@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Image from "next/image";
+import Image from "./optimized-image";
 import type { PartProduct } from "@/lib/partspro-data";
 import { getProductImageCandidates } from "@/lib/partspro-product-images";
 import { cn } from "@/lib/utils";
