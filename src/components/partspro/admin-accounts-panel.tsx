@@ -262,6 +262,54 @@ type AccountProfileEditorState = {
   shippingAddress: AddressDraft;
 };
 
+type SettlementPaymentMethod = "bank_transfer" | "cash";
+
+type CustomerSettlementOrderPreview = {
+  createdAt: string | null;
+  dueAmount: number;
+  grossAmount: number;
+  id: string;
+  orderNo: string;
+  orderStatus: string;
+  paymentMethod: string | null;
+  paymentStatus: string;
+  receivedAmount: number;
+  updatedAt: string | null;
+  walletAppliedAmount: number;
+};
+
+type CustomerSettlementPreview = {
+  customerId: string;
+  customerName: string | null;
+  dueAmount: number;
+  grossAmount: number;
+  orderCount: number;
+  orders: CustomerSettlementOrderPreview[];
+  receivedAmount: number;
+  revision: string;
+  walletAppliedAmount: number;
+};
+
+type CustomerSettlementState = {
+  account: Account;
+  customerId: string;
+  customerName: string;
+  error: string | null;
+  loading: boolean;
+  note: string;
+  paymentMethod: SettlementPaymentMethod;
+  preview: CustomerSettlementPreview | null;
+  receivedAt: string;
+  reference: string;
+};
+
+type CustomerSettlementResult = {
+  bulkSettlementId: string;
+  collectedAmount: number;
+  customerId: string;
+  orderCount: number;
+};
+
 type AccountProfileEditorField =
   | "companyName"
   | "contactName"
@@ -340,10 +388,14 @@ export function AdminAccountsPanel({
   const [conversion, setConversion] = React.useState<ConversionState | null>(null);
   const [customerAction, setCustomerAction] = React.useState<CustomerActionState | null>(null);
   const [profileEditor, setProfileEditor] = React.useState<AccountProfileEditorState | null>(null);
+  const [customerSettlement, setCustomerSettlement] =
+    React.useState<CustomerSettlementState | null>(null);
+  const [settlementSubmitting, setSettlementSubmitting] = React.useState(false);
   const detailCacheRef = React.useRef(new Map<string, AccountDetail>());
   const detailLoadedIncludesRef = React.useRef(new Map<string, Set<AccountDetailInclude>>());
   const detailEpochRef = React.useRef(0);
   const detailAbortRef = React.useRef<AbortController | null>(null);
+  const settlementAbortRef = React.useRef<AbortController | null>(null);
   const currentUserId = hasExternalPermissions ? initialUserId : fetchedCurrentUserId;
   const currentPermissions = React.useMemo(
     () =>
@@ -365,6 +417,8 @@ export function AdminAccountsPanel({
   const canManageCustomerProfile = currentPermissionSet.has("customers.classify");
   const canManageCustomerType = currentPermissionSet.has("customers.classify");
   const canReadCustomerAccounts = currentPermissionSet.has("customers.read");
+  const canSettleCustomerAccounts =
+    canReadCustomerAccounts && currentPermissionSet.has("orders.manage");
   const canReadEmployeeAccounts =
     currentPermissionSet.has("employees.read") ||
     currentPermissionSet.has("employees.manage_permissions");
@@ -442,7 +496,13 @@ export function AdminAccountsPanel({
     };
   }, []);
 
-  React.useEffect(() => () => detailAbortRef.current?.abort(), []);
+  React.useEffect(
+    () => () => {
+      detailAbortRef.current?.abort();
+      settlementAbortRef.current?.abort();
+    },
+    []
+  );
 
   React.useEffect(() => {
     if (hasExternalPermissions) {
@@ -694,6 +754,141 @@ export function AdminAccountsPanel({
 
   function openProfileEditor(account: Account, profileCustomer?: AccountCustomer | null) {
     setProfileEditor(createAccountProfileEditor(account, profileCustomer ?? account.profileCustomer));
+  }
+
+  async function openCustomerSettlement(
+    account: Account,
+    customer: AccountCustomer
+  ) {
+    if (!customer.id || !canSettleCustomerAccounts) {
+      return;
+    }
+
+    settlementAbortRef.current?.abort();
+    const controller = new AbortController();
+
+    settlementAbortRef.current = controller;
+    setCustomerSettlement({
+      account,
+      customerId: customer.id,
+      customerName:
+        customer.name ?? account.displayName ?? account.email ?? "当前客户",
+      error: null,
+      loading: true,
+      note: "",
+      paymentMethod: "bank_transfer",
+      preview: null,
+      receivedAt: toDateTimeLocalInput(new Date().toISOString()),
+      reference: "",
+    });
+
+    try {
+      const preview = await fetchCustomerSettlementPreview(
+        customer.id,
+        controller.signal
+      );
+
+      if (controller.signal.aborted) {
+        return;
+      }
+
+      setCustomerSettlement((current) =>
+        current?.customerId === customer.id
+          ? { ...current, loading: false, preview }
+          : current
+      );
+    } catch (error) {
+      if (controller.signal.aborted) {
+        return;
+      }
+
+      setCustomerSettlement((current) =>
+        current?.customerId === customer.id
+          ? {
+              ...current,
+              error: readableError(error),
+              loading: false,
+              preview: null,
+            }
+          : current
+      );
+    }
+  }
+
+  function closeCustomerSettlement() {
+    settlementAbortRef.current?.abort();
+    settlementAbortRef.current = null;
+    setCustomerSettlement(null);
+  }
+
+  function updateCustomerSettlement(
+    patch: Partial<
+      Pick<
+        CustomerSettlementState,
+        "note" | "paymentMethod" | "receivedAt" | "reference"
+      >
+    >
+  ) {
+    setCustomerSettlement((current) =>
+      current ? { ...current, ...patch } : current
+    );
+  }
+
+  async function submitCustomerSettlement() {
+    const preview = customerSettlement?.preview;
+
+    if (
+      !customerSettlement ||
+      !preview ||
+      preview.orderCount <= 0 ||
+      settlementSubmitting
+    ) {
+      return;
+    }
+
+    const settlement = customerSettlement;
+    const receivedAtTimestamp = Date.parse(settlement.receivedAt);
+
+    if (!Number.isFinite(receivedAtTimestamp)) {
+      setCustomerSettlement((current) =>
+        current ? { ...current, error: "请选择有效的收款时间。" } : current
+      );
+      return;
+    }
+
+    setSettlementSubmitting(true);
+
+    try {
+      const result = await postCustomerSettlement(settlement.customerId, {
+        expectedRevision: preview.revision,
+        note: settlement.note,
+        paymentMethod: settlement.paymentMethod,
+        receivedAt: new Date(receivedAtTimestamp).toISOString(),
+        reference: settlement.reference,
+      });
+
+      closeCustomerSettlement();
+      setNotice({
+        message: `已一次结清 ${result.orderCount} 笔订单，本次收款 ${formatEuro(result.collectedAmount)}。`,
+        tone: "success",
+      });
+      await Promise.all([
+        refreshAccounts(),
+        loadDetail(settlement.account.userId, { includes: ["orders"] }),
+      ]);
+    } catch (error) {
+      setCustomerSettlement((current) =>
+        current
+          ? {
+              ...current,
+              error: readableError(error),
+              preview: null,
+            }
+          : current
+      );
+    } finally {
+      setSettlementSubmitting(false);
+    }
   }
 
   function updateProfileEditorField(field: AccountProfileEditorField, value: string) {
@@ -1071,6 +1266,7 @@ export function AdminAccountsPanel({
               canManageCustomerStatus={canManageCustomerStatus}
               canManageCustomerType={canManageCustomerType}
               canManageEmployeeAccounts={canManageEmployeeAccounts}
+              canSettleCustomerAccounts={canSettleCustomerAccounts}
               currentUserId={currentUserId}
               detail={detail}
               loadedIncludes={detailLoadedIncludes}
@@ -1079,6 +1275,7 @@ export function AdminAccountsPanel({
               onAction={openConversion}
               onCustomerAction={openCustomerAction}
               onProfileEdit={openProfileEditor}
+              onSettleCustomer={openCustomerSettlement}
               onTabChange={handleDetailTabChange}
               tab={detailTab}
             />
@@ -1102,6 +1299,7 @@ export function AdminAccountsPanel({
               canManageCustomerStatus={canManageCustomerStatus}
               canManageCustomerType={canManageCustomerType}
               canManageEmployeeAccounts={canManageEmployeeAccounts}
+              canSettleCustomerAccounts={canSettleCustomerAccounts}
               currentUserId={currentUserId}
               detail={detail}
               loadedIncludes={detailLoadedIncludes}
@@ -1110,6 +1308,7 @@ export function AdminAccountsPanel({
               onAction={openConversion}
               onCustomerAction={openCustomerAction}
               onProfileEdit={openProfileEditor}
+              onSettleCustomer={openCustomerSettlement}
               onTabChange={handleDetailTabChange}
               tab={detailTab}
             />
@@ -1140,6 +1339,13 @@ export function AdminAccountsPanel({
         onClose={() => setProfileEditor(null)}
         onSubmit={submitProfileEditor}
         submitting={submitting}
+      />
+      <CustomerSettlementDialog
+        onChange={updateCustomerSettlement}
+        onClose={closeCustomerSettlement}
+        onSubmit={submitCustomerSettlement}
+        settlement={customerSettlement}
+        submitting={settlementSubmitting}
       />
     </section>
   );
@@ -1370,6 +1576,7 @@ function AccountDetailPane({
   canManageCustomerStatus,
   canManageCustomerType,
   canManageEmployeeAccounts,
+  canSettleCustomerAccounts,
   currentUserId,
   detail,
   loadedIncludes,
@@ -1378,6 +1585,7 @@ function AccountDetailPane({
   onAction,
   onCustomerAction,
   onProfileEdit,
+  onSettleCustomer,
   onTabChange,
   tab,
 }: {
@@ -1386,6 +1594,7 @@ function AccountDetailPane({
   canManageCustomerStatus: boolean;
   canManageCustomerType: boolean;
   canManageEmployeeAccounts: boolean;
+  canSettleCustomerAccounts: boolean;
   currentUserId: string | null;
   detail: AccountDetail | null;
   loadedIncludes: Set<AccountDetailInclude>;
@@ -1394,6 +1603,7 @@ function AccountDetailPane({
   onAction: (kind: ConversionKind, account: Account) => void;
   onCustomerAction: (kind: CustomerActionKind, account: Account) => void;
   onProfileEdit: (account: Account, profileCustomer?: AccountCustomer | null) => void;
+  onSettleCustomer: (account: Account, customer: AccountCustomer) => void;
   onTabChange: (value: string) => void;
   tab: AccountDetailTab;
 }) {
@@ -1627,9 +1837,12 @@ function AccountDetailPane({
           </TabsContent>
           <TabsContent value="spend" className="m-0">
             <CustomerSpendTab
+              account={account}
+              canSettle={canSettleCustomerAccounts}
               customer={detail.customer}
               loaded={loadedIncludes.has("orders")}
               loading={loadingIncludes.has("orders")}
+              onSettle={onSettleCustomer}
             />
           </TabsContent>
           <TabsContent value="activity" className="m-0">
@@ -1895,13 +2108,19 @@ function CustomerOrdersTab({
 }
 
 function CustomerSpendTab({
+  account,
+  canSettle,
   customer,
   loaded,
   loading,
+  onSettle,
 }: {
+  account: Account;
+  canSettle: boolean;
   customer: AccountCustomer | null;
   loaded: boolean;
   loading: boolean;
+  onSettle: (account: Account, customer: AccountCustomer) => void;
 }) {
   const summary = customer?.spendSummary ?? emptySpendSummary();
   const orders = customer?.orders ?? [];
@@ -1912,6 +2131,24 @@ function CustomerSpendTab({
         <LoadingText text="正在加载消费明细..." />
       ) : (
       <div className="space-y-2">
+        {canSettle && customer?.id ? (
+          <div className="flex flex-col gap-2 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <div className="text-xs font-black text-emerald-950">客户账款结清</div>
+              <div className="text-[11px] font-semibold leading-4 text-emerald-800">
+                服务端会重新核对全部未结清订单、钱包抵扣和既有实收。
+              </div>
+            </div>
+            <Button
+              className="shrink-0"
+              size="sm"
+              onClick={() => onSettle(account, customer)}
+            >
+              <CircleDollarSign className="size-4" />
+              一次结清
+            </Button>
+          </div>
+        ) : null}
         <div className="grid grid-cols-2 gap-1 sm:grid-cols-5 sm:gap-1.5">
           <SpendTile label="累计消费" value={formatEuro(summary.total)} />
           <SpendTile label="已付款" value={formatEuro(summary.paidAmount)} />
@@ -1957,6 +2194,190 @@ function CustomerSpendTab({
       </div>
       )}
     </DetailSection>
+  );
+}
+
+function CustomerSettlementDialog({
+  onChange,
+  onClose,
+  onSubmit,
+  settlement,
+  submitting,
+}: {
+  onChange: (
+    patch: Partial<
+      Pick<
+        CustomerSettlementState,
+        "note" | "paymentMethod" | "receivedAt" | "reference"
+      >
+    >
+  ) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+  settlement: CustomerSettlementState | null;
+  submitting: boolean;
+}) {
+  const preview = settlement?.preview ?? null;
+  const receivedAtIsValid = Boolean(
+    settlement && Number.isFinite(Date.parse(settlement.receivedAt))
+  );
+  const canSubmit = Boolean(
+    settlement &&
+      !settlement.loading &&
+      !settlement.error &&
+      preview &&
+      preview.orderCount > 0 &&
+      receivedAtIsValid
+  );
+
+  return (
+    <Dialog open={Boolean(settlement)} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>确认一次结清客户账款</DialogTitle>
+          <DialogDescription>
+            将把该客户当前全部未结清且未取消的订单一次标记为已付款。提交前会再次核对订单与金额。
+          </DialogDescription>
+        </DialogHeader>
+
+        {settlement ? (
+          <div className="space-y-3">
+            <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+              <div className="text-xs font-bold text-slate-500">客户</div>
+              <div className="mt-0.5 break-words text-sm font-black text-slate-950">
+                {settlement.customerName}
+              </div>
+            </div>
+
+            {settlement.loading ? (
+              <div className="flex min-h-28 items-center justify-center gap-2 rounded-md border border-slate-200 bg-white text-sm font-bold text-slate-500">
+                <Loader2 className="size-4 animate-spin" />
+                正在核对全部未结清订单...
+              </div>
+            ) : settlement.error ? (
+              <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-800">
+                {settlement.error}
+              </div>
+            ) : preview && preview.orderCount > 0 ? (
+              <>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  <SpendTile label="结清订单" value={`${preview.orderCount} 笔`} />
+                  <SpendTile label="订单总额" value={formatEuro(preview.grossAmount)} />
+                  <SpendTile label="钱包/已收" value={formatEuro(preview.walletAppliedAmount + preview.receivedAmount)} />
+                  <SpendTile label="本次需收" value={formatEuro(preview.dueAmount)} />
+                </div>
+
+                <div className="max-h-52 overflow-y-auto rounded-md border border-slate-200 bg-white">
+                  {preview.orders.map((order) => (
+                    <div
+                      key={order.id}
+                      className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-b border-slate-100 px-3 py-2 text-xs last:border-b-0"
+                    >
+                      <div className="min-w-0">
+                        <div className="truncate font-black text-slate-900">
+                          {order.orderNo}
+                        </div>
+                        <div className="mt-0.5 font-semibold text-slate-500">
+                          {orderStatusLabel(order.orderStatus)} · {paymentStatusLabel(order.paymentStatus)}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-black text-slate-950">
+                          待收 {formatEuro(order.dueAmount)}
+                        </div>
+                        <div className="mt-0.5 font-semibold text-slate-500">
+                          总额 {formatEuro(order.grossAmount)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label>收款方式 *</Label>
+                    <Select
+                      value={settlement.paymentMethod}
+                      onValueChange={(value) =>
+                        onChange({
+                          paymentMethod:
+                            value === "cash" ? "cash" : "bank_transfer",
+                        })
+                      }
+                    >
+                      <SelectTrigger className="bg-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="bank_transfer">银行转账</SelectItem>
+                        <SelectItem value="cash">现金</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="customer-settlement-received-at">收款时间 *</Label>
+                    <Input
+                      id="customer-settlement-received-at"
+                      type="datetime-local"
+                      step={60}
+                      value={settlement.receivedAt}
+                      onChange={(event) =>
+                        onChange({ receivedAt: event.target.value })
+                      }
+                      aria-invalid={!receivedAtIsValid}
+                    />
+                  </div>
+                  <div className="space-y-1.5 sm:col-span-2">
+                    <Label htmlFor="customer-settlement-reference">流水号 / 参考号</Label>
+                    <Input
+                      id="customer-settlement-reference"
+                      maxLength={120}
+                      value={settlement.reference}
+                      onChange={(event) => onChange({ reference: event.target.value })}
+                      placeholder="可选"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="customer-settlement-note">备注</Label>
+                  <Textarea
+                    id="customer-settlement-note"
+                    maxLength={1000}
+                    rows={3}
+                    value={settlement.note}
+                    onChange={(event) => onChange({ note: event.target.value })}
+                    placeholder="可选；将写入本次结清审计"
+                  />
+                </div>
+
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-900">
+                  二次确认：提交后，上述 {preview.orderCount} 笔订单会在同一事务中结清；如任一订单已变化，本次操作会整体停止并要求重新核对。
+                </div>
+              </>
+            ) : (
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-5 text-center text-sm font-semibold text-slate-600">
+                该客户当前没有需要结清的订单。
+              </div>
+            )}
+          </div>
+        ) : null}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={submitting}>
+            取消
+          </Button>
+          <Button onClick={onSubmit} disabled={!canSubmit || submitting}>
+            {submitting ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <BadgeCheck className="size-4" />
+            )}
+            确认一次结清
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -2693,6 +3114,206 @@ async function fetchAccountDetail(
   }
 
   return detail;
+}
+
+async function fetchCustomerSettlementPreview(
+  customerId: string,
+  signal?: AbortSignal
+): Promise<CustomerSettlementPreview> {
+  const path = `/api/admin/customers/${encodeURIComponent(customerId)}/settlement`;
+  const response = await fetchWithTimeout(path, {
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+    signal,
+    timeoutMs: adminAccountReadTimeoutMs,
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      await responseErrorMessage(response, "客户未结清账款核对失败。")
+    );
+  }
+
+  const payload = (await response.json()) as unknown;
+  const data = isRecord(payload) && isRecord(payload.data) ? payload.data : null;
+  const preview = normalizeCustomerSettlementPreview(data);
+
+  if (!preview) {
+    throw new Error("客户结清预览返回格式不完整。");
+  }
+
+  return preview;
+}
+
+async function postCustomerSettlement(
+  customerId: string,
+  body: {
+    expectedRevision: string;
+    note: string;
+    paymentMethod: SettlementPaymentMethod;
+    receivedAt: string;
+    reference: string;
+  }
+): Promise<CustomerSettlementResult> {
+  const path = `/api/admin/customers/${encodeURIComponent(customerId)}/settlement`;
+  const response = await fetch(path, {
+    body: JSON.stringify(body),
+    cache: "no-store",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+
+  if (!response.ok) {
+    throw new Error(await responseErrorMessage(response, "客户账款结清失败。"));
+  }
+
+  const payload = (await response.json()) as unknown;
+  const data = isRecord(payload) && isRecord(payload.data) ? payload.data : null;
+  const result = normalizeCustomerSettlementResult(data);
+
+  if (!result) {
+    throw new Error("客户账款结清返回格式不完整。");
+  }
+
+  return result;
+}
+
+function normalizeCustomerSettlementPreview(
+  value: unknown
+): CustomerSettlementPreview | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const customerId = readString(value.customerId);
+  const revision = readString(value.revision);
+  const orderCount = readNumber(value.orderCount);
+  const grossAmount = readNumber(value.grossAmount);
+  const walletAppliedAmount = readNumber(value.walletAppliedAmount);
+  const receivedAmount = readNumber(value.receivedAmount);
+  const dueAmount = readNumber(value.dueAmount);
+  const orders = readArray(value.orders)
+    .map(normalizeCustomerSettlementOrderPreview)
+    .filter(isDefined);
+
+  if (
+    !customerId ||
+    !revision ||
+    !/^[0-9a-f]{32}$/.test(revision) ||
+    orderCount === null ||
+    orderCount < 0 ||
+    grossAmount === null ||
+    grossAmount < 0 ||
+    walletAppliedAmount === null ||
+    walletAppliedAmount < 0 ||
+    receivedAmount === null ||
+    receivedAmount < 0 ||
+    dueAmount === null ||
+    dueAmount < 0 ||
+    orders.length !== orderCount
+  ) {
+    return null;
+  }
+
+  return {
+    customerId,
+    customerName: readString(value.customerName),
+    dueAmount,
+    grossAmount,
+    orderCount,
+    orders,
+    receivedAmount,
+    revision,
+    walletAppliedAmount,
+  };
+}
+
+function normalizeCustomerSettlementOrderPreview(
+  value: unknown
+): CustomerSettlementOrderPreview | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const id = readString(value.id);
+  const orderNo = readString(value.orderNo);
+  const orderStatus = readString(value.orderStatus);
+  const paymentStatus = readString(value.paymentStatus);
+  const grossAmount = readNumber(value.grossAmount);
+  const walletAppliedAmount = readNumber(value.walletAppliedAmount);
+  const receivedAmount = readNumber(value.receivedAmount);
+  const dueAmount = readNumber(value.dueAmount);
+
+  if (
+    !id ||
+    !orderNo ||
+    !orderStatus ||
+    !paymentStatus ||
+    grossAmount === null ||
+    grossAmount < 0 ||
+    walletAppliedAmount === null ||
+    walletAppliedAmount < 0 ||
+    receivedAmount === null ||
+    receivedAmount < 0 ||
+    dueAmount === null ||
+    dueAmount < 0
+  ) {
+    return null;
+  }
+
+  return {
+    createdAt: readString(value.createdAt),
+    dueAmount,
+    grossAmount,
+    id,
+    orderNo,
+    orderStatus,
+    paymentMethod: readString(value.paymentMethod),
+    paymentStatus,
+    receivedAmount,
+    updatedAt: readString(value.updatedAt),
+    walletAppliedAmount,
+  };
+}
+
+function normalizeCustomerSettlementResult(
+  value: unknown
+): CustomerSettlementResult | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const bulkSettlementId = readString(value.bulkSettlementId);
+  const customerId = readString(value.customerId);
+  const orderCount = readNumber(value.orderCount);
+  const collectedAmount = readNumber(value.collectedAmount);
+
+  if (
+    !bulkSettlementId ||
+    !customerId ||
+    orderCount === null ||
+    orderCount <= 0 ||
+    collectedAmount === null ||
+    collectedAmount < 0
+  ) {
+    return null;
+  }
+
+  return { bulkSettlementId, collectedAmount, customerId, orderCount };
+}
+
+async function responseErrorMessage(response: Response, fallback: string) {
+  try {
+    const payload = (await response.json()) as unknown;
+    const error = isRecord(payload) && isRecord(payload.error) ? payload.error : null;
+
+    return readString(error?.message) ?? fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 async function patchAccountType(conversion: ConversionState): Promise<AccountDetail> {
@@ -3474,7 +4095,10 @@ function orderStatusLabel(value: string) {
 function paymentStatusLabel(value: string) {
   const labels: Record<string, string> = {
     authorized: "待核查",
+    bank_waiting: "待核查",
+    failed: "付款失败",
     paid: "已付款",
+    pending: "待收款",
     refunded: "已退款",
     unpaid: "待收款",
   };
@@ -3729,6 +4353,19 @@ function readArray(value: unknown): unknown[] {
 
 function readString(value: unknown) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+function toDateTimeLocalInput(value: string) {
+  const timestamp = Date.parse(value);
+
+  if (!Number.isFinite(timestamp)) {
+    return "";
+  }
+
+  const date = new Date(timestamp);
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+
+  return local.toISOString().slice(0, 16);
 }
 
 function readNumber(value: unknown) {
