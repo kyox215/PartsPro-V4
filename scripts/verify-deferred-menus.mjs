@@ -40,7 +40,7 @@ async function closeAndCheckFocus(page, role, trigger) {
 async function holdChunk(page, chunk) {
   let release;
   const gate = new Promise(resolve => { release = resolve; });
-  await page.route(`**/${chunk}`, async route => { await gate; await route.continue(); });
+  await page.route(url => url.pathname.endsWith(`/${chunk}`), async route => { await gate; await route.continue(); });
   return release;
 }
 try {
@@ -50,7 +50,7 @@ try {
     assert.ok(!scripts.some(s => s.endsWith(accountChunk) || s.endsWith(mobileChunk)));
     await page.screenshot({ path: `${output}/desktop.png`, fullPage: false });
     await account(page).hover();
-    await page.waitForFunction(chunk => performance.getEntriesByType('resource').some(r => r.name.endsWith(chunk)), accountChunk);
+    await page.waitForFunction(chunk => performance.getEntriesByType('resource').some(r => new URL(r.name).pathname.endsWith(`/${chunk}`)), accountChunk);
     assert.equal(await page.getByRole('menu').count(), 0, 'Hover preloads without opening');
     await account(page).click();
     await page.getByRole('menu').waitFor();
@@ -97,7 +97,7 @@ try {
 
   await scenario('account chunk failure recovers on retry', async page => {
     let requests = 0;
-    await page.route(`**/${accountChunk}`, route => ++requests === 1 ? route.abort('failed') : route.continue());
+    await page.route(url => url.pathname.endsWith(`/${accountChunk}`), route => ++requests === 1 ? route.abort('failed') : route.continue());
     await page.goto(baseURL, { waitUntil: 'networkidle' });
     await account(page).hover();
     await page.getByRole('button', { name: /Apri centro personale.*Riprova/ }).waitFor();
@@ -129,7 +129,7 @@ try {
 
   await scenario('mobile chunk failure recovers on retry', async page => {
     let requests = 0;
-    await page.route(`**/${mobileChunk}`, route => ++requests === 1 ? route.abort('failed') : route.continue());
+    await page.route(url => url.pathname.endsWith(`/${mobileChunk}`), route => ++requests === 1 ? route.abort('failed') : route.continue());
     await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
     await page.getByRole('button', { name: /Apri menu.*Riprova/ }).waitFor();
     await mobileMenu(page).click();
