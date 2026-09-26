@@ -194,6 +194,36 @@ export function getTierRule(tier: CompanyProfile["priceList"]): CustomerTierRule
   return customerTierRules[tier];
 }
 
+export function isDiscountExemptCategory(
+  category: string | null | undefined
+): boolean {
+  return category?.trim().toLocaleLowerCase("it-IT") === "pellicole protettive";
+}
+
+export function isDiscountExemptBrand(
+  brand: string | null | undefined
+): boolean {
+  return brand?.trim().toLocaleUpperCase("it-IT") === "REMAX";
+}
+
+export function isDiscountExemptProduct(
+  category: string | null | undefined,
+  brand: string | null | undefined
+): boolean {
+  return isDiscountExemptCategory(category) || isDiscountExemptBrand(brand);
+}
+
+export function calculateProductTierPrice(
+  basePrice: number,
+  tier: CompanyProfile["priceList"],
+  category: string | null | undefined,
+  brand?: string | null
+): number {
+  return isDiscountExemptProduct(category, brand)
+    ? roundCurrency(Math.max(0, basePrice))
+    : calculateTierPrice(basePrice, tier);
+}
+
 export function calculateTierPrice(
   basePrice: number,
   tier: CompanyProfile["priceList"]

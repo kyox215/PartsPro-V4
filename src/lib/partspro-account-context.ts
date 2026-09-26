@@ -1,8 +1,9 @@
 import { readLinkedCustomerRow } from "@/lib/partspro-customer-linkage";
 import {
-  calculateTierPrice,
+  calculateProductTierPrice,
   effectiveCustomerTier,
   getTierRule,
+  isDiscountExemptProduct,
   normalizeCustomerTier,
 } from "@/lib/partspro-pricing";
 import { visiblePanelsForPermissions } from "@/lib/partspro-permissions";
@@ -327,8 +328,14 @@ export function applyAccountPriceToProduct(
       ? account.employeeSelfCustomer?.level ?? "bronze"
       : account.customer?.level ?? "bronze";
   const basePrice = customerType === "wholesale" ? product.price : product.retailPrice;
-  const finalPrice = calculateTierPrice(basePrice, level);
-  const levelDiscountAmount = getTierRule(level).discountAmount;
+  const discountExempt = isDiscountExemptProduct(product.category, product.brand);
+  const finalPrice = calculateProductTierPrice(
+    basePrice,
+    level,
+    product.category,
+    product.brand
+  );
+  const levelDiscountAmount = discountExempt ? 0 : getTierRule(level).discountAmount;
   const levelDiscountPercent =
     basePrice > 0
       ? Math.round((Math.min(levelDiscountAmount, basePrice) / basePrice) * 10000) / 100
@@ -345,7 +352,11 @@ export function applyAccountPriceToProduct(
     levelDiscountPercent,
     price: finalPrice,
     priceSource:
-      levelDiscountAmount > 0
+      discountExempt
+        ? customerType === "retail"
+          ? "local_retail_price_discount_exempt"
+          : "local_b2b_price_discount_exempt"
+        : levelDiscountAmount > 0
         ? customerType === "retail"
           ? "local_retail_customer_level"
           : "local_customer_level"

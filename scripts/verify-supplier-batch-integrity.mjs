@@ -443,11 +443,18 @@ function numberValue(value) {
 function readExpectedPrices(metadata, costPrice) {
   const defaultPrice = Math.ceil(costPrice + 5);
 
-  if (isRecord(metadata) && metadata.price_policy === "explicit_user_price") {
-    const retailPrice = metadataNumber(metadata.expected_retail_price);
-    const b2bPrice = metadataNumber(metadata.expected_b2b_price);
+  if (isRecord(metadata)) {
+    const isExplicitUserPrice = metadata.price_policy === "explicit_user_price";
+    const isRemaxPreorderPrice = metadata.source === "remax_preorder_center";
+    const retailPrice = metadataNumber(
+      isRemaxPreorderPrice ? metadata.retail_price : metadata.expected_retail_price
+    );
+    const b2bPrice = metadataNumber(
+      isRemaxPreorderPrice ? metadata.b2b_price : metadata.expected_b2b_price
+    );
 
     if (
+      (isExplicitUserPrice || isRemaxPreorderPrice) &&
       retailPrice !== null &&
       retailPrice > 0 &&
       b2bPrice !== null &&

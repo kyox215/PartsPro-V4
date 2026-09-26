@@ -51,6 +51,31 @@ test("CLI keeps the explicit-price fallback used by integrity verification", () 
   );
 });
 
+test("CLI honors trusted REMAX preorder-center prices", () => {
+  assert.deepEqual(
+    {
+      ...verifierPrices(
+        {
+          source: "remax_preorder_center",
+          retail_price: 20.5,
+          b2b_price: 15.38,
+        },
+        10.12
+      ),
+    },
+    { retailPrice: 20.5, b2bPrice: 15.38 }
+  );
+  assert.deepEqual(
+    {
+      ...verifierPrices(
+        { source: "untrusted_source", retail_price: 1, b2b_price: 1 },
+        0.7
+      ),
+    },
+    { retailPrice: 6, b2bPrice: 6 }
+  );
+});
+
 test("v2 projection computes price_rule_ok and repository maps the real RPC field", () => {
   const projection = extractSqlSection(
     supplierBatchMigrationSource,
