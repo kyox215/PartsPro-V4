@@ -1,6 +1,6 @@
 import {
-  projectAdminRmaWorkflow as projectAdminRmaWorkflowRule,
-} from "./partspro-rma-workflow-rules.mjs";
+  projectRmaV4Workflow as projectAdminRmaWorkflowRule,
+} from "./partspro-rma-v4-rules.mjs";
 
 export const rmaWorkflowQueueCodes = [
   "review",
@@ -17,6 +17,15 @@ export const rmaWorkflowQueues = rmaWorkflowQueueCodes;
 export type RmaWorkflowQueue = (typeof rmaWorkflowQueueCodes)[number];
 
 export const rmaWorkflowActionCodes = [
+  "split_request",
+  "cancel_unreceived",
+  "verify_refund_snapshot",
+  "release_cancelled_replacement",
+  "create_replacement_order",
+  "start_negotiation",
+  "resolve_negotiation",
+  "return_to_customer",
+  "bind_replacement_order",
   "start_review",
   "approve",
   "reject",
@@ -39,6 +48,7 @@ export type RmaWorkflowRecommendation =
   | "choose_inventory_disposition";
 
 export type RmaWorkflowBlockedReason =
+  | "waiting_customer_agreement"
   | "waiting_customer_return"
   | "waiting_wallet_approval"
   | "waiting_qc"
@@ -57,6 +67,7 @@ export type RmaWorkflowBlockedReason =
   | "invalid_state";
 
 export type RmaAdminCapabilities = {
+  createReplacement?: boolean;
   manage: boolean;
   inventory: boolean;
   refund: boolean;
@@ -64,6 +75,11 @@ export type RmaAdminCapabilities = {
 };
 
 export type RmaAdminWorkflowInput = {
+  refundPricingVerified?: boolean;
+  replacementReservedOrderId?: string | null;
+  negotiationStatus?: string | null;
+  negotiationOutcome?: string | null;
+  walletRefundRequestId?: string | null;
   status: string;
   quantity?: number | null;
   receivedQuantity?: number | null;

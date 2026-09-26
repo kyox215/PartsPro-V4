@@ -53,6 +53,10 @@ export const rmaAttachmentContentTypes = sharedRmaAttachmentContentTypes;
 export type RmaAttachmentContentType = (typeof rmaAttachmentContentTypes)[number];
 
 export const rmaCustomerStageCodes = [
+  "rejected",
+  "awaiting_return",
+  "negotiation",
+  "refunded",
   "submitted",
   "under_review",
   "return_in_transit",
@@ -133,6 +137,15 @@ export type RmaCompleteAttachmentInput = z.infer<typeof rmaCompleteAttachmentSch
 export const adminRmaActionSchema = z
   .object({
     action: z.enum([
+      "split_request",
+      "cancel_unreceived",
+      "verify_refund_snapshot",
+      "release_cancelled_replacement",
+  "create_replacement_order",
+      "start_negotiation",
+      "resolve_negotiation",
+      "return_to_customer",
+      "bind_replacement_order",
       "start_review",
       "approve",
       "reject",
@@ -146,6 +159,10 @@ export const adminRmaActionSchema = z
       "mark_replacement_sent",
       "close",
     ]),
+    negotiationOutcome: z.enum(["refund_wallet", "replacement", "return_to_customer", "scrap_without_refund"]).optional(),
+    customerConfirmation: z.string().trim().min(8).max(1000).optional(),
+    trackingNumber: z.string().trim().max(160).optional(),
+    carrier: z.string().trim().max(120).optional(),
     assignedTo: uuid.nullable().optional(),
     batchCode: z.string().trim().max(120).optional(),
     customerVisibleNote: z.string().trim().max(1000).optional(),
@@ -158,6 +175,7 @@ export const adminRmaActionSchema = z
     reason: z.string().trim().max(1000).optional(),
     refundAmount: z.number().positive().max(999999).optional(),
     replacementOrderId: uuid.optional(),
+    replacementOrderNumber: z.string().trim().max(120).optional(),
     supplier: z.string().trim().max(160).optional(),
     warehouse: z.literal("Milano").optional(),
   })
@@ -191,6 +209,13 @@ export type CustomerRmaAttachmentDto = {
 };
 
 export type CustomerRmaDto = {
+  parentRequestId?: string | null;
+  negotiationStatus?: string | null;
+  negotiationOutcome?: string | null;
+  refundAmount?: number | null;
+  refundedAt?: string | null;
+  receivedQuantity?: number | null;
+  returnToCustomerTracking?: string | null;
   attachments: CustomerRmaAttachmentDto[];
   createdAt: string;
   customerShippedAt: string | null;
@@ -326,14 +351,19 @@ export function customerStageForRmaStatus(status: string): RmaCustomerStage {
   switch (status) {
     case "return_in_transit":
       return "return_in_transit";
-    case "under_review":
+    case "rejected":
+      return "rejected";
     case "approved":
+      return "awaiting_return";
+    case "under_review":
       return "under_review";
     case "received":
       return "resolution";
     case "replacement_sent":
     case "replaced":
+      return "completed";
     case "refunded":
+      return "refunded";
     case "closed":
       return "completed";
     default:

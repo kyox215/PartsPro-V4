@@ -1803,11 +1803,15 @@ export type AdminRmaPage = {
 
 export type AdminRmaRefundPreview = {
   available: boolean;
-  blockedReason?: "missing_unit_price_snapshot" | "wallet_balance_exhausted" | "invalid_snapshot";
+  blockedReason?: "missing_unit_price_snapshot" | "missing_pricing_snapshot" | "wallet_balance_exhausted" | "invalid_snapshot";
   currency: string;
   maxRefundAmount: number;
   quantity: number;
   taxAndShippingIncluded: false;
+  netAmount?: number;
+  taxAmount?: number;
+  taxIncluded?: boolean;
+  shippingIncluded?: boolean;
 };
 
 export type AdminRmaReplacementCandidate = {
@@ -1838,6 +1842,15 @@ export type UpdateAdminRmaInput = {
 };
 
 export type AdminRmaAction =
+  | "split_request"
+  | "cancel_unreceived"
+  | "verify_refund_snapshot"
+  | "release_cancelled_replacement"
+  | "create_replacement_order"
+  | "start_negotiation"
+  | "resolve_negotiation"
+  | "return_to_customer"
+  | "bind_replacement_order"
   | "start_review"
   | "approve"
   | "reject"
@@ -1852,6 +1865,10 @@ export type AdminRmaAction =
   | "close";
 
 export type PerformAdminRmaActionInput = {
+  negotiationOutcome?: "refund_wallet" | "replacement" | "return_to_customer" | "scrap_without_refund";
+  customerConfirmation?: string;
+  trackingNumber?: string;
+  carrier?: string;
   action: AdminRmaAction;
   assignedTo?: string | null;
   batchCode?: string;
@@ -1865,6 +1882,7 @@ export type PerformAdminRmaActionInput = {
   reason?: string;
   refundAmount?: number;
   replacementOrderId?: string;
+  replacementOrderNumber?: string;
   requestId: string;
   supplier?: string;
   warehouse?: PartProduct["warehouse"];
@@ -12756,7 +12774,7 @@ async function readAdminRmaRefundPreview(
   client: SupabaseServerClient,
   requestId: string
 ): Promise<AdminRmaRefundPreview | null> {
-  const { data, error } = await client.rpc("admin_rma_refund_preview", {
+  const { data, error } = await client.rpc("admin_rma_refund_preview_v4", {
     p_request_id: requestId,
   });
 
@@ -12799,6 +12817,10 @@ async function readAdminRmaRefundPreview(
     available,
     ...(blockedReason ? { blockedReason: normalizeRefundPreviewBlockedReason(blockedReason) } : {}),
     currency,
+    netAmount: pickNumber(row, ["net_amount"]) ?? 0,
+    taxAmount: pickNumber(row, ["tax_amount"]) ?? 0,
+    taxIncluded: row.tax_included === true,
+    shippingIncluded: row.shipping_included === true,
     maxRefundAmount: Math.max(0, maxRefundAmount),
     quantity: Math.max(0, Math.trunc(quantity)),
     taxAndShippingIncluded: false,
@@ -12853,7 +12875,7 @@ function normalizeRefundPreviewBlockedReason(
   value: string
 ): AdminRmaRefundPreview["blockedReason"] {
   if (value === "wallet_balance_exhausted") return value;
-  if (value === "invalid_snapshot") return value;
+  if (value === "invalid_snapshot" || value === "missing_pricing_snapshot") return value;
   return "missing_unit_price_snapshot";
 }
 
@@ -13454,22 +13476,37 @@ async function performAdminRmaActionViaRpc(
   context: SupabaseContext,
   input: PerformAdminRmaActionInput
 ): Promise<RmaRequest | null> {
-  const { data, error } = await context.client.rpc("admin_perform_rma_action_v3", {
-    p_action: input.action,
-    p_assigned_to: input.assignedTo ?? null,
-    p_batch_code: input.batchCode ?? null,
-    p_customer_visible_note: input.customerVisibleNote ?? null,
-    p_internal_note: input.internalNote ?? null,
-    p_idempotency_key: input.idempotencyKey ?? null,
-    p_location: input.location ?? input.warehouse ?? null,
-    p_qc_note: input.qcNote ?? null,
-    p_qc_status: input.qcStatus ?? null,
-    p_quantity: input.quantity ?? null,
-    p_reason: input.reason ?? null,
-    p_refund_amount: input.refundAmount ?? null,
+  let replacementOrderId = input.replacementOrderId ?? null;
+  if (input.action === "bind_replacement_order" && input.replacementOrderNumber) {
+    const lookup = await requireRmaServiceClient().from("orders").select("id")
+      .eq("order_no", input.replacementOrderNumber).maybeSingle();
+    if (lookup.error || !lookup.data?.id) {
+      throw new RepositoryWriteError(404, "RMA_REPLACEMENT_ORDER_NOT_FOUND", "The replacement order was not found.");
+    }
+    replacementOrderId = lookup.data.id;
+  }
+  const { data, error } = await context.client.rpc("admin_perform_rma_action_v4", {
     p_request_id: input.requestId,
-    p_supplier: input.supplier ?? null,
-    p_replacement_order_id: input.replacementOrderId ?? null,
+    p_action: input.action,
+    p_idempotency_key: input.idempotencyKey ?? null,
+    p_payload: {
+      assigned_to: input.assignedTo ?? null,
+      batch_code: input.batchCode ?? null,
+      customer_visible_note: input.customerVisibleNote ?? null,
+      internal_note: input.internalNote ?? null,
+      location: input.location ?? input.warehouse ?? null,
+      qc_note: input.qcNote ?? null,
+      qc_status: input.qcStatus ?? null,
+      quantity: input.quantity ?? null,
+      reason: input.reason ?? null,
+      refund_amount: input.refundAmount ?? null,
+      supplier: input.supplier ?? null,
+      replacement_order_id: replacementOrderId,
+      outcome: input.negotiationOutcome ?? null,
+      customer_confirmation: input.customerConfirmation ?? null,
+      tracking_number: input.trackingNumber ?? null,
+      carrier: input.carrier ?? null,
+    },
   });
 
   if (error) {
@@ -16082,6 +16119,16 @@ function mapRmaRow(
 
   return {
     id,
+    parentRequestId: pickString(row, ["parent_request_id"]),
+    negotiationStatus: pickString(row, ["negotiation_status"]),
+    negotiationOutcome: pickString(row, ["negotiation_outcome"]),
+    customerConfirmation: pickString(row, ["customer_confirmation"]),
+    customerConfirmedAt: pickString(row, ["customer_confirmed_at"]),
+    returnToCustomerTracking: pickString(row, ["outbound_tracking_number"]),
+    refundPricingVerified: isDbRow(row.refund_pricing_snapshot),
+    replacementReservedOrderId: pickString(row, ["replacement_reserved_order_id"]),
+    refundGrossAmount: pickNumber(row, ["refund_gross_amount"]),
+    refundTaxAmount: pickNumber(row, ["refund_tax_amount"]),
     orderId,
     sku: sku ? toPublicSku(sku) : "SKU-ND",
     productName:
@@ -17231,7 +17278,8 @@ function normalizeRmaInventoryDisposition(
     value === "quarantine" ||
     value === "restock" ||
     value === "scrap" ||
-    value === "supplier_return"
+    value === "supplier_return" ||
+    value === "returned_to_customer"
   ) {
     return value;
   }

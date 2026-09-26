@@ -137,6 +137,10 @@ const rmaResolutionKeys: Record<string, string> = {
 };
 
 const rmaCustomerStageKeys: Record<string, string> = {
+  rejected: "rejected",
+  awaiting_return: "awaitingReturn",
+  negotiation: "negotiation",
+  refunded: "refunded",
   submitted: "submitted",
   under_review: "underReview",
   return_in_transit: "returnInTransit",
@@ -195,12 +199,16 @@ export function leadTimeLabel(t: StorefrontTranslator, value: string) {
 export function rmaReasonLabel(t: StorefrontTranslator, value: string) {
   const key = rmaReasonKeys[value];
 
+  if (key && ["quality_defect", "shipping_damage", "not_as_described", "wrong_item", "missing_or_quantity_error", "withdrawal_no_longer_needed"].includes(value)) {
+    return tx(t, `storefront.rma.reason.${key.replace(/Reason$/, "")}`, value);
+  }
   return key ? tx(t, `storefront.data.rmaReasons.${key}`, value) : value;
 }
 
 export function rmaResolutionLabel(t: StorefrontTranslator, value: string) {
   const key = rmaResolutionKeys[value];
 
+  if (key === "replacement" || key === "walletCredit") return tx(t, `storefront.rma.resolution.${key}`, value);
   return key ? tx(t, `storefront.data.rmaResolutions.${key}`, value) : value;
 }
 
@@ -1357,6 +1365,15 @@ export const storefrontItIT = {
   "storefront.rma.image.retryingShort": "Riprovo...",
   "storefront.rma.image.failedShort": "Non riuscita",
   "storefront.rma.stage.submitted": "Inviata",
+  "storefront.rma.originalRequest": "Vedi richiesta originale e foto",
+  "storefront.rma.receivedQuantity": "Quantità ricevuta",
+  "storefront.rma.walletCredited": "Accreditato nel saldo PartsPro",
+  "storefront.rma.viewWallet": "Controlla i movimenti del saldo",
+  "storefront.rma.returnedTracking": "Tracking restituzione al cliente",
+  "storefront.rma.stage.rejected": "Richiesta non accettata",
+  "storefront.rma.stage.awaitingReturn": "In attesa del reso",
+  "storefront.rma.stage.negotiation": "In attesa di accordo",
+  "storefront.rma.stage.refunded": "Rimborso accreditato",
   "storefront.rma.stage.underReview": "In verifica",
   "storefront.rma.stage.returnInTransit": "Reso in transito",
   "storefront.rma.stage.resolution": "Soluzione in corso",
@@ -2491,6 +2508,15 @@ export const storefrontZhCN = {
   "storefront.rma.image.retryingShort": "重试中...",
   "storefront.rma.image.failedShort": "失败",
   "storefront.rma.stage.submitted": "已提交",
+  "storefront.rma.originalRequest": "查看原申请与照片",
+  "storefront.rma.receivedQuantity": "已收到数量",
+  "storefront.rma.walletCredited": "已退至 PartsPro 钱包",
+  "storefront.rma.viewWallet": "查看钱包流水",
+  "storefront.rma.returnedTracking": "原物寄回物流单号",
+  "storefront.rma.stage.rejected": "未通过",
+  "storefront.rma.stage.awaitingReturn": "待寄回",
+  "storefront.rma.stage.negotiation": "待协商确认",
+  "storefront.rma.stage.refunded": "退款已到账",
   "storefront.rma.stage.underReview": "审核中",
   "storefront.rma.stage.returnInTransit": "退货运输中",
   "storefront.rma.stage.resolution": "处理中",

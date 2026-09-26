@@ -946,6 +946,17 @@ function rmaPushCopy(event: DbRow) {
     return null;
   }
 
+  const actionBodies: Record<string, string> = {
+    start_negotiation: "La soluzione richiede il tuo accordo. Contatta l'assistenza prima di proseguire.",
+    resolve_negotiation: "La soluzione concordata è registrata. Il rimborso resta soggetto ad approvazione.",
+    split_request: "La richiesta è stata divisa per quantità. Controlla le pratiche collegate nella pagina Resi.",
+    return_to_customer: "L'articolo originale è stato rispedito. Consulta il tracking nella pagina Resi.",
+    cancel_unreceived: "La richiesta relativa alla merce non ricevuta è stata annullata come concordato.",
+  };
+  if (sourceAction && Object.hasOwn(actionBodies, sourceAction)) {
+    return { body: actionBodies[sourceAction], title: "Gestione del reso aggiornata" };
+  }
+
   if (sourceAction === "request_wallet_refund") {
     return {
       body: "La richiesta di rimborso wallet è stata creata ed è in attesa di approvazione.",

@@ -35,9 +35,9 @@ test("admin v3 freezes fine-grained permissions and legacy delegation", () => {
     adminAuth,
     /export function hasExactAdminPermission[\s\S]*authState\.permissions\.includes\(permission\)/
   );
-  assert.match(adminRoute, /workflow: "admin_perform_rma_action_v3"/);
-  assert.match(repository, /rpc\("admin_perform_rma_action_v3"/);
-  assert.match(repository, /p_location: input\.warehouse \?\? null/);
+  assert.match(adminRoute, /workflow: "admin_perform_rma_action_v4"/);
+  assert.match(repository, /rpc\("admin_perform_rma_action_v4"/);
+  assert.match(repository, /location: input\.location \?\? input\.warehouse \?\? null/);
 });
 
 test("action ledger and terminal disposition guard make restock idempotent", () => {
@@ -187,7 +187,8 @@ test("admin DTO remains allowlisted and supports supplier/replacement actions", 
   assert.match(repository, /select\("rma_request_id, status, requested_at"\)/);
   assert.match(repository, /refund_approved_quantity/);
   assert.match(repository, /replacement_quantity/);
-  assert.doesNotMatch(customerDto, /receivedQuantity|resolutionQuantity|inventoryDispositionQuantity/);
+  assert.match(customerDto, /receivedQuantity: request\.receivedQuantity/);
+  assert.doesNotMatch(customerDto, /resolutionQuantity|inventoryDispositionQuantity/);
   assert.doesNotMatch(customerDto, /qcStatus|replacementOrderId|walletRefundStatus/);
 });
 

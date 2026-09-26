@@ -177,3 +177,15 @@ function loadNotificationHelpers() {
   vm.runInNewContext(compiled.outputText, context);
   return context.helpers;
 }
+
+
+test("negotiation and physical return notifications override the unchanged received status", () => {
+  for (const locale of ["zh-CN", "it-IT"]) {
+    const agreement=content({sourceAction:"start_negotiation",payload:{status:"received"}},locale);
+    assert.match(agreement.body,locale === "zh-CN" ? /协商.*确认前/ : /accordo.*sospesi/);
+    const returned=content({sourceAction:"return_to_customer",payload:{status:"received"}},locale);
+    assert.match(returned.body,locale === "zh-CN" ? /寄回.*物流/ : /rispedito.*tracciamento/);
+    const confirmed=content({sourceAction:"resolve_negotiation",payload:{status:"received"}},locale);
+    assert.match(confirmed.body,locale === "zh-CN" ? /仍需审批/ : /soggetto ad approvazione/);
+  }
+});

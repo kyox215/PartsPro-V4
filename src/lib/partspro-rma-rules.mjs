@@ -136,7 +136,8 @@ export function isRmaActionAvailable(input) {
       ["received", "refunded", "replacement_sent", "replaced"].includes(status) &&
       receivedComplete &&
       inspectionComplete &&
-      inventoryDisposition === "quarantine"
+      inventoryDisposition === "quarantine" &&
+      (action !== "restock_return" || qcStatus === "passed")
     );
   }
 

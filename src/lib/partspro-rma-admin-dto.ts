@@ -49,6 +49,7 @@ export function getAdminRmaCapabilities(
   authState: AdminAuthState
 ): RmaAdminCapabilities {
   return {
+    createReplacement: hasAdminPermission(authState, "orders.manage"),
     manage: hasAdminPermission(authState, "rma.manage"),
     inventory: hasAdminPermission(authState, "rma.inventory"),
     refund: hasAdminPermission(authState, "rma.refund"),

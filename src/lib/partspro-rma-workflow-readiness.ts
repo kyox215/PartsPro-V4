@@ -1,13 +1,13 @@
 import "server-only";
 
 /**
- * Migration B capability contract. The new admin/customer workflow is enabled
+ * RMA v4 migration capability contract. The new admin/customer workflow is enabled
  * only after this narrow RPC exists and explicitly reports the expected
  * contract. A missing RPC is treated as a deployment gap, never as a generic
  * Supabase failure or an empty RMA result.
  */
-export const rmaWorkflowCapabilityRpc = "rma_workflow_capabilities" as const;
-export const rmaWorkflowContractVersion = "rma-workflow-b1" as const;
+export const rmaWorkflowCapabilityRpc = "rma_workflow_v4_capabilities" as const;
+export const rmaWorkflowContractVersion = "rma-workflow-v4" as const;
 
 export class RmaWorkflowNotReadyError extends Error {
   readonly code = "RMA_WORKFLOW_NOT_READY" as const;
@@ -32,7 +32,7 @@ type RpcClient = {
 };
 
 /**
- * Fail closed when Migration B is absent, partially deployed, or reports a
+ * Fail closed when RMA v4 migration is absent, partially deployed, or reports a
  * different contract. The capability response intentionally has no business
  * or customer data.
  */

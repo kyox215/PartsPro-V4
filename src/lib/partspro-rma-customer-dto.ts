@@ -36,9 +36,18 @@ export function toCustomerRmaDto(request: RmaRequest): CustomerRmaDto {
 
   return {
     attachments,
+    parentRequestId: request.parentRequestId ?? null,
+    negotiationStatus: request.negotiationStatus ?? null,
+    negotiationOutcome: request.negotiationOutcome ?? null,
+    refundAmount: request.resolutionAction === "refund_wallet" && ["refunded", "closed"].includes(request.status)
+      ? request.refundGrossAmount ?? request.refundAmount ?? null : null,
+    refundedAt: request.resolutionAction === "refund_wallet" && ["refunded", "closed"].includes(request.status)
+      ? request.resolvedAt ?? null : null,
+    receivedQuantity: request.receivedQuantity ?? null,
+    returnToCustomerTracking: request.returnToCustomerTracking ?? null,
     createdAt: request.createdAt,
     customerShippedAt: request.customerShippedAt ?? null,
-    customerStage: isReturnInTransit
+    customerStage: request.negotiationStatus === "pending" ? "negotiation" : isReturnInTransit
       ? "return_in_transit"
       : customerStageForRmaStatus(request.status),
     description: request.description ?? "",

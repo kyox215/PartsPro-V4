@@ -107,6 +107,7 @@ const rmaResolutionOptions: ReadonlyArray<{
   value: RmaResolutionChoice;
 }> = rmaResolutionCodes
   .filter((value): value is RmaResolutionChoice => value !== "refund")
+  .sort((left, right) => Number(right === "wallet_credit") - Number(left === "wallet_credit"))
   .map((value) => ({
     value,
     key: `storefront.rma.resolution.${resolutionTranslationKey[value]}`,
@@ -187,7 +188,7 @@ const initialForm: RmaFormState = {
   orderLineId: "",
   quantity: "1",
   reasonCode: "quality_defect",
-  requestedResolution: "replacement",
+  requestedResolution: "wallet_credit",
 };
 
 export function RmaPage({
@@ -1378,6 +1379,22 @@ function RmaRequestCard({
         <div><span className="font-semibold">{tx(t, "storefront.rma.reason.label", "Motivo")}: </span>{rmaReasonLabel(t, request.reasonCode)}</div>
         <div><span className="font-semibold">{tx(t, "storefront.rma.resolution.label", "Soluzione")}: </span>{rmaResolutionLabel(t, request.requestedResolution)}</div>
       </div>
+      {request.parentRequestId ? (
+        <Link className="text-sm font-semibold text-primary underline" href={`/rma?requestId=${encodeURIComponent(request.parentRequestId)}`}>
+          {tx(t, "storefront.rma.originalRequest", "Vedi richiesta originale e foto")}
+        </Link>
+      ) : null}
+      {typeof request.receivedQuantity === "number" ? (
+        <p className="text-sm text-slate-600">{tx(t, "storefront.rma.receivedQuantity", "Quantità ricevuta")}: {request.receivedQuantity}</p>
+      ) : null}
+      {typeof request.refundAmount === "number" && request.refundAmount > 0 ? (
+        <div className="space-y-1 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+          <p className="font-bold">{tx(t, "storefront.rma.walletCredited", "Accreditato nel saldo PartsPro")}: {formatEuro(request.refundAmount)}</p>
+          {request.refundedAt ? <p>{formatCustomerDateTime(request.refundedAt)}</p> : null}
+          <Link className="underline" href="/account?section=wallet">{tx(t, "storefront.rma.viewWallet", "Controlla i movimenti del saldo")}</Link>
+        </div>
+      ) : null}
+      {request.returnToCustomerTracking ? <p className="text-sm">{tx(t, "storefront.rma.returnedTracking", "Tracking restituzione al cliente")}: {request.returnToCustomerTracking}</p> : null}
       {request.customerVisibleNote ? <p className="text-sm leading-6 text-slate-600">{request.customerVisibleNote}</p> : null}
       {request.customerShippedAt ? (
         <div className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm font-semibold text-primary">

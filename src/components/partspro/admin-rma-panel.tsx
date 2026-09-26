@@ -50,12 +50,13 @@ type ActionCode = RmaWorkflowAction;
 type Recommendation = RmaWorkflowRecommendation;
 type QcStatus = "passed" | "failed" | "not_required";
 type InventoryAction = "restock_return" | "mark_scrapped" | "supplier_return";
-type ActionDialog = "receive" | "reject" | "qc" | "refund" | "replacement" | "inventory" | null;
+type ActionDialog = "cancel_unreceived" | "verify_refund_snapshot" | "release_cancelled_replacement" | "create_replacement_order" | "approve" | "split_request" | "start_negotiation" | "resolve_negotiation" | "return_to_customer" | "bind_replacement_order" | "receive" | "reject" | "qc" | "refund" | "replacement" | "inventory" | null;
 type DirectReceiptRequest = Pick<AdminRmaDto, "id" | "rmaNo" | "productName" | "quantity">;
 
 type RefundPreview = {
   available: boolean;
   blockedReason?:
+    | "missing_pricing_snapshot"
     | "missing_unit_price_snapshot"
     | "wallet_balance_exhausted"
     | "invalid_snapshot";
@@ -63,6 +64,10 @@ type RefundPreview = {
   maxRefundAmount: number;
   quantity: number;
   taxAndShippingIncluded: false;
+  netAmount?: number;
+  taxAmount?: number;
+  taxIncluded?: boolean;
+  shippingIncluded?: boolean;
 };
 
 type ReplacementCandidate = {
@@ -103,6 +108,12 @@ type Notice = {
 };
 
 type ActionFields = {
+  quantity?: number;
+  negotiationOutcome?: "refund_wallet" | "replacement" | "return_to_customer" | "scrap_without_refund";
+  customerConfirmation?: string;
+  trackingNumber?: string;
+  carrier?: string;
+  replacementOrderNumber?: string;
   batchCode?: string;
   customerVisibleNote?: string;
   location?: string;
@@ -133,6 +144,16 @@ const INVENTORY_ACTIONS: readonly InventoryAction[] = [
 const rmaCopy = {
   it: {
     action: {
+      cancelUnreceived: "Annulla quantità non restituita",
+      verifyRefund: "Verifica importi originali",
+      releaseReplacement: "Sblocca ordine sostitutivo annullato",
+      createReplacement: "Crea ordine sostitutivo",
+      splitRequest: "Dividi quantità",
+      startNegotiation: "Apri accordo con cliente",
+      resolveNegotiation: "Registra accordo",
+      returnToCustomer: "Spedisci articolo al cliente",
+      bindReplacement: "Collega ordine sostitutivo",
+
       approve: "Approva",
       assign: "Assegna a me",
       close: "Chiudi pratica",
@@ -186,7 +207,7 @@ const rmaCopy = {
     refundApproval: "Rimborso wallet: resta soggetto ad approvazione.",
     refundDescription: "Il massimo deriva dal prezzo unitario immutabile, dai rimborsi esistenti e dal saldo wallet.",
     refundAmount: "Importo da richiedere",
-    refundNoTax: "Tasse e spedizione non sono incluse automaticamente.",
+    refundNoTax: "Prezzo originale e imposte registrate nell’ordine; spedizione da valutare separatamente.",
     replacement: "Ordine sostitutivo",
     replacementDescription: "Scegli l'ordine spedito dal numero ordine; l'UUID non viene mostrato.",
     replacementOrder: "Ordine sostitutivo",
@@ -210,6 +231,7 @@ const rmaCopy = {
     unknownBlocker: "Non è possibile proseguire con i dati attuali. Aggiorna il dettaglio; se il problema persiste, chiedi una verifica al responsabile.",
     workflow: "Prossimo passo consigliato",
     reasons: {
+      waiting_customer_agreement: "Attendi che un responsabile registri la soluzione concordata con il cliente.",
       waiting_customer_return: "La richiesta è approvata. Attendi che il cliente restituisca la merce o confermi di averla spedita dalla propria area RMA. È una normale fase di attesa, non un errore.",
       waiting_wallet_approval: "La richiesta di rimborso wallet è in attesa di approvazione. Non inviare una seconda richiesta.",
       waiting_qc: "Attendi la registrazione del risultato del controllo qualità.",
@@ -226,6 +248,7 @@ const rmaCopy = {
       missing_replacement_order: "Manca l'ordine sostitutivo collegato. Chiedi al responsabile di verificare l'ordine e la spedizione.",
       permission_denied: "Il tuo account non dispone del permesso necessario per il prossimo passo. Chiedi a un responsabile autorizzato di intervenire.",
       invalid_state: "Lo stato della pratica non è coerente con i dati registrati. Aggiorna il dettaglio e chiedi una verifica al responsabile.",
+      missing_pricing_snapshot: "Verifica prima i dati originali della fattura con l’azione dedicata.",
       missing_unit_price_snapshot: "Manca il prezzo unitario registrato nell'ordine. Chiedi una verifica al responsabile prima di richiedere il rimborso.",
       wallet_balance_exhausted: "Non resta alcun importo rimborsabile sul wallet per questo ordine. Verifica i rimborsi già registrati.",
       invalid_snapshot: "I dati registrati nell'ordine non consentono di calcolare un rimborso sicuro. Chiedi una verifica al responsabile.",
@@ -233,6 +256,16 @@ const rmaCopy = {
   },
   zh: {
     action: {
+      cancelUnreceived: "取消未退回数量",
+      verifyRefund: "核验原订单退款金额",
+      releaseReplacement: "解除已取消的换货订单",
+      createReplacement: "创建专属换货订单",
+      splitRequest: "拆分数量处理",
+      startNegotiation: "发起协商",
+      resolveNegotiation: "记录客户确认结果",
+      returnToCustomer: "原物寄回客户",
+      bindReplacement: "关联专属换货订单",
+
       approve: "批准",
       assign: "分配给我",
       close: "关闭售后",
@@ -286,7 +319,7 @@ const rmaCopy = {
     refundApproval: "钱包退款仍需审批。",
     refundDescription: "上限来自不可变单价、已有退款和订单钱包可退余额。",
     refundAmount: "申请退款金额",
-    refundNoTax: "税费和运费不会自动包含。",
+    refundNoTax: "以原成交金额及订单已记录税额为准；运费另行审批。",
     replacement: "替换订单",
     replacementDescription: "按订单号选择已发货替换订单，不展示 UUID。",
     replacementOrder: "替换订单",
@@ -310,6 +343,7 @@ const rmaCopy = {
     unknownBlocker: "当前资料暂不支持继续操作。请刷新详情；若仍无法继续，请联系负责人核查。",
     workflow: "服务端建议下一步",
     reasons: {
+      waiting_customer_agreement: "请等待负责人记录客户已确认的处理方案，再继续处理。",
       waiting_customer_return: "申请已批准，等待客户寄回商品，或在售后页面确认已寄出。这是正常等待阶段，并非系统异常。",
       waiting_wallet_approval: "钱包退款申请正在等待审批，请勿重复发起退款。",
       waiting_qc: "等待登记质量检查结果。",
@@ -326,6 +360,7 @@ const rmaCopy = {
       missing_replacement_order: "缺少关联的替换订单，请联系负责人核对订单及发货情况。",
       permission_denied: "当前账号没有执行下一步所需的权限，请由具备权限的负责人继续处理。",
       invalid_state: "申请状态与已有记录不一致，请刷新详情并联系负责人核查。",
+      missing_pricing_snapshot: "请先使用核验退款基准操作确认原始订单金额。",
       missing_unit_price_snapshot: "缺少订单成交单价记录，请先联系负责人核查，再申请退款。",
       wallet_balance_exhausted: "此订单已无可退的钱包金额，请核对已有退款记录。",
       invalid_snapshot: "订单记录暂不支持安全计算退款金额，请联系负责人核查。",
@@ -352,6 +387,13 @@ export function AdminRmaPanel() {
   const [notice, setNotice] = React.useState<Notice | null>(null);
   const [actionDialog, setActionDialog] = React.useState<ActionDialog>(null);
   const [directReceiptRequest, setDirectReceiptRequest] = React.useState<DirectReceiptRequest | null>(null);
+  const [actionQuantity, setActionQuantity] = React.useState("1");
+  const [actionReason, setActionReason] = React.useState("");
+  const [customerConfirmation, setCustomerConfirmation] = React.useState("");
+  const [negotiationOutcome, setNegotiationOutcome] = React.useState<NonNullable<ActionFields["negotiationOutcome"]>>("refund_wallet");
+  const [returnTracking, setReturnTracking] = React.useState("");
+  const [returnCarrier, setReturnCarrier] = React.useState("");
+  const [replacementOrderNumber, setReplacementOrderNumber] = React.useState("");
   const [rejectReason, setRejectReason] = React.useState("");
   const [qcStatus, setQcStatus] = React.useState<QcStatus>("passed");
   const [qcNote, setQcNote] = React.useState("");
@@ -362,6 +404,7 @@ export function AdminRmaPanel() {
   const [location, setLocation] = React.useState("Milano");
   const [supplier, setSupplier] = React.useState("");
   const [photoAttachment, setPhotoAttachment] = React.useState<AdminRmaDto["attachments"][number] | null>(null);
+  const actionRetryKeysRef = React.useRef(new Map<string, string>());
   const pendingActionRef = React.useRef<ActionCode | null>(null);
 
   const selectedRequest = React.useMemo(
@@ -496,6 +539,13 @@ export function AdminRmaPanel() {
     }
     const detailForSelection = selectedDetail?.id === selectedId ? selectedDetail : null;
     setActionDialog(nextDialog);
+    setActionReason("");
+    setCustomerConfirmation("");
+    setActionQuantity("1");
+    setLocation("Milano");
+    setReturnTracking("");
+    setReturnCarrier("");
+    setReplacementOrderNumber("");
     if (nextDialog === "reject") {
       setRejectReason("");
     }
@@ -523,8 +573,12 @@ export function AdminRmaPanel() {
   }
 
   function triggerAction(action: ActionCode) {
-    if (action === "mark_received" && canReceiveDirectly(selectedRequest)) {
+    if (["cancel_unreceived", "verify_refund_snapshot", "release_cancelled_replacement", "create_replacement_order", "split_request", "start_negotiation", "resolve_negotiation", "return_to_customer", "bind_replacement_order"].includes(action)) {
+      openActionDialog(action as Exclude<ActionDialog, null>);
+    } else if (action === "mark_received" && canReceiveDirectly(selectedRequest)) {
       openActionDialog("receive");
+    } else if (action === "approve") {
+      openActionDialog("approve");
     } else if (action === "reject") {
       openActionDialog("reject");
     } else if (action === "record_qc") {
@@ -558,12 +612,16 @@ export function AdminRmaPanel() {
     try {
       const body: Record<string, unknown> = {
         action,
-        idempotencyKey: createClientId("rma-action"),
         ...fields,
       };
-      if (requiresCompleteQuantity(action)) {
+      if (requiresCompleteQuantity(action) && fields.quantity === undefined) {
         body.quantity = completeQuantity(request);
       }
+
+      const retryFingerprint = `${request.id}:${JSON.stringify(body)}`;
+      const retryKey = actionRetryKeysRef.current.get(retryFingerprint) ?? createClientId("rma-action");
+      actionRetryKeysRef.current.set(retryFingerprint, retryKey);
+      body.idempotencyKey = retryKey;
 
       const response = await fetch(`/api/admin/rma/${encodeURIComponent(request.id)}/actions`, {
         method: "POST",
@@ -577,6 +635,7 @@ export function AdminRmaPanel() {
       if (!response.ok || !payload?.data) {
         throw new Error(readApiMessage(payload) ?? copy.updated);
       }
+      actionRetryKeysRef.current.delete(retryFingerprint);
       const actionResult = payload.data;
       setRequests((current) => current.map((item) => (item.id === actionResult.id ? actionResult : item)));
       setSelectedDetail((current) =>
@@ -780,6 +839,14 @@ export function AdminRmaPanel() {
                   </div>
                 </div>
 
+                {selectedRequest.parentRequestId ? (
+                  <Button variant="link" onClick={() => setSelectedId(selectedRequest.parentRequestId!)}>
+                    {isZh ? "查看原申请与照片" : "Apri richiesta originale e foto"}
+                  </Button>
+                ) : null}
+                {selectedRequest.customerConfirmation ? (
+                  <p className="rounded-lg border border-slate-200 p-3 text-sm">{isZh ? "客户确认记录：" : "Accordo confermato: "}{selectedRequest.customerConfirmation}</p>
+                ) : null}
                 {selectedRequest.recommendedAction ? (
                   <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
                     <div className="flex items-start gap-2">
@@ -852,6 +919,7 @@ export function AdminRmaPanel() {
                   <DetailBlock title={copy.resolution}>
                     <ReadOnlySummary label={copy.resolution} value={selectedRequest.requestedResolution ?? selectedRequest.resolution} />
                     <ReadOnlySummary label={copy.quantity} value={String(fullQuantity)} />
+                    {selectedRequest.replacementReservedOrderId ? <a className="block text-sm font-bold text-blue-700 underline" href={`/admin?panel=orders&orderId=${encodeURIComponent(selectedRequest.replacementReservedOrderId)}`}>{isZh ? "打开专属换货订单，完成拣货与发货" : "Apri l’ordine sostitutivo per preparazione e spedizione"}</a> : null}
                     <ReadOnlySummary label={isZh ? "库存状态" : "Stato stock"} value={selectedRequest.inventoryDisposition} />
                   </DetailBlock>
                 </div>
@@ -960,6 +1028,12 @@ export function AdminRmaPanel() {
             <div className="break-words font-black">{directReceiptRequest?.rmaNo ?? copy.rma}</div>
             <div className="break-words">{directReceiptRequest?.productName}</div>
             <div className="font-semibold">{copy.quantity}: {directReceiptRequest ? completeQuantity(directReceiptRequest) : "—"}</div>
+            {selectedRequest?.availableActions.includes("split_request") ? (
+              <div className="rounded-lg bg-amber-50 p-3 text-sm">
+                <p>{isZh ? "实收不足时，先拆分出本次收到的数量，再确认收货。剩余数量保持待退。" : "Se il reso è parziale, dividi prima la quantità ricevuta. Il resto rimane in attesa."}</p>
+                <Button variant="outline" onClick={() => openActionDialog("split_request")}>{copy.action.splitRequest}</Button>
+              </div>
+            ) : null}
           </div>
           {!canConfirmDirectReceipt(selectedRequest, directReceiptRequest) ? (
             <p className="text-sm font-semibold text-amber-800" role="alert">{copy.directReceiptChanged}</p>
@@ -975,6 +1049,19 @@ export function AdminRmaPanel() {
               {pendingAction === "mark_received" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="size-4" aria-hidden="true" />}
               {copy.confirmReceived}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={actionDialog === "approve"} onOpenChange={(open) => !open && setActionDialog(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{copy.action.approve}</DialogTitle>
+            <DialogDescription>{isZh ? "请向客户提供经核验的退货地址、联系人、包装要求，并提醒附上售后编号。" : "Indica l’indirizzo verificato, il destinatario e le istruzioni di imballaggio. Chiedi di includere il numero RMA."}</DialogDescription>
+          </DialogHeader>
+          <Label htmlFor="rma-return-instructions">{isZh ? "客户退回指引" : "Istruzioni per il reso"}</Label>
+          <Textarea id="rma-return-instructions" value={actionReason} onChange={(event) => setActionReason(event.target.value)} />
+          <DialogFooter><Button variant="outline" onClick={() => setActionDialog(null)}>{copy.cancel}</Button>
+            <Button disabled={actionReason.trim().length < 20 || Boolean(pendingAction)} onClick={() => void runAction("approve", { customerVisibleNote: actionReason.trim() })}>{copy.action.approve}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1048,6 +1135,74 @@ export function AdminRmaPanel() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={Boolean(actionDialog && ["cancel_unreceived", "verify_refund_snapshot", "release_cancelled_replacement", "create_replacement_order", "split_request", "start_negotiation", "resolve_negotiation", "return_to_customer", "bind_replacement_order"].includes(actionDialog))} onOpenChange={(open) => !open && setActionDialog(null)}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{actionDialog ? actionLabel(actionDialog as ActionCode, copy) : ""}</DialogTitle>
+            <DialogDescription>{isZh ? "操作会记录在售后历史中。协商完成前保持商品隔离。" : "L’operazione sarà registrata nella cronologia. Mantieni gli articoli separati fino all’accordo."}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            {actionDialog === "cancel_unreceived" ? <>
+              <Label htmlFor="rma-cancel-confirmation">{isZh ? "客户同意取消的凭据" : "Conferma del cliente per annullare"}</Label>
+              <Textarea id="rma-cancel-confirmation" value={customerConfirmation} onChange={(event) => setCustomerConfirmation(event.target.value)} />
+            </> : null}
+            {actionDialog === "release_cancelled_replacement" ? <p className="text-sm">{isZh ? "请先在订单管理中取消尚未发出的换货订单。这里只解除已取消订单的关联，保留原记录，然后可重新协商或创建换货。" : "Annulla prima l’ordine sostitutivo non spedito nella gestione ordini. Questa azione conserva lo storico e consente di concordare una nuova soluzione."}</p> : null}
+            {actionDialog === "create_replacement_order" ? <p className="text-sm">{isZh ? "创建零价专属换货订单并预留库存，之后在订单管理中完成出库；这一步不会标记已发货。" : "Crea un ordine sostitutivo a costo zero e riserva lo stock. Completa poi la spedizione nella gestione ordini."}</p> : null}
+            {actionDialog === "verify_refund_snapshot" ? <p className="text-sm">{isZh ? "请先核对原订单/发票的成交金额与税额。系统将核对订单明细合计并保存金额依据；无法对应的历史订单不允许自动退款。" : "Controlla prima ordine e fattura originali. Il sistema verifica i totali e registra la base del rimborso; le incongruenze richiedono revisione."}</p> : null}
+            {actionDialog === "split_request" ? <>
+              <Label htmlFor="rma-split-quantity">{isZh ? "本单保留处理数量" : "Quantità da gestire in questa richiesta"}</Label>
+              <Input id="rma-split-quantity" type="number" min={1} max={fullQuantity - 1} value={actionQuantity} onChange={(event) => setActionQuantity(event.target.value)} />
+              <p className="text-sm text-slate-600">{isZh ? `原单 ${fullQuantity} 件；其余数量生成关联申请，分别检测、退款和处置。请在检测前拆分不同结果的商品。` : `${fullQuantity} pezzi totali. Il resto crea una richiesta collegata con gestione separata. Dividi gli articoli prima di registrare esiti diversi.`}</p>
+            </> : null}
+            {actionDialog === "resolve_negotiation" ? <>
+              <Label>{isZh ? "客户同意的方案" : "Soluzione concordata"}</Label>
+              <Select value={negotiationOutcome} onValueChange={(value) => setNegotiationOutcome(value as NonNullable<ActionFields["negotiationOutcome"]>)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="refund_wallet">{isZh ? "退至钱包（仍需退款审批）" : "Rimborso wallet (soggetto ad approvazione)"}</SelectItem>
+                  <SelectItem value="replacement">{isZh ? "换货" : "Sostituzione"}</SelectItem>
+                  <SelectItem value="return_to_customer">{isZh ? "不退款，原物寄回" : "Restituzione al cliente senza rimborso"}</SelectItem>
+                  <SelectItem value="scrap_without_refund">{isZh ? "不退款，客户同意报废" : "Smaltimento concordato senza rimborso"}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Label htmlFor="rma-customer-confirmation">{isZh ? "确认凭据（联系渠道、时间及客户答复）" : "Conferma del cliente (canale, data e risposta)"}</Label>
+              <Textarea id="rma-customer-confirmation" value={customerConfirmation} onChange={(event) => setCustomerConfirmation(event.target.value)} />
+            </> : null}
+            {actionDialog === "return_to_customer" ? <>
+              <Label htmlFor="rma-return-carrier">{isZh ? "承运商" : "Corriere"}</Label>
+              <Input id="rma-return-carrier" value={returnCarrier} onChange={(event) => setReturnCarrier(event.target.value)} />
+              <Label htmlFor="rma-return-tracking">{isZh ? "原物寄回物流单号" : "Tracking della restituzione"}</Label>
+              <Input id="rma-return-tracking" value={returnTracking} onChange={(event) => setReturnTracking(event.target.value)} />
+              <Label htmlFor="rma-return-location">{isZh ? "发出仓库 / 位置" : "Magazzino / posizione di partenza"}</Label>
+              <Input id="rma-return-location" value={location} onChange={(event) => setLocation(event.target.value)} />
+            </> : null}
+            {actionDialog === "bind_replacement_order" ? <>
+              <Label htmlFor="rma-replacement-number">{isZh ? "待发出的专属换货订单号" : "Numero ordine sostitutivo da spedire"}</Label>
+              <Input id="rma-replacement-number" value={replacementOrderNumber} onChange={(event) => setReplacementOrderNumber(event.target.value)} />
+              <p className="text-sm text-slate-600">{isZh ? "只可关联属于此客户、无应付金额且尚未发出的换货订单。普通历史订单不接受。" : "Solo un ordine dedicato allo stesso cliente, senza importo dovuto e non ancora spedito. Gli ordini storici non sono accettati."}</p>
+            </> : null}
+            <Label htmlFor="rma-action-reason">{isZh ? "处理原因 / 凭据说明" : "Motivo / documentazione"}</Label>
+            <Textarea id="rma-action-reason" value={actionReason} onChange={(event) => setActionReason(event.target.value)} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setActionDialog(null)}>{isZh ? "取消" : "Annulla"}</Button>
+            <Button disabled={Boolean(pendingAction) || actionReason.trim().length < 8 ||
+              (actionDialog === "split_request" && (!Number.isInteger(Number(actionQuantity)) || Number(actionQuantity) < 1 || Number(actionQuantity) >= fullQuantity)) ||
+              (["resolve_negotiation", "cancel_unreceived"].includes(actionDialog ?? "") && customerConfirmation.trim().length < 8) ||
+              (actionDialog === "return_to_customer" && (!returnTracking.trim() || !returnCarrier.trim() || !location.trim())) ||
+              (actionDialog === "bind_replacement_order" && !replacementOrderNumber.trim())}
+              onClick={() => actionDialog && void runAction(actionDialog as ActionCode, {
+                reason: actionReason.trim(),
+                ...(actionDialog === "split_request" ? { quantity: Number(actionQuantity) } : {}),
+                ...(actionDialog === "resolve_negotiation" ? { negotiationOutcome, customerConfirmation: customerConfirmation.trim() } : {}),
+                ...(actionDialog === "cancel_unreceived" ? { customerConfirmation: customerConfirmation.trim() } : {}),
+                ...(actionDialog === "return_to_customer" ? { carrier: returnCarrier.trim(), trackingNumber: returnTracking.trim(), location: location.trim() } : {}),
+                ...(actionDialog === "bind_replacement_order" ? { replacementOrderNumber: replacementOrderNumber.trim() } : {}),
+              })}>{isZh ? "确认记录" : "Conferma"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={actionDialog === "refund"} onOpenChange={(open) => !open && setActionDialog(null)}>
         <DialogContent>
           <DialogHeader>
@@ -1059,6 +1214,7 @@ export function AdminRmaPanel() {
               <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
                 <div className="font-black">{isZh ? "最多" : "Massimo"}: {formatMoney(refundPreview.maxRefundAmount, refundPreview.currency)}</div>
                 <div className="mt-1 text-xs">{copy.refundNoTax}</div>
+                <div className="text-xs">{isZh ? "另列税额" : "Imposte separate"}: {formatMoney(refundPreview.taxAmount ?? 0, refundPreview.currency)}</div>
                 <div className="text-xs">{copy.refundApproval}</div>
               </div>
             ) : (
@@ -1337,6 +1493,15 @@ function actionLabel(action: ActionCode, copy: Copy, queue?: QueueTab) {
     return copy.action.markReceivedFallback;
   }
   switch (action) {
+    case "cancel_unreceived": return copy.action.cancelUnreceived;
+    case "verify_refund_snapshot": return copy.action.verifyRefund;
+    case "release_cancelled_replacement": return copy.action.releaseReplacement;
+    case "create_replacement_order": return copy.action.createReplacement;
+    case "split_request": return copy.action.splitRequest;
+    case "start_negotiation": return copy.action.startNegotiation;
+    case "resolve_negotiation": return copy.action.resolveNegotiation;
+    case "return_to_customer": return copy.action.returnToCustomer;
+    case "bind_replacement_order": return copy.action.bindReplacement;
     case "start_review":
       return copy.action.startReview;
     case "approve":
@@ -1380,7 +1545,7 @@ function isInventoryAction(action: ActionCode): action is InventoryAction {
 }
 
 function requiresCompleteQuantity(action: ActionCode) {
-  return !["start_review", "approve", "reject", "assign", "close"].includes(action);
+  return ["mark_received", "record_qc", "request_wallet_refund", "mark_replacement_sent", "restock_return", "mark_scrapped", "supplier_return", "return_to_customer"].includes(action);
 }
 
 function completeQuantity(request: Pick<AdminRmaDto, "quantity">) {

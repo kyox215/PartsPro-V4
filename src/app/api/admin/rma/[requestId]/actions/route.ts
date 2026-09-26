@@ -27,7 +27,7 @@ import { repositoryErrorResponse, requireAdminApi } from "../../../_shared";
 
 export const dynamic = "force-dynamic";
 
-// Non-review actions retain the v3 response contract: workflow: "admin_perform_rma_action_v3".
+// Non-review actions use the guarded v4 response contract: workflow: "admin_perform_rma_action_v4".
 
 type AdminRmaActionParams = { params: Promise<{ requestId: string }> };
 
@@ -52,6 +52,10 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
     });
   }
 
+  if (parsedBody.data.action === "approve" && (parsedBody.data.customerVisibleNote?.length ?? 0) < 20) {
+    return apiError(400, "RMA_RETURN_INSTRUCTIONS_REQUIRED", "Provide return address and packing instructions before approval.");
+  }
+
   const { requestId } = await params;
   const parsedRequestId = z.string().uuid().safeParse(requestId);
 
@@ -59,6 +63,12 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
     return apiError(400, "INVALID_RMA_REQUEST_ID", "RMA request id is invalid.");
   }
 
+  if ((parsedBody.data.action === "verify_refund_snapshot" &&
+      (!hasAdminPermission(admin.authState, "rma.manage") || !hasAdminPermission(admin.authState, "rma.refund"))) ||
+      (["release_cancelled_replacement", "create_replacement_order", "bind_replacement_order"].includes(parsedBody.data.action) &&
+      (!hasAdminPermission(admin.authState, "rma.manage") || !hasAdminPermission(admin.authState, "orders.manage")))) {
+    return apiError(403, "ADMIN_PERMISSION_DENIED", "Missing permission for this RMA action.");
+  }
   const permission = requiredPermissionForAction(parsedBody.data.action);
 
   // Restocking invokes the exact product-stock RPC. Its API gate must use the
@@ -122,7 +132,7 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
         workflow:
           isReviewAction(parsedBody.data.action)
             ? "admin_perform_rma_review_action"
-            : "admin_perform_rma_action_v3",
+            : "admin_perform_rma_action_v4",
       },
     });
   } catch (error) {
@@ -148,7 +158,7 @@ function pushDeliveryWarning(status: RmaNotificationPushStatus) {
 }
 
 function requiredPermissionForAction(action: AdminRmaAction) {
-  if (action === "start_review" || action === "approve" || action === "reject") {
+  if (["start_review", "approve", "reject", "split_request", "start_negotiation", "resolve_negotiation", "bind_replacement_order", "cancel_unreceived", "verify_refund_snapshot", "release_cancelled_replacement", "create_replacement_order"].includes(action)) {
     return ["rma.manage"];
   }
 
@@ -164,7 +174,7 @@ function requiredPermissionForAction(action: AdminRmaAction) {
     return ["product.adjust_stock"];
   }
 
-  if (action === "mark_received" || action === "mark_scrapped" || action === "supplier_return") {
+  if (action === "mark_received" || action === "mark_scrapped" || action === "supplier_return" || action === "return_to_customer") {
     return ["rma.inventory", "product.adjust_stock", "inventory.manage"];
   }
 

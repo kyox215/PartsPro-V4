@@ -1,0 +1,8 @@
+import { notFound } from "next/navigation";
+import { AdminRmaPanel } from "@/components/partspro/admin-rma-panel";
+import { RmaPage } from "@/components/partspro/rma-page";
+export default async function Fixture({searchParams}: {searchParams: Promise<{customer?: string}>}) {
+  if(process.env.RMA_UI_FIXTURE !== "1") notFound();
+  const p = await searchParams;
+  return <><p style={{padding:12,background:"#fef3c7"}}>LOCAL TEST FIXTURES — NO REAL DATA OR WRITES</p>{p.customer ? <RmaPage initialAccountAccess={{accountType:"customer",authenticated:true,canOpenAdmin:false,displayName:"Test customer",email:null,role:null,status:"ready"}} /> : <AdminRmaPanel />}</>;
+}

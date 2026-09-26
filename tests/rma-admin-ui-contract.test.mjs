@@ -293,7 +293,27 @@ function loadAdminHelpers(names, bindings = {}) {
   const compiled = typescript.transpileModule(`${copySource}\n${helperSource}\nglobalThis.helpers = { rmaCopy, ${names.join(", ")} };`, {
     compilerOptions: { module: typescript.ModuleKind.CommonJS, target: typescript.ScriptTarget.ES2022, jsx: typescript.JsxEmit.React },
   });
-  const context = { React, Clock3, CheckCircle2, ShieldAlert, cn: (...classes) => classes.filter(Boolean).join(" "), ...bindings };
+  const context = { setLocation() {}, setActionReason() {}, setCustomerConfirmation() {}, setActionQuantity() {}, setReturnTracking() {}, setReturnCarrier() {}, setReplacementOrderNumber() {}, React, Clock3, CheckCircle2, ShieldAlert, cn: (...classes) => classes.filter(Boolean).join(" "), ...bindings };
   vm.runInNewContext(compiled.outputText, context);
   return context.helpers;
 }
+
+
+test("failed network actions reuse the same idempotency key and successful new actions receive a new key", async () => {
+  const request = waitingRequest({availableActions:["split_request"]});
+  const sent=[]; let fail=true; let next=0;
+  const {runAction}=loadAdminHelpers(["runAction"], {
+    selectedRequest:request,selectedDetail:null,selectedId:request.id,
+    pendingActionRef:{current:null},actionRetryKeysRef:{current:new Map()},
+    setPendingAction(){},setRequests(){},setSelectedDetail(){},setNotice(){},setActionDialog(){},
+    requiresCompleteQuantity:()=>false,createClientId:()=>`test-key-${++next}`,
+    copy:{updated:'Error',actionDone:'Done'}, refresh:async()=>{},loadDetail:async()=>true,
+    fetch:async(_url, options)=>{sent.push(JSON.parse(options.body));if(fail)throw Error('Response lost');return {ok:true,json:async()=>({data:request})};},
+  });
+  await runAction('split_request',{quantity:1,reason:'Partial receipt'});
+  fail=false;
+  await runAction('split_request',{quantity:1,reason:'Partial receipt'});
+  assert.equal(sent[0].idempotencyKey,sent[1].idempotencyKey);
+  await runAction('split_request',{quantity:1,reason:'Partial receipt'});
+  assert.notEqual(sent[1].idempotencyKey,sent[2].idempotencyKey);
+});

@@ -55,7 +55,8 @@ export type RmaInventoryDisposition =
   | "quarantine"
   | "restock"
   | "scrap"
-  | "supplier_return";
+  | "supplier_return"
+  | "returned_to_customer";
 export type RmaWalletRefundStatus = "pending" | "approved" | "rejected" | "cancelled";
 export type CustomerType = "retail" | "wholesale";
 export type CustomerAssignmentStatus =
@@ -181,6 +182,16 @@ export type OrderSummary = {
 };
 
 export type RmaRequest = {
+  parentRequestId?: string | null;
+  negotiationStatus?: string | null;
+  negotiationOutcome?: string | null;
+  customerConfirmation?: string | null;
+  customerConfirmedAt?: string | null;
+  returnToCustomerTracking?: string | null;
+  refundPricingVerified?: boolean;
+  replacementReservedOrderId?: string | null;
+  refundGrossAmount?: number | null;
+  refundTaxAmount?: number | null;
   id: string;
   orderId: string;
   orderLineId?: string;

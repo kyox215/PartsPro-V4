@@ -872,6 +872,22 @@ function rmaNotificationCopy(item: NotificationItem, locale: string) {
   if (item.eventType !== "rma_status_updated") {
     return null;
   }
+  const actionBodies: Record<string, string> = isZh ? {
+    start_negotiation: "售后处理需要与您确认方案，请联系客服协商。确认前不会执行退款或商品处置。",
+    resolve_negotiation: "已记录双方确认的处理方案。退款仍需审批，请进入售后页面查看进度。",
+    split_request: "售后申请已按数量拆分，分别处理。请查看关联申请及各自进度。",
+    return_to_customer: "原商品已寄回给您，请进入售后页面查看物流单号。",
+    cancel_unreceived: "根据双方确认，尚未收到商品的申请已取消。详情见售后记录。",
+  } : {
+    start_negotiation: "La soluzione richiede il tuo accordo. Contatta l'assistenza; rimborso e disposizione della merce restano sospesi fino alla conferma.",
+    resolve_negotiation: "La soluzione concordata è stata registrata. Il rimborso resta soggetto ad approvazione; segui la pratica nella pagina Resi.",
+    split_request: "La richiesta è stata divisa per quantità, da gestire separatamente. Controlla le pratiche collegate e il loro stato.",
+    return_to_customer: "L'articolo originale è stato rispedito. Apri la pagina Resi per il codice di tracciamento.",
+    cancel_unreceived: "La richiesta relativa alla merce non ricevuta è stata annullata come concordato. Consulta lo storico del reso.",
+  };
+  if (!isStaff && item.sourceAction && Object.hasOwn(actionBodies, item.sourceAction)) {
+    return { title: isZh ? "售后处理更新" : "Gestione del reso aggiornata", body: withReference(actionBodies[item.sourceAction]) };
+  }
   if (!isStaff && item.sourceAction === "request_wallet_refund") {
     return {
       title: isZh ? "钱包退款等待审核" : "Rimborso wallet in attesa di approvazione",

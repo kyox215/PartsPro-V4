@@ -552,7 +552,7 @@ function isWorkflowActionAvailable(action, state, queue) {
       );
     case "restock_return":
       return (
-        queue === "inventory_close" &&
+        (queue === "inventory_close" || queue === "resolution") &&
         state.inventoryDisposition === "quarantine" &&
         capabilities.inventory &&
         capabilities.adjustStock &&
@@ -561,7 +561,7 @@ function isWorkflowActionAvailable(action, state, queue) {
     case "mark_scrapped":
     case "supplier_return":
       return (
-        queue === "inventory_close" &&
+        (queue === "inventory_close" || queue === "resolution") &&
         state.inventoryDisposition === "quarantine" &&
         capabilities.inventory &&
         sharedActionGuard(action, state)

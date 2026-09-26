@@ -66,3 +66,23 @@ Last reviewed: 2026-06-19
 - 25% 运营效率、供应商导入和后台工具。
 - 10% 文档、runbook、质量门禁和复盘。
 - 5% 探索性自动化和渠道试点。
+
+## 2026-09-26 售后钱包闭环修复（生产数据库已应用，前端待发布）
+
+- Task ID：TASK-20260926-RMA；P1 / R3；主责订单运营部，协作仓库库存部、价格与客户部。主助手实施前后端，数据库专项负责新增 migration，业务契约与 migration/RLS 守门独立验收。
+- 用户批准本地实施：钱包退款优先；检测争议先协商；按实收拆分处理；退商品折扣后实付额及对应税额，运费另审。已于后续明确回复“批准”授权本次 db push；前端发布未获授权。
+- 基线：已核实生产部署 dpl_RuZ7FWurm14GBUY7iz91Ze11YbDw 对应隔离发布提交 f26c793（包含最新客户结清功能）；修复在 codex/rma-wallet-closure-20260926 独立 worktree。
+- 范围：RMA 客户/后台/API/数据库动作、钱包退款审批与订单金额上限、库存处置；禁止修改旧 migration、静默变更历史售后结果或覆盖主目录改动。
+- 验收：检测失败不能回可售；少收/混合处置能分拆；协商结果可追踪；专属换货凭证；退款税额与累计实付 cap 正确；重复/并发不重复资金库存；客户公开 DTO 不泄漏内部数据。
+- 验证计划：相关 RMA/钱包合同及本地数据库事务测试、storefront 测试、全量 lint/build、目标 UI 交互；linked 只读核对和 dry-run。生产 db push 须另行展示清单并批准，发布独立处理。
+
+- 已实现：仅检测通过允许回可售；收货前/质检前数量拆分、未收取消；协商退款/换货/寄回/同意报废；专属零价换货真实锁库、取消后受控解除重建；原商品实付及原税额上限、稳定税基与尾差、退款拒绝重试；客户到账金额/状态/物流/关联申请与通知。运费不自动混入商品退款，仍须另审。
+- 独立门禁：审查曾发现部分协商退款会抬高后件税额，已以 `refund_allocated_tax_amount` 冻结原税基修复；主助手核对最终差异。原待审批历史申请按原额度兼容，不自动补税；其他缺快照的旧单需人工核验原始订单金额。
+- 数据库验证：PostgreSQL 17 实际载入 113 个 migrations，49 个 SQL 断言点及正/倒序审批、拒绝重试、双连接并发测试通过；auth/storage/cron 基础设施使用 stub，跳过 4 个仅生产商品数据补丁。隔离测试容器和卷已清理。命令：`RMA_V4_FIXTURE=tests/rma-v4-database-integration.sql node scripts/rma-v4-db-test.mjs <独立测试容器>`。
+- 界面验证：优化构建下 1440×1000 / 390×844 真实组件交互通过，API 全部夹具模拟；覆盖拆单、协商确认、寄回、创建/解除换货、客户拒绝与到账展示。截图及结果位于 `outputs/rma-v4/`。可用 `node scripts/verify-rma-v4-ui.mjs --prepare` 生成临时夹具，验证后必须 `--cleanup`；本次临时页面已移除，测试服务已停止。此证据不是生产端到端测试。
+- 生产门禁：本 worktree 复用已核验的无密码连接元数据，`migration list --linked` 无 remote-only divergence；最终 `db push --linked --dry-run` 仅列 `20260926110808_rma_v4_wallet_negotiation_split_closure.sql`。目标 PartsPro-V4 / yiuxrjqexlfjtxxrkqvi。后续用户批准后已完成本次真实 push；未执行 Vercel 发布。
+- 迁移风险/补偿：新增字段/索引/受限 RPC，替换旧 v3 关键守卫与钱包税额同步逻辑，无删除表/数据、批量历史回填或 RLS policy 重写。应用需短时 DDL 锁；不应通过删除新列回滚已有业务结果。异常时停用新增售后动作并以补偿 migration 前向修复；钱包/库存已发生业务须逐笔审计补偿。数据库应用与前端发布分开批准，新前端要求 v4 capability。
+- 最终应用代码验证：126 项售后/通知测试、6 项 storefront 测试、全量 `npm run lint`、移除临时夹具后的 `npm run build` 均通过；`git diff --check` 通过。当前修改保存在独立 worktree，未合并、推送或发布。
+
+- 2026-09-26 生产应用记录：用户针对本次清单明确回复“批准”。重新核验 project ref/name、无远端分歧且 dry-run 仅本条后执行 `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db push --linked` 成功。迁移 SHA-256：`85743b5d5ec795053186c5359407154c77b6d7ab37696b1e450ba536c811c507`。
+- 应用后核验：本地/远端 `20260926110808` 一致，再次 dry-run 为 `Remote database is up to date`；v4 capability 返回 ready=true / rma-workflow-v4；12 个新增 RMA 字段、定价触发器、未取消换货唯一索引、旧 v3 QC 守卫及冻结税基函数均存在。新 public RPC 禁止 anon，private helper 禁止 anon/authenticated，search_path 固定。安全 advisor 的 authenticated SECURITY DEFINER 提示按已审查的函数内身份/权限门控制；其他原有提示未在本次扩大修改。仅做结构和只读验证，未创建真实退款/订单或调整库存；前端新流程仍待单独发布。
