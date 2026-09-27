@@ -1,5 +1,6 @@
 export const adminPanelPermissions = {
   accounts: "panel.accounts",
+  analytics: "analytics.read",
   catalog: "panel.catalog",
   finance: "panel.finance",
   inventory: "panel.inventory",
@@ -27,6 +28,8 @@ export const supplierBatchCostPermissions = {
 } as const;
 
 export const adminPermissions = [
+  "pricing.manage_policy",
+  "analytics.read",
   "panel.orders",
   "panel.accounts",
   "panel.catalog",
@@ -106,6 +109,7 @@ const adminPermissionSet = new Set(adminPermissions);
 export const roleTemplatePermissions: Record<string, Set<string>> = {
   admin: adminPermissionSet,
   auditor: new Set([
+    "analytics.read",
     "panel.orders",
     "panel.catalog",
     "panel.finance",
@@ -228,7 +232,7 @@ export function visiblePanelsForPermissions(permissions: Iterable<string>) {
     }
 
     if (permissionSet.has(permission)) {
-      panels.add(panel);
+      panels.add(panel === "inventory" ? "catalog" : panel);
     }
   }
 

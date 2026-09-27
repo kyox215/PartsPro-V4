@@ -147,6 +147,8 @@ export function normalizeCustomerTier(
 export type CustomerTierPromotionInput = {
   level?: CustomerTier | string | null;
   lifetimeSpendNet?: number | null;
+  levelSource?: string | null;
+  profileKind?: string | null;
   promoLevel?: CustomerTier | string | null;
   promoLevelExpiresAt?: string | Date | null;
   promoLevelStartsAt?: string | Date | null;
@@ -173,21 +175,24 @@ export function isCustomerTierPromotionActive(
   return now >= startsAt && now < expiresAt;
 }
 
+export function baseCustomerTier(input: CustomerTierPromotionInput): CustomerTier {
+  if (input.levelSource === "manual" || input.profileKind === "employee_self") {
+    const stored = (input.level ?? input.tier)?.trim().toLowerCase();
+    if (stored && [...customerTiers, "standard", "pro", "partner"].includes(stored)) {
+      return normalizeCustomerTier(stored);
+    }
+  }
+  return levelForLifetimeSpend(input.lifetimeSpendNet ?? 0);
+}
+
 export function effectiveCustomerTier(
   input: CustomerTierPromotionInput,
   now: Date = new Date()
 ): CustomerTier {
-  if (isCustomerTierPromotionActive(input, now)) {
-    return normalizeCustomerTier(input.promoLevel);
-  }
-
-  const expiresAt = toValidDate(input.promoLevelExpiresAt ?? null);
-
-  if (normalizeOptionalCustomerTier(input.promoLevel) && expiresAt && now >= expiresAt) {
-    return levelForLifetimeSpend(input.lifetimeSpendNet ?? 0);
-  }
-
-  return normalizeCustomerTier(input.level ?? input.tier);
+  const base = baseCustomerTier(input);
+  if (!isCustomerTierPromotionActive(input, now)) return base;
+  const promo = normalizeCustomerTier(input.promoLevel);
+  return customerTiers[Math.max(customerTiers.indexOf(base), customerTiers.indexOf(promo))];
 }
 
 export function getTierRule(tier: CompanyProfile["priceList"]): CustomerTierRule {

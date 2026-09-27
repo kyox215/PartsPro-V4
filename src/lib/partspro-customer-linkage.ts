@@ -23,35 +23,37 @@ export async function readLinkedCustomerRow(
     return null;
   }
 
-  const email = readString(options.email) ?? readString(profile?.email);
-  const candidates: DbRow[] = [];
   const profileCustomerId = readString(profile?.customer_id);
-
   if (profileCustomerId) {
-    const row = await readCustomerById(client, profileCustomerId, options.select);
-
-    if (row) {
-      if (isNormalCustomerProfile(row)) {
-        return row;
-      }
-
-      candidates.push(row);
-    }
+    const { data: owned, error: ownerError } = await client.from("customers")
+      .select(options.select).eq("id", profileCustomerId).eq("user_id", userId).maybeSingle();
+    if (ownerError) return null;
+    const ownerRow = asRow(owned);
+    if (ownerRow) return isNormalCustomerProfile(ownerRow) ? ownerRow : null;
+    const { data: membership, error: membershipError } = await client.from("customer_memberships")
+      .select("customer_id").eq("customer_id", profileCustomerId).eq("user_id", userId)
+      .eq("status", "active").limit(1).maybeSingle();
+    if (membershipError || !membership) return null;
+    const { data, error } = await client.from("customers").select(options.select)
+      .eq("id", profileCustomerId).maybeSingle();
+    const memberRow = error ? null : asRow(data);
+    return memberRow && isNormalCustomerProfile(memberRow) ? memberRow : null;
   }
 
-  const [userRows, membershipRows, emailRows] = await Promise.all([
+  // Ownership/membership are authoritative; an email match never grants a price list.
+  const [userRows, membershipRows] = await Promise.all([
     readCustomerRowsByUserId(client, userId, options.select),
     readCustomerRowsByMembership(client, userId, options.select),
-    email ? readCustomerRowsByEmail(client, email, options.select) : Promise.resolve([]),
   ]);
-
-  candidates.push(...userRows, ...membershipRows, ...emailRows);
-
-  return chooseLinkedCustomer(candidates, {
-    email,
-    profileCustomerId,
-    userId,
-  });
+  if (!userRows || !membershipRows) return null;
+  const candidates = Array.from(new Map(
+    [...userRows, ...membershipRows]
+      .filter(isNormalCustomerProfile)
+      .map((row) => [readString(row.id), row] as const)
+      .filter(([id]) => Boolean(id))
+  ).values());
+  // Ambiguous links require an explicit assignment; never prefer a cheaper wholesale account.
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 export async function readLinkedCustomerId(
@@ -77,20 +79,6 @@ async function readProfileLinkage(client: SupabaseServerClient, userId: string) 
   return error ? null : asRow(data);
 }
 
-async function readCustomerById(
-  client: SupabaseServerClient,
-  customerId: string,
-  select: string
-) {
-  const { data, error } = await client
-    .from("customers")
-    .select(select)
-    .eq("id", customerId)
-    .maybeSingle();
-
-  return error ? null : asRow(data);
-}
-
 async function readCustomerRowsByUserId(
   client: SupabaseServerClient,
   userId: string,
@@ -103,7 +91,7 @@ async function readCustomerRowsByUserId(
     .order("updated_at", { ascending: false })
     .limit(10);
 
-  return error ? [] : rows(data);
+  return error || rows(data).length >= 10 ? null : rows(data);
 }
 
 async function readCustomerRowsByMembership(
@@ -121,107 +109,21 @@ async function readCustomerRowsByMembership(
     .map((row) => readString(row.customer_id))
     .filter(isDefined);
 
-  if (error || customerIds.length === 0) {
-    return [];
-  }
+  if (error || rows(data).length >= 10) return null;
+  if (customerIds.length === 0) return [];
 
   const { data: customers, error: customerError } = await client
     .from("customers")
     .select(select)
     .in("id", customerIds);
 
-  return customerError ? [] : rows(customers);
-}
-
-async function readCustomerRowsByEmail(
-  client: SupabaseServerClient,
-  email: string,
-  select: string
-) {
-  const { data, error } = await client
-    .from("customers")
-    .select(select)
-    .ilike("email", email)
-    .order("updated_at", { ascending: false })
-    .limit(10);
-
-  return error ? [] : rows(data);
-}
-
-function chooseLinkedCustomer(
-  candidates: DbRow[],
-  context: { email: string | null; profileCustomerId: string | null; userId: string }
-) {
-  const uniqueCandidates = Array.from(
-    new Map(
-      candidates
-        .filter(isNormalCustomerProfile)
-        .map((row) => [readString(row.id), row])
-        .filter((entry): entry is [string, DbRow] => Boolean(entry[0]))
-    ).values()
-  );
-
-  return uniqueCandidates.sort((left, right) => {
-    const rankDelta = rankCustomer(right, context) - rankCustomer(left, context);
-
-    if (rankDelta !== 0) {
-      return rankDelta;
-    }
-
-    return timestampOf(right) - timestampOf(left);
-  })[0] ?? null;
-}
-
-function rankCustomer(
-  row: DbRow,
-  context: { email: string | null; profileCustomerId: string | null; userId: string }
-) {
-  let rank = 0;
-
-  if (readString(row.id) === context.profileCustomerId) {
-    rank += 1000;
-  }
-
-  if (readString(row.user_id) === context.userId) {
-    rank += 500;
-  }
-
-  if (context.email && equalEmail(readString(row.email), context.email)) {
-    rank += 200;
-  }
-
-  if (readString(row.status) === "active") {
-    rank += 100;
-  }
-
-  if (readString(row.assignment_status) === "assigned") {
-    rank += 60;
-  } else if (readString(row.assignment_status) === "needs_review") {
-    rank += 20;
-  }
-
-  if (readString(row.customer_type) === "wholesale") {
-    rank += 20;
-  }
-
-  return rank;
+  return customerError ? null : rows(customers);
 }
 
 function isNormalCustomerProfile(row: DbRow) {
   const profileKind = readString(row.profile_kind) ?? "customer";
 
   return profileKind !== "employee_self" && profileKind !== "archived_customer";
-}
-
-function timestampOf(row: DbRow) {
-  const value = readString(row.updated_at) ?? readString(row.created_at);
-  const timestamp = value ? Date.parse(value) : 0;
-
-  return Number.isFinite(timestamp) ? timestamp : 0;
-}
-
-function equalEmail(left: string | null, right: string) {
-  return left?.toLowerCase() === right.toLowerCase();
 }
 
 function rows(value: unknown) {

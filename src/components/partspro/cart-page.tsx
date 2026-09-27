@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
+import { usePricingSession } from "./use-pricing-session";
 import {
   AlertTriangle,
   ChevronDown,
@@ -187,10 +188,13 @@ export function CartPage({
 }: CartPageProps) {
   const searchParams = useSearchParams();
   const assistedCompanyId = readAssistedCompanyIdFromSearchParams(searchParams);
+  const session = usePricingSession(initialAccountAccess?.userId);
+  const t = useT();
+  if (!session.ready) return <div role="status" className="p-8">{tx(t, "storefront.cart.sync.catalogTitle", "Aggiornamento prezzi e disponibilità...")}</div>;
 
   return (
     <CartPageScoped
-      key={assistedCompanyId ?? "default"}
+      key={`${session.key}:${assistedCompanyId ?? "self"}`}
       assistedCompanyId={assistedCompanyId}
       catalogProducts={catalogProducts}
       initialAccountAccess={initialAccountAccess}
@@ -207,13 +211,12 @@ function CartPageScoped({
   catalogProducts: readonly PartProduct[];
   initialAccountAccess?: StoreHeaderAccountAccess;
 }) {
-  const [catalogState, setCatalogState] = React.useState<PartProduct[]>(() =>
-    filterOrderableCatalogProducts(catalogProducts)
-  );
+  const [catalogState, setCatalogState] = React.useState<PartProduct[]>([]);
+  void catalogProducts;
 
   const handleCatalogProductsLoaded = React.useCallback(
     (products: readonly PartProduct[]) => {
-      setCatalogState((current) => mergeCatalogProducts(current, products));
+      setCatalogState(filterOrderableCatalogProducts(products));
     },
     []
   );
@@ -249,14 +252,11 @@ function CartPageContent({
   const [catalogRejections, setCatalogRejections] = React.useState<
     Record<string, CartCatalogRejectedItem>
   >({});
-  const requestedCatalogSkus = React.useRef(new Set<string>());
+  const cartQuoteSignature = JSON.stringify(cart.items.map(({ sku, quantity }) => ({ sku, quantity })));
+  const [resolvedSignature, setResolvedSignature] = React.useState("");
   const checkoutHref = hrefWithAssistedCompanyId("/checkout", assistedCompanyId);
   const catalogHref = hrefWithAssistedCompanyId("/catalogo", assistedCompanyId);
   const loginHref = loginHrefForNext(hrefWithAssistedCompanyId("/carrello", assistedCompanyId));
-  const catalogSkuSet = React.useMemo(
-    () => new Set(catalogProducts.map((product) => product.sku)),
-    [catalogProducts]
-  );
   const catalogProductBySku = React.useMemo(
     () => new Map(catalogProducts.map((product) => [product.sku, product])),
     [catalogProducts]
@@ -293,7 +293,7 @@ function CartPageContent({
   const isCatalogResolving =
     cart.isHydrated &&
     cart.items.length > 0 &&
-    (catalogLoadState === "loading" || hasPendingCatalogResolution);
+    (catalogLoadState === "loading" || hasPendingCatalogResolution || (resolvedSignature !== cartQuoteSignature && catalogLoadState !== "error"));
   const isRemoteCartLoading =
     !isLoginRequired &&
     isCartRemoteSyncPending(cartSyncStatus.remoteStatus);
@@ -351,7 +351,7 @@ function CartPageContent({
       cart.items.map((item) => {
         const line = cartLineBySku.get(item.sku);
 
-        if (line) {
+        if (line && !isCatalogResolving && catalogLoadState === "ready") {
           return {
             kind: "available",
             line,
@@ -480,89 +480,50 @@ function CartPageContent({
   }, [cart.isHydrated, catalogProducts]);
 
   React.useEffect(() => {
-    if (!cart.isHydrated || cart.items.length === 0) {
-      return;
-    }
+    const refresh = () => { if (document.visibilityState === "visible") setCatalogRetryToken((value) => value + 1); };
+    window.addEventListener("focus", refresh);
+    window.addEventListener("partspro-pricing-invalidated", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    const expiries = catalogProducts.map((p) => Date.parse(p.priceValidUntil ?? "")).filter((time) => Number.isFinite(time) && time > Date.now());
+    const timer = expiries.length ? window.setTimeout(refresh, Math.min(2_147_483_647, Math.max(1, Math.min(...expiries) - Date.now() + 50))) : undefined;
+    return () => { window.removeEventListener("focus", refresh); window.removeEventListener("partspro-pricing-invalidated", refresh); document.removeEventListener("visibilitychange", refresh); if (timer !== undefined) window.clearTimeout(timer); };
+  }, [catalogProducts]);
 
-    const missingSkus = cart.items
-      .map((item) => item.sku)
-      .filter(
-        (sku) =>
-          !catalogSkuSet.has(sku) &&
-          !catalogRejections[sku] &&
-          !requestedCatalogSkus.current.has(sku)
-      );
-
-    if (missingSkus.length === 0) {
-      setCatalogLoadState("ready");
-      return;
-    }
-
+  React.useEffect(() => {
+    if (!cart.isHydrated || isLoginRequired) return;
+    const items = JSON.parse(cartQuoteSignature) as { sku: string; quantity: number }[];
+    if (!items.length) return;
     const controller = new AbortController();
-    const inFlightSkus = requestedCatalogSkus.current;
-
-    missingSkus.forEach((sku) => inFlightSkus.add(sku));
-    setCatalogLoadState("loading");
-
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
+    let active = true;
     async function loadCartCatalogProducts() {
+      setCatalogLoadState("loading");
+      onCatalogProductsLoaded([]);
       try {
-        const params = new URLSearchParams({ skus: missingSkus.join(",") });
-
-        if (assistedCompanyId) {
-          params.set("companyId", assistedCompanyId);
+        const allProducts: PartProduct[] = [];
+        const allRejected: Record<string, CartCatalogRejectedItem> = {};
+        for (let offset = 0; offset < items.length; offset += 50) {
+          const batch = items.slice(offset, offset + 50);
+          const params = new URLSearchParams({ skus: batch.map((item) => item.sku).join(","), quantities: JSON.stringify(Object.fromEntries(batch.map((item) => [item.sku, item.quantity]))) });
+          if (assistedCompanyId) params.set("companyId", assistedCompanyId);
+          const response = await fetch(`/api/cart/catalog?${params}`, { cache: "no-store", credentials: "same-origin", signal: controller.signal });
+          if (!response.ok) throw new Error("Unable to load cart quotes");
+          const payload = await response.json() as CartCatalogApiResponse;
+          allProducts.push(...(payload.data ?? []));
+          for (const item of payload.meta?.rejected ?? []) allRejected[item.sku] = item;
         }
-
-        const response = await fetch(`/api/cart/catalog?${params.toString()}`, {
-          cache: "no-store",
-          credentials: "same-origin",
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          throw new Error("Unable to load cart catalog products");
-        }
-
-        const payload = (await response.json()) as CartCatalogApiResponse;
-        const nextProducts = Array.isArray(payload.data) ? payload.data : [];
-
-        onCatalogProductsLoaded(nextProducts);
-        setCatalogRejections((current) => {
-          const next = { ...current };
-
-          missingSkus.forEach((sku) => {
-            delete next[sku];
-          });
-
-          for (const rejection of payload.meta?.rejected ?? []) {
-            next[rejection.sku] = rejection;
-          }
-
-          return next;
-        });
+        if (!active || controller.signal.aborted) return;
+        onCatalogProductsLoaded(allProducts);
+        setCatalogRejections(allRejected);
+        setResolvedSignature(cartQuoteSignature);
         setCatalogLoadState("ready");
       } catch {
-        if (!controller.signal.aborted) {
-          setCatalogLoadState("error");
-        }
-        missingSkus.forEach((sku) => inFlightSkus.delete(sku));
-      }
+        if (active) { onCatalogProductsLoaded([]); setCatalogLoadState("error"); }
+      } finally { window.clearTimeout(timeout); }
     }
-
     void loadCartCatalogProducts();
-
-    return () => {
-      controller.abort();
-      missingSkus.forEach((sku) => inFlightSkus.delete(sku));
-    };
-  }, [
-    assistedCompanyId,
-    cart.isHydrated,
-    cart.items,
-    catalogRejections,
-    catalogRetryToken,
-    catalogSkuSet,
-    onCatalogProductsLoaded,
-  ]);
+    return () => { active = false; controller.abort(); window.clearTimeout(timeout); };
+  }, [assistedCompanyId, cart.isHydrated, cartQuoteSignature, catalogRetryToken, isLoginRequired, onCatalogProductsLoaded]);
 
   const {
     clearCart: clearCartItems,
@@ -634,7 +595,6 @@ function CartPageContent({
   }, [clearCartItems, t]);
 
   const retryCatalogLoad = React.useCallback(() => {
-    requestedCatalogSkus.current.clear();
     setCatalogLoadState("idle");
     setCatalogRetryToken((value) => value + 1);
   }, []);
@@ -2705,28 +2665,6 @@ function CompactSummaryLine({
       <span className={strong ? "text-base font-black" : "font-bold text-slate-800"}>{value}</span>
     </div>
   );
-}
-
-function mergeCatalogProducts(
-  currentProducts: PartProduct[],
-  incomingProducts: readonly PartProduct[]
-) {
-  if (incomingProducts.length === 0) {
-    return filterOrderableCatalogProducts(currentProducts);
-  }
-
-  const productsBySku = new Map(
-    filterOrderableCatalogProducts(currentProducts).map((product) => [
-      product.sku,
-      product,
-    ])
-  );
-
-  for (const product of filterOrderableCatalogProducts(incomingProducts)) {
-    productsBySku.set(product.sku, product);
-  }
-
-  return Array.from(productsBySku.values());
 }
 
 function filterOrderableCatalogProducts(products: readonly PartProduct[]) {

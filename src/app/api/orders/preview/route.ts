@@ -226,6 +226,7 @@ export async function POST(request: Request) {
 
     const catalog = await listCatalogProductsBySkus(requestedSkus, {
       buyerCustomerId: company.id,
+      quoteItems: result.data.items,
       includeBuyerPrices: account.canViewPrices || checkoutMode !== "customer_self",
     });
 

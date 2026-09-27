@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { effectiveCustomerTier, normalizeCustomerTier } from "@/lib/partspro-pricing";
+import { baseCustomerTier, effectiveCustomerTier, normalizeCustomerTier } from "@/lib/partspro-pricing";
 
 export const roleTemplates = [
   "admin",
@@ -17,7 +17,7 @@ export const roleTemplates = [
 export const profileSelect =
   "id, email, role, account_type, auth_provider, display_name, avatar_url, role_template, customer_id, created_at, updated_at";
 export const customerSelect =
-  "id, user_id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address, status, customer_type, assignment_status, profile_kind, level, tier, lifetime_spend_net, promo_level, promo_level_starts_at, promo_level_expires_at, promo_level_reason, orders_count, revenue, last_order_at, last_activity_at, profile_completed_at, converted_to_employee_at, created_at, updated_at";
+  "id, user_id, company_name, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address, status, customer_type, assignment_status, profile_kind, level, tier, level_source, lifetime_spend_net, promo_level, promo_level_starts_at, promo_level_expires_at, promo_level_reason, orders_count, revenue, last_order_at, last_activity_at, profile_completed_at, converted_to_employee_at, created_at, updated_at";
 const customerActivitySelect =
   "id, user_id, customer_id, event_type, sku_code, product_name, brand, model, model_series, search_query, metadata, created_at";
 const customerOrderSelect =
@@ -66,6 +66,9 @@ export type AdminAccountCustomerDto = {
   lastActivityAt: string | null;
   lastOrderAt: string | null;
   level: string;
+  baseLevel: string;
+  levelSource: string;
+  storedLevel: string;
   lifetimeSpendNet: number;
   promoLevel: string | null;
   promoLevelStartsAt: string | null;
@@ -801,6 +804,8 @@ function toCustomerDto(row: DbRow): AdminAccountCustomerDto {
   const lifetimeSpendNet = readNumber(row.lifetime_spend_net) ?? 0;
   const promoLevel = normalizeOptionalCustomerTier(readString(row.promo_level));
   const level = effectiveCustomerTier({
+    levelSource: readString(row.level_source),
+    profileKind: readString(row.profile_kind),
     level: readString(row.level),
     lifetimeSpendNet,
     promoLevel,
@@ -827,6 +832,9 @@ function toCustomerDto(row: DbRow): AdminAccountCustomerDto {
     assignmentStatus: readString(row.assignment_status) ?? "needs_review",
     profileKind: readString(row.profile_kind) ?? "customer",
     level,
+    baseLevel: baseCustomerTier({ level: readString(row.level), tier: readString(row.tier), levelSource: readString(row.level_source), profileKind: readString(row.profile_kind), lifetimeSpendNet }),
+    levelSource: readString(row.level_source) ?? "automatic",
+    storedLevel: readString(row.level) ?? "bronze",
     lifetimeSpendNet,
     promoLevel,
     promoLevelStartsAt: readString(row.promo_level_starts_at),

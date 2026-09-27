@@ -1043,10 +1043,12 @@ function AccountSummaryPanel({
 
         <div className="grid grid-cols-3 gap-1.5">
           <SummaryMetric label="资料" value={profileStatus} />
+          <SummaryMetric label="价格类型" value={(profile?.customerType ?? company?.customerType) === "wholesale" ? "批发价" : "零售价"} helper="价格类型与会员等级独立" />
+          <SummaryMetric label="基础等级" value={customerLevelLabel(profile?.baseLevel ?? company?.baseLevel ?? level)} helper={(profile?.levelSource ?? company?.levelSource) === "manual" ? "人工设置" : "消费累计 / 自购"} />
           <SummaryMetric
             label="等级"
             value={customerLevelLabel(level)}
-            helper={customerPromoHelper(profile, company) ?? `每件减 ${formatTierDiscount(level)}`}
+            helper={customerPromoHelper(profile, company) ?? `普通商品每件最多减 ${formatTierDiscount(level)}；REMAX/保护膜除外`}
           />
           <SummaryMetric label="钱包" value={formatEuro(wallet.balance)} accent />
           <SummaryMetric label="未完单" value={openOrderCount} />
@@ -1054,6 +1056,7 @@ function AccountSummaryPanel({
           <SummaryMetric label="售后" value={rmaRequests.length} />
         </div>
 
+        <p className="text-[11px] text-slate-500">有效等级为基础等级与有效促销中较高者。售后退款不额外扣回升级累计，钱包再次购买按订单规则累计。</p>
         <div className="grid grid-cols-2 gap-1.5">
           {summaryRows.map((row) => (
             <Info

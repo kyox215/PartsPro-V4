@@ -1,3 +1,5 @@
+import { PricingSessionBoundary, QuoteExpiryRefresh } from "./pricing-session-boundary";
+import { ProductPriceExplanation } from "./product-price-explanation";
 import Link from "next/link";
 import { ArrowLeft, Barcode } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -70,7 +72,7 @@ export async function ProductDetailPage({
   const localizedCategory = categoryLabel(t, product.category);
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
+    <PricingSessionBoundary userId={initialAccountAccess?.userId}><main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
       <CustomerActivityTracker
         brand={product.brand}
         enabled={Boolean(initialAccountAccess?.authenticated)}
@@ -164,6 +166,7 @@ export async function ProductDetailPage({
                     </div>
                   </div>
 
+                  {showWholesalePrice ? <ProductPriceExplanation product={product} detailed /> : null}
                   <div className="rounded-lg border border-primary/20 bg-primary/8 p-2.5 text-xs text-slate-700">
                     {showWholesalePrice && hasBuyerPrice ? (
                       <div className="flex min-w-0 flex-wrap items-end gap-2">
@@ -296,7 +299,8 @@ export async function ProductDetailPage({
           </section>
         </div>
       </div>
-    </main>
+      <QuoteExpiryRefresh products={[product]} />
+    </main></PricingSessionBoundary>
   );
 }
 

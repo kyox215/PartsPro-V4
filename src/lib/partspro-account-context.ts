@@ -1,10 +1,7 @@
 import { cache } from "react";
 import { readLinkedCustomerRow } from "@/lib/partspro-customer-linkage";
 import {
-  calculateProductTierPrice,
   effectiveCustomerTier,
-  getTierRule,
-  isDiscountExemptProduct,
   normalizeCustomerTier,
 } from "@/lib/partspro-pricing";
 import { visiblePanelsForPermissions } from "@/lib/partspro-permissions";
@@ -24,7 +21,7 @@ type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 type DbRow = Record<string, unknown>;
 
 const accountCustomerSelect =
-  "id, user_id, company_name, status, customer_type, assignment_status, profile_kind, level, tier, lifetime_spend_net, promo_level, promo_level_starts_at, promo_level_expires_at, promo_level_reason, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address, updated_at, created_at";
+  "id, user_id, company_name, status, customer_type, assignment_status, profile_kind, level, tier, level_source, lifetime_spend_net, promo_level, promo_level_starts_at, promo_level_expires_at, promo_level_reason, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address, updated_at, created_at";
 
 export type AccountType = "customer" | "employee";
 export type PriceVisibilityReason =
@@ -320,59 +317,34 @@ export function applyAccountPriceToProduct(
       ...product,
       price: 0,
       retailPrice: 0,
+      basePrice: undefined,
+      discountPercent: undefined,
+      levelDiscountAmount: undefined,
+      levelDiscountPercent: undefined,
+      priceGroupDiscountPercent: undefined,
+      marginPercent: undefined,
+      priceResolved: false,
+      priceVersion: undefined,
+      priceSource: "hidden",
+      quoteStatus: "hidden",
     };
   }
 
-  if (product.priceResolved || product.priceVersion) {
+  // A positive number alone is not a quote. Never guess a trading price on RPC failure.
+  if (product.priceResolved && product.priceVersion && product.quoteStatus !== "unavailable") {
     return product;
   }
-
-  const customerType =
-    account.accountType === "employee"
-      ? account.employeeSelfCustomer?.customerType ?? "wholesale"
-      : account.customer?.customerType ?? "retail";
-  const level =
-    account.accountType === "employee"
-      ? account.employeeSelfCustomer?.level ?? "bronze"
-      : account.customer?.level ?? "bronze";
-  const basePrice = customerType === "wholesale" ? product.price : product.retailPrice;
-  const discountExempt = isDiscountExemptProduct(product.category, product.brand);
-  const finalPrice = calculateProductTierPrice(
-    basePrice,
-    level,
-    product.category,
-    product.brand
-  );
-  const levelDiscountAmount = discountExempt ? 0 : getTierRule(level).discountAmount;
-  const levelDiscountPercent =
-    basePrice > 0
-      ? Math.round((Math.min(levelDiscountAmount, basePrice) / basePrice) * 10000) / 100
-      : 0;
-  const discountPercent =
-    basePrice > 0 ? Math.round((1 - finalPrice / basePrice) * 10000) / 100 : 0;
-
   return {
     ...product,
-    basePrice,
-    customerLevel: level,
-    discountPercent,
-    levelDiscountAmount,
-    levelDiscountPercent,
-    price: finalPrice,
-    priceSource:
-      discountExempt
-        ? customerType === "retail"
-          ? "local_retail_price_discount_exempt"
-          : "local_b2b_price_discount_exempt"
-        : levelDiscountAmount > 0
-        ? customerType === "retail"
-          ? "local_retail_customer_level"
-          : "local_customer_level"
-        : customerType === "retail"
-          ? "local_retail_price"
-          : "local_base_price",
-    priceResolved: true,
-    retailPrice: product.retailPrice,
+    price: 0,
+    retailPrice: 0,
+    basePrice: undefined,
+    discountPercent: undefined,
+    levelDiscountAmount: undefined,
+    priceResolved: false,
+    priceVersion: undefined,
+    priceSource: "unavailable",
+    quoteStatus: "unavailable",
   };
 }
 
@@ -601,7 +573,7 @@ async function readEmployeeSelfCustomerByUserId(
   const { data, error } = await client
     .from("customers")
     .select(
-      "id, company_name, status, customer_type, assignment_status, profile_kind, level, tier, lifetime_spend_net, promo_level, promo_level_starts_at, promo_level_expires_at, promo_level_reason, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address"
+      "id, company_name, status, customer_type, assignment_status, profile_kind, level, tier, level_source, lifetime_spend_net, promo_level, promo_level_starts_at, promo_level_expires_at, promo_level_reason, profile_completed_at, contact_name, email, phone, vat_number, fiscal_code, sdi, pec, billing_address, shipping_address"
     )
     .eq("user_id", userId)
     .eq("profile_kind", "employee_self")
@@ -626,6 +598,8 @@ function toCustomerContext(row: DbRow): AccountCustomerContext {
   const lifetimeSpendNet = readNumber(row.lifetime_spend_net) ?? 0;
   const promoLevel = normalizeOptionalCustomerTier(readString(row.promo_level));
   const level = effectiveCustomerTier({
+    levelSource: readString(row.level_source),
+    profileKind: readString(row.profile_kind),
     level: readString(row.level),
     lifetimeSpendNet,
     promoLevel,

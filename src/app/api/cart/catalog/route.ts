@@ -31,6 +31,7 @@ const cartCatalogQuerySchema = z
     checkoutMode: z.enum(["customer_self", "employee_self", "delegated_customer"]).optional(),
     companyId: z.string().trim().uuid().optional(),
     skus: z.string().trim().min(1).max(4096),
+    quantities: z.string().max(8192).optional(),
   })
   .strict();
 const allowedQueryKeys = new Set(Object.keys(cartCatalogQuerySchema.shape));
@@ -76,6 +77,18 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    let quantities: Record<string, number> = {};
+    if (result.data.quantities) {
+      let value: unknown;
+      try { value = JSON.parse(result.data.quantities); } catch {
+        return apiError(400, "INVALID_QUANTITIES", "Quantities must be valid JSON.");
+      }
+      const parsed = z.record(z.string(), z.number().int().min(1).max(10000)).safeParse(value);
+      if (!parsed.success || Object.keys(parsed.data).some((sku) => !skus.includes(sku))) {
+        return apiError(400, "INVALID_QUANTITIES", "Quantities must match the requested SKUs.");
+      }
+      quantities = parsed.data;
+    }
     const account = await getCurrentAccountContext();
     const delegatedCheckout = canDelegateCheckout(account);
     const requestedCompanyId = result.data.companyId;
@@ -101,6 +114,7 @@ export async function GET(request: NextRequest) {
 
     const repositoryResult = await listCatalogProductsBySkus(skus, {
       buyerCustomerId,
+      quoteItems: skus.filter((sku) => quantities[sku] !== undefined).map((sku) => ({ sku, quantity: quantities[sku] })),
       includeBuyerPrices: canResolveTargetPrices,
     });
 
@@ -147,6 +161,8 @@ export async function GET(request: NextRequest) {
           requested: skus.length,
           returned: cartProducts.length,
           rejected: rejectedProducts,
+          buyerCustomerId: buyerCustomerId ?? null,
+          checkoutMode,
           currency: "EUR",
           priceVisibility:
             canResolveTargetPrices && visibilityReason !== "customer_needs_assignment"
@@ -327,6 +343,12 @@ function cartCatalogBlockReason(
 
 function productPriceFields(product: PartProduct, visible: boolean) {
   return {
+    customerType: visible ? product.customerType : undefined,
+    baseCustomerLevel: visible ? product.baseCustomerLevel : undefined,
+    levelSource: visible ? product.levelSource : undefined,
+    quotedQuantity: visible ? product.quotedQuantity : undefined,
+    priceValidUntil: visible ? product.priceValidUntil : null,
+    quoteStatus: visible ? product.quoteStatus : "hidden",
     basePrice: visible ? product.basePrice ?? null : null,
     customerLevel: visible ? product.customerLevel ?? null : null,
     discountPercent: visible ? product.discountPercent ?? null : null,

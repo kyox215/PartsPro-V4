@@ -173,6 +173,12 @@ function toCatalogProduct(
 
 function productPriceFields(product: PartProduct, visible: boolean) {
   return {
+    customerType: visible ? product.customerType : undefined,
+    baseCustomerLevel: visible ? product.baseCustomerLevel : undefined,
+    levelSource: visible ? product.levelSource : undefined,
+    quotedQuantity: visible ? product.quotedQuantity : undefined,
+    priceValidUntil: visible ? product.priceValidUntil : null,
+    quoteStatus: visible ? product.quoteStatus : "hidden",
     basePrice: visible ? product.basePrice ?? null : null,
     customerLevel: visible ? product.customerLevel ?? null : null,
     discountPercent: visible ? product.discountPercent ?? null : null,

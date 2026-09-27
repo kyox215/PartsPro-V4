@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { usePricingSession } from "./use-pricing-session";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -239,6 +240,13 @@ const previewRequestTimeoutMs = 15_000;
 const orderSubmitTimeoutMs = 25_000;
 
 export function CheckoutClient(props: CheckoutClientProps) {
+  const session = usePricingSession(props.initialAccountAccess?.userId);
+  const t = useT();
+  if (!session.ready) return <div role="status" className="p-8">{tx(t, "storefront.cart.sync.catalogTitle", "Aggiornamento prezzi e disponibilità...")}</div>;
+  return <CheckoutClientScoped key={`${session.key}:${props.company?.id ?? "none"}`} {...props} />;
+}
+
+function CheckoutClientScoped(props: CheckoutClientProps) {
   const initialScope =
     props.delegatedCheckout ? "" : props.company?.id ?? "";
   const [catalogState, setCatalogState] = React.useState<{
@@ -268,7 +276,7 @@ export function CheckoutClient(props: CheckoutClientProps) {
     (products: readonly PartProduct[]) => {
       setCatalogState((current) => ({
         ...current,
-        products: mergeCatalogProducts(current.products, products),
+        products: [...products],
       }));
     },
     []
@@ -357,6 +365,7 @@ function CheckoutClientContent({
     issues: [],
   });
   const [previewRetryToken, setPreviewRetryToken] = React.useState(0);
+  const [resolvedPreviewKey, setResolvedPreviewKey] = React.useState("");
   const cartSignature = React.useMemo(
     () => serializeCartItems(cart.items),
     [cart.items]
@@ -407,10 +416,6 @@ function CheckoutClientContent({
     : form.deliveryMethod === "pickup"
       ? tx(t, "storefront.checkout.summary.pickupNote", "Ritiro in sede: spedizione gratuita.")
       : tx(t, "storefront.checkout.summary.note", "Prezzi IVA inclusa; viene aggiunta solo la spedizione.");
-  const checkoutTotals = React.useMemo(
-    () => totalsForDeliveryMethod(cart.totals, form.deliveryMethod),
-    [cart.totals, form.deliveryMethod]
-  );
   const isRemoteCartLoading =
     cartSyncStatus.remoteStatus === "idle" ||
     isCartRemoteSyncPending(cartSyncStatus.remoteStatus);
@@ -424,7 +429,20 @@ function CheckoutClientContent({
     Boolean(selectedCompany?.id) &&
     !targetCustomerBlocker &&
     isRemoteCartReadyForPreview;
-  const previewForUi = shouldLoadPreview ? preview : idlePreviewState;
+  const previewKey = JSON.stringify([cartSignature, checkoutMode, selectedCompany?.id, form.deliveryMethod, form.useWallet, previewRetryToken]);
+  const previewForUi = shouldLoadPreview && resolvedPreviewKey === previewKey ? preview : idlePreviewState;
+  const checkoutTotals = React.useMemo(() => {
+    const pending = totalsForDeliveryMethod(cart.totals, form.deliveryMethod);
+    const totals = previewForUi.status === "ready" ? previewForUi.totals : undefined;
+    if (!totals) return pending;
+    return {
+      ...pending,
+      subtotal: moneyDtoToNumber(totals.subtotal) ?? pending.subtotal,
+      shipping: moneyDtoToNumber(totals.shipping) ?? pending.shipping,
+      vat: moneyDtoToNumber(totals.vat) ?? pending.vat,
+      total: moneyDtoToNumber(totals.total) ?? pending.total,
+    };
+  }, [cart.totals, form.deliveryMethod, previewForUi]);
   const isPreorder = previewForUi.orderKind === "preorder";
   const effectivePaymentMethod = isPreorder ? "bank_transfer" : form.paymentMethod;
   const effectiveUseWallet = isPreorder ? false : form.useWallet;
@@ -578,29 +596,32 @@ function CheckoutClientContent({
   }, [checkoutContextCompanyId]);
 
   React.useEffect(() => {
+    const refresh = () => { if (document.visibilityState === "visible") { setPreview(idlePreviewState); setConfirmed(false); setPreviewRetryToken((value) => value + 1); } };
+    window.addEventListener("focus", refresh);
+    window.addEventListener("partspro-pricing-invalidated", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    const expiries = catalogProducts.map((p) => Date.parse(p.priceValidUntil ?? "")).filter((time) => Number.isFinite(time) && time > Date.now());
+    const timer = expiries.length ? window.setTimeout(refresh, Math.min(2_147_483_647, Math.max(1, Math.min(...expiries) - Date.now() + 50))) : undefined;
+    return () => { window.removeEventListener("focus", refresh); window.removeEventListener("partspro-pricing-invalidated", refresh); document.removeEventListener("visibilitychange", refresh); if (timer !== undefined) window.clearTimeout(timer); };
+  }, [catalogProducts]);
+
+  React.useEffect(() => {
     if (!shouldLoadPreview) {
       return;
     }
 
     const controller = new AbortController();
     const previewCompanyId = selectedCompany?.id;
-    const previewItems = cartItemsForApi(cart.items);
+    const previewItems = JSON.parse(cartSignature) as ReturnType<typeof cartItemsForApi>;
     let active = true;
     let requestTimedOut = false;
     let requestTimeout: number | null = null;
 
     async function loadPreview() {
-      setPreview((current) => ({
-        status: "loading",
-        canSubmit: current.canSubmit,
-        issues: current.status === "ready" || current.status === "loading"
-          ? current.issues
-          : [],
-        lines: current.lines,
-        orderKind: current.orderKind,
-        totals: current.totals,
-        wallet: current.wallet,
-      }));
+      setResolvedPreviewKey(previewKey);
+      setPreview({ status: "loading", canSubmit: false, issues: [] });
+      setConfirmed(false);
+      onCatalogProductsLoaded([]);
       setCatalogLoadState("loading");
 
       try {
@@ -616,7 +637,7 @@ function CheckoutClientContent({
             checkoutMode,
             deliveryMethod: form.deliveryMethod,
             items: previewItems,
-            useWallet: effectiveUseWallet,
+            useWallet: form.useWallet,
           }),
           cache: "no-store",
           credentials: "same-origin",
@@ -642,6 +663,11 @@ function CheckoutClientContent({
           throw new Error(friendlyCheckoutError(t, payload?.error?.code, payload?.error?.message));
         }
 
+        if (payload?.data?.canSubmit && (!payload.data.totals ||
+          (["subtotal", "shipping", "vat", "total"] as const).some((key) => { const amount = Number(payload.data?.totals?.[key]?.amount); return !Number.isFinite(amount) || amount < 0; }) ||
+          !payload.data.lines?.length)) {
+          throw new Error("Invalid order quote");
+        }
         if (active && !controller.signal.aborted) {
           const catalog = payload?.data?.catalog;
           const products = Array.isArray(catalog?.products) ? catalog.products : [];
@@ -649,6 +675,9 @@ function CheckoutClientContent({
             ? catalog.rejected.filter((rejection) => rejection?.sku)
             : [];
 
+          if (payload?.data?.orderKind === "preorder") {
+            setForm((current) => current.useWallet ? { ...current, useWallet: false } : current);
+          }
           onCatalogProductsLoaded(products);
           setCatalogRejections((current) => {
             const next = { ...current };
@@ -724,7 +753,7 @@ function CheckoutClientContent({
       }
       controller.abort();
     };
-  }, [cart.items, cartSignature, checkoutMode, effectiveUseWallet, form.deliveryMethod, onCatalogProductsLoaded, previewRetryToken, selectedCompany?.id, shouldLoadPreview, t]);
+  }, [cartSignature, checkoutMode, form.useWallet, form.deliveryMethod, onCatalogProductsLoaded, previewKey, previewRetryToken, selectedCompany?.id, shouldLoadPreview, t]);
 
   async function submitOrder() {
     setSubmitAttempted(true);
@@ -1721,7 +1750,7 @@ function PaymentSection({
             type="checkbox"
             className="mt-1 size-4 shrink-0 accent-primary"
             disabled={!canUseWallet}
-            checked={!isPreorder && form.useWallet && canUseWallet}
+            checked={!isPreorder && form.useWallet}
             onChange={(event) =>
               onChange((current) => ({ ...current, useWallet: event.currentTarget.checked }))
             }
@@ -2953,23 +2982,6 @@ function optionalText(value: string) {
 
 function loginHrefForNext(nextHref: string) {
   return `/login?${new URLSearchParams({ next: nextHref }).toString()}`;
-}
-
-function mergeCatalogProducts(
-  currentProducts: readonly PartProduct[],
-  incomingProducts: readonly PartProduct[]
-) {
-  const productsBySku = new Map<string, PartProduct>();
-
-  for (const product of currentProducts) {
-    productsBySku.set(product.sku, product);
-  }
-
-  for (const product of incomingProducts) {
-    productsBySku.set(product.sku, product);
-  }
-
-  return Array.from(productsBySku.values());
 }
 
 function submitButtonLabel(

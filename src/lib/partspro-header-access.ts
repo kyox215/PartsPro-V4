@@ -2,6 +2,7 @@ import type { AccountContext } from "@/lib/partspro-account-context";
 
 export type StoreHeaderAccountAccess = {
   accountType: AccountContext["accountType"];
+  userId?: string | null;
   authenticated: boolean;
   canOpenAdmin: boolean;
   displayName: string | null;
@@ -55,6 +56,7 @@ export function toStoreHeaderAccountAccess(
 
   return {
     accountType: account.accountType,
+    userId: account.userId,
     authenticated: account.authenticated,
     canOpenAdmin: staff,
     displayName:

@@ -1,5 +1,6 @@
 "use client";
 
+import { PricingSessionBoundary, QuoteExpiryRefresh } from "./pricing-session-boundary";
 import { createLatestRequest } from "@/lib/latest-request.mjs";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -119,7 +120,8 @@ export function CatalogPage({
   const searchParams = useSearchParams();
 
   return (
-    <CatalogPageContent
+    <PricingSessionBoundary userId={initialAccountAccess?.userId}><CatalogPageContent
+      key={JSON.stringify([initialAccountAccess?.userId, assistedCompanyId, initialProducts.map((product) => [product.sku, product.priceVersion])])}
       filteredTotal={filteredTotal ?? initialProducts.length}
       assistedCompanyId={assistedCompanyId}
       assistedCompanyName={assistedCompanyName}
@@ -134,7 +136,7 @@ export function CatalogPage({
       initialSearchTerm={getModelSearchFromParams(searchParams)}
       priceGateReason={priceGateReason}
       showWholesalePrice={showWholesalePrice}
-    />
+    /></PricingSessionBoundary>
   );
 }
 
@@ -412,6 +414,7 @@ function CatalogPageContent({
 
   return (
     <main className="min-h-screen overflow-x-clip bg-[#f4f6fa] text-slate-950">
+      <QuoteExpiryRefresh products={products} />
       <StoreHeader
         assistedCompanyId={assistedCompanyId}
         departmentGroups={departmentGroups}

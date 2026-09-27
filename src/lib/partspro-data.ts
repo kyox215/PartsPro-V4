@@ -101,6 +101,12 @@ export type PartProduct = {
   imageAlt?: string;
   galleryImageUrls?: string[];
   basePrice?: number;
+  customerType?: CustomerType;
+  baseCustomerLevel?: CustomerLevel | string;
+  levelSource?: string;
+  quotedQuantity?: number;
+  priceValidUntil?: string | null;
+  quoteStatus?: "available" | "hidden" | "unavailable";
   customerLevel?: CustomerLevel | string;
   discountPercent?: number;
   levelDiscountAmount?: number;
@@ -157,6 +163,8 @@ export type CompanyProfile = {
   assignmentStatus?: CustomerAssignmentStatus;
   profileKind?: CustomerProfileKind;
   level?: CustomerLevel;
+  baseLevel?: CustomerLevel;
+  levelSource?: string;
   lifetimeSpendNet?: number;
   promoLevel?: CustomerLevel | null;
   promoLevelStartsAt?: string | null;

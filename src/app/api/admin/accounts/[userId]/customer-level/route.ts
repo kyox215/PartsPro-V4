@@ -32,7 +32,7 @@ const accountParamSchema = z
 
 const customerLevelPatchSchema = z
   .object({
-    level: z.enum(customerLevels),
+    level: z.union([z.enum(customerLevels), z.literal("automatic")]),
     reason: z.string().trim().min(3).max(1000),
   })
   .strict();
@@ -109,7 +109,12 @@ export async function PATCH(request: NextRequest, { params }: AccountParams) {
       });
     }
 
-    await updateAdminCustomerLevel(targetCustomer.id, parsed.data);
+    if (parsed.data.level === "automatic") {
+      const { error } = await supabase.rpc("admin_restore_customer_automatic_level", { p_customer_id: targetCustomer.id, p_reason: parsed.data.reason });
+      if (error) return apiError(503, "AUTOMATIC_LEVEL_RESTORE_FAILED", "Automatic level could not be restored.");
+    } else {
+      await updateAdminCustomerLevel(targetCustomer.id, { level: parsed.data.level, reason: parsed.data.reason });
+    }
 
     const detail = await readAdminAccountDetail(supabase, paramResult.data.userId);
 
@@ -121,7 +126,7 @@ export async function PATCH(request: NextRequest, { params }: AccountParams) {
 
     return NextResponse.json({
       data: detail,
-      meta: { source: "supabase_rpc", rpc: "admin_update_customer_level" },
+      meta: { source: "supabase_rpc", rpc: parsed.data.level === "automatic" ? "admin_restore_customer_automatic_level" : "admin_update_customer_level" },
     });
   } catch (error) {
     return repositoryErrorResponse(

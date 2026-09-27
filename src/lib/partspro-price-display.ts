@@ -59,13 +59,14 @@ export function formatPriceDiscountBadge(
   display: ProductPriceDisplay,
   t?: StorefrontTranslator
 ) {
-  return display.levelDiscountAmount > 0
+  const actualDiscount = display.basePrice === null ? 0 : Math.max(0, Math.round((display.basePrice - display.effectivePrice) * 100) / 100);
+  return actualDiscount > 0
     ? txFormat(
       t ?? passthroughTranslator,
       "storefront.price.discountEach",
       "-{amount} / pz",
       {
-        amount: formatEuroCents(display.levelDiscountAmount),
+        amount: formatEuroCents(actualDiscount),
       }
     )
     : formatPercentBadge(display.discountPercent);

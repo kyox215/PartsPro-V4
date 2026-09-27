@@ -1,5 +1,7 @@
 "use client";
 
+import { ProductPriceExplanation } from "./product-price-explanation";
+
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Image from "./optimized-image";
@@ -314,6 +316,7 @@ export const ProductCard = memo(function ProductCard({
                         </Badge>
                       ) : null}
                     </div>
+                    <ProductPriceExplanation product={product} />
                     {priceDisplay.hasDiscount && priceDisplay.basePrice ? (
                       <div className="mt-0.5 text-[10px] font-semibold leading-3 text-slate-400 line-through sm:text-xs sm:leading-4">
                         {tx(t, "storefront.product.card.basePrice", "Prezzo base")} {formatEuro(priceDisplay.basePrice)}

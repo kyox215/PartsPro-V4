@@ -352,6 +352,7 @@ export async function POST(request: NextRequest) {
 
     const catalog = await listCatalogProductsBySkus(requestedSkus, {
       buyerCustomerId: company.id,
+      quoteItems: requestedItems,
       includeBuyerPrices: account.canViewPrices || checkoutMode !== "customer_self",
     });
     const productsWithPreorders = await mergePreorderAvailability(catalog.data);
