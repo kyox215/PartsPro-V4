@@ -66,19 +66,18 @@ PLAYWRIGHT_MODULE=/path/to/playwright node scripts/verify-account-pricing-ui.mjs
 - SQL：仅隔离 `postgres:17 --network none`、无端口容器中，以 `psql -v ON_ERROR_STOP=1` 依次执行 `supabase/tests/account_pricing_fixture.sql` → 完整 migration → `account_pricing_behavior.sql` → `account_pricing_access_boundaries.sql`，全通过且容器删除。覆盖七等级、促销边界、数量协议价、免折扣、领取去重、活动配置、旧列兼容和真实 authenticated 角色访问拒绝。fixture 为最小 schema，不覆盖完整生产库存/钱包/订单事务。
 - 证据：`outputs/pricing/2026-09-27/verification.json`、`browser-result.json`、日志和手机截图。构建最初遇到既有 `.next` 重复生成文件，保留旧目录于 `/tmp/partspro-pricing-next-backup-1790519648` 后干净构建通过，未修改用户源码来绕开构建。
 
-## 生产安全门与具体阻塞
+## 生产安全门与当前状态
 
 目标：`yiuxrjqexlfjtxxrkqvi` / `PartsPro-V4`，production-sensitive。
 
-本次 CLI `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase migration list --linked` 及 `supabase db push --linked --dry-run` 因 access token 未提供而失败。只读 MCP 查询确认远端独有迁移 `20260926110808` / `rma_v4_wallet_negotiation_split_closure`，本地未找到；不能以本地 `.temp` 或文件数量假定同步。
+CLI 已重新登录并链接既定目标。远端历史缺口 `20260926091650_admin_customer_bulk_settlement_and_remax_price_rounding.sql` 从可追溯提交 `f26c793` 恢复，SHA256 为 `30f34f7ae3bc27f8bd12e59ec343f27bbc3e80c5e4e63fbd872feafd39f0c6be`；`20260926110808_rma_v4_wallet_negotiation_split_closure.sql` 来自线上基线提交，SHA256 为 `85743b5d5ec795053186c5359407154c77b6d7ab37696b1e450ba536c811c507`。重新执行 linked list 后无 remote-only divergence。
 
-**未应用迁移、未发布、未写生产业务数据。无成功 dry-run 清单，因此尚不满足向老板请求本次 db push 最终批准的前提。** 上线后还须完成：
+`supabase db push --linked --dry-run` 已成功，唯一待应用项为 `20260927141646_account_pricing_authority.sql`（SHA256 `bc022f9b7ae02680d95046dd72d215ff89c3926611b246477bd1b38c40cbec20`）。**尚未应用迁移、未发布、未写生产业务数据；当前已满足请求本次 db push 最终批准的前提。** 后续步骤：
 
-1. 恢复 CLI 登录；由相关负责人核清远端独有 RMA 迁移并提供准确本地记录。不得静默 migration repair、include-all、db pull 或覆盖他人改动。
-2. 重新 linked list 确認无 remote-only；dry-run 必须仅列本次 `20260927141646_account_pricing_authority.sql`。任何其他 pending 停止；展示真实清单和下述风险，再申请本次 db push 明确批准。
-3. 应用后核对函数返回签名、权限、默认活动、领取账本，以及两个测试账号的 retail/wholesale × 7 等级、promo 到期、MOQ 9/10/11、免折扣、预购、钱包、最终订单快照。用受控测试档案，不改真实客户原价或历史交易。
-4. 通过独立发布审查后，单独批准应用发布。**不能先发布新应用**：缺少新 RPC 时故障关闭会导致已登录商品无法报价。迁移和部署仍是两个操作。
-5. 线上使用指定客户编号验证账号归属、1.4/1.9解释及预览/提交；观察报价失败与 PRICE_CHANGED 错误。没有提供两个客户编号的个体归因仍待核对。
+1. 展示目标、唯一 dry-run 项、风险和回退/补偿说明，取得对本次 `supabase db push --linked` 的明确批准。不得 migration repair、include-all、db pull 或夹带其他 migration。
+2. 应用后核对函数返回签名、权限、默认活动、领取账本，以及受控测试账号的 retail/wholesale × 7 等级、promo 到期、MOQ 9/10/11、免折扣、预购、钱包、最终订单快照，不改真实客户原价或历史交易。
+3. 独立发布复核已完成且未发现价格/结算/权限阻断；老板已在本任务明确授权应用发布。**仍不能先发布新应用**：缺少新 RPC 时故障关闭会导致已登录商品无法报价。数据库应用成功后再部署并切换域名。
+4. 线上使用受控账号验证账号归属、1.4/1.9解释及预览/提交；观察报价失败与 PRICE_CHANGED 错误。没有提供截图中两个客户的编号，因此个体归因只能在获得编号后补核。
 
 风险与回退/补偿：
 
