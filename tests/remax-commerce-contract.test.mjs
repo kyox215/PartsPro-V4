@@ -52,16 +52,15 @@ test("REMAX and protective films are discount-exempt products", () => {
   assert.equal(context.result("Schermi", "Samsung"), false);
 });
 
-test("local REMAX pricing bypasses tier discounts", () => {
+test("storefront accepts only authoritative REMAX quotes and never calculates a local fallback", () => {
   assert.match(
     accountSource,
-    /isDiscountExemptProduct\(product\.category, product\.brand\)/
+    /product\.priceResolved && product\.priceVersion && product\.quoteStatus !== "unavailable"/
   );
-  assert.match(
-    accountSource,
-    /calculateProductTierPrice\([\s\S]*product\.category,[\s\S]*product\.brand[\s\S]*\)/
-  );
-  assert.match(accountSource, /const levelDiscountAmount = discountExempt \? 0/);
+  assert.match(accountSource, /priceSource: "unavailable"/);
+  assert.match(accountSource, /quoteStatus: "unavailable"/);
+  assert.doesNotMatch(accountSource, /calculateProductTierPrice\(/);
+  assert.doesNotMatch(accountSource, /isDiscountExemptProduct\(product\.category/);
 });
 
 test("stock remains the first purchase mode before preorder", () => {
