@@ -39,7 +39,7 @@ RACI：主代理 Responsible；老板 Approver（生产迁移/发布）；专项
 
 ## 完成定义
 
-兼容实现、定向和专项审查完成；清楚区分本地验证、未应用迁移、未发布及真实UI缺口。上线后才可声称线上修复。
+兼容实现、定向和专项审查完成；数据库迁移与应用发布分别通过生产安全门；正式域名、公开接口、鉴权门禁和受控登录账号完成 smoke test。
 
 ## 本地交付与验收（2026-09-27）
 
@@ -66,22 +66,23 @@ PLAYWRIGHT_MODULE=/path/to/playwright node scripts/verify-account-pricing-ui.mjs
 - SQL：仅隔离 `postgres:17 --network none`、无端口容器中，以 `psql -v ON_ERROR_STOP=1` 依次执行 `supabase/tests/account_pricing_fixture.sql` → 完整 migration → `account_pricing_behavior.sql` → `account_pricing_access_boundaries.sql`，全通过且容器删除。覆盖七等级、促销边界、数量协议价、免折扣、领取去重、活动配置、旧列兼容和真实 authenticated 角色访问拒绝。fixture 为最小 schema，不覆盖完整生产库存/钱包/订单事务。
 - 证据：`outputs/pricing/2026-09-27/verification.json`、`browser-result.json`、日志和手机截图。构建最初遇到既有 `.next` 重复生成文件，保留旧目录于 `/tmp/partspro-pricing-next-backup-1790519648` 后干净构建通过，未修改用户源码来绕开构建。
 
-## 生产安全门与当前状态
+## 生产应用与发布记录
 
 目标：`yiuxrjqexlfjtxxrkqvi` / `PartsPro-V4`，production-sensitive。
 
 CLI 已重新登录并链接既定目标。远端历史缺口 `20260926091650_admin_customer_bulk_settlement_and_remax_price_rounding.sql` 从可追溯提交 `f26c793` 恢复，SHA256 为 `30f34f7ae3bc27f8bd12e59ec343f27bbc3e80c5e4e63fbd872feafd39f0c6be`；`20260926110808_rma_v4_wallet_negotiation_split_closure.sql` 来自线上基线提交，SHA256 为 `85743b5d5ec795053186c5359407154c77b6d7ab37696b1e450ba536c811c507`。重新执行 linked list 后无 remote-only divergence。
 
-`supabase db push --linked --dry-run` 成功且唯一待应用项为 `20260927141646_account_pricing_authority.sql`（SHA256 `bc022f9b7ae02680d95046dd72d215ff89c3926611b246477bd1b38c40cbec20`）。老板明确批准本次 db push 后，已于 2026-09-28 成功应用；远端 migration 记录、关键 RPC、表和执行权限已只读核验。**应用尚未发布，未改商品原价、真实客户等级或历史订单。** 后续步骤：
+`supabase db push --linked --dry-run` 成功且唯一待应用项为 `20260927141646_account_pricing_authority.sql`（SHA256 `bc022f9b7ae02680d95046dd72d215ff89c3926611b246477bd1b38c40cbec20`）。老板明确批准本次 db push 后，已于 2026-09-28 成功应用；远端 migration 记录、关键 RPC、表和执行权限已只读核验。未执行 migration repair、include-all 或 db pull，未改商品原价、真实客户等级或历史订单。
 
-1. 已完成：展示目标、唯一 dry-run 项、风险和回退说明，取得明确批准并应用唯一 migration；未执行 migration repair、include-all 或 db pull。
-2. 已完成：核对 migration 记录；报价、恢复自动等级和分类预览 RPC 存在；活动配置和领取账本存在且默认配置单行；匿名无报价执行权、authenticated 有执行权。
-3. 独立发布复核已完成且未发现价格/结算/权限阻断；老板已明确授权应用发布。部署 production 候选，验证后再切换正式域名。
-4. 线上使用受控账号验证账号归属、1.4/1.9解释及预览/提交；观察报价失败与 PRICE_CHANGED 错误。没有提供截图中两个客户的编号，因此个体归因只能在获得编号后补核。
+应用部署 `dpl_9gWPU9yQ6UXtQcj1dmdphjFUqHJk` 状态 READY，验证候选后已 promote 到 `partspro.app` / `www.partspro.app`。正式域名 `/`、`/catalogo` 和 `/api/catalogo?limit=1` 返回成功；未登录 `/api/admin/pricing` 正确返回 401。正式页面 HTML 的 deployment id 与本次部署一致。
+
+受控登录零售账号在正式目录搜索 REMAX CB25 后显示：橙色 CB25 为 `1,90 €`，黑色 CB25 为 `2,40 €`，均明确标注“零售价 · 不参与等级折扣”，与商品当前零售原价和免折扣策略一致。未获得截图中两个客户的客户编号或第二个可用批发账号，因此没有对该具体 `1,40 €` 账号执行真实生产交易；批发原价、账号归属和数量报价由隔离 PostgreSQL 行为测试、合同测试及生产 RPC/权限核对覆盖。未提交真实订单、改客户等级或改库存。
+
+DDL 后 Supabase advisors 已核对。本次两个 `private.signup_pricing_*` 表只出现“RLS 开启但无 policy”的 INFO；它们位于未暴露的 private schema、无客户端表授权，只能经带权限检查的函数访问，符合设计。此次新增报价和管理 RPC 没有 search_path 或匿名 SECURITY DEFINER 告警。`customer_product_prices` 的外键索引、未使用索引和重复 permissive policy 为既有性能项，本次未扩大权限或自动改写策略。
 
 风险与回退/补偿：
 
 - 迁移替换定价、下单/预购函数，新增私有配置/领取账本、权限及审计 RPC；已有订单函数仅变更等级/数量定价上下文与快照，仍需完整 schema 场景验收。现有商品原价、毛利公式、退款累计和历史订单不回填。
-- 上线前保留当前部署 ID 与受影响函数原定义。新旧报价 RPC 列兼容，可先回滚应用到已验证上一部署；不要直接删除新表或领取账本，不自动逆转新发促销。
+- 已保留上一生产部署 `dpl_HUC1ykUu7xz7znrLmizMHnhFnFjd` 与受影响函数原定义。新旧报价 RPC 列兼容；应用异常可先 promote 上一部署。不要直接删除新表或领取账本，不自动逆转新发促销。
 - DB 出现问题采用经独立审查、重新批准的前向修复；如需恢复函数，使用保存的准确原定义，明确可能重新出现旧等级/报价问题。活动可经授权停发未来权益，已发权益和幂等账本保留；任何客户补偿单独列精确清单审批。
 - SKU 3667075243373 的 €14/€15 倒挂只列异常，不擅自纠正；5 个毛利不足目标商品按用户选择不在本次处理。

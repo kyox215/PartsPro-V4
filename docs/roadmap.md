@@ -2,7 +2,14 @@
 
 Period: 2026 H2
 Owner: 总调度/项目经理
-Last reviewed: 2026-06-19
+Last reviewed: 2026-09-28
+
+## 2026-09-28 账号价格制度闭环（已发布）
+
+- Task ID：TASK-20260927-01；P1 / R3；主责价格与客户部。客户、SKU、数量统一进入权威报价，报价失败关闭购买与结算入口；人工/自动等级、促销取高与到期恢复、注册权益、免折扣及后台解释形成闭环。
+- 数据库 migration `20260927141646_account_pricing_authority.sql` 经 linked dry-run、独立 Migration/RLS 审查及老板明确批准后应用到 `PartsPro-V4` / `yiuxrjqexlfjtxxrkqvi`。远端 migration、RPC、私有配置/领取账本和执行权限核对通过。
+- 应用部署 `dpl_9gWPU9yQ6UXtQcj1dmdphjFUqHJk` 已 promote 到 `partspro.app` / `www.partspro.app`。首页、目录、公开目录 API 和后台鉴权门禁 smoke test 通过；正式站受控零售账号显示 CB25 橙色 `1,90 €` 且明确“零售价 · 不参与等级折扣”。
+- 完整证据、验证范围、回退与未复现的具体账号限制见 `docs/tasks/done/P1-2026-09-27-account-pricing-closure.md`。本次未改商品原价、真实客户等级、历史订单或库存。
 
 ## 2026-09-26 加载性能修复
 
