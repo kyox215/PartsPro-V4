@@ -58,7 +58,7 @@ import {
   normalizeDeviceModelName,
   normalizeDeviceModelSeries,
 } from "@/lib/partspro-device-series";
-import { effectiveCustomerTier, normalizeCustomerTier } from "@/lib/partspro-pricing";
+import { baseCustomerTier, effectiveCustomerTier, normalizeCustomerTier } from "@/lib/partspro-pricing";
 import {
   defaultDeliveryMethod,
   shippingMethodForDeliveryMethod,
@@ -114,7 +114,7 @@ const catalogProductCardSelect =
 const adminProductFallbackSelect =
   "id, sku_code, name, brand, model, model_series, model_code, model_codes, category, catalog_department, quality_grade, stock_status, moq, cost_price, retail_price, b2b_price, vat_mode, warranty_days, weight_gram, stock_qty, location, batch_code, supplier, compatibility_models, alternative_skus, highlights, status, updated_at, image_path, image_alt, gallery_image_paths, created_at";
 const adminCustomerSelect =
-  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, customer_type, assignment_status, profile_kind, level, lifetime_spend_net, promo_level, promo_level_starts_at, promo_level_expires_at, promo_level_reason, assigned_by, assigned_at, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
+  "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, customer_type, assignment_status, profile_kind, level, level_source, lifetime_spend_net, promo_level, promo_level_starts_at, promo_level_expires_at, promo_level_reason, assigned_by, assigned_at, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
 const adminCustomerCompatSelect =
   "id, user_id, company_name, contact_name, email, vat_number, fiscal_code, sdi, pec, phone, billing_address, shipping_address, tier, price_group_id, status, profile_kind, promo_level, promo_level_starts_at, promo_level_expires_at, promo_level_reason, monthly_purchase, orders_count, revenue, credit_limit, payment_terms, profile_completed_at, last_order_at, created_at, updated_at";
 const adminCustomerMinimalSelect =
@@ -257,6 +257,8 @@ export type AccountCustomerProfile = {
   shippingAddress: string;
   status: string;
   vatNumber: string;
+  baseLevel?: CustomerLevel;
+  levelSource?: string;
 };
 
 export type AccountCustomerProfileInput = {
@@ -1683,6 +1685,7 @@ export type AdminHomeBannerWriteInput = {
 type CatalogProductPageOptions = {
   buyerCustomerId?: string;
   includeBuyerPrices?: boolean;
+  quoteItems?: readonly { sku: string; quantity: number }[];
   scope?: "public" | "admin";
 };
 
@@ -1927,7 +1930,7 @@ export async function listCatalogProducts(): Promise<RepositoryResult<Repository
 
 export async function listCatalogProductsBySkus(
   skus: string[],
-  options: Pick<CatalogProductPageOptions, "buyerCustomerId" | "includeBuyerPrices"> = {}
+  options: Pick<CatalogProductPageOptions, "buyerCustomerId" | "includeBuyerPrices" | "quoteItems"> = {}
 ): Promise<RepositoryResult<RepositoryPartProduct[]>> {
   const normalizedSkus = uniqueDefinedStrings(skus.map((sku) => toPublicSku(sku)));
 
@@ -2410,7 +2413,7 @@ async function readPublicCatalogProducts(options: CatalogProductDetailOptions = 
 
 async function readPublicCatalogProductsBySkus(
   skus: string[],
-  options: Pick<CatalogProductPageOptions, "buyerCustomerId" | "includeBuyerPrices"> = {}
+  options: Pick<CatalogProductPageOptions, "buyerCustomerId" | "includeBuyerPrices" | "quoteItems"> = {}
 ): Promise<RepositoryResult<RepositoryPartProduct[]> | null> {
   if (!isSupabaseConfigured()) {
     return null;
@@ -2428,7 +2431,7 @@ async function readPublicCatalogProductsBySkus(
 
 async function readPublicHotCatalogProductPage(
   limit: number,
-  options: Pick<CatalogProductPageOptions, "buyerCustomerId" | "includeBuyerPrices"> = {}
+  options: Pick<CatalogProductPageOptions, "buyerCustomerId" | "includeBuyerPrices" | "quoteItems"> = {}
 ): Promise<RepositoryResult<CatalogProductPage> | null> {
   if (!isSupabaseConfigured()) {
     return null;
@@ -6281,7 +6284,7 @@ async function readCatalogProducts(context: SupabaseContext, options: CatalogPro
 async function readCatalogProductsBySkus(
   client: SupabaseServerClient,
   skus: string[],
-  options: Pick<CatalogProductPageOptions, "buyerCustomerId" | "includeBuyerPrices"> = {}
+  options: Pick<CatalogProductPageOptions, "buyerCustomerId" | "includeBuyerPrices" | "quoteItems"> = {}
 ) {
   const normalizedSkus = uniqueDefinedStrings(skus.map((sku) => toPublicSku(sku)));
   const lookupCandidates = uniqueDefinedStrings(
@@ -6303,7 +6306,7 @@ async function readCatalogProductsBySkus(
 
   if (summaryRows) {
     const pricedRows = options.includeBuyerPrices
-      ? await mergeCatalogBuyerPriceRows(client, summaryRows, options.buyerCustomerId)
+      ? await mergeCatalogBuyerPriceRows(client, summaryRows, options.buyerCustomerId, options.quoteItems)
       : summaryRows;
 
     return orderProductsByRequestedSkus(
@@ -6325,8 +6328,11 @@ async function readCatalogProductsBySkus(
     return null;
   }
 
+  const pricedProductRows = options.includeBuyerPrices
+    ? await mergeCatalogBuyerPriceRows(client, productRows, options.buyerCustomerId, options.quoteItems)
+    : productRows;
   return orderProductsByRequestedSkus(
-    productRows
+    pricedProductRows
       .filter((row) => pickString(row, ["status"]) === "active")
       .map(mapProductRow)
       .filter(isDefined),
@@ -6390,8 +6396,8 @@ async function readCatalogProductPageFromTable(
     }
 
     const pricedRows =
-      options.includeBuyerPrices && table === "catalog_public_summary"
-        ? await mergeCatalogBuyerPriceRows(client, rows, options.buyerCustomerId)
+      options.includeBuyerPrices && options.scope !== "admin"
+        ? await mergeCatalogBuyerPriceRows(client, rows, options.buyerCustomerId, options.quoteItems)
         : rows;
 
     return {
@@ -6495,14 +6501,15 @@ function applyCatalogProductQuery(
 async function mergeCatalogBuyerPriceRows(
   client: SupabaseServerClient,
   rows: DbRow[],
-  buyerCustomerId?: string
+  buyerCustomerId?: string,
+  quoteItems?: readonly { sku: string; quantity: number }[]
 ) {
   const priceRows = buyerCustomerId
-    ? await readCatalogBuyerPriceRowsForProductsAndCustomer(client, rows, buyerCustomerId)
-    : await readCatalogBuyerPriceRowsForProducts(client, rows);
+    ? await readCatalogBuyerPriceRowsForProductsAndCustomer(client, rows, buyerCustomerId, quoteItems)
+    : [];
 
   if (priceRows.length === 0) {
-    return rows;
+    return rows.map(unavailablePriceRow);
   }
 
   const priceRowsById = new Map<string, DbRow>();
@@ -6528,72 +6535,42 @@ async function mergeCatalogBuyerPriceRows(
       (id ? priceRowsById.get(id) : undefined) ??
       (sku ? priceRowsBySku.get(sku.toUpperCase()) : undefined);
 
-    return prices ? { ...row, ...prices } : row;
+    return prices ? { ...row, ...prices } : unavailablePriceRow(row);
   });
 }
 
-async function readCatalogBuyerPriceRowsForProducts(
-  client: SupabaseServerClient,
-  productRows: DbRow[]
-) {
-  const ids = uniqueDefinedStrings(
-    productRows.map((row) => pickString(row, ["id"]))
-  );
-  const skus = uniqueDefinedStrings(
-    productRows.map((row) => pickString(row, ["sku_code", "sku"]))
-  );
-  const priceRows: DbRow[] = [];
-
-  try {
-    const [idResult, skuResult] = await Promise.all([
-      ids.length > 0
-        ? client.from("catalog_buyer_prices").select("*").in("id", ids)
-        : Promise.resolve({ data: null, error: null }),
-      skus.length > 0
-        ? client.from("catalog_buyer_prices").select("*").in("sku_code", skus)
-        : Promise.resolve({ data: null, error: null }),
-    ]);
-
-    if (!idResult.error && Array.isArray(idResult.data)) {
-      priceRows.push(...idResult.data.filter(isDbRow));
-    }
-
-    if (!skuResult.error && Array.isArray(skuResult.data)) {
-      priceRows.push(...skuResult.data.filter(isDbRow));
-    }
-  } catch {
-    return [];
-  }
-
-  return priceRows;
+function unavailablePriceRow(row: DbRow): DbRow {
+  return { ...row, price: null, effective_unit_price: null, b2b_price: null,
+    retail_price: null, base_unit_price: null, price_version: null,
+    price_source: "unavailable", quote_status: "unavailable" };
 }
 
 async function readCatalogBuyerPriceRowsForProductsAndCustomer(
   client: SupabaseServerClient,
   productRows: DbRow[],
-  buyerCustomerId: string
+  buyerCustomerId: string,
+  quoteItems?: readonly { sku: string; quantity: number }[]
 ) {
-  const skus = uniqueDefinedStrings(
-    productRows.map((row) => pickString(row, ["sku_code", "sku"]))
-  );
-
-  if (skus.length === 0) {
-    return [];
+  const quantities = new Map<string, number>();
+  for (const item of quoteItems ?? []) {
+    const sku = toPublicSku(item.sku);
+    quantities.set(sku, (quantities.get(sku) ?? 0) + item.quantity);
   }
-
+  const items = productRows.flatMap((row) => {
+    const sku = pickString(row, ["sku_code", "sku"]);
+    return sku ? [{ sku, quantity: quantities.get(toPublicSku(sku)) ?? Math.max(1, pickNumber(row, ["moq"]) ?? 1) }] : [];
+  });
+  if (items.length === 0) return [];
   try {
-    const { data, error } = await client.rpc("resolve_customer_catalog_prices", {
+    const { data, error } = await client.rpc("resolve_customer_product_quotes", {
       p_customer_id: buyerCustomerId,
-      p_sku_codes: skus,
+      p_items: items,
     });
-
-    if (!error && Array.isArray(data)) {
-      return data.filter(isDbRow);
-    }
+    if (!error && Array.isArray(data)) return data.filter(isDbRow);
+    console.error("PartsPro quote unavailable", { code: error?.code ?? "invalid_response" });
   } catch {
-    return [];
+    console.error("PartsPro quote unavailable", { code: "transport_error" });
   }
-
   return [];
 }
 
@@ -15069,15 +15046,13 @@ function mapProductRow(row: DbRow): RepositoryPartProduct | null {
     0;
   const retailPrice = pickNumber(row, ["retail_price", "retailPrice", "msrp", "list_price"]) ?? price;
   const priceVersion = pickString(row, ["price_version", "priceVersion"]);
-  const priceResolved =
-    effectivePrice !== null ||
-    Boolean(priceVersion || pickString(row, ["price_source", "priceSource"]));
+  const quoteStatus = pickString(row, ["quote_status", "quoteStatus"]);
+  const priceResolved = effectivePrice !== null && Boolean(priceVersion) && quoteStatus !== "unavailable" && quoteStatus !== "hidden";
   const basePrice = pickNumber(row, ["base_unit_price", "basePrice"]);
   const customerLevel = pickString(row, ["customer_level", "customerLevel"]);
   const discountPercent = pickNumber(row, ["discount_percent", "discountPercent"]);
   const levelDiscountAmount = pickNumber(row, ["level_discount_amount", "levelDiscountAmount"]);
   const levelDiscountPercent = pickNumber(row, ["level_discount_percent", "levelDiscountPercent"]);
-  const marginPercent = pickNumber(row, ["margin_percent", "marginPercent"]);
   const priceGroupDiscountPercent = pickNumber(row, [
     "price_group_discount_percent",
     "priceGroupDiscountPercent",
@@ -15126,11 +15101,16 @@ function mapProductRow(row: DbRow): RepositoryPartProduct | null {
     ...(galleryImageUrls.length > 0 ? { galleryImageUrls } : {}),
     ...(remoteId ? { remoteId } : {}),
     ...(basePrice !== null ? { basePrice } : {}),
+    customerType: pickString(row, ["customer_type"]) === "wholesale" ? "wholesale" : "retail",
+    baseCustomerLevel: pickString(row, ["base_customer_level"]) ?? undefined,
+    levelSource: pickString(row, ["level_source"]) ?? undefined,
+    quotedQuantity: pickNumber(row, ["quoted_quantity"]) ?? undefined,
+    priceValidUntil: pickString(row, ["price_valid_until"]),
+    quoteStatus: priceResolved ? "available" : quoteStatus === "hidden" ? "hidden" : "unavailable",
     ...(customerLevel ? { customerLevel } : {}),
     ...(discountPercent !== null ? { discountPercent } : {}),
     ...(levelDiscountAmount !== null ? { levelDiscountAmount } : {}),
     ...(levelDiscountPercent !== null ? { levelDiscountPercent } : {}),
-    ...(marginPercent !== null ? { marginPercent } : {}),
     ...(priceGroupDiscountPercent !== null ? { priceGroupDiscountPercent } : {}),
     ...(priceGroupId ? { priceGroupId } : {}),
     ...(priceResolved ? { priceResolved: true } : {}),
@@ -15466,6 +15446,8 @@ function mapCompanyRow(row: DbRow): CompanyProfile | null {
   const lifetimeSpendNet = pickNumber(row, ["lifetime_spend_net"]) ?? 0;
   const promoLevel = normalizeOptionalCustomerLevel(pickString(row, ["promo_level", "promoLevel"]));
   const effectiveLevel = effectiveCustomerTier({
+    levelSource: pickString(row, ["level_source"]),
+    profileKind: pickString(row, ["profile_kind"]),
     level: pickString(row, ["level", "price_list", "priceList"]),
     lifetimeSpendNet,
     promoLevel,
@@ -15494,6 +15476,8 @@ function mapCompanyRow(row: DbRow): CompanyProfile | null {
     assignmentStatus: normalizeCustomerAssignmentStatus(pickString(row, ["assignment_status"])),
     profileKind: normalizeCustomerProfileKind(pickString(row, ["profile_kind", "profileKind"])),
     level: effectiveLevel,
+    baseLevel: baseCustomerTier({ level: pickString(row, ["level"]), tier: pickString(row, ["tier"]), levelSource: pickString(row, ["level_source"]), profileKind: pickString(row, ["profile_kind"]), lifetimeSpendNet }),
+    levelSource: pickString(row, ["level_source"]) ?? "automatic",
     lifetimeSpendNet,
     promoLevel,
     promoLevelStartsAt: pickString(row, ["promo_level_starts_at", "promoLevelStartsAt"]),
@@ -15513,6 +15497,8 @@ function mapAccountCustomerProfileRow(row: DbRow): AccountCustomerProfile | null
   const lifetimeSpendNet = pickNumber(row, ["lifetime_spend_net"]) ?? 0;
   const promoLevel = normalizeOptionalCustomerLevel(pickString(row, ["promo_level"]));
   const effectiveLevel = effectiveCustomerTier({
+    levelSource: pickString(row, ["level_source"]),
+    profileKind: pickString(row, ["profile_kind"]),
     level: pickString(row, ["level"]),
     lifetimeSpendNet,
     promoLevel,
@@ -15531,6 +15517,8 @@ function mapAccountCustomerProfileRow(row: DbRow): AccountCustomerProfile | null
     fiscalCode: pickString(row, ["fiscal_code"]) ?? "",
     id,
     level: effectiveLevel,
+    baseLevel: baseCustomerTier({ level: pickString(row, ["level"]), tier: pickString(row, ["tier"]), levelSource: pickString(row, ["level_source"]), profileKind: pickString(row, ["profile_kind"]), lifetimeSpendNet }),
+    levelSource: pickString(row, ["level_source"]) ?? "automatic",
     promoLevel,
     promoLevelStartsAt: pickString(row, ["promo_level_starts_at"]),
     promoLevelExpiresAt: pickString(row, ["promo_level_expires_at"]),
@@ -15568,6 +15556,8 @@ function mapAdminCustomerRow(row: DbRow): AdminCustomer | null {
     shippingAddress: pickString(row, ["shipping_address"]) ?? "",
     tier: effectiveLevel,
     level: effectiveLevel,
+    baseLevel: baseCustomerTier({ level: pickString(row, ["level"]), tier: pickString(row, ["tier"]), levelSource: pickString(row, ["level_source"]), profileKind: pickString(row, ["profile_kind"]), lifetimeSpendNet }),
+    levelSource: pickString(row, ["level_source"]) ?? "automatic",
     lifetimeSpendNet,
     assignedBy: pickString(row, ["assigned_by"]),
     assignedAt: pickString(row, ["assigned_at"]),

@@ -1,0 +1,17 @@
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {PricingSessionBoundary,QuoteExpiryRefresh} from '@/components/partspro/pricing-session-boundary';
+import {CheckoutClient} from '@/components/partspro/checkout-client';
+import {AdminPricingPanel,ClassificationPricePreview} from '@/components/partspro/admin-pricing-panel';
+import {I18nProvider} from '@/components/partspro/i18n-provider';
+import {replaceStoredCartItems,setCartStorageOwner} from '@/components/partspro/cart-state';
+const id='11111111-1111-4111-8111-111111111111';
+const product={sku:'REMAX-6954851225270',name:'REMAX CB25 Arancione',brand:'REMAX',category:'Accessori',price:1.4,retailPrice:1.4,basePrice:1.4,priceResolved:true,priceVersion:'fixture-v1',quoteStatus:'available',customerType:'wholesale',customerLevel:'king',moq:1,stock:100,status:'In Stock',grade:'Original',visual:'cable'};
+window.fixtureProduct=product;
+window.setQuantity=(quantity)=>replaceStoredCartItems([{sku:product.sku,quantity}]);
+setCartStorageOwner('user-a');replaceStoredCartItems([{sku:product.sku,quantity:1}]);
+const company={id,name:'Fixture store',partitaIva:'12345678901',codiceFiscale:'12345678901',pec:'',codiceDestinatario:'0000000',status:'approved',priceList:'king',customerType:'wholesale',assignmentStatus:'assigned',profileKind:'customer',city:'Roma',province:'RM',email:'fixture@example.test',phone:'123456789',billingAddress:'Via Test 1',shippingAddress:'Via Test 1',contactName:'Fixture'};
+const profile={id,companyName:company.name,assignmentStatus:'assigned',customerType:'wholesale',status:'active',level:'king',profileKind:'customer',shippingAddress:'Via Test 1',billingAddress:'Via Test 1',email:'fixture@example.test',phone:'123456789',fiscalCode:'12345678901',vatNumber:'12345678901',sdi:'0000000',pec:'',contactName:'Fixture'};
+function BoundaryProbe(){const [generation]=React.useState(()=>{window.probeMounts=(window.probeMounts||0)+1;return window.probeMounts});return <p data-testid="probe">{generation}</p>}
+function App(){const[user,setUser]=React.useState('user-a');const[scope,setScope]=React.useState('');window.setUser=setUser;return <I18nProvider locale="it" scope="storefront" dictionary={{}}>{location.pathname==='/boundary'?<PricingSessionBoundary userId={user}><BoundaryProbe/><QuoteExpiryRefresh products={[{priceValidUntil:window.boundaryPast},{priceValidUntil:window.boundaryExpiry}]}/></PricingSessionBoundary>:location.pathname==='/admin'?<><AdminPricingPanel permissions={['pricing.manage_policy','customers.read','orders.manage']} customerId={id}/><ClassificationPricePreview customerId={id} customerType="retail" onReady={setScope}/><div data-testid="preview-ready">{scope}</div></>:<CheckoutClient company={company} customerProfile={profile} initialAccountAccess={{userId:user,authenticated:true,canViewPrices:true,canCheckout:true,accountType:'customer'}} catalogProducts={[product]} runtime={{canSubmit:true,mode:'ready',title:'Checkout',description:''}}/>}</I18nProvider>}
+createRoot(document.getElementById('root')!).render(<App/>);

@@ -35,6 +35,7 @@ import type {
   StorefrontCartAccess,
 } from "@/lib/partspro-account-context";
 import { RoutePendingIndicator } from "./pending-feedback";
+import { PricingSessionBoundary, QuoteExpiryRefresh } from "./pricing-session-boundary";
 import { ProductCard } from "./product-card";
 
 type HomePageProps = {
@@ -46,7 +47,7 @@ type HomePageProps = {
 
 export function HomePage({ departmentGroups, initialAccountAccess, banner, children }: HomePageProps) {
   return (
-    <main className="min-h-screen overflow-x-clip bg-[#f4f6fa] text-slate-950">
+    <PricingSessionBoundary userId={initialAccountAccess.userId}><main className="min-h-screen overflow-x-clip bg-[#f4f6fa] text-slate-950">
       <StoreHeader departmentGroups={departmentGroups} initialAccountAccess={initialAccountAccess} prefetchCatalogLinks />
       <div className="mx-auto grid w-full max-w-[1500px] min-w-0 grid-cols-[minmax(0,1fr)] gap-3 px-2 py-3 sm:gap-4 sm:px-4 sm:py-4 lg:grid-cols-[230px_minmax(0,1fr)]">
         <CategorySidebar departmentGroups={departmentGroups} />
@@ -55,7 +56,7 @@ export function HomePage({ departmentGroups, initialAccountAccess, banner, child
           {children}
         </div>
       </div>
-    </main>
+    </main></PricingSessionBoundary>
   );
 }
 
@@ -68,6 +69,7 @@ export function HomeProductShelf({ kind, products, cartAccess, priceGateReason, 
 }) {
   const t = useT();
   return (<>
+          <QuoteExpiryRefresh products={products} />
           {kind === "remax" && products.length > 0 ? (
             <ProductShelf
               actionHref="/catalogo?department=general_merchandise&brand=REMAX"

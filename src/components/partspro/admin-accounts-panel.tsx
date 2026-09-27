@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminPricingPanel, ClassificationPricePreview } from "./admin-pricing-panel";
+
 import * as React from "react";
 import {
   Activity,
@@ -97,6 +99,9 @@ type AccountCustomer = {
   lastActivityAt: string | null;
   lastOrderAt: string | null;
   level: string;
+  baseLevel: string;
+  levelSource: string;
+  storedLevel: string;
   lifetimeSpendNet: number;
   promoLevel: string | null;
   promoLevelStartsAt: string | null;
@@ -242,7 +247,7 @@ type CustomerActionState = {
   account: Account;
   customerType: CustomerType;
   kind: CustomerActionKind;
-  level: CustomerLevel;
+  level: CustomerLevel | "automatic";
   reason: string;
   status: CustomerStatus;
   targetCustomer: AccountCustomer;
@@ -929,6 +934,8 @@ export function AdminAccountsPanel({
         </Button>
       </div>
 
+      <AdminPricingPanel permissions={[...currentPermissionSet]} customerId={detail?.profileCustomer?.id ?? detail?.customer?.id} />
+
       {notice ? <NoticeBanner notice={notice} onDismiss={() => setNotice(null)} /> : null}
 
       <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
@@ -1126,6 +1133,7 @@ export function AdminAccountsPanel({
         submitting={submitting}
       />
       <CustomerAccountActionDialog
+        key={customerAction?.kind === "customer_type" ? `${customerAction.targetCustomer.id}:${customerAction.customerType}` : customerAction?.kind ?? "closed"}
         action={customerAction}
         onChange={setCustomerAction}
         onClose={() => setCustomerAction(null)}
@@ -2253,6 +2261,7 @@ function CustomerAccountActionDialog({
   onSubmit: () => void;
   submitting: boolean;
 }) {
+  const [previewScope, setPreviewScope] = React.useState("");
   const scopeLabel = action?.account.accountType === "employee" ? "员工自购资料" : "客户资料";
   const title =
     action?.kind === "customer_level"
@@ -2266,7 +2275,7 @@ function CustomerAccountActionDialog({
       : action?.kind === "customer_type"
         ? "价格类型决定客户使用零售价还是批发价，和活跃状态独立。"
         : "活跃状态只控制账号是否可继续使用价格和 checkout，不会改变价格类型。";
-  const canSubmit = Boolean(action && action.reason.trim().length >= 3);
+  const canSubmit = Boolean(action && action.reason.trim().length >= 3 && (action.kind !== "customer_type" || previewScope === `${action.targetCustomer.id}:${action.customerType}`));
 
   return (
     <Dialog open={Boolean(action)} onOpenChange={(open) => !open && onClose()}>
@@ -2291,13 +2300,14 @@ function CustomerAccountActionDialog({
                 <Select
                   value={action.level}
                   onValueChange={(value) =>
-                    onChange({ ...action, level: normalizeCustomerLevel(value) })
+                    onChange({ ...action, level: value === "automatic" ? "automatic" : normalizeCustomerLevel(value) })
                   }
                 >
                   <SelectTrigger className="bg-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="automatic">恢复消费自动等级</SelectItem>
                     {customerLevels.map((level) => (
                       <SelectItem key={level} value={level}>
                         {customerLevelOptionLabel(level)}
@@ -2306,7 +2316,7 @@ function CustomerAccountActionDialog({
                   </SelectContent>
                 </Select>
                 <div className="text-xs font-semibold text-slate-500">
-                  当前等级减价：每件减 {customerLevelDiscountLabel(action.level)}
+                  {action.level === "automatic" ? "恢复消费等级作为基础，有效促销继续取高。" : `基础等级减价：每件减 ${customerLevelDiscountLabel(action.level)}；有效促销只提升，不降低。`}
                 </div>
               </div>
             ) : action.kind === "customer_type" ? (
@@ -2352,6 +2362,8 @@ function CustomerAccountActionDialog({
                 </Select>
               </div>
             )}
+            <p className="text-xs text-slate-600">基础等级：{action.targetCustomer.baseLevel}（{action.targetCustomer.levelSource === "manual" ? "人工" : "自动"}）；有效等级：{action.targetCustomer.level}。{action.targetCustomer.promoLevelExpiresAt ? `促销到期：${new Date(action.targetCustomer.promoLevelExpiresAt).toLocaleString()}` : ""}</p>
+            {action.kind === "customer_type" && action.targetCustomer.id ? <ClassificationPricePreview key={`${action.targetCustomer.id}:${action.customerType}`} customerId={action.targetCustomer.id} customerType={action.customerType} onReady={setPreviewScope} /> : null}
             <div className="space-y-1.5">
               <Label>变更原因</Label>
               <Textarea
@@ -2755,7 +2767,7 @@ async function patchAccountRole(userId: string, roleTemplate: string, reason: st
 
 async function patchCustomerLevel(
   userId: string,
-  level: CustomerLevel,
+  level: CustomerLevel | "automatic",
   reason: string
 ): Promise<AccountDetail> {
   const response = await fetch(`/api/admin/accounts/${encodeURIComponent(userId)}/customer-level`, {
@@ -3170,6 +3182,9 @@ function normalizeCustomer(value: unknown): AccountCustomer | null {
     assignmentStatus: readString(value.assignmentStatus) ?? "needs_review",
     profileKind: readString(value.profileKind) ?? "customer",
     level: readString(value.level) ?? "bronze",
+    baseLevel: readString(value.baseLevel) ?? "bronze",
+    levelSource: readString(value.levelSource) ?? "automatic",
+    storedLevel: readString(value.storedLevel) ?? "bronze",
     lifetimeSpendNet: readNumber(value.lifetimeSpendNet) ?? 0,
     promoLevel: readString(value.promoLevel),
     promoLevelStartsAt: readString(value.promoLevelStartsAt),

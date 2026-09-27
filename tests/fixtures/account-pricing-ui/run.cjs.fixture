@@ -1,0 +1,45 @@
+const projectRequire=require('module').createRequire(process.cwd()+'/package.json');
+const {chromium}=projectRequire(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const fs=require('fs'),http=require('http'),assert=require('assert/strict'),path=require('path');
+const dir=__HARNESS_DIR__;
+const output=process.env.PRICING_UI_OUTPUT_DIR;fs.mkdirSync(output,{recursive:true});
+const cssDir=process.cwd()+'/.next/static/css';
+const css=fs.existsSync(cssDir)?fs.readdirSync(cssDir).filter(n=>n.endsWith('.css')).map(n=>fs.readFileSync(cssDir+'/'+n,'utf8')).join('\n'):'';
+const server=http.createServer((req,res)=>{res.setHeader('Content-Type',req.url==='/bundle.js'?'application/javascript':'text/html');res.end(req.url==='/bundle.js'?fs.readFileSync(dir+'/bundle.js'): '<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+css+'</style><body><div id="root"></div><script>window.process={env:{NODE_ENV:"development"}}</script><script src="/bundle.js"></script></body></html>')});
+(async()=>{
+ await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(3107,'127.0.0.1',resolve)});
+ let browser;
+ try{
+ browser=await chromium.launch({headless:true,channel:"chrome"});const page=await browser.newPage({viewport:{width:390,height:844}});const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.log('PAGEERROR',e.message)});page.on('console',m=>{if(m.type()==='error')console.log('CONSOLE',m.text())});page.setDefaultTimeout(10000);
+ let requests=[],fail=false,delay=0,preorder=false;
+ const money=n=>({amount:n.toFixed(2),cents:Math.round(n*100),currency:'EUR'});
+ await page.route('**/api/orders/preview',async route=>{
+ const body=route.request().postDataJSON(); requests.push(body);console.log('preview',requests.length);if(delay)await new Promise(r=>setTimeout(r,delay));
+ if(fail){await route.fulfill({status:503,json:{error:{message:'Quote unavailable'}}});return}
+ const product=await page.evaluate(()=>window.fixtureProduct);const qty=body.items[0].quantity;const total=qty*product.price;
+ await route.fulfill({json:{data:{canSubmit:true,issues:[],orderKind:preorder?'preorder':'stock',catalog:{products:[product],rejected:[]},lines:[{sku:product.sku,quantity:qty,unitPrice:money(product.price),lineGross:money(total),priceVersion:'fixture-v1',purchaseKind:preorder?'preorder':'stock'}],totals:{subtotal:money(total),shipping:money(0),vat:money(0),total:money(total)},wallet:{enabled:true,availableAmount:money(100),appliedAmount:money(0),payableAmount:money(total)}}}});
+ });
+ console.log('open checkout');await page.goto('http://127.0.0.1:3107/checkout',{waitUntil:'domcontentloaded'});console.log('opened checkout');await page.locator('#notes').waitFor();await page.waitForTimeout(1000);
+ if(requests.length===0){console.log(await page.locator('body').innerText());console.log(await page.evaluate(()=>({...localStorage})));}assert.equal(requests.length,1,'initial quote must settle once');await page.waitForTimeout(1000);assert.equal(requests.length,1,'idle catalog updates must not cause quote loop');
+ await page.locator('#notes').fill('Keep this note');await page.evaluate(()=>window.authEvent('TOKEN_REFRESHED','user-a'));await page.waitForTimeout(700);
+ assert.equal(await page.locator('#notes').inputValue(),'Keep this note');assert.equal(requests.length,2,'same-user auth refresh requotes once');
+ await page.evaluate(()=>window.setQuantity(10));await page.waitForTimeout(700);assert.equal(requests.length,3);assert.equal(requests.at(-1).items[0].quantity,10);
+ await page.waitForTimeout(700);assert.equal(requests.length,3,'quantity quote must settle');
+ await page.getByRole('checkbox').last().check();await page.waitForTimeout(700);assert.equal(requests.length,3,'confirmation must remain stable');assert.equal(await page.getByRole('checkbox').last().isChecked(),true);
+ await page.screenshot({path:output+'/checkout-mobile.png',fullPage:true});
+ await page.getByRole('checkbox').first().check();await page.waitForTimeout(600);assert.equal(requests.at(-1).useWallet,true);
+ preorder=true;await page.evaluate(()=>window.dispatchEvent(new Event('partspro-pricing-invalidated')));await page.waitForTimeout(1100);assert.equal(requests.at(-1).useWallet,false,'preorder clears hidden wallet choice');const settled=requests.length;await page.waitForTimeout(700);assert.equal(requests.length,settled,'preorder requote settles');preorder=false;
+
+ fail=true;await page.evaluate(()=>window.dispatchEvent(new Event('partspro-pricing-invalidated')));await page.waitForTimeout(700);assert.ok((await page.locator('body').innerText()).includes('Non inviabile')); 
+ await page.evaluate(()=>window.authEvent('SIGNED_IN','user-b'));await page.waitForTimeout(100);assert.equal(await page.locator('#notes').count(),0,'old identity form hidden before server context catches up');
+ fail=false;await page.evaluate(()=>window.setUser('user-b'));await page.locator('#notes').waitFor();assert.equal(await page.locator('#notes').inputValue(),'');
+ const campaign={enabled:true,level:'king',duration_months:3,starts_at:null,ends_at:null};const adminRequests=[];
+ await page.route('**/api/admin/pricing**',async route=>{const req=route.request();adminRequests.push({method:req.method(),body:req.postDataJSON()});const data=req.method()==='PATCH'?req.postDataJSON():req.method()==='POST'?(req.postDataJSON().customerType?{items:[{sku_code:'REMAX-6954851225270',before:{effective_unit_price:1.4},after:{effective_unit_price:1.9}}]}:[{sku_code:'REMAX-6954851225270',customer_type:'wholesale',base_unit_price:1.4,effective_unit_price:1.4,customer_level:'king',base_customer_level:'gold',quoted_quantity:1,price_version:'fixture-v1'}]):req.url().includes('anomalies')?[{kind:'retail_below_b2b',sku_code:'fixture'}]:req.url().includes('audit')?[]:campaign;await route.fulfill({json:{data}})});
+ await page.goto('http://127.0.0.1:3107/admin');await page.getByText('价格规则、迎新活动与检查',{exact:true}).click();await page.getByLabel('有效月数').waitFor();await page.getByLabel('变更原因',{exact:true}).fill('测试保存原因');await page.getByRole('button',{name:'保存活动',exact:true}).click();await page.waitForTimeout(200);assert.ok(adminRequests.some(r=>r.method==='PATCH'&&r.body.duration_months===3));
+ await page.getByRole('button',{name:'查询价格',exact:true}).click();await page.getByText(/基础 1,40/).waitFor();await page.getByRole('button',{name:'运行价格一致性检查',exact:true}).click();await page.getByText(/零售价低于批发价/).waitFor();
+ await page.getByRole('button',{name:'预览变更影响',exact:true}).click();await page.getByTestId('preview-ready').filter({hasText:':retail'}).waitFor();await page.screenshot({path:output+'/admin-mobile.png',fullPage:true});
+ await page.addInitScript(()=>{window.boundaryPast=new Date(Date.now()-1000).toISOString();window.boundaryExpiry=new Date(Date.now()+1800).toISOString()});
+ await page.goto('http://127.0.0.1:3107/boundary');await page.getByTestId('probe').waitFor();const first=await page.getByTestId('probe').innerText();await page.evaluate(()=>window.dispatchEvent(new Event('focus')));await page.waitForTimeout(100);assert.notEqual(await page.getByTestId('probe').innerText(),first,'focus discards catalog state');await page.waitForTimeout(1900);assert.ok(await page.evaluate(()=>window.refreshes>=3),'expiry refreshes server quote');await page.evaluate(()=>window.authEvent('SIGNED_IN','user-b'));await page.waitForTimeout(100);assert.equal(await page.getByTestId('probe').count(),0,'catalog old identity hidden');await page.evaluate(()=>window.setUser('user-b'));await page.getByTestId('probe').waitFor();
+ assert.deepEqual(errors,[]);const result={passed:true,checkoutRequests:requests.length,adminRequests:adminRequests.length,checks:['idle-no-loop','same-user-token-retains-form','quantity-requotes','confirmation-stable','preorder-clears-wallet','failure-explicit','identity-blocks-old-state','campaign-save','price-inspection','anomaly-list','classification-preview','catalog-focus-reset','catalog-past-and-future-expiry-refresh','catalog-identity-guard'],screenshots:[output+'/checkout-mobile.png',output+'/admin-mobile.png']};fs.writeFileSync(output+'/browser-result.json',JSON.stringify(result,null,2)+'\n');console.log(JSON.stringify(result,null,2));
+ }finally{if(browser)await browser.close();await new Promise(r=>server.close(r))}
+})().catch(e=>{console.error(e);process.exitCode=1;server.close()});
