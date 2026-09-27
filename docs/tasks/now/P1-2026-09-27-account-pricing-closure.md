@@ -72,11 +72,11 @@ PLAYWRIGHT_MODULE=/path/to/playwright node scripts/verify-account-pricing-ui.mjs
 
 CLI 已重新登录并链接既定目标。远端历史缺口 `20260926091650_admin_customer_bulk_settlement_and_remax_price_rounding.sql` 从可追溯提交 `f26c793` 恢复，SHA256 为 `30f34f7ae3bc27f8bd12e59ec343f27bbc3e80c5e4e63fbd872feafd39f0c6be`；`20260926110808_rma_v4_wallet_negotiation_split_closure.sql` 来自线上基线提交，SHA256 为 `85743b5d5ec795053186c5359407154c77b6d7ab37696b1e450ba536c811c507`。重新执行 linked list 后无 remote-only divergence。
 
-`supabase db push --linked --dry-run` 已成功，唯一待应用项为 `20260927141646_account_pricing_authority.sql`（SHA256 `bc022f9b7ae02680d95046dd72d215ff89c3926611b246477bd1b38c40cbec20`）。**尚未应用迁移、未发布、未写生产业务数据；当前已满足请求本次 db push 最终批准的前提。** 后续步骤：
+`supabase db push --linked --dry-run` 成功且唯一待应用项为 `20260927141646_account_pricing_authority.sql`（SHA256 `bc022f9b7ae02680d95046dd72d215ff89c3926611b246477bd1b38c40cbec20`）。老板明确批准本次 db push 后，已于 2026-09-28 成功应用；远端 migration 记录、关键 RPC、表和执行权限已只读核验。**应用尚未发布，未改商品原价、真实客户等级或历史订单。** 后续步骤：
 
-1. 展示目标、唯一 dry-run 项、风险和回退/补偿说明，取得对本次 `supabase db push --linked` 的明确批准。不得 migration repair、include-all、db pull 或夹带其他 migration。
-2. 应用后核对函数返回签名、权限、默认活动、领取账本，以及受控测试账号的 retail/wholesale × 7 等级、promo 到期、MOQ 9/10/11、免折扣、预购、钱包、最终订单快照，不改真实客户原价或历史交易。
-3. 独立发布复核已完成且未发现价格/结算/权限阻断；老板已在本任务明确授权应用发布。**仍不能先发布新应用**：缺少新 RPC 时故障关闭会导致已登录商品无法报价。数据库应用成功后再部署并切换域名。
+1. 已完成：展示目标、唯一 dry-run 项、风险和回退说明，取得明确批准并应用唯一 migration；未执行 migration repair、include-all 或 db pull。
+2. 已完成：核对 migration 记录；报价、恢复自动等级和分类预览 RPC 存在；活动配置和领取账本存在且默认配置单行；匿名无报价执行权、authenticated 有执行权。
+3. 独立发布复核已完成且未发现价格/结算/权限阻断；老板已明确授权应用发布。部署 production 候选，验证后再切换正式域名。
 4. 线上使用受控账号验证账号归属、1.4/1.9解释及预览/提交；观察报价失败与 PRICE_CHANGED 错误。没有提供截图中两个客户的编号，因此个体归因只能在获得编号后补核。
 
 风险与回退/补偿：
