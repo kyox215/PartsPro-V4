@@ -101,4 +101,8 @@ Last reviewed: 2026-09-28
 - 公共 Dialog/AlertDialog/Sheet 适配动态视口和短屏，客户、订单、财务、库存表单正文可滚动，按钮可达；保留线上新版菜单、供应商费用及售后功能。导入/运输费用底栏负边距溢出一并修复。
 - 隔离发布源码验证：全量 lint/build、6 项 storefront 和 35 项账号价格/运输 UI 合同测试通过；真实组件＋模拟 API 的 91 项浏览器检查通过。旧运输 UI 测试的客服偏移调用断言更新为线上已有的购物车/checkout 限定行为，未改客服逻辑。独立发布专项审查通过。
 - 证据 `outputs/overlay-ui/2026-09-28/browser-result.json`。构建使用与发布 lockfile 同版本的既有依赖（主目录额外 analytics 包未被本分支引用或部署）。真实 iPhone Safari 软键盘未实机验证。
-- 用户已授权推送部署上线。候选部署及正式域名切换验证结果在发布完成后补记；回退目标为上述当前生产部署。
+- 用户已授权推送部署上线，实际发布结果如下。
+
+- 2026-09-28 发布完成：修复提交 `c33a1ac` 已推送到 `origin/codex/mobile-overlay-fix-20260928`；Vercel 候选 `dpl_EE4NmwdYDoPeeN3vgVgFEcofRGYX` 远端 build READY，7 项受保护访问检查通过后 promote。`partspro.app` 与 `www.partspro.app` 的 alias API 均确认指向该部署。
+- 上线后 11 项只读检查通过：手机菜单位于可视区域、关闭恢复背景滚动，首页/目录/购物车/账号/后台页面 HTTP 200、公开目录 API 200，未登录后台账号/价格 API 401，正式 CSS 包含视口保护；本次部署近 10 分钟 error 查询无记录。未验证登录管理员真实保存与真机软键盘，业务写入仍仅由模拟接口测试覆盖。
+- 发布证据：`outputs/overlay-ui/2026-09-28/{deployment-verification,candidate-smoke,live-smoke}.json`。回退部署 `dpl_9gWPU9yQ6UXtQcj1dmdphjFUqHJk` 保留；本次没有 migration、生产数据或环境变量变更。源码已推送发布分支，未合并 GitHub main；已上线历史功能完整保留。
