@@ -80,7 +80,8 @@ function PricingPanelContent({ manage, inspect, customerId, canCheck }: { manage
           <label>活动开始（留空为立即）<Input type="datetime-local" value={localDateInput(campaign.starts_at)} onChange={(e) => { setCampaign({ ...campaign, starts_at: e.target.value ? new Date(e.target.value).toISOString() : null }); }} /></label>
           <label>活动结束（留空为长期）<Input type="datetime-local" value={campaign.ends_at ? localDateInput(campaign.ends_at) : ""} onChange={(e) => setCampaign({ ...campaign, ends_at: e.target.value ? new Date(e.target.value).toISOString() : null })} /></label>
         </div>
-        <label className="block">变更原因<Input required minLength={3} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+        <label className="block">变更原因<Input aria-describedby="campaign-reason-hint" required minLength={3} maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} /></label>
+        <p id="campaign-reason-hint" className="text-xs text-slate-500">至少填写 3 个字，去除首尾空格后计算。</p>
         <Button disabled={busy || reason.trim().length < 3}>保存活动</Button>
       </form> : <p>活动配置尚未加载；可重新展开面板重试。</p>}
       <div className="flex flex-wrap gap-2">

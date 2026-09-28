@@ -316,7 +316,7 @@ export function AdminProductImportDialog({
           )}
         </div>
 
-        <DialogFooter className="border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+        <DialogFooter className="mx-0 mb-0 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
           {result ? (
             <>
               <Button variant="outline" onClick={() => { setPreview(null); setResult(null); setConfirmed(false); setCompatibilityConfirmations({}); setError(null); }}>

@@ -1441,7 +1441,7 @@ test("support widget fails closed on admin client navigations", () => {
   assert.match(supportSource, /const pathname = usePathname\(\)/);
   assert.match(supportSource, /pathname === "\/admin" \|\| pathname\.startsWith\("\/admin\/"\)/);
   assert.match(supportSource, /const shouldRender = scope === "storefront" && !isAdminPath/);
-  assert.match(supportSource, /useSupportActionBarOffset\(shouldRender\)/);
+  assert.match(supportSource, /useSupportActionBarOffset\(\s*shouldRender && \(pathname === "\/carrello" \|\| pathname === "\/checkout"\)\s*\)/);
   assert.match(supportSource, /if \(!shouldRender\) \{\s*return null/);
 });
 

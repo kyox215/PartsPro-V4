@@ -1,0 +1,99 @@
+const projectRequire=require('module').createRequire(process.cwd()+'/package.json');
+const {chromium}=projectRequire(process.env.PLAYWRIGHT_MODULE||'playwright');
+const fs=require('fs'),http=require('http'),assert=require('assert/strict'),path=require('path');
+const dir=__HARNESS_DIR__,output=process.env.OVERLAY_UI_OUTPUT_DIR;
+fs.mkdirSync(output,{recursive:true});
+(async()=>{
+ // Compile current CSS directly so no stale build stylesheet can mask a regression.
+ const postcss=projectRequire('postcss'),tailwind=projectRequire('@tailwindcss/postcss');
+ const css=(await postcss([tailwind()]).process(fs.readFileSync('src/app/globals.css','utf8'),{from:process.cwd()+'/src/app/globals.css'})).css;
+ const server=http.createServer((req,res)=>{res.setHeader('Content-Type',req.url.endsWith('.js')?'application/javascript':'text/html');res.end(req.url.endsWith('.js')?fs.readFileSync(path.join(dir,path.basename(req.url))):'<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+css+'</style><body><div id="root"></div><script>window.process={env:{NODE_ENV:"development"}}</script><script src="/bundle.js"></script></body></html>')});
+ await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve)});
+ const url='http://127.0.0.1:'+server.address().port;
+ let browser;
+ const checks=[],errors=[];
+ try{
+  browser=await chromium.launch({headless:true,channel:'chrome'});
+  const context=await browser.newContext({viewport:{width:390,height:740},isMobile:true,hasTouch:true});
+  const page=await context.newPage();page.setDefaultTimeout(8000);
+  page.on('pageerror',e=>{errors.push(e.message);console.error('PAGEERROR',e.message)});
+  await page.route('**/*',route=>route.request().url().startsWith(url)||route.request().url().startsWith('data:')?route.continue():route.abort());
+  let expenseFails=false,expenseWrites=0;
+  page.on('dialog',dialog=>dialog.dismiss());
+  await page.route('**/api/**',route=>route.fulfill({json:{data:{items:[{sku_code:'TEST-SKU',before:{effective_unit_price:1.9},after:{effective_unit_price:1.4}}]}}}));
+  await page.route('**/api/admin/finance/expenses',async route=>{expenseWrites++;await route.fulfill({status:expenseFails?500:200,json:expenseFails?{error:'fixture failure'}:{data:{id:'fixture-expense'}}})});
+  const cases=['customer','level','status','conversion','admin-profile','profile','expense','supplier-payment','stock','success','image','alert','sheet','nested','default','import','payment','shipping','transport'];
+  async function open(name,locale='zh'){
+   console.log('case',name,locale,page.viewportSize());await page.goto(url+'/?case='+name+'&locale='+locale);
+   if(['expense','supplier-payment'].includes(name))await page.getByRole('button').last().click();
+   if(name==='payment')await page.getByRole('button',{name:/登记收款|Registra incasso/}).first().click();
+   if(name==='shipping')await page.getByRole('button',{name:/调整运费|Aggiusta spedizione/}).first().click();
+   if(name==='nested')await page.getByRole('button',{name:'Open nested',exact:true}).click();
+   await page.locator('[data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="sheet-content"]').last().waitFor();
+   await page.locator('[data-slot=dialog-content], [data-slot=alert-dialog-content], [data-slot=sheet-content]').last().evaluate(el=>Promise.all(el.getAnimations().map(animation=>animation.finished.catch(()=>{}))));
+  }
+  async function bounds(name){
+   const data=await page.locator('[data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="sheet-content"]').last().evaluate(el=>{
+    const r=el.getBoundingClientRect(),v=window.visualViewport;
+    return {top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:v.width,height:v.height,offset:v.offsetTop,horizontal:el.scrollWidth-el.clientWidth};
+   });
+   assert.ok(data.top>=data.offset-1&&data.bottom<=data.offset+data.height+1&&data.left>=-1&&data.right<=data.width+1,name+': '+JSON.stringify(data));
+   assert.ok(data.horizontal<=2,name+' horizontal overflow: '+data.horizontal);
+  }
+  for(const [width,height] of (process.env.OVERLAY_INTERACTIONS_ONLY?[]:[[390,740],[320,568],[844,390],[1280,800]])){
+   await page.setViewportSize({width,height});
+   for(const name of cases){
+    await open(name);await bounds(name);
+    // Every content scroller must reach its end; then the last button must be clickable.
+    const modal=page.locator('[data-slot="dialog-content"], [data-slot="alert-dialog-content"], [data-slot="sheet-content"]').last();
+    await modal.evaluate(el=>{for(const node of [el,...el.querySelectorAll('*')])if(node.scrollHeight>node.clientHeight&&['auto','scroll'].includes(getComputedStyle(node).overflowY))node.scrollTop=node.scrollHeight;});
+    const footer=modal.locator('[data-slot=dialog-footer], [data-slot=alert-dialog-footer]');
+    const actions=modal.getByRole('button').filter({hasNot:page.locator('.sr-only')});
+    const last=await footer.count()?footer.getByRole('button').last():await actions.count()?actions.last():modal.getByRole('button').last();
+    await last.scrollIntoViewIfNeeded();
+    const rect=await last.boundingBox();assert.ok(rect&&rect.y>=-1&&rect.y+rect.height<=height+1,name+' final action reachable');
+    if(await last.isEnabled())await last.click({trial:true});
+    checks.push(name+' '+width+'x'+height);
+   }
+  }
+  await page.setViewportSize({width:390,height:740});
+  for(const name of ['expense','supplier-payment','stock','success']){await open(name,'it');await bounds(name);checks.push(name+' Italian');}
+  await open('customer');
+  await page.setViewportSize({width:390,height:600});await page.waitForTimeout(200);
+  const body=page.locator('[data-slot=dialog-body]');await body.evaluate(el=>el.scrollTop=0);const area=await body.boundingBox();console.log('touch-body',await body.evaluate(el=>({client:el.clientHeight,scroll:el.scrollHeight,top:el.scrollTop})),area);
+  const cdp=await context.newCDPSession(page);
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:area.x+1,y:area.y+area.height-30}]});
+  for(let i=1;i<=6;i++){await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:area.x+1,y:area.y+area.height-30-i*(area.height-60)/6}]});await page.waitForTimeout(30)}
+  await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+  await page.waitForTimeout(150);assert.ok(await body.evaluate(el=>el.scrollTop>0),'touch swipe scrolls dialog body');checks.push('touch swipe');
+  await page.setViewportSize({width:390,height:740});
+  const save=page.getByRole('button',{name:'保存',exact:true});
+  await page.getByRole('button',{name:'预览变更影响',exact:true}).click();
+  await page.getByText(/TEST-SKU/).waitFor();assert.equal(await save.isEnabled(),false,'two-character reason stays invalid');
+  await page.locator('#action-reason').fill('批发客户调整');assert.equal(await save.isEnabled(),true);
+  await save.click();assert.equal(await save.isEnabled(),false,'saving disables duplicate clicks');
+  await page.waitForTimeout(450);assert.equal(await page.evaluate(()=>window.fixtureSubmissions),1);
+  await page.screenshot({path:output+'/customer-mobile.png'});checks.push('customer preview/reason/save/busy');
+  await page.getByRole('combobox').click();await page.getByRole('option').first().click();assert.equal(await save.isEnabled(),false,'changing customer type requires new preview');
+  await page.getByRole('button',{name:'取消',exact:true}).click();assert.equal(await page.locator('[data-slot="dialog-content"]').count(),0);
+  await page.waitForFunction(()=>!document.body.hasAttribute('data-scroll-locked'));assert.notEqual(await page.evaluate(()=>getComputedStyle(document.body).overflow),'hidden');checks.push('select portal and close unlock');
+  await open('stock');await page.locator('textarea').fill('测试库存调整');await page.locator('[data-slot="dialog-footer"] button').last().click();assert.equal(await page.evaluate(()=>window.fixtureSubmissions),1);checks.push('stock form submit');
+  await open('admin-profile');await page.getByRole('button',{name:'保存资料',exact:true}).click();assert.equal(await page.evaluate(()=>window.fixtureSubmissions),1);checks.push('external footer form submit');
+  // Simulate visualViewport keyboard bounds without pretending this is a real iOS keyboard.
+  await open('customer');await page.evaluate(()=>{Object.defineProperty(window.visualViewport,'height',{configurable:true,value:300});Object.defineProperty(window.visualViewport,'offsetTop',{configurable:true,value:80});window.visualViewport.dispatchEvent(new Event('resize'));});
+  await page.waitForTimeout(100);await bounds('keyboard viewport');
+  await page.locator('#action-reason').fill('键盘测试原因');await page.getByRole('button',{name:'取消',exact:true}).click();checks.push('visualViewport height+offset fallback');
+  await open('nested');await page.locator('[data-slot="dialog-body"]').evaluate(el=>el.scrollTop=el.scrollHeight);await page.getByRole('button',{name:'Save nested',exact:true}).click();assert.equal(await page.evaluate(()=>window.fixtureSubmissions),1);await page.keyboard.press('Escape');assert.equal(await page.locator('[data-slot="sheet-content"]').count(),1);checks.push('nested save and Escape retains sheet');
+  await open('expense','it');await page.screenshot({path:output+'/expense-mobile-it.png'});
+  const expense=page.locator('[data-slot=dialog-content]');
+  await expense.locator('input').nth(0).fill('Test expense');await expense.locator('input').nth(1).fill('10');
+  expenseFails=true;await expense.locator('[data-slot=dialog-footer] button').click();await page.waitForTimeout(150);assert.equal(await expense.count(),1,'failed submit retains form');assert.equal(await expense.locator('input').nth(0).inputValue(),'Test expense');
+  expenseFails=false;await expense.locator('[data-slot=dialog-footer] button').click();await expense.waitFor({state:'detached'});assert.equal(expenseWrites,2);checks.push('finance failure retains form and retry succeeds');
+  await open('profile');await page.getByRole('button',{name:'Close',exact:true}).click();await page.getByRole('button',{name:'Open fixture',exact:true}).click();await page.getByRole('button',{name:'Close',exact:true}).click();await page.waitForFunction(()=>document.activeElement?.id==='opener');checks.push('profile focus returns to opener');
+  await page.setViewportSize({width:1280,height:800});await open('sheet');assert.ok((await page.locator('[data-slot=sheet-content]').boundingBox()).width<=384.5,'desktop sheet keeps design maximum');checks.push('desktop sheet width');
+  await page.setViewportSize({width:1280,height:390});await page.goto(url+'/?case=hidden-sheet');await page.waitForTimeout(150);assert.equal(await page.locator('[data-slot=sheet-content]').isVisible(),false);checks.push('compact viewport preserves responsive hidden');
+  assert.deepEqual(errors,[]);
+  fs.writeFileSync(output+'/browser-result.json',JSON.stringify({passed:true,checks,realDeviceKeyboardVerified:false,screenshots:['customer-mobile.png','expense-mobile-it.png']},null,2)+'\n');
+  console.log(JSON.stringify({passed:true,checks:checks.length,output}));
+ }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));}
+})().catch(e=>{console.error(e);process.exitCode=1});

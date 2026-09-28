@@ -506,7 +506,7 @@ function ProductImagePreviewLoading() {
           <Loader2 className="size-4 animate-spin text-primary" />
           {tx(t, "storefront.product.card.previewLoading", "Caricamento anteprima...")}
         </div>
-        <div className="mt-3 h-[min(72vh,620px)] min-h-[280px] animate-pulse rounded-lg bg-slate-100" />
+        <div className="mt-3 h-[min(65dvh,620px)] animate-pulse rounded-lg bg-slate-100" />
       </div>
     </div>
   );

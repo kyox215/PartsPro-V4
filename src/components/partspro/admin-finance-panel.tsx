@@ -29,6 +29,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
+  DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -679,40 +680,42 @@ function ExpenseDialog({ copy, onSaved }: { copy: FinanceCopy; onSaved: () => vo
           {copy.addExpense}
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent scrollLayout="body" className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{copy.addExpense}</DialogTitle>
           <DialogDescription className="sr-only">{copy.dialogDescription}</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-3">
-          <Label>{copy.expenseCategory}</Label>
-          <Select value={form.category} onValueChange={(value) => setForm((current) => ({ ...current, category: value }))}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {expenseCategories.map((category) => (
-                <SelectItem key={category} value={category}>{category}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Label>{copy.description}</Label>
-          <Input value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} />
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="grid gap-2">
-              <Label>{copy.amountNet}</Label>
-              <Input inputMode="decimal" value={form.amountNet} onChange={(event) => setForm((current) => ({ ...current, amountNet: event.target.value }))} />
-            </div>
-            <div className="grid gap-2">
-              <Label>IVA</Label>
-              <Input inputMode="decimal" value={form.vatAmount} onChange={(event) => setForm((current) => ({ ...current, vatAmount: event.target.value }))} />
-            </div>
-            <div className="grid gap-2">
-              <Label>{copy.date}</Label>
-              <Input type="date" value={form.occurredAt} onChange={(event) => setForm((current) => ({ ...current, occurredAt: event.target.value }))} />
+        <DialogBody className="space-y-3">
+          <div className="grid gap-3">
+            <Label>{copy.expenseCategory}</Label>
+            <Select value={form.category} onValueChange={(value) => setForm((current) => ({ ...current, category: value }))}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {expenseCategories.map((category) => (
+                  <SelectItem key={category} value={category}>{category}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Label>{copy.description}</Label>
+            <Input value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-2">
+                <Label>{copy.amountNet}</Label>
+                <Input inputMode="decimal" value={form.amountNet} onChange={(event) => setForm((current) => ({ ...current, amountNet: event.target.value }))} />
+              </div>
+              <div className="grid gap-2">
+                <Label>IVA</Label>
+                <Input inputMode="decimal" value={form.vatAmount} onChange={(event) => setForm((current) => ({ ...current, vatAmount: event.target.value }))} />
+              </div>
+              <div className="grid gap-2">
+                <Label>{copy.date}</Label>
+                <Input type="date" value={form.occurredAt} onChange={(event) => setForm((current) => ({ ...current, occurredAt: event.target.value }))} />
+              </div>
             </div>
           </div>
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button type="button" disabled={isSaving || !form.description || !form.amountNet} onClick={submit}>
             {isSaving ? copy.saving : copy.save}
@@ -779,42 +782,44 @@ function SupplierPaymentDialog({
           {copy.addPayment}
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent scrollLayout="body" className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{copy.addPayment}</DialogTitle>
           <DialogDescription className="sr-only">{copy.dialogDescription}</DialogDescription>
         </DialogHeader>
-        <div className="grid gap-3">
-          <Label>{copy.batch}</Label>
-          <Select value={form.batchId} onValueChange={(value) => setForm((current) => ({ ...current, batchId: value }))}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder={copy.batchPlaceholder} />
-            </SelectTrigger>
-            <SelectContent>
-              {batchOptions.map((row) => (
-                <SelectItem key={row.batchId ?? row.id} value={row.batchId as string}>
-                  {[row.batchCode, row.supplierName, row.amountNet.toFixed(2)].filter(Boolean).join(" / ")}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <div className="grid gap-2">
-              <Label>{copy.amountNet}</Label>
-              <Input inputMode="decimal" value={form.amountNet} onChange={(event) => setForm((current) => ({ ...current, amountNet: event.target.value }))} />
+        <DialogBody className="space-y-3">
+          <div className="grid gap-3">
+            <Label>{copy.batch}</Label>
+            <Select value={form.batchId} onValueChange={(value) => setForm((current) => ({ ...current, batchId: value }))}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder={copy.batchPlaceholder} />
+              </SelectTrigger>
+              <SelectContent>
+                {batchOptions.map((row) => (
+                  <SelectItem key={row.batchId ?? row.id} value={row.batchId as string}>
+                    {[row.batchCode, row.supplierName, row.amountNet.toFixed(2)].filter(Boolean).join(" / ")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-2">
+                <Label>{copy.amountNet}</Label>
+                <Input inputMode="decimal" value={form.amountNet} onChange={(event) => setForm((current) => ({ ...current, amountNet: event.target.value }))} />
+              </div>
+              <div className="grid gap-2">
+                <Label>IVA</Label>
+                <Input inputMode="decimal" value={form.vatAmount} onChange={(event) => setForm((current) => ({ ...current, vatAmount: event.target.value }))} />
+              </div>
+              <div className="grid gap-2">
+                <Label>{copy.date}</Label>
+                <Input type="datetime-local" value={form.paidAt} onChange={(event) => setForm((current) => ({ ...current, paidAt: event.target.value }))} />
+              </div>
             </div>
-            <div className="grid gap-2">
-              <Label>IVA</Label>
-              <Input inputMode="decimal" value={form.vatAmount} onChange={(event) => setForm((current) => ({ ...current, vatAmount: event.target.value }))} />
-            </div>
-            <div className="grid gap-2">
-              <Label>{copy.date}</Label>
-              <Input type="datetime-local" value={form.paidAt} onChange={(event) => setForm((current) => ({ ...current, paidAt: event.target.value }))} />
-            </div>
+            <Label>{copy.note}</Label>
+            <Textarea value={form.note} onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))} />
           </div>
-          <Label>{copy.note}</Label>
-          <Textarea value={form.note} onChange={(event) => setForm((current) => ({ ...current, note: event.target.value }))} />
-        </div>
+        </DialogBody>
         <DialogFooter>
           <Button type="button" disabled={isSaving || !form.amountNet || !form.batchId} onClick={submit}>
             {isSaving ? copy.saving : copy.save}

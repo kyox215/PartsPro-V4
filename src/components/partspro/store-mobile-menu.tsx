@@ -153,7 +153,7 @@ export function StoreMobileMenu({
       <SheetContent
         ref={contentRef}
         side="left"
-        className="flex h-dvh w-[min(86vw,320px)] max-w-[320px] gap-0 overflow-hidden border-r bg-white p-0 text-slate-950"
+        className="flex h-dvh w-[min(86vw,320px,var(--overlay-width,100vw))] max-w-[320px] gap-0 overflow-hidden border-r bg-white p-0 text-slate-950"
         onOpenAutoFocus={(event) => {
           event.preventDefault();
           contentRef.current?.focus();

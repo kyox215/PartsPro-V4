@@ -36,6 +36,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -3638,7 +3639,7 @@ function OrderPaymentMethodCard({
   function renderPaymentDialog() {
     return (
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-[520px] rounded-lg bg-white">
+        <DialogContent scrollLayout="body" className="max-w-[520px] rounded-lg bg-white">
           <DialogHeader>
             <DialogTitle className="text-base font-black text-slate-950">
               {text.orders.paymentReconciliation}
@@ -3650,104 +3651,106 @@ function OrderPaymentMethodCard({
               })}
             </DialogDescription>
           </DialogHeader>
-          <form className="space-y-3" onSubmit={handleReconciliationSubmit}>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="min-w-0">
-                <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
-                  {text.orders.paymentStatus}
-                </span>
-                <Select
-                  value={statusDraft}
-                  onValueChange={(value) => setStatusDraft(normalizePaymentStatusValue(value))}
-                  disabled={!canReconcilePayment || isMutating}
-                >
-                  <SelectTrigger className="h-9 rounded-md border-slate-200 bg-white text-xs font-bold text-slate-900 sm:text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(["unpaid", "authorized", "paid", "refunded"] as PaymentStatus[]).map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {labels.payment[status]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
-              <label className="min-w-0">
-                <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
-                  {text.orders.details.paymentMethod}
-                </span>
-                <Select
-                  value={reconciliationMethodDraft}
-                  onValueChange={(value) => setReconciliationMethodDraft(normalizePaymentMethodValue(value))}
-                  disabled={!canReconcilePayment || isMutating}
-                >
-                  <SelectTrigger className="h-9 rounded-md border-slate-200 bg-white text-xs font-bold text-slate-900 sm:text-sm">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {paymentMethodOptions.map((paymentMethod) => (
-                      <SelectItem key={paymentMethod} value={paymentMethod}>
-                        {labels.paymentMethod[paymentMethod]}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </label>
-              <label className="min-w-0">
-                <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
-                  {text.orders.paymentReceivedAmount}
-                </span>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={amountDraft}
-                  onChange={(event) => setAmountDraft(event.target.value)}
-                  disabled={statusDraft !== "paid" || !canReconcilePayment || isMutating}
-                  className="h-9 rounded-md text-xs font-bold sm:text-sm"
-                />
-              </label>
-              <label className="min-w-0">
-                <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
-                  {text.orders.paymentReceivedAt}
-                </span>
-                <Input
-                  type="datetime-local"
-                  value={receivedAtDraft}
-                  onChange={(event) => setReceivedAtDraft(event.target.value)}
-                  disabled={statusDraft !== "paid" || !canReconcilePayment || isMutating}
-                  className="h-9 rounded-md text-xs font-bold sm:text-sm"
-                />
-              </label>
-            </div>
-            <label className="block min-w-0">
-              <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
-                {text.orders.paymentReference}
-              </span>
-              <Input
-                value={referenceDraft}
-                onChange={(event) => setReferenceDraft(event.target.value)}
-                disabled={!canReconcilePayment || isMutating}
-                className="h-9 rounded-md text-xs font-bold sm:text-sm"
-              />
-            </label>
-            <label className="block min-w-0">
-              <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
-                {text.orders.paymentNote}
-              </span>
-              <Textarea
-                value={noteDraft}
-                onChange={(event) => setNoteDraft(event.target.value)}
-                disabled={!canReconcilePayment || isMutating}
-                className="min-h-20 rounded-md text-xs font-bold sm:text-sm"
-              />
-            </label>
-            {requiresReversalNote && noteDraft.trim().length === 0 && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-semibold text-amber-700">
-                {text.orders.paymentReversalNoteRequired}
+          <form className="flex min-h-0 flex-1 flex-col gap-3" onSubmit={handleReconciliationSubmit}>
+            <DialogBody className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="min-w-0">
+                  <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                    {text.orders.paymentStatus}
+                  </span>
+                  <Select
+                    value={statusDraft}
+                    onValueChange={(value) => setStatusDraft(normalizePaymentStatusValue(value))}
+                    disabled={!canReconcilePayment || isMutating}
+                  >
+                    <SelectTrigger className="h-9 rounded-md border-slate-200 bg-white text-xs font-bold text-slate-900 sm:text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(["unpaid", "authorized", "paid", "refunded"] as PaymentStatus[]).map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {labels.payment[status]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+                <label className="min-w-0">
+                  <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                    {text.orders.details.paymentMethod}
+                  </span>
+                  <Select
+                    value={reconciliationMethodDraft}
+                    onValueChange={(value) => setReconciliationMethodDraft(normalizePaymentMethodValue(value))}
+                    disabled={!canReconcilePayment || isMutating}
+                  >
+                    <SelectTrigger className="h-9 rounded-md border-slate-200 bg-white text-xs font-bold text-slate-900 sm:text-sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {paymentMethodOptions.map((paymentMethod) => (
+                        <SelectItem key={paymentMethod} value={paymentMethod}>
+                          {labels.paymentMethod[paymentMethod]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+                <label className="min-w-0">
+                  <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                    {text.orders.paymentReceivedAmount}
+                  </span>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={amountDraft}
+                    onChange={(event) => setAmountDraft(event.target.value)}
+                    disabled={statusDraft !== "paid" || !canReconcilePayment || isMutating}
+                    className="h-9 rounded-md text-xs font-bold sm:text-sm"
+                  />
+                </label>
+                <label className="min-w-0">
+                  <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                    {text.orders.paymentReceivedAt}
+                  </span>
+                  <Input
+                    type="datetime-local"
+                    value={receivedAtDraft}
+                    onChange={(event) => setReceivedAtDraft(event.target.value)}
+                    disabled={statusDraft !== "paid" || !canReconcilePayment || isMutating}
+                    className="h-9 rounded-md text-xs font-bold sm:text-sm"
+                  />
+                </label>
               </div>
-            )}
+              <label className="block min-w-0">
+                <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                  {text.orders.paymentReference}
+                </span>
+                <Input
+                  value={referenceDraft}
+                  onChange={(event) => setReferenceDraft(event.target.value)}
+                  disabled={!canReconcilePayment || isMutating}
+                  className="h-9 rounded-md text-xs font-bold sm:text-sm"
+                />
+              </label>
+              <label className="block min-w-0">
+                <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                  {text.orders.paymentNote}
+                </span>
+                <Textarea
+                  value={noteDraft}
+                  onChange={(event) => setNoteDraft(event.target.value)}
+                  disabled={!canReconcilePayment || isMutating}
+                  className="min-h-20 rounded-md text-xs font-bold sm:text-sm"
+                />
+              </label>
+              {requiresReversalNote && noteDraft.trim().length === 0 && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-semibold text-amber-700">
+                  {text.orders.paymentReversalNoteRequired}
+                </div>
+              )}
+            </DialogBody>
             <DialogFooter>
               <Button
                 type="button"
@@ -4373,7 +4376,7 @@ function OrderLogisticsCard({
         </div>
       )}
       <Dialog open={shippingDialogOpen} onOpenChange={setShippingDialogOpen}>
-        <DialogContent className="max-w-[520px] rounded-lg bg-white">
+        <DialogContent scrollLayout="body" className="max-w-[520px] rounded-lg bg-white">
           <DialogHeader>
             <DialogTitle className="text-base font-black text-slate-950">
               {text.orders.adjustShipping}
@@ -4385,63 +4388,65 @@ function OrderLogisticsCard({
               })}
             </DialogDescription>
           </DialogHeader>
-          <form className="space-y-3" onSubmit={handleShippingAdjustmentSubmit}>
-            <div className="grid gap-2 rounded-md border border-slate-100 bg-slate-50/70 p-2 text-xs sm:grid-cols-3">
-              <InfoRow label={text.orders.currentShipping} value={formatEuro(order.shipping)} />
-              <InfoRow
-                label={text.orders.suggestedShipping}
-                value={formatEuro(shippingAdjustmentSuggestedAmount)}
-              />
-              <InfoRow
-                label={text.orders.newOrderTotal}
-                value={
-                  shippingAmountValue !== null
-                    ? formatEuro(roundMoney(order.total - order.shipping + shippingAmountValue))
-                    : text.common.none
-                }
-              />
-            </div>
-            <label className="block min-w-0">
-              <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
-                {text.orders.shippingAmount}
-              </span>
-              <Input
-                type="number"
-                min="0"
-                step="0.01"
-                value={shippingAmountDraft}
-                onChange={(event) => setShippingAmountDraft(event.target.value)}
-                disabled={!canAdjustShipping || isMutating}
-                className="h-9 rounded-md text-xs font-bold sm:text-sm"
-              />
-            </label>
-            <label className="block min-w-0">
-              <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
-                {text.orders.shippingAdjustmentReason}
-              </span>
-              <Input
-                value={shippingReasonDraft}
-                onChange={(event) => setShippingReasonDraft(event.target.value)}
-                disabled={!canAdjustShipping || isMutating}
-                className="h-9 rounded-md text-xs font-bold sm:text-sm"
-              />
-            </label>
-            <label className="block min-w-0">
-              <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
-                {text.orders.paymentNote}
-              </span>
-              <Textarea
-                value={shippingNoteDraft}
-                onChange={(event) => setShippingNoteDraft(event.target.value)}
-                disabled={!canAdjustShipping || isMutating}
-                className="min-h-20 rounded-md text-xs font-bold sm:text-sm"
-              />
-            </label>
-            {shippingReasonDraft.trim().length === 0 && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-semibold text-amber-700">
-                {text.orders.shippingAdjustmentReasonRequired}
+          <form className="flex min-h-0 flex-1 flex-col gap-3" onSubmit={handleShippingAdjustmentSubmit}>
+            <DialogBody className="space-y-3">
+              <div className="grid gap-2 rounded-md border border-slate-100 bg-slate-50/70 p-2 text-xs sm:grid-cols-3">
+                <InfoRow label={text.orders.currentShipping} value={formatEuro(order.shipping)} />
+                <InfoRow
+                  label={text.orders.suggestedShipping}
+                  value={formatEuro(shippingAdjustmentSuggestedAmount)}
+                />
+                <InfoRow
+                  label={text.orders.newOrderTotal}
+                  value={
+                    shippingAmountValue !== null
+                      ? formatEuro(roundMoney(order.total - order.shipping + shippingAmountValue))
+                      : text.common.none
+                  }
+                />
               </div>
-            )}
+              <label className="block min-w-0">
+                <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                  {text.orders.shippingAmount}
+                </span>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={shippingAmountDraft}
+                  onChange={(event) => setShippingAmountDraft(event.target.value)}
+                  disabled={!canAdjustShipping || isMutating}
+                  className="h-9 rounded-md text-xs font-bold sm:text-sm"
+                />
+              </label>
+              <label className="block min-w-0">
+                <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                  {text.orders.shippingAdjustmentReason}
+                </span>
+                <Input
+                  value={shippingReasonDraft}
+                  onChange={(event) => setShippingReasonDraft(event.target.value)}
+                  disabled={!canAdjustShipping || isMutating}
+                  className="h-9 rounded-md text-xs font-bold sm:text-sm"
+                />
+              </label>
+              <label className="block min-w-0">
+                <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                  {text.orders.paymentNote}
+                </span>
+                <Textarea
+                  value={shippingNoteDraft}
+                  onChange={(event) => setShippingNoteDraft(event.target.value)}
+                  disabled={!canAdjustShipping || isMutating}
+                  className="min-h-20 rounded-md text-xs font-bold sm:text-sm"
+                />
+              </label>
+              {shippingReasonDraft.trim().length === 0 && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-semibold text-amber-700">
+                  {text.orders.shippingAdjustmentReasonRequired}
+                </div>
+              )}
+            </DialogBody>
             <DialogFooter>
               <Button
                 type="button"
@@ -4682,13 +4687,14 @@ function OrderLines({
         </Table>
       </div>
       <Dialog open={editingLine !== null} onOpenChange={(open) => !open && setEditingLine(null)}>
-        <DialogContent className="max-w-[calc(100vw-1.5rem)] rounded-lg bg-white sm:max-w-md">
+        <DialogContent scrollLayout="body" className="max-w-[calc(100vw-1.5rem)] rounded-lg bg-white sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-base font-black">登记缺货数量</DialogTitle>
             <DialogDescription>
               默认全部有货并按订购数量打包。只有实际缺货或少给时，填写实际给货数量和原因。
             </DialogDescription>
           </DialogHeader>
+        <DialogBody className="space-y-3">
           {editingLine ? (
             <div className="space-y-3">
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
@@ -4732,7 +4738,8 @@ function OrderLines({
               </div>
             </div>
           ) : null}
-          <DialogFooter>
+        </DialogBody>
+        <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setEditingLine(null)}>
               {text.common.cancel}
             </Button>

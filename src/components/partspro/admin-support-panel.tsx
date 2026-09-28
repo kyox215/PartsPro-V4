@@ -1095,7 +1095,7 @@ function MobileSupportDetail({
 
   return (
     <>
-      <div className="border-b border-slate-200 p-3 pr-12">
+      <div className="shrink-0 border-b border-slate-200 p-3 pr-12">
         <SheetTitle className="truncate text-base font-black leading-6">
           {title}
         </SheetTitle>
@@ -1261,7 +1261,7 @@ function MobileSupportDetail({
       </Tabs>
 
       {detailView === "messages" ? (
-        <form className="border-t border-slate-200 bg-white p-2" onSubmit={onSendReply}>
+        <form className="shrink-0 border-t border-slate-200 bg-white p-2" onSubmit={onSendReply}>
           <Textarea
             value={reply}
             className="max-h-24 min-h-12 resize-none bg-white text-sm"

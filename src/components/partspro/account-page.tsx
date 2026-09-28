@@ -16,7 +16,6 @@ import {
   Plus,
   RotateCcw,
   WalletCards,
-  X,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,6 +23,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -358,7 +358,7 @@ export function AccountPage({
         </section>
 
         <Dialog open={orderDetailOpen} onOpenChange={setOrderDetailOpen}>
-          <DialogContent className="max-h-[90vh] overflow-y-auto rounded-lg sm:max-w-3xl">
+          <DialogContent className="rounded-lg sm:max-w-3xl">
             <DialogHeader>
               <DialogTitle>
                 {orderDetail?.number ?? orderDetail?.id ?? "订单详情"}
@@ -1203,6 +1203,7 @@ function AccountProfileDialog({
   const [error, setError] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const wasOpenRef = React.useRef(open);
+  const openerRef = React.useRef<HTMLElement | null>(null);
 
   React.useEffect(() => {
     if (open && !wasOpenRef.current) {
@@ -1306,143 +1307,131 @@ function AccountProfileDialog({
   }
 
   return (
-    <div className="fixed inset-0 z-50">
-      <button
-        type="button"
-        aria-label="关闭"
-        className="absolute inset-0 bg-black/10 backdrop-blur-xs"
-        onClick={() => onOpenChange(false)}
-      />
-      <div
-        aria-labelledby="account-profile-title"
-        aria-modal="true"
-        className="fixed left-1/2 top-1/2 grid max-h-[90vh] w-[calc(100%-2rem)] max-w-3xl -translate-x-1/2 -translate-y-1/2 gap-3 overflow-y-auto rounded-lg bg-white p-4 text-sm text-slate-950 shadow-2xl ring-1 ring-slate-200"
-        role="dialog"
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        scrollLayout="body"
+        className="rounded-lg sm:max-w-3xl"
+        onOpenAutoFocus={() => {
+          openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        }}
+        onCloseAutoFocus={(event) => {
+          if (openerRef.current?.isConnected) {
+            event.preventDefault();
+            openerRef.current.focus();
+          }
+        }}
       >
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="absolute right-2 top-2"
-          aria-label="关闭"
-          onClick={() => onOpenChange(false)}
-        >
-          <X className="size-4" />
-        </Button>
-        <div className="flex flex-col gap-2 pr-10">
-          <h2 id="account-profile-title" className="text-base font-black">
-            完善个人中心资料
-          </h2>
-          <p className="text-sm text-slate-500">
-            这些资料用于账户、订单、税务和配送。
-          </p>
-        </div>
-        <form className="space-y-3" onSubmit={submitProfile}>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <ProfileInput
-              field="companyName"
-              label="客户名称"
-              required
-              value={form.companyName}
-              onChange={updateField}
-            />
-            <ProfileInput
-              field="contactName"
-              label="微信号码 / WhatsApp 号码"
-              value={form.contactName}
-              onChange={updateField}
-            />
-            <ProfileInput
-              field="email"
-              label="邮箱"
-              disabled
-              required
-              type="email"
-              value={form.email}
-              onChange={updateField}
-            />
-            <ProfileInput
-              field="phone"
-              label="电话"
-              required
-              value={form.phone}
-              onChange={updateField}
-            />
-            <ProfileInput
-              field="fiscalCode"
-              label="税号"
-              required
-              value={form.fiscalCode}
-              onChange={updateField}
-            />
-            <ProfileInput
-              field="pec"
-              label="PEC"
-              type="email"
-              value={form.pec}
-              onChange={updateField}
-            />
-          </div>
-
-          <div className="space-y-3">
-            <AddressFields
-              title="配送地址"
-              addressKey="shippingAddress"
-              value={form.shippingAddress}
-              onChange={updateAddressField}
-            />
-            <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
-              <Checkbox
-                className="mt-0.5"
-                checked={form.billingSameAsShipping}
-                onCheckedChange={(checked) => updateBillingSameAsShipping(Boolean(checked))}
+        <DialogHeader>
+          <DialogTitle>完善个人中心资料</DialogTitle>
+          <DialogDescription>这些资料用于账户、订单、税务和配送。</DialogDescription>
+        </DialogHeader>
+        <DialogBody>
+          <form id="account-profile-form" className="space-y-3" onSubmit={submitProfile}>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ProfileInput
+                field="companyName"
+                label="客户名称"
+                required
+                value={form.companyName}
+                onChange={updateField}
               />
-              <span>账单地址跟配送地址一样</span>
-            </label>
-            {!form.billingSameAsShipping ? (
+              <ProfileInput
+                field="contactName"
+                label="微信号码 / WhatsApp 号码"
+                value={form.contactName}
+                onChange={updateField}
+              />
+              <ProfileInput
+                field="email"
+                label="邮箱"
+                disabled
+                required
+                type="email"
+                value={form.email}
+                onChange={updateField}
+              />
+              <ProfileInput
+                field="phone"
+                label="电话"
+                required
+                value={form.phone}
+                onChange={updateField}
+              />
+              <ProfileInput
+                field="fiscalCode"
+                label="税号"
+                required
+                value={form.fiscalCode}
+                onChange={updateField}
+              />
+              <ProfileInput
+                field="pec"
+                label="PEC"
+                type="email"
+                value={form.pec}
+                onChange={updateField}
+              />
+            </div>
+
+            <div className="space-y-3">
               <AddressFields
-                title="账单地址"
-                addressKey="billingAddress"
-                value={form.billingAddress}
+                title="配送地址"
+                addressKey="shippingAddress"
+                value={form.shippingAddress}
                 onChange={updateAddressField}
               />
-            ) : null}
-          </div>
-
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs font-semibold leading-5 text-blue-800">
-            税号、电话和详细地址用于订单与配送；微信或 WhatsApp 可留空。保存后资料会保持审核状态，直到管理员分配客户类型和等级。
-          </div>
-
-          {error ? (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
-              {error}
+              <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
+                <Checkbox
+                  className="mt-0.5"
+                  checked={form.billingSameAsShipping}
+                  onCheckedChange={(checked) => updateBillingSameAsShipping(Boolean(checked))}
+                />
+                <span>账单地址跟配送地址一样</span>
+              </label>
+              {!form.billingSameAsShipping ? (
+                <AddressFields
+                  title="账单地址"
+                  addressKey="billingAddress"
+                  value={form.billingAddress}
+                  onChange={updateAddressField}
+                />
+              ) : null}
             </div>
-          ) : null}
 
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              className="bg-white"
-              disabled={saving}
-              onClick={() => onOpenChange(false)}
-            >
-              取消
-            </Button>
-            <Button type="submit" disabled={saving}>
-              {saving ? (
-                <>
-                  <Loader2 className="size-4 animate-spin" />
-                  保存中
-                </>
-              ) : (
-                "保存资料"
-              )}
-            </Button>
-          </DialogFooter>
-        </form>
-      </div>
-    </div>
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs font-semibold leading-5 text-blue-800">
+              税号、电话和详细地址用于订单与配送；微信或 WhatsApp 可留空。保存后资料会保持审核状态，直到管理员分配客户类型和等级。
+            </div>
+
+            {error ? (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
+                {error}
+              </div>
+            ) : null}
+          </form>
+        </DialogBody>
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            className="bg-white"
+            disabled={saving}
+            onClick={() => onOpenChange(false)}
+          >
+            取消
+          </Button>
+          <Button type="submit" form="account-profile-form" disabled={saving}>
+            {saving ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                保存中
+              </>
+            ) : (
+              "保存资料"
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

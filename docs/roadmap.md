@@ -94,3 +94,11 @@ Last reviewed: 2026-09-28
 - 2026-09-26 生产应用记录：用户针对本次清单明确回复“批准”。重新核验 project ref/name、无远端分歧且 dry-run 仅本条后执行 `SUPABASE_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 supabase db push --linked` 成功。迁移 SHA-256：`85743b5d5ec795053186c5359407154c77b6d7ab37696b1e450ba536c811c507`。
 - 应用后核验：本地/远端 `20260926110808` 一致，再次 dry-run 为 `Remote database is up to date`；v4 capability 返回 ready=true / rma-workflow-v4；12 个新增 RMA 字段、定价触发器、未取消换货唯一索引、旧 v3 QC 守卫及冻结税基函数均存在。新 public RPC 禁止 anon，private helper 禁止 anon/authenticated，search_path 固定。安全 advisor 的 authenticated SECURITY DEFINER 提示按已审查的函数内身份/权限门控制；其他原有提示未在本次扩大修改。仅做结构和只读验证，未创建真实退款/订单或调整库存。
 - 2026-09-26 发布记录：工作区先变基到 production 当前 `main` 的 `5e14141`，并剔除了已被该分支删除的旧结算功能提交。Vercel production deployment `dpl_7dGhHA5gHQQ7ghMK4uSszDgXDgyX` 状态 READY，别名为 `www.partspro.app` 与 `partspro.app`。上线后的 `/` 与 `/rma` 返回 200，未认证 `/api/rma` 正确返回 401；发布后 30 分钟生产 runtime 无 error/fatal 日志。
+
+## 2026-09-28 手机弹层修复发布
+
+- 发布分支 `codex/mobile-overlay-fix-20260928`，基于已上线账号价格版本 `861c26e`。Vercel 当前基线 `dpl_9gWPU9yQ6UXtQcj1dmdphjFUqHJk` 的 357 个源码/资源/配置 SHA1 与该基线全部一致；本次只提取弹层布局、滚动与校验提示，无新增 migration、API 或业务规则变化。
+- 公共 Dialog/AlertDialog/Sheet 适配动态视口和短屏，客户、订单、财务、库存表单正文可滚动，按钮可达；保留线上新版菜单、供应商费用及售后功能。导入/运输费用底栏负边距溢出一并修复。
+- 隔离发布源码验证：全量 lint/build、6 项 storefront 和 35 项账号价格/运输 UI 合同测试通过；真实组件＋模拟 API 的 91 项浏览器检查通过。旧运输 UI 测试的客服偏移调用断言更新为线上已有的购物车/checkout 限定行为，未改客服逻辑。独立发布专项审查通过。
+- 证据 `outputs/overlay-ui/2026-09-28/browser-result.json`。构建使用与发布 lockfile 同版本的既有依赖（主目录额外 analytics 包未被本分支引用或部署）。真实 iPhone Safari 软键盘未实机验证。
+- 用户已授权推送部署上线。候选部署及正式域名切换验证结果在发布完成后补记；回退目标为上述当前生产部署。

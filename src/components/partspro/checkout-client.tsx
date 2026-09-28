@@ -29,6 +29,7 @@ import {
   Dialog,
   DialogClose,
   DialogContent,
+  DialogBody,
   DialogDescription,
   DialogHeader,
   DialogTitle,
@@ -2074,8 +2075,8 @@ function CheckoutSuccessDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[calc(100vw-1.5rem)] gap-0 overflow-hidden p-0 sm:max-w-md">
-        <div className="bg-emerald-50 px-4 pt-5 pb-4 text-emerald-950 sm:px-5">
+      <DialogContent scrollLayout="body" className="max-w-[calc(100vw-1.5rem)] gap-0 overflow-hidden p-0 sm:max-w-md">
+        <div className="shrink-0 bg-emerald-50 px-4 pt-5 pb-4 text-emerald-950 sm:px-5">
           <DialogHeader className="pr-9">
             <div className="mb-1 flex size-11 items-center justify-center rounded-full bg-emerald-600 text-white">
               <CheckCircle2 className="size-6" />
@@ -2089,7 +2090,7 @@ function CheckoutSuccessDialog({
           </DialogHeader>
         </div>
 
-        <div className="space-y-3 bg-white px-4 py-4 sm:px-5">
+        <DialogBody className="space-y-3 bg-white px-4 py-4 sm:px-5">
           <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div className="text-xs font-bold uppercase tracking-normal text-slate-500">
               {tx(t, "storefront.checkout.success.orderNumber", "Numero ordine")}
@@ -2125,9 +2126,9 @@ function CheckoutSuccessDialog({
               />
             </div>
           ) : null}
-        </div>
+        </DialogBody>
 
-        <div className="grid gap-2 bg-slate-50 p-3 sm:grid-cols-3">
+        <div className="grid shrink-0 gap-2 bg-slate-50 p-3 sm:grid-cols-3">
           <DialogClose asChild>
             <Button variant="outline" className="sm:order-first">
               {tx(t, "storefront.common.close", "Chiudi")}

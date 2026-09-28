@@ -177,3 +177,80 @@
     }
   }
 }
+
+/* Portal-local viewport bounds include the iOS keyboard and browser chrome.
+   Keep these safety limits outside Tailwind layers so caller sizing cannot
+   accidentally put an action outside the visible viewport. */
+[data-overlay-viewport] {
+  display: contents;
+  --overlay-height: 100dvh;
+  --overlay-width: 100vw;
+  --overlay-top: 0px;
+  --overlay-left: 0px;
+  --overlay-gap-top: max(0.75rem, env(safe-area-inset-top));
+  --overlay-gap-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+[data-overlay-viewport] > :is([data-slot="dialog-content"], [data-slot="alert-dialog-content"]) {
+  top: calc(var(--overlay-top) + (var(--overlay-height) + var(--overlay-gap-top) - var(--overlay-gap-bottom)) / 2);
+  left: calc(var(--overlay-left) + var(--overlay-width) / 2);
+  width: calc(var(--overlay-width) - 2 * max(1rem, env(safe-area-inset-left), env(safe-area-inset-right)));
+  max-height: max(1px, calc(var(--overlay-height) - var(--overlay-gap-top) - var(--overlay-gap-bottom)));
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+}
+
+[data-slot="dialog-content"][data-scroll-layout="body"] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+[data-slot="dialog-content"] > *,
+[data-slot="alert-dialog-content"] > *,
+[data-slot="sheet-content"] > * {
+  min-width: 0;
+}
+
+[data-slot="dialog-body"] {
+  /* Leave room for input focus rings at the scrolling edges. */
+  scroll-padding-block: 1rem;
+}
+
+[data-overlay-viewport] > [data-slot="sheet-content"] {
+  max-height: var(--overlay-height);
+  padding-bottom: env(safe-area-inset-bottom);
+  overflow-wrap: anywhere;
+}
+
+[data-overlay-viewport] > [data-slot="sheet-content"]:is([data-side="left"], [data-side="right"]) {
+  top: var(--overlay-top);
+  bottom: auto;
+  height: var(--overlay-height);
+  padding-top: env(safe-area-inset-top);
+}
+
+[data-overlay-viewport] > [data-slot="sheet-content"][data-side="top"] {
+  top: var(--overlay-top);
+}
+
+[data-overlay-viewport] > [data-slot="sheet-content"][data-side="bottom"] {
+  bottom: calc(100% - var(--overlay-top) - var(--overlay-height));
+}
+
+/* With a keyboard or a short landscape viewport, keeping large headers and
+   footers fixed can leave no body space. Fall back to one complete scroller. */
+[data-overlay-viewport][data-compact="true"] > :is([data-slot="dialog-content"], [data-slot="sheet-content"]) {
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+[data-overlay-viewport][data-compact="true"] > [data-slot="dialog-content"] {
+  display: flex;
+}
+
+[data-overlay-viewport][data-compact="true"] > :is([data-slot="dialog-content"], [data-slot="sheet-content"]) > :not([data-slot="dialog-close"], [data-slot="sheet-close"]) {
+  flex: 0 0 auto;
+  max-height: none;
+  overflow-y: visible;
+}

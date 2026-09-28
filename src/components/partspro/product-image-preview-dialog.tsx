@@ -33,7 +33,7 @@ export function ProductImagePreviewDialog({
             {productName}
           </DialogTitle>
         </DialogHeader>
-        <div className="relative h-[min(72vh,620px)] min-h-[280px] overflow-hidden rounded-lg bg-slate-50">
+        <div className="relative h-[min(65dvh,620px)] overflow-hidden rounded-lg bg-slate-50">
           <Image
             src={imageUrl}
             alt={imageAlt}

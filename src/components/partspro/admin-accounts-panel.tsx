@@ -30,6 +30,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
+  DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -2183,57 +2184,62 @@ function AccountActionDialog({
 
   return (
     <Dialog open={Boolean(conversion)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent scrollLayout="body" className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        {conversion ? (
-          <div className="space-y-3">
-            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
-              <div className="font-black text-slate-900">
-                {conversion.account.displayName ?? conversion.account.email ?? conversion.account.userId}
+        <DialogBody>
+          {conversion ? (
+            <div className="space-y-3">
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                <div className="font-black text-slate-900">
+                  {conversion.account.displayName ?? conversion.account.email ?? conversion.account.userId}
+                </div>
+                <div className="mt-1 break-words text-xs text-slate-500">
+                  {conversion.account.email ?? conversion.account.userId}
+                </div>
               </div>
-              <div className="mt-1 break-words text-xs text-slate-500">
-                {conversion.account.email ?? conversion.account.userId}
-              </div>
-            </div>
-            {conversion.kind !== "to_customer" ? (
+              {conversion.kind !== "to_customer" ? (
+                <div className="space-y-1.5">
+                  <Label>员工角色</Label>
+                  <Select
+                    value={conversion.roleTemplate}
+                    onValueChange={(value) =>
+                      onChange({ ...conversion, roleTemplate: value })
+                    }
+                  >
+                    <SelectTrigger className="bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(roleTemplates.length > 0
+                        ? roleTemplates
+                        : [{ id: "sales_support", label: "销售支持", permissions: [], description: null }]
+                      ).map((roleTemplate) => (
+                        <SelectItem key={roleTemplate.id} value={roleTemplate.id}>
+                          {roleTemplateLabel(text, roleTemplate.id, roleTemplate.label)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
               <div className="space-y-1.5">
-                <Label>员工角色</Label>
-                <Select
-                  value={conversion.roleTemplate}
-                  onValueChange={(value) =>
-                    onChange({ ...conversion, roleTemplate: value })
-                  }
-                >
-                  <SelectTrigger className="bg-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(roleTemplates.length > 0
-                      ? roleTemplates
-                      : [{ id: "sales_support", label: "销售支持", permissions: [], description: null }]
-                    ).map((roleTemplate) => (
-                      <SelectItem key={roleTemplate.id} value={roleTemplate.id}>
-                        {roleTemplateLabel(text, roleTemplate.id, roleTemplate.label)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="conversion-reason">变更原因</Label>
+                <Textarea
+                  id="conversion-reason"
+                  aria-describedby="conversion-reason-hint"
+                  value={conversion.reason}
+                  onChange={(event) => onChange({ ...conversion, reason: event.target.value })}
+                  placeholder="说明业务原因，便于审计追踪"
+                  rows={4}
+                />
+                <p id="conversion-reason-hint" className="text-xs text-slate-500">至少填写 3 个字，去除首尾空格后计算。</p>
               </div>
-            ) : null}
-            <div className="space-y-1.5">
-              <Label>变更原因</Label>
-              <Textarea
-                value={conversion.reason}
-                onChange={(event) => onChange({ ...conversion, reason: event.target.value })}
-                placeholder="说明业务原因，便于审计追踪"
-                rows={4}
-              />
             </div>
-          </div>
-        ) : null}
+          ) : null}
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={submitting}>
             取消
@@ -2279,102 +2285,110 @@ function CustomerAccountActionDialog({
 
   return (
     <Dialog open={Boolean(action)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent scrollLayout="body" className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        {action ? (
-          <div className="space-y-3">
-            <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
-              <div className="font-black text-slate-900">
-                {action.targetCustomer.name ?? action.account.displayName ?? action.account.email ?? action.account.userId}
-              </div>
-              <div className="mt-1 break-words text-xs text-slate-500">
-                {scopeLabel} · {action.targetCustomer.email ?? action.account.email ?? action.account.userId}
-              </div>
-            </div>
-            {action.kind === "customer_level" ? (
-              <div className="space-y-1.5">
-                <Label>客户等级</Label>
-                <Select
-                  value={action.level}
-                  onValueChange={(value) =>
-                    onChange({ ...action, level: value === "automatic" ? "automatic" : normalizeCustomerLevel(value) })
-                  }
-                >
-                  <SelectTrigger className="bg-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="automatic">恢复消费自动等级</SelectItem>
-                    {customerLevels.map((level) => (
-                      <SelectItem key={level} value={level}>
-                        {customerLevelOptionLabel(level)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <div className="text-xs font-semibold text-slate-500">
-                  {action.level === "automatic" ? "恢复消费等级作为基础，有效促销继续取高。" : `基础等级减价：每件减 ${customerLevelDiscountLabel(action.level)}；有效促销只提升，不降低。`}
+        <DialogBody>
+          {action ? (
+            <div className="space-y-3">
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                <div className="font-black text-slate-900">
+                  {action.targetCustomer.name ?? action.account.displayName ?? action.account.email ?? action.account.userId}
+                </div>
+                <div className="mt-1 break-words text-xs text-slate-500">
+                  {scopeLabel} · {action.targetCustomer.email ?? action.account.email ?? action.account.userId}
                 </div>
               </div>
-            ) : action.kind === "customer_type" ? (
+              {action.kind === "customer_level" ? (
+                <div className="space-y-1.5">
+                  <Label>客户等级</Label>
+                  <Select
+                    value={action.level}
+                    onValueChange={(value) =>
+                      onChange({ ...action, level: value === "automatic" ? "automatic" : normalizeCustomerLevel(value) })
+                    }
+                  >
+                    <SelectTrigger className="bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="automatic">恢复消费自动等级</SelectItem>
+                      {customerLevels.map((level) => (
+                        <SelectItem key={level} value={level}>
+                          {customerLevelOptionLabel(level)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="text-xs font-semibold text-slate-500">
+                    {action.level === "automatic" ? "恢复消费等级作为基础，有效促销继续取高。" : `基础等级减价：每件减 ${customerLevelDiscountLabel(action.level)}；有效促销只提升，不降低。`}
+                  </div>
+                </div>
+              ) : action.kind === "customer_type" ? (
+                <div className="space-y-1.5">
+                  <Label>价格类型</Label>
+                  <Select
+                    value={action.customerType}
+                    onValueChange={(value) =>
+                      onChange({ ...action, customerType: normalizeCustomerType(value) })
+                    }
+                  >
+                    <SelectTrigger className="bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {customerTypes.map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {customerTypeLabel(type)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <Label>活跃状态</Label>
+                  <Select
+                    value={action.status}
+                    onValueChange={(value) =>
+                      onChange({ ...action, status: normalizeCustomerStatus(value) })
+                    }
+                  >
+                    <SelectTrigger className="bg-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {customerStatuses.map((status) => (
+                        <SelectItem key={status} value={status}>
+                          {customerStatusLabel(status)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <p className="text-xs text-slate-600">基础等级：{action.targetCustomer.baseLevel}（{action.targetCustomer.levelSource === "manual" ? "人工" : "自动"}）；有效等级：{action.targetCustomer.level}。{action.targetCustomer.promoLevelExpiresAt ? `促销到期：${new Date(action.targetCustomer.promoLevelExpiresAt).toLocaleString()}` : ""}</p>
+              {action.kind === "customer_type" && action.targetCustomer.id ? <ClassificationPricePreview key={`${action.targetCustomer.id}:${action.customerType}`} customerId={action.targetCustomer.id} customerType={action.customerType} onReady={setPreviewScope} /> : null}
+              {action.kind === "customer_type" && previewScope !== `${action.targetCustomer.id}:${action.customerType}` ? (
+                <p role="status" className="text-xs text-amber-700">请先完成价格变更影响预览，再保存。</p>
+              ) : null}
               <div className="space-y-1.5">
-                <Label>价格类型</Label>
-                <Select
-                  value={action.customerType}
-                  onValueChange={(value) =>
-                    onChange({ ...action, customerType: normalizeCustomerType(value) })
-                  }
-                >
-                  <SelectTrigger className="bg-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customerTypes.map((type) => (
-                      <SelectItem key={type} value={type}>
-                        {customerTypeLabel(type)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Label htmlFor="action-reason">变更原因</Label>
+                <Textarea
+                  id="action-reason"
+                  aria-describedby="action-reason-hint"
+                  value={action.reason}
+                  onChange={(event) => onChange({ ...action, reason: event.target.value })}
+                  placeholder="说明业务原因，便于审计追踪"
+                  rows={4}
+                />
+                <p id="action-reason-hint" className="text-xs text-slate-500">至少填写 3 个字，去除首尾空格后计算。</p>
               </div>
-            ) : (
-              <div className="space-y-1.5">
-                <Label>活跃状态</Label>
-                <Select
-                  value={action.status}
-                  onValueChange={(value) =>
-                    onChange({ ...action, status: normalizeCustomerStatus(value) })
-                  }
-                >
-                  <SelectTrigger className="bg-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customerStatuses.map((status) => (
-                      <SelectItem key={status} value={status}>
-                        {customerStatusLabel(status)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            <p className="text-xs text-slate-600">基础等级：{action.targetCustomer.baseLevel}（{action.targetCustomer.levelSource === "manual" ? "人工" : "自动"}）；有效等级：{action.targetCustomer.level}。{action.targetCustomer.promoLevelExpiresAt ? `促销到期：${new Date(action.targetCustomer.promoLevelExpiresAt).toLocaleString()}` : ""}</p>
-            {action.kind === "customer_type" && action.targetCustomer.id ? <ClassificationPricePreview key={`${action.targetCustomer.id}:${action.customerType}`} customerId={action.targetCustomer.id} customerType={action.customerType} onReady={setPreviewScope} /> : null}
-            <div className="space-y-1.5">
-              <Label>变更原因</Label>
-              <Textarea
-                value={action.reason}
-                onChange={(event) => onChange({ ...action, reason: event.target.value })}
-                placeholder="说明业务原因，便于审计追踪"
-                rows={4}
-              />
             </div>
-          </div>
-        ) : null}
+          ) : null}
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={submitting}>
             取消
@@ -2422,7 +2436,7 @@ function AccountProfileEditorDialog({
 
   return (
     <Dialog open={Boolean(editor)} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent scrollLayout="body" className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
             {editor?.account.accountType === "employee" ? "编辑员工自购资料" : "编辑客户个人中心资料"}
@@ -2431,77 +2445,83 @@ function AccountProfileEditorDialog({
             这些资料用于账号、订单、发票和配送；邮箱来自登录账号，不能在这里修改。
           </DialogDescription>
         </DialogHeader>
-        {editor ? (
-          <form
-            className="space-y-3"
-            onSubmit={(event) => {
-              event.preventDefault();
-              onSubmit();
-            }}
-          >
-            <div className="grid gap-3 sm:grid-cols-2">
-              <ProfileEditorInput field="companyName" label="客户名称" required value={editor.companyName} onChange={onChange} />
-              <ProfileEditorInput field="contactName" label="微信号码 / WhatsApp 号码" value={editor.contactName} onChange={onChange} />
-              <div className="space-y-1.5">
-                <Label htmlFor="admin-profile-editor-email" className="text-xs font-black text-slate-500">
-                  邮箱 *
-                </Label>
-                <Input id="admin-profile-editor-email" disabled type="email" value={editor.email} />
+        <DialogBody>
+          {editor ? (
+            <form
+              id="admin-profile-editor-form"
+              className="space-y-3"
+              onSubmit={(event) => {
+                event.preventDefault();
+                onSubmit();
+              }}
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <ProfileEditorInput field="companyName" label="客户名称" required value={editor.companyName} onChange={onChange} />
+                <ProfileEditorInput field="contactName" label="微信号码 / WhatsApp 号码" value={editor.contactName} onChange={onChange} />
+                <div className="space-y-1.5">
+                  <Label htmlFor="admin-profile-editor-email" className="text-xs font-black text-slate-500">
+                    邮箱 *
+                  </Label>
+                  <Input id="admin-profile-editor-email" disabled type="email" value={editor.email} />
+                </div>
+                <ProfileEditorInput field="phone" label="电话" required value={editor.phone} onChange={onChange} />
+                <ProfileEditorInput field="fiscalCode" label="税号" required value={editor.fiscalCode} onChange={onChange} />
+                <ProfileEditorInput field="pec" label="PEC" value={editor.pec} onChange={onChange} />
               </div>
-              <ProfileEditorInput field="phone" label="电话" required value={editor.phone} onChange={onChange} />
-              <ProfileEditorInput field="fiscalCode" label="税号" required value={editor.fiscalCode} onChange={onChange} />
-              <ProfileEditorInput field="pec" label="PEC" value={editor.pec} onChange={onChange} />
-            </div>
 
-            <AddressDraftFields
-              addressKey="shippingAddress"
-              idPrefix="admin-profile-editor"
-              title="配送地址"
-              value={editor.shippingAddress}
-              onChange={onAddressChange}
-            />
-            <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
-              <Checkbox
-                className="mt-0.5"
-                checked={editor.billingSameAsShipping}
-                onCheckedChange={(checked) => onBillingSameAsShippingChange(Boolean(checked))}
-              />
-              <span>账单地址跟配送地址一样</span>
-            </label>
-            {!editor.billingSameAsShipping ? (
               <AddressDraftFields
-                addressKey="billingAddress"
+                addressKey="shippingAddress"
                 idPrefix="admin-profile-editor"
-                title="账单地址"
-                value={editor.billingAddress}
+                title="配送地址"
+                value={editor.shippingAddress}
                 onChange={onAddressChange}
               />
-            ) : null}
+              <label className="flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
+                <Checkbox
+                  className="mt-0.5"
+                  checked={editor.billingSameAsShipping}
+                  onCheckedChange={(checked) => onBillingSameAsShippingChange(Boolean(checked))}
+                />
+                <span>账单地址跟配送地址一样</span>
+              </label>
+              {!editor.billingSameAsShipping ? (
+                <AddressDraftFields
+                  addressKey="billingAddress"
+                  idPrefix="admin-profile-editor"
+                  title="账单地址"
+                  value={editor.billingAddress}
+                  onChange={onAddressChange}
+                />
+              ) : null}
 
-            <div className="space-y-1.5">
-              <Label htmlFor="admin-profile-editor-reason" className="text-xs font-black text-slate-500">
-                变更原因 *
-              </Label>
-              <Textarea
-                id="admin-profile-editor-reason"
-                value={editor.reason}
-                onChange={(event) => onChange("reason", event.target.value)}
-                placeholder="说明业务原因，便于审计追踪"
-                rows={3}
-              />
-            </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="admin-profile-editor-reason" className="text-xs font-black text-slate-500">
+                  变更原因 *
+                </Label>
+                <Textarea
+                  id="admin-profile-editor-reason"
+                  aria-describedby="admin-profile-editor-reason-hint"
+                  value={editor.reason}
+                  onChange={(event) => onChange("reason", event.target.value)}
+                  placeholder="说明业务原因，便于审计追踪"
+                  rows={3}
+                />
+                <p id="admin-profile-editor-reason-hint" className="text-xs text-slate-500">至少填写 3 个字，去除首尾空格后计算。</p>
+              </div>
 
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
-                取消
-              </Button>
-              <Button type="submit" disabled={!canSubmit || submitting}>
-                {submitting ? <Loader2 className="size-4 animate-spin" /> : <BadgeCheck className="size-4" />}
-                保存资料
-              </Button>
-            </DialogFooter>
-          </form>
-        ) : null}
+              {!canSubmit ? <p role="status" className="text-xs text-amber-700">请补全客户名称、电话、税号、配送地址和账单地址，并填写至少 3 个字的变更原因。</p> : null}
+            </form>
+          ) : null}
+        </DialogBody>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+            取消
+          </Button>
+          <Button type="submit" form="admin-profile-editor-form" disabled={!canSubmit || submitting}>
+            {submitting ? <Loader2 className="size-4 animate-spin" /> : <BadgeCheck className="size-4" />}
+            保存资料
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );

@@ -704,7 +704,7 @@ function AdminTopbar({
               <Menu className="size-4" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="w-[310px] p-0">
+          <SheetContent side="left" className="w-[min(310px,var(--overlay-width,100vw))] gap-0 overflow-hidden p-0">
             <SheetHeader className="border-b px-5 py-4 text-left">
               <SheetTitle>
                 <PartsProLogo />
@@ -713,7 +713,7 @@ function AdminTopbar({
                 {text.topbar.mobileNavigationDescription}
               </SheetDescription>
             </SheetHeader>
-            <div className="p-4">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4">
               <div className="mb-3 flex min-w-0 items-center gap-2">
                 <Link
                   href="/"

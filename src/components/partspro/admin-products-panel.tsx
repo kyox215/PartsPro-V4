@@ -45,6 +45,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
+  DialogBody,
   DialogDescription,
   DialogFooter,
   DialogHeader,
@@ -3805,7 +3806,7 @@ function SupplierBatchDetailSheet({
       <SheetContent
         side="right"
         className="w-screen max-w-none gap-0 overflow-hidden p-0"
-        style={{ width: "min(1100px, 100vw)", maxWidth: "min(1100px, 100vw)" }}
+        style={{ width: "min(1100px, var(--overlay-width, 100vw))", maxWidth: "min(1100px, 100vw)" }}
       >
         <SheetHeader className="border-b border-slate-200 bg-white p-4 pr-12">
           <SheetTitle className="text-lg font-bold">
@@ -4983,67 +4984,69 @@ function ProductRestockRequestsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl">
+      <DialogContent scrollLayout="body" className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>{text.restockRequests}</DialogTitle>
           <DialogDescription>{text.restockDialogDescription}</DialogDescription>
         </DialogHeader>
+        <DialogBody className="space-y-3">
 
-        <div className="max-h-[56vh] space-y-2 overflow-y-auto pr-1">
-          {isLoading ? (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
-              {text.loading}
-            </div>
-          ) : requests.length > 0 ? (
-            requests.map((request) => (
-              <div
-                key={request.id}
-                className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto]"
-              >
-                <div className="min-w-0">
-                  <div className="line-clamp-2 text-sm font-black text-slate-950">
-                    {request.productName}
-                  </div>
-                  <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
-                    <span className="font-mono">{request.sku}</span>
-                    <span>{request.createdAt}</span>
-                    {request.customerId ? <span>{request.customerId}</span> : null}
-                  </div>
-                </div>
-                <div className="flex min-w-0 items-center gap-2">
-                  <Button
-                    size="xs"
-                    className="bg-emerald-600 text-white hover:bg-emerald-600"
-                    disabled={Boolean(updatingId)}
-                    onClick={() => void markRequest(request, "notified")}
-                  >
-                    {updatingId === request.id ? (
-                      <Loader2 className="size-3 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="size-3" />
-                    )}
-                    {text.restockMarkNotified}
-                  </Button>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    className="bg-white text-slate-600"
-                    disabled={Boolean(updatingId)}
-                    onClick={() => void markRequest(request, "cancelled")}
-                  >
-                    <XCircle className="size-3" />
-                    {text.restockCancel}
-                  </Button>
-                </div>
+          <div className="space-y-2 pr-1">
+            {isLoading ? (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
+                {text.loading}
               </div>
-            ))
-          ) : (
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
-              {text.restockEmpty}
-            </div>
-          )}
-        </div>
+            ) : requests.length > 0 ? (
+              requests.map((request) => (
+                <div
+                  key={request.id}
+                  className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto]"
+                >
+                  <div className="min-w-0">
+                    <div className="line-clamp-2 text-sm font-black text-slate-950">
+                      {request.productName}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+                      <span className="font-mono">{request.sku}</span>
+                      <span>{request.createdAt}</span>
+                      {request.customerId ? <span>{request.customerId}</span> : null}
+                    </div>
+                  </div>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Button
+                      size="xs"
+                      className="bg-emerald-600 text-white hover:bg-emerald-600"
+                      disabled={Boolean(updatingId)}
+                      onClick={() => void markRequest(request, "notified")}
+                    >
+                      {updatingId === request.id ? (
+                        <Loader2 className="size-3 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="size-3" />
+                      )}
+                      {text.restockMarkNotified}
+                    </Button>
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      className="bg-white text-slate-600"
+                      disabled={Boolean(updatingId)}
+                      onClick={() => void markRequest(request, "cancelled")}
+                    >
+                      <XCircle className="size-3" />
+                      {text.restockCancel}
+                    </Button>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
+                {text.restockEmpty}
+              </div>
+            )}
+          </div>
 
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             {text.close}
@@ -5215,7 +5218,7 @@ function ProductMobileFiltersSheet({
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="left" className="w-[92vw] max-w-md gap-0 overflow-hidden p-0 sm:max-w-md">
+      <SheetContent side="left" className="w-[min(92vw,var(--overlay-width,100vw))] max-w-md gap-0 overflow-hidden p-0 sm:max-w-md">
         <SheetHeader className="border-b border-slate-200 bg-white p-3 pr-12">
           <SheetTitle className="text-base font-black">{text.mobileFilters}</SheetTitle>
           <SheetDescription className="text-xs font-semibold">
@@ -6788,7 +6791,7 @@ function ProductDrawer({
       <SheetContent
         side="right"
         className="w-screen max-w-none gap-0 overflow-hidden p-0"
-        style={{ width: "min(820px, 100vw)", maxWidth: "min(820px, 100vw)" }}
+        style={{ width: "min(820px, var(--overlay-width, 100vw))", maxWidth: "min(820px, 100vw)" }}
       >
         <SheetHeader className="border-b border-slate-200 bg-white p-4 pr-12">
           <SheetTitle className="text-lg font-bold">{title}</SheetTitle>
@@ -8101,40 +8104,42 @@ function StockAdjustmentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px]">
+      <DialogContent scrollLayout="body" className="sm:max-w-[520px]">
         <DialogHeader>
           <DialogTitle>{text.stockAdjust}</DialogTitle>
           <DialogDescription>{product.sku}</DialogDescription>
         </DialogHeader>
-        <form onSubmit={onSubmit} className="space-y-4">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={text.stockAdjust}>
-              <Select value={action} onValueChange={(value) => setAction(value as StockAdjustmentAction)}>
-                <SelectTrigger className="bg-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {stockAdjustmentActions.map((item) => (
-                    <SelectItem key={item} value={item}>
-                      {text.stockActions[item]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col gap-3">
+          <DialogBody className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label={text.stockAdjust}>
+                <Select value={action} onValueChange={(value) => setAction(value as StockAdjustmentAction)}>
+                  <SelectTrigger className="bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {stockAdjustmentActions.map((item) => (
+                      <SelectItem key={item} value={item}>
+                        {text.stockActions[item]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label={text.quantity}>
+                <Input value={quantity} type="number" min={0} step={1} onChange={(event) => setQuantity(event.target.value)} />
+              </Field>
+              <DetailItem label={text.availableStock} value={product.availableQty ?? product.stock} />
+            </div>
+            <Field label={text.reason}>
+              <Textarea
+                className="min-h-24"
+                value={reason}
+                onChange={(event) => setReason(event.target.value)}
+              />
             </Field>
-            <Field label={text.quantity}>
-              <Input value={quantity} type="number" min={0} step={1} onChange={(event) => setQuantity(event.target.value)} />
-            </Field>
-            <DetailItem label={text.availableStock} value={product.availableQty ?? product.stock} />
-          </div>
-          <Field label={text.reason}>
-            <Textarea
-              className="min-h-24"
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-            />
-          </Field>
-          <DialogFooter>
+          </DialogBody>
+            <DialogFooter>
             <Button type="button" variant="outline" className="bg-white" onClick={() => onOpenChange(false)}>
               {text.cancel}
             </Button>
