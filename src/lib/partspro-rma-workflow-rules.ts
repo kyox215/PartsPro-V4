@@ -67,6 +67,8 @@ export type RmaWorkflowBlockedReason =
   | "invalid_state";
 
 export type RmaAdminCapabilities = {
+  qc?: boolean;
+  approveRefund?: boolean;
   createReplacement?: boolean;
   manage: boolean;
   inventory: boolean;

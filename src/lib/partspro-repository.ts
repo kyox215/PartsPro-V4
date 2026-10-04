@@ -6,6 +6,7 @@ import {
 } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { createPublicReadClient } from "@/lib/supabase/public";
+import { getAdminAuthState } from "@/lib/partspro-admin-auth";
 import { createCachedPublicRead, invalidatePublicBannersCache, invalidatePublicNavigationCache, publicBannersTag, publicNavigationTag } from "@/lib/partspro-public-cache";
 import {
   readLinkedCustomerId,
@@ -5874,6 +5875,7 @@ export async function listAdminRmaRequests(
 ): Promise<RepositoryResult<AdminRmaPage>> {
   const context = await getSupabaseContext();
   if (context) {
+    await requireAdminRmaReadPermission(context);
     await ensureRmaWorkflowReady(context);
     const data = await readAdminRmaRequests(context, query);
     if (data) {
@@ -5915,6 +5917,7 @@ export async function getAdminRmaRequest(
   // detail response.
   const context = await getSupabaseContext();
   if (context) {
+    await requireAdminRmaReadPermission(context);
     await ensureRmaWorkflowReady(context);
     return {
       data: await readAdminRmaRequestById(context, requestId, options),
@@ -5943,6 +5946,7 @@ export async function getAdminRmaRefundPreview(
   // must reach repositoryErrorResponse as a stable fail-closed error.
   const context = await getSupabaseContext();
   if (context) {
+    await requireAdminRmaReadPermission(context);
     await ensureRmaWorkflowReady(context);
     return {
       data: await readAdminRmaRefundPreview(context.client, requestId),
@@ -6043,6 +6047,7 @@ export async function updateAdminRmaRequest(
   }
 
   const context = await requireSupabaseContext();
+  await requireAdminRmaReadPermission(context);
   await ensureRmaWorkflowReady(context);
   const request = await updateAdminRmaRequestViaRpc(context, input);
 
@@ -6069,6 +6074,7 @@ export async function performAdminRmaAction(
   }
 
   const context = await requireSupabaseContext();
+  await requireAdminRmaReadPermission(context);
   await ensureRmaWorkflowReady(context);
   const request = isReviewRmaAction(input.action)
     ? await performAdminRmaReviewActionViaRpc(context, input)
@@ -12676,6 +12682,28 @@ function isProjectionQueueFilter(
   );
 }
 
+async function requireAdminRmaReadPermission(context: SupabaseContext) {
+  const auth = await getAdminAuthState();
+  if (!auth.allowed || auth.userId !== context.userId ||
+      !auth.permissions.some((permission) => permission === "rma.read" || permission === "orders.read")) {
+    throw new RepositoryWriteError(403, "ADMIN_RMA_READ_DENIED", "After-sales read permission is required.");
+  }
+}
+
+async function readAdminRmaWalletAmounts(request: RmaRequest, client: SupabaseServerClient): Promise<RmaRequest> {
+  if (!request.walletRefundRequestId) return request;
+  const { data, error } = await client.from("wallet_refund_requests")
+    .select("id, status, requested_amount, approved_amount, wallet_transaction_id, currency")
+    .eq("id", request.walletRefundRequestId).eq("rma_request_id", request.id)
+    .eq("request_type", "rma_return").maybeSingle();
+  if (error || !isDbRow(data) || pickString(data, ["currency"]) !== "EUR") {
+    throw rmaReadUnavailable("The linked after-sales refund could not be verified.", supabaseErrorDetails(error));
+  }
+  return { ...request, walletRefundStatus: normalizeRmaWalletRefundStatus(pickString(data, ["status"])),
+    walletRequestedAmount: pickNumber(data, ["requested_amount"]),
+    walletCreditedAmount: pickString(data, ["wallet_transaction_id"]) ? pickNumber(data, ["approved_amount"]) : null };
+}
+
 async function readAdminRmaRequestById(
   context: SupabaseContext,
   requestId: string,
@@ -12744,7 +12772,7 @@ async function readAdminRmaRequestById(
     readAdminRmaReplacementCandidates(context.client, requestId),
   ]);
 
-  return { request, refundPreview, replacementCandidates };
+  return { request: await readAdminRmaWalletAmounts(request, rmaClient), refundPreview, replacementCandidates };
 }
 
 async function readAdminRmaRefundPreview(
@@ -17232,6 +17260,7 @@ function normalizeRmaQcStatus(
 function normalizeRmaWalletRefundStatus(
   value: string | null
 ): RmaWalletRefundStatus | null {
+  if (value === "requested") return "pending";
   if (
     value === "pending" ||
     value === "approved" ||

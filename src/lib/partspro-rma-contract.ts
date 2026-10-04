@@ -173,7 +173,7 @@ export const adminRmaActionSchema = z
     qcNote: z.string().trim().max(1000).optional(),
     qcStatus: z.enum(["passed", "failed", "not_required"]).optional(),
     reason: z.string().trim().max(1000).optional(),
-    refundAmount: z.number().positive().max(999999).optional(),
+    refundAmount: z.number().positive().max(999999).multipleOf(0.01).optional(),
     replacementOrderId: uuid.optional(),
     replacementOrderNumber: z.string().trim().max(120).optional(),
     supplier: z.string().trim().max(160).optional(),

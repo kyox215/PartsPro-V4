@@ -35,6 +35,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { AdminRmaDto } from "@/lib/partspro-rma-admin-dto";
 import type {
   RmaWorkflowAction,
@@ -383,7 +387,8 @@ export function AdminRmaPanel() {
   const [total, setTotal] = React.useState(0);
   const [isLoading, setIsLoading] = React.useState(false);
   const [isDetailLoading, setIsDetailLoading] = React.useState(false);
-  const [pendingAction, setPendingAction] = React.useState<ActionCode | null>(null);
+  const [pendingAction, setPendingAction] = React.useState<ActionCode | "approve_wallet_refund" | null>(null);
+  const [refundConfirmation, setRefundConfirmation] = React.useState<AdminRmaDto | null>(null);
   const [notice, setNotice] = React.useState<Notice | null>(null);
   const [actionDialog, setActionDialog] = React.useState<ActionDialog>(null);
   const [directReceiptRequest, setDirectReceiptRequest] = React.useState<DirectReceiptRequest | null>(null);
@@ -405,7 +410,7 @@ export function AdminRmaPanel() {
   const [supplier, setSupplier] = React.useState("");
   const [photoAttachment, setPhotoAttachment] = React.useState<AdminRmaDto["attachments"][number] | null>(null);
   const actionRetryKeysRef = React.useRef(new Map<string, string>());
-  const pendingActionRef = React.useRef<ActionCode | null>(null);
+  const pendingActionRef = React.useRef<ActionCode | "approve_wallet_refund" | null>(null);
 
   const selectedRequest = React.useMemo(
     () =>
@@ -554,11 +559,7 @@ export function AdminRmaPanel() {
       setQcNote("");
     }
     if (nextDialog === "refund") {
-      setRefundAmount(
-        detailForSelection?.refundPreview?.available
-          ? String(detailForSelection.refundPreview.maxRefundAmount)
-          : ""
-      );
+      setRefundAmount("");
     }
     if (nextDialog === "replacement") {
       setReplacementId(detailForSelection?.replacementCandidates[0]?.id ?? "");
@@ -659,6 +660,32 @@ export function AdminRmaPanel() {
         message: error instanceof Error ? error.message : copy.updated,
         tone: "error",
       });
+    } finally {
+      pendingActionRef.current = null;
+      setPendingAction(null);
+    }
+  }
+
+  async function approveWalletRefund(request: AdminRmaDto) {
+    if (!request.canApproveWalletRefund || request.walletRefundStatus !== "pending"
+        || !request.walletRefundRequestId || pendingActionRef.current) return;
+    pendingActionRef.current = "approve_wallet_refund";
+    setPendingAction("approve_wallet_refund");
+    try {
+      const response = await fetch(`/api/admin/wallet-refunds/${encodeURIComponent(request.walletRefundRequestId)}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ decision: "approve", metadata: { source: "admin_rma_panel", rma_request_id: request.id } }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.data) throw new Error(readApiMessage(payload) ?? copy.updated);
+      const refreshed = await refresh();
+      const detailLoaded = await loadDetail(request.id);
+      setNotice({ tone: "success", message: (isZh
+        ? `${formatMoney(payload.data.amount, "EUR")} 已入客户钱包。`
+        : `${formatMoney(payload.data.amount, "EUR")} accreditati al portafoglio cliente.`)
+        + (refreshed && detailLoaded ? "" : isZh ? " 状态刷新失败，请重新刷新。" : " Aggiornamento stato non riuscito: aggiorna la pagina.") });
+    } catch (error) {
+      setNotice({ tone: "error", message: error instanceof Error ? error.message : copy.updated });
     } finally {
       pendingActionRef.current = null;
       setPendingAction(null);
@@ -781,6 +808,7 @@ export function AdminRmaPanel() {
                     <div key={request.id} role="listitem">
                       <button
                         type="button"
+                        disabled={Boolean(pendingAction) || Boolean(refundConfirmation)}
                         aria-current={selectedId === request.id ? "true" : undefined}
                         className={cn(
                           "w-full rounded-lg border p-3 text-left transition hover:border-primary/30 hover:bg-primary/5 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40",
@@ -909,6 +937,25 @@ export function AdminRmaPanel() {
                   </WorkflowNotice>
                 )}
 
+                {selectedRequest.walletRefundRequestId ? (
+                  <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <h4 className="text-sm font-black">{isZh ? "退款至客户钱包" : "Rimborso al portafoglio cliente"}</h4>
+                    {(selectedRequest.walletCreditedAmount ?? 0) > 0 ? (
+                      <p className="text-sm font-bold text-emerald-700">{isZh ? "已入账" : "Accreditato"}: {formatMoney(selectedRequest.walletCreditedAmount!, "EUR")}</p>
+                    ) : selectedRequest.walletRefundStatus === "pending" ? (
+                      <>
+                        <p className="text-sm text-amber-800">{isZh ? "待批准" : "In attesa di approvazione"}: {selectedRequest.walletRequestedAmount == null ? "…" : formatMoney(selectedRequest.walletRequestedAmount, "EUR")}</p>
+                        {selectedRequest.canApproveWalletRefund ? (
+                          <Button type="button" disabled={Boolean(pendingAction) || isDetailLoading} onClick={() => setRefundConfirmation(selectedRequest)}>
+                            {pendingAction === "approve_wallet_refund" ? <Loader2 className="size-4 animate-spin" /> : null}
+                            {isZh ? "批准并入客户钱包" : "Approva e accredita"}
+                          </Button>
+                        ) : <p className="text-xs text-slate-600">{isZh ? "需拥有“批准钱包退款”权限的员工批准后入账。" : "Un dipendente con il permesso di approvare i rimborsi deve confermare l'accredito."}</p>}
+                      </>
+                    ) : <p className="text-sm text-slate-600">{isZh ? "退款申请未入账，请核对处理状态。" : "Richiesta non accreditata: verifica lo stato."}</p>}
+                  </div>
+                ) : null}
+
                 <div className="grid gap-3 sm:grid-cols-2">
                   <DetailBlock title={copy.noteSummary}>
                     <ReadOnlySummary label={copy.customerVisibleReason} value={selectedRequest.customerVisibleNote} />
@@ -1017,6 +1064,29 @@ export function AdminRmaPanel() {
           </div>
         </div>
       </section>
+
+      <AlertDialog open={Boolean(refundConfirmation)} onOpenChange={(open) => { if (!open) setRefundConfirmation(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{isZh ? "确认批准钱包退款" : "Conferma rimborso al portafoglio"}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {refundConfirmation?.customerName ?? "—"} · {refundConfirmation?.orderNumber ?? "—"}
+              <br />
+              {isZh ? "申请金额" : "Importo richiesto"}: {formatMoney(refundConfirmation?.walletRequestedAmount ?? 0, "EUR")}
+              <br />
+              {isZh ? "确认后按剩余可退金额入账，系统保留退款流水。不会自动回补库存。" : "L'accredito è limitato al saldo rimborsabile residuo e viene registrato. Lo stock non viene ripristinato automaticamente."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{isZh ? "取消" : "Annulla"}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => {
+              const confirmed = refundConfirmation;
+              setRefundConfirmation(null);
+              if (confirmed) void approveWalletRefund(confirmed);
+            }}>{isZh ? "确认入钱包" : "Conferma accredito"}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={actionDialog === "receive"} onOpenChange={(open) => !open && setActionDialog(null)}>
         <DialogContent>
@@ -1555,7 +1625,8 @@ function completeQuantity(request: Pick<AdminRmaDto, "quantity">) {
 
 function validRefundAmount(value: string, max: number | undefined) {
   const amount = Number(value);
-  return Number.isFinite(amount) && amount > 0 && (max === undefined || amount <= max);
+  return Boolean(value.trim()) && Number.isFinite(amount) && amount > 0
+    && Math.abs(Math.round(amount * 100) - amount * 100) < 1e-8 && max !== undefined && amount <= max;
 }
 
 function formatMoney(value: number, currency: string) {

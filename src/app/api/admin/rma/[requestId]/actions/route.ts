@@ -55,6 +55,9 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
   if (parsedBody.data.action === "approve" && (parsedBody.data.customerVisibleNote?.length ?? 0) < 20) {
     return apiError(400, "RMA_RETURN_INSTRUCTIONS_REQUIRED", "Provide return address and packing instructions before approval.");
   }
+  if (parsedBody.data.action === "request_wallet_refund" && parsedBody.data.refundAmount === undefined) {
+    return apiError(400, "RMA_REFUND_AMOUNT_REQUIRED", "Confirm the refund amount explicitly.");
+  }
 
   const { requestId } = await params;
   const parsedRequestId = z.string().uuid().safeParse(requestId);
@@ -75,7 +78,9 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
   // same canonical permission, rather than accepting the broader RMA
   // inventory alias and letting the database reject the request later.
   const permissionGranted =
-    parsedBody.data.action === "restock_return"
+    parsedBody.data.action === "record_qc"
+      ? hasExactAdminPermission(admin.authState, "rma.manage") || hasExactAdminPermission(admin.authState, "rma.inventory")
+      : parsedBody.data.action === "restock_return"
       ? hasExactAdminPermission(admin.authState, "product.adjust_stock")
       : permission.some((item) => hasAdminPermission(admin.authState, item));
 

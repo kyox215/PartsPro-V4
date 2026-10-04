@@ -35,6 +35,7 @@ export type AdminRmaDto = Omit<
   RmaRequest,
   "attachments" | "events" | "ownerUserId"
 > & {
+  canApproveWalletRefund: boolean;
   attachments: AdminRmaAttachmentDto[];
   events: AdminRmaEventDto[];
   workflowQueue: RmaAdminWorkflowResult["workflowQueue"];
@@ -49,6 +50,8 @@ export function getAdminRmaCapabilities(
   authState: AdminAuthState
 ): RmaAdminCapabilities {
   return {
+    qc: hasExactAdminPermission(authState, "rma.manage") || hasExactAdminPermission(authState, "rma.inventory"),
+    approveRefund: hasExactAdminPermission(authState, "wallet_refunds.approve"),
     createReplacement: hasAdminPermission(authState, "orders.manage"),
     manage: hasAdminPermission(authState, "rma.manage"),
     inventory: hasAdminPermission(authState, "rma.inventory"),
@@ -84,6 +87,7 @@ export function toAdminRmaDto(
   capabilities: RmaAdminCapabilities
 ): AdminRmaDto {
   const workflow = projectAdminRmaWorkflow(request, capabilities);
+  const qcDenied = workflow.recommendedAction === "record_qc" && capabilities.qc === false;
   const {
     attachments: sourceAttachments,
     events: sourceEvents,
@@ -97,6 +101,11 @@ export function toAdminRmaDto(
     attachments: (sourceAttachments ?? []).map(toAdminAttachmentDto),
     events: (sourceEvents ?? []).map(toAdminEventDto),
     ...workflow,
+    availableActions: workflow.availableActions.filter((action) => action !== "record_qc" || capabilities.qc !== false),
+    recommendedAction: qcDenied ? null : workflow.recommendedAction,
+    blockedReason: qcDenied ? "permission_denied" : workflow.blockedReason,
+    canApproveWalletRefund: capabilities.approveRefund === true && request.walletRefundStatus === "pending"
+      && Boolean(request.walletRefundRequestId) && (request.walletRequestedAmount ?? 0) > 0,
   };
 }
 

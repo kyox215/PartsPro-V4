@@ -1,0 +1,14 @@
+{
+  "passed": true,
+  "fixtureOnly": true,
+  "productionWrites": 0,
+  "scenarios": [
+    "explicit cents and original cap",
+    "stable failed retry",
+    "pending vs actual credit",
+    "confirmation and cancellation",
+    "reader/warehouse/approver separation",
+    "desktop/mobile/Italian"
+  ],
+  "pageErrors": []
+}

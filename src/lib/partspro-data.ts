@@ -253,6 +253,9 @@ export type RmaRequest = {
   replacementOrderId?: string | null;
   /** Admin-only linked wallet request state; omitted by the customer DTO. */
   walletRefundStatus?: RmaWalletRefundStatus | null;
+  /** Admin-only amounts verified against the exact linked refund request. */
+  walletRequestedAmount?: number | null;
+  walletCreditedAmount?: number | null;
   reviewedAt?: string | null;
   receivedAt?: string | null;
   resolvedAt?: string | null;

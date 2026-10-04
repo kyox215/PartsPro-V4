@@ -67,7 +67,13 @@ test("admin detail renders server workflow actions and uses one guarded action e
   assert.match(panel, /method: "POST"/);
   assert.match(panel, /pendingActionRef/);
   assert.match(panel, /idempotencyKey/);
-  assert.doesNotMatch(panel, /method: "PATCH"/);
+  const rmaActionHandler = panel.split("async function runAction(")[1]?.split("async function approveWalletRefund(")[0];
+  assert.ok(rmaActionHandler);
+  assert.doesNotMatch(rmaActionHandler, /method: "PATCH"/);
+  const walletApprovalHandler = panel.split("async function approveWalletRefund(")[1]?.split("const showDirectReceipt")[0];
+  assert.match(walletApprovalHandler, /\/api\/admin\/wallet-refunds\//);
+  assert.match(walletApprovalHandler, /method: "PATCH"/);
+  assert.match(walletApprovalHandler, /canApproveWalletRefund/);
   assert.doesNotMatch(panel, /isRmaActionAvailable/);
 });
 
