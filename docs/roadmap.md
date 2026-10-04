@@ -106,3 +106,12 @@ Last reviewed: 2026-09-28
 - 2026-09-28 发布完成：修复提交 `c33a1ac` 已推送到 `origin/codex/mobile-overlay-fix-20260928`；Vercel 候选 `dpl_EE4NmwdYDoPeeN3vgVgFEcofRGYX` 远端 build READY，7 项受保护访问检查通过后 promote。`partspro.app` 与 `www.partspro.app` 的 alias API 均确认指向该部署。
 - 上线后 11 项只读检查通过：手机菜单位于可视区域、关闭恢复背景滚动，首页/目录/购物车/账号/后台页面 HTTP 200、公开目录 API 200，未登录后台账号/价格 API 401，正式 CSS 包含视口保护；本次部署近 10 分钟 error 查询无记录。未验证登录管理员真实保存与真机软键盘，业务写入仍仅由模拟接口测试覆盖。
 - 发布证据：`outputs/overlay-ui/2026-09-28/{deployment-verification,candidate-smoke,live-smoke}.json`。回退部署 `dpl_9gWPU9yQ6UXtQcj1dmdphjFUqHJk` 保留；本次没有 migration、生产数据或环境变量变更。源码已推送发布分支，未合并 GitHub main；已上线历史功能完整保留。
+
+
+## 2026-10-04 两单作废与员工钱包退款
+
+- 老板明确指定的两单屏幕各 EUR 13，共 EUR 26 已退至原客户钱包；两单 cancelled/作废隐藏，原订单支付与明细保留，库存没有增加。任务与实际核验见 `docs/tasks/done/P1-2026-10-04-order-void-wallet-refund.md`。
+- 员工 RMA 钱包批准入口已上线，申请与批准权限分离，QC exact 权限与服务端读权限边界修复；保留已上线协商、分拆、收货向导及换货流程。未新增 migration、改 env 或员工授权。
+- 发布源码为项目内 `.codex-worktrees/employee-rma-refund-20261004` / 分支 `codex/employee-rma-refund-20261004`，提交 `02f93eb`，基于当前线上 c33a1ac/c344fadc；主目录较早且有其他既有未提交改动，本次未整目录部署，尚未推送/合并 GitHub main。
+- 34 项 RMA/员工合同测试、6 项 storefront、全量 lint、生产 build、桌面/手机/意大利文真实组件模拟 API 验证与独立审查通过。Vercel 候选远端 build READY，6 项候选及7项上线只读检查通过；两个正式域名指向 `dpl_GTEgBj9PQrU1gfNfLob6gD2caGwf`，短时错误日志聚合无记录。
+- 回退代码部署 `dpl_EE4NmwdYDoPeeN3vgVgFEcofRGYX` 保留；代码回退不会撤销本次已批准的钱包退款。真实员工账号线上退款 E2E 与真机 Safari 未验证，模拟测试与实际两单 SQL核验分别留证。

@@ -1,6 +1,6 @@
 # P1-2026-10-04-order-void-wallet-refund
 
-状态：production_refund_complete / release_verified_pending_deploy
+状态：completed（两单生产退款、作废及员工退款流程上线完成）
 Task ID：TASK-20261004-01
 风险等级：R3；自治等级：L2
 主责部门：订单运营部；协作部门：仓库库存部、价格与客户部
@@ -60,3 +60,14 @@ RACI：主助手 Responsible；老板 Approver；独立审查代理 Consulted；
 目标：Vercel `parts-pro-v4` / `prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo`，team `team_AOJDnrjov0QDLqpvMyhwA1yc`。当前 partspro.app 已只读核验指向 `dpl_EE4NmwdYDoPeeN3vgVgFEcofRGYX`，作为代码回退目标。
 
 先创建不切域名的生产候选、验证 READY 与匿名权限/API/资源，再 promote。代码回退不撤销已经授权且完成的钱包退款；如需资金补偿须由老板另行授权。
+
+
+## 最终发布与交付证据（2026-10-04）
+
+- 独立 PartsPro 业务/权限与 Vercel 专项审查结论 GO；发布源提交 `02f93eb42f45d8690c7852b27891bb81982e4c3f`，无其他未提交改动混入。
+- 本次候选 `dpl_GTEgBj9PQrU1gfNfLob6gD2caGwf` 完成 Vercel 生产构建并 READY。CLI 部署元数据的 release、sourceCommit、baseline 经只读 API核验；6 项受保护候选检查通过。
+- promote 前再次核对正式域名仍在旧部署；promote 后 alias API 确认 `partspro.app` 与 `www.partspro.app` 均指向本次候选。
+- 上线后 7 项匿名只读检查通过：首页、后台售后入口、客户售后页面 HTTP 200；售后列表/详情/钱包退款后台 API 对未登录用户返回应用层 401 ADMIN_FORBIDDEN；根域名正确 307 至 www。未使用客户会话，未执行额外业务写入。
+- 本次部署最近 10 分钟 error/fatal 聚合查询无记录；这是发布后的短时观察，不证明全天无错误。
+- 发布源码的 `outputs/rma/2026-10-04/{production-refund-verification,deployment-verification,candidate-smoke,live-smoke}.json` 保存脱敏最小证据。两单 SQL 核验系操作后的实际结果；上线检查和模拟 API 验证分别标记，不混作真实员工退款 E2E。
+- 代码已上线；本地隔离分支保留，尚未推送或合并 GitHub main。主目录既有未提交改动全部保留，其早期实现不是本次发布源码；后续发布应基于本记录的隔离分支/提交，避免旧主目录覆盖已有线上协商和收货流程。

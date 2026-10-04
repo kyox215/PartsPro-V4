@@ -1,0 +1,33 @@
+{
+  "projectRef": "yiuxrjqexlfjtxxrkqvi",
+  "projectName": "PartsPro-V4",
+  "source": "Post-operation linked SQL verification captured during this task",
+  "wallet": {
+    "balance": 26,
+    "currency": "EUR"
+  },
+  "credits": [
+    {
+      "amount": 13,
+      "hidden": true,
+      "status": "approved",
+      "order_no": "PP-20260925164001-0025F6",
+      "fulfilled": 1,
+      "cancelled_qty": 0,
+      "transaction_id": "4eadf9d2-d26f-4fa3-a1a3-dfb4d4d22581",
+      "original_paid_amount": 13
+    },
+    {
+      "amount": 13,
+      "hidden": true,
+      "status": "approved",
+      "order_no": "PP-20260926103733-430BA0",
+      "fulfilled": 1,
+      "cancelled_qty": 0,
+      "transaction_id": "bcb68550-07b9-4a80-9940-203aace97fae",
+      "original_paid_amount": 13
+    }
+  ],
+  "void_event_count": 2,
+  "restock_movement_count": 0
+}

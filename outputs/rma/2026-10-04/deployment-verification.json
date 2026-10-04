@@ -1,0 +1,20 @@
+{
+  "deploymentId": "dpl_GTEgBj9PQrU1gfNfLob6gD2caGwf",
+  "sourceCommit": "02f93eb42f45d8690c7852b27891bb81982e4c3f",
+  "aliases": [
+    {
+      "alias": "partspro.app",
+      "deploymentId": "dpl_GTEgBj9PQrU1gfNfLob6gD2caGwf"
+    },
+    {
+      "alias": "www.partspro.app",
+      "deploymentId": "dpl_GTEgBj9PQrU1gfNfLob6gD2caGwf"
+    }
+  ],
+  "candidateSmokePassed": true,
+  "liveSmokePassed": true,
+  "runtimeErrorGroups": [],
+  "migrationApplied": false,
+  "productionEnvironmentChanged": false,
+  "employeeGrantsChanged": false
+}
