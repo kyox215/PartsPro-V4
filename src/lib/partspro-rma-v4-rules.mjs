@@ -59,5 +59,20 @@ export function projectRmaV4Workflow(input, capabilities) {
     if (actions.has('verify_refund_snapshot')) result.recommendedAction = 'verify_refund_snapshot';
     else if (result.recommendedAction === 'request_wallet_refund') result.recommendedAction = null;
   }
+  const canPrepare = capabilities.prepareRefund === true && noSettlement && received && qcComplete
+    && ['replacement', 'refund', 'wallet_credit', 'credit_note'].includes(input.requestedResolution)
+    && (negotiation === 'none' || (negotiation === 'agreed' && input.negotiationOutcome === 'refund_wallet'))
+    && (quarantined || (['restock', 'scrap', 'supplier_return'].includes(input.inventoryDisposition)
+      && input.inventoryDispositionQuantity === input.quantity));
+  if (canPrepare && (input.requestedResolution === 'replacement' || input.refundPricingVerified === false)) {
+    actions.add('prepare_wallet_refund');
+  }
+  if (input.refundPricingVerified === false && input.unitPriceSnapshot === null) {
+    actions.delete('verify_refund_snapshot');
+    if (result.recommendedAction === 'verify_refund_snapshot') {
+      result.recommendedAction = actions.has('prepare_wallet_refund') ? 'prepare_wallet_refund' : null;
+      result.blockedReason = actions.has('prepare_wallet_refund') ? null : 'missing_unit_price_snapshot';
+    }
+  }
   return { ...result, availableActions: [...actions] };
 }

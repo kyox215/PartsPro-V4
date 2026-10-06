@@ -50,6 +50,8 @@ export function getAdminRmaCapabilities(
   authState: AdminAuthState
 ): RmaAdminCapabilities {
   return {
+    prepareRefund: hasExactAdminPermission(authState, "rma.manage") && hasExactAdminPermission(authState, "wallet_refunds.approve")
+      && (hasExactAdminPermission(authState, "rma.refund") || hasExactAdminPermission(authState, "wallet_refunds.request")),
     qc: hasExactAdminPermission(authState, "rma.manage") || hasExactAdminPermission(authState, "rma.inventory"),
     approveRefund: hasExactAdminPermission(authState, "wallet_refunds.approve"),
     createReplacement: hasAdminPermission(authState, "orders.manage"),

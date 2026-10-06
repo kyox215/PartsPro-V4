@@ -17,6 +17,7 @@ export const rmaWorkflowQueues = rmaWorkflowQueueCodes;
 export type RmaWorkflowQueue = (typeof rmaWorkflowQueueCodes)[number];
 
 export const rmaWorkflowActionCodes = [
+  "prepare_wallet_refund",
   "split_request",
   "cancel_unreceived",
   "verify_refund_snapshot",
@@ -48,6 +49,7 @@ export type RmaWorkflowRecommendation =
   | "choose_inventory_disposition";
 
 export type RmaWorkflowBlockedReason =
+  | "missing_unit_price_snapshot"
   | "waiting_customer_agreement"
   | "waiting_customer_return"
   | "waiting_wallet_approval"
@@ -67,6 +69,7 @@ export type RmaWorkflowBlockedReason =
   | "invalid_state";
 
 export type RmaAdminCapabilities = {
+  prepareRefund?: boolean;
   qc?: boolean;
   approveRefund?: boolean;
   createReplacement?: boolean;
@@ -77,6 +80,7 @@ export type RmaAdminCapabilities = {
 };
 
 export type RmaAdminWorkflowInput = {
+  unitPriceSnapshot?: number | null;
   refundPricingVerified?: boolean;
   replacementReservedOrderId?: string | null;
   negotiationStatus?: string | null;

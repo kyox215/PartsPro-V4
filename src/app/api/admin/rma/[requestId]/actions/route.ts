@@ -58,6 +58,12 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
   if (parsedBody.data.action === "request_wallet_refund" && parsedBody.data.refundAmount === undefined) {
     return apiError(400, "RMA_REFUND_AMOUNT_REQUIRED", "Confirm the refund amount explicitly.");
   }
+  if (parsedBody.data.action === "prepare_wallet_refund" && (
+    (parsedBody.data.reason?.length ?? 0) < 8 || !parsedBody.data.idempotencyKey
+    || parsedBody.data.refundAmount !== undefined || parsedBody.data.customerConfirmation !== undefined
+    || parsedBody.data.negotiationOutcome !== undefined)) {
+    return apiError(400, "RMA_REFUND_DIRECTION_REQUIRED", "Confirm the wallet refund direction with a reason and stable key.");
+  }
 
   const { requestId } = await params;
   const parsedRequestId = z.string().uuid().safeParse(requestId);
@@ -78,7 +84,10 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
   // same canonical permission, rather than accepting the broader RMA
   // inventory alias and letting the database reject the request later.
   const permissionGranted =
-    parsedBody.data.action === "record_qc"
+    parsedBody.data.action === "prepare_wallet_refund"
+      ? hasExactAdminPermission(admin.authState, "rma.manage") && hasExactAdminPermission(admin.authState, "wallet_refunds.approve")
+        && (hasExactAdminPermission(admin.authState, "rma.refund") || hasExactAdminPermission(admin.authState, "wallet_refunds.request"))
+      : parsedBody.data.action === "record_qc"
       ? hasExactAdminPermission(admin.authState, "rma.manage") || hasExactAdminPermission(admin.authState, "rma.inventory")
       : parsedBody.data.action === "restock_return"
       ? hasExactAdminPermission(admin.authState, "product.adjust_stock")

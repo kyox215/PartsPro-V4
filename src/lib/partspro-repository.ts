@@ -1846,6 +1846,7 @@ export type UpdateAdminRmaInput = {
 };
 
 export type AdminRmaAction =
+  | "prepare_wallet_refund"
   | "split_request"
   | "cancel_unreceived"
   | "verify_refund_snapshot"
@@ -13481,6 +13482,15 @@ async function performAdminRmaActionViaRpc(
   context: SupabaseContext,
   input: PerformAdminRmaActionInput
 ): Promise<RmaRequest | null> {
+  if (input.action === "prepare_wallet_refund") {
+    const { data, error } = await context.client.rpc("admin_prepare_rma_wallet_refund_v1", {
+      p_request_id: input.requestId, p_reason: input.reason, p_idempotency_key: input.idempotencyKey,
+    });
+    if (error) throw new RepositoryWriteError(supabaseRpcStatus(error), "RMA_PREPARATION_FAILED",
+      "The original return could not be prepared for a wallet refund.", supabaseErrorDetails(error));
+    const row = Array.isArray(data) ? data.find(isDbRow) : data;
+    return isDbRow(row) ? mapRmaRpcRow(context, row) : null;
+  }
   let replacementOrderId = input.replacementOrderId ?? null;
   if (input.action === "bind_replacement_order" && input.replacementOrderNumber) {
     const lookup = await requireRmaServiceClient().from("orders").select("id")
@@ -16144,6 +16154,7 @@ function mapRmaRow(
     customerConfirmedAt: pickString(row, ["customer_confirmed_at"]),
     returnToCustomerTracking: pickString(row, ["outbound_tracking_number"]),
     refundPricingVerified: isDbRow(row.refund_pricing_snapshot),
+    unitPriceSnapshot: pickNumber(row, ["unit_price_snapshot"]),
     replacementReservedOrderId: pickString(row, ["replacement_reserved_order_id"]),
     refundGrossAmount: pickNumber(row, ["refund_gross_amount"]),
     refundTaxAmount: pickNumber(row, ["refund_tax_amount"]),

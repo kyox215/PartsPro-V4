@@ -118,3 +118,40 @@ test("actual API blocks QC aliases and unconfirmed or fractional-cent refunds", 
   assert.equal(refund.writes[0].refundAmount, 13);
   assert.equal(refund.writes[0].idempotencyKey, "fixture-refund-key");
 });
+
+test("preparing a legacy return requires exact management, request and approval grants", async () => {
+  const payload = { action: "prepare_wallet_refund", reason: "Manager directed wallet refund", idempotencyKey: "fixture-prepare-key" };
+  for (const permissions of [
+    ["rma.read", "rma.manage", "rma.refund"],
+    ["rma.read", "wallet_refunds.approve", "wallet_refunds.request"],
+    ["rma.read", "rma.manage", "wallet_refunds.approve"],
+    ["rma.read", "orders.manage", "wallet_refunds.approve", "rma.refund"],
+  ]) {
+    const route = actionRoute(permissions);
+    assert.equal((await route.post(payload)).status, 403);
+    assert.equal(route.writes.length, 0);
+  }
+  const route = actionRoute(["rma.read", "rma.manage", "wallet_refunds.request", "wallet_refunds.approve"]);
+  for (const extra of [{ reason: "" }, { idempotencyKey: undefined }, { refundAmount: 10 }, { customerConfirmation: "Fabricated agreement" }]) {
+    assert.equal((await route.post({ ...payload, ...extra })).status, 400);
+  }
+  assert.equal(route.writes.length, 0);
+  assert.equal((await route.post(payload)).status, 200);
+  assert.equal(route.writes[0].action, "prepare_wallet_refund");
+  assert.equal(route.writes[0].idempotencyKey, payload.idempotencyKey);
+});
+
+test("already disposed legacy replacement exposes a safe preparation path without reopening stock", () => {
+  const permissions = ["rma.read", "rma.manage", "rma.refund", "wallet_refunds.approve"];
+  for (const disposition of ["restock", "scrap"]) {
+    const row = { ...received, requestedResolution: "replacement", refundPricingVerified: false,
+      unitPriceSnapshot: null, inventoryDisposition: disposition, inventoryDispositionQuantity: 1 };
+    const state = dto.toAdminRmaDto(row, dto.getAdminRmaCapabilities(auth(permissions)));
+    assert.equal(state.availableActions.includes("prepare_wallet_refund"), true);
+    assert.equal(state.availableActions.includes("verify_refund_snapshot"), false);
+    assert.equal(state.availableActions.includes("restock_return"), false);
+    assert.equal(state.canApproveWalletRefund, false);
+    const reader = dto.toAdminRmaDto(row, dto.getAdminRmaCapabilities(auth(["rma.read"])));
+    assert.equal(reader.availableActions.includes("prepare_wallet_refund"), false);
+  }
+});

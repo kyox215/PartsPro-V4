@@ -54,7 +54,7 @@ type ActionCode = RmaWorkflowAction;
 type Recommendation = RmaWorkflowRecommendation;
 type QcStatus = "passed" | "failed" | "not_required";
 type InventoryAction = "restock_return" | "mark_scrapped" | "supplier_return";
-type ActionDialog = "cancel_unreceived" | "verify_refund_snapshot" | "release_cancelled_replacement" | "create_replacement_order" | "approve" | "split_request" | "start_negotiation" | "resolve_negotiation" | "return_to_customer" | "bind_replacement_order" | "receive" | "reject" | "qc" | "refund" | "replacement" | "inventory" | null;
+type ActionDialog = "prepare_wallet_refund" | "cancel_unreceived" | "verify_refund_snapshot" | "release_cancelled_replacement" | "create_replacement_order" | "approve" | "split_request" | "start_negotiation" | "resolve_negotiation" | "return_to_customer" | "bind_replacement_order" | "receive" | "reject" | "qc" | "refund" | "replacement" | "inventory" | null;
 type DirectReceiptRequest = Pick<AdminRmaDto, "id" | "rmaNo" | "productName" | "quantity">;
 
 type RefundPreview = {
@@ -164,6 +164,7 @@ const rmaCopy = {
       markReceived: "Ricevuto",
       markReceivedFallback: "Merce già ricevuta in negozio / magazzino",
       recordQc: "Registra controllo",
+      prepareRefund: "Prepara rimborso wallet",
       reject: "Rifiuta",
       requestRefund: "Richiedi rimborso wallet",
       replacementSent: "Segna sostituzione spedita",
@@ -276,6 +277,7 @@ const rmaCopy = {
       markReceived: "标记收货",
       markReceivedFallback: "门店／仓库已收到商品",
       recordQc: "记录质检",
+      prepareRefund: "改为钱包退款并核价",
       reject: "拒绝",
       requestRefund: "申请钱包退款",
       replacementSent: "标记替换件已发出",
@@ -574,7 +576,7 @@ export function AdminRmaPanel() {
   }
 
   function triggerAction(action: ActionCode) {
-    if (["cancel_unreceived", "verify_refund_snapshot", "release_cancelled_replacement", "create_replacement_order", "split_request", "start_negotiation", "resolve_negotiation", "return_to_customer", "bind_replacement_order"].includes(action)) {
+    if (["prepare_wallet_refund", "cancel_unreceived", "verify_refund_snapshot", "release_cancelled_replacement", "create_replacement_order", "split_request", "start_negotiation", "resolve_negotiation", "return_to_customer", "bind_replacement_order"].includes(action)) {
       openActionDialog(action as Exclude<ActionDialog, null>);
     } else if (action === "mark_received" && canReceiveDirectly(selectedRequest)) {
       openActionDialog("receive");
@@ -653,7 +655,9 @@ export function AdminRmaPanel() {
       const detailLoaded = await loadDetail(request.id);
       if (detailLoaded) {
         setActionDialog(null);
-        setNotice({ message: copy.actionDone, tone: "success" });
+        setNotice({ message: action === "prepare_wallet_refund"
+          ? (isZh ? "原单金额已核验，处理方式已改为钱包退款。请填写金额创建申请，再批准入账。" : "Importo originale verificato. Crea la richiesta con l'importo, poi approva l'accredito.")
+          : copy.actionDone, tone: "success" });
       }
     } catch (error) {
       setNotice({
@@ -696,7 +700,7 @@ export function AdminRmaPanel() {
   const availableSecondaryActions = selectedRequest
     ? selectedRequest.availableActions.filter(
         (action) => action !== selectedRequest.recommendedAction && action !== "assign" &&
-          !(showDirectReceipt && action === "mark_received")
+          !(showDirectReceipt && action === "mark_received") && !["prepare_wallet_refund", "request_wallet_refund"].includes(action)
       )
     : [];
   const allowedInventoryActions = selectedRequest ? inventoryActionsFor(selectedRequest) : [];
@@ -867,6 +871,44 @@ export function AdminRmaPanel() {
                   </div>
                 </div>
 
+                <div id="rma-wallet-flow" className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
+                  <h4 className="font-black">{isZh ? "客户钱包退款" : "Rimborso al portafoglio cliente"}</h4>
+                  <ol className="grid grid-cols-3 gap-2 text-xs font-semibold">
+                    {(isZh ? ["1 · 准备并核价", "2 · 创建申请", "3 · 批准入账"] : ["1 · Verifica", "2 · Richiesta", "3 · Accredito"]).map((label) =>
+                      <li key={label} className="rounded-md border border-primary/15 bg-white p-2">{label}</li>)}
+                  </ol>
+                  {(selectedRequest.walletCreditedAmount ?? 0) > 0 ? (
+                    <p className="text-sm font-bold text-emerald-700">{isZh ? "已入客户钱包" : "Accreditato al cliente"}: {formatMoney(selectedRequest.walletCreditedAmount!, "EUR")}</p>
+                  ) : selectedRequest.walletRefundStatus === "pending" ? (
+                    <>
+                      <p className="text-sm text-amber-800">{isZh ? "申请已创建，待批准" : "Richiesta creata, in attesa di approvazione"}: {selectedRequest.walletRequestedAmount == null ? "…" : formatMoney(selectedRequest.walletRequestedAmount, "EUR")}</p>
+                      {selectedRequest.canApproveWalletRefund ? (
+                        <Button type="button" className="h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto" disabled={Boolean(pendingAction) || isDetailLoading} onClick={() => setRefundConfirmation(selectedRequest)}>
+                          {pendingAction === "approve_wallet_refund" ? <Loader2 className="size-4 animate-spin" /> : null}
+                          {isZh ? "批准并入客户钱包" : "Approva e accredita"}
+                        </Button>
+                      ) : <p className="text-xs text-slate-600">{isZh ? "需拥有“批准钱包退款”权限的员工批准后入账。" : "Un dipendente autorizzato deve approvare l'accredito."}</p>}
+                    </>
+                  ) : selectedRequest.walletRefundRequestId ? (
+                    <p className="text-sm">{isZh ? "此退款申请未入账，请核对处理状态。" : "Richiesta non accreditata: verifica lo stato."}</p>
+                  ) : (
+                    <>
+                      <p className="text-sm">{isZh ? "尚未创建钱包退款申请，因此还没有批准按钮。" : "Non esiste ancora una richiesta: il pulsante di approvazione appare dopo la creazione."}</p>
+                      {selectedRequest.requestedResolution === "replacement" ? <p className="text-sm font-semibold">{isZh ? "原处理方式为换货；退款前先确认改为钱包退款。" : "La soluzione originale è una sostituzione: conferma prima il passaggio al rimborso wallet."}</p> : null}
+                      {selectedRequest.refundPricingVerified === false ? <p className="text-xs">{isZh ? "历史记录的原成交金额尚未核验。需要有售后管理、退款申请和批准权限的负责人准备退款。" : "L'importo storico richiede verifica da un responsabile con permessi di gestione, richiesta e approvazione."}</p> : null}
+                      {selectedRequest.availableActions.includes("prepare_wallet_refund") ? (
+                        <Button type="button" className="h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto" disabled={Boolean(pendingAction) || isDetailLoading} onClick={() => triggerAction("prepare_wallet_refund")}>
+                          {copy.action.prepareRefund}
+                        </Button>
+                      ) : selectedRequest.availableActions.includes("request_wallet_refund") ? (
+                        <Button type="button" className="h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto" disabled={Boolean(pendingAction) || isDetailLoading} onClick={() => openActionDialog("refund")}>
+                          {copy.action.requestRefund}
+                        </Button>
+                      ) : <p className="text-xs text-slate-600">{isZh ? "先完成收货、检测及处理方式核对；下一步还会验证当前账号的权限。" : "Completa ricezione, controllo e soluzione; i permessi vengono verificati prima dell'azione."}</p>}
+                    </>
+                  )}
+                </div>
+
                 {selectedRequest.parentRequestId ? (
                   <Button variant="link" onClick={() => setSelectedId(selectedRequest.parentRequestId!)}>
                     {isZh ? "查看原申请与照片" : "Apri richiesta originale e foto"}
@@ -875,7 +917,7 @@ export function AdminRmaPanel() {
                 {selectedRequest.customerConfirmation ? (
                   <p className="rounded-lg border border-slate-200 p-3 text-sm">{isZh ? "客户确认记录：" : "Accordo confermato: "}{selectedRequest.customerConfirmation}</p>
                 ) : null}
-                {selectedRequest.recommendedAction ? (
+                {["prepare_wallet_refund", "request_wallet_refund"].includes(selectedRequest.recommendedAction ?? "") ? null : selectedRequest.recommendedAction ? (
                   <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
                     <div className="flex items-start gap-2">
                       <ShieldAlert className="mt-0.5 size-5 shrink-0 text-primary" />
@@ -936,25 +978,6 @@ export function AdminRmaPanel() {
                     ) : null}
                   </WorkflowNotice>
                 )}
-
-                {selectedRequest.walletRefundRequestId ? (
-                  <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <h4 className="text-sm font-black">{isZh ? "退款至客户钱包" : "Rimborso al portafoglio cliente"}</h4>
-                    {(selectedRequest.walletCreditedAmount ?? 0) > 0 ? (
-                      <p className="text-sm font-bold text-emerald-700">{isZh ? "已入账" : "Accreditato"}: {formatMoney(selectedRequest.walletCreditedAmount!, "EUR")}</p>
-                    ) : selectedRequest.walletRefundStatus === "pending" ? (
-                      <>
-                        <p className="text-sm text-amber-800">{isZh ? "待批准" : "In attesa di approvazione"}: {selectedRequest.walletRequestedAmount == null ? "…" : formatMoney(selectedRequest.walletRequestedAmount, "EUR")}</p>
-                        {selectedRequest.canApproveWalletRefund ? (
-                          <Button type="button" disabled={Boolean(pendingAction) || isDetailLoading} onClick={() => setRefundConfirmation(selectedRequest)}>
-                            {pendingAction === "approve_wallet_refund" ? <Loader2 className="size-4 animate-spin" /> : null}
-                            {isZh ? "批准并入客户钱包" : "Approva e accredita"}
-                          </Button>
-                        ) : <p className="text-xs text-slate-600">{isZh ? "需拥有“批准钱包退款”权限的员工批准后入账。" : "Un dipendente con il permesso di approvare i rimborsi deve confermare l'accredito."}</p>}
-                      </>
-                    ) : <p className="text-sm text-slate-600">{isZh ? "退款申请未入账，请核对处理状态。" : "Richiesta non accreditata: verifica lo stato."}</p>}
-                  </div>
-                ) : null}
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <DetailBlock title={copy.noteSummary}>
@@ -1205,11 +1228,13 @@ export function AdminRmaPanel() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(actionDialog && ["cancel_unreceived", "verify_refund_snapshot", "release_cancelled_replacement", "create_replacement_order", "split_request", "start_negotiation", "resolve_negotiation", "return_to_customer", "bind_replacement_order"].includes(actionDialog))} onOpenChange={(open) => !open && setActionDialog(null)}>
+      <Dialog open={Boolean(actionDialog && ["prepare_wallet_refund", "cancel_unreceived", "verify_refund_snapshot", "release_cancelled_replacement", "create_replacement_order", "split_request", "start_negotiation", "resolve_negotiation", "return_to_customer", "bind_replacement_order"].includes(actionDialog))} onOpenChange={(open) => !open && setActionDialog(null)}>
         <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{actionDialog ? actionLabel(actionDialog as ActionCode, copy) : ""}</DialogTitle>
-            <DialogDescription>{isZh ? "操作会记录在售后历史中。协商完成前保持商品隔离。" : "L’operazione sarà registrata nella cronologia. Mantieni gli articoli separati fino all’accordo."}</DialogDescription>
+            <DialogDescription>{actionDialog === "prepare_wallet_refund"
+              ? (isZh ? "确认将本售后改为钱包退款并核对原单金额。此步只准备退款，下一步创建申请，再批准入账；保留原收货、检测和库存记录。" : "Conferma il rimborso wallet e verifica l'importo originale. Questo passo prepara la richiesta; l'accredito richiede poi l'approvazione. Ricezione, controllo e stock restano documentati.")
+              : isZh ? "操作会记录在售后历史中。协商完成前保持商品隔离。" : "L’operazione sarà registrata nella cronologia. Mantieni gli articoli separati fino all’accordo."}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             {actionDialog === "cancel_unreceived" ? <>
@@ -1564,6 +1589,7 @@ function actionLabel(action: ActionCode, copy: Copy, queue?: QueueTab) {
   }
   switch (action) {
     case "cancel_unreceived": return copy.action.cancelUnreceived;
+    case "prepare_wallet_refund": return copy.action.prepareRefund;
     case "verify_refund_snapshot": return copy.action.verifyRefund;
     case "release_cancelled_replacement": return copy.action.releaseReplacement;
     case "create_replacement_order": return copy.action.createReplacement;

@@ -137,6 +137,7 @@ export type RmaCompleteAttachmentInput = z.infer<typeof rmaCompleteAttachmentSch
 export const adminRmaActionSchema = z
   .object({
     action: z.enum([
+      "prepare_wallet_refund",
       "split_request",
       "cancel_unreceived",
       "verify_refund_snapshot",

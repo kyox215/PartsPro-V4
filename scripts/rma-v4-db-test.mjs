@@ -35,9 +35,13 @@ for(const filename of readdirSync('supabase/migrations').filter(n=>n.endsWith('.
  try { sql(source); count++; } catch(e){ console.error(`FAILED ${filename}\n${e.message}`); process.exit(1); }
 }
 console.log(`Applied ${count} migrations to isolated PostgreSQL database ${database}`);
-if(process.env.RMA_V4_FIXTURE) { sql(readFileSync(process.env.RMA_V4_FIXTURE,'utf8')); console.log('All RMA v4 SQL integration assertions passed.'); }
-if (process.env.RMA_V4_FIXTURE) {
-  const fixture=readFileSync(process.env.RMA_V4_FIXTURE,'utf8');
+let fixture=process.env.RMA_V4_FIXTURE ? readFileSync(process.env.RMA_V4_FIXTURE,'utf8') : null;
+if(process.env.RMA_V4_EXTRA_FIXTURE) {
+  if(!fixture || !/rollback;\s*$/i.test(fixture)) throw Error('Extra fixture requires a transaction-only base fixture');
+  fixture=fixture.replace(/rollback;\s*$/i,'')+readFileSync(process.env.RMA_V4_EXTRA_FIXTURE,'utf8');
+}
+if(fixture) { sql(fixture); console.log('All RMA v4 SQL integration assertions passed.'); }
+if (fixture) {
   const setup=fixture.split('do $$ declare r uuid;')[0];
   sql(setup+`do $$ declare r uuid:=pg_temp.make_rma(); begin update public.rma_requests set rma_no='RMA-CONCURRENCY' where id=r; end $$; commit;`);
   const getId=(query)=>sql(query).match(/[0-9a-f]{8}-[0-9a-f-]{27,}/)[0];

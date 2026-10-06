@@ -256,6 +256,7 @@ export type RmaRequest = {
   /** Admin-only amounts verified against the exact linked refund request. */
   walletRequestedAmount?: number | null;
   walletCreditedAmount?: number | null;
+  unitPriceSnapshot?: number | null;
   reviewedAt?: string | null;
   receivedAt?: string | null;
   resolvedAt?: string | null;
