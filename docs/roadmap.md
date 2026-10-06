@@ -115,3 +115,9 @@ Last reviewed: 2026-09-28
 - 发布源码为项目内 `.codex-worktrees/employee-rma-refund-20261004` / 分支 `codex/employee-rma-refund-20261004`，提交 `02f93eb`，基于当前线上 c33a1ac/c344fadc；主目录较早且有其他既有未提交改动，本次未整目录部署，尚未推送/合并 GitHub main。
 - 34 项 RMA/员工合同测试、6 项 storefront、全量 lint、生产 build、桌面/手机/意大利文真实组件模拟 API 验证与独立审查通过。Vercel 候选远端 build READY，6 项候选及7项上线只读检查通过；两个正式域名指向 `dpl_GTEgBj9PQrU1gfNfLob6gD2caGwf`，短时错误日志聚合无记录。
 - 回退代码部署 `dpl_EE4NmwdYDoPeeN3vgVgFEcofRGYX` 保留；代码回退不会撤销本次已批准的钱包退款。真实员工账号线上退款 E2E 与真机 Safari 未验证，模拟测试与实际两单 SQL核验分别留证。
+
+## 2026-10-06 历史售后钱包退款
+
+- 最新截图两条售后 PP-20260803110230-D3DDD9 / 3000000194072 与 PP-20260812152916-53B7E4 / 3667075265009 已分别入原客户钱包 EUR6.50、EUR14.50，余额EUR21；唯一credit各1，两条closed，原restock/scrap数量和收货/QC证据保留，无新增库存流水。与10月4日EUR26为不同订单。
+- 按已上线源 `.codex-worktrees/employee-rma-refund-20261004` 完成固定钱包操作区和受控历史退款准备函数候选；36项合同测试、lint/build、隔离SQL集成与并发唯一入账、390×844模拟接口交互及独立Migration/RLS专项通过。
+- 老板本次明确“批准”后，新migration `20261006002331_prepare_legacy_rma_wallet_refund.sql` 重新dry-run仅本条并受控应用；remote函数/ACL/原两笔ledger核验通过。源码763c01b部署到production候选并核361源码哈希及7项smoke，独立PROMOTE GO后正式发布，两域名指向 `dpl_FZHgXPWj6fLzuHNw23yDHxQGcgJb`，正式7项检查与短时无error/fatal日志通过。保留旧部署回退；没有改env/员工授权，没有重复退款。截图为演示接口，真实员工线上E2E未验证。详情 `docs/tasks/done/P1-2026-10-06-legacy-rma-wallet-refund.md`，证据 `outputs/rma/2026-10-06/`。

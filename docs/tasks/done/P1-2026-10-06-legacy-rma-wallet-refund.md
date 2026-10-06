@@ -1,7 +1,7 @@
 # P1-2026-10-06-legacy-rma-wallet-refund
 
-状态：in_progress；Task ID：TASK-20261006-01；风险 R3；自治 L2。
-当前进度：两笔真实退款及关闭已完成；通用流程候选已验证，等待本次 db push 明确批准，未应用新 migration、未部署新界面。
+状态：done；Task ID：TASK-20261006-01；风险 R3；自治 L2。
+当前结果：两笔真实退款及关闭已完成；老板本次明确“批准”后，唯一migration已受控应用，通用流程已部署并核验正式域名。
 主责：订单运营部；协作：价格与客户部、仓库库存部、平台发布部。
 RACI：主助手 Responsible，老板 Approver，独立资金/权限/迁移/发布审查 Consulted。
 
@@ -36,5 +36,15 @@ RACI：主助手 Responsible，老板 Approver，独立资金/权限/迁移/发�
 - 最终全量 lint/build、36项定向合同测试、6项storefront、TypeScript通过；隔离 PostgreSQL17 应用115条migration，旧V4及新准备/权限/价格冲突/回滚断言全部通过，原退款申请/批准并发测试仅1笔credit。
 - SQL复现：`RMA_V4_FIXTURE=tests/rma-v4-database-integration.sql RMA_V4_EXTRA_FIXTURE=tests/rma-wallet-preparation-integration.sql node scripts/rma-v4-db-test.mjs partspro-rma-v4-test-20261006`。专用容器network none，仅匿名volume，不连接linked环境。
 - 手机390×844真实React组件＋本地模拟接口，准备/金额空值及超上限与多小数拒绝/申请/待批准/取消确认/模拟批准/关闭、只读及批准员工分离通过；无横向溢出，浏览器error/warn空。截图为演示，不证明真实员工线上E2E。线上浏览器仍停在登录页；不读取或注入登录凭据。
-- 证据：主目录 `outputs/rma/2026-10-06/`；候选源码在既有项目内worktree。暂停只限迁移及依赖它的新界面发布，真实退款已完成。
+- 证据：主目录 `outputs/rma/2026-10-06/`；候选源码在既有项目内worktree。前述候选阶段已结束；迁移和新界面均已受控发布，真实退款已完成。
 - 回退：保持既有线上版本即可停用新入口；如已应用函数，先回退依赖它的代码，再在后续经批准迁移中撤回函数。代码回退不会撤销已批准EUR21；本任务不发起反向扣款。
+
+## 批准后发布结果
+
+- 老板本次原话“批准”，对应前一轮展示的PartsPro-V4唯一migration及验证后发布，未扩展为其它schema/env/员工权限或退款授权。
+- 重新linked list/dry-run仅本条，SHA256 e155379045c9d894e1450e765f812c60022f8da71b61e59cccc7fda007de4ba9，真实db push成功。Remote新函数body MD5 9cbaebc47c475241bc60392d167b93f1与本地一致，fixed search_path，anon execute false/authenticated true，readonly调用无JWT28000。两笔approved/credit金额6.5及14.5、closed及库存数量保持。
+- Advisor新函数通用authenticated SECURITY DEFINER WARN属于已审查内部门禁的预期分类，未出现新函数匿名暴露或mutable search_path；其它既有提示不在本任务范围。
+- 生产源码提交763c01b；--prod --skip-domain候选dpl_FZHgXPWj6fLzuHNw23yDHxQGcgJb，远端READY。361上传源码文件SHA1全部与本地匹配，禁上传文件0。候选7项通过后独立发布审查PROMOTE GO，再promote。
+- partspro.app与www.partspro.app均API确认指向新部署；正式7项检查通过：admin/home/catalog200，RMA list/detail401，prepare POST401，wallet approve PATCH401。正式admin资源均标记新部署。短时10m error/fatal grouped query为空；保留回退dpl_GTEgBj9PQrU1gfNfLob6gD2caGwf。
+- 无真实员工登录E2E/真机Safari证明；手机截图为真实组件模拟接口，线上检查未登录。已完成退款未重复操作。源码已发布但没有推送或合并GitHub main。
+- 发布与核验证据在主目录outputs/rma/2026-10-06；保留原主目录其它未提交改动。
