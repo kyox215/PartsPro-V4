@@ -2,14 +2,14 @@
 
 验收日期：2026-10-11，Europe/Rome。候选工作树：`.codex-worktrees/frontend-ux-states-release-20261010`；集成基线：`c9f1b1a5b6ea0baab30049acecefb6051e48db4a`。
 
-原审计的 59 项前台问题已逐项对应到候选行为，后台 64 项候选已集成。下单结果未知、重复提交、迟到请求、旧购物车被清空等风险增加了数据库回执与终止机制；页面复用了统一动作、反馈与草稿保护组件。**当前是本地修复候选和验收证据，尚未应用生产 migration 或正式发布，不能表述为“123 项生产验证全通过”。** 部分原建议采用安全替代，受保护价格排序、B2B 客户自助查询审核状态和正式法律政策仍有边界，见对应行。
+原审计的 59 项前台问题已逐项对应到候选行为，后台 64 项候选已集成。下单结果未知、重复提交、迟到请求、旧购物车被清空等风险增加了数据库回执与终止机制；页面复用了统一动作、反馈与草稿保护组件。**本轮实施已发布到 https://www.partspro.app，运行源码 bc70ed26，部署 dpl_Hz8t57m5kDJRmf2iwn6pDRXQJ3Rh。123项均有变更或明确边界的对应记录；这不代表123项真实业务生产E2E全通过。** 部分原建议采用安全替代，受保护价格排序、B2B 客户自助查询审核状态和正式法律政策仍有边界，见对应行。
 
 ## 依据与证据等级
 
 - 问题编号和原触发条件：[全站审计](2026-10-10-full-frontend-ux-ui-audit.md)及 canonical 根目录 `outputs/frontend-audit/2026-10-10/findings.json`，共 123 项（前台 59、后台 64）。该原始 JSON 未改写为修复结果。
 - 公开页面候选：[公开页面验收](2026-10-10-public-ui-repair-verification.md)。
 - 后台候选及其逐 64 项结果：[后台修复验收](2026-10-10-admin-panel-repair-verification.md)。其原工作树、运行环境和历史证据保持原口径。
-- 本报告补充核对集成树的 Cart、Checkout、Account、RMA、订单 API、repository 与新 SQL；只写本报告，未执行生产、客户或管理员业务写入。
+- 本报告核对集成树的 Cart、Checkout、Account、RMA、订单 API、repository 与新 SQL。仅已批准的 schema 迁移和网站发布涉及生产变更，未执行真实客户或管理员业务测试写入。
 - 组件规范：[组件状态矩阵](../design/component-states.md)。生产迁移及部署依赖：[本轮发布门](2026-10-11-frontend-release-gate.md)。
 
 | 标记 | 可支持的结论 | 不支持的结论 |
@@ -19,11 +19,11 @@
 | PGlite | 本轮真实 migration SQL 在合成表、Auth 和业务依赖下执行通过 | 真实 Supabase JWT/RLS、多连接竞争 |
 | PostgreSQL 17 | 无网络隔离容器内多连接事务与锁竞争通过 | 生产交易、真实库存/钱包/支付、网络故障全覆盖 |
 | 浏览器模拟 | 候选真实 React 组件及样式在合成 API/路由适配下实际交互 | 正式 Next 页面连接真实服务的完整流程 |
-| 正式候选浏览器 | 待最终补充具体页面、视口、交互和截图 | 当前没有据此宣称发布或生产验收 |
+| 正式网站浏览器 | 匿名1280px目录排序、详情内容及链接实际读取，具体交互与截图见文末 | 不支持真实账号、完整鼠标导航、移动设备或业务交易全流程验收 |
 
 ## 前台 59 项对应结果
 
-表内“候选”均指上述集成树。浏览器收尾尚在执行，未完成的真实设备、账户和外部服务验收不由源码或测试替代。
+表内“候选”对应已发布的上述隔离集成源码。表内历史待补项目的最终覆盖范围以文末最终发布记录为准；未完成的真实设备、账户和外部服务验收不由源码或测试替代。
 
 ### 导航、首页与目录
 
@@ -161,9 +161,9 @@
 
 ## 生产依赖、回退与外部验收
 
-本轮发布门记录的目标是 **PartsPro-V4 / yiuxrjqexlfjtxxrkqvi**，fresh linked dry-run只列两条：后台原子客服/财务读取 `20261010204858_admin_support_atomic_reply.sql`，以及上述checkout migration。前者SHA-256为 `23576d5e5c451f321a4d07cddc4257b09df333b8a5f3d4350ce453173aaf59bb`。目标核对和清单以[发布门](2026-10-11-frontend-release-gate.md)为准；**尚未取得并执行本次linked db push的独立明确批准，页面不能先发布再等schema。** 若SQL或清单改变，需重新核对审批所涵盖的精确版本。
+本轮发布门记录的目标是 **PartsPro-V4 / yiuxrjqexlfjtxxrkqvi**。首次预检列出后台原子客服/财务读取 `20261010204858_admin_support_atomic_reply.sql` 和上述checkout migration；后台迁移由并行任务先行应用后，批准前的fresh linked dry-run仅列checkout一条。后台migration SHA-256为 `23576d5e5c451f321a4d07cddc4257b09df333b8a5f3d4350ce453173aaf59bb`。目标核对和清单见[发布门](2026-10-11-frontend-release-gate.md)；唯一剩余checkout已获Owner明确批准并受控应用，远端up to date与发布完成记录见文末。若SQL或清单改变，需重新核对审批所涵盖的精确版本。
 
-受控应用并核对ACL/函数/迁移历史后，正式Vercel候选仍需运行环境验收与同提交CI，再将同一构建promote。网站回退目标由发布门保存；优先回到旧部署，保留附加回执、终止历史和RPC。页面回退不撤销已经发生的真实订单、客服回复、财务修改或库存事实；数据库撤回需独立补偿migration，不自动DROP、删历史或repair迁移记录。
+受控应用并核对ACL/函数/迁移历史后，Vercel候选已完成本轮运行环境与同提交检查，并promote同一构建。网站立即回退目标为上一前台部署 `dpl_4ua1E7wmj8EkKdYnHvGdL3EVdjj6`，保留附加回执、终止历史和RPC。页面回退不撤销已经发生的真实订单、客服回复、财务修改或库存事实；数据库撤回需独立补偿migration，不自动DROP、删历史或repair迁移记录。
 
 尚未验收的真实外部边界：客户/管理员登录与实际角色权限、邮件与验证码送达、真实B2B提交及审核、订单/库存/钱包/通知/支付副作用、RMA照片Storage与失联恢复、客服发送、财务写入/修正、eBay刊登/订单回流、真实统计、生产负载、iPhone Safari/软键盘/触控及打印设备。当前测试只对它们的候选契约提供有限证据，不替代生产事实。
 
@@ -174,17 +174,17 @@
 | 收尾项 | 状态 |
 |---|---|
 | 前台59项候选映射、后台64项来源及边界 | 已记录，保留安全替代和未新增能力 |
-| 本轮浏览器最终结果/实际查看截图 | 待主助手补入 |
-| 最终Git SHA与同提交CI | 待主助手补入 |
-| 本次两条生产migration批准与应用后核对 | 待Owner批准及受控执行 |
-| 候选deployment/promote/运行版本/线上smoke | 待发布门完成后补入 |
+| 本轮浏览器最终结果/实际查看截图 | 已补充文末范围，鼠标完整导航及原生确认保留限制 |
+| 最终Git SHA与同提交CI | bc70ed26完整SHA、Vercel check/status success |
+| 本次生产migration批准与应用后核对 | 唯一checkout获批准、应用后核对通过；后台此前已应用 |
+| 候选deployment/promote/运行版本/线上smoke | 同一READY构建promote，正式域名映射与14项无认证GET全部通过 |
 
-## 2026-10-11 集成与受控迁移更新
+## 2026-10-11 集成与受控迁移过程记录
 
 - 检测到并行后台已上线 `a826642402a459042f5beb883a29624511494547`，当前候选已完整merge，保留后台19个源码变更与状态tokens，不回退其发布。只重叠globals.css，两段独立样式均保留。
 - 最新后台集成独立回归20文件104/104、客户相关回归60/60（含storefront、恢复、checkout SQL、Cart及RMA上传），分别见本次输出TAP，不与历史129/133/88等重复加总。最终全lint/build通过；最后新增目录排序后再次构建通过。
 - 老板明确批准本次checkout迁移。fresh dry-run仅 `20261010215007_checkout_request_replay.sql`；受控db push已成功，linked再次dry-run up to date。两张private表RLS=true，anon/authenticated直接SELECT=false；三公开RPC仅authenticated可执行，private helper不可直接执行，固定空search_path。原下单/预订函数SHA摘要和应用前一致。无真实业务测试写入。
-- 最新回退部署 `dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ`（刚上线后台状态规范）；Vercel同项目正式域名已核对为partspro.app/www.partspro.app，前者重定向后者。新候选尚待最终部署与域名切换记录。
+- 此阶段后台回退基线为 `dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ`；Vercel同项目正式域名核对为partspro.app/www.partspro.app，前者重定向后者。最终上线及更新后的立即回退记录见文末。
 - UI末轮还修复：卡片容器查询与预览定位；代客地址编辑跳后台；账户日期按实际语言/罗马时区，客户备注原文保留；unknown/loading禁止修改被冻结的结账字段；售后读取失败时近期记录不再伪装为空，最终上传checkpoint不误提示重新选照片。
 
 ### 本轮实际组件浏览器交互
@@ -206,4 +206,24 @@
 
 截图：本次 `outputs/frontend-repair/2026-10-11/`，含cards-390-it、catalog-390-it、cart-768-it（裁切）、checkout-recovered-it、states-1280-zh。状态demo的说明文字为测试文案，不是产品正式文案。
 
-发布基线补充：正式www.partspro.app已更新到e09af0e（统计采集修复），本候选再次完整merge，最新统计12/12通过，依赖变更后全量lint/build再次通过。默认Vercel别名与custom域名暂不同步，以custom域名dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ作为回退基线；两个旧预检部署不再作为正式商城的当前版本。账户脏草稿原生确认框自动化受到工具阻塞，未将取消放弃/确认放弃交互算PASS；浏览器关闭清理也受到同一阻塞。
+历史集成基线补充：正式www.partspro.app曾更新到e09af0e（统计采集修复），本候选再次完整merge，统计12/12通过，依赖变更后全量lint/build再次通过。该阶段默认Vercel别名与custom域名不同步，曾以custom域名dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ作为回退基线；它与两个旧预检部署均不代表当前正式版本。账户脏草稿原生确认框自动化受到工具阻塞，未将取消放弃/确认放弃交互算PASS；该阶段浏览器关闭清理也受到同一阻塞。
+
+## 最终发布与交付（覆盖前文历史候选状态）
+
+- 正式网站：https://www.partspro.app；https://partspro.app 307重定向到www。运行源码完整SHA `bc70ed26aa0d74598d632bf7e0b5f437f92b9ff5`，分支 `codex/frontend-ux-states-release-20261010`。后续仅报告/证据提交不改变运行源码。
+- 同一生产构建 `dpl_Hz8t57m5kDJRmf2iwn6pDRXQJ3Rh`，immutable URL `https://parts-pro-v4-jajzldkwc-kyox120-9295s-projects.vercel.app`；先skip-domain验收，再promote，没有promote时重建。customalias API确认www指向这一ID/项目。最后导航补丁的立即回退部署为 `dpl_4ua1E7wmj8EkKdYnHvGdL3EVdjj6`；更早HH为后台基线，不能混称当前回退。
+- 独立最终核对406源码+6配置/lockfile共412上传摘要与Git blob一致（缺失/不匹配/额外src均0），双source metadata SHA吻合，production/项目正确。同源码Vercel Preview Comments check completed success与Vercel status success，Actions无运行；没有将本地build冒充Actions E2E。
+- 最新后台集成115/115；客户主回归60/60，最后链接补丁另4/4导航与6/6商城合同通过，存在重复测试不相加；真实隔离PG17并发3/3；最后全量lint/build及diff-check通过。最终只读生产候选14/14、正式公开无认证GET14/14，包括正常页面、目录排序、404/noindex、内部demo隐藏、Account/RMA完整next、匿名门禁、详情登录保留returnTo。见本次输出JSON/TAP。
+- 404和鉴权页的HTTP200带实际Next16流式notFound/redirect标记：验收严格核对`NEXT_HTTP_ERROR_FALLBACK;404`+noindex+商城恢复模块，或`__next-page-redirect`+完整/login next，符合安装版本文档，不是单凭200算正常。
+- 正式IAB匿名页面实际读取：1280px目录从名称切到最近更新，minStock保持，URL与详情returnTo一致；卡片按钮超界0、scrollWidth=1280。直接打开正式详情，返回目录href正确，最终reload后的login next确实包含完整returnTo。图库、规格/日期、匿名价格门禁已实际查看。截图`production-catalog-1280-zh.png`（首次全量上线，最终补丁未改CSS）及`final-production-detail-1280-zh.png`（最终源码）。
+- 真实鼠标/键盘完整“点击商品→详情→返回”未取得成功导航证据。用户已清除确认框后仍有自动化输入限制；无页面JS错误、无覆盖、inert=false，RSC目录GET0.88秒完整返回。子代理仅能看到Chrome、无法访问父线程IAB，故没有切其他浏览器或把goto/HTTP当点击通过。本轮对这点不推断为网站故障或宣称已完全验收。账户脏草稿原生确认取消/放弃也保留人工验收。自动审批曾拒绝对本地确认框继续发送Escape，理由是重复已停止的操作；未绕过拒绝。
+- 最后一处实测发现的详情登录丢returnTo已修复；详情门禁与补货提醒复用安全helper。授权公司只来自server delegation gate；匿名或foreign公司输入被剥离，编码控制符/反斜线、外部链接、重复公司参数被拒绝。Source/helper4项及真实候选/正式SSR/DOM链接核对通过。真实登录、邮件、支付和业务事务仍不是本轮证据范围。
+- 迁移仅在本轮明确批准后应用；无后续schema变化。真实customers/member/order/order_lines字段元数据契约匹配，原下单/预订函数摘要不变，RLS/ACL符合记录。未执行真实订单/库存/钱包/售后/客服写验收。测试HTTP服务和独占PG容器已停止，临时视口已reset，脱敏fixture源码归档供复现。
+
+### 当前仍有边界的能力
+
+1. B2B已给真实提交参考号、unknown防重与联系团队路径；没有新增客户自助实时审核状态GET/RLS。
+2. 同意链接提供实际帮助/业务规则；正式独立法律/隐私政策需有效业务条款，不能以帮助页冒充。
+3. Account订单号搜索与50条分页已上线，状态筛选作用于当前页；未增加日期范围、总数和多地址簿。
+4. RMA已核验的最终payload可跨刷新恢复确认；浏览器File不持久化，未完上传仍需清理后重选照片。
+5. 真实角色登录、邮件验证码、支付/库存钱包、Storage、eBay和统计真实外部配置、物理手机软键盘/触控/打印均保留对应实测边界。

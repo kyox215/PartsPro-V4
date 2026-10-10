@@ -1,0 +1,46 @@
+{
+  "sourceSha": "bc70ed26aa0d74598d632bf7e0b5f437f92b9ff5",
+  "deploymentId": "dpl_Hz8t57m5kDJRmf2iwn6pDRXQJ3Rh",
+  "productionUrl": "https://www.partspro.app",
+  "immutableUrl": "https://parts-pro-v4-jajzldkwc-kyox120-9295s-projects.vercel.app",
+  "rollbackDeploymentId": "dpl_4ua1E7wmj8EkKdYnHvGdL3EVdjj6",
+  "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+  "teamId": "team_AOJDnrjov0QDLqpvMyhwA1yc",
+  "supabase": {
+    "ref": "yiuxrjqexlfjtxxrkqvi",
+    "name": "PartsPro-V4",
+    "approvedMigration": "20261010215007_checkout_request_replay.sql",
+    "sha256": "b04606d1d232c05c114990f4fcc9c91d6274fc3bac5e3a8046cd78c50985c49a",
+    "applied": true,
+    "upToDate": true,
+    "privateRls": true,
+    "directAnonAndAuthSelect": false,
+    "originalOrderFunctionHashesUnchanged": true
+  },
+  "checks": {
+    "admin": 115,
+    "customer": 60,
+    "postgresMultiConnection": 3,
+    "candidateReadOnly": 14,
+    "productionReadOnly": 14,
+    "uploadHashesMatched": 412,
+    "lint": "passed",
+    "build": "passed",
+    "githubSameShaCheck": "success",
+    "githubSameShaStatus": "success",
+    "githubActionsRuns": 0,
+    "navigation": 4
+  },
+  "limitations": [
+    "No real business transaction, actual password/email, or physical-device acceptance",
+    "Account native discard-confirm browser automation blocked; Escape rejected after retry stop",
+    "Browser mock viewport and real public desktop evidence are separate",
+    "Public B2B review-status self query and formal legal/privacy policy not introduced"
+  ],
+  "previousBackendRollbackDeploymentId": "dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ",
+  "testResourceCleanup": {
+    "syntheticHttpServer": "stopped",
+    "postgres17Container": "stopped",
+    "temporaryViewport": "reset"
+  }
+}

@@ -1,0 +1,107 @@
+{
+  "deployment": "https://www.partspro.app",
+  "executedAt": "2026-10-10T23:21:48.558Z",
+  "mode": "public read-only anonymous GET, no Vercel authentication",
+  "results": [
+    {
+      "path": "/",
+      "expected": 200,
+      "status": 200,
+      "pass": true
+    },
+    {
+      "path": "/catalogo?sort=name&minStock=1",
+      "expected": 200,
+      "status": 200,
+      "pass": true,
+      "sortNameSelected": true
+    },
+    {
+      "path": "/login?next=%2Fcheckout",
+      "expected": 200,
+      "status": 200,
+      "pass": true
+    },
+    {
+      "path": "/help",
+      "expected": 200,
+      "status": 200,
+      "pass": true
+    },
+    {
+      "path": "/checkout",
+      "expected": 200,
+      "status": 200,
+      "pass": true
+    },
+    {
+      "path": "/prodotto/FRONTEND-AUDIT-NONEXISTENT-SKU",
+      "expected": [
+        200,
+        404
+      ],
+      "status": 200,
+      "pass": true,
+      "notFoundDigest": true
+    },
+    {
+      "path": "/internal/component-states",
+      "expected": [
+        200,
+        404
+      ],
+      "status": 200,
+      "pass": true,
+      "notFoundDigest": true,
+      "demoHidden": true
+    },
+    {
+      "path": "/account?section=orders&orderId=44444444-4444-4444-8444-444444444444",
+      "expected": [
+        200,
+        307
+      ],
+      "status": 200,
+      "pass": true,
+      "deepLinkPreserved": true,
+      "streamingRedirect": true
+    },
+    {
+      "path": "/rma?order=44444444-4444-4444-8444-444444444444&requestId=55555555-5555-4555-8555-555555555555",
+      "expected": [
+        200,
+        307
+      ],
+      "status": 200,
+      "pass": true,
+      "deepLinkPreserved": true,
+      "streamingRedirect": true
+    },
+    {
+      "path": "/api/me",
+      "expected": 200,
+      "status": 200,
+      "pass": true,
+      "authenticated": false
+    },
+    {
+      "path": "/api/admin/accounts",
+      "expected": 401,
+      "status": 401,
+      "pass": true
+    },
+    {
+      "path": "/api/orders/submissions/44444444-4444-4444-8444-444444444444",
+      "expected": 403,
+      "status": 403,
+      "pass": true
+    },
+    {
+      "path": "/api/catalogo?minStock=1&sort=name&limit=1",
+      "expected": 200,
+      "status": 200,
+      "pass": true,
+      "returned": 1
+    }
+  ]
+}

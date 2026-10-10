@@ -5,7 +5,7 @@
 ## 精确目标及清单
 
 2026-10-11 本轮只读核对：Supabase `PartsPro-V4` / `yiuxrjqexlfjtxxrkqvi`，`ACTIVE_HEALTHY`，eu-west-2；linked migration list 无 remote-only 分歧。
-fresh `supabase db push --linked --dry-run` 仅两条：
+首次预检 `supabase db push --linked --dry-run` 列出两条。后台任务先行应用第一条后，本次明确批准前的fresh dry-run仅列第二条checkout：
 
 | 文件 | 来源/用途 | SHA-256 |
 |---|---|---|
@@ -22,8 +22,10 @@ PGlite执行验证事务回滚、hash冲突、scope/ACL、停止与回执；真�
 
 ## 回退与生产门
 
-网站回退目标为当前核对部署 `dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ`；正式别名 `parts-pro-v4-kyox120-9295s-projects.vercel.app`。保留本次附加表/RPC和去重/终止历史，不执行自动DROP或反向删数据。如需数据库撤回，另做补偿迁移并重新批准。
+网站当前立即回退目标为上一前台部署 `dpl_4ua1E7wmj8EkKdYnHvGdL3EVdjj6`，生产域名 `www.partspro.app`。初始后台基线 `dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ` 仅保留为历史记录。保留本次附加表/RPC和去重/终止历史，不执行自动DROP或反向删数据。如需数据库撤回，另做补偿迁移并重新批准。
 Vercel目标 `parts-pro-v4` / `prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo` / `team_AOJDnrjov0QDLqpvMyhwA1yc`，远端Node24.x。先应用已批准清单并核对权限/历史；生产skip-domain候选完整验证；同一构建promote。禁止无依赖schema切正式域名。
-状态更新：后台迁移已由并行后台发布完成。Owner明确批准本次唯一剩余checkout迁移；fresh dry-run仅20261010215007，db push已成功，应用后ACL/RLS/原函数摘要及up-to-date核对通过。代码候选完整merge最新a826后台发布，待本次production skip-domain候选验收/promote。前面的两条清单为首次预检记录，不再重复应用后台迁移。
+状态更新：后台迁移已由并行后台发布完成。Owner明确批准本次唯一剩余checkout迁移；fresh dry-run仅20261010215007，db push已成功，应用后ACL/RLS/原函数摘要及up-to-date核对通过。代码完整merge a826与e09后台发布，production skip-domain候选验收及同构建promote已完成。前面的两条清单为首次预检记录，不再重复应用后台迁移。
 
-发布基线补充：正式www.partspro.app已更新到e09af0e（统计采集修复），本候选再次完整merge，最新统计12/12通过，依赖变更后全量lint/build再次通过。默认Vercel别名与custom域名暂不同步，以custom域名dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ作为回退基线；两个旧预检部署不再作为正式商城的当前版本。账户脏草稿原生确认框自动化受到工具阻塞，未将取消放弃/确认放弃交互算PASS；浏览器关闭清理也受到同一阻塞。
+历史基线补充：正式www.partspro.app曾更新到e09af0e（统计采集修复），本候选再次完整merge，统计12/12通过，依赖变更后全量lint/build再次通过。该阶段以custom域名dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ作为回退基线；它和两个旧预检部署均不代表当前正式版本。账户脏草稿原生确认框自动化受到工具阻塞，未将取消放弃/确认放弃交互算PASS；该阶段浏览器关闭清理也受到同一阻塞。
+
+最终状态：唯一checkout迁移已批准应用，生产上线完成。运行源码bc70ed26aa0d74598d632bf7e0b5f437f92b9ff5，部署dpl_Hz8t57m5kDJRmf2iwn6pDRXQJ3Rh已promote到www.partspro.app，同SHA检查/412上传摘要/14候选与14线上无认证GET通过。最新立即回退为dpl_4ua1E7wmj8EkKdYnHvGdL3EVdjj6，保留数据库附加历史；真实业务和完整鼠标链限制见完整报告。

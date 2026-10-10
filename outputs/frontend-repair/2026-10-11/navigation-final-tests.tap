@@ -1,0 +1,30 @@
+TAP version 13
+# Subtest: catalog return preserves search but rejects external paths and delegated customer changes
+ok 1 - catalog return preserves search but rejects external paths and delegated customer changes
+  ---
+  duration_ms: 1.811167
+  ...
+# Subtest: auth redirect rejects external and malformed destinations and retains internal deep links
+ok 2 - auth redirect rejects external and malformed destinations and retains internal deep links
+  ---
+  duration_ms: 0.185625
+  ...
+# Subtest: profile completion retains one safe return destination without nested setup loops
+ok 3 - profile completion retains one safe return destination without nested setup loops
+  ---
+  duration_ms: 0.346708
+  ...
+# Subtest: product login next retains the catalog sort/filters and only server-authorized company context
+ok 4 - product login next retains the catalog sort/filters and only server-authorized company context
+  ---
+  duration_ms: 0.395916
+  ...
+1..4
+# tests 4
+# suites 0
+# pass 4
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 346.778542
