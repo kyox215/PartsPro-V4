@@ -1,6 +1,6 @@
 # P1-2026-10-10-admin-panel-comprehensive-ux
 
-状态：approved_release_in_progress（老板已批准本次单条迁移和上线；状态规范增强与验证进行中）
+状态：released_read_only_verified（64项、状态规范、单条批准迁移及正式发布完成；真实业务写验收另列）
 Task ID：TASK-20261010-ADMIN-UX
 风险等级：R3
 自治等级：L2（本地实施、验证及老板本次明确批准的生产迁移/发布）
@@ -44,3 +44,8 @@ Supabase PartsPro-V4/yiuxrjqexlfjtxxrkqvi敏感。新增schema时使用CLI生成
 新增migration 20261010204858_admin_support_atomic_reply.sql，PartsPro-V4/yiuxrjqexlfjtxxrkqvi已只读核对；无remote-only分歧，dry-run仅该文件。真实应用与发布均未执行，等待本次明确批准。测试、SQL fixture与真实服务边界详见报告，不以模拟验证代表生产。
 
 2026-10-11批准已收到，以上“等待批准”为此前阶段记录。新增执行项：参照小红书官方操作反馈规范与公开设计系统，统一共享状态组件、各面板提示、提交中、错误焦点、只读/禁用与弹窗层级。主助手负责admin-feedback.tsx、admin-dashboard.tsx和globals.css；唯一工作子助手负责16个业务面板及对应测试，写入不重叠。重新验证后执行批准范围，实际外部结果记入docs/roadmap.md。
+
+
+## 最终交付
+
+2026-10-11批准范围已执行。最终运行e09af0e，部署dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ，两正式域名已核对；单条迁移与函数ACL验证完成。170项测试、完整lint/build、405上传哈希、同SHA Vercel success、12候选/12正式HTTP、独立PROMOTE GO通过。12桌面/6手机重点面板真实管理员只读检查通过；统计7/30日与公开SDK实际新访问读取闭环。历史失败/首轮证据保留，生产业务写和真机未验收。细节与回退以docs/roadmap.md和修复报告为准。

@@ -157,3 +157,14 @@ Last reviewed: 2026-09-28
 - 共享组件已实现信息/成功/警告/错误、提交中、紧凑空状态和错误汇总；后台限定样式覆盖焦点/禁用/只读/校验/选中/Portal层级/减少动画。资料与状态矩阵记入既有后台修复报告。
 - 最新只读外部核对：Vercel parts-pro-v4 / prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo / team_AOJDnrjov0QDLqpvMyhwA1yc；正式域名仍指向dpl_BgiuoEqK7TPqFqSA66FC8KvG3qCL。Supabase健康，迁移无remote-only分歧，dry-run仍只列本次文件；尚未执行db push或生产promote。
 - 新增状态fixture通过1440/390/360三档真实组件交互及reduced-motion测试，18业务交互/60布局组合和发布候选lint/build重新验证进行中。最终迁移、部署和只读验收结果完成后更新本节。
+
+
+## 2026-10-11 — 后台全面修复与状态规范正式发布完成
+
+- 64项修复、16面板提示/12写面板等待态/8列表空态及焦点、只读、禁用、校验、选中、弹层和减少动画规范已上线。资料采用小红书官方反馈原则、Dynatrace与GOV.UK规范，细节在后台修复报告；没有替换既有业务保护。
+- 获得本次明确批准后，仅20261010204858_admin_support_atomic_reply.sql受控应用到PartsPro-V4/yiuxrjqexlfjtxxrkqvi。三个函数body/ACL/search_path核对PASS，应用后dry-run up to date，无生产业务数据写入或RLS重写。
+- 首次a826642发布的真实管理员只读验收发现统计by=[]错误，直接API确认后修为production单组environment期间总值，并补官方Analytics 2.0.1公开页面采集。只采集双正式HTTPS域名首页/目录/商品pageview，剔除query/hash，保留回调阻断私有SPA事件。无新增迁移、生产env/开关、权限提升或服务购买。
+- 最终源码e09af0e72578a17264223a1434a44939df76e99f已推送codex/admin-panel-comprehensive-20261010，未合并main，主目录既有业务改动未部署。production dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ READY，同SHA Vercel success，405上传SHA1全匹配、候选12HTTP及独立PROMOTE GO后切域名；两正式alias及正式12HTTP核对PASS。
+- 最终144后台/统计＋6商城＋20导入共170测试、完整lint/build/diff PASS。19真实组件模拟交互、60布局组合和4状态fixture证据复用于未变UI。真实管理员12桌面/6手机重点面板只读检查通过，财务20批次选项和手机弹窗按钮可达；正式统计7/30日读取显示新增1次浏览/1匿名访客，首页实际SDK2.0.1与HTTP200脚本、fresh后台无SDK已核对，viewport已恢复。近15分钟error日志0条，仅短时观察。
+- 报告：工作树docs/audits/2026-10-10-admin-panel-repair-verification.md；证据outputs/admin-repair/2026-10-11/。first-release保留首次部署/失败记录。历史漏采不能回填；访客是24小时匿名标识的UTC期间聚合。真实业务保存、记账、发送、库存、权限、eBay刊登/回流、退款、生产负载和真机软键盘仍未验收，不以只读/模拟证据冒充。
+- 回退首选dpl_EgvvHNSc3EaCZ1yMgPuMczg3q4U4（首轮完整修复），此前dpl_BgiuoEqK7TPqFqSA66FC8KvG3qCL仍保留；新增函数可保留，不需删库或修复迁移历史。
