@@ -3,6 +3,8 @@
 import * as React from "react";
 import { Bell, CheckCircle2, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
+import { productDetailPathWithCatalogReturn } from "@/lib/partspro-catalog-return.mjs";
 import { Button } from "@/components/ui/button";
 import { tx, txFormat } from "@/i18n/dictionaries/storefront";
 import type { PartProduct } from "@/lib/partspro-data";
@@ -30,6 +32,10 @@ export function ProductRestockReminderButton({
   product,
 }: ProductRestockReminderButtonProps) {
   const t = useT();
+  const pathname = usePathname();
+  const search = useSearchParams();
+  const returnTo = pathname === "/catalogo" ? `/catalogo?${search}` : search.get("returnTo");
+  const loginNext = productDetailPathWithCatalogReturn(product.sku, returnTo);
   const sku = toPublicSku(product.sku);
   const restockState = useRestockRequests(isAuthenticated);
   const [submitState, setSubmitState] = React.useState<SubmitState>("idle");
@@ -72,7 +78,7 @@ export function ProductRestockReminderButton({
           "Avvisa al rientro"
         );
 
-  if (!isAuthenticated) return <Button asChild variant="outline" className={cn("min-h-11 max-w-full whitespace-normal border-amber-200 bg-white px-3 text-amber-800", className)}><Link href={`/login?${new URLSearchParams({next:`/prodotto/${encodeURIComponent(product.sku)}`})}`}><Bell className="size-4" />{tx(t,"storefront.ux.loginForRestock","Accedi per avviso")}</Link></Button>;
+  if (!isAuthenticated) return <Button asChild variant="outline" className={cn("min-h-11 max-w-full whitespace-normal border-amber-200 bg-white px-3 text-amber-800", className)}><Link href={`/login?${new URLSearchParams({next:loginNext})}`}><Bell className="size-4" />{tx(t,"storefront.ux.loginForRestock","Accedi per avviso")}</Link></Button>;
   return (
     <Button
       type="button"

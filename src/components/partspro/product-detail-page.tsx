@@ -1,3 +1,4 @@
+import { productDetailPathWithCatalogReturn } from "@/lib/partspro-catalog-return.mjs";
 import { PricingSessionBoundary, QuoteExpiryRefresh } from "./pricing-session-boundary";
 import { CatalogBackLink } from "./catalog-back-link";
 import { ProductCompatibilityList } from "./product-compatibility-list";
@@ -34,6 +35,7 @@ import { StorefrontProductImage } from "./storefront-product-image";
 
 type ProductDetailPageProps = {
   assistedCompanyId?: string | null;
+  catalogReturnTo?: string | null;
   canUseCart?: boolean;
   initialAccountAccess?: StoreHeaderAccountAccess;
   priceGateReason?: PriceVisibilityReason;
@@ -43,6 +45,7 @@ type ProductDetailPageProps = {
 
 export async function ProductDetailPage({
   assistedCompanyId = null,
+  catalogReturnTo = null,
   canUseCart = false,
   initialAccountAccess,
   priceGateReason = "login_required",
@@ -61,7 +64,7 @@ export async function ProductDetailPage({
     hasBuyerPrice;
   const canRequestRestock = getProductPurchaseKind(product) === "unavailable";
   const shouldShowPurchasePanel = canPurchaseProduct || canRequestRestock;
-  const productPath = `/prodotto/${encodeURIComponent(product.sku)}`;
+  const productPath = productDetailPathWithCatalogReturn(product.sku, catalogReturnTo, assistedCompanyId);
   const hiddenPriceCopy = getAccountGateCopy(t, priceGateReason, {
     loginNextPath: productPath,
     moq: product.moq,

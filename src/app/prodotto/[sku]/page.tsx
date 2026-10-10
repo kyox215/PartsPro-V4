@@ -1,3 +1,4 @@
+import { safeCatalogReturn } from "@/lib/partspro-catalog-return.mjs";
 import { ProductDetailPage } from "@/components/partspro/product-detail-page";
 import type { PartProduct } from "@/lib/partspro-data";
 import {
@@ -33,6 +34,10 @@ export default async function Page({
   const requestedCompanyId = readAssistedCompanyIdFromRecord(resolvedSearchParams);
   const assistedCompanyId =
     requestedCompanyId && canDelegateCheckout(account) ? requestedCompanyId : null;
+  const catalogReturnTo = safeCatalogReturn(
+    typeof resolvedSearchParams.returnTo === "string" ? resolvedSearchParams.returnTo : null,
+    assistedCompanyId
+  );
   const buyerCustomerId = assistedCompanyId ?? accountPricingCustomerId(account);
   const productResult = buyerCustomerId && (account.canViewPrices || assistedCompanyId)
     ? await listCatalogProductsBySkus([decodedSku], {
@@ -59,6 +64,7 @@ export default async function Page({
     <ProductDetailPage
       initialAccountAccess={toStoreHeaderAccountAccess(account)}
       assistedCompanyId={assistedCompanyId}
+      catalogReturnTo={catalogReturnTo}
       canUseCart={canUseStorefrontCart(account, assistedCompanyId)}
       priceGateReason={priceVisibilityReason(account)}
       product={toProductDetailProduct(product, account)}
