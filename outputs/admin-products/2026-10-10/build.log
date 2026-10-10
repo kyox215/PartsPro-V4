@@ -1,4 +1,3 @@
-
 > partspro-app@0.1.0 build
 > next build --webpack
 
@@ -11,9 +10,9 @@
   Finished TypeScript in 5.7s ...
   Collecting page data using 17 workers ...
   Generating static pages using 17 workers (0/18) ...
-  Generating static pages using 17 workers (4/18) 
-  Generating static pages using 17 workers (8/18) 
-  Generating static pages using 17 workers (13/18) 
+  Generating static pages using 17 workers (4/18)
+  Generating static pages using 17 workers (8/18)
+  Generating static pages using 17 workers (13/18)
 ✓ Generating static pages using 17 workers (18/18) in 230ms
   Finalizing page optimization ...
   Collecting build traces ...
@@ -155,4 +154,3 @@ Route (app)
 
 ○  (Static)   prerendered as static content
 ƒ  (Dynamic)  server-rendered on demand
-
