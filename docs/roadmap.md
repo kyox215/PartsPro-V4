@@ -164,4 +164,6 @@ Last reviewed: 2026-09-28
 - 前台59项逐项修复映射、后台64项整合；隔离候选 `codex/frontend-ux-states-release-20261010`，完整merge刚上线后台a826，保护主工作树未提交业务改动。完整结果见 `docs/audits/2026-10-11-full-frontend-repair-verification.md`，状态规范见 `docs/design/component-states.md`。
 - 已批准且应用唯一checkout迁移20261010215007；PartsPro-V4/yiuxrjqexlfjtxxrkqvi linked up to date，private RLS/ACL、三RPC权限与原下单函数摘要核对通过。后台20261010204858已由前一任务应用。无真实交易或客户写验收。
 - 最新后台集成独立104/104，客户回归60/60，真实PG17多连接3/3，lint/build通过。浏览器合成组件已验证手机目录、删除撤销、unknown订单回执及新购物车保留、账户详情、登录表单、客服草稿/身份清理、售后读取重试。实际账户/邮件/交易/真机范围明确在报告。
-- 本次production候选与promote尚在收尾；当前回退目标dpl_EgvvHNSc3EaCZ1yMgPuMczg3q4U4。下文最终发布记录将给出运行源码和deployment，不能以上方旧进行中记录推断当前生产。
+- 本次production候选与promote尚在收尾；当前回退目标dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ。下文最终发布记录将给出运行源码和deployment，不能以上方旧进行中记录推断当前生产。
+
+发布基线补充：正式www.partspro.app已更新到e09af0e（统计采集修复），本候选再次完整merge，最新统计12/12通过，依赖变更后全量lint/build再次通过。默认Vercel别名与custom域名暂不同步，以custom域名dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ作为回退基线；两个旧预检部署不再作为正式商城的当前版本。账户脏草稿原生确认框自动化受到工具阻塞，未将取消放弃/确认放弃交互算PASS；浏览器关闭清理也受到同一阻塞。

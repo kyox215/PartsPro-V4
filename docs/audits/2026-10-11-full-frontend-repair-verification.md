@@ -184,7 +184,7 @@
 - 检测到并行后台已上线 `a826642402a459042f5beb883a29624511494547`，当前候选已完整merge，保留后台19个源码变更与状态tokens，不回退其发布。只重叠globals.css，两段独立样式均保留。
 - 最新后台集成独立回归20文件104/104、客户相关回归60/60（含storefront、恢复、checkout SQL、Cart及RMA上传），分别见本次输出TAP，不与历史129/133/88等重复加总。最终全lint/build通过；最后新增目录排序后再次构建通过。
 - 老板明确批准本次checkout迁移。fresh dry-run仅 `20261010215007_checkout_request_replay.sql`；受控db push已成功，linked再次dry-run up to date。两张private表RLS=true，anon/authenticated直接SELECT=false；三公开RPC仅authenticated可执行，private helper不可直接执行，固定空search_path。原下单/预订函数SHA摘要和应用前一致。无真实业务测试写入。
-- 最新回退部署 `dpl_EgvvHNSc3EaCZ1yMgPuMczg3q4U4`（刚上线后台状态规范）；Vercel同项目正式域名已核对为partspro.app/www.partspro.app，前者重定向后者。新候选尚待最终部署与域名切换记录。
+- 最新回退部署 `dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ`（刚上线后台状态规范）；Vercel同项目正式域名已核对为partspro.app/www.partspro.app，前者重定向后者。新候选尚待最终部署与域名切换记录。
 - UI末轮还修复：卡片容器查询与预览定位；代客地址编辑跳后台；账户日期按实际语言/罗马时区，客户备注原文保留；unknown/loading禁止修改被冻结的结账字段；售后读取失败时近期记录不再伪装为空，最终上传checkpoint不误提示重新选照片。
 
 ### 本轮实际组件浏览器交互
@@ -205,3 +205,5 @@
 | 统一状态示例1280px | 实际查看loading/empty/error/success/unknown/info，使用图标+语义色+文本，不以颜色唯一传达状态 |
 
 截图：本次 `outputs/frontend-repair/2026-10-11/`，含cards-390-it、catalog-390-it、cart-768-it（裁切）、checkout-recovered-it、states-1280-zh。状态demo的说明文字为测试文案，不是产品正式文案。
+
+发布基线补充：正式www.partspro.app已更新到e09af0e（统计采集修复），本候选再次完整merge，最新统计12/12通过，依赖变更后全量lint/build再次通过。默认Vercel别名与custom域名暂不同步，以custom域名dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ作为回退基线；两个旧预检部署不再作为正式商城的当前版本。账户脏草稿原生确认框自动化受到工具阻塞，未将取消放弃/确认放弃交互算PASS；浏览器关闭清理也受到同一阻塞。

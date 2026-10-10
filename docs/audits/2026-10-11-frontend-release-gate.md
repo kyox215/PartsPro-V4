@@ -22,6 +22,8 @@ PGlite执行验证事务回滚、hash冲突、scope/ACL、停止与回执；真�
 
 ## 回退与生产门
 
-网站回退目标为当前核对部署 `dpl_EgvvHNSc3EaCZ1yMgPuMczg3q4U4`；正式别名 `parts-pro-v4-kyox120-9295s-projects.vercel.app`。保留本次附加表/RPC和去重/终止历史，不执行自动DROP或反向删数据。如需数据库撤回，另做补偿迁移并重新批准。
+网站回退目标为当前核对部署 `dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ`；正式别名 `parts-pro-v4-kyox120-9295s-projects.vercel.app`。保留本次附加表/RPC和去重/终止历史，不执行自动DROP或反向删数据。如需数据库撤回，另做补偿迁移并重新批准。
 Vercel目标 `parts-pro-v4` / `prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo` / `team_AOJDnrjov0QDLqpvMyhwA1yc`，远端Node24.x。先应用已批准清单并核对权限/历史；生产skip-domain候选完整验证；同一构建promote。禁止无依赖schema切正式域名。
 状态更新：后台迁移已由并行后台发布完成。Owner明确批准本次唯一剩余checkout迁移；fresh dry-run仅20261010215007，db push已成功，应用后ACL/RLS/原函数摘要及up-to-date核对通过。代码候选完整merge最新a826后台发布，待本次production skip-domain候选验收/promote。前面的两条清单为首次预检记录，不再重复应用后台迁移。
+
+发布基线补充：正式www.partspro.app已更新到e09af0e（统计采集修复），本候选再次完整merge，最新统计12/12通过，依赖变更后全量lint/build再次通过。默认Vercel别名与custom域名暂不同步，以custom域名dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ作为回退基线；两个旧预检部署不再作为正式商城的当前版本。账户脏草稿原生确认框自动化受到工具阻塞，未将取消放弃/确认放弃交互算PASS；浏览器关闭清理也受到同一阻塞。

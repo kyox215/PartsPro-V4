@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: period visitors use one production environment group, not the sum of daily uniques
+ok 1 - period visitors use one production environment group, not the sum of daily uniques
+  ---
+  duration_ms: 42.429209
+  ...
+# Subtest: acknowledged empty groups allow zero metrics and all queries retain 30-day ISO bounds
+ok 2 - acknowledged empty groups allow zero metrics and all queries retain 30-day ISO bounds
+  ---
+  duration_ms: 8.840334
+  ...
+# Subtest: totals with non-production, missing environment or multiple rows are rejected
+ok 3 - totals with non-production, missing environment or multiple rows are rejected
+  ---
+  duration_ms: 23.467417
+  ...
+# Subtest: malformed data and rows fail instead of being silently removed or converted to zeros
+ok 4 - malformed data and rows fail instead of being silently removed or converted to zeros
+  ---
+  duration_ms: 32.678083
+  ...
+# Subtest: each metric must be present, non-negative and a safe integer
+ok 5 - each metric must be present, non-negative and a safe integer
+  ---
+  duration_ms: 61.416084
+  ...
+# Subtest: invalid metrics in a grouped report also reject the complete snapshot
+ok 6 - invalid metrics in a grouped report also reject the complete snapshot
+  ---
+  duration_ms: 4.181292
+  ...
+# Subtest: upstream failures are not cached as an empty snapshot
+ok 7 - upstream failures are not cached as an empty snapshot
+  ---
+  duration_ms: 3.615916
+  ...
+# Subtest: only the homepage, catalog and one product segment are public tracking paths
+ok 8 - only the homepage, catalog and one product segment are public tracking paths
+  ---
+  duration_ms: 22.191209
+  ...
+# Subtest: public pageviews retain the allowed host/path and strip all query/hash without mutating input
+ok 9 - public pageviews retain the allowed host/path and strip all query/hash without mutating input
+  ---
+  duration_ms: 3.560833
+  ...
+# Subtest: custom events, preview/external hosts, userinfo and non-HTTPS origins are denied
+ok 10 - custom events, preview/external hosts, userinfo and non-HTTPS origins are denied
+  ---
+  duration_ms: 3.545875
+  ...
+# Subtest: private and malformed URLs are rejected by the event callback
+ok 11 - private and malformed URLs are rejected by the event callback
+  ---
+  duration_ms: 2.638208
+  ...
+# Subtest: actual client stops mounting on private navigation and retained SDK callback rejects private URLs
+ok 12 - actual client stops mounting on private navigation and retained SDK callback rejects private URLs
+  ---
+  duration_ms: 5.305417
+  ...
+1..12
+# tests 12
+# suites 0
+# pass 12
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 434.919125
