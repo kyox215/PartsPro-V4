@@ -137,4 +137,6 @@ Last reviewed: 2026-09-28
 
 - 用户明确“确认迁移数据库”，本次dry-run仅20261010081040，无remote-only历史分歧。已受控应用到PartsPro-V4/yiuxrjqexlfjtxxrkqvi；再次dry-run up to date；12函数摘要和RLS/ACL核对通过，17976商品/2399库存及商品状态聚合摘要前后相同。
 - 目录管理页签、双语名称/排序/品牌分类启停、目录预填新建和原子批量移动已移植到当前已上线商品UI基线；版本保存、固定UUID草稿防重、公开目录修订刷新接入。全量lint/build、39合同测试、离线实际schema安全/并发与四视口目录和原UI回归通过。
-- 詳细报告 `docs/audits/2026-10-10-catalog-directory-release.md`；证据 `outputs/catalog/2026-10-10/`。数据库已应用，页面发布正在核对精确源码与候选；正式域名切换结果待下条记录。无真实商品/库存/图片写验收，物理手机键盘未验证；图片并发和库存跨请求幂等仍独立待处理。
+- 詳细报告 `docs/audits/2026-10-10-catalog-directory-release.md`；证据 `outputs/catalog/2026-10-10/`。数据库及依赖页面已上线，最终记录见下条。无真实商品/库存/图片写验收，物理手机键盘未验证；图片并发和库存跨请求幂等仍独立待处理。
+
+- 最终发布完成：运行源码832c53c已推送codex/catalog-directory-release-20261010，最终生产部署dpl_BgiuoEqK7TPqFqSA66FC8KvG3qCL，两域名指向已核对。370上传文件hash/同SHA Vercel success/10候选和11线上GET检查通过，独立PROMOTE GO；短时error日志0条。IAB真实生产桌面1280及手机390目录名称、REMAX导航、无横向溢出、菜单关闭复查通过。未合并main；已登录Chrome自动化仍受限，真实管理员保存与真机软键盘不计PASS。上一正式部署dpl_3uXTPRgAjbBTxxhMJoufPhsTdwDm保留。

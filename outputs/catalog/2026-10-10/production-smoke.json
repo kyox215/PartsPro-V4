@@ -1,0 +1,68 @@
+{
+  "deployment": "dpl_BgiuoEqK7TPqFqSA66FC8KvG3qCL",
+  "base": "https://www.partspro.app",
+  "appSession": "anonymous",
+  "productionWrites": false,
+  "checks": [
+    {
+      "path": "/",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/catalogo?department=general_merchandise",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/catalogo?brand=REMAX",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/prodotto/REMAX-6954851225270",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/carrello",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/checkout",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/api/catalogo?brand=REMAX&limit=1",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/api/catalog-directory",
+      "status": 200,
+      "expected": 200
+    },
+    {
+      "path": "/api/admin/products?department=computer&limit=1",
+      "status": 401,
+      "expected": 401
+    },
+    {
+      "path": "/api/admin/catalog-directory",
+      "status": 401,
+      "expected": 401
+    },
+    {
+      "path": "https://partspro.app/api/catalog-directory (redirect followed)",
+      "status": 200,
+      "expected": 200
+    }
+  ],
+  "directory": {
+    "revision": "2",
+    "nodes": 29,
+    "electronicsNameVerified": true
+  }
+}

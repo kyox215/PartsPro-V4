@@ -1,0 +1,10 @@
+{
+  "deployment": "dpl_BgiuoEqK7TPqFqSA66FC8KvG3qCL",
+  "url": "https://www.partspro.app/catalogo?department=general_merchandise",
+  "environment": "Codex in-app browser, real production frontend, anonymous session",
+  "productionWrites": false,
+  "desktop": { "width": 1280, "scrollWidth": 1280, "electronicsNameVisible": true, "remaxNavigationVisible": true },
+  "mobile": { "width": 390, "height": 844, "scrollWidth": 390, "menuX": 0, "menuWidth": 292.5, "menuHeight": 844, "electronicsNameVisible": true, "remaxVisible": true, "menuCloseVerified": true },
+  "temporaryViewportReset": true,
+  "limits": ["Mobile viewport emulation, not a physical phone", "Logged-in Chrome automation unavailable", "No production admin save, move, image or stock action executed"]
+}

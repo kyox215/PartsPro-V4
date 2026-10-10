@@ -46,4 +46,11 @@
 
 ## 发布结果
 
-源码/候选/正式域名的精确核验结果在后续发布记录补充；数据库应用已完成，依赖页面仍须通过候选校验和独立发布GO再切域名。
+- 运行源码 `832c53c916f15ff7bb751aff258b1ad8055a1cbc` 已推送 `origin/codex/catalog-directory-release-20261010`，未合并main。仅后续文档/证据提交不会改变此运行源码。
+- 最终生产环境候选 `dpl_BgiuoEqK7TPqFqSA66FC8KvG3qCL` / `parts-pro-v4-iftg3bpny-kyox120-9295s-projects.vercel.app` READY。370上传源码文件：369与精确Git提交一致，1个已知生成的next-env声明与本地build一致；差异0，禁止上传的备份/凭据/工具产物0。Vercel生成out树与上传src树分开核对。
+- 同SHA GitHub连接器Vercel status为success；仓库无GitHub workflows，不宣称存在额外Actions验收。
+- 最终10项候选检查通过并取得独立PROMOTE GO后，执行精确候选promote。partspro.app与www.partspro.app alias均确认指向最终部署。
+- 11项正式域名只读HTTP检查通过；公开目录revision=2、nodes=29、新名称正确，后台商品/目录匿名401。该部署上线后查询近10分钟error日志返回0条，此为短时观察。
+- 独立IAB真实生产前台复查：桌面1280无横向溢出、新名称与REMAX导航可见；390×844手机菜单新名称/REMAX可见、宽292.5、无页面横向溢出、关闭正常，临时viewport已恢复。已登录Chrome控制连接仍timeout，未宣称生产管理员完整交互验收。
+- 上一正式部署 `dpl_3uXTPRgAjbBTxxhMJoufPhsTdwDm` 保留作页面回退。原初次候选未promote；最后新目录默认启用的UI/HTTP契约修正已在最终源码与候选中。
+- 已停止本任务自己的本地夹具和无网络测试容器，生产schema备份仅保留于本项目忽略临时目录；没有上传、提交或混入部署。

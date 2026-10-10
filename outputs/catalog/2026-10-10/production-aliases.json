@@ -1,0 +1,16 @@
+{
+  "aliases": [
+    {
+      "alias": "partspro.app",
+      "project": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+      "deployment": "dpl_BgiuoEqK7TPqFqSA66FC8KvG3qCL"
+    },
+    {
+      "alias": "www.partspro.app",
+      "project": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+      "deployment": "dpl_BgiuoEqK7TPqFqSA66FC8KvG3qCL"
+    }
+  ],
+  "errorWindow": "10m query after candidate build and live smoke",
+  "errorLogRows": 0
+}
