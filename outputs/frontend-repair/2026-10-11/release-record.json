@@ -29,13 +29,15 @@
     "githubSameShaCheck": "success",
     "githubSameShaStatus": "success",
     "githubActionsRuns": 0,
-    "navigation": 4
+    "navigation": 4,
+    "navigationEvidence": "contract tests only; not complete mouse/keyboard navigation"
   },
   "limitations": [
     "No real business transaction, actual password/email, or physical-device acceptance",
     "Account native discard-confirm browser automation blocked; Escape rejected after retry stop",
     "Browser mock viewport and real public desktop evidence are separate",
-    "Public B2B review-status self query and formal legal/privacy policy not introduced"
+    "Public B2B review-status self query and formal legal/privacy policy not introduced",
+    "Real mouse/keyboard product-to-detail-to-return navigation unconfirmed; HTTP and goto do not prove a click flow"
   ],
   "previousBackendRollbackDeploymentId": "dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ",
   "testResourceCleanup": {

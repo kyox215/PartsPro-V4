@@ -122,9 +122,9 @@
 | eBay | E-01～06（6） | 草稿/计划前置条件、就绪步骤、手机卡片/映射、五条队列继续及中意文案；原合成交互，不证明实际OAuth/刊登 |
 | 客服/活动/权限/REMAX | S-01～03、M-01～02、T-01～03、X-01～02（10） | 绑定会话草稿/稳定UUID、原子发送与事件、搜索分页、真实审计接入、便签范围、权限差异统一提交与REMAX分页/导航；原交互及事务证据 |
 
-原后台报告记录：129项后台测试（含6项PGlite SQL）、商城6项、导入20项、18项真实组件合成交互、12面板×5视口共60组合，以及实际Next匿名API403/登录门禁。最新集成候选独立回归另为 **18个admin测试文件88/88（含6项PGlite）**。两组测试存在重叠，**不相加形成“217项独立测试”**。
+原后台报告记录：129项后台测试（含6项PGlite SQL）、商城6项、导入20项、18项真实组件合成交互、12面板×5视口共60组合，以及实际Next匿名API403/登录门禁。首次集成阶段独立回归为18个admin测试文件88/88（含6项PGlite），最终集成回归为 **21个文件115/115**。各阶段测试存在重叠，不相加形成独立测试总数。
 
-原证据位于原实施工作树 `.codex-worktrees/admin-panel-comprehensive-20261010/outputs/admin-repair/2026-10-10/`。记录时集成树没有该输出目录，后台报告中的相对输出链接尚未随候选迁入；最终交付应补齐必要脱敏证据或指向原路径，不能把缺失的相对文件称为已经随候选交付。
+原60个视口和18项交互证据位于原实施工作树 `.codex-worktrees/admin-panel-comprehensive-20261010/outputs/admin-repair/2026-10-10/`，没有复制到本候选，读取原报告相对输出链接需以上述工作树为根。本轮最终后台115项TAP已随发布分支交付，路径为 `outputs/frontend-repair/2026-10-11/admin-final-tests.tap`。
 
 后台仍保留实际能力限制：总览每域最多50000条，超过即失败；offset上限5000，库存完整导出最多5200条且变化时拒绝部分文件；eBay计划/当前刊登预览最多100个SKU；打印最多50单；采购批量限当前页50行。多次分页不是数据库事务快照。网站真实统计依赖项目配置/token，eBay政策依赖实际OAuth；已集成代码和模拟页面不证明这些真实服务已就绪。
 
@@ -142,22 +142,22 @@
 
 `not_found` 只说明查询时没有回执，不能证明原HTTP请求已结束。客户端保留unknown并锁定原意图；要重新编辑必须让终止RPC确认，迟到原请求受同一事务锁和终止记录拒绝。通知/清车/刷新失败也不会产生新的下单意图。成功回执只含客户所需结果，不能把员工内部订单资料或别人的历史回执暴露给当前身份。
 
-## 本轮本地验证与待补浏览器证据
+## 本轮验证与最终证据
 
 | 检查 | 已有结果 | 证据 |
 |---|---|---|
-| 全量lint | 通过 | `.codex-tmp/final-lint.log` |
-| Next生产build | 通过；Next16.2.6 webpack、TypeScript、22页生成及路由收集完成 | `.codex-tmp/final-build.log` |
-| 客户相关回归 | 32/32通过，含售后上传/恢复/UI合同 | `.codex-tmp/customer-regression.log` |
+| 全量lint | 最终源码通过 | `outputs/frontend-repair/2026-10-11/final-lint.log` |
+| Next生产build | 最终源码通过，含webpack、TypeScript与路由生成 | `outputs/frontend-repair/2026-10-11/final-build.log` |
+| 客户相关回归 | 主集成60/60通过，含售后上传/恢复/UI合同 | `outputs/frontend-repair/2026-10-11/customer-integrated-tests.tap` |
 | 公开storefront合同 | 6/6通过 | 公开验收报告；字典和commerce合同，不是E2E |
-| 导航helper | 3/3通过 | `tests/public-ui-navigation.test.mjs`，公开验收报告 |
+| 导航helper | 最终4/4合同测试通过，覆盖详情登录返回与安全边界；不是鼠标完整导航 | `outputs/frontend-repair/2026-10-11/navigation-final-tests.tap` |
 | 密码恢复合成流程 | 3/3通过 | `tests/password-recovery-flow.test.mjs`，公开验收报告 |
 | 文档及候选空白检查 | 本报告写后运行 `git diff --check` | 无新源码验证重复执行 |
 | 商品卡初步截图 | 已保存390意文候选截图；只作为该状态的视觉材料 | `outputs/frontend-repair/2026-10-11/cards-390-it.png`；不能单独证明完整交互 |
-| 真实组件模拟及正式候选浏览器 | 正在收尾，待补实际页面/视口/动作/截图与结果文件 | 未计入通过数 |
-| 最终提交/同提交CI/部署 | 待最终集成与发布门完成 | 待补最终SHA、CI链接、候选deployment、promote后的运行版本 |
+| 真实组件模拟及正式网站浏览器 | 已执行的页面/视口/动作和截图见文末，保留原生确认与完整鼠标链限制 | 本次输出目录；未执行的组合未计入通过数 |
+| 最终源码/同提交检查/部署 | bc70ed26、同SHA检查success、Hz同构建promote已完成 | `outputs/frontend-repair/2026-10-11/release-record.json` 与文末记录 |
 
-最终浏览器记录至少应区分：匿名正式页面与合成账户组件；手机/平板/桌面的受影响布局；搜索/筛选返回、续页失败、商品动作、Auth切换、资料关闭、结账unknown恢复、账户详情竞态、售后重读/恢复、客服关闭/焦点。截图不能代替实际操作，也不把本轮未执行的组合写为通过。
+最终浏览器记录区分匿名正式页面与合成账户组件，并逐项说明视口、动作和结果；未执行的续页失败、真实账户、移动设备及完整点击链等组合仍保留边界。截图不能代替实际操作。
 
 ## 生产依赖、回退与外部验收
 
@@ -182,7 +182,7 @@
 ## 2026-10-11 集成与受控迁移过程记录
 
 - 检测到并行后台已上线 `a826642402a459042f5beb883a29624511494547`，当前候选已完整merge，保留后台19个源码变更与状态tokens，不回退其发布。只重叠globals.css，两段独立样式均保留。
-- 最新后台集成独立回归20文件104/104、客户相关回归60/60（含storefront、恢复、checkout SQL、Cart及RMA上传），分别见本次输出TAP，不与历史129/133/88等重复加总。最终全lint/build通过；最后新增目录排序后再次构建通过。
+- 此阶段后台集成独立回归20文件104/104、客户相关回归60/60（含storefront、恢复、checkout SQL、Cart及RMA上传），分别见本次输出TAP，不与其他阶段重复加总。最终后台扩大到21文件115/115，最后源码全lint/build通过，见文末。
 - 老板明确批准本次checkout迁移。fresh dry-run仅 `20261010215007_checkout_request_replay.sql`；受控db push已成功，linked再次dry-run up to date。两张private表RLS=true，anon/authenticated直接SELECT=false；三公开RPC仅authenticated可执行，private helper不可直接执行，固定空search_path。原下单/预订函数SHA摘要和应用前一致。无真实业务测试写入。
 - 此阶段后台回退基线为 `dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ`；Vercel同项目正式域名核对为partspro.app/www.partspro.app，前者重定向后者。最终上线及更新后的立即回退记录见文末。
 - UI末轮还修复：卡片容器查询与预览定位；代客地址编辑跳后台；账户日期按实际语言/罗马时区，客户备注原文保留；unknown/loading禁止修改被冻结的结账字段；售后读取失败时近期记录不再伪装为空，最终上传checkpoint不误提示重新选照片。
