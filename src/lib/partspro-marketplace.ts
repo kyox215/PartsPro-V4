@@ -1,4 +1,5 @@
 import "server-only";
+import { marketplaceActionBlocker } from "@/lib/admin-marketplace-readiness.mjs";
 
 import { createHash } from "node:crypto";
 import {
@@ -294,10 +295,19 @@ export async function saveEbayConnectionFromCode(input: {
 export async function enqueueMarketplaceSync(input: {
   action: MarketplaceQueueAction;
   skus?: string[];
+  requestId?: string;
 }): Promise<MarketplaceQueueResult> {
+  if ((input.action === "publish_eligible" || input.action === "sync_inventory") && (!input.requestId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.requestId) || !input.skus?.length || input.skus.length > 100 || new Set(input.skus).size !== input.skus.length || input.skus.some(sku => !sku.trim()))) {
+    throw new RepositoryWriteError(400, "EBAY_EXPLICIT_SCOPE_REQUIRED", "A nonempty unique SKU scope is required.");
+  }
   const client = await createClient();
   const settings = await readMarketplaceSettings(client);
 
+  if (input.action !== "plan_listings") {
+    const connection = await readMarketplaceConnection(client);
+    const blocker = marketplaceActionBlocker(toSettingsDto(settings), connection ? toConnectionDto(connection) : null, input.action);
+    if (blocker) throw new RepositoryWriteError(409,"EBAY_NOT_READY",`eBay readiness: ${blocker}`);
+  }
   switch (input.action) {
     case "plan_listings": {
       const result = await evaluateAndUpsertListings(client, settings, input.skus);
@@ -311,7 +321,7 @@ export async function enqueueMarketplaceSync(input: {
 
       for (const item of eligible) {
         const queued = await enqueueJob(client, {
-          idempotencyKey: `publish:${item.sku}:${Date.now()}`,
+          idempotencyKey: `publish:${input.requestId}:${item.sku}`,
           jobType: "publish_listing",
           targetSku: item.sku,
         });
@@ -328,7 +338,7 @@ export async function enqueueMarketplaceSync(input: {
       const listings = await readMarketplaceListings(client, {
         status: "published",
       });
-      const syncableListings = listings.filter((listing) => readBoolean(listing.sync_enabled) !== false);
+      const syncableListings = listings.filter((listing) => readBoolean(listing.sync_enabled) !== false && (!input.skus || input.skus.includes(readString(listing.sku_code) ?? "")));
       let enqueued = 0;
 
       for (const listing of syncableListings) {
@@ -336,7 +346,7 @@ export async function enqueueMarketplaceSync(input: {
 
         if (sku) {
           const queued = await enqueueJob(client, {
-            idempotencyKey: `sync:${sku}:${Date.now()}`,
+            idempotencyKey: `sync:${input.requestId}:${sku}`,
             jobType: "sync_inventory",
             targetSku: sku,
           });
@@ -358,7 +368,7 @@ export async function enqueueMarketplaceSync(input: {
     case "import_orders": {
       assertMarketplaceActionEnabled(settings, input.action);
       const queued = await enqueueJob(client, {
-        idempotencyKey: `import-orders:${new Date().toISOString().slice(0, 13)}`,
+        idempotencyKey: `import-orders:${input.requestId ?? new Date().toISOString().slice(0, 13)}`,
         jobType: "import_orders",
       });
       return {
@@ -401,6 +411,19 @@ export async function runMarketplaceJobs(limit = 5) {
   }
 
   return { processed: results.length, results };
+}
+
+export async function readMarketplacePolicyOptions() {
+  const client = await createClient();
+  const [settings, connection] = await Promise.all([readMarketplaceSettings(client), readMarketplaceConnection(client)]);
+  const ebay = await createAuthorizedEbayClient(client, settings, connection);
+  const kinds = ["payment", "return", "fulfillment"] as const;
+  const options = await Promise.all(kinds.map(async kind => {
+    const payload = await ebay.getBusinessPolicies(kind, ebayMarketplaceDefaults.marketplaceId);
+    const rows = readRows(payload[`${kind}Policies`]);
+    return [kind, rows.map(row => ({ id: readString(row[`${kind}PolicyId`]), name: readString(row.name) })).filter((row): row is { id: string; name: string | null } => Boolean(row.id))] as const;
+  }));
+  return { environment: toEbayEnvironment(settings.environment), marketplaceId: ebayMarketplaceDefaults.marketplaceId, policies: Object.fromEntries(options) };
 }
 
 export async function importMarketplaceOrderPayload(order: unknown) {
@@ -679,6 +702,7 @@ async function createAuthorizedEbayClient(
   connection: DbRow | null
 ) {
   const environment = toEbayEnvironment(settings.environment);
+  if (connection && toEbayEnvironment(connection.environment) !== environment) throw new Error("eBay readiness: environment");
 
   if (environment === "production" && readBoolean(settings.production_enabled) !== true) {
     throw new Error("生产环境尚未启用。");
@@ -1040,7 +1064,7 @@ async function enqueueJob(
     return false;
   }
 
-  const { error } = await client.from("marketplace_sync_jobs").upsert(
+  const { data, error } = await client.from("marketplace_sync_jobs").insert(
     {
       idempotency_key: input.idempotencyKey,
       job_type: input.jobType,
@@ -1050,17 +1074,27 @@ async function enqueueJob(
       status: "queued",
       target_order_id: input.targetOrderId ?? null,
       target_sku: input.targetSku ?? null,
-    },
-    { onConflict: "provider,marketplace_id,idempotency_key" }
-  );
+    }
+  ).select("id").maybeSingle();
 
+  if (error?.code === "23505") {
+    // The existing partial unique index rejects the same logical job even
+    // after completion. Read its identity; never reset a finished job to queued.
+    const existing = await client.from("marketplace_sync_jobs").select("job_type,target_sku,target_order_id")
+      .eq("provider", ebayMarketplaceDefaults.provider).eq("marketplace_id", ebayMarketplaceDefaults.marketplaceId)
+      .eq("idempotency_key", input.idempotencyKey).maybeSingle();
+    if (!existing.error && isRow(existing.data) && readString(existing.data.job_type) === input.jobType
+      && readString(existing.data.target_sku) === (input.targetSku ?? null)
+      && readString(existing.data.target_order_id) === (input.targetOrderId ?? null)) return false;
+    throw new RepositoryWriteError(409, "EBAY_SEND_IDENTIFIER_CONFLICT", "Existing job identity must be verified.");
+  }
   if (error) {
     throw new RepositoryWriteError(502, "MARKETPLACE_JOB_ENQUEUE_FAILED", "eBay 任务入队失败。", {
       message: error.message,
     });
   }
 
-  return true;
+  return Boolean(data);
 }
 
 async function hasActiveMarketplaceJob(

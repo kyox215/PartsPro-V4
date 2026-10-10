@@ -1,0 +1,18 @@
+import { z } from "zod";
+export const MAX_FINANCE_AMOUNT: number;
+export const financeMoneySchema: z.ZodType<number>;
+export const financeDateSchema: z.ZodType<string>;
+export const expenseCategories: string[];
+export function parseFinanceMoney(value: unknown): { ok: true; value: number; cents: number } | { ok: false; error: "MONEY_REQUIRED" | "MONEY_INVALID" };
+export function financeGross(amountNet: number, vatAmount: number): number;
+export function localFinanceDate(date?: Date): string;
+export function localFinanceDateTime(date?: Date): string;
+export function isFinanceDate(value: unknown): boolean;
+export function financeLocalDateTimeToIso(value: unknown): string | null;
+export function financeEditableId(type: unknown, id: unknown): string | null;
+type ExpenseInput = { amountNet: number; category: "rent" | "salary" | "shipping" | "platform_fee" | "utilities" | "tax" | "supplier_fee" | "bank_fee" | "other"; description: string; vatAmount?: number; status?: "pending" | "paid" | "cancelled"; occurredAt?: string; paidAt?: string | null; counterpartyName?: string | null; evidenceUrl?: string | null; notes?: string | null; paymentMethod?: string | null; reference?: string | null; metadata?: Record<string, unknown> };
+type PaymentInput = { amountNet: number; amountGross?: number; batchId?: string | null; supplierId?: string | null; vatAmount?: number; status?: "pending" | "paid" | "cancelled"; dueAt?: string | null; paidAt?: string | null; note?: string | null; paymentMethod?: string | null; reference?: string | null; metadata?: Record<string, unknown> };
+export const financeExpenseCreateSchema: z.ZodType<ExpenseInput>;
+export const financeExpensePatchSchema: z.ZodType<Partial<ExpenseInput> & { correctionReason: string; expectedUpdatedAt: string }>;
+export const supplierPaymentCreateSchema: z.ZodType<PaymentInput>;
+export const supplierPaymentPatchSchema: z.ZodType<Partial<PaymentInput> & { correctionReason: string; expectedUpdatedAt: string }>;

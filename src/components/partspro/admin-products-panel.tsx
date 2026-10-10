@@ -1,6 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { AdminFieldGroup } from "./admin-field-group";
+import { compatibilityReasonLabel, compatibilitySignalLabel } from "@/lib/admin-compatibility-copy";
+import { usePersistentAdminQuery, usePersistentAdminValue } from "./admin-workspace-state";
 import Image from "@/components/partspro/optimized-image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -1682,7 +1685,7 @@ export function AdminProductsPanel({
   const [createDirectoryNode, setCreateDirectoryNode] = React.useState<CatalogNode | null>(null);
   const [directoryGuard, setDirectoryGuard] = React.useState<ProductDraftGuard>({ dirty: false, pending: false });
   const [moveProducts, setMoveProducts] = React.useState<AdminProductRow[] | null>(null);
-  const [filters, setFilters] = React.useState<ProductListFilters>(defaultFilters);
+  const [filters, setFilters] = usePersistentAdminQuery<ProductListFilters>("products.filters", defaultFilters);
   React.useEffect(() => {
     const requests = productRequest.current;
     return () => requests.controller?.abort();
@@ -1717,10 +1720,10 @@ export function AdminProductsPanel({
   const [drawerInlineEditSku, setDrawerInlineEditSku] = React.useState<string | null>(null);
   const [stockAdjustProduct, setStockAdjustProduct] =
     React.useState<AdminProductRow | null>(null);
-  const [workspace, setWorkspace] = React.useState<ProductWorkspace>(() =>
+  const [workspace, setWorkspace] = usePersistentAdminValue<ProductWorkspace>("products.workspace", () =>
     normalizeProductWorkspace(searchParams.get("catalogView"))
   );
-  const [batchFilters, setBatchFilters] = React.useState<SupplierBatchFilters>(() =>
+  const [batchFilters, setBatchFilters] = usePersistentAdminQuery<SupplierBatchFilters>("products.batches", () =>
     supplierBatchFiltersFromSearchParams(searchParams)
   );
   const [supplierBatches, setSupplierBatches] = React.useState<AdminSupplierBatchRow[]>([]);
@@ -1740,12 +1743,13 @@ export function AdminProductsPanel({
   const lastFocusedSkuRef = React.useRef<string | null>(null);
 
   React.useEffect(() => {
+    if (!catalogView && !focusedSku) return;
     const nextWorkspace = focusedSku
       ? "products"
       : normalizeProductWorkspace(catalogView);
 
     setWorkspace((current) => (current === nextWorkspace ? current : nextWorkspace));
-  }, [catalogView, focusedSku]);
+  }, [catalogView, focusedSku, setWorkspace]);
 
   React.useEffect(() => {
     if (workspace !== "batches") {
@@ -1835,7 +1839,7 @@ export function AdminProductsPanel({
             page: 0,
           }
     );
-  }, [focusedSku]);
+  }, [focusedSku, setFilters, setWorkspace]);
 
   React.useEffect(() => {
     if (!pendingFocusedSku) {
@@ -1918,7 +1922,7 @@ export function AdminProductsPanel({
         }
       }
     },
-    [adminText, filters, text]
+    [adminText, filters, text, setFilters]
   );
 
   const refreshSupplierBatches = React.useCallback(
@@ -2381,6 +2385,7 @@ export function AdminProductsPanel({
 
   return (
     <section className="min-w-0 space-y-2 sm:space-y-4">
+      <p className="text-xs font-medium text-slate-600">{locale.startsWith("zh") ? "商品资料：商品、目录 · 采购与仓库：售出缺货、到货批次 · 商城内容：首页横幅" : "Catalogo: prodotti e voci · Acquisti e magazzino: esauriti e lotti · Contenuti: banner"}</p>
       <Tabs
         value={workspace}
         onValueChange={(value) => {
@@ -2391,20 +2396,12 @@ export function AdminProductsPanel({
           syncWorkspaceUrl(nextWorkspace);
         }}
       >
-        <TabsList className="group-data-horizontal/tabs:h-auto grid h-auto w-full grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 shadow-[0_8px_22px_rgba(15,23,42,0.04)] sm:w-auto sm:inline-grid sm:grid-cols-5">
-          <TabsTrigger value="products" className="h-auto min-h-10 min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
-            {text.workspaceProducts}
-          </TabsTrigger>
-          <TabsTrigger value="sold-shortages" className="h-auto min-h-10 min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
-            {text.workspaceSoldShortages}
-          </TabsTrigger>
-          <TabsTrigger value="batches" className="h-auto min-h-10 min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
-            {text.workspaceBatches}
-          </TabsTrigger>
-          <TabsTrigger value="banners" className="h-auto min-h-10 min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
-            {text.workspaceBanners}
-          </TabsTrigger>
-          <TabsTrigger value="directory" className="h-auto min-h-10 min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">{locale.startsWith("zh") ? "目录管理" : "Gestione catalogo"}</TabsTrigger>
+        <TabsList className="group-data-horizontal/tabs:h-auto grid h-auto w-full grid-cols-1 gap-2 rounded-lg border border-slate-200 bg-white p-2 sm:grid-cols-3">
+          {[
+            { label: locale.startsWith("zh") ? "商品资料" : "Catalogo", items: [["products", text.workspaceProducts], ["directory", locale.startsWith("zh") ? "目录管理" : "Gestione catalogo"]] },
+            { label: locale.startsWith("zh") ? "采购与仓库" : "Acquisti e magazzino", items: [["sold-shortages", text.workspaceSoldShortages], ["batches", text.workspaceBatches]] },
+            { label: locale.startsWith("zh") ? "商城内容" : "Contenuti vetrina", items: [["banners", text.workspaceBanners]] },
+          ].map(group => <div key={group.label} role="group" aria-label={group.label} className="min-w-0 rounded-md bg-slate-50 p-1"><p className="px-2 py-1 text-[11px] font-semibold text-slate-500">{group.label}</p><div className="flex min-w-0 gap-1">{group.items.map(([value,label]) => <TabsTrigger key={value} value={value} className="h-auto min-h-10 min-w-0 flex-1 whitespace-normal rounded-md px-2 py-2 text-center text-xs font-bold leading-4">{label}</TabsTrigger>)}</div></div>)}
         </TabsList>
 
         <TabsContent value="directory" className="m-0 pt-2">
@@ -2620,7 +2617,7 @@ export function AdminProductsPanel({
         </TabsContent>
 
         <TabsContent value="sold-shortages" className="m-0 pt-2">
-          <AdminInventoryPanel />
+          <AdminInventoryPanel permissions={permissionsLoaded ? permissions : []} />
         </TabsContent>
 
         <TabsContent value="banners" className="m-0 pt-2">
@@ -4031,12 +4028,12 @@ function SupplierBatchDetailSheet({
                 <div className="border-b border-slate-200 px-3 py-2 text-sm font-black text-slate-950">
                   {copy.detail}
                 </div>
-                <div className="hidden overflow-x-auto sm:block">
+                <div className="hidden overflow-x-auto 2xl:block">
                   <Table className="min-w-[1180px]">
                     <TableHeader className="bg-slate-50 text-xs">
                       <TableRow>
                         <TableHead className="w-14">#</TableHead>
-                        <TableHead className="w-[24%]">{text.tableProduct}</TableHead>
+                        <TableHead className="min-w-[240px]">{text.tableProduct}</TableHead>
                         <TableHead className="w-[13%]">SKU</TableHead>
                         <TableHead className="w-[12%]">{copy.quantity}</TableHead>
                         <TableHead className="w-[12%]">{copy.amount}</TableHead>
@@ -4122,7 +4119,7 @@ function SupplierBatchDetailSheet({
                     </TableBody>
                   </Table>
                 </div>
-                <div className="space-y-2 p-2 sm:hidden">
+                <div className="space-y-2 p-2 2xl:hidden">
                   {detail.lines.length ? detail.lines.map((line) => (
                     <article key={`mobile-line-${line.id}`} className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs">
                       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -6856,7 +6853,7 @@ function ProductCompatibilityReviewNotice({
       <div className="mt-2 grid gap-1 leading-5 sm:grid-cols-2">
         <div>
           <span className="font-bold">{text.compatibilityReviewReasons}: </span>
-          {review.reasonCodes.join("、") || text.none}
+          {review.reasonCodes.map(code => compatibilityReasonLabel(code, text.compatibilityReviewTitle === panelText.it.compatibilityReviewTitle)).join("；") || text.none}
         </div>
         <div>
           <span className="font-bold">{text.compatibilityReviewEvidence}: </span>
@@ -6864,7 +6861,7 @@ function ProductCompatibilityReviewNotice({
         </div>
         <div className="sm:col-span-2">
           <span className="font-bold">{text.compatibilityReviewSignals}: </span>
-          {review.signals.length > 0 ? review.signals.join("；") : text.none}
+          {review.signals.length > 0 ? review.signals.map(signal => compatibilitySignalLabel(signal, text.compatibilityReviewTitle === panelText.it.compatibilityReviewTitle)).join("；") : text.none}
         </div>
       </div>
       <label className="mt-2 flex items-start gap-2 font-semibold">
@@ -7337,8 +7334,9 @@ function ProductDetails({
       ) : null}
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-3">
-        <div className="max-w-full overflow-x-auto rounded-lg border border-slate-200 bg-white p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          <TabsList variant="line" className="grid min-w-[660px] grid-cols-6 bg-transparent">
+        <div className="max-w-full rounded-lg border border-slate-200 bg-white p-1">
+          {isEditing && <p role="status" className="px-2 py-2 text-xs font-medium text-amber-800">{editorLocale.startsWith("it") ? "Le altre schede sono sospese mentre modifichi questa sezione. Usa Salva oppure Annulla nella barra della sezione per riattivarle; un errore di salvataggio conserva i dati inseriti." : "编辑当前区域时，其他页签暂时锁定。使用当前区域工具栏的“保存”或“取消”恢复页签；保存失败会保留已输入资料。"}</p>}
+          <TabsList variant="line" className="group-data-horizontal/tabs:h-auto grid h-auto w-full grid-cols-3 gap-1 bg-transparent sm:grid-cols-6">
             <TabsTrigger value="base" disabled={isEditing && activeTab !== "base"}>{text.tabBase}</TabsTrigger>
             <TabsTrigger value="price" disabled={isEditing && activeTab !== "price"}>{text.tabPrice}</TabsTrigger>
             <TabsTrigger value="inventory" disabled={isEditing && activeTab !== "inventory"}>{text.tabInventory}</TabsTrigger>
@@ -8431,7 +8429,7 @@ function ProductAuditPanel({
     <div className="space-y-2">
       {events.map((event) => {
         const metadataItems = auditMetadataItems(event, text);
-        const changeItems = auditChangeItems(event, text).slice(0, 6);
+        const changeItems = auditChangeItems(event, text);
         const reason = auditReasonLabel(event.reason, text);
 
         return (
@@ -8469,11 +8467,12 @@ function ProductAuditPanel({
                 <div className="text-[11px] font-black uppercase tracking-wide text-slate-400">
                   {text.auditChangesTitle}
                 </div>
-                {changeItems.map((item) => (
+                {changeItems.slice(0, 6).map((item) => (
                   <div key={item} className="text-xs font-semibold text-slate-700">
                     {item}
                   </div>
                 ))}
+                {changeItems.length > 6 && <details className="mt-2"><summary className="cursor-pointer text-xs font-bold text-primary">{text.auditChangesTitle} · +{changeItems.length - 6}</summary>{changeItems.slice(6).map((item) => <p key={item} className="mt-1 break-words text-xs">{item}</p>)}</details>}
               </div>
             )}
             {reason && (
@@ -8758,12 +8757,11 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div role="group" aria-label={label} data-field-error={Boolean(error)} className="min-w-0 space-y-1.5">
-      <Label>{label}</Label>
+    <AdminFieldGroup label={label} invalid={Boolean(error)}>
       {children}
       {hint && <p className="text-xs font-medium text-slate-500">{hint}</p>}
       {error && <p className="text-xs font-semibold text-red-600">{error}</p>}
-    </div>
+    </AdminFieldGroup>
   );
 }
 

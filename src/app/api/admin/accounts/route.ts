@@ -1,3 +1,4 @@
+import { savedAccountResponse } from "./_saved-account-response";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { apiError, formatZodIssues, readJsonBody, readQueryParams } from "@/lib/partspro-api";
@@ -188,21 +189,7 @@ export async function PATCH(request: NextRequest) {
       roleData = roleResult.data;
     }
 
-    const detail = await readAdminAccountDetail(supabase, parsed.data.userId);
-
-    if (!detail) {
-      return apiError(404, "ADMIN_ACCOUNT_NOT_FOUND", "Account was updated but could not be reloaded.", {
-        userId: parsed.data.userId,
-      });
-    }
-
-    return NextResponse.json({
-      data: detail,
-      meta: {
-        source: "supabase_rpc",
-        rpc: roleData ? "admin_update_employee_role" : "admin_update_account_type",
-      },
-    });
+    return savedAccountResponse(() => readAdminAccountDetail(supabase, parsed.data.userId), roleData ? "admin_update_employee_role" : "admin_update_account_type");
   } catch {
     return apiError(500, "ADMIN_ACCOUNT_UPDATE_FAILED", "Account could not be updated.");
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
+import { financeGross } from "@/lib/admin-finance-input.mjs";
 import { apiError, formatZodIssues } from "@/lib/partspro-api";
-import { updateAdminSupplierBatchPayment } from "@/lib/partspro-repository";
+import { updateAdminSupplierBatchPayment, readAdminFinanceEditableEntry } from "@/lib/partspro-repository";
 import { repositoryErrorResponse, requireAdminApi } from "../../../_shared";
 import {
   idParamSchema,
@@ -35,7 +36,21 @@ export async function PATCH(request: NextRequest, { params }: PaymentParams) {
   }
 
   try {
-    const result = await updateAdminSupplierBatchPayment(parsedId.data.id, body.data);
+    const original = await readAdminFinanceEditableEntry("supplier_payment", parsedId.data.id);
+    if (!original.data) return apiError(404, "FINANCE_ENTRY_NOT_FOUND", "Finance entry could not be found.");
+    const { correctionReason, expectedUpdatedAt, ...changes } = body.data;
+    const net = changes.amountNet ?? original.data.amountNet;
+    const vat = changes.vatAmount ?? original.data.vatAmount;
+    const gross = financeGross(net, vat);
+    if (changes.amountGross !== undefined && changes.amountGross !== gross) return apiError(400, "INVALID_BODY", "Gross amount must equal net plus VAT.", {
+      issues: [{ path: "amountGross", code: "custom", message: "GROSS_MUST_EQUAL_NET_PLUS_VAT" }],
+    });
+    if (original.data.version !== expectedUpdatedAt) return apiError(409, "FINANCE_ENTRY_CONFLICT", "This entry changed. Reopen it and review the latest values before correcting.");
+    const result = await updateAdminSupplierBatchPayment(parsedId.data.id, {
+      ...changes,
+      ...(changes.amountNet !== undefined || changes.vatAmount !== undefined || changes.amountGross !== undefined ? { amountNet: net, vatAmount: vat, amountGross: gross } : {}),
+      metadata: { ...original.data.metadata, ...changes.metadata, correctionReason },
+    }, expectedUpdatedAt);
 
     return NextResponse.json({
       data: result.data,

@@ -19,6 +19,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -100,6 +101,12 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
   const [isLoading, setIsLoading] = React.useState(false);
   const [mobilePermissionGroup, setMobilePermissionGroup] = React.useState("");
   const [mobileView, setMobileView] = React.useState<MobilePermissionView>("employees");
+  const [draftTargetId, setDraftTargetId] = React.useState<string | null>(null);
+  const [draftTargetName, setDraftTargetName] = React.useState("");
+  const [draftRole, setDraftRole] = React.useState<string | null>(null);
+  const [draftOverrides, setDraftOverrides] = React.useState<Record<string, PermissionEffect>>({});
+  const [changeReason, setChangeReason] = React.useState("");
+  const [unknownSubmission, setUnknownSubmission] = React.useState(false);
   const [pendingKey, setPendingKey] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<Notice | null>(null);
 
@@ -201,12 +208,11 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
       })),
     [permissions, text]
   );
-  const selectedEmployee =
-    employees.find((employee) => employee.userId === selectedUserId) ??
-    filteredEmployees[0] ??
-    null;
+  const draftActive = Boolean(draftRole || Object.keys(draftOverrides).length);
+  const selectedEmployee = draftActive && draftTargetId ? employees.find(employee => employee.userId === draftTargetId) ?? null :
+    employees.find(employee => employee.userId === selectedUserId) ?? filteredEmployees[0] ?? null;
   const selectedRole =
-    localizedRoleTemplates.find((roleTemplate) => roleTemplate.id === selectedEmployee?.roleTemplate) ??
+    localizedRoleTemplates.find((roleTemplate) => roleTemplate.id === (draftRole ?? selectedEmployee?.roleTemplate)) ??
     localizedRoleTemplates.find((roleTemplate) => roleTemplate.id === "sales_support") ??
     localizedRoleTemplates[0] ??
     null;
@@ -219,8 +225,9 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
       }
     }
 
+    for (const [id, effect] of Object.entries(draftOverrides)) { if (effect === "inherit") map.delete(id); else map.set(id, effect); }
     return map;
-  }, [overrides, selectedEmployee?.userId]);
+  }, [overrides, selectedEmployee?.userId, draftOverrides]);
   const permissionGroups = React.useMemo(
     () => groupPermissions(localizedPermissions),
     [localizedPermissions]
@@ -251,7 +258,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
   const mobileRoleLabel = copy.mobileRole;
   const mobilePermissionsLabel = copy.mobilePermissions;
   const selectedEmployeeName =
-    selectedEmployee?.displayName ??
+    (draftActive ? draftTargetName : null) ?? selectedEmployee?.displayName ??
     selectedEmployee?.email ??
     selectedEmployee?.userId ??
     copy.userRequired;
@@ -265,86 +272,62 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
       ([groupName]) => groupName === activeMobilePermissionGroup
     )?.[1] ?? [];
 
-  async function updateRoleTemplate(roleTemplate: string) {
-    if (!selectedEmployee || selectedEmployee.roleTemplate === roleTemplate) {
-      return;
-    }
-
-    setPendingKey(`role:${selectedEmployee.userId}`);
-
-    try {
-      await patchPermissions(
-        {
-          reason: `Role template changed to ${roleTemplate}.`,
-          roleTemplate,
-          userId: selectedEmployee.userId,
-        },
-        copy
-      );
-      setEmployees((current) =>
-        current.map((employee) =>
-          employee.userId === selectedEmployee.userId
-            ? { ...employee, roleTemplate }
-            : employee
-        )
-      );
-      setNotice({
-        message: copy.roleSaved,
-        tone: "success",
-      });
-    } catch (error) {
-      setNotice({
-        message: readableError(error, copy),
-        tone: "error",
-      });
-    } finally {
-      setPendingKey(null);
-    }
+  const hasChanges = Boolean(draftRole || Object.keys(draftOverrides).length);
+  function chooseEmployee(userId: string) {
+    if (pendingKey) return;
+    if (hasChanges && !window.confirm(locale.startsWith("zh") ? "放弃未保存权限调整并切换员工？" : "Scartare le modifiche e cambiare dipendente?")) return;
+    setDraftTargetId(null); setDraftTargetName(""); setDraftRole(null); setDraftOverrides({}); setChangeReason(""); setUnknownSubmission(false); setSelectedUserId(userId);
   }
-
-  async function updateOverride(permissionId: string, effect: PermissionEffect) {
-    if (!selectedEmployee) {
-      return;
-    }
-
-    setPendingKey(`permission:${permissionId}`);
-
+  function updateRoleTemplate(roleTemplate: string) {
+    if (!selectedEmployee || pendingKey) return;
+    setDraftTargetId(selectedEmployee.userId); setDraftTargetName(selectedEmployeeName);
+    setDraftRole(roleTemplate === selectedEmployee.roleTemplate ? null : roleTemplate);
+  }
+  function updateOverride(permissionId: string, effect: PermissionEffect) {
+    if (!selectedEmployee || pendingKey) return;
+    setDraftTargetId(selectedEmployee.userId); setDraftTargetName(selectedEmployeeName);
+    const original = overrides.find(item => item.userId === selectedEmployee.userId && item.permissionId === permissionId)?.effect ?? "inherit";
+    setDraftOverrides(current => { const next = { ...current }; if (effect === original) delete next[permissionId]; else next[permissionId] = effect; return next; });
+  }
+  async function saveChanges() {
+    if (!selectedEmployee || selectedEmployee.userId !== draftTargetId || pendingKey || !hasChanges || changeReason.trim().length < 3 || unknownSubmission) return;
+    const target = selectedEmployee.userId;
+    const changes = Object.entries(draftOverrides).map(([permissionId, effect]) => ({ permissionId, effect }));
+    const message = locale.startsWith("zh") ? `确认修改 ${selectedEmployeeName} 的角色/权限？这会立即影响该员工的访问。` : `Confermi le modifiche per ${selectedEmployeeName}? L'accesso del dipendente cambierà subito.`;
+    if (!window.confirm(message)) return;
+    setPendingKey("save"); setNotice(null);
     try {
-      const result = await patchPermissions(
-        {
-          overrides: [{ effect, permissionId }],
-          reason: `Permission override ${permissionId} set to ${effect}.`,
-          userId: selectedEmployee.userId,
-        },
-        copy
-      );
-      setOverrides((current) => [
-        ...current.filter((override) => override.userId !== selectedEmployee.userId),
-        ...result.overrides,
-      ]);
-      setNotice({
-        message: copy.updateSaved,
-        tone: "success",
-      });
+      const result = await patchPermissions({ userId: target, reason: changeReason.trim(), ...(draftRole ? { roleTemplate: draftRole } : {}), overrides: changes }, copy);
+      setOverrides(current => result.readError ? [...current.filter(item => !(item.userId === target && changes.some(change => change.permissionId === item.permissionId))), ...changes.filter((change): change is { permissionId: string; effect: "grant" | "deny" } => change.effect !== "inherit").map(change => ({ ...change, userId: target }))] : [...current.filter(item => item.userId !== target), ...result.overrides]);
+      if (draftRole) setEmployees(current => current.map(item => item.userId === target ? { ...item, roleTemplate: draftRole } : item));
+      setDraftTargetId(null); setDraftTargetName(""); setDraftRole(null); setDraftOverrides({}); setChangeReason("");
+      setNotice({ message: copy.updateSaved + (result.readError ? (locale.startsWith("zh") ? " 已保存；重读失败，请刷新核对。" : " Salvato; rilettura non riuscita, aggiorna per verificare.") : ""), tone: result.readError ? "warning" : "success" });
+      window.dispatchEvent(new Event("partspro:admin-permissions-changed"));
     } catch (error) {
-      setNotice({
-        message: readableError(error, copy),
-        tone: "error",
-      });
-    } finally {
-      setPendingKey(null);
-    }
+      setUnknownSubmission(error instanceof TypeError || error instanceof SyntaxError);
+      setNotice({ message: readableError(error, copy), tone: "error" });
+    } finally { setPendingKey(null); }
   }
 
   return (
-    <section className="min-w-0 space-y-2 text-slate-950 sm:space-y-4">
+    <section data-admin-mutating={pendingKey ? "true" : "false"} data-admin-dirty={hasChanges ? "true" : "false"} className="min-w-0 space-y-2 text-slate-950 sm:space-y-4">
+      {hasChanges && <div className="sticky top-0 z-10 space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-3" role="region" aria-label={locale.startsWith("zh") ? "权限修改核对" : "Riepilogo modifiche"}>
+        {!selectedEmployee && <p role="alert" className="text-sm text-red-800">{locale.startsWith("zh") ? "草稿对应员工已不在当前列表，保存已锁定。请核对原对象或放弃草稿后选择新员工。" : "Il dipendente della bozza non è più disponibile. Il salvataggio è sospeso: verifica o scarta la bozza."}</p>}
+        <h3 className="font-bold">{selectedEmployeeName} · {locale.startsWith("zh") ? "待保存修改" : "Modifiche da salvare"}</h3>
+        {draftRole && <p className="text-sm">{adminRoleTemplateLabel(text, selectedEmployee?.roleTemplate)} → {adminRoleTemplateLabel(text, draftRole)}</p>}
+        <ul className="max-h-40 list-disc space-y-1 overflow-y-auto pl-5 text-sm">{Object.entries(draftOverrides).map(([id, effect]) => <li key={id}>{adminPermissionLabel(text, id, id)}: {overrides.find(item => item.userId === selectedEmployee?.userId && item.permissionId === id)?.effect ?? "inherit"} → {effect}</li>)}</ul>
+        <Label htmlFor="permission-change-reason">{locale.startsWith("zh") ? "修改原因（必填）" : "Motivo della modifica (obbligatorio)"}</Label>
+        <Input id="permission-change-reason" value={changeReason} disabled={Boolean(pendingKey)} maxLength={1000} onChange={event => setChangeReason(event.target.value)} />
+        {unknownSubmission && <p role="alert" className="text-sm">{locale.startsWith("zh") ? "提交结果未知。请先刷新核对实际权限，再决定后续修改。" : "Esito non confermato. Aggiorna e verifica i permessi prima di riprovare."}</p>}
+        <div className="flex flex-wrap gap-2"><Button disabled={!selectedEmployee || selectedEmployee.userId !== draftTargetId || Boolean(pendingKey) || changeReason.trim().length < 3 || unknownSubmission} onClick={() => void saveChanges()}>{locale.startsWith("zh") ? "核对并保存修改" : "Conferma e salva"}</Button><Button variant="outline" disabled={Boolean(pendingKey)} onClick={() => { setDraftRole(null); setDraftOverrides({}); setChangeReason(""); setUnknownSubmission(false); void refreshData(); }}>{locale.startsWith("zh") ? "放弃草稿并重读权限" : "Scarta e rileggi i permessi"}</Button></div>
+      </div>}
       <div
         className={cn(
           "flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between",
-          embedded && "sr-only"
+          embedded && "hidden sm:flex sm:justify-end"
         )}
       >
-        <div className="min-w-0">
+        <div className={cn("min-w-0", embedded && "sr-only")}>
           <h2 className="text-2xl font-black tracking-normal">{copy.title}</h2>
           <p className="mt-1 text-sm leading-6 text-slate-500">
             {copy.description}
@@ -353,7 +336,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
         <Button
           variant="outline"
           className="bg-white"
-          disabled={isLoading}
+          disabled={isLoading || Boolean(pendingKey)}
           onClick={() => void refreshData()}
         >
           <RefreshCcw className={cn("size-4", isLoading && "animate-spin")} />
@@ -391,7 +374,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                 type="button"
                 variant="outline"
                 className="size-8 shrink-0 bg-white p-0"
-                disabled={isLoading}
+                disabled={isLoading || Boolean(pendingKey)}
                 aria-label={copy.sync}
                 onClick={() => void refreshData()}
               >
@@ -425,7 +408,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                   placeholder={copy.employeeSearchPlaceholder}
                 />
               </div>
-              <div className="mt-2 max-h-[calc(100svh-320px)] min-h-[240px] space-y-1.5 overflow-y-auto pr-0.5">
+              <div className="mt-2 max-h-[calc(100svh-320px)] min-h-0 space-y-1.5 overflow-y-auto pr-0.5">
                 {isInitialLoading ? (
                   <EmployeeListSkeleton />
                 ) : (
@@ -450,7 +433,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                             name: employee.displayName ?? employee.email ?? employee.userId,
                           })}
                           onClick={() => {
-                            setSelectedUserId(employee.userId);
+                            chooseEmployee(employee.userId);
                             setMobileView("role");
                           }}
                         >
@@ -493,7 +476,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                   <Select
                     value={selectedRole?.id ?? ""}
                     onValueChange={(value) => void updateRoleTemplate(value)}
-                    disabled={pendingKey?.startsWith("role:")}
+                    disabled={Boolean(pendingKey)}
                   >
                     <SelectTrigger className="h-10 bg-white" aria-label={copy.roleSelectLabel}>
                       <SelectValue placeholder={copy.roleSelectPlaceholder} />
@@ -544,10 +527,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                               "h-8 px-1.5 text-xs",
                               customerLevelOverride === effect ? "" : "bg-white"
                             )}
-                            disabled={
-                              pendingKey ===
-                              `permission:${CUSTOMER_MANAGE_LEVEL_PERMISSION}`
-                            }
+                            disabled={Boolean(pendingKey)}
                             onClick={() =>
                               void updateOverride(CUSTOMER_MANAGE_LEVEL_PERMISSION, effect)
                             }
@@ -600,7 +580,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                       </SelectContent>
                     </Select>
                   ) : null}
-                  <div className="mt-2 max-h-[calc(100svh-350px)] min-h-[210px] space-y-2 overflow-y-auto pr-0.5">
+                  <div className="mt-2 max-h-[calc(100svh-350px)] min-h-0 space-y-2 overflow-y-auto pr-0.5">
                     {isInitialLoading ? (
                       <PermissionMatrixSkeleton />
                     ) : filteredPermissionGroups.length > 0 ? (
@@ -656,7 +636,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                                         "h-7 px-1 text-[11px]",
                                         overrideEffect === effect ? "" : "bg-white"
                                       )}
-                                      disabled={pendingKey === `permission:${permission.id}`}
+                                      disabled={Boolean(pendingKey)}
                                       onClick={() => void updateOverride(permission.id, effect)}
                                     >
                                       {effectLabel(effect, copy)}
@@ -728,7 +708,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                         aria-label={formatAdminMessage(copy.employeeSelectAria, {
                           name: employee.displayName ?? employee.email ?? employee.userId,
                         })}
-                        onClick={() => setSelectedUserId(employee.userId)}
+                        onClick={() => chooseEmployee(employee.userId)}
                       >
                         <div className="truncate text-sm font-black">
                           {employee.displayName ?? employee.email ?? copy.employees}
@@ -755,9 +735,9 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
         <Card className="min-w-0 border-slate-200 bg-white">
           <CardHeader className="gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
-              <CardTitle className="flex items-center gap-2">
-                <ShieldCheck className="size-5 text-primary" />
-                {copy.title}
+              <CardTitle className="flex min-w-0 items-start gap-2 text-base">
+                <ShieldCheck className="size-5 shrink-0 text-primary" />
+                <span className="min-w-0 break-words">{copy.title}</span>
               </CardTitle>
               <CardDescription>
                 {selectedEmployee
@@ -773,7 +753,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
               <Select
                 value={selectedRole?.id ?? ""}
                 onValueChange={(value) => void updateRoleTemplate(value)}
-                disabled={pendingKey?.startsWith("role:")}
+                disabled={Boolean(pendingKey)}
               >
                 <SelectTrigger className="w-full bg-white lg:w-64" aria-label={copy.roleSelectLabel}>
                   <SelectValue placeholder={copy.roleSelectPlaceholder} />
@@ -848,10 +828,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                                 `permission:${CUSTOMER_MANAGE_LEVEL_PERMISSION}` &&
                                 "ring-2 ring-primary/15"
                             )}
-                            disabled={
-                              pendingKey ===
-                              `permission:${CUSTOMER_MANAGE_LEVEL_PERMISSION}`
-                            }
+                            disabled={Boolean(pendingKey)}
                             onClick={() =>
                               void updateOverride(CUSTOMER_MANAGE_LEVEL_PERMISSION, effect)
                             }
@@ -932,7 +909,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                                       pendingKey === `permission:${permission.id}` &&
                                         "ring-2 ring-primary/15"
                                     )}
-                                    disabled={pendingKey === `permission:${permission.id}`}
+                                    disabled={Boolean(pendingKey)}
                                     onClick={() => void updateOverride(permission.id, effect)}
                                   >
                                     {effectLabel(effect, copy)}
@@ -1075,11 +1052,12 @@ async function patchPermissions(
     );
   }
 
-  const payload = (await response.json()) as unknown;
+  const payload = (await response.json().catch(() => null)) as unknown;
   const data = isRecord(payload) && isRecord(payload.data) ? payload.data : {};
 
   return {
     overrides: readArray(data.overrides).map(normalizeOverride).filter(isDefined),
+    readError: !isRecord(payload) || !Array.isArray(data.overrides) || isRecord(payload) && isRecord(payload.meta) && typeof payload.meta.readError === "string",
   };
 }
 

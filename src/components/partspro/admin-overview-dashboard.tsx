@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { usePersistentAdminValue } from "./admin-workspace-state";
 import Image from "./optimized-image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -50,6 +51,8 @@ import { AdminBusyRegion } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
 
 type AdminOverviewPanelValue =
+  | "analytics"
+  | "remax"
   | "overview"
   | "orders"
   | "rma"
@@ -138,7 +141,7 @@ export function AdminOverviewDashboard({
   const { locale } = useI18n();
   const text = getAdminDictionary(locale).admin;
   const copy = text.dashboard.overview;
-  const [salesRange, setSalesRange] = React.useState<DashboardRange>("7");
+  const [salesRange, setSalesRange] = usePersistentAdminValue<DashboardRange>("overview.range", "7");
   const { refresh, snapshot } = useDashboardSnapshot(salesRange);
   const model = snapshot.modelRange === salesRange && snapshot.model
     ? snapshot.model
@@ -201,13 +204,14 @@ export function AdminOverviewDashboard({
         text={text}
       />
 
+      <p className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">{locale.startsWith("zh") ? "指标来自当前权限可读取的完整清单（每类最多5万条）；读取中清单变化会报告失败，避免显示不完整总数。30秒内复用汇总。趋势期间由下拉选择，旁边小计固定为最近7日。" : "Metriche dall’elenco completo accessibile (fino a 50.000 righe per dominio). Un elenco variato o incompleto genera un errore. Riepilogo riutilizzato per 30 secondi. Il grafico segue il periodo selezionato; i piccoli totali restano a 7 giorni."}</p>
       {snapshot.error ? (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
           {copy.partialData}: {snapshot.error}
         </div>
       ) : null}
 
-      {(snapshot.isLoading && !snapshot.syncedAt) || snapshot.modelRange !== salesRange ? (
+      {snapshot.error && !snapshot.model ? <p role="alert" className="rounded border bg-white p-4">{locale.startsWith("zh") ? "完整数据不可用，请刷新后核对。" : "Riepilogo completo non disponibile: aggiorna e verifica."}</p> : (snapshot.isLoading && !snapshot.syncedAt) || snapshot.modelRange !== salesRange ? (
         <OverviewDashboardSkeleton />
       ) : (
         <AdminBusyRegion
@@ -422,7 +426,7 @@ function SalesTrendCard({
             salesLabel={text.dashboard.charts.sales}
           />
         </div>
-        <div className="grid grid-cols-3 gap-1.5 lg:grid-cols-1">
+        <div className="space-y-2"><p className="text-xs font-semibold text-slate-500">{copy.metrics.sales7d} · {text.dashboard.charts.range7}</p><div className="grid grid-cols-3 gap-1.5 lg:grid-cols-1">
           <MiniKpi
             icon={CircleDollarSign}
             label={copy.metrics.sales7d}
@@ -438,7 +442,7 @@ function SalesTrendCard({
             label={copy.details.fromLoadedOrders}
             value={formatEuro(model.averageOrder7d)}
           />
-        </div>
+        </div></div>
       </CardContent>
     </Card>
   );
@@ -563,6 +567,7 @@ function InventoryAlertRow({
           <div className="mt-2 grid grid-cols-3 gap-1.5 text-[11px]">
             <DenseFact label={copy.inventory.available} value={formatCount(alert.availableQty, locale)} />
             <DenseFact label={copy.inventory.sold7d} value={formatCount(alert.sold7d, locale)} />
+            <Link className="text-xs font-bold text-primary underline" href={`/admin?panel=catalog&sku=${encodeURIComponent(alert.sku)}`}>{locale.startsWith("zh") ? "处理此商品" : "Gestisci prodotto"}</Link>
             <DenseFact label={copy.inventory.coverage} value={coverage} />
           </div>
         </div>
@@ -680,7 +685,7 @@ function OrderPipelineCard({
       </CardHeader>
       <CardContent className="space-y-2 px-3 pb-3">
         {model.pipeline.map((item) => (
-          <div key={item.key} className="space-y-1">
+          <Link href={`/admin?panel=orders&status=${encodeURIComponent(item.key)}`} key={item.key} className="block space-y-1 rounded p-1 hover:bg-slate-50">
             <div className="flex items-center gap-2 text-xs">
               <span className="min-w-0 flex-1 truncate font-semibold text-slate-600">
                 {text.enums.adminOrderStatus[item.key]}
@@ -688,7 +693,7 @@ function OrderPipelineCard({
               <span className="font-mono font-black text-slate-950">{item.count}</span>
             </div>
             <Progress value={(item.count / maxCount) * 100} className="h-1.5 bg-slate-100" />
-          </div>
+          </Link>
         ))}
       </CardContent>
     </Card>

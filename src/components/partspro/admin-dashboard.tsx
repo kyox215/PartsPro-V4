@@ -8,7 +8,6 @@ import {
   BarChart3,
   Bell,
   Boxes,
-  ChevronDown,
   ChevronRight,
   ClipboardList,
   Home,
@@ -18,7 +17,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   RotateCcw,
-  Search,
   Settings,
   ShoppingBag,
   User,
@@ -26,7 +24,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
@@ -47,6 +44,8 @@ import { cn } from "@/lib/utils";
 import { useI18n } from "./i18n-provider";
 import { LanguageSwitcher } from "./language-switcher";
 import { PartsProLogo } from "./logo";
+import { AdminGlobalSearch } from "./admin-global-search";
+import { AdminWorkspaceStateProvider } from "./admin-workspace-state";
 import { NotificationCenter } from "./notification-center";
 import {
   DelayedPendingIndicator,
@@ -55,6 +54,8 @@ import {
 } from "./pending-feedback";
 
 type AdminPanelValue =
+  | "remax"
+  | "analytics"
   | "overview"
   | "orders"
   | "rma"
@@ -74,6 +75,8 @@ type AdminNavItem = {
 };
 
 const adminPanelValues = [
+  "remax",
+  "analytics",
   "overview",
   "orders",
   "rma",
@@ -91,12 +94,13 @@ const navItems = [
   { labelKey: "orders", icon: ClipboardList, panel: "orders" },
   { labelKey: "rma", icon: RotateCcw, panel: "rma" },
   { labelKey: "catalog", icon: Package, panel: "catalog" },
+  { labelKey: "remax", icon: Package, panel: "remax" },
   { labelKey: "marketplace", icon: ShoppingBag, panel: "marketplace" },
   { labelKey: "support", icon: MessageCircle, panel: "support" },
   { labelKey: "accounts", icon: UsersRound, panel: "accounts" },
   { labelKey: "marketing", icon: Bell, panel: "timeline" },
   { labelKey: "finance", icon: BarChart3, panel: "finance" },
-  { labelKey: "reports", icon: Boxes },
+  { labelKey: "reports", icon: Boxes, panel: "analytics" },
   { labelKey: "settings", icon: Settings, panel: "settings" },
 ] as const satisfies readonly AdminNavItem[];
 
@@ -115,10 +119,12 @@ type AdminProductsPanelProps = {
 };
 
 type AdminOrdersPanelProps = {
+  permissions?: string[]; customerId?: string; returnAccountId?: string; focusStatus?: string;
   focusOrderId?: string;
 };
 
 type AdminAccountsPanelProps = {
+  focusAccountId?: string;
   initialPermissions?: readonly string[];
   initialUserId?: string | null;
   permissionsLoaded?: boolean;
@@ -130,70 +136,76 @@ type AdminSupportPanelProps = {
 };
 
 type AdminDashboardProps = {
+  initialUserName?: string | null;
+  initialUserRole?: string | null;
   initialPermissions?: readonly string[];
   initialUserId?: string | null;
   initialVisiblePanels?: readonly string[];
 };
 
+const AdminRemaxPanel = dynamic(() => import("./admin-remax-center").then(module => module.AdminRemaxCenter), { ssr: false, loading: AdminPanelLoadingFallback });
+
+const AdminAnalyticsPanel = dynamic(() => import("./admin-analytics-panel").then(module => module.AdminAnalyticsPanel), { ssr: false, loading: () => <AdminPanelLoadingFallback /> });
+
 const AdminOrdersPanel = dynamic(
   () => import("./admin-orders-panel").then((module) => module.AdminOrdersPanel),
-  { loading: () => <AdminPanelLoadingFallback /> }
+  { ssr: false, loading: () => <AdminPanelLoadingFallback /> }
 ) as React.ComponentType<AdminOrdersPanelProps>;
 const AdminRmaPanel = dynamic(
   () => import("./admin-rma-panel").then((module) => module.AdminRmaPanel),
-  { loading: () => <AdminPanelLoadingFallback /> }
+  { ssr: false, loading: () => <AdminPanelLoadingFallback /> }
 );
 const AdminProductsPanel = dynamic<AdminProductsPanelProps>(
   () =>
     import("./admin-products-panel").then((module) => module.AdminProductsPanel),
-  { loading: () => <AdminPanelLoadingFallback /> }
+  { ssr: false, loading: () => <AdminPanelLoadingFallback /> }
 );
 const AdminFinancePanel = dynamic(
   () =>
     import("./admin-finance-panel").then((module) => module.AdminFinancePanel),
-  { loading: () => <AdminPanelLoadingFallback /> }
+  { ssr: false, loading: () => <AdminPanelLoadingFallback /> }
 );
 const AdminActivityTimeline = dynamic(
   () =>
     import("./admin-activity-timeline").then(
       (module) => module.AdminActivityTimeline
     ),
-  { loading: () => <AdminPanelLoadingFallback /> }
+  { ssr: false, loading: () => <AdminPanelLoadingFallback /> }
 );
 const AdminSettingsPanel = dynamic(
   () =>
     import("./admin-settings-panel").then(
       (module) => module.AdminSettingsPanel
     ),
-  { loading: () => <AdminPanelLoadingFallback /> }
+  { ssr: false, loading: () => <AdminPanelLoadingFallback /> }
 );
 const AdminAccountsPanel = dynamic<AdminAccountsPanelProps>(
   () =>
     import("./admin-accounts-panel").then(
       (module) => module.AdminAccountsPanel
     ),
-  { loading: () => <AdminPanelLoadingFallback /> }
+  { ssr: false, loading: () => <AdminPanelLoadingFallback /> }
 );
 const AdminCommercePanel = dynamic<AdminCommercePanelProps>(
   () =>
     import("./admin-commerce-panel").then(
       (module) => module.AdminCommercePanel
     ),
-  { loading: () => <AdminPanelLoadingFallback /> }
+  { ssr: false, loading: () => <AdminPanelLoadingFallback /> }
 );
 const AdminSupportPanel = dynamic(
   () =>
     import("./admin-support-panel").then(
       (module) => module.AdminSupportPanel
     ),
-  { loading: () => <AdminPanelLoadingFallback /> }
+  { ssr: false, loading: () => <AdminPanelLoadingFallback /> }
 ) as React.ComponentType<AdminSupportPanelProps>;
 const AdminOverviewDashboard = dynamic<AdminOverviewDashboardProps>(
   () =>
     import("./admin-overview-dashboard").then(
       (module) => module.AdminOverviewDashboard
     ),
-  { loading: () => <AdminPanelLoadingFallback /> }
+  { ssr: false, loading: () => <AdminPanelLoadingFallback /> }
 );
 
 function isAdminPanelValue(value: string): value is AdminPanelValue {
@@ -264,9 +276,12 @@ function AdminPanelLoadingFallback() {
 
 export function AdminDashboard({
   initialPermissions,
+  initialUserName = null,
+  initialUserRole = null,
   initialUserId = null,
   initialVisiblePanels,
 }: AdminDashboardProps = {}) {
+  const text = useAdminText();
   const router = useRouter();
   const searchParams = useSearchParams();
   const hasInitialAdminContext = initialPermissions !== undefined;
@@ -274,7 +289,14 @@ export function AdminDashboard({
     React.useState<AdminPanelValue>("overview");
   const [pendingPanel, setPendingPanel] =
     React.useState<AdminPanelValue | null>(null);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(true);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
+  const mainRef = React.useRef<HTMLElement>(null);
+  const scrollPositions = React.useRef<Record<string, number>>({});
+  const panelUrls = React.useRef<Record<string, string>>({});
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => { try { setIsSidebarCollapsed(localStorage.getItem("partspro:admin-sidebar") === "collapsed"); } catch {} }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
   const [visiblePanels, setVisiblePanels] =
     React.useState<AdminPanelValue[] | null>(() =>
       normalizeVisiblePanels(initialVisiblePanels)
@@ -367,6 +389,12 @@ export function AdminDashboard({
         return;
       }
 
+      const previous = activePanelRef.current;
+      if (previous !== panel && document.querySelector('[data-admin-mutating="true"]')) return;
+      if (previous !== panel && document.querySelector('[data-admin-dirty="true"], [data-catalog-dirty="true"]') && !window.confirm(text.nav.settings === "设置" ? "放弃未保存修改并切换页面？" : "Scartare le modifiche non salvate?")) {
+        if (!options.syncUrl) router.replace(panelUrls.current[previous] ?? adminPanelHref(previous), { scroll: false });
+        return;
+      }
       if (pendingPanelTimerRef.current !== null) {
         window.clearTimeout(pendingPanelTimerRef.current);
       }
@@ -375,17 +403,75 @@ export function AdminDashboard({
         setPendingPanel(panel);
       }
 
+      if (previous !== panel) {
+        scrollPositions.current[previous] = mainRef.current?.scrollTop ?? 0;
+        const currentParams = new URLSearchParams(window.location.search);
+        const urlPanel = currentParams.get("panel") ?? "overview";
+        // On a Link/back navigation the browser already contains the target URL.
+        if (urlPanel === previous) panelUrls.current[previous] = window.location.pathname + window.location.search;
+        else panelUrls.current[previous] ??= adminPanelHref(previous);
+      }
+      if (!options.syncUrl) panelUrls.current[panel] = window.location.pathname + window.location.search;
       activePanelRef.current = panel;
       setActivePanel(panel);
       if (options.syncUrl) {
-        router.replace(adminPanelHref(panel), { scroll: false });
+        router.push(panelUrls.current[panel] ?? adminPanelHref(panel), { scroll: false });
       }
+
       pendingPanelTimerRef.current = window.setTimeout(() => {
         setPendingPanel((current) => (current === panel ? null : current));
       }, 360);
     },
-    [router, visiblePanelSet]
+    [router, visiblePanelSet, text.nav.settings]
   );
+
+
+  React.useEffect(() => {
+    const main = mainRef.current;
+    if (!main) return;
+    const target = scrollPositions.current[activePanel] ?? 0;
+    let done = false;
+    let frame = 0;
+    const stop = () => { done = true; observer.disconnect(); resize.disconnect(); cancelAnimationFrame(frame); };
+    const restore = () => {
+      if (done) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (!done && main.scrollHeight - main.clientHeight >= target) { main.scrollTop = target; stop(); }
+      });
+    };
+    const observer = new MutationObserver(restore);
+    const resize = new ResizeObserver(restore);
+    observer.observe(main, { childList: true, subtree: true, characterData: true });
+    resize.observe(main);
+    const timer = window.setTimeout(stop, 5000);
+    main.addEventListener("wheel", stop, { passive: true });
+    main.addEventListener("pointerdown", stop, { passive: true });
+    restore();
+    return () => { stop(); window.clearTimeout(timer); main.removeEventListener("wheel", stop); main.removeEventListener("pointerdown", stop); };
+  }, [activePanel]);
+
+  React.useEffect(() => {
+    const guardLink = (event: MouseEvent) => {
+      const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+      if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const url = new URL(link.getAttribute("href") ?? "", window.location.href);
+      if (url.origin !== window.location.origin || !url.pathname.startsWith("/admin") || url.href === window.location.href) return;
+      if (document.querySelector('[data-admin-mutating="true"]')) { event.preventDefault(); event.stopPropagation(); return; }
+      if (document.querySelector('[data-admin-dirty="true"], [data-catalog-dirty="true"]') && !window.confirm(text.nav.settings === "设置" ? "放弃未保存修改并打开目标页面？" : "Scartare le modifiche e aprire la pagina?")) { event.preventDefault(); event.stopPropagation(); }
+    };
+    document.addEventListener("click", guardLink, true);
+    return () => document.removeEventListener("click", guardLink, true);
+  }, [text.nav.settings]);
+  React.useEffect(() => {
+    const changed = () => { void fetch("/api/me", { cache: "no-store" }).then(async response => {
+      if (!response.ok) return; const data = await response.json();
+      if (data.userId !== currentUserId) { router.refresh(); return; }
+      if (Array.isArray(data.permissions)) setCurrentPermissions(data.permissions.filter((item: unknown): item is string => typeof item === "string"));
+      if (Array.isArray(data.visiblePanels)) setVisiblePanels(normalizeVisiblePanels(data.visiblePanels));
+    }).catch(() => undefined); };
+    window.addEventListener("partspro:admin-permissions-changed", changed); return () => window.removeEventListener("partspro:admin-permissions-changed", changed);
+  }, [currentUserId, router]);
 
   const navigateToPanel = React.useCallback(
     (panel: AdminPanelValue) => selectPanel(panel, { syncUrl: true }),
@@ -413,6 +499,10 @@ export function AdminDashboard({
 
   React.useEffect(() => {
     const requestedPanel = searchParams.get("panel");
+    if (!requestedPanel) {
+      const timeoutId = window.setTimeout(() => selectPanel("overview"), 0);
+      return () => window.clearTimeout(timeoutId);
+    }
 
     if (requestedPanel === "inventory") {
       const params = new URLSearchParams(searchParams.toString());
@@ -437,7 +527,7 @@ export function AdminDashboard({
   }, [router, searchParams, selectPanel]);
 
   return (
-    <main className="h-dvh overflow-y-auto overflow-x-clip bg-slate-50 text-slate-950">
+    <AdminWorkspaceStateProvider userId={currentUserId}><main ref={mainRef} className="h-dvh overflow-y-auto overflow-x-clip bg-slate-50 text-slate-950">
       <div className="flex min-w-0">
         <AdminSidebar
           activePanel={activePanel}
@@ -445,7 +535,9 @@ export function AdminDashboard({
           pendingPanel={pendingPanel}
           visiblePanels={visiblePanelSet}
           collapsed={isSidebarCollapsed}
-          onCollapsedChange={setIsSidebarCollapsed}
+          onCollapsedChange={(collapsed) => { setIsSidebarCollapsed(collapsed); try { localStorage.setItem("partspro:admin-sidebar", collapsed ? "collapsed" : "expanded"); } catch {} }}
+          userName={initialUserName}
+          userRole={initialUserRole}
         />
         <section className="w-full min-w-0 flex-1">
           <AdminTopbar
@@ -461,7 +553,7 @@ export function AdminDashboard({
               className="flex min-w-0 flex-col gap-3 sm:gap-4"
             >
               <TabsContent value="orders" className="order-4 mt-0 min-w-0">
-                <AdminOrdersPanel focusOrderId={focusOrderId} />
+                <AdminOrdersPanel focusStatus={searchParams.get("status") ?? undefined} focusOrderId={focusOrderId} permissions={currentPermissions} customerId={searchParams.get("customerId") ?? undefined} returnAccountId={searchParams.get("returnAccountId") ?? undefined} />
               </TabsContent>
               <TabsContent value="rma" className="order-4 mt-0 min-w-0">
                 <AdminRmaPanel />
@@ -473,7 +565,7 @@ export function AdminDashboard({
                 />
               </TabsContent>
               <TabsContent value="finance" className="order-4 mt-0 min-w-0">
-                <AdminFinancePanel />
+                <AdminFinancePanel permissions={currentPermissions} currentUserId={currentUserId ?? undefined} />
               </TabsContent>
               <TabsContent value="marketplace" className="order-4 mt-0 min-w-0">
                 <AdminCommercePanel permissions={currentPermissions} />
@@ -485,10 +577,11 @@ export function AdminDashboard({
                 />
               </TabsContent>
               <TabsContent value="timeline" className="order-4 mt-0 min-w-0">
-                <AdminActivityTimeline />
+                <AdminActivityTimeline permissions={currentPermissions} />
               </TabsContent>
               <TabsContent value="accounts" className="order-4 mt-0 min-w-0">
                 <AdminAccountsPanel
+                  focusAccountId={searchParams.get("accountId") ?? undefined}
                   initialPermissions={currentPermissions}
                   initialUserId={currentUserId}
                   permissionsLoaded={adminContextLoaded}
@@ -497,6 +590,8 @@ export function AdminDashboard({
               <TabsContent value="settings" className="order-4 mt-0 min-w-0">
                 <AdminSettingsPanel />
               </TabsContent>
+              <TabsContent value="remax" className="order-4 mt-0 min-w-0"><AdminRemaxPanel initialDashboard={null} initialError={null} /></TabsContent>
+              <TabsContent value="analytics" className="order-4 mt-0 min-w-0"><AdminAnalyticsPanel /></TabsContent>
               <TabsContent value="overview" className="order-4 mt-0 min-w-0">
                 <AdminOverviewDashboard
                   onPanelChange={navigateToPanel}
@@ -507,7 +602,7 @@ export function AdminDashboard({
           </div>
         </section>
       </div>
-    </main>
+    </main></AdminWorkspaceStateProvider>
   );
 }
 
@@ -520,24 +615,28 @@ type AdminNavigationProps = {
 
 type AdminSidebarProps = AdminNavigationProps & {
   collapsed: boolean;
+  userName?: string | null;
+  userRole?: string | null;
   onCollapsedChange: (collapsed: boolean) => void;
 };
 
 function AdminSidebar({
   activePanel,
   collapsed,
+  userName,
+  userRole,
   onCollapsedChange,
   onPanelChange,
   pendingPanel,
   visiblePanels,
 }: AdminSidebarProps) {
   const text = useAdminText();
-  const toggleLabel = collapsed ? "Expand admin sidebar" : "Collapse admin sidebar";
+  const toggleLabel = text.nav.settings === "设置" ? (collapsed ? "展开后台导航" : "收起后台导航") : (collapsed ? "Espandi navigazione" : "Riduci navigazione");
   const ToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
   const userCard = (
-    <div
+    <Link href="/account" aria-label={userName ?? text.topbar.adminName}
       className={cn(
-        "flex items-center rounded-lg bg-slate-50",
+        "flex items-center rounded-lg bg-slate-50 hover:bg-primary/10",
         collapsed ? "justify-center p-2" : "gap-3 p-3"
       )}
     >
@@ -547,19 +646,19 @@ function AdminSidebar({
       {!collapsed && (
         <>
           <div className="min-w-0">
-            <div className="truncate text-sm font-bold">{text.topbar.adminName}</div>
-            <div className="text-xs text-slate-500">{text.topbar.adminRole}</div>
+            <div className="truncate text-sm font-bold">{userName ?? text.topbar.adminName}</div>
+            <div className="text-xs text-slate-500">{userRole ?? text.topbar.adminRole}</div>
           </div>
-          <ChevronDown className="ml-auto size-4 text-slate-400" />
+          <ChevronRight className="ml-auto size-4 text-slate-400" />
         </>
       )}
-    </div>
+    </Link>
   );
 
   return (
     <aside
       className={cn(
-        "sticky top-0 hidden h-screen shrink-0 border-r border-slate-200 bg-white transition-[width,padding] duration-200 lg:block",
+        "sticky top-0 hidden h-dvh shrink-0 flex-col border-r border-slate-200 bg-white transition-[width,padding] duration-200 lg:flex",
         collapsed ? "w-[72px] px-3 py-4" : "w-[250px] p-4"
       )}
     >
@@ -589,7 +688,7 @@ function AdminSidebar({
           </TooltipContent>
         </Tooltip>
       </div>
-      <nav className={cn("space-y-1", collapsed ? "mt-6" : "mt-8")}>
+      <nav className={cn("min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain py-2", collapsed ? "mt-4" : "mt-5")}>
         {navItems.map((item) => {
           const panel = "panel" in item ? item.panel : undefined;
           const label = text.nav[item.labelKey];
@@ -662,14 +761,14 @@ function AdminSidebar({
           );
         })}
       </nav>
-      <div className={cn("absolute bottom-4", collapsed ? "left-3 right-3" : "left-4 right-4")}>
+      <div className="shrink-0 pt-2">
         <Separator className="mb-4" />
         {collapsed ? (
           <Tooltip>
             <TooltipTrigger asChild>{userCard}</TooltipTrigger>
             <TooltipContent side="right" sideOffset={10}>
-              <div className="font-semibold">{text.topbar.adminName}</div>
-              <div className="text-xs opacity-80">{text.topbar.adminRole}</div>
+              <div className="font-semibold">{userName ?? text.topbar.adminName}</div>
+              <div className="text-xs opacity-80">{userRole ?? text.topbar.adminRole}</div>
             </TooltipContent>
           </Tooltip>
         ) : (
@@ -780,19 +879,13 @@ function AdminTopbar({
         </Sheet>
 
         <div className="min-w-0 flex-1 sm:flex-none">
-          <div className="truncate text-lg font-black">{text.topbar.title}</div>
+          <div className="truncate text-lg font-black">{text.nav[navItems.find(item => item.panel === activePanel)?.labelKey ?? "dashboard"]}</div>
           <div className="truncate text-xs text-slate-500">
             {text.topbar.subtitle}
           </div>
         </div>
 
-        <div className="relative ml-auto hidden w-full max-w-md md:block">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-          <Input
-            className="h-10 bg-white pl-9"
-            placeholder={text.topbar.searchPlaceholder}
-          />
-        </div>
+        <AdminGlobalSearch />
 
         <LanguageSwitcher scope="admin" compact className="hidden sm:inline-flex" />
         <NotificationCenter audience="staff" />

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { apiError } from "@/lib/partspro-api";
 import {
   listAdminSupportConversations,
+  readAdminSupportInboxCounts,
   SupportServiceError,
 } from "@/lib/partspro-support";
 import { parseAdminQuery, requireAdminApi } from "../../_shared";
@@ -13,6 +14,9 @@ const supportConversationQuerySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(100).default(50),
     offset: z.coerce.number().int().min(0).max(5000).default(0),
+    includeInboxCounts: z.enum(["true", "false"]).optional(),
+    needsReply: z.enum(["true", "false"]).optional(),
+    q: z.string().trim().min(1).max(120).optional(),
     scope: z.enum(["all", "mine", "unassigned"]).default("all"),
     status: z.enum(["all", "open", "resolved", "archived"]).default("open"),
   })
@@ -36,10 +40,13 @@ export async function GET(request: NextRequest) {
       currentUserId: admin.authState.userId,
       limit: query.data.limit,
       offset: query.data.offset,
+      q: query.data.q,
+      needsReply: query.data.needsReply === "true",
       scope: query.data.scope,
       status: query.data.status,
     });
 
+    const inboxCounts = query.data.includeInboxCounts === "true" ? await readAdminSupportInboxCounts(admin.authState.userId) : undefined;
     return NextResponse.json({
       data: data.conversations,
       meta: {
@@ -48,6 +55,7 @@ export async function GET(request: NextRequest) {
         returned: data.conversations.length,
         source: "support_conversations",
         total: data.total,
+        ...(inboxCounts ? { inboxCounts } : {}),
       },
     });
   } catch (error) {

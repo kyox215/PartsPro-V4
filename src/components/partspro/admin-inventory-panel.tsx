@@ -1,6 +1,11 @@
 "use client";
 
 import * as React from "react";
+import { buildReplenishmentBatchPlan, type ReplenishmentBatchPlan } from "@/lib/admin-replenishment-batch.mjs";
+import { Dialog, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { AdminListPager } from "./admin-list-pager";
+import { usePersistentAdminValue } from "./admin-workspace-state";
+import { loadAllAdminRows } from "@/lib/admin-paged-read.mjs";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -228,7 +233,8 @@ const defaultInventoryHealthSummary: InventoryHealthSummary = {
   staleLockHours: 72,
 };
 
-export function AdminInventoryPanel() {
+export function AdminInventoryPanel({ permissions = [] }: { permissions?: readonly string[] }) {
+  const canManage = permissions.includes("inventory.manage");
   const { locale } = useI18n();
   const dictionary = getAdminDictionary(locale).admin;
   const text = dictionary.inventoryPanel;
@@ -244,14 +250,26 @@ export function AdminInventoryPanel() {
   const [healthSummary, setHealthSummary] =
     React.useState<InventoryHealthSummary>(defaultInventoryHealthSummary);
   const [healthError, setHealthError] = React.useState<string | null>(null);
-  const [queryInput, setQueryInput] = React.useState("");
-  const [query, setQuery] = React.useState("");
-  const [windowDays, setWindowDays] = React.useState("30");
-  const [lowStockThreshold, setLowStockThreshold] = React.useState("10");
-  const [sort, setSort] = React.useState<ShortageSort>("urgency");
+  const [queryInput, setQueryInput] = usePersistentAdminValue("inventory.search", "");
+  const [query, setQuery] = React.useState(queryInput);
+  const [windowDays, setWindowDays] = usePersistentAdminValue("inventory.window", "30");
+  const [lowStockThreshold, setLowStockThreshold] = usePersistentAdminValue("inventory.threshold", "10");
+  const [sort, setSort] = usePersistentAdminValue<ShortageSort>("inventory.sort", "urgency");
   const [queueStatus, setQueueStatus] =
-    React.useState<ReplenishmentStatusFilter>("open");
-  const [queueSupplier, setQueueSupplier] = React.useState("");
+    usePersistentAdminValue<ReplenishmentStatusFilter>("inventory.status", "open");
+  const [queueSupplier, setQueueSupplier] = usePersistentAdminValue("inventory.supplier", "");
+  const [shortagePage, setShortagePage] = usePersistentAdminValue("inventory.shortagePage", 0);
+  const [queuePage, setQueuePage] = usePersistentAdminValue("inventory.queuePage", 0);
+  const [healthPage, setHealthPage] = usePersistentAdminValue("inventory.healthPage", 0);
+  const [totals, setTotals] = React.useState({ shortage: 0, queue: 0, health: 0 });
+  const [selectedPlanIds, setSelectedPlanIds] = React.useState<string[]>([]);
+  const [batchPlan, setBatchPlan] = React.useState<ReplenishmentBatchPlan | null>(null);
+  const [bulkUnknown, setBulkUnknown] = React.useState(false);
+  const [commonPlan, setCommonPlan] = React.useState({ applySupplier: false, supplier: "", applyQty: false, plannedQty: "", applyNote: false, note: "", status: "" });
+  const [selectedSkus, setSelectedSkus] = React.useState<string[]>([]);
+  const [bulkBusy, setBulkBusy] = React.useState(false);
+  const [bulkNotice, setBulkNotice] = React.useState<string | null>(null);
+  const [exporting, setExporting] = React.useState(false);
   const [pending, setPending] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [copiedSku, setCopiedSku] = React.useState<string | null>(null);
@@ -265,6 +283,7 @@ export function AdminInventoryPanel() {
     (signal?: AbortSignal) => {
       const params = new URLSearchParams({
         limit: String(pageSize),
+        offset: String(shortagePage * pageSize),
         lowStockThreshold,
         sort,
         windowDays,
@@ -276,6 +295,7 @@ export function AdminInventoryPanel() {
 
       const queueParams = new URLSearchParams({
         limit: String(pageSize),
+        offset: String(queuePage * pageSize),
         status: queueStatus,
       });
 
@@ -289,6 +309,7 @@ export function AdminInventoryPanel() {
 
       const healthParams = new URLSearchParams({
         limit: String(pageSize),
+        offset: String(healthPage * pageSize),
         sort: "severity",
         staleLockHours: "72",
         windowDays: "90",
@@ -350,6 +371,7 @@ export function AdminInventoryPanel() {
 
           if (shortageResult.status === "fulfilled") {
             setRows(shortageResult.value.rows);
+            setTotals(current => ({ ...current, shortage: shortageResult.value.total }));
             setSummary(shortageResult.value.summary);
           } else {
             setRows([]);
@@ -359,6 +381,8 @@ export function AdminInventoryPanel() {
 
           if (replenishmentResult.status === "fulfilled") {
             setReplenishmentItems(replenishmentResult.value.items);
+            setBulkUnknown(false);
+            setTotals(current => ({ ...current, queue: replenishmentResult.value.total }));
             setReplenishmentSummary(replenishmentResult.value.summary);
             setDrafts((current) => hydrateDrafts(current, replenishmentResult.value.items));
           } else {
@@ -369,6 +393,7 @@ export function AdminInventoryPanel() {
 
           if (healthResult.status === "fulfilled") {
             setHealthRows(healthResult.value.rows);
+            setTotals(current => ({ ...current, health: healthResult.value.total }));
             setHealthSummary(healthResult.value.summary);
             setHealthError(null);
           } else {
@@ -384,6 +409,7 @@ export function AdminInventoryPanel() {
         });
     },
     [
+      shortagePage, queuePage, healthPage,
       healthText.error,
       lowStockThreshold,
       query,
@@ -409,31 +435,29 @@ export function AdminInventoryPanel() {
     (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       setQuery(queryInput.trim());
+      setShortagePage(0); setQueuePage(0); setHealthPage(0);
     },
-    [queryInput]
+    [queryInput, setShortagePage, setQueuePage, setHealthPage]
   );
 
-  const exportCsv = React.useCallback(() => {
-    const csv = buildCsv(rows, text);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `partspro-sold-stock-shortages-${windowDays}d.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  }, [rows, text, windowDays]);
-
-  const exportPurchaseCsv = React.useCallback(() => {
-    const csv = buildPurchaseCsv(replenishmentItems, text);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `partspro-replenishment-plan-${queueStatus}.csv`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  }, [queueStatus, replenishmentItems, text]);
+  const exportFiltered = React.useCallback(async (kind: "shortage" | "queue") => {
+    if (exporting) return;
+    setExporting(true); setError(null);
+    try {
+      const params = new URLSearchParams(kind === "shortage" ? { lowStockThreshold, sort, windowDays } : { status: queueStatus });
+      if (query.trim().length >= 2) params.set("q", query.trim());
+      if (kind === "queue" && queueSupplier.trim()) params.set("supplier", queueSupplier.trim());
+      const all = await loadAllAdminRows(kind === "shortage" ? endpoint : replenishmentEndpoint, params, { key: row => isRecord(row) ? readString(row[kind === "shortage" ? "sku" : "id"]) : null });
+      const csv = kind === "shortage" ? buildCsv(all.map(parseSoldStockShortageRow).filter(isDefined), text) : buildPurchaseCsv(all.map(parseReplenishmentItem).filter(isDefined), text);
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const anchor = document.createElement("a"); anchor.href = url; anchor.download = `partspro-${kind}-filtered.csv`; anchor.click(); URL.revokeObjectURL(url);
+    } catch (error) {
+      setError(locale.startsWith("zh") ? "完整导出未完成。请重试；超过5200条时先缩小筛选范围。" : "Esportazione completa non riuscita. Riprova o restringi i filtri oltre 5200 righe.");
+      console.warn("Admin export", error instanceof Error ? error.message : "failed");
+    } finally { setExporting(false); }
+  }, [exporting, lowStockThreshold, sort, windowDays, queueStatus, query, queueSupplier, text, locale]);
+  const exportCsv = () => void exportFiltered("shortage");
+  const exportPurchaseCsv = () => void exportFiltered("queue");
 
   const copySku = React.useCallback(
     async (sku: string) => {
@@ -445,7 +469,8 @@ export function AdminInventoryPanel() {
   );
 
   const createReplenishmentItem = React.useCallback(
-    async (row: SoldStockShortageRow) => {
+    async (row: SoldStockShortageRow, refreshAfter = true): Promise<boolean> => {
+      if (!canManage || bulkUnknown || actionKey || (bulkBusy && refreshAfter)) return false;
       setActionKey(`${row.sku}:create`);
 
       try {
@@ -481,14 +506,16 @@ export function AdminInventoryPanel() {
           throw new Error(`${response.status}`);
         }
 
-        refresh();
+        if (refreshAfter) refresh();
+        return true;
       } catch {
         setError(text.actionError);
+        return false;
       } finally {
         setActionKey(null);
       }
     },
-    [lowStockThreshold, refresh, text.actionError, windowDays]
+    [canManage, bulkUnknown, bulkBusy, actionKey, lowStockThreshold, refresh, text.actionError, windowDays]
   );
 
   const updateReplenishmentItem = React.useCallback(
@@ -496,6 +523,8 @@ export function AdminInventoryPanel() {
       item: ReplenishmentItem,
       patch: Partial<Pick<ReplenishmentItem, "note" | "plannedQty" | "status" | "supplier">>
     ) => {
+      if (!canManage || bulkUnknown || bulkBusy || actionKey) return;
+      if (patch.status && patch.status !== item.status && !window.confirm(locale.startsWith("zh") ? `确认将 ${item.sku} 的补货计划从 ${item.status} 改为 ${patch.status}？此处只更新计划，不登记实物入库。` : `Cambiare il piano ${item.sku} da ${item.status} a ${patch.status}? Aggiorna il piano, non la giacenza reale.`)) return;
       setActionKey(`${item.id}:update`);
 
       try {
@@ -519,7 +548,7 @@ export function AdminInventoryPanel() {
         setActionKey(null);
       }
     },
-    [refresh, text.actionError]
+    [canManage, bulkUnknown, bulkBusy, actionKey, locale, refresh, text.actionError]
   );
 
   const updateDraft = React.useCallback(
@@ -542,8 +571,57 @@ export function AdminInventoryPanel() {
     []
   );
 
+  function savePlan(item: ReplenishmentItem, draft: { note: string; plannedQty: string; supplier: string }) {
+    if (!canManage || bulkUnknown || bulkBusy || actionKey) return;
+    const value = draft.plannedQty.trim();
+    if (!/^\d+$/.test(value) || Number(value) > 99999) { setError(locale.startsWith("zh") ? "采购数量需为0–99999的整数，原输入已保留。" : "La quantità deve essere un intero da 0 a 99999. I dati sono conservati."); return; }
+    void updateReplenishmentItem(item, { note: draft.note, plannedQty: Number(value), supplier: draft.supplier });
+  }
+
+  async function addSelectedToPlan() {
+    const chosen = rows.filter(row => selectedSkus.includes(row.sku) && !row.activeReplenishmentItem);
+    if (!canManage || bulkUnknown || actionKey || bulkBusy || !chosen.length) return;
+    if (!window.confirm(locale.startsWith("zh") ? `核对后将本页所选 ${chosen.length} 个商品加入采购计划？不会改变真实库存；失败即停止。` : `Aggiungere ${chosen.length} prodotti selezionati al piano acquisti? Lo stock non cambia. Un errore interrompe le restanti righe.`)) return;
+    setBulkBusy(true); setBulkNotice(null); let saved = 0;
+    for (const row of chosen) {
+      const success = await createReplenishmentItem(row, false); if (!success) break;
+      saved++; setSelectedSkus(current => current.filter(sku => sku !== row.sku));
+    }
+    setBulkNotice(locale.startsWith("zh") ? `已确认加入 ${saved}/${chosen.length} 个商品。${saved < chosen.length ? "后续已停止，请刷新核对失败行后继续。" : ""}` : `Aggiunti ${saved}/${chosen.length} prodotti.${saved < chosen.length ? " Operazione interrotta: verifica la riga prima di continuare." : ""}`);
+    setBulkBusy(false); refresh();
+  }
+  function previewPlanBatch() {
+    if (!canManage || bulkBusy || actionKey || bulkUnknown) return;
+    try {
+      const chosen = selectedPlanIds.filter(id => replenishmentItems.some(item => item.id === id));
+      const plan = buildReplenishmentBatchPlan(replenishmentItems, drafts, chosen, commonPlan);
+      if (!plan.length) { setError(locale.startsWith("zh") ? "所选行没有待保存变化。" : "Nessuna modifica da salvare nelle righe selezionate."); return; }
+      setBatchPlan(plan); setError(null);
+    } catch { setError(locale.startsWith("zh") ? "请核对所选行：数量需为0–99999整数，供应商最多100字，备注最多500字。原草稿已保留。" : "Verifica le righe: quantità intera 0–99999, fornitore massimo 100 caratteri, nota massimo 500. Bozza conservata."); }
+  }
+  async function savePlanBatch() {
+    if (!batchPlan || !canManage || bulkBusy || actionKey || bulkUnknown) return;
+    setBulkBusy(true); setBulkNotice(null); let saved = 0;
+    for (const row of batchPlan) {
+      try {
+        const response = await fetch(replenishmentEndpoint, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: row.id, ...row.patch }) });
+        if (!response.ok) throw Error("Not acknowledged");
+        saved++;
+        setReplenishmentItems(current => current.map(item => item.id === row.id ? { ...item, ...row.after } : item));
+        setDrafts(current => ({ ...current, [row.id]: { supplier: row.after.supplier, plannedQty: String(row.after.plannedQty), note: row.after.note } }));
+        setSelectedPlanIds(current => current.filter(id => id !== row.id));
+      } catch { setBulkUnknown(true); break; }
+    }
+    setBulkNotice(locale.startsWith("zh") ? `已确认保存 ${saved}/${batchPlan.length} 行。${saved < batchPlan.length ? "后续已停止；剩余草稿保留，请先刷新核对实际结果。" : "只更新采购计划，不改变真实库存。"}` : `Salvate ${saved}/${batchPlan.length} righe.${saved < batchPlan.length ? " Interrotto: bozze rimanenti conservate. Aggiorna e verifica prima di continuare." : " Solo piano acquisti; giacenza reale invariata."}`);
+    setBatchPlan(null); setBulkBusy(false);
+    if (saved === batchPlan.length) refresh();
+  }
+  const planSelection = (item: ReplenishmentItem) => <label className="inline-flex items-center gap-2 text-xs"><input type="checkbox" checked={selectedPlanIds.includes(item.id)} disabled={bulkBusy || Boolean(actionKey) || bulkUnknown} onChange={event => setSelectedPlanIds(current => event.target.checked ? [...new Set([...current,item.id])] : current.filter(id => id !== item.id))}/>{locale.startsWith("zh") ? "选择计划" : "Seleziona piano"} {item.sku}</label>;
+  const selection = (row: SoldStockShortageRow) => <label className="inline-flex items-center gap-2 text-xs font-medium"><input type="checkbox" checked={selectedSkus.includes(row.sku)} disabled={!canManage || bulkBusy || Boolean(actionKey) || Boolean(row.activeReplenishmentItem)} onChange={event => setSelectedSkus(current => event.target.checked ? [...new Set([...current,row.sku])] : current.filter(sku => sku !== row.sku))} /><span>{row.sku}</span></label>;
+
   return (
-    <section className="min-w-0 space-y-3">
+    <section data-admin-dirty={replenishmentItems.some(item => JSON.stringify(drafts[item.id] ?? replenishmentDraft(item)) !== JSON.stringify(replenishmentDraft(item))) || (selectedPlanIds.length > 0 && (commonPlan.applySupplier || commonPlan.applyQty || commonPlan.applyNote || Boolean(commonPlan.status))) ? "true" : "false"} data-admin-mutating={bulkBusy || Boolean(actionKey) ? "true" : "false"} className="min-w-0 space-y-3">
+      <Dialog open={batchPlan !== null} onOpenChange={open => { if (!open && !bulkBusy) setBatchPlan(null); }}><DialogContent scrollLayout="body" className="sm:max-w-2xl"><DialogHeader><DialogTitle>{locale.startsWith("zh") ? "核对采购计划批量修改" : "Verifica modifiche al piano acquisti"}</DialogTitle><DialogDescription>{locale.startsWith("zh") ? "按行显示旧值 → 新值。保存逐行执行，失败即停止；状态仅代表计划，不登记实物入库。" : "Valore precedente → nuovo. Salvataggio per riga; un errore interrompe le restanti righe. Gli stati riguardano il piano, non il magazzino."}</DialogDescription></DialogHeader><DialogBody className="space-y-3">{batchPlan?.map(row => <div key={row.id} className="rounded border p-3 text-sm"><strong>{row.sku}</strong>{Object.keys(row.patch).map(key => <p className="break-words" key={key}>{({supplier:text.supplier,plannedQty:text.plannedQty,note:text.note,status:text.status} as Record<string,string>)[key]}: {String(row.before[key as keyof typeof row.before]) || "—"} → {String(row.after[key as keyof typeof row.after]) || "—"}</p>)}</div>)}</DialogBody><DialogFooter><Button variant="outline" disabled={bulkBusy} onClick={() => setBatchPlan(null)}>{locale.startsWith("zh") ? "取消" : "Annulla"}</Button><Button disabled={bulkBusy || bulkUnknown} onClick={() => void savePlanBatch()}>{locale.startsWith("zh") ? "确认并保存所选计划" : "Conferma e salva i piani"}</Button></DialogFooter></DialogContent></Dialog>
       <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800">
@@ -573,7 +651,7 @@ export function AdminInventoryPanel() {
             variant="outline"
             size="sm"
             className="min-w-0 bg-white px-2.5"
-            disabled={rows.length === 0}
+            disabled={pending || exporting || totals.shortage === 0}
             onClick={exportCsv}
           >
             <Download className="size-4" />
@@ -584,7 +662,7 @@ export function AdminInventoryPanel() {
             variant="outline"
             size="sm"
             className="min-w-0 bg-white px-2.5"
-            disabled={replenishmentItems.length === 0}
+            disabled={pending || exporting || totals.queue === 0}
             onClick={exportPurchaseCsv}
           >
             <FileSpreadsheet className="size-4" />
@@ -650,6 +728,7 @@ export function AdminInventoryPanel() {
         summary={healthSummary}
         text={healthText}
         locale={locale}
+        pager={<AdminListPager page={healthPage} pageSize={pageSize} total={totals.health} returned={healthRows.length} pending={pending} onPageChange={setHealthPage} />}
       />
 
       <Card className="overflow-hidden rounded-md border-slate-200 shadow-[0_8px_18px_rgba(15,23,42,0.035)]">
@@ -664,11 +743,12 @@ export function AdminInventoryPanel() {
                 <Input
                   className="h-8 bg-white pl-8 text-xs"
                   value={queryInput}
+                  aria-label={text.searchPlaceholder}
                   placeholder={text.searchPlaceholder}
                   onChange={(event) => setQueryInput(event.target.value)}
                 />
               </form>
-              <Select value={windowDays} onValueChange={setWindowDays}>
+              <Select value={windowDays} onValueChange={value => { setWindowDays(value); setShortagePage(0); }}>
                 <SelectTrigger className="h-8 bg-white text-xs">
                   <SelectValue />
                 </SelectTrigger>
@@ -678,7 +758,7 @@ export function AdminInventoryPanel() {
                   <SelectItem value="90">{text.window90}</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={lowStockThreshold} onValueChange={setLowStockThreshold}>
+              <Select value={lowStockThreshold} onValueChange={value => { setLowStockThreshold(value); setShortagePage(0); }}>
                 <SelectTrigger className="h-8 bg-white text-xs">
                   <SelectValue />
                 </SelectTrigger>
@@ -690,7 +770,7 @@ export function AdminInventoryPanel() {
               </Select>
               <Select
                 value={sort}
-                onValueChange={(value) => setSort(value as ShortageSort)}
+                onValueChange={(value) => { setSort(value as ShortageSort); setShortagePage(0); }}
               >
                 <SelectTrigger className="h-8 bg-white text-xs">
                   <SelectValue />
@@ -706,6 +786,7 @@ export function AdminInventoryPanel() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
+          {canManage && <div className="flex flex-wrap items-center gap-2 border-b p-3"><Button variant="outline" size="sm" disabled={pending || bulkUnknown || bulkBusy || Boolean(actionKey)} onClick={() => setSelectedSkus(rows.filter(row => !row.activeReplenishmentItem).map(row => row.sku))}>{locale.startsWith("zh") ? "选择本页可加入商品" : "Seleziona prodotti disponibili nella pagina"}</Button><Button size="sm" disabled={pending || bulkUnknown || bulkBusy || Boolean(actionKey) || !rows.some(row => selectedSkus.includes(row.sku) && !row.activeReplenishmentItem)} onClick={() => void addSelectedToPlan()}>{locale.startsWith("zh") ? "核对并批量加入计划" : "Conferma e aggiungi al piano"}</Button><Button variant="ghost" size="sm" disabled={bulkBusy || Boolean(actionKey)} onClick={() => setSelectedSkus([])}>{locale.startsWith("zh") ? "清除选择" : "Deseleziona"}</Button>{bulkNotice && <p role="status" className="w-full text-sm text-slate-700">{bulkNotice}</p>}</div>}
           <AdminBusyRegion
             label={dictionary.common.refreshing}
             pending={pending}
@@ -743,6 +824,7 @@ export function AdminInventoryPanel() {
                         <TableRow key={row.sku} className="h-[54px]">
                           <TableCell className="px-2 py-1.5 align-middle">
                             <InventoryProductCell row={row} />
+                            {canManage && selection(row)}
                           </TableCell>
                           <TableCell className="px-1 py-1.5 text-center text-sm font-black">
                             {row.soldQty}
@@ -764,7 +846,8 @@ export function AdminInventoryPanel() {
                           </TableCell>
                           <TableCell className="px-2 py-1.5 text-right">
                             <InventoryRowActions
-                              actionPending={actionKey === `${row.sku}:create`}
+                              canManage={canManage}
+                              actionPending={bulkBusy || actionKey === `${row.sku}:create`}
                               copied={copiedSku === row.sku}
                               row={row}
                               text={text}
@@ -789,6 +872,7 @@ export function AdminInventoryPanel() {
                           <div className="line-clamp-2 text-xs font-black leading-4 text-slate-950">
                             {row.name}
                           </div>
+                          {canManage && selection(row)}
                           <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">
                             {row.sku}
                           </div>
@@ -819,7 +903,8 @@ export function AdminInventoryPanel() {
                           {formatDate(row.lastSoldAt, locale)}
                         </span>
                         <InventoryRowActions
-                          actionPending={actionKey === `${row.sku}:create`}
+                          canManage={canManage}
+                              actionPending={bulkBusy || actionKey === `${row.sku}:create`}
                           copied={copiedSku === row.sku}
                           row={row}
                           text={text}
@@ -833,6 +918,7 @@ export function AdminInventoryPanel() {
               </>
             )}
           </AdminBusyRegion>
+          <AdminListPager page={shortagePage} pageSize={pageSize} total={totals.shortage} returned={rows.length} pending={pending} onPageChange={setShortagePage} />
         </CardContent>
       </Card>
 
@@ -845,9 +931,7 @@ export function AdminInventoryPanel() {
             <div className="grid gap-1.5 md:grid-cols-[132px_minmax(180px,1fr)_auto]">
               <Select
                 value={queueStatus}
-                onValueChange={(value) =>
-                  setQueueStatus(value as ReplenishmentStatusFilter)
-                }
+                onValueChange={(value) => { setQueueStatus(value as ReplenishmentStatusFilter); setQueuePage(0); }}
               >
                 <SelectTrigger className="h-8 bg-white text-xs">
                   <SelectValue />
@@ -881,6 +965,7 @@ export function AdminInventoryPanel() {
           </div>
         </CardHeader>
         <CardContent className="p-0">
+          {canManage && <div className="space-y-3 border-b p-3"><div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" disabled={pending || bulkBusy || Boolean(actionKey) || bulkUnknown} onClick={() => setSelectedPlanIds(replenishmentItems.map(item => item.id))}>{locale.startsWith("zh") ? "选择本页采购计划" : "Seleziona piani della pagina"}</Button><Button variant="ghost" size="sm" disabled={bulkBusy} onClick={() => setSelectedPlanIds([])}>{locale.startsWith("zh") ? "清除计划选择" : "Deseleziona piani"}</Button></div><fieldset disabled={bulkBusy || Boolean(actionKey) || bulkUnknown} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><label className="grid gap-1 text-xs"><span><input type="checkbox" checked={commonPlan.applySupplier} onChange={event => setCommonPlan(current => ({ ...current, applySupplier: event.target.checked }))}/> {locale.startsWith("zh") ? "统一供应商（勾选后应用）" : "Unifica fornitore (se selezionato)"}</span><Input aria-label={locale.startsWith("zh") ? "批量供应商" : "Fornitore comune"} value={commonPlan.supplier} maxLength={100} onChange={event => setCommonPlan(current => ({ ...current, supplier: event.target.value }))}/></label><label className="grid gap-1 text-xs"><span><input type="checkbox" checked={commonPlan.applyQty} onChange={event => setCommonPlan(current => ({ ...current, applyQty: event.target.checked }))}/> {locale.startsWith("zh") ? "统一采购数量" : "Unifica quantità"}</span><Input aria-label={locale.startsWith("zh") ? "批量采购数量" : "Quantità comune"} inputMode="numeric" value={commonPlan.plannedQty} onChange={event => setCommonPlan(current => ({ ...current, plannedQty: event.target.value }))}/></label><label className="grid gap-1 text-xs"><span><input type="checkbox" checked={commonPlan.applyNote} onChange={event => setCommonPlan(current => ({ ...current, applyNote: event.target.checked }))}/> {locale.startsWith("zh") ? "统一备注" : "Unifica nota"}</span><Input aria-label={locale.startsWith("zh") ? "批量计划备注" : "Nota comune"} value={commonPlan.note} maxLength={500} onChange={event => setCommonPlan(current => ({ ...current, note: event.target.value }))}/></label><label className="grid gap-1 text-xs">{locale.startsWith("zh") ? "推进所选计划状态" : "Stato dei piani selezionati"}<select className="h-10 rounded border bg-white px-2 text-sm" value={commonPlan.status} onChange={event => setCommonPlan(current => ({ ...current, status: event.target.value }))}><option value="">{locale.startsWith("zh") ? "保留原状态" : "Mantieni stato"}</option>{(["open","planned","ordered","received","ignored"] as const).map(status => <option key={status} value={status}>{({open:text.statusOpen,planned:text.statusPlanned,ordered:text.queueOrdered,received:locale.startsWith("zh")?"计划已收货":"Piano ricevuto",ignored:locale.startsWith("zh")?"忽略":"Ignorato"})[status]}</option>)}</select></label></fieldset><p className="text-xs text-slate-500">{locale.startsWith("zh") ? "只处理本页所选行；未勾选的统一字段保留每行草稿。状态变更不登记真实库存。" : "Solo righe selezionate nella pagina. I campi comuni non attivati conservano le bozze delle righe. Gli stati non modificano la giacenza reale."}</p><Button size="sm" disabled={pending || bulkBusy || Boolean(actionKey) || bulkUnknown || !selectedPlanIds.some(id => replenishmentItems.some(item => item.id===id))} onClick={previewPlanBatch}>{locale.startsWith("zh") ? "预览所选计划修改" : "Anteprima modifiche selezionate"}</Button>{bulkUnknown && <p role="alert" className="text-sm text-amber-800">{locale.startsWith("zh") ? "批量操作已停止，请先刷新核对实际结果，再继续。" : "Operazione interrotta. Aggiorna e verifica i risultati prima di continuare."}</p>}{bulkNotice && <p role="status" className="text-sm">{bulkNotice}</p>}</div>}
           {replenishmentItems.length === 0 ? (
             <InventoryEmptyState
               title={text.queueEmptyTitle}
@@ -912,6 +997,7 @@ export function AdminInventoryPanel() {
                               <div className="line-clamp-2 text-sm font-bold leading-4 text-slate-950">
                                 {item.productName}
                               </div>
+                              {canManage && planSelection(item)}
                               <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] font-semibold text-slate-500">
                                 <span>{item.sku}</span>
                                 <span>{text.soldQty}: {item.soldQty}</span>
@@ -921,7 +1007,7 @@ export function AdminInventoryPanel() {
                           </TableCell>
                           <TableCell className="px-2 py-1.5">
                             <ReplenishmentStatusSelect
-                              disabled={pendingItem}
+                              disabled={pendingItem || !canManage || bulkBusy || bulkUnknown}
                               item={item}
                               text={text}
                               onUpdate={updateReplenishmentItem}
@@ -931,7 +1017,7 @@ export function AdminInventoryPanel() {
                             <Input
                               className="mx-auto h-8 w-16 bg-white text-center text-sm font-black"
                               inputMode="numeric"
-                              value={draft.plannedQty}
+                              disabled={!canManage || bulkBusy || bulkUnknown || Boolean(actionKey)} aria-label={text.plannedQty} value={draft.plannedQty}
                               onChange={(event) =>
                                 updateDraft(item.id, { plannedQty: event.target.value })
                               }
@@ -940,7 +1026,7 @@ export function AdminInventoryPanel() {
                           <TableCell className="px-2 py-1.5">
                             <Input
                               className="h-8 min-w-0 bg-white text-xs"
-                              value={draft.supplier}
+                              disabled={!canManage || bulkBusy || bulkUnknown || Boolean(actionKey)} aria-label={text.supplier} value={draft.supplier}
                               placeholder={text.supplierMissing}
                               onChange={(event) =>
                                 updateDraft(item.id, { supplier: event.target.value })
@@ -950,7 +1036,7 @@ export function AdminInventoryPanel() {
                           <TableCell className="px-2 py-1.5">
                             <Input
                               className="h-8 min-w-0 bg-white text-xs"
-                              value={draft.note}
+                              disabled={!canManage || bulkBusy || bulkUnknown || Boolean(actionKey)} aria-label={text.note} value={draft.note}
                               placeholder={text.notePlaceholder}
                               onChange={(event) =>
                                 updateDraft(item.id, { note: event.target.value })
@@ -964,7 +1050,7 @@ export function AdminInventoryPanel() {
                               size="icon-sm"
                               title={text.save}
                               className="bg-white"
-                              disabled={pendingItem}
+                              disabled={pendingItem || !canManage || bulkBusy || bulkUnknown}
                               onClick={() =>
                                 updateReplenishmentItem(item, {
                                   note: draft.note,
@@ -996,6 +1082,7 @@ export function AdminInventoryPanel() {
                           <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">
                             {item.sku}
                           </div>
+                          {canManage && planSelection(item)}
                         </div>
                         <ReplenishmentStatusBadge status={item.status} text={text} />
                       </div>
@@ -1007,7 +1094,7 @@ export function AdminInventoryPanel() {
                       <div className="mt-2 grid grid-cols-[minmax(0,1fr)_72px] gap-1.5">
                         <Input
                           className="h-8 bg-white text-xs"
-                          value={draft.supplier}
+                          disabled={!canManage || bulkBusy || bulkUnknown || Boolean(actionKey)} aria-label={text.supplier} value={draft.supplier}
                           placeholder={text.supplierMissing}
                           onChange={(event) =>
                             updateDraft(item.id, { supplier: event.target.value })
@@ -1015,7 +1102,7 @@ export function AdminInventoryPanel() {
                         />
                         <Input
                           className="h-8 bg-white text-xs"
-                          value={draft.plannedQty}
+                          disabled={!canManage || bulkBusy || bulkUnknown || Boolean(actionKey)} aria-label={text.plannedQty} value={draft.plannedQty}
                           inputMode="numeric"
                           onChange={(event) =>
                             updateDraft(item.id, { plannedQty: event.target.value })
@@ -1025,7 +1112,7 @@ export function AdminInventoryPanel() {
                       <div className="mt-1.5 grid gap-1.5">
                         <Input
                           className="h-8 bg-white text-xs"
-                          value={draft.note}
+                          disabled={!canManage || bulkBusy || bulkUnknown || Boolean(actionKey)} aria-label={text.note} value={draft.note}
                           placeholder={text.notePlaceholder}
                           onChange={(event) =>
                             updateDraft(item.id, { note: event.target.value })
@@ -1038,13 +1125,9 @@ export function AdminInventoryPanel() {
                           variant="outline"
                           size="sm"
                           className="bg-white"
-                          disabled={actionKey === `${item.id}:update`}
+                          disabled={!canManage || bulkUnknown || bulkBusy || Boolean(actionKey)}
                           onClick={() =>
-                            updateReplenishmentItem(item, {
-                              note: draft.note,
-                              plannedQty: Number(draft.plannedQty) || 0,
-                              supplier: draft.supplier,
-                            })
+                            savePlan(item, draft)
                           }
                         >
                           <CheckCircle2 className="size-4" />
@@ -1057,6 +1140,7 @@ export function AdminInventoryPanel() {
               </div>
             </>
           )}
+          <AdminListPager page={queuePage} pageSize={pageSize} total={totals.queue} returned={replenishmentItems.length} pending={pending} onPageChange={setQueuePage} />
         </CardContent>
       </Card>
     </section>
@@ -1069,7 +1153,9 @@ function InventoryHealthSection({
   summary,
   text,
   locale,
+  pager,
 }: {
+  pager: React.ReactNode;
   error: string | null;
   rows: InventoryHealthRow[];
   summary: InventoryHealthSummary;
@@ -1138,7 +1224,7 @@ function InventoryHealthSection({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.slice(0, 8).map((row) => (
+                {rows.map((row) => (
                   <TableRow key={row.sku}>
                     <TableCell className="px-2 py-1.5">
                       <div className="min-w-0">
@@ -1192,6 +1278,7 @@ function InventoryHealthSection({
             </Table>
           </div>
         )}
+        {pager}
       </CardContent>
     </Card>
   );
@@ -1307,12 +1394,14 @@ function ShortageBadge({
 
 function InventoryRowActions({
   actionPending,
+  canManage,
   copied,
   onCreate,
   onCopy,
   row,
   text,
 }: {
+  canManage: boolean;
   actionPending: boolean;
   copied: boolean;
   onCreate: (row: SoldStockShortageRow) => void;
@@ -1332,7 +1421,7 @@ function InventoryRowActions({
           variant="outline"
           size="xs"
           className="h-7 bg-white px-2 text-[11px]"
-          disabled={actionPending}
+          disabled={actionPending || !canManage}
           onClick={() => onCreate(row)}
         >
           <CheckCircle2 className="size-3.5" />
@@ -1399,7 +1488,7 @@ function ReplenishmentStatusSelect({
         onUpdate(item, { status: value as ReplenishmentStatus })
       }
     >
-      <SelectTrigger className="h-9 w-[132px] bg-white">
+      <SelectTrigger aria-label={text.status} className="h-9 w-[132px] bg-white">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -1478,7 +1567,7 @@ function parseSoldStockShortagePayload(payload: unknown) {
     : [];
   const summary = parseSummary(record.meta?.summary);
 
-  return { rows, summary };
+  return { rows, summary, total: readNumber(record.meta?.total) };
 }
 
 function parseSoldStockShortageRow(value: unknown): SoldStockShortageRow | null {
@@ -1533,7 +1622,7 @@ function parseReplenishmentPayload(payload: unknown) {
     : [];
   const summary = parseReplenishmentSummary(record.meta?.summary);
 
-  return { items, summary };
+  return { items, summary, total: readNumber(record.meta?.total) };
 }
 
 function parseInventoryHealthPayload(payload: unknown) {
@@ -1543,7 +1632,7 @@ function parseInventoryHealthPayload(payload: unknown) {
     : [];
   const summary = parseInventoryHealthSummary(record.meta?.summary);
 
-  return { rows, summary };
+  return { rows, summary, total: readNumber(record.meta?.total) };
 }
 
 function parseInventoryHealthRow(value: unknown): InventoryHealthRow | null {

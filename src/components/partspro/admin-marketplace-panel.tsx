@@ -1,6 +1,11 @@
 "use client";
 
 import * as React from "react";
+import { AdminFieldGroup } from "./admin-field-group";
+import { useI18n } from "./i18n-provider";
+import { marketplaceActionBlocker } from "@/lib/admin-marketplace-readiness.mjs";
+import { Dialog, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { marketplaceText } from "@/lib/admin-marketplace-copy";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -26,7 +31,6 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -197,11 +201,27 @@ const emptySettings: MarketplaceSettings = {
 };
 
 export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePanelProps) {
+  const { locale } = useI18n();
+  const t = React.useCallback((value: string) => marketplaceText(value, locale), [locale]);
   const [overview, setOverview] = React.useState<MarketplaceOverview | null>(null);
   const [draft, setDraft] = React.useState<DraftState>({
     mappings: [],
     settings: emptySettings,
   });
+  const [policyOptions, setPolicyOptions] = React.useState<Record<string, Array<{ id: string; name: string | null }>> | null>(null);
+  const [policyError, setPolicyError] = React.useState<string | null>(null);
+  const [savedDraft, setSavedDraft] = React.useState<string | null>(null);
+  const queueAttempts = React.useRef<Record<string,string>>({});
+  const [unconfirmedScope, setUnconfirmedScope] = React.useState<{ action: EbayQueueAction; skus: string[]; requestId: string } | null>(null);
+  const [queueUnknown, setQueueUnknown] = React.useState(false);
+  const [queueReviewed, setQueueReviewed] = React.useState(false);
+  const [previewAction, setPreviewAction] = React.useState<"publish_eligible" | "sync_inventory" | null>(null);
+  const [previewSkus, setPreviewSkus] = React.useState<string[]>([]);
+  const [queueProgress, setQueueProgress] = React.useState<{ processed: number; succeeded: number; failed: number } | null>(null);
+  const dirty = savedDraft !== null && JSON.stringify(draft) !== savedDraft;
+  const dirtyRef = React.useRef(false);
+  React.useEffect(() => { dirtyRef.current = dirty; }, [dirty, queueUnknown]);
+  React.useEffect(() => { const protect = (event: BeforeUnloadEvent) => { if (dirty || queueUnknown) { event.preventDefault(); event.returnValue = ""; } }; window.addEventListener("beforeunload", protect); return () => window.removeEventListener("beforeunload", protect); }, [dirty, queueUnknown]);
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState<string | null>("load");
@@ -226,20 +246,21 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
       const payload = (await response.json()) as { data?: MarketplaceOverview; error?: unknown };
 
       if (!response.ok || !payload.data) {
-        throw new Error(readApiError(payload.error) ?? "eBay 面板数据读取失败。");
+        throw new Error(t(readApiError(payload.error) ?? "") || t("eBay 面板数据读取失败。"));
       }
 
       setOverview(payload.data);
-      setDraft({
-        mappings: payload.data.categoryMappings,
-        settings: payload.data.settings,
-      });
+      setQueueReviewed(true);
+      if (!dirtyRef.current) {
+        const next = { mappings: payload.data.categoryMappings, settings: payload.data.settings };
+        setDraft(next); setSavedDraft(JSON.stringify(next));
+      }
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "eBay 面板数据读取失败。");
+      setError(loadError instanceof Error ? loadError.message : t("eBay 面板数据读取失败。"));
     } finally {
       setPending((current) => (current === "load" ? null : current));
     }
-  }, []);
+  }, [t]);
 
   React.useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -250,6 +271,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
   }, [loadOverview]);
 
   const updateSettings = React.useCallback((patch: Partial<MarketplaceSettings>) => {
+    if (unconfirmedScope) return;
     setDraft((current) => ({
       ...current,
       settings: {
@@ -257,10 +279,11 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
         ...patch,
       },
     }));
-  }, []);
+  }, [unconfirmedScope]);
 
   const updateMapping = React.useCallback(
     (index: number, patch: Partial<CategoryMapping>) => {
+      if (unconfirmedScope) return;
       setDraft((current) => ({
         ...current,
         mappings: current.mappings.map((mapping, mappingIndex) =>
@@ -268,12 +291,24 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
         ),
       }));
     },
-    []
+    [unconfirmedScope]
   );
 
+  async function loadPolicies() {
+    if (pending || dirty || unconfirmedScope || !canManageSettings) return;
+    setPending("policies"); setPolicyError(null);
+    try {
+      const response = await fetch("/api/admin/ebay/policies", { cache: "no-store" });
+      const payload = await response.json();
+      if (!response.ok || !payload.data?.policies || payload.data.environment !== draft.settings.environment) throw new Error(locale.startsWith("zh") ? "政策读取失败。请核对已保存环境、连接和账号权限。" : "Lettura condizioni non riuscita. Verifica ambiente salvato, collegamento e autorizzazioni.");
+      setPolicyOptions(payload.data.policies);
+    } catch (error) { setPolicyError(error instanceof Error ? error.message : "Error"); } finally { setPending(null); }
+  }
+
   async function saveSettings() {
+    if (unconfirmedScope) return;
     if (!canManageSettings) {
-      setError(missingPermissionMessage("管理 eBay 设置"));
+      setError(missingPermissionMessage(t("管理 eBay 设置"), locale));
       setNotice(null);
       return;
     }
@@ -309,7 +344,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
       const payload = (await response.json()) as { data?: MarketplaceOverview; error?: unknown };
 
       if (!response.ok || !payload.data) {
-        throw new Error(readApiError(payload.error) ?? "eBay 设置保存失败。");
+        throw new Error(t(readApiError(payload.error) ?? "") || t("eBay 设置保存失败。"));
       }
 
       setOverview(payload.data);
@@ -317,34 +352,48 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
         mappings: payload.data.categoryMappings,
         settings: payload.data.settings,
       });
-      setNotice("设置已保存。");
+      setSavedDraft(JSON.stringify({ mappings: payload.data.categoryMappings, settings: payload.data.settings }));
+      setNotice(t("设置已保存。"));
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "eBay 设置保存失败。");
+      setError(saveError instanceof Error ? t(saveError.message) : t("eBay 设置保存失败。"));
     } finally {
       setPending(null);
     }
   }
 
-  async function queueAction(action: EbayQueueAction) {
+  async function queueAction(action: EbayQueueAction, skus?: string[]) {
+    if (queueUnknown) return;
+    if (dirty || pending) { setError(locale.startsWith("zh") ? "请先保存设置和映射，再使用已保存设置生成或执行任务。" : "Salva impostazioni e categorie prima di creare attività."); return; }
     if (!permissionSet.has(queueActionPermissions[action])) {
-      setError(missingPermissionMessage(queueActionPermissionLabels[action]));
+      setError(missingPermissionMessage(t(queueActionPermissionLabels[action]), locale));
       setNotice(null);
       return;
     }
 
+    const blocker = marketplaceActionBlocker(draft.settings, overview?.connection, action);
+    if (blocker) { setError(readinessMessage(blocker, locale)); return; }
+    const attemptKey = JSON.stringify([action, [...(skus ?? [])].sort()]);
+    if (unconfirmedScope && JSON.stringify([unconfirmedScope.action, [...unconfirmedScope.skus].sort()]) !== attemptKey) { setError(locale.startsWith("zh") ? "请先完成原任务核对；未确认的任务范围已冻结。" : "Verifica il tentativo originale: il suo ambito è bloccato."); return; }
+    const requestId = unconfirmedScope?.requestId ?? queueAttempts.current[attemptKey] ?? crypto.randomUUID();
+    queueAttempts.current[attemptKey] = requestId;
+    setUnconfirmedScope({ action, skus: [...(skus ?? [])], requestId });
+    let knownRefusal = false;
+    setQueueReviewed(false);
     setPending(action);
     setError(null);
     setNotice(null);
 
     try {
       const response = await fetch("/api/admin/ebay", {
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, requestId, ...(skus ? { skus } : {}) }),
         headers: {
           Accept: "application/json",
           "Content-Type": "application/json",
         },
         method: "POST",
       });
+      if (response.status === 400 || response.status === 403) { knownRefusal = true; setUnconfirmedScope(null); }
+      if (response.status >= 500 || response.status === 409) { setQueueUnknown(true); }
       const payload = (await response.json()) as {
         data?: {
           blocked: number;
@@ -357,13 +406,18 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
       };
 
       if (!response.ok || !payload.data) {
-        throw new Error(readApiError(payload.error) ?? "eBay 任务入队失败。");
+        if (response.ok) setQueueUnknown(true);
+        throw new Error(t(readApiError(payload.error) ?? "") || t("eBay 任务入队失败。"));
       }
 
-      setNotice(queueActionNotice(action, payload.data));
+      delete queueAttempts.current[attemptKey];
+      setUnconfirmedScope(null);
+      setPreviewAction(null);
+      setNotice(queueActionNotice(action, payload.data, locale));
       await loadOverview();
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "eBay 任务入队失败。");
+      if (!knownRefusal) setQueueUnknown(true);
+      setError(actionError instanceof Error ? t(actionError.message) : t("eBay 任务入队失败。"));
     } finally {
       setPending(null);
     }
@@ -371,7 +425,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
 
   async function runJobs() {
     if (!canRunJobs) {
-      setError(missingPermissionMessage("执行 eBay 队列"));
+      setError(missingPermissionMessage(t("执行 eBay 队列"), locale));
       setNotice(null);
       return;
     }
@@ -390,26 +444,31 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
         method: "POST",
       });
       const payload = (await response.json()) as {
-        data?: { processed: number };
+        data?: { processed: number; results?: Array<{ ok: boolean }> };
         error?: unknown;
       };
 
       if (!response.ok || !payload.data) {
-        throw new Error(readApiError(payload.error) ?? "eBay 队列执行失败。");
+        throw new Error(t(readApiError(payload.error) ?? "") || t("eBay 队列执行失败。"));
       }
 
-      setNotice(`已执行 ${payload.data.processed} 个队列任务。`);
+      const results = payload.data.results ?? [];
+      const failed = results.filter(result => !result.ok).length;
+      setQueueProgress({ processed: payload.data.processed, succeeded: results.filter(result => result.ok).length, failed });
+      setNotice(locale.startsWith("zh") ? `本轮处理 ${payload.data.processed} 条，成功 ${results.filter(result => result.ok).length} 条，失败 ${failed} 条。` : `Elaborate ${payload.data.processed}: ${results.filter(result => result.ok).length} riuscite, ${failed} non riuscite.`);
       await loadOverview();
     } catch (runError) {
-      setError(runError instanceof Error ? runError.message : "eBay 队列执行失败。");
+      setError(runError instanceof Error ? t(runError.message) : t("eBay 队列执行失败。"));
     } finally {
       setPending(null);
     }
   }
 
   function connectEbay() {
+    if (unconfirmedScope) return;
+    if (dirty) { setError(locale.startsWith("zh") ? "请保存设置后连接；连接页面会离开当前草稿。" : "Salva le impostazioni prima di collegare eBay."); return; }
     if (!canConnectEbay) {
-      setError(missingPermissionMessage("连接 eBay"));
+      setError(missingPermissionMessage(t("连接 eBay"), locale));
       setNotice(null);
       return;
     }
@@ -418,20 +477,60 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
     window.location.assign(`/api/admin/ebay/oauth?environment=${environment}`);
   }
 
+  function reviewQueueAction(action: "publish_eligible" | "sync_inventory" | "import_orders") {
+    if (dirty || pending || queueUnknown) return;
+    const blocker = marketplaceActionBlocker(draft.settings, overview?.connection, action);
+    if (blocker) { setError(readinessMessage(blocker, locale)); return; }
+    if (action === "import_orders") {
+      if (window.confirm(locale.startsWith("zh") ? "确认将当前已保存环境的 eBay 订单拉取任务加入队列？导入将在执行队列时发生。" : "Accodare l’importazione ordini dell’ambiente salvato? L’importazione avverrà eseguendo la coda.")) void queueAction(action);
+      return;
+    }
+    if (unconfirmedScope && unconfirmedScope.action !== action) { setError(locale.startsWith("zh") ? "请先核对并完成原任务。" : "Verifica e completa prima il tentativo originale."); return; }
+    const candidates = (overview?.listings ?? []).filter(item => action === "publish_eligible" ? item.eligibilityStatus === "eligible" : item.listingStatus === "published");
+    if (!candidates.length) { setError(locale.startsWith("zh") ? "当前预览没有可处理商品，请先生成计划或核对已刊登商品。" : "Nessun prodotto elaborabile nell’anteprima. Prepara il piano o verifica le inserzioni pubblicate."); return; }
+    setPreviewSkus(unconfirmedScope?.skus ?? candidates.map(item => item.sku)); setPreviewAction(action);
+  }
+  const previewRows = (overview?.listings ?? []).filter(item => previewAction === "publish_eligible" ? item.eligibilityStatus === "eligible" : item.listingStatus === "published");
+  function resumeOriginalAttempt() {
+    setQueueUnknown(false); setError(null);
+    if (unconfirmedScope?.action === "publish_eligible" || unconfirmedScope?.action === "sync_inventory") {
+      setPreviewSkus(unconfirmedScope.skus); setPreviewAction(unconfirmedScope.action);
+    }
+  }
   const isBusy = pending !== null;
   const connection = overview?.connection;
+  const isConfigLocked = isBusy || Boolean(unconfirmedScope);
 
   if (pending === "load" && !overview) {
     return <MarketplacePanelSkeleton />;
   }
 
   return (
-    <div className="min-w-0 space-y-4">
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryTile label="连接" value={connectionStatusLabel(connection)} tone={connection?.connected ? "good" : "warn"} />
-        <SummaryTile label="可发布商品" value={overview?.summary.eligible ?? 0} tone="good" />
-        <SummaryTile label="已刊登" value={overview?.summary.published ?? 0} tone="neutral" />
-        <SummaryTile label="失败/阻断" value={(overview?.summary.failedJobs ?? 0) + (overview?.summary.blocked ?? 0)} tone="bad" />
+    <div data-admin-mutating={pending && pending !== "load" ? "true" : "false"} data-admin-dirty={dirty || queueUnknown ? "true" : "false"} className="min-w-0 space-y-4">
+      {unconfirmedScope && <p role="status" className="rounded border border-amber-200 bg-amber-50 p-3 text-sm">{locale.startsWith("zh") ? "原任务范围已冻结；核对后重试仍处理同一组 SKU。请先完成原任务再开始新的范围。" : "Ambito originale bloccato: il retry conserva gli stessi SKU. Completa il tentativo prima di scegliere un altro ambito."}</p>}
+      {unconfirmedScope && !queueUnknown && !previewAction && <Button variant="outline" disabled={isBusy} onClick={() => { if (unconfirmedScope.action === "publish_eligible" || unconfirmedScope.action === "sync_inventory") resumeOriginalAttempt(); else void queueAction(unconfirmedScope.action,unconfirmedScope.skus.length ? unconfirmedScope.skus : undefined); }}>{locale.startsWith("zh") ? "继续原任务" : "Continua il tentativo originale"}</Button>}
+      {queueUnknown && <div role="alert" className="space-y-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm"><p>{locale.startsWith("zh") ? "任务提交结果尚未确认。请刷新核对队列；重复请求会沿用原任务标识，不重新创建已确认任务。" : "Esito dell’invio non confermato. Aggiorna e controlla la coda; il tentativo conserva l’identificativo originale per evitare duplicati."}</p><Button variant="outline" disabled={isBusy} onClick={() => void loadOverview()}>{locale.startsWith("zh") ? "重读队列核对" : "Rileggi la coda"}</Button><Button variant="outline" disabled={isBusy || !queueReviewed} onClick={resumeOriginalAttempt}>{locale.startsWith("zh") ? "已核对，继续原任务" : "Verificato, continua il tentativo"}</Button></div>}
+      <Dialog open={previewAction !== null} onOpenChange={open => { if (!open && !isBusy) setPreviewAction(null); }}>
+        <DialogContent scrollLayout="body" className="sm:max-w-2xl"><DialogHeader><DialogTitle>{locale.startsWith("zh") ? "核对 eBay 任务范围" : "Verifica prodotti e attività eBay"}</DialogTitle><DialogDescription>{locale.startsWith("zh") ? `环境：${draft.settings.environment}；只处理下面勾选的 SKU，最多100个。价格和库存为当前预览，执行时服务会重新校验。` : `Ambiente: ${draft.settings.environment}. Solo gli SKU selezionati, massimo 100. Prezzi e stock sono un’anteprima; il servizio li verificherà all’esecuzione.`}</DialogDescription></DialogHeader>
+        <DialogBody className="space-y-2">{queueUnknown && <div role="alert" className="space-y-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm"><p>{locale.startsWith("zh") ? "提交结果未知，请先重读队列核对。原任务标识已保留。" : "Esito non confermato. Rileggi la coda; identificativo originale conservato."}</p><Button variant="outline" disabled={isBusy} onClick={() => void loadOverview()}>{locale.startsWith("zh") ? "重读队列核对" : "Rileggi la coda"}</Button><Button variant="outline" disabled={isBusy || !queueReviewed} onClick={resumeOriginalAttempt}>{locale.startsWith("zh") ? "已核对，继续原任务" : "Verificato, continua il tentativo"}</Button></div>}<p className="text-sm">{locale.startsWith("zh") ? `已选择 ${previewSkus.length}/${previewRows.length}` : `Selezionati ${previewSkus.length}/${previewRows.length}`}</p>{previewRows.map(item => <label key={item.sku} className="flex items-start gap-3 rounded border p-3 text-sm"><input type="checkbox" disabled={isBusy || Boolean(unconfirmedScope)} checked={previewSkus.includes(item.sku)} onChange={event => setPreviewSkus(current => event.target.checked ? [...current,item.sku] : current.filter(sku => sku !== item.sku))}/><span className="min-w-0 break-words"><strong>{item.productName}</strong><br/>{item.sku} · EUR {item.computedPrice.toFixed(2)} · {locale.startsWith("zh") ? "可发布数量" : "Quantità"} {item.computedQuantity}</span></label>)}</DialogBody><DialogFooter><Button variant="outline" disabled={isBusy} onClick={() => setPreviewAction(null)}>{unconfirmedScope ? (locale.startsWith("zh") ? "关闭并保留未确认任务" : "Chiudi e conserva il tentativo") : (locale.startsWith("zh") ? "取消" : "Annulla")}</Button><Button disabled={isBusy || queueUnknown || dirty || !previewSkus.length || !previewAction || Boolean(marketplaceActionBlocker(draft.settings, connection, previewAction))} onClick={() => { if (previewAction) void queueAction(previewAction,previewSkus); }}>{locale.startsWith("zh") ? "确认范围并加入队列" : "Conferma e accoda"}</Button></DialogFooter></DialogContent>
+      </Dialog>
+      <section className="space-y-2 rounded-lg border bg-white p-3">
+        <h2 className="font-bold">{locale.startsWith("zh") ? "eBay 就绪步骤" : "Preparazione eBay"}</h2>
+        <ol className="grid gap-2 text-sm sm:grid-cols-4">{[
+          [Boolean(connection?.connected), locale.startsWith("zh") ? "1 · 连接账号" : "1 · Collega account"],
+          [Boolean(draft.settings.merchantLocationKey && draft.settings.paymentPolicyId && draft.settings.returnPolicyId && draft.settings.fulfillmentPolicyId), locale.startsWith("zh") ? "2 · 选择仓库与销售政策" : "2 · Sede e condizioni"],
+          [draft.mappings.some(mapping => mapping.enabled && mapping.ebayCategoryId), locale.startsWith("zh") ? "3 · 设置类目映射" : "3 · Associa categorie"],
+          [!dirty && Boolean(savedDraft), locale.startsWith("zh") ? "4 · 保存后生成计划" : "4 · Salva e prepara il piano"],
+        ].map(([ready, label]) => <li key={String(label)} className={cn("rounded border p-2", ready ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50")}>{ready ? "✓ " : "○ "}{label}</li>)}</ol>
+        <p className="text-xs text-slate-500">{locale.startsWith("zh") ? "生成计划可离线检查；发布、同步和拉单必须满足已保存环境、连接与对应开关。" : "Il piano permette verifiche offline. Pubblicazione, sincronizzazione e importazione richiedono ambiente, connessione e opzioni salvati."}</p>
+        {dirty && <p role="status" className="text-sm text-amber-800">{locale.startsWith("zh") ? "有未保存修改。已锁住刊登计划等操作；刷新会保留草稿。" : "Modifiche non salvate: le azioni dipendenti dalle impostazioni sono sospese. La bozza resta al refresh."}</p>}
+        {queueProgress && <div className="flex flex-wrap items-center gap-2 text-sm"><span>{locale.startsWith("zh") ? `本轮 ${queueProgress.processed} 条；失败 ${queueProgress.failed} 条；仍排队 ${overview?.summary.queuedJobs ?? "…"} 条。` : `Ultimo gruppo: ${queueProgress.processed}, errori: ${queueProgress.failed}, ancora in coda: ${overview?.summary.queuedJobs ?? "…"}.`}</span><Button variant="outline" disabled={isBusy || !canRunJobs || overview?.summary.queuedJobs === 0} onClick={() => void runJobs()}>{locale.startsWith("zh") ? "继续处理下一组（最多5条）" : "Elabora i prossimi 5"}</Button></div>}
+      </section>
+      <section className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+        <SummaryTile label={t("连接")} value={t(connectionStatusLabel(connection))} tone={connection?.connected ? "good" : "warn"} />
+        <SummaryTile label={t("可发布商品")} value={overview?.summary.eligible ?? 0} tone="good" />
+        <SummaryTile label={t("已刊登")} value={overview?.summary.published ?? 0} tone="neutral" />
+        <SummaryTile label={t("失败/阻断")} value={(overview?.summary.failedJobs ?? 0) + (overview?.summary.blocked ?? 0)} tone="bad" />
       </section>
 
       {(error || notice) && (
@@ -449,31 +548,31 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
         </div>
       )}
 
+      <section className="space-y-2 rounded-lg border bg-white p-3"><h3 className="font-bold">{locale.startsWith("zh") ? "从 eBay 账号选择销售政策" : "Scegli le condizioni del tuo account eBay"}</h3><Button variant="outline" disabled={isBusy || queueUnknown || dirty || !canManageSettings || !connection?.connected} onClick={() => void loadPolicies()}>{locale.startsWith("zh") ? "读取已保存环境的政策" : "Leggi condizioni dell'ambiente salvato"}</Button>{policyError && <p role="alert" className="text-sm text-red-700">{policyError}</p>}{policyOptions && <div className="grid gap-2 sm:grid-cols-3">{([['payment','paymentPolicyId',locale.startsWith("zh") ? '付款政策' : 'Pagamento'],['return','returnPolicyId',locale.startsWith("zh") ? '退货政策' : 'Resi'],['fulfillment','fulfillmentPolicyId',locale.startsWith("zh") ? '配送政策' : 'Spedizione']] as const).map(([kind,key,label]) => <label key={kind} className="space-y-1 text-sm">{label}<select className="h-10 w-full rounded border bg-white px-2" value={draft.settings[key] ?? ""} disabled={isConfigLocked || !canManageSettings} onChange={event => updateSettings({ [key]: event.target.value })}><option value="">{locale.startsWith("zh") ? "请选择" : "Seleziona"}</option>{draft.settings[key] && !(policyOptions[kind] ?? []).some(option => option.id === draft.settings[key]) && <option value={draft.settings[key]!}>{draft.settings[key]} · {locale.startsWith("zh") ? "当前值（未读取到）" : "Valore attuale non trovato"}</option>}{(policyOptions[kind] ?? []).map(option => <option key={option.id} value={option.id}>{option.name ?? option.id}</option>)}</select></label>)}</div>}</section>
       <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <Card className="rounded-lg bg-white">
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2 text-base">
               <ShoppingBag className="size-4 text-primary" />
-              eBay 连接
-            </CardTitle>
+              {t("eBay 连接")}</CardTitle>
             <CardAction>
               <StatusBadge status={connection?.connectionStatus ?? "disconnected"} />
             </CardAction>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4"><fieldset disabled={isConfigLocked} className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
-              <Field label="站点">
+              <Field label={t("站点")}>
                 <Input value="EBAY_IT / EUR" readOnly />
               </Field>
-              <Field label="环境">
+              <Field label={t("环境")}>
                 <Select
-                  disabled={isBusy || !canManageSettings}
+                  disabled={isConfigLocked || !canManageSettings}
                   value={draft.settings.environment}
                   onValueChange={(value) =>
                     updateSettings({ environment: value as EbayEnvironment })
                   }
                 >
-                  <SelectTrigger className="w-full bg-white">
+                  <SelectTrigger aria-label={t("环境")} className="w-full bg-white">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -482,10 +581,10 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="账号">
-                <Input value={connection?.accountLabel ?? "未连接"} readOnly />
+              <Field label={t("账号")}>
+                <Input value={connection?.accountLabel ?? t("未连接")} readOnly />
               </Field>
-              <Field label="Token 到期">
+              <Field label={t("Token 到期")}>
                 <Input value={formatDateTime(connection?.tokenExpiresAt)} readOnly />
               </Field>
             </div>
@@ -493,53 +592,50 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
               <Button
                 type="button"
                 onClick={connectEbay}
-                disabled={isBusy || !canConnectEbay}
-                title={!canConnectEbay ? missingPermissionMessage("连接 eBay") : undefined}
+                disabled={isConfigLocked || !canConnectEbay}
+                title={!canConnectEbay ? missingPermissionMessage(t("连接 eBay"), locale) : undefined}
               >
                 <ExternalLink className="size-4" />
-                连接 eBay
-              </Button>
-              <Button type="button" variant="outline" onClick={loadOverview} disabled={isBusy}>
+                {t("连接 eBay")}</Button>
+              <Button type="button" variant="outline" onClick={() => { if (!dirty || window.confirm(locale.startsWith("zh") ? "刷新会保留未保存草稿，继续？" : "Aggiornare mantenendo la bozza?")) void loadOverview(); }} disabled={isBusy}>
                 <RefreshCcw className={cn("size-4", pending === "load" && "animate-spin")} />
-                刷新
-              </Button>
+                {t("刷新")}</Button>
             </div>
-          </CardContent>
+          </fieldset></CardContent>
         </Card>
 
         <Card className="rounded-lg bg-white">
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2 text-base">
               <Settings2 className="size-4 text-primary" />
-              自动化设置
-            </CardTitle>
+              {t("自动化设置")}</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-4">
+          <CardContent className="space-y-4"><fieldset disabled={isConfigLocked} className="space-y-4">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               <ToggleField
                 checked={draft.settings.enabled}
-                label="启用 eBay"
+                label={t("启用 eBay")}
                 onCheckedChange={(enabled) => updateSettings({ enabled })}
               />
               <ToggleField
                 checked={draft.settings.autoPublishEnabled}
-                label="自动发布"
+                label={t("自动发布")}
                 onCheckedChange={(autoPublishEnabled) => updateSettings({ autoPublishEnabled })}
               />
               <ToggleField
                 checked={draft.settings.autoSyncEnabled}
-                label="同步价格库存"
+                label={t("同步价格库存")}
                 onCheckedChange={(autoSyncEnabled) => updateSettings({ autoSyncEnabled })}
               />
               <ToggleField
                 checked={draft.settings.orderImportEnabled}
-                label="订单回流"
+                label={t("订单回流")}
                 onCheckedChange={(orderImportEnabled) => updateSettings({ orderImportEnabled })}
               />
             </div>
 
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <Field label="merchantLocationKey">
+            <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
+              <Field label={locale.startsWith("zh") ? "eBay 仓库标识" : "Sede magazzino eBay"}>
                 <Input
                   value={draft.settings.merchantLocationKey ?? ""}
                   onChange={(event) =>
@@ -547,7 +643,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                   }
                 />
               </Field>
-              <Field label="Payment policy">
+              <Field label={locale.startsWith("zh") ? "付款政策" : "Condizioni pagamento"}>
                 <Input
                   value={draft.settings.paymentPolicyId ?? ""}
                   onChange={(event) =>
@@ -555,7 +651,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                   }
                 />
               </Field>
-              <Field label="Return policy">
+              <Field label={locale.startsWith("zh") ? "退货政策" : "Condizioni reso"}>
                 <Input
                   value={draft.settings.returnPolicyId ?? ""}
                   onChange={(event) =>
@@ -563,7 +659,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                   }
                 />
               </Field>
-              <Field label="Fulfillment policy">
+              <Field label={locale.startsWith("zh") ? "配送政策" : "Condizioni spedizione"}>
                 <Input
                   value={draft.settings.fulfillmentPolicyId ?? ""}
                   onChange={(event) =>
@@ -571,21 +667,21 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                   }
                 />
               </Field>
-              <Field label="加价百分比">
+              <Field label={t("加价百分比")}>
                 <NumberInput
                   min={0}
                   value={draft.settings.markupPercent}
                   onValueChange={(markupPercent) => updateSettings({ markupPercent })}
                 />
               </Field>
-              <Field label="固定加价 EUR">
+              <Field label={t("固定加价 EUR")}>
                 <NumberInput
                   min={0}
                   value={draft.settings.markupFixed}
                   onValueChange={(markupFixed) => updateSettings({ markupFixed })}
                 />
               </Field>
-              <Field label="安全库存">
+              <Field label={t("安全库存")}>
                 <NumberInput
                   integer
                   min={0}
@@ -593,7 +689,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                   onValueChange={(stockBuffer) => updateSettings({ stockBuffer })}
                 />
               </Field>
-              <Field label="默认成色">
+              <Field label={t("默认成色")}>
                 <Input
                   value={draft.settings.defaultConditionId}
                   onChange={(event) =>
@@ -607,67 +703,66 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
               <Button
                 type="button"
                 onClick={saveSettings}
-                disabled={isBusy || !canManageSettings}
-                title={!canManageSettings ? missingPermissionMessage("管理 eBay 设置") : undefined}
+                disabled={isConfigLocked || !canManageSettings}
+                title={!canManageSettings ? missingPermissionMessage(t("管理 eBay 设置"), locale) : undefined}
               >
                 <Save className="size-4" />
-                保存设置
-              </Button>
+                {t("保存设置")}</Button>
               <ActionButton
-                disabled={isBusy || !canPlanListings}
+                disabled={isBusy || queueUnknown || dirty || !canPlanListings}
                 icon={CheckCircle2}
-                label="生成刊登计划"
+                label={t("生成刊登计划")}
                 loading={pending === "plan_listings"}
                 onClick={() => void queueAction("plan_listings")}
-                title={!canPlanListings ? missingPermissionMessage("发布 eBay 商品") : undefined}
+                title={!canPlanListings ? missingPermissionMessage(t("发布 eBay 商品"), locale) : undefined}
               />
               <ActionButton
-                disabled={isBusy || !canPublishListings}
+                disabled={isBusy || queueUnknown || dirty || !canPublishListings || Boolean(marketplaceActionBlocker(draft.settings, connection, "publish_eligible"))}
                 icon={Send}
-                label="发布完整商品"
+                label={t("发布完整商品")}
                 loading={pending === "publish_eligible"}
-                onClick={() => void queueAction("publish_eligible")}
-                title={!canPublishListings ? missingPermissionMessage("发布 eBay 商品") : undefined}
+                onClick={() => reviewQueueAction("publish_eligible")}
+                title={!canPublishListings ? missingPermissionMessage(t("发布 eBay 商品"), locale) : undefined}
               />
               <ActionButton
-                disabled={isBusy || !canSyncInventory}
+                disabled={isBusy || queueUnknown || dirty || !canSyncInventory || Boolean(marketplaceActionBlocker(draft.settings, connection, "sync_inventory"))}
                 icon={RefreshCcw}
-                label="同步库存价格"
+                label={t("同步库存价格")}
                 loading={pending === "sync_inventory"}
-                onClick={() => void queueAction("sync_inventory")}
-                title={!canSyncInventory ? missingPermissionMessage("同步 eBay 价格库存") : undefined}
+                onClick={() => reviewQueueAction("sync_inventory")}
+                title={!canSyncInventory ? missingPermissionMessage(t("同步 eBay 价格库存"), locale) : undefined}
               />
               <ActionButton
-                disabled={isBusy || !canImportOrders}
+                disabled={isBusy || queueUnknown || dirty || !canImportOrders || Boolean(marketplaceActionBlocker(draft.settings, connection, "import_orders"))}
                 icon={Truck}
-                label="拉取 eBay 订单"
+                label={t("拉取 eBay 订单")}
                 loading={pending === "import_orders"}
-                onClick={() => void queueAction("import_orders")}
-                title={!canImportOrders ? missingPermissionMessage("管理 eBay 订单") : undefined}
+                onClick={() => reviewQueueAction("import_orders")}
+                title={!canImportOrders ? missingPermissionMessage(t("管理 eBay 订单"), locale) : undefined}
               />
               <ActionButton
                 disabled={isBusy || !canRunJobs}
                 icon={Play}
-                label="执行队列"
+                label={t("执行队列")}
                 loading={pending === "run"}
                 onClick={() => void runJobs()}
-                title={!canRunJobs ? missingPermissionMessage("执行 eBay 队列") : undefined}
+                title={!canRunJobs ? missingPermissionMessage(t("执行 eBay 队列"), locale) : undefined}
               />
             </div>
-          </CardContent>
+          </fieldset></CardContent>
         </Card>
       </section>
 
       <Card className="rounded-lg bg-white">
         <CardHeader className="border-b">
-          <CardTitle>类目映射</CardTitle>
+          <CardTitle>{t("类目映射")}</CardTitle>
           <CardAction>
             <Button
               type="button"
               size="sm"
               variant="outline"
-              disabled={!canManageSettings}
-              title={!canManageSettings ? missingPermissionMessage("管理 eBay 设置") : undefined}
+              disabled={isConfigLocked || !canManageSettings}
+              title={!canManageSettings ? missingPermissionMessage(t("管理 eBay 设置"), locale) : undefined}
               onClick={() =>
                 setDraft((current) => ({
                   ...current,
@@ -692,20 +787,20 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
               }
             >
               <Plus className="size-4" />
-              新增映射
-            </Button>
+              {t("新增映射")}</Button>
           </CardAction>
         </CardHeader>
         <CardContent>
-          <Table>
+          <div className="space-y-3 md:hidden">{draft.mappings.map((mapping, index) => <div key={mapping.id || index} className="space-y-2 rounded border p-3">{([['localCategory','本地类目'],['brand','品牌'],['modelSeries','系列'],['ebayCategoryId','eBay 类目 ID'],['conditionId','成色']] as const).map(([key,label]) => <label key={key} className="block space-y-1 text-xs font-semibold">{t(label)}<Input value={mapping[key] ?? ""} disabled={isConfigLocked || !canManageSettings} onChange={event => updateMapping(index, { [key]: event.target.value })} /></label>)}<ToggleField checked={mapping.enabled} label={t("启用")} onCheckedChange={enabled => updateMapping(index, { enabled })} /><Button disabled={isConfigLocked || !canManageSettings} variant="outline" onClick={() => setDraft(current => ({ ...current, mappings: current.mappings.filter((_, i) => i !== index) }))}>{t("删除映射")}</Button></div>)}</div>
+          <div className="hidden md:block"><Table>
             <TableHeader>
               <TableRow>
-                <TableHead>本地类目</TableHead>
-                <TableHead>品牌</TableHead>
-                <TableHead>系列</TableHead>
-                <TableHead>eBay 类目 ID</TableHead>
-                <TableHead>成色</TableHead>
-                <TableHead>启用</TableHead>
+                <TableHead>{t("本地类目")}</TableHead>
+                <TableHead>{t("品牌")}</TableHead>
+                <TableHead>{t("系列")}</TableHead>
+                <TableHead>{t("eBay 类目 ID")}</TableHead>
+                <TableHead>{t("成色")}</TableHead>
+                <TableHead>{t("启用")}</TableHead>
                 <TableHead className="w-12" />
               </TableRow>
             </TableHeader>
@@ -713,8 +808,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
               {draft.mappings.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="h-20 text-center text-slate-500">
-                    暂无类目映射。
-                  </TableCell>
+                    {t("暂无类目映射。")}</TableCell>
                 </TableRow>
               ) : (
                 draft.mappings.map((mapping, index) => (
@@ -722,6 +816,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                     <TableCell>
                       <Input
                         className="min-w-36"
+                        aria-label={t("本地类目")}
                         value={mapping.localCategory}
                         onChange={(event) =>
                           updateMapping(index, { localCategory: event.currentTarget.value })
@@ -731,6 +826,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                     <TableCell>
                       <Input
                         className="min-w-28"
+                        aria-label={t("品牌")}
                         value={mapping.brand ?? ""}
                         onChange={(event) =>
                           updateMapping(index, { brand: event.currentTarget.value })
@@ -740,6 +836,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                     <TableCell>
                       <Input
                         className="min-w-28"
+                        aria-label={t("系列")}
                         value={mapping.modelSeries ?? ""}
                         onChange={(event) =>
                           updateMapping(index, { modelSeries: event.currentTarget.value })
@@ -749,6 +846,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                     <TableCell>
                       <Input
                         className="min-w-32"
+                        aria-label={t("eBay 类目 ID")}
                         value={mapping.ebayCategoryId}
                         onChange={(event) =>
                           updateMapping(index, { ebayCategoryId: event.currentTarget.value })
@@ -758,6 +856,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                     <TableCell>
                       <Input
                         className="min-w-24"
+                        aria-label={t("成色")}
                         value={mapping.conditionId}
                         onChange={(event) =>
                           updateMapping(index, { conditionId: event.currentTarget.value })
@@ -775,8 +874,8 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                         type="button"
                         size="icon-sm"
                         variant="ghost"
-                        aria-label="删除映射"
-                        disabled={!canManageSettings}
+                        aria-label={t("删除映射")}
+                        disabled={isConfigLocked || !canManageSettings}
                         onClick={() =>
                           setDraft((current) => ({
                             ...current,
@@ -791,21 +890,21 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                 ))
               )}
             </TableBody>
-          </Table>
+          </Table></div>
         </CardContent>
       </Card>
 
       <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <DataTableCard title="刊登状态">
+        <DataTableCard title={t("刊登状态")}>
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>SKU</TableHead>
-                <TableHead>商品</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>价格</TableHead>
-                <TableHead>库存</TableHead>
-                <TableHead>失败原因</TableHead>
+                <TableHead>{t("商品")}</TableHead>
+                <TableHead>{t("状态")}</TableHead>
+                <TableHead>{t("价格")}</TableHead>
+                <TableHead>{t("库存")}</TableHead>
+                <TableHead>{t("失败原因")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -832,32 +931,32 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                     <TableCell>€{listing.computedPrice.toFixed(2)}</TableCell>
                     <TableCell>{listing.computedQuantity}</TableCell>
                     <TableCell className="max-w-[360px] whitespace-normal break-words text-xs text-slate-600">
-                      {listing.blockers.length ? listing.blockers.join("；") : listing.lastErrorMessage ?? "-"}
+                      {listing.blockers.length ? listing.blockers.map(t).join("；") : t(listing.lastErrorMessage ?? "-")}
                     </TableCell>
                   </TableRow>
                 ))
               ) : (
-                <EmptyRow colSpan={6} label="暂无刊登评估记录。" />
+                <EmptyRow colSpan={6} label={t("暂无刊登评估记录。")} />
               )}
             </TableBody>
           </Table>
         </DataTableCard>
 
-        <DataTableCard title="失败队列">
+        <DataTableCard title={t("失败队列")}>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>任务</TableHead>
-                <TableHead>对象</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>错误</TableHead>
+                <TableHead>{t("任务")}</TableHead>
+                <TableHead>{t("对象")}</TableHead>
+                <TableHead>{t("状态")}</TableHead>
+                <TableHead>{t("错误")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {overview?.jobs.length ? (
                 overview.jobs.map((job) => (
                   <TableRow key={job.id}>
-                    <TableCell>{jobTypeLabel(job.jobType)}</TableCell>
+                    <TableCell>{t(jobTypeLabel(job.jobType))}</TableCell>
                     <TableCell className="font-mono text-xs">
                       {job.targetSku ?? job.targetOrderId ?? "-"}
                     </TableCell>
@@ -865,28 +964,28 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                       <StatusBadge status={job.status} />
                     </TableCell>
                     <TableCell className="max-w-[260px] whitespace-normal break-words text-xs text-slate-600">
-                      {job.errorMessage ?? "-"}
+                      {t(job.errorMessage ?? "-")}
                     </TableCell>
                   </TableRow>
                 ))
               ) : (
-                <EmptyRow colSpan={4} label="暂无队列任务。" />
+                <EmptyRow colSpan={4} label={t("暂无队列任务。")} />
               )}
             </TableBody>
           </Table>
         </DataTableCard>
       </section>
 
-      <DataTableCard title="订单回流日志">
+      <DataTableCard title={t("订单回流日志")}>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>eBay 订单</TableHead>
-              <TableHead>本地订单</TableHead>
-              <TableHead>金额</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>导入时间</TableHead>
-              <TableHead>错误</TableHead>
+              <TableHead>{t("eBay 订单")}</TableHead>
+              <TableHead>{t("本地订单")}</TableHead>
+              <TableHead>{t("金额")}</TableHead>
+              <TableHead>{t("状态")}</TableHead>
+              <TableHead>{t("导入时间")}</TableHead>
+              <TableHead>{t("错误")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -903,12 +1002,12 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                   </TableCell>
                   <TableCell>{formatDateTime(link.importedAt)}</TableCell>
                   <TableCell className="max-w-[320px] whitespace-normal break-words text-xs text-slate-600">
-                    {link.lastError ?? "-"}
+                    {t(link.lastError ?? "-")}
                   </TableCell>
                 </TableRow>
               ))
             ) : (
-              <EmptyRow colSpan={6} label="暂无 eBay 订单回流记录。" />
+              <EmptyRow colSpan={6} label={t("暂无 eBay 订单回流记录。")} />
             )}
           </TableBody>
         </Table>
@@ -920,7 +1019,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
 function MarketplacePanelSkeleton() {
   return (
     <div className="min-w-0 space-y-4" aria-busy="true" aria-live="polite">
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid grid-cols-2 gap-2 xl:grid-cols-4">
         {Array.from({ length: 4 }).map((_, index) => (
           <div key={index} className="rounded-lg border border-slate-200 bg-white p-4">
             <div className="h-3 w-20 animate-pulse rounded bg-slate-100" />
@@ -995,12 +1094,7 @@ function SummaryTile({
 }
 
 function Field({ children, label }: { children: React.ReactNode; label: string }) {
-  return (
-    <div className="min-w-0 space-y-1.5">
-      <Label className="text-xs font-semibold text-slate-500">{label}</Label>
-      {children}
-    </div>
-  );
+  return <AdminFieldGroup label={label}>{children}</AdminFieldGroup>;
 }
 
 function ToggleField({
@@ -1021,11 +1115,13 @@ function ToggleField({
 }
 
 function NumberInput({
+  id,
   integer = false,
   min,
   onValueChange,
   value,
 }: {
+  id?: string;
   integer?: boolean;
   min: number;
   onValueChange: (value: number) => void;
@@ -1033,6 +1129,7 @@ function NumberInput({
 }) {
   return (
     <Input
+      id={id}
       min={min}
       step={integer ? 1 : 0.01}
       type="number"
@@ -1076,12 +1173,15 @@ function queueActionNotice(
     enqueued: number;
     evaluated: number;
     skipped: number;
-  }
+  },
+  locale: string
 ) {
   if (action === "plan_listings") {
+    if (!locale.startsWith("zh")) return `Piano preparato: ${result.evaluated} valutati, ${result.eligible} idonei, ${result.blocked} bloccati.`;
     return `已生成刊登计划：检查 ${result.evaluated} 条，可发布 ${result.eligible} 条，阻断 ${result.blocked} 条。`;
   }
 
+  if (!locale.startsWith("zh")) return `In coda ${result.enqueued}: ${result.evaluated} valutati, ${result.eligible} idonei, ${result.skipped} saltati.`;
   return `已入队 ${result.enqueued} 个任务，检查 ${result.evaluated} 条，可执行 ${result.eligible} 条，跳过 ${result.skipped} 条。`;
 }
 
@@ -1113,7 +1213,8 @@ function EmptyRow({ colSpan, label }: { colSpan: number; label: string }) {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const label = statusLabel(status);
+  const { locale } = useI18n();
+  const label = marketplaceText(statusLabel(status), locale);
   const variant = statusVariant(status);
 
   return (
@@ -1200,7 +1301,7 @@ function formatDateTime(value: string | null | undefined) {
     return "-";
   }
 
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat("it-IT", {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
@@ -1214,7 +1315,8 @@ function emptyToNull(value: string | null | undefined) {
   return normalized ? normalized : null;
 }
 
-function missingPermissionMessage(label: string) {
+function missingPermissionMessage(label: string, locale = "zh-CN") {
+  if (!locale.startsWith("zh")) return `Permesso richiesto: ${label}.`;
   return `缺少权限：${label}。`;
 }
 
@@ -1225,4 +1327,9 @@ function readApiError(error: unknown) {
 
   const message = (error as { message?: unknown }).message;
   return typeof message === "string" ? message : null;
+}
+
+function readinessMessage(code: string, locale: string) {
+ const copy: Record<string,[string,string]> = {disabled:["请先启用并保存 eBay 设置。","Abilita e salva eBay."],connection:["请先连接 eBay 账号。","Collega prima l’account eBay."],environment:["连接环境与已保存设置不一致，请重新连接对应环境。","Collega l’account nell’ambiente delle impostazioni salvate."],production:["生产环境尚未启用。","Ambiente produzione non abilitato."],publish:["请先生成计划并启用自动发布。","Prepara il piano e abilita la pubblicazione."],policies:["请保存仓库和三项销售政策。","Salva la sede e le tre condizioni di vendita."],sync:["请启用并保存价格库存同步。","Abilita e salva la sincronizzazione."],orders:["请启用并保存订单回流。","Abilita e salva l’importazione ordini."]};
+ return copy[code]?.[locale.startsWith("zh") ? 0 : 1] ?? code;
 }

@@ -1,6 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { runOrderWriteAndRefresh, orderQueryParams, orderDeepLinkFilters, combinePackingSlipDocuments, type OrderMutationResult } from "@/lib/admin-orders-operation.mjs";
+import { useAdminMemoryValue, usePersistentAdminQuery, usePersistentAdminValue } from "./admin-workspace-state";
 import { createLatestRequest } from "@/lib/latest-request.mjs";
 import Image from "./optimized-image";
 import {
@@ -421,9 +424,9 @@ function useAdminText() {
 }
 
 export function AdminOrdersPanel({
-  focusOrderId,
+  focusOrderId, permissions, customerId, returnAccountId, focusStatus,
 }: {
-  focusOrderId?: string;
+  focusOrderId?: string; permissions?: string[]; customerId?: string; returnAccountId?: string; focusStatus?: string;
 } = {}) {
   const { locale } = useI18n();
   const text = useAdminText();
@@ -443,15 +446,15 @@ export function AdminOrdersPanel({
     null
   );
   const [statusFilter, setStatusFilter] =
-    React.useState<StatusFilterValue>("all");
+    usePersistentAdminValue<StatusFilterValue>("orders-statusFilter", "all");
   const [paymentFilter, setPaymentFilter] =
-    React.useState<PaymentFilterValue>("all");
+    usePersistentAdminValue<PaymentFilterValue>("orders-paymentFilter", "all");
   const [stockRiskFilter, setStockRiskFilter] =
-    React.useState<StockRiskFilterValue>("all");
+    usePersistentAdminValue<StockRiskFilterValue>("orders-stockRiskFilter", "all");
   const [reservationFilter, setReservationFilter] =
-    React.useState<ReservationFilterValue>("all");
-  const [viewMode, setViewMode] = React.useState<ViewMode>("orders");
-  const [selectedOrderId, setSelectedOrderId] = React.useState("");
+    usePersistentAdminValue<ReservationFilterValue>("orders-reservationFilter", "all");
+  const [viewMode, setViewMode] = usePersistentAdminValue<ViewMode>("orders-viewMode", "orders");
+  const [selectedOrderId, setSelectedOrderId] = useAdminMemoryValue("orders.selectedOrderId", focusOrderId ?? "");
   const [mobileDetailsOpen, setMobileDetailsOpen] = React.useState(false);
   const [notice, setNotice] = React.useState<PanelNotice | null>(null);
   const [adminSession, setAdminSession] = React.useState<AdminSessionState>({
@@ -459,10 +462,32 @@ export function AdminOrdersPanel({
     permissions: [],
     role: null,
   });
-  const [page, setPage] = React.useState(1);
+  const [page, setPage] = usePersistentAdminValue<number>("orders-page", 1);
+  const [searchFilters, setSearchFilters] = usePersistentAdminQuery("orders-search", { dateFrom: "", dateTo: "", sort: "operations_queue" });
+  const [orderQuery, setOrderQuery] = useAdminMemoryValue("orders.query", "");
+  const [selectedForPrint, setSelectedForPrint] = React.useState<string[]>([]);
+  const [printing, setPrinting] = React.useState(false);
+  const mutationInFlight = React.useRef(false);
+  const explicitLinkKey = `${focusStatus ?? ""}:${customerId ?? ""}:${focusOrderId ?? ""}`;
+  const [appliedLinkKey, setAppliedLinkKey] = useAdminMemoryValue("orders.appliedLinkKey", "");
+  const pendingExplicitLink = Boolean(focusStatus || customerId || focusOrderId) && appliedLinkKey !== explicitLinkKey;
+  React.useEffect(() => {
+    if (!pendingExplicitLink) return;
+    const timer = window.setTimeout(() => {
+      const scope = orderDeepLinkFilters({}, { focusStatus, customerId, focusOrderId });
+      setStatusFilter((scope.status ?? "all") as StatusFilterValue); setPaymentFilter("all"); setStockRiskFilter("all"); setReservationFilter("all"); setViewMode("orders"); setPage(1);
+      setOrderQuery(""); setSearchFilters({ dateFrom: "", dateTo: "", sort: scope.sort ?? "operations_queue" }); setAppliedLinkKey(explicitLinkKey);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [customerId, explicitLinkKey, focusOrderId, focusStatus, pendingExplicitLink, setAppliedLinkKey, setOrderQuery, setPage, setPaymentFilter, setReservationFilter, setSearchFilters, setStatusFilter, setStockRiskFilter, setViewMode]);
+  const canManageOrders = permissions !== undefined ? permissions.includes("orders.manage") : hasAdminSessionPermission(adminSession, "orders.manage");
 
   React.useEffect(() => {
     let cancelled = false;
+    if (permissions !== undefined) {
+      queueMicrotask(() => { if (!cancelled) setAdminSession({ allowed: true, permissions, role: null }); });
+      return () => { cancelled = true; };
+    }
 
     void fetch("/api/me", {
       cache: "no-store",
@@ -491,7 +516,7 @@ export function AdminOrdersPanel({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [permissions]);
 
   const upsertOrder = React.useCallback((order: AdminOrder) => {
     setOrders((currentOrders) => {
@@ -502,13 +527,13 @@ export function AdminOrdersPanel({
           )
         : currentOrders;
 
-      return sortOrdersForOperationsQueue(nextOrders);
+      return searchFilters.sort === "operations_queue" ? sortOrdersForOperationsQueue(nextOrders) : nextOrders;
     });
     setDetailsById((currentDetails) => ({
       ...currentDetails,
       [order.id]: order,
     }));
-  }, []);
+  }, [searchFilters.sort]);
 
   const removeOrder = React.useCallback((orderId: string) => {
     setOrders((currentOrders) => currentOrders.filter((order) => order.id !== orderId));
@@ -585,17 +610,14 @@ export function AdminOrdersPanel({
       setIsLoadingOrders(true);
 
       try {
-        const result = await fetchOrdersFromApi({
-          signal: requestSignal,
-          page,
-          limit: pageSize,
-          stockRisk: stockRiskFilter === "all" ? undefined : stockRiskFilter,
-          reservation: reservationFilter === "all" ? undefined : reservationFilter,
-          status: statusFilter === "all" ? undefined : statusFilter,
-          paymentStatus: paymentFilter === "all" ? undefined : paymentFilter,
-          view: viewMode === "orders" ? undefined : viewMode,
-        });
-        const sortedOrders = sortOrdersForOperationsQueue(result.orders);
+        const filters = { q: orderQuery, dateFrom: searchFilters.dateFrom, dateTo: searchFilters.dateTo, sort: searchFilters.sort, customerId,
+          stockRisk: stockRiskFilter === "all" ? undefined : stockRiskFilter, reservation: reservationFilter === "all" ? undefined : reservationFilter,
+          status: statusFilter === "all" ? undefined : statusFilter, paymentStatus: paymentFilter === "all" ? undefined : paymentFilter, view: viewMode === "orders" ? undefined : viewMode };
+        const scoped = pendingExplicitLink ? orderDeepLinkFilters(filters, { focusStatus, customerId, focusOrderId }) : filters;
+        const result = await fetchOrdersFromApi({ ...scoped, signal: requestSignal, page: pendingExplicitLink ? 1 : page, limit: pageSize,
+          status: scoped.status as OrderDbStatus | undefined, paymentStatus: scoped.paymentStatus as Exclude<PaymentFilterValue, "all"> | undefined,
+          view: scoped.view as Exclude<ViewMode, "orders"> | undefined, stockRisk: scoped.stockRisk as Exclude<StockRiskFilterValue, "all"> | undefined, reservation: scoped.reservation as "overdue" | undefined });
+        const sortedOrders = scoped.sort === "operations_queue" ? sortOrdersForOperationsQueue(result.orders) : result.orders;
 
         if (!request.isCurrent() || requestSignal.aborted) {
           return;
@@ -610,9 +632,9 @@ export function AdminOrdersPanel({
           returned: result.returned,
         });
         setSelectedOrderId((currentId) =>
-          currentId && sortedOrders.some((order) => order.id === currentId)
+          focusOrderId && pendingExplicitLink ? focusOrderId : currentId && sortedOrders.some((order) => order.id === currentId)
             ? currentId
-            : sortedOrders[0]?.id ?? ""
+            : focusOrderId ?? sortedOrders[0]?.id ?? ""
         );
         setNotice(null);
       } catch (error) {
@@ -638,7 +660,7 @@ export function AdminOrdersPanel({
         }
       }
     },
-    [page, paymentFilter, reservationFilter, statusFilter, stockRiskFilter, text, viewMode]
+    [customerId, focusOrderId, focusStatus, orderQuery, page, paymentFilter, pendingExplicitLink, reservationFilter, searchFilters, setSelectedOrderId, statusFilter, stockRiskFilter, text, viewMode]
   );
 
   React.useEffect(() => {
@@ -681,7 +703,7 @@ export function AdminOrdersPanel({
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [focusOrderId, loadOrderDetails]);
+  }, [focusOrderId, loadOrderDetails, setSelectedOrderId]);
 
   const filteredOrders = React.useMemo(
     () =>
@@ -829,160 +851,35 @@ export function AdminOrdersPanel({
     setStockRiskFilter("all");
     setReservationFilter("all");
     setViewMode(key === "shipped" ? "shipping" : "orders");
-  }, []);
+  }, [setPage, setPaymentFilter, setReservationFilter, setStatusFilter, setStockRiskFilter, setViewMode]);
 
-  const patchOrder = React.useCallback(
-    async (order: AdminOrder, patch: OrderPatchInput, successMessage: string) => {
-      const actionKey = `${order.id}:${
-        patch.rollback ? "rollback" : patch.status ?? Object.keys(patch).sort().join(",")
-      }`;
-
-      setPendingOrderAction(actionKey);
-
-      try {
-        const result = await patchOrderInApi(order.id, patch, text);
-
-        if (result.order) {
-          upsertOrder(result.order);
-        }
-
-        const refreshedOrder = await fetchOrderDetailFromApi(order.id);
-
-        upsertOrder(refreshedOrder);
-        setNotice({
-          tone: "success",
-          message: `${successMessage} ${formatAdminMessage(text.orders.notices.persisted, {
-            id: order.id,
-          })}`,
-        });
-      } catch (error) {
-        setNotice({
-          tone: "error",
-          message:
-            error instanceof Error ? error.message : text.orders.notices.rejected,
-        });
-      } finally {
-        setPendingOrderAction(null);
-      }
-    },
-    [text, upsertOrder]
-  );
-
-  const patchOrderPayment = React.useCallback(
-    async (order: AdminOrder, patch: OrderPaymentPatchInput, successMessage: string) => {
-      const actionKey = `${order.id}:payment`;
-
-      setPendingOrderAction(actionKey);
-
-      try {
-        const result = await patchOrderPaymentInApi(order.id, patch, text);
-
-        if (result.order) {
-          upsertOrder(result.order);
-        }
-
-        const refreshedOrder = await fetchOrderDetailFromApi(order.id);
-
-        upsertOrder(refreshedOrder);
-        setNotice({
-          tone: "success",
-          message: `${successMessage} ${formatAdminMessage(text.orders.notices.persisted, {
-            id: order.id,
-          })}`,
-        });
-      } catch (error) {
-        setNotice({
-          tone: "error",
-          message:
-            error instanceof Error ? error.message : text.orders.notices.rejected,
-        });
-      } finally {
-        setPendingOrderAction(null);
-      }
-    },
-    [text, upsertOrder]
-  );
-
-  const patchOrderShipping = React.useCallback(
-    async (order: AdminOrder, patch: OrderShippingPatchInput, successMessage: string) => {
-      const actionKey = `${order.id}:shipping`;
-
-      setPendingOrderAction(actionKey);
-
-      try {
-        const result = await patchOrderShippingInApi(order.id, patch, text);
-
-        if (result.order) {
-          upsertOrder(result.order);
-        }
-
-        const refreshedOrder = await fetchOrderDetailFromApi(order.id);
-
-        upsertOrder(refreshedOrder);
-        setNotice({
-          tone: "success",
-          message: `${successMessage} ${formatAdminMessage(text.orders.notices.persisted, {
-            id: order.id,
-          })}`,
-        });
-      } catch (error) {
-        setNotice({
-          tone: "error",
-          message:
-            error instanceof Error ? error.message : text.orders.notices.rejected,
-        });
-      } finally {
-        setPendingOrderAction(null);
-      }
-    },
-    [text, upsertOrder]
-  );
-
-  const patchOrderLineFulfillment = React.useCallback(
-    async (
-      order: AdminOrder,
-      line: OrderLine,
-      patch: OrderLineFulfillmentInput
-    ) => {
-      const actionKey = `${order.id}:line:${line.id}`;
-
-      setPendingOrderAction(actionKey);
-
-      try {
-        const result = await patchOrderLineFulfillmentInApi(order.id, line.id, patch, text);
-
-        if (result.order) {
-          upsertOrder(result.order);
-        }
-
-        const refreshedOrder = await fetchOrderDetailFromApi(order.id);
-        const walletRefunds = canReadWalletRefunds(adminSession)
-          ? await fetchWalletRefundsForOrderFromApi(order.id, text)
-          : refreshedOrder.walletRefunds;
-
-        upsertOrder({ ...refreshedOrder, walletRefunds });
-        setNotice({
-          tone: "success",
-          message:
-            patch.actualQuantity < line.quantity
-              ? `${line.name} 缺货数量已保存；生成申请，审批通过后入账。`
-              : `${line.name} 无缺货，按订购数量处理。`,
-        });
-      } catch (error) {
-        setNotice({
-          tone: "error",
-          message:
-            error instanceof Error ? error.message : text.orders.notices.rejected,
-        });
-      } finally {
-        setPendingOrderAction(null);
-      }
-    },
-    [adminSession, text, upsertOrder]
-  );
+  const finishOrderMutation = React.useCallback(async (order: AdminOrder, actionKey: string, write: () => Promise<{ order: AdminOrder | null }>, successMessage: string, refunds = false): Promise<OrderMutationResult> => {
+    if (mutationInFlight.current) return { ok: false, error: text.common.saving };
+    mutationInFlight.current = true;
+    setPendingOrderAction(actionKey);
+    const outcome = await runOrderWriteAndRefresh(write, async () => {
+      const refreshedOrder = await fetchOrderDetailFromApi(order.id);
+      const walletRefunds = refunds && canReadWalletRefunds(adminSession) ? await fetchWalletRefundsForOrderFromApi(order.id, text) : refreshedOrder.walletRefunds;
+      upsertOrder({ ...refreshedOrder, walletRefunds });
+    }, (result) => { if (result.order) upsertOrder(result.order); });
+    if (!outcome.ok) setNotice({ tone: "error", message: outcome.error });
+    else setNotice({ tone: outcome.refreshError ? "warning" : "success", message: `${successMessage}${outcome.refreshError ? ` · ${locale.startsWith("it") ? "Salvato; aggiornamento dettagli non riuscito. Riprova solo la lettura." : "已保存；详情刷新失败。请仅重试读取。"}` : ""}` });
+    setPendingOrderAction(null); mutationInFlight.current = false;
+    return outcome;
+  }, [adminSession, locale, text, upsertOrder]);
+  const patchOrder = React.useCallback((order: AdminOrder, patch: OrderPatchInput, successMessage: string) =>
+    finishOrderMutation(order, `${order.id}:${patch.rollback ? "rollback" : patch.status ?? Object.keys(patch).sort().join(",")}`, () => patchOrderInApi(order.id, patch, text), successMessage), [finishOrderMutation, text]);
+  const patchOrderPayment = React.useCallback((order: AdminOrder, patch: OrderPaymentPatchInput, successMessage: string) =>
+    finishOrderMutation(order, `${order.id}:payment`, () => patchOrderPaymentInApi(order.id, patch, text), successMessage), [finishOrderMutation, text]);
+  const patchOrderShipping = React.useCallback((order: AdminOrder, patch: OrderShippingPatchInput, successMessage: string) =>
+    finishOrderMutation(order, `${order.id}:shipping`, () => patchOrderShippingInApi(order.id, patch, text), successMessage), [finishOrderMutation, text]);
+  const patchOrderLineFulfillment = React.useCallback((order: AdminOrder, line: OrderLine, patch: OrderLineFulfillmentInput) =>
+    finishOrderMutation(order, `${order.id}:line:${line.id}`, () => patchOrderLineFulfillmentInApi(order.id, line.id, patch, text),
+      locale.startsWith("it") ? "Quantità salvata. La richiesta di rimborso richiede approvazione prima dell’accredito." : "数量已保存。退款申请经审批后入账。", true), [finishOrderMutation, locale, text]);
 
   const handleTransition = React.useCallback(
     (order: AdminOrder, status: OrderDbStatus, successMessage: string) => {
+      if (!canManageOrders) return;
       void patchOrder(
         order,
         {
@@ -992,7 +889,7 @@ export function AdminOrdersPanel({
         successMessage
       );
     },
-    [labels.status, patchOrder]
+    [canManageOrders, labels.status, patchOrder]
   );
 
   const handleCancelOrder = React.useCallback(
@@ -1080,6 +977,7 @@ export function AdminOrdersPanel({
     },
     [
       removeOrder,
+      setSelectedOrderId,
       text,
     ]
   );
@@ -1139,7 +1037,7 @@ export function AdminOrdersPanel({
 
   const handleUpdateStaffNote = React.useCallback(
     (order: AdminOrder, staffNote: string) => {
-      void patchOrder(
+      return patchOrder(
         order,
         {
           note: text.orders.activity.staffNoteUpdated,
@@ -1153,7 +1051,7 @@ export function AdminOrdersPanel({
 
   const handleUpdateLogistics = React.useCallback(
     (order: AdminOrder, carrier: string, tracking: string) => {
-      void patchOrder(
+      return patchOrder(
         order,
         {
           carrier,
@@ -1168,7 +1066,7 @@ export function AdminOrdersPanel({
 
   const handleUpdatePaymentMethod = React.useCallback(
     (order: AdminOrder, paymentMethod: PaymentMethod) => {
-      void patchOrder(
+      return patchOrder(
         order,
         {
           note: `${text.orders.details.paymentMethod}: ${labels.paymentMethod[order.paymentMethod]} -> ${labels.paymentMethod[paymentMethod]}`,
@@ -1182,24 +1080,40 @@ export function AdminOrdersPanel({
 
   const handleUpdatePayment = React.useCallback(
     (order: AdminOrder, patch: OrderPaymentPatchInput) => {
-      void patchOrderPayment(order, patch, text.orders.paymentReconciliationSaved);
+      return patchOrderPayment(order, patch, text.orders.paymentReconciliationSaved);
     },
     [patchOrderPayment, text.orders.paymentReconciliationSaved]
   );
 
   const handleUpdateLineFulfillment = React.useCallback(
     (order: AdminOrder, line: OrderLine, patch: OrderLineFulfillmentInput) => {
-      void patchOrderLineFulfillment(order, line, patch);
+      return patchOrderLineFulfillment(order, line, patch);
     },
     [patchOrderLineFulfillment]
   );
 
   const handleAdjustShipping = React.useCallback(
     (order: AdminOrder, patch: OrderShippingPatchInput) => {
-      void patchOrderShipping(order, patch, text.orders.shippingAdjustmentSaved);
+      return patchOrderShipping(order, patch, text.orders.shippingAdjustmentSaved);
     },
     [patchOrderShipping, text.orders.shippingAdjustmentSaved]
   );
+
+  const handlePrintSelected = React.useCallback(async () => {
+    const ids = selectedForPrint.slice(0, 50);
+    if (!ids.length || printing) return;
+    const printWindow = window.open("", "_blank", "width=900,height=1200");
+    if (!printWindow) { setNotice({ tone: "error", message: locale.startsWith("it") ? "Consenti la finestra di anteprima stampa." : "请允许打开打印预览窗口。" }); return; }
+    printWindow.opener = null; printWindow.document.body.textContent = text.common.refreshing;
+    setPrinting(true);
+    try {
+      const selected = await Promise.all(ids.map(id => fetchOrderDetailFromApi(id)));
+      const html = combinePackingSlipDocuments(selected.map(order => buildOrderPackingSlipHtml(order, labels, text)));
+      printWindow.document.open(); printWindow.document.write(html); printWindow.document.close();
+      await waitForPrintAssets(printWindow); printWindow.focus(); printWindow.print();
+    } catch (error) { printWindow.close(); setNotice({ tone: "error", message: error instanceof Error ? error.message : text.orders.detailError }); }
+    finally { setPrinting(false); }
+  }, [labels, locale, printing, selectedForPrint, text]);
 
   const handlePrintOrder = React.useCallback(
     (order: AdminOrder) => {
@@ -1209,16 +1123,19 @@ export function AdminOrdersPanel({
   );
 
   const handleOpenOrder = React.useCallback((orderId: string) => {
+    if (document.querySelector("[data-admin-dirty='true']") && !window.confirm(locale.startsWith("it") ? "Abbandonare le modifiche non salvate?" : "放弃未保存的修改？")) return;
     setSelectedOrderId(orderId);
     setMobileDetailsOpen(true);
-  }, []);
+  }, [locale, setSelectedOrderId]);
 
   const handleOpenMobileDetails = React.useCallback((orderId: string) => {
+    if (document.querySelector("[data-admin-dirty='true']") && !window.confirm(locale.startsWith("it") ? "Abbandonare le modifiche non salvate?" : "放弃未保存的修改？")) return;
     setSelectedOrderId(orderId);
     setMobileDetailsOpen(true);
-  }, []);
+  }, [locale, setSelectedOrderId]);
   const handleQuickTransition = React.useCallback(
     (order: AdminOrder) => {
+      if (!canManageOrders) { handleOpenOrder(order.id); return; }
       const transition = getOrderTransition(order, text);
 
       if (!transition) {
@@ -1233,7 +1150,7 @@ export function AdminOrdersPanel({
 
       handleTransition(order, transition.status, transition.notice);
     },
-    [handleOpenOrder, handleTransition, text]
+    [canManageOrders, handleOpenOrder, handleTransition, text]
   );
 
   return (
@@ -1335,6 +1252,18 @@ export function AdminOrdersPanel({
               </Button>
             </div>
           </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <label className="grid gap-1 text-xs font-semibold">{locale.startsWith("it") ? "Ordine / cliente" : "订单/客户搜索"}<Input value={orderQuery} placeholder={locale.startsWith("it") ? "Numero ordine, cliente (min. 2 caratteri)" : "订单号、客户（至少2字）"} onChange={(event) => { setPage(1); setOrderQuery(event.target.value); }} /></label>
+            <label className="grid gap-1 text-xs font-semibold">{locale.startsWith("it") ? "Dal" : "开始日期"}<Input type="date" value={searchFilters.dateFrom} onChange={(event) => { setPage(1); setSearchFilters(current => ({ ...current, dateFrom: event.target.value })); }} /></label>
+            <label className="grid gap-1 text-xs font-semibold">{locale.startsWith("it") ? "Al" : "结束日期"}<Input type="date" value={searchFilters.dateTo} onChange={(event) => { setPage(1); setSearchFilters(current => ({ ...current, dateTo: event.target.value })); }} /></label>
+            <Select value={searchFilters.sort} onValueChange={(sort) => { setPage(1); setSearchFilters(current => ({ ...current, sort })); }}><SelectTrigger aria-label={locale.startsWith("it") ? "Ordina" : "排序"}><SelectValue /></SelectTrigger><SelectContent>{[
+              ["operations_queue", locale.startsWith("it") ? "Coda operativa" : "工作队列"], ["date_desc", locale.startsWith("it") ? "Più recenti" : "日期从新到旧"], ["date_asc", locale.startsWith("it") ? "Meno recenti" : "日期从旧到新"], ["total_desc", locale.startsWith("it") ? "Totale decrescente" : "金额从高到低"], ["total_asc", locale.startsWith("it") ? "Totale crescente" : "金额从低到高"]].map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs">
+            {customerId ? <Badge variant="outline">{locale.startsWith("it") ? "Filtro cliente" : "客户筛选"}: {customerId}</Badge> : null}
+            <Button type="button" size="xs" variant="outline" onClick={() => { setPage(1); setSearchFilters({ dateFrom: "", dateTo: "", sort: "operations_queue" }); setOrderQuery(""); setStatusFilter("all"); setPaymentFilter("all"); setStockRiskFilter("all"); setReservationFilter("all"); setViewMode("orders"); }}>{text.common.reset}</Button>
+            {returnAccountId ? <a className="text-primary underline" href={`/admin?panel=accounts&accountId=${encodeURIComponent(returnAccountId)}`}>{locale.startsWith("it") ? "Torna all’account" : "返回账号"}</a> : null}
+          </div>
           <OrderWorkflowStrip
             activeKey={activeWorkflowKey}
             counts={workflowCounts}
@@ -1348,6 +1277,7 @@ export function AdminOrdersPanel({
             <div className={cn("flex min-w-0 items-center gap-3 rounded-lg border px-3 py-2 text-sm font-medium", noticeToneClass(notice.tone))}>
               <NoticeIcon tone={notice.tone} />
               <span className="min-w-0 flex-1 break-words">{notice.message}</span>
+              {notice.tone === "warning" && selectedOrder ? <Button size="xs" variant="outline" onClick={() => void loadOrderDetails(selectedOrder.id)}>{locale.startsWith("it") ? "Rileggi dettagli" : "重读详情"}</Button> : null}
               <Button
                 variant="ghost"
                 size="xs"
@@ -1374,6 +1304,10 @@ export function AdminOrdersPanel({
             </div>
           )}
 
+          <details className="rounded-lg border p-2"><summary className="cursor-pointer text-sm font-semibold">{locale.startsWith("it") ? "Seleziona ordini per la stampa" : "选择订单批量打印"} ({selectedForPrint.length}/50)</summary>
+            <div className="mt-2 flex flex-wrap gap-3">{visibleOrders.map(order => <label key={order.id} className="flex items-center gap-2 text-xs"><Checkbox checked={selectedForPrint.includes(order.id)} disabled={!selectedForPrint.includes(order.id) && selectedForPrint.length >= 50} onCheckedChange={(checked) => setSelectedForPrint(current => checked ? [...new Set([...current, order.id])] : current.filter(id => id !== order.id))} />{shortOrderId(order.id)}</label>)}</div>
+            <div className="mt-2 flex gap-2"><Button type="button" size="sm" disabled={!selectedForPrint.length || printing} onClick={() => void handlePrintSelected()}><Printer className="size-4" />{locale.startsWith("it") ? "Anteprima stampa selezionati" : "打印所选预览"}</Button><Button variant="outline" size="sm" onClick={() => setSelectedForPrint([])}>{text.common.deselect}</Button></div>
+          </details>
           <div className="min-w-0">
             {isLoadingOrders && !dataSource.syncedAt && orders.length === 0 ? (
               <OrdersListSkeleton text={text} />
@@ -1384,6 +1318,7 @@ export function AdminOrdersPanel({
                 rows={5}
               >
                 <OrdersList
+                  canManage={canManageOrders}
                   labels={labels}
                   orders={visibleOrders}
                   page={currentPage}
@@ -1404,11 +1339,12 @@ export function AdminOrdersPanel({
           </div>
           <Dialog
             open={mobileDetailsOpen && selectedOrder !== null}
-            onOpenChange={setMobileDetailsOpen}
+            onOpenChange={(open) => { if (pendingOrderAction) return; if (!open && document.querySelector("[data-admin-dirty='true']") && !window.confirm(locale.startsWith("it") ? "Abbandonare le modifiche non salvate?" : "放弃未保存的修改？")) return; setMobileDetailsOpen(open); }}
           >
             {selectedOrder && (
               <DialogContent className="grid h-[min(760px,calc(100dvh-0.5rem))] max-h-[calc(100dvh-0.5rem)] w-[calc(100vw-0.5rem)] max-w-[calc(100vw-0.5rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg bg-white p-0 pt-7 sm:h-[min(820px,calc(100dvh-1rem))] sm:max-h-[calc(100dvh-1rem)] sm:w-[calc(100vw-1rem)] sm:max-w-[calc(100vw-1rem)] sm:pt-10 xl:max-w-[1280px] 2xl:max-w-[1360px]">
                 <DialogHeader className="border-b border-slate-200 px-2.5 pb-1.5 pr-12 sm:px-4 sm:pb-2.5">
+                  <Button type="button" variant="outline" size="xs" className="w-fit" disabled={pendingOrderAction !== null || visibleOrders.findIndex(order => order.id === selectedOrder.id) >= visibleOrders.length - 1} onClick={() => { const index = visibleOrders.findIndex(order => order.id === selectedOrder.id); const next = visibleOrders[index + 1]; if (next) handleOpenOrder(next.id); }}>{locale.startsWith("it") ? "Ordine successivo" : "处理下一单"}</Button>
                   <DialogTitle className="break-words text-sm font-black leading-tight text-slate-950 sm:text-base">
                     {formatAdminMessage(text.orders.detailDialogTitle, {
                       id: shortOrderId(selectedOrder.id),
@@ -1419,7 +1355,7 @@ export function AdminOrdersPanel({
                   </DialogDescription>
                 </DialogHeader>
                 <div className="min-h-0 overflow-y-auto overscroll-contain bg-slate-50/40">
-                  <OrderDetailsPanel
+                  <OrderDetailsPanel key={selectedOrder?.id ?? "none"}
                     adminSession={adminSession}
                     labels={labels}
                     loading={loadingDetailId === selectedOrder.id}
@@ -1509,6 +1445,7 @@ function OrderWorkflowStrip({
       aria-label={text.orders.workflow.title}
       className="grid min-w-0 gap-2 xl:grid-cols-[minmax(0,1fr)_auto]"
     >
+      <div className="sm:hidden"><Select value={activeKey} onValueChange={(value) => onSelect(value as WorkflowKey)}><SelectTrigger className="w-full" aria-label={text.orders.workflow.title}><SelectValue /></SelectTrigger><SelectContent>{groups.flatMap(group => group.items).map(item => <SelectItem key={item.key} value={item.key}>{item.label} ({counts[item.key] ?? 0})</SelectItem>)}</SelectContent></Select></div>
       {groups.map((group) => (
         <div
           key={group.key}
@@ -1602,6 +1539,7 @@ function MetricCard({
 }
 
 function OrdersList({
+  canManage,
   labels,
   orders,
   page,
@@ -1617,6 +1555,7 @@ function OrdersList({
   onQuickTransition,
   onSelectOrder,
 }: {
+  canManage: boolean;
   labels: OrderLabels;
   orders: AdminOrder[];
   page: number;
@@ -1793,7 +1732,7 @@ function OrdersList({
                   )}
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1.5">
-                      {transition && (
+                      {canManage && transition && (
                         <Button
                           size="xs"
                           className="h-7 px-2"
@@ -2147,16 +2086,16 @@ function OrderDetailsPanel({
   onPrintOrder: (order: AdminOrder) => void;
   onRollback: (order: AdminOrder) => void;
   onTransition: (order: AdminOrder, status: OrderDbStatus, successMessage: string) => void;
-  onAdjustShipping: (order: AdminOrder, patch: OrderShippingPatchInput) => void;
-  onUpdateLogistics: (order: AdminOrder, carrier: string, tracking: string) => void;
+  onAdjustShipping: (order: AdminOrder, patch: OrderShippingPatchInput) => Promise<OrderMutationResult>;
+  onUpdateLogistics: (order: AdminOrder, carrier: string, tracking: string) => Promise<OrderMutationResult>;
   onUpdateLineFulfillment: (
     order: AdminOrder,
     line: OrderLine,
     patch: OrderLineFulfillmentInput
-  ) => void;
-  onUpdatePayment: (order: AdminOrder, patch: OrderPaymentPatchInput) => void;
-  onUpdatePaymentMethod: (order: AdminOrder, paymentMethod: PaymentMethod) => void;
-  onUpdateStaffNote: (order: AdminOrder, staffNote: string) => void;
+  ) => Promise<OrderMutationResult>;
+  onUpdatePayment: (order: AdminOrder, patch: OrderPaymentPatchInput) => Promise<OrderMutationResult>;
+  onUpdatePaymentMethod: (order: AdminOrder, paymentMethod: PaymentMethod) => Promise<OrderMutationResult>;
+  onUpdateStaffNote: (order: AdminOrder, staffNote: string) => Promise<OrderMutationResult>;
 }) {
   const [trackingDetailsState, setTrackingDetailsState] = React.useState(() => ({
     open: false,
@@ -2613,19 +2552,19 @@ function OrderMobileDetailsSection({
   text: AdminText;
   trackingDetail: OrderTrackingDetail;
   trackingDetailsOpen: boolean;
-  onAdjustShipping: (order: AdminOrder, patch: OrderShippingPatchInput) => void;
+  onAdjustShipping: (order: AdminOrder, patch: OrderShippingPatchInput) => Promise<OrderMutationResult>;
   onApproveWalletRefund: (order: AdminOrder, refund: WalletRefundRequest) => void;
   onRefreshTrackingDetails: () => void;
   onToggleTrackingDetails: () => void;
-  onUpdateLogistics: (order: AdminOrder, carrier: string, tracking: string) => void;
+  onUpdateLogistics: (order: AdminOrder, carrier: string, tracking: string) => Promise<OrderMutationResult>;
   onUpdateLineFulfillment: (
     order: AdminOrder,
     line: OrderLine,
     patch: OrderLineFulfillmentInput
-  ) => void;
-  onUpdatePayment: (order: AdminOrder, patch: OrderPaymentPatchInput) => void;
-  onUpdatePaymentMethod: (order: AdminOrder, paymentMethod: PaymentMethod) => void;
-  onUpdateStaffNote: (order: AdminOrder, staffNote: string) => void;
+  ) => Promise<OrderMutationResult>;
+  onUpdatePayment: (order: AdminOrder, patch: OrderPaymentPatchInput) => Promise<OrderMutationResult>;
+  onUpdatePaymentMethod: (order: AdminOrder, paymentMethod: PaymentMethod) => Promise<OrderMutationResult>;
+  onUpdateStaffNote: (order: AdminOrder, staffNote: string) => Promise<OrderMutationResult>;
 }) {
   if (activeSection === "payment") {
     return (
@@ -2729,7 +2668,7 @@ function OrderMobileOverview({
   order: AdminOrder;
   pickedItems: number;
   text: AdminText;
-  onUpdateStaffNote: (order: AdminOrder, staffNote: string) => void;
+  onUpdateStaffNote: (order: AdminOrder, staffNote: string) => Promise<OrderMutationResult>;
 }) {
   return (
     <div className="min-w-0 space-y-1.5">
@@ -3496,13 +3435,14 @@ function OrderPaymentMethodCard({
   order: AdminOrder;
   text: AdminText;
   onApproveWalletRefund: (order: AdminOrder, refund: WalletRefundRequest) => void;
-  onUpdatePayment: (order: AdminOrder, patch: OrderPaymentPatchInput) => void;
-  onUpdatePaymentMethod: (order: AdminOrder, paymentMethod: PaymentMethod) => void;
+  onUpdatePayment: (order: AdminOrder, patch: OrderPaymentPatchInput) => Promise<OrderMutationResult>;
+  onUpdatePaymentMethod: (order: AdminOrder, paymentMethod: PaymentMethod) => Promise<OrderMutationResult>;
 }) {
   const [paymentMethodDraft, setPaymentMethodDraft] = React.useState<PaymentMethod>(
     order.paymentMethod
   );
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [formError, setFormError] = React.useState("");
   const [statusDraft, setStatusDraft] = React.useState<PaymentStatus>("paid");
   const [reconciliationMethodDraft, setReconciliationMethodDraft] =
     React.useState<PaymentMethod>(order.paymentMethod);
@@ -3555,14 +3495,15 @@ function OrderPaymentMethodCard({
     setDialogOpen(true);
   }
 
-  function handleReconciliationSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function handleReconciliationSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!canSaveReconciliation) {
       return;
     }
 
-    onUpdatePayment(order, {
+    setFormError("");
+    const outcome = await onUpdatePayment(order, {
       paymentMethod: reconciliationMethodDraft,
       paymentStatus: statusDraft,
       receivedAmount: statusDraft === "paid" ? amountValue ?? undefined : undefined,
@@ -3573,7 +3514,8 @@ function OrderPaymentMethodCard({
       reference: referenceDraft.trim() || undefined,
       note: noteDraft.trim() || undefined,
     });
-    setDialogOpen(false);
+    if (outcome.ok) setDialogOpen(false);
+    else setFormError(outcome.error);
   }
 
   const collectorLabel =
@@ -3638,8 +3580,8 @@ function OrderPaymentMethodCard({
 
   function renderPaymentDialog() {
     return (
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent scrollLayout="body" className="max-w-[520px] rounded-lg bg-white">
+      <Dialog open={dialogOpen} onOpenChange={(open) => { if (!isMutating && (open || window.confirm(/\p{Script=Han}/u.test(text.common.cancel) ? "放弃未保存的修改？" : "Abbandonare le modifiche non salvate?"))) setDialogOpen(open); }}>
+        <DialogContent data-admin-dirty={dialogOpen ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} scrollLayout="body" className="max-w-[520px] rounded-lg bg-white">
           <DialogHeader>
             <DialogTitle className="text-base font-black text-slate-950">
               {text.orders.paymentReconciliation}
@@ -3652,6 +3594,7 @@ function OrderPaymentMethodCard({
             </DialogDescription>
           </DialogHeader>
           <form className="flex min-h-0 flex-1 flex-col gap-3" onSubmit={handleReconciliationSubmit}>
+            {formError ? <p role="alert" className="text-sm text-red-700">{formError}</p> : null}
             <DialogBody className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="min-w-0">
@@ -3756,7 +3699,7 @@ function OrderPaymentMethodCard({
                 type="button"
                 variant="outline"
                 className="rounded-md"
-                onClick={() => setDialogOpen(false)}
+                onClick={() => { if (!isMutating && window.confirm(/\p{Script=Han}/u.test(text.common.cancel) ? "放弃未保存的修改？" : "Abbandonare le modifiche non salvate?")) setDialogOpen(false); }}
               >
                 {text.common.cancel}
               </Button>
@@ -3917,6 +3860,7 @@ function OrderPaymentMethodCard({
       <form
         className="grid min-w-0 gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
         onSubmit={handleSubmit}
+        data-admin-dirty={paymentMethodDraft !== order.paymentMethod ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined}
       >
         <label className="min-w-0">
           <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
@@ -4115,12 +4059,13 @@ function OrderLogisticsCard({
   trackingDetailsOpen: boolean;
   onRefreshTrackingDetails: () => void;
   onToggleTrackingDetails: () => void;
-  onAdjustShipping: (order: AdminOrder, patch: OrderShippingPatchInput) => void;
-  onUpdateLogistics: (order: AdminOrder, carrier: string, tracking: string) => void;
+  onAdjustShipping: (order: AdminOrder, patch: OrderShippingPatchInput) => Promise<OrderMutationResult>;
+  onUpdateLogistics: (order: AdminOrder, carrier: string, tracking: string) => Promise<OrderMutationResult>;
 }) {
   const [carrierDraft, setCarrierDraft] = React.useState<Carrier>(order.carrier);
   const [trackingDraft, setTrackingDraft] = React.useState(order.tracking);
   const [shippingDialogOpen, setShippingDialogOpen] = React.useState(false);
+  const [formError, setFormError] = React.useState("");
   const [shippingAmountDraft, setShippingAmountDraft] = React.useState(() =>
     formatPaymentAmountInput(suggestedShippingAmount(order))
   );
@@ -4185,19 +4130,21 @@ function OrderLogisticsCard({
   }, [needsShippingAdjustment, shippingAdjustmentSuggestedAmount, text.orders.shippingAdjustmentDefaultReason]);
 
   const handleShippingAdjustmentSubmit = React.useCallback(
-    (event: React.FormEvent<HTMLFormElement>) => {
+    async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
 
       if (!canSaveShippingAdjustment || shippingAmountValue === null) {
         return;
       }
 
-      onAdjustShipping(order, {
+      setFormError("");
+      const outcome = await onAdjustShipping(order, {
         shippingAmount: shippingAmountValue,
         reason: shippingReasonDraft.trim(),
         note: shippingNoteDraft.trim() || undefined,
       });
-      setShippingDialogOpen(false);
+      if (outcome.ok) setShippingDialogOpen(false);
+      else setFormError(outcome.error);
     },
     [
       canSaveShippingAdjustment,
@@ -4241,6 +4188,7 @@ function OrderLogisticsCard({
       <form
         className="mt-1.5 grid gap-1.5 rounded-md border border-slate-100 bg-slate-50 p-1.5 sm:grid-cols-[minmax(160px,0.9fr)_minmax(180px,1.1fr)_auto] sm:items-end"
         onSubmit={handleSubmit}
+        data-admin-dirty={carrierDraft !== order.carrier || trackingDraft !== order.tracking ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined}
       >
         <label className="min-w-0">
           <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
@@ -4375,8 +4323,8 @@ function OrderLogisticsCard({
           />
         </div>
       )}
-      <Dialog open={shippingDialogOpen} onOpenChange={setShippingDialogOpen}>
-        <DialogContent scrollLayout="body" className="max-w-[520px] rounded-lg bg-white">
+      <Dialog open={shippingDialogOpen} onOpenChange={(open) => { if (!isMutating && (open || window.confirm(/\p{Script=Han}/u.test(text.common.cancel) ? "放弃未保存的修改？" : "Abbandonare le modifiche non salvate?"))) setShippingDialogOpen(open); }}>
+        <DialogContent data-admin-dirty={shippingDialogOpen ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} scrollLayout="body" className="max-w-[520px] rounded-lg bg-white">
           <DialogHeader>
             <DialogTitle className="text-base font-black text-slate-950">
               {text.orders.adjustShipping}
@@ -4389,6 +4337,7 @@ function OrderLogisticsCard({
             </DialogDescription>
           </DialogHeader>
           <form className="flex min-h-0 flex-1 flex-col gap-3" onSubmit={handleShippingAdjustmentSubmit}>
+            {formError ? <p role="alert" className="text-sm text-red-700">{formError}</p> : null}
             <DialogBody className="space-y-3">
               <div className="grid gap-2 rounded-md border border-slate-100 bg-slate-50/70 p-2 text-xs sm:grid-cols-3">
                 <InfoRow label={text.orders.currentShipping} value={formatEuro(order.shipping)} />
@@ -4452,7 +4401,7 @@ function OrderLogisticsCard({
                 type="button"
                 variant="outline"
                 className="rounded-md"
-                onClick={() => setShippingDialogOpen(false)}
+                onClick={() => { if (!isMutating && window.confirm(/\p{Script=Han}/u.test(text.common.cancel) ? "放弃未保存的修改？" : "Abbandonare le modifiche non salvate?")) setShippingDialogOpen(false); }}
               >
                 {text.common.cancel}
               </Button>
@@ -4489,8 +4438,12 @@ function OrderLines({
     order: AdminOrder,
     line: OrderLine,
     patch: OrderLineFulfillmentInput
-  ) => void;
+  ) => Promise<OrderMutationResult>;
 }) {
+  const { locale } = useI18n();
+  const copy = locale.startsWith("it") ? { title: "Registra quantità mancanti", description: "Di norma tutti i pezzi sono disponibili. Registra solo una quantità consegnata inferiore, con il motivo.", actual: "Quantità effettivamente consegnata", ordered: "Quantità ordinata", noShortage: "Se consegni tutto, completa l’imballaggio senza registrare una mancanza.", preview: "Pezzi mancanti", impact: "Il salvataggio avvia la registrazione della mancanza e la richiesta di rimborso, da approvare prima dell’accredito.", complete: "Quantità completa: nessuna mancanza da registrare.", reason: "Motivo della mancanza", example: "Ad esempio: inventario fisico zero, articolo prenotato non trovato.", save: "Salva mancanza" }
+    : { title: "登记缺货数量", description: "默认全部有货并按订购数量打包。只有实际缺货或少给时，填写实际给货数量和原因。", actual: "实际给货数量", ordered: "订购数量", noShortage: "没有缺货时无需保存，直接打包完成即可。", preview: "少给数量", impact: "保存后登记缺货并生成退款申请，经审批后入账。", complete: "当前等于订购数量，系统默认全给，不需要登记。", reason: "缺货原因", example: "例如：仓库实盘为0，锁货商品不存在。", save: "保存缺货" };
+  const [formError, setFormError] = React.useState("");
   const [editingLine, setEditingLine] = React.useState<OrderLine | null>(null);
   const [actualQuantity, setActualQuantity] = React.useState("0");
   const [reason, setReason] = React.useState("");
@@ -4516,7 +4469,7 @@ function OrderLines({
     reason.trim().length > 0 &&
     !isMutating;
 
-  const submitEditor = () => {
+  const submitEditor = async () => {
     if (!editingLine || !order || !onUpdateLineFulfillment) {
       return;
     }
@@ -4535,11 +4488,13 @@ function OrderLines({
       return;
     }
 
-    onUpdateLineFulfillment(order, editingLine, {
+    setFormError("");
+    const outcome = await onUpdateLineFulfillment(order, editingLine, {
       actualQuantity: safeQuantity,
       reason: reason.trim() || undefined,
     });
-    setEditingLine(null);
+    if (outcome.ok) setEditingLine(null);
+    else setFormError(outcome.error);
   };
 
   return (
@@ -4561,9 +4516,9 @@ function OrderLines({
                 </div>
                 <div className="mt-1.5 grid grid-cols-4 gap-1 text-xs max-[360px]:grid-cols-2">
                   <MobileFact label={text.orders.lines.quantity} value={`${line.quantity}`} />
-                  <MobileFact label="实给" value={`${lineEffectivePickedQty(line)}`} />
+                  <MobileFact label={locale.startsWith("it") ? "Consegnati" : "实给"} value={`${lineEffectivePickedQty(line)}`} />
                   <MobileFact label={text.orders.lines.reserved} value={`${line.reservedQty}`} />
-                  <MobileFact label="缺货" value={`${line.cancelledQty}`} />
+                  <MobileFact label={locale.startsWith("it") ? "Mancanti" : "缺货"} value={`${line.cancelledQty}`} />
                 </div>
                 {refundSummary && lineShortageRefundAmount(line) > 0 ? (
                   <div className="mt-1 grid grid-cols-2 gap-1 text-xs">
@@ -4587,7 +4542,7 @@ function OrderLines({
                 ) : null}
                 <div className="mt-2 flex items-center justify-between gap-2">
                   <Badge className={orderLineOperationalBadgeClass(line)}>
-                    {orderLineOperationalLabel(line)}
+                    {orderLineOperationalLabel(line, locale)}
                   </Badge>
                   {canEditLines && order && onUpdateLineFulfillment ? (
                     <Button
@@ -4598,7 +4553,7 @@ function OrderLines({
                       disabled={isMutating}
                       onClick={() => openEditor(line)}
                     >
-                      登记缺货
+                      {locale.startsWith("it") ? "Registra mancanza" : "登记缺货"}
                     </Button>
                   ) : null}
                 </div>
@@ -4614,11 +4569,11 @@ function OrderLines({
               <TableHead className="w-[188px]">{text.common.sku}</TableHead>
               <TableHead className="min-w-[420px]">{text.common.product}</TableHead>
               <TableHead className="w-[48px] text-center">{text.orders.lines.quantity}</TableHead>
-              <TableHead className="w-[56px] text-center">实给</TableHead>
+              <TableHead className="w-[56px] text-center">{locale.startsWith("it") ? "Consegnati" : "实给"}</TableHead>
               <TableHead className="w-[64px] text-center">{text.orders.lines.reserved}</TableHead>
               <TableHead className="w-[64px] text-center">{text.orders.lines.fulfilled}</TableHead>
               <TableHead className="w-[82px] text-right">{text.common.price}</TableHead>
-              <TableHead className="w-[84px] text-right">操作</TableHead>
+              <TableHead className="w-[84px] text-right">{locale.startsWith("it") ? "Azioni" : "操作"}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody className="[&_td]:px-1.5 [&_td]:py-1.5">
@@ -4673,11 +4628,11 @@ function OrderLines({
                       disabled={isMutating}
                       onClick={() => openEditor(line)}
                     >
-                      缺货
+                      {locale.startsWith("it") ? "Mancanza" : "缺货"}
                     </Button>
                   ) : (
                     <span className="text-[11px] font-semibold text-slate-400">
-                      {orderLineOperationalLabel(line)}
+                      {orderLineOperationalLabel(line, locale)}
                     </span>
                   )}
                 </TableCell>
@@ -4686,15 +4641,16 @@ function OrderLines({
           </TableBody>
         </Table>
       </div>
-      <Dialog open={editingLine !== null} onOpenChange={(open) => !open && setEditingLine(null)}>
-        <DialogContent scrollLayout="body" className="max-w-[calc(100vw-1.5rem)] rounded-lg bg-white sm:max-w-md">
+      <Dialog open={editingLine !== null} onOpenChange={(open) => { if (!open && !isMutating && window.confirm(/\p{Script=Han}/u.test(text.common.cancel) ? "放弃未保存的修改？" : "Abbandonare le modifiche non salvate?")) setEditingLine(null); }}>
+        <DialogContent data-admin-dirty={editingLine && (reason.trim() || actualQuantity !== String(lineEffectivePickedQty(editingLine))) ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} scrollLayout="body" className="max-w-[calc(100vw-1.5rem)] rounded-lg bg-white sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-base font-black">登记缺货数量</DialogTitle>
+            <DialogTitle className="text-base font-black">{copy.title}</DialogTitle>
             <DialogDescription>
-              默认全部有货并按订购数量打包。只有实际缺货或少给时，填写实际给货数量和原因。
+              {copy.description}
             </DialogDescription>
           </DialogHeader>
         <DialogBody className="space-y-3">
+          {formError ? <p role="alert" className="text-sm text-red-700">{formError}</p> : null}
           {editingLine ? (
             <div className="space-y-3">
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
@@ -4706,33 +4662,33 @@ function OrderLines({
                 </div>
               </div>
               <div className="grid gap-1.5">
-                <div className="text-xs font-black text-slate-500">实际给货数量</div>
+                <label htmlFor="order-shortage-qty" className="text-xs font-black text-slate-500">{copy.actual}</label>
                 <Input
-                  type="number"
+                  id="order-shortage-qty" type="number" disabled={isMutating}
                   min={0}
                   max={editingLine.quantity}
                   value={actualQuantity}
                   onChange={(event) => setActualQuantity(event.target.value)}
                 />
                 <div className="text-[11px] font-semibold text-slate-500">
-                  订购 {editingLine.quantity} 件。没有缺货时无需保存，直接打包完成即可。
+                  {copy.ordered}: {editingLine.quantity}. {copy.noShortage}
                 </div>
               </div>
               {editingIsShortage ? (
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-semibold text-amber-800">
-                  少给 {editingLine.quantity - editingActualQuantity} 件，需要填写原因；保存后会走缺货核销和退款申请流程。
+                  {copy.preview}: {editingLine.quantity - editingActualQuantity}. {copy.impact}
                 </div>
               ) : (
                 <div className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-xs font-semibold text-emerald-700">
-                  当前等于订购数量，系统默认全给，不需要登记。
+                  {copy.complete}
                 </div>
               )}
               <div className="grid gap-1.5">
-                <div className="text-xs font-black text-slate-500">缺货原因</div>
+                <label htmlFor="order-shortage-reason" className="text-xs font-black text-slate-500">{copy.reason}</label>
                 <Textarea
                   value={reason}
-                  placeholder="例如：仓库实盘为 0，锁货商品不存在。"
-                  disabled={!editingIsShortage}
+                  id="order-shortage-reason" placeholder={copy.example}
+                  disabled={!editingIsShortage || isMutating}
                   onChange={(event) => setReason(event.target.value)}
                 />
               </div>
@@ -4740,11 +4696,11 @@ function OrderLines({
           ) : null}
         </DialogBody>
         <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setEditingLine(null)}>
+            <Button type="button" variant="outline" disabled={isMutating} onClick={() => { if (window.confirm(/\p{Script=Han}/u.test(text.common.cancel) ? "放弃未保存的修改？" : "Abbandonare le modifiche non salvate?")) setEditingLine(null); }}>
               {text.common.cancel}
             </Button>
             <Button type="button" onClick={submitEditor} disabled={!canSaveShortage}>
-              保存缺货
+              {copy.save}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -4837,7 +4793,7 @@ function OrderNotesBanner({
   isMutating: boolean;
   order: AdminOrder;
   text: AdminText;
-  onUpdateStaffNote: (order: AdminOrder, staffNote: string) => void;
+  onUpdateStaffNote: (order: AdminOrder, staffNote: string) => Promise<OrderMutationResult>;
 }) {
   const customerNote =
     order.customerNote.trim() ||
@@ -4910,8 +4866,9 @@ function StaffNoteEditor({
   order: AdminOrder;
   staffNote: string;
   text: AdminText;
-  onUpdateStaffNote: (order: AdminOrder, staffNote: string) => void;
+  onUpdateStaffNote: (order: AdminOrder, staffNote: string) => Promise<OrderMutationResult>;
 }) {
+  const [formError, setFormError] = React.useState("");
   const [draft, setDraft] = React.useState(staffNote);
   const [isEditing, setIsEditing] = React.useState(false);
   const normalizedDraft = draft.trim();
@@ -4919,7 +4876,7 @@ function StaffNoteEditor({
 
   if (!isEditing) {
     return (
-      <div className="min-w-0 rounded bg-white/75 px-1.5 py-1">
+      <div data-admin-dirty={isEditing && hasChanges ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} className="min-w-0 rounded bg-white/75 px-1.5 py-1">
         <div className="flex items-center justify-between gap-2">
           <div className="text-[10px] font-black leading-none text-amber-700/80">
             {text.orders.details.staffNote}
@@ -4944,7 +4901,7 @@ function StaffNoteEditor({
   }
 
   return (
-    <div className="min-w-0 rounded bg-white/75 px-1.5 py-1">
+    <div data-admin-dirty={isEditing && hasChanges ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} className="min-w-0 rounded bg-white/75 px-1.5 py-1">
       <div className="flex items-center justify-between gap-2">
         <div className="text-[10px] font-black leading-none text-amber-700/80">
           {text.orders.details.staffNote}
@@ -4970,9 +4927,11 @@ function StaffNoteEditor({
             variant="outline"
             disabled={!hasChanges || isMutating}
             className="h-6 gap-1 rounded px-1.5 text-[10px] font-bold"
-            onClick={() => {
-              onUpdateStaffNote(order, draft);
-              setIsEditing(false);
+            onClick={async () => {
+              setFormError("");
+              const outcome = await onUpdateStaffNote(order, draft);
+              if (outcome.ok) setIsEditing(false);
+              else setFormError(outcome.error);
             }}
           >
             {isMutating ? (
@@ -4984,6 +4943,7 @@ function StaffNoteEditor({
           </Button>
         </div>
       </div>
+      {formError ? <p role="alert" className="text-xs text-red-700">{formError}</p> : null}
       <textarea
         value={draft}
         maxLength={1000}
@@ -5874,8 +5834,9 @@ async function fetchOrdersFromApi({
   paymentStatus,
   view,
   stockRisk,
-  reservation,
+  reservation, q, dateFrom, dateTo, sort, customerId,
 }: {
+  q?: string; dateFrom?: string; dateTo?: string; sort?: string; customerId?: string;
   signal?: AbortSignal;
   stockRisk?: Exclude<StockRiskFilterValue, "all">;
   reservation?: "overdue";
@@ -5885,24 +5846,7 @@ async function fetchOrdersFromApi({
   paymentStatus?: Exclude<PaymentFilterValue, "all">;
   view?: Exclude<ViewMode, "orders">;
 }): Promise<OrdersApiResult> {
-  const params = new URLSearchParams({
-    limit: String(limit),
-    offset: String((page - 1) * limit),
-    sort: "operations_queue",
-  });
-
-  if (status) {
-    params.set("status", status);
-  }
-  if (paymentStatus) {
-    params.set("paymentStatus", paymentStatus);
-  }
-  if (view) {
-    params.set("view", view);
-  }
-
-  if (stockRisk) params.set("stockRisk", stockRisk);
-  if (reservation) params.set("reservation", reservation);
+  const params = orderQueryParams({ status, paymentStatus, view, stockRisk, reservation, q, dateFrom, dateTo, sort, customerId }, page, limit);
 
   const response = await fetch(`/api/admin/orders?${params.toString()}`, {
     cache: "no-store",
@@ -8124,18 +8068,18 @@ function orderLineOperationalBadgeClass(line: OrderLine) {
   return "border-emerald-200 bg-emerald-50 text-emerald-700";
 }
 
-function orderLineOperationalLabel(line: OrderLine) {
+function orderLineOperationalLabel(line: OrderLine, locale: string) {
   if (line.cancelledQty >= line.quantity) {
-    return "缺货核销";
+    return locale.startsWith("it") ? "Annullato per mancanza" : "缺货核销";
   }
 
   if (line.cancelledQty > 0) {
-    return "部分缺货";
+    return locale.startsWith("it") ? "Mancanza parziale" : "部分缺货";
   }
 
   if (line.pickedQty >= line.quantity) {
-    return "已确认";
+    return locale.startsWith("it") ? "Confermato" : "已确认";
   }
 
-  return "默认全给";
+  return locale.startsWith("it") ? "Consegna completa prevista" : "默认全给";
 }

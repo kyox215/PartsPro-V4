@@ -1,6 +1,10 @@
 "use client";
 
 import * as React from "react";
+import { AdminFieldGroup } from "./admin-field-group";
+import { useI18n } from "./i18n-provider";
+import { remaxText } from "@/lib/admin-remax-copy";
+import { AdminListPager } from "./admin-list-pager";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -31,6 +35,7 @@ import { cn } from "@/lib/utils";
 
 type RequestState = {
   message: string;
+  values?: Record<string, string | number>;
   status: "idle" | "loading" | "success" | "error";
 };
 
@@ -63,6 +68,8 @@ export function AdminRemaxCenter({
   initialDashboard: AdminRemaxDashboard | null;
   initialError: string | null;
 }) {
+ const { locale } = useI18n(); const t = React.useCallback((value: string) => remaxText(value, locale), [locale]);
+
   const [dashboard, setDashboard] = React.useState<AdminRemaxDashboard | null>(initialDashboard);
   const [dashboardState, setDashboardState] = React.useState<RequestState>(() =>
     initialError
@@ -93,6 +100,8 @@ export function AdminRemaxCenter({
       setDashboardState({ status: "error", message: errorMessage(error) });
     }
   }, []);
+
+  React.useEffect(() => { if (initialDashboard) return; const timer = window.setTimeout(() => void refreshDashboard(), 0); return () => window.clearTimeout(timer); }, [initialDashboard, refreshDashboard]);
 
   const openBatches = React.useMemo(
     () => dashboard?.batches.filter((batch) => batch.remainingQty > 0 && ["open", "partially_received"].includes(batch.status)) ?? [],
@@ -133,8 +142,9 @@ export function AdminRemaxCenter({
       setPreviewState({
         status: payload.data.counts.blocked > 0 ? "error" : "success",
         message: payload.data.counts.blocked > 0
-          ? `Ci sono ${payload.data.counts.blocked} righe da correggere.`
+          ? "Ci sono {count} righe da correggere."
           : "Controllo completato. Ora puoi confermare l'importazione.",
+        values: { count: payload.data.counts.blocked },
       });
     } catch (error) {
       setPreview(null);
@@ -154,7 +164,8 @@ export function AdminRemaxCenter({
       if (!response.ok || !payload.data) throw new Error(apiMessage(payload));
       setPreviewState({
         status: "success",
-        message: `Lotto ${String(payload.data.batchCode ?? settings.batchCode)} importato. Le quantità sono ancora “in arrivo”, non stock fisico.`,
+        message: "Lotto {batchCode} importato. Le quantità sono ancora “in arrivo”, non stock fisico.",
+        values: { batchCode: String(payload.data.batchCode ?? settings.batchCode) },
       });
       setPreview(null);
       setApplyConfirmed(false);
@@ -226,7 +237,8 @@ export function AdminRemaxCenter({
       if (!response.ok || !payload.data) throw new Error(apiMessage(payload));
       setArrivalState({
         status: "success",
-        message: `Arrivo registrato: ${String(payload.data.receivedQty ?? 0)} pezzi, ${String(payload.data.allocatedQty ?? 0)} assegnati ai preordini.`,
+        message: "Arrivo registrato: {received} pezzi, {allocated} assegnati ai preordini.",
+        values: { received: String(payload.data.receivedQty ?? 0), allocated: String(payload.data.allocatedQty ?? 0) },
       });
       setArrivalPreview(null);
       setArrivalIdempotencyKey("");
@@ -240,24 +252,22 @@ export function AdminRemaxCenter({
   }
 
   return (
-    <main className="min-h-screen bg-[#f4f6fa] px-3 py-4 text-slate-950 sm:px-5 sm:py-6">
+    <section data-admin-dirty={file || Object.keys(receiptQuantities).length ? "true" : "false"} className="min-w-0 space-y-3 text-slate-950">
       <div className="mx-auto max-w-7xl space-y-3">
         <header className="rounded-xl border border-fuchsia-200 bg-gradient-to-r from-fuchsia-950 via-purple-900 to-indigo-900 p-4 text-white shadow-lg sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <Button asChild variant="ghost" size="sm" className="mb-2 -ml-2 text-white hover:bg-white/10 hover:text-white">
-                <Link href="/admin"><ArrowLeft className="size-4" /> Torna al pannello</Link>
+                <Link href="/admin?panel=overview"><ArrowLeft className="size-4" /> {t("Torna al pannello")}</Link>
               </Button>
               <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-fuchsia-200">
-                <Sparkles className="size-4" /> REMAX esclusiva
-              </div>
-              <h1 className="mt-1 text-2xl font-black sm:text-3xl">Centro preordini REMAX</h1>
+                <Sparkles className="size-4" /> {t("REMAX esclusiva")}</div>
+              <h1 className="mt-1 text-2xl font-black sm:text-3xl">{t("Centro preordini REMAX")}</h1>
               <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-purple-100">
-                Quattro passaggi guidati. L&apos;importazione apre le prenotazioni ma non aumenta lo stock; solo “Registra arrivo” trasforma la merce in giacenza reale.
-              </p>
+                {t("Quattro passaggi guidati. L&apos;importazione apre le prenotazioni ma non aumenta lo stock; solo “Registra arrivo” trasforma la merce in giacenza reale.")}</p>
             </div>
             <Button asChild className="bg-white text-purple-950 hover:bg-purple-50">
-              <a href="/api/admin/remax/template"><Download className="size-4" /> 1. Scarica modello</a>
+              <a href="/api/admin/remax/template"><Download className="size-4" /> {t("1. Scarica modello")}</a>
             </Button>
           </div>
         </header>
@@ -266,28 +276,27 @@ export function AdminRemaxCenter({
           <section className="space-y-3">
             <Card className="border-slate-200">
               <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-lg"><FileSpreadsheet className="size-5 text-purple-700" /> 2. Compila lotto e carica file</CardTitle>
+                <CardTitle className="flex items-center gap-2 text-lg"><FileSpreadsheet className="size-5 text-purple-700" /> {t("2. Compila lotto e carica file")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <Field label="Codice lotto *"><Input value={settings.batchCode} placeholder="REMAX-2026-07-A" onChange={(event) => updateSettings("batchCode", event.currentTarget.value)} /></Field>
-                  <Field label="ETA inizio *"><Input type="date" value={settings.etaStart} onChange={(event) => updateSettings("etaStart", event.currentTarget.value)} /></Field>
-                  <Field label="ETA fine *"><Input type="date" value={settings.etaEnd} onChange={(event) => updateSettings("etaEnd", event.currentTarget.value)} /></Field>
-                  <Field label="Chiusura prenotazioni"><Input type="datetime-local" value={settings.closeAt} onChange={(event) => updateSettings("closeAt", event.currentTarget.value)} /></Field>
-                  <Field label="Numero ordine fornitore"><Input value={settings.orderNo} onChange={(event) => updateSettings("orderNo", event.currentTarget.value)} /></Field>
-                  <Field label="Deposito"><Input value={settings.location} onChange={(event) => updateSettings("location", event.currentTarget.value)} /></Field>
+                  <Field label={t("Codice lotto *")}><Input value={settings.batchCode} placeholder={t("REMAX-2026-07-A")} onChange={(event) => updateSettings("batchCode", event.currentTarget.value)} /></Field>
+                  <Field label={t("ETA inizio *")}><Input type="date" value={settings.etaStart} onChange={(event) => updateSettings("etaStart", event.currentTarget.value)} /></Field>
+                  <Field label={t("ETA fine *")}><Input type="date" value={settings.etaEnd} onChange={(event) => updateSettings("etaEnd", event.currentTarget.value)} /></Field>
+                  <Field label={t("Chiusura prenotazioni")}><Input type="datetime-local" value={settings.closeAt} onChange={(event) => updateSettings("closeAt", event.currentTarget.value)} /></Field>
+                  <Field label={t("Numero ordine fornitore")}><Input value={settings.orderNo} onChange={(event) => updateSettings("orderNo", event.currentTarget.value)} /></Field>
+                  <Field label={t("Deposito")}><Input value={settings.location} onChange={(event) => updateSettings("location", event.currentTarget.value)} /></Field>
                 </div>
-                <Field label="Condizioni mostrate al cliente *">
+                <Field label={t("Condizioni mostrate al cliente *")}>
                   <Textarea className="min-h-24" value={settings.terms} onChange={(event) => updateSettings("terms", event.currentTarget.value)} />
                 </Field>
                 <div className="rounded-lg border border-dashed border-purple-300 bg-purple-50 p-4">
-                  <Label htmlFor="remaxFile" className="font-black">File REMAX (.xlsx o .csv, massimo 5 MB / 500 righe)</Label>
+                  <Label htmlFor="remaxFile" className="font-black">{t("File REMAX (.xlsx o .csv, massimo 5 MB / 500 righe)")}</Label>
                   <Input id="remaxFile" className="mt-2 bg-white" type="file" accept=".xlsx,.csv" onChange={handleFileChange} />
-                  {file ? <p className="mt-2 text-xs font-bold text-purple-800">Selezionato: {file.name}</p> : null}
+                  {file ? <p className="mt-2 text-xs font-bold text-purple-800">{t("Selezionato:")}{file.name}</p> : null}
                 </div>
                 <Button type="button" variant="outline" disabled={previewState.status === "loading"} onClick={previewImport}>
-                  {previewState.status === "loading" ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />} 3. Controlla prima di importare
-                </Button>
+                  {previewState.status === "loading" ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />} {t("3. Controlla prima di importare")}</Button>
                 <InlineState state={previewState} />
               </CardContent>
             </Card>
@@ -296,11 +305,11 @@ export function AdminRemaxCenter({
               <Card className="border-purple-200">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex flex-wrap items-center justify-between gap-2 text-lg">
-                    <span>3. Anteprima file</span>
+                    <span>{t("3. Anteprima file")}</span>
                     <span className="flex gap-1.5 text-xs">
-                      <Badge className="bg-emerald-600">Pronte {preview.counts.ready}</Badge>
-                      <Badge variant="secondary">Bozze {preview.counts.draft}</Badge>
-                      <Badge variant="destructive">Bloccate {preview.counts.blocked}</Badge>
+                      <Badge className="bg-emerald-600">{t("Pronte")}{preview.counts.ready}</Badge>
+                      <Badge variant="secondary">{t("Bozze")}{preview.counts.draft}</Badge>
+                      <Badge variant="destructive">{t("Bloccate")}{preview.counts.blocked}</Badge>
                     </span>
                   </CardTitle>
                 </CardHeader>
@@ -308,7 +317,7 @@ export function AdminRemaxCenter({
                   <div className="max-h-96 overflow-auto rounded-lg border border-slate-200">
                     <table className="w-full min-w-[760px] text-left text-xs">
                       <thead className="sticky top-0 bg-slate-100 text-slate-600">
-                        <tr><th className="p-2">Riga</th><th className="p-2">Stato</th><th className="p-2">SKU / prodotto</th><th className="p-2">Q.tà</th><th className="p-2">Prezzi C / B2B / retail</th><th className="p-2">Controllo</th></tr>
+                        <tr><th className="p-2">{t("Riga")}</th><th className="p-2">{t("Stato")}</th><th className="p-2">{t("SKU / prodotto")}</th><th className="p-2">{t("Q.tà")}</th><th className="p-2">{t("Prezzi C / B2B / retail")}</th><th className="p-2">{t("Controllo")}</th></tr>
                       </thead>
                       <tbody>
                         {preview.rows.map((row) => (
@@ -316,9 +325,9 @@ export function AdminRemaxCenter({
                             <td className="p-2 font-mono">{row.rowNumber}</td>
                             <td className="p-2"><RowStatus status={row.status} /></td>
                             <td className="p-2"><div className="font-mono font-bold">{row.sku}</div><div className="mt-1 max-w-sm font-semibold">{row.name}</div></td>
-                            <td className="p-2 font-mono">{row.qtyOrdered} - buffer {row.bufferQty}</td>
+                            <td className="p-2 font-mono">{row.qtyOrdered} {t("- buffer")}{row.bufferQty}</td>
                             <td className="p-2 font-mono">€{row.costPrice.toFixed(2)} / €{row.b2bPrice.toFixed(2)} / €{row.retailPrice.toFixed(2)}</td>
-                            <td className={cn("p-2 font-semibold", row.issues.length ? "text-red-700" : "text-emerald-700")}>{row.issues.join(" · ") || "OK"}</td>
+                            <td className={cn("p-2 font-semibold", row.issues.length ? "text-red-700" : "text-emerald-700")}>{row.issues.map(t).join(" · ") || "OK"}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -326,12 +335,11 @@ export function AdminRemaxCenter({
                   </div>
                   <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-950">
                     <Checkbox checked={applyConfirmed} onCheckedChange={(value) => setApplyConfirmed(value === true)} />
-                    <span>Ho controllato quantità, costi, prezzi, immagini, ETA e righe da pubblicare. Confermo la creazione del lotto.</span>
+                    <span>{t("Ho controllato quantità, costi, prezzi, immagini, ETA e righe da pubblicare. Confermo la creazione del lotto.")}</span>
                   </label>
                   <Button type="button" disabled={!applyConfirmed || preview.counts.blocked > 0 || previewState.status === "loading" || !dashboard?.permissions.canImport} onClick={applyImport}>
-                    {previewState.status === "loading" ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />} Conferma e apri preordini
-                  </Button>
-                  {!dashboard?.permissions.canImport ? <p className="text-xs font-bold text-amber-700">Il tuo ruolo non possiede tutti i permessi richiesti per creare, prezzare e pubblicare.</p> : null}
+                    {previewState.status === "loading" ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />} {t("Conferma e apri preordini")}</Button>
+                  {!dashboard?.permissions.canImport ? <p className="text-xs font-bold text-amber-700">{t("Il tuo ruolo non possiede tutti i permessi richiesti per creare, prezzare e pubblicare.")}</p> : null}
                 </CardContent>
               </Card>
             ) : null}
@@ -362,31 +370,35 @@ export function AdminRemaxCenter({
           </aside>
         </div>
       </div>
-    </main>
+    </section>
   );
 }
 
 function SummaryCard({ dashboard, onRefresh, state }: { dashboard: AdminRemaxDashboard | null; onRefresh: () => void; state: RequestState }) {
+ const { locale } = useI18n(); const t = React.useCallback((value: string) => remaxText(value, locale), [locale]);
+
+  const [page, setPage] = React.useState(0);
   const pending = dashboard?.orders.reduce((sum, order) => sum + Math.max(order.quantity - order.readyQuantity, 0), 0) ?? 0;
   return (
     <Card className="border-slate-200">
-      <CardHeader className="pb-3"><CardTitle className="flex items-center justify-between text-lg"><span>Situazione REMAX</span><Button size="icon-sm" variant="outline" onClick={onRefresh} disabled={state.status === "loading"}><RefreshCw className={cn("size-4", state.status === "loading" && "animate-spin")} /></Button></CardTitle></CardHeader>
+      <CardHeader className="pb-3"><CardTitle className="flex items-center justify-between text-lg"><span>{t("Situazione REMAX")}</span><Button size="icon-sm" variant="outline" onClick={onRefresh} disabled={state.status === "loading"}><RefreshCw className={cn("size-4", state.status === "loading" && "animate-spin")} /></Button></CardTitle></CardHeader>
       <CardContent className="space-y-3">
         <div className="grid grid-cols-3 gap-2">
-          <Metric label="Prodotti" value={dashboard?.products.length ?? 0} />
-          <Metric label="Lotti aperti" value={dashboard?.batches.filter((batch) => batch.remainingQty > 0).length ?? 0} />
-          <Metric label="Pezzi in attesa" value={pending} />
+          <Metric label={t("Prodotti")} value={dashboard?.products.length ?? 0} />
+          <Metric label={t("Lotti aperti")} value={dashboard?.batches.filter((batch) => batch.remainingQty > 0).length ?? 0} />
+          <Metric label={t("Pezzi in attesa")} value={pending} />
         </div>
         <InlineState state={state} />
         {dashboard?.orders.length ? (
           <div className="space-y-1.5">
-            <div className="text-xs font-black uppercase text-slate-500">Preordini clienti</div>
-            {dashboard.orders.slice(0, 8).map((order) => (
-              <div key={order.id} className="flex items-center justify-between gap-2 rounded-md border border-slate-100 p-2 text-xs">
+            <div className="text-xs font-black uppercase text-slate-500">{t("Preordini clienti")}</div>
+            {dashboard.orders.slice(page * 20, page * 20 + 20).map((order) => (
+              <Link href={`/admin?panel=orders&orderId=${encodeURIComponent(order.id)}`} key={order.id} className="flex items-center justify-between gap-2 rounded-md border border-slate-100 p-2 text-xs">
                 <div className="min-w-0"><div className="truncate font-bold">{order.orderNo} · {order.customerName}</div><div className="text-slate-500">{order.status} / {order.paymentStatus}</div></div>
                 <div className="shrink-0 font-mono font-black">{order.readyQuantity}/{order.quantity}</div>
-              </div>
+              </Link>
             ))}
+            <AdminListPager page={page} pageSize={20} total={dashboard.orders.length} returned={dashboard.orders.slice(page * 20, page * 20 + 20).length} onPageChange={setPage} />
           </div>
         ) : null}
       </CardContent>
@@ -409,39 +421,41 @@ function ArrivalCard(props: {
   selectedBatch: AdminRemaxBatch | null;
   selectedBatchCode: string;
 }) {
+ const { locale } = useI18n(); const t = React.useCallback((value: string) => remaxText(value, locale), [locale]);
+
   return (
     <Card className="border-emerald-200">
-      <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-lg"><PackageCheck className="size-5 text-emerald-700" /> 4. Registra arrivo</CardTitle></CardHeader>
+      <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-lg"><PackageCheck className="size-5 text-emerald-700" /> {t("4. Registra arrivo")}</CardTitle></CardHeader>
       <CardContent className="space-y-3">
-        <p className="text-xs font-semibold leading-5 text-slate-600">Usa questa sezione solo quando hai contato fisicamente la merce. Il sistema assegna prima i preordini più vecchi (FIFO).</p>
-        <Field label="Lotto arrivato">
+        <p className="text-xs font-semibold leading-5 text-slate-600">{t("Usa questa sezione solo quando hai contato fisicamente la merce. Il sistema assegna prima i preordini più vecchi (FIFO).")}</p>
+        <Field label={t("Lotto arrivato")}>
           <select className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm" value={props.selectedBatchCode} onChange={(event) => props.onSelectBatch(event.currentTarget.value)}>
-            <option value="">Seleziona lotto</option>
-            {props.batches.map((batch) => <option key={batch.id} value={batch.batchCode}>{batch.batchCode} · residuo {batch.remainingQty}</option>)}
+            <option value="">{t("Seleziona lotto")}</option>
+            {props.batches.map((batch) => <option key={batch.id} value={batch.batchCode}>{batch.batchCode} {t("· residuo")}{batch.remainingQty}</option>)}
           </select>
         </Field>
         {props.selectedBatch ? (
           <div className="max-h-72 space-y-2 overflow-auto">
             {props.selectedBatch.lines.filter((line) => line.remainingQty > 0).map((line) => (
               <div key={line.id} className="grid grid-cols-[minmax(0,1fr)_90px] items-center gap-2 rounded-lg border border-slate-200 p-2">
-                <div className="min-w-0 text-xs"><div className="truncate font-mono font-bold">{line.sku}</div><div className="truncate font-semibold">{line.name}</div><div className="text-slate-500">Residuo {line.remainingQty} · clienti in attesa {line.waitingQty}</div></div>
-                <Input type="number" min={0} max={line.remainingQty} value={props.quantities[line.id] ?? 0} onChange={(event) => props.onQuantityChange(line.id, Math.max(0, Math.min(line.remainingQty, Number(event.currentTarget.value) || 0)))} />
+                <div className="min-w-0 text-xs"><div className="truncate font-mono font-bold">{line.sku}</div><div className="truncate font-semibold">{line.name}</div><div className="text-slate-500">{t("Residuo")}{line.remainingQty} {t("· clienti in attesa")}{line.waitingQty}</div></div>
+                <div className="space-y-1"><Label htmlFor={`remax-received-${line.id}`} className="text-xs">{t("Quantità ricevuta")}</Label><Input id={`remax-received-${line.id}`} aria-label={`${t("Quantità ricevuta")} · ${line.sku}`} type="number" min={0} max={line.remainingQty} value={props.quantities[line.id] ?? 0} onChange={(event) => props.onQuantityChange(line.id, Math.max(0, Math.min(line.remainingQty, Number(event.currentTarget.value) || 0)))} /></div>
               </div>
             ))}
           </div>
         ) : null}
-        <Button type="button" variant="outline" disabled={!props.selectedBatch || props.arrivalState.status === "loading"} onClick={props.onPreview}><ShieldCheck className="size-4" /> Anteprima arrivo</Button>
+        <Button type="button" variant="outline" disabled={!props.selectedBatch || props.arrivalState.status === "loading"} onClick={props.onPreview}><ShieldCheck className="size-4" /> {t("Anteprima arrivo")}</Button>
         {props.arrivalPreview ? (
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-950">
-            <div className="font-black">Totale ricevuto: {props.arrivalPreview.totalReceiveQty}</div>
-            <div className="mt-2 space-y-1">{props.arrivalPreview.lines.map((line) => <div key={line.lineId}>{line.sku}: {line.receiveQty} ricevuti · {line.willAllocateQty} ai preordini · {line.willRemainAvailableQty} liberi</div>)}</div>
+            <div className="font-black">{t("Totale ricevuto:")}{props.arrivalPreview.totalReceiveQty}</div>
+            <div className="mt-2 space-y-1">{props.arrivalPreview.lines.map((line) => <div key={line.lineId}>{line.sku}: {line.receiveQty} {t("ricevuti ·")}{line.willAllocateQty} {t("ai preordini ·")}{line.willRemainAvailableQty} {t("liberi")}</div>)}</div>
           </div>
         ) : null}
         {props.arrivalPreview ? (
-          <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-950"><Checkbox checked={props.arrivalConfirmed} onCheckedChange={(value) => props.onConfirm(value === true)} /><span>Ho contato la merce fisica e confermo queste quantità. Questa operazione aumenta lo stock reale.</span></label>
+          <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-950"><Checkbox checked={props.arrivalConfirmed} onCheckedChange={(value) => props.onConfirm(value === true)} /><span>{t("Ho contato la merce fisica e confermo queste quantità. Questa operazione aumenta lo stock reale.")}</span></label>
         ) : null}
-        <Button type="button" className="bg-emerald-700 hover:bg-emerald-800" disabled={!props.arrivalPreview || !props.arrivalConfirmed || !props.canReceive || props.arrivalState.status === "loading"} onClick={props.onApply}>{props.arrivalState.status === "loading" ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />} Registra arrivo reale</Button>
-        {!props.canReceive ? <p className="text-xs font-bold text-amber-700">Il tuo ruolo non può modificare lo stock.</p> : null}
+        <Button type="button" className="bg-emerald-700 hover:bg-emerald-800" disabled={!props.arrivalPreview || !props.arrivalConfirmed || !props.canReceive || props.arrivalState.status === "loading"} onClick={props.onApply}>{props.arrivalState.status === "loading" ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />} {t("Registra arrivo reale")}</Button>
+        {!props.canReceive ? <p className="text-xs font-bold text-amber-700">{t("Il tuo ruolo non può modificare lo stock.")}</p> : null}
         <InlineState state={props.arrivalState} />
       </CardContent>
     </Card>
@@ -449,7 +463,7 @@ function ArrivalCard(props: {
 }
 
 function Field({ children, label }: { children: React.ReactNode; label: string }) {
-  return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>;
+  return <AdminFieldGroup label={label}>{children}</AdminFieldGroup>;
 }
 
 function Metric({ label, value }: { label: string; value: number }) {
@@ -457,14 +471,17 @@ function Metric({ label, value }: { label: string; value: number }) {
 }
 
 function RowStatus({ status }: { status: "ready" | "draft" | "blocked" }) {
-  if (status === "ready") return <Badge className="bg-emerald-600">Pronta</Badge>;
-  if (status === "draft") return <Badge variant="secondary">Bozza</Badge>;
-  return <Badge variant="destructive">Bloccata</Badge>;
+ const { locale } = useI18n(); const t = React.useCallback((value: string) => remaxText(value, locale), [locale]);
+
+  if (status === "ready") return <Badge className="bg-emerald-600">{t("Pronta")}</Badge>;
+  if (status === "draft") return <Badge variant="secondary">{t("Bozza")}</Badge>;
+  return <Badge variant="destructive">{t("Bloccata")}</Badge>;
 }
 
 function InlineState({ state }: { state: RequestState }) {
+ const { locale } = useI18n();
   if (!state.message || state.status === "idle") return null;
-  return <div className={cn("rounded-lg border p-2.5 text-xs font-semibold", state.status === "error" ? "border-red-200 bg-red-50 text-red-700" : state.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-blue-200 bg-blue-50 text-blue-800")}>{state.status === "loading" ? <Loader2 className="mr-2 inline size-3.5 animate-spin" /> : null}{state.message}</div>;
+  return <div role={state.status === "error" ? "alert" : "status"} className={cn("rounded-lg border p-2.5 text-xs font-semibold", state.status === "error" ? "border-red-200 bg-red-50 text-red-700" : state.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-blue-200 bg-blue-50 text-blue-800")}>{state.status === "loading" ? <Loader2 className="mr-2 inline size-3.5 animate-spin" /> : null}{remaxText(state.message, locale, state.values)}</div>;
 }
 
 function importFormData(file: File, settings: ImportSettingsForm) {

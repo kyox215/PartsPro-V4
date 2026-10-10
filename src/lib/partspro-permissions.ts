@@ -2,6 +2,7 @@ export const adminPanelPermissions = {
   accounts: "panel.accounts",
   analytics: "analytics.read",
   catalog: "panel.catalog",
+  remax: "panel.catalog",
   finance: "panel.finance",
   inventory: "panel.inventory",
   marketplace: "panel.marketplace",

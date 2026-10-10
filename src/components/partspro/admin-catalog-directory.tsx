@@ -30,12 +30,15 @@ export function AdminCatalogDirectory({ locale, canEdit, canCreate, onProducts, 
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [kind, setKind] = useState<CatalogNodeInput["kind"]>("department");
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState<CatalogNodeInput | null>(null);
   const [initial, setInitial] = useState("");
+  const [orderIds, setOrderIds] = useState<string[] | null>(null);
+  const [orderUnknown, setOrderUnknown] = useState(false);
   const submission = useRef(false);
-  const dirty = draft !== null && JSON.stringify(draft) !== initial;
+  const dirty = (draft !== null && JSON.stringify(draft) !== initial) || orderIds !== null;
   useEffect(() => { onGuardChange?.({ dirty, pending: busy }); }, [dirty, busy, onGuardChange]);
   useEffect(() => () => onGuardChange?.({ dirty: false, pending: false }), [onGuardChange]);
   useEffect(() => {
@@ -46,31 +49,55 @@ export function AdminCatalogDirectory({ locale, canEdit, canCreate, onProducts, 
   function discardDraft() {
     if (busy || submission.current) return false;
     if (dirty && !window.confirm(zh ? "放弃未保存的目录修改？" : "Scartare le modifiche non salvate?")) return false;
-    setDraft(null); setInitial("");
+    setDraft(null); setInitial(""); setOrderIds(null); setOrderUnknown(false);
     return true;
   }
   const reload = useCallback(async (signal?: AbortSignal) => {
     setBusy(true); setError("");
-    try { const next = await catalogRequest<CatalogDirectory>("/api/admin/catalog-directory", undefined, signal); if (!signal?.aborted) setDirectory(next); }
-    catch (e) { if (!signal?.aborted) setError(e instanceof Error ? e.message : "Error"); }
+    try { const next = await catalogRequest<CatalogDirectory>("/api/admin/catalog-directory", undefined, signal); if (!signal?.aborted) setDirectory(next); return !signal?.aborted; }
+    catch (e) { if (!signal?.aborted) setError(e instanceof Error ? e.message : "Error"); return false; }
     finally { if (!signal?.aborted) setBusy(false); }
   }, []);
   useEffect(() => { const c = new AbortController(); queueMicrotask(() => { if (!c.signal.aborted) void reload(c.signal); }); return () => c.abort(); }, [reload]);
   function choose(next: CatalogNodeInput | null) {
     if (busy || (dirty && !window.confirm(zh ? "放弃未保存的目录修改？" : "Scartare le modifiche non salvate?"))) return;
-    setDraft(next); setInitial(JSON.stringify(next)); setMessage("");
+    setDraft(next); setInitial(JSON.stringify(next)); setOrderIds(null); setOrderUnknown(false); setMessage("");
     if (next && window.innerWidth < 1024) requestAnimationFrame(() => document.getElementById("catalog-node-editor")?.scrollIntoView({ block: "start", behavior: "smooth" }));
   }
   async function save() {
     if (!draft || submission.current) return;
-    submission.current = true; setBusy(true); setError(""); setMessage("");
+    submission.current = true; setIsSaving(true); setBusy(true); setError(""); setMessage("");
     try {
       const next = await catalogRequest<CatalogDirectory>("/api/admin/catalog-directory", draft);
       setDirectory(next); setDraft(null); setInitial("");
       setMessage(zh ? "目录已保存，前台将在重新进入或刷新时更新。" : "Catalogo salvato. La vetrina si aggiorna al prossimo accesso o aggiornamento.");
       notifyCatalogChanged(); onChanged();
     } catch (e) { setError(e instanceof Error ? e.message : "Error"); }
-    finally { submission.current = false; setBusy(false); }
+    finally { submission.current = false; setIsSaving(false); setBusy(false); }
+  }
+  const allKindNodes = directory.nodes.filter(node => node.kind === kind).sort((a,b) => a.position - b.position || a.value.localeCompare(b.value));
+  function moveOrder(index: number, direction: number) {
+    if (!orderIds || busy) return;
+    const target = index + direction; if (target < 0 || target >= orderIds.length) return;
+    const next = [...orderIds]; [next[index], next[target]] = [next[target], next[index]]; setOrderIds(next);
+  }
+  async function saveOrder() {
+    if (!orderIds || busy || submission.current || orderUnknown) return;
+    if (!window.confirm(zh ? "确认保存以下排序？按条保存，失败会停止并保留剩余调整。" : "Salvare questo ordine? Le voci sono salvate singolarmente; un errore interrompe le restanti modifiche.")) return;
+    submission.current = true; setIsSaving(true); setBusy(true); setError(""); let saved = 0;
+    try {
+      for (let index = 0; index < orderIds.length; index++) {
+        const node = directory.nodes.find(item => item.id === orderIds[index]); if (!node) throw new Error("Directory changed");
+        if (node.position === index * 10) continue;
+        const next = await catalogRequest<CatalogDirectory>("/api/admin/catalog-directory", { id: node.id, kind: node.kind, value: node.value, nameZh: node.nameZh, nameIt: node.nameIt, active: node.active, version: node.version, position: index * 10 });
+        setDirectory(next); saved++;
+      }
+      setOrderIds(null); setMessage(zh ? `排序已保存（${saved}项）。` : `Ordine salvato (${saved} voci).`); notifyCatalogChanged(); onChanged();
+    } catch (error) {
+      setOrderUnknown(true);
+      setError(zh ? `已确认保存${saved}项，后续已停止。请先刷新核对当前顺序，未完成调整仍保留。` : `${saved} voci salvate, operazione interrotta. Aggiorna e verifica prima di continuare; l'ordine proposto è conservato.`);
+      console.warn("Catalog reorder", error instanceof Error ? error.message : "failed");
+    } finally { submission.current = false; setIsSaving(false); setBusy(false); }
   }
   const nodes = directory.nodes.filter((n) => n.kind === kind && `${n.nameZh} ${n.nameIt} ${n.value}`.toLowerCase().includes(search.toLowerCase()));
   return <section className="min-w-0 space-y-3 rounded-lg border bg-white p-3 sm:p-4">
@@ -81,6 +108,7 @@ export function AdminCatalogDirectory({ locale, canEdit, canCreate, onProducts, 
     <p className="text-sm text-slate-600">{zh ? "选择系列、品牌或分类 → 编辑显示名称与排序 → 保存。内部标识保持稳定；设备型号与兼容性使用专门审核。" : "Scegli reparto, brand o categoria → modifica nome e ordine → salva. I codici interni restano stabili; modelli e compatibilità richiedono la revisione dedicata."}</p>
     {error && <div role="alert" className="break-words rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error.startsWith("503") ? (zh ? "目录管理所需数据库更新尚未就绪，请联系管理员。" : "Aggiornamento database richiesto per la gestione catalogo.") : error.startsWith("409") ? (zh ? "目录已被其他人修改或标识已存在。请刷新后核对，草稿已保留。" : "Catalogo modificato o codice già esistente. Aggiorna e verifica la bozza.") : error}</div>}
     {message && <p role="status" className="rounded bg-green-50 p-3 text-sm text-green-800">{message}</p>}
+    {canEdit && <div data-catalog-dirty={orderIds ? "true" : "false"} data-admin-mutating={isSaving ? "true" : "false"} className="space-y-2 rounded border border-slate-200 p-3">{!orderIds ? <Button variant="outline" disabled={busy || Boolean(search.trim()) || allKindNodes.length > 100} onClick={() => { if (discardDraft()) setOrderIds(allKindNodes.map(node => node.id)); }}>{zh ? "批量调整顺序（上移/下移）" : "Riordina elenco (su/giù)"}</Button> : <><p className="text-xs text-slate-600">{zh ? "先调整完整列表，核对后保存。排序按条执行；失败后先刷新核对已保存部分。" : "Riordina l’elenco completo e controlla prima di salvare. In caso di errore, verifica le voci già salvate."}</p><ol className="max-h-80 space-y-1 overflow-y-auto">{orderIds.map((id,index) => { const node = directory.nodes.find(item => item.id === id); return <li key={id} className="flex items-center gap-2 rounded border bg-slate-50 p-2 text-sm"><span className="min-w-0 flex-1 break-words">{index + 1}. {node ? catalogNodeLabel(node, locale) : id}</span><Button size="sm" variant="outline" disabled={busy || index === 0} aria-label={zh ? "上移" : "Sposta su"} onClick={() => moveOrder(index,-1)}>↑</Button><Button size="sm" variant="outline" disabled={busy || index === orderIds.length - 1} aria-label={zh ? "下移" : "Sposta giù"} onClick={() => moveOrder(index,1)}>↓</Button></li>; })}</ol><div className="flex flex-wrap gap-2"><Button disabled={busy || orderUnknown} onClick={() => void saveOrder()}>{zh ? "核对并保存排序" : "Conferma ordine"}</Button><Button variant="outline" disabled={busy} onClick={() => { setOrderIds(null); setOrderUnknown(false); }}>{zh ? "取消排序" : "Annulla"}</Button>{orderUnknown && <Button variant="outline" disabled={busy} onClick={() => { void reload().then(success => { if (success) setOrderUnknown(false); }); }}>{zh ? "重读并核对" : "Rileggi e verifica"}</Button>}</div></>}</div>}
     <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div className="min-w-0 space-y-3">
         <div className="grid grid-cols-3 gap-1" role="group" aria-label={zh ? "目录类型" : "Tipo catalogo"}>
@@ -97,14 +125,14 @@ export function AdminCatalogDirectory({ locale, canEdit, canCreate, onProducts, 
           {!busy && nodes.length === 0 && <p className="p-3 text-sm text-slate-500">{zh ? "没有匹配的目录项。" : "Nessuna voce trovata."}</p>}
         </div>
       </div>
-      {draft ? <form id="catalog-node-editor" data-catalog-dirty={dirty ? "true" : "false"} className="min-w-0 space-y-3 rounded-lg bg-slate-50 p-3" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+      {draft ? <form id="catalog-node-editor" data-catalog-dirty={dirty ? "true" : "false"} className="order-first min-w-0 space-y-3 rounded-lg bg-slate-50 p-3 lg:order-last" onSubmit={(e) => { e.preventDefault(); void save(); }}>
         <h3 className="font-bold">{zh ? "编辑目录" : "Modifica voce"}</h3>
         {([["value",zh ? "内部标识（创建后固定）" : "Codice interno (fisso dopo la creazione)"],["nameZh","中文名称"],["nameIt","Nome italiano"]] as const).map(([key,label]) => <div key={key} className="space-y-1"><Label htmlFor={`catalog-node-${key}`}>{label}</Label><Input id={`catalog-node-${key}`} required minLength={key === "value" && draft.kind === "category" && !draft.id ? 2 : 1} maxLength={key === "value" ? 80 : 120} value={draft[key]} disabled={!canEdit || busy || (key === "value" && Boolean(draft.id))} onChange={(e) => setDraft({ ...draft, [key]: e.target.value })} /></div>)}
         <div className="space-y-1"><Label htmlFor="catalog-node-position">{zh ? "顺序（数字越小越靠前）" : "Ordine (numeri piccoli prima)"}</Label><Input id="catalog-node-position" type="number" min={0} max={10000} required value={draft.position} disabled={!canEdit || busy} onChange={(e) => setDraft({ ...draft, position: Number(e.target.value) })} /></div>
         {draft.kind !== "department" && !draft.id && <p className="text-sm text-slate-600">{zh ? "新目录保存后默认可用；没有关联商品时可以再停用。" : "Le nuove voci sono attive dopo il salvataggio. Puoi disattivarle se non hanno prodotti associati."}</p>}
         {draft.kind !== "department" && Boolean(draft.id) && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={draft.active} disabled={!canEdit || busy} onChange={(e) => setDraft({ ...draft, active: e.target.checked })} />{zh ? "可用（停用前须移走关联商品）" : "Attivo (sposta i prodotti prima di disattivare)"}</label>}
         <div className="sticky bottom-0 flex flex-wrap gap-2 bg-slate-50 py-2">{canEdit && <Button disabled={busy} type="submit"><Save className="size-4" />{busy ? (zh ? "处理中…" : "Attendi…") : (zh ? "保存目录" : "Salva")}</Button>}<Button type="button" variant="outline" disabled={busy} onClick={() => choose(null)}>{zh ? "关闭" : "Chiudi"}</Button></div>
-      </form> : <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">{zh ? "选择左侧目录项开始编辑。手机上编辑区位于列表下方。" : "Seleziona una voce per modificarla. Su telefono il modulo appare sotto l’elenco."}</p>}
+      </form> : <p className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">{zh ? "选择左侧目录项开始编辑。手机上编辑区优先显示。" : "Seleziona una voce per modificarla. Su telefono il modulo appare sopra l’elenco."}</p>}
     </div>
   </section>;
 }

@@ -13,6 +13,9 @@ import {
   Send,
   UserCheck,
 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { AdminListPager } from "./admin-list-pager";
+import { acknowledgeConversationDraft, setConversationDraft, supportDetailMatches } from "@/lib/admin-operation-state.mjs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -241,12 +244,23 @@ export function AdminSupportPanel({
   const [status, setStatus] = React.useState<SupportStatus>("open");
   const [scope, setScope] = React.useState<SupportScope>("all");
   const [conversations, setConversations] = React.useState<SupportConversation[]>([]);
+  const [exactInboxCounts, setExactInboxCounts] = React.useState<{ all: number; needsReply: number; unassigned: number; mine: number } | null>(null);
   const [inboxConversations, setInboxConversations] = React.useState<SupportConversation[]>([]);
   const [selectedId, setSelectedId] = React.useState<string>("");
   const [detail, setDetail] = React.useState<SupportDetail | null>(null);
   const [employees, setEmployees] = React.useState<EmployeeOption[]>([]);
   const [assignee, setAssignee] = React.useState(unassignedValue);
-  const [reply, setReply] = React.useState("");
+  const replyAttempts = React.useRef<Record<string, { id: string; body: string }>>({});
+  const [replyDrafts, setReplyDrafts] = React.useState<Record<string, string>>({});
+  const reply = replyDrafts[selectedId] ?? "";
+  const setReply = React.useCallback((value: string) => setReplyDrafts(current => setConversationDraft(current, selectedId, value)), [selectedId]);
+  const [searchInput, setSearchInput] = React.useState("");
+  const [search, setSearch] = React.useState("");
+  const [page, setPage] = React.useState(0);
+  const [total, setTotal] = React.useState<number | null>(null);
+  const selectedIdRef = React.useRef(selectedId);
+  const detailRevision = React.useRef(0);
+  React.useEffect(() => { selectedIdRef.current = selectedId; }, [selectedId]);
   const [detailView, setDetailView] = React.useState<DetailView>("messages");
   const [isDesktopLayout, setIsDesktopLayout] = React.useState(false);
   const [isLoadingList, setIsLoadingList] = React.useState(false);
@@ -263,6 +277,7 @@ export function AdminSupportPanel({
 
     try {
       const params = new URLSearchParams({
+        includeInboxCounts: "true",
         limit: "100",
         offset: "0",
         scope: "all",
@@ -281,6 +296,7 @@ export function AdminSupportPanel({
       const payload = await response.json();
 
       setInboxConversations(readConversations(payload));
+      setExactInboxCounts(payload.meta?.inboxCounts ?? null);
     } catch (error) {
       if (!signal?.aborted) {
         setNotice({
@@ -301,7 +317,9 @@ export function AdminSupportPanel({
     try {
       const params = new URLSearchParams({
         limit: "50",
-        offset: "0",
+        offset: String(page * 50),
+        ...(search ? { q: search } : {}),
+        ...(!isDesktopLayout && status === "open" && mobileInboxMode === "needsReply" ? { needsReply: "true" } : {}),
         scope: effectiveScope,
         status,
       });
@@ -311,20 +329,20 @@ export function AdminSupportPanel({
         signal,
       });
 
-      if (!response.ok) {
-        throw new Error(copy.unavailable);
-      }
-
       const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error?.code === "SUPPORT_SEARCH_TOO_BROAD" ? (locale.startsWith("zh") ? "匹配客户过多，请输入更精确的客户姓名或邮箱。" : "Troppi clienti corrispondenti. Inserisci nome o email più precisi.") : payload.error?.message ?? copy.unavailable);
+      }
+      if (signal?.aborted) return;
       const nextConversations = readConversations(payload);
 
       setConversations(nextConversations);
+      setTotal(typeof payload.meta?.total === "number" ? payload.meta.total : null);
       setSelectedId((current) =>
         current && nextConversations.some((conversation) => conversation.id === current)
           ? current
           : nextConversations[0]?.id ?? ""
       );
-      setNotice(null);
     } catch (error) {
       if (!signal?.aborted) {
         setNotice({
@@ -337,7 +355,7 @@ export function AdminSupportPanel({
         setIsLoadingList(false);
       }
     }
-  }, [copy.unavailable, effectiveScope, status]);
+  }, [copy.unavailable, effectiveScope, status, page, search, isDesktopLayout, mobileInboxMode, locale]);
 
   const refreshDetail = React.useCallback(async (conversationId: string, signal?: AbortSignal) => {
     if (!conversationId) {
@@ -345,6 +363,7 @@ export function AdminSupportPanel({
       return;
     }
 
+    const revision = ++detailRevision.current;
     setIsLoadingDetail(true);
 
     try {
@@ -360,20 +379,17 @@ export function AdminSupportPanel({
 
       const payload = await response.json();
       const nextDetail = readDetail(payload);
+      if (signal?.aborted || revision !== detailRevision.current) return;
 
       setDetail(nextDetail);
       setAssignee(nextDetail.conversation.assignedTo ?? unassignedValue);
     } catch (error) {
-      if (!signal?.aborted) {
-        setNotice({
-          message: error instanceof Error ? error.message : copy.unavailable,
-          tone: "error",
-        });
+      if (!signal?.aborted && revision === detailRevision.current) {
+        setNotice({ message: error instanceof Error ? error.message : copy.unavailable, tone: "error" });
+        setDetail(null);
       }
     } finally {
-      if (!signal?.aborted) {
-        setIsLoadingDetail(false);
-      }
+      if (!signal?.aborted && revision === detailRevision.current) setIsLoadingDetail(false);
     }
   }, [copy.unavailable]);
 
@@ -513,14 +529,12 @@ export function AdminSupportPanel({
     action: "assign" | "claim" | "mark_read" | "reopen" | "resolve",
     assignedTo?: string | null
   ) {
-    if (!detail) {
-      return;
-    }
-
+    if (!detail || !supportDetailMatches(selectedId, detail.conversation.id, isLoadingDetail) || pendingAction) return;
+    const conversationId = detail.conversation.id;
     setPendingAction(action);
 
     try {
-      const response = await fetch(`/api/admin/support/conversations/${detail.conversation.id}`, {
+      const response = await fetch(`/api/admin/support/conversations/${conversationId}`, {
         body: JSON.stringify({ action, assignedTo }),
         cache: "no-store",
         headers: { "Content-Type": "application/json" },
@@ -531,12 +545,15 @@ export function AdminSupportPanel({
         throw new Error(copy.unavailable);
       }
 
-      const payload = await response.json();
-      const nextDetail = readDetail(payload);
+      const payload = await response.json().catch(() => null);
+      let nextDetail: SupportDetail | null = null;
+      try { nextDetail = readDetail(payload); } catch { /* The action succeeded; reload without replaying it. */ }
 
-      setDetail(nextDetail);
-      setAssignee(nextDetail.conversation.assignedTo ?? unassignedValue);
-      setNotice({ message: copy.actions.refresh, tone: "success" });
+      if (selectedIdRef.current === conversationId) {
+        setDetail(nextDetail);
+        if (nextDetail) setAssignee(nextDetail.conversation.assignedTo ?? unassignedValue);
+        setNotice({ message: nextDetail && !payload?.meta?.readError ? copy.actions.refresh : locale.startsWith("zh") ? "操作已保存，详情重读失败。请刷新核对，不要重复执行动作。" : "Operazione salvata, rilettura non riuscita. Aggiorna senza ripetere l’azione.", tone: "success" });
+      }
       void refreshList();
       void refreshInbox();
     } catch (error) {
@@ -552,17 +569,19 @@ export function AdminSupportPanel({
   async function sendReply(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!detail || !reply.trim()) {
-      return;
-    }
-
+    if (!detail || !reply.trim() || pendingAction || !supportDetailMatches(selectedId, detail.conversation.id, isLoadingDetail)) return;
+    const conversationId = detail.conversation.id;
+    const submittedReply = reply.trim();
+    const previousAttempt = replyAttempts.current[conversationId];
+    const requestId = previousAttempt?.body === submittedReply ? previousAttempt.id : crypto.randomUUID();
+    replyAttempts.current[conversationId] = { id: requestId, body: submittedReply };
     setPendingAction("reply");
 
     try {
       const response = await fetch(
-        `/api/admin/support/conversations/${detail.conversation.id}/messages`,
+        `/api/admin/support/conversations/${conversationId}/messages`,
         {
-          body: JSON.stringify({ body: reply.trim() }),
+          body: JSON.stringify({ body: submittedReply, requestId }),
           cache: "no-store",
           headers: { "Content-Type": "application/json" },
           method: "POST",
@@ -573,14 +592,20 @@ export function AdminSupportPanel({
         throw new Error(copy.sendFailed);
       }
 
-      const payload = await response.json();
-      const nextDetail = readDetail(payload);
-
-      setDetail(nextDetail);
-      setAssignee(nextDetail.conversation.assignedTo ?? unassignedValue);
-      setReply("");
-      void refreshList();
-      void refreshInbox();
+      const payload = await response.json().catch(() => null);
+      let nextDetail: SupportDetail | null = null;
+      try { nextDetail = readDetail(payload); } catch { /* A 2xx send is final even if the returned detail is unavailable. */ }
+      if (selectedIdRef.current === conversationId) {
+        setDetail(nextDetail);
+        if (nextDetail) setAssignee(nextDetail.conversation.assignedTo ?? unassignedValue);
+      }
+      setReplyDrafts(current => acknowledgeConversationDraft(current, conversationId, submittedReply));
+      delete replyAttempts.current[conversationId];
+      void refreshList(); void refreshInbox();
+      if (!nextDetail || payload?.meta?.followupError) {
+        setNotice({ tone: "success", message: locale.startsWith("zh") ? "消息已发送；后续状态或详情更新失败，请重读会话。不要再次发送同一内容。" : "Messaggio inviato; aggiornamento stato o dettaglio non riuscito. Rileggi la conversazione senza inviare di nuovo." });
+        void refreshDetail(conversationId);
+      }
     } catch (error) {
       setNotice({
         message: error instanceof Error ? error.message : copy.sendFailed,
@@ -597,7 +622,7 @@ export function AdminSupportPanel({
     detail?.conversation ??
     null;
   const inboxCounts = React.useMemo(
-    () => ({
+    () => exactInboxCounts ?? ({
       all: inboxConversations.length,
       mine: currentUserId
         ? inboxConversations.filter((conversation) => conversation.assignedTo === currentUserId).length
@@ -605,36 +630,16 @@ export function AdminSupportPanel({
       needsReply: inboxConversations.filter((conversation) => conversation.staffUnreadCount > 0).length,
       unassigned: inboxConversations.filter((conversation) => !conversation.assignedTo).length,
     }),
-    [currentUserId, inboxConversations]
+    [currentUserId, inboxConversations, exactInboxCounts]
   );
-  const mobileInboxConversations = React.useMemo(
-    () =>
-      inboxConversations
-        .filter((conversation) => {
-          if (mobileInboxMode === "needsReply") {
-            return conversation.staffUnreadCount > 0;
-          }
-
-          if (mobileInboxMode === "unassigned") {
-            return !conversation.assignedTo;
-          }
-
-          if (mobileInboxMode === "mine") {
-            return Boolean(currentUserId && conversation.assignedTo === currentUserId);
-          }
-
-          return true;
-        })
-        .sort((a, b) => getSupportPriority(a, currentUserId) - getSupportPriority(b, currentUserId)),
-    [currentUserId, inboxConversations, mobileInboxMode]
-  );
-  const displayedConversations = isDesktopLayout ? conversations : mobileInboxConversations;
-  const displayedConversationCount = isDesktopLayout
-    ? conversations.length
-    : mobileInboxConversations.length;
-  const displayedLoading = isDesktopLayout ? isLoadingList : isLoadingInbox;
+  const displayedConversations = conversations;
+  const displayedConversationCount = conversations.length;
+  const displayedLoading = isLoadingList || isLoadingInbox;
+  const detailReady = detail !== null && supportDetailMatches(selectedId, detail.conversation.id, isLoadingDetail);
 
   function selectConversation(conversationId: string) {
+    if (pendingAction) return;
+    selectedIdRef.current = conversationId;
     setSelectedId(conversationId);
     setDetailView("messages");
 
@@ -644,7 +649,7 @@ export function AdminSupportPanel({
   }
 
   return (
-    <section className="min-w-0 space-y-1.5 sm:space-y-3">
+    <section data-admin-dirty={Object.values(replyDrafts).some(value => value.trim()) ? "true" : "false"} data-admin-mutating={pendingAction ? "true" : "false"} className="min-w-0 space-y-1.5 sm:space-y-3">
       <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-[0_12px_32px_rgba(15,23,42,0.045)] sm:p-4">
         <div className="flex min-w-0 items-center justify-between gap-2">
           <div className="min-w-0">
@@ -675,32 +680,36 @@ export function AdminSupportPanel({
             </Button>
           </div>
         </div>
+        <form className="mt-3 flex gap-2" onSubmit={e => { e.preventDefault(); setPage(0); setSearch(searchInput.trim()); }}>
+          <Input aria-label={locale.startsWith("zh") ? "搜索客户或会话" : "Cerca cliente o conversazione"} placeholder={locale.startsWith("zh") ? "客户、邮箱、会话标题或编号" : "Cliente, email, oggetto o ID"} value={searchInput} onChange={e => setSearchInput(e.target.value)} />
+          <Button type="submit" variant="outline">{locale.startsWith("zh") ? "搜索" : "Cerca"}</Button>
+        </form>
         <div className="mt-1.5 grid grid-cols-4 gap-1 sm:hidden">
           <MobileInboxModeButton
             active={mobileInboxMode === "needsReply"}
             count={inboxCounts.needsReply}
             label={copy.tasks.needsReply}
             tone="hot"
-            onClick={() => setMobileInboxMode("needsReply")}
+            onClick={() => { setMobileInboxMode("needsReply"); setScope("all"); setStatus("open"); setPage(0); } }
           />
           <MobileInboxModeButton
             active={mobileInboxMode === "unassigned"}
             count={inboxCounts.unassigned}
             label={copy.tasks.unassigned}
-            onClick={() => setMobileInboxMode("unassigned")}
+            onClick={() => { setMobileInboxMode("unassigned"); setScope("unassigned"); setStatus("open"); setPage(0); } }
           />
           <MobileInboxModeButton
             active={mobileInboxMode === "mine"}
             count={inboxCounts.mine}
             disabled={!currentUserId}
             label={copy.tasks.mine}
-            onClick={() => setMobileInboxMode("mine")}
+            onClick={() => { setMobileInboxMode("mine"); setScope("mine"); setStatus("open"); setPage(0); } }
           />
           <MobileInboxModeButton
             active={mobileInboxMode === "all"}
             count={inboxCounts.all}
             label={copy.tasks.all}
-            onClick={() => setMobileInboxMode("all")}
+            onClick={() => { setMobileInboxMode("all"); setScope("all"); setStatus("open"); setPage(0); } }
           />
         </div>
       </div>
@@ -733,8 +742,8 @@ export function AdminSupportPanel({
               {displayedConversationCount}
             </Badge>
           </div>
-          <div className="mb-1.5 hidden grid-cols-2 gap-1.5 sm:mb-3 sm:grid sm:gap-2">
-            <Select value={status} onValueChange={(value) => setStatus(value as SupportStatus)}>
+          <div className="mb-1.5 grid grid-cols-2 gap-1.5 sm:mb-3 sm:gap-2">
+            <Select value={status} onValueChange={(value) => { setPage(0); setStatus(value as SupportStatus); }}>
               <SelectTrigger size="sm" className="h-8 bg-white text-xs sm:h-9 sm:text-sm">
                 <SelectValue />
               </SelectTrigger>
@@ -745,7 +754,7 @@ export function AdminSupportPanel({
                 <SelectItem value="all">{copy.filters.all}</SelectItem>
               </SelectContent>
             </Select>
-            <Select value={scope} onValueChange={(value) => setScope(value as SupportScope)}>
+            <Select value={scope} onValueChange={(value) => { setPage(0); setScope(value as SupportScope); }}>
               <SelectTrigger size="sm" className="h-8 bg-white text-xs sm:h-9 sm:text-sm">
                 <SelectValue />
               </SelectTrigger>
@@ -831,7 +840,7 @@ export function AdminSupportPanel({
           className="hidden min-h-0 rounded-lg border border-slate-200 bg-white shadow-[0_12px_32px_rgba(15,23,42,0.045)] lg:block"
           contentClassName="flex min-h-0 flex-col lg:h-full lg:min-h-[640px]"
         >
-          {detail && selectedConversation ? (
+          {detail && detailReady && selectedConversation ? (
             <>
               <div className="border-b border-slate-200 p-2 sm:p-4">
                 <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-2 xl:flex xl:items-start xl:justify-between">
@@ -974,12 +983,13 @@ export function AdminSupportPanel({
           )}
         </AdminBusyRegion>
       </div>
+      <AdminListPager page={page} pageSize={50} total={total} returned={conversations.length} pending={displayedLoading} onPageChange={setPage} />
       <Sheet open={mobileDetailOpen} onOpenChange={setMobileDetailOpen}>
         <SheetContent
           side="bottom"
           className="h-[88svh] gap-0 overflow-hidden rounded-t-2xl p-0 lg:hidden"
         >
-          {detail && selectedConversation ? (
+          {detail && detailReady && selectedConversation ? (
             <MobileSupportDetail
               assignee={assignee}
               copy={copy}
@@ -1420,24 +1430,6 @@ function formatSupportTime(value: string | null, locale: string) {
   }).format(date);
 }
 
-function getSupportPriority(
-  conversation: SupportConversation,
-  currentUserId?: string | null
-) {
-  if (conversation.staffUnreadCount > 0) {
-    return 0;
-  }
-
-  if (!conversation.assignedTo) {
-    return 1;
-  }
-
-  if (currentUserId && conversation.assignedTo === currentUserId) {
-    return 2;
-  }
-
-  return 3;
-}
 
 function getSupportTask(
   conversation: SupportConversation,

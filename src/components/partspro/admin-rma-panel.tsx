@@ -1,6 +1,8 @@
 "use client";
 
 import * as React from "react";
+import { AdminListPager } from "./admin-list-pager";
+import { usePersistentAdminValue } from "./admin-workspace-state";
 import Image from "next/image";
 import {
   CheckCircle2,
@@ -93,6 +95,8 @@ type AdminRmaListResponse = {
     countsComplete?: boolean;
     queueCounts?: Partial<Record<QueueTab, number>>;
     total?: number;
+    hasMore?: boolean;
+    totalIsExact?: boolean;
   };
 };
 
@@ -378,9 +382,12 @@ export function AdminRmaPanel() {
   const { locale } = useI18n();
   const isZh = locale === "zh-CN";
   const copy = isZh ? rmaCopy.zh : rmaCopy.it;
-  const [queue, setQueue] = React.useState<QueueTab>("review");
-  const [searchInput, setSearchInput] = React.useState("");
-  const [search, setSearch] = React.useState("");
+  const [queue, setQueue] = usePersistentAdminValue<QueueTab>("rma.queue", "review");
+  const [searchInput, setSearchInput] = usePersistentAdminValue("rma.search", "");
+  const [search, setSearch] = React.useState(searchInput);
+  const [page, setPage] = usePersistentAdminValue("rma.page", 0);
+  const [hasMore, setHasMore] = React.useState(false);
+  const [totalIsExact, setTotalIsExact] = React.useState(false);
   const [requests, setRequests] = React.useState<AdminRmaDto[]>([]);
   const [selectedId, setSelectedId] = React.useState("");
   const [selectedDetail, setSelectedDetail] = React.useState<AdminRmaDetailDto | null>(null);
@@ -427,7 +434,7 @@ export function AdminRmaPanel() {
       setIsLoading(true);
 
       try {
-        const params = new URLSearchParams({ limit: "80", offset: "0", queue });
+        const params = new URLSearchParams({ limit: "80", offset: String(page * 80), queue });
         if (search) {
           params.set("q", search);
         }
@@ -444,6 +451,8 @@ export function AdminRmaPanel() {
 
         const nextRequests = Array.isArray(payload?.data) ? payload.data : [];
         setRequests(nextRequests);
+        setHasMore(payload?.meta?.hasMore ?? nextRequests.length === 80);
+        setTotalIsExact(payload?.meta?.totalIsExact === true);
         setTotal(typeof payload?.meta?.total === "number" ? payload.meta.total : nextRequests.length);
         setQueueCounts((current) => ({ ...current, ...payload?.meta?.queueCounts }));
         setCountsComplete(payload?.meta?.countsComplete === true);
@@ -468,7 +477,7 @@ export function AdminRmaPanel() {
         }
       }
     },
-    [copy.updated, queue, search]
+    [copy.updated, queue, search, page]
   );
 
   const loadDetail = React.useCallback(
@@ -504,9 +513,9 @@ export function AdminRmaPanel() {
   );
 
   React.useEffect(() => {
-    const timeoutId = window.setTimeout(() => setSearch(searchInput.trim()), 260);
+    const timeoutId = window.setTimeout(() => { if (searchInput.trim() !== search) { setSearch(searchInput.trim()); setPage(0); } }, 260);
     return () => window.clearTimeout(timeoutId);
-  }, [searchInput]);
+  }, [searchInput, search, setPage]);
 
   React.useEffect(() => {
     const controller = new AbortController();
@@ -755,7 +764,12 @@ export function AdminRmaPanel() {
               onChange={(event) => setSearchInput(event.target.value)}
             />
           </div>
-          <div className="mt-3 flex gap-2 overflow-x-auto pb-1" role="tablist" aria-label={copy.title}>
+          <label className="mt-3 block text-sm font-semibold sm:hidden">{isZh ? "处理阶段" : "Fase di gestione"}
+            <select className="mt-1 min-h-11 w-full rounded-md border bg-white px-3" value={queue} disabled={Boolean(pendingAction)} onChange={event => { setQueue(event.target.value as QueueTab); setPage(0); }}>
+              {[...ACTIVE_QUEUE_TABS, "archive" as QueueTab].map(tab => <option key={tab} value={tab}>{queueLabel(tab, isZh)} · {countsComplete ? queueCounts[tab] : `≥${queueCounts[tab]}`}</option>)}
+            </select>
+          </label>
+          <div className="mt-3 hidden gap-2 overflow-x-auto pb-1 sm:flex" role="tablist" aria-label={copy.title}>
             {ACTIVE_QUEUE_TABS.map((tab) => (
               <button
                 key={tab}
@@ -768,7 +782,7 @@ export function AdminRmaPanel() {
                     ? "border-primary bg-primary text-primary-foreground"
                     : "border-slate-200 bg-white text-slate-700 hover:border-primary/40 hover:bg-primary/5"
                 )}
-                onClick={() => setQueue(tab)}
+                onClick={() => { setQueue(tab); setPage(0); }}
               >
                 <span>{queueLabel(tab, isZh)}</span>
                 <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px]">
@@ -786,7 +800,7 @@ export function AdminRmaPanel() {
               size="sm"
               variant={queue === "archive" ? "default" : "outline"}
               aria-pressed={queue === "archive"}
-              onClick={() => setQueue("archive")}
+              onClick={() => { setQueue("archive"); setPage(0); }}
             >
               {copy.archive} <ChevronRight className="size-3.5" />
             </Button>
@@ -839,12 +853,13 @@ export function AdminRmaPanel() {
                   ))
                 )}
               </div>
+              <AdminListPager page={page} pageSize={80} total={totalIsExact ? total : null} hasMore={hasMore} returned={requests.length} pending={isLoading || Boolean(pendingAction)} onPageChange={setPage} />
             </div>
           </AdminBusyRegion>
 
           <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
             {!selectedRequest ? (
-              <div className="grid min-h-[420px] place-items-center rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500">
+              <div className="grid min-h-[96px] xl:min-h-[420px] place-items-center rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500">
                 {copy.emptyDetail}
               </div>
             ) : (
@@ -871,6 +886,11 @@ export function AdminRmaPanel() {
                   </div>
                 </div>
 
+                <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+                  <h4 className="font-bold">{isZh ? "客户原始问题" : "Problema segnalato dal cliente"}</h4>
+                  <p className="break-words"><span className="font-semibold">{isZh ? "故障原因" : "Motivo"}: </span>{selectedRequest.reason || "—"}</p>
+                  <p className="whitespace-pre-wrap break-words"><span className="font-semibold">{isZh ? "原始描述" : "Descrizione originale"}: </span>{selectedRequest.description || (isZh ? "未填写" : "Non indicata")}</p>
+                </div>
                 <div id="rma-wallet-flow" className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
                   <h4 className="font-black">{isZh ? "客户钱包退款" : "Rimborso al portafoglio cliente"}</h4>
                   <ol className="grid grid-cols-3 gap-2 text-xs font-semibold">

@@ -1,0 +1,62 @@
+"use client";
+
+import * as React from "react";
+import Link from "next/link";
+import { Search, Loader2 } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { useI18n } from "./i18n-provider";
+
+type SearchResult = { id: string; kind: "order" | "product" | "account"; title: string; subtitle: string; href: string };
+
+export function AdminGlobalSearch() {
+  const { locale } = useI18n();
+  const zh = locale.startsWith("zh");
+  const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const [results, setResults] = React.useState<SearchResult[]>([]);
+  const [state, setState] = React.useState<"idle" | "pending" | "ready" | "error">("idle");
+  const [partial, setPartial] = React.useState(false);
+  React.useEffect(() => {
+    if (!open || query.trim().length < 2) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setState("pending");
+      setPartial(false);
+      try {
+        const response = await fetch(`/api/admin/search?q=${encodeURIComponent(query.trim())}`, { cache: "no-store", signal: controller.signal });
+        if (!response.ok) throw new Error("search unavailable");
+        const payload = await response.json();
+        if (controller.signal.aborted) return;
+        setResults(Array.isArray(payload.data) ? payload.data : []);
+        setPartial(payload.meta?.partial === true);
+        setState("ready");
+      } catch {
+        if (!controller.signal.aborted) { setResults([]); setState("error"); }
+      }
+    }, 250);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [open, query]);
+  const labels = zh ? { order: "订单", product: "商品", account: "账号" } : { order: "Ordine", product: "Prodotto", account: "Account" };
+  return <>
+    <Button variant="outline" type="button" aria-label={zh ? "搜索订单、商品和账号" : "Cerca ordini, prodotti e account"} className="ml-auto min-w-0 shrink bg-white md:max-w-[240px] lg:max-w-md lg:flex-1 md:justify-start md:text-slate-500" onClick={() => setOpen(true)}>
+      <Search className="size-4" /><span className="hidden truncate md:inline">{zh ? "搜索订单、SKU、客户…" : "Cerca ordini, SKU, clienti…"}</span>
+    </Button>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogContent className="sm:max-w-xl">
+        <DialogHeader><DialogTitle>{zh ? "后台搜索" : "Ricerca nel pannello"}</DialogTitle><DialogDescription>{zh ? "输入至少2个字符，搜索你有权访问的订单、商品和账号。" : "Inserisci almeno 2 caratteri. I risultati rispettano i tuoi permessi."}</DialogDescription></DialogHeader>
+        <Input autoFocus aria-label={zh ? "搜索关键字" : "Termine di ricerca"} value={query} onChange={e => { setQuery(e.target.value); setState("idle"); setResults([]); }} placeholder={zh ? "订单号、SKU、姓名或邮箱" : "Numero ordine, SKU, nome o email"} />
+        <div className="max-h-[55dvh] min-h-24 space-y-2 overflow-y-auto" aria-busy={state === "pending"}>
+          {state === "pending" && <p role="status" className="flex items-center gap-2 p-3 text-sm"><Loader2 className="size-4 animate-spin" />{zh ? "搜索中…" : "Ricerca…"}</p>}
+          {state === "error" && <p role="alert" className="p-3 text-sm text-red-700">{zh ? "搜索读取失败，请修改关键字重试。" : "Ricerca non disponibile. Riprova."}</p>}
+          {partial && <p role="status" className="p-2 text-xs text-amber-800">{zh ? "部分模块读取失败，以下为已读取的结果。" : "Alcuni moduli non sono disponibili. Risultati parziali."}</p>}
+          {state === "ready" && results.length === 0 && <p role="status" className="p-3 text-sm text-slate-500">{zh ? "没有匹配结果。" : "Nessun risultato."}</p>}
+          {results.map(result => <Link key={`${result.kind}:${result.id}`} href={result.href} onClick={() => setOpen(false)} className="block rounded-md border p-3 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-primary">
+            <span className="text-xs text-primary">{labels[result.kind]}</span><div className="break-words text-sm font-semibold">{result.title}</div><div className="break-all text-xs text-slate-500">{result.subtitle}</div>
+          </Link>)}
+        </div>
+      </DialogContent>
+    </Dialog>
+  </>;
+}

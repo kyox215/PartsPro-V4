@@ -48,8 +48,9 @@ const settingsSchema = z.object({
 
 const syncSchema = z.object({
   action: z.enum(["plan_listings", "publish_eligible", "sync_inventory", "import_orders"]),
-  skus: z.array(z.string().trim().min(1)).max(100).optional(),
-});
+  requestId: z.string().uuid().optional(),
+  skus: z.array(z.string().trim().min(1)).min(1).max(100).refine(values => new Set(values).size === values.length, "SKU scope must be unique.").optional(),
+}).refine(value => !["publish_eligible", "sync_inventory"].includes(value.action) || Boolean(value.skus?.length && value.requestId), "Publication and synchronization require an explicit nonempty SKU scope.");
 
 const actionPermissions: Record<MarketplaceQueueAction, string> = {
   import_orders: "ebay.orders",

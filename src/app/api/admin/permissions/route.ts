@@ -156,20 +156,10 @@ export async function PATCH(request: NextRequest) {
       .order("permission_id", { ascending: true });
 
     if (error) {
-      return apiError(502, "ADMIN_PERMISSION_OVERRIDES_READ_FAILED", "Permission overrides could not be read.", {
-        message: error.message,
-      });
+      return NextResponse.json({ data: { userId: parsed.data.userId, overrides: null }, meta: { saved: true, readError: "Permission changes saved; refresh could not be read." } });
     }
 
-    return NextResponse.json({
-      data: {
-        overrides: readRows(data).map(toOverrideDto),
-        userId: parsed.data.userId,
-      },
-      meta: {
-        source: "supabase",
-      },
-    });
+    return NextResponse.json({ data: { overrides: readRows(data).map(toOverrideDto), userId: parsed.data.userId }, meta: { source: "supabase", saved: true } });
   } catch {
     return apiError(500, "ADMIN_PERMISSION_UPDATE_FAILED", "Permissions could not be updated.");
   }

@@ -15,7 +15,9 @@ export default async function AdminPage() {
   }
 
   return (
-    <AdminDashboard
+    <AdminDashboard key={authState.userId}
+      initialUserName={authState.email}
+      initialUserRole={authState.role}
       initialPermissions={authState.permissions}
       initialUserId={authState.userId}
       initialVisiblePanels={visiblePanelsForPermissions(authState.permissions)}

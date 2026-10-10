@@ -20,6 +20,7 @@ type SupportConversationParams = {
 const messageSchema = z
   .object({
     body: z.string().trim().min(1).max(2000),
+    requestId: z.string().uuid().optional(),
   })
   .strict();
 
@@ -52,14 +53,17 @@ export async function POST(
   try {
     const data = await createAdminSupportMessage({
       body: parsed.data.body,
+      requestId: parsed.data.requestId,
       conversationId,
       userId: admin.authState.userId,
     });
 
     return NextResponse.json(
       {
-        data,
+        data: data.detail,
         meta: {
+          saved: data.saved,
+          followupError: data.followupError,
           action: "admin_support_message_create",
           source: "support_conversations",
         },

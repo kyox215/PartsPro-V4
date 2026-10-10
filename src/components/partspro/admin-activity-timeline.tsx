@@ -1,6 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
+import { AdminListPager } from "./admin-list-pager";
+import { useAdminWorkspaceUserId, usePersistentAdminValue } from "./admin-workspace-state";
 import {
   BadgeEuro,
   Boxes,
@@ -51,6 +54,9 @@ export type AdminActivity = {
   description: string;
   actor: string;
   subject: string;
+  entityType?: string;
+  entityId?: string | null;
+  sku?: string | null;
   createdAt: string;
   important?: boolean;
   metadata?: Record<string, number | string | undefined>;
@@ -60,6 +66,7 @@ export type AdminActivityTimelineProps = {
   className?: string;
   description?: string;
   initialActivities?: AdminActivity[];
+  permissions?: readonly string[];
   title?: string;
 };
 
@@ -118,10 +125,39 @@ const activityTypeConfig = {
 
 export const defaultAdminActivities: AdminActivity[] = [];
 
+function activityTarget(activity: AdminActivity, permissions: readonly string[]) {
+  if (activity.type === "note" || !activity.entityType) return null;
+  const allowed = (...required: string[]) => required.every(permission => permissions.includes(permission));
+  const entityId = activity.entityId;
+  const uuid = typeof entityId === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(entityId);
+  switch (activity.entityType) {
+    case "order":
+      return uuid && allowed("panel.orders", "orders.read") ? { href: `/admin?panel=orders&orderId=${encodeURIComponent(entityId!)}`, label: "order" } : null;
+    case "product":
+      return activity.sku?.trim() && allowed("panel.catalog", "product.read_admin") ? { href: `/admin?panel=catalog&sku=${encodeURIComponent(activity.sku)}`, label: "product" } : null;
+    case "customer":
+      // Audit customer IDs identify customer records, never authentication accounts.
+      return uuid && allowed("customers.read", "panel.orders", "orders.read") ? { href: `/admin?panel=orders&customerId=${encodeURIComponent(entityId!)}`, label: "customerOrders" } : null;
+    case "supplier_batch":
+      return allowed("panel.catalog", "product.read_admin") ? { href: "/admin?panel=catalog&catalogView=batches", label: "batches" } : null;
+    case "rma":
+    case "rma_request":
+      return allowed("rma.read") ? { href: "/admin?panel=rma", label: "rma" } : null;
+    case "finance_expense":
+    case "finance_expense_entry":
+    case "supplier_batch_payment":
+    case "finance_export":
+      return allowed("panel.finance", "finance.read") ? { href: "/admin?panel=finance", label: "finance" } : null;
+    default:
+      return null;
+  }
+}
+
 export function AdminActivityTimeline({
   className,
   description,
   initialActivities = defaultAdminActivities,
+  permissions = [],
   title,
 }: AdminActivityTimelineProps) {
   const { locale } = useI18n();
@@ -129,12 +165,52 @@ export function AdminActivityTimeline({
   const [activities, setActivities] = React.useState<AdminActivity[]>(() =>
     sortActivities(initialActivities)
   );
-  const [query, setQuery] = React.useState("");
+  const userId = useAdminWorkspaceUserId();
+  const [page, setPage] = usePersistentAdminValue("activity.page", 0);
+  const [total, setTotal] = React.useState(0);
+  const [readError, setReadError] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [noteStorageError, setNoteStorageError] = React.useState("");
+  const [notesRestored, setNotesRestored] = React.useState(false);
+  const [query, setQuery] = usePersistentAdminValue("activity.search", "");
   const [typeFilter, setTypeFilter] = React.useState<ActivityFilterValue>("all");
   const [showImportantOnly, setShowImportantOnly] = React.useState(false);
   const [noteText, setNoteText] = React.useState("");
   const [noteImportant, setNoteImportant] = React.useState(false);
   const [isNoteComposerOpen, setIsNoteComposerOpen] = React.useState(false);
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => {
+      try {
+        const raw = userId ? localStorage.getItem(`partspro:admin-notes:v1:${userId}`) : null;
+        const notes: unknown = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(notes)) setActivities(current => sortActivities([...current.filter(item => item.type !== "note"), ...notes.filter((item): item is AdminActivity => Boolean(item && typeof item === "object" && item.type === "note" && typeof item.id === "string" && typeof item.description === "string" && item.description.length <= 2000 && typeof item.createdAt === "string")).slice(0, 500)]));
+      } catch { /* Personal browser notes may be unavailable. */ }
+      setNotesRestored(true);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [userId]);
+  React.useEffect(() => {
+    if (!userId || !notesRestored) return;
+    try { localStorage.setItem(`partspro:admin-notes:v1:${userId}`, JSON.stringify(activities.filter(item => item.type === "note").slice(0, 500))); } catch { /* No shared record is written. */ }
+  }, [activities, notesRestored, userId]);
+  React.useEffect(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setLoading(true); setReadError(null);
+      void fetch(`/api/admin/activity?limit=50&offset=${page * 50}`, { cache: "no-store", signal: controller.signal }).then(async response => {
+        const payload = await response.json();
+        if (!response.ok || !Array.isArray(payload.data)) throw new Error(locale.startsWith("zh") ? "活动读取失败，请重试。" : "Lettura attività non riuscita.");
+        if (controller.signal.aborted) return;
+        const data: AdminActivity[] = payload.data.map((row: Record<string, unknown>) => {
+          const entity = String(row.entity_type); const action = String(row.action);
+          const type: AdminActivityType = entity === "customer" ? "customer-tier" : entity.startsWith("rma") ? "rma-created" : entity.startsWith("finance") || entity === "supplier_batch_payment" ? "payment-posted" : entity === "product" || entity === "supplier_batch" ? "inventory-update" : "order-status";
+          return { id: String(row.id), type, title: copy.typeOptions[type], description: `${action} · ${row.result === "success" ? (locale.startsWith("zh") ? "成功" : "Completato") : (locale.startsWith("zh") ? "失败" : "Non riuscito")}`, subject: String(row.sku_code ?? row.entity_id ?? "—"), entityType: entity, entityId: typeof row.entity_id === "string" ? row.entity_id : null, sku: typeof row.sku_code === "string" ? row.sku_code : null, actor: String(row.actor_role ?? "—"), createdAt: String(row.created_at) };
+        });
+        setActivities(current => sortActivities([...current.filter(item => item.type === "note"), ...data])); setTotal(Number(payload.meta?.total) || 0);
+      }).catch(error => { if (!controller.signal.aborted) setReadError(error instanceof Error ? error.message : "Error"); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    }, 0);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [page, locale, copy.typeOptions]);
   const noteComposerId = React.useId();
   const activityTypeOptions = React.useMemo(
     () =>
@@ -176,11 +252,15 @@ export function AdminActivityTimeline({
   function handleAddNote() {
     const trimmedNote = noteText.trim();
 
-    if (!trimmedNote) {
+    if (!trimmedNote || trimmedNote.length > 2000 || !notesRestored) {
       return;
     }
 
     const noteActivity = createNoteActivity(trimmedNote, noteImportant, copy);
+    const notes = activities.filter(activity => activity.type === "note");
+    if (!userId || notes.length >= 500) { setNoteStorageError(locale.startsWith("zh") ? "当前账号不可用或便签已达500条，内容仍保留在输入框。" : "Account non disponibile o limite di 500 note raggiunto. Il testo è conservato."); return; }
+    try { localStorage.setItem(`partspro:admin-notes:v1:${userId}`, JSON.stringify([noteActivity, ...notes])); setNoteStorageError(""); }
+    catch { setNoteStorageError(locale.startsWith("zh") ? "浏览器未能保存便签，内容仍保留，请先复制备份。" : "Il browser non ha salvato la nota. Il testo resta: copialo prima di continuare."); return; }
 
     setActivities((currentActivities) =>
       sortActivities([noteActivity, ...currentActivities])
@@ -200,7 +280,7 @@ export function AdminActivityTimeline({
       <CardHeader className="gap-3 p-3 sm:gap-4 sm:p-6 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0">
           <CardTitle>{resolvedTitle}</CardTitle>
-          <CardDescription className="hidden sm:block">{resolvedDescription}</CardDescription>
+          <CardDescription className="block">{resolvedDescription}</CardDescription>
         </div>
 
         <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row xl:w-auto xl:justify-end">
@@ -210,6 +290,7 @@ export function AdminActivityTimeline({
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               className="h-9 bg-white pl-9"
+              aria-label={copy.searchPlaceholder}
               placeholder={copy.searchPlaceholder}
             />
           </div>
@@ -241,6 +322,10 @@ export function AdminActivityTimeline({
       </CardHeader>
 
       <CardContent className="space-y-3 p-3 pt-0 sm:space-y-4 sm:p-6 sm:pt-0">
+        <p className="text-xs text-slate-500">{locale.startsWith("zh") ? "真实活动按当前权限分页读取。备注仅保存在当前账号的本机浏览器中，不是团队共享记录；设备或浏览器清理后会丢失。筛选作用于当前页。" : "Attività reali paginate secondo i permessi. Le note sono personali e salvate solo nel browser di questo account; non sono condivise. I filtri agiscono sulla pagina corrente."}</p>
+        {noteStorageError && <p role="alert" className="rounded border border-amber-200 bg-amber-50 p-3 text-sm">{noteStorageError}</p>}
+        {readError && <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{readError}</p>}
+        <AdminListPager page={page} pageSize={50} total={total} returned={activities.filter(item => item.type !== "note").length} pending={loading} onPageChange={setPage} />
         <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
           <span className="sm:hidden">
             {formatAdminMessage(copy.showCountMobile, {
@@ -269,6 +354,7 @@ export function AdminActivityTimeline({
                   activity={activity}
                   copy={copy}
                   locale={locale}
+                  permissions={permissions}
                   onToggleImportant={toggleImportant}
                 />
               ))
@@ -281,7 +367,7 @@ export function AdminActivityTimeline({
 
           <aside className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-2.5 lg:p-3">
             <div className="flex items-start justify-between gap-3">
-              <div className="hidden min-w-0 lg:block">
+              <div className="min-w-0">
                 <div className="text-sm font-bold text-slate-900">{copy.localNoteTitle}</div>
                 <div className="mt-1 text-xs text-slate-500">
                   {copy.localNoteDescription}
@@ -341,7 +427,7 @@ export function AdminActivityTimeline({
                 </Button>
               </div>
 
-              <Textarea
+              <Textarea maxLength={2000}
                 value={noteText}
                 onChange={(event) => setNoteText(event.target.value)}
                 className="min-h-24 bg-white lg:min-h-28"
@@ -374,16 +460,22 @@ function ActivityItem({
   activity,
   copy,
   locale,
+  permissions,
   onToggleImportant,
 }: {
   activity: AdminActivity;
   copy: ActivityCopy;
   locale: string;
+  permissions: readonly string[];
   onToggleImportant: (activityId: string) => void;
 }) {
   const config = activityTypeConfig[activity.type];
   const Icon = config.icon;
   const metadataEntries = getActivityMetadataEntries(activity);
+  const target = activityTarget(activity, permissions);
+  const linkLabels: Record<string, string> = locale.startsWith("zh")
+    ? { order: "查看此订单", product: "查看此商品", customerOrders: "查看此客户的订单", batches: "进入到货批次", rma: "进入售后工作台", finance: "进入财务工作台" }
+    : { order: "Apri ordine", product: "Apri prodotto", customerOrders: "Ordini del cliente", batches: "Apri lotti fornitori", rma: "Apri gestione resi", finance: "Apri gestione finanze" };
 
   return (
     <article
@@ -428,6 +520,7 @@ function ActivityItem({
             <span className="min-w-0 max-w-full break-all font-mono leading-5">
               {activity.subject}
             </span>
+            {target && <Link href={target.href} prefetch={false} className="mt-1 block w-fit text-xs font-semibold text-primary underline underline-offset-2">{linkLabels[target.label]}</Link>}
           </div>
 
           <details className="group mt-3 border-t border-slate-100 pt-2">

@@ -1,4 +1,6 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
+import { createClient as createStaffSupportClient } from "@/lib/supabase/server";
 
 import {
   createServiceRoleClient,
@@ -262,17 +264,29 @@ export async function markCustomerSupportConversationRead(input: {
   return readCustomerConversationBundle(client, data);
 }
 
+export async function readAdminSupportInboxCounts(currentUserId: string) {
+  const client = getSupportClient();
+  const base = () => client.from("support_conversations").select("id", { count: "exact", head: true }).eq("status", "open");
+  const results = await Promise.all([base(), base().gt("staff_unread_count", 0), base().is("assigned_to", null), base().eq("assigned_to", currentUserId)]);
+  if (results.some(result => result.error || result.count == null)) throw new SupportServiceError(502, "SUPPORT_INBOX_COUNTS_UNAVAILABLE", "Inbox counts unavailable.");
+  return { all: results[0].count!, needsReply: results[1].count!, unassigned: results[2].count!, mine: results[3].count! };
+}
+
 export async function listAdminSupportConversations(input: {
   currentUserId: string;
   limit: number;
   offset: number;
+  q?: string;
+  needsReply?: boolean;
   scope: SupportConversationScope;
   status: SupportConversationStatus | "all";
 }) {
   const client = getSupportClient();
   let request = client
     .from("support_conversations")
-    .select("*", { count: "planned" });
+    .select("*", { count: "exact" });
+
+  if (input.needsReply) request = request.gt("staff_unread_count", 0);
 
   if (input.status !== "all") {
     request = request.eq("status", input.status);
@@ -282,6 +296,22 @@ export async function listAdminSupportConversations(input: {
     request = request.eq("assigned_to", input.currentUserId);
   } else if (input.scope === "unassigned") {
     request = request.is("assigned_to", null);
+  }
+
+  if (input.q) {
+    const value = input.q.replace(/[%_,().]/g, " ").trim();
+    if (value) {
+      const profiles = await client.from("profiles").select("id", { count: "exact" }).or(
+        `display_name.ilike.%${value}%,email.ilike.%${value}%`
+      ).limit(250);
+      if (profiles.error) throw supportWriteError("ADMIN_SUPPORT_SEARCH_FAILED", "Customer search failed.", profiles.error);
+      if ((profiles.count ?? 0) > 250) throw new SupportServiceError(400, "SUPPORT_SEARCH_TOO_BROAD", "Search matches too many customers. Use a more precise name or email.");
+      const profileIds = readRows(profiles.data).map(row => readString(row.id)).filter((id): id is string => Boolean(id));
+      const clauses = [`subject.ilike.%${value}%`];
+      if (/^[a-f0-9-]{36}$/i.test(value)) clauses.push(`id.eq.${value}`);
+      if (profileIds.length) clauses.push(`user_id.in.(${profileIds.join(",")})`);
+      request = request.or(clauses.join(","));
+    }
   }
 
   const { data, error, count } = await request
@@ -314,228 +344,39 @@ export async function getAdminSupportConversationDetail(input: {
   return readAdminConversationBundle(client, conversation);
 }
 
-export async function createAdminSupportMessage(input: {
-  body: string;
-  conversationId: string;
-  userId: string;
-}) {
+export async function createAdminSupportMessage(input: { body: string; conversationId: string; userId: string; requestId?: string }) {
   const body = normalizeMessageBody(input.body);
-  const client = getSupportClient();
-  const conversation = await readConversation(client, input.conversationId);
-  const status = normalizeStatus(readString(conversation.status));
-
-  if (status !== "open") {
-    throw new SupportServiceError(
-      409,
-      "SUPPORT_CONVERSATION_NOT_OPEN",
-      "Only open support conversations can receive staff replies."
-    );
+  const client = await createStaffSupportClient();
+  const messageId = input.requestId ?? randomUUID();
+  const { data, error } = await client.rpc("admin_send_support_message_atomic", { p_conversation_id: input.conversationId, p_body: body, p_message_id: messageId });
+  if (error || !isRow(data) || data.saved !== true) {
+    const status = error?.code === "42501" ? 403 : error?.code === "23505" ? 409 : error?.code === "23514" ? 400 : error?.code === "P0002" ? 404 : 503;
+    throw new SupportServiceError(status, "SUPPORT_ATOMIC_SEND_UNAVAILABLE", "Message was not acknowledged. Verify the atomic reply migration and use the same send identifier to retry.");
   }
-
-  const now = new Date().toISOString();
-  const conversationId = readRequiredString(conversation.id, "conversation.id");
-  const customerUnread = readNumber(conversation.customer_unread_count) ?? 0;
-  const previousAssignee = readString(conversation.assigned_to);
-  const updates: DbRow = {
-    customer_unread_count: customerUnread + 1,
-    last_message_at: now,
-    last_staff_message_at: now,
-    staff_last_read_at: now,
-    staff_unread_count: 0,
-  };
-
-  if (!previousAssignee) {
-    updates.assigned_to = input.userId;
-    updates.assigned_by = input.userId;
-    updates.assigned_at = now;
-  }
-
-  const { error: messageError } = await client.from("support_messages").insert({
-    body,
-    conversation_id: conversationId,
-    sender_id: input.userId,
-    sender_type: "staff",
-  });
-
-  if (messageError) {
-    throw supportWriteError(
-      "ADMIN_SUPPORT_MESSAGE_CREATE_FAILED",
-      "Staff support message could not be sent.",
-      messageError
-    );
-  }
-
-  const { error: updateError } = await client
-    .from("support_conversations")
-    .update(updates)
-    .eq("id", conversationId);
-
-  if (updateError) {
-    throw supportWriteError(
-      "ADMIN_SUPPORT_CONVERSATION_UPDATE_FAILED",
-      "Support conversation could not be updated.",
-      updateError
-    );
-  }
-
-  if (!previousAssignee) {
-    await insertSupportEvent(client, {
-      actorId: input.userId,
-      conversationId,
-      eventType: "claimed",
-      metadata: { source: "staff_reply" },
-      toAssignee: input.userId,
-    });
-  }
-
-  await insertSupportEvent(client, {
-    actorId: input.userId,
-    conversationId,
-    eventType: "staff_message",
-  });
-
-  const customerUserId = readString(conversation.user_id);
-
-  if (customerUserId) {
+  // No fallback writes: an environment missing the transaction must fail closed.
+  let detail: Awaited<ReturnType<typeof getAdminSupportConversationDetail>> | null = null;
+  let followupError = false;
+  try { detail = await getAdminSupportConversationDetail({ conversationId: input.conversationId }); } catch { followupError = true; }
+  if (data.created === true) {
     try {
-      await notifySupportStaffReply({
-        actorUserId: input.userId,
-        conversationId,
-        customerUserId,
-      });
-    } catch (error) {
-      console.error("[support:staff_message] notification failed", {
-        conversationId,
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
+      const conversation = await readConversation(getSupportClient(), input.conversationId);
+      const customerUserId = readString(conversation.user_id);
+      if (customerUserId) await notifySupportStaffReply({ actorUserId: input.userId, conversationId: input.conversationId, customerUserId });
+    } catch { followupError = true; }
   }
-
-  return getAdminSupportConversationDetail({ conversationId });
+  return { detail, saved: true as const, followupError };
 }
 
-export async function updateAdminSupportConversation(input: {
-  action: SupportConversationAction;
-  assignedTo?: string | null;
-  conversationId: string;
-  note?: string | null;
-  userId: string;
-}) {
-  const client = getSupportClient();
-  const conversation = await readConversation(client, input.conversationId);
-  const conversationId = readRequiredString(conversation.id, "conversation.id");
-  const status = normalizeStatus(readString(conversation.status));
-  const previousAssignee = readString(conversation.assigned_to);
-  const now = new Date().toISOString();
-
-  switch (input.action) {
-    case "claim":
-      await updateConversation(client, conversationId, {
-        assigned_at: now,
-        assigned_by: input.userId,
-        assigned_to: input.userId,
-      });
-      await insertSupportEvent(client, {
-        actorId: input.userId,
-        conversationId,
-        eventType: previousAssignee ? "assigned" : "claimed",
-        fromAssignee: previousAssignee,
-        note: input.note,
-        toAssignee: input.userId,
-      });
-      await notifySupportAssignmentChange({
-        actorUserId: input.userId,
-        assignedTo: input.userId,
-        conversationId,
-      });
-      break;
-    case "assign":
-      await assertAssignableStaff(client, input.assignedTo);
-      await updateConversation(client, conversationId, {
-        assigned_at: input.assignedTo ? now : null,
-        assigned_by: input.assignedTo ? input.userId : null,
-        assigned_to: input.assignedTo ?? null,
-      });
-      await insertSupportEvent(client, {
-        actorId: input.userId,
-        conversationId,
-        eventType: "assigned",
-        fromAssignee: previousAssignee,
-        note: input.note,
-        toAssignee: input.assignedTo ?? null,
-      });
-      await notifySupportAssignmentChange({
-        actorUserId: input.userId,
-        assignedTo: input.assignedTo ?? null,
-        conversationId,
-      });
-      break;
-    case "mark_read":
-      await updateConversation(client, conversationId, {
-        staff_last_read_at: now,
-        staff_unread_count: 0,
-      });
-      await insertSupportEvent(client, {
-        actorId: input.userId,
-        conversationId,
-        eventType: "read",
-        metadata: { side: "staff" },
-      });
-      break;
-    case "resolve":
-      if (status !== "open") {
-        throw new SupportServiceError(
-          409,
-          "SUPPORT_CONVERSATION_NOT_OPEN",
-          "Only open support conversations can be resolved."
-        );
-      }
-      await updateConversation(client, conversationId, {
-        resolved_at: now,
-        resolved_by: input.userId,
-        status: "resolved",
-      });
-      await insertSupportEvent(client, {
-        actorId: input.userId,
-        conversationId,
-        eventType: "resolved",
-        fromStatus: status,
-        note: input.note,
-        toStatus: "resolved",
-      });
-      break;
-    case "reopen":
-      if (status !== "resolved") {
-        throw new SupportServiceError(
-          409,
-          "SUPPORT_CONVERSATION_NOT_RESOLVED",
-          "Only resolved support conversations can be reopened."
-        );
-      }
-      await updateConversation(client, conversationId, {
-        reopened_at: now,
-        resolved_at: null,
-        resolved_by: null,
-        status: "open",
-      });
-      await insertSupportEvent(client, {
-        actorId: input.userId,
-        conversationId,
-        eventType: "reopened",
-        fromStatus: status,
-        note: input.note,
-        toStatus: "open",
-      });
-      break;
-    default:
-      throw new SupportServiceError(
-        400,
-        "SUPPORT_ACTION_UNSUPPORTED",
-        "Support conversation action is not supported."
-      );
+export async function updateAdminSupportConversation(input: { action: SupportConversationAction; assignedTo?: string | null; conversationId: string; note?: string | null; userId: string }) {
+  const client = await createStaffSupportClient();
+  const { data, error } = await client.rpc("admin_update_support_conversation_atomic", { p_conversation_id: input.conversationId, p_action: input.action, p_assigned_to: input.assignedTo ?? null, p_note: input.note ?? null });
+  if (error || !isRow(data) || data.saved !== true) throw new SupportServiceError(error?.code === "42501" ? 403 : error?.code === "23514" ? 409 : 503, "SUPPORT_ATOMIC_ACTION_UNAVAILABLE", "Conversation action was not acknowledged. Verify the migration and reload the current state.");
+  let readError = false;
+  if (input.action === "claim" || input.action === "assign") {
+    try { await notifySupportAssignmentChange({ actorUserId: input.userId, assignedTo: input.action === "claim" ? input.userId : input.assignedTo ?? null, conversationId: input.conversationId }); } catch { readError = true; }
   }
-
-  return getAdminSupportConversationDetail({ conversationId });
+  try { return { detail: await getAdminSupportConversationDetail({ conversationId: input.conversationId }), saved: true as const, readError }; }
+  catch { return { detail: null, saved: true as const, readError: true }; }
 }
 
 function getSupportClient() {
@@ -717,25 +558,6 @@ async function readEvents(client: SupportDbClient, conversationId: string) {
   return toEventDtos(client, readRows(data));
 }
 
-async function updateConversation(
-  client: SupportDbClient,
-  conversationId: string,
-  values: DbRow
-) {
-  const { error } = await client
-    .from("support_conversations")
-    .update(values)
-    .eq("id", conversationId);
-
-  if (error) {
-    throw supportWriteError(
-      "ADMIN_SUPPORT_CONVERSATION_UPDATE_FAILED",
-      "Support conversation could not be updated.",
-      error
-    );
-  }
-}
-
 async function insertSupportEvent(
   client: SupportDbClient,
   input: {
@@ -767,42 +589,6 @@ async function insertSupportEvent(
       "SUPPORT_EVENT_CREATE_FAILED",
       "Support event could not be recorded.",
       error
-    );
-  }
-}
-
-async function assertAssignableStaff(
-  client: SupportDbClient,
-  assignedTo: string | null | undefined
-) {
-  if (!assignedTo) {
-    return;
-  }
-
-  const { data, error } = await client
-    .from("profiles")
-    .select("id, account_type, role, role_template")
-    .eq("id", assignedTo)
-    .maybeSingle();
-
-  if (error || !isRow(data)) {
-    throw new SupportServiceError(
-      400,
-      "SUPPORT_ASSIGNEE_INVALID",
-      "Support assignee must be an existing staff account.",
-      error ? { message: error.message } : undefined
-    );
-  }
-
-  const accountType = readString(data.account_type);
-  const role = readString(data.role);
-  const roleTemplate = readString(data.role_template);
-
-  if (accountType !== "employee" && !role && !roleTemplate) {
-    throw new SupportServiceError(
-      400,
-      "SUPPORT_ASSIGNEE_NOT_STAFF",
-      "Support assignee must be a staff account."
     );
   }
 }

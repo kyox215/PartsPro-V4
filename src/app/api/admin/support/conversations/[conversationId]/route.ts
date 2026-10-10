@@ -98,8 +98,10 @@ export async function PATCH(
     });
 
     return NextResponse.json({
-      data,
+      data: data.detail,
       meta: {
+        saved: data.saved,
+        readError: data.readError,
         action: parsed.data.action,
         source: "support_conversations",
       },

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiError, formatZodIssues } from "@/lib/partspro-api";
-import { updateAdminFinanceExpense } from "@/lib/partspro-repository";
+import { updateAdminFinanceExpense, readAdminFinanceEditableEntry } from "@/lib/partspro-repository";
 import { repositoryErrorResponse, requireAdminApi } from "../../../_shared";
 import {
   financeExpensePatchSchema,
@@ -35,7 +35,14 @@ export async function PATCH(request: NextRequest, { params }: ExpenseParams) {
   }
 
   try {
-    const result = await updateAdminFinanceExpense(parsedId.data.id, body.data);
+    const original = await readAdminFinanceEditableEntry("expense", parsedId.data.id);
+    if (!original.data) return apiError(404, "FINANCE_ENTRY_NOT_FOUND", "Finance entry could not be found.");
+    const { correctionReason, expectedUpdatedAt, ...changes } = body.data;
+    if (original.data.version !== expectedUpdatedAt) return apiError(409, "FINANCE_ENTRY_CONFLICT", "This entry changed. Reopen it and review the latest values before correcting.");
+    const result = await updateAdminFinanceExpense(parsedId.data.id, {
+      ...changes,
+      metadata: { ...original.data.metadata, ...changes.metadata, correctionReason },
+    }, expectedUpdatedAt);
 
     return NextResponse.json({
       data: result.data,

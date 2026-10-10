@@ -1,3 +1,4 @@
+import { collectAdminRows } from "@/lib/admin-paged-read.mjs";
 import { readCatalogRevision } from "@/lib/partspro-catalog-revision";
 import { applyOrderListFilters, orderListSelect } from "@/lib/partspro-order-list-filters.mjs";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -703,6 +704,7 @@ export type AdminFinanceLedgerType =
   | "supplier_payment";
 
 export type AdminFinanceQueryInput = {
+  ledgerView?: "margin" | "purchases" | "expenses";
   category?: string;
   confidence?: AdminFinanceConfidence;
   dateFrom?: string;
@@ -2809,6 +2811,49 @@ export async function listCompanies(): Promise<RepositoryResult<CompanyProfile[]
   );
 }
 
+async function readCompleteScopedRows(client: SupabaseServerClient, table: string, fields: string, scopeField: string, ids: string[]) {
+  if (!ids.length) return [] as DbRow[];
+  const all = await collectAdminRows(async ({ limit, offset }) => {
+    const { data, error, count } = await client.from(table).select(fields, { count: "exact" }).in(scopeField, ids).order("id", { ascending: true }).range(offset, offset + limit - 1);
+    if (error || count == null || !Array.isArray(data)) throw new RepositoryWriteError(502, "COMPLETE_SCOPE_READ_FAILED", "Complete scoped records unavailable.");
+    return { rows: (data as unknown[]).filter(isDbRow), total: count };
+  }, { key: row => pickString(row, ["id"]) ?? "" });
+  return all.rows;
+}
+
+export async function readCompleteAdminOverviewProducts() {
+  const context = await requireSupabaseContext();
+  const all = await collectAdminRows(async query => {
+    const page = await readAdminProductPage(context.client, { ...query, sort: "updated_desc" });
+    if (!page) throw new RepositoryWriteError(502, "OVERVIEW_PRODUCTS_UNAVAILABLE", "Complete product summary unavailable.");
+    return { rows: page.products, total: page.total };
+  }, { key: product => product.sku });
+  return { data: { products: all.rows, total: all.total }, source: "supabase_complete" };
+}
+
+export async function readCompleteAdminOverviewOrders() {
+  const context = await requireSupabaseContext();
+  const all = await collectAdminRows(async query => {
+    const page = await readAdminOrderPage(context.client, { ...query, sort: "date_desc" });
+    if (!page) throw new RepositoryWriteError(502, "OVERVIEW_ORDERS_UNAVAILABLE", "Complete order summary unavailable.");
+    return { rows: page.orders, total: page.total };
+  }, { key: order => order.id });
+  const linesByOrder = new Map<string, AdminOrderLine[]>();
+  for (let offset = 0; offset < all.rows.length; offset += 100) {
+    const rows = await readCompleteScopedRows(context.client, "order_lines", "id,order_id,sku_code,product_name,quantity,unit_price,cancelled_qty", "order_id", all.rows.slice(offset, offset + 100).map(order => order.id));
+    for (const row of rows) {
+      const line = mapAdminOrderLineRow(row); const orderId = pickString(row, ["order_id"]);
+      if (!line || !orderId) throw new RepositoryWriteError(502, "OVERVIEW_ORDER_LINE_INVALID", "Order summary line is incomplete.");
+      const existing = linesByOrder.get(orderId) ?? []; existing.push(line); linesByOrder.set(orderId, existing);
+    }
+  }
+  const orders = all.rows.map(order => {
+    const lines = (linesByOrder.get(order.id) ?? []).map(line => ({ ...line, quantity: Math.max(0, line.quantity - line.cancelledQty) }));
+    return { ...order, lines };
+  });
+  return { data: { orders, total: all.total }, source: "supabase_complete" };
+}
+
 export async function listAdminProducts(
   query: AdminProductQueryInput
 ): Promise<RepositoryResult<AdminProductPage>> {
@@ -3657,6 +3702,46 @@ export async function listAdminFinanceCogs(
   };
 }
 
+export type AdminFinanceEditableEntry = (AdminFinanceExpenseEntry | AdminSupplierBatchPayment) & { version: string };
+
+export async function readAdminFinanceEditableEntry(type: "expense" | "supplier_payment", id: string): Promise<RepositoryResult<AdminFinanceEditableEntry | null>> {
+  const context = await requireSupabaseContext();
+  const table = type === "expense" ? "finance_expense_entries" : "supplier_batch_payments";
+  const { data, error } = await context.client.from(table).select("*").eq("id", id).maybeSingle();
+  if (error) throw new RepositoryWriteError(502, "FINANCE_ENTRY_READ_FAILED", "Finance entry could not be read.");
+  if (!isDbRow(data)) return { data: null, source: "supabase" };
+  if (type === "expense") {
+    const entry = mapAdminFinanceExpenseEntry(data);
+    return { data: entry ? { ...entry, version: pickString(data, ["updated_at"]) ?? "" } : null, source: "supabase" };
+  }
+  const batchId = pickString(data, ["batch_id"]);
+  const supplierId = pickString(data, ["supplier_id"]);
+  const [batch, supplier] = await Promise.all([
+    batchId ? readSingleRow(context.client, "supplier_batches", "id", batchId, "id,batch_code,supplier_id") : Promise.resolve(null),
+    supplierId ? readSingleRow(context.client, "suppliers", "id", supplierId, "id,name,display_label") : Promise.resolve(null),
+  ]);
+  const entry = mapAdminSupplierBatchPayment(data, {
+    batchById: makeRowMap(batch ? [batch] : []), supplierById: makeRowMap(supplier ? [supplier] : []),
+    costLayerById: new Map(), orderById: new Map(), orderLineById: new Map(),
+  });
+  return { data: entry ? { ...entry, version: pickString(data, ["updated_at"]) ?? "" } : null, source: "supabase" };
+}
+
+export async function readAdminFinanceSupplierBatchOptions(query: { q?: string; supplier?: string; limit: number; offset: number }) {
+  const context = await requireSupabaseContext();
+  const { data, error } = await context.client.rpc("admin_finance_supplier_batch_options", { p_q: query.q ?? null, p_supplier: query.supplier ?? null, p_limit: query.limit, p_offset: query.offset });
+  if (error || !isDbRow(data)) throw new RepositoryWriteError(error?.code === "42501" ? 403 : 503, "FINANCE_BATCH_OPTIONS_UNAVAILABLE", "Complete supplier batch options unavailable. Verify the finance batch reader migration.");
+  const result = data;
+  const rawRows = Array.isArray(result.batches) ? result.batches : null;
+  const rows = rawRows?.filter(isDbRow);
+  const total = pickNumber(result, ["total"]);
+  if (!rows || total == null || !Number.isInteger(total) || total < 0 || rows.length !== rawRows?.length || rows.some(row => !pickString(row, ["id"]) || !pickString(row, ["batchCode"]))) throw new RepositoryWriteError(502, "FINANCE_BATCH_OPTIONS_INVALID", "Complete payment batch options unavailable.");
+  return { data: { batches: rows.map(row => ({
+    id: pickString(row,["id"]) ?? "", batchCode: pickString(row,["batchCode"]) ?? "", supplierName: pickString(row,["supplierName"]), currency: pickString(row,["currency"]) ?? "EUR",
+    paidNet: pickNumber(row,["paidNet"]), outstandingNet: pickNumber(row,["outstandingNet"]), latestPaidAt: pickString(row,["latestPaidAt"]), costBasis: pickString(row,["costBasis"]) ?? "unknown",
+  })), total }, source: "finance_batch_options" };
+}
+
 export async function createAdminFinanceExpense(
   input: AdminFinanceExpenseEntryInput
 ): Promise<RepositoryResult<AdminFinanceExpenseEntry>> {
@@ -3671,10 +3756,11 @@ export async function createAdminFinanceExpense(
 
 export async function updateAdminFinanceExpense(
   expenseId: string,
-  input: Partial<AdminFinanceExpenseEntryInput>
+  input: Partial<AdminFinanceExpenseEntryInput>,
+  expectedUpdatedAt?: string
 ): Promise<RepositoryResult<AdminFinanceExpenseEntry>> {
   const context = await requireSupabaseContext();
-  const entry = await writeAdminFinanceExpense(context, input, expenseId);
+  const entry = await writeAdminFinanceExpense(context, input, expenseId, expectedUpdatedAt);
 
   return {
     data: entry,
@@ -3696,10 +3782,11 @@ export async function createAdminSupplierBatchPayment(
 
 export async function updateAdminSupplierBatchPayment(
   paymentId: string,
-  input: Partial<AdminSupplierBatchPaymentInput>
+  input: Partial<AdminSupplierBatchPaymentInput>,
+  expectedUpdatedAt?: string
 ): Promise<RepositoryResult<AdminSupplierBatchPayment>> {
   const context = await requireSupabaseContext();
-  const payment = await writeAdminSupplierBatchPayment(context, input, paymentId);
+  const payment = await writeAdminSupplierBatchPayment(context, input, paymentId, expectedUpdatedAt);
 
   return {
     data: payment,
@@ -8449,7 +8536,8 @@ function buildAdminFinanceLedgerRows(
 async function writeAdminFinanceExpense(
   context: SupabaseContext,
   input: Partial<AdminFinanceExpenseEntryInput>,
-  expenseId?: string
+  expenseId?: string,
+  expectedUpdatedAt?: string
 ): Promise<AdminFinanceExpenseEntry> {
   const payload: Record<string, unknown> = {};
 
@@ -8474,17 +8562,16 @@ async function writeAdminFinanceExpense(
     payload.updated_by = context.userId;
   }
 
-  const request = expenseId
-    ? context.client
-        .from("finance_expense_entries")
-        .update(payload)
-        .eq("id", expenseId)
-        .select("*")
-        .single()
+  let update = context.client.from("finance_expense_entries").update(payload).eq("id", expenseId ?? "");
+  if (expectedUpdatedAt) update = update.eq("updated_at", expectedUpdatedAt);
+  const request = expenseId ? update.select("*").maybeSingle()
     : context.client.from("finance_expense_entries").insert(payload).select("*").single();
   const { data, error } = await request;
   const row = isDbRow(data) ? data : null;
 
+  if (!error && !row && expenseId && expectedUpdatedAt) {
+    throw new RepositoryWriteError(409, "FINANCE_ENTRY_CONFLICT", "The entry changed. Reload it before correcting.");
+  }
   if (error || !row) {
     throw new RepositoryWriteError(
       error?.code === "PGRST116" ? 404 : 502,
@@ -8512,7 +8599,8 @@ async function writeAdminFinanceExpense(
 async function writeAdminSupplierBatchPayment(
   context: SupabaseContext,
   input: Partial<AdminSupplierBatchPaymentInput>,
-  paymentId?: string
+  paymentId?: string,
+  expectedUpdatedAt?: string
 ): Promise<AdminSupplierBatchPayment> {
   const payload: Record<string, unknown> = {};
   const batchId = input.batchId ?? undefined;
@@ -8547,17 +8635,16 @@ async function writeAdminSupplierBatchPayment(
     payload.updated_by = context.userId;
   }
 
-  const request = paymentId
-    ? context.client
-        .from("supplier_batch_payments")
-        .update(payload)
-        .eq("id", paymentId)
-        .select("*")
-        .single()
+  let update = context.client.from("supplier_batch_payments").update(payload).eq("id", paymentId ?? "");
+  if (expectedUpdatedAt) update = update.eq("updated_at", expectedUpdatedAt);
+  const request = paymentId ? update.select("*").maybeSingle()
     : context.client.from("supplier_batch_payments").insert(payload).select("*").single();
   const { data, error } = await request;
   const row = isDbRow(data) ? data : null;
 
+  if (!error && !row && paymentId && expectedUpdatedAt) {
+    throw new RepositoryWriteError(409, "FINANCE_ENTRY_CONFLICT", "The entry changed. Reload it before correcting.");
+  }
   if (error || !row) {
     throw new RepositoryWriteError(
       error?.code === "PGRST116" ? 404 : 502,
@@ -8571,8 +8658,10 @@ async function writeAdminSupplierBatchPayment(
     );
   }
 
-  const dataSet = await readAdminFinanceDataSet(context.client);
-  const mapped = mapAdminSupplierBatchPayment(row, makeAdminFinanceMaps(dataSet));
+  // The write already committed. A separate name lookup must not turn success into a retryable failure.
+  const mapped = mapAdminSupplierBatchPayment(row, {
+    batchById: new Map(), costLayerById: new Map(), orderById: new Map(), orderLineById: new Map(), supplierById: new Map(),
+  });
 
   if (!mapped) {
     throw new RepositoryWriteError(
@@ -8747,6 +8836,10 @@ function financeLedgerRowMatches(
   row: AdminFinanceLedgerRow,
   query: NormalizedFinanceQuery
 ) {
+  const views: Record<string, readonly AdminFinanceLedgerType[]> = {
+    margin: ["sale", "cogs", "receivable"], purchases: ["purchase", "supplier_payment"], expenses: ["expense"],
+  };
+  if (query.ledgerView && !views[query.ledgerView]?.includes(row.type)) return false;
   if (!financeCategoryMatches(row.category, query.category)) {
     return false;
   }

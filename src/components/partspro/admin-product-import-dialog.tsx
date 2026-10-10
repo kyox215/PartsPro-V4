@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { compatibilityReasonLabel, compatibilitySignalLabel } from "@/lib/admin-compatibility-copy";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -106,6 +107,8 @@ export function AdminProductImportDialog({
 
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen) {
+      if (pending) return;
+      if (!result && (file || pasteText.trim() || preview) && !window.confirm(italian ? "Scartare file, testo e anteprima non salvati?" : "放弃未保存的文件、粘贴资料和预览？")) return;
       setFile(null);
       setPasteText("");
       setPreview(null);
@@ -236,7 +239,7 @@ export function AdminProductImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="flex max-h-[94dvh] w-[calc(100vw-1rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:w-[calc(100vw-2rem)]">
+      <DialogContent data-admin-mutating={pending === "apply" ? "true" : "false"} data-admin-dirty={open && !result && Boolean(file || pasteText.trim() || preview) ? "true" : "false"} className="flex max-h-[94dvh] w-[calc(100vw-1rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:w-[calc(100vw-2rem)]">
         <DialogHeader className="border-b border-slate-200 px-4 py-4 sm:px-6">
           <div className="flex items-start gap-3">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
@@ -433,7 +436,7 @@ function PreviewTableRow({
   row: PreviewRow;
   copy: typeof zhCopy;
 }) {
-  return <tr className="align-top"><td className="px-3 py-3 font-mono text-xs">{row.rowNumber}</td><td className="px-3 py-3"><StatusBadge status={row.status} copy={copy} /></td><td className="px-3 py-3">{operationLabel(row.operation, copy)}</td><td className="px-3 py-3 font-mono text-xs">{row.sku}</td><td className="px-3 py-3"><div className="max-w-xs font-semibold text-slate-900">{row.normalized.name || "—"}</div><div className="mt-1 text-xs text-slate-500">{[row.normalized.brand, row.normalized.category].filter(Boolean).join(" · ")}</div></td><td className="px-3 py-3 text-xs text-slate-600">{row.changes.length ? row.changes.slice(0, 3).map((change) => change.field).join("、") : "—"}{row.changes.length > 3 ? ` +${row.changes.length - 3}` : ""}</td><td className="max-w-sm px-3 py-3 text-xs"><IssueList compatibilityConfirmed={compatibilityConfirmed} onCompatibilityReviewConfirm={onCompatibilityReviewConfirm} row={row} copy={copy} /></td></tr>;
+  return <tr className="align-top"><td className="px-3 py-3 font-mono text-xs">{row.rowNumber}</td><td className="px-3 py-3"><StatusBadge status={row.status} copy={copy} /></td><td className="px-3 py-3">{operationLabel(row.operation, copy)}</td><td className="px-3 py-3 font-mono text-xs">{row.sku}</td><td className="px-3 py-3"><div className="max-w-xs font-semibold text-slate-900">{row.normalized.name || "—"}</div><div className="mt-1 text-xs text-slate-500">{[row.normalized.brand, row.normalized.category].filter(Boolean).join(" · ")}</div></td><td className="px-3 py-3 text-xs text-slate-600"><ChangeDetails row={row} copy={copy} /></td><td className="max-w-sm px-3 py-3 text-xs"><IssueList compatibilityConfirmed={compatibilityConfirmed} onCompatibilityReviewConfirm={onCompatibilityReviewConfirm} row={row} copy={copy} /></td></tr>;
 }
 
 function PreviewMobileCard({
@@ -447,7 +450,13 @@ function PreviewMobileCard({
   row: PreviewRow;
   copy: typeof zhCopy;
 }) {
-  return <div className="rounded-xl border border-slate-200 p-3"><div className="flex items-start justify-between gap-2"><div><div className="font-semibold text-slate-950">{row.normalized.name || row.sku}</div><div className="mt-1 font-mono text-xs text-slate-500">#{row.rowNumber} · {row.sku}</div></div><StatusBadge status={row.status} copy={copy} /></div><div className="mt-3 flex flex-wrap gap-2"><Badge variant="outline">{operationLabel(row.operation, copy)}</Badge>{row.changes.length > 0 && <Badge variant="outline">{copy.changes} {row.changes.length}</Badge>}</div><div className="mt-3"><IssueList compatibilityConfirmed={compatibilityConfirmed} onCompatibilityReviewConfirm={onCompatibilityReviewConfirm} row={row} copy={copy} /></div></div>;
+  return <div className="rounded-xl border border-slate-200 p-3"><div className="flex items-start justify-between gap-2"><div><div className="font-semibold text-slate-950">{row.normalized.name || row.sku}</div><div className="mt-1 font-mono text-xs text-slate-500">#{row.rowNumber} · {row.sku}</div></div><StatusBadge status={row.status} copy={copy} /></div><div className="mt-3 flex flex-wrap gap-2"><Badge variant="outline">{operationLabel(row.operation, copy)}</Badge>{row.changes.length > 0 && <Badge variant="outline">{copy.changes} {row.changes.length}</Badge>}</div><div className="mt-3"><ChangeDetails row={row} copy={copy} /><IssueList compatibilityConfirmed={compatibilityConfirmed} onCompatibilityReviewConfirm={onCompatibilityReviewConfirm} row={row} copy={copy} /></div></div>;
+}
+
+function ChangeDetails({ row, copy }: { row: PreviewRow; copy: typeof zhCopy }) {
+  const italian = copy.title.startsWith("Import");
+  if (!row.changes.length) return <span>—</span>;
+  return <details className="min-w-0 rounded border border-slate-200 p-2"><summary className="cursor-pointer font-semibold">{copy.changes} · {row.changes.length}</summary><dl className="mt-2 space-y-2">{row.changes.map(change => <div key={change.field} className="break-words rounded bg-slate-50 p-2"><dt className="font-semibold">{change.field}</dt><dd className="mt-1 whitespace-pre-wrap"><span className="text-slate-500">{italian ? "Prima" : "原值"}: </span>{change.currentValue || "—"}<br /><span className="text-emerald-700">{italian ? "Dopo" : "新值"}: </span>{change.nextValue || "—"}</dd></div>)}</dl></details>;
 }
 
 function IssueList({
@@ -477,7 +486,7 @@ function CompatibilityReviewBlock({
   copy: typeof zhCopy;
 }) {
   const review = row.compatibilityReview;
-  return <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-950"><div className="font-semibold">{copy.compatibilityReviewEvidence}</div><div className="mt-1">{copy.compatibilityReviewReasons}: {review.reasonCodes.join("、") || "—"}</div><div className="mt-1">{copy.compatibilityReviewSignals}: {review.signals.join("；") || "—"}</div><label className="mt-2 flex items-start gap-2"><Checkbox checked={compatibilityConfirmed} onCheckedChange={(value) => onCompatibilityReviewConfirm(row, value === true)} /><span>{copy.compatibilityReviewConfirm}</span></label></div>;
+  return <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-950"><div className="font-semibold">{copy.compatibilityReviewEvidence}</div><div className="mt-1">{copy.compatibilityReviewReasons}: {review.reasonCodes.map(code => compatibilityReasonLabel(code, copy.title.startsWith("Import"))).join("；") || "—"}</div><div className="mt-1">{copy.compatibilityReviewSignals}: {review.signals.map(signal => compatibilitySignalLabel(signal, copy.title.startsWith("Import"))).join("；") || "—"}</div><label className="mt-2 flex items-start gap-2"><Checkbox checked={compatibilityConfirmed} onCheckedChange={(value) => onCompatibilityReviewConfirm(row, value === true)} /><span>{copy.compatibilityReviewConfirm}</span></label></div>;
 }
 
 function StatusBadge({ status, copy }: { status: PreviewRow["status"]; copy: typeof zhCopy }) {

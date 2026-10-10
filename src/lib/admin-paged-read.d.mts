@@ -1,0 +1,2 @@
+export function loadAllAdminRows(endpoint: string, params: URLSearchParams, options?: { fetcher?: typeof fetch; key?: (row: unknown) => string | null | undefined; maxOffset?: number }): Promise<unknown[]>;
+export function collectAdminRows<T>(readPage: (query: { limit: number; offset: number }) => Promise<{ rows: T[]; total: number }>, options?: { key?: (row: T) => string; pageSize?: number; maxRows?: number; parallelism?: number }): Promise<{ rows: T[]; total: number }>;

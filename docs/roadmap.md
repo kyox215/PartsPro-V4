@@ -140,3 +140,11 @@ Last reviewed: 2026-09-28
 - 詳细报告 `docs/audits/2026-10-10-catalog-directory-release.md`；证据 `outputs/catalog/2026-10-10/`。数据库及依赖页面已上线，最终记录见下条。无真实商品/库存/图片写验收，物理手机键盘未验证；图片并发和库存跨请求幂等仍独立待处理。
 
 - 最终发布完成：运行源码832c53c已推送codex/catalog-directory-release-20261010，最终生产部署dpl_BgiuoEqK7TPqFqSA66FC8KvG3qCL，两域名指向已核对。370上传文件hash/同SHA Vercel success/10候选和11线上GET检查通过，独立PROMOTE GO；短时error日志0条。IAB真实生产桌面1280及手机390目录名称、REMAX导航、无横向溢出、菜单关闭复查通过。未合并main；已登录Chrome自动化仍受限，真实管理员保存与真机软键盘不计PASS。上一正式部署dpl_3uXTPRgAjbBTxxhMJoufPhsTdwDm保留。
+
+
+## 2026-10-10 — 后台全面修复候选完成
+
+- 64项本地实施完成，隔离工作树 `.codex-worktrees/admin-panel-comprehensive-20261010` / 分支 `codex/admin-panel-comprehensive-20261010`，基准a32c8b9（运行源码832c53c）；主目录既有业务改动保留。
+- 129后台测试、26商城/导入回归、18真实组件模拟交互、60页面/视口组合、全量lint/build与diff检查PASS；实际编译Next的9个匿名后台API均403，后台页跳登录。独立SQL/RLS和恢复流程静态GO。模拟环境和真实服务边界均已在报告说明。
+- PartsPro-V4/yiuxrjqexlfjtxxrkqvi已核对，linked历史无remote-only分歧，dry-run仅20261010204858_admin_support_atomic_reply.sql（原子客服回复、会话动作、财务最小批次读取）。生产迁移、正式发布和真实业务写验收均未执行，当前状态local_ready_for_owner_gate。
+- 逐项结果及回退说明：工作树 `docs/audits/2026-10-10-admin-panel-repair-verification.md`；证据 `outputs/admin-repair/2026-10-10/`。统计凭据/eBay真实政策、生产真实账号和物理手机另行验收；原有图片并发和库存跨请求幂等事项保持原范围。

@@ -90,6 +90,11 @@ export class EbaySellClient {
     private readonly accessToken: string
   ) {}
 
+  getBusinessPolicies(kind: "payment" | "return" | "fulfillment", marketplaceId: string) {
+    const query = new URLSearchParams({ marketplace_id: marketplaceId });
+    return this.request<Record<string, unknown>>(`/sell/account/v1/${kind}_policy?${query}`);
+  }
+
   createOrReplaceInventoryItem(sku: string, payload: unknown) {
     return this.request(`/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`, {
       body: JSON.stringify(payload),

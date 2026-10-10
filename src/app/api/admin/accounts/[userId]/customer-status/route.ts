@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+import { savedAccountResponse } from "../../_saved-account-response";
 import { z } from "zod";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
 import {
@@ -105,18 +106,7 @@ export async function PATCH(request: NextRequest, { params }: AccountParams) {
       status: parsed.data.status,
     });
 
-    const detail = await readAdminAccountDetail(supabase, paramResult.data.userId);
-
-    if (!detail) {
-      return apiError(404, "ADMIN_ACCOUNT_NOT_FOUND", "Account was updated but could not be reloaded.", {
-        userId: paramResult.data.userId,
-      });
-    }
-
-    return NextResponse.json({
-      data: detail,
-      meta: { source: "supabase_rpc", rpc: "admin_update_customer_classification" },
-    });
+    return savedAccountResponse(() => readAdminAccountDetail(supabase, paramResult.data.userId), "admin_update_customer_classification");
   } catch (error) {
     return repositoryErrorResponse(
       error,

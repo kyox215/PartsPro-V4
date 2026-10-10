@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { buildOverviewModel, type OverviewOrder, type OverviewProduct } from "@/lib/partspro-overview-model";
 import {
-  listAdminOrders,
-  listAdminProducts,
+  readCompleteAdminOverviewOrders,
+  readCompleteAdminOverviewProducts,
   type AdminOrder,
   type AdminOrderLine,
   type AdminProduct,
@@ -12,6 +12,7 @@ import { hasAdminPermission } from "@/lib/partspro-admin-auth";
 import { requireAdminApi } from "../_shared";
 
 export const dynamic = "force-dynamic";
+const overviewCache = new Map<string, { expiresAt: number; readStartedAt: string; readCompletedAt: string; data: [OverviewDomainResult<ReturnType<typeof toDashboardOrderPayload>>, OverviewDomainResult<ReturnType<typeof toDashboardProductPayload>>] }>();
 
 type OverviewDomainResult<T> = {
   data: T[];
@@ -28,10 +29,21 @@ export async function GET(request: Request) {
     return admin.response;
   }
 
-  const [ordersResult, productsResult] = await Promise.all([
-    readOverviewOrders(hasAdminPermission(admin.authState, "orders.read")),
-    readOverviewProducts(hasAdminPermission(admin.authState, "product.read_admin")),
+  const startedAt = new Date().toISOString();
+  const ordersAllowed = hasAdminPermission(admin.authState, "orders.read");
+  const productsAllowed = hasAdminPermission(admin.authState, "product.read_admin");
+  const cacheKey = `${admin.authState.userId}:${ordersAllowed}:${productsAllowed}:${admin.authState.role}`;
+  const cached = overviewCache.get(cacheKey);
+  const cacheHit = Boolean(cached && cached.expiresAt > Date.now());
+  const [ordersResult, productsResult] = cacheHit && cached ? cached.data : await Promise.all([
+    readOverviewOrders(ordersAllowed), readOverviewProducts(productsAllowed),
   ]);
+  const readCompletedAt = cacheHit && cached ? cached.readCompletedAt : new Date().toISOString();
+  const readStartedAt = cacheHit && cached ? cached.readStartedAt : startedAt;
+  if (!cacheHit && !ordersResult.error && !productsResult.error) {
+    if (overviewCache.size >= 20) overviewCache.delete(overviewCache.keys().next().value!);
+    overviewCache.set(cacheKey, { expiresAt: Date.now() + 30000, readStartedAt, readCompletedAt, data: [ordersResult, productsResult] });
+  }
   const errors = [ordersResult.error, productsResult.error].filter(Boolean);
 
   const params = new URL(request.url).searchParams;
@@ -58,7 +70,10 @@ export async function GET(request: Request) {
     productTotal: productsResult.total,
     productsReturned: productsResult.returned,
     source: "admin_overview",
+    readStartedAt, readCompletedAt, cached: cacheHit,
   };
+
+  if (errors.length) return NextResponse.json({ error: { code: "OVERVIEW_COMPLETE_READ_FAILED", message: "Complete overview unavailable.", details: { domains: errors } }, meta }, { status: 503 });
 
   if (compact) {
     const model = buildOverviewModel(
@@ -71,7 +86,7 @@ export async function GET(request: Request) {
       anchor,
       timeZone,
     );
-    return NextResponse.json({ data: { model }, meta: { ...meta, sampleLimit: 100 } });
+    return NextResponse.json({ data: { model }, meta: { ...meta, scope: "complete_authorized_domains", maxRowsPerDomain: 50000, readStartedAt, readCompletedAt } });
   }
 
   return NextResponse.json({
@@ -91,18 +106,15 @@ async function readOverviewOrders(
   }
 
   try {
-    const result = await listAdminOrders({
-      limit: 100,
-      offset: 0,
-      sort: "date_desc",
-    });
+    const result = await readCompleteAdminOverviewOrders();
+    const all = { rows: result.data.orders, total: result.data.total };
 
     return {
-      data: result.data.orders.map(toDashboardOrderPayload),
+      data: all.rows.map(toDashboardOrderPayload),
       error: null,
-      returned: result.data.orders.length,
-      source: result.source,
-      total: result.data.total,
+      returned: all.rows.length,
+      source: "supabase_complete",
+      total: all.total,
     };
   } catch (error) {
     return emptyDomainResult("error", readErrorMessage(error));
@@ -117,18 +129,15 @@ async function readOverviewProducts(
   }
 
   try {
-    const result = await listAdminProducts({
-      limit: 100,
-      offset: 0,
-      sort: "updated_desc",
-    });
+    const result = await readCompleteAdminOverviewProducts();
+    const all = { rows: result.data.products, total: result.data.total };
 
     return {
-      data: result.data.products.map(toDashboardProductPayload),
+      data: all.rows.map(toDashboardProductPayload),
       error: null,
-      returned: result.data.products.length,
-      source: result.source,
-      total: result.data.total,
+      returned: all.rows.length,
+      source: "supabase_complete",
+      total: all.total,
     };
   } catch (error) {
     return emptyDomainResult("error", readErrorMessage(error));
@@ -140,7 +149,7 @@ function toDashboardOrderPayload(order: AdminOrder) {
     company: order.customer.name,
     createdAt: order.createdAt,
     id: order.orderNo,
-    items: order.lineCount,
+    items: (order.lines ?? []).reduce((total, line) => total + line.quantity, 0),
     lines: (order.lines ?? []).map(toDashboardOrderLinePayload),
     paymentStatus: order.paymentStatus,
     status: order.status,
