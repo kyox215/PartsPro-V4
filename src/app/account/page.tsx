@@ -1,3 +1,4 @@
+import { loginUrl } from "@/lib/partspro-auth-redirect";
 import { AccountPage } from "@/components/partspro/account-page";
 import { getCurrentAccountContext } from "@/lib/partspro-account-context";
 import {
@@ -25,20 +26,25 @@ export default async function Page({
   searchParams: AccountPageSearchParams;
 }) {
   const params = await searchParams;
+  const preserved = new URLSearchParams();
+  for (const key of ["section", "orderId", "setup", "returnTo", "page", "q"]) { const value = readSingleParam(params[key]); if (value) preserved.set(key, value.slice(0, 2000)); }
+  const authNext = "/account" + (preserved.size ? `?${preserved}` : "");
   const configured = isSupabaseConfigured();
 
   if (!configured) {
-    redirect("/login?next=/account&error=config");
+    redirect(loginUrl(authNext, "config"));
   }
 
   const account = await getCurrentAccountContext({ ensure: true });
   if (!account.authenticated) {
-    redirect("/login?next=/account");
+    redirect(loginUrl(authNext));
   }
   const requestedSection = readSingleParam(params.section);
   const loadedSection = readSingleParam(params.orderId) ? "orders"
     : requestedSection === "wallet" || requestedSection === "orders" || requestedSection === "service"
       ? requestedSection : "overview";
+  const historyPage = Math.min(10000, Math.max(0, Number(readSingleParam(params.page)) || 0));
+  const historyQuery = { offset: historyPage * 50, limit: 51, q: (readSingleParam(params.q) ?? "").slice(0,80) };
   const needsOrders = loadedSection !== "wallet";
   const needsRmas = loadedSection === "overview" || loadedSection === "service";
   const needsWallet = loadedSection === "overview" || loadedSection === "wallet";
@@ -49,10 +55,10 @@ export default async function Page({
   const [companies, orders, rmas, customerProfile, wallet] = shouldReadCustomerData
     ? await Promise.all([
         loadedSection === "overview" ? listCurrentCustomerCompanies() : emptyList,
-        needsOrders ? listCurrentCustomerOrderSummaries() : emptyList,
+        needsOrders ? listCurrentCustomerOrderSummaries(loadedSection === "orders" ? historyQuery : {}) : emptyList,
         needsRmas ? listCurrentCustomerRmaRequests() : emptyList,
         getCurrentCustomerProfile(),
-        needsWallet ? getCurrentCustomerWallet() : emptyWallet,
+        needsWallet ? getCurrentCustomerWallet(loadedSection === "wallet" ? historyQuery : {}) : emptyWallet,
       ])
     : shouldReadEmployeeSelfData
       ? await Promise.all([
@@ -60,10 +66,10 @@ export default async function Page({
             ...result,
             data: result.data ? [result.data] : [],
           })) : emptyList,
-          needsOrders ? listCurrentEmployeeSelfOrderSummaries() : emptyList,
+          needsOrders ? listCurrentEmployeeSelfOrderSummaries(loadedSection === "orders" ? historyQuery : {}) : emptyList,
           needsRmas ? listCurrentEmployeeSelfRmaRequests() : emptyList,
           getCurrentEmployeeSelfProfile(),
-          needsWallet ? getCurrentCustomerWallet() : emptyWallet,
+          needsWallet ? getCurrentCustomerWallet(loadedSection === "wallet" ? historyQuery : {}) : emptyWallet,
         ])
     : [
         { data: [], warning: undefined },
@@ -87,9 +93,10 @@ export default async function Page({
       customerProfile={customerProfile.data}
       dataWarning={orders.warning ?? rmas.warning ?? companies.warning ?? wallet.warning}
       forceSetup={readSingleParam(params.setup) === "1"}
-      orderSummaries={orders.data}
+      orderSummaries={loadedSection === "orders" ? orders.data.slice(0,50) : orders.data}
+      historyHasMore={loadedSection === "orders" ? orders.data.length > 50 : wallet.data.transactions.length > 50}
       rmaRequests={rmas.data}
-      wallet={wallet.data}
+      wallet={{ ...wallet.data, transactions: wallet.data.transactions.slice(0, 50) }}
       userEmail={account.email ?? undefined}
       initialAccountAccess={toStoreHeaderAccountAccess(account)}
     />

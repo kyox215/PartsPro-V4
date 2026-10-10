@@ -1,5 +1,7 @@
 "use client";
 
+import { catalogBrowseKey } from "@/lib/partspro-catalog-return.mjs";
+import { AsyncFeedback } from "./async-feedback";
 import { PricingSessionBoundary, QuoteExpiryRefresh } from "./pricing-session-boundary";
 import { createLatestRequest } from "@/lib/latest-request.mjs";
 
@@ -21,7 +23,7 @@ import {
   hrefWithAssistedCompanyId,
   rememberAssistedCompanyId,
 } from "@/lib/partspro-assisted-order";
-import { tx, txFormat } from "@/i18n/dictionaries/storefront";
+import { categoryLabel, tx, txFormat } from "@/i18n/dictionaries/storefront";
 import { inferDeviceModelSeries } from "@/lib/partspro-device-series";
 import type {
   PriceVisibilityReason,
@@ -34,7 +36,7 @@ import {
 } from "@/lib/partspro-account-gate-copy";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import { cn } from "@/lib/utils";
-import { CatalogBrandTree, type CatalogSelection } from "./catalog-brand-tree";
+import { CatalogBrandTree, type CatalogSelection as BaseCatalogSelection } from "./catalog-brand-tree";
 import { ProductCard } from "./product-card";
 import { StoreHeader } from "./store-header";
 import { useCatalogDirectory } from "./catalog-directory-provider";
@@ -44,6 +46,13 @@ import {
   DelayedPendingIndicator,
   useDelayedVisible,
 } from "./pending-feedback";
+
+type CatalogSort = "name" | "stock_desc" | "updated_desc";
+type CatalogSelection = BaseCatalogSelection & { sort?: CatalogSort };
+
+function normalizeCatalogSort(value: string | null | undefined): CatalogSort {
+  return value === "name" || value === "updated_desc" ? value : "stock_desc";
+}
 
 type FilterKey = "brand" | "category" | "department" | "status" | "grade";
 
@@ -130,6 +139,7 @@ export function CatalogPage({
       initialAccountAccess={initialAccountAccess}
       initialFilters={getFiltersFromParams(searchParams)}
       initialInStockOnly={getInStockOnlyFromParams(searchParams)}
+      initialSort={normalizeCatalogSort(searchParams.get("sort"))}
       initialDepartmentGroups={initialDepartmentGroups}
       initialProducts={initialProducts}
       cartAccess={cartAccess}
@@ -150,6 +160,7 @@ function CatalogPageContent({
   cartAccess,
   initialFilters,
   initialInStockOnly,
+  initialSort,
   initialDepartmentGroups,
   initialProducts,
   initialModelSeries,
@@ -165,6 +176,7 @@ function CatalogPageContent({
   cartAccess: StorefrontCartAccess;
   initialFilters: CatalogFiltersState;
   initialInStockOnly: boolean;
+  initialSort: CatalogSort;
   initialDepartmentGroups?: CatalogDepartmentGroup[];
   initialProducts: PartProduct[];
   initialModelSeries: string;
@@ -181,12 +193,28 @@ function CatalogPageContent({
   const [modelSeries, setModelSeries] = useState(initialModelSeries);
   const [filters, setFilters] = useState<CatalogFiltersState>(initialFilters);
   const [inStockOnly, setInStockOnly] = useState(initialInStockOnly);
+  const [sort, setSort] = useState<CatalogSort>(initialSort);
   const [products, setProducts] = useState(initialProducts);
   const [filteredTotal, setFilteredTotal] = useState(initialFilteredTotal);
   const [catalogLoadState, setCatalogLoadState] = useState<
     "idle" | "loading" | "loading-more"
   >("idle");
   const [catalogError, setCatalogError] = useState<"network" | null>(null);
+  const [failedOffset, setFailedOffset] = useState(0);
+  const [browseKey] = useState(() => catalogBrowseKey(
+    buildCatalogSelectionPath({
+      brand: initialFilters.brand[0],
+      category: initialFilters.category[0],
+      department: readDepartmentFilter(initialFilters) ?? undefined,
+      inStockOnly: initialInStockOnly,
+      sort: initialSort,
+      model: initialSearchTerm,
+      modelSeries: initialModelSeries,
+      searchQuery: initialSearchQuery,
+    }, assistedCompanyId),
+    initialAccountAccess?.userId,
+    assistedCompanyId
+  ));
   const initialDepartment = readDepartmentFilter(initialFilters);
   const [expandedDepartment, setExpandedDepartment] =
     useState<CatalogDepartment | null>(() => initialDepartment);
@@ -206,6 +234,7 @@ function CatalogPageContent({
             category: initialFilters.category[0],
             department: initialDepartment ?? undefined,
             inStockOnly: initialInStockOnly,
+            sort: initialSort,
             model: initialSearchTerm || undefined,
             modelSeries: initialModelSeries || undefined,
             searchQuery: initialSearchQuery || undefined,
@@ -242,12 +271,14 @@ function CatalogPageContent({
       category: selectedCategory,
       department: selectedDepartment,
       inStockOnly,
+      sort,
       model: searchTerm.trim() || undefined,
       modelSeries: modelSeries || undefined,
       searchQuery: searchQuery.trim() || undefined,
     }),
     [
       inStockOnly,
+      sort,
       modelSeries,
       searchQuery,
       searchTerm,
@@ -261,6 +292,7 @@ function CatalogPageContent({
     category: initialFilters.category[0],
     department: initialDepartment ?? undefined,
     inStockOnly: initialInStockOnly,
+    sort: initialSort,
     model: initialSearchTerm || undefined,
     modelSeries: initialModelSeries || undefined,
     searchQuery: initialSearchQuery || undefined,
@@ -274,15 +306,16 @@ function CatalogPageContent({
       const request = catalogRequestRef.current.begin();
 
       setCatalogError(null);
+      setFailedOffset(offset);
       setCatalogLoadState(offset > 0 ? "loading-more" : "loading");
 
       if (cachedPage && cachedPage.expiresAt > Date.now()) {
         setFilteredTotal(cachedPage.total);
         setProducts((currentProducts) =>
-          offset > 0 ? [...currentProducts, ...cachedPage.products] : cachedPage.products
+          offset > 0 ? mergeUniqueProducts(currentProducts, cachedPage.products) : cachedPage.products
         );
         setCatalogLoadState("idle");
-        return;
+        return { count: cachedPage.products.length, total: cachedPage.total };
       }
 
 
@@ -317,9 +350,10 @@ function CatalogPageContent({
 
         setFilteredTotal(nextTotal);
         setProducts((currentProducts) =>
-          offset > 0 ? [...currentProducts, ...nextProducts] : nextProducts
+          offset > 0 ? mergeUniqueProducts(currentProducts, nextProducts) : nextProducts
         );
         setCatalogError(null);
+        return { count: nextProducts.length, total: nextTotal };
       } catch (error) {
         if (!request.isCurrent() || (error instanceof Error && error.name === "AbortError")) {
           return;
@@ -333,6 +367,34 @@ function CatalogPageContent({
     },
     [assistedCompanyId, shouldUseCatalogPageCache]
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    async function restore() {
+      try {
+        const stored = JSON.parse(sessionStorage.getItem(browseKey) || "null") as { count?: number; scrollY?: number; savedAt?: number } | null;
+        if (!stored || Date.now() - (stored.savedAt || 0) > 30 * 60_000) return;
+        const desired = Math.min(Math.max(Math.trunc(Number(stored.count)) || 0, 0), initialFilteredTotal);
+        let offset = initialProducts.length;
+        while (!cancelled && offset < desired) {
+          const page = await loadCatalogSelection(initialActivitySelectionRef.current, offset);
+          if (!page || page.count === 0) break;
+          offset += page.count;
+          if (offset >= page.total) break;
+        }
+        if (!cancelled) requestAnimationFrame(() => window.scrollTo({ top: Math.max(0, Number(stored.scrollY) || 0), behavior: "instant" }));
+      } catch { /* unavailable session storage must not block browsing */ }
+    }
+    void restore();
+    return () => { cancelled = true; };
+  }, [browseKey, initialProducts.length, initialFilteredTotal, loadCatalogSelection]);
+
+  function rememberBrowse() {
+    try {
+      const path = buildCatalogSelectionPath(selectedCatalog, assistedCompanyId);
+      sessionStorage.setItem(catalogBrowseKey(path, initialAccountAccess?.userId, assistedCompanyId), JSON.stringify({ count: products.length, scrollY: window.scrollY, savedAt: Date.now() }));
+    } catch { /* browsing still works */ }
+  }
 
   useEffect(() => {
     const refresh = () => {
@@ -360,6 +422,7 @@ function CatalogPageContent({
         category: nextFilters.category[0],
         department: readDepartmentFilter(nextFilters) ?? undefined,
         inStockOnly: getInStockOnlyFromParams(search),
+        sort: normalizeCatalogSort(search.get("sort")),
         model: getModelSearchFromParams(search) || undefined,
         modelSeries: getModelSeriesFromParams(search) || undefined,
         searchQuery: getSearchQueryFromParams(search) || undefined,
@@ -370,6 +433,7 @@ function CatalogPageContent({
       setModelSeries(nextSelection.modelSeries ?? "");
       setFilters(nextFilters);
       setInStockOnly(Boolean(nextSelection.inStockOnly));
+      setSort(nextSelection.sort);
       setExpandedDepartment(nextSelection.department ?? null);
       setExpandedBrandKey(
         nextSelection.department && nextSelection.brand
@@ -400,10 +464,12 @@ function CatalogPageContent({
     setSearchQuery("");
     setFilters(emptyFilters);
     setInStockOnly(false);
-    selectCatalog({});
+    selectCatalog({ sort });
   }
 
-  function selectCatalog(selection: CatalogSelection) {
+  function selectCatalog(requestedSelection: CatalogSelection) {
+    const selection = { ...requestedSelection, sort: normalizeCatalogSort(requestedSelection.sort ?? sort) };
+    setSort(selection.sort);
     const nextFilters: CatalogFiltersState = {
       ...emptyFilters,
       brand: selection.brand ? [selection.brand] : [],
@@ -458,11 +524,11 @@ function CatalogPageContent({
             </div>
           ) : null}
           {accountGateCopy ? <CatalogAccountGateBanner copy={accountGateCopy} /> : null}
-          {catalogError ? (
+          {catalogError && failedOffset === 0 ? (
             <CatalogLoadErrorBanner
               loading={catalogLoadState !== "idle"}
               onRetry={() => {
-                void loadCatalogSelection(selectedCatalog);
+                void loadCatalogSelection(selectedCatalog, failedOffset);
               }}
             />
           ) : null}
@@ -480,11 +546,28 @@ function CatalogPageContent({
               {tx(t, "storefront.catalog.filtering", "Filtro in corso...")}
             </div>
           ) : null}
+          <div className="space-y-2 rounded-lg border bg-white p-3">
+            <h1 className="break-words text-lg font-bold">{searchQuery || searchTerm ? txFormat(t,"storefront.ux.searchResults","Risultati per “{query}”",{query:searchQuery || searchTerm}) : tx(t,"storefront.ux.browseCatalog","Sfoglia catalogo")}</h1>
+            <p className="text-sm text-slate-600" role="status">{txFormat(t,"storefront.ux.resultCount","{loaded} di {total} SKU caricati",{loaded:products.length,total:filteredTotal})}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              {(["searchQuery","model","brand","category","department","modelSeries"] as const).map(key => selectedCatalog[key] ? <Button key={key} type="button" size="sm" variant="outline" className="max-w-full whitespace-normal" onClick={() => selectCatalog({...selectedCatalog,[key]:undefined})}>{key === "category" ? categoryLabel(t,String(selectedCatalog[key])) : String(selectedCatalog[key])} ×<span className="sr-only">{tx(t,"storefront.ux.removeFilter","Rimuovi filtro")}</span></Button> : null)}
+              <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm"><input type="checkbox" checked={inStockOnly} onChange={event => selectCatalog({...selectedCatalog,inStockOnly:event.target.checked})} className="size-5 accent-primary" />{tx(t,"storefront.ux.inStockOnly","Solo disponibili")}</label>
+              <Button type="button" variant="ghost" size="sm" onClick={clearAll}>{tx(t,"storefront.catalog.clearFilters","Cancella filtri")}</Button>
+            </div>
+            <label htmlFor="catalog-sort" className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+              <span>{locale.startsWith("zh") ? "排序" : "Ordina per"}</span>
+              <select id="catalog-sort" value={sort} className="h-11 w-full min-w-0 rounded border bg-white px-2 sm:w-64" onChange={event => selectCatalog({ ...selectedCatalog, sort: normalizeCatalogSort(event.target.value) })}>
+                <option value="stock_desc">{locale.startsWith("zh") ? "现货优先（默认）" : "Disponibilità (predefinito)"}</option>
+                <option value="name">{locale.startsWith("zh") ? "商品名称" : "Nome prodotto"}</option>
+                <option value="updated_desc">{locale.startsWith("zh") ? "最近更新" : "Aggiornati di recente"}</option>
+              </select>
+            </label>
+          </div>
           <label className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border bg-white p-3 text-sm">
             <span>{locale.startsWith("zh") ? "商品分类" : "Categoria"}</span>
             <select aria-label={locale.startsWith("zh") ? "商品分类" : "Categoria"} className="h-10 w-full min-w-0 rounded border bg-white px-2 sm:w-64" value={selectedCategory ?? ""} onChange={(e) => selectCatalog({ ...selectedCatalog, category: e.target.value || undefined })}>
               <option value="">{locale.startsWith("zh") ? "全部分类" : "Tutte le categorie"}</option>
-              {directory.nodes.filter((n) => n.kind === "category" && n.active && (!selectedDepartment || (n.countsByDepartment[selectedDepartment] ?? 0) > 0)).map((n) => <option key={n.id} value={n.value}>{catalogNodeLabel(n, locale)}</option>)}
+              {directory.nodes.filter((n) => n.kind === "category" && n.active && (!selectedDepartment || (n.countsByDepartment[selectedDepartment] ?? 0) > 0)).map((n) => <option key={n.id} value={n.value}>{locale.startsWith("zh") && /^[\x00-\x7F]+$/.test(n.nameZh) ? categoryLabel(t,n.nameIt) : catalogNodeLabel(n, locale)}</option>)}
               {selectedCategory && !directory.nodes.some((n) => n.kind === "category" && n.value === selectedCategory) && <option value={selectedCategory}>{selectedCategory}</option>}
             </select>
           </label>
@@ -497,14 +580,19 @@ function CatalogPageContent({
               >
                 {products.length > 0 ? (
                   <div
+                    inert={catalogReplacing}
+                    aria-hidden={catalogReplacing || undefined}
                     className={cn(
-                      "partspro-catalog-grid transition-opacity duration-150",
+                      "partspro-catalog-grid transition-opacity duration-150 motion-reduce:transition-none",
                       catalogReplacing && "opacity-45"
                     )}
                   >
                     {products.map((product, index) => (
                       <ProductCard
                         assistedCompanyId={assistedCompanyId}
+                        returnTo={buildCatalogSelectionPath(selectedCatalog, assistedCompanyId)}
+                        searchMatch={searchQuery || searchTerm}
+                        onOpenProduct={rememberBrowse}
                         cartAccess={cartAccess}
                         key={product.sku}
                         priceGateReason={priceGateReason}
@@ -526,7 +614,8 @@ function CatalogPageContent({
                   </div>
                 ) : null}
               </div>
-              {hiddenProductCount > 0 && (
+              {catalogError && failedOffset > 0 && <AsyncFeedback state="error" title={tx(t,"storefront.ux.moreFailed","Impossibile caricare la pagina successiva")} description={tx(t,"storefront.ux.moreKept","I risultati già caricati restano disponibili.")} actions={<Button type="button" variant="outline" disabled={catalogLoadState !== "idle"} onClick={() => void loadCatalogSelection(selectedCatalog, failedOffset)}>{tx(t,"common.retry","Riprova")}</Button>} />}
+              {hiddenProductCount > 0 && !(catalogError && failedOffset > 0) && (
                 <div className="flex justify-center">
                   <Button
                     type="button"
@@ -760,6 +849,8 @@ function buildCatalogSelectionPath(
     params.set("minStock", "1");
   }
 
+  params.set("sort", normalizeCatalogSort(selection.sort));
+
   return hrefWithAssistedCompanyId(
     `/catalogo${params.toString() ? `?${params.toString()}` : ""}`,
     assistedCompanyId
@@ -896,7 +987,7 @@ function buildCatalogApiPath(
 
   params.set("limit", String(visibleProductsIncrement));
   params.set("offset", String(offset));
-  params.set("sort", "stock_desc");
+  params.set("sort", normalizeCatalogSort(selection.sort));
 
   return hrefWithAssistedCompanyId(
     `/api/catalogo?${params.toString()}`,
@@ -928,4 +1019,8 @@ function readDepartmentFilter(filters: CatalogFiltersState) {
   return catalogDepartments.includes(department as CatalogDepartment)
     ? (department as CatalogDepartment)
     : null;
+}
+
+function mergeUniqueProducts(current: PartProduct[], next: PartProduct[]) {
+  return [...new Map([...current, ...next].map(product => [product.sku, product])).values()];
 }

@@ -9,6 +9,7 @@ export default async function Page() {
 
   return (
     <ProfessionalApplicationPage
+      key={account.userId ?? "guest"}
       initialAccountAccess={toStoreHeaderAccountAccess(account)}
     />
   );

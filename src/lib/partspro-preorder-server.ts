@@ -1,3 +1,4 @@
+import { createCheckoutSubmission } from "@/lib/partspro-checkout-submission";
 import "server-only";
 
 import type {
@@ -177,7 +178,7 @@ export async function savePreorder(
 
   const deliveryMethod = input.deliveryMethod ?? defaultDeliveryMethod;
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("create_preorder_transaction", {
+  const rpcArgs = {
     p_lines: input.lines.map((line) => ({
       offer_version: line.product.preorder?.offerVersion ?? null,
       price_version: line.priceVersion ?? line.product.priceVersion ?? null,
@@ -214,7 +215,9 @@ export async function savePreorder(
       wallet_requested_amount: 0,
     },
     p_terms_accepted: true,
-  });
+  };
+  if (input.checkoutAttempt) return { data: await createCheckoutSubmission(input.checkoutAttempt, "preorder", rpcArgs), source: "supabase" };
+  const { data, error } = await supabase.rpc("create_preorder_transaction", rpcArgs);
 
   if (error) {
     throw new RepositoryWriteError(

@@ -188,7 +188,7 @@ export function StoreMobileMenu({
                 key={catalogSearchValue}
                 className="h-9 rounded-lg border-slate-200 bg-slate-50 pl-8 pr-10 text-sm shadow-none focus-visible:bg-white"
                 defaultValue={catalogSearchValue}
-                name="catalogSearch"
+                name="catalogSearch" aria-label={tx(t, "storefront.header.searchFull", "Cerca SKU, brand, modello...")}
                 placeholder={tx(t, "storefront.home.mobileSearch", "Cerca SKU / prodotto")}
               />
               <Button
@@ -236,6 +236,7 @@ export function StoreMobileMenu({
                   </Link>
                 );
               })}
+              <Link href="/help" onClick={closeMenu} className="flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-slate-700 hover:bg-white">{tx(t,"storefront.ux.help","Aiuto")}</Link>
               <button
                 type="button"
                 className={cn(

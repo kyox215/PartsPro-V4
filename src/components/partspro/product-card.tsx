@@ -15,6 +15,7 @@ import {
   LogIn,
   Lock,
   ShoppingCart,
+  ZoomIn,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -46,6 +47,7 @@ import {
   isProductOrderable,
   preorderEtaLabel,
 } from "@/lib/partspro-preorder-contract";
+import { safeCatalogReturn } from "@/lib/partspro-catalog-return.mjs";
 import { cn } from "@/lib/utils";
 import { addCartItem } from "./cart-state";
 import { useT } from "./i18n-provider";
@@ -59,6 +61,10 @@ import {
 import { ProductRestockReminderButton } from "./product-restock-reminder-button";
 
 type ProductCardProps = {
+  className?: string;
+  returnTo?: string;
+  searchMatch?: string;
+  onOpenProduct?: () => void;
   assistedCompanyId?: string | null;
   cartAccess?: StorefrontCartAccess;
   priceGateReason?: PriceVisibilityReason;
@@ -79,6 +85,10 @@ const ProductImagePreviewDialog = dynamic(
 
 export const ProductCard = memo(function ProductCard({
   assistedCompanyId,
+  className,
+  returnTo,
+  searchMatch = "",
+  onOpenProduct,
   cartAccess = { allowed: false, missingFields: [], reason: "login_required" },
   priceGateReason = "login_required",
   priorityImage = false,
@@ -101,11 +111,15 @@ export const ProductCard = memo(function ProductCard({
   const canRequestRestock = purchaseKind === "unavailable";
   const canAddToCart = canUseCart && hasOpenPrice && hasEffectivePrice && hasSellableStock;
   const isLoginRequired = priceGateReason === "login_required";
-  const productPath = hrefWithAssistedCompanyId(
+  const baseProductPath = hrefWithAssistedCompanyId(
     `/prodotto/${encodeURIComponent(product.sku)}`,
     assistedCompanyId
   );
+  const safeReturn = safeCatalogReturn(returnTo, assistedCompanyId);
+  const productPath = safeReturn ? `${baseProductPath}${baseProductPath.includes("?") ? "&" : "?"}${new URLSearchParams({returnTo:safeReturn})}` : baseProductPath;
+  const matchingModels = [...product.compatibleWith].sort((a,b) => Number(b.toLowerCase().includes(searchMatch.toLowerCase())) - Number(a.toLowerCase().includes(searchMatch.toLowerCase())));
   const loginHref = `/login?${new URLSearchParams({ next: productPath }).toString()}`;
+  const variantTokens = [...new Set([product.grade, ...(product.name.match(/\b(?:soft\s+oled|hard\s+oled|oled|incell|amoled|\d{2,3}\s?hz|con\s+cornice|senza\s+cornice|with\s+frame|no\s+frame|nero|bianco|black|white)\b/gi) || []), ...product.tags.filter(tag => /oled|incell|cornice|hz/i.test(tag))])].slice(0,4);
   const imageAlt = product.imageAlt ?? product.name;
   const remainingModels = Math.max(product.compatibleWith.length - 2, 0);
   const imageCandidates = useMemo(() => getProductImageCandidates(product), [product]);
@@ -191,23 +205,24 @@ export const ProductCard = memo(function ProductCard({
     <>
       <Card
         className={cn(
-          "h-full min-w-0 rounded-lg border-slate-200 bg-white shadow-sm transition sm:shadow-[0_14px_34px_rgba(15,23,42,0.045)] sm:hover:-translate-y-0.5 sm:hover:shadow-[0_18px_40px_rgba(15,23,42,0.07)]",
-          !canAddToCart && "opacity-80"
+          "@container/product h-full min-w-0 rounded-lg border-slate-200 bg-white shadow-sm transition sm:shadow-[0_14px_34px_rgba(15,23,42,0.045)] sm:hover:-translate-y-0.5 sm:hover:shadow-[0_18px_40px_rgba(15,23,42,0.07)]",
+          className
         )}
       >
-        <CardContent className="grid h-full min-w-0 grid-cols-[104px_minmax(0,1fr)] gap-1.5 p-1.5 sm:flex sm:flex-col sm:p-2.5">
+        <CardContent className="grid h-full min-w-0 grid-cols-1 grid-rows-[auto_1fr] gap-1.5 p-1.5 @min-[320px]/product:grid-cols-[104px_minmax(0,1fr)] @min-[320px]/product:grid-rows-1 sm:p-2.5">
           {imageUrl ? (
-            <button
-              type="button"
-              className="relative block h-28 w-full cursor-zoom-in overflow-hidden rounded-md bg-slate-50 text-left outline-none transition hover:bg-slate-100 focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-auto sm:rounded-lg"
+            <div className="relative self-start">
+            <Link
+              href={productPath}
+              onClick={onOpenProduct}
+              className="relative block h-28 w-full cursor-pointer overflow-hidden rounded-md bg-slate-50 text-left outline-none transition hover:bg-slate-100 focus-visible:ring-3 focus-visible:ring-ring/50 sm:h-auto sm:rounded-lg"
               aria-label={txFormat(
                 t,
-                "storefront.product.card.previewImageAria",
-                "Apri anteprima immagine {name}",
+                "storefront.ux.openProduct",
+                "Apri prodotto {name}",
                 { name: product.name }
               )}
-              aria-haspopup="dialog"
-              onClick={() => setPreviewOpen(true)}
+
             >
               <div className="relative h-full rounded-md sm:h-36 sm:rounded-lg">
                 <Image
@@ -223,16 +238,19 @@ export const ProductCard = memo(function ProductCard({
                   className="object-contain p-1.5 sm:p-2"
                 />
               </div>
-            </button>
-          ) : (
-            <div className="relative block h-28 overflow-hidden rounded-md bg-slate-50 sm:h-auto sm:rounded-lg">
-              <PartVisual variant={product.visual} className="h-full rounded-md sm:h-36 sm:rounded-lg" />
+            </Link>
+            <Button type="button" size="icon-lg" variant="outline" className="absolute bottom-1 right-1 bg-white/95" aria-haspopup="dialog" aria-label={txFormat(t,"storefront.product.card.previewImageAria","Apri anteprima immagine {name}",{name:product.name})} onClick={() => setPreviewOpen(true)}><ZoomIn className="size-4" /></Button>
             </div>
+          ) : (
+            <Link href={productPath} onClick={onOpenProduct} className="relative block h-28 overflow-hidden rounded-md bg-slate-50 sm:h-auto sm:rounded-lg">
+              <PartVisual variant={product.visual} className="h-full rounded-md sm:h-36 sm:rounded-lg" />
+            </Link>
           )}
 
           <div className="flex min-w-0 flex-1 flex-col sm:mt-2">
             <Link
               href={productPath}
+              onClick={onOpenProduct}
               className="relative block min-h-0 pr-5 text-[13px] font-black leading-[0.95rem] text-slate-950 transition active:translate-y-px hover:text-primary sm:min-h-[2.15rem] sm:text-[13px] sm:leading-[1.08rem]"
             >
               <span className="line-clamp-2 break-words">{product.name}</span>
@@ -241,6 +259,7 @@ export const ProductCard = memo(function ProductCard({
                 label={tx(t, "storefront.navigation.loadingProduct", "Caricamento prodotto...")}
               />
             </Link>
+            <p className="mt-1 break-words text-[10px] font-semibold leading-4 text-slate-600">SKU {product.sku} · {variantTokens.join(" · ")}</p>
             {isPreorder ? (
               <div className="mt-1 flex min-w-0 items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-1.5 py-1 text-[10px] font-black text-violet-800">
                 <CalendarClock className="size-3 shrink-0" />
@@ -252,12 +271,12 @@ export const ProductCard = memo(function ProductCard({
               </div>
             ) : null}
             <div className="mt-0.5 flex min-w-0 flex-wrap gap-0.5 sm:mt-1 sm:gap-1">
-              {product.compatibleWith.slice(0, 2).map((model, index) => (
+              {matchingModels.slice(0, 2).map((model) => (
                 <span
                   key={model}
                   className={cn(
                     "max-w-full truncate rounded-full bg-slate-100 px-1.5 py-0 text-[10px] font-semibold text-slate-600 sm:px-1.5 sm:py-0.5",
-                    index > 0 && "hidden sm:inline-flex"
+
                   )}
                   title={model}
                 >
@@ -265,8 +284,8 @@ export const ProductCard = memo(function ProductCard({
                 </span>
               ))}
               {remainingModels > 0 && (
-                <span
-                  className="hidden max-w-full truncate rounded-full bg-primary/8 px-1.5 py-0.5 text-[10px] font-bold text-primary sm:inline-flex"
+                <Link href={productPath} onClick={onOpenProduct}
+                  className="max-w-full break-words rounded-full bg-primary/8 px-1.5 py-0.5 text-[10px] font-bold text-primary sm:inline-flex"
                   title={txFormat(
                     t,
                     "storefront.product.card.extraModelsTitle",
@@ -280,12 +299,12 @@ export const ProductCard = memo(function ProductCard({
                     "+{count} modelli",
                     { count: remainingModels }
                   )}
-                </span>
+                </Link>
               )}
             </div>
 
-            <div className="mt-auto flex items-center justify-between gap-1 pt-1 sm:items-end sm:pt-2">
-              <div className="min-w-0">
+            <div className="mt-auto flex flex-wrap items-start gap-2 pt-2">
+              <div className="w-full min-w-0">
                 {showWholesalePrice ? (
                   <>
                     <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
@@ -340,7 +359,7 @@ export const ProductCard = memo(function ProductCard({
                   size="sm"
                   variant="outline"
                   className={cn(
-                    "size-8 min-w-0 shrink-0 bg-white px-0 text-primary sm:size-auto sm:min-w-[96px] sm:px-2",
+                    "min-h-11 min-w-0 max-w-full bg-white px-3 text-primary",
                     addFeedbackState === "success" &&
                       "border-emerald-200 bg-emerald-50 text-emerald-700",
                     addFeedbackState === "error" &&
@@ -367,7 +386,7 @@ export const ProductCard = memo(function ProductCard({
                   ) : (
                     <ShoppingCart className="size-3.5 sm:size-4" />
                   )}
-                  <span className="sr-only min-w-0 truncate sm:not-sr-only" aria-live="polite">
+                  <span className="min-w-0 whitespace-normal" aria-live="polite">
                     {addFeedbackState === "success"
                       ? tx(t, "storefront.product.card.added", "Aggiunto")
                       : addFeedbackState === "error"
@@ -381,7 +400,7 @@ export const ProductCard = memo(function ProductCard({
                 <Button
                   size="sm"
                   variant="outline"
-                  className="size-8 min-w-0 shrink-0 bg-white px-0 text-primary sm:size-auto sm:min-w-[96px] sm:px-2"
+                  className="min-h-11 min-w-0 max-w-full bg-white px-3 text-primary"
                   asChild
                 >
                   <Link
@@ -394,7 +413,7 @@ export const ProductCard = memo(function ProductCard({
                     )}
                   >
                     <LogIn className="size-3.5 sm:size-4" />
-                    <span className="sr-only min-w-0 truncate sm:not-sr-only">
+                    <span className="min-w-0 whitespace-normal">
                       {tx(t, "storefront.product.card.loginToAdd", "Accedi")}
                     </span>
                     <RoutePendingIndicator className="size-3 text-primary" />
@@ -405,7 +424,7 @@ export const ProductCard = memo(function ProductCard({
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="size-8 min-w-0 shrink-0 bg-white px-0 text-primary sm:h-8 sm:w-[104px] sm:px-2"
+                  className="min-h-11 min-w-0 max-w-full bg-white px-3 text-primary"
                   aria-label={txFormat(
                     t,
                     "storefront.product.card.accountGateAria",
@@ -417,7 +436,7 @@ export const ProductCard = memo(function ProductCard({
                   aria-haspopup="dialog"
                 >
                   <Info className="size-3.5 sm:size-4" />
-                  <span className="sr-only min-w-0 truncate sm:not-sr-only sm:max-w-[72px]">
+                  <span className="min-w-0 whitespace-normal text-left">
                     {hiddenPriceCopy.label}
                   </span>
                 </Button>
@@ -431,7 +450,7 @@ export const ProductCard = memo(function ProductCard({
                   type="button"
                   size="sm"
                   variant="outline"
-                  className="size-8 min-w-0 shrink-0 bg-slate-50 px-0 text-slate-500 hover:bg-slate-100 hover:text-slate-700 sm:size-auto sm:min-w-[96px] sm:px-2"
+                  className="min-h-11 min-w-0 max-w-full bg-slate-50 px-3 text-slate-700 hover:bg-slate-100"
                   onClick={() => setAccountGateOpen(true)}
                   aria-haspopup="dialog"
                   aria-label={txFormat(
@@ -443,7 +462,7 @@ export const ProductCard = memo(function ProductCard({
                   title={blockedCartCopy.title}
                 >
                   <ShoppingCart className="size-3.5 sm:size-4" />
-                  <span className="sr-only sm:not-sr-only">
+                  <span className="min-w-0 whitespace-normal">
                     {blockedCartCopy.label}
                   </span>
                 </Button>

@@ -23,7 +23,7 @@ import {
   preorderEtaLabel,
 } from "@/lib/partspro-preorder-contract";
 import { cn } from "@/lib/utils";
-import { addCartItem } from "./cart-state";
+import { addCartItem, useStoredCartItems } from "./cart-state";
 import { useT } from "./i18n-provider";
 import {
   ProductCartQuantityControl,
@@ -54,14 +54,18 @@ export function ProductDetailPurchasePanel({
   const initialQuantity = stockAvailable
     ? Math.min(Math.max(minimumQuantity, 1), orderableQuantity)
     : minimumQuantity;
-  const [quantity, setQuantity] = useState(initialQuantity);
+  const [quantityDraft, setQuantityDraft] = useState(String(initialQuantity));
+  const draftValid = /^\d+$/.test(quantityDraft) && Number.isSafeInteger(Number(quantityDraft)) && Number(quantityDraft) > 0;
+  const quantity = Number(quantityDraft);
+  const cartItems = useStoredCartItems({ preserveUnknown: true });
+  const otherItems = cartItems.filter(item => item.sku !== product.sku).length;
   const cartQuantity = useProductCartQuantity(product.sku);
   const isInCart = cartQuantity > 0;
   const safeQuantity = Number.isFinite(quantity) ? Math.max(1, Math.trunc(quantity)) : 1;
   const activeQuantity = isInCart ? cartQuantity : safeQuantity;
   const isBelowMoq = activeQuantity < minimumQuantity;
   const isAboveStock = stockAvailable && activeQuantity > orderableQuantity;
-  const canOrder = stockAvailable && !isBelowMoq && !isAboveStock;
+  const canOrder = stockAvailable && (isInCart || draftValid) && !isBelowMoq && !isAboveStock;
   const canRequestRestock = purchaseKind === "unavailable";
   const showQuoteSummary = canOrder && product.price > 0;
   const subtotal = product.price * activeQuantity;
@@ -69,6 +73,7 @@ export function ProductDetailPurchasePanel({
   const validationId = `purchase-state-${product.sku.replace(/[^a-zA-Z0-9]/g, "-")}`;
   const quantityId = `quantity-${product.sku.replace(/[^a-zA-Z0-9]/g, "-")}`;
   const validationMessage = getPurchaseValidationMessage({
+    t,
     canOrder,
     isAboveStock,
     isBelowMoq,
@@ -97,11 +102,11 @@ export function ProductDetailPurchasePanel({
 
   function updateQuantity(value: number) {
     if (!Number.isFinite(value)) {
-      setQuantity(1);
+      setQuantityDraft(String(minimumQuantity));
       return;
     }
 
-    setQuantity(Math.max(1, Math.trunc(value)));
+    setQuantityDraft(String(Math.max(1, Math.trunc(value))));
   }
 
   function addCurrentQuantityToCart() {
@@ -150,7 +155,7 @@ export function ProductDetailPurchasePanel({
           <Button
             type="button"
             className={cn(
-              "h-9 min-w-0",
+              "min-h-11 min-w-0",
               addFeedbackState === "success" &&
                 "bg-emerald-600 text-white hover:bg-emerald-600",
               addFeedbackState === "error" &&
@@ -194,7 +199,7 @@ export function ProductDetailPurchasePanel({
             product={product}
           />
         ) : (
-          <Button className="h-9 min-w-0" disabled aria-describedby={validationId}>
+          <Button className="min-h-11 min-w-0" disabled aria-describedby={validationId}>
             <ShoppingCart className="size-4" />
             <span className="min-w-0 truncate">
               {tx(t, "storefront.product.purchase.add", "Aggiungi al carrello")}
@@ -205,7 +210,7 @@ export function ProductDetailPurchasePanel({
           canOrder ? (
             <Button
               variant="outline"
-              className="h-9 min-w-0 bg-white"
+              className="min-h-11 min-w-0 bg-white"
               asChild
             >
               <Link href={checkoutHref}>
@@ -224,7 +229,7 @@ export function ProductDetailPurchasePanel({
           ) : (
             <Button
               variant="outline"
-              className="h-9 min-w-0 bg-white"
+              className="min-h-11 min-w-0 bg-white"
               disabled
               aria-describedby={validationId}
             >
@@ -237,25 +242,23 @@ export function ProductDetailPurchasePanel({
           <Button
             type="button"
             variant="outline"
-            className="h-9 min-w-0 bg-white"
+            className="min-h-11 min-w-0 bg-white"
             onClick={handleOrderNow}
             aria-label={txFormat(
               t,
-              "storefront.product.purchase.orderNowAria",
-              "Ordina ora {quantity} pezzi di {name}",
+              "storefront.ux.addAndCheckoutAria",
+              "Aggiungi {quantity} pezzi di {name} e apri il checkout del carrello",
               { quantity: safeQuantity, name: product.name }
             )}
           >
             <span className="min-w-0 truncate">
-              {isPreorder
-                ? tx(t, "storefront.preorder.reserveNow", "Prenota ora")
-                : tx(t, "storefront.product.purchase.orderNow", "Ordina ora")}
+              {tx(t, "storefront.ux.addAndCheckout", "Aggiungi e vai al checkout")}
             </span>
           </Button>
         ) : (
           <Button
             variant="outline"
-            className="h-9 min-w-0 bg-white"
+            className="min-h-11 min-w-0 bg-white"
             disabled
             aria-describedby={validationId}
           >
@@ -299,17 +302,17 @@ export function ProductDetailPurchasePanel({
                 htmlFor={quantityId}
                 className="text-[10px] font-bold uppercase text-primary/70"
               >
-                Quantita
+                {tx(t,"storefront.product.purchase.quoteQuantity","Quantita")}
               </label>
               <div className="mt-1 flex min-w-0 items-center rounded-md border border-primary/20 bg-white">
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  className="size-8 rounded-none"
+                  className="size-11 rounded-none"
                   disabled={!stockAvailable || safeQuantity <= 1}
                   onClick={() => updateQuantity(safeQuantity - 1)}
-                  aria-label={`Riduci quantita per ${product.name}`}
+                  aria-label={txFormat(t,"storefront.product.quantity.decreaseAria","Riduci quantita di {name}",{name:product.name})}
                 >
                   <Minus className="size-4" />
                 </Button>
@@ -319,21 +322,22 @@ export function ProductDetailPurchasePanel({
                   inputMode="numeric"
                   min={1}
                   max={stockAvailable ? orderableQuantity : undefined}
-                  value={safeQuantity}
+                  value={quantityDraft}
                   disabled={!stockAvailable}
                   aria-describedby={validationId}
                   aria-invalid={!canOrder}
-                  onChange={(event) => updateQuantity(Number(event.target.value))}
-                  className="h-8 min-w-0 flex-1 border-x border-primary/10 bg-white px-2 text-center text-sm font-black outline-none focus:ring-3 focus:ring-primary/20 disabled:bg-slate-50 disabled:text-slate-500"
+                  onChange={(event) => setQuantityDraft(event.target.value)}
+                  onBlur={() => { if (!draftValid) setQuantityDraft(String(minimumQuantity)); }}
+                  className="h-11 min-w-0 flex-1 border-x border-primary/10 bg-white px-2 text-center text-sm font-black outline-none focus:ring-3 focus:ring-primary/20 disabled:bg-slate-50 disabled:text-slate-500"
                 />
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  className="size-8 rounded-none"
+                  className="size-11 rounded-none"
                   disabled={!stockAvailable || safeQuantity >= orderableQuantity}
                   onClick={() => updateQuantity(safeQuantity + 1)}
-                  aria-label={`Aumenta quantita per ${product.name}`}
+                  aria-label={txFormat(t,"storefront.product.quantity.increaseAria","Aumenta quantita di {name}",{name:product.name})}
                 >
                   <Plus className="size-4" />
                 </Button>
@@ -359,6 +363,7 @@ export function ProductDetailPurchasePanel({
             <span className="min-w-0">{validationMessage}</span>
           </div>
           {renderPurchaseActions()}
+          <p className="text-xs leading-5 text-slate-600">{txFormat(t,"storefront.ux.checkoutIncludes","Il checkout include tutto il carrello, compresi {count} altri articoli.",{count:otherItems})}</p>
         </div>
 
         <div className="rounded-md border border-primary/15 bg-white p-2">
@@ -504,6 +509,7 @@ function SummaryLine({
 }
 
 function getPurchaseValidationMessage({
+  t,
   canOrder,
   isAboveStock,
   isBelowMoq,
@@ -514,6 +520,7 @@ function getPurchaseValidationMessage({
   safeQuantity,
   stockAvailable,
 }: {
+  t: import("@/i18n/dictionaries/storefront").StorefrontTranslator;
   canOrder: boolean;
   isAboveStock: boolean;
   isBelowMoq: boolean;
@@ -525,25 +532,25 @@ function getPurchaseValidationMessage({
   stockAvailable: boolean;
 }) {
   if (!stockAvailable) {
-    return "Articolo esaurito: il carrello resta disattivato finche lo stock non rientra.";
+    return tx(t,"storefront.ux.stockUnavailable","Articolo esaurito: acquisto non disponibile.");
   }
 
   if (purchaseKind === "preorder" && canOrder) {
     const eta = product.preorder ? preorderEtaLabel(product.preorder) : "";
-    return `${safeQuantity} pezzi prenotabili${eta ? ` · arrivo previsto ${eta}` : ""}.`;
+    return txFormat(t,"storefront.ux.preorderQuantity","{quantity} pezzi prenotabili · {eta}",{quantity:safeQuantity,eta});
   }
 
   if (isBelowMoq) {
-    return `Quantita sotto MOQ: seleziona almeno ${minimumQuantity} pezzi per procedere.`;
+    return txFormat(t,"storefront.ux.belowMoq","Seleziona almeno {quantity} pezzi.",{quantity:minimumQuantity});
   }
 
   if (isAboveStock) {
-    return `Quantita oltre disponibilita: disponibili ${orderableQuantity} pezzi.`;
+    return txFormat(t,"storefront.ux.aboveStock","Disponibili {quantity} pezzi: riduci la quantità.",{quantity:orderableQuantity});
   }
 
   if (canOrder) {
-    return `${safeQuantity} pezzi pronti per il carrello.`;
+    return txFormat(t,"storefront.ux.quantityReady","{quantity} pezzi pronti per il carrello.",{quantity:safeQuantity});
   }
 
-  return "Controlla quantita, MOQ e disponibilita prima di procedere.";
+  return tx(t,"storefront.ux.checkQuantity","Inserisci una quantità intera valida e controlla disponibilità e MOQ.");
 }

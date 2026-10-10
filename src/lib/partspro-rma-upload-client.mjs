@@ -1076,3 +1076,13 @@ async function cancelFailedRmaTicket(fetchImpl, draftId, attachmentId) {
     return false;
   }
 }
+
+/** Resume an immutable final submit payload after page refresh; the API still
+ * verifies the current user, owned draft and attachment receipts.
+ * @param {{checkpoint:RmaUploadCheckpoint,fetchImpl?:RmaFetch,onCheckpoint?:RmaCheckpointCallback}} input
+ */
+export async function resumeRmaUploadCheckpoint({checkpoint,fetchImpl=globalThis.fetch.bind(globalThis),onCheckpoint}) {
+  const normalized=normalizeRmaUploadCheckpoint(checkpoint);
+  if (!normalized?.payload || normalized.phase!=="active") throw new RmaUploadClientError("RMA_UPLOAD_RESTART_REQUIRED","Final submission is not available.");
+  return submitCheckpointPayload({checkpoint:normalized,fetchImpl,onCheckpoint});
+}

@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import vm from "node:vm";
+import { canSubmitCustomerRma } from "../src/lib/partspro-rma-submit-state.mjs";
 import { toCustomerRmaPrivacySafeFields } from "../src/lib/partspro-rma-customer-order.mjs";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -51,7 +52,11 @@ test("customer UI is a responsive three-block photo-first flow", () => {
   assert.match(component, /value=\{form\.quantity\}/);
   assert.doesNotMatch(component, /noteRequired/);
   assert.doesNotMatch(component, /storefront\.rma\.note\.required/);
-  assert.match(component, /canSubmit = Boolean\(selectedLine && quantityIsValid && images\.length > 0\)/);
+  assert.equal(canSubmitCustomerRma({selectedLine:null,quantityIsValid:false,imageCount:0}),false);
+  assert.equal(canSubmitCustomerRma({selectedLine:{id:"line"},quantityIsValid:true,imageCount:0}),false);
+  assert.equal(canSubmitCustomerRma({selectedLine:{id:"line"},quantityIsValid:true,imageCount:1}),true);
+  assert.equal(canSubmitCustomerRma({selectedLine:null,quantityIsValid:false,imageCount:0,checkpoint:{version:1,phase:"active",payload:{draftId:"draft"}}}),true);
+  assert.equal(canSubmitCustomerRma({selectedLine:{id:"line"},quantityIsValid:true,imageCount:1,checkpoint:{version:1,phase:"abandoning",payload:{draftId:"draft"}}}),false);
 });
 
 test("camera and gallery controls expose only supported image inputs", () => {

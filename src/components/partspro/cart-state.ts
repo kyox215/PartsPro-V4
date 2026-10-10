@@ -261,6 +261,14 @@ export function removeCartItemBySku(
   return setCartItemQuantity(sku, 0, catalog);
 }
 
+/** Compare the current persisted cart at response time, never an old render. */
+export function clearStoredCartIfSignature(expectedSignature: string, expectedOwner: string | null) {
+  if (!isBrowser() || !expectedOwner || activeCartStorageOwner !== normalizeCartStorageOwner(expectedOwner)) return false;
+  const current = readStoredCartItems([], {preserveUnknown: true});
+  if (serializeCartItems(current) !== expectedSignature) return false;
+  return writeStoredCartItems([], [], {preserveUnknown: true});
+}
+
 export function clearStoredCart() {
   if (!isBrowser()) {
     return false;

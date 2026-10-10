@@ -1,6 +1,9 @@
 "use client";
 
 import * as React from "react";
+import { CartBulkEntry } from "./cart-bulk-entry";
+import { AsyncFeedback } from "./async-feedback";
+import { restoreRemovedCartItems } from "@/lib/partspro-cart-tools.mjs";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { usePricingSession } from "./use-pricing-session";
@@ -67,6 +70,7 @@ import { cn } from "@/lib/utils";
 import {
   CartCatalogProvider,
   refreshStoredCartItemSnapshots,
+  readClientStoredCartItems,
   type CartItemSnapshot,
   type CartLine,
   type CartTotals,
@@ -240,6 +244,7 @@ function CartPageContent({
   onCatalogProductsLoaded,
 }: CartPageContentProps) {
   const t = useT();
+  const {locale} = useI18n();
   const isLoginRequired = initialAccountAccess?.authenticated === false;
   const cart = useCart({
     consumeUrlIntent: !isLoginRequired,
@@ -567,14 +572,19 @@ function CartPageContent({
     setRejectedQuantity(sku, currentQuantity + direction, item);
   }, [cartItemBySku, setRejectedQuantity]);
 
+  const [undoItems, setUndoItems] = React.useState<{items: typeof cart.items; expiresAt: number} | null>(null);
+  React.useEffect(() => { if (!undoItems) return; const timer=window.setTimeout(()=>setUndoItems(null),Math.max(0,undoItems.expiresAt-Date.now())); return ()=>window.clearTimeout(timer); },[undoItems]);
+
   const removeLine = React.useCallback((sku: string) => {
+    setUndoItems({items: cart.items.filter(item=>item.sku===sku), expiresAt: Date.now()+30000});
     removeItem(sku);
     setCatalogRejections((current) => removeRejection(current, sku));
-  }, [removeItem]);
+  }, [removeItem, cart.items]);
 
   const removeUnresolvedLines = React.useCallback(() => {
     const unresolvedSkuSet = new Set(unresolvedSkus);
 
+    setUndoItems({items: cart.items.filter(item=>unresolvedSkuSet.has(item.sku)), expiresAt: Date.now()+30000});
     setItems(cart.items.filter((item) => !unresolvedSkuSet.has(item.sku)));
     setCatalogRejections((current) =>
       unresolvedSkus.reduce(
@@ -590,10 +600,11 @@ function CartPageContent({
         tx(t, "storefront.cart.clearConfirm", "Svuotare tutti gli articoli dal carrello?")
       )
     ) {
+      setUndoItems({items:cart.items,expiresAt:Date.now()+30000});
       clearCartItems();
       setCatalogRejections({});
     }
-  }, [clearCartItems, t]);
+  }, [clearCartItems, cart.items, t]);
 
   const retryCatalogLoad = React.useCallback(() => {
     setCatalogLoadState("idle");
@@ -634,6 +645,8 @@ function CartPageContent({
             )}
           </div>
 
+          <CartBulkEntry companyId={assistedCompanyId} disabled={isLoginRequired} />
+          {undoItems ? <AsyncFeedback state="info" title={locale === "zh-CN" ? "已移除，可在30秒内撤销。" : "Articoli rimossi. Puoi annullare entro 30 secondi."} actions={<Button variant="outline" onClick={()=>{if(Date.now()>undoItems.expiresAt){setUndoItems(null);return;}setItems(restoreRemovedCartItems(readClientStoredCartItems(),undoItems.items));setUndoItems(null);retryCatalogLoad();}}>{locale === "zh-CN" ? "撤销" : "Annulla"}</Button>} /> : null}
           {readyForCheckout && (
             <Card className="hidden border-emerald-200 bg-emerald-50 lg:block">
               <CardContent className="flex gap-2 p-3 text-xs text-emerald-950 sm:gap-3 sm:p-4 sm:text-sm">

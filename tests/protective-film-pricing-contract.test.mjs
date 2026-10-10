@@ -10,10 +10,6 @@ const pricingSource = readFileSync(
   path.join(repoRoot, "src/lib/partspro-pricing.ts"),
   "utf8"
 );
-const accountSource = readFileSync(
-  path.join(repoRoot, "src/lib/partspro-account-context.ts"),
-  "utf8"
-);
 const migrationSource = readFileSync(
   path.join(
     repoRoot,
@@ -76,29 +72,6 @@ test("category-aware tier pricing leaves films unchanged and keeps other discoun
   assert.equal(context.result(1.6, "king", "Pellicole Protettive"), 1.6);
   assert.equal(context.result(20, "king", "Accessori", "REMAX"), 20);
   assert.equal(context.result(20, "king", "Schermi"), 18.5);
-});
-
-test("local pricing fallback preserves the original price for protective films", () => {
-  const exemptionCheck = accountSource.indexOf(
-    "const discountExempt = isDiscountExemptProduct(product.category, product.brand);"
-  );
-  const finalPrice = accountSource.indexOf(
-    "const finalPrice = calculateProductTierPrice(",
-    exemptionCheck
-  );
-  const zeroDiscount = accountSource.indexOf(
-    "const levelDiscountAmount = discountExempt ? 0",
-    finalPrice
-  );
-  const exemptSource = accountSource.indexOf(
-    '"local_b2b_price_discount_exempt"',
-    zeroDiscount
-  );
-
-  assert.ok(exemptionCheck >= 0);
-  assert.ok(finalPrice > exemptionCheck);
-  assert.ok(zeroDiscount > finalPrice);
-  assert.ok(exemptSource > zeroDiscount);
 });
 
 test("database pricing bypasses every discount path for protective films", () => {

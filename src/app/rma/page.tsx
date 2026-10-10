@@ -1,3 +1,4 @@
+import { loginUrl } from "@/lib/partspro-auth-redirect";
 import { redirect } from "next/navigation";
 import { RmaPage } from "@/components/partspro/rma-page";
 import { getCurrentAccountContext } from "@/lib/partspro-account-context";
@@ -15,10 +16,13 @@ export default async function Page({
   searchParams: RmaPageSearchParams;
 }) {
   const params = await searchParams;
+  const preserved = new URLSearchParams();
+  for (const key of ["order", "line", "requestId"]) { const value = readSingleParam(params[key]); if (value) preserved.set(key, value.slice(0, 2000)); }
+  const authNext = "/rma" + (preserved.size ? `?${preserved}` : "");
   const account = await getCurrentAccountContext({ ensure: true });
 
   if (!account.authenticated) {
-    redirect("/login?next=/rma");
+    redirect(loginUrl(authNext));
   }
 
   return (

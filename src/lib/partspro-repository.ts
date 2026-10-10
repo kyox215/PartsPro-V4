@@ -1,3 +1,4 @@
+import { createCheckoutSubmission, type CheckoutAttempt, type CheckoutReceipt } from "@/lib/partspro-checkout-submission";
 import { collectAdminRows } from "@/lib/admin-paged-read.mjs";
 import { readCatalogRevision } from "@/lib/partspro-catalog-revision";
 import { applyOrderListFilters, orderListSelect } from "@/lib/partspro-order-list-filters.mjs";
@@ -296,6 +297,8 @@ export type CustomerWalletTransaction = {
   orderLineId: string | null;
   reason: string;
 };
+
+export type AccountHistoryQuery = { offset?: number; limit?: number; q?: string };
 
 export type CustomerWallet = {
   balance: number;
@@ -1742,6 +1745,7 @@ export type FiscalSnapshot = {
 };
 
 export type SaveOrderInput = {
+  checkoutAttempt?: CheckoutAttempt;
   company: CompanyProfile;
   paymentMethod: AdminPaymentMethod;
   purchaseOrderNumber?: string;
@@ -1755,6 +1759,8 @@ export type SaveOrderInput = {
 };
 
 export type SavedOrder = {
+  receipt?: CheckoutReceipt;
+  replayed?: boolean;
   id: string;
   orderNo?: string;
   status: OrderStatus;
@@ -1909,6 +1915,7 @@ export type PerformAdminRmaActionInput = {
 };
 
 export type B2BApplicationInput = {
+  submissionId?: string;
   companyName: string;
   partitaIva: string;
   codiceFiscale: string;
@@ -4519,7 +4526,7 @@ export async function getCurrentEmployeeSelfProfile(): Promise<
   );
 }
 
-export async function getCurrentCustomerWallet(): Promise<RepositoryResult<CustomerWallet>> {
+export async function getCurrentCustomerWallet(query: AccountHistoryQuery = {}): Promise<RepositoryResult<CustomerWallet>> {
   const supabaseResult = await withSupabase(async (context) => {
     const profile =
       (await readCurrentCustomerProfile(context)) ??
@@ -4530,7 +4537,7 @@ export async function getCurrentCustomerWallet(): Promise<RepositoryResult<Custo
       return { balance: 0, currency: "EUR" as const, transactions: [] };
     }
 
-    return readCustomerWallet(context.client, customerId);
+    return readCustomerWallet(context.client, customerId, query);
   });
 
   return (
@@ -5131,10 +5138,10 @@ export async function listCurrentCustomerCompanies(): Promise<
   );
 }
 
-export async function listCurrentCustomerOrderSummaries(): Promise<
+export async function listCurrentCustomerOrderSummaries(query: AccountHistoryQuery = {}): Promise<
   RepositoryResult<OrderSummary[]>
 > {
-  const supabaseResult = await withSupabase(readCurrentCustomerOrderSummaries);
+  const supabaseResult = await withSupabase((context) => readCurrentCustomerOrderSummaries(context, query));
 
   return (
     supabaseResult ??
@@ -5147,10 +5154,10 @@ export async function listCurrentCustomerOrderSummaries(): Promise<
   );
 }
 
-export async function listCurrentEmployeeSelfOrderSummaries(): Promise<
+export async function listCurrentEmployeeSelfOrderSummaries(query: AccountHistoryQuery = {}): Promise<
   RepositoryResult<OrderSummary[]>
 > {
-  const supabaseResult = await withSupabase(readCurrentEmployeeSelfOrderSummaries);
+  const supabaseResult = await withSupabase((context) => readCurrentEmployeeSelfOrderSummaries(context, query));
 
   return (
     supabaseResult ??
@@ -12427,7 +12434,8 @@ async function readCurrentEmployeeSelfProfile(
 
 async function readCustomerWallet(
   client: SupabaseServerClient,
-  customerId: string
+  customerId: string,
+  query: AccountHistoryQuery = {}
 ): Promise<CustomerWallet> {
   const walletRow = await readSingleRow(
     client,
@@ -12436,16 +12444,11 @@ async function readCustomerWallet(
     customerId
   );
   const walletId = pickString(walletRow, ["id"]);
-  const transactionRows = walletId
-    ? await readRowsByColumn(
-        client,
-        "customer_wallet_transactions",
-        "*",
-        "wallet_id",
-        walletId,
-        { orderColumn: "created_at", ascending: false }
-      )
-    : [];
+  const offset = Math.max(0, query.offset ?? 0);
+  const limit = Math.min(100, Math.max(1, query.limit ?? 20));
+  const transactionResult = walletId ? await client.from("customer_wallet_transactions").select("*").eq("wallet_id", walletId).order("created_at", { ascending: false }).order("id", { ascending: false }).range(offset, offset + limit - 1) : { data: [], error: null };
+  if (transactionResult.error) throw new RepositoryWriteError(503, "WALLET_HISTORY_UNAVAILABLE", "Wallet history could not be read.");
+  const transactionRows = transactionResult.data as DbRow[] | null;
 
   return {
     balance: pickNumber(walletRow, ["balance"]) ?? 0,
@@ -12460,15 +12463,13 @@ async function readCustomerOrderRows(
   client: SupabaseServerClient,
   customerId: string,
   limit = 200,
-  options: { failClosed?: boolean } = {}
+  options: { failClosed?: boolean; offset?: number; q?: string } = {}
 ) {
   try {
-    const { data, error } = await client
-      .from("orders")
-      .select("*")
-      .eq("customer_id", customerId)
-      .order("created_at", { ascending: false })
-      .limit(limit);
+    let query = client.from("orders").select("*").eq("customer_id", customerId).order("created_at", { ascending: false }).order("id", { ascending: false });
+    if (options.q) query = query.ilike("order_no", `%${options.q.replace(/[%_\\]/g, "").slice(0, 80)}%`);
+    const offset = Math.max(0, options.offset ?? 0);
+    const { data, error } = await query.range(offset, offset + Math.min(200, limit) - 1);
     const rows = Array.isArray(data) ? (data as unknown[]).filter(isDbRow) : null;
 
     if (error || !rows) {
@@ -12500,7 +12501,7 @@ async function readCustomerOrderRows(
 }
 
 async function readCurrentCustomerOrderSummaries(
-  context: SupabaseContext
+  context: SupabaseContext, query: AccountHistoryQuery = {}
 ): Promise<OrderSummary[] | null> {
   const customerProfile = await readCurrentCustomerProfile(context);
   const customerId = pickString(customerProfile?.raw, ["id"]);
@@ -12512,12 +12513,12 @@ async function readCurrentCustomerOrderSummaries(
   return readOrderSummariesForCustomer(
     context,
     customerId,
-    customerProfile?.profile.companyName ?? "Cliente PartsPro"
+    customerProfile?.profile.companyName ?? "Cliente PartsPro", query
   );
 }
 
 async function readCurrentEmployeeSelfOrderSummaries(
-  context: SupabaseContext
+  context: SupabaseContext, query: AccountHistoryQuery = {}
 ): Promise<OrderSummary[] | null> {
   await ensureEmployeeSelfCustomer(context.client);
   const employeeSelfProfile = await readCurrentEmployeeSelfProfile(context);
@@ -12530,16 +12531,16 @@ async function readCurrentEmployeeSelfOrderSummaries(
   return readOrderSummariesForCustomer(
     context,
     customerId,
-    employeeSelfProfile?.profile.companyName ?? "PartsPro employee"
+    employeeSelfProfile?.profile.companyName ?? "PartsPro employee", query
   );
 }
 
 async function readOrderSummariesForCustomer(
   context: SupabaseContext,
   customerId: string,
-  companyName: string
+  companyName: string, query: AccountHistoryQuery = {}
 ): Promise<OrderSummary[] | null> {
-  const orderRows = await readCustomerOrderRows(context.client, customerId);
+  const orderRows = await readCustomerOrderRows(context.client, customerId, query.limit ?? 200, query);
 
   if (!orderRows) {
     return null;
@@ -13427,6 +13428,7 @@ async function createRemoteOrderTransaction(
   };
 
   try {
+    if (input.checkoutAttempt) return await createCheckoutSubmission(input.checkoutAttempt, "stock", rpcArgs);
     const { data, error } = await context.client.rpc("create_order_transaction", rpcArgs);
 
     if (error) {
@@ -13767,6 +13769,7 @@ async function insertB2BApplication(
   input: B2BApplicationInput
 ): Promise<B2BApplication | null> {
   const now = new Date().toISOString();
+  const applicationId = input.submissionId ?? crypto.randomUUID();
   const normalizedAddress = [input.address, input.city, input.province]
     .map((part) => part?.trim())
     .filter(Boolean)
@@ -13783,7 +13786,7 @@ async function insertB2BApplication(
     pec: input.pec ?? "",
     company_type: "repair_shop",
     registered_address: normalizedAddress,
-    shipping_address: normalizedAddress,
+    shipping_address: "",
     monthly_purchase: "",
     interested_categories: [],
     payment_needs: [],
@@ -13827,12 +13830,12 @@ async function insertB2BApplication(
   };
 
   for (const payload of [remotePayload, snakePayload, camelPayload]) {
-    const inserted = await insertRowWithoutReturning(client, "b2b_applications", payload);
+    const inserted = await insertRowWithoutReturning(client, "b2b_applications", { ...payload, id: applicationId });
 
     if (inserted) {
       return {
         ...input,
-        id: `B2B-${Date.now()}`,
+        id: applicationId,
         status: "submitted",
         createdAt: now,
       };

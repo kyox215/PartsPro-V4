@@ -91,8 +91,8 @@ export function ProductCartQuantityControl({
         className={cn(
           "inline-flex min-w-0 items-center justify-between overflow-hidden border bg-white shadow-sm",
           density === "detail"
-            ? "h-10 w-full rounded-lg border-primary/20"
-            : "h-8 w-24 rounded-md border-slate-200",
+            ? "min-h-11 w-full rounded-lg border-primary/20"
+            : "min-h-11 w-36 rounded-md border-slate-200",
           isOverStock && "border-amber-200 bg-amber-50"
         )}
         title={
@@ -117,7 +117,7 @@ export function ProductCartQuantityControl({
           size={buttonSize}
           className={cn(
             "rounded-none",
-            density === "detail" ? "size-9" : "size-8"
+            "size-11"
           )}
           onClick={handleDecrease}
           aria-label={
@@ -164,7 +164,7 @@ export function ProductCartQuantityControl({
           size={buttonSize}
           className={cn(
             "rounded-none",
-            density === "detail" ? "size-9" : "size-8"
+            "size-11"
           )}
           disabled={!canIncrease}
           onClick={handleIncrease}
