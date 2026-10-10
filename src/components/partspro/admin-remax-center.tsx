@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminNotice, AdminActionButton } from "./admin-feedback";
+
 import * as React from "react";
 import { AdminFieldGroup } from "./admin-field-group";
 import { useI18n } from "./i18n-provider";
@@ -36,7 +38,7 @@ import { cn } from "@/lib/utils";
 type RequestState = {
   message: string;
   values?: Record<string, string | number>;
-  status: "idle" | "loading" | "success" | "error";
+  status: "idle" | "loading" | "info" | "success" | "warning" | "error";
 };
 
 type ImportSettingsForm = {
@@ -74,7 +76,7 @@ export function AdminRemaxCenter({
   const [dashboardState, setDashboardState] = React.useState<RequestState>(() =>
     initialError
       ? { status: "error", message: initialError }
-      : { status: "success", message: "Dati REMAX caricati." }
+      : { status: "info", message: "Dati REMAX caricati." }
   );
   const [settings, setSettings] = React.useState(initialSettings);
   const [file, setFile] = React.useState<File | null>(null);
@@ -95,9 +97,11 @@ export function AdminRemaxCenter({
       const payload = await readApiPayload<{ data?: AdminRemaxDashboard }>(response);
       if (!response.ok || !payload.data) throw new Error(apiMessage(payload));
       setDashboard(payload.data);
-      setDashboardState({ status: "success", message: "Dati aggiornati." });
+      setDashboardState({ status: "info", message: "Dati aggiornati." });
+      return true;
     } catch (error) {
       setDashboardState({ status: "error", message: errorMessage(error) });
+      return false;
     }
   }, []);
 
@@ -140,7 +144,7 @@ export function AdminRemaxCenter({
       setPreview(payload.data);
       setApplyConfirmed(false);
       setPreviewState({
-        status: payload.data.counts.blocked > 0 ? "error" : "success",
+        status: payload.data.counts.blocked > 0 ? "error" : "info",
         message: payload.data.counts.blocked > 0
           ? "Ci sono {count} righe da correggere."
           : "Controllo completato. Ora puoi confermare l'importazione.",
@@ -169,7 +173,8 @@ export function AdminRemaxCenter({
       });
       setPreview(null);
       setApplyConfirmed(false);
-      await refreshDashboard();
+      const refreshed = await refreshDashboard();
+      if (!refreshed) setPreviewState(current => ({ ...current, status: "warning" }));
     } catch (error) {
       setPreviewState({ status: "error", message: errorMessage(error) });
     }
@@ -245,7 +250,8 @@ export function AdminRemaxCenter({
       setArrivalConfirmed(false);
       setSelectedBatchCode("");
       setReceiptQuantities({});
-      await refreshDashboard();
+      const refreshed = await refreshDashboard();
+      if (!refreshed) setArrivalState(current => ({ ...current, status: "warning" }));
     } catch (error) {
       setArrivalState({ status: "error", message: errorMessage(error) });
     }
@@ -337,8 +343,8 @@ export function AdminRemaxCenter({
                     <Checkbox checked={applyConfirmed} onCheckedChange={(value) => setApplyConfirmed(value === true)} />
                     <span>{t("Ho controllato quantità, costi, prezzi, immagini, ETA e righe da pubblicare. Confermo la creazione del lotto.")}</span>
                   </label>
-                  <Button type="button" disabled={!applyConfirmed || preview.counts.blocked > 0 || previewState.status === "loading" || !dashboard?.permissions.canImport} onClick={applyImport}>
-                    {previewState.status === "loading" ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />} {t("Conferma e apri preordini")}</Button>
+                  <AdminActionButton pending={previewState.status === "loading"} type="button" disabled={!applyConfirmed || preview.counts.blocked > 0 || previewState.status === "loading" || !dashboard?.permissions.canImport} onClick={applyImport}>
+                    {!(previewState.status === "loading") && (<Upload className="size-4" />)} {t("Conferma e apri preordini")}</AdminActionButton>
                   {!dashboard?.permissions.canImport ? <p className="text-xs font-bold text-amber-700">{t("Il tuo ruolo non possiede tutti i permessi richiesti per creare, prezzare e pubblicare.")}</p> : null}
                 </CardContent>
               </Card>
@@ -454,7 +460,7 @@ function ArrivalCard(props: {
         {props.arrivalPreview ? (
           <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-950"><Checkbox checked={props.arrivalConfirmed} onCheckedChange={(value) => props.onConfirm(value === true)} /><span>{t("Ho contato la merce fisica e confermo queste quantità. Questa operazione aumenta lo stock reale.")}</span></label>
         ) : null}
-        <Button type="button" className="bg-emerald-700 hover:bg-emerald-800" disabled={!props.arrivalPreview || !props.arrivalConfirmed || !props.canReceive || props.arrivalState.status === "loading"} onClick={props.onApply}>{props.arrivalState.status === "loading" ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />} {t("Registra arrivo reale")}</Button>
+        <AdminActionButton pending={props.arrivalState.status === "loading"} type="button" className="bg-emerald-700 hover:bg-emerald-800" disabled={!props.arrivalPreview || !props.arrivalConfirmed || !props.canReceive || props.arrivalState.status === "loading"} onClick={props.onApply}>{!(props.arrivalState.status === "loading") && (<CheckCircle2 className="size-4" />)} {t("Registra arrivo reale")}</AdminActionButton>
         {!props.canReceive ? <p className="text-xs font-bold text-amber-700">{t("Il tuo ruolo non può modificare lo stock.")}</p> : null}
         <InlineState state={props.arrivalState} />
       </CardContent>
@@ -481,7 +487,7 @@ function RowStatus({ status }: { status: "ready" | "draft" | "blocked" }) {
 function InlineState({ state }: { state: RequestState }) {
  const { locale } = useI18n();
   if (!state.message || state.status === "idle") return null;
-  return <div role={state.status === "error" ? "alert" : "status"} className={cn("rounded-lg border p-2.5 text-xs font-semibold", state.status === "error" ? "border-red-200 bg-red-50 text-red-700" : state.status === "success" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-blue-200 bg-blue-50 text-blue-800")}>{state.status === "loading" ? <Loader2 className="mr-2 inline size-3.5 animate-spin" /> : null}{remaxText(state.message, locale, state.values)}</div>;
+  return <AdminNotice tone={state.status === "loading" || state.status === "info" ? "info" : state.status} message={remaxText(state.message, locale, state.values)}>{state.status === "loading" ? <span className="flex items-center gap-2"><Loader2 className="size-3.5 animate-spin" aria-hidden="true" />{remaxText(state.message, locale, state.values)}</span> : state.status === "warning" ? <>{remaxText(state.message, locale, state.values)}<p className="mt-1">{locale.startsWith("zh") ? "记录已保存，但列表重读失败，请刷新核对。" : "Registrazione salvata; rilettura non riuscita. Aggiorna per verificare."}</p></> : undefined}</AdminNotice>;
 }
 
 function importFormData(file: File, settings: ImportSettingsForm) {

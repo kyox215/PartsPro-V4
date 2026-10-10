@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AdminEmptyState, AdminNotice } from "./admin-feedback";
 import Link from "next/link";
 import { AdminListPager } from "./admin-list-pager";
 import { useAdminWorkspaceUserId, usePersistentAdminValue } from "./admin-workspace-state";
@@ -323,8 +324,8 @@ export function AdminActivityTimeline({
 
       <CardContent className="space-y-3 p-3 pt-0 sm:space-y-4 sm:p-6 sm:pt-0">
         <p className="text-xs text-slate-500">{locale.startsWith("zh") ? "真实活动按当前权限分页读取。备注仅保存在当前账号的本机浏览器中，不是团队共享记录；设备或浏览器清理后会丢失。筛选作用于当前页。" : "Attività reali paginate secondo i permessi. Le note sono personali e salvate solo nel browser di questo account; non sono condivise. I filtri agiscono sulla pagina corrente."}</p>
-        {noteStorageError && <p role="alert" className="rounded border border-amber-200 bg-amber-50 p-3 text-sm">{noteStorageError}</p>}
-        {readError && <p role="alert" className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-800">{readError}</p>}
+        {noteStorageError && <AdminNotice tone="warning" message={noteStorageError} />}
+        {readError && <AdminNotice tone="error" message={readError} />}
         <AdminListPager page={page} pageSize={50} total={total} returned={activities.filter(item => item.type !== "note").length} pending={loading} onPageChange={setPage} />
         <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500">
           <span className="sm:hidden">
@@ -359,9 +360,7 @@ export function AdminActivityTimeline({
                 />
               ))
             ) : (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-center text-sm text-slate-500 sm:p-6">
-                {copy.noEvents}
-              </div>
+              <AdminEmptyState title={copy.noEvents} />
             )}
           </div>
 

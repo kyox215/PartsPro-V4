@@ -148,3 +148,12 @@ Last reviewed: 2026-09-28
 - 129后台测试、26商城/导入回归、18真实组件模拟交互、60页面/视口组合、全量lint/build与diff检查PASS；实际编译Next的9个匿名后台API均403，后台页跳登录。独立SQL/RLS和恢复流程静态GO。模拟环境和真实服务边界均已在报告说明。
 - PartsPro-V4/yiuxrjqexlfjtxxrkqvi已核对，linked历史无remote-only分歧，dry-run仅20261010204858_admin_support_atomic_reply.sql（原子客服回复、会话动作、财务最小批次读取）。生产迁移、正式发布和真实业务写验收均未执行，当前状态local_ready_for_owner_gate。
 - 逐项结果及回退说明：工作树 `docs/audits/2026-10-10-admin-panel-repair-verification.md`；证据 `outputs/admin-repair/2026-10-10/`。统计凭据/eBay真实政策、生产真实账号和物理手机另行验收；原有图片并发和库存跨请求幂等事项保持原范围。
+
+
+## 2026-10-11 — 后台状态规范及授权上线进行中
+
+- 老板已明确要求完成修复后上线，并参照小红书等资料设计组件状态。沿用64项修复候选工作树，不发布主目录未提交业务代码。
+- 本次批准范围：仅20261010204858_admin_support_atomic_reply.sql应用到PartsPro-V4/yiuxrjqexlfjtxxrkqvi，再发布验证通过的精确候选到partspro.app/www.partspro.app。授权不包含真实订单、付款、库存、权限或客服消息等业务写入。
+- 共享组件已实现信息/成功/警告/错误、提交中、紧凑空状态和错误汇总；后台限定样式覆盖焦点/禁用/只读/校验/选中/Portal层级/减少动画。资料与状态矩阵记入既有后台修复报告。
+- 最新只读外部核对：Vercel parts-pro-v4 / prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo / team_AOJDnrjov0QDLqpvMyhwA1yc；正式域名仍指向dpl_BgiuoEqK7TPqFqSA66FC8KvG3qCL。Supabase健康，迁移无remote-only分歧，dry-run仍只列本次文件；尚未执行db push或生产promote。
+- 新增状态fixture通过1440/390/360三档真实组件交互及reduced-motion测试，18业务交互/60布局组合和发布候选lint/build重新验证进行中。最终迁移、部署和只读验收结果完成后更新本节。

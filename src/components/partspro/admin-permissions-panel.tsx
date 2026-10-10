@@ -2,8 +2,6 @@
 
 import * as React from "react";
 import {
-  AlertTriangle,
-  CheckCircle2,
   KeyRound,
   RefreshCcw,
   Search,
@@ -41,7 +39,7 @@ import {
 } from "@/i18n/dictionaries/admin";
 import { CUSTOMER_MANAGE_LEVEL_PERMISSION } from "@/lib/partspro-permissions";
 import { cn } from "@/lib/utils";
-import { AdminBusyRegion, AdminInlinePending, AdminSkeletonRows } from "./admin-feedback";
+import { AdminBusyRegion, AdminInlinePending, AdminSkeletonRows, AdminNotice, AdminActionButton } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
 
 type PermissionEffect = "grant" | "deny" | "inherit";
@@ -82,7 +80,7 @@ type PermissionsPayload = {
 
 type Notice = {
   message: string;
-  tone: "success" | "warning" | "error";
+  tone: "info" | "success" | "warning" | "error";
 };
 
 type MobilePermissionView = "employees" | "permissions" | "role";
@@ -134,7 +132,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
       );
       setNotice({
         message: copy.syncSuccess,
-        tone: "success",
+        tone: "info",
       });
     } catch (error) {
       if (!signal?.aborted) {
@@ -305,7 +303,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
       window.dispatchEvent(new Event("partspro:admin-permissions-changed"));
     } catch (error) {
       setUnknownSubmission(error instanceof TypeError || error instanceof SyntaxError);
-      setNotice({ message: readableError(error, copy), tone: "error" });
+      setNotice({ message: readableError(error, copy), tone: error instanceof TypeError || error instanceof SyntaxError ? "warning" : "error" });
     } finally { setPendingKey(null); }
   }
 
@@ -318,8 +316,8 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
         <ul className="max-h-40 list-disc space-y-1 overflow-y-auto pl-5 text-sm">{Object.entries(draftOverrides).map(([id, effect]) => <li key={id}>{adminPermissionLabel(text, id, id)}: {overrides.find(item => item.userId === selectedEmployee?.userId && item.permissionId === id)?.effect ?? "inherit"} → {effect}</li>)}</ul>
         <Label htmlFor="permission-change-reason">{locale.startsWith("zh") ? "修改原因（必填）" : "Motivo della modifica (obbligatorio)"}</Label>
         <Input id="permission-change-reason" value={changeReason} disabled={Boolean(pendingKey)} maxLength={1000} onChange={event => setChangeReason(event.target.value)} />
-        {unknownSubmission && <p role="alert" className="text-sm">{locale.startsWith("zh") ? "提交结果未知。请先刷新核对实际权限，再决定后续修改。" : "Esito non confermato. Aggiorna e verifica i permessi prima di riprovare."}</p>}
-        <div className="flex flex-wrap gap-2"><Button disabled={!selectedEmployee || selectedEmployee.userId !== draftTargetId || Boolean(pendingKey) || changeReason.trim().length < 3 || unknownSubmission} onClick={() => void saveChanges()}>{locale.startsWith("zh") ? "核对并保存修改" : "Conferma e salva"}</Button><Button variant="outline" disabled={Boolean(pendingKey)} onClick={() => { setDraftRole(null); setDraftOverrides({}); setChangeReason(""); setUnknownSubmission(false); void refreshData(); }}>{locale.startsWith("zh") ? "放弃草稿并重读权限" : "Scarta e rileggi i permessi"}</Button></div>
+        {unknownSubmission && <AdminNotice tone="warning" message={locale.startsWith("zh") ? "提交结果未知。请先刷新核对实际权限，再决定后续修改。" : "Esito non confermato. Aggiorna e verifica i permessi prima di riprovare."} />}
+        <div className="flex flex-wrap gap-2"><AdminActionButton pending={pendingKey === "save"} disabled={!selectedEmployee || selectedEmployee.userId !== draftTargetId || Boolean(pendingKey) || changeReason.trim().length < 3 || unknownSubmission} onClick={() => void saveChanges()}>{locale.startsWith("zh") ? "核对并保存修改" : "Conferma e salva"}</AdminActionButton><Button variant="outline" disabled={Boolean(pendingKey)} onClick={() => { setDraftRole(null); setDraftOverrides({}); setChangeReason(""); setUnknownSubmission(false); void refreshData(); }}>{locale.startsWith("zh") ? "放弃草稿并重读权限" : "Scarta e rileggi i permessi"}</Button></div>
       </div>}
       <div
         className={cn(
@@ -1110,45 +1108,7 @@ function groupLabel(text: AdminText, groupName: string) {
   return adminPermissionGroupLabel(text, groupName, groupName);
 }
 
-function NoticeBanner({
-  copy,
-  notice,
-  onDismiss,
-}: {
-  copy: AdminText["permissions"];
-  notice: Notice;
-  onDismiss: () => void;
-}) {
-  const isSuccess = notice.tone === "success";
-
-  return (
-    <div
-      className={cn(
-        "flex min-w-0 items-center gap-3 rounded-lg border px-3 py-2 text-sm font-medium",
-        isSuccess
-          ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-          : notice.tone === "warning"
-            ? "border-amber-200 bg-amber-50 text-amber-900"
-            : "border-red-200 bg-red-50 text-red-800"
-      )}
-    >
-      {isSuccess ? (
-        <CheckCircle2 className="size-4 shrink-0" />
-      ) : (
-        <AlertTriangle className="size-4 shrink-0" />
-      )}
-      <span className="min-w-0 flex-1 break-words">{notice.message}</span>
-      <Button
-        variant="ghost"
-        size="xs"
-        className="text-current hover:bg-white/60"
-        onClick={onDismiss}
-      >
-        {copy.closeNotice}
-      </Button>
-    </div>
-  );
-}
+function NoticeBanner({ copy, notice, onDismiss }: { copy: AdminText["permissions"]; notice: Notice; onDismiss: () => void }) { return <AdminNotice tone={notice.tone} message={notice.message} onDismiss={onDismiss} dismissLabel={copy.closeNotice} />; }
 
 function effectLabel(effect: PermissionEffect, copy: AdminText["permissions"]) {
   if (effect === "grant") {

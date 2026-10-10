@@ -2,13 +2,13 @@
 
 本次针对原审查的64项问题完成了本地修复候选，涵盖导航、总览、订单、商品、库存、售后、账号、财务、eBay、客服、活动记录、权限和REMAX。财务金额误记、客服回复错对象、写入后读取失败导致重复操作的风险已优先处理；常用流程增加搜索、分页、批量准备、差异预览和失败恢复。
 
-**当前结果是本地候选已完成，生产数据库与正式发布尚未执行。** 129项后台测试、26项商城与导入回归通过；18项真实组件模拟交互通过；60个页面与视口组合无页面报错或整页横向溢出。SQL、权限及最后的恢复流程完成独立静态复核。
+**2026-10-11最终候选已通过验证，老板已批准本次单条迁移及上线，发布正在执行。** 133项后台测试、26项商城与导入回归通过；19项真实组件模拟交互、60个页面与视口组合无页面报错或整页横向溢出；状态组件三种宽度及减少动画检查通过。SQL、权限及基础层完成独立静态复核。
 
 ## 候选范围与证据
 
 - 实施工作树：`.codex-worktrees/admin-panel-comprehensive-20261010`；分支：`codex/admin-panel-comprehensive-20261010`；基准：a32c8b9，业务源码与此前运行版本832c53c一致。主目录已有业务改动未覆盖。
-- 原问题编号与复现：[原审查报告](2026-10-10-admin-panel-operation-ui-audit.md)。以下“已实施”均指本地候选，不代表生产已更新。
-- [18项交互结果](../../outputs/admin-repair/2026-10-10/interaction-results.json)、[60项视口结果](../../outputs/admin-repair/2026-10-10/browser-results.json)、[129项后台测试](../../outputs/admin-repair/2026-10-10/admin-tests.tap)、[构建](../../outputs/admin-repair/2026-10-10/build.log)、[lint](../../outputs/admin-repair/2026-10-10/lint.log)。
+- 原问题编号与复现：[原审查报告](2026-10-10-admin-panel-operation-ui-audit.md)。以下“已实施”指完成代码及测试；真实生产写入类验收未执行，发布结果以本报告末尾和roadmap最终记录为准。
+- [19项交互结果](../../outputs/admin-repair/2026-10-11/interaction-results.json)、[60项视口结果](../../outputs/admin-repair/2026-10-11/browser-results.json)、[133项后台测试](../../outputs/admin-repair/2026-10-11/admin-tests.tap)、[构建](../../outputs/admin-repair/2026-10-11/build.log)、[lint](../../outputs/admin-repair/2026-10-11/lint.log)。
 - 页面检查使用候选真实React组件、Tailwind CSS和Chrome，所有业务API使用合成数据，外网全部拦截，Auth、Next路由和图片适配器有替代实现。另用实际编译的Next.js服务确认9个匿名后台API均403，以及后台页流式跳转登录：[运行时检查](../../outputs/admin-repair/2026-10-10/next-runtime-smoke.json)。这些证据不等于生产E2E。
 
 ## 64项实施结果
@@ -129,11 +129,11 @@
 
 60个组合包括12个面板，分别在1440×900中文、768×1024意文、390×844中文、360×740意文、1280×568中文检查。整页无溢出，宽表与阶段栏的局部滚动仍保留；不把局部滚动组件当成错位。重点截图：
 
-- [短屏财务筛选](../../outputs/admin-repair/2026-10-10/finance-1280-zh-CN.png)
-- [意文手机权限](../../outputs/admin-repair/2026-10-10/settings-360-it-IT.png)
-- [手机采购批量预览](../../outputs/admin-repair/2026-10-10/interaction-plan-preview-390.png)
-- [客服已发送而详情需重读](../../outputs/admin-repair/2026-10-10/interaction-support.png)
-- [手机导入差异展开](../../outputs/admin-repair/2026-10-10/interaction-import-390.png)
+- [短屏财务筛选](../../outputs/admin-repair/2026-10-11/finance-1280-zh-CN.png)
+- [意文手机权限](../../outputs/admin-repair/2026-10-11/settings-360-it-IT.png)
+- [手机采购批量预览](../../outputs/admin-repair/2026-10-11/interaction-plan-preview-390.png)
+- [客服已发送而详情需重读](../../outputs/admin-repair/2026-10-11/interaction-support.png)
+- [手机导入差异展开](../../outputs/admin-repair/2026-10-11/interaction-import-390.png)
 
 ## 生产审批前已经完成的迁移预检
 
@@ -141,7 +141,7 @@
 
 `20261010204858_admin_support_atomic_reply.sql`
 
-迁移新增三个函数：原子客服回复、原子会话动作、财务独立批次读取。全部在数据库内检查身份和具体权限，固定空search_path，撤销PUBLIC/anon执行，只向authenticated开放受内部权限约束的调用。不改既有表结构、客户/订单/价格/库存数据，不重写RLS策略，不做历史回填。证据：[迁移预检](../../outputs/admin-repair/2026-10-10/migration-preflight.json)。
+迁移新增三个函数：原子客服回复、原子会话动作、财务独立批次读取。全部在数据库内检查身份和具体权限，固定空search_path，撤销PUBLIC/anon执行，只向authenticated开放受内部权限约束的调用。不改既有表结构、客户/订单/价格/库存数据，不重写RLS策略，不做历史回填。证据：[迁移预检](../../outputs/admin-repair/2026-10-11/migration-preflight.json)。
 
 代码依赖这些函数，**不能先发布页面再等待迁移**。生产批准后应先受控应用本次迁移、核对函数/ACL和只读范围，再发布精确候选并检查运行版本。两个动作是独立审批范围。
 
@@ -157,3 +157,37 @@
 - 原有“图片并发上传、库存动作跨请求幂等”等项目roadmap中的独立底层事项仍保持原范围，本次没有宣称已经解决这些未列入64项的工程项目。
 
 参考接口：[Vercel统计聚合](https://vercel.com/docs/rest-api/web-analytics/aggregates-page-views)、[eBay账号政策](https://developer.ebay.com/develop/api/sell/account_api_v1)。统计期间人数采用未分组总值，不能把每日去重人数相加冒充期间人数；销售政策读取按已保存环境与EBAY_IT账号进行。
+
+
+## 2026-10-11 组件状态规范与发布追加
+
+老板已批准本次单条生产迁移和完成后上线，并要求查阅小红书等资料后落实状态层级。采用现有蓝色品牌、Tailwind/Radix组件，样式仅在后台作用域生效。
+
+资料核验与取舍：
+
+- [小红书官方“清晰”设计原则](https://miniapp.xiaohongshu.com/doc/DC772457)：及时反馈，按启动、页面刷新和关键操作选择反馈强度；局部动作在局部反馈；失败说明原因和可执行的下一步。页面直接打开超时，搜索缓存返回官方正文；没有将无法读取的小红书用户笔记当作已核验资料。
+- [Dynatrace 官方交互状态规范](https://developer.dynatrace.com/design/foundations/interaction-states/)：默认、悬停、按下和禁用互斥；聚焦、选中可叠加；只读字段可聚焦复制，禁用字段不可操作；选中除颜色外给额外标识。
+- [GOV.UK 按钮](https://design-system.service.gov.uk/components/button/)：主要行动文案明确，警告按钮仅用于严重或不可逆动作；不要仅凭红色传达风险，不增加不必要的禁用。
+- [GOV.UK 错误汇总](https://design-system.service.gov.uk/components/error-summary/)：同时提供表单错误汇总与字段错误；聚焦汇总，链接到确切字段，保持同一错误说明。
+- Material 官方状态页面需要JavaScript，未把未获取的正文或转载当作实施依据。资料用于状态设计，业务保护继续以现有权限、金额、幂等与写入结果契约为准。
+
+| 层级或状态 | 后台规范 | 交互与恢复 |
+| --- | --- | --- |
+| 默认 / 次要 / 危险行动 | 蓝色主要按钮；描边或轻量次要按钮；明确删除等最终危险行动使用危险样式 | 不把权限拒绝选项或普通关闭做成危险操作 |
+| 悬停 / 按下 / 键盘聚焦 | 亮度反馈；独立2px蓝色焦点线与间距 | 可使用Tab定位，不依赖鼠标 |
+| 选中 | 品牌浅底、页签底线；原有勾选标识保留 | 保留查询、选定对象和上下文 |
+| 禁用 | 中性底和可读文字 | 原有权限/前置条件说明保留，处理函数仍核验 |
+| 只读 | 浅底、虚线边框；可聚焦复制 | 关键值不伪装成可编辑输入 |
+| 首次加载 / 局部刷新 | 首次已有骨架；刷新保留原数据和局部状态条 | aria-busy标记局部区域，不将整个列表设为live公告 |
+| 提交中 | 按钮显示进度文字和图标、aria-busy，相关动作禁用 | 保留输入，阻止再次发起请求 |
+| 信息 / 确认成功 | 蓝色信息 / 绿色已确认成功，图标、文字和role=status | 只有已确认成功使用成功语义 |
+| 警告 / 结果未知 | 琥珀色图标与明确标题 | 已保存但读取失败、部分成功、未知结果提示核对或继续原请求 |
+| 校验 / 操作失败 | 红色边框、图标、文字；role=alert | 财务表单汇总可直接聚焦错误字段，输入不清空 |
+| 空结果 | 紧凑中性空状态、原因与相关行动 | 与读取错误分开，不用巨大留白填满页面 |
+| 弹窗 / 菜单 / 提示 | modal70、menu80、tooltip90；嵌套弹窗依Radix DOM顺序 | 下拉在弹窗上方；后打开弹窗及遮罩覆盖父弹窗 |
+| 减少动画 | 系统prefers-reduced-motion停止旋转/脉冲 | 保留进度文字，不靠动画传达忙碌 |
+
+状态增强已完成：16个面板统一提示，12个写入面板主要按钮统一等待态，8个列表/查询面板使用共享空态。最终133后台+6商城+20导入共159项测试通过；19模拟交互、60布局组合、4次状态组件验证通过，全量lint/build与diff检查通过。售后正常等待保留时钟图标与正常公告，真实阻塞保留警告公告；财务错误汇总重复校验会聚焦，编辑时不抢焦点。首次集成发现的商品/RMA状态引用错误已修复，测试源码证据改为zip归档，不更改编译配置或放松断言。生产结果完成后追加。
+
+
+最终状态证据：[组件状态矩阵](../../outputs/admin-repair/2026-10-11/state-matrix-390.png)、[嵌套弹窗](../../outputs/admin-repair/2026-10-11/nested-dialog-390.png)、[状态交互](../../outputs/admin-repair/2026-10-11/state-interaction-results.json)。这些示例使用合成数据。

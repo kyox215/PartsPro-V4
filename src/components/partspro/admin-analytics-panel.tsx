@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AdminEmptyState, AdminNotice } from "./admin-feedback";
 import dynamic from "next/dynamic";
 import {
   BarChart3,
@@ -422,20 +423,13 @@ function AnalyticsError({ code, copy }: { code: string; copy: AnalyticsCopy }) {
   const isConfigError = code === "ANALYTICS_NOT_CONFIGURED";
 
   return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50 p-5 text-amber-950">
-      <h2 className="font-black">{isConfigError ? copy.configTitle : copy.errorTitle}</h2>
-      <p className="mt-2 text-sm leading-6">
-        {isConfigError ? copy.configDescription : copy.errorDescription}
-      </p>
-    </div>
+    <AdminNotice tone={isConfigError ? "warning" : "error"} title={isConfigError ? copy.configTitle : copy.errorTitle} message={isConfigError ? copy.configDescription : copy.errorDescription} />
   );
 }
 
 function EmptyState({ label }: { label: string }) {
   return (
-    <div className="mt-4 grid min-h-28 place-items-center rounded-lg border border-dashed border-slate-200 bg-slate-50 px-4 text-center text-sm text-slate-500">
-      {label}
-    </div>
+    <AdminEmptyState className="mt-4" title={label} />
   );
 }
 

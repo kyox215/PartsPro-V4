@@ -12,6 +12,7 @@ const typescript = require("typescript");
 const React = require("react");
 const { renderToStaticMarkup } = require("react-dom/server");
 const { Clock3, CheckCircle2, ShieldAlert } = require("lucide-react");
+const { Info, TriangleAlert, CircleAlert } = require("lucide-react");
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relativePath) => readFileSync(join(repoRoot, relativePath), "utf8");
@@ -296,10 +297,12 @@ function loadAdminHelpers(names, bindings = {}) {
     assert.ok(declarations.has(name), `${name} is required`);
     return declarations.get(name).getText(sourceFile);
   }).join("\n");
-  const compiled = typescript.transpileModule(`${copySource}\n${helperSource}\nglobalThis.helpers = { rmaCopy, ${names.join(", ")} };`, {
+  const feedbackSource = typescript.createSourceFile("admin-feedback.tsx", read("src/components/partspro/admin-feedback.tsx"), typescript.ScriptTarget.Latest, true, typescript.ScriptKind.TSX);
+  const noticeSource = feedbackSource.statements.find(node => typescript.isFunctionDeclaration(node) && node.name?.text === "AdminNotice").getText(feedbackSource);
+  const compiled = typescript.transpileModule(`${noticeSource}\n${copySource}\n${helperSource}\nglobalThis.helpers = { rmaCopy, ${names.join(", ")} };`, {
     compilerOptions: { module: typescript.ModuleKind.CommonJS, target: typescript.ScriptTarget.ES2022, jsx: typescript.JsxEmit.React },
   });
-  const context = { setLocation() {}, setActionReason() {}, setCustomerConfirmation() {}, setActionQuantity() {}, setReturnTracking() {}, setReturnCarrier() {}, setReplacementOrderNumber() {}, React, Clock3, CheckCircle2, ShieldAlert, cn: (...classes) => classes.filter(Boolean).join(" "), ...bindings };
+  const context = { exports: {}, setLocation() {}, setActionReason() {}, setCustomerConfirmation() {}, setActionQuantity() {}, setReturnTracking() {}, setReturnCarrier() {}, setReplacementOrderNumber() {}, React, Clock3, CheckCircle2, ShieldAlert, noticeIcons: { info: Info, success: CheckCircle2, warning: TriangleAlert, error: CircleAlert }, cn: (...classes) => classes.filter(Boolean).join(" "), ...bindings };
   vm.runInNewContext(compiled.outputText, context);
   return context.helpers;
 }

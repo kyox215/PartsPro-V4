@@ -1,9 +1,9 @@
 # P1-2026-10-10-admin-panel-comprehensive-ux
 
-状态：local_ready_for_owner_gate（本地候选完成，生产未执行）
+状态：approved_release_in_progress（老板已批准本次单条迁移和上线；状态规范增强与验证进行中）
 Task ID：TASK-20261010-ADMIN-UX
 风险等级：R3
-自治等级：L2（本地实施和验证）
+自治等级：L2（本地实施、验证及老板本次明确批准的生产迁移/发布）
 
 ## 老板原始目标
 “进行全面的修复与优化”，对应 docs/audits/2026-10-10-admin-panel-operation-ui-audit.md 的64项。
@@ -26,7 +26,7 @@ RACI：主助手实施/整合；财务子助手负责财务闭环；子助手顺
 主助手唯一写入：其他后台组件/API/shared repository/词典/文档。需要共用helper先消息协调。
 
 ## 授权和禁止事项
-当前授权：全面本地修复、必要测试、隔离模拟和文档。没有真实记账/消息发送/退款/库存/权限写入授权。
+当前授权：全面修复、必要测试、隔离模拟和文档。老板于2026-10-11回复“开始进行修复 完成后上线，同时按照ui设计规范设计不同组件的状态层级，去搜索小红书等去查找资料 然后实行”，承接已经展示的迁移与发布方案，批准将20261010204858_admin_support_atomic_reply.sql应用到PartsPro-V4/yiuxrjqexlfjtxxrkqvi，再将完成验证的精确候选发布到partspro.app/www.partspro.app。没有真实记账/消息发送/退款/库存/权限调整等业务写入授权。
 Supabase PartsPro-V4/yiuxrjqexlfjtxxrkqvi敏感。新增schema时使用CLI生成migration，完成list/dry-run/专项审查后本次db push须明确批准；Vercel发布独立批准。默认优先复用既有API/schema。
 保留已上线售后协商/换货/员工功能；不能以降低校验、绕过权限或把错误当空数据来简化。
 
@@ -42,3 +42,5 @@ Supabase PartsPro-V4/yiuxrjqexlfjtxxrkqvi敏感。新增schema时使用CLI生成
 64项本地实现及逐项验证见 [修复与验证报告](../../audits/2026-10-10-admin-panel-repair-verification.md)。129后台测试、26商城/导入回归、18真实组件模拟交互、60页面/视口组合、全量lint/build与diff检查通过。实际编译Next的9个匿名API均403，后台页流式跳转登录。独立SQL/RLS与恢复流程专项静态GO。
 
 新增migration 20261010204858_admin_support_atomic_reply.sql，PartsPro-V4/yiuxrjqexlfjtxxrkqvi已只读核对；无remote-only分歧，dry-run仅该文件。真实应用与发布均未执行，等待本次明确批准。测试、SQL fixture与真实服务边界详见报告，不以模拟验证代表生产。
+
+2026-10-11批准已收到，以上“等待批准”为此前阶段记录。新增执行项：参照小红书官方操作反馈规范与公开设计系统，统一共享状态组件、各面板提示、提交中、错误焦点、只读/禁用与弹窗层级。主助手负责admin-feedback.tsx、admin-dashboard.tsx和globals.css；唯一工作子助手负责16个业务面板及对应测试，写入不重叠。重新验证后执行批准范围，实际外部结果记入docs/roadmap.md。

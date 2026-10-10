@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AdminActionButton, AdminErrorSummary, AdminNotice } from "./admin-feedback";
 import { useAdminMemoryQuery, usePersistentAdminValue } from "./admin-workspace-state";
 import {
   AlertTriangle,
@@ -246,7 +247,7 @@ function AdminFinancePanelContent({ permissions, currentUserId }: { permissions:
         <FinanceFiltersBar filters={filters} setFilters={updateFilters} copy={copy} />
       </div>
 
-      {savedNotice ? <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{savedNotice}</div> : null}
+      {savedNotice ? <AdminNotice tone={errors.summary || errors.ledger || errors.cogs ? "warning" : "success"} message={savedNotice} /> : null}
       <Tabs value={tab} onValueChange={(value) => { setTab(value); setLedgerPage(0); }} className="min-w-0">
         <TabsList className="grid h-auto group-data-horizontal/tabs:h-auto w-full grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 sm:grid-cols-5">
           {(["overview", "margin", "purchases", "expenses", "export"] as const).map((value) => <TabsTrigger key={value} value={value} className="h-auto min-h-10 whitespace-normal break-words px-2 py-2 text-center leading-tight">{copy.tabs[value]}</TabsTrigger>)}
@@ -614,6 +615,7 @@ function FinanceEntryDialog({ type, copy, onSaved, row }: {
   const [uncertain, setUncertain] = React.useState(false);
   const [error, setError] = React.useState("");
   const [fieldErrors, setFieldErrors] = React.useState<Record<string, string>>({});
+  const [validationAttempt, setValidationAttempt] = React.useState(0);
   const [initialPaidAt, setInitialPaidAt] = React.useState(() => new Date());
   const [form, setForm] = React.useState<FinanceEntryForm>(() => emptyEntryForm(initialPaidAt));
   const [loadedForm, setLoadedForm] = React.useState(() => JSON.stringify(form));
@@ -636,9 +638,18 @@ function FinanceEntryDialog({ type, copy, onSaved, row }: {
   const title = editing ? copy.edit : isExpense ? copy.addExpense : copy.addPayment;
   const updateField = <K extends keyof FinanceEntryForm>(key: K, value: FinanceEntryForm[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
-    setFieldErrors((current) => ({ ...current, [key]: "" }));
+    setFieldErrors((current) => ({ ...current, [key]: "", ...((key === "amountNet" || key === "vatAmount") ? { amountGross: "" } : {}), ...(key === "note" ? { notes: "" } : {}) }));
   };
-  const fieldProps = (key: string) => ({ id: `${id}-${key}`, "aria-invalid": Boolean(fieldErrors[key]), "aria-describedby": fieldErrors[key] ? `${id}-${key}-error` : undefined });
+  const fieldProps = (key: string) => {
+    const keys = [key, ...(key === "amountNet" ? ["amountGross"] : key === "note" ? ["notes"] : [])].filter(field => Boolean(fieldErrors[field]));
+    return { id: `${id}-${key}`, "aria-invalid": keys.length > 0, "aria-describedby": keys.length ? keys.map(field => `${id}-${field}-error`).join(" ") : undefined };
+  };
+  const visibleFields = ["amountNet", "vatAmount", "note", ...(isExpense ? ["category", "description", "occurredAt"] : ["paidAt", ...(!editing ? ["batchId"] : [])]), ...(editing ? ["status", "correctionReason"] : [])];
+  const summaryMessages = Object.entries(fieldErrors).reduce<Record<string, string[]>>((messages, [key, message]) => {
+    const target = key === "amountGross" ? "amountNet" : key === "notes" ? "note" : key;
+    if (message && visibleFields.includes(target)) messages[target] = [...new Set([...(messages[target] ?? []), message])];
+    return messages;
+  }, {});
   const detailLoadError = React.useEffectEvent(() => copy.loadError);
   const fieldError = (key: string) => fieldErrors[key] ? <p id={`${id}-${key}-error`} className="text-xs text-red-700">{fieldErrors[key]}</p> : null;
 
@@ -694,7 +705,7 @@ function FinanceEntryDialog({ type, copy, onSaved, row }: {
     if (!isExpense && form.paidAt && !paidAt) issues.paidAt = copy.invalidDate;
     if (editing && !form.correctionReason.trim()) issues.correctionReason = copy.required;
     if (editing && !original) issues.correctionReason = copy.loadError;
-    if (Object.keys(issues).length || !net.ok || !vat.ok) { setFieldErrors(issues); return; }
+    if (Object.keys(issues).length || !net.ok || !vat.ok) { setFieldErrors(issues); setValidationAttempt(attempt => attempt + 1); return; }
     const body = isExpense ? {
       amountNet: net.value, vatAmount: vat.value, category: form.category, description: form.description.trim(),
       occurredAt: form.occurredAt, status: form.status, notes: form.note.trim() || null,
@@ -711,7 +722,9 @@ function FinanceEntryDialog({ type, copy, onSaved, row }: {
       if (!response.ok) {
         const failure = await financeResponseError(response, copy.saveError);
         setFieldErrors(Object.fromEntries(Object.entries(failure.fields).map(([field, message]) => [field,
-          ["amountNet", "vatAmount", "amountGross"].includes(field) ? copy.invalidMoney : message]))); throw failure;
+          ["amountNet", "vatAmount", "amountGross"].includes(field) ? copy.invalidMoney : message])));
+        if (Object.keys(failure.fields).length) setValidationAttempt(attempt => attempt + 1);
+        throw failure;
       }
       // A successful write is final. Report refresh failures in the panel; never replay it.
       setOpen(false); setOriginal(null); const nextPaidAt = new Date(); setInitialPaidAt(nextPaidAt); setForm(emptyEntryForm(nextPaidAt)); setLoadedForm(JSON.stringify(emptyEntryForm(nextPaidAt))); setSelectedBatch(null); onSaved();
@@ -738,9 +751,9 @@ function FinanceEntryDialog({ type, copy, onSaved, row }: {
       <DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>{editing ? copy.correctionDescription : copy.dialogDescription}</DialogDescription></DialogHeader>
       <form onSubmit={submit} noValidate className="contents">
         <DialogBody className="space-y-4">
-          {error ? <div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}
-            {editing && !original ? <Button variant="outline" type="button" onClick={() => setDetailReload((value) => value + 1)}>{copy.retry}</Button> : null}</div> : null}
-          {uncertain ? <p role="alert" className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">{copy.uncertain}<Button type="button" variant="outline" className="mt-2 block h-auto whitespace-normal" onClick={() => { setUncertain(false); setError(""); }}>{copy.allowRetryAfterReview}</Button></p> : null}
+          {error && !uncertain ? <AdminNotice tone="error" message={error} action={editing && !original ? <Button variant="outline" type="button" onClick={() => setDetailReload((value) => value + 1)}>{copy.retry}</Button> : undefined} /> : null}
+          {uncertain ? <AdminNotice tone="warning" title={locale.startsWith("it") ? "Esito da verificare" : "结果需要核对"} message={<>{copy.uncertain}{error && <p className="mt-1">{error}</p>}</>} action={<Button type="button" variant="outline" className="h-auto whitespace-normal" onClick={() => { setUncertain(false); setError(""); }}>{copy.allowRetryAfterReview}</Button>} /> : null}
+          <AdminErrorSummary focusKey={validationAttempt} title={locale.startsWith("it") ? "Controlla i campi indicati" : "请检查以下字段"} issues={Object.entries(summaryMessages).map(([key, messages]) => ({ id: `${id}-${key}`, message: messages.join(" · ") }))} />
           {entryLoading ? <p role="status">{copy.loading}</p> : null}
           {original ? <div className="rounded-lg border bg-slate-50 p-3 text-xs text-slate-600">
             <strong>{copy.original} · {original.id}</strong><p>{original.description ?? original.batchCode ?? copy.addPayment} · {original.occurredAt ?? original.paidAt ?? "--"} · {formatFinanceMoney(original.amountNet, locale, original.currency)} + IVA {formatFinanceMoney(original.vatAmount, locale, original.currency)} = {formatFinanceMoney(original.amountGross, locale, original.currency)} · {original.status}</p>
@@ -760,7 +773,7 @@ function FinanceEntryDialog({ type, copy, onSaved, row }: {
                 <SelectContent>{selectedBatch && !batchData?.data.some((batch) => batch.id === selectedBatch.id) ? <SelectItem value={selectedBatch.id}>{selectedBatch.batchCode} / {selectedBatch.supplierName}</SelectItem> : null}
                   {batchData?.data.map((batch) => <SelectItem key={batch.id} value={batch.id}>{batch.batchCode} / {batch.supplierName}{batch.outstandingNet !== null ? ` / ${formatFinanceMoney(batch.outstandingNet, locale, batch.currency)}` : ""}</SelectItem>)}</SelectContent></Select>
               {fieldError("batchId")}
-              {batchLoading ? <p role="status" className="text-xs text-slate-500">{copy.loading}</p> : batchError ? <div role="alert" className="text-sm text-red-700">{batchError}<Button type="button" variant="outline" onClick={() => setDetailReload((value) => value + 1)}>{copy.retry}</Button></div> : batchData?.data.length === 0 ? <p className="text-xs text-slate-500">{copy.empty}</p> : null}
+              {batchLoading ? <p role="status" className="text-xs text-slate-500">{copy.loading}</p> : batchError ? <AdminNotice tone="error" message={batchError} action={<Button type="button" variant="outline" onClick={() => setDetailReload((value) => value + 1)}>{copy.retry}</Button>} /> : batchData?.data.length === 0 ? <p className="text-xs text-slate-500">{copy.empty}</p> : null}
               <FinancePagination copy={copy} meta={batchData?.meta} page={batchSearch.page} setPage={(update) => setBatchSearch((current) => ({ ...current, page: typeof update === "function" ? update(current.page) : update }))} loading={batchLoading || Boolean(batchError)} />
               {selectedBatch ? <div className="rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
                 <p>{copy.paymentCurrency}: EUR · {copy.batch}: {selectedBatch.currency}</p>
@@ -781,7 +794,7 @@ function FinanceEntryDialog({ type, copy, onSaved, row }: {
             {editing ? <div className="grid gap-2"><Label htmlFor={`${id}-correctionReason`}>{copy.reason}</Label><Textarea {...fieldProps("correctionReason")} maxLength={500} value={form.correctionReason} onChange={(event) => updateField("correctionReason", event.target.value)} />{fieldError("correctionReason")}</div> : null}
           </fieldset>
         </DialogBody>
-        <DialogFooter><Button type="submit" disabled={isSaving || entryLoading || (editing && !original) || uncertain}>{isSaving ? copy.saving : copy.save}</Button></DialogFooter>
+        <DialogFooter><AdminActionButton type="submit" pending={isSaving} pendingLabel={copy.saving} disabled={isSaving || entryLoading || (editing && !original) || uncertain}>{copy.save}</AdminActionButton></DialogFooter>
       </form>
     </DialogContent>
   </Dialog>;
@@ -818,9 +831,7 @@ function useFinanceResource<T>(url: string, reloadKey: number, fallback: string)
 }
 function FinanceReadNotice({ copy, error, stale, loading, onRetry }: { copy: FinanceCopy; error: string; stale: boolean; loading: boolean; onRetry: () => void }) {
   if (!error && !stale) return null;
-  return <div role={error ? "alert" : "status"} className="flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-    {error || (loading ? copy.loading : "")} {stale ? copy.stale : ""}{error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>{copy.retry}</Button> : null}
-  </div>;
+  return <AdminNotice tone={error ? stale ? "warning" : "error" : "info"} className="m-3" message={<>{error || (loading ? copy.loading : "")} {stale ? copy.stale : ""}</>} action={error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>{copy.retry}</Button> : undefined} />;
 }
 function FinancePagination({ copy, meta, page, setPage, loading }: { copy: FinanceCopy; meta?: ApiListResponse<unknown>["meta"]; page: number; setPage: React.Dispatch<React.SetStateAction<number>>; loading: boolean }) {
   if (!meta) return null;

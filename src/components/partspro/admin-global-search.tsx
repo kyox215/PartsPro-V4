@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AdminEmptyState, AdminNotice } from "./admin-feedback";
 import Link from "next/link";
 import { Search, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -49,9 +50,9 @@ export function AdminGlobalSearch() {
         <Input autoFocus aria-label={zh ? "搜索关键字" : "Termine di ricerca"} value={query} onChange={e => { setQuery(e.target.value); setState("idle"); setResults([]); }} placeholder={zh ? "订单号、SKU、姓名或邮箱" : "Numero ordine, SKU, nome o email"} />
         <div className="max-h-[55dvh] min-h-24 space-y-2 overflow-y-auto" aria-busy={state === "pending"}>
           {state === "pending" && <p role="status" className="flex items-center gap-2 p-3 text-sm"><Loader2 className="size-4 animate-spin" />{zh ? "搜索中…" : "Ricerca…"}</p>}
-          {state === "error" && <p role="alert" className="p-3 text-sm text-red-700">{zh ? "搜索读取失败，请修改关键字重试。" : "Ricerca non disponibile. Riprova."}</p>}
-          {partial && <p role="status" className="p-2 text-xs text-amber-800">{zh ? "部分模块读取失败，以下为已读取的结果。" : "Alcuni moduli non sono disponibili. Risultati parziali."}</p>}
-          {state === "ready" && results.length === 0 && <p role="status" className="p-3 text-sm text-slate-500">{zh ? "没有匹配结果。" : "Nessun risultato."}</p>}
+          {state === "error" && <AdminNotice tone="error" message={zh ? "搜索读取失败，请修改关键字重试。" : "Ricerca non disponibile. Riprova."} />}
+          {partial && <AdminNotice tone="warning" message={zh ? "部分模块读取失败，以下为已读取的结果。" : "Alcuni moduli non sono disponibili. Risultati parziali."} />}
+          {state === "ready" && results.length === 0 && <AdminEmptyState title={zh ? "没有匹配结果。" : "Nessun risultato."} />}
           {results.map(result => <Link key={`${result.kind}:${result.id}`} href={result.href} onClick={() => setOpen(false)} className="block rounded-md border p-3 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-primary">
             <span className="text-xs text-primary">{labels[result.kind]}</span><div className="break-words text-sm font-semibold">{result.title}</div><div className="break-all text-xs text-slate-500">{result.subtitle}</div>
           </Link>)}

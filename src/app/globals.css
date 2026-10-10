@@ -265,3 +265,61 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Admin state tokens also cover Radix portals. Dashboard owns this scope;
+   public storefront pages keep their existing design. */
+[data-admin-ui="true"] {
+  --admin-focus: #2563eb;
+  --admin-info-fg: #1e40af;
+  --admin-info-bg: #eff6ff;
+  --admin-info-border: #93c5fd;
+  --admin-success-fg: #166534;
+  --admin-success-bg: #f0fdf4;
+  --admin-success-border: #86efac;
+  --admin-warning-fg: #92400e;
+  --admin-warning-bg: #fffbeb;
+  --admin-warning-border: #fcd34d;
+  --admin-error-fg: #991b1b;
+  --admin-error-bg: #fef2f2;
+  --admin-error-border: #fca5a5;
+}
+[data-admin-ui="true"] [data-admin-notice="info"] { color: var(--admin-info-fg); background: var(--admin-info-bg); border-color: var(--admin-info-border); }
+[data-admin-ui="true"] [data-admin-notice="success"] { color: var(--admin-success-fg); background: var(--admin-success-bg); border-color: var(--admin-success-border); }
+[data-admin-ui="true"] [data-admin-notice="warning"] { color: var(--admin-warning-fg); background: var(--admin-warning-bg); border-color: var(--admin-warning-border); }
+[data-admin-ui="true"] [data-admin-notice="error"] { color: var(--admin-error-fg); background: var(--admin-error-bg); border-color: var(--admin-error-border); }
+[data-admin-ui="true"] :is(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: 2px solid var(--admin-focus);
+  outline-offset: 2px;
+}
+[data-admin-ui="true"] [data-slot="button"][data-variant="default"]:not(:disabled):hover { filter: brightness(0.94); }
+[data-admin-ui="true"] [data-slot="button"]:not(:disabled):active { filter: brightness(0.88); }
+[data-admin-ui="true"] fieldset:disabled { opacity: 1; }
+[data-admin-ui="true"] :is([data-slot="button"], [data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"], [data-slot="checkbox"], [data-slot="tabs-trigger"]):disabled {
+  opacity: 1;
+  color: #475569;
+  background-color: #f1f5f9;
+  border-color: #cbd5e1;
+  box-shadow: none;
+}
+[data-admin-ui="true"] [data-slot="switch"]:disabled { opacity: 1; background-color: #cbd5e1; }
+[data-admin-ui="true"] :is([data-slot="select-item"], [data-slot="dropdown-menu-item"])[data-disabled] { opacity: 1; color: #64748b; }
+[data-admin-ui="true"] [data-slot="button"][data-admin-pending="true"]:disabled {
+  color: var(--admin-info-fg);
+  background-color: var(--admin-info-bg);
+  border-color: var(--admin-info-border);
+}
+[data-admin-ui="true"] :is(input, textarea)[readonly]:not(:disabled) { background-color: #f8fafc; color: #334155; border-style: dashed; }
+[data-admin-ui="true"] :is(input, textarea, [data-slot="select-trigger"])[aria-invalid="true"] {
+  border-color: #b91c1c;
+  box-shadow: 0 0 0 1px #b91c1c;
+}
+[data-admin-ui="true"] [data-slot="tabs-trigger"][data-state="active"] { color: var(--admin-info-fg); box-shadow: inset 0 -2px 0 var(--admin-focus); }
+[data-admin-ui="true"] [data-slot="table-row"][data-state="selected"] { background-color: var(--admin-info-bg); }
+/* Overlay and content share a level so later nested dialogs cover their
+   parent using Radix's DOM order; menus are above all modal content. */
+body[data-admin-ui="true"] :is([data-slot="dialog-overlay"], [data-slot="dialog-content"], [data-slot="sheet-overlay"], [data-slot="sheet-content"], [data-slot="alert-dialog-overlay"], [data-slot="alert-dialog-content"]) { z-index: 70; }
+body[data-admin-ui="true"] :is([data-slot="select-content"], [data-slot="popover-content"], [data-slot="dropdown-menu-content"], [data-slot="dropdown-menu-sub-content"]) { z-index: 80; }
+body[data-admin-ui="true"] [data-slot="tooltip-content"] { z-index: 90; }
+@media (prefers-reduced-motion: reduce) {
+  [data-admin-ui="true"] :is(.animate-spin, .animate-pulse, [data-state]) { animation: none; transition-duration: 0.01ms; }
+}
