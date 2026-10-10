@@ -1,3 +1,4 @@
+import { hideAdminProductsSequentially } from "@/lib/partspro-admin-bulk-hide";
 import { NextRequest, NextResponse } from "next/server";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
 import {
@@ -294,37 +295,27 @@ export async function DELETE(request: NextRequest) {
     return apiError(400, "INVALID_JSON", "Request body must be valid JSON.");
   }
 
-  const skus = readSkusPayload(body.data);
+  const skus = [...new Set(readSkusPayload(body.data))];
 
   if (skus.length === 0) {
     return apiError(400, "INVALID_ADMIN_PRODUCT_PAYLOAD", "At least one SKU is required.");
   }
 
-  try {
-    const products = [];
-
-    for (const sku of skus) {
-      const result = await hideAdminProduct(sku, "Hidden through bulk admin products API.");
-      products.push(toAdminProductDto(result.data));
-    }
-
-    return NextResponse.json({
-      data: products,
-      meta: {
-        source: "supabase",
-        deleted: false,
-        action: "hidden",
-        count: products.length,
-        storefrontVisible: false,
-      },
-    });
-  } catch (error) {
-    return repositoryErrorResponse(
-      error,
-      "ADMIN_PRODUCT_DELETE_FAILED",
-      "Products could not be hidden at this time."
-    );
+  if (skus.some((sku) => sku.length > 64)) return apiError(400, "INVALID_ADMIN_PRODUCT_PAYLOAD", "Invalid SKU.");
+  if (skus.length > 100) return apiError(400, "INVALID_ADMIN_PRODUCT_PAYLOAD", "A maximum of 100 products may be hidden per request.");
+  const result = await hideAdminProductsSequentially(skus, async (sku) => {
+    const saved = await hideAdminProduct(sku, "Hidden through bulk admin products API.");
+    return toAdminProductDto(saved.data);
+  });
+  if (result.failedSku && result.products.length === 0) {
+    return repositoryErrorResponse(result.error, "ADMIN_PRODUCT_DELETE_FAILED", "Products could not be hidden at this time.");
   }
+  return NextResponse.json({ data: result.products, meta: {
+    source: "supabase", deleted: false, action: "hidden", count: result.products.length,
+    storefrontVisible: false, outcome: result.failedSku ? "partial" : "complete",
+    succeededSkus: result.succeededSkus, failedSku: result.failedSku, unattemptedSkus: result.unattemptedSkus,
+  } }, { status: result.failedSku ? 207 : 200 });
+
 }
 
 function resolveProductQuery(

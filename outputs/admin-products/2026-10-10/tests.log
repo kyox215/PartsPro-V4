@@ -1,0 +1,170 @@
+TAP version 13
+# Subtest: successful hides await each write and preserve request order
+ok 1 - successful hides await each write and preserve request order
+  ---
+  duration_ms: 1.518583
+  ...
+# Subtest: a middle failure retains committed results and stops before remaining SKUs
+ok 2 - a middle failure retains committed results and stops before remaining SKUs
+  ---
+  duration_ms: 0.203208
+  ...
+# Subtest: first failure reports zero successes without retrying
+ok 3 - first failure reports zero successes without retrying
+  ---
+  duration_ms: 0.085542
+  ...
+# Subtest: last failure reports all earlier successes and no unattempted SKUs
+ok 4 - last failure reports all earlier successes and no unattempted SKUs
+  ---
+  duration_ms: 0.084834
+  ...
+# Subtest: empty input performs no writes
+ok 5 - empty input performs no writes
+  ---
+  duration_ms: 0.065334
+  ...
+# Subtest: remaining work is stable when caller mutates its array during a write
+ok 6 - remaining work is stable when caller mutates its array during a write
+  ---
+  duration_ms: 0.073541
+  ...
+# Subtest: remote cart restore and requests have bounded deadlines
+ok 7 - remote cart restore and requests have bounded deadlines
+  ---
+  duration_ms: 2.47825
+  ...
+# Subtest: order preview waits for cart readiness and has a timeout
+ok 8 - order preview waits for cart readiness and has a timeout
+  ---
+  duration_ms: 0.891375
+  ...
+# Subtest: checkout status prioritizes remote cart before catalog and preview
+ok 9 - checkout status prioritizes remote cart before catalog and preview
+  ---
+  duration_ms: 0.862417
+  ...
+# Subtest: normalizes pasted headers and explicit SKU values
+ok 10 - normalizes pasted headers and explicit SKU values
+  ---
+  duration_ms: 0.658875
+  ...
+# Subtest: normalizes supplier aliases to the same product SKU
+ok 11 - normalizes supplier aliases to the same product SKU
+  ---
+  duration_ms: 0.2565
+  ...
+# Subtest: only skips a no-op update when validation has no issues
+ok 12 - only skips a no-op update when validation has no issues
+  ---
+  duration_ms: 0.045292
+  ...
+# Subtest: parses Excel-style TSV clipboard data
+ok 13 - parses Excel-style TSV clipboard data
+  ---
+  duration_ms: 0.16725
+  ...
+# Subtest: parses quoted CSV fields and CRLF
+ok 14 - parses quoted CSV fields and CRLF
+  ---
+  duration_ms: 0.068042
+  ...
+# Subtest: deduplicates semicolon lists without losing order
+ok 15 - deduplicates semicolon lists without losing order
+  ---
+  duration_ms: 0.061375
+  ...
+# Subtest: flags a title with Poco C65 and Redmi 13C when structured compatibility is missing
+ok 16 - flags a title with Poco C65 and Redmi 13C when structured compatibility is missing
+  ---
+  duration_ms: 1.995542
+  ...
+# Subtest: legacy completeness still requires review until the product is managed
+ok 17 - legacy completeness still requires review until the product is managed
+  ---
+  duration_ms: 0.641167
+  ...
+# Subtest: a managed product with complete structured coverage does not require review
+ok 18 - a managed product with complete structured coverage does not require review
+  ---
+  duration_ms: 0.741958
+  ...
+# Subtest: keeps 13C and 13C 5G distinct when managed coverage is incomplete
+ok 19 - keeps 13C and 13C 5G distinct when managed coverage is incomplete
+  ---
+  duration_ms: 0.334583
+  ...
+# Subtest: managed coverage of Poco C65, Redmi 13C, and Redmi 13C 5G is complete
+ok 20 - managed coverage of Poco C65, Redmi 13C, and Redmi 13C 5G is complete
+  ---
+  duration_ms: 0.20675
+  ...
+# Subtest: detects adjacent OnePlus and OPPO model evidence without a slash
+ok 21 - detects adjacent OnePlus and OPPO model evidence without a slash
+  ---
+  duration_ms: 0.242625
+  ...
+# Subtest: does not let a wrong Nord 2 5G structured model cover Nord CE 3 Lite 5G
+ok 22 - does not let a wrong Nord 2 5G structured model cover Nord CE 3 Lite 5G
+  ---
+  duration_ms: 0.204042
+  ...
+# Subtest: strips embedded CPH codes without counting them as another A98 model
+ok 23 - strips embedded CPH codes without counting them as another A98 model
+  ---
+  duration_ms: 0.176542
+  ...
+# Subtest: detects OPPO and Realme as distinct brands
+ok 24 - detects OPPO and Realme as distinct brands
+  ---
+  duration_ms: 0.123709
+  ...
+# Subtest: detects three Honor marketing models
+ok 25 - detects three Honor marketing models
+  ---
+  duration_ms: 0.232458
+  ...
+# Subtest: does not split Realme model-code aliases into multiple devices
+ok 26 - does not split Realme model-code aliases into multiple devices
+  ---
+  duration_ms: 0.378416
+  ...
+# Subtest: does not split Samsung A14 model-code aliases into multiple devices
+ok 27 - does not split Samsung A14 model-code aliases into multiple devices
+  ---
+  duration_ms: 0.418708
+  ...
+# Subtest: ignores a single model, empty title, color, network, and year tokens
+ok 28 - ignores a single model, empty title, color, network, and year tokens
+  ---
+  duration_ms: 0.558125
+  ...
+# Subtest: fingerprints only normalized analyzer fields deterministically
+ok 29 - fingerprints only normalized analyzer fields deterministically
+  ---
+  duration_ms: 0.75875
+  ...
+# Subtest: storefront Italian and Chinese dictionaries expose the same keys
+ok 30 - storefront Italian and Chinese dictionaries expose the same keys
+  ---
+  duration_ms: 1.341416
+  ...
+# Subtest: every literal storefront tx/txFormat key exists in both locale dictionaries
+ok 31 - every literal storefront tx/txFormat key exists in both locale dictionaries
+  ---
+  duration_ms: 37.112417
+  ...
+# Subtest: Italian customer-facing dictionary values do not leak Han characters
+ok 32 - Italian customer-facing dictionary values do not leak Han characters
+  ---
+  duration_ms: 4.394792
+  ...
+1..32
+# tests 32
+# suites 0
+# pass 32
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 469.422125

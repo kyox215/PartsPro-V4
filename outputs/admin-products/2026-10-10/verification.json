@@ -1,0 +1,31 @@
+{
+  "status": "local_verified_not_deployed",
+  "baselineSource": "763c01b0f9fcc6396ced01f16a24dadd025f68a0",
+  "baselineHead": "456567c5b8deb9bf29891dcab902e7358cf240c9",
+  "vercelProject": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+  "productionRollback": "dpl_FZHgXPWj6fLzuHNw23yDHxQGcgJb",
+  "migrationRequired": false,
+  "productionWrites": false,
+  "checks": {
+    "lint": "passed",
+    "build": "passed",
+    "contractTests": 32,
+    "browserViewports": [
+      1440,
+      360,
+      390,
+      768
+    ],
+    "creationImageRetry": {
+      "create": 1,
+      "patch": 0,
+      "image": 2
+    }
+  },
+  "limitations": [
+    "No production product/inventory/image writes performed",
+    "Physical mobile keyboard not tested",
+    "Full catalog metadata migration remains unapplied",
+    "Cross-admin edits and stock request idempotency require DB work"
+  ]
+}

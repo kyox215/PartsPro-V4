@@ -790,7 +790,13 @@ const panelText = {
     workspaceBanners: "首页横幅",
     workspaceBatches: "到货批次",
     workspaceSoldShortages: "近期售出缺货",
-    selectedCount: "已选择 {count} 个商品",
+    selectedCount: "本页已选择 {count} 个商品",
+    editFormHint: "修改当前商品资料；型号和供应商可留空，库存请使用库存动作调整，发布状态在列表操作。", retrySync: "重新加载", selectPage: "全选本页", activeFilters: "当前筛选", clearFilters: "清除筛选",
+    unsavedPrompt: "有未保存的修改，确定放弃并关闭？", copySuffix: "副本",
+    hideConfirm: "确认隐藏商品", hideConfirmHelp: "隐藏后商品将不再前台展示；可从隐藏状态恢复为草稿。库存不变。",
+    hidePartial: "已隐藏 {count} 个；{sku} 未确认成功，后续 {remaining} 个未执行。请核对列表后重试。",
+    resultUnconfirmed: "操作结果尚未确认，请先刷新核对，避免重复操作。",
+    pageLimit: "已达到列表浏览上限，请缩小筛选范围查找更多商品。",
     hideSelected: "批量下架",
     sourceStats: "{returned}/{total} 个商品 · {time}",
     sourcePending: "等待同步",
@@ -803,7 +809,7 @@ const panelText = {
     hideSuccess: "{count} 个商品已下架，不再前台展示。",
     stockSuccess: "商品 {sku} 的库存动作已入账。",
     mediaSuccess: "商品 {sku} 的媒体信息已保存。",
-    saveError: "保存失败，商品未修改。",
+    saveError: "保存结果尚未确认。输入已保留，请刷新核对商品。",
     actionError: "商品动作失败。",
     actionPublishBlocked: "无法上架，缺少必要资料",
     publishIssueLabels: {
@@ -1021,7 +1027,7 @@ const panelText = {
       phone: "手机",
       tablet: "平板",
       computer: "电脑",
-      general_merchandise: "百货系列",
+      general_merchandise: "电子产品 · 高端产品",
     } satisfies Record<CatalogDepartment, string>,
     brand: "品牌",
     quality: "品质",
@@ -1230,7 +1236,13 @@ const panelText = {
     workspaceBanners: "Banner homepage",
     workspaceBatches: "Lotti arrivo",
     workspaceSoldShortages: "Venduti recenti esauriti",
-    selectedCount: "{count} prodotti selezionati",
+    selectedCount: "{count} prodotti selezionati in questa pagina",
+    editFormHint: "Modifica i dati del prodotto. Modello e fornitore sono facoltativi; usa le azioni dedicate per scorte e pubblicazione.", retrySync: "Ricarica", selectPage: "Seleziona pagina", activeFilters: "Filtri attivi", clearFilters: "Azzera filtri",
+    unsavedPrompt: "Modifiche non salvate. Vuoi abbandonarle e chiudere?", copySuffix: "Copia",
+    hideConfirm: "Conferma prodotti da nascondere", hideConfirmHelp: "I prodotti non saranno visibili nel negozio. Puoi ripristinarli come bozze. Le scorte restano invariate.",
+    hidePartial: "{count} nascosti; esito non confermato per {sku}, {remaining} non elaborati. Controlla prima di riprovare.",
+    resultUnconfirmed: "Esito non confermato. Aggiorna e controlla prima di ripetere l’operazione.",
+    pageLimit: "Raggiunto il limite di consultazione. Restringi i filtri per trovare altri prodotti.",
     hideSelected: "Nascondi selezionati",
     sourceStats: "{returned}/{total} prodotti · {time}",
     sourcePending: "In attesa",
@@ -1243,7 +1255,7 @@ const panelText = {
     hideSuccess: "{count} prodotti nascosti.",
     stockSuccess: "Movimento stock registrato per {sku}.",
     mediaSuccess: "Media salvati per {sku}.",
-    saveError: "Salvataggio non riuscito.",
+    saveError: "Salvataggio non confermato. I dati inseriti sono conservati: aggiorna e verifica il prodotto.",
     actionError: "Azione prodotto non riuscita.",
     actionPublishBlocked: "Pubblicazione bloccata, dati obbligatori mancanti",
     publishIssueLabels: {
@@ -1461,7 +1473,7 @@ const panelText = {
       phone: "Smartphone",
       tablet: "Tablet",
       computer: "Computer",
-      general_merchandise: "Accessori e altro",
+      general_merchandise: "Elettronica e prodotti premium",
     } satisfies Record<CatalogDepartment, string>,
     brand: "Brand",
     quality: "Qualita",
@@ -1610,6 +1622,16 @@ const panelText = {
   },
 } as const;
 
+type ProductDraftGuard = { dirty: boolean; pending: boolean };
+const ProductDraftGuardContext = React.createContext<{ update: (key: string, guard: ProductDraftGuard | null) => void; canDiscard: (key: string) => boolean }>({ update: () => {}, canDiscard: () => true });
+function useProductDraftGuard(key: string, dirty: boolean, pending: boolean) {
+  const { update } = React.useContext(ProductDraftGuardContext);
+  React.useEffect(() => {
+    update(key, { dirty, pending });
+    return () => update(key, null);
+  }, [key, dirty, pending, update]);
+}
+
 export function AdminProductsPanel({
   permissions = [],
   permissionsLoaded = false,
@@ -1640,7 +1662,23 @@ export function AdminProductsPanel({
   const canCorrectSupplierBatchCosts = supplierBatchCostPermissions.canCorrect;
   const canExportSupplierBatchCosts = supplierBatchCostPermissions.canExport;
   const canManageSupplierBatchCosts = supplierBatchCostPermissions.canManage;
+  const productRequest = React.useRef({ sequence: 0, controller: null as AbortController | null });
+  const [loadedFilterKey, setLoadedFilterKey] = React.useState("");
+  const [drawerGuard, setDrawerGuard] = React.useState({ dirty: false, pending: false });
+  const [productEditError, setProductEditError] = React.useState("");
+  const [hideCandidates, setHideCandidates] = React.useState<AdminProductRow[]>([]);
+  const writeLock = React.useRef(false);
   const [filters, setFilters] = React.useState<ProductListFilters>(defaultFilters);
+  React.useEffect(() => {
+    const requests = productRequest.current;
+    return () => requests.controller?.abort();
+  }, []);
+  React.useEffect(() => {
+    if (!drawerGuard.dirty && !drawerGuard.pending) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [drawerGuard]);
   const [products, setProducts] = React.useState<AdminProductRow[]>([]);
   const [productMetrics, setProductMetrics] =
     React.useState<ProductMetrics>(emptyProductMetrics);
@@ -1803,26 +1841,39 @@ export function AdminProductsPanel({
       return;
     }
 
-    if (!isLoading && dataSource.syncedAt) {
+    if (!isLoading && !dataSource.error && loadedFilterKey === JSON.stringify(filters)) {
       setPendingFocusedSku(null);
       clearFocusedSkuParam();
     }
-  }, [clearFocusedSkuParam, dataSource.syncedAt, isLoading, pendingFocusedSku, products]);
+  }, [clearFocusedSkuParam, dataSource.error, filters, loadedFilterKey, isLoading, pendingFocusedSku, products]);
 
   const refreshProducts = React.useCallback(
     async (
       signal?: AbortSignal,
       options: { clearNotice?: boolean } = {}
     ) => {
+      const sequence = ++productRequest.current.sequence;
+      productRequest.current.controller?.abort();
+      const controller = new AbortController();
+      productRequest.current.controller = controller;
+      const combinedSignal = signal ? AbortSignal.any([signal, controller.signal, AbortSignal.timeout(15000)]) : AbortSignal.any([controller.signal, AbortSignal.timeout(15000)]);
+      const isCurrent = () => sequence === productRequest.current.sequence && !controller.signal.aborted && !signal?.aborted;
       setIsLoading(true);
 
       try {
-        const result = await fetchAdminProducts(filters, signal);
+        const result = await fetchAdminProducts(filters, combinedSignal);
 
-        if (signal?.aborted) {
+        if (!isCurrent()) {
           return;
         }
 
+        const maxPage = Math.min(Math.max(0, Math.ceil(result.total / filters.pageSize) - 1), Math.floor(5000 / filters.pageSize));
+        if (filters.page > maxPage) {
+          setSelectedSkus(new Set());
+          setFilters((current) => ({ ...current, page: maxPage }));
+          return;
+        }
+        setLoadedFilterKey(JSON.stringify(filters));
         setProducts(result.products);
         setProductMetrics(result.summary);
         setDataSource({
@@ -1837,7 +1888,7 @@ export function AdminProductsPanel({
           setNotice(null);
         }
       } catch (error) {
-        if (signal?.aborted) {
+        if (!isCurrent()) {
           return;
         }
 
@@ -1848,7 +1899,7 @@ export function AdminProductsPanel({
         }));
         setNotice({ tone: "error", message: formatNoticeError(text.syncError, error) });
       } finally {
-        if (!signal?.aborted) {
+        if (isCurrent()) {
           setIsLoading(false);
         }
       }
@@ -1998,9 +2049,13 @@ export function AdminProductsPanel({
   );
   const visibleProducts = products;
   const metrics = productMetrics;
-  const pageCount = Math.max(1, Math.ceil(dataSource.total / filters.pageSize));
+  const pageCount = Math.min(Math.max(1, Math.ceil(dataSource.total / filters.pageSize)), Math.floor(5000 / filters.pageSize) + 1);
+  const listReady = !isLoading && !dataSource.error && loadedFilterKey === JSON.stringify(filters);
 
   function updateFilters(patch: Partial<ProductListFilters>) {
+    productRequest.current.controller?.abort();
+    setSelectedSkus(new Set());
+    setIsLoading(true);
     setFilters((current) => ({
       ...current,
       ...patch,
@@ -2111,6 +2166,9 @@ export function AdminProductsPanel({
     values: ProductFormValues,
     compatibilityReview?: ProductCompatibilityReviewConfirmation
   ) {
+    if (writeLock.current) return null;
+    writeLock.current = true;
+    setProductEditError("");
     setIsMutating(true);
 
     try {
@@ -2132,9 +2190,11 @@ export function AdminProductsPanel({
 
       return saved;
     } catch (error) {
+      setProductEditError(formatNoticeError(text.saveError, error));
       setNotice({ tone: "error", message: formatNoticeError(text.saveError, error) });
       return null;
     } finally {
+      writeLock.current = false;
       setIsMutating(false);
     }
   }
@@ -2146,6 +2206,9 @@ export function AdminProductsPanel({
     compatibilityManaged = false,
     compatibilityReview?: ProductCompatibilityReviewConfirmation
   ) {
+    if (writeLock.current) return null;
+    writeLock.current = true;
+    setProductEditError("");
     setIsMutating(true);
 
     try {
@@ -2166,14 +2229,19 @@ export function AdminProductsPanel({
 
       return saved;
     } catch (error) {
+      setProductEditError(formatNoticeError(text.saveError, error));
       setNotice({ tone: "error", message: formatNoticeError(text.saveError, error) });
       return null;
     } finally {
+      writeLock.current = false;
       setIsMutating(false);
     }
   }
 
   async function handleProductAction(product: AdminProductRow, action: ProductAction) {
+    if (!listReady || writeLock.current) return;
+    if (action === "hide") { setHideCandidates([product]); return; }
+    writeLock.current = true;
     setPendingProductActionKey(`${product.sku}:${action}`);
     setIsMutating(true);
 
@@ -2195,31 +2263,32 @@ export function AdminProductsPanel({
       });
     } finally {
       setPendingProductActionKey(null);
+      writeLock.current = false;
       setIsMutating(false);
     }
   }
 
   async function handleHideProducts(skus: string[]) {
-    if (skus.length === 0) {
-      return;
-    }
-
+    if (!listReady || writeLock.current || skus.length === 0) return;
+    writeLock.current = true;
     setPendingProductActionKey("bulk:hide");
     setIsMutating(true);
-
     try {
-      const savedProducts = await hideAdminProducts(skus);
-
-      savedProducts.forEach(replaceProduct);
+      const result = await hideAdminProducts(skus);
+      result.products.forEach(replaceProduct);
       setSelectedSkus(new Set());
-      setNotice({
-        tone: "info",
-        message: formatAdminMessage(text.hideSuccess, { count: savedProducts.length }),
-      });
-      refreshProductsQuietly();
+      setNotice({ tone: result.failedSku ? "warning" : "info", message: result.failedSku
+        ? formatAdminMessage(text.hidePartial, { count: result.products.length, sku: result.failedSku, remaining: result.unattemptedSkus.length })
+        : formatAdminMessage(text.hideSuccess, { count: result.products.length }) });
+      setHideCandidates([]);
     } catch (error) {
-      setNotice({ tone: "error", message: formatNoticeError(text.actionError, error) });
+      setHideCandidates([]);
+      setSelectedSkus(new Set());
+      setNotice({ tone: "error", message: formatNoticeError(text.resultUnconfirmed, error) });
     } finally {
+      // Some items may already be committed even when the HTTP response is lost.
+      refreshProductsQuietly();
+      writeLock.current = false;
       setPendingProductActionKey(null);
       setIsMutating(false);
     }
@@ -2229,7 +2298,7 @@ export function AdminProductsPanel({
     const duplicatedValues = productFormDefaults({
       ...product,
       sku: ensureUniqueSku(`${product.sku}-COPY`, products),
-      name: `${product.name} 副本`,
+      name: `${product.name} ${text.copySuffix}`,
       catalogStatus: "draft",
     });
     const saved = await handleCreateProduct(duplicatedValues);
@@ -2254,8 +2323,9 @@ export function AdminProductsPanel({
       });
       refreshProductsQuietly();
       return true;
-    } catch {
-      setNotice({ tone: "error", message: text.stockError });
+    } catch (error) {
+      setNotice({ tone: "error", message: formatNoticeError(text.resultUnconfirmed, error) });
+      refreshProductsQuietly();
       return false;
     } finally {
       setPendingProductActionKey(null);
@@ -2273,12 +2343,17 @@ export function AdminProductsPanel({
   }
 
   function openDrawer(mode: ProductDrawerMode, product: AdminProductRow | null = null) {
+    if (!listReady && product) return;
+    setProductEditError("");
     setDrawerMode(mode);
     setDrawerProduct(product);
     setDrawerInlineEditSku(null);
   }
 
   function closeDrawer() {
+    if (drawerGuard.pending || isMutating) return;
+    if (drawerGuard.dirty && !window.confirm(text.unsavedPrompt)) return;
+    setProductEditError("");
     setDrawerMode(null);
     setDrawerProduct(null);
     setDrawerInlineEditSku(null);
@@ -2296,16 +2371,16 @@ export function AdminProductsPanel({
         }}
       >
         <TabsList className="group-data-horizontal/tabs:h-auto grid h-auto w-full grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 shadow-[0_8px_22px_rgba(15,23,42,0.04)] sm:w-auto sm:inline-grid sm:grid-cols-4">
-          <TabsTrigger value="products" className="min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
+          <TabsTrigger value="products" className="h-auto min-h-10 min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
             {text.workspaceProducts}
           </TabsTrigger>
-          <TabsTrigger value="sold-shortages" className="min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
+          <TabsTrigger value="sold-shortages" className="h-auto min-h-10 min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
             {text.workspaceSoldShortages}
           </TabsTrigger>
-          <TabsTrigger value="batches" className="min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
+          <TabsTrigger value="batches" className="h-auto min-h-10 min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
             {text.workspaceBatches}
           </TabsTrigger>
-          <TabsTrigger value="banners" className="min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
+          <TabsTrigger value="banners" className="h-auto min-h-10 min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
             {text.workspaceBanners}
           </TabsTrigger>
         </TabsList>
@@ -2340,6 +2415,7 @@ export function AdminProductsPanel({
                   <Button
                     variant="outline"
                     className="h-10 bg-white px-3"
+                    aria-label={locale.toLowerCase().startsWith("it") ? "Importa Excel" : "Excel 导入"}
                     onClick={() => setIsProductImportOpen(true)}
                   >
                     <FileSpreadsheet className="size-4" />
@@ -2406,6 +2482,14 @@ export function AdminProductsPanel({
             </div>
 
             <div className="min-w-0">
+            {(filters.q || filters.brand !== "all" || filters.model !== "all" || filters.catalogStatus !== "all" || filters.stockStatus !== "all" || filters.supplier || filters.batchCode || filters.issueFilter !== "all" || filters.grade !== "all" || filters.activeRestockOnly) && (
+              <div className="flex min-w-0 flex-wrap items-center gap-2 border-b px-3 py-2 text-xs" aria-label={text.activeFilters}>
+                <span className="font-bold">{text.activeFilters}:</span>
+                <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">{[filters.q, filters.brand !== "all" ? filters.brand : "", filters.modelSeries !== "all" ? filters.modelSeries : "", filters.model !== "all" ? filters.model : "", filters.catalogStatus !== "all" ? (filters.catalogStatus === "missing_image" ? text.missingImage : adminText.enums.catalogStatus[filters.catalogStatus]) : "", filters.supplier, filters.batchCode, filters.stockStatus !== "all" ? filters.stockStatus : "", filters.issueFilter !== "all" ? filters.issueFilter : "", filters.grade !== "all" ? filters.grade : "", filters.activeRestockOnly ? text.restockOnly : ""].filter(Boolean).join(" · ")}</span>
+                <Button size="sm" variant="ghost" onClick={() => updateFilters(defaultFilters)}>{text.clearFilters}</Button>
+              </div>
+            )}
+            {dataSource.error && <div className="flex flex-wrap items-center gap-2 p-3" role="alert"><span className="min-w-0 flex-1 break-words">{text.syncError}</span><Button variant="outline" disabled={isLoading} onClick={() => void refreshProducts()}><RefreshCw className="size-4" />{text.retrySync}</Button></div>}
 
             {notice && (
               <div className="px-3 pt-3 sm:px-4">
@@ -2450,8 +2534,8 @@ export function AdminProductsPanel({
                       size="sm"
                       variant="outline"
                       className="bg-white text-amber-700 hover:text-amber-700"
-                      disabled={isMutating}
-                      onClick={() => void handleHideProducts(selectedProducts.map((item) => item.sku))}
+                      disabled={isMutating || !listReady}
+                      onClick={() => setHideCandidates(selectedProducts.filter((item) => item.catalogStatus !== "hidden"))}
                     >
                       {pendingProductActionKey === "bulk:hide" ? (
                         <Loader2 className="size-4 animate-spin" />
@@ -2476,7 +2560,7 @@ export function AdminProductsPanel({
               products={visibleProducts}
               selectedSkus={selectedSkus}
               isLoading={isLoading}
-              isMutating={isMutating}
+              isMutating={isMutating || !listReady}
               pendingActionKey={pendingProductActionKey}
               capabilities={capabilities}
               text={text}
@@ -2490,6 +2574,7 @@ export function AdminProductsPanel({
               onStockAdjust={setStockAdjustProduct}
             />
 
+            {dataSource.total > 5000 + filters.pageSize && <p className="px-3 py-2 text-xs text-amber-800">{text.pageLimit}</p>}
             <ProductPagination
               filters={filters}
               pageCount={pageCount}
@@ -2541,6 +2626,13 @@ export function AdminProductsPanel({
         </TabsContent>
       </Tabs>
 
+      <Dialog open={hideCandidates.length > 0} onOpenChange={(open) => { if (!open && !isMutating) setHideCandidates([]); }}>
+        <DialogContent scrollLayout="body" className="sm:max-w-lg">
+          <DialogHeader><DialogTitle>{text.hideConfirm}</DialogTitle><DialogDescription>{text.hideConfirmHelp}</DialogDescription></DialogHeader>
+          <DialogBody><p className="mb-2 font-semibold">{formatAdminMessage(text.selectedCount, { count: hideCandidates.length })}</p><ul className="space-y-2 text-sm">{hideCandidates.map((item) => <li key={item.sku} className="break-words [overflow-wrap:anywhere]"><strong>{item.sku}</strong> · {item.name}</li>)}</ul></DialogBody>
+          <DialogFooter><Button variant="outline" disabled={isMutating} onClick={() => setHideCandidates([])}>{text.cancel}</Button><Button disabled={isMutating || !listReady} onClick={() => void handleHideProducts(hideCandidates.map((item) => item.sku))}>{isMutating && <Loader2 className="size-4 animate-spin" />}{text.hideSelected}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
       <AdminProductImportDialog
         locale={locale}
         open={isProductImportOpen}
@@ -2557,10 +2649,12 @@ export function AdminProductsPanel({
         adminText={adminText}
         onOpenChange={setIsMobileFiltersOpen}
         onChange={updateFilters}
-        onReset={() => setFilters(defaultFilters)}
+        onReset={() => updateFilters(defaultFilters)}
       />
 
       <ProductDrawer
+        error={productEditError}
+        onGuardChange={setDrawerGuard}
         mode={drawerMode}
         product={drawerProduct}
         products={products}
@@ -5075,6 +5169,7 @@ function ProductSearchField({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         className="h-8 rounded-md bg-white pl-9 text-sm sm:h-9"
+        aria-label={text.searchPlaceholder}
         placeholder={text.searchPlaceholder}
       />
     </div>
@@ -5691,12 +5786,15 @@ function ProductTable({
     >
       {showRefreshBar ? <ProductTableLoadingBar label={text.loading} /> : null}
       <div className="lg:hidden">
+        {products.length > 0 && <label className="flex min-h-11 items-center gap-3 border-b px-3 py-2 text-sm font-semibold"><Checkbox checked={allSelected || (someSelected && "indeterminate")} disabled={isLoading || isMutating} onCheckedChange={(value) => toggleAll(value === true)} />{text.selectPage}</label>}
         {products.length ? (
           <div className="grid gap-2 p-2">
             {products.map((product) => (
               <ProductMobileCard
                 key={product.sku}
                 product={product}
+                selected={selectedSkus.has(product.sku)}
+                onSelect={(checked) => toggleOne(product.sku, checked)}
                 isMutating={isMutating}
                 pendingActionKey={pendingActionKey}
                 capabilities={capabilities}
@@ -5728,7 +5826,8 @@ function ProductTable({
                   <Checkbox
                     checked={allSelected || (someSelected && "indeterminate")}
                     onCheckedChange={(value) => toggleAll(value === true)}
-                    aria-label="Select all products"
+                    disabled={isMutating}
+                    aria-label={text.selectPage}
                   />
                 </TableHead>
                 <TableHead className="w-[38%] whitespace-normal 2xl:w-[32%]">
@@ -5766,12 +5865,13 @@ function ProductTable({
                     )}
                     data-state={selectedSkus.has(product.sku) ? "selected" : undefined}
                     data-pending={pendingActionKey?.startsWith(`${product.sku}:`) ? "true" : undefined}
-                    onClick={() => canEditProduct(capabilities) ? onEdit(product) : onView(product)}
+                    onClick={() => { if (!isMutating) { if (canEditProduct(capabilities)) onEdit(product); else onView(product); } }}
                   >
                     <TableCell className="w-9 whitespace-normal px-2" onClick={(event) => event.stopPropagation()}>
                       <Checkbox
                         checked={selectedSkus.has(product.sku)}
                         onCheckedChange={(value) => toggleOne(product.sku, value === true)}
+                        disabled={isMutating}
                         aria-label={`Select ${product.sku}`}
                       />
                     </TableCell>
@@ -5866,6 +5966,8 @@ function ProductTableLoadingBar({ label }: { label: string }) {
 
 function ProductMobileCard({
   product,
+  selected,
+  onSelect,
   isMutating,
   pendingActionKey,
   capabilities,
@@ -5879,6 +5981,8 @@ function ProductMobileCard({
   onStockAdjust,
 }: {
   product: AdminProductRow;
+  selected: boolean;
+  onSelect: (checked: boolean) => void;
   isMutating: boolean;
   pendingActionKey: string | null;
   capabilities: ProductCapabilities;
@@ -5901,10 +6005,12 @@ function ProductMobileCard({
           "border-primary/30 ring-2 ring-primary/15"
       )}
     >
+      <label className="mb-2 flex min-h-11 items-center gap-2 text-xs font-semibold"><Checkbox checked={selected} disabled={isMutating} onCheckedChange={(value) => onSelect(value === true)} />{product.sku}</label>
       <div className="grid min-w-0 grid-cols-[72px_minmax(0,1fr)_auto] gap-3">
         <ProductImageThumb product={product} className="size-[72px]" sizes="72px" />
 
         <button
+          disabled={isMutating}
           type="button"
           className="grid min-h-11 min-w-0 content-start text-left"
           onClick={() => editable ? onEdit(product) : onView(product)}
@@ -6445,6 +6551,7 @@ function ProductActionsMenu({
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
+          disabled={isMutating}
           variant="ghost"
           size="icon-sm"
           className="bg-white/60"
@@ -6738,6 +6845,8 @@ function ProductCompatibilityReviewNotice({
 
 function ProductDrawer({
   mode,
+  error,
+  onGuardChange,
   product,
   products,
   isMutating,
@@ -6754,6 +6863,8 @@ function ProductDrawer({
   onMediaSaved,
 }: {
   mode: ProductDrawerMode | null;
+  error: string;
+  onGuardChange: (guard: ProductDraftGuard) => void;
   product: AdminProductRow | null;
   products: AdminProductRow[];
   isMutating: boolean;
@@ -6778,6 +6889,16 @@ function ProductDrawer({
   onStockAdjust: (product: AdminProductRow) => void;
   onMediaSaved: (product: AdminProductRow) => void;
 }) {
+  const [guards, setGuards] = React.useState<Record<string, ProductDraftGuard>>({});
+  const dirty = Object.values(guards).some((guard) => guard.dirty);
+  const pending = Object.values(guards).some((guard) => guard.pending);
+  React.useEffect(() => { onGuardChange({ dirty, pending }); return () => onGuardChange({ dirty: false, pending: false }); }, [dirty, pending, onGuardChange]);
+  const updateGuard = React.useCallback((key: string, guard: ProductDraftGuard | null) => {
+    setGuards((current) => { if (!guard && !current[key]) return current;
+      if (guard && current[key]?.dirty === guard.dirty && current[key]?.pending === guard.pending) return current;
+      const next = { ...current }; if (guard) next[key] = guard; else delete next[key]; return next; });
+  }, []);
+  const guardContext = React.useMemo(() => ({ update: updateGuard, canDiscard: (key: string) => !guards[key]?.pending && (!guards[key]?.dirty || window.confirm(text.unsavedPrompt)) }), [guards, text.unsavedPrompt, updateGuard]);
   const open = Boolean(mode);
   const title =
     mode === "create"
@@ -6787,10 +6908,10 @@ function ProductDrawer({
         : text.drawerViewTitle;
 
   return (
-    <Sheet open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+    <ProductDraftGuardContext.Provider value={guardContext}><Sheet open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <SheetContent
         side="right"
-        className="w-screen max-w-none gap-0 overflow-hidden p-0"
+        className="w-screen max-w-none gap-0 overflow-clip p-0"
         style={{ width: "min(820px, var(--overlay-width, 100vw))", maxWidth: "min(820px, 100vw)" }}
       >
         <SheetHeader className="border-b border-slate-200 bg-white p-4 pr-12">
@@ -6798,6 +6919,7 @@ function ProductDrawer({
           <SheetDescription className="break-all">
             {mode === "create" ? text.subtitle : product?.sku ?? ""}
           </SheetDescription>
+          {error && <div role="alert" className="mt-2 break-words rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-800 [overflow-wrap:anywhere]">{error}</div>}
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-3 lg:p-4">
           {mode === "view" && product ? (
@@ -6840,7 +6962,7 @@ function ProductDrawer({
           </SheetFooter>
         )}
       </SheetContent>
-    </Sheet>
+    </Sheet></ProductDraftGuardContext.Provider>
   );
 }
 
@@ -6875,6 +6997,8 @@ function ProductDetails({
   onStockAdjust: () => void;
   onMediaSaved: (product: AdminProductRow) => void;
 }) {
+  const { canDiscard } = React.useContext(ProductDraftGuardContext);
+  const inlineSaveLock = React.useRef(false);
   const [copiedSku, setCopiedSku] = React.useState<string | null>(null);
   const [editingSku, setEditingSku] = React.useState<string | null>(null);
   const [editorState, setEditorState] = React.useState<{
@@ -6953,6 +7077,8 @@ function ProductDetails({
     setCopiedSku(product.sku);
   }
 
+  useProductDraftGuard("inline", isEditing && JSON.stringify(editValues) !== JSON.stringify(productFormDefaults(product)), isSubmittingEdit);
+
   function setEditValue<K extends keyof ProductFormValues>(key: K, value: ProductFormValues[K]) {
     setEditorState((current) => {
       const nextState =
@@ -6995,7 +7121,8 @@ function ProductDetails({
     onInitialEditHandled();
   }
 
-  function stopInlineEdit() {
+  function stopInlineEdit(force = false) {
+    if (!force && !canDiscard("inline")) return;
     setEditingSku(null);
     setEditorState(null);
     setCompatibilityReviewConfirmation(null);
@@ -7007,10 +7134,12 @@ function ProductDetails({
       return;
     }
 
+    if (activeTab === "media" && value !== activeTab && !canDiscard("media")) return;
     setActiveTabState({ sku: product.sku, value });
   }
 
   async function saveInlineEdit() {
+    if (inlineSaveLock.current || isMutating) return;
     const scope = editorState?.scope ?? productUpdateScopeForTab(activeTab);
     const nextErrors = validateProductForm(editValues, true, text, capabilities);
     const reviewRequired = compatibilityReviewApplies && compatibilityReview.required;
@@ -7039,6 +7168,7 @@ function ProductDetails({
       scope: current?.sku === product.sku ? current.scope : scope,
     }));
 
+    inlineSaveLock.current = true;
     let saved: AdminProductRow | null = null;
 
     try {
@@ -7054,6 +7184,7 @@ function ProductDetails({
         )
       );
     } finally {
+      inlineSaveLock.current = false;
       if (!saved) {
         setEditorState((current) => (
           current?.sku === product.sku ? { ...current, isSubmitting: false } : current
@@ -7063,12 +7194,12 @@ function ProductDetails({
 
     if (saved) {
       onSaved(saved);
-      stopInlineEdit();
+      stopInlineEdit(true);
     }
   }
 
   return (
-    <div className="space-y-3">
+    <fieldset disabled={isSubmittingEdit || isMutating} className="min-w-0 space-y-3">
       <section className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
         <div className="grid grid-cols-[112px_minmax(0,1fr)] gap-3 lg:grid-cols-[220px_minmax(0,1fr)_172px]">
           <ProductDetailImageGallery
@@ -7179,7 +7310,7 @@ function ProductDetails({
             <DetailPanelToolbar title={isEditing ? text.drawerEditTitle : text.sectionBase}>
               {isEditing ? (
                 <>
-                  <Button variant="outline" size="xs" className="bg-white" onClick={stopInlineEdit}>
+                  <Button variant="outline" size="xs" className="bg-white" onClick={() => stopInlineEdit()}>
                     {text.cancel}
                   </Button>
                   <Button
@@ -7309,7 +7440,7 @@ function ProductDetails({
             <DetailPanelToolbar title={text.sectionPrice}>
               {isEditing ? (
                 <>
-                  <Button variant="outline" size="xs" className="bg-white" onClick={stopInlineEdit}>
+                  <Button variant="outline" size="xs" className="bg-white" onClick={() => stopInlineEdit()}>
                     {text.cancel}
                   </Button>
                   <Button
@@ -7402,7 +7533,7 @@ function ProductDetails({
             <DetailPanelToolbar title={text.sectionCatalog}>
               {isEditing ? (
                 <>
-                  <Button variant="outline" size="xs" className="bg-white" onClick={stopInlineEdit}>
+                  <Button variant="outline" size="xs" className="bg-white" onClick={() => stopInlineEdit()}>
                     {text.cancel}
                   </Button>
                   <Button
@@ -7482,7 +7613,7 @@ function ProductDetails({
           <ProductAuditPanel sku={product.sku} text={text} />
         </TabsContent>
       </Tabs>
-    </div>
+    </fieldset>
   );
 }
 
@@ -7528,17 +7659,22 @@ function ProductEditorForm({
   const [values, setValues] = React.useState<ProductFormValues>(() =>
     product ? productFormDefaults(product) : defaultProductFormValues()
   );
+  const [initialValues] = React.useState(() => JSON.stringify(values));
+  const submitLock = React.useRef(false);
+  const savedContent = React.useRef<{ values: string; product: AdminProductRow } | null>(null);
   const [errors, setErrors] = React.useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [file, setFile] = React.useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
+  const [submittedAutoSku, setSubmittedAutoSku] = React.useState<string | null>(null);
   const [createdDraft, setCreatedDraft] = React.useState<AdminProductRow | null>(null);
   const [partialNotice, setPartialNotice] = React.useState<string | null>(null);
   const [compatibilityReviewFingerprint, setCompatibilityReviewFingerprint] =
     React.useState<string | null>(null);
+  useProductDraftGuard("form", JSON.stringify(values) !== initialValues || Boolean(file), isSubmitting || isMutating);
   const isManualSku = values.skuMode === "manual";
   const generatedSku = buildProductFormSkuCandidate(values, products);
-  const displayedSku = isEdit || isManualSku ? values.sku : generatedSku.sku;
+  const displayedSku = isEdit || isManualSku ? values.sku : submittedAutoSku ?? generatedSku.sku;
   const externalCodeIsInvalid =
     !isEdit && values.modelCode.trim().length > 0 && !isValidAdminSku(values.modelCode);
   const compatibilityReviewValues = React.useMemo(
@@ -7616,8 +7752,9 @@ function ProductEditorForm({
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (submitLock.current || isMutating) return;
     const withGeneratedSku =
-      !isEdit && !isManualSku ? { ...values, sku: generatedSku.sku } : values;
+      !isEdit && !isManualSku ? { ...values, sku: submittedAutoSku ?? generatedSku.sku } : values;
     const submitValues: ProductFormValues = {
       ...withGeneratedSku,
       compatibleWith:
@@ -7649,12 +7786,16 @@ function ProductEditorForm({
       return;
     }
 
+    if (!isEdit && !isManualSku) setSubmittedAutoSku(submitValues.sku);
+    submitLock.current = true;
     setIsSubmitting(true);
 
     try {
       let saved = createdDraft;
 
-      if (isEdit && product) {
+      if (savedContent.current?.values === JSON.stringify(submitValues)) {
+        saved = savedContent.current.product;
+      } else if (isEdit && product) {
         saved = canSaveData
           ? await onSave(
               product.sku,
@@ -7698,6 +7839,7 @@ function ProductEditorForm({
         return;
       }
 
+      savedContent.current = { values: JSON.stringify(submitValues), product: saved };
       if (file && capabilities.imageManage) {
         try {
           saved = await uploadAdminProductImage(saved.sku, {
@@ -7720,14 +7862,15 @@ function ProductEditorForm({
 
       onSaved(saved);
     } finally {
+      submitLock.current = false;
       setIsSubmitting(false);
     }
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4 pb-20">
+    <form aria-busy={isSubmitting || isMutating} onSubmit={onSubmit} className="pb-20"><fieldset disabled={isSubmitting || isMutating} className="min-w-0 space-y-4">
       <div className="rounded-lg border border-primary/15 bg-primary/5 px-3 py-2 text-sm font-semibold text-slate-700">
-        {text.simpleFormHint}
+        {isEdit ? text.editFormHint : text.simpleFormHint}
       </div>
 
       {compatibilityReviewApplies && compatibilityReview.required ? (
@@ -7761,6 +7904,7 @@ function ProductEditorForm({
             </div>
             <Field label={text.uploadImage} error={errors.media} hint={text.photoHint}>
               <Input
+                disabled={isSubmitting || isMutating}
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
                 capture="environment"
@@ -7799,6 +7943,7 @@ function ProductEditorForm({
             <Select value={values.category} onValueChange={(value) => setValue("category", value)}>
               <SelectTrigger className="h-11 bg-white"><SelectValue /></SelectTrigger>
               <SelectContent>
+                {!categories.some((category) => category.label === values.category) && values.category && <SelectItem value={values.category}>{values.category}</SelectItem>}
                 {categories.map((category) => (
                   <SelectItem key={category.label} value={category.label}>{category.label}</SelectItem>
                 ))}
@@ -7958,7 +8103,7 @@ function ProductEditorForm({
           {isSubmitting || isMutating ? text.saving : text.save}
         </Button>}
       </div>
-    </form>
+    </fieldset></form>
   );
 }
 
@@ -7971,9 +8116,12 @@ function ProductMediaManager({
   text: typeof panelText.zh | typeof panelText.it;
   onSaved: (product: AdminProductRow) => void;
 }) {
+  const uploadLock = React.useRef(false);
   const [file, setFile] = React.useState<File | null>(null);
   const [isSaving, setIsSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  useProductDraftGuard("media", Boolean(file), isSaving);
 
   React.useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -7981,13 +8129,14 @@ function ProductMediaManager({
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [product]);
+  }, [product.sku]);
 
   async function uploadMedia() {
-    if (!file) {
+    if (!file || uploadLock.current) {
       return;
     }
 
+    uploadLock.current = true;
     setIsSaving(true);
     setError(null);
 
@@ -8000,9 +8149,10 @@ function ProductMediaManager({
       });
       onSaved(saved);
       setFile(null);
-    } catch {
-      setError(text.mediaError);
+    } catch (error) {
+      setError(formatNoticeError(text.resultUnconfirmed, error));
     } finally {
+      uploadLock.current = false;
       setIsSaving(false);
     }
   }
@@ -8022,12 +8172,13 @@ function ProductMediaManager({
           </div>
           <Field label={text.uploadImage}>
             <Input
+              disabled={isSaving}
               type="file"
               accept="image/png,image/jpeg,image/webp"
               onChange={(event) => setFile(event.target.files?.[0] ?? null)}
             />
           </Field>
-          {error && <div className="text-sm font-semibold text-red-600">{error}</div>}
+          {error && <div role="alert" className="text-sm font-semibold text-red-600">{error}</div>}
           <div className="flex justify-end">
             <Button type="button" onClick={() => void uploadMedia()} disabled={!file || isSaving}>
               {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
@@ -8053,13 +8204,16 @@ function StockAdjustmentDialog({
   onOpenChange: (open: boolean) => void;
   onSave: (sku: string, adjustment: StockAdjustmentPayload) => Promise<boolean>;
 }) {
+  const submitLock = React.useRef(false);
+  const [submitError, setSubmitError] = React.useState("");
   const [action, setAction] = React.useState<StockAdjustmentAction>("receive");
   const [quantity, setQuantity] = React.useState("1");
   const [reason, setReason] = React.useState("");
   const [isSubmitting, setIsSubmitting] = React.useState(false);
 
+  const productSku = product?.sku;
   React.useEffect(() => {
-    if (!product || !open) {
+    if (!productSku || !open) {
       return;
     }
 
@@ -8070,7 +8224,7 @@ function StockAdjustmentDialog({
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [open, product]);
+  }, [open, productSku]);
 
   if (!product) {
     return null;
@@ -8085,25 +8239,29 @@ function StockAdjustmentDialog({
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!canSubmit || !product) {
+    if (!canSubmit || !product || submitLock.current) {
       return;
     }
 
+    submitLock.current = true;
+    setSubmitError("");
     setIsSubmitting(true);
-    const saved = await onSave(product.sku, {
-      action,
-      quantity: parsedQuantity,
-      reason: reason.trim(),
-    });
-    setIsSubmitting(false);
+    try {
+      const saved = await onSave(product.sku, { action, quantity: parsedQuantity, reason: reason.trim() });
+      if (saved) onOpenChange(false);
+      else setSubmitError(text.resultUnconfirmed);
+    } catch (error) { setSubmitError(formatNoticeError(text.resultUnconfirmed, error)); }
+    finally { submitLock.current = false; setIsSubmitting(false); }
+  }
 
-    if (saved) {
-      onOpenChange(false);
-    }
+  function requestClose(nextOpen: boolean) {
+    if (submitLock.current) return;
+    if (!nextOpen && (reason.trim() || quantity !== "1" || action !== "receive") && !window.confirm(text.unsavedPrompt)) return;
+    onOpenChange(nextOpen);
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={requestClose}>
       <DialogContent scrollLayout="body" className="sm:max-w-[520px]">
         <DialogHeader>
           <DialogTitle>{text.stockAdjust}</DialogTitle>
@@ -8111,9 +8269,10 @@ function StockAdjustmentDialog({
         </DialogHeader>
         <form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col gap-3">
           <DialogBody className="space-y-3">
+            {submitError && <p role="alert" className="break-words text-sm font-semibold text-red-700">{submitError}</p>}
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label={text.stockAdjust}>
-                <Select value={action} onValueChange={(value) => setAction(value as StockAdjustmentAction)}>
+                <Select disabled={isSubmitting} value={action} onValueChange={(value) => setAction(value as StockAdjustmentAction)}>
                   <SelectTrigger className="bg-white">
                     <SelectValue />
                   </SelectTrigger>
@@ -8127,12 +8286,13 @@ function StockAdjustmentDialog({
                 </Select>
               </Field>
               <Field label={text.quantity}>
-                <Input value={quantity} type="number" min={0} step={1} onChange={(event) => setQuantity(event.target.value)} />
+                <Input disabled={isSubmitting} value={quantity} type="number" min={0} step={1} onChange={(event) => setQuantity(event.target.value)} />
               </Field>
               <DetailItem label={text.availableStock} value={product.availableQty ?? product.stock} />
             </div>
             <Field label={text.reason}>
               <Textarea
+                disabled={isSubmitting}
                 className="min-h-24"
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
@@ -8140,7 +8300,7 @@ function StockAdjustmentDialog({
             </Field>
           </DialogBody>
             <DialogFooter>
-            <Button type="button" variant="outline" className="bg-white" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" className="bg-white" disabled={isSubmitting} onClick={() => requestClose(false)}>
               {text.cancel}
             </Button>
             <Button type="submit" disabled={!canSubmit || isSubmitting}>
@@ -8544,7 +8704,7 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-1.5">
+    <div role="group" aria-label={label} data-field-error={Boolean(error)} className="min-w-0 space-y-1.5">
       <Label>{label}</Label>
       {children}
       {hint && <p className="text-xs font-medium text-slate-500">{hint}</p>}
@@ -9242,9 +9402,11 @@ async function hideAdminProducts(skus: string[]) {
     `DELETE ${adminProductsEndpoint} failed`
   );
 
-  return readProductsRows(await readJsonResponse(response))
-    .map(normalizeProductApiRow)
-    .filter(isDefined);
+  const payload = await readJsonResponse(response);
+  const meta = isRecord(payload) && isRecord(payload.meta) ? payload.meta : {};
+  return { products: readProductsRows(payload).map(normalizeProductApiRow).filter(isDefined),
+    failedSku: readString(meta.failedSku) ?? null, unattemptedSkus: readStringArray(meta.unattemptedSkus) ?? [] };
+
 }
 
 async function saveAdminProductStockAdjustment(
@@ -10787,8 +10949,6 @@ function validateProductForm(
       errors.catalogDepartment = text.formRequired;
     }
     if (!values.brand.trim()) errors.brand = text.formRequired;
-    if (!values.model.trim()) errors.model = text.formRequired;
-    if (!values.supplier.trim()) errors.supplier = text.formRequired;
   }
 
   if (!isEdit && values.sku.trim().length < 2) {
@@ -11188,7 +11348,7 @@ async function fetchAdminWriteResponse(
     return response;
   } catch (error) {
     if (controller.signal.aborted) {
-      throw new Error("请求超时，请刷新后重试，或检查当前账号的商品权限。");
+      throw new Error("Request timed out; refresh and verify before repeating. / 请求超时，结果尚未确认，请先刷新核对。");
     }
 
     throw error;

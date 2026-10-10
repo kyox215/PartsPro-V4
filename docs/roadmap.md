@@ -121,3 +121,12 @@ Last reviewed: 2026-09-28
 - 最新截图两条售后 PP-20260803110230-D3DDD9 / 3000000194072 与 PP-20260812152916-53B7E4 / 3667075265009 已分别入原客户钱包 EUR6.50、EUR14.50，余额EUR21；唯一credit各1，两条closed，原restock/scrap数量和收货/QC证据保留，无新增库存流水。与10月4日EUR26为不同订单。
 - 按已上线源 `.codex-worktrees/employee-rma-refund-20261004` 完成固定钱包操作区和受控历史退款准备函数候选；36项合同测试、lint/build、隔离SQL集成与并发唯一入账、390×844模拟接口交互及独立Migration/RLS专项通过。
 - 老板本次明确“批准”后，新migration `20261006002331_prepare_legacy_rma_wallet_refund.sql` 重新dry-run仅本条并受控应用；remote函数/ACL/原两笔ledger核验通过。源码763c01b部署到production候选并核361源码哈希及7项smoke，独立PROMOTE GO后正式发布，两域名指向 `dpl_FZHgXPWj6fLzuHNw23yDHxQGcgJb`，正式7项检查与短时无error/fatal日志通过。保留旧部署回退；没有改env/员工授权，没有重复退款。截图为演示接口，真实员工线上E2E未验证。详情 `docs/tasks/done/P1-2026-10-06-legacy-rma-wallet-refund.md`，证据 `outputs/rma/2026-10-06/`。
+
+
+## 2026-10-10 — 商品管理 UX 发布候选
+
+- 从当前生产源码763c01b的文档后续456567c建立隔离分支 `codex/admin-products-ux-20261010`，保护主目录未提交候选。
+- 商品筛选请求竞争保护、旧结果操作锁定、分页回退与offset边界；手机勾选和本页全选、隐藏确认、批量部分结果与回读；编辑/媒体/库存关闭保护、提交锁、弹层错误和输入保留。
+- “百货系列”显示为“电子产品 · 高端产品”，真实业务值不变；型号/供应商按API契约允许可选，旧分类保留。
+- 详细建议：`docs/audits/2026-10-10-admin-products-ux.md`；本次无migration，也未引入完整目录候选schema。图片并发、跨请求库存幂等和目录完整管理仍单列。
+- 本地lint/build与32相关行为/合同测试PASS；1440/360/390/768中意交互PASS；创建权限图片重试create=1/PATCH=0/image=2。证据 `outputs/admin-products/2026-10-10/`。待精确提交推送、候选部署、独立GO和生产域名smoke。

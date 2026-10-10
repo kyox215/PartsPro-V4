@@ -1,0 +1,63 @@
+{
+  "environment": "Real components with mocked admin APIs",
+  "results": [
+    {
+      "width": 1440,
+      "height": 1000,
+      "locale": "zh-CN",
+      "confirmation": true,
+      "bulkPartialReadback": true,
+      "pageRecovery": true,
+      "staleRowsLocked": true,
+      "unsavedProtected": true,
+      "saveFailureRetained": true,
+      "noOverflow": true,
+      "pageErrors": 0
+    },
+    {
+      "width": 360,
+      "height": 740,
+      "locale": "zh-CN",
+      "confirmation": true,
+      "bulkPartialReadback": true,
+      "pageRecovery": true,
+      "staleRowsLocked": true,
+      "unsavedProtected": true,
+      "saveFailureRetained": true,
+      "noOverflow": true,
+      "pageErrors": 0
+    },
+    {
+      "width": 390,
+      "height": 700,
+      "locale": "it",
+      "confirmation": true,
+      "bulkPartialReadback": true,
+      "pageRecovery": true,
+      "staleRowsLocked": true,
+      "unsavedProtected": true,
+      "saveFailureRetained": true,
+      "noOverflow": true,
+      "pageErrors": 0
+    },
+    {
+      "width": 768,
+      "height": 900,
+      "locale": "it",
+      "confirmation": true,
+      "bulkPartialReadback": true,
+      "pageRecovery": true,
+      "staleRowsLocked": true,
+      "unsavedProtected": true,
+      "saveFailureRetained": true,
+      "noOverflow": true,
+      "pageErrors": 0
+    },
+    {
+      "scenario": "creation-only automatic SKU with image failure",
+      "create": 1,
+      "patch": 0,
+      "image": 2
+    }
+  ]
+}
