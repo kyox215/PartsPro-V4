@@ -54,8 +54,13 @@ export async function readWebsiteAnalytics(
     queryAggregate(config, dates, "country", 12),
     queryAggregate(config, dates, "route", 10),
     queryAggregate(config, dates, "referrerHostname", 10),
-    queryAggregate(config, dates, undefined, 1),
+    queryAggregate(config, dates, "environment", 1),
   ]);
+  // A single production-environment group spans the full requested period.
+  // The API requires a supported grouping; the literal "[]" is rejected.
+  if (totalRows.length > 1 || totalRows.some(row => row.environment !== "production")) {
+    throw new Error("Vercel Web Analytics total has an unexpected environment.");
+  }
   const daily = dailyRows
     .map((row) => ({
       date: readDate(row.timestamp),
@@ -139,18 +144,19 @@ function readAnalyticsConfig() {
 function analyticsDateRange(range: AnalyticsRange) {
   const until = new Date();
   const since = new Date(until);
+  since.setUTCHours(0, 0, 0, 0);
   since.setUTCDate(since.getUTCDate() - (range - 1));
 
   return {
-    since: since.toISOString().slice(0, 10),
-    until: until.toISOString().slice(0, 10),
+    since: since.toISOString(),
+    until: until.toISOString(),
   };
 }
 
 async function queryAggregate(
   config: { projectId: string; teamId: string; token: string },
   dates: { since: string; until: string },
-  by: "country" | "day" | "referrerHostname" | "route" | undefined,
+  by: "country" | "day" | "referrerHostname" | "route" | "environment",
   limit: number
 ) {
   const url = new URL(analyticsApiBase);
@@ -158,7 +164,7 @@ async function queryAggregate(
   url.searchParams.set("teamId", config.teamId);
   url.searchParams.set("since", dates.since);
   url.searchParams.set("until", dates.until);
-  url.searchParams.set("by", by ?? "[]");
+  url.searchParams.set("by", by);
   url.searchParams.set("limit", String(limit));
   url.searchParams.set("filter", "environment eq 'production'");
 
@@ -181,8 +187,15 @@ async function queryAggregate(
     throw new Error("Vercel Web Analytics API returned an invalid response.");
   }
 
-  const rows = Array.isArray(payload.data) ? payload.data.filter(isRecord) : [payload.data as Record<string, unknown>];
-  if (rows.some(row => typeof row.pageviews !== "number" || !Number.isFinite(row.pageviews) || typeof row.visitors !== "number" || !Number.isFinite(row.visitors))) throw new Error("Vercel Web Analytics metrics are missing or invalid.");
+  const rawRows = Array.isArray(payload.data) ? payload.data : [payload.data];
+  if (rawRows.some(row => !isRecord(row))) {
+    throw new Error("Vercel Web Analytics API returned an invalid row.");
+  }
+  const rows = rawRows as Record<string, unknown>[];
+  if (rows.some(row =>
+    typeof row.pageviews !== "number" || !Number.isSafeInteger(row.pageviews) || row.pageviews < 0 ||
+    typeof row.visitors !== "number" || !Number.isSafeInteger(row.visitors) || row.visitors < 0
+  )) throw new Error("Vercel Web Analytics metrics are missing or invalid.");
   return rows;
 }
 
