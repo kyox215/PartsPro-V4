@@ -92,7 +92,7 @@ import {
   type AdminText,
 } from "@/i18n/dictionaries/admin";
 import { sanitizeSupplierText, toPublicSku } from "@/lib/partspro-sku";
-import { AdminBusyRegion, AdminSkeletonRows } from "./admin-feedback";
+import { AdminBusyRegion, AdminSkeletonRows, AdminNotice, AdminEmptyState, AdminActionButton } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
 
 type OrderDbStatus =
@@ -1274,19 +1274,7 @@ export function AdminOrdersPanel({
         </CardHeader>
         <CardContent className="min-w-0 space-y-2 px-3 py-2.5">
           {notice && (
-            <div className={cn("flex min-w-0 items-center gap-3 rounded-lg border px-3 py-2 text-sm font-medium", noticeToneClass(notice.tone))}>
-              <NoticeIcon tone={notice.tone} />
-              <span className="min-w-0 flex-1 break-words">{notice.message}</span>
-              {notice.tone === "warning" && selectedOrder ? <Button size="xs" variant="outline" onClick={() => void loadOrderDetails(selectedOrder.id)}>{locale.startsWith("it") ? "Rileggi dettagli" : "重读详情"}</Button> : null}
-              <Button
-                variant="ghost"
-                size="xs"
-                className="text-current hover:bg-white/60"
-                onClick={() => setNotice(null)}
-              >
-                {text.common.ok}
-              </Button>
-            </div>
+            <AdminNotice tone={notice.tone} message={notice.message} onDismiss={() => setNotice(null)} dismissLabel={text.common.ok} action={notice.tone === "warning" && selectedOrder ? <Button size="xs" variant="outline" onClick={() => void loadOrderDetails(selectedOrder.id)}>{locale.startsWith("it") ? "Rileggi dettagli" : "重读详情"}</Button> : undefined} />
           )}
           {dataSource.error && (
             <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold leading-6 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
@@ -3594,7 +3582,7 @@ function OrderPaymentMethodCard({
             </DialogDescription>
           </DialogHeader>
           <form className="flex min-h-0 flex-1 flex-col gap-3" onSubmit={handleReconciliationSubmit}>
-            {formError ? <p role="alert" className="text-sm text-red-700">{formError}</p> : null}
+            {formError ? <AdminNotice tone="error" message={formError} /> : null}
             <DialogBody className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="min-w-0">
@@ -3703,14 +3691,12 @@ function OrderPaymentMethodCard({
               >
                 {text.common.cancel}
               </Button>
-              <Button type="submit" className="rounded-md" disabled={!canSaveReconciliation}>
-                {isMutating ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
+              <AdminActionButton pending={isMutating} type="submit" className="rounded-md" disabled={!canSaveReconciliation}>
+                {!(isMutating) && ((
                   <Save className="size-3.5" />
-                )}
+                ))}
                 <span className="truncate">{text.common.saveChanges}</span>
-              </Button>
+              </AdminActionButton>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -3883,19 +3869,17 @@ function OrderPaymentMethodCard({
             </SelectContent>
           </Select>
         </label>
-        <Button
+        <AdminActionButton pending={isMutating}
           type="submit"
           size="sm"
           className="self-end rounded-md"
           disabled={!canSave}
         >
-          {isMutating ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
+          {!(isMutating) && ((
             <Save className="size-3.5" />
-          )}
+          ))}
           <span className="truncate">{text.common.saveChanges}</span>
-        </Button>
+        </AdminActionButton>
       </form>
       <div className="mt-2 flex flex-wrap gap-2">
         {order.paymentStatus !== "paid" && (
@@ -4242,19 +4226,17 @@ function OrderLogisticsCard({
         </label>
 
         <div className="grid min-w-0 grid-cols-2 gap-1 sm:flex sm:w-fit sm:grid-cols-none">
-          <Button
+          <AdminActionButton pending={isMutating}
             type="submit"
             size="sm"
             className="min-w-0 rounded-md"
             disabled={!canSave}
           >
-            {isMutating ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
+            {!(isMutating) && ((
               <Save className="size-3.5" />
-            )}
+            ))}
             <span className="truncate">{text.common.saveChanges}</span>
-          </Button>
+          </AdminActionButton>
           {trackingUrl ? (
             <Button
               asChild
@@ -4337,7 +4319,7 @@ function OrderLogisticsCard({
             </DialogDescription>
           </DialogHeader>
           <form className="flex min-h-0 flex-1 flex-col gap-3" onSubmit={handleShippingAdjustmentSubmit}>
-            {formError ? <p role="alert" className="text-sm text-red-700">{formError}</p> : null}
+            {formError ? <AdminNotice tone="error" message={formError} /> : null}
             <DialogBody className="space-y-3">
               <div className="grid gap-2 rounded-md border border-slate-100 bg-slate-50/70 p-2 text-xs sm:grid-cols-3">
                 <InfoRow label={text.orders.currentShipping} value={formatEuro(order.shipping)} />
@@ -4405,14 +4387,12 @@ function OrderLogisticsCard({
               >
                 {text.common.cancel}
               </Button>
-              <Button type="submit" className="rounded-md" disabled={!canSaveShippingAdjustment}>
-                {isMutating ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
+              <AdminActionButton pending={isMutating} type="submit" className="rounded-md" disabled={!canSaveShippingAdjustment}>
+                {!(isMutating) && ((
                   <Save className="size-3.5" />
-                )}
+                ))}
                 <span className="truncate">{text.common.saveChanges}</span>
-              </Button>
+              </AdminActionButton>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -4650,7 +4630,7 @@ function OrderLines({
             </DialogDescription>
           </DialogHeader>
         <DialogBody className="space-y-3">
-          {formError ? <p role="alert" className="text-sm text-red-700">{formError}</p> : null}
+          {formError ? <AdminNotice tone="error" message={formError} /> : null}
           {editingLine ? (
             <div className="space-y-3">
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
@@ -4699,9 +4679,9 @@ function OrderLines({
             <Button type="button" variant="outline" disabled={isMutating} onClick={() => { if (window.confirm(/\p{Script=Han}/u.test(text.common.cancel) ? "放弃未保存的修改？" : "Abbandonare le modifiche non salvate?")) setEditingLine(null); }}>
               {text.common.cancel}
             </Button>
-            <Button type="button" onClick={submitEditor} disabled={!canSaveShortage}>
+            <AdminActionButton pending={isMutating} type="button" onClick={submitEditor} disabled={!canSaveShortage}>
               {copy.save}
-            </Button>
+            </AdminActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -4943,7 +4923,7 @@ function StaffNoteEditor({
           </Button>
         </div>
       </div>
-      {formError ? <p role="alert" className="text-xs text-red-700">{formError}</p> : null}
+      {formError ? <AdminNotice tone="error" message={formError} /> : null}
       <textarea
         value={draft}
         maxLength={1000}
@@ -5818,13 +5798,7 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function EmptyState({ text }: { text: AdminText }) {
-  return (
-    <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500">
-      {text.orders.empty}
-    </div>
-  );
-}
+function EmptyState({ text }: { text: AdminText }) { return <AdminEmptyState title={text.orders.empty} />; }
 
 async function fetchOrdersFromApi({
   signal,
@@ -7746,33 +7720,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function NoticeIcon({ tone }: { tone: NoticeTone }) {
-  if (tone === "warning" || tone === "error") {
-    return <AlertTriangle className="size-4 shrink-0" />;
-  }
 
-  if (tone === "info") {
-    return <Info className="size-4 shrink-0" />;
-  }
 
-  return <BadgeCheck className="size-4 shrink-0" />;
-}
 
-function noticeToneClass(tone: NoticeTone) {
-  if (tone === "error") {
-    return "border-red-200 bg-red-50 text-red-800";
-  }
-
-  if (tone === "warning") {
-    return "border-amber-200 bg-amber-50 text-amber-900";
-  }
-
-  if (tone === "info") {
-    return "border-cyan-200 bg-cyan-50 text-cyan-800";
-  }
-
-  return "border-emerald-200 bg-emerald-50 text-emerald-800";
-}
 
 function activityEventLabel(eventType: string, text: AdminText) {
   if (eventType === "admin_voided_soft_deleted") {

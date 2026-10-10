@@ -7,10 +7,8 @@ import { marketplaceActionBlocker } from "@/lib/admin-marketplace-readiness.mjs"
 import { Dialog, DialogContent, DialogBody, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { marketplaceText } from "@/lib/admin-marketplace-copy";
 import {
-  AlertTriangle,
   CheckCircle2,
   ExternalLink,
-  Loader2,
   Play,
   Plus,
   RefreshCcw,
@@ -48,7 +46,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { AdminSkeletonRows } from "./admin-feedback";
+import { AdminSkeletonRows, AdminNotice, AdminActionButton } from "./admin-feedback";
 
 type EbayEnvironment = "sandbox" | "production";
 
@@ -224,6 +222,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
   React.useEffect(() => { const protect = (event: BeforeUnloadEvent) => { if (dirty || queueUnknown) { event.preventDefault(); event.returnValue = ""; } }; window.addEventListener("beforeunload", protect); return () => window.removeEventListener("beforeunload", protect); }, [dirty, queueUnknown]);
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
+  const [noticeTone, setNoticeTone] = React.useState<"info" | "success" | "warning">("info");
   const [pending, setPending] = React.useState<string | null>("load");
   const permissionSet = React.useMemo(() => new Set(permissions), [permissions]);
   const canConnectEbay = permissionSet.has("ebay.connect");
@@ -353,6 +352,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
         settings: payload.data.settings,
       });
       setSavedDraft(JSON.stringify({ mappings: payload.data.categoryMappings, settings: payload.data.settings }));
+      setNoticeTone("success");
       setNotice(t("设置已保存。"));
     } catch (saveError) {
       setError(saveError instanceof Error ? t(saveError.message) : t("eBay 设置保存失败。"));
@@ -413,6 +413,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
       delete queueAttempts.current[attemptKey];
       setUnconfirmedScope(null);
       setPreviewAction(null);
+      setNoticeTone(action === "plan_listings" ? "info" : "success");
       setNotice(queueActionNotice(action, payload.data, locale));
       await loadOverview();
     } catch (actionError) {
@@ -455,6 +456,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
       const results = payload.data.results ?? [];
       const failed = results.filter(result => !result.ok).length;
       setQueueProgress({ processed: payload.data.processed, succeeded: results.filter(result => result.ok).length, failed });
+      setNoticeTone(failed ? "warning" : payload.data.processed ? "success" : "info");
       setNotice(locale.startsWith("zh") ? `本轮处理 ${payload.data.processed} 条，成功 ${results.filter(result => result.ok).length} 条，失败 ${failed} 条。` : `Elaborate ${payload.data.processed}: ${results.filter(result => result.ok).length} riuscite, ${failed} non riuscite.`);
       await loadOverview();
     } catch (runError) {
@@ -507,12 +509,12 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
 
   return (
     <div data-admin-mutating={pending && pending !== "load" ? "true" : "false"} data-admin-dirty={dirty || queueUnknown ? "true" : "false"} className="min-w-0 space-y-4">
-      {unconfirmedScope && <p role="status" className="rounded border border-amber-200 bg-amber-50 p-3 text-sm">{locale.startsWith("zh") ? "原任务范围已冻结；核对后重试仍处理同一组 SKU。请先完成原任务再开始新的范围。" : "Ambito originale bloccato: il retry conserva gli stessi SKU. Completa il tentativo prima di scegliere un altro ambito."}</p>}
+      {unconfirmedScope && <AdminNotice tone="warning" message={locale.startsWith("zh") ? "原任务范围已冻结；核对后重试仍处理同一组 SKU。请先完成原任务再开始新的范围。" : "Ambito originale bloccato: il retry conserva gli stessi SKU. Completa il tentativo prima di scegliere un altro ambito."} />}
       {unconfirmedScope && !queueUnknown && !previewAction && <Button variant="outline" disabled={isBusy} onClick={() => { if (unconfirmedScope.action === "publish_eligible" || unconfirmedScope.action === "sync_inventory") resumeOriginalAttempt(); else void queueAction(unconfirmedScope.action,unconfirmedScope.skus.length ? unconfirmedScope.skus : undefined); }}>{locale.startsWith("zh") ? "继续原任务" : "Continua il tentativo originale"}</Button>}
-      {queueUnknown && <div role="alert" className="space-y-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm"><p>{locale.startsWith("zh") ? "任务提交结果尚未确认。请刷新核对队列；重复请求会沿用原任务标识，不重新创建已确认任务。" : "Esito dell’invio non confermato. Aggiorna e controlla la coda; il tentativo conserva l’identificativo originale per evitare duplicati."}</p><Button variant="outline" disabled={isBusy} onClick={() => void loadOverview()}>{locale.startsWith("zh") ? "重读队列核对" : "Rileggi la coda"}</Button><Button variant="outline" disabled={isBusy || !queueReviewed} onClick={resumeOriginalAttempt}>{locale.startsWith("zh") ? "已核对，继续原任务" : "Verificato, continua il tentativo"}</Button></div>}
+      {queueUnknown && <AdminNotice tone="warning"><p>{locale.startsWith("zh") ? "任务提交结果尚未确认。请刷新核对队列；重复请求会沿用原任务标识，不重新创建已确认任务。" : "Esito dell’invio non confermato. Aggiorna e controlla la coda; il tentativo conserva l’identificativo originale per evitare duplicati."}</p><Button variant="outline" disabled={isBusy} onClick={() => void loadOverview()}>{locale.startsWith("zh") ? "重读队列核对" : "Rileggi la coda"}</Button><Button variant="outline" disabled={isBusy || !queueReviewed} onClick={resumeOriginalAttempt}>{locale.startsWith("zh") ? "已核对，继续原任务" : "Verificato, continua il tentativo"}</Button></AdminNotice>}
       <Dialog open={previewAction !== null} onOpenChange={open => { if (!open && !isBusy) setPreviewAction(null); }}>
         <DialogContent scrollLayout="body" className="sm:max-w-2xl"><DialogHeader><DialogTitle>{locale.startsWith("zh") ? "核对 eBay 任务范围" : "Verifica prodotti e attività eBay"}</DialogTitle><DialogDescription>{locale.startsWith("zh") ? `环境：${draft.settings.environment}；只处理下面勾选的 SKU，最多100个。价格和库存为当前预览，执行时服务会重新校验。` : `Ambiente: ${draft.settings.environment}. Solo gli SKU selezionati, massimo 100. Prezzi e stock sono un’anteprima; il servizio li verificherà all’esecuzione.`}</DialogDescription></DialogHeader>
-        <DialogBody className="space-y-2">{queueUnknown && <div role="alert" className="space-y-2 rounded border border-amber-300 bg-amber-50 p-3 text-sm"><p>{locale.startsWith("zh") ? "提交结果未知，请先重读队列核对。原任务标识已保留。" : "Esito non confermato. Rileggi la coda; identificativo originale conservato."}</p><Button variant="outline" disabled={isBusy} onClick={() => void loadOverview()}>{locale.startsWith("zh") ? "重读队列核对" : "Rileggi la coda"}</Button><Button variant="outline" disabled={isBusy || !queueReviewed} onClick={resumeOriginalAttempt}>{locale.startsWith("zh") ? "已核对，继续原任务" : "Verificato, continua il tentativo"}</Button></div>}<p className="text-sm">{locale.startsWith("zh") ? `已选择 ${previewSkus.length}/${previewRows.length}` : `Selezionati ${previewSkus.length}/${previewRows.length}`}</p>{previewRows.map(item => <label key={item.sku} className="flex items-start gap-3 rounded border p-3 text-sm"><input type="checkbox" disabled={isBusy || Boolean(unconfirmedScope)} checked={previewSkus.includes(item.sku)} onChange={event => setPreviewSkus(current => event.target.checked ? [...current,item.sku] : current.filter(sku => sku !== item.sku))}/><span className="min-w-0 break-words"><strong>{item.productName}</strong><br/>{item.sku} · EUR {item.computedPrice.toFixed(2)} · {locale.startsWith("zh") ? "可发布数量" : "Quantità"} {item.computedQuantity}</span></label>)}</DialogBody><DialogFooter><Button variant="outline" disabled={isBusy} onClick={() => setPreviewAction(null)}>{unconfirmedScope ? (locale.startsWith("zh") ? "关闭并保留未确认任务" : "Chiudi e conserva il tentativo") : (locale.startsWith("zh") ? "取消" : "Annulla")}</Button><Button disabled={isBusy || queueUnknown || dirty || !previewSkus.length || !previewAction || Boolean(marketplaceActionBlocker(draft.settings, connection, previewAction))} onClick={() => { if (previewAction) void queueAction(previewAction,previewSkus); }}>{locale.startsWith("zh") ? "确认范围并加入队列" : "Conferma e accoda"}</Button></DialogFooter></DialogContent>
+        <DialogBody className="space-y-2">{queueUnknown && <AdminNotice tone="warning"><p>{locale.startsWith("zh") ? "提交结果未知，请先重读队列核对。原任务标识已保留。" : "Esito non confermato. Rileggi la coda; identificativo originale conservato."}</p><Button variant="outline" disabled={isBusy} onClick={() => void loadOverview()}>{locale.startsWith("zh") ? "重读队列核对" : "Rileggi la coda"}</Button><Button variant="outline" disabled={isBusy || !queueReviewed} onClick={resumeOriginalAttempt}>{locale.startsWith("zh") ? "已核对，继续原任务" : "Verificato, continua il tentativo"}</Button></AdminNotice>}<p className="text-sm">{locale.startsWith("zh") ? `已选择 ${previewSkus.length}/${previewRows.length}` : `Selezionati ${previewSkus.length}/${previewRows.length}`}</p>{previewRows.map(item => <label key={item.sku} className="flex items-start gap-3 rounded border p-3 text-sm"><input type="checkbox" disabled={isBusy || Boolean(unconfirmedScope)} checked={previewSkus.includes(item.sku)} onChange={event => setPreviewSkus(current => event.target.checked ? [...current,item.sku] : current.filter(sku => sku !== item.sku))}/><span className="min-w-0 break-words"><strong>{item.productName}</strong><br/>{item.sku} · EUR {item.computedPrice.toFixed(2)} · {locale.startsWith("zh") ? "可发布数量" : "Quantità"} {item.computedQuantity}</span></label>)}</DialogBody><DialogFooter><Button variant="outline" disabled={isBusy} onClick={() => setPreviewAction(null)}>{unconfirmedScope ? (locale.startsWith("zh") ? "关闭并保留未确认任务" : "Chiudi e conserva il tentativo") : (locale.startsWith("zh") ? "取消" : "Annulla")}</Button><AdminActionButton pending={pending === previewAction && previewAction !== null} disabled={isBusy || queueUnknown || dirty || !previewSkus.length || !previewAction || Boolean(marketplaceActionBlocker(draft.settings, connection, previewAction))} onClick={() => { if (previewAction) void queueAction(previewAction,previewSkus); }}>{locale.startsWith("zh") ? "确认范围并加入队列" : "Conferma e accoda"}</AdminActionButton></DialogFooter></DialogContent>
       </Dialog>
       <section className="space-y-2 rounded-lg border bg-white p-3">
         <h2 className="font-bold">{locale.startsWith("zh") ? "eBay 就绪步骤" : "Preparazione eBay"}</h2>
@@ -523,7 +525,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
           [!dirty && Boolean(savedDraft), locale.startsWith("zh") ? "4 · 保存后生成计划" : "4 · Salva e prepara il piano"],
         ].map(([ready, label]) => <li key={String(label)} className={cn("rounded border p-2", ready ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50")}>{ready ? "✓ " : "○ "}{label}</li>)}</ol>
         <p className="text-xs text-slate-500">{locale.startsWith("zh") ? "生成计划可离线检查；发布、同步和拉单必须满足已保存环境、连接与对应开关。" : "Il piano permette verifiche offline. Pubblicazione, sincronizzazione e importazione richiedono ambiente, connessione e opzioni salvati."}</p>
-        {dirty && <p role="status" className="text-sm text-amber-800">{locale.startsWith("zh") ? "有未保存修改。已锁住刊登计划等操作；刷新会保留草稿。" : "Modifiche non salvate: le azioni dipendenti dalle impostazioni sono sospese. La bozza resta al refresh."}</p>}
+        {dirty && <AdminNotice tone="warning" message={locale.startsWith("zh") ? "有未保存修改。已锁住刊登计划等操作；刷新会保留草稿。" : "Modifiche non salvate: le azioni dipendenti dalle impostazioni sono sospese. La bozza resta al refresh."} />}
         {queueProgress && <div className="flex flex-wrap items-center gap-2 text-sm"><span>{locale.startsWith("zh") ? `本轮 ${queueProgress.processed} 条；失败 ${queueProgress.failed} 条；仍排队 ${overview?.summary.queuedJobs ?? "…"} 条。` : `Ultimo gruppo: ${queueProgress.processed}, errori: ${queueProgress.failed}, ancora in coda: ${overview?.summary.queuedJobs ?? "…"}.`}</span><Button variant="outline" disabled={isBusy || !canRunJobs || overview?.summary.queuedJobs === 0} onClick={() => void runJobs()}>{locale.startsWith("zh") ? "继续处理下一组（最多5条）" : "Elabora i prossimi 5"}</Button></div>}
       </section>
       <section className="grid grid-cols-2 gap-2 xl:grid-cols-4">
@@ -534,21 +536,10 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
       </section>
 
       {(error || notice) && (
-        <div
-          className={cn(
-            "flex items-start gap-2 rounded-lg border px-3 py-2 text-sm",
-            error
-              ? "border-red-200 bg-red-50 text-red-700"
-              : "border-emerald-200 bg-emerald-50 text-emerald-700"
-          )}
-          role="status"
-        >
-          {error ? <AlertTriangle className="mt-0.5 size-4" /> : <CheckCircle2 className="mt-0.5 size-4" />}
-          <span className="min-w-0 break-words">{error ?? notice}</span>
-        </div>
+        <AdminNotice tone={error ? queueUnknown ? "warning" : "error" : noticeTone} message={error ?? notice} />
       )}
 
-      <section className="space-y-2 rounded-lg border bg-white p-3"><h3 className="font-bold">{locale.startsWith("zh") ? "从 eBay 账号选择销售政策" : "Scegli le condizioni del tuo account eBay"}</h3><Button variant="outline" disabled={isBusy || queueUnknown || dirty || !canManageSettings || !connection?.connected} onClick={() => void loadPolicies()}>{locale.startsWith("zh") ? "读取已保存环境的政策" : "Leggi condizioni dell'ambiente salvato"}</Button>{policyError && <p role="alert" className="text-sm text-red-700">{policyError}</p>}{policyOptions && <div className="grid gap-2 sm:grid-cols-3">{([['payment','paymentPolicyId',locale.startsWith("zh") ? '付款政策' : 'Pagamento'],['return','returnPolicyId',locale.startsWith("zh") ? '退货政策' : 'Resi'],['fulfillment','fulfillmentPolicyId',locale.startsWith("zh") ? '配送政策' : 'Spedizione']] as const).map(([kind,key,label]) => <label key={kind} className="space-y-1 text-sm">{label}<select className="h-10 w-full rounded border bg-white px-2" value={draft.settings[key] ?? ""} disabled={isConfigLocked || !canManageSettings} onChange={event => updateSettings({ [key]: event.target.value })}><option value="">{locale.startsWith("zh") ? "请选择" : "Seleziona"}</option>{draft.settings[key] && !(policyOptions[kind] ?? []).some(option => option.id === draft.settings[key]) && <option value={draft.settings[key]!}>{draft.settings[key]} · {locale.startsWith("zh") ? "当前值（未读取到）" : "Valore attuale non trovato"}</option>}{(policyOptions[kind] ?? []).map(option => <option key={option.id} value={option.id}>{option.name ?? option.id}</option>)}</select></label>)}</div>}</section>
+      <section className="space-y-2 rounded-lg border bg-white p-3"><h3 className="font-bold">{locale.startsWith("zh") ? "从 eBay 账号选择销售政策" : "Scegli le condizioni del tuo account eBay"}</h3><Button variant="outline" disabled={isBusy || queueUnknown || dirty || !canManageSettings || !connection?.connected} onClick={() => void loadPolicies()}>{locale.startsWith("zh") ? "读取已保存环境的政策" : "Leggi condizioni dell'ambiente salvato"}</Button>{policyError && <AdminNotice tone="error" message={policyError} />}{policyOptions && <div className="grid gap-2 sm:grid-cols-3">{([['payment','paymentPolicyId',locale.startsWith("zh") ? '付款政策' : 'Pagamento'],['return','returnPolicyId',locale.startsWith("zh") ? '退货政策' : 'Resi'],['fulfillment','fulfillmentPolicyId',locale.startsWith("zh") ? '配送政策' : 'Spedizione']] as const).map(([kind,key,label]) => <label key={kind} className="space-y-1 text-sm">{label}<select className="h-10 w-full rounded border bg-white px-2" value={draft.settings[key] ?? ""} disabled={isConfigLocked || !canManageSettings} onChange={event => updateSettings({ [key]: event.target.value })}><option value="">{locale.startsWith("zh") ? "请选择" : "Seleziona"}</option>{draft.settings[key] && !(policyOptions[kind] ?? []).some(option => option.id === draft.settings[key]) && <option value={draft.settings[key]!}>{draft.settings[key]} · {locale.startsWith("zh") ? "当前值（未读取到）" : "Valore attuale non trovato"}</option>}{(policyOptions[kind] ?? []).map(option => <option key={option.id} value={option.id}>{option.name ?? option.id}</option>)}</select></label>)}</div>}</section>
       <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
         <Card className="rounded-lg bg-white">
           <CardHeader className="border-b">
@@ -700,14 +691,15 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button
+              <AdminActionButton
+                pending={pending === "save"}
                 type="button"
                 onClick={saveSettings}
                 disabled={isConfigLocked || !canManageSettings}
                 title={!canManageSettings ? missingPermissionMessage(t("管理 eBay 设置"), locale) : undefined}
               >
-                <Save className="size-4" />
-                {t("保存设置")}</Button>
+                {pending !== "save" && <Save className="size-4" />}
+                {t("保存设置")}</AdminActionButton>
               <ActionButton
                 disabled={isBusy || queueUnknown || dirty || !canPlanListings}
                 icon={CheckCircle2}
@@ -1142,28 +1134,7 @@ function NumberInput({
   );
 }
 
-function ActionButton({
-  disabled,
-  icon: Icon,
-  label,
-  loading,
-  onClick,
-  title,
-}: {
-  disabled: boolean;
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  loading: boolean;
-  onClick: () => void;
-  title?: string;
-}) {
-  return (
-    <Button type="button" variant="outline" onClick={onClick} disabled={disabled} title={title}>
-      {loading ? <Loader2 className="size-4 animate-spin" /> : <Icon className="size-4" />}
-      {label}
-    </Button>
-  );
-}
+function ActionButton({ disabled, icon: Icon, label, loading, onClick, title }: { disabled: boolean; icon: React.ComponentType<{ className?: string }>; label: string; loading: boolean; onClick: () => void; title?: string }) { return <AdminActionButton pending={loading} type="button" variant="outline" onClick={onClick} disabled={disabled} title={title}>{!loading && <Icon className="size-4" />}{label}</AdminActionButton>; }
 
 function queueActionNotice(
   action: EbayQueueAction,

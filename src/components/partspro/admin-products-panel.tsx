@@ -143,7 +143,7 @@ import type {
   SupplierBatchCharge,
   SupplierBatchCostSummary,
 } from "@/lib/partspro-supplier-batch-cost-core.mjs";
-import { AdminBusyRegion, AdminSkeletonRows } from "./admin-feedback";
+import { AdminBusyRegion, AdminSkeletonRows, AdminNotice, AdminActionButton, AdminEmptyState } from "./admin-feedback";
 import { AdminProductImportDialog } from "./admin-product-import-dialog";
 import { useI18n } from "./i18n-provider";
 import { PartVisual as ProductVisual } from "./part-visual";
@@ -2520,24 +2520,7 @@ export function AdminProductsPanel({
 
             {notice && (
               <div className="px-3 pt-3 sm:px-4">
-                <div className={cn("flex items-center gap-3 rounded-lg border px-3 py-2 text-sm font-medium", noticeClassName(notice.tone))}>
-                  {notice.tone === "error" ? (
-                    <XCircle className="size-4 shrink-0" />
-                  ) : notice.tone === "warning" ? (
-                    <AlertTriangle className="size-4 shrink-0" />
-                  ) : (
-                    <CheckCircle2 className="size-4 shrink-0" />
-                  )}
-                  <span className="min-w-0 flex-1">{notice.message}</span>
-                  <Button
-                    variant="ghost"
-                    size="xs"
-                    className="text-current hover:bg-white/60"
-                    onClick={() => setNotice(null)}
-                  >
-                    {text.close}
-                  </Button>
-                </div>
+                <AdminNotice tone={notice.tone} message={notice.message} onDismiss={() => setNotice(null)} dismissLabel={text.close} />
               </div>
             )}
 
@@ -4227,15 +4210,15 @@ function SupplierBatchDetailSheet({
             >
               {text.close}
             </Button>
-            <Button
+            <AdminActionButton pending={isCancelling}
               type="button"
               variant="destructive"
               onClick={() => void submitCancelCharge()}
               disabled={isCancelling || !cancelReason.trim() || !canCancelCosts}
             >
-              {isCancelling ? <Loader2 className="size-4 animate-spin" /> : null}
+
               {isCancelling ? cancelCopy.submitting : cancelCopy.action}
-            </Button>
+            </AdminActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -4697,22 +4680,7 @@ function AdminHomeBannersPanel({
 
         {notice && (
           <div className="px-3 pt-3 sm:px-4">
-            <div className={cn("flex items-center gap-3 rounded-lg border px-3 py-2 text-sm font-medium", noticeClassName(notice.tone))}>
-              {notice.tone === "error" ? (
-                <XCircle className="size-4 shrink-0" />
-              ) : (
-                <CheckCircle2 className="size-4 shrink-0" />
-              )}
-              <span className="min-w-0 flex-1">{notice.message}</span>
-              <Button
-                className="text-current hover:bg-white/60"
-                onClick={() => setNotice(null)}
-                size="xs"
-                variant="ghost"
-              >
-                {text.close}
-              </Button>
-            </div>
+            <AdminNotice tone={notice.tone} message={notice.message} onDismiss={() => setNotice(null)} dismissLabel={text.close} />
           </div>
         )}
 
@@ -5020,10 +4988,10 @@ function AdminHomeBannersPanel({
           </label>
 
           <div className="flex flex-wrap gap-2">
-            <Button disabled={isSaving || isUploading} onClick={() => void saveBanner()}>
-              {isSaving ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+            <AdminActionButton pending={isSaving} disabled={isSaving || isUploading} onClick={() => void saveBanner()}>
+              {!(isSaving) && (<CheckCircle2 className="size-4" />)}
               {isSaving ? copy.saving : copy.save}
-            </Button>
+            </AdminActionButton>
             <Button asChild className="bg-white" variant="outline">
               <Link href={previewHref} target="_blank">
                 <ExternalLink className="size-4" />
@@ -6695,6 +6663,7 @@ function ProductEmptyState({
   isLoading: boolean;
   text: typeof panelText.zh | typeof panelText.it;
 }) {
+  if (!isLoading) return <AdminEmptyState title={text.emptyTitle} description={text.emptyBody} icon={Package} className="m-3" />;
   return (
     <div className="grid min-h-52 place-items-center px-4 py-10 text-center">
       <div>
@@ -6954,7 +6923,7 @@ function ProductDrawer({
           <SheetDescription className="break-all">
             {mode === "create" ? text.subtitle : product?.sku ?? ""}
           </SheetDescription>
-          {error && <div role="alert" className="mt-2 break-words rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-800 [overflow-wrap:anywhere]">{error}</div>}
+          {error && <AdminNotice tone="error" message={error} className="mt-2" />}
         </SheetHeader>
         <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-3 lg:p-4">
           {mode === "view" && product ? (
@@ -7353,18 +7322,16 @@ function ProductDetails({
                   <Button variant="outline" size="xs" className="bg-white" onClick={() => stopInlineEdit()}>
                     {text.cancel}
                   </Button>
-                  <Button
+                  <AdminActionButton pending={isSubmittingEdit || isMutating}
                     size="xs"
                     onClick={() => void saveInlineEdit()}
                     disabled={isSubmittingEdit || isMutating || (compatibilityReviewApplies && compatibilityReview.required && !compatibilityReviewConfirmed)}
                   >
-                    {isSubmittingEdit || isMutating ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
+                    {!(isSubmittingEdit || isMutating) && ((
                       <CheckCircle2 className="size-3.5" />
-                    )}
+                    ))}
                     {isSubmittingEdit || isMutating ? text.saving : text.save}
-                  </Button>
+                  </AdminActionButton>
                 </>
               ) : capabilities.editContent ? (
                 <Button variant="outline" size="xs" className="bg-white" onClick={() => startInlineEdit("base")}>
@@ -7482,18 +7449,16 @@ function ProductDetails({
                   <Button variant="outline" size="xs" className="bg-white" onClick={() => stopInlineEdit()}>
                     {text.cancel}
                   </Button>
-                  <Button
+                  <AdminActionButton pending={isSubmittingEdit || isMutating}
                     size="xs"
                     onClick={() => void saveInlineEdit()}
                     disabled={isSubmittingEdit || isMutating || (compatibilityReviewApplies && compatibilityReview.required && !compatibilityReviewConfirmed)}
                   >
-                    {isSubmittingEdit || isMutating ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
+                    {!(isSubmittingEdit || isMutating) && ((
                       <CheckCircle2 className="size-3.5" />
-                    )}
+                    ))}
                     {isSubmittingEdit || isMutating ? text.saving : text.save}
-                  </Button>
+                  </AdminActionButton>
                 </>
               ) : capabilities.editPrice && capabilities.editCost ? (
                 <Button variant="outline" size="xs" className="bg-white" onClick={() => startInlineEdit("price")}>
@@ -7575,18 +7540,16 @@ function ProductDetails({
                   <Button variant="outline" size="xs" className="bg-white" onClick={() => stopInlineEdit()}>
                     {text.cancel}
                   </Button>
-                  <Button
+                  <AdminActionButton pending={isSubmittingEdit || isMutating}
                     size="xs"
                     onClick={() => void saveInlineEdit()}
                     disabled={isSubmittingEdit || isMutating || (compatibilityReviewApplies && compatibilityReview.required && !compatibilityReviewConfirmed)}
                   >
-                    {isSubmittingEdit || isMutating ? (
-                      <Loader2 className="size-3.5 animate-spin" />
-                    ) : (
+                    {!(isSubmittingEdit || isMutating) && ((
                       <CheckCircle2 className="size-3.5" />
-                    )}
+                    ))}
                     {isSubmittingEdit || isMutating ? text.saving : text.save}
-                  </Button>
+                  </AdminActionButton>
                 </>
               ) : capabilities.editContent ? (
                 <Button variant="outline" size="xs" className="bg-white" onClick={() => startInlineEdit("compatibility")}>
@@ -8146,14 +8109,12 @@ function ProductEditorForm({
             {text.cancel}
           </Button>
         )}
-        {(canSaveData || capabilities.imageManage) && <Button className="h-11" type="submit" disabled={isSubmitting || isMutating || (compatibilityReviewApplies && compatibilityReview.required && !compatibilityReviewConfirmed)}>
-          {isSubmitting || isMutating ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
+        {(canSaveData || capabilities.imageManage) && <AdminActionButton pending={isSubmitting || isMutating} className="h-11" type="submit" disabled={isSubmitting || isMutating || (compatibilityReviewApplies && compatibilityReview.required && !compatibilityReviewConfirmed)}>
+          {!(isSubmitting || isMutating) && ((
             <CheckCircle2 className="size-4" />
-          )}
+          ))}
           {isSubmitting || isMutating ? text.saving : text.save}
-        </Button>}
+        </AdminActionButton>}
       </div>
     </fieldset></form>
   );
@@ -8230,7 +8191,7 @@ function ProductMediaManager({
               onChange={(event) => setFile(event.target.files?.[0] ?? null)}
             />
           </Field>
-          {error && <div role="alert" className="text-sm font-semibold text-red-600">{error}</div>}
+          {error && <AdminNotice tone="error" message={error} className="mt-2" />}
           <div className="flex justify-end">
             <Button type="button" onClick={() => void uploadMedia()} disabled={!file || isSaving}>
               {isSaving ? <Loader2 className="size-4 animate-spin" /> : <Upload className="size-4" />}
@@ -8355,10 +8316,10 @@ function StockAdjustmentDialog({
             <Button type="button" variant="outline" className="bg-white" disabled={isSubmitting} onClick={() => requestClose(false)}>
               {text.cancel}
             </Button>
-            <Button type="submit" disabled={!canSubmit || isSubmitting}>
-              {isSubmitting ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+            <AdminActionButton pending={isSubmitting} type="submit" disabled={!canSubmit || isSubmitting}>
+              {!(isSubmitting) && (<CheckCircle2 className="size-4" />)}
               {isSubmitting ? text.saving : text.save}
-            </Button>
+            </AdminActionButton>
           </DialogFooter>
         </form>
       </DialogContent>
@@ -11667,20 +11628,4 @@ function catalogStatusBadgeClass(status: CatalogStatus) {
   }
 
   return "border-amber-200 bg-amber-50 text-amber-700";
-}
-
-function noticeClassName(tone: ProductNotice["tone"]) {
-  if (tone === "success") {
-    return "border-emerald-200 bg-emerald-50 text-emerald-800";
-  }
-
-  if (tone === "warning") {
-    return "border-amber-200 bg-amber-50 text-amber-800";
-  }
-
-  if (tone === "error") {
-    return "border-red-200 bg-red-50 text-red-800";
-  }
-
-  return "border-sky-200 bg-sky-50 text-sky-800";
 }

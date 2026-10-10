@@ -294,6 +294,14 @@ export function AdminDashboard({
   const scrollPositions = React.useRef<Record<string, number>>({});
   const panelUrls = React.useRef<Record<string, string>>({});
   React.useEffect(() => {
+    const previousScope = document.body.dataset.adminUi;
+    document.body.dataset.adminUi = "true";
+    return () => {
+      if (previousScope === undefined) delete document.body.dataset.adminUi;
+      else document.body.dataset.adminUi = previousScope;
+    };
+  }, []);
+  React.useEffect(() => {
     const timer = window.setTimeout(() => { try { setIsSidebarCollapsed(localStorage.getItem("partspro:admin-sidebar") === "collapsed"); } catch {} }, 0);
     return () => window.clearTimeout(timer);
   }, []);
@@ -457,6 +465,8 @@ export function AdminDashboard({
       if (!link || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       const url = new URL(link.getAttribute("href") ?? "", window.location.href);
       if (url.origin !== window.location.origin || !url.pathname.startsWith("/admin") || url.href === window.location.href) return;
+      // Error-summary anchors move focus inside the current form, without leaving it.
+      if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return;
       if (document.querySelector('[data-admin-mutating="true"]')) { event.preventDefault(); event.stopPropagation(); return; }
       if (document.querySelector('[data-admin-dirty="true"], [data-catalog-dirty="true"]') && !window.confirm(text.nav.settings === "设置" ? "放弃未保存修改并打开目标页面？" : "Scartare le modifiche e aprire la pagina?")) { event.preventDefault(); event.stopPropagation(); }
     };
@@ -527,7 +537,7 @@ export function AdminDashboard({
   }, [router, searchParams, selectPanel]);
 
   return (
-    <AdminWorkspaceStateProvider userId={currentUserId}><main ref={mainRef} className="h-dvh overflow-y-auto overflow-x-clip bg-slate-50 text-slate-950">
+    <AdminWorkspaceStateProvider userId={currentUserId}><main ref={mainRef} data-admin-ui="true" className="h-dvh overflow-y-auto overflow-x-clip bg-slate-50 text-slate-950">
       <div className="flex min-w-0">
         <AdminSidebar
           activePanel={activePanel}

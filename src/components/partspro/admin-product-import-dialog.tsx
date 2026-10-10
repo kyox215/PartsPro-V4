@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminNotice, AdminActionButton } from "./admin-feedback";
+
 import * as React from "react";
 import { compatibilityReasonLabel, compatibilitySignalLabel } from "@/lib/admin-compatibility-copy";
 import {
@@ -255,10 +257,7 @@ export function AdminProductImportDialog({
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
           {error && (
-            <div className="mb-4 flex gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-medium text-red-800">
-              <XCircle className="mt-0.5 size-4 shrink-0" />
-              <span>{error}</span>
-            </div>
+            <AdminNotice className="mb-4" tone={result?.partial ? "warning" : "error"} message={error} />
           )}
 
           {result ? (
@@ -341,10 +340,10 @@ export function AdminProductImportDialog({
                 <Button variant="outline" onClick={() => { setPreview(null); setConfirmed(false); setCompatibilityConfirmations({}); setError(null); }} disabled={pending !== null}>
                   {copy.backToEdit}
                 </Button>
-                <Button onClick={() => void applyImport()} disabled={!confirmed || !allCompatibilityReviewsConfirmed || preview.counts.blocked > 0 || pending !== null}>
-                  {pending === "apply" ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+                <AdminActionButton pending={pending === "apply"} onClick={() => void applyImport()} disabled={!confirmed || !allCompatibilityReviewsConfirmed || preview.counts.blocked > 0 || pending !== null}>
+                  {!(pending === "apply") && (<CheckCircle2 className="size-4" />)}
                   {copy.apply}
-                </Button>
+                </AdminActionButton>
               </div>
             </div>
           ) : (
@@ -498,10 +497,7 @@ function MetricCard({ label, value, tone }: { label: string; value: number; tone
   return <div className={cn("rounded-lg p-2.5", tones[tone])}><div className="text-lg font-bold">{value}</div><div className="text-[11px] font-semibold">{label}</div></div>;
 }
 
-function ResultPanel({ result, copy }: { result: ApplyResult; copy: typeof zhCopy }) {
-  const success = result.failures.length === 0;
-  return <div className={cn("mx-auto max-w-xl rounded-2xl border p-6 text-center", success ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50")}><div className={cn("mx-auto flex size-12 items-center justify-center rounded-full", success ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>{success ? <CheckCircle2 className="size-6" /> : <AlertTriangle className="size-6" />}</div><h3 className="mt-3 text-lg font-bold text-slate-950">{success ? copy.successTitle : copy.partialTitle}</h3><p className="mt-2 text-sm text-slate-600">{copy.resultSummary.replace("{applied}", String(result.counts.applied)).replace("{total}", String(result.counts.total))}</p>{result.failures.length > 0 && <div className="mt-4 space-y-2 text-left">{result.failures.map((failure) => <div key={`${failure.rowNumber}-${failure.sku}`} className="rounded-lg border border-amber-200 bg-white p-3 text-sm"><div className="font-semibold">#{failure.rowNumber} · {failure.sku}</div><div className="mt-1 text-amber-800">{failure.message}</div></div>)}</div>}</div>;
-}
+function ResultPanel({ result, copy }: { result: ApplyResult; copy: typeof zhCopy }) { return <AdminNotice tone={result.partial || result.failures.length > 0 ? "warning" : "success"} title={result.partial || result.failures.length > 0 ? copy.partialTitle : copy.successTitle}><p>{copy.resultSummary.replace("{applied}", String(result.counts.applied)).replace("{total}", String(result.counts.total))}</p>{result.failures.length > 0 && <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">{result.failures.map(failure => <li key={`${failure.rowNumber}-${failure.sku}`}>#{failure.rowNumber} · {failure.sku} · {failure.message}</li>)}</ul>}</AdminNotice>; }
 
 function operationLabel(operation: PreviewRow["operation"], copy: typeof zhCopy) { return copy.operationLabels[operation]; }
 async function readJson(response: Response) { const body = await response.json().catch(() => null) as { data?: unknown; error?: { message?: string } } | null; if (!response.ok || !body?.data) throw new Error(body?.error?.message || `HTTP ${response.status}`); return body; }

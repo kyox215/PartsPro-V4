@@ -22,7 +22,7 @@ import { formatEuro } from "@/lib/partspro-data";
 import { formatTierDiscount } from "@/lib/partspro-pricing";
 import { type AddressDraft, type AddressDraftField, formatAddressDraft, isAddressDraftComplete, normalizeAddressText, parseAddressDraft, } from "@/lib/partspro-address-draft";
 import { cn } from "@/lib/utils";
-import { AdminBusyRegion } from "./admin-feedback";
+import { AdminBusyRegion, AdminNotice, AdminActionButton, AdminEmptyState } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
 type AccountType = "customer" | "employee";
 type ConversionKind = "role" | "to_customer" | "to_employee";
@@ -1521,7 +1521,7 @@ function AccountActionDialog({ conversion, onChange, onClose, onSubmit, roleTemp
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <DialogBody><fieldset disabled={submitting} className="contents">
-          {error ? <p role="alert" className="mb-3 text-sm text-red-700">{error}</p> : null}
+          {error ? <AdminNotice tone="error" message={error} className="mb-3" /> : null}
           {conversion ? (<div className="space-y-3">
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
                 <div className="font-black text-slate-900">
@@ -1554,8 +1554,8 @@ function AccountActionDialog({ conversion, onChange, onClose, onSubmit, roleTemp
         </fieldset></DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={submitting}>{accountText("取消", locale)}</Button>
-          <Button onClick={onSubmit} disabled={!canSubmit || submitting}>
-            {submitting ? <Loader2 className="size-4 animate-spin"/> : <BadgeCheck className="size-4"/>}{accountText("保存", locale)}</Button>
+          <AdminActionButton pending={submitting} onClick={onSubmit} disabled={!canSubmit || submitting}>
+            {!(submitting) && (<BadgeCheck className="size-4"/>)}{accountText("保存", locale)}</AdminActionButton>
         </DialogFooter>
       </DialogContent>
     </Dialog>);
@@ -1586,7 +1586,7 @@ function CustomerAccountActionDialog({ action, onChange, onClose, onSubmit, subm
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
         <DialogBody><fieldset disabled={submitting} className="contents">
-          {error ? <p role="alert" className="mb-3 text-sm text-red-700">{error}</p> : null}
+          {error ? <AdminNotice tone="error" message={error} className="mb-3" /> : null}
           {action ? (<div className="space-y-3">
               <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
                 <div className="font-black text-slate-900">
@@ -1649,8 +1649,8 @@ function CustomerAccountActionDialog({ action, onChange, onClose, onSubmit, subm
         </fieldset></DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} disabled={submitting}>{accountText("取消", locale)}</Button>
-          <Button onClick={onSubmit} disabled={!canSubmit || submitting}>
-            {submitting ? <Loader2 className="size-4 animate-spin"/> : <BadgeCheck className="size-4"/>}{accountText("保存", locale)}</Button>
+          <AdminActionButton pending={submitting} onClick={onSubmit} disabled={!canSubmit || submitting}>
+            {!(submitting) && (<BadgeCheck className="size-4"/>)}{accountText("保存", locale)}</AdminActionButton>
         </DialogFooter>
       </DialogContent>
     </Dialog>);
@@ -1681,7 +1681,7 @@ function AccountProfileEditorDialog({ editor, onAddressChange, onBillingSameAsSh
           <DialogDescription>{accountText("这些资料用于账号、订单、发票和配送；邮箱来自登录账号，不能在这里修改。", locale)}</DialogDescription>
         </DialogHeader>
         <DialogBody><fieldset disabled={submitting} className="contents">
-          {error ? <p role="alert" className="mb-3 text-sm text-red-700">{error}</p> : null}
+          {error ? <AdminNotice tone="error" message={error} className="mb-3" /> : null}
           {editor ? (<form id="admin-profile-editor-form" className="space-y-3" onSubmit={(event) => {
                 event.preventDefault();
                 onSubmit();
@@ -1717,8 +1717,8 @@ function AccountProfileEditorDialog({ editor, onAddressChange, onBillingSameAsSh
         </fieldset></DialogBody>
         <DialogFooter>
           <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>{accountText("取消", locale)}</Button>
-          <Button type="submit" form="admin-profile-editor-form" disabled={!canSubmit || submitting}>
-            {submitting ? <Loader2 className="size-4 animate-spin"/> : <BadgeCheck className="size-4"/>}{accountText("保存资料", locale)}</Button>
+          <AdminActionButton pending={submitting} type="submit" form="admin-profile-editor-form" disabled={!canSubmit || submitting}>
+            {!(submitting) && (<BadgeCheck className="size-4"/>)}{accountText("保存资料", locale)}</AdminActionButton>
         </DialogFooter>
       </DialogContent>
     </Dialog>);
@@ -2089,23 +2089,7 @@ function CustomerPromoBadge({ compact = false, customer, }: {
     return (<Badge className={cn("h-5 shrink-0 border-emerald-200 bg-emerald-50 px-1.5 text-[10px] font-black text-emerald-700", compact && "max-w-[92px] truncate")} variant="outline">{accountText("活动至", locale)}{formatDate(expiresAt)}
     </Badge>);
 }
-function NoticeBanner({ notice, onDismiss, }: {
-    notice: Notice;
-    onDismiss: () => void;
-}) {
-    const isSuccess = notice.tone === "success";
-    return (<div className={cn("flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold", isSuccess
-            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-            : notice.tone === "warning"
-                ? "border-amber-200 bg-amber-50 text-amber-800"
-                : "border-red-200 bg-red-50 text-red-800")}>
-      {isSuccess ? <BadgeCheck className="size-4"/> : <AlertTriangle className="size-4"/>}
-      <span className="min-w-0 flex-1 break-words">{notice.message}</span>
-      <Button variant="ghost" size="xs" className="text-current" onClick={onDismiss}>
-        OK
-      </Button>
-    </div>);
-}
+function NoticeBanner({ notice, onDismiss }: { notice: Notice; onDismiss: () => void }) { return <AdminNotice tone={notice.tone} message={notice.message} onDismiss={onDismiss} dismissLabel="OK" />; }
 function AccountListSkeleton() {
     const { locale } = useI18n();
     return (<div className="space-y-2">
@@ -2120,13 +2104,7 @@ function AccountListSkeleton() {
         </div>))}
     </div>);
 }
-function EmptyText({ text }: {
-    text: string;
-}) {
-    return (<div className="rounded-md border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500">
-      {text}
-    </div>);
-}
+function EmptyText({ text }: { text: string }) { return <AdminEmptyState title={text} className="py-4" />; }
 function LoadingText({ text }: {
     text: string;
 }) {

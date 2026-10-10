@@ -36,7 +36,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { cn } from "@/lib/utils";
-import { AdminBusyRegion, AdminSkeletonRows } from "./admin-feedback";
+import { AdminBusyRegion, AdminSkeletonRows, AdminNotice, AdminActionButton } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
 
 type SupportStatus = "all" | "open" | "resolved" | "archived";
@@ -109,7 +109,7 @@ type EmployeeOption = {
 
 type Notice = {
   message: string;
-  tone: "success" | "warning" | "error";
+  tone: "info" | "success" | "warning" | "error";
 };
 
 type MobileInboxMode = "all" | "mine" | "needsReply" | "unassigned";
@@ -357,7 +357,7 @@ export function AdminSupportPanel({
     }
   }, [copy.unavailable, effectiveScope, status, page, search, isDesktopLayout, mobileInboxMode, locale]);
 
-  const refreshDetail = React.useCallback(async (conversationId: string, signal?: AbortSignal) => {
+  const refreshDetail = React.useCallback(async (conversationId: string, signal?: AbortSignal, savedNotice?: Notice) => {
     if (!conversationId) {
       setDetail(null);
       return;
@@ -385,7 +385,7 @@ export function AdminSupportPanel({
       setAssignee(nextDetail.conversation.assignedTo ?? unassignedValue);
     } catch (error) {
       if (!signal?.aborted && revision === detailRevision.current) {
-        setNotice({ message: error instanceof Error ? error.message : copy.unavailable, tone: "error" });
+        setNotice(savedNotice ?? { message: error instanceof Error ? error.message : copy.unavailable, tone: "error" });
         setDetail(null);
       }
     } finally {
@@ -552,7 +552,7 @@ export function AdminSupportPanel({
       if (selectedIdRef.current === conversationId) {
         setDetail(nextDetail);
         if (nextDetail) setAssignee(nextDetail.conversation.assignedTo ?? unassignedValue);
-        setNotice({ message: nextDetail && !payload?.meta?.readError ? copy.actions.refresh : locale.startsWith("zh") ? "操作已保存，详情重读失败。请刷新核对，不要重复执行动作。" : "Operazione salvata, rilettura non riuscita. Aggiorna senza ripetere l’azione.", tone: "success" });
+        setNotice({ message: nextDetail && !payload?.meta?.readError ? copy.actions.refresh : locale.startsWith("zh") ? "操作已保存，详情重读失败。请刷新核对，不要重复执行动作。" : "Operazione salvata, rilettura non riuscita. Aggiorna senza ripetere l’azione.", tone: nextDetail && !payload?.meta?.readError ? "success" : "warning" });
       }
       void refreshList();
       void refreshInbox();
@@ -603,8 +603,9 @@ export function AdminSupportPanel({
       delete replyAttempts.current[conversationId];
       void refreshList(); void refreshInbox();
       if (!nextDetail || payload?.meta?.followupError) {
-        setNotice({ tone: "success", message: locale.startsWith("zh") ? "消息已发送；后续状态或详情更新失败，请重读会话。不要再次发送同一内容。" : "Messaggio inviato; aggiornamento stato o dettaglio non riuscito. Rileggi la conversazione senza inviare di nuovo." });
-        void refreshDetail(conversationId);
+        const savedNotice: Notice = { tone: "warning", message: locale.startsWith("zh") ? "消息已发送；后续状态或详情更新失败，请重读会话。不要再次发送同一内容。" : "Messaggio inviato; aggiornamento stato o dettaglio non riuscito. Rileggi la conversazione senza inviare di nuovo." };
+        setNotice(savedNotice);
+        void refreshDetail(conversationId, undefined, savedNotice);
       }
     } catch (error) {
       setNotice({
@@ -715,18 +716,7 @@ export function AdminSupportPanel({
       </div>
 
       {notice ? (
-        <div
-          className={cn(
-            "rounded-lg border px-3 py-2 text-sm font-semibold",
-            notice.tone === "error"
-              ? "border-red-200 bg-red-50 text-red-700"
-              : notice.tone === "warning"
-                ? "border-amber-200 bg-amber-50 text-amber-800"
-                : "border-emerald-200 bg-emerald-50 text-emerald-700"
-          )}
-        >
-          {notice.message}
-        </div>
+        <AdminNotice tone={notice.tone} message={notice.message} />
       ) : null}
 
       <div className="grid min-w-0 gap-2 lg:min-h-[640px] lg:grid-cols-[360px_minmax(0,1fr)] lg:gap-3">
@@ -957,7 +947,7 @@ export function AdminSupportPanel({
                   <span className="text-xs font-semibold text-slate-400">
                     {reply.trim().length}/2000
                   </span>
-                  <Button
+                  <AdminActionButton pending={pendingAction === "reply"}
                     type="submit"
                     className="h-8 px-3 text-xs sm:h-9 sm:text-sm"
                     disabled={
@@ -966,13 +956,11 @@ export function AdminSupportPanel({
                       reply.trim().length === 0
                     }
                   >
-                    {pendingAction === "reply" ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
+                    {!(pendingAction === "reply") && ((
                       <Send className="size-4" />
-                    )}
+                    ))}
                     {copy.actions.reply}
-                  </Button>
+                  </AdminActionButton>
                 </div>
               </form>
             </>
@@ -1284,18 +1272,16 @@ function MobileSupportDetail({
             <span className="text-xs font-semibold text-slate-400">
               {reply.trim().length}/2000
             </span>
-            <Button
+            <AdminActionButton pending={pendingAction === "reply"}
               type="submit"
               className="h-8 px-3 text-xs"
               disabled={!canReply || pendingAction !== null || reply.trim().length === 0}
             >
-              {pendingAction === "reply" ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
+              {!(pendingAction === "reply") && ((
                 <Send className="size-4" />
-              )}
+              ))}
               {copy.actions.reply}
-            </Button>
+            </AdminActionButton>
           </div>
         </form>
       ) : null}

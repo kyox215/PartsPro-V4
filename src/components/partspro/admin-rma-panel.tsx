@@ -6,8 +6,8 @@ import { usePersistentAdminValue } from "./admin-workspace-state";
 import Image from "next/image";
 import {
   CheckCircle2,
-  ChevronRight,
   Clock3,
+  ChevronRight,
   ExternalLink,
   FileImage,
   Loader2,
@@ -48,7 +48,7 @@ import type {
   RmaWorkflowRecommendation,
 } from "@/lib/partspro-rma-workflow-rules";
 import { cn } from "@/lib/utils";
-import { AdminBusyRegion, AdminSkeletonRows } from "./admin-feedback";
+import { AdminBusyRegion, AdminSkeletonRows, AdminNotice, AdminEmptyState, AdminActionButton } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
 
 type QueueTab = RmaWorkflowQueue;
@@ -112,7 +112,7 @@ type AdminRmaActionResponse = {
 
 type Notice = {
   message: string;
-  tone: "success" | "error";
+  tone: "info" | "success" | "warning" | "error";
 };
 
 type ActionFields = {
@@ -667,6 +667,8 @@ export function AdminRmaPanel() {
         setNotice({ message: action === "prepare_wallet_refund"
           ? (isZh ? "原单金额已核验，处理方式已改为钱包退款。请填写金额创建申请，再批准入账。" : "Importo originale verificato. Crea la richiesta con l'importo, poi approva l'accredito.")
           : copy.actionDone, tone: "success" });
+      } else {
+        setNotice({ tone: "warning", message: `${copy.actionDone} ${isZh ? "详情重读失败，请刷新核对，不要重复执行。" : "Rilettura non riuscita: aggiorna senza ripetere l’operazione."}` });
       }
     } catch (error) {
       setNotice({
@@ -693,7 +695,7 @@ export function AdminRmaPanel() {
       if (!response.ok || !payload?.data) throw new Error(readApiMessage(payload) ?? copy.updated);
       const refreshed = await refresh();
       const detailLoaded = await loadDetail(request.id);
-      setNotice({ tone: "success", message: (isZh
+      setNotice({ tone: refreshed && detailLoaded ? "success" : "warning", message: (isZh
         ? `${formatMoney(payload.data.amount, "EUR")} 已入客户钱包。`
         : `${formatMoney(payload.data.amount, "EUR")} accreditati al portafoglio cliente.`)
         + (refreshed && detailLoaded ? "" : isZh ? " 状态刷新失败，请重新刷新。" : " Aggiornamento stato non riuscito: aggiorna la pagina.") });
@@ -738,18 +740,7 @@ export function AdminRmaPanel() {
         </div>
 
         {notice ? (
-          <div
-            className={cn(
-              "rounded-lg border p-3 text-sm font-semibold",
-              notice.tone === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                : "border-red-200 bg-red-50 text-red-700"
-            )}
-            role={notice.tone === "error" ? "alert" : "status"}
-            aria-live="polite"
-          >
-            {notice.message}
-          </div>
+          <AdminNotice tone={notice.tone} message={notice.message} />
         ) : null}
 
         <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
@@ -859,9 +850,7 @@ export function AdminRmaPanel() {
 
           <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
             {!selectedRequest ? (
-              <div className="grid min-h-[96px] xl:min-h-[420px] place-items-center rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500">
-                {copy.emptyDetail}
-              </div>
+              <AdminEmptyState title={copy.emptyDetail} className="xl:min-h-[420px]" />
             ) : (
               <div className="min-w-0 space-y-4">
                 <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 lg:flex-row lg:items-start lg:justify-between">
@@ -981,7 +970,7 @@ export function AdminRmaPanel() {
                         <p id="rma-direct-receipt-hint" className="mt-1 text-sm leading-relaxed text-slate-600">
                           {copy.directReceiptDescription}
                         </p>
-                        <Button
+                        <AdminActionButton pending={pendingAction === "mark_received"}
                           type="button"
                           variant="outline"
                           className="mt-3 h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto"
@@ -991,9 +980,9 @@ export function AdminRmaPanel() {
                           disabled={Boolean(pendingAction) || isDetailLoading}
                           onClick={() => triggerAction("mark_received")}
                         >
-                          <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />
+                          {pendingAction !== "mark_received" && <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />}
                           {copy.action.markReceivedFallback}
-                        </Button>
+                        </AdminActionButton>
                       </div>
                     ) : null}
                   </WorkflowNotice>
@@ -1153,15 +1142,15 @@ export function AdminRmaPanel() {
           ) : null}
           <DialogFooter>
             <Button type="button" variant="outline" disabled={Boolean(pendingAction)} onClick={() => setActionDialog(null)}>{copy.cancel}</Button>
-            <Button
+            <AdminActionButton pending={Boolean(pendingAction)}
               type="button"
               className="h-auto min-h-11 whitespace-normal py-2"
               disabled={!canConfirmDirectReceipt(selectedRequest, directReceiptRequest) || isDetailLoading || Boolean(pendingAction)}
               onClick={confirmDirectReceipt}
             >
-              {pendingAction === "mark_received" ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : <CheckCircle2 className="size-4" aria-hidden="true" />}
+              {!(Boolean(pendingAction)) && (<CheckCircle2 className="size-4" aria-hidden="true" />)}
               {copy.confirmReceived}
-            </Button>
+            </AdminActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1174,7 +1163,7 @@ export function AdminRmaPanel() {
           <Label htmlFor="rma-return-instructions">{isZh ? "客户退回指引" : "Istruzioni per il reso"}</Label>
           <Textarea id="rma-return-instructions" value={actionReason} onChange={(event) => setActionReason(event.target.value)} />
           <DialogFooter><Button variant="outline" onClick={() => setActionDialog(null)}>{copy.cancel}</Button>
-            <Button disabled={actionReason.trim().length < 20 || Boolean(pendingAction)} onClick={() => void runAction("approve", { customerVisibleNote: actionReason.trim() })}>{copy.action.approve}</Button>
+            <AdminActionButton pending={Boolean(pendingAction)} disabled={actionReason.trim().length < 20 || Boolean(pendingAction)} onClick={() => void runAction("approve", { customerVisibleNote: actionReason.trim() })}>{copy.action.approve}</AdminActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1197,15 +1186,15 @@ export function AdminRmaPanel() {
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setActionDialog(null)}>{copy.cancel}</Button>
-            <Button
+            <AdminActionButton pending={Boolean(pendingAction)}
               type="button"
               variant="destructive"
               disabled={!rejectReason.trim() || Boolean(pendingAction)}
               onClick={() => void runAction("reject", { customerVisibleNote: rejectReason.trim(), reason: rejectReason.trim() })}
             >
-              {pendingAction === "reject" ? <Loader2 className="size-4 animate-spin" /> : <XCircle className="size-4" />}
+              {!(Boolean(pendingAction)) && (<XCircle className="size-4" />)}
               {copy.action.reject}
-            </Button>
+            </AdminActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1236,14 +1225,14 @@ export function AdminRmaPanel() {
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setActionDialog(null)}>{copy.cancel}</Button>
-            <Button
+            <AdminActionButton pending={Boolean(pendingAction)}
               type="button"
               disabled={Boolean(pendingAction)}
               onClick={() => void runAction("record_qc", { qcStatus, qcNote: qcNote.trim() || undefined })}
             >
-              {pendingAction === "record_qc" ? <Loader2 className="size-4 animate-spin" /> : <CheckCircle2 className="size-4" />}
+              {!(Boolean(pendingAction)) && (<CheckCircle2 className="size-4" />)}
               {copy.action.recordQc}
-            </Button>
+            </AdminActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1301,7 +1290,7 @@ export function AdminRmaPanel() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setActionDialog(null)}>{isZh ? "取消" : "Annulla"}</Button>
-            <Button disabled={Boolean(pendingAction) || actionReason.trim().length < 8 ||
+            <AdminActionButton pending={Boolean(pendingAction)} disabled={Boolean(pendingAction) || actionReason.trim().length < 8 ||
               (actionDialog === "split_request" && (!Number.isInteger(Number(actionQuantity)) || Number(actionQuantity) < 1 || Number(actionQuantity) >= fullQuantity)) ||
               (["resolve_negotiation", "cancel_unreceived"].includes(actionDialog ?? "") && customerConfirmation.trim().length < 8) ||
               (actionDialog === "return_to_customer" && (!returnTracking.trim() || !returnCarrier.trim() || !location.trim())) ||
@@ -1313,7 +1302,7 @@ export function AdminRmaPanel() {
                 ...(actionDialog === "cancel_unreceived" ? { customerConfirmation: customerConfirmation.trim() } : {}),
                 ...(actionDialog === "return_to_customer" ? { carrier: returnCarrier.trim(), trackingNumber: returnTracking.trim(), location: location.trim() } : {}),
                 ...(actionDialog === "bind_replacement_order" ? { replacementOrderNumber: replacementOrderNumber.trim() } : {}),
-              })}>{isZh ? "确认记录" : "Conferma"}</Button>
+              })}>{isZh ? "确认记录" : "Conferma"}</AdminActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1355,14 +1344,14 @@ export function AdminRmaPanel() {
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setActionDialog(null)}>{copy.cancel}</Button>
-            <Button
+            <AdminActionButton pending={Boolean(pendingAction)}
               type="button"
               disabled={!refundPreview?.available || !validRefundAmount(refundAmount, refundPreview?.maxRefundAmount) || Boolean(pendingAction)}
               onClick={() => void runAction("request_wallet_refund", { refundAmount: Number(refundAmount) })}
             >
-              {pendingAction === "request_wallet_refund" ? <Loader2 className="size-4 animate-spin" /> : null}
+
               {copy.action.requestRefund}
-            </Button>
+            </AdminActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1392,14 +1381,14 @@ export function AdminRmaPanel() {
           )}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setActionDialog(null)}>{copy.cancel}</Button>
-            <Button
+            <AdminActionButton pending={Boolean(pendingAction)}
               type="button"
               disabled={!replacementId || replacementCandidates.length === 0 || Boolean(pendingAction)}
               onClick={() => void runAction("mark_replacement_sent", { replacementOrderId: replacementId })}
             >
-              {pendingAction === "mark_replacement_sent" ? <Loader2 className="size-4 animate-spin" /> : null}
+
               {copy.action.replacementSent}
-            </Button>
+            </AdminActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1552,29 +1541,11 @@ function canConfirmDirectReceipt(request: AdminRmaDto | null, confirmation: Dire
 }
 
 function WorkflowNotice({ notice, children }: { notice: WorkflowNoticeState; children?: React.ReactNode }) {
-  const Icon = notice.tone === "waiting" ? Clock3 : notice.tone === "complete" ? CheckCircle2 : ShieldAlert;
   return (
-    <div
-      className={cn(
-        "min-w-0 rounded-xl border p-4",
-        notice.tone === "waiting"
-          ? "border-sky-200 bg-sky-50 text-sky-900"
-          : notice.tone === "complete"
-            ? "border-emerald-200 bg-emerald-50 text-emerald-900"
-            : "border-amber-200 bg-amber-50 text-amber-900"
-      )}
-      role={notice.tone === "blocked" ? "alert" : "status"}
-      aria-live="polite"
-    >
-      <div className="flex items-start gap-3">
-        <Icon className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
-        <div className="min-w-0 flex-1 break-words">
-          <h4 className="text-sm font-black">{notice.title}</h4>
-          <p className="mt-1 text-sm leading-relaxed">{notice.message}</p>
-          {children}
-        </div>
-      </div>
-    </div>
+    <AdminNotice tone={notice.tone === "waiting" ? "info" : notice.tone === "complete" ? "success" : "warning"} icon={notice.tone === "waiting" ? Clock3 : notice.tone === "complete" ? CheckCircle2 : ShieldAlert} role={notice.tone === "blocked" ? "alert" : "status"} title={notice.title}>
+      <p>{notice.message}</p>
+      {children}
+    </AdminNotice>
   );
 }
 
@@ -1751,9 +1722,9 @@ function ActionButton({
   pending: boolean;
 }) {
   return (
-    <Button type="button" variant="outline" size="sm" className="bg-white" data-rma-action={action} disabled={disabled} onClick={onClick}>
-      {pending ? <Loader2 className="size-3.5 animate-spin" /> : null}
+    <AdminActionButton pending={pending} type="button" variant="outline" size="sm" className="bg-white" data-rma-action={action} disabled={disabled} onClick={onClick}>
+
       {label}
-    </Button>
+    </AdminActionButton>
   );
 }

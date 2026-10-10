@@ -47,7 +47,7 @@ import {
 import { formatEuro, type StockStatus } from "@/lib/partspro-data";
 import { buildOverviewModel, type OverviewModel } from "@/lib/partspro-overview-model";
 import { cn } from "@/lib/utils";
-import { AdminBusyRegion } from "./admin-feedback";
+import { AdminBusyRegion, AdminNotice } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
 
 type AdminOverviewPanelValue =
@@ -205,13 +205,11 @@ export function AdminOverviewDashboard({
       />
 
       <p className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">{locale.startsWith("zh") ? "指标来自当前权限可读取的完整清单（每类最多5万条）；读取中清单变化会报告失败，避免显示不完整总数。30秒内复用汇总。趋势期间由下拉选择，旁边小计固定为最近7日。" : "Metriche dall’elenco completo accessibile (fino a 50.000 righe per dominio). Un elenco variato o incompleto genera un errore. Riepilogo riutilizzato per 30 secondi. Il grafico segue il periodo selezionato; i piccoli totali restano a 7 giorni."}</p>
-      {snapshot.error ? (
-        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-900">
-          {copy.partialData}: {snapshot.error}
-        </div>
+      {snapshot.error && snapshot.model ? (
+        <AdminNotice tone={snapshot.model ? "warning" : "error"} title={copy.partialData} message={snapshot.error} />
       ) : null}
 
-      {snapshot.error && !snapshot.model ? <p role="alert" className="rounded border bg-white p-4">{locale.startsWith("zh") ? "完整数据不可用，请刷新后核对。" : "Riepilogo completo non disponibile: aggiorna e verifica."}</p> : (snapshot.isLoading && !snapshot.syncedAt) || snapshot.modelRange !== salesRange ? (
+      {snapshot.error && !snapshot.model ? <AdminNotice tone="error" title={locale.startsWith("zh") ? "完整数据不可用，请刷新后核对。" : "Riepilogo completo non disponibile: aggiorna e verifica."} message={snapshot.error} /> : (snapshot.isLoading && !snapshot.syncedAt) || snapshot.modelRange !== salesRange ? (
         <OverviewDashboardSkeleton />
       ) : (
         <AdminBusyRegion
