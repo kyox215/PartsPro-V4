@@ -1,6 +1,6 @@
 # P1-2026-10-10-admin-products-ux
 
-状态：in_progress。Task ID：TASK-20261010-PRODUCTS-UX。风险：R2；自治：L3，推送部署已由用户明确授权。
+状态：released。Task ID：TASK-20261010-PRODUCTS-UX。风险：R2；自治：L3，推送部署已由用户明确授权。
 
 老板目标：检查后台商品管理设计、操作逻辑和页面 UI，提供详细优化建议并执行，完成后推送部署。
 
@@ -13,3 +13,6 @@
 批准与边界：本次无 migration，不需要 db push。目录完整候选、图片并发、跨请求库存幂等单独保留，不能借发布执行生产 DB 写入。禁止覆盖主目录用户改动、自动重放库存、无断言宣称真实写入验收。回滚至 `dpl_FZHgXPWj6fLzuHNw23yDHxQGcgJb`，不需要数据补偿。
 
 验证命令：`git diff --check`；`npm run lint`；`npm run build`；`node --test tests/admin-bulk-hide-contract.test.mjs tests/storefront-i18n-contract.test.mjs tests/checkout-state-contract.test.mjs tests/partspro-product-import-core.test.mjs`。浏览器证据保存于 `outputs/admin-products/2026-10-10/`，生产写入不在本次 smoke 范围。
+
+
+发布结果：源码e35da93，生产dpl_3uXTPRgAjbBTxxhMJoufPhsTdwDm。362源码hash、7候选/7生产HTTP smoke与独立promote GO已核对；生产staff手机主要只读操作和桌面布局/编辑打开已核对。桌面未保存退出的生产复查被浏览器自动化超时中断，临时输入清理等待用户；本地该行为四视口通过。数据库层目录/并发/幂等不属于本次已发布范围。详细证据见 outputs/admin-products/2026-10-10。

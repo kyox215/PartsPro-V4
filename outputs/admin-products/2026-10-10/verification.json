@@ -1,5 +1,5 @@
 {
-  "status": "local_verified_not_deployed",
+  "status": "released",
   "baselineSource": "763c01b0f9fcc6396ced01f16a24dadd025f68a0",
   "baselineHead": "456567c5b8deb9bf29891dcab902e7358cf240c9",
   "vercelProject": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
@@ -27,5 +27,16 @@
     "Physical mobile keyboard not tested",
     "Full catalog metadata migration remains unapplied",
     "Cross-admin edits and stock request idempotency require DB work"
-  ]
+  ],
+  "sourceCommit": "e35da93d3899c126fa611794d70a0fb8bbb3fb47",
+  "deployment": "dpl_3uXTPRgAjbBTxxhMJoufPhsTdwDm",
+  "domains": [
+    "partspro.app",
+    "www.partspro.app"
+  ],
+  "sourceFilesVerified": 362,
+  "candidateHttpChecks": 7,
+  "productionHttpChecks": 7,
+  "independentReleaseReview": "GO",
+  "productionBrowser": "Mobile list/select/search/editor cancellation verified; desktop layout/open verified; unsaved exit test interrupted by browser connection timeout"
 }

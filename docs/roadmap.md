@@ -130,3 +130,5 @@ Last reviewed: 2026-09-28
 - “百货系列”显示为“电子产品 · 高端产品”，真实业务值不变；型号/供应商按API契约允许可选，旧分类保留。
 - 详细建议：`docs/audits/2026-10-10-admin-products-ux.md`；本次无migration，也未引入完整目录候选schema。图片并发、跨请求库存幂等和目录完整管理仍单列。
 - 本地lint/build与32相关行为/合同测试PASS；1440/360/390/768中意交互PASS；创建权限图片重试create=1/PATCH=0/image=2。证据 `outputs/admin-products/2026-10-10/`。待精确提交推送、候选部署、独立GO和生产域名smoke。
+
+- 发布完成：源码 `e35da93`；正式部署 `dpl_3uXTPRgAjbBTxxhMJoufPhsTdwDm`，两正式域名均已核对。362上传源码hash与7候选/7生产GET检查PASS，独立发布GO。线上staff手机选择/确认取消/搜索/编辑取消和桌面布局通过；桌面未保存退出测试因浏览器自动化超时中断，不计生产PASS，临时输入待用户关闭。此次没有真实商品/库存/图片写入；完整目录metadata migration仍未应用。

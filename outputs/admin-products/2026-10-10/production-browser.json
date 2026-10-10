@@ -1,0 +1,27 @@
+{
+  "environment": "Existing authenticated staff Chrome session; production domain",
+  "productionWrites": false,
+  "mobile": {
+    "width": 360,
+    "overflow": false,
+    "visibleProductCheckboxes": 21,
+    "pageCount": "251 instead of prior invalid 899",
+    "allPageSelection": 20,
+    "hideConfirmationOpenedAndCancelled": true,
+    "searchClearsSelection": true,
+    "productEditorOpenedAndCancelled": true,
+    "seriesLabel": "电子产品 · 高端产品",
+    "editorWidth": 360
+  },
+  "desktop": {
+    "width": 1440,
+    "overflow": false,
+    "editorOpened": true,
+    "unsavedExitVerification": "Browser automation timeout after attempting cancellation of unsaved temporary input; not claimed passed in production"
+  },
+  "pendingCleanup": "User asked to discard temporary name input and close test prompt; viewport restoration pending browser recovery",
+  "limitations": [
+    "No production save/hide/stock/image operations executed",
+    "Physical mobile keyboard not tested"
+  ]
+}
