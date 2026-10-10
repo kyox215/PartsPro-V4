@@ -3,6 +3,8 @@
 import * as React from "react";
 import type { Locale, LocaleScope } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/get-dictionary";
+import { useCatalogDirectory } from "./catalog-directory-provider";
+import { catalogNodeLabel } from "@/lib/partspro-catalog-directory";
 import { translate } from "@/i18n/translate";
 
 type I18nContextValue = {
@@ -27,14 +29,16 @@ export function I18nProvider({
   dictionary,
   children,
 }: I18nProviderProps) {
+  const directory = useCatalogDirectory();
+  const labels = React.useMemo(() => new Map(directory.nodes.map((node) => [`catalog.label.${node.kind}.${node.value.toLowerCase()}`, catalogNodeLabel(node, locale)])), [directory.nodes, locale]);
   const value = React.useMemo<I18nContextValue>(
     () => ({
       locale,
       scope,
       dictionary,
-      t: (key, params) => translate(dictionary, key, params),
+      t: (key, params) => labels.get(key.toLowerCase()) ?? translate(dictionary, key, params),
     }),
-    [dictionary, locale, scope]
+    [dictionary, labels, locale, scope]
   );
 
   return (

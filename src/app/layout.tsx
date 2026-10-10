@@ -1,3 +1,4 @@
+import { CatalogDirectoryProvider } from "@/components/partspro/catalog-directory-provider";
 import type { Metadata, Viewport } from "next";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { CartSyncBridge } from "@/components/partspro/cart-sync-bridge";
@@ -70,11 +71,11 @@ export default async function RootLayout({
   return (
     <html lang={locale} className="h-full antialiased">
       <body className="min-h-full flex flex-col">
-        <I18nProvider locale={locale} scope={scope} dictionary={dictionary}>
+        <CatalogDirectoryProvider><I18nProvider locale={locale} scope={scope} dictionary={dictionary}>
           <CartSyncBridge />
           <SupportWidget />
           <TooltipProvider delayDuration={120}>{children}</TooltipProvider>
-        </I18nProvider>
+        </I18nProvider></CatalogDirectoryProvider>
       </body>
     </html>
   );

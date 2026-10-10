@@ -28,6 +28,7 @@ const optionalBooleanFlagSchema = z
 export const productQuerySchema = z
   .object({
     activeRestockOnly: optionalBooleanFlagSchema,
+    department: catalogDepartmentSchema.optional(),
     brand: z.string().trim().min(1).max(80).optional(),
     batchCode: z.string().trim().min(1).max(80).optional(),
     category: z.string().trim().min(1).max(80).optional(),
@@ -80,6 +81,7 @@ export const productWriteSchema = z
 
 export const productPatchSchema = z
   .object({
+    expectedUpdatedAt: z.string().datetime({ offset: true }),
     name: z.string().trim().min(2).max(180).optional(),
     category: z.string().trim().min(2).max(80).optional(),
     catalogDepartment: catalogDepartmentSchema.optional(),

@@ -1,0 +1,71 @@
+{
+  "environment": "PartsPro-V4 production after controlled migration",
+  "projectRef": "yiuxrjqexlfjtxxrkqvi",
+  "migration": "20261010081040_catalog_directory_management.sql",
+  "migrationSha256": "df2ce617b94f05480cd85a4b4b3bc7a28f03fd34caba9659d977fae17d283ec1",
+  "before": {
+    "products": "17976",
+    "stock_sum": "2399",
+    "product_state_hash": "fde0ecef48b428d72482b68a053afaf0"
+  },
+  "after": {
+    "counts": {
+      "brand": 13,
+      "category": 14,
+      "department": 4
+    },
+    "revision": "2",
+    "triggers": [
+      "catalog_product_revision",
+      "validate_product_directory"
+    ],
+    "publicNodes": 29,
+    "privateTables": [
+      {
+        "rls": true,
+        "name": "catalog_directory_nodes",
+        "anonRead": false,
+        "authenticatedRead": false
+      },
+      {
+        "rls": true,
+        "name": "catalog_product_creations",
+        "anonRead": false,
+        "authenticatedRead": false
+      },
+      {
+        "rls": true,
+        "name": "catalog_revision",
+        "anonRead": false,
+        "authenticatedRead": false
+      },
+      {
+        "rls": true,
+        "name": "catalog_revision_events",
+        "anonRead": false,
+        "authenticatedRead": false
+      }
+    ],
+    "functionHashes": {
+      "private.bump_catalog_revision": "c71381ef281b5f8b402e8aee12f23bd8",
+      "public.admin_catalog_directory": "1c24242ea68b6b970432ce47c97203de",
+      "public.admin_save_catalog_node": "630b3fa6b504fcb3c3377afc2e143601",
+      "public.catalog_directory_public": "85f550f086a75970ca1a77469e1b5d2a",
+      "public.catalog_directory_revision": "e34aa1dca98208338d13186a9daa8b93",
+      "private.validate_product_directory": "6ce42527ec4838ab0cbb8ecadf46cd01",
+      "public.admin_list_products_catalog": "4127842110defc0f0eb0b9f9429b04be",
+      "public.admin_move_catalog_products": "a0ade6c375a07675d008754ecf241fe0",
+      "public.admin_update_product_versioned": "abda40a4beebbf338e3fd3091bf54a0f",
+      "public.admin_create_product_draft_once": "ecf158834c7079f6f9defd6bb68b73e6",
+      "private.compact_catalog_revision_events": "1fdf32537dc68644fbb0e8e73b757844",
+      "private.partspro_products_catalog_department_default": "ac65eeeb4b03a4f01a78ac50f88d1076"
+    },
+    "productSnapshot": {
+      "products": "17976",
+      "stockSum": "2399",
+      "stateHash": "fde0ecef48b428d72482b68a053afaf0"
+    },
+    "migrationApplied": true
+  },
+  "productStateUnchanged": true
+}

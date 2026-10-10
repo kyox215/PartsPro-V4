@@ -72,7 +72,7 @@ export function HomeProductShelf({ kind, products, cartAccess, priceGateReason, 
           <QuoteExpiryRefresh products={products} />
           {kind === "remax" && products.length > 0 ? (
             <ProductShelf
-              actionHref="/catalogo?department=general_merchandise&brand=REMAX"
+              actionHref="/catalogo?brand=REMAX"
               actionLabel={tx(t, "storefront.home.common.viewAll", "Vedi tutto")}
               emptyKey="storefront.home.remax.empty"
               emptyFallback="I preordini REMAX saranno disponibili a breve."

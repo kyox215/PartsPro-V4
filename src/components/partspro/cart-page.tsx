@@ -483,10 +483,11 @@ function CartPageContent({
     const refresh = () => { if (document.visibilityState === "visible") setCatalogRetryToken((value) => value + 1); };
     window.addEventListener("focus", refresh);
     window.addEventListener("partspro-pricing-invalidated", refresh);
+    window.addEventListener("partspro:catalog-refreshed", refresh);
     document.addEventListener("visibilitychange", refresh);
     const expiries = catalogProducts.map((p) => Date.parse(p.priceValidUntil ?? "")).filter((time) => Number.isFinite(time) && time > Date.now());
     const timer = expiries.length ? window.setTimeout(refresh, Math.min(2_147_483_647, Math.max(1, Math.min(...expiries) - Date.now() + 50))) : undefined;
-    return () => { window.removeEventListener("focus", refresh); window.removeEventListener("partspro-pricing-invalidated", refresh); document.removeEventListener("visibilitychange", refresh); if (timer !== undefined) window.clearTimeout(timer); };
+    return () => { window.removeEventListener("focus", refresh); window.removeEventListener("partspro-pricing-invalidated", refresh); window.removeEventListener("partspro:catalog-refreshed", refresh); document.removeEventListener("visibilitychange", refresh); if (timer !== undefined) window.clearTimeout(timer); };
   }, [catalogProducts]);
 
   React.useEffect(() => {

@@ -232,7 +232,7 @@ function readProductPayload(payload: unknown) {
 }
 
 function hasWritableProductPatch(payload: Record<string, unknown>) {
-  return Object.keys(payload).some((key) => key !== "reason");
+  return Object.keys(payload).some((key) => key !== "reason" && key !== "expectedUpdatedAt");
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

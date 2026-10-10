@@ -37,7 +37,9 @@ import { cn } from "@/lib/utils";
 import { CatalogBrandTree, type CatalogSelection } from "./catalog-brand-tree";
 import { ProductCard } from "./product-card";
 import { StoreHeader } from "./store-header";
-import { useT } from "./i18n-provider";
+import { useCatalogDirectory } from "./catalog-directory-provider";
+import { catalogNodeLabel } from "@/lib/partspro-catalog-directory";
+import { useI18n, useT } from "./i18n-provider";
 import {
   DelayedPendingIndicator,
   useDelayedVisible,
@@ -172,6 +174,8 @@ function CatalogPageContent({
   showWholesalePrice: boolean;
 }) {
   const t = useT();
+  const directory = useCatalogDirectory();
+  const locale = useI18n().locale;
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [modelSeries, setModelSeries] = useState(initialModelSeries);
@@ -331,6 +335,15 @@ function CatalogPageContent({
   );
 
   useEffect(() => {
+    const refresh = () => {
+      catalogPageCacheRef.current.clear();
+      void loadCatalogSelection(selectedCatalog);
+    };
+    window.addEventListener("partspro:catalog-refreshed", refresh);
+    return () => window.removeEventListener("partspro:catalog-refreshed", refresh);
+  }, [loadCatalogSelection, selectedCatalog]);
+
+  useEffect(() => {
     void recordCatalogActivity(initialActivitySelectionRef.current, initialAccountAccess);
   }, [initialAccountAccess]);
 
@@ -467,6 +480,14 @@ function CatalogPageContent({
               {tx(t, "storefront.catalog.filtering", "Filtro in corso...")}
             </div>
           ) : null}
+          <label className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border bg-white p-3 text-sm">
+            <span>{locale.startsWith("zh") ? "商品分类" : "Categoria"}</span>
+            <select aria-label={locale.startsWith("zh") ? "商品分类" : "Categoria"} className="h-10 w-full min-w-0 rounded border bg-white px-2 sm:w-64" value={selectedCategory ?? ""} onChange={(e) => selectCatalog({ ...selectedCatalog, category: e.target.value || undefined })}>
+              <option value="">{locale.startsWith("zh") ? "全部分类" : "Tutte le categorie"}</option>
+              {directory.nodes.filter((n) => n.kind === "category" && n.active && (!selectedDepartment || (n.countsByDepartment[selectedDepartment] ?? 0) > 0)).map((n) => <option key={n.id} value={n.value}>{catalogNodeLabel(n, locale)}</option>)}
+              {selectedCategory && !directory.nodes.some((n) => n.kind === "category" && n.value === selectedCategory) && <option value={selectedCategory}>{selectedCategory}</option>}
+            </select>
+          </label>
           {products.length > 0 || catalogReplacing ? (
             <div className="space-y-3">
               <div

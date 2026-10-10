@@ -1,0 +1,97 @@
+{
+  "environment": "real React components with simulated admin APIs; not production E2E",
+  "results": [
+    {
+      "width": 1440,
+      "height": 1000,
+      "locale": "zh-CN",
+      "passed": [
+        "directory unsaved tab exit protection",
+        "directory rename/readback",
+        "department move/version payload",
+        "long labels",
+        "no page overflow",
+        "editor viewport",
+        "custom category edit/save/version",
+        "failed save retains input",
+        "directory-prefilled draft"
+      ],
+      "writes": [
+        "node",
+        "move",
+        "rejected-product",
+        "product",
+        "create"
+      ]
+    },
+    {
+      "width": 360,
+      "height": 740,
+      "locale": "zh-CN",
+      "passed": [
+        "directory unsaved tab exit protection",
+        "directory rename/readback",
+        "department move/version payload",
+        "long labels",
+        "no page overflow",
+        "editor viewport",
+        "custom category edit/save/version",
+        "failed save retains input",
+        "directory-prefilled draft"
+      ],
+      "writes": [
+        "node",
+        "move",
+        "rejected-product",
+        "product",
+        "create"
+      ]
+    },
+    {
+      "width": 390,
+      "height": 700,
+      "locale": "it",
+      "passed": [
+        "directory unsaved tab exit protection",
+        "directory rename/readback",
+        "department move/version payload",
+        "long labels",
+        "no page overflow",
+        "editor viewport",
+        "custom category edit/save/version",
+        "failed save retains input",
+        "directory-prefilled draft"
+      ],
+      "writes": [
+        "node",
+        "move",
+        "rejected-product",
+        "product",
+        "create"
+      ]
+    },
+    {
+      "width": 768,
+      "height": 900,
+      "locale": "it",
+      "passed": [
+        "directory unsaved tab exit protection",
+        "directory rename/readback",
+        "department move/version payload",
+        "long labels",
+        "no page overflow",
+        "editor viewport",
+        "custom category edit/save/version",
+        "failed save retains input",
+        "directory-prefilled draft"
+      ],
+      "writes": [
+        "node",
+        "move",
+        "rejected-product",
+        "product",
+        "create"
+      ]
+    }
+  ]
+}

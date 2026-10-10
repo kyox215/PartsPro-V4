@@ -19,6 +19,8 @@ import {
   tx,
   txFormat,
 } from "@/i18n/dictionaries/storefront";
+import { mergeCatalogDirectoryBrands } from "@/lib/partspro-catalog-directory";
+import { useCatalogDirectory, sortedCatalogValues } from "./catalog-directory-provider";
 import { useT } from "./i18n-provider";
 import { RoutePendingIndicator } from "./pending-feedback";
 
@@ -64,6 +66,7 @@ export function CatalogBrandTree({
   variant = "mobile",
 }: CatalogBrandTreeProps) {
   const t = useT();
+  const directory = useCatalogDirectory();
   const desktop = variant === "desktop";
   const selectedBrand = selectedCatalog?.brand;
   const selectedCategory = selectedCatalog?.category;
@@ -83,6 +86,12 @@ export function CatalogBrandTree({
       ),
     [departmentGroups]
   );
+  const orderedGroups = useMemo(() => sortedCatalogValues(directory.nodes, "department", groups.map((g) => g.department)).map((value) => {
+    const group = groups.find((g) => g.department === value)!;
+    const completeBrands = mergeCatalogDirectoryBrands(group.brands, directory.nodes, group.department);
+    const brands = sortedCatalogValues(directory.nodes, "brand", completeBrands.map((b) => b.brand));
+    return { ...group, brands: brands.map((brand) => completeBrands.find((b) => b.brand === brand)!) };
+  }), [directory.nodes, groups]);
   const selectedModelSeriesFromGroups = useMemo(
     () =>
       findSeriesForModel(
@@ -299,7 +308,7 @@ export function CatalogBrandTree({
       )}
 
       <div className={desktop ? "space-y-1.5" : "space-y-1"}>
-        {groups.map((departmentGroup) => {
+        {orderedGroups.map((departmentGroup) => {
           const department = departmentGroup.department;
           const departmentOpen = expandedDepartment === department;
           const departmentWithinSelection = selectedDepartment === department;

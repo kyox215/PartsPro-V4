@@ -1,0 +1,7 @@
+{
+  "environment": "Offline Docker with current production schema, synthetic data only",
+  "uncommittedInvisible": true,
+  "productRowAndRevisionDeadlockAvoided": true,
+  "compactionAllowsConcurrentWrites": true,
+  "compactionTokenPreserved": true
+}

@@ -23,7 +23,8 @@ try {
     await context.route('**/api/**', async route => {
       const request = route.request(), url = new URL(request.url());
       let data = [], meta = { source:'supabase', total:0, returned:0 };
-      if (url.pathname === '/api/admin/products/model-groups') data = [{brand:'REMAX',models:[],series:[]}];
+      if (url.pathname === '/api/catalog-directory' || url.pathname === '/api/admin/catalog-directory') data={nodes:[],revision:'1'};
+      else if (url.pathname === '/api/admin/products/model-groups') data = [{brand:'REMAX',models:[],series:[]}];
       else if (url.pathname === '/api/admin/products' && request.method() === 'GET') {
         if (url.searchParams.get('q') === 'slow') await new Promise(resolve=>setTimeout(resolve,450));
         const offset = Number(url.searchParams.get('offset'));
@@ -37,7 +38,7 @@ try {
         const body = request.postDataJSON(); writes.push({method:'PATCH',body});
         await new Promise(resolve=>setTimeout(resolve,300));
         if (rejectSave) { rejectSave=false; await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:{message:'Synthetic save unavailable'}})}); return; }
-        Object.assign(products[0],body.product); data=products[0];
+        assert.equal(body.product.expectedUpdatedAt,products[0].updatedAt); Object.assign(products[0],body.product); products[0].updatedAt='2026-10-10T11:00:00.123456Z'; data=products[0];
       }
       await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({data,meta})});
     });
@@ -98,7 +99,8 @@ try {
     page.setDefaultTimeout(6000); const counts={create:0,patch:0,image:0}; let created=null;
     await context.route('**/api/**',async route=>{
       const r=route.request(),u=new URL(r.url());let data=[],meta={source:'supabase',total:0,returned:0};
-      if(u.pathname==='/api/admin/products' && r.method()==='GET') {data=created?[created]:[];meta.total=data.length;meta.returned=data.length;}
+      if(u.pathname==='/api/catalog-directory' || u.pathname==='/api/admin/catalog-directory') data={nodes:[],revision:'1'};
+      else if(u.pathname==='/api/admin/products' && r.method()==='GET') {data=created?[created]:[];meta.total=data.length;meta.returned=data.length;}
       else if(u.pathname==='/api/admin/products' && r.method()==='POST') {counts.create++;created={...initial,...r.postDataJSON().product,sku:'NEW-SYNTHETIC',catalogStatus:'draft',storefrontVisible:false};data=created;}
       else if(u.pathname==='/api/admin/products' && r.method()==='PATCH') {counts.patch++;throw new Error('Creation-only image retry must not patch product content');}
       else if(u.pathname.endsWith('/images')) {counts.image++; if(counts.image===1){await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:{message:'Synthetic image error'}})});return;}data=created;}

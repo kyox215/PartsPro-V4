@@ -22,7 +22,8 @@ export function createCachedPublicRead<T>(
     if (result === null) throw new Error(`Public read unavailable: ${tag}`);
     return { data: result, readAt: Date.now() };
   };
-  const cached = unstable_cache(async (projectUrl: string) => {
+  const cached = unstable_cache(async (projectUrl: string, cacheVersion: string) => {
+    if (!cacheVersion) throw new Error("Public cache version required");
     if (projectUrl !== getSupabaseEnv().url) throw new Error("Public cache project mismatch");
     return load();
   }, [tag], { revalidate: seconds, tags: [tag] });
@@ -31,21 +32,23 @@ export function createCachedPublicRead<T>(
   resets.add(() => pending.clear());
   clearPending.set(tag, resets);
 
-  return function readCached(): Promise<T | null> {
+  return function readCached(cacheVersion = "stable"): Promise<T | null> {
     if (!isSupabaseConfigured()) return Promise.resolve(null);
+    if (cacheVersion === "uncached") return load().then((entry) => entry.data).catch(() => null);
     const projectUrl = getSupabaseEnv().url;
-    const inFlight = pending.get(projectUrl);
+    const requestKey = `${projectUrl}:${cacheVersion}`;
+    const inFlight = pending.get(requestKey);
     if (inFlight) return inFlight;
-    const request = cached(projectUrl).then(async (entry) => {
+    const request = cached(projectUrl, cacheVersion).then(async (entry) => {
       // Scheduled banners must not use an expired SWR response. Next refreshes
       // the stable cache key in the background; this request reads fresh data.
       const value = options.requireFresh && Date.now() - entry.readAt >= seconds * 1000
         ? await load() : entry;
       return value.data;
     }).catch(() => null).finally(() => {
-      if (pending.get(projectUrl) === request) pending.delete(projectUrl);
+      if (pending.get(requestKey) === request) pending.delete(requestKey);
     });
-    pending.set(projectUrl, request);
+    pending.set(requestKey, request);
     return request;
   };
 }

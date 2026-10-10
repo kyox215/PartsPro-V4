@@ -4,6 +4,9 @@ import * as React from "react";
 import Image from "@/components/partspro/optimized-image";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import { AdminCatalogDirectory, CatalogMoveDialog, useAdminCatalogOptions } from "./admin-catalog-directory";
+import { notifyCatalogChanged } from "./catalog-directory-provider";
+import { catalogNodeLabel, type CatalogNode } from "@/lib/partspro-catalog-directory";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
@@ -263,6 +266,8 @@ type SupplierBatchChargeTypeFilter = SupplierBatchCharge["chargeType"];
 type SupplierBatchVatTreatmentFilter = SupplierBatchCharge["vatTreatment"];
 type FilterValue<T extends string> = "all" | T;
 type ProductListFilters = {
+  department: FilterValue<CatalogDepartment>;
+  category: string;
   activeRestockOnly: boolean;
   q: string;
   brand: string;
@@ -478,6 +483,8 @@ type ProductModelGroupsResult = {
 };
 
 type ProductFormValues = {
+  creationRequestId?: string;
+  expectedUpdatedAt?: string;
   sku: string;
   skuMode: "auto" | "manual";
   name: string;
@@ -555,7 +562,8 @@ type ProductWorkspace =
   | "products"
   | "batches"
   | "banners"
-  | "sold-shortages";
+  | "sold-shortages"
+  | "directory";
 
 export function resolveSupplierBatchCostPermissions(
   permissions: readonly string[],
@@ -604,7 +612,7 @@ export function isSupplierBatchChargeForBatch(
 }
 
 function normalizeProductWorkspace(value: string | null): ProductWorkspace {
-  if (value === "batches" || value === "banners" || value === "sold-shortages") {
+  if (value === "batches" || value === "banners" || value === "sold-shortages" || value === "directory") {
     return value;
   }
 
@@ -635,6 +643,8 @@ type ProductAuditEvent = {
 };
 
 const defaultFilters: ProductListFilters = {
+  department: "all",
+  category: "all",
   activeRestockOnly: false,
   q: "",
   brand: "all",
@@ -1668,6 +1678,10 @@ export function AdminProductsPanel({
   const [productEditError, setProductEditError] = React.useState("");
   const [hideCandidates, setHideCandidates] = React.useState<AdminProductRow[]>([]);
   const writeLock = React.useRef(false);
+  const duplicateDraftRequests = React.useRef(new Map<string, ProductFormValues>());
+  const [createDirectoryNode, setCreateDirectoryNode] = React.useState<CatalogNode | null>(null);
+  const [directoryGuard, setDirectoryGuard] = React.useState<ProductDraftGuard>({ dirty: false, pending: false });
+  const [moveProducts, setMoveProducts] = React.useState<AdminProductRow[] | null>(null);
   const [filters, setFilters] = React.useState<ProductListFilters>(defaultFilters);
   React.useEffect(() => {
     const requests = productRequest.current;
@@ -2040,6 +2054,7 @@ export function AdminProductsPanel({
   }, [workspace]);
 
   const refreshProductsQuietly = React.useCallback(() => {
+    notifyCatalogChanged();
     void refreshProducts(undefined, { clearNotice: false });
   }, [refreshProducts]);
 
@@ -2218,7 +2233,8 @@ export function AdminProductsPanel({
         scope,
         compatibilityManaged,
         capabilities,
-        compatibilityReview
+        compatibilityReview,
+        values.expectedUpdatedAt ?? (drawerProduct?.sku === sku ? drawerProduct : products.find((row) => row.sku === sku))?.updatedAt
       );
       replaceProduct(saved);
       setNotice({
@@ -2295,15 +2311,18 @@ export function AdminProductsPanel({
   }
 
   async function handleDuplicateProduct(product: AdminProductRow) {
-    const duplicatedValues = productFormDefaults({
-      ...product,
-      sku: ensureUniqueSku(`${product.sku}-COPY`, products),
-      name: `${product.name} ${text.copySuffix}`,
-      catalogStatus: "draft",
-    });
+    let duplicatedValues = duplicateDraftRequests.current.get(product.sku);
+    if (!duplicatedValues) {
+      duplicatedValues = {
+        ...productFormDefaults({ ...product, sku: ensureUniqueSku(`${product.sku}-COPY`, products),
+          name: `${product.name} ${text.copySuffix}`, catalogStatus: "draft" }),
+        creationRequestId: crypto.randomUUID(),
+      };
+      duplicateDraftRequests.current.set(product.sku, duplicatedValues);
+    }
     const saved = await handleCreateProduct(duplicatedValues);
-
     if (saved) {
+      duplicateDraftRequests.current.delete(product.sku);
       setDrawerProduct(saved);
       setDrawerMode("view");
     }
@@ -2355,6 +2374,7 @@ export function AdminProductsPanel({
     if (drawerGuard.dirty && !window.confirm(text.unsavedPrompt)) return;
     setProductEditError("");
     setDrawerMode(null);
+    setCreateDirectoryNode(null);
     setDrawerProduct(null);
     setDrawerInlineEditSku(null);
   }
@@ -2365,12 +2385,13 @@ export function AdminProductsPanel({
         value={workspace}
         onValueChange={(value) => {
           const nextWorkspace = normalizeProductWorkspace(value);
+          if (workspace === "directory" && nextWorkspace !== "directory" && (directoryGuard.pending || (directoryGuard.dirty && !window.confirm(text.unsavedPrompt)))) return;
 
           setWorkspace(nextWorkspace);
           syncWorkspaceUrl(nextWorkspace);
         }}
       >
-        <TabsList className="group-data-horizontal/tabs:h-auto grid h-auto w-full grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 shadow-[0_8px_22px_rgba(15,23,42,0.04)] sm:w-auto sm:inline-grid sm:grid-cols-4">
+        <TabsList className="group-data-horizontal/tabs:h-auto grid h-auto w-full grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 shadow-[0_8px_22px_rgba(15,23,42,0.04)] sm:w-auto sm:inline-grid sm:grid-cols-5">
           <TabsTrigger value="products" className="h-auto min-h-10 min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
             {text.workspaceProducts}
           </TabsTrigger>
@@ -2383,7 +2404,16 @@ export function AdminProductsPanel({
           <TabsTrigger value="banners" className="h-auto min-h-10 min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">
             {text.workspaceBanners}
           </TabsTrigger>
+          <TabsTrigger value="directory" className="h-auto min-h-10 min-w-0 whitespace-normal rounded-md px-2 py-2 text-center text-[11px] font-bold leading-4 sm:px-3 sm:text-xs">{locale.startsWith("zh") ? "目录管理" : "Gestione catalogo"}</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="directory" className="m-0 pt-2">
+          <AdminCatalogDirectory locale={locale} canEdit={capabilities.editContent} canCreate={capabilities.create} onGuardChange={setDirectoryGuard}
+            onChanged={refreshProductsQuietly} onProducts={(node) => {
+              updateFilters({ ...defaultFilters, ...(node.kind === "department" ? { department: node.value as CatalogDepartment } : { [node.kind]: node.value }) });
+              syncWorkspaceUrl("products"); setWorkspace("products");
+            }} onCreate={(node) => { setCreateDirectoryNode(node); openDrawer("create"); }} />
+        </TabsContent>
 
         <TabsContent value="products" className="m-0 pt-2">
           <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.04)] sm:rounded-lg sm:shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
@@ -2530,6 +2560,7 @@ export function AdminProductsPanel({
                       <Download className="size-4" />
                       {text.exportSelection}
                     </Button>
+                    {capabilities.editContent && <Button size="sm" variant="outline" disabled={isMutating || !listReady} onClick={() => setMoveProducts(selectedProducts)}>{locale.startsWith("zh") ? "移动目录" : "Sposta nel catalogo"}</Button>}
                     {capabilities.hide && <Button
                       size="sm"
                       variant="outline"
@@ -2556,6 +2587,7 @@ export function AdminProductsPanel({
               </div>
             )}
 
+            {(filters.department !== "all" || filters.category !== "all") && <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm"><span>{text.catalogDepartment}: {filters.department === "all" ? "—" : text.catalogDepartmentLabels[filters.department]} · {text.category}: {filters.category === "all" ? "—" : filters.category}</span><Button size="sm" variant="outline" onClick={() => updateFilters({ department: "all", category: "all" })}>{text.clearFilters}</Button></div>}
             <ProductTable
               products={visibleProducts}
               selectedSkus={selectedSkus}
@@ -2652,7 +2684,9 @@ export function AdminProductsPanel({
         onReset={() => updateFilters(defaultFilters)}
       />
 
+      {moveProducts && <CatalogMoveDialog products={moveProducts} locale={locale} onClose={() => setMoveProducts(null)} onMoved={refreshProductsQuietly} />}
       <ProductDrawer
+        initialDirectoryNode={createDirectoryNode}
         error={productEditError}
         onGuardChange={setDrawerGuard}
         mode={drawerMode}
@@ -2668,6 +2702,7 @@ export function AdminProductsPanel({
         onCreate={handleCreateProduct}
         onSave={handleUpdateProduct}
         onSaved={(product) => {
+          setCreateDirectoryNode(null);
           setDrawerProduct(product);
           setDrawerMode("view");
           setDrawerInlineEditSku(null);
@@ -5757,6 +5792,7 @@ function ProductTable({
   onHide: (product: AdminProductRow) => void;
   onStockAdjust: (product: AdminProductRow) => void;
 }) {
+  const { locale } = useI18n();
   const allSelected = products.length > 0 && products.every((product) => selectedSkus.has(product.sku));
   const someSelected = products.some((product) => selectedSkus.has(product.sku));
   const showInitialSkeleton = isLoading && products.length === 0;
@@ -5908,7 +5944,7 @@ function ProductTable({
                     </TableCell>
                     <TableCell className="hidden whitespace-normal 2xl:table-cell">
                       <span className="text-xs font-medium leading-tight text-slate-500">
-                        {product.updatedAt}
+                        {formatProductUpdatedAt(product.updatedAt, locale)}
                       </span>
                     </TableCell>
                     <TableCell className="w-12 whitespace-normal px-2 text-right" onClick={(event) => event.stopPropagation()}>
@@ -6844,6 +6880,7 @@ function ProductCompatibilityReviewNotice({
 }
 
 function ProductDrawer({
+  initialDirectoryNode,
   mode,
   error,
   onGuardChange,
@@ -6862,6 +6899,7 @@ function ProductDrawer({
   onStockAdjust,
   onMediaSaved,
 }: {
+  initialDirectoryNode?: CatalogNode | null;
   mode: ProductDrawerMode | null;
   error: string;
   onGuardChange: (guard: ProductDraftGuard) => void;
@@ -6938,6 +6976,7 @@ function ProductDrawer({
             />
           ) : mode ? (
             <ProductEditorForm
+              initialDirectoryNode={initialDirectoryNode}
               key={`${mode}-${product?.sku ?? "new"}`}
               mode={mode}
               product={product}
@@ -6997,6 +7036,9 @@ function ProductDetails({
   onStockAdjust: () => void;
   onMediaSaved: (product: AdminProductRow) => void;
 }) {
+  const directoryOptions = useAdminCatalogOptions();
+  const editorLocale = useI18n().locale;
+  const brandOptionsId = React.useId();
   const { canDiscard } = React.useContext(ProductDraftGuardContext);
   const inlineSaveLock = React.useRef(false);
   const [copiedSku, setCopiedSku] = React.useState<string | null>(null);
@@ -7347,10 +7389,8 @@ function ProductDetails({
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {categories.map((category) => (
-                        <SelectItem key={category.label} value={category.label}>
-                          {category.label}
-                        </SelectItem>
+                      {productCategoryOptions(directoryOptions.nodes, editValues.category, editorLocale).map((category) => (
+                        <SelectItem key={category.value} value={category.value}>{category.label}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -7371,14 +7411,15 @@ function ProductDetails({
                     <SelectContent>
                       {catalogDepartments.map((department) => (
                         <SelectItem key={department} value={department}>
-                          {text.catalogDepartmentLabels[department]}
+                          {directoryOptions.nodes.some((n) => n.kind === "department" && n.value === department) ? catalogNodeLabel(directoryOptions.nodes.find((n) => n.kind === "department" && n.value === department)!, editorLocale) : text.catalogDepartmentLabels[department]}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </EditableDetailItem>
                 <EditableDetailItem label={text.brand} error={editErrors.brand}>
-                  <Input value={editValues.brand} onChange={(event) => setEditValue("brand", event.target.value)} />
+                  <Input list={brandOptionsId} value={editValues.brand} onChange={(event) => setEditValue("brand", event.target.value)} />
+                  <datalist id={brandOptionsId}>{directoryOptions.nodes.filter((node) => node.kind === "brand" && node.active).map((node) => <option key={node.id} value={node.value}>{catalogNodeLabel(node, editorLocale)}</option>)}</datalist>
                 </EditableDetailItem>
                 <EditableDetailItem label={text.quality}>
                   <Select value={editValues.grade} onValueChange={(value) => setEditValue("grade", value as ProductGrade)}>
@@ -7618,6 +7659,7 @@ function ProductDetails({
 }
 
 function ProductEditorForm({
+  initialDirectoryNode,
   mode,
   product,
   products,
@@ -7631,6 +7673,7 @@ function ProductEditorForm({
   onCancel,
   onStockAdjust,
 }: {
+  initialDirectoryNode?: CatalogNode | null;
   mode: ProductDrawerMode;
   product: AdminProductRow | null;
   products: AdminProductRow[];
@@ -7653,11 +7696,16 @@ function ProductEditorForm({
   onCancel?: () => void;
   onStockAdjust: (product: AdminProductRow) => void;
 }) {
+  const directoryOptions = useAdminCatalogOptions();
+  const editorLocale = useI18n().locale;
+  const brandOptionsId = React.useId();
+  const [creationRequestId] = React.useState(() => crypto.randomUUID());
+  const departmentTouched = React.useRef(Boolean(initialDirectoryNode?.kind === "department"));
   const isEdit = mode === "edit";
   const canEditContent = capabilities.editContent || (!isEdit && capabilities.create);
   const canSaveData = canEditContent || capabilities.editPrice || capabilities.editCost;
   const [values, setValues] = React.useState<ProductFormValues>(() =>
-    product ? productFormDefaults(product) : defaultProductFormValues()
+    product ? productFormDefaults(product) : { ...defaultProductFormValues(), ...(initialDirectoryNode ? { [initialDirectoryNode.kind === "department" ? "catalogDepartment" : initialDirectoryNode.kind]: initialDirectoryNode.value, ...(initialDirectoryNode.kind === "brand" && initialDirectoryNode.value.toLowerCase() === "remax" ? { catalogDepartment: "general_merchandise" as CatalogDepartment } : {}) } : {}) }
   );
   const [initialValues] = React.useState(() => JSON.stringify(values));
   const submitLock = React.useRef(false);
@@ -7706,7 +7754,8 @@ function ProductEditorForm({
   }, [previewUrl]);
 
   function setValue<K extends keyof ProductFormValues>(key: K, value: ProductFormValues[K]) {
-    setValues((current) => ({ ...current, [key]: value }));
+    if (key === "catalogDepartment") departmentTouched.current = true;
+    setValues((current) => ({ ...current, [key]: value, ...(!isEdit && key === "brand" && String(value).trim().toLowerCase() === "remax" && !departmentTouched.current ? { catalogDepartment: "general_merchandise" as CatalogDepartment } : {}) }));
     setCompatibilityReviewFingerprint(null);
     setErrors((current) => {
       const next = { ...current };
@@ -7757,6 +7806,8 @@ function ProductEditorForm({
       !isEdit && !isManualSku ? { ...values, sku: submittedAutoSku ?? generatedSku.sku } : values;
     const submitValues: ProductFormValues = {
       ...withGeneratedSku,
+      creationRequestId,
+      expectedUpdatedAt: createdDraft?.updatedAt ?? withGeneratedSku.expectedUpdatedAt,
       compatibleWith:
         withGeneratedSku.compatibleWith.trim() || withGeneratedSku.model.trim(),
       costPrice: capabilities.editCost ? withGeneratedSku.costPrice : "",
@@ -7791,9 +7842,10 @@ function ProductEditorForm({
     setIsSubmitting(true);
 
     try {
+      const contentFingerprint = JSON.stringify({ ...submitValues, expectedUpdatedAt: undefined, creationRequestId: undefined });
       let saved = createdDraft;
 
-      if (savedContent.current?.values === JSON.stringify(submitValues)) {
+      if (savedContent.current?.values === contentFingerprint) {
         saved = savedContent.current.product;
       } else if (isEdit && product) {
         saved = canSaveData
@@ -7839,7 +7891,9 @@ function ProductEditorForm({
         return;
       }
 
-      savedContent.current = { values: JSON.stringify(submitValues), product: saved };
+      savedContent.current = { values: contentFingerprint, product: saved };
+      if (!isEdit) setCreatedDraft(saved);
+      setValues((current) => ({ ...current, expectedUpdatedAt: saved!.updatedAt }));
       if (file && capabilities.imageManage) {
         try {
           saved = await uploadAdminProductImage(saved.sku, {
@@ -7933,7 +7987,7 @@ function ProductEditorForm({
               <SelectContent>
                 {catalogDepartments.map((department) => (
                   <SelectItem key={department} value={department}>
-                    {text.catalogDepartmentLabels[department]}
+                    {directoryOptions.nodes.some((n) => n.kind === "department" && n.value === department) ? catalogNodeLabel(directoryOptions.nodes.find((n) => n.kind === "department" && n.value === department)!, editorLocale) : text.catalogDepartmentLabels[department]}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -7943,16 +7997,16 @@ function ProductEditorForm({
             <Select value={values.category} onValueChange={(value) => setValue("category", value)}>
               <SelectTrigger className="h-11 bg-white"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {!categories.some((category) => category.label === values.category) && values.category && <SelectItem value={values.category}>{values.category}</SelectItem>}
-                {categories.map((category) => (
-                  <SelectItem key={category.label} value={category.label}>{category.label}</SelectItem>
+                {productCategoryOptions(directoryOptions.nodes, values.category, editorLocale).map((category) => (
+                  <SelectItem key={category.value} value={category.value}>{category.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </Field>
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label={text.brand} error={errors.brand}>
-              <Input className="h-11" value={values.brand} onChange={(event) => setValue("brand", event.target.value)} />
+              <Input className="h-11" list={brandOptionsId} value={values.brand} onChange={(event) => setValue("brand", event.target.value)} />
+              <datalist id={brandOptionsId}>{directoryOptions.nodes.filter((n) => n.kind === "brand" && n.active).map((n) => <option key={n.id} value={n.value}>{catalogNodeLabel(n, editorLocale)}</option>)}</datalist>
             </Field>
             <Field label={text.model} error={errors.model}>
               <Input className="h-11" value={values.model} onChange={(event) => setValue("model", event.target.value)} />
@@ -8940,6 +8994,8 @@ async function fetchAdminProducts(
     offset: String(filters.page * filters.pageSize),
     sort: filters.sort,
   });
+  if (filters.department !== "all") params.set("department", filters.department);
+  if (filters.category !== "all") params.set("category", filters.category);
   const q = filters.q.trim();
 
   if (q.length >= 2) {
@@ -9308,6 +9364,7 @@ async function createAdminProduct(
   capabilities: ProductCapabilities,
   compatibilityReview?: ProductCompatibilityReviewConfirmation
 ) {
+  if (!values.creationRequestId) throw new Error("Reload the creation form before saving. / 请重新打开新建表单后保存。");
   const payload = buildProductWritePayload(values, "create", "all", capabilities);
   const response = await fetchAdminWriteResponse(
     adminProductsEndpoint,
@@ -9320,6 +9377,7 @@ async function createAdminProduct(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
+        requestId: values.creationRequestId,
         product: payload,
         ...(compatibilityReview ? { compatibilityReview } : {}),
       }),
@@ -9336,8 +9394,10 @@ async function updateAdminProduct(
   scope: ProductUpdateScope = "all",
   compatibilityManaged = false,
   capabilities: ProductCapabilities = buildProductCapabilities([]),
-  compatibilityReview?: ProductCompatibilityReviewConfirmation
+  compatibilityReview?: ProductCompatibilityReviewConfirmation,
+  expectedUpdatedAt?: string
 ) {
+  if (!expectedUpdatedAt) throw new Error("Reload the product before saving. / 请重新读取商品后保存。");
   const payload = buildProductWritePayload(values, "update", scope, capabilities);
 
   if (compatibilityManaged) {
@@ -9357,7 +9417,7 @@ async function updateAdminProduct(
       },
       body: JSON.stringify({
         sku,
-        product: payload,
+        product: { ...payload, expectedUpdatedAt },
         ...(compatibilityReview ? { compatibilityReview } : {}),
       }),
     },
@@ -10885,6 +10945,7 @@ function defaultProductFormValues(): ProductFormValues {
 
 function productFormDefaults(product: AdminProductRow): ProductFormValues {
   return {
+    expectedUpdatedAt: product.updatedAt,
     sku: product.sku,
     skuMode: "manual",
     name: product.name,
@@ -10908,6 +10969,23 @@ function productFormDefaults(product: AdminProductRow): ProductFormValues {
     imagePath: product.imagePath ?? "",
     imageAlt: product.imageAlt ?? "",
   };
+}
+
+function formatProductUpdatedAt(value: string, locale: string) {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime())
+    ? new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short", timeZone: "Europe/Rome" }).format(date)
+    : value;
+}
+
+function productCategoryOptions(nodes: CatalogNode[], selected: string, locale: string) {
+  const options = new Map(categories.map((category) => [category.label, category.label]));
+  for (const node of nodes.filter((node) => node.kind === "category")) {
+    if (node.active || node.value === selected) options.set(node.value, catalogNodeLabel(node, locale));
+    else options.delete(node.value);
+  }
+  if (selected && !options.has(selected)) options.set(selected, selected);
+  return Array.from(options, ([value, label]) => ({ value, label }));
 }
 
 function buildProductFormSkuCandidate(

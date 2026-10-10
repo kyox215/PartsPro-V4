@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { hideAdminProductsSequentially } from "@/lib/partspro-admin-bulk-hide";
 import { NextRequest, NextResponse } from "next/server";
 import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
@@ -89,6 +90,8 @@ export async function POST(request: NextRequest) {
     return apiError(400, "INVALID_JSON", "Request body must be valid JSON.");
   }
 
+  const requestId = z.string().uuid().safeParse(isRecord(body.data) ? body.data.requestId : null);
+  if (!requestId.success) return apiError(400, "PRODUCT_CREATION_REQUEST_REQUIRED", "Draft creation needs a stable request ID.");
   const payload = readProductPayload(body.data);
   const parsed = productWriteSchema.safeParse(payload);
 
@@ -144,6 +147,7 @@ export async function POST(request: NextRequest) {
   try {
     const result = await createAdminProduct({
       ...parsed.data,
+      requestId: requestId.data,
       catalogStatus: "draft",
     });
 
@@ -345,7 +349,7 @@ function resolveProductQuery(
 }
 
 function hasWritableProductPatch(payload: Record<string, unknown>) {
-  return Object.keys(payload).some((key) => key !== "reason");
+  return Object.keys(payload).some((key) => key !== "reason" && key !== "expectedUpdatedAt");
 }
 
 function readProductPayload(payload: unknown) {

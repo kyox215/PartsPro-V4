@@ -149,6 +149,7 @@ const rmaCustomerStageKeys: Record<string, string> = {
 };
 
 export function categoryLabel(t: StorefrontTranslator, value: string) {
+  const keyOverride = `catalog.label.category.${value.toLowerCase()}`; const configured = t(keyOverride); if (configured !== keyOverride) return configured;
   const key = categoryKeys[value];
   const fallback = categoryEnglishFallbacks[value] ?? value;
 
@@ -156,6 +157,7 @@ export function categoryLabel(t: StorefrontTranslator, value: string) {
 }
 
 export function brandLabel(t: StorefrontTranslator, value: string) {
+  const keyOverride = `catalog.label.brand.${value.toLowerCase()}`; const configured = t(keyOverride); if (configured !== keyOverride) return configured;
   const key = brandKeys[value];
 
   return key ? tx(t, `storefront.data.brands.${key}`, value) : value;
@@ -165,6 +167,7 @@ export function catalogDepartmentLabel(
   t: StorefrontTranslator,
   value: CatalogDepartment
 ) {
+  const keyOverride = `catalog.label.department.${value}`; const configured = t(keyOverride); if (configured !== keyOverride) return configured;
   return tx(
     t,
     `storefront.data.catalogDepartments.${catalogDepartmentKeys[value]}`,

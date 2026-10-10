@@ -132,3 +132,9 @@ Last reviewed: 2026-09-28
 - 本地lint/build与32相关行为/合同测试PASS；1440/360/390/768中意交互PASS；创建权限图片重试create=1/PATCH=0/image=2。证据 `outputs/admin-products/2026-10-10/`。待精确提交推送、候选部署、独立GO和生产域名smoke。
 
 - 发布完成：源码 `e35da93`；正式部署 `dpl_3uXTPRgAjbBTxxhMJoufPhsTdwDm`，两正式域名均已核对。362上传源码hash与7候选/7生产GET检查PASS，独立发布GO。线上staff手机选择/确认取消/搜索/编辑取消和桌面布局通过；桌面未保存退出测试因浏览器自动化超时中断，不计生产PASS，临时输入待用户关闭。此次没有真实商品/库存/图片写入；完整目录metadata migration仍未应用。
+
+## 2026-10-10 — 目录管理数据库应用与发布
+
+- 用户明确“确认迁移数据库”，本次dry-run仅20261010081040，无remote-only历史分歧。已受控应用到PartsPro-V4/yiuxrjqexlfjtxxrkqvi；再次dry-run up to date；12函数摘要和RLS/ACL核对通过，17976商品/2399库存及商品状态聚合摘要前后相同。
+- 目录管理页签、双语名称/排序/品牌分类启停、目录预填新建和原子批量移动已移植到当前已上线商品UI基线；版本保存、固定UUID草稿防重、公开目录修订刷新接入。全量lint/build、38合同测试、离线实际schema安全/并发与四视口目录和原UI回归通过。
+- 詳细报告 `docs/audits/2026-10-10-catalog-directory-release.md`；证据 `outputs/catalog/2026-10-10/`。数据库已应用，页面发布正在核对精确源码与候选；正式域名切换结果待下条记录。无真实商品/库存/图片写验收，物理手机键盘未验证；图片并发和库存跨请求幂等仍独立待处理。

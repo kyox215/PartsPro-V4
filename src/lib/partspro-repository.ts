@@ -1,3 +1,4 @@
+import { readCatalogRevision } from "@/lib/partspro-catalog-revision";
 import { applyOrderListFilters, orderListSelect } from "@/lib/partspro-order-list-filters.mjs";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import {
@@ -165,6 +166,15 @@ export type RepositoryResult<T> = {
   warning?: string;
 };
 
+let catalogCacheRevision: string | null = null;
+async function syncCatalogCacheRevision() {
+  const revision = await readCatalogRevision();
+  if (revision === null || revision !== catalogCacheRevision) {
+    clearPublicCatalogPageCache(false);
+    catalogCacheRevision = revision;
+  }
+  return revision;
+}
 const catalogModelGroupsCacheTtlMs = 10 * 60 * 1000;
 const catalogModelGroupsWarningCacheTtlMs = 15 * 1000;
 const catalogModelGroupsRowLimit = 100000;
@@ -425,6 +435,7 @@ export type AdminProductIssueFilter =
   | "zero_stock_sold";
 
 export type AdminProductQueryInput = {
+  department?: CatalogDepartment;
   activeRestockOnly?: boolean;
   brand?: string;
   batchCode?: string;
@@ -852,6 +863,7 @@ export type AdminSupplierBatchPaymentInput = {
 };
 
 export type AdminProductWriteInput = {
+  requestId?: string;
   sku?: string;
   name: string;
   category: string;
@@ -884,6 +896,7 @@ export type AdminProductWriteInput = {
 export type AdminProductPatchInput = Partial<
   Omit<AdminProductWriteInput, "sku" | "stock" | "stockStatus" | "catalogStatus">
 > & {
+  expectedUpdatedAt?: string;
   reason?: string;
 };
 
@@ -2181,6 +2194,7 @@ export async function deleteAdminHomeBanner(
 export async function listCatalogModelGroups(): Promise<
   RepositoryResult<DeviceModelGroup[]>
 > {
+  const revision = await syncCatalogCacheRevision();
   const now = Date.now();
 
   if (catalogModelGroupsCache && catalogModelGroupsCache.expiresAt > now) {
@@ -2197,6 +2211,7 @@ export async function listCatalogModelGroups(): Promise<
         ? catalogModelGroupsCacheTtlMs
         : catalogModelGroupsWarningCacheTtlMs;
 
+    if (revision !== catalogCacheRevision) return result;
     catalogModelGroupsCache = {
       expiresAt: Date.now() + ttl,
       result,
@@ -2209,15 +2224,15 @@ export async function listCatalogModelGroups(): Promise<
   return catalogModelGroupsRequest;
 }
 
-export async function listCatalogDepartmentGroups(): Promise<
-  RepositoryResult<CatalogDepartmentGroup[]>
-> {
-  return readCatalogDepartmentGroupsUncached();
+export async function listCatalogDepartmentGroups(): Promise<RepositoryResult<CatalogDepartmentGroup[]>> {
+  const revision = await syncCatalogCacheRevision();
+  return readCatalogDepartmentGroupsUncached(revision ?? "uncached");
 }
 
 export async function getCatalogCategoryCounts(): Promise<
   RepositoryResult<CatalogCategoryCountSummary>
 > {
+  const revision = await syncCatalogCacheRevision();
   const now = Date.now();
 
   if (catalogCategoryCountsCache && catalogCategoryCountsCache.expiresAt > now) {
@@ -2234,6 +2249,7 @@ export async function getCatalogCategoryCounts(): Promise<
         ? catalogCategoryCountsCacheTtlMs
         : catalogCategoryCountsWarningCacheTtlMs;
 
+    if (revision !== catalogCacheRevision) return result;
     catalogCategoryCountsCache = {
       expiresAt: Date.now() + ttl,
       result,
@@ -2279,10 +2295,10 @@ async function readCatalogModelGroupsUncached(): Promise<
   );
 }
 
-async function readCatalogDepartmentGroupsUncached(): Promise<
+async function readCatalogDepartmentGroupsUncached(revision = "stable"): Promise<
   RepositoryResult<CatalogDepartmentGroup[]>
 > {
-  const supabaseResult = await readCachedPublicDepartments();
+  const supabaseResult = await readCachedPublicDepartments(revision);
 
   return (
     supabaseResult ??
@@ -2515,11 +2531,12 @@ async function readPublicCatalogProductPage(
     return readPublicCatalogProductPageUncached(query, options);
   }
 
-  const cacheKey = publicCatalogPageCacheKey(query, options);
+  const revision = await syncCatalogCacheRevision();
+  const cacheKey = `${revision ?? "uncached"}:${publicCatalogPageCacheKey(query, options)}`;
   const now = Date.now();
   const cached = publicCatalogPageCache.get(cacheKey);
 
-  if (cached && cached.expiresAt > now) {
+  if (revision !== null && cached && cached.expiresAt > now) {
     return cached.result;
   }
 
@@ -2535,14 +2552,14 @@ async function readPublicCatalogProductPage(
 
   const request = readPublicCatalogProductPageUncached(query, options)
     .then((result) => {
-      if (result) {
+      if (result && revision !== null && revision === catalogCacheRevision) {
         rememberPublicCatalogPage(cacheKey, result);
       }
 
       return result;
     })
     .finally(() => {
-      publicCatalogPageRequests.delete(cacheKey);
+      if (publicCatalogPageRequests.get(cacheKey) === request) publicCatalogPageRequests.delete(cacheKey);
     });
 
   publicCatalogPageRequests.set(cacheKey, request);
@@ -2645,12 +2662,14 @@ function prunePublicCatalogPageCache(now = Date.now()) {
   }
 }
 
-function clearPublicCatalogPageCache() {
+function clearPublicCatalogPageCache(revalidate = true) {
+  catalogCategoryCountsCache = null;
+  catalogCategoryCountsRequest = null;
   publicCatalogPageCache.clear();
   publicCatalogPageRequests.clear();
   catalogModelGroupsCache = null;
   catalogModelGroupsRequest = null;
-  invalidatePublicNavigationCache();
+  if (revalidate) invalidatePublicNavigationCache();
 }
 
 async function readPublicCatalogDepartmentGroups(client: SupabaseServerClient): Promise<
@@ -3808,7 +3827,8 @@ export async function createAdminProduct(
     false,
     { includeStatus: true, includeStock: true, includeSku: true }
   );
-  const row = await rpcProductRow(context.client, "admin_create_product_draft", {
+  const row = await rpcProductRow(context.client, input.requestId ? "admin_create_product_draft_once" : "admin_create_product_draft", {
+    ...(input.requestId ? { p_request_id: input.requestId } : {}),
     p_product: payload,
     p_reason: "Created as draft from admin product API.",
   });
@@ -3859,7 +3879,8 @@ export async function updateAdminProduct(
     );
   }
 
-  const row = await rpcProductRow(context.client, "admin_update_product", {
+  const row = await rpcProductRow(context.client, input.expectedUpdatedAt ? "admin_update_product_versioned" : "admin_update_product", {
+    ...(input.expectedUpdatedAt ? { p_expected_updated_at: input.expectedUpdatedAt } : {}),
     p_sku_code: current.sourceSku ?? current.sku,
     p_product: payload,
     p_reason: input.reason ?? "Updated from admin product API.",
@@ -6705,7 +6726,7 @@ async function readAdminProductPage(
     rpcArgs.p_issue_filter = query.issueFilter;
   }
 
-  const { data, error } = await client.rpc("admin_list_products", rpcArgs);
+  const { data, error } = await client.rpc(query.department ? "admin_list_products_catalog" : "admin_list_products", { ...rpcArgs, ...(query.department ? { p_department: query.department } : {}) });
 
   if (error) {
     if (query.issueFilter && isRecoverableAdminProductIssueFilterRpcError(error)) {
@@ -15178,6 +15199,7 @@ function mapAdminProductRow(row: DbRow): AdminProduct | null {
 
   return {
     ...product,
+    updatedAt: pickString(row, ["updated_at", "updatedAt"]) ?? product.updatedAt,
     id,
     sourceSku: sourceSku ? sourceSku.toUpperCase() : undefined,
     compatibilityManaged: false,
