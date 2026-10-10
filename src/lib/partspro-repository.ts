@@ -4972,6 +4972,7 @@ export async function listAdminProductRestockRequests(
     .from("product_restock_requests")
     .select(productRestockRequestSelect, { count: "exact" })
     .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
     .range(from, to);
 
   if (query.status) {
@@ -5014,6 +5015,19 @@ export async function listAdminProductRestockRequests(
   };
 }
 
+export async function getAdminProductRestockRequest(
+  id: string
+): Promise<RepositoryResult<ProductRestockRequest>> {
+  const context = await requireSupabaseContext();
+  const { data, error } = await context.client.from("product_restock_requests")
+    .select(productRestockRequestSelect).eq("id", id).maybeSingle();
+  if (error) throw new RepositoryWriteError(supabaseRpcStatus(error), "ADMIN_RESTOCK_REQUEST_READ_FAILED", "Restock reminder could not be read.", supabaseErrorDetails(error));
+  if (!data) throw new RepositoryWriteError(404, "RESTOCK_REQUEST_NOT_FOUND", "Restock reminder was not found.");
+  const request = isDbRow(data) ? mapProductRestockRequestRow(data) : null;
+  if (!request) throw new RepositoryWriteError(502, "ADMIN_RESTOCK_REQUEST_RESULT_INVALID", "Supabase returned an invalid restock reminder row.");
+  return { data: request, source: "supabase" };
+}
+
 export async function updateAdminProductRestockRequestStatus(
   id: string,
   status: Exclude<ProductRestockRequestStatus, "active">
@@ -5027,10 +5041,14 @@ export async function updateAdminProductRestockRequestStatus(
       status,
     })
     .eq("id", id)
+    .eq("status", "active")
     .select(productRestockRequestSelect)
     .single();
 
   if (error) {
+    if (error.code === "PGRST116") {
+      throw new RepositoryWriteError(409, "RESTOCK_REQUEST_NOT_ACTIVE", "This reminder is no longer active. Refresh its current status.");
+    }
     if (isRecoverableRestockSchemaError(error)) {
       throw new RepositoryWriteError(
         503,

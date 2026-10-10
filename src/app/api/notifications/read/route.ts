@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 const markReadSchema = z
   .object({
-    ids: z.array(z.string().uuid()).max(50).optional(),
+    ids: z.array(z.string().uuid()).min(1).max(50).optional(),
   })
   .strict();
 
@@ -27,9 +27,10 @@ export async function POST(request: Request) {
   }
 
   const body = await readJsonBody(request);
-  const parsed = body.ok
-    ? markReadSchema.safeParse(body.data)
-    : markReadSchema.safeParse({});
+  if (!body.ok) {
+    return apiError(400, "INVALID_JSON", "Request body must be valid JSON.");
+  }
+  const parsed = markReadSchema.safeParse(body.data);
 
   if (!parsed.success) {
     return apiError(

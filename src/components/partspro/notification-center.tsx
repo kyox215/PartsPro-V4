@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { useI18n } from "./i18n-provider";
+import { AdminNotice } from "./admin-feedback";
 
 type NotificationAudience = "customer" | "staff";
 
@@ -46,6 +47,8 @@ type NotificationItem = {
 type NotificationPayload = {
   notifications: NotificationItem[];
   unreadCount: number;
+  hasMore: boolean;
+  nextCursor: { beforeCreatedAt: string; beforeId: string } | null;
 };
 
 type NotificationSummaryPayload = {
@@ -62,7 +65,7 @@ const copy = {
   it: {
     browserDenied: "Notifiche bloccate dal browser",
     browserError: "Notifiche non salvate",
-    browserReady: "Notifiche browser attive",
+    browserReady: "Il browser consente le notifiche",
     browserUnsupported: "Notifiche push non supportate",
     enable: "Attiva",
     empty: "Nessuna notifica",
@@ -84,11 +87,22 @@ const copy = {
     sendTest: "Test",
     testSent: "Test inviato",
     unread: "non lette",
+    readError: "Impossibile leggere le notifiche. I dati precedenti restano visibili.",
+    actionError: "Operazione non completata. Riprova o aggiorna le notifiche.",
+    unknown: "Esito non verificabile. Aggiorna e controlla le notifiche prima di ripetere l'azione.",
+    readDone: "Notifiche segnate come lette.",
+    savedReadError: "Operazione confermata; la lettura non è riuscita. Aggiorna senza ripetere l'invio.",
+    testLocal: "Test creato nelle notifiche del sito; consegna al dispositivo non confermata.",
+    refresh: "Aggiorna", more: "Carica altre", pending: "Operazione in corso...",
+    refreshed: "Notifiche aggiornate. Controlla l'esito prima di ripetere l'azione.",
+    navigationBusy: "Attendi il completamento dell'operazione aperta.",
+    unsavedLeave: "Ci sono modifiche non salvate. Vuoi lasciarle per aprire la notifica?",
+    invalidTarget: "Il collegamento della notifica non è disponibile.",
   },
   zh: {
     browserDenied: "浏览器已阻止通知",
     browserError: "通知保存失败",
-    browserReady: "浏览器通知已开启",
+    browserReady: "浏览器已允许通知",
     browserUnsupported: "当前浏览器不支持推送",
     enable: "开启",
     empty: "暂无通知",
@@ -110,6 +124,17 @@ const copy = {
     sendTest: "测试",
     testSent: "测试已发送",
     unread: "未读",
+    readError: "通知读取失败，原有内容继续保留。",
+    actionError: "操作未完成，请重试或刷新通知。",
+    unknown: "结果尚未核对，请刷新并检查通知后再重复操作。",
+    readDone: "通知已标为已读。",
+    savedReadError: "操作已确认，通知读取失败；请刷新，不要重复提交。",
+    testLocal: "站内测试通知已创建，设备推送尚未确认。",
+    refresh: "刷新", more: "加载更早通知", pending: "正在处理...",
+    refreshed: "通知已重新读取，请核对结果后再重复操作。",
+    navigationBusy: "请等待当前操作完成后再打开通知。",
+    unsavedLeave: "有未保存的修改。是否放弃这些修改并打开通知？",
+    invalidTarget: "通知目标链接暂不可用。",
   },
 };
 
@@ -129,6 +154,14 @@ export function NotificationCenter({
   const [popoverOpen, setPopoverOpen] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [busyAction, setBusyAction] = React.useState<string | null>(null);
+  const [readError, setReadError] = React.useState(false);
+  const [notice, setNotice] = React.useState<{ tone: "info" | "success" | "warning" | "error"; message: string } | null>(null);
+  const [requiresReview, setRequiresReview] = React.useState(false);
+  const [hasMore, setHasMore] = React.useState(false);
+  const nextCursorRef = React.useRef<NotificationPayload["nextCursor"]>(null);
+  const notificationRequestRef = React.useRef<{ sequence: number; controller: AbortController | null }>({ sequence: 0, controller: null });
+  const notificationActionRef = React.useRef(false);
+  const summarySequenceRef = React.useRef(0);
   const [pushState, setPushState] = React.useState<
     "checking" | "unsupported" | "default" | "denied" | "granted" | "unconfigured" | "error"
   >("checking");
@@ -141,10 +174,12 @@ export function NotificationCenter({
   >(null);
 
   const loadNotificationSummary = React.useCallback(async () => {
+    const sequence = ++summarySequenceRef.current;
     try {
       const response = await fetch("/api/notifications/summary", {
         cache: "no-store",
         headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(8_000),
       });
 
       if (!response.ok) {
@@ -153,32 +188,57 @@ export function NotificationCenter({
 
       const payload = await response.json();
       const data = readNotificationSummaryPayload(payload);
-      setUnreadCount(data.unreadCount);
+      if (sequence === summarySequenceRef.current) setUnreadCount(data.unreadCount);
     } catch {
       // Summary refresh is best-effort; the full popover load still reports errors.
     }
   }, []);
 
-  const loadNotifications = React.useCallback(async () => {
+  const loadNotifications = React.useCallback(async (options: { append?: boolean; verify?: boolean } = {}) => {
+    const cursor = options.append ? nextCursorRef.current : null;
+    if (options.append && !cursor) return false;
+    notificationRequestRef.current.controller?.abort();
+    const controller = new AbortController();
+    const sequence = ++notificationRequestRef.current.sequence;
+    notificationRequestRef.current.controller = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 8_000);
     setLoading(true);
+    setReadError(false);
 
     try {
-      const response = await fetch("/api/notifications?limit=20", {
+      const params = new URLSearchParams({ limit: "20", ...(cursor ?? {}) });
+      const response = await fetch(`/api/notifications?${params.toString()}`, {
         cache: "no-store",
         headers: { Accept: "application/json" },
+        signal: controller.signal,
       });
 
-      if (!response.ok) {
-        return;
-      }
+      if (!response.ok) throw new Error("Notification read failed.");
 
       const payload = await response.json();
       const data = readNotificationPayload(payload);
-      setItems(data.notifications);
+      if (sequence !== notificationRequestRef.current.sequence) return false;
+      setItems(current => options.append ? mergeNotificationItems(current, data.notifications) : data.notifications);
       setUnreadCount(data.unreadCount);
+      setHasMore(data.hasMore);
+      nextCursorRef.current = data.nextCursor;
+      if (options.verify) {
+        setRequiresReview(false);
+        setNotice({ tone: "info", message: text.refreshed });
+      }
+      return true;
+    } catch {
+      if (sequence === notificationRequestRef.current.sequence) setReadError(true);
+      return false;
     } finally {
-      setLoading(false);
+      window.clearTimeout(timeout);
+      if (sequence === notificationRequestRef.current.sequence) setLoading(false);
     }
+  }, [text.refreshed]);
+
+  React.useEffect(() => () => {
+    notificationRequestRef.current.sequence++;
+    notificationRequestRef.current.controller?.abort();
   }, []);
 
   React.useEffect(() => {
@@ -316,11 +376,12 @@ export function NotificationCenter({
       }
 
       const url = typeof event.data.url === "string" ? event.data.url : "/";
-      const target = new URL(url, window.location.origin);
-
-      if (target.origin === window.location.origin) {
-        router.push(`${target.pathname}${target.search}${target.hash}`);
-      }
+      try {
+        const target = new URL(url, window.location.origin);
+        if (target.origin === window.location.origin && canLeaveForNotification(text)) {
+          router.push(`${target.pathname}${target.search}${target.hash}`);
+        }
+      } catch { setNotice({ tone: "error", message: text.invalidTarget }); }
     };
 
     navigator.serviceWorker.addEventListener("message", listener);
@@ -328,14 +389,16 @@ export function NotificationCenter({
     return () => {
       navigator.serviceWorker.removeEventListener("message", listener);
     };
-  }, [router]);
+  }, [router, text]);
 
   async function enablePush() {
+    if (notificationActionRef.current) return false;
     if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
       setPushState("unsupported");
       return false;
     }
 
+    notificationActionRef.current = true;
     setBusyAction("enable");
 
     try {
@@ -408,6 +471,7 @@ export function NotificationCenter({
       setPushState("error");
       return false;
     } finally {
+      notificationActionRef.current = false;
       setBusyAction(null);
     }
   }
@@ -426,51 +490,82 @@ export function NotificationCenter({
   }
 
   async function markAllRead() {
+    if (notificationActionRef.current || requiresReview) return;
+    notificationActionRef.current = true;
+    summarySequenceRef.current++;
     setBusyAction("read");
 
     try {
-      await fetch("/api/notifications/read", {
+      await notificationActionRequest("/api/notifications/read", {
         body: JSON.stringify({}),
         cache: "no-store",
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
-      await loadNotifications();
+      const refreshed = await loadNotifications();
+      setRequiresReview(!refreshed);
+      setNotice({ tone: refreshed ? "success" : "warning", message: refreshed ? text.readDone : text.savedReadError });
+    } catch (error) {
+      const unknown = error instanceof NotificationActionError && error.unknown;
+      setRequiresReview(unknown);
+      setNotice({ tone: unknown ? "warning" : "error", message: unknown ? text.unknown : text.actionError });
     } finally {
+      notificationActionRef.current = false;
       setBusyAction(null);
     }
   }
 
   async function sendTest() {
+    if (notificationActionRef.current || requiresReview) return;
+    notificationActionRef.current = true;
     setBusyAction("test");
 
     try {
-      await fetch("/api/notifications/test", {
+      const result = await notificationActionRequest("/api/notifications/test", {
         cache: "no-store",
         method: "POST",
       });
-      await loadNotifications();
+      const refreshed = await loadNotifications();
+      setRequiresReview(!refreshed);
+      const delivered = Number(result.pushDeliveredCount) > 0 && Number(result.pushFailedCount) === 0;
+      setNotice({ tone: refreshed && delivered ? "success" : "warning", message: !refreshed ? text.savedReadError : delivered ? text.testSent : text.testLocal });
+    } catch (error) {
+      const unknown = error instanceof NotificationActionError && error.unknown;
+      setRequiresReview(unknown);
+      setNotice({ tone: unknown ? "warning" : "error", message: unknown ? text.unknown : text.actionError });
     } finally {
+      notificationActionRef.current = false;
       setBusyAction(null);
     }
   }
 
   async function openNotification(item: NotificationItem) {
-    await fetch("/api/notifications/read", {
-      body: JSON.stringify({ ids: [item.id] }),
-      cache: "no-store",
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    }).catch(() => undefined);
-    setItems((current) =>
-      current.map((notification) =>
-        notification.id === item.id
-          ? { ...notification, readAt: new Date().toISOString() }
-          : notification
-      )
-    );
-    setUnreadCount((current) => Math.max(0, current - 1));
+    if (notificationActionRef.current) return;
+    if (!item.targetPath.startsWith("/") || item.targetPath.startsWith("//") || item.targetPath.includes("\\")) {
+      setNotice({ tone: "error", message: text.invalidTarget }); return;
+    }
+    if (!canLeaveForNotification(text)) { setNotice({ tone: "warning", message: text.navigationBusy }); return; }
     router.push(item.targetPath);
+    setPopoverOpen(false);
+    if (item.readAt || requiresReview) return;
+    notificationActionRef.current = true;
+    summarySequenceRef.current++;
+    setBusyAction("read");
+    try {
+      await notificationActionRequest("/api/notifications/read", {
+        body: JSON.stringify({ ids: [item.id] }), cache: "no-store",
+        headers: { "Content-Type": "application/json" }, method: "POST",
+      });
+      setItems(current => current.map(row => row.id === item.id ? { ...row, readAt: new Date().toISOString() } : row));
+      await loadNotificationSummary();
+    } catch (error) {
+      const unknown = error instanceof NotificationActionError && error.unknown;
+      setRequiresReview(unknown);
+      setNotice({ tone: unknown ? "warning" : "error", message: unknown ? text.unknown : text.actionError });
+    } finally {
+      notificationActionRef.current = false;
+      setBusyAction(null);
+    }
   }
 
   const statusLabel = statusText(pushState, text);
@@ -496,8 +591,8 @@ export function NotificationCenter({
             ) : null}
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="end" className="w-[min(360px,calc(100vw-1.5rem))] p-0">
-          <div className="border-b border-slate-200 p-3">
+        <PopoverContent align="end" className="flex max-h-[min(600px,var(--radix-popover-content-available-height))] w-[min(360px,calc(100vw-1.5rem))] flex-col overflow-y-auto p-0">
+          <div className="shrink-0 border-b border-slate-200 p-3">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <h2 className="text-sm font-black text-slate-950">{text.notifications}</h2>
@@ -511,7 +606,7 @@ export function NotificationCenter({
                 variant="outline"
                 className="h-8 bg-white px-2 text-xs"
                 onClick={enablePush}
-                disabled={busyAction === "enable" || pushState === "unsupported"}
+                disabled={Boolean(busyAction) || pushState === "unsupported"}
               >
                 {busyAction === "enable" ? (
                   <Loader2 className="size-3.5 animate-spin" />
@@ -528,13 +623,16 @@ export function NotificationCenter({
             ) : null}
           </div>
 
-          <div className="max-h-[320px] overflow-y-auto p-2">
+          <div className="min-h-0 max-h-[320px] flex-1 overflow-y-auto p-2">
+            {notice ? <AdminNotice tone={notice.tone} message={notice.message} className="mb-2 text-xs" /> : null}
+            {readError ? <AdminNotice tone="error" message={text.readError} action={<Button size="xs" variant="outline" disabled={loading} onClick={() => void loadNotifications({ verify: true })}>{text.refresh}</Button>} className="mb-2 text-xs" /> : null}
+            {requiresReview && !readError ? <Button size="xs" variant="outline" disabled={loading} onClick={() => void loadNotifications({ verify: true })}>{text.refresh}</Button> : null}
             {loading && items.length === 0 ? (
               <div className="flex h-24 items-center justify-center text-xs font-bold text-slate-500">
                 <Loader2 className="mr-2 size-3.5 animate-spin" />
                 {text.loading}
               </div>
-            ) : items.length === 0 ? (
+            ) : items.length === 0 && !readError ? (
               <div className="grid h-24 place-items-center text-xs font-bold text-slate-500">
                 {text.empty}
               </div>
@@ -546,6 +644,7 @@ export function NotificationCenter({
                   <button
                     key={item.id}
                     type="button"
+                    disabled={Boolean(busyAction)}
                     className={cn(
                       "w-full rounded-md border px-2.5 py-2 text-left transition hover:border-primary/40 hover:bg-primary/5 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40",
                       item.readAt
@@ -579,14 +678,16 @@ export function NotificationCenter({
             )}
           </div>
 
-          <div className="flex items-center justify-between gap-2 border-t border-slate-200 p-2">
+          {hasMore ? <div className="shrink-0 border-t p-2"><Button className="w-full" size="sm" variant="outline" disabled={loading || Boolean(busyAction)} onClick={() => void loadNotifications({ append: true })}>{loading ? text.loading : text.more}</Button></div> : null}
+
+          <div className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 p-2">
             <Button
               type="button"
               size="sm"
               variant="ghost"
               className="h-8 px-2 text-xs"
               onClick={markAllRead}
-              disabled={busyAction === "read" || unreadCount === 0}
+              disabled={Boolean(busyAction) || requiresReview || unreadCount === 0}
             >
               {busyAction === "read" ? <Loader2 className="size-3.5 animate-spin" /> : <X className="size-3.5" />}
               {text.markAll}
@@ -597,7 +698,7 @@ export function NotificationCenter({
               variant="outline"
               className="h-8 bg-white px-2 text-xs"
               onClick={sendTest}
-              disabled={busyAction === "test"}
+              disabled={Boolean(busyAction) || requiresReview}
             >
               {busyAction === "test" ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
               {text.sendTest}
@@ -782,31 +883,34 @@ function uint8ArrayEquals(left: Uint8Array, right: Uint8Array) {
 
 function readNotificationPayload(payload: unknown): NotificationPayload {
   const data = isRecord(payload) && isRecord(payload.data) ? payload.data : null;
-  const notifications = Array.isArray(data?.notifications)
-    ? data.notifications
-        .map(readNotification)
-        .filter((item): item is NotificationItem => Boolean(item))
-    : [];
-  const unreadCount =
-    typeof data?.unreadCount === "number"
-      ? data.unreadCount
-      : notifications.filter((item) => !item.readAt).length;
-
-  return { notifications, unreadCount };
+  if (!data || !Array.isArray(data.notifications) || !isNotificationCount(data.unreadCount)) {
+    throw new Error("Invalid notification response.");
+  }
+  const notifications = data.notifications.map(readNotification);
+  if (notifications.some(item => item === null)) throw new Error("Invalid notification row.");
+  const hasMore = data.hasMore === true;
+  const cursor = isRecord(data.nextCursor) ? data.nextCursor : null;
+  if (hasMore && (!cursor || typeof cursor.beforeCreatedAt !== "string" || !Number.isFinite(Date.parse(cursor.beforeCreatedAt)) || typeof cursor.beforeId !== "string" || !notificationUuid.test(cursor.beforeId))) {
+    throw new Error("Invalid notification cursor.");
+  }
+  return {
+    notifications: notifications as NotificationItem[], unreadCount: data.unreadCount, hasMore,
+    nextCursor: hasMore && cursor ? { beforeCreatedAt: cursor.beforeCreatedAt as string, beforeId: cursor.beforeId as string } : null,
+  };
 }
 
 function readNotificationSummaryPayload(payload: unknown): NotificationSummaryPayload {
   const data = isRecord(payload) && isRecord(payload.data) ? payload.data : null;
-
+  if (!data || !isNotificationCount(data.unreadCount)) throw new Error("Invalid notification summary.");
   return {
     latestCreatedAt:
       typeof data?.latestCreatedAt === "string" ? data.latestCreatedAt : null,
-    unreadCount: typeof data?.unreadCount === "number" ? data.unreadCount : 0,
+    unreadCount: data.unreadCount,
   };
 }
 
 function readNotification(value: unknown): NotificationItem | null {
-  if (!isRecord(value) || typeof value.id !== "string") {
+  if (!isRecord(value) || typeof value.id !== "string" || !notificationUuid.test(value.id) || typeof value.createdAt !== "string" || !Number.isFinite(Date.parse(value.createdAt)) || typeof value.targetPath !== "string") {
     return null;
   }
 
@@ -822,6 +926,46 @@ function readNotification(value: unknown): NotificationItem | null {
     targetPath: typeof value.targetPath === "string" ? value.targetPath : "/",
     title: typeof value.title === "string" ? value.title : "PartsPro",
   };
+}
+
+const notificationUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function canLeaveForNotification(text: typeof copy.zh) {
+  if (document.body.getAttribute("data-admin-ui") !== "true") return true;
+  if (document.querySelector('[data-admin-mutating="true"]')) return false;
+  return !document.querySelector('[data-admin-dirty="true"]') || window.confirm(text.unsavedLeave);
+}
+
+function isNotificationCount(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+}
+
+function mergeNotificationItems(current: NotificationItem[], incoming: NotificationItem[]) {
+  const rows = new Map(current.map(item => [item.id, item]));
+  for (const item of incoming) {
+    const previous = rows.get(item.id);
+    rows.set(item.id, previous?.readAt && !item.readAt ? { ...item, readAt: previous.readAt } : item);
+  }
+  return [...rows.values()];
+}
+
+class NotificationActionError extends Error {
+  constructor(public readonly unknown: boolean) { super("Notification action failed."); }
+}
+
+async function notificationActionRequest(url: string, init: RequestInit): Promise<Record<string, unknown>> {
+  let response: Response;
+  try {
+    response = await fetch(url, { ...init, signal: AbortSignal.timeout(8_000) });
+  } catch { throw new NotificationActionError(true); }
+  if (!response.ok) throw new NotificationActionError(response.status >= 500);
+  let payload: unknown;
+  try { payload = await response.json(); } catch { throw new NotificationActionError(true); }
+  const data = isRecord(payload) && isRecord(payload.data) ? payload.data : null;
+  const valid = data && (url.endsWith("/read") ? data.ok === true :
+    isNotificationCount(data.eventCount) && data.eventCount > 0 && isNotificationCount(data.pushDeliveredCount) && isNotificationCount(data.pushFailedCount));
+  if (!valid || !data) throw new NotificationActionError(true);
+  return data;
 }
 
 function notificationContent(item: NotificationItem, locale: string) {

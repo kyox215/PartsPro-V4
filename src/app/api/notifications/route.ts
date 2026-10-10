@@ -12,9 +12,14 @@ export const dynamic = "force-dynamic";
 const querySchema = z
   .object({
     limit: z.coerce.number().int().min(1).max(50).default(20),
+    beforeCreatedAt: z.string().datetime({ offset: true }).optional(),
+    beforeId: z.string().uuid().optional(),
   })
-  .strict();
-const queryKeys = new Set(Object.keys(querySchema.shape));
+  .strict()
+  .refine(value => Boolean(value.beforeCreatedAt) === Boolean(value.beforeId), {
+    message: "Both cursor fields are required together.",
+  });
+const queryKeys = new Set(["limit", "beforeCreatedAt", "beforeId"]);
 
 export async function GET(request: NextRequest) {
   const account = await getCurrentAccountContext({ ensure: true });
@@ -41,6 +46,8 @@ export async function GET(request: NextRequest) {
     const data = await listNotificationEvents({
       limit: parsed.data.limit,
       userId: account.userId,
+      beforeCreatedAt: parsed.data.beforeCreatedAt,
+      beforeId: parsed.data.beforeId,
     });
 
     return NextResponse.json({

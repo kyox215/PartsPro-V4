@@ -182,15 +182,24 @@ export async function revokeNotificationSubscription(input: {
 export async function listNotificationEvents(input: {
   limit: number;
   userId: string;
+  beforeCreatedAt?: string;
+  beforeId?: string;
 }) {
+  const cursorFilter = notificationCursorFilter(input.beforeCreatedAt, input.beforeId);
+  if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 50) {
+    throw new NotificationServiceError(400, "INVALID_QUERY", "Invalid notification page size.");
+  }
   const client = getNotificationClient();
+  let eventsQuery = client
+    .from("notification_events")
+    .select("id, audience, body, created_at, event_type, payload, read_at, source_action, target_path, title")
+    .eq("recipient_user_id", input.userId)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(input.limit + 1);
+  if (cursorFilter) eventsQuery = eventsQuery.or(cursorFilter);
   const [eventsResult, unreadResult] = await Promise.all([
-    client
-      .from("notification_events")
-      .select("id, audience, body, created_at, event_type, payload, read_at, source_action, target_path, title")
-      .eq("recipient_user_id", input.userId)
-      .order("created_at", { ascending: false })
-      .limit(input.limit),
+    eventsQuery,
     client
       .from("notification_events")
       .select("id", { count: "exact", head: true })
@@ -207,12 +216,37 @@ export async function listNotificationEvents(input: {
     );
   }
 
-  const events = readRows(eventsResult.data).map(toNotificationEventDto);
+  if (!Array.isArray(eventsResult.data) || !eventsResult.data.every(isRecord) || !Number.isSafeInteger(unreadResult.count) || Number(unreadResult.count) < 0) {
+    throw new NotificationServiceError(502, "NOTIFICATIONS_RESULT_INVALID", "Notification rows or count could not be verified.");
+  }
+  const rows = readRows(eventsResult.data);
+  const hasMore = rows.length > input.limit;
+  const events = rows.slice(0, input.limit).map(toNotificationEventDto);
+  const last = events.at(-1);
+  const nextCursor = hasMore && last
+    ? { beforeCreatedAt: last.createdAt, beforeId: last.id }
+    : null;
+  if (nextCursor) {
+    try { notificationCursorFilter(nextCursor.beforeCreatedAt, nextCursor.beforeId); }
+    catch { throw new NotificationServiceError(502, "NOTIFICATIONS_RESULT_INVALID", "Notification cursor could not be verified."); }
+  }
 
   return {
     notifications: events,
-    unreadCount: unreadResult.count ?? events.filter((event) => !event.readAt).length,
+    unreadCount: unreadResult.count as number,
+    hasMore,
+    nextCursor,
   };
+}
+
+export function notificationCursorFilter(createdAt?: string, id?: string) {
+  if (createdAt === undefined && id === undefined) return null;
+  if (!createdAt || !id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2})$/.test(createdAt) || !Number.isFinite(Date.parse(createdAt))) {
+    throw new NotificationServiceError(400, "INVALID_QUERY", "Invalid notification cursor.");
+  }
+  // Preserve PostgreSQL microseconds; Date.toISOString() would skip rows at a tied timestamp.
+  // Only a strict ISO timestamp and UUID enter the raw PostgREST expression.
+  return `created_at.lt.${createdAt},and(created_at.eq.${createdAt},id.lt.${id})`;
 }
 
 export async function getNotificationSummary(input: { userId: string }) {
@@ -241,9 +275,12 @@ export async function getNotificationSummary(input: { userId: string }) {
     );
   }
 
+  if (!Number.isSafeInteger(unreadResult.count) || Number(unreadResult.count) < 0) {
+    throw new NotificationServiceError(502, "NOTIFICATIONS_RESULT_INVALID", "Notification count could not be verified.");
+  }
   return {
     latestCreatedAt: readString(latestResult.data?.created_at),
-    unreadCount: unreadResult.count ?? 0,
+    unreadCount: unreadResult.count as number,
   };
 }
 
@@ -251,6 +288,7 @@ export async function markNotificationEventsRead(input: {
   ids?: string[];
   userId: string;
 }) {
+  if (input.ids?.length === 0) return { ok: true };
   const client = getNotificationClient();
   const now = new Date().toISOString();
   let request = client

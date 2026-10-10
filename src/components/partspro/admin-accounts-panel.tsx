@@ -261,6 +261,13 @@ function AdminAccountsPanelContent({ initialPermissions, initialUserId = null, p
     const [detailLoadedIncludes, setDetailLoadedIncludes] = React.useState<Set<AccountDetailInclude>>(() => new Set());
     const [detailLoadingIncludes, setDetailLoadingIncludes] = React.useState<Set<AccountDetailInclude>>(() => new Set());
     const [submitting, setSubmitting] = React.useState(false);
+    const [pricingMutating, setPricingMutating] = React.useState(false);
+    const pricingMutatingRef = React.useRef(false);
+    const pricingDeferredFocusRef = React.useRef(false);
+    const handlePricingMutation = React.useCallback((pending: boolean) => {
+        pricingMutatingRef.current = pending;
+        setPricingMutating(pending);
+    }, []);
     const [notice, setNotice] = React.useState<Notice | null>(null);
     const [dialogError, setDialogError] = React.useState("");
     const [conversion, setConversion] = React.useState<ConversionState | null>(null);
@@ -424,6 +431,7 @@ function AdminAccountsPanelContent({ initialPermissions, initialUserId = null, p
         setAppliedQuery(value.length >= 2 ? value : "");
     }
     function openDetail(account: Account) {
+        if (pricingMutatingRef.current) return;
         const shouldUseInlineDetailPane = usesInlineDetailPane || window.matchMedia(accountDetailInlineMediaQuery).matches;
         const userId = account.userId;
         setSelectedAccountId(userId);
@@ -542,6 +550,8 @@ function AdminAccountsPanelContent({ initialPermissions, initialUserId = null, p
     };
     const focusAccount = React.useEffectEvent(() => {
         if (focusAccountId && appliedFocusId.current === focusAccountId) return;
+        if (pricingMutatingRef.current) { pricingDeferredFocusRef.current = true; return; }
+        pricingDeferredFocusRef.current = false;
         const target = focusAccountId || selectedAccountId;
         if (!target) return;
         if (focusAccountId) appliedFocusId.current = focusAccountId;
@@ -559,6 +569,9 @@ function AdminAccountsPanelContent({ initialPermissions, initialUserId = null, p
         const timer = window.setTimeout(() => focusAccount(), 0);
         return () => window.clearTimeout(timer);
     }, [focusAccountId, permissionsLoaded]);
+    React.useEffect(() => {
+        if (!pricingMutating && pricingDeferredFocusRef.current && permissionsLoaded) focusAccount();
+    }, [pricingMutating, permissionsLoaded]);
     function openConversion(kind: ConversionKind, account: Account) {
         const fallbackRole = account.roleTemplate ?? "";
         setDialogError("");
@@ -804,7 +817,7 @@ function AdminAccountsPanelContent({ initialPermissions, initialUserId = null, p
           <RefreshCcw className={cn("size-4", loading && "animate-spin")}/>{accountText("刷新", locale)}</Button>
       </div>
 
-      <AdminPricingPanel permissions={[...currentPermissionSet]} customerId={detail?.profileCustomer?.id ?? detail?.customer?.id}/>
+      <AdminPricingPanel permissions={[...currentPermissionSet]} customerId={detail?.profileCustomer?.id ?? detail?.customer?.id} onMutatingChange={handlePricingMutation}/>
 
       {notice ? <><NoticeBanner notice={notice} onDismiss={() => setNotice(null)}/>{notice.tone === "warning" && detail ? <Button type="button" variant="outline" size="sm" onClick={() => void loadDetail(detail.account.userId)}>{accountText("重读账号详情", locale)}</Button> : null}</> : null}
 
@@ -812,6 +825,7 @@ function AdminAccountsPanelContent({ initialPermissions, initialUserId = null, p
         <div className="grid gap-2 xl:grid-cols-[minmax(360px,410px)_minmax(0,1fr)]">
           <div className="min-w-0 space-y-2 rounded-md border border-slate-100 bg-slate-50/60 p-2">
             {permissionsLoaded && visibleAccountTabCount > 0 ? (<Tabs value={accountType} onValueChange={(value) => {
+                if (pricingMutatingRef.current) return;
                 const nextType = value === "employee" ? "employee" : "customer";
                 if ((nextType === "employee" && !canReadEmployeeAccounts) ||
                     (nextType === "customer" && !canReadCustomerAccounts)) {
@@ -828,8 +842,8 @@ function AdminAccountsPanelContent({ initialPermissions, initialUserId = null, p
                 setDetailLoadingIncludes(new Set());
             }}>
                 <TabsList className={cn("grid h-8 rounded-md bg-white p-1 shadow-sm", visibleAccountTabCount > 1 ? "grid-cols-2" : "grid-cols-1")}>
-                  {canReadCustomerAccounts ? (<TabsTrigger value="customer" className="h-6 rounded text-xs font-bold">{accountText("客户账号", locale)}</TabsTrigger>) : null}
-                  {canReadEmployeeAccounts ? (<TabsTrigger value="employee" className="h-6 rounded text-xs font-bold">{accountText("员工账号", locale)}</TabsTrigger>) : null}
+                  {canReadCustomerAccounts ? (<TabsTrigger disabled={pricingMutating} value="customer" className="h-6 rounded text-xs font-bold">{accountText("客户账号", locale)}</TabsTrigger>) : null}
+                  {canReadEmployeeAccounts ? (<TabsTrigger disabled={pricingMutating} value="employee" className="h-6 rounded text-xs font-bold">{accountText("员工账号", locale)}</TabsTrigger>) : null}
                 </TabsList>
               </Tabs>) : null}
 
@@ -847,7 +861,7 @@ function AdminAccountsPanelContent({ initialPermissions, initialUserId = null, p
 
             <div className="max-h-[calc(100vh-280px)] min-h-[320px] overflow-y-auto pr-1">
               {!permissionsLoaded || (loading && accounts.length === 0) ? (<AccountListSkeleton />) : !canReadSelectedAccountType ? (<div className="rounded-md border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-slate-500">{accountText("当前账号没有读取", locale)}{accountType === "employee" ? accountText("员工", locale) : accountText("客户", locale)}{accountText("账号的权限。", locale)}</div>) : (<AdminBusyRegion contentClassName="space-y-1.5" label={text.common.refreshing} pending={loading} rows={4}>
-                  {accounts.length > 0 ? (accounts.map((account) => (<AccountListItem key={account.userId} account={account} active={detail?.account.userId === account.userId} currentUserId={currentUserId} onOpen={openDetail}/>))) : (<div className="rounded-md border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-slate-500">{accountText("没有匹配的账号。", locale)}</div>)}
+                  {accounts.length > 0 ? (accounts.map((account) => (<AccountListItem key={account.userId} account={account} active={detail?.account.userId === account.userId} currentUserId={currentUserId} disabled={pricingMutating} onOpen={openDetail}/>))) : (<div className="rounded-md border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-slate-500">{accountText("没有匹配的账号。", locale)}</div>)}
                 </AdminBusyRegion>)}
             </div>
 
@@ -1020,17 +1034,18 @@ function defaultDetailTabForAccount(): AccountDetailTab {
 function commerceCustomerForAccount(account: Pick<Account, "accountType" | "customer" | "profileCustomer">) {
     return account.accountType === "employee" ? account.profileCustomer : account.customer;
 }
-function AccountListItem({ account, active, currentUserId, onOpen, }: {
+function AccountListItem({ account, active, currentUserId, disabled = false, onOpen, }: {
     account: Account;
     active: boolean;
     currentUserId: string | null;
+    disabled?: boolean;
     onOpen: (account: Account) => void;
 }) {
     const { locale } = useI18n();
     const isSelf = account.userId === currentUserId;
     const text = useAdminText();
     const commerceCustomer = commerceCustomerForAccount(account);
-    return (<button type="button" className={cn("w-full rounded-md border px-2.5 py-2 text-left transition", active
+    return (<button type="button" disabled={disabled} className={cn("w-full rounded-md border px-2.5 py-2 text-left transition", active
             ? "border-primary/30 bg-primary/8"
             : "border-slate-200 bg-white hover:border-primary/30 hover:bg-primary/5")} onClick={() => onOpen(account)}>
       <div className="flex min-w-0 items-start gap-2">

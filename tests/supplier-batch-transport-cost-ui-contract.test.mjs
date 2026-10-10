@@ -1401,7 +1401,10 @@ test("supplier batch filters use namespaced URL state and strict API keys", () =
 });
 
 test("supplier batch mobile UI keeps advanced filters in an applied Sheet", () => {
-  assert.match(panelSource, /group-data-horizontal\/tabs:h-auto[\s\S]{0,180}grid-cols-2[\s\S]{0,180}sm:grid-cols-4/);
+  assert.match(panelSource, /group-data-horizontal\/tabs:h-auto[\s\S]{0,180}grid-cols-1[\s\S]{0,180}sm:grid-cols-3/);
+  for (const workspace of ["products", "directory", "sold-shortages", "batches", "banners"]) {
+    assert.match(panelSource, new RegExp(`\\[\\[?"${workspace}"`), `workspace ${workspace} remains accessible in its task group`);
+  }
   assert.match(panelSource, /className="hidden flex-wrap gap-2 sm:flex"/);
   assert.match(panelSource, /className="flex w-full gap-2 sm:hidden"/);
   assert.match(panelSource, /<BatchMobileExportMenu[\s\S]{0,420}onDownloadTemplate={onDownloadTemplate}/);

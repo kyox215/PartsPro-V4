@@ -757,7 +757,13 @@ const panelText = {
     restockManage: "处理提醒",
     restockActiveCount: "{count} 个提醒",
     restockEmpty: "暂无待处理补货提醒。",
-    restockDialogDescription: "客户提交的 active 补货提醒；处理后可标记为已通知或取消。",
+    restockDialogDescription: "客户提交的待处理补货提醒；实际联系客户后再标记已通知，此操作不会自动发送消息。",
+    restockReview: "提交结果待核对，请读取这条提醒的当前状态，勿重复处理。",
+    restockVerify: "核对当前状态",
+    restockRefresh: "重新读取",
+    restockVerifiedActive: "当前仍待处理，可重新选择操作。",
+    restockVerifiedChanged: "当前状态已更新，请按最新记录处理。",
+    restockTotal: "待处理 {count} 条 · 第 {page} 页",
     restockMarkNotified: "已通知",
     restockCancel: "取消提醒",
     restockUpdateSuccess: "补货提醒已更新。",
@@ -1203,7 +1209,13 @@ const panelText = {
     restockActiveCount: "{count} avvisi",
     restockEmpty: "Nessun avviso di riassortimento attivo.",
     restockDialogDescription:
-      "Avvisi active salvati dai clienti; dopo la gestione puoi marcarli notificati o annullati.",
+      "Segna notificato dopo aver contattato il cliente. Questa azione non invia messaggi automaticamente.",
+    restockReview: "Esito da verificare. Leggi lo stato di questo avviso prima di ripetere l’azione.",
+    restockVerify: "Verifica stato attuale",
+    restockRefresh: "Rileggi",
+    restockVerifiedActive: "L’avviso risulta ancora attivo; puoi scegliere nuovamente l’azione.",
+    restockVerifiedChanged: "Lo stato è cambiato. Controlla la registrazione aggiornata.",
+    restockTotal: "{count} da gestire · Pagina {page}",
     restockMarkNotified: "Notificato",
     restockCancel: "Annulla avviso",
     restockUpdateSuccess: "Avviso di riassortimento aggiornato.",
@@ -5006,11 +5018,7 @@ function AdminHomeBannersPanel({
 }
 
 function ProductRestockRequestsDialog({
-  open,
-  text,
-  onHandled,
-  onNotice,
-  onOpenChange,
+  open, text, onHandled, onNotice, onOpenChange,
 }: {
   open: boolean;
   text: typeof panelText.zh | typeof panelText.it;
@@ -5021,130 +5029,123 @@ function ProductRestockRequestsDialog({
   const [requests, setRequests] = React.useState<AdminRestockRequest[]>([]);
   const [isLoading, setIsLoading] = React.useState(false);
   const [updatingId, setUpdatingId] = React.useState<string | null>(null);
+  const [notice, setNotice] = React.useState<ProductNotice | null>(null);
+  const [readFailed, setReadFailed] = React.useState(false);
+  const [page, setPage] = React.useState(0);
+  const [total, setTotal] = React.useState(0);
+  const [unknownRequest, setUnknownRequest] = React.useState<AdminRestockRequest | null>(null);
+  const busyRef = React.useRef(false);
+  const handledRef = React.useRef(new Set<string>());
+  const readRef = React.useRef<{ sequence: number; controller: AbortController | null }>({ sequence: 0, controller: null });
+  const pageSize = 50;
+
+  const loadPage = React.useCallback(async (nextPage: number) => {
+    readRef.current.controller?.abort();
+    const controller = new AbortController();
+    const sequence = ++readRef.current.sequence;
+    readRef.current.controller = controller;
+    const timer = window.setTimeout(() => controller.abort(), 8_000);
+    setIsLoading(true);
+    setReadFailed(false);
+    try {
+      const result = await fetchAdminRestockRequests(nextPage * pageSize, controller.signal);
+      if (sequence !== readRef.current.sequence) return false;
+      const lastPage = Math.max(0, Math.ceil(result.total / pageSize) - 1);
+      if (nextPage > lastPage) { setPage(lastPage); return false; }
+      setRequests(result.requests);
+      setTotal(result.total);
+      return true;
+    } catch {
+      if (sequence === readRef.current.sequence) setReadFailed(true);
+      return false;
+    } finally {
+      window.clearTimeout(timer);
+      if (sequence === readRef.current.sequence) setIsLoading(false);
+    }
+  }, []);
 
   React.useEffect(() => {
-    if (!open) {
-      return;
-    }
+    if (!open) return;
+    const state = readRef.current;
+    const timer = window.setTimeout(() => void loadPage(page), 0);
+    return () => { window.clearTimeout(timer); state.sequence++; state.controller?.abort(); };
+  }, [loadPage, open, page]);
 
-    const controller = new AbortController();
-
-    const loadingTimer = window.setTimeout(() => {
-      if (!controller.signal.aborted) {
-        setIsLoading(true);
-      }
-    }, 0);
-    fetchAdminRestockRequests(controller.signal)
-      .then((items) => {
-        if (!controller.signal.aborted) {
-          setRequests(items);
-        }
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setRequests([]);
-          onNotice({ tone: "error", message: text.syncError });
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) {
-          setIsLoading(false);
-        }
-      });
-
-    return () => {
-      controller.abort();
-      window.clearTimeout(loadingTimer);
-    };
-  }, [onNotice, open, text.syncError]);
-
-  async function markRequest(
-    request: AdminRestockRequest,
-    status: Exclude<AdminRestockRequestStatus, "active">
-  ) {
-    setUpdatingId(request.id);
-
-    try {
-      await updateAdminRestockRequestStatus(request.id, status);
-      setRequests((current) => current.filter((item) => item.id !== request.id));
+  function confirmHandled(request: AdminRestockRequest) {
+    setRequests(current => current.filter(item => item.id !== request.id));
+    if (!handledRef.current.has(request.id)) {
+      handledRef.current.add(request.id);
+      setTotal(current => Math.max(0, current - 1));
       onHandled(request.sku);
-      onNotice({ tone: "success", message: text.restockUpdateSuccess });
-    } catch {
-      onNotice({ tone: "error", message: text.restockUpdateError });
-    } finally {
-      setUpdatingId(null);
     }
   }
 
+  async function markRequest(request: AdminRestockRequest, status: Exclude<AdminRestockRequestStatus, "active">) {
+    if (busyRef.current || unknownRequest || isLoading || readFailed) return;
+    busyRef.current = true;
+    setUpdatingId(request.id);
+    try {
+      const confirmed = await updateAdminRestockRequestStatus(request, status);
+      confirmHandled(confirmed);
+      const success = { tone: "success" as const, message: text.restockUpdateSuccess };
+      setNotice(success); onNotice(success);
+      await loadPage(page);
+    } catch (error) {
+      const needsReview = error instanceof RestockActionError && error.requiresReview;
+      if (needsReview) setUnknownRequest(request);
+      setNotice({ tone: needsReview ? "warning" : "error", message: needsReview ? text.restockReview : text.restockUpdateError });
+    } finally { busyRef.current = false; setUpdatingId(null); }
+  }
+
+  async function verifyRequest() {
+    if (!unknownRequest || busyRef.current) return;
+    busyRef.current = true; setUpdatingId(unknownRequest.id);
+    try {
+      const current = await fetchAdminRestockRequest(unknownRequest);
+      if (current.status !== "active") confirmHandled(current);
+      setUnknownRequest(null);
+      setNotice({ tone: "info", message: current.status === "active" ? text.restockVerifiedActive : text.restockVerifiedChanged });
+      await loadPage(page);
+    } catch { setNotice({ tone: "warning", message: text.restockReview }); }
+    finally { busyRef.current = false; setUpdatingId(null); }
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent scrollLayout="body" className="max-w-3xl">
+    <Dialog open={open} onOpenChange={next => { if (!busyRef.current) onOpenChange(next); }}>
+      <DialogContent scrollLayout="body" className="sm:max-w-3xl" data-admin-mutating={Boolean(updatingId) ? "true" : "false"}>
         <DialogHeader>
           <DialogTitle>{text.restockRequests}</DialogTitle>
           <DialogDescription>{text.restockDialogDescription}</DialogDescription>
         </DialogHeader>
         <DialogBody className="space-y-3">
-
-          <div className="space-y-2 pr-1">
-            {isLoading ? (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
-                {text.loading}
-              </div>
-            ) : requests.length > 0 ? (
-              requests.map((request) => (
-                <div
-                  key={request.id}
-                  className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto]"
-                >
-                  <div className="min-w-0">
-                    <div className="line-clamp-2 text-sm font-black text-slate-950">
-                      {request.productName}
-                    </div>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
-                      <span className="font-mono">{request.sku}</span>
-                      <span>{request.createdAt}</span>
-                      {request.customerId ? <span>{request.customerId}</span> : null}
-                    </div>
-                  </div>
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Button
-                      size="xs"
-                      className="bg-emerald-600 text-white hover:bg-emerald-600"
-                      disabled={Boolean(updatingId)}
-                      onClick={() => void markRequest(request, "notified")}
-                    >
-                      {updatingId === request.id ? (
-                        <Loader2 className="size-3 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="size-3" />
-                      )}
-                      {text.restockMarkNotified}
-                    </Button>
-                    <Button
-                      size="xs"
-                      variant="outline"
-                      className="bg-white text-slate-600"
-                      disabled={Boolean(updatingId)}
-                      onClick={() => void markRequest(request, "cancelled")}
-                    >
-                      <XCircle className="size-3" />
-                      {text.restockCancel}
-                    </Button>
+          {notice ? <AdminNotice tone={notice.tone} message={notice.message} /> : null}
+          {unknownRequest ? <AdminNotice tone="warning" message={text.restockReview} action={<AdminActionButton pending={Boolean(updatingId)} pendingLabel={text.loading} size="sm" onClick={() => void verifyRequest()}>{text.restockVerify}</AdminActionButton>} /> : null}
+          {readFailed ? <AdminNotice tone="error" message={text.syncError} action={<Button size="sm" disabled={isLoading || Boolean(updatingId)} onClick={() => void loadPage(page)}>{text.restockRefresh}</Button>} /> : null}
+          <p className="text-xs font-semibold text-slate-500">{formatAdminMessage(text.restockTotal, { count: total, page: page + 1 })}</p>
+          <div className="space-y-2 pr-1" aria-busy={isLoading}>
+            {isLoading ? <div role="status" className="rounded-lg border bg-slate-50 p-4 text-sm">{text.loading}</div> : null}
+            {requests.map(request => (
+              <div key={request.id} className="grid gap-2 rounded-lg border border-slate-200 bg-white p-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+                <div className="min-w-0">
+                  <div className="line-clamp-2 text-sm font-black text-slate-950">{request.productName}</div>
+                  <div className="mt-1 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
+                    <span className="break-all font-mono">{request.sku}</span><span>{request.createdAt}</span>
+                    {request.customerId ? <span className="break-all">{request.customerId}</span> : null}
                   </div>
                 </div>
-              ))
-            ) : (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
-                {text.restockEmpty}
+                <div className="flex min-w-0 flex-wrap items-center gap-2">
+                  <AdminActionButton size="xs" pending={updatingId === request.id} pendingLabel={text.loading} disabled={Boolean(updatingId) || isLoading || readFailed || Boolean(unknownRequest)} onClick={() => void markRequest(request, "notified")}><CheckCircle2 className="size-3" />{text.restockMarkNotified}</AdminActionButton>
+                  <Button size="xs" variant="outline" disabled={Boolean(updatingId) || isLoading || readFailed || Boolean(unknownRequest)} onClick={() => void markRequest(request, "cancelled")}><XCircle className="size-3" />{text.restockCancel}</Button>
+                </div>
               </div>
-            )}
+            ))}
+            {!isLoading && !readFailed && requests.length === 0 ? <AdminEmptyState title={text.restockEmpty} /> : null}
           </div>
-
         </DialogBody>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            {text.close}
-          </Button>
+        <DialogFooter className="flex-wrap">
+          <Button variant="outline" disabled={page === 0 || isLoading || Boolean(updatingId) || Boolean(unknownRequest)} onClick={() => setPage(current => current - 1)}>{text.previousPage}</Button>
+          <Button variant="outline" disabled={(page + 1) * pageSize >= total || isLoading || Boolean(updatingId) || Boolean(unknownRequest)} onClick={() => setPage(current => current + 1)}>{text.nextPage}</Button>
+          <Button variant="outline" disabled={Boolean(updatingId)} onClick={() => onOpenChange(false)}>{text.close}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -9243,56 +9244,47 @@ function readContentDispositionFileName(value: string | null) {
   return match?.[1]?.trim() ?? null;
 }
 
-async function fetchAdminRestockRequests(
-  signal?: AbortSignal
-): Promise<AdminRestockRequest[]> {
-  const params = new URLSearchParams({
-    limit: "100",
-    offset: "0",
-    status: "active",
-  });
+async function fetchAdminRestockRequests(offset: number, signal?: AbortSignal) {
+  const params = new URLSearchParams({ limit: "50", offset: String(offset), status: "active" });
   const response = await fetch(`/api/admin/restock-requests?${params.toString()}`, {
-    cache: "no-store",
-    headers: { Accept: "application/json", "Cache-Control": "no-cache" },
-    signal,
+    cache: "no-store", headers: { Accept: "application/json", "Cache-Control": "no-cache" }, signal,
   });
-
-  if (!response.ok) {
-    throw new Error(
-      await readApiErrorMessage(
-        response,
-        `GET /api/admin/restock-requests responded ${response.status}`
-      )
-    );
-  }
-
-  return readRestockRequestRows(await readJsonResponse(response));
+  if (!response.ok) throw new Error("Restock reminders could not be read.");
+  const payload = await readJsonResponse(response);
+  const rows = readRestockRequestRows(payload);
+  const meta = isRecord(payload) && isRecord(payload.meta) ? payload.meta : null;
+  if (!meta || typeof meta.total !== "number" || !Number.isSafeInteger(meta.total) || meta.total < 0 || meta.offset !== offset || meta.limit !== 50 || rows.some(row => row.status !== "active") || rows.length > 50 || (rows.length > 0 && meta.total < offset + rows.length) || typeof meta.warning === "string") throw new Error("Invalid restock page.");
+  return { requests: rows, total: meta.total };
 }
 
-async function updateAdminRestockRequestStatus(
-  id: string,
-  status: Exclude<AdminRestockRequestStatus, "active">
-) {
-  const response = await fetch(`/api/admin/restock-requests/${encodeURIComponent(id)}`, {
-    body: JSON.stringify({ status }),
-    cache: "no-store",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    method: "PATCH",
+class RestockActionError extends Error {
+  constructor(public readonly requiresReview: boolean) { super("Restock action failed."); }
+}
+
+function confirmedRestockRow(payload: unknown, request: AdminRestockRequest, status?: AdminRestockRequestStatus) {
+  const row = parseRestockRequestRow(readPayloadDataObject(payload));
+  if (!row || row.id !== request.id || row.sku !== request.sku || (status && row.status !== status)) throw new RestockActionError(true);
+  return row;
+}
+
+async function fetchAdminRestockRequest(request: AdminRestockRequest) {
+  const response = await fetch(`/api/admin/restock-requests/${encodeURIComponent(request.id)}`, {
+    cache: "no-store", headers: { Accept: "application/json" }, signal: AbortSignal.timeout(8_000),
   });
+  if (!response.ok) throw new Error("Restock status could not be read.");
+  return confirmedRestockRow(await readJsonResponse(response), request);
+}
 
-  if (!response.ok) {
-    throw new Error(
-      await readApiErrorMessage(
-        response,
-        `PATCH /api/admin/restock-requests/${id} responded ${response.status}`
-      )
-    );
-  }
-
-  return parseRestockRequestRow(readPayloadDataObject(await readJsonResponse(response)));
+async function updateAdminRestockRequestStatus(request: AdminRestockRequest, status: Exclude<AdminRestockRequestStatus, "active">) {
+  let response: Response;
+  try {
+    response = await fetch(`/api/admin/restock-requests/${encodeURIComponent(request.id)}`, {
+      body: JSON.stringify({ status }), cache: "no-store", headers: { Accept: "application/json", "Content-Type": "application/json" }, method: "PATCH", signal: AbortSignal.timeout(8_000),
+    });
+  } catch { throw new RestockActionError(true); }
+  if (!response.ok) throw new RestockActionError(response.status >= 500 || response.status === 409);
+  try { return confirmedRestockRow(await readJsonResponse(response), request, status); }
+  catch { throw new RestockActionError(true); }
 }
 
 async function fetchAdminProductModelGroups(
@@ -10524,11 +10516,10 @@ function readProductsRows(payload: unknown) {
 }
 
 function readRestockRequestRows(payload: unknown) {
-  if (!isRecord(payload) || !Array.isArray(payload.data)) {
-    return [];
-  }
-
-  return payload.data.map(parseRestockRequestRow).filter(isDefined);
+  if (!isRecord(payload) || !Array.isArray(payload.data)) throw new Error("Invalid restock rows.");
+  const rows = payload.data.map(parseRestockRequestRow);
+  if (rows.some(row => row === null)) throw new Error("Invalid restock row.");
+  return rows as AdminRestockRequest[];
 }
 
 function readPayloadDataObject(payload: unknown) {

@@ -139,7 +139,8 @@ test("RMA instructions remain readable in the narrow popover and use the existin
   assert.match(component, /!content\.isRma && "line-clamp-2"/);
   assert.match(component, /break-words/);
   assert.match(component, /focus-visible:ring-3/);
-  assert.match(component, /max-h-\[320px\] overflow-y-auto/);
+  assert.match(component, /min-h-0 max-h-\[320px\] flex-1 overflow-y-auto/);
+  assert.ok(component.includes("max-h-[min(600px,var(--radix-popover-content-available-height))]"));
   assert.match(component, /void openNotification\(item\)/);
   assert.match(component, /router\.push\(item\.targetPath\)/);
   assert.doesNotMatch(component, /dangerouslySetInnerHTML/);
@@ -147,7 +148,7 @@ test("RMA instructions remain readable in the narrow popover and use the existin
 
 function notification(overrides = {}) {
   return {
-    id: "notification-1", audience: "customer", body: "Original server body", title: "Original server title",
+    id: "11111111-1111-4111-8111-111111111111", audience: "customer", body: "Original server body", title: "Original server title",
     createdAt: "2026-09-13T18:00:00.000Z", eventType: "rma_status_updated", payload: { status: "approved" },
     readAt: null, sourceAction: null, targetPath: "/rma?requestId=request-1", ...overrides,
   };
@@ -158,17 +159,18 @@ function content(overrides, locale) {
 }
 
 function loadNotificationHelpers() {
-  const names = ["readNotificationPayload", "readNotification", "notificationContent", "rmaNotificationCopy", "isRecord"];
+  const names = ["notificationUuid", "isNotificationCount", "readNotificationPayload", "readNotification", "notificationContent", "rmaNotificationCopy", "isRecord"];
   const sourceFile = typescript.createSourceFile("notification-center.tsx", component, typescript.ScriptTarget.Latest, true, typescript.ScriptKind.TSX);
   const declarations = new Map();
   const visit = (node) => {
-    if (typescript.isFunctionDeclaration(node) && node.name) declarations.set(node.name.text, node);
+    if (typescript.isFunctionDeclaration(node) && node.name) declarations.set(node.name.text, node.getText(sourceFile));
+    if (typescript.isVariableDeclaration(node) && typescript.isIdentifier(node.name)) declarations.set(node.name.text, "const " + node.getText(sourceFile) + ";");
     typescript.forEachChild(node, visit);
   };
   visit(sourceFile);
   const source = names.map((name) => {
     assert.ok(declarations.has(name), `${name} is required`);
-    return declarations.get(name).getText(sourceFile);
+    return declarations.get(name);
   }).join("\n");
   const compiled = typescript.transpileModule(`${source}\nglobalThis.helpers = { ${names.join(", ")} };`, {
     compilerOptions: { module: typescript.ModuleKind.CommonJS, target: typescript.ScriptTarget.ES2022 },
