@@ -2,199 +2,204 @@ TAP version 13
 # Subtest: successful hides await each write and preserve request order
 ok 1 - successful hides await each write and preserve request order
   ---
-  duration_ms: 1.21475
+  duration_ms: 1.110833
   ...
 # Subtest: a middle failure retains committed results and stops before remaining SKUs
 ok 2 - a middle failure retains committed results and stops before remaining SKUs
   ---
-  duration_ms: 0.140083
+  duration_ms: 0.132709
   ...
 # Subtest: first failure reports zero successes without retrying
 ok 3 - first failure reports zero successes without retrying
   ---
-  duration_ms: 0.065
+  duration_ms: 0.062792
   ...
 # Subtest: last failure reports all earlier successes and no unattempted SKUs
 ok 4 - last failure reports all earlier successes and no unattempted SKUs
   ---
-  duration_ms: 0.062125
+  duration_ms: 0.058917
   ...
 # Subtest: empty input performs no writes
 ok 5 - empty input performs no writes
   ---
-  duration_ms: 0.051291
+  duration_ms: 0.048708
   ...
 # Subtest: remaining work is stable when caller mutates its array during a write
 ok 6 - remaining work is stable when caller mutates its array during a write
   ---
-  duration_ms: 0.056959
+  duration_ms: 0.054333
   ...
 # Subtest: display renaming preserves canonical identity and both languages
 ok 7 - display renaming preserves canonical identity and both languages
   ---
-  duration_ms: 1.052625
+  duration_ms: 0.988958
   ...
 # Subtest: existing nodes require an optimistic version; departments cannot be created or disabled
 ok 8 - existing nodes require an optimistic version; departments cannot be created or disabled
   ---
-  duration_ms: 0.413542
+  duration_ms: 0.372416
   ...
 # Subtest: moves retain microsecond versions and reject duplicates, null reasons and unknown targets
 ok 9 - moves retain microsecond versions and reject duplicates, null reasons and unknown targets
   ---
-  duration_ms: 0.874375
+  duration_ms: 0.749167
   ...
 # Subtest: bulk directory moves cannot become canonical brand edits or stock writes
 ok 10 - bulk directory moves cannot become canonical brand edits or stock writes
   ---
-  duration_ms: 0.149625
+  duration_ms: 0.1385
   ...
 # Subtest: product edits need exact versions; model and supplier remain optional
 ok 11 - product edits need exact versions; model and supplier remain optional
   ---
-  duration_ms: 0.637
+  duration_ms: 0.548458
   ...
 # Subtest: universal products retain brand navigation after department moves without inventing compatibility
 ok 12 - universal products retain brand navigation after department moves without inventing compatibility
   ---
-  duration_ms: 0.070583
+  duration_ms: 0.063458
+  ...
+# Subtest: new nodes match the database active default and existing nodes may be disabled
+ok 13 - new nodes match the database active default and existing nodes may be disabled
+  ---
+  duration_ms: 0.142125
   ...
 # Subtest: remote cart restore and requests have bounded deadlines
-ok 13 - remote cart restore and requests have bounded deadlines
+ok 14 - remote cart restore and requests have bounded deadlines
   ---
-  duration_ms: 2.486042
+  duration_ms: 2.030375
   ...
 # Subtest: order preview waits for cart readiness and has a timeout
-ok 14 - order preview waits for cart readiness and has a timeout
+ok 15 - order preview waits for cart readiness and has a timeout
   ---
-  duration_ms: 0.813458
+  duration_ms: 0.606166
   ...
 # Subtest: checkout status prioritizes remote cart before catalog and preview
-ok 15 - checkout status prioritizes remote cart before catalog and preview
+ok 16 - checkout status prioritizes remote cart before catalog and preview
   ---
-  duration_ms: 0.676
+  duration_ms: 0.554917
   ...
 # Subtest: normalizes pasted headers and explicit SKU values
-ok 16 - normalizes pasted headers and explicit SKU values
+ok 17 - normalizes pasted headers and explicit SKU values
   ---
-  duration_ms: 0.843
+  duration_ms: 0.633584
   ...
 # Subtest: normalizes supplier aliases to the same product SKU
-ok 17 - normalizes supplier aliases to the same product SKU
+ok 18 - normalizes supplier aliases to the same product SKU
   ---
-  duration_ms: 0.291625
+  duration_ms: 0.253375
   ...
 # Subtest: only skips a no-op update when validation has no issues
-ok 18 - only skips a no-op update when validation has no issues
+ok 19 - only skips a no-op update when validation has no issues
   ---
-  duration_ms: 0.049083
+  duration_ms: 0.044292
   ...
 # Subtest: parses Excel-style TSV clipboard data
-ok 19 - parses Excel-style TSV clipboard data
+ok 20 - parses Excel-style TSV clipboard data
   ---
-  duration_ms: 0.16375
+  duration_ms: 0.17
   ...
 # Subtest: parses quoted CSV fields and CRLF
-ok 20 - parses quoted CSV fields and CRLF
+ok 21 - parses quoted CSV fields and CRLF
   ---
-  duration_ms: 0.074709
+  duration_ms: 0.064542
   ...
 # Subtest: deduplicates semicolon lists without losing order
-ok 21 - deduplicates semicolon lists without losing order
+ok 22 - deduplicates semicolon lists without losing order
   ---
-  duration_ms: 0.064958
+  duration_ms: 0.059833
   ...
 # Subtest: flags a title with Poco C65 and Redmi 13C when structured compatibility is missing
-ok 22 - flags a title with Poco C65 and Redmi 13C when structured compatibility is missing
+ok 23 - flags a title with Poco C65 and Redmi 13C when structured compatibility is missing
   ---
-  duration_ms: 1.413833
+  duration_ms: 1.538916
   ...
 # Subtest: legacy completeness still requires review until the product is managed
-ok 23 - legacy completeness still requires review until the product is managed
+ok 24 - legacy completeness still requires review until the product is managed
   ---
-  duration_ms: 0.479666
+  duration_ms: 0.501125
   ...
 # Subtest: a managed product with complete structured coverage does not require review
-ok 24 - a managed product with complete structured coverage does not require review
+ok 25 - a managed product with complete structured coverage does not require review
   ---
-  duration_ms: 0.213125
+  duration_ms: 0.224417
   ...
 # Subtest: keeps 13C and 13C 5G distinct when managed coverage is incomplete
-ok 25 - keeps 13C and 13C 5G distinct when managed coverage is incomplete
+ok 26 - keeps 13C and 13C 5G distinct when managed coverage is incomplete
   ---
-  duration_ms: 0.492125
+  duration_ms: 0.480458
   ...
 # Subtest: managed coverage of Poco C65, Redmi 13C, and Redmi 13C 5G is complete
-ok 26 - managed coverage of Poco C65, Redmi 13C, and Redmi 13C 5G is complete
+ok 27 - managed coverage of Poco C65, Redmi 13C, and Redmi 13C 5G is complete
   ---
-  duration_ms: 0.167958
+  duration_ms: 0.14975
   ...
 # Subtest: detects adjacent OnePlus and OPPO model evidence without a slash
-ok 27 - detects adjacent OnePlus and OPPO model evidence without a slash
+ok 28 - detects adjacent OnePlus and OPPO model evidence without a slash
   ---
-  duration_ms: 0.207875
+  duration_ms: 0.123041
   ...
 # Subtest: does not let a wrong Nord 2 5G structured model cover Nord CE 3 Lite 5G
-ok 28 - does not let a wrong Nord 2 5G structured model cover Nord CE 3 Lite 5G
+ok 29 - does not let a wrong Nord 2 5G structured model cover Nord CE 3 Lite 5G
   ---
-  duration_ms: 0.172042
+  duration_ms: 0.136958
   ...
 # Subtest: strips embedded CPH codes without counting them as another A98 model
-ok 29 - strips embedded CPH codes without counting them as another A98 model
+ok 30 - strips embedded CPH codes without counting them as another A98 model
   ---
-  duration_ms: 0.140792
+  duration_ms: 0.126208
   ...
 # Subtest: detects OPPO and Realme as distinct brands
-ok 30 - detects OPPO and Realme as distinct brands
+ok 31 - detects OPPO and Realme as distinct brands
   ---
-  duration_ms: 0.108958
+  duration_ms: 0.096583
   ...
 # Subtest: detects three Honor marketing models
-ok 31 - detects three Honor marketing models
+ok 32 - detects three Honor marketing models
   ---
-  duration_ms: 0.1725
+  duration_ms: 0.155667
   ...
 # Subtest: does not split Realme model-code aliases into multiple devices
-ok 32 - does not split Realme model-code aliases into multiple devices
+ok 33 - does not split Realme model-code aliases into multiple devices
   ---
-  duration_ms: 0.117042
+  duration_ms: 0.113166
   ...
 # Subtest: does not split Samsung A14 model-code aliases into multiple devices
-ok 33 - does not split Samsung A14 model-code aliases into multiple devices
+ok 34 - does not split Samsung A14 model-code aliases into multiple devices
   ---
-  duration_ms: 0.184041
+  duration_ms: 0.183167
   ...
 # Subtest: ignores a single model, empty title, color, network, and year tokens
-ok 34 - ignores a single model, empty title, color, network, and year tokens
+ok 35 - ignores a single model, empty title, color, network, and year tokens
   ---
-  duration_ms: 0.256042
+  duration_ms: 0.252709
   ...
 # Subtest: fingerprints only normalized analyzer fields deterministically
-ok 35 - fingerprints only normalized analyzer fields deterministically
+ok 36 - fingerprints only normalized analyzer fields deterministically
   ---
-  duration_ms: 0.485875
+  duration_ms: 0.4
   ...
 # Subtest: storefront Italian and Chinese dictionaries expose the same keys
-ok 36 - storefront Italian and Chinese dictionaries expose the same keys
+ok 37 - storefront Italian and Chinese dictionaries expose the same keys
   ---
-  duration_ms: 1.072875
+  duration_ms: 1.072916
   ...
 # Subtest: every literal storefront tx/txFormat key exists in both locale dictionaries
-ok 37 - every literal storefront tx/txFormat key exists in both locale dictionaries
+ok 38 - every literal storefront tx/txFormat key exists in both locale dictionaries
   ---
-  duration_ms: 30.571166
+  duration_ms: 29.227833
   ...
 # Subtest: Italian customer-facing dictionary values do not leak Han characters
-ok 38 - Italian customer-facing dictionary values do not leak Han characters
+ok 39 - Italian customer-facing dictionary values do not leak Han characters
   ---
-  duration_ms: 2.090916
+  duration_ms: 1.967958
   ...
-1..38
-# tests 38
+1..39
+# tests 39
 # suites 0
-# pass 38
+# pass 39
 # fail 0
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 317.060959
+# duration_ms 306.926708

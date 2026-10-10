@@ -1,0 +1,14 @@
+{
+  "deployment": "dpl_8zdj85FagVtZmMnph7XvLRCbFjRA",
+  "commit": "05d6cc4110e412754f34c529ff2ddc2e121c999c",
+  "project": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+  "target": "production staged before domain promotion",
+  "filesChecked": 370,
+  "trackedFiles": 369,
+  "generated": [
+    "next-env.d.ts"
+  ],
+  "mismatches": [],
+  "forbidden": [],
+  "source": "Complete authenticated CLI src tree compared with Git commit; generated next-env.d.ts compared with local build; Vercel-generated out tree distinct"
+}

@@ -11,6 +11,7 @@ export const catalogNodeSchema = z.object({
   active: z.boolean().default(true),
   version: z.number().int().positive().optional(),
 }).strict().superRefine((node, context) => {
+  if (!node.id && !node.active) context.addIssue({ code: "custom", path: ["active"], message: "New directory nodes start active; save before disabling" });
   if (!node.id && node.kind === "category" && node.value.length < 2) context.addIssue({ code: "custom", path: ["value"], message: "Category codes need at least two characters" });
   if (node.id && !node.version) context.addIssue({ code: "custom", path: ["version"], message: "Version required" });
   if (node.kind === "department" && (!node.id || !node.active || !catalogDepartments.includes(node.value as CatalogDepartment))) {

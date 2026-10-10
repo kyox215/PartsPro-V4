@@ -48,3 +48,9 @@ test('universal products retain brand navigation after department moves without 
  assert.equal(mergeCatalogDirectoryBrands(existing,nodes,'tablet').length,1);
  assert.equal(mergeCatalogDirectoryBrands(result,nodes,'computer').length,2);
 });
+
+test('new nodes match the database active default and existing nodes may be disabled',()=>{
+ assert.equal(catalogNodeSchema.safeParse({...node,active:false}).success,false);
+ assert.equal(catalogNodeSchema.parse({...node,active:undefined}).active,true);
+ assert.equal(catalogNodeSchema.safeParse({...node,id:'00000000-0000-4000-8000-000000000001',version:1,active:false}).success,true);
+});

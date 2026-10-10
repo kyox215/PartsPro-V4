@@ -14,14 +14,16 @@
         "editor viewport",
         "custom category edit/save/version",
         "failed save retains input",
-        "directory-prefilled draft"
+        "directory-prefilled draft",
+        "new category active default/readback"
       ],
       "writes": [
         "node",
         "move",
         "rejected-product",
         "product",
-        "create"
+        "create",
+        "node"
       ]
     },
     {
@@ -37,14 +39,16 @@
         "editor viewport",
         "custom category edit/save/version",
         "failed save retains input",
-        "directory-prefilled draft"
+        "directory-prefilled draft",
+        "new category active default/readback"
       ],
       "writes": [
         "node",
         "move",
         "rejected-product",
         "product",
-        "create"
+        "create",
+        "node"
       ]
     },
     {
@@ -60,14 +64,16 @@
         "editor viewport",
         "custom category edit/save/version",
         "failed save retains input",
-        "directory-prefilled draft"
+        "directory-prefilled draft",
+        "new category active default/readback"
       ],
       "writes": [
         "node",
         "move",
         "rejected-product",
         "product",
-        "create"
+        "create",
+        "node"
       ]
     },
     {
@@ -83,14 +89,16 @@
         "editor viewport",
         "custom category edit/save/version",
         "failed save retains input",
-        "directory-prefilled draft"
+        "directory-prefilled draft",
+        "new category active default/readback"
       ],
       "writes": [
         "node",
         "move",
         "rejected-product",
         "product",
-        "create"
+        "create",
+        "node"
       ]
     }
   ]

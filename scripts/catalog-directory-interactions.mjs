@@ -21,7 +21,7 @@ try {
    let data,meta; let status=200;
    if(url.pathname==='/api/catalog-directory') data={nodes:nodes.filter(n=>n.active),revision:String(revision)};
    else if(url.pathname==='/api/admin/catalog-directory' && request.method()==='GET') data={nodes,revision:String(revision)};
-   else if(url.pathname==='/api/admin/catalog-directory') { writes.push({type:'node',body}); const n=nodes.find(n=>n.id===body.id); assert.equal(n.version,body.version); Object.assign(n,body,{version:n.version+1}); revision++; data={nodes,revision:String(revision)}; }
+   else if(url.pathname==='/api/admin/catalog-directory') { writes.push({type:'node',body}); if(body.id){ const n=nodes.find(n=>n.id===body.id); assert.equal(n.version,body.version); Object.assign(n,body,{version:n.version+1}); } else { assert.equal(body.active,true); nodes.push({...body,id:'00000000-0000-4000-8000-000000000888',version:1,count:0,countsByDepartment:{}}); } revision++; data={nodes,revision:String(revision)}; }
    else if(url.pathname==='/api/admin/catalog-directory/move'){ writes.push({type:'move',body}); assert.equal(body.products[0].updatedAt,product.updatedAt); product.catalogDepartment=body.target.department; product.updatedAt='2026-10-10T09:00:00.123456Z'; revision++; data={moved:1,directory:{nodes,revision:String(revision)}}; }
    else if(url.pathname==='/api/admin/products/model-groups') {data=[{brand:'REMAX',models:[],series:[]}];meta={source:'supabase'};}
    else if(url.pathname==='/api/admin/products' && request.method()==='GET'){ data=[product];meta={source:'supabase',total:1,returned:1,summary:{total:1,active:1}}; }
@@ -91,8 +91,20 @@ try {
   await page.waitForTimeout(300);
   const creation=writes.find(w=>w.type==='create');assert.ok(creation);assert.match(creation.body.requestId,/^[a-f0-9-]{36}$/i);assert.equal(creation.body.product.category,'Custom category');
   await page.screenshot({path:path.join(output,`draft-${width}-${locale}.png`)});
+  await createDialog.locator('[data-slot="sheet-close"]').click();
+  await page.getByRole('button',{name:zh?'新增':'Aggiungi',exact:true}).click();
+  const nodeForm=page.locator('#catalog-node-editor');
+  assert.equal(await nodeForm.getByRole('checkbox').count(),0,'new directory state has a fixed active default');
+  await page.getByLabel(zh?'内部标识（创建后固定）':'Codice interno (fisso dopo la creazione)',{exact:true}).fill('New fixture category');
+  await page.getByLabel('中文名称',{exact:true}).fill('新增测试分类');
+  await page.getByLabel('Nome italiano',{exact:true}).fill('Nuova categoria');
+  await page.getByRole('button',{name:zh?'保存目录':'Salva',exact:true}).click();
+  await page.getByRole('status').filter({hasText:zh?'目录已保存':'Catalogo salvato'}).waitFor();
+  assert.ok(nodes.some(n=>n.value==='New fixture category'&&n.active));
+  assert.equal(writes.filter(w=>w.type==='node').length,2);
+  await page.screenshot({path:path.join(output,`new-category-${width}-${locale}.png`),fullPage:true});
   assert.equal(errors.length,0,errors.join('\n'));
-  results.push({width,height,locale,passed:['directory unsaved tab exit protection','directory rename/readback','department move/version payload','long labels','no page overflow','editor viewport','custom category edit/save/version','failed save retains input','directory-prefilled draft'],writes:writes.map(w=>w.type)});
+  results.push({width,height,locale,passed:['directory unsaved tab exit protection','directory rename/readback','department move/version payload','long labels','no page overflow','editor viewport','custom category edit/save/version','failed save retains input','directory-prefilled draft','new category active default/readback'],writes:writes.map(w=>w.type)});
   await context.close();
  }
  await fs.writeFile(path.join(output,'browser-fixture-results.json'),JSON.stringify({environment:'real React components with simulated admin APIs; not production E2E',results},null,2));
