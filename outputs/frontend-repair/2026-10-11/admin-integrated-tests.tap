@@ -1,0 +1,530 @@
+TAP version 13
+# Subtest: authorized phone correction on an incomplete profile writes only known changes without creating another profile
+ok 1 - authorized phone correction on an incomplete profile writes only known changes without creating another profile
+  ---
+  duration_ms: 49.489375
+  ...
+# Subtest: profile classification permission remains mandatory for partial correction
+ok 2 - profile classification permission remains mandatory for partial correction
+  ---
+  duration_ms: 22.993
+  ...
+# Subtest: correction cannot initialize a missing profile or bypass complete-profile validation
+ok 3 - correction cannot initialize a missing profile or bypass complete-profile validation
+  ---
+  duration_ms: 39.282167
+  ...
+# Subtest: successful profile write plus failed detail read reports saved and never replays the write
+ok 4 - successful profile write plus failed detail read reports saved and never replays the write
+  ---
+  duration_ms: 14.334791
+  ...
+# Subtest: a phone correction on an incomplete customer does not require unrelated address fields
+ok 5 - a phone correction on an incomplete customer does not require unrelated address fields
+  ---
+  duration_ms: 2.189209
+  ...
+# Subtest: correction requires a real changed field and a reason and never accepts identity fields
+ok 6 - correction requires a real changed field and a reason and never accepts identity fields
+  ---
+  duration_ms: 0.585375
+  ...
+# Subtest: submitting blocks all close paths; dirty drafts can remain open or be deliberately discarded
+ok 7 - submitting blocks all close paths; dirty drafts can remain open or be deliberately discarded
+  ---
+  duration_ms: 0.075
+  ...
+# Subtest: role preview exposes added and removed permissions including sensitive changes
+ok 8 - role preview exposes added and removed permissions including sensitive changes
+  ---
+  duration_ms: 0.105958
+  ...
+# Subtest: Italian templates preserve customer names and user-entered text verbatim
+ok 9 - Italian templates preserve customer names and user-entered text verbatim
+  ---
+  duration_ms: 0.139334
+  ...
+# Subtest: every account UI copy literal and template part resolves without Chinese in Italian
+ok 10 - every account UI copy literal and template part resolves without Chinese in Italian
+  ---
+  duration_ms: 67.035541
+  ...
+# Subtest: history links enter the real order panel with exact customer and return-account scope
+ok 11 - history links enter the real order panel with exact customer and return-account scope
+  ---
+  duration_ms: 60.844875
+  ...
+# Subtest: period visitor count comes from the ungrouped total, not the sum of daily uniques
+ok 12 - period visitor count comes from the ungrouped total, not the sum of daily uniques
+  ---
+  duration_ms: 15.214625
+  ...
+# Subtest: SQL reply atomically inserts message, clears staff unread, claims conversation and emits exactly one message event; retry is idempotent
+ok 13 - SQL reply atomically inserts message, clears staff unread, claims conversation and emits exactly one message event; retry is idempotent
+  ---
+  duration_ms: 1252.928083
+  ...
+# Subtest: SQL event insert failure rolls back the message and unread update together
+ok 14 - SQL event insert failure rolls back the message and unread update together
+  ---
+  duration_ms: 3.211875
+  ...
+# Subtest: SQL denies anonymous, missing permission, NULL/unknown state action and unauthorized resolve/reopen without any change
+ok 15 - SQL denies anonymous, missing permission, NULL/unknown state action and unauthorized resolve/reopen without any change
+  ---
+  duration_ms: 3.621542
+  ...
+# Subtest: SQL assignment rejects non-employee, resolve/reopen require correct state, and state event failure rolls back
+ok 16 - SQL assignment rejects non-employee, resolve/reopen require correct state, and state event failure rolls back
+  ---
+  duration_ms: 7.144291
+  ...
+# Subtest: finance-only SQL reader aggregates 1205 batch lines and 1205 payments completely, paginates old batches, and excludes pending payments
+ok 17 - finance-only SQL reader aggregates 1205 batch lines and 1205 payments completely, paginates old batches, and excludes pending payments
+  ---
+  duration_ms: 41.704292
+  ...
+# Subtest: existing marketplace partial unique index refuses a second logical send after completion without resetting status
+ok 18 - existing marketplace partial unique index refuses a second logical send after completion without resetting status
+  ---
+  duration_ms: 1.547875
+  ...
+# Subtest: batch plan applies common supplier/status only to selected rows, preserves per-row quantity/note and presents precise old/new values
+ok 19 - batch plan applies common supplier/status only to selected rows, preserves per-row quantity/note and presents precise old/new values
+  ---
+  duration_ms: 0.761291
+  ...
+# Subtest: batch invalid/empty quantities, stale selection and duplicate IDs never become a zero write
+ok 20 - batch invalid/empty quantities, stale selection and duplicate IDs never become a zero write
+  ---
+  duration_ms: 0.185958
+  ...
+# Subtest: offline plans are readable; unconnected, wrong-environment and unsaved-ready external actions are refused
+ok 21 - offline plans are readable; unconnected, wrong-environment and unsaved-ready external actions are refused
+  ---
+  duration_ms: 0.084083
+  ...
+# Subtest: Italian copy translates known dynamic blockers, permissions and queue failures while retaining entered SKU/aspect names
+ok 22 - Italian copy translates known dynamic blockers, permissions and queue failures while retaining entered SKU/aspect names
+  ---
+  duration_ms: 35.30525
+  ...
+# Subtest: successful hides await each write and preserve request order
+ok 23 - successful hides await each write and preserve request order
+  ---
+  duration_ms: 4.729542
+  ...
+# Subtest: a middle failure retains committed results and stops before remaining SKUs
+ok 24 - a middle failure retains committed results and stops before remaining SKUs
+  ---
+  duration_ms: 0.195375
+  ...
+# Subtest: first failure reports zero successes without retrying
+ok 25 - first failure reports zero successes without retrying
+  ---
+  duration_ms: 0.069791
+  ...
+# Subtest: last failure reports all earlier successes and no unattempted SKUs
+ok 26 - last failure reports all earlier successes and no unattempted SKUs
+  ---
+  duration_ms: 0.063917
+  ...
+# Subtest: empty input performs no writes
+ok 27 - empty input performs no writes
+  ---
+  duration_ms: 0.058
+  ...
+# Subtest: remaining work is stable when caller mutates its array during a write
+ok 28 - remaining work is stable when caller mutates its array during a write
+  ---
+  duration_ms: 0.056292
+  ...
+# Subtest: finance server aliases point aria-describedby to visible original field errors
+ok 29 - finance server aliases point aria-describedby to visible original field errors
+  ---
+  duration_ms: 40.273958
+  ...
+# Subtest: finance error summary deduplicates aliases and never links a hidden field
+ok 30 - finance error summary deduplicates aliases and never links a hidden field
+  ---
+  duration_ms: 8.3905
+  ...
+# Subtest: editing finance money or notes clears only related alias errors and preserves draft
+ok 31 - editing finance money or notes clears only related alias errors and preserves draft
+  ---
+  duration_ms: 3.283291
+  ...
+# Subtest: support 2xx bad detail is acknowledged once and keeps saved-warning during failed reread
+ok 32 - support 2xx bad detail is acknowledged once and keeps saved-warning during failed reread
+  ---
+  duration_ms: 42.405916
+  ...
+# Subtest: expense POST rejects null amount before any booked write and reports the field
+ok 33 - expense POST rejects null amount before any booked write and reports the field
+  ---
+  duration_ms: 8.946208
+  ...
+# Subtest: expense correction passes the same exact ID and raw version while retaining audit metadata
+ok 34 - expense correction passes the same exact ID and raw version while retaining audit metadata
+  ---
+  duration_ms: 22.7815
+  ...
+# Subtest: stale correction refuses to write and preserves the original version
+ok 35 - stale correction refuses to write and preserves the original version
+  ---
+  duration_ms: 6.379084
+  ...
+# Subtest: partial payment amount correction preserves original VAT and recomputes gross
+ok 36 - partial payment amount correction preserves original VAT and recomputes gross
+  ---
+  duration_ms: 18.798875
+  ...
+# Subtest: batch options require finance.read and return only selection/balance DTOs
+ok 37 - batch options require finance.read and return only selection/balance DTOs
+  ---
+  duration_ms: 7.259167
+  ...
+# Subtest: permission refusal stops read and write routes before repository access
+ok 38 - permission refusal stops read and write routes before repository access
+  ---
+  duration_ms: 8.422792
+  ...
+# Subtest: impossible calendar dates are refused instead of displaying a false empty result
+ok 39 - impossible calendar dates are refused instead of displaying a false empty result
+  ---
+  duration_ms: 0.682375
+  ...
+# Subtest: payment gross-only correction cannot discard existing VAT
+ok 40 - payment gross-only correction cannot discard existing VAT
+  ---
+  duration_ms: 10.716
+  ...
+# Subtest: Italian and dot decimal entries resolve to the same cents without coercing empty input
+ok 41 - Italian and dot decimal entries resolve to the same cents without coercing empty input
+  ---
+  duration_ms: 2.032333
+  ...
+# Subtest: JSON money schema rejects null, text, booleans, nonfinite and fractional cents
+ok 42 - JSON money schema rejects null, text, booleans, nonfinite and fractional cents
+  ---
+  duration_ms: 3.609042
+  ...
+# Subtest: corrections require a reason and exact original version without inserting defaults
+ok 43 - corrections require a reason and exact original version without inserting defaults
+  ---
+  duration_ms: 3.075625
+  ...
+# Subtest: supplier gross is checked against net plus VAT
+ok 44 - supplier gross is checked against net plus VAT
+  ---
+  duration_ms: 0.462041
+  ...
+# Subtest: editable IDs only accept the precise ledger type and original UUID
+ok 45 - editable IDs only accept the precise ledger type and original UUID
+  ---
+  duration_ms: 1.4135
+  ...
+# Subtest: Europe/Rome summer, winter and midnight preserve the local wall time and date
+ok 46 - Europe/Rome summer, winter and midnight preserve the local wall time and date
+  ---
+  duration_ms: 150.176
+  ...
+# Subtest: publish/sync cannot turn absent, empty, duplicated or blank scope into a full-catalog job; exact selection passes
+ok 47 - publish/sync cannot turn absent, empty, duplicated or blank scope into a full-catalog job; exact selection passes
+  ---
+  duration_ms: 231.723584
+  ...
+# Subtest: server refuses empty scope before opening a client and rejects unconnected/wrong-environment before enqueueing
+ok 48 - server refuses empty scope before opening a client and rejects unconnected/wrong-environment before enqueueing
+  ---
+  duration_ms: 108.906459
+  ...
+# Subtest: server sync queues only the SKU approved in preview and leaves another published listing out of scope
+ok 49 - server sync queues only the SKU approved in preview and leaves another published listing out of scope
+  ---
+  duration_ms: 22.128042
+  ...
+# Subtest: same logical send after a completed job cannot reset it to queued or insert a duplicate
+ok 50 - same logical send after a completed job cannot reset it to queued or insert a duplicate
+  ---
+  duration_ms: 18.215208
+  ...
+# Subtest: support drafts are isolated by conversation and empty drafts are removed
+ok 51 - support drafts are isolated by conversation and empty drafts are removed
+  ---
+  duration_ms: 0.660833
+  ...
+# Subtest: acknowledging one reply preserves another conversation and edits made in flight
+ok 52 - acknowledging one reply preserves another conversation and edits made in flight
+  ---
+  duration_ms: 0.066375
+  ...
+# Subtest: a failed or loading conversation cannot use an old detail as the selected target
+ok 53 - a failed or loading conversation cannot use an old detail as the selected target
+  ---
+  duration_ms: 0.047583
+  ...
+# Subtest: pagination continues beyond the first page and stops at a known end
+ok 54 - pagination continues beyond the first page and stops at a known end
+  ---
+  duration_ms: 0.052084
+  ...
+# Subtest: unknown UI stock risk selects the stored split status
+ok 55 - unknown UI stock risk selects the stored split status
+  ---
+  duration_ms: 1.161583
+  ...
+# Subtest: risk filtering reaches matching orders beyond the old 100-row window before pagination
+ok 56 - risk filtering reaches matching orders beyond the old 100-row window before pagination
+  ---
+  duration_ms: 0.219834
+  ...
+# Subtest: overdue requires an open order, positive reserved quantity and at least fourteen days
+ok 57 - overdue requires an open order, positive reserved quantity and at least fourteen days
+  ---
+  duration_ms: 1.533375
+  ...
+# Subtest: legacy status aliases and payment/shipping views keep their UI meaning
+ok 58 - legacy status aliases and payment/shipping views keep their UI meaning
+  ---
+  duration_ms: 0.295208
+  ...
+# Subtest: Supabase request filters and exact count precede the requested range without expanding order payload
+ok 59 - Supabase request filters and exact count precede the requested range without expanding order payload
+  ---
+  duration_ms: 17.612209
+  ...
+# Subtest: 400, 403 and timeout leave writes unacknowledged and do not trigger a read or retry
+ok 60 - 400, 403 and timeout leave writes unacknowledged and do not trigger a read or retry
+  ---
+  duration_ms: 0.729083
+  ...
+# Subtest: successful write plus failed read remains saved and never replays the write
+ok 61 - successful write plus failed read remains saved and never replays the write
+  ---
+  duration_ms: 0.112834
+  ...
+# Subtest: payment editor preserves dialog and amount draft after rejected save, closes only on committed save
+ok 62 - payment editor preserves dialog and amount draft after rejected save, closes only on committed save
+  ---
+  duration_ms: 75.04825
+  ...
+# Subtest: shipping editor keeps reason and dialog after rejected save
+ok 63 - shipping editor keeps reason and dialog after rejected save
+  ---
+  duration_ms: 5.461083
+  ...
+# Subtest: shortage editor keeps the selected line and reason on timeout
+ok 64 - shortage editor keeps the selected line and reason on timeout
+  ---
+  duration_ms: 8.330125
+  ...
+# Subtest: search, exact customer, date and chosen sort are preserved when paging
+ok 65 - search, exact customer, date and chosen sort are preserved when paging
+  ---
+  duration_ms: 1.195875
+  ...
+# Subtest: five order documents produce one preview with five complete page sections
+ok 66 - five order documents produce one preview with five complete page sections
+  ---
+  duration_ms: 0.58275
+  ...
+# Subtest: read-only list actions open details without requesting a write
+ok 67 - read-only list actions open details without requesting a write
+  ---
+  duration_ms: 15.723417
+  ...
+# Subtest: explicit linked stage and customer override restored filters before the first list request
+ok 68 - explicit linked stage and customer override restored filters before the first list request
+  ---
+  duration_ms: 0.423125
+  ...
+# Subtest: overview preserves complete order quantities in hot SKU and coverage and keeps cache source timestamps
+ok 69 - overview preserves complete order quantities in hot SKU and coverage and keeps cache source timestamps
+  ---
+  duration_ms: 62.729542
+  ...
+# Subtest: failed or unauthorized complete domain never returns a false zero model
+ok 70 - failed or unauthorized complete domain never returns a false zero model
+  ---
+  duration_ms: 36.367542
+  ...
+# Subtest: overview retains bounded-sample sales, pipeline, stock and top SKU semantics
+ok 71 - overview retains bounded-sample sales, pipeline, stock and top SKU semantics
+  ---
+  duration_ms: 13.459541
+  ...
+# Subtest: 7/30/90 day buckets follow the client calendar across DST and midnight
+ok 72 - 7/30/90 day buckets follow the client calendar across DST and midnight
+  ---
+  duration_ms: 6.239333
+  ...
+# Subtest: full export continues after first 200 without dropping filtered rows
+ok 73 - full export continues after first 200 without dropping filtered rows
+  ---
+  duration_ms: 1.526417
+  ...
+# Subtest: changed or incomplete export fails instead of downloading a partial file
+ok 74 - changed or incomplete export fails instead of downloading a partial file
+  ---
+  duration_ms: 4.668208
+  ...
+# Subtest: duplicate rows from moving pagination are rejected
+ok 75 - duplicate rows from moving pagination are rejected
+  ---
+  duration_ms: 0.173083
+  ...
+# Subtest: complete summary reads all 1205 records beyond the old 100-row sample
+ok 76 - complete summary reads all 1205 records beyond the old 100-row sample
+  ---
+  duration_ms: 0.440375
+  ...
+# Subtest: summary rejects changed counts and duplicated pages rather than presenting sample totals
+ok 77 - summary rejects changed counts and duplicated pages rather than presenting sample totals
+  ---
+  duration_ms: 0.683167
+  ...
+# Subtest: admin v3 freezes fine-grained permissions and legacy delegation
+ok 78 - admin v3 freezes fine-grained permissions and legacy delegation
+  ---
+  duration_ms: 1.395083
+  ...
+# Subtest: action ledger and terminal disposition guard make restock idempotent
+ok 79 - action ledger and terminal disposition guard make restock idempotent
+  ---
+  duration_ms: 0.437416
+  ...
+# Subtest: receive/restock/disposition preserve quarantine and available-stock invariants
+ok 80 - receive/restock/disposition preserve quarantine and available-stock invariants
+  ---
+  duration_ms: 0.527042
+  ...
+# Subtest: wallet, replacement and state guards are explicit
+ok 81 - wallet, replacement and state guards are explicit
+  ---
+  duration_ms: 1.498542
+  ...
+# Subtest: admin DTO remains allowlisted and supports supplier/replacement actions
+ok 82 - admin DTO remains allowlisted and supports supplier/replacement actions
+  ---
+  duration_ms: 2.056708
+  ...
+# Subtest: historical RMA trigger and INSERT policies use the shared owner and net quantity guards
+ok 83 - historical RMA trigger and INSERT policies use the shared owner and net quantity guards
+  ---
+  duration_ms: 0.273333
+  ...
+# Subtest: service reads and readiness fail closed after Migration B revokes browser table SELECT
+ok 84 - service reads and readiness fail closed after Migration B revokes browser table SELECT
+  ---
+  duration_ms: 4.128584
+  ...
+# Subtest: atomic support reply preserves the exact send identifier and acknowledges committed send despite failed detail read
+ok 85 - atomic support reply preserves the exact send identifier and acknowledges committed send despite failed detail read
+  ---
+  duration_ms: 122.523542
+  ...
+# Subtest: missing atomic RPC fails closed without any fallback direct writes
+ok 86 - missing atomic RPC fails closed without any fallback direct writes
+  ---
+  duration_ms: 37.617375
+  ...
+# Subtest: send identifier conflicts remain a 409 and cannot be acknowledged as a new send
+ok 87 - send identifier conflicts remain a 409 and cannot be acknowledged as a new send
+  ---
+  duration_ms: 24.536333
+  ...
+# Subtest: committed conversation actions remain acknowledged when read fails; no retry mutation is issued
+ok 88 - committed conversation actions remain acknowledged when read fails; no retry mutation is issued
+  ---
+  duration_ms: 16.935583
+  ...
+# Subtest: REMAX progress and inventory effects translate without translating batch identifiers or quantities
+ok 89 - REMAX progress and inventory effects translate without translating batch identifiers or quantities
+  ---
+  duration_ms: 46.474916
+  ...
+# Subtest: audit object links require destination panel and read permissions and never turn customer IDs into account IDs
+ok 90 - audit object links require destination panel and read permissions and never turn customer IDs into account IDs
+  ---
+  duration_ms: 31.145625
+  ...
+# Subtest: shortage operational states remain distinct in Chinese and Italian
+ok 91 - shortage operational states remain distinct in Chinese and Italian
+  ---
+  duration_ms: 60.479291
+  ...
+# Subtest: order identifiers and search survive module remounts in memory without browser storage
+ok 92 - order identifiers and search survive module remounts in memory without browser storage
+  ---
+  duration_ms: 15.856125
+  ...
+# Subtest: admin panel exposes six active server queues and a secondary archive entry
+ok 93 - admin panel exposes six active server queues and a secondary archive entry
+  ---
+  duration_ms: 0.719459
+  ...
+# Subtest: admin detail renders server workflow actions and uses one guarded action endpoint
+ok 94 - admin detail renders server workflow actions and uses one guarded action endpoint
+  ---
+  duration_ms: 0.335458
+  ...
+# Subtest: admin refund preview, replacement candidates and inventory forms stay fail-closed and opaque
+ok 95 - admin refund preview, replacement candidates and inventory forms stay fail-closed and opaque
+  ---
+  duration_ms: 0.152042
+  ...
+# Subtest: admin uses focused dialogs and hides assign from the recommendation
+ok 96 - admin uses focused dialogs and hides assign from the recommendation
+  ---
+  duration_ms: 0.165792
+  ...
+# Subtest: waiting for the customer return is a localized normal status, with or without receiving permission
+ok 97 - waiting for the customer return is a localized normal status, with or without receiving permission
+  ---
+  duration_ms: 82.995625
+  ...
+# Subtest: workflow and refund blockers have stable bilingual labels and unknown codes fail closed
+ok 98 - workflow and refund blockers have stable bilingual labels and unknown codes fail closed
+  ---
+  duration_ms: 61.141042
+  ...
+# Subtest: other normal waits and completed archive requests are not mislabeled as blocked
+ok 99 - other normal waits and completed archive requests are not mislabeled as blocked
+  ---
+  duration_ms: 39.724917
+  ...
+# Subtest: direct receiving is only offered for the server-authorized customer-return wait
+ok 100 - direct receiving is only offered for the server-authorized customer-return wait
+  ---
+  duration_ms: 12.44025
+  ...
+# Subtest: direct receiving requires a second confirmation bound to the same request and quantity
+ok 101 - direct receiving requires a second confirmation bound to the same request and quantity
+  ---
+  duration_ms: 165.673625
+  ...
+# Subtest: opening direct receipt captures a fixed confirmation summary and refuses revoked or loading actions
+ok 102 - opening direct receipt captures a fixed confirmation summary and refuses revoked or loading actions
+  ---
+  duration_ms: 32.476583
+  ...
+# Subtest: direct receipt copy and controls are responsive, descriptive and explicit about physical receipt
+ok 103 - direct receipt copy and controls are responsive, descriptive and explicit about physical receipt
+  ---
+  duration_ms: 13.564958
+  ...
+# Subtest: failed network actions reuse the same idempotency key and successful new actions receive a new key
+ok 104 - failed network actions reuse the same idempotency key and successful new actions receive a new key
+  ---
+  duration_ms: 11.647416
+  ...
+1..104
+# tests 104
+# suites 0
+# pass 104
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1436.681709

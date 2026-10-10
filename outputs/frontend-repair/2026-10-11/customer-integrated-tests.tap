@@ -1,0 +1,310 @@
+TAP version 13
+# Subtest: expiry restores manual base, automatic spend tier, and employee stored tier
+ok 1 - expiry restores manual base, automatic spend tier, and employee stored tier
+  ---
+  duration_ms: 0.571792
+  ...
+# Subtest: active promotion only raises base and is inactive before start
+ok 2 - active promotion only raises base and is inactive before start
+  ---
+  duration_ms: 0.076916
+  ...
+# Subtest: all seven spend thresholds and fixed discounts are unchanged
+ok 3 - all seven spend thresholds and fixed discounts are unchanged
+  ---
+  duration_ms: 0.065459
+  ...
+# Subtest: unversioned positive prices cannot become trading quotes; valid backend prices survive
+ok 4 - unversioned positive prices cannot become trading quotes; valid backend prices survive
+  ---
+  duration_ms: 0.137791
+  ...
+# Subtest: discount badge reports actual rounded reduction rather than nominal tier deduction
+ok 5 - discount badge reports actual rounded reduction rather than nominal tier deduction
+  ---
+  duration_ms: 7.729833
+  ...
+# Subtest: admin policy and quote inputs reject invalid ranges and mixed unknown fields
+ok 6 - admin policy and quote inputs reject invalid ranges and mixed unknown fields
+  ---
+  duration_ms: 1.799
+  ...
+# Subtest: customer linkage never infers a price list from email or arbitrarily chooses wholesale
+ok 7 - customer linkage never infers a price list from email or arbitrarily chooses wholesale
+  ---
+  duration_ms: 0.570166
+  ...
+# Subtest: admin pricing endpoints deny insufficient permissions before executing RPC
+ok 8 - admin pricing endpoints deny insufficient permissions before executing RPC
+  ---
+  duration_ms: 6.18125
+  ...
+# Subtest: classification preview is read only and quote inspection preserves actual quantity
+ok 9 - classification preview is read only and quote inspection preserves actual quantity
+  ---
+  duration_ms: 6.298917
+  ...
+# Subtest: campaign input failure and backend quote errors never return fake success or raw SQL
+ok 10 - campaign input failure and backend quote errors never return fake success or raw SQL
+  ---
+  duration_ms: 4.166542
+  ...
+# Subtest: protective film has no local fallback and preserves its versioned authoritative price
+ok 11 - protective film has no local fallback and preserves its versioned authoritative price
+  ---
+  duration_ms: 0.071833
+  ...
+# Subtest: batch accepts CSV/TSV/space, combines duplicate SKU and rejects malformed quantities
+ok 12 - batch accepts CSV/TSV/space, combines duplicate SKU and rejects malformed quantities
+  ---
+  duration_ms: 0.990375
+  ...
+# Subtest: undo preserves later edits and restores removed SKU without old price snapshots
+ok 13 - undo preserves later edits and restores removed SKU without old price snapshots
+  ---
+  duration_ms: 0.176167
+  ...
+# Subtest: known PostgreSQL business rollbacks differ from transport and conflicting receipts
+ok 14 - known PostgreSQL business rollbacks differ from transport and conflicting receipts
+  ---
+  duration_ms: 0.16525
+  ...
+# Subtest: a delayed response never clears a newer persisted cart or a changed owner
+ok 15 - a delayed response never clears a newer persisted cart or a changed owner
+  ---
+  duration_ms: 7.327375
+  ...
+# Subtest: same frozen request replays original receipt and business side effect exactly once
+ok 16 - same frozen request replays original receipt and business side effect exactly once
+  ---
+  duration_ms: 788.285
+  ...
+# Subtest: business or receipt insertion failure rolls back order and side effects atomically
+ok 17 - business or receipt insertion failure rolls back order and side effects atomically
+  ---
+  duration_ms: 5.586041
+  ...
+# Subtest: actor scope, exact staff permissions, and private table ACL fail closed
+ok 18 - actor scope, exact staff permissions, and private table ACL fail closed
+  ---
+  duration_ms: 5.49375
+  ...
+# Subtest: customer or line mismatch and missing preorder terms reject before creation
+ok 19 - customer or line mismatch and missing preorder terms reject before creation
+  ---
+  duration_ms: 2.491875
+  ...
+# Subtest: terminal stop before delayed preflight blocks every late original create; existing success cannot be stopped
+ok 20 - terminal stop before delayed preflight blocks every late original create; existing success cannot be stopped
+  ---
+  duration_ms: 3.3475
+  ...
+# Subtest: remote cart restore and requests have bounded deadlines
+ok 21 - remote cart restore and requests have bounded deadlines
+  ---
+  duration_ms: 2.8195
+  ...
+# Subtest: order preview waits for cart readiness and has a timeout
+ok 22 - order preview waits for cart readiness and has a timeout
+  ---
+  duration_ms: 1.149334
+  ...
+# Subtest: checkout status prioritizes remote cart before catalog and preview
+ok 23 - checkout status prioritizes remote cart before catalog and preview
+  ---
+  duration_ms: 1.282917
+  ...
+# Subtest: request reports generic success and rate errors without revealing account existence
+ok 24 - request reports generic success and rate errors without revealing account existence
+  ---
+  duration_ms: 9.328833
+  ...
+# Subtest: expired, reused and missing recovery codes return to recovery request
+ok 25 - expired, reused and missing recovery codes return to recovery request
+  ---
+  duration_ms: 1.397041
+  ...
+# Subtest: password update validates matching user, strength and confirmation, then consumes marker
+ok 26 - password update validates matching user, strength and confirmation, then consumes marker
+  ---
+  duration_ms: 0.468
+  ...
+# Subtest: only the canonical protective-film category is discount-exempt
+ok 27 - only the canonical protective-film category is discount-exempt
+  ---
+  duration_ms: 1.58
+  ...
+# Subtest: category-aware tier pricing leaves films unchanged and keeps other discounts
+ok 28 - category-aware tier pricing leaves films unchanged and keeps other discounts
+  ---
+  duration_ms: 1.053125
+  ...
+# Subtest: database pricing bypasses every discount path for protective films
+ok 29 - database pricing bypasses every discount path for protective films
+  ---
+  duration_ms: 0.19425
+  ...
+# Subtest: catalog return preserves search but rejects external paths and delegated customer changes
+ok 30 - catalog return preserves search but rejects external paths and delegated customer changes
+  ---
+  duration_ms: 1.549584
+  ...
+# Subtest: auth redirect rejects external and malformed destinations and retains internal deep links
+ok 31 - auth redirect rejects external and malformed destinations and retains internal deep links
+  ---
+  duration_ms: 0.1755
+  ...
+# Subtest: profile completion retains one safe return destination without nested setup loops
+ok 32 - profile completion retains one safe return destination without nested setup loops
+  ---
+  duration_ms: 0.387375
+  ...
+# Subtest: customer RMA page passes order, line and request query selections through the server page
+ok 33 - customer RMA page passes order, line and request query selections through the server page
+  ---
+  duration_ms: 0.688791
+  ...
+# Subtest: customer UI is a responsive three-block photo-first flow
+ok 34 - customer UI is a responsive three-block photo-first flow
+  ---
+  duration_ms: 0.303
+  ...
+# Subtest: camera and gallery controls expose only supported image inputs
+ok 35 - camera and gallery controls expose only supported image inputs
+  ---
+  duration_ms: 0.400417
+  ...
+# Subtest: customer submit uses the new upload orchestrator and safe DTO history
+ok 36 - customer submit uses the new upload orchestrator and safe DTO history
+  ---
+  duration_ms: 0.288708
+  ...
+# Subtest: customer UI has no confirmation modal and final request remains opaque
+ok 37 - customer UI has no confirmation modal and final request remains opaque
+  ---
+  duration_ms: 0.196458
+  ...
+# Subtest: customer upload errors use locale-aware tx copy without exposing server messages
+ok 38 - customer upload errors use locale-aware tx copy without exposing server messages
+  ---
+  duration_ms: 53.355084
+  ...
+# Subtest: already-submitted recovery clears local upload state and reloads recent requests and refundable quantities
+ok 39 - already-submitted recovery clears local upload state and reloads recent requests and refundable quantities
+  ---
+  duration_ms: 30.173333
+  ...
+# Subtest: customer can mark an approved request shipped in one tap with optional logistics
+ok 40 - customer can mark an approved request shipped in one tap with optional logistics
+  ---
+  duration_ms: 0.40725
+  ...
+# Subtest: customer DTO exposes a safe order number and the canonical flow resolves it by customer-owned order
+ok 41 - customer DTO exposes a safe order number and the canonical flow resolves it by customer-owned order
+  ---
+  duration_ms: 0.482333
+  ...
+# Subtest: RMA image selection enforces shared MIME, count and HEIC size policy
+ok 42 - RMA image selection enforces shared MIME, count and HEIC size policy
+  ---
+  duration_ms: 2.837583
+  ...
+# Subtest: RMA image preparation preserves supported small HEIC and reports uncompressible oversized files
+ok 43 - RMA image preparation preserves supported small HEIC and reports uncompressible oversized files
+  ---
+  duration_ms: 2.219208
+  ...
+# Subtest: SHA-256 covers the actual upload Blob
+ok 44 - SHA-256 covers the actual upload Blob
+  ---
+  duration_ms: 3.822875
+  ...
+# Subtest: new protocol uses signed PUT, complete SHA, one retry and ticket DELETE compensation
+ok 45 - new protocol uses signed PUT, complete SHA, one retry and ticket DELETE compensation
+  ---
+  duration_ms: 12.691958
+  ...
+# Subtest: final submit checkpoint retries only the opaque submit after a lost response
+ok 46 - final submit checkpoint retries only the opaque submit after a lost response
+  ---
+  duration_ms: 1.616083
+  ...
+# Subtest: resume retains five verified images, settles a failed ticket, and uploads only the missing sixth
+ok 47 - resume retains five verified images, settles a failed ticket, and uploads only the missing sixth
+  ---
+  duration_ms: 4.924292
+  ...
+# Subtest: explicit restart abandons the draft once after images are verified and only then clears state
+ok 48 - explicit restart abandons the draft once after images are verified and only then clears state
+  ---
+  duration_ms: 1.0315
+  ...
+# Subtest: draft abandonment preserves checkpoint after 503 and retries only the same draft DELETE
+ok 49 - draft abandonment preserves checkpoint after 503 and retries only the same draft DELETE
+  ---
+  duration_ms: 0.259167
+  ...
+# Subtest: abandoning checkpoint only retries draft DELETE after its success response is lost
+ok 50 - abandoning checkpoint only retries draft DELETE after its success response is lost
+  ---
+  duration_ms: 0.295541
+  ...
+# Subtest: a committed submission with a lost response clears recovery when abandonment confirms already submitted
+ok 51 - a committed submission with a lost response clears recovery when abandonment confirms already submitted
+  ---
+  duration_ms: 0.800875
+  ...
+# Subtest: abandoning recovery clears only the dedicated already-submitted conflict and retains other 409s
+ok 52 - abandoning recovery clears only the dedicated already-submitted conflict and retains other 409s
+  ---
+  duration_ms: 0.862083
+  ...
+# Subtest: failed ticket body preserves code, message and HTTP status while compensation stays attachment-scoped
+ok 53 - failed ticket body preserves code, message and HTTP status while compensation stays attachment-scoped
+  ---
+  duration_ms: 1.113292
+  ...
+# Subtest: draft API errors preserve structured authentication errors
+ok 54 - draft API errors preserve structured authentication errors
+  ---
+  duration_ms: 0.314917
+  ...
+# Subtest: automatic pending compensation never sends DELETE for a known verified attachment
+ok 55 - automatic pending compensation never sends DELETE for a known verified attachment
+  ---
+  duration_ms: 0.179958
+  ...
+# Subtest: submit payload helper is explicit and the client never references legacy evidence or video
+ok 56 - submit payload helper is explicit and the client never references legacy evidence or video
+  ---
+  duration_ms: 0.428416
+  ...
+# Subtest: refresh recovery reuses immutable final payload without reading or uploading a photo File
+ok 57 - refresh recovery reuses immutable final payload without reading or uploading a photo File
+  ---
+  duration_ms: 0.4975
+  ...
+# Subtest: storefront Italian and Chinese dictionaries expose the same keys
+ok 58 - storefront Italian and Chinese dictionaries expose the same keys
+  ---
+  duration_ms: 1.587042
+  ...
+# Subtest: every literal storefront tx/txFormat key exists in both locale dictionaries
+ok 59 - every literal storefront tx/txFormat key exists in both locale dictionaries
+  ---
+  duration_ms: 35.928875
+  ...
+# Subtest: Italian customer-facing dictionary values do not leak Han characters
+ok 60 - Italian customer-facing dictionary values do not leak Han characters
+  ---
+  duration_ms: 0.76325
+  ...
+1..60
+# tests 60
+# suites 0
+# pass 60
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 889.245

@@ -1099,7 +1099,8 @@ function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,i
           </CardHeader>
           <CardContent className="space-y-3">
             {dataLoading ? <LoadingBox text={tx(t, "storefront.rma.recent.loading", "Caricamento richieste...")} /> : null}
-            {!dataLoading && recentRequests.length === 0 ? (
+            {!dataLoading && dataError ? <AsyncFeedback state="error" title={locale === "zh-CN" ? "已有申请暂时无法读取" : "Richieste precedenti non disponibili"} description={locale === "zh-CN" ? "请使用上方重试读取；这不表示没有申请。" : "Riprova il caricamento con il pulsante sopra. Questo errore non indica l’assenza di richieste."} /> : null}
+            {!dataLoading && !dataError && recentRequests.length === 0 ? (
               <EmptyBox text={tx(t, "storefront.rma.recent.empty", "Nessuna richiesta assistenza registrata.")} />
             ) : null}
             {recentRequests.map((request) => (

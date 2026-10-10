@@ -1,0 +1,172 @@
+
+> partspro-app@0.1.0 build
+> next build --webpack
+
+▲ Next.js 16.2.6 (webpack)
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 6.8s
+  Running TypeScript ...
+  Finished TypeScript in 8.7s ...
+  Collecting page data using 17 workers ...
+  Generating static pages using 17 workers (0/22) ...
+  Generating static pages using 17 workers (5/22) 
+  Generating static pages using 17 workers (10/22) 
+  Generating static pages using 17 workers (16/22) 
+✓ Generating static pages using 17 workers (22/22) in 253ms
+  Finalizing page optimization ...
+  Collecting build traces ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /account
+├ ƒ /admin
+├ ƒ /admin/remax
+├ ƒ /api/account/orders/[orderId]
+├ ƒ /api/account/profile
+├ ƒ /api/account/wallet
+├ ƒ /api/admin/accounts
+├ ƒ /api/admin/accounts/[userId]
+├ ƒ /api/admin/accounts/[userId]/customer-level
+├ ƒ /api/admin/accounts/[userId]/customer-profile
+├ ƒ /api/admin/accounts/[userId]/customer-status
+├ ƒ /api/admin/accounts/[userId]/customer-type
+├ ƒ /api/admin/accounts/[userId]/role
+├ ƒ /api/admin/accounts/[userId]/type
+├ ƒ /api/admin/activity
+├ ƒ /api/admin/analytics
+├ ƒ /api/admin/b2b-applications
+├ ƒ /api/admin/b2b-applications/[applicationId]
+├ ƒ /api/admin/catalog-directory
+├ ƒ /api/admin/catalog-directory/move
+├ ƒ /api/admin/ebay
+├ ƒ /api/admin/ebay/jobs/run
+├ ƒ /api/admin/ebay/oauth
+├ ƒ /api/admin/ebay/policies
+├ ƒ /api/admin/finance/cogs
+├ ƒ /api/admin/finance/entries/[entryType]/[entryId]
+├ ƒ /api/admin/finance/expenses
+├ ƒ /api/admin/finance/expenses/[expenseId]
+├ ƒ /api/admin/finance/export
+├ ƒ /api/admin/finance/ledger
+├ ƒ /api/admin/finance/summary
+├ ƒ /api/admin/finance/supplier-batch-options
+├ ƒ /api/admin/finance/supplier-payments
+├ ƒ /api/admin/finance/supplier-payments/[paymentId]
+├ ƒ /api/admin/home-banners
+├ ƒ /api/admin/home-banners/[id]
+├ ƒ /api/admin/home-banners/images
+├ ƒ /api/admin/inventory-health
+├ ƒ /api/admin/orders
+├ ƒ /api/admin/orders/[orderId]
+├ ƒ /api/admin/orders/[orderId]/danger-actions
+├ ƒ /api/admin/orders/[orderId]/lines/[lineId]/fulfillment
+├ ƒ /api/admin/orders/[orderId]/payment
+├ ƒ /api/admin/orders/[orderId]/shipping
+├ ƒ /api/admin/orders/[orderId]/status
+├ ƒ /api/admin/overview
+├ ƒ /api/admin/permissions
+├ ƒ /api/admin/permissions/catalog
+├ ƒ /api/admin/permissions/users/[userId]
+├ ƒ /api/admin/pricing
+├ ƒ /api/admin/products
+├ ƒ /api/admin/products/[sku]
+├ ƒ /api/admin/products/[sku]/audit
+├ ƒ /api/admin/products/[sku]/block
+├ ƒ /api/admin/products/[sku]/hide
+├ ƒ /api/admin/products/[sku]/images
+├ ƒ /api/admin/products/[sku]/publish
+├ ƒ /api/admin/products/[sku]/restore
+├ ƒ /api/admin/products/[sku]/stock-adjustments
+├ ƒ /api/admin/products/import/apply
+├ ƒ /api/admin/products/import/preview
+├ ƒ /api/admin/products/import/preview-export
+├ ƒ /api/admin/products/import/template
+├ ƒ /api/admin/products/model-groups
+├ ƒ /api/admin/remax/arrivals/apply
+├ ƒ /api/admin/remax/arrivals/preview
+├ ƒ /api/admin/remax/import/apply
+├ ƒ /api/admin/remax/import/preview
+├ ƒ /api/admin/remax/summary
+├ ƒ /api/admin/remax/template
+├ ƒ /api/admin/restock-requests
+├ ƒ /api/admin/restock-requests/[id]
+├ ƒ /api/admin/rma
+├ ƒ /api/admin/rma/[requestId]
+├ ƒ /api/admin/rma/[requestId]/actions
+├ ƒ /api/admin/search
+├ ƒ /api/admin/sold-stock-shortages
+├ ƒ /api/admin/supplier-batches
+├ ƒ /api/admin/supplier-batches/[batchCode]
+├ ƒ /api/admin/supplier-batches/[batchCode]/charges/cancel
+├ ƒ /api/admin/supplier-batches/[batchCode]/charges/confirm
+├ ƒ /api/admin/supplier-batches/[batchCode]/charges/correct
+├ ƒ /api/admin/supplier-batches/[batchCode]/charges/estimate
+├ ƒ /api/admin/supplier-batches/[batchCode]/charges/history
+├ ƒ /api/admin/supplier-batches/[batchCode]/charges/preview
+├ ƒ /api/admin/supplier-batches/export
+├ ƒ /api/admin/supplier-batches/template
+├ ƒ /api/admin/suppliers
+├ ƒ /api/admin/support/conversations
+├ ƒ /api/admin/support/conversations/[conversationId]
+├ ƒ /api/admin/support/conversations/[conversationId]/messages
+├ ƒ /api/admin/wallet-refunds
+├ ƒ /api/admin/wallet-refunds/[refundId]
+├ ƒ /api/admin/warehouse/replenishment
+├ ƒ /api/b2b-applications
+├ ƒ /api/cart
+├ ƒ /api/cart/catalog
+├ ƒ /api/catalog-directory
+├ ƒ /api/catalogo
+├ ƒ /api/customer-activity
+├ ƒ /api/ebay/notifications
+├ ƒ /api/ebay/oauth/callback
+├ ƒ /api/me
+├ ƒ /api/notifications
+├ ƒ /api/notifications/config
+├ ƒ /api/notifications/read
+├ ƒ /api/notifications/subscriptions
+├ ƒ /api/notifications/summary
+├ ƒ /api/notifications/test
+├ ƒ /api/orders
+├ ƒ /api/orders/preview
+├ ƒ /api/orders/submissions/[requestId]
+├ ƒ /api/orders/submissions/[requestId]/cancel
+├ ƒ /api/restock-requests
+├ ƒ /api/rma
+├ ƒ /api/rma/[requestId]/shipped
+├ ƒ /api/rma/drafts
+├ ƒ /api/rma/drafts/[draftId]
+├ ƒ /api/rma/drafts/[draftId]/attachments/[attachmentId]/complete
+├ ƒ /api/rma/drafts/[draftId]/uploads
+├ ƒ /api/rma/evidence
+├ ƒ /api/rma/submit
+├ ƒ /api/support/conversations/current
+├ ƒ /api/support/conversations/current/messages
+├ ƒ /api/support/conversations/current/read
+├ ƒ /auth/callback
+├ ƒ /auth/google
+├ ƒ /auth/recovery
+├ ƒ /auth/wechat
+├ ƒ /b2b
+├ ƒ /carrello
+├ ƒ /catalogo
+├ ƒ /checkout
+├ ƒ /help
+├ ƒ /internal/component-states
+├ ƒ /login
+├ ƒ /login/update-password
+├ ○ /manifest.webmanifest
+├ ƒ /prodotto/[sku]
+├ ƒ /professionale
+├ ƒ /rma
+├ ○ /robots.txt
+└ ○ /sitemap.xml
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+

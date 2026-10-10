@@ -365,6 +365,7 @@ function CheckoutClientContent({
   const submissionScope = `partspro:checkout:${initialAccountAccess?.userId ?? runtime.userEmail ?? "anonymous"}:${selectedCompany?.id ?? "none"}:${checkoutMode}`;
   const [submissionRestored, setSubmissionRestored] = React.useState(false);
   const [resolvingSubmission, setResolvingSubmission] = React.useState(false);
+  const submissionLocked = submitState.status === "loading" || submitState.status === "unknown";
   const unknownMessage = locale === "zh-CN" ? "请求已发送，尚无法确认订单结果。请先核对结果；再次发送会复用原请求编号。" : "Richiesta inviata: esito ancora da verificare. Controlla prima il risultato; un nuovo invio usa lo stesso riferimento.";
   useUnsavedChanges(submitState.status === "loading" || submitState.status === "unknown", unknownMessage);
   React.useEffect(() => {
@@ -960,6 +961,7 @@ function CheckoutClientContent({
         <div className="mx-auto grid max-w-[1460px] gap-2.5 px-2 pt-2 pb-[calc(5.75rem_+_env(safe-area-inset-bottom))] sm:px-4 sm:pt-3 lg:grid-cols-[minmax(0,1fr)_330px] lg:gap-3 lg:pb-6">
           <section className="space-y-2">
           <CheckoutHeader cartHref={cartHref} runtime={runtime} company={selectedCompany} />
+          <fieldset disabled={submissionLocked} inert={submissionLocked} className="contents">
           {hasEmployeeSelfProfile && delegatedCheckout ? (
             <CheckoutModeSelector
               mode={checkoutMode}
@@ -973,6 +975,7 @@ function CheckoutClientContent({
               onSelectedCompanyIdChange={handleSelectedCompanyIdChange}
             />
           ) : null}
+          </fieldset>
           {submitState.status === "unknown" ? <AsyncFeedback state="unknown" title={locale === "zh-CN" ? "订单结果待确认" : "Esito ordine da verificare"} description={<>{submitState.message}<span className="mt-2 block break-all font-mono text-xs">{pendingSubmissionRef.current?.requestId}</span></>} actions={<div className="flex flex-wrap gap-2"><Button disabled={resolvingSubmission} onClick={resolveSubmission}>{locale === "zh-CN" ? "核对结果" : "Verifica risultato"}</Button><Button variant="outline" disabled={resolvingSubmission} onClick={() => void submitOrder(true)}>{locale === "zh-CN" ? "重发原请求" : "Reinvia richiesta originale"}</Button><Button variant="outline" disabled={resolvingSubmission} onClick={stopSubmission}>{locale === "zh-CN" ? "停止原请求并重新编辑" : "Ferma richiesta e modifica"}</Button><Button asChild variant="ghost"><Link href="/account?section=orders">{locale === "zh-CN" ? "订单记录" : "I miei ordini"}</Link></Button></div>} /> : <GlobalBlockers blockers={blockers} />}
           {canRetryCheckoutValidation && (
             <Button
@@ -995,6 +998,7 @@ function CheckoutClientContent({
             pendingItemsReason={pendingItemsReason}
             unresolvedSkus={reviewUnresolvedSkus}
           />
+          <fieldset disabled={submissionLocked} inert={submissionLocked} className="space-y-2">
           <DeliverySection
             errors={formErrors}
             form={form}
@@ -1018,6 +1022,7 @@ function CheckoutClientContent({
             onChange={setConfirmed}
             onFormChange={setForm}
           />
+          </fieldset>
         </section>
 
         <aside className="hidden lg:block">

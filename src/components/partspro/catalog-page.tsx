@@ -36,7 +36,7 @@ import {
 } from "@/lib/partspro-account-gate-copy";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import { cn } from "@/lib/utils";
-import { CatalogBrandTree, type CatalogSelection } from "./catalog-brand-tree";
+import { CatalogBrandTree, type CatalogSelection as BaseCatalogSelection } from "./catalog-brand-tree";
 import { ProductCard } from "./product-card";
 import { StoreHeader } from "./store-header";
 import { useCatalogDirectory } from "./catalog-directory-provider";
@@ -46,6 +46,13 @@ import {
   DelayedPendingIndicator,
   useDelayedVisible,
 } from "./pending-feedback";
+
+type CatalogSort = "name" | "stock_desc" | "updated_desc";
+type CatalogSelection = BaseCatalogSelection & { sort?: CatalogSort };
+
+function normalizeCatalogSort(value: string | null | undefined): CatalogSort {
+  return value === "name" || value === "updated_desc" ? value : "stock_desc";
+}
 
 type FilterKey = "brand" | "category" | "department" | "status" | "grade";
 
@@ -132,6 +139,7 @@ export function CatalogPage({
       initialAccountAccess={initialAccountAccess}
       initialFilters={getFiltersFromParams(searchParams)}
       initialInStockOnly={getInStockOnlyFromParams(searchParams)}
+      initialSort={normalizeCatalogSort(searchParams.get("sort"))}
       initialDepartmentGroups={initialDepartmentGroups}
       initialProducts={initialProducts}
       cartAccess={cartAccess}
@@ -152,6 +160,7 @@ function CatalogPageContent({
   cartAccess,
   initialFilters,
   initialInStockOnly,
+  initialSort,
   initialDepartmentGroups,
   initialProducts,
   initialModelSeries,
@@ -167,6 +176,7 @@ function CatalogPageContent({
   cartAccess: StorefrontCartAccess;
   initialFilters: CatalogFiltersState;
   initialInStockOnly: boolean;
+  initialSort: CatalogSort;
   initialDepartmentGroups?: CatalogDepartmentGroup[];
   initialProducts: PartProduct[];
   initialModelSeries: string;
@@ -183,6 +193,7 @@ function CatalogPageContent({
   const [modelSeries, setModelSeries] = useState(initialModelSeries);
   const [filters, setFilters] = useState<CatalogFiltersState>(initialFilters);
   const [inStockOnly, setInStockOnly] = useState(initialInStockOnly);
+  const [sort, setSort] = useState<CatalogSort>(initialSort);
   const [products, setProducts] = useState(initialProducts);
   const [filteredTotal, setFilteredTotal] = useState(initialFilteredTotal);
   const [catalogLoadState, setCatalogLoadState] = useState<
@@ -190,7 +201,20 @@ function CatalogPageContent({
   >("idle");
   const [catalogError, setCatalogError] = useState<"network" | null>(null);
   const [failedOffset, setFailedOffset] = useState(0);
-  const browseKey = catalogBrowseKey(buildCatalogSelectionPath({brand:initialFilters.brand[0],category:initialFilters.category[0],department:readDepartmentFilter(initialFilters) ?? undefined,inStockOnly:initialInStockOnly,model:initialSearchTerm,modelSeries:initialModelSeries,searchQuery:initialSearchQuery}, assistedCompanyId), initialAccountAccess?.userId, assistedCompanyId);
+  const [browseKey] = useState(() => catalogBrowseKey(
+    buildCatalogSelectionPath({
+      brand: initialFilters.brand[0],
+      category: initialFilters.category[0],
+      department: readDepartmentFilter(initialFilters) ?? undefined,
+      inStockOnly: initialInStockOnly,
+      sort: initialSort,
+      model: initialSearchTerm,
+      modelSeries: initialModelSeries,
+      searchQuery: initialSearchQuery,
+    }, assistedCompanyId),
+    initialAccountAccess?.userId,
+    assistedCompanyId
+  ));
   const initialDepartment = readDepartmentFilter(initialFilters);
   const [expandedDepartment, setExpandedDepartment] =
     useState<CatalogDepartment | null>(() => initialDepartment);
@@ -210,6 +234,7 @@ function CatalogPageContent({
             category: initialFilters.category[0],
             department: initialDepartment ?? undefined,
             inStockOnly: initialInStockOnly,
+            sort: initialSort,
             model: initialSearchTerm || undefined,
             modelSeries: initialModelSeries || undefined,
             searchQuery: initialSearchQuery || undefined,
@@ -246,12 +271,14 @@ function CatalogPageContent({
       category: selectedCategory,
       department: selectedDepartment,
       inStockOnly,
+      sort,
       model: searchTerm.trim() || undefined,
       modelSeries: modelSeries || undefined,
       searchQuery: searchQuery.trim() || undefined,
     }),
     [
       inStockOnly,
+      sort,
       modelSeries,
       searchQuery,
       searchTerm,
@@ -265,6 +292,7 @@ function CatalogPageContent({
     category: initialFilters.category[0],
     department: initialDepartment ?? undefined,
     inStockOnly: initialInStockOnly,
+    sort: initialSort,
     model: initialSearchTerm || undefined,
     modelSeries: initialModelSeries || undefined,
     searchQuery: initialSearchQuery || undefined,
@@ -394,6 +422,7 @@ function CatalogPageContent({
         category: nextFilters.category[0],
         department: readDepartmentFilter(nextFilters) ?? undefined,
         inStockOnly: getInStockOnlyFromParams(search),
+        sort: normalizeCatalogSort(search.get("sort")),
         model: getModelSearchFromParams(search) || undefined,
         modelSeries: getModelSeriesFromParams(search) || undefined,
         searchQuery: getSearchQueryFromParams(search) || undefined,
@@ -404,6 +433,7 @@ function CatalogPageContent({
       setModelSeries(nextSelection.modelSeries ?? "");
       setFilters(nextFilters);
       setInStockOnly(Boolean(nextSelection.inStockOnly));
+      setSort(nextSelection.sort);
       setExpandedDepartment(nextSelection.department ?? null);
       setExpandedBrandKey(
         nextSelection.department && nextSelection.brand
@@ -434,10 +464,12 @@ function CatalogPageContent({
     setSearchQuery("");
     setFilters(emptyFilters);
     setInStockOnly(false);
-    selectCatalog({});
+    selectCatalog({ sort });
   }
 
-  function selectCatalog(selection: CatalogSelection) {
+  function selectCatalog(requestedSelection: CatalogSelection) {
+    const selection = { ...requestedSelection, sort: normalizeCatalogSort(requestedSelection.sort ?? sort) };
+    setSort(selection.sort);
     const nextFilters: CatalogFiltersState = {
       ...emptyFilters,
       brand: selection.brand ? [selection.brand] : [],
@@ -522,7 +554,14 @@ function CatalogPageContent({
               <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm"><input type="checkbox" checked={inStockOnly} onChange={event => selectCatalog({...selectedCatalog,inStockOnly:event.target.checked})} className="size-5 accent-primary" />{tx(t,"storefront.ux.inStockOnly","Solo disponibili")}</label>
               <Button type="button" variant="ghost" size="sm" onClick={clearAll}>{tx(t,"storefront.catalog.clearFilters","Cancella filtri")}</Button>
             </div>
-            <p className="text-xs text-slate-500">{tx(t,"storefront.ux.defaultSort","Ordine del catalogo. I prezzi dipendono dall’account.")}</p>
+            <label htmlFor="catalog-sort" className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+              <span>{locale.startsWith("zh") ? "排序" : "Ordina per"}</span>
+              <select id="catalog-sort" value={sort} className="h-11 w-full min-w-0 rounded border bg-white px-2 sm:w-64" onChange={event => selectCatalog({ ...selectedCatalog, sort: normalizeCatalogSort(event.target.value) })}>
+                <option value="stock_desc">{locale.startsWith("zh") ? "现货优先（默认）" : "Disponibilità (predefinito)"}</option>
+                <option value="name">{locale.startsWith("zh") ? "商品名称" : "Nome prodotto"}</option>
+                <option value="updated_desc">{locale.startsWith("zh") ? "最近更新" : "Aggiornati di recente"}</option>
+              </select>
+            </label>
           </div>
           <label className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border bg-white p-3 text-sm">
             <span>{locale.startsWith("zh") ? "商品分类" : "Categoria"}</span>
@@ -810,6 +849,8 @@ function buildCatalogSelectionPath(
     params.set("minStock", "1");
   }
 
+  params.set("sort", normalizeCatalogSort(selection.sort));
+
   return hrefWithAssistedCompanyId(
     `/catalogo${params.toString() ? `?${params.toString()}` : ""}`,
     assistedCompanyId
@@ -946,7 +987,7 @@ function buildCatalogApiPath(
 
   params.set("limit", String(visibleProductsIncrement));
   params.set("offset", String(offset));
-  params.set("sort", "stock_desc");
+  params.set("sort", normalizeCatalogSort(selection.sort));
 
   return hrefWithAssistedCompanyId(
     `/api/catalogo?${params.toString()}`,

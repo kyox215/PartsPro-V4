@@ -25,7 +25,7 @@ import type { AccountCustomerProfile, CustomerWallet } from "@/lib/partspro-repo
 import type { ItalyCapLookupResult } from "@/lib/italy-cap-lookup";
 import { NotificationCenter } from "./notification-center";
 import { StoreHeader } from "./store-header";
-import { useT } from "./i18n-provider";
+import { useT, useI18n } from "./i18n-provider";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 type AccountPageProps = {
     loadedSection?: AccountSectionId;
@@ -158,6 +158,7 @@ export function AccountPage(props: AccountPageProps) {
 
 function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, accountType = "customer", company = null, customerProfile = null, dataWarning, forceSetup = false, historyHasMore = false, orderSummaries = [], rmaRequests = [], wallet = { balance: 0, currency: "EUR", transactions: [] }, userEmail, }: AccountPageProps) {
     const c = useAccountCopy();
+    const accountDate = useAccountDateTime();
     const t = useT();
     const router = useRouter();
     const [sectionPending, startSectionTransition] = React.useTransition();
@@ -281,7 +282,7 @@ function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, a
               </DialogTitle>
               <DialogDescription>
                 {orderDetail?.createdAt
-            ? formatAccountOrderDateTime(orderDetail.createdAt)
+            ? accountDate(orderDetail.createdAt)
             : c("订单行、状态和操作记录摘要。")}
               </DialogDescription>
             </DialogHeader>
@@ -301,6 +302,7 @@ function AccountOrderDetailPanel({ detail, error, loading, }: {
     loading: boolean;
 }) {
     const c = useAccountCopy();
+    const accountDate = useAccountDateTime();
     const [copyState,setCopyState]=React.useState<"idle"|"success"|"error">("idle");
     if (loading) {
         return (<div className="flex min-h-40 items-center justify-center gap-2 text-sm font-semibold text-slate-500">
@@ -363,11 +365,11 @@ function AccountOrderDetailPanel({ detail, error, loading, }: {
                 <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                   <span className="font-black">{c(orderEventLabel(event))}</span>
                   <span className="text-xs font-semibold text-slate-500">
-                    {formatAccountOrderDateTime(event.createdAt)}
+                    {accountDate(event.createdAt)}
                   </span>
                 </div>
                 {event.note ? (<p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-                    {formatOrderEventNote(event.note)}
+                    {event.note}
                   </p>) : null}
               </li>))}
           </ol>)}
@@ -477,6 +479,7 @@ function WalletSection({ wallet }: {
     wallet: CustomerWallet;
 }) {
     const c = useAccountCopy();
+    const accountDate = useAccountDateTime();
     const recentTransactions = wallet.transactions;
     return (<Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
       <CardHeader className="pb-0">
@@ -503,7 +506,7 @@ function WalletSection({ wallet }: {
                     {c(walletTransactionReasonLabel(transaction.reason, transaction.direction))}
                   </div>
                   <div className="mt-0.5 truncate font-semibold text-slate-500">
-                    {formatAccountOrderDateTime(transaction.createdAt)}
+                    {accountDate(transaction.createdAt)}
                   </div>
                   {transaction.orderId ? <Link className="mt-1 inline-block min-h-8 py-1 font-semibold text-primary underline" href={`/account?section=orders&orderId=${encodeURIComponent(transaction.orderId)}`}>{c("查看关联订单")}</Link> : null}
                 </div>
@@ -1295,12 +1298,17 @@ function orderEventLabel(event: AccountOrderDetailEvent) {
     };
     return labels[value] ?? "订单动态";
 }
-function formatAccountOrderDateTime(value: string) {
+function useAccountDateTime() {
+    const {locale} = useI18n();
+    return (value: string) => formatAccountOrderDateTime(value, locale);
+}
+function formatAccountOrderDateTime(value: string, locale: string) {
     const timestamp = Date.parse(value);
     if (!Number.isFinite(timestamp)) {
         return value;
     }
-    return new Intl.DateTimeFormat("zh-CN", {
+    return new Intl.DateTimeFormat(locale, {
+        timeZone: "Europe/Rome",
         day: "2-digit",
         hour: "2-digit",
         hour12: false,
@@ -1308,18 +1316,6 @@ function formatAccountOrderDateTime(value: string) {
         month: "2-digit",
         year: "numeric",
     }).format(new Date(timestamp));
-}
-function formatOrderEventNote(note: string) {
-    return note
-        .replace(/\bConsegna:\s*/gi, "配送：")
-        .replace(/\bDelivery:\s*/gi, "配送：")
-        .replace(/\bFascia:\s*/gi, "配送时段：")
-        .replace(/\bNote:\s*/gi, "备注：")
-        .replace(/\border_created\b/g, "订单已创建")
-        .replace(/\boperations_updated\b/g, "订单状态已更新")
-        .replace(/\bunpaid\b/g, "待收款")
-        .replace(/\bauthorized\b/g, "已授权")
-        .replace(/\brefunded\b/g, "已退款");
 }
 function getExternalOrderLineImageFallbackUrl(imageUrl: string | undefined) {
     if (!imageUrl) {

@@ -50,7 +50,6 @@ export default async function Page({
         ...query,
         limit: initialCatalogLimit,
         offset: 0,
-        sort: "stock_desc",
       },
       {
         buyerCustomerId,
@@ -88,6 +87,8 @@ export default async function Page({
 
 function readCatalogQuery(params: Awaited<CatalogPageSearchParams>) {
   const minStockParam = readSingleParam(params.minStock);
+  const requestedSort = readSingleParam(params.sort);
+  const sort: "name" | "stock_desc" | "updated_desc" = requestedSort === "name" || requestedSort === "updated_desc" ? requestedSort : "stock_desc";
 
   return {
     brand: readSingleParam(params.brand),
@@ -97,6 +98,7 @@ function readCatalogQuery(params: Awaited<CatalogPageSearchParams>) {
     model: readSingleParam(params.model),
     modelSeries: readSingleParam(params.modelSeries),
     q: readSingleParam(params.q),
+    sort,
   };
 }
 
