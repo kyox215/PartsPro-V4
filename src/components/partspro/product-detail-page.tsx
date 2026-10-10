@@ -1,7 +1,9 @@
 import { PricingSessionBoundary, QuoteExpiryRefresh } from "./pricing-session-boundary";
+import { CatalogBackLink } from "./catalog-back-link";
+import { ProductCompatibilityList } from "./product-compatibility-list";
 import { ProductPriceExplanation } from "./product-price-explanation";
 import Link from "next/link";
-import { ArrowLeft, Barcode } from "lucide-react";
+import { Barcode } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -88,12 +90,7 @@ export async function ProductDetailPage({
         initialAccountAccess={initialAccountAccess}
       />
       <div className="mx-auto max-w-[1440px] px-2 py-2 sm:px-3 sm:py-3">
-        <Button variant="ghost" size="sm" asChild className="mb-2 h-8 px-2">
-          <Link href={hrefWithAssistedCompanyId("/catalogo", assistedCompanyId)}>
-            <ArrowLeft className="size-4" />
-            {tx(t, "storefront.product.backToCatalog", "Torna al catalogo")}
-          </Link>
-        </Button>
+        <CatalogBackLink assistedCompanyId={assistedCompanyId} />
 
         <div className="grid gap-2 lg:grid-cols-[minmax(300px,420px)_minmax(0,1fr)] xl:grid-cols-[minmax(340px,460px)_minmax(0,1fr)]">
           <Card className="rounded-lg border-slate-200 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.045)] lg:sticky lg:top-24 lg:self-start">
@@ -132,7 +129,7 @@ export async function ProductDetailPage({
                     <div className="text-[11px] font-bold uppercase text-slate-400">
                       {item.label}
                     </div>
-                    <div className="mt-0.5 truncate text-xs font-black text-slate-700">
+                    <div className="mt-0.5 break-words text-xs font-black text-slate-700">
                       {item.value}
                     </div>
                   </div>
@@ -153,17 +150,7 @@ export async function ProductDetailPage({
                       <Barcode className="size-3.5 shrink-0" />
                       <span className="truncate">{product.sku}</span>
                     </p>
-                    <div className="mt-2 flex max-h-[58px] flex-wrap gap-1.5 overflow-hidden">
-                      {product.compatibleWith.map((model) => (
-                        <span
-                          key={model}
-                          className="max-w-full truncate rounded-full bg-slate-100 px-2 py-0.5 text-xs font-bold text-slate-700"
-                          title={model}
-                        >
-                          {model}
-                        </span>
-                      ))}
-                    </div>
+                    <ProductCompatibilityList models={product.compatibleWith} />
                   </div>
 
                   {showWholesalePrice ? <ProductPriceExplanation product={product} detailed /> : null}
@@ -267,16 +254,16 @@ export async function ProductDetailPage({
                 <div className="mt-2 border-t border-slate-100 pt-2">
                   <div className="mb-1.5 flex min-w-0 items-center justify-between gap-3">
                     <h2 className="truncate text-sm font-black text-slate-950">
-                      Dettagli rapidi
+                      {tx(t, "storefront.ux.quickDetails", "Dettagli rapidi")}
                     </h2>
                     <span className="shrink-0 text-[11px] font-semibold text-slate-400">
                       SKU {product.sku}
                     </span>
                   </div>
                   <div className="grid gap-1.5 text-xs text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
-                    <Spec label="Brand" value={localizedBrand} />
-                    <Spec label="Categoria" value={localizedCategory} />
-                    <Spec label="IVA" value={`${product.vatRate}%`} />
+                    <Spec label={tx(t,"storefront.ux.brand","Brand")} value={localizedBrand} />
+                    <Spec label={tx(t,"storefront.ux.category","Categoria")} value={localizedCategory} />
+                    <Spec label={tx(t,"storefront.ux.vat","IVA")} value={`${product.vatRate}%`} />
                     <Spec
                       label={tx(t, "storefront.product.detail.afterSales", "Assistenza")}
                       value={txFormat(t, "storefront.product.detail.afterSalesDays", "{days} giorni", {
@@ -291,7 +278,7 @@ export async function ProductDetailPage({
                         "PEC / Codice Destinatario"
                       )}
                     />
-                    <Spec label="Aggiornato" value={product.updatedAt} />
+                    <Spec label={tx(t,"storefront.ux.updated","Aggiornato")} value={Number.isNaN(Date.parse(product.updatedAt)) ? product.updatedAt : new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeZone: "Europe/Rome" }).format(new Date(product.updatedAt))} />
                   </div>
                 </div>
               </CardContent>
@@ -308,7 +295,7 @@ function Spec({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-md border border-slate-100 bg-slate-50 px-2 py-1.5">
       <div className="truncate text-[10px] font-bold uppercase text-slate-400">{label}</div>
-      <div className="mt-0.5 truncate text-xs font-bold text-slate-800">{value}</div>
+      <div className="mt-0.5 break-words text-xs font-bold text-slate-800">{value}</div>
     </div>
   );
 }

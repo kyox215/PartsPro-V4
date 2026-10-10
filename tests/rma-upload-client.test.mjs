@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   buildRmaSubmitPayload,
+  resumeRmaUploadCheckpoint,
   cancelRmaUploadCheckpoint,
   inferRmaImageContentType,
   isRmaImageFile,
@@ -819,4 +820,13 @@ test("submit payload helper is explicit and the client never references legacy e
   assert.match(source, /RMA_UPLOAD_ABANDONED/);
   assert.match(source, /onCheckpoint/);
   assert.match(source, /return response\.ok/);
+});
+
+test('refresh recovery reuses immutable final payload without reading or uploading a photo File',async()=>{
+ const checkpoint={version:1,phase:'active',draftId:'draft-refresh',verifiedAttachmentIds:{},pendingCancellationIds:[],inputFingerprint:'original-input',payload:{draftId:'draft-refresh',idempotencyKey:'original-submit',attachmentIds:['verified-photo'],quantity:1,requestedResolution:'replacement'}};
+ const requests=[];
+ const result=await resumeRmaUploadCheckpoint({checkpoint,fetchImpl:async(url,init)=>{requests.push({url,body:JSON.parse(init.body)});return new Response(JSON.stringify({data:{id:'rma-refresh'}}),{status:201});}});
+ assert.equal(result.data.id,'rma-refresh');assert.deepEqual(requests,[{url:'/api/rma/submit',body:checkpoint.payload}]);
+ await assert.rejects(resumeRmaUploadCheckpoint({checkpoint:{...checkpoint,payload:null},fetchImpl:()=>{throw new Error('Unexpected network')}}));
+ await assert.rejects(resumeRmaUploadCheckpoint({checkpoint:{...checkpoint,phase:'abandoning'},fetchImpl:()=>{throw new Error('Unexpected network')}}));
 });

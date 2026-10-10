@@ -20,6 +20,9 @@ import { useI18n } from "./i18n-provider";
 
 type SupportChatPanelProps = {
   onClose: () => void;
+  draft: string;
+  onDraftChange: (value: string) => void;
+  onConversationChange: (id: string | null) => void;
 };
 
 type SupportConversation = {
@@ -63,6 +66,8 @@ const supportCopy = {
     send: "Invia",
     sending: "Invio...",
     unavailable: "Assistenza temporaneamente non disponibile.",
+    close: "Chiudi assistenza",
+    retry: "Riprova",
   },
   zh: {
     composerPlaceholder: "输入你的问题...",
@@ -78,10 +83,12 @@ const supportCopy = {
     send: "发送",
     sending: "发送中...",
     unavailable: "客服暂时不可用。",
+    close: "关闭客服",
+    retry: "重试",
   },
 };
 
-export function SupportChatPanel({ onClose }: SupportChatPanelProps) {
+export function SupportChatPanel({ onClose, draft, onDraftChange, onConversationChange }: SupportChatPanelProps) {
   const { locale } = useI18n();
   const copy = locale === "zh-CN" ? supportCopy.zh : supportCopy.it;
   const [loaded, setLoaded] = React.useState(false);
@@ -92,7 +99,8 @@ export function SupportChatPanel({ onClose }: SupportChatPanelProps) {
   const [conversation, setConversation] =
     React.useState<SupportConversation | null>(null);
   const [messages, setMessages] = React.useState<SupportMessage[]>([]);
-  const [draft, setDraft] = React.useState("");
+  const inputRef = React.useRef<HTMLTextAreaElement>(null);
+  const panelRef = React.useRef<HTMLElement>(null);
   const markedReadRef = React.useRef("");
 
   const loadConversation = React.useCallback(
@@ -120,6 +128,7 @@ export function SupportChatPanel({ onClose }: SupportChatPanelProps) {
 
         setAccessError(null);
         setConversation(data.conversation);
+        onConversationChange(data.conversation?.id || null);
         setMessages(data.messages);
         setLoaded(true);
       } catch (loadError) {
@@ -133,7 +142,7 @@ export function SupportChatPanel({ onClose }: SupportChatPanelProps) {
         }
       }
     },
-    [copy.unavailable]
+    [copy.unavailable, onConversationChange]
   );
 
   React.useEffect(() => {
@@ -251,7 +260,7 @@ export function SupportChatPanel({ onClose }: SupportChatPanelProps) {
       setConversation(data.conversation);
       setMessages(data.messages);
       setLoaded(true);
-      setDraft("");
+      onDraftChange("");
     } catch (sendError) {
       setError(sendError instanceof Error ? sendError.message : copy.unavailable);
     } finally {
@@ -259,10 +268,15 @@ export function SupportChatPanel({ onClose }: SupportChatPanelProps) {
     }
   }
 
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => (inputRef.current || panelRef.current)?.focus(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loaded]);
+
   const canUseComposer = loaded && !accessError && (!error || messages.length > 0);
 
   return (
-    <section className="flex h-[min(620px,var(--support-widget-panel-height,calc(100dvh-2rem)))] w-[min(390px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.22)]">
+    <section ref={panelRef} role="dialog" aria-modal="false" aria-label={copy.headerTitle} tabIndex={-1} className="flex h-[min(620px,var(--support-widget-panel-height,calc(100dvh-2rem)))] w-[min(390px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.22)]">
       <div className="flex min-w-0 items-center gap-3 border-b border-slate-200 bg-slate-950 px-3 py-3 text-white">
         <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-white/12">
           <Headphones className="size-4" />
@@ -272,7 +286,7 @@ export function SupportChatPanel({ onClose }: SupportChatPanelProps) {
           <p className="truncate text-xs text-white/65">{copy.headerSubtitle}</p>
         </div>
         <Button
-          aria-label="Close support"
+          aria-label={copy.close}
           className="text-white hover:bg-white/10 hover:text-white"
           size="icon-sm"
           type="button"
@@ -298,6 +312,7 @@ export function SupportChatPanel({ onClose }: SupportChatPanelProps) {
         ) : messages.length === 0 ? (
           <div className="rounded-lg border border-dashed border-slate-300 bg-white p-4 text-sm font-semibold leading-6 text-slate-600">
             {error ?? copy.empty}
+            {error && <Button type="button" className="mt-3" variant="outline" disabled={loading} onClick={() => void loadConversation()}>{copy.retry}</Button>}
           </div>
         ) : (
           <div className="space-y-2">
@@ -322,17 +337,19 @@ export function SupportChatPanel({ onClose }: SupportChatPanelProps) {
       {canUseComposer ? (
         <form className="border-t border-slate-200 bg-white p-3" onSubmit={handleSend}>
           <Textarea
+            ref={inputRef}
+            aria-label={copy.composerPlaceholder}
             value={draft}
             className="max-h-28 min-h-20 resize-none bg-white text-sm"
             maxLength={2000}
             placeholder={copy.composerPlaceholder}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => onDraftChange(event.target.value)}
           />
           <div className="mt-2 flex items-center justify-between gap-2">
             <span className="text-xs font-semibold text-slate-400">
               {draft.trim().length}/2000
             </span>
-            <Button type="submit" disabled={sending || draft.trim().length === 0}>
+            <Button type="submit" aria-busy={sending} disabled={sending || draft.trim().length === 0}>
               {sending ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : (

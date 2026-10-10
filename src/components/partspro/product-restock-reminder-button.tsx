@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Bell, CheckCircle2, Loader2 } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { tx, txFormat } from "@/i18n/dictionaries/storefront";
 import type { PartProduct } from "@/lib/partspro-data";
@@ -67,10 +68,11 @@ export function ProductRestockReminderButton({
       ? tx(t, "storefront.product.restock.retry", "Riprova")
       : tx(
           t,
-          "storefront.product.restock.request",
-          "Avvisami al riassortimento"
+          "storefront.ux.restockShort",
+          "Avvisa al rientro"
         );
 
+  if (!isAuthenticated) return <Button asChild variant="outline" className={cn("min-h-11 max-w-full whitespace-normal border-amber-200 bg-white px-3 text-amber-800", className)}><Link href={`/login?${new URLSearchParams({next:`/prodotto/${encodeURIComponent(product.sku)}`})}`}><Bell className="size-4" />{tx(t,"storefront.ux.loginForRestock","Accedi per avviso")}</Link></Button>;
   return (
     <Button
       type="button"
@@ -79,8 +81,8 @@ export function ProductRestockReminderButton({
       className={cn(
         "min-w-0 bg-white text-amber-700 hover:bg-amber-50 hover:text-amber-800",
         density === "detail"
-          ? "h-10 flex-1 border-amber-200"
-          : "size-8 shrink-0 border-amber-200 px-0 sm:size-auto sm:min-w-[96px] sm:px-2",
+          ? "min-h-11 flex-1 border-amber-200"
+          : "min-h-11 max-w-full border-amber-200 px-3 whitespace-normal",
         saved && "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-50 hover:text-emerald-700",
         submitState === "error" && "border-red-200 bg-red-50 text-red-700",
         !isAuthenticated && "text-slate-500 hover:bg-white hover:text-slate-500",
@@ -100,8 +102,7 @@ export function ProductRestockReminderButton({
       )}
       <span
         className={cn(
-          "min-w-0 truncate",
-          density === "card" && "sr-only sm:not-sr-only"
+          "min-w-0 whitespace-normal text-left"
         )}
         aria-live="polite"
       >

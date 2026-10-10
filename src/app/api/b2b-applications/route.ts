@@ -13,6 +13,7 @@ const optionalTrimmedString = (max: number) =>
 
 const b2bApplicationSchema = z
   .object({
+    submissionId: z.string().uuid().optional(),
     companyName: z.string().trim().min(2).max(120),
     partitaIva: z
       .string()

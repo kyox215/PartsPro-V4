@@ -139,3 +139,10 @@ test('campaign input failure and backend quote errors never return fake success 
   assert.equal(result.code, 'QUOTE_UNAVAILABLE');
   assert.doesNotMatch(result.message, /sensitive/);
 });
+
+test('protective film has no local fallback and preserves its versioned authoritative price',()=>{
+ const product={sku:'FILM-DEMO',price:1.6,retailPrice:1.6,basePrice:1.6,brand:'Generic',category:'Pellicole Protettive'};
+ assert.equal(account.applyAccountPriceToProduct(product,{canViewPrices:true}).price,0);
+ const quoted={...product,priceResolved:true,priceVersion:'version-film',quoteStatus:'available'};
+ const result=account.applyAccountPriceToProduct(quoted,{canViewPrices:true});assert.equal(result.price,1.6);assert.equal(result.priceVersion,'version-film');
+});

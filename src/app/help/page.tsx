@@ -1,0 +1,17 @@
+import Link from "next/link";
+import { StoreHeader } from "@/components/partspro/store-header";
+import { Button } from "@/components/ui/button";
+import { tx } from "@/i18n/dictionaries/storefront";
+import { getRequestI18n } from "@/i18n/request";
+import { getDictionary,translate } from "@/i18n/get-dictionary";
+export default async function HelpPage() {
+  const {locale}=await getRequestI18n(); const dictionary=getDictionary(locale); const t=(key:string)=>translate(dictionary,key);
+  const sections=[
+    {id:"application",title:tx(t,"storefront.ux.applicationHelp","Richiesta professionale"),body:tx(t,"storefront.professional.terms","Confermo che i dati inseriti sono corretti e accetto le condizioni di richiesta accesso."),extra:tx(t,"storefront.professional.after.review.body","Controlliamo azienda, contatto e dati fiscali prima di abilitare il profilo.")},
+    {id:"privacy",title:tx(t,"storefront.ux.applicationPrivacy","Uso dei dati della richiesta"),body:tx(t,"storefront.professional.privacy","Autorizzo il trattamento dei dati per la valutazione della richiesta."),extra:tx(t,"storefront.ux.privacyHelp","La richiesta contiene i dati aziendali e di contatto inseriti nel modulo, usati dal team per valutarla e rispondere. Per domande sul trattamento o correzioni, contatta PartsPro dall’assistenza.")},
+    {id:"delivery",title:tx(t,"storefront.common.shipping","Spedizione"),body:tx(t,"storefront.checkout.shippingFixed","Metodo logistico gestito dal magazzino PartsPro. Spedizione €6,50, gratuita da €100; partenza standard entro le 16:00."),extra:tx(t,"storefront.ux.deliveryHelp","Verifica costo, indirizzo e disponibilità nel riepilogo del checkout. I preordini mostrano condizioni e arrivo previsto dedicati.")},
+    {id:"payment",title:tx(t,"storefront.checkout.group.payment","Pagamento"),body:tx(t,"storefront.ux.paymentHelp","I metodi e le condizioni disponibili per il tuo account sono mostrati al checkout, insieme al totale dell’ordine. Controlla il riepilogo prima di inviare.")},
+    {id:"after-sales",title:tx(t,"storefront.rma.rules.title","Regole assistenza"),body:tx(t,"storefront.rma.rules.order.body","Le richieste senza numero ordine non possono essere validate automaticamente."),extra:tx(t,"storefront.rma.rules.photo.body","Carica immagini del difetto e del sigillo qualità prima della spedizione.")},
+  ];
+  return <main className="min-h-screen bg-background"><StoreHeader /><div className="mx-auto max-w-3xl space-y-4 px-4 py-6"><h1 className="text-2xl font-bold">{tx(t,"storefront.ux.help","Aiuto")}</h1><nav className="flex flex-wrap gap-2" aria-label={tx(t,"storefront.ux.help","Aiuto")}>{sections.map(section=><Button key={section.id} variant="outline" asChild size="sm"><a href={`#${section.id}`}>{section.title}</a></Button>)}</nav>{sections.map(section=><section id={section.id} key={section.id} className="scroll-mt-36 space-y-2 rounded-lg border bg-white p-5"><h2 className="text-lg font-semibold">{section.title}</h2><p className="text-sm leading-6">{section.body}</p>{section.extra && <p className="text-sm leading-6 text-muted-foreground">{section.extra}</p>}</section>)}<div className="flex flex-wrap gap-2"><Button asChild><Link href="/professionale">{tx(t,"storefront.professional.title","Richiedi accesso clienti professionali")}</Link></Button><Button asChild variant="outline"><Link href="/account?support=open">{tx(t,"storefront.ux.contactSupport","Contatta assistenza")}</Link></Button></div></div></main>;
+}

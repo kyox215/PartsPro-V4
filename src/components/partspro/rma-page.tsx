@@ -1,6 +1,11 @@
 "use client";
 
 import * as React from "react";
+import { canSubmitCustomerRma } from "@/lib/partspro-rma-submit-state.mjs";
+import { usePricingSession } from "./use-pricing-session";
+import { Input } from "@/components/ui/input";
+import { AsyncFeedback } from "./async-feedback";
+import { useUnsavedChanges } from "./use-unsaved-changes";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -41,6 +46,7 @@ import {
 } from "@/lib/partspro-rma-contract";
 import {
   cancelRmaUploadCheckpoint,
+  resumeRmaUploadCheckpoint,
   rmaMaxAttachments,
   rmaImageIdentity,
   selectRmaImageFiles,
@@ -191,17 +197,14 @@ const initialForm: RmaFormState = {
   requestedResolution: "wallet_credit",
 };
 
-export function RmaPage({
-  initialAccountAccess,
-  initialOrderId,
-  initialOrderLineId,
-  initialRequestId,
-}: {
-  initialAccountAccess?: StoreHeaderAccountAccess;
-  initialOrderId?: string;
-  initialOrderLineId?: string;
-  initialRequestId?: string;
-}) {
+type RmaPageProps = {initialAccountAccess?:StoreHeaderAccountAccess;initialOrderId?:string;initialOrderLineId?:string;initialRequestId?:string};
+export function RmaPage(props: RmaPageProps) {
+  const session = usePricingSession(props.initialAccountAccess?.userId);
+  const {locale} = useI18n();
+  if (!session.ready) return <AsyncFeedback state="loading" title={locale === "zh-CN" ? "正在更新账户资料…" : "Aggiornamento dati account…"} />;
+  return <RmaPageScoped key={`${session.key}:${props.initialAccountAccess?.accountType ?? "none"}`} {...props} />;
+}
+function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,initialRequestId}:RmaPageProps) {
   const { t, locale } = useI18n();
   const [form, setForm] = React.useState<RmaFormState>(initialForm);
   const [images, setImages] = React.useState<LocalRmaImage[]>([]);
@@ -232,6 +235,25 @@ export function RmaPage({
   const [shippingDrafts, setShippingDrafts] = React.useState<Record<string, ShippingDraft>>({});
   const [shippingNotices, setShippingNotices] = React.useState<Record<string, ShippingNotice>>({});
 
+  const [orderSearch, setOrderSearch] = React.useState("");
+  const [lineSearch, setLineSearch] = React.useState("");
+  const [recoveredUpload, setRecoveredUpload] = React.useState(false);
+  const recoveryScope = `partspro:rma:${initialAccountAccess?.userId ?? "anonymous"}`;
+  useUnsavedChanges(images.length > 0 || Boolean(form.note) || submitState.status === "loading", locale === "zh-CN" ? "照片选择和未保存的资料可能丢失。确定离开？" : "Le foto selezionate e i dati non salvati potrebbero andare persi. Vuoi uscire?");
+  React.useEffect(() => {
+    let active=true;
+    queueMicrotask(()=>{
+      if(!active || !initialAccountAccess?.userId)return;
+      try {
+        const saved=JSON.parse(sessionStorage.getItem(recoveryScope)??"null");
+        if(saved?.checkpoint?.version===1 && saved?.form && typeof saved?.checkpoint?.inputFingerprint==="string") {
+          uploadCheckpointRef.current=saved.checkpoint;setUploadCheckpoint(saved.checkpoint);setForm(saved.form);
+          draftIdempotencyKeyRef.current=saved.draftKey;submitIdempotencyKeyRef.current=saved.submitKey;setRecoveredUpload(true);
+        }
+      } catch { /* The server remains the authority for owned drafts. */ }
+    });
+    return ()=>{active=false;};
+  },[recoveryScope,initialAccountAccess?.userId]);
   React.useEffect(() => {
     imagesRef.current = images;
   }, [images]);
@@ -322,7 +344,7 @@ export function RmaPage({
     [selectedLine]
   );
   const quantityIsValid = Boolean(selectedLine && quantityOptions.includes(form.quantity));
-  const canSubmit = Boolean(selectedLine && quantityIsValid && images.length > 0);
+  const canSubmit = canSubmitCustomerRma({selectedLine,quantityIsValid,imageCount:images.length,checkpoint:uploadCheckpoint});
   const isSubmitting = submitState.status === "loading";
   const hasFinalCheckpoint = Boolean(uploadCheckpoint?.payload);
   const isAbandoningCheckpoint = uploadCheckpoint?.phase === "abandoning";
@@ -335,6 +357,7 @@ export function RmaPage({
   function handleUploadCheckpoint(nextCheckpoint: RmaUploadCheckpoint | null) {
     uploadCheckpointRef.current = nextCheckpoint;
     setUploadCheckpoint(nextCheckpoint);
+    try { if (nextCheckpoint) sessionStorage.setItem(recoveryScope,JSON.stringify({checkpoint:nextCheckpoint,form,draftKey:draftIdempotencyKeyRef.current,submitKey:submitIdempotencyKeyRef.current})); else sessionStorage.removeItem(recoveryScope); } catch {}
   }
 
   function recoverAlreadySubmittedRma(error: unknown) {
@@ -486,6 +509,7 @@ export function RmaPage({
         URL.revokeObjectURL(image.previewUrl);
       }
       setImages([]);
+      setRecoveredUpload(false);
       setImageError(null);
       setUploadProgress(null);
       draftIdempotencyKeyRef.current = null;
@@ -514,7 +538,7 @@ export function RmaPage({
       return;
     }
 
-    if (!selectedLine) {
+    if (!selectedLine && !uploadCheckpointRef.current?.payload) {
       setSubmitState({
         status: "error",
         message: tx(t, "storefront.rma.submit.selectOrderLine", "Scegli prima un ordine e un ricambio."),
@@ -522,7 +546,7 @@ export function RmaPage({
       return;
     }
 
-    if (!quantityIsValid) {
+    if (!quantityIsValid && !uploadCheckpointRef.current?.payload) {
       setSubmitState({
         status: "error",
         message: tx(t, "storefront.rma.submit.invalidQuantity", "Scegli una quantità disponibile."),
@@ -530,7 +554,7 @@ export function RmaPage({
       return;
     }
 
-    if (images.length === 0) {
+    if (images.length === 0 && !uploadCheckpointRef.current?.payload) {
       setImageError(tx(t, "storefront.rma.image.required", "Aggiungi almeno una foto prima di inviare."));
       setSubmitState({
         status: "error",
@@ -553,8 +577,10 @@ export function RmaPage({
     });
 
     try {
-      const result = await submitRmaWithAttachments({
-        orderLineId: selectedLine.id,
+      const result = recoveredUpload && uploadCheckpointRef.current?.payload
+        ? await resumeRmaUploadCheckpoint({checkpoint:uploadCheckpointRef.current,onCheckpoint:handleUploadCheckpoint})
+        : await submitRmaWithAttachments({
+        orderLineId: selectedLine!.id,
         quantity,
         reasonCode: form.reasonCode,
         requestedResolution: form.requestedResolution,
@@ -600,7 +626,8 @@ export function RmaPage({
       const savedRequest = result.data as CustomerRmaDto;
 
       setRecentRequests((current) => dedupeCustomerRmaRequests([savedRequest, ...current]));
-      setOrderOptions((current) => decrementLineRemaining(current, selectedLine.id, quantity));
+      if (selectedLine) setOrderOptions((current) => decrementLineRemaining(current, selectedLine.id, quantity));
+      setRecoveredUpload(false); setRmaDataRevision(value=>value+1);
       for (const image of images) {
         URL.revokeObjectURL(image.previewUrl);
       }
@@ -755,9 +782,7 @@ export function RmaPage({
             </CardHeader>
             <CardContent className="space-y-4">
               {dataError ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-900" role="alert">
-                  {dataError}
-                </div>
+                <AsyncFeedback state="error" title={locale === "zh-CN" ? "无法读取售后资料" : "Dati resi non disponibili"} description={locale === "zh-CN" ? "请重试读取；已有申请不会受影响。" : "Riprova il caricamento. Le richieste esistenti restano salvate."} actions={<Button variant="outline" onClick={()=>setRmaDataRevision(value=>value+1)}>{locale === "zh-CN" ? "重新读取" : "Riprova"}</Button>} />
               ) : null}
 
               <RmaStep
@@ -765,9 +790,11 @@ export function RmaPage({
                 title={tx(t, "storefront.rma.block.order.title", "Ordine e prodotto acquistato")}
                 helper={tx(t, "storefront.rma.block.order.helper", "Partiamo da una riga ordine reale: niente numeri d'ordine o SKU da digitare.")}
               >
-                {dataLoading ? (
+                {hasFinalCheckpoint && recoveredUpload ? (
+                  <AsyncFeedback state="unknown" title={locale === "zh-CN" ? "核对原申请结果" : "Conferma l’esito della richiesta originale"} description={locale === "zh-CN" ? "原订单行和照片已保存在提交记录中。请使用下方确认按钮核对原申请；即使可退数量已变，也不要重新创建同一申请。" : "La riga ordine e le foto sono già nel record di invio. Usa il pulsante di conferma qui sotto per verificare la richiesta originale, anche se la quantità disponibile è cambiata."} />
+                ) : dataLoading ? (
                   <LoadingBox text={tx(t, "storefront.rma.order.loading", "Caricamento ordini...")} />
-                ) : selectedOrder ? (
+                ) : dataError ? null : selectedOrder ? (
                   <div className="space-y-3">
                     <SelectedOrderSummary order={selectedOrder} t={t} onChange={clearOrder} disabled={controlsLocked} />
                     <div className="space-y-2">
@@ -779,8 +806,9 @@ export function RmaPage({
                           </span>
                         ) : null}
                       </div>
+                      <Input value={lineSearch} onChange={e=>setLineSearch(e.target.value)} aria-label={locale === "zh-CN" ? "搜索商品或SKU" : "Cerca articolo o SKU"} placeholder={locale === "zh-CN" ? "搜索商品或SKU" : "Cerca articolo o SKU"} disabled={controlsLocked} />
                       <div className="grid gap-2">
-                        {selectedOrder.lines.map((line) => (
+                        {selectedOrder.lines.filter(line=>`${line.productName} ${line.sku}`.toLowerCase().includes(lineSearch.trim().toLowerCase())).map((line) => (
                           <ProductOptionCard
                             key={line.id}
                             line={line}
@@ -835,11 +863,11 @@ export function RmaPage({
                 ) : orderOptions.length === 0 ? (
                   <EmptyBox text={tx(t, "storefront.rma.order.none", "Nessun ordine spedito o consegnato con quantità disponibile.")} />
                 ) : (
-                  <div className="grid gap-2 md:grid-cols-2">
-                    {orderOptions.map((order) => (
+                  <div className="space-y-2"><Input value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} aria-label={locale === "zh-CN" ? "搜索订单或商品" : "Cerca ordine o articolo"} placeholder={locale === "zh-CN" ? "搜索订单或商品" : "Cerca ordine o articolo"} disabled={controlsLocked} /><div className="grid gap-2 md:grid-cols-2">
+                    {orderOptions.filter(order=>JSON.stringify([order.id,order.lines.map(line=>[line.productName,line.sku])]).toLowerCase().includes(orderSearch.trim().toLowerCase())).map((order) => (
                       <OrderOptionCard key={order.id} order={order} t={t} onSelect={() => updateOrder(order.id)} disabled={controlsLocked} />
                     ))}
-                  </div>
+                  </div></div>
                 )}
               </RmaStep>
 
@@ -985,7 +1013,7 @@ export function RmaPage({
                         <span className="max-w-[calc(100%-24px)] truncate">{image.file.name}</span>
                         <button
                           type="button"
-                          className="grid size-6 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-slate-200 hover:text-slate-950"
+                          className="grid size-11 shrink-0 place-items-center rounded-full text-slate-500 hover:bg-slate-200 hover:text-slate-950"
                           aria-label={txFormat(t, "storefront.rma.image.remove", "Rimuovi foto {name}", { name: image.file.name })}
                           disabled={controlsLocked}
                           onClick={() => removeImage(image.id)}
@@ -1002,7 +1030,9 @@ export function RmaPage({
                   ))}
                 </div>
                 <div className="text-xs font-semibold text-slate-500" aria-live="polite">
-                  {images.length > 0
+                  {hasFinalCheckpoint && images.length === 0
+                    ? (locale === "zh-CN" ? "原申请照片已上传并核验，可直接确认原提交。" : "Le foto originali sono già caricate e verificate. Puoi confermare l’invio originale.")
+                    : images.length > 0
                     ? txFormat(t, "storefront.rma.image.selected", "{count} foto pronte per il caricamento.", { count: images.length })
                     : tx(t, "storefront.rma.image.required", "Aggiungi almeno una foto per inviare la richiesta.")}
                 </div>
@@ -1017,6 +1047,7 @@ export function RmaPage({
                 </div>
               </RmaStep>
 
+              {recoveredUpload ? <AsyncFeedback state="unknown" title={locale === "zh-CN" ? "已恢复上次上传记录" : "Caricamento precedente recuperato"} description={locale === "zh-CN" ? "提交结果待确认时可继续确认原申请；照片文件不会在浏览器关闭后保留，未完成的上传须先清理再选照片。" : "Conferma la richiesta originale se l’esito è incerto. I file foto non restano dopo la chiusura: per un upload incompleto termina la pulizia e seleziona di nuovo le foto."} /> : null}
               <Button
                 type="submit"
                 className="h-11 w-full"

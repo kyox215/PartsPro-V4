@@ -123,9 +123,7 @@ export function StoreHeader({
     const formData = new FormData(event.currentTarget);
     const query = String(formData.get("catalogSearch") ?? "").trim();
 
-    if (!query) {
-      return;
-    }
+
 
     if (onCatalogSelect) {
       onCatalogSelect({ searchQuery: query });
@@ -181,7 +179,7 @@ export function StoreHeader({
           </Link>
 
           <form
-            className="relative ml-auto hidden min-w-0 flex-1 md:block lg:max-w-xl xl:max-w-2xl"
+            className="relative ml-auto hidden min-w-[260px] flex-1 xl:block xl:max-w-2xl"
             onSubmit={handleSearchSubmit}
           >
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -190,6 +188,7 @@ export function StoreHeader({
               className="h-10 rounded-full border-primary/25 bg-white pl-9 pr-12 shadow-[0_0_0_3px_rgba(59,91,255,0.03)]"
               defaultValue={catalogSearchValue}
               name="catalogSearch"
+              aria-label={tx(t, "storefront.header.searchFull", "Cerca SKU, brand, modello...")}
               placeholder={tx(t, "storefront.header.searchFull", "Cerca SKU, brand, modello...")}
             />
             <Button
@@ -209,7 +208,8 @@ export function StoreHeader({
             </Button>
           </form>
 
-          <LanguageSwitcher compact className="hidden md:inline-flex" />
+          <Button asChild variant="ghost" size="sm" className="hidden xl:inline-flex"><Link href="/help">{tx(t,"storefront.ux.help","Aiuto")}</Link></Button>
+          <LanguageSwitcher compact className="ml-auto hidden md:inline-flex xl:ml-0" />
 
           <StoreDeferredAccountMenu
             access={accountAccess}
@@ -228,8 +228,13 @@ export function StoreHeader({
             label={tx(t, "nav.cart", "Carrello")}
           />
         </div>
+        <form onSubmit={handleSearchSubmit} className="relative mx-3 mb-2 xl:hidden" role="search">
+          <label htmlFor="store-header-search" className="sr-only">{tx(t, "storefront.header.searchFull", "Cerca SKU, brand, modello...")}</label>
+          <Input key={catalogSearchValue} id="store-header-search" name="catalogSearch" defaultValue={catalogSearchValue} placeholder={tx(t, "storefront.header.searchFull", "Cerca SKU, brand, modello...")} className="h-11 rounded-full bg-white pr-14" />
+          <Button type="submit" size="icon-lg" className="absolute right-0 top-0 rounded-full" aria-label={tx(t, "storefront.header.searchSubmit", "Cerca")}><Search className="size-4" /></Button>
+        </form>
       </header>
-      <div aria-hidden="true" className="h-14 sm:h-16" />
+      <div aria-hidden="true" className="h-[108px] sm:h-[116px] xl:h-16" />
     </>
   );
 }

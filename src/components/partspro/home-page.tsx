@@ -46,12 +46,19 @@ type HomePageProps = {
 };
 
 export function HomePage({ departmentGroups, initialAccountAccess, banner, children }: HomePageProps) {
+  const t = useT();
   return (
     <PricingSessionBoundary userId={initialAccountAccess.userId}><main className="min-h-screen overflow-x-clip bg-[#f4f6fa] text-slate-950">
       <StoreHeader departmentGroups={departmentGroups} initialAccountAccess={initialAccountAccess} prefetchCatalogLinks />
       <div className="mx-auto grid w-full max-w-[1500px] min-w-0 grid-cols-[minmax(0,1fr)] gap-3 px-2 py-3 sm:gap-4 sm:px-4 sm:py-4 lg:grid-cols-[230px_minmax(0,1fr)]">
         <CategorySidebar departmentGroups={departmentGroups} />
         <div className="min-w-0 space-y-4">
+          <nav className="flex flex-wrap gap-2 rounded-lg border bg-white p-3 lg:hidden" aria-label={tx(t, "storefront.home.sidebar.title", "Catalogo rapido")}>
+            <Button asChild size="sm"><Link href="/catalogo">{tx(t, "storefront.ux.browseCatalog", "Sfoglia catalogo")}</Link></Button>
+            <Button asChild size="sm" variant="outline"><Link href="/catalogo?minStock=1">{tx(t, "storefront.home.products.action", "Disponibili ora")}</Link></Button>
+            <Button asChild size="sm" variant="outline"><Link href="/catalogo?brand=REMAX">REMAX</Link></Button>
+            <Button asChild size="sm" variant="ghost"><Link href="/help">{tx(t, "storefront.ux.help", "Aiuto")}</Link></Button>
+          </nav>
           {banner}
           {children}
         </div>
@@ -92,7 +99,7 @@ export function HomeProductShelf({ kind, products, cartAccess, priceGateReason, 
           {kind === "hot" ? (
           <ProductShelf
             actionHref="/catalogo?minStock=1"
-            actionLabel={tx(t, "storefront.home.common.viewAll", "Vedi tutto")}
+            actionLabel={tx(t, "storefront.home.products.action", "Disponibili ora")}
             emptyKey="storefront.home.hot.empty"
             emptyFallback="Non ci sono ancora vendite recenti. Sfoglia il catalogo disponibile."
             eyebrowKey="storefront.home.hot.eyebrow"
@@ -110,7 +117,7 @@ export function HomeProductShelf({ kind, products, cartAccess, priceGateReason, 
           {kind === "new" ? (
           <ProductShelf
             actionHref="/catalogo"
-            actionLabel={tx(t, "storefront.home.common.viewAll", "Vedi tutto")}
+            actionLabel={tx(t, "storefront.ux.browseCatalog", "Sfoglia catalogo")}
             emptyKey="storefront.home.new.empty"
             emptyFallback="Non ci sono nuovi prodotti da mostrare in questo momento."
             eyebrowKey="storefront.home.new.eyebrow"
@@ -337,7 +344,7 @@ function CuttingMachinePoster({
 
   return (
     <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
-      <div className="grid min-h-[270px] bg-[#f7f4ef] md:min-h-[300px] lg:min-h-[340px] lg:grid-cols-[minmax(0,0.9fr)_minmax(320px,1.1fr)]">
+      <div className="grid min-h-[170px] bg-[#f7f4ef] md:min-h-[300px] lg:min-h-[340px] lg:grid-cols-[minmax(0,0.9fr)_minmax(320px,1.1fr)]">
         <div className="relative z-10 flex min-w-0 flex-col justify-center px-4 py-5 text-center sm:px-6 md:text-left lg:px-8">
           <Badge className="mx-auto w-fit border border-primary/15 bg-primary text-primary-foreground shadow-sm md:mx-0">
             {tx(t, "storefront.home.cuttingPoster.badge", "New Generation")}
@@ -364,8 +371,8 @@ function CuttingMachinePoster({
           </div>
           <div className="mt-4 flex min-w-0 flex-wrap items-center justify-center gap-3 md:justify-start">
             <Button asChild className="h-9 px-4 shadow-sm shadow-primary/15">
-              <Link href="/catalogo">
-                {tx(t, "storefront.home.cuttingPoster.action", "Browse catalog")}
+              <Link href="/help?support=open">
+                {tx(t, "storefront.ux.askCuttingMachine", "Chiedi informazioni")}
                 <RoutePendingIndicator
                   className="size-3.5 text-primary-foreground"
                   label={tx(t, "storefront.navigation.loadingCatalog", "Caricamento catalogo...")}
@@ -378,7 +385,7 @@ function CuttingMachinePoster({
             </div>
           </div>
         </div>
-        <div className="relative min-h-[170px] overflow-hidden border-t border-white/80 bg-[#efe8de] md:min-h-[220px] lg:min-h-0 lg:border-l lg:border-t-0">
+        <div className="relative hidden min-h-[170px] overflow-hidden border-t border-white/80 bg-[#efe8de] sm:block md:min-h-[220px] lg:min-h-0 lg:border-l lg:border-t-0">
           <Image
             alt={tx(
               t,
@@ -450,9 +457,10 @@ function ProductShelf({
       />
       {products.length > 0 ? (
         <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          {products.map((product) => (
+          {products.map((product, index) => (
             <ProductCard
               key={`${id}-${product.sku}`}
+              className={index > 1 ? "hidden sm:block" : undefined}
               cartAccess={cartAccess}
               priceGateReason={priceGateReason}
               product={product}

@@ -17,11 +17,15 @@ export function cleanAuthRedirect(
 ) {
   const next = typeof value === "string" ? value : fallback;
 
-  if (!next.startsWith("/") || next.startsWith("//")) {
+  if (!next.startsWith("/") || next.startsWith("//") || /[\\\u0000-\u001f\u007f]/.test(next)) {
     return fallback;
   }
 
-  return next;
+  try {
+    const url = new URL(next, "https://partspro.invalid");
+    if (url.origin !== "https://partspro.invalid") return fallback;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch { return fallback; }
 }
 
 export function loginUrl(next: string, error?: string, notice?: string) {
@@ -44,16 +48,24 @@ export function postLoginRedirect(next: string, account: PostLoginAccountState) 
   }
 
   if (account.profileComplete === false) {
-    return `${CUSTOMER_POST_LOGIN_REDIRECT}?setup=1`;
+    const original = cleanAuthRedirect(next, CUSTOMER_POST_LOGIN_REDIRECT);
+    const parsed = new URL(original,"https://partspro.invalid");
+    const requestedReturn = parsed.pathname === "/account" && parsed.searchParams.get("setup") === "1" ? parsed.searchParams.get("returnTo") : original;
+    const returnTo = cleanAuthRedirect(requestedReturn,CUSTOMER_POST_LOGIN_REDIRECT);
+    const params = new URLSearchParams({setup:"1"});
+    const destination = new URL(returnTo,"https://partspro.invalid");
+    const loopsToSetup = destination.pathname === "/account" && destination.searchParams.get("setup") === "1";
+    if (!loopsToSetup && returnTo !== CUSTOMER_POST_LOGIN_REDIRECT && !returnTo.startsWith("/login") && !returnTo.startsWith("/admin") && !returnTo.startsWith("/auth/")) params.set("returnTo",returnTo);
+    return `${CUSTOMER_POST_LOGIN_REDIRECT}?${params}`;
   }
 
   const cleanedNext = cleanAuthRedirect(next, CUSTOMER_POST_LOGIN_REDIRECT);
 
-  if (cleanedNext === DEFAULT_LOGIN_REDIRECT || cleanedNext === "/login") {
+  if (cleanedNext === DEFAULT_LOGIN_REDIRECT || cleanedNext === "/login" || cleanedNext.startsWith("/login?") || cleanedNext.startsWith("/login/")) {
     return CUSTOMER_POST_LOGIN_REDIRECT;
   }
 
-  if (cleanedNext === STAFF_POST_LOGIN_REDIRECT || cleanedNext.startsWith(`${STAFF_POST_LOGIN_REDIRECT}/`)) {
+  if (new URL(cleanedNext,"https://partspro.invalid").pathname === STAFF_POST_LOGIN_REDIRECT || cleanedNext.startsWith(`${STAFF_POST_LOGIN_REDIRECT}/`) || cleanedNext.startsWith("/auth/")) {
     return CUSTOMER_POST_LOGIN_REDIRECT;
   }
 

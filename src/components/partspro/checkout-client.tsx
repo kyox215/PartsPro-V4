@@ -3,6 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { AsyncFeedback } from "./async-feedback";
+import { useUnsavedChanges } from "./use-unsaved-changes";
 import { usePricingSession } from "./use-pricing-session";
 import {
   AlertTriangle,
@@ -41,13 +43,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   orderStatusLabel,
@@ -77,6 +72,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   CartCatalogProvider,
+  clearStoredCartIfSignature,
   cartItemsForApi,
   serializeCartItems,
   type CartLine,
@@ -134,7 +130,8 @@ type SubmitState =
   | { status: "idle"; message?: string }
   | { status: "loading"; message: string }
   | { status: "success"; message: string; order: OrderResult }
-  | { status: "error"; message: string };
+  | { status: "error"; message: string }
+  | { status: "unknown"; message: string };
 
 type MoneyDto = {
   amount: string;
@@ -225,6 +222,7 @@ type CheckoutSyncState = (StorefrontSyncStatusState & {
 type CheckoutAmountStatus = "loading" | "ready" | "stale";
 
 type CheckoutApiErrorDetails = {
+  transactionRolledBack?: boolean;
   accountProfileComplete?: boolean | null;
   accountStatus?: string | null;
   assignmentStatus?: string | null;
@@ -311,6 +309,7 @@ function CheckoutClientContent({
   onCatalogScopeChange: (scope: string) => void;
 }) {
   const t = useT();
+  const {locale} = useI18n();
   const router = useRouter();
   const [, startTransition] = React.useTransition();
   const initialDelegatedCompanyId =
@@ -360,6 +359,36 @@ function CheckoutClientContent({
   const [confirmed, setConfirmed] = React.useState(false);
   const [submitAttempted, setSubmitAttempted] = React.useState(false);
   const [submitState, setSubmitState] = React.useState<SubmitState>({ status: "idle" });
+  const componentActiveRef = React.useRef(true);
+  React.useEffect(()=>{componentActiveRef.current=true;return()=>{componentActiveRef.current=false;};},[]);
+  const pendingSubmissionRef = React.useRef<{ requestId: string; body: Record<string, unknown>; cartSignature: string } | null>(null);
+  const submissionScope = `partspro:checkout:${initialAccountAccess?.userId ?? runtime.userEmail ?? "anonymous"}:${selectedCompany?.id ?? "none"}:${checkoutMode}`;
+  const [submissionRestored, setSubmissionRestored] = React.useState(false);
+  const [resolvingSubmission, setResolvingSubmission] = React.useState(false);
+  const unknownMessage = locale === "zh-CN" ? "请求已发送，尚无法确认订单结果。请先核对结果；再次发送会复用原请求编号。" : "Richiesta inviata: esito ancora da verificare. Controlla prima il risultato; un nuovo invio usa lo stesso riferimento.";
+  useUnsavedChanges(submitState.status === "loading" || submitState.status === "unknown", unknownMessage);
+  React.useEffect(() => {
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      try {
+        const stored = sessionStorage.getItem(submissionScope);
+        const saved = stored ? JSON.parse(stored) : null;
+        if (saved?.requestId && saved?.body?.companyId === selectedCompany?.id && saved.body.checkoutMode === checkoutMode) {
+          pendingSubmissionRef.current = saved;
+          setSubmitState({ status: "unknown", message: unknownMessage });
+        }
+        const draft = JSON.parse(sessionStorage.getItem(`${submissionScope}:draft`) ?? "null");
+        if (draft) setForm({ ...initialFormState(), notes: typeof draft.notes === "string" ? draft.notes.slice(0, 500) : "", deliveryMethod: normalizeDraftDelivery(draft.deliveryMethod), paymentMethod: draft.paymentMethod === "cash" ? "cash" : "bank_transfer", useWallet: Boolean(draft.useWallet) });
+      } catch { /* Storage unavailable: in-memory reference still protects this visit. */ }
+      setSubmissionRestored(true);
+    });
+    return () => { active = false; };
+  }, [submissionScope, selectedCompany?.id, checkoutMode, unknownMessage]);
+  React.useEffect(() => {
+    if (!submissionRestored) return;
+    try { sessionStorage.setItem(`${submissionScope}:draft`, JSON.stringify({ notes: form.notes, deliveryMethod: form.deliveryMethod, paymentMethod: form.paymentMethod, useWallet: form.useWallet })); } catch { /* Private mode */ }
+  }, [form, submissionScope, submissionRestored]);
   const [successDialogOpen, setSuccessDialogOpen] = React.useState(false);
   const [preview, setPreview] = React.useState<PreviewState>({
     status: "idle",
@@ -543,14 +572,17 @@ function CheckoutClientContent({
     !shouldLoadPreview ||
     (previewForUi.status === "ready" && previewForUi.canSubmit === true);
   const canSubmit =
+    submissionRestored &&
     blockers.length === 0 &&
     !checkoutSyncState &&
     !formDisabledReason &&
     previewReadyForSubmit &&
     submitState.status !== "loading" &&
-    submitState.status !== "success";
+    submitState.status !== "success" &&
+    submitState.status !== "unknown";
 
   function handleSelectedCompanyIdChange(value: string) {
+    if (pendingSubmissionRef.current) return;
     const nextCompany = companies.find((item) => item.id === value) ?? null;
 
     setSelectedCompanyId(value);
@@ -566,6 +598,7 @@ function CheckoutClientContent({
   }
 
   function handleCheckoutModeChange(value: CheckoutMode) {
+    if (pendingSubmissionRef.current) return;
     setCheckoutMode(value);
     setForm(initialFormState());
     setConfirmed(false);
@@ -757,10 +790,11 @@ function CheckoutClientContent({
     };
   }, [cartSignature, checkoutMode, form.useWallet, form.deliveryMethod, onCatalogProductsLoaded, previewKey, previewRetryToken, selectedCompany?.id, shouldLoadPreview, t]);
 
-  async function submitOrder() {
+  async function submitOrder(replayOriginal = false) {
+    if (pendingSubmissionRef.current && !replayOriginal) return;
     setSubmitAttempted(true);
 
-    if (Object.keys(formErrors).length > 0) {
+    if (!replayOriginal && Object.keys(formErrors).length > 0) {
       setSubmitState({
         status: "error",
         message: tx(t, "storefront.checkout.formInvalid", "Completa indirizzo e conferme prima di inviare l'ordine."),
@@ -768,7 +802,7 @@ function CheckoutClientContent({
       return;
     }
 
-    if (!canSubmit) {
+    if (!replayOriginal && !canSubmit) {
       setSubmitState({
         status: "error",
         message:
@@ -783,6 +817,15 @@ function CheckoutClientContent({
       message: tx(t, "storefront.checkout.submit.sending", "Creazione ordine in corso..."),
     });
 
+    const attempt = pendingSubmissionRef.current ?? { requestId: crypto.randomUUID(), cartSignature, body: {
+      companyId: selectedCompany?.id, checkoutMode, expectedPreview: expectedPreviewForOrder(previewForUi),
+      paymentMethod: effectivePaymentMethod, preorderTermsAccepted: form.preorderTermsAccepted, useWallet: effectiveUseWallet,
+      deliveryAddress: selectedShippingAddress, deliveryMethod: form.deliveryMethod,
+      notes: buildOrderNotes(form.notes, form.deliveryMethod), items: cartItemsForApi(cart.items),
+    } };
+    pendingSubmissionRef.current = attempt;
+    try { sessionStorage.setItem(submissionScope, JSON.stringify(attempt)); } catch { /* In-memory recovery */ }
+    let definitiveRejection = false;
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
       controller.abort();
@@ -793,18 +836,7 @@ function CheckoutClientContent({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
-        body: JSON.stringify({
-          companyId: selectedCompany?.id,
-          checkoutMode,
-          expectedPreview: expectedPreviewForOrder(previewForUi),
-          paymentMethod: effectivePaymentMethod,
-          preorderTermsAccepted: form.preorderTermsAccepted,
-          useWallet: effectiveUseWallet,
-          deliveryAddress: selectedShippingAddress,
-          deliveryMethod: form.deliveryMethod,
-          notes: buildOrderNotes(form.notes, form.deliveryMethod),
-          items: cartItemsForApi(cart.items),
-        }),
+        body: JSON.stringify({ ...attempt.body, requestId: attempt.requestId }),
       });
       const payload = (await response.json().catch(() => null)) as {
         data?: OrderResult;
@@ -815,7 +847,9 @@ function CheckoutClientContent({
         };
       } | null;
 
+      if (!componentActiveRef.current) return;
       if (!response.ok) {
+        definitiveRejection = !replayOriginal && (payload?.error?.details?.transactionRolledBack === true || (response.status < 500 && payload?.error?.code !== "ORDER_RESULT_UNKNOWN" && payload?.error?.code !== "CHECKOUT_REQUEST_CONFLICT"));
         if (isCheckoutContextError(payload?.error?.code)) {
           setPreview(idlePreviewState);
           setPreviewRetryToken((value) => value + 1);
@@ -838,50 +872,68 @@ function CheckoutClientContent({
         throw new Error(tx(t, "storefront.checkout.submit.orderIncomplete", "Risposta ordine incompleta."));
       }
 
-      const orderReference = payload.data.orderNo ?? payload.data.id;
-
-      setSubmitState({
-        status: "success",
-        message:
-          payload.data.orderKind === "preorder"
-            ? txFormat(
-                t,
-                "storefront.checkout.preorder.received",
-                "Preordine {id} ricevuto. Ti avviseremo quando la merce sarà arrivata.",
-                { id: orderReference }
-              )
-            : txFormat(t, "storefront.checkout.submit.orderAccepted", "Ordine {id} creato correttamente.", {
-                id: orderReference,
-              }),
-        order: payload.data,
-      });
-      setSuccessDialogOpen(true);
-      cart.clearCart();
-      clearAssistedCompanyId();
-      replaceCurrentUrlAssistedCompanyId(null);
-      startTransition(() => {
-        router.refresh();
-      });
+      acceptSubmittedOrder(payload.data, attempt);
     } catch (error) {
-      const timeoutMessage =
-        isAbortError(error)
-          ? tx(t, "storefront.checkout.submit.timeout", "Invio ordine scaduto. Controlla la connessione e riprova.")
-          : null;
-
-      setSubmitState({
-        status: "error",
-        message:
-          timeoutMessage ??
-          (error instanceof Error
-            ? error.message
-            : tx(t, "storefront.checkout.submit.sendError", "Errore durante l'invio.")),
-      });
+      if (definitiveRejection) {
+        pendingSubmissionRef.current = null;
+        setPreview(idlePreviewState); setPreviewRetryToken(value=>value+1); setCatalogLoadState("idle");
+        try { sessionStorage.removeItem(submissionScope); } catch {}
+        setSubmitState({ status: "error", message: error instanceof Error ? error.message : tx(t, "storefront.checkout.submit.sendError", "Errore durante l'invio.") });
+      } else setSubmitState({ status: "unknown", message: unknownMessage });
     } finally {
       window.clearTimeout(timeoutId);
     }
   }
 
+  function acceptSubmittedOrder(order: OrderResult, attempt: { cartSignature: string }) {
+    if(!componentActiveRef.current)return;
+    pendingSubmissionRef.current = null;
+    try { sessionStorage.removeItem(submissionScope); sessionStorage.removeItem(`${submissionScope}:draft`); } catch {}
+    setSubmitState({ status: "success", message: locale === "zh-CN" ? `订单 ${order.orderNo ?? order.id} 已创建。` : `Ordine ${order.orderNo ?? order.id} creato.`, order });
+    setSuccessDialogOpen(true);
+    // Another tab/user action may have changed the cart while the response was lost.
+    clearStoredCartIfSignature(attempt.cartSignature, initialAccountAccess?.userId ?? null);
+    clearAssistedCompanyId(); replaceCurrentUrlAssistedCompanyId(null);
+    startTransition(() => { router.refresh(); });
+  }
+  async function resolveSubmission() {
+    const attempt = pendingSubmissionRef.current;
+    if (!attempt || resolvingSubmission) return;
+    setResolvingSubmission(true);
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(`/api/orders/submissions/${encodeURIComponent(attempt.requestId)}`, { cache: "no-store", signal: controller.signal });
+      const result = await response.json();
+      if (!componentActiveRef.current) return;
+      if (!response.ok) throw new Error("Verification unavailable");
+      if (result.state === "created" && result.data?.id) acceptSubmittedOrder(result.data, attempt);
+      else if(result.state === "cancelled") { pendingSubmissionRef.current=null;try{sessionStorage.removeItem(submissionScope);}catch{} setSubmitState({status:"idle"}); setPreview(idlePreviewState);setPreviewRetryToken(value=>value+1); }
+      else setSubmitState({ status: "unknown", message: result.state === "pending" ? (locale === "zh-CN" ? "订单仍在处理，请稍后再次核对。" : "Ordine ancora in elaborazione. Verifica tra poco.") : unknownMessage });
+    } catch { setSubmitState({ status: "unknown", message: unknownMessage }); }
+    finally { window.clearTimeout(timer); setResolvingSubmission(false); }
+  }
+
+  async function stopSubmission() {
+    const attempt=pendingSubmissionRef.current;
+    if(!attempt || resolvingSubmission || !window.confirm(locale==="zh-CN" ? "停止本次请求后可重新编辑。已创建的订单不会取消，将显示实际结果。确定继续？" : "Ferma questa richiesta per modificare i dati. Un ordine già creato resta valido e verrà mostrato. Continuare?"))return;
+    setResolvingSubmission(true);
+    const controller=new AbortController();const timer=window.setTimeout(()=>controller.abort(),20000);
+    try {
+      const response=await fetch(`/api/orders/submissions/${encodeURIComponent(attempt.requestId)}/cancel`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({...attempt.body,requestId:attempt.requestId}),signal:controller.signal});
+      const result=await response.json();if(!componentActiveRef.current)return;if(!response.ok)throw new Error("Stop not confirmed");
+      if(result.state==="created" && result.data?.id)acceptSubmittedOrder(result.data,attempt);
+      else if(result.state==="cancelled") {
+        pendingSubmissionRef.current=null;try{sessionStorage.removeItem(submissionScope);}catch{}
+        setSubmitState({status:"idle",message:locale==="zh-CN"?"已停止原请求，请重新核对后提交。":"Richiesta fermata. Verifica i dati prima di inviare di nuovo."});
+        setPreview(idlePreviewState);setPreviewRetryToken(value=>value+1);setCatalogLoadState("idle");
+      } else throw new Error("Stop not confirmed");
+    }catch{setSubmitState({status:"unknown",message:unknownMessage});}
+    finally{window.clearTimeout(timer);setResolvingSubmission(false);}
+  }
+
   function retryCheckoutValidation() {
+    if (pendingSubmissionRef.current) return;
     requestCartSyncRetry();
     setCatalogLoadState("idle");
     setSubmitState({ status: "idle" });
@@ -891,6 +943,8 @@ function CheckoutClientContent({
 
   const canRetryCheckoutValidation =
     isRemoteCartError || previewForUi.status === "error" || catalogLoadState === "error";
+
+  if (runtime.mode === "needs-login") return <><StoreHeader initialAccountAccess={initialAccountAccess} /><main className="mx-auto max-w-xl px-4 py-10"><AsyncFeedback state="info" title={locale === "zh-CN" ? "登录后继续结算" : "Accedi per continuare"} description={locale === "zh-CN" ? "购物车将保留，登录后继续核对地址和金额。" : "Il carrello resta disponibile. Dopo l'accesso verifica indirizzo e importi."} actions={<Button asChild><Link href={loginHref}>{locale === "zh-CN" ? "登录" : "Accedi"}</Link></Button>} /></main></>;
 
   return (
     <>
@@ -919,7 +973,7 @@ function CheckoutClientContent({
               onSelectedCompanyIdChange={handleSelectedCompanyIdChange}
             />
           ) : null}
-          <GlobalBlockers blockers={blockers} />
+          {submitState.status === "unknown" ? <AsyncFeedback state="unknown" title={locale === "zh-CN" ? "订单结果待确认" : "Esito ordine da verificare"} description={<>{submitState.message}<span className="mt-2 block break-all font-mono text-xs">{pendingSubmissionRef.current?.requestId}</span></>} actions={<div className="flex flex-wrap gap-2"><Button disabled={resolvingSubmission} onClick={resolveSubmission}>{locale === "zh-CN" ? "核对结果" : "Verifica risultato"}</Button><Button variant="outline" disabled={resolvingSubmission} onClick={() => void submitOrder(true)}>{locale === "zh-CN" ? "重发原请求" : "Reinvia richiesta originale"}</Button><Button variant="outline" disabled={resolvingSubmission} onClick={stopSubmission}>{locale === "zh-CN" ? "停止原请求并重新编辑" : "Ferma richiesta e modifica"}</Button><Button asChild variant="ghost"><Link href="/account?section=orders">{locale === "zh-CN" ? "订单记录" : "I miei ordini"}</Link></Button></div>} /> : <GlobalBlockers blockers={blockers} />}
           {canRetryCheckoutValidation && (
             <Button
               type="button"
@@ -946,6 +1000,7 @@ function CheckoutClientContent({
             form={form}
             onChange={setForm}
             shippingAddress={selectedShippingAddress}
+            profileHref={isDelegatedMode ? "/admin?panel=accounts" : `/account?setup=1&returnTo=${encodeURIComponent(hrefWithAssistedCompanyId("/checkout", checkoutContextCompanyId || null))}`}
             submitAttempted={submitAttempted}
           />
           <PaymentSection
@@ -1542,12 +1597,14 @@ function DeliverySection({
   form,
   onChange,
   shippingAddress,
+  profileHref,
   submitAttempted,
 }: {
   errors: Record<string, string>;
   form: CheckoutFormState;
   onChange: React.Dispatch<React.SetStateAction<CheckoutFormState>>;
   shippingAddress: string;
+  profileHref: string;
   submitAttempted: boolean;
 }) {
   const t = useT();
@@ -1590,26 +1647,14 @@ function DeliverySection({
                 {tx(t, "storefront.checkout.savedShippingAddress", "Indirizzo spedizione salvato")}
               </div>
               {shippingAddress ? (
-                <Select defaultValue="saved-shipping-address">
-                  <SelectTrigger className="mt-2 h-auto min-h-10 w-full whitespace-normal bg-white py-2 text-left">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem
-                      value="saved-shipping-address"
-                      className="max-w-[calc(100vw-3rem)] whitespace-normal"
-                    >
-                      {shippingAddress}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="mt-2"><p className="break-words leading-6">{shippingAddress}</p><Button asChild variant="outline" size="sm" className="mt-2 bg-white"><Link href={profileHref}>{tx(t, "storefront.common.edit", "Modifica")}</Link></Button></div>
               ) : (
                 <div className="mt-2">
                   <p className="break-words text-xs font-semibold leading-5">
                     {tx(t, "storefront.checkout.deliveryAddressMissing", "Completa l'indirizzo di spedizione nel profilo cliente.")}
                   </p>
                   <Button asChild variant="outline" size="sm" className="mt-2 bg-white">
-                    <Link href="/account?setup=1">
+                    <Link href={profileHref}>
                       {tx(t, "storefront.checkout.completeProfile", "Completa profilo")}
                     </Link>
                   </Button>
@@ -1712,7 +1757,7 @@ function PaymentSection({
             <label
               key={option.value}
               className={cn(
-                "flex min-h-14 cursor-pointer items-center justify-center rounded-lg border px-2 py-2 text-center text-xs font-black leading-4 transition sm:min-h-20 sm:items-start sm:justify-start sm:gap-2 sm:text-left sm:text-sm",
+                "flex min-h-14 cursor-pointer items-center justify-center rounded-lg border focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 px-2 py-2 text-center text-xs font-black leading-4 transition sm:min-h-20 sm:items-start sm:justify-start sm:gap-2 sm:text-left sm:text-sm",
                 (isPreorder ? option.value === "bank_transfer" : form.paymentMethod === option.value)
                   ? "border-primary/50 bg-primary/8"
                   : "border-slate-200 bg-white hover:border-primary/30",
@@ -1732,7 +1777,7 @@ function PaymentSection({
               />
               <span className="min-w-0">
                 <span className="block">{option.label}</span>
-                <span className="mt-1 hidden text-xs font-semibold leading-5 text-slate-500 sm:block">
+                <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">
                   {option.description}
                 </span>
               </span>
@@ -3125,11 +3170,7 @@ function customerReadinessErrorMessage(
   return null;
 }
 
-function isAbortError(error: unknown) {
-  return error instanceof DOMException
-    ? error.name === "AbortError"
-    : error instanceof Error && error.name === "AbortError";
-}
+
 
 function formatMoneyDto(value: MoneyDto, locale: string) {
   return new Intl.NumberFormat(locale, {
@@ -3143,3 +3184,5 @@ function moneyDtoToNumber(value: MoneyDto | undefined) {
 
   return Number.isFinite(amount) ? amount : undefined;
 }
+
+function normalizeDraftDelivery(value: unknown): DeliveryMethod { return value === "pickup" ? "pickup" : "express_24_48"; }
