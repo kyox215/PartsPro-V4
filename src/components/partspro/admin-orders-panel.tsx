@@ -424,9 +424,9 @@ function useAdminText() {
 }
 
 export function AdminOrdersPanel({
-  focusOrderId, permissions, customerId, returnAccountId, focusStatus,
+  focusOrderId, permissions, customerId, returnAccountId, focusStatus, focusWorkflow,
 }: {
-  focusOrderId?: string; permissions?: string[]; customerId?: string; returnAccountId?: string; focusStatus?: string;
+  focusOrderId?: string; permissions?: string[]; customerId?: string; returnAccountId?: string; focusStatus?: string; focusWorkflow?: string;
 } = {}) {
   const { locale } = useI18n();
   const text = useAdminText();
@@ -853,6 +853,22 @@ export function AdminOrdersPanel({
     setViewMode(key === "shipped" ? "shipping" : "orders");
   }, [setPage, setPaymentFilter, setReservationFilter, setStatusFilter, setStockRiskFilter, setViewMode]);
 
+  const appliedWorkflowLink = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!focusWorkflow) {
+      appliedWorkflowLink.current = null;
+      return;
+    }
+    if (appliedWorkflowLink.current === focusWorkflow) return;
+    const key = focusWorkflow === "payments" ? "openPayments" : focusWorkflow;
+    const validKeys: readonly WorkflowKey[] = ["all", "submitted", "accepted", "picking", "packed", "shipped", "completed", "cancelled", "openPayments", "stockRisk", "agedReservations"];
+    if (!validKeys.includes(key as WorkflowKey)) return;
+    appliedWorkflowLink.current = focusWorkflow;
+    setOrderQuery("");
+    setSearchFilters({ dateFrom: "", dateTo: "", sort: "operations_queue" });
+    handleWorkflowSelect(key as WorkflowKey);
+  }, [focusWorkflow, handleWorkflowSelect, setOrderQuery, setSearchFilters]);
+
   const finishOrderMutation = React.useCallback(async (order: AdminOrder, actionKey: string, write: () => Promise<{ order: AdminOrder | null }>, successMessage: string, refunds = false): Promise<OrderMutationResult> => {
     if (mutationInFlight.current) return { ok: false, error: text.common.saving };
     mutationInFlight.current = true;
@@ -1154,7 +1170,7 @@ export function AdminOrdersPanel({
   );
 
   return (
-    <section className="w-full min-w-0 space-y-3 text-slate-950">
+    <section className="admin-mobile-module w-full min-w-0 space-y-3 text-slate-950">
       <div className="hidden gap-2 md:grid md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label={text.orders.metrics.totalOrders}
@@ -1187,23 +1203,21 @@ export function AdminOrdersPanel({
       </div>
 
       <p className="text-xs text-slate-500">
-        {locale.startsWith("it")
-          ? "Indicatori e conteggi calcolati sugli ordini della pagina corrente."
-          : "指标和流程数量基于当前页订单。"}
+        {locale.startsWith("it") ? "Conteggi: pagina corrente" : "流程计数：当前页"}
       </p>
 
-      <Card className="gap-0 rounded-md border-slate-200 bg-white py-0 shadow-[0_10px_26px_rgba(15,23,42,0.045)]">
+      <Card className="admin-mobile-card gap-0 rounded-md border-slate-200 bg-white py-0 shadow-[0_10px_26px_rgba(15,23,42,0.045)]">
         <CardHeader className="gap-2 border-b border-slate-200/80 px-3 py-2.5">
           <div className="flex min-w-0 flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
               <div className="min-w-0">
                 <CardTitle className="text-base leading-tight">{text.orders.title}</CardTitle>
-                <CardDescription className="text-xs leading-tight">
+                <CardDescription className="hidden text-xs leading-tight lg:block">
                   {text.orders.description}
                 </CardDescription>
               </div>
-              <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-500">
-                <Badge className={cn("h-5 px-2 text-[11px]", sourceBadgeClass(dataSource.source))}>
+              <div className="flex min-w-0 flex-wrap items-center gap-1.5 text-xs lg:text-[11px] font-semibold text-slate-500">
+                <Badge className={cn("h-5 px-2 text-xs lg:text-[11px]", sourceBadgeClass(dataSource.source))}>
                   {text.catalog.sourceBadge.replace("{source}", dataSource.label)}
                 </Badge>
                 <span className="min-w-0 break-words">
@@ -1226,7 +1240,7 @@ export function AdminOrdersPanel({
                 }}
                 className="w-full sm:w-auto"
               >
-                <TabsList className="grid h-8 w-full grid-cols-3 bg-slate-100 sm:w-auto">
+                <TabsList className="admin-mobile-tabs grid h-8 w-full grid-cols-3 bg-slate-100 sm:w-auto">
                   <TabsTrigger value="orders" className="text-xs">
                     {text.orders.tabs.orders}
                   </TabsTrigger>
@@ -1252,8 +1266,8 @@ export function AdminOrdersPanel({
               </Button>
             </div>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <label className="grid gap-1 text-xs font-semibold">{locale.startsWith("it") ? "Ordine / cliente" : "订单/客户搜索"}<Input value={orderQuery} placeholder={locale.startsWith("it") ? "Numero ordine, cliente (min. 2 caratteri)" : "订单号、客户（至少2字）"} onChange={(event) => { setPage(1); setOrderQuery(event.target.value); }} /></label>
+          <div className="admin-mobile-toolbar grid grid-cols-2 gap-2 lg:grid-cols-4">
+            <label className="col-span-2 grid gap-1 text-xs font-semibold lg:col-span-1">{locale.startsWith("it") ? "Ordine / cliente" : "订单/客户搜索"}<Input value={orderQuery} placeholder={locale.startsWith("it") ? "Numero ordine, cliente (min. 2 caratteri)" : "订单号、客户（至少2字）"} onChange={(event) => { setPage(1); setOrderQuery(event.target.value); }} /></label>
             <label className="grid gap-1 text-xs font-semibold">{locale.startsWith("it") ? "Dal" : "开始日期"}<Input type="date" value={searchFilters.dateFrom} onChange={(event) => { setPage(1); setSearchFilters(current => ({ ...current, dateFrom: event.target.value })); }} /></label>
             <label className="grid gap-1 text-xs font-semibold">{locale.startsWith("it") ? "Al" : "结束日期"}<Input type="date" value={searchFilters.dateTo} onChange={(event) => { setPage(1); setSearchFilters(current => ({ ...current, dateTo: event.target.value })); }} /></label>
             <Select value={searchFilters.sort} onValueChange={(sort) => { setPage(1); setSearchFilters(current => ({ ...current, sort })); }}><SelectTrigger aria-label={locale.startsWith("it") ? "Ordina" : "排序"}><SelectValue /></SelectTrigger><SelectContent>{[
@@ -1292,8 +1306,8 @@ export function AdminOrdersPanel({
             </div>
           )}
 
-          <details className="rounded-lg border p-2"><summary className="cursor-pointer text-sm font-semibold">{locale.startsWith("it") ? "Seleziona ordini per la stampa" : "选择订单批量打印"} ({selectedForPrint.length}/50)</summary>
-            <div className="mt-2 flex flex-wrap gap-3">{visibleOrders.map(order => <label key={order.id} className="flex items-center gap-2 text-xs"><Checkbox checked={selectedForPrint.includes(order.id)} disabled={!selectedForPrint.includes(order.id) && selectedForPrint.length >= 50} onCheckedChange={(checked) => setSelectedForPrint(current => checked ? [...new Set([...current, order.id])] : current.filter(id => id !== order.id))} />{shortOrderId(order.id)}</label>)}</div>
+          <details className="rounded-lg border p-2"><summary className="flex min-h-11 cursor-pointer items-center text-sm font-semibold">{locale.startsWith("it") ? "Seleziona ordini per la stampa" : "选择订单批量打印"} ({selectedForPrint.length}/50)</summary>
+            <div className="mt-2 flex flex-wrap gap-3">{visibleOrders.map(order => <label key={order.id} className="flex min-h-11 items-center gap-2 text-xs"><Checkbox checked={selectedForPrint.includes(order.id)} disabled={!selectedForPrint.includes(order.id) && selectedForPrint.length >= 50} onCheckedChange={(checked) => setSelectedForPrint(current => checked ? [...new Set([...current, order.id])] : current.filter(id => id !== order.id))} />{shortOrderId(order.id)}</label>)}</div>
             <div className="mt-2 flex gap-2"><Button type="button" size="sm" disabled={!selectedForPrint.length || printing} onClick={() => void handlePrintSelected()}><Printer className="size-4" />{locale.startsWith("it") ? "Anteprima stampa selezionati" : "打印所选预览"}</Button><Button variant="outline" size="sm" onClick={() => setSelectedForPrint([])}>{text.common.deselect}</Button></div>
           </details>
           <div className="min-w-0">
@@ -1433,16 +1447,22 @@ function OrderWorkflowStrip({
       aria-label={text.orders.workflow.title}
       className="grid min-w-0 gap-2 xl:grid-cols-[minmax(0,1fr)_auto]"
     >
-      <div className="sm:hidden"><Select value={activeKey} onValueChange={(value) => onSelect(value as WorkflowKey)}><SelectTrigger className="w-full" aria-label={text.orders.workflow.title}><SelectValue /></SelectTrigger><SelectContent>{groups.flatMap(group => group.items).map(item => <SelectItem key={item.key} value={item.key}>{item.label} ({counts[item.key] ?? 0})</SelectItem>)}</SelectContent></Select></div>
+      <div className="admin-mobile-tabs flex gap-1 overflow-x-auto lg:hidden" role="group" aria-label={text.orders.workflow.title}>
+        {groups.flatMap((group) => group.items).map((item) => (
+          <Button key={item.key} type="button" size="sm" variant={activeKey === item.key ? "default" : "outline"} aria-pressed={activeKey === item.key} className="min-h-11 shrink-0 whitespace-nowrap px-2 text-xs" onClick={() => onSelect(item.key)}>
+            {item.label} <span className="font-mono text-xs lg:text-[11px]">{counts[item.key] ?? 0}</span>
+          </Button>
+        ))}
+      </div>
       {groups.map((group) => (
         <div
           key={group.key}
           className={cn(
-            "min-w-0 rounded-md border border-slate-200/80 bg-slate-50/60 px-2 py-1.5",
+            "hidden min-w-0 rounded-md border border-slate-200/80 bg-slate-50/60 px-2 py-1.5 lg:block",
             group.key === "followUps" && "xl:col-span-2"
           )}
         >
-          <div className="mb-1 truncate text-[10px] font-black leading-tight text-slate-500">
+          <div className="mb-1 truncate text-xs lg:text-[10px] font-black leading-tight text-slate-500">
             {group.title}
           </div>
           <div
@@ -1474,7 +1494,7 @@ function OrderWorkflowStrip({
                   <span>{item.label}</span>
                   <span
                     className={cn(
-                      "rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-black leading-none text-slate-600",
+                      "rounded bg-slate-100 px-1.5 py-0.5 text-xs lg:text-[10px] font-black leading-none text-slate-600",
                       item.tone === "attention" &&
                         !isActive &&
                         "bg-amber-100 text-amber-900",
@@ -1513,7 +1533,7 @@ function MetricCard({
             <div className="mt-1 truncate text-xl font-black leading-none tracking-normal">
               {value}
             </div>
-            <p className="mt-1 truncate text-[11px] font-semibold leading-tight text-slate-500">
+            <p className="mt-1 truncate text-xs lg:text-[11px] font-semibold leading-tight text-slate-500">
               {detail}
             </p>
           </div>
@@ -1566,7 +1586,7 @@ function OrdersList({
           <h3 className="truncate text-sm font-bold text-slate-900">
             {text.orders.listTitle}
           </h3>
-          <p className="truncate text-xs text-slate-500">
+          <p className="hidden truncate text-xs text-slate-500 lg:block">
             {text.orders.listDescription}
           </p>
         </div>
@@ -1577,7 +1597,7 @@ function OrdersList({
         </div>
       </div>
 
-      <div className="space-y-2 md:hidden">
+      <div className="divide-y divide-slate-200 lg:hidden">
         {orders.length > 0 ? (
           orders.map((order) => {
             return (
@@ -1588,7 +1608,7 @@ function OrdersList({
                   id: order.id,
                 })}
                 className={cn(
-                  "w-full min-w-0 rounded-lg border bg-white p-2.5 text-left transition hover:border-primary/40 hover:bg-primary/4",
+                  "admin-mobile-row w-full min-w-0 rounded-none border-x-0 border-t-0 border-b-0 bg-white px-1 py-2 text-left transition hover:bg-primary/4",
                   selectedOrderId === order.id
                     ? "border-primary/50 ring-2 ring-primary/12"
                     : "border-slate-200"
@@ -1604,7 +1624,7 @@ function OrdersList({
         )}
       </div>
 
-      <div className="hidden overflow-hidden rounded-md border border-slate-200 md:block">
+      <div className="hidden overflow-hidden rounded-md border border-slate-200 lg:block">
         <Table className="min-w-[980px] text-xs">
           <TableHeader className="bg-slate-50 [&_th]:h-8 [&_th]:px-2 [&_th]:text-xs">
             <TableRow>
@@ -1652,14 +1672,14 @@ function OrdersList({
                     >
                       {shortOrderId(order.id)}
                     </div>
-                    <div className="text-[11px] text-slate-500">{order.date}</div>
+                    <div className="text-xs lg:text-[11px] text-slate-500">{order.date}</div>
                   </TableCell>
                   <TableCell>
                     <div className="max-w-[260px] truncate text-xs font-bold text-slate-900">
                       {order.company}
                     </div>
                     <div
-                      className="text-[11px] text-slate-500"
+                      className="text-xs lg:text-[11px] text-slate-500"
                       title={order.shippingAddress || order.customer.address}
                     >
                       {orderCustomerLocationLabel(order, text)}
@@ -1681,13 +1701,13 @@ function OrdersList({
                     <>
                       <TableCell>
                         <div className="text-xs font-semibold">{orderValueLabel(text, order.service)}</div>
-                        <div className="text-[11px] text-slate-500">{orderValueLabel(text, order.eta)}</div>
+                        <div className="text-xs lg:text-[11px] text-slate-500">{orderValueLabel(text, order.eta)}</div>
                       </TableCell>
                       <TableCell>
                         <div className="text-xs font-semibold">
                           {carrierLabel(order.carrier, text)}
                         </div>
-                        <div className="text-[11px] text-slate-500">
+                        <div className="text-xs lg:text-[11px] text-slate-500">
                           {order.tracking || orderValueLabel(text, order.eta)}
                         </div>
                       </TableCell>
@@ -1701,7 +1721,7 @@ function OrdersList({
                       </TableCell>
                       <TableCell>
                         <div className="text-xs font-semibold">{paymentDueLabel(order, text)}</div>
-                        <div className="text-[11px] text-slate-500">
+                        <div className="text-xs lg:text-[11px] text-slate-500">
                           {labels.paymentMethod[order.paymentMethod]}
                         </div>
                       </TableCell>
@@ -1834,61 +1854,24 @@ function MobileOrderCard({
   const summaryFacts = getMobileSummaryFacts(order, viewMode, labels, text);
 
   return (
-    <div className="min-w-0">
+    <div className="min-w-0 space-y-1.5">
       <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2">
         <div className="min-w-0">
-          <div
-            className="truncate text-[13px] font-black leading-4 text-slate-900"
-            title={order.company}
-          >
-            {order.company}
+          <div className="flex min-w-0 items-baseline gap-2">
+            <span className="shrink-0 font-mono text-xs font-bold text-slate-600">{shortOrderId(order.id)}</span>
+            <span className="min-w-0 truncate text-[13px] font-bold text-slate-950" title={order.company}>{order.company}</span>
           </div>
+          <p className="text-xs lg:text-[11px] text-slate-500">{order.date} · {order.items} {text.common.product}</p>
         </div>
-        <div className="shrink-0 text-right">
-          <div className="text-sm font-black leading-4 text-slate-950">{formatEuro(order.total)}</div>
-          <div className="mt-0.5 text-[10px] font-semibold leading-3 text-slate-400">
-            {order.items} {text.common.product}
-          </div>
-        </div>
+        <span className="whitespace-nowrap text-right font-mono text-sm font-black tabular-nums">{formatEuro(order.total)}</span>
       </div>
-
-      <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1">
-        <Badge
-          className={cn(
-            orderStatusBadgeClass(order.status),
-            "h-5 shrink-0 rounded px-1.5 text-[11px] leading-none"
-          )}
-        >
-          {labels.status[order.status]}
-        </Badge>
-        <Badge
-          className={cn(
-            paymentBadgeClass(order.paymentStatus),
-            "h-5 shrink-0 rounded px-1.5 text-[11px] leading-none"
-          )}
-        >
-          {labels.payment[order.paymentStatus]}
-        </Badge>
-        <span className="min-w-0 truncate rounded bg-slate-50 px-1.5 py-1 text-[11px] font-semibold leading-3 text-slate-500">
-          {labels.fulfillment[order.fulfillmentStatus]}
-        </span>
+      <div className="flex min-w-0 flex-wrap items-center gap-1 text-xs lg:text-[11px]">
+        <Badge className={cn(orderStatusBadgeClass(order.status), "h-5 rounded px-1.5 text-xs lg:text-[11px]")}>{labels.status[order.status]}</Badge>
+        <Badge className={cn(paymentBadgeClass(order.paymentStatus), "h-5 rounded px-1.5 text-xs lg:text-[11px]")}>{labels.payment[order.paymentStatus]}</Badge>
+        <span className="break-words font-semibold text-slate-500">{labels.fulfillment[order.fulfillmentStatus]}</span>
         <ReservationBadge compact order={order} text={text} />
       </div>
-
-      <div className="mt-1.5 grid min-w-0 grid-cols-2 gap-1">
-        {summaryFacts.map((fact) => (
-          <div key={fact.label} className="min-w-0 rounded bg-slate-50 px-1.5 py-1">
-            <div className="truncate text-[10px] font-semibold leading-3 text-slate-400">
-              {fact.label}
-            </div>
-            <div className="mt-0.5 truncate text-[11px] font-bold leading-3 text-slate-700">
-              {fact.value}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <MobileOrderProgress labels={labels} status={order.status} />
+      {viewMode !== "orders" ? <p className="break-words text-xs lg:text-[11px] text-slate-500">{summaryFacts.map((fact) => `${fact.label}: ${fact.value}`).join(" · ")}</p> : null}
     </div>
   );
 }
@@ -1908,12 +1891,12 @@ function MobileOrderProgress({
   return (
     <div className="mt-1.5 min-w-0" aria-label={`${labels.status[status]} ${progressValue}/5`}>
       <div className="mb-1 flex min-w-0 items-center justify-between gap-2">
-        <span className="truncate text-[10px] font-semibold leading-3 text-slate-400">
+        <span className="truncate text-xs lg:text-[10px] font-semibold leading-3 text-slate-400">
           {labels.status[status]}
         </span>
         <span
           className={cn(
-            "shrink-0 font-mono text-[10px] font-black leading-3 text-slate-400",
+            "shrink-0 font-mono text-xs lg:text-[10px] font-black leading-3 text-slate-400",
             !cancelled && "text-primary"
           )}
         >
@@ -2012,7 +1995,7 @@ function OrderProgressInline({
               )}
               <span
                 className={cn(
-                  "relative z-10 mx-auto grid size-4 place-items-center rounded-full border text-[9px] font-black leading-none",
+                  "relative z-10 mx-auto grid size-4 place-items-center rounded-full border text-xs lg:text-[9px] font-black leading-none",
                   done
                     ? "border-primary bg-primary text-white"
                     : "border-slate-200 bg-white text-slate-400",
@@ -2024,7 +2007,7 @@ function OrderProgressInline({
               </span>
               <span
                 className={cn(
-                  "mt-0.5 block truncate text-[9px] font-semibold leading-tight text-slate-400",
+                  "mt-0.5 block truncate text-xs lg:text-[9px] font-semibold leading-tight text-slate-400",
                   done && "text-primary",
                   current && "text-slate-900",
                   cancelled && "text-red-300"
@@ -2469,7 +2452,7 @@ function OrderMobileSectionTabs({
               key={section.key}
               type="button"
               className={cn(
-                "flex min-w-0 flex-col items-center justify-center gap-0.5 rounded px-1 py-1 text-[10px] font-black leading-tight transition",
+                "flex min-w-0 flex-col items-center justify-center gap-0.5 rounded px-1 py-1 text-xs lg:text-[10px] font-black leading-tight transition",
                 selected
                   ? "bg-primary text-white shadow-sm"
                   : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
@@ -2482,7 +2465,7 @@ function OrderMobileSectionTabs({
                 {section.count !== undefined && section.count > 0 ? (
                   <span
                     className={cn(
-                      "absolute -right-2 -top-1 rounded-full px-1 text-[9px] leading-3",
+                      "absolute -right-2 -top-1 rounded-full px-1 text-xs lg:text-[9px] leading-3",
                       selected ? "bg-white/20 text-white" : "bg-white text-slate-500"
                     )}
                   >
@@ -2599,7 +2582,7 @@ function OrderMobileDetailsSection({
             <PackageCheck className="size-4 shrink-0 text-primary" />
             <span className="truncate">{text.orders.details.orderLines}</span>
           </div>
-          <Badge variant="outline" className="h-5 bg-white px-1.5 text-[10px]">
+          <Badge variant="outline" className="h-5 bg-white px-1.5 text-xs lg:text-[10px]">
             {order.lines.length}
           </Badge>
         </div>
@@ -2848,10 +2831,10 @@ function ShipmentReadiness({
   return (
     <div className="mt-1.5 rounded-md border border-slate-100 bg-slate-50 px-1.5 py-1">
       <div className="mb-1 flex items-center justify-between gap-2">
-        <span className="text-[10px] font-black uppercase leading-none text-slate-400">
+        <span className="text-xs lg:text-[10px] font-black uppercase leading-none text-slate-400">
           {text.orders.details.shipmentCheck}
         </span>
-        <span className="font-mono text-[10px] font-black text-slate-500">
+        <span className="font-mono text-xs lg:text-[10px] font-black text-slate-500">
           {checks.filter((check) => check.ok).length}/{checks.length}
         </span>
       </div>
@@ -2865,11 +2848,11 @@ function ShipmentReadiness({
                 ) : (
                   <XCircle className="size-3 shrink-0" />
                 )}
-                <span className="truncate text-[10px] font-black leading-none">
+                <span className="truncate text-xs lg:text-[10px] font-black leading-none">
                   {check.label}
                 </span>
               </div>
-              <div className="mt-0.5 truncate text-[10px] font-semibold text-slate-500">
+              <div className="mt-0.5 truncate text-xs lg:text-[10px] font-semibold text-slate-500">
                 {check.value}
               </div>
             </>
@@ -3039,7 +3022,7 @@ function OrderActionBar({
         <Button
           variant="outline"
           size="sm"
-          className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-slate-700 hover:text-slate-900 sm:h-8 sm:px-2 sm:text-xs"
+          className="h-7 min-w-0 rounded-md bg-white px-1.5 text-xs text-slate-700 hover:text-slate-900 sm:h-8 sm:px-2 sm:text-xs"
           onClick={() => onPrintOrder(order)}
         >
           <Printer className="size-4" />
@@ -3051,7 +3034,7 @@ function OrderActionBar({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-red-600 hover:text-red-600 sm:h-8 sm:px-2 sm:text-xs"
+                className="h-7 min-w-0 rounded-md bg-white px-1.5 text-xs text-red-600 hover:text-red-600 sm:h-8 sm:px-2 sm:text-xs"
                 disabled={isMutating}
               >
                 <XCircle className="size-4" />
@@ -3117,7 +3100,7 @@ function OrderActionBar({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-red-700 hover:text-red-700 sm:h-8 sm:px-2 sm:text-xs"
+            className="h-7 min-w-0 rounded-md bg-white px-1.5 text-xs text-red-700 hover:text-red-700 sm:h-8 sm:px-2 sm:text-xs"
             onClick={() => onForceCancelOrder(order)}
             disabled={isMutating}
           >
@@ -3138,7 +3121,7 @@ function OrderActionBar({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-red-700 hover:text-red-700 sm:h-8 sm:px-2 sm:text-xs"
+                className="h-7 min-w-0 rounded-md bg-white px-1.5 text-xs text-red-700 hover:text-red-700 sm:h-8 sm:px-2 sm:text-xs"
                 disabled={isMutating}
               >
                 <AlertTriangle className="size-4" />
@@ -3211,7 +3194,7 @@ function OrderActionBar({
           <Button
             variant="outline"
             size="sm"
-            className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-slate-700 hover:text-slate-900 sm:h-8 sm:px-2 sm:text-xs"
+            className="h-7 min-w-0 rounded-md bg-white px-1.5 text-xs text-slate-700 hover:text-slate-900 sm:h-8 sm:px-2 sm:text-xs"
             onClick={() => onRollback(order)}
             disabled={isMutating}
           >
@@ -3222,7 +3205,7 @@ function OrderActionBar({
         {canManageOrders && transition && (
           <Button
             size="sm"
-            className="h-7 min-w-0 rounded-md px-1.5 text-[11px] sm:h-8 sm:px-2 sm:text-xs"
+            className="h-7 min-w-0 rounded-md px-1.5 text-xs sm:h-8 sm:px-2 sm:text-xs"
             onClick={() => onTransition(order, transition.status, transition.notice)}
             disabled={isMutating || (transition.status === "shipped" && !canShip)}
           >
@@ -3232,7 +3215,7 @@ function OrderActionBar({
         )}
       </div>
       {order.status === "packed" && !canShip && (
-        <div className="max-w-none text-[11px] font-semibold leading-4 text-amber-700 sm:max-w-[280px]">
+        <div className="max-w-none text-xs lg:text-[11px] font-semibold leading-4 text-amber-700 sm:max-w-[280px]">
           {text.orders.logisticsRequired}
         </div>
       )}
@@ -3258,11 +3241,11 @@ function TrackingDetailsPanel({
             <h4 className="truncate text-sm font-black leading-tight text-slate-950">
               {text.orders.tracking.title}
             </h4>
-            <Badge className="h-5 border-cyan-200 bg-white text-[10px] text-cyan-700">
+            <Badge className="h-5 border-cyan-200 bg-white text-xs lg:text-[10px] text-cyan-700">
               {detail.status}
             </Badge>
           </div>
-          <p className="mt-0.5 line-clamp-2 text-[11px] font-medium leading-snug text-slate-500">
+          <p className="mt-0.5 line-clamp-2 text-xs lg:text-[11px] font-medium leading-snug text-slate-500">
             {text.orders.tracking.description}
           </p>
         </div>
@@ -3293,7 +3276,7 @@ function TrackingDetailsPanel({
       </div>
 
       <div className="mt-1.5 flex min-w-0 flex-col gap-1.5 rounded-md border border-cyan-100 bg-white/75 p-1.5 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0 text-[11px] font-semibold leading-snug text-slate-500">
+        <div className="min-w-0 text-xs lg:text-[11px] font-semibold leading-snug text-slate-500">
           {detail.trackingUrl
             ? text.orders.tracking.externalHint
             : text.orders.tracking.noCarrierPortal}
@@ -3315,10 +3298,10 @@ function TrackingDetailsPanel({
 
       <div className="mt-1.5 rounded-md border border-cyan-100 bg-white">
         <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-2 py-1.5">
-          <div className="text-[11px] font-black uppercase leading-none text-slate-400">
+          <div className="text-xs lg:text-[11px] font-black uppercase leading-none text-slate-400">
             {text.orders.tracking.timeline}
           </div>
-          <Badge variant="outline" className="h-5 bg-white px-1.5 text-[10px]">
+          <Badge variant="outline" className="h-5 bg-white px-1.5 text-xs lg:text-[10px]">
             {detail.events.length}
           </Badge>
         </div>
@@ -3349,7 +3332,7 @@ function TrackingFact({
 }) {
   return (
     <div className="min-w-0 rounded border border-cyan-100 bg-white px-1.5 py-1">
-      <div className="truncate text-[10px] font-black leading-none text-slate-400">
+      <div className="truncate text-xs lg:text-[10px] font-black leading-none text-slate-400">
         {label}
       </div>
       <div
@@ -3384,15 +3367,15 @@ function TrackingTimelineItem({ event }: { event: TrackingTimelineEvent }) {
             <div className="truncate text-xs font-black leading-tight text-slate-900">
               {event.title}
             </div>
-            <div className="mt-0.5 break-words text-[11px] font-medium leading-snug text-slate-500">
+            <div className="mt-0.5 break-words text-xs lg:text-[11px] font-medium leading-snug text-slate-500">
               {event.description}
             </div>
           </div>
-          <time className="shrink-0 text-right text-[10px] font-semibold leading-tight text-slate-400">
+          <time className="shrink-0 text-right text-xs lg:text-[10px] font-semibold leading-tight text-slate-400">
             {formatDisplayDate(event.createdAt)}
           </time>
         </div>
-        <div className="mt-1 inline-flex items-center gap-1 rounded bg-slate-50 px-1.5 py-0.5 text-[10px] font-bold text-slate-500">
+        <div className="mt-1 inline-flex items-center gap-1 rounded bg-slate-50 px-1.5 py-0.5 text-xs lg:text-[10px] font-bold text-slate-500">
           <Clock3 className="size-3" />
           {event.source}
         </div>
@@ -3586,7 +3569,7 @@ function OrderPaymentMethodCard({
             <DialogBody className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="min-w-0">
-                  <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                  <span className="mb-1 block text-xs lg:text-[10px] font-black uppercase leading-none text-slate-400">
                     {text.orders.paymentStatus}
                   </span>
                   <Select
@@ -3607,7 +3590,7 @@ function OrderPaymentMethodCard({
                   </Select>
                 </label>
                 <label className="min-w-0">
-                  <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                  <span className="mb-1 block text-xs lg:text-[10px] font-black uppercase leading-none text-slate-400">
                     {text.orders.details.paymentMethod}
                   </span>
                   <Select
@@ -3628,7 +3611,7 @@ function OrderPaymentMethodCard({
                   </Select>
                 </label>
                 <label className="min-w-0">
-                  <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                  <span className="mb-1 block text-xs lg:text-[10px] font-black uppercase leading-none text-slate-400">
                     {text.orders.paymentReceivedAmount}
                   </span>
                   <Input
@@ -3642,7 +3625,7 @@ function OrderPaymentMethodCard({
                   />
                 </label>
                 <label className="min-w-0">
-                  <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                  <span className="mb-1 block text-xs lg:text-[10px] font-black uppercase leading-none text-slate-400">
                     {text.orders.paymentReceivedAt}
                   </span>
                   <Input
@@ -3655,7 +3638,7 @@ function OrderPaymentMethodCard({
                 </label>
               </div>
               <label className="block min-w-0">
-                <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                <span className="mb-1 block text-xs lg:text-[10px] font-black uppercase leading-none text-slate-400">
                   {text.orders.paymentReference}
                 </span>
                 <Input
@@ -3666,7 +3649,7 @@ function OrderPaymentMethodCard({
                 />
               </label>
               <label className="block min-w-0">
-                <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                <span className="mb-1 block text-xs lg:text-[10px] font-black uppercase leading-none text-slate-400">
                   {text.orders.paymentNote}
                 </span>
                 <Textarea
@@ -3765,7 +3748,7 @@ function OrderPaymentMethodCard({
           </Badge>
         </div>
         <div className="mb-1.5 rounded-md border border-primary/10 bg-primary/5 px-2 py-2">
-          <div className="text-[10px] font-black uppercase leading-none text-primary/70">
+          <div className="text-xs lg:text-[10px] font-black uppercase leading-none text-primary/70">
             {primaryAmountTitle}
           </div>
           <div className="mt-1 text-lg font-black leading-none text-slate-950">
@@ -3849,7 +3832,7 @@ function OrderPaymentMethodCard({
         data-admin-dirty={paymentMethodDraft !== order.paymentMethod ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined}
       >
         <label className="min-w-0">
-          <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+          <span className="mb-1 block text-xs lg:text-[10px] font-black uppercase leading-none text-slate-400">
             {text.orders.details.paymentMethod}
           </span>
           <Select
@@ -3963,10 +3946,10 @@ function OrderWalletRefundsCard({
       )}
     >
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <div className="min-w-0 text-[11px] font-black uppercase leading-none text-slate-400">
+        <div className="min-w-0 text-xs lg:text-[11px] font-black uppercase leading-none text-slate-400">
           {text.orders.walletRefundRequests}
         </div>
-        <Badge variant="outline" className="h-5 bg-white px-1.5 text-[10px]">
+        <Badge variant="outline" className="h-5 bg-white px-1.5 text-xs lg:text-[10px]">
           {order.walletRefunds.length}
         </Badge>
       </div>
@@ -3987,7 +3970,7 @@ function OrderWalletRefundsCard({
                   <div className="truncate text-xs font-black text-slate-950">
                     {formatEuro(refund.amount)}
                   </div>
-                  <div className="mt-0.5 truncate text-[10px] font-semibold text-slate-500">
+                  <div className="mt-0.5 truncate text-xs lg:text-[10px] font-semibold text-slate-500">
                     {refund.reason || text.common.none}
                   </div>
                 </div>
@@ -3996,7 +3979,7 @@ function OrderWalletRefundsCard({
                 </Badge>
               </div>
               <div className="flex min-w-0 items-center justify-between gap-2">
-                <span className="truncate text-[10px] font-semibold text-slate-400">
+                <span className="truncate text-xs lg:text-[10px] font-semibold text-slate-400">
                   {refund.requestedAt ? formatDisplayDate(refund.requestedAt) : refund.id}
                 </span>
                 {canApprove ? (
@@ -4175,7 +4158,7 @@ function OrderLogisticsCard({
         data-admin-dirty={carrierDraft !== order.carrier || trackingDraft !== order.tracking ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined}
       >
         <label className="min-w-0">
-          <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+          <span className="mb-1 block text-xs lg:text-[10px] font-black uppercase leading-none text-slate-400">
             {text.common.carrier}
           </span>
           <Select
@@ -4198,7 +4181,7 @@ function OrderLogisticsCard({
         </label>
 
         <label className="min-w-0">
-          <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+          <span className="mb-1 block text-xs lg:text-[10px] font-black uppercase leading-none text-slate-400">
             {text.orders.print.tracking}
           </span>
           <div className="flex min-w-0 items-center gap-1">
@@ -4337,7 +4320,7 @@ function OrderLogisticsCard({
                 />
               </div>
               <label className="block min-w-0">
-                <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                <span className="mb-1 block text-xs lg:text-[10px] font-black uppercase leading-none text-slate-400">
                   {text.orders.shippingAmount}
                 </span>
                 <Input
@@ -4351,7 +4334,7 @@ function OrderLogisticsCard({
                 />
               </label>
               <label className="block min-w-0">
-                <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                <span className="mb-1 block text-xs lg:text-[10px] font-black uppercase leading-none text-slate-400">
                   {text.orders.shippingAdjustmentReason}
                 </span>
                 <Input
@@ -4362,7 +4345,7 @@ function OrderLogisticsCard({
                 />
               </label>
               <label className="block min-w-0">
-                <span className="mb-1 block text-[10px] font-black uppercase leading-none text-slate-400">
+                <span className="mb-1 block text-xs lg:text-[10px] font-black uppercase leading-none text-slate-400">
                   {text.orders.paymentNote}
                 </span>
                 <Textarea
@@ -4488,10 +4471,10 @@ function OrderLines({
                 <div className="break-words text-[13px] font-bold leading-tight text-slate-900 sm:text-sm">
                   {line.name}
                 </div>
-                <div className="mt-0.5 truncate font-mono text-[11px] text-slate-500 sm:text-xs">
+                <div className="mt-0.5 truncate font-mono text-xs text-slate-500 sm:text-xs">
                   {line.sku}
                 </div>
-                <div className="mt-1 truncate text-[11px] font-semibold text-slate-500">
+                <div className="mt-1 truncate text-xs lg:text-[11px] font-semibold text-slate-500">
                   {orderValueLabel(text, line.category)} · {line.batchCode || text.common.none}
                 </div>
                 <div className="mt-1.5 grid grid-cols-4 gap-1 text-xs max-[360px]:grid-cols-2">
@@ -4573,7 +4556,7 @@ function OrderLines({
                     {line.name}
                   </div>
                   <div
-                    className="mt-0.5 min-w-0 truncate text-[11px] leading-tight text-slate-500"
+                    className="mt-0.5 min-w-0 truncate text-xs lg:text-[11px] leading-tight text-slate-500"
                     title={`${orderValueLabel(text, line.category)} · ${line.batchCode || text.common.none}`}
                   >
                     {orderValueLabel(text, line.category)} · {line.batchCode || text.common.none}
@@ -4611,7 +4594,7 @@ function OrderLines({
                       {locale.startsWith("it") ? "Mancanza" : "缺货"}
                     </Button>
                   ) : (
-                    <span className="text-[11px] font-semibold text-slate-400">
+                    <span className="text-xs lg:text-[11px] font-semibold text-slate-400">
                       {orderLineOperationalLabel(line, locale)}
                     </span>
                   )}
@@ -4650,7 +4633,7 @@ function OrderLines({
                   value={actualQuantity}
                   onChange={(event) => setActualQuantity(event.target.value)}
                 />
-                <div className="text-[11px] font-semibold text-slate-500">
+                <div className="text-xs lg:text-[11px] font-semibold text-slate-500">
                   {copy.ordered}: {editingLine.quantity}. {copy.noShortage}
                 </div>
               </div>
@@ -4802,7 +4785,7 @@ function OrderNotesBanner({
         <div className="min-w-0 flex-1">
           <div
             className={cn(
-              "text-[11px] font-black leading-none",
+              "text-xs lg:text-[11px] font-black leading-none",
               hasAnyNote ? "text-amber-700" : "text-slate-400"
             )}
           >
@@ -4858,7 +4841,7 @@ function StaffNoteEditor({
     return (
       <div data-admin-dirty={isEditing && hasChanges ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} className="min-w-0 rounded bg-white/75 px-1.5 py-1">
         <div className="flex items-center justify-between gap-2">
-          <div className="text-[10px] font-black leading-none text-amber-700/80">
+          <div className="text-xs lg:text-[10px] font-black leading-none text-amber-700/80">
             {text.orders.details.staffNote}
           </div>
           <Button
@@ -4866,7 +4849,7 @@ function StaffNoteEditor({
             size="sm"
             variant="outline"
             disabled={isMutating}
-            className="h-6 shrink-0 gap-1 rounded px-1.5 text-[10px] font-bold"
+            className="h-6 shrink-0 gap-1 rounded px-1.5 text-xs lg:text-[10px] font-bold"
             onClick={() => setIsEditing(true)}
           >
             <Pencil className="size-3" />
@@ -4883,7 +4866,7 @@ function StaffNoteEditor({
   return (
     <div data-admin-dirty={isEditing && hasChanges ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} className="min-w-0 rounded bg-white/75 px-1.5 py-1">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-[10px] font-black leading-none text-amber-700/80">
+        <div className="text-xs lg:text-[10px] font-black leading-none text-amber-700/80">
           {text.orders.details.staffNote}
         </div>
         <div className="flex shrink-0 items-center gap-1">
@@ -4892,7 +4875,7 @@ function StaffNoteEditor({
             size="sm"
             variant="ghost"
             disabled={isMutating}
-            className="h-6 rounded px-1.5 text-[10px] font-bold text-slate-500"
+            className="h-6 rounded px-1.5 text-xs lg:text-[10px] font-bold text-slate-500"
             onClick={() => {
               setDraft(staffNote);
               setIsEditing(false);
@@ -4906,7 +4889,7 @@ function StaffNoteEditor({
             size="sm"
             variant="outline"
             disabled={!hasChanges || isMutating}
-            className="h-6 gap-1 rounded px-1.5 text-[10px] font-bold"
+            className="h-6 gap-1 rounded px-1.5 text-xs lg:text-[10px] font-bold"
             onClick={async () => {
               setFormError("");
               const outcome = await onUpdateStaffNote(order, draft);
@@ -4940,7 +4923,7 @@ function StaffNoteEditor({
 function NoteValue({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded bg-white/65 px-1.5 py-1">
-      <div className="text-[10px] font-black leading-none text-amber-700/80">
+      <div className="text-xs lg:text-[10px] font-black leading-none text-amber-700/80">
         {label}
       </div>
       <div className="mt-0.5 break-words font-mono text-[12px] font-black leading-snug text-slate-950">
@@ -5432,10 +5415,10 @@ function OrderOperationHistory({
   return (
     <div className="min-w-0">
       <div className="mb-1 flex min-w-0 items-center justify-between gap-2">
-        <div className="text-[11px] font-black uppercase text-slate-400">
+        <div className="text-xs lg:text-[11px] font-black uppercase text-slate-400">
           {text.orders.details.operationHistory}
         </div>
-        <Badge variant="outline" className="h-5 bg-white px-1.5 text-[10px]">
+        <Badge variant="outline" className="h-5 bg-white px-1.5 text-xs lg:text-[10px]">
           {events.length || fallbackActivity.length}
         </Badge>
       </div>
@@ -5469,7 +5452,7 @@ function OrderOperationHistory({
                           {activityEventLabel(event.eventType, text)}
                         </Badge>
                         {event.fromStatus && event.toStatus && (
-                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-black text-slate-600">
+                          <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs lg:text-[10px] font-black text-slate-600">
                             {labels.status[event.fromStatus]} {"->"}{" "}
                             {labels.status[event.toStatus]}
                           </span>
@@ -5479,11 +5462,11 @@ function OrderOperationHistory({
                         {event.note || text.common.none}
                       </div>
                     </div>
-                    <time className="shrink-0 whitespace-nowrap text-[10px] font-bold text-slate-400 sm:text-right">
+                    <time className="shrink-0 whitespace-nowrap text-xs lg:text-[10px] font-bold text-slate-400 sm:text-right">
                       {formatDisplayDate(event.createdAt)}
                     </time>
                   </div>
-                  <div className="mt-2 grid min-w-0 gap-2 rounded-md bg-slate-50 px-2 py-1.5 text-[11px] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                  <div className="mt-2 grid min-w-0 gap-2 rounded-md bg-slate-50 px-2 py-1.5 text-xs lg:text-[11px] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                     <div className="min-w-0">
                       <div className="font-semibold text-slate-400">
                         {text.activity.actor}
@@ -5492,13 +5475,13 @@ function OrderOperationHistory({
                         {actorName}
                       </div>
                       {actorSecondary && (
-                        <div className="mt-0.5 break-all text-[11px] font-semibold text-slate-500">
+                        <div className="mt-0.5 break-all text-xs lg:text-[11px] font-semibold text-slate-500">
                           {actorSecondary}
                         </div>
                       )}
                     </div>
                     {actorRole && (
-                      <span className="w-fit rounded bg-white px-1.5 py-0.5 text-[10px] font-bold text-slate-500 ring-1 ring-slate-200">
+                      <span className="w-fit rounded bg-white px-1.5 py-0.5 text-xs lg:text-[10px] font-bold text-slate-500 ring-1 ring-slate-200">
                         {actorRole}
                       </span>
                     )}
@@ -5596,14 +5579,14 @@ function StatusStepper({
         <Badge
           className={cn(
             orderStatusBadgeClass(status),
-            "h-5 rounded px-1.5 text-[11px] leading-none"
+            "h-5 rounded px-1.5 text-xs lg:text-[11px] leading-none"
           )}
         >
           {labels.status[status]}
         </Badge>
         <span
           className={cn(
-            "shrink-0 font-mono text-[11px] font-black text-slate-400",
+            "shrink-0 font-mono text-xs lg:text-[11px] font-black text-slate-400",
             !cancelled && "text-primary"
           )}
         >
@@ -5629,7 +5612,7 @@ function StatusStepper({
               )}
               <span
                 className={cn(
-                  "relative z-10 mx-auto grid size-4 place-items-center rounded-full border text-[9px] font-black leading-none",
+                  "relative z-10 mx-auto grid size-4 place-items-center rounded-full border text-xs lg:text-[9px] font-black leading-none",
                   done
                     ? "border-primary bg-primary text-white"
                     : "border-slate-200 bg-white text-slate-400",
@@ -5641,7 +5624,7 @@ function StatusStepper({
               </span>
               <span
                 className={cn(
-                  "mt-0.5 block truncate text-[10px] font-semibold leading-tight text-slate-400",
+                  "mt-0.5 block truncate text-xs lg:text-[10px] font-semibold leading-tight text-slate-400",
                   done && "text-primary",
                   current && "text-slate-900",
                   cancelled && "text-red-300"
@@ -5668,14 +5651,14 @@ function DetailFact({
 }) {
   return (
     <div className="min-w-0 rounded-md border border-slate-200 bg-white p-2">
-      <div className="truncate text-[11px] font-semibold uppercase leading-none text-slate-500">
+      <div className="truncate text-xs lg:text-[11px] font-semibold uppercase leading-none text-slate-500">
         {label}
       </div>
       <div className="mt-1 break-words text-[13px] font-black leading-tight text-slate-900">
         {value}
       </div>
       {helper ? (
-        <div className="mt-0.5 break-words text-[10px] leading-tight text-slate-500">{helper}</div>
+        <div className="mt-0.5 break-words text-xs lg:text-[10px] leading-tight text-slate-500">{helper}</div>
       ) : null}
     </div>
   );
@@ -5696,8 +5679,8 @@ function ReservationBadge({
   const consumed = order.fulfilledQty > 0 && order.status === "completed";
   const className = cn(
     compact
-      ? "h-5 shrink-0 rounded px-1.5 text-[11px] leading-none"
-      : "border px-1.5 py-0.5 text-[11px]",
+      ? "h-5 shrink-0 rounded px-1.5 text-xs lg:text-[11px] leading-none"
+      : "border px-1.5 py-0.5 text-xs lg:text-[11px]",
     order.reservationOverdue
       ? "border-red-200 bg-red-50 text-red-700"
       : hasUnavailableReservation
@@ -5779,10 +5762,10 @@ function reservationHelper(order: AdminOrder, text: AdminText) {
 function MobileFact({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded bg-slate-50 px-1.5 py-0.5">
-      <div className="truncate text-[9px] font-semibold uppercase leading-tight text-slate-400 sm:text-[10px]">
+      <div className="truncate text-xs font-semibold uppercase leading-tight text-slate-400 lg:text-[10px]">
         {label}
       </div>
-      <div className="mt-0.5 break-words text-[11px] font-bold leading-tight text-slate-700 sm:text-xs">
+      <div className="mt-0.5 break-words text-xs font-bold leading-tight text-slate-700 sm:text-xs">
         {value}
       </div>
     </div>
@@ -5792,7 +5775,7 @@ function MobileFact({ label, value }: { label: string; value: string }) {
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid min-w-0 grid-cols-[70px_minmax(0,1fr)] gap-1">
-      <span className="text-[11px] font-semibold uppercase text-slate-400">{label}</span>
+      <span className="text-xs lg:text-[11px] font-semibold uppercase text-slate-400">{label}</span>
       <span className="min-w-0 break-words text-[12px] font-medium leading-snug text-slate-700">{value}</span>
     </div>
   );

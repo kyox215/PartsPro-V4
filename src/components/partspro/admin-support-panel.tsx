@@ -650,8 +650,8 @@ export function AdminSupportPanel({
   }
 
   return (
-    <section data-admin-dirty={Object.values(replyDrafts).some(value => value.trim()) ? "true" : "false"} data-admin-mutating={pendingAction ? "true" : "false"} className="min-w-0 space-y-1.5 sm:space-y-3">
-      <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-[0_12px_32px_rgba(15,23,42,0.045)] sm:p-4">
+    <section data-admin-dirty={Object.values(replyDrafts).some(value => value.trim()) ? "true" : "false"} data-admin-mutating={pendingAction ? "true" : "false"} className="admin-mobile-module min-w-0 space-y-1.5 sm:space-y-3">
+      <div className="admin-mobile-card rounded-lg border border-slate-200 bg-white p-2 shadow-[0_12px_32px_rgba(15,23,42,0.045)] sm:p-4">
         <div className="flex min-w-0 items-center justify-between gap-2">
           <div className="min-w-0">
             <div className="flex min-w-0 items-center gap-2">
@@ -681,11 +681,11 @@ export function AdminSupportPanel({
             </Button>
           </div>
         </div>
-        <form className="mt-3 flex gap-2" onSubmit={e => { e.preventDefault(); setPage(0); setSearch(searchInput.trim()); }}>
+        <form className="admin-mobile-toolbar mt-2 flex gap-2" onSubmit={e => { e.preventDefault(); setPage(0); setSearch(searchInput.trim()); }}>
           <Input aria-label={locale.startsWith("zh") ? "搜索客户或会话" : "Cerca cliente o conversazione"} placeholder={locale.startsWith("zh") ? "客户、邮箱、会话标题或编号" : "Cliente, email, oggetto o ID"} value={searchInput} onChange={e => setSearchInput(e.target.value)} />
           <Button type="submit" variant="outline">{locale.startsWith("zh") ? "搜索" : "Cerca"}</Button>
         </form>
-        <div className="mt-1.5 grid grid-cols-4 gap-1 sm:hidden">
+        <div className="admin-mobile-tabs mt-1.5 flex gap-1 overflow-x-auto lg:hidden">
           <MobileInboxModeButton
             active={mobileInboxMode === "needsReply"}
             count={inboxCounts.needsReply}
@@ -723,12 +723,12 @@ export function AdminSupportPanel({
         <AdminBusyRegion
           pending={displayedLoading}
           label={copy.loading}
-          className="overflow-hidden rounded-lg border border-slate-200 bg-white p-2 shadow-[0_12px_32px_rgba(15,23,42,0.045)] sm:p-3 lg:h-auto lg:min-h-0 lg:max-h-none"
+          className="admin-mobile-card overflow-hidden rounded-lg border border-slate-200 bg-white p-2 shadow-[0_12px_32px_rgba(15,23,42,0.045)] sm:p-3 lg:h-auto lg:min-h-0 lg:max-h-none"
           contentClassName="flex min-h-0 flex-col lg:h-full"
         >
           <div className="mb-1.5 flex min-w-0 items-center justify-between gap-2 sm:mb-3">
             <h2 className="truncate text-sm font-black leading-5">{copy.queueTitle}</h2>
-            <Badge className="h-5 px-2 text-[11px]" variant="outline">
+            <Badge className="h-5 px-2 text-xs lg:text-[11px]" variant="outline">
               {displayedConversationCount}
             </Badge>
           </div>
@@ -765,13 +765,13 @@ export function AdminSupportPanel({
               {copy.emptyQueue}
             </div>
           ) : (
-            <div className="max-h-[32svh] min-h-0 space-y-1.5 overflow-y-auto pr-0.5 sm:space-y-2 lg:max-h-none lg:flex-1">
+            <div className="min-h-0 divide-y divide-slate-200 lg:flex-1 lg:space-y-2 lg:divide-y-0 lg:overflow-y-auto">
               {displayedConversations.map((conversation) => (
                 <button
                   key={conversation.id}
                   type="button"
                   className={cn(
-                    "w-full rounded-lg border p-1.5 text-left transition sm:p-3",
+                    "admin-mobile-row w-full min-w-0 border-0 p-2 text-left transition lg:rounded-lg lg:border lg:p-3",
                     conversation.id === selectedId
                       ? "border-primary bg-primary/5 ring-2 ring-primary/10"
                       : "border-slate-200 bg-white hover:border-primary/40 hover:bg-slate-50"
@@ -786,19 +786,19 @@ export function AdminSupportPanel({
                           conversation.subject ??
                           conversation.id}
                       </div>
-                      <div className="line-clamp-1 text-[11px] font-semibold leading-4 text-slate-500 sm:mt-1 sm:line-clamp-2 sm:text-xs">
+                      <div className="line-clamp-1 text-xs font-semibold leading-4 text-slate-500 sm:mt-1 sm:line-clamp-2 sm:text-xs">
                         {conversation.subject ?? conversation.id}
                       </div>
                     </div>
                     {conversation.staffUnreadCount > 0 ? (
-                      <Badge className="h-5 min-w-5 justify-center bg-red-500 px-1.5 text-[11px] text-white">
+                      <Badge className="h-5 min-w-5 justify-center bg-red-500 px-1.5 text-xs lg:text-[11px] text-white">
                         {conversation.staffUnreadCount}
                       </Badge>
                     ) : (
                       <StatusBadge status={conversation.status} />
                     )}
                   </div>
-                  <div className="mt-1 flex min-w-0 items-center justify-between gap-2 text-[11px] font-semibold text-slate-500 sm:mt-2 sm:text-xs">
+                  <div className="mt-1 flex min-w-0 items-center justify-between gap-2 text-xs font-semibold text-slate-500 sm:mt-2 sm:text-xs">
                     <span className="flex min-w-0 items-center gap-1.5">
                       <UserCheck className="size-3.5 shrink-0" />
                       <span className="truncate">
@@ -807,7 +807,7 @@ export function AdminSupportPanel({
                         copy.filters.unassigned}
                       </span>
                     </span>
-                    <span className="shrink-0 text-[11px] text-slate-400">
+                    <span className="shrink-0 text-xs lg:text-[11px] text-slate-400">
                       {formatSupportTime(conversation.lastMessageAt ?? conversation.updatedAt, locale)}
                     </span>
                   </div>
@@ -843,7 +843,7 @@ export function AdminSupportPanel({
                           detail.conversation.id}
                       </h2>
                     </div>
-                    <p className="truncate text-[11px] font-semibold leading-4 text-slate-500 sm:mt-1 sm:text-sm">
+                    <p className="truncate text-xs font-semibold leading-4 text-slate-500 sm:mt-1 sm:text-sm">
                       {detail.conversation.customer?.email ?? detail.conversation.customer?.phone ?? detail.conversation.id}
                     </p>
                   </div>
@@ -1024,7 +1024,7 @@ function MobileInboxModeButton({
     <button
       type="button"
       className={cn(
-        "min-w-0 rounded-md border px-1.5 py-0.5 text-left transition",
+        "min-h-11 min-w-fit shrink-0 rounded-md border px-2 py-1.5 text-left transition",
         active
           ? tone === "hot"
             ? "border-red-300 bg-red-50 text-red-700 ring-2 ring-red-100"
@@ -1035,7 +1035,7 @@ function MobileInboxModeButton({
       disabled={disabled}
       onClick={onClick}
     >
-      <div className="truncate text-[9px] font-bold leading-3 text-current/70">
+      <div className="whitespace-nowrap text-xs lg:text-[11px] font-bold leading-4 text-current/70">
         {label}
       </div>
       <div className="text-[13px] font-black leading-4">{count}</div>
@@ -1107,12 +1107,12 @@ function MobileSupportDetail({
             currentUserId={currentUserId}
             text={copy}
           />
-          <Badge className="h-5 max-w-full truncate border-slate-200 bg-slate-50 px-1.5 text-[11px] text-slate-600" variant="outline">
+          <Badge className="h-5 max-w-full truncate border-slate-200 bg-slate-50 px-1.5 text-xs lg:text-[11px] text-slate-600" variant="outline">
             {conversation.assignee?.displayName ??
               conversation.assignee?.email ??
               copy.filters.unassigned}
           </Badge>
-          <span className="ml-auto shrink-0 text-[11px] font-bold text-slate-400">
+          <span className="ml-auto shrink-0 text-xs lg:text-[11px] font-bold text-slate-400">
             {formatSupportTime(conversation.lastMessageAt ?? conversation.updatedAt, locale)}
           </span>
         </div>
@@ -1205,16 +1205,16 @@ function MobileSupportDetail({
         className="min-h-0 flex-1 gap-0"
       >
         <div className="border-b border-slate-200 p-2">
-          <TabsList className="grid h-8 w-full grid-cols-2 bg-slate-100">
+          <TabsList className="admin-mobile-tabs grid h-8 w-full grid-cols-2 bg-slate-100">
             <TabsTrigger value="messages" className="text-xs">
               {copy.tabs.messages}
-              <span className="ml-1 text-[10px] text-slate-400">
+              <span className="ml-1 text-xs lg:text-[10px] text-slate-400">
                 {detail.messages.length}
               </span>
             </TabsTrigger>
             <TabsTrigger value="history" className="text-xs">
               {copy.tabs.history}
-              <span className="ml-1 text-[10px] text-slate-400">
+              <span className="ml-1 text-xs lg:text-[10px] text-slate-400">
                 {detail.events.length}
               </span>
             </TabsTrigger>
@@ -1303,7 +1303,7 @@ function SupportTaskBadge({
   return (
     <Badge
       className={cn(
-        "h-5 gap-1 px-1.5 text-[11px]",
+        "h-5 gap-1 px-1.5 text-xs lg:text-[11px]",
         task.tone === "hot"
           ? "border-red-200 bg-red-50 text-red-700"
           : task.tone === "warning"
@@ -1332,15 +1332,15 @@ function SupportEventItem({
         <div className="truncate text-xs font-black text-slate-800">
           {formatSupportEventLabel(event.eventType, text)}
         </div>
-        <div className="shrink-0 text-[11px] font-semibold text-slate-400">
+        <div className="shrink-0 text-xs lg:text-[11px] font-semibold text-slate-400">
           {formatSupportTime(event.createdAt, locale)}
         </div>
       </div>
-      <div className="mt-1 truncate text-[11px] font-semibold text-slate-500">
+      <div className="mt-1 truncate text-xs lg:text-[11px] font-semibold text-slate-500">
         {event.actor?.displayName ?? event.actor?.email ?? event.actorId ?? "system"}
       </div>
       {event.note ? (
-        <div className="mt-1 rounded-md bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600">
+        <div className="mt-1 rounded-md bg-slate-50 px-2 py-1 text-xs lg:text-[11px] font-semibold text-slate-600">
           {event.note}
         </div>
       ) : null}
@@ -1379,11 +1379,11 @@ function SupportMessageBubble({
         )}
       >
         <div>{message.body}</div>
-        <div className={cn("mt-1 text-[10px] sm:text-[11px]", isCustomer ? "text-slate-400" : "text-white/65")}>
+        <div className={cn("mt-1 text-xs lg:text-[11px]", isCustomer ? "text-slate-400" : "text-white/65")}>
           {message.sender?.displayName ?? message.sender?.email ?? message.senderType}
         </div>
         {!isCustomer && !isSystem ? (
-          <div className="mt-1 flex items-center justify-end gap-1 text-[10px] font-semibold text-white/70 sm:text-[11px]">
+          <div className="mt-1 flex items-center justify-end gap-1 text-xs font-semibold text-white/70 lg:text-[11px]">
             {isRead ? (
               <CheckCheck className="size-3" aria-hidden="true" />
             ) : (
@@ -1471,7 +1471,7 @@ function formatSupportEventLabel(eventType: string, text: SupportPanelCopy) {
 function StatusBadge({ status }: { status: Exclude<SupportStatus, "all"> }) {
   if (status === "resolved") {
     return (
-      <Badge className="h-5 gap-1 border-emerald-200 bg-emerald-50 px-1.5 text-[11px] text-emerald-700" variant="outline">
+      <Badge className="h-5 gap-1 border-emerald-200 bg-emerald-50 px-1.5 text-xs lg:text-[11px] text-emerald-700" variant="outline">
         <CheckCircle2 className="size-3" />
         resolved
       </Badge>
@@ -1480,14 +1480,14 @@ function StatusBadge({ status }: { status: Exclude<SupportStatus, "all"> }) {
 
   if (status === "archived") {
     return (
-      <Badge className="h-5 border-slate-200 bg-slate-50 px-1.5 text-[11px] text-slate-600" variant="outline">
+      <Badge className="h-5 border-slate-200 bg-slate-50 px-1.5 text-xs lg:text-[11px] text-slate-600" variant="outline">
         archived
       </Badge>
     );
   }
 
   return (
-    <Badge className="h-5 gap-1 border-sky-200 bg-sky-50 px-1.5 text-[11px] text-sky-700" variant="outline">
+    <Badge className="h-5 gap-1 border-sky-200 bg-sky-50 px-1.5 text-xs lg:text-[11px] text-sky-700" variant="outline">
       <CircleDot className="size-3" />
       open
     </Badge>

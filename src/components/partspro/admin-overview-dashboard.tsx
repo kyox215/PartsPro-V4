@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AdminMobileDisclosure } from "./admin-mobile-layout";
 import { usePersistentAdminValue } from "./admin-workspace-state";
 import Image from "./optimized-image";
 import Link from "next/link";
@@ -111,7 +112,7 @@ type MetricCard = {
 const dashboardRanges = ["7", "30", "90"] as const;
 const productImagesBucket = "product-images";
 const cardClass =
-  "min-w-0 rounded-lg border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.045)]";
+  "admin-mobile-card min-w-0 rounded-lg border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.045)]";
 
 const AdminSalesTrendChart = dynamic<AdminSalesTrendChartProps>(
   () =>
@@ -195,7 +196,7 @@ export function AdminOverviewDashboard({
   );
 
   return (
-    <div className="space-y-2.5 sm:space-y-3">
+    <div className="admin-mobile-module space-y-2.5 sm:space-y-3">
       <OverviewHeader
         copy={copy}
         locale={locale}
@@ -204,7 +205,7 @@ export function AdminOverviewDashboard({
         text={text}
       />
 
-      <p className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">{locale.startsWith("zh") ? "指标来自当前权限可读取的完整清单（每类最多5万条）；读取中清单变化会报告失败，避免显示不完整总数。30秒内复用汇总。趋势期间由下拉选择，旁边小计固定为最近7日。" : "Metriche dall’elenco completo accessibile (fino a 50.000 righe per dominio). Un elenco variato o incompleto genera un errore. Riepilogo riutilizzato per 30 secondi. Il grafico segue il periodo selezionato; i piccoli totali restano a 7 giorni."}</p>
+      <details className="admin-mobile-disclosure"><summary className="min-h-11 cursor-pointer text-xs font-semibold text-slate-500 lg:hidden">{locale.startsWith("zh") ? "数据范围与口径" : "Ambito delle metriche"}</summary><p className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">{locale.startsWith("zh") ? "指标来自当前权限可读取的完整清单（每类最多5万条）；读取中清单变化会报告失败，避免显示不完整总数。30秒内复用汇总。趋势期间由下拉选择，旁边小计固定为最近7日。" : "Metriche dall’elenco completo accessibile (fino a 50.000 righe per dominio). Un elenco variato o incompleto genera un errore. Riepilogo riutilizzato per 30 secondi. Il grafico segue il periodo selezionato; i piccoli totali restano a 7 giorni."}</p></details>
       {snapshot.error && snapshot.model ? (
         <AdminNotice tone={snapshot.model ? "warning" : "error"} title={copy.partialData} message={snapshot.error} />
       ) : null}
@@ -220,28 +221,29 @@ export function AdminOverviewDashboard({
         >
           <MetricGrid metrics={metrics} />
 
-          <section className="grid gap-2.5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.75fr)]">
-            <SalesTrendCard
-              copy={copy}
-              model={model}
-              onRangeChange={setSalesRange}
-              range={salesRange}
-              text={text}
-            />
-            <InventoryRiskCard copy={copy} locale={locale} model={model} />
+          <section className="divide-y divide-slate-200 rounded-md border border-slate-200 bg-white lg:hidden" aria-label={locale.startsWith("zh") ? "优先待办" : "Da gestire"}>
+            {(!visiblePanels || visiblePanels.has("orders")) ? <>
+              <Link className="admin-mobile-row flex min-h-11 items-center justify-between gap-2 px-3 py-2 text-xs font-semibold" href="/admin?panel=orders&workflow=payments"><span className="min-w-0 break-words">{copy.metrics.pendingPayments}</span><span className="flex shrink-0 items-center gap-2 font-mono font-bold">{model.pendingPayments}<ArrowRight className="size-3.5" /></span></Link>
+              <Link className="admin-mobile-row flex min-h-11 items-center justify-between gap-2 px-3 py-2 text-xs font-semibold" href="/admin?panel=orders&workflow=all"><span className="min-w-0"><span className="block break-words">{locale.startsWith("zh") ? "查看订单" : "Apri ordini"}</span><span className="block break-words text-xs lg:text-[11px] font-normal text-slate-500">{copy.metrics.fulfillmentQueue} · {locale.startsWith("zh") ? "摘要" : "riepilogo"}</span></span><span className="flex shrink-0 items-center gap-2 font-mono font-bold">{model.fulfillmentQueue}<ArrowRight className="size-3.5" /></span></Link>
+            </> : null}
+            {(!visiblePanels || visiblePanels.has("catalog")) ? <Link className="admin-mobile-row flex min-h-11 items-center justify-between gap-2 px-3 py-2 text-xs font-semibold" href="/admin?panel=catalog&catalogView=sold-shortages"><span className="min-w-0 break-words">{copy.metrics.stockAlerts}</span><span className="flex shrink-0 items-center gap-2 font-mono font-bold">{model.stockAlerts}<ArrowRight className="size-3.5" /></span></Link> : null}
           </section>
 
-          <section className="grid gap-2.5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.1fr)_minmax(0,0.85fr)]">
-            <OrderPipelineCard model={model} text={text} />
-            <HotSkuCard copy={copy} locale={locale} model={model} />
-            <CatalogOpsCard
-              copy={copy}
-              model={model}
-              onPanelChange={onPanelChange}
-              text={text}
-              visiblePanels={visiblePanels}
-            />
-          </section>
+          <AdminMobileDisclosure className="min-w-0" title={<>{copy.sections.salesTrend} · {copy.sections.inventoryRisk}</>}>
+            <section className="grid gap-2.5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.75fr)]">
+              <SalesTrendCard copy={copy} model={model} onRangeChange={setSalesRange} range={salesRange} text={text} />
+              <InventoryRiskCard copy={copy} locale={locale} model={model} />
+            </section>
+          </AdminMobileDisclosure>
+
+          <details className="admin-mobile-disclosure min-w-0">
+            <summary className="min-h-11 cursor-pointer rounded-md border border-slate-200 bg-white px-3 py-3 text-xs font-bold lg:hidden">{copy.sections.hotSku} · {copy.sections.catalogHealth}</summary>
+            <section className="grid gap-2.5 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.1fr)_minmax(0,0.85fr)]">
+              <OrderPipelineCard model={model} text={text} />
+              <HotSkuCard copy={copy} locale={locale} model={model} />
+              <CatalogOpsCard copy={copy} model={model} onPanelChange={onPanelChange} text={text} visiblePanels={visiblePanels} />
+            </section>
+          </details>
         </AdminBusyRegion>
       )}
     </div>
@@ -293,18 +295,18 @@ function OverviewHeader({
     : copy.syncing;
 
   return (
-    <section className="min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
+    <section className="admin-mobile-card min-w-0 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
       <div className="flex min-w-0 items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
             <h1 className="truncate text-base font-black leading-5 text-slate-950 sm:text-lg">
               {copy.sections.operations}
             </h1>
-            <Badge variant="outline" className="h-5 rounded-md border-slate-200 bg-slate-50 px-1.5 text-[10px]">
+            <Badge variant="outline" className="h-5 rounded-md border-slate-200 bg-slate-50 px-1.5 text-xs lg:text-[10px]">
               {syncedAt}
             </Badge>
           </div>
-          <div className="mt-1 grid grid-cols-2 gap-1 text-[11px] font-semibold text-slate-500 sm:flex sm:flex-wrap sm:gap-x-3 sm:gap-y-1">
+          <div className="mt-1 grid grid-cols-2 gap-1 text-xs lg:text-[11px] font-semibold text-slate-500 sm:flex sm:flex-wrap sm:gap-x-3 sm:gap-y-1">
             <span className="min-w-0 truncate rounded bg-slate-50 px-1.5 py-0.5 sm:bg-transparent sm:px-0 sm:py-0">
             {formatAdminMessage(copy.ordersSource, {
               returned: snapshot.ordersReturned,
@@ -326,7 +328,7 @@ function OverviewHeader({
           type="button"
           variant="outline"
           size="sm"
-          className="h-7 shrink-0 gap-1 rounded-md bg-white px-2 text-[11px] sm:h-8 sm:gap-1.5 sm:px-2.5 sm:text-xs"
+          className="min-h-11 shrink-0 gap-1 rounded-md bg-white px-2 text-xs sm:h-8 sm:gap-1.5 sm:px-2.5 sm:text-xs"
           disabled={snapshot.isLoading}
           onClick={onRefresh}
         >
@@ -341,28 +343,28 @@ function OverviewHeader({
 function MetricGrid({ metrics }: { metrics: MetricCard[] }) {
   return (
     <section className="grid grid-cols-2 gap-2 md:grid-cols-3 2xl:grid-cols-6">
-      {metrics.map((metric) => (
-        <Card key={metric.label} size="sm" className={cn(cardClass, "py-2.5")}>
+      {metrics.map((metric, index) => (
+        <Card key={metric.label} size="sm" className={cn(cardClass, "py-2 lg:py-2.5", index >= 4 && "hidden lg:block")}>
           <CardContent className="px-3">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0">
-                <p className="truncate text-[11px] font-semibold text-slate-500">
+                <p className="truncate text-xs lg:text-[11px] font-semibold text-slate-500">
                   {metric.label}
                 </p>
-                <div className="mt-1 truncate font-mono text-xl font-black leading-none text-slate-950 sm:text-2xl">
+                <div className="mt-1 break-words font-mono text-xl font-black tabular-nums leading-none text-slate-950 lg:text-2xl">
                   {metric.value}
                 </div>
               </div>
               <div
                 className={cn(
-                  "grid size-8 shrink-0 place-items-center rounded-md",
+                  "hidden size-8 shrink-0 place-items-center rounded-md lg:grid",
                   metricToneClass(metric.tone)
                 )}
               >
                 <metric.icon className="size-4" />
               </div>
             </div>
-            <p className="mt-2 truncate text-[11px] font-semibold text-slate-500">
+            <p className="mt-2 hidden truncate text-xs lg:text-[11px] font-semibold text-slate-500 lg:block">
               {metric.detail}
             </p>
           </CardContent>
@@ -466,7 +468,7 @@ function InventoryRiskCard({
             {copy.sections.inventoryRiskDescription}
           </CardDescription>
         </div>
-        <Badge variant="outline" className="h-5 rounded-md border-red-200 bg-red-50 text-[10px] text-red-700">
+        <Badge variant="outline" className="h-5 rounded-md border-red-200 bg-red-50 text-xs lg:text-[10px] text-red-700">
           {model.stockAlerts}
         </Badge>
       </CardHeader>
@@ -475,7 +477,7 @@ function InventoryRiskCard({
           <div className="h-[116px]">
             <AdminInventoryMixChart data={model.inventoryMix} />
           </div>
-          <div className="flex min-w-0 flex-col justify-center gap-1.5 text-[11px] md:mt-2 xl:mt-0 2xl:mt-2">
+          <div className="flex min-w-0 flex-col justify-center gap-1.5 text-xs lg:text-[11px] md:mt-2 xl:mt-0 2xl:mt-2">
             {model.inventoryMix.map((item) => (
               <div key={item.key} className="flex min-w-0 items-center gap-1.5">
                 <span className="size-2 rounded-full" style={{ backgroundColor: item.fill }} />
@@ -545,7 +547,7 @@ function InventoryAlertRow({
                         : "bg-emerald-500"
                   )}
                 />
-                <span className="min-w-0 truncate font-mono text-[10px] font-black text-slate-500">
+                <span className="min-w-0 truncate font-mono text-xs lg:text-[10px] font-black text-slate-500">
                   {alert.sku}
                 </span>
               </div>
@@ -553,7 +555,7 @@ function InventoryAlertRow({
             <Badge
               variant="outline"
               className={cn(
-                "h-5 shrink-0 rounded-md px-1.5 text-[10px]",
+                "h-5 shrink-0 rounded-md px-1.5 text-xs lg:text-[10px]",
                 alert.risk === "urgent"
                   ? "border-red-200 bg-red-50 text-red-700"
                   : "border-amber-200 bg-amber-50 text-amber-700"
@@ -562,7 +564,7 @@ function InventoryAlertRow({
               {alert.risk === "urgent" ? copy.inventory.urgent : copy.inventory.watch}
             </Badge>
           </div>
-          <div className="mt-2 grid grid-cols-3 gap-1.5 text-[11px]">
+          <div className="mt-2 grid grid-cols-3 gap-1.5 text-xs lg:text-[11px]">
             <DenseFact label={copy.inventory.available} value={formatCount(alert.availableQty, locale)} />
             <DenseFact label={copy.inventory.sold7d} value={formatCount(alert.sold7d, locale)} />
             <Link className="text-xs font-bold text-primary underline" href={`/admin?panel=catalog&sku=${encodeURIComponent(alert.sku)}`}>{locale.startsWith("zh") ? "处理此商品" : "Gestisci prodotto"}</Link>
@@ -722,12 +724,12 @@ function HotSkuCard({
               key={item.sku}
               className="grid grid-cols-[22px_minmax(0,1fr)_44px_74px] items-center gap-2 rounded-md border border-slate-100 px-2 py-2 text-xs"
             >
-              <span className="grid size-5 place-items-center rounded bg-slate-100 font-mono text-[10px] font-black text-slate-500">
+              <span className="grid size-5 place-items-center rounded bg-slate-100 font-mono text-xs lg:text-[10px] font-black text-slate-500">
                 {index + 1}
               </span>
               <div className="min-w-0">
                 <div className="truncate font-black text-slate-900">{item.sku}</div>
-                <div className="truncate text-[11px] text-slate-500">{item.name}</div>
+                <div className="truncate text-xs lg:text-[11px] text-slate-500">{item.name}</div>
               </div>
               <div className="text-right font-mono font-black">
                 {formatCount(item.quantity, locale)}
@@ -861,7 +863,7 @@ function MiniKpi({
 }) {
   return (
     <div className="min-w-0 rounded-md border border-slate-100 bg-slate-50 px-2 py-2">
-      <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+      <div className="flex items-center gap-1.5 text-xs lg:text-[11px] font-semibold text-slate-500">
         <Icon className="size-3.5 shrink-0" />
         <span className="truncate">{label}</span>
       </div>
@@ -875,7 +877,7 @@ function MiniKpi({
 function DenseFact({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded border border-slate-100 bg-white px-1.5 py-1">
-      <div className="truncate text-[10px] font-semibold text-slate-400">{label}</div>
+      <div className="truncate text-xs lg:text-[10px] font-semibold text-slate-400">{label}</div>
       <div className="truncate font-mono text-xs font-black text-slate-900">{value}</div>
     </div>
   );

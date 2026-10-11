@@ -274,18 +274,18 @@ export function AdminActivityTimeline({
   return (
     <Card
       className={cn(
-        "overflow-hidden border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)]",
+        "admin-mobile-module admin-mobile-card overflow-hidden border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)]",
         className
       )}
     >
       <CardHeader className="gap-3 p-3 sm:gap-4 sm:p-6 xl:flex-row xl:items-start xl:justify-between">
         <div className="min-w-0">
           <CardTitle>{resolvedTitle}</CardTitle>
-          <CardDescription className="block">{resolvedDescription}</CardDescription>
+          <CardDescription className="hidden lg:block">{resolvedDescription}</CardDescription>
         </div>
 
-        <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row xl:w-auto xl:justify-end">
-          <div className="relative min-w-0 flex-1 xl:w-[260px] xl:flex-none">
+        <div className="admin-mobile-toolbar grid w-full min-w-0 grid-cols-2 gap-2 lg:flex lg:flex-row xl:w-auto xl:justify-end">
+          <div className="relative col-span-2 min-w-0 flex-1 xl:w-[260px] xl:flex-none">
             <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
             <Input
               value={query}
@@ -323,7 +323,7 @@ export function AdminActivityTimeline({
       </CardHeader>
 
       <CardContent className="space-y-3 p-3 pt-0 sm:space-y-4 sm:p-6 sm:pt-0">
-        <p className="text-xs text-slate-500">{locale.startsWith("zh") ? "真实活动按当前权限分页读取。备注仅保存在当前账号的本机浏览器中，不是团队共享记录；设备或浏览器清理后会丢失。筛选作用于当前页。" : "Attività reali paginate secondo i permessi. Le note sono personali e salvate solo nel browser di questo account; non sono condivise. I filtri agiscono sulla pagina corrente."}</p>
+        <details className="admin-mobile-disclosure"><summary className="min-h-11 cursor-pointer text-xs font-semibold text-slate-500 lg:hidden">{locale.startsWith("zh") ? "记录与本机备注说明" : "Attività e note personali"}</summary><p className="text-xs text-slate-500">{locale.startsWith("zh") ? "真实活动按当前权限分页读取。备注仅保存在当前账号的本机浏览器中，不是团队共享记录；设备或浏览器清理后会丢失。筛选作用于当前页。" : "Attività reali paginate secondo i permessi. Le note sono personali e salvate solo nel browser di questo account; non sono condivise. I filtri agiscono sulla pagina corrente."}</p></details>
         {noteStorageError && <AdminNotice tone="warning" message={noteStorageError} />}
         {readError && <AdminNotice tone="error" message={readError} />}
         <AdminListPager page={page} pageSize={50} total={total} returned={activities.filter(item => item.type !== "note").length} pending={loading} onPageChange={setPage} />
@@ -347,7 +347,7 @@ export function AdminActivityTimeline({
         </div>
 
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-4">
-          <div className="min-w-0 space-y-2 sm:space-y-3">
+          <div className="min-w-0 divide-y divide-slate-200 lg:space-y-3 lg:divide-y-0">
             {filteredActivities.length > 0 ? (
               filteredActivities.map((activity) => (
                 <ActivityItem
@@ -479,7 +479,7 @@ function ActivityItem({
   return (
     <article
       className={cn(
-        "overflow-hidden rounded-lg border p-2.5 transition sm:p-4",
+        "admin-mobile-row overflow-hidden border-0 p-2 transition lg:rounded-lg lg:border lg:p-4",
         activity.important
           ? "border-primary/25 bg-primary/5"
           : "border-slate-200 bg-white"
@@ -522,8 +522,8 @@ function ActivityItem({
             {target && <Link href={target.href} prefetch={false} className="mt-1 block w-fit text-xs font-semibold text-primary underline underline-offset-2">{linkLabels[target.label]}</Link>}
           </div>
 
-          <details className="group mt-3 border-t border-slate-100 pt-2">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 rounded-md py-1 text-xs font-semibold text-slate-600 outline-none transition hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden">
+          <details className="group mt-1 lg:mt-3 lg:border-t lg:border-slate-100 lg:pt-2">
+            <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-md py-1 text-xs font-semibold text-slate-600 outline-none transition hover:text-slate-950 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 [&::-webkit-details-marker]:hidden">
               <span>{copy.details}</span>
               <ChevronDown className="size-4 shrink-0 transition-transform group-open:rotate-180" />
             </summary>

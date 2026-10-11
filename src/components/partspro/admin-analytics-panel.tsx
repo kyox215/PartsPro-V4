@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AdminMobileDisclosure } from "./admin-mobile-layout";
 import { AdminEmptyState, AdminNotice } from "./admin-feedback";
 import dynamic from "next/dynamic";
 import {
@@ -120,22 +121,22 @@ export function AdminAnalyticsPanel() {
     : 0;
 
   return (
-    <section className="min-w-0 space-y-4" aria-busy={state.isLoading}>
-      <header className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+    <section className="admin-mobile-module min-w-0 space-y-2 lg:space-y-4" aria-busy={state.isLoading}>
+      <header className="admin-mobile-card flex flex-col gap-2 rounded-lg border border-slate-200 bg-white p-2 lg:p-4 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-primary">
             <BarChart3 className="size-4" />
             {copy.eyebrow}
           </div>
-          <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950">
+          <h1 className="mt-1 text-base font-black lg:text-2xl tracking-tight text-slate-950">
             {copy.title}
           </h1>
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+          <p className="mt-1 hidden max-w-3xl text-sm leading-6 text-slate-600 lg:block">
             {copy.description}
           </p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
-          <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+          <div className="admin-mobile-tabs inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
             {([7, 30] as const).map((value) => (
               <button
                 key={value}
@@ -154,7 +155,7 @@ export function AdminAnalyticsPanel() {
                   setRange(value);
                 }}
                 className={cn(
-                  "rounded-md px-3 py-1.5 text-xs font-bold transition",
+                  "min-h-11 rounded-md px-3 py-1.5 text-xs font-bold transition",
                   range === value
                     ? "bg-white text-primary shadow-sm"
                     : "text-slate-600 hover:text-slate-950"
@@ -188,7 +189,7 @@ export function AdminAnalyticsPanel() {
         <AnalyticsError code={state.errorCode} copy={copy} />
       ) : (
         <>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
             <MetricCard
               icon={Eye}
               label={copy.pageviews}
@@ -231,8 +232,8 @@ export function AdminAnalyticsPanel() {
             />
           </div>
 
-          <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(300px,1fr)]">
-            <article className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+          <AdminMobileDisclosure className="min-w-0" title={<>{copy.trend} · {copy.countries}</>}><div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(300px,1fr)]">
+            <article className="admin-mobile-card min-w-0 rounded-lg border border-slate-200 bg-white p-2 lg:p-4 shadow-sm">
               <div className="mb-4">
                 <h2 className="text-base font-black text-slate-950">{copy.trend}</h2>
                 <p className="mt-1 text-xs text-slate-500">{copy.trendDescription}</p>
@@ -244,7 +245,7 @@ export function AdminAnalyticsPanel() {
               />
             </article>
 
-            <article className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <article className="admin-mobile-card min-w-0 rounded-lg border border-slate-200 bg-white p-2 lg:p-4 shadow-sm">
               <h2 className="text-base font-black text-slate-950">{copy.countries}</h2>
               <p className="mt-1 text-xs text-slate-500">{copy.countriesDescription}</p>
               <CountryList
@@ -254,7 +255,7 @@ export function AdminAnalyticsPanel() {
                 visitorsLabel={copy.visitors}
               />
             </article>
-          </div>
+          </div></AdminMobileDisclosure>
 
           <div className="grid min-w-0 gap-4 xl:grid-cols-2">
             <RankingCard
@@ -318,19 +319,19 @@ function MetricCard({
   } as const;
 
   return (
-    <article className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <article className="admin-mobile-card min-w-0 rounded-lg border border-slate-200 bg-white p-2 lg:p-4 shadow-sm">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
-          <p className={cn("mt-2 truncate text-2xl font-black text-slate-950", loading && "animate-pulse text-slate-300")}>
+          <p className={cn("mt-2 truncate text-lg font-black text-slate-950 lg:text-2xl", loading && "animate-pulse text-slate-300")}>
             {loading ? "—" : value}
           </p>
         </div>
-        <div className={cn("grid size-10 shrink-0 place-items-center rounded-lg", tones[tone])}>
+        <div className={cn("hidden size-10 shrink-0 place-items-center rounded-lg lg:grid", tones[tone])}>
           <Icon className="size-5" />
         </div>
       </div>
-      <p className="mt-3 truncate text-xs text-slate-500">{detail}</p>
+      <p className="mt-3 hidden truncate text-xs text-slate-500 lg:block">{detail}</p>
     </article>
   );
 }
@@ -390,7 +391,7 @@ function RankingCard({
   title: string;
 }) {
   return (
-    <article className="min-w-0 rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+    <article className="admin-mobile-card min-w-0 rounded-lg border border-slate-200 bg-white p-2 lg:p-4 shadow-sm">
       <h2 className="text-base font-black text-slate-950">{title}</h2>
       <p className="mt-1 text-xs text-slate-500">{description}</p>
       {rows.length === 0 ? (
@@ -409,7 +410,7 @@ function RankingCard({
                 <div className="text-sm font-black text-slate-900">
                   {formatCount(row.pageviews, locale)}
                 </div>
-                <div className="text-[11px] text-slate-500">{copy.pageviews}</div>
+                <div className="text-xs lg:text-[11px] text-slate-500">{copy.pageviews}</div>
               </div>
             </div>
           ))}

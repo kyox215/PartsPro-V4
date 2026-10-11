@@ -258,9 +258,9 @@ export function AdminRemaxCenter({
   }
 
   return (
-    <section data-admin-dirty={file || Object.keys(receiptQuantities).length ? "true" : "false"} className="min-w-0 space-y-3 text-slate-950">
+    <section data-admin-dirty={file || Object.keys(receiptQuantities).length ? "true" : "false"} className="admin-mobile-module min-w-0 space-y-3 text-slate-950">
       <div className="mx-auto max-w-7xl space-y-3">
-        <header className="rounded-xl border border-fuchsia-200 bg-gradient-to-r from-fuchsia-950 via-purple-900 to-indigo-900 p-4 text-white shadow-lg sm:p-5">
+        <header className="admin-mobile-card rounded-xl border border-fuchsia-200 bg-gradient-to-r from-fuchsia-950 via-purple-900 to-indigo-900 p-2 text-white shadow-lg lg:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <Button asChild variant="ghost" size="sm" className="mb-2 -ml-2 text-white hover:bg-white/10 hover:text-white">
@@ -268,8 +268,8 @@ export function AdminRemaxCenter({
               </Button>
               <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-fuchsia-200">
                 <Sparkles className="size-4" /> {t("REMAX esclusiva")}</div>
-              <h1 className="mt-1 text-2xl font-black sm:text-3xl">{t("Centro preordini REMAX")}</h1>
-              <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-purple-100">
+              <h1 className="mt-1 text-base font-black lg:text-3xl">{t("Centro preordini REMAX")}</h1>
+              <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-purple-100 lg:text-sm">
                 {t("Quattro passaggi guidati. L&apos;importazione apre le prenotazioni ma non aumenta lo stock; solo “Registra arrivo” trasforma la merce in giacenza reale.")}</p>
             </div>
             <Button asChild className="bg-white text-purple-950 hover:bg-purple-50">
@@ -278,9 +278,11 @@ export function AdminRemaxCenter({
           </div>
         </header>
 
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
-          <section className="space-y-3">
-            <Card className="border-slate-200">
+        <div className="grid min-w-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
+          <section className="order-2 min-w-0 space-y-3 xl:order-1">
+            <details className="admin-mobile-disclosure min-w-0">
+              <summary className="min-h-11 cursor-pointer rounded-md border bg-white px-3 py-3 text-xs font-bold lg:hidden">{t("2. Compila lotto e carica file")}</summary>
+            <Card className="admin-mobile-card border-slate-200">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg"><FileSpreadsheet className="size-5 text-purple-700" /> {t("2. Compila lotto e carica file")}</CardTitle>
               </CardHeader>
@@ -306,9 +308,10 @@ export function AdminRemaxCenter({
                 <InlineState state={previewState} />
               </CardContent>
             </Card>
+            </details>
 
             {preview ? (
-              <Card className="border-purple-200">
+              <Card className="admin-mobile-card border-purple-200">
                 <CardHeader className="pb-3">
                   <CardTitle className="flex flex-wrap items-center justify-between gap-2 text-lg">
                     <span>{t("3. Anteprima file")}</span>
@@ -320,7 +323,8 @@ export function AdminRemaxCenter({
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <div className="max-h-96 overflow-auto rounded-lg border border-slate-200">
+                  <div className="divide-y divide-slate-200 lg:hidden">{preview.rows.map((row) => <div key={`${row.rowNumber}-${row.sku}`} className="admin-mobile-row min-w-0 py-2"><div className="flex items-center justify-between gap-2"><span className="font-mono text-xs font-bold">{row.rowNumber} · {row.sku}</span><RowStatus status={row.status} /></div><p className="mt-1 truncate text-xs font-semibold" title={row.name}>{row.name}</p><p className="mt-1 break-words text-xs lg:text-[11px] text-slate-500">{t("Q.tà")}: {row.qtyOrdered} {t("- buffer")}{row.bufferQty} · €{row.costPrice.toFixed(2)} / €{row.b2bPrice.toFixed(2)} / €{row.retailPrice.toFixed(2)}</p>{row.issues.length ? <p className="mt-1 break-words text-xs lg:text-[11px] text-red-700">{row.issues.map(t).join(" · ")}</p> : null}</div>)}</div>
+                  <div className="hidden max-h-96 overflow-auto rounded-lg border border-slate-200 lg:block">
                     <table className="w-full min-w-[760px] text-left text-xs">
                       <thead className="sticky top-0 bg-slate-100 text-slate-600">
                         <tr><th className="p-2">{t("Riga")}</th><th className="p-2">{t("Stato")}</th><th className="p-2">{t("SKU / prodotto")}</th><th className="p-2">{t("Q.tà")}</th><th className="p-2">{t("Prezzi C / B2B / retail")}</th><th className="p-2">{t("Controllo")}</th></tr>
@@ -351,7 +355,7 @@ export function AdminRemaxCenter({
             ) : null}
           </section>
 
-          <aside className="space-y-3">
+          <aside className="order-1 min-w-0 space-y-3 xl:order-2">
             <SummaryCard dashboard={dashboard} state={dashboardState} onRefresh={refreshDashboard} />
             <ArrivalCard
               arrivalConfirmed={arrivalConfirmed}
@@ -386,7 +390,7 @@ function SummaryCard({ dashboard, onRefresh, state }: { dashboard: AdminRemaxDas
   const [page, setPage] = React.useState(0);
   const pending = dashboard?.orders.reduce((sum, order) => sum + Math.max(order.quantity - order.readyQuantity, 0), 0) ?? 0;
   return (
-    <Card className="border-slate-200">
+    <Card className="admin-mobile-card border-slate-200">
       <CardHeader className="pb-3"><CardTitle className="flex items-center justify-between text-lg"><span>{t("Situazione REMAX")}</span><Button size="icon-sm" variant="outline" onClick={onRefresh} disabled={state.status === "loading"}><RefreshCw className={cn("size-4", state.status === "loading" && "animate-spin")} /></Button></CardTitle></CardHeader>
       <CardContent className="space-y-3">
         <div className="grid grid-cols-3 gap-2">
@@ -399,7 +403,7 @@ function SummaryCard({ dashboard, onRefresh, state }: { dashboard: AdminRemaxDas
           <div className="space-y-1.5">
             <div className="text-xs font-black uppercase text-slate-500">{t("Preordini clienti")}</div>
             {dashboard.orders.slice(page * 20, page * 20 + 20).map((order) => (
-              <Link href={`/admin?panel=orders&orderId=${encodeURIComponent(order.id)}`} key={order.id} className="flex items-center justify-between gap-2 rounded-md border border-slate-100 p-2 text-xs">
+              <Link href={`/admin?panel=orders&orderId=${encodeURIComponent(order.id)}`} key={order.id} className="admin-mobile-row flex min-h-11 items-center justify-between gap-2 border-b border-slate-100 p-2 text-xs lg:rounded-md lg:border">
                 <div className="min-w-0"><div className="truncate font-bold">{order.orderNo} · {order.customerName}</div><div className="text-slate-500">{order.status} / {order.paymentStatus}</div></div>
                 <div className="shrink-0 font-mono font-black">{order.readyQuantity}/{order.quantity}</div>
               </Link>
@@ -430,7 +434,7 @@ function ArrivalCard(props: {
  const { locale } = useI18n(); const t = React.useCallback((value: string) => remaxText(value, locale), [locale]);
 
   return (
-    <Card className="border-emerald-200">
+    <Card className="admin-mobile-card border-emerald-200">
       <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-lg"><PackageCheck className="size-5 text-emerald-700" /> {t("4. Registra arrivo")}</CardTitle></CardHeader>
       <CardContent className="space-y-3">
         <p className="text-xs font-semibold leading-5 text-slate-600">{t("Usa questa sezione solo quando hai contato fisicamente la merce. Il sistema assegna prima i preordini più vecchi (FIFO).")}</p>
@@ -441,9 +445,9 @@ function ArrivalCard(props: {
           </select>
         </Field>
         {props.selectedBatch ? (
-          <div className="max-h-72 space-y-2 overflow-auto">
+          <div className="divide-y divide-slate-200 lg:max-h-72 lg:space-y-2 lg:divide-y-0 lg:overflow-auto">
             {props.selectedBatch.lines.filter((line) => line.remainingQty > 0).map((line) => (
-              <div key={line.id} className="grid grid-cols-[minmax(0,1fr)_90px] items-center gap-2 rounded-lg border border-slate-200 p-2">
+              <div key={line.id} className="admin-mobile-row grid min-w-0 grid-cols-[minmax(0,1fr)_90px] items-center gap-2 py-2 lg:rounded-lg lg:border lg:border-slate-200 lg:p-2">
                 <div className="min-w-0 text-xs"><div className="truncate font-mono font-bold">{line.sku}</div><div className="truncate font-semibold">{line.name}</div><div className="text-slate-500">{t("Residuo")}{line.remainingQty} {t("· clienti in attesa")}{line.waitingQty}</div></div>
                 <div className="space-y-1"><Label htmlFor={`remax-received-${line.id}`} className="text-xs">{t("Quantità ricevuta")}</Label><Input id={`remax-received-${line.id}`} aria-label={`${t("Quantità ricevuta")} · ${line.sku}`} type="number" min={0} max={line.remainingQty} value={props.quantities[line.id] ?? 0} onChange={(event) => props.onQuantityChange(line.id, Math.max(0, Math.min(line.remainingQty, Number(event.currentTarget.value) || 0)))} /></div>
               </div>
@@ -473,7 +477,7 @@ function Field({ children, label }: { children: React.ReactNode; label: string }
 }
 
 function Metric({ label, value }: { label: string; value: number }) {
-  return <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center"><div className="text-xl font-black">{value}</div><div className="text-[10px] font-bold uppercase text-slate-500">{label}</div></div>;
+  return <div className="rounded-lg border border-slate-200 bg-slate-50 p-2 text-center"><div className="text-xl font-black">{value}</div><div className="text-xs lg:text-[10px] font-bold uppercase text-slate-500">{label}</div></div>;
 }
 
 function RowStatus({ status }: { status: "ready" | "draft" | "blocked" }) {

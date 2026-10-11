@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ShoppingBag } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useI18n } from "./i18n-provider";
 import { AdminMarketplacePanel } from "./admin-marketplace-panel";
 
 type AdminCommercePanelProps = {
@@ -10,22 +11,23 @@ type AdminCommercePanelProps = {
 };
 
 export function AdminCommercePanel({ permissions = [] }: AdminCommercePanelProps) {
+  const { locale } = useI18n();
   return (
-    <div className="min-w-0 space-y-4">
-      <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+    <div className="admin-mobile-module min-w-0 space-y-2 lg:space-y-4">
+      <div className="admin-mobile-card flex min-w-0 flex-row items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-2 py-2 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
-          <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+          <div className="hidden size-10 shrink-0 place-items-center lg:grid rounded-lg bg-primary/10 text-primary">
             <ShoppingBag className="size-5" />
           </div>
           <div className="min-w-0">
-            <h2 className="truncate text-lg font-black text-slate-950">电商</h2>
+            <h2 className="truncate text-lg font-black text-slate-950">{locale.startsWith("zh") ? "电商" : "Commercio"}</h2>
           </div>
         </div>
-        <div className="text-xs font-semibold text-slate-500">当前站点：EBAY_IT / EUR</div>
+        <div className="text-xs font-semibold text-slate-500">EBAY_IT / EUR</div>
       </div>
 
       <Tabs value="ebay" className="min-w-0 gap-4">
-        <TabsList className="h-10 bg-white shadow-sm" aria-label="电商功能">
+        <TabsList className="admin-mobile-tabs h-10 bg-white shadow-sm" aria-label="电商功能">
           <TabsTrigger value="ebay" className="px-4">
             eBay
           </TabsTrigger>

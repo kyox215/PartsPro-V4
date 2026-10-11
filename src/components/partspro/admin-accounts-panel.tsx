@@ -30,8 +30,8 @@ type CustomerActionKind = "customer_level" | "customer_status" | "customer_type"
 type CustomerLevel = "bronze" | "silver" | "gold" | "emerald" | "diamond" | "master" | "king";
 type CustomerStatus = "pending" | "active" | "suspended";
 type CustomerType = "retail" | "wholesale";
-const detailTabsListClassName = "!flex !h-auto !w-full min-w-0 gap-1 overflow-x-auto overflow-y-hidden rounded-md border border-slate-200 bg-white/80 p-0.5 shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
-const detailTabsTriggerClassName = "!h-7 min-w-[72px] flex-1 whitespace-nowrap rounded px-2 text-[11px] font-bold leading-none text-slate-500 transition-colors data-active:!bg-primary data-active:!text-white data-active:!shadow-sm sm:!h-8 sm:min-w-0 sm:text-xs";
+const detailTabsListClassName = "admin-mobile-tabs !flex !h-auto !w-full min-w-0 gap-1 overflow-x-auto overflow-y-hidden rounded-md border border-slate-200 bg-white/80 p-0.5 shadow-sm [scrollbar-width:none] [&::-webkit-scrollbar]:hidden";
+const detailTabsTriggerClassName = "!h-7 min-w-[72px] flex-1 whitespace-nowrap rounded px-2 text-xs font-bold leading-none text-slate-500 transition-colors data-active:!bg-primary data-active:!text-white data-active:!shadow-sm sm:!h-8 sm:min-w-0 sm:text-xs";
 type AccountCustomer = {
     assignmentStatus: string;
     billingAddress: string | null;
@@ -785,7 +785,7 @@ function AdminAccountsPanelContent({ initialPermissions, initialUserId = null, p
             setSubmitting(false);
         }
     }
-    return (<section className="min-w-0 space-y-3">
+    return (<section className="admin-mobile-module min-w-0 space-y-3">
       <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -798,19 +798,22 @@ function AdminAccountsPanelContent({ initialPermissions, initialUserId = null, p
               {accountType === "employee" ? accountText("员工账号", locale) : accountText("客户账号", locale)}
             </Badge>
           </div>
-          <p className="mt-0.5 text-xs font-semibold leading-5 text-slate-500">{accountText("管理已存在的客户账号和员工账号，不创建新的 Supabase Auth 用户。", locale)}</p>
+          <p className="mt-0.5 hidden text-xs font-semibold leading-5 text-slate-500 lg:block">{accountText("管理已存在的客户账号和员工账号，不创建新的 Supabase Auth 用户。", locale)}</p>
         </div>
         <Button variant="outline" size="sm" className="h-8 bg-white" disabled={loading || !permissionsLoaded || !canReadSelectedAccountType} onClick={() => void refreshAccounts()}>
           <RefreshCcw className={cn("size-4", loading && "animate-spin")}/>{accountText("刷新", locale)}</Button>
       </div>
 
-      <AdminPricingPanel permissions={[...currentPermissionSet]} customerId={detail?.profileCustomer?.id ?? detail?.customer?.id}/>
+      <details className="admin-mobile-disclosure min-w-0 rounded-md border border-slate-200 bg-white lg:border-0">
+        <summary className="min-h-11 cursor-pointer px-3 py-3 text-xs font-bold lg:hidden">{locale.startsWith("it") ? "Prezzi e livelli cliente" : "客户等级与价格"}</summary>
+        <AdminPricingPanel permissions={[...currentPermissionSet]} customerId={detail?.profileCustomer?.id ?? detail?.customer?.id}/>
+      </details>
 
       {notice ? <><NoticeBanner notice={notice} onDismiss={() => setNotice(null)}/>{notice.tone === "warning" && detail ? <Button type="button" variant="outline" size="sm" onClick={() => void loadDetail(detail.account.userId)}>{accountText("重读账号详情", locale)}</Button> : null}</> : null}
 
-      <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
+      <div className="admin-mobile-card rounded-lg border border-slate-200 bg-white p-2 shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
         <div className="grid gap-2 xl:grid-cols-[minmax(360px,410px)_minmax(0,1fr)]">
-          <div className="min-w-0 space-y-2 rounded-md border border-slate-100 bg-slate-50/60 p-2">
+          <div className="min-w-0 space-y-2 lg:rounded-md lg:border lg:border-slate-100 lg:bg-slate-50/60 lg:p-2">
             {permissionsLoaded && visibleAccountTabCount > 0 ? (<Tabs value={accountType} onValueChange={(value) => {
                 const nextType = value === "employee" ? "employee" : "customer";
                 if ((nextType === "employee" && !canReadEmployeeAccounts) ||
@@ -827,13 +830,13 @@ function AdminAccountsPanelContent({ initialPermissions, initialUserId = null, p
                 setDetailLoadedIncludes(new Set());
                 setDetailLoadingIncludes(new Set());
             }}>
-                <TabsList className={cn("grid h-8 rounded-md bg-white p-1 shadow-sm", visibleAccountTabCount > 1 ? "grid-cols-2" : "grid-cols-1")}>
+                <TabsList className={cn("admin-mobile-tabs grid h-8 rounded-md bg-white p-1 shadow-sm", visibleAccountTabCount > 1 ? "grid-cols-2" : "grid-cols-1")}>
                   {canReadCustomerAccounts ? (<TabsTrigger value="customer" className="h-6 rounded text-xs font-bold">{accountText("客户账号", locale)}</TabsTrigger>) : null}
                   {canReadEmployeeAccounts ? (<TabsTrigger value="employee" className="h-6 rounded text-xs font-bold">{accountText("员工账号", locale)}</TabsTrigger>) : null}
                 </TabsList>
               </Tabs>) : null}
 
-            <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+            <div className="admin-mobile-toolbar grid grid-cols-[minmax(0,1fr)_auto] gap-2">
               <div className="relative min-w-0">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400"/>
                 <Input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
@@ -845,8 +848,8 @@ function AdminAccountsPanelContent({ initialPermissions, initialUserId = null, p
               <Button size="sm" className="h-8 px-3" disabled={!permissionsLoaded || !canReadSelectedAccountType} onClick={applySearch}>{accountText("搜索", locale)}</Button>
             </div>
 
-            <div className="max-h-[calc(100vh-280px)] min-h-[320px] overflow-y-auto pr-1">
-              {!permissionsLoaded || (loading && accounts.length === 0) ? (<AccountListSkeleton />) : !canReadSelectedAccountType ? (<div className="rounded-md border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-slate-500">{accountText("当前账号没有读取", locale)}{accountType === "employee" ? accountText("员工", locale) : accountText("客户", locale)}{accountText("账号的权限。", locale)}</div>) : (<AdminBusyRegion contentClassName="space-y-1.5" label={text.common.refreshing} pending={loading} rows={4}>
+            <div className="lg:max-h-[calc(100vh-280px)] lg:min-h-[320px] lg:overflow-y-auto lg:pr-1">
+              {!permissionsLoaded || (loading && accounts.length === 0) ? (<AccountListSkeleton />) : !canReadSelectedAccountType ? (<div className="rounded-md border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-slate-500">{accountText("当前账号没有读取", locale)}{accountType === "employee" ? accountText("员工", locale) : accountText("客户", locale)}{accountText("账号的权限。", locale)}</div>) : (<AdminBusyRegion contentClassName="divide-y divide-slate-200 lg:space-y-1.5 lg:divide-y-0" label={text.common.refreshing} pending={loading} rows={4}>
                   {accounts.length > 0 ? (accounts.map((account) => (<AccountListItem key={account.userId} account={account} active={detail?.account.userId === account.userId} currentUserId={currentUserId} onOpen={openDetail}/>))) : (<div className="rounded-md border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-slate-500">{accountText("没有匹配的账号。", locale)}</div>)}
                 </AdminBusyRegion>)}
             </div>
@@ -1030,7 +1033,7 @@ function AccountListItem({ account, active, currentUserId, onOpen, }: {
     const isSelf = account.userId === currentUserId;
     const text = useAdminText();
     const commerceCustomer = commerceCustomerForAccount(account);
-    return (<button type="button" className={cn("w-full rounded-md border px-2.5 py-2 text-left transition", active
+    return (<button type="button" className={cn("admin-mobile-row w-full min-w-0 border-0 px-1 py-2 text-left transition lg:rounded-md lg:border lg:px-2.5", active
             ? "border-primary/30 bg-primary/8"
             : "border-slate-200 bg-white hover:border-primary/30 hover:bg-primary/5")} onClick={() => onOpen(account)}>
       <div className="flex min-w-0 items-start gap-2">
@@ -1040,17 +1043,17 @@ function AccountListItem({ account, active, currentUserId, onOpen, }: {
             <div className="truncate text-[13px] font-black leading-5 text-slate-950">
               {account.displayName ?? account.email ?? account.userId}
             </div>
-            {isSelf ? (<Badge className="h-5 border-blue-200 bg-blue-50 px-1.5 text-[10px] text-blue-700" variant="outline">{accountText("当前账号", locale)}</Badge>) : null}
+            {isSelf ? (<Badge className="h-5 border-blue-200 bg-blue-50 px-1.5 text-xs lg:text-[10px] text-blue-700" variant="outline">{accountText("当前账号", locale)}</Badge>) : null}
           </div>
-          <div className="truncate text-[11px] font-semibold leading-4 text-slate-500">
+          <div className="truncate text-xs lg:text-[11px] font-semibold leading-4 text-slate-500">
             {account.email ?? account.userId}
           </div>
           <div className="mt-1.5 flex flex-wrap gap-1">
-            <Badge className={cn("h-5 px-1.5 text-[10px]", accountTypeBadgeClass(account.accountType))} variant="outline">
+            <Badge className={cn("h-5 px-1.5 text-xs lg:text-[10px]", accountTypeBadgeClass(account.accountType))} variant="outline">
               {accountTypeLabel(account.accountType, locale)}
             </Badge>
             <ProfileStateBadge state={account.profileState}/>
-            {account.accountType === "employee" ? (<Badge className="h-5 border-indigo-200 bg-indigo-50 px-1.5 text-[10px] text-indigo-700" variant="outline">
+            {account.accountType === "employee" ? (<Badge className="h-5 border-indigo-200 bg-indigo-50 px-1.5 text-xs lg:text-[10px] text-indigo-700" variant="outline">
                 {roleTemplateLabel(text, account.roleTemplate ?? account.role)}
               </Badge>) : null}
             <CustomerAssignmentBadges customer={commerceCustomer}/>
@@ -1107,7 +1110,7 @@ function AccountDetailPane({ canReadOrders, canManageCustomerLevel, canManageCus
     return (<div aria-busy={loading} aria-live="polite" className="min-w-0">
       {loading ? (<div className="mb-1.5 overflow-hidden rounded-md border border-primary/10 bg-white text-primary shadow-sm">
           <div className="h-0.5 w-full animate-pulse bg-primary/40"/>
-          <div className="flex items-center gap-1.5 px-2 py-1 text-[11px] font-bold leading-4">
+          <div className="flex items-center gap-1.5 px-2 py-1 text-xs lg:text-[11px] font-bold leading-4">
             <Loader2 className="size-3 animate-spin"/>
             <span>{text.common.refreshing}</span>
           </div>
@@ -1122,7 +1125,7 @@ function AccountDetailPane({ canReadOrders, canManageCustomerLevel, canManageCus
               </h3>
               {isSelf ? (<Badge className="border-blue-200 bg-blue-50 text-blue-700" variant="outline">{accountText("当前账号", locale)}</Badge>) : null}
             </div>
-            <div className="break-words text-[11px] font-semibold leading-4 text-slate-500 sm:text-xs">
+            <div className="break-words text-xs font-semibold leading-4 text-slate-500 sm:text-xs">
               {account.email ?? account.userId}
             </div>
             <div className="mt-1 flex flex-wrap gap-1 sm:mt-1.5">
@@ -1236,7 +1239,7 @@ function CustomerProfileTab({ account, canManageCustomerLevel, canManageProfile,
     return (<DetailSection title={title}>
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         <ProfileStateBadge state={profileState}/>
-        {profileState.missingFields.length > 0 ? (<span className="text-[11px] font-semibold leading-5 text-slate-500">{accountText("缺少：", locale)}{profileState.missingFields.map(item => profileMissingFieldLabel(item, locale)).join("、")}
+        {profileState.missingFields.length > 0 ? (<span className="text-xs lg:text-[11px] font-semibold leading-5 text-slate-500">{accountText("缺少：", locale)}{profileState.missingFields.map(item => profileMissingFieldLabel(item, locale)).join("、")}
           </span>) : null}
         <Button size="xs" variant="outline" className="ml-auto bg-white" disabled={!canManageProfile} onClick={() => onProfileEdit(account, profileCustomer)}>
           <FilePenLine className="size-3.5"/>{accountText("编辑资料", locale)}</Button>
@@ -1249,7 +1252,7 @@ function CustomerProfileTab({ account, canManageCustomerLevel, canManageProfile,
               <BadgeCheck className="size-3.5"/>{accountText("修改状态", locale)}</Button>
             <Button size="xs" variant="outline" className="bg-white" disabled={!canManageCustomerType} onClick={() => onCustomerAction("customer_type", account)}>
               <BriefcaseBusiness className="size-3.5"/>{accountText("修改价格类型", locale)}</Button>
-            {!canManageCustomerLevel || !canManageCustomerStatus || !canManageCustomerType ? (<span className="col-span-3 text-[11px] font-semibold leading-5 text-slate-500 sm:text-xs sm:leading-8">{accountText("缺少权限的操作会被锁定。", locale)}</span>) : null}
+            {!canManageCustomerLevel || !canManageCustomerStatus || !canManageCustomerType ? (<span className="col-span-3 text-xs font-semibold leading-5 text-slate-500 sm:text-xs sm:leading-8">{accountText("缺少权限的操作会被锁定。", locale)}</span>) : null}
             </div>) : null}
           <div className="grid grid-cols-2 gap-1 sm:gap-1.5 lg:grid-cols-3">
             <DetailLine label={accountText("名称", locale)} value={profileCustomer.name ?? accountText("暂无", locale)}/>
@@ -1309,7 +1312,7 @@ function CustomerOrdersTab({ loaded, loading, orders, canReadOrders, customerId,
           {orders.map((order) => (<div key={order.id} className="grid gap-1.5 rounded-md border border-slate-200 bg-white px-2 py-1.5 sm:grid-cols-[minmax(0,1.3fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_auto]">
               <div className="min-w-0">
                 {canReadOrders && customerId ? <a className="break-words text-xs font-black text-primary underline" href={accountOrdersHref(customerId, accountId, order.id)}>{order.orderNo}</a> : <div className="break-words text-xs font-black text-slate-950">{order.orderNo}</div>}
-                <div className="text-[11px] font-semibold text-slate-500">
+                <div className="text-xs lg:text-[11px] font-semibold text-slate-500">
                   {formatDateTime(order.createdAt) ?? accountText("暂无日期", locale)}
                 </div>
               </div>
@@ -1321,7 +1324,7 @@ function CustomerOrdersTab({ loaded, loading, orders, canReadOrders, customerId,
                   {paymentStatusLabel(order.paymentStatus, locale)}
                 </Badge>
               </div>
-              <div className="text-[11px] font-semibold text-slate-500">
+              <div className="text-xs lg:text-[11px] font-semibold text-slate-500">
                 {order.lineCount}{accountText("行商品", locale)}</div>
               <div className="text-right text-sm font-black text-slate-950">
                 {formatEuro(order.total)}
@@ -1357,7 +1360,7 @@ function CustomerSpendTab({ customer, canReadOrders, accountId, loaded, loading,
         </div>
         {orders.length > 0 ? (<div className="overflow-x-auto rounded-md border border-slate-200 bg-white">
             <div className="min-w-[620px]">
-              <div className="grid grid-cols-[1.3fr_0.9fr_0.8fr_0.8fr_0.8fr_0.9fr] border-b border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-slate-500">
+              <div className="grid grid-cols-[1.3fr_0.9fr_0.8fr_0.8fr_0.8fr_0.9fr] border-b border-slate-200 bg-slate-50 px-2 py-1 text-xs lg:text-[10px] font-black uppercase tracking-wide text-slate-500">
                 <span>{accountText("订单", locale)}</span>
                 <span>{accountText("付款", locale)}</span>
                 <span className="text-right">{accountText("净额", locale)}</span>
@@ -1383,7 +1386,7 @@ function SpendTile({ label, value }: {
     value: React.ReactNode;
 }) {
     return (<div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1.5">
-      <div className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">
+      <div className="truncate text-xs lg:text-[10px] font-bold uppercase tracking-wide text-slate-400">
         {label}
       </div>
       <div className="mt-0.5 truncate text-sm font-black text-slate-950">{value}</div>
@@ -1418,7 +1421,7 @@ function EmployeeMembershipsSection({ detail, text, }: {
                   {memberStatusLabel(membership.status, locale)}
                 </Badge>
               </div>
-              <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-semibold text-slate-500">
+              <div className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs lg:text-[11px] font-semibold text-slate-500">
                 <span>{membership.email ?? membership.userId}</span>
                 <span>{accountText("成员角色：", locale)}{memberRoleLabel(membership.memberRole, locale)}</span>
                 {membership.roleTemplate ? (<span>{accountText("员工角色：", locale)}{roleTemplateLabel(text, membership.roleTemplate)}</span>) : null}
@@ -1438,7 +1441,7 @@ function AccountActivityTab({ detail, loaded, loading, text, }: {
     return (<DetailSection title={accountText("活动记录", locale)}>
       {loading || !loaded ? (<LoadingText text={accountText("正在加载活动记录...", locale)}/>) : detail.auditEvents.length > 0 || (detail.customer?.recentActivity.length ?? 0) > 0 ? (<div className="grid gap-2 xl:grid-cols-2">
           <div className="min-w-0">
-            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-black text-slate-500">
+            <div className="mb-1.5 flex items-center gap-1.5 text-xs lg:text-[11px] font-black text-slate-500">
               <ShieldCheck className="size-3.5"/>{accountText("后台审计", locale)}</div>
             {detail.auditEvents.length > 0 ? (<ol className="space-y-1.5">
                 {detail.auditEvents.slice(0, 8).map((event) => (<li key={event.id} className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
@@ -1447,7 +1450,7 @@ function AccountActivityTab({ detail, loaded, loading, text, }: {
                         <div className="break-words text-xs font-black text-slate-900">
                           {adminActionLabel(event.action, locale)}
                         </div>
-                        <div className="mt-0.5 break-words text-[11px] font-semibold leading-4 text-slate-500">
+                        <div className="mt-0.5 break-words text-xs lg:text-[11px] font-semibold leading-4 text-slate-500">
                           {[
                         event.actorEmail,
                         event.actorRole
@@ -1458,11 +1461,11 @@ function AccountActivityTab({ detail, loaded, loading, text, }: {
                         .filter(Boolean)
                         .join(" · ") || accountText("系统记录", locale)}
                         </div>
-                        {event.reason ? (<div className="mt-0.5 break-words text-[11px] leading-4 text-slate-600">
+                        {event.reason ? (<div className="mt-0.5 break-words text-xs lg:text-[11px] leading-4 text-slate-600">
                             {event.reason}
                           </div>) : null}
                       </div>
-                      <span className="shrink-0 text-[11px] font-semibold text-slate-500">
+                      <span className="shrink-0 text-xs lg:text-[11px] font-semibold text-slate-500">
                         {formatDateTime(event.createdAt) ?? accountText("暂无", locale)}
                       </span>
                     </div>
@@ -1470,7 +1473,7 @@ function AccountActivityTab({ detail, loaded, loading, text, }: {
               </ol>) : (<EmptyText text={accountText("暂无后台审计记录。", locale)}/>)}
           </div>
           <div className="min-w-0">
-            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-black text-slate-500">
+            <div className="mb-1.5 flex items-center gap-1.5 text-xs lg:text-[11px] font-black text-slate-500">
               <Activity className="size-3.5"/>{accountText("客户活动", locale)}</div>
             {detail.customer?.recentActivity.length ? (<ol className="space-y-1.5">
                 {detail.customer.recentActivity.slice(0, 8).map((event) => (<li key={event.id} className="rounded-md border border-slate-200 bg-white px-2 py-1.5">
@@ -1479,11 +1482,11 @@ function AccountActivityTab({ detail, loaded, loading, text, }: {
                         <div className="break-words text-xs font-black text-slate-900">
                           {customerActivityLabel(event, locale)}
                         </div>
-                        <div className="mt-0.5 break-words text-[11px] font-semibold leading-4 text-slate-500">
+                        <div className="mt-0.5 break-words text-xs lg:text-[11px] font-semibold leading-4 text-slate-500">
                           {customerActivitySubject(event, locale)}
                         </div>
                       </div>
-                      <span className="shrink-0 text-[11px] font-semibold text-slate-500">
+                      <span className="shrink-0 text-xs lg:text-[11px] font-semibold text-slate-500">
                         {formatDateTime(event.createdAt) ?? accountText("暂无", locale)}
                       </span>
                     </div>
@@ -2016,7 +2019,7 @@ function InfoTile({ icon: Icon, label, value, }: {
     value: React.ReactNode;
 }) {
     return (<div className="min-h-[46px] min-w-0 rounded-md border border-slate-200 bg-white px-1.5 py-1 sm:min-h-[56px] sm:px-2 sm:py-1.5">
-      <div className="flex min-w-0 items-center gap-1 text-[10px] font-bold leading-3 text-slate-500 sm:text-[11px]">
+      <div className="flex min-w-0 items-center gap-1 text-xs font-bold leading-3 text-slate-500 lg:text-[11px]">
         <Icon className="size-3 shrink-0 sm:size-3.5"/>
         <span className="min-w-0 truncate">{label}</span>
       </div>
@@ -2030,7 +2033,7 @@ function DetailSection({ children, title }: {
     title: string;
 }) {
     return (<section className="rounded-md border border-slate-200 bg-white p-2 sm:p-2.5">
-      <h4 className="mb-1.5 text-[11px] font-black uppercase tracking-wide text-slate-500 sm:mb-2 sm:text-xs">{title}</h4>
+      <h4 className="mb-1.5 text-xs font-black uppercase tracking-wide text-slate-500 sm:mb-2 sm:text-xs">{title}</h4>
       {children}
     </section>);
 }
@@ -2040,8 +2043,8 @@ function DetailLine({ label, multiline = false, value, }: {
     value: React.ReactNode;
 }) {
     return (<div className={cn("min-w-0 rounded-md bg-slate-50 px-1.5 py-1 sm:px-2", multiline && "sm:col-span-2 lg:col-span-3")}>
-      <div className="truncate text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</div>
-      <div className={cn("text-[11px] font-bold leading-4 text-slate-900 sm:text-xs sm:leading-5", multiline ? "break-words" : "truncate sm:break-words")}>
+      <div className="truncate text-xs lg:text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</div>
+      <div className={cn("text-xs font-bold leading-4 text-slate-900 sm:text-xs sm:leading-5", multiline ? "break-words" : "truncate sm:break-words")}>
         {value}
       </div>
     </div>);
@@ -2050,7 +2053,7 @@ function CustomerAssignmentBadges({ customer }: {
     customer: AccountCustomer | null;
 }) {
     const { locale } = useI18n();
-    const badgeClass = "h-5 px-1.5 text-[10px]";
+    const badgeClass = "h-5 px-1.5 text-xs lg:text-[10px]";
     if (!customer) {
         return (<Badge className={cn(badgeClass, "border-slate-200 bg-slate-50 text-slate-500")} variant="outline">{accountText("客户资料未初始化", locale)}</Badge>);
     }
@@ -2073,7 +2076,7 @@ function ProfileStateBadge({ state }: {
     state: AccountProfileState;
 }) {
     const { locale } = useI18n();
-    return (<Badge className={cn("h-5 px-1.5 text-[10px]", profileStateBadgeClass(state.status))} variant="outline">
+    return (<Badge className={cn("h-5 px-1.5 text-xs lg:text-[10px]", profileStateBadgeClass(state.status))} variant="outline">
       {profileStateLabel(state, locale)}
     </Badge>);
 }
@@ -2086,7 +2089,7 @@ function CustomerPromoBadge({ compact = false, customer, }: {
     if (!expiresAt) {
         return null;
     }
-    return (<Badge className={cn("h-5 shrink-0 border-emerald-200 bg-emerald-50 px-1.5 text-[10px] font-black text-emerald-700", compact && "max-w-[92px] truncate")} variant="outline">{accountText("活动至", locale)}{formatDate(expiresAt)}
+    return (<Badge className={cn("h-5 shrink-0 border-emerald-200 bg-emerald-50 px-1.5 text-xs lg:text-[10px] font-black text-emerald-700", compact && "max-w-[92px] truncate")} variant="outline">{accountText("活动至", locale)}{formatDate(expiresAt)}
     </Badge>);
 }
 function NoticeBanner({ notice, onDismiss }: { notice: Notice; onDismiss: () => void }) { return <AdminNotice tone={notice.tone} message={notice.message} onDismiss={onDismiss} dismissLabel="OK" />; }

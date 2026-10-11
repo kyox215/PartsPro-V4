@@ -1,0 +1,10 @@
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {I18nProvider} from '@/components/partspro/i18n-provider';
+import {CatalogDirectoryProvider} from '@/components/partspro/catalog-directory-provider';
+import {AdminDashboard} from '@/components/partspro/admin-dashboard';
+import {TooltipProvider} from '@/components/ui/tooltip';
+import {getDictionary} from '@/i18n/get-dictionary';
+import {adminPermissions} from '@/lib/partspro-permissions';
+const locale=new URLSearchParams(location.search).get('locale')==='it'?'it-IT':'zh-CN';
+createRoot(document.getElementById('root')!).render(<I18nProvider locale={locale} scope="admin" dictionary={getDictionary(locale)}><CatalogDirectoryProvider><TooltipProvider><AdminDashboard initialUserName="Local fixture staff" initialUserRole="admin" initialUserId="00000000-0000-4000-8000-000000000001" initialPermissions={adminPermissions} /></TooltipProvider></CatalogDirectoryProvider></I18nProvider>);

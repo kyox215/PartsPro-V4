@@ -263,6 +263,7 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
   const [healthPage, setHealthPage] = usePersistentAdminValue("inventory.healthPage", 0);
   const [totals, setTotals] = React.useState({ shortage: 0, queue: 0, health: 0 });
   const [selectedPlanIds, setSelectedPlanIds] = React.useState<string[]>([]);
+  const [mobilePlanId, setMobilePlanId] = React.useState<string | null>(null);
   const [batchPlan, setBatchPlan] = React.useState<ReplenishmentBatchPlan | null>(null);
   const [bulkUnknown, setBulkUnknown] = React.useState(false);
   const [commonPlan, setCommonPlan] = React.useState({ applySupplier: false, supplier: "", applyQty: false, plannedQty: "", applyNote: false, note: "", status: "" });
@@ -616,26 +617,26 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
     setBatchPlan(null); setBulkBusy(false);
     if (saved === batchPlan.length) refresh();
   }
-  const planSelection = (item: ReplenishmentItem) => <label className="inline-flex items-center gap-2 text-xs"><input type="checkbox" checked={selectedPlanIds.includes(item.id)} disabled={bulkBusy || Boolean(actionKey) || bulkUnknown} onChange={event => setSelectedPlanIds(current => event.target.checked ? [...new Set([...current,item.id])] : current.filter(id => id !== item.id))}/>{locale.startsWith("zh") ? "选择计划" : "Seleziona piano"} {item.sku}</label>;
-  const selection = (row: SoldStockShortageRow) => <label className="inline-flex items-center gap-2 text-xs font-medium"><input type="checkbox" checked={selectedSkus.includes(row.sku)} disabled={!canManage || bulkBusy || Boolean(actionKey) || Boolean(row.activeReplenishmentItem)} onChange={event => setSelectedSkus(current => event.target.checked ? [...new Set([...current,row.sku])] : current.filter(sku => sku !== row.sku))} /><span>{row.sku}</span></label>;
+  const planSelection = (item: ReplenishmentItem) => <label className="inline-flex min-h-11 items-center gap-2 text-xs"><input type="checkbox" checked={selectedPlanIds.includes(item.id)} disabled={bulkBusy || Boolean(actionKey) || bulkUnknown} onChange={event => setSelectedPlanIds(current => event.target.checked ? [...new Set([...current,item.id])] : current.filter(id => id !== item.id))}/>{locale.startsWith("zh") ? "选择计划" : "Seleziona piano"} {item.sku}</label>;
+  const selection = (row: SoldStockShortageRow) => <label className="inline-flex min-h-11 items-center gap-2 text-xs font-medium"><input type="checkbox" checked={selectedSkus.includes(row.sku)} disabled={!canManage || bulkBusy || Boolean(actionKey) || Boolean(row.activeReplenishmentItem)} onChange={event => setSelectedSkus(current => event.target.checked ? [...new Set([...current,row.sku])] : current.filter(sku => sku !== row.sku))} /><span>{row.sku}</span></label>;
 
   return (
-    <section data-admin-dirty={replenishmentItems.some(item => JSON.stringify(drafts[item.id] ?? replenishmentDraft(item)) !== JSON.stringify(replenishmentDraft(item))) || (selectedPlanIds.length > 0 && (commonPlan.applySupplier || commonPlan.applyQty || commonPlan.applyNote || Boolean(commonPlan.status))) ? "true" : "false"} data-admin-mutating={bulkBusy || Boolean(actionKey) ? "true" : "false"} className="min-w-0 space-y-3">
+    <section data-admin-dirty={replenishmentItems.some(item => JSON.stringify(drafts[item.id] ?? replenishmentDraft(item)) !== JSON.stringify(replenishmentDraft(item))) || (selectedPlanIds.length > 0 && (commonPlan.applySupplier || commonPlan.applyQty || commonPlan.applyNote || Boolean(commonPlan.status))) ? "true" : "false"} data-admin-mutating={bulkBusy || Boolean(actionKey) ? "true" : "false"} className="admin-mobile-module min-w-0 space-y-3">
       <Dialog open={batchPlan !== null} onOpenChange={open => { if (!open && !bulkBusy) setBatchPlan(null); }}><DialogContent scrollLayout="body" className="sm:max-w-2xl"><DialogHeader><DialogTitle>{locale.startsWith("zh") ? "核对采购计划批量修改" : "Verifica modifiche al piano acquisti"}</DialogTitle><DialogDescription>{locale.startsWith("zh") ? "按行显示旧值 → 新值。保存逐行执行，失败即停止；状态仅代表计划，不登记实物入库。" : "Valore precedente → nuovo. Salvataggio per riga; un errore interrompe le restanti righe. Gli stati riguardano il piano, non il magazzino."}</DialogDescription></DialogHeader><DialogBody className="space-y-3">{batchPlan?.map(row => <div key={row.id} className="rounded border p-3 text-sm"><strong>{row.sku}</strong>{Object.keys(row.patch).map(key => <p className="break-words" key={key}>{({supplier:text.supplier,plannedQty:text.plannedQty,note:text.note,status:text.status} as Record<string,string>)[key]}: {String(row.before[key as keyof typeof row.before]) || "—"} → {String(row.after[key as keyof typeof row.after]) || "—"}</p>)}</div>)}</DialogBody><DialogFooter><Button variant="outline" disabled={bulkBusy} onClick={() => setBatchPlan(null)}>{locale.startsWith("zh") ? "取消" : "Annulla"}</Button><AdminActionButton pending={bulkBusy} disabled={bulkBusy || bulkUnknown} onClick={() => void savePlanBatch()}>{locale.startsWith("zh") ? "确认并保存所选计划" : "Conferma e salva i piani"}</AdminActionButton></DialogFooter></DialogContent></Dialog>
       <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
-          <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs lg:text-[11px] font-bold text-amber-800">
             <Warehouse className="size-3.5" />
             {text.eyebrow}
           </div>
-          <h1 className="mt-2 text-xl font-black tracking-normal text-slate-950 lg:text-2xl">
+          <h1 className="mt-1 text-base font-black tracking-normal text-slate-950 lg:text-2xl">
             {text.title}
           </h1>
-          <p className="mt-0.5 max-w-3xl text-xs font-medium leading-5 text-slate-600 lg:text-sm">
+          <p className="mt-0.5 hidden max-w-3xl text-xs lg:block font-medium leading-5 text-slate-600 lg:text-sm">
             {text.description}
           </p>
         </div>
-        <div className="grid grid-cols-3 gap-1.5 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
+        <div className="admin-mobile-toolbar grid grid-cols-3 gap-1.5 sm:flex sm:flex-wrap sm:items-center sm:gap-2">
           <Button
             type="button"
             variant="outline"
@@ -731,7 +732,7 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
         pager={<AdminListPager page={healthPage} pageSize={pageSize} total={totals.health} returned={healthRows.length} pending={pending} onPageChange={setHealthPage} />}
       />
 
-      <Card className="overflow-hidden rounded-md border-slate-200 shadow-[0_8px_18px_rgba(15,23,42,0.035)]">
+      <Card className="admin-mobile-card overflow-hidden rounded-md border-slate-200 shadow-[0_8px_18px_rgba(15,23,42,0.035)]">
         <CardHeader className="border-b bg-white px-3 py-2">
           <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
             <CardTitle className="text-sm font-black text-slate-950">
@@ -860,11 +861,11 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
                     </TableBody>
                   </Table>
                 </div>
-                <div className="grid gap-1.5 p-2 lg:hidden">
+                <div className="divide-y divide-slate-200 p-2 lg:hidden">
                   {rows.map((row) => (
                     <div
                       key={row.sku}
-                      className="rounded-md border border-slate-200 bg-white p-2 shadow-sm"
+                      className="admin-mobile-row min-w-0 bg-white py-2"
                     >
                       <div className="grid min-w-0 grid-cols-[34px_minmax(0,1fr)_auto] items-start gap-2">
                         <InventoryProductVisual row={row} />
@@ -873,7 +874,7 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
                             {row.name}
                           </div>
                           {canManage && selection(row)}
-                          <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">
+                          <div className="mt-0.5 truncate text-xs lg:text-[11px] font-semibold text-slate-500">
                             {row.sku}
                           </div>
                         </div>
@@ -894,12 +895,12 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
                           value={row.startingAvailableQty}
                         />
                       </div>
-                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs lg:text-[11px] font-semibold text-slate-500">
                         <span className="max-w-[58%] truncate">{text.supplier}: {row.supplier ?? text.supplierMissing}</span>
                         <ReplenishmentInlineStatus row={row} text={text} />
                       </div>
                       <div className="mt-2 flex items-center justify-between gap-2">
-                        <span className="min-w-0 truncate text-[11px] font-semibold text-slate-500">
+                        <span className="min-w-0 truncate text-xs lg:text-[11px] font-semibold text-slate-500">
                           {formatDate(row.lastSoldAt, locale)}
                         </span>
                         <InventoryRowActions
@@ -922,7 +923,7 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
         </CardContent>
       </Card>
 
-      <Card className="overflow-hidden rounded-md border-slate-200 shadow-[0_8px_18px_rgba(15,23,42,0.035)]">
+      <Card className="admin-mobile-card overflow-hidden rounded-md border-slate-200 shadow-[0_8px_18px_rgba(15,23,42,0.035)]">
         <CardHeader className="border-b bg-white px-3 py-2">
           <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
             <CardTitle className="text-sm font-black text-slate-950">
@@ -998,7 +999,7 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
                                 {item.productName}
                               </div>
                               {canManage && planSelection(item)}
-                              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+                              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs lg:text-[11px] font-semibold text-slate-500">
                                 <span>{item.sku}</span>
                                 <span>{text.soldQty}: {item.soldQty}</span>
                                 <span>{text.currentStock}: {item.availableQty}</span>
@@ -1068,18 +1069,18 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
                   </TableBody>
                 </Table>
               </div>
-              <div className="grid gap-1.5 p-2 lg:hidden">
+              <div className="divide-y divide-slate-200 p-2 lg:hidden">
                 {replenishmentItems.map((item) => {
                   const draft = drafts[item.id] ?? replenishmentDraft(item);
 
                   return (
-                    <div key={item.id} className="rounded-md border border-slate-200 bg-white p-2 shadow-sm">
+                    <div key={item.id} className="admin-mobile-row min-w-0 bg-white py-2">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="line-clamp-2 text-xs font-black leading-4 text-slate-950">
                             {item.productName}
                           </div>
-                          <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">
+                          <div className="mt-0.5 truncate text-xs lg:text-[11px] font-semibold text-slate-500">
                             {item.sku}
                           </div>
                           {canManage && planSelection(item)}
@@ -1091,7 +1092,14 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
                         <MobileMetric label={text.currentStock} value={item.availableQty} />
                         <MobileMetric label={text.plannedQty} value={item.plannedQty} />
                       </div>
-                      <div className="mt-2 grid grid-cols-[minmax(0,1fr)_72px] gap-1.5">
+                      <div className="mt-1 flex min-w-0 items-center justify-between gap-2">
+                        <p className="min-w-0 break-words text-xs lg:text-[11px] text-slate-500">{item.supplier || text.supplierMissing}</p>
+                        <Button type="button" variant="outline" size="sm" disabled={bulkBusy || Boolean(actionKey)} onClick={() => setMobilePlanId(item.id)}>{dictionary.common.edit}{JSON.stringify(draft) !== JSON.stringify(replenishmentDraft(item)) ? " •" : ""}</Button>
+                      </div>
+                      <Dialog open={mobilePlanId === item.id} onOpenChange={(open) => { if (!open && !bulkBusy && !actionKey) setMobilePlanId(null); }}>
+                        <DialogContent scrollLayout="body" className="sm:max-w-lg">
+                          <DialogHeader><DialogTitle>{item.productName}</DialogTitle><DialogDescription>{item.sku} · {text.plannedQty}: {item.plannedQty}</DialogDescription></DialogHeader>
+                          <DialogBody className="space-y-3">                      <div className="mt-2 grid grid-cols-[minmax(0,1fr)_72px] gap-1.5">
                         <Input
                           className="h-8 bg-white text-xs"
                           disabled={!canManage || bulkBusy || bulkUnknown || Boolean(actionKey)} aria-label={text.supplier} value={draft.supplier}
@@ -1133,7 +1141,9 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
                           {!(actionKey === `${item.id}:update`) && <CheckCircle2 className="size-4" />}
                           {text.save}
                         </AdminActionButton>
-                      </div>
+                      </div></DialogBody>
+                        </DialogContent>
+                      </Dialog>
                     </div>
                   );
                 })}
@@ -1163,7 +1173,7 @@ function InventoryHealthSection({
   locale: string;
 }) {
   return (
-    <Card className="overflow-hidden rounded-md border-slate-200 shadow-[0_8px_18px_rgba(15,23,42,0.035)]">
+    <Card className="admin-mobile-card overflow-hidden rounded-md border-slate-200 shadow-[0_8px_18px_rgba(15,23,42,0.035)]">
       <CardHeader className="border-b bg-white px-3 py-2">
         <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <CardTitle className="text-sm font-black text-slate-950">
@@ -1209,7 +1219,17 @@ function InventoryHealthSection({
             {text.empty}
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-md border border-slate-200">
+          <div className="min-w-0">
+            <div className="divide-y divide-slate-200 lg:hidden">{rows.map((row) => (
+              <div key={row.sku} className="admin-mobile-row min-w-0 py-2">
+                <p className="truncate text-[13px] font-bold" title={row.name}>{row.name}</p>
+                <p className="break-words font-mono text-xs lg:text-[11px] text-slate-500">{row.sku}{row.model ? ` · ${row.model}` : ""}</p>
+                <div className="mt-1 flex flex-wrap gap-1">{row.issues.map((issue) => <Badge key={issue} variant="outline" className={cn("text-xs lg:text-[10px]", row.severity === "critical" ? "border-rose-200 bg-rose-50 text-rose-700" : "border-amber-200 bg-amber-50 text-amber-700")}>{text.issueLabels[issue]}</Badge>)}</div>
+                <p className="mt-1 break-words text-xs lg:text-[11px] text-slate-600">{text.productStock}: {row.productStockQty} · {text.inventoryStock}: {row.inventoryAvailableQty}/{row.inventoryActualQty} · {text.lockedReserved}: {row.inventoryLockedQty}/{row.activeReservedQty}</p>
+                <p className="mt-1 break-words text-xs font-semibold text-primary">{text.actionLabels[row.recommendedAction]}</p>
+              </div>
+            ))}</div>
+          <div className="hidden overflow-x-auto rounded-md border border-slate-200 lg:block">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -1229,7 +1249,7 @@ function InventoryHealthSection({
                         <div className="line-clamp-2 text-sm font-bold text-slate-950">
                           {row.name}
                         </div>
-                        <div className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                        <div className="mt-0.5 text-xs lg:text-[11px] font-semibold text-slate-500">
                           {row.sku}
                           {row.model ? ` · ${row.model}` : ""}
                         </div>
@@ -1242,7 +1262,7 @@ function InventoryHealthSection({
                             key={issue}
                             variant="outline"
                             className={cn(
-                              "rounded-md text-[10px] font-black",
+                              "rounded-md text-xs lg:text-[10px] font-black",
                               row.severity === "critical"
                                 ? "border-rose-200 bg-rose-50 text-rose-700"
                                 : "border-amber-200 bg-amber-50 text-amber-700"
@@ -1265,7 +1285,7 @@ function InventoryHealthSection({
                     <TableCell className="px-2 py-1.5 text-xs font-semibold text-slate-600">
                       <div>{text.actionLabels[row.recommendedAction]}</div>
                       {row.lastSoldAt ? (
-                        <div className="mt-0.5 text-[11px] text-slate-400">
+                        <div className="mt-0.5 text-xs lg:text-[11px] text-slate-400">
                           {formatDate(row.lastSoldAt, locale)}
                         </div>
                       ) : null}
@@ -1274,6 +1294,7 @@ function InventoryHealthSection({
                 ))}
               </TableBody>
             </Table>
+          </div>
           </div>
         )}
         {pager}
@@ -1307,7 +1328,7 @@ function InventoryMetric({
       </div>
       <div className="min-w-0">
         <div className="text-lg font-black leading-5 text-slate-950">{value}</div>
-        <div className="mt-0.5 truncate text-[11px] font-bold tracking-normal text-slate-500">
+        <div className="mt-0.5 truncate text-xs lg:text-[11px] font-bold tracking-normal text-slate-500">
           {label}
         </div>
       </div>
@@ -1321,7 +1342,7 @@ function InventoryProductCell({ row }: { row: SoldStockShortageRow }) {
       <InventoryProductVisual row={row} />
       <div className="min-w-0">
         <div className="line-clamp-2 text-sm font-bold leading-4 text-slate-950">{row.name}</div>
-        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] font-semibold text-slate-500">
+        <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-xs lg:text-[11px] font-semibold text-slate-500">
           <span className="shrink-0">{row.sku}</span>
           {row.brand ? <span className="truncate">{row.brand}</span> : null}
           {row.model ? <span className="truncate">{row.model}</span> : null}
@@ -1378,7 +1399,7 @@ function ShortageBadge({
   return (
     <Badge
       className={cn(
-        "max-w-full truncate px-1.5 py-0 text-[11px]",
+        "max-w-full truncate px-1.5 py-0 text-xs lg:text-[11px]",
         out
           ? "border-rose-200 bg-rose-50 text-rose-700"
           : "border-amber-200 bg-amber-50 text-amber-700",
@@ -1418,7 +1439,7 @@ function InventoryRowActions({
           type="button"
           variant="outline"
           size="xs"
-          className="h-7 bg-white px-2 text-[11px]"
+          className="h-7 bg-white px-2 text-xs lg:text-[11px]"
           disabled={actionPending || !canManage}
           onClick={() => onCreate(row)}
         >
@@ -1528,7 +1549,7 @@ function ReplenishmentStatusBadge({
 function MobileMetric({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
-      <div className="truncate text-[11px] font-bold uppercase tracking-normal text-slate-500">
+      <div className="truncate text-xs lg:text-[11px] font-bold uppercase tracking-normal text-slate-500">
         {label}
       </div>
       <div className="mt-1 truncate text-sm font-black text-slate-950">{value}</div>

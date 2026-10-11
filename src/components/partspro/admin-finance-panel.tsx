@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AdminMobileDisclosure } from "./admin-mobile-layout";
 import { AdminActionButton, AdminErrorSummary, AdminNotice } from "./admin-feedback";
 import { useAdminMemoryQuery, usePersistentAdminValue } from "./admin-workspace-state";
 import {
@@ -221,12 +222,12 @@ function AdminFinancePanelContent({ permissions, currentUserId }: { permissions:
     meta: ledgerResource.data?.meta, page: ledgerPage, setPage: setLedgerPage, canManage, onSaved, currentUserId };
 
   return (
-    <section className="flex min-w-0 flex-col gap-3 sm:gap-4">
-      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
+    <section className="admin-mobile-module flex min-w-0 flex-col gap-2 lg:gap-4">
+      <div className="admin-mobile-card rounded-lg border border-slate-200 bg-white p-2 lg:p-4 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
         <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
-            <h1 className="text-xl font-black text-slate-950">{copy.title}</h1>
-            <p className="mt-1 text-sm text-slate-500">{copy.subtitle}</p>
+            <h1 className="text-base font-black text-slate-950 lg:text-xl">{copy.title}</h1>
+            <p className="mt-1 hidden text-sm text-slate-500 lg:block">{copy.subtitle}</p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Button
@@ -244,13 +245,16 @@ function AdminFinancePanelContent({ permissions, currentUserId }: { permissions:
             </React.Fragment> : <p className="self-center text-xs text-slate-500">{copy.readOnly}</p>}
           </div>
         </div>
-        <FinanceFiltersBar filters={filters} setFilters={updateFilters} copy={copy} />
+        <details className="admin-mobile-disclosure mt-2 min-w-0">
+          <summary className="min-h-11 cursor-pointer py-3 text-xs font-bold lg:hidden">{locale.startsWith("it") ? "Filtri e periodo" : "筛选与期间"}{filters.q || filters.supplier || filters.dateFrom || filters.dateTo || filters.category !== "all" || filters.confidence !== "all" ? " •" : ""}</summary>
+          <FinanceFiltersBar filters={filters} setFilters={updateFilters} copy={copy} />
+        </details>
       </div>
 
       {savedNotice ? <AdminNotice tone={errors.summary || errors.ledger || errors.cogs ? "warning" : "success"} message={savedNotice} /> : null}
       <Tabs value={tab} onValueChange={(value) => { setTab(value); setLedgerPage(0); }} className="min-w-0">
-        <TabsList className="grid h-auto group-data-horizontal/tabs:h-auto w-full grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 sm:grid-cols-5">
-          {(["overview", "margin", "purchases", "expenses", "export"] as const).map((value) => <TabsTrigger key={value} value={value} className="h-auto min-h-10 whitespace-normal break-words px-2 py-2 text-center leading-tight">{copy.tabs[value]}</TabsTrigger>)}
+        <TabsList className="admin-mobile-tabs grid h-auto group-data-horizontal/tabs:h-auto w-full grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 sm:grid-cols-5">
+          {(["overview", "margin", "purchases", "expenses", "export"] as const).map((value) => <TabsTrigger key={value} value={value} className="h-auto min-h-11 shrink-0 whitespace-nowrap px-2 py-2 text-center leading-tight lg:whitespace-normal">{copy.tabs[value]}</TabsTrigger>)}
         </TabsList>
 
         <TabsContent value="overview" className="mt-3 min-w-0">
@@ -260,7 +264,7 @@ function AdminFinancePanelContent({ permissions, currentUserId }: { permissions:
               {loading.summary ? copy.loading : errors.summary || copy.empty}
             </div>
           ) : <>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
             <MetricCard icon={TrendingUp} label={copy.salesNet} value={formatMoney(summary.salesNet, locale)} />
             <MetricCard icon={Scale} label="COGS" value={formatMoney(summary.cogsNet, locale)} />
             <MetricCard icon={Calculator} label={copy.grossProfit} value={formatMoney(summary.grossProfit, locale)} hint={`${summary.grossMarginRate.toFixed(1)}%`} />
@@ -271,14 +275,14 @@ function AdminFinancePanelContent({ permissions, currentUserId }: { permissions:
             <MetricCard icon={FileSpreadsheet} label={copy.payables} value={formatMoney(summary.accountsPayable, locale)} />
           </div>
 
-          <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.6fr)]">
+          <AdminMobileDisclosure className="mt-3 min-w-0" title={<>{copy.netChart} · {copy.costConfidence}</>}><div className="grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.6fr)]">
             <Card className="rounded-lg border-slate-200 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
               <CardHeader className="pb-2">
                 <CardTitle className="text-sm font-black">{copy.netChart}</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="h-[280px] min-w-0">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 320, height: 280 }}>
                     <BarChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
                       <XAxis dataKey="label" tickLine={false} axisLine={false} />
@@ -308,7 +312,7 @@ function AdminFinancePanelContent({ permissions, currentUserId }: { permissions:
                 ) : null}
               </CardContent>
             </Card>
-          </div>
+          </div></AdminMobileDisclosure>
           </>}
         </TabsContent>
 
@@ -371,7 +375,7 @@ function FinanceFiltersBar({
 }) {
   const id = React.useId();
   return (
-    <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-[140px_140px_150px_150px_minmax(180px,1fr)_minmax(160px,1fr)_150px]">
+    <div className="admin-mobile-toolbar mt-2 grid grid-cols-2 gap-2 lg:grid-cols-3 2xl:grid-cols-[140px_140px_150px_150px_minmax(180px,1fr)_minmax(160px,1fr)_150px]">
       <div className="grid gap-1"><Label htmlFor={`${id}-dateMode`}>{copy.dateBasis}</Label><Select value={filters.dateMode} onValueChange={(value) => setFilters((current) => ({ ...current, dateMode: value }))}>
         <SelectTrigger id={`${id}-dateMode`} className="w-full bg-white">
           <SelectValue />
@@ -433,13 +437,13 @@ function MetricCard({
 }) {
   return (
     <Card className="rounded-lg border-slate-200 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
-      <CardContent className="flex min-h-[112px] items-start justify-between gap-3 p-4">
+      <CardContent className="flex min-h-[76px] items-start justify-between gap-2 p-2 lg:min-h-[112px] lg:p-4">
         <div className="min-w-0">
           <div className="text-xs font-bold text-slate-500">{label}</div>
-          <div className="mt-2 truncate font-mono text-2xl font-black text-slate-950">{value}</div>
+          <div className="mt-2 break-words font-mono text-lg font-black tabular-nums text-slate-950 lg:text-2xl">{value}</div>
           {hint ? <div className="mt-1 text-xs font-semibold text-emerald-600">{hint}</div> : null}
         </div>
-        <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+        <div className="hidden size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary lg:grid">
           <Icon className="size-4" />
         </div>
       </CardContent>
@@ -462,7 +466,17 @@ function FinanceTable({
     <Card className="rounded-lg border-slate-200 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
       <CardContent className="p-0">
         <FinanceReadNotice copy={copy} error={error} stale={stale} loading={isLoading} onRetry={onRetry} />
-        <div className="overflow-x-auto">
+        <div className="divide-y divide-slate-200 lg:hidden">
+          {rows.length === 0 ? <p className="p-4 text-center text-sm text-slate-500">{isLoading ? copy.loading : error ? copy.loadError : copy.empty}</p> : rows.map((row) => (
+            <div key={row.id} className="admin-mobile-row grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-1 p-2.5">
+              <div className="min-w-0"><p className="truncate text-[13px] font-bold" title={row.title}>{row.title}</p><p className="break-words text-xs lg:text-[11px] text-slate-500">{formatDate(row.date)} · {row.supplierName ?? (row.category ? expenseCategoryLabel(row.category, locale) : row.status ?? "--")}</p></div>
+              <div className="whitespace-nowrap text-right font-mono text-sm font-black tabular-nums">{formatFinanceMoney(row.amountNet, locale, row.currency)}</div>
+              <div className="min-w-0 space-y-1"><div className="flex flex-wrap gap-1"><TypeBadge type={row.type} />{row.confidence ? <ConfidenceBadge confidence={row.confidence} /> : null}</div><p className="break-words font-mono text-xs lg:text-[11px] text-slate-500">{[row.orderNo, row.skuCode, row.batchCode].filter(Boolean).join(" / ")}</p></div>
+              {canManage && financeEditableId(row.type, row.id) ? <div className="self-end"><FinanceEntryDialog key={`${currentUserId}:mobile:${row.id}`} type={row.type as "expense" | "supplier_payment"} row={row} copy={copy} onSaved={onSaved} /></div> : null}
+            </div>
+          ))}
+        </div>
+        <div className="hidden overflow-x-auto lg:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -536,7 +550,18 @@ function CogsTable({
       </CardHeader>
       <CardContent className="p-0">
         <FinanceReadNotice copy={copy} error={error} stale={stale} loading={isLoading} onRetry={onRetry} />
-        <div className="overflow-x-auto">
+        <div className="divide-y divide-slate-200 lg:hidden">
+          {allocations.length === 0 ? <p className="p-4 text-center text-sm text-slate-500">{isLoading ? copy.loading : error ? copy.loadError : copy.empty}</p> : allocations.map((allocation) => (
+            <div key={allocation.id} className="admin-mobile-row grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-1 p-2.5">
+              <div className="min-w-0"><p className="truncate font-mono text-xs font-bold">{allocation.skuCode}</p><p className="truncate text-xs lg:text-[11px] text-slate-500" title={allocation.productName ?? ""}>{allocation.productName}</p></div>
+              <span className="whitespace-nowrap text-right font-mono text-sm font-black tabular-nums">{formatFinanceMoney(allocation.totalCostNet, locale, allocation.currency)}</span>
+              <p className="break-words text-xs lg:text-[11px] text-slate-500">{allocation.orderNo ?? "--"} · {allocation.batchCode ?? "--"} · {copy.table.qty}: {allocation.quantity}</p>
+              <span className="whitespace-nowrap text-right font-mono text-xs lg:text-[11px] text-slate-500">{formatFinanceMoney(allocation.unitCostNet, locale, allocation.currency)} / {copy.table.qty}</span>
+              <div className="col-span-2"><ConfidenceBadge confidence={allocation.confidence} /></div>
+            </div>
+          ))}
+        </div>
+        <div className="hidden overflow-x-auto lg:block">
           <Table>
             <TableHeader>
               <TableRow>

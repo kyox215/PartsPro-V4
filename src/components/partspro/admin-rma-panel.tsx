@@ -7,7 +7,6 @@ import Image from "next/image";
 import {
   CheckCircle2,
   Clock3,
-  ChevronRight,
   ExternalLink,
   FileImage,
   Loader2,
@@ -390,6 +389,7 @@ export function AdminRmaPanel() {
   const [totalIsExact, setTotalIsExact] = React.useState(false);
   const [requests, setRequests] = React.useState<AdminRmaDto[]>([]);
   const [selectedId, setSelectedId] = React.useState("");
+  const [mobileDetailOpen, setMobileDetailOpen] = React.useState(false);
   const [selectedDetail, setSelectedDetail] = React.useState<AdminRmaDetailDto | null>(null);
   const [queueCounts, setQueueCounts] = React.useState<QueueCounts>(emptyQueueCounts);
   const [countsComplete, setCountsComplete] = React.useState(false);
@@ -420,6 +420,13 @@ export function AdminRmaPanel() {
   const [photoAttachment, setPhotoAttachment] = React.useState<AdminRmaDto["attachments"][number] | null>(null);
   const actionRetryKeysRef = React.useRef(new Map<string, string>());
   const pendingActionRef = React.useRef<ActionCode | "approve_wallet_refund" | null>(null);
+
+  React.useEffect(() => {
+    const desktop = window.matchMedia("(min-width: 1024px)");
+    const closeMobileDetail = (event: MediaQueryListEvent) => { if (event.matches) setMobileDetailOpen(false); };
+    desktop.addEventListener("change", closeMobileDetail);
+    return () => desktop.removeEventListener("change", closeMobileDetail);
+  }, []);
 
   const selectedRequest = React.useMemo(
     () =>
@@ -720,135 +727,8 @@ export function AdminRmaPanel() {
   const replacementCandidates =
     selectedDetail?.id === selectedId ? selectedDetail.replacementCandidates : [];
 
-  return (
-    <>
-      <section className="min-w-0 space-y-4">
-        <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.045)] sm:p-5 md:flex-row md:items-center md:justify-between">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <RotateCcw className="size-5 text-primary" />
-              <h2 className="truncate text-xl font-black tracking-normal">{copy.title}</h2>
-            </div>
-            <p className="mt-1 text-sm text-slate-500">
-              {countsComplete ? total : `≥${total}`} {copy.selectedCount}
-            </p>
-          </div>
-          <Button type="button" variant="outline" className="bg-white" disabled={isLoading} onClick={() => void refresh()}>
-            {isLoading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-            {isZh ? "刷新" : "Aggiorna"}
-          </Button>
-        </div>
-
-        {notice ? (
-          <AdminNotice tone={notice.tone} message={notice.message} />
-        ) : null}
-
-        <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
-          <div className="relative min-w-0">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <Label htmlFor="admin-rma-search" className="sr-only">{copy.search}</Label>
-            <Input
-              id="admin-rma-search"
-              className="bg-white pl-9"
-              placeholder={copy.searchPlaceholder}
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-            />
-          </div>
-          <label className="mt-3 block text-sm font-semibold sm:hidden">{isZh ? "处理阶段" : "Fase di gestione"}
-            <select className="mt-1 min-h-11 w-full rounded-md border bg-white px-3" value={queue} disabled={Boolean(pendingAction)} onChange={event => { setQueue(event.target.value as QueueTab); setPage(0); }}>
-              {[...ACTIVE_QUEUE_TABS, "archive" as QueueTab].map(tab => <option key={tab} value={tab}>{queueLabel(tab, isZh)} · {countsComplete ? queueCounts[tab] : `≥${queueCounts[tab]}`}</option>)}
-            </select>
-          </label>
-          <div className="mt-3 hidden gap-2 overflow-x-auto pb-1 sm:flex" role="tablist" aria-label={copy.title}>
-            {ACTIVE_QUEUE_TABS.map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                role="tab"
-                aria-selected={queue === tab}
-                className={cn(
-                  "flex min-h-11 shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs font-black transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40",
-                  queue === tab
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-slate-200 bg-white text-slate-700 hover:border-primary/40 hover:bg-primary/5"
-                )}
-                onClick={() => { setQueue(tab); setPage(0); }}
-              >
-                <span>{queueLabel(tab, isZh)}</span>
-                <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px]">
-                  {countsComplete ? queueCounts[tab] : `≥${queueCounts[tab]}`}
-                </span>
-              </button>
-            ))}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-slate-500">
-              {countsComplete ? `${total} ${copy.selectedCount}` : copy.countsIncomplete}
-            </p>
-            <Button
-              type="button"
-              size="sm"
-              variant={queue === "archive" ? "default" : "outline"}
-              aria-pressed={queue === "archive"}
-              onClick={() => { setQueue("archive"); setPage(0); }}
-            >
-              {copy.archive} <ChevronRight className="size-3.5" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="grid min-w-0 gap-4 xl:grid-cols-[390px_minmax(0,1fr)]">
-          <AdminBusyRegion label={copy.loading} pending={isLoading}>
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
-              <div className="mb-3 flex items-center justify-between gap-2 text-xs font-black uppercase text-slate-400">
-                <span>{queueLabel(queue, isZh)}</span>
-                <span>{countsComplete ? queueCounts[queue] : `≥${queueCounts[queue]}`}</span>
-              </div>
-              <div className="space-y-2" role="list">
-                {isLoading && requests.length === 0 ? (
-                  <AdminSkeletonRows rows={6} />
-                ) : requests.length === 0 ? (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
-                    {copy.emptyQueue}
-                  </div>
-                ) : (
-                  requests.map((request) => (
-                    <div key={request.id} role="listitem">
-                      <button
-                        type="button"
-                        disabled={Boolean(pendingAction) || Boolean(refundConfirmation)}
-                        aria-current={selectedId === request.id ? "true" : undefined}
-                        className={cn(
-                          "w-full rounded-lg border p-3 text-left transition hover:border-primary/30 hover:bg-primary/5 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40",
-                          selectedId === request.id
-                            ? "border-primary/40 bg-primary/8"
-                            : "border-slate-200 bg-white"
-                        )}
-                        onClick={() => setSelectedId(request.id)}
-                      >
-                        <div className="flex min-w-0 items-center gap-2">
-                          <span className="min-w-0 flex-1 truncate font-mono text-xs font-black">
-                            {request.rmaNo ?? copy.rma}
-                          </span>
-                          <Badge className="border border-primary/20 bg-primary/5 text-primary">
-                            {queueLabel(request.workflowQueue, isZh)}
-                          </Badge>
-                        </div>
-                        <div className="mt-2 truncate text-sm font-black text-slate-900">{request.productName}</div>
-                        <div className="mt-1 truncate text-xs font-semibold text-slate-500">
-                          {request.sku} · {request.orderNumber ?? "—"} · {completeQuantity(request)}
-                        </div>
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-              <AdminListPager page={page} pageSize={80} total={totalIsExact ? total : null} hasMore={hasMore} returned={requests.length} pending={isLoading || Boolean(pendingAction)} onPageChange={setPage} />
-            </div>
-          </AdminBusyRegion>
-
-          <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+  const detailPanel = (
+<div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
             {!selectedRequest ? (
               <AdminEmptyState title={copy.emptyDetail} className="xl:min-h-[420px]" />
             ) : (
@@ -1061,7 +941,7 @@ export function AdminRmaPanel() {
                                 unoptimized
                                 className="aspect-[4/3] w-full object-cover transition group-hover:scale-105"
                               />
-                              <span className="block truncate px-2 py-1.5 text-[11px] font-semibold text-slate-600">{attachment.name}</span>
+                              <span className="block truncate px-2 py-1.5 text-xs lg:text-[11px] font-semibold text-slate-600">{attachment.name}</span>
                             </button>
                           ) : (
                             <div
@@ -1094,8 +974,139 @@ export function AdminRmaPanel() {
               </div>
             )}
           </div>
+  );
+
+  return (
+    <>
+      <section className="admin-mobile-module min-w-0 space-y-2 lg:space-y-4">
+        <div className="admin-mobile-card flex flex-row items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_12px_30px_rgba(15,23,42,0.045)] sm:p-5 md:flex-row md:items-center md:justify-between">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <RotateCcw className="size-5 text-primary" />
+              <h2 className="truncate text-base font-black tracking-normal lg:text-xl">{copy.title}</h2>
+            </div>
+            <p className="mt-1 text-sm text-slate-500">
+              {countsComplete ? total : `≥${total}`} {copy.selectedCount}
+            </p>
+          </div>
+          <Button type="button" variant="outline" className="bg-white" disabled={isLoading} onClick={() => void refresh()}>
+            {isLoading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+            {isZh ? "刷新" : "Aggiorna"}
+          </Button>
+        </div>
+
+        {notice ? (
+          <AdminNotice tone={notice.tone} message={notice.message} />
+        ) : null}
+
+        <div className="admin-mobile-card admin-mobile-toolbar rounded-xl border border-slate-200 bg-white p-2 lg:p-4">
+          <div className="relative min-w-0">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+            <Label htmlFor="admin-rma-search" className="sr-only">{copy.search}</Label>
+            <Input
+              id="admin-rma-search"
+              className="bg-white pl-9"
+              placeholder={copy.searchPlaceholder}
+              value={searchInput}
+              onChange={(event) => setSearchInput(event.target.value)}
+            />
+          </div>
+          <div className="admin-mobile-tabs mt-2 flex gap-1 overflow-x-auto pb-1" role="tablist" aria-label={copy.title}>
+            {[...ACTIVE_QUEUE_TABS, "archive" as QueueTab].map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                aria-selected={queue === tab}
+                className={cn(
+                  "flex min-h-11 shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs font-black transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40",
+                  tab === "archive" && "lg:hidden",
+                  queue === tab
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-slate-200 bg-white text-slate-700 hover:border-primary/40 hover:bg-primary/5"
+                )}
+                onClick={() => { setQueue(tab); setPage(0); }}
+              >
+                <span>{queueLabel(tab, isZh)}</span>
+                <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-xs lg:text-[10px]">
+                  {countsComplete ? queueCounts[tab] : `≥${queueCounts[tab]}`}
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-slate-500">
+              {countsComplete ? `${total} ${copy.selectedCount}` : copy.countsIncomplete}
+            </p>
+            <Button type="button" size="sm" className="hidden lg:inline-flex" variant={queue === "archive" ? "default" : "outline"} aria-pressed={queue === "archive"} onClick={() => { setQueue("archive"); setPage(0); }}>{copy.archive}</Button>
+
+          </div>
+        </div>
+
+        <div className="grid min-w-0 gap-4 lg:grid-cols-[340px_minmax(0,1fr)] xl:grid-cols-[390px_minmax(0,1fr)]">
+          <AdminBusyRegion label={copy.loading} pending={isLoading}>
+            <div className="rounded-xl border border-slate-200 bg-white p-3">
+              <div className="mb-3 flex items-center justify-between gap-2 text-xs font-black uppercase text-slate-400">
+                <span>{queueLabel(queue, isZh)}</span>
+                <span>{countsComplete ? queueCounts[queue] : `≥${queueCounts[queue]}`}</span>
+              </div>
+              <div className="space-y-2" role="list">
+                {isLoading && requests.length === 0 ? (
+                  <AdminSkeletonRows rows={6} />
+                ) : requests.length === 0 ? (
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
+                    {copy.emptyQueue}
+                  </div>
+                ) : (
+                  requests.map((request) => (
+                    <div key={request.id} role="listitem">
+                      <button
+                        type="button"
+                        disabled={Boolean(pendingAction) || Boolean(refundConfirmation)}
+                        aria-current={selectedId === request.id ? "true" : undefined}
+                        className={cn(
+                          "admin-mobile-row w-full min-w-0 rounded-md border p-2 text-left transition hover:border-primary/30 hover:bg-primary/5 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40",
+                          selectedId === request.id
+                            ? "border-primary/40 bg-primary/8"
+                            : "border-slate-200 bg-white"
+                        )}
+                        onClick={() => { setSelectedId(request.id); setMobileDetailOpen(window.matchMedia("(max-width: 1023px)").matches); }}
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="min-w-0 flex-1 truncate font-mono text-xs font-black">
+                            {request.rmaNo ?? copy.rma}
+                          </span>
+                          <Badge className="border border-primary/20 bg-primary/5 text-primary">
+                            {queueLabel(request.workflowQueue, isZh)}
+                          </Badge>
+                        </div>
+                        <div className="mt-1 truncate text-[13px] font-bold text-slate-900">{request.productName}</div>
+                        <div className="mt-1 truncate text-xs font-semibold text-slate-500">
+                          {request.sku} · {copy.quantity}: {completeQuantity(request)} · {request.orderNumber ?? "—"}
+                        </div>
+                        <p className="mt-1 break-words text-xs lg:text-[11px] font-semibold text-primary">{request.recommendedAction ? recommendationLabel(request.recommendedAction, copy) : queueLabel(request.workflowQueue, isZh)}</p>
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+              <AdminListPager page={page} pageSize={80} total={totalIsExact ? total : null} hasMore={hasMore} returned={requests.length} pending={isLoading || Boolean(pendingAction)} onPageChange={setPage} />
+            </div>
+          </AdminBusyRegion>
+
+          <div className="hidden min-w-0 lg:block">{!mobileDetailOpen ? detailPanel : null}</div>
         </div>
       </section>
+
+      <Dialog open={mobileDetailOpen && Boolean(selectedRequest)} onOpenChange={(open) => { if (pendingAction || actionDialog || refundConfirmation) return; setMobileDetailOpen(open); }}>
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-none overflow-y-auto p-2 pt-10 sm:max-w-2xl lg:hidden">
+          <DialogHeader className="sr-only">
+            <DialogTitle>{selectedRequest?.rmaNo ?? copy.rma}</DialogTitle>
+            <DialogDescription>{copy.emptyDetail}</DialogDescription>
+          </DialogHeader>
+          {detailPanel}
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog open={Boolean(refundConfirmation)} onOpenChange={(open) => { if (!open) setRefundConfirmation(null); }}>
         <AlertDialogContent>
@@ -1684,7 +1695,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function DetailPill({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 rounded-md bg-slate-50 px-3 py-2">
-      <div className="text-[10px] font-black uppercase text-slate-400">{label}</div>
+      <div className="text-xs lg:text-[10px] font-black uppercase text-slate-400">{label}</div>
       <div className="mt-0.5 truncate text-sm font-black text-slate-800">{value}</div>
     </div>
   );
@@ -1702,7 +1713,7 @@ function DetailBlock({ children, title }: { children: React.ReactNode; title: st
 function ReadOnlySummary({ label, value }: { label: string; value: string | null | undefined }) {
   return (
     <div className="border-b border-slate-100 py-2 last:border-b-0">
-      <div className="text-[10px] font-black uppercase text-slate-400">{label}</div>
+      <div className="text-xs lg:text-[10px] font-black uppercase text-slate-400">{label}</div>
       <div className="mt-1 whitespace-pre-wrap text-sm font-semibold text-slate-700">{value?.trim() || "—"}</div>
     </div>
   );

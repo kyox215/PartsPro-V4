@@ -1,0 +1,6 @@
+import React from 'react';
+const subscribe = (cb:()=>void) => { window.addEventListener('fixture:navigation',cb); window.addEventListener('popstate',cb); return()=>{window.removeEventListener('fixture:navigation',cb);window.removeEventListener('popstate',cb);}; };
+const router={replace:(url:string)=>{history.replaceState({},'',url);window.dispatchEvent(new Event('fixture:navigation'));},push:(url:string)=>{history.pushState({},'',url);window.dispatchEvent(new Event('fixture:navigation'));},refresh:()=>window.dispatchEvent(new Event('fixture:refresh'))};
+export const useRouter=()=>router;
+export function useSearchParams(){const query=React.useSyncExternalStore(subscribe,()=>location.search,()=> '');return React.useMemo(()=>new URLSearchParams(query),[query]);}
+export const usePathname=()=>location.pathname;

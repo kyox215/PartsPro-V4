@@ -6,7 +6,7 @@ type Workspace = { userId: string | null; queries: Map<string, unknown> };
 const Context = React.createContext<Workspace | null>(null);
 export function AdminWorkspaceStateProvider({ userId, children }: { userId: string | null; children: React.ReactNode }) {
   const context = React.useMemo(() => ({ userId, queries: new Map<string, unknown>() }), [userId]);
-  return <Context.Provider value={context}>{children}</Context.Provider>;
+  return <Context.Provider key={userId ?? "anonymous"} value={context}>{children}</Context.Provider>;
 }
 
 function restoreShape<T>(raw: unknown, defaults: T): T {
@@ -23,16 +23,17 @@ function restoreShape<T>(raw: unknown, defaults: T): T {
 }
 
 // Stores query preferences only. Never use this hook for records, messages, forms or secrets.
-export function usePersistentAdminQuery<T extends object>(name: string, initial: T | (() => T), options: { persist?: boolean } = {}) {
+export function usePersistentAdminQuery<T extends object>(name: string, initial: T | (() => T), options: { persist?: boolean; storage?: "session" | "local" } = {}) {
   const workspace = React.useContext(Context);
   const storageKey = options.persist !== false && workspace?.userId ? `partspro:admin-query:v1:${workspace.userId}:${name}` : null;
+  const storageType = options.storage ?? "session";
   const [value, setValue] = React.useState<T>(() => {
     const defaults = typeof initial === "function" ? initial() : initial;
     const cached = workspace?.queries.get(name);
     if (cached) return restoreShape(cached, defaults);
     if (storageKey && typeof window !== "undefined") {
       try {
-        const stored = sessionStorage.getItem(storageKey);
+        const stored = (storageType === "local" ? localStorage : sessionStorage).getItem(storageKey);
         if (stored) return restoreShape(JSON.parse(stored), defaults);
       } catch { /* Optional query preferences. */ }
     }
@@ -41,9 +42,9 @@ export function usePersistentAdminQuery<T extends object>(name: string, initial:
   React.useEffect(() => {
     workspace?.queries.set(name, value);
     if (storageKey) {
-      try { sessionStorage.setItem(storageKey, JSON.stringify(value)); } catch { /* Storage may be disabled. */ }
+      try { (storageType === "local" ? localStorage : sessionStorage).setItem(storageKey, JSON.stringify(value)); } catch { /* Storage may be disabled. */ }
     }
-  }, [name, storageKey, workspace, value]);
+  }, [name, storageKey, storageType, workspace, value]);
   return [value, setValue] as const;
 }
 

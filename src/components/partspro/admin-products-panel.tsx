@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { AdminFieldGroup } from "./admin-field-group";
+import { AdminMobileTabs, useAdminMobile } from "./admin-mobile-layout";
 import { compatibilityReasonLabel, compatibilitySignalLabel } from "@/lib/admin-compatibility-copy";
 import { usePersistentAdminQuery, usePersistentAdminValue } from "./admin-workspace-state";
 import Image from "@/components/partspro/optimized-image";
@@ -31,6 +32,8 @@ import {
   FileText,
   ImageIcon,
   ListChecks,
+  List,
+  LayoutGrid,
   Loader2,
   MoreHorizontal,
   Package,
@@ -1705,6 +1708,20 @@ export function AdminProductsPanel({
   }));
   const [modelGroups, setModelGroups] = React.useState<DeviceModelGroup[]>([]);
   const [selectedSkus, setSelectedSkus] = React.useState<Set<string>>(() => new Set());
+  const [mobileSelectionMode, setMobileSelectionMode] = React.useState(false);
+  const [mobilePreference, setMobilePreference] = usePersistentAdminQuery("products.mobile-view", { value: "list" }, { storage: "local" });
+  const mobileView = mobilePreference.value;
+  const setMobileView = (value: string) => setMobilePreference({ value });
+  const productListRef = React.useRef<HTMLDivElement>(null);
+  function changeMobileView(value: "list" | "grid") {
+    const visible = Array.from(productListRef.current?.querySelectorAll<HTMLElement>("[data-product-sku]") ?? []).find(row => row.getBoundingClientRect().bottom > 100);
+    const sku = visible?.dataset.productSku;
+    setMobileView(value);
+    if (sku) requestAnimationFrame(() => {
+      const row = Array.from(productListRef.current?.querySelectorAll<HTMLElement>("[data-product-sku]") ?? []).find(item => item.dataset.productSku === sku);
+      row?.scrollIntoView({ block: "nearest" });
+    });
+  }
   const [notice, setNotice] = React.useState<ProductNotice | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
   const [isMutating, setIsMutating] = React.useState(false);
@@ -1999,7 +2016,7 @@ export function AdminProductsPanel({
     const controller = new AbortController();
     const timeoutId = window.setTimeout(() => {
       void refreshProducts(controller.signal);
-    }, 180);
+    }, 300);
 
     return () => {
       controller.abort();
@@ -2070,6 +2087,21 @@ export function AdminProductsPanel({
   const metrics = productMetrics;
   const pageCount = Math.min(Math.max(1, Math.ceil(dataSource.total / filters.pageSize)), Math.floor(5000 / filters.pageSize) + 1);
   const listReady = !isLoading && !dataSource.error && loadedFilterKey === JSON.stringify(filters);
+  const activeProductFilters = [
+    ...(filters.q ? [{ key: "q", label: filters.q, reset: { q: "" } }] : []),
+    ...(filters.department !== "all" ? [{ key: "department", label: text.catalogDepartmentLabels[filters.department], reset: { department: "all" as const } }] : []),
+    ...(filters.category !== "all" ? [{ key: "category", label: filters.category, reset: { category: "all" } }] : []),
+    ...(filters.brand !== "all" ? [{ key: "brand", label: filters.brand, reset: { brand: "all", modelSeries: "all", model: "all" } }] : []),
+    ...(filters.modelSeries !== "all" ? [{ key: "modelSeries", label: filters.modelSeries, reset: { modelSeries: "all", model: "all" } }] : []),
+    ...(filters.model !== "all" ? [{ key: "model", label: filters.model, reset: { model: "all" } }] : []),
+    ...(filters.catalogStatus !== "all" ? [{ key: "catalogStatus", label: filters.catalogStatus === "missing_image" ? text.missingImage : adminText.enums.catalogStatus[filters.catalogStatus], reset: { catalogStatus: "all" as const } }] : []),
+    ...(filters.stockStatus !== "all" ? [{ key: "stockStatus", label: adminText.enums.stockStatus[filters.stockStatus], reset: { stockStatus: "all" as const } }] : []),
+    ...(filters.supplier ? [{ key: "supplier", label: filters.supplier, reset: { supplier: "" } }] : []),
+    ...(filters.batchCode ? [{ key: "batchCode", label: filters.batchCode, reset: { batchCode: "" } }] : []),
+    ...(filters.issueFilter !== "all" ? [{ key: "issueFilter", label: filters.issueFilter, reset: { issueFilter: "all" as const } }] : []),
+    ...(filters.grade !== "all" ? [{ key: "grade", label: filters.grade, reset: { grade: "all" as const } }] : []),
+    ...(filters.activeRestockOnly ? [{ key: "restock", label: text.restockOnly, reset: { activeRestockOnly: false } }] : []),
+  ];
 
   function updateFilters(patch: Partial<ProductListFilters>) {
     productRequest.current.controller?.abort();
@@ -2385,7 +2417,6 @@ export function AdminProductsPanel({
 
   return (
     <section className="min-w-0 space-y-2 sm:space-y-4">
-      <p className="text-xs font-medium text-slate-600">{locale.startsWith("zh") ? "商品资料：商品、目录 · 采购与仓库：售出缺货、到货批次 · 商城内容：首页横幅" : "Catalogo: prodotti e voci · Acquisti e magazzino: esauriti e lotti · Contenuti: banner"}</p>
       <Tabs
         value={workspace}
         onValueChange={(value) => {
@@ -2396,13 +2427,13 @@ export function AdminProductsPanel({
           syncWorkspaceUrl(nextWorkspace);
         }}
       >
-        <TabsList className="group-data-horizontal/tabs:h-auto grid h-auto w-full grid-cols-1 gap-2 rounded-lg border border-slate-200 bg-white p-2 sm:grid-cols-3">
-          {[
-            { label: locale.startsWith("zh") ? "商品资料" : "Catalogo", items: [["products", text.workspaceProducts], ["directory", locale.startsWith("zh") ? "目录管理" : "Gestione catalogo"]] },
-            { label: locale.startsWith("zh") ? "采购与仓库" : "Acquisti e magazzino", items: [["sold-shortages", text.workspaceSoldShortages], ["batches", text.workspaceBatches]] },
-            { label: locale.startsWith("zh") ? "商城内容" : "Contenuti vetrina", items: [["banners", text.workspaceBanners]] },
-          ].map(group => <div key={group.label} role="group" aria-label={group.label} className="min-w-0 rounded-md bg-slate-50 p-1"><p className="px-2 py-1 text-[11px] font-semibold text-slate-500">{group.label}</p><div className="flex min-w-0 gap-1">{group.items.map(([value,label]) => <TabsTrigger key={value} value={value} className="h-auto min-h-10 min-w-0 flex-1 whitespace-normal rounded-md px-2 py-2 text-center text-xs font-bold leading-4">{label}</TabsTrigger>)}</div></div>)}
-        </TabsList>
+        <AdminMobileTabs value={workspace} className="admin-product-navigation">
+          <TabsTrigger value="products">{locale.startsWith("zh") ? "商品" : "Prodotti"}</TabsTrigger>
+          <TabsTrigger value="directory">{locale.startsWith("zh") ? "目录" : "Catalogo"}</TabsTrigger>
+          <TabsTrigger value="sold-shortages">{locale.startsWith("zh") ? "缺货" : "Esauriti"}</TabsTrigger>
+          <TabsTrigger value="batches">{locale.startsWith("zh") ? "批次" : "Lotti"}</TabsTrigger>
+          <TabsTrigger value="banners">{locale.startsWith("zh") ? "横幅" : "Banner"}</TabsTrigger>
+        </AdminMobileTabs>
 
         <TabsContent value="directory" className="m-0 pt-2">
           <AdminCatalogDirectory locale={locale} canEdit={capabilities.editContent} canCreate={capabilities.create} onGuardChange={setDirectoryGuard}
@@ -2413,16 +2444,16 @@ export function AdminProductsPanel({
         </TabsContent>
 
         <TabsContent value="products" className="m-0 pt-2">
-          <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.04)] sm:rounded-lg sm:shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
-            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-3 sm:px-4">
+          <div className="admin-products-content overflow-hidden rounded-md border border-slate-200 bg-white sm:rounded-lg">
+            <div className="flex min-h-11 items-center justify-between gap-2 border-b border-slate-200 px-2 py-0 sm:px-4 sm:py-2">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-base font-bold tracking-normal text-slate-950">{text.title}</h1>
+                  <h1 className="hidden text-base font-bold tracking-normal text-slate-950 sm:block">{text.title}</h1>
                   <span className="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
                     {dataSource.returned}/{dataSource.total}
-                  </span>
+                  </span><span className="text-xs text-slate-500 lg:hidden">{text.netPrice}</span>
                 </div>
-                <div className="mt-1 truncate text-xs font-medium text-slate-500">
+                <div className="mt-1 hidden truncate text-xs font-medium text-slate-500 sm:block">
                   {dataSource.syncedAt
                     ? formatAdminMessage(text.sourceStats, {
                         returned: dataSource.returned,
@@ -2452,9 +2483,9 @@ export function AdminProductsPanel({
                   </Button>
                 )}
                 {capabilities.create && (
-                  <Button className="h-10 px-3" onClick={() => openDrawer("create")}>
+                  <Button className="h-10 px-3" aria-label={text.create} onClick={() => openDrawer("create")}>
                     <Plus className="size-4" />
-                    {text.create}
+                    <span className="hidden sm:inline">{text.create}</span>
                   </Button>
                 )}
                 <DropdownMenu>
@@ -2486,17 +2517,17 @@ export function AdminProductsPanel({
               </div>
             </div>
 
-            <div className="grid gap-2 border-b border-slate-200 bg-slate-50/70 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_180px_auto] sm:px-4">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 border-b border-slate-200 bg-white px-2 py-0 sm:grid-cols-[minmax(0,1fr)_180px_auto] sm:px-4 sm:py-2">
               <ProductSearchField
                 value={filters.q}
                 text={text}
                 onChange={(value) => updateFilters({ q: value })}
               />
-              <CatalogStatusSelect
+              <div className="hidden sm:block"><CatalogStatusSelect
                 value={filters.catalogStatus}
                 text={text}
                 onChange={(catalogStatus) => updateFilters({ catalogStatus })}
-              />
+              /></div>
               <Button
                 variant="outline"
                 aria-label={text.filters}
@@ -2505,17 +2536,28 @@ export function AdminProductsPanel({
               >
                 <SlidersHorizontal className="size-4" />
                 {text.filters}
+                {[filters.department !== "all", filters.category !== "all", filters.brand !== "all", filters.modelSeries !== "all", filters.model !== "all", filters.catalogStatus !== "all", filters.stockStatus !== "all", Boolean(filters.supplier), Boolean(filters.batchCode), filters.issueFilter !== "all", filters.grade !== "all", filters.activeRestockOnly].filter(Boolean).length || null}
               </Button>
             </div>
-
-            <div className="min-w-0">
-            {(filters.q || filters.brand !== "all" || filters.model !== "all" || filters.catalogStatus !== "all" || filters.stockStatus !== "all" || filters.supplier || filters.batchCode || filters.issueFilter !== "all" || filters.grade !== "all" || filters.activeRestockOnly) && (
-              <div className="flex min-w-0 flex-wrap items-center gap-2 border-b px-3 py-2 text-xs" aria-label={text.activeFilters}>
-                <span className="font-bold">{text.activeFilters}:</span>
-                <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">{[filters.q, filters.brand !== "all" ? filters.brand : "", filters.modelSeries !== "all" ? filters.modelSeries : "", filters.model !== "all" ? filters.model : "", filters.catalogStatus !== "all" ? (filters.catalogStatus === "missing_image" ? text.missingImage : adminText.enums.catalogStatus[filters.catalogStatus]) : "", filters.supplier, filters.batchCode, filters.stockStatus !== "all" ? filters.stockStatus : "", filters.issueFilter !== "all" ? filters.issueFilter : "", filters.grade !== "all" ? filters.grade : "", filters.activeRestockOnly ? text.restockOnly : ""].filter(Boolean).join(" · ")}</span>
-                <Button size="sm" variant="ghost" onClick={() => updateFilters(defaultFilters)}>{text.clearFilters}</Button>
+            <div className="flex min-h-11 min-w-0 items-center justify-between gap-1 border-b px-2 lg:hidden">
+              <div className="flex min-w-0 items-center overflow-x-auto">
+                <Button variant={filters.catalogStatus === "all" && filters.stockStatus === "all" ? "secondary" : "ghost"} className="px-2" onClick={() => updateFilters({ catalogStatus: "all", stockStatus: "all" })}>{locale.startsWith("zh") ? "全部" : "Tutti"}</Button>
+                <Button variant={filters.catalogStatus === "active" ? "secondary" : "ghost"} className="px-2" onClick={() => updateFilters({ catalogStatus: "active", stockStatus: "all" })}>{locale.startsWith("zh") ? "在售" : "Attivi"}</Button>
+                <Button variant={filters.stockStatus === "Out of Stock" ? "secondary" : "ghost"} className="px-2" onClick={() => updateFilters({ stockStatus: "Out of Stock" })}>{locale.startsWith("zh") ? "缺货" : "Esauriti"}</Button>
               </div>
-            )}
+              <div className="flex shrink-0 items-center">
+                <Button variant="ghost" size="icon" aria-label={locale.startsWith("zh") ? "紧凑列表" : "Elenco compatto"} aria-pressed={mobileView !== "grid"} onClick={() => changeMobileView("list")}><List className="size-4" /></Button>
+                <Button variant="ghost" size="icon" aria-label={locale.startsWith("zh") ? "双列卡片" : "Griglia a due colonne"} aria-pressed={mobileView === "grid"} onClick={() => changeMobileView("grid")}><LayoutGrid className="size-4" /></Button>
+                <Button variant="ghost" className="px-1" aria-pressed={mobileSelectionMode} onClick={() => { setMobileSelectionMode(!mobileSelectionMode); if (mobileSelectionMode) setSelectedSkus(new Set()); }}>{mobileSelectionMode ? text.cancel : (locale.startsWith("zh") ? "选择" : "Seleziona")}</Button>
+              </div>
+            </div>
+
+            <div ref={productListRef} className={cn("min-w-0", selectedProducts.length > 0 && "pb-28 lg:pb-0")}>
+            {activeProductFilters.length > 0 && <div className="flex min-w-0 items-center gap-1 border-b px-2" aria-label={text.activeFilters}>
+              <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+                {activeProductFilters.map(item => <Button key={item.key} variant="ghost" className="shrink-0 gap-1 px-2 text-xs" onClick={() => updateFilters(item.reset)} aria-label={`${text.clearFilters}: ${item.label}`}><span className="max-w-36 truncate">{item.label}</span><XCircle className="size-3.5" /></Button>)}
+              </div><Button variant="ghost" className="shrink-0 px-1 text-xs" onClick={() => updateFilters(defaultFilters)}>{text.clearFilters}</Button>
+            </div>}
             {dataSource.error && <div className="flex flex-wrap items-center gap-2 p-3" role="alert"><span className="min-w-0 flex-1 break-words">{text.syncError}</span><Button variant="outline" disabled={isLoading} onClick={() => void refreshProducts()}><RefreshCw className="size-4" />{text.retrySync}</Button></div>}
 
             {notice && (
@@ -2525,8 +2567,8 @@ export function AdminProductsPanel({
             )}
 
             {selectedProducts.length > 0 && (
-              <div className="px-3 pt-3 sm:px-4">
-                <div className="flex flex-col gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="admin-mobile-bulk-bar px-3 pt-3 sm:px-4">
+                <div className="flex flex-col gap-1 rounded-lg border border-primary/20 bg-white p-2 text-sm sm:flex-row sm:items-center sm:justify-between">
                   <div className="font-semibold text-slate-800">
                     {formatAdminMessage(text.selectedCount, { count: selectedProducts.length })}
                   </div>
@@ -2567,8 +2609,9 @@ export function AdminProductsPanel({
               </div>
             )}
 
-            {(filters.department !== "all" || filters.category !== "all") && <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm"><span>{text.catalogDepartment}: {filters.department === "all" ? "—" : text.catalogDepartmentLabels[filters.department]} · {text.category}: {filters.category === "all" ? "—" : filters.category}</span><Button size="sm" variant="outline" onClick={() => updateFilters({ department: "all", category: "all" })}>{text.clearFilters}</Button></div>}
             <ProductTable
+              mobileView={mobileView === "grid" ? "grid" : "list"}
+              selectionMode={mobileSelectionMode}
               products={visibleProducts}
               selectedSkus={selectedSkus}
               isLoading={isLoading}
@@ -2684,7 +2727,7 @@ export function AdminProductsPanel({
         onSaved={(product) => {
           setCreateDirectoryNode(null);
           setDrawerProduct(product);
-          setDrawerMode("view");
+          setDrawerMode(window.matchMedia("(max-width: 767px)").matches ? null : "view");
           setDrawerInlineEditSku(null);
         }}
         onStockAdjust={setStockAdjustProduct}
@@ -2809,8 +2852,8 @@ function SupplierBatchesPanel({
   const activeFilterCount = countSupplierBatchFilters(filters);
 
   return (
-    <section className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
-      <div className="flex flex-col gap-3 border-b border-slate-200 px-3 py-3 lg:flex-row lg:items-center lg:justify-between">
+    <section className="admin-mobile-card overflow-hidden rounded-md border border-slate-200 bg-white">
+      <div className="flex items-center justify-between gap-1 border-b border-slate-200 px-2 py-1 lg:px-3 lg:py-3">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-base font-bold tracking-normal text-slate-950">
@@ -2820,7 +2863,7 @@ function SupplierBatchesPanel({
               {dataSource.returned}/{dataSource.total}
             </span>
           </div>
-          <div className="mt-1 truncate text-xs font-medium text-slate-500">
+          <div className="mt-1 hidden truncate text-xs font-medium text-slate-500 sm:block">
             {dataSource.syncedAt
               ? formatAdminMessage(copy.sourceStats, {
                   returned: dataSource.returned,
@@ -2872,7 +2915,7 @@ function SupplierBatchesPanel({
             onDownload={onDownloadTemplate}
           />
         </div>
-        <div className="flex w-full gap-2 sm:hidden">
+        <div className="flex shrink-0 gap-1 sm:hidden">
           <Button
             variant="outline"
             className="min-h-11 flex-1 bg-white"
@@ -2907,14 +2950,14 @@ function SupplierBatchesPanel({
         </div>
       ) : null}
 
-      <div className="border-b border-slate-200 bg-slate-50/70 px-3 py-3 sm:hidden">
+      <div className="border-b border-slate-200 bg-white px-2 py-1 sm:hidden">
         <Input
           value={filters.q}
           className="h-11 w-full bg-white text-base"
           placeholder={copy.searchPlaceholder}
           onChange={(event) => onChange({ q: event.target.value })}
         />
-        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
+        <div className="mt-1 grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-1">
           <Button
             variant="outline"
             className="min-h-11 min-w-0 bg-white px-2 text-sm"
@@ -2938,7 +2981,7 @@ function SupplierBatchesPanel({
             </SelectContent>
           </Select>
         </div>
-        <div className="mt-2 grid grid-cols-4 gap-1.5">
+        <div className="mt-1 hidden grid-cols-4 gap-1.5">
           <Button variant="outline" className="min-h-11 min-w-0 bg-white px-1 text-xs" onClick={() => onQuickRange("today")}>
             {copy.quickToday}
           </Button>
@@ -3208,33 +3251,19 @@ function SupplierBatchesPanel({
             </TableBody>
           </Table>
         </div>
-        <div className="space-y-2 p-2 sm:hidden">
-          {batches.length ? batches.map((batch) => (
-            <article key={`mobile-${batch.id}`} className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <button type="button" className="min-w-0 text-left" onClick={() => onOpenDetail(batch)}>
-                  <div className="line-clamp-2 break-words font-mono text-xs font-black text-slate-950 [overflow-wrap:anywhere]">{batch.batchCode}</div>
-                  <div className="mt-1 text-xs font-semibold text-slate-600">{batch.supplierName ?? text.none}</div>
-                </button>
-                <SupplierBatchVerificationBadge batch={batch} text={text} />
-              </div>
-              <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
-                <BatchMobileField label={copy.quantity} value={`${batch.lineQtyTotal}/${batch.totalQty}`} />
-                <BatchMobileField label={copy.lineCount} value={String(batch.lineCount)} />
-                <BatchMobileField label={copy.lineTotal} value={formatSupplierBatchMoney(batch.lineCostTotal, batch.currency, language === "it" ? "it-IT" : "zh-CN")} />
-                <BatchMobileField label={copy.productStatus} value={`${copy.active} ${batch.activeProductCount} · ${copy.draft} ${batch.draftProductCount}`} />
-                <BatchMobileField label={copy.receivedAt} value={batch.receivedAt ? formatSupplierBatchDateTime(batch.receivedAt, language === "it" ? "it-IT" : "zh-CN") : text.none} />
-                <BatchMobileField
-                  label={copy.costStatus}
-                  value={batch.costSummary ? copy.costStatusLabels[batch.costSummary.costStatus] : copy.costStatusLabels.unrecorded}
-                />
-              </dl>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button variant="outline" size="sm" className="h-11 min-h-11 bg-white" onClick={() => onOpenDetail(batch)}>{copy.openDetail}</Button>
-                <Button variant="ghost" size="sm" className="h-11 min-h-11" onClick={() => onViewProducts(batch)}>{copy.viewProducts}</Button>
-              </div>
-            </article>
-          )) : !isLoading ? <div className="p-6 text-center text-sm font-semibold text-slate-500">{copy.empty}</div> : null}
+        <div className="divide-y sm:hidden">
+          {batches.length ? batches.map(batch => <article key={`mobile-${batch.id}`} className="flex min-h-[88px] min-w-0 items-center gap-1 px-2 py-2">
+            <button type="button" className="min-h-11 min-w-0 flex-1 text-left" onClick={() => onOpenDetail(batch)}>
+              <span className="block truncate font-mono text-xs font-bold">{batch.batchCode}</span>
+              <span className="block truncate text-sm">{batch.supplierName ?? text.none}</span>
+              <span className="block text-xs text-slate-500">{formatSupplierBatchDateTime(batch.receivedAt || batch.createdAt, language === "it" ? "it-IT" : "zh-CN")} · {copy.quantity} {batch.lineQtyTotal}/{batch.totalQty}</span>
+            </button>
+            <div className="shrink-0 text-right text-xs"><strong className="block">{formatSupplierBatchMoney(batch.lineCostTotal, batch.currency, language === "it" ? "it-IT" : "zh-CN")}</strong><SupplierBatchVerificationBadge batch={batch} text={text} />{batch.shortQty > 0 && <span className="block text-amber-700">{copy.shortQty} {batch.shortQty}</span>}</div>
+            <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`${text.moreActions}: ${batch.batchCode}`}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onOpenDetail(batch)}>{copy.openDetail}</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onViewProducts(batch)}>{copy.viewProducts}</DropdownMenuItem>
+            </DropdownMenuContent></DropdownMenu>
+          </article>) : !isLoading ? <div className="p-3 text-sm text-slate-500">{copy.empty}</div> : <AdminSkeletonRows rows={5} />}
         </div>
       </div>
 
@@ -4458,15 +4487,25 @@ function AdminHomeBannersPanel({
   text: typeof panelText.zh | typeof panelText.it;
 }) {
   const copy = text.banners;
+  const mobile = useAdminMobile();
+  const [editorOpen, setEditorOpen] = React.useState(false);
   const [banners, setBanners] = React.useState<AdminHomeBanner[]>([]);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [formValues, setFormValues] = React.useState<HomeBannerFormValues>(() =>
     homeBannerFormDefaults()
   );
+  const [initialBanner, setInitialBanner] = React.useState(() => JSON.stringify(homeBannerFormDefaults()));
+  const bannerDirty = (editorOpen || !mobile) && JSON.stringify(formValues) !== initialBanner;
   const [isLoading, setIsLoading] = React.useState(true);
   const [isSaving, setIsSaving] = React.useState(false);
   const [pendingId, setPendingId] = React.useState<string | null>(null);
   const [isUploading, setIsUploading] = React.useState(false);
+  const bannerBusy = isSaving || isUploading || Boolean(pendingId);
+  React.useEffect(() => {
+    if (!bannerDirty && !bannerBusy) return;
+    const protect = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", protect); return () => window.removeEventListener("beforeunload", protect);
+  }, [bannerDirty, bannerBusy]);
   const [notice, setNotice] = React.useState<ProductNotice | null>(null);
   const sortedBanners = React.useMemo(() => sortHomeBanners(banners), [banners]);
   const activeCount = sortedBanners.filter((banner) => banner.isActive).length;
@@ -4477,6 +4516,11 @@ function AdminHomeBannersPanel({
   const availableModels =
     selectedSeriesGroup?.models ?? selectedBrandGroup?.models ?? [];
   const previewHref = buildBannerPreviewHref(formValues);
+  function closeBannerEditor() {
+    if (bannerBusy || (bannerDirty && !window.confirm(text.unsavedPrompt))) return;
+    setFormValues(JSON.parse(initialBanner)); setEditorOpen(false);
+  }
+
 
   const refreshBanners = React.useCallback(
     async (signal?: AbortSignal) => {
@@ -4535,16 +4579,19 @@ function AdminHomeBannersPanel({
   }
 
   function startCreate() {
-    setEditingId(null);
-    setFormValues(homeBannerFormDefaults(sortedBanners.length));
+    if (bannerBusy || (bannerDirty && !window.confirm(text.unsavedPrompt))) return;
+    const next = homeBannerFormDefaults(sortedBanners.length);
+    setEditingId(null); setFormValues(next); setInitialBanner(JSON.stringify(next)); setEditorOpen(true);
   }
 
   function startEdit(banner: AdminHomeBanner) {
-    setEditingId(banner.id);
-    setFormValues(homeBannerFormDefaults(sortedBanners.length, banner));
+    if (bannerBusy || (bannerDirty && !window.confirm(text.unsavedPrompt))) return;
+    const next = homeBannerFormDefaults(sortedBanners.length, banner);
+    setEditingId(banner.id); setFormValues(next); setInitialBanner(JSON.stringify(next)); setEditorOpen(true);
   }
 
   async function saveBanner() {
+    if (bannerBusy) return;
     setIsSaving(true);
 
     try {
@@ -4554,7 +4601,8 @@ function AdminHomeBannersPanel({
 
       setBanners((current) => upsertHomeBanner(current, saved));
       setEditingId(saved.id);
-      setFormValues(homeBannerFormDefaults(sortedBanners.length, saved));
+      const next = homeBannerFormDefaults(sortedBanners.length, saved);
+      setFormValues(next); setInitialBanner(JSON.stringify(next)); setEditorOpen(false);
       setNotice({ tone: "success", message: copy.saved });
     } catch (error) {
       setNotice({ tone: "error", message: getErrorMessage(error) || text.saveError });
@@ -4647,188 +4695,22 @@ function AdminHomeBannersPanel({
     }
   }
 
-  return (
-    <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
-      <section className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
-        <div className="flex flex-col gap-2 border-b border-slate-200 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
-          <div className="min-w-0">
-            <h2 className="text-base font-black text-slate-950">{copy.title}</h2>
-            <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
-              {copy.description}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge className="border-primary/15 bg-primary/8 text-primary" variant="outline">
-              {formatAdminMessage(copy.activeCount, { count: activeCount })}
-            </Badge>
-            <Button
-              className="h-8 bg-white px-2"
-              disabled={isLoading}
-              onClick={() => void refreshBanners()}
-              size="xs"
-              variant="outline"
-            >
-              <RefreshCw className={cn("size-4", isLoading && "animate-spin")} />
-              {copy.refresh}
-            </Button>
-            <Button className="h-8 px-2" onClick={startCreate} size="xs">
-              <Plus className="size-4" />
-              {copy.add}
-            </Button>
-          </div>
-        </div>
-
-        {notice && (
-          <div className="px-3 pt-3 sm:px-4">
-            <AdminNotice tone={notice.tone} message={notice.message} onDismiss={() => setNotice(null)} dismissLabel={text.close} />
-          </div>
-        )}
-
-        <AdminBusyRegion
-          className="p-3 sm:p-4"
-          label={copy.refresh}
-          pending={isLoading && sortedBanners.length > 0}
-        >
-          {isLoading && sortedBanners.length === 0 ? (
-            <AdminSkeletonRows rows={4} />
-          ) : sortedBanners.length > 0 ? (
-            <div className="grid gap-3">
-              {sortedBanners.map((banner, index) => (
-                <article
-                  key={banner.id}
-                  className={cn(
-                    "grid gap-3 rounded-lg border border-slate-200 bg-slate-50/60 p-2 sm:grid-cols-[220px_minmax(0,1fr)]",
-                    editingId === banner.id && "border-primary/40 bg-primary/5"
-                  )}
-                >
-                  <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
-                    <div className="relative aspect-[4/1]">
-                      <Image
-                        alt={banner.imageAlt}
-                        className="object-contain"
-                        fill
-                        loading="lazy"
-                        sizes="220px"
-                        src={banner.imageUrl}
-                      />
-                    </div>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <h3 className="truncate text-sm font-black text-slate-950">
-                          {banner.title}
-                        </h3>
-                        <p className="mt-1 truncate text-xs font-semibold text-slate-500">
-                          {banner.href}
-                        </p>
-                      </div>
-                      <Badge
-                        className={cn(
-                          "border",
-                          banner.isActive
-                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-                            : "border-slate-200 bg-white text-slate-500"
-                        )}
-                        variant="outline"
-                      >
-                        {banner.isActive ? copy.active : copy.inactive}
-                      </Badge>
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      <Button
-                        className="h-8 bg-white px-2"
-                        onClick={() => startEdit(banner)}
-                        size="xs"
-                        variant="outline"
-                      >
-                        <Edit className="size-4" />
-                        {copy.edit}
-                      </Button>
-                      <Button
-                        asChild
-                        className="h-8 bg-white px-2"
-                        size="xs"
-                        variant="outline"
-                      >
-                        <Link href={banner.href} target="_blank">
-                          <ExternalLink className="size-4" />
-                          {copy.openCatalog}
-                        </Link>
-                      </Button>
-                      <Button
-                        className="h-8 bg-white px-2"
-                        disabled={pendingId === banner.id}
-                        onClick={() => void patchBanner(banner, { isActive: !banner.isActive })}
-                        size="xs"
-                        variant="outline"
-                      >
-                        {pendingId === banner.id ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : banner.isActive ? (
-                          <EyeOff className="size-4" />
-                        ) : (
-                          <Eye className="size-4" />
-                        )}
-                        {banner.isActive ? copy.inactive : copy.active}
-                      </Button>
-                      <Button
-                        aria-label={copy.moveUp}
-                        className="h-8 bg-white px-2"
-                        disabled={index === 0 || pendingId === banner.id}
-                        onClick={() => void moveBanner(index, -1)}
-                        size="xs"
-                        variant="outline"
-                      >
-                        <ChevronLeft className="size-4 rotate-90" />
-                      </Button>
-                      <Button
-                        aria-label={copy.moveDown}
-                        className="h-8 bg-white px-2"
-                        disabled={index === sortedBanners.length - 1 || pendingId === banner.id}
-                        onClick={() => void moveBanner(index, 1)}
-                        size="xs"
-                        variant="outline"
-                      >
-                        <ChevronRight className="size-4 rotate-90" />
-                      </Button>
-                      <Button
-                        className="h-8 bg-white px-2 text-red-600 hover:text-red-700"
-                        disabled={pendingId === banner.id}
-                        onClick={() => void removeBanner(banner)}
-                        size="xs"
-                        variant="outline"
-                      >
-                        <XCircle className="size-4" />
-                        {copy.delete}
-                      </Button>
-                    </div>
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500">
-              {copy.empty}
-            </div>
-          )}
-        </AdminBusyRegion>
-      </section>
-
-      <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.04)] sm:p-4">
+  const bannerEditor = (
+      <section className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-white p-3 lg:rounded-lg lg:border lg:p-4">
+        {notice?.tone === "error" && <AdminNotice tone="error" message={notice.message} />}
         <div className="mb-3 flex items-center justify-between gap-2">
           <div className="min-w-0">
             <h2 className="truncate text-sm font-black text-slate-950">
               {editingId ? copy.edit : copy.newTitle}
             </h2>
-            <p className="mt-1 text-xs font-semibold leading-5 text-slate-500">
+            <p className="mt-1 hidden text-xs font-semibold leading-5 text-slate-500 sm:block">
               {copy.uploadHint}
             </p>
           </div>
           <Badge variant="outline">4:1</Badge>
         </div>
 
-        <div className="grid gap-3">
+        <fieldset disabled={bannerBusy} className="grid min-w-0 gap-3">
           <Field label={copy.bannerTitle}>
             <Input
               value={formValues.title}
@@ -4987,7 +4869,8 @@ function AdminHomeBannersPanel({
             {copy.minStock}
           </label>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="admin-mobile-save-bar sticky bottom-0 flex flex-wrap gap-2 border-t bg-white pt-2">
+            {mobile && <Button variant="outline" onClick={closeBannerEditor}>{text.cancel}</Button>}
             <AdminActionButton pending={isSaving} disabled={isSaving || isUploading} onClick={() => void saveBanner()}>
               {!(isSaving) && (<CheckCircle2 className="size-4" />)}
               {isSaving ? copy.saving : copy.save}
@@ -4999,8 +4882,188 @@ function AdminHomeBannersPanel({
               </Link>
             </Button>
           </div>
-        </div>
+        </fieldset>
       </section>
+  );
+
+  return (
+    <div data-admin-dirty={bannerDirty ? "true" : "false"} data-admin-mutating={bannerBusy ? "true" : "false"} className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_420px]">
+      <section className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.04)]">
+        <div className="flex flex-col gap-2 border-b border-slate-200 px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+          <div className="min-w-0">
+            <h2 className="text-base font-black text-slate-950">{copy.title}</h2>
+            <p className="mt-1 hidden text-xs font-semibold leading-5 text-slate-500 sm:block">
+              {copy.description}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge className="border-primary/15 bg-primary/8 text-primary" variant="outline">
+              {formatAdminMessage(copy.activeCount, { count: activeCount })}
+            </Badge>
+            <Button
+              className="h-8 bg-white px-2"
+              disabled={isLoading}
+              onClick={() => void refreshBanners()}
+              size="xs"
+              variant="outline"
+            >
+              <RefreshCw className={cn("size-4", isLoading && "animate-spin")} />
+              {copy.refresh}
+            </Button>
+            <Button className="h-8 px-2" onClick={startCreate} size="xs">
+              <Plus className="size-4" />
+              {copy.add}
+            </Button>
+          </div>
+        </div>
+
+        {notice && (
+          <div className="px-3 pt-3 sm:px-4">
+            <AdminNotice tone={notice.tone} message={notice.message} onDismiss={() => setNotice(null)} dismissLabel={text.close} />
+          </div>
+        )}
+
+        <AdminBusyRegion
+          className="p-3 sm:p-4"
+          label={copy.refresh}
+          pending={isLoading && sortedBanners.length > 0}
+        >
+          {isLoading && sortedBanners.length === 0 ? (
+            <AdminSkeletonRows rows={4} />
+          ) : sortedBanners.length > 0 ? (
+            <div className="divide-y">
+              {sortedBanners.map((banner, index) => (
+                <article
+                  key={banner.id}
+                  className={cn(
+                    "grid grid-cols-[80px_minmax(0,1fr)] gap-2 bg-white py-2 sm:grid-cols-[220px_minmax(0,1fr)]",
+                    editingId === banner.id && "border-primary/40 bg-primary/5"
+                  )}
+                >
+                  <div className="overflow-hidden rounded-md border border-slate-200 bg-white">
+                    <div className="relative aspect-[4/1]">
+                      <Image
+                        alt={banner.imageAlt}
+                        className="object-contain"
+                        fill
+                        loading="lazy"
+                        sizes="220px"
+                        src={banner.imageUrl}
+                      />
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h3 className="truncate text-sm font-black text-slate-950">
+                          {banner.title}
+                        </h3>
+                        <p className="mt-1 truncate text-xs font-semibold text-slate-500">
+                          {banner.href}
+                        </p>
+                      </div>
+                      <Badge
+                        className={cn(
+                          "border",
+                          banner.isActive
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : "border-slate-200 bg-white text-slate-500"
+                        )}
+                        variant="outline"
+                      >
+                        {banner.isActive ? copy.active : copy.inactive}
+                      </Badge>
+                    </div>
+                    <div className="flex justify-end sm:hidden"><DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label={`${text.moreActions}: ${banner.title}`}><MoreHorizontal className="size-4" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
+                      <DropdownMenuItem disabled={bannerBusy} onClick={() => startEdit(banner)}>{copy.edit}</DropdownMenuItem>
+                      <DropdownMenuItem asChild><Link href={banner.href} target="_blank">{copy.openCatalog}</Link></DropdownMenuItem>
+                      <DropdownMenuItem disabled={bannerBusy} onClick={() => void patchBanner(banner, { isActive: !banner.isActive })}>{banner.isActive ? copy.inactive : copy.active}</DropdownMenuItem>
+                      <DropdownMenuItem disabled={bannerBusy || index === 0} onClick={() => void moveBanner(index,-1)}>{copy.moveUp}</DropdownMenuItem>
+                      <DropdownMenuItem disabled={bannerBusy || index === sortedBanners.length-1} onClick={() => void moveBanner(index,1)}>{copy.moveDown}</DropdownMenuItem>
+                      <DropdownMenuItem disabled={bannerBusy} className="text-red-600" onClick={() => void removeBanner(banner)}>{copy.delete}</DropdownMenuItem>
+                    </DropdownMenuContent></DropdownMenu></div>
+                    <div className="mt-2 hidden flex-wrap gap-1.5 sm:flex">
+                      <Button
+                        className="h-8 bg-white px-2"
+                        onClick={() => startEdit(banner)}
+                        size="xs"
+                        variant="outline"
+                      >
+                        <Edit className="size-4" />
+                        {copy.edit}
+                      </Button>
+                      <Button
+                        asChild
+                        className="h-8 bg-white px-2"
+                        size="xs"
+                        variant="outline"
+                      >
+                        <Link href={banner.href} target="_blank">
+                          <ExternalLink className="size-4" />
+                          {copy.openCatalog}
+                        </Link>
+                      </Button>
+                      <Button
+                        className="h-8 bg-white px-2"
+                        disabled={pendingId === banner.id}
+                        onClick={() => void patchBanner(banner, { isActive: !banner.isActive })}
+                        size="xs"
+                        variant="outline"
+                      >
+                        {pendingId === banner.id ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : banner.isActive ? (
+                          <EyeOff className="size-4" />
+                        ) : (
+                          <Eye className="size-4" />
+                        )}
+                        {banner.isActive ? copy.inactive : copy.active}
+                      </Button>
+                      <Button
+                        aria-label={copy.moveUp}
+                        className="h-8 bg-white px-2"
+                        disabled={index === 0 || pendingId === banner.id}
+                        onClick={() => void moveBanner(index, -1)}
+                        size="xs"
+                        variant="outline"
+                      >
+                        <ChevronLeft className="size-4 rotate-90" />
+                      </Button>
+                      <Button
+                        aria-label={copy.moveDown}
+                        className="h-8 bg-white px-2"
+                        disabled={index === sortedBanners.length - 1 || pendingId === banner.id}
+                        onClick={() => void moveBanner(index, 1)}
+                        size="xs"
+                        variant="outline"
+                      >
+                        <ChevronRight className="size-4 rotate-90" />
+                      </Button>
+                      <Button
+                        className="h-8 bg-white px-2 text-red-600 hover:text-red-700"
+                        disabled={pendingId === banner.id}
+                        onClick={() => void removeBanner(banner)}
+                        size="xs"
+                        variant="outline"
+                      >
+                        <XCircle className="size-4" />
+                        {copy.delete}
+                      </Button>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm font-semibold text-slate-500">
+              {copy.empty}
+            </div>
+          )}
+        </AdminBusyRegion>
+      </section>
+
+      {!mobile && bannerEditor}
+      {mobile && <Sheet open={editorOpen} onOpenChange={open => { if (!open) closeBannerEditor(); }}><SheetContent side="right" className="admin-mobile-editor w-screen max-w-none gap-0 p-0"><SheetHeader className="border-b p-3 pr-12"><SheetTitle>{editingId ? copy.edit : copy.newTitle}</SheetTitle><SheetDescription>{formValues.title || copy.uploadHint}</SheetDescription></SheetHeader>{bannerEditor}</SheetContent></Sheet>}
     </div>
   );
 }
@@ -5313,7 +5376,7 @@ function ProductMobileFiltersSheet({
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="left" className="w-[min(92vw,var(--overlay-width,100vw))] max-w-md gap-0 overflow-hidden p-0 sm:max-w-md">
+      <SheetContent side="bottom" className="admin-mobile-filter-sheet max-h-[85dvh] w-full gap-0 overflow-hidden rounded-t-xl p-0 sm:mx-auto sm:max-w-lg">
         <SheetHeader className="border-b border-slate-200 bg-white p-3 pr-12">
           <SheetTitle className="text-base font-black">{text.mobileFilters}</SheetTitle>
           <SheetDescription className="text-xs font-semibold">
@@ -5725,6 +5788,8 @@ function StockStatusSelect({
 }
 
 function ProductTable({
+  mobileView,
+  selectionMode,
   products,
   selectedSkus,
   isLoading,
@@ -5741,6 +5806,8 @@ function ProductTable({
   onHide,
   onStockAdjust,
 }: {
+  mobileView: "list" | "grid";
+  selectionMode: boolean;
   products: AdminProductRow[];
   selectedSkus: Set<string>;
   isLoading: boolean;
@@ -5787,12 +5854,14 @@ function ProductTable({
     >
       {showRefreshBar ? <ProductTableLoadingBar label={text.loading} /> : null}
       <div className="lg:hidden">
-        {products.length > 0 && <label className="flex min-h-11 items-center gap-3 border-b px-3 py-2 text-sm font-semibold"><Checkbox checked={allSelected || (someSelected && "indeterminate")} disabled={isLoading || isMutating} onCheckedChange={(value) => toggleAll(value === true)} />{text.selectPage}</label>}
+        {selectionMode && products.length > 0 && <label className="flex min-h-11 items-center gap-3 border-b px-3 py-2 text-sm font-semibold"><Checkbox checked={allSelected || (someSelected && "indeterminate")} disabled={isLoading || isMutating} onCheckedChange={(value) => toggleAll(value === true)} />{text.selectPage}</label>}
         {products.length ? (
-          <div className="grid gap-2 p-2">
+          <div className={mobileView === "grid" ? "grid grid-cols-2 gap-2 p-2" : "divide-y divide-slate-100"}>
             {products.map((product) => (
               <ProductMobileCard
                 key={product.sku}
+                layout={mobileView}
+                selectionMode={selectionMode}
                 product={product}
                 selected={selectedSkus.has(product.sku)}
                 onSelect={(checked) => toggleOne(product.sku, checked)}
@@ -5966,6 +6035,8 @@ function ProductTableLoadingBar({ label }: { label: string }) {
 }
 
 function ProductMobileCard({
+  layout,
+  selectionMode,
   product,
   selected,
   onSelect,
@@ -5981,6 +6052,8 @@ function ProductMobileCard({
   onHide,
   onStockAdjust,
 }: {
+  layout: "list" | "grid";
+  selectionMode: boolean;
   product: AdminProductRow;
   selected: boolean;
   onSelect: (checked: boolean) => void;
@@ -5996,69 +6069,30 @@ function ProductMobileCard({
   onHide: (product: AdminProductRow) => void;
   onStockAdjust: (product: AdminProductRow) => void;
 }) {
-  const editable = canEditProduct(capabilities);
-
+  const grid = layout === "grid";
   return (
-    <div
-      className={cn(
-        "rounded-lg border border-slate-200 bg-white p-3 shadow-[0_8px_22px_rgba(15,23,42,0.035)]",
-        pendingActionKey?.startsWith(`${product.sku}:`) &&
-          "border-primary/30 ring-2 ring-primary/15"
-      )}
-    >
-      <label className="mb-2 flex min-h-11 items-center gap-2 text-xs font-semibold"><Checkbox checked={selected} disabled={isMutating} onCheckedChange={(value) => onSelect(value === true)} />{product.sku}</label>
-      <div className="grid min-w-0 grid-cols-[72px_minmax(0,1fr)_auto] gap-3">
-        <ProductImageThumb product={product} className="size-[72px]" sizes="72px" />
-
-        <button
-          disabled={isMutating}
-          type="button"
-          className="grid min-h-11 min-w-0 content-start text-left"
-          onClick={() => editable ? onEdit(product) : onView(product)}
-        >
-          <div className="line-clamp-2 break-words text-sm font-black leading-5 text-slate-950 [overflow-wrap:anywhere]">
-            {product.name}
-          </div>
-          <div className="mt-1 truncate font-mono text-[11px] font-semibold leading-4 text-slate-500">
-            {product.sku}
-          </div>
-          <div className="mt-1 truncate text-xs font-semibold leading-4 text-slate-400">
-            {product.category} · {[product.modelSeries, product.model || product.compatibleWith[0] || text.none].filter(Boolean).join(" / ")}
-          </div>
-        </button>
-
-        <div className="flex shrink-0 flex-col items-end gap-2">
-          <span className={cn("rounded-md border px-2 py-1 text-[11px] font-black", catalogStatusBadgeClass(product.catalogStatus))}>
-            {adminText.enums.catalogStatus[product.catalogStatus]}
-          </span>
-          <ProductActionsMenu
-            product={product}
-            isMutating={isMutating}
-            pendingActionKey={pendingActionKey}
-            capabilities={capabilities}
-            text={text}
-            onView={onView}
-            onEdit={onEdit}
-            onDuplicate={onDuplicate}
-            onAction={onAction}
-            onHide={onHide}
-            onStockAdjust={onStockAdjust}
-          />
+    <article data-product-sku={product.sku} data-state={selected ? "selected" : undefined} className={cn("admin-product-mobile min-w-0 bg-white", grid ? "rounded-md border p-2" : "flex min-h-[88px] items-center gap-1 px-2 py-1", selected && "bg-primary/5", pendingActionKey?.startsWith(`${product.sku}:`) && "ring-2 ring-inset ring-primary/20")}>
+      {selectionMode && <label className={cn("flex min-h-11 shrink-0 items-center justify-center", grid ? "mb-1 gap-2 text-xs" : "w-11")}>
+        <Checkbox checked={selected} disabled={isMutating} onCheckedChange={value => onSelect(value === true)} aria-label={`${text.selectPage}: ${product.sku}`} />
+        {grid && <span>{text.selectedCount.replace("{count}", "1")}</span>}
+      </label>}
+      <button disabled={isMutating} type="button" onClick={() => onView(product)} className={cn("min-w-0 text-left", grid ? "block w-full" : "flex flex-1 items-center gap-2")}>
+        <ProductImageThumb product={product} className={grid ? "aspect-[4/3] w-full" : "size-10"} sizes={grid ? "(max-width: 767px) 45vw, 220px" : "40px"} />
+        <span className={cn("block min-w-0 flex-1", grid && "mt-2")}>
+          <span className="line-clamp-2 break-words text-sm font-semibold leading-[18px] text-slate-950 [overflow-wrap:anywhere]">{product.name}</span>
+          <span className="mt-1 block truncate font-mono text-xs text-slate-500">{product.sku}</span>
+          {grid && <span className="mt-1 block text-xs text-slate-600">{adminText.enums.catalogStatus[product.catalogStatus]}</span>}
+        </span>
+      </button>
+      <div className={cn("flex shrink-0", grid ? "mt-1 items-center justify-between gap-1" : "max-w-[36%] items-center gap-0")}>
+        <div className={cn("min-w-0 text-xs leading-5", grid ? "flex-1" : "text-right")}>
+          <span className="block break-words font-bold tabular-nums text-slate-950 [overflow-wrap:anywhere]">{formatEuro(product.price)}</span>
+          <span className="block break-words text-slate-600 [overflow-wrap:anywhere]">{text.stock} <strong>{product.availableQty ?? product.stock}</strong></span>
+          {!grid && <span className="block text-[12px] leading-4 text-slate-500">{adminText.enums.catalogStatus[product.catalogStatus]}</span>}
         </div>
+        <ProductActionsMenu product={product} isMutating={isMutating} pendingActionKey={pendingActionKey} capabilities={capabilities} text={text} onView={onView} onEdit={onEdit} onDuplicate={onDuplicate} onAction={onAction} onHide={onHide} onStockAdjust={onStockAdjust} />
       </div>
-      <div className="mt-3 flex min-h-11 items-center justify-between gap-3 border-t border-slate-100 pt-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-slate-500">
-          <span>{text.netPrice} <strong className="text-slate-950">{formatEuro(product.price)}</strong></span>
-          <span>{text.stock} <strong className="text-slate-950">{product.availableQty ?? product.stock}</strong></span>
-        </div>
-        {editable && (
-          <Button size="sm" className="h-10 shrink-0 px-3" onClick={() => onEdit(product)}>
-            <Edit className="size-4" />
-            {text.edit}
-          </Button>
-        )}
-      </div>
-    </div>
+    </article>
   );
 }
 
@@ -6914,8 +6948,10 @@ function ProductDrawer({
   return (
     <ProductDraftGuardContext.Provider value={guardContext}><Sheet open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <SheetContent
+        data-admin-dirty={dirty ? "true" : "false"}
+        data-admin-mutating={pending ? "true" : "false"}
         side="right"
-        className="w-screen max-w-none gap-0 overflow-clip p-0"
+        className="admin-mobile-editor w-screen max-w-none gap-0 overflow-clip p-0"
         style={{ width: "min(820px, var(--overlay-width, 100vw))", maxWidth: "min(820px, 100vw)" }}
       >
         <SheetHeader className="border-b border-slate-200 bg-white p-4 pr-12">
@@ -8103,7 +8139,7 @@ function ProductEditorForm({
         </div>
       )}
 
-      <div className="sticky bottom-0 z-10 -mx-3 flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur lg:-mx-4 lg:px-4">
+      <div className="admin-mobile-save-bar sticky bottom-0 z-10 -mx-3 flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur lg:-mx-4 lg:px-4">
         {onCancel && (
           <Button type="button" variant="outline" className="h-11 bg-white" onClick={onCancel}>
             {text.cancel}

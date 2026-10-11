@@ -508,7 +508,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
   }
 
   return (
-    <div data-admin-mutating={pending && pending !== "load" ? "true" : "false"} data-admin-dirty={dirty || queueUnknown ? "true" : "false"} className="min-w-0 space-y-4">
+    <div data-admin-mutating={pending && pending !== "load" ? "true" : "false"} data-admin-dirty={dirty || queueUnknown ? "true" : "false"} className="admin-mobile-module min-w-0 space-y-2 lg:space-y-4">
       {unconfirmedScope && <AdminNotice tone="warning" message={locale.startsWith("zh") ? "原任务范围已冻结；核对后重试仍处理同一组 SKU。请先完成原任务再开始新的范围。" : "Ambito originale bloccato: il retry conserva gli stessi SKU. Completa il tentativo prima di scegliere un altro ambito."} />}
       {unconfirmedScope && !queueUnknown && !previewAction && <Button variant="outline" disabled={isBusy} onClick={() => { if (unconfirmedScope.action === "publish_eligible" || unconfirmedScope.action === "sync_inventory") resumeOriginalAttempt(); else void queueAction(unconfirmedScope.action,unconfirmedScope.skus.length ? unconfirmedScope.skus : undefined); }}>{locale.startsWith("zh") ? "继续原任务" : "Continua il tentativo originale"}</Button>}
       {queueUnknown && <AdminNotice tone="warning"><p>{locale.startsWith("zh") ? "任务提交结果尚未确认。请刷新核对队列；重复请求会沿用原任务标识，不重新创建已确认任务。" : "Esito dell’invio non confermato. Aggiorna e controlla la coda; il tentativo conserva l’identificativo originale per evitare duplicati."}</p><Button variant="outline" disabled={isBusy} onClick={() => void loadOverview()}>{locale.startsWith("zh") ? "重读队列核对" : "Rileggi la coda"}</Button><Button variant="outline" disabled={isBusy || !queueReviewed} onClick={resumeOriginalAttempt}>{locale.startsWith("zh") ? "已核对，继续原任务" : "Verificato, continua il tentativo"}</Button></AdminNotice>}
@@ -516,9 +516,9 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
         <DialogContent scrollLayout="body" className="sm:max-w-2xl"><DialogHeader><DialogTitle>{locale.startsWith("zh") ? "核对 eBay 任务范围" : "Verifica prodotti e attività eBay"}</DialogTitle><DialogDescription>{locale.startsWith("zh") ? `环境：${draft.settings.environment}；只处理下面勾选的 SKU，最多100个。价格和库存为当前预览，执行时服务会重新校验。` : `Ambiente: ${draft.settings.environment}. Solo gli SKU selezionati, massimo 100. Prezzi e stock sono un’anteprima; il servizio li verificherà all’esecuzione.`}</DialogDescription></DialogHeader>
         <DialogBody className="space-y-2">{queueUnknown && <AdminNotice tone="warning"><p>{locale.startsWith("zh") ? "提交结果未知，请先重读队列核对。原任务标识已保留。" : "Esito non confermato. Rileggi la coda; identificativo originale conservato."}</p><Button variant="outline" disabled={isBusy} onClick={() => void loadOverview()}>{locale.startsWith("zh") ? "重读队列核对" : "Rileggi la coda"}</Button><Button variant="outline" disabled={isBusy || !queueReviewed} onClick={resumeOriginalAttempt}>{locale.startsWith("zh") ? "已核对，继续原任务" : "Verificato, continua il tentativo"}</Button></AdminNotice>}<p className="text-sm">{locale.startsWith("zh") ? `已选择 ${previewSkus.length}/${previewRows.length}` : `Selezionati ${previewSkus.length}/${previewRows.length}`}</p>{previewRows.map(item => <label key={item.sku} className="flex items-start gap-3 rounded border p-3 text-sm"><input type="checkbox" disabled={isBusy || Boolean(unconfirmedScope)} checked={previewSkus.includes(item.sku)} onChange={event => setPreviewSkus(current => event.target.checked ? [...current,item.sku] : current.filter(sku => sku !== item.sku))}/><span className="min-w-0 break-words"><strong>{item.productName}</strong><br/>{item.sku} · EUR {item.computedPrice.toFixed(2)} · {locale.startsWith("zh") ? "可发布数量" : "Quantità"} {item.computedQuantity}</span></label>)}</DialogBody><DialogFooter><Button variant="outline" disabled={isBusy} onClick={() => setPreviewAction(null)}>{unconfirmedScope ? (locale.startsWith("zh") ? "关闭并保留未确认任务" : "Chiudi e conserva il tentativo") : (locale.startsWith("zh") ? "取消" : "Annulla")}</Button><AdminActionButton pending={pending === previewAction && previewAction !== null} disabled={isBusy || queueUnknown || dirty || !previewSkus.length || !previewAction || Boolean(marketplaceActionBlocker(draft.settings, connection, previewAction))} onClick={() => { if (previewAction) void queueAction(previewAction,previewSkus); }}>{locale.startsWith("zh") ? "确认范围并加入队列" : "Conferma e accoda"}</AdminActionButton></DialogFooter></DialogContent>
       </Dialog>
-      <section className="space-y-2 rounded-lg border bg-white p-3">
+      <section className="admin-mobile-card space-y-2 rounded-lg border bg-white p-2 lg:p-3">
         <h2 className="font-bold">{locale.startsWith("zh") ? "eBay 就绪步骤" : "Preparazione eBay"}</h2>
-        <ol className="grid gap-2 text-sm sm:grid-cols-4">{[
+        <ol className="grid grid-cols-2 gap-1.5 text-xs lg:grid-cols-4 lg:text-sm">{[
           [Boolean(connection?.connected), locale.startsWith("zh") ? "1 · 连接账号" : "1 · Collega account"],
           [Boolean(draft.settings.merchantLocationKey && draft.settings.paymentPolicyId && draft.settings.returnPolicyId && draft.settings.fulfillmentPolicyId), locale.startsWith("zh") ? "2 · 选择仓库与销售政策" : "2 · Sede e condizioni"],
           [draft.mappings.some(mapping => mapping.enabled && mapping.ebayCategoryId), locale.startsWith("zh") ? "3 · 设置类目映射" : "3 · Associa categorie"],
@@ -539,9 +539,11 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
         <AdminNotice tone={error ? queueUnknown ? "warning" : "error" : noticeTone} message={error ?? notice} />
       )}
 
+      <details className="admin-mobile-disclosure min-w-0">
+        <summary className="min-h-11 cursor-pointer rounded-md border border-slate-200 bg-white px-3 py-3 text-xs font-bold lg:hidden">{t("eBay 连接")} · {t("自动化设置")} · {t("类目映射")}{dirty ? " •" : ""}</summary>
       <section className="space-y-2 rounded-lg border bg-white p-3"><h3 className="font-bold">{locale.startsWith("zh") ? "从 eBay 账号选择销售政策" : "Scegli le condizioni del tuo account eBay"}</h3><Button variant="outline" disabled={isBusy || queueUnknown || dirty || !canManageSettings || !connection?.connected} onClick={() => void loadPolicies()}>{locale.startsWith("zh") ? "读取已保存环境的政策" : "Leggi condizioni dell'ambiente salvato"}</Button>{policyError && <AdminNotice tone="error" message={policyError} />}{policyOptions && <div className="grid gap-2 sm:grid-cols-3">{([['payment','paymentPolicyId',locale.startsWith("zh") ? '付款政策' : 'Pagamento'],['return','returnPolicyId',locale.startsWith("zh") ? '退货政策' : 'Resi'],['fulfillment','fulfillmentPolicyId',locale.startsWith("zh") ? '配送政策' : 'Spedizione']] as const).map(([kind,key,label]) => <label key={kind} className="space-y-1 text-sm">{label}<select className="h-10 w-full rounded border bg-white px-2" value={draft.settings[key] ?? ""} disabled={isConfigLocked || !canManageSettings} onChange={event => updateSettings({ [key]: event.target.value })}><option value="">{locale.startsWith("zh") ? "请选择" : "Seleziona"}</option>{draft.settings[key] && !(policyOptions[kind] ?? []).some(option => option.id === draft.settings[key]) && <option value={draft.settings[key]!}>{draft.settings[key]} · {locale.startsWith("zh") ? "当前值（未读取到）" : "Valore attuale non trovato"}</option>}{(policyOptions[kind] ?? []).map(option => <option key={option.id} value={option.id}>{option.name ?? option.id}</option>)}</select></label>)}</div>}</section>
       <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-        <Card className="rounded-lg bg-white">
+        <Card className="admin-mobile-card rounded-lg bg-white">
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2 text-base">
               <ShoppingBag className="size-4 text-primary" />
@@ -595,7 +597,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
           </fieldset></CardContent>
         </Card>
 
-        <Card className="rounded-lg bg-white">
+        <Card className="admin-mobile-card rounded-lg bg-white">
           <CardHeader className="border-b">
             <CardTitle className="flex items-center gap-2 text-base">
               <Settings2 className="size-4 text-primary" />
@@ -745,7 +747,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
         </Card>
       </section>
 
-      <Card className="rounded-lg bg-white">
+      <Card className="admin-mobile-card rounded-lg bg-white">
         <CardHeader className="border-b">
           <CardTitle>{t("类目映射")}</CardTitle>
           <CardAction>
@@ -783,8 +785,8 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
           </CardAction>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3 md:hidden">{draft.mappings.map((mapping, index) => <div key={mapping.id || index} className="space-y-2 rounded border p-3">{([['localCategory','本地类目'],['brand','品牌'],['modelSeries','系列'],['ebayCategoryId','eBay 类目 ID'],['conditionId','成色']] as const).map(([key,label]) => <label key={key} className="block space-y-1 text-xs font-semibold">{t(label)}<Input value={mapping[key] ?? ""} disabled={isConfigLocked || !canManageSettings} onChange={event => updateMapping(index, { [key]: event.target.value })} /></label>)}<ToggleField checked={mapping.enabled} label={t("启用")} onCheckedChange={enabled => updateMapping(index, { enabled })} /><Button disabled={isConfigLocked || !canManageSettings} variant="outline" onClick={() => setDraft(current => ({ ...current, mappings: current.mappings.filter((_, i) => i !== index) }))}>{t("删除映射")}</Button></div>)}</div>
-          <div className="hidden md:block"><Table>
+          <div className="space-y-2 lg:hidden">{draft.mappings.map((mapping, index) => <div key={mapping.id || index} className="space-y-2 rounded border p-3">{([['localCategory','本地类目'],['brand','品牌'],['modelSeries','系列'],['ebayCategoryId','eBay 类目 ID'],['conditionId','成色']] as const).map(([key,label]) => <label key={key} className="block space-y-1 text-xs font-semibold">{t(label)}<Input value={mapping[key] ?? ""} disabled={isConfigLocked || !canManageSettings} onChange={event => updateMapping(index, { [key]: event.target.value })} /></label>)}<ToggleField checked={mapping.enabled} label={t("启用")} onCheckedChange={enabled => updateMapping(index, { enabled })} /><Button disabled={isConfigLocked || !canManageSettings} variant="outline" onClick={() => setDraft(current => ({ ...current, mappings: current.mappings.filter((_, i) => i !== index) }))}>{t("删除映射")}</Button></div>)}</div>
+          <div className="hidden lg:block"><Table>
             <TableHeader>
               <TableRow>
                 <TableHead>{t("本地类目")}</TableHead>
@@ -886,9 +888,17 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
         </CardContent>
       </Card>
 
+      </details>
+
       <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
         <DataTableCard title={t("刊登状态")}>
-          <Table>
+          <div className="divide-y divide-slate-200 lg:hidden">{overview?.listings.length ? overview.listings.map((listing) => (
+            <div key={listing.id || listing.sku} className="admin-mobile-row min-w-0 py-2">
+              <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2"><div className="min-w-0"><p className="truncate text-[13px] font-bold" title={listing.productName}>{listing.productName}</p><p className="break-words font-mono text-xs lg:text-[11px] text-slate-500">{listing.sku}</p></div><span className="whitespace-nowrap text-right font-mono text-sm font-black tabular-nums">€{listing.computedPrice.toFixed(2)}</span></div>
+              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs lg:text-[11px]"><StatusBadge status={listing.listingStatus} /><span>{t("库存")}: {listing.computedQuantity}</span>{listing.ebayItemWebUrl ? <a className="inline-flex min-h-11 items-center gap-1 text-primary underline" href={listing.ebayItemWebUrl} rel="noreferrer" target="_blank">eBay <ExternalLink className="size-3.5" /></a> : null}</div>
+              {listing.blockers.length || listing.lastErrorMessage ? <p className="mt-1 break-words text-xs lg:text-[11px] text-amber-800">{listing.blockers.length ? listing.blockers.map(t).join(" · ") : t(listing.lastErrorMessage ?? "-")}</p> : null}
+            </div>
+          )) : <p className="py-4 text-center text-xs text-slate-500">{t("暂无刊登评估记录。")}</p>}</div><div className="hidden lg:block"><Table>
             <TableHeader>
               <TableRow>
                 <TableHead>SKU</TableHead>
@@ -931,11 +941,13 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                 <EmptyRow colSpan={6} label={t("暂无刊登评估记录。")} />
               )}
             </TableBody>
-          </Table>
+          </Table></div>
         </DataTableCard>
 
         <DataTableCard title={t("失败队列")}>
-          <Table>
+          <div className="divide-y divide-slate-200 lg:hidden">{overview?.jobs.length ? overview.jobs.map((job) => (
+            <div key={job.id} className="admin-mobile-row min-w-0 py-2"><div className="flex min-w-0 items-center justify-between gap-2"><span className="min-w-0 break-words text-xs font-bold">{t(jobTypeLabel(job.jobType))}</span><StatusBadge status={job.status} /></div><p className="mt-1 break-words font-mono text-xs lg:text-[11px] text-slate-500">{job.targetSku ?? job.targetOrderId ?? "-"}</p>{job.errorMessage ? <p className="mt-1 break-words text-xs lg:text-[11px] text-amber-800">{t(job.errorMessage)}</p> : null}</div>
+          )) : <p className="py-4 text-center text-xs text-slate-500">{t("暂无队列任务。")}</p>}</div><div className="hidden lg:block"><Table>
             <TableHeader>
               <TableRow>
                 <TableHead>{t("任务")}</TableHead>
@@ -964,12 +976,14 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                 <EmptyRow colSpan={4} label={t("暂无队列任务。")} />
               )}
             </TableBody>
-          </Table>
+          </Table></div>
         </DataTableCard>
       </section>
 
       <DataTableCard title={t("订单回流日志")}>
-        <Table>
+        <div className="divide-y divide-slate-200 lg:hidden">{overview?.orderLinks.length ? overview.orderLinks.map((link) => (
+          <div key={link.externalOrderId} className="admin-mobile-row grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-1 py-2"><div className="min-w-0"><p className="break-words font-mono text-xs font-bold">{link.externalOrderId}</p><p className="text-xs lg:text-[11px] text-slate-500">{link.localOrderNo ?? "-"} · {formatDateTime(link.importedAt)}</p></div><span className="whitespace-nowrap text-right font-mono text-sm font-black tabular-nums">{link.currency} {link.total.toFixed(2)}</span><div className="col-span-2"><StatusBadge status={link.importStatus} />{link.lastError ? <p className="mt-1 break-words text-xs lg:text-[11px] text-amber-800">{t(link.lastError)}</p> : null}</div></div>
+        )) : <p className="py-4 text-center text-xs text-slate-500">{t("暂无 eBay 订单回流记录。")}</p>}</div><div className="hidden lg:block"><Table>
           <TableHeader>
             <TableRow>
               <TableHead>{t("eBay 订单")}</TableHead>
@@ -1002,7 +1016,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
               <EmptyRow colSpan={6} label={t("暂无 eBay 订单回流记录。")} />
             )}
           </TableBody>
-        </Table>
+        </Table></div>
       </DataTableCard>
     </div>
   );
@@ -1020,7 +1034,7 @@ function MarketplacePanelSkeleton() {
         ))}
       </section>
       <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-        <Card className="rounded-lg bg-white">
+        <Card className="admin-mobile-card rounded-lg bg-white">
           <CardHeader className="border-b">
             <div className="h-4 w-32 animate-pulse rounded bg-slate-100" />
           </CardHeader>
@@ -1033,7 +1047,7 @@ function MarketplacePanelSkeleton() {
             <div className="h-9 w-32 animate-pulse rounded-md bg-primary/15" />
           </CardContent>
         </Card>
-        <Card className="rounded-lg bg-white">
+        <Card className="admin-mobile-card rounded-lg bg-white">
           <CardHeader className="border-b">
             <div className="h-4 w-36 animate-pulse rounded bg-slate-100" />
           </CardHeader>
@@ -1046,7 +1060,7 @@ function MarketplacePanelSkeleton() {
           </CardContent>
         </Card>
       </section>
-      <Card className="rounded-lg bg-white">
+      <Card className="admin-mobile-card rounded-lg bg-white">
         <CardHeader className="border-b">
           <div className="h-4 w-28 animate-pulse rounded bg-slate-100" />
         </CardHeader>
@@ -1164,7 +1178,7 @@ function DataTableCard({
   title: string;
 }) {
   return (
-    <Card className="rounded-lg bg-white">
+    <Card className="admin-mobile-card rounded-lg bg-white">
       <CardHeader className="border-b">
         <CardTitle>{title}</CardTitle>
       </CardHeader>

@@ -12,6 +12,8 @@ import {
   ClipboardList,
   Home,
   Menu,
+  ChevronDown,
+  Search,
   MessageCircle,
   Package,
   PanelLeftClose,
@@ -24,6 +26,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
@@ -120,7 +123,7 @@ type AdminProductsPanelProps = {
 
 type AdminOrdersPanelProps = {
   permissions?: string[]; customerId?: string; returnAccountId?: string; focusStatus?: string;
-  focusOrderId?: string;
+  focusOrderId?: string; focusWorkflow?: string;
 };
 
 type AdminAccountsPanelProps = {
@@ -556,14 +559,14 @@ export function AdminDashboard({
             pendingPanel={pendingPanel}
             visiblePanels={visiblePanelSet}
           />
-          <div className="mx-auto w-full max-w-[1500px] min-w-0 px-3 pb-3 pt-2 sm:px-4 sm:py-4">
+          <div className="admin-mobile-page mx-auto w-full max-w-[1500px] min-w-0 px-3 pb-3 pt-2 sm:px-4 sm:py-4">
             <Tabs
               value={activePanel}
               onValueChange={handlePanelChange}
               className="flex min-w-0 flex-col gap-3 sm:gap-4"
             >
               <TabsContent value="orders" className="order-4 mt-0 min-w-0">
-                <AdminOrdersPanel focusStatus={searchParams.get("status") ?? undefined} focusOrderId={focusOrderId} permissions={currentPermissions} customerId={searchParams.get("customerId") ?? undefined} returnAccountId={searchParams.get("returnAccountId") ?? undefined} />
+                <AdminOrdersPanel focusWorkflow={searchParams.get("workflow") ?? undefined} focusStatus={searchParams.get("status") ?? undefined} focusOrderId={focusOrderId} permissions={currentPermissions} customerId={searchParams.get("customerId") ?? undefined} returnAccountId={searchParams.get("returnAccountId") ?? undefined} />
               </TabsContent>
               <TabsContent value="rma" className="order-4 mt-0 min-w-0">
                 <AdminRmaPanel />
@@ -797,16 +800,19 @@ function AdminTopbar({
 }: AdminNavigationProps) {
   const text = useAdminText();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
+  const [moduleQuery, setModuleQuery] = React.useState("");
+  const zh = text.nav.settings === "设置";
+  const moduleLabel = text.nav[navItems.find(item => item.panel === activePanel)?.labelKey ?? "dashboard"];
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-slate-50/95 backdrop-blur-xl">
-      <div className="mx-auto flex h-14 w-full max-w-[1500px] min-w-0 items-center gap-3 px-3 sm:h-16 sm:px-4">
-        <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+      <div className="mx-auto flex h-12 w-full max-w-[1500px] min-w-0 items-center gap-1 px-2 sm:h-16 sm:gap-3 sm:px-4">
+        <Sheet open={isMobileMenuOpen} onOpenChange={open => { setIsMobileMenuOpen(open); if (!open) setModuleQuery(""); }}>
           <SheetTrigger asChild>
             <Button
               variant="outline"
               size="icon"
-              className="bg-white lg:hidden"
+              className="size-11 border-0 bg-transparent lg:hidden"
               aria-label={text.topbar.mobileNavigationLabel}
               title={text.topbar.mobileNavigationLabel}
             >
@@ -838,7 +844,8 @@ function AdminTopbar({
                 </Link>
                 <LanguageSwitcher scope="admin" compact className="h-10 shadow-sm" />
               </div>
-              {navItems.map((item) => {
+              <div className="relative mb-2"><Search className="pointer-events-none absolute left-3 top-3.5 size-4 text-slate-400" /><Input className="h-11 pl-9" value={moduleQuery} onChange={event => setModuleQuery(event.target.value)} placeholder={zh ? "搜索后台模块" : "Cerca sezione"} aria-label={zh ? "搜索后台模块" : "Cerca sezione"} /></div>
+              {navItems.filter(item => text.nav[item.labelKey].toLowerCase().includes(moduleQuery.trim().toLowerCase())).map((item) => {
                 const panel = "panel" in item ? item.panel : undefined;
                 const isAvailable = Boolean(panel && visiblePanels.has(panel));
                 const isActive = panel === activePanel;
@@ -889,10 +896,11 @@ function AdminTopbar({
         </Sheet>
 
         <div className="min-w-0 flex-1 sm:flex-none">
-          <div className="truncate text-lg font-black">{text.nav[navItems.find(item => item.panel === activePanel)?.labelKey ?? "dashboard"]}</div>
-          <div className="truncate text-xs text-slate-500">
-            {text.topbar.subtitle}
-          </div>
+          <button type="button" onClick={() => setIsMobileMenuOpen(true)} className="flex h-11 max-w-full items-center gap-1 text-base font-bold lg:hidden" aria-label={zh ? `切换模块：${moduleLabel}` : `Cambia sezione: ${moduleLabel}`} aria-expanded={isMobileMenuOpen}>
+            <span className="truncate">{moduleLabel}</span><ChevronDown className="size-4 shrink-0" />
+          </button>
+          <div className="hidden truncate text-lg font-black lg:block">{moduleLabel}</div>
+          <div className="hidden truncate text-xs text-slate-500 lg:block">{text.topbar.subtitle}</div>
         </div>
 
         <AdminGlobalSearch />
