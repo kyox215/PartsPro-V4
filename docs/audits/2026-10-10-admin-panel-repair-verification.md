@@ -1,8 +1,8 @@
 # PartsPro 后台全面修复与验证报告
 
-本次针对原审查的64项问题完成修复并上线，涵盖导航、总览、订单、商品、库存、售后、账号、财务、eBay、客服、活动记录、权限和REMAX。财务金额误记、客服回复错对象、写入后读取失败导致重复操作的风险已优先处理；常用流程增加搜索、分页、批量准备、差异预览和失败恢复。
+本次针对原64项及补充16项问题完成修复并上线，累计80项，涵盖导航、总览、订单、商品、库存、售后、账号、财务、eBay、客服、活动记录、权限和REMAX。财务金额误记、客服回复错对象、写入后读取失败导致重复操作的风险已优先处理；常用流程增加搜索、分页、批量准备、差异预览和失败恢复。
 
-**2026-10-11修复、组件状态规范、单条生产迁移及正式上线均已完成，最终运行源码e09af0e。** 144项后台与统计测试、26项商城与导入回归通过；19项真实组件模拟交互、60个页面与视口组合无页面报错或整页横向溢出；状态组件三种宽度及减少动画检查通过。SQL、权限及基础层完成独立静态复核。
+**最终正式运行源码44f8904，部署dpl_CBmypjyY8x9gksXohdVcs1C4Vn64；前台bc70ed26修复完整保留。314项相关回归、full lint/build、434上传哈希、同SHA Vercel检查、候选与正式各13项HTTP均通过，两个正式域名已核对。** 原64项19交互/60布局与状态证据复用；新增子流程另做真实组件模拟与正式管理员只读验收。详细版本和边界以末尾最终发布记录为准，初次发布记录保留历史口径。
 
 ## 候选范围与证据
 
@@ -250,3 +250,29 @@ Analytics 2采用构建时动态脚本路径，实际本次路径/50aceeee765551
 本轮源码提交443382af95b0046f69a1b41c7acd124b2624b5dc。**232项后台/统计/RMA/运输费用测试＋6项商城＋20项导入，共258项通过，full lint/build及diff通过。** 新增状态/字段/分页测试执行实际TS/TSX/Route/Repository函数，fixture实际组件及CSS做浏览器交互；Auth、网络、SW和业务数据模拟，不称生产写入E2E。fixture为人工挂起场景屏蔽自动超时，所以浏览器pending证据不证明8秒超时；源码分类测试与构建证明请求上限配置有效。
 
 补充视觉与交互：[浏览器验证](../../outputs/admin-repair/2026-10-11/supplement/browser-verification.json)、[258项测试](../../outputs/admin-repair/2026-10-11/supplement/tests.tap)、[新源码指纹](../../outputs/admin-repair/2026-10-11/supplement/source-fingerprint.json)。原64项未变源码的面板/状态证据继续复用，运输费用的五个功能区仍在三段流程中可达，已修正测试对过期布局的断言。原有真实业务写入、设备Safari/软键盘、真实推送和高负载未验收边界继续有效。
+
+
+## 发布前并行版本保护与整合复验
+
+正式切换前发现两域名已转到同项目刚发布的前台版本dpl_Hz8t57m5kDJRmf2iwn6pDRXQJ3Rh。canonical roadmap记录其源码bc70ed26；只读比对433个受版本管理上传文件与该提交全部一致，另next-env.d.ts为构建生成声明。因此没有将旧443382a后台候选直接promote，先把已发布前台提交合入隔离后台分支。
+
+整合提交0f530d4fe44f92c81381a20c63535d1d5a4e34a3相对当前前台源码只增加本轮10个后台/通知文件的变化；package/lockfile/Next配置不变，repository三方合并后仅本轮补货read-back/active条件/排序变化，购物车与下单恢复代码完整保留。唯一roadmap冲突保留双方历史记录；主目录未提交业务代码未整包发布。
+
+287项后台与前台定向/SQL回归＋6项商城＋20项导入，**整合后共313项通过，full lint/build/diff通过**。继承的20261010215007_checkout_request_replay.sql是前台任务已批准应用的迁移，本次没有创建或修改它；linked list两条迁移local=remote、dry-run up to date，不重复db push。前台已有PG17并发验证按完全未改的SQL与订单函数复用，287项中包含PGlite回归，未额外操作另一任务的数据库容器。
+
+证据：[正式源码漂移核对](../../outputs/admin-repair/2026-10-11/supplement/production-drift.json)、[整合回归](../../outputs/admin-repair/2026-10-11/supplement/merged-final/tests.tap)、[已应用迁移历史](../../outputs/admin-repair/2026-10-11/supplement/merged-migration-list.txt)、[无待应用迁移](../../outputs/admin-repair/2026-10-11/supplement/merged-migration-dry-run.txt)。443382a候选是已验证但被整合版本取代的历史候选，未切换正式域名。
+
+
+最终复核追加目录专用data-catalog-dirty：通知导航在客户取消离开确认时不router.push、不关闭弹层、不发mark-read。当前源码44f8904的实际helper/openNotification新增断言覆盖确认1次、导航0、POST0；这一行不改视觉，整合0f530d4真实组件布局证据复用，不声称旧fixture执行了新guard。最终288项定向/SQL＋6商城＋20导入，共314项PASS，full lint/build/diff PASS。
+
+
+## 本轮最终正式发布与交付
+
+- **正式源码44f8904efb4301cbc1383483c52dea3bd4386ab5，部署dpl_CBmypjyY8x9gksXohdVcs1C4Vn64，READY/production；partspro.app与www.partspro.app同部署，apex跳转www。** 发布分支已推送；未合并main，主目录未提交业务代码保持原样。
+- 精确候选434个上传文件SHA1全匹配、无遗漏/秘密；499源码/测试/配置指纹全匹配，314项相关测试、full lint/build/diff PASS。同SHA Vercel success及独立PROMOTE GO后切域名。候选13项与正式13项HTTP PASS，匿名后台API保持401 ADMIN_FORBIDDEN/missing_session。
+- 正式管理员只读验收账号/商品目录/电商三受影响面板：桌面1437×771与手机390×844无整页溢出或读取阻塞。全局活动实际读取完成1表单8输入，未改字段/保存；补货提醒桌面读取12条，显示精确总数/第1页，768px弹窗与页码/关闭按钮可达。正式手机补货弹窗首次加载状态可达，满列表移动几何使用121行真实组件合成数据补验，分别标记证据。
+- 正式通知读取20条并提供更早入口，390px弹层18..378、底部559可达，无错误；没有点击通知条目、全部已读、测试或开启推送。电商真实桌面/手机读取无错误，未改变设置/连接/刊登。检查后已恢复正常视口。
+- 本轮没有新增或执行生产迁移，继承的checkout迁移保持原字节且remote历史一致，dry-run up to date。**直接回退点保留为最新前台部署dpl_Hz8t57m5kDJRmf2iwn6pDRXQJ3Rh**，避免回到旧后台部署丢失已发布前台。
+- 真实记账/订单/库存/权限/客服发送/活动修改、物理Safari软键盘、设备推送和负载未验收；不把合成API、PGlite或只读页面当成真实业务写入E2E。
+
+证据：[最终汇总](../../outputs/admin-repair/2026-10-11/supplement/merged-final/verification-summary.json)、[正式UI](../../outputs/admin-repair/2026-10-11/supplement/merged-final/production-ui-checks.json)、[正式HTTP](../../outputs/admin-repair/2026-10-11/supplement/merged-final/production-http-smoke.json)、[正式域名](../../outputs/admin-repair/2026-10-11/supplement/merged-final/aliases-after-promote.json)、[上传核对](../../outputs/admin-repair/2026-10-11/supplement/merged-final/source-verification.json)、[独立发布复核](../../outputs/admin-repair/2026-10-11/supplement/merged-final/independent-release-review.json)。

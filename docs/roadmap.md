@@ -178,3 +178,14 @@ Last reviewed: 2026-09-28
 - 本次production候选与promote尚在收尾；当前回退目标dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ。下文最终发布记录将给出运行源码和deployment，不能以上方旧进行中记录推断当前生产。
 
 发布基线补充：正式www.partspro.app已更新到e09af0e（统计采集修复），本候选再次完整merge，最新统计12/12通过，依赖变更后全量lint/build再次通过。默认Vercel别名与custom域名暂不同步，以custom域名dpl_HH2aD81wV5khFZyiq7fWXzouZfhZ作为回退基线；两个旧预检部署不再作为正式商城的当前版本。账户脏草稿原生确认框自动化受到工具阻塞，未将取消放弃/确认放弃交互算PASS；浏览器关闭清理也受到同一阻塞。
+
+
+## 2026-10-11 — 后台80项补充闭环与整合正式发布完成
+
+- 原64项及子流程补充16项，累计80项（P1 2/P2 54/P3 24），问题与桌面/手机范围、状态规范、修复及证据已列入隔离树两份后台报告。
+- 正式源码44f8904efb4301cbc1383483c52dea3bd4386ab5，dpl_CBmypjyY8x9gksXohdVcs1C4Vn64 READY/production，partspro.app与www.partspro.app已核对同部署；apex仍跳www。分支codex/admin-panel-comprehensive-20261010已推送，未合并main；主目录未提交业务代码未发布。
+- 发布前发现同项目刚上线前台bc70ed26/Hz8，核对433 tracked上传哈希后完整合入隔离后台候选，保留购物车、下单恢复、登录等前台功能。最终相对bc70仅本轮10个后台/通知文件改变，repo只有补货排序/逐条读取/active条件，前台与已应用checkout SQL完整保留。
+- 288定向/SQL＋6商城＋20导入=314 PASS；full lint/build/diff PASS，434上传SHA1/499源码测试配置指纹全匹配，同SHA Vercel success、独立PROMOTE GO；候选与正式13HTTP均PASS。原64项未变布局证据复用，新增价格/通知/补货真实组件模拟覆盖错误/未知/提交中/分页与360/390/短屏。
+- 正式账号/商品目录/电商三受影响面板桌面和390px只读通过；活动配置实际读到1表单8输入，补货实际12条与分页总数/桌面768px弹窗正常；手机初次补货弹窗可达，满移动列表采用121行fixture补验；正式通知20条+更早入口可用、手机footer可达。无真实业务写入，视口恢复。
+- 继承的20261010204858/20261010215007均local=remote，dry-run up to date；本补充轮没有新增/修改migration或重复db push。回退保留最新前台dpl_Hz8t57m5kDJRmf2iwn6pDRXQJ3Rh，避免丢失前台修复。
+- 报告 `.codex-worktrees/admin-panel-comprehensive-20261010/docs/audits/2026-10-10-admin-panel-operation-ui-audit.md` 与 `2026-10-10-admin-panel-repair-verification.md`；最终证据 `outputs/admin-repair/2026-10-11/supplement/merged-final/`。真实记账/订单/库存/权限/消息/活动修改、真机Safari软键盘、设备推送和负载仍未验收，不以只读/模拟证据替代。
