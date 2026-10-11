@@ -204,3 +204,15 @@ test('missing authoritative notification summary count fails rather than resetti
   count = 0; assert.equal((await getNotificationSummary({ userId: uuid })).unreadCount, 0);
   count = 55; assert.equal((await getNotificationSummary({ userId: uuid })).unreadCount, 55);
 });
+
+test('declining a catalog draft navigation sends neither a router transition nor a mark-read POST', async () => {
+  let navigated = 0, posts = 0, confirmed = 0;
+  const api = notification(['NotificationActionError', 'canLeaveForNotification', 'openNotification'], {
+    notificationActionRef: { current: false }, requiresReview: false, text: { unsavedLeave: 'leave?', navigationBusy: 'cancelled' },
+    document: { body: { getAttribute: () => 'true' }, querySelector: selectors => selectors.split(',').some(s => s.trim() === '[data-catalog-dirty="true"]') },
+    window: { confirm: () => { confirmed++; return false; } }, router: { push: () => { navigated++; } }, setNotice() {},
+    notificationActionRequest: async () => { posts++; return { ok: true }; },
+  });
+  await api.openNotification(item);
+  assert.equal(confirmed, 1); assert.equal(navigated, 0); assert.equal(posts, 0);
+});

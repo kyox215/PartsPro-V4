@@ -933,7 +933,7 @@ const notificationUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a
 function canLeaveForNotification(text: typeof copy.zh) {
   if (document.body.getAttribute("data-admin-ui") !== "true") return true;
   if (document.querySelector('[data-admin-mutating="true"]')) return false;
-  return !document.querySelector('[data-admin-dirty="true"]') || window.confirm(text.unsavedLeave);
+  return !document.querySelector('[data-admin-dirty="true"], [data-catalog-dirty="true"]') || window.confirm(text.unsavedLeave);
 }
 
 function isNotificationCount(value: unknown): value is number {
