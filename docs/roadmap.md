@@ -181,4 +181,5 @@ Last reviewed: 2026-09-28
 - 老板接受完整规划并授权实施；默认紧凑列表＋可切换双列，顶部模块切换和横向子导航，编辑/批量操作才显示底部操作。
 - 隔离工作树 `.codex-worktrees/admin-mobile-density-20261011`，基线d4f37a0；保护根目录未提交内容。覆盖现有后台模块，不改变API/数据库契约，不新增migration。
 - 商品/目录与公共框架、其余14后台组件实施完成；220合同、6商城、20导入、全量lint/build及52浏览器组合通过。390×700首条目录198px，7条完整目录/5条商品；REMAX长名溢出与隐藏图表尺寸问题已修复。API模拟与真实服务边界在验收报告中说明。
-- 发布候选冻结，下一步精确提交推送、候选源码核对与只读smoke/独立GO后上线；本轮无数据库写入。
+- 已推送分支codex/admin-mobile-density-20261011，运行提交9dfd9c391cdf0bf5789049d3fb191a5fe708acdb。候选production READY、同SHA Vercel检查success、435上传文件摘要一致、11项候选GET及独立PROMOTE GO通过后上线。
+- 正式partspro.app/www.partspro.app已于2026-10-11 02:48 UTC核对指向dpl_BTWZpjbi89uGQTZKrpqBqFeKTexX；正式www的11项GET全部通过，6后台API匿名401，页面跳转登录。新部署近期错误日志0；回退基线dpl_CBmypjyY8x9gksXohdVcs1C4Vn64。详情见docs/audits/2026-10-11-admin-mobile-density.md；本轮无数据库写入。真实管理员业务写入与物理Safari软键盘仍未验证。

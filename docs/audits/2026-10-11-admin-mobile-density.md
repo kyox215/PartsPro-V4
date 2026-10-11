@@ -22,3 +22,12 @@
 - 当前Supabase只读核对目标为PartsPro-V4/yiuxrjqexlfjtxxrkqvi，健康；目录、客服原子操作、结账重放三条现有迁移均已应用。本轮没有新增或修改API/SQL/依赖/env，不执行数据库写入。
 - Vercel目标parts-pro-v4/prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo/team_AOJDnrjov0QDLqpvMyhwA1yc。应用基线保留全部先前修复；当前正式回退部署dpl_CBmypjyY8x9gksXohdVcs1C4Vn64。
 - 精确提交推送、候选生产build、源码SHA1核对、受保护候选GET smoke与独立发布GO后再promote。最终状态以docs/roadmap.md及本报告后续实际发布记录为准。
+
+## 实际发布记录
+
+- 运行提交：9dfd9c391cdf0bf5789049d3fb191a5fe708acdb；分支codex/admin-mobile-density-20261011已推送。Vercel同提交检查success；候选production READY；433 manifest文件与2个额外本地生成文件，共435项上传SHA1全部匹配，没有遗漏或敏感/临时路径。
+- 独立发布审查对上述精确提交与部署给出PROMOTE GO后，执行已授权promote。2026-10-11 02:48 UTC核对partspro.app与www.partspro.app均指向dpl_BTWZpjbi89uGQTZKrpqBqFeKTexX；前者重定向到www。
+- 正式https://www.partspro.app的11项GET检查全部通过：首页、商城、目录API、admin、6后台API与sw.js。目录29节点，general_merchandise名称为“电子产品·高端产品”；admin匿名请求以Next16流式meta与NEXT_REDIRECT跳转登录，不渲染后台工作区；6后台API均401。候选同样11项通过。
+- 新部署promote后近10分钟错误日志0。线上证据为匿名只读访问，Vercel保护身份不等于应用管理员会话；未进行真实订单/商品/库存/付款/权限/客服写入，物理Safari软键盘仍未验证。
+- 本机证据：production-aliases.json、production-smoke.json、production-log-summary.json、source-verification.json、schema-readiness.json，均位于outputs/mobile-density/2026-10-11。回退部署dpl_CBmypjyY8x9gksXohdVcs1C4Vn64；需要回退时在当前目标团队运行vercel promote该ID并复查正式域名。
+- 任务完成；发布记录后续提交仅为文档，不改变线上运行提交。根目录未提交改动仍保留，本轮无需migration。
