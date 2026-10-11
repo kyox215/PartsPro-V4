@@ -16,3 +16,5 @@ RACI：主助手负责商品/目录/共享框架；模块助手负责其余后�
 
 完成：2026-10-11 02:48 UTC。运行提交9dfd9c391cdf0bf5789049d3fb191a5fe708acdb已推送；精确候选dpl_BTWZpjbi89uGQTZKrpqBqFeKTexX经源码435项一致性、READY、同SHA Vercel success、11候选GET与独立PROMOTE GO后切换正式域名。两正式alias已核对、11正式GET通过、6后台API匿名401、新部署日志错误0。
 验收：全量lint/build、220后台合同+6商城+20导入测试、6商品目录组合和46模块场景通过；390×700显示7目录/5商品。无数据库写入，根目录既有改动保留。真实业务写入及物理Safari软键盘未验证。完整结果与回退ID见docs/audits/2026-10-11-admin-mobile-density.md；权威状态见docs/roadmap.md。
+
+后续状态：2026-10-11 14:41 UTC老板判定设计不合格并要求回滚，已恢复改版前部署dpl_CBmypjyY8x9gksXohdVcs1C4Vn64，两正式alias已核对。上述完成仅记录实施与技术检查，设计验收未获接受；本次改版发布已撤回，不继续发布。未回滚数据库或业务数据，源码保留在原隔离分支。真实当前状态以docs/roadmap.md最后记录为准。

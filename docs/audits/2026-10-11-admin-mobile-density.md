@@ -31,3 +31,11 @@
 - 新部署promote后近10分钟错误日志0。线上证据为匿名只读访问，Vercel保护身份不等于应用管理员会话；未进行真实订单/商品/库存/付款/权限/客服写入，物理Safari软键盘仍未验证。
 - 本机证据：production-aliases.json、production-smoke.json、production-log-summary.json、source-verification.json、schema-readiness.json，均位于outputs/mobile-density/2026-10-11。回退部署dpl_CBmypjyY8x9gksXohdVcs1C4Vn64；需要回退时在当前目标团队运行vercel promote该ID并复查正式域名。
 - 任务完成；发布记录后续提交仅为文档，不改变线上运行提交。根目录未提交改动仍保留，本轮无需migration。
+
+## 用户拒绝设计与实际回滚
+
+- 2026-10-11老板明确“回滚成原来的版本，这个版本页面设计不合格”。先前技术验收结果不构成设计接受，本轮改版已停止上线。
+- 已实时核对parts-pro-v4项目与团队、当前改版alias，以及改版前部署dpl_CBmypjyY8x9gksXohdVcs1C4Vn64为production READY。发布专项只读复核记录与候选diff，确认此次没有API/SQL/env/依赖/部署配置修改，无需数据库回滚。
+- 执行vercel rollback dpl_CBmypjyY8x9gksXohdVcs1C4Vn64 --yes --scope team_AOJDnrjov0QDLqpvMyhwA1yc成功。2026-10-11 14:41 UTC，partspro.app与www.partspro.app均确认指向该改版前部署，commit 44f8904efb4301cbc1383483c52dea3bd4386ab5；根域仍重定向到www。
+- 改版源码保留在codex/admin-mobile-density-20261011，不删除根目录用户改动，不做数据库或业务数据回滚。Vercel rollback暂停production自动域名分配；重新上线须老板接受设计并明确发布后promote。
+- 回滚后正式www的11项只读GET全部通过，公共首页/商城/目录API/sw.js为200，admin匿名跳转登录且不渲染后台工作区、6后台API为401；近5分钟部署错误日志0。目录名称仍为“电子产品·高端产品”。本机证据rollback-aliases.json、rollback-smoke.json、rollback-log-summary.json保留在原outputs目录；未作真实管理员业务写入或物理手机验收。

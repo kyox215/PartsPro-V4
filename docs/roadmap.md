@@ -183,3 +183,5 @@ Last reviewed: 2026-09-28
 - 商品/目录与公共框架、其余14后台组件实施完成；220合同、6商城、20导入、全量lint/build及52浏览器组合通过。390×700首条目录198px，7条完整目录/5条商品；REMAX长名溢出与隐藏图表尺寸问题已修复。API模拟与真实服务边界在验收报告中说明。
 - 已推送分支codex/admin-mobile-density-20261011，运行提交9dfd9c391cdf0bf5789049d3fb191a5fe708acdb。候选production READY、同SHA Vercel检查success、435上传文件摘要一致、11项候选GET及独立PROMOTE GO通过后上线。
 - 正式partspro.app/www.partspro.app已于2026-10-11 02:48 UTC核对指向dpl_BTWZpjbi89uGQTZKrpqBqFeKTexX；正式www的11项GET全部通过，6后台API匿名401，页面跳转登录。新部署近期错误日志0；回退基线dpl_CBmypjyY8x9gksXohdVcs1C4Vn64。详情见docs/audits/2026-10-11-admin-mobile-density.md；本轮无数据库写入。真实管理员业务写入与物理Safari软键盘仍未验证。
+- 2026-10-11 14:41 UTC，老板判定本轮页面设计不合格并明确要求回滚。已执行Vercel rollback，两正式alias均实时确认恢复至改版前dpl_CBmypjyY8x9gksXohdVcs1C4Vn64（运行提交44f8904efb4301cbc1383483c52dea3bd4386ab5），上述改版部署已撤下。代码仅保留在隔离分支，本轮不继续改版或重新上线；未回滚数据库/业务数据。Vercel rollback暂停production自动域名分配，后续发布须经过新的设计验收后明确promote。
+- 回滚后正式www的11项只读GET全部通过：公共页面与目录200，后台跳转登录、6后台API匿名401；近期错误日志0。证据为rollback-aliases.json、rollback-smoke.json、rollback-log-summary.json。已恢复的是原部署构建，未执行真实管理员业务写入验收。
