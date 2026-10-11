@@ -1,0 +1,52 @@
+{
+  "commit": "975f43552b9902ea209f260eb0cb5d8145116975",
+  "branch": "codex/admin-ui-preserve-style-20261011",
+  "candidate": {
+    "id": "dpl_9GouAqee1NKPggTwoPJpcsS1pWf7",
+    "readyState": "READY",
+    "target": "production",
+    "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+    "url": "parts-pro-v4-3diyv18gl-kyox120-9295s-projects.vercel.app",
+    "metaCommit": "975f43552b9902ea209f260eb0cb5d8145116975",
+    "teamId": "team_AOJDnrjov0QDLqpvMyhwA1yc"
+  },
+  "ci": {
+    "commit": "975f43552b9902ea209f260eb0cb5d8145116975",
+    "statuses": [
+      {
+        "context": "Vercel",
+        "state": "success",
+        "target_url": "https://vercel.com/kyox120-9295s-projects/parts-pro-v4/Fj4mmD8ahnxvmVPcfSW7ox8tXz7Z"
+      }
+    ]
+  },
+  "checks": {
+    "lint": "PASS; no warnings",
+    "build": "PASS; production Next and TypeScript",
+    "contracts": 264,
+    "storefront": 6,
+    "productImport": 20,
+    "previewUnits": 44,
+    "previewPngs": 88,
+    "independentSource": "GO_SOURCE_REVIEW",
+    "sourceVerification": "source-verification.json; 434 matched + next-env; no missing/mismatch/extras/sensitive",
+    "candidateSmoke": "PASS; 11/11 GET; candidate-smoke.json"
+  },
+  "supabase": {
+    "projectRef": "yiuxrjqexlfjtxxrkqvi",
+    "name": "PartsPro-V4",
+    "status": "ACTIVE_HEALTHY",
+    "existingMigrationsVerified": [
+      "20260926110808",
+      "20260927141646",
+      "20261010081040"
+    ],
+    "newMigrations": false,
+    "writes": false
+  },
+  "rollback": {
+    "deployment": "dpl_CBmypjyY8x9gksXohdVcs1C4Vn64",
+    "commit": "44f8904efb4301cbc1383483c52dea3bd4386ab5"
+  },
+  "userAuthorization": "开始按照规划执行 完成后推送上线"
+}

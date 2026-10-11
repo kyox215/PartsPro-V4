@@ -1,6 +1,6 @@
 # 后台原样式信息密度优化
 
-状态：verified
+状态：released
 
 Task ID：TASK-20261011-ADMIN-UI；优先级 P1；风险 R2；自治 L3。
 
@@ -48,4 +48,6 @@ npm run test:product-import
 
 - 2026-10-11：44 单元 / 88 张截图完成；264 项相关合同、6 项 storefront、20 项导入测试通过。最终全量 lint 无警告、正式 build/TypeScript 成功。核心 5 宽度无错误/溢出，390×700 商品与订单 3 卡、目录 5 条。
 - 独立源码审查 GO_SOURCE_REVIEW；移动回执、pending/unknown 快捷导航风险修复并复验。Vercel 本机解析目标与团队正确，Supabase PartsPro-V4 ACTIVE_HEALTHY；RMA v4、账号价格权威、目录管理三项现有依赖 migration 已只读确认存在。
-- 原始日志：`outputs/admin-ui-preserve-style/`；可分享逐页预览：`docs/previews/admin-ui-preserve-style-20261011/index.html`。代码发布尚未发生，待精确提交候选与独立发布门禁。
+- 原始日志：`outputs/admin-ui-preserve-style/`；可分享逐页预览：`docs/previews/admin-ui-preserve-style-20261011/index.html`。应用提交 `975f43552b9902ea209f260eb0cb5d8145116975` 已推送并发布。候选经 GO_RELEASE、同提交 CI/checks、435 上传文件哈希（434 冻结源码 + next-env）、11/11 GET 核验后 promote；两正式域名指向 `dpl_9GouAqee1NKPggTwoPJpcsS1pWf7`，发布后 11/11 匿名 HTTPS GET 通过，10m 观察错误记录 0。发布回执保留在预览 `evidence/`。主目录未提交改动未覆盖。
+
+- 限制：后台 UI 为实际组件合成数据验证；本次没有真实订单/退款/库存/财务/权限/eBay 写入，没有物理 iPhone/Safari 软键盘验证。

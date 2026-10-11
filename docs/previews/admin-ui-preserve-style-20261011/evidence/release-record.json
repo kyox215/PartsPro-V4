@@ -1,0 +1,23 @@
+{
+  "releasedAt": "2026-10-11T18:09:37.162200+00:00",
+  "applicationCommit": "975f43552b9902ea209f260eb0cb5d8145116975",
+  "branch": "codex/admin-ui-preserve-style-20261011",
+  "deployment": "dpl_9GouAqee1NKPggTwoPJpcsS1pWf7",
+  "project": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+  "team": "team_AOJDnrjov0QDLqpvMyhwA1yc",
+  "domains": {
+    "partspro.app": "dpl_9GouAqee1NKPggTwoPJpcsS1pWf7",
+    "www.partspro.app": "dpl_9GouAqee1NKPggTwoPJpcsS1pWf7"
+  },
+  "promote": "success",
+  "postSmoke": "11/11 anonymous public HTTPS GET",
+  "observedErrors": 0,
+  "rollback": "dpl_CBmypjyY8x9gksXohdVcs1C4Vn64",
+  "databaseWrites": false,
+  "newMigrations": false,
+  "primaryWorkingTreeReplaced": false,
+  "limits": [
+    "Actual UI interaction used synthetic APIs",
+    "Physical iPhone/Safari keyboard and authenticated production transactions not tested"
+  ]
+}

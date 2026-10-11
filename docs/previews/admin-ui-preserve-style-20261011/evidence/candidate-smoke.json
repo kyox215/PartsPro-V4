@@ -1,0 +1,79 @@
+{
+  "target": "parts-pro-v4-3diyv18gl-kyox120-9295s-projects.vercel.app",
+  "mode": "GET only; Vercel protection accepted, app session anonymous",
+  "checks": [
+    {
+      "path": "/",
+      "status": 200,
+      "redirectPath": "",
+      "pass": true
+    },
+    {
+      "path": "/catalogo",
+      "status": 200,
+      "redirectPath": "",
+      "pass": true
+    },
+    {
+      "path": "/api/catalog-directory",
+      "status": 200,
+      "redirectPath": "",
+      "pass": true,
+      "directoryNodes": 29,
+      "generalMerchandiseLabel": [
+        "电子产品·高端产品"
+      ]
+    },
+    {
+      "path": "/admin",
+      "status": 200,
+      "redirectPath": "",
+      "pass": true,
+      "loginMeta": true,
+      "streamRedirectLogin": true,
+      "adminWorkspaceRendered": false
+    },
+    {
+      "path": "/api/admin/products",
+      "status": 401,
+      "redirectPath": "",
+      "pass": true
+    },
+    {
+      "path": "/api/admin/catalog-directory",
+      "status": 401,
+      "redirectPath": "",
+      "pass": true
+    },
+    {
+      "path": "/api/admin/orders",
+      "status": 401,
+      "redirectPath": "",
+      "pass": true
+    },
+    {
+      "path": "/api/admin/rma",
+      "status": 401,
+      "redirectPath": "",
+      "pass": true
+    },
+    {
+      "path": "/api/admin/finance/summary",
+      "status": 401,
+      "redirectPath": "",
+      "pass": true
+    },
+    {
+      "path": "/api/admin/support/conversations",
+      "status": 401,
+      "redirectPath": "",
+      "pass": true
+    },
+    {
+      "path": "/sw.js",
+      "status": 200,
+      "redirectPath": "",
+      "pass": true
+    }
+  ]
+}

@@ -2,13 +2,13 @@
 
 Period: 2026 H2
 Owner: 总调度/项目经理
-Last reviewed: 2026-09-28
+Last reviewed: 2026-10-11
 
-## 2026-10-11 后台原样式信息密度优化（实施验收中）
+## 2026-10-11 后台原样式信息密度优化（已发布）
 
 - TASK-20261011-ADMIN-UI / R2，老板已授权按照预览规划实施并推送上线。基于原生产 `44f8904` 的独立分支；主目录本地修改与被拒绝的手机重设计不混入本次候选。
 - 保留原配色、卡片、侧栏、手机标题栏与弹窗；整理菜单、搜索、选项、低频筛选和已选条件，覆盖 12 组模块的 44 个验收单元。合成数据真实组件预览与生产业务写入证据分开记录。
-- 无新数据库 migration、API/DTO 或依赖变更；发布前执行合同、lint/build、手机/电脑浏览器、源码哈希与鉴权检查，独立 GO 后切换正式域名。进度与门禁见 `docs/tasks/now/P1-2026-10-11-admin-ui-preserve-style.md`。
+- 应用 `975f435` 已推送隔离分支并 promote 到 `dpl_9GouAqee1NKPggTwoPJpcsS1pWf7`，两正式域名核实一致。44 单元/88 截图、264+6+20 项测试、lint/build、435 上传文件哈希与独立 GO_RELEASE 通过；发布后 11/11 匿名 HTTPS GET、短观察错误记录 0。无新 migration、数据库/API/DTO/依赖/env 写入，真实交易与物理 Safari 未验收。进度与门禁见 `docs/tasks/done/P1-2026-10-11-admin-ui-preserve-style.md`。
 
 ## 2026-09-28 账号价格制度闭环（已发布）
 

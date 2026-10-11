@@ -1,0 +1,121 @@
+{
+  "decision": "GO_RELEASE",
+  "reviewedAt": "2026-10-11T18:04:57.047636+00:00",
+  "commit": "975f43552b9902ea209f260eb0cb5d8145116975",
+  "branch": "codex/admin-ui-preserve-style-20261011",
+  "deploymentId": "dpl_9GouAqee1NKPggTwoPJpcsS1pWf7",
+  "deploymentUrl": "parts-pro-v4-3diyv18gl-kyox120-9295s-projects.vercel.app",
+  "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+  "teamId": "team_AOJDnrjov0QDLqpvMyhwA1yc",
+  "target": "production",
+  "liveDeploymentRead": {
+    "source": "authenticated Vercel MCP get_deployment/get_project",
+    "readyState": "READY",
+    "metaCommit": "975f43552b9902ea209f260eb0cb5d8145116975",
+    "projectMatched": true,
+    "teamMatched": true
+  },
+  "git": {
+    "headAndOriginMatch": true,
+    "trackedWorktreeClean": true,
+    "apiDtoDbDepsEnvConfigChanges": false
+  },
+  "githubCi": {
+    "source": "fresh gh API commit status and check-runs",
+    "headSha": "975f43552b9902ea209f260eb0cb5d8145116975",
+    "combinedState": "success",
+    "statuses": [
+      {
+        "context": "Vercel",
+        "state": "success"
+      }
+    ],
+    "checkRuns": [
+      {
+        "name": "Vercel Preview Comments",
+        "status": "completed",
+        "conclusion": "success",
+        "headSha": "975f43552b9902ea209f260eb0cb5d8145116975"
+      }
+    ],
+    "pendingOrFailed": 0,
+    "scopeNote": "仓库现有CI为Vercel提交状态和Preview Comments检查；264合同/6storefront/20导入为本地冻结源码验证，不冒充GitHub Actions业务测试"
+  },
+  "sourceIntegrity": {
+    "uploadedFiles": 435,
+    "frozenRuntimeFiles": 434,
+    "all434VerifiedAgainstGitCommitBlobs": true,
+    "extra": "next-env.d.ts independently hash matched by source-verification",
+    "missing": 0,
+    "mismatch": 0,
+    "unverifiedExtras": 0,
+    "sensitivePaths": 0,
+    "priorReviewedSourceHashesUnchanged": true
+  },
+  "verification": {
+    "lint": "PASS; no warnings",
+    "build": "PASS; production Next and TypeScript",
+    "contracts": 264,
+    "storefront": 6,
+    "productImport": 20,
+    "previewUnits": 44,
+    "previewPngs": 88,
+    "independentSource": "GO_SOURCE_REVIEW",
+    "sourceVerification": "source-verification.json; 434 matched + next-env; no missing/mismatch/extras/sensitive",
+    "candidateSmoke": "PASS; 11/11 GET; candidate-smoke.json"
+  },
+  "candidateSmoke": {
+    "passed": 11,
+    "total": 11,
+    "mode": "GET only; Vercel protection accepted, app session anonymous",
+    "publicDirectoryNodes": 29,
+    "generalMerchandiseLabel": "电子产品·高端产品",
+    "anonymousAdminApis401": 6,
+    "anonymousAdminDoesNotRenderWorkspace": true
+  },
+  "candidateErrors": {
+    "observedErrorRecords": 0,
+    "window": "10m",
+    "limit": "短窗口只读观察，非真实业务流量保障"
+  },
+  "database": {
+    "newMigrations": false,
+    "writes": false,
+    "existingDependencies": {
+      "projectRef": "yiuxrjqexlfjtxxrkqvi",
+      "name": "PartsPro-V4",
+      "status": "ACTIVE_HEALTHY",
+      "existingMigrationsVerified": [
+        "20260926110808",
+        "20260927141646",
+        "20261010081040"
+      ],
+      "newMigrations": false,
+      "writes": false
+    },
+    "source": "本次主助手只读数据库核对证据；本审查未调用数据库"
+  },
+  "rollback": {
+    "deployment": "dpl_CBmypjyY8x9gksXohdVcs1C4Vn64",
+    "commit": "44f8904efb4301cbc1383483c52dea3bd4386ab5"
+  },
+  "allowedNextAction": "仅主助手可将此精确已测试的production skip-domain候选promote；不得改为其他部署或重新构建未经核验产物。切换后核对两正式域名与只读smoke。",
+  "findings": [],
+  "evidenceFiles": [
+    "release-gates.json",
+    "source-verification.json",
+    "source-manifest.json",
+    "candidate-smoke.json",
+    "candidate-errors.json",
+    "independent-ui-review.json",
+    "core/move-guard-result.json",
+    "build.log",
+    "lint.log"
+  ],
+  "limitations": [
+    "未执行真实订单、退款、库存、财务、权限、eBay或导入写入",
+    "本地实际组件合成数据UI证据不等于生产登录员工的真实业务验收",
+    "物理iPhone/Safari软键盘未测试"
+  ],
+  "reviewActions": "只读git/MCP/GitHub API与已有证据；没有部署、promote、写库或源码修改"
+}
