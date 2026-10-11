@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminSearchField } from "./admin-ui-controls";
+
 import * as React from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { runOrderWriteAndRefresh, orderQueryParams, orderDeepLinkFilters, combinePackingSlipDocuments, type OrderMutationResult } from "@/lib/admin-orders-operation.mjs";
@@ -1153,8 +1155,17 @@ export function AdminOrdersPanel({
     [canManageOrders, handleOpenOrder, handleTransition, text]
   );
 
+  const activeDetailFilterCount = Number(Boolean(searchFilters.dateFrom)) + Number(Boolean(searchFilters.dateTo)) + Number(searchFilters.sort !== "operations_queue");
+  const renderDateSortFilters = () => <div className="grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-4">
+            <label className="grid gap-1 text-xs font-semibold">{locale.startsWith("it") ? "Dal" : "开始日期"}<Input type="date" value={searchFilters.dateFrom} onChange={(event) => { setPage(1); setSearchFilters(current => ({ ...current, dateFrom: event.target.value })); }} /></label>
+            <label className="grid gap-1 text-xs font-semibold">{locale.startsWith("it") ? "Al" : "结束日期"}<Input type="date" value={searchFilters.dateTo} onChange={(event) => { setPage(1); setSearchFilters(current => ({ ...current, dateTo: event.target.value })); }} /></label>
+            <Select value={searchFilters.sort} onValueChange={(sort) => { setPage(1); setSearchFilters(current => ({ ...current, sort })); }}><SelectTrigger aria-label={locale.startsWith("it") ? "Ordina" : "排序"}><SelectValue /></SelectTrigger><SelectContent>{[
+              ["operations_queue", locale.startsWith("it") ? "Coda operativa" : "工作队列"], ["date_desc", locale.startsWith("it") ? "Più recenti" : "日期从新到旧"], ["date_asc", locale.startsWith("it") ? "Meno recenti" : "日期从旧到新"], ["total_desc", locale.startsWith("it") ? "Totale decrescente" : "金额从高到低"], ["total_asc", locale.startsWith("it") ? "Totale crescente" : "金额从低到高"]].map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
+            <Button type="button" size="xs" variant="outline" onClick={() => { setPage(1); setSearchFilters({ dateFrom: "", dateTo: "", sort: "operations_queue" }); setOrderQuery(""); setStatusFilter("all"); setPaymentFilter("all"); setStockRiskFilter("all"); setReservationFilter("all"); setViewMode("orders"); }}>{text.common.reset}</Button>
+  </div>;
+
   return (
-    <section className="w-full min-w-0 space-y-3 text-slate-950">
+    <section className="admin-ui-panel w-full min-w-0 space-y-3 text-slate-950">
       <div className="hidden gap-2 md:grid md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label={text.orders.metrics.totalOrders}
@@ -1186,19 +1197,19 @@ export function AdminOrdersPanel({
         />
       </div>
 
-      <p className="text-xs text-slate-500">
+      <p className="hidden text-xs text-slate-500 sm:block">
         {locale.startsWith("it")
           ? "Indicatori e conteggi calcolati sugli ordini della pagina corrente."
           : "指标和流程数量基于当前页订单。"}
       </p>
 
       <Card className="gap-0 rounded-md border-slate-200 bg-white py-0 shadow-[0_10px_26px_rgba(15,23,42,0.045)]">
-        <CardHeader className="gap-2 border-b border-slate-200/80 px-3 py-2.5">
-          <div className="flex min-w-0 flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+        <CardHeader className="gap-1.5 border-b border-slate-200/80 px-3 py-2 sm:gap-2 sm:py-2.5">
+          <div className="flex min-w-0 flex-col gap-1 sm:gap-2 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-center sm:gap-3">
-              <div className="min-w-0">
+              <div className="hidden min-w-0 sm:block">
                 <CardTitle className="text-base leading-tight">{text.orders.title}</CardTitle>
-                <CardDescription className="text-xs leading-tight">
+                <CardDescription className="hidden text-xs leading-tight sm:block">
                   {text.orders.description}
                 </CardDescription>
               </div>
@@ -1207,6 +1218,7 @@ export function AdminOrdersPanel({
                   {text.catalog.sourceBadge.replace("{source}", dataSource.label)}
                 </Badge>
                 <span className="min-w-0 break-words">
+                  <span className="sm:hidden">{locale.startsWith("it") ? "Code pagina · " : "流程按本页 · "}</span>
                   {dataSource.syncedAt
                     ? formatAdminMessage(text.orders.sourceStats, {
                         returned: dataSource.returned,
@@ -1217,14 +1229,14 @@ export function AdminOrdersPanel({
                 </span>
               </div>
             </div>
-            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center xl:justify-end">
+            <div className="flex min-w-0 items-center gap-2 xl:justify-end">
               <Tabs
                 value={viewMode}
                 onValueChange={(value) => {
                   setPage(1);
                   setViewMode(value as ViewMode);
                 }}
-                className="w-full sm:w-auto"
+                className="min-w-0 flex-1 sm:w-auto sm:flex-none"
               >
                 <TabsList className="grid h-8 w-full grid-cols-3 bg-slate-100 sm:w-auto">
                   <TabsTrigger value="orders" className="text-xs">
@@ -1241,29 +1253,22 @@ export function AdminOrdersPanel({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-8 bg-white"
+                className="h-8 shrink-0 bg-white"
+                aria-label={text.orders.syncOrders}
                 onClick={() => void refreshOrders()}
                 disabled={isLoadingOrders}
               >
                 <RefreshCw
                   className={cn("size-3.5", isLoadingOrders && "animate-spin")}
                 />
-                {text.orders.syncOrders}
+                <span className="hidden sm:inline">{text.orders.syncOrders}</span>
               </Button>
             </div>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
-            <label className="grid gap-1 text-xs font-semibold">{locale.startsWith("it") ? "Ordine / cliente" : "订单/客户搜索"}<Input value={orderQuery} placeholder={locale.startsWith("it") ? "Numero ordine, cliente (min. 2 caratteri)" : "订单号、客户（至少2字）"} onChange={(event) => { setPage(1); setOrderQuery(event.target.value); }} /></label>
-            <label className="grid gap-1 text-xs font-semibold">{locale.startsWith("it") ? "Dal" : "开始日期"}<Input type="date" value={searchFilters.dateFrom} onChange={(event) => { setPage(1); setSearchFilters(current => ({ ...current, dateFrom: event.target.value })); }} /></label>
-            <label className="grid gap-1 text-xs font-semibold">{locale.startsWith("it") ? "Al" : "结束日期"}<Input type="date" value={searchFilters.dateTo} onChange={(event) => { setPage(1); setSearchFilters(current => ({ ...current, dateTo: event.target.value })); }} /></label>
-            <Select value={searchFilters.sort} onValueChange={(sort) => { setPage(1); setSearchFilters(current => ({ ...current, sort })); }}><SelectTrigger aria-label={locale.startsWith("it") ? "Ordina" : "排序"}><SelectValue /></SelectTrigger><SelectContent>{[
-              ["operations_queue", locale.startsWith("it") ? "Coda operativa" : "工作队列"], ["date_desc", locale.startsWith("it") ? "Più recenti" : "日期从新到旧"], ["date_asc", locale.startsWith("it") ? "Meno recenti" : "日期从旧到新"], ["total_desc", locale.startsWith("it") ? "Totale decrescente" : "金额从高到低"], ["total_asc", locale.startsWith("it") ? "Totale crescente" : "金额从低到高"]].map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            {customerId ? <Badge variant="outline">{locale.startsWith("it") ? "Filtro cliente" : "客户筛选"}: {customerId}</Badge> : null}
-            <Button type="button" size="xs" variant="outline" onClick={() => { setPage(1); setSearchFilters({ dateFrom: "", dateTo: "", sort: "operations_queue" }); setOrderQuery(""); setStatusFilter("all"); setPaymentFilter("all"); setStockRiskFilter("all"); setReservationFilter("all"); setViewMode("orders"); }}>{text.common.reset}</Button>
-            {returnAccountId ? <a className="text-primary underline" href={`/admin?panel=accounts&accountId=${encodeURIComponent(returnAccountId)}`}>{locale.startsWith("it") ? "Torna all’account" : "返回账号"}</a> : null}
-          </div>
+          <div className="grid min-w-0 gap-2">
+            <AdminSearchField value={orderQuery} placeholder={locale.startsWith("it") ? "Numero ordine, cliente (min. 2 caratteri)" : "订单号、客户（至少2字）"} aria-label={locale.startsWith("it") ? "Ordine / cliente" : "订单/客户搜索"} clearLabel={text.common.reset} pending={isLoadingOrders} onValueChange={(value) => { setPage(1); setOrderQuery(value); }} />
+            <div className="hidden sm:block">{renderDateSortFilters()}</div>
+            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 sm:block">
           <OrderWorkflowStrip
             activeKey={activeWorkflowKey}
             counts={workflowCounts}
@@ -1271,8 +1276,21 @@ export function AdminOrdersPanel({
             text={text}
             onSelect={handleWorkflowSelect}
           />
+              <details className="min-w-0 self-start rounded-md border border-slate-200 bg-white open:col-span-2 sm:hidden">
+                <summary className="flex min-h-11 cursor-pointer items-center gap-1 px-3 text-xs font-semibold">{locale.startsWith("it") ? "Altri filtri" : "更多筛选"}{activeDetailFilterCount > 0 && <Badge variant="outline">{activeDetailFilterCount}</Badge>}</summary>
+                <div className="border-t p-2">{renderDateSortFilters()}</div>
+              </details>
+            </div>
+            {(customerId || returnAccountId || activeDetailFilterCount > 0) && <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
+              {customerId ? <Badge variant="outline">{locale.startsWith("it") ? "Filtro cliente" : "客户筛选"}: {customerId}</Badge> : null}
+              {searchFilters.dateFrom && <Button type="button" size="sm" variant="outline" onClick={() => { setPage(1); setSearchFilters(current => ({ ...current, dateFrom: "" })); }}>{locale.startsWith("it") ? "Dal" : "开始"}: {searchFilters.dateFrom} ×</Button>}
+              {searchFilters.dateTo && <Button type="button" size="sm" variant="outline" onClick={() => { setPage(1); setSearchFilters(current => ({ ...current, dateTo: "" })); }}>{locale.startsWith("it") ? "Al" : "结束"}: {searchFilters.dateTo} ×</Button>}
+              {searchFilters.sort !== "operations_queue" && <Button type="button" size="sm" variant="outline" onClick={() => { setPage(1); setSearchFilters(current => ({ ...current, sort: "operations_queue" })); }}>{locale.startsWith("it") ? "Ordinamento personalizzato" : "自定义排序"} ×</Button>}
+              {returnAccountId ? <a className="text-primary underline" href={`/admin?panel=accounts&accountId=${encodeURIComponent(returnAccountId)}`}>{locale.startsWith("it") ? "Torna all’account" : "返回账号"}</a> : null}
+            </div>}
+          </div>
         </CardHeader>
-        <CardContent className="min-w-0 space-y-2 px-3 py-2.5">
+        <CardContent className="min-w-0 space-y-1.5 px-3 py-2 sm:space-y-2 sm:py-2.5">
           {notice && (
             <AdminNotice tone={notice.tone} message={notice.message} onDismiss={() => setNotice(null)} dismissLabel={text.common.ok} action={notice.tone === "warning" && selectedOrder ? <Button size="xs" variant="outline" onClick={() => void loadOrderDetails(selectedOrder.id)}>{locale.startsWith("it") ? "Rileggi dettagli" : "重读详情"}</Button> : undefined} />
           )}
@@ -1292,10 +1310,7 @@ export function AdminOrdersPanel({
             </div>
           )}
 
-          <details className="rounded-lg border p-2"><summary className="cursor-pointer text-sm font-semibold">{locale.startsWith("it") ? "Seleziona ordini per la stampa" : "选择订单批量打印"} ({selectedForPrint.length}/50)</summary>
-            <div className="mt-2 flex flex-wrap gap-3">{visibleOrders.map(order => <label key={order.id} className="flex items-center gap-2 text-xs"><Checkbox checked={selectedForPrint.includes(order.id)} disabled={!selectedForPrint.includes(order.id) && selectedForPrint.length >= 50} onCheckedChange={(checked) => setSelectedForPrint(current => checked ? [...new Set([...current, order.id])] : current.filter(id => id !== order.id))} />{shortOrderId(order.id)}</label>)}</div>
-            <div className="mt-2 flex gap-2"><Button type="button" size="sm" disabled={!selectedForPrint.length || printing} onClick={() => void handlePrintSelected()}><Printer className="size-4" />{locale.startsWith("it") ? "Anteprima stampa selezionati" : "打印所选预览"}</Button><Button variant="outline" size="sm" onClick={() => setSelectedForPrint([])}>{text.common.deselect}</Button></div>
-          </details>
+
           <div className="min-w-0">
             {isLoadingOrders && !dataSource.syncedAt && orders.length === 0 ? (
               <OrdersListSkeleton text={text} />
@@ -1325,12 +1340,16 @@ export function AdminOrdersPanel({
               </AdminBusyRegion>
             )}
           </div>
+          <details className="rounded-lg border p-2"><summary className="cursor-pointer text-sm font-semibold">{locale.startsWith("it") ? "Seleziona ordini per la stampa" : "选择订单批量打印"} ({selectedForPrint.length}/50)</summary>
+            <div className="mt-2 flex flex-wrap gap-3">{visibleOrders.map(order => <label key={order.id} className="flex items-center gap-2 text-xs"><Checkbox checked={selectedForPrint.includes(order.id)} disabled={!selectedForPrint.includes(order.id) && selectedForPrint.length >= 50} onCheckedChange={(checked) => setSelectedForPrint(current => checked ? [...new Set([...current, order.id])] : current.filter(id => id !== order.id))} />{shortOrderId(order.id)}</label>)}</div>
+            <div className="mt-2 flex gap-2"><Button type="button" size="sm" disabled={!selectedForPrint.length || printing} onClick={() => void handlePrintSelected()}><Printer className="size-4" />{locale.startsWith("it") ? "Anteprima stampa selezionati" : "打印所选预览"}</Button><Button variant="outline" size="sm" onClick={() => setSelectedForPrint([])}>{text.common.deselect}</Button></div>
+          </details>
           <Dialog
             open={mobileDetailsOpen && selectedOrder !== null}
             onOpenChange={(open) => { if (pendingOrderAction) return; if (!open && document.querySelector("[data-admin-dirty='true']") && !window.confirm(locale.startsWith("it") ? "Abbandonare le modifiche non salvate?" : "放弃未保存的修改？")) return; setMobileDetailsOpen(open); }}
           >
             {selectedOrder && (
-              <DialogContent className="grid h-[min(760px,calc(100dvh-0.5rem))] max-h-[calc(100dvh-0.5rem)] w-[calc(100vw-0.5rem)] max-w-[calc(100vw-0.5rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg bg-white p-0 pt-7 sm:h-[min(820px,calc(100dvh-1rem))] sm:max-h-[calc(100dvh-1rem)] sm:w-[calc(100vw-1rem)] sm:max-w-[calc(100vw-1rem)] sm:pt-10 xl:max-w-[1280px] 2xl:max-w-[1360px]">
+              <DialogContent className="admin-ui-panel grid h-[min(760px,calc(100dvh-0.5rem))] max-h-[calc(100dvh-0.5rem)] w-[calc(100vw-0.5rem)] max-w-[calc(100vw-0.5rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg bg-white p-0 pt-7 sm:h-[min(820px,calc(100dvh-1rem))] sm:max-h-[calc(100dvh-1rem)] sm:w-[calc(100vw-1rem)] sm:max-w-[calc(100vw-1rem)] sm:pt-10 xl:max-w-[1280px] 2xl:max-w-[1360px]">
                 <DialogHeader className="border-b border-slate-200 px-2.5 pb-1.5 pr-12 sm:px-4 sm:pb-2.5">
                   <Button type="button" variant="outline" size="xs" className="w-fit" disabled={pendingOrderAction !== null || visibleOrders.findIndex(order => order.id === selectedOrder.id) >= visibleOrders.length - 1} onClick={() => { const index = visibleOrders.findIndex(order => order.id === selectedOrder.id); const next = visibleOrders[index + 1]; if (next) handleOpenOrder(next.id); }}>{locale.startsWith("it") ? "Ordine successivo" : "处理下一单"}</Button>
                   <DialogTitle className="break-words text-sm font-black leading-tight text-slate-950 sm:text-base">
@@ -1438,7 +1457,7 @@ function OrderWorkflowStrip({
         <div
           key={group.key}
           className={cn(
-            "min-w-0 rounded-md border border-slate-200/80 bg-slate-50/60 px-2 py-1.5",
+            "hidden min-w-0 rounded-md border border-slate-200/80 bg-slate-50/60 px-2 py-1.5 sm:block",
             group.key === "followUps" && "xl:col-span-2"
           )}
         >
@@ -1566,7 +1585,7 @@ function OrdersList({
           <h3 className="truncate text-sm font-bold text-slate-900">
             {text.orders.listTitle}
           </h3>
-          <p className="truncate text-xs text-slate-500">
+          <p className="hidden truncate text-xs text-slate-500 sm:block">
             {text.orders.listDescription}
           </p>
         </div>
@@ -1875,7 +1894,7 @@ function MobileOrderCard({
         <ReservationBadge compact order={order} text={text} />
       </div>
 
-      <div className="mt-1.5 grid min-w-0 grid-cols-2 gap-1">
+      {viewMode !== "orders" && <div className="mt-1.5 grid min-w-0 grid-cols-2 gap-1">
         {summaryFacts.map((fact) => (
           <div key={fact.label} className="min-w-0 rounded bg-slate-50 px-1.5 py-1">
             <div className="truncate text-[10px] font-semibold leading-3 text-slate-400">
@@ -1886,7 +1905,7 @@ function MobileOrderCard({
             </div>
           </div>
         ))}
-      </div>
+      </div>}
 
       <MobileOrderProgress labels={labels} status={order.status} />
     </div>
@@ -3569,7 +3588,7 @@ function OrderPaymentMethodCard({
   function renderPaymentDialog() {
     return (
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!isMutating && (open || window.confirm(/\p{Script=Han}/u.test(text.common.cancel) ? "放弃未保存的修改？" : "Abbandonare le modifiche non salvate?"))) setDialogOpen(open); }}>
-        <DialogContent data-admin-dirty={dialogOpen ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} scrollLayout="body" className="max-w-[520px] rounded-lg bg-white">
+        <DialogContent data-admin-dirty={dialogOpen ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} scrollLayout="body" className="admin-ui-panel max-w-[520px] rounded-lg bg-white">
           <DialogHeader>
             <DialogTitle className="text-base font-black text-slate-950">
               {text.orders.paymentReconciliation}
@@ -4306,7 +4325,7 @@ function OrderLogisticsCard({
         </div>
       )}
       <Dialog open={shippingDialogOpen} onOpenChange={(open) => { if (!isMutating && (open || window.confirm(/\p{Script=Han}/u.test(text.common.cancel) ? "放弃未保存的修改？" : "Abbandonare le modifiche non salvate?"))) setShippingDialogOpen(open); }}>
-        <DialogContent data-admin-dirty={shippingDialogOpen ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} scrollLayout="body" className="max-w-[520px] rounded-lg bg-white">
+        <DialogContent data-admin-dirty={shippingDialogOpen ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} scrollLayout="body" className="admin-ui-panel max-w-[520px] rounded-lg bg-white">
           <DialogHeader>
             <DialogTitle className="text-base font-black text-slate-950">
               {text.orders.adjustShipping}
@@ -4622,7 +4641,7 @@ function OrderLines({
         </Table>
       </div>
       <Dialog open={editingLine !== null} onOpenChange={(open) => { if (!open && !isMutating && window.confirm(/\p{Script=Han}/u.test(text.common.cancel) ? "放弃未保存的修改？" : "Abbandonare le modifiche non salvate?")) setEditingLine(null); }}>
-        <DialogContent data-admin-dirty={editingLine && (reason.trim() || actualQuantity !== String(lineEffectivePickedQty(editingLine))) ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} scrollLayout="body" className="max-w-[calc(100vw-1.5rem)] rounded-lg bg-white sm:max-w-md">
+        <DialogContent data-admin-dirty={editingLine && (reason.trim() || actualQuantity !== String(lineEffectivePickedQty(editingLine))) ? "true" : undefined} data-admin-mutating={isMutating ? "true" : undefined} scrollLayout="body" className="admin-ui-panel max-w-[calc(100vw-1.5rem)] rounded-lg bg-white sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-base font-black">{copy.title}</DialogTitle>
             <DialogDescription>

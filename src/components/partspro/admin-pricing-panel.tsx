@@ -1,5 +1,7 @@
 "use client";
 
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -96,7 +98,7 @@ export function AdminPricingPanel({ permissions, customerId, onMutatingChange }:
   const [mutating, setMutating] = useState(false);
   const updateMutating = useCallback((value: boolean) => { setMutating(value); onMutatingChange?.(value); }, [onMutatingChange]);
   if (!manage && !inspect) return null;
-  return <details open={opened} className="rounded-lg border bg-white p-3" onToggle={event => {
+  return <details open={opened} className="admin-ui-panel rounded-lg border bg-white p-3" onToggle={event => {
     if (mutating && !event.currentTarget.open) { event.currentTarget.open = true; return; }
     setOpened(event.currentTarget.open);
     if (event.currentTarget.open) setVisited(true);
@@ -191,7 +193,7 @@ function PricingPanelContent({ manage, inspect, customerId, canCheck, onMutating
         <fieldset disabled={locked} className="min-w-0 space-y-3">
           <label className="flex items-center gap-2"><input type="checkbox" checked={campaign.enabled} onChange={event => updateCampaign({ enabled: event.target.checked })} />{zh ? "向符合条件的新客户发放权益" : "Assegna il beneficio ai nuovi clienti idonei"}</label>
           <div className="grid gap-3 sm:grid-cols-2">
-            <label>{zh ? "赠送等级" : "Livello assegnato"}<select className="mt-1 block w-full rounded border p-2" value={campaign.level} onChange={event => updateCampaign({ level: event.target.value as SignupPricingCampaign["level"] })}>{customerTiers.map(tier => <option value={tier} key={tier}>{tierLabel(tier, zh)}</option>)}</select></label>
+            <label>{zh ? "赠送等级" : "Livello assegnato"}<Select value={campaign.level} disabled={locked} onValueChange={level => updateCampaign({ level: level as SignupPricingCampaign["level"] })}><SelectTrigger className="mt-1 w-full bg-white" aria-label={zh ? "赠送等级" : "Livello assegnato"}><SelectValue /></SelectTrigger><SelectContent>{customerTiers.map(tier => <SelectItem value={tier} key={tier}>{tierLabel(tier, zh)}</SelectItem>)}</SelectContent></Select></label>
             <label>{zh ? "有效月数" : "Durata in mesi"}<Input type="number" min={1} max={24} required value={campaign.duration_months} onChange={event => updateCampaign({ duration_months: Number(event.target.value) })} /></label>
             <label>{zh ? "活动开始（留空为立即）" : "Inizio (vuoto: subito)"}<Input type="datetime-local" value={localDateInput(campaign.starts_at)} onChange={event => updateCampaign({ starts_at: event.target.value ? new Date(event.target.value).toISOString() : null })} /></label>
             <label>{zh ? "活动结束（留空为长期）" : "Fine (vuoto: senza scadenza)"}<Input type="datetime-local" value={localDateInput(campaign.ends_at)} onChange={event => updateCampaign({ ends_at: event.target.value ? new Date(event.target.value).toISOString() : null })} /></label>

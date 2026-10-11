@@ -2937,7 +2937,7 @@ export function SupplierBatchTransportCostDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent aria-modal={true} className="flex max-h-[94dvh] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden p-0 sm:w-[calc(100vw-2rem)] sm:max-w-6xl">
+      <DialogContent aria-modal={true} className="admin-ui-panel flex max-h-[94dvh] w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] flex-col gap-0 overflow-hidden p-0 sm:w-[calc(100vw-2rem)] sm:max-w-6xl">
         <DialogHeader className="border-b border-slate-200 px-4 py-4 sm:px-6">
           <DialogTitle>{isCorrectionMode ? text.correctionTitle : charge ? text.editTitle : text.title}</DialogTitle>
           <DialogDescription>{isCorrectionMode ? text.correctionDescription : text.description}</DialogDescription>
@@ -3278,7 +3278,7 @@ export function SupplierBatchTransportCostDialog({
       </DialogContent>
       </Dialog>
       <Dialog open={confirmDialogOpen} onOpenChange={setConfirmDialogOpen}>
-      <DialogContent aria-modal={true} className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-lg">
+      <DialogContent aria-modal={true} className="admin-ui-panel w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{isCorrectionMode ? text.correctionTitle : text.confirmSummaryTitle}</DialogTitle>
           <DialogDescription>{isCorrectionMode ? text.correctionDescription : text.confirmSummaryDescription}</DialogDescription>
@@ -3317,7 +3317,7 @@ export function SupplierBatchTransportCostDialog({
       </DialogContent>
       </Dialog>
       <Dialog open={closeGuardOpen} onOpenChange={setCloseGuardOpen}>
-      <DialogContent aria-modal={true} className="w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-md">
+      <DialogContent aria-modal={true} className="admin-ui-panel w-[calc(100vw-1rem)] max-w-[calc(100vw-1rem)] sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{text.draftGuardTitle}</DialogTitle>
           <DialogDescription>{text.draftGuardDescription}</DialogDescription>

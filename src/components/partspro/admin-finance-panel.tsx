@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminSearchField } from "./admin-ui-controls";
+
 import * as React from "react";
 import { AdminActionButton, AdminErrorSummary, AdminNotice } from "./admin-feedback";
 import { useAdminMemoryQuery, usePersistentAdminValue } from "./admin-workspace-state";
@@ -221,14 +223,14 @@ function AdminFinancePanelContent({ permissions, currentUserId }: { permissions:
     meta: ledgerResource.data?.meta, page: ledgerPage, setPage: setLedgerPage, canManage, onSaved, currentUserId };
 
   return (
-    <section className="flex min-w-0 flex-col gap-3 sm:gap-4">
+    <section className="admin-ui-panel flex min-w-0 flex-col gap-3 sm:gap-4">
       <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
         <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
             <h1 className="text-xl font-black text-slate-950">{copy.title}</h1>
             <p className="mt-1 text-sm text-slate-500">{copy.subtitle}</p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex min-w-0 flex-wrap gap-2 max-sm:[&>button]:h-auto max-sm:[&>button]:max-w-full max-sm:[&>button]:whitespace-normal">
             <Button
               type="button"
               variant="outline"
@@ -249,8 +251,8 @@ function AdminFinancePanelContent({ permissions, currentUserId }: { permissions:
 
       {savedNotice ? <AdminNotice tone={errors.summary || errors.ledger || errors.cogs ? "warning" : "success"} message={savedNotice} /> : null}
       <Tabs value={tab} onValueChange={(value) => { setTab(value); setLedgerPage(0); }} className="min-w-0">
-        <TabsList className="grid h-auto group-data-horizontal/tabs:h-auto w-full grid-cols-2 rounded-lg border border-slate-200 bg-white p-1 sm:grid-cols-5">
-          {(["overview", "margin", "purchases", "expenses", "export"] as const).map((value) => <TabsTrigger key={value} value={value} className="h-auto min-h-10 whitespace-normal break-words px-2 py-2 text-center leading-tight">{copy.tabs[value]}</TabsTrigger>)}
+        <TabsList className="flex h-auto group-data-horizontal/tabs:h-auto w-full min-w-0 overflow-x-auto rounded-lg border border-slate-200 bg-white p-1 sm:grid sm:grid-cols-5">
+          {(["overview", "margin", "purchases", "expenses", "export"] as const).map((value) => <TabsTrigger key={value} value={value} className="h-auto min-h-11 min-w-20 shrink-0 flex-1 whitespace-normal break-words px-2 py-2 text-center leading-tight">{copy.tabs[value]}</TabsTrigger>)}
         </TabsList>
 
         <TabsContent value="overview" className="mt-3 min-w-0">
@@ -260,7 +262,7 @@ function AdminFinancePanelContent({ permissions, currentUserId }: { permissions:
               {loading.summary ? copy.loading : errors.summary || copy.empty}
             </div>
           ) : <>
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid min-w-0 grid-cols-2 gap-2 md:gap-3 xl:grid-cols-4">
             <MetricCard icon={TrendingUp} label={copy.salesNet} value={formatMoney(summary.salesNet, locale)} />
             <MetricCard icon={Scale} label="COGS" value={formatMoney(summary.cogsNet, locale)} />
             <MetricCard icon={Calculator} label={copy.grossProfit} value={formatMoney(summary.grossProfit, locale)} hint={`${summary.grossMarginRate.toFixed(1)}%`} />
@@ -278,7 +280,7 @@ function AdminFinancePanelContent({ permissions, currentUserId }: { permissions:
               </CardHeader>
               <CardContent>
                 <div className="h-[280px] min-w-0">
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 320, height: 280 }}>
                     <BarChart data={chartData}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} />
                       <XAxis dataKey="label" tickLine={false} axisLine={false} />
@@ -370,10 +372,9 @@ function FinanceFiltersBar({
   setFilters: React.Dispatch<React.SetStateAction<FinanceFilters>>;
 }) {
   const id = React.useId();
-  return (
-    <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-[140px_140px_150px_150px_minmax(180px,1fr)_minmax(160px,1fr)_150px]">
-      <div className="grid gap-1"><Label htmlFor={`${id}-dateMode`}>{copy.dateBasis}</Label><Select value={filters.dateMode} onValueChange={(value) => setFilters((current) => ({ ...current, dateMode: value }))}>
-        <SelectTrigger id={`${id}-dateMode`} className="w-full bg-white">
+  const renderOptions = (layout: string) => <>
+      <div className="grid min-w-0 gap-1"><Label htmlFor={`${id}-${layout}-dateMode`}>{copy.dateBasis}</Label><Select value={filters.dateMode} onValueChange={(value) => setFilters((current) => ({ ...current, dateMode: value }))}>
+        <SelectTrigger id={`${id}-${layout}-dateMode`} className="w-full min-w-0 bg-white">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -384,8 +385,8 @@ function FinanceFiltersBar({
           <SelectItem value="recognized">{copy.dateModes.recognized}</SelectItem>
         </SelectContent>
       </Select></div>
-      <div className="grid gap-1"><Label htmlFor={`${id}-confidence`}>{copy.table.confidence}</Label><Select value={filters.confidence} onValueChange={(value) => setFilters((current) => ({ ...current, confidence: value }))}>
-        <SelectTrigger id={`${id}-confidence`} className="w-full bg-white">
+      <div className="grid min-w-0 gap-1"><Label htmlFor={`${id}-${layout}-confidence`}>{copy.table.confidence}</Label><Select value={filters.confidence} onValueChange={(value) => setFilters((current) => ({ ...current, confidence: value }))}>
+        <SelectTrigger id={`${id}-${layout}-confidence`} className="w-full min-w-0 bg-white">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -395,12 +396,12 @@ function FinanceFiltersBar({
           <SelectItem value="unmatched">unmatched</SelectItem>
         </SelectContent>
       </Select></div>
-      <div className="grid gap-1"><Label htmlFor={`${id}-from`}>{copy.dateFrom}</Label><Input id={`${id}-from`} type="date" value={filters.dateFrom} onChange={(event) => setFilters((current) => ({ ...current, dateFrom: event.target.value }))} /></div>
-      <div className="grid gap-1"><Label htmlFor={`${id}-to`}>{copy.dateTo}</Label><Input id={`${id}-to`} type="date" value={filters.dateTo} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} /></div>
-      <div className="grid gap-1"><Label htmlFor={`${id}-q`}>{copy.searchPlaceholder}</Label><Input id={`${id}-q`} value={filters.q} placeholder={copy.searchPlaceholder} onChange={(event) => setFilters((current) => ({ ...current, q: event.target.value }))} /></div>
-      <div className="grid gap-1"><Label htmlFor={`${id}-supplier`}>{copy.supplierPlaceholder}</Label><Input id={`${id}-supplier`} value={filters.supplier} placeholder={copy.supplierPlaceholder} onChange={(event) => setFilters((current) => ({ ...current, supplier: event.target.value }))} /></div>
-      <div className="grid gap-1"><Label htmlFor={`${id}-category`}>{copy.expenseCategory}</Label><Select value={filters.category} onValueChange={(value) => setFilters((current) => ({ ...current, category: value }))}>
-        <SelectTrigger id={`${id}-category`} className="w-full bg-white">
+      <div className="grid min-w-0 gap-1"><Label htmlFor={`${id}-${layout}-from`}>{copy.dateFrom}</Label><Input id={`${id}-${layout}-from`} type="date" value={filters.dateFrom} onChange={(event) => setFilters((current) => ({ ...current, dateFrom: event.target.value }))} /></div>
+      <div className="grid min-w-0 gap-1"><Label htmlFor={`${id}-${layout}-to`}>{copy.dateTo}</Label><Input id={`${id}-${layout}-to`} type="date" value={filters.dateTo} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} /></div>
+
+      <div className="grid min-w-0 gap-1"><Label htmlFor={`${id}-${layout}-supplier`}>{copy.supplierPlaceholder}</Label><AdminSearchField id={`${id}-${layout}-supplier`} value={filters.supplier} placeholder={copy.supplierPlaceholder} onValueChange={supplier => setFilters((current) => ({ ...current, supplier }))} /></div>
+      <div className="grid min-w-0 gap-1"><Label htmlFor={`${id}-${layout}-category`}>{copy.expenseCategory}</Label><Select value={filters.category} onValueChange={(value) => setFilters((current) => ({ ...current, category: value }))}>
+        <SelectTrigger id={`${id}-${layout}-category`} className="w-full min-w-0 bg-white">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
@@ -416,6 +417,20 @@ function FinanceFiltersBar({
           ))}
         </SelectContent>
       </Select></div>
+  </>;
+  return (
+    <div className="mt-3 grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-3 2xl:grid-cols-[140px_140px_150px_150px_minmax(180px,1fr)_minmax(160px,1fr)_150px]">
+      <div className="order-first col-span-2 grid min-w-0 gap-1 lg:col-span-1 2xl:order-none"><Label htmlFor={`${id}-q`}>{copy.searchPlaceholder}</Label><AdminSearchField id={`${id}-q`} value={filters.q} placeholder={copy.searchPlaceholder} clearLabel={copy.locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca"} onValueChange={(q) => setFilters((current) => ({ ...current, q }))} /></div>
+      <details className="col-span-2 min-w-0 rounded-lg border border-slate-200 bg-white sm:hidden">
+        <summary className="flex min-h-11 cursor-pointer flex-wrap items-center justify-between gap-2 px-3 text-xs font-semibold"><span>{copy.locale.startsWith("zh") ? "筛选与日期口径" : "Filtri e base della data"} · {copy.dateModes[filters.dateMode as keyof typeof copy.dateModes] ?? filters.dateMode}</span><span className="font-mono font-normal text-slate-500">{filters.dateFrom || "—"} → {filters.dateTo || "—"}</span></summary>
+        <div className="grid min-w-0 grid-cols-2 gap-2 border-t p-2">{renderOptions("mobile")}</div>
+      </details>
+      <div className="hidden sm:contents">{renderOptions("desktop")}</div>
+      {(filters.supplier || filters.category !== "all" || filters.confidence !== "all") && <div className="col-span-2 flex min-w-0 flex-wrap gap-2 2xl:col-span-7">
+        {filters.supplier && <Button type="button" variant="outline" size="sm" onClick={() => setFilters(current => ({ ...current, supplier: "" }))}>{copy.supplierPlaceholder}: {filters.supplier} ×</Button>}
+        {filters.category !== "all" && <Button type="button" variant="outline" size="sm" onClick={() => setFilters(current => ({ ...current, category: "all" }))}>{copy.expenseCategory}: {({ sales: copy.salesNet, purchase: copy.purchaseNet, cogs: "COGS", supplier_payment: copy.addPayment } as Record<string, string>)[filters.category] ?? expenseCategoryLabel(filters.category, copy.locale)} ×</Button>}
+        {filters.confidence !== "all" && <Button type="button" variant="outline" size="sm" onClick={() => setFilters(current => ({ ...current, confidence: "all" }))}>{copy.table.confidence}: {filters.confidence} ×</Button>}
+      </div>}
     </div>
   );
 }
@@ -432,14 +447,14 @@ function MetricCard({
   value: string;
 }) {
   return (
-    <Card className="rounded-lg border-slate-200 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
-      <CardContent className="flex min-h-[112px] items-start justify-between gap-3 p-4">
+    <Card className="gap-0 rounded-lg border-slate-200 py-0 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
+      <CardContent className="flex min-h-[96px] min-w-0 items-start justify-between gap-2 p-3 md:min-h-[112px] md:gap-3 md:p-4">
         <div className="min-w-0">
           <div className="text-xs font-bold text-slate-500">{label}</div>
-          <div className="mt-2 truncate font-mono text-2xl font-black text-slate-950">{value}</div>
+          <div className="mt-2 break-all font-mono text-lg font-black text-slate-950 md:text-2xl">{value}</div>
           {hint ? <div className="mt-1 text-xs font-semibold text-emerald-600">{hint}</div> : null}
         </div>
-        <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+        <div className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary md:size-9">
           <Icon className="size-4" />
         </div>
       </CardContent>
@@ -462,6 +477,7 @@ function FinanceTable({
     <Card className="rounded-lg border-slate-200 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
       <CardContent className="p-0">
         <FinanceReadNotice copy={copy} error={error} stale={stale} loading={isLoading} onRetry={onRetry} />
+        <p className="px-3 py-2 text-xs text-slate-500 md:hidden">{locale.startsWith("zh") ? "横向滑动查看参考编号、金额与成本口径" : "Scorri per vedere riferimenti, importi e base dei costi"}</p>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -747,7 +763,7 @@ function FinanceEntryDialog({ type, copy, onSaved, row }: {
     <DialogTrigger asChild><Button type="button" variant="outline" className="bg-white" size={editing ? "sm" : "default"}>
       {editing ? <Pencil className="size-4" /> : isExpense ? <Plus className="size-4" /> : <HandCoins className="size-4" />}{title}
     </Button></DialogTrigger>
-    <DialogContent data-admin-dirty={open && dirty ? "true" : "false"} data-admin-mutating={isSaving ? "true" : "false"} scrollLayout="body" className="sm:max-w-xl">
+    <DialogContent data-admin-dirty={open && dirty ? "true" : "false"} data-admin-mutating={isSaving ? "true" : "false"} scrollLayout="body" className="admin-ui-panel sm:max-w-xl">
       <DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>{editing ? copy.correctionDescription : copy.dialogDescription}</DialogDescription></DialogHeader>
       <form onSubmit={submit} noValidate className="contents">
         <DialogBody className="space-y-4">

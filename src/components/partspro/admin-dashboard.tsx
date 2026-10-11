@@ -45,6 +45,7 @@ import { useI18n } from "./i18n-provider";
 import { LanguageSwitcher } from "./language-switcher";
 import { PartsProLogo } from "./logo";
 import { AdminGlobalSearch } from "./admin-global-search";
+import { AdminSearchField } from "./admin-ui-controls";
 import { AdminWorkspaceStateProvider } from "./admin-workspace-state";
 import { NotificationCenter } from "./notification-center";
 import {
@@ -641,6 +642,8 @@ function AdminSidebar({
   visiblePanels,
 }: AdminSidebarProps) {
   const text = useAdminText();
+  const [navigationQuery, setNavigationQuery] = React.useState("");
+  const navigationItems = navItems.filter(item => visiblePanels.has(item.panel) && (collapsed || text.nav[item.labelKey].toLocaleLowerCase().includes(navigationQuery.trim().toLocaleLowerCase())));
   const toggleLabel = text.nav.settings === "设置" ? (collapsed ? "展开后台导航" : "收起后台导航") : (collapsed ? "Espandi navigazione" : "Riduci navigazione");
   const ToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
   const userCard = (
@@ -698,8 +701,10 @@ function AdminSidebar({
           </TooltipContent>
         </Tooltip>
       </div>
-      <nav className={cn("min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain py-2", collapsed ? "mt-4" : "mt-5")}>
-        {navItems.map((item) => {
+      {!collapsed && <AdminSearchField containerClassName="mt-4" value={navigationQuery} onValueChange={setNavigationQuery} aria-label={text.nav.settings === "设置" ? "搜索后台菜单" : "Cerca menu"} placeholder={text.nav.settings === "设置" ? "搜索菜单" : "Cerca menu"} className="h-9" />}
+      <nav className={cn("min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain py-2", collapsed ? "mt-4" : "mt-2")}>
+        {navigationItems.length === 0 && <p role="status" className="p-2 text-sm text-slate-500">{text.nav.settings === "设置" ? "没有匹配的菜单" : "Nessun menu corrispondente"}</p>}
+        {navigationItems.map((item) => {
           const panel = "panel" in item ? item.panel : undefined;
           const label = text.nav[item.labelKey];
           const isAvailable = Boolean(panel && visiblePanels.has(panel));
@@ -797,6 +802,8 @@ function AdminTopbar({
 }: AdminNavigationProps) {
   const text = useAdminText();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
+  const [navigationQuery, setNavigationQuery] = React.useState("");
+  const navigationItems = navItems.filter(item => visiblePanels.has(item.panel) && text.nav[item.labelKey].toLocaleLowerCase().includes(navigationQuery.trim().toLocaleLowerCase()));
 
   return (
     <header className="sticky top-0 z-30 border-b border-slate-200 bg-slate-50/95 backdrop-blur-xl">
@@ -813,7 +820,7 @@ function AdminTopbar({
               <Menu className="size-4" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="w-[min(310px,var(--overlay-width,100vw))] gap-0 overflow-hidden p-0">
+          <SheetContent side="left" className="admin-ui-panel w-[min(310px,var(--overlay-width,100vw))] gap-0 overflow-hidden p-0">
             <SheetHeader className="border-b px-5 py-4 text-left">
               <SheetTitle>
                 <PartsProLogo />
@@ -838,7 +845,9 @@ function AdminTopbar({
                 </Link>
                 <LanguageSwitcher scope="admin" compact className="h-10 shadow-sm" />
               </div>
-              {navItems.map((item) => {
+              <AdminSearchField containerClassName="mb-2" value={navigationQuery} onValueChange={setNavigationQuery} aria-label={text.nav.settings === "设置" ? "搜索后台菜单" : "Cerca menu"} placeholder={text.nav.settings === "设置" ? "搜索菜单" : "Cerca menu"} />
+              {navigationItems.length === 0 && <p role="status" className="p-3 text-sm text-slate-500">{text.nav.settings === "设置" ? "没有匹配的菜单" : "Nessun menu corrispondente"}</p>}
+              {navigationItems.map((item) => {
                 const panel = "panel" in item ? item.panel : undefined;
                 const isAvailable = Boolean(panel && visiblePanels.has(panel));
                 const isActive = panel === activePanel;

@@ -1,0 +1,45 @@
+{
+  "decision": "GO_SOURCE_REVIEW",
+  "scope": [
+    "src/components/partspro/admin-ui-controls.tsx",
+    "src/components/partspro/admin-catalog-directory.tsx",
+    "src/components/partspro/admin-products-panel.tsx",
+    "src/components/partspro/admin-dashboard.tsx",
+    "src/components/partspro/admin-global-search.tsx",
+    "src/app/globals.css"
+  ],
+  "sourceHashes": {
+    "src/components/partspro/admin-ui-controls.tsx": "ecaf1ea8ad1719c2ed0a03c6f67bd0e7a093079c05d9b35c276aee2788f86e25",
+    "src/components/partspro/admin-catalog-directory.tsx": "ef1f2912982455bd1ea3beeaf7173fa71e3151a04b02122116ee547f7f082ef2",
+    "src/components/partspro/admin-products-panel.tsx": "8abfd3df5db35754f52ec4b51efc9b78ba290a9ee630b6bc417daf2a93c3e842",
+    "src/components/partspro/admin-dashboard.tsx": "3a4431832199ebb1b927ceb6d6bbfbcb8b5c5cd03a78fe9baf1d5c57139d5152",
+    "src/components/partspro/admin-global-search.tsx": "05089859564117b313869870b2421ec5dedd44eafded872ba11a591eb3f651a8",
+    "src/app/globals.css": "69de697a798befbaadd2c5806cde64db158570611ef162ffa91d2582143f8b4a"
+  },
+  "findings": [],
+  "closedFindings": [
+    {
+      "issue": "目录移动2xx回执不完整可能假成功",
+      "resolution": "实际catalogRequest校验moved等于请求数且directory.nodes/revision完整；不完整归unknown",
+      "evidence": "tests/admin-catalog-write-result.test.mjs 4/4独立通过"
+    },
+    {
+      "issue": "目录移动pending/unknown可被新增Ctrl+K搜索绕开导航保护",
+      "resolution": "原DialogContent新增pending/unknown与dirty标志；global快捷键与按钮共同检查mutating；dirty退出确认、beforeunload和unknown字段冻结",
+      "evidence": "outputs/admin-ui-preserve-style/core/move-guard-result.json 1次POST；pending/unknown Ctrl+K与Escape保护通过"
+    }
+  ],
+  "contracts": {
+    "apiDtoDbDependencyDiff": "empty",
+    "permissions": "原能力判断及服务器权限未变；共享选择器只过滤本地options",
+    "dirtyAndUnknown": "目录409保留草稿；unknown锁定写操作，GET核对不自动重放；移动unknown关闭触发刷新",
+    "portal": "CSS只在admin-ui-panel/admin-ui-control/admin-ui-select-popup及admin body内，前台视觉token未变",
+    "accessibility": "手机输入16px、主要控制44px、辅助12px；搜索清除有label且保留焦点；长选项完整换行与键盘/IME保护"
+  },
+  "uiEvidence": "outputs/admin-ui-preserve-style/modules-manifest-37.json：37单元74帧；桌面logo重新拍摄正常；390×700订单3完整原卡",
+  "releaseGate": "此结论是当前冻结源码与本地浏览器独立复核GO，发布仍由主助手核对最终lint/build/合同CI以及目标并执行。",
+  "limits": [
+    "本地Chromium合成数据不证明真实业务写入或物理Safari软键盘",
+    "价格故障注入锁定保存和活动输入；权限故障锁定保存且保留矩阵草稿编辑，不声称全部输入锁定"
+  ]
+}

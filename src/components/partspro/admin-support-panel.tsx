@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminSearchField, AdminSearchableSelect } from "./admin-ui-controls";
+
 import * as React from "react";
 import {
   Check,
@@ -13,7 +15,6 @@ import {
   Send,
   UserCheck,
 } from "lucide-react";
-import { Input } from "@/components/ui/input";
 import { AdminListPager } from "./admin-list-pager";
 import { acknowledgeConversationDraft, setConversationDraft, supportDetailMatches } from "@/lib/admin-operation-state.mjs";
 import { Badge } from "@/components/ui/badge";
@@ -650,7 +651,7 @@ export function AdminSupportPanel({
   }
 
   return (
-    <section data-admin-dirty={Object.values(replyDrafts).some(value => value.trim()) ? "true" : "false"} data-admin-mutating={pendingAction ? "true" : "false"} className="min-w-0 space-y-1.5 sm:space-y-3">
+    <section data-admin-dirty={Object.values(replyDrafts).some(value => value.trim()) ? "true" : "false"} data-admin-mutating={pendingAction ? "true" : "false"} className="admin-ui-panel min-w-0 space-y-1.5 sm:space-y-3">
       <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-[0_12px_32px_rgba(15,23,42,0.045)] sm:p-4">
         <div className="flex min-w-0 items-center justify-between gap-2">
           <div className="min-w-0">
@@ -682,7 +683,7 @@ export function AdminSupportPanel({
           </div>
         </div>
         <form className="mt-3 flex gap-2" onSubmit={e => { e.preventDefault(); setPage(0); setSearch(searchInput.trim()); }}>
-          <Input aria-label={locale.startsWith("zh") ? "搜索客户或会话" : "Cerca cliente o conversazione"} placeholder={locale.startsWith("zh") ? "客户、邮箱、会话标题或编号" : "Cliente, email, oggetto o ID"} value={searchInput} onChange={e => setSearchInput(e.target.value)} />
+          <AdminSearchField containerClassName="min-w-0 flex-1" aria-label={locale.startsWith("zh") ? "搜索客户或会话" : "Cerca cliente o conversazione"} placeholder={locale.startsWith("zh") ? "客户、邮箱、会话标题或编号" : "Cliente, email, oggetto o ID"} value={searchInput} onValueChange={setSearchInput} pending={isLoadingList} clearLabel={locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca"} />
           <Button type="submit" variant="outline">{locale.startsWith("zh") ? "搜索" : "Cerca"}</Button>
         </form>
         <div className="mt-1.5 grid grid-cols-4 gap-1 sm:hidden">
@@ -887,19 +888,7 @@ export function AdminSupportPanel({
                   </div>
                 ) : null}
                 <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_auto] gap-1.5 sm:mt-3 sm:gap-2">
-                  <Select value={assignee} onValueChange={setAssignee}>
-                    <SelectTrigger className="h-8 bg-white text-xs sm:h-9 sm:text-sm">
-                      <SelectValue placeholder={copy.assignedTo} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value={unassignedValue}>{copy.filters.unassigned}</SelectItem>
-                      {employees.map((employee) => (
-                        <SelectItem key={employee.userId} value={employee.userId}>
-                          {employee.displayName ?? employee.email ?? employee.userId}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <AdminSearchableSelect value={assignee} onValueChange={setAssignee} ariaLabel={copy.assignedTo} placeholder={copy.assignedTo} disabled={pendingAction !== null} options={[{ value: unassignedValue, label: copy.filters.unassigned }, ...employees.map(employee => ({ value: employee.userId, label: employee.displayName ?? employee.email ?? employee.userId, description: employee.email ?? undefined }))]} />
                   <Button
                     type="button"
                     className="h-8 px-2 text-xs sm:h-9 sm:px-3 sm:text-sm"
@@ -975,7 +964,7 @@ export function AdminSupportPanel({
       <Sheet open={mobileDetailOpen} onOpenChange={setMobileDetailOpen}>
         <SheetContent
           side="bottom"
-          className="h-[88svh] gap-0 overflow-hidden rounded-t-2xl p-0 lg:hidden"
+          className="admin-ui-panel h-[88svh] gap-0 overflow-hidden rounded-t-2xl p-0 lg:hidden"
         >
           {detail && detailReady && selectedConversation ? (
             <MobileSupportDetail
@@ -1168,19 +1157,7 @@ function MobileSupportDetail({
         ) : null}
 
         <div className="mt-1.5 grid grid-cols-[minmax(0,1fr)_auto] gap-1.5">
-          <Select value={assignee} onValueChange={onAssigneeChange}>
-            <SelectTrigger className="h-8 bg-white text-xs">
-              <SelectValue placeholder={copy.assignedTo} />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={unassignedValue}>{copy.filters.unassigned}</SelectItem>
-              {employees.map((employee) => (
-                <SelectItem key={employee.userId} value={employee.userId}>
-                  {employee.displayName ?? employee.email ?? employee.userId}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <AdminSearchableSelect value={assignee} onValueChange={onAssigneeChange} ariaLabel={copy.assignedTo} placeholder={copy.assignedTo} disabled={pendingAction !== null} options={[{ value: unassignedValue, label: copy.filters.unassigned }, ...employees.map(employee => ({ value: employee.userId, label: employee.displayName ?? employee.email ?? employee.userId, description: employee.email ?? undefined }))]} />
           <Button
             type="button"
             className="h-8 px-2 text-xs"

@@ -1,0 +1,4242 @@
+{
+  "version": 1,
+  "generatedAt": "2026-10-11T17:56:39.080Z",
+  "baseCommit": "44f8904",
+  "plannedUnits": 37,
+  "screenshots": 74,
+  "source": "实际生产React组件和原CSS；完全本地合成API，无生产业务访问或写入",
+  "verificationScope": "37个计划子状态均有390手机和1440桌面截图。少量只有读取的状态以实际页面进入和组件/图表尺寸为交互验证，写入只测本地失败/草稿保护。原业务操作并未在生产执行。",
+  "summary": {
+    "all37UnitsHaveTwoActualFrames": true,
+    "primaryFramesWithOverflow": 0,
+    "primaryFramesWithPageErrors": 0,
+    "primaryFramesWithConsoleErrors": 0,
+    "primaryFramesWithConsoleWarnings": 0,
+    "desktopLogo": "公开assets已修复后全部1440重新拍摄",
+    "orders390x700": "首条298px、完整原卡3条、106px每卡（results-orders-390-zh-CN-h700.json）"
+  },
+  "units": [
+    {
+      "id": "overview.summary",
+      "name": "经营概览",
+      "panel": "overview",
+      "view": "default",
+      "recordState": "订单6、商品1、原图表非零尺寸",
+      "clickPath": "进入概览；读取真实图表组件并检查尺寸",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=overview",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/overview-default-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/overview-default-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:25:08.597Z",
+          "resultModifiedAt": "2026-10-11T17:27:13.518Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [],
+            "chartDimensions": [
+              {
+                "width": 350,
+                "height": 220
+              },
+              {
+                "width": 116,
+                "height": 116
+              }
+            ]
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/overview-default-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/overview-default-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              }
+            ],
+            "chartDimensions": [
+              {
+                "width": 544,
+                "height": 220
+              },
+              {
+                "width": 367,
+                "height": 116
+              }
+            ]
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "orders.list",
+      "name": "订单列表",
+      "panel": "orders",
+      "view": "default",
+      "recordState": "订单6条",
+      "clickPath": "进入订单；展开/折叠更多筛选并检查日期并排；打开原详情后返回",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=orders",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/orders-default-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/orders-default-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-orders-accounts-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:26:14.152Z",
+          "resultModifiedAt": "2026-10-11T17:38:55.761Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 342,
+                "parentWidth": 342
+              }
+            ],
+            "density": {
+              "firstRowTop": 306,
+              "completeCards": 4,
+              "cardHeights": [
+                106,
+                106,
+                106,
+                106,
+                106,
+                106
+              ]
+            },
+            "datePair": true,
+            "workflowVisible": 1,
+            "originalDetails": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/orders-default-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/orders-default-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 1134,
+                "parentWidth": 1134
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 277.5,
+                "parentWidth": 277.5
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 277.5,
+                "parentWidth": 277.5
+              }
+            ],
+            "density": {
+              "firstRowTop": null,
+              "completeCards": 0,
+              "cardHeights": []
+            },
+            "datePair": true,
+            "workflowVisible": 11
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "orders.payments",
+      "name": "收款工作区",
+      "panel": "orders",
+      "view": "payments",
+      "recordState": "订单6条按原收款口径",
+      "clickPath": "点击订单原收款页签",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=orders",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/orders-payments-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/orders-payments-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-orders-accounts-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:26:14.152Z",
+          "resultModifiedAt": "2026-10-11T17:38:55.761Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 342,
+                "parentWidth": 342
+              }
+            ],
+            "density": {
+              "firstRowTop": 306,
+              "completeCards": 4,
+              "cardHeights": [
+                106,
+                106,
+                106,
+                106,
+                106,
+                106
+              ]
+            },
+            "datePair": true,
+            "workflowVisible": 1,
+            "originalDetails": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/orders-payments-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/orders-payments-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 1134,
+                "parentWidth": 1134
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 277.5,
+                "parentWidth": 277.5
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 277.5,
+                "parentWidth": 277.5
+              }
+            ],
+            "density": {
+              "firstRowTop": null,
+              "completeCards": 0,
+              "cardHeights": []
+            },
+            "datePair": true,
+            "workflowVisible": 11
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "orders.shipping",
+      "name": "配送工作区",
+      "panel": "orders",
+      "view": "shipping",
+      "recordState": "订单6条按原配送口径",
+      "clickPath": "点击订单原配送页签",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=orders",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/orders-shipping-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/orders-shipping-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-orders-accounts-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:26:14.152Z",
+          "resultModifiedAt": "2026-10-11T17:38:55.761Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 342,
+                "parentWidth": 342
+              }
+            ],
+            "density": {
+              "firstRowTop": 306,
+              "completeCards": 4,
+              "cardHeights": [
+                106,
+                106,
+                106,
+                106,
+                106,
+                106
+              ]
+            },
+            "datePair": true,
+            "workflowVisible": 1,
+            "originalDetails": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/orders-shipping-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/orders-shipping-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 1134,
+                "parentWidth": 1134
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 277.5,
+                "parentWidth": 277.5
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 277.5,
+                "parentWidth": 277.5
+              }
+            ],
+            "density": {
+              "firstRowTop": null,
+              "completeCards": 0,
+              "cardHeights": []
+            },
+            "datePair": true,
+            "workflowVisible": 11
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "rma.queue",
+      "name": "售后队列",
+      "panel": "rma",
+      "view": "default",
+      "recordState": "售后申请4条",
+      "clickPath": "进入售后列表并点首条",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=rma",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/rma-default-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/rma-default-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:25:08.597Z",
+          "resultModifiedAt": "2026-10-11T17:27:13.518Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 340,
+                "parentWidth": 340
+              }
+            ],
+            "returnToList": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/rma-default-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/rma-default-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 1124,
+                "parentWidth": 1124
+              }
+            ]
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "rma.detail",
+      "name": "售后详情与处理",
+      "panel": "rma",
+      "view": "detail",
+      "recordState": "选中售后1条，原可用操作与退款限制",
+      "clickPath": "点击首条；手机当前详情定位与返回列表",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=rma",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/rma-detail-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/rma-detail-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:25:08.597Z",
+          "resultModifiedAt": "2026-10-11T17:27:13.518Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 340,
+                "parentWidth": 340
+              }
+            ],
+            "returnToList": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/rma-detail-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/rma-detail-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 1124,
+                "parentWidth": 1124
+              }
+            ]
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "inventory.shortages",
+      "name": "近期售出缺货",
+      "panel": "inventory",
+      "view": "shortages",
+      "recordState": "缺货SKU1条，DOM明确断言可见",
+      "clickPath": "商品工作区→近期售出缺货；滚动实际缺货清单",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=catalog&catalogView=sold-shortages",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/inventory-shortages-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/inventory-shortages-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-inventory-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:50:13.725Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 342,
+                "parentWidth": 342
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 342,
+                "parentWidth": 342
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 257.5,
+                "parentWidth": 335.5
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 72,
+                "parentWidth": 335.5
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 335.5,
+                "parentWidth": 335.5
+              }
+            ],
+            "shortagesNonempty": true,
+            "unselectedBulkHidden": true,
+            "selectedBulkVisible": true,
+            "healthNonempty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/inventory-shortages-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/inventory-shortages-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 220,
+                "parentWidth": 220
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 204,
+                "parentWidth": 204
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 64,
+                "parentWidth": 92
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 134,
+                "parentWidth": 150
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.96875,
+                "parentWidth": 251.96875
+              }
+            ],
+            "shortagesNonempty": true,
+            "unselectedBulkHidden": true,
+            "selectedBulkVisible": true,
+            "healthNonempty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "inventory.replenishment",
+      "name": "采购补货计划",
+      "panel": "inventory",
+      "view": "replenishment",
+      "recordState": "采购计划1条",
+      "clickPath": "滚动采购计划；选择本页并检查批量字段从隐藏到显示",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=catalog&catalogView=sold-shortages",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/inventory-replenishment-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/inventory-replenishment-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-inventory-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:50:13.725Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 342,
+                "parentWidth": 342
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 342,
+                "parentWidth": 342
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 257.5,
+                "parentWidth": 335.5
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 72,
+                "parentWidth": 335.5
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 335.5,
+                "parentWidth": 335.5
+              }
+            ],
+            "shortagesNonempty": true,
+            "unselectedBulkHidden": true,
+            "selectedBulkVisible": true,
+            "healthNonempty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/inventory-replenishment-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/inventory-replenishment-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 220,
+                "parentWidth": 220
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 204,
+                "parentWidth": 204
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 64,
+                "parentWidth": 92
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 134,
+                "parentWidth": 150
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.96875,
+                "parentWidth": 251.96875
+              }
+            ],
+            "shortagesNonempty": true,
+            "unselectedBulkHidden": true,
+            "selectedBulkVisible": true,
+            "healthNonempty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "inventory.health",
+      "name": "库存一致性",
+      "panel": "inventory",
+      "view": "health",
+      "recordState": "库存体检异常SKU1条，DOM明确断言可见",
+      "clickPath": "滚动库存体检；校验实际SKU记录",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=catalog&catalogView=sold-shortages",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/inventory-health-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/inventory-health-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-inventory-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:50:13.725Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 342,
+                "parentWidth": 342
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 342,
+                "parentWidth": 342
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 257.5,
+                "parentWidth": 335.5
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 72,
+                "parentWidth": 335.5
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 335.5,
+                "parentWidth": 335.5
+              }
+            ],
+            "shortagesNonempty": true,
+            "unselectedBulkHidden": true,
+            "selectedBulkVisible": true,
+            "healthNonempty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/inventory-health-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/inventory-health-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 220,
+                "parentWidth": 220
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 204,
+                "parentWidth": 204
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 64,
+                "parentWidth": 92
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 134,
+                "parentWidth": 150
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.96875,
+                "parentWidth": 251.96875
+              }
+            ],
+            "shortagesNonempty": true,
+            "unselectedBulkHidden": true,
+            "selectedBulkVisible": true,
+            "healthNonempty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "remax.import",
+      "name": "REMAX模板与导入预检",
+      "panel": "remax",
+      "view": "import-preview",
+      "recordState": "合成CSV预检结果1条",
+      "clickPath": "选本地合成CSV→导入前预检；只读预览不实际导入",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=remax",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/remax-import-preview-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/remax-import-preview-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:25:08.597Z",
+          "resultModifiedAt": "2026-10-11T17:27:13.518Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "date",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "date",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "datetime-local",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "file",
+                "font": 16,
+                "width": 300,
+                "parentWidth": 334
+              }
+            ]
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/remax-import-preview-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/remax-import-preview-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 222.75,
+                "parentWidth": 222.75
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 222.75,
+                "parentWidth": 222.75
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 222.75,
+                "parentWidth": 222.75
+              },
+              {
+                "type": "datetime-local",
+                "font": 14,
+                "width": 222.75,
+                "parentWidth": 222.75
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 222.75,
+                "parentWidth": 222.75
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 222.75,
+                "parentWidth": 222.75
+              },
+              {
+                "type": "file",
+                "font": 14,
+                "width": 650.25,
+                "parentWidth": 684.25
+              }
+            ]
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "remax.arrival",
+      "name": "REMAX到货登记",
+      "panel": "remax",
+      "view": "arrival",
+      "recordState": "批次1个、待收货商品1条",
+      "clickPath": "打开批次选项→选择长名称批次→显示原到货数量字段",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=remax",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/remax-arrival-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/remax-arrival-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:25:08.597Z",
+          "resultModifiedAt": "2026-10-11T17:27:13.518Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "date",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "date",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "datetime-local",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "file",
+                "font": 16,
+                "width": 300,
+                "parentWidth": 334
+              }
+            ]
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/remax-arrival-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/remax-arrival-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 222.75,
+                "parentWidth": 222.75
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 222.75,
+                "parentWidth": 222.75
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 222.75,
+                "parentWidth": 222.75
+              },
+              {
+                "type": "datetime-local",
+                "font": 14,
+                "width": 222.75,
+                "parentWidth": 222.75
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 222.75,
+                "parentWidth": 222.75
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 222.75,
+                "parentWidth": 222.75
+              },
+              {
+                "type": "file",
+                "font": 14,
+                "width": 650.25,
+                "parentWidth": 684.25
+              }
+            ]
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "commerce.connection",
+      "name": "eBay连接与刊登设置",
+      "panel": "marketplace",
+      "view": "connection",
+      "recordState": "合成sandbox连接与设置",
+      "clickPath": "页内定位→连接；折叠设置字段挂载保留",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=marketplace",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/marketplace-connection-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/marketplace-connection-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-marketplace-timeline-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:39:00.843Z",
+          "resultModifiedAt": "2026-10-11T17:41:40.363Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              }
+            ],
+            "mappingDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/marketplace-connection-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/marketplace-connection-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.84375,
+                "parentWidth": 235.84375
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.84375,
+                "parentWidth": 235.84375
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.84375,
+                "parentWidth": 235.84375
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              }
+            ],
+            "mappingDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "commerce.policies",
+      "name": "eBay政策选择",
+      "panel": "marketplace",
+      "view": "policies",
+      "recordState": "支付、退货、配送政策各1个",
+      "clickPath": "页内定位→政策→读取政策→打开选项并选择长名称",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=marketplace",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/marketplace-policies-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/marketplace-policies-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-marketplace-timeline-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:39:00.843Z",
+          "resultModifiedAt": "2026-10-11T17:41:40.363Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              }
+            ],
+            "mappingDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/marketplace-policies-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/marketplace-policies-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.84375,
+                "parentWidth": 235.84375
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.84375,
+                "parentWidth": 235.84375
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.84375,
+                "parentWidth": 235.84375
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              }
+            ],
+            "mappingDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "commerce.mapping",
+      "name": "eBay类目映射",
+      "panel": "marketplace",
+      "view": "mapping",
+      "recordState": "新增映射草稿1行",
+      "clickPath": "页内定位→映射→新增→填写分类并校验dirty",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=marketplace",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/marketplace-mapping-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/marketplace-mapping-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-marketplace-timeline-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:39:00.843Z",
+          "resultModifiedAt": "2026-10-11T17:41:40.363Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              }
+            ],
+            "mappingDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/marketplace-mapping-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/marketplace-mapping-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.84375,
+                "parentWidth": 235.84375
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.84375,
+                "parentWidth": 235.84375
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.84375,
+                "parentWidth": 235.84375
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              }
+            ],
+            "mappingDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "commerce.listings",
+      "name": "eBay商品刊登",
+      "panel": "marketplace",
+      "view": "listings",
+      "recordState": "blocked刊登商品1条",
+      "clickPath": "页内定位→刊登",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=marketplace",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/marketplace-listings-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/marketplace-listings-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-marketplace-timeline-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:39:00.843Z",
+          "resultModifiedAt": "2026-10-11T17:41:40.363Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              }
+            ],
+            "mappingDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/marketplace-listings-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/marketplace-listings-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.84375,
+                "parentWidth": 235.84375
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.84375,
+                "parentWidth": 235.84375
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.84375,
+                "parentWidth": 235.84375
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              }
+            ],
+            "mappingDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "commerce.jobs",
+      "name": "eBay任务队列",
+      "panel": "marketplace",
+      "view": "jobs",
+      "recordState": "failed任务1条",
+      "clickPath": "页内定位→队列",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=marketplace",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/marketplace-jobs-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/marketplace-jobs-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-marketplace-timeline-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:39:00.843Z",
+          "resultModifiedAt": "2026-10-11T17:41:40.363Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              }
+            ],
+            "mappingDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/marketplace-jobs-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/marketplace-jobs-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.84375,
+                "parentWidth": 235.84375
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.84375,
+                "parentWidth": 235.84375
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.84375,
+                "parentWidth": 235.84375
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              }
+            ],
+            "mappingDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "commerce.orders",
+      "name": "eBay订单回流",
+      "panel": "marketplace",
+      "view": "orders",
+      "recordState": "imported订单1条",
+      "clickPath": "页内定位→订单",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=marketplace",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/marketplace-orders-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/marketplace-orders-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-marketplace-timeline-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:39:00.843Z",
+          "resultModifiedAt": "2026-10-11T17:41:40.363Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 334,
+                "parentWidth": 334
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              },
+              {
+                "type": "text",
+                "font": 16,
+                "width": 163,
+                "parentWidth": 163
+              }
+            ],
+            "mappingDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/marketplace-orders-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/marketplace-orders-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.84375,
+                "parentWidth": 235.84375
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.84375,
+                "parentWidth": 235.84375
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 235.84375,
+                "parentWidth": 235.84375
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 143.578125,
+                "parentWidth": 143.578125
+              }
+            ],
+            "mappingDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "support.inbox",
+      "name": "客服收件箱",
+      "panel": "support",
+      "view": "default",
+      "recordState": "会话1条",
+      "clickPath": "进入客服收件箱→选择会话",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=support",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/support-default-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/support-default-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:25:08.597Z",
+          "resultModifiedAt": "2026-10-11T17:27:13.518Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 286,
+                "parentWidth": 286
+              }
+            ],
+            "replyDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/support-default-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/support-default-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 1062,
+                "parentWidth": 1062
+              }
+            ],
+            "replyDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "support.conversation",
+      "name": "会话详情与回复",
+      "panel": "support",
+      "view": "conversation",
+      "recordState": "会话1条、客户消息1条",
+      "clickPath": "选择会话→原详情；填写回复草稿并检查dirty",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=support",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/support-conversation-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/support-conversation-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:25:08.597Z",
+          "resultModifiedAt": "2026-10-11T17:27:13.518Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 286,
+                "parentWidth": 286
+              }
+            ],
+            "replyDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/support-conversation-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/support-conversation-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 1062,
+                "parentWidth": 1062
+              }
+            ],
+            "replyDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "accounts.customers",
+      "name": "客户列表",
+      "panel": "accounts",
+      "view": "default",
+      "recordState": "客户账号1条",
+      "clickPath": "进入账号客户页签→打开原详情抽屉",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=accounts",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/accounts-default-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/accounts-default-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-orders-accounts-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:26:14.152Z",
+          "resultModifiedAt": "2026-10-11T17:38:55.761Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 270.390625,
+                "parentWidth": 270.390625
+              }
+            ],
+            "pricingUnknownLocked": true,
+            "pricingWriteOnce": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/accounts-default-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/accounts-default-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 332.390625,
+                "parentWidth": 332.390625
+              }
+            ]
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "accounts.customer_detail",
+      "name": "客户详情",
+      "panel": "accounts",
+      "view": "customer-detail",
+      "recordState": "客户1条；资料、订单、消费与活动各原页签",
+      "clickPath": "点客户→原抽屉/桌面详情；逐项切换资料/订单/消费/活动",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=accounts",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/accounts-customer-detail-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/accounts-customer-detail-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-orders-accounts-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:26:14.152Z",
+          "resultModifiedAt": "2026-10-11T17:38:55.761Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 270.390625,
+                "parentWidth": 270.390625
+              }
+            ],
+            "pricingUnknownLocked": true,
+            "pricingWriteOnce": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/accounts-customer-detail-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/accounts-customer-detail-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 332.390625,
+                "parentWidth": 332.390625
+              }
+            ]
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "accounts.employees",
+      "name": "员工列表",
+      "panel": "accounts",
+      "view": "employees",
+      "recordState": "员工1条",
+      "clickPath": "关闭客户详情→员工页签",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=accounts",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/accounts-employees-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/accounts-employees-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-orders-accounts-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:26:14.152Z",
+          "resultModifiedAt": "2026-10-11T17:38:55.761Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 270.390625,
+                "parentWidth": 270.390625
+              }
+            ],
+            "pricingUnknownLocked": true,
+            "pricingWriteOnce": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/accounts-employees-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/accounts-employees-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 332.390625,
+                "parentWidth": 332.390625
+              }
+            ]
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "accounts.employee_detail",
+      "name": "员工详情",
+      "panel": "accounts",
+      "view": "employee-detail",
+      "recordState": "员工1条、权限非空；自资料/归属/活动允许原空态",
+      "clickPath": "点员工→原详情；逐项切换资料/权限/归属/活动",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=accounts",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/accounts-employee-detail-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/accounts-employee-detail-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-orders-accounts-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:26:14.152Z",
+          "resultModifiedAt": "2026-10-11T17:38:55.761Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 270.390625,
+                "parentWidth": 270.390625
+              }
+            ],
+            "pricingUnknownLocked": true,
+            "pricingWriteOnce": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/accounts-employee-detail-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/accounts-employee-detail-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 332.390625,
+                "parentWidth": 332.390625
+              }
+            ]
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "accounts.price_rules",
+      "name": "客户价格规则",
+      "panel": "accounts",
+      "view": "price-rules",
+      "recordState": "原折叠价格规则说明非空",
+      "clickPath": "展开原价格规则说明",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=accounts",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/accounts-price-rules-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/accounts-price-rules-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-orders-accounts-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:26:14.152Z",
+          "resultModifiedAt": "2026-10-11T17:38:55.761Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 270.390625,
+                "parentWidth": 270.390625
+              }
+            ],
+            "pricingUnknownLocked": true,
+            "pricingWriteOnce": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/accounts-price-rules-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/accounts-price-rules-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 332.390625,
+                "parentWidth": 332.390625
+              }
+            ]
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "accounts.welcome_campaign",
+      "name": "迎新价格活动",
+      "panel": "accounts",
+      "view": "welcome-campaign",
+      "recordState": "当前迎新配置1条",
+      "clickPath": "展开价格规则→显示原活动配置",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=accounts",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/accounts-welcome-campaign-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/accounts-welcome-campaign-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-orders-accounts-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:26:14.152Z",
+          "resultModifiedAt": "2026-10-11T17:38:55.761Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 270.390625,
+                "parentWidth": 270.390625
+              }
+            ],
+            "pricingUnknownLocked": true,
+            "pricingWriteOnce": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/accounts-welcome-campaign-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/accounts-welcome-campaign-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 332.390625,
+                "parentWidth": 332.390625
+              }
+            ]
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "accounts.price_explanation",
+      "name": "客户报价解释",
+      "panel": "accounts",
+      "view": "price-explanation",
+      "recordState": "合成客户价格结果1条",
+      "clickPath": "填写合成客户ID→只读查询价格",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=accounts",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/accounts-price-explanation-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/accounts-price-explanation-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-orders-accounts-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:26:14.152Z",
+          "resultModifiedAt": "2026-10-11T17:38:55.761Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 270.390625,
+                "parentWidth": 270.390625
+              }
+            ],
+            "pricingUnknownLocked": true,
+            "pricingWriteOnce": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/accounts-price-explanation-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/accounts-price-explanation-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 332.390625,
+                "parentWidth": 332.390625
+              }
+            ]
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "accounts.pricing_audit",
+      "name": "价格一致性与审计",
+      "panel": "accounts",
+      "view": "pricing-audit",
+      "recordState": "一致性异常为空但完整报告；活动审计1条",
+      "clickPath": "只读运行一致性检查→读取活动审计",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=accounts",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/accounts-pricing-audit-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/accounts-pricing-audit-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-orders-accounts-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:26:14.152Z",
+          "resultModifiedAt": "2026-10-11T17:38:55.761Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 270.390625,
+                "parentWidth": 270.390625
+              }
+            ],
+            "pricingUnknownLocked": true,
+            "pricingWriteOnce": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/accounts-pricing-audit-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/accounts-pricing-audit-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 332.390625,
+                "parentWidth": 332.390625
+              }
+            ]
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "timeline.activity",
+      "name": "活动时间轴",
+      "panel": "timeline",
+      "view": "default",
+      "recordState": "活动1条",
+      "clickPath": "搜索无匹配→点击清除→恢复输入与列表",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=timeline",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/timeline-default-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/timeline-default-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-marketplace-timeline-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:39:00.843Z",
+          "resultModifiedAt": "2026-10-11T17:41:40.363Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 342,
+                "parentWidth": 342
+              }
+            ],
+            "searchCleared": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/timeline-default-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/timeline-default-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 260,
+                "parentWidth": 260
+              }
+            ],
+            "searchCleared": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "finance.overview",
+      "name": "财务概览",
+      "panel": "finance",
+      "view": "default",
+      "recordState": "8项合成指标、非零原图表",
+      "clickPath": "进入财务；手机展开筛选、日期成对、折叠后值保留",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=finance",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/finance-default-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/finance-default-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:25:08.597Z",
+          "resultModifiedAt": "2026-10-11T17:27:13.518Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 332,
+                "parentWidth": 332
+              }
+            ],
+            "financeDatePair": true,
+            "financePreserved": true,
+            "originalEditor": true,
+            "chartDimensions": []
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/finance-default-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/finance-default-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 369.328125,
+                "parentWidth": 369.328125
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 369.328125,
+                "parentWidth": 369.328125
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 369.328125,
+                "parentWidth": 369.328125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 369.34375,
+                "parentWidth": 369.34375
+              }
+            ],
+            "originalEditor": true,
+            "chartDimensions": []
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "finance.margin",
+      "name": "财务毛利",
+      "panel": "finance",
+      "view": "margin",
+      "recordState": "合成销售流水4条、成本分配1条",
+      "clickPath": "点击原毛利页签",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=finance",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/finance-margin-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/finance-margin-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:25:08.597Z",
+          "resultModifiedAt": "2026-10-11T17:27:13.518Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 332,
+                "parentWidth": 332
+              }
+            ],
+            "financeDatePair": true,
+            "financePreserved": true,
+            "originalEditor": true,
+            "chartDimensions": []
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/finance-margin-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/finance-margin-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 369.328125,
+                "parentWidth": 369.328125
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 369.328125,
+                "parentWidth": 369.328125
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 369.328125,
+                "parentWidth": 369.328125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 369.34375,
+                "parentWidth": 369.34375
+              }
+            ],
+            "originalEditor": true,
+            "chartDimensions": []
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "finance.purchases",
+      "name": "采购账务",
+      "panel": "finance",
+      "view": "purchases",
+      "recordState": "合成采购流水4条",
+      "clickPath": "点击原采购页签",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=finance",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/finance-purchases-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/finance-purchases-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:25:08.597Z",
+          "resultModifiedAt": "2026-10-11T17:27:13.518Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 332,
+                "parentWidth": 332
+              }
+            ],
+            "financeDatePair": true,
+            "financePreserved": true,
+            "originalEditor": true,
+            "chartDimensions": []
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/finance-purchases-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/finance-purchases-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 369.328125,
+                "parentWidth": 369.328125
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 369.328125,
+                "parentWidth": 369.328125
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 369.328125,
+                "parentWidth": 369.328125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 369.34375,
+                "parentWidth": 369.34375
+              }
+            ],
+            "originalEditor": true,
+            "chartDimensions": []
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "finance.expenses",
+      "name": "支出管理",
+      "panel": "finance",
+      "view": "expenses",
+      "recordState": "合成支出流水4条",
+      "clickPath": "点击原支出页签→原更正弹窗→关闭",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=finance",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/finance-expenses-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/finance-expenses-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:25:08.597Z",
+          "resultModifiedAt": "2026-10-11T17:27:13.518Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 332,
+                "parentWidth": 332
+              }
+            ],
+            "financeDatePair": true,
+            "financePreserved": true,
+            "originalEditor": true,
+            "chartDimensions": []
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/finance-expenses-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/finance-expenses-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 369.328125,
+                "parentWidth": 369.328125
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 369.328125,
+                "parentWidth": 369.328125
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 369.328125,
+                "parentWidth": 369.328125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 369.34375,
+                "parentWidth": 369.34375
+              }
+            ],
+            "originalEditor": true,
+            "chartDimensions": []
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "finance.export",
+      "name": "财务导出",
+      "panel": "finance",
+      "view": "export",
+      "recordState": "原导出表单与说明；不执行文件/真实账务导出",
+      "clickPath": "点击原导出页签",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=finance",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/finance-export-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/finance-export-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:25:08.597Z",
+          "resultModifiedAt": "2026-10-11T17:27:13.518Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 332,
+                "parentWidth": 332
+              }
+            ],
+            "financeDatePair": true,
+            "financePreserved": true,
+            "originalEditor": true,
+            "chartDimensions": []
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/finance-export-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/finance-export-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 369.328125,
+                "parentWidth": 369.328125
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 369.328125,
+                "parentWidth": 369.328125
+              },
+              {
+                "type": "date",
+                "font": 14,
+                "width": 369.328125,
+                "parentWidth": 369.328125
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 369.34375,
+                "parentWidth": 369.34375
+              }
+            ],
+            "originalEditor": true,
+            "chartDimensions": []
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "analytics.website",
+      "name": "网站分析",
+      "panel": "analytics",
+      "view": "default",
+      "recordState": "浏览20、访客10、国家/路由/来源各1条",
+      "clickPath": "进入分析；检查原图表非零尺寸",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=analytics",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/analytics-default-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/analytics-default-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:25:08.597Z",
+          "resultModifiedAt": "2026-10-11T17:27:13.518Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [],
+            "chartDimensions": [
+              {
+                "width": 332,
+                "height": 260
+              }
+            ]
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/analytics-default-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/analytics-default-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-orders-rma-inventory-remax-marketplace-support-accounts-timeline-finance-analytics-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:44:04.019Z",
+          "resultModifiedAt": "2026-10-11T17:54:34.456Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              }
+            ],
+            "chartDimensions": [
+              {
+                "width": 685,
+                "height": 260
+              }
+            ]
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "permissions.employees",
+      "name": "权限员工",
+      "panel": "settings",
+      "view": "default",
+      "recordState": "员工1条、完整权限目录",
+      "clickPath": "进入权限设置并加载员工",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=settings",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/settings-default-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/settings-default-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-orders-accounts-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:26:14.152Z",
+          "resultModifiedAt": "2026-10-11T17:38:55.761Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 348,
+                "parentWidth": 348
+              }
+            ],
+            "permissionDirty": true,
+            "permissionUnknownLocked": true,
+            "permissionWriteOnce": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/settings-default-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/settings-default-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:55:05.910Z",
+          "resultModifiedAt": "2026-10-11T17:55:23.341Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 328,
+                "parentWidth": 328
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 750,
+                "parentWidth": 750
+              }
+            ],
+            "permissionDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "permissions.roles",
+      "name": "权限角色模板",
+      "panel": "settings",
+      "view": "role",
+      "recordState": "角色模板1条、完整权限集合",
+      "clickPath": "手机点击角色页签；桌面定位原角色选择与模板说明",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=settings",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/settings-role-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/settings-role-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-orders-accounts-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:26:14.152Z",
+          "resultModifiedAt": "2026-10-11T17:38:55.761Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 348,
+                "parentWidth": 348
+              }
+            ],
+            "permissionDirty": true,
+            "permissionUnknownLocked": true,
+            "permissionWriteOnce": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/settings-role-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/settings-role-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:55:05.910Z",
+          "resultModifiedAt": "2026-10-11T17:55:23.341Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 328,
+                "parentWidth": 328
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 750,
+                "parentWidth": 750
+              }
+            ],
+            "permissionDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    },
+    {
+      "id": "permissions.matrix",
+      "name": "权限矩阵",
+      "panel": "settings",
+      "view": "matrix",
+      "recordState": "完整权限目录与原逐项继承/允许/拒绝",
+      "clickPath": "手机点击矩阵页签；桌面定位权限搜索与矩阵→拒绝一项检查草稿摘要",
+      "previewUrl": "http://127.0.0.1:3179/admin?panel=settings",
+      "frames": {
+        "mobile": {
+          "viewport": {
+            "width": 390,
+            "height": 844
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/settings-matrix-390-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/settings-matrix-390-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-orders-accounts-settings-390-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:26:14.152Z",
+          "resultModifiedAt": "2026-10-11T17:38:55.761Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 16,
+                "width": 348,
+                "parentWidth": 348
+              }
+            ],
+            "permissionDirty": true,
+            "permissionUnknownLocked": true,
+            "permissionWriteOnce": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        },
+        "desktop": {
+          "viewport": {
+            "width": 1440,
+            "height": 900
+          },
+          "locale": "zh-CN",
+          "screenshot": "outputs/admin-ui-preserve-style/modules/settings-matrix-1440-zh-CN.png",
+          "path": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011/outputs/admin-ui-preserve-style/modules/settings-matrix-1440-zh-CN.png",
+          "resultFile": "outputs/admin-ui-preserve-style/modules/results-settings-1440-zh-CN.json",
+          "fixtureStamp": "2026-10-11T17:55:05.910Z",
+          "resultModifiedAt": "2026-10-11T17:55:23.341Z",
+          "status": "PASS",
+          "actualReactComponent": true,
+          "nonemptyUi": true,
+          "domInteractionSucceeded": true,
+          "documentOverflow": false,
+          "mainOverflow": false,
+          "checks": {
+            "controls": [
+              {
+                "type": "text",
+                "font": 14,
+                "width": 217,
+                "parentWidth": 217
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 328,
+                "parentWidth": 328
+              },
+              {
+                "type": "text",
+                "font": 14,
+                "width": 750,
+                "parentWidth": 750
+              }
+            ],
+            "permissionDirty": true
+          },
+          "pageErrors": [],
+          "consoleErrors": [],
+          "consoleWarnings": []
+        }
+      }
+    }
+  ],
+  "supplemental": [
+    {
+      "panel": "marketplace",
+      "width": 320,
+      "locale": "zh-CN",
+      "resultFile": "outputs/admin-ui-preserve-style/modules/results-marketplace-timeline-320-390-zh-CN.json",
+      "status": "PASS",
+      "views": [
+        "default",
+        "connection",
+        "policies",
+        "policy-options",
+        "policy-selected",
+        "advanced",
+        "mapping",
+        "listings",
+        "jobs",
+        "orders"
+      ],
+      "issues": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "consoleWarnings": []
+    },
+    {
+      "panel": "timeline",
+      "width": 320,
+      "locale": "zh-CN",
+      "resultFile": "outputs/admin-ui-preserve-style/modules/results-marketplace-timeline-320-390-zh-CN.json",
+      "status": "PASS",
+      "views": [
+        "default",
+        "no-results",
+        "search-cleared"
+      ],
+      "issues": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "consoleWarnings": []
+    },
+    {
+      "panel": "orders",
+      "width": 320,
+      "locale": "it",
+      "resultFile": "outputs/admin-ui-preserve-style/modules/results-orders-finance-remax-320-it.json",
+      "status": "PASS",
+      "views": [
+        "default",
+        "payments",
+        "shipping",
+        "details"
+      ],
+      "issues": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "consoleWarnings": []
+    },
+    {
+      "panel": "finance",
+      "width": 320,
+      "locale": "it",
+      "resultFile": "outputs/admin-ui-preserve-style/modules/results-orders-finance-remax-320-it.json",
+      "status": "PASS",
+      "views": [
+        "default",
+        "filters",
+        "margin",
+        "purchases",
+        "expenses",
+        "export",
+        "expense-editor"
+      ],
+      "issues": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "consoleWarnings": []
+    },
+    {
+      "panel": "remax",
+      "width": 320,
+      "locale": "it",
+      "resultFile": "outputs/admin-ui-preserve-style/modules/results-orders-finance-remax-320-it.json",
+      "status": "PASS",
+      "views": [
+        "default",
+        "batch-options",
+        "arrival",
+        "import-preview"
+      ],
+      "issues": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "consoleWarnings": []
+    },
+    {
+      "panel": "overview",
+      "width": 320,
+      "locale": "it",
+      "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-rma-inventory-marketplace-support-accounts-timeline-finance-analytics-settings-320-it.json",
+      "status": "PASS",
+      "views": [
+        "default"
+      ],
+      "issues": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "consoleWarnings": []
+    },
+    {
+      "panel": "rma",
+      "width": 320,
+      "locale": "it",
+      "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-rma-inventory-marketplace-support-accounts-timeline-finance-analytics-settings-320-it.json",
+      "status": "PASS",
+      "views": [
+        "default",
+        "detail"
+      ],
+      "issues": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "consoleWarnings": []
+    },
+    {
+      "panel": "inventory",
+      "width": 320,
+      "locale": "it",
+      "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-rma-inventory-marketplace-support-accounts-timeline-finance-analytics-settings-320-it.json",
+      "status": "PASS",
+      "views": [
+        "default",
+        "replenishment",
+        "bulk-selected",
+        "health"
+      ],
+      "issues": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "consoleWarnings": []
+    },
+    {
+      "panel": "marketplace",
+      "width": 320,
+      "locale": "it",
+      "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-rma-inventory-marketplace-support-accounts-timeline-finance-analytics-settings-320-it.json",
+      "status": "PASS",
+      "views": [
+        "default",
+        "policies",
+        "policy-options",
+        "advanced",
+        "mapping",
+        "listings",
+        "jobs",
+        "orders"
+      ],
+      "issues": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "consoleWarnings": []
+    },
+    {
+      "panel": "support",
+      "width": 320,
+      "locale": "it",
+      "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-rma-inventory-marketplace-support-accounts-timeline-finance-analytics-settings-320-it.json",
+      "status": "PASS",
+      "views": [
+        "default",
+        "conversation",
+        "reply-draft"
+      ],
+      "issues": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "consoleWarnings": []
+    },
+    {
+      "panel": "accounts",
+      "width": 320,
+      "locale": "it",
+      "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-rma-inventory-marketplace-support-accounts-timeline-finance-analytics-settings-320-it.json",
+      "status": "PASS",
+      "views": [
+        "default",
+        "customer-detail",
+        "customer-orders",
+        "customer-spend",
+        "customer-activity",
+        "employees",
+        "employee-detail",
+        "price-rules",
+        "welcome-campaign",
+        "price-explanation",
+        "pricing-audit"
+      ],
+      "issues": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "consoleWarnings": []
+    },
+    {
+      "panel": "timeline",
+      "width": 320,
+      "locale": "it",
+      "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-rma-inventory-marketplace-support-accounts-timeline-finance-analytics-settings-320-it.json",
+      "status": "PASS",
+      "views": [
+        "default",
+        "no-results",
+        "search-cleared"
+      ],
+      "issues": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "consoleWarnings": []
+    },
+    {
+      "panel": "analytics",
+      "width": 320,
+      "locale": "it",
+      "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-rma-inventory-marketplace-support-accounts-timeline-finance-analytics-settings-320-it.json",
+      "status": "PASS",
+      "views": [
+        "default"
+      ],
+      "issues": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "consoleWarnings": []
+    },
+    {
+      "panel": "settings",
+      "width": 320,
+      "locale": "it",
+      "resultFile": "outputs/admin-ui-preserve-style/modules/results-overview-rma-inventory-marketplace-support-accounts-timeline-finance-analytics-settings-320-it.json",
+      "status": "PASS",
+      "views": [
+        "default",
+        "role",
+        "matrix",
+        "unsaved"
+      ],
+      "issues": [],
+      "pageErrors": [],
+      "consoleErrors": [],
+      "consoleWarnings": []
+    }
+  ],
+  "unknownWriteEvidence": {
+    "resultFile": "outputs/admin-ui-preserve-style/modules/results-orders-accounts-settings-390-1440-zh-CN.json",
+    "pricing": "390/1440：保存和原活动输入锁定，1次PATCH，GET核对无重放",
+    "permissions": "390/1440：保存按钮锁定，草稿保留，1次PATCH；原矩阵草稿编辑可用，未声称所有输入锁定",
+    "console": "故障注入每例1次预期ERR_FAILED，与正常案例0errors分开"
+  },
+  "limitations": [
+    "浏览器为本地Chromium，非物理iPhone/Safari软键盘",
+    "合成权限、订单、价格、财务、库存数据只能证明页面/交互合同，非线上真实业务",
+    "未执行真实商品、库存、退款、权限、财务、导入、eBay写操作；预览服务未知写入明确拒绝"
+  ],
+  "qaScript": ".codex-tmp/preserve-style/modules-preserve.mjs"
+}

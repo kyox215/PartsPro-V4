@@ -1,11 +1,13 @@
 "use client";
+
+import { AdminSearchField } from "./admin-ui-controls";
 import { AdminPricingPanel, ClassificationPricePreview } from "./admin-pricing-panel";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { accountText, accountTemplate } from "@/lib/admin-account-copy.mjs";
 import { accountProfilePatchSchema, profileChangedValues, rolePermissionDifference, canCloseAccountDraft, type AccountProfilePatch } from "@/lib/admin-account-operation.mjs";
 import { usePersistentAdminValue, useAdminMemoryValue } from "./admin-workspace-state";
-import { Activity, AlertTriangle, ArrowLeftRight, BadgeCheck, BriefcaseBusiness, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, FilePenLine, KeyRound, Loader2, RefreshCcw, Search, ShieldCheck, ShoppingBag, Star, UserCog, UsersRound, } from "lucide-react";
+import { Activity, AlertTriangle, ArrowLeftRight, BadgeCheck, BriefcaseBusiness, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, FilePenLine, KeyRound, Loader2, RefreshCcw, ShieldCheck, ShoppingBag, Star, UserCog, UsersRound, } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -798,7 +800,7 @@ function AdminAccountsPanelContent({ initialPermissions, initialUserId = null, p
             setSubmitting(false);
         }
     }
-    return (<section className="min-w-0 space-y-3">
+    return (<section className="admin-ui-panel min-w-0 space-y-3">
       <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -848,18 +850,17 @@ function AdminAccountsPanelContent({ initialPermissions, initialUserId = null, p
               </Tabs>) : null}
 
             <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-              <div className="relative min-w-0">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400"/>
-                <Input value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
+              <div className="min-w-0">
+                <AdminSearchField value={query} onValueChange={setQuery} pending={loading} clearLabel={locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca"} aria-label={accountText("搜索邮箱、姓名或角色", locale)} onKeyDown={(event) => {
             if (event.key === "Enter") {
                 applySearch();
             }
-        }} disabled={!permissionsLoaded || !canReadSelectedAccountType} className="h-8 bg-white pl-8 text-sm" placeholder={accountText("搜索邮箱、姓名或角色", locale)}/>
+        }} disabled={!permissionsLoaded || !canReadSelectedAccountType} className="bg-white text-sm" placeholder={accountText("搜索邮箱、姓名或角色", locale)}/>
               </div>
               <Button size="sm" className="h-8 px-3" disabled={!permissionsLoaded || !canReadSelectedAccountType} onClick={applySearch}>{accountText("搜索", locale)}</Button>
             </div>
 
-            <div className="max-h-[calc(100vh-280px)] min-h-[320px] overflow-y-auto pr-1">
+            <div className="max-h-[calc(100svh-280px)] min-h-0 overflow-y-auto overscroll-contain pr-1 xl:min-h-[320px]">
               {!permissionsLoaded || (loading && accounts.length === 0) ? (<AccountListSkeleton />) : !canReadSelectedAccountType ? (<div className="rounded-md border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-slate-500">{accountText("当前账号没有读取", locale)}{accountType === "employee" ? accountText("员工", locale) : accountText("客户", locale)}{accountText("账号的权限。", locale)}</div>) : (<AdminBusyRegion contentClassName="space-y-1.5" label={text.common.refreshing} pending={loading} rows={4}>
                   {accounts.length > 0 ? (accounts.map((account) => (<AccountListItem key={account.userId} account={account} active={detail?.account.userId === account.userId} currentUserId={currentUserId} disabled={pricingMutating} onOpen={openDetail}/>))) : (<div className="rounded-md border border-dashed border-slate-300 bg-white p-5 text-center text-sm text-slate-500">{accountText("没有匹配的账号。", locale)}</div>)}
                 </AdminBusyRegion>)}
@@ -883,7 +884,7 @@ function AdminAccountsPanelContent({ initialPermissions, initialUserId = null, p
       </div>
 
       <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
-        <SheetContent side="right" className="!w-full !max-w-none overflow-y-auto p-0 sm:!w-[560px] sm:!max-w-[560px]">
+        <SheetContent side="right" className="admin-ui-panel !w-full !max-w-none overflow-y-auto p-0 sm:!w-[560px] sm:!max-w-[560px]">
           <SheetHeader className="sr-only">
             <SheetTitle>{detail?.account.email ?? accountText("账号详情", locale)}</SheetTitle>
             <SheetDescription>{accountText("账号资料、权限和审计。", locale)}</SheetDescription>
@@ -1530,7 +1531,7 @@ function AccountActionDialog({ conversion, onChange, onClose, onSubmit, roleTemp
     const canSubmit = Boolean(conversion && conversion.reason.trim().length >= 3 && (conversion.kind === "to_customer" || target));
     return (<Dialog open={Boolean(conversion)} onOpenChange={(open) => { if (!open && !submitting)
         onClose(); }}>
-      <DialogContent data-admin-dirty={conversion && (conversion.reason.trim() || conversion.roleTemplate !== conversion.initialRoleTemplate) ? "true" : undefined} data-admin-mutating={submitting ? "true" : undefined} scrollLayout="body" className="sm:max-w-lg">
+      <DialogContent data-admin-dirty={conversion && (conversion.reason.trim() || conversion.roleTemplate !== conversion.initialRoleTemplate) ? "true" : undefined} data-admin-mutating={submitting ? "true" : undefined} scrollLayout="body" className="admin-ui-panel sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
@@ -1595,7 +1596,7 @@ function CustomerAccountActionDialog({ action, onChange, onClose, onSubmit, subm
     const canSubmit = Boolean(action && action.reason.trim().length >= 3 && (action.kind !== "customer_type" || previewScope === `${action.targetCustomer.id}:${action.customerType}`));
     return (<Dialog open={Boolean(action)} onOpenChange={(open) => { if (!open && !submitting)
         onClose(); }}>
-      <DialogContent data-admin-dirty={action && (action.reason.trim() || action.level !== normalizeCustomerLevel(action.targetCustomer.level) || action.status !== normalizeCustomerStatus(action.targetCustomer.status) || action.customerType !== normalizeCustomerType(action.targetCustomer.customerType)) ? "true" : undefined} data-admin-mutating={submitting ? "true" : undefined} scrollLayout="body" className="sm:max-w-lg">
+      <DialogContent data-admin-dirty={action && (action.reason.trim() || action.level !== normalizeCustomerLevel(action.targetCustomer.level) || action.status !== normalizeCustomerStatus(action.targetCustomer.status) || action.customerType !== normalizeCustomerType(action.targetCustomer.customerType)) ? "true" : undefined} data-admin-mutating={submitting ? "true" : undefined} scrollLayout="body" className="admin-ui-panel sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
@@ -1688,7 +1689,7 @@ function AccountProfileEditorDialog({ editor, onAddressChange, onBillingSameAsSh
     const canSubmit = Boolean(validation?.success);
     return (<Dialog open={Boolean(editor)} onOpenChange={(open) => { if (!open && !submitting)
         onClose(); }}>
-      <DialogContent data-admin-dirty={editor && (editor.reason.trim() || Object.keys(changed).length) ? "true" : undefined} data-admin-mutating={submitting ? "true" : undefined} scrollLayout="body" className="sm:max-w-3xl">
+      <DialogContent data-admin-dirty={editor && (editor.reason.trim() || Object.keys(changed).length) ? "true" : undefined} data-admin-mutating={submitting ? "true" : undefined} scrollLayout="body" className="admin-ui-panel sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
             {editor?.account.accountType === "employee" ? accountText("编辑员工自购资料", locale) : accountText("编辑客户个人中心资料", locale)}

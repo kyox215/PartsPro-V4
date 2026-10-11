@@ -1,10 +1,11 @@
 "use client";
 
+import { AdminSearchField } from "./admin-ui-controls";
+
 import * as React from "react";
 import {
   KeyRound,
   RefreshCcw,
-  Search,
   ShieldCheck,
   UserCog,
 } from "lucide-react";
@@ -308,8 +309,8 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
   }
 
   return (
-    <section data-admin-mutating={pendingKey ? "true" : "false"} data-admin-dirty={hasChanges ? "true" : "false"} className="min-w-0 space-y-2 text-slate-950 sm:space-y-4">
-      {hasChanges && <div className="sticky top-0 z-10 space-y-3 rounded-lg border border-amber-300 bg-amber-50 p-3" role="region" aria-label={locale.startsWith("zh") ? "权限修改核对" : "Riepilogo modifiche"}>
+    <section data-admin-mutating={pendingKey ? "true" : "false"} data-admin-dirty={hasChanges ? "true" : "false"} className="admin-ui-panel min-w-0 space-y-2 text-slate-950 sm:space-y-4">
+      {hasChanges && <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 sm:sticky sm:top-0 sm:z-10" role="region" aria-label={locale.startsWith("zh") ? "权限修改核对" : "Riepilogo modifiche"}>
         {!selectedEmployee && <p role="alert" className="text-sm text-red-800">{locale.startsWith("zh") ? "草稿对应员工已不在当前列表，保存已锁定。请核对原对象或放弃草稿后选择新员工。" : "Il dipendente della bozza non è più disponibile. Il salvataggio è sospeso: verifica o scarta la bozza."}</p>}
         <h3 className="font-bold">{selectedEmployeeName} · {locale.startsWith("zh") ? "待保存修改" : "Modifiche da salvare"}</h3>
         {draftRole && <p className="text-sm">{adminRoleTemplateLabel(text, selectedEmployee?.roleTemplate)} → {adminRoleTemplateLabel(text, draftRole)}</p>}
@@ -397,15 +398,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
 
           <TabsContent value="employees" className="m-0 min-w-0">
             <div className="rounded-xl border border-slate-200 bg-white p-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                <Input
-                  value={query}
-                  onChange={(event) => setQuery(event.target.value)}
-                  className="h-9 bg-white pl-9 text-sm"
-                  placeholder={copy.employeeSearchPlaceholder}
-                />
-              </div>
+              <AdminSearchField value={query} onValueChange={setQuery} className="bg-white" placeholder={copy.employeeSearchPlaceholder} aria-label={copy.employeeSearchPlaceholder} clearLabel={locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca"} />
               <div className="mt-2 max-h-[calc(100svh-320px)] min-h-0 space-y-1.5 overflow-y-auto pr-0.5">
                 {isInitialLoading ? (
                   <EmployeeListSkeleton />
@@ -464,7 +457,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
               {selectedEmployee ? (
                 <>
                   <div className="rounded-lg border border-slate-200 bg-slate-50 p-2">
-                    <div className="truncate text-sm font-black text-slate-950">
+                    <div className="break-words text-sm font-black text-slate-950">
                       {selectedEmployeeName}
                     </div>
                     <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">
@@ -497,10 +490,10 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                     <div className="rounded-lg border border-primary/20 bg-primary/5 p-2">
                       <div className="flex min-w-0 items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-black text-slate-950">
+                          <div className="break-words text-sm font-black text-slate-950">
                             {customerLevelPermission.label}
                           </div>
-                          <div className="truncate font-mono text-[11px] font-semibold text-slate-500">
+                          <div className="break-all font-mono text-xs font-semibold text-slate-500">
                             {CUSTOMER_MANAGE_LEVEL_PERMISSION}
                           </div>
                         </div>
@@ -549,15 +542,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
             <div className="rounded-xl border border-slate-200 bg-white p-2">
               {selectedEmployee ? (
                 <>
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                    <Input
-                      value={permissionQuery}
-                      onChange={(event) => setPermissionQuery(event.target.value)}
-                      className="h-9 bg-white pl-9 text-sm"
-                      placeholder={copy.matrixSearchPlaceholder}
-                    />
-                  </div>
+                  <AdminSearchField value={permissionQuery} onValueChange={setPermissionQuery} className="bg-white" placeholder={copy.matrixSearchPlaceholder} aria-label={copy.matrixSearchPlaceholder} clearLabel={locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca"} />
                   {filteredPermissionGroups.length > 0 ? (
                     <Select
                       value={activeMobilePermissionGroup}
@@ -606,10 +591,10 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                               <div key={permission.id} className="min-w-0 px-2.5 py-2">
                                 <div className="flex min-w-0 items-start justify-between gap-2">
                                   <div className="min-w-0">
-                                    <div className="truncate text-sm font-black leading-5 text-slate-900">
+                                    <div className="break-words text-sm font-black leading-5 text-slate-900">
                                       {permission.label}
                                     </div>
-                                    <div className="truncate font-mono text-[10px] font-semibold leading-4 text-slate-400">
+                                    <div className="break-all font-mono text-xs font-semibold leading-4 text-slate-400">
                                       {permission.id}
                                     </div>
                                   </div>
@@ -673,15 +658,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
             <CardDescription>{copy.employeeListDescription}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                className="bg-white pl-9"
-                placeholder={copy.employeeSearchPlaceholder}
-              />
-            </div>
+            <AdminSearchField value={query} onValueChange={setQuery} className="bg-white" placeholder={copy.employeeSearchPlaceholder} aria-label={copy.employeeSearchPlaceholder} clearLabel={locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca"} />
             <div className="grid max-h-[560px] gap-2 overflow-y-auto pr-1">
               {isInitialLoading ? (
                 <EmployeeListSkeleton />
@@ -839,15 +816,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                   </div>
                 )}
 
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-                  <Input
-                    value={permissionQuery}
-                    onChange={(event) => setPermissionQuery(event.target.value)}
-                    className="bg-white pl-9"
-                    placeholder={copy.matrixSearchPlaceholder}
-                  />
-                </div>
+                <AdminSearchField value={permissionQuery} onValueChange={setPermissionQuery} className="bg-white" placeholder={copy.matrixSearchPlaceholder} aria-label={copy.matrixSearchPlaceholder} clearLabel={locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca"} />
 
                 {filteredPermissionGroups.length > 0 ? (
                   filteredPermissionGroups.map(([groupName, items]) => (

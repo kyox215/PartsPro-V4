@@ -9,6 +9,7 @@ import Link from "next/link";
 import dynamic from "next/dynamic";
 import { AdminCatalogDirectory, CatalogMoveDialog, useAdminCatalogOptions } from "./admin-catalog-directory";
 import { notifyCatalogChanged } from "./catalog-directory-provider";
+import { AdminSearchField, AdminSearchableSelect } from "./admin-ui-controls";
 import { catalogNodeLabel, type CatalogNode } from "@/lib/partspro-catalog-directory";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -38,11 +39,11 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
-  Search,
   SlidersHorizontal,
   Smartphone,
   Tag,
   Upload,
+  X,
   XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -61,6 +62,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -2395,25 +2397,47 @@ export function AdminProductsPanel({
     setDrawerInlineEditSku(null);
   }
 
+  const activeFilterChips: { key: string; label: string; clear: Partial<ProductListFilters> }[] = [
+    ...(filters.q ? [{ key: "q", label: filters.q, clear: { q: "" } }] : []),
+    ...(filters.department !== "all" ? [{ key: "department", label: text.catalogDepartmentLabels[filters.department], clear: { department: "all" as const } }] : []),
+    ...(filters.category !== "all" ? [{ key: "category", label: filters.category, clear: { category: "all" as const } }] : []),
+    ...(filters.brand !== "all" ? [{ key: "brand", label: filters.brand, clear: { brand: "all" as const, modelSeries: "all" as const, model: "all" as const } }] : []),
+    ...(filters.modelSeries !== "all" ? [{ key: "series", label: filters.modelSeries, clear: { modelSeries: "all" as const, model: "all" as const } }] : []),
+    ...(filters.model !== "all" ? [{ key: "model", label: filters.model, clear: { model: "all" as const } }] : []),
+    ...(filters.catalogStatus !== "all" ? [{ key: "catalog", label: filters.catalogStatus === "missing_image" ? text.missingImage : adminText.enums.catalogStatus[filters.catalogStatus], clear: { catalogStatus: "all" as const } }] : []),
+    ...(filters.stockStatus !== "all" ? [{ key: "stock", label: adminText.enums.stockStatus[filters.stockStatus], clear: { stockStatus: "all" as const } }] : []),
+    ...(filters.supplier ? [{ key: "supplier", label: filters.supplier, clear: { supplier: "" } }] : []),
+    ...(filters.batchCode ? [{ key: "batch", label: filters.batchCode, clear: { batchCode: "" } }] : []),
+    ...(filters.issueFilter !== "all" ? [{ key: "issue", label: filters.issueFilter === "missing_image" ? text.missingImage : filters.issueFilter, clear: { issueFilter: "all" as const } }] : []),
+    ...(filters.grade !== "all" ? [{ key: "grade", label: adminText.enums.productGrade[filters.grade], clear: { grade: "all" as const } }] : []),
+    ...(filters.activeRestockOnly ? [{ key: "restock", label: text.restockOnly, clear: { activeRestockOnly: false } }] : []),
+  ];
+  const workspaceGroups: { label: string; items: readonly (readonly [ProductWorkspace, string])[] }[] = [
+    { label: locale.startsWith("zh") ? "商品资料" : "Catalogo", items: [["products", text.workspaceProducts], ["directory", locale.startsWith("zh") ? "目录管理" : "Gestione catalogo"]] as const },
+    { label: locale.startsWith("zh") ? "采购与仓库" : "Acquisti e magazzino", items: [["sold-shortages", text.workspaceSoldShortages], ["batches", text.workspaceBatches]] as const },
+    { label: locale.startsWith("zh") ? "商城内容" : "Contenuti vetrina", items: [["banners", text.workspaceBanners]] as const },
+  ];
+  const changeWorkspace = (nextWorkspace: ProductWorkspace) => {
+    if (workspace === "directory" && nextWorkspace !== "directory" && (directoryGuard.pending || (directoryGuard.dirty && !window.confirm(text.unsavedPrompt)))) return false;
+    setWorkspace(nextWorkspace);
+    syncWorkspaceUrl(nextWorkspace);
+    return true;
+  };
+  const workspaceLabel = workspaceGroups.flatMap(group => group.items).find(([value]) => value === workspace)?.[1];
   return (
-    <section className="min-w-0 space-y-2 sm:space-y-4">
-      <p className="text-xs font-medium text-slate-600">{locale.startsWith("zh") ? "商品资料：商品、目录 · 采购与仓库：售出缺货、到货批次 · 商城内容：首页横幅" : "Catalogo: prodotti e voci · Acquisti e magazzino: esauriti e lotti · Contenuti: banner"}</p>
+    <section className="admin-ui-panel min-w-0 space-y-2 sm:space-y-4">
       <Tabs
         value={workspace}
-        onValueChange={(value) => {
-          const nextWorkspace = normalizeProductWorkspace(value);
-          if (workspace === "directory" && nextWorkspace !== "directory" && (directoryGuard.pending || (directoryGuard.dirty && !window.confirm(text.unsavedPrompt)))) return;
-
-          setWorkspace(nextWorkspace);
-          syncWorkspaceUrl(nextWorkspace);
-        }}
+        onValueChange={(value) => { changeWorkspace(normalizeProductWorkspace(value)); }}
       >
-        <TabsList className="group-data-horizontal/tabs:h-auto grid h-auto w-full grid-cols-1 gap-2 rounded-lg border border-slate-200 bg-white p-2 sm:grid-cols-3">
-          {[
-            { label: locale.startsWith("zh") ? "商品资料" : "Catalogo", items: [["products", text.workspaceProducts], ["directory", locale.startsWith("zh") ? "目录管理" : "Gestione catalogo"]] },
-            { label: locale.startsWith("zh") ? "采购与仓库" : "Acquisti e magazzino", items: [["sold-shortages", text.workspaceSoldShortages], ["batches", text.workspaceBatches]] },
-            { label: locale.startsWith("zh") ? "商城内容" : "Contenuti vetrina", items: [["banners", text.workspaceBanners]] },
-          ].map(group => <div key={group.label} role="group" aria-label={group.label} className="min-w-0 rounded-md bg-slate-50 p-1"><p className="px-2 py-1 text-[11px] font-semibold text-slate-500">{group.label}</p><div className="flex min-w-0 gap-1">{group.items.map(([value,label]) => <TabsTrigger key={value} value={value} className="h-auto min-h-10 min-w-0 flex-1 whitespace-normal rounded-md px-2 py-2 text-center text-xs font-bold leading-4">{label}</TabsTrigger>)}</div></div>)}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild><Button variant="outline" aria-label={locale.startsWith("zh") ? "商品工作区" : "Area catalogo"} className="flex h-11 w-full min-w-0 justify-between bg-white sm:hidden"><span className="truncate font-semibold">{workspaceLabel}</span><ChevronDown className="size-4 shrink-0" /></Button></DropdownMenuTrigger>
+          <DropdownMenuContent className="w-[min(360px,calc(100vw-24px))]" align="start">
+            {workspaceGroups.map((group, index) => <React.Fragment key={group.label}>{index > 0 && <DropdownMenuSeparator />}<DropdownMenuLabel>{group.label}</DropdownMenuLabel>{group.items.map(([value,label]) => <DropdownMenuItem key={value} className="min-h-11" onSelect={event => { if (!changeWorkspace(value)) event.preventDefault(); }}><span className="min-w-0 flex-1 whitespace-normal">{label}</span>{workspace === value && <CheckCircle2 className="size-4 text-primary" />}</DropdownMenuItem>)}</React.Fragment>)}
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <TabsList className="group-data-horizontal/tabs:h-auto hidden h-auto w-full grid-cols-3 gap-2 rounded-lg border border-slate-200 bg-white p-2 sm:grid">
+          {workspaceGroups.map(group => <div key={group.label} role="group" aria-label={group.label} className="min-w-0 rounded-md bg-slate-50 p-1"><p className="px-2 py-1 text-xs font-semibold text-slate-500">{group.label}</p><div className="flex min-w-0 gap-1">{group.items.map(([value,label]) => <TabsTrigger key={value} value={value} className="h-auto min-h-10 min-w-0 flex-1 whitespace-normal rounded-md px-2 py-2 text-center text-xs font-bold leading-4">{label}</TabsTrigger>)}</div></div>)}
         </TabsList>
 
         <TabsContent value="directory" className="m-0 pt-2">
@@ -2426,7 +2450,7 @@ export function AdminProductsPanel({
 
         <TabsContent value="products" className="m-0 pt-2">
           <div className="overflow-hidden rounded-md border border-slate-200 bg-white shadow-[0_12px_30px_rgba(15,23,42,0.04)] sm:rounded-lg sm:shadow-[0_16px_40px_rgba(15,23,42,0.05)]">
-            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-3 py-3 sm:px-4">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-1.5 sm:px-4 sm:py-3">
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-base font-bold tracking-normal text-slate-950">{text.title}</h1>
@@ -2434,7 +2458,7 @@ export function AdminProductsPanel({
                     {dataSource.returned}/{dataSource.total}
                   </span>
                 </div>
-                <div className="mt-1 truncate text-xs font-medium text-slate-500">
+                <div className="mt-1 hidden truncate text-xs font-medium text-slate-500 sm:block">
                   {dataSource.syncedAt
                     ? formatAdminMessage(text.sourceStats, {
                         returned: dataSource.returned,
@@ -2445,6 +2469,7 @@ export function AdminProductsPanel({
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-2">
+
                 {permissionsLoaded && (
                   capabilities.create ||
                   capabilities.editContent ||
@@ -2476,6 +2501,7 @@ export function AdminProductsPanel({
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    <DropdownMenuLabel className="text-xs font-normal text-slate-500 sm:hidden">{dataSource.syncedAt ? formatAdminMessage(text.sourceStats, { returned: dataSource.returned, total: dataSource.total, time: dataSource.syncedAt }) : text.sourcePending}</DropdownMenuLabel>
                     <DropdownMenuItem disabled={isLoading} onClick={() => void refreshProducts()}>
                       <RefreshCw className={cn("size-4", isLoading && "animate-spin")} />
                       {text.sync}
@@ -2498,12 +2524,14 @@ export function AdminProductsPanel({
               </div>
             </div>
 
-            <div className="grid gap-2 border-b border-slate-200 bg-slate-50/70 px-3 py-3 sm:grid-cols-[minmax(0,1fr)_180px_auto] sm:px-4">
+            <div className="grid grid-cols-[44px_minmax(0,1fr)_auto] gap-1.5 border-b border-slate-200 bg-slate-50/70 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_180px_auto] sm:px-4">
               <ProductSearchField
+                className="col-span-3 sm:col-span-1"
                 value={filters.q}
                 text={text}
                 onChange={(value) => updateFilters({ q: value })}
               />
+              <label className="flex size-11 items-center justify-center sm:hidden" title={text.selectPage}><Checkbox aria-label={text.selectPage} checked={visibleProducts.length > 0 && visibleProducts.every(product => selectedSkus.has(product.sku)) || (visibleProducts.some(product => selectedSkus.has(product.sku)) && "indeterminate")} disabled={isLoading || isMutating || !listReady} onCheckedChange={value => { const next = new Set(selectedSkus); for (const product of visibleProducts) { if (value === true) next.add(product.sku); else next.delete(product.sku); } setSelectedSkus(next); }} /></label>
               <CatalogStatusSelect
                 value={filters.catalogStatus}
                 text={text}
@@ -2512,19 +2540,19 @@ export function AdminProductsPanel({
               <Button
                 variant="outline"
                 aria-label={text.filters}
-                className="h-9 bg-white px-3"
+                className="h-11 bg-white px-3 sm:h-9"
                 onClick={() => setIsMobileFiltersOpen(true)}
               >
                 <SlidersHorizontal className="size-4" />
                 {text.filters}
+                {activeFilterChips.length > 0 && <span className="rounded bg-primary/10 px-1 text-xs text-primary">{activeFilterChips.length}</span>}
               </Button>
             </div>
 
             <div className="min-w-0">
-            {(filters.q || filters.brand !== "all" || filters.model !== "all" || filters.catalogStatus !== "all" || filters.stockStatus !== "all" || filters.supplier || filters.batchCode || filters.issueFilter !== "all" || filters.grade !== "all" || filters.activeRestockOnly) && (
+            {activeFilterChips.length > 0 && (
               <div className="flex min-w-0 flex-wrap items-center gap-2 border-b px-3 py-2 text-xs" aria-label={text.activeFilters}>
-                <span className="font-bold">{text.activeFilters}:</span>
-                <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">{[filters.q, filters.brand !== "all" ? filters.brand : "", filters.modelSeries !== "all" ? filters.modelSeries : "", filters.model !== "all" ? filters.model : "", filters.catalogStatus !== "all" ? (filters.catalogStatus === "missing_image" ? text.missingImage : adminText.enums.catalogStatus[filters.catalogStatus]) : "", filters.supplier, filters.batchCode, filters.stockStatus !== "all" ? filters.stockStatus : "", filters.issueFilter !== "all" ? filters.issueFilter : "", filters.grade !== "all" ? filters.grade : "", filters.activeRestockOnly ? text.restockOnly : ""].filter(Boolean).join(" · ")}</span>
+                {activeFilterChips.map(chip => <button key={chip.key} type="button" title={chip.label} aria-label={`${text.clearFilters}: ${chip.label}`} onClick={() => updateFilters(chip.clear)} className="flex min-h-11 min-w-0 max-w-full items-center gap-1 rounded-md bg-primary/5 px-2 font-semibold text-primary sm:min-h-8"><span className="min-w-0 truncate">{chip.label}</span><X aria-hidden="true" className="size-3.5 shrink-0" /></button>)}
                 <Button size="sm" variant="ghost" onClick={() => updateFilters(defaultFilters)}>{text.clearFilters}</Button>
               </div>
             )}
@@ -2579,7 +2607,6 @@ export function AdminProductsPanel({
               </div>
             )}
 
-            {(filters.department !== "all" || filters.category !== "all") && <div className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm"><span>{text.catalogDepartment}: {filters.department === "all" ? "—" : text.catalogDepartmentLabels[filters.department]} · {text.category}: {filters.category === "all" ? "—" : filters.category}</span><Button size="sm" variant="outline" onClick={() => updateFilters({ department: "all", category: "all" })}>{text.clearFilters}</Button></div>}
             <ProductTable
               products={visibleProducts}
               selectedSkus={selectedSkus}
@@ -2651,7 +2678,7 @@ export function AdminProductsPanel({
       </Tabs>
 
       <Dialog open={hideCandidates.length > 0} onOpenChange={(open) => { if (!open && !isMutating) setHideCandidates([]); }}>
-        <DialogContent scrollLayout="body" className="sm:max-w-lg">
+        <DialogContent scrollLayout="body" className="admin-ui-panel sm:max-w-lg">
           <DialogHeader><DialogTitle>{text.hideConfirm}</DialogTitle><DialogDescription>{text.hideConfirmHelp}</DialogDescription></DialogHeader>
           <DialogBody><p className="mb-2 font-semibold">{formatAdminMessage(text.selectedCount, { count: hideCandidates.length })}</p><ul className="space-y-2 text-sm">{hideCandidates.map((item) => <li key={item.sku} className="break-words [overflow-wrap:anywhere]"><strong>{item.sku}</strong> · {item.name}</li>)}</ul></DialogBody>
           <DialogFooter><Button variant="outline" disabled={isMutating} onClick={() => setHideCandidates([])}>{text.cancel}</Button><Button disabled={isMutating || !listReady} onClick={() => void handleHideProducts(hideCandidates.map((item) => item.sku))}>{isMutating && <Loader2 className="size-4 animate-spin" />}{text.hideSelected}</Button></DialogFooter>
@@ -3481,7 +3508,7 @@ function SupplierBatchMobileFiltersSheet({
       <SheetContent
         side="bottom"
         showCloseButton={false}
-        className="max-h-[min(90dvh,720px)] gap-0 overflow-hidden rounded-t-2xl p-0 pb-[env(safe-area-inset-bottom)]"
+        className="admin-ui-panel max-h-[min(90dvh,720px)] gap-0 overflow-hidden rounded-t-2xl p-0 pb-[env(safe-area-inset-bottom)]"
       >
         <SheetHeader className="border-b border-slate-200 bg-white p-3 pr-14">
           <div className="flex items-start justify-between gap-3">
@@ -3926,7 +3953,7 @@ function SupplierBatchDetailSheet({
       <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="w-screen max-w-none gap-0 overflow-hidden p-0"
+        className="admin-ui-panel w-screen max-w-none gap-0 overflow-hidden p-0"
         style={{ width: "min(1100px, var(--overlay-width, 100vw))", maxWidth: "min(1100px, 100vw)" }}
       >
         <SheetHeader className="border-b border-slate-200 bg-white p-4 pr-12">
@@ -4178,7 +4205,7 @@ function SupplierBatchDetailSheet({
           cancelIdempotencyKeyRef.current = null;
         }}
       >
-        <DialogContent aria-modal={true} className="w-[calc(100vw-1rem)] max-w-lg">
+        <DialogContent aria-modal={true} className="admin-ui-panel w-[calc(100vw-1rem)] max-w-lg">
           <DialogHeader>
             <DialogTitle>{cancelCopy.title}</DialogTitle>
             <DialogDescription>{cancelCopy.description}</DialogDescription>
@@ -4907,81 +4934,24 @@ function AdminHomeBannersPanel({
               </Select>
             </Field>
             <Field label={text.brand}>
-              <Select
-                disabled={isLoadingModelGroups}
-                value={formValues.brand || "all"}
-                onValueChange={(value) => setFormValue("brand", value === "all" ? "" : value)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{text.allBrands}</SelectItem>
-                  {modelGroups.map((group) => (
-                    <SelectItem key={group.brand} value={group.brand}>
-                      {group.brand}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <AdminSearchableSelect disabled={isLoadingModelGroups} value={formValues.brand || "all"}
+                ariaLabel={text.brand} onValueChange={(value) => setFormValue("brand", value === "all" ? "" : value)}
+                options={[{value:"all",label:text.allBrands}, ...modelGroups.map(group => ({value:group.brand,label:group.brand}))]} />
             </Field>
             <Field label={copy.category}>
-              <Select
-                value={formValues.category || "all"}
+              <AdminSearchableSelect value={formValues.category || "all"} ariaLabel={copy.category}
                 onValueChange={(value) => setFormValue("category", value === "all" ? "" : value)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{text.allCategories}</SelectItem>
-                  {categories.map((category) => (
-                    <SelectItem key={category.value} value={category.value}>
-                      {category.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={[{value:"all",label:text.allCategories}, ...categories.map(category => ({value:category.value,label:category.label}))]} />
             </Field>
             <Field label={text.modelSeries}>
-              <Select
-                disabled={!selectedBrandGroup}
-                value={formValues.modelSeries || "all"}
-                onValueChange={(value) =>
-                  setFormValue("modelSeries", value === "all" ? "" : value)
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{text.allSeries}</SelectItem>
-                  {(selectedBrandGroup?.series ?? []).map((series) => (
-                    <SelectItem key={series.series} value={series.series}>
-                      {series.series}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <AdminSearchableSelect disabled={!selectedBrandGroup} value={formValues.modelSeries || "all"} ariaLabel={text.modelSeries}
+                onValueChange={(value) => setFormValue("modelSeries", value === "all" ? "" : value)}
+                options={[{value:"all",label:text.allSeries}, ...(selectedBrandGroup?.series ?? []).map(series => ({value:series.series,label:series.series}))]} />
             </Field>
             <Field label={text.model}>
-              <Select
-                disabled={!selectedBrandGroup}
-                value={formValues.model || "all"}
+              <AdminSearchableSelect disabled={!selectedBrandGroup} value={formValues.model || "all"} ariaLabel={text.model}
                 onValueChange={(value) => setFormValue("model", value === "all" ? "" : value)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">{text.allModels}</SelectItem>
-                  {availableModels.map((model) => (
-                    <SelectItem key={model} value={model}>
-                      {model}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={[{value:"all",label:text.allModels}, ...availableModels.map(model => ({value:model,label:model}))]} />
             </Field>
           </div>
 
@@ -5112,7 +5082,7 @@ function ProductRestockRequestsDialog({
 
   return (
     <Dialog open={open} onOpenChange={next => { if (!busyRef.current) onOpenChange(next); }}>
-      <DialogContent scrollLayout="body" className="sm:max-w-3xl" data-admin-mutating={Boolean(updatingId) ? "true" : "false"}>
+      <DialogContent scrollLayout="body" className="admin-ui-panel sm:max-w-3xl" data-admin-mutating={Boolean(updatingId) ? "true" : "false"}>
         <DialogHeader>
           <DialogTitle>{text.restockRequests}</DialogTitle>
           <DialogDescription>{text.restockDialogDescription}</DialogDescription>
@@ -5163,18 +5133,8 @@ function ProductSearchField({
   text: typeof panelText.zh | typeof panelText.it;
   onChange: (value: string) => void;
 }) {
-  return (
-    <div className={cn("relative min-w-0", className)}>
-      <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-      <Input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="h-8 rounded-md bg-white pl-9 text-sm sm:h-9"
-        aria-label={text.searchPlaceholder}
-        placeholder={text.searchPlaceholder}
-      />
-    </div>
-  );
+  return <AdminSearchField value={value} onValueChange={onChange} containerClassName={className}
+    className="h-11 rounded-md sm:h-9" aria-label={text.searchPlaceholder} placeholder={text.searchPlaceholder} />;
 }
 
 function ProductFilters({
@@ -5314,7 +5274,7 @@ function ProductMobileFiltersSheet({
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="left" className="w-[min(92vw,var(--overlay-width,100vw))] max-w-md gap-0 overflow-hidden p-0 sm:max-w-md">
+      <SheetContent side="left" className="admin-ui-panel w-[min(92vw,var(--overlay-width,100vw))] max-w-md gap-0 overflow-hidden p-0 sm:max-w-md">
         <SheetHeader className="border-b border-slate-200 bg-white p-3 pr-12">
           <SheetTitle className="text-base font-black">{text.mobileFilters}</SheetTitle>
           <SheetDescription className="text-xs font-semibold">
@@ -5788,7 +5748,7 @@ function ProductTable({
     >
       {showRefreshBar ? <ProductTableLoadingBar label={text.loading} /> : null}
       <div className="lg:hidden">
-        {products.length > 0 && <label className="flex min-h-11 items-center gap-3 border-b px-3 py-2 text-sm font-semibold"><Checkbox checked={allSelected || (someSelected && "indeterminate")} disabled={isLoading || isMutating} onCheckedChange={(value) => toggleAll(value === true)} />{text.selectPage}</label>}
+        {products.length > 0 && <label className="hidden min-h-11 items-center gap-3 border-b px-3 py-2 text-sm font-semibold sm:flex"><Checkbox checked={allSelected || (someSelected && "indeterminate")} disabled={isLoading || isMutating} onCheckedChange={(value) => toggleAll(value === true)} />{text.selectPage}</label>}
         {products.length ? (
           <div className="grid gap-2 p-2">
             {products.map((product) => (
@@ -5998,33 +5958,31 @@ function ProductMobileCard({
   onStockAdjust: (product: AdminProductRow) => void;
 }) {
   const editable = canEditProduct(capabilities);
+  const { locale } = useI18n();
 
   return (
     <div
       className={cn(
-        "rounded-lg border border-slate-200 bg-white p-3 shadow-[0_8px_22px_rgba(15,23,42,0.035)]",
+        "rounded-lg border border-slate-200 bg-white px-2 py-1.5 shadow-[0_8px_22px_rgba(15,23,42,0.035)]",
         pendingActionKey?.startsWith(`${product.sku}:`) &&
           "border-primary/30 ring-2 ring-primary/15"
       )}
+      data-admin-product-card={product.sku}
     >
-      <label className="mb-2 flex min-h-11 items-center gap-2 text-xs font-semibold"><Checkbox checked={selected} disabled={isMutating} onCheckedChange={(value) => onSelect(value === true)} />{product.sku}</label>
-      <div className="grid min-w-0 grid-cols-[72px_minmax(0,1fr)_auto] gap-3">
-        <ProductImageThumb product={product} className="size-[72px]" sizes="72px" />
+      <div className="grid min-w-0 grid-cols-[56px_minmax(0,1fr)_auto] gap-2">
+        <ProductImageThumb product={product} className="size-14" sizes="56px" />
 
         <button
           disabled={isMutating}
           type="button"
-          className="grid min-h-11 min-w-0 content-start text-left"
+          className="flex min-h-11 min-w-0 flex-col items-stretch justify-start text-left"
           onClick={() => editable ? onEdit(product) : onView(product)}
         >
           <div className="line-clamp-2 break-words text-sm font-black leading-5 text-slate-950 [overflow-wrap:anywhere]">
             {product.name}
           </div>
-          <div className="mt-1 truncate font-mono text-[11px] font-semibold leading-4 text-slate-500">
+          <div title={product.sku} className="mt-0.5 truncate font-mono text-xs font-semibold leading-4 text-slate-500">
             {product.sku}
-          </div>
-          <div className="mt-1 truncate text-xs font-semibold leading-4 text-slate-400">
-            {product.category} · {[product.modelSeries, product.model || product.compatibleWith[0] || text.none].filter(Boolean).join(" / ")}
           </div>
         </button>
 
@@ -6032,32 +5990,20 @@ function ProductMobileCard({
           <span className={cn("rounded-md border px-2 py-1 text-[11px] font-black", catalogStatusBadgeClass(product.catalogStatus))}>
             {adminText.enums.catalogStatus[product.catalogStatus]}
           </span>
-          <ProductActionsMenu
-            product={product}
-            isMutating={isMutating}
-            pendingActionKey={pendingActionKey}
-            capabilities={capabilities}
-            text={text}
-            onView={onView}
-            onEdit={onEdit}
-            onDuplicate={onDuplicate}
-            onAction={onAction}
-            onHide={onHide}
-            onStockAdjust={onStockAdjust}
-          />
         </div>
       </div>
-      <div className="mt-3 flex min-h-11 items-center justify-between gap-3 border-t border-slate-100 pt-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-xs font-semibold text-slate-500">
-          <span>{text.netPrice} <strong className="text-slate-950">{formatEuro(product.price)}</strong></span>
-          <span>{text.stock} <strong className="text-slate-950">{product.availableQty ?? product.stock}</strong></span>
+      <div className="mt-1 flex min-h-11 items-center gap-1 border-t border-slate-100 pt-1">
+        <label className="flex size-11 shrink-0 items-center justify-center" title={product.sku}><Checkbox aria-label={`${locale.startsWith("zh") ? "选择商品" : "Seleziona prodotto"}: ${product.sku}`} checked={selected} disabled={isMutating} onCheckedChange={(value) => onSelect(value === true)} /></label>
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-semibold text-slate-500">
+          <span aria-label={text.netPrice}><strong className="text-sm text-slate-950">{formatEuro(product.price)}</strong></span>
+          <span>{text.availableStock} <strong className="text-slate-950">{product.availableQty ?? product.stock}</strong></span>
         </div>
         {editable && (
-          <Button size="sm" className="h-10 shrink-0 px-3" onClick={() => onEdit(product)}>
+          <Button size="icon" aria-label={text.edit} title={text.edit} disabled={isMutating} className="size-11 shrink-0" onClick={() => onEdit(product)}>
             <Edit className="size-4" />
-            {text.edit}
           </Button>
         )}
+        <ProductActionsMenu product={product} isMutating={isMutating} pendingActionKey={pendingActionKey} capabilities={capabilities} text={text} onView={onView} onEdit={onEdit} onDuplicate={onDuplicate} onAction={onAction} onHide={onHide} onStockAdjust={onStockAdjust} />
       </div>
     </div>
   );
@@ -6556,7 +6502,7 @@ function ProductActionsMenu({
           disabled={isMutating}
           variant="ghost"
           size="icon-sm"
-          className="bg-white/60"
+          className="size-11 bg-white/60 sm:size-8"
           aria-label={`${text.moreActions}: ${product.sku}`}
           title={`${text.moreActions}: ${product.sku}`}
         >
@@ -6916,7 +6862,7 @@ function ProductDrawer({
     <ProductDraftGuardContext.Provider value={guardContext}><Sheet open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
       <SheetContent
         side="right"
-        className="w-screen max-w-none gap-0 overflow-clip p-0"
+        className="admin-ui-panel w-screen max-w-none gap-0 overflow-clip p-0"
         style={{ width: "min(820px, var(--overlay-width, 100vw))", maxWidth: "min(820px, 100vw)" }}
       >
         <SheetHeader className="border-b border-slate-200 bg-white p-4 pr-12">
@@ -8276,7 +8222,7 @@ function StockAdjustmentDialog({
 
   return (
     <Dialog open={open} onOpenChange={requestClose}>
-      <DialogContent scrollLayout="body" className="sm:max-w-[520px]">
+      <DialogContent scrollLayout="body" className="admin-ui-panel sm:max-w-[520px]">
         <DialogHeader>
           <DialogTitle>{text.stockAdjust}</DialogTitle>
           <DialogDescription>{product.sku}</DialogDescription>

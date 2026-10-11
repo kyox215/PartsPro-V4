@@ -1,0 +1,67 @@
+[
+  {
+    "width": 320,
+    "height": 700,
+    "locale": "zh-CN",
+    "productsVisible": 2,
+    "directoryVisible": 5,
+    "directoryTop": 302,
+    "overflow": false,
+    "pageErrors": 0,
+    "warnings": [],
+    "expectedConflictAndUnknown": false,
+    "apiRequests": 23
+  },
+  {
+    "width": 390,
+    "height": 700,
+    "locale": "zh-CN",
+    "productsVisible": 3,
+    "directoryVisible": 5,
+    "directoryTop": 302,
+    "overflow": false,
+    "pageErrors": 0,
+    "warnings": [],
+    "expectedConflictAndUnknown": true,
+    "apiRequests": 27
+  },
+  {
+    "width": 430,
+    "height": 844,
+    "locale": "it",
+    "productsVisible": 4,
+    "directoryVisible": 7,
+    "directoryTop": 302,
+    "overflow": false,
+    "pageErrors": 0,
+    "warnings": [],
+    "expectedConflictAndUnknown": false,
+    "apiRequests": 23
+  },
+  {
+    "width": 768,
+    "height": 900,
+    "locale": "it",
+    "productsVisible": 4,
+    "directoryVisible": 7,
+    "directoryTop": 368,
+    "overflow": false,
+    "pageErrors": 0,
+    "warnings": [],
+    "expectedConflictAndUnknown": false,
+    "apiRequests": 22
+  },
+  {
+    "width": 1440,
+    "height": 900,
+    "locale": "zh-CN",
+    "productsVisible": 0,
+    "directoryVisible": 7,
+    "directoryTop": 358,
+    "overflow": false,
+    "pageErrors": 0,
+    "warnings": [],
+    "expectedConflictAndUnknown": false,
+    "apiRequests": 23
+  }
+]

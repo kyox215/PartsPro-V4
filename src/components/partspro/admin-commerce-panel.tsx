@@ -14,7 +14,7 @@ export function AdminCommercePanel({ permissions = [] }: AdminCommercePanelProps
   const { locale } = useI18n();
   const zh = locale.startsWith("zh");
   return (
-    <div className="min-w-0 space-y-4">
+    <div className="admin-ui-panel min-w-0 space-y-3 sm:space-y-4">
       <div className="flex min-w-0 flex-col gap-3 rounded-lg border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-center gap-3">
           <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">

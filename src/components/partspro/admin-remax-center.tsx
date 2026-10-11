@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminSearchableSelect } from "./admin-ui-controls";
+
 import { AdminNotice, AdminActionButton } from "./admin-feedback";
 
 import * as React from "react";
@@ -258,7 +260,7 @@ export function AdminRemaxCenter({
   }
 
   return (
-    <section data-admin-dirty={file || Object.keys(receiptQuantities).length ? "true" : "false"} className="min-w-0 space-y-3 text-slate-950">
+    <section data-admin-dirty={file || Object.keys(receiptQuantities).length ? "true" : "false"} className="admin-ui-panel min-w-0 space-y-3 text-slate-950">
       <div className="mx-auto max-w-7xl space-y-3">
         <header className="rounded-xl border border-fuchsia-200 bg-gradient-to-r from-fuchsia-950 via-purple-900 to-indigo-900 p-4 text-white shadow-lg sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -278,18 +280,18 @@ export function AdminRemaxCenter({
           </div>
         </header>
 
-        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
-          <section className="space-y-3">
+        <div className="grid min-w-0 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.25fr)_minmax(360px,0.75fr)]">
+          <section className="min-w-0 space-y-3">
             <Card className="border-slate-200">
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg"><FileSpreadsheet className="size-5 text-purple-700" /> {t("2. Compila lotto e carica file")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <Field label={t("Codice lotto *")}><Input value={settings.batchCode} placeholder={t("REMAX-2026-07-A")} onChange={(event) => updateSettings("batchCode", event.currentTarget.value)} /></Field>
+                <div className="grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-3">
+                  <Field className="col-span-2 lg:col-span-1" label={t("Codice lotto *")}><Input value={settings.batchCode} placeholder={t("REMAX-2026-07-A")} onChange={(event) => updateSettings("batchCode", event.currentTarget.value)} /></Field>
                   <Field label={t("ETA inizio *")}><Input type="date" value={settings.etaStart} onChange={(event) => updateSettings("etaStart", event.currentTarget.value)} /></Field>
                   <Field label={t("ETA fine *")}><Input type="date" value={settings.etaEnd} onChange={(event) => updateSettings("etaEnd", event.currentTarget.value)} /></Field>
-                  <Field label={t("Chiusura prenotazioni")}><Input type="datetime-local" value={settings.closeAt} onChange={(event) => updateSettings("closeAt", event.currentTarget.value)} /></Field>
+                  <Field className="col-span-2 lg:col-span-1" label={t("Chiusura prenotazioni")}><Input type="datetime-local" value={settings.closeAt} onChange={(event) => updateSettings("closeAt", event.currentTarget.value)} /></Field>
                   <Field label={t("Numero ordine fornitore")}><Input value={settings.orderNo} onChange={(event) => updateSettings("orderNo", event.currentTarget.value)} /></Field>
                   <Field label={t("Deposito")}><Input value={settings.location} onChange={(event) => updateSettings("location", event.currentTarget.value)} /></Field>
                 </div>
@@ -320,6 +322,7 @@ export function AdminRemaxCenter({
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
+                  <p className="text-xs text-slate-500 lg:hidden">{locale.startsWith("zh") ? "横向滑动查看价格与预检结果" : "Scorri per vedere prezzi ed esito dei controlli"}</p>
                   <div className="max-h-96 overflow-auto rounded-lg border border-slate-200">
                     <table className="w-full min-w-[760px] text-left text-xs">
                       <thead className="sticky top-0 bg-slate-100 text-slate-600">
@@ -430,15 +433,12 @@ function ArrivalCard(props: {
  const { locale } = useI18n(); const t = React.useCallback((value: string) => remaxText(value, locale), [locale]);
 
   return (
-    <Card className="border-emerald-200">
+    <Card className="min-w-0 border-emerald-200">
       <CardHeader className="pb-3"><CardTitle className="flex items-center gap-2 text-lg"><PackageCheck className="size-5 text-emerald-700" /> {t("4. Registra arrivo")}</CardTitle></CardHeader>
       <CardContent className="space-y-3">
         <p className="text-xs font-semibold leading-5 text-slate-600">{t("Usa questa sezione solo quando hai contato fisicamente la merce. Il sistema assegna prima i preordini più vecchi (FIFO).")}</p>
         <Field label={t("Lotto arrivato")}>
-          <select className="h-10 w-full rounded-md border border-input bg-white px-3 text-sm" value={props.selectedBatchCode} onChange={(event) => props.onSelectBatch(event.currentTarget.value)}>
-            <option value="">{t("Seleziona lotto")}</option>
-            {props.batches.map((batch) => <option key={batch.id} value={batch.batchCode}>{batch.batchCode} {t("· residuo")}{batch.remainingQty}</option>)}
-          </select>
+          <AdminSearchableSelect value={props.selectedBatchCode} onValueChange={props.onSelectBatch} ariaLabel={t("Lotto arrivato")} placeholder={t("Seleziona lotto")} searchPlaceholder={locale.startsWith("zh") ? "搜索批次" : "Cerca lotto"} options={[{ value: "", label: t("Seleziona lotto") }, ...props.batches.map(batch => ({ value: batch.batchCode, label: `${batch.batchCode} ${t("· residuo")}${batch.remainingQty}` }))]} />
         </Field>
         {props.selectedBatch ? (
           <div className="max-h-72 space-y-2 overflow-auto">
@@ -468,8 +468,8 @@ function ArrivalCard(props: {
   );
 }
 
-function Field({ children, label }: { children: React.ReactNode; label: string }) {
-  return <AdminFieldGroup label={label}>{children}</AdminFieldGroup>;
+function Field({ children, label, className }: { children: React.ReactNode; label: string; className?: string }) {
+  return <AdminFieldGroup label={label} className={className}>{children}</AdminFieldGroup>;
 }
 
 function Metric({ label, value }: { label: string; value: number }) {

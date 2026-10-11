@@ -195,7 +195,7 @@ export function AdminOverviewDashboard({
   );
 
   return (
-    <div className="space-y-2.5 sm:space-y-3">
+    <div className="admin-ui-panel space-y-2.5 sm:space-y-3">
       <OverviewHeader
         copy={copy}
         locale={locale}
@@ -204,7 +204,7 @@ export function AdminOverviewDashboard({
         text={text}
       />
 
-      <p className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600">{locale.startsWith("zh") ? "指标来自当前权限可读取的完整清单（每类最多5万条）；读取中清单变化会报告失败，避免显示不完整总数。30秒内复用汇总。趋势期间由下拉选择，旁边小计固定为最近7日。" : "Metriche dall’elenco completo accessibile (fino a 50.000 righe per dominio). Un elenco variato o incompleto genera un errore. Riepilogo riutilizzato per 30 secondi. Il grafico segue il periodo selezionato; i piccoli totali restano a 7 giorni."}</p>
+      <details className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600"><summary className="cursor-pointer font-semibold">{locale.startsWith("zh") ? "统计口径与数据来源" : "Base delle metriche e fonti"}</summary><p className="mt-2">{locale.startsWith("zh") ? "指标来自当前权限可读取的完整清单（每类最多5万条）；读取中清单变化会报告失败，避免显示不完整总数。30秒内复用汇总。趋势期间由下拉选择，旁边小计固定为最近7日。" : "Metriche dall’elenco completo accessibile (fino a 50.000 righe per dominio). Un elenco variato o incompleto genera un errore. Riepilogo riutilizzato per 30 secondi. Il grafico segue il periodo selezionato; i piccoli totali restano a 7 giorni."}</p></details>
       {snapshot.error && snapshot.model ? (
         <AdminNotice tone={snapshot.model ? "warning" : "error"} title={copy.partialData} message={snapshot.error} />
       ) : null}

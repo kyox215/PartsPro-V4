@@ -241,7 +241,7 @@ export function AdminProductImportDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent data-admin-mutating={pending === "apply" ? "true" : "false"} data-admin-dirty={open && !result && Boolean(file || pasteText.trim() || preview) ? "true" : "false"} className="flex max-h-[94dvh] w-[calc(100vw-1rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:w-[calc(100vw-2rem)]">
+      <DialogContent data-admin-mutating={pending === "apply" ? "true" : "false"} data-admin-dirty={open && !result && Boolean(file || pasteText.trim() || preview) ? "true" : "false"} className="admin-ui-panel flex max-h-[94dvh] w-[calc(100vw-1rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:w-[calc(100vw-2rem)]">
         <DialogHeader className="border-b border-slate-200 px-4 py-4 sm:px-6">
           <div className="flex items-start gap-3">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">

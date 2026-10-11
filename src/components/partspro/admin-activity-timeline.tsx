@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminSearchField } from "./admin-ui-controls";
+
 import * as React from "react";
 import { AdminEmptyState, AdminNotice } from "./admin-feedback";
 import Link from "next/link";
@@ -13,7 +15,6 @@ import {
   Flag,
   MessageSquarePlus,
   RotateCcw,
-  Search,
   Star,
   StarOff,
   UserCog,
@@ -27,7 +28,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -274,7 +274,7 @@ export function AdminActivityTimeline({
   return (
     <Card
       className={cn(
-        "overflow-hidden border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)]",
+        "admin-ui-panel overflow-hidden border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)]",
         className
       )}
     >
@@ -284,17 +284,8 @@ export function AdminActivityTimeline({
           <CardDescription className="block">{resolvedDescription}</CardDescription>
         </div>
 
-        <div className="flex w-full min-w-0 flex-col gap-2 sm:flex-row xl:w-auto xl:justify-end">
-          <div className="relative min-w-0 flex-1 xl:w-[260px] xl:flex-none">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              className="h-9 bg-white pl-9"
-              aria-label={copy.searchPlaceholder}
-              placeholder={copy.searchPlaceholder}
-            />
-          </div>
+        <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:flex xl:w-auto xl:justify-end">
+          <AdminSearchField containerClassName="col-span-2 min-w-0 flex-1 xl:w-[260px] xl:flex-none" value={query} onValueChange={setQuery} className="bg-white" aria-label={copy.searchPlaceholder} placeholder={copy.searchPlaceholder} clearLabel={locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca"} />
           <Select
             value={typeFilter}
             onValueChange={(value) => setTypeFilter(value as ActivityFilterValue)}

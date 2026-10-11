@@ -8,7 +8,7 @@ export function AdminSettingsPanel() {
   const { locale } = useI18n();
   const zh = locale.startsWith("zh");
   return (
-    <section className="min-w-0 space-y-2 text-slate-950 sm:space-y-4">
+    <section className="admin-ui-panel min-w-0 space-y-2 text-slate-950 sm:space-y-4">
       <div className="min-w-0">
         <div className="flex min-w-0 items-center gap-2">
           <ShieldCheck className="size-4 shrink-0 text-primary sm:size-5" />

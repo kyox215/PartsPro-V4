@@ -1,5 +1,7 @@
 "use client";
 
+import { AdminSearchField } from "./admin-ui-controls";
+
 import * as React from "react";
 import { AdminListPager } from "./admin-list-pager";
 import { usePersistentAdminValue } from "./admin-workspace-state";
@@ -13,7 +15,6 @@ import {
   Loader2,
   RefreshCw,
   RotateCcw,
-  Search,
   ShieldAlert,
   XCircle,
 } from "lucide-react";
@@ -720,9 +721,12 @@ export function AdminRmaPanel() {
   const replacementCandidates =
     selectedDetail?.id === selectedId ? selectedDetail.replacementCandidates : [];
 
+  const listRef = React.useRef<HTMLDivElement>(null);
+  const detailRef = React.useRef<HTMLDivElement>(null);
+
   return (
     <>
-      <section className="min-w-0 space-y-4">
+      <section className="admin-ui-panel min-w-0 space-y-3 sm:space-y-4">
         <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.045)] sm:p-5 md:flex-row md:items-center md:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -744,16 +748,9 @@ export function AdminRmaPanel() {
         ) : null}
 
         <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
-          <div className="relative min-w-0">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+          <div className="min-w-0">
             <Label htmlFor="admin-rma-search" className="sr-only">{copy.search}</Label>
-            <Input
-              id="admin-rma-search"
-              className="bg-white pl-9"
-              placeholder={copy.searchPlaceholder}
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-            />
+            <AdminSearchField id="admin-rma-search" className="bg-white" placeholder={copy.searchPlaceholder} value={searchInput} onValueChange={setSearchInput} pending={isLoading} clearLabel={isZh ? "清除搜索" : "Cancella ricerca"} />
           </div>
           <label className="mt-3 block text-sm font-semibold sm:hidden">{isZh ? "处理阶段" : "Fase di gestione"}
             <select className="mt-1 min-h-11 w-full rounded-md border bg-white px-3" value={queue} disabled={Boolean(pendingAction)} onChange={event => { setQueue(event.target.value as QueueTab); setPage(0); }}>
@@ -800,7 +797,7 @@ export function AdminRmaPanel() {
 
         <div className="grid min-w-0 gap-4 xl:grid-cols-[390px_minmax(0,1fr)]">
           <AdminBusyRegion label={copy.loading} pending={isLoading}>
-            <div className="rounded-xl border border-slate-200 bg-white p-3">
+            <div ref={listRef} className="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-3">
               <div className="mb-3 flex items-center justify-between gap-2 text-xs font-black uppercase text-slate-400">
                 <span>{queueLabel(queue, isZh)}</span>
                 <span>{countsComplete ? queueCounts[queue] : `≥${queueCounts[queue]}`}</span>
@@ -825,7 +822,7 @@ export function AdminRmaPanel() {
                             ? "border-primary/40 bg-primary/8"
                             : "border-slate-200 bg-white"
                         )}
-                        onClick={() => setSelectedId(request.id)}
+                        onClick={() => { setSelectedId(request.id); if (window.innerWidth < 1280) requestAnimationFrame(() => detailRef.current?.scrollIntoView({ block: "start" })); }}
                       >
                         <div className="flex min-w-0 items-center gap-2">
                           <span className="min-w-0 flex-1 truncate font-mono text-xs font-black">
@@ -848,7 +845,8 @@ export function AdminRmaPanel() {
             </div>
           </AdminBusyRegion>
 
-          <div className="min-w-0 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+          <div ref={detailRef} className="min-w-0 scroll-mt-24 rounded-xl border border-slate-200 bg-white p-3 sm:p-5">
+            {selectedRequest && <div className="mb-3 flex min-w-0 items-center justify-between gap-2 xl:hidden"><span className="min-w-0 truncate text-xs font-semibold text-slate-500">{isZh ? "当前售后详情" : "Dettaglio selezionato"} · {selectedRequest.rmaNo ?? copy.rma}</span><Button type="button" size="sm" variant="outline" disabled={Boolean(pendingAction) || Boolean(refundConfirmation)} onClick={() => listRef.current?.scrollIntoView({ block: "start" })}>{isZh ? "返回列表" : "Torna alla lista"}</Button></div>}
             {!selectedRequest ? (
               <AdminEmptyState title={copy.emptyDetail} className="xl:min-h-[420px]" />
             ) : (
@@ -1121,7 +1119,7 @@ export function AdminRmaPanel() {
       </AlertDialog>
 
       <Dialog open={actionDialog === "receive"} onOpenChange={(open) => !open && setActionDialog(null)}>
-        <DialogContent>
+        <DialogContent className="admin-ui-panel">
           <DialogHeader>
             <DialogTitle>{copy.confirmReceived}</DialogTitle>
             <DialogDescription>{copy.directReceiptConfirmation}</DialogDescription>
@@ -1156,7 +1154,7 @@ export function AdminRmaPanel() {
       </Dialog>
 
       <Dialog open={actionDialog === "approve"} onOpenChange={(open) => !open && setActionDialog(null)}>
-        <DialogContent>
+        <DialogContent className="admin-ui-panel">
           <DialogHeader><DialogTitle>{copy.action.approve}</DialogTitle>
             <DialogDescription>{isZh ? "请向客户提供经核验的退货地址、联系人、包装要求，并提醒附上售后编号。" : "Indica l’indirizzo verificato, il destinatario e le istruzioni di imballaggio. Chiedi di includere il numero RMA."}</DialogDescription>
           </DialogHeader>
@@ -1169,7 +1167,7 @@ export function AdminRmaPanel() {
       </Dialog>
 
       <Dialog open={actionDialog === "reject"} onOpenChange={(open) => !open && setActionDialog(null)}>
-        <DialogContent>
+        <DialogContent className="admin-ui-panel">
           <DialogHeader>
             <DialogTitle>{copy.action.reject}</DialogTitle>
             <DialogDescription>{copy.rejectDescription}</DialogDescription>
@@ -1200,7 +1198,7 @@ export function AdminRmaPanel() {
       </Dialog>
 
       <Dialog open={actionDialog === "qc"} onOpenChange={(open) => !open && setActionDialog(null)}>
-        <DialogContent>
+        <DialogContent className="admin-ui-panel">
           <DialogHeader>
             <DialogTitle>{copy.qc}</DialogTitle>
             <DialogDescription>{copy.qcDescription}</DialogDescription>
@@ -1238,7 +1236,7 @@ export function AdminRmaPanel() {
       </Dialog>
 
       <Dialog open={Boolean(actionDialog && ["prepare_wallet_refund", "cancel_unreceived", "verify_refund_snapshot", "release_cancelled_replacement", "create_replacement_order", "split_request", "start_negotiation", "resolve_negotiation", "return_to_customer", "bind_replacement_order"].includes(actionDialog))} onOpenChange={(open) => !open && setActionDialog(null)}>
-        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="admin-ui-panel max-h-[90dvh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{actionDialog ? actionLabel(actionDialog as ActionCode, copy) : ""}</DialogTitle>
             <DialogDescription>{actionDialog === "prepare_wallet_refund"
@@ -1308,7 +1306,7 @@ export function AdminRmaPanel() {
       </Dialog>
 
       <Dialog open={actionDialog === "refund"} onOpenChange={(open) => !open && setActionDialog(null)}>
-        <DialogContent>
+        <DialogContent className="admin-ui-panel">
           <DialogHeader>
             <DialogTitle>{copy.refund}</DialogTitle>
             <DialogDescription>{copy.refundDescription}</DialogDescription>
@@ -1357,7 +1355,7 @@ export function AdminRmaPanel() {
       </Dialog>
 
       <Dialog open={actionDialog === "replacement"} onOpenChange={(open) => !open && setActionDialog(null)}>
-        <DialogContent>
+        <DialogContent className="admin-ui-panel">
           <DialogHeader>
             <DialogTitle>{copy.replacement}</DialogTitle>
             <DialogDescription>{copy.replacementDescription}</DialogDescription>
@@ -1394,7 +1392,7 @@ export function AdminRmaPanel() {
       </Dialog>
 
       <Dialog open={actionDialog === "inventory"} onOpenChange={(open) => !open && setActionDialog(null)}>
-        <DialogContent>
+        <DialogContent className="admin-ui-panel">
           <DialogHeader>
             <DialogTitle>{copy.inventory}</DialogTitle>
             <DialogDescription>{copy.inventoryImpact}</DialogDescription>
@@ -1457,7 +1455,7 @@ export function AdminRmaPanel() {
       </Dialog>
 
       <Dialog open={Boolean(photoAttachment)} onOpenChange={(open) => !open && setPhotoAttachment(null)}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="admin-ui-panel sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>{copy.photoPreview}</DialogTitle>
             <DialogDescription>{photoAttachment?.name}</DialogDescription>

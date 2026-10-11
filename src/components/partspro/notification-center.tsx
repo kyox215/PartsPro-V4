@@ -585,8 +585,8 @@ export function NotificationCenter({
           >
             {hasUnread ? <BellRing className="size-4" /> : <Bell className="size-4" />}
             {hasUnread ? (
-              <span className="absolute -right-1 -top-1 grid min-w-4 place-items-center rounded-full bg-red-500 px-1 text-[10px] font-black text-white">
-                {Math.min(unreadCount, 99)}
+              <span className="absolute -right-1 -top-1 grid min-h-5 min-w-5 place-items-center rounded-full bg-red-500 px-1 text-xs font-black text-white">
+                {unreadCount > 99 ? "99+" : unreadCount}
               </span>
             ) : null}
           </Button>

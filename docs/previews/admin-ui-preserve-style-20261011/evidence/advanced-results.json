@@ -1,0 +1,24 @@
+[
+  {
+    "width": 390,
+    "height": 844,
+    "imageValidation": true,
+    "unsavedEscapeRetains": true,
+    "importBlocked": true,
+    "pasteRetained": true,
+    "costDialog": true,
+    "pageErrors": 0,
+    "overflow": false
+  },
+  {
+    "width": 1440,
+    "height": 900,
+    "imageValidation": true,
+    "unsavedEscapeRetains": true,
+    "importBlocked": true,
+    "pasteRetained": true,
+    "costDialog": true,
+    "pageErrors": 0,
+    "overflow": false
+  }
+]

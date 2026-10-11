@@ -1,0 +1,10 @@
+{
+  "dirtyEscapeRetained": true,
+  "pendingCtrlKBlocked": true,
+  "pendingEscapeBlocked": true,
+  "unknownCtrlKBlocked": true,
+  "unknownFieldsFrozen": true,
+  "unknownCloseRefresh": true,
+  "writeRequests": 1,
+  "pageErrors": []
+}

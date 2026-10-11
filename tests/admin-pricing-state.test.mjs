@@ -54,6 +54,7 @@ function harness({ fetch: fetchImpl = async () => json(campaign), locale = 'zh-C
       if (name.endsWith('/label')) return { Label: host('label') };
       if (name.endsWith('partspro-pricing')) return { customerTiers: ['bronze', 'silver', 'gold', 'emerald', 'diamond', 'master', 'king'] };
       if (name === 'lucide-react') return { ShoppingBag: host('svg') };
+      if (name.endsWith('/select')) return Object.fromEntries(['Select', 'SelectContent', 'SelectItem', 'SelectTrigger', 'SelectValue'].map(name => [name, host(name)]));
       if (name.endsWith('/tabs')) return Object.fromEntries(['Tabs', 'TabsContent', 'TabsList', 'TabsTrigger'].map(name => [name, host(name)]));
       if (name === './admin-marketplace-panel') return { AdminMarketplacePanel: () => jsx('span', { children: 'Marketplace fixture' }) };
       throw Error('Unexpected import: ' + name);

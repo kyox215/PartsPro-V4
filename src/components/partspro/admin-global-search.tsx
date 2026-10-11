@@ -4,7 +4,7 @@ import * as React from "react";
 import { AdminEmptyState, AdminNotice } from "./admin-feedback";
 import Link from "next/link";
 import { Search, Loader2 } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { AdminSearchField } from "./admin-ui-controls";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useI18n } from "./i18n-provider";
@@ -19,6 +19,17 @@ export function AdminGlobalSearch() {
   const [results, setResults] = React.useState<SearchResult[]>([]);
   const [state, setState] = React.useState<"idle" | "pending" | "ready" | "error">("idle");
   const [partial, setPartial] = React.useState(false);
+  React.useEffect(() => {
+    const onShortcut = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        if (document.querySelector('[data-admin-mutating="true"]')) return;
+        setOpen(value => !value);
+      }
+    };
+    window.addEventListener("keydown", onShortcut);
+    return () => window.removeEventListener("keydown", onShortcut);
+  }, []);
   React.useEffect(() => {
     if (!open || query.trim().length < 2) return;
     const controller = new AbortController();
@@ -41,13 +52,13 @@ export function AdminGlobalSearch() {
   }, [open, query]);
   const labels = zh ? { order: "订单", product: "商品", account: "账号" } : { order: "Ordine", product: "Prodotto", account: "Account" };
   return <>
-    <Button variant="outline" type="button" aria-label={zh ? "搜索订单、商品和账号" : "Cerca ordini, prodotti e account"} className="ml-auto min-w-0 shrink bg-white md:max-w-[240px] lg:max-w-md lg:flex-1 md:justify-start md:text-slate-500" onClick={() => setOpen(true)}>
+    <Button variant="outline" type="button" aria-label={zh ? "搜索订单、商品和账号" : "Cerca ordini, prodotti e account"} title="Ctrl / ⌘ K" className="ml-auto min-h-11 min-w-11 shrink bg-white sm:min-h-10 md:max-w-[240px] lg:max-w-md lg:flex-1 md:justify-start md:text-slate-500" onClick={() => { if (!document.querySelector('[data-admin-mutating="true"]')) setOpen(true); }}>
       <Search className="size-4" /><span className="hidden truncate md:inline">{zh ? "搜索订单、SKU、客户…" : "Cerca ordini, SKU, clienti…"}</span>
     </Button>
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="sm:max-w-xl">
+      <DialogContent className="admin-ui-panel sm:max-w-xl">
         <DialogHeader><DialogTitle>{zh ? "后台搜索" : "Ricerca nel pannello"}</DialogTitle><DialogDescription>{zh ? "输入至少2个字符，搜索你有权访问的订单、商品和账号。" : "Inserisci almeno 2 caratteri. I risultati rispettano i tuoi permessi."}</DialogDescription></DialogHeader>
-        <Input autoFocus aria-label={zh ? "搜索关键字" : "Termine di ricerca"} value={query} onChange={e => { setQuery(e.target.value); setState("idle"); setResults([]); }} placeholder={zh ? "订单号、SKU、姓名或邮箱" : "Numero ordine, SKU, nome o email"} />
+        <AdminSearchField autoFocus aria-label={zh ? "搜索关键字" : "Termine di ricerca"} pending={state === "pending"} value={query} onValueChange={value => { setQuery(value); setState("idle"); setResults([]); setPartial(false); }} placeholder={zh ? "订单号、SKU、姓名或邮箱" : "Numero ordine, SKU, nome o email"} />
         <div className="max-h-[55dvh] min-h-24 space-y-2 overflow-y-auto" aria-busy={state === "pending"}>
           {state === "pending" && <p role="status" className="flex items-center gap-2 p-3 text-sm"><Loader2 className="size-4 animate-spin" />{zh ? "搜索中…" : "Ricerca…"}</p>}
           {state === "error" && <AdminNotice tone="error" message={zh ? "搜索读取失败，请修改关键字重试。" : "Ricerca non disponibile. Riprova."} />}
