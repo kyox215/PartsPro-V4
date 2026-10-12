@@ -1,0 +1,17 @@
+{
+  "id": "dpl_F4MW4NgmxFWHndeVTzNk9MzRPuur",
+  "url": "parts-pro-v4-33cqhwq1j-kyox120-9295s-projects.vercel.app",
+  "source": "cli",
+  "target": "production",
+  "readyState": "READY",
+  "checksState": null,
+  "checksConclusion": null,
+  "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+  "teamId": null,
+  "createdAt": 1791830519403,
+  "ready": 1791830601448,
+  "aliasError": null,
+  "commit": "4f30c3eee59034131d691d972a5f92daabd0a72e",
+  "branch": "codex/admin-component-density-20261012",
+  "project": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo"
+}

@@ -1,0 +1,35 @@
+{
+  "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+  "projectName": "parts-pro-v4",
+  "teamId": "team_AOJDnrjov0QDLqpvMyhwA1yc",
+  "baseline": {
+    "deployment": "dpl_9GouAqee1NKPggTwoPJpcsS1pWf7",
+    "url": "parts-pro-v4-3diyv18gl-kyox120-9295s-projects.vercel.app",
+    "commit": "975f43552b9902ea209f260eb0cb5d8145116975",
+    "state": "READY",
+    "target": "production"
+  },
+  "aliases": [
+    {
+      "alias": "partspro.app",
+      "deploymentId": "dpl_9GouAqee1NKPggTwoPJpcsS1pWf7",
+      "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+      "updatedAt": 1791741935605,
+      "redirect": "www.partspro.app"
+    },
+    {
+      "alias": "www.partspro.app",
+      "deploymentId": "dpl_9GouAqee1NKPggTwoPJpcsS1pWf7",
+      "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+      "updatedAt": 1791741935607,
+      "redirect": null
+    }
+  ],
+  "remoteMain": {
+    "commit": "5e141419f64b98cb38968c588293389cd1697d53",
+    "isAncestorOfReleaseBaseline": true
+  },
+  "userAuthorization": "上线",
+  "newMigrations": false,
+  "databaseWrites": false
+}

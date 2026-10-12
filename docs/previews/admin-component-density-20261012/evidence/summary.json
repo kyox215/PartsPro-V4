@@ -1,0 +1,703 @@
+{
+  "phase": "local actual-component preview; do not publish",
+  "generatedAt": "2026-10-12T08:23:40.046614+00:00",
+  "source": "原React组件＋本地合成API，所有外部请求阻止，不部署不写库",
+  "uniqueCases": 20,
+  "targetedReruns": {
+    "finance": 6,
+    "inventoryHealth": 3
+  },
+  "passed": 20,
+  "warnings": 0,
+  "pageErrors": 0,
+  "consoleErrors": 0,
+  "pageOrMainOverflow": 0,
+  "businessWrites": 0,
+  "statsHeights": [
+    {
+      "panel": "inventory",
+      "width": 320,
+      "locale": "zh-CN",
+      "stress": false,
+      "groups": [
+        {
+          "label": "缺货统计",
+          "height": 62
+        },
+        {
+          "label": "采购计划统计",
+          "height": 62
+        },
+        {
+          "label": "库存体检",
+          "height": 62
+        }
+      ],
+      "checks": {
+        "inventoryEightHeight": 160,
+        "inventoryEightCount": 8,
+        "healthHeight": 62,
+        "zeroVisible": true,
+        "healthNameFitsViewport": true,
+        "healthNameExpand": true,
+        "nameExpandAndEscape": true
+      }
+    },
+    {
+      "panel": "inventory",
+      "width": 320,
+      "locale": "it",
+      "stress": false,
+      "groups": [
+        {
+          "label": "Metriche scorte",
+          "height": 62
+        },
+        {
+          "label": "Metriche piani di acquisto",
+          "height": 62
+        },
+        {
+          "label": "Controllo inventario",
+          "height": 72
+        }
+      ],
+      "checks": {
+        "inventoryEightHeight": 160,
+        "inventoryEightCount": 8,
+        "healthHeight": 72,
+        "zeroVisible": true,
+        "healthNameFitsViewport": true,
+        "healthNameExpand": true,
+        "nameExpandAndEscape": true
+      }
+    },
+    {
+      "panel": "finance",
+      "width": 320,
+      "locale": "zh-CN",
+      "stress": false,
+      "groups": [
+        {
+          "label": "总览",
+          "height": 148
+        }
+      ],
+      "checks": {
+        "firstTabNotLeftClipped": true,
+        "currencyPreserved": true,
+        "percentPreserved": true,
+        "tabsReturn": true
+      }
+    },
+    {
+      "panel": "finance",
+      "width": 320,
+      "locale": "it",
+      "stress": false,
+      "groups": [
+        {
+          "label": "Panoramica",
+          "height": 185
+        }
+      ],
+      "checks": {
+        "firstTabNotLeftClipped": true,
+        "currencyPreserved": true,
+        "percentPreserved": true,
+        "tabsReturn": true
+      }
+    },
+    {
+      "panel": "overview",
+      "width": 320,
+      "locale": "zh-CN",
+      "stress": false,
+      "groups": [
+        {
+          "label": "经营指标",
+          "height": 92
+        }
+      ],
+      "checks": {
+        "metricDetailsOpen": true
+      }
+    },
+    {
+      "panel": "overview",
+      "width": 320,
+      "locale": "it",
+      "stress": false,
+      "groups": [
+        {
+          "label": "Metriche operative",
+          "height": 103
+        }
+      ],
+      "checks": {
+        "metricDetailsOpen": true
+      }
+    },
+    {
+      "panel": "analytics",
+      "width": 320,
+      "locale": "zh-CN",
+      "stress": false,
+      "groups": [
+        {
+          "label": "网站访问统计",
+          "height": 76
+        }
+      ],
+      "checks": {
+        "metricDetailsOpen": true
+      }
+    },
+    {
+      "panel": "analytics",
+      "width": 320,
+      "locale": "it",
+      "stress": false,
+      "groups": [
+        {
+          "label": "Statistiche visite sito",
+          "height": 92
+        }
+      ],
+      "checks": {
+        "metricDetailsOpen": true
+      }
+    },
+    {
+      "panel": "inventory",
+      "width": 390,
+      "locale": "zh-CN",
+      "stress": false,
+      "groups": [
+        {
+          "label": "缺货统计",
+          "height": 62
+        },
+        {
+          "label": "采购计划统计",
+          "height": 62
+        },
+        {
+          "label": "库存体检",
+          "height": 62
+        }
+      ],
+      "checks": {
+        "inventoryEightHeight": 160,
+        "inventoryEightCount": 8,
+        "healthHeight": 62,
+        "zeroVisible": true,
+        "healthNameFitsViewport": true,
+        "healthNameExpand": true,
+        "nameExpandAndEscape": true
+      }
+    },
+    {
+      "panel": "finance",
+      "width": 390,
+      "locale": "zh-CN",
+      "stress": false,
+      "groups": [
+        {
+          "label": "总览",
+          "height": 137
+        }
+      ],
+      "checks": {
+        "firstTabNotLeftClipped": true,
+        "currencyPreserved": true,
+        "percentPreserved": true,
+        "tabsReturn": true
+      }
+    },
+    {
+      "panel": "overview",
+      "width": 390,
+      "locale": "zh-CN",
+      "stress": false,
+      "groups": [
+        {
+          "label": "经营指标",
+          "height": 92
+        }
+      ],
+      "checks": {
+        "metricDetailsOpen": true
+      }
+    },
+    {
+      "panel": "analytics",
+      "width": 390,
+      "locale": "zh-CN",
+      "stress": false,
+      "groups": [
+        {
+          "label": "网站访问统计",
+          "height": 76
+        }
+      ],
+      "checks": {
+        "metricDetailsOpen": true
+      }
+    },
+    {
+      "panel": "inventory",
+      "width": 320,
+      "locale": "it",
+      "stress": true,
+      "groups": [
+        {
+          "label": "Metriche scorte",
+          "height": 123
+        },
+        {
+          "label": "Metriche piani di acquisto",
+          "height": 131
+        },
+        {
+          "label": "Controllo inventario",
+          "height": 72
+        }
+      ],
+      "checks": {
+        "inventoryEightHeight": 290,
+        "inventoryEightCount": 8,
+        "healthHeight": 72,
+        "zeroVisible": true,
+        "nameExpandAndEscape": true
+      }
+    },
+    {
+      "panel": "inventory",
+      "width": 390,
+      "locale": "zh-CN",
+      "stress": true,
+      "groups": [
+        {
+          "label": "缺货统计",
+          "height": 62
+        },
+        {
+          "label": "采购计划统计",
+          "height": 62
+        },
+        {
+          "label": "库存体检",
+          "height": 62
+        }
+      ],
+      "checks": {
+        "inventoryEightHeight": 160,
+        "inventoryEightCount": 8,
+        "healthHeight": 62,
+        "zeroVisible": true,
+        "nameExpandAndEscape": true
+      }
+    },
+    {
+      "panel": "finance",
+      "width": 320,
+      "locale": "it",
+      "stress": true,
+      "groups": [
+        {
+          "label": "Panoramica",
+          "height": 257
+        }
+      ],
+      "checks": {
+        "firstTabNotLeftClipped": true,
+        "currencyPreserved": true,
+        "percentPreserved": true,
+        "tabsReturn": true
+      }
+    },
+    {
+      "panel": "finance",
+      "width": 390,
+      "locale": "zh-CN",
+      "stress": true,
+      "groups": [
+        {
+          "label": "总览",
+          "height": 257
+        }
+      ],
+      "checks": {
+        "firstTabNotLeftClipped": true,
+        "currencyPreserved": true,
+        "percentPreserved": true,
+        "tabsReturn": true
+      }
+    }
+  ],
+  "sourceHashes": {
+    "src/components/partspro/admin-inventory-panel.tsx": "c3c5bca4ae846d50e299ad8489fbc31aaccdbd5333e4e601dca4dd4cfcab845b",
+    "src/components/partspro/admin-finance-panel.tsx": "8c7d47edd77a878168487de198c4baed98cbac7881db64705f7fd3bd9bf88169",
+    "src/components/partspro/admin-overview-dashboard.tsx": "63f4362f83cab804959c00088f1fbe13a02f9e125baa86e5ebafdec420b1acb8",
+    "src/components/partspro/admin-analytics-panel.tsx": "15ea37f95a440165eecf35504d00fd6a0fb182b9b9337c6ae708aa28bba9ca33"
+  },
+  "zeroAndUnits": "原变量与formatMoney/formatCount保留；0值、负金额、€、毛利率%、国家访客数均未隐藏",
+  "interactions": [
+    "库存商品/采购计划长名称全文Popover和Esc",
+    "体检名称在表格可见区内，全文Popover与Esc返回",
+    "概览原统计说明展开后同比明细可读",
+    "访问统计说明展开",
+    "原财务页签进入与返回，手机首个页签无左裁切"
+  ],
+  "runtime": "本地Chromium 320中文/意文、390中文、1440桌面",
+  "limitations": [
+    "10位库存计数＋320意文会使8项区增至290px，完整标签/数字优先；正常数据160px",
+    "超长金额自动单列，8项257px，金额和百分比完整",
+    "原表格内横向滚动保留；检查无页面/main级横向溢出",
+    "非物理Safari/软键盘，未进行真实业务写入"
+  ],
+  "evidence": [
+    "results.json",
+    "results-finance.json",
+    "results-inventory-health.json"
+  ],
+  "screens": [
+    {
+      "panel": "inventory",
+      "width": 320,
+      "locale": "zh-CN",
+      "stress": false,
+      "bundleTime": "2026-10-12T08:18:50.434Z",
+      "views": [
+        {
+          "name": "stats",
+          "file": "inventory-stats-320-zh-CN.png"
+        },
+        {
+          "name": "health",
+          "file": "inventory-health-320-zh-CN.png"
+        },
+        {
+          "name": "health-name-full",
+          "file": "inventory-health-name-full-320-zh-CN.png"
+        },
+        {
+          "name": "name-full",
+          "file": "inventory-name-full-320-zh-CN.png"
+        }
+      ]
+    },
+    {
+      "panel": "inventory",
+      "width": 320,
+      "locale": "it",
+      "stress": false,
+      "bundleTime": "2026-10-12T08:18:50.434Z",
+      "views": [
+        {
+          "name": "stats",
+          "file": "inventory-stats-320-it.png"
+        },
+        {
+          "name": "health",
+          "file": "inventory-health-320-it.png"
+        },
+        {
+          "name": "health-name-full",
+          "file": "inventory-health-name-full-320-it.png"
+        },
+        {
+          "name": "name-full",
+          "file": "inventory-name-full-320-it.png"
+        }
+      ]
+    },
+    {
+      "panel": "finance",
+      "width": 320,
+      "locale": "zh-CN",
+      "stress": false,
+      "bundleTime": "2026-10-12T08:01:06.596Z",
+      "views": [
+        {
+          "name": "stats",
+          "file": "finance-stats-320-zh-CN.png"
+        }
+      ]
+    },
+    {
+      "panel": "finance",
+      "width": 320,
+      "locale": "it",
+      "stress": false,
+      "bundleTime": "2026-10-12T08:01:06.596Z",
+      "views": [
+        {
+          "name": "stats",
+          "file": "finance-stats-320-it.png"
+        }
+      ]
+    },
+    {
+      "panel": "overview",
+      "width": 320,
+      "locale": "zh-CN",
+      "stress": false,
+      "bundleTime": "2026-10-12T08:01:06.596Z",
+      "views": [
+        {
+          "name": "stats",
+          "file": "overview-stats-320-zh-CN.png"
+        },
+        {
+          "name": "metric-details",
+          "file": "overview-metric-details-320-zh-CN.png"
+        }
+      ]
+    },
+    {
+      "panel": "overview",
+      "width": 320,
+      "locale": "it",
+      "stress": false,
+      "bundleTime": "2026-10-12T08:01:06.596Z",
+      "views": [
+        {
+          "name": "stats",
+          "file": "overview-stats-320-it.png"
+        },
+        {
+          "name": "metric-details",
+          "file": "overview-metric-details-320-it.png"
+        }
+      ]
+    },
+    {
+      "panel": "analytics",
+      "width": 320,
+      "locale": "zh-CN",
+      "stress": false,
+      "bundleTime": "2026-10-12T08:01:06.596Z",
+      "views": [
+        {
+          "name": "stats",
+          "file": "analytics-stats-320-zh-CN.png"
+        },
+        {
+          "name": "metric-details",
+          "file": "analytics-metric-details-320-zh-CN.png"
+        }
+      ]
+    },
+    {
+      "panel": "analytics",
+      "width": 320,
+      "locale": "it",
+      "stress": false,
+      "bundleTime": "2026-10-12T08:01:06.596Z",
+      "views": [
+        {
+          "name": "stats",
+          "file": "analytics-stats-320-it.png"
+        },
+        {
+          "name": "metric-details",
+          "file": "analytics-metric-details-320-it.png"
+        }
+      ]
+    },
+    {
+      "panel": "inventory",
+      "width": 390,
+      "locale": "zh-CN",
+      "stress": false,
+      "bundleTime": "2026-10-12T08:18:50.434Z",
+      "views": [
+        {
+          "name": "stats",
+          "file": "inventory-stats-390-zh-CN.png"
+        },
+        {
+          "name": "health",
+          "file": "inventory-health-390-zh-CN.png"
+        },
+        {
+          "name": "health-name-full",
+          "file": "inventory-health-name-full-390-zh-CN.png"
+        },
+        {
+          "name": "name-full",
+          "file": "inventory-name-full-390-zh-CN.png"
+        }
+      ]
+    },
+    {
+      "panel": "finance",
+      "width": 390,
+      "locale": "zh-CN",
+      "stress": false,
+      "bundleTime": "2026-10-12T08:01:06.596Z",
+      "views": [
+        {
+          "name": "stats",
+          "file": "finance-stats-390-zh-CN.png"
+        }
+      ]
+    },
+    {
+      "panel": "overview",
+      "width": 390,
+      "locale": "zh-CN",
+      "stress": false,
+      "bundleTime": "2026-10-12T08:01:06.596Z",
+      "views": [
+        {
+          "name": "stats",
+          "file": "overview-stats-390-zh-CN.png"
+        },
+        {
+          "name": "metric-details",
+          "file": "overview-metric-details-390-zh-CN.png"
+        }
+      ]
+    },
+    {
+      "panel": "analytics",
+      "width": 390,
+      "locale": "zh-CN",
+      "stress": false,
+      "bundleTime": "2026-10-12T08:01:06.596Z",
+      "views": [
+        {
+          "name": "stats",
+          "file": "analytics-stats-390-zh-CN.png"
+        },
+        {
+          "name": "metric-details",
+          "file": "analytics-metric-details-390-zh-CN.png"
+        }
+      ]
+    },
+    {
+      "panel": "inventory",
+      "width": 1440,
+      "locale": "zh-CN",
+      "stress": false,
+      "bundleTime": "2026-10-12T08:01:06.596Z",
+      "views": [
+        {
+          "name": "desktop",
+          "file": "inventory-desktop-1440-zh-CN.png"
+        }
+      ]
+    },
+    {
+      "panel": "finance",
+      "width": 1440,
+      "locale": "zh-CN",
+      "stress": false,
+      "bundleTime": "2026-10-12T08:01:06.596Z",
+      "views": [
+        {
+          "name": "desktop",
+          "file": "finance-desktop-1440-zh-CN.png"
+        }
+      ]
+    },
+    {
+      "panel": "overview",
+      "width": 1440,
+      "locale": "zh-CN",
+      "stress": false,
+      "bundleTime": "2026-10-12T08:01:06.596Z",
+      "views": [
+        {
+          "name": "desktop",
+          "file": "overview-desktop-1440-zh-CN.png"
+        }
+      ]
+    },
+    {
+      "panel": "analytics",
+      "width": 1440,
+      "locale": "zh-CN",
+      "stress": false,
+      "bundleTime": "2026-10-12T08:01:06.596Z",
+      "views": [
+        {
+          "name": "desktop",
+          "file": "analytics-desktop-1440-zh-CN.png"
+        }
+      ]
+    },
+    {
+      "panel": "inventory",
+      "width": 320,
+      "locale": "it",
+      "stress": true,
+      "bundleTime": "2026-10-12T08:01:06.596Z",
+      "views": [
+        {
+          "name": "stats",
+          "file": "inventory-stats-320-it-long-values.png"
+        },
+        {
+          "name": "health",
+          "file": "inventory-health-320-it-long-values.png"
+        },
+        {
+          "name": "name-full",
+          "file": "inventory-name-full-320-it-long-values.png"
+        }
+      ]
+    },
+    {
+      "panel": "inventory",
+      "width": 390,
+      "locale": "zh-CN",
+      "stress": true,
+      "bundleTime": "2026-10-12T08:01:06.596Z",
+      "views": [
+        {
+          "name": "stats",
+          "file": "inventory-stats-390-zh-CN-long-values.png"
+        },
+        {
+          "name": "health",
+          "file": "inventory-health-390-zh-CN-long-values.png"
+        },
+        {
+          "name": "name-full",
+          "file": "inventory-name-full-390-zh-CN-long-values.png"
+        }
+      ]
+    },
+    {
+      "panel": "finance",
+      "width": 320,
+      "locale": "it",
+      "stress": true,
+      "bundleTime": "2026-10-12T08:01:06.596Z",
+      "views": [
+        {
+          "name": "stats",
+          "file": "finance-stats-320-it-long-values.png"
+        }
+      ]
+    },
+    {
+      "panel": "finance",
+      "width": 390,
+      "locale": "zh-CN",
+      "stress": true,
+      "bundleTime": "2026-10-12T08:01:06.596Z",
+      "views": [
+        {
+          "name": "stats",
+          "file": "finance-stats-390-zh-CN-long-values.png"
+        }
+      ]
+    }
+  ]
+}

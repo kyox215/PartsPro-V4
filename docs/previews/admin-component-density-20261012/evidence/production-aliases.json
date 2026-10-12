@@ -1,0 +1,19 @@
+{
+  "checkedAt": "2026-10-12T18:52:46.137Z",
+  "aliases": [
+    {
+      "alias": "partspro.app",
+      "deploymentId": "dpl_F4MW4NgmxFWHndeVTzNk9MzRPuur",
+      "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+      "updatedAt": 1791831133771,
+      "redirect": "www.partspro.app"
+    },
+    {
+      "alias": "www.partspro.app",
+      "deploymentId": "dpl_F4MW4NgmxFWHndeVTzNk9MzRPuur",
+      "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+      "updatedAt": 1791831133774,
+      "redirect": null
+    }
+  ]
+}

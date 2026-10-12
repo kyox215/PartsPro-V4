@@ -1,0 +1,35 @@
+{
+  "reviewedAt": "2026-10-12T08:23:40.047785+00:00",
+  "decision": "GO_LOCAL_PREVIEW",
+  "scope": [
+    "src/components/partspro/admin-summary-components.tsx",
+    "src/components/partspro/admin-rma-panel.tsx",
+    "src/components/partspro/admin-product-import-dialog.tsx"
+  ],
+  "sourceHashes": {
+    "src/components/partspro/admin-summary-components.tsx": "2bdc9d97fe31b9238ba30334a58d63e7b608a7c1e0911e2d7f1525c179bfff9f",
+    "src/components/partspro/admin-rma-panel.tsx": "214cf914925a874139b90b2fe0dd215923c4bda0e97d52cb90a43079d6513c6e",
+    "src/components/partspro/admin-product-import-dialog.tsx": "4296a6ff9905d87d53e30bf659b9c939bfd37ca2f05d0cfa4c3ec4cbb5f3c929"
+  },
+  "blockingFindings": [],
+  "notes": [],
+  "closedFindings": [
+    "模板和字段折叠头点击区已扩至44px且维持紧凑外框",
+    "父共享名称textNode已whitespace-normal，避免表格nowrap继承"
+  ],
+  "accessibility": [
+    "长名称只在真实溢出时增加全文按钮，短名称不增加动作",
+    "触发按钮/关闭按钮44px、有中文意文aria-label和可见焦点",
+    "Popover Esc停止向父弹窗传播，保留原Dialog；父annotated-results验证焦点还原",
+    "RMA与导入名称均未嵌入其他button/link；h3内组件使用span",
+    "Excel步骤ol保留所有步骤屏幕阅读器文本及aria-current"
+  ],
+  "confirmationGates": [
+    "blocked>0无法确认；按钮与applyImport函数都检查blocked",
+    "总确认与兼容审核指纹缺失时仍disabled；applyImport再次校验",
+    "previewHash、confirmed=true、兼容审核fingerprint请求契约完全保留",
+    "RMA钱包退款/直接收货/动作权限路径未改"
+  ],
+  "parentEvidence": "../annotated-results.json：5宽度嵌套名称Esc/焦点、blocked和兼容确认门禁，未实际执行apply",
+  "release": "用户已选择先更新预览，确定布局后上线；本轮不发布不写库"
+}

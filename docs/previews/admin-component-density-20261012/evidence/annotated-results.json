@@ -1,0 +1,156 @@
+[
+  {
+    "width": 320,
+    "locale": "zh-CN",
+    "checks": {
+      "rmaIdentityHeight": 193,
+      "nameFullAndFocusRestore": true,
+      "shortNameNoExpandButton": true,
+      "templateTouchHeight": 44,
+      "summaryTouchHeights": [
+        44,
+        44
+      ],
+      "importHeaderHeight": 77,
+      "importSummaryHeight": 122,
+      "columnsVisibleOnExpand": true,
+      "nestedNameEscapeRetainsDialog": true,
+      "importBlockedAndConfirmations": true,
+      "pasteDraftRetained": true
+    },
+    "screens": [
+      "rma-compact-320-zh-CN.png",
+      "rma-name-full-320-zh-CN.png",
+      "excel-blocked-320-zh-CN.png",
+      "excel-ready-confirmed-320-zh-CN.png"
+    ],
+    "errors": [],
+    "warnings": [],
+    "consoleErrors": [],
+    "external": [],
+    "writes": []
+  },
+  {
+    "width": 390,
+    "locale": "zh-CN",
+    "checks": {
+      "rmaIdentityHeight": 193,
+      "nameFullAndFocusRestore": true,
+      "shortNameNoExpandButton": true,
+      "templateTouchHeight": 44,
+      "summaryTouchHeights": [
+        44,
+        44
+      ],
+      "importHeaderHeight": 77,
+      "importSummaryHeight": 122,
+      "columnsVisibleOnExpand": true,
+      "nestedNameEscapeRetainsDialog": true,
+      "importBlockedAndConfirmations": true,
+      "pasteDraftRetained": true
+    },
+    "screens": [
+      "rma-compact-390-zh-CN.png",
+      "rma-name-full-390-zh-CN.png",
+      "excel-blocked-390-zh-CN.png",
+      "excel-ready-confirmed-390-zh-CN.png"
+    ],
+    "errors": [],
+    "warnings": [],
+    "consoleErrors": [],
+    "external": [],
+    "writes": []
+  },
+  {
+    "width": 430,
+    "locale": "it",
+    "checks": {
+      "rmaIdentityHeight": 201,
+      "nameFullAndFocusRestore": true,
+      "shortNameNoExpandButton": true,
+      "templateTouchHeight": 44,
+      "summaryTouchHeights": [
+        44,
+        44
+      ],
+      "importHeaderHeight": 77,
+      "importSummaryHeight": 122,
+      "columnsVisibleOnExpand": true,
+      "nestedNameEscapeRetainsDialog": true,
+      "importBlockedAndConfirmations": true,
+      "pasteDraftRetained": true
+    },
+    "screens": [
+      "rma-compact-430-it.png",
+      "rma-name-full-430-it.png",
+      "excel-blocked-430-it.png",
+      "excel-ready-confirmed-430-it.png"
+    ],
+    "errors": [],
+    "warnings": [],
+    "consoleErrors": [],
+    "external": [],
+    "writes": []
+  },
+  {
+    "width": 768,
+    "locale": "it",
+    "checks": {
+      "rmaIdentityHeight": 177,
+      "fittingNameFullyVisibleWithoutExtraButton": true,
+      "shortNameNoExpandButton": true,
+      "templateTouchHeight": 44,
+      "summaryTouchHeights": [
+        44,
+        64
+      ],
+      "importHeaderHeight": 77,
+      "importSummaryHeight": 115,
+      "columnsVisibleOnExpand": true,
+      "nestedNameEscapeRetainsDialog": true,
+      "importBlockedAndConfirmations": true,
+      "pasteDraftRetained": true
+    },
+    "screens": [
+      "rma-compact-768-it.png",
+      "excel-blocked-768-it.png",
+      "excel-ready-confirmed-768-it.png"
+    ],
+    "errors": [],
+    "warnings": [],
+    "consoleErrors": [],
+    "external": [],
+    "writes": []
+  },
+  {
+    "width": 1440,
+    "locale": "zh-CN",
+    "checks": {
+      "rmaIdentityHeight": 97,
+      "nameFullAndFocusRestore": true,
+      "shortNameNoExpandButton": true,
+      "templateTouchHeight": 44,
+      "summaryTouchHeights": [
+        44,
+        44
+      ],
+      "importHeaderHeight": 77,
+      "importSummaryHeight": 74,
+      "columnsVisibleOnExpand": true,
+      "nestedNameEscapeRetainsDialog": true,
+      "importBlockedAndConfirmations": true,
+      "pasteDraftRetained": true
+    },
+    "screens": [
+      "rma-compact-1440-zh-CN.png",
+      "rma-name-full-1440-zh-CN.png",
+      "excel-blocked-1440-zh-CN.png",
+      "excel-ready-confirmed-1440-zh-CN.png"
+    ],
+    "errors": [],
+    "warnings": [],
+    "consoleErrors": [],
+    "external": [],
+    "writes": []
+  }
+]

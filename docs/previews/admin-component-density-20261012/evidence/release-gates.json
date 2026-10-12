@@ -1,0 +1,122 @@
+{
+  "applicationCommit": "4f30c3eee59034131d691d972a5f92daabd0a72e",
+  "branch": "codex/admin-component-density-20261012",
+  "userAuthorization": "上线",
+  "candidate": {
+    "id": "dpl_F4MW4NgmxFWHndeVTzNk9MzRPuur",
+    "url": "parts-pro-v4-33cqhwq1j-kyox120-9295s-projects.vercel.app",
+    "source": "cli",
+    "target": "production",
+    "readyState": "READY",
+    "checksState": null,
+    "checksConclusion": null,
+    "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+    "teamId": null,
+    "createdAt": 1791830519403,
+    "ready": 1791830601448,
+    "aliasError": null,
+    "commit": "4f30c3eee59034131d691d972a5f92daabd0a72e",
+    "branch": "codex/admin-component-density-20261012",
+    "project": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo"
+  },
+  "baseline": {
+    "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+    "projectName": "parts-pro-v4",
+    "teamId": "team_AOJDnrjov0QDLqpvMyhwA1yc",
+    "baseline": {
+      "deployment": "dpl_9GouAqee1NKPggTwoPJpcsS1pWf7",
+      "url": "parts-pro-v4-3diyv18gl-kyox120-9295s-projects.vercel.app",
+      "commit": "975f43552b9902ea209f260eb0cb5d8145116975",
+      "state": "READY",
+      "target": "production"
+    },
+    "aliases": [
+      {
+        "alias": "partspro.app",
+        "deploymentId": "dpl_9GouAqee1NKPggTwoPJpcsS1pWf7",
+        "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+        "updatedAt": 1791741935605,
+        "redirect": "www.partspro.app"
+      },
+      {
+        "alias": "www.partspro.app",
+        "deploymentId": "dpl_9GouAqee1NKPggTwoPJpcsS1pWf7",
+        "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+        "updatedAt": 1791741935607,
+        "redirect": null
+      }
+    ],
+    "remoteMain": {
+      "commit": "5e141419f64b98cb38968c588293389cd1697d53",
+      "isAncestorOfReleaseBaseline": true
+    },
+    "userAuthorization": "上线",
+    "newMigrations": false,
+    "databaseWrites": false
+  },
+  "sourceVerification": {
+    "commit": "4f30c3eee59034131d691d972a5f92daabd0a72e",
+    "deployment": "dpl_F4MW4NgmxFWHndeVTzNk9MzRPuur",
+    "uploaded": 436,
+    "manifestMatched": 435,
+    "missing": [],
+    "mismatch": [],
+    "verifiedExtras": [
+      "next-env.d.ts"
+    ],
+    "unverifiedExtras": [],
+    "sensitivePaths": []
+  },
+  "ci": {
+    "commit": "4f30c3eee59034131d691d972a5f92daabd0a72e",
+    "commitStatus": {
+      "sha": "4f30c3eee59034131d691d972a5f92daabd0a72e",
+      "state": "pending",
+      "statuses": [],
+      "total_count": 0
+    },
+    "checkRunsCount": 0,
+    "workflowRunsCount": 0,
+    "gitLinkedBuild": {
+      "id": "dpl_GpjUB8YEesPj11ccqZvSD7oxs46s",
+      "url": "parts-pro-v4-oubro08ar-kyox120-9295s-projects.vercel.app",
+      "source": "git",
+      "target": null,
+      "readyState": "READY",
+      "checksState": null,
+      "checksConclusion": null,
+      "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+      "teamId": null,
+      "createdAt": 1791830471047,
+      "ready": 1791830559309,
+      "aliasError": null,
+      "commit": "4f30c3eee59034131d691d972a5f92daabd0a72e",
+      "branch": "codex/admin-component-density-20261012",
+      "project": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo"
+    },
+    "interpretation": "No GitHub status/check/Actions run is registered for this SHA. The exact-SHA Vercel Git build is READY; no GitHub test CI success is claimed."
+  },
+  "checks": {
+    "fullLint": "PASS",
+    "productionBuild": "PASS; final frozen source unchanged",
+    "contractsPassed": 72,
+    "annotatedBrowserFlows": 5,
+    "additionalNameScenarios": 8,
+    "moduleCases": 20,
+    "moduleRechecks": 9,
+    "galleryWidths": 4,
+    "candidateGET": 11,
+    "candidateObservedErrors": 0
+  },
+  "database": {
+    "newMigrations": false,
+    "writes": false,
+    "reason": "Only 9 admin component source files differ from previous production. Existing backend source/contracts and schemas are unchanged."
+  },
+  "rollback": {
+    "deployment": "dpl_9GouAqee1NKPggTwoPJpcsS1pWf7",
+    "applicationCommit": "975f43552b9902ea209f260eb0cb5d8145116975",
+    "dataCompensationRequired": false
+  },
+  "boundary": "UI browser checks use actual components with synthetic data. Candidate GET checks use real deployed application anonymously. No authenticated business writes or physical iPhone/Safari verification."
+}

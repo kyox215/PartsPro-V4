@@ -1,0 +1,352 @@
+{
+  "title": "后台紧凑组件预览",
+  "date": "2026-10-12",
+  "status": "production-released",
+  "baseline": "acf1f841767aa238812d3747cc99dfd3747454ab",
+  "branch": "codex/admin-component-density-20261012",
+  "runtime": "actual React components and project CSS; local synthetic API and Next navigation/image stubs",
+  "productionWrites": false,
+  "cards": [
+    {
+      "id": "inventory",
+      "title": "库存统计与体检",
+      "description": "8 项统计改为两组横排摘要，体检 4 项保留两列。",
+      "metric": "8 项 160px · 体检 62px",
+      "workspace": "/admin?panel=catalog&catalogView=sold-shortages&locale=zh-CN",
+      "shots": {
+        "mobile": {
+          "after": {
+            "path": "screens/inventory-after-mobile.png",
+            "sha256": "4b1d16eaaa67c53a7ee2c53577109ca26e6ec2748f3eb8d948e47ff5a865a73c"
+          },
+          "before": {
+            "path": "screens/inventory-before-mobile.png",
+            "sha256": "366285cd71257137756f874f48dcf566125bca5cfaf46c7daacc0f3593c07e96"
+          }
+        },
+        "desktop": {
+          "after": {
+            "path": "screens/inventory-after-desktop.png",
+            "sha256": "217fe3a981203cb09561b4e42d2ff2823db87db0af62bd1b3e63053c88b974fe"
+          },
+          "before": {
+            "path": "screens/inventory-before-desktop.png",
+            "sha256": "1bd16b351e7ef27e173da0032383d7039fa77ed0156d5627ca49010de09725e3"
+          }
+        }
+      }
+    },
+    {
+      "id": "rma",
+      "title": "售后详情",
+      "description": "商品名最多两行，客户名一行；点击名称旁的展开图标查看全文。",
+      "metric": "身份信息 193px",
+      "workspace": "/admin?panel=rma&locale=zh-CN",
+      "shots": {
+        "mobile": {
+          "after": {
+            "path": "screens/rma-after-mobile.png",
+            "sha256": "4049f4c16231acb0c6f69607c25ec498f765a841f6a4c5e1a7c3eae206e285b1"
+          },
+          "before": {
+            "path": "screens/rma-before-mobile.png",
+            "sha256": "b11fc5d2627d500d4a70f1e3da326dd641a122511393ef539071bb14aaae066d"
+          },
+          "full": {
+            "path": "screens/rma-full-mobile.png",
+            "sha256": "03ec0a630e650387bbda26975f595c8ddb257453d508dc6d52e1b5379012ac11"
+          }
+        },
+        "desktop": {
+          "after": {
+            "path": "screens/rma-after-desktop.png",
+            "sha256": "87150e00abfc438e767e35e9d422e9c378567eae675b5cc0a9105a433402e058"
+          },
+          "before": {
+            "path": "screens/rma-before-desktop.png",
+            "sha256": "7640d67e556824d101b982ba617b30d3c9895f442582b1962da281d0f214e00a"
+          },
+          "full": {
+            "path": "screens/rma-full-desktop.png",
+            "sha256": "811f2c53ebadfcb74027098646b7a9ffaa7f5082f5b2f4591fbde00ec82ee200"
+          }
+        }
+      }
+    },
+    {
+      "id": "excel",
+      "title": "Excel 导入预检",
+      "description": "标题和当前步骤合并，7 项统计改为紧凑摘要，说明按需展开。",
+      "metric": "标题 77px · 7 项 122px",
+      "workspace": "/admin?panel=catalog&locale=zh-CN",
+      "shots": {
+        "mobile": {
+          "after": {
+            "path": "screens/excel-after-mobile.png",
+            "sha256": "a74c743f58d37fbe8398ed16c283966055beca20f62a169acb5621901cc6596a"
+          },
+          "before": {
+            "path": "screens/excel-before-mobile.png",
+            "sha256": "6ee5316b2604c3219fe57b72f13a78cc3c3eb66b371dfb930454519b86f82c23"
+          },
+          "full": {
+            "path": "screens/excel-confirmed-mobile.png",
+            "sha256": "672c5ee50de4e0870a7a0e6dcde0c594ba8cd2f3241c3c20b1b24d4699460e99"
+          }
+        },
+        "desktop": {
+          "after": {
+            "path": "screens/excel-after-desktop.png",
+            "sha256": "b4b904f4a3b4643ef2c660c5d6c9c10a571f17c31b539be360ec46aca3c08c34"
+          },
+          "before": {
+            "path": "screens/excel-before-desktop.png",
+            "sha256": "fcf504f6a2aff10e1cef69e14fcdd5fcc6c8d33608323ff910ce3f32890cabe7"
+          },
+          "full": {
+            "path": "screens/excel-confirmed-desktop.png",
+            "sha256": "651bf65da9558264c47f173e4cd6adac04a28d6a905abdf5e4e87b53ef6227a7"
+          }
+        }
+      }
+    },
+    {
+      "id": "finance",
+      "title": "财务摘要",
+      "description": "标签与完整金额横排；大金额自动改为单列，保留币种和百分比。",
+      "metric": "正常摘要 137px",
+      "workspace": "/admin?panel=finance&locale=zh-CN",
+      "shots": {
+        "mobile": {
+          "after": {
+            "path": "screens/finance-after-mobile.png",
+            "sha256": "483f2c86db568873f290e60d052e4fe0b851ccf53214db21a7c2176439ea97b6"
+          },
+          "before": {
+            "path": "screens/finance-before-mobile.png",
+            "sha256": "61079a20431da8a21ea810c32a6f0ed440b6200de2875900c80ae41b2cfbcc17"
+          }
+        },
+        "desktop": {
+          "after": {
+            "path": "screens/finance-after-desktop.png",
+            "sha256": "b13e0277ec4f4e0669d23c1b4f1a19fd10a9a5374575579cacc132f656d64bfe"
+          },
+          "before": {
+            "path": "screens/finance-before-desktop.png",
+            "sha256": "8f53dc0b66eac43f6ebe852eb76a94e3b773b24782a7ffa553e5024ab7f009a3"
+          }
+        }
+      }
+    },
+    {
+      "id": "overview",
+      "title": "经营概览",
+      "description": "手机端 6 项指标集中呈现，统计口径和原对比数据按需展开。",
+      "metric": "6 项约 92–103px",
+      "workspace": "/admin?panel=overview&locale=zh-CN",
+      "shots": {
+        "mobile": {
+          "after": {
+            "path": "screens/overview-after-mobile.png",
+            "sha256": "082c184213a22496e9f1d3c6b40d91cf1ca7e4dc56c2615e2dea3f7c47620160"
+          },
+          "before": {
+            "path": "screens/overview-before-mobile.png",
+            "sha256": "c3349c67e174b5ca01cbdc5a8a4a1b6a758693f2238e01d5a2d716f8afeeed53"
+          }
+        },
+        "desktop": {
+          "after": {
+            "path": "screens/overview-after-desktop.png",
+            "sha256": "94950b8c3c2ccc243fa82af4af4db32fe424347c03d3ce7f02301c63c353d196"
+          },
+          "before": {
+            "path": "screens/overview-before-desktop.png",
+            "sha256": "90c342e5040b1b20758c7757f95753c6792d454d661d0a69e951706478e43c73"
+          }
+        }
+      }
+    },
+    {
+      "id": "analytics",
+      "title": "访问分析",
+      "description": "4 项指标使用同一摘要排版，指标说明集中折叠。",
+      "metric": "4 项约 76–92px",
+      "workspace": "/admin?panel=analytics&locale=zh-CN",
+      "shots": {
+        "mobile": {
+          "after": {
+            "path": "screens/analytics-after-mobile.png",
+            "sha256": "5aa6a7fe822f3572512d789ffe6d58aef833aeb71330548ed86e540a557bcac7"
+          },
+          "before": {
+            "path": "screens/analytics-before-mobile.png",
+            "sha256": "27da33deaee8355a529bc822ee8156f065cbb9c259634fc64d293e66516876ff"
+          }
+        },
+        "desktop": {
+          "after": {
+            "path": "screens/analytics-after-desktop.png",
+            "sha256": "96ffc133e15d9af6e2a1b337d3a7ce6e945e1942409e5c24bc3f672b8beecc48"
+          },
+          "before": {
+            "path": "screens/analytics-before-desktop.png",
+            "sha256": "96ffc133e15d9af6e2a1b337d3a7ce6e945e1942409e5c24bc3f672b8beecc48"
+          }
+        }
+      }
+    },
+    {
+      "id": "product",
+      "title": "商品详情名称",
+      "description": "详情名称最多两行，原查看和编辑入口继续保留。",
+      "metric": "复用名称展开",
+      "workspace": "/admin?panel=catalog&locale=zh-CN",
+      "shots": {
+        "mobile": {
+          "after": {
+            "path": "screens/product-after-mobile.png",
+            "sha256": "f4121cd9690d5e95f5448781bf0e84ac05d9ef110f513771943c32c3fe37cc26"
+          },
+          "full": {
+            "path": "screens/product-full-mobile.png",
+            "sha256": "2980aebf468e0a6c49459527d42cba7a81c44d20b6df01fa4449c2bfef24c8f2"
+          }
+        },
+        "desktop": {
+          "after": {
+            "path": "screens/product-after-desktop.png",
+            "sha256": "176bbf38674d47a4cee6729c2a5f9597a6ba80fa2f5c82c217c15631b7591d75"
+          },
+          "full": {
+            "path": "screens/product-full-desktop.png",
+            "sha256": "0d9748f3dea9bc203e9017a30529b0c9e3a705e15d59b05412e94e878afc62eb"
+          }
+        }
+      }
+    },
+    {
+      "id": "batch",
+      "title": "到货批次商品名称",
+      "description": "限制名称列宽，超长名称可展开，不挤占数量与成本列。",
+      "metric": "复用名称展开",
+      "workspace": "/admin?panel=catalog&catalogView=batches&locale=zh-CN",
+      "shots": {
+        "mobile": {
+          "after": {
+            "path": "screens/batch-after-mobile.png",
+            "sha256": "f41dc9942450429fb529b348096fa585edd89732672e3f69619f65cf53e10d28"
+          },
+          "full": {
+            "path": "screens/batch-full-mobile.png",
+            "sha256": "d20092200c9d738d60303c7f7af0059591f0a7bbc50a2050c22b0ecef6c12635"
+          }
+        },
+        "desktop": {
+          "after": {
+            "path": "screens/batch-after-desktop.png",
+            "sha256": "f9a1a92b6dd9902623bfd9afa7ec22a43d33cb5745a6e1f0b871daba3bbe86be"
+          },
+          "full": {
+            "path": "screens/batch-full-desktop.png",
+            "sha256": "13fa9b154b4dfde6340dcd76bf8e03b9b1f718185610a5149d47538a6b3e2d42"
+          }
+        }
+      }
+    },
+    {
+      "id": "remax",
+      "title": "REMAX 到货名称",
+      "description": "到货商品名一行摘要，点击查看全文，数量输入继续完整显示。",
+      "metric": "复用名称展开",
+      "workspace": "/admin?panel=remax&locale=zh-CN",
+      "shots": {
+        "mobile": {
+          "after": {
+            "path": "screens/remax-after-mobile.png",
+            "sha256": "e66af694ea2c9d695ed5a71f2410f1614899197f503aa54791e59c2b634f8b65"
+          },
+          "before": {
+            "path": "screens/remax-before-mobile.png",
+            "sha256": "33a36a64cea69563751e545f43fbc180de5eef6692d0fdedfef714c3f731f088"
+          },
+          "full": {
+            "path": "screens/remax-full-mobile.png",
+            "sha256": "f72ade05c96415eb0e60298abae5f9209c927c0fb486c231a7e26a0d2edec9af"
+          }
+        },
+        "desktop": {
+          "after": {
+            "path": "screens/remax-after-desktop.png",
+            "sha256": "3ee8d8822d276f4f250db0d7681f06bcdb5f0d12fb16181052653962a8896153"
+          },
+          "before": {
+            "path": "screens/remax-before-desktop.png",
+            "sha256": "fe87778550ad13013e84a7488ad1529f522a9de934cdd6d2e8a2911d3efa395d"
+          },
+          "full": {
+            "path": "screens/remax-full-desktop.png",
+            "sha256": "4e35c7d23b91bc29d2aca65f2b4671700e50d06f7eafccc62e1839ef745f5f10"
+          }
+        }
+      }
+    }
+  ],
+  "sourceFiles": [
+    {
+      "path": "src/app/globals.css",
+      "sha256": "69de697a798befbaadd2c5806cde64db158570611ef162ffa91d2582143f8b4a"
+    },
+    {
+      "path": "src/components/partspro/admin-summary-components.tsx",
+      "sha256": "2bdc9d97fe31b9238ba30334a58d63e7b608a7c1e0911e2d7f1525c179bfff9f"
+    },
+    {
+      "path": "src/components/partspro/admin-inventory-panel.tsx",
+      "sha256": "c3c5bca4ae846d50e299ad8489fbc31aaccdbd5333e4e601dca4dd4cfcab845b"
+    },
+    {
+      "path": "src/components/partspro/admin-finance-panel.tsx",
+      "sha256": "8c7d47edd77a878168487de198c4baed98cbac7881db64705f7fd3bd9bf88169"
+    },
+    {
+      "path": "src/components/partspro/admin-overview-dashboard.tsx",
+      "sha256": "63f4362f83cab804959c00088f1fbe13a02f9e125baa86e5ebafdec420b1acb8"
+    },
+    {
+      "path": "src/components/partspro/admin-analytics-panel.tsx",
+      "sha256": "15ea37f95a440165eecf35504d00fd6a0fb182b9b9337c6ae708aa28bba9ca33"
+    },
+    {
+      "path": "src/components/partspro/admin-rma-panel.tsx",
+      "sha256": "214cf914925a874139b90b2fe0dd215923c4bda0e97d52cb90a43079d6513c6e"
+    },
+    {
+      "path": "src/components/partspro/admin-product-import-dialog.tsx",
+      "sha256": "4296a6ff9905d87d53e30bf659b9c939bfd37ca2f05d0cfa4c3ec4cbb5f3c929"
+    },
+    {
+      "path": "src/components/partspro/admin-products-panel.tsx",
+      "sha256": "7f144b5a49ab011f5160330c81b4b0606fcc755f5bd5991fa02d875d5431680a"
+    },
+    {
+      "path": "src/components/partspro/admin-remax-center.tsx",
+      "sha256": "296b9426b18dde63eba1b293f1d10eb3b84c2618b439d3425b4c5f7210d4c52d"
+    }
+  ],
+  "validation": {
+    "annotatedFlows": 5,
+    "nameContexts": 8,
+    "moduleCases": 20,
+    "moduleRechecks": 9,
+    "galleryWidths": 4,
+    "contractTests": 72,
+    "targetedLint": "passed",
+    "nextProductionBuild": "passed",
+    "productionWrites": false
+  },
+  "applicationCommit": "4f30c3eee59034131d691d972a5f92daabd0a72e",
+  "deploymentId": "dpl_F4MW4NgmxFWHndeVTzNk9MzRPuur",
+  "productionUrl": "https://www.partspro.app/admin"
+}

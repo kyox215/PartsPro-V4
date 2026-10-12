@@ -2,7 +2,14 @@
 
 Period: 2026 H2
 Owner: 总调度/项目经理
-Last reviewed: 2026-10-11
+Last reviewed: 2026-10-12
+
+## 2026-10-12 后台紧凑组件重排（已发布）
+
+- 老板针对库存统计、售后长名称、Excel 导入预检的竖向空间提出标注，先验收预览，随后明确授权“上线”。基于已发布应用的隔离分支 `codex/admin-component-density-20261012` 实施，保留原样式和原操作入口。
+- 库存 8 项摘要 160px，体检 4 项 62–72px；售后名称最多两行、客户与负责人横排；导入标题与当前步骤 77px，7 项统计 122px。财务、概览、分析复用同一摘要；相关只读长名称可点击全文，新增折叠控制至少 44px 点击高度。
+- 本地 9 个相关预览单元包含前后对照、全文示例与交互工作区。5 个标注流程、8 个相关名称场景、20 个局部案例及 9 次定向复验、72 个既有合同测试、定向 lint/build/diff-check 和独立 GO_LOCAL_PREVIEW 通过。细节见 `docs/previews/admin-component-density-20261012/README.md`。
+- 应用 `4f30c3e` 已推送隔离分支并 promote 到 `dpl_F4MW4NgmxFWHndeVTzNk9MzRPuur`；两正式域名核对一致，候选及正式站各 11/11 匿名 GET、436 上传文件哈希、全量 lint、同提交 Git/生产构建和独立 GO_RELEASE 通过，短窗口错误记录 0。GitHub 无注册测试 CI，本轮不宣称其通过。无 API、DTO、migration、依赖或生产配置改动，真实业务写入和物理 Safari 未验收。回退为上一部署 `dpl_9GouAqee1NKPggTwoPJpcsS1pWf7` / `975f435`；发布回执见预览目录 `evidence/release-record.json`。
 
 ## 2026-10-11 后台原样式信息密度优化（已发布）
 

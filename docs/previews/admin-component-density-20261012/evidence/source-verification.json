@@ -1,0 +1,13 @@
+{
+  "commit": "4f30c3eee59034131d691d972a5f92daabd0a72e",
+  "deployment": "dpl_F4MW4NgmxFWHndeVTzNk9MzRPuur",
+  "uploaded": 436,
+  "manifestMatched": 435,
+  "missing": [],
+  "mismatch": [],
+  "verifiedExtras": [
+    "next-env.d.ts"
+  ],
+  "unverifiedExtras": [],
+  "sensitivePaths": []
+}

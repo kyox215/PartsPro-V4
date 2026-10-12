@@ -1,0 +1,29 @@
+{
+  "commit": "4f30c3eee59034131d691d972a5f92daabd0a72e",
+  "commitStatus": {
+    "sha": "4f30c3eee59034131d691d972a5f92daabd0a72e",
+    "state": "pending",
+    "statuses": [],
+    "total_count": 0
+  },
+  "checkRunsCount": 0,
+  "workflowRunsCount": 0,
+  "gitLinkedBuild": {
+    "id": "dpl_GpjUB8YEesPj11ccqZvSD7oxs46s",
+    "url": "parts-pro-v4-oubro08ar-kyox120-9295s-projects.vercel.app",
+    "source": "git",
+    "target": null,
+    "readyState": "READY",
+    "checksState": null,
+    "checksConclusion": null,
+    "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+    "teamId": null,
+    "createdAt": 1791830471047,
+    "ready": 1791830559309,
+    "aliasError": null,
+    "commit": "4f30c3eee59034131d691d972a5f92daabd0a72e",
+    "branch": "codex/admin-component-density-20261012",
+    "project": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo"
+  },
+  "interpretation": "No GitHub status/check/Actions run is registered for this SHA. The exact-SHA Vercel Git build is READY; no GitHub test CI success is claimed."
+}

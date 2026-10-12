@@ -1,0 +1,151 @@
+{
+  "reviewedAt": "2026-10-12T18:51:07.755Z",
+  "decision": "GO_RELEASE",
+  "phase": "independent final review completed; formal-domain promotion remains to be executed by parent",
+  "projectRoot": "/Users/kyox215/Documents/partspro v4",
+  "worktree": "/Users/kyox215/Documents/partspro v4/.codex-worktrees/admin-ui-preserve-style-20261011",
+  "branch": "codex/admin-component-density-20261012",
+  "baselineCommit": "acf1f841767aa238812d3747cc99dfd3747454ab",
+  "previousApplicationCommit": "975f43552b9902ea209f260eb0cb5d8145116975",
+  "project": {
+    "name": "parts-pro-v4",
+    "id": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+    "teamId": "team_AOJDnrjov0QDLqpvMyhwA1yc"
+  },
+  "sourceHashes": {
+    "src/app/globals.css": "69de697a798befbaadd2c5806cde64db158570611ef162ffa91d2582143f8b4a",
+    "src/components/partspro/admin-summary-components.tsx": "2bdc9d97fe31b9238ba30334a58d63e7b608a7c1e0911e2d7f1525c179bfff9f",
+    "src/components/partspro/admin-inventory-panel.tsx": "c3c5bca4ae846d50e299ad8489fbc31aaccdbd5333e4e601dca4dd4cfcab845b",
+    "src/components/partspro/admin-finance-panel.tsx": "8c7d47edd77a878168487de198c4baed98cbac7881db64705f7fd3bd9bf88169",
+    "src/components/partspro/admin-overview-dashboard.tsx": "63f4362f83cab804959c00088f1fbe13a02f9e125baa86e5ebafdec420b1acb8",
+    "src/components/partspro/admin-analytics-panel.tsx": "15ea37f95a440165eecf35504d00fd6a0fb182b9b9337c6ae708aa28bba9ca33",
+    "src/components/partspro/admin-rma-panel.tsx": "214cf914925a874139b90b2fe0dd215923c4bda0e97d52cb90a43079d6513c6e",
+    "src/components/partspro/admin-product-import-dialog.tsx": "4296a6ff9905d87d53e30bf659b9c939bfd37ca2f05d0cfa4c3ec4cbb5f3c929",
+    "src/components/partspro/admin-products-panel.tsx": "7f144b5a49ab011f5160330c81b4b0606fcc755f5bd5991fa02d875d5431680a",
+    "src/components/partspro/admin-remax-center.tsx": "296b9426b18dde63eba1b293f1d10eb3b84c2618b439d3425b4c5f7210d4c52d"
+  },
+  "sourceEvidenceMatch": true,
+  "blockingFindings": [],
+  "reviewedBehavior": [
+    "All 8 inventory metrics and 4 health metrics preserve original data sources and visible zero values.",
+    "Finance preserves all 8 formatted money values, currency and gross margin percentage; large values select one column.",
+    "Overview preserves 6 values and original comparison details in mobile disclosure; analytics preserves 4 values and all descriptions.",
+    "Full-name popovers are read-only, not nested in another button/link; long text wraps, focus returns, Escape retains surrounding dialogs.",
+    "Import retains blocked count checks in UI and applyImport; total confirmation and compatibility review fingerprints are required; previewHash and confirmed request contract unchanged.",
+    "Import field/change/template disclosures retain their content; current step plus all screen-reader step labels remain available.",
+    "RMA selected status badge remains visible; refund/direct receipt/action guards and complete quantity unchanged.",
+    "Product/batch/REMAX original edit, quantity and apply controls unchanged."
+  ],
+  "validatedEvidence": {
+    "manifest": "docs/previews/admin-component-density-20261012/manifest.json",
+    "sourceHashesMatched": 10,
+    "annotatedFlows": 5,
+    "nameContexts": 8,
+    "moduleCases": 20,
+    "moduleRechecks": 9,
+    "galleryWidths": 4,
+    "contractTests": {
+      "passed": 72,
+      "failed": 0
+    },
+    "targetedLint": "passed per evidence",
+    "nextProductionBuild": "compiled, TypeScript, prerender and traces complete per build.log",
+    "gitDiffCheck": "passed in this independent source review",
+    "businessWrites": 0,
+    "boundary": "Local actual React components/CSS with synthetic API; not evidence of real production mutation."
+  },
+  "schemaMigrationRequired": false,
+  "sourceScope": "9 admin component application files only; no API/lib/DTO/schema/migration/dependency/env change",
+  "rollbackScope": "Promote retained previous verified production deployment after reconfirming latest aliases; no database or environment compensation required.",
+  "notes": [
+    "Checked worktree AGENTS.md is older than user-supplied current rules; latest explicit user rules govern.",
+    "Baseline acf1f84 differs from previous application 975f435 only in historic documentation."
+  ],
+  "applicationCommit": "4f30c3eee59034131d691d972a5f92daabd0a72e",
+  "candidate": {
+    "id": "dpl_F4MW4NgmxFWHndeVTzNk9MzRPuur",
+    "url": "parts-pro-v4-33cqhwq1j-kyox120-9295s-projects.vercel.app",
+    "target": "production",
+    "readyState": "READY",
+    "source": "cli",
+    "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+    "projectName": "parts-pro-v4",
+    "commit": "4f30c3eee59034131d691d972a5f92daabd0a72e",
+    "teamScope": "team_AOJDnrjov0QDLqpvMyhwA1yc"
+  },
+  "userAuthorization": "User explicitly authorized 上线 for the confirmed compact admin component layout.",
+  "independentFinalChecks": {
+    "liveCandidateMetadata": "Authenticated Vercel MCP read scoped to the intended team confirms exact production candidate READY/project/commit.",
+    "frozenApplicationDiff": "Working tree application paths have no difference from 4f30c3eee59034131d691d972a5f92daabd0a72e; commit contains exactly nine admin component source files.",
+    "frozenGitManifestHashVerification": {
+      "files": 435,
+      "mismatches": 0
+    },
+    "uploadedTreeHashVerification": {
+      "files": 436,
+      "matchedFrozenFiles": 435,
+      "missing": [],
+      "mismatch": [],
+      "extras": [
+        "next-env.d.ts"
+      ],
+      "nextEnvHashMatches": true
+    },
+    "previewEvidenceHashes": "All 10 preview source hashes (9 components plus unchanged globals.css) match the exact frozen commit.",
+    "liveFormalAliases": [
+      {
+        "alias": "partspro.app",
+        "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+        "deploymentId": "dpl_9GouAqee1NKPggTwoPJpcsS1pWf7",
+        "updatedAt": 1791741935605,
+        "redirect": "www.partspro.app"
+      },
+      {
+        "alias": "www.partspro.app",
+        "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+        "deploymentId": "dpl_9GouAqee1NKPggTwoPJpcsS1pWf7",
+        "updatedAt": 1791741935607,
+        "redirect": null
+      }
+    ],
+    "liveDefaultAlias": {
+      "alias": "parts-pro-v4-kyox120-9295s-projects.vercel.app",
+      "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+      "deploymentId": "dpl_F4MW4NgmxFWHndeVTzNk9MzRPuur",
+      "updatedAt": 1791830601596
+    },
+    "aliasInterpretation": "Both formal custom domains still point to the prior verified production deployment with unchanged updatedAt. The generic vercel.app project alias points to this exact candidate and is recorded as the platform-assigned candidate alias, not an unrelated concurrent production change. Formal custom domains have not switched.",
+    "liveGitBuild": {
+      "id": "dpl_GpjUB8YEesPj11ccqZvSD7oxs46s",
+      "source": "git",
+      "state": "READY",
+      "commit": "4f30c3eee59034131d691d972a5f92daabd0a72e",
+      "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo"
+    },
+    "github": "Independent GitHub connector returned statuses=[] for the exact SHA. The parent's ci-evidence records 0 statuses/check runs/Actions; frozen tree has no .github workflow. The empty legacy combined status pending does not identify a configured running or failed check. No GitHub test CI success is claimed.",
+    "githubCliRefresh": "The independent sandbox gh API refresh could not connect; it was not used as success evidence. Available GitHub connector status and exact-SHA live Vercel build were read.",
+    "readOnlyCandidateSmoke": "11/11 real deployed anonymous GET checks pass; directory contains 29 nodes and retained general-merchandise label, admin redirects to login, 6 admin APIs return 401.",
+    "candidateErrorScan": "10-minute parent command succeeded with zero observed error records.",
+    "validation": "Full lint PASS, Next production build PASS, 72 contract tests PASS and matching local actual-component UI evidence; no broad tests rerun without source change."
+  },
+  "rollback": {
+    "deployment": "dpl_9GouAqee1NKPggTwoPJpcsS1pWf7",
+    "applicationCommit": "975f43552b9902ea209f260eb0cb5d8145116975",
+    "dataCompensationRequired": false,
+    "environmentCompensationRequired": false
+  },
+  "promotionConditions": [
+    "Promote only dpl_F4MW4NgmxFWHndeVTzNk9MzRPuur for application commit 4f30c3eee59034131d691d972a5f92daabd0a72e.",
+    "Immediately before promotion, reconfirm both formal custom-domain aliases still match the recorded prior deployment and timestamps; halt on any intervening unrelated production drift."
+  ],
+  "postPromotionValidation": [
+    "Confirm partspro.app/www.partspro.app target the exact candidate, repeat read-only formal-domain GET checks and short runtime error scan.",
+    "Retain prior verified production deployment as rollback target."
+  ],
+  "residualVerificationBoundaries": [
+    "Admin UI interactions were verified with actual React components/project CSS and synthetic data; candidate smoke is anonymous real GET access, not authenticated production mutation.",
+    "No real product/inventory/payment/refund/import writes and no physical iPhone/Safari verification were performed.",
+    "Formal-domain promotion is outside this independent reviewer action and was not yet performed when GO_RELEASE was issued.",
+    "Short-window zero errors does not establish absence of future runtime errors under real traffic."
+  ]
+}

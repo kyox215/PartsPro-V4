@@ -1,0 +1,24 @@
+{
+  "status": "released",
+  "applicationCommit": "4f30c3eee59034131d691d972a5f92daabd0a72e",
+  "branch": "codex/admin-component-density-20261012",
+  "deploymentId": "dpl_F4MW4NgmxFWHndeVTzNk9MzRPuur",
+  "projectId": "prj_wQ4XmNuE5C0cEcaqKw3wcy4rjpPo",
+  "teamId": "team_AOJDnrjov0QDLqpvMyhwA1yc",
+  "formalDomains": [
+    "partspro.app",
+    "www.partspro.app"
+  ],
+  "independentDecision": "GO_RELEASE",
+  "productionGETPassed": 11,
+  "productionErrorRecords": 0,
+  "databaseWrites": false,
+  "rootRedirect": {
+    "status": 307,
+    "to": "https://www.partspro.app/"
+  },
+  "rollbackDeployment": "dpl_9GouAqee1NKPggTwoPJpcsS1pWf7",
+  "rollbackApplicationCommit": "975f43552b9902ea209f260eb0cb5d8145116975",
+  "scope": "9 admin component files; no API, DTO, migration, dependency or environment change",
+  "validationBoundary": "Synthetic actual-component browser validation; live anonymous GET only, no real business mutation or physical Safari test."
+}

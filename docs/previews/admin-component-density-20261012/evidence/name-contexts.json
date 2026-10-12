@@ -1,0 +1,28 @@
+[
+  {
+    "width": 390,
+    "checks": {
+      "product-detailFullNameAndEscape": true,
+      "batch-detailFullNameAndEscape": true,
+      "remax-arrivalFullNameAndEscape": true,
+      "remax-importFullNameAndEscape": true
+    },
+    "errors": [],
+    "warnings": [],
+    "external": [],
+    "writes": []
+  },
+  {
+    "width": 1440,
+    "checks": {
+      "product-detailFullNameAndEscape": true,
+      "batch-detailFullNameAndEscape": true,
+      "remax-arrivalFullNameAndEscape": true,
+      "remax-importFullNameAndEscape": true
+    },
+    "errors": [],
+    "warnings": [],
+    "external": [],
+    "writes": []
+  }
+]

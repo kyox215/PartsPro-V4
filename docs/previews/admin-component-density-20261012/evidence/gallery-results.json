@@ -1,0 +1,54 @@
+[
+  {
+    "width": 320,
+    "errors": [],
+    "warnings": [],
+    "external": [],
+    "writes": [],
+    "checks": {
+      "allNineImagesLoaded": true,
+      "threeComparisonsAndFullName": true,
+      "desktopAndInteractiveLoaded": true,
+      "previousGalleryRetained": true
+    }
+  },
+  {
+    "width": 390,
+    "errors": [],
+    "warnings": [],
+    "external": [],
+    "writes": [],
+    "checks": {
+      "allNineImagesLoaded": true,
+      "threeComparisonsAndFullName": true,
+      "desktopAndInteractiveLoaded": true,
+      "previousGalleryRetained": true
+    }
+  },
+  {
+    "width": 768,
+    "errors": [],
+    "warnings": [],
+    "external": [],
+    "writes": [],
+    "checks": {
+      "allNineImagesLoaded": true,
+      "threeComparisonsAndFullName": true,
+      "desktopAndInteractiveLoaded": true,
+      "previousGalleryRetained": true
+    }
+  },
+  {
+    "width": 1440,
+    "errors": [],
+    "warnings": [],
+    "external": [],
+    "writes": [],
+    "checks": {
+      "allNineImagesLoaded": true,
+      "threeComparisonsAndFullName": true,
+      "desktopAndInteractiveLoaded": true,
+      "previousGalleryRetained": true
+    }
+  }
+]
