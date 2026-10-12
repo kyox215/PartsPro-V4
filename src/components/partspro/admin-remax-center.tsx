@@ -1,5 +1,6 @@
 "use client";
 
+import { AdminExpandableText } from "./admin-summary-components";
 import { AdminSearchableSelect } from "./admin-ui-controls";
 
 import { AdminNotice, AdminActionButton } from "./admin-feedback";
@@ -333,7 +334,7 @@ export function AdminRemaxCenter({
                           <tr key={`${row.rowNumber}-${row.sku}`} className="border-t border-slate-100 align-top">
                             <td className="p-2 font-mono">{row.rowNumber}</td>
                             <td className="p-2"><RowStatus status={row.status} /></td>
-                            <td className="p-2"><div className="font-mono font-bold">{row.sku}</div><div className="mt-1 max-w-sm font-semibold">{row.name}</div></td>
+                            <td className="p-2"><div className="font-mono font-bold">{row.sku}</div><AdminExpandableText text={row.name} className="mt-1 max-w-sm font-semibold" /></td>
                             <td className="p-2 font-mono">{row.qtyOrdered} {t("- buffer")}{row.bufferQty}</td>
                             <td className="p-2 font-mono">€{row.costPrice.toFixed(2)} / €{row.b2bPrice.toFixed(2)} / €{row.retailPrice.toFixed(2)}</td>
                             <td className={cn("p-2 font-semibold", row.issues.length ? "text-red-700" : "text-emerald-700")}>{row.issues.map(t).join(" · ") || "OK"}</td>
@@ -444,7 +445,7 @@ function ArrivalCard(props: {
           <div className="max-h-72 space-y-2 overflow-auto">
             {props.selectedBatch.lines.filter((line) => line.remainingQty > 0).map((line) => (
               <div key={line.id} className="grid grid-cols-[minmax(0,1fr)_90px] items-center gap-2 rounded-lg border border-slate-200 p-2">
-                <div className="min-w-0 text-xs"><div className="truncate font-mono font-bold">{line.sku}</div><div className="truncate font-semibold">{line.name}</div><div className="text-slate-500">{t("Residuo")}{line.remainingQty} {t("· clienti in attesa")}{line.waitingQty}</div></div>
+                <div className="min-w-0 text-xs"><div className="truncate font-mono font-bold">{line.sku}</div><AdminExpandableText text={line.name} lines={1} className="font-semibold" /><div className="text-slate-500">{t("Residuo")}{line.remainingQty} {t("· clienti in attesa")}{line.waitingQty}</div></div>
                 <div className="space-y-1"><Label htmlFor={`remax-received-${line.id}`} className="text-xs">{t("Quantità ricevuta")}</Label><Input id={`remax-received-${line.id}`} aria-label={`${t("Quantità ricevuta")} · ${line.sku}`} type="number" min={0} max={line.remainingQty} value={props.quantities[line.id] ?? 0} onChange={(event) => props.onQuantityChange(line.id, Math.max(0, Math.min(line.remainingQty, Number(event.currentTarget.value) || 0)))} /></div>
               </div>
             ))}

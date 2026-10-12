@@ -1,6 +1,7 @@
 "use client";
 
 import { AdminSearchField } from "./admin-ui-controls";
+import { AdminExpandableText } from "./admin-summary-components";
 
 import * as React from "react";
 import { AdminListPager } from "./admin-list-pager";
@@ -851,25 +852,24 @@ export function AdminRmaPanel() {
               <AdminEmptyState title={copy.emptyDetail} className="xl:min-h-[420px]" />
             ) : (
               <div className="min-w-0 space-y-4">
-                <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 lg:flex-row lg:items-start lg:justify-between">
+                <div data-rma-identity className="flex min-w-0 flex-col gap-2 border-b border-slate-100 pb-2 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-sm font-black">{selectedRequest.rmaNo ?? copy.rma}</span>
                       <Badge className="border border-slate-200 bg-slate-50 text-slate-700">{selectedRequest.status}</Badge>
                       {isDetailLoading ? <Loader2 className="size-4 animate-spin text-primary" /> : null}
                     </div>
-                    <h3 className="mt-2 break-words text-xl font-black tracking-normal">{selectedRequest.productName}</h3>
-                    <div className="mt-1 text-sm font-semibold text-slate-500">
+                    <h3 className="mt-1 text-base font-bold leading-5 tracking-normal sm:text-lg"><AdminExpandableText text={selectedRequest.productName} /></h3>
+                    <div className="mt-1 break-words text-xs font-semibold text-slate-500 [overflow-wrap:anywhere]">
                       {selectedRequest.orderNumber ?? "—"} · {selectedRequest.sku} · {copy.quantity}: {fullQuantity}
                     </div>
                   </div>
-                  <div className="grid gap-2 text-sm font-semibold text-slate-600 sm:grid-cols-2 lg:min-w-[250px] lg:grid-cols-1">
+                  <div className="grid min-w-0 gap-1 text-sm font-semibold text-slate-600 lg:w-[280px] lg:shrink-0">
                     <DetailPill label={copy.customer} value={selectedRequest.customerName ?? "—"} />
                     <DetailPill
                       label={isZh ? "负责人" : "Responsabile"}
-                      value={selectedRequest.assignedTo ? (isZh ? "已分配" : "Assegnata") : copy.unassigned}
+                      value={selectedRequest.assignedTo ? (isZh ? "已分配" : "Assegnata") : (isZh ? "未分配" : "Non assegnata")}
                     />
-                    <DetailPill label={copy.status} value={selectedRequest.status} />
                   </div>
                 </div>
 
@@ -1126,7 +1126,7 @@ export function AdminRmaPanel() {
           </DialogHeader>
           <div className="min-w-0 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
             <div className="break-words font-black">{directReceiptRequest?.rmaNo ?? copy.rma}</div>
-            <div className="break-words">{directReceiptRequest?.productName}</div>
+            <AdminExpandableText text={directReceiptRequest?.productName ?? "—"} />
             <div className="font-semibold">{copy.quantity}: {directReceiptRequest ? completeQuantity(directReceiptRequest) : "—"}</div>
             {selectedRequest?.availableActions.includes("split_request") ? (
               <div className="rounded-lg bg-amber-50 p-3 text-sm">
@@ -1681,9 +1681,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function DetailPill({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-md bg-slate-50 px-3 py-2">
-      <div className="text-[10px] font-black uppercase text-slate-400">{label}</div>
-      <div className="mt-0.5 truncate text-sm font-black text-slate-800">{value}</div>
+    <div className="grid min-h-8 min-w-0 grid-cols-[72px_minmax(0,1fr)] items-center gap-2 rounded-md bg-slate-50 px-2 py-1">
+      <div className="break-words text-xs font-medium text-slate-500">{label}</div>
+      <AdminExpandableText lines={1} text={value} className="text-sm font-semibold text-slate-800" />
     </div>
   );
 }

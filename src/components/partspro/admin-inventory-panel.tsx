@@ -1,6 +1,7 @@
 "use client";
 
 import { AdminSearchField } from "./admin-ui-controls";
+import { AdminMetricSummary, AdminExpandableText } from "./admin-summary-components";
 
 import * as React from "react";
 import { buildReplenishmentBatchPlan, type ReplenishmentBatchPlan } from "@/lib/admin-replenishment-batch.mjs";
@@ -672,7 +673,27 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4 xl:grid-cols-8">
+      <section className="space-y-1 sm:hidden" data-admin-summary="inventory" aria-label={locale.startsWith("zh") ? "缺货与采购计划统计" : "Riepilogo scorte e piani di acquisto"}>
+        <div className="min-w-0">
+          <h3 className="text-xs font-semibold text-slate-600">{locale.startsWith("zh") ? "近期售出缺货" : "Scorte e vendite recenti"}</h3>
+          <AdminMetricSummary ariaLabel={locale.startsWith("zh") ? "缺货统计" : "Metriche scorte"} items={[
+            { key: "outOfStock", label: text.outOfStock, value: summary.outOfStock, tone: "red" },
+            { key: "lowStock", label: text.lowStock, value: summary.lowStock, tone: "amber" },
+            { key: "sold", label: text.recentSoldQty, value: summary.totalSoldQty, tone: "blue" },
+            { key: "restock", label: text.suggestedRestockQty, value: summary.suggestedRestockQty, tone: "green" },
+          ]} />
+        </div>
+        <div className="min-w-0">
+          <h3 className="text-xs font-semibold text-slate-600">{locale.startsWith("zh") ? "采购计划" : "Piani di acquisto"}</h3>
+          <AdminMetricSummary ariaLabel={locale.startsWith("zh") ? "采购计划统计" : "Metriche piani di acquisto"} items={[
+            { key: "active", label: text.queueActive, value: replenishmentSummary.active, tone: "blue" },
+            { key: "ordered", label: text.queueOrdered, value: replenishmentSummary.ordered, tone: "amber" },
+            { key: "supplierMissing", label: text.supplierMissing, value: replenishmentSummary.supplierMissing, tone: "red" },
+            { key: "plannedQty", label: text.plannedQty, value: replenishmentSummary.plannedQty, tone: "green" },
+          ]} />
+        </div>
+      </section>
+      <div className="hidden grid-cols-2 gap-1.5 sm:grid sm:grid-cols-4 xl:grid-cols-8">
         <InventoryMetric
           icon={PackageX}
           label={text.outOfStock}
@@ -863,9 +884,7 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
                       <div className="grid min-w-0 grid-cols-[34px_minmax(0,1fr)_auto] items-start gap-2">
                         <InventoryProductVisual row={row} />
                         <div className="min-w-0 flex-1">
-                          <div className="line-clamp-2 text-xs font-black leading-4 text-slate-950">
-                            {row.name}
-                          </div>
+                          <AdminExpandableText text={row.name} className="text-xs font-black leading-4 text-slate-950" />
                           {canManage && selection(row)}
                           <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">
                             {row.sku}
@@ -1065,9 +1084,7 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
                     <div key={item.id} className="rounded-md border border-slate-200 bg-white p-2 shadow-sm">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="line-clamp-2 text-xs font-black leading-4 text-slate-950">
-                            {item.productName}
-                          </div>
+                          <AdminExpandableText text={item.productName} className="text-xs font-black leading-4 text-slate-950" />
                           <div className="mt-0.5 truncate text-[11px] font-semibold text-slate-500">
                             {item.sku}
                           </div>
@@ -1167,7 +1184,13 @@ function InventoryHealthSection({
         {error ? (
           <AdminNotice tone="error" message={error} />
         ) : null}
-        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+        <AdminMetricSummary className="sm:hidden" ariaLabel={text.title} items={[
+          { key: "stockMismatch", label: text.stockMismatch, value: summary.stock_mismatch, tone: "amber" },
+          { key: "reservedMismatch", label: text.reservedMismatch, value: summary.reserved_mismatch, tone: "blue" },
+          { key: "lockedOrphan", label: text.lockedOrphan, value: summary.locked_orphan, tone: "red" },
+          { key: "activeZeroSold", label: text.activeZeroSold, value: summary.active_zero_stock_sold, tone: "red" },
+        ]} />
+        <div className="hidden grid-cols-2 gap-1.5 sm:grid sm:grid-cols-4">
           <InventoryMetric
             icon={AlertTriangle}
             label={text.stockMismatch}
@@ -1214,11 +1237,9 @@ function InventoryHealthSection({
                 {rows.map((row) => (
                   <TableRow key={row.sku}>
                     <TableCell className="px-2 py-1.5">
-                      <div className="min-w-0">
-                        <div className="line-clamp-2 text-sm font-bold text-slate-950">
-                          {row.name}
-                        </div>
-                        <div className="mt-0.5 text-[11px] font-semibold text-slate-500">
+                      <div className="min-w-0 max-w-[min(260px,calc(100vw-64px))] whitespace-normal sm:max-w-[360px]">
+                        <AdminExpandableText text={row.name} className="text-sm font-bold text-slate-950" />
+                        <div className="mt-0.5 break-words text-[11px] font-semibold text-slate-500 [overflow-wrap:anywhere]">
                           {row.sku}
                           {row.model ? ` · ${row.model}` : ""}
                         </div>

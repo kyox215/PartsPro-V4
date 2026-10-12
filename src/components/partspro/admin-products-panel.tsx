@@ -1,4 +1,5 @@
 "use client";
+import { AdminExpandableText } from "./admin-summary-components";
 
 import * as React from "react";
 import { AdminFieldGroup } from "./admin-field-group";
@@ -4071,7 +4072,7 @@ function SupplierBatchDetailSheet({
                           <TableRow key={line.id}>
                             <TableCell className="font-mono text-xs font-bold">{line.lineNo}</TableCell>
                             <TableCell>
-                              <div className="font-bold text-slate-950">{line.name}</div>
+                              <AdminExpandableText text={line.name} className="max-w-sm font-bold text-slate-950" />
                               <div className="mt-1 text-xs font-medium text-slate-500">
                                 {line.product?.brand ?? text.none}
                                 {line.product?.model ? ` · ${line.product.model}` : ""}
@@ -4146,7 +4147,7 @@ function SupplierBatchDetailSheet({
                     <article key={`mobile-line-${line.id}`} className="rounded-md border border-slate-200 bg-slate-50 p-3 text-xs">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="font-bold text-slate-950">#{line.lineNo} · {line.name}</div>
+                          <div className="text-xs text-slate-500">#{line.lineNo}</div><AdminExpandableText text={line.name} className="max-w-sm font-bold text-slate-950" />
                           <div className="mt-1 break-all font-mono text-[11px] text-slate-500">{line.skuCode ?? line.ean ?? text.none}</div>
                         </div>
                         <Badge className={catalogStatusBadgeClass(line.product?.catalogStatus ?? line.productStatus)}>{line.product?.catalogStatus ?? line.productStatus}</Badge>
@@ -7180,7 +7181,7 @@ function ProductDetails({
               ) : null}
             </div>
             <h3 className="mt-2 break-words text-base font-black leading-snug text-slate-950 lg:text-xl">
-              {displayName}
+              <AdminExpandableText text={displayName} />
             </h3>
             <div className="mt-2 text-xs font-semibold text-slate-500">
               {displayCategory} · {displayBrand}

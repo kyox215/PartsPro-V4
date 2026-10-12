@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AdminMetricSummary } from "./admin-summary-components";
 import { usePersistentAdminValue } from "./admin-workspace-state";
 import Image from "./optimized-image";
 import Link from "next/link";
@@ -204,7 +205,7 @@ export function AdminOverviewDashboard({
         text={text}
       />
 
-      <details className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600"><summary className="cursor-pointer font-semibold">{locale.startsWith("zh") ? "统计口径与数据来源" : "Base delle metriche e fonti"}</summary><p className="mt-2">{locale.startsWith("zh") ? "指标来自当前权限可读取的完整清单（每类最多5万条）；读取中清单变化会报告失败，避免显示不完整总数。30秒内复用汇总。趋势期间由下拉选择，旁边小计固定为最近7日。" : "Metriche dall’elenco completo accessibile (fino a 50.000 righe per dominio). Un elenco variato o incompleto genera un errore. Riepilogo riutilizzato per 30 secondi. Il grafico segue il periodo selezionato; i piccoli totali restano a 7 giorni."}</p></details>
+      <details className="rounded border border-slate-200 bg-white px-3 py-2 text-xs text-slate-600"><summary className="cursor-pointer font-semibold">{locale.startsWith("zh") ? "统计口径与数据来源" : "Base delle metriche e fonti"}</summary><p className="mt-2">{locale.startsWith("zh") ? "指标来自当前权限可读取的完整清单（每类最多5万条）；读取中清单变化会报告失败，避免显示不完整总数。30秒内复用汇总。趋势期间由下拉选择，旁边小计固定为最近7日。" : "Metriche dall’elenco completo accessibile (fino a 50.000 righe per dominio). Un elenco variato o incompleto genera un errore. Riepilogo riutilizzato per 30 secondi. Il grafico segue il periodo selezionato; i piccoli totali restano a 7 giorni."}</p><dl className="mt-2 space-y-1 sm:hidden">{metrics.map(metric => <div key={metric.label} className="flex flex-wrap gap-x-2"><dt className="font-semibold">{metric.label}</dt><dd>{metric.detail}</dd></div>)}</dl></details>
       {snapshot.error && snapshot.model ? (
         <AdminNotice tone={snapshot.model ? "warning" : "error"} title={copy.partialData} message={snapshot.error} />
       ) : null}
@@ -218,7 +219,8 @@ export function AdminOverviewDashboard({
           pending={snapshot.isLoading}
           rows={6}
         >
-          <MetricGrid metrics={metrics} />
+          <AdminMetricSummary className="sm:hidden" ariaLabel={locale.startsWith("zh") ? "经营指标" : "Metriche operative"} items={metrics.map(metric => ({ key: metric.label, label: metric.label, value: metric.value, tone: metric.tone === "cyan" ? "blue" : metric.tone }))} />
+          <div className="hidden sm:block"><MetricGrid metrics={metrics} /></div>
 
           <section className="grid gap-2.5 xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.75fr)]">
             <SalesTrendCard

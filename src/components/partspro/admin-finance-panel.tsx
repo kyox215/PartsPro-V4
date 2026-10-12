@@ -1,6 +1,7 @@
 "use client";
 
 import { AdminSearchField } from "./admin-ui-controls";
+import { AdminMetricSummary } from "./admin-summary-components";
 
 import * as React from "react";
 import { AdminActionButton, AdminErrorSummary, AdminNotice } from "./admin-feedback";
@@ -205,6 +206,7 @@ function AdminFinancePanelContent({ permissions, currentUserId }: { permissions:
   const ledgerResource = useFinanceResource<ApiListResponse<FinanceLedgerRow>>(`/api/admin/finance/ledger?${ledgerParams}`, reloadKey, copy.loadError);
   const cogsResource = useFinanceResource<ApiListResponse<FinanceAllocation>>(`/api/admin/finance/cogs?${cogsParams}`, reloadKey, copy.loadError);
   const summary = summaryResource.data?.data ?? emptySummary;
+  const wideMetricValues = [summary.salesNet, summary.cogsNet, summary.grossProfit, summary.operatingProfit, summary.purchaseNet, summary.inventoryCostValue, summary.pendingReceivables, summary.accountsPayable].some(value => formatMoney(value, locale).length > 12);
   const ledgerRows = ledgerResource.data?.data ?? [];
   const allocations = cogsResource.data?.data ?? [];
   const loading = { summary: summaryResource.loading, ledger: ledgerResource.loading, cogs: cogsResource.loading };
@@ -251,7 +253,7 @@ function AdminFinancePanelContent({ permissions, currentUserId }: { permissions:
 
       {savedNotice ? <AdminNotice tone={errors.summary || errors.ledger || errors.cogs ? "warning" : "success"} message={savedNotice} /> : null}
       <Tabs value={tab} onValueChange={(value) => { setTab(value); setLedgerPage(0); }} className="min-w-0">
-        <TabsList className="flex h-auto group-data-horizontal/tabs:h-auto w-full min-w-0 overflow-x-auto rounded-lg border border-slate-200 bg-white p-1 sm:grid sm:grid-cols-5">
+        <TabsList className="flex h-auto group-data-horizontal/tabs:h-auto w-full min-w-0 justify-start overflow-x-auto rounded-lg border border-slate-200 bg-white p-1 sm:grid sm:grid-cols-5 sm:justify-center">
           {(["overview", "margin", "purchases", "expenses", "export"] as const).map((value) => <TabsTrigger key={value} value={value} className="h-auto min-h-11 min-w-20 shrink-0 flex-1 whitespace-normal break-words px-2 py-2 text-center leading-tight">{copy.tabs[value]}</TabsTrigger>)}
         </TabsList>
 
@@ -262,7 +264,17 @@ function AdminFinancePanelContent({ permissions, currentUserId }: { permissions:
               {loading.summary ? copy.loading : errors.summary || copy.empty}
             </div>
           ) : <>
-          <div className="grid min-w-0 grid-cols-2 gap-2 md:gap-3 xl:grid-cols-4">
+          <AdminMetricSummary className={cn("sm:hidden", wideMetricValues && "grid-cols-1")} ariaLabel={copy.tabs.overview} items={[
+            { key: "sales", label: copy.salesNet, value: formatMoney(summary.salesNet, locale), tone: "blue" },
+            { key: "cogs", label: "COGS", value: formatMoney(summary.cogsNet, locale) },
+            { key: "grossProfit", label: copy.grossProfit, value: <><span>{formatMoney(summary.grossProfit, locale)}</span><span className="block text-xs font-semibold text-emerald-700">{summary.grossMarginRate.toFixed(1)}%</span></>, tone: "green" },
+            { key: "operatingProfit", label: copy.operatingProfit, value: formatMoney(summary.operatingProfit, locale), tone: "green" },
+            { key: "purchase", label: copy.purchaseNet, value: formatMoney(summary.purchaseNet, locale) },
+            { key: "inventory", label: copy.inventoryCost, value: formatMoney(summary.inventoryCostValue, locale) },
+            { key: "receivables", label: copy.receivables, value: formatMoney(summary.pendingReceivables, locale), tone: "amber" },
+            { key: "payables", label: copy.payables, value: formatMoney(summary.accountsPayable, locale), tone: "red" },
+          ]} />
+          <div className="hidden min-w-0 grid-cols-2 gap-2 sm:grid md:gap-3 xl:grid-cols-4">
             <MetricCard icon={TrendingUp} label={copy.salesNet} value={formatMoney(summary.salesNet, locale)} />
             <MetricCard icon={Scale} label="COGS" value={formatMoney(summary.cogsNet, locale)} />
             <MetricCard icon={Calculator} label={copy.grossProfit} value={formatMoney(summary.grossProfit, locale)} hint={`${summary.grossMarginRate.toFixed(1)}%`} />

@@ -1,6 +1,7 @@
 "use client";
 
 import { AdminNotice, AdminActionButton } from "./admin-feedback";
+import { AdminExpandableText, AdminMetricSummary } from "./admin-summary-components";
 
 import * as React from "react";
 import { compatibilityReasonLabel, compatibilitySignalLabel } from "@/lib/admin-compatibility-copy";
@@ -242,20 +243,20 @@ export function AdminProductImportDialog({
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent data-admin-mutating={pending === "apply" ? "true" : "false"} data-admin-dirty={open && !result && Boolean(file || pasteText.trim() || preview) ? "true" : "false"} className="admin-ui-panel flex max-h-[94dvh] w-[calc(100vw-1rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0 sm:w-[calc(100vw-2rem)]">
-        <DialogHeader className="border-b border-slate-200 px-4 py-4 sm:px-6">
-          <div className="flex items-start gap-3">
-            <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
-              <FileSpreadsheet className="size-5" />
+        <DialogHeader className="border-b border-slate-200 px-3 py-2 pr-12 sm:px-6 sm:pr-12">
+          <div className="flex items-center gap-2">
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
+              <FileSpreadsheet className="size-4" />
             </div>
             <div className="min-w-0">
-              <DialogTitle>{copy.title}</DialogTitle>
-              <DialogDescription className="mt-1">{copy.description}</DialogDescription>
+              <DialogTitle className="text-base leading-5">{copy.title}</DialogTitle>
+              <DialogDescription className="sr-only">{copy.description}</DialogDescription>
             </div>
           </div>
           <StepBar step={step} labels={copy.steps} />
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-6">
           {error && (
             <AdminNotice className="mb-4" tone={result?.partial ? "warning" : "error"} message={error} />
           )}
@@ -271,8 +272,9 @@ export function AdminProductImportDialog({
             />
           ) : (
             <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
-                <h3 className="font-bold text-slate-950">{copy.templateTitle}</h3>
+              <details className="rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
+                <summary className="-m-3 min-h-11 cursor-pointer rounded-lg p-3 text-sm font-bold text-emerald-900">{copy.templateTitle}</summary>
+                <div className="mt-4">
                 <p className="mt-2 text-sm leading-6 text-slate-600">{copy.templateHelp}</p>
                 <Button className="mt-4 w-full" variant="outline" onClick={() => void downloadTemplate()} disabled={pending !== null}>
                   {pending === "template" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
@@ -283,7 +285,8 @@ export function AdminProductImportDialog({
                   <p>• {copy.blankRule}</p>
                   <p>• {copy.draftRule}</p>
                 </div>
-              </div>
+                </div>
+              </details>
 
               <Tabs value={mode} onValueChange={(value) => { setMode(value === "paste" ? "paste" : "file"); setPreview(null); setCompatibilityConfirmations({}); setError(null); }}>
                 <TabsList className="grid w-full grid-cols-2">
@@ -318,7 +321,7 @@ export function AdminProductImportDialog({
           )}
         </div>
 
-        <DialogFooter className="mx-0 mb-0 border-t border-slate-200 bg-white px-4 py-3 sm:px-6">
+        <DialogFooter className="mx-0 mb-0 border-t border-slate-200 bg-white px-3 py-2 sm:px-6">
           {result ? (
             <>
               <Button variant="outline" onClick={() => { setPreview(null); setResult(null); setConfirmed(false); setCompatibilityConfirmations({}); setError(null); }}>
@@ -327,20 +330,20 @@ export function AdminProductImportDialog({
               <Button onClick={() => handleOpenChange(false)}>{copy.done}</Button>
             </>
           ) : preview ? (
-            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              {preview.counts.blocked > 0 ? <p className="text-xs font-semibold text-red-700">{italian ? `${preview.counts.blocked} ${preview.counts.blocked === 1 ? "riga" : "righe"} da correggere. Correggi i dati e rigenera l’anteprima.` : `${preview.counts.blocked} 行需修正，请返回修正后重新预检。`}</p> :
               <label className={cn("flex items-start gap-2 text-sm", (preview.counts.blocked > 0 || !allCompatibilityReviewsConfirmed) && "text-slate-400")}>
                 <Checkbox checked={confirmed} onCheckedChange={(value) => setConfirmed(value === true)} disabled={preview.counts.blocked > 0 || pending !== null} />
                 <span>{copy.confirm}</span>
-              </label>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <Button variant="outline" onClick={() => void exportPreview()} disabled={pending !== null}>
+              </label>}
+              <div className="grid min-w-0 grid-cols-[44px_minmax(0,1fr)_minmax(0,1fr)] gap-1.5 sm:flex">
+                <Button variant="outline" aria-label={copy.exportPreview} title={copy.exportPreview} className="size-11 shrink-0" onClick={() => void exportPreview()} disabled={pending !== null}>
                   {pending === "export" ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
-                  {copy.exportPreview}
                 </Button>
-                <Button variant="outline" onClick={() => { setPreview(null); setConfirmed(false); setCompatibilityConfirmations({}); setError(null); }} disabled={pending !== null}>
+                <Button variant="outline" className="h-auto min-h-11 min-w-0 whitespace-normal px-2 py-2" onClick={() => { setPreview(null); setConfirmed(false); setCompatibilityConfirmations({}); setError(null); }} disabled={pending !== null}>
                   {copy.backToEdit}
                 </Button>
-                <AdminActionButton pending={pending === "apply"} onClick={() => void applyImport()} disabled={!confirmed || !allCompatibilityReviewsConfirmed || preview.counts.blocked > 0 || pending !== null}>
+                <AdminActionButton className="h-auto min-h-11 min-w-0 whitespace-normal px-2 py-2" pending={pending === "apply"} onClick={() => void applyImport()} disabled={!confirmed || !allCompatibilityReviewsConfirmed || preview.counts.blocked > 0 || pending !== null}>
                   {!(pending === "apply") && (<CheckCircle2 className="size-4" />)}
                   {copy.apply}
                 </AdminActionButton>
@@ -360,16 +363,19 @@ export function AdminProductImportDialog({
 
 function StepBar({ step, labels }: { step: number; labels: readonly string[] }) {
   return (
-    <div className="mt-4 grid grid-cols-4 gap-1">
+    <div data-admin-import-steps className="mt-2 flex min-w-0 items-center justify-between gap-3">
+      <span className="min-w-0 text-xs font-semibold text-emerald-800">{step}/{labels.length} · {labels[step - 1]}</span>
+      <ol className="flex shrink-0 items-center gap-1">
       {labels.map((label, index) => {
         const value = index + 1;
         return (
-          <div key={label} className="min-w-0">
-            <div className={cn("h-1.5 rounded-full", value <= step ? "bg-emerald-600" : "bg-slate-200")} />
-            <div className={cn("mt-1 truncate text-[10px] font-semibold sm:text-xs", value <= step ? "text-emerald-700" : "text-slate-400")}>{value}. {label}</div>
-          </div>
+          <li key={label} aria-current={value === step ? "step" : undefined}>
+            <span aria-hidden="true" className={cn("block h-1.5 w-5 rounded-full sm:w-7", value <= step ? "bg-emerald-600" : "bg-slate-200")} />
+            <span className="sr-only">{value}. {label}</span>
+          </li>
         );
       })}
+      </ol>
     </div>
   );
 }
@@ -395,14 +401,13 @@ function PreviewPanel({
     [copy.compatibilityReviewCount, preview.counts.compatibilityReviewRequired, "orange"],
   ] as const;
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-7">
-        {cards.map(([label, value, tone]) => <MetricCard key={label} label={label} value={value} tone={tone} />)}
-      </div>
-      <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-        <span className="font-semibold text-slate-900">{copy.detected}：</span>{preview.detectedHeaders.join("、")}
-        {preview.ignoredHeaders.length > 0 && <span className="ml-3 text-amber-700"><span className="font-semibold">{copy.ignored}：</span>{preview.ignoredHeaders.join("、")}</span>}
-      </div>
+    <div className="space-y-2">
+      <AdminMetricSummary ariaLabel={copy.title} className="sm:grid-cols-4 xl:grid-cols-7" items={cards.map(([label,value,tone])=>({key:label,label,value,tone:({slate:"slate",blue:"blue",violet:"violet",amber:"amber",emerald:"green",red:"red",orange:"amber"} as const)[tone]}))} />
+      <details className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600">
+        <summary className="-my-1.5 min-h-11 cursor-pointer py-3 font-semibold">{copy.detected} · {preview.detectedHeaders.length}{preview.ignoredHeaders.length > 0 ? ` · ${copy.ignored} ${preview.ignoredHeaders.length}` : ""}</summary>
+        <p className="mt-1 break-words">{preview.detectedHeaders.join("、")}</p>
+        {preview.ignoredHeaders.length > 0 && <p className="mt-1 break-words text-amber-700">{copy.ignored}：{preview.ignoredHeaders.join("、")}</p>}
+      </details>
       {preview.counts.compatibilityReviewRequired > 0 && (
         <div className="flex gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
@@ -435,7 +440,7 @@ function PreviewTableRow({
   row: PreviewRow;
   copy: typeof zhCopy;
 }) {
-  return <tr className="align-top"><td className="px-3 py-3 font-mono text-xs">{row.rowNumber}</td><td className="px-3 py-3"><StatusBadge status={row.status} copy={copy} /></td><td className="px-3 py-3">{operationLabel(row.operation, copy)}</td><td className="px-3 py-3 font-mono text-xs">{row.sku}</td><td className="px-3 py-3"><div className="max-w-xs font-semibold text-slate-900">{row.normalized.name || "—"}</div><div className="mt-1 text-xs text-slate-500">{[row.normalized.brand, row.normalized.category].filter(Boolean).join(" · ")}</div></td><td className="px-3 py-3 text-xs text-slate-600"><ChangeDetails row={row} copy={copy} /></td><td className="max-w-sm px-3 py-3 text-xs"><IssueList compatibilityConfirmed={compatibilityConfirmed} onCompatibilityReviewConfirm={onCompatibilityReviewConfirm} row={row} copy={copy} /></td></tr>;
+  return <tr className="align-top"><td className="px-3 py-3 font-mono text-xs">{row.rowNumber}</td><td className="px-3 py-3"><StatusBadge status={row.status} copy={copy} /></td><td className="px-3 py-3">{operationLabel(row.operation, copy)}</td><td className="px-3 py-3 font-mono text-xs">{row.sku}</td><td className="px-3 py-3"><AdminExpandableText text={row.normalized.name || "—"} className="max-w-xs font-semibold text-slate-900" /><div className="mt-1 text-xs text-slate-500">{[row.normalized.brand, row.normalized.category].filter(Boolean).join(" · ")}</div></td><td className="px-3 py-3 text-xs text-slate-600"><ChangeDetails row={row} copy={copy} /></td><td className="max-w-sm px-3 py-3 text-xs"><IssueList compatibilityConfirmed={compatibilityConfirmed} onCompatibilityReviewConfirm={onCompatibilityReviewConfirm} row={row} copy={copy} /></td></tr>;
 }
 
 function PreviewMobileCard({
@@ -449,13 +454,13 @@ function PreviewMobileCard({
   row: PreviewRow;
   copy: typeof zhCopy;
 }) {
-  return <div className="rounded-xl border border-slate-200 p-3"><div className="flex items-start justify-between gap-2"><div><div className="font-semibold text-slate-950">{row.normalized.name || row.sku}</div><div className="mt-1 font-mono text-xs text-slate-500">#{row.rowNumber} · {row.sku}</div></div><StatusBadge status={row.status} copy={copy} /></div><div className="mt-3 flex flex-wrap gap-2"><Badge variant="outline">{operationLabel(row.operation, copy)}</Badge>{row.changes.length > 0 && <Badge variant="outline">{copy.changes} {row.changes.length}</Badge>}</div><div className="mt-3"><ChangeDetails row={row} copy={copy} /><IssueList compatibilityConfirmed={compatibilityConfirmed} onCompatibilityReviewConfirm={onCompatibilityReviewConfirm} row={row} copy={copy} /></div></div>;
+  return <div className="rounded-xl border border-slate-200 p-3"><div className="flex items-start justify-between gap-2"><div className="min-w-0 flex-1"><AdminExpandableText text={row.normalized.name || row.sku} className="font-semibold text-slate-950" /><div className="mt-1 break-words font-mono text-xs text-slate-500 [overflow-wrap:anywhere]">#{row.rowNumber} · {row.sku}</div></div><StatusBadge status={row.status} copy={copy} /></div><div className="mt-3 flex flex-wrap gap-2"><Badge variant="outline">{operationLabel(row.operation, copy)}</Badge>{row.changes.length > 0 && <Badge variant="outline">{copy.changes} {row.changes.length}</Badge>}</div><div className="mt-3"><ChangeDetails row={row} copy={copy} /><IssueList compatibilityConfirmed={compatibilityConfirmed} onCompatibilityReviewConfirm={onCompatibilityReviewConfirm} row={row} copy={copy} /></div></div>;
 }
 
 function ChangeDetails({ row, copy }: { row: PreviewRow; copy: typeof zhCopy }) {
   const italian = copy.title.startsWith("Import");
   if (!row.changes.length) return <span>—</span>;
-  return <details className="min-w-0 rounded border border-slate-200 p-2"><summary className="cursor-pointer font-semibold">{copy.changes} · {row.changes.length}</summary><dl className="mt-2 space-y-2">{row.changes.map(change => <div key={change.field} className="break-words rounded bg-slate-50 p-2"><dt className="font-semibold">{change.field}</dt><dd className="mt-1 whitespace-pre-wrap"><span className="text-slate-500">{italian ? "Prima" : "原值"}: </span>{change.currentValue || "—"}<br /><span className="text-emerald-700">{italian ? "Dopo" : "新值"}: </span>{change.nextValue || "—"}</dd></div>)}</dl></details>;
+  return <details className="min-w-0 rounded border border-slate-200 p-2"><summary className="-m-2 min-h-11 cursor-pointer rounded p-2 font-semibold">{copy.changes} · {row.changes.length}</summary><dl className="mt-2 space-y-2">{row.changes.map(change => <div key={change.field} className="break-words rounded bg-slate-50 p-2"><dt className="font-semibold">{change.field}</dt><dd className="mt-1 whitespace-pre-wrap"><span className="text-slate-500">{italian ? "Prima" : "原值"}: </span>{change.currentValue || "—"}<br /><span className="text-emerald-700">{italian ? "Dopo" : "新值"}: </span>{change.nextValue || "—"}</dd></div>)}</dl></details>;
 }
 
 function IssueList({
@@ -492,10 +497,6 @@ function StatusBadge({ status, copy }: { status: PreviewRow["status"]; copy: typ
   return <Badge className={cn("border", status === "blocked" ? "border-red-200 bg-red-50 text-red-700" : status === "ready" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : status === "draft" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-slate-200 bg-slate-50 text-slate-600")}>{copy.statusLabels[status]}</Badge>;
 }
 
-function MetricCard({ label, value, tone }: { label: string; value: number; tone: string }) {
-  const tones: Record<string, string> = { slate: "bg-slate-50 text-slate-800", blue: "bg-blue-50 text-blue-800", violet: "bg-violet-50 text-violet-800", amber: "bg-amber-50 text-amber-800", emerald: "bg-emerald-50 text-emerald-800", red: "bg-red-50 text-red-800", orange: "bg-orange-50 text-orange-800" };
-  return <div className={cn("rounded-lg p-2.5", tones[tone])}><div className="text-lg font-bold">{value}</div><div className="text-[11px] font-semibold">{label}</div></div>;
-}
 
 function ResultPanel({ result, copy }: { result: ApplyResult; copy: typeof zhCopy }) { return <AdminNotice tone={result.partial || result.failures.length > 0 ? "warning" : "success"} title={result.partial || result.failures.length > 0 ? copy.partialTitle : copy.successTitle}><p>{copy.resultSummary.replace("{applied}", String(result.counts.applied)).replace("{total}", String(result.counts.total))}</p>{result.failures.length > 0 && <ul className="mt-3 list-disc space-y-1 pl-5 text-sm">{result.failures.map(failure => <li key={`${failure.rowNumber}-${failure.sku}`}>#{failure.rowNumber} · {failure.sku} · {failure.message}</li>)}</ul>}</AdminNotice>; }
 

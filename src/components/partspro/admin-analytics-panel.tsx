@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { AdminMetricSummary } from "./admin-summary-components";
 import { AdminEmptyState, AdminNotice } from "./admin-feedback";
 import dynamic from "next/dynamic";
 import {
@@ -188,7 +189,19 @@ export function AdminAnalyticsPanel() {
         <AnalyticsError code={state.errorCode} copy={copy} />
       ) : (
         <>
-          <div className="grid min-w-0 grid-cols-2 gap-2 sm:gap-3 xl:grid-cols-4">
+          <AdminMetricSummary className="sm:hidden" ariaLabel={copy.title} items={[
+            { key: "pageviews", label: copy.pageviews, value: state.isLoading ? "—" : formatCount(data?.pageviews, locale), tone: "blue" },
+            { key: "visitors", label: copy.visitors, value: state.isLoading ? "—" : formatCount(data?.visitors, locale), tone: "violet" },
+            { key: "viewsPerVisitor", label: copy.viewsPerVisitor, value: state.isLoading ? "—" : formatDecimal(viewsPerVisitor, locale), tone: "blue" },
+            { key: "country", label: copy.leadingCountry, value: state.isLoading ? "—" : leadingCountry ? <><span>{formatCountry(leadingCountry.country, locale)}</span><span className="block text-xs font-semibold text-slate-500">{formatCount(leadingCountry.visitors, locale)} {copy.visitors.toLowerCase()}</span></> : copy.noData, tone: "green" },
+          ]} />
+          <details className="text-xs text-slate-500 sm:hidden">
+            <summary className="min-h-11 cursor-pointer py-2 font-semibold">{locale.startsWith("zh") ? "指标说明" : "Dettagli metriche"}</summary>
+            <p>{copy.selectedRange(range)} · {copy.privacyDetail}</p>
+            <p>{copy.averageDetail}</p>
+            {!leadingCountry && <p>{copy.countryDetail}</p>}
+          </details>
+          <div className="hidden min-w-0 grid-cols-2 gap-2 sm:grid sm:gap-3 xl:grid-cols-4">
             <MetricCard
               icon={Eye}
               label={copy.pageviews}
