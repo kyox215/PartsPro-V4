@@ -198,3 +198,11 @@ Last reviewed: 2026-10-12
 - 从74cc6e6建立独立候选，重做双层导航、配件主题首页、三种商品卡、目录草稿筛选、账户和认证/购买流程布局。按老板最新要求替换蓝底白P站点及PWA图标，后台/服务/API/DB/依赖/生产env保持既有发布基线。
 - 已修品牌切换残留机型、平板搜索入口、售后已寄出更换件计数，补页签键盘交互和窄屏公司卡。实际组件本地夹具覆盖账户、非空购物车和checkout；生产不包含夹具。32相关合同、源码lint/build与独立静态审查通过。
 - 当前仍为发布候选，正式域名只读核对仍在dpl_AeHQgnmVHqiPch8dUkwDvikvCcwg；平台候选及最终域名验收后追加最终记录。
+
+
+## 2026-10-17 — 设计板高度还原 UI03 正式上线
+
+- 最终运行 c2e55254016a12c76ee7246af53112648b4a109b 已推送 codex/storefront-visual-match-20261017；dpl_BGN6DBjWepiQRjU3svqkeFLx2DMV 经精确同构建验收及独立 PROMOTE_GO 后切到 www.partspro.app / partspro.app，apex307跳www。此记录替代上方本轮进行中/候选状态；回退保留 dpl_AeHQgnmVHqiPch8dUkwDvikvCcwg。
+- 按27 PNG重做全前台结构与蓝底白P标志/PWA。32合同、lint/本地及远端build、1084源码一致/451保护/452上传hash、候选12和正式12HTTP、双语/多宽度浏览器及真实已登录员工自购账户只读布局通过。源码fp7acf854538c7a3e9655d709be47e3594f8c22c5f0acb853e3cb8401472ba5970。未改后台/API/DB/依赖/env，不部署本地夹具；主目录改动保留，未合并main。
+- 已修筛选残留、平板搜索、售后终态计数和键盘/窄屏布局。旧submitted订单显示待付款但汇总只统计pending_payment的问题仍需统一，账户统计只基于已加载资料；详见 docs/audits/2026-10-17-storefront-reference-fidelity-release.md。无真实交易/资料/售后/消息写验收，物理键盘未测。
+- 全套交付位于 outputs/storefront-reference-match/2026-10-17/partspro-ui-full-kit.zip；任务已转 docs/tasks/done/P1-2026-10-17-storefront-preview-fidelity.md。

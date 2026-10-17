@@ -1,6 +1,6 @@
 # P1-2026-10-17-storefront-preview-fidelity
 
-Task ID：TASK-20261017-UI03；状态：validated_release_candidate；风险R3；自治L3。
+Task ID：TASK-20261017-UI03；状态：complete；风险R3；自治L3。
 
 目标：按已交付27张PNG高度还原全前台，纠正此前只接近配色、版式比例偏离的问题。用户已确认高度还原和配件主题首页，随后明确“logo也改过去”，因此以参考蓝底白P替换现有站点logo，取代上一条logo冻结要求。
 
@@ -15,3 +15,5 @@ Task ID：TASK-20261017-UI03；状态：validated_release_candidate；风险R3�
 命令：npm run lint；npm run test:storefront；npm run build；现有相关node --test tests/<具体合同文件>.test.mjs；git diff --check。不虚构E2E脚本。
 
 本地结果：双层导航、配件主视觉/商品tabs/REMAX分区、目录横向卡/草稿筛选、账户白公司卡/蓝钱包/状态与订单、购买流程和认证页面排版、蓝P站点/PWA图标已完成。相关32合同测试通过；正式build和源码lint通过，verification本地演示构建文件排除于lint和上传。最终发布/域名核对待完成。
+
+最终验收：c2e5525 / dpl_BGN6DBjWepiQRjU3svqkeFLx2DMV 已上线，两域名精确一致；32相关测试、lint/build、1084文件/451保护和452上传、候选/正式各12 HTTP及浏览器验收PASS。详细证据与旧submitted付款文案口径问题见 docs/audits/2026-10-17-storefront-reference-fidelity-release.md。无DB/env/业务写入。
