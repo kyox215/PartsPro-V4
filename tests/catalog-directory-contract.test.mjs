@@ -54,3 +54,21 @@ test('new nodes match the database active default and existing nodes may be disa
  assert.equal(catalogNodeSchema.parse({...node,active:undefined}).active,true);
  assert.equal(catalogNodeSchema.safeParse({...node,id:'00000000-0000-4000-8000-000000000001',version:1,active:false}).success,true);
 });
+
+test('catalog text search finds model codes after REMAX model navigation is removed',()=>{
+ const source=fs.readFileSync(new URL('../src/lib/partspro-repository.ts',import.meta.url),'utf8');
+ const queryFunction=source.slice(source.indexOf('function applyCatalogProductQuery('),source.indexOf('\nasync function mergeCatalogBuyerPriceRows('));
+ const sanitizer=source.match(/function sanitizePostgrestSearchTerm\(value: string\) \{[\s\S]*?\n\}/)[0];
+ const compiled=transpileModule(queryFunction+'\n'+sanitizer+'\nglobalThis.runQuery=applyCatalogProductQuery;',{compilerOptions:{target:ScriptTarget.ES2020}}).outputText;
+ const context={};vm.runInNewContext(compiled,context);
+ const row={sku_code:'REMAX-001',name:'Wireless accessory',brand:'REMAX',category:'Batterie esterne',model:'CX08',model_code:'CT-Z',model_series:'CB53'};
+ for(const table of ['catalog_public_summary','products'])for(const q of ['CX08','CT-Z','CB53','REMAX-001']){
+  const filters=[];let found=false;
+  const request={eq:(...args)=>{filters.push(args);return request;},or:(expression)=>{found=expression.split(',').some(part=>{const [field,term]=part.split('.ilike.');return String(row[field]??'').toLowerCase().includes(term.slice(1,-1).toLowerCase());});return request;},order:()=>request};
+  context.runQuery(request,table,{q,category:'Batterie esterne',department:'general_merchandise'},'public');
+  assert.equal(found,true,`${table} must find ${q}`);
+  assert.ok(filters.some(([field,value])=>field==='catalog_department'&&value==='general_merchandise'));
+  assert.ok(filters.some(([field,value])=>field==='category'&&value==='Batterie esterne'));
+  if(table==='products')assert.ok(filters.some(([field,value])=>field==='status'&&value==='active'));
+ }
+});

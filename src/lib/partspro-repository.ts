@@ -6611,7 +6611,7 @@ function applyCatalogProductQuery(
   if (query.q) {
     const search = sanitizePostgrestSearchTerm(query.q);
     request = request.or(
-      `name.ilike.%${search}%,sku_code.ilike.%${search}%,brand.ilike.%${search}%,category.ilike.%${search}%`
+      `name.ilike.%${search}%,sku_code.ilike.%${search}%,brand.ilike.%${search}%,category.ilike.%${search}%,model.ilike.%${search}%,model_code.ilike.%${search}%,model_series.ilike.%${search}%`
     );
   }
 
