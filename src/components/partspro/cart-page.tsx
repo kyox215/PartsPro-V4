@@ -934,7 +934,7 @@ function CartPageContent({
           )}
         </section>
 
-        <div className="hidden lg:block">
+        <div className="pp-cart-summary hidden lg:block">
           {isLoginRequired ? null : isCartBootstrapping && catalogProducts.length === 0 ? (
             <CartSummaryLoadingCard
               lineCount={cart.items.length}
@@ -1664,7 +1664,7 @@ const CartLineMobileRow = React.memo(function CartLineMobileRow({
                   t,
                   "storefront.preorder.etaBadge",
                   "Preordine · ETA {eta}",
-                  { eta: preorderEtaLabel(line.product.preorder) }
+                  { eta: preorderEtaLabel(line.product.preorder, locale) }
                 )}
               </Badge>
             ) : null}
@@ -1801,7 +1801,7 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
                     t,
                     "storefront.preorder.etaBadge",
                     "Preordine · ETA {eta}",
-                    { eta: preorderEtaLabel(line.product.preorder) }
+                    { eta: preorderEtaLabel(line.product.preorder, locale) }
                   )}
                 </Badge>
               ) : (
@@ -2196,6 +2196,7 @@ function CartProductDetailsDialog({
   );
   const [failedImageUrls, setFailedImageUrls] = React.useState<string[]>([]);
   const [previewOpen, setPreviewOpen] = React.useState(false);
+  const previewTriggerRef = React.useRef<HTMLButtonElement>(null);
   const imageUrl = imageCandidates.find(
     (candidate) => !failedImageUrls.includes(candidate)
   );
@@ -2244,6 +2245,7 @@ function CartProductDetailsDialog({
               {imageUrl ? (
                 <button
                   type="button"
+                  ref={previewTriggerRef}
                   className="group relative aspect-square w-full overflow-hidden rounded-lg border border-slate-200 bg-slate-50 focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                   onClick={() => setPreviewOpen(true)}
                   aria-label={txFormat(
@@ -2384,6 +2386,7 @@ function CartProductDetailsDialog({
       </Dialog>
       {imageUrl && previewOpen && (
         <ProductImagePreviewDialog
+          returnFocusRef={previewTriggerRef}
           imageAlt={product.imageAlt ?? product.name}
           imageUrl={imageUrl}
           onImageError={() => markImageFailed(imageUrl)}

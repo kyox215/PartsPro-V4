@@ -104,6 +104,7 @@ export const ProductCard = memo(function ProductCard({
   const { locale } = useI18n();
   const [mixedCartRejected, setMixedCartRejected] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const previewTriggerRef = useRef<HTMLButtonElement>(null);
   const [accountGateOpen, setAccountGateOpen] = useState(false);
   const freshness = usePriceFreshness(product);
   const quotePending = showWholesalePrice && (pricingPending || pricingError || freshness.refreshing || !freshness.available);
@@ -223,6 +224,7 @@ export const ProductCard = memo(function ProductCard({
       <Card
         data-product-layout={layout}
         data-price-visible={showWholesalePrice}
+        data-purchase-kind={purchaseKind}
         className={cn(
           "pp-product-card @container/product h-full min-w-0 rounded-lg border-slate-200 bg-white shadow-sm transition sm:shadow-[0_14px_34px_rgba(15,23,42,0.045)] sm:hover:-translate-y-0.5 sm:hover:shadow-[0_18px_40px_rgba(15,23,42,0.07)]",
           className
@@ -258,7 +260,7 @@ export const ProductCard = memo(function ProductCard({
                 />
               </div>
             </Link>
-            <Button type="button" size="icon-lg" variant="outline" className="pp-card-zoom absolute bottom-1 right-1 bg-white/95" aria-haspopup="dialog" aria-label={txFormat(t,"storefront.product.card.previewImageAria","Apri anteprima immagine {name}",{name:product.name})} onClick={() => setPreviewOpen(true)}><ZoomIn className="size-4" /></Button>
+            <Button ref={previewTriggerRef} type="button" size="icon-lg" variant="outline" className="pp-card-zoom absolute bottom-1 right-1 bg-white/95" aria-haspopup="dialog" aria-label={txFormat(t,"storefront.product.card.previewImageAria","Apri anteprima immagine {name}",{name:product.name})} onClick={() => setPreviewOpen(true)}><ZoomIn className="size-4" /></Button>
             </div>
           ) : (
             <Link href={productPath} onClick={onOpenProduct} className="pp-card-media pp-card-image relative block h-28 overflow-hidden rounded-md bg-slate-50 sm:h-auto sm:rounded-lg">
@@ -285,7 +287,7 @@ export const ProductCard = memo(function ProductCard({
                 <span className="min-w-0 truncate">
                   {tx(t, "storefront.preorder.badge", "Preordine")} · {orderableQuantity}{" "}
                   {tx(t, "storefront.preorder.available", "prenotabili")}
-                  {product.preorder ? ` · ETA ${preorderEtaLabel(product.preorder)}` : ""}
+                  {product.preorder ? ` · ETA ${preorderEtaLabel(product.preorder, locale)}` : ""}
                 </span>
               </div>
             ) : null}
@@ -510,6 +512,7 @@ export const ProductCard = memo(function ProductCard({
       </Card>
       {imageUrl && previewOpen && (
         <ProductImagePreviewDialog
+          returnFocusRef={previewTriggerRef}
           imageAlt={imageAlt}
           imageUrl={imageUrl}
           imageUrls={(product.galleryImageUrls ?? []).filter(url => !failedImageUrls.includes(url))}

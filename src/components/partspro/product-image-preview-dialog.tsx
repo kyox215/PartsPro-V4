@@ -4,9 +4,9 @@ import { englishUiCopy, englishUiTemplate } from "@/i18n/english-ui-copy";
 
 
 import Image from "./optimized-image";
-import { useState } from "react";
+import { useState, type RefObject } from "react";
 import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from "lucide-react";
-import { useI18n } from "./i18n-provider";
+import { useI18n, useT } from "./i18n-provider";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +23,7 @@ type ProductImagePreviewDialogProps = {
   onOpenChange: (open: boolean) => void;
   open: boolean;
   productName: string;
+  returnFocusRef?: RefObject<HTMLElement | null>;
 };
 
 export function ProductImagePreviewDialog({
@@ -33,8 +34,10 @@ export function ProductImagePreviewDialog({
   onOpenChange,
   open,
   productName,
+  returnFocusRef,
 }: ProductImagePreviewDialogProps) {
   const { locale } = useI18n();
+  const t = useT();
   const zh = locale === "zh-CN";
   const images = [...new Set([imageUrl, ...imageUrls])];
   const [selectedImage, setSelectedImage] = useState(imageUrl);
@@ -44,7 +47,12 @@ export function ProductImagePreviewDialog({
   function step(direction: number) { selectImage(images[(images.indexOf(activeImage) + direction + images.length) % images.length]); }
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="pp-storefront-portal pp-product-preview max-w-[calc(100vw-1.5rem)] gap-3 p-3 sm:max-w-3xl">
+      <DialogContent closeLabel={t("common.close")} onCloseAutoFocus={event => {
+        if (returnFocusRef?.current?.isConnected) {
+          event.preventDefault();
+          returnFocusRef.current.focus();
+        }
+      }} className="pp-storefront-portal pp-product-preview max-w-[calc(100vw-1.5rem)] gap-3 p-3 sm:max-w-3xl">
         <DialogHeader className="pr-10">
           <DialogTitle className="line-clamp-2 text-sm font-black text-slate-950">
             {productName}

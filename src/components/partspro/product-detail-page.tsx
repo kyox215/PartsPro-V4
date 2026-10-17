@@ -33,6 +33,7 @@ import { CustomerActivityTracker } from "./customer-activity-tracker";
 import { ProductDetailPurchasePanelSlot } from "./product-detail-purchase-panel-slot";
 import { StoreHeader } from "./store-header";
 import { ProductDetailGallery } from "./product-detail-gallery";
+import { MobileDisclosure } from "./mobile-disclosure";
 import { publicStockLevelMeta } from "@/lib/partspro-stock-availability";
 
 type ProductDetailPageProps = {
@@ -287,7 +288,7 @@ export async function ProductDetailPage({
             </Card>
           </section>
         </div>
-        {product.compatibleWith.length > 0 ? <section id="product-compatibility" className="pp-product-compatibility-panel"><div><h2>{tx(t, "storefront.ui.product.compatibility", "Compatibilità")}</h2><p>{localizedBrand} · {localizedCategory}</p></div><ProductCompatibilityList models={product.compatibleWith} /></section> : null}
+        {product.compatibleWith.length > 0 ? <MobileDisclosure id="product-compatibility" className="pp-product-compatibility-panel" title={tx(t, "storefront.ui.product.compatibility", "Compatibilità")} description={`${localizedBrand} · ${localizedCategory}`}><ProductCompatibilityList models={product.compatibleWith} /></MobileDisclosure> : null}
       </div>
       <QuoteExpiryRefresh products={[product]} />
     </main></PricingSessionBoundary>

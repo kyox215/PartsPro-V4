@@ -2137,7 +2137,7 @@ function CheckoutSuccessDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent scrollLayout="body" className="pp-storefront-portal max-w-[calc(100vw-1.5rem)] gap-0 overflow-hidden p-0 sm:max-w-md">
+      <DialogContent closeLabel={t("common.close")} scrollLayout="body" className="pp-storefront-portal pp-checkout-result max-w-[calc(100vw-1.5rem)] gap-0 overflow-hidden p-0 sm:max-w-md">
         <div className="shrink-0 bg-emerald-50 px-4 pt-5 pb-4 text-emerald-950 sm:px-5">
           <DialogHeader className="pr-9">
             <div className="mb-1 flex size-11 items-center justify-center rounded-full bg-emerald-600 text-white">
@@ -2190,7 +2190,7 @@ function CheckoutSuccessDialog({
           ) : null}
         </DialogBody>
 
-        <div className="grid shrink-0 gap-2 bg-slate-50 p-3 sm:grid-cols-3">
+        <div className="pp-checkout-result-actions grid shrink-0 gap-2 bg-slate-50 p-3 sm:grid-cols-3">
           <DialogClose asChild>
             <Button variant="outline" className="sm:order-first">
               {tx(t, "storefront.common.close", "Chiudi")}

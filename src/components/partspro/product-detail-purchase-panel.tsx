@@ -80,6 +80,7 @@ export function ProductDetailPurchasePanel({
   const quantityId = `quantity-${product.sku.replace(/[^a-zA-Z0-9]/g, "-")}`;
   const validationMessage = getPurchaseValidationMessage({
     t,
+    locale,
     canOrder,
     isAboveStock,
     isBelowMoq,
@@ -302,7 +303,7 @@ export function ProductDetailPurchasePanel({
               <div className="text-[10px] font-bold uppercase text-primary/70">
                 {tx(t, "storefront.product.quantity.inCart", "Nel carrello")}
               </div>
-              <div className="mt-1 rounded-md border border-primary/20 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700">
+              <div className="pp-product-cart-saved-note mt-1 rounded-md border border-primary/20 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700">
                 {txFormat(
                   t,
                   "storefront.product.quantity.inCartSummary",
@@ -398,7 +399,7 @@ export function ProductDetailPurchasePanel({
               {isPreorder && product.preorder ? (
                 <div className="mt-2 rounded-md border border-violet-100 bg-violet-50 px-2 py-1.5 text-[11px] font-semibold leading-4 text-violet-900">
                   <div className="font-black">
-                    {tx(t, "storefront.preorder.eta", "Arrivo previsto")}: {preorderEtaLabel(product.preorder)}
+                    {tx(t, "storefront.preorder.eta", "Arrivo previsto")}: {preorderEtaLabel(product.preorder, locale)}
                   </div>
                   <p className="mt-1">{product.preorder.terms}</p>
                 </div>
@@ -513,6 +514,7 @@ function SummaryLine({
 
 function getPurchaseValidationMessage({
   t,
+  locale,
   canOrder,
   isAboveStock,
   isBelowMoq,
@@ -524,6 +526,7 @@ function getPurchaseValidationMessage({
   stockAvailable,
 }: {
   t: import("@/i18n/dictionaries/storefront").StorefrontTranslator;
+  locale: string;
   canOrder: boolean;
   isAboveStock: boolean;
   isBelowMoq: boolean;
@@ -539,7 +542,7 @@ function getPurchaseValidationMessage({
   }
 
   if (purchaseKind === "preorder" && canOrder) {
-    const eta = product.preorder ? preorderEtaLabel(product.preorder) : "";
+    const eta = product.preorder ? preorderEtaLabel(product.preorder, locale) : "";
     return txFormat(t,"storefront.ux.preorderQuantity","{quantity} pezzi prenotabili · {eta}",{quantity:safeQuantity,eta});
   }
 

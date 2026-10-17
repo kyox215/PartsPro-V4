@@ -1,0 +1,266 @@
+/* UI07: approved mobile account preview. Desktop and account contracts stay intact. */
+@media (max-width:767px) {
+  .pp-storefront .pp-account-page { font-size:14px; }
+  .pp-storefront .pp-account-page .pp-account-content { padding:12px 12px 24px; }
+  .pp-storefront .pp-account-page .pp-account-workspace { gap:8px; }
+  .pp-storefront .pp-account-page .pp-account-main { display:contents; }
+  .pp-storefront .pp-account-page .pp-account-heading { order:-2; align-items:center; min-height:32px; padding:0; margin:0; gap:8px; }
+  .pp-storefront .pp-account-page .pp-account-heading h1 { margin:0; font-size:22px; line-height:1.3; letter-spacing:-.5px; }
+  .pp-storefront .pp-account-page .pp-profile-edit-action { min-height:44px; padding:8px 10px; align-self:center; font-size:12px; gap:6px; }
+  .pp-storefront .pp-account-page .pp-account-navigation { order:-1; grid-template-columns:minmax(0,1fr) 44px; gap:8px; }
+  .pp-storefront .pp-account-page .pp-account-section-nav { padding:3px; gap:2px; border-radius:9px; background:#edf2fa; }
+  .pp-storefront .pp-account-page .pp-account-section-nav > button { min-height:44px; padding:6px 3px; border:0; border-radius:7px; background:transparent; font-size:12px; line-height:1.3; }
+  .pp-storefront .pp-account-page .pp-account-section-nav > button[aria-current=page] { background:#1557ff; color:#fff; box-shadow:0 2px 5px #1557ff1a; }
+  .pp-storefront .pp-account-page .pp-account-notifications { width:44px; min-height:50px; border-radius:9px; }
+  .pp-storefront .pp-account-page .pp-account-notifications > button { min-height:44px; }
+  .pp-storefront .pp-account-page .pp-account-section,
+  .pp-storefront .pp-account-page .pp-account-overview,
+  .pp-storefront .pp-account-page .pp-wallet-section,
+  .pp-storefront .pp-account-page .pp-account-service { gap:8px; }
+  .pp-storefront .pp-account-page .pp-account-panel { padding:10px 12px; border-radius:10px; }
+  .pp-storefront .pp-account-page .pp-account-panel-header { min-height:28px; margin-bottom:8px; gap:6px; }
+  .pp-storefront .pp-account-page .pp-account-panel-header h2 { font-size:14px; gap:6px; letter-spacing:0; }
+  .pp-storefront .pp-account-page .pp-account-panel-header h2 > svg { width:18px; height:18px; }
+  .pp-storefront .pp-account-page .pp-account-panel-header > span { font-size:12px; }
+  .pp-storefront .pp-account-page .pp-inline-action { min-height:44px; font-size:12px; padding:6px 0; gap:5px; }
+  .pp-storefront .pp-account-page .pp-account-rule-note { margin-top:8px; font-size:12px; line-height:1.5; }
+  .pp-storefront .pp-account-page .pp-account-data-note { font-size:12px; line-height:1.5; }
+
+  .pp-storefront .pp-account-page .pp-overview-top-grid { grid-template-columns:minmax(0,1fr); gap:8px; }
+  .pp-storefront .pp-account-page .pp-overview-company { padding:10px 12px; }
+  .pp-storefront .pp-account-page .pp-overview-company-heading { grid-template-columns:36px minmax(0,1fr) 44px; gap:3px 8px; }
+  .pp-storefront .pp-account-page .pp-overview-company-heading .pp-account-company-avatar { grid-column:1; grid-row:1 / span 2; width:36px; height:40px; border-radius:8px; background:#edf4ff; color:#1557ff; }
+  .pp-storefront .pp-account-page .pp-overview-company-heading .pp-account-company-avatar > svg { width:24px; height:24px; }
+  .pp-storefront .pp-account-page .pp-overview-company-heading > div { grid-column:2; grid-row:1; }
+  .pp-storefront .pp-account-page .pp-overview-company-heading h2 { font-size:15px; line-height:1.4; letter-spacing:0; }
+  .pp-storefront .pp-account-page .pp-overview-company-heading p { margin-top:2px; font-size:12px; line-height:1.4; gap:4px; }
+  .pp-storefront .pp-account-page .pp-overview-company-heading p > svg { width:13px; height:13px; }
+  .pp-storefront .pp-account-page .pp-overview-company-heading > .pp-profile-completeness { grid-column:2; grid-row:2; margin:0; padding:2px 6px; font-size:12px; line-height:1.4; border-radius:5px; }
+  .pp-storefront .pp-account-page .pp-overview-company-heading > .pp-inline-action { grid-column:3; grid-row:1 / span 2; width:44px; min-height:44px; margin:0; justify-content:center; align-self:start; }
+  .pp-storefront .pp-account-page .pp-overview-company-heading > .pp-inline-action > span,
+  .pp-storefront .pp-account-page .pp-overview-address > .pp-inline-action > span { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+  .pp-storefront .pp-account-page .pp-overview-company-levels { margin-top:8px; padding-top:8px; }
+  .pp-storefront .pp-account-page .pp-overview-company-levels > div { padding:0 8px; }
+  .pp-storefront .pp-account-page .pp-overview-company-levels > div:first-child { padding-left:0; }
+  .pp-storefront .pp-account-page .pp-overview-company-levels dt { font-size:12px; line-height:1.4; }
+  .pp-storefront .pp-account-page .pp-overview-company-levels dd { font-size:13px; line-height:1.4; margin-top:3px; }
+  .pp-storefront .pp-account-page .pp-overview-company .pp-account-rule-note { margin-top:8px; font-size:12px; line-height:1.5; }
+
+  .pp-storefront .pp-account-page .pp-wallet-hero { display:grid; grid-template-columns:36px minmax(0,1fr); grid-template-rows:auto auto auto; justify-content:start; align-items:center; min-height:0; padding:12px; column-gap:10px; row-gap:2px; color:#1557ff; background:linear-gradient(110deg,#f4f8ff,#eaf2ff); border:1px solid #dfebff; border-radius:10px; }
+  .pp-storefront .pp-account-page .pp-wallet-hero > .pp-wallet-watermark { position:static; grid-column:1; grid-row:1 / span 3; width:36px; height:40px; padding:6px; opacity:1; transform:none; border-radius:8px; background:#e0ebff; stroke-width:1.7; }
+  .pp-storefront .pp-account-page .pp-wallet-hero > span { grid-column:2; grid-row:1; font-size:12px; line-height:1.4; color:#34496c; }
+  .pp-storefront .pp-account-page .pp-wallet-hero > span > svg { display:none; }
+  .pp-storefront .pp-account-page .pp-wallet-hero > strong { grid-column:2; grid-row:2; margin:0; font-size:30px; line-height:1.15; letter-spacing:-.5px; }
+  .pp-storefront .pp-account-page .pp-wallet-hero > p { grid-column:2; grid-row:3; font-size:12px; line-height:1.4; color:#617baf; }
+  .pp-storefront .pp-account-page .pp-overview-wallet { grid-template-columns:32px minmax(0,1fr) auto; padding:10px 12px; column-gap:8px; }
+  .pp-storefront .pp-account-page .pp-overview-wallet > .pp-wallet-watermark { width:32px; height:36px; }
+  .pp-storefront .pp-account-page .pp-overview-wallet > strong { font-size:24px; }
+  .pp-storefront .pp-account-page .pp-overview-wallet > button { position:static; grid-column:3; grid-row:1 / span 3; justify-content:flex-end; width:auto; max-width:104px; min-height:44px; height:auto; margin:0; padding:4px 0 4px 6px; border:0; color:#1557ff; font-size:12px; line-height:1.4; gap:4px; }
+  .pp-storefront .pp-account-page .pp-overview-wallet > button > svg { flex-shrink:0; width:16px; height:16px; }
+  .pp-storefront .pp-account-page .pp-overview-stats { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+  .pp-storefront .pp-account-page .pp-overview-stats > button { min-height:64px; padding:9px 10px; gap:8px; border-radius:9px; }
+  .pp-storefront .pp-account-page .pp-overview-stats > button > span { width:32px; height:32px; }
+  .pp-storefront .pp-account-page .pp-overview-stats > button > span > svg { width:19px; height:19px; }
+  .pp-storefront .pp-account-page .pp-overview-stats > button:nth-child(1) > span { background:#fff0f0; color:#ef4b5c; }
+  .pp-storefront .pp-account-page .pp-overview-stats > button:nth-child(3) > span { background:#e8faf2; color:#009e70; }
+  .pp-storefront .pp-account-page .pp-overview-stats > button:nth-child(4) > span { background:#f2f4f8; color:#41577c; }
+  .pp-storefront .pp-account-page .pp-overview-stats > button > div { flex-direction:column; align-items:flex-start; flex-wrap:nowrap; gap:2px; }
+  .pp-storefront .pp-account-page .pp-overview-stats strong { order:-1; margin:0; font-size:18px; line-height:1.2; }
+  .pp-storefront .pp-account-page .pp-overview-stats small { font-size:12px; line-height:1.3; }
+  .pp-storefront .pp-account-page .pp-overview-middle-grid { display:grid; grid-template-columns:minmax(0,1fr); gap:8px; }
+  .pp-storefront .pp-account-page .pp-overview-recent { padding:0; border:0; background:transparent; }
+  .pp-storefront .pp-account-page .pp-overview-recent .pp-account-panel-header { margin:0; }
+  .pp-storefront .pp-account-page .pp-overview-attention { padding:6px 12px; }
+  .pp-storefront .pp-account-page .pp-overview-attention .pp-account-panel-header { margin:0; }
+  .pp-storefront .pp-account-page .pp-overview-attention > button,
+  .pp-storefront .pp-account-page .pp-overview-attention > a { min-height:44px; padding:8px 0; gap:8px; align-items:center; }
+  .pp-storefront .pp-account-page .pp-overview-attention strong { font-size:13px; line-height:1.4; }
+  .pp-storefront .pp-account-page .pp-overview-attention small { font-size:12px; line-height:1.4; margin-top:2px; }
+  .pp-storefront .pp-account-page .pp-attention-dot { margin-top:0; width:7px; height:7px; }
+  .pp-storefront .pp-account-page .pp-overview-address { display:grid; grid-template-columns:30px minmax(0,1fr) 44px; align-items:start; gap:8px; padding:10px 12px; }
+  .pp-storefront .pp-account-page .pp-overview-address > span { width:30px; height:32px; border-radius:7px; }
+  .pp-storefront .pp-account-page .pp-overview-address > span > svg { width:18px; height:18px; }
+  .pp-storefront .pp-account-page .pp-overview-address > div { min-width:0; }
+  .pp-storefront .pp-account-page .pp-overview-address h2 { font-size:14px; line-height:1.4; }
+  .pp-storefront .pp-account-page .pp-overview-address p { font-size:12px; line-height:1.5; margin-top:2px; }
+  .pp-storefront .pp-account-page .pp-overview-address > .pp-inline-action { width:44px; min-height:44px; margin:0; justify-content:center; }
+  .pp-storefront .pp-account-page .pp-overview-tier-note { margin:0; }
+
+  .pp-storefront .pp-account-page .pp-account-orders-table tr { gap:3px 8px; padding:10px 12px; margin-bottom:8px; border-radius:9px; }
+  .pp-storefront .pp-account-page .pp-account-orders-table td { min-width:0; padding:0; border:0; }
+  .pp-storefront .pp-account-page .pp-account-orders-table .pp-order-identity-cell { grid-row:1 / span 3; align-items:flex-start; gap:8px; }
+  .pp-storefront .pp-account-page .pp-account-orders-table .pp-order-document { display:grid; width:28px; height:36px; border-radius:6px; }
+  .pp-storefront .pp-account-page .pp-order-document > svg { width:17px; height:17px; }
+  .pp-storefront .pp-account-page .pp-order-identity-cell strong { font-size:14px; line-height:1.4; }
+  .pp-storefront .pp-account-page .pp-order-mobile-meta { margin-top:3px; font-size:12px; line-height:1.5; }
+  .pp-storefront .pp-account-page .pp-account-orders-table .pp-order-amount-cell { font-size:16px; line-height:1.4; color:#1557ff; }
+  .pp-storefront .pp-account-page .pp-account-orders-table .pp-order-action-cell { grid-column:2; grid-row:3; padding:0; border:0; }
+  .pp-storefront .pp-account-page .pp-account-orders-table .pp-order-action-cell .pp-inline-action { min-height:44px; padding:4px 0; font-size:12px; }
+  .pp-storefront .pp-account-page .pp-account-status { border-radius:5px; padding:3px 6px; font-size:12px; line-height:1.4; }
+  .pp-storefront .pp-account-page .pp-account-status > i { display:none; }
+  .pp-storefront .pp-account-page .pp-account-orders-table.is-compact { overflow:hidden; border:1px solid #e1e9f5; border-radius:9px; background:#fff; }
+  .pp-storefront .pp-account-page .pp-account-orders-table.is-compact tr { gap:2px 8px; padding:8px 10px; margin:0; border:0; border-bottom:1px solid #edf1f7; border-radius:0; min-height:60px; }
+  .pp-storefront .pp-account-page .pp-account-orders-table.is-compact tr:last-child { border-bottom:0; }
+  .pp-storefront .pp-account-page .pp-account-orders-table.is-compact .pp-order-identity-cell { grid-row:1 / span 2; align-self:center; }
+  .pp-storefront .pp-account-page .pp-account-orders-table.is-compact .pp-order-identity-cell strong { font-size:13px; }
+  .pp-storefront .pp-account-page .pp-account-orders-table.is-compact .pp-order-amount-cell { font-size:14px; }
+  .pp-storefront .pp-account-page .pp-account-orders-table.is-compact .pp-order-action-cell { grid-column:auto; position:absolute; inset:0; }
+  .pp-storefront .pp-account-page .pp-account-orders-table.is-compact .pp-order-action-cell > button { min-height:44px; width:100%; height:100%; padding:0; color:transparent; }
+  .pp-storefront .pp-account-page .pp-account-history-controls { padding:8px; gap:6px; border-radius:9px; }
+  .pp-storefront .pp-account-page .pp-account-history-controls > form { gap:6px; }
+  .pp-storefront .pp-account-page .pp-account-history-controls input { min-width:0; min-height:44px; padding-inline:10px; font-size:16px; }
+  .pp-storefront .pp-account-page .pp-account-history-controls [data-slot=button] { min-height:44px; padding:7px 10px; font-size:12px; white-space:normal; }
+  .pp-storefront .pp-account-page .pp-account-history-controls > span { font-size:12px; }
+  .pp-storefront .pp-account-page .pp-orders-section { padding:0; border:0; background:transparent; }
+  .pp-storefront .pp-account-page .pp-order-filters { gap:4px; margin-bottom:8px; }
+  .pp-storefront .pp-account-page .pp-order-filters > button { min-height:44px; padding:8px 10px; font-size:12px; gap:5px; border-radius:7px; }
+  .pp-storefront .pp-account-page .pp-order-filters b { font-size:12px; }
+  .pp-storefront .pp-account-page .pp-orders-section > .pp-account-data-note { margin-top:8px; }
+  .pp-storefront .pp-account-page .pp-wallet-top-grid { gap:8px; }
+  .pp-storefront .pp-account-page .pp-wallet-ledger { padding:0; border:0; background:transparent; }
+  .pp-storefront .pp-account-page .pp-wallet-ledger .pp-account-table-scroll { overflow:hidden; border:1px solid #e1e9f5; border-radius:9px; }
+  .pp-storefront .pp-account-page .pp-wallet-table tr { grid-template-columns:minmax(0,1fr) auto; padding:10px; gap:2px 8px; }
+  .pp-storefront .pp-account-page .pp-wallet-table tr:last-child { border-bottom:0; }
+  .pp-storefront .pp-account-page .pp-wallet-table td:first-child { grid-column:1; grid-row:1; gap:8px; min-width:0; }
+  .pp-storefront .pp-account-page .pp-wallet-table td:first-child > span:last-child { min-width:0; overflow-wrap:anywhere; }
+  .pp-storefront .pp-account-page .pp-wallet-table td strong { font-size:14px; line-height:1.4; }
+  .pp-storefront .pp-account-page .pp-wallet-table td:nth-child(2) { grid-column:1; grid-row:3; padding-left:40px; font-size:12px; line-height:1.4; }
+  .pp-storefront .pp-account-page .pp-wallet-table td:nth-child(3) { grid-column:1; grid-row:2; padding-left:40px; font-size:12px; line-height:1.4; text-align:left; }
+  .pp-storefront .pp-account-page .pp-wallet-table td:last-child { grid-column:2; grid-row:1 / span 3; align-self:center; font-size:16px; line-height:1.4; }
+  .pp-storefront .pp-account-page .pp-wallet-table td.is-debit { color:#d52d40; }
+  .pp-storefront .pp-account-page .pp-wallet-movement-icon { width:32px; height:32px; }
+  .pp-storefront .pp-account-page .pp-wallet-movement-icon > svg { width:18px; height:18px; }
+
+  .pp-storefront .pp-account-page .pp-account-empty { min-height:112px; padding:16px 12px; gap:8px; font-size:12px; line-height:1.5; }
+  .pp-storefront .pp-account-page .pp-account-empty > strong { font-size:14px; }
+  .pp-storefront .pp-account-page .pp-account-empty > svg { width:32px; height:32px; padding:6px; }
+  .pp-storefront .pp-account-page .pp-account-profile-notice { margin:0; border-radius:9px; }
+  .pp-storefront .pp-account-page .pp-account-profile-notice [data-slot=card-content] { padding:10px 12px; gap:8px; }
+  .pp-storefront .pp-account-page .pp-account-profile-notice p { font-size:12px; line-height:1.5; }
+  .pp-storefront .pp-account-page .pp-account-profile-notice [data-slot=button] { min-height:44px; font-size:12px; }
+  .pp-storefront .pp-account-page .pp-account-info-banner { padding:10px 12px; gap:8px; font-size:12px; line-height:1.5; }
+  .pp-storefront .pp-account-page .pp-account-info-banner > svg { width:18px; height:18px; }
+  .pp-storefront .pp-account-page .pp-service-master-detail { gap:8px; }
+  .pp-storefront .pp-account-page .pp-service-request-list { padding:0; border:0; background:transparent; }
+  .pp-storefront .pp-account-page .pp-service-request-list .pp-account-panel-header input { min-height:44px; font-size:16px; }
+  .pp-storefront .pp-account-page .pp-service-request-option { grid-template-columns:32px minmax(0,1fr) auto; padding:10px; margin-top:8px; gap:8px; border-radius:9px; }
+  .pp-storefront .pp-account-page .pp-service-request-icon { width:32px; height:40px; border-radius:6px; }
+  .pp-storefront .pp-account-page .pp-service-request-icon > svg { width:20px; height:20px; }
+  .pp-storefront .pp-account-page .pp-service-request-option > .pp-account-status { grid-column:3; font-size:12px; }
+  .pp-storefront .pp-account-page .pp-service-request-option strong,
+  .pp-storefront .pp-account-page .pp-service-selected-product strong { font-size:14px; line-height:1.4; }
+  .pp-storefront .pp-account-page .pp-service-request-option b { font-size:13px; line-height:1.4; margin-top:3px; }
+  .pp-storefront .pp-account-page .pp-service-request-option small { font-size:12px; line-height:1.4; margin-top:3px; }
+  .pp-storefront .pp-account-page .pp-service-selected-heading { gap:8px; }
+  .pp-storefront .pp-account-page .pp-service-selected-heading h3 { font-size:16px; }
+  .pp-storefront .pp-account-page .pp-service-selected-product { margin:12px 0; gap:8px; }
+  .pp-storefront .pp-account-page .pp-service-facts { margin-bottom:12px; gap:6px; }
+  .pp-storefront .pp-account-page .pp-service-facts > div { grid-template-columns:92px minmax(0,1fr); gap:8px; font-size:12px; }
+  .pp-storefront .pp-account-page .pp-service-detail > .pp-inline-action { margin-top:8px; }
+  .pp-storefront .pp-account-page .pp-service-order-links { gap:8px; }
+  .pp-storefront .pp-account-page .pp-service-order-links > a { min-height:44px; padding:8px 10px; }
+  .pp-storefront .pp-account-page .pp-service-order-links strong,
+  .pp-storefront .pp-account-page .pp-service-order-links small { font-size:12px; }
+
+  .pp-storefront .pp-account-page .pp-profile-summary-view .pp-profile-summary-grid { grid-template-columns:minmax(0,1fr); gap:8px; }
+  .pp-storefront .pp-account-page .pp-profile-summary-view .pp-profile-facts { grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px 12px; }
+  .pp-storefront .pp-account-page .pp-profile-summary-view .pp-profile-facts .text-xs { font-size:12px; line-height:1.4; }
+  .pp-storefront .pp-account-page .pp-profile-summary-view .pp-profile-facts .text-sm { margin-top:3px; font-size:14px; line-height:1.5; }
+  .pp-storefront .pp-account-page .pp-profile-summary-view .pp-profile-identity > div { padding:8px 0; gap:8px; font-size:13px; line-height:1.5; }
+  .pp-storefront .pp-account-page .pp-profile-summary-view .pp-profile-address-text { font-size:14px; line-height:1.5; }
+  .pp-storefront .pp-account-page .pp-profile-summary-actions { padding:8px 0 0; gap:8px; }
+  .pp-storefront .pp-account-page .pp-profile-summary-actions [data-slot=button] { min-height:44px; font-size:14px; }
+
+  .pp-storefront-portal.pp-account-dialog { padding:12px; gap:10px; border-radius:12px; }
+  .pp-storefront-portal.pp-account-dialog [data-slot=dialog-header] { gap:4px; min-height:44px; justify-content:center; }
+  .pp-storefront-portal.pp-account-dialog [data-slot=dialog-title] { font-size:20px; line-height:1.3; overflow-wrap:anywhere; }
+  .pp-storefront-portal.pp-account-dialog [data-slot=dialog-description] { font-size:12px; line-height:1.5; }
+  .pp-storefront-portal.pp-account-dialog [data-slot=dialog-close] { min-width:44px; min-height:44px; top:6px; right:4px; }
+  .pp-storefront-portal.pp-account-dialog [data-slot=dialog-footer] { flex-direction:row; gap:8px; margin:0 -12px -12px; padding:10px 12px; }
+  .pp-storefront-portal.pp-account-dialog [data-slot=dialog-footer] [data-slot=button] { flex:1; min-height:44px; padding:8px; font-size:14px; }
+  .pp-storefront-portal.pp-account-dialog .pp-account-panel { padding:10px 12px; border-radius:9px; }
+  .pp-storefront-portal.pp-account-dialog .pp-account-panel-header { min-height:24px; margin-bottom:8px; gap:6px; }
+  .pp-storefront-portal.pp-account-dialog .pp-account-panel-header h2 { font-size:14px; line-height:1.4; }
+  .pp-storefront-portal.pp-account-dialog .pp-account-rule-note { margin-top:8px; font-size:12px; line-height:1.5; }
+  .pp-storefront-portal.pp-account-dialog .pp-account-info-banner { padding:10px; gap:8px; font-size:12px; line-height:1.5; }
+  .pp-storefront-portal.pp-account-dialog .pp-account-empty { min-height:100px; padding:16px 10px; gap:8px; font-size:12px; }
+  .pp-storefront-portal.pp-account-dialog .pp-account-empty > strong { font-size:14px; }
+  .pp-storefront-portal.pp-account-dialog .pp-account-empty > svg { width:32px; height:32px; padding:6px; }
+  .pp-storefront-portal.pp-account-dialog .pp-account-status { padding:3px 6px; border-radius:5px; font-size:12px; line-height:1.4; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-detail { gap:8px; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-detail-status { padding:8px 10px; gap:6px 10px; font-size:12px; line-height:1.5; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-detail-grid { grid-template-columns:minmax(0,1fr); gap:8px; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-detail-main,
+  .pp-storefront-portal.pp-order-dialog .pp-order-detail-aside { gap:8px; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-line-table-head { padding:6px 8px; font-size:12px; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-detail-line { grid-template-columns:44px minmax(0,1fr); padding:8px 0; gap:3px 8px; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-detail-line > div:first-child { grid-column:1; grid-row:1 / span 2; width:44px; height:52px; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-detail-line > div:nth-child(2) { grid-column:2; grid-row:1; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-detail-line strong { font-size:14px; line-height:1.4; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-detail-line p,
+  .pp-storefront-portal.pp-order-dialog .pp-order-detail-line small { font-size:12px; line-height:1.4; margin-top:2px; gap:4px; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-detail-line > b { grid-column:2; grid-row:2; justify-self:end; font-size:14px; color:#1557ff; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-detail-summary dl > div { margin-top:8px; font-size:13px; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-detail-summary dl > .is-total { margin-top:10px; padding-top:10px; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-detail-summary .is-total dd { font-size:22px; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-payment-state { display:flex; flex-wrap:wrap; justify-content:space-between; gap:4px 8px; padding:8px 10px; margin-top:10px; font-size:12px; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-payment-state strong { margin:0; font-size:13px; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-delivery > div:not(.pp-account-panel-header) { padding:7px 0; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-delivery > div > div:last-child { margin-top:2px; font-size:14px; line-height:1.5; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-delivery > button { margin-top:8px; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-events li { gap:10px; padding-bottom:14px; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-events strong { font-size:14px; }
+  .pp-storefront-portal.pp-order-dialog .pp-order-events time,
+  .pp-storefront-portal.pp-order-dialog .pp-order-events p { margin-top:3px; font-size:12px; line-height:1.5; }
+
+  .pp-storefront-portal.pp-profile-dialog .pp-profile-editor-nav { margin-bottom:12px; padding:3px; }
+  .pp-storefront-portal.pp-profile-dialog .pp-profile-editor-nav > button { min-height:44px; padding:6px 8px; font-size:13px; line-height:1.4; }
+  .pp-storefront-portal.pp-profile-dialog .pp-profile-editor-section > h3,
+  .pp-storefront-portal.pp-profile-dialog .pp-address-fields-title { font-size:16px; line-height:1.4; margin-bottom:10px; gap:6px; }
+  .pp-storefront-portal.pp-profile-dialog .pp-profile-editor-section > h3 > svg,
+  .pp-storefront-portal.pp-profile-dialog .pp-address-fields-title > svg { width:20px; height:20px; }
+  .pp-storefront-portal.pp-profile-dialog .pp-profile-editor-section > .grid { gap:10px; }
+  .pp-storefront-portal.pp-profile-dialog .pp-address-fields > div { gap:10px; }
+  .pp-storefront-portal.pp-profile-dialog #account-profile-form label { font-size:12px; line-height:1.5; }
+  .pp-storefront-portal.pp-profile-dialog #account-profile-form input,
+  .pp-storefront-portal.pp-profile-dialog [data-slot=select-trigger] { min-height:44px; padding-inline:10px; font-size:16px; }
+  .pp-storefront-portal.pp-profile-dialog .pp-profile-same-address { align-items:center; min-height:44px; padding:8px 10px; margin-block:12px; gap:8px; font-size:12px; line-height:1.5; }
+  .pp-storefront-portal.pp-profile-dialog #account-profile-form > div:last-of-type { padding:10px; font-size:12px; line-height:1.5; }
+
+  .pp-storefront-portal.pp-account-notification-panel { width:calc(100vw - 24px); max-height:min(680px,calc(100dvh - 96px)); border-radius:12px; }
+  .pp-storefront-portal.pp-account-notification-panel > div:first-child { padding:10px 12px 8px; }
+  .pp-storefront-portal.pp-account-notification-panel h2 { font-size:18px; line-height:1.4; }
+  .pp-storefront-portal.pp-account-notification-panel > div:first-child p { font-size:12px; margin-top:3px; }
+  .pp-storefront-portal.pp-account-notification-panel .pp-notification-header-actions { gap:4px; }
+  .pp-storefront-portal.pp-account-notification-panel .pp-notification-header-actions [data-slot=button] { min-height:44px; font-size:12px; padding:6px; }
+  .pp-storefront-portal.pp-account-notification-panel .pp-notification-header-actions > [data-slot=button]:last-child { width:44px; }
+  .pp-storefront-portal.pp-account-notification-panel .pp-notification-permission { margin:0 12px 8px; padding:8px; gap:8px; flex-wrap:wrap; }
+  .pp-storefront-portal.pp-account-notification-panel .pp-notification-permission > svg { width:22px; height:22px; }
+  .pp-storefront-portal.pp-account-notification-panel .pp-notification-permission > div { min-width:120px; }
+  .pp-storefront-portal.pp-account-notification-panel .pp-notification-permission strong,
+  .pp-storefront-portal.pp-account-notification-panel .pp-notification-permission p { font-size:12px; line-height:1.4; }
+  .pp-storefront-portal.pp-account-notification-panel .pp-notification-permission [data-slot=button] { min-height:44px; padding:6px 8px; font-size:12px; }
+  .pp-storefront-portal.pp-account-notification-panel .pp-notification-list { padding:0 12px; }
+  .pp-storefront-portal.pp-account-notification-panel .pp-notification-item { min-height:60px; padding:10px 0; gap:8px; }
+  .pp-storefront-portal.pp-account-notification-panel .pp-notification-item-icon { width:32px; height:36px; border-radius:8px; }
+  .pp-storefront-portal.pp-account-notification-panel .pp-notification-item-icon svg { width:20px; height:20px; }
+  .pp-storefront-portal.pp-account-notification-panel .pp-notification-item-copy > div > p { font-size:14px; line-height:1.4; }
+  .pp-storefront-portal.pp-account-notification-panel .pp-notification-item-copy > p,
+  .pp-storefront-portal.pp-account-notification-panel .pp-notification-item-copy > p:last-child { font-size:12px; line-height:1.4; }
+  .pp-storefront-portal.pp-account-notification-panel .pp-notification-footer { padding:8px 12px; font-size:12px; line-height:1.4; }
+  .pp-storefront-portal.pp-account-notification-panel .pp-notification-footer [data-slot=button] { min-height:44px; }
+}
+
+@media (max-width:359px) {
+  .pp-storefront .pp-account-page .pp-account-navigation { gap:6px; }
+  .pp-storefront .pp-account-page .pp-account-section-nav > button { padding-inline:2px; }
+  .pp-storefront .pp-account-page .pp-overview-company-heading { grid-template-columns:30px minmax(0,1fr) 44px; gap:3px 6px; }
+  .pp-storefront .pp-account-page .pp-overview-company-heading .pp-account-company-avatar { width:30px; height:36px; }
+  .pp-storefront .pp-account-page .pp-overview-company-levels > div { padding-inline:6px; }
+  .pp-storefront .pp-account-page .pp-overview-wallet { grid-template-columns:28px minmax(0,1fr) auto; column-gap:6px; }
+  .pp-storefront .pp-account-page .pp-overview-wallet > .pp-wallet-watermark { width:28px; height:34px; padding:5px; }
+  .pp-storefront .pp-account-page .pp-overview-wallet > button { max-width:84px; }
+  .pp-storefront .pp-account-page .pp-overview-stats > button { padding:8px; gap:6px; }
+  .pp-storefront .pp-account-page .pp-service-request-option { grid-template-columns:28px minmax(0,1fr); }
+  .pp-storefront .pp-account-page .pp-service-request-option > .pp-account-status { grid-column:2; justify-self:start; }
+}

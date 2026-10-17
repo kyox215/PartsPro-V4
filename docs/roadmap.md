@@ -246,3 +246,9 @@ Last reviewed: 2026-10-12
 - 三语言覆盖商城/注册/个人中心/后台：本设备显式选择优先，否则设备首选en/zh/it，其他/缺失为英语；恢复设备语言可清除覆盖。不再读写账户语言偏好。REG01五个遗留问题已修复并验证，保留客户/商品/地址/备注原文。
 - 24测试、53相关测试、35实际组件隔离浏览器、候选/正式各30HTTP、正式19浏览器通过；lint和本地/远端build通过，469运行输入上传hash一致。真实手动切换/刷新/恢复设备语言已验证，仅2次语言Cookie action，生产客户/交易写0，无migration/env变更，短时error/fatal无组。
 - 合入已上线UI06 e9e814d/8002518，保留紧凑页头和筛选草稿，主目录其它改动未混入。无真实邮箱注册或物理iPhone系统键盘验收。报告 `docs/audits/2026-10-17-registration-device-locale-release.md`，证据 `outputs/registration-device-locale/2026-10-17/release/`，任务转done。
+
+
+## 2026-10-17 UI07：移动端高密度预览还原（执行中）
+
+- TASK-20261017-UI07：已获老板明确实施及上线授权。基于正式 REG02 4096f92 / dpl_BTLh3gDWL3P8fF9gPVLmVoSsJZR1 建立隔离分支，落实7张批准预览，仅调整<768px前台。主目录其它未提交运行源码不纳入发布，无API/DB/env/后台/Logo变更或migration依赖。
+- 已完成移动布局、三语210几何检查与30桌面对照、筛选/数量/刷新/身份保护及草稿交互检查，24+60测试、lint/build通过；独立初步SOURCE_GO。候选与正式推广待完成，详见docs/audits/2026-10-17-storefront-mobile-density-release.md。

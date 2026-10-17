@@ -579,7 +579,7 @@ function CatalogPageContent({
             <button type="submit" aria-label={tx(t,"storefront.header.searchSubmit","Cerca")}><ChevronRight aria-hidden="true"/></button>
           </form>
           <Dialog open={filterOpen} onOpenChange={setFilterOpen}>
-            <DialogContent className="pp-storefront-portal pp-catalog-filter-dialog" onCloseAutoFocus={event => {
+            <DialogContent closeLabel={t("common.close")} className="pp-storefront-portal pp-catalog-filter-dialog" onCloseAutoFocus={event => {
               event.preventDefault();
               filterTriggerRef.current?.focus({ preventScroll: true });
             }}>

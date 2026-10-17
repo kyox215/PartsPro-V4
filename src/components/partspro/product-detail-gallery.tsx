@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ZoomIn } from "lucide-react";
 import type { PartProduct } from "@/lib/partspro-data";
 import { getProductImageCandidates } from "@/lib/partspro-product-images";
@@ -15,6 +15,7 @@ export function ProductDetailGallery({ product }: { product: PartProduct }) {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [failedImages, setFailedImages] = useState<string[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const previewTriggerRef = useRef<HTMLButtonElement>(null);
   const candidates = useMemo(() => getProductImageCandidates(product), [product]);
   const primaryImage = candidates.find((url) => !failedImages.includes(url));
   const images = [...new Set([primaryImage, ...(product.galleryImageUrls ?? [])])]
@@ -47,6 +48,7 @@ export function ProductDetailGallery({ product }: { product: PartProduct }) {
       {activeImage ? (
         <button
           type="button"
+          ref={previewTriggerRef}
           className="pp-gallery-main"
           aria-haspopup="dialog"
           aria-label={txFormat(t, "storefront.product.card.previewImageAria", "Apri anteprima immagine {name}", { name: product.name })}
@@ -57,7 +59,7 @@ export function ProductDetailGallery({ product }: { product: PartProduct }) {
         </button>
       ) : <PartVisual variant={product.visual} className="pp-gallery-fallback" />}
       {activeImage && previewOpen ? (
-        <ProductImagePreviewDialog imageAlt={imageAlt} imageUrl={activeImage} imageUrls={images} onImageError={markFailed} onOpenChange={setPreviewOpen} open={previewOpen} productName={product.name} />
+        <ProductImagePreviewDialog returnFocusRef={previewTriggerRef} imageAlt={imageAlt} imageUrl={activeImage} imageUrls={images} onImageError={markFailed} onOpenChange={setPreviewOpen} open={previewOpen} productName={product.name} />
       ) : null}
     </div>
   );

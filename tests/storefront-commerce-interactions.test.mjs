@@ -147,3 +147,23 @@ test("support authentication denial still disables the composer", async () => {
   assert.equal(context.canCompose(), false);
   assert.equal(context.draft, "Please help with this order");
 });
+
+
+test("preorder validation uses the active storefront language for arrival dates", () => {
+  const source = read("src/components/partspro/product-detail-purchase-panel.tsx");
+  const start = source.indexOf("function getPurchaseValidationMessage(");
+  assert.ok(start >= 0);
+  const context = {
+    preorderEtaLabel: preorderModule.exports.preorderEtaLabel,
+    tx: (_t, _key, fallback) => fallback,
+    txFormat: (_t, _key, fallback, values) => fallback.replace(/\{(\w+)\}/g, (_match, key) => values[key]),
+  };
+  vm.runInNewContext(compile(source.slice(start) + "\nglobalThis.validate = getPurchaseValidationMessage;"), context);
+  const preorder = { etaStart: "2026-10-01", etaEnd: "2026-12-01" };
+  for (const locale of ["zh-CN", "it-IT", "en-US"]) {
+    const message = context.validate({ t: () => "", locale, canOrder: true, stockAvailable: true, purchaseKind: "preorder", safeQuantity: 2, product: { preorder } });
+    assert.ok(message.includes(preorderModule.exports.preorderEtaLabel(preorder, locale)), locale);
+  }
+  const invalid = { etaStart: "invalid", etaEnd: "2026-12-01" };
+  assert.equal(preorderModule.exports.preorderEtaLabel(invalid, "zh-CN"), "");
+});

@@ -15,6 +15,8 @@ import "./catalog-ui.css";
 import "./account-ui.css";
 import "./commerce-ui.css";
 import "./reference-ui.css";
+import "./mobile-ui.css";
+import "./account-mobile-density.css";
 
 export const viewport: Viewport = {
   themeColor: "#0f172a",
