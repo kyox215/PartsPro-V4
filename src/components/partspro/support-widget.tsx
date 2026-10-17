@@ -87,7 +87,7 @@ export function SupportWidget() {
   const onDraftChange = React.useCallback((value:string) => { if (identityRef.current === identity) setDraft(current => ({...current,userId:identity,value})); },[identity]);
   const onConversationChange = React.useCallback((conversationId:string|null) => { if (identityRef.current === identity) setDraft(current => current.userId === identity && (current.conversationId === conversationId || current.conversationId === null) ? {...current,conversationId} : {userId:identity,conversationId,value:""}); },[identity]);
   const actionBarOffset = useSupportActionBarOffset(
-    shouldRender && (pathname === "/carrello" || pathname === "/checkout")
+    shouldRender
   );
   const widgetBottom =
     actionBarOffset > 0
@@ -126,7 +126,7 @@ export function SupportWidget() {
 
   return (
     <div
-      className={`fixed right-3 z-50 transition-[bottom] duration-200 ease-out motion-reduce:transition-none sm:right-5 ${editing && !open ? "max-lg:hidden" : ""}`}
+      className={`pp-support-widget fixed right-3 z-50 transition-[bottom] duration-200 ease-out motion-reduce:transition-none sm:right-5 ${editing && !open ? "max-lg:hidden" : ""}`}
       style={widgetStyle}
     >
       {open ? (

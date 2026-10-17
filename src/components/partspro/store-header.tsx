@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Search } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Grid3X3, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CatalogDepartmentGroup } from "@/lib/partspro-data";
@@ -17,6 +17,7 @@ import {
   RoutePendingIndicator,
 } from "./pending-feedback";
 import { StoreCartButton } from "./store-cart-button";
+import { StoreBottomNavigation } from "./store-bottom-navigation";
 import { StoreDeferredAccountMenu, StoreDeferredMobileMenu } from "./store-deferred-menus";
 import { useT } from "./i18n-provider";
 import { tx } from "@/i18n/dictionaries/storefront";
@@ -52,6 +53,7 @@ export function StoreHeader({
 }: StoreHeaderProps) {
   const t = useT();
   const router = useRouter();
+  const pathname = usePathname();
   const [isSearchPending, startSearchTransition] = useTransition();
   const [accountAccess, setAccountAccess] = useState<AccountAccessState>(
     () => initialAccountAccess ?? loadingAccountAccess
@@ -142,8 +144,8 @@ export function StoreHeader({
 
   return (
     <>
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-slate-200/80 bg-white/90 shadow-[0_10px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl">
-        <div className="mx-auto flex h-14 w-full max-w-[1500px] items-center gap-2 px-3 sm:h-16 sm:gap-3 sm:px-4">
+      <header className="pp-store-header fixed inset-x-0 top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
+        <div className="pp-store-header-row mx-auto flex h-14 w-full max-w-[1500px] items-center gap-2 px-3 sm:h-16 sm:gap-3 sm:px-4">
           <StoreDeferredMobileMenu
             assistedCompanyId={assistedCompanyId}
             departmentGroups={departmentGroups}
@@ -178,6 +180,10 @@ export function StoreHeader({
             <RoutePendingIndicator className="size-3 text-primary" />
           </Link>
 
+          <Link href={hrefWithAssistedCompanyId("/catalogo", assistedCompanyId)} className="pp-header-catalog" aria-current={pathname === "/catalogo" ? "page" : undefined}>
+            <Grid3X3 aria-hidden="true" className="size-4" />
+            {tx(t, "nav.catalog", "Catalogo")}
+          </Link>
           <form
             className="relative ml-auto hidden min-w-[260px] flex-1 xl:block xl:max-w-2xl"
             onSubmit={handleSearchSubmit}
@@ -235,6 +241,7 @@ export function StoreHeader({
         </form>
       </header>
       <div aria-hidden="true" className="h-[108px] sm:h-[116px] xl:h-16" />
+      <StoreBottomNavigation assistedCompanyId={assistedCompanyId} />
     </>
   );
 }

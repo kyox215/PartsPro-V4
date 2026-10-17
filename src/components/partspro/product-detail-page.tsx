@@ -31,7 +31,8 @@ import { getProductPurchaseKind } from "@/lib/partspro-preorder-contract";
 import { CustomerActivityTracker } from "./customer-activity-tracker";
 import { ProductDetailPurchasePanelSlot } from "./product-detail-purchase-panel-slot";
 import { StoreHeader } from "./store-header";
-import { StorefrontProductImage } from "./storefront-product-image";
+import { ProductDetailGallery } from "./product-detail-gallery";
+import { publicStockLevelMeta } from "@/lib/partspro-stock-availability";
 
 type ProductDetailPageProps = {
   assistedCompanyId?: string | null;
@@ -75,9 +76,11 @@ export async function ProductDetailPage({
   const modelSeries = inferDeviceModelSeries(product.brand, primaryModel);
   const localizedBrand = brandLabel(t, product.brand);
   const localizedCategory = categoryLabel(t, product.category);
+  const stockMeta = publicStockLevelMeta(t, product);
+  const purchaseKind = getProductPurchaseKind(product);
 
   return (
-    <PricingSessionBoundary userId={initialAccountAccess?.userId}><main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
+    <PricingSessionBoundary userId={initialAccountAccess?.userId}><main className="pp-product-page min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
       <CustomerActivityTracker
         brand={product.brand}
         enabled={Boolean(initialAccountAccess?.authenticated)}
@@ -92,21 +95,14 @@ export async function ProductDetailPage({
         assistedCompanyId={assistedCompanyId}
         initialAccountAccess={initialAccountAccess}
       />
-      <div className="mx-auto max-w-[1440px] px-2 py-2 sm:px-3 sm:py-3">
-        <CatalogBackLink assistedCompanyId={assistedCompanyId} />
+      <div className="pp-product-shell mx-auto max-w-[1440px]">
+        <div className="pp-product-breadcrumb"><CatalogBackLink assistedCompanyId={assistedCompanyId} /><span aria-hidden="true">/</span><span>{localizedBrand}</span><span aria-hidden="true">/</span><span>{localizedCategory}</span></div>
 
-        <div className="grid gap-2 lg:grid-cols-[minmax(300px,420px)_minmax(0,1fr)] xl:grid-cols-[minmax(340px,460px)_minmax(0,1fr)]">
-          <Card className="rounded-lg border-slate-200 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.045)] lg:sticky lg:top-24 lg:self-start">
-            <CardContent className="p-2">
-              <StorefrontProductImage
-                product={product}
-                sizes="(max-width: 1024px) 100vw, 420px"
-                quality={88}
-                priority
-                className="min-h-[220px] rounded-lg bg-slate-50 sm:min-h-[300px] lg:min-h-[390px] xl:min-h-[430px]"
-                imageClassName="object-contain p-3"
-              />
-              <div className="mt-1.5 grid grid-cols-3 gap-1.5">
+        <div className="pp-product-layout">
+          <Card className="pp-product-gallery-card rounded-lg border-slate-200 bg-white">
+            <CardContent className="pp-product-gallery-content">
+              <ProductDetailGallery product={product} />
+              <div className="pp-product-proof">
                 {[
                   {
                     label: tx(t, "storefront.product.detail.lot", "Lotto"),
@@ -127,7 +123,7 @@ export async function ProductDetailPage({
                 ].map((item) => (
                   <div
                     key={item.label}
-                    className="min-w-0 rounded-md border border-slate-100 bg-slate-50 px-2 py-1.5"
+                    className="pp-product-proof-item min-w-0"
                   >
                     <div className="text-[11px] font-bold uppercase text-slate-400">
                       {item.label}
@@ -141,26 +137,27 @@ export async function ProductDetailPage({
             </CardContent>
           </Card>
 
-          <section className="min-w-0 space-y-2">
-            <Card className="rounded-lg border-slate-200 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.045)]">
-              <CardContent className="p-3 md:p-3.5">
-                <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_minmax(260px,0.55fr)] xl:items-start">
+          <section className="pp-product-information min-w-0">
+            <Card className="pp-product-information-card rounded-lg border-slate-200 bg-white">
+              <CardContent className="pp-product-information-content">
+                <div className="pp-product-heading-grid">
                   <div className="min-w-0">
-                    <h1 className="break-words text-2xl font-black leading-[1.05] tracking-normal sm:text-[1.8rem] xl:text-[2rem]">
+                    <div className="pp-product-labels"><Badge variant="outline">{localizedCategory}</Badge><Badge className={purchaseKind === "preorder" ? "border-violet-200 bg-violet-50 text-violet-700" : stockMeta.className}>{purchaseKind === "preorder" ? tx(t, "storefront.preorder.badge", "Preordine") : stockMeta.label}</Badge></div>
+                    <h1 className="pp-product-title break-words">
                       {product.name}
                     </h1>
-                    <p className="mt-1 flex min-w-0 items-center gap-1.5 font-mono text-xs text-slate-500">
+                    <p className="pp-product-sku flex min-w-0 items-center gap-1.5 font-mono text-xs text-slate-500">
                       <Barcode className="size-3.5 shrink-0" />
                       <span className="truncate">{product.sku}</span>
                     </p>
-                    <ProductCompatibilityList models={product.compatibleWith} />
+                    {product.compatibleWith.length > 0 ? <a className="pp-product-model-link" href="#product-compatibility">{txFormat(t, "storefront.ux.allModels", "Mostra tutti i {count} modelli compatibili", { count: product.compatibleWith.length })}</a> : null}
                   </div>
 
-                  {showWholesalePrice ? <ProductPriceExplanation product={product} detailed /> : null}
-                  <div className="rounded-lg border border-primary/20 bg-primary/8 p-2.5 text-xs text-slate-700">
+                  {showWholesalePrice ? <div className="pp-product-price-context"><ProductPriceExplanation product={product} detailed /></div> : null}
+                  <div className="pp-product-price-block">
                     {showWholesalePrice && hasBuyerPrice ? (
                       <div className="flex min-w-0 flex-wrap items-end gap-2">
-                        <div className="text-2xl font-black leading-none text-slate-950">
+                        <div className="pp-product-current-price">
                           {formatEuro(product.price)}
                         </div>
                         {priceDisplay.hasDiscount && priceDisplay.basePrice ? (
@@ -187,6 +184,7 @@ export async function ProductDetailPage({
                             : hiddenPriceCopy.description}
                       </p>
                     )}
+                    {showWholesalePrice && hasBuyerPrice ? <p className="pp-product-tax">{tx(t, "storefront.product.purchase.quotePriceEach", "Prezzo IVA inclusa")}</p> : null}
                   </div>
                 </div>
 
@@ -254,7 +252,7 @@ export async function ProductDetailPage({
                   </Card>
                 )}
 
-                <div className="mt-2 border-t border-slate-100 pt-2">
+                <div className="pp-product-specifications">
                   <div className="mb-1.5 flex min-w-0 items-center justify-between gap-3">
                     <h2 className="truncate text-sm font-black text-slate-950">
                       {tx(t, "storefront.ux.quickDetails", "Dettagli rapidi")}
@@ -263,7 +261,7 @@ export async function ProductDetailPage({
                       SKU {product.sku}
                     </span>
                   </div>
-                  <div className="grid gap-1.5 text-xs text-slate-600 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="pp-product-spec-grid">
                     <Spec label={tx(t,"storefront.ux.brand","Brand")} value={localizedBrand} />
                     <Spec label={tx(t,"storefront.ux.category","Categoria")} value={localizedCategory} />
                     <Spec label={tx(t,"storefront.ux.vat","IVA")} value={`${product.vatRate}%`} />
@@ -288,6 +286,7 @@ export async function ProductDetailPage({
             </Card>
           </section>
         </div>
+        {product.compatibleWith.length > 0 ? <section id="product-compatibility" className="pp-product-compatibility-panel"><div><h2>{tx(t, "storefront.ui.product.compatibility", "Compatibilità")}</h2><p>{localizedBrand} · {localizedCategory}</p></div><ProductCompatibilityList models={product.compatibleWith} /></section> : null}
       </div>
       <QuoteExpiryRefresh products={[product]} />
     </main></PricingSessionBoundary>
@@ -296,7 +295,7 @@ export async function ProductDetailPage({
 
 function Spec({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-md border border-slate-100 bg-slate-50 px-2 py-1.5">
+    <div className="pp-product-spec min-w-0">
       <div className="truncate text-[10px] font-bold uppercase text-slate-400">{label}</div>
       <div className="mt-0.5 break-words text-xs font-bold text-slate-800">{value}</div>
     </div>

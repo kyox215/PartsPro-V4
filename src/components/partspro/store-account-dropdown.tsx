@@ -65,7 +65,7 @@ export function StoreAccountDropdown({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="w-56"
+        className="pp-storefront-portal w-64"
         onFocus={(event) => {
           // The first key event can precede loading Radix's keyboard handling.
           if (focusFirstItem && event.target === event.currentTarget) {

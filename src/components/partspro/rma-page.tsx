@@ -410,10 +410,24 @@ function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,i
     resetSubmitForChange();
   }
 
+  function confirmSelectionChange() {
+    if (!form.note.trim() && imagesRef.current.length === 0 && form.reasonCode === initialForm.reasonCode && form.requestedResolution === initialForm.requestedResolution) return true;
+    if (!window.confirm(locale === "zh-CN"
+      ? "更换订单或商品会清除当前备注和照片，并重置原因及解决方式，避免把旧资料提交到另一商品。确定继续？"
+      : "Cambiare ordine o articolo rimuove nota e foto e reimposta motivo e soluzione, per non inviare dati del prodotto precedente. Continuare?")) return false;
+    for (const image of imagesRef.current) URL.revokeObjectURL(image.previewUrl);
+    imagesRef.current = [];
+    setImages([]);
+    setImageError(null);
+    setForm((current) => ({ ...current, note: "", reasonCode: initialForm.reasonCode, requestedResolution: initialForm.requestedResolution }));
+    return true;
+  }
+
   function updateOrder(orderId: string) {
     if (areRmaControlsLocked()) {
       return;
     }
+    if (orderId === form.orderId || !confirmSelectionChange()) return;
     const order = orderOptions.find((item) => item.id === orderId);
     const firstLine = order?.lines.length === 1 ? order.lines[0] : null;
     setForm((current) => ({
@@ -429,6 +443,7 @@ function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,i
     if (areRmaControlsLocked()) {
       return;
     }
+    if (orderLineId === form.orderLineId || !confirmSelectionChange()) return;
     setForm((current) => ({ ...current, orderLineId, quantity: "1" }));
     resetSubmitForChange();
   }
@@ -437,6 +452,7 @@ function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,i
     if (areRmaControlsLocked()) {
       return;
     }
+    if (!confirmSelectionChange()) return;
     setForm((current) => ({ ...current, orderId: "", orderLineId: "", quantity: "1" }));
     resetSubmitForChange();
   }
@@ -753,10 +769,10 @@ function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,i
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
+    <main className="pp-rma-page min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
       <StoreHeader initialAccountAccess={initialAccountAccess} />
-      <div className="mx-auto max-w-[1120px] space-y-4 px-3 pb-12 pt-20 sm:px-5 sm:pt-24">
-        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.04)] sm:p-7">
+      <div className="pp-rma-content mx-auto max-w-[1120px] space-y-4 px-3 pb-12 pt-20 sm:px-5 sm:pt-24">
+        <section className="pp-rma-heading rounded-xl border border-slate-200 bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.04)] sm:p-7">
           <Badge className="mb-3 border border-primary/20 bg-primary/8 text-primary">
             {tx(t, "storefront.rma.badge", "Assistenza tracciabile")}
           </Badge>
@@ -772,7 +788,7 @@ function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,i
           </p>
         </section>
 
-        <Card className="border-slate-200 bg-white">
+        <Card className="pp-rma-form-card border-slate-200 bg-white">
           <form onSubmit={submitRma}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -843,7 +859,7 @@ function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,i
                               <SelectTrigger id="rma-quantity" className="w-full bg-white">
                                 <SelectValue />
                               </SelectTrigger>
-                              <SelectContent>
+                              <SelectContent className="pp-storefront-portal">
                                 {quantityOptions.map((quantity) => (
                                   <SelectItem key={quantity} value={quantity}>
                                     {quantity}
@@ -1093,7 +1109,7 @@ function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,i
           </form>
         </Card>
 
-        <Card className="border-slate-200 bg-white">
+        <Card className="pp-rma-history border-slate-200 bg-white">
           <CardHeader>
             <CardTitle>{tx(t, "storefront.rma.recent.title", "Richieste recenti")}</CardTitle>
           </CardHeader>
@@ -1161,7 +1177,7 @@ function RmaStep({
   title: string;
 }) {
   return (
-    <section className="space-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:p-5" aria-labelledby={`rma-step-${number}`}>
+    <section className="pp-rma-step space-y-3 rounded-xl border border-slate-200 bg-white p-4 sm:p-5" aria-labelledby={`rma-step-${number}`}>
       <div className="flex items-start gap-3">
         <div className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-sm font-black text-primary-foreground">
           {number}
@@ -1198,7 +1214,7 @@ function ChoiceButton({
       disabled={disabled}
       onClick={onSelect}
       className={cn(
-        "min-h-11 rounded-lg border px-3 py-2 text-left text-sm font-semibold transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60",
+        "pp-rma-choice min-h-11 rounded-lg border px-3 py-2 text-left text-sm font-semibold transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60",
         selected
           ? "border-primary bg-primary/8 text-primary ring-1 ring-primary/20"
           : "border-slate-200 bg-white text-slate-700 hover:border-primary/40 hover:bg-primary/5"
@@ -1253,7 +1269,7 @@ function OrderOptionCard({
     <button
       type="button"
       disabled={disabled}
-      className="flex min-h-20 items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left transition hover:border-primary/40 hover:bg-primary/5 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60"
+      className="pp-rma-order-option flex min-h-20 items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 text-left transition hover:border-primary/40 hover:bg-primary/5 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-60"
       onClick={onSelect}
     >
       <span className="flex min-w-0 items-center gap-3">
@@ -1391,7 +1407,7 @@ function RmaRequestCard({
     <article
       id={`rma-request-${request.id}`}
       className={cn(
-        "space-y-3 rounded-xl border bg-white p-4 transition",
+        "pp-rma-request space-y-3 rounded-xl border bg-white p-4 transition",
         highlighted ? "border-primary ring-2 ring-primary/20" : "border-slate-200"
       )}
     >

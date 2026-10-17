@@ -242,21 +242,26 @@ function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, a
             router.refresh();
     }
     React.useEffect(() => () => { detailRequestRef.current.version++; detailRequestRef.current.controller?.abort(); }, []);
-    return (<main className="min-h-screen overflow-x-hidden bg-slate-100 text-slate-950">
+    return (<main className="pp-account-page min-h-screen overflow-x-hidden bg-slate-100 text-slate-950">
       <StoreHeader initialAccountAccess={initialAccountAccess}/>
-      <div className="mx-auto max-w-[1180px] space-y-2 px-2 py-2 md:px-3 lg:space-y-3">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+      <div className="pp-account-content mx-auto max-w-[1180px] space-y-2 px-2 py-2 md:px-3 lg:space-y-3">
+        <header className="pp-account-heading">
+          <div><span className="pp-account-eyebrow">PARTSPRO ACCOUNT</span><h1>{t("nav.account")}</h1><p>{c("这些资料用于账户、订单、税务和配送。")}</p></div>
+          <Button type="button" variant="outline" onClick={() => setProfileDialogOpen(true)}><Pencil className="size-4"/>{c("查看资料")}</Button>
+        </header>
+        <div className="pp-account-workspace">
+        <div className="pp-account-navigation grid grid-cols-[minmax(0,1fr)_auto] gap-2">
           <AccountSectionNav activeSection={activeSection} orderSummaries={orderSummaries} rmaRequests={rmaRequests} onSectionChange={changeSection}/>
-          <NotificationCenter audience={isEmployeeAccount ? "staff" : "customer"} className="h-full min-h-12 w-12"/>
+          <div className="pp-account-notifications"><span>{t("storefront.home.notifications")}</span><NotificationCenter audience={isEmployeeAccount ? "staff" : "customer"} className="h-full min-h-12 w-12" portalClassName="pp-storefront-portal"/></div>
         </div>
-
+        <div className="pp-account-main">
         {shouldShowProfileNotice && profile ? (<AccountProfileNotice forceSetup={forceSetup} profile={profile} onOpen={() => setProfileDialogOpen(true)}/>) : null}
 
         {dataWarning ? (<div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
             <AsyncFeedback state="error" title={c(accountDataWarningLabel(dataWarning, isEmployeeAccount))} actions={<Button variant="outline" onClick={() => router.refresh()}>{c("重试")}</Button>}/>
           </div>) : null}
 
-        <section className="min-w-0" aria-busy={sectionPending || loadedSection !== activeSection}>
+        <section className="pp-account-section min-w-0" aria-busy={sectionPending || loadedSection !== activeSection}>
           {sectionPending || loadedSection !== activeSection ? (<div role="status" className="flex min-h-48 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-500">
               <Loader2 className="size-4 animate-spin"/>{t("common.loading")}
             </div>) : <>
@@ -270,12 +275,13 @@ function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, a
           {activeSection === "service" ? (<ServiceSection orderSummaries={orderSummaries} rmaRequests={rmaRequests}/>) : null}
           </>}
         </section>
-
+        </div>
+        </div>
         <Dialog open={orderDetailOpen} onOpenChange={(open) => { if (!open) {
         detailRequestRef.current.version++;
         detailRequestRef.current.controller?.abort();
     } setOrderDetailOpen(open); }}>
-          <DialogContent className="rounded-lg sm:max-w-3xl">
+          <DialogContent className="pp-storefront-portal pp-account-dialog pp-order-dialog rounded-lg sm:max-w-3xl">
             <DialogHeader>
               <DialogTitle>
                 {orderDetail?.number ?? orderDetail?.id ?? c("订单详情")}
@@ -318,7 +324,7 @@ function AccountOrderDetailPanel({ detail, error, loading, }: {
     }
     const lines = detail.lines ?? [];
     const events = detail.operationHistory ?? [];
-    return (<div className="space-y-4">
+    return (<div className="pp-order-detail space-y-4">
       <div className="grid gap-2 sm:grid-cols-3">
         <DetailTile label={c("状态")} value={c(orderStatusLabel(detail.uiStatus ?? detail.status))}/>
         <DetailTile label={c("付款")} value={c(paymentStatusLabel(detail.paymentStatus))}/>
@@ -457,14 +463,14 @@ function AccountSectionNav({ activeSection, onSectionChange, orderSummaries, rma
             label: c("售后"),
         },
     ];
-    return (<nav className="rounded-lg border border-slate-200 bg-white p-1 shadow-sm" aria-label={c("个人中心分组")}>
+    return (<nav className="pp-account-section-nav rounded-lg border border-slate-200 bg-white p-1 shadow-sm" aria-label={c("个人中心分组")}>
       <div className="grid grid-cols-4 gap-1">
         {sections.map((section) => {
             const Icon = section.icon;
             const active = section.id === activeSection;
             return (<button key={section.id} type="button" className={cn("relative flex h-10 min-w-0 items-center justify-center gap-1 rounded-md px-1 text-xs font-black transition", "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40", active
                     ? "bg-primary text-white shadow-sm"
-                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900")} aria-pressed={active} onClick={() => onSectionChange(section.id)}>
+                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900")} aria-pressed={active} aria-current={active ? "page" : undefined} onClick={() => onSectionChange(section.id)}>
               <Icon className={cn("size-4 shrink-0", active ? "text-white" : "text-primary")}/>
               <span className="truncate">{section.label}</span>
               {section.badge ? (<span className={cn("absolute right-1 top-1 grid min-w-4 place-items-center rounded-full px-1 text-[10px] leading-4", active ? "bg-white text-primary" : "bg-red-500 text-white")}>
@@ -481,7 +487,7 @@ function WalletSection({ wallet }: {
     const c = useAccountCopy();
     const accountDate = useAccountDateTime();
     const recentTransactions = wallet.transactions;
-    return (<Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
+    return (<Card size="sm" className="pp-wallet-section rounded-lg border-slate-200 bg-white shadow-sm">
       <CardHeader className="pb-0">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="flex items-center gap-2 text-sm font-black">
@@ -490,7 +496,7 @@ function WalletSection({ wallet }: {
         </div>
       </CardHeader>
       <CardContent className="grid gap-2 lg:grid-cols-[280px_minmax(0,1fr)]">
-        <div className="rounded-lg border border-blue-100 bg-blue-50/70 p-3">
+        <div className="pp-wallet-balance rounded-lg border border-blue-100 bg-blue-50/70 p-3">
           <div className="text-xs font-bold text-blue-700">{c("可用余额")}</div>
           <div className="mt-1 text-3xl font-black leading-none text-slate-950">
             {formatEuro(wallet.balance)}
@@ -498,7 +504,7 @@ function WalletSection({ wallet }: {
           <div className="mt-2 text-xs font-semibold leading-5 text-slate-500">{c("银行转账订单缺货差价会进入钱包；结算时可勾选使用余额抵扣。")}</div>
         </div>
 
-        <div className="min-w-0 space-y-1.5">
+        <div className="pp-wallet-transactions min-w-0 space-y-1.5">
           <div className="text-xs font-black text-slate-500">{c("最近流水")}</div>
           {recentTransactions.length === 0 ? (<div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-600">{c("暂无钱包流水。")}</div>) : (recentTransactions.map((transaction) => (<div key={transaction.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 rounded-md border border-slate-200 bg-slate-50/70 px-2.5 py-2 text-xs">
                 <div className="min-w-0">
@@ -527,7 +533,7 @@ function OrdersSection({ activeFilter, filteredOrders, onFilterChange, onOpenOrd
     orderSummaries: OrderSummary[];
 }) {
     const c = useAccountCopy();
-    return (<Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
+    return (<Card size="sm" className="pp-orders-section rounded-lg border-slate-200 bg-white shadow-sm">
       <CardHeader className="pb-0">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <CardTitle className="flex flex-wrap items-center gap-2 text-sm font-black">
@@ -537,7 +543,7 @@ function OrdersSection({ activeFilter, filteredOrders, onFilterChange, onOpenOrd
         </div>
       </CardHeader>
       <CardContent className="space-y-2">
-        <div className="flex flex-wrap gap-1.5" aria-label={c("按状态筛选订单")}>
+        <div className="pp-order-filters flex flex-wrap gap-1.5" aria-label={c("按状态筛选订单")}>
           {orderFilters.map((filter) => {
             const count = orderSummaries.filter(filter.predicate).length;
             const isActive = filter.id === activeFilter;
@@ -550,7 +556,7 @@ function OrdersSection({ activeFilter, filteredOrders, onFilterChange, onOpenOrd
 
         {filteredOrders.length === 0 && (<div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs font-semibold text-slate-600">{c("当前筛选下没有订单。切换状态可查看其他记录。")}</div>)}
 
-        {filteredOrders.map((order) => (<div key={order.id} className="grid gap-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-sm md:grid-cols-[minmax(160px,1fr)_110px_minmax(120px,.8fr)_auto] md:items-center">
+        {filteredOrders.map((order) => (<div key={order.id} className="pp-order-row grid gap-2 rounded-lg border border-slate-200 bg-slate-50/70 p-3 text-sm md:grid-cols-[minmax(160px,1fr)_110px_minmax(120px,.8fr)_auto] md:items-center">
             <div className="min-w-0">
               <div className="flex min-w-0 flex-wrap items-center gap-1.5">
                 <span className="font-mono text-sm font-black">{order.id}</span>
@@ -582,7 +588,7 @@ function ServiceSection({ orderSummaries, rmaRequests, }: {
 }) {
     const c = useAccountCopy();
     const rmaStartableOrders = orderSummaries.filter(isRmaStartableOrder).slice(0, 6);
-    return (<div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_360px]">
+    return (<div className="pp-account-service grid gap-2 lg:grid-cols-[minmax(0,1fr)_360px]">
       <Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
         <CardHeader className="pb-0">
           <CardTitle className="flex items-center gap-2 text-sm font-black">
@@ -699,15 +705,15 @@ function AccountSummaryPanel({ company, isEmployeeAccount, onOpenProfile, orderS
         { label: c("税号"), value: profile?.fiscalCode ?? company?.codiceFiscale ?? "-" },
         { label: c("配送"), value: primaryAddress || "-", wide: true },
     ] as const;
-    return (<Card size="sm" className="rounded-lg border-slate-200 bg-white shadow-sm">
+    return (<Card size="sm" className="pp-account-overview rounded-lg border-slate-200 bg-white shadow-sm">
       <CardContent className="space-y-2 p-2.5 sm:p-3">
-        <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="pp-account-identity flex min-w-0 items-start justify-between gap-2">
           <div className="flex min-w-0 items-start gap-2">
             <div className={cn("grid size-9 shrink-0 place-items-center rounded-lg", profile ? "bg-primary/10 text-primary" : "bg-amber-100 text-amber-700")}>
               <Building2 className="size-4"/>
             </div>
             <div className="min-w-0">
-              <h1 className="truncate text-base font-black leading-5">{displayName}</h1>
+              <h2 className="truncate text-base font-black leading-5">{displayName}</h2>
               <p className="mt-0.5 line-clamp-2 text-[11px] font-semibold leading-4 text-slate-500">
                 {profileDescription}
               </p>
@@ -717,7 +723,7 @@ function AccountSummaryPanel({ company, isEmployeeAccount, onOpenProfile, orderS
             <CheckCircle2 className="size-3"/>{c("已验证")}</Badge>
         </div>
 
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="pp-account-metrics grid grid-cols-2 gap-1.5 sm:grid-cols-4">
           <SummaryMetric label={c("资料")} value={profileStatus}/>
           <SummaryMetric label={c("价格类型")} value={(profile?.customerType ?? company?.customerType) === "wholesale" ? c("批发价") : c("零售价")} helper={c("价格类型与会员等级独立")}/>
           <SummaryMetric label={c("基础等级")} value={c(customerLevelLabel(profile?.baseLevel ?? company?.baseLevel ?? level))} helper={(profile?.levelSource ?? company?.levelSource) === "manual" ? c("人工设置") : c("消费累计 / 自购")}/>
@@ -729,11 +735,11 @@ function AccountSummaryPanel({ company, isEmployeeAccount, onOpenProfile, orderS
         </div>
 
         <p className="text-[11px] text-slate-500">{c("有效等级为基础等级与有效促销中较高者。售后退款不额外扣回升级累计，钱包再次购买按订单规则累计。")}</p>
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="pp-account-profile-facts grid grid-cols-2 gap-1.5">
           {summaryRows.map((row) => (<Info key={row.label} label={row.label} value={row.value} className={"wide" in row && row.wide ? "col-span-2" : undefined}/>))}
         </div>
 
-        <div className="grid grid-cols-4 gap-1.5">
+        <div className="pp-account-quick-actions grid grid-cols-2 gap-1.5 sm:grid-cols-4">
           <Button size="xs" className="h-8 px-1 text-[11px]" asChild>
             <Link href="/catalogo">
               <Plus className="size-3.5"/>{c("下单")}</Link>
@@ -758,7 +764,7 @@ function SummaryMetric({ accent = false, helper, label, value, }: {
     label: string;
     value: React.ReactNode;
 }) {
-    return (<div className={cn("min-w-0 rounded-md border px-2 py-1.5", accent ? "border-primary/15 bg-primary/10" : "border-slate-100 bg-slate-50")}>
+    return (<div className={cn("pp-account-metric min-w-0 rounded-md border px-2 py-1.5", accent ? "border-primary/15 bg-primary/10" : "border-slate-100 bg-slate-50")}>
       <div className="truncate text-[10px] font-bold text-slate-400">{label}</div>
       <div className={cn("mt-0.5 truncate text-xs font-black", accent ? "text-primary" : "text-slate-800")}>
         {value}
@@ -783,7 +789,7 @@ function AccountProfileNotice({ forceSetup, onOpen, profile, }: {
         profile.fiscalCode ? null : c("税号"),
     ].filter(Boolean);
     const isPending = profile.status === "pending";
-    return (<Card size="sm" className="rounded-lg border-amber-200 bg-amber-50 shadow-sm">
+    return (<Card size="sm" className="pp-account-profile-notice rounded-lg border-amber-200 bg-amber-50 shadow-sm">
       <CardContent className="flex flex-col gap-3 p-3 text-sm text-amber-950 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="text-sm font-black">
@@ -905,7 +911,7 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
     return (<Dialog open={open} onOpenChange={requestProfileOpenChange}>
       <DialogContent showCloseButton={!saving} onEscapeKeyDown={(event) => { if (saving)
         event.preventDefault(); }} onInteractOutside={(event) => { if (saving)
-        event.preventDefault(); }} scrollLayout="body" className="rounded-lg sm:max-w-3xl" onOpenAutoFocus={() => {
+        event.preventDefault(); }} scrollLayout="body" className="pp-storefront-portal pp-account-dialog pp-profile-dialog rounded-lg sm:max-w-3xl" onOpenAutoFocus={() => {
             openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         }} onCloseAutoFocus={(event) => {
             if (openerRef.current?.isConnected) {
@@ -1000,7 +1006,7 @@ function AddressFields({ addressKey, onChange, title, value, }: {
     function updateField(field: AddressDraftField, nextValue: string) {
         onChange(addressKey, field, field === "postalCode" ? normalizeItalianPostalCode(nextValue) : nextValue);
     }
-    return (<section className="rounded-lg border border-slate-200 bg-white p-3">
+    return (<section className="pp-address-fields rounded-lg border border-slate-200 bg-white p-3">
       <div className="mb-3 text-sm font-black text-slate-700">{title}</div>
       <div className="grid gap-3 sm:grid-cols-3">
         <ProfileInput id={`account-profile-${addressKey}-postalCode`} field="postalCode" label="CAP" inputMode="numeric" maxLength={5} required value={value.postalCode} onChange={updateField}/>
@@ -1017,7 +1023,7 @@ function AddressFields({ addressKey, onChange, title, value, }: {
               <SelectTrigger id={candidateSelectId} className="w-full bg-white">
                 <SelectValue placeholder={c("请选择城市 / Provincia")}/>
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="pp-storefront-portal">
                 {visibleCapMatches.map((match) => (<SelectItem key={getCapMatchValue(match)} value={getCapMatchValue(match)}>
                     {match.city} ({match.provinceCode})
                   </SelectItem>))}
@@ -1163,7 +1169,7 @@ function Info({ className, label, value, }: {
     label: string;
     value: string;
 }) {
-    return (<div className={cn("min-w-0 rounded-md border border-slate-100 bg-slate-50 px-2 py-1.5", className)}>
+    return (<div className={cn("pp-account-info min-w-0 rounded-md border border-slate-100 bg-slate-50 px-2 py-1.5", className)}>
       <div className="truncate text-[11px] font-bold text-slate-400">{label}</div>
       <div className="mt-0.5 truncate text-xs font-semibold text-slate-700" title={value || "-"}>
         {value || "-"}
@@ -1385,7 +1391,7 @@ function AccountHistoryControls({ section, hasMore, pending }: {
             next.delete("q");
         router.replace(`/account?${next}`, { scroll: false });
     }
-    return <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-white p-3">
+    return <div className="pp-account-history-controls flex flex-wrap items-center gap-2 rounded-lg border bg-white p-3">
     {section === "orders" ? <form key={params.get("q")} className="flex min-w-0 flex-1 gap-2" onSubmit={(event) => { event.preventDefault(); navigate(0, String(new FormData(event.currentTarget).get("q") ?? "")); }}><Input name="q" defaultValue={params.get("q") ?? ""} aria-label={c("按订单号搜索")} placeholder={c("订单号")} maxLength={80}/><Button type="submit" disabled={pending}>{c("搜索")}</Button>{params.get("q") ? <Button variant="ghost" type="button" onClick={() => navigate(0, "")}>{c("清除")}</Button> : null}</form> : null}
     <span className="text-xs text-slate-500">{c(`第 ${page+1} 页 · 状态筛选限本页`)}</span><Button variant="outline" disabled={pending || page === 0} onClick={() => navigate(page - 1)}>{c("上一页")}</Button><Button variant="outline" disabled={pending || !hasMore} onClick={() => navigate(page + 1)}>{c("下一页")}</Button>
   </div>;

@@ -95,6 +95,7 @@ export function SupportChatPanel({ onClose, draft, onDraftChange, onConversation
   const [loading, setLoading] = React.useState(false);
   const [sending, setSending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [sendFailed, setSendFailed] = React.useState(false);
   const [accessError, setAccessError] = React.useState<SupportApiError | null>(null);
   const [conversation, setConversation] =
     React.useState<SupportConversation | null>(null);
@@ -230,6 +231,7 @@ export function SupportChatPanel({ onClose, draft, onDraftChange, onConversation
     }
 
     setSending(true);
+    setSendFailed(false);
     setError(null);
 
     try {
@@ -262,6 +264,7 @@ export function SupportChatPanel({ onClose, draft, onDraftChange, onConversation
       setLoaded(true);
       onDraftChange("");
     } catch (sendError) {
+      setSendFailed(true);
       setError(sendError instanceof Error ? sendError.message : copy.unavailable);
     } finally {
       setSending(false);
@@ -273,7 +276,7 @@ export function SupportChatPanel({ onClose, draft, onDraftChange, onConversation
     return () => window.clearTimeout(timer);
   }, [loaded]);
 
-  const canUseComposer = loaded && !accessError && (!error || messages.length > 0);
+  const canUseComposer = loaded && !accessError && (!error || sendFailed || messages.length > 0);
 
   return (
     <section ref={panelRef} role="dialog" aria-modal="false" aria-label={copy.headerTitle} tabIndex={-1} className="flex h-[min(620px,var(--support-widget-panel-height,calc(100dvh-2rem)))] w-[min(390px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.22)]">

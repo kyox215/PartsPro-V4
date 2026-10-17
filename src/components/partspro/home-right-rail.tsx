@@ -14,7 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { formatMoney } from "@/i18n/format";
 import { translateText } from "@/i18n/dictionaries/auto-translate";
 import { tx } from "@/i18n/dictionaries/storefront";
-import { PartVisual } from "./part-visual";
+import { StorefrontProductImage } from "./storefront-product-image";
 import { useCart } from "./cart-state";
 import { useI18n, useT } from "./i18n-provider";
 
@@ -33,7 +33,7 @@ export function HomeRightRail() {
         );
 
   return (
-    <aside className="hidden space-y-4 xl:block">
+    <aside className="pp-home-right-rail hidden space-y-4 xl:block">
       <section id="cart" className="rounded-lg border border-slate-200 bg-white p-4 shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="font-black">
@@ -48,7 +48,7 @@ export function HomeRightRail() {
 
               return (
                 <div key={line.sku} className="flex gap-3">
-                  <PartVisual variant={line.product.visual} className="size-12 shrink-0 rounded-md" />
+                  <StorefrontProductImage product={line.product} sizes="56px" className="size-14 shrink-0 rounded-lg bg-slate-50" imageClassName="object-contain p-1.5" />
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-xs font-bold">{productName}</div>
                     <div className="mt-1 text-[11px] text-slate-500">{line.sku}</div>
@@ -115,7 +115,7 @@ export function HomeRightRail() {
         </div>
         <div className="mt-3 grid grid-cols-2 gap-2">
           <Button variant="outline" size="sm" asChild>
-            <Link href="/account">{tx(t, "nav.orders", "Ordini")}</Link>
+            <Link href="/account?section=orders">{tx(t, "nav.orders", "Ordini")}</Link>
           </Button>
           <Button variant="outline" size="sm" asChild>
             <Link href="/rma">{tx(t, "storefront.rma.linkLabel", "Assistenza")}</Link>

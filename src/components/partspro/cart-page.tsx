@@ -83,7 +83,7 @@ import {
   useCartSyncStatus,
 } from "./cart-sync-bridge";
 import { useI18n, useT } from "./i18n-provider";
-import { OrderSummaryCard } from "./order-summary-card";
+import { CommerceProgress, OrderSummaryCard } from "./order-summary-card";
 import { ProductImagePreviewDialog } from "./product-image-preview-dialog";
 import {
   StorefrontSyncStatusBar,
@@ -612,7 +612,7 @@ function CartPageContent({
   }, []);
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
+    <main className="pp-cart-page min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
       <StoreHeader
         assistedCompanyId={assistedCompanyId}
         initialAccountAccess={initialAccountAccess}
@@ -621,9 +621,10 @@ function CartPageContent({
         maxWidthClassName="max-w-[1360px]"
         state={cartSyncBanner}
       />
-      <div className="mx-auto grid max-w-[1360px] gap-2 px-2 pt-2 pb-[calc(5.25rem_+_env(safe-area-inset-bottom))] sm:gap-4 sm:px-4 sm:pt-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-3 lg:pt-3 lg:pb-4">
+      <CommerceProgress step={1} />
+      <div className="pp-commerce-layout mx-auto grid max-w-[1360px] gap-2 px-2 pt-2 pb-[calc(5.25rem_+_env(safe-area-inset-bottom))] sm:gap-4 sm:px-4 sm:pt-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-3 lg:pt-3 lg:pb-4">
         <section className="space-y-2 sm:space-y-4 lg:space-y-3">
-          <div className="flex flex-wrap items-start justify-between gap-2 sm:gap-3 lg:items-center">
+          <div className="pp-commerce-heading flex flex-wrap items-start justify-between gap-2 sm:gap-3 lg:items-center">
             <div className="min-w-0">
               <Badge className="mb-1 hidden h-5 border border-primary/20 bg-primary/8 px-2 text-[11px] text-primary lg:inline-flex">
                 {tx(t, "storefront.cart.badge", "Carrello clienti")}
@@ -631,6 +632,7 @@ function CartPageContent({
               <h1 className="text-xl font-black tracking-normal sm:text-3xl md:text-4xl lg:text-3xl">
                 {tx(t, "storefront.cart.title", "Conferma prodotti e quantità")}
               </h1>
+              <p className="pp-commerce-intro">{locale === "zh-CN" ? "核对配件、数量与客户报价，准备下一笔采购。" : "Ricambi, quantità e prezzi dedicati, pronti per il prossimo ordine."}</p>
             </div>
             {cart.items.length > 0 && (
               <Button
@@ -1588,7 +1590,7 @@ const CartLineMobileRow = React.memo(function CartLineMobileRow({
   const priceDisplay = getProductPriceDisplay(line.product);
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 border-b border-slate-100 px-2.5 py-2 last:border-b-0">
+    <div className="pp-cart-mobile-line grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 border-b border-slate-100 px-2.5 py-2 last:border-b-0">
       <CartProductDetailsTrigger
         product={line.product}
         quantity={line.quantity}
@@ -1627,7 +1629,7 @@ const CartLineMobileRow = React.memo(function CartLineMobileRow({
           </div>
         </div>
       </CartProductDetailsTrigger>
-      <div className="grid min-w-[92px] justify-items-end gap-1 text-right">
+      <div className="pp-cart-line-actions grid min-w-[92px] justify-items-end gap-1 text-right">
         <div>
           <div className="whitespace-nowrap text-[13px] font-black leading-4">
             {formatMoney(line.lineTotal, locale)}
@@ -1719,7 +1721,7 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
   const stockMeta = publicStockLevelMeta(t, line.product);
 
   return (
-    <Card size="sm" className="rounded-lg border-slate-200 bg-white">
+    <Card size="sm" className="pp-cart-desktop-line rounded-lg border-slate-200 bg-white">
       <CardContent className="grid grid-cols-[minmax(0,1fr)_190px] items-center gap-3 p-2.5">
         <CartProductDetailsTrigger
           product={line.product}
@@ -2197,7 +2199,7 @@ function CartProductDetailsDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
-        <DialogContent className="max-h-[calc(100dvh-1rem)] max-w-[calc(100vw-1rem)] overflow-y-auto p-3 sm:max-w-2xl sm:p-4">
+        <DialogContent className="pp-storefront-portal max-h-[calc(100dvh-1rem)] max-w-[calc(100vw-1rem)] overflow-y-auto p-3 sm:max-w-2xl sm:p-4">
           <DialogHeader className="pr-10">
             <DialogTitle className="text-base font-black leading-6 text-slate-950 sm:text-lg">
               {tx(t, "storefront.cart.detailsTitle", "Dettaglio prodotto")}

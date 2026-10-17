@@ -23,8 +23,9 @@ import {
   preorderEtaLabel,
 } from "@/lib/partspro-preorder-contract";
 import { cn } from "@/lib/utils";
-import { addCartItem, useStoredCartItems } from "./cart-state";
-import { useT } from "./i18n-provider";
+import { addCartItem, readClientStoredCartItems, useStoredCartItems } from "./cart-state";
+import { cartHasPurchaseKindConflict } from "./commerce-feedback";
+import { useI18n, useT } from "./i18n-provider";
 import {
   ProductCartQuantityControl,
   useProductCartQuantity,
@@ -45,6 +46,8 @@ export function ProductDetailPurchasePanel({
   product,
 }: ProductDetailPurchasePanelProps) {
   const t = useT();
+  const { locale } = useI18n();
+  const [mixedCartRejected, setMixedCartRejected] = useState(false);
   const router = useRouter();
   const minimumQuantity = Math.max(product.moq, 1);
   const purchaseKind = getProductPurchaseKind(product);
@@ -84,7 +87,11 @@ export function ProductDetailPurchasePanel({
     safeQuantity: activeQuantity,
     stockAvailable,
   });
-  const addFailedHint = tx(
+  const addFailedHint = mixedCartRejected
+    ? locale === "zh-CN"
+      ? "现货与预售需要分开下单。请先完成当前购物车，再采购另一类商品。"
+      : "Articoli disponibili e preordini richiedono ordini separati. Completa prima il carrello attuale."
+    : tx(
     t,
     "storefront.product.purchase.addFailedHint",
     "Carrello non sincronizzato. Aggiorna la pagina o accedi di nuovo."
@@ -111,13 +118,14 @@ export function ProductDetailPurchasePanel({
 
   function addCurrentQuantityToCart() {
     const didAdd = safeAddCartItem(product.sku, safeQuantity, [product]);
+    setMixedCartRejected(!didAdd && cartHasPurchaseKindConflict(product, readClientStoredCartItems()));
     setAddFeedbackState(didAdd ? "success" : "error");
 
     if (addFeedbackTimerRef.current) {
       window.clearTimeout(addFeedbackTimerRef.current);
     }
 
-    addFeedbackTimerRef.current = window.setTimeout(() => {
+    if (didAdd) addFeedbackTimerRef.current = window.setTimeout(() => {
       setAddFeedbackState("idle");
     }, 1400);
 
@@ -144,13 +152,11 @@ export function ProductDetailPurchasePanel({
 
   function renderPurchaseActions() {
     return (
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="pp-product-purchase-actions grid grid-cols-1 gap-2 sm:grid-cols-2" data-support-offset="mobile-action-bar">
         {isInCart ? (
-          <ProductCartQuantityControl
-            className="min-w-0"
-            density="detail"
-            product={product}
-          />
+          <Button variant="outline" className="min-h-11 min-w-0 bg-white" asChild>
+            <Link href={checkoutHref.replace(/^\/checkout(?=\?|$)/, "/carrello")}><ShoppingCart className="size-4" /><span>{locale === "zh-CN" ? "查看购物车" : "Vedi il carrello"}</span></Link>
+          </Button>
         ) : canOrder ? (
           <Button
             type="button"
@@ -267,6 +273,12 @@ export function ProductDetailPurchasePanel({
             </span>
           </Button>
         )}
+        {addFeedbackState === "error" ? (
+          <div className="flex items-start gap-2 rounded-md border border-red-100 bg-red-50 px-2.5 py-2 text-xs font-semibold leading-5 text-red-700" role="alert">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <div><span>{addFailedHint}</span>{mixedCartRejected ? <Link className="mt-1 block font-semibold underline underline-offset-4" href={checkoutHref.replace(/^\/checkout(?=\?|$)/, "/carrello")}>{locale === "zh-CN" ? "查看当前购物车" : "Vedi il carrello attuale"}</Link> : null}</div>
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -274,13 +286,13 @@ export function ProductDetailPurchasePanel({
   return (
     <div
       className={cn(
-        "mt-2 rounded-lg border p-2",
+        "pp-product-purchase mt-2 rounded-lg border p-2",
         isPreorder
           ? "border-violet-200 bg-violet-50/80"
           : "border-primary/20 bg-primary/8"
       )}
     >
-      <div className="grid gap-2 lg:grid-cols-[minmax(260px,360px)_minmax(240px,1fr)] xl:grid-cols-[minmax(280px,380px)_minmax(260px,1fr)]">
+      <div className="pp-product-purchase-grid grid gap-2 lg:grid-cols-[minmax(260px,360px)_minmax(240px,1fr)] xl:grid-cols-[minmax(280px,380px)_minmax(260px,1fr)]">
         <div className="space-y-1.5">
           {isInCart ? (
             <div>
@@ -295,6 +307,7 @@ export function ProductDetailPurchasePanel({
                   { quantity: cartQuantity }
                 )}
               </div>
+              <ProductCartQuantityControl className="mt-2 min-w-0" density="detail" product={product} />
             </div>
           ) : (
             <div>
@@ -366,7 +379,7 @@ export function ProductDetailPurchasePanel({
           <p className="text-xs leading-5 text-slate-600">{txFormat(t,"storefront.ux.checkoutIncludes","Il checkout include tutto il carrello, compresi {count} altri articoli.",{count:otherItems})}</p>
         </div>
 
-        <div className="rounded-md border border-primary/15 bg-white p-2">
+        <div className="pp-product-quote rounded-md border border-primary/15 bg-white p-2">
           {showQuoteSummary ? (
             <>
               <div className="flex items-center gap-2 text-xs font-black text-slate-950">
@@ -414,12 +427,8 @@ export function ProductDetailPurchasePanel({
                   />
                 </div>
               </div>
-              <div className="mt-1.5 line-clamp-2 text-[10px] font-semibold leading-4 text-slate-500">
-                {tx(
-                  t,
-                  "storefront.product.purchase.quoteLocalNote",
-                  "Preventivo locale: lo stock viene controllato lato interfaccia prima dell'invio."
-                )}
+              <div className="pp-product-quote-note mt-1.5 text-xs leading-5 text-slate-500">
+                {locale === "zh-CN" ? "当前商品估算金额，价格和库存会在结账时重新核对。" : "Stima per questo articolo. Prezzi e disponibilità vengono verificati al checkout."}
               </div>
             </>
           ) : canRequestRestock ? (
@@ -455,15 +464,6 @@ export function ProductDetailPurchasePanel({
           )}
         </div>
       </div>
-      {addFeedbackState === "error" ? (
-        <div
-          className="mt-2 flex items-start gap-2 rounded-md border border-red-100 bg-red-50 px-2.5 py-2 text-xs font-semibold leading-5 text-red-700"
-          role="alert"
-        >
-          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-          <span>{addFailedHint}</span>
-        </div>
-      ) : null}
     </div>
   );
 }

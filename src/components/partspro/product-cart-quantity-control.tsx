@@ -81,7 +81,7 @@ export function ProductCartQuantityControl({
   const iconSize = density === "detail" ? "size-4" : "size-3.5";
 
   return (
-    <div className={cn("min-w-0", density === "card" && "shrink-0", className)}>
+    <div className={cn("pp-cart-quantity min-w-0", density === "card" && "shrink-0", className)}>
       {showLabel ? (
         <div className="mb-1 truncate text-xs font-bold uppercase text-primary/70">
           {tx(t, "storefront.product.quantity.inCart", "Nel carrello")}
@@ -89,7 +89,7 @@ export function ProductCartQuantityControl({
       ) : null}
       <div
         className={cn(
-          "inline-flex min-w-0 items-center justify-between overflow-hidden border bg-white shadow-sm",
+          "pp-cart-quantity-stepper inline-flex min-w-0 items-center justify-between overflow-hidden border bg-white shadow-sm",
           density === "detail"
             ? "min-h-11 w-full rounded-lg border-primary/20"
             : "min-h-11 w-36 rounded-md border-slate-200",

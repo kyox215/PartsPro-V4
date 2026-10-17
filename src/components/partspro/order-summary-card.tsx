@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Loader2, ShoppingBag } from "lucide-react";
+import { Check, Loader2, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -45,6 +45,16 @@ export function OrderSummaryCard({
   }
 
   return <ConnectedOrderSummaryCard {...props} />;
+}
+
+export function CommerceProgress({ step }: { step: 1 | 2 | 3 }) {
+  const { locale } = useI18n();
+  const labels = locale === "zh-CN" ? ["购物车", "核对订单", "订单已提交"] : ["Carrello", "Conferma ordine", "Ordine inviato"];
+  return (
+    <nav className="pp-commerce-progress" aria-label={locale === "zh-CN" ? "采购进度" : "Avanzamento acquisto"}>
+      <ol>{labels.map((label, index) => <li key={label} aria-current={index + 1 === step ? "step" : undefined} data-complete={index + 1 < step || undefined}><span className="pp-commerce-step-number">{index + 1 < step ? <Check aria-hidden="true" /> : index + 1}</span><span>{label}</span></li>)}</ol>
+    </nav>
+  );
 }
 
 function ConnectedOrderSummaryCard({
@@ -112,7 +122,7 @@ function OrderSummaryCardView({
     <Card
       size={compact ? "sm" : "default"}
       className={cn(
-        "h-fit border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)]",
+        "pp-order-summary h-fit border-slate-200 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.05)]",
         sticky && "lg:sticky lg:top-28"
       )}
     >
@@ -171,7 +181,7 @@ function OrderSummaryCardView({
             />
           </>
         )}
-        <div className={compact ? "rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] font-semibold leading-4 text-amber-900" : "rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900"}>
+        <div className={cn("pp-summary-note", compact ? "rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] font-semibold leading-4 text-amber-900" : "rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900")}>
           {summaryStatusNote}
         </div>
         {(showCheckoutAction || showContinueAction) && (

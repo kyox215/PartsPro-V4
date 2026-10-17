@@ -32,7 +32,7 @@ export function StorefrontSyncStatusBar({
       aria-live="polite"
       aria-atomic="true"
       className={cn(
-        "sticky inset-x-0 top-14 z-40 border-b bg-white/95 shadow-[0_12px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:top-16",
+        "pp-commerce-sync sticky inset-x-0 top-14 z-40 border-b bg-white/95 shadow-[0_12px_30px_rgba(15,23,42,0.08)] backdrop-blur-xl sm:top-16",
         tone === "info" && "border-blue-100",
         tone === "warning" && "border-amber-100",
         tone === "error" && "border-red-100"

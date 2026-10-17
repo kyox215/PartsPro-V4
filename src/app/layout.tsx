@@ -5,10 +5,15 @@ import { CartSyncBridge } from "@/components/partspro/cart-sync-bridge";
 import { I18nProvider } from "@/components/partspro/i18n-provider";
 import { SupportWidget } from "@/components/partspro/support-widget";
 import { PublicSiteAnalytics } from "@/components/partspro/public-site-analytics";
+import { StorefrontThemeBoundary } from "@/components/partspro/storefront-theme-boundary";
 import { getDictionary } from "@/i18n/get-dictionary";
 import { getRequestI18n } from "@/i18n/request";
 import { getPartsProSiteUrl } from "@/lib/partspro-site-url";
 import "./globals.css";
+import "./storefront-ui.css";
+import "./catalog-ui.css";
+import "./account-ui.css";
+import "./commerce-ui.css";
 
 export const viewport: Viewport = {
   themeColor: "#0f172a",
@@ -74,9 +79,13 @@ export default async function RootLayout({
       <body className="min-h-full flex flex-col">
         <CatalogDirectoryProvider><I18nProvider locale={locale} scope={scope} dictionary={dictionary}>
           <CartSyncBridge />
-          <SupportWidget />
           <PublicSiteAnalytics />
-          <TooltipProvider delayDuration={120}>{children}</TooltipProvider>
+          <TooltipProvider delayDuration={120}>
+            <StorefrontThemeBoundary>
+              {children}
+              <SupportWidget />
+            </StorefrontThemeBoundary>
+          </TooltipProvider>
         </I18nProvider></CatalogDirectoryProvider>
       </body>
     </html>

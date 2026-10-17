@@ -86,7 +86,7 @@ import {
   useCartSyncStatus,
 } from "./cart-sync-bridge";
 import { useI18n, useT } from "./i18n-provider";
-import { OrderSummaryCard } from "./order-summary-card";
+import { CommerceProgress, OrderSummaryCard } from "./order-summary-card";
 import {
   StorefrontSyncStatusBar,
   type StorefrontSyncStatusState,
@@ -956,9 +956,10 @@ function CheckoutClientContent({
       <StorefrontSyncStatusBar state={checkoutSyncState} />
       <main
         aria-busy={Boolean(checkoutSyncState)}
-        className="min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950"
+        className="pp-checkout-page min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950"
       >
-        <div className="mx-auto grid max-w-[1460px] gap-2.5 px-2 pt-2 pb-[calc(5.75rem_+_env(safe-area-inset-bottom))] sm:px-4 sm:pt-3 lg:grid-cols-[minmax(0,1fr)_330px] lg:gap-3 lg:pb-6">
+        <CommerceProgress step={submitState.status === "success" ? 3 : 2} />
+        <div className="pp-commerce-layout mx-auto grid max-w-[1460px] gap-2.5 px-2 pt-2 pb-[calc(5.75rem_+_env(safe-area-inset-bottom))] sm:px-4 sm:pt-3 lg:grid-cols-[minmax(0,1fr)_330px] lg:gap-3 lg:pb-6">
           <section className="space-y-2">
           <CheckoutHeader cartHref={cartHref} runtime={runtime} company={selectedCompany} />
           <fieldset disabled={submissionLocked} inert={submissionLocked} className="contents">
@@ -1086,7 +1087,7 @@ function CheckoutHeader({
   const t = useT();
 
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+    <div className="pp-commerce-heading pp-checkout-heading flex flex-wrap items-start justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
       <div className="flex min-w-0 items-start gap-3">
         <Button asChild variant="outline" size="icon" className="size-9 shrink-0 bg-white" title={tx(t, "storefront.checkout.backToCart", "Torna al carrello")}>
           <Link href={cartHref} aria-label={tx(t, "storefront.checkout.backToCart", "Torna al carrello")}>
@@ -1393,7 +1394,7 @@ function DelegatedCustomerSelector({
             </PopoverTrigger>
             <PopoverContent
               align="end"
-              className="w-[min(680px,calc(100vw-2rem))] gap-2 p-2"
+              className="pp-storefront-portal w-[min(680px,calc(100vw-2rem))] gap-2 p-2"
             >
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -1981,7 +1982,7 @@ function CheckoutSubmitPanel({
   const t = useT();
 
   return (
-    <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
+    <div className="pp-checkout-submit space-y-3 rounded-lg border border-slate-200 bg-white p-4 shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
       <Button
         type="button"
         className="h-11 w-full min-w-0 gap-2"
@@ -2089,7 +2090,7 @@ function OrderSuccess({ message, order }: { message: string; order: OrderResult 
       </div>
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
         <Button asChild className="bg-emerald-700 hover:bg-emerald-700">
-          <Link href="/account">{tx(t, "storefront.checkout.success.openOrders", "Vai agli ordini")}</Link>
+          <Link href={`/account?section=orders&orderId=${encodeURIComponent(order.id)}`}>{tx(t, "storefront.checkout.success.openOrders", "Vai agli ordini")}</Link>
         </Button>
         <Button asChild variant="outline" className="border-emerald-200 bg-white/70 text-emerald-800">
           <Link href="/catalogo">{tx(t, "storefront.common.continueShopping", "Continua acquisti")}</Link>
@@ -2126,7 +2127,7 @@ function CheckoutSuccessDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent scrollLayout="body" className="max-w-[calc(100vw-1.5rem)] gap-0 overflow-hidden p-0 sm:max-w-md">
+      <DialogContent scrollLayout="body" className="pp-storefront-portal max-w-[calc(100vw-1.5rem)] gap-0 overflow-hidden p-0 sm:max-w-md">
         <div className="shrink-0 bg-emerald-50 px-4 pt-5 pb-4 text-emerald-950 sm:px-5">
           <DialogHeader className="pr-9">
             <div className="mb-1 flex size-11 items-center justify-center rounded-full bg-emerald-600 text-white">
@@ -2189,7 +2190,7 @@ function CheckoutSuccessDialog({
             <Link href="/catalogo">{tx(t, "storefront.common.continueShopping", "Continua acquisti")}</Link>
           </Button>
           <Button asChild className="bg-emerald-700 hover:bg-emerald-700 sm:col-span-1">
-            <Link href="/account">{tx(t, "storefront.checkout.success.openOrders", "Vai agli ordini")}</Link>
+            <Link href={`/account?section=orders&orderId=${encodeURIComponent(order.id)}`}>{tx(t, "storefront.checkout.success.openOrders", "Vai agli ordini")}</Link>
           </Button>
         </div>
       </DialogContent>

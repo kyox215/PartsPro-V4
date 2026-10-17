@@ -8,7 +8,7 @@ import { createLatestRequest } from "@/lib/latest-request.mjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { AlertTriangle, Grid3X3, Loader2, RotateCcw } from "lucide-react";
+import { AlertTriangle, ChevronRight, Grid3X3, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -23,7 +23,7 @@ import {
   hrefWithAssistedCompanyId,
   rememberAssistedCompanyId,
 } from "@/lib/partspro-assisted-order";
-import { categoryLabel, tx, txFormat } from "@/i18n/dictionaries/storefront";
+import { brandLabel, catalogDepartmentLabel, categoryLabel, tx, txFormat } from "@/i18n/dictionaries/storefront";
 import { inferDeviceModelSeries } from "@/lib/partspro-device-series";
 import type {
   PriceVisibilityReason,
@@ -492,7 +492,7 @@ function CatalogPageContent({
   }
 
   return (
-    <main className="min-h-screen overflow-x-clip bg-[#f4f6fa] text-slate-950">
+    <main className="pp-catalog-page min-h-screen overflow-x-clip bg-[#f4f6fa] text-slate-950">
       <QuoteExpiryRefresh products={products} />
       <StoreHeader
         assistedCompanyId={assistedCompanyId}
@@ -501,8 +501,8 @@ function CatalogPageContent({
         onCatalogSelect={selectCatalog}
         selectedCatalog={selectedCatalog}
       />
-      <div className="mx-auto grid max-w-[1500px] gap-4 px-3 py-3 sm:px-4 sm:py-4 lg:grid-cols-[300px_minmax(0,1fr)]">
-        <aside className="hidden lg:block">
+      <div className="pp-catalog-layout">
+        <aside className="pp-browse-sidebar hidden lg:block">
           <CatalogNavigationSidebar
             assistedCompanyId={assistedCompanyId}
             departmentGroups={departmentGroups}
@@ -515,7 +515,8 @@ function CatalogPageContent({
           />
         </aside>
 
-        <section className="min-w-0 space-y-3">
+        <section className="pp-catalog-results min-w-0">
+          <nav className="pp-catalog-breadcrumb" aria-label={tx(t, "storefront.ux.browseCatalog", "Sfoglia catalogo")}><Link href="/">{tx(t, "nav.home", "Home")}</Link><ChevronRight className="size-3" /><span>{tx(t, "storefront.ux.browseCatalog", "Sfoglia catalogo")}</span>{selectedBrand ? <><ChevronRight className="size-3" /><span>{brandLabel(t, selectedBrand)}</span></> : null}</nav>
           {assistedCompanyId ? (
             <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900">
               {assistedCompanyName
@@ -546,15 +547,17 @@ function CatalogPageContent({
               {tx(t, "storefront.catalog.filtering", "Filtro in corso...")}
             </div>
           ) : null}
-          <div className="space-y-2 rounded-lg border bg-white p-3">
-            <h1 className="break-words text-lg font-bold">{searchQuery || searchTerm ? txFormat(t,"storefront.ux.searchResults","Risultati per “{query}”",{query:searchQuery || searchTerm}) : tx(t,"storefront.ux.browseCatalog","Sfoglia catalogo")}</h1>
-            <p className="text-sm text-slate-600" role="status">{txFormat(t,"storefront.ux.resultCount","{loaded} di {total} SKU caricati",{loaded:products.length,total:filteredTotal})}</p>
-            <div className="flex flex-wrap items-center gap-2">
-              {(["searchQuery","model","brand","category","department","modelSeries"] as const).map(key => selectedCatalog[key] ? <Button key={key} type="button" size="sm" variant="outline" className="max-w-full whitespace-normal" onClick={() => selectCatalog({...selectedCatalog,[key]:undefined})}>{key === "category" ? categoryLabel(t,String(selectedCatalog[key])) : String(selectedCatalog[key])} ×<span className="sr-only">{tx(t,"storefront.ux.removeFilter","Rimuovi filtro")}</span></Button> : null)}
+          <div className="pp-catalog-toolbar">
+            <h1 className="pp-catalog-title break-words">{searchQuery || searchTerm ? txFormat(t,"storefront.ux.searchResults","Risultati per “{query}”",{query:searchQuery || searchTerm}) : tx(t,"storefront.ux.browseCatalog","Sfoglia catalogo")}</h1>
+            <p className="pp-catalog-count" role="status">{txFormat(t,"storefront.ux.resultCount","{loaded} di {total} SKU caricati",{loaded:products.length,total:filteredTotal})}</p>
+            <p className="pp-catalog-description">{tx(t, "storefront.ui.catalog.subtitle", "Filtra i risultati e verifica la compatibilità prima di acquistare.")}</p>
+            <div className="pp-catalog-filter-chips">
+              {(["searchQuery","model","brand","category","department","modelSeries"] as const).map(key => selectedCatalog[key] ? <Button key={key} type="button" size="sm" variant="outline" className="max-w-full whitespace-normal" onClick={() => selectCatalog({...selectedCatalog,[key]:undefined})}>{key === "category" ? categoryLabel(t,String(selectedCatalog[key])) : key === "department" ? catalogDepartmentLabel(t, selectedCatalog[key] as CatalogDepartment) : key === "brand" ? brandLabel(t,String(selectedCatalog[key])) : String(selectedCatalog[key])} ×<span className="sr-only">{tx(t,"storefront.ux.removeFilter","Rimuovi filtro")}</span></Button> : null)}
               <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm"><input type="checkbox" checked={inStockOnly} onChange={event => selectCatalog({...selectedCatalog,inStockOnly:event.target.checked})} className="size-5 accent-primary" />{tx(t,"storefront.ux.inStockOnly","Solo disponibili")}</label>
               <Button type="button" variant="ghost" size="sm" onClick={clearAll}>{tx(t,"storefront.catalog.clearFilters","Cancella filtri")}</Button>
             </div>
-            <label htmlFor="catalog-sort" className="flex min-w-0 flex-wrap items-center gap-2 text-sm">
+            <div className="pp-catalog-selects">
+            <label htmlFor="catalog-sort" className="pp-catalog-sort">
               <span>{locale.startsWith("zh") ? "排序" : "Ordina per"}</span>
               <select id="catalog-sort" value={sort} className="h-11 w-full min-w-0 rounded border bg-white px-2 sm:w-64" onChange={event => selectCatalog({ ...selectedCatalog, sort: normalizeCatalogSort(event.target.value) })}>
                 <option value="stock_desc">{locale.startsWith("zh") ? "现货优先（默认）" : "Disponibilità (predefinito)"}</option>
@@ -562,17 +565,18 @@ function CatalogPageContent({
                 <option value="updated_desc">{locale.startsWith("zh") ? "最近更新" : "Aggiornati di recente"}</option>
               </select>
             </label>
-          </div>
-          <label className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border bg-white p-3 text-sm">
+          <label className="pp-catalog-category-filter">
             <span>{locale.startsWith("zh") ? "商品分类" : "Categoria"}</span>
-            <select aria-label={locale.startsWith("zh") ? "商品分类" : "Categoria"} className="h-10 w-full min-w-0 rounded border bg-white px-2 sm:w-64" value={selectedCategory ?? ""} onChange={(e) => selectCatalog({ ...selectedCatalog, category: e.target.value || undefined })}>
+            <select aria-label={locale.startsWith("zh") ? "商品分类" : "Categoria"} className="h-11 w-full min-w-0 rounded border bg-white px-2 sm:w-64" value={selectedCategory ?? ""} onChange={(e) => selectCatalog({ ...selectedCatalog, category: e.target.value || undefined })}>
               <option value="">{locale.startsWith("zh") ? "全部分类" : "Tutte le categorie"}</option>
               {directory.nodes.filter((n) => n.kind === "category" && n.active && (!selectedDepartment || (n.countsByDepartment[selectedDepartment] ?? 0) > 0)).map((n) => <option key={n.id} value={n.value}>{locale.startsWith("zh") && /^[\x00-\x7F]+$/.test(n.nameZh) ? categoryLabel(t,n.nameIt) : catalogNodeLabel(n, locale)}</option>)}
               {selectedCategory && !directory.nodes.some((n) => n.kind === "category" && n.value === selectedCategory) && <option value={selectedCategory}>{selectedCategory}</option>}
             </select>
           </label>
+            </div>
+          </div>
           {products.length > 0 || catalogReplacing ? (
-            <div className="space-y-3">
+            <div className="pp-catalog-products space-y-3">
               <div
                 className="relative min-h-[320px]"
                 aria-busy={catalogReplacing}
@@ -583,7 +587,7 @@ function CatalogPageContent({
                     inert={catalogReplacing}
                     aria-hidden={catalogReplacing || undefined}
                     className={cn(
-                      "partspro-catalog-grid transition-opacity duration-150 motion-reduce:transition-none",
+                      "pp-product-grid partspro-catalog-grid transition-opacity duration-150 motion-reduce:transition-none",
                       catalogReplacing && "opacity-45"
                     )}
                   >
@@ -644,7 +648,7 @@ function CatalogPageContent({
               )}
             </div>
           ) : (
-            <Card className="rounded-lg border-slate-200 bg-white">
+            <Card className="pp-catalog-empty rounded-lg border-slate-200 bg-white">
               <CardContent className="flex flex-col items-start gap-3 p-6 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <div className="text-lg font-black">
@@ -716,8 +720,8 @@ function CatalogNavigationSidebar({
   const t = useT();
 
   return (
-    <div className="sticky top-20 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
-      <div className="mb-3 flex items-center justify-between gap-3 px-1">
+    <div className="pp-browse-sidebar-surface sticky top-20 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white">
+      <div className="pp-sidebar-heading flex items-center justify-between gap-3">
         <div className="min-w-0">
           <h2 className="truncate text-sm font-black">
             {tx(t, "storefront.home.sidebar.title", "Catalogo rapido")}
@@ -789,7 +793,7 @@ function CatalogLoadErrorBanner({
 
 function CatalogProductSkeletonGrid({ count }: { count: number }) {
   return (
-    <div className="partspro-catalog-grid">
+    <div className="pp-product-grid partspro-catalog-grid">
       {Array.from({ length: count }, (_, index) => (
         <div
           key={index}

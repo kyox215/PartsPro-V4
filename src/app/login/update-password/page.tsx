@@ -17,5 +17,5 @@ export default async function UpdatePasswordPage({searchParams}:{searchParams:Pr
   const client=await createClient(); const {data:{user},error}=await client.auth.getUser();
   if (error || !user || (await cookies()).get(PASSWORD_RECOVERY_COOKIE)?.value !== user.id) redirect(failure);
   const {locale}=await getRequestI18n(); const dictionary=getDictionary(locale); const t=(key:string)=>translate(dictionary,key);
-  return <main className="min-h-screen bg-[#f4f6fa]"><StoreHeader /><div className="mx-auto max-w-[440px] px-3 py-5"><Card><CardHeader><CardTitle>{tx(t,"storefront.ux.newPassword","Nuova password")}</CardTitle></CardHeader><CardContent><PasswordRecoveryUpdate next={next} /></CardContent></Card></div></main>;
+  return <main className="pp-auth-page pp-recovery-page min-h-screen bg-[#f4f6fa]"><StoreHeader /><div className="pp-recovery-layout mx-auto max-w-[440px] px-3 py-5"><Card className="pp-auth-card"><CardHeader><span className="pp-account-eyebrow">PARTSPRO ACCOUNT</span><CardTitle><h1>{tx(t,"storefront.ux.newPassword","Nuova password")}</h1></CardTitle></CardHeader><CardContent><PasswordRecoveryUpdate next={next} /></CardContent></Card></div></main>;
 }

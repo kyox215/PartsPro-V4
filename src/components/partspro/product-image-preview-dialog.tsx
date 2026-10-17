@@ -27,7 +27,7 @@ export function ProductImagePreviewDialog({
 }: ProductImagePreviewDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[calc(100vw-1.5rem)] gap-3 p-3 sm:max-w-3xl">
+      <DialogContent className="pp-storefront-portal pp-product-preview max-w-[calc(100vw-1.5rem)] gap-3 p-3 sm:max-w-3xl">
         <DialogHeader className="pr-10">
           <DialogTitle className="line-clamp-2 text-sm font-black text-slate-950">
             {productName}

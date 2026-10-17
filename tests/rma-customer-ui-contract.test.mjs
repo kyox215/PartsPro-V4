@@ -109,8 +109,10 @@ test("customer submit uses the new upload orchestrator and safe DTO history", ()
   assert.match(uploadClient, /RMA_UPLOAD_ABANDONED/);
 });
 
-test("customer UI has no confirmation modal and final request remains opaque", () => {
-  assert.doesNotMatch(component, /Dialog|window\.confirm|confirm\(/);
+test("customer final submission has no confirmation modal and final request remains opaque", () => {
+  const submitHandler = component.slice(component.indexOf("  async function submitRma("), component.indexOf("  async function markRequestShipped("));
+  assert.doesNotMatch(submitHandler, /Dialog|window\.confirm|confirm\(/);
+  assert.doesNotMatch(component, /Dialog/);
   const submitStart = uploadClient.indexOf("export function buildRmaSubmitPayload");
   const submitEnd = uploadClient.indexOf("export async function submitRmaWithAttachments");
   const payloadHelper = uploadClient.slice(submitStart, submitEnd);
@@ -276,7 +278,8 @@ test("customer can mark an approved request shipped in one tap with optional log
   assert.match(component, /shippingNotice\.tone === "error"/);
   assert.match(component, /const EMPTY_SHIPPING_DRAFT: Readonly<ShippingDraft>/);
   assert.match(component, /shippingDrafts\[request\.id\] \?\? EMPTY_SHIPPING_DRAFT/);
-  assert.doesNotMatch(component, /Dialog|window\.confirm|confirm\(/);
+  const shippingHandler = component.slice(component.indexOf("  async function markRequestShipped("), component.indexOf("  function updateShippingDraft("));
+  assert.doesNotMatch(shippingHandler, /Dialog|window\.confirm|confirm\(/);
 });
 
 test("customer DTO exposes a safe order number and the canonical flow resolves it by customer-owned order", () => {

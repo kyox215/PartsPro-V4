@@ -50,7 +50,7 @@ export function AccountGateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md">
+      <DialogContent className="pp-storefront-portal max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-md">
         <DialogHeader className="pr-8">
           <div className="flex items-start gap-3">
             <div

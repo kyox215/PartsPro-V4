@@ -59,6 +59,7 @@ type NotificationSummaryPayload = {
 type NotificationCenterProps = {
   audience: NotificationAudience;
   className?: string;
+  portalClassName?: string;
 };
 
 const copy = {
@@ -145,6 +146,7 @@ const notificationSummaryPollMs = 150_000;
 export function NotificationCenter({
   audience,
   className,
+  portalClassName,
 }: NotificationCenterProps) {
   const router = useRouter();
   const { locale } = useI18n();
@@ -591,7 +593,7 @@ export function NotificationCenter({
             ) : null}
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="end" className="flex max-h-[min(600px,var(--radix-popover-content-available-height))] w-[min(360px,calc(100vw-1.5rem))] flex-col overflow-y-auto p-0">
+        <PopoverContent align="end" className={cn("flex max-h-[min(600px,var(--radix-popover-content-available-height))] w-[min(360px,calc(100vw-1.5rem))] flex-col overflow-y-auto p-0", portalClassName)}>
           <div className="shrink-0 border-b border-slate-200 p-3">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
@@ -718,7 +720,7 @@ export function NotificationCenter({
           setPermissionPromptOpen(open);
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className={cn("sm:max-w-md", portalClassName)}>
           <DialogHeader>
             <div className="mb-1 flex size-10 items-center justify-center rounded-md bg-primary/10 text-primary">
               <BellRing className="size-5" />

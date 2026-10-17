@@ -226,6 +226,13 @@ export function rmaCustomerStageLabel(t: StorefrontTranslator, value: string) {
 }
 
 export const storefrontItIT = {
+  "storefront.ui.home.title": "Trova il ricambio giusto.",
+  "storefront.ui.home.subtitle": "Cerca per brand, modello o SKU e prepara il tuo ordine.",
+  "storefront.ui.home.quickLinks": "Acquista per categoria",
+  "storefront.ui.catalog.subtitle": "Filtra i risultati e verifica la compatibilità prima di acquistare.",
+  "storefront.ui.product.compatibility": "Compatibilità",
+  "storefront.ui.product.photos": "Immagini di {name}",
+  "storefront.ui.product.photo": "Mostra immagine {number}",
   "storefront.login.name": "Nome",
   "storefront.login.professional": "Richiedi accesso professionale",
   "storefront.login.signIn": "Accedi",
@@ -1567,6 +1574,13 @@ export const storefrontItIT = {
 };
 
 export const storefrontZhCN = {
+  "storefront.ui.home.title": "快速找到合适配件。",
+  "storefront.ui.home.subtitle": "按品牌、型号或 SKU 查找，清楚准备每次采购。",
+  "storefront.ui.home.quickLinks": "按品类快速采购",
+  "storefront.ui.catalog.subtitle": "按需筛选，购买前核对适配型号。",
+  "storefront.ui.product.compatibility": "完整兼容型号",
+  "storefront.ui.product.photos": "{name} 的商品图片",
+  "storefront.ui.product.photo": "查看第 {number} 张图片",
   "storefront.login.name": "姓名",
   "storefront.login.professional": "申请专业客户权限",
   "storefront.login.signIn": "登录",

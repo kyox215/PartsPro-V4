@@ -7,7 +7,7 @@ import { useT } from "./i18n-provider";
 export function StorefrontLoading() {
   const t = useT();
   return (
-    <main className="min-h-screen bg-[#f4f6fa] text-slate-950" aria-busy="true">
+    <main className="pp-loading-page min-h-screen bg-[#f4f6fa] text-slate-950" aria-busy="true">
       <header className="flex h-16 items-center justify-between border-b bg-white px-4">
         <Link href="/" aria-label={t("nav.home")}><PartsProLogo /></Link>
         <Link href="/catalogo" className="text-sm font-semibold">{t("nav.catalog")}</Link>

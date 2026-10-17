@@ -183,7 +183,7 @@ export function CatalogBrandTree({
         type="button"
         aria-label={ariaLabel}
         aria-pressed={pressed}
-        className={className}
+        className={cn("pp-tree-selection", className)}
         onClick={onClick ?? (() => handleSelect(selection))}
         title={title}
       >
@@ -196,7 +196,7 @@ export function CatalogBrandTree({
         href={catalogQueryHref(selection, assistedCompanyId)}
         prefetch={prefetchCatalogLinks ? null : false}
         aria-current={pressed ? "page" : undefined}
-        className={className}
+        className={cn("pp-tree-selection", className)}
         onClick={onNavigate}
         title={title}
       >
@@ -277,7 +277,8 @@ export function CatalogBrandTree({
   return (
     <div
       className={cn(
-        desktop ? "space-y-2" : "space-y-2 rounded-lg bg-white px-2 py-2 shadow-sm"
+        "pp-catalog-tree",
+        desktop ? "pp-catalog-tree-desktop space-y-2" : "pp-catalog-tree-mobile space-y-2 rounded-lg bg-white px-2 py-2 shadow-sm"
       )}
     >
       {onSelectCatalog ? (

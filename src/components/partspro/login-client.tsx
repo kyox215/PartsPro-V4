@@ -25,7 +25,7 @@ export function LoginSubmitButton({
   const { pending } = useFormStatus();
 
   return (
-    <Button className="h-11 w-full" type="submit" disabled={disabled || pending}>
+    <Button className="pp-auth-submit h-11 w-full" type="submit" disabled={disabled || pending}>
       {pending ? <Loader2 className="size-4 animate-spin" /> : <LogIn className="size-4" />}
       {pending ? pendingLabel : label}
     </Button>
@@ -49,7 +49,7 @@ export function GoogleLoginButton({
   if (disabled) {
     return (
       <Button
-        className="h-11 w-full border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
+        className="pp-auth-provider h-11 w-full border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
         type="button"
         variant="outline"
         disabled
@@ -61,7 +61,7 @@ export function GoogleLoginButton({
 
   return (
     <Button
-      className="h-11 w-full border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
+      className="pp-auth-provider h-11 w-full border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
       asChild
       variant="outline"
     >
@@ -85,7 +85,7 @@ export function WeChatLoginButton({
   if (disabled) {
     return (
       <Button
-        className="h-11 w-full border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
+        className="pp-auth-provider h-11 w-full border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
         type="button"
         variant="outline"
         disabled
@@ -97,7 +97,7 @@ export function WeChatLoginButton({
 
   return (
     <Button
-      className="h-11 w-full border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
+      className="pp-auth-provider h-11 w-full border-slate-200 bg-white text-slate-900 hover:bg-slate-50"
       asChild
       variant="outline"
     >

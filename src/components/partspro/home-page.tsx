@@ -5,12 +5,15 @@ import Image from "./optimized-image";
 import Link from "next/link";
 import {
   ArrowRight,
+  BatteryCharging,
+  Cable,
   CalendarClock,
   ChevronLeft,
   ChevronRight,
   Flame,
   Grid3X3,
   PackageCheck,
+  MonitorSmartphone,
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
@@ -26,9 +29,12 @@ import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import { cn } from "@/lib/utils";
 import { CatalogBrandTree } from "./catalog-brand-tree";
 import { StoreHeader } from "./store-header";
-import { useT } from "./i18n-provider";
+import { useI18n, useT } from "./i18n-provider";
+import { useCatalogDirectory } from "./catalog-directory-provider";
+import { catalogNodeLabel } from "@/lib/partspro-catalog-directory";
 import {
   tx,
+  txFormat,
 } from "@/i18n/dictionaries/storefront";
 import type {
   PriceVisibilityReason,
@@ -47,19 +53,33 @@ type HomePageProps = {
 
 export function HomePage({ departmentGroups, initialAccountAccess, banner, children }: HomePageProps) {
   const t = useT();
+  const { locale } = useI18n();
+  const directory = useCatalogDirectory();
+  const categoryPriority = ["Schermi", "Batterie", "Connettori"];
+  const quickCategories = directory.nodes.filter((node) => node.kind === "category" && node.active)
+    .sort((a, b) => (categoryPriority.includes(a.value) ? categoryPriority.indexOf(a.value) : 99) - (categoryPriority.includes(b.value) ? categoryPriority.indexOf(b.value) : 99)).slice(0, 3);
   return (
-    <PricingSessionBoundary userId={initialAccountAccess.userId}><main className="min-h-screen overflow-x-clip bg-[#f4f6fa] text-slate-950">
+    <PricingSessionBoundary userId={initialAccountAccess.userId}><main className="pp-home-page min-h-screen overflow-x-clip bg-[#f4f6fa] text-slate-950">
       <StoreHeader departmentGroups={departmentGroups} initialAccountAccess={initialAccountAccess} prefetchCatalogLinks />
-      <div className="mx-auto grid w-full max-w-[1500px] min-w-0 grid-cols-[minmax(0,1fr)] gap-3 px-2 py-3 sm:gap-4 sm:px-4 sm:py-4 lg:grid-cols-[230px_minmax(0,1fr)]">
+      <div className="pp-home-layout">
         <CategorySidebar departmentGroups={departmentGroups} />
-        <div className="min-w-0 space-y-4">
-          <nav className="flex flex-wrap gap-2 rounded-lg border bg-white p-3 lg:hidden" aria-label={tx(t, "storefront.home.sidebar.title", "Catalogo rapido")}>
+        <div className="pp-home-content min-w-0">
+          <div className="pp-home-intro"><div><h1>{tx(t, "storefront.ui.home.title", "Trova il ricambio giusto.")}</h1><p>{tx(t, "storefront.ui.home.subtitle", "Cerca per brand, modello o SKU e prepara il tuo ordine.")}</p></div><Button variant="outline" asChild><Link href="/catalogo">{tx(t, "storefront.ux.browseCatalog", "Sfoglia catalogo")}<ArrowRight className="size-4" /></Link></Button></div>
+          <nav className="pp-home-mobile-links flex flex-wrap gap-2 lg:hidden" aria-label={tx(t, "storefront.home.sidebar.title", "Catalogo rapido")}>
             <Button asChild size="sm"><Link href="/catalogo">{tx(t, "storefront.ux.browseCatalog", "Sfoglia catalogo")}</Link></Button>
             <Button asChild size="sm" variant="outline"><Link href="/catalogo?minStock=1">{tx(t, "storefront.home.products.action", "Disponibili ora")}</Link></Button>
             <Button asChild size="sm" variant="outline"><Link href="/catalogo?brand=REMAX">REMAX</Link></Button>
             <Button asChild size="sm" variant="ghost"><Link href="/help">{tx(t, "storefront.ux.help", "Aiuto")}</Link></Button>
           </nav>
-          {banner}
+          <div className="pp-home-promotion-grid" data-has-categories={quickCategories.length > 0}>
+            <div className="pp-home-promotion">{banner}</div>
+            {quickCategories.length > 0 ? <nav className="pp-home-category-links" aria-label={tx(t, "storefront.ui.home.quickLinks", "Acquista per categoria")}>
+              {quickCategories.map((node) => {
+                const Icon = /scherm|display|screen/i.test(node.value) ? MonitorSmartphone : /batt/i.test(node.value) ? BatteryCharging : Cable;
+                return <Link href={`/catalogo?${new URLSearchParams({ category: node.value }).toString()}`} key={node.id}><span className="pp-home-category-icon"><Icon className="size-5" /></span><span>{catalogNodeLabel(node, locale)}</span><ChevronRight className="size-4" /></Link>;
+              })}
+            </nav> : null}
+          </div>
           {children}
         </div>
       </div>
@@ -176,9 +196,9 @@ function CategorySidebar({
   const [expandedBrandKey, setExpandedBrandKey] = useState<string | null>(null);
 
   return (
-    <aside className="hidden lg:block">
-      <div className="sticky top-20 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.05)]">
-        <div className="mb-3 flex items-center justify-between gap-3 px-1">
+    <aside className="pp-browse-sidebar hidden lg:block">
+      <div className="pp-browse-sidebar-surface sticky top-20 max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white">
+        <div className="pp-sidebar-heading flex items-center justify-between gap-3">
           <div className="min-w-0">
             <h2 className="truncate text-sm font-black">
               {tx(t, "storefront.home.sidebar.title", "Catalogo rapido")}
@@ -227,7 +247,7 @@ export function HomeBannerCarousel({
 
     setActiveIndex(nextIndex);
     track?.scrollTo({
-      behavior: "smooth",
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
       left: nextIndex * track.clientWidth,
     });
   }
@@ -255,7 +275,7 @@ export function HomeBannerCarousel({
   return (
     <section
       aria-label={tx(t, "storefront.home.banners.label", "Promozioni catalogo")}
-      className="group relative overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.05)]"
+      className="pp-home-banner group relative overflow-hidden rounded-lg border border-slate-200 bg-white"
     >
       <div
         ref={trackRef}
@@ -292,7 +312,8 @@ export function HomeBannerCarousel({
         <>
           <Button
             aria-label={tx(t, "storefront.home.banners.previous", "Banner precedente")}
-            className="absolute left-2 top-1/2 hidden size-9 -translate-y-1/2 rounded-full bg-white/90 p-0 text-slate-700 opacity-0 shadow-sm transition-opacity hover:bg-white group-hover:opacity-100 sm:inline-flex"
+            className="pp-banner-arrow absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-0 text-slate-700 shadow-sm hover:bg-white"
+            disabled={safeActiveIndex === 0}
             onClick={() => scrollToBanner(safeActiveIndex - 1)}
             type="button"
             variant="outline"
@@ -301,21 +322,23 @@ export function HomeBannerCarousel({
           </Button>
           <Button
             aria-label={tx(t, "storefront.home.banners.next", "Banner successivo")}
-            className="absolute right-2 top-1/2 hidden size-9 -translate-y-1/2 rounded-full bg-white/90 p-0 text-slate-700 opacity-0 shadow-sm transition-opacity hover:bg-white group-hover:opacity-100 sm:inline-flex"
+            className="pp-banner-arrow absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/90 p-0 text-slate-700 shadow-sm hover:bg-white"
+            disabled={safeActiveIndex === banners.length - 1}
             onClick={() => scrollToBanner(safeActiveIndex + 1)}
             type="button"
             variant="outline"
           >
             <ChevronRight className="size-4" />
           </Button>
-          <div className="absolute bottom-2 left-1/2 flex -translate-x-1/2 gap-1.5 rounded-full bg-white/80 px-2 py-1 shadow-sm">
+          <div className="pp-banner-pagination absolute bottom-2 left-1/2 flex -translate-x-1/2 rounded-full bg-white/80 shadow-sm">
             {banners.map((banner, index) => (
               <button
                 key={`${banner.id}-dot`}
-                aria-label={`${tx(t, "storefront.home.banners.open", "Apri banner")} ${index + 1}`}
+                aria-label={txFormat(t, "storefront.home.banners.open", "Apri promozione {title}", { title: banner.title || index + 1 })}
+                aria-current={safeActiveIndex === index ? "true" : undefined}
                 className={cn(
-                  "size-1.5 rounded-full bg-slate-300 transition-[width,background-color] duration-150",
-                  safeActiveIndex === index && "w-4 bg-primary"
+                  "pp-banner-dot",
+                  safeActiveIndex === index && "pp-banner-dot-active"
                 )}
                 onClick={() => scrollToBanner(index)}
                 type="button"
@@ -343,15 +366,15 @@ function CuttingMachinePoster({
   ];
 
   return (
-    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_14px_34px_rgba(15,23,42,0.05)]">
-      <div className="grid min-h-[170px] bg-[#f7f4ef] md:min-h-[300px] lg:min-h-[340px] lg:grid-cols-[minmax(0,0.9fr)_minmax(320px,1.1fr)]">
+    <section className="pp-home-fallback-promotion overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="pp-home-fallback-grid">
         <div className="relative z-10 flex min-w-0 flex-col justify-center px-4 py-5 text-center sm:px-6 md:text-left lg:px-8">
           <Badge className="mx-auto w-fit border border-primary/15 bg-primary text-primary-foreground shadow-sm md:mx-0">
             {tx(t, "storefront.home.cuttingPoster.badge", "New Generation")}
           </Badge>
-          <h1 className="mt-3 max-w-xl text-2xl font-black leading-tight tracking-normal text-slate-950 sm:text-3xl lg:text-4xl">
+          <h2 className="pp-home-promotion-title mt-3 max-w-xl font-bold text-slate-950">
             {tx(t, "storefront.home.cuttingPoster.title", "Intelligent Film Cutting Machine")}
-          </h1>
+          </h2>
           <p className="mt-3 max-w-xl text-sm font-semibold leading-6 text-slate-600 sm:text-base">
             {tx(
               t,
@@ -443,9 +466,9 @@ function ProductShelf({
     <section
       id={id}
       className={cn(
-        "space-y-2",
+        "pp-home-shelf",
         tone === "preorder" &&
-          "rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50 via-white to-sky-50 p-3 shadow-[0_16px_38px_rgba(91,33,182,0.08)]"
+          "pp-home-shelf-preorder"
       )}
     >
       <SectionHeader
@@ -456,7 +479,7 @@ function ProductShelf({
         title={tx(t, titleKey, titleFallback)}
       />
       {products.length > 0 ? (
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-2 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="pp-home-product-grid">
           {products.map((product, index) => (
             <ProductCard
               key={`${id}-${product.sku}`}
@@ -493,7 +516,7 @@ function SectionHeader({
   const t = useT();
 
   return (
-    <div className="flex flex-wrap items-end justify-between gap-3">
+    <div className="pp-shelf-heading flex flex-wrap items-end justify-between gap-3">
       <div className="flex min-w-0 items-center gap-2">
         {Icon ? (
           <div className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/8 text-primary">
