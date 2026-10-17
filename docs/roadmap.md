@@ -253,3 +253,9 @@ Last reviewed: 2026-10-12
 - TASK-20261017-UI07已完成。运行提交 `c68206ccd977ba6c8770bc6753bd37f2fbc86a38` 已推送隔离分支 `codex/storefront-mobile-density-20261017`；独立SOURCE_GO/PROMOTE_GO后，同一构建 `dpl_B8UXo2AiVFfNyrqvDThCSAwNLJGw` 已推广至www/apex，apex307到www。回退保留BTL/4096f92。
 - 落实7张批准预览，仅调整<768px前台，所有商品区横向紧凑卡，正式预售卡191px、同卡降低45.8%；购物/结算/账户/详情/售后/申请/登录/帮助及局部状态统一压缩。主目录其它未提交运行源码不纳入发布，无API/DB/env/后台/Logo/交易协议改动或migration依赖。
 - 24+60测试、lint、本地/远端build、210手机几何及30桌面对照通过；473上传源hash一致。候选和正式各12+30 HTTP通过，实际三语及手机/桌面、账户/购物/结算只读布局已核对，短时error/fatal为空，独立RELEASE_VERIFIED。真实业务写及物理iPhone键盘未做E2E。报告 `docs/audits/2026-10-17-storefront-mobile-density-release.md`，证据 `outputs/storefront-mobile-density/2026-10-17/`，任务转done。
+
+## 2026-10-17 UI08：手机侧边菜单四类直达（已上线）
+
+- 已按老板要求移除菜单内首页/帮助/目录及全部目录层，直接展示手机、平板、电脑、电子产品；保留搜索、语言切换、品牌机型展开和当前选择。桌面/筛选全部目录入口保留。仅4前台运行文件，无Logo/API/DB/env/后台/交易变化。
+- 隔离分支 `codex/storefront-mobile-menu-20261017`，运行提交 `23db1b2783356c18ac658970af7064ccf81f0cdb`，独立STAGE_GO/PROMOTE_GO后同构建 `dpl_CzDN5mBvDaEd343VGLGk1iqoF3sN` 已推广www/apex；apex307到www，最终RELEASE_VERIFIED。回退保留B8UX/c682。
+- 24storefront+13相关通过、另7目录契约通过本地别名loader（既有裸Node runner问题如实记录）；lint/build、三语390/320、导航/搜索/重开/焦点及桌面/筛选回归通过，候选/正式各12+30 HTTP通过，稳定正式中文截图及短时日志已复核。报告 `docs/audits/2026-10-17-storefront-mobile-menu-release.md`，证据 `outputs/storefront-mobile-menu/2026-10-17/`。
