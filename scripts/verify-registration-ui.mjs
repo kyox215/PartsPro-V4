@@ -8,6 +8,8 @@ const temporary = mkdtempSync(path.join(tmpdir(), 'partspro-registration-ui-'));
 try {
   const build = readFileSync('tests/fixtures/account-pricing-ui/build.cjs.fixture', 'utf8')
     .replace('return ts.transpileModule(source,', 'if(this.resourcePath.endsWith("/account-page.tsx"))source+=";export {AccountProfileDialog};"; return ts.transpileModule(source,')
+    .replace("import React from 'react';export default function Link", "import React from 'react';export const useLinkStatus=()=>({pending:false});export default function Link")
+    .replace("push(){},replace(){}","push(){},replace(destination){window.fixtureDestination=destination;window.history.replaceState(null,'',destination)}").replace("new URLSearchParams()","new URLSearchParams(location.search)")
     .replace("const alias={", `fs.writeFileSync(dir+'/actions.ts','export async function signOut(){}');fs.writeFileSync(dir+'/locale-actions.ts','export async function setLocale(){return {ok:true}}');fs.writeFileSync(dir+'/session.ts','export const usePricingSession=()=>({ready:true,key:"fixture"});');\nconst alias={'@/app/actions/i18n':dir+'/locale-actions.ts','./use-pricing-session':dir+'/session.ts','@/app/login/actions':dir+'/actions.ts',`);
   for (const name of ['build.cjs', 'entry.tsx', 'run.cjs']) {
     const source = name === 'build.cjs' ? build : readFileSync(`tests/fixtures/registration-ui/${name}.fixture`, 'utf8');

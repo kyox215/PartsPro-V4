@@ -1,6 +1,6 @@
 # P1-2026-10-17-storefront-local-refresh
 
-状态：in_progress
+状态：done
 Task ID：TASK-20261017-UI05
 风险：R3（跨前台会话/报价保护与生产发布）；自治：L3（老板已批准具体计划并授权上线）。
 主责：平台发布部；协作：订单运营、价格与客户；R主执行者、A老板、C独立业务契约/前端/发布守门、I老板。
@@ -15,3 +15,5 @@ Task ID：TASK-20261017-UI05
 命令：git diff --check；npm run test:storefront；node --test tests/storefront-refresh-state.test.mjs tests/commerce-refresh-ui.test.mjs tests/performance-behavior.test.mjs tests/account-pricing-policy.test.mjs tests/storefront-commerce-interactions.test.mjs tests/cart-tools.test.mjs tests/checkout-cart-snapshot.test.mjs；npm run lint；npm run build。
 发布门：源码/保护文件/上传哈希/精确SHA，远端build候选和正式只读HTTP/浏览器，独立PROMOTE_GO后同构建推广，正式alias及短时error核对。
 证据：隔离候选verification/；当前权威状态仅docs/roadmap.md。
+
+验收：运行a1073b8/源码fp a39383d3，B8同构建经独立PROMOTE_GO正式上线；6+51测试/lint/build、候选和正式各12HTTP、双语/1536/390/异常夹具通过，短时error/fatal0。回退FU4/f89保留。完整结果见docs/audits/2026-10-17-storefront-local-refresh-release.md；主目录源码保留，未合并main。

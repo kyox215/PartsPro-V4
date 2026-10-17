@@ -595,7 +595,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                 <Input value={connection?.accountLabel ?? t("未连接")} readOnly />
               </Field>
               <Field label={t("Token 到期")}>
-                <Input value={formatDateTime(connection?.tokenExpiresAt)} readOnly />
+                <Input value={formatDateTime(connection?.tokenExpiresAt, locale)} readOnly />
               </Field>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -1016,7 +1016,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                   <TableCell>
                     <StatusBadge status={link.importStatus} />
                   </TableCell>
-                  <TableCell>{formatDateTime(link.importedAt)}</TableCell>
+                  <TableCell>{formatDateTime(link.importedAt, locale)}</TableCell>
                   <TableCell className="max-w-[320px] whitespace-normal break-words text-xs text-slate-600">
                     {t(link.lastError ?? "-")}
                   </TableCell>
@@ -1287,7 +1287,7 @@ function connectionStatusLabel(connection: MarketplaceConnection | null | undefi
   return statusLabel(connection.connectionStatus);
 }
 
-function formatDateTime(value: string | null | undefined) {
+function formatDateTime(value: string | null | undefined, locale: string) {
   if (!value) {
     return "-";
   }
@@ -1298,7 +1298,7 @@ function formatDateTime(value: string | null | undefined) {
     return "-";
   }
 
-  return new Intl.DateTimeFormat("it-IT", {
+  return new Intl.DateTimeFormat(locale, {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",

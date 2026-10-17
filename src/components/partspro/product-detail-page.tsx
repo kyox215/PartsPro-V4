@@ -97,7 +97,7 @@ export async function ProductDetailPage({
         initialAccountAccess={initialAccountAccess}
       />
       <div className="pp-product-shell mx-auto max-w-[1440px]">
-        <div className="pp-product-breadcrumb"><CatalogBackLink assistedCompanyId={assistedCompanyId} /><span aria-hidden="true">/</span><span>{localizedBrand}</span><span aria-hidden="true">/</span><span>{localizedCategory}</span></div>
+        <div className="pp-product-return"><CatalogBackLink assistedCompanyId={assistedCompanyId} /></div>
 
         <div className="pp-product-layout">
           <Card className="pp-product-gallery-card rounded-lg border-slate-200 bg-white">

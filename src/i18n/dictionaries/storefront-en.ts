@@ -1,5 +1,10 @@
 /** English storefront copy. Keep keys and placeholders aligned with storefrontItIT. */
 export const storefrontEnUS = {
+  "storefront.compact.sort": "Sort by",
+  "storefront.compact.stockFirst": "Availability",
+  "storefront.compact.nameSort": "Product name",
+  "storefront.compact.newestSort": "Most recent",
+  "storefront.compact.loadMore": "Load more",
   "storefront.account.filter.all": "All",
   "storefront.account.filter.full": "Full view",
   "storefront.account.filter.processing": "In progress",

@@ -776,21 +776,7 @@ function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,i
     <main className="pp-rma-page min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
       <StoreHeader initialAccountAccess={initialAccountAccess} />
       <div className="pp-rma-content mx-auto max-w-[1120px] space-y-4 px-3 pb-12 pt-20 sm:px-5 sm:pt-24">
-        <section className="pp-rma-heading rounded-xl border border-slate-200 bg-white p-5 shadow-[0_18px_45px_rgba(15,23,42,0.04)] sm:p-7">
-          <Badge className="mb-3 border border-primary/20 bg-primary/8 text-primary">
-            {tx(t, "storefront.rma.badge", "Assistenza tracciabile")}
-          </Badge>
-          <h1 className="text-3xl font-black tracking-tight sm:text-4xl">
-            {tx(t, "storefront.rma.title", "Apri una richiesta di reso o sostituzione")}
-          </h1>
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            {tx(
-              t,
-              "storefront.rma.description",
-              "Collega una riga ordine, scegli il motivo e conserva le foto del prodotto nel dossier della richiesta."
-            )}
-          </p>
-        </section>
+        <header className="pp-rma-heading"><h1>{tx(t, "storefront.rma.title", "Apri una richiesta di reso o sostituzione")}</h1></header>
 
         <Card className="pp-rma-form-card border-slate-200 bg-white">
           <form onSubmit={submitRma}>

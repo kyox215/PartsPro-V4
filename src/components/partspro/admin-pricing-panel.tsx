@@ -80,7 +80,7 @@ function pricingError(code: string, locale: string) {
 }
 function money(value: number | null | undefined, locale: string) {
   const zh = locale.startsWith("zh");
-  return value == null ? (locale.startsWith("en") ? englishUiCopy("Prezzo non disponibile") : zh ? "不可报价" : "Prezzo non disponibile") : new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(value);
+  return value == null ? (locale.startsWith("en") ? englishUiCopy("Prezzo non disponibile") : zh ? "不可报价" : "Prezzo non disponibile") : new Intl.NumberFormat(locale, { style: "currency", currency: "EUR" }).format(value);
 }
 function tierLabel(tier: string | undefined, locale: string) {
   const zh = locale.startsWith("zh");

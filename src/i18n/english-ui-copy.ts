@@ -4,7 +4,7 @@ import { englishLiteralCopy } from "./english-literals";
 export function englishUiCopy<T>(copy: T): T {
   if (typeof copy === "string") return (englishLiteralCopy[copy] ?? copy) as T;
   if (Array.isArray(copy)) return copy.map(item => englishUiCopy(item)) as T;
-  if (copy && typeof copy === "object" && Object.getPrototypeOf(copy) === Object.prototype) {
+  if (copy && typeof copy === "object" && Object.prototype.toString.call(copy) === "[object Object]") {
     return Object.fromEntries(Object.entries(copy).map(([key, value]) => [key, englishUiCopy(value)])) as T;
   }
   return copy;

@@ -1,4 +1,6 @@
 import React from 'react';
+import {AdminDashboard} from '@/components/partspro/admin-dashboard';
+import {TooltipProvider} from '@/components/ui/tooltip';
 import {createRoot} from 'react-dom/client';
 import {AccountPage,AccountProfileDialog} from '@/components/partspro/account-page';
 import {I18nProvider} from '@/components/partspro/i18n-provider';
@@ -7,12 +9,12 @@ const params=new URLSearchParams(location.search);
 const profile={id:'fixture-customer',companyName:'Negozio 客户',contactName:'',email:'fixture@example.test',phone:'123456789',fiscalCode:'12345678901',pec:'',shippingAddress:'',billingAddress:'',status:'pending',level:'bronze',baseLevel:'bronze',customerType:'retail',profileCompletedAt:null};
 const orders=[{id:'TEST-ORDER',date:'17/10/2026',items:2,company:'Negozio 客户',total:25,status:'shipped'}];
 function App(){
- const [locale,setLocale]=React.useState('it-IT'); const [open,setOpen]=React.useState(true);
+ const [locale,setLocale]=React.useState(params.get('locale')||'it-IT'); const [open,setOpen]=React.useState(true);
  window.fixtureSetLocale=setLocale;
  const section=params.get('section')||'overview';
- return <I18nProvider locale={locale} scope="storefront" dictionary={getDictionary(locale)}><div className="pp-storefront">
- {params.has('dialog')?<AccountProfileDialog open={open} onOpenChange={setOpen} onSaved={()=>{window.fixtureSaved=true}} profile={profile} userEmail={profile.email}/>:
- <AccountPage initialAccountAccess={{userId:"fixture-user",authenticated:true,canViewPrices:true,canCheckout:true,accountType:"customer"}} loadedSection={section} forceSetup={params.has('setup')} customerProfile={{...profile,profileCompletedAt:params.has('setup')?null:'2026-10-17'}} company={null} userEmail={profile.email} orderSummaries={orders} rmaRequests={[{id:'TEST-RMA',status:'requested',productName:'Prodotto 商品',sku:'TEST-SKU',orderId:'TEST-ORDER',createdAt:'17/10/2026'}]} wallet={{balance:10,currency:'EUR',transactions:[{id:'TEST-TX',reason:'Nota 人工',direction:'credit',amount:10,createdAt:'2026-10-17T10:00:00Z'}]}}/>}
+ return <I18nProvider locale={locale} scope={params.has("admin")?"admin":"storefront"} dictionary={getDictionary(locale)}><div className="pp-storefront">
+ {params.has('admin')?<TooltipProvider><AdminDashboard initialPermissions={[]} initialUserId="fixture-admin" initialVisiblePanels={["overview"]}/></TooltipProvider>:params.has('dialog')?<AccountProfileDialog open={open} onOpenChange={setOpen} onSaved={()=>{window.fixtureSaved=true}} profile={profile} userEmail={profile.email}/>:
+ <AccountPage initialAccountAccess={{userId:"fixture-user",authenticated:true,canViewPrices:true,canCheckout:true,accountType:"customer"}} loadedSection={section} profileUnavailable={params.has("unavailable")} dataWarning={params.has("unavailable")?"RAW profile failure":undefined} forceSetup={params.has('setup')} customerProfile={{...profile,profileCompletedAt:params.has('setup')&&!params.has('complete')?null:'2026-10-17'}} company={null} userEmail={profile.email} orderSummaries={orders} rmaRequests={[{id:'TEST-RMA',status:'requested',productName:'Prodotto 商品',sku:'TEST-SKU',orderId:'TEST-ORDER',createdAt:'17/10/2026'}]} wallet={{balance:10,currency:'EUR',transactions:[{id:'TEST-TX',reason:'Nota 人工',direction:'credit',amount:10,createdAt:'2026-10-17T10:00:00Z'}]}}/>}
  </div></I18nProvider>;
 }
 createRoot(document.getElementById('root')!).render(<App/>);

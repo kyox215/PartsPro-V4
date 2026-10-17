@@ -661,9 +661,6 @@ function CartPageContent({
         <section className="space-y-2 sm:space-y-4 lg:space-y-3">
           <div className="pp-commerce-heading flex flex-wrap items-start justify-between gap-2 sm:gap-3 lg:items-center">
             <div className="min-w-0">
-              <Badge className="mb-1 hidden h-5 border border-primary/20 bg-primary/8 px-2 text-[11px] text-primary lg:inline-flex">
-                {tx(t, "storefront.cart.badge", "Carrello clienti")}
-              </Badge>
               <h1 className="text-xl font-black tracking-normal sm:text-3xl md:text-4xl lg:text-3xl">
                 {tx(t, "storefront.cart.title", "Conferma prodotti e quantità")}
               </h1>

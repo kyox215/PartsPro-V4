@@ -10,13 +10,14 @@ import { useI18n } from "./i18n-provider";
 import { useDelayedVisible } from "./pending-feedback";
 import { usePriceFreshness, useStorefrontRefresh } from "./storefront-refresh-provider";
 
-export function RefreshStatus({ initialLoading = false, busy = false, failed = false, retry, compact = false }: { initialLoading?: boolean; busy?: boolean; failed?: boolean; retry?: () => void; compact?: boolean }) {
+export function RefreshStatus({ initialLoading = false, busy = false, failed = false, retry, compact = false, reserveSpace = true }: { initialLoading?: boolean; busy?: boolean; failed?: boolean; retry?: () => void; compact?: boolean; reserveSpace?: boolean }) {
   const state = useStorefrontRefresh();
   const { locale } = useI18n();
   const zh = locale === "zh-CN";
   const error = failed || Boolean(state.error);
   const pending = initialLoading || busy || state.refreshing;
   const visible = useDelayedVisible(pending, 120);
+  if (!error && !visible && !reserveSpace) return null;
   if (!error && !visible) return <span className={compact ? "pp-refresh-placeholder" : "pp-refresh-status-reserved"} aria-hidden="true" />;
   return <div role={error ? "alert" : "status"} aria-live="polite" className="pp-refresh-status" data-error={error || undefined}>
     {!error ? <Loader2 aria-hidden="true" className="size-3.5 animate-spin motion-reduce:animate-none"/> : null}

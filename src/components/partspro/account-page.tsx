@@ -267,8 +267,9 @@ function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, a
     function handleProfileSaved(nextProfile: AccountCustomerProfile) {
         setSavedProfile(nextProfile);
         const destination = postProfileSaveRedirect(searchParams.get("returnTo"), searchParams.toString());
-        router.replace(destination);
-        router.refresh();
+        const current = `/account${searchParams.size ? `?${searchParams}` : ""}`;
+        if (destination !== current) router.replace(destination);
+        else router.refresh();
     }
     React.useEffect(() => () => { detailRequestRef.current.version++; detailRequestRef.current.controller?.abort(); }, []);
     return (<main className="pp-account-page min-h-screen overflow-x-hidden bg-slate-100 text-slate-950">
@@ -283,7 +284,7 @@ function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, a
           <div className="pp-account-sidebar-footer"><Link className="pp-account-sidebar-link" href="/help"><CircleHelp aria-hidden="true"/><span>{ui.help}</span></Link><form action={signOut}><button type="submit" className="pp-account-sidebar-link"><LogOut aria-hidden="true"/><span>{c("退出")}</span></button></form></div>
         </aside>
         <div className="pp-account-main">
-        <header className="pp-account-heading"><div><p className="pp-account-breadcrumb">{ui.title}<span>/</span>{profileSummaryOpen ? ui.companyAddress : ui[activeSection]}</p><h1>{profileSummaryOpen ? ui.companyAddress : activeSection === "overview" ? ui.welcome : ui[activeSection]}</h1><p>{profileSummaryOpen ? ui.profileDescription : ui[`${activeSection}Description`]}</p></div>{profileSummaryOpen ? <Button className="pp-account-primary-action pp-profile-edit-action" disabled={profileUnavailable} onClick={() => setProfileDialogOpen(true)}><Pencil aria-hidden="true"/>{ui.editProfile}</Button> : <Button asChild className="pp-account-primary-action"><Link href={activeSection === "service" ? "/rma" : "/catalogo"}>{activeSection === "service" ? <Plus aria-hidden="true"/> : null}{activeSection === "service" ? c("新建售后申请") : ui.shop}<ArrowRight aria-hidden="true"/></Link></Button>}</header>
+        <header className="pp-account-heading"><div><h1>{profileSummaryOpen ? ui.companyAddress : activeSection === "overview" ? ui.welcome : ui[activeSection]}</h1></div>{profileSummaryOpen ? <Button className="pp-account-primary-action pp-profile-edit-action" disabled={profileUnavailable} onClick={() => setProfileDialogOpen(true)}><Pencil aria-hidden="true"/>{ui.editProfile}</Button> : <Button asChild className="pp-account-primary-action"><Link href={activeSection === "service" ? "/rma" : "/catalogo"}>{activeSection === "service" ? <Plus aria-hidden="true"/> : null}{activeSection === "service" ? c("新建售后申请") : ui.shop}<ArrowRight aria-hidden="true"/></Link></Button>}</header>
         {shouldShowProfileNotice && profile ? (<AccountProfileNotice forceSetup={forceSetup} profile={profile} onOpen={() => setProfileDialogOpen(true)}/>) : null}
 
         {dataWarning || profileUnavailable ? (<div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
@@ -566,6 +567,7 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
         if (open && !wasOpenRef.current) {
             setForm(accountProfileToForm(profile, userEmail));
             setError(null);
+            setFieldIssue(null);
         }
         wasOpenRef.current = open;
     }, [open, profile, userEmail]);
@@ -601,6 +603,7 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
     function showFieldIssue(issues: unknown) {
         const issue = accountProfileIssue(issues);
         if (!issue) return false;
+        if (issue.field === "billingAddress" && form.billingSameAsShipping) issue.field = "shippingAddress";
         setFieldIssue(issue);
         setError(issue.key);
         const address = issue.field === "shippingAddress" || issue.field === "billingAddress";

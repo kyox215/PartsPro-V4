@@ -121,6 +121,7 @@ export function LanguageSwitcher({
         return (
           <Button
             key={item}
+            lang={item}
             type="button"
             variant={active ? "default" : "ghost"}
             size="sm"

@@ -6771,6 +6771,7 @@ function ProductCompatibilityReviewNotice({
   error?: string;
   onConfirmedChange: (confirmed: boolean) => void;
 }) {
+  const { locale } = useI18n();
   if (!review.required) {
     return null;
   }
@@ -6782,7 +6783,7 @@ function ProductCompatibilityReviewNotice({
       <div className="mt-2 grid gap-1 leading-5 sm:grid-cols-2">
         <div>
           <span className="font-bold">{text.compatibilityReviewReasons}: </span>
-          {review.reasonCodes.map(code => compatibilityReasonLabel(code, text.compatibilityReviewTitle === panelText.it.compatibilityReviewTitle)).join("；") || text.none}
+          {review.reasonCodes.map(code => compatibilityReasonLabel(code, locale)).join("；") || text.none}
         </div>
         <div>
           <span className="font-bold">{text.compatibilityReviewEvidence}: </span>
@@ -6790,7 +6791,7 @@ function ProductCompatibilityReviewNotice({
         </div>
         <div className="sm:col-span-2">
           <span className="font-bold">{text.compatibilityReviewSignals}: </span>
-          {review.signals.length > 0 ? review.signals.map(signal => compatibilitySignalLabel(signal, text.compatibilityReviewTitle === panelText.it.compatibilityReviewTitle)).join("；") : text.none}
+          {review.signals.length > 0 ? review.signals.map(signal => compatibilitySignalLabel(signal, locale)).join("；") : text.none}
         </div>
       </div>
       <label className="mt-2 flex items-start gap-2 font-semibold">

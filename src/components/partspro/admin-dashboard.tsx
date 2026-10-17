@@ -41,7 +41,7 @@ import {
 } from "@/components/ui/tooltip";
 import { getAdminDictionary, type AdminText } from "@/i18n/dictionaries/admin";
 import { cn } from "@/lib/utils";
-import { useI18n } from "./i18n-provider";
+import { useI18n, useT } from "./i18n-provider";
 import { LanguageSwitcher } from "./language-switcher";
 import { PartsProLogo } from "./logo";
 import { AdminGlobalSearch } from "./admin-global-search";
@@ -282,7 +282,7 @@ export function AdminDashboard({
   initialUserId = null,
   initialVisiblePanels,
 }: AdminDashboardProps = {}) {
-  const text = useAdminText();
+  const t = useT();
   const router = useRouter();
   const searchParams = useSearchParams();
   const hasInitialAdminContext = initialPermissions !== undefined;
@@ -400,7 +400,7 @@ export function AdminDashboard({
 
       const previous = activePanelRef.current;
       if (previous !== panel && document.querySelector('[data-admin-mutating="true"]')) return;
-      if (previous !== panel && document.querySelector('[data-admin-dirty="true"], [data-catalog-dirty="true"]') && !window.confirm(text.nav.settings === "设置" ? "放弃未保存修改并切换页面？" : "Scartare le modifiche non salvate?")) {
+      if (previous !== panel && document.querySelector('[data-admin-dirty="true"], [data-catalog-dirty="true"]') && !window.confirm(t("admin.navigation.discardSwitch"))) {
         if (!options.syncUrl) router.replace(panelUrls.current[previous] ?? adminPanelHref(previous), { scroll: false });
         return;
       }
@@ -431,7 +431,7 @@ export function AdminDashboard({
         setPendingPanel((current) => (current === panel ? null : current));
       }, 360);
     },
-    [router, visiblePanelSet, text.nav.settings]
+    [router, visiblePanelSet, t]
   );
 
 
@@ -469,11 +469,11 @@ export function AdminDashboard({
       // Error-summary anchors move focus inside the current form, without leaving it.
       if (url.pathname === window.location.pathname && url.search === window.location.search && url.hash) return;
       if (document.querySelector('[data-admin-mutating="true"]')) { event.preventDefault(); event.stopPropagation(); return; }
-      if (document.querySelector('[data-admin-dirty="true"], [data-catalog-dirty="true"]') && !window.confirm(text.nav.settings === "设置" ? "放弃未保存修改并打开目标页面？" : "Scartare le modifiche e aprire la pagina?")) { event.preventDefault(); event.stopPropagation(); }
+      if (document.querySelector('[data-admin-dirty="true"], [data-catalog-dirty="true"]') && !window.confirm(t("admin.navigation.discardOpen"))) { event.preventDefault(); event.stopPropagation(); }
     };
     document.addEventListener("click", guardLink, true);
     return () => document.removeEventListener("click", guardLink, true);
-  }, [text.nav.settings]);
+  }, [t]);
   React.useEffect(() => {
     const changed = () => { void fetch("/api/me", { cache: "no-store" }).then(async response => {
       if (!response.ok) return; const data = await response.json();
@@ -642,9 +642,10 @@ function AdminSidebar({
   visiblePanels,
 }: AdminSidebarProps) {
   const text = useAdminText();
+  const t = useT();
   const [navigationQuery, setNavigationQuery] = React.useState("");
   const navigationItems = navItems.filter(item => visiblePanels.has(item.panel) && (collapsed || text.nav[item.labelKey].toLocaleLowerCase().includes(navigationQuery.trim().toLocaleLowerCase())));
-  const toggleLabel = text.nav.settings === "设置" ? (collapsed ? "展开后台导航" : "收起后台导航") : (collapsed ? "Espandi navigazione" : "Riduci navigazione");
+  const toggleLabel = t(collapsed ? "admin.navigation.expand" : "admin.navigation.collapse");
   const ToggleIcon = collapsed ? PanelLeftOpen : PanelLeftClose;
   const userCard = (
     <Link href="/account" aria-label={userName ?? text.topbar.adminName}
@@ -701,9 +702,9 @@ function AdminSidebar({
           </TooltipContent>
         </Tooltip>
       </div>
-      {!collapsed && <AdminSearchField containerClassName="mt-4" value={navigationQuery} onValueChange={setNavigationQuery} aria-label={text.nav.settings === "设置" ? "搜索后台菜单" : "Cerca menu"} placeholder={text.nav.settings === "设置" ? "搜索菜单" : "Cerca menu"} className="h-9" />}
+      {!collapsed && <AdminSearchField containerClassName="mt-4" value={navigationQuery} onValueChange={setNavigationQuery} aria-label={t("admin.navigation.searchLabel")} placeholder={t("admin.navigation.search")} className="h-9" />}
       <nav className={cn("min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain py-2", collapsed ? "mt-4" : "mt-2")}>
-        {navigationItems.length === 0 && <p role="status" className="p-2 text-sm text-slate-500">{text.nav.settings === "设置" ? "没有匹配的菜单" : "Nessun menu corrispondente"}</p>}
+        {navigationItems.length === 0 && <p role="status" className="p-2 text-sm text-slate-500">{t("admin.navigation.empty")}</p>}
         {navigationItems.map((item) => {
           const panel = "panel" in item ? item.panel : undefined;
           const label = text.nav[item.labelKey];
@@ -801,6 +802,7 @@ function AdminTopbar({
   visiblePanels,
 }: AdminNavigationProps) {
   const text = useAdminText();
+  const t = useT();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [navigationQuery, setNavigationQuery] = React.useState("");
   const navigationItems = navItems.filter(item => visiblePanels.has(item.panel) && text.nav[item.labelKey].toLocaleLowerCase().includes(navigationQuery.trim().toLocaleLowerCase()));
@@ -845,8 +847,8 @@ function AdminTopbar({
                 </Link>
                 <LanguageSwitcher scope="admin" compact className="h-10 shadow-sm" />
               </div>
-              <AdminSearchField containerClassName="mb-2" value={navigationQuery} onValueChange={setNavigationQuery} aria-label={text.nav.settings === "设置" ? "搜索后台菜单" : "Cerca menu"} placeholder={text.nav.settings === "设置" ? "搜索菜单" : "Cerca menu"} />
-              {navigationItems.length === 0 && <p role="status" className="p-3 text-sm text-slate-500">{text.nav.settings === "设置" ? "没有匹配的菜单" : "Nessun menu corrispondente"}</p>}
+              <AdminSearchField containerClassName="mb-2" value={navigationQuery} onValueChange={setNavigationQuery} aria-label={t("admin.navigation.searchLabel")} placeholder={t("admin.navigation.search")} />
+              {navigationItems.length === 0 && <p role="status" className="p-3 text-sm text-slate-500">{t("admin.navigation.empty")}</p>}
               {navigationItems.map((item) => {
                 const panel = "panel" in item ? item.panel : undefined;
                 const isAvailable = Boolean(panel && visiblePanels.has(panel));

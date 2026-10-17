@@ -1,3 +1,6 @@
+"use client";
+
+import { useT } from "./i18n-provider";
 import Image from "./optimized-image";
 import { cn } from "@/lib/utils";
 
@@ -12,8 +15,9 @@ type LogoProps = {
 export function PartsProLogo({
   compact = false,
   className,
-  tagline = "Ricambi smartphone Italia",
+  tagline,
 }: LogoProps) {
+  const t = useT();
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
       <Image
@@ -34,7 +38,7 @@ export function PartsProLogo({
             PartsPro
           </div>
           <div className="mt-1 text-[11px] font-medium text-slate-500">
-            {tagline}
+            {tagline ?? t("storefront.logo.deviceTagline")}
           </div>
         </div>
       )}

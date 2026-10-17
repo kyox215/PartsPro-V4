@@ -1,5 +1,14 @@
 export const registrationClosureCopy = {
   "en-US": {
+    "admin.navigation.search": "Search menu",
+    "admin.navigation.searchLabel": "Search admin menu",
+    "admin.navigation.empty": "No matching menu items",
+    "admin.navigation.expand": "Expand navigation",
+    "admin.navigation.collapse": "Collapse navigation",
+    "admin.navigation.discardSwitch": "Discard unsaved changes and switch page?",
+    "admin.navigation.discardOpen": "Discard unsaved changes and open the page?",
+
+    "storefront.logo.deviceTagline": "Smartphone parts in Italy",
     "language.en-US": "English", "language.auto": "Use device language", "language.failed": "Could not change language. Please try again.",
     "storefront.account.profile.loadError": "Your profile could not be loaded. Please retry before editing your details.",
     "storefront.account.profile.tooLong": "{field}: use no more than {limit} characters.",
@@ -7,6 +16,15 @@ export const registrationClosureCopy = {
     "storefront.account.profile.checkField": "Check {field} and try again.",
   },
   "it-IT": {
+    "admin.navigation.search": "Cerca menu",
+    "admin.navigation.searchLabel": "Cerca menu amministrazione",
+    "admin.navigation.empty": "Nessun menu corrispondente",
+    "admin.navigation.expand": "Espandi navigazione",
+    "admin.navigation.collapse": "Riduci navigazione",
+    "admin.navigation.discardSwitch": "Scartare le modifiche non salvate?",
+    "admin.navigation.discardOpen": "Scartare le modifiche e aprire la pagina?",
+
+    "storefront.logo.deviceTagline": "Ricambi smartphone Italia",
     "language.en-US": "English", "language.auto": "Usa la lingua del dispositivo", "language.failed": "Cambio lingua non riuscito. Riprova.",
     "storefront.account.profile.loadError": "Impossibile caricare il profilo. Riprova prima di modificare i dati.",
     "storefront.account.profile.tooLong": "{field}: usa al massimo {limit} caratteri.",
@@ -14,6 +32,15 @@ export const registrationClosureCopy = {
     "storefront.account.profile.checkField": "Controlla {field} e riprova.",
   },
   "zh-CN": {
+    "admin.navigation.search": "搜索菜单",
+    "admin.navigation.searchLabel": "搜索后台菜单",
+    "admin.navigation.empty": "没有匹配的菜单",
+    "admin.navigation.expand": "展开后台导航",
+    "admin.navigation.collapse": "收起后台导航",
+    "admin.navigation.discardSwitch": "放弃未保存修改并切换页面？",
+    "admin.navigation.discardOpen": "放弃未保存修改并打开目标页面？",
+
+    "storefront.logo.deviceTagline": "意大利手机配件",
     "language.en-US": "English", "language.auto": "使用设备语言", "language.failed": "语言切换失败，请重试。",
     "storefront.account.profile.loadError": "无法读取账户资料，请先重试再修改资料。",
     "storefront.account.profile.tooLong": "{field}：最多填写 {limit} 个字符。",

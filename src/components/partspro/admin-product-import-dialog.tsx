@@ -1,5 +1,6 @@
 "use client";
 
+import { useI18n } from "./i18n-provider";
 import { englishUiCopy } from "@/i18n/english-ui-copy";
 
 import { AdminNotice, AdminActionButton } from "./admin-feedback";
@@ -492,8 +493,9 @@ function CompatibilityReviewBlock({
   row: PreviewRow;
   copy: typeof zhCopy;
 }) {
+  const { locale } = useI18n();
   const review = row.compatibilityReview;
-  return <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-950"><div className="font-semibold">{copy.compatibilityReviewEvidence}</div><div className="mt-1">{copy.compatibilityReviewReasons}: {review.reasonCodes.map(code => compatibilityReasonLabel(code, copy.title.startsWith("Import"))).join("；") || "—"}</div><div className="mt-1">{copy.compatibilityReviewSignals}: {review.signals.map(signal => compatibilitySignalLabel(signal, copy.title.startsWith("Import"))).join("；") || "—"}</div><label className="mt-2 flex items-start gap-2"><Checkbox checked={compatibilityConfirmed} onCheckedChange={(value) => onCompatibilityReviewConfirm(row, value === true)} /><span>{copy.compatibilityReviewConfirm}</span></label></div>;
+  return <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-950"><div className="font-semibold">{copy.compatibilityReviewEvidence}</div><div className="mt-1">{copy.compatibilityReviewReasons}: {review.reasonCodes.map(code => compatibilityReasonLabel(code, locale)).join("；") || "—"}</div><div className="mt-1">{copy.compatibilityReviewSignals}: {review.signals.map(signal => compatibilitySignalLabel(signal, locale)).join("；") || "—"}</div><label className="mt-2 flex items-start gap-2"><Checkbox checked={compatibilityConfirmed} onCheckedChange={(value) => onCompatibilityReviewConfirm(row, value === true)} /><span>{copy.compatibilityReviewConfirm}</span></label></div>;
 }
 
 function StatusBadge({ status, copy }: { status: PreviewRow["status"]; copy: typeof zhCopy }) {

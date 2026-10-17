@@ -216,9 +216,21 @@ Last reviewed: 2026-10-12
 - 自动审批拒绝资料保存校验点击，未执行或绕过；真实交易/资料/申请/通知写入未测。旧submitted待付款文案和计数口径差异仍待后续规范，分页统计边界已提醒。报告 `docs/audits/2026-10-17-storefront-component-fidelity.md`，任务已转done，全套 `outputs/storefront-fidelity-detail/2026-10-17/partspro-ui-full-kit-ui04.zip`。
 
 
-## 2026-10-17 UI05：前台局部加载与后台刷新（进行中）
+## 2026-10-17 UI05：前台局部加载与后台刷新（已上线）
 
-TASK-20261017-UI05，按老板已批准计划，从正式FU4/f89a515建立隔离候选，移除整页隐藏和刷新重建；保留身份/报价隔离与交易门禁。主目录已有改动不参与。完成后在本节记录实际验证与精确部署，API/DB/env/后台不变。
+- TASK-20261017-UI05 已完成。运行提交 `a1073b8767c16ba48eab90aa2f0d976032ab53d4` 已推送 `codex/storefront-local-refresh-20261017`；独立 SOURCE_GO、STAGE_GO2、PROMOTE_GO 后，将 `dpl_B8YduhG5zUjCYirDGSuc6xX8fBtV` 同构建推广。www/apex 均核对 READY/同SHA，apex307到www；回退保留 `dpl_FU4dTyHQ8MxxtxPsMKTztGYqR64N` / f89a515。
+- 取消按刷新版本隐藏/重建整页，增加公开安全骨架、共享刷新调度、120ms局部提示、15s终态和显式重试；保留同账户筛选、分页、草稿和弹层。身份/代客scope隔离与过期报价购买门禁保留；目录每批最多50、并发2且拒绝旧响应。目录/购物车原有空Suspense回退一并替换。
+- 6+51相关合同/行为测试、lint（排除本地verification生成bundle）、本地和远端build通过；1097源码blob一致/450保护文件无改/459上传文件核对，源码fp `a39383d337c4b219f28a21d80f7f3229e89ac49edaac690fa56e47e43b89b68a`。候选/正式各12HTTP、真实Next导航及语言切换、正式1536/390布局通过，短时error/fatal均0。真实组件合成夹具验证慢网/断网/超时、焦点风暴、分页/滚动/数量和订单备注、弹层焦点及身份变化；不冒充真实业务写E2E。
+- API、数据库、环境变量、后台、Logo和价格算法未变，无migration依赖。主目录现有未提交改动保留，运行源码在 `.company-tmp/storefront-local-refresh-20261017`，未合并main。详细报告 `docs/audits/2026-10-17-storefront-local-refresh-release.md`；任务 `docs/tasks/done/P1-2026-10-17-storefront-local-refresh.md`，预览证据 `outputs/storefront-local-refresh/2026-10-17/`。
+
+
+## 2026-10-17 UI06：前台页首与筛选精简（已上线）
+
+- TASK-20261017-UI06完成。运行提交 `e9e814dc27a8054ae223d19cb0953d8aabebc78a` 已推送 `codex/storefront-compact-header-20261017`；独立STAGE_GO2/PROMOTE_GO2后，同构建 `dpl_2ax6n9uKXsDtPkzwTQk1nZL16Wwf` 正式上线。www/apex均READY/同SHA，apex307→www；回退保留 `dpl_84Mo47vkuRDf41SYAjK4c3cUvTGp` / 5d329f1。
+- 目录桌面保留左树、顶部44px排序/筛选；手机44px搜索+44px工具条，移除重复标题/路径/说明/数量/标签和空闲刷新占位。筛选草稿应用/取消/重置保留q/sort，数字badge及显式关闭回焦。账户、购物车/结算、商品详情、RMA、申请、登录、帮助和首页页首同步压缩，保留业务限制/报价/校验/规则。
+- 源码冻结后识别并发生产REG01更新，旧31f候选未推广；无冲突合入已上线5d329f1，完整保留注册语言修复。相对最新正式基线453保护文件0改，1109blob一致；462运行文件上传hash全匹配，另1个生成next-env一致。指纹 `2b8e77cf6c38147cfffab3730c83fcb07b8e1dd75d71ff3513b9666b8a911578`。
+- storefront13+相关41共54案例、lint、本地/远端build通过；目录双语四宽度、其他页48组及合并后账户8组几何检查无横溢，1536/1280首卡445→190px。筛选/清搜索/排序/分页24→48/商品返回恢复48/慢刷新失败重试/回焦通过。候选和正式各12只读HTTP；正式1536/390双语与短时error/fatal均通过（日志0条）。
+- API、DB、env、后台、Logo和交易协议未变，无migration依赖。主目录未提交源码保留，未合并main；真实注册/资料/交易写入未执行，合成组件证据不冒充业务写E2E。报告 `docs/audits/2026-10-17-storefront-compact-header-release.md`，任务转done，截图/证据 `outputs/storefront-compact-header/2026-10-17/`。
 
 ## 2026-10-17 REG01：注册/个人中心语言反馈上线与闭环审计
 

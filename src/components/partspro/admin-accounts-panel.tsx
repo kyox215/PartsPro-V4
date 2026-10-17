@@ -1152,7 +1152,7 @@ function AccountDetailPane({ canReadOrders, canManageCustomerLevel, canManageCus
                 {account.authProvider}
               </Badge>
               <Badge className="border-slate-200 bg-slate-50 text-slate-600" variant="outline">
-                {formatDate(account.createdAt) ?? accountText("无创建时间", locale)}
+                {formatDate(account.createdAt, locale) ?? accountText("无创建时间", locale)}
               </Badge>
             </div>
           </div>
@@ -1176,7 +1176,7 @@ function AccountDetailPane({ canReadOrders, canManageCustomerLevel, canManageCus
               </span>}/>
           <InfoTile icon={ShoppingBag} label={accountText("订单数量", locale)} value={commerceSpend.orderCount || commerceCustomer.ordersCount}/>
           <InfoTile icon={CircleDollarSign} label={accountText("消费金额", locale)} value={formatEuro(commerceSpend.total || commerceCustomer.revenue)}/>
-          <InfoTile icon={Clock3} label={accountText("最近订单", locale)} value={formatDate(commerceCustomer.lastOrderAt) ?? accountText("暂无", locale)}/>
+          <InfoTile icon={Clock3} label={accountText("最近订单", locale)} value={formatDate(commerceCustomer.lastOrderAt, locale) ?? accountText("暂无", locale)}/>
         </div>) : null}
 
       <div className="flex flex-wrap gap-1">
@@ -1287,8 +1287,8 @@ function CustomerProfileTab({ account, canManageCustomerLevel, canManageProfile,
               </>) : null}
             <DetailLine label={accountText("配送地址", locale)} multiline value={profileCustomer.shippingAddress ?? accountText("暂无", locale)}/>
             <DetailLine label={accountText("账单地址", locale)} multiline value={profileCustomer.billingAddress ?? accountText("暂无", locale)}/>
-            <DetailLine label={accountText("资料完成时间", locale)} value={formatDateTime(profileCustomer.profileCompletedAt) ?? accountText("未完成", locale)}/>
-            <DetailLine label={accountText("更新时间", locale)} value={formatDateTime(profileCustomer.updatedAt) ?? accountText("暂无", locale)}/>
+            <DetailLine label={accountText("资料完成时间", locale)} value={formatDateTime(profileCustomer.profileCompletedAt, locale) ?? accountText("未完成", locale)}/>
+            <DetailLine label={accountText("更新时间", locale)} value={formatDateTime(profileCustomer.updatedAt, locale) ?? accountText("暂无", locale)}/>
           </div>
           {historyCustomer ? (<div className="rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-600">
               <div className="mb-1 font-black text-slate-800">{accountText("历史客户资料 / 已转员工", locale)}</div>
@@ -1329,7 +1329,7 @@ function CustomerOrdersTab({ loaded, loading, orders, canReadOrders, customerId,
               <div className="min-w-0">
                 {canReadOrders && customerId ? <a className="break-words text-xs font-black text-primary underline" href={accountOrdersHref(customerId, accountId, order.id)}>{order.orderNo}</a> : <div className="break-words text-xs font-black text-slate-950">{order.orderNo}</div>}
                 <div className="text-[11px] font-semibold text-slate-500">
-                  {formatDateTime(order.createdAt) ?? accountText("暂无日期", locale)}
+                  {formatDateTime(order.createdAt, locale) ?? accountText("暂无日期", locale)}
                 </div>
               </div>
               <div className="flex min-w-0 flex-wrap items-center gap-1">
@@ -1482,7 +1482,7 @@ function AccountActivityTab({ detail, loaded, loading, text, }: {
                           </div>) : null}
                       </div>
                       <span className="shrink-0 text-[11px] font-semibold text-slate-500">
-                        {formatDateTime(event.createdAt) ?? accountText("暂无", locale)}
+                        {formatDateTime(event.createdAt, locale) ?? accountText("暂无", locale)}
                       </span>
                     </div>
                   </li>))}
@@ -1503,7 +1503,7 @@ function AccountActivityTab({ detail, loaded, loading, text, }: {
                         </div>
                       </div>
                       <span className="shrink-0 text-[11px] font-semibold text-slate-500">
-                        {formatDateTime(event.createdAt) ?? accountText("暂无", locale)}
+                        {formatDateTime(event.createdAt, locale) ?? accountText("暂无", locale)}
                       </span>
                     </div>
                   </li>))}
@@ -2105,7 +2105,7 @@ function CustomerPromoBadge({ compact = false, customer, }: {
     if (!expiresAt) {
         return null;
     }
-    return (<Badge className={cn("h-5 shrink-0 border-emerald-200 bg-emerald-50 px-1.5 text-[10px] font-black text-emerald-700", compact && "max-w-[92px] truncate")} variant="outline">{accountText("活动至", locale)}{formatDate(expiresAt)}
+    return (<Badge className={cn("h-5 shrink-0 border-emerald-200 bg-emerald-50 px-1.5 text-[10px] font-black text-emerald-700", compact && "max-w-[92px] truncate")} variant="outline">{accountText("活动至", locale)}{formatDate(expiresAt, locale)}
     </Badge>);
 }
 function NoticeBanner({ notice, onDismiss }: { notice: Notice; onDismiss: () => void }) { return <AdminNotice tone={notice.tone} message={notice.message} onDismiss={onDismiss} dismissLabel="OK" />; }
@@ -2638,21 +2638,21 @@ function initials(account: Pick<Account, "displayName" | "email">) {
     const value = account.displayName ?? account.email ?? "A";
     return value.slice(0, 2).toUpperCase();
 }
-function formatDate(value: string | null | undefined) {
+function formatDate(value: string | null | undefined, locale: string) {
     if (!value) {
         return null;
     }
-    return new Intl.DateTimeFormat("zh-CN", {
+    return new Intl.DateTimeFormat(locale, {
         day: "2-digit",
         month: "2-digit",
         year: "2-digit",
     }).format(new Date(value));
 }
-function formatDateTime(value: string | null | undefined) {
+function formatDateTime(value: string | null | undefined, locale: string) {
     if (!value) {
         return null;
     }
-    return new Intl.DateTimeFormat("zh-CN", {
+    return new Intl.DateTimeFormat(locale, {
         day: "2-digit",
         hour: "2-digit",
         minute: "2-digit",

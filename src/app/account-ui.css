@@ -539,7 +539,7 @@
   .pp-storefront .pp-overview-wallet > span { font-size:13px; }
   .pp-storefront .pp-overview-wallet > strong { font-size:36px; margin:10px 0 5px; }
   .pp-storefront .pp-overview-wallet > p { font-size:12px; }
-  .pp-storefront .pp-overview-wallet > button { position:absolute; right:19px; bottom:15px; width:auto; min-height:33px; padding:5px 0; border:0; font-size:12px; }
+  .pp-storefront .pp-overview-wallet > button { position:relative; right:auto; bottom:auto; width:100%; min-height:33px; margin-top:8px; padding:5px 0; border:0; font-size:12px; }
   .pp-storefront .pp-overview-wallet .pp-wallet-watermark { width:88px; height:88px; top:31px; right:17px; }
   .pp-storefront .pp-overview-stats { grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
   .pp-storefront .pp-overview-stats > button { min-height:73px; padding:13px 12px; gap:9px; }

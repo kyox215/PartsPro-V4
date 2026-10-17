@@ -1084,7 +1084,7 @@ export function AdminRmaPanel() {
                       <div className="space-y-2">
                         {(selectedRequest.events ?? []).map((event) => (
                           <div key={event.id} className="rounded-md border border-slate-200 bg-slate-50 p-2 text-xs text-slate-600">
-                            <div className="font-black text-slate-800">{formatDateTime(event.createdAt)}</div>
+                            <div className="font-black text-slate-800">{formatDateTime(event.createdAt, locale)}</div>
                             <div className="mt-1">{event.toStatus ?? event.eventType}{event.note ? ` · ${event.note}` : null}</div>
                           </div>
                         ))}
@@ -1373,7 +1373,7 @@ export function AdminRmaPanel() {
                 <SelectContent>
                   {replacementCandidates.map((candidate) => (
                     <SelectItem key={candidate.id} value={candidate.id}>
-                      {candidate.orderNumber} · {candidate.quantity} · {formatDateTime(candidate.shippedAt)}
+                      {candidate.orderNumber} · {candidate.quantity} · {formatDateTime(candidate.shippedAt, locale)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1656,7 +1656,7 @@ function formatMoney(value: number, currency: string) {
   }
 }
 
-function formatDateTime(value: string | null | undefined) {
+function formatDateTime(value: string | null | undefined, locale: string) {
   if (!value) {
     return "—";
   }
@@ -1664,7 +1664,7 @@ function formatDateTime(value: string | null | undefined) {
   if (!Number.isFinite(timestamp)) {
     return value;
   }
-  return new Intl.DateTimeFormat("it-IT", { dateStyle: "short", timeStyle: "short" }).format(new Date(timestamp));
+  return new Intl.DateTimeFormat(locale, { dateStyle: "short", timeStyle: "short" }).format(new Date(timestamp));
 }
 
 function createClientId(prefix: string) {

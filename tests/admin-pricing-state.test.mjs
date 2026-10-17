@@ -5,6 +5,22 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 const root = new URL('../', import.meta.url);
+
+function loadEnglishCopy() {
+  const modules = new Map();
+  function load(relative) {
+    if (modules.has(relative)) return modules.get(relative);
+    const compiled = ts.transpileModule(readFileSync(new URL(relative, root), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+    const loadedModule = { exports: {} };
+    vm.runInNewContext(compiled, { module: loadedModule, exports: loadedModule.exports, require: name => {
+      if (name === './english-literals') return load('src/i18n/english-literals.ts');
+      throw new Error('Unexpected English copy dependency: ' + name);
+    } });
+    modules.set(relative, loadedModule.exports); return loadedModule.exports;
+  }
+  return load('src/i18n/english-ui-copy.ts');
+}
+const englishCopy = loadEnglishCopy();
 const customerA = '11111111-1111-4111-8111-111111111111';
 const customerB = '22222222-2222-4222-8222-222222222222';
 const campaign = { enabled: true, level: 'silver', duration_months: 3, starts_at: null, ends_at: null };
@@ -45,6 +61,7 @@ function harness({ fetch: fetchImpl = async () => json(campaign), locale = 'zh-C
     fetch: fetchImpl,
     window: { addEventListener: (name, fn) => { const set = listeners.get(name) ?? new Set(); set.add(fn); listeners.set(name, set); }, removeEventListener: (name, fn) => listeners.get(name)?.delete(fn) },
     require(name) {
+      if (name === '@/i18n/english-ui-copy') return englishCopy;
       if (name === 'react') return react;
       if (name === 'react/jsx-runtime') return { jsx, jsxs: jsx, Fragment: 'fragment' };
       if (name.endsWith('i18n-provider')) return { useI18n: () => ({ locale }) };

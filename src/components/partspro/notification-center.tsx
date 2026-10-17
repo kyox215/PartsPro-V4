@@ -696,7 +696,7 @@ export function NotificationCenter({
                       {content.body}
                     </p>
                     <p className="mt-1 text-[11px] font-semibold text-slate-400">
-                      {formatNotificationTime(item.createdAt)}
+                      {formatNotificationTime(item.createdAt, locale)}
                     </p></div>
                   </button>
                   );
@@ -1146,14 +1146,14 @@ function detectBrowser() {
   return "Browser";
 }
 
-function formatNotificationTime(value: string) {
+function formatNotificationTime(value: string, locale: string) {
   const timestamp = Date.parse(value);
 
   if (!Number.isFinite(timestamp)) {
     return value;
   }
 
-  return new Intl.DateTimeFormat("it-IT", {
+  return new Intl.DateTimeFormat(locale, {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",

@@ -1,5 +1,4 @@
 import { storefrontEnUS } from "./storefront-en";
-import { englishLiteralCopy } from "../english-literals";
 
 const dictionary = {
   "metadata.title": "PartsPro | Smartphone parts for professional customers in Italy",
@@ -24,7 +23,6 @@ const dictionary = {
   "common.cancel": "Cancel",
   "common.close": "Close",
   ...storefrontEnUS,
-  ...Object.fromEntries(Object.entries(englishLiteralCopy).map(([source, english]) => [`literal.${source}`, english])),
 };
 
 export default dictionary;

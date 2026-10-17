@@ -1,3 +1,4 @@
+import { storefrontEnUS } from "./storefront-en";
 import type { CatalogDepartment } from "@/lib/partspro-data";
 
 export type StorefrontTranslator = (key: string) => string;
@@ -606,6 +607,11 @@ export const storefrontItIT = {
   "storefront.catalog.loadErrorTitle": "Catalogo non aggiornato",
   "storefront.catalog.loadingMore": "Caricamento...",
   "storefront.catalog.loadMore": "Carica altri {count} SKU",
+  "storefront.compact.sort": "Ordina per",
+  "storefront.compact.stockFirst": "Disponibilità",
+  "storefront.compact.nameSort": "Nome prodotto",
+  "storefront.compact.newestSort": "Più recenti",
+  "storefront.compact.loadMore": "Carica altri",
   "storefront.catalog.retry": "Riprova",
   "storefront.account.menuLabel": "Area account",
   "storefront.account.openAccount": "Centro personale",
@@ -2143,6 +2149,11 @@ export const storefrontZhCN = {
   "storefront.catalog.loadErrorTitle": "目录暂未更新",
   "storefront.catalog.loadingMore": "正在加载...",
   "storefront.catalog.loadMore": "再加载 {count} 个 SKU",
+  "storefront.compact.sort": "排序",
+  "storefront.compact.stockFirst": "现货优先",
+  "storefront.compact.nameSort": "商品名称",
+  "storefront.compact.newestSort": "最近更新",
+  "storefront.compact.loadMore": "加载更多",
   "storefront.catalog.retry": "重试",
   "storefront.account.menuLabel": "账户区域",
   "storefront.account.openAccount": "个人中心",
@@ -3210,6 +3221,7 @@ export const storefrontZhCN = {
 };
 
 export const storefrontDictionaries = {
+  "en-US": storefrontEnUS,
   "it-IT": storefrontItIT,
   "zh-CN": storefrontZhCN,
 };

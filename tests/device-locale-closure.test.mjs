@@ -11,7 +11,7 @@ function loader(mocks={}){
  return function load(relative){
   const file=path.resolve(relative);if(cache.has(file))return cache.get(file);
   const source=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText;
-  const module={exports:{}};cache.set(file,module.exports);
+  const loadedModule={exports:{}};cache.set(file,loadedModule.exports);
   const localRequire=name=>{
    if(name in mocks)return mocks[name];
    if(name.startsWith('.')||name.startsWith('@/')){
@@ -21,7 +21,7 @@ function loader(mocks={}){
    }
    return require(name);
   };
-  vm.runInNewContext(source,{module,exports:module.exports,require:localRequire,URL,URLSearchParams,process,console,Intl},{filename:file});cache.set(file,module.exports);return module.exports;
+  vm.runInNewContext(source,{module:loadedModule,exports:loadedModule.exports,require:localRequire,URL,URLSearchParams,process,console,Intl},{filename:file});cache.set(file,loadedModule.exports);return loadedModule.exports;
  };
 }
 const load=loader();const config=load('src/i18n/config.ts');
@@ -79,4 +79,26 @@ test('English dictionaries cover every storefront/admin leaf and keep interpolat
  for(const locale of ['it-IT','zh-CN'])for(const [key,value] of Object.entries(getDictionary(locale))){const en=getDictionary('en-US')[key];assert.equal(typeof en,'string',key);assert.deepEqual((value.match(/\{\w+\}/g)||[]).sort(),(en.match(/\{\w+\}/g)||[]).sort(),key);if(key!=='language.zh-CN')assert.doesNotMatch(en,/\p{Script=Han}/u,key);}
  const en=new Map(leaves(getAdminDictionary('en-US')));for(const [key,value] of leaves(getAdminDictionary('it-IT'))){assert.ok(en.has(key),key);assert.deepEqual((value.match(/\{\w+\}/g)||[]).sort(),(en.get(key).match(/\{\w+\}/g)||[]).sort(),key);assert.doesNotMatch(en.get(key),/\p{Script=Han}/u,key);}
  assert.equal(normalizeAdminLocale('fr-FR'),'en');assert.equal(normalizeAdminLocale('en-GB'),'en');
+});
+test('fixed English UI templates translate labels and preserve inserted business values verbatim',()=>{
+ const {englishUiCopy,englishUiTemplate}=load('src/i18n/english-ui-copy.ts');
+ const callback=()=>42;const original=Object.freeze({label:'Ordini',count:0,callback,nested:['Nome cliente']});
+ const translated=englishUiCopy(original);assert.equal(translated.label,'Orders');assert.equal(translated.nested[0],'Customer name');assert.equal(translated.callback,callback);assert.equal(translated.count,0);assert.equal(original.label,'Ordini');
+ assert.equal(englishUiTemplate`Ordine ${'客户 {0}'} creato.`,'Order 客户 {0} created.');
+ assert.equal(englishUiCopy('UNRECOGNIZED DATA'), 'UNRECOGNIZED DATA');
+});
+test('English call sites have explicit translations for every fixed literal and template',()=>{
+ const {englishLiteralCopy:dictionary}=load('src/i18n/english-literals.ts');let checked=0;
+ function files(dir){return fs.readdirSync(dir,{withFileTypes:true}).flatMap(entry=>entry.isDirectory()?files(path.join(dir,entry.name)):/\.(ts|tsx)$/.test(entry.name)?[path.join(dir,entry.name)]:[]);}
+ for(const file of [...files('src/components/partspro'),...files('src/lib')]){
+  const ast=ts.createSourceFile(file,fs.readFileSync(file,'utf8'),ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+  function walk(node){
+   let key;
+   if(ts.isCallExpression(node)&&node.expression.getText(ast)==='englishUiCopy'&&ts.isStringLiteral(node.arguments[0]))key=node.arguments[0].text;
+   if(ts.isTaggedTemplateExpression(node)&&node.tag.getText(ast)==='englishUiTemplate')key=ts.isTemplateExpression(node.template)?node.template.head.text+node.template.templateSpans.map((span,index)=>`{${index}}`+span.literal.text).join(''):node.template.text;
+   if(key&&/[A-Za-zÀ-ÿ]/.test(key)){assert.equal(typeof dictionary[key],'string',file+': '+key);checked++;}
+   ts.forEachChild(node,walk);
+  }walk(ast);
+ }
+ assert.ok(checked>350,checked+' fixed UI translations checked');
 });
