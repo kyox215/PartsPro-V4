@@ -1,0 +1,4 @@
+export type RefreshState = { refreshVersion: number; completedVersion: number; refreshing: boolean; pricesInvalid: boolean; error: string | null };
+export function createStorefrontRefresh(options: {run: (version: number) => void; changed?: (state: RefreshState) => void; now?: () => number; schedule?: typeof setTimeout; cancel?: typeof clearTimeout}): {getSnapshot: () => RefreshState; request: (reason?: string) => void; complete: (version: number) => void; fail: (version: number) => void; activate: () => void; dispose: () => void};
+export function quoteIsCurrent(product: {priceValidUntil?: string | null; quoteStatus?: string | null}, now?: number): boolean;
+export function refreshVisibleCatalog<T>(count: number, loadPage: (offset: number, limit: number) => Promise<{products:T[];total:number}>, signal: AbortSignal): Promise<{products:T[];total:number}>;

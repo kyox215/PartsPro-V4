@@ -1,5 +1,7 @@
 "use client";
 
+import { usePriceFreshness } from "./storefront-refresh-provider";
+import { QuoteRegion } from "./storefront-refresh-status";
 import { ProductPriceExplanation } from "./product-price-explanation";
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
@@ -70,6 +72,8 @@ type ProductCardProps = {
   cartAccess?: StorefrontCartAccess;
   priceGateReason?: PriceVisibilityReason;
   priorityImage?: boolean;
+  pricingPending?: boolean;
+  pricingError?: boolean;
   product: PartProduct;
   showWholesalePrice?: boolean;
 };
@@ -88,6 +92,8 @@ export const ProductCard = memo(function ProductCard({
   cartAccess = { allowed: false, missingFields: [], reason: "login_required" },
   priceGateReason = "login_required",
   priorityImage = false,
+  pricingPending = false,
+  pricingError = false,
   product,
   showWholesalePrice = false,
 }: ProductCardProps) {
@@ -96,6 +102,8 @@ export const ProductCard = memo(function ProductCard({
   const [mixedCartRejected, setMixedCartRejected] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [accountGateOpen, setAccountGateOpen] = useState(false);
+  const freshness = usePriceFreshness(product);
+  const quotePending = showWholesalePrice && (pricingPending || pricingError || freshness.refreshing || !freshness.available);
   const canUseCart = cartAccess.allowed;
   const hasEffectivePrice = hasOrderableEffectivePrice(product);
   const priceDisplay = getProductPriceDisplay(product);
@@ -108,7 +116,7 @@ export const ProductCard = memo(function ProductCard({
   const orderableQuantity = getProductOrderableQuantity(product);
   const hasSellableStock = isProductOrderable(product, Math.max(1, product.moq));
   const canRequestRestock = purchaseKind === "unavailable";
-  const canAddToCart = canUseCart && hasOpenPrice && hasEffectivePrice && hasSellableStock;
+  const canAddToCart = !quotePending && canUseCart && hasOpenPrice && hasEffectivePrice && hasSellableStock;
   const isLoginRequired = priceGateReason === "login_required";
   const baseProductPath = hrefWithAssistedCompanyId(
     `/prodotto/${encodeURIComponent(product.sku)}`,
@@ -313,7 +321,7 @@ export const ProductCard = memo(function ProductCard({
 
             <div className="pp-card-supply">{!isPreorder ? <span className={cn("pp-card-stock", stockMeta.className)}><span aria-hidden="true" />{stockMeta.label}</span> : null}<span className="pp-card-moq">{txFormat(t, "storefront.cart.moqBadge", "MOQ {moq}", { moq: product.moq })}</span></div>
             <div className="pp-card-purchase mt-auto flex flex-wrap items-start gap-2 pt-2">
-              <div className="pp-card-price w-full min-w-0">
+              <div className="pp-card-price w-full min-w-0"><QuoteRegion product={product} pending={showWholesalePrice && pricingPending} failed={pricingError}>
                 {showWholesalePrice ? (
                   <>
                     <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
@@ -360,8 +368,8 @@ export const ProductCard = memo(function ProductCard({
                     </div>
                   </>
                 )}
-              </div>
-              {canAddToCart && cartQuantity > 0 ? (
+              </QuoteRegion></div>
+              {quotePending ? <Button type="button" disabled size="sm" className="pp-card-add" aria-label={locale === "zh-CN" ? "正在核对价格" : "Verifica prezzo"}><ShoppingCart className="size-4"/></Button> : canAddToCart && cartQuantity > 0 ? (
                 <ProductCartQuantityControl product={product} />
               ) : canAddToCart ? (
                 <Button

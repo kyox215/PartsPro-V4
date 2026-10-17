@@ -214,3 +214,8 @@ Last reviewed: 2026-10-12
 - 运行 `f89a515d5da294e947a65fe1e132b06f2cb6835c` 已推送 `codex/storefront-fidelity-detail-20261017`；独立PROMOTE_GO后，`dpl_FU4dTyHQ8MxxtxPsMKTztGYqR64N` 同构建正式上线，两alias核对同SHA READY；apex307到www。回退保留BGN6/c2e5525。根工作树既有未提交改动保留，未合并main。
 - lint/build/32相关合同、1087源码一致/450保护/452上传、候选与正式各12HTTP、语言实际IT/ZH切换与刷新保持、1536/768/390/320合成组件及真实1536/390只读布局通过。已登录账户公司地址工作区确认，无联系方式截图导出；15m运行error/fatal无组，仅短时观察。
 - 自动审批拒绝资料保存校验点击，未执行或绕过；真实交易/资料/申请/通知写入未测。旧submitted待付款文案和计数口径差异仍待后续规范，分页统计边界已提醒。报告 `docs/audits/2026-10-17-storefront-component-fidelity.md`，任务已转done，全套 `outputs/storefront-fidelity-detail/2026-10-17/partspro-ui-full-kit-ui04.zip`。
+
+
+## 2026-10-17 UI05：前台局部加载与后台刷新（进行中）
+
+TASK-20261017-UI05，按老板已批准计划，从正式FU4/f89a515建立隔离候选，移除整页隐藏和刷新重建；保留身份/报价隔离与交易门禁。主目录已有改动不参与。完成后在本节记录实际验证与精确部署，API/DB/env/后台不变。

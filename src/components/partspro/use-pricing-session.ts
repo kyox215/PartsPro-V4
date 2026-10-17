@@ -1,34 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { useEffect, useRef } from "react";
+import { useStorefrontRefresh } from "./storefront-refresh-provider";
 
-/** Prices are invalidated before a changed identity can reuse hydrated state. */
+/** Only changed identities replace private UI; same-account refresh preserves it. */
 export function usePricingSession(serverUserId: string | null | undefined) {
+  const state = useStorefrontRefresh();
   const expectedUserId = serverUserId ?? null;
-  const router = useRouter();
-  const [session, setSession] = useState({ userId: expectedUserId, revision: 0 });
+  const ready = state.userId === undefined || state.userId === expectedUserId;
+  const requestedIdentity = useRef<string | null>(null);
   useEffect(() => {
-    if (!isSupabaseConfigured()) return;
-    const { data } = createClient().auth.onAuthStateChange((event, next) => {
-      const userId = next?.user.id ?? null;
-      if (event === "INITIAL_SESSION") {
-        setSession((current) => current.userId === userId ? current : { userId, revision: current.revision + 1 });
-        if (userId !== expectedUserId) queueMicrotask(() => router.refresh());
-        return;
-      }
-      setSession((current) => ({ userId, revision: current.revision + 1 }));
-      queueMicrotask(() => {
-        window.dispatchEvent(new Event("partspro-pricing-invalidated"));
-        router.refresh();
-      });
-    });
-    return () => data.subscription.unsubscribe();
-  }, [router, expectedUserId]);
-  return {
-    key: session.userId ?? "anonymous",
-    ready: session.userId === expectedUserId,
-  };
+    state.reportExpectedUserId(expectedUserId);
+    const identityKey = JSON.stringify([state.userId,expectedUserId]);
+    if (ready) requestedIdentity.current=null;
+    else if (requestedIdentity.current !== identityKey && !state.refreshing && !state.error) { requestedIdentity.current=identityKey; state.request(`identity:${JSON.stringify(state.userId)}`); }
+  }, [ready, expectedUserId, state]);
+  return { ...state, key: state.userId === undefined ? expectedUserId ?? "anonymous" : state.userId ?? "anonymous", ready };
 }

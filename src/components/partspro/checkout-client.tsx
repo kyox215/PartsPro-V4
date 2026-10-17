@@ -98,6 +98,7 @@ import {
 } from "./storefront-commerce-status";
 import { StoreHeader } from "./store-header";
 import { StorefrontProductImage } from "./storefront-product-image";
+import { StorefrontLoading } from "./storefront-loading";
 
 export type CheckoutRuntimeView = {
   actionHref?: string;
@@ -245,12 +246,11 @@ const orderSubmitTimeoutMs = 25_000;
 
 export function CheckoutClient(props: CheckoutClientProps) {
   const session = usePricingSession(props.initialAccountAccess?.userId);
-  const t = useT();
-  if (!session.ready) return <div role="status" className="p-8">{tx(t, "storefront.cart.sync.catalogTitle", "Aggiornamento prezzi e disponibilità...")}</div>;
-  return <CheckoutClientScoped key={`${session.key}:${props.company?.id ?? "none"}`} {...props} />;
+  if (!session.ready) return <StorefrontLoading variant="checkout" />;
+  return <CheckoutClientScoped key={`${session.key}:${props.company?.id ?? "none"}`} {...props} pricingSession={session} />;
 }
 
-function CheckoutClientScoped(props: CheckoutClientProps) {
+function CheckoutClientScoped(props: CheckoutClientProps & { pricingSession: ReturnType<typeof usePricingSession> }) {
   const initialScope =
     props.delegatedCheckout ? "" : props.company?.id ?? "";
   const [catalogState, setCatalogState] = React.useState<{
@@ -308,10 +308,12 @@ function CheckoutClientContent({
   initialSelectedCompanyId = null,
   onCatalogProductsLoaded,
   onCatalogScopeChange,
+  pricingSession,
   runtime,
 }: CheckoutClientProps & {
   onCatalogProductsLoaded: (products: readonly PartProduct[]) => void;
   onCatalogScopeChange: (scope: string) => void;
+  pricingSession: ReturnType<typeof usePricingSession>;
 }) {
   const t = useT();
   const {locale} = useI18n();
@@ -465,11 +467,18 @@ function CheckoutClientContent({
     Boolean(selectedCompany?.id) &&
     !targetCustomerBlocker &&
     isRemoteCartReadyForPreview;
-  const previewKey = JSON.stringify([cartSignature, checkoutMode, selectedCompany?.id, form.deliveryMethod, form.useWallet, previewRetryToken]);
-  const previewForUi = shouldLoadPreview && resolvedPreviewKey === previewKey ? preview : idlePreviewState;
+  const previewKey = JSON.stringify([cartSignature, checkoutMode, selectedCompany?.id, form.deliveryMethod, form.useWallet, previewRetryToken, pricingSession.refreshVersion]);
+  const previewForUi = React.useMemo<PreviewState>(() => shouldLoadPreview && resolvedPreviewKey === previewKey ? preview : { ...preview, status: "idle", canSubmit: false, issues: [] }, [shouldLoadPreview, resolvedPreviewKey, previewKey, preview]);
+  const pricingRefreshPending = !pricingSession.error && (pricingSession.refreshing || pricingSession.completedVersion < pricingSession.refreshVersion);
+  const [priceCheckedAt, setPriceCheckedAt] = React.useState(0);
+  const catalogPricesExpired = catalogProducts.some((product) => {
+    const expiry = Date.parse(product.priceValidUntil ?? "");
+    return Number.isFinite(expiry) && expiry <= priceCheckedAt;
+  });
+  const pricingRefreshBlocked = catalogPricesExpired || pricingRefreshPending || pricingSession.pricesInvalid || Boolean(pricingSession.error);
   const checkoutTotals = React.useMemo(() => {
     const pending = totalsForDeliveryMethod(cart.totals, form.deliveryMethod);
-    const totals = previewForUi.status === "ready" ? previewForUi.totals : undefined;
+    const totals = previewForUi.totals;
     if (!totals) return pending;
     return {
       ...pending,
@@ -515,9 +524,9 @@ function CheckoutClientContent({
   const previewBusy = previewQueued || previewForUi.status === "loading";
   const checkoutAmountStatus: CheckoutAmountStatus =
     cart.items.length > 0 &&
-    (isCartBootstrapping || catalogResolutionPending || previewBusy)
+    (isCartBootstrapping || catalogResolutionPending || previewBusy || pricingRefreshPending)
       ? "loading"
-      : cart.items.length > 0 && (isRemoteCartError || previewForUi.status === "error")
+      : cart.items.length > 0 && (isRemoteCartError || previewForUi.status === "error" || pricingRefreshBlocked)
         ? "stale"
         : "ready";
   const lineIssues = React.useMemo(
@@ -544,6 +553,9 @@ function CheckoutClientContent({
     remoteCartLoading: isRemoteCartLoading,
     submitState,
     onRemoteCartRetry: requestCartSyncRetry,
+    pricingError: pricingSession.error,
+    pricingRefreshPending,
+    onPricingRetry: pricingSession.retry,
     t,
   });
   const blockers = buildCheckoutBlockers({
@@ -582,6 +594,7 @@ function CheckoutClientContent({
     blockers.length === 0 &&
     !checkoutSyncState &&
     !formDisabledReason &&
+    !pricingRefreshBlocked &&
     previewReadyForSubmit &&
     submitState.status !== "loading" &&
     submitState.status !== "success" &&
@@ -635,15 +648,18 @@ function CheckoutClientContent({
     rememberAssistedCompanyId(checkoutContextCompanyId || null);
   }, [checkoutContextCompanyId]);
 
+  const notifiedExpiryRef = React.useRef<number | null>(null);
   React.useEffect(() => {
-    const refresh = () => { if (document.visibilityState === "visible") { setPreview(idlePreviewState); setConfirmed(false); setPreviewRetryToken((value) => value + 1); } };
-    window.addEventListener("focus", refresh);
-    window.addEventListener("partspro-pricing-invalidated", refresh);
-    window.addEventListener("partspro:catalog-refreshed", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    const expiries = catalogProducts.map((p) => Date.parse(p.priceValidUntil ?? "")).filter((time) => Number.isFinite(time) && time > Date.now());
-    const timer = expiries.length ? window.setTimeout(refresh, Math.min(2_147_483_647, Math.max(1, Math.min(...expiries) - Date.now() + 50))) : undefined;
-    return () => { window.removeEventListener("focus", refresh); window.removeEventListener("partspro-pricing-invalidated", refresh); window.removeEventListener("partspro:catalog-refreshed", refresh); document.removeEventListener("visibilitychange", refresh); if (timer !== undefined) window.clearTimeout(timer); };
+    const expiries = catalogProducts.map((p) => Date.parse(p.priceValidUntil ?? "")).filter(Number.isFinite);
+    const nextExpiry = expiries.length ? Math.min(...expiries) : undefined;
+    if (nextExpiry === undefined || (nextExpiry <= Date.now() && notifiedExpiryRef.current === nextExpiry)) return;
+    const refresh = () => {
+      notifiedExpiryRef.current = nextExpiry;
+      setPriceCheckedAt(Date.now());
+      window.dispatchEvent(new CustomEvent("partspro-pricing-invalidated", { detail: { reason: "expiry" } }));
+    };
+    const timer = window.setTimeout(refresh, Math.min(2_147_483_647, Math.max(1, nextExpiry - Date.now() + 50)));
+    return () => window.clearTimeout(timer);
   }, [catalogProducts]);
 
   React.useEffect(() => {
@@ -660,9 +676,8 @@ function CheckoutClientContent({
 
     async function loadPreview() {
       setResolvedPreviewKey(previewKey);
-      setPreview({ status: "loading", canSubmit: false, issues: [] });
+      setPreview((current) => ({ ...current, status: "loading", canSubmit: false, issues: [] }));
       setConfirmed(false);
-      onCatalogProductsLoaded([]);
       setCatalogLoadState("loading");
 
       try {
@@ -719,6 +734,7 @@ function CheckoutClientContent({
           if (payload?.data?.orderKind === "preorder") {
             setForm((current) => current.useWallet ? { ...current, useWallet: false } : current);
           }
+          setPriceCheckedAt(Date.now());
           onCatalogProductsLoaded(products);
           setCatalogRejections((current) => {
             const next = { ...current };
@@ -940,15 +956,16 @@ function CheckoutClientContent({
 
   function retryCheckoutValidation() {
     if (pendingSubmissionRef.current) return;
+    if (pricingSession.error) { pricingSession.retry(); return; }
     requestCartSyncRetry();
     setCatalogLoadState("idle");
     setSubmitState({ status: "idle" });
-    setPreview(idlePreviewState);
+    setPreview((current) => ({ ...current, status: "idle", canSubmit: false, issues: [] }));
     setPreviewRetryToken((value) => value + 1);
   }
 
   const canRetryCheckoutValidation =
-    isRemoteCartError || previewForUi.status === "error" || catalogLoadState === "error";
+    isRemoteCartError || previewForUi.status === "error" || catalogLoadState === "error" || Boolean(pricingSession.error) || catalogPricesExpired;
 
   if (runtime.mode === "needs-login") return <><StoreHeader initialAccountAccess={initialAccountAccess} /><main className="mx-auto max-w-xl px-4 py-10"><AsyncFeedback state="info" title={locale === "zh-CN" ? "登录后继续结算" : "Accedi per continuare"} description={locale === "zh-CN" ? "购物车将保留，登录后继续核对地址和金额。" : "Il carrello resta disponibile. Dopo l'accesso verifica indirizzo e importi."} actions={<Button asChild><Link href={loginHref}>{locale === "zh-CN" ? "登录" : "Accedi"}</Link></Button>} /></main></>;
 
@@ -1006,7 +1023,7 @@ function CheckoutClientContent({
             <CardHeader><CardTitle><span className="pp-checkout-number">2</span>{locale === "zh-CN" ? "配送与付款" : "Consegna e pagamento"}</CardTitle></CardHeader>
             <CardContent className="pp-checkout-method-grid">
               <DeliverySection form={form} onChange={setForm} />
-              <PaymentSection form={form} isPreorder={isPreorder} onChange={setForm} walletPreview={walletPreview} />
+              <PaymentSection amountStatus={checkoutAmountStatus} form={form} isPreorder={isPreorder} onChange={setForm} walletPreview={walletPreview} />
             </CardContent>
           </Card>
           <OrderLinesReview
@@ -1015,6 +1032,7 @@ function CheckoutClientContent({
             catalogResolutionPending={catalogResolutionPending}
             lineIssues={lineIssues}
             lines={cart.lines}
+            amountStatus={checkoutAmountStatus}
             pendingCustomerItems={pendingCustomerItems}
             pendingItemsReason={pendingItemsReason}
             unresolvedSkus={reviewUnresolvedSkus}
@@ -1433,6 +1451,7 @@ function DelegatedCustomerSelector({
 }
 
 function OrderLinesReview({
+  amountStatus,
   cartHref,
   catalogLoadState,
   catalogResolutionPending,
@@ -1444,6 +1463,7 @@ function OrderLinesReview({
   notes,
   onNotesChange,
 }: {
+  amountStatus: CheckoutAmountStatus;
   cartHref: string;
   catalogLoadState: "idle" | "loading" | "ready" | "error";
   catalogResolutionPending: boolean;
@@ -1521,6 +1541,7 @@ function OrderLinesReview({
             key={line.sku}
             issues={issuesBySku.get(line.sku) ?? []}
             line={line}
+            amountStatus={amountStatus}
           />
         ))}
         {!catalogResolutionPending && catalogLoadState !== "error" && unresolvedSkus.map((sku) => (
@@ -1558,10 +1579,13 @@ function OrderLinesReview({
   );
 }
 
-function OrderLineRow({ issues, line }: { issues: PreviewIssue[]; line: CartLine }) {
+function OrderLineRow({ issues, line, amountStatus }: { issues: PreviewIssue[]; line: CartLine; amountStatus: CheckoutAmountStatus }) {
   const t = useT();
   const { locale } = useI18n();
   const stockMeta = publicStockLevelMeta(t, line.product);
+  const amountLabel = amountStatus === "loading" ? tx(t, "storefront.checkout.amountCalculating", "Verifica ordine...") : tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare");
+  const unitAmount = amountStatus === "ready" ? formatMoney(line.product.price, locale) : amountLabel;
+  const lineAmount = amountStatus === "ready" ? formatMoney(line.lineTotal, locale) : amountLabel;
 
   return (
     <div className="pp-checkout-review-row grid grid-cols-[48px_minmax(0,1fr)] gap-2 rounded-lg border border-slate-200 p-2 sm:grid-cols-[56px_minmax(220px,1fr)_70px_110px_110px] sm:items-center sm:gap-2.5 sm:p-2.5">
@@ -1604,20 +1628,20 @@ function OrderLineRow({ issues, line }: { issues: PreviewIssue[]; line: CartLine
         </div>
       </div>
       <div className="hidden text-right text-sm sm:block">
-        <div className="font-black">{formatMoney(line.product.price, locale)}</div>
+        <div className="font-black">{unitAmount}</div>
       </div>
       <div className="col-span-2 grid grid-cols-2 gap-2 text-sm sm:col-span-1 sm:block sm:text-right">
         <div className="sm:hidden">
           <div className="text-[11px] font-semibold text-slate-500">
             {tx(t, "storefront.checkout.unitPriceTaxIncluded", "Prezzo IVA incl.")}
           </div>
-          <div className="font-black">{formatMoney(line.product.price, locale)}</div>
+          <div className="font-black">{unitAmount}</div>
         </div>
         <div>
           <div className="text-[11px] font-semibold text-slate-500 sm:hidden">
             {tx(t, "storefront.common.total", "Totale")}
           </div>
-          <div className="font-black">{formatMoney(line.lineTotal, locale)}</div>
+          <div className="font-black">{lineAmount}</div>
         </div>
       </div>
     </div>
@@ -1703,11 +1727,13 @@ function DeliverySection({form, onChange}: {
 }
 
 function PaymentSection({
+  amountStatus,
   form,
   isPreorder,
   onChange,
   walletPreview,
 }: {
+  amountStatus: CheckoutAmountStatus;
   form: CheckoutFormState;
   isPreorder: boolean;
   onChange: React.Dispatch<React.SetStateAction<CheckoutFormState>>;
@@ -1717,7 +1743,8 @@ function PaymentSection({
   const { locale } = useI18n();
   const walletAvailable = walletPreview?.availableAmount.cents ?? 0;
   const walletApplied = walletPreview?.appliedAmount.cents ?? 0;
-  const canUseWallet = Boolean(!isPreorder && walletPreview && walletAvailable > 0);
+  const walletAmountsCurrent = amountStatus === "ready";
+  const canUseWallet = Boolean(walletAmountsCurrent && !isPreorder && walletPreview && walletAvailable > 0);
   const options = [
     {
       value: "bank_transfer" as const,
@@ -1808,12 +1835,12 @@ function PaymentSection({
               {walletPreview ? (
                 <span className="text-xs font-black text-blue-700">
                   {tx(t, "storefront.checkout.wallet.available", "Disponibile")}{" "}
-                  {formatMoneyDto(walletPreview.availableAmount, locale)}
+                  {walletAmountsCurrent ? formatMoneyDto(walletPreview.availableAmount, locale) : tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare")}
                 </span>
               ) : null}
             </span>
             <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">
-              {walletPreview
+              {!walletAmountsCurrent ? tx(t, "storefront.checkout.wallet.loading", "Il saldo wallet viene calcolato con il controllo ordine.") : walletPreview
                 ? canUseWallet
                   ? tx(t, "storefront.checkout.wallet.description", "Seleziona per scalare il saldo disponibile da questo ordine.")
                   : tx(t, "storefront.checkout.wallet.empty", "Nessun saldo wallet disponibile per questo cliente.")
@@ -2367,6 +2394,9 @@ function buildCheckoutSyncState({
   cartHydrated,
   catalogResolutionPending,
   onRemoteCartRetry,
+  onPricingRetry,
+  pricingError,
+  pricingRefreshPending,
   previewQueued,
   preview,
   remoteCartError,
@@ -2377,6 +2407,9 @@ function buildCheckoutSyncState({
   cartHydrated: boolean;
   catalogResolutionPending: boolean;
   onRemoteCartRetry: () => void;
+  onPricingRetry: () => void;
+  pricingError: string | null;
+  pricingRefreshPending: boolean;
   previewQueued: boolean;
   preview: PreviewState;
   remoteCartError: boolean;
@@ -2429,6 +2462,14 @@ function buildCheckoutSyncState({
       ),
       message: tx(t, "storefront.checkout.submit.cartLoadingReason", "Caricamento carrello del tuo account..."),
     };
+  }
+
+  if (pricingError) {
+    return { kind: "preview", title: tx(t, "storefront.checkout.preview.errorTitle", "Controllo ordine non riuscito"), message: pricingError, tone: "error", actionLabel: tx(t, "storefront.common.retry", "Riprova"), onAction: onPricingRetry };
+  }
+
+  if (pricingRefreshPending) {
+    return { kind: "preview", title: tx(t, "storefront.checkout.sync.previewTitle", "Verifica ordine..."), message: tx(t, "storefront.checkout.preview.loading", "Controllo prezzi, scorte e MOQ in corso.") };
   }
 
   if (catalogResolutionPending) {

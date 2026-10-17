@@ -1,4 +1,6 @@
 "use client";
+
+import { StorefrontLoading } from "./storefront-loading";
 import * as React from "react";
 import { usePricingSession } from "./use-pricing-session";
 import { useAccountCopy } from "./use-account-copy";
@@ -173,8 +175,7 @@ const orderFilters: Array<{
 ];
 export function AccountPage(props: AccountPageProps) {
     const session = usePricingSession(props.initialAccountAccess?.userId);
-    const c = useAccountCopy();
-    if (!session.ready) return <AsyncFeedback state="loading" title={c("正在更新账户资料…")} />;
+    if (!session.ready) return <StorefrontLoading variant="account" />;
     return <AccountPageScoped key={`${session.key}:${props.customerProfile?.id ?? "none"}`} {...props} />;
 }
 

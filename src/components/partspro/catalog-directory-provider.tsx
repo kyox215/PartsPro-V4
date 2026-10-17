@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { isStorefrontPath } from "./storefront-navigation";
 import { emptyCatalogDirectory, type CatalogDirectory, type CatalogNode } from "@/lib/partspro-catalog-directory";
 
 const Context = createContext<CatalogDirectory>(emptyCatalogDirectory);
@@ -22,7 +23,7 @@ export function CatalogDirectoryProvider({ children }: { children: ReactNode }) 
       setDirectory(next);
       if (changed) {
         window.dispatchEvent(new Event("partspro:catalog-refreshed"));
-        router.refresh();
+        if (!isStorefrontPath(window.location.pathname)) router.refresh();
       }
     } catch { /* Static labels remain usable when metadata is unavailable. Admin writes fail closed. */ }
   }, [router]);

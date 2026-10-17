@@ -1,39 +1,17 @@
 "use client";
 
-import { useEffect, useState, useTransition, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import type { PartProduct } from "@/lib/partspro-data";
-import { tx } from "@/i18n/dictionaries/storefront";
-import { useT } from "./i18n-provider";
 import { usePricingSession } from "./use-pricing-session";
+import { StorefrontLoading } from "./storefront-loading";
 
-/** Catalog pages can discard cached results; checkout preserves its form separately. */
+/** Only an identity mismatch replaces private UI. Refreshes preserve every child. */
 export function PricingSessionBoundary({ userId, children }: { userId?: string | null; children: ReactNode }) {
   const session = usePricingSession(userId);
-  const router = useRouter();
-  const t = useT();
-  const [pending, startTransition] = useTransition();
-  const [revision, setRevision] = useState(0);
-  useEffect(() => {
-    const refresh = () => {
-      if (document.visibilityState !== "visible") return;
-      startTransition(() => {
-        setRevision((value) => value + 1);
-        router.refresh();
-      });
-    };
-    window.addEventListener("focus", refresh);
-    window.addEventListener("partspro-pricing-invalidated", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    return () => {
-      window.removeEventListener("focus", refresh);
-      window.removeEventListener("partspro-pricing-invalidated", refresh);
-      document.removeEventListener("visibilitychange", refresh);
-    };
-  }, [router]);
-  const loading = <div role="status" className="p-8">{tx(t, "storefront.cart.sync.catalogTitle", "Aggiornamento prezzi e disponibilità...")}</div>;
-  if (!session.ready) return loading;
-  return <>{pending ? loading : null}<div hidden={pending} key={`${session.key}:${revision}`}>{children}</div></>;
+  const pathname = usePathname();
+  if (!session.ready) return <StorefrontLoading variant={pathname.startsWith("/prodotto/") ? "product" : pathname === "/" ? "home" : "catalog"} />;
+  return <div key={session.key}>{children}</div>;
 }
 
 // Shared by streamed shelves so one expired boundary causes one refresh, even on remount.
@@ -46,7 +24,7 @@ export function QuoteExpiryRefresh({ products }: { products: readonly Pick<PartP
       if (refreshedExpiries.has(time)) return;
       refreshedExpiries.add(time);
       if (refreshedExpiries.size > 256) refreshedExpiries.delete(refreshedExpiries.values().next().value!);
-      window.dispatchEvent(new Event("partspro-pricing-invalidated"));
+      window.dispatchEvent(new CustomEvent("partspro-pricing-invalidated", { detail: { reason: "expiry" } }));
     };
     const expired = times.filter((time) => time <= Date.now() && !refreshedExpiries.has(time));
     if (expired.length) {

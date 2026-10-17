@@ -1,1 +1,2 @@
-export { StorefrontLoading as default } from "@/components/partspro/storefront-loading";
+import { StorefrontLoading } from "@/components/partspro/storefront-loading";
+export default function Loading() { return <StorefrontLoading variant="home"/>; }

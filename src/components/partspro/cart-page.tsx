@@ -91,6 +91,7 @@ import {
 } from "./storefront-commerce-status";
 import { StorefrontProductImage } from "./storefront-product-image";
 import { StoreHeader } from "./store-header";
+import { StorefrontLoading } from "./storefront-loading";
 
 type CartPageProps = {
   catalogProducts?: readonly PartProduct[];
@@ -102,6 +103,7 @@ type CartPageContentProps = {
   catalogProducts: readonly PartProduct[];
   initialAccountAccess?: StoreHeaderAccountAccess;
   onCatalogProductsLoaded: (products: readonly PartProduct[]) => void;
+  pricingSession: ReturnType<typeof usePricingSession>;
 };
 
 type CartCatalogApiResponse = {
@@ -181,6 +183,7 @@ type LoadingCartLineViewProps = {
 };
 
 type SnapshotCartLineViewProps = {
+  amountState?: MobileCartAmountState;
   quantity: number;
   sku: string;
   snapshot: CartItemSnapshot;
@@ -193,8 +196,7 @@ export function CartPage({
   const searchParams = useSearchParams();
   const assistedCompanyId = readAssistedCompanyIdFromSearchParams(searchParams);
   const session = usePricingSession(initialAccountAccess?.userId);
-  const t = useT();
-  if (!session.ready) return <div role="status" className="p-8">{tx(t, "storefront.cart.sync.catalogTitle", "Aggiornamento prezzi e disponibilità...")}</div>;
+  if (!session.ready) return <StorefrontLoading variant="cart" />;
 
   return (
     <CartPageScoped
@@ -202,6 +204,7 @@ export function CartPage({
       assistedCompanyId={assistedCompanyId}
       catalogProducts={catalogProducts}
       initialAccountAccess={initialAccountAccess}
+      pricingSession={session}
     />
   );
 }
@@ -210,10 +213,12 @@ function CartPageScoped({
   assistedCompanyId,
   catalogProducts,
   initialAccountAccess,
+  pricingSession,
 }: {
   assistedCompanyId: string | null;
   catalogProducts: readonly PartProduct[];
   initialAccountAccess?: StoreHeaderAccountAccess;
+  pricingSession: ReturnType<typeof usePricingSession>;
 }) {
   const [catalogState, setCatalogState] = React.useState<PartProduct[]>([]);
   void catalogProducts;
@@ -232,6 +237,7 @@ function CartPageScoped({
         catalogProducts={catalogState}
         initialAccountAccess={initialAccountAccess}
         onCatalogProductsLoaded={handleCatalogProductsLoaded}
+        pricingSession={pricingSession}
       />
     </CartCatalogProvider>
   );
@@ -242,6 +248,7 @@ function CartPageContent({
   catalogProducts,
   initialAccountAccess,
   onCatalogProductsLoaded,
+  pricingSession,
 }: CartPageContentProps) {
   const t = useT();
   const {locale} = useI18n();
@@ -259,6 +266,15 @@ function CartPageContent({
   >({});
   const cartQuoteSignature = JSON.stringify(cart.items.map(({ sku, quantity }) => ({ sku, quantity })));
   const [resolvedSignature, setResolvedSignature] = React.useState("");
+  const [resolvedRefreshVersion, setResolvedRefreshVersion] = React.useState(-1);
+  const [priceCheckedAt, setPriceCheckedAt] = React.useState(0);
+  const catalogPricesExpired = catalogProducts.some((product) => {
+    const expiry = Date.parse(product.priceValidUntil ?? "");
+    return Number.isFinite(expiry) && expiry <= priceCheckedAt;
+  });
+  const pricingRefreshBlocked = catalogPricesExpired || pricingSession.refreshing || pricingSession.pricesInvalid || Boolean(pricingSession.error) || pricingSession.completedVersion < pricingSession.refreshVersion || resolvedRefreshVersion !== pricingSession.refreshVersion;
+  const pricingRefreshPending = !isLoginRequired && !pricingSession.error && (pricingSession.refreshing || (resolvedRefreshVersion !== pricingSession.refreshVersion && catalogLoadState !== "error"));
+  const hasQuoteError = catalogLoadState === "error" || Boolean(pricingSession.error);
   const checkoutHref = hrefWithAssistedCompanyId("/checkout", assistedCompanyId);
   const catalogHref = hrefWithAssistedCompanyId("/catalogo", assistedCompanyId);
   const loginHref = loginHrefForNext(hrefWithAssistedCompanyId("/carrello", assistedCompanyId));
@@ -298,7 +314,7 @@ function CartPageContent({
   const isCatalogResolving =
     cart.isHydrated &&
     cart.items.length > 0 &&
-    (catalogLoadState === "loading" || hasPendingCatalogResolution || (resolvedSignature !== cartQuoteSignature && catalogLoadState !== "error"));
+    (catalogLoadState === "loading" || pricingRefreshPending || hasPendingCatalogResolution || (resolvedSignature !== cartQuoteSignature && catalogLoadState !== "error"));
   const isRemoteCartLoading =
     !isLoginRequired &&
     isCartRemoteSyncPending(cartSyncStatus.remoteStatus);
@@ -356,7 +372,7 @@ function CartPageContent({
       cart.items.map((item) => {
         const line = cartLineBySku.get(item.sku);
 
-        if (line && !isCatalogResolving && catalogLoadState === "ready") {
+        if (line) {
           return {
             kind: "available",
             line,
@@ -365,7 +381,6 @@ function CartPageContent({
         }
 
         if (
-          isCatalogResolving &&
           item.snapshot &&
           !catalogProductBySku.has(item.sku) &&
           !catalogRejections[item.sku]
@@ -410,7 +425,6 @@ function CartPageContent({
       catalogLoadState,
       catalogProductBySku,
       catalogRejections,
-      isCatalogResolving,
     ]
   );
   const displayItemCount = React.useMemo(
@@ -423,6 +437,8 @@ function CartPageContent({
     !isRemoteCartLoading &&
     !isCartSyncError &&
     !isCatalogResolving &&
+    !pricingRefreshBlocked &&
+    !hasQuoteError &&
     totals.lines.length > 0 &&
     unresolvedSkus.length === 0;
   const canNavigateToCheckout =
@@ -435,11 +451,11 @@ function CartPageContent({
     canNavigateToCheckout &&
     (isCatalogResolving || totals.lines.length === 0 || unresolvedSkus.length > 0);
   const checkoutDisabled =
-    !canNavigateToCheckout || isCatalogResolving || isCartSyncError;
+    !canNavigateToCheckout || isCatalogResolving || isCartSyncError || hasQuoteError || pricingRefreshBlocked;
   const cartAmountState: MobileCartAmountState =
     isCartBootstrapping || isCatalogResolving
       ? "loading"
-      : isCartSyncError || hasCheckoutBlockers
+      : isCartSyncError || hasCheckoutBlockers || hasQuoteError || pricingRefreshBlocked
         ? "stale"
         : "ready";
   const cartPendingTitle =
@@ -461,11 +477,22 @@ function CartPageContent({
     onRetry: retryCartSync,
     t,
   });
+  const pricingErrorBanner: StorefrontSyncStatusState | null = pricingSession.error ? {
+    title: tx(t, "storefront.checkout.preview.errorTitle", "Controllo ordine non riuscito"),
+    message: pricingSession.error,
+    tone: "error",
+    actionLabel: tx(t, "storefront.common.retry", "Riprova"),
+    onAction: pricingSession.retry,
+  } : null;
   const checkoutDisabledReason =
     isCartBootstrapping
       ? tx(t, "storefront.cart.sync.remoteMessage", "Lettura del carrello del tuo account. Il checkout resta disattivato finche il totale non e aggiornato.")
       : isCatalogResolving
         ? tx(t, "storefront.cart.sync.catalogMessage", "Verifica prodotti, prezzi cliente, stock e MOQ.")
+        : pricingSession.error
+          ? pricingSession.error
+        : hasQuoteError || pricingRefreshBlocked
+          ? tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare")
         : isCartSyncError
           ? tx(t, "storefront.cart.sync.errorBlocker", "Sincronizzazione carrello non riuscita: checkout sospeso. Riprova la sincronizzazione o aggiorna la pagina.")
           : hasCheckoutBlockers
@@ -484,15 +511,18 @@ function CartPageContent({
     refreshStoredCartItemSnapshots(catalogProducts);
   }, [cart.isHydrated, catalogProducts]);
 
+  const notifiedExpiryRef = React.useRef<number | null>(null);
   React.useEffect(() => {
-    const refresh = () => { if (document.visibilityState === "visible") setCatalogRetryToken((value) => value + 1); };
-    window.addEventListener("focus", refresh);
-    window.addEventListener("partspro-pricing-invalidated", refresh);
-    window.addEventListener("partspro:catalog-refreshed", refresh);
-    document.addEventListener("visibilitychange", refresh);
-    const expiries = catalogProducts.map((p) => Date.parse(p.priceValidUntil ?? "")).filter((time) => Number.isFinite(time) && time > Date.now());
-    const timer = expiries.length ? window.setTimeout(refresh, Math.min(2_147_483_647, Math.max(1, Math.min(...expiries) - Date.now() + 50))) : undefined;
-    return () => { window.removeEventListener("focus", refresh); window.removeEventListener("partspro-pricing-invalidated", refresh); window.removeEventListener("partspro:catalog-refreshed", refresh); document.removeEventListener("visibilitychange", refresh); if (timer !== undefined) window.clearTimeout(timer); };
+    const expiries = catalogProducts.map((p) => Date.parse(p.priceValidUntil ?? "")).filter(Number.isFinite);
+    const nextExpiry = expiries.length ? Math.min(...expiries) : undefined;
+    if (nextExpiry === undefined || (nextExpiry <= Date.now() && notifiedExpiryRef.current === nextExpiry)) return;
+    const refresh = () => {
+      notifiedExpiryRef.current = nextExpiry;
+      setPriceCheckedAt(Date.now());
+      window.dispatchEvent(new CustomEvent("partspro-pricing-invalidated", { detail: { reason: "expiry" } }));
+    };
+    const timer = window.setTimeout(refresh, Math.min(2_147_483_647, Math.max(1, nextExpiry - Date.now() + 50)));
+    return () => window.clearTimeout(timer);
   }, [catalogProducts]);
 
   React.useEffect(() => {
@@ -504,7 +534,6 @@ function CartPageContent({
     let active = true;
     async function loadCartCatalogProducts() {
       setCatalogLoadState("loading");
-      onCatalogProductsLoaded([]);
       try {
         const allProducts: PartProduct[] = [];
         const allRejected: Record<string, CartCatalogRejectedItem> = {};
@@ -519,17 +548,19 @@ function CartPageContent({
           for (const item of payload.meta?.rejected ?? []) allRejected[item.sku] = item;
         }
         if (!active || controller.signal.aborted) return;
+        setPriceCheckedAt(Date.now());
         onCatalogProductsLoaded(allProducts);
         setCatalogRejections(allRejected);
         setResolvedSignature(cartQuoteSignature);
+        setResolvedRefreshVersion(pricingSession.refreshVersion);
         setCatalogLoadState("ready");
       } catch {
-        if (active) { onCatalogProductsLoaded([]); setCatalogLoadState("error"); }
+        if (active) setCatalogLoadState("error");
       } finally { window.clearTimeout(timeout); }
     }
     void loadCartCatalogProducts();
     return () => { active = false; controller.abort(); window.clearTimeout(timeout); };
-  }, [assistedCompanyId, cart.isHydrated, cartQuoteSignature, catalogRetryToken, isLoginRequired, onCatalogProductsLoaded]);
+  }, [assistedCompanyId, cart.isHydrated, cartQuoteSignature, catalogRetryToken, isLoginRequired, onCatalogProductsLoaded, pricingSession.refreshVersion]);
 
   const {
     clearCart: clearCartItems,
@@ -606,10 +637,11 @@ function CartPageContent({
     }
   }, [clearCartItems, cart.items, t]);
 
-  const retryCatalogLoad = React.useCallback(() => {
+  function retryCatalogLoad() {
+    if (pricingSession.error) { pricingSession.retry(); return; }
     setCatalogLoadState("idle");
     setCatalogRetryToken((value) => value + 1);
-  }, []);
+  }
 
   return (
     <main className="pp-cart-page min-h-screen overflow-x-hidden bg-[#f4f6fa] text-slate-950">
@@ -619,7 +651,7 @@ function CartPageContent({
       />
       <StorefrontSyncStatusBar
         maxWidthClassName="max-w-[1360px]"
-        state={cartSyncBanner}
+        state={pricingErrorBanner ?? cartSyncBanner}
       />
       <CommerceProgress step={1} />
       <div className="pp-commerce-layout mx-auto grid max-w-[1360px] gap-2 px-2 pt-2 pb-[calc(5.25rem_+_env(safe-area-inset-bottom))] sm:gap-4 sm:px-4 sm:pt-5 lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-3 lg:pt-3 lg:pb-4">
@@ -802,7 +834,7 @@ function CartPageContent({
             </Card>
           )}
 
-          {catalogLoadState === "error" && !hasUnresolvedItems && (
+          {hasQuoteError && !pricingSession.error && !hasUnresolvedItems && (
             <Card className="border-amber-200 bg-amber-50">
               <CardContent className="flex flex-col items-start gap-3 p-4 text-sm font-semibold leading-6 text-amber-950 sm:flex-row sm:items-center sm:justify-between sm:p-5">
                 <span>
@@ -829,12 +861,14 @@ function CartPageContent({
                     <CartLineMobileRow
                       key={row.sku}
                       line={row.line}
+                      amountState={cartAmountState}
                       onChangeQuantity={changeQuantity}
                       onRemove={removeLine}
                       onSetQuantity={setQuantity}
                     />
                   ) : row.kind === "snapshot" ? (
                     <CartLineMobileSnapshotRow
+                      amountState={cartAmountState}
                       key={row.sku}
                       quantity={row.quantity}
                       sku={row.sku}
@@ -865,12 +899,14 @@ function CartPageContent({
                     <CartLineDesktopCard
                       key={row.sku}
                       line={row.line}
+                      amountState={cartAmountState}
                       onChangeQuantity={changeQuantity}
                       onRemove={removeLine}
                       onSetQuantity={setQuantity}
                     />
                   ) : row.kind === "snapshot" ? (
                     <CartLineDesktopSnapshotCard
+                      amountState={cartAmountState}
                       key={row.sku}
                       quantity={row.quantity}
                       sku={row.sku}
@@ -899,7 +935,7 @@ function CartPageContent({
         </section>
 
         <div className="hidden lg:block">
-          {isLoginRequired ? null : isCartBootstrapping || isCatalogResolving ? (
+          {isLoginRequired ? null : isCartBootstrapping && catalogProducts.length === 0 ? (
             <CartSummaryLoadingCard
               lineCount={cart.items.length}
               message={cartPendingMessage}
@@ -908,7 +944,7 @@ function CartPageContent({
           ) : (
             <OrderSummaryCard
               amountMessage={checkoutDisabledReason}
-              amountStatus={isCartSyncError || hasCheckoutBlockers ? "stale" : "ready"}
+              amountStatus={cartAmountState}
               totals={totals}
               checkoutDisabled={checkoutDisabled}
               checkoutHref={checkoutHref}
@@ -1372,6 +1408,7 @@ type MobileCartCheckoutBarProps = {
 type MobileCartAmountState = "loading" | "ready" | "stale";
 
 type CartLineViewProps = {
+  amountState?: MobileCartAmountState;
   line: CartLine;
   onChangeQuantity: (sku: string, direction: -1 | 1) => void;
   onRemove: (sku: string) => void;
@@ -1379,14 +1416,15 @@ type CartLineViewProps = {
 };
 
 const CartLineMobileSnapshotRow = React.memo(function CartLineMobileSnapshotRow({
+  amountState = "loading",
   quantity,
   sku,
   snapshot,
 }: SnapshotCartLineViewProps) {
   const t = useT();
-  const { locale } = useI18n();
   const product = cartSnapshotProduct(snapshot, sku);
   const lineTotal = product.price * quantity;
+  const pendingAmount = amountState === "stale" ? tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare") : tx(t, "storefront.checkout.amountCalculating", "Verifica ordine...");
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 border-b border-slate-100 bg-white px-2.5 py-2 last:border-b-0">
@@ -1394,6 +1432,7 @@ const CartLineMobileSnapshotRow = React.memo(function CartLineMobileSnapshotRow(
         product={product}
         quantity={quantity}
         lineTotal={lineTotal}
+        amountState={amountState}
         className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-start gap-2 rounded-md text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
       >
         <StorefrontProductImage
@@ -1416,7 +1455,7 @@ const CartLineMobileSnapshotRow = React.memo(function CartLineMobileSnapshotRow(
               {product.grade}
             </Badge>
             <Badge className="h-5 border border-sky-200 bg-sky-50 px-1.5 text-[10px] leading-none text-sky-700">
-              {tx(t, "storefront.cart.snapshotRefreshing", "Aggiornamento")}
+              {pendingAmount}
             </Badge>
           </div>
         </div>
@@ -1424,12 +1463,10 @@ const CartLineMobileSnapshotRow = React.memo(function CartLineMobileSnapshotRow(
       <div className="grid min-w-[92px] justify-items-end gap-1 text-right">
         <div>
           <div className="whitespace-nowrap text-[13px] font-black leading-4">
-            {formatMoney(lineTotal, locale)}
+            <span className="text-xs font-semibold">{pendingAmount}</span>
           </div>
           <div className="whitespace-nowrap text-[10px] leading-3 text-slate-500">
-            {txFormat(t, "storefront.cart.priceEach", "{price} / pz", {
-              price: formatMoney(product.price, locale),
-            })}
+            —
           </div>
         </div>
         <div className="rounded-md border border-slate-100 bg-slate-50 px-2 py-1 text-xs font-black text-slate-500">
@@ -1577,6 +1614,7 @@ const RejectedCartLineMobileRow = React.memo(function RejectedCartLineMobileRow(
 });
 
 const CartLineMobileRow = React.memo(function CartLineMobileRow({
+  amountState = "ready",
   line,
   onChangeQuantity,
   onRemove,
@@ -1589,6 +1627,8 @@ const CartLineMobileRow = React.memo(function CartLineMobileRow({
   const canDecrease = line.quantity > minimumQuantity;
   const canIncrease = line.quantity < orderableQuantity;
   const priceDisplay = getProductPriceDisplay(line.product);
+  const pricesCurrent = amountState === "ready";
+  const pendingAmount = amountState === "loading" ? tx(t, "storefront.checkout.amountCalculating", "Verifica ordine...") : tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare");
 
   return (
     <div className="pp-cart-mobile-line grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 border-b border-slate-100 px-2.5 py-2 last:border-b-0">
@@ -1596,6 +1636,7 @@ const CartLineMobileRow = React.memo(function CartLineMobileRow({
         product={line.product}
         quantity={line.quantity}
         lineTotal={line.lineTotal}
+        amountState={amountState}
         className="grid min-w-0 grid-cols-[40px_minmax(0,1fr)] items-start gap-2 rounded-md text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
       >
         <StorefrontProductImage
@@ -1633,14 +1674,14 @@ const CartLineMobileRow = React.memo(function CartLineMobileRow({
       <div className="pp-cart-line-actions grid min-w-[92px] justify-items-end gap-1 text-right">
         <div>
           <div className="whitespace-nowrap text-[13px] font-black leading-4">
-            {formatMoney(line.lineTotal, locale)}
+              {pricesCurrent ? formatMoney(line.lineTotal, locale) : <span className="text-xs font-semibold">{pendingAmount}</span>}
           </div>
           <div className="whitespace-nowrap text-[10px] leading-3 text-slate-500">
-            {txFormat(t, "storefront.cart.priceEach", "{price} / pz", {
+            {pricesCurrent ? txFormat(t, "storefront.cart.priceEach", "{price} / pz", {
               price: formatMoney(line.product.price, locale),
-            })}
+            }) : "—"}
           </div>
-          {priceDisplay.hasDiscount && priceDisplay.basePrice ? (
+          {pricesCurrent && priceDisplay.hasDiscount && priceDisplay.basePrice ? (
             <div className="whitespace-nowrap text-[10px] leading-3 text-slate-400 line-through">
               {txFormat(t, "storefront.cart.priceEach", "{price} / pz", {
                 price: formatMoney(priceDisplay.basePrice, locale),
@@ -1707,6 +1748,7 @@ const CartLineMobileRow = React.memo(function CartLineMobileRow({
 });
 
 const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
+  amountState = "ready",
   line,
   onChangeQuantity,
   onRemove,
@@ -1720,6 +1762,8 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
   const canIncrease = line.quantity < orderableQuantity;
   const priceDisplay = getProductPriceDisplay(line.product);
   const stockMeta = publicStockLevelMeta(t, line.product);
+  const pricesCurrent = amountState === "ready";
+  const pendingAmount = amountState === "loading" ? tx(t, "storefront.checkout.amountCalculating", "Verifica ordine...") : tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare");
 
   return (
     <Card size="sm" className="pp-cart-desktop-line rounded-lg border-slate-200 bg-white">
@@ -1728,6 +1772,7 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
           product={line.product}
           quantity={line.quantity}
           lineTotal={line.lineTotal}
+          amountState={amountState}
           className="pp-cart-product-info grid min-w-0 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 rounded-md text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
         >
           <StorefrontProductImage
@@ -1773,8 +1818,8 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
           </div>
         </CartProductDetailsTrigger>
         <div className="pp-cart-unit-price">
-          <strong>{formatMoney(line.product.price, locale)}</strong>
-          {priceDisplay.hasDiscount && priceDisplay.basePrice ? <small><s>{formatMoney(priceDisplay.basePrice, locale)}</s><span>{formatPriceDiscountBadge(priceDisplay, t)}</span></small> : null}
+          <strong>{pricesCurrent ? formatMoney(line.product.price, locale) : <span className="text-xs font-semibold">{pendingAmount}</span>}</strong>
+          {pricesCurrent && priceDisplay.hasDiscount && priceDisplay.basePrice ? <small><s>{formatMoney(priceDisplay.basePrice, locale)}</s><span>{formatPriceDiscountBadge(priceDisplay, t)}</span></small> : null}
         </div>
         <div className="pp-cart-quantity">
             <div className="inline-flex h-7 items-center rounded-md border bg-white">
@@ -1820,7 +1865,7 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
               </Button>
             </div>
         </div>
-        <strong className="pp-cart-line-total">{formatMoney(line.lineTotal, locale)}</strong>
+        <strong className="pp-cart-line-total">{pricesCurrent ? formatMoney(line.lineTotal, locale) : <span className="text-xs font-semibold">{pendingAmount}</span>}</strong>
             <Button
               type="button"
               variant="ghost"
@@ -1838,15 +1883,15 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
 });
 
 const CartLineDesktopSnapshotCard = React.memo(function CartLineDesktopSnapshotCard({
+  amountState = "loading",
   quantity,
   sku,
   snapshot,
 }: SnapshotCartLineViewProps) {
   const t = useT();
-  const { locale } = useI18n();
   const product = cartSnapshotProduct(snapshot, sku);
-  const priceDisplay = getProductPriceDisplay(product);
   const lineTotal = product.price * quantity;
+  const pendingAmount = amountState === "stale" ? tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare") : tx(t, "storefront.checkout.amountCalculating", "Verifica ordine...");
 
   return (
     <Card size="sm" className="rounded-lg border-slate-200 bg-white">
@@ -1855,6 +1900,7 @@ const CartLineDesktopSnapshotCard = React.memo(function CartLineDesktopSnapshotC
           product={product}
           quantity={quantity}
           lineTotal={lineTotal}
+          amountState={amountState}
           className="grid min-w-0 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 rounded-md text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
         >
           <StorefrontProductImage
@@ -1875,7 +1921,7 @@ const CartLineDesktopSnapshotCard = React.memo(function CartLineDesktopSnapshotC
                 {product.grade}
               </Badge>
               <Badge className="h-5 border border-sky-200 bg-sky-50 px-1.5 text-[11px] text-sky-700">
-                {tx(t, "storefront.cart.snapshotRefreshing", "Aggiornamento")}
+                {pendingAmount}
               </Badge>
               {(product.brand || product.category) && (
                 <Badge variant="outline" className="h-5 max-w-[160px] px-1.5 text-[11px]">
@@ -1887,20 +1933,11 @@ const CartLineDesktopSnapshotCard = React.memo(function CartLineDesktopSnapshotC
         </CartProductDetailsTrigger>
         <div className="block text-right">
           <div className="whitespace-nowrap text-lg font-black leading-5">
-            {formatMoney(lineTotal, locale)}
+            <span className="text-xs font-semibold">{pendingAmount}</span>
           </div>
           <div className="mt-0.5 whitespace-nowrap text-xs leading-4 text-slate-500">
-            {txFormat(t, "storefront.cart.priceEach", "{price} / pz", {
-              price: formatMoney(product.price, locale),
-            })}
+            —
           </div>
-          {priceDisplay.hasDiscount && priceDisplay.basePrice ? (
-            <div className="whitespace-nowrap text-xs leading-4 text-slate-400 line-through">
-              {txFormat(t, "storefront.cart.priceEach", "{price} / pz", {
-                price: formatMoney(priceDisplay.basePrice, locale),
-              })}
-            </div>
-          ) : null}
           <div className="mt-2 inline-flex h-7 items-center rounded-md border border-slate-100 bg-slate-50 px-3 text-xs font-black text-slate-500">
             x{quantity}
           </div>
@@ -2079,6 +2116,7 @@ const RejectedCartLineDesktopCard = React.memo(function RejectedCartLineDesktopC
 });
 
 type CartProductDetailsTriggerProps = {
+  amountState?: MobileCartAmountState;
   children: React.ReactNode;
   className?: string;
   lineTotal?: number;
@@ -2089,6 +2127,7 @@ type CartProductDetailsTriggerProps = {
 };
 
 function CartProductDetailsTrigger({
+  amountState,
   children,
   className,
   lineTotal,
@@ -2117,6 +2156,7 @@ function CartProductDetailsTrigger({
         {children}
       </button>
       <CartProductDetailsDialog
+        amountState={amountState}
         lineTotal={lineTotal}
         onOpenChange={setDetailsOpen}
         open={detailsOpen}
@@ -2130,6 +2170,7 @@ function CartProductDetailsTrigger({
 }
 
 function CartProductDetailsDialog({
+  amountState = "ready",
   lineTotal,
   onOpenChange,
   open,
@@ -2138,6 +2179,7 @@ function CartProductDetailsDialog({
   statusDescription,
   statusLabel,
 }: {
+  amountState?: MobileCartAmountState;
   lineTotal?: number;
   onOpenChange: (open: boolean) => void;
   open: boolean;
@@ -2175,7 +2217,7 @@ function CartProductDetailsDialog({
     onOpenChange(nextOpen);
   }
 
-  const hasPrice = product.price > 0;
+  const hasPrice = amountState === "ready" && product.price > 0;
   const productMeta = [
     brandLabel(t, product.brand),
     categoryLabel(t, product.category),
@@ -2297,7 +2339,7 @@ function CartProductDetailsDialog({
                       : null
                   }
                 />
-                {priceDisplay.hasDiscount && priceDisplay.basePrice ? (
+                {hasPrice && priceDisplay.hasDiscount && priceDisplay.basePrice ? (
                   <CartProductDetailField
                     label={tx(t, "storefront.cart.detailsBasePrice", "Prezzo listino")}
                     value={formatMoney(priceDisplay.basePrice, locale)}

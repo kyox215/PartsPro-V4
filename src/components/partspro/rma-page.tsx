@@ -1,5 +1,7 @@
 "use client";
 
+import { StorefrontLoading } from "./storefront-loading";
+
 import * as React from "react";
 import { canSubmitCustomerRma } from "@/lib/partspro-rma-submit-state.mjs";
 import { usePricingSession } from "./use-pricing-session";
@@ -200,8 +202,7 @@ const initialForm: RmaFormState = {
 type RmaPageProps = {initialAccountAccess?:StoreHeaderAccountAccess;initialOrderId?:string;initialOrderLineId?:string;initialRequestId?:string};
 export function RmaPage(props: RmaPageProps) {
   const session = usePricingSession(props.initialAccountAccess?.userId);
-  const {locale} = useI18n();
-  if (!session.ready) return <AsyncFeedback state="loading" title={locale === "zh-CN" ? "正在更新账户资料…" : "Aggiornamento dati account…"} />;
+  if (!session.ready) return <StorefrontLoading variant="rma" />;
   return <RmaPageScoped key={`${session.key}:${props.initialAccountAccess?.accountType ?? "none"}`} {...props} />;
 }
 function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,initialRequestId}:RmaPageProps) {

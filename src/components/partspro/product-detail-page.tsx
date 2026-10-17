@@ -1,3 +1,4 @@
+import { QuoteRegion } from "./storefront-refresh-status";
 import { productDetailPathWithCatalogReturn } from "@/lib/partspro-catalog-return.mjs";
 import { PricingSessionBoundary, QuoteExpiryRefresh } from "./pricing-session-boundary";
 import { CatalogBackLink } from "./catalog-back-link";
@@ -153,8 +154,8 @@ export async function ProductDetailPage({
                     {product.compatibleWith.length > 0 ? <a className="pp-product-model-link" href="#product-compatibility">{txFormat(t, "storefront.ux.allModels", "Mostra tutti i {count} modelli compatibili", { count: product.compatibleWith.length })}</a> : null}
                   </div>
 
-                  {showWholesalePrice ? <div className="pp-product-price-context"><ProductPriceExplanation product={product} detailed /></div> : null}
-                  <div className="pp-product-price-block">
+                  {showWholesalePrice ? <div className="pp-product-price-context"><QuoteRegion product={product}><ProductPriceExplanation product={product} detailed /></QuoteRegion></div> : null}
+                  <div className="pp-product-price-block"><QuoteRegion product={product}>
                     {showWholesalePrice && hasBuyerPrice ? (
                       <div className="flex min-w-0 flex-wrap items-end gap-2">
                         <div className="pp-product-current-price">
@@ -185,10 +186,10 @@ export async function ProductDetailPage({
                       </p>
                     )}
                     {showWholesalePrice && hasBuyerPrice ? <p className="pp-product-tax">{tx(t, "storefront.product.purchase.quotePriceEach", "Prezzo IVA inclusa")}</p> : null}
-                  </div>
+                  </QuoteRegion></div>
                 </div>
 
-                {shouldShowPurchasePanel ? (
+                <QuoteRegion product={product} preserveState>{shouldShowPurchasePanel ? (
                   <ProductDetailPurchasePanelSlot
                     checkoutHref={hrefWithAssistedCompanyId("/checkout", assistedCompanyId)}
                     isAuthenticated={Boolean(initialAccountAccess?.authenticated)}
@@ -252,7 +253,7 @@ export async function ProductDetailPage({
                   </Card>
                 )}
 
-                <div className="pp-product-specifications">
+                </QuoteRegion><div className="pp-product-specifications">
                   <div className="mb-1.5 flex min-w-0 items-center justify-between gap-3">
                     <h2 className="truncate text-sm font-black text-slate-950">
                       {tx(t, "storefront.ux.quickDetails", "Dettagli rapidi")}

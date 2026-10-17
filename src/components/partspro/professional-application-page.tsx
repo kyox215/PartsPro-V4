@@ -1,5 +1,7 @@
 "use client";
 
+import { StorefrontLoading } from "./storefront-loading";
+
 import * as React from "react";
 import { usePricingSession } from "./use-pricing-session";
 import Link from "next/link";
@@ -42,8 +44,8 @@ const fields: { key: keyof ProfessionalForm; required?: boolean; type?: string; 
 const fallback: Record<keyof ProfessionalForm,string> = { companyName:"Ragione sociale",contactName:"Referente",partitaIva:"Partita IVA",codiceFiscale:"Codice fiscale",email:"Email",phone:"Telefono",city:"Comune",province:"Provincia",address:"Indirizzo sede",pec:"PEC",codiceDestinatario:"Codice destinatario",website:"Sito web",notes:"Note" };
 
 export function ProfessionalApplicationPage(props:{initialAccountAccess?:StoreHeaderAccountAccess}) {
-  const session=usePricingSession(props.initialAccountAccess?.userId);const t=useT();
-  if(!session.ready)return <AsyncFeedback state="loading" title={tx(t,"storefront.cart.sync.catalogTitle","Aggiornamento account…")} />;
+  const session=usePricingSession(props.initialAccountAccess?.userId);
+  if(!session.ready)return <StorefrontLoading variant="professional" />;
   return <ProfessionalApplicationScoped key={session.key} {...props} />;
 }
 function ProfessionalApplicationScoped({ initialAccountAccess }: { initialAccountAccess?: StoreHeaderAccountAccess }) {

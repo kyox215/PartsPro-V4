@@ -4,6 +4,9 @@ import { catalogBrowseKey } from "@/lib/partspro-catalog-return.mjs";
 import { AsyncFeedback } from "./async-feedback";
 import { PricingSessionBoundary, QuoteExpiryRefresh } from "./pricing-session-boundary";
 import { createLatestRequest } from "@/lib/latest-request.mjs";
+import { refreshVisibleCatalog } from "@/lib/storefront-refresh.mjs";
+import { useStorefrontRefresh } from "./storefront-refresh-provider";
+import { RefreshStatus } from "./storefront-refresh-status";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -133,7 +136,7 @@ export function CatalogPage({
 
   return (
     <PricingSessionBoundary userId={initialAccountAccess?.userId}><CatalogPageContent
-      key={JSON.stringify([initialAccountAccess?.userId, assistedCompanyId, initialProducts.map((product) => [product.sku, product.priceVersion])])}
+      key={JSON.stringify([initialAccountAccess?.userId, assistedCompanyId])}
       filteredTotal={filteredTotal ?? initialProducts.length}
       assistedCompanyId={assistedCompanyId}
       assistedCompanyName={assistedCompanyName}
@@ -189,6 +192,10 @@ function CatalogPageContent({
   const t = useT();
   const directory = useCatalogDirectory();
   const locale = useI18n().locale;
+  const refresh = useStorefrontRefresh();
+  const locationQuery = useSearchParams().toString();
+  const [backgroundRefresh, setBackgroundRefresh] = useState(false);
+  const [backgroundError, setBackgroundError] = useState(false);
   const [searchTerm, setSearchTerm] = useState(initialSearchTerm);
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [modelSeries, setModelSeries] = useState(initialModelSeries);
@@ -196,6 +203,7 @@ function CatalogPageContent({
   const [inStockOnly, setInStockOnly] = useState(initialInStockOnly);
   const [sort, setSort] = useState<CatalogSort>(initialSort);
   const [products, setProducts] = useState(initialProducts);
+  const [restoreSnapshot] = useState(() => ({ count: initialProducts.length, total: initialFilteredTotal }));
   const [filteredTotal, setFilteredTotal] = useState(initialFilteredTotal);
   const [catalogLoadState, setCatalogLoadState] = useState<
     "idle" | "loading" | "loading-more"
@@ -292,6 +300,37 @@ function CatalogPageContent({
       selectedDepartment,
     ]
   );
+  const browseSnapshot = useRef({selection: selectedCatalog, count: products.length});
+  useEffect(() => { browseSnapshot.current = {selection: selectedCatalog, count: products.length}; }, [selectedCatalog, products.length]);
+  useEffect(() => {
+    if (!refresh.refreshVersion) return;
+    const requests = catalogRequestRef.current;
+    const request = requests.begin();
+    const snapshot = browseSnapshot.current;
+    let active = true;
+    let timedOut = false;
+    const timeout = window.setTimeout(() => { if (request.isCurrent()) {timedOut = true; requests.cancel();} }, 15_000);
+    queueMicrotask(() => { if (active) {
+      setBackgroundRefresh(true); setBackgroundError(false);
+      // This request owns the selected filter now; the cancelled foreground
+      // request cannot clear its former loading state in its guarded finally.
+      setCatalogLoadState("idle"); setCatalogError(null); setFailedOffset(0);
+    } });
+    void refreshVisibleCatalog(snapshot.count, async (offset, limit) => {
+      const response = await fetch(buildCatalogApiPath(snapshot.selection, offset, assistedCompanyId, limit), {cache:"no-store", signal:request.signal});
+      if (!response.ok) throw new Error("catalog_refresh_failed");
+      const payload = await response.json() as {data?:PartProduct[];meta?:{total?:number}};
+      return {products:payload.data??[],total:payload.meta?.total??0};
+    }, request.signal).then(next => {
+      if (!active || !request.isCurrent()) return;
+      setProducts(next.products);
+      setFilteredTotal(next.total);
+      catalogPageCacheRef.current.clear();
+    }).catch(() => {
+      if (active && (request.isCurrent() || timedOut)) { setBackgroundError(true); if (request.isCurrent()) requests.cancel(); }
+    }).finally(() => { window.clearTimeout(timeout); if (active) setBackgroundRefresh(false); });
+    return () => { active=false; window.clearTimeout(timeout); if (request.isCurrent()) requests.cancel(); };
+  }, [refresh.refreshVersion, assistedCompanyId]);
   const initialActivitySelectionRef = useRef<CatalogSelection>({
     brand: initialFilters.brand[0],
     category: initialFilters.category[0],
@@ -323,7 +362,12 @@ function CatalogPageContent({
         return { count: cachedPage.products.length, total: cachedPage.total };
       }
 
-
+      const timeout = window.setTimeout(() => {
+        if (!request.isCurrent()) return;
+        catalogRequestRef.current.cancel();
+        setCatalogError("network");
+        setCatalogLoadState("idle");
+      }, 15_000);
       try {
         const response = await fetch(apiPath, {
           cache: "no-store",
@@ -365,6 +409,7 @@ function CatalogPageContent({
         }
         setCatalogError("network");
       } finally {
+        window.clearTimeout(timeout);
         if (request.isCurrent()) {
           setCatalogLoadState("idle");
         }
@@ -373,16 +418,19 @@ function CatalogPageContent({
     [assistedCompanyId, shouldUseCatalogPageCache]
   );
 
+  // Restore only this scope's first visit, including StrictMode effect replay.
+  // Later RSC permissions/price changes must not replay the old browse record.
+  const [restoreCatalogSelection] = useState(() => loadCatalogSelection);
   useEffect(() => {
     let cancelled = false;
     async function restore() {
       try {
         const stored = JSON.parse(sessionStorage.getItem(browseKey) || "null") as { count?: number; scrollY?: number; savedAt?: number } | null;
         if (!stored || Date.now() - (stored.savedAt || 0) > 30 * 60_000) return;
-        const desired = Math.min(Math.max(Math.trunc(Number(stored.count)) || 0, 0), initialFilteredTotal);
-        let offset = initialProducts.length;
+        const desired = Math.min(Math.max(Math.trunc(Number(stored.count)) || 0, 0), restoreSnapshot.total);
+        let offset = restoreSnapshot.count;
         while (!cancelled && offset < desired) {
-          const page = await loadCatalogSelection(initialActivitySelectionRef.current, offset);
+          const page = await restoreCatalogSelection(initialActivitySelectionRef.current, offset);
           if (!page || page.count === 0) break;
           offset += page.count;
           if (offset >= page.total) break;
@@ -392,7 +440,7 @@ function CatalogPageContent({
     }
     void restore();
     return () => { cancelled = true; };
-  }, [browseKey, initialProducts.length, initialFilteredTotal, loadCatalogSelection]);
+  }, [browseKey, restoreSnapshot, restoreCatalogSelection]);
 
   function rememberBrowse() {
     try {
@@ -400,15 +448,6 @@ function CatalogPageContent({
       sessionStorage.setItem(catalogBrowseKey(path, initialAccountAccess?.userId, assistedCompanyId), JSON.stringify({ count: products.length, scrollY: window.scrollY, savedAt: Date.now() }));
     } catch { /* browsing still works */ }
   }
-
-  useEffect(() => {
-    const refresh = () => {
-      catalogPageCacheRef.current.clear();
-      void loadCatalogSelection(selectedCatalog);
-    };
-    window.addEventListener("partspro:catalog-refreshed", refresh);
-    return () => window.removeEventListener("partspro:catalog-refreshed", refresh);
-  }, [loadCatalogSelection, selectedCatalog]);
 
   useEffect(() => {
     void recordCatalogActivity(initialActivitySelectionRef.current, initialAccountAccess);
@@ -419,8 +458,12 @@ function CatalogPageContent({
   }, [assistedCompanyId]);
 
   useEffect(() => {
-    function syncCatalogStateFromLocation() {
-      const search = new URLSearchParams(window.location.search);
+    let active = true;
+    // Next Link, native history and back/forward all update useSearchParams.
+    // Same-URL background refresh must not reset pagination or drafts.
+    queueMicrotask(() => {
+      if (!active) return;
+      const search = new URLSearchParams(locationQuery);
       const nextFilters = getFiltersFromParams(search);
       const nextSelection = {
         brand: nextFilters.brand[0],
@@ -433,6 +476,7 @@ function CatalogPageContent({
         searchQuery: getSearchQueryFromParams(search) || undefined,
       };
 
+      if (buildCatalogSelectionPath(nextSelection, assistedCompanyId) === buildCatalogSelectionPath(browseSnapshot.current.selection, assistedCompanyId)) return;
       setSearchTerm(nextSelection.model ?? "");
       setSearchQuery(nextSelection.searchQuery ?? "");
       setModelSeries(nextSelection.modelSeries ?? "");
@@ -446,18 +490,13 @@ function CatalogPageContent({
           : null
       );
       void loadCatalogSelection(nextSelection);
-    }
-
-    window.addEventListener("popstate", syncCatalogStateFromLocation);
-
-    return () => {
-      window.removeEventListener("popstate", syncCatalogStateFromLocation);
-    };
-  }, [loadCatalogSelection]);
+    });
+    return () => { active = false; };
+  }, [locationQuery, assistedCompanyId, loadCatalogSelection]);
 
   const hiddenProductCount = Math.max(filteredTotal - products.length, 0);
   const catalogReplacing = catalogLoadState === "loading";
-  const showCatalogPendingHint = useDelayedVisible(catalogReplacing, 80);
+  const showCatalogPendingHint = useDelayedVisible(catalogReplacing, 120);
   const showCatalogSkeleton = useDelayedVisible(catalogReplacing, 300);
   const accountGateCopy =
     !assistedCompanyId && isCustomerActionRequiredReason(priceGateReason)
@@ -558,6 +597,7 @@ function CatalogPageContent({
             <h1 className="pp-catalog-title break-words">{searchQuery || searchTerm ? txFormat(t,"storefront.ux.searchResults","Risultati per “{query}”",{query:searchQuery || searchTerm}) : tx(t,"storefront.ux.browseCatalog","Sfoglia catalogo")}</h1>
             <p className="pp-catalog-count" role="status">{txFormat(t,"storefront.ux.resultCount","{loaded} di {total} SKU caricati",{loaded:products.length,total:filteredTotal})}</p>
             <p className="pp-catalog-description">{tx(t, "storefront.ui.catalog.subtitle", "Filtra i risultati e verifica la compatibilità prima di acquistare.")}</p>
+            <div className="pp-catalog-refresh-row"><RefreshStatus busy={backgroundRefresh} failed={backgroundError} retry={refresh.retry}/></div>
             <div className="pp-catalog-filter-chips">
               {(["searchQuery","model","brand","category","department","modelSeries"] as const).map(key => selectedCatalog[key] ? <Button key={key} type="button" size="sm" variant="outline" className="max-w-full whitespace-normal" onClick={() => selectCatalog({...selectedCatalog,[key]:undefined})}>{key === "category" ? categoryLabel(t,String(selectedCatalog[key])) : key === "department" ? catalogDepartmentLabel(t, selectedCatalog[key] as CatalogDepartment) : key === "brand" ? brandLabel(t,String(selectedCatalog[key])) : String(selectedCatalog[key])} ×<span className="sr-only">{tx(t,"storefront.ux.removeFilter","Rimuovi filtro")}</span></Button> : null)}
               <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm"><input type="checkbox" checked={inStockOnly} onChange={event => selectCatalog({...selectedCatalog,inStockOnly:event.target.checked})} className="size-5 accent-primary" />{tx(t,"storefront.ux.inStockOnly","Solo disponibili")}</label>
@@ -609,6 +649,8 @@ function CatalogPageContent({
                         priceGateReason={priceGateReason}
                         priorityImage={index < 4}
                         product={product}
+                        pricingPending={backgroundRefresh}
+                        pricingError={backgroundError}
                         showWholesalePrice={showWholesalePrice}
                       />
                     ))}
@@ -964,7 +1006,8 @@ function catalogFilterSummary(selection: CatalogSelection) {
 function buildCatalogApiPath(
   selection: CatalogSelection,
   offset = 0,
-  assistedCompanyId?: string | null
+  assistedCompanyId?: string | null,
+  limit = visibleProductsIncrement
 ) {
   const params = new URLSearchParams();
 
@@ -996,7 +1039,7 @@ function buildCatalogApiPath(
     params.set("minStock", "1");
   }
 
-  params.set("limit", String(visibleProductsIncrement));
+  params.set("limit", String(limit));
   params.set("offset", String(offset));
   params.set("sort", normalizeCatalogSort(selection.sort));
 
