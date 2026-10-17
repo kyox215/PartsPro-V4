@@ -14,3 +14,5 @@ Task ID：TASK-20261017-UI06
 证据：隔离工作区verification；权威状态仅docs/roadmap.md。
 
 实现与本地验证：44px目录工具条；草稿应用/取消/重置；其余页首压缩。6项storefront+41项相关测试PASS；最终lint/build PASS；ZH/IT四宽度无溢出；桌面首卡445→190px；320/390错误重试通过。独立源码SOURCE_GO，等待精确发布候选。
+
+发布并发保护：PROMOTE复核发现正式域名已更新为84Mo/5d329f1（注册双语反馈修复）。31f旧候选NO_GO，未推广；无冲突合并精确已上线5d329f1，保留注册翻译/错误映射/Dialog可选closeLabel和新测试脚本。新候选以5d为保护基线，回退更新84Mo；重跑测试/lint/build。

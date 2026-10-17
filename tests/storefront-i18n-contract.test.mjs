@@ -14,6 +14,8 @@ const italianBaseDictionaryPath = path.join(
   "src/i18n/dictionaries/it-IT.ts"
 );
 const localeContractFiles = [
+  "src/app/login/page.tsx",
+  "src/components/partspro/account-page.tsx",
   "src/components/partspro/cart-page.tsx",
   "src/components/partspro/checkout-client.tsx",
   "src/components/partspro/checkout-page.tsx",
@@ -64,7 +66,7 @@ test("storefront Italian and Chinese dictionaries expose the same keys", () => {
   );
 });
 
-test("every literal storefront tx/txFormat key exists in both locale dictionaries", () => {
+test("every literal storefront t/tx/txFormat key exists in both locale dictionaries", () => {
   const references = collectStorefrontTranslationReferences(
     localeContractFiles.map((relativePath) => path.join(repoRoot, relativePath))
   );
@@ -117,7 +119,7 @@ function collectStorefrontTranslationReferences(filePaths) {
 
   for (const filePath of filePaths) {
     const source = fs.readFileSync(filePath, "utf8");
-    const matcher = /\btx(?:Format)?\(\s*t\s*,\s*["'](storefront\.[^"']+)["']/g;
+    const matcher = /\b(?:tx(?:Format)?\(\s*t\s*,\s*|t\(\s*)["'](storefront\.[^"']+)["']/g;
 
     for (const match of source.matchAll(matcher)) {
       references.push({
