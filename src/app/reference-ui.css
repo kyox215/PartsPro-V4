@@ -260,3 +260,12 @@
 
 .pp-storefront .pp-card-purchase>.pp-card-add[data-feedback=idle]{background:#1557ff;border-color:#1557ff}
 @media(min-width:768px) and (max-width:1023px){.pp-storefront .pp-home-product-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(min-width:768px) and (max-width:1023px){
+.pp-storefront .pp-reference-hero-copy{max-width:58%;flex:0 0 58%;min-width:0;padding:20px}
+.pp-storefront .pp-reference-hero h1{font-size:24px}
+.pp-storefront .pp-reference-hero p{font-size:13px}
+.pp-storefront .pp-reference-hero-products{inset:0 0 0 60%}
+.pp-storefront .pp-reference-hero-products img:nth-child(1){height:150px;width:110px}
+.pp-storefront .pp-reference-hero-products img:nth-child(2){height:110px;width:80px;left:40%}
+.pp-storefront .pp-reference-hero-products img:nth-child(3){height:70px;width:90px}
+}
