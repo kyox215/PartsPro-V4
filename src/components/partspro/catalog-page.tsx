@@ -234,6 +234,7 @@ function CatalogPageContent({
         : null
   );
   const [filterOpen, setFilterOpen] = useState(false);
+  const filterTriggerRef = useRef<HTMLButtonElement>(null);
   const [draftFilters, setDraftFilters] = useState<CatalogSelection>({});
   const [draftDepartment, setDraftDepartment] = useState<CatalogDepartment | null>("phone");
   const [draftBrand, setDraftBrand] = useState<string | null>(null);
@@ -576,7 +577,10 @@ function CatalogPageContent({
             <button type="submit" aria-label={tx(t,"storefront.header.searchSubmit","Cerca")}><ChevronRight aria-hidden="true"/></button>
           </form>
           <Dialog open={filterOpen} onOpenChange={setFilterOpen}>
-            <DialogContent className="pp-storefront-portal pp-catalog-filter-dialog">
+            <DialogContent className="pp-storefront-portal pp-catalog-filter-dialog" onCloseAutoFocus={event => {
+              event.preventDefault();
+              filterTriggerRef.current?.focus({ preventScroll: true });
+            }}>
               <DialogHeader>
                 <DialogTitle>{tx(t,"storefront.reference.filters","Filtri")}</DialogTitle>
                 <DialogDescription className="sr-only">{tx(t,"storefront.reference.filterDescription","Scegli brand, modello e disponibilità, poi applica i filtri.")}</DialogDescription>
@@ -630,7 +634,7 @@ function CatalogPageContent({
                 <option value="updated_desc">{tx(t,"storefront.compact.newestSort","Più recenti")}</option>
               </select>
             </label>
-            <Button type="button" variant="outline" className="pp-catalog-filter-trigger" onClick={openFilters} aria-haspopup="dialog">
+            <Button ref={filterTriggerRef} type="button" variant="outline" className="pp-catalog-filter-trigger" onClick={openFilters} aria-haspopup="dialog" aria-expanded={filterOpen}>
               <SlidersHorizontal aria-hidden="true"/>{tx(t,"storefront.reference.filters","Filtri")}
               {countCatalogFilters(selectedCatalog) > 0 ? <span className="pp-filter-count">{countCatalogFilters(selectedCatalog)}</span> : null}
             </Button>
