@@ -1,325 +1,732 @@
-/* Storefront account and forms only. Business state stays in the existing containers. */
-.pp-storefront .pp-account-eyebrow { display:block; color:#63728a; font-size:10px; font-weight:650; letter-spacing:1.8px; line-height:1.6; }
-.pp-storefront .pp-account-page,.pp-storefront .pp-auth-page,.pp-storefront .pp-professional-page,.pp-storefront .pp-rma-page,.pp-storefront .pp-help-page { background:#f6f8fc; color:#0f1a2f; }
-.pp-storefront .pp-account-content { max-width:1200px; padding:32px 28px 64px; }
-.pp-storefront .pp-account-heading { display:flex; align-items:center; justify-content:space-between; gap:24px; margin-bottom:26px; }
-.pp-storefront .pp-account-heading h1 { font-size:32px; line-height:1.25; font-weight:700; letter-spacing:-.8px; margin:8px 0; }
-.pp-storefront .pp-account-heading p { color:#63728a; font-size:14px; line-height:1.7; }
-.pp-storefront .pp-account-heading > button { min-height:44px; border-radius:12px; padding-inline:18px; background:#fff; }
-.pp-storefront .pp-account-navigation { gap:12px; margin-bottom:24px; }
+/* PNG reference implementation: public account and form surfaces only. */
+.pp-storefront .pp-account-page,
+.pp-storefront .pp-auth-page,
+.pp-storefront .pp-professional-page,
+.pp-storefront .pp-rma-page,
+.pp-storefront .pp-help-page { background:#f6f8fc; color:#0f1a2f; font-size:16px; }
+.pp-storefront .pp-account-content { width:100%; max-width:1560px; margin:auto; padding:22px 24px 36px; }
+.pp-storefront .pp-account-workspace { display:grid; grid-template-columns:236px minmax(0,1fr); gap:28px; align-items:start; }
+.pp-storefront .pp-account-navigation { display:flex; flex-direction:column; position:sticky; top:calc(var(--pp-header-height,122px) + 22px); min-height:calc(100dvh - var(--pp-header-height,122px) - 44px); padding:24px 18px; border:1px solid #e2e9f4; border-radius:12px; background:#fff; }
+.pp-storefront .pp-account-sidebar-title { padding:0 4px; }
+.pp-storefront .pp-account-sidebar-title h2 { font-size:24px; line-height:1.35; font-weight:700; letter-spacing:-.7px; }
+.pp-storefront .pp-account-sidebar-title > span { color:#8592ad; font-size:13px; letter-spacing:.06em; }
+.pp-storefront .pp-account-sidebar-company { display:flex; align-items:center; gap:10px; min-height:102px; width:100%; margin:14px 0 20px; padding:8px 3px; border:0; background:transparent; text-align:left; color:#0f1a2f; }
+.pp-storefront .pp-account-company-avatar { display:inline-grid; flex-shrink:0; place-items:center; width:54px; height:54px; border-radius:50%; color:white; background:linear-gradient(135deg,#1557ff,#4974ff); }
+.pp-storefront .pp-account-company-avatar > svg { width:27px; height:27px; stroke-width:1.7; }
+.pp-storefront .pp-account-sidebar-company > .pp-account-company-avatar { width:42px; height:42px; }
+.pp-storefront .pp-account-sidebar-company > .pp-account-company-avatar > svg { width:22px; height:22px; }
+.pp-storefront .pp-account-sidebar-company > span:last-child { min-width:0; }
+.pp-storefront .pp-account-sidebar-company strong { display:block; font-size:14px; line-height:1.5; font-weight:650; overflow-wrap:anywhere; }
+.pp-storefront .pp-account-sidebar-company small { display:inline-block; margin-top:5px; padding:2px 8px; color:#3256ae; background:#eff4ff; border-radius:20px; font-size:11px; line-height:1.5; }
+.pp-storefront .pp-account-section-nav { display:grid; gap:6px; }
+.pp-storefront .pp-account-section-nav > button { position:relative; display:flex; align-items:center; gap:14px; min-height:54px; padding:13px 12px; border:0; border-radius:9px; background:transparent; color:#0f1a2f; font-size:15px; line-height:1.5; font-weight:500; text-align:left; }
+.pp-storefront .pp-account-section-nav > button:hover { background:#f6f9ff; color:#1557ff; }
+.pp-storefront .pp-account-section-nav > button[aria-current=page] { color:#1557ff; background:#edf4ff; font-weight:600; }
+.pp-storefront .pp-account-section-nav > button > svg { width:22px; height:22px; flex-shrink:0; }
+.pp-storefront .pp-account-section-nav > button > span { min-width:0; overflow-wrap:anywhere; }
+.pp-storefront .pp-account-section-nav > button > b { min-width:23px; height:23px; display:grid; place-items:center; margin-left:auto; padding:1px 6px; border-radius:50%; background:#ff4b59; color:#fff; font-size:12px; font-weight:500; }
+.pp-storefront .pp-account-sidebar-secondary { display:grid; gap:4px; margin-top:26px; padding-top:20px; border-top:1px solid #e5ebf5; }
+.pp-storefront .pp-account-sidebar-link { display:flex; align-items:center; gap:14px; min-height:51px; width:100%; padding:12px; background:transparent; border:0; border-radius:8px; color:#0f1a2f; font-size:14px; line-height:1.5; text-align:left; }
+.pp-storefront .pp-account-sidebar-link > svg { width:22px; height:22px; flex-shrink:0; }
+.pp-storefront .pp-account-sidebar-link:hover { color:#1557ff; background:#f5f8ff; }
+.pp-storefront .pp-account-notifications { display:flex; align-items:center; position:relative; gap:14px; min-height:51px; padding:10px 12px; border-radius:8px; }
+.pp-storefront .pp-account-notifications > svg { width:22px; height:22px; flex-shrink:0; }
+.pp-storefront .pp-account-notifications > span { font-size:14px; }
+.pp-storefront .pp-account-notifications > button { position:absolute; inset:0; width:100%; height:100%; min-height:51px; background:transparent; color:transparent; border:0; box-shadow:none; border-radius:8px; }
+.pp-storefront .pp-account-notifications > button > svg { visibility:hidden; }
+.pp-storefront .pp-account-notifications > button > span { right:8px; top:14px; min-width:22px; height:22px; font-size:11px; }
+.pp-storefront .pp-account-sidebar-footer { display:grid; gap:2px; margin-top:auto; padding-top:32px; }
+.pp-storefront .pp-account-sidebar-footer::before { content:""; display:block; margin-bottom:15px; border-top:1px solid #e5ebf5; }
 .pp-storefront .pp-account-main { min-width:0; }
-.pp-storefront .pp-account-notifications { display:flex; align-items:center; justify-content:space-between; border:1px solid #dfe6f1; border-radius:14px; background:white; }
-.pp-storefront .pp-account-notifications > span { display:none; font-size:13px; font-weight:550; color:#63728a; }
-.pp-storefront .pp-account-notifications > button { width:48px; min-height:48px; border:0; background:transparent; border-radius:13px; }
-.pp-storefront .pp-account-section-nav { border-color:#dfe6f1; border-radius:16px; padding:6px; box-shadow:0 4px 16px #0f1a2f04; }
-.pp-storefront .pp-account-section-nav > div { gap:6px; }
-.pp-storefront .pp-account-section-nav button { height:48px; gap:10px; border-radius:11px; font-size:14px; font-weight:600; padding-inline:18px; }
-.pp-storefront .pp-account-section-nav [aria-current=page] { background:#eef2ff; color:#3b5bff; box-shadow:none; }
-.pp-storefront .pp-account-section-nav [aria-current=page] > svg { color:#3b5bff; }
-.pp-storefront .pp-account-section-nav button > span:last-child:not(:first-of-type) { position:static; min-width:20px; border-radius:6px; font-size:10px; line-height:20px; background:#e7edff; color:#3b5bff; }
-.pp-storefront .pp-account-section { display:grid; gap:18px; }
-.pp-storefront .pp-account-section [data-slot=card],.pp-storefront .pp-account-profile-notice { gap:20px; border-radius:18px; border-color:#dfe6f1; box-shadow:0 5px 22px #0f1a2f04; padding-block:24px; }
-.pp-storefront .pp-account-section [data-slot=card-header],.pp-storefront .pp-account-section [data-slot=card-content] { padding-inline:26px; }
-.pp-storefront .pp-account-section [data-slot=card-title] { font-size:18px; line-height:1.5; font-weight:650; }
-.pp-storefront .pp-account-section [data-slot=card-title] > svg { width:20px; height:20px; }
-.pp-storefront .pp-account-overview > [data-slot=card-content] { padding:8px 28px; }
-.pp-storefront .pp-account-identity { padding:0 0 25px; margin:0 0 24px; border-bottom:1px solid #e5eaf3; gap:18px; }
-.pp-storefront .pp-account-identity > div { gap:16px; }
-.pp-storefront .pp-account-identity > div > div:first-child { width:54px; height:54px; border-radius:16px; }
-.pp-storefront .pp-account-identity > div > div:first-child svg { width:24px; height:24px; }
-.pp-storefront .pp-account-identity h2 { font-size:24px; line-height:1.4; font-weight:700; letter-spacing:-.6px; white-space:normal; }
-.pp-storefront .pp-account-identity p { font-size:13px; line-height:1.7; margin-top:5px; font-weight:400; display:block; }
-.pp-storefront .pp-account-identity [data-slot=badge] { font-size:11px; padding:6px 10px; border-radius:7px; font-weight:550; }
-.pp-storefront .pp-account-metrics { gap:14px; margin-bottom:18px; }
-.pp-storefront .pp-account-metric { padding:18px 16px; border-radius:14px; border-color:#e5eaf4; background:#f8faff; min-height:106px; }
-.pp-storefront .pp-account-metric > div:first-child { color:#63728a; font-size:12px; font-weight:500; white-space:normal; }
-.pp-storefront .pp-account-metric > div:nth-child(2) { font-size:19px; font-weight:650; line-height:1.45; margin-top:7px; white-space:normal; overflow-wrap:anywhere; }
-.pp-storefront .pp-account-metric > div:nth-child(3) { font-size:11px; font-weight:400; white-space:normal; line-height:1.7; margin-top:7px; }
-.pp-storefront .pp-account-overview > [data-slot=card-content] > p { font-size:12px; line-height:1.9; color:#63728a; margin-block:18px; }
-.pp-storefront .pp-account-profile-facts { gap:12px; margin-top:22px; }
-.pp-storefront .pp-account-info { background:white; border-color:#e5eaf3; border-radius:12px; padding:16px; }
-.pp-storefront .pp-account-info > div:first-child { font-size:11px; color:#63728a; font-weight:500; }
-.pp-storefront .pp-account-info > div:last-child { font-size:14px; line-height:1.7; font-weight:550; margin-top:5px; overflow-wrap:anywhere; }
-.pp-storefront .pp-account-quick-actions { gap:10px; margin-top:24px; padding-top:24px; border-top:1px solid #e5eaf3; }
-.pp-storefront .pp-account-quick-actions [data-slot=button] { height:auto; min-height:44px; border-radius:12px; font-size:13px; gap:8px; padding:10px 14px; white-space:normal; }
-.pp-storefront .pp-account-profile-notice { margin-bottom:20px; background:#fff8ed; border-color:#efdbb3; padding:0; }
-.pp-storefront .pp-account-profile-notice [data-slot=card-content] { padding:20px 22px; }
-.pp-storefront .pp-account-profile-notice p { font-size:13px; font-weight:400; line-height:1.8; max-width:740px; }
-.pp-storefront .pp-account-profile-notice [data-slot=button] { min-height:44px; border-radius:12px; }
-.pp-storefront .pp-account-history-controls { border-color:#dfe6f1; border-radius:14px; gap:12px; padding:16px; }
-.pp-storefront .pp-account-history-controls input { min-height:44px; border-radius:11px; padding-inline:14px; max-width:380px; }
-.pp-storefront .pp-account-history-controls button { min-height:44px; border-radius:11px; font-size:13px; }
-.pp-storefront .pp-account-history-controls > span { margin-left:auto; font-size:12px; }
-.pp-storefront .pp-order-filters { gap:8px; margin-bottom:20px; }
-.pp-storefront .pp-order-filters button { min-height:40px; border-radius:10px; padding:8px 13px; font-size:12px; gap:9px; }
-.pp-storefront .pp-order-filters button[aria-pressed=true] { background:#eef2ff; color:#3b5bff; border-color:#cbd6ff; }
-.pp-storefront .pp-order-filters button > span { padding:1px 5px; border-radius:4px; background:#f6f8fc; font-size:10px; }
-.pp-storefront .pp-order-row { gap:18px; padding:20px; border-color:#e1e7f1; background:white; border-radius:13px; margin-top:12px; transition:border-color .16s,box-shadow .16s; }
-.pp-storefront .pp-order-row:hover { border-color:#b7c6ff; box-shadow:0 4px 15px #3b5bff06; }
-.pp-storefront .pp-order-row > div:first-child > div:first-child > span { font-size:14px; font-weight:650; overflow-wrap:anywhere; }
-.pp-storefront .pp-order-row [data-slot=badge] { font-size:10px; font-weight:550; padding:4px 8px; border-radius:6px; }
-.pp-storefront .pp-order-row > div:last-child > div { font-size:17px; font-weight:650; font-variant-numeric:tabular-nums; }
-.pp-storefront .pp-order-row button { min-height:40px; padding-inline:13px; border-radius:10px; font-size:12px; }
-.pp-storefront .pp-wallet-section > [data-slot=card-content] { gap:24px; grid-template-columns:300px minmax(0,1fr); }
-.pp-storefront .pp-wallet-balance { padding:28px 24px; border-color:#d4dfff; border-radius:16px; background:linear-gradient(140deg,#f7f9ff,#edf2ff); align-self:start; }
-.pp-storefront .pp-wallet-balance > div:nth-child(2) { font-size:36px; font-weight:700; color:#3b5bff; margin-block:14px; letter-spacing:-1px; font-variant-numeric:tabular-nums; }
-.pp-storefront .pp-wallet-balance > div:last-child { font-size:12px; line-height:1.9; font-weight:400; }
-.pp-storefront .pp-wallet-transactions > div:first-child { font-size:13px; margin:4px 0 15px; font-weight:550; }
-.pp-storefront .pp-wallet-transactions > div:not(:first-child) { border-color:#e4eaf3; padding:16px; border-radius:12px; background:white; margin-top:10px; gap:20px; font-size:13px; }
-.pp-storefront .pp-wallet-transactions > div > div > div:first-child { white-space:normal; font-weight:550; line-height:1.7; }
-.pp-storefront .pp-wallet-transactions > div > div > div:nth-child(2) { font-size:11px; font-weight:400; margin-top:5px; }
-.pp-storefront .pp-wallet-transactions > div > div:last-child { font-variant-numeric:tabular-nums; }
-.pp-storefront .pp-account-service { gap:22px; }
-.pp-storefront .pp-account-service [data-slot=card-content] > div { padding:20px; border-radius:13px; margin-bottom:14px; }
-.pp-storefront .pp-account-service [data-slot=card-content] [data-slot=button] { min-height:42px; border-radius:10px; font-size:12px; padding-inline:13px; }
-.pp-storefront .pp-account-service [data-slot=card-content] .text-xs { font-size:12px; line-height:1.8; font-weight:450; }
-.pp-storefront-portal.pp-account-dialog { border-radius:18px; border-color:#dfe6f1; padding:26px; gap:22px; box-shadow:0 20px 70px #0f1a2f24; }
-.pp-storefront-portal.pp-account-dialog [data-slot=dialog-title] { font-size:22px; font-weight:650; line-height:1.4; letter-spacing:-.5px; }
-.pp-storefront-portal.pp-account-dialog [data-slot=dialog-description] { font-size:13px; line-height:1.8; }
-.pp-storefront-portal.pp-account-dialog [data-slot=dialog-footer] { padding:20px 26px; margin-inline:-26px; margin-bottom:-26px; border-radius:0 0 18px 18px; background:#f8faff; }
-.pp-storefront-portal.pp-account-dialog [data-slot=dialog-footer] button { min-height:44px; border-radius:12px; }
-.pp-storefront-portal.pp-profile-dialog #account-profile-form { padding:4px 2px; }
-.pp-storefront-portal.pp-profile-dialog #account-profile-form > div:first-child { gap:20px 18px; margin-bottom:24px; }
-.pp-storefront-portal.pp-profile-dialog label { font-size:12px; font-weight:550; color:#4b5b75; }
-.pp-storefront-portal.pp-profile-dialog input,:is(.pp-storefront,.pp-storefront-portal) .pp-address-fields input,.pp-storefront-portal.pp-profile-dialog [data-slot=select-trigger] { min-height:44px; border-radius:11px; padding-inline:13px; font-size:14px; border-color:#c8d3e4; }
-:is(.pp-storefront,.pp-storefront-portal) .pp-address-fields { padding:20px; border-color:#e1e7f2; border-radius:14px; background:#fbfcff; }
-:is(.pp-storefront,.pp-storefront-portal) .pp-address-fields > div:first-child { color:#0f1a2f; font-size:15px; font-weight:600; margin-bottom:18px; }
-:is(.pp-storefront,.pp-storefront-portal) .pp-address-fields > div:last-child { gap:18px; }
-.pp-storefront-portal.pp-profile-dialog #account-profile-form > .space-y-3 { display:grid; gap:16px; }
-:is(.pp-storefront,.pp-storefront-portal) .pp-order-detail > div:first-child > div { padding:18px; border-radius:12px; background:#f5f8ff; border-color:#e1e7f2; }
-:is(.pp-storefront,.pp-storefront-portal) .pp-order-detail > div:first-child > div > div:last-child { font-size:18px; line-height:1.5; }
-:is(.pp-storefront,.pp-storefront-portal) .pp-order-detail > section { border-radius:14px; border-color:#e1e7f2; overflow:hidden; }
-:is(.pp-storefront,.pp-storefront-portal) .pp-order-detail > section > .border-b { padding:16px 20px; font-weight:600; background:#f9fbff; }
-:is(.pp-storefront,.pp-storefront-portal) .pp-order-detail > section > ol > li { padding:16px 20px; }
-.pp-storefront .pp-auth-layout { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,460px); align-items:center; gap:90px; max-width:1120px; padding:64px 32px 90px; min-height:calc(100dvh - 160px); }
-.pp-storefront .pp-auth-introduction { position:relative; padding:24px 0; }
-.pp-storefront .pp-auth-introduction h1 { font-size:46px; font-weight:700; line-height:1.18; letter-spacing:-1.4px; margin:16px 0 22px; overflow-wrap:anywhere; }
-.pp-storefront .pp-auth-introduction > p { color:#63728a; font-size:15px; line-height:1.95; max-width:370px; margin-bottom:30px; }
-.pp-storefront .pp-auth-feature { display:flex; align-items:center; gap:14px; margin-top:16px; font-size:14px; font-weight:550; color:#4b5b75; }
-.pp-storefront .pp-auth-feature svg { width:42px; height:42px; background:#eaf0ff; color:#3b5bff; border:1px solid #dce4ff; padding:11px; border-radius:13px; }
-.pp-storefront .pp-auth-help-link { display:inline-flex; align-items:center; min-height:44px; margin-top:22px; font-size:13px; color:#3b5bff; font-weight:550; }
-.pp-storefront .pp-auth-card { border-radius:20px; border:1px solid #dce4f1; background:#fff; padding-block:30px; gap:24px; box-shadow:0 18px 60px #0f1a2f08; }
-.pp-storefront .pp-auth-card [data-slot=card-header],.pp-storefront .pp-auth-card [data-slot=card-content] { padding-inline:30px; }
-.pp-storefront .pp-auth-card [data-slot=card-title] { font-size:25px; font-weight:650; letter-spacing:-.6px; line-height:1.35; margin-top:8px; }
+.pp-storefront .pp-account-heading { display:flex; align-items:center; justify-content:space-between; gap:24px; margin:0 0 23px; padding:2px 0 0; }
+.pp-storefront .pp-account-breadcrumb { display:flex; gap:9px; align-items:center; color:#6b7c9a; font-size:13px; margin-bottom:13px; }
+.pp-storefront .pp-account-breadcrumb > span { color:#9aa6bb; }
+.pp-storefront .pp-account-heading h1 { font-size:36px; line-height:1.25; font-weight:700; letter-spacing:-1px; margin:0 0 9px; }
+.pp-storefront .pp-account-heading > div > p:last-child { color:#7181a1; font-size:16px; line-height:1.7; }
+.pp-storefront .pp-account-primary-action { align-self:center; min-height:50px; padding:13px 22px; border-radius:10px; background:#1557ff; font-size:14px; font-weight:550; gap:12px; flex-shrink:0; }
+.pp-storefront .pp-account-primary-action > svg { width:18px; height:18px; }
+.pp-storefront .pp-account-section { display:grid; gap:16px; min-width:0; }
+.pp-storefront .pp-account-panel,
+.pp-storefront-portal .pp-account-panel { min-width:0; padding:22px; border:1px solid #e2e9f4; border-radius:12px; background:#fff; }
+.pp-storefront .pp-account-panel-header,
+.pp-storefront-portal .pp-account-panel-header { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:17px; }
+.pp-storefront .pp-account-panel-header h2,
+.pp-storefront-portal .pp-account-panel-header h2 { display:flex; align-items:center; gap:10px; font-size:19px; line-height:1.5; font-weight:650; letter-spacing:-.3px; }
+.pp-storefront .pp-account-panel-header h2 > svg,
+.pp-storefront-portal .pp-account-panel-header h2 > svg { width:23px; height:23px; color:#1557ff; }
+.pp-storefront .pp-account-panel-header > span { color:#8190aa; font-size:12px; }
+.pp-storefront .pp-inline-action,
+.pp-storefront-portal .pp-inline-action { display:inline-flex; align-items:center; justify-content:center; gap:8px; min-height:40px; padding:6px 0; border:0; background:transparent; color:#1557ff; font-size:13px; line-height:1.5; font-weight:550; text-align:left; text-decoration:none; }
+.pp-storefront .pp-inline-action > svg,
+.pp-storefront-portal .pp-inline-action > svg { width:17px; height:17px; flex-shrink:0; }
+.pp-storefront .pp-inline-action:hover { color:#073bc9; }
+.pp-storefront .pp-account-rule-note,
+.pp-storefront-portal .pp-account-rule-note { color:#7c8ba7; font-size:13px; line-height:1.8; font-weight:400; margin-top:14px; }
+.pp-storefront .pp-account-data-note { color:#8996ad; font-size:11px; line-height:1.6; margin:0; }
+.pp-storefront .pp-account-overview { display:grid; gap:18px; }
+.pp-storefront .pp-overview-top-grid { display:grid; grid-template-columns:minmax(0,1.85fr) minmax(265px,.95fr); gap:18px; align-items:stretch; }
+.pp-storefront .pp-overview-company { padding:23px 24px 19px; }
+.pp-storefront .pp-overview-company-heading { display:flex; align-items:center; flex-wrap:wrap; gap:12px 15px; }
+.pp-storefront .pp-overview-company-heading > div { min-width:0; flex:1; }
+.pp-storefront .pp-overview-company-heading h2 { font-size:23px; line-height:1.4; font-weight:650; letter-spacing:-.6px; overflow-wrap:anywhere; }
+.pp-storefront .pp-overview-company-heading p { display:flex; align-items:center; gap:7px; font-size:13px; line-height:1.6; margin-top:6px; overflow-wrap:anywhere; }
+.pp-storefront .pp-overview-company-heading p > svg { width:17px; height:17px; flex-shrink:0; color:#57698a; }
+.pp-storefront .pp-profile-completeness { border-radius:20px; font-size:11px; line-height:1.5; padding:4px 8px; border:0; font-weight:550; flex-shrink:0; }
+.pp-storefront .pp-profile-completeness > svg { width:13px; height:13px; }
+.pp-storefront .pp-profile-completeness.is-complete { background:#e6faf3; color:#039a75; }
+.pp-storefront .pp-profile-completeness.is-incomplete { background:#fff5df; color:#a66a00; }
+.pp-storefront .pp-overview-company-heading > .pp-inline-action { margin-left:auto; font-size:12px; }
+.pp-storefront .pp-overview-company-levels { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); margin-top:22px; padding-top:17px; border-top:1px solid #e5ebf5; }
+.pp-storefront .pp-overview-company-levels > div { padding:0 16px; min-width:0; }
+.pp-storefront .pp-overview-company-levels > div:first-child { padding-left:0; }
+.pp-storefront .pp-overview-company-levels > div + div { border-left:1px solid #e3eaf5; }
+.pp-storefront .pp-overview-company-levels dt { color:#8190ac; font-size:12px; line-height:1.5; }
+.pp-storefront .pp-overview-company-levels dd { font-size:17px; line-height:1.5; font-weight:650; margin:5px 0 0; overflow-wrap:anywhere; }
+.pp-storefront .pp-overview-company .pp-account-rule-note { font-size:12px; margin-top:15px; }
+.pp-storefront .pp-wallet-hero { position:relative; min-width:0; overflow:hidden; display:flex; flex-direction:column; align-items:flex-start; justify-content:center; padding:28px; border:1px solid #2457ff; border-radius:12px; color:#fff; background:linear-gradient(115deg,#104df3,#4a6aff); }
+.pp-storefront .pp-wallet-hero > span { display:flex; align-items:center; gap:12px; font-size:15px; line-height:1.6; position:relative; z-index:1; }
+.pp-storefront .pp-wallet-hero > span > svg { width:24px; height:24px; flex-shrink:0; }
+.pp-storefront .pp-wallet-hero > strong { display:block; font-size:49px; line-height:1.2; font-weight:700; letter-spacing:-1px; margin:21px 0 12px; position:relative; z-index:1; font-variant-numeric:tabular-nums; overflow-wrap:anywhere; }
+.pp-storefront .pp-wallet-hero > p { font-size:14px; line-height:1.7; color:#dce6ff; position:relative; z-index:1; }
+.pp-storefront .pp-wallet-hero > button { display:flex; align-items:center; gap:12px; width:100%; min-height:46px; margin-top:20px; padding:14px 0 0; color:#fff; background:transparent; border:0; border-top:1px solid #ffffff3d; font-size:13px; text-align:left; }
+.pp-storefront .pp-wallet-hero > button > svg { width:17px; height:17px; }
+.pp-storefront .pp-wallet-watermark { position:absolute; width:112px; height:112px; right:20px; top:52px; stroke-width:1.3; opacity:.15; transform:rotate(-8deg); }
+.pp-storefront .pp-overview-wallet { padding:24px; }
+.pp-storefront .pp-overview-wallet > strong { font-size:39px; margin:18px 0 8px; }
+.pp-storefront .pp-overview-wallet > span { font-size:14px; }
+.pp-storefront .pp-overview-wallet .pp-wallet-watermark { width:98px; height:98px; top:50px; right:15px; }
+.pp-storefront .pp-overview-stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+.pp-storefront .pp-overview-stats > button { display:flex; align-items:center; gap:13px; min-height:94px; min-width:0; padding:18px; border:1px solid #e2e9f4; border-radius:12px; background:#fff; color:#0f1a2f; text-align:left; }
+.pp-storefront .pp-overview-stats > button > span { display:grid; place-items:center; width:46px; height:46px; border-radius:50%; background:#f0f5ff; color:#1557ff; flex-shrink:0; }
+.pp-storefront .pp-overview-stats > button > span > svg { width:25px; height:25px; }
+.pp-storefront .pp-overview-stats > button > div { min-width:0; flex:1; }
+.pp-storefront .pp-overview-stats small { display:block; font-size:13px; line-height:1.5; }
+.pp-storefront .pp-overview-stats strong { display:block; margin-top:4px; font-size:24px; line-height:1.2; font-weight:700; }
+.pp-storefront .pp-overview-stats > button > svg { width:16px; height:16px; color:#8b99b1; flex-shrink:0; }
+.pp-storefront .pp-overview-middle-grid { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(265px,.95fr); gap:18px; }
+.pp-storefront .pp-overview-recent { padding:20px; }
+.pp-storefront .pp-overview-recent .pp-account-panel-header { margin:0 0 12px; }
+.pp-storefront .pp-overview-attention { padding:20px; }
+.pp-storefront .pp-overview-attention > button,
+.pp-storefront .pp-overview-attention > a { display:flex; align-items:flex-start; gap:12px; width:100%; padding:17px 0; border:0; border-top:1px solid #e5ebf5; background:transparent; color:#0f1a2f; text-align:left; }
+.pp-storefront .pp-overview-attention > button > span:nth-child(2),
+.pp-storefront .pp-overview-attention > a > span { flex:1; min-width:0; }
+.pp-storefront .pp-overview-attention strong { display:block; font-size:14px; font-weight:600; line-height:1.6; }
+.pp-storefront .pp-overview-attention small { display:block; font-size:12px; line-height:1.75; color:#8794af; margin-top:3px; }
+.pp-storefront .pp-overview-attention > button > svg,
+.pp-storefront .pp-overview-attention > a > svg:last-child { color:#1557ff; width:17px; height:17px; margin-top:5px; flex-shrink:0; }
+.pp-storefront .pp-overview-attention > a > svg:first-child { color:#7b89a3; width:24px; height:24px; flex-shrink:0; }
+.pp-storefront .pp-attention-dot { width:9px; height:9px; margin-top:8px; border-radius:50%; flex-shrink:0; background:#1557ff; }
+.pp-storefront .pp-attention-dot.is-warning { background:#f4a21a; }
+.pp-storefront .pp-overview-address { display:flex; align-items:center; gap:16px; padding:17px 20px; }
+.pp-storefront .pp-overview-address > span { display:grid; place-items:center; width:46px; height:46px; flex-shrink:0; border-radius:50%; color:#1557ff; background:#f0f5ff; }
+.pp-storefront .pp-overview-address > div { flex:1; min-width:0; }
+.pp-storefront .pp-overview-address h2 { font-size:15px; line-height:1.5; font-weight:600; }
+.pp-storefront .pp-overview-address p { margin-top:4px; font-size:13px; color:#697b9c; line-height:1.7; overflow-wrap:anywhere; }
+.pp-storefront .pp-overview-tier-note { margin-top:0; font-size:11px; }
+.pp-storefront .pp-account-table-scroll { width:100%; min-width:0; }
+.pp-storefront .pp-account-orders-table,
+.pp-storefront .pp-wallet-table { width:100%; border-collapse:collapse; color:#0f1a2f; text-align:left; font-size:13px; }
+.pp-storefront .pp-account-orders-table th,
+.pp-storefront .pp-wallet-table th { background:#f5f8fd; font-size:12px; color:#526787; font-weight:500; padding:13px 12px; white-space:nowrap; }
+.pp-storefront .pp-account-orders-table th:first-child,
+.pp-storefront .pp-wallet-table th:first-child { border-radius:7px 0 0 7px; }
+.pp-storefront .pp-account-orders-table th:last-child,
+.pp-storefront .pp-wallet-table th:last-child { border-radius:0 7px 7px 0; }
+.pp-storefront .pp-account-orders-table td,
+.pp-storefront .pp-wallet-table td { padding:17px 12px; border-bottom:1px solid #e6ecf5; vertical-align:middle; line-height:1.6; }
+.pp-storefront .pp-account-orders-table .pp-order-identity-cell { display:flex; align-items:center; gap:12px; min-width:0; }
+.pp-storefront .pp-order-document { display:grid; place-items:center; width:38px; height:46px; background:#f3f6fc; color:#5c78ba; border-radius:8px; flex-shrink:0; }
+.pp-storefront .pp-order-document > svg { width:21px; height:21px; }
+.pp-storefront .pp-order-identity-cell > span:last-child { min-width:0; }
+.pp-storefront .pp-order-identity-cell strong { font-size:14px; font-weight:600; overflow-wrap:anywhere; }
+.pp-storefront .pp-order-identity-cell small { display:block; color:#8a97ae; font-size:11px; margin-top:3px; overflow-wrap:anywhere; }
+.pp-storefront .pp-order-mobile-meta { display:none; }
+.pp-storefront .pp-order-date-cell,
+.pp-storefront .pp-order-quantity-cell { color:#536583; font-size:12px; white-space:nowrap; }
+.pp-storefront .pp-order-amount-cell { font-variant-numeric:tabular-nums; font-size:15px; font-weight:600; white-space:nowrap; }
+.pp-storefront .pp-order-action-cell { text-align:right; }
+.pp-storefront .pp-order-action-cell .pp-inline-action { font-size:12px; white-space:nowrap; }
+.pp-storefront .pp-account-status,
+.pp-storefront-portal .pp-account-status { display:inline-flex; align-items:center; gap:6px; border:0; border-radius:20px; padding:5px 10px; font-size:11px; font-weight:500; line-height:1.5; max-width:100%; white-space:normal; }
+.pp-storefront .pp-account-status > i,
+.pp-storefront-portal .pp-account-status > i { display:block; width:6px; height:6px; background:currentColor; border-radius:50%; flex-shrink:0; }
+.pp-storefront .pp-account-orders-table.is-compact .pp-order-document,
+.pp-storefront .pp-account-orders-table.is-compact .pp-order-quantity-cell,
+.pp-storefront .pp-account-orders-table.is-compact th:nth-child(3),
+.pp-storefront .pp-account-orders-table.is-compact .pp-order-identity-cell small { display:none; }
+.pp-storefront .pp-account-orders-table.is-compact td { padding:13px 8px; }
+.pp-storefront .pp-account-orders-table.is-compact th { padding:10px 8px; font-size:11px; }
+.pp-storefront .pp-account-orders-table.is-compact .pp-order-identity-cell strong { font-size:12px; }
+.pp-storefront .pp-account-orders-table.is-compact .pp-order-action-cell .pp-inline-action { font-size:11px; }
+.pp-storefront .pp-account-orders-table.is-compact .pp-order-action-cell svg { width:15px; }
+.pp-storefront .pp-account-orders-table.is-compact .pp-order-amount-cell { font-size:13px; }
+.pp-storefront .pp-account-history-controls { display:flex; flex-wrap:wrap; align-items:center; gap:10px; padding:16px 20px; background:white; border:1px solid #e2e9f4; border-radius:12px; }
+.pp-storefront .pp-account-history-controls > form { display:flex; min-width:0; flex:1 1 100%; gap:12px; }
+.pp-storefront .pp-account-history-controls input { min-height:46px; border-radius:7px; background:#fafcff; font-size:14px; padding-inline:14px; border-color:#d8e2f2; }
+.pp-storefront .pp-account-history-controls [data-slot=button] { min-height:42px; height:auto; border-radius:7px; font-size:13px; padding:9px 16px; }
+.pp-storefront .pp-account-history-controls > span { color:#7e8da9; margin-right:auto; font-size:12px; }
+.pp-storefront .pp-orders-section { padding:18px 20px 15px; }
+.pp-storefront .pp-order-filters { display:flex; flex-wrap:wrap; gap:12px; margin:0 0 14px; border-bottom:1px solid #e8edf5; }
+.pp-storefront .pp-order-filters > button { display:flex; align-items:center; gap:8px; min-height:46px; padding:10px 13px 13px; border:0; border-bottom:2px solid transparent; background:transparent; color:#0f1a2f; font-size:14px; }
+.pp-storefront .pp-order-filters > button[aria-pressed=true] { color:#1557ff; border-bottom-color:#1557ff; font-weight:600; }
+.pp-storefront .pp-order-filters b { min-width:22px; padding:1px 6px; background:#f1f5fc; border-radius:6px; color:#6a7eaa; font-size:11px; font-weight:500; }
+.pp-storefront .pp-orders-section > .pp-account-data-note { margin-top:14px; }
+.pp-storefront .pp-wallet-section { display:grid; gap:20px; }
+.pp-storefront .pp-wallet-top-grid { display:grid; grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr); gap:20px; }
+.pp-storefront .pp-wallet-guide { padding:24px; }
+.pp-storefront .pp-wallet-guide h2 { font-size:20px; font-weight:650; margin-bottom:15px; }
+.pp-storefront .pp-wallet-guide > div { display:flex; align-items:flex-start; gap:14px; margin-top:15px; }
+.pp-storefront .pp-wallet-guide > div > span { display:grid; place-items:center; width:43px; height:43px; border-radius:50%; background:#f0f5ff; color:#1557ff; flex-shrink:0; }
+.pp-storefront .pp-wallet-guide > div:first-of-type > span { color:#019d77; background:#e8faf4; }
+.pp-storefront .pp-wallet-guide strong { display:block; font-size:14px; line-height:1.6; font-weight:600; }
+.pp-storefront .pp-wallet-guide small { display:block; margin-top:3px; color:#8090ae; font-size:12px; line-height:1.8; }
+.pp-storefront .pp-wallet-ledger { padding:20px; }
+.pp-storefront .pp-wallet-table td:first-child { display:flex; align-items:center; gap:12px; }
+.pp-storefront .pp-wallet-movement-icon { display:grid; place-items:center; width:38px; height:38px; border-radius:50%; color:#1557ff; background:#edf3ff; flex-shrink:0; }
+.pp-storefront .pp-wallet-movement-icon.is-credit { color:#009d75; background:#e6faf2; }
+.pp-storefront .pp-wallet-movement-icon > svg { width:20px; height:20px; }
+.pp-storefront .pp-wallet-table td strong { display:block; font-size:13px; font-weight:600; }
+.pp-storefront .pp-wallet-table td small { display:block; color:#8391ab; font-size:11px; margin-top:3px; }
+.pp-storefront .pp-wallet-table td:nth-child(2) { color:#49638d; font-size:12px; overflow-wrap:anywhere; }
+.pp-storefront .pp-wallet-table td:nth-child(3) { font-size:12px; color:#667c9e; }
+.pp-storefront .pp-wallet-table td:last-child { text-align:right; white-space:nowrap; font-size:17px; font-weight:650; font-variant-numeric:tabular-nums; }
+.pp-storefront .pp-wallet-table td.is-credit { color:#009e70; }
+.pp-storefront .pp-wallet-table td.is-debit { color:#1557ff; }
+.pp-storefront .pp-account-empty,
+.pp-storefront-portal .pp-account-empty { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:15px; min-height:190px; padding:30px 20px; text-align:center; color:#8090aa; font-size:14px; line-height:1.8; }
+.pp-storefront .pp-account-empty > svg,
+.pp-storefront-portal .pp-account-empty > svg { width:46px; height:46px; color:#1557ff; padding:10px; border-radius:50%; background:#f0f6ff; }
+.pp-storefront .pp-account-empty > strong { color:#445773; font-size:16px; font-weight:550; }
+.pp-storefront .pp-account-profile-notice { padding:0; margin:0 0 18px; border:1px solid #f1dfba; border-radius:12px; box-shadow:none; background:#fff9ec; }
+.pp-storefront .pp-account-profile-notice [data-slot=card-content] { padding:18px 20px; gap:20px; }
+.pp-storefront .pp-account-profile-notice p { font-size:13px; font-weight:400; line-height:1.8; }
+.pp-storefront .pp-account-profile-notice [data-slot=button] { min-height:42px; font-size:13px; border-radius:8px; }
+.pp-storefront .pp-account-info-banner,
+.pp-storefront-portal .pp-account-info-banner { display:flex; align-items:center; gap:12px; padding:16px 18px; border:1px solid #dfe9ff; border-radius:9px; background:#eef5ff; color:#5a76aa; font-size:13px; line-height:1.8; }
+.pp-storefront .pp-account-info-banner > svg,
+.pp-storefront-portal .pp-account-info-banner > svg { width:23px; height:23px; color:#1557ff; flex-shrink:0; }
+.pp-storefront .pp-account-info-banner > p { flex:1; }
+.pp-storefront-portal .pp-account-info-banner.is-error { color:#b42332; background:#fff0f1; border-color:#f5d0d5; }
+.pp-storefront .pp-account-service { display:grid; gap:18px; }
+.pp-storefront .pp-service-steps { display:flex; align-items:center; gap:20px; padding:19px 22px; }
+.pp-storefront .pp-service-steps > strong { flex:1.1; font-size:15px; line-height:1.6; font-weight:600; }
+.pp-storefront .pp-service-steps > div { display:flex; align-items:center; flex:1; gap:12px; }
+.pp-storefront .pp-service-steps > div > span { display:grid; place-items:center; width:43px; height:43px; flex-shrink:0; border-radius:50%; background:#f0f5ff; color:#1557ff; }
+.pp-storefront .pp-service-steps > div > span > svg { width:22px; height:22px; }
+.pp-storefront .pp-service-steps b { font-size:13px; line-height:1.6; font-weight:550; }
+.pp-storefront .pp-service-steps > div > svg { margin-left:auto; width:15px; height:15px; color:#7990b8; }
+.pp-storefront .pp-service-master-detail { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.15fr); gap:18px; }
+.pp-storefront .pp-service-request-list { padding:20px; }
+.pp-storefront .pp-service-request-list .pp-account-panel-header { align-items:flex-start; gap:12px; }
+.pp-storefront .pp-service-request-list .pp-account-panel-header input { min-height:39px; max-width:240px; border-color:#dfe8f8; background:#fafcff; border-radius:7px; font-size:12px; }
+.pp-storefront .pp-service-request-option { display:grid; grid-template-columns:52px minmax(0,1fr) auto; align-items:start; gap:12px; position:relative; width:100%; padding:17px 14px; margin-top:10px; border:1px solid #e0e8f6; border-radius:11px; background:#fff; color:#0f1a2f; text-align:left; }
+.pp-storefront .pp-service-request-option[aria-pressed=true] { border-color:#648aff; background:#f0f5ff; box-shadow:0 0 0 1px #1557ff0d; }
+.pp-storefront .pp-service-request-icon { display:grid; place-items:center; width:52px; height:64px; border:1px solid #e4eaf4; border-radius:9px; background:#f8faff; color:#7289b8; flex-shrink:0; }
+.pp-storefront .pp-service-request-icon > svg { width:27px; height:27px; }
+.pp-storefront .pp-service-request-option > span:nth-child(2) { min-width:0; }
+.pp-storefront .pp-service-request-option strong { display:block; font-size:15px; line-height:1.5; font-weight:650; overflow-wrap:anywhere; }
+.pp-storefront .pp-service-request-option b { display:block; margin-top:4px; font-size:13px; line-height:1.6; font-weight:400; }
+.pp-storefront .pp-service-request-option small { display:block; font-size:11px; line-height:1.6; color:#8192ae; margin-top:5px; overflow-wrap:anywhere; }
+.pp-storefront .pp-service-request-option > .pp-account-status { font-size:10px; max-width:95px; padding:4px 8px; }
+.pp-storefront .pp-service-request-option > svg { position:absolute; right:12px; bottom:18px; width:16px; height:16px; color:#8597b8; }
+.pp-storefront .pp-service-detail { padding:22px; }
+.pp-storefront .pp-service-selected-heading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; }
+.pp-storefront .pp-service-selected-heading h3 { font-size:20px; font-weight:650; }
+.pp-storefront .pp-service-selected-heading p { color:#7d90ad; font-size:12px; margin-top:4px; }
+.pp-storefront .pp-service-selected-product { display:flex; align-items:center; gap:16px; margin:22px 0; }
+.pp-storefront .pp-service-selected-product strong { font-size:15px; line-height:1.6; font-weight:550; }
+.pp-storefront .pp-service-selected-product p { font-size:12px; color:#8190aa; margin-top:5px; overflow-wrap:anywhere; }
+.pp-storefront .pp-service-facts { display:grid; gap:12px; margin:0 0 24px; }
+.pp-storefront .pp-service-facts > div { display:grid; grid-template-columns:100px minmax(0,1fr); gap:12px; font-size:13px; line-height:1.7; }
+.pp-storefront .pp-service-facts dt { color:#8190aa; }
+.pp-storefront .pp-service-facts dd { margin:0; }
+.pp-storefront .pp-service-detail > .pp-inline-action { margin-top:16px; }
+.pp-storefront .pp-service-order-links { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.pp-storefront .pp-service-order-links > a { display:flex; align-items:center; gap:10px; min-width:0; padding:14px; border:1px solid #e3eaf5; border-radius:9px; background:#fafcff; }
+.pp-storefront .pp-service-order-links > a > svg:first-child { width:20px; height:20px; flex-shrink:0; color:#1557ff; }
+.pp-storefront .pp-service-order-links > a > span { min-width:0; flex:1; }
+.pp-storefront .pp-service-order-links strong { display:block; font-size:12px; font-weight:550; overflow-wrap:anywhere; }
+.pp-storefront .pp-service-order-links small { display:block; font-size:11px; margin-top:5px; color:#8190aa; }
+.pp-storefront .pp-service-order-links > a > svg:last-child { width:15px; height:15px; color:#1557ff; flex-shrink:0; }
+.pp-storefront .pp-service-eligible > p { color:#8190aa; font-size:13px; line-height:1.8; }
+.pp-storefront-portal.pp-account-dialog { border:1px solid #e0e8f5; border-radius:12px; padding:26px; gap:20px; box-shadow:0 20px 80px #0f1a2f25; }
+.pp-storefront-portal.pp-account-dialog [data-slot=dialog-title] { font-size:25px; font-weight:650; line-height:1.4; letter-spacing:-.6px; }
+.pp-storefront-portal.pp-account-dialog [data-slot=dialog-description] { font-size:14px; line-height:1.8; color:#7183a3; }
+.pp-storefront-portal.pp-account-dialog [data-slot=dialog-footer] { margin:0 -26px -26px; padding:18px 26px; border-radius:0 0 12px 12px; background:#fff; }
+.pp-storefront-portal.pp-account-dialog [data-slot=dialog-footer] [data-slot=button] { min-height:44px; border-radius:7px; font-size:14px; padding-inline:22px; }
+.pp-storefront-portal.pp-order-dialog { max-width:1160px; }
+.pp-storefront-portal .pp-order-detail { display:grid; gap:20px; }
+.pp-storefront-portal .pp-order-detail-status { display:flex; align-items:center; flex-wrap:wrap; gap:18px; padding:13px 16px; border:1px solid #e7edf6; border-radius:9px; background:#f7faff; font-size:13px; color:#7c8eaa; }
+.pp-storefront-portal .pp-order-detail-status strong { color:#394e70; font-weight:550; }
+.pp-storefront-portal .pp-order-detail-grid { display:grid; grid-template-columns:minmax(0,1.45fr) minmax(0,.9fr); align-items:start; gap:18px; }
+.pp-storefront-portal .pp-order-detail-main,
+.pp-storefront-portal .pp-order-detail-aside { display:grid; gap:18px; min-width:0; }
+.pp-storefront-portal .pp-order-line-table-head { display:flex; justify-content:space-between; padding:12px; border-radius:7px; background:#f3f7fd; color:#5b7093; font-size:12px; }
+.pp-storefront-portal .pp-order-detail-line { display:grid; grid-template-columns:56px minmax(0,1fr) auto; align-items:center; gap:14px; padding:17px 5px; border-bottom:1px solid #e6ecf5; }
+.pp-storefront-portal .pp-order-detail-line > div:first-child { width:56px; height:64px; }
+.pp-storefront-portal .pp-order-detail-line > div:nth-child(2) { min-width:0; overflow-wrap:anywhere; }
+.pp-storefront-portal .pp-order-detail-line strong { font-size:14px; line-height:1.6; font-weight:550; }
+.pp-storefront-portal .pp-order-detail-line p { color:#8293af; font-size:11px; margin-top:5px; overflow-wrap:anywhere; }
+.pp-storefront-portal .pp-order-detail-line small { display:flex; flex-wrap:wrap; gap:8px; color:#687fa6; font-size:12px; margin-top:5px; }
+.pp-storefront-portal .pp-order-detail-line em { font-style:normal; color:#ab7109; }
+.pp-storefront-portal .pp-order-detail-line > b { font-size:16px; font-weight:650; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.pp-storefront-portal .pp-order-detail-summary dl { margin:0; }
+.pp-storefront-portal .pp-order-detail-summary dl > div { display:flex; justify-content:space-between; gap:14px; font-size:13px; margin-top:13px; }
+.pp-storefront-portal .pp-order-detail-summary dt { color:#7e8fab; }
+.pp-storefront-portal .pp-order-detail-summary dd { margin:0; font-weight:550; font-variant-numeric:tabular-nums; }
+.pp-storefront-portal .pp-order-detail-summary dl > .is-total { margin-top:20px; padding-top:18px; border-top:1px solid #e1e9f4; font-size:17px; }
+.pp-storefront-portal .pp-order-detail-summary .is-total dt { color:#0f1a2f; font-weight:600; }
+.pp-storefront-portal .pp-order-detail-summary .is-total dd { color:#1557ff; font-size:24px; font-weight:700; }
+.pp-storefront-portal .pp-order-payment-state { margin-top:22px; padding:15px; border-radius:8px; background:#fff8ec; color:#9a6a20; font-size:13px; }
+.pp-storefront-portal .pp-order-payment-state strong { display:block; margin-top:5px; font-size:15px; font-weight:550; }
+.pp-storefront-portal .pp-order-delivery > div:not(.pp-account-panel-header) { padding:11px 0; border:0; border-top:1px solid #edf1f7; background:white; border-radius:0; }
+.pp-storefront-portal .pp-order-delivery > div > div:first-child { color:#8190aa; font-size:12px; }
+.pp-storefront-portal .pp-order-delivery > div > div:last-child { font-size:13px; line-height:1.7; margin-top:4px; white-space:normal; overflow:visible; text-overflow:clip; overflow-wrap:anywhere; }
+.pp-storefront-portal .pp-order-delivery > button { min-height:44px; width:100%; border-radius:7px; margin-top:14px; font-size:13px; }
+.pp-storefront-portal .pp-order-events { list-style:none; padding:0; margin:6px 0 0; }
+.pp-storefront-portal .pp-order-events li { display:flex; align-items:flex-start; gap:16px; position:relative; padding:0 0 23px 7px; }
+.pp-storefront-portal .pp-order-events li::before { content:""; position:absolute; top:15px; bottom:0; left:12px; border-left:1px solid #b7cbff; }
+.pp-storefront-portal .pp-order-events li:last-child::before { display:none; }
+.pp-storefront-portal .pp-order-events li > span { display:block; width:11px; height:11px; border:2px solid #fff; border-radius:50%; background:#1557ff; box-shadow:0 0 0 3px #e9f0ff; margin-top:6px; flex-shrink:0; position:relative; }
+.pp-storefront-portal .pp-order-events li > div { min-width:0; flex:1; }
+.pp-storefront-portal .pp-order-events strong { display:block; font-size:14px; font-weight:600; }
+.pp-storefront-portal .pp-order-events time { display:block; font-size:11px; color:#7e91af; margin-top:5px; }
+.pp-storefront-portal .pp-order-events p { font-size:12px; color:#7e91af; line-height:1.8; margin-top:6px; }
+.pp-storefront-portal.pp-profile-summary-dialog { max-width:1120px; }
+.pp-storefront-portal .pp-profile-summary-grid { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,.9fr); gap:18px; }
+.pp-storefront-portal .pp-profile-facts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 24px; }
+.pp-storefront-portal .pp-account-info { border:0; border-top:1px solid #e5ecf5; border-radius:0; padding:14px 0 0; background:white; }
+.pp-storefront-portal .pp-account-info > div:first-child { font-size:12px; line-height:1.6; font-weight:500; color:#6c81a4; }
+.pp-storefront-portal .pp-account-info > div:last-child { margin-top:7px; font-size:14px; line-height:1.8; font-weight:450; overflow-wrap:anywhere; }
+.pp-storefront-portal .pp-profile-identity { margin:0; }
+.pp-storefront-portal .pp-profile-identity > div { display:flex; justify-content:space-between; gap:15px; padding:13px 0; border-top:1px solid #e5ecf5; font-size:13px; line-height:1.7; }
+.pp-storefront-portal .pp-profile-identity dt { color:#7e91af; }
+.pp-storefront-portal .pp-profile-identity dd { margin:0; font-weight:550; }
+.pp-storefront-portal .pp-profile-address-text { font-size:15px; line-height:1.9; color:#4a5f81; overflow-wrap:anywhere; white-space:pre-line; }
+.pp-storefront-portal.pp-profile-dialog { max-width:760px; }
+.pp-storefront-portal .pp-profile-editor-nav { display:grid; grid-template-columns:1fr 1fr; padding:4px; border-radius:8px; background:#f0f5ff; margin-bottom:24px; }
+.pp-storefront-portal .pp-profile-editor-nav > button { min-height:43px; padding:8px 12px; border:0; border-radius:6px; background:transparent; color:#6881b1; font-size:14px; font-weight:550; }
+.pp-storefront-portal .pp-profile-editor-nav > button:hover,
+.pp-storefront-portal .pp-profile-editor-nav > button:focus-visible { color:#fff; background:#1557ff; }
+.pp-storefront-portal .pp-profile-editor-section { scroll-margin-top:14px; }
+.pp-storefront-portal .pp-profile-editor-section + .pp-profile-editor-section { padding-top:25px; margin-top:25px; border-top:1px solid #e4ebf5; }
+.pp-storefront-portal .pp-profile-editor-section > h3,
+.pp-storefront-portal .pp-address-fields-title { display:flex; align-items:center; gap:10px; margin-bottom:18px; font-size:19px; font-weight:650; color:#0f1a2f; }
+.pp-storefront-portal .pp-profile-editor-section > h3 > svg,
+.pp-storefront-portal .pp-address-fields-title > svg { color:#1557ff; width:25px; height:25px; }
+.pp-storefront-portal.pp-profile-dialog #account-profile-form label { font-size:13px; line-height:1.7; font-weight:500; color:#485f83; }
+.pp-storefront-portal.pp-profile-dialog #account-profile-form input,
+.pp-storefront-portal.pp-profile-dialog [data-slot=select-trigger] { min-height:44px; border-radius:7px; padding-inline:13px; border-color:#cad7ed; background:white; font-size:15px; }
+.pp-storefront-portal .pp-profile-editor-section > .grid { gap:20px 22px; }
+.pp-storefront-portal .pp-address-fields { padding:0; border:0; border-radius:0; background:transparent; }
+.pp-storefront-portal .pp-address-fields > div { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 22px; }
+.pp-storefront-portal .pp-address-fields > div > div:has(input[id$="-city"]),
+.pp-storefront-portal .pp-address-fields > div > div:has(input[id$="-extra"]),
+.pp-storefront-portal .pp-address-fields > div > div:has([data-slot=select-trigger]) { grid-column:1 / -1; }
+.pp-storefront-portal .pp-profile-same-address { padding:17px 18px; margin-block:22px; border:0; border-radius:8px; background:#eef5ff; font-size:14px; }
+.pp-storefront-portal.pp-profile-dialog #account-profile-form > div:last-of-type { font-size:12px; line-height:1.8; border-radius:8px; }
+.pp-storefront .pp-account-eyebrow { display:block; color:#6c80a5; font-size:11px; font-weight:550; letter-spacing:.08em; line-height:1.6; }
+.pp-storefront .pp-auth-layout { display:grid; grid-template-columns:minmax(0,640px); justify-content:center; align-items:start; width:100%; max-width:800px; min-height:auto; margin:auto; padding:40px 28px 65px; gap:23px; }
+.pp-storefront .pp-auth-introduction { padding:0 6px; }
+.pp-storefront .pp-auth-introduction h1 { font-size:31px; line-height:1.3; font-weight:700; letter-spacing:-.7px; margin:10px 0; }
+.pp-storefront .pp-auth-introduction > p { color:#7285a5; font-size:15px; line-height:1.8; max-width:none; margin:0; }
+.pp-storefront .pp-auth-feature { display:none; }
+.pp-storefront .pp-auth-help-link { display:inline-flex; align-items:center; min-height:38px; color:#1557ff; font-size:13px; margin-top:6px; }
+.pp-storefront .pp-auth-card { border:1px solid #e1e9f5; border-radius:12px; padding-block:26px; gap:22px; box-shadow:none; }
+.pp-storefront .pp-auth-card [data-slot=card-header],
+.pp-storefront .pp-auth-card [data-slot=card-content] { padding-inline:30px; }
+.pp-storefront .pp-auth-card [data-slot=card-title] { font-size:25px; line-height:1.4; font-weight:650; margin-top:7px; letter-spacing:-.4px; }
 .pp-storefront .pp-auth-card [data-slot=card-title] h1 { font:inherit; }
-.pp-storefront .pp-auth-card input { min-height:46px; border-radius:11px; padding-inline:14px; border-color:#c7d2e4; background:#fff; font-size:14px; }
-.pp-storefront .pp-auth-card label { font-size:12px; font-weight:550; color:#4b5b75; }
-.pp-storefront .pp-auth-card form fieldset { border:0; padding:0; min-width:0; }
-.pp-storefront .pp-auth-card [data-slot=button] { min-height:44px; height:auto; border-radius:12px; font-weight:550; font-size:13px; white-space:normal; line-height:1.5; padding:11px 15px; }
-.pp-storefront .pp-auth-tabs { border-radius:12px; border:1px solid #e1e7f1; background:#f5f7fb; gap:4px; padding:4px; }
-.pp-storefront .pp-auth-tabs [data-slot=button] { border:0; background:transparent; color:#63728a; border-radius:9px; box-shadow:none; font-size:12px; }
-.pp-storefront .pp-auth-tabs [aria-selected=true] { background:white; color:#3b5bff; box-shadow:0 2px 6px #0f1a2f0a; }
-.pp-storefront .pp-auth-providers { margin-block:22px; padding-bottom:22px; border-bottom:1px solid #e5eaf2; }
-.pp-storefront .pp-auth-provider { border-color:#dfe6f1; }
-.pp-storefront .pp-auth-note { color:#63728a; font-size:12px; line-height:1.9; padding-top:20px; margin-top:22px; border-color:#e5eaf2; }
-.pp-storefront .pp-auth-note a { font-size:12px; text-underline-offset:4px; }
+.pp-storefront .pp-auth-card input { min-height:46px; border-radius:7px; padding-inline:14px; border-color:#cedaee; background:#fff; font-size:15px; }
+.pp-storefront .pp-auth-card label { font-size:13px; line-height:1.6; color:#435779; font-weight:500; }
+.pp-storefront .pp-auth-card form fieldset { min-width:0; padding:0; border:0; }
+.pp-storefront .pp-auth-card [data-slot=button] { min-height:44px; height:auto; padding:11px 16px; border-radius:7px; font-size:14px; line-height:1.5; font-weight:550; white-space:normal; }
+.pp-storefront .pp-auth-tabs { padding:0; gap:0; border-radius:7px; background:#f0f5fc; }
+.pp-storefront .pp-auth-tabs [data-slot=button] { background:transparent; border:0; border-bottom:2px solid transparent; border-radius:0; color:#7184a7; box-shadow:none; }
+.pp-storefront .pp-auth-tabs [aria-selected=true] { color:#1557ff; background:#f7faff; border-bottom-color:#1557ff; }
+.pp-storefront .pp-auth-providers { padding:19px 0; border-bottom:1px solid #e4ebf5; margin-bottom:22px; }
+.pp-storefront .pp-auth-provider { border-color:#d9e3f2; background:white; }
+.pp-storefront .pp-auth-note { margin-top:24px; padding-top:20px; border-color:#e3ebf5; color:#7184a5; font-size:13px; line-height:1.8; }
+.pp-storefront .pp-auth-note a { font-size:13px; text-underline-offset:4px; }
 .pp-storefront .pp-password-field > div > input { padding-right:54px; }
-.pp-storefront .pp-password-field > div > button { min-width:44px; padding:12px; min-height:46px; height:46px; }
-.pp-storefront .pp-auth-verification > p { color:#63728a; font-size:14px; line-height:1.9; margin-bottom:20px; }
-.pp-storefront .pp-auth-verification #verification-code { text-align:center; letter-spacing:8px; font-size:22px; min-height:56px; font-variant-numeric:tabular-nums; }
-.pp-storefront .pp-recovery-layout { max-width:510px; padding:64px 24px 90px; }
-.pp-storefront .pp-professional-content { max-width:1180px; padding:40px 28px 80px; display:grid; grid-template-columns:minmax(0,.78fr) minmax(0,1.35fr); gap:28px; align-items:start; }
-.pp-storefront .pp-professional-content > * { margin:0; min-width:0; }
-.pp-storefront .pp-professional-introduction { padding:30px; border-color:#dce5f6; border-radius:18px; background:linear-gradient(135deg,#fff,#edf3ff); position:sticky; top:110px; }
-.pp-storefront .pp-professional-mark { display:grid; place-items:center; width:58px; height:58px; border-radius:18px; background:#3b5bff; color:white; margin-bottom:26px; box-shadow:0 8px 20px #3b5bff20; }
-.pp-storefront .pp-professional-mark svg { width:27px; height:27px; }
-.pp-storefront .pp-professional-introduction > [data-slot=badge] { font-size:10px; font-weight:550; background:#eef2ff; color:#3b5bff; border:1px solid #cedaff; padding:5px 8px; border-radius:6px; white-space:normal; }
-.pp-storefront .pp-professional-introduction h1 { font-size:30px; line-height:1.35; letter-spacing:-.7px; font-weight:700; margin-block:14px 20px; }
-.pp-storefront .pp-professional-introduction p { color:#63728a; font-size:13px; line-height:1.9; margin-top:15px; }
-.pp-storefront .pp-professional-next { border-top:1px solid #dce5f4; margin-top:26px; padding-top:24px; }
-.pp-storefront .pp-professional-next h2 { font-size:16px; font-weight:600; margin-top:8px; }
-.pp-storefront .pp-professional-next p { font-size:12px; }
-.pp-storefront .pp-professional-content > [data-slot=card] { border-radius:18px; border-color:#dfe6f1; padding-block:26px; box-shadow:0 8px 30px #0f1a2f04; }
-.pp-storefront .pp-professional-content [data-slot=card-header],.pp-storefront .pp-professional-content [data-slot=card-content] { padding-inline:26px; }
-.pp-storefront .pp-professional-content [data-slot=card-header] { gap:12px; margin-bottom:24px; }
-.pp-storefront .pp-professional-content [data-slot=card-title] { font-size:19px; font-weight:650; }
-.pp-storefront .pp-professional-content [data-slot=card-header] p { font-size:12px; line-height:1.8; }
-.pp-storefront .pp-professional-content fieldset { gap:22px 18px; min-width:0; }
-.pp-storefront .pp-professional-field label { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:5px; font-size:12px; font-weight:550; color:#4b5b75; }
-.pp-storefront .pp-professional-field label span { margin:0; font-size:9px; font-weight:400; color:#63728a; }
-.pp-storefront .pp-professional-field input,.pp-storefront .pp-professional-content textarea { min-height:44px; font-size:14px; border-radius:11px; padding-inline:13px; border-color:#c7d2e4; }
-.pp-storefront .pp-professional-content details { padding:16px; border-color:#dfe6f1; border-radius:13px; background:#fbfcff; margin-block:24px; }
-.pp-storefront .pp-professional-content details summary { font-size:13px; line-height:1.7; font-weight:550; display:list-item; padding-top:8px; }
-.pp-storefront .pp-professional-consent { padding:16px; border-color:#e1e7f2; border-radius:12px; background:#f8faff; font-size:12px; line-height:1.9; }
-.pp-storefront .pp-professional-consent label { gap:12px; }
-.pp-storefront .pp-professional-consent a { font-size:11px; text-underline-offset:4px; }
-.pp-storefront .pp-professional-content [data-slot=button] { min-height:44px; border-radius:12px; font-size:13px; height:auto; padding:11px 16px; white-space:normal; }
-.pp-storefront .pp-professional-footer { grid-column:2; }
-.pp-storefront .pp-rma-content { max-width:1160px; padding:36px 28px 70px; }
-.pp-storefront .pp-rma-heading { background:linear-gradient(110deg,#fff,#eff4ff); border-color:#dfe6f1; border-radius:18px; padding:30px 32px; box-shadow:none; margin-bottom:26px; }
-.pp-storefront .pp-rma-heading h1 { font-size:30px; font-weight:700; line-height:1.35; letter-spacing:-.7px; max-width:760px; }
-.pp-storefront .pp-rma-heading > p { font-size:14px; line-height:1.8; color:#63728a; margin-top:15px; }
-.pp-storefront .pp-rma-heading [data-slot=badge] { border-radius:6px; font-weight:550; font-size:10px; }
-.pp-storefront .pp-rma-content > [data-slot=card] { border-color:#dfe6f1; border-radius:18px; box-shadow:0 6px 24px #0f1a2f04; padding-block:26px; gap:22px; }
-.pp-storefront .pp-rma-content > [data-slot=card] [data-slot=card-header],.pp-storefront .pp-rma-content > [data-slot=card] [data-slot=card-content] { padding-inline:26px; }
-.pp-storefront .pp-rma-content [data-slot=card-title] { font-size:20px; font-weight:650; }
-.pp-storefront .pp-rma-step { padding:24px; border-color:#e1e7f2; border-radius:15px; margin-bottom:20px; }
-.pp-storefront .pp-rma-step > div:first-child { gap:16px; margin-bottom:22px; }
-.pp-storefront .pp-rma-step > div:first-child > div:first-child { width:36px; height:36px; border-radius:11px; font-size:13px; background:#eef2ff; color:#3b5bff; border:1px solid #d5dfff; }
-.pp-storefront .pp-rma-step h2 { font-size:16px; line-height:1.5; font-weight:650; }
-.pp-storefront .pp-rma-step > div:first-child p { font-size:12px; color:#63728a; line-height:1.8; margin-top:5px; }
+.pp-storefront .pp-password-field > div > button { min-width:44px; height:46px; padding:12px; }
+.pp-storefront .pp-auth-verification > p { margin-bottom:22px; color:#7084a6; font-size:15px; line-height:1.8; }
+.pp-storefront .pp-auth-verification #verification-code { min-height:60px; font-size:25px; letter-spacing:10px; text-align:center; font-weight:600; font-variant-numeric:tabular-nums; }
+.pp-storefront .pp-recovery-layout { width:100%; max-width:640px; margin:auto; padding:40px 28px 70px; }
+.pp-storefront .pp-professional-content { display:grid; grid-template-columns:minmax(0,1.65fr) minmax(300px,.85fr); align-items:start; gap:24px; width:100%; max-width:1320px; margin:auto; padding:30px 28px 58px; }
+.pp-storefront .pp-professional-content > * { min-width:0; margin:0; }
+.pp-storefront .pp-professional-introduction { grid-column:2; grid-row:1; position:sticky; top:calc(var(--pp-header-height,122px) + 24px); border:1px solid #e1e9f5; border-radius:12px; background:#fff; padding:25px; }
+.pp-storefront .pp-professional-mark { display:grid; place-items:center; width:48px; height:48px; margin-bottom:20px; border-radius:50%; color:#1557ff; background:#f0f5ff; }
+.pp-storefront .pp-professional-mark > svg { width:25px; height:25px; }
+.pp-storefront .pp-professional-introduction > [data-slot=badge] { max-width:100%; padding:4px 8px; border:0; border-radius:6px; background:#f0f5ff; color:#5375b6; font-size:10px; white-space:normal; }
+.pp-storefront .pp-professional-introduction h1 { margin:14px 0; font-size:25px; font-weight:650; line-height:1.4; letter-spacing:-.5px; }
+.pp-storefront .pp-professional-introduction p { color:#7488aa; font-size:13px; line-height:1.9; margin-top:14px; }
+.pp-storefront .pp-professional-next { margin-top:24px; padding-top:22px; border-top:1px solid #e3ebf5; }
+.pp-storefront .pp-professional-next h2 { font-size:17px; line-height:1.5; font-weight:600; margin-top:12px; }
+.pp-storefront .pp-professional-content > [data-slot=card] { grid-column:1; grid-row:1; border:1px solid #e1e9f5; border-radius:12px; padding-block:26px; box-shadow:none; }
+.pp-storefront .pp-professional-content [data-slot=card-header],
+.pp-storefront .pp-professional-content [data-slot=card-content] { padding-inline:25px; }
+.pp-storefront .pp-professional-content [data-slot=card-header] { margin-bottom:24px; gap:13px; }
+.pp-storefront .pp-professional-content [data-slot=card-title] { font-size:22px; line-height:1.4; font-weight:650; }
+.pp-storefront .pp-professional-content [data-slot=card-header] p { font-size:13px; line-height:1.8; color:#8191aa; }
+.pp-storefront .pp-professional-content fieldset { min-width:0; gap:22px 20px; }
+.pp-storefront .pp-professional-field label { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:4px; font-size:13px; font-weight:500; line-height:1.6; color:#354b70; }
+.pp-storefront .pp-professional-field label > span { font-size:10px; color:#8191aa; font-weight:400; margin:0; }
+.pp-storefront .pp-professional-field input,
+.pp-storefront .pp-professional-content textarea { min-height:44px; padding-inline:13px; border-color:#cedaee; border-radius:7px; background:#fff; font-size:15px; }
+.pp-storefront .pp-professional-content details { padding:16px; margin-block:24px; border-color:#e2e9f4; border-radius:9px; background:#fafcff; }
+.pp-storefront .pp-professional-content details summary { display:list-item; font-size:14px; line-height:1.7; font-weight:550; padding:7px 0; min-height:42px; }
+.pp-storefront .pp-professional-consent { padding:14px 0; border:0; border-radius:0; background:transparent; font-size:13px; line-height:1.8; }
+.pp-storefront .pp-professional-consent + .pp-professional-consent { margin-top:0; }
+.pp-storefront .pp-professional-consent label { gap:11px; }
+.pp-storefront .pp-professional-consent a { min-height:32px; font-size:12px; padding:5px 0; text-underline-offset:4px; }
+.pp-storefront .pp-professional-content [data-slot=button] { min-height:45px; height:auto; padding:11px 17px; border-radius:7px; font-size:14px; white-space:normal; line-height:1.5; }
+.pp-storefront .pp-professional-footer { grid-column:1; }
+.pp-storefront .pp-rma-content { display:grid; grid-template-columns:minmax(0,1.6fr) minmax(300px,.8fr); gap:22px; align-items:start; width:100%; max-width:1320px; margin:auto; padding:28px 28px 60px; }
+.pp-storefront .pp-rma-content > * { min-width:0; margin:0; }
+.pp-storefront .pp-rma-heading { grid-column:1 / -1; border:0; padding:0 0 6px; border-radius:0; background:transparent; box-shadow:none; }
+.pp-storefront .pp-rma-heading h1 { font-size:31px; line-height:1.35; font-weight:700; letter-spacing:-.6px; }
+.pp-storefront .pp-rma-heading > p { font-size:15px; line-height:1.8; color:#7285a6; margin-top:10px; }
+.pp-storefront .pp-rma-heading [data-slot=badge] { font-size:10px; padding:4px 8px; border:0; background:#edf4ff; color:#5a78b0; border-radius:5px; }
+.pp-storefront .pp-rma-form-card { grid-column:1; }
+.pp-storefront .pp-rma-history { grid-column:2; grid-row:2; position:sticky; top:calc(var(--pp-header-height,122px) + 20px); }
+.pp-storefront .pp-rma-content > [data-slot=card] { border:1px solid #e1e9f5; border-radius:12px; padding-block:23px; gap:20px; box-shadow:none; }
+.pp-storefront .pp-rma-content > [data-slot=card] [data-slot=card-header],
+.pp-storefront .pp-rma-content > [data-slot=card] [data-slot=card-content] { padding-inline:23px; }
+.pp-storefront .pp-rma-content [data-slot=card-title] { font-size:20px; font-weight:650; line-height:1.5; }
+.pp-storefront .pp-rma-step { border:0; border-bottom:1px solid #e4ebf5; border-radius:0; background:white; padding:20px 0 24px; margin:0 0 14px; }
+.pp-storefront .pp-rma-step > div:first-child { gap:13px; margin-bottom:22px; }
+.pp-storefront .pp-rma-step > div:first-child > div:first-child { width:33px; height:33px; border:0; border-radius:50%; background:#edf4ff; color:#1557ff; font-size:14px; font-weight:650; }
+.pp-storefront .pp-rma-step h2 { font-size:17px; font-weight:600; line-height:1.5; }
+.pp-storefront .pp-rma-step > div:first-child p { color:#8092af; font-size:12px; font-weight:400; line-height:1.8; }
 .pp-storefront .pp-rma-step > div:last-child { padding-left:0; }
-.pp-storefront .pp-rma-choice { padding:14px 16px; border-radius:12px; font-size:13px; min-height:52px; font-weight:500; }
-.pp-storefront .pp-rma-choice[aria-checked=true] { border-color:#aabaff; background:#f1f5ff; color:#2944a4; box-shadow:0 0 0 1px #d7e0ff; }
-.pp-storefront .pp-rma-order-option { padding:20px 18px; border-radius:12px; border-color:#dfe6f1; min-height:90px; }
-.pp-storefront .pp-rma-content input,.pp-storefront .pp-rma-content textarea,.pp-storefront .pp-rma-content [data-slot=select-trigger] { min-height:44px; border-radius:11px; font-size:14px; padding-inline:13px; border-color:#c7d2e4; }
-.pp-storefront .pp-rma-content [data-slot=button] { min-height:44px; height:auto; border-radius:11px; padding:10px 15px; font-size:13px; line-height:1.6; white-space:normal; }
-.pp-storefront .pp-rma-content label { font-size:13px; font-weight:550; }
-.pp-storefront .pp-rma-content details { border-radius:12px; border-color:#e1e7f2; padding:14px 16px; }
-.pp-storefront .pp-rma-content details summary { font-size:13px; min-height:30px; line-height:1.8; }
-.pp-storefront .pp-rma-request { padding:24px; border-radius:14px; border-color:#e1e7f2; }
-.pp-storefront .pp-rma-request > div:first-child > div > div:first-child { font-size:16px; font-weight:650; }
-.pp-storefront .pp-rma-request [data-slot=badge] { font-size:11px; border-radius:6px; padding:4px 8px; white-space:normal; }
-.pp-storefront .pp-help-content { max-width:1100px; padding:40px 28px 80px; }
-.pp-storefront .pp-help-heading { padding-bottom:15px; }
-.pp-storefront .pp-help-heading h1 { font-size:36px; font-weight:700; letter-spacing:-.9px; line-height:1.3; margin-top:8px; }
-.pp-storefront .pp-help-topics { gap:9px; margin:10px 0 30px; }
-.pp-storefront .pp-help-topics [data-slot=button] { min-height:44px; border-radius:11px; font-size:12px; font-weight:500; padding:11px 15px; white-space:normal; height:auto; background:white; border-color:#dfe6f1; }
+.pp-storefront .pp-rma-choice { min-height:48px; padding:12px 14px; border-radius:7px; font-size:13px; line-height:1.6; font-weight:500; }
+.pp-storefront .pp-rma-choice[aria-checked=true] { border-color:#7fa4ff; background:#f0f6ff; color:#1557ff; box-shadow:0 0 0 1px #1557ff0a; }
+.pp-storefront .pp-rma-order-option { padding:15px; border-radius:8px; border-color:#dfe7f4; gap:12px; min-height:84px; }
+.pp-storefront .pp-rma-content input,
+.pp-storefront .pp-rma-content textarea,
+.pp-storefront .pp-rma-content [data-slot=select-trigger] { min-height:44px; padding-inline:13px; border-color:#ccdaef; border-radius:7px; font-size:15px; }
+.pp-storefront .pp-rma-content [data-slot=button] { min-height:44px; height:auto; padding:10px 14px; border-radius:7px; font-size:13px; line-height:1.6; white-space:normal; }
+.pp-storefront .pp-rma-content label { font-size:13px; font-weight:500; line-height:1.7; }
+.pp-storefront .pp-rma-content details { border-color:#e1e9f5; border-radius:8px; padding:13px 14px; }
+.pp-storefront .pp-rma-content details summary { font-size:13px; line-height:1.8; min-height:30px; }
+.pp-storefront .pp-rma-request { padding:17px; border-color:#e1e9f5; border-radius:9px; }
+.pp-storefront .pp-rma-request > div:first-child > div > div:first-child { font-size:15px; font-weight:650; overflow-wrap:anywhere; }
+.pp-storefront .pp-rma-request [data-slot=badge] { padding:4px 8px; border-radius:20px; font-size:10px; font-weight:500; white-space:normal; }
+.pp-storefront .pp-rma-history [data-slot=card-content] { max-height:660px; overflow-y:auto; }
+.pp-storefront .pp-help-content { max-width:1160px; padding:32px 28px 60px; margin:auto; }
+.pp-storefront .pp-help-heading { padding-bottom:12px; }
+.pp-storefront .pp-help-heading h1 { font-size:34px; line-height:1.3; font-weight:700; letter-spacing:-.7px; margin-top:8px; }
+.pp-storefront .pp-help-topics { display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 25px; }
+.pp-storefront .pp-help-topics [data-slot=button] { min-height:44px; height:auto; padding:10px 14px; border:1px solid #dce6f5; border-radius:7px; background:white; font-size:13px; font-weight:500; white-space:normal; }
 .pp-storefront .pp-help-sections { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
-.pp-storefront .pp-help-topic { padding:26px; border-color:#dfe6f1; border-radius:16px; box-shadow:0 5px 22px #0f1a2f03; }
-.pp-storefront .pp-help-topic-number { display:inline-grid; place-items:center; width:34px; height:34px; color:#3b5bff; font-size:11px; font-weight:600; background:#eef2ff; border:1px solid #d8e2ff; border-radius:10px; margin-bottom:14px; }
-.pp-storefront .pp-help-topic h2 { font-size:18px; line-height:1.5; font-weight:650; margin-bottom:12px; }
-.pp-storefront .pp-help-topic p { font-size:13px; line-height:1.95; color:#63728a; }
-.pp-storefront .pp-help-actions { padding:24px; background:#eef3ff; border:1px solid #dce5ff; border-radius:15px; margin-top:28px; gap:12px; }
-.pp-storefront .pp-help-actions [data-slot=button] { min-height:44px; height:auto; padding:11px 16px; font-size:12px; border-radius:11px; white-space:normal; }
-@media (min-width:1024px) {
-  .pp-storefront .pp-account-workspace { display:grid; grid-template-columns:228px minmax(0,1fr); gap:26px; align-items:start; }
-  .pp-storefront .pp-account-navigation { display:flex; flex-direction:column; gap:14px; position:sticky; top:112px; margin-bottom:0; }
-  .pp-storefront .pp-account-section-nav { padding:8px; }
-  .pp-storefront .pp-account-section-nav > div { grid-template-columns:1fr; gap:6px; }
-  .pp-storefront .pp-account-section-nav button { justify-content:flex-start; gap:12px; padding:14px 16px; min-height:52px; height:auto; }
-  .pp-storefront .pp-account-section-nav button > span:last-child:not(:first-of-type) { margin-left:auto; }
-  .pp-storefront .pp-account-notifications { padding-inline:16px 4px; }
-  .pp-storefront .pp-account-notifications > span { display:block; }
-  .pp-storefront .pp-account-section [data-slot=card-header],.pp-storefront .pp-account-section [data-slot=card-content] { padding-inline:24px; }
-  .pp-storefront .pp-account-overview > [data-slot=card-content] { padding-inline:24px; }
-  .pp-storefront .pp-account-service { grid-template-columns:1fr; }
-  .pp-storefront .pp-order-row { grid-template-columns:minmax(0,1fr) auto; gap:6px 20px; }
-  .pp-storefront .pp-order-row > div:first-child { grid-column:1; grid-row:1; }
-  .pp-storefront .pp-order-row > div:nth-child(2) { grid-column:1; grid-row:2; }
-  .pp-storefront .pp-order-row > div:nth-child(3) { grid-column:1; grid-row:3; }
-  .pp-storefront .pp-order-row > div:last-child { grid-column:2; grid-row:1 / span 3; gap:14px; flex-direction:column; align-items:flex-end; justify-content:center; }
+.pp-storefront .pp-help-topic { padding:25px; border:1px solid #e1e9f5; border-radius:12px; background:#fff; box-shadow:none; }
+.pp-storefront .pp-help-topic-number { display:grid; place-items:center; width:34px; height:34px; border-radius:50%; background:#edf4ff; color:#1557ff; font-size:13px; font-weight:550; margin-bottom:17px; }
+.pp-storefront .pp-help-topic h2 { font-size:20px; font-weight:650; line-height:1.5; margin-bottom:12px; }
+.pp-storefront .pp-help-topic p { color:#7286a7; font-size:14px; line-height:1.9; }
+.pp-storefront .pp-help-actions { display:flex; flex-wrap:wrap; gap:12px; padding:22px; margin-top:25px; border:1px solid #e0e9fa; border-radius:10px; background:#edf4ff; }
+.pp-storefront .pp-help-actions [data-slot=button] { min-height:44px; height:auto; padding:11px 17px; border-radius:7px; font-size:13px; line-height:1.5; white-space:normal; }
+@media (max-width:1279px) and (min-width:1024px) {
+  .pp-storefront .pp-account-content { padding-inline:20px; }
+  .pp-storefront .pp-account-workspace { grid-template-columns:210px minmax(0,1fr); gap:22px; }
+  .pp-storefront .pp-account-navigation { padding-inline:13px; }
+  .pp-storefront .pp-overview-top-grid { grid-template-columns:minmax(0,1fr); }
+  .pp-storefront .pp-overview-wallet { min-height:180px; }
+  .pp-storefront .pp-overview-wallet > strong { margin-top:12px; }
+  .pp-storefront .pp-overview-wallet > button { margin-top:10px; }
+  .pp-storefront .pp-overview-stats { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .pp-storefront .pp-overview-middle-grid { grid-template-columns:minmax(0,1fr); }
+  .pp-storefront .pp-overview-attention { display:none; }
+  .pp-storefront .pp-account-heading { gap:16px; }
+  .pp-storefront .pp-account-heading h1 { font-size:32px; }
+  .pp-storefront .pp-account-primary-action { padding-inline:16px; font-size:13px; }
+  .pp-storefront .pp-account-orders-table td { padding-inline:8px; }
+  .pp-storefront .pp-account-orders-table th { padding-inline:8px; font-size:11px; }
+  .pp-storefront .pp-account-orders-table .pp-order-document { display:none; }
+  .pp-storefront .pp-service-steps { flex-wrap:wrap; }
+  .pp-storefront .pp-service-steps > strong { flex-basis:100%; }
+  .pp-storefront .pp-service-master-detail { grid-template-columns:1fr; }
+  .pp-storefront .pp-service-order-links { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .pp-storefront .pp-wallet-top-grid { grid-template-columns:1fr; }
 }
-@media (min-width:1024px) and (max-width:1279px) {
-  .pp-storefront .pp-account-navigation { top:136px; }
-}
-@media (min-width:761px) and (max-width:1279px) {
-  .pp-storefront .pp-professional-introduction { top:136px; }
-}
-@media (max-width:1000px) {
-  .pp-storefront .pp-auth-layout { gap:45px; padding-inline:26px; grid-template-columns:minmax(0,.9fr) minmax(0,420px); }
-  .pp-storefront .pp-auth-introduction h1 { font-size:37px; }
-  .pp-storefront .pp-professional-content { grid-template-columns:minmax(0,.75fr) minmax(0,1.3fr); gap:20px; padding-inline:22px; }
-  .pp-storefront .pp-professional-introduction { padding:24px; }
-  .pp-storefront .pp-professional-introduction h1 { font-size:26px; }
+@media (max-width:1023px) {
+  .pp-storefront .pp-account-content { padding:18px 20px 36px; }
+  .pp-storefront .pp-account-workspace { display:flex; flex-direction:column; gap:20px; }
+  .pp-storefront .pp-account-navigation { position:static; display:grid; grid-template-columns:minmax(0,1fr) 44px; align-items:stretch; gap:8px; min-height:0; width:100%; padding:0; border:0; border-radius:0; background:transparent; }
+  .pp-storefront .pp-account-sidebar-title,
+  .pp-storefront .pp-account-sidebar-company,
+  .pp-storefront .pp-account-sidebar-footer,
+  .pp-storefront .pp-account-sidebar-secondary > .pp-account-sidebar-link { display:none; }
+  .pp-storefront .pp-account-section-nav { grid-template-columns:repeat(4,minmax(0,1fr)); gap:5px; }
+  .pp-storefront .pp-account-section-nav > button { justify-content:center; min-height:45px; padding:10px 5px; border:1px solid #e2e9f5; background:#f0f5fc; border-radius:7px; font-size:13px; text-align:center; }
+  .pp-storefront .pp-account-section-nav > button[aria-current=page] { color:white; border-color:#1557ff; background:#1557ff; }
+  .pp-storefront .pp-account-section-nav > button > svg,
+  .pp-storefront .pp-account-section-nav > button > b { display:none; }
+  .pp-storefront .pp-account-sidebar-secondary { display:contents; margin:0; padding:0; border:0; }
+  .pp-storefront .pp-account-notifications { justify-content:center; width:44px; min-height:45px; height:100%; padding:0; border:1px solid #e2e9f5; background:#fff; border-radius:7px; }
+  .pp-storefront .pp-account-notifications > span { display:none; }
+  .pp-storefront .pp-account-notifications > button { min-height:45px; }
+  .pp-storefront .pp-account-notifications > button > span { top:-4px; right:-4px; min-width:17px; height:17px; font-size:9px; }
+  .pp-storefront .pp-account-main { width:100%; }
+  .pp-storefront .pp-account-heading { margin-bottom:20px; }
+  .pp-storefront .pp-account-heading h1 { font-size:31px; }
+  .pp-storefront .pp-account-breadcrumb { display:none; }
+  .pp-storefront .pp-overview-stats > button { padding:15px; gap:11px; }
+  .pp-storefront .pp-overview-stats > button > span { width:39px; height:39px; }
+  .pp-storefront .pp-overview-stats small { font-size:12px; }
+  .pp-storefront .pp-overview-top-grid { grid-template-columns:minmax(0,1.5fr) minmax(250px,1fr); }
+  .pp-storefront .pp-overview-company-heading h2 { font-size:20px; }
+  .pp-storefront .pp-overview-company-heading .pp-account-company-avatar { width:45px; height:45px; }
+  .pp-storefront .pp-overview-company-heading > .pp-profile-completeness { margin-left:auto; }
+  .pp-storefront .pp-overview-company-heading > .pp-inline-action { margin-left:0; }
+  .pp-storefront .pp-overview-company-levels { margin-top:17px; }
+  .pp-storefront .pp-overview-company-levels dd { font-size:15px; }
+  .pp-storefront .pp-overview-wallet { padding:22px; }
+  .pp-storefront .pp-overview-wallet > strong { font-size:36px; }
+  .pp-storefront .pp-overview-middle-grid { grid-template-columns:1fr; }
+  .pp-storefront .pp-overview-attention { display:none; }
+  .pp-storefront .pp-wallet-top-grid { grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr); }
+  .pp-storefront .pp-wallet-guide { padding:20px; }
+  .pp-storefront .pp-wallet-hero { padding:25px; }
+  .pp-storefront .pp-service-steps { flex-wrap:wrap; gap:16px; }
+  .pp-storefront .pp-service-steps > strong { flex-basis:100%; }
+  .pp-storefront .pp-service-master-detail { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .pp-storefront .pp-service-request-option { grid-template-columns:44px minmax(0,1fr); }
+  .pp-storefront .pp-service-request-option > .pp-account-status { grid-column:2; }
+  .pp-storefront .pp-service-request-icon { width:44px; height:57px; }
+  .pp-storefront .pp-service-order-links { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .pp-storefront .pp-professional-content { grid-template-columns:minmax(0,1.4fr) minmax(255px,.85fr); gap:18px; padding-inline:22px; }
+  .pp-storefront .pp-professional-introduction { position:static; padding:21px; }
+  .pp-storefront .pp-professional-introduction h1 { font-size:22px; }
   .pp-storefront .pp-professional-content fieldset { grid-template-columns:1fr; }
-  .pp-storefront .pp-wallet-section > [data-slot=card-content] { grid-template-columns:1fr; }
+  .pp-storefront .pp-rma-content { grid-template-columns:minmax(0,1fr); padding-inline:22px; }
+  .pp-storefront .pp-rma-history { grid-column:1; grid-row:auto; position:static; }
+  .pp-storefront .pp-rma-history [data-slot=card-content] { max-height:none; overflow-y:visible; }
 }
-@media (max-width:760px) {
-  .pp-storefront .pp-account-content { padding:24px 16px 38px; }
-  .pp-storefront .pp-account-heading { gap:14px; margin-bottom:20px; align-items:flex-start; }
-  .pp-storefront .pp-account-heading h1 { font-size:27px; margin-block:5px 7px; }
-  .pp-storefront .pp-account-heading p { font-size:12px; max-width:235px; }
-  .pp-storefront .pp-account-heading > button { font-size:11px; gap:6px; min-height:42px; padding:9px 12px; }
-  .pp-storefront .pp-account-heading > button svg { width:13px; height:13px; }
-  .pp-storefront .pp-account-eyebrow { font-size:9px; letter-spacing:1.5px; }
-  .pp-storefront .pp-account-navigation { gap:8px; margin-bottom:18px; }
-  .pp-storefront .pp-account-section-nav { padding:4px; border-radius:12px; }
-  .pp-storefront .pp-account-section-nav > div { gap:2px; }
-  .pp-storefront .pp-account-section-nav button { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:64px; height:auto; padding:9px 5px; gap:4px; font-size:11px; border-radius:9px; }
-  .pp-storefront .pp-account-section-nav button > svg { width:14px; height:14px; }
-  .pp-storefront .pp-account-section-nav button > span:first-of-type { width:100%; min-width:0; overflow:visible; white-space:normal; text-overflow:clip; overflow-wrap:anywhere; line-height:1.3; }
-  .pp-storefront .pp-account-section-nav button > span:last-child:not(:first-of-type) { position:absolute; right:2px; top:2px; font-size:8px; line-height:15px; min-width:15px; padding-inline:3px; }
-  .pp-storefront .pp-account-navigation > button { min-width:44px; width:44px; }
-  .pp-storefront .pp-account-section [data-slot=card] { border-radius:16px; padding-block:20px; gap:18px; }
-  .pp-storefront .pp-account-section [data-slot=card-header],.pp-storefront .pp-account-section [data-slot=card-content] { padding-inline:18px; }
-  .pp-storefront .pp-account-overview > [data-slot=card-content] { padding:2px 18px; }
-  .pp-storefront .pp-account-identity { gap:10px; padding-bottom:20px; margin-bottom:20px; }
-  .pp-storefront .pp-account-identity > div { gap:11px; }
-  .pp-storefront .pp-account-identity > div > div:first-child { width:42px; height:42px; border-radius:13px; }
-  .pp-storefront .pp-account-identity h2 { font-size:19px; }
-  .pp-storefront .pp-account-identity p { font-size:11px; line-height:1.8; }
-  .pp-storefront .pp-account-identity [data-slot=badge] { font-size:9px; padding:4px 6px; }
-  .pp-storefront .pp-account-identity [data-slot=badge] svg { width:11px; height:11px; }
-  .pp-storefront .pp-account-metrics { gap:10px; }
-  .pp-storefront .pp-account-metric { padding:15px 13px; min-height:98px; border-radius:12px; }
-  .pp-storefront .pp-account-metric > div:nth-child(2) { font-size:18px; }
-  .pp-storefront .pp-account-metric > div:nth-child(3) { font-size:11px; }
-  .pp-storefront .pp-account-profile-facts { grid-template-columns:1fr; gap:10px; }
-  .pp-storefront .pp-account-profile-facts .col-span-2 { grid-column:auto; }
-  .pp-storefront .pp-account-info { padding:14px; }
-  .pp-storefront .pp-account-info > div:last-child { font-size:13px; }
-  .pp-storefront .pp-account-quick-actions { margin-top:18px; padding-top:18px; gap:8px; }
-  .pp-storefront .pp-account-quick-actions [data-slot=button] { font-size:12px; }
-  .pp-storefront .pp-account-history-controls { padding:12px; gap:8px; }
-  .pp-storefront .pp-account-history-controls form { flex-basis:100%; }
-  .pp-storefront .pp-account-history-controls form input { font-size:16px; }
-  .pp-storefront .pp-account-history-controls > span { margin-right:auto; margin-left:0; font-size:10px; }
-  .pp-storefront .pp-account-history-controls > button { font-size:11px; min-height:40px; padding-inline:10px; }
-  .pp-storefront .pp-order-filters { gap:6px; }
-  .pp-storefront .pp-order-filters button { font-size:11px; min-height:40px; padding:8px 10px; }
-  .pp-storefront .pp-order-row { padding:16px; gap:14px; margin-top:10px; }
-  .pp-storefront .pp-order-row > div:first-child > div:first-child > span { font-size:12px; }
-  .pp-storefront .pp-wallet-balance { padding:24px 20px; }
-  .pp-storefront .pp-wallet-balance > div:nth-child(2) { font-size:34px; }
-  .pp-storefront .pp-wallet-transactions > div:not(:first-child) { padding:14px; gap:14px; }
-  .pp-storefront .pp-account-service { gap:18px; }
-  .pp-storefront .pp-account-service [data-slot=card-content] > div { padding:16px; }
-  .pp-storefront-portal.pp-account-dialog { padding:22px; gap:18px; }
-  .pp-storefront-portal.pp-account-dialog [data-slot=dialog-title] { font-size:20px; }
-  .pp-storefront-portal.pp-account-dialog [data-slot=dialog-footer] { margin-inline:-22px; margin-bottom:-22px; padding:18px 22px; }
-  .pp-storefront-portal.pp-profile-dialog input,:is(.pp-storefront,.pp-storefront-portal) .pp-address-fields input { font-size:16px; }
-  :is(.pp-storefront,.pp-storefront-portal) .pp-address-fields { padding:16px; }
-  :is(.pp-storefront,.pp-storefront-portal) .pp-address-fields > div:last-child { gap:16px; }
-  .pp-storefront .pp-auth-layout { display:block; padding:28px 20px 50px; max-width:520px; min-height:auto; }
-  .pp-storefront .pp-auth-introduction { padding:0 2px; margin-bottom:23px; }
-  .pp-storefront .pp-auth-introduction h1 { font-size:29px; margin:8px 0 10px; letter-spacing:-.7px; }
-  .pp-storefront .pp-auth-introduction > p { font-size:12px; line-height:1.9; margin:0; max-width:none; }
-  .pp-storefront .pp-auth-feature { display:none; }
-  .pp-storefront .pp-auth-help-link { font-size:12px; margin-top:6px; min-height:34px; }
-  .pp-storefront .pp-auth-card { padding-block:24px; gap:21px; border-radius:18px; }
-  .pp-storefront .pp-auth-card [data-slot=card-header],.pp-storefront .pp-auth-card [data-slot=card-content] { padding-inline:22px; }
-  .pp-storefront .pp-auth-card [data-slot=card-title] { font-size:23px; }
-  .pp-storefront .pp-auth-card input { font-size:16px; }
-  .pp-storefront .pp-auth-card [data-slot=button] { font-size:12px; }
-  .pp-storefront .pp-auth-note { font-size:12px; }
-  .pp-storefront .pp-recovery-layout { padding:32px 20px 60px; }
-  .pp-storefront .pp-professional-content { display:block; max-width:620px; padding:24px 16px 46px; }
-  .pp-storefront .pp-professional-content > * + * { margin-top:20px; }
-  .pp-storefront .pp-professional-introduction { position:static; padding:24px; }
-  .pp-storefront .pp-professional-mark { width:44px; height:44px; border-radius:14px; margin-bottom:18px; }
-  .pp-storefront .pp-professional-mark svg { width:22px; height:22px; }
-  .pp-storefront .pp-professional-introduction h1 { font-size:26px; margin:12px 0 16px; }
-  .pp-storefront .pp-professional-introduction p { font-size:12px; }
-  .pp-storefront .pp-professional-next { margin-top:20px; padding-top:18px; }
-  .pp-storefront .pp-professional-content [data-slot=card-header],.pp-storefront .pp-professional-content [data-slot=card-content] { padding-inline:20px; }
+@media (max-width:767px) {
+  .pp-storefront .pp-account-content { padding:15px 16px 30px; }
+  .pp-storefront .pp-account-workspace { gap:19px; }
+  .pp-storefront .pp-account-section-nav > button { min-height:44px; height:auto; font-size:11px; gap:0; padding:8px 3px; line-height:1.5; }
+  .pp-storefront .pp-account-heading { align-items:flex-start; gap:12px; }
+  .pp-storefront .pp-account-heading h1 { font-size:28px; margin-bottom:7px; }
+  .pp-storefront .pp-account-heading > div > p:last-child { font-size:14px; line-height:1.75; }
+  .pp-storefront .pp-account-primary-action { display:none; }
+  .pp-storefront .pp-account-section { gap:13px; }
+  .pp-storefront .pp-account-panel,
+  .pp-storefront-portal .pp-account-panel { padding:17px; border-radius:11px; }
+  .pp-storefront .pp-account-panel-header,
+  .pp-storefront-portal .pp-account-panel-header { gap:10px; margin-bottom:14px; }
+  .pp-storefront .pp-account-panel-header h2,
+  .pp-storefront-portal .pp-account-panel-header h2 { font-size:17px; }
+  .pp-storefront .pp-inline-action,
+  .pp-storefront-portal .pp-inline-action { font-size:12px; min-height:36px; }
+  .pp-storefront .pp-account-overview { gap:14px; }
+  .pp-storefront .pp-overview-top-grid { grid-template-columns:1fr; gap:13px; }
+  .pp-storefront .pp-overview-company { padding:17px; }
+  .pp-storefront .pp-overview-company-heading { gap:8px 11px; }
+  .pp-storefront .pp-overview-company-heading .pp-account-company-avatar { width:48px; height:48px; }
+  .pp-storefront .pp-overview-company-heading h2 { font-size:17px; letter-spacing:-.3px; }
+  .pp-storefront .pp-overview-company-heading p { font-size:12px; }
+  .pp-storefront .pp-overview-company-heading > .pp-profile-completeness { font-size:9px; padding:3px 6px; }
+  .pp-storefront .pp-overview-company-heading > .pp-inline-action { flex-basis:100%; justify-content:flex-start; margin-left:59px; min-height:30px; padding:2px 0; font-size:12px; }
+  .pp-storefront .pp-overview-company-levels { margin-top:13px; padding-top:13px; gap:0; }
+  .pp-storefront .pp-overview-company-levels > div { padding:0 11px; }
+  .pp-storefront .pp-overview-company-levels dt { font-size:10px; }
+  .pp-storefront .pp-overview-company-levels dd { font-size:13px; line-height:1.6; margin-top:4px; }
+  .pp-storefront .pp-overview-company .pp-account-rule-note { font-size:11px; line-height:1.75; margin-top:11px; }
+  .pp-storefront .pp-overview-wallet { min-height:157px; padding:19px 21px; }
+  .pp-storefront .pp-overview-wallet > span { font-size:13px; }
+  .pp-storefront .pp-overview-wallet > strong { font-size:36px; margin:10px 0 5px; }
+  .pp-storefront .pp-overview-wallet > p { font-size:12px; }
+  .pp-storefront .pp-overview-wallet > button { position:absolute; right:19px; bottom:15px; width:auto; min-height:33px; padding:5px 0; border:0; font-size:12px; }
+  .pp-storefront .pp-overview-wallet .pp-wallet-watermark { width:88px; height:88px; top:31px; right:17px; }
+  .pp-storefront .pp-overview-stats { grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px; }
+  .pp-storefront .pp-overview-stats > button { min-height:73px; padding:13px 12px; gap:9px; }
+  .pp-storefront .pp-overview-stats > button > span { width:34px; height:34px; background:#f4f8ff; }
+  .pp-storefront .pp-overview-stats > button > span > svg { width:22px; height:22px; }
+  .pp-storefront .pp-overview-stats > button > div { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+  .pp-storefront .pp-overview-stats small { font-size:12px; line-height:1.5; }
+  .pp-storefront .pp-overview-stats strong { font-size:16px; margin:0 0 0 auto; }
+  .pp-storefront .pp-overview-stats > button > svg { display:none; }
+  .pp-storefront .pp-overview-middle-grid { display:block; }
+  .pp-storefront .pp-overview-recent { background:transparent; border:0; padding:0; }
+  .pp-storefront .pp-overview-recent .pp-account-panel-header { margin-bottom:9px; }
+  .pp-storefront .pp-account-orders-table thead { display:none; }
+  .pp-storefront .pp-account-orders-table,
+  .pp-storefront .pp-account-orders-table tbody { display:block; }
+  .pp-storefront .pp-account-orders-table tr { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px 12px; position:relative; margin-bottom:11px; padding:16px; border:1px solid #e1e9f5; border-radius:10px; background:#fff; }
+  .pp-storefront .pp-account-orders-table td { display:block; padding:0; border:0; }
+  .pp-storefront .pp-account-orders-table .pp-order-identity-cell { grid-column:1; grid-row:1 / span 2; align-items:flex-start; gap:10px; }
+  .pp-storefront .pp-account-orders-table .pp-order-document { width:39px; height:52px; display:grid; }
+  .pp-storefront .pp-order-identity-cell strong { font-size:13px; line-height:1.5; }
+  .pp-storefront .pp-order-identity-cell small { display:none; }
+  .pp-storefront .pp-order-mobile-meta { display:block; font-size:11px; line-height:1.7; color:#7c8faf; margin-top:5px; }
+  .pp-storefront .pp-account-orders-table .pp-order-date-cell,
+  .pp-storefront .pp-account-orders-table .pp-order-quantity-cell { display:none; }
+  .pp-storefront .pp-account-orders-table .pp-order-status-cell { grid-column:2; grid-row:1; justify-self:end; }
+  .pp-storefront .pp-account-orders-table .pp-order-amount-cell { grid-column:2; grid-row:2; text-align:right; font-size:16px; }
+  .pp-storefront .pp-account-orders-table .pp-order-action-cell { grid-column:1 / -1; grid-row:3; text-align:right; border-top:1px solid #edf1f7; padding-top:7px; }
+  .pp-storefront .pp-account-orders-table .pp-order-action-cell .pp-inline-action { min-height:28px; font-size:11px; padding:3px 0; }
+  .pp-storefront .pp-account-orders-table.is-compact tr { padding:12px; margin-bottom:8px; }
+  .pp-storefront .pp-account-orders-table.is-compact .pp-order-document { display:grid; width:32px; height:42px; }
+  .pp-storefront .pp-account-orders-table.is-compact .pp-order-action-cell { grid-column:auto; position:absolute; inset:0; border:0; padding:0; }
+  .pp-storefront .pp-account-orders-table.is-compact .pp-order-action-cell > button { width:100%; height:100%; padding:0; border-radius:10px; color:transparent; }
+  .pp-storefront .pp-account-orders-table.is-compact .pp-order-action-cell > button > svg { display:none; }
+  .pp-storefront .pp-account-orders-table.is-compact .pp-order-identity-cell strong { font-size:12px; }
+  .pp-storefront .pp-account-orders-table.is-compact .pp-order-amount-cell { font-size:14px; }
+  .pp-storefront .pp-account-status { padding:4px 8px; font-size:10px; }
+  .pp-storefront .pp-overview-address { padding:15px; gap:12px; flex-wrap:wrap; }
+  .pp-storefront .pp-overview-address > span { width:35px; height:35px; }
+  .pp-storefront .pp-overview-address > div { min-width:calc(100% - 48px); }
+  .pp-storefront .pp-overview-address h2 { font-size:14px; }
+  .pp-storefront .pp-overview-address p { font-size:12px; }
+  .pp-storefront .pp-overview-address > .pp-inline-action { margin-left:47px; font-size:11px; min-height:26px; }
+  .pp-storefront .pp-overview-tier-note { font-size:10px; line-height:1.8; }
+  .pp-storefront .pp-account-history-controls { padding:13px; gap:7px; }
+  .pp-storefront .pp-account-history-controls > form { gap:8px; }
+  .pp-storefront .pp-account-history-controls input { min-height:44px; font-size:16px; }
+  .pp-storefront .pp-account-history-controls [data-slot=button] { min-height:39px; padding:8px 12px; font-size:11px; }
+  .pp-storefront .pp-account-history-controls > span { font-size:10px; }
+  .pp-storefront .pp-orders-section { padding:0; border:0; background:transparent; }
+  .pp-storefront .pp-order-filters { gap:7px; flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; border:0; margin-bottom:14px; }
+  .pp-storefront .pp-order-filters > button { flex-shrink:0; min-height:40px; padding:9px 12px; border:0; border-radius:9px; background:#eef4fd; font-size:12px; }
+  .pp-storefront .pp-order-filters > button[aria-pressed=true] { background:#1557ff; color:#fff; }
+  .pp-storefront .pp-order-filters b { background:#ffffff5c; color:inherit; font-size:10px; padding:1px 4px; min-width:16px; }
+  .pp-storefront .pp-wallet-top-grid { grid-template-columns:1fr; gap:14px; }
+  .pp-storefront .pp-wallet-hero { padding:24px; min-height:174px; }
+  .pp-storefront .pp-wallet-hero > span { font-size:14px; }
+  .pp-storefront .pp-wallet-hero > strong { font-size:42px; margin:13px 0 8px; }
+  .pp-storefront .pp-wallet-hero > p { font-size:12px; }
+  .pp-storefront .pp-wallet-guide { display:none; }
+  .pp-storefront .pp-wallet-ledger { padding:0; border:0; background:transparent; }
+  .pp-storefront .pp-wallet-table,
+  .pp-storefront .pp-wallet-table tbody { display:block; }
+  .pp-storefront .pp-wallet-table thead { display:none; }
+  .pp-storefront .pp-wallet-table tr { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:3px 10px; padding:16px 10px; border-bottom:1px solid #e5ecf5; background:white; }
+  .pp-storefront .pp-wallet-table td { display:block; padding:0; border:0; }
+  .pp-storefront .pp-wallet-table td:first-child { grid-column:1; grid-row:1; gap:10px; }
+  .pp-storefront .pp-wallet-table td:nth-child(2) { grid-column:1; grid-row:2; padding-left:48px; font-size:11px; }
+  .pp-storefront .pp-wallet-table td:nth-child(3) { grid-column:2; grid-row:2; text-align:right; font-size:10px; }
+  .pp-storefront .pp-wallet-table td:last-child { grid-column:2; grid-row:1; font-size:17px; }
+  .pp-storefront .pp-wallet-table td strong { font-size:13px; }
+  .pp-storefront .pp-wallet-table td small { display:none; }
+  .pp-storefront .pp-wallet-movement-icon { width:37px; height:37px; }
+  .pp-storefront .pp-account-empty { padding:26px 15px; min-height:170px; font-size:13px; }
+  .pp-storefront .pp-account-empty > strong { font-size:14px; }
+  .pp-storefront .pp-account-profile-notice [data-slot=card-content] { padding:16px; }
+  .pp-storefront .pp-account-profile-notice p { font-size:12px; }
+  .pp-storefront .pp-account-info-banner { padding:14px; gap:10px; flex-wrap:wrap; font-size:12px; }
+  .pp-storefront .pp-service-steps { display:none; }
+  .pp-storefront .pp-service-master-detail { grid-template-columns:1fr; gap:14px; }
+  .pp-storefront .pp-service-request-list { padding:0; border:0; background:transparent; }
+  .pp-storefront .pp-service-request-list .pp-account-panel-header input { max-width:none; width:100%; min-height:42px; background:white; font-size:16px; }
+  .pp-storefront .pp-service-request-option { grid-template-columns:45px minmax(0,1fr) auto; padding:15px 12px; gap:10px; }
+  .pp-storefront .pp-service-request-option > .pp-account-status { grid-column:3; font-size:9px; }
+  .pp-storefront .pp-service-request-option strong { font-size:13px; }
+  .pp-storefront .pp-service-request-option b { font-size:12px; }
+  .pp-storefront .pp-service-request-option small { font-size:10px; }
+  .pp-storefront .pp-service-detail { padding:19px; }
+  .pp-storefront .pp-service-selected-heading h3 { font-size:18px; }
+  .pp-storefront .pp-service-order-links { grid-template-columns:1fr; gap:8px; }
+  .pp-storefront .pp-service-eligible { padding:17px; }
+  .pp-storefront-portal.pp-account-dialog { padding:20px; border-radius:11px; gap:17px; }
+  .pp-storefront-portal.pp-account-dialog [data-slot=dialog-title] { font-size:22px; }
+  .pp-storefront-portal.pp-account-dialog [data-slot=dialog-description] { font-size:13px; }
+  .pp-storefront-portal.pp-account-dialog [data-slot=dialog-footer] { margin:0 -20px -20px; padding:16px 20px; }
+  .pp-storefront-portal.pp-account-dialog [data-slot=dialog-footer] [data-slot=button] { font-size:13px; min-height:44px; padding-inline:16px; }
+  .pp-storefront-portal .pp-order-detail-grid { grid-template-columns:1fr; gap:14px; }
+  .pp-storefront-portal .pp-order-detail-main,
+  .pp-storefront-portal .pp-order-detail-aside { gap:14px; }
+  .pp-storefront-portal .pp-order-detail-line { grid-template-columns:48px minmax(0,1fr) auto; gap:10px; }
+  .pp-storefront-portal .pp-order-detail-line > div:first-child { width:48px; height:58px; }
+  .pp-storefront-portal .pp-order-detail-line strong { font-size:12px; }
+  .pp-storefront-portal .pp-order-detail-line > b { font-size:14px; }
+  .pp-storefront-portal .pp-order-detail-line small { font-size:11px; }
+  .pp-storefront-portal .pp-order-detail-line p { font-size:10px; }
+  .pp-storefront-portal .pp-profile-summary-grid { grid-template-columns:1fr; gap:14px; }
+  .pp-storefront-portal .pp-profile-facts { gap:10px 18px; }
+  .pp-storefront-portal .pp-account-info > div:last-child { font-size:13px; }
+  .pp-storefront-portal .pp-profile-address-text { font-size:14px; }
+  .pp-storefront-portal .pp-profile-editor-nav { margin-bottom:21px; }
+  .pp-storefront-portal .pp-profile-editor-nav > button { font-size:12px; }
+  .pp-storefront-portal .pp-profile-editor-section > h3,
+  .pp-storefront-portal .pp-address-fields-title { font-size:18px; }
+  .pp-storefront-portal.pp-profile-dialog #account-profile-form input { font-size:16px; }
+  .pp-storefront-portal .pp-profile-editor-section > .grid,
+  .pp-storefront-portal .pp-address-fields > div { gap:18px 14px; }
+  .pp-storefront .pp-auth-layout { padding:22px 16px 38px; gap:19px; max-width:560px; }
+  .pp-storefront .pp-auth-introduction { padding:0 2px; }
+  .pp-storefront .pp-auth-introduction h1 { font-size:27px; margin:8px 0; }
+  .pp-storefront .pp-auth-introduction > p { font-size:13px; line-height:1.8; }
+  .pp-storefront .pp-auth-card { padding-block:24px; }
+  .pp-storefront .pp-auth-card [data-slot=card-header],
+  .pp-storefront .pp-auth-card [data-slot=card-content] { padding-inline:21px; }
+  .pp-storefront .pp-auth-card [data-slot=card-title] { font-size:25px; }
+  .pp-storefront .pp-auth-card input { font-size:16px; min-height:48px; }
+  .pp-storefront .pp-auth-card [data-slot=button] { min-height:48px; font-size:14px; }
+  .pp-storefront .pp-auth-card label { font-size:13px; }
+  .pp-storefront .pp-auth-note { font-size:13px; }
+  .pp-storefront .pp-auth-tabs [data-slot=button] { min-height:42px; font-size:13px; }
+  .pp-storefront .pp-auth-providers { padding-top:16px; margin-bottom:20px; }
+  .pp-storefront .pp-auth-verification #verification-code { font-size:24px; letter-spacing:8px; min-height:62px; }
+  .pp-storefront .pp-recovery-layout { padding:27px 16px 46px; }
+  .pp-storefront .pp-professional-content { display:flex; flex-direction:column; gap:17px; max-width:620px; padding:22px 16px 42px; }
+  .pp-storefront .pp-professional-content > * { width:100%; }
+  .pp-storefront .pp-professional-introduction { padding:0 3px; border:0; border-radius:0; background:transparent; }
+  .pp-storefront .pp-professional-mark,
+  .pp-storefront .pp-professional-introduction > [data-slot=badge],
+  .pp-storefront .pp-professional-next { display:none; }
+  .pp-storefront .pp-professional-introduction h1 { font-size:27px; margin:0 0 10px; }
+  .pp-storefront .pp-professional-introduction p { font-size:13px; margin-top:8px; line-height:1.8; }
+  .pp-storefront .pp-professional-content > [data-slot=card] { padding-block:22px; }
+  .pp-storefront .pp-professional-content [data-slot=card-header],
+  .pp-storefront .pp-professional-content [data-slot=card-content] { padding-inline:18px; }
+  .pp-storefront .pp-professional-content [data-slot=card-title] { font-size:20px; }
   .pp-storefront .pp-professional-content fieldset { gap:20px; }
-  .pp-storefront .pp-professional-field input,.pp-storefront .pp-professional-content textarea { font-size:16px; }
-  .pp-storefront .pp-professional-field label { font-size:13px; }
-  .pp-storefront .pp-professional-consent { padding:14px; font-size:12px; }
-  .pp-storefront .pp-rma-content { padding:24px 16px 50px; }
-  .pp-storefront .pp-rma-heading { padding:24px; margin-bottom:20px; }
-  .pp-storefront .pp-rma-heading h1 { font-size:27px; letter-spacing:-.6px; }
-  .pp-storefront .pp-rma-heading > p { font-size:12px; line-height:1.9; }
+  .pp-storefront .pp-professional-field input,
+  .pp-storefront .pp-professional-content textarea { font-size:16px; }
+  .pp-storefront .pp-professional-content details { padding:13px; }
+  .pp-storefront .pp-professional-consent { font-size:12px; }
+  .pp-storefront .pp-professional-consent a { font-size:11px; }
+  .pp-storefront .pp-rma-content { display:block; padding:22px 16px 42px; }
+  .pp-storefront .pp-rma-content > * + * { margin-top:18px; }
+  .pp-storefront .pp-rma-heading h1 { font-size:27px; }
+  .pp-storefront .pp-rma-heading > p { font-size:13px; line-height:1.8; }
   .pp-storefront .pp-rma-content > [data-slot=card] { padding-block:20px; }
-  .pp-storefront .pp-rma-content > [data-slot=card] [data-slot=card-header],.pp-storefront .pp-rma-content > [data-slot=card] [data-slot=card-content] { padding-inline:16px; }
-  .pp-storefront .pp-rma-content [data-slot=card-title] { font-size:18px; }
-  .pp-storefront .pp-rma-step { padding:18px; border-radius:13px; margin-bottom:16px; }
-  .pp-storefront .pp-rma-step > div:first-child { gap:12px; margin-bottom:18px; }
-  .pp-storefront .pp-rma-step h2 { font-size:15px; }
-  .pp-storefront .pp-rma-step > div:first-child > div:first-child { width:30px; height:30px; border-radius:9px; font-size:12px; }
-  .pp-storefront .pp-rma-step > div:first-child p { font-size:12px; }
-  .pp-storefront .pp-rma-choice { min-height:48px; padding:12px 14px; font-size:12px; }
-  .pp-storefront .pp-rma-content input,.pp-storefront .pp-rma-content textarea { font-size:16px; }
-  .pp-storefront .pp-rma-order-option { padding:16px 13px; gap:12px; }
-  .pp-storefront .pp-rma-request { padding:18px; }
-  .pp-storefront .pp-rma-request > div:first-child > div > div:first-child { font-size:14px; overflow-wrap:anywhere; }
-  .pp-storefront .pp-help-content { padding:26px 16px 48px; }
-  .pp-storefront .pp-help-heading h1 { font-size:29px; }
-  .pp-storefront .pp-help-sections { grid-template-columns:1fr; gap:16px; }
-  .pp-storefront .pp-help-topic { padding:22px; }
-  .pp-storefront .pp-help-topics { gap:7px; margin-bottom:24px; }
-  .pp-storefront .pp-help-topics [data-slot=button] { font-size:11px; padding:10px 12px; }
-  .pp-storefront .pp-help-actions { padding:20px; }
+  .pp-storefront .pp-rma-content > [data-slot=card] [data-slot=card-header],
+  .pp-storefront .pp-rma-content > [data-slot=card] [data-slot=card-content] { padding-inline:17px; }
+  .pp-storefront .pp-rma-step { padding:15px 0 20px; margin-bottom:12px; }
+  .pp-storefront .pp-rma-step h2 { font-size:16px; }
+  .pp-storefront .pp-rma-content input,
+  .pp-storefront .pp-rma-content textarea { font-size:16px; }
+  .pp-storefront .pp-rma-choice { min-height:46px; padding:11px 12px; font-size:12px; }
+  .pp-storefront .pp-rma-history { margin-top:20px; }
+  .pp-storefront .pp-help-content { padding:25px 16px 42px; }
+  .pp-storefront .pp-help-heading h1 { font-size:28px; }
+  .pp-storefront .pp-help-topics { margin-bottom:20px; gap:7px; }
+  .pp-storefront .pp-help-topics [data-slot=button] { font-size:12px; padding:10px 12px; }
+  .pp-storefront .pp-help-sections { grid-template-columns:1fr; gap:15px; }
+  .pp-storefront .pp-help-topic { padding:21px; }
+  .pp-storefront .pp-help-topic h2 { font-size:19px; }
+  .pp-storefront .pp-help-topic p { font-size:13px; }
+  .pp-storefront .pp-help-actions { padding:18px; }
   .pp-storefront .pp-help-actions [data-slot=button] { width:100%; }
+}
+@media (max-width:359px) {
+  .pp-storefront .pp-account-content { padding-inline:12px; }
+  .pp-storefront .pp-account-navigation { grid-template-columns:minmax(0,1fr) 40px; gap:5px; }
+  .pp-storefront .pp-account-notifications { width:40px; }
+  .pp-storefront .pp-account-section-nav { gap:4px; }
+  .pp-storefront .pp-account-section-nav > button { font-size:10px; padding-inline:2px; min-height:46px; }
+  .pp-storefront .pp-overview-company-heading { gap:8px; }
+  .pp-storefront .pp-overview-company-heading > .pp-profile-completeness { margin-left:56px; }
+  .pp-storefront .pp-overview-stats > button { padding:11px 9px; gap:7px; }
+  .pp-storefront .pp-overview-stats > button > span { width:29px; height:29px; }
+  .pp-storefront .pp-overview-stats small { font-size:11px; }
+  .pp-storefront .pp-wallet-table td:last-child { font-size:15px; }
+  .pp-storefront .pp-service-request-option { grid-template-columns:37px minmax(0,1fr); }
+  .pp-storefront .pp-service-request-option > .pp-account-status { grid-column:2; }
+  .pp-storefront .pp-service-request-icon { width:37px; height:50px; }
+  .pp-storefront-portal .pp-profile-facts { grid-template-columns:1fr; }
 }
