@@ -1,6 +1,6 @@
 # P1-2026-10-17-registration-closure-device-locale
 
-状态：in_progress
+状态：released
 
 Task ID：TASK-20261017-REG02
 
@@ -33,4 +33,11 @@ RACI：Responsible 主代理；Approver 老板（当前明确“完成后上线�
 
 推广前记录两域名部署 ID；失败回退至该部署。同一任务无数据库写入，无数据补偿。
 
-证据与结论待验收后追加。当前权威进度见 docs/roadmap.md。
+当前权威进度见 docs/roadmap.md；验收证据与结论见下方。
+
+
+## 验收结果
+
+已发布 `4096f92b62e6797d901a3940bf49e168e72027f1` / `dpl_BTLh3gDWL3P8fF9gPVLmVoSsJZR1`，独立SOURCE_GO/PROMOTE_GO、24+53测试、35隔离浏览器、候选/正式30+30HTTP、正式19浏览器、lint/build/hash检查通过。
+
+无migration/env/生产客户写入；回退UI06 dpl_2ax6n9uKXsDtPkzwTQk1nZL16Wwf。未创建真实邮箱客户、未测物理iPhone键盘；详情见 `docs/audits/2026-10-17-registration-device-locale-release.md`。

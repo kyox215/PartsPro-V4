@@ -240,8 +240,9 @@ Last reviewed: 2026-10-12
 - 审计保留5项未修问题（4P2/1P3）：仅后台中文Cookie被新商城账户继承、setup重复弹窗、资料warning漏传、前后端字段限制不一致、返回账户栏目被拦截。不能把翻译发布描述为全部语言跳变或业务闭环已消除；建议优先单独修复语言继承与setup。报告 `docs/audits/2026-10-17-registration-closure-report.md`，证据 `outputs/registration-i18n/2026-10-17/release/`，任务转done。
 
 
-## 2026-10-17 REG02：设备默认语言、英语与注册闭环修复
+## 2026-10-17 REG02：设备默认语言、英语与注册闭环修复（已上线）
 
-- TASK-20261017-REG02 执行中。老板已授权修复并上线，明确商城/注册/个人中心/后台三语言，手动选择记在本设备。独立候选 `.company-tmp/registration-closure-device-locale-20261017` 基于 REG01 文档收尾提交 8a11ec2；其他主目录和 UI06 改动保持隔离。
-- 目标：修复 REG01 五项遗留问题；删除账户语言自动读写，以设备首选语言和显式本设备 Cookie 决定文案；无 migration 和生产资料写入。
-- 英文全量词典已补，旧双语 UI 分支和验证正在整合；尚未发布本轮改动。任务卡 `docs/tasks/now/P1-2026-10-17-registration-closure-device-locale.md`。
+- TASK-20261017-REG02 已发布。固定运行提交 `4096f92b62e6797d901a3940bf49e168e72027f1` 已推送 `codex/registration-closure-device-locale-20261017`，SOURCE_GO/PROMOTE_GO 后同构建 `dpl_BTLh3gDWL3P8fF9gPVLmVoSsJZR1` 推广至 www/apex；apex307到www。回退保留UI06 `dpl_2ax6n9uKXsDtPkzwTQk1nZL16Wwf`。
+- 三语言覆盖商城/注册/个人中心/后台：本设备显式选择优先，否则设备首选en/zh/it，其他/缺失为英语；恢复设备语言可清除覆盖。不再读写账户语言偏好。REG01五个遗留问题已修复并验证，保留客户/商品/地址/备注原文。
+- 24测试、53相关测试、35实际组件隔离浏览器、候选/正式各30HTTP、正式19浏览器通过；lint和本地/远端build通过，469运行输入上传hash一致。真实手动切换/刷新/恢复设备语言已验证，仅2次语言Cookie action，生产客户/交易写0，无migration/env变更，短时error/fatal无组。
+- 合入已上线UI06 e9e814d/8002518，保留紧凑页头和筛选草稿，主目录其它改动未混入。无真实邮箱注册或物理iPhone系统键盘验收。报告 `docs/audits/2026-10-17-registration-device-locale-release.md`，证据 `outputs/registration-device-locale/2026-10-17/release/`，任务转done。

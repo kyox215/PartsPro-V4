@@ -77,3 +77,8 @@
 独立发布/业务契约代理已给出 SOURCE_GO 与 PROMOTE_GO。汇总证据已复制到主项目 `outputs/registration-i18n/2026-10-17/release/`，入口 `release-result.json`。完整函数、组件与真实线上只读证据分开记录，未将模拟测试称为真实注册或下单 E2E。
 
 回退目标：`dpl_B8YduhG5zUjCYirDGSuc6xX8fBtV` / `a1073b8`，只涉及 Vercel，无数据库回退需求。
+
+
+## REG02 后续闭环（2026-10-17）
+
+本报告记录的是 REG01 上线时的历史审计状态。上述5项遗留问题已在 REG02 修复并随 `4096f92b62e6797d901a3940bf49e168e72027f1` / `dpl_BTLh3gDWL3P8fF9gPVLmVoSsJZR1` 正式上线；语言规则同时按老板新要求改为设备默认与本设备手动覆盖。验证边界与最终证据见 [REG02修复报告](2026-10-17-registration-device-locale-release.md)。

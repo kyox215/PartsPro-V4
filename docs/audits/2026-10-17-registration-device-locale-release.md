@@ -1,6 +1,6 @@
 # 注册闭环与设备语言修复报告（REG02）
 
-状态：修复与本地验收完成，生产发布门禁执行中。
+状态：已上线并完成正式域名验收（2026-10-17）。
 
 ## 修复结果
 
@@ -29,14 +29,19 @@
 - 独立复核补齐 REMAX/eBay 辅助函数的 83 项固定文案/模板漏网；实际 helper 全部固定源文案与四种动态行号/数量校验通过，插值保留原始 SKU/字段。
 - 真实组件隔离 Chrome：35 项通过，外部请求为零、生产写入为零。覆盖三语言、自动资料窗、CAP 候选、地址联动、字段限制、失败保留/重试、提交锁、语言切换、账户 returnTo 与刷新、四栏目、订单详情原始备注、后台实际界面。
 - 320/390/1280 宽度检查资料弹窗边界与底部保存可达；查看截图并修复英语钱包提示与按钮重叠、后台菜单搜索/导航提示残留意大利语。
-- 完整 lint（排除未部署 verification 工具目录）、生产 build、git diff --check 验证；发布时补最终文件和运行部署证据。
+- 完整 lint（排除未部署 verification 工具目录）、本地及远端生产 build、git diff --check 均通过。
 
 ## 发布与隔离
 
 - 当前主目录未提交改动保留。本轮独立候选基于 REG01，再合入已上线 UI06 e9e814d / 文档收尾 8002518，保留紧凑页头及筛选草稿逻辑。
 - 无数据库 migration、环境变量、生产客户或业务资料写入；profile API 请求/响应结构与服务端校验强度保持。
-- 回退目标为发布前 www/apex 的 UI06 部署 dpl_2ax6n9uKXsDtPkzwTQk1nZL16Wwf；发布前再次确认未被并发更新。
-- 待追加：最终源码提交、独立 SOURCE_GO、候选 READY/hash/HTTP、PROMOTE_GO、正式域名/browser/logs 核验。
+- 回退目标为发布前 www/apex 的 UI06 部署 dpl_2ax6n9uKXsDtPkzwTQk1nZL16Wwf；推广前已再次确认没有并发上线更新。
+- 固定运行提交 `4096f92b62e6797d901a3940bf49e168e72027f1` 已推送 `codex/registration-closure-device-locale-20261017`；独立 SOURCE_GO / PROMOTE_GO 后，将同一 READY 构建 `dpl_BTLh3gDWL3P8fF9gPVLmVoSsJZR1` 推广。www/apex 都核对为此部署，apex 307 到 www，注册查询参数保留。
+- 469 个运行输入上传 hash 全部一致，实际上传 471 项仅另含 .vercelignore 和已核对的生成 next-env.d.ts；无环境文件和 verification/docs/tests/scripts/supabase。源码指纹 c2c24a25ae2fa5e68769bc408180f95351530e322a9a4cc20589e79b71eacb64。
+- 候选与正式各30项 HTTP 通过；正式浏览器 19 项通过，覆盖 en-GB/it-IT/zh-TW/fr-FR、390/1280布局、真实语言按钮Cookie保存/刷新保持、后台登录共享偏好、恢复设备语言和匿名setup跳转。只执行了2次语言Cookie action，无客户/交易写入；JavaScript错误为0。
+- 该部署短时15m error/fatal查询未返回错误组；此为短时观察，不能等同长期无故障保证。
+- 修复推送专用分支，未合并 main；后续发布须从此线上提交继续，避免旧分支覆盖修复。
+- [完整验证证据](../../outputs/registration-device-locale/2026-10-17/release/release-result.json)，任务已转 done。
 
 ## 验收边界
 
