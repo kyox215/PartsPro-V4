@@ -1,0 +1,92 @@
+const projectRequire=require('module').createRequire(process.cwd()+'/package.json');
+const {chromium}=projectRequire(process.env.PLAYWRIGHT_MODULE||'playwright');
+const fs=require('fs'),http=require('http'),assert=require('assert/strict'),path=require('path');
+const dir=__HARNESS_DIR__,output=path.resolve('verification/browser');
+fs.mkdirSync(output,{recursive:true});
+(async()=>{
+ const postcss=projectRequire('postcss'),tailwind=projectRequire('@tailwindcss/postcss');
+ const css=(await postcss([tailwind()]).process(['globals.css','storefront-ui.css','commerce-ui.css','account-ui.css','reference-ui.css'].map(name=>fs.readFileSync('src/app/'+name,'utf8')).join('\n'),{from:process.cwd()+'/src/app/globals.css'})).css;
+ const server=http.createServer((req,res)=>{res.setHeader('Content-Type',req.url.endsWith('.js')?'application/javascript':'text/html');res.end(req.url.endsWith('.js')?fs.readFileSync(path.join(dir,path.basename(req.url))):'<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+css+'</style><body><div id="root"></div><script>window.process={env:{NODE_ENV:"development"}}</script><script src="/bundle.js"></script></body></html>')});
+ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const url='http://127.0.0.1:'+server.address().port;
+ let browser;const errors=[],checks=[],external=[];
+ try{
+  browser=await chromium.launch({headless:true,channel:'chrome'});
+  const page=await browser.newPage({viewport:{width:390,height:740},serviceWorkers:"block"});page.setDefaultTimeout(8000);
+  page.on('pageerror',e=>errors.push(e.message));
+  let failure=true,writes=0;
+  await page.route('**/*',async route=>{
+   const req=route.request(),u=new URL(req.url());
+   if(u.origin!==url){external.push(req.url());return route.abort()}
+   if(u.pathname==='/api/account/profile'){writes++;await new Promise(r=>setTimeout(r,300));return route.fulfill({status:failure?400:200,json:failure?{error:{code:'INVALID_ACCOUNT_PROFILE',message:'RAW BACKEND ERROR'}}:{data:{companyName:'Negozio 客户',profileCompletedAt:'2026-10-17'}}})}
+   if(u.pathname.startsWith('/api/account/orders/'))return route.fulfill({json:{data:{id:'TEST-ORDER',number:'TEST-ORDER',createdAt:'2026-10-17T10:00:00Z',status:'shipped',paymentStatus:'paid',total:25,lines:[{id:'line',sku:'TEST-SKU',productName:'Prodotto 商品',quantity:2,unitPrice:10,lineTotal:20,shortageQty:1}],operationHistory:[{id:'event',action:'order_created',createdAt:'2026-10-17T10:00:00Z',note:'Note: Nota 人工'}]}}});
+   if(u.pathname.startsWith('/api/'))return route.fulfill({json:{data:[],notifications:[],unreadCount:0}});
+   return route.continue();
+  });
+  await page.goto(url+'/?dialog=1');await page.getByRole('dialog').waitFor();
+  const modal=page.getByRole('dialog');
+  async function noTranslatedHan(locator){
+   const text=await locator.innerText();
+   assert.doesNotMatch(text.replaceAll('Negozio 客户','').replaceAll('Prodotto 商品','').replaceAll('Note: Nota 人工','').replaceAll('Nota 人工',''),/\p{Script=Han}|storefront\./u);
+  }
+  async function bounds(){
+   await page.waitForFunction(()=>{const el=document.querySelector("[data-overlay-viewport]");return el?.style.getPropertyValue("--overlay-height")===window.innerHeight+"px"&&el?.style.getPropertyValue("--overlay-width")===window.innerWidth+"px"});
+   await modal.evaluate(el=>Promise.all(el.getAnimations().map(a=>a.finished.catch(()=>{}))));
+   const box=await modal.boundingBox(),viewport=page.viewportSize();
+   assert.ok(box.x>=-1&&box.y>=-1&&box.x+box.width<=viewport.width+1&&box.y+box.height<=viewport.height+1,JSON.stringify(box));
+   assert.ok(await modal.evaluate(el=>el.scrollWidth-el.clientWidth<=2),'dialog horizontal overflow');
+   const save=modal.locator('[data-slot=dialog-footer] button').last();if(await save.count()){await save.scrollIntoViewIfNeeded();await save.click({trial:true})}
+  }
+  await page.getByRole('heading',{name:'Completa i tuoi dati',exact:true}).waitFor();await noTranslatedHan(modal);checks.push('Italian profile copy');
+  for(const [width,height] of [[320,568],[390,740],[1280,800]]){
+   await page.setViewportSize({width,height});await bounds();
+   await modal.locator('[data-slot=dialog-body]').evaluate(el=>el.scrollTop=0);
+   await page.screenshot({path:output+'/profile-it-'+width+'.png'});checks.push('profile bounds and save reachable '+width);
+  }
+  await page.setViewportSize({width:390,height:740});
+  await modal.getByRole('button',{name:'Consegna e fatturazione',exact:true}).click();
+  await page.locator('#account-profile-shippingAddress-postalCode').fill('00010');
+  await page.getByRole('combobox').waitFor();await page.getByRole('combobox').click();await page.getByRole('option',{name:'Casape (RM)',exact:true}).click();
+  assert.equal(await page.locator('#account-profile-shippingAddress-city').inputValue(),'Casape');
+  assert.equal(await page.locator('#account-profile-shippingAddress-province').inputValue(),'RM');checks.push('CAP multi-city labels and selection');
+  await page.locator('#account-profile-shippingAddress-postalCode').fill('00012');
+  await page.waitForFunction(()=>document.querySelector('#account-profile-shippingAddress-city').value==='Guidonia Montecelio');checks.push('CAP unique city autofill');
+  await page.locator('#account-profile-shippingAddress-street').fill('Via Test');
+  await page.locator('#account-profile-shippingAddress-streetNumber').fill('1');
+  // Both addresses share the same payload until the checkbox is cleared.
+  await modal.getByRole('checkbox').click();await page.locator('#account-profile-billingAddress-street').waitFor();
+  for(const [field,value] of Object.entries({postalCode:'00012',province:'RM',city:'Guidonia Montecelio',street:'Via Fattura',streetNumber:'2'}))await page.locator('#account-profile-billingAddress-'+field).fill(value);
+  await modal.getByRole('checkbox').click();checks.push('separate billing address toggle');
+  await page.locator('#account-profile-shippingAddress-postalCode').fill('0001');
+  await page.locator('#account-profile-form').evaluate(form=>form.dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));
+  await page.getByText("Completa provincia, città, CAP, via e numero civico dell'indirizzo.",{exact:true}).waitFor();assert.equal(writes,0);checks.push('incomplete address validation in Italian');
+  await page.locator('#account-profile-shippingAddress-postalCode').fill('00012');
+  await modal.getByRole('button',{name:'Salva dati',exact:true}).click();
+  assert.ok(await modal.getByRole('button',{name:'Salvataggio...',exact:true}).isDisabled());
+  await page.getByText('Dati incompleti o non validi. Controlla i campi e riprova.',{exact:true}).waitFor();
+  assert.equal(writes,1);assert.equal(await page.locator('#account-profile-shippingAddress-street').inputValue(),'Via Test');
+  assert.doesNotMatch(await modal.innerText(),/RAW BACKEND ERROR/);checks.push('failed save retains values and localizes error');
+  await page.evaluate(()=>window.fixtureSetLocale('zh-CN'));await page.getByRole('heading',{name:'完善个人中心资料',exact:true}).waitFor();
+  await page.getByText('资料不完整或格式不正确，请检查后重试。',{exact:true}).waitFor();
+  assert.equal(await page.locator('#account-profile-shippingAddress-street').inputValue(),'Via Test');checks.push('open form and error update language without losing input');
+  await page.evaluate(()=>window.fixtureSetLocale('it-IT'));failure=false;
+  await modal.getByRole('button',{name:'Salva dati',exact:true}).click();await modal.waitFor({state:'detached'});assert.equal(writes,2);assert.equal(await page.evaluate(()=>window.fixtureSaved),true);checks.push('retry saves once and closes dialog');
+  await page.goto(url+'/?setup=1');await page.getByRole('heading',{name:'Completa i tuoi dati',exact:true}).waitFor();await noTranslatedHan(modal);checks.push('new-customer setup auto opens Italian form');
+  await modal.getByRole('button',{name:'Annulla',exact:true}).click();
+  await page.getByRole('button',{name:'Visualizza dati',exact:true}).click();await modal.waitFor();checks.push('profile notice reopens form');
+  for(const section of ['overview','wallet','orders','service']){
+   await page.goto(url+'/?section='+section);await page.getByRole('navigation').waitFor();await noTranslatedHan(page.locator('main'));
+   assert.ok(await page.locator('nav button span').evaluateAll(els=>els.every(el=>el.scrollWidth<=el.clientWidth+1)),'navigation labels fit');
+   await page.screenshot({path:output+'/account-'+section+'-it-mobile.png'});
+   await page.evaluate(()=>window.fixtureSetLocale('zh-CN'));await page.getByRole('button',{name:/账户概览|概览/,exact:true}).first().waitFor();
+   await page.evaluate(()=>window.fixtureSetLocale('it-IT'));await page.getByRole('button',{name:/Riepilogo|Panoramica/,exact:true}).first().waitFor();
+   checks.push(section+' translated and switches language');
+   if(section==='orders'){
+    await page.getByRole('button',{name:/Dettagli|Dettaglio/,exact:true}).first().click();await page.getByText(/Mancante.*1|Articoli mancanti: 1/).waitFor();await noTranslatedHan(modal);await bounds();
+    assert.equal(await page.getByText('Note: Nota 人工',{exact:true}).count(),1);await page.screenshot({path:output+'/order-detail-it-mobile.png'});checks.push('order detail labels and operator note unchanged');
+   }
+  }
+  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
+  fs.writeFileSync(output+'/browser-result.json',JSON.stringify({passed:true,checks,externalRequests:external,realEmailSignupTested:false,productionWrites:0},null,2));
+  console.log(JSON.stringify({checks,external}));
+ }finally{await browser?.close();await new Promise(resolve=>server.close(resolve))}
+})().catch(e=>{console.error(e);process.exitCode=1});

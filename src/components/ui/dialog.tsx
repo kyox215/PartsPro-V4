@@ -52,10 +52,12 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  closeLabel = "Close",
   scrollLayout = "content",
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
+  closeLabel?: string
   scrollLayout?: "content" | "body"
 }) {
   return (
@@ -81,7 +83,7 @@ function DialogContent({
               >
                 <XIcon
                 />
-                <span className="sr-only">Close</span>
+                <span className="sr-only">{closeLabel}</span>
               </Button>
             </DialogPrimitive.Close>
           )}

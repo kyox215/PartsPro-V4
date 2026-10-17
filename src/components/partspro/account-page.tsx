@@ -3,6 +3,7 @@
 import { StorefrontLoading } from "./storefront-loading";
 import * as React from "react";
 import { usePricingSession } from "./use-pricing-session";
+import { AccountRequestError, accountRequestErrorKey } from "@/lib/partspro-account-errors";
 import { useAccountCopy } from "./use-account-copy";
 import { AsyncFeedback } from "./async-feedback";
 import { useUnsavedChanges } from "./use-unsaved-changes";
@@ -224,16 +225,16 @@ function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, a
             if (version === detailRequestRef.current.version)
                 setOrderDetail(payload.data);
         }
-        catch {
+        catch (error) {
             if (controller.signal.aborted || version !== detailRequestRef.current.version)
                 return;
-            setOrderDetailError(c("订单详情暂不可用。"));
+            setOrderDetailError(accountRequestErrorKey(error, "orders"));
         }
         finally {
             if (version === detailRequestRef.current.version)
                 setOrderDetailLoading(false);
         }
-    }, [c]);
+    }, []);
     React.useEffect(() => {
         const requestedOrderId = searchParams.get("orderId");
         const timeoutId = window.setTimeout(() => {
@@ -309,7 +310,7 @@ function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, a
         detailRequestRef.current.version++;
         detailRequestRef.current.controller?.abort();
     } setOrderDetailOpen(open); }}>
-          <DialogContent className="pp-storefront-portal pp-account-dialog pp-order-dialog rounded-lg sm:max-w-3xl">
+          <DialogContent closeLabel={t("common.close")} className="pp-storefront-portal pp-account-dialog pp-order-dialog rounded-lg sm:max-w-3xl">
             <DialogHeader>
               <DialogTitle>
                 {orderDetail?.number ?? orderDetail?.id ?? c("订单详情")}
@@ -332,12 +333,13 @@ function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, a
     </main>);
 }
 function AccountOrderDetailPanel({ detail, error, loading }: { detail: AccountOrderDetail | null; error: string | null; loading: boolean }) {
+    const t = useT();
     const c = useAccountCopy();
     const ui = useAccountReferenceCopy();
     const accountDate = useAccountDateTime();
     const [copyState, setCopyState] = React.useState<"idle" | "success" | "error">("idle");
     if (loading) return <div className="pp-account-empty" role="status"><Loader2 className="animate-spin" aria-hidden="true"/><strong>{c("正在加载订单详情...")}</strong></div>;
-    if (error) return <div className="pp-account-info-banner is-error" role="alert">{error}</div>;
+    if (error) return <div className="pp-account-info-banner is-error" role="alert">{t(error)}</div>;
     if (!detail) return <div className="pp-account-empty">{c("暂无订单详情。")}</div>;
     const lines = detail.lines ?? [];
     const events = detail.operationHistory ?? [];
@@ -459,6 +461,7 @@ function ServiceSection({ orderSummaries, rmaRequests }: { orderSummaries: Order
 function AccountSummaryPanel({ company, isEmployeeAccount, onOpenProfile, onOpenOrder, onSectionChange, orderSummaries, profile, rmaRequests, userEmail, wallet }: {
     company: CompanyProfile | null; isEmployeeAccount: boolean; onOpenProfile: () => void; onOpenOrder: (order: OrderSummary) => void; onSectionChange: (section: AccountSectionId, filter?: OrderFilterId) => void; orderSummaries: OrderSummary[]; profile: AccountCustomerProfile | null; rmaRequests: RmaRequest[]; userEmail?: string; wallet: CustomerWallet;
 }) {
+    const { locale } = useI18n();
     const c = useAccountCopy();
     const ui = useAccountReferenceCopy();
     const level = normalizeCustomerTier(profile?.level ?? company?.level ?? company?.priceList);
@@ -477,7 +480,7 @@ function AccountSummaryPanel({ company, isEmployeeAccount, onOpenProfile, onOpen
         { label: ui.afterSales, count: rmaCount, icon: Headphones, section: "service" as const, filter: undefined },
     ];
     return <div className="pp-account-overview">
-        <div className="pp-overview-top-grid"><section className="pp-overview-company pp-account-panel"><div className="pp-overview-company-heading"><span className="pp-account-company-avatar"><Building2 aria-hidden="true"/></span><div><h2>{displayName}</h2><p><Mail aria-hidden="true"/>{userEmail || profile?.email || company?.email || "—"}</p></div><Badge className={cn("pp-profile-completeness", complete ? "is-complete" : "is-incomplete")}>{complete && <CheckCircle2 aria-hidden="true"/>}{complete ? ui.complete : ui.incomplete}</Badge><button className="pp-inline-action" type="button" onClick={onOpenProfile}>{ui.manageCompany}<ArrowRight aria-hidden="true"/></button></div><dl className="pp-overview-company-levels"><div><dt>{c("价格类型")}</dt><dd>{(profile?.customerType ?? company?.customerType) === "wholesale" ? c("批发价") : c("零售价")}</dd></div><div><dt>{ui.effectiveLevel}</dt><dd>{c(customerLevelLabel(level))}</dd></div><div><dt>{ui.baseLevel}</dt><dd>{c(customerLevelLabel(baseLevel))}</dd></div></dl><p className="pp-account-rule-note">{c("价格类型与会员等级独立")} · {c(customerPromoHelper(profile, company) ?? `普通商品每件最多减 ${formatTierDiscount(level)}；REMAX/保护膜除外`)}</p></section>
+        <div className="pp-overview-top-grid"><section className="pp-overview-company pp-account-panel"><div className="pp-overview-company-heading"><span className="pp-account-company-avatar"><Building2 aria-hidden="true"/></span><div><h2>{displayName}</h2><p><Mail aria-hidden="true"/>{userEmail || profile?.email || company?.email || "—"}</p></div><Badge className={cn("pp-profile-completeness", complete ? "is-complete" : "is-incomplete")}>{complete && <CheckCircle2 aria-hidden="true"/>}{complete ? ui.complete : ui.incomplete}</Badge><button className="pp-inline-action" type="button" onClick={onOpenProfile}>{ui.manageCompany}<ArrowRight aria-hidden="true"/></button></div><dl className="pp-overview-company-levels"><div><dt>{c("价格类型")}</dt><dd>{(profile?.customerType ?? company?.customerType) === "wholesale" ? c("批发价") : c("零售价")}</dd></div><div><dt>{ui.effectiveLevel}</dt><dd>{c(customerLevelLabel(level))}</dd></div><div><dt>{ui.baseLevel}</dt><dd>{c(customerLevelLabel(baseLevel))}</dd></div></dl><p className="pp-account-rule-note">{c("价格类型与会员等级独立")} · {c(customerPromoHelper(profile, company, locale) ?? `普通商品每件最多减 ${formatTierDiscount(level)}；REMAX/保护膜除外`)}</p></section>
         <section className="pp-wallet-hero pp-overview-wallet"><WalletCards className="pp-wallet-watermark" aria-hidden="true"/><span><WalletCards aria-hidden="true"/>{ui.balance}</span><strong>{formatEuro(wallet.balance)}</strong><p>{ui.walletUse}</p><button type="button" onClick={() => onSectionChange("wallet")}>{ui.movements}<ArrowRight aria-hidden="true"/></button></section></div>
         <div className="pp-overview-stats">{stats.map(({ label, count, icon: Icon, section, filter }) => <button key={label} type="button" onClick={() => onSectionChange(section, filter)}><span><Icon aria-hidden="true"/></span><div><small>{label}</small><strong>{count}</strong></div><ChevronRight aria-hidden="true"/></button>)}</div><p className="pp-account-data-note">{ui.availableData}</p>
         <div className="pp-overview-middle-grid"><section className="pp-overview-recent pp-account-panel"><header className="pp-account-panel-header"><h2>{ui.recentOrders}</h2><button className="pp-inline-action" type="button" onClick={() => onSectionChange("orders", "all")}>{ui.seeAll}<ArrowRight aria-hidden="true"/></button></header>{orderSummaries.length ? <AccountOrderRows orders={orderSummaries.slice(0, 3)} compact onOpenOrder={onOpenOrder}/> : <div className="pp-account-empty"><Package aria-hidden="true"/><strong>{ui.noRecentOrders}</strong><Link className="pp-inline-action" href="/catalogo">{ui.shop}<ArrowRight aria-hidden="true"/></Link></div>}</section>
@@ -503,6 +506,7 @@ function AccountProfileNotice({ forceSetup, onOpen, profile, }: {
     onOpen: () => void;
     profile: AccountCustomerProfile;
 }) {
+    const { locale } = useI18n();
     const c = useAccountCopy();
     const missingFields = [
         profile.companyName ? null : c("公司"),
@@ -523,7 +527,7 @@ function AccountProfileNotice({ forceSetup, onOpen, profile, }: {
             {isPending
             ? c("补全后系统会启用零售价客户，可查看零售价并下单；批发价由后台升级。") : c("补全客户资料后可使用结账、单据和订单管理。")}
           </p>
-          {missingFields.length > 0 ? (<div className="mt-2 text-xs font-bold">{c("待补全：")}{missingFields.join("、")}
+          {missingFields.length > 0 ? (<div className="mt-2 text-xs font-bold">{c("待补全：")}{missingFields.join(locale === "zh-CN" ? "、" : ", ")}
             </div>) : null}
         </div>
         <Button type="button" variant="outline" className="shrink-0 border-amber-300 bg-white" onClick={onOpen}>{c("查看资料")}</Button>
@@ -537,6 +541,7 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
     profile: AccountCustomerProfile;
     userEmail?: string;
 }) {
+    const t = useT();
     const c = useAccountCopy();
     const ui = useAccountReferenceCopy();
     const activeRef=React.useRef(true);React.useEffect(()=>{activeRef.current=true;return()=>{activeRef.current=false;};},[]);
@@ -596,7 +601,7 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
         if (!isAddressDraftComplete(form.shippingAddress) ||
             (!form.billingSameAsShipping && !isAddressDraftComplete(form.billingAddress))) {
             setProfileGroup("delivery");
-            setError(c("请补全地址里的 Provincia、Citta、CAP、Via 和 Numero。"));
+            setError("storefront.account.profile.addressRequired");
             return;
         }
         const shippingAddress = formatAddressDraft(form.shippingAddress);
@@ -626,8 +631,8 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
             onSaved(response.data);
             onOpenChange(false);
         }
-        catch {
-            setError(c("无法保存资料。"));
+        catch (error) {
+            setError(accountRequestErrorKey(error, "profile"));
         }
         finally {
             setSaving(false);
@@ -637,7 +642,7 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
         return null;
     }
     return (<Dialog open={open} onOpenChange={requestProfileOpenChange}>
-      <DialogContent showCloseButton={!saving} onEscapeKeyDown={(event) => { if (saving)
+      <DialogContent closeLabel={t("common.close")} showCloseButton={!saving} onEscapeKeyDown={(event) => { if (saving)
         event.preventDefault(); }} onInteractOutside={(event) => { if (saving)
         event.preventDefault(); }} scrollLayout="body" className="pp-storefront-portal pp-account-dialog pp-profile-dialog rounded-lg sm:max-w-3xl" onOpenAutoFocus={() => {
             openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -658,7 +663,7 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
               if (invalidFocusRef.current) return;
               invalidFocusRef.current = true;
               setProfileGroup(input.closest("#account-delivery-fields") ? "delivery" : "company");
-              setError(input.validationMessage);
+              setError("storefront.account.profile.invalidField");
               window.requestAnimationFrame(() => { input.focus(); invalidFocusRef.current = false; });
             }}>
             <nav className="pp-profile-editor-nav" aria-label={ui.editProfile}>
@@ -687,7 +692,7 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
             <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs font-semibold leading-5 text-blue-800">{c("税号、电话和详细地址用于订单与配送；微信或 WhatsApp 可留空。补全后系统会启用零售价客户；批发价由后台升级，资料异常时请联系客服。")}</div>
 
             {error ? (<div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
-                {error}
+                {t(error)}
               </div>) : null}
           </form>
         </DialogBody>
@@ -959,7 +964,7 @@ function customerLevelLabel(level: CompanyProfile["priceList"]) {
     };
     return labels[level] ?? level;
 }
-function customerPromoHelper(profile: AccountCustomerProfile | null, company: CompanyProfile | null) {
+function customerPromoHelper(profile: AccountCustomerProfile | null, company: CompanyProfile | null, locale: string) {
     const promoLevel = profile?.promoLevel ?? company?.promoLevel;
     const startsAtValue = profile?.promoLevelStartsAt ?? company?.promoLevelStartsAt;
     const expiresAtValue = profile?.promoLevelExpiresAt ?? company?.promoLevelExpiresAt;
@@ -972,7 +977,7 @@ function customerPromoHelper(profile: AccountCustomerProfile | null, company: Co
     if (!Number.isFinite(startsAt) || !Number.isFinite(expiresAt) || now < startsAt || now >= expiresAt) {
         return null;
     }
-    return `活动至 ${new Intl.DateTimeFormat("zh-CN", {
+    return `活动至 ${new Intl.DateTimeFormat(locale, {
         day: "2-digit",
         month: "2-digit",
         year: "2-digit",
@@ -1097,20 +1102,20 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
     const response = await fetch(url, init);
     const payload = (await response.json().catch(() => null)) as unknown;
     if (!response.ok) {
-        throw new Error(readErrorMessage(payload) ?? `${response.status}`);
+        throw new AccountRequestError(readErrorCode(payload), response.status);
     }
     return payload as T;
 }
-function readErrorMessage(payload: unknown) {
+function readErrorCode(payload: unknown) {
     if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
         return null;
     }
     const error = (payload as {
         error?: {
-            message?: unknown;
+            code?: unknown;
         };
     }).error;
-    return typeof error?.message === "string" ? error.message : null;
+    return typeof error?.code === "string" ? error.code : null;
 }
 function AccountHistoryControls({ section, hasMore, pending }: {
     section: "orders" | "wallet";
