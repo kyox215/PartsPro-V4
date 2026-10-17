@@ -38,7 +38,8 @@ export function StorefrontRefreshProvider({ children }: { children: ReactNode })
     coordinator.activate();
     const passive = () => { if (document.visibilityState === "visible") coordinator.request("focus"); };
     const invalidated = (event: Event) => {
-      if (document.visibilityState !== "visible") return;
+      // An explicit expiry must not be lost while hidden: a fresh focus event
+      // may legitimately be skipped by the same-account freshness window.
       coordinator.request((event as CustomEvent<{reason?: string}>).detail?.reason ?? "pricing");
     };
     window.addEventListener("focus", passive);
