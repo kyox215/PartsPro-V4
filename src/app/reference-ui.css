@@ -688,3 +688,4 @@
 .pp-storefront .pp-profile-summary-view .pp-profile-identity dt{font-size:14px}
 .pp-storefront .pp-profile-summary-view .pp-profile-identity dd{font-size:16px}
 @media(max-width:767px){.pp-storefront .pp-profile-summary-view .pp-account-info>div:last-child{font-size:14px}.pp-storefront .pp-profile-summary-view .pp-account-info>div:first-child{font-size:12px}}
+.pp-storefront .pp-profile-summary-view .pp-account-panel-header [data-slot=badge]{background:#edf4ff;color:#1557ff;border:0;padding:4px 8px;font-size:12px;font-weight:500}
