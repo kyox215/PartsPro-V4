@@ -39,6 +39,8 @@ export type CatalogSelection = {
 type CatalogBrandTreeProps = {
   assistedCompanyId?: string | null;
   departmentGroups?: readonly CatalogDepartmentGroup[];
+  departmentLabelOverrides?: Partial<Record<CatalogDepartment, string>>;
+  showAllProducts?: boolean;
   expandedBrandKey: string | null;
   expandedDepartment: CatalogDepartment | null;
   idPrefix: string;
@@ -55,6 +57,8 @@ type CatalogBrandTreeProps = {
 export function CatalogBrandTree({
   assistedCompanyId,
   departmentGroups,
+  departmentLabelOverrides,
+  showAllProducts = true,
   expandedBrandKey,
   expandedDepartment,
   idPrefix,
@@ -283,7 +287,7 @@ export function CatalogBrandTree({
         desktop ? "pp-catalog-tree-desktop space-y-2" : "pp-catalog-tree-mobile space-y-2 rounded-lg bg-white px-2 py-2 shadow-sm"
       )}
     >
-      {onSelectCatalog ? (
+      {showAllProducts && (onSelectCatalog ? (
         <button
           type="button"
           aria-pressed={catalogRootSelected}
@@ -308,7 +312,7 @@ export function CatalogBrandTree({
           </span>
           <RoutePendingIndicator className="size-3.5 text-primary" />
         </Link>
-      )}
+      ))}
 
       <div className={desktop ? "space-y-1.5" : "space-y-1"}>
         {orderedGroups.map((departmentGroup) => {
@@ -324,7 +328,7 @@ export function CatalogBrandTree({
             !selectedSearchQuery &&
             !inStockOnly;
           const departmentPanelId = catalogDepartmentPanelId(idPrefix, department);
-          const localizedDepartment = catalogDepartmentLabel(t, department);
+          const localizedDepartment = departmentLabelOverrides?.[department] ?? catalogDepartmentLabel(t, department);
           const DepartmentIcon = department === "phone" ? Smartphone : department === "tablet" ? Tablet : department === "computer" ? Laptop : Wrench;
           const hasBrands = departmentGroup.brands.length > 0;
 

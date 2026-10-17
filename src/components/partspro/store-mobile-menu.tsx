@@ -1,9 +1,8 @@
 "use client";
 
 import { useRef, useState, useTransition, type FormEvent, type ReactElement } from "react";
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { ChevronDown, Grid3X3, Home, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,7 +13,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { cn } from "@/lib/utils";
 import type {
   CatalogDepartment,
   CatalogDepartmentGroup,
@@ -24,15 +22,8 @@ import { tx } from "@/i18n/dictionaries/storefront";
 import { CatalogBrandTree, type CatalogSelection } from "./catalog-brand-tree";
 import { LanguageSwitcher } from "./language-switcher";
 import { PartsProLogo } from "./logo";
-import {
-  DelayedPendingIndicator,
-  RoutePendingIndicator,
-} from "./pending-feedback";
+import { DelayedPendingIndicator } from "./pending-feedback";
 import { useT } from "./i18n-provider";
-
-const storeMobileNavItems = [
-  { labelKey: "nav.home", labelFallback: "Home", href: "/", icon: Home },
-];
 
 export type StoreMobileMenuProps = {
   assistedCompanyId?: string | null;
@@ -56,11 +47,9 @@ export function StoreMobileMenu({
   trigger,
 }: StoreMobileMenuProps) {
   const t = useT();
-  const pathname = usePathname();
   const router = useRouter();
   const contentRef = useRef<HTMLDivElement>(null);
   const [isSearchPending, startSearchTransition] = useTransition();
-  const [catalogOpen, setCatalogOpen] = useState(() => pathname.startsWith("/catalogo"));
   const catalogSearchValue = selectedCatalog?.searchQuery ?? selectedCatalog?.model ?? "";
   const [expandedDepartmentOverride, setExpandedDepartmentOverride] = useState<
     CatalogDepartment | null | undefined
@@ -68,7 +57,6 @@ export function StoreMobileMenu({
   const [expandedBrandKeyOverride, setExpandedBrandKeyOverride] = useState<
     string | null | undefined
   >(undefined);
-  const catalogActive = pathname === "/catalogo" || pathname.startsWith("/catalogo/");
   const selectedDepartment = selectedCatalog?.department ?? null;
   const selectedBrand = selectedCatalog?.brand ?? null;
   const selectedBrandKey =
@@ -86,12 +74,6 @@ export function StoreMobileMenu({
 
   function handleOpenChange(nextOpen: boolean) {
     onOpenChange(nextOpen);
-
-    if (nextOpen && catalogActive) {
-      setCatalogOpen(true);
-      setExpandedDepartmentOverride(undefined);
-      setExpandedBrandKeyOverride(undefined);
-    }
 
     if (!nextOpen) {
       setExpandedDepartmentOverride(undefined);
@@ -137,14 +119,6 @@ export function StoreMobileMenu({
     closeMenu();
   }
 
-  function toggleCatalog() {
-    setExpandedDepartmentOverride(undefined);
-    setExpandedBrandKeyOverride(undefined);
-    setCatalogOpen((current) => {
-      return !current;
-    });
-  }
-
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetTrigger asChild>
@@ -176,7 +150,7 @@ export function StoreMobileMenu({
             {tx(
               t,
               "storefront.home.mobileMenuDescription",
-              "Menu mobile con home e catalogo."
+              "Sfoglia smartphone, tablet, computer ed elettronica per brand e modello."
             )}
           </SheetDescription>
         </SheetHeader>
@@ -212,77 +186,23 @@ export function StoreMobileMenu({
             aria-label={tx(t, "storefront.header.mobileMenuTitle", "Menu PartsPro")}
             className="min-h-0 flex-1 overflow-y-auto px-3 py-3"
           >
-            <div className="space-y-1 rounded-xl bg-slate-50 p-1">
-              {storeMobileNavItems.slice(0, 1).map((item) => {
-                const active = pathname === "/";
-
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={cn(
-                      "flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-semibold transition",
-                      active
-                        ? "bg-white text-primary shadow-sm"
-                        : "text-slate-700 hover:bg-white hover:text-primary"
-                    )}
-                    onClick={closeMenu}
-                  >
-                    <item.icon className="size-4" />
-                    <span className="min-w-0 flex-1 truncate">
-                      {tx(t, item.labelKey, item.labelFallback)}
-                    </span>
-                    <RoutePendingIndicator className="size-3.5 text-primary" />
-                  </Link>
-                );
-              })}
-              <Link href="/help" onClick={closeMenu} className="flex min-h-11 items-center rounded-lg px-3 text-sm font-semibold text-slate-700 hover:bg-white">{tx(t,"storefront.ux.help","Aiuto")}</Link>
-              <button
-                type="button"
-                className={cn(
-                  "flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-semibold transition",
-                  catalogActive
-                    ? "bg-white text-primary shadow-sm"
-                    : "text-slate-700 hover:bg-white hover:text-primary"
-                )}
-                aria-expanded={catalogOpen}
-                aria-controls="store-mobile-catalog-tree"
-                onClick={toggleCatalog}
-              >
-                <Grid3X3 className="size-4" />
-                <span className="min-w-0 flex-1">
-                  {tx(t, "nav.catalog", "Catalogo")}
-                </span>
-                <ChevronDown
-                  className={cn(
-                    "size-4 text-slate-400 transition",
-                    catalogOpen && "rotate-180 text-primary"
-                  )}
-                />
-              </button>
-              {catalogOpen && (
-                <div
-                  id="store-mobile-catalog-tree"
-                  className="rounded-lg bg-white shadow-sm"
-                >
-                  <CatalogBrandTree
-                    assistedCompanyId={assistedCompanyId}
-                    departmentGroups={departmentGroups}
-                    expandedBrandKey={expandedBrandKey}
-                    expandedDepartment={expandedDepartment}
-                    idPrefix="store-mobile-catalog"
-                    onExpandedBrandKeyChange={setExpandedBrandKeyOverride}
-                    onExpandedDepartmentChange={setExpandedDepartmentOverride}
-                    onNavigate={onCatalogSelect ? undefined : closeMenu}
-                    onSelectCatalog={
-                      onCatalogSelect ? handleCatalogSelect : undefined
-                    }
-                    prefetchCatalogLinks={prefetchCatalogLinks}
-                    selectedCatalog={selectedCatalog}
-                  />
-                </div>
-              )}
-            </div>
+            <CatalogBrandTree
+              assistedCompanyId={assistedCompanyId}
+              departmentGroups={departmentGroups}
+              departmentLabelOverrides={{
+                general_merchandise: tx(t, "storefront.header.mobileElectronics", "Elettronica"),
+              }}
+              expandedBrandKey={expandedBrandKey}
+              expandedDepartment={expandedDepartment}
+              idPrefix="store-mobile-catalog"
+              onExpandedBrandKeyChange={setExpandedBrandKeyOverride}
+              onExpandedDepartmentChange={setExpandedDepartmentOverride}
+              onNavigate={onCatalogSelect ? undefined : closeMenu}
+              onSelectCatalog={onCatalogSelect ? handleCatalogSelect : undefined}
+              prefetchCatalogLinks={prefetchCatalogLinks}
+              selectedCatalog={selectedCatalog}
+              showAllProducts={false}
+            />
           </nav>
           <div className="mt-auto border-t border-slate-100 px-3 py-3">
             <LanguageSwitcher presentation="menu" className="w-full" />
