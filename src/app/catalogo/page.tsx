@@ -1,5 +1,3 @@
-import { StorefrontLoading } from "@/components/partspro/storefront-loading";
-import { Suspense } from "react";
 import { CatalogPage } from "@/components/partspro/catalog-page";
 import {
   getCustomerProfileById,
@@ -68,7 +66,6 @@ export default async function Page({
   );
 
   return (
-    <Suspense fallback={<StorefrontLoading variant="catalog"/>}>
       <CatalogPage
         assistedCompanyId={assistedCompanyId}
         assistedCompanyName={assistedProfile?.companyName ?? null}
@@ -82,7 +79,6 @@ export default async function Page({
         priceGateReason={priceVisibilityReason(account)}
         showWholesalePrice={account.canViewPrices}
       />
-    </Suspense>
   );
 }
 

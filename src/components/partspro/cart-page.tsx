@@ -1,5 +1,7 @@
 "use client";
 
+import { InlinePending } from "./pending-feedback";
+
 import { englishUiCopy } from "@/i18n/english-ui-copy";
 
 
@@ -1424,7 +1426,7 @@ const CartLineMobileSnapshotRow = React.memo(function CartLineMobileSnapshotRow(
   const t = useT();
   const product = cartSnapshotProduct(snapshot, sku);
   const lineTotal = product.price * quantity;
-  const pendingAmount = amountState === "stale" ? tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare") : tx(t, "storefront.checkout.amountCalculating", "Verifica ordine...");
+  const pendingAmount = amountState === "stale" ? tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare") : <InlinePending />;
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 border-b border-slate-100 bg-white px-2.5 py-2 last:border-b-0">
@@ -1628,7 +1630,7 @@ const CartLineMobileRow = React.memo(function CartLineMobileRow({
   const canIncrease = line.quantity < orderableQuantity;
   const priceDisplay = getProductPriceDisplay(line.product);
   const pricesCurrent = amountState === "ready";
-  const pendingAmount = amountState === "loading" ? tx(t, "storefront.checkout.amountCalculating", "Verifica ordine...") : tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare");
+  const pendingAmount = amountState === "loading" ? <InlinePending /> : tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare");
 
   return (
     <div className="pp-cart-mobile-line grid grid-cols-[minmax(0,1fr)_auto] items-start gap-2 border-b border-slate-100 px-2.5 py-2 last:border-b-0">
@@ -1763,7 +1765,7 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
   const priceDisplay = getProductPriceDisplay(line.product);
   const stockMeta = publicStockLevelMeta(t, line.product);
   const pricesCurrent = amountState === "ready";
-  const pendingAmount = amountState === "loading" ? tx(t, "storefront.checkout.amountCalculating", "Verifica ordine...") : tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare");
+  const pendingAmount = amountState === "loading" ? <InlinePending /> : tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare");
 
   return (
     <Card size="sm" className="pp-cart-desktop-line rounded-lg border-slate-200 bg-white">
@@ -1891,7 +1893,7 @@ const CartLineDesktopSnapshotCard = React.memo(function CartLineDesktopSnapshotC
   const t = useT();
   const product = cartSnapshotProduct(snapshot, sku);
   const lineTotal = product.price * quantity;
-  const pendingAmount = amountState === "stale" ? tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare") : tx(t, "storefront.checkout.amountCalculating", "Verifica ordine...");
+  const pendingAmount = amountState === "stale" ? tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare") : <InlinePending />;
 
   return (
     <Card size="sm" className="rounded-lg border-slate-200 bg-white">
@@ -2510,7 +2512,7 @@ function CartSummaryLoadingCard({
         <div className="flex items-center gap-2">
           <Loader2 className="size-4 animate-spin text-primary" />
           <div className="text-sm font-black text-slate-950">
-            {title ?? tx(t, "storefront.cart.summaryLoadingTitle", "Calcolo totale...")}
+            <span className="sr-only">{title ?? tx(t, "storefront.cart.summaryLoadingTitle", "Calcolo totale...")}</span>
           </div>
         </div>
         <div className="space-y-2">
@@ -2527,7 +2529,7 @@ function CartSummaryLoadingCard({
         </div>
         <div className="rounded-md border border-slate-200 bg-slate-50 p-2">
           <p className="text-xs font-semibold leading-5 text-slate-500">
-            {message ?? tx(t, "storefront.cart.summaryLoading", "Caricamento carrello del tuo account...")}
+            <span className="sr-only">{message ?? tx(t, "storefront.cart.summaryLoading", "Caricamento carrello del tuo account...")}</span>
           </p>
         </div>
         <div className="h-10 animate-pulse rounded-md bg-primary/20" />
@@ -2590,13 +2592,13 @@ function MobileCartCheckoutBar({
           <div className="space-y-1.5">
             <CompactSummaryLine
               label={tx(t, "storefront.common.subtotal", "Subtotale")}
-              value={amountPending ? tx(t, "storefront.common.loading", "Caricamento") : formatMoney(totals.subtotal, locale)}
+              value={amountPending ? <InlinePending /> : formatMoney(totals.subtotal, locale)}
             />
             <CompactSummaryLine
               label={tx(t, "storefront.common.shipping", "Spedizione")}
               value={
                 amountPending
-                  ? tx(t, "storefront.common.loading", "Caricamento")
+                  ? <InlinePending />
                   : totals.shipping === 0
                     ? tx(t, "storefront.common.free", "Gratis")
                     : formatMoney(totals.shipping, locale)
@@ -2604,7 +2606,7 @@ function MobileCartCheckoutBar({
             />
             <CompactSummaryLine
               label={totalLabel}
-              value={amountPending ? tx(t, "storefront.common.loading", "Caricamento") : formatMoney(totals.total, locale)}
+              value={amountPending ? <InlinePending /> : formatMoney(totals.total, locale)}
               strong
             />
           </div>
@@ -2617,7 +2619,7 @@ function MobileCartCheckoutBar({
                   : "border-amber-200 bg-amber-50 text-amber-900"
               )}
             >
-              {amountPending ? effectivePendingMessage : disabledReason ?? tx(t, "storefront.cart.summaryNoteReviewCheckout", "Puoi aprire il checkout per vedere cosa manca. Login, cliente, prezzi, stock e MOQ verranno comunque verificati prima dell'invio.")}
+              {amountPending ? <span className="sr-only">{effectivePendingMessage}</span> : disabledReason ?? tx(t, "storefront.cart.summaryNoteReviewCheckout", "Puoi aprire il checkout per vedere cosa manca. Login, cliente, prezzi, stock e MOQ verranno comunque verificati prima dell'invio.")}
             </div>
           )}
           <div className="mt-2 grid grid-cols-2 gap-2">
@@ -2656,14 +2658,14 @@ function MobileCartCheckoutBar({
           onClick={() => setExpanded((current) => !current)}
         >
           <div className="truncate text-[10px] font-bold uppercase tracking-normal text-slate-500">
-            {amountPending ? effectivePendingTitle : `${lineLabel} · ${itemLabel}`}
+            {amountPending ? <span className="sr-only">{effectivePendingTitle}</span> : `${lineLabel} · ${itemLabel}`}
           </div>
           <div className="flex min-w-0 items-center gap-1 text-lg font-black" aria-live="polite">
             {amountPending ? (
               <>
                 <span className="h-5 w-24 animate-pulse rounded bg-slate-200" />
                 <span className="text-xs font-bold text-slate-500">
-                  {tx(t, "storefront.common.loading", "Caricamento")}
+                  {<InlinePending />}
                 </span>
               </>
             ) : (
@@ -2701,7 +2703,7 @@ function CompactSummaryLine({
   strong = false,
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   strong?: boolean;
 }) {
   return (

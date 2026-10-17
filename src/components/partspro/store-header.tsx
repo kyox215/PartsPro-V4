@@ -15,6 +15,7 @@ import { LanguageSwitcher } from "./language-switcher";
 import {
   DelayedPendingIndicator,
   RoutePendingIndicator,
+  RoutePendingIcon,
 } from "./pending-feedback";
 import { StoreCartButton } from "./store-cart-button";
 import { StoreBottomNavigation } from "./store-bottom-navigation";
@@ -26,7 +27,7 @@ type StoreHeaderProps = {
   assistedCompanyId?: string | null;
   departmentGroups?: readonly CatalogDepartmentGroup[];
   initialAccountAccess?: StoreHeaderAccountAccess;
-  onCatalogSelect?: (selection: CatalogSelection) => void;
+  onCatalogSelect?: (selection: CatalogSelection) => void | Promise<boolean>;
   prefetchCatalogLinks?: boolean;
   selectedCatalog?: CatalogSelection;
 };
@@ -129,7 +130,7 @@ export function StoreHeader({
 
 
     if (onCatalogSelect) {
-      onCatalogSelect({ searchQuery: query });
+      startSearchTransition(async () => { await onCatalogSelect({ searchQuery: query }); });
       return;
     }
 
@@ -158,7 +159,7 @@ export function StoreHeader({
 
           <Link href={hrefWithAssistedCompanyId("/catalogo", assistedCompanyId)} className="pp-header-catalog" aria-current={pathname === "/catalogo" ? "page" : undefined}>
             <Grid3X3 aria-hidden="true" className="size-4" />
-            {tx(t, "nav.catalog", "Catalogo")}
+            {tx(t, "nav.catalog", "Catalogo")}<RoutePendingIndicator className="size-3" />
           </Link>
           <form
             className="pp-header-search relative ml-auto hidden min-w-[180px] flex-1 md:block"
@@ -191,7 +192,7 @@ export function StoreHeader({
             </Button>
           </form>
 
-          {accountPage ? <Link href="/catalogo" className="pp-header-return"><ArrowLeft aria-hidden="true" />{tx(t, "storefront.reference.backToStore", "Torna allo shop")}</Link> : null}
+          {accountPage ? <Link href="/catalogo" className="pp-header-return"><ArrowLeft aria-hidden="true" />{tx(t, "storefront.reference.backToStore", "Torna allo shop")}<RoutePendingIndicator className="size-3" /></Link> : null}
           <StoreCartButton
             ariaLabel={tx(t, "storefront.header.openCart", "Apri carrello")}
             href={hrefWithAssistedCompanyId("/carrello", assistedCompanyId)}
@@ -226,10 +227,10 @@ export function StoreHeader({
           <Button type="submit" size="icon-lg" className="absolute right-0 top-0 rounded-full" aria-label={tx(t, "storefront.header.searchSubmit", "Cerca")}><Search className="size-4" /></Button>
         </form>
         <nav className="pp-desktop-primary-nav" aria-label={tx(t, "nav.catalog", "Catalogo")}>
-          <Link href="/" aria-current={pathname === "/" ? "page" : undefined}><Home />{tx(t,"nav.home","Home")}</Link>
-          <Link href={hrefWithAssistedCompanyId("/catalogo",assistedCompanyId)} aria-current={pathname === "/catalogo" || pathname.startsWith("/prodotto/") ? "page" : undefined}><Grid3X3 />{tx(t,"nav.catalog","Catalogo")}</Link>
-          <Link href="/#remax-preorders"><ShoppingBag />{tx(t,"storefront.reference.preorderNav","REMAX preordini")}</Link>
-          <Link href="/professionale" aria-current={pathname === "/professionale" ? "page" : undefined}><UserRound />{tx(t,"storefront.reference.professionalNav","Professionisti")}</Link>
+          <Link href="/" aria-current={pathname === "/" ? "page" : undefined}><RoutePendingIcon><Home /></RoutePendingIcon>{tx(t,"nav.home","Home")}</Link>
+          <Link href={hrefWithAssistedCompanyId("/catalogo",assistedCompanyId)} aria-current={pathname === "/catalogo" || pathname.startsWith("/prodotto/") ? "page" : undefined}><RoutePendingIcon><Grid3X3 /></RoutePendingIcon>{tx(t,"nav.catalog","Catalogo")}</Link>
+          <Link href="/#remax-preorders"><RoutePendingIcon><ShoppingBag /></RoutePendingIcon>{tx(t,"storefront.reference.preorderNav","REMAX preordini")}</Link>
+          <Link href="/professionale" aria-current={pathname === "/professionale" ? "page" : undefined}><RoutePendingIcon><UserRound /></RoutePendingIcon>{tx(t,"storefront.reference.professionalNav","Professionisti")}</Link>
         </nav>
       </header>
       <div aria-hidden="true" data-account-page={accountPage || undefined} className="pp-store-header-spacer h-[108px] sm:h-[116px] xl:h-16" />

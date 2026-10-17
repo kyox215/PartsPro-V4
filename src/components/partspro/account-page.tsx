@@ -279,7 +279,7 @@ function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, a
         <aside className="pp-account-navigation">
           <div className="pp-account-sidebar-title"><h2>{ui.title}</h2><span>ACCOUNT</span></div>
           <button type="button" className="pp-account-sidebar-company" onClick={() => setProfileSummaryOpen(true)}><span className="pp-account-company-avatar"><Building2 aria-hidden="true"/></span><span><strong>{company?.name || profile?.companyName || userEmail || ui.title}</strong><small>{isEmployeeAccount ? ui.staff : (profile?.customerType ?? company?.customerType) === "wholesale" ? ui.business : ui.customer}</small></span></button>
-          <AccountSectionNav activeSection={profileSummaryOpen ? undefined : activeSection} orderSummaries={orderSummaries} rmaRequests={rmaRequests} onSectionChange={changeSection}/>
+          <AccountSectionNav activeSection={profileSummaryOpen ? undefined : activeSection} orderSummaries={orderSummaries} rmaRequests={rmaRequests} onSectionChange={changeSection} pending={sectionPending}/>
           <div className="pp-account-sidebar-secondary"><button type="button" className="pp-account-sidebar-link" aria-current={profileSummaryOpen ? "page" : undefined} onClick={() => setProfileSummaryOpen(true)}><Building2 aria-hidden="true"/><span>{ui.companyAddress}</span></button><div className="pp-account-notifications"><Bell aria-hidden="true"/><span>{ui.notifications}</span><NotificationCenter audience={isEmployeeAccount ? "staff" : "customer"} className="pp-account-notification-button" presentation="account" portalClassName="pp-storefront-portal"/></div></div>
           <div className="pp-account-sidebar-footer"><Link className="pp-account-sidebar-link" href="/help"><CircleHelp aria-hidden="true"/><span>{ui.help}</span></Link><form action={signOut}><button type="submit" className="pp-account-sidebar-link"><LogOut aria-hidden="true"/><span>{c("退出")}</span></button></form></div>
         </aside>
@@ -293,19 +293,16 @@ function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, a
 
         {profileSummaryOpen && !profileUnavailable ? <AccountProfileSummaryView open={profileSummaryOpen} onOpenChange={setProfileSummaryOpen} company={company} profile={profile} userEmail={userEmail} onEdit={() => setProfileDialogOpen(true)}/> : null}
         <section hidden={profileSummaryOpen} className="pp-account-section min-w-0" aria-busy={sectionPending || loadedSection !== activeSection}>
-          {sectionPending || loadedSection !== activeSection ? (<div role="status" className="flex min-h-48 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-500">
-              <Loader2 className="size-4 animate-spin"/>{t("common.loading")}
-            </div>) : <>
-          {activeSection === "overview" ? (<AccountSummaryPanel company={company} isEmployeeAccount={isEmployeeAccount} orderSummaries={orderSummaries} profile={profile} rmaRequests={rmaRequests} userEmail={userEmail} wallet={wallet} onOpenProfile={() => setProfileSummaryOpen(true)} onOpenOrder={openOrderDetail} onSectionChange={(section, filter) => { if (filter) setActiveFilter(filter); changeSection(section); }}/>) : null}
+          {loadedSection === "overview" ? (<AccountSummaryPanel company={company} isEmployeeAccount={isEmployeeAccount} orderSummaries={orderSummaries} profile={profile} rmaRequests={rmaRequests} userEmail={userEmail} wallet={wallet} onOpenProfile={() => setProfileSummaryOpen(true)} onOpenOrder={openOrderDetail} onSectionChange={(section, filter) => { if (filter) setActiveFilter(filter); changeSection(section); }}/>) : null}
 
-          {activeSection === "orders" ? <AccountHistoryControls section={activeSection} hasMore={historyHasMore} pending={sectionPending}/> : null}
-          {activeSection === "wallet" ? (<WalletSection wallet={wallet}/>) : null}
-          {activeSection === "wallet" ? <AccountHistoryControls section={activeSection} hasMore={historyHasMore} pending={sectionPending}/> : null}
+          {loadedSection === "orders" ? <AccountHistoryControls section={loadedSection} hasMore={historyHasMore} pending={sectionPending}/> : null}
+          {loadedSection === "wallet" ? (<WalletSection wallet={wallet}/>) : null}
+          {loadedSection === "wallet" ? <AccountHistoryControls section={loadedSection} hasMore={historyHasMore} pending={sectionPending}/> : null}
 
-          {activeSection === "orders" ? (<OrdersSection activeFilter={activeFilter} filteredOrders={filteredOrders} onFilterChange={setActiveFilter} onOpenOrder={openOrderDetail} orderSummaries={orderSummaries}/>) : null}
+          {loadedSection === "orders" ? (<OrdersSection activeFilter={activeFilter} filteredOrders={filteredOrders} onFilterChange={setActiveFilter} onOpenOrder={openOrderDetail} orderSummaries={orderSummaries}/>) : null}
 
-          {activeSection === "service" ? (<ServiceSection orderSummaries={orderSummaries} rmaRequests={rmaRequests}/>) : null}
-          </>}
+          {loadedSection === "service" ? (<ServiceSection orderSummaries={orderSummaries} rmaRequests={rmaRequests}/>) : null}
+
         </section>
         </div>
         </div>
@@ -341,7 +338,7 @@ function AccountOrderDetailPanel({ detail, error, loading }: { detail: AccountOr
     const ui = useAccountReferenceCopy();
     const accountDate = useAccountDateTime();
     const [copyState, setCopyState] = React.useState<"idle" | "success" | "error">("idle");
-    if (loading) return <div className="pp-account-empty" role="status"><Loader2 className="animate-spin" aria-hidden="true"/><strong>{c("正在加载订单详情...")}</strong></div>;
+    if (loading) return <div className="pp-account-empty" role="status"><Loader2 className="animate-spin" aria-hidden="true"/><span className="sr-only">{c("正在加载订单详情...")}</span></div>;
     if (error) return <div className="pp-account-info-banner is-error" role="alert">{t(error)}</div>;
     if (!detail) return <div className="pp-account-empty">{c("暂无订单详情。")}</div>;
     const lines = detail.lines ?? [];
@@ -396,8 +393,9 @@ function walletTransactionReasonLabel(reason: string, direction: "credit" | "deb
     }
     return reason || walletTransactionLabel(direction);
 }
-function AccountSectionNav({ activeSection, onSectionChange, orderSummaries, rmaRequests }: {
+function AccountSectionNav({ activeSection, onSectionChange, orderSummaries, rmaRequests, pending = false }: {
     activeSection?: AccountSectionId;
+    pending?: boolean;
     onSectionChange: (section: AccountSectionId) => void;
     orderSummaries: OrderSummary[];
     rmaRequests: RmaRequest[];
@@ -411,7 +409,7 @@ function AccountSectionNav({ activeSection, onSectionChange, orderSummaries, rma
         { id: "service" as const, icon: Headphones, mobileLabel: ui.mobileService, label: ui.service, badge: rmaRequests.length },
     ];
     return <nav className="pp-account-section-nav" aria-label={ui.title}>
-        {sections.map(({ id, icon: Icon, label, mobileLabel, badge }) => <button key={id} type="button" aria-current={activeSection === id ? "page" : undefined} aria-pressed={activeSection === id} onClick={() => onSectionChange(id)}><Icon aria-hidden="true"/><span className="pp-account-tab-full">{label}</span><span className="pp-account-tab-short">{mobileLabel}</span>{Boolean(badge) && <b>{badge}</b>}</button>)}
+        {sections.map(({ id, icon: Icon, label, mobileLabel, badge }) => <button key={id} type="button" aria-current={activeSection === id ? "page" : undefined} aria-pressed={activeSection === id} onClick={() => onSectionChange(id)} aria-busy={pending && activeSection === id || undefined}>{pending && activeSection === id ? <Loader2 aria-hidden="true" className="animate-spin motion-reduce:animate-none"/> : <Icon aria-hidden="true"/>}<span className="pp-account-tab-full">{label}</span><span className="pp-account-tab-short">{mobileLabel}</span>{Boolean(badge) && <b>{badge}</b>}</button>)}
     </nav>;
 }
 function WalletSection({ wallet }: { wallet: CustomerWallet }) {

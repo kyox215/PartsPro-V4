@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useLinkStatus } from "next/link";
 import { Loader2 } from "lucide-react";
+import { useT } from "./i18n-provider";
 import { cn } from "@/lib/utils";
 
 type DelayedPendingIndicatorProps = {
@@ -48,7 +49,7 @@ export function DelayedPendingIndicator({
       )}
       role={label && visible ? "status" : undefined}
     >
-      {visible ? <Loader2 className="size-full animate-spin" /> : null}
+      {visible ? <Loader2 className="size-full animate-spin motion-reduce:animate-none" /> : null}
     </span>
   );
 }
@@ -69,4 +70,16 @@ export function RoutePendingIndicator({
       pending={pending}
     />
   );
+}
+
+// A stable local placeholder without replacing surrounding content or visible waiting copy.
+export function InlinePending() {
+  const t = useT();
+  return <span role="status" aria-busy="true" className="inline-flex items-center"><Loader2 aria-hidden="true" className="size-3.5 animate-spin motion-reduce:animate-none"/><span className="sr-only">{t("common.loading")}</span></span>;
+}
+
+export function RoutePendingIcon({ children }: { children: React.ReactNode }) {
+  const { pending } = useLinkStatus();
+  const visible = useDelayedVisible(pending, 80);
+  return visible ? <Loader2 aria-hidden="true" style={{ display: "inline-block" }} className="size-4 animate-spin motion-reduce:animate-none"/> : children;
 }

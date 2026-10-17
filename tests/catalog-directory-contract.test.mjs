@@ -11,7 +11,7 @@ const catalogDepartments=vm.runInNewContext(array);
 function load(relative){
  const source=fs.readFileSync(new URL(relative,import.meta.url),'utf8');
  const compiled=transpileModule(source,{compilerOptions:{module:ModuleKind.CommonJS,target:ScriptTarget.ES2020}}).outputText;
- const exports={};vm.runInNewContext(compiled,{exports,require:(name)=>name.includes('partspro-data')?{catalogDepartments}:require(name)});return exports;
+ const exports={};vm.runInNewContext(compiled,{exports,require:(name)=>name.includes('partspro-data')?{catalogDepartments}:name==='@/i18n/english-ui-copy'?load('../src/i18n/english-ui-copy.ts'):name==='./english-literals'?load('../src/i18n/english-literals.ts'):require(name)});return exports;
 }
 const {catalogNodeSchema,catalogMoveSchema,catalogNodeLabel,mergeCatalogDirectoryBrands}=load('../src/lib/partspro-catalog-directory.ts');
 const {productPatchSchema}=load('../src/app/api/admin/products/_schemas.ts');

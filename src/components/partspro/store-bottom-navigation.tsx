@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Grid3X3, Home, ShoppingCart, UserRound } from "lucide-react";
 import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
 import { useStoredCartItems } from "./cart-state";
+import { RoutePendingIcon } from "./pending-feedback";
 import { useT } from "./i18n-provider";
 import { hasStorefrontMobileNavigation } from "./storefront-navigation";
 
@@ -33,7 +34,7 @@ export function StoreBottomNavigation({ assistedCompanyId }: { assistedCompanyId
           className="pp-bottom-navigation-item"
         >
           <span className="pp-bottom-navigation-icon">
-            <Icon aria-hidden="true" />
+            <RoutePendingIcon><Icon aria-hidden="true" /></RoutePendingIcon>
             {href === "/carrello" && count > 0 && <span className="pp-cart-count">{count > 99 ? "99+" : count}</span>}
           </span>
           <span>{t(key)}</span>

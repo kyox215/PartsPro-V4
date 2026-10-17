@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { IntentLink as Link } from "./intent-link";
 import { ChevronDown, ChevronRight, Laptop, Smartphone, Tablet, Wrench } from "lucide-react";
 import {
@@ -19,10 +19,10 @@ import {
   tx,
   txFormat,
 } from "@/i18n/dictionaries/storefront";
-import { mergeCatalogDirectoryBrands } from "@/lib/partspro-catalog-directory";
+import { catalogNodeLabel, mergeCatalogDirectoryBrands } from "@/lib/partspro-catalog-directory";
 import { useCatalogDirectory, sortedCatalogValues } from "./catalog-directory-provider";
-import { useT } from "./i18n-provider";
-import { RoutePendingIndicator } from "./pending-feedback";
+import { useT, useI18n } from "./i18n-provider";
+import { DelayedPendingIndicator, RoutePendingIndicator } from "./pending-feedback";
 
 type CatalogBrandTreeVariant = "mobile" | "desktop";
 
@@ -47,7 +47,7 @@ type CatalogBrandTreeProps = {
   onExpandedBrandKeyChange: (brandKey: string | null) => void;
   onExpandedDepartmentChange: (department: CatalogDepartment | null) => void;
   onNavigate?: () => void;
-  onSelectCatalog?: (selection: CatalogSelection) => void;
+  onSelectCatalog?: (selection: CatalogSelection) => void | Promise<boolean>;
   prefetchCatalogLinks?: boolean;
   selectedCatalog?: CatalogSelection;
   variant?: CatalogBrandTreeVariant;
@@ -72,6 +72,9 @@ export function CatalogBrandTree({
   brandLimit,
 }: CatalogBrandTreeProps) {
   const t = useT();
+  const { locale } = useI18n();
+  const [pendingItem, setPendingItem] = useState<string | null>(null);
+  const selectionRequest = useRef(0);
   const directory = useCatalogDirectory();
   const desktop = variant === "desktop";
   const selectedBrand = selectedCatalog?.brand;
@@ -156,9 +159,17 @@ export function CatalogBrandTree({
     !selectedSearchQuery &&
     !inStockOnly;
 
-  function handleSelect(selection: CatalogSelection) {
-    onSelectCatalog?.(selection);
-    onNavigate?.();
+  async function handleSelect(selection: CatalogSelection, itemKey: string) {
+    const request = ++selectionRequest.current;
+    setPendingItem(itemKey);
+    try {
+      const succeeded = await onSelectCatalog?.(selection);
+      if (request === selectionRequest.current && succeeded !== false) onNavigate?.();
+    } catch {
+      // The caller owns the request error and retry UI; keep the current selection visible.
+    } finally {
+      if (request === selectionRequest.current) setPendingItem(null);
+    }
   }
 
   function renderSelectionItem({
@@ -190,10 +201,12 @@ export function CatalogBrandTree({
         aria-label={ariaLabel}
         aria-pressed={pressed}
         className={cn("pp-tree-selection", className)}
-        onClick={onClick ?? (() => handleSelect(selection))}
+        onClick={onClick ?? (() => { void handleSelect(selection, itemKey); })}
+        aria-busy={pendingItem === itemKey || undefined}
         title={title}
       >
         {children}
+        <DelayedPendingIndicator pending={pendingItem === itemKey} className="ml-auto size-3" />
       </button>
     ) : (
       <Link
@@ -296,9 +309,10 @@ export function CatalogBrandTree({
             catalogRootSelected &&
               "bg-primary text-white shadow-sm hover:bg-primary"
           )}
-          onClick={() => handleSelect({})}
+          onClick={() => handleSelect({}, "all-products")}
         >
           {tx(t, "storefront.catalog.allProducts", "Tutto il catalogo")}
+          <DelayedPendingIndicator pending={pendingItem === "all-products"} className="ml-auto size-3" />
         </button>
       ) : (
         <Link
@@ -412,15 +426,24 @@ export function CatalogBrandTree({
                         department,
                         entry.brand
                       );
-                      const seriesGroups = entry.series ?? [];
+                      const isRemax = entry.brand.trim().toUpperCase() === "REMAX";
+                      const remaxCategories = [
+                        ["Cavi dati", "数据线", "Cavi dati", "Data cables"],
+                        ["Batterie esterne", "充电宝", "Power bank", "Power banks"],
+                        ["Caricatori", "充电器", "Caricatori", "Chargers"],
+                        ["Audio", "耳机与音频", "Cuffie e audio", "Headphones & audio"],
+                        ["Raffreddatori", "手机散热器", "Raffreddatori", "Phone coolers"],
+                      ].filter(([value]) => directory.nodes.find(node => node.kind === "category" && node.value === value)?.active !== false)
+                        .sort(([a], [b]) => (directory.nodes.find(node => node.kind === "category" && node.value === a)?.position ?? 10000) - (directory.nodes.find(node => node.kind === "category" && node.value === b)?.position ?? 10000));
+                      const seriesGroups = isRemax ? [] : entry.series ?? [];
                       const groupedModels = new Set(
                         seriesGroups.flatMap((seriesGroup) => seriesGroup.models)
                       );
-                      const standaloneModels = entry.models.filter(
+                      const standaloneModels = (isRemax ? [] : entry.models).filter(
                         (model) => !groupedModels.has(model)
                       );
                       const hasBrandChildren =
-                        seriesGroups.length > 0 || standaloneModels.length > 0;
+                        (isRemax && remaxCategories.length > 0) || seriesGroups.length > 0 || standaloneModels.length > 0;
 
                       return (
                         <div
@@ -446,7 +469,7 @@ export function CatalogBrandTree({
                                   <span className="min-w-0 flex-1 truncate">
                                     {localizedBrand}
                                   </span>
-                                  {desktop && hasBrandChildren ? (
+                                  {desktop && hasBrandChildren && !isRemax ? (
                                     <span
                                       className={cn(
                                         "pp-tree-count text-[11px] font-semibold text-slate-400",
@@ -491,6 +514,16 @@ export function CatalogBrandTree({
                           {brandOpen && hasBrandChildren ? (
                             <div id={brandPanelId} className="border-t border-slate-100 p-2">
                               <div className="space-y-1">
+                                {isRemax ? remaxCategories.map(([value, zh, it, en]) => renderSelectionItem({
+                                  itemKey: `${brandPanelKey}-category-${value}`,
+                                  selection: { brand: entry.brand, department, category: value },
+                                  pressed: brandWithinSelection && selectedCategory === value,
+                                  className: cn("flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs font-semibold hover:bg-primary/8", brandWithinSelection && selectedCategory === value && "bg-primary text-white hover:bg-primary hover:text-white"),
+                                  children: <span>{(() => {
+                                    const node = directory.nodes.find(node => node.kind === "category" && node.value === value);
+                                    return node ? catalogNodeLabel(node, locale) : locale.startsWith("zh") ? zh : locale.startsWith("en") ? en : it;
+                                  })()}</span>,
+                                })) : null}
                                 {seriesGroups.map((seriesGroup) => {
                                   const panelKey = seriesPanelKey(
                                     department,

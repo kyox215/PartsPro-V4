@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState, useTransition, type FormEvent, type ReactElement } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactElement } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,12 +23,12 @@ import { CatalogBrandTree, type CatalogSelection } from "./catalog-brand-tree";
 import { LanguageSwitcher } from "./language-switcher";
 import { PartsProLogo } from "./logo";
 import { DelayedPendingIndicator } from "./pending-feedback";
-import { useT } from "./i18n-provider";
+import { useT, useI18n } from "./i18n-provider";
 
 export type StoreMobileMenuProps = {
   assistedCompanyId?: string | null;
   departmentGroups?: readonly CatalogDepartmentGroup[];
-  onCatalogSelect?: (selection: CatalogSelection) => void;
+  onCatalogSelect?: (selection: CatalogSelection) => void | Promise<boolean>;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   prefetchCatalogLinks?: boolean;
@@ -47,7 +47,16 @@ export function StoreMobileMenu({
   trigger,
 }: StoreMobileMenuProps) {
   const t = useT();
+  const { locale } = useI18n();
+  const [failedSelection, setFailedSelection] = useState<CatalogSelection | null>(null);
   const router = useRouter();
+  const pathname = usePathname();
+  const previousPath = useRef(pathname);
+  const selectionRequest = useRef(0);
+  useEffect(() => {
+    if (previousPath.current !== pathname) onOpenChange(false);
+    previousPath.current = pathname;
+  }, [pathname, onOpenChange]);
   const contentRef = useRef<HTMLDivElement>(null);
   const [isSearchPending, startSearchTransition] = useTransition();
   const catalogSearchValue = selectedCatalog?.searchQuery ?? selectedCatalog?.model ?? "";
@@ -76,6 +85,8 @@ export function StoreMobileMenu({
     onOpenChange(nextOpen);
 
     if (!nextOpen) {
+      selectionRequest.current++;
+      setFailedSelection(null);
       setExpandedDepartmentOverride(undefined);
       setExpandedBrandKeyOverride(undefined);
     }
@@ -87,9 +98,15 @@ export function StoreMobileMenu({
     setExpandedBrandKeyOverride(undefined);
   }
 
-  function handleCatalogSelect(selection: CatalogSelection) {
-    onCatalogSelect?.(selection);
-    closeMenu();
+  async function handleCatalogSelect(selection: CatalogSelection) {
+    const request = ++selectionRequest.current;
+    setFailedSelection(null);
+    let succeeded = false;
+    try { succeeded = (await onCatalogSelect?.(selection)) !== false; } catch { /* Show local retry below. */ }
+    if (request !== selectionRequest.current) return false;
+    if (succeeded) closeMenu();
+    else setFailedSelection(selection);
+    return succeeded;
   }
 
   function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
@@ -103,8 +120,7 @@ export function StoreMobileMenu({
     }
 
     if (onCatalogSelect) {
-      onCatalogSelect({ searchQuery: query });
-      closeMenu();
+      startSearchTransition(async () => { await handleCatalogSelect({ searchQuery: query }); });
       return;
     }
 
@@ -116,7 +132,6 @@ export function StoreMobileMenu({
         )
       );
     });
-    closeMenu();
   }
 
   return (
@@ -182,6 +197,10 @@ export function StoreMobileMenu({
               </Button>
             </form>
           </div>
+          {failedSelection ? <div role="alert" className="mx-3 rounded border border-red-200 bg-red-50 p-2 text-xs">
+            {locale.startsWith("zh") ? "加载失败，请重试" : locale.startsWith("en") ? "Could not load. Try again." : "Caricamento non riuscito. Riprova."}
+            <Button size="sm" variant="ghost" disabled={isSearchPending} onClick={() => startSearchTransition(async () => { await handleCatalogSelect(failedSelection); })}>{tx(t, "storefront.common.retry", "Riprova")}</Button>
+          </div> : null}
           <nav
             aria-label={tx(t, "storefront.header.mobileMenuTitle", "Menu PartsPro")}
             className="min-h-0 flex-1 overflow-y-auto px-3 py-3"
@@ -197,7 +216,7 @@ export function StoreMobileMenu({
               idPrefix="store-mobile-catalog"
               onExpandedBrandKeyChange={setExpandedBrandKeyOverride}
               onExpandedDepartmentChange={setExpandedDepartmentOverride}
-              onNavigate={onCatalogSelect ? undefined : closeMenu}
+              onNavigate={undefined}
               onSelectCatalog={onCatalogSelect ? handleCatalogSelect : undefined}
               prefetchCatalogLinks={prefetchCatalogLinks}
               selectedCatalog={selectedCatalog}

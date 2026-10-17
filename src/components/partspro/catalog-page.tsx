@@ -50,7 +50,6 @@ import { useCatalogDirectory } from "./catalog-directory-provider";
 import { catalogNodeLabel } from "@/lib/partspro-catalog-directory";
 import { useI18n, useT } from "./i18n-provider";
 import {
-  useDelayedVisible,
 } from "./pending-feedback";
 
 type CatalogSort = "name" | "stock_desc" | "updated_desc";
@@ -499,7 +498,6 @@ function CatalogPageContent({
 
   const hiddenProductCount = Math.max(filteredTotal - products.length, 0);
   const catalogReplacing = catalogLoadState === "loading";
-  const showCatalogSkeleton = useDelayedVisible(catalogReplacing, 300);
   const accountGateCopy =
     !assistedCompanyId && isCustomerActionRequiredReason(priceGateReason)
       ? getAccountGateCopy(t, priceGateReason)
@@ -520,7 +518,7 @@ function CatalogPageContent({
     selectCatalog({ sort });
   }
 
-  function selectCatalog(requestedSelection: CatalogSelection) {
+  async function selectCatalog(requestedSelection: CatalogSelection) {
     const selection = { ...requestedSelection, sort: normalizeCatalogSort(requestedSelection.sort ?? sort) };
     setSort(selection.sort);
     const nextFilters: CatalogFiltersState = {
@@ -541,7 +539,7 @@ function CatalogPageContent({
       window.history.pushState(null, "", nextPath);
     }
     void recordCatalogActivity(selection, initialAccountAccess);
-    void loadCatalogSelection(selection);
+    return Boolean(await loadCatalogSelection(selection));
   }
 
   return (
@@ -606,7 +604,7 @@ function CatalogPageContent({
               </div>
               <div className="pp-filter-actions">
                 <Button type="button" variant="outline" onClick={() => {setDraftFilters(resetCatalogFilters(draftFilters));setDraftBrand(null);setDraftDepartment("phone");}}>{tx(t,"storefront.reference.reset","Ripristina")}</Button>
-                <Button type="button" onClick={() => {selectCatalog(draftFilters);setFilterOpen(false);}}>{tx(t,"storefront.reference.apply","Applica filtri")}</Button>
+                <Button type="button" disabled={catalogReplacing} onClick={async () => { if (await selectCatalog(draftFilters)) setFilterOpen(false); }}>{catalogReplacing ? <Loader2 aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none"/> : null}{tx(t,"storefront.reference.apply","Applica filtri")}</Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -651,11 +649,9 @@ function CatalogPageContent({
               >
                 {products.length > 0 ? (
                   <div
-                    inert={catalogReplacing}
-                    aria-hidden={catalogReplacing || undefined}
                     className={cn(
                       "pp-product-grid partspro-catalog-grid transition-opacity duration-150 motion-reduce:transition-none",
-                      catalogReplacing && "opacity-45"
+
                     )}
                   >
                     {products.map((product, index) => (
@@ -676,18 +672,9 @@ function CatalogPageContent({
                     ))}
                   </div>
                 ) : null}
-                {showCatalogSkeleton ? (
-                  <div
-                    className={cn(
-                      products.length > 0 &&
-                        "pointer-events-none absolute inset-x-0 top-0"
-                    )}
-                  >
-                    <CatalogProductSkeletonGrid count={products.length > 0 ? 10 : 8} />
-                  </div>
-                ) : null}
+
               </div>
-              {catalogError && failedOffset > 0 && <AsyncFeedback state="error" title={tx(t,"storefront.ux.moreFailed","Impossibile caricare la pagina successiva")} description={tx(t,"storefront.ux.moreKept","I risultati già caricati restano disponibili.")} actions={<Button type="button" variant="outline" disabled={catalogLoadState !== "idle"} onClick={() => void loadCatalogSelection(selectedCatalog, failedOffset)}>{tx(t,"common.retry","Riprova")}</Button>} />}
+              {catalogError && failedOffset > 0 && <AsyncFeedback state="error" title={tx(t,"storefront.ux.moreFailed","Impossibile caricare la pagina successiva")} description={tx(t,"storefront.ux.moreKept","I risultati già caricati restano disponibili.")} actions={<Button type="button" variant="outline" disabled={catalogLoadState !== "idle"} onClick={() => void loadCatalogSelection(selectedCatalog, failedOffset)}>{tx(t,"storefront.common.retry","Riprova")}</Button>} />}
               {hiddenProductCount > 0 && !(catalogError && failedOffset > 0) && (
                 <div className="flex justify-center">
                   <Button
@@ -702,7 +689,7 @@ function CatalogPageContent({
                     {catalogLoadState === "loading-more" ? (
                       <>
                         <Loader2 className="size-4 animate-spin" />
-                        {tx(t, "storefront.catalog.loadingMore", "Caricamento...")}
+                        {tx(t, "storefront.compact.loadMore", "Carica altri")}
                       </>
                     ) : (
                       tx(t, "storefront.compact.loadMore", "Carica altri")
@@ -778,7 +765,7 @@ function CatalogNavigationSidebar({
   expandedDepartment: CatalogDepartment | null;
   onExpandedBrandKeyChange: (brandKey: string | null) => void;
   onExpandedDepartmentChange: (department: CatalogDepartment | null) => void;
-  onSelectCatalog: (selection: CatalogSelection) => void;
+  onSelectCatalog: (selection: CatalogSelection) => void | Promise<boolean>;
   selectedCatalog: CatalogSelection;
 }) {
   const t = useT();
@@ -855,33 +842,6 @@ function CatalogLoadErrorBanner({
   );
 }
 
-function CatalogProductSkeletonGrid({ count }: { count: number }) {
-  return (
-    <div className="pp-product-grid partspro-catalog-grid">
-      {Array.from({ length: count }, (_, index) => (
-        <div
-          key={index}
-          className="h-[184px] animate-pulse rounded-lg border border-slate-200 bg-white p-2 shadow-sm sm:h-[318px]"
-        >
-          <div className="h-28 rounded-md bg-slate-100 sm:h-36" />
-          <div className="mt-2 h-4 w-5/6 rounded bg-slate-100" />
-          <div className="mt-1.5 h-4 w-2/3 rounded bg-slate-100" />
-          <div className="mt-2 grid grid-cols-2 gap-1">
-            <div className="h-6 rounded bg-slate-100" />
-            <div className="h-6 rounded bg-slate-100" />
-          </div>
-          <div className="mt-3 flex items-end justify-between gap-2">
-            <div className="space-y-1">
-              <div className="h-5 w-16 rounded bg-slate-100" />
-              <div className="h-3 w-24 rounded bg-slate-100" />
-            </div>
-            <div className="h-8 w-20 rounded-md bg-slate-100" />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 function buildCatalogSelectionPath(
   selection: CatalogSelection,

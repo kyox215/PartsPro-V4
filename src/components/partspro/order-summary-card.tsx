@@ -1,5 +1,7 @@
 "use client";
 
+import { InlinePending } from "./pending-feedback";
+
 import { englishUiCopy } from "@/i18n/english-ui-copy";
 
 
@@ -108,7 +110,7 @@ function OrderSummaryCardView({
     tx(t, "storefront.cart.summaryNote", "Il carrello non blocca stock: spedizione €6,50, gratuita da €100; disponibilita e quantita vengono verificate alla conferma.");
   const effectiveLineCount = lineCount ?? totals.lines.length;
   const summaryLoading = !isHydrated || amountStatus === "loading";
-  const loadingValue = tx(t, "storefront.common.loading", "Caricamento");
+  const loadingValue = <InlinePending />;
   const effectiveCheckoutDisabled =
     checkoutDisabled || summaryLoading || effectiveLineCount === 0;
   const effectiveWalletApplied = Math.max(0, walletAppliedAmount);
@@ -188,7 +190,7 @@ function OrderSummaryCardView({
           </>
         )}
         <div className={cn("pp-summary-note", compact ? "rounded-md border border-amber-200 bg-amber-50 p-2 text-[11px] font-semibold leading-4 text-amber-900" : "rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900")}>
-          {summaryStatusNote}
+          {summaryLoading ? <span className="sr-only">{summaryStatusNote}</span> : summaryStatusNote}
         </div>
         {(showCheckoutAction || showContinueAction) && (
           <div className="grid gap-2">
@@ -224,7 +226,7 @@ function Line({
 }: {
   compact?: boolean;
   label: string;
-  value: string;
+  value: ReactNode;
   strong?: boolean;
 }) {
   return (

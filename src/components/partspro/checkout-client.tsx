@@ -1,5 +1,7 @@
 "use client";
 
+import { InlinePending } from "./pending-feedback";
+
 import { englishUiCopy, englishUiTemplate } from "@/i18n/english-ui-copy";
 
 
@@ -1586,7 +1588,7 @@ function OrderLineRow({ issues, line, amountStatus }: { issues: PreviewIssue[]; 
   const t = useT();
   const { locale } = useI18n();
   const stockMeta = publicStockLevelMeta(t, line.product);
-  const amountLabel = amountStatus === "loading" ? tx(t, "storefront.checkout.amountCalculating", "Verifica ordine...") : tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare");
+  const amountLabel = amountStatus === "loading" ? <InlinePending /> : tx(t, "storefront.cart.amountNeedsReview", "Totale da confermare");
   const unitAmount = amountStatus === "ready" ? formatMoney(line.product.price, locale) : amountLabel;
   const lineAmount = amountStatus === "ready" ? formatMoney(line.lineTotal, locale) : amountLabel;
 
@@ -2253,7 +2255,7 @@ function CheckoutMobileBar({
   const hasWalletApplied = !amountPending && effectiveWalletApplied > 0;
   const amountLabel =
     amountPending
-      ? tx(t, "storefront.checkout.amountCalculating", "Verifica ordine...")
+      ? <InlinePending />
       : hasWalletApplied
         ? tx(t, "storefront.checkout.wallet.payable", "Importo da pagare")
         : amountStale
@@ -2288,13 +2290,13 @@ function CheckoutMobileBar({
           <CompactSummaryLine label={tx(t, "storefront.cart.rows", "Articoli")} value={String(lineCount)} />
           <CompactSummaryLine
             label={tx(t, "storefront.common.subtotal", "Subtotale")}
-            value={amountPending ? tx(t, "storefront.common.loading", "Caricamento") : formatMoney(totals.subtotal, locale)}
+            value={amountPending ? <InlinePending /> : formatMoney(totals.subtotal, locale)}
           />
           <CompactSummaryLine
             label={tx(t, "storefront.common.shipping", "Spedizione")}
             value={
               amountPending
-                ? tx(t, "storefront.common.loading", "Caricamento")
+                ? <InlinePending />
                 : totals.shipping === 0
                   ? tx(t, "storefront.common.free", "Gratis")
                   : formatMoney(totals.shipping, locale)
@@ -2320,7 +2322,7 @@ function CheckoutMobileBar({
                     : "border-amber-200 bg-amber-50 text-amber-900"
               )}
             >
-              {mobileStatusMessage}
+              {amountPending ? <span className="sr-only">{mobileStatusMessage}</span> : mobileStatusMessage}
             </div>
           )}
         </div>
@@ -2341,7 +2343,7 @@ function CheckoutMobileBar({
               <>
                 <span className="h-5 w-24 animate-pulse rounded bg-slate-200" />
                 <span className="text-xs font-bold text-slate-500">
-                  {tx(t, "storefront.common.loading", "Caricamento")}
+                  {<InlinePending />}
                 </span>
               </>
             ) : (
@@ -2383,7 +2385,7 @@ function CompactSummaryLine({
   value,
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
 }) {
   return (
     <div className="flex min-w-0 items-center justify-between gap-3 text-xs">
