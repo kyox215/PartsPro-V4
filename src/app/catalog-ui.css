@@ -199,7 +199,7 @@
 }
 @media (min-width: 1280px) {
   .pp-storefront .pp-home-product-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .pp-storefront .pp-home-promotion-grid[data-has-categories="true"] { grid-template-columns: minmax(0, 1fr) 180px; }
+  .pp-storefront .pp-home-promotion-grid[data-has-categories="true"] { grid-template-columns: minmax(0, 1fr) 208px; }
   .pp-storefront .pp-home-category-links { display: grid; align-content: stretch; gap: 12px; }
   .pp-storefront .pp-home-fallback-grid { grid-template-columns: minmax(0, 1fr) minmax(190px, .8fr); }
 }
