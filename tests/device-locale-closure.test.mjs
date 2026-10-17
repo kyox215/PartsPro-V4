@@ -102,3 +102,29 @@ test('English call sites have explicit translations for every fixed literal and 
  }
  assert.ok(checked>350,checked+' fixed UI translations checked');
 });
+test('REMAX and marketplace real helpers translate all fixed source messages in English',()=>{
+ const {englishLiteralCopy:dictionary}=load('src/i18n/english-literals.ts');
+ function propertyPairs(file,before){const source=fs.readFileSync(file,'utf8').split(before)[0];const ast=ts.createSourceFile(file,source,99,true);const rows=[];function walk(node){if(ts.isPropertyAssignment(node)&&ts.isStringLiteral(node.name)&&ts.isStringLiteral(node.initializer))rows.push([node.name.text,node.initializer.text]);ts.forEachChild(node,walk);}walk(ast);return rows;}
+ const {remaxText}=load('src/lib/admin-remax-copy.ts');let checked=0;
+ for(const [source]of propertyPairs('src/lib/admin-remax-copy.ts','export function remaxText')){
+  const expected = dictionary[source] ?? (source.startsWith('REMAX ') && source.includes(' could not ') ? source : undefined);
+  assert.equal(typeof expected,'string','REMAX source: '+source);assert.equal(remaxText(source,'en-US'),expected,source);checked++;
+ }
+ const {marketplaceText}=load('src/lib/admin-marketplace-copy.ts');
+ for(const [source,italian]of propertyPairs('src/lib/admin-marketplace-copy.ts','export function marketplaceText')){
+  assert.equal(typeof dictionary[italian],'string','eBay source: '+italian);assert.equal(marketplaceText(source,'en-US'),dictionary[italian],source);checked++;
+ }
+ assert.ok(checked>180,checked+' actual helper source messages verified');
+ for(const reason of ['disabled','connection','environment','production','publish','policies','sync','orders'])assert.doesNotMatch(marketplaceText('eBay readiness: '+reason,'en-US'),/Abilita|Collega|Ricollega|Salva/);
+});
+test('dynamic REMAX/eBay validation translates only UI and preserves row numbers and original values',()=>{
+ const {remaxText}=load('src/lib/admin-remax-copy.ts');const {marketplaceText}=load('src/lib/admin-marketplace-copy.ts');
+ for(const [value,expected]of [
+  ['Il file supera il limite di 500 righe.','The file exceeds the limit of 500 rows.'],
+  ['客户-SKU duplicato (già presente alla riga 12)','客户-SKU is duplicated (already present on row 12)'],
+  ['客户字段 deve essere un intero tra 1 e 100','客户字段 must be an integer between 1 and 100'],
+  ['客户字段 deve essere un numero valido maggiore o uguale a 0','客户字段 must be a valid number greater than or equal to 0'],
+ ])assert.equal(remaxText(value,'en-US'),expected);
+ assert.equal(marketplaceText('找不到商品 客户-SKU。','en-US'),'Product 客户-SKU not found.');
+ assert.equal(marketplaceText('缺少 eBay 必填属性：品牌、型号','en-US'),'Missing required eBay attributes: 品牌, 型号');
+});

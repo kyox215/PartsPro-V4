@@ -42,7 +42,13 @@ export function remaxText(value: string, locale: string, values: Record<string, 
       .replace(/^(.+) duplicato \(già presente alla riga (\d+)\)$/, "$1 重复（已出现在第 $2 行）")
       .replace(/^(.+) deve essere un intero tra (\d+) e (\d+)$/, "$1 须为 $2 至 $3 的整数")
       .replace(/^(.+) deve essere un numero valido maggiore o uguale a (\d+)$/, "$1 须为不小于 $2 的有效数字");
-  } else if (!locale.startsWith("en")) {
+  } else if (locale.startsWith("en")) {
+    template = value
+      .replace(/^Il file supera il limite di (\d+) righe\.$/, "The file exceeds the limit of $1 rows.")
+      .replace(/^(.+) duplicato \(già presente alla riga (\d+)\)$/, "$1 is duplicated (already present on row $2)")
+      .replace(/^(.+) deve essere un intero tra (\d+) e (\d+)$/, "$1 must be an integer between $2 and $3")
+      .replace(/^(.+) deve essere un numero valido maggiore o uguale a (\d+)$/, "$1 must be a valid number greater than or equal to $2");
+  } else {
     const italian: Record<string, string> = {
       "REMAX preorder dashboard could not be loaded.": "Lettura dati preordini REMAX non riuscita.",
       "REMAX preorder batch could not be imported.": "Importazione lotto REMAX non riuscita.",
