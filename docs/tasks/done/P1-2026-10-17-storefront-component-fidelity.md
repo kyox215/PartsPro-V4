@@ -1,6 +1,6 @@
 # P1-2026-10-17-storefront-component-fidelity
 
-状态：in_progress
+状态：done
 优先级：P1
 Task ID：TASK-20261017-UI04
 风险等级：R3（跨模块前台 UI 与生产发布）
@@ -40,4 +40,5 @@ R：主执行者；A：老板（本会话既有明确授权）；C：独立 rele
 - 精确deployment SHA、上传文件哈希、HTTP及浏览器证据与独立发布门。
 
 ## 执行记录
-实现中；验证证据放隔离候选 verification/。最终线上状态只记 docs/roadmap.md。
+2026-10-17：22份前台文件完成，运行f89a515已推送并上线FU4同构建。全量lint/build、6+26相关合同、上传完整性、独立STAGE/PROMOTE门、候选和正式各12HTTP、双正式alias、真实语言持久化与响应式只读验证通过。详情见 docs/audits/2026-10-17-storefront-component-fidelity.md；证据在隔离候选 verification/，交付 outputs/storefront-fidelity-detail/2026-10-17/。
+资料保存点击被自动审批拒绝，未执行；不声称真实业务保存/交易E2E通过。既有submitted待付款显示与统计口径差异已提醒老板。无DB/env/后台变更。最终线上状态只记 docs/roadmap.md。

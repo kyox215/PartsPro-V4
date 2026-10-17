@@ -208,6 +208,9 @@ Last reviewed: 2026-10-12
 - 全套交付位于 outputs/storefront-reference-match/2026-10-17/partspro-ui-full-kit.zip；任务已转 docs/tasks/done/P1-2026-10-17-storefront-preview-fidelity.md。
 
 
-## 2026-10-17 UI04：原稿组件与布局补齐（进行中）
+## 2026-10-17 UI04：原稿组件与布局补齐（已上线）
 
-任务 TASK-20261017-UI04：根据老板指出的语言切换等剩余差异，基于正式版 c2e5525 在隔离候选继续修正共享控件、采购页、账户、登录及申请布局。发布目标与原有授权一致；后台/API/DB/env 均排除。最终验证与上线结果将在本节更新。
+- TASK-20261017-UI04：按27原稿补齐地球全名语言下拉和手机常驻入口、共享顶部/搜索/设备树、首页、购物车列、结算三组与摘要、公司地址工作区、资料页签、账户通知、真实图库及登录/专业申请。保留真实数据和校验，未改后台/API/DB/env/依赖，无migration前置。
+- 运行 `f89a515d5da294e947a65fe1e132b06f2cb6835c` 已推送 `codex/storefront-fidelity-detail-20261017`；独立PROMOTE_GO后，`dpl_FU4dTyHQ8MxxtxPsMKTztGYqR64N` 同构建正式上线，两alias核对同SHA READY；apex307到www。回退保留BGN6/c2e5525。根工作树既有未提交改动保留，未合并main。
+- lint/build/32相关合同、1087源码一致/450保护/452上传、候选与正式各12HTTP、语言实际IT/ZH切换与刷新保持、1536/768/390/320合成组件及真实1536/390只读布局通过。已登录账户公司地址工作区确认，无联系方式截图导出；15m运行error/fatal无组，仅短时观察。
+- 自动审批拒绝资料保存校验点击，未执行或绕过；真实交易/资料/申请/通知写入未测。旧submitted待付款文案和计数口径差异仍待后续规范，分页统计边界已提醒。报告 `docs/audits/2026-10-17-storefront-component-fidelity.md`，任务已转done，全套 `outputs/storefront-fidelity-detail/2026-10-17/partspro-ui-full-kit-ui04.zip`。
