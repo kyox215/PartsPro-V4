@@ -219,6 +219,7 @@ function CategorySidebar({
           expandedBrandKey={expandedBrandKey}
           expandedDepartment={expandedDepartment}
           idPrefix="home-desktop-catalog"
+          brandLimit={5}
           onExpandedBrandKeyChange={setExpandedBrandKey}
           onExpandedDepartmentChange={setExpandedDepartment}
           prefetchCatalogLinks

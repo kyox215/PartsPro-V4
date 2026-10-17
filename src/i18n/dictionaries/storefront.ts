@@ -226,6 +226,7 @@ export function rmaCustomerStageLabel(t: StorefrontTranslator, value: string) {
 }
 
 export const storefrontItIT = {
+  "storefront.reference.allBrands": "Vedi tutti i brand",
   "storefront.reference.filters": "Filtri",
   "storefront.reference.filterDescription": "Scegli brand, modello e disponibilità, poi applica i filtri.",
   "storefront.reference.category": "Categoria",
@@ -1588,6 +1589,7 @@ export const storefrontItIT = {
 };
 
 export const storefrontZhCN = {
+  "storefront.reference.allBrands": "查看全部品牌",
   "storefront.reference.filters": "筛选",
   "storefront.reference.filterDescription": "选择品牌、机型和库存条件，然后应用筛选。",
   "storefront.reference.category": "商品分类",

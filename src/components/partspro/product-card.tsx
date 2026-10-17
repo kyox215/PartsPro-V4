@@ -211,6 +211,7 @@ export const ProductCard = memo(function ProductCard({
     <>
       <Card
         data-product-layout={layout}
+        data-price-visible={showWholesalePrice}
         className={cn(
           "pp-product-card @container/product h-full min-w-0 rounded-lg border-slate-200 bg-white shadow-sm transition sm:shadow-[0_14px_34px_rgba(15,23,42,0.045)] sm:hover:-translate-y-0.5 sm:hover:shadow-[0_18px_40px_rgba(15,23,42,0.07)]",
           className

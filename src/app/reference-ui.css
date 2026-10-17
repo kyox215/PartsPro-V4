@@ -269,3 +269,8 @@
 .pp-storefront .pp-reference-hero-products img:nth-child(2){height:110px;width:80px;left:40%}
 .pp-storefront .pp-reference-hero-products img:nth-child(3){height:70px;width:90px}
 }
+
+.pp-storefront .pp-home-all-brands{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:40px;padding:8px 12px;color:#1557ff;font-size:13px;font-weight:600}
+.pp-storefront [data-product-layout=home][data-price-visible=false] .pp-card-purchase{display:flex;flex-direction:column;align-items:stretch;gap:8px}
+.pp-storefront .pp-card-price .truncate{white-space:normal;overflow:visible;text-overflow:clip}
+.pp-storefront .pp-card-preorder .truncate{white-space:normal;overflow:visible;text-overflow:clip}

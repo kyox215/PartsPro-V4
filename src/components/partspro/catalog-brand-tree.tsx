@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { IntentLink as Link } from "./intent-link";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import {
   catalogDepartmentGroups as fallbackCatalogDepartmentGroups,
   catalogDepartments,
@@ -49,6 +49,7 @@ type CatalogBrandTreeProps = {
   prefetchCatalogLinks?: boolean;
   selectedCatalog?: CatalogSelection;
   variant?: CatalogBrandTreeVariant;
+  brandLimit?: number;
 };
 
 export function CatalogBrandTree({
@@ -64,6 +65,7 @@ export function CatalogBrandTree({
   prefetchCatalogLinks = false,
   selectedCatalog,
   variant = "mobile",
+  brandLimit,
 }: CatalogBrandTreeProps) {
   const t = useT();
   const directory = useCatalogDirectory();
@@ -393,7 +395,7 @@ export function CatalogBrandTree({
               {departmentOpen && hasBrands ? (
                 <div id={departmentPanelId} className="border-t border-slate-100 p-2">
                   <div className="space-y-1">
-                    {departmentGroup.brands.map((entry) => {
+                    {departmentGroup.brands.slice(0, brandLimit).map((entry) => {
                       const brandPanelKey = catalogBrandKey(department, entry.brand);
                       const brandOpen = expandedBrandKey === brandPanelKey;
                       const localizedBrand = brandLabel(t, entry.brand);
@@ -609,6 +611,7 @@ export function CatalogBrandTree({
                         </div>
                       );
                     })}
+                    {brandLimit && departmentGroup.brands.length > brandLimit ? <Link href={catalogQueryHref({department},assistedCompanyId)} className="pp-home-all-brands" onClick={onNavigate}>{tx(t,"storefront.reference.allBrands","Vedi tutti i brand")}<ChevronRight className="size-4"/></Link>:null}
                   </div>
                 </div>
               ) : null}
