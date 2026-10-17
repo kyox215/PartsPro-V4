@@ -8,8 +8,8 @@ export function StorefrontLoading() {
   const t = useT();
   return (
     <main className="pp-loading-page min-h-screen bg-[#f4f6fa] text-slate-950" aria-busy="true">
-      <header className="flex h-16 items-center justify-between border-b bg-white px-4">
-        <Link href="/" aria-label={t("nav.home")}><PartsProLogo /></Link>
+      <header className="pp-loading-header flex h-16 items-center justify-between border-b bg-white px-4">
+        <Link href="/" className="pp-header-logo" aria-label={t("nav.home")}><PartsProLogo /></Link>
         <Link href="/catalogo" className="text-sm font-semibold">{t("nav.catalog")}</Link>
       </header>
       <div className="mx-auto max-w-[1500px] space-y-4 p-4">

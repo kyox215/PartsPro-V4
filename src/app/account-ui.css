@@ -740,3 +740,12 @@
   .pp-storefront .pp-overview-company-heading>div{min-width:0}
   .pp-storefront .pp-overview-company-heading p{overflow-wrap:anywhere;word-break:normal}
 }
+
+/* Profile overview lives in the account workspace, matching A07. */
+.pp-storefront .pp-profile-summary-view .pp-profile-summary-grid { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,.9fr); gap:18px; }
+.pp-storefront .pp-profile-summary-view .pp-profile-facts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px 24px; }
+.pp-storefront .pp-profile-summary-view .pp-profile-identity { margin:0; }
+.pp-storefront .pp-profile-summary-view .pp-profile-identity > div { display:flex; justify-content:space-between; gap:15px; padding:13px 0; border-top:1px solid #e5ecf5; font-size:13px; line-height:1.7; }
+.pp-storefront .pp-profile-summary-view .pp-profile-identity dt { color:#7e91af; }
+.pp-storefront .pp-profile-summary-view .pp-profile-identity dd { margin:0; font-weight:550; }
+.pp-storefront .pp-profile-summary-view .pp-profile-address-text { font-size:15px; line-height:1.9; color:#4a5f81; overflow-wrap:anywhere; white-space:pre-line; }

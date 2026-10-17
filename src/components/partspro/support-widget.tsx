@@ -4,7 +4,7 @@ import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { usePathname } from "next/navigation";
-import { Headphones, Loader2, MessageCircle, X } from "lucide-react";
+import { Headphones, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "./i18n-provider";
 
@@ -145,7 +145,7 @@ export function SupportWidget() {
           onFocus={() => preloadSupportChatPanel()}
           onPointerEnter={() => preloadSupportChatPanel()}
         >
-          <MessageCircle className="size-4" />
+          <Headphones className="size-6" />
           <span className="max-[430px]:sr-only">{copy.openLabel}</span>
         </button>
       )}

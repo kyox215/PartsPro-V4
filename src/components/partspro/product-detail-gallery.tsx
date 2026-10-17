@@ -57,7 +57,7 @@ export function ProductDetailGallery({ product }: { product: PartProduct }) {
         </button>
       ) : <PartVisual variant={product.visual} className="pp-gallery-fallback" />}
       {activeImage && previewOpen ? (
-        <ProductImagePreviewDialog imageAlt={imageAlt} imageUrl={activeImage} onImageError={() => markFailed(activeImage)} onOpenChange={setPreviewOpen} open={previewOpen} productName={product.name} />
+        <ProductImagePreviewDialog imageAlt={imageAlt} imageUrl={activeImage} imageUrls={images} onImageError={markFailed} onOpenChange={setPreviewOpen} open={previewOpen} productName={product.name} />
       ) : null}
     </div>
   );

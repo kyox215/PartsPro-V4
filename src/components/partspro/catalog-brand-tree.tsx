@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { IntentLink as Link } from "./intent-link";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Laptop, Smartphone, Tablet, Wrench } from "lucide-react";
 import {
   catalogDepartmentGroups as fallbackCatalogDepartmentGroups,
   catalogDepartments,
@@ -202,8 +202,8 @@ export function CatalogBrandTree({
         onClick={onNavigate}
         title={title}
       >
-        <span className="flex min-w-0 items-center gap-1">
-          <span className="min-w-0 flex-1">{children}</span>
+        <span className="flex min-w-0 flex-1 items-center gap-1">
+          <span className="flex min-w-0 flex-1 items-center gap-2">{children}</span>
           <RoutePendingIndicator className="size-3 text-primary" />
         </span>
       </Link>
@@ -325,13 +325,15 @@ export function CatalogBrandTree({
             !inStockOnly;
           const departmentPanelId = catalogDepartmentPanelId(idPrefix, department);
           const localizedDepartment = catalogDepartmentLabel(t, department);
+          const DepartmentIcon = department === "phone" ? Smartphone : department === "tablet" ? Tablet : department === "computer" ? Laptop : Wrench;
           const hasBrands = departmentGroup.brands.length > 0;
 
           return (
             <div
               key={department}
+              data-expanded={departmentOpen}
               className={cn(
-                "overflow-hidden rounded-md border border-slate-100 bg-white",
+                "pp-tree-department overflow-hidden rounded-md border border-slate-100 bg-white",
                 desktop && "border-slate-200 shadow-[0_8px_22px_rgba(15,23,42,0.03)]"
               )}
             >
@@ -349,19 +351,11 @@ export function CatalogBrandTree({
                   selection: { department },
                   children: (
                     <>
+                      <DepartmentIcon aria-hidden="true" className="pp-tree-department-icon" />
                       <span className="min-w-0 flex-1 truncate">
                         {localizedDepartment}
                       </span>
-                      {desktop && (
-                        <span
-                          className={cn(
-                            "text-[11px] font-semibold text-slate-400",
-                            departmentSelected && "text-white/80"
-                          )}
-                        >
-                          {departmentGroup.brands.length}
-                        </span>
-                      )}
+
                     </>
                   ),
                 })}
@@ -451,9 +445,10 @@ export function CatalogBrandTree({
                                   {desktop && hasBrandChildren ? (
                                     <span
                                       className={cn(
-                                        "text-[11px] font-semibold text-slate-400",
+                                        "pp-tree-count text-[11px] font-semibold text-slate-400",
                                         brandSelected && "text-white/80"
                                       )}
+                                      title={txFormat(t, "storefront.reference.modelCount", "{count} modelli", {count: entry.models.length})}
                                     >
                                       {entry.models.length}
                                     </span>

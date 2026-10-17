@@ -10,10 +10,15 @@ import {
   AlertTriangle,
   ArrowLeft,
   CheckCircle2,
+  Building2,
+  Mail,
+  Phone,
+  Store,
+  Landmark,
+  Banknote,
   ChevronDown,
   ChevronUp,
   ClipboardCheck,
-  CreditCard,
   Loader2,
   MapPin,
   RefreshCcw,
@@ -990,20 +995,20 @@ function CheckoutClientContent({
             </Button>
           )}
           <fieldset disabled={submissionLocked} inert={submissionLocked} className="pp-checkout-sections space-y-2">
-          <DeliverySection
-            errors={formErrors}
-            form={form}
-            onChange={setForm}
+          <BuyerDetailsSection
+            company={selectedCompany}
+            profile={selectedCustomerProfile}
             shippingAddress={selectedShippingAddress}
             profileHref={isDelegatedMode ? "/admin?panel=accounts" : `/account?setup=1&returnTo=${encodeURIComponent(hrefWithAssistedCompanyId("/checkout", checkoutContextCompanyId || null))}`}
-            submitAttempted={submitAttempted}
+            error={submitAttempted ? formErrors.deliveryAddress : undefined}
           />
-          <PaymentSection
-            form={form}
-            isPreorder={isPreorder}
-            onChange={setForm}
-            walletPreview={walletPreview}
-          />
+          <Card className="pp-checkout-methods">
+            <CardHeader><CardTitle><span className="pp-checkout-number">2</span>{locale === "zh-CN" ? "配送与付款" : "Consegna e pagamento"}</CardTitle></CardHeader>
+            <CardContent className="pp-checkout-method-grid">
+              <DeliverySection form={form} onChange={setForm} />
+              <PaymentSection form={form} isPreorder={isPreorder} onChange={setForm} walletPreview={walletPreview} />
+            </CardContent>
+          </Card>
           <OrderLinesReview
             cartHref={cartHref}
             catalogLoadState={catalogLoadState}
@@ -1013,21 +1018,14 @@ function CheckoutClientContent({
             pendingCustomerItems={pendingCustomerItems}
             pendingItemsReason={pendingItemsReason}
             unresolvedSkus={reviewUnresolvedSkus}
-          />
-          <ConfirmationSection
-            confirmed={confirmed}
-            errors={formErrors}
-            form={form}
-            isPreorder={isPreorder}
-            submitAttempted={submitAttempted}
-            onChange={setConfirmed}
-            onFormChange={setForm}
+            notes={form.notes}
+            onNotesChange={(notes) => setForm(current => ({...current, notes}))}
           />
           </fieldset>
         </section>
 
-        <aside className="hidden lg:block">
-          <div className="space-y-2.5 lg:sticky lg:top-28">
+        <aside className="pp-checkout-summary">
+          <div className="lg:sticky lg:top-28">
             <OrderSummaryCard
               amountMessage={checkoutSyncState?.message}
               amountStatus={checkoutAmountStatus}
@@ -1040,7 +1038,18 @@ function CheckoutClientContent({
               showCheckoutAction={false}
               sticky={false}
               summaryNote={summaryNote}
-            />
+            >
+            <fieldset disabled={submissionLocked} inert={submissionLocked}>
+          <ConfirmationSection
+            confirmed={confirmed}
+            errors={formErrors}
+            form={form}
+            isPreorder={isPreorder}
+            submitAttempted={submitAttempted}
+            onChange={setConfirmed}
+            onFormChange={setForm}
+          />
+            </fieldset>
             <CheckoutSubmitPanel
               canSubmit={canSubmit}
               disabledReason={disabledReason}
@@ -1048,6 +1057,7 @@ function CheckoutClientContent({
               onSubmit={submitOrder}
               state={submitState}
             />
+            </OrderSummaryCard>
           </div>
         </aside>
       </div>
@@ -1091,11 +1101,11 @@ function CheckoutHeader({
       <div className="flex min-w-0 items-start gap-3">
         <Button asChild variant="outline" size="icon" className="size-9 shrink-0 bg-white" title={tx(t, "storefront.checkout.backToCart", "Torna al carrello")}>
           <Link href={cartHref} aria-label={tx(t, "storefront.checkout.backToCart", "Torna al carrello")}>
-            <ArrowLeft className="size-4" />
+            <ArrowLeft className="size-4" /><span>{tx(t, "storefront.checkout.backToCart", "Torna al carrello")}</span>
           </Link>
         </Button>
         <div className="min-w-0">
-          <div className="mb-1.5 flex flex-wrap gap-1.5">
+          <div className="pp-checkout-context-badges mb-1.5 flex flex-wrap gap-1.5">
             <Badge className="border border-primary/20 bg-primary/8 text-primary">
               {tx(t, "storefront.checkout.badge", "Checkout clienti")}
             </Badge>
@@ -1431,6 +1441,8 @@ function OrderLinesReview({
   pendingCustomerItems,
   pendingItemsReason,
   unresolvedSkus,
+  notes,
+  onNotesChange,
 }: {
   cartHref: string;
   catalogLoadState: "idle" | "loading" | "ready" | "error";
@@ -1440,6 +1452,8 @@ function OrderLinesReview({
   pendingCustomerItems: Array<{ quantity: number; sku: string }>;
   pendingItemsReason: PendingItemsReason | null;
   unresolvedSkus: string[];
+  notes: string;
+  onNotesChange: (notes: string) => void;
 }) {
   const t = useT();
   const issuesBySku = React.useMemo(() => {
@@ -1527,6 +1541,18 @@ function OrderLinesReview({
             </Link>
           </Button>
         )}
+        <div className="pp-checkout-notes space-y-1.5">
+          <Label htmlFor="notes">{tx(t, "storefront.checkout.field.notes", "Note ordine")}</Label>
+          <Textarea
+            id="notes"
+            value={notes}
+            className="min-h-16"
+            maxLength={500}
+            onChange={(event) =>
+              onNotesChange(event.currentTarget.value)
+            }
+          />
+        </div>
       </CardContent>
     </Card>
   );
@@ -1538,7 +1564,7 @@ function OrderLineRow({ issues, line }: { issues: PreviewIssue[]; line: CartLine
   const stockMeta = publicStockLevelMeta(t, line.product);
 
   return (
-    <div className="grid grid-cols-[48px_minmax(0,1fr)] gap-2 rounded-lg border border-slate-200 p-2 sm:grid-cols-[56px_minmax(220px,1fr)_70px_110px_110px] sm:items-center sm:gap-2.5 sm:p-2.5">
+    <div className="pp-checkout-review-row grid grid-cols-[48px_minmax(0,1fr)] gap-2 rounded-lg border border-slate-200 p-2 sm:grid-cols-[56px_minmax(220px,1fr)_70px_110px_110px] sm:items-center sm:gap-2.5 sm:p-2.5">
       <StorefrontProductImage
         product={line.product}
         sizes="56px"
@@ -1598,20 +1624,28 @@ function OrderLineRow({ issues, line }: { issues: PreviewIssue[]; line: CartLine
   );
 }
 
-function DeliverySection({
-  errors,
-  form,
-  onChange,
-  shippingAddress,
-  profileHref,
-  submitAttempted,
-}: {
-  errors: Record<string, string>;
-  form: CheckoutFormState;
-  onChange: React.Dispatch<React.SetStateAction<CheckoutFormState>>;
+function BuyerDetailsSection({company, profile, shippingAddress, profileHref, error}: {
+  company: CompanyProfile | null;
+  profile: AccountCustomerProfile | null;
   shippingAddress: string;
   profileHref: string;
-  submitAttempted: boolean;
+  error?: string;
+}) {
+  const {locale} = useI18n();
+  const zh = locale === "zh-CN";
+  const companyName = profile?.companyName || company?.name;
+  return <Card className="pp-checkout-buyer">
+    <CardHeader><CardTitle><span className="pp-checkout-number">1</span>{zh ? "采购与配送资料" : "Dati cliente e consegna"}</CardTitle><Link className="pp-checkout-profile-link" href={profileHref}>{zh ? "编辑资料" : "Modifica dati"}<ChevronDown aria-hidden="true"/></Link></CardHeader>
+    <CardContent className="pp-checkout-buyer-grid">
+      <div className="pp-checkout-buyer-identity"><span className="pp-checkout-buyer-icon"><Building2 aria-hidden="true"/></span><div><strong>{companyName || (zh ? "待完善采购资料" : "Completa i dati cliente")}</strong>{profile?.email ? <p><Mail aria-hidden="true"/>{profile.email}</p> : null}{profile?.phone ? <p><Phone aria-hidden="true"/>{profile.phone}</p> : null}</div></div>
+      <div className="pp-checkout-buyer-address"><div><MapPin aria-hidden="true"/><div><strong>{zh ? "配送地址" : "Indirizzo di consegna"}</strong><p>{shippingAddress || (zh ? "请先在个人资料中补全配送地址。" : "Completa l’indirizzo nel profilo cliente.")}</p></div></div><div><ClipboardCheck aria-hidden="true"/><div><strong>Partita IVA</strong><p>{profile?.vatNumber || company?.partitaIva || "—"}</p></div></div>{error ? <p role="alert" className="text-sm text-red-600">{error}</p> : null}</div>
+    </CardContent>
+  </Card>;
+}
+
+function DeliverySection({form, onChange}: {
+  form: CheckoutFormState;
+  onChange: React.Dispatch<React.SetStateAction<CheckoutFormState>>;
 }) {
   const t = useT();
   const options = [
@@ -1629,50 +1663,9 @@ function DeliverySection({
     },
   ];
 
-  return (
-    <Card size="sm" className="pp-checkout-delivery rounded-lg border-slate-200 bg-white py-2.5">
-      <CardHeader className="px-3">
-        <CardTitle className="flex items-center gap-2">
-          <Truck className="size-4 text-primary" />
-          {tx(t, "storefront.checkout.group.delivery", "Consegna")}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-2.5 px-3 sm:grid-cols-[minmax(0,1fr)_minmax(220px,300px)]">
-        <div
-          className={cn(
-            "rounded-lg border p-2.5 text-sm sm:col-span-2",
-            shippingAddress
-              ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-              : "border-amber-200 bg-amber-50 text-amber-950"
-          )}
-        >
-          <div className="flex items-start gap-2">
-            <MapPin className="mt-0.5 size-4 shrink-0 text-primary" />
-            <div className="min-w-0">
-              <div className="font-black">
-                {tx(t, "storefront.checkout.savedShippingAddress", "Indirizzo spedizione salvato")}
-              </div>
-              {shippingAddress ? (
-                <div className="mt-2"><p className="break-words leading-6">{shippingAddress}</p><Button asChild variant="outline" size="sm" className="mt-2 bg-white"><Link href={profileHref}>{tx(t, "storefront.common.edit", "Modifica")}</Link></Button></div>
-              ) : (
-                <div className="mt-2">
-                  <p className="break-words text-xs font-semibold leading-5">
-                    {tx(t, "storefront.checkout.deliveryAddressMissing", "Completa l'indirizzo di spedizione nel profilo cliente.")}
-                  </p>
-                  <Button asChild variant="outline" size="sm" className="mt-2 bg-white">
-                    <Link href={profileHref}>
-                      {tx(t, "storefront.checkout.completeProfile", "Completa profilo")}
-                    </Link>
-                  </Button>
-                </div>
-              )}
-              {submitAttempted && errors.deliveryAddress ? (
-                <div className="mt-1 text-xs font-bold text-red-600">{errors.deliveryAddress}</div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-        <div className="grid gap-1.5 sm:col-span-2 sm:grid-cols-2">
+  return <section className="pp-checkout-delivery">
+    <h3>{tx(t, "storefront.checkout.group.delivery", "Consegna")}</h3>
+    <div className="pp-checkout-delivery-options">
           {options.map((option) => (
             <label
               key={option.value}
@@ -1684,7 +1677,7 @@ function DeliverySection({
               )}
             >
               <input
-                className="sr-only"
+                className="pp-method-radio"
                 type="radio"
                 name="deliveryMethod"
                 value={option.value}
@@ -1693,7 +1686,7 @@ function DeliverySection({
                   onChange((current) => ({ ...current, deliveryMethod: option.value }))
                 }
               />
-              <Truck className="mt-0.5 size-4 shrink-0 text-primary" />
+              {option.value === "pickup" ? <Store aria-hidden="true" className="pp-method-icon"/> : <Truck aria-hidden="true" className="pp-method-icon"/>}
               <span className="min-w-0">
                 <span className="block font-black">{option.label}</span>
                 <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">
@@ -1705,10 +1698,8 @@ function DeliverySection({
               </span>
             </label>
           ))}
-        </div>
-      </CardContent>
-    </Card>
-  );
+    </div>
+  </section>;
 }
 
 function PaymentSection({
@@ -1741,14 +1732,10 @@ function PaymentSection({
   ];
 
   return (
-    <Card size="sm" className="pp-checkout-payment rounded-lg border-slate-200 bg-white py-2.5">
-      <CardHeader className="px-3">
-        <CardTitle className="flex items-center gap-2">
-          <CreditCard className="size-4 text-primary" />
-          {tx(t, "storefront.checkout.group.payment", "Pagamento")}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-2.5 px-3">
+    <>
+      <section className="pp-checkout-payment">
+        <h3>{tx(t, "storefront.checkout.group.payment", "Pagamento")}</h3>
+        <div className="space-y-2.5">
         {isPreorder ? (
           <div className="rounded-lg border border-fuchsia-200 bg-fuchsia-50 p-3 text-xs font-semibold leading-5 text-fuchsia-950">
             {tx(
@@ -1758,7 +1745,7 @@ function PaymentSection({
             )}
           </div>
         ) : null}
-        <div className="grid grid-cols-2 gap-1.5">
+        <div className="pp-checkout-payment-options">
           {options.map((option) => (
             <label
               key={option.value}
@@ -1771,7 +1758,7 @@ function PaymentSection({
               )}
             >
               <input
-                className="sr-only"
+                className="pp-method-radio"
                 type="radio"
                 name="paymentMethod"
                 value={option.value}
@@ -1781,6 +1768,7 @@ function PaymentSection({
                   onChange((current) => ({ ...current, paymentMethod: option.value }))
                 }
               />
+              {option.value === "bank_transfer" ? <Landmark aria-hidden="true" className="pp-method-icon"/> : <Banknote aria-hidden="true" className="pp-method-icon"/>}
               <span className="min-w-0">
                 <span className="block">{option.label}</span>
                 <span className="mt-1 block text-xs font-semibold leading-5 text-slate-500">
@@ -1790,6 +1778,9 @@ function PaymentSection({
             </label>
           ))}
         </div>
+        </div>
+      </section>
+      <div className="pp-checkout-wallet">
         <label
           className={cn(
             "flex min-w-0 items-start gap-2.5 rounded-lg border px-2.5 py-2.5 text-sm transition",
@@ -1855,20 +1846,9 @@ function PaymentSection({
             ) : null}
           </span>
         </label>
-        <div className="space-y-1.5">
-          <Label htmlFor="notes">{tx(t, "storefront.checkout.field.notes", "Note ordine")}</Label>
-          <Textarea
-            id="notes"
-            value={form.notes}
-            className="min-h-16"
-            maxLength={500}
-            onChange={(event) =>
-              onChange((current) => ({ ...current, notes: event.currentTarget.value }))
-            }
-          />
-        </div>
-      </CardContent>
-    </Card>
+
+      </div>
+    </>
   );
 }
 

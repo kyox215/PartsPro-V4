@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Grid3X3, Search, Home, ShoppingBag, UserRound } from "lucide-react";
+import { ArrowLeft, Grid3X3, Search, Home, ShoppingBag, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CatalogDepartmentGroup } from "@/lib/partspro-data";
@@ -54,6 +54,7 @@ export function StoreHeader({
   const t = useT();
   const router = useRouter();
   const pathname = usePathname();
+  const accountPage = pathname === "/account" || pathname.startsWith("/account/");
   const [isSearchPending, startSearchTransition] = useTransition();
   const [accountAccess, setAccountAccess] = useState<AccountAccessState>(
     () => initialAccountAccess ?? loadingAccountAccess
@@ -144,39 +145,14 @@ export function StoreHeader({
 
   return (
     <>
-      <header className="pp-store-header fixed inset-x-0 top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
+      <header data-account-page={accountPage || undefined} className="pp-store-header fixed inset-x-0 top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
         <div className="pp-store-header-row mx-auto flex h-14 w-full max-w-[1500px] items-center gap-2 px-3 sm:h-16 sm:gap-3 sm:px-4">
-          <StoreDeferredMobileMenu
-            assistedCompanyId={assistedCompanyId}
-            departmentGroups={departmentGroups}
-            onCatalogSelect={onCatalogSelect}
-            prefetchCatalogLinks={prefetchCatalogLinks}
-            selectedCatalog={selectedCatalog}
-          />
-
           <Link
             href="/"
             aria-label={tx(t, "storefront.home.header.logoLabel", "Torna alla home PartsPro")}
-            className="hidden shrink-0 items-center gap-1 rounded-lg outline-none transition active:translate-y-px focus-visible:ring-3 focus-visible:ring-ring/50 sm:flex"
+            className="pp-header-logo shrink-0 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
           >
-            <PartsProLogo
-              tagline={tx(
-                t,
-                "storefront.logo.tagline",
-                "Ricambi smartphone Italia"
-              )}
-            />
-            <RoutePendingIndicator className="size-3 text-primary" />
-          </Link>
-          <Link
-            href="/"
-            aria-label={tx(t, "storefront.home.header.logoLabel", "Torna alla home PartsPro")}
-            className="flex min-w-0 shrink-0 items-center gap-1.5 rounded-lg outline-none transition active:translate-y-px focus-visible:ring-3 focus-visible:ring-ring/50 sm:hidden"
-          >
-            <PartsProLogo compact />
-            <span className="text-base font-black leading-none tracking-normal text-slate-950">
-              PartsPro
-            </span>
+            <PartsProLogo />
             <RoutePendingIndicator className="size-3 text-primary" />
           </Link>
 
@@ -185,7 +161,8 @@ export function StoreHeader({
             {tx(t, "nav.catalog", "Catalogo")}
           </Link>
           <form
-            className="relative ml-auto hidden min-w-[260px] flex-1 xl:block xl:max-w-2xl"
+            className="pp-header-search relative ml-auto hidden min-w-[180px] flex-1 md:block"
+            role="search"
             onSubmit={handleSearchSubmit}
           >
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -200,7 +177,7 @@ export function StoreHeader({
             <Button
               type="submit"
               size="icon-sm"
-              className="absolute right-0.5 top-1/2 size-9 -translate-y-1/2 rounded-full"
+              className="pp-header-search-submit absolute right-0.5 top-1/2 size-9 -translate-y-1/2 rounded-full"
               aria-label={tx(t, "storefront.header.searchSubmit", "Cerca")}
             >
               <span className="relative grid size-4 place-items-center">
@@ -214,8 +191,13 @@ export function StoreHeader({
             </Button>
           </form>
 
-          <Button asChild variant="ghost" size="sm" className="hidden xl:inline-flex"><Link href="/help">{tx(t,"storefront.ux.help","Aiuto")}</Link></Button>
-          <LanguageSwitcher compact className="ml-auto hidden md:inline-flex xl:ml-0" />
+          {accountPage ? <Link href="/catalogo" className="pp-header-return"><ArrowLeft aria-hidden="true" />{tx(t, "storefront.reference.backToStore", "Torna allo shop")}</Link> : null}
+          <StoreCartButton
+            ariaLabel={tx(t, "storefront.header.openCart", "Apri carrello")}
+            href={hrefWithAssistedCompanyId("/carrello", assistedCompanyId)}
+            label={tx(t, "nav.cart", "Carrello")}
+          />
+          <LanguageSwitcher presentation="menu" className="pp-header-language" />
 
           <StoreDeferredAccountMenu
             access={accountAccess}
@@ -228,11 +210,15 @@ export function StoreHeader({
             staffLabel={tx(t, "storefront.account.staffRole", "Accesso staff")}
           />
 
-          <StoreCartButton
-            ariaLabel={tx(t, "storefront.header.openCart", "Apri carrello")}
-            href={hrefWithAssistedCompanyId("/carrello", assistedCompanyId)}
-            label={tx(t, "nav.cart", "Carrello")}
-          />
+          <div className="pp-header-menu">
+            <StoreDeferredMobileMenu
+              assistedCompanyId={assistedCompanyId}
+              departmentGroups={departmentGroups}
+              onCatalogSelect={onCatalogSelect}
+              prefetchCatalogLinks={prefetchCatalogLinks}
+              selectedCatalog={selectedCatalog}
+            />
+          </div>
         </div>
         <form onSubmit={handleSearchSubmit} className="pp-header-mobile-search relative mx-3 mb-2 xl:hidden" role="search">
           <label htmlFor="store-header-search" className="sr-only">{tx(t, "storefront.header.searchFull", "Cerca SKU, brand, modello...")}</label>
@@ -242,11 +228,11 @@ export function StoreHeader({
         <nav className="pp-desktop-primary-nav" aria-label={tx(t, "nav.catalog", "Catalogo")}>
           <Link href="/" aria-current={pathname === "/" ? "page" : undefined}><Home />{tx(t,"nav.home","Home")}</Link>
           <Link href={hrefWithAssistedCompanyId("/catalogo",assistedCompanyId)} aria-current={pathname === "/catalogo" || pathname.startsWith("/prodotto/") ? "page" : undefined}><Grid3X3 />{tx(t,"nav.catalog","Catalogo")}</Link>
-          <Link href="/#remax-preorders"><ShoppingBag />REMAX</Link>
+          <Link href="/#remax-preorders"><ShoppingBag />{tx(t,"storefront.reference.preorderNav","REMAX preordini")}</Link>
           <Link href="/professionale" aria-current={pathname === "/professionale" ? "page" : undefined}><UserRound />{tx(t,"storefront.reference.professionalNav","Professionisti")}</Link>
         </nav>
       </header>
-      <div aria-hidden="true" className="pp-store-header-spacer h-[108px] sm:h-[116px] xl:h-16" />
+      <div aria-hidden="true" data-account-page={accountPage || undefined} className="pp-store-header-spacer h-[108px] sm:h-[116px] xl:h-16" />
       <StoreBottomNavigation assistedCompanyId={assistedCompanyId} />
     </>
   );

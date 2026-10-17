@@ -501,7 +501,8 @@ export const ProductCard = memo(function ProductCard({
         <ProductImagePreviewDialog
           imageAlt={imageAlt}
           imageUrl={imageUrl}
-          onImageError={() => markImageFailed(imageUrl)}
+          imageUrls={(product.galleryImageUrls ?? []).filter(url => !failedImageUrls.includes(url))}
+          onImageError={markImageFailed}
           onOpenChange={setPreviewOpen}
           open={previewOpen}
           productName={product.name}

@@ -5,6 +5,7 @@ import Image from "./optimized-image";
 import Link from "next/link";
 import {
   ArrowRight,
+  Ellipsis,
   BatteryCharging,
   Cable,
   CalendarClock,
@@ -66,15 +67,21 @@ export function HomePage({ departmentGroups, initialAccountAccess, banner, preor
       <div className="pp-home-layout">
         <CategorySidebar departmentGroups={departmentGroups} />
         <div className="pp-home-content min-w-0">
-          <div className="pp-home-mobile-intro"><h1>{tx(t,"storefront.ui.home.title","Trova il ricambio giusto.")}</h1><p>{tx(t,"storefront.ui.home.subtitle","Cerca per brand, modello o SKU e prepara il tuo ordine.")}</p></div>
-          <form action="/catalogo" className="pp-home-search" role="search"><Search aria-hidden="true"/><input name="q" aria-label={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")} placeholder={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")} /><button type="submit" aria-label={tx(t,"storefront.header.searchSubmit","Cerca")}><ArrowRight/></button></form>
+          <div className="pp-home-mobile-intro"><h1>{tx(t,"storefront.reference.mobileTitle","Trova il ricambio giusto")}</h1><p>{tx(t,"storefront.ui.home.subtitle","Cerca per brand, modello o SKU e prepara il tuo ordine.")}</p></div>
+          <form action="/catalogo" className="pp-home-search" role="search"><Search aria-hidden="true"/><input name="q" aria-label={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")} placeholder={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")} /><button type="submit" aria-label={tx(t,"storefront.header.searchSubmit","Cerca")}>{tx(t,"storefront.header.searchSubmit","Cerca")}</button></form>
           <div className="pp-reference-hero-row">
             <section className="pp-reference-hero"><div className="pp-reference-hero-copy"><span>{tx(t,"storefront.reference.heroEyebrow","RICAMBI PER PROFESSIONISTI")}</span><h1>{tx(t,"storefront.ui.home.title","Trova il ricambio giusto.")}</h1><p>{tx(t,"storefront.ui.home.subtitle","Cerca per brand, modello o SKU e prepara il tuo ordine.")}</p><Button asChild><Link href="/catalogo">{tx(t,"storefront.ux.browseCatalog","Sfoglia catalogo")}<ArrowRight className="size-4"/></Link></Button></div><div className="pp-reference-hero-products" aria-hidden="true"><Image src="/home/reference-display.png" alt="" width={210} height={230}/><Image src="/home/reference-battery.jpg" alt="" width={150} height={170}/><Image src="/home/reference-connector.png" alt="" width={140} height={140}/></div></section>
             <nav className="pp-home-category-links" aria-label={tx(t,"storefront.ui.home.quickLinks","Acquista per categoria")}>
-              {quickCategories.map((node) => {const Icon = /scherm|display|screen/i.test(node.value) ? MonitorSmartphone : /batt/i.test(node.value) ? BatteryCharging : Cable;return <Link href={`/catalogo?${new URLSearchParams({category:node.value}).toString()}`} key={node.id}><span className="pp-home-category-icon"><Icon/></span><span>{catalogNodeLabel(node,locale)}</span><ChevronRight className="size-4"/></Link>;})}
+              {quickCategories.map((node) => {const Icon = /scherm|display|screen/i.test(node.value) ? MonitorSmartphone : /batt/i.test(node.value) ? BatteryCharging : Cable;return <Link href={`/catalogo?${new URLSearchParams({category:node.value}).toString()}`} key={node.id}><span className="pp-home-category-icon"><Icon/></span><Image className="pp-home-category-photo" src={/scherm|display|screen/i.test(node.value) ? "/home/reference-display.png" : /batt/i.test(node.value) ? "/home/reference-battery.jpg" : "/home/reference-connector.png"} alt="" width={68} height={70}/><span>{catalogNodeLabel(node,locale)}</span><ChevronRight className="size-4"/></Link>;})}
             </nav>
           </div>
-          <nav className="pp-home-mobile-brands" aria-label={tx(t,"storefront.home.sidebar.subtitle","Brand e modelli")}>{departmentGroups.flatMap(group=>group.brands).slice(0,6).map(brand=><Link key={brand.brand} href={`/catalogo?brand=${encodeURIComponent(brand.brand)}`}>{brand.brand}</Link>)}</nav>
+          <section className="pp-home-brands-panel">
+            <div><h2>{tx(t,"storefront.reference.chooseBrand","Scegli il brand")}</h2><Link href="/catalogo">{tx(t,"storefront.reference.moreBrands","Altri brand")}<ArrowRight aria-hidden="true"/></Link></div>
+            <nav className="pp-home-mobile-brands" aria-label={tx(t,"storefront.home.sidebar.subtitle","Brand e modelli")}>
+              {departmentGroups.find(group => group.department === "phone")?.brands.slice(0,2).map(brand=><Link key={brand.brand} href={`/catalogo?${new URLSearchParams({department:"phone",brand:brand.brand}).toString()}`}><span className="pp-home-brand-monogram" aria-hidden="true">{brand.brand.slice(0,2)}</span>{brand.brand}</Link>)}
+              <Link href="/catalogo"><span className="pp-home-brand-monogram"><Ellipsis aria-hidden="true"/></span>{tx(t,"storefront.reference.moreBrands","Altri brand")}</Link>
+            </nav>
+          </section>
           {children}
         </div>
       </div>

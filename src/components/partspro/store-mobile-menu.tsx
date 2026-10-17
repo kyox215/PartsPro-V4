@@ -285,7 +285,7 @@ export function StoreMobileMenu({
             </div>
           </nav>
           <div className="mt-auto border-t border-slate-100 px-3 py-3">
-            <LanguageSwitcher compact className="h-9 shadow-none" />
+            <LanguageSwitcher presentation="menu" className="w-full" />
           </div>
         </div>
       </SheetContent>

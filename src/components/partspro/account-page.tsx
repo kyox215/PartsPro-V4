@@ -249,6 +249,7 @@ function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, a
         return () => window.clearTimeout(timeoutId);
     }, [loadedSection, openOrderDetail, orderSummaries, searchParams]);
     function changeSection(section: AccountSectionId) {
+        setProfileSummaryOpen(false);
         setActiveSection(section);
         const params = new URLSearchParams(searchParams.toString());
         params.set("section", section);
@@ -273,19 +274,20 @@ function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, a
         <aside className="pp-account-navigation">
           <div className="pp-account-sidebar-title"><h2>{ui.title}</h2><span>ACCOUNT</span></div>
           <button type="button" className="pp-account-sidebar-company" onClick={() => setProfileSummaryOpen(true)}><span className="pp-account-company-avatar"><Building2 aria-hidden="true"/></span><span><strong>{company?.name || profile?.companyName || userEmail || ui.title}</strong><small>{isEmployeeAccount ? ui.staff : (profile?.customerType ?? company?.customerType) === "wholesale" ? ui.business : ui.customer}</small></span></button>
-          <AccountSectionNav activeSection={activeSection} orderSummaries={orderSummaries} rmaRequests={rmaRequests} onSectionChange={changeSection}/>
-          <div className="pp-account-sidebar-secondary"><button type="button" className="pp-account-sidebar-link" onClick={() => setProfileSummaryOpen(true)}><Building2 aria-hidden="true"/><span>{ui.companyAddress}</span></button><div className="pp-account-notifications"><Bell aria-hidden="true"/><span>{ui.notifications}</span><NotificationCenter audience={isEmployeeAccount ? "staff" : "customer"} className="pp-account-notification-button" portalClassName="pp-storefront-portal"/></div></div>
+          <AccountSectionNav activeSection={profileSummaryOpen ? undefined : activeSection} orderSummaries={orderSummaries} rmaRequests={rmaRequests} onSectionChange={changeSection}/>
+          <div className="pp-account-sidebar-secondary"><button type="button" className="pp-account-sidebar-link" aria-current={profileSummaryOpen ? "page" : undefined} onClick={() => setProfileSummaryOpen(true)}><Building2 aria-hidden="true"/><span>{ui.companyAddress}</span></button><div className="pp-account-notifications"><Bell aria-hidden="true"/><span>{ui.notifications}</span><NotificationCenter audience={isEmployeeAccount ? "staff" : "customer"} className="pp-account-notification-button" presentation="account" portalClassName="pp-storefront-portal"/></div></div>
           <div className="pp-account-sidebar-footer"><Link className="pp-account-sidebar-link" href="/help"><CircleHelp aria-hidden="true"/><span>{ui.help}</span></Link><form action={signOut}><button type="submit" className="pp-account-sidebar-link"><LogOut aria-hidden="true"/><span>{c("退出")}</span></button></form></div>
         </aside>
         <div className="pp-account-main">
-        <header className="pp-account-heading"><div><p className="pp-account-breadcrumb">{ui.title}<span>/</span>{ui[activeSection]}</p><h1>{activeSection === "overview" ? ui.welcome : ui[activeSection]}</h1><p>{ui[`${activeSection}Description`]}</p></div><Button asChild className="pp-account-primary-action"><Link href={activeSection === "service" ? "/rma" : "/catalogo"}>{activeSection === "service" ? <Plus aria-hidden="true"/> : null}{activeSection === "service" ? c("新建售后申请") : ui.shop}<ArrowRight aria-hidden="true"/></Link></Button></header>
+        <header className="pp-account-heading"><div><p className="pp-account-breadcrumb">{ui.title}<span>/</span>{profileSummaryOpen ? ui.companyAddress : ui[activeSection]}</p><h1>{profileSummaryOpen ? ui.companyAddress : activeSection === "overview" ? ui.welcome : ui[activeSection]}</h1><p>{profileSummaryOpen ? ui.profileDescription : ui[`${activeSection}Description`]}</p></div>{profileSummaryOpen ? <Button className="pp-account-primary-action pp-profile-edit-action" onClick={() => setProfileDialogOpen(true)}><Pencil aria-hidden="true"/>{ui.editProfile}</Button> : <Button asChild className="pp-account-primary-action"><Link href={activeSection === "service" ? "/rma" : "/catalogo"}>{activeSection === "service" ? <Plus aria-hidden="true"/> : null}{activeSection === "service" ? c("新建售后申请") : ui.shop}<ArrowRight aria-hidden="true"/></Link></Button>}</header>
         {shouldShowProfileNotice && profile ? (<AccountProfileNotice forceSetup={forceSetup} profile={profile} onOpen={() => setProfileDialogOpen(true)}/>) : null}
 
         {dataWarning ? (<div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
             <AsyncFeedback state="error" title={c(accountDataWarningLabel(dataWarning, isEmployeeAccount))} actions={<Button variant="outline" onClick={() => router.refresh()}>{c("重试")}</Button>}/>
           </div>) : null}
 
-        <section className="pp-account-section min-w-0" aria-busy={sectionPending || loadedSection !== activeSection}>
+        {profileSummaryOpen ? <AccountProfileSummaryView open={profileSummaryOpen} onOpenChange={setProfileSummaryOpen} company={company} profile={profile} userEmail={userEmail} onEdit={() => setProfileDialogOpen(true)}/> : null}
+        <section hidden={profileSummaryOpen} className="pp-account-section min-w-0" aria-busy={sectionPending || loadedSection !== activeSection}>
           {sectionPending || loadedSection !== activeSection ? (<div role="status" className="flex min-h-48 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-500">
               <Loader2 className="size-4 animate-spin"/>{t("common.loading")}
             </div>) : <>
@@ -324,7 +326,7 @@ function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, a
         </Dialog>
 
         <AccountProfileDialog open={profileDialogOpen} profile={editableProfile} userEmail={userEmail} onOpenChange={setProfileDialogOpen} onSaved={handleProfileSaved}/>
-        <AccountProfileSummaryDialog open={profileSummaryOpen} onOpenChange={setProfileSummaryOpen} company={company} profile={profile} userEmail={userEmail} onEdit={() => { setProfileSummaryOpen(false); setProfileDialogOpen(true); }}/>
+
       </div>
     </main>);
 }
@@ -389,7 +391,7 @@ function walletTransactionReasonLabel(reason: string, direction: "credit" | "deb
     return reason || walletTransactionLabel(direction);
 }
 function AccountSectionNav({ activeSection, onSectionChange, orderSummaries, rmaRequests }: {
-    activeSection: AccountSectionId;
+    activeSection?: AccountSectionId;
     onSectionChange: (section: AccountSectionId) => void;
     orderSummaries: OrderSummary[];
     rmaRequests: RmaRequest[];
@@ -483,7 +485,7 @@ function AccountSummaryPanel({ company, isEmployeeAccount, onOpenProfile, onOpen
         <p className="pp-account-rule-note pp-overview-tier-note">{c("有效等级为基础等级与有效促销中较高者。售后退款不额外扣回升级累计，钱包再次购买按订单规则累计。")}</p>
     </div>;
 }
-function AccountProfileSummaryDialog({ company, profile, userEmail, open, onOpenChange, onEdit }: { company: CompanyProfile | null; profile: AccountCustomerProfile | null; userEmail?: string; open: boolean; onOpenChange: (open: boolean) => void; onEdit: () => void }) {
+function AccountProfileSummaryView({ company, profile, userEmail, open, onOpenChange, onEdit }: { company: CompanyProfile | null; profile: AccountCustomerProfile | null; userEmail?: string; open: boolean; onOpenChange: (open: boolean) => void; onEdit: () => void }) {
     const c = useAccountCopy();
     const ui = useAccountReferenceCopy();
     const level = normalizeCustomerTier(profile?.level ?? company?.level ?? company?.priceList);
@@ -492,7 +494,8 @@ function AccountProfileSummaryDialog({ company, profile, userEmail, open, onOpen
     ];
     const shipping = profile?.shippingAddress || company?.shippingAddress || "";
     const billing = profile?.billingAddress || company?.billingAddress || "";
-    return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent scrollLayout="body" className="pp-storefront-portal pp-account-dialog pp-profile-summary-dialog"><DialogHeader><DialogTitle>{ui.companyAddress}</DialogTitle><DialogDescription>{ui.profileDescription}</DialogDescription></DialogHeader><DialogBody><div className="pp-profile-summary-grid"><section className="pp-account-panel"><header className="pp-account-panel-header"><h2><Building2 aria-hidden="true"/>{ui.companyInfo}</h2></header><div className="pp-profile-facts">{rows.map(([label, value]) => <Info key={label} label={label} value={value}/>)}</div><p className="pp-account-rule-note">{ui.emailLocked}</p></section><section className="pp-account-panel"><header className="pp-account-panel-header"><h2><ShieldCheck aria-hidden="true"/>{ui.accountIdentity}</h2></header><dl className="pp-profile-identity"><div><dt>{c("价格类型")}</dt><dd>{(profile?.customerType ?? company?.customerType) === "wholesale" ? c("批发价") : c("零售价")}</dd></div><div><dt>{ui.baseLevel}</dt><dd>{c(customerLevelLabel(profile?.baseLevel ?? company?.baseLevel ?? level))}</dd></div><div><dt>{ui.effectiveLevel}</dt><dd>{c(customerLevelLabel(level))}</dd></div><div><dt>{c("资料")}</dt><dd>{company ? c(companyStatusLabel(company.status)) : profile?.profileCompletedAt ? ui.complete : ui.incomplete}</dd></div></dl></section><section className="pp-account-panel"><header className="pp-account-panel-header"><h2><MapPin aria-hidden="true"/>{ui.address}</h2></header><p className="pp-profile-address-text">{shipping || ui.noAddress}</p></section><section className="pp-account-panel"><header className="pp-account-panel-header"><h2><FileText aria-hidden="true"/>{ui.billingAddress}</h2>{billing && billing === shipping ? <Badge>{ui.sameAddress}</Badge> : null}</header><p className="pp-profile-address-text">{billing || ui.noAddress}</p></section></div></DialogBody><DialogFooter><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{c("取消")}</Button><Button type="button" onClick={() => { onOpenChange(false); window.requestAnimationFrame(onEdit); }}><Pencil aria-hidden="true"/>{ui.editProfile}</Button></DialogFooter></DialogContent></Dialog>;
+    if (!open) return null;
+    return <section className="pp-profile-summary-view" aria-label={ui.companyAddress}><div className="pp-profile-summary-grid"><section className="pp-account-panel"><header className="pp-account-panel-header"><h2><Building2 aria-hidden="true"/>{ui.companyInfo}</h2></header><div className="pp-profile-facts">{rows.map(([label, value]) => <Info key={label} label={label} value={value}/>)}</div><p className="pp-account-rule-note">{ui.emailLocked}</p></section><section className="pp-account-panel"><header className="pp-account-panel-header"><h2><ShieldCheck aria-hidden="true"/>{ui.accountIdentity}</h2></header><dl className="pp-profile-identity"><div><dt>{c("价格类型")}</dt><dd>{(profile?.customerType ?? company?.customerType) === "wholesale" ? c("批发价") : c("零售价")}</dd></div><div><dt>{ui.baseLevel}</dt><dd>{c(customerLevelLabel(profile?.baseLevel ?? company?.baseLevel ?? level))}</dd></div><div><dt>{ui.effectiveLevel}</dt><dd>{c(customerLevelLabel(level))}</dd></div><div><dt>{c("资料")}</dt><dd>{company ? c(companyStatusLabel(company.status)) : profile?.profileCompletedAt ? ui.complete : ui.incomplete}</dd></div></dl></section><section className="pp-account-panel"><header className="pp-account-panel-header"><h2><MapPin aria-hidden="true"/>{ui.address}</h2></header><p className="pp-profile-address-text">{shipping || ui.noAddress}</p></section><section className="pp-account-panel"><header className="pp-account-panel-header"><h2><FileText aria-hidden="true"/>{ui.billingAddress}</h2>{billing && billing === shipping ? <Badge>{ui.sameAddress}</Badge> : null}</header><p className="pp-profile-address-text">{billing || ui.noAddress}</p></section></div><div className="pp-profile-summary-actions"><Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{ui.overview}</Button><Button type="button" onClick={onEdit}><Pencil aria-hidden="true"/>{ui.editProfile}</Button></div></section>;
 }
 function AccountProfileNotice({ forceSetup, onOpen, profile, }: {
     forceSetup: boolean;
@@ -537,6 +540,8 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
     const ui = useAccountReferenceCopy();
     const activeRef=React.useRef(true);React.useEffect(()=>{activeRef.current=true;return()=>{activeRef.current=false;};},[]);
     const [form, setForm] = React.useState<AccountProfileForm>(() => accountProfileToForm(profile, userEmail));
+    const [profileGroup, setProfileGroup] = React.useState<"company" | "delivery">("company");
+    const invalidFocusRef = React.useRef(false);
     const [error, setError] = React.useState<string | null>(null);
     const [saving, setSaving] = React.useState(false);
     const dirty = JSON.stringify(form) !== JSON.stringify(accountProfileToForm(profile, userEmail));
@@ -589,6 +594,7 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
         setError(null);
         if (!isAddressDraftComplete(form.shippingAddress) ||
             (!form.billingSameAsShipping && !isAddressDraftComplete(form.billingAddress))) {
+            setProfileGroup("delivery");
             setError(c("请补全地址里的 Provincia、Citta、CAP、Via 和 Numero。"));
             return;
         }
@@ -645,9 +651,20 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
           <DialogDescription>{c("这些资料用于账户、订单、税务和配送。")}</DialogDescription>
         </DialogHeader>
         <DialogBody>
-          <form id="account-profile-form" className="space-y-3" onSubmit={submitProfile}>
-            <nav className="pp-profile-editor-nav" aria-label={ui.editProfile}><button type="button" onClick={() => document.getElementById("account-company-fields")?.scrollIntoView({ block: "start" })}>{ui.profileCompany}</button><button type="button" onClick={() => document.getElementById("account-delivery-fields")?.scrollIntoView({ block: "start" })}>{ui.profileDelivery}</button></nav>
-            <section id="account-company-fields" className="pp-profile-editor-section"><h3><Building2 aria-hidden="true"/>{ui.companyInfo}</h3>
+          <form id="account-profile-form" className="space-y-3" onSubmit={submitProfile} onInvalidCapture={event => {
+              const input = event.target as HTMLInputElement;
+              event.preventDefault();
+              if (invalidFocusRef.current) return;
+              invalidFocusRef.current = true;
+              setProfileGroup(input.closest("#account-delivery-fields") ? "delivery" : "company");
+              setError(input.validationMessage);
+              window.requestAnimationFrame(() => { input.focus(); invalidFocusRef.current = false; });
+            }}>
+            <nav className="pp-profile-editor-nav" aria-label={ui.editProfile}>
+              <button type="button" aria-pressed={profileGroup === "company"} aria-controls="account-company-fields" onClick={() => setProfileGroup("company")}>{ui.profileCompany}</button>
+              <button type="button" aria-pressed={profileGroup === "delivery"} aria-controls="account-delivery-fields" onClick={() => setProfileGroup("delivery")}>{ui.profileDelivery}</button>
+            </nav>
+            <section hidden={profileGroup !== "company"} id="account-company-fields" className="pp-profile-editor-section"><h3><Building2 aria-hidden="true"/>{ui.companyInfo}</h3>
             <div className="grid gap-3 sm:grid-cols-2">
               <ProfileInput field="companyName" label={c("客户名称")} required value={form.companyName} onChange={updateField}/>
               <ProfileInput field="contactName" label={c("微信号码 / WhatsApp 号码")} value={form.contactName} onChange={updateField}/>
@@ -657,7 +674,7 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
               <ProfileInput field="pec" label="PEC" type="email" value={form.pec} onChange={updateField}/>
             </div>
             <p className="pp-account-rule-note">{ui.emailLocked}</p></section>
-            <section id="account-delivery-fields" className="pp-profile-editor-section space-y-3">
+            <section hidden={profileGroup !== "delivery"} id="account-delivery-fields" className="pp-profile-editor-section space-y-3">
               <AddressFields title={c("配送地址")} addressKey="shippingAddress" value={form.shippingAddress} onChange={updateAddressField}/>
               <label className="pp-profile-same-address flex items-start gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600">
                 <Checkbox className="mt-0.5" checked={form.billingSameAsShipping} onCheckedChange={(checked) => updateBillingSameAsShipping(Boolean(checked))}/>

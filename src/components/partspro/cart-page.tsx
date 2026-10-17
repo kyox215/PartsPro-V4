@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { usePricingSession } from "./use-pricing-session";
 import {
-  AlertTriangle,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   ImageIcon,
@@ -632,7 +632,7 @@ function CartPageContent({
               <h1 className="text-xl font-black tracking-normal sm:text-3xl md:text-4xl lg:text-3xl">
                 {tx(t, "storefront.cart.title", "Conferma prodotti e quantità")}
               </h1>
-              <p className="pp-commerce-intro">{locale === "zh-CN" ? "核对配件、数量与客户报价，准备下一笔采购。" : "Ricambi, quantità e prezzi dedicati, pronti per il prossimo ordine."}</p>
+              <p className="pp-commerce-intro">{txFormat(t, "storefront.reference.cartCount", "{lines} articoli · {quantity} pezzi", {lines:cart.items.length, quantity:cart.items.reduce((sum,item)=>sum+item.quantity,0)})}</p>
             </div>
             {cart.items.length > 0 && (
               <Button
@@ -650,9 +650,9 @@ function CartPageContent({
           <CartBulkEntry companyId={assistedCompanyId} disabled={isLoginRequired} />
           {undoItems ? <AsyncFeedback state="info" title={locale === "zh-CN" ? "已移除，可在30秒内撤销。" : "Articoli rimossi. Puoi annullare entro 30 secondi."} actions={<Button variant="outline" onClick={()=>{if(Date.now()>undoItems.expiresAt){setUndoItems(null);return;}setItems(restoreRemovedCartItems(readClientStoredCartItems(),undoItems.items));setUndoItems(null);retryCatalogLoad();}}>{locale === "zh-CN" ? "撤销" : "Annulla"}</Button>} /> : null}
           {readyForCheckout && (
-            <Card className="hidden border-emerald-200 bg-emerald-50 lg:block">
+            <Card className="pp-cart-ready-status hidden border-emerald-200 bg-emerald-50 lg:block">
               <CardContent className="flex gap-2 p-3 text-xs text-emerald-950 sm:gap-3 sm:p-4 sm:text-sm">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600 sm:size-5" />
+                <CheckCircle2 className="size-4 shrink-0 text-emerald-600" />
                 <div className="min-w-0">
                   <div className="font-black">
                     {tx(t, "storefront.cart.localReadyTitle", "Carrello account pronto per checkout")}
@@ -859,6 +859,7 @@ function CartPageContent({
                 )}
               </div>
               <div className="pp-cart-lines hidden space-y-2 lg:block">
+                <div className="pp-cart-table-head" aria-hidden="true"><span>{tx(t,"storefront.checkout.itemColumn.product","Prodotto")}</span><span>{tx(t,"storefront.cart.detailsUnitPrice","Prezzo unitario")}</span><span>{tx(t,"storefront.checkout.quantity","Quantità")}</span><span>{tx(t,"storefront.common.total","Totale")}</span><span/></div>
                 {displayRows.map((row) =>
                   row.kind === "available" ? (
                     <CartLineDesktopCard
@@ -1727,7 +1728,7 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
           product={line.product}
           quantity={line.quantity}
           lineTotal={line.lineTotal}
-          className="grid min-w-0 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 rounded-md text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+          className="pp-cart-product-info grid min-w-0 grid-cols-[64px_minmax(0,1fr)] items-center gap-3 rounded-md text-left focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
         >
           <StorefrontProductImage
             product={line.product}
@@ -1771,26 +1772,11 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
             </div>
           </div>
         </CartProductDetailsTrigger>
-        <div className="block text-right">
-          <div>
-            <div className="whitespace-nowrap text-base font-black leading-5">
-              {formatMoney(line.lineTotal, locale)}
-            </div>
-            <div className="whitespace-nowrap text-[11px] leading-4 text-slate-500">
-              {txFormat(t, "storefront.cart.priceEach", "{price} / pz", {
-                price: formatMoney(line.product.price, locale),
-              })}
-            </div>
-            {priceDisplay.hasDiscount && priceDisplay.basePrice ? (
-              <div className="flex justify-end gap-1 whitespace-nowrap text-[11px] text-slate-400">
-                <span className="line-through">{formatMoney(priceDisplay.basePrice, locale)}</span>
-                <span className="font-bold text-emerald-700">
-                  {formatPriceDiscountBadge(priceDisplay, t)}
-                </span>
-              </div>
-            ) : null}
-          </div>
-          <div className="mt-2 flex items-center justify-end gap-1">
+        <div className="pp-cart-unit-price">
+          <strong>{formatMoney(line.product.price, locale)}</strong>
+          {priceDisplay.hasDiscount && priceDisplay.basePrice ? <small><s>{formatMoney(priceDisplay.basePrice, locale)}</s><span>{formatPriceDiscountBadge(priceDisplay, t)}</span></small> : null}
+        </div>
+        <div className="pp-cart-quantity">
             <div className="inline-flex h-7 items-center rounded-md border bg-white">
               <Button
                 type="button"
@@ -1833,6 +1819,8 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
                 <Plus className="size-3.5" />
               </Button>
             </div>
+        </div>
+        <strong className="pp-cart-line-total">{formatMoney(line.lineTotal, locale)}</strong>
             <Button
               type="button"
               variant="ghost"
@@ -1844,8 +1832,6 @@ const CartLineDesktopCard = React.memo(function CartLineDesktopCard({
             >
               <Trash2 className="size-3.5" />
             </Button>
-          </div>
-        </div>
       </CardContent>
     </Card>
   );

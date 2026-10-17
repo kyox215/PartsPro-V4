@@ -84,6 +84,9 @@ export function StoreDeferredAccountMenu({
     if (!nextOpen) setFocusFirstItem(false);
   }
 
+  const displayName = props.access.authenticated ? props.access.displayName?.trim() : null;
+  const initials = displayName?.split(/\s+/).map(part => Array.from(part)[0]).slice(0, 2).join("").toLocaleUpperCase();
+
   const trigger = (
     <Button
       ref={triggerRef}
@@ -94,7 +97,7 @@ export function StoreDeferredAccountMenu({
       aria-haspopup="menu"
       aria-expanded={ready && open}
       aria-busy={status === "loading" || undefined}
-      className="bg-white shadow-sm lg:w-auto lg:gap-1.5 lg:border-transparent lg:bg-transparent lg:px-3 lg:shadow-none"
+      className="pp-account-trigger bg-white shadow-sm lg:w-auto lg:gap-1.5 lg:border-transparent lg:bg-transparent lg:px-3 lg:shadow-none"
       onMouseEnter={() => void accountMenu.load()}
       onFocus={() => void accountMenu.load()}
       onClick={ready ? undefined : (event) => requestOpen(event.detail === 0)}
@@ -108,14 +111,14 @@ export function StoreDeferredAccountMenu({
       }}
       onBlur={ready ? undefined : () => handleOpenChange(false)}
     >
-      <User className="size-4" />
-      <span className="hidden lg:inline">{status === "error" ? retryLabel : label}</span>
+      <span className="pp-header-avatar" aria-hidden="true">{initials || <User className="size-4" />}</span>
+      <span className="pp-header-account-name">{status === "error" ? retryLabel : displayName || label}</span>
       <ChevronDown className="hidden size-4 text-slate-400 lg:block" />
     </Button>
   );
 
   return (
-    <div className="order-2 lg:order-none">
+    <div className="pp-header-account">
       {ready && Component ? (
         <Component
           {...props}

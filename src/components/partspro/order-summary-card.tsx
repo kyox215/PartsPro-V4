@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { Check, Loader2, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import { type CartTotals, useCart } from "./cart-state";
 import { useI18n, useT } from "./i18n-provider";
 
 type OrderSummaryCardProps = {
+  children?: ReactNode;
   amountMessage?: string;
   amountStatus?: "loading" | "ready" | "stale";
   showCheckoutAction?: boolean;
@@ -73,6 +75,7 @@ function ConnectedOrderSummaryCard({
 }
 
 function OrderSummaryCardView({
+  children,
   showCheckoutAction = true,
   amountMessage,
   amountStatus = "ready",
@@ -204,6 +207,7 @@ function OrderSummaryCardView({
             )}
           </div>
         )}
+        {children}
       </CardContent>
     </Card>
   );
@@ -221,7 +225,7 @@ function Line({
   strong?: boolean;
 }) {
   return (
-    <div className={compact ? "flex min-w-0 items-center justify-between gap-3 text-xs" : "flex min-w-0 items-center justify-between gap-3 text-sm"}>
+    <div data-summary-total={strong || undefined} className={compact ? "flex min-w-0 items-center justify-between gap-3 text-xs" : "flex min-w-0 items-center justify-between gap-3 text-sm"}>
       <span className={strong ? "shrink-0 font-black" : "shrink-0 text-slate-500"}>{label}</span>
       <span className={strong ? (compact ? "min-w-0 text-right text-lg font-black" : "min-w-0 text-right text-xl font-black") : "min-w-0 text-right font-bold"}>
         {value}

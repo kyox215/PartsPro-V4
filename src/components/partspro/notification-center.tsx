@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import {
   Bell,
   BellRing,
+  Headphones,
+  PackageCheck,
+  WalletCards,
+  FileText,
   Check,
   Loader2,
   Send,
@@ -58,6 +62,7 @@ type NotificationSummaryPayload = {
 
 type NotificationCenterProps = {
   audience: NotificationAudience;
+  presentation?: "compact" | "account";
   className?: string;
   portalClassName?: string;
 };
@@ -145,6 +150,7 @@ const notificationSummaryPollMs = 150_000;
 
 export function NotificationCenter({
   audience,
+  presentation = "compact",
   className,
   portalClassName,
 }: NotificationCenterProps) {
@@ -574,6 +580,33 @@ export function NotificationCenter({
   const hasUnread = unreadCount > 0;
   const permissionPromptIsIos = permissionPromptKind === "ios";
 
+  const markAllControl = (            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-8 px-2 text-xs"
+              onClick={markAllRead}
+              disabled={Boolean(busyAction) || requiresReview || unreadCount === 0}
+            >
+              {busyAction === "read" ? <Loader2 className="size-3.5 animate-spin" /> : presentation === "account" ? <Check className="size-3.5" /> : <X className="size-3.5" />}
+              {text.markAll}
+            </Button>);
+  const enableControl = (              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 bg-white px-2 text-xs"
+                onClick={enablePush}
+                disabled={Boolean(busyAction) || pushState === "unsupported"}
+              >
+                {busyAction === "enable" ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Smartphone className="size-3.5" />
+                )}
+                {text.enable}
+              </Button>);
+
   return (
     <>
       <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
@@ -593,7 +626,7 @@ export function NotificationCenter({
             ) : null}
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="end" className={cn("flex max-h-[min(600px,var(--radix-popover-content-available-height))] w-[min(360px,calc(100vw-1.5rem))] flex-col overflow-y-auto p-0", portalClassName)}>
+        <PopoverContent align="end" className={cn("flex max-h-[min(600px,var(--radix-popover-content-available-height))] w-[min(360px,calc(100vw-1.5rem))] flex-col overflow-y-auto p-0", presentation === "account" && "pp-account-notification-panel", portalClassName)}>
           <div className="shrink-0 border-b border-slate-200 p-3">
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
@@ -602,21 +635,7 @@ export function NotificationCenter({
                   {unreadCount} {text.unread} · {statusLabel}
                 </p>
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-8 bg-white px-2 text-xs"
-                onClick={enablePush}
-                disabled={Boolean(busyAction) || pushState === "unsupported"}
-              >
-                {busyAction === "enable" ? (
-                  <Loader2 className="size-3.5 animate-spin" />
-                ) : (
-                  <Smartphone className="size-3.5" />
-                )}
-                {text.enable}
-              </Button>
+              {presentation === "compact" ? enableControl : <div className="pp-notification-header-actions">{markAllControl}<Button type="button" size="icon" variant="ghost" aria-label={locale === "zh-CN" ? "关闭通知" : "Chiudi notifiche"} onClick={() => setPopoverOpen(false)}><X aria-hidden="true"/></Button></div>}
             </div>
             {isIosStandaloneMissing ? (
               <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-semibold text-amber-900">
@@ -625,7 +644,8 @@ export function NotificationCenter({
             ) : null}
           </div>
 
-          <div className="min-h-0 max-h-[320px] flex-1 overflow-y-auto p-2">
+          {presentation === "account" ? <div className="pp-notification-permission"><Bell aria-hidden="true"/><div><strong>{locale === "zh-CN" ? "接收订单与售后更新" : "Aggiornamenti su ordini e assistenza"}</strong><p>{statusLabel}</p></div>{enableControl}</div> : null}
+          <div className="pp-notification-list min-h-0 max-h-[320px] flex-1 overflow-y-auto p-2">
             {notice ? <AdminNotice tone={notice.tone} message={notice.message} className="mb-2 text-xs" /> : null}
             {readError ? <AdminNotice tone="error" message={text.readError} action={<Button size="xs" variant="outline" disabled={loading} onClick={() => void loadNotifications({ verify: true })}>{text.refresh}</Button>} className="mb-2 text-xs" /> : null}
             {requiresReview && !readError ? <Button size="xs" variant="outline" disabled={loading} onClick={() => void loadNotifications({ verify: true })}>{text.refresh}</Button> : null}
@@ -642,13 +662,14 @@ export function NotificationCenter({
               <div className="space-y-1">
                 {items.map((item) => {
                   const content = notificationContent(item, locale);
+                  const ItemIcon = content.isRma ? Headphones : /wallet|credit/i.test(item.eventType) ? WalletCards : /order/i.test(item.eventType) ? PackageCheck : FileText;
                   return (
                   <button
                     key={item.id}
                     type="button"
                     disabled={Boolean(busyAction)}
                     className={cn(
-                      "w-full rounded-md border px-2.5 py-2 text-left transition hover:border-primary/40 hover:bg-primary/5 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40",
+                      "pp-notification-item w-full rounded-md border px-2.5 py-2 text-left transition hover:border-primary/40 hover:bg-primary/5 focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40",
                       item.readAt
                         ? "border-slate-200 bg-white"
                         : "border-primary/20 bg-primary/5"
@@ -657,7 +678,8 @@ export function NotificationCenter({
                       void openNotification(item);
                     }}
                   >
-                    <div className="flex min-w-0 items-start justify-between gap-2">
+                    {presentation === "account" ? <span className="pp-notification-item-icon"><ItemIcon aria-hidden="true"/></span> : null}
+                    <div className="pp-notification-item-copy"><div className="flex min-w-0 items-start justify-between gap-2">
                       <p className="min-w-0 break-words text-xs font-black text-slate-950">
                         {content.title}
                       </p>
@@ -672,7 +694,7 @@ export function NotificationCenter({
                     </p>
                     <p className="mt-1 text-[11px] font-semibold text-slate-400">
                       {formatNotificationTime(item.createdAt)}
-                    </p>
+                    </p></div>
                   </button>
                   );
                 })}
@@ -682,23 +704,15 @@ export function NotificationCenter({
 
           {hasMore ? <div className="shrink-0 border-t p-2"><Button className="w-full" size="sm" variant="outline" disabled={loading || Boolean(busyAction)} onClick={() => void loadNotifications({ append: true })}>{loading ? text.loading : text.more}</Button></div> : null}
 
-          <div className="flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 p-2">
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="h-8 px-2 text-xs"
-              onClick={markAllRead}
-              disabled={Boolean(busyAction) || requiresReview || unreadCount === 0}
-            >
-              {busyAction === "read" ? <Loader2 className="size-3.5 animate-spin" /> : <X className="size-3.5" />}
-              {text.markAll}
-            </Button>
+          <div className="pp-notification-footer flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 p-2">
+            {presentation === "account" ? <p>{locale === "zh-CN" ? "订单、售后及余额更新会显示在这里。" : "Qui trovi novità su ordini, assistenza e saldo."}</p> : null}
+            {presentation === "compact" ? markAllControl : null}
             <Button
               type="button"
               size="sm"
               variant="outline"
               className="h-8 bg-white px-2 text-xs"
+              hidden={presentation === "account"}
               onClick={sendTest}
               disabled={Boolean(busyAction) || requiresReview}
             >

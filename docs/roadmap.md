@@ -206,3 +206,8 @@ Last reviewed: 2026-10-12
 - 按27 PNG重做全前台结构与蓝底白P标志/PWA。32合同、lint/本地及远端build、1084源码一致/451保护/452上传hash、候选12和正式12HTTP、双语/多宽度浏览器及真实已登录员工自购账户只读布局通过。源码fp7acf854538c7a3e9655d709be47e3594f8c22c5f0acb853e3cb8401472ba5970。未改后台/API/DB/依赖/env，不部署本地夹具；主目录改动保留，未合并main。
 - 已修筛选残留、平板搜索、售后终态计数和键盘/窄屏布局。旧submitted订单显示待付款但汇总只统计pending_payment的问题仍需统一，账户统计只基于已加载资料；详见 docs/audits/2026-10-17-storefront-reference-fidelity-release.md。无真实交易/资料/售后/消息写验收，物理键盘未测。
 - 全套交付位于 outputs/storefront-reference-match/2026-10-17/partspro-ui-full-kit.zip；任务已转 docs/tasks/done/P1-2026-10-17-storefront-preview-fidelity.md。
+
+
+## 2026-10-17 UI04：原稿组件与布局补齐（进行中）
+
+任务 TASK-20261017-UI04：根据老板指出的语言切换等剩余差异，基于正式版 c2e5525 在隔离候选继续修正共享控件、采购页、账户、登录及申请布局。发布目标与原有授权一致；后台/API/DB/env 均排除。最终验证与上线结果将在本节更新。
