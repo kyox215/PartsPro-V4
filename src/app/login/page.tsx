@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Package, ShieldCheck, RotateCcw } from "lucide-react";
 import { cookies } from "next/headers";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { StoreHeader } from "@/components/partspro/store-header";
 import { AsyncFeedback } from "@/components/partspro/async-feedback";
 import { PasswordAuthPanel, SignupVerificationPanel, PasswordRecoveryRequest } from "@/components/partspro/auth-forms";
@@ -26,7 +25,7 @@ export default async function LoginPage({searchParams}:{searchParams:Promise<Rec
   const retryAt = Number((await cookies()).get(SIGNUP_RESEND_AT_COOKIE)?.value || 0);
   const pendingEmail=normalizeSignupVerificationEmail((await cookies()).get(SIGNUP_VERIFICATION_EMAIL_COOKIE)?.value);
   const title=mode === "forgot" ? tx(t,"storefront.ux.recoverPassword","Recupera password") : mode === "verify" ? tx(t,"storefront.login.verify.title","Verifica email") : tx(t,"storefront.login.title","Login PartsPro");
-  return <main className="pp-auth-page min-h-screen bg-[#f4f6fa] text-slate-950"><StoreHeader /><div className="pp-auth-layout mx-auto px-3 py-4 sm:py-8"><section className="pp-auth-introduction"><span className="pp-account-eyebrow">PARTSPRO · ITALIA</span><h1>{tx(t,"storefront.professional.after.account.title","Accesso account")}</h1><p>{tx(t,"storefront.professional.after.account.body","Userai login, carrello, checkout e assistenza con lo stesso profilo cliente.")}</p><div className="pp-auth-feature"><Package aria-hidden="true"/><span>{tx(t,"nav.catalog","Catalogo")}</span></div><div className="pp-auth-feature"><ShieldCheck aria-hidden="true"/><span>{tx(t,"nav.account","Account")}</span></div><div className="pp-auth-feature"><RotateCcw aria-hidden="true"/><span>{tx(t,"storefront.rma.rules.title","Regole assistenza")}</span></div><Link className="pp-auth-help-link" href="/help">{tx(t,"storefront.ux.help","Aiuto")} →</Link></section><Card className="pp-auth-card border-slate-200 bg-white"><CardHeader><span className="pp-account-eyebrow">{tx(t,"storefront.login.badge","Accesso clienti")}</span><CardTitle className="text-2xl font-bold">{title}</CardTitle></CardHeader><CardContent className="space-y-4">
+  return <main className="pp-auth-page min-h-screen bg-[#f4f6fa] text-slate-950"><StoreHeader /><div className="pp-auth-layout mx-auto px-3 py-4 sm:py-8"><Card className="pp-auth-card border-slate-200 bg-white"><CardHeader className="pp-auth-compact-heading"><h1>{title}</h1><Link href="/help">{tx(t,"storefront.ux.help","Aiuto")}</Link></CardHeader><CardContent className="space-y-4">
     {!configured && <AsyncFeedback state="error" title={tx(t,"storefront.login.error.config","Accesso temporaneamente non disponibile. Riprova più tardi o contatta l’assistenza.")} />}
     {error && <AsyncFeedback state="error" title={tx(t,`storefront.login.error.${error}`,tx(t,"storefront.login.error.generic","Accesso non riuscito. Riprova."))} />}
     {notice && <AsyncFeedback state="success" title={tx(t,`storefront.login.notice.${notice}`,tx(t,"storefront.ux.completed","Operazione completata."))} />}

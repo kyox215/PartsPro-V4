@@ -222,3 +222,8 @@ Last reviewed: 2026-10-12
 - 取消按刷新版本隐藏/重建整页，增加公开安全骨架、共享刷新调度、120ms局部提示、15s终态和显式重试；保留同账户筛选、分页、草稿和弹层。身份/代客scope隔离与过期报价购买门禁保留；目录每批最多50、并发2且拒绝旧响应。目录/购物车原有空Suspense回退一并替换。
 - 6+51相关合同/行为测试、lint（排除本地verification生成bundle）、本地和远端build通过；1097源码blob一致/450保护文件无改/459上传文件核对，源码fp `a39383d337c4b219f28a21d80f7f3229e89ac49edaac690fa56e47e43b89b68a`。候选/正式各12HTTP、真实Next导航及语言切换、正式1536/390布局通过，短时error/fatal均0。真实组件合成夹具验证慢网/断网/超时、焦点风暴、分页/滚动/数量和订单备注、弹层焦点及身份变化；不冒充真实业务写E2E。
 - API、数据库、环境变量、后台、Logo和价格算法未变，无migration依赖。主目录现有未提交改动保留，运行源码在 `.company-tmp/storefront-local-refresh-20261017`，未合并main。详细报告 `docs/audits/2026-10-17-storefront-local-refresh-release.md`；任务 `docs/tasks/done/P1-2026-10-17-storefront-local-refresh.md`，预览证据 `outputs/storefront-local-refresh/2026-10-17/`。
+
+
+## 2026-10-17 UI06：前台页首与筛选精简（进行中）
+
+TASK-20261017-UI06，执行老板已批准方案：保留桌面左侧目录，顶部仅排序/筛选，移除重复标题、路径、数量、说明及空闲刷新占位，其他前台页首同步紧凑化。正式基线B8/a1073b8，隔离分支codex/storefront-compact-header-20261017；无API/DB/env/后台/Logo变更。完成后在本节补精确验证与发布身份。

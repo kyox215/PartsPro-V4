@@ -7,6 +7,7 @@ import { createLatestRequest } from "@/lib/latest-request.mjs";
 import { refreshVisibleCatalog } from "@/lib/storefront-refresh.mjs";
 import { useStorefrontRefresh } from "./storefront-refresh-provider";
 import { RefreshStatus } from "./storefront-refresh-status";
+import { countCatalogFilters, resetCatalogFilters, removeCatalogFilter } from "./catalog-filters.mjs";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -47,7 +48,6 @@ import { useCatalogDirectory } from "./catalog-directory-provider";
 import { catalogNodeLabel } from "@/lib/partspro-catalog-directory";
 import { useI18n, useT } from "./i18n-provider";
 import {
-  DelayedPendingIndicator,
   useDelayedVisible,
 } from "./pending-feedback";
 
@@ -496,12 +496,18 @@ function CatalogPageContent({
 
   const hiddenProductCount = Math.max(filteredTotal - products.length, 0);
   const catalogReplacing = catalogLoadState === "loading";
-  const showCatalogPendingHint = useDelayedVisible(catalogReplacing, 120);
   const showCatalogSkeleton = useDelayedVisible(catalogReplacing, 300);
   const accountGateCopy =
     !assistedCompanyId && isCustomerActionRequiredReason(priceGateReason)
       ? getAccountGateCopy(t, priceGateReason)
       : null;
+
+  function openFilters() {
+    setDraftFilters({ ...selectedCatalog });
+    setDraftDepartment(selectedCatalog.department ?? "phone");
+    setDraftBrand(selectedCatalog.brand ? `${selectedCatalog.department ?? "phone"}::${selectedCatalog.brand}` : null);
+    setFilterOpen(true);
+  }
 
   function clearAll() {
     setSearchTerm("");
@@ -560,9 +566,44 @@ function CatalogPageContent({
         </aside>
 
         <section className="pp-catalog-results min-w-0">
-          <div className="pp-catalog-mobile-tools"><form role="search" onSubmit={event=>{event.preventDefault();const data=new FormData(event.currentTarget);selectCatalog({...selectedCatalog,searchQuery:String(data.get("q")??"")});}}><Search aria-hidden="true"/><input name="q" key={searchQuery} defaultValue={searchQuery} aria-label={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")} placeholder={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")}/><button type="submit" aria-label={tx(t,"storefront.header.searchSubmit","Cerca")}><ChevronRight/></button></form><Button variant="outline" onClick={()=>{setDraftFilters({...selectedCatalog});setDraftDepartment(selectedCatalog.department??"phone");setDraftBrand(selectedCatalog.brand ? `${selectedCatalog.department??"phone"}::${selectedCatalog.brand}`:null);setFilterOpen(true);}}><SlidersHorizontal/>{tx(t,"storefront.reference.filters","Filtri")}</Button></div>
-          <Dialog open={filterOpen} onOpenChange={setFilterOpen}><DialogContent className="pp-storefront-portal pp-catalog-filter-dialog"><DialogHeader><DialogTitle>{tx(t,"storefront.reference.filters","Filtri")}</DialogTitle><DialogDescription>{tx(t,"storefront.reference.filterDescription","Scegli brand, modello e disponibilità, poi applica i filtri.")}</DialogDescription></DialogHeader><div className="pp-catalog-filter-scroll"><CatalogBrandTree departmentGroups={departmentGroups} expandedBrandKey={draftBrand} expandedDepartment={draftDepartment} onExpandedBrandKeyChange={setDraftBrand} onExpandedDepartmentChange={setDraftDepartment} selectedCatalog={draftFilters} onSelectCatalog={selection=>setDraftFilters(previous=>({...selection,sort:previous.sort,searchQuery:previous.searchQuery,category:selection.department?previous.category:undefined,inStockOnly:selection.department?previous.inStockOnly:undefined}))} idPrefix="catalog-filter-draft" variant="mobile"/><label className="pp-filter-field"><span>{tx(t,"storefront.reference.category","Categoria")}</span><select value={draftFilters.category??""} onChange={event=>setDraftFilters(previous=>({...previous,category:event.target.value||undefined}))}><option value="">{tx(t,"storefront.reference.allCategories","Tutte le categorie")}</option>{directory.nodes.filter(node=>node.kind==="category"&&node.active).map(node=><option key={node.id} value={node.value}>{catalogNodeLabel(node,locale)}</option>)}</select></label><label className="pp-filter-stock"><input type="checkbox" checked={Boolean(draftFilters.inStockOnly)} onChange={event=>setDraftFilters(previous=>({...previous,inStockOnly:event.target.checked}))}/>{tx(t,"storefront.ux.inStockOnly","Solo disponibili")}</label></div><div className="pp-filter-actions"><Button variant="outline" onClick={()=>{setDraftFilters({sort:draftFilters.sort,searchQuery:draftFilters.searchQuery});setDraftBrand(null);setDraftDepartment("phone");}}>{tx(t,"storefront.reference.reset","Ripristina")}</Button><Button onClick={()=>{selectCatalog(draftFilters);setFilterOpen(false);}}>{tx(t,"storefront.reference.apply","Applica filtri")}</Button></div></DialogContent></Dialog>
-          <nav className="pp-catalog-breadcrumb" aria-label={tx(t, "storefront.ux.browseCatalog", "Sfoglia catalogo")}><Link href="/">{tx(t, "nav.home", "Home")}</Link><ChevronRight className="size-3" /><span>{tx(t, "storefront.ux.browseCatalog", "Sfoglia catalogo")}</span>{selectedBrand ? <><ChevronRight className="size-3" /><span>{brandLabel(t, selectedBrand)}</span></> : null}</nav>
+          <h1 className="sr-only">{searchQuery || searchTerm ? txFormat(t,"storefront.ux.searchResults","Risultati per “{query}”",{query:searchQuery || searchTerm}) : tx(t,"storefront.ux.browseCatalog","Sfoglia catalogo")}</h1>
+          <form className="pp-catalog-compact-search" role="search" onSubmit={event => {
+            event.preventDefault();
+            selectCatalog({ ...selectedCatalog, searchQuery: String(new FormData(event.currentTarget).get("q") ?? "") });
+          }}>
+            <Search aria-hidden="true"/>
+            <input name="q" key={searchQuery} defaultValue={searchQuery} aria-label={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")} placeholder={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")}/>
+            <button type="submit" aria-label={tx(t,"storefront.header.searchSubmit","Cerca")}><ChevronRight aria-hidden="true"/></button>
+          </form>
+          <Dialog open={filterOpen} onOpenChange={setFilterOpen}>
+            <DialogContent className="pp-storefront-portal pp-catalog-filter-dialog">
+              <DialogHeader>
+                <DialogTitle>{tx(t,"storefront.reference.filters","Filtri")}</DialogTitle>
+                <DialogDescription className="sr-only">{tx(t,"storefront.reference.filterDescription","Scegli brand, modello e disponibilità, poi applica i filtri.")}</DialogDescription>
+              </DialogHeader>
+              <div className="pp-catalog-filter-scroll">
+                {countCatalogFilters(draftFilters) > 0 ? <div className="pp-catalog-draft-chips">
+                  {(["department","brand","modelSeries","model","category"] as const).map(key => draftFilters[key] ? <Button key={key} type="button" size="sm" variant="outline" onClick={() => {
+                    const next = removeCatalogFilter(draftFilters, key);
+                    setDraftFilters(next);
+                    setDraftDepartment(next.department ?? "phone");
+                    setDraftBrand(next.brand ? `${next.department ?? "phone"}::${next.brand}` : null);
+                  }}>{key === "category" ? categoryLabel(t,String(draftFilters[key])) : key === "department" ? catalogDepartmentLabel(t,draftFilters[key] as CatalogDepartment) : key === "brand" ? brandLabel(t,String(draftFilters[key])) : String(draftFilters[key])}<span aria-hidden="true"> ×</span><span className="sr-only">{tx(t,"storefront.ux.removeFilter","Rimuovi filtro")}</span></Button> : null)}
+                </div> : null}
+                <CatalogBrandTree departmentGroups={departmentGroups} expandedBrandKey={draftBrand} expandedDepartment={draftDepartment} onExpandedBrandKeyChange={setDraftBrand} onExpandedDepartmentChange={setDraftDepartment} selectedCatalog={draftFilters} onSelectCatalog={selection => setDraftFilters(previous => ({...selection,sort:previous.sort,searchQuery:previous.searchQuery,category:selection.department?previous.category:undefined,inStockOnly:selection.department?previous.inStockOnly:undefined}))} idPrefix="catalog-filter-draft" variant="mobile"/>
+                <label className="pp-filter-field"><span>{tx(t,"storefront.reference.category","Categoria")}</span><select value={draftFilters.category ?? ""} onChange={event => setDraftFilters(previous => ({...previous,category:event.target.value || undefined}))}>
+                  <option value="">{tx(t,"storefront.reference.allCategories","Tutte le categorie")}</option>
+                  {directory.nodes.filter(node => node.kind === "category" && node.active).map(node => <option key={node.id} value={node.value}>{catalogNodeLabel(node,locale)}</option>)}
+                  {draftFilters.category && !directory.nodes.some(node => node.kind === "category" && node.active && node.value === draftFilters.category) ? <option value={draftFilters.category}>{categoryLabel(t,draftFilters.category)}</option> : null}
+                </select></label>
+                <label className="pp-filter-stock"><input type="checkbox" checked={Boolean(draftFilters.inStockOnly)} onChange={event => setDraftFilters(previous => ({...previous,inStockOnly:event.target.checked}))}/>{tx(t,"storefront.ux.inStockOnly","Solo disponibili")}</label>
+              </div>
+              <div className="pp-filter-actions">
+                <Button type="button" variant="outline" onClick={() => {setDraftFilters(resetCatalogFilters(draftFilters));setDraftBrand(null);setDraftDepartment("phone");}}>{tx(t,"storefront.reference.reset","Ripristina")}</Button>
+                <Button type="button" onClick={() => {selectCatalog(draftFilters);setFilterOpen(false);}}>{tx(t,"storefront.reference.apply","Applica filtri")}</Button>
+              </div>
+            </DialogContent>
+          </Dialog>
           {assistedCompanyId ? (
             <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900">
               {assistedCompanyName
@@ -579,49 +620,22 @@ function CatalogPageContent({
               }}
             />
           ) : null}
-          {showCatalogPendingHint ? (
-            <div
-              className="flex items-center gap-2 rounded-lg border border-primary/15 bg-white px-3 py-2 text-xs font-black text-primary shadow-sm"
-              role="status"
-              aria-live="polite"
-            >
-              <DelayedPendingIndicator
-                className="size-3.5 text-primary"
-                delayMs={0}
-                pending={catalogReplacing}
-              />
-              {tx(t, "storefront.catalog.filtering", "Filtro in corso...")}
-            </div>
-          ) : null}
-          <div className="pp-catalog-toolbar">
-            <h1 className="pp-catalog-title break-words">{searchQuery || searchTerm ? txFormat(t,"storefront.ux.searchResults","Risultati per “{query}”",{query:searchQuery || searchTerm}) : tx(t,"storefront.ux.browseCatalog","Sfoglia catalogo")}</h1>
-            <p className="pp-catalog-count" role="status">{txFormat(t,"storefront.ux.resultCount","{loaded} di {total} SKU caricati",{loaded:products.length,total:filteredTotal})}</p>
-            <p className="pp-catalog-description">{tx(t, "storefront.ui.catalog.subtitle", "Filtra i risultati e verifica la compatibilità prima di acquistare.")}</p>
-            <div className="pp-catalog-refresh-row"><RefreshStatus busy={backgroundRefresh} failed={backgroundError} retry={refresh.retry}/></div>
-            <div className="pp-catalog-filter-chips">
-              {(["searchQuery","model","brand","category","department","modelSeries"] as const).map(key => selectedCatalog[key] ? <Button key={key} type="button" size="sm" variant="outline" className="max-w-full whitespace-normal" onClick={() => selectCatalog({...selectedCatalog,[key]:undefined})}>{key === "category" ? categoryLabel(t,String(selectedCatalog[key])) : key === "department" ? catalogDepartmentLabel(t, selectedCatalog[key] as CatalogDepartment) : key === "brand" ? brandLabel(t,String(selectedCatalog[key])) : String(selectedCatalog[key])} ×<span className="sr-only">{tx(t,"storefront.ux.removeFilter","Rimuovi filtro")}</span></Button> : null)}
-              <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm"><input type="checkbox" checked={inStockOnly} onChange={event => selectCatalog({...selectedCatalog,inStockOnly:event.target.checked})} className="size-5 accent-primary" />{tx(t,"storefront.ux.inStockOnly","Solo disponibili")}</label>
-              <Button type="button" variant="ghost" size="sm" onClick={clearAll}>{tx(t,"storefront.catalog.clearFilters","Cancella filtri")}</Button>
-            </div>
-            <div className="pp-catalog-selects">
-            <label htmlFor="catalog-sort" className="pp-catalog-sort">
-              <span>{locale.startsWith("zh") ? "排序" : "Ordina per"}</span>
-              <select id="catalog-sort" value={sort} className="h-11 w-full min-w-0 rounded border bg-white px-2 sm:w-64" onChange={event => selectCatalog({ ...selectedCatalog, sort: normalizeCatalogSort(event.target.value) })}>
-                <option value="stock_desc">{locale.startsWith("zh") ? "现货优先（默认）" : "Disponibilità (predefinito)"}</option>
-                <option value="name">{locale.startsWith("zh") ? "商品名称" : "Nome prodotto"}</option>
-                <option value="updated_desc">{locale.startsWith("zh") ? "最近更新" : "Aggiornati di recente"}</option>
+          <div className="pp-catalog-compact-toolbar">
+            <div className="pp-catalog-compact-feedback"><RefreshStatus reserveSpace={false} busy={backgroundRefresh || catalogReplacing} failed={backgroundError} retry={refresh.retry}/></div>
+            <label htmlFor="catalog-sort" className="pp-catalog-compact-sort">
+              <span className="sr-only">{tx(t,"storefront.compact.sort","Ordina per")}</span>
+              <select id="catalog-sort" value={sort} onChange={event => selectCatalog({ ...selectedCatalog, sort: normalizeCatalogSort(event.target.value) })}>
+                <option value="stock_desc">{tx(t,"storefront.compact.stockFirst","Disponibilità")}</option>
+                <option value="name">{tx(t,"storefront.compact.nameSort","Nome prodotto")}</option>
+                <option value="updated_desc">{tx(t,"storefront.compact.newestSort","Più recenti")}</option>
               </select>
             </label>
-          <label className="pp-catalog-category-filter">
-            <span>{locale.startsWith("zh") ? "商品分类" : "Categoria"}</span>
-            <select aria-label={locale.startsWith("zh") ? "商品分类" : "Categoria"} className="h-11 w-full min-w-0 rounded border bg-white px-2 sm:w-64" value={selectedCategory ?? ""} onChange={(e) => selectCatalog({ ...selectedCatalog, category: e.target.value || undefined })}>
-              <option value="">{locale.startsWith("zh") ? "全部分类" : "Tutte le categorie"}</option>
-              {directory.nodes.filter((n) => n.kind === "category" && n.active && (!selectedDepartment || (n.countsByDepartment[selectedDepartment] ?? 0) > 0)).map((n) => <option key={n.id} value={n.value}>{locale.startsWith("zh") && /^[\x00-\x7F]+$/.test(n.nameZh) ? categoryLabel(t,n.nameIt) : catalogNodeLabel(n, locale)}</option>)}
-              {selectedCategory && !directory.nodes.some((n) => n.kind === "category" && n.value === selectedCategory) && <option value={selectedCategory}>{selectedCategory}</option>}
-            </select>
-          </label>
-            </div>
+            <Button type="button" variant="outline" className="pp-catalog-filter-trigger" onClick={openFilters} aria-haspopup="dialog">
+              <SlidersHorizontal aria-hidden="true"/>{tx(t,"storefront.reference.filters","Filtri")}
+              {countCatalogFilters(selectedCatalog) > 0 ? <span className="pp-filter-count">{countCatalogFilters(selectedCatalog)}</span> : null}
+            </Button>
           </div>
+          <p className="sr-only" role="status">{txFormat(t,"storefront.ux.resultCount","{loaded} di {total} SKU caricati",{loaded:products.length,total:filteredTotal})}</p>
           {products.length > 0 || catalogReplacing ? (
             <div className="pp-catalog-products space-y-3">
               <div
@@ -685,12 +699,7 @@ function CatalogPageContent({
                         {tx(t, "storefront.catalog.loadingMore", "Caricamento...")}
                       </>
                     ) : (
-                      txFormat(t, "storefront.catalog.loadMore", "Carica altri {count} SKU", {
-                          count: Math.min(
-                            hiddenProductCount,
-                            visibleProductsIncrement
-                          ),
-                        })
+                      tx(t, "storefront.compact.loadMore", "Carica altri")
                     )}
                   </Button>
                 </div>
