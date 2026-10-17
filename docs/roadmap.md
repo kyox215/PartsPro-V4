@@ -224,8 +224,17 @@ Last reviewed: 2026-10-12
 - API、数据库、环境变量、后台、Logo和价格算法未变，无migration依赖。主目录现有未提交改动保留，运行源码在 `.company-tmp/storefront-local-refresh-20261017`，未合并main。详细报告 `docs/audits/2026-10-17-storefront-local-refresh-release.md`；任务 `docs/tasks/done/P1-2026-10-17-storefront-local-refresh.md`，预览证据 `outputs/storefront-local-refresh/2026-10-17/`。
 
 
-## 2026-10-17 UI06：前台页首与筛选精简（进行中）
+## 2026-10-17 UI06：前台页首与筛选精简（已上线）
 
-TASK-20261017-UI06，执行老板已批准方案：保留桌面左侧目录，顶部仅排序/筛选，移除重复标题、路径、数量、说明及空闲刷新占位，其他前台页首同步紧凑化。正式基线B8/a1073b8，隔离分支codex/storefront-compact-header-20261017；无API/DB/env/后台/Logo变更。完成后在本节补精确验证与发布身份。
+- TASK-20261017-UI06完成。运行提交 `e9e814dc27a8054ae223d19cb0953d8aabebc78a` 已推送 `codex/storefront-compact-header-20261017`；独立STAGE_GO2/PROMOTE_GO2后，同构建 `dpl_2ax6n9uKXsDtPkzwTQk1nZL16Wwf` 正式上线。www/apex均READY/同SHA，apex307→www；回退保留 `dpl_84Mo47vkuRDf41SYAjK4c3cUvTGp` / 5d329f1。
+- 目录桌面保留左树、顶部44px排序/筛选；手机44px搜索+44px工具条，移除重复标题/路径/说明/数量/标签和空闲刷新占位。筛选草稿应用/取消/重置保留q/sort，数字badge及显式关闭回焦。账户、购物车/结算、商品详情、RMA、申请、登录、帮助和首页页首同步压缩，保留业务限制/报价/校验/规则。
+- 源码冻结后识别并发生产REG01更新，旧31f候选未推广；无冲突合入已上线5d329f1，完整保留注册语言修复。相对最新正式基线453保护文件0改，1109blob一致；462运行文件上传hash全匹配，另1个生成next-env一致。指纹 `2b8e77cf6c38147cfffab3730c83fcb07b8e1dd75d71ff3513b9666b8a911578`。
+- storefront13+相关41共54案例、lint、本地/远端build通过；目录双语四宽度、其他页48组及合并后账户8组几何检查无横溢，1536/1280首卡445→190px。筛选/清搜索/排序/分页24→48/商品返回恢复48/慢刷新失败重试/回焦通过。候选和正式各12只读HTTP；正式1536/390双语与短时error/fatal均通过（日志0条）。
+- API、DB、env、后台、Logo和交易协议未变，无migration依赖。主目录未提交源码保留，未合并main；真实注册/资料/交易写入未执行，合成组件证据不冒充业务写E2E。报告 `docs/audits/2026-10-17-storefront-compact-header-release.md`，任务转done，截图/证据 `outputs/storefront-compact-header/2026-10-17/`。
 
-UI06发布中检测到并发正式更新84Mo/5d329f1；旧31f候选停止推广，合并已上线注册语言修复后重新验证，保留最新正式代码。
+## 2026-10-17 REG01：注册/个人中心语言反馈上线与闭环审计
+
+- TASK-20261017-REG01 已发布。实际生产基线 a1073b8；独立候选提交 `5d329f192cfdb0ebbc31af2fcaa2e62cada42126` 已推送 `codex/registration-i18n-20261017`。SOURCE_GO/PROMOTE_GO 后，同一生产配置构建 `dpl_84Mo47vkuRDf41SYAjK4c3cUvTGp` 推广至 www.partspro.app / partspro.app；根域名307到www，回退保留 B8/a1073b8。
+- 固定账户文案接入字典，资料/订单错误按code本地化，校验不再依赖浏览器语言，促销日期与关闭按钮跟随网站语言。保留正式新版UI、双组表单、未保存保护、保存关闭锁、请求竞态隔离。主目录其他未提交改动及UI06候选未混入。无API/auth动作/SQL/环境变量改动，无migration依赖或生产数据写入。
+- 候选13测试、全量lint、本地/远端build通过；18项真实组件隔离浏览器、候选13和正式13项HTTP、正式6项匿名浏览器检查通过，截图已核对；457运行输入上传hash一致，无敏感文件；短时error/fatal查询无组。无真实邮箱注册/客户资料保存/交易写验收，未测物理iPhone键盘。
+- 审计保留5项未修问题（4P2/1P3）：仅后台中文Cookie被新商城账户继承、setup重复弹窗、资料warning漏传、前后端字段限制不一致、返回账户栏目被拦截。不能把翻译发布描述为全部语言跳变或业务闭环已消除；建议优先单独修复语言继承与setup。报告 `docs/audits/2026-10-17-registration-closure-report.md`，证据 `outputs/registration-i18n/2026-10-17/release/`，任务转done。

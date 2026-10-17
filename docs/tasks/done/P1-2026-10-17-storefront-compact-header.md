@@ -1,6 +1,6 @@
 # P1-2026-10-17-storefront-compact-header
 
-状态：in_progress
+状态：completed
 Task ID：TASK-20261017-UI06
 风险：R3（多前台展示与生产发布）；自治L3（老板批准具体计划与上线）。
 主责：平台发布部；协作：前端体验、订单运营。R主执行者、A老板、C独立发布守门、I老板。
@@ -16,3 +16,5 @@ Task ID：TASK-20261017-UI06
 实现与本地验证：44px目录工具条；草稿应用/取消/重置；其余页首压缩。6项storefront+41项相关测试PASS；最终lint/build PASS；ZH/IT四宽度无溢出；桌面首卡445→190px；320/390错误重试通过。独立源码SOURCE_GO，等待精确发布候选。
 
 发布并发保护：PROMOTE复核发现正式域名已更新为84Mo/5d329f1（注册双语反馈修复）。31f旧候选NO_GO，未推广；无冲突合并精确已上线5d329f1，保留注册翻译/错误映射/Dialog可选closeLabel和新测试脚本。新候选以5d为保护基线，回退更新84Mo；重跑测试/lint/build。
+
+最终验收：e9e814d / dpl_2ax6n9uKXsDtPkzwTQk1nZL16Wwf已正式上线，54测试+lint/build、候选/正式12HTTP、正式双语1536/390通过；回退84Mo/5d。新注册修复完整保留，无生产业务写入。独立发布报告与截图已归档。

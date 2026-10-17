@@ -1,6 +1,6 @@
 # P1-2026-10-17-registration-i18n-release
 
-状态：in_progress；Task ID：TASK-20261017-REG01；风险 R2；自治 L3。
+状态：released；Task ID：TASK-20261017-REG01；风险 R2；自治 L3。
 
 老板目标：推送上线注册/个人中心语言修复，继续检查逻辑闭环并提供报告。
 主责：平台发布部；协作：价格与客户部、文档审计部。
@@ -16,3 +16,5 @@ RACI：Responsible 主代理；Approver 老板（本聊天已明确批准推送�
 回退：生产 dpl_B8YduhG5zUjCYirDGSuc6xX8fBtV / a1073b8；回退仅Vercel，不涉及数据库补偿。
 验证：npm run test:storefront、相关定向node --test、npm run lint、npm run build、git diff --check；线上只读smoke。
 证据：候选 verification/；发布与审计结果最终回写 docs/roadmap.md 和本任务卡。
+
+完成记录：运行5d329f1/生产dpl_84Mo47vkuRDf41SYAjK4c3cUvTGp，两个正式alias核对；候选13测试/18组件浏览器、正式13HTTP/6浏览器、lint/build、457hash门禁通过。报告含5项未修闭环问题和真实邮箱/iPhone/数据写验收限制。详见注册闭环审计报告与roadmap REG01。
