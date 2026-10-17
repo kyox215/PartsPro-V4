@@ -858,7 +858,7 @@ function CartPageContent({
                   )
                 )}
               </div>
-              <div className="hidden space-y-2 lg:block">
+              <div className="pp-cart-lines hidden space-y-2 lg:block">
                 {displayRows.map((row) =>
                   row.kind === "available" ? (
                     <CartLineDesktopCard

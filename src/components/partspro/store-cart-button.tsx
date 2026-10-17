@@ -22,7 +22,7 @@ export function StoreCartButton({ ariaLabel, href = "/carrello", label }: StoreC
       variant="outline"
       size="icon"
       asChild
-      className="relative ml-auto min-w-10 bg-white shadow-sm sm:ml-0 sm:w-auto sm:max-w-36 sm:px-2.5"
+      className="pp-header-cart relative ml-auto min-w-10 bg-white shadow-sm sm:ml-0 sm:w-auto sm:max-w-36 sm:px-2.5"
     >
       <Link href={href} aria-label={ariaLabel}>
         <span className="grid size-4 place-items-center sm:shrink-0">

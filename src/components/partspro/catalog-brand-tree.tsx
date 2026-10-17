@@ -425,7 +425,7 @@ export function CatalogBrandTree({
                       return (
                         <div
                           key={brandPanelKey}
-                          className="overflow-hidden rounded-md border border-slate-100 bg-white"
+                          className="pp-tree-brand overflow-hidden rounded-md border border-slate-100 bg-white"
                         >
                           <div className="flex min-w-0 items-stretch">
                             {renderSelectionItem({

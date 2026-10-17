@@ -12,6 +12,7 @@ import {
   ChevronRight,
   Flame,
   Grid3X3,
+  Search,
   PackageCheck,
   MonitorSmartphone,
   Sparkles,
@@ -48,10 +49,11 @@ type HomePageProps = {
   departmentGroups: readonly CatalogDepartmentGroup[];
   initialAccountAccess: StoreHeaderAccountAccess;
   banner: ReactNode;
+  preorder: ReactNode;
   children: ReactNode;
 };
 
-export function HomePage({ departmentGroups, initialAccountAccess, banner, children }: HomePageProps) {
+export function HomePage({ departmentGroups, initialAccountAccess, banner, preorder, children }: HomePageProps) {
   const t = useT();
   const { locale } = useI18n();
   const directory = useCatalogDirectory();
@@ -64,27 +66,28 @@ export function HomePage({ departmentGroups, initialAccountAccess, banner, child
       <div className="pp-home-layout">
         <CategorySidebar departmentGroups={departmentGroups} />
         <div className="pp-home-content min-w-0">
-          <div className="pp-home-intro"><div><h1>{tx(t, "storefront.ui.home.title", "Trova il ricambio giusto.")}</h1><p>{tx(t, "storefront.ui.home.subtitle", "Cerca per brand, modello o SKU e prepara il tuo ordine.")}</p></div><Button variant="outline" asChild><Link href="/catalogo">{tx(t, "storefront.ux.browseCatalog", "Sfoglia catalogo")}<ArrowRight className="size-4" /></Link></Button></div>
-          <nav className="pp-home-mobile-links flex flex-wrap gap-2 lg:hidden" aria-label={tx(t, "storefront.home.sidebar.title", "Catalogo rapido")}>
-            <Button asChild size="sm"><Link href="/catalogo">{tx(t, "storefront.ux.browseCatalog", "Sfoglia catalogo")}</Link></Button>
-            <Button asChild size="sm" variant="outline"><Link href="/catalogo?minStock=1">{tx(t, "storefront.home.products.action", "Disponibili ora")}</Link></Button>
-            <Button asChild size="sm" variant="outline"><Link href="/catalogo?brand=REMAX">REMAX</Link></Button>
-            <Button asChild size="sm" variant="ghost"><Link href="/help">{tx(t, "storefront.ux.help", "Aiuto")}</Link></Button>
-          </nav>
-          <div className="pp-home-promotion-grid" data-has-categories={quickCategories.length > 0}>
-            <div className="pp-home-promotion">{banner}</div>
-            {quickCategories.length > 0 ? <nav className="pp-home-category-links" aria-label={tx(t, "storefront.ui.home.quickLinks", "Acquista per categoria")}>
-              {quickCategories.map((node) => {
-                const Icon = /scherm|display|screen/i.test(node.value) ? MonitorSmartphone : /batt/i.test(node.value) ? BatteryCharging : Cable;
-                return <Link href={`/catalogo?${new URLSearchParams({ category: node.value }).toString()}`} key={node.id}><span className="pp-home-category-icon"><Icon className="size-5" /></span><span>{catalogNodeLabel(node, locale)}</span><ChevronRight className="size-4" /></Link>;
-              })}
-            </nav> : null}
+          <div className="pp-home-mobile-intro"><h1>{tx(t,"storefront.ui.home.title","Trova il ricambio giusto.")}</h1><p>{tx(t,"storefront.ui.home.subtitle","Cerca per brand, modello o SKU e prepara il tuo ordine.")}</p></div>
+          <form action="/catalogo" className="pp-home-search" role="search"><Search aria-hidden="true"/><input name="q" aria-label={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")} placeholder={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")} /><button type="submit" aria-label={tx(t,"storefront.header.searchSubmit","Cerca")}><ArrowRight/></button></form>
+          <div className="pp-reference-hero-row">
+            <section className="pp-reference-hero"><div className="pp-reference-hero-copy"><span>{tx(t,"storefront.reference.heroEyebrow","RICAMBI PER PROFESSIONISTI")}</span><h1>{tx(t,"storefront.ui.home.title","Trova il ricambio giusto.")}</h1><p>{tx(t,"storefront.ui.home.subtitle","Cerca per brand, modello o SKU e prepara il tuo ordine.")}</p><Button asChild><Link href="/catalogo">{tx(t,"storefront.ux.browseCatalog","Sfoglia catalogo")}<ArrowRight className="size-4"/></Link></Button></div><div className="pp-reference-hero-products" aria-hidden="true"><Image src="/home/reference-display.png" alt="" width={210} height={230}/><Image src="/home/reference-battery.jpg" alt="" width={150} height={170}/><Image src="/home/reference-connector.png" alt="" width={140} height={140}/></div></section>
+            <nav className="pp-home-category-links" aria-label={tx(t,"storefront.ui.home.quickLinks","Acquista per categoria")}>
+              {quickCategories.map((node) => {const Icon = /scherm|display|screen/i.test(node.value) ? MonitorSmartphone : /batt/i.test(node.value) ? BatteryCharging : Cable;return <Link href={`/catalogo?${new URLSearchParams({category:node.value}).toString()}`} key={node.id}><span className="pp-home-category-icon"><Icon/></span><span>{catalogNodeLabel(node,locale)}</span><ChevronRight className="size-4"/></Link>;})}
+            </nav>
           </div>
+          <nav className="pp-home-mobile-brands" aria-label={tx(t,"storefront.home.sidebar.subtitle","Brand e modelli")}>{departmentGroups.flatMap(group=>group.brands).slice(0,6).map(brand=><Link key={brand.brand} href={`/catalogo?brand=${encodeURIComponent(brand.brand)}`}>{brand.brand}</Link>)}</nav>
           {children}
         </div>
       </div>
+      <div className="pp-home-secondary">{preorder}<div className="pp-home-secondary-promotion">{banner}</div></div>
     </main></PricingSessionBoundary>
   );
+}
+
+export function HomeReferenceTabs({ hot, fresh, stocked }: {hot: ReactNode; fresh: ReactNode; stocked: ReactNode}) {
+  const t = useT();
+  const [active,setActive] = useState("hot");
+  const tabs = [{id:"hot",label:tx(t,"storefront.reference.hot","Più venduti"),content:hot},{id:"new",label:tx(t,"storefront.reference.new","Novità"),content:fresh},{id:"stock",label:tx(t,"storefront.reference.stock","Disponibili"),content:stocked}];
+  return <section className="pp-reference-common"><div className="pp-reference-common-heading"><h2>{tx(t,"storefront.reference.common","Ricambi più richiesti")}</h2><Link href="/catalogo">{tx(t,"storefront.home.common.viewAll","Vedi tutto")}<ArrowRight className="size-4"/></Link></div><div role="tablist" aria-label={tx(t,"storefront.reference.common","Ricambi più richiesti")} className="pp-reference-tabs">{tabs.map(tab=><button key={tab.id} type="button" role="tab" id={`home-tab-${tab.id}`} aria-controls={`home-panel-${tab.id}`} aria-selected={active===tab.id} tabIndex={active===tab.id?0:-1} onKeyDown={event=>{const index=tabs.findIndex(item=>item.id===tab.id);const next=event.key==="ArrowRight"?(index+1)%tabs.length:event.key==="ArrowLeft"?(index+tabs.length-1)%tabs.length:event.key==="Home"?0:event.key==="End"?tabs.length-1:null;if(next!==null){event.preventDefault();setActive(tabs[next].id);event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("button")[next]?.focus();}}} onClick={()=>setActive(tab.id)}>{tab.label}</button>)}</div>{tabs.map(tab=><div key={tab.id} role="tabpanel" id={`home-panel-${tab.id}`} aria-labelledby={`home-tab-${tab.id}`} hidden={active!==tab.id}>{tab.content}</div>)}</section>;
 }
 
 export function HomeProductShelf({ kind, products, cartAccess, priceGateReason, showPrices }: {
@@ -192,7 +195,7 @@ function CategorySidebar({
 }) {
   const t = useT();
   const [expandedDepartment, setExpandedDepartment] =
-    useState<CatalogDepartment | null>(null);
+    useState<CatalogDepartment | null>("phone");
   const [expandedBrandKey, setExpandedBrandKey] = useState<string | null>(null);
 
   return (
@@ -480,10 +483,10 @@ function ProductShelf({
       />
       {products.length > 0 ? (
         <div className="pp-home-product-grid">
-          {products.map((product, index) => (
+          {products.slice(0, 4).map((product) => (
             <ProductCard
               key={`${id}-${product.sku}`}
-              className={index > 1 ? "hidden sm:block" : undefined}
+              layout={tone === "preorder" ? "preorder" : "home"}
               cartAccess={cartAccess}
               priceGateReason={priceGateReason}
               product={product}

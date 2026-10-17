@@ -730,3 +730,13 @@
   .pp-storefront .pp-service-request-icon { width:37px; height:50px; }
   .pp-storefront-portal .pp-profile-facts { grid-template-columns:1fr; }
 }
+
+.pp-storefront .pp-account-tab-short { display:none; }
+@media(max-width:1023px) { .pp-storefront .pp-account-section-nav .pp-account-tab-full { display:none; } .pp-storefront .pp-account-section-nav .pp-account-tab-short { display:block; overflow-wrap:normal; word-break:normal; } }
+@media(max-width:767px){
+  .pp-storefront .pp-overview-company-heading{display:grid;grid-template-columns:48px minmax(0,1fr);align-items:center;gap:8px 11px}
+  .pp-storefront .pp-overview-company-heading>.pp-profile-completeness{grid-column:2;justify-self:start;margin-left:0}
+  .pp-storefront .pp-overview-company-heading>.pp-inline-action{grid-column:2;justify-self:start;margin-left:0}
+  .pp-storefront .pp-overview-company-heading>div{min-width:0}
+  .pp-storefront .pp-overview-company-heading p{overflow-wrap:anywhere;word-break:normal}
+}

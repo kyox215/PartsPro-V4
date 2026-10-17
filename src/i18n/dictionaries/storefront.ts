@@ -226,6 +226,20 @@ export function rmaCustomerStageLabel(t: StorefrontTranslator, value: string) {
 }
 
 export const storefrontItIT = {
+  "storefront.reference.filters": "Filtri",
+  "storefront.reference.filterDescription": "Scegli brand, modello e disponibilità, poi applica i filtri.",
+  "storefront.reference.category": "Categoria",
+  "storefront.reference.allCategories": "Tutte le categorie",
+  "storefront.reference.reset": "Ripristina",
+  "storefront.reference.apply": "Applica filtri",
+
+  "storefront.reference.professionalNav": "Professionisti",
+  "storefront.reference.heroEyebrow": "RICAMBI PER PROFESSIONISTI",
+  "storefront.reference.hot": "Più venduti",
+  "storefront.reference.new": "Novità",
+  "storefront.reference.stock": "Disponibili",
+  "storefront.reference.common": "Ricambi più richiesti",
+
   "storefront.ui.home.title": "Trova il ricambio giusto.",
   "storefront.ui.home.subtitle": "Cerca per brand, modello o SKU e prepara il tuo ordine.",
   "storefront.ui.home.quickLinks": "Acquista per categoria",
@@ -1574,6 +1588,20 @@ export const storefrontItIT = {
 };
 
 export const storefrontZhCN = {
+  "storefront.reference.filters": "筛选",
+  "storefront.reference.filterDescription": "选择品牌、机型和库存条件，然后应用筛选。",
+  "storefront.reference.category": "商品分类",
+  "storefront.reference.allCategories": "全部分类",
+  "storefront.reference.reset": "重置",
+  "storefront.reference.apply": "应用筛选",
+
+  "storefront.reference.professionalNav": "专业客户",
+  "storefront.reference.heroEyebrow": "专业维修配件商城",
+  "storefront.reference.hot": "热销推荐",
+  "storefront.reference.new": "新品上架",
+  "storefront.reference.stock": "现货优先",
+  "storefront.reference.common": "常用维修配件",
+
   "storefront.ui.home.title": "快速找到合适配件。",
   "storefront.ui.home.subtitle": "按品牌、型号或 SKU 查找，清楚准备每次采购。",
   "storefront.ui.home.quickLinks": "按品类快速采购",

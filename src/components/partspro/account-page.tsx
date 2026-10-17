@@ -31,13 +31,13 @@ import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 const accountReferenceCopy = {
     "it-IT": {
         title: "Area personale", overview: "Panoramica", orders: "I miei ordini", wallet: "Il mio portafoglio", service: "Assistenza", welcome: "Bentornato",
-        overviewDescription: "Ordini, saldo e assistenza. Tutto sotto controllo.", ordersDescription: "Consulta i tuoi acquisti e segui lo stato degli ordini.", walletDescription: "Controlla il saldo disponibile e i movimenti recenti.", serviceDescription: "Apri una richiesta da un ordine e segui gli aggiornamenti.",
+        mobileOverview: "Riepilogo", mobileOrders: "Ordini", mobileWallet: "Saldo", mobileService: "Assistenza", overviewDescription: "Ordini, saldo e assistenza. Tutto sotto controllo.", ordersDescription: "Consulta i tuoi acquisti e segui lo stato degli ordini.", walletDescription: "Controlla il saldo disponibile e i movimenti recenti.", serviceDescription: "Apri una richiesta da un ordine e segui gli aggiornamenti.",
         companyAddress: "Azienda e indirizzi", notifications: "Notifiche", help: "Centro assistenza", shop: "Acquista nel catalogo", business: "Cliente professionale", customer: "Account cliente", staff: "Acquisti personali staff",
         manageCompany: "Gestisci i dati", complete: "Dati completi", incomplete: "Dati da completare", effectiveLevel: "Livello effettivo", baseLevel: "Livello base", balance: "Saldo disponibile", walletUse: "Scegli se usarlo al checkout", movements: "Vedi movimenti", recentOrders: "Ordini recenti", seeAll: "Vedi tutti", attention: "Da tenere d’occhio", openOrders: "Ordini aperti", pendingPayment: "Da pagare", processing: "In lavorazione", shipped: "Spediti", afterSales: "Richieste aperte", availableData: "Conteggi sulle informazioni caricate", noRecentOrders: "Non hai ancora ordini da mostrare.", address: "Indirizzo di consegna", billingAddress: "Indirizzo di fatturazione", manageAddress: "Gestisci indirizzi", noAddress: "Completa l’indirizzo prima del prossimo acquisto.",
         order: "Ordine", date: "Data ordine", quantity: "Articoli", status: "Stato ordine", amount: "Importo", action: "Dettaglio", walletHow: "Come si usa il saldo?", walletRefund: "Rimborsi e differenze vengono registrati", walletChoose: "Seleziona il saldo al checkout", walletRecord: "Ogni movimento resta consultabile", walletExplanation: "Il saldo segue i movimenti del tuo account. Il totale e l’eventuale utilizzo vengono confermati al checkout.", typeDescription: "Tipo e descrizione", linkedOrder: "Ordine collegato", serviceSteps: "Parti da un ordine spedito o completato", stepOrder: "Seleziona l’ordine", stepProduct: "Scegli l’articolo", stepProblem: "Descrivi il problema", myRequests: "Le mie richieste", requestDetails: "Dettaglio richiesta", searchRequests: "Cerca richiesta o prodotto", openRequest: "Apri richiesta e aggiornamenti", requestDate: "Data richiesta", noRequests: "Non ci sono richieste assistenza da mostrare.", chooseRequest: "Seleziona una richiesta per consultarne i dati.", currentStage: "Stato attuale", accountIdentity: "Profilo cliente", companyInfo: "Dati azienda", editProfile: "Modifica dati", profileDescription: "Gestisci i dati usati per account, ordini e consegne.", sameAddress: "Uguale alla consegna", profileCompany: "Dati azienda", profileDelivery: "Consegna e fatturazione", emailLocked: "L’email di accesso non si modifica da qui.", noDocuments: "Non ci sono documenti scaricabili.", payment: "Stato pagamento", detailSummary: "Riepilogo ordine", details: "Dettagli", timeline: "Cronologia ordine", deliveryDetails: "Dati di consegna", walletApplied: "Credito utilizzato", latestData: "La disponibilità e gli importi seguono i dati del tuo account.",
     },
     "zh-CN": {
-        title: "个人中心", overview: "概览", orders: "我的订单", wallet: "我的钱包", service: "售后服务", welcome: "欢迎回来",
+        mobileOverview: "账户概览", mobileOrders: "我的订单", mobileWallet: "我的钱包", mobileService: "售后服务", title: "个人中心", overview: "概览", orders: "我的订单", wallet: "我的钱包", service: "售后服务", welcome: "欢迎回来",
         overviewDescription: "订单、余额与售后，一目了然。", ordersDescription: "查看采购记录与订单状态。", walletDescription: "查看可用余额与最近收支。", serviceDescription: "从订单发起申请，随时查看处理进度。",
         companyAddress: "公司与地址", notifications: "通知消息", help: "帮助中心", shop: "前往商城采购", business: "专业客户", customer: "客户账户", staff: "员工自购账户",
         manageCompany: "管理公司资料", complete: "资料已完善", incomplete: "资料待补全", effectiveLevel: "有效等级", baseLevel: "基础等级", balance: "可用钱包余额", walletUse: "结算时可选择抵扣", movements: "查看流水", recentOrders: "最近订单", seeAll: "查看全部", attention: "需要关注", openOrders: "未完成订单", pendingPayment: "待付款", processing: "处理中", shipped: "已发货", afterSales: "售后处理中", availableData: "统计基于当前已加载资料", noRecentOrders: "暂无可展示的采购订单。", address: "配送地址", billingAddress: "账单地址", manageAddress: "管理地址", noAddress: "请在下次采购前补全配送地址。",
@@ -397,13 +397,13 @@ function AccountSectionNav({ activeSection, onSectionChange, orderSummaries, rma
     const ui = useAccountReferenceCopy();
     const openOrderCount = orderSummaries.filter((order) => !isTerminalOrderStatus(order.status)).length;
     const sections = [
-        { id: "overview" as const, icon: Home, label: ui.overview },
-        { id: "orders" as const, icon: FileText, label: ui.orders, badge: openOrderCount },
-        { id: "wallet" as const, icon: WalletCards, label: ui.wallet },
-        { id: "service" as const, icon: Headphones, label: ui.service, badge: rmaRequests.length },
+        { id: "overview" as const, icon: Home, mobileLabel: ui.mobileOverview, label: ui.overview },
+        { id: "orders" as const, icon: FileText, mobileLabel: ui.mobileOrders, label: ui.orders, badge: openOrderCount },
+        { id: "wallet" as const, icon: WalletCards, mobileLabel: ui.mobileWallet, label: ui.wallet },
+        { id: "service" as const, icon: Headphones, mobileLabel: ui.mobileService, label: ui.service, badge: rmaRequests.length },
     ];
     return <nav className="pp-account-section-nav" aria-label={ui.title}>
-        {sections.map(({ id, icon: Icon, label, badge }) => <button key={id} type="button" aria-current={activeSection === id ? "page" : undefined} aria-pressed={activeSection === id} onClick={() => onSectionChange(id)}><Icon aria-hidden="true"/><span>{label}</span>{Boolean(badge) && <b>{badge}</b>}</button>)}
+        {sections.map(({ id, icon: Icon, label, mobileLabel, badge }) => <button key={id} type="button" aria-current={activeSection === id ? "page" : undefined} aria-pressed={activeSection === id} onClick={() => onSectionChange(id)}><Icon aria-hidden="true"/><span className="pp-account-tab-full">{label}</span><span className="pp-account-tab-short">{mobileLabel}</span>{Boolean(badge) && <b>{badge}</b>}</button>)}
     </nav>;
 }
 function WalletSection({ wallet }: { wallet: CustomerWallet }) {
@@ -465,7 +465,7 @@ function AccountSummaryPanel({ company, isEmployeeAccount, onOpenProfile, onOpen
     const pendingCount = orderSummaries.filter((order) => order.status === "pending_payment").length;
     const openCount = orderSummaries.filter((order) => !isTerminalOrderStatus(order.status)).length;
     const shippedCount = orderSummaries.filter((order) => order.status === "shipped").length;
-    const rmaCount = rmaRequests.filter((request) => !["rejected", "replaced", "refunded", "closed"].includes(request.status)).length;
+    const rmaCount = rmaRequests.filter((request) => !["rejected", "replacement_sent", "replaced", "refunded", "closed"].includes(request.status)).length;
     const primaryAddress = company?.shippingAddress || profile?.shippingAddress || company?.billingAddress || profile?.billingAddress;
     const stats = [
         { label: ui.pendingPayment, count: pendingCount, icon: FileText, section: "orders" as const, filter: "pending_payment" as const },

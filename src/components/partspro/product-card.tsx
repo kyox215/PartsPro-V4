@@ -62,6 +62,7 @@ import { ProductRestockReminderButton } from "./product-restock-reminder-button"
 
 type ProductCardProps = {
   className?: string;
+  layout?: "home" | "catalog" | "preorder";
   returnTo?: string;
   searchMatch?: string;
   onOpenProduct?: () => void;
@@ -78,6 +79,7 @@ type AddFeedbackState = "idle" | "success" | "error";
 import { ProductImagePreviewDialog } from "./product-image-preview-dialog";
 
 export const ProductCard = memo(function ProductCard({
+  layout = "catalog",
   assistedCompanyId,
   className,
   returnTo,
@@ -208,6 +210,7 @@ export const ProductCard = memo(function ProductCard({
   return (
     <>
       <Card
+        data-product-layout={layout}
         className={cn(
           "pp-product-card @container/product h-full min-w-0 rounded-lg border-slate-200 bg-white shadow-sm transition sm:shadow-[0_14px_34px_rgba(15,23,42,0.045)] sm:hover:-translate-y-0.5 sm:hover:shadow-[0_18px_40px_rgba(15,23,42,0.07)]",
           className

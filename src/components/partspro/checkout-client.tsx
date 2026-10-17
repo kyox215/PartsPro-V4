@@ -989,17 +989,7 @@ function CheckoutClientContent({
               {tx(t, "storefront.common.retry", "Riprova")}
             </Button>
           )}
-          <OrderLinesReview
-            cartHref={cartHref}
-            catalogLoadState={catalogLoadState}
-            catalogResolutionPending={catalogResolutionPending}
-            lineIssues={lineIssues}
-            lines={cart.lines}
-            pendingCustomerItems={pendingCustomerItems}
-            pendingItemsReason={pendingItemsReason}
-            unresolvedSkus={reviewUnresolvedSkus}
-          />
-          <fieldset disabled={submissionLocked} inert={submissionLocked} className="space-y-2">
+          <fieldset disabled={submissionLocked} inert={submissionLocked} className="pp-checkout-sections space-y-2">
           <DeliverySection
             errors={formErrors}
             form={form}
@@ -1013,6 +1003,16 @@ function CheckoutClientContent({
             isPreorder={isPreorder}
             onChange={setForm}
             walletPreview={walletPreview}
+          />
+          <OrderLinesReview
+            cartHref={cartHref}
+            catalogLoadState={catalogLoadState}
+            catalogResolutionPending={catalogResolutionPending}
+            lineIssues={lineIssues}
+            lines={cart.lines}
+            pendingCustomerItems={pendingCustomerItems}
+            pendingItemsReason={pendingItemsReason}
+            unresolvedSkus={reviewUnresolvedSkus}
           />
           <ConfirmationSection
             confirmed={confirmed}
@@ -1455,7 +1455,7 @@ function OrderLinesReview({
   }, [lineIssues]);
 
   return (
-    <Card size="sm" className="rounded-lg border-slate-200 bg-white">
+    <Card size="sm" className="pp-checkout-items rounded-lg border-slate-200 bg-white">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <ShoppingBag className="size-5 text-primary" />
@@ -1630,7 +1630,7 @@ function DeliverySection({
   ];
 
   return (
-    <Card size="sm" className="rounded-lg border-slate-200 bg-white py-2.5">
+    <Card size="sm" className="pp-checkout-delivery rounded-lg border-slate-200 bg-white py-2.5">
       <CardHeader className="px-3">
         <CardTitle className="flex items-center gap-2">
           <Truck className="size-4 text-primary" />
@@ -1741,7 +1741,7 @@ function PaymentSection({
   ];
 
   return (
-    <Card size="sm" className="rounded-lg border-slate-200 bg-white py-2.5">
+    <Card size="sm" className="pp-checkout-payment rounded-lg border-slate-200 bg-white py-2.5">
       <CardHeader className="px-3">
         <CardTitle className="flex items-center gap-2">
           <CreditCard className="size-4 text-primary" />
@@ -1892,7 +1892,7 @@ function ConfirmationSection({
   const t = useT();
 
   return (
-    <Card size="sm" className="rounded-lg border-slate-200 bg-white py-2.5">
+    <Card size="sm" className="pp-checkout-confirmation rounded-lg border-slate-200 bg-white py-2.5">
       <CardHeader className="px-3">
         <CardTitle className="flex items-center gap-2">
           <ClipboardCheck className="size-4 text-primary" />

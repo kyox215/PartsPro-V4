@@ -29,8 +29,8 @@ export function PartsProLogo({
         loading="eager"
       />
       {!compact && (
-        <div className="leading-none">
-          <div className="text-xl font-black tracking-normal text-slate-950">
+        <div className="pp-brand-wordmark leading-none">
+          <div className="text-[28px] font-bold tracking-normal text-slate-950">
             PartsPro
           </div>
           <div className="mt-1 text-[11px] font-medium text-slate-500">

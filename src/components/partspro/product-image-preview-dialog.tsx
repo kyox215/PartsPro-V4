@@ -6,6 +6,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 
 type ProductImagePreviewDialogProps = {
@@ -32,6 +33,7 @@ export function ProductImagePreviewDialog({
           <DialogTitle className="line-clamp-2 text-sm font-black text-slate-950">
             {productName}
           </DialogTitle>
+          <DialogDescription className="sr-only">{imageAlt}</DialogDescription>
         </DialogHeader>
         <div className="relative h-[min(65dvh,620px)] overflow-hidden rounded-lg bg-slate-50">
           <Image

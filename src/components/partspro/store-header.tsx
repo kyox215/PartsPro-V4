@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Grid3X3, Search } from "lucide-react";
+import { Grid3X3, Search, Home, ShoppingBag, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { CatalogDepartmentGroup } from "@/lib/partspro-data";
@@ -234,13 +234,19 @@ export function StoreHeader({
             label={tx(t, "nav.cart", "Carrello")}
           />
         </div>
-        <form onSubmit={handleSearchSubmit} className="relative mx-3 mb-2 xl:hidden" role="search">
+        <form onSubmit={handleSearchSubmit} className="pp-header-mobile-search relative mx-3 mb-2 xl:hidden" role="search">
           <label htmlFor="store-header-search" className="sr-only">{tx(t, "storefront.header.searchFull", "Cerca SKU, brand, modello...")}</label>
           <Input key={catalogSearchValue} id="store-header-search" name="catalogSearch" defaultValue={catalogSearchValue} placeholder={tx(t, "storefront.header.searchFull", "Cerca SKU, brand, modello...")} className="h-11 rounded-full bg-white pr-14" />
           <Button type="submit" size="icon-lg" className="absolute right-0 top-0 rounded-full" aria-label={tx(t, "storefront.header.searchSubmit", "Cerca")}><Search className="size-4" /></Button>
         </form>
+        <nav className="pp-desktop-primary-nav" aria-label={tx(t, "nav.catalog", "Catalogo")}>
+          <Link href="/" aria-current={pathname === "/" ? "page" : undefined}><Home />{tx(t,"nav.home","Home")}</Link>
+          <Link href={hrefWithAssistedCompanyId("/catalogo",assistedCompanyId)} aria-current={pathname === "/catalogo" || pathname.startsWith("/prodotto/") ? "page" : undefined}><Grid3X3 />{tx(t,"nav.catalog","Catalogo")}</Link>
+          <Link href="/#remax-preorders"><ShoppingBag />REMAX</Link>
+          <Link href="/professionale" aria-current={pathname === "/professionale" ? "page" : undefined}><UserRound />{tx(t,"storefront.reference.professionalNav","Professionisti")}</Link>
+        </nav>
       </header>
-      <div aria-hidden="true" className="h-[108px] sm:h-[116px] xl:h-16" />
+      <div aria-hidden="true" className="pp-store-header-spacer h-[108px] sm:h-[116px] xl:h-16" />
       <StoreBottomNavigation assistedCompanyId={assistedCompanyId} />
     </>
   );

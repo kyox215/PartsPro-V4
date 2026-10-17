@@ -8,7 +8,8 @@ import { createLatestRequest } from "@/lib/latest-request.mjs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { AlertTriangle, ChevronRight, Grid3X3, Loader2, RotateCcw } from "lucide-react";
+import { AlertTriangle, ChevronRight, Grid3X3, Loader2, RotateCcw, Search, SlidersHorizontal } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -224,6 +225,10 @@ function CatalogPageContent({
         ? `${initialDepartment}::${initialFilters.brand[0]}`
         : null
   );
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [draftFilters, setDraftFilters] = useState<CatalogSelection>({});
+  const [draftDepartment, setDraftDepartment] = useState<CatalogDepartment | null>("phone");
+  const [draftBrand, setDraftBrand] = useState<string | null>(null);
   const shouldUseCatalogPageCache = !showWholesalePrice;
   const catalogPageCacheRef = useRef(
     new Map<string, { products: PartProduct[]; total: number; expiresAt: number }>([
@@ -516,6 +521,8 @@ function CatalogPageContent({
         </aside>
 
         <section className="pp-catalog-results min-w-0">
+          <div className="pp-catalog-mobile-tools"><form role="search" onSubmit={event=>{event.preventDefault();const data=new FormData(event.currentTarget);selectCatalog({...selectedCatalog,searchQuery:String(data.get("q")??"")});}}><Search aria-hidden="true"/><input name="q" key={searchQuery} defaultValue={searchQuery} aria-label={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")} placeholder={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")}/><button type="submit" aria-label={tx(t,"storefront.header.searchSubmit","Cerca")}><ChevronRight/></button></form><Button variant="outline" onClick={()=>{setDraftFilters({...selectedCatalog});setDraftDepartment(selectedCatalog.department??"phone");setDraftBrand(selectedCatalog.brand ? `${selectedCatalog.department??"phone"}::${selectedCatalog.brand}`:null);setFilterOpen(true);}}><SlidersHorizontal/>{tx(t,"storefront.reference.filters","Filtri")}</Button></div>
+          <Dialog open={filterOpen} onOpenChange={setFilterOpen}><DialogContent className="pp-storefront-portal pp-catalog-filter-dialog"><DialogHeader><DialogTitle>{tx(t,"storefront.reference.filters","Filtri")}</DialogTitle><DialogDescription>{tx(t,"storefront.reference.filterDescription","Scegli brand, modello e disponibilità, poi applica i filtri.")}</DialogDescription></DialogHeader><div className="pp-catalog-filter-scroll"><CatalogBrandTree departmentGroups={departmentGroups} expandedBrandKey={draftBrand} expandedDepartment={draftDepartment} onExpandedBrandKeyChange={setDraftBrand} onExpandedDepartmentChange={setDraftDepartment} selectedCatalog={draftFilters} onSelectCatalog={selection=>setDraftFilters(previous=>({...selection,sort:previous.sort,searchQuery:previous.searchQuery,category:selection.department?previous.category:undefined,inStockOnly:selection.department?previous.inStockOnly:undefined}))} idPrefix="catalog-filter-draft" variant="mobile"/><label className="pp-filter-field"><span>{tx(t,"storefront.reference.category","Categoria")}</span><select value={draftFilters.category??""} onChange={event=>setDraftFilters(previous=>({...previous,category:event.target.value||undefined}))}><option value="">{tx(t,"storefront.reference.allCategories","Tutte le categorie")}</option>{directory.nodes.filter(node=>node.kind==="category"&&node.active).map(node=><option key={node.id} value={node.value}>{catalogNodeLabel(node,locale)}</option>)}</select></label><label className="pp-filter-stock"><input type="checkbox" checked={Boolean(draftFilters.inStockOnly)} onChange={event=>setDraftFilters(previous=>({...previous,inStockOnly:event.target.checked}))}/>{tx(t,"storefront.ux.inStockOnly","Solo disponibili")}</label></div><div className="pp-filter-actions"><Button variant="outline" onClick={()=>{setDraftFilters({sort:draftFilters.sort,searchQuery:draftFilters.searchQuery});setDraftBrand(null);setDraftDepartment("phone");}}>{tx(t,"storefront.reference.reset","Ripristina")}</Button><Button onClick={()=>{selectCatalog(draftFilters);setFilterOpen(false);}}>{tx(t,"storefront.reference.apply","Applica filtri")}</Button></div></DialogContent></Dialog>
           <nav className="pp-catalog-breadcrumb" aria-label={tx(t, "storefront.ux.browseCatalog", "Sfoglia catalogo")}><Link href="/">{tx(t, "nav.home", "Home")}</Link><ChevronRight className="size-3" /><span>{tx(t, "storefront.ux.browseCatalog", "Sfoglia catalogo")}</span>{selectedBrand ? <><ChevronRight className="size-3" /><span>{brandLabel(t, selectedBrand)}</span></> : null}</nav>
           {assistedCompanyId ? (
             <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-900">

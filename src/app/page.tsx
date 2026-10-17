@@ -1,5 +1,5 @@
 import { Suspense } from "react";
-import { HomePage, HomeProductShelf, HomeShelfLoading, HomeBannerCarousel } from "@/components/partspro/home-page";
+import { HomePage, HomeReferenceTabs, HomeProductShelf, HomeShelfLoading, HomeBannerCarousel } from "@/components/partspro/home-page";
 import { listActiveHomeBanners, listCatalogDepartmentGroups, pageHotCatalogProducts, pageCatalogProducts } from "@/lib/partspro-repository";
 import { accountPricingCustomerId, applyAccountPriceToProduct, getCurrentAccountContext, priceVisibilityReason, storefrontCartAccess, type AccountContext } from "@/lib/partspro-account-context";
 import { toStoreHeaderAccountAccess } from "@/lib/partspro-header-access";
@@ -29,15 +29,16 @@ export default async function Home() {
     <HomePage
       departmentGroups={groups.data}
       initialAccountAccess={toStoreHeaderAccountAccess(account)}
+      preorder={<Suspense fallback={<HomeShelfLoading />}><ShelfSection kind="remax" result={shelves.remax} account={account}/></Suspense>}
       banner={<Suspense fallback={<div className="aspect-[4/1] min-h-[86px] rounded-lg bg-white sm:min-h-[150px] motion-safe:animate-pulse" />}>
         <Banner banners={bannersPromise} products={shelves.new} brandCount={brandCount} />
       </Suspense>}
     >
-      {(["remax", "hot", "new", "stocked"] as const).map((kind) => (
-        <Suspense key={kind} fallback={<HomeShelfLoading />}>
-          <ShelfSection kind={kind} result={shelves[kind]} fallback={kind === "hot" ? shelves.stocked : undefined} account={account} />
-        </Suspense>
-      ))}
+      <HomeReferenceTabs
+        hot={<Suspense fallback={<HomeShelfLoading/>}><ShelfSection kind="hot" result={shelves.hot} fallback={shelves.stocked} account={account}/></Suspense>}
+        fresh={<Suspense fallback={<HomeShelfLoading/>}><ShelfSection kind="new" result={shelves.new} account={account}/></Suspense>}
+        stocked={<Suspense fallback={<HomeShelfLoading/>}><ShelfSection kind="stocked" result={shelves.stocked} account={account}/></Suspense>}
+      />
     </HomePage>
   );
 }
