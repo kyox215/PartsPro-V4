@@ -1,3 +1,4 @@
+import { StorefrontLoading } from "@/components/partspro/storefront-loading";
 import { Suspense } from "react";
 import { CatalogPage } from "@/components/partspro/catalog-page";
 import {
@@ -67,7 +68,7 @@ export default async function Page({
   );
 
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<StorefrontLoading variant="catalog"/>}>
       <CatalogPage
         assistedCompanyId={assistedCompanyId}
         assistedCompanyName={assistedProfile?.companyName ?? null}
