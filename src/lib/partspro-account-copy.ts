@@ -1,3 +1,4 @@
+import { englishUiCopy } from "@/i18n/english-ui-copy";
 /** Literal UI copy only. Customer names, addresses and API data are never rewritten. */
 const italianCopy: Record<string,string> = {
   "已复制":"Copiato", "无法复制，请选中追踪号复制。":"Copia non disponibile: seleziona il codice tracking e copialo.",
@@ -14,11 +15,13 @@ const italianCopy: Record<string,string> = {
 };
 export function accountCopy(text: string, locale: string): string {
   if (locale.startsWith("zh")) return text;
-  if (italianCopy[text]) return italianCopy[text];
-  if(text.startsWith("活动至 ")) return `Promozione fino al ${text.slice(4)}`;
+  if (italianCopy[text]) return locale.startsWith("en") ? englishUiCopy(italianCopy[text]) : italianCopy[text];
+  if(text.startsWith("活动至 ")) return locale.startsWith("en") ? `Promotion until ${text.slice(4)}` : `Promozione fino al ${text.slice(4)}`;
   const discount = text.match(/^普通商品每件最多减 (.+)；REMAX\/保护膜除外$/);
+  if (discount && locale.startsWith("en")) return `Up to ${discount[1]} off each standard item; excludes REMAX and protective films.`;
   if (discount) return `Sconto fino a ${discount[1]} per articolo standard; esclusi REMAX e pellicole.`;
   const page = text.match(/^第 (\d+) 页 · 状态筛选限本页$/);
+  if (page && locale.startsWith("en")) return `Page ${page[1]} · status filter applies to this page`;
   if (page) return `Pagina ${page[1]} · filtro stato applicato a questa pagina`;
   return text;
 }

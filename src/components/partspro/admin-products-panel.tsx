@@ -1,4 +1,7 @@
 "use client";
+
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
 import { AdminExpandableText } from "./admin-summary-components";
 
 import * as React from "react";
@@ -1667,7 +1670,7 @@ export function AdminProductsPanel({
   const router = useRouter();
   const searchParams = useSearchParams();
   const { locale } = useI18n();
-  const text = locale.toLowerCase().startsWith("it") ? panelText.it : panelText.zh;
+  const text = locale.startsWith("en") ? englishUiCopy(panelText.it) : locale.toLowerCase().startsWith("it") ? panelText.it : panelText.zh;
   const adminText = getAdminDictionary(locale).admin;
   const capabilities = React.useMemo(
     () => buildProductCapabilities(permissionsLoaded ? permissions : []),
@@ -2414,9 +2417,9 @@ export function AdminProductsPanel({
     ...(filters.activeRestockOnly ? [{ key: "restock", label: text.restockOnly, clear: { activeRestockOnly: false } }] : []),
   ];
   const workspaceGroups: { label: string; items: readonly (readonly [ProductWorkspace, string])[] }[] = [
-    { label: locale.startsWith("zh") ? "商品资料" : "Catalogo", items: [["products", text.workspaceProducts], ["directory", locale.startsWith("zh") ? "目录管理" : "Gestione catalogo"]] as const },
-    { label: locale.startsWith("zh") ? "采购与仓库" : "Acquisti e magazzino", items: [["sold-shortages", text.workspaceSoldShortages], ["batches", text.workspaceBatches]] as const },
-    { label: locale.startsWith("zh") ? "商城内容" : "Contenuti vetrina", items: [["banners", text.workspaceBanners]] as const },
+    { label: (locale.startsWith("en") ? englishUiCopy("Catalogo") : locale.startsWith("zh") ? "商品资料" : "Catalogo"), items: [["products", text.workspaceProducts], ["directory", (locale.startsWith("en") ? englishUiCopy("Gestione catalogo") : locale.startsWith("zh") ? "目录管理" : "Gestione catalogo")]] as const },
+    { label: (locale.startsWith("en") ? englishUiCopy("Acquisti e magazzino") : locale.startsWith("zh") ? "采购与仓库" : "Acquisti e magazzino"), items: [["sold-shortages", text.workspaceSoldShortages], ["batches", text.workspaceBatches]] as const },
+    { label: (locale.startsWith("en") ? englishUiCopy("Contenuti vetrina") : locale.startsWith("zh") ? "商城内容" : "Contenuti vetrina"), items: [["banners", text.workspaceBanners]] as const },
   ];
   const changeWorkspace = (nextWorkspace: ProductWorkspace) => {
     if (workspace === "directory" && nextWorkspace !== "directory" && (directoryGuard.pending || (directoryGuard.dirty && !window.confirm(text.unsavedPrompt)))) return false;
@@ -2432,7 +2435,7 @@ export function AdminProductsPanel({
         onValueChange={(value) => { changeWorkspace(normalizeProductWorkspace(value)); }}
       >
         <DropdownMenu>
-          <DropdownMenuTrigger asChild><Button variant="outline" aria-label={locale.startsWith("zh") ? "商品工作区" : "Area catalogo"} className="flex h-11 w-full min-w-0 justify-between bg-white sm:hidden"><span className="truncate font-semibold">{workspaceLabel}</span><ChevronDown className="size-4 shrink-0" /></Button></DropdownMenuTrigger>
+          <DropdownMenuTrigger asChild><Button variant="outline" aria-label={(locale.startsWith("en") ? englishUiCopy("Area catalogo") : locale.startsWith("zh") ? "商品工作区" : "Area catalogo")} className="flex h-11 w-full min-w-0 justify-between bg-white sm:hidden"><span className="truncate font-semibold">{workspaceLabel}</span><ChevronDown className="size-4 shrink-0" /></Button></DropdownMenuTrigger>
           <DropdownMenuContent className="w-[min(360px,calc(100vw-24px))]" align="start">
             {workspaceGroups.map((group, index) => <React.Fragment key={group.label}>{index > 0 && <DropdownMenuSeparator />}<DropdownMenuLabel>{group.label}</DropdownMenuLabel>{group.items.map(([value,label]) => <DropdownMenuItem key={value} className="min-h-11" onSelect={event => { if (!changeWorkspace(value)) event.preventDefault(); }}><span className="min-w-0 flex-1 whitespace-normal">{label}</span>{workspace === value && <CheckCircle2 className="size-4 text-primary" />}</DropdownMenuItem>)}</React.Fragment>)}
           </DropdownMenuContent>
@@ -2480,12 +2483,12 @@ export function AdminProductsPanel({
                   <Button
                     variant="outline"
                     className="h-10 bg-white px-3"
-                    aria-label={locale.toLowerCase().startsWith("it") ? "Importa Excel" : "Excel 导入"}
+                    aria-label={locale.startsWith("en") ? "Import Excel" : locale.toLowerCase().startsWith("it") ? "Importa Excel" : "Excel 导入"}
                     onClick={() => setIsProductImportOpen(true)}
                   >
                     <FileSpreadsheet className="size-4" />
                     <span className="hidden sm:inline">
-                      {locale.toLowerCase().startsWith("it") ? "Importa Excel" : "Excel 导入"}
+                      {locale.startsWith("en") ? "Import Excel" : locale.toLowerCase().startsWith("it") ? "Importa Excel" : "Excel 导入"}
                     </span>
                   </Button>
                 )}
@@ -2581,7 +2584,7 @@ export function AdminProductsPanel({
                       <Download className="size-4" />
                       {text.exportSelection}
                     </Button>
-                    {capabilities.editContent && <Button size="sm" variant="outline" disabled={isMutating || !listReady} onClick={() => setMoveProducts(selectedProducts)}>{locale.startsWith("zh") ? "移动目录" : "Sposta nel catalogo"}</Button>}
+                    {capabilities.editContent && <Button size="sm" variant="outline" disabled={isMutating || !listReady} onClick={() => setMoveProducts(selectedProducts)}>{(locale.startsWith("en") ? englishUiCopy("Sposta nel catalogo") : locale.startsWith("zh") ? "移动目录" : "Sposta nel catalogo")}</Button>}
                     {capabilities.hide && <Button
                       size="sm"
                       variant="outline"
@@ -2898,7 +2901,7 @@ function SupplierBatchesPanel({
                 onDownload={(format) => onDownload("lines", format)}
               />
               <BatchDownloadMenu
-                label={language === "it" ? "Esporta costi" : "导出费用"}
+                label={(language.startsWith("en") ? englishUiCopy("Esporta costi") : language === "it" ? "Esporta costi" : "导出费用")}
                 pendingKeyPrefix="charges"
                 pendingDownload={pendingDownload}
                 text={copy}
@@ -3165,7 +3168,7 @@ function SupplierBatchesPanel({
                       ) : null}
                     </TableCell>
                     <TableCell className="px-2 py-2 align-top sm:px-3">
-                      <BatchMetricLine label={copy.lineTotal} value={formatSupplierBatchMoney(batch.lineCostTotal, batch.currency, language === "it" ? "it-IT" : "zh-CN")} />
+                      <BatchMetricLine label={copy.lineTotal} value={formatSupplierBatchMoney(batch.lineCostTotal, batch.currency, (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN"))} />
                       <SupplierBatchCostSummaryCompact summary={batch.costSummary} language={language} canReadCosts={canReadCosts} />
                     </TableCell>
                     <TableCell className="px-2 py-2 align-top sm:px-3">
@@ -3221,7 +3224,7 @@ function SupplierBatchesPanel({
                             {canExportCosts ? (
                               <DropdownMenuItem onClick={() => void onDownload("charges", "csv", batch)}>
                                 <FileText className="size-4" />
-                                {language === "it" ? "Esporta costi CSV" : "导出费用 CSV"}
+                                {(language.startsWith("en") ? englishUiCopy("Esporta costi CSV") : language === "it" ? "Esporta costi CSV" : "导出费用 CSV")}
                               </DropdownMenuItem>
                             ) : null}
                           </DropdownMenuContent>
@@ -3261,9 +3264,9 @@ function SupplierBatchesPanel({
               <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
                 <BatchMobileField label={copy.quantity} value={`${batch.lineQtyTotal}/${batch.totalQty}`} />
                 <BatchMobileField label={copy.lineCount} value={String(batch.lineCount)} />
-                <BatchMobileField label={copy.lineTotal} value={formatSupplierBatchMoney(batch.lineCostTotal, batch.currency, language === "it" ? "it-IT" : "zh-CN")} />
+                <BatchMobileField label={copy.lineTotal} value={formatSupplierBatchMoney(batch.lineCostTotal, batch.currency, (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN"))} />
                 <BatchMobileField label={copy.productStatus} value={`${copy.active} ${batch.activeProductCount} · ${copy.draft} ${batch.draftProductCount}`} />
-                <BatchMobileField label={copy.receivedAt} value={batch.receivedAt ? formatSupplierBatchDateTime(batch.receivedAt, language === "it" ? "it-IT" : "zh-CN") : text.none} />
+                <BatchMobileField label={copy.receivedAt} value={batch.receivedAt ? formatSupplierBatchDateTime(batch.receivedAt, (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN")) : text.none} />
                 <BatchMobileField
                   label={copy.costStatus}
                   value={batch.costSummary ? copy.costStatusLabels[batch.costSummary.costStatus] : copy.costStatusLabels.unrecorded}
@@ -3442,11 +3445,11 @@ function BatchMobileExportMenu({
           <>
             <DropdownMenuItem className="min-h-11 text-base" onClick={() => void onDownload("charges", "csv")}>
               <FileText className="size-4" />
-              {language === "it" ? "Esporta costi CSV" : "导出费用 CSV"}
+              {(language.startsWith("en") ? englishUiCopy("Esporta costi CSV") : language === "it" ? "Esporta costi CSV" : "导出费用 CSV")}
             </DropdownMenuItem>
             <DropdownMenuItem className="min-h-11 text-base" onClick={() => void onDownload("charges", "xlsx")}>
               <FileSpreadsheet className="size-4" />
-              {language === "it" ? "Esporta costi Excel" : "导出费用 Excel"}
+              {(language.startsWith("en") ? englishUiCopy("Esporta costi Excel") : language === "it" ? "Esporta costi Excel" : "导出费用 Excel")}
             </DropdownMenuItem>
           </>
         ) : null}
@@ -3847,7 +3850,16 @@ function SupplierBatchDetailSheet({
   const cancelIdempotencyKeyRef = React.useRef<string | null>(null);
   const canManageSupplierBatchCosts = canReadCosts && canEstimateCosts;
 
-  const cancelCopy = language === "it"
+  const cancelCopy = (language.startsWith("en") ? englishUiCopy({
+        title: "Annulla costo stimato",
+        description: "L'annullamento conserva la traccia storica. Indica un motivo prima di procedere.",
+        reason: "Motivo annullamento",
+        reasonHelp: "Obbligatorio; non usare questa azione per correggere un costo confermato.",
+        action: "Annulla stima",
+        submitting: "Annullamento...",
+        readback: "Operazione inviata, ma la rilettura non conferma ancora l'annullamento.",
+        invalidResponse: "La risposta del servizio non è verificabile; aggiorna il dettaglio prima di riprovare.",
+      }) : language === "it"
     ? {
         title: "Annulla costo stimato",
         description: "L'annullamento conserva la traccia storica. Indica un motivo prima di procedere.",
@@ -3867,7 +3879,7 @@ function SupplierBatchDetailSheet({
         submitting: "正在取消...",
         readback: "请求已提交，但回读暂未确认取消状态。",
         invalidResponse: "服务返回无法核对；请先刷新详情再重试。",
-      };
+      });
 
   function openCreateChargeDialog() {
     setEditingCharge(null);
@@ -4020,8 +4032,8 @@ function SupplierBatchDetailSheet({
                   <DetailItem label={copy.lineCount} value={batch.lineCount} />
                   <DetailItem label={copy.quantity} value={`${batch.lineQtyTotal}/${batch.totalQty}`} />
                   <DetailItem label={copy.shortQty} value={batch.shortQty} />
-                  <DetailItem label={copy.lineTotal} value={formatSupplierBatchMoney(batch.lineCostTotal, batch.currency, language === "it" ? "it-IT" : "zh-CN")} />
-                  <DetailItem label={copy.totalCost} value={formatSupplierBatchMoney(batch.totalCost, batch.currency, language === "it" ? "it-IT" : "zh-CN")} />
+                  <DetailItem label={copy.lineTotal} value={formatSupplierBatchMoney(batch.lineCostTotal, batch.currency, (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN"))} />
+                  <DetailItem label={copy.totalCost} value={formatSupplierBatchMoney(batch.totalCost, batch.currency, (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN"))} />
                   <DetailItem label={copy.imageMissing} value={batch.missingImageCount + batch.activeMissingImageCount} />
                 </div>
                 <SupplierBatchIssueList batch={batch} text={text} className="mt-3" />
@@ -4060,7 +4072,7 @@ function SupplierBatchDetailSheet({
                         <TableHead className="w-[13%]">SKU</TableHead>
                         <TableHead className="w-[12%]">{copy.quantity}</TableHead>
                         <TableHead className="w-[12%]">{copy.amount}</TableHead>
-                        <TableHead className="w-[17%]">{language === "it" ? "Costo sbarcato" : "运输 / 落地成本"}</TableHead>
+                        <TableHead className="w-[17%]">{(language.startsWith("en") ? englishUiCopy("Costo sbarcato") : language === "it" ? "Costo sbarcato" : "运输 / 落地成本")}</TableHead>
                         <TableHead className="w-[14%]">{copy.stock}</TableHead>
                         <TableHead className="w-[14%]">{copy.productStatus}</TableHead>
                         <TableHead className="w-[11%]">{copy.issues}</TableHead>
@@ -4096,8 +4108,8 @@ function SupplierBatchDetailSheet({
                               ) : null}
                             </TableCell>
                             <TableCell>
-                              <BatchMetricLine label="unit" value={formatSupplierBatchMoney(line.unitCost, batch.currency, language === "it" ? "it-IT" : "zh-CN")} />
-                              <BatchMetricLine label="line" value={formatSupplierBatchMoney(line.lineTotal, batch.currency, language === "it" ? "it-IT" : "zh-CN")} />
+                              <BatchMetricLine label="unit" value={formatSupplierBatchMoney(line.unitCost, batch.currency, (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN"))} />
+                              <BatchMetricLine label="line" value={formatSupplierBatchMoney(line.lineTotal, batch.currency, (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN"))} />
                             </TableCell>
                             <TableCell>
                               <SupplierBatchLineCostCompact costs={line.costs} summary={batch.costSummary} language={language} canReadCosts={canReadCosts} />
@@ -4154,9 +4166,9 @@ function SupplierBatchDetailSheet({
                       </div>
                       <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
                         <BatchMobileField label={copy.quantity} value={`${line.qtyReceived}${line.qtyOrdered !== null ? ` / ${line.qtyOrdered}` : ""}`} />
-                        <BatchMobileField label={copy.amount} value={formatSupplierBatchMoney(line.lineTotal, batch.currency, language === "it" ? "it-IT" : "zh-CN")} />
+                        <BatchMobileField label={copy.amount} value={formatSupplierBatchMoney(line.lineTotal, batch.currency, (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN"))} />
                         <BatchMobileField label={copy.stock} value={line.product ? String(line.product.stockQty) : text.none} />
-                        <BatchMobileField label={language === "it" ? "Costo sbarcato" : "落地成本"} value={formatSupplierBatchLineLandedCost(line.costs, batch.currency, batch.costSummary, language === "it" ? "it-IT" : "zh-CN")} />
+                        <BatchMobileField label={(language.startsWith("en") ? englishUiCopy("Costo sbarcato") : language === "it" ? "Costo sbarcato" : "落地成本")} value={formatSupplierBatchLineLandedCost(line.costs, batch.currency, batch.costSummary, (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN"))} />
                       </dl>
                       <div className="mt-2"><SupplierBatchLineIssueBadges line={line} text={text} /></div>
                     </article>
@@ -4219,7 +4231,7 @@ function SupplierBatchDetailSheet({
                   {formatSupplierBatchCents(
                     cancelTarget.capitalizedAmountCents,
                     cancelTarget.currency,
-                    language === "it" ? "it-IT" : "zh-CN"
+                    (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN")
                   )}
                 </div>
               </div>
@@ -5994,7 +6006,7 @@ function ProductMobileCard({
         </div>
       </div>
       <div className="mt-1 flex min-h-11 items-center gap-1 border-t border-slate-100 pt-1">
-        <label className="flex size-11 shrink-0 items-center justify-center" title={product.sku}><Checkbox aria-label={`${locale.startsWith("zh") ? "选择商品" : "Seleziona prodotto"}: ${product.sku}`} checked={selected} disabled={isMutating} onCheckedChange={(value) => onSelect(value === true)} /></label>
+        <label className="flex size-11 shrink-0 items-center justify-center" title={product.sku}><Checkbox aria-label={`${(locale.startsWith("en") ? englishUiCopy("Seleziona prodotto") : locale.startsWith("zh") ? "选择商品" : "Seleziona prodotto")}: ${product.sku}`} checked={selected} disabled={isMutating} onCheckedChange={(value) => onSelect(value === true)} /></label>
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-0.5 text-xs font-semibold text-slate-500">
           <span aria-label={text.netPrice}><strong className="text-sm text-slate-950">{formatEuro(product.price)}</strong></span>
           <span>{text.availableStock} <strong className="text-slate-950">{product.availableQty ?? product.stock}</strong></span>
@@ -8557,7 +8569,7 @@ function formatAuditDateTime(
     return `${part("year")}年${part("month")}月${part("day")}日 ${part("hour")}:${part("minute")}`;
   }
 
-  return new Intl.DateTimeFormat("it-IT", {
+  return new Intl.DateTimeFormat(locale, {
     day: "2-digit",
     hour: "2-digit",
     hour12: false,

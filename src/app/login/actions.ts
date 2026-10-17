@@ -6,8 +6,6 @@ import { redirect } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { createClient } from "@/lib/supabase/server";
 import { cleanAuthRedirect, postLoginRedirect, requestOrigin } from "@/lib/partspro-auth-redirect";
-import { seedCurrentAccountPreferredLocaleFromCookies } from "@/i18n/account-locale";
-import { resolveLocaleScope } from "@/i18n/config";
 import {
   ensureCurrentUserAccount,
   getCurrentAccountContext,
@@ -52,7 +50,6 @@ export async function signInWithPassword(formData: FormData) {
     return {error:"account",email};
   }
 
-  await seedCurrentAccountPreferredLocaleFromCookies(resolveLocaleScope("/login", next));
 
   const [account, adminAuth] = await Promise.all([
     getCurrentAccountContext(),
@@ -143,7 +140,6 @@ export async function verifySignupCode(formData: FormData) {
   }
 
   await clearPendingSignupEmail();
-  await seedCurrentAccountPreferredLocaleFromCookies(resolveLocaleScope("/login", next));
 
   const [account, adminAuth] = await Promise.all([
     getCurrentAccountContext(),

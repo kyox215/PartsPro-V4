@@ -91,8 +91,9 @@ export default async function Page({
       company={company}
       accountType={account.accountType}
       customerProfile={customerProfile.data}
-      dataWarning={orders.warning ?? rmas.warning ?? companies.warning ?? wallet.warning}
-      forceSetup={readSingleParam(params.setup) === "1"}
+      profileUnavailable={Boolean(customerProfile.warning)}
+      dataWarning={customerProfile.warning ?? orders.warning ?? rmas.warning ?? companies.warning ?? wallet.warning}
+      forceSetup={!customerProfile.warning && !customerProfile.data?.profileCompletedAt && readSingleParam(params.setup) === "1"}
       orderSummaries={loadedSection === "orders" ? orders.data.slice(0,50) : orders.data}
       historyHasMore={loadedSection === "orders" ? orders.data.length > 50 : wallet.data.transactions.length > 50}
       rmaRequests={rmas.data}

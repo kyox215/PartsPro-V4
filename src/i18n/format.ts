@@ -1,3 +1,4 @@
+import { englishUiCopy } from "./english-ui-copy";
 import type { Locale } from "./config";
 import type {
   CompanyStatus,
@@ -23,11 +24,12 @@ export function stockStatusLabel(status: StockStatus, locale: Locale) {
     }[status];
   }
 
-  return {
+  const labels = {
     "In Stock": "Disponibile",
     "Low Stock": "Scorte basse",
     "Out of Stock": "Esaurito",
   }[status];
+  return locale === "en-US" ? englishUiCopy(labels) : labels;
 }
 
 export function orderStatusLabel(status: OrderStatus, locale: Locale) {
@@ -47,7 +49,7 @@ export function orderStatusLabel(status: OrderStatus, locale: Locale) {
     }[status];
   }
 
-  return {
+  const labels = {
     draft: "Bozza",
     pending_payment: "In attesa pagamento",
     submitted: "Nuovo ordine",
@@ -60,6 +62,7 @@ export function orderStatusLabel(status: OrderStatus, locale: Locale) {
     delivered: "Consegnato",
     cancelled: "Annullato",
   }[status];
+  return locale === "en-US" ? englishUiCopy(labels) : labels;
 }
 
 export function companyStatusLabel(status: CompanyStatus, locale: Locale) {
@@ -72,12 +75,13 @@ export function companyStatusLabel(status: CompanyStatus, locale: Locale) {
     }[status];
   }
 
-  return {
+  const labels = {
     pending: "In revisione",
     approved: "Approvato",
     rejected: "Respinto",
     suspended: "Sospeso",
   }[status];
+  return locale === "en-US" ? englishUiCopy(labels) : labels;
 }
 
 export function rmaStatusLabel(status: RmaStatus, locale: Locale) {
@@ -96,7 +100,7 @@ export function rmaStatusLabel(status: RmaStatus, locale: Locale) {
     }[status];
   }
 
-  return {
+  const labels = {
     submitted: "Richiesta",
     requested: "Richiesta",
     under_review: "In verifica",
@@ -108,4 +112,5 @@ export function rmaStatusLabel(status: RmaStatus, locale: Locale) {
     refunded: "Rimborsata",
     closed: "Chiusa",
   }[status];
+  return locale === "en-US" ? englishUiCopy(labels) : labels;
 }

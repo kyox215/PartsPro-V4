@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy, englishUiTemplate } from "@/i18n/english-ui-copy";
+
+
 import { AdminSearchableSelect } from "./admin-ui-controls";
 
 import * as React from "react";
@@ -301,7 +304,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
     try {
       const response = await fetch("/api/admin/ebay/policies", { cache: "no-store" });
       const payload = await response.json();
-      if (!response.ok || !payload.data?.policies || payload.data.environment !== draft.settings.environment) throw new Error(locale.startsWith("zh") ? "政策读取失败。请核对已保存环境、连接和账号权限。" : "Lettura condizioni non riuscita. Verifica ambiente salvato, collegamento e autorizzazioni.");
+      if (!response.ok || !payload.data?.policies || payload.data.environment !== draft.settings.environment) throw new Error((locale.startsWith("en") ? englishUiCopy("Lettura condizioni non riuscita. Verifica ambiente salvato, collegamento e autorizzazioni.") : locale.startsWith("zh") ? "政策读取失败。请核对已保存环境、连接和账号权限。" : "Lettura condizioni non riuscita. Verifica ambiente salvato, collegamento e autorizzazioni."));
       setPolicyOptions(payload.data.policies);
     } catch (error) { setPolicyError(error instanceof Error ? error.message : "Error"); } finally { setPending(null); }
   }
@@ -365,7 +368,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
 
   async function queueAction(action: EbayQueueAction, skus?: string[]) {
     if (queueUnknown) return;
-    if (dirty || pending) { setError(locale.startsWith("zh") ? "请先保存设置和映射，再使用已保存设置生成或执行任务。" : "Salva impostazioni e categorie prima di creare attività."); return; }
+    if (dirty || pending) { setError((locale.startsWith("en") ? englishUiCopy("Salva impostazioni e categorie prima di creare attività.") : locale.startsWith("zh") ? "请先保存设置和映射，再使用已保存设置生成或执行任务。" : "Salva impostazioni e categorie prima di creare attività.")); return; }
     if (!permissionSet.has(queueActionPermissions[action])) {
       setError(missingPermissionMessage(t(queueActionPermissionLabels[action]), locale));
       setNotice(null);
@@ -375,7 +378,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
     const blocker = marketplaceActionBlocker(draft.settings, overview?.connection, action);
     if (blocker) { setError(readinessMessage(blocker, locale)); return; }
     const attemptKey = JSON.stringify([action, [...(skus ?? [])].sort()]);
-    if (unconfirmedScope && JSON.stringify([unconfirmedScope.action, [...unconfirmedScope.skus].sort()]) !== attemptKey) { setError(locale.startsWith("zh") ? "请先完成原任务核对；未确认的任务范围已冻结。" : "Verifica il tentativo originale: il suo ambito è bloccato."); return; }
+    if (unconfirmedScope && JSON.stringify([unconfirmedScope.action, [...unconfirmedScope.skus].sort()]) !== attemptKey) { setError((locale.startsWith("en") ? englishUiCopy("Verifica il tentativo originale: il suo ambito è bloccato.") : locale.startsWith("zh") ? "请先完成原任务核对；未确认的任务范围已冻结。" : "Verifica il tentativo originale: il suo ambito è bloccato.")); return; }
     const requestId = unconfirmedScope?.requestId ?? queueAttempts.current[attemptKey] ?? crypto.randomUUID();
     queueAttempts.current[attemptKey] = requestId;
     setUnconfirmedScope({ action, skus: [...(skus ?? [])], requestId });
@@ -459,7 +462,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
       const failed = results.filter(result => !result.ok).length;
       setQueueProgress({ processed: payload.data.processed, succeeded: results.filter(result => result.ok).length, failed });
       setNoticeTone(failed ? "warning" : payload.data.processed ? "success" : "info");
-      setNotice(locale.startsWith("zh") ? `本轮处理 ${payload.data.processed} 条，成功 ${results.filter(result => result.ok).length} 条，失败 ${failed} 条。` : `Elaborate ${payload.data.processed}: ${results.filter(result => result.ok).length} riuscite, ${failed} non riuscite.`);
+      setNotice((locale.startsWith("en") ? englishUiTemplate`Elaborate ${payload.data.processed}: ${results.filter(result => result.ok).length} riuscite, ${failed} non riuscite.` : locale.startsWith("zh") ? `本轮处理 ${payload.data.processed} 条，成功 ${results.filter(result => result.ok).length} 条，失败 ${failed} 条。` : `Elaborate ${payload.data.processed}: ${results.filter(result => result.ok).length} riuscite, ${failed} non riuscite.`));
       await loadOverview();
     } catch (runError) {
       setError(runError instanceof Error ? t(runError.message) : t("eBay 队列执行失败。"));
@@ -470,7 +473,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
 
   function connectEbay() {
     if (unconfirmedScope) return;
-    if (dirty) { setError(locale.startsWith("zh") ? "请保存设置后连接；连接页面会离开当前草稿。" : "Salva le impostazioni prima di collegare eBay."); return; }
+    if (dirty) { setError((locale.startsWith("en") ? englishUiCopy("Salva le impostazioni prima di collegare eBay.") : locale.startsWith("zh") ? "请保存设置后连接；连接页面会离开当前草稿。" : "Salva le impostazioni prima di collegare eBay.")); return; }
     if (!canConnectEbay) {
       setError(missingPermissionMessage(t("连接 eBay"), locale));
       setNotice(null);
@@ -486,12 +489,12 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
     const blocker = marketplaceActionBlocker(draft.settings, overview?.connection, action);
     if (blocker) { setError(readinessMessage(blocker, locale)); return; }
     if (action === "import_orders") {
-      if (window.confirm(locale.startsWith("zh") ? "确认将当前已保存环境的 eBay 订单拉取任务加入队列？导入将在执行队列时发生。" : "Accodare l’importazione ordini dell’ambiente salvato? L’importazione avverrà eseguendo la coda.")) void queueAction(action);
+      if (window.confirm((locale.startsWith("en") ? englishUiCopy("Accodare l’importazione ordini dell’ambiente salvato? L’importazione avverrà eseguendo la coda.") : locale.startsWith("zh") ? "确认将当前已保存环境的 eBay 订单拉取任务加入队列？导入将在执行队列时发生。" : "Accodare l’importazione ordini dell’ambiente salvato? L’importazione avverrà eseguendo la coda."))) void queueAction(action);
       return;
     }
-    if (unconfirmedScope && unconfirmedScope.action !== action) { setError(locale.startsWith("zh") ? "请先核对并完成原任务。" : "Verifica e completa prima il tentativo originale."); return; }
+    if (unconfirmedScope && unconfirmedScope.action !== action) { setError((locale.startsWith("en") ? englishUiCopy("Verifica e completa prima il tentativo originale.") : locale.startsWith("zh") ? "请先核对并完成原任务。" : "Verifica e completa prima il tentativo originale.")); return; }
     const candidates = (overview?.listings ?? []).filter(item => action === "publish_eligible" ? item.eligibilityStatus === "eligible" : item.listingStatus === "published");
-    if (!candidates.length) { setError(locale.startsWith("zh") ? "当前预览没有可处理商品，请先生成计划或核对已刊登商品。" : "Nessun prodotto elaborabile nell’anteprima. Prepara il piano o verifica le inserzioni pubblicate."); return; }
+    if (!candidates.length) { setError((locale.startsWith("en") ? englishUiCopy("Nessun prodotto elaborabile nell’anteprima. Prepara il piano o verifica le inserzioni pubblicate.") : locale.startsWith("zh") ? "当前预览没有可处理商品，请先生成计划或核对已刊登商品。" : "Nessun prodotto elaborabile nell’anteprima. Prepara il piano o verifica le inserzioni pubblicate.")); return; }
     setPreviewSkus(unconfirmedScope?.skus ?? candidates.map(item => item.sku)); setPreviewAction(action);
   }
   const previewRows = (overview?.listings ?? []).filter(item => previewAction === "publish_eligible" ? item.eligibilityStatus === "eligible" : item.listingStatus === "published");
@@ -511,34 +514,34 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
 
   return (
     <div data-admin-mutating={pending && pending !== "load" ? "true" : "false"} data-admin-dirty={dirty || queueUnknown ? "true" : "false"} className="admin-ui-panel min-w-0 space-y-3 sm:space-y-4">
-      {unconfirmedScope && <AdminNotice tone="warning" message={locale.startsWith("zh") ? "原任务范围已冻结；核对后重试仍处理同一组 SKU。请先完成原任务再开始新的范围。" : "Ambito originale bloccato: il retry conserva gli stessi SKU. Completa il tentativo prima di scegliere un altro ambito."} />}
-      {unconfirmedScope && !queueUnknown && !previewAction && <Button variant="outline" disabled={isBusy} onClick={() => { if (unconfirmedScope.action === "publish_eligible" || unconfirmedScope.action === "sync_inventory") resumeOriginalAttempt(); else void queueAction(unconfirmedScope.action,unconfirmedScope.skus.length ? unconfirmedScope.skus : undefined); }}>{locale.startsWith("zh") ? "继续原任务" : "Continua il tentativo originale"}</Button>}
-      {queueUnknown && <AdminNotice tone="warning"><p>{locale.startsWith("zh") ? "任务提交结果尚未确认。请刷新核对队列；重复请求会沿用原任务标识，不重新创建已确认任务。" : "Esito dell’invio non confermato. Aggiorna e controlla la coda; il tentativo conserva l’identificativo originale per evitare duplicati."}</p><Button variant="outline" disabled={isBusy} onClick={() => void loadOverview()}>{locale.startsWith("zh") ? "重读队列核对" : "Rileggi la coda"}</Button><Button variant="outline" disabled={isBusy || !queueReviewed} onClick={resumeOriginalAttempt}>{locale.startsWith("zh") ? "已核对，继续原任务" : "Verificato, continua il tentativo"}</Button></AdminNotice>}
+      {unconfirmedScope && <AdminNotice tone="warning" message={(locale.startsWith("en") ? englishUiCopy("Ambito originale bloccato: il retry conserva gli stessi SKU. Completa il tentativo prima di scegliere un altro ambito.") : locale.startsWith("zh") ? "原任务范围已冻结；核对后重试仍处理同一组 SKU。请先完成原任务再开始新的范围。" : "Ambito originale bloccato: il retry conserva gli stessi SKU. Completa il tentativo prima di scegliere un altro ambito.")} />}
+      {unconfirmedScope && !queueUnknown && !previewAction && <Button variant="outline" disabled={isBusy} onClick={() => { if (unconfirmedScope.action === "publish_eligible" || unconfirmedScope.action === "sync_inventory") resumeOriginalAttempt(); else void queueAction(unconfirmedScope.action,unconfirmedScope.skus.length ? unconfirmedScope.skus : undefined); }}>{(locale.startsWith("en") ? englishUiCopy("Continua il tentativo originale") : locale.startsWith("zh") ? "继续原任务" : "Continua il tentativo originale")}</Button>}
+      {queueUnknown && <AdminNotice tone="warning"><p>{(locale.startsWith("en") ? englishUiCopy("Esito dell’invio non confermato. Aggiorna e controlla la coda; il tentativo conserva l’identificativo originale per evitare duplicati.") : locale.startsWith("zh") ? "任务提交结果尚未确认。请刷新核对队列；重复请求会沿用原任务标识，不重新创建已确认任务。" : "Esito dell’invio non confermato. Aggiorna e controlla la coda; il tentativo conserva l’identificativo originale per evitare duplicati.")}</p><Button variant="outline" disabled={isBusy} onClick={() => void loadOverview()}>{(locale.startsWith("en") ? englishUiCopy("Rileggi la coda") : locale.startsWith("zh") ? "重读队列核对" : "Rileggi la coda")}</Button><Button variant="outline" disabled={isBusy || !queueReviewed} onClick={resumeOriginalAttempt}>{(locale.startsWith("en") ? englishUiCopy("Verificato, continua il tentativo") : locale.startsWith("zh") ? "已核对，继续原任务" : "Verificato, continua il tentativo")}</Button></AdminNotice>}
       <Dialog open={previewAction !== null} onOpenChange={open => { if (!open && !isBusy) setPreviewAction(null); }}>
-        <DialogContent scrollLayout="body" className="admin-ui-panel sm:max-w-2xl"><DialogHeader><DialogTitle>{locale.startsWith("zh") ? "核对 eBay 任务范围" : "Verifica prodotti e attività eBay"}</DialogTitle><DialogDescription>{locale.startsWith("zh") ? `环境：${draft.settings.environment}；只处理下面勾选的 SKU，最多100个。价格和库存为当前预览，执行时服务会重新校验。` : `Ambiente: ${draft.settings.environment}. Solo gli SKU selezionati, massimo 100. Prezzi e stock sono un’anteprima; il servizio li verificherà all’esecuzione.`}</DialogDescription></DialogHeader>
-        <DialogBody className="space-y-2">{queueUnknown && <AdminNotice tone="warning"><p>{locale.startsWith("zh") ? "提交结果未知，请先重读队列核对。原任务标识已保留。" : "Esito non confermato. Rileggi la coda; identificativo originale conservato."}</p><Button variant="outline" disabled={isBusy} onClick={() => void loadOverview()}>{locale.startsWith("zh") ? "重读队列核对" : "Rileggi la coda"}</Button><Button variant="outline" disabled={isBusy || !queueReviewed} onClick={resumeOriginalAttempt}>{locale.startsWith("zh") ? "已核对，继续原任务" : "Verificato, continua il tentativo"}</Button></AdminNotice>}<p className="text-sm">{locale.startsWith("zh") ? `已选择 ${previewSkus.length}/${previewRows.length}` : `Selezionati ${previewSkus.length}/${previewRows.length}`}</p>{previewRows.map(item => <label key={item.sku} className="flex items-start gap-3 rounded border p-3 text-sm"><input type="checkbox" disabled={isBusy || Boolean(unconfirmedScope)} checked={previewSkus.includes(item.sku)} onChange={event => setPreviewSkus(current => event.target.checked ? [...current,item.sku] : current.filter(sku => sku !== item.sku))}/><span className="min-w-0 break-words"><strong>{item.productName}</strong><br/>{item.sku} · EUR {item.computedPrice.toFixed(2)} · {locale.startsWith("zh") ? "可发布数量" : "Quantità"} {item.computedQuantity}</span></label>)}</DialogBody><DialogFooter><Button variant="outline" disabled={isBusy} onClick={() => setPreviewAction(null)}>{unconfirmedScope ? (locale.startsWith("zh") ? "关闭并保留未确认任务" : "Chiudi e conserva il tentativo") : (locale.startsWith("zh") ? "取消" : "Annulla")}</Button><AdminActionButton pending={pending === previewAction && previewAction !== null} disabled={isBusy || queueUnknown || dirty || !previewSkus.length || !previewAction || Boolean(marketplaceActionBlocker(draft.settings, connection, previewAction))} onClick={() => { if (previewAction) void queueAction(previewAction,previewSkus); }}>{locale.startsWith("zh") ? "确认范围并加入队列" : "Conferma e accoda"}</AdminActionButton></DialogFooter></DialogContent>
+        <DialogContent scrollLayout="body" className="admin-ui-panel sm:max-w-2xl"><DialogHeader><DialogTitle>{(locale.startsWith("en") ? englishUiCopy("Verifica prodotti e attività eBay") : locale.startsWith("zh") ? "核对 eBay 任务范围" : "Verifica prodotti e attività eBay")}</DialogTitle><DialogDescription>{(locale.startsWith("en") ? englishUiTemplate`Ambiente: ${draft.settings.environment}. Solo gli SKU selezionati, massimo 100. Prezzi e stock sono un’anteprima; il servizio li verificherà all’esecuzione.` : locale.startsWith("zh") ? `环境：${draft.settings.environment}；只处理下面勾选的 SKU，最多100个。价格和库存为当前预览，执行时服务会重新校验。` : `Ambiente: ${draft.settings.environment}. Solo gli SKU selezionati, massimo 100. Prezzi e stock sono un’anteprima; il servizio li verificherà all’esecuzione.`)}</DialogDescription></DialogHeader>
+        <DialogBody className="space-y-2">{queueUnknown && <AdminNotice tone="warning"><p>{(locale.startsWith("en") ? englishUiCopy("Esito non confermato. Rileggi la coda; identificativo originale conservato.") : locale.startsWith("zh") ? "提交结果未知，请先重读队列核对。原任务标识已保留。" : "Esito non confermato. Rileggi la coda; identificativo originale conservato.")}</p><Button variant="outline" disabled={isBusy} onClick={() => void loadOverview()}>{(locale.startsWith("en") ? englishUiCopy("Rileggi la coda") : locale.startsWith("zh") ? "重读队列核对" : "Rileggi la coda")}</Button><Button variant="outline" disabled={isBusy || !queueReviewed} onClick={resumeOriginalAttempt}>{(locale.startsWith("en") ? englishUiCopy("Verificato, continua il tentativo") : locale.startsWith("zh") ? "已核对，继续原任务" : "Verificato, continua il tentativo")}</Button></AdminNotice>}<p className="text-sm">{(locale.startsWith("en") ? englishUiTemplate`Selezionati ${previewSkus.length}/${previewRows.length}` : locale.startsWith("zh") ? `已选择 ${previewSkus.length}/${previewRows.length}` : `Selezionati ${previewSkus.length}/${previewRows.length}`)}</p>{previewRows.map(item => <label key={item.sku} className="flex items-start gap-3 rounded border p-3 text-sm"><input type="checkbox" disabled={isBusy || Boolean(unconfirmedScope)} checked={previewSkus.includes(item.sku)} onChange={event => setPreviewSkus(current => event.target.checked ? [...current,item.sku] : current.filter(sku => sku !== item.sku))}/><span className="min-w-0 break-words"><strong>{item.productName}</strong><br/>{item.sku} · EUR {item.computedPrice.toFixed(2)} · {(locale.startsWith("en") ? englishUiCopy("Quantità") : locale.startsWith("zh") ? "可发布数量" : "Quantità")} {item.computedQuantity}</span></label>)}</DialogBody><DialogFooter><Button variant="outline" disabled={isBusy} onClick={() => setPreviewAction(null)}>{unconfirmedScope ? ((locale.startsWith("en") ? englishUiCopy("Chiudi e conserva il tentativo") : locale.startsWith("zh") ? "关闭并保留未确认任务" : "Chiudi e conserva il tentativo")) : ((locale.startsWith("en") ? englishUiCopy("Annulla") : locale.startsWith("zh") ? "取消" : "Annulla"))}</Button><AdminActionButton pending={pending === previewAction && previewAction !== null} disabled={isBusy || queueUnknown || dirty || !previewSkus.length || !previewAction || Boolean(marketplaceActionBlocker(draft.settings, connection, previewAction))} onClick={() => { if (previewAction) void queueAction(previewAction,previewSkus); }}>{(locale.startsWith("en") ? englishUiCopy("Conferma e accoda") : locale.startsWith("zh") ? "确认范围并加入队列" : "Conferma e accoda")}</AdminActionButton></DialogFooter></DialogContent>
       </Dialog>
-      <nav aria-label={locale.startsWith("zh") ? "eBay 页内定位" : "Sezioni eBay"} className="flex min-w-0 flex-wrap gap-2 rounded-lg border border-slate-200 bg-white p-2">
+      <nav aria-label={(locale.startsWith("en") ? englishUiCopy("Sezioni eBay") : locale.startsWith("zh") ? "eBay 页内定位" : "Sezioni eBay")} className="flex min-w-0 flex-wrap gap-2 rounded-lg border border-slate-200 bg-white p-2">
         {([
-          ["admin-ebay-connection", locale.startsWith("zh") ? "连接与设置" : "Account e impostazioni"],
-          ["admin-ebay-policies", locale.startsWith("zh") ? "销售政策" : "Condizioni"],
-          ["admin-ebay-mappings", locale.startsWith("zh") ? "类目映射" : "Categorie"],
-          ["admin-ebay-listings", locale.startsWith("zh") ? "商品刊登" : "Inserzioni"],
-          ["admin-ebay-jobs", locale.startsWith("zh") ? "任务队列" : "Coda"],
-          ["admin-ebay-orders", locale.startsWith("zh") ? "订单回流" : "Ordini"],
+          ["admin-ebay-connection", (locale.startsWith("en") ? englishUiCopy("Account e impostazioni") : locale.startsWith("zh") ? "连接与设置" : "Account e impostazioni")],
+          ["admin-ebay-policies", (locale.startsWith("en") ? englishUiCopy("Condizioni") : locale.startsWith("zh") ? "销售政策" : "Condizioni")],
+          ["admin-ebay-mappings", (locale.startsWith("en") ? englishUiCopy("Categorie") : locale.startsWith("zh") ? "类目映射" : "Categorie")],
+          ["admin-ebay-listings", (locale.startsWith("en") ? englishUiCopy("Inserzioni") : locale.startsWith("zh") ? "商品刊登" : "Inserzioni")],
+          ["admin-ebay-jobs", (locale.startsWith("en") ? englishUiCopy("Coda") : locale.startsWith("zh") ? "任务队列" : "Coda")],
+          ["admin-ebay-orders", (locale.startsWith("en") ? englishUiCopy("Ordini") : locale.startsWith("zh") ? "订单回流" : "Ordini")],
         ] as const).map(([id, label]) => <Button key={id} type="button" size="sm" variant="outline" onClick={() => { const target = document.getElementById(id); target?.scrollIntoView({ block: "start" }); target?.focus({ preventScroll: true }); }}>{label}</Button>)}
       </nav>
       <section className="space-y-2 rounded-lg border bg-white p-3">
-        <h2 className="font-bold">{locale.startsWith("zh") ? "eBay 就绪步骤" : "Preparazione eBay"}</h2>
+        <h2 className="font-bold">{(locale.startsWith("en") ? englishUiCopy("Preparazione eBay") : locale.startsWith("zh") ? "eBay 就绪步骤" : "Preparazione eBay")}</h2>
         <ol className="grid gap-2 text-sm sm:grid-cols-4">{[
-          [Boolean(connection?.connected), locale.startsWith("zh") ? "1 · 连接账号" : "1 · Collega account"],
-          [Boolean(draft.settings.merchantLocationKey && draft.settings.paymentPolicyId && draft.settings.returnPolicyId && draft.settings.fulfillmentPolicyId), locale.startsWith("zh") ? "2 · 选择仓库与销售政策" : "2 · Sede e condizioni"],
-          [draft.mappings.some(mapping => mapping.enabled && mapping.ebayCategoryId), locale.startsWith("zh") ? "3 · 设置类目映射" : "3 · Associa categorie"],
-          [!dirty && Boolean(savedDraft), locale.startsWith("zh") ? "4 · 保存后生成计划" : "4 · Salva e prepara il piano"],
+          [Boolean(connection?.connected), (locale.startsWith("en") ? englishUiCopy("1 · Collega account") : locale.startsWith("zh") ? "1 · 连接账号" : "1 · Collega account")],
+          [Boolean(draft.settings.merchantLocationKey && draft.settings.paymentPolicyId && draft.settings.returnPolicyId && draft.settings.fulfillmentPolicyId), (locale.startsWith("en") ? englishUiCopy("2 · Sede e condizioni") : locale.startsWith("zh") ? "2 · 选择仓库与销售政策" : "2 · Sede e condizioni")],
+          [draft.mappings.some(mapping => mapping.enabled && mapping.ebayCategoryId), (locale.startsWith("en") ? englishUiCopy("3 · Associa categorie") : locale.startsWith("zh") ? "3 · 设置类目映射" : "3 · Associa categorie")],
+          [!dirty && Boolean(savedDraft), (locale.startsWith("en") ? englishUiCopy("4 · Salva e prepara il piano") : locale.startsWith("zh") ? "4 · 保存后生成计划" : "4 · Salva e prepara il piano")],
         ].map(([ready, label]) => <li key={String(label)} className={cn("rounded border p-2", ready ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50")}>{ready ? "✓ " : "○ "}{label}</li>)}</ol>
-        <p className="text-xs text-slate-500">{locale.startsWith("zh") ? "生成计划可离线检查；发布、同步和拉单必须满足已保存环境、连接与对应开关。" : "Il piano permette verifiche offline. Pubblicazione, sincronizzazione e importazione richiedono ambiente, connessione e opzioni salvati."}</p>
-        {dirty && <AdminNotice tone="warning" message={locale.startsWith("zh") ? "有未保存修改。已锁住刊登计划等操作；刷新会保留草稿。" : "Modifiche non salvate: le azioni dipendenti dalle impostazioni sono sospese. La bozza resta al refresh."} />}
-        {queueProgress && <div className="flex flex-wrap items-center gap-2 text-sm"><span>{locale.startsWith("zh") ? `本轮 ${queueProgress.processed} 条；失败 ${queueProgress.failed} 条；仍排队 ${overview?.summary.queuedJobs ?? "…"} 条。` : `Ultimo gruppo: ${queueProgress.processed}, errori: ${queueProgress.failed}, ancora in coda: ${overview?.summary.queuedJobs ?? "…"}.`}</span><Button variant="outline" disabled={isBusy || !canRunJobs || overview?.summary.queuedJobs === 0} onClick={() => void runJobs()}>{locale.startsWith("zh") ? "继续处理下一组（最多5条）" : "Elabora i prossimi 5"}</Button></div>}
+        <p className="text-xs text-slate-500">{(locale.startsWith("en") ? englishUiCopy("Il piano permette verifiche offline. Pubblicazione, sincronizzazione e importazione richiedono ambiente, connessione e opzioni salvati.") : locale.startsWith("zh") ? "生成计划可离线检查；发布、同步和拉单必须满足已保存环境、连接与对应开关。" : "Il piano permette verifiche offline. Pubblicazione, sincronizzazione e importazione richiedono ambiente, connessione e opzioni salvati.")}</p>
+        {dirty && <AdminNotice tone="warning" message={(locale.startsWith("en") ? englishUiCopy("Modifiche non salvate: le azioni dipendenti dalle impostazioni sono sospese. La bozza resta al refresh.") : locale.startsWith("zh") ? "有未保存修改。已锁住刊登计划等操作；刷新会保留草稿。" : "Modifiche non salvate: le azioni dipendenti dalle impostazioni sono sospese. La bozza resta al refresh.")} />}
+        {queueProgress && <div className="flex flex-wrap items-center gap-2 text-sm"><span>{(locale.startsWith("en") ? englishUiTemplate`Ultimo gruppo: ${queueProgress.processed}, errori: ${queueProgress.failed}, ancora in coda: ${overview?.summary.queuedJobs ?? "…"}.` : locale.startsWith("zh") ? `本轮 ${queueProgress.processed} 条；失败 ${queueProgress.failed} 条；仍排队 ${overview?.summary.queuedJobs ?? "…"} 条。` : `Ultimo gruppo: ${queueProgress.processed}, errori: ${queueProgress.failed}, ancora in coda: ${overview?.summary.queuedJobs ?? "…"}.`)}</span><Button variant="outline" disabled={isBusy || !canRunJobs || overview?.summary.queuedJobs === 0} onClick={() => void runJobs()}>{(locale.startsWith("en") ? englishUiCopy("Elabora i prossimi 5") : locale.startsWith("zh") ? "继续处理下一组（最多5条）" : "Elabora i prossimi 5")}</Button></div>}
       </section>
       <section className="grid grid-cols-2 gap-2 xl:grid-cols-4">
         <SummaryTile label={t("连接")} value={t(connectionStatusLabel(connection))} tone={connection?.connected ? "good" : "warn"} />
@@ -551,9 +554,9 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
         <AdminNotice tone={error ? queueUnknown ? "warning" : "error" : noticeTone} message={error ?? notice} />
       )}
 
-      <section id="admin-ebay-policies" tabIndex={-1} className="min-w-0 scroll-mt-24 space-y-2 rounded-lg border bg-white p-3"><h3 className="font-bold">{locale.startsWith("zh") ? "从 eBay 账号选择销售政策" : "Scegli le condizioni del tuo account eBay"}</h3><Button variant="outline" disabled={isBusy || queueUnknown || dirty || !canManageSettings || !connection?.connected} onClick={() => void loadPolicies()}>{locale.startsWith("zh") ? "读取已保存环境的政策" : "Leggi condizioni dell'ambiente salvato"}</Button>{policyError && <AdminNotice tone="error" message={policyError} />}{policyOptions && <div className="grid gap-2 sm:grid-cols-3">{([['payment','paymentPolicyId',locale.startsWith("zh") ? '付款政策' : 'Pagamento'],['return','returnPolicyId',locale.startsWith("zh") ? '退货政策' : 'Resi'],['fulfillment','fulfillmentPolicyId',locale.startsWith("zh") ? '配送政策' : 'Spedizione']] as const).map(([kind,key,label]) => <label key={kind} className="min-w-0 space-y-1 text-sm">{label}<AdminSearchableSelect value={draft.settings[key] ?? ""} ariaLabel={label} disabled={isConfigLocked || !canManageSettings} onValueChange={value => updateSettings({ [key]: value })} placeholder={locale.startsWith("zh") ? "请选择" : "Seleziona"} searchPlaceholder={locale.startsWith("zh") ? "搜索政策" : "Cerca condizioni"} options={[
- { value: "", label: locale.startsWith("zh") ? "请选择" : "Seleziona" },
- ...(draft.settings[key] && !(policyOptions[kind] ?? []).some(option => option.id === draft.settings[key]) ? [{ value: draft.settings[key]!, label: `${draft.settings[key]} · ${locale.startsWith("zh") ? "当前值（未读取到）" : "Valore attuale non trovato"}` }] : []),
+      <section id="admin-ebay-policies" tabIndex={-1} className="min-w-0 scroll-mt-24 space-y-2 rounded-lg border bg-white p-3"><h3 className="font-bold">{(locale.startsWith("en") ? englishUiCopy("Scegli le condizioni del tuo account eBay") : locale.startsWith("zh") ? "从 eBay 账号选择销售政策" : "Scegli le condizioni del tuo account eBay")}</h3><Button variant="outline" disabled={isBusy || queueUnknown || dirty || !canManageSettings || !connection?.connected} onClick={() => void loadPolicies()}>{(locale.startsWith("en") ? englishUiCopy("Leggi condizioni dell'ambiente salvato") : locale.startsWith("zh") ? "读取已保存环境的政策" : "Leggi condizioni dell'ambiente salvato")}</Button>{policyError && <AdminNotice tone="error" message={policyError} />}{policyOptions && <div className="grid gap-2 sm:grid-cols-3">{([['payment','paymentPolicyId',(locale.startsWith("en") ? englishUiCopy('Pagamento') : locale.startsWith("zh") ? '付款政策' : 'Pagamento')],['return','returnPolicyId',(locale.startsWith("en") ? englishUiCopy('Resi') : locale.startsWith("zh") ? '退货政策' : 'Resi')],['fulfillment','fulfillmentPolicyId',(locale.startsWith("en") ? englishUiCopy('Spedizione') : locale.startsWith("zh") ? '配送政策' : 'Spedizione')]] as const).map(([kind,key,label]) => <label key={kind} className="min-w-0 space-y-1 text-sm">{label}<AdminSearchableSelect value={draft.settings[key] ?? ""} ariaLabel={label} disabled={isConfigLocked || !canManageSettings} onValueChange={value => updateSettings({ [key]: value })} placeholder={(locale.startsWith("en") ? englishUiCopy("Seleziona") : locale.startsWith("zh") ? "请选择" : "Seleziona")} searchPlaceholder={(locale.startsWith("en") ? englishUiCopy("Cerca condizioni") : locale.startsWith("zh") ? "搜索政策" : "Cerca condizioni")} options={[
+ { value: "", label: (locale.startsWith("en") ? englishUiCopy("Seleziona") : locale.startsWith("zh") ? "请选择" : "Seleziona") },
+ ...(draft.settings[key] && !(policyOptions[kind] ?? []).some(option => option.id === draft.settings[key]) ? [{ value: draft.settings[key]!, label: `${draft.settings[key]} · ${(locale.startsWith("en") ? englishUiCopy("Valore attuale non trovato") : locale.startsWith("zh") ? "当前值（未读取到）" : "Valore attuale non trovato")}` }] : []),
  ...(policyOptions[kind] ?? []).map(option => ({ value: option.id, label: option.name ?? option.id, description: option.id }))
  ]} /></label>)}</div>}</section>
       <section id="admin-ebay-connection" tabIndex={-1} className="min-w-0 scroll-mt-24 grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
@@ -604,7 +607,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
               >
                 <ExternalLink className="size-4" />
                 {t("连接 eBay")}</Button>
-              <Button type="button" variant="outline" onClick={() => { if (!dirty || window.confirm(locale.startsWith("zh") ? "刷新会保留未保存草稿，继续？" : "Aggiornare mantenendo la bozza?")) void loadOverview(); }} disabled={isBusy}>
+              <Button type="button" variant="outline" onClick={() => { if (!dirty || window.confirm((locale.startsWith("en") ? englishUiCopy("Aggiornare mantenendo la bozza?") : locale.startsWith("zh") ? "刷新会保留未保存草稿，继续？" : "Aggiornare mantenendo la bozza?"))) void loadOverview(); }} disabled={isBusy}>
                 <RefreshCcw className={cn("size-4", pending === "load" && "animate-spin")} />
                 {t("刷新")}</Button>
             </div>
@@ -642,7 +645,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
             </div>
 
             <div className="grid grid-cols-2 gap-2 xl:grid-cols-4">
-              <Field label={locale.startsWith("zh") ? "eBay 仓库标识" : "Sede magazzino eBay"}>
+              <Field label={(locale.startsWith("en") ? englishUiCopy("Sede magazzino eBay") : locale.startsWith("zh") ? "eBay 仓库标识" : "Sede magazzino eBay")}>
                 <Input
                   value={draft.settings.merchantLocationKey ?? ""}
                   onChange={(event) =>
@@ -650,7 +653,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                   }
                 />
               </Field>
-              <Field label={locale.startsWith("zh") ? "付款政策" : "Condizioni pagamento"}>
+              <Field label={(locale.startsWith("en") ? englishUiCopy("Condizioni pagamento") : locale.startsWith("zh") ? "付款政策" : "Condizioni pagamento")}>
                 <Input
                   value={draft.settings.paymentPolicyId ?? ""}
                   onChange={(event) =>
@@ -658,7 +661,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                   }
                 />
               </Field>
-              <Field label={locale.startsWith("zh") ? "退货政策" : "Condizioni reso"}>
+              <Field label={(locale.startsWith("en") ? englishUiCopy("Condizioni reso") : locale.startsWith("zh") ? "退货政策" : "Condizioni reso")}>
                 <Input
                   value={draft.settings.returnPolicyId ?? ""}
                   onChange={(event) =>
@@ -666,7 +669,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
                   }
                 />
               </Field>
-              <Field label={locale.startsWith("zh") ? "配送政策" : "Condizioni spedizione"}>
+              <Field label={(locale.startsWith("en") ? englishUiCopy("Condizioni spedizione") : locale.startsWith("zh") ? "配送政策" : "Condizioni spedizione")}>
                 <Input
                   value={draft.settings.fulfillmentPolicyId ?? ""}
                   onChange={(event) =>
@@ -676,7 +679,7 @@ export function AdminMarketplacePanel({ permissions = [] }: AdminMarketplacePane
               </Field>
             </div>
             <details className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <summary className="cursor-pointer text-sm font-semibold">{locale.startsWith("zh") ? "高级参数 · 加价、库存与成色" : "Parametri avanzati · Prezzi, stock e condizione"}</summary>
+              <summary className="cursor-pointer text-sm font-semibold">{(locale.startsWith("en") ? englishUiCopy("Parametri avanzati · Prezzi, stock e condizione") : locale.startsWith("zh") ? "高级参数 · 加价、库存与成色" : "Parametri avanzati · Prezzi, stock e condizione")}</summary>
               <div className="mt-3 grid min-w-0 grid-cols-2 gap-2 xl:grid-cols-4">
               <Field label={t("加价百分比")}>
                 <NumberInput
@@ -1309,7 +1312,7 @@ function emptyToNull(value: string | null | undefined) {
   return normalized ? normalized : null;
 }
 
-function missingPermissionMessage(label: string, locale = "zh-CN") {
+function missingPermissionMessage(label: string, locale = "en-US") {
   if (!locale.startsWith("zh")) return `Permesso richiesto: ${label}.`;
   return `缺少权限：${label}。`;
 }
@@ -1325,5 +1328,5 @@ function readApiError(error: unknown) {
 
 function readinessMessage(code: string, locale: string) {
  const copy: Record<string,[string,string]> = {disabled:["请先启用并保存 eBay 设置。","Abilita e salva eBay."],connection:["请先连接 eBay 账号。","Collega prima l’account eBay."],environment:["连接环境与已保存设置不一致，请重新连接对应环境。","Collega l’account nell’ambiente delle impostazioni salvate."],production:["生产环境尚未启用。","Ambiente produzione non abilitato."],publish:["请先生成计划并启用自动发布。","Prepara il piano e abilita la pubblicazione."],policies:["请保存仓库和三项销售政策。","Salva la sede e le tre condizioni di vendita."],sync:["请启用并保存价格库存同步。","Abilita e salva la sincronizzazione."],orders:["请启用并保存订单回流。","Abilita e salva l’importazione ordini."]};
- return copy[code]?.[locale.startsWith("zh") ? 0 : 1] ?? code;
+ return (locale.startsWith("en") ? englishUiCopy(copy[code]?.[1]) : copy[code]?.[locale.startsWith("zh") ? 0 : 1]) ?? code;
 }

@@ -1,7 +1,5 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
-import { seedCurrentAccountPreferredLocaleFromCookies } from "@/i18n/account-locale";
-import { resolveLocaleScope } from "@/i18n/config";
 import { AUTH_NEXT_COOKIE } from "@/lib/partspro-auth-cookies";
 import { cleanAuthRedirect, loginUrl, postLoginRedirect, requestOrigin } from "@/lib/partspro-auth-redirect";
 import {
@@ -38,7 +36,6 @@ export async function GET(request: Request) {
         return redirectAndClearNext(`${origin}${loginUrl(next, "account")}`);
       }
 
-      await seedCurrentAccountPreferredLocaleFromCookies(resolveLocaleScope("/login", next));
 
       const [account, adminAuth] = await Promise.all([
         getCurrentAccountContext(),

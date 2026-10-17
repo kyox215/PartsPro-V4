@@ -1,10 +1,13 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import { AdminSearchField } from "./admin-ui-controls";
 import { AdminPricingPanel, ClassificationPricePreview } from "./admin-pricing-panel";
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { accountText, accountTemplate } from "@/lib/admin-account-copy.mjs";
+import { accountText, accountTemplate } from "@/lib/admin-account-text";
 import { accountProfilePatchSchema, profileChangedValues, rolePermissionDifference, canCloseAccountDraft, type AccountProfilePatch } from "@/lib/admin-account-operation.mjs";
 import { usePersistentAdminValue, useAdminMemoryValue } from "./admin-workspace-state";
 import { Activity, AlertTriangle, ArrowLeftRight, BadgeCheck, BriefcaseBusiness, ChevronLeft, ChevronRight, CircleDollarSign, Clock3, FilePenLine, KeyRound, Loader2, RefreshCcw, ShieldCheck, ShoppingBag, Star, UserCog, UsersRound, } from "lucide-react";
@@ -851,7 +854,7 @@ function AdminAccountsPanelContent({ initialPermissions, initialUserId = null, p
 
             <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
               <div className="min-w-0">
-                <AdminSearchField value={query} onValueChange={setQuery} pending={loading} clearLabel={locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca"} aria-label={accountText("搜索邮箱、姓名或角色", locale)} onKeyDown={(event) => {
+                <AdminSearchField value={query} onValueChange={setQuery} pending={loading} clearLabel={(locale.startsWith("en") ? englishUiCopy("Cancella ricerca") : locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca")} aria-label={accountText("搜索邮箱、姓名或角色", locale)} onKeyDown={(event) => {
             if (event.key === "Enter") {
                 applySearch();
             }
@@ -1764,7 +1767,7 @@ function ProfileEditorInput({ field, label, onChange, required, value, }: {
 }
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit & {
     timeoutMs?: number;
-} = {}, locale = "zh-CN") {
+} = {}, locale = "en-US") {
     const { signal, timeoutMs = adminAccountReadTimeoutMs, ...requestInit } = init;
     const controller = new AbortController();
     let timedOut = false;
@@ -1798,7 +1801,7 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit & {
         signal?.removeEventListener("abort", abortFromParent);
     }
 }
-async function fetchCurrentUser(signal?: AbortSignal, locale = "zh-CN"): Promise<CurrentUser> {
+async function fetchCurrentUser(signal?: AbortSignal, locale = "en-US"): Promise<CurrentUser> {
     const response = await fetchWithTimeout("/api/me", {
         cache: "no-store",
         headers: { Accept: "application/json" },
@@ -1816,7 +1819,7 @@ async function fetchCurrentUser(signal?: AbortSignal, locale = "zh-CN"): Promise
         userId: isRecord(payload) ? readString(payload.userId) : null,
     };
 }
-async function fetchRoleTemplates(signal?: AbortSignal, locale = "zh-CN"): Promise<RoleTemplate[]> {
+async function fetchRoleTemplates(signal?: AbortSignal, locale = "en-US"): Promise<RoleTemplate[]> {
     const response = await fetchWithTimeout("/api/admin/permissions/catalog", {
         cache: "no-store",
         headers: { Accept: "application/json" },
@@ -1830,7 +1833,7 @@ async function fetchRoleTemplates(signal?: AbortSignal, locale = "zh-CN"): Promi
     const data = isRecord(payload) && isRecord(payload.data) ? payload.data : {};
     return readArray(data.roleTemplates).map(normalizeRoleTemplate).filter(isDefined);
 }
-function submitCustomerAccountAction(action: CustomerActionState, locale = "zh-CN"): Promise<AccountDetail> {
+function submitCustomerAccountAction(action: CustomerActionState, locale = "en-US"): Promise<AccountDetail> {
     if (action.kind === "customer_level") {
         return patchCustomerLevel(action.account.userId, action.level, action.reason, locale);
     }
@@ -1839,7 +1842,7 @@ function submitCustomerAccountAction(action: CustomerActionState, locale = "zh-C
     }
     return patchCustomerStatus(action.account.userId, action.status, action.reason, locale);
 }
-async function fetchAccounts(accountType: AccountType, page: number, query: string, signal?: AbortSignal, locale = "zh-CN") {
+async function fetchAccounts(accountType: AccountType, page: number, query: string, signal?: AbortSignal, locale = "en-US") {
     const params = new URLSearchParams({
         accountType,
         limit: String(pageSize),
@@ -1869,7 +1872,7 @@ async function fetchAccounts(accountType: AccountType, page: number, query: stri
 async function fetchAccountDetail(userId: string, { includes = [], signal, }: {
     includes?: AccountDetailInclude[];
     signal?: AbortSignal;
-} = {}, locale = "zh-CN"): Promise<AccountDetail> {
+} = {}, locale = "en-US"): Promise<AccountDetail> {
     const params = new URLSearchParams();
     if (includes.length > 0) {
         params.set("include", includes.join(","));
@@ -1892,7 +1895,7 @@ async function fetchAccountDetail(userId: string, { includes = [], signal, }: {
     }
     return detail;
 }
-async function patchAccountType(conversion: ConversionState, locale = "zh-CN"): Promise<AccountDetail> {
+async function patchAccountType(conversion: ConversionState, locale = "en-US"): Promise<AccountDetail> {
     const body = conversion.kind === "to_employee"
         ? {
             accountType: "employee",
@@ -1921,7 +1924,7 @@ async function patchAccountType(conversion: ConversionState, locale = "zh-CN"): 
     }
     return accountDetailFromResponse(await response.json(), accountText("账号变更返回格式不完整", locale), locale);
 }
-async function patchAccountRole(userId: string, roleTemplate: string, reason: string, locale = "zh-CN") {
+async function patchAccountRole(userId: string, roleTemplate: string, reason: string, locale = "en-US") {
     const response = await fetch(`/api/admin/accounts/${encodeURIComponent(userId)}/role`, {
         body: JSON.stringify({ reason, roleTemplate }),
         cache: "no-store",
@@ -1935,7 +1938,7 @@ async function patchAccountRole(userId: string, roleTemplate: string, reason: st
         throw await accountPatchError(response, locale);
     }
 }
-async function patchCustomerLevel(userId: string, level: CustomerLevel | "automatic", reason: string, locale = "zh-CN"): Promise<AccountDetail> {
+async function patchCustomerLevel(userId: string, level: CustomerLevel | "automatic", reason: string, locale = "en-US"): Promise<AccountDetail> {
     const response = await fetch(`/api/admin/accounts/${encodeURIComponent(userId)}/customer-level`, {
         body: JSON.stringify({ level, reason }),
         cache: "no-store",
@@ -1950,7 +1953,7 @@ async function patchCustomerLevel(userId: string, level: CustomerLevel | "automa
     }
     return accountDetailFromResponse(await response.json(), accountText("客户等级更新返回格式不完整", locale), locale);
 }
-async function patchCustomerStatus(userId: string, status: CustomerStatus, reason: string, locale = "zh-CN"): Promise<AccountDetail> {
+async function patchCustomerStatus(userId: string, status: CustomerStatus, reason: string, locale = "en-US"): Promise<AccountDetail> {
     const response = await fetch(`/api/admin/accounts/${encodeURIComponent(userId)}/customer-status`, {
         body: JSON.stringify({ reason, status }),
         cache: "no-store",
@@ -1965,7 +1968,7 @@ async function patchCustomerStatus(userId: string, status: CustomerStatus, reaso
     }
     return accountDetailFromResponse(await response.json(), accountText("客户状态更新返回格式不完整", locale), locale);
 }
-async function patchCustomerType(userId: string, customerType: CustomerType, reason: string, locale = "zh-CN"): Promise<AccountDetail> {
+async function patchCustomerType(userId: string, customerType: CustomerType, reason: string, locale = "en-US"): Promise<AccountDetail> {
     const response = await fetch(`/api/admin/accounts/${encodeURIComponent(userId)}/customer-type`, {
         body: JSON.stringify({ customerType, reason }),
         cache: "no-store",
@@ -1980,7 +1983,7 @@ async function patchCustomerType(userId: string, customerType: CustomerType, rea
     }
     return accountDetailFromResponse(await response.json(), accountText("价格类型更新返回格式不完整", locale), locale);
 }
-async function patchAccountCustomerProfile(userId: string, profile: AccountProfilePatch, locale = "zh-CN"): Promise<AccountDetail> {
+async function patchAccountCustomerProfile(userId: string, profile: AccountProfilePatch, locale = "en-US"): Promise<AccountDetail> {
     const response = await fetch(`/api/admin/accounts/${encodeURIComponent(userId)}/customer-profile`, {
         body: JSON.stringify(profile),
         cache: "no-store",
@@ -1997,7 +2000,7 @@ async function patchAccountCustomerProfile(userId: string, profile: AccountProfi
 }
 class AccountWriteSavedError extends Error {
 }
-async function accountPatchError(response: Response, locale = "zh-CN") {
+async function accountPatchError(response: Response, locale = "en-US") {
     const payload = await response.json().catch(() => null) as { error?: { code?: string; details?: { issues?: { path: string; message: string }[] } } } | null;
     const code = payload?.error?.code ?? `HTTP_${response.status}`;
     const message = code === "ADMIN_PERMISSION_DENIED" ? "当前账号没有执行此操作的权限。" : code === "ACCOUNT_PROFILE_NOT_INITIALIZED" ? "资料未初始化，请先补全资料用于购买。" : code.includes("SELF_") ? "当前账号禁止自我降级" : response.status === 400 ? "请检查输入字段后重试。" : "操作失败，请稍后重试。";
@@ -2005,7 +2008,7 @@ async function accountPatchError(response: Response, locale = "zh-CN") {
     return new Error(`${accountText(message, locale)}${fields ? ` ${fields}` : ""} (${code})`);
 }
 
-function accountDetailFromResponse(payload: unknown, message: string, locale = "zh-CN"): AccountDetail {
+function accountDetailFromResponse(payload: unknown, message: string, locale = "en-US"): AccountDetail {
     if (isRecord(payload) && isRecord(payload.meta) && payload.meta.saved === true && !payload.data)
         throw new AccountWriteSavedError(accountText("已保存；账号详情刷新失败，请重试读取，不要重复提交。", locale));
     const data = isRecord(payload) && isRecord(payload.data) ? payload.data : null;
@@ -2405,10 +2408,10 @@ function normalizeRoleTemplate(value: unknown): RoleTemplate | null {
         permissions: readArray(value.permissions).map(readString).filter(isDefined),
     };
 }
-function accountTypeLabel(value: string, locale = "zh-CN") {
+function accountTypeLabel(value: string, locale = "en-US") {
     return value === "employee" ? accountText("员工账号", locale) : accountText("客户账号", locale);
 }
-function profileStateLabel(state: AccountProfileState, locale = "zh-CN") {
+function profileStateLabel(state: AccountProfileState, locale = "en-US") {
     if (state.status === "complete") {
         return accountText("资料完整", locale);
     }
@@ -2417,7 +2420,7 @@ function profileStateLabel(state: AccountProfileState, locale = "zh-CN") {
     }
     return accountText("资料待补全", locale);
 }
-function profileMissingFieldLabel(value: string, locale = "zh-CN") {
+function profileMissingFieldLabel(value: string, locale = "en-US") {
     const labels: Record<string, string> = {
         billingAddress: accountText("账单地址", locale),
         email: accountText("邮箱", locale),
@@ -2429,7 +2432,7 @@ function profileMissingFieldLabel(value: string, locale = "zh-CN") {
     };
     return labels[value] ?? value;
 }
-function customerStatusLabel(value: string, locale = "zh-CN") {
+function customerStatusLabel(value: string, locale = "en-US") {
     if (value === "active") {
         return accountText("活跃", locale);
     }
@@ -2438,10 +2441,10 @@ function customerStatusLabel(value: string, locale = "zh-CN") {
     }
     return accountText("待处理", locale);
 }
-function customerTypeLabel(value: string, locale = "zh-CN") {
+function customerTypeLabel(value: string, locale = "en-US") {
     return value === "wholesale" ? accountText("批发客户", locale) : accountText("零售价客户", locale);
 }
-function assignmentStatusLabel(value: string, locale = "zh-CN") {
+function assignmentStatusLabel(value: string, locale = "en-US") {
     const labels: Record<string, string> = {
         archived: accountText("已归档", locale),
         assigned: accountText("已启用", locale),
@@ -2450,7 +2453,7 @@ function assignmentStatusLabel(value: string, locale = "zh-CN") {
     };
     return labels[value] ?? value;
 }
-function orderStatusLabel(value: string, locale = "zh-CN") {
+function orderStatusLabel(value: string, locale = "en-US") {
     const labels: Record<string, string> = {
         accepted: accountText("已接单", locale),
         cancelled: accountText("已取消", locale),
@@ -2462,7 +2465,7 @@ function orderStatusLabel(value: string, locale = "zh-CN") {
     };
     return labels[value] ?? value;
 }
-function paymentStatusLabel(value: string, locale = "zh-CN") {
+function paymentStatusLabel(value: string, locale = "en-US") {
     const labels: Record<string, string> = {
         authorized: accountText("待核查", locale),
         paid: accountText("已付款", locale),
@@ -2471,16 +2474,16 @@ function paymentStatusLabel(value: string, locale = "zh-CN") {
     };
     return labels[value] ?? value;
 }
-function customerLevelLabel(value: string, locale = "zh-CN") {
+function customerLevelLabel(value: string, locale = "en-US") {
     return accountTemplate(["", ' \u00B7 每件减 ', ''], [customerLevelName(value, locale), customerLevelDiscountLabel(value)], locale);
 }
-function customerLevelOptionLabel(value: string, locale = "zh-CN") {
+function customerLevelOptionLabel(value: string, locale = "en-US") {
     return accountTemplate(["", ' \u00B7 每件减 ', ''], [customerLevelName(value, locale), customerLevelDiscountLabel(value)], locale);
 }
 function customerLevelDiscountLabel(value: string) {
     return formatTierDiscount(normalizeCustomerLevel(value));
 }
-function customerLevelName(value: string, locale = "zh-CN") {
+function customerLevelName(value: string, locale = "en-US") {
     const labels: Record<CustomerLevel, string> = {
         bronze: accountText("青铜 Bronze", locale),
         silver: accountText("白银 Silver", locale),
@@ -2519,7 +2522,7 @@ function normalizeCustomerType(value: string): CustomerType {
         ? (value as CustomerType)
         : "retail";
 }
-function customerActivityLabel(event: AccountCustomerActivity, locale = "zh-CN") {
+function customerActivityLabel(event: AccountCustomerActivity, locale = "en-US") {
     const labels: Record<string, string> = {
         catalog_filter: accountText("筛选目录", locale),
         catalog_search: accountText("搜索目录", locale),
@@ -2529,7 +2532,7 @@ function customerActivityLabel(event: AccountCustomerActivity, locale = "zh-CN")
     };
     return labels[event.eventType] ?? event.eventType;
 }
-function customerActivitySubject(event: AccountCustomerActivity, locale = "zh-CN") {
+function customerActivitySubject(event: AccountCustomerActivity, locale = "en-US") {
     return [
         event.searchQuery ? accountTemplate(["搜索：", ''], [event.searchQuery], locale) : null,
         event.productName,
@@ -2540,7 +2543,7 @@ function customerActivitySubject(event: AccountCustomerActivity, locale = "zh-CN
         .filter(Boolean)
         .join(" · ") || accountText("客户前台操作", locale);
 }
-function memberRoleLabel(value: string, locale = "zh-CN") {
+function memberRoleLabel(value: string, locale = "en-US") {
     const labels: Record<string, string> = {
         buyer: accountText("采购", locale),
         finance: accountText("财务", locale),
@@ -2549,7 +2552,7 @@ function memberRoleLabel(value: string, locale = "zh-CN") {
     };
     return labels[value] ?? value;
 }
-function memberStatusLabel(value: string, locale = "zh-CN") {
+function memberStatusLabel(value: string, locale = "en-US") {
     if (value === "disabled") {
         return accountText("已停用成员关系", locale);
     }
@@ -2561,7 +2564,7 @@ function memberStatusLabel(value: string, locale = "zh-CN") {
 function roleTemplateLabel(text: AdminText, value: string | null | undefined, fallback?: string | null) {
     return adminRoleTemplateLabel(text, value, fallback);
 }
-function adminActionLabel(value: string, locale = "zh-CN") {
+function adminActionLabel(value: string, locale = "en-US") {
     const labels: Record<string, string> = {
         "account.role_update": accountText("员工角色更新", locale),
         "account.type_update": accountText("账号类型更新", locale),
@@ -2657,7 +2660,7 @@ function formatDateTime(value: string | null | undefined) {
         year: "2-digit",
     }).format(new Date(value));
 }
-function readableError(error: unknown, locale = "zh-CN") {
+function readableError(error: unknown, locale = "en-US") {
     return error instanceof Error ? error.message : accountText("操作失败，请稍后重试。", locale);
 }
 function readArray(value: unknown): unknown[] {

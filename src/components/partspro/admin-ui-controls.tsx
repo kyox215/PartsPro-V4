@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import * as React from "react";
 import { Check, ChevronDown, Loader2, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,7 +25,7 @@ export function AdminSearchField({
 }: SearchFieldProps) {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const { locale } = useI18n();
-  const clearText = clearLabel ?? (locale.startsWith("zh") ? "清除搜索" : "Azzera ricerca");
+  const clearText = clearLabel ?? ((locale.startsWith("en") ? englishUiCopy("Azzera ricerca") : locale.startsWith("zh") ? "清除搜索" : "Azzera ricerca"));
   return <div className={cn("admin-ui-search relative min-w-0", containerClassName)}>
     {pending
       ? <Loader2 aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 animate-spin text-slate-500" />
@@ -114,7 +117,7 @@ export function AdminSearchableSelect({
       aria-label={ariaLabel} aria-expanded={open && !disabled} aria-controls={listId} aria-haspopup="listbox" disabled={disabled}
       title={selected?.label} onKeyDown={event => { if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); changeOpen(true); } }}
       className={cn("admin-ui-control h-10 w-full min-w-0 justify-between gap-2 bg-white px-3 font-normal", className)}>
-      <span className={cn("min-w-0 truncate", !selected && !value && "text-muted-foreground")}>{selected?.label ?? (value || placeholder || (zh ? "请选择" : "Seleziona"))}</span>
+      <span className={cn("min-w-0 truncate", !selected && !value && "text-muted-foreground")}>{selected?.label ?? (value || placeholder || ((locale.startsWith("en") ? englishUiCopy("Seleziona") : zh ? "请选择" : "Seleziona")))}</span>
       <ChevronDown aria-hidden="true" className="size-4 shrink-0 text-slate-500" />
     </Button></PopoverTrigger>
     <PopoverContent align="start" sideOffset={4}
@@ -124,7 +127,7 @@ export function AdminSearchableSelect({
         <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
         <Input ref={queryInput} value={query} onChange={(event) => { setQuery(event.target.value); setActiveValue(""); }} onKeyDown={onKeyDown}
           className="admin-ui-control h-10 bg-white pl-9 text-base sm:text-sm"
-          placeholder={searchPlaceholder ?? (zh ? "搜索选项" : "Cerca opzioni")} aria-label={searchPlaceholder ?? (zh ? "搜索选项" : "Cerca opzioni")}
+          placeholder={searchPlaceholder ?? ((locale.startsWith("en") ? englishUiCopy("Cerca opzioni") : zh ? "搜索选项" : "Cerca opzioni"))} aria-label={searchPlaceholder ?? ((locale.startsWith("en") ? englishUiCopy("Cerca opzioni") : zh ? "搜索选项" : "Cerca opzioni"))}
           aria-controls={listId} aria-activedescendant={activeIndex >= 0 ? `${listId}-${activeIndex}` : undefined} autoComplete="off" />
       </div>
       <div id={listId} role="listbox" aria-label={ariaLabel} className="max-h-[min(300px,calc(var(--radix-popover-content-available-height,70svh)-64px))] min-h-0 overflow-y-auto overscroll-contain">
@@ -135,7 +138,7 @@ export function AdminSearchableSelect({
           <span className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]"><span className="block">{option.label}</span>{option.description && <span className="block text-xs text-slate-500">{option.description}</span>}</span>
           {value === option.value && <Check aria-hidden="true" className="size-4 shrink-0" />}
         </button>)}
-        {filtered.length === 0 && <p role="status" className="px-3 py-4 text-sm text-slate-500">{emptyLabel ?? (zh ? "没有匹配选项" : "Nessuna opzione")}</p>}
+        {filtered.length === 0 && <p role="status" className="px-3 py-4 text-sm text-slate-500">{emptyLabel ?? ((locale.startsWith("en") ? englishUiCopy("Nessuna opzione") : zh ? "没有匹配选项" : "Nessuna opzione"))}</p>}
       </div>
     </PopoverContent>
   </Popover>;

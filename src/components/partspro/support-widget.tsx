@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import * as React from "react";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -38,7 +41,7 @@ export function SupportWidget() {
   const pathname = usePathname();
   const isAdminPath = pathname === "/admin" || pathname.startsWith("/admin/");
   const shouldRender = scope === "storefront" && !isAdminPath;
-  const copy = locale === "zh-CN" ? supportWidgetCopy.zh : supportWidgetCopy.it;
+  const copy = (locale.startsWith("en") ? englishUiCopy(supportWidgetCopy.it) : locale === "zh-CN" ? supportWidgetCopy.zh : supportWidgetCopy.it);
   const [open, setOpen] = React.useState(false);
   const [moduleAttempt, setModuleAttempt] = React.useState(0);
   const [supportModule,setSupportModule] = React.useState<typeof import("./support-chat-panel") | null>(null);
@@ -155,7 +158,7 @@ export function SupportWidget() {
 
 function SupportChatPanelLoading({ onClose, error = false, onRetry }: { onClose: () => void; error?: boolean; onRetry?: () => void }) {
   const { locale } = useI18n();
-  const copy = locale === "zh-CN" ? supportWidgetCopy.zh : supportWidgetCopy.it;
+  const copy = (locale.startsWith("en") ? englishUiCopy(supportWidgetCopy.it) : locale === "zh-CN" ? supportWidgetCopy.zh : supportWidgetCopy.it);
 
   return (
     <section role="dialog" aria-label={copy.headerTitle} tabIndex={-1} className="flex h-[min(620px,var(--support-widget-panel-height,calc(100dvh-2rem)))] w-[min(390px,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.22)]">

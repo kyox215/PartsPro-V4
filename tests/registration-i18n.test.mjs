@@ -23,6 +23,8 @@ function load(relativePath, mocks = {}, extra = '') {
     module: loadedModule, exports: loadedModule.exports,
     require(name) {
       if (name in mocks) return mocks[name];
+      if (name === 'zod') return zod;
+      if (name === '@/lib/partspro-account-profile-validation') return load('src/lib/partspro-account-profile-validation.ts');
       if (name === 'react' || name === 'react/jsx-runtime') return name === 'react' ? React : { ...jsxRuntime };
       if (name.startsWith('.') && filename.includes('/src/i18n/')) return load(path.relative(root, path.resolve(path.dirname(filename), name + '.ts')));
       if (name.startsWith('@/i18n/')) return load('src/' + name.slice(2) + '.ts');
@@ -32,6 +34,7 @@ function load(relativePath, mocks = {}, extra = '') {
   if (!extra) cache.set(filename, loadedModule.exports);
   return loadedModule.exports;
 }
+const zod = await import('zod');
 const jsxRuntime = await import('react/jsx-runtime');
 const { getDictionary, translate } = load('src/i18n/get-dictionary.ts');
 const copy = locale => (key, params) => translate(getDictionary(locale), key, params);
@@ -43,7 +46,7 @@ const translatedCopy=locale=>text=>accountTranslationKeys[text]?copy(locale)(acc
 const account = {...load('src/components/partspro/account-page.tsx', {}, extra),...errors};
 
 test('profile form renders the real locale dictionary, not hardcoded Chinese', () => {
-  for (const locale of ['it-IT', 'zh-CN']) {
+  for (const locale of ['en-US', 'it-IT', 'zh-CN']) {
     const { AccountProfileDialog } = load('src/components/partspro/account-page.tsx', {
       './i18n-provider': { useT: () => copy(locale), useI18n: () => ({ locale }) },
       './use-account-copy': {useAccountCopy:()=>translatedCopy(locale)},
@@ -54,7 +57,7 @@ test('profile form renders the real locale dictionary, not hardcoded Chinese', (
     }));
     assert.ok(html.includes(copy(locale)('storefront.account.profile.title')));
     assert.ok(html.includes(copy(locale)('storefront.account.profile.save')));
-    if (locale === 'it-IT') assert.doesNotMatch(html, /\p{Script=Han}|storefront\./u);
+    if (locale !== 'zh-CN') assert.doesNotMatch(html, /\p{Script=Han}|storefront\./u);
   }
 });
 
@@ -72,7 +75,7 @@ test('API errors map to safe keys; unknown and network errors never expose raw m
   for (const [context, code, status, expected] of cases) {
     const key = account.accountRequestErrorKey(new account.AccountRequestError(code, status), context);
     assert.equal(key, 'storefront.account.' + expected);
-    for (const locale of ['it-IT', 'zh-CN']) assert.notEqual(copy(locale)(key), key);
+    for (const locale of ['en-US', 'it-IT', 'zh-CN']) assert.notEqual(copy(locale)(key), key);
   }
   assert.equal(account.accountRequestErrorKey(new Error('RAW BACKEND ERROR'), 'profile'), 'storefront.account.profile.saveError');
 });
@@ -81,12 +84,12 @@ test('labels, dates and promotions use the requested language', () => {
   assert.equal(translatedCopy('it-IT')(account.orderStatusLabel('shipped')), 'Spedito');
   assert.equal(translatedCopy('zh-CN')(account.paymentStatusLabel('paid')), '已付款');
   const value = '2026-10-17T10:00:00Z';
-  for (const locale of ['it-IT', 'zh-CN']) {
+  for (const locale of ['en-US', 'it-IT', 'zh-CN']) {
     const result = account.formatAccountOrderDateTime(value, locale);
     assert.equal(result, new Intl.DateTimeFormat(locale, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone:'Europe/Rome' }).format(new Date(value)));
     const promo = account.customerPromoHelper({ promoLevel: 'gold', promoLevelStartsAt: new Date(Date.now() - 60_000).toISOString(), promoLevelExpiresAt: new Date(Date.now() + 60_000).toISOString() }, null, locale);
     const translated=translatedCopy(locale)(promo);
-    assert.match(translated, locale === 'it-IT' ? /^Promozione fino al / : /^活动至 /);
+    assert.match(translated, locale === 'en-US' ? /^Promotion until / : locale === 'it-IT' ? /^Promozione fino al / : /^活动至 /);
   }
 });
 
@@ -94,7 +97,7 @@ test('every server auth error and notice code exists in both locale dictionaries
   const source=fs.readFileSync('src/app/login/actions.ts','utf8');
   const refs=[...source.matchAll(/(error|notice):\s*["']([a-z_]+)["']/g)].map(m=>`storefront.login.${m[1]}.${m[2]}`);
   assert.ok(refs.length>10);
-  for(const locale of ['it-IT','zh-CN'])for(const key of refs){assert.notEqual(copy(locale)(key),key);}
+  for(const locale of ['en-US','it-IT','zh-CN'])for(const key of refs){assert.notEqual(copy(locale)(key),key);}
 });
 
 test('registration and account dictionary placeholders stay aligned', () => {
@@ -105,7 +108,7 @@ test('registration and account dictionary placeholders stay aligned', () => {
 });
 
 test('registration and verification pages render notices and errors in the request locale', async () => {
-  for (const locale of ['it-IT', 'zh-CN']) {
+  for (const locale of ['en-US', 'it-IT', 'zh-CN']) {
     const { default: LoginPage } = load('src/app/login/page.tsx', {
       'next/headers': { cookies: async () => ({ get: () => undefined }) },
       '@/i18n/request': { getRequestI18n: async () => ({ locale }) },
@@ -118,7 +121,7 @@ test('registration and verification pages render notices and errors in the reque
     for (const params of [{}, { mode: 'verify', notice: 'code_sent' }, { mode: 'verify', error: 'code' }, { mode: 'verify', error: 'resend_rate' }, { error: 'unknown', notice: 'unknown' }]) {
       const html = renderToStaticMarkup(await LoginPage({ searchParams: Promise.resolve(params) }));
       assert.doesNotMatch(html, /storefront\./);
-      if (locale === 'it-IT') assert.doesNotMatch(html, /\p{Script=Han}/u);
+      if (locale !== 'zh-CN') assert.doesNotMatch(html, /\p{Script=Han}/u);
       else assert.match(html, /\p{Script=Han}/u);
     }
   }
@@ -136,5 +139,5 @@ test('every literal account copy has an Italian translation', () => {
     ts.forEachChild(node,walk);
   }
   walk(ast);assert.deepEqual(leaks,[]);
-  for(const key of Object.values(accountTranslationKeys))for(const locale of ['it-IT','zh-CN'])assert.notEqual(copy(locale)(key),key);
+  for(const key of Object.values(accountTranslationKeys))for(const locale of ['en-US','it-IT','zh-CN'])assert.notEqual(copy(locale)(key),key);
 });

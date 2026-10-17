@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import { StorefrontLoading } from "./storefront-loading";
 
 import * as React from "react";
@@ -51,7 +54,15 @@ export function ProfessionalApplicationPage(props:{initialAccountAccess?:StoreHe
 function ProfessionalApplicationScoped({ initialAccountAccess }: { initialAccountAccess?: StoreHeaderAccountAccess }) {
   const t = useT();
   const { locale } = useI18n();
-  const ui = locale === "zh-CN" ? {
+  const ui = (locale.startsWith("en") ? englishUiCopy({
+    contact: "Azienda e contatti", tax: "Dati fiscali", address: "Sede dell’attività", additional: "Informazioni aggiuntive",
+    comparison: "Account base o richiesta professionale?", basicTitle: "Account base", basicBody: "Registrati e completa i dati per consultare i prezzi e acquistare secondo i permessi del tuo account.",
+    reviewTitle: "I dati professionali vengono verificati", reviewBody: "Invia azienda, referente e dati fiscali. Il team verifica le informazioni e ti contatta via email.",
+    pricingTitle: "Listino e livello sono gestiti separatamente", pricingBody: "L’esito della verifica determina i relativi permessi. La registrazione base non abilita automaticamente i prezzi professionali.",
+    after: "Dopo l’invio", resultTitle: "Conserva l’esito", resultBody: "La pagina mostra l’esito e il riferimento di ricezione. Conservali per eventuali verifiche con l’assistenza.",
+    emailTitle: "Ti contattiamo via email", emailBody: "Dopo la verifica, il team usa l’email della richiesta e può chiedere informazioni aggiuntive.",
+    accessTitle: "I permessi seguono la verifica", accessBody: "L’invio non attiva subito i prezzi professionali. Attendi la conferma dell’esito da parte del team.",
+  }) : locale === "zh-CN" ? {
     contact: "公司与联系", tax: "税务资料", address: "营业地址", additional: "补充信息",
     comparison: "专业申请与基础账户有什么不同？", basicTitle: "基础账户", basicBody: "注册并完善资料后，按账户权限查看价格与采购。",
     reviewTitle: "专业申请需要审核资料", reviewBody: "提交公司、联系人与税务资料，工作人员审核后通过邮件联系。",
@@ -67,7 +78,7 @@ function ProfessionalApplicationScoped({ initialAccountAccess }: { initialAccoun
     after: "Dopo l’invio", resultTitle: "Conserva l’esito", resultBody: "La pagina mostra l’esito e il riferimento di ricezione. Conservali per eventuali verifiche con l’assistenza.",
     emailTitle: "Ti contattiamo via email", emailBody: "Dopo la verifica, il team usa l’email della richiesta e può chiedere informazioni aggiuntive.",
     accessTitle: "I permessi seguono la verifica", accessBody: "L’invio non attiva subito i prezzi professionali. Attendi la conferma dell’esito da parte del team.",
-  };
+  });
   const initial = React.useMemo(() => ({ ...blank, email: initialAccountAccess?.authenticated ? initialAccountAccess.email || "" : "", contactName: initialAccountAccess?.authenticated && initialAccountAccess.displayName !== initialAccountAccess.email ? initialAccountAccess.displayName || "" : "" }), [initialAccountAccess]);
   const userId = initialAccountAccess?.userId || "guest";
   const [restored] = React.useState(() => readDraft(userId));

@@ -1,13 +1,16 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
 import { StorefrontLoading } from "./storefront-loading";
 import * as React from "react";
 import { usePricingSession } from "./use-pricing-session";
 import { AccountRequestError, accountRequestErrorKey } from "@/lib/partspro-account-errors";
+import { accountProfileSchema, accountProfileLimits, accountProfileIssue, type AccountProfileIssueField } from "@/lib/partspro-account-profile-validation";
 import { useAccountCopy } from "./use-account-copy";
 import { AsyncFeedback } from "./async-feedback";
 import { useUnsavedChanges } from "./use-unsaved-changes";
-import { cleanAuthRedirect } from "@/lib/partspro-auth-redirect";
+import { postProfileSaveRedirect } from "@/lib/partspro-auth-redirect";
 import Image from "./optimized-image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -50,7 +53,7 @@ const accountReferenceCopy = {
 
 function useAccountReferenceCopy() {
     const { locale } = useI18n();
-    return accountReferenceCopy[locale === "zh-CN" ? "zh-CN" : "it-IT"];
+    return locale === "en-US" ? englishUiCopy(accountReferenceCopy["it-IT"]) : accountReferenceCopy[locale];
 }
 type AccountPageProps = {
     loadedSection?: AccountSectionId;
@@ -60,6 +63,7 @@ type AccountPageProps = {
     customerProfile?: AccountCustomerProfile | null;
     dataWarning?: string;
     forceSetup?: boolean;
+    profileUnavailable?: boolean;
     orderSummaries?: OrderSummary[];
     rmaRequests?: RmaRequest[];
     wallet?: CustomerWallet;
@@ -180,7 +184,7 @@ export function AccountPage(props: AccountPageProps) {
     return <AccountPageScoped key={`${session.key}:${props.customerProfile?.id ?? "none"}`} {...props} />;
 }
 
-function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, accountType = "customer", company = null, customerProfile = null, dataWarning, forceSetup = false, historyHasMore = false, orderSummaries = [], rmaRequests = [], wallet = { balance: 0, currency: "EUR", transactions: [] }, userEmail, }: AccountPageProps) {
+function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, accountType = "customer", company = null, customerProfile = null, dataWarning, profileUnavailable = false, forceSetup = false, historyHasMore = false, orderSummaries = [], rmaRequests = [], wallet = { balance: 0, currency: "EUR", transactions: [] }, userEmail, }: AccountPageProps) {
     const c = useAccountCopy();
     const ui = useAccountReferenceCopy();
     const accountDate = useAccountDateTime();
@@ -205,11 +209,11 @@ function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, a
         : customerProfile;
     const isEmployeeAccount = accountType === "employee";
     const editableProfile = profile ?? createEmptyAccountProfile(userEmail, isEmployeeAccount);
-    const [profileDialogOpen, setProfileDialogOpen] = React.useState(() => Boolean(forceSetup || (customerProfile && !customerProfile.profileCompletedAt)));
+    const [profileDialogOpen, setProfileDialogOpen] = React.useState(() => Boolean(!profileUnavailable && !customerProfile?.profileCompletedAt && (forceSetup || customerProfile)));
     const [profileSummaryOpen, setProfileSummaryOpen] = React.useState(false);
     const selectedFilter = orderFilters.find((filter) => filter.id === activeFilter) ?? orderFilters[0];
     const filteredOrders = orderSummaries.filter(selectedFilter.predicate);
-    const shouldShowProfileNotice = Boolean(profile && !profile.profileCompletedAt);
+    const shouldShowProfileNotice = Boolean(!profileUnavailable && profile && !profile.profileCompletedAt);
     const openOrderDetail = React.useCallback(async (order: OrderSummary) => {
         detailRequestRef.current.controller?.abort();
         const version = ++detailRequestRef.current.version;
@@ -262,11 +266,9 @@ function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, a
     }
     function handleProfileSaved(nextProfile: AccountCustomerProfile) {
         setSavedProfile(nextProfile);
-        const returnTo = cleanAuthRedirect(searchParams.get("returnTo"), "");
-        if (returnTo && !returnTo.startsWith("/account") && !returnTo.startsWith("/login"))
-            router.replace(returnTo);
-        else
-            router.refresh();
+        const destination = postProfileSaveRedirect(searchParams.get("returnTo"), searchParams.toString());
+        router.replace(destination);
+        router.refresh();
     }
     React.useEffect(() => () => { detailRequestRef.current.version++; detailRequestRef.current.controller?.abort(); }, []);
     return (<main className="pp-account-page min-h-screen overflow-x-hidden bg-slate-100 text-slate-950">
@@ -281,14 +283,14 @@ function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, a
           <div className="pp-account-sidebar-footer"><Link className="pp-account-sidebar-link" href="/help"><CircleHelp aria-hidden="true"/><span>{ui.help}</span></Link><form action={signOut}><button type="submit" className="pp-account-sidebar-link"><LogOut aria-hidden="true"/><span>{c("退出")}</span></button></form></div>
         </aside>
         <div className="pp-account-main">
-        <header className="pp-account-heading"><div><p className="pp-account-breadcrumb">{ui.title}<span>/</span>{profileSummaryOpen ? ui.companyAddress : ui[activeSection]}</p><h1>{profileSummaryOpen ? ui.companyAddress : activeSection === "overview" ? ui.welcome : ui[activeSection]}</h1><p>{profileSummaryOpen ? ui.profileDescription : ui[`${activeSection}Description`]}</p></div>{profileSummaryOpen ? <Button className="pp-account-primary-action pp-profile-edit-action" onClick={() => setProfileDialogOpen(true)}><Pencil aria-hidden="true"/>{ui.editProfile}</Button> : <Button asChild className="pp-account-primary-action"><Link href={activeSection === "service" ? "/rma" : "/catalogo"}>{activeSection === "service" ? <Plus aria-hidden="true"/> : null}{activeSection === "service" ? c("新建售后申请") : ui.shop}<ArrowRight aria-hidden="true"/></Link></Button>}</header>
+        <header className="pp-account-heading"><div><p className="pp-account-breadcrumb">{ui.title}<span>/</span>{profileSummaryOpen ? ui.companyAddress : ui[activeSection]}</p><h1>{profileSummaryOpen ? ui.companyAddress : activeSection === "overview" ? ui.welcome : ui[activeSection]}</h1><p>{profileSummaryOpen ? ui.profileDescription : ui[`${activeSection}Description`]}</p></div>{profileSummaryOpen ? <Button className="pp-account-primary-action pp-profile-edit-action" disabled={profileUnavailable} onClick={() => setProfileDialogOpen(true)}><Pencil aria-hidden="true"/>{ui.editProfile}</Button> : <Button asChild className="pp-account-primary-action"><Link href={activeSection === "service" ? "/rma" : "/catalogo"}>{activeSection === "service" ? <Plus aria-hidden="true"/> : null}{activeSection === "service" ? c("新建售后申请") : ui.shop}<ArrowRight aria-hidden="true"/></Link></Button>}</header>
         {shouldShowProfileNotice && profile ? (<AccountProfileNotice forceSetup={forceSetup} profile={profile} onOpen={() => setProfileDialogOpen(true)}/>) : null}
 
-        {dataWarning ? (<div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
-            <AsyncFeedback state="error" title={c(accountDataWarningLabel(dataWarning, isEmployeeAccount))} actions={<Button variant="outline" onClick={() => router.refresh()}>{c("重试")}</Button>}/>
+        {dataWarning || profileUnavailable ? (<div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
+            <AsyncFeedback state="error" title={profileUnavailable ? t("storefront.account.profile.loadError") : c(accountDataWarningLabel(dataWarning ?? "", isEmployeeAccount))} actions={<Button variant="outline" onClick={() => router.refresh()}>{c("重试")}</Button>}/>
           </div>) : null}
 
-        {profileSummaryOpen ? <AccountProfileSummaryView open={profileSummaryOpen} onOpenChange={setProfileSummaryOpen} company={company} profile={profile} userEmail={userEmail} onEdit={() => setProfileDialogOpen(true)}/> : null}
+        {profileSummaryOpen && !profileUnavailable ? <AccountProfileSummaryView open={profileSummaryOpen} onOpenChange={setProfileSummaryOpen} company={company} profile={profile} userEmail={userEmail} onEdit={() => setProfileDialogOpen(true)}/> : null}
         <section hidden={profileSummaryOpen} className="pp-account-section min-w-0" aria-busy={sectionPending || loadedSection !== activeSection}>
           {sectionPending || loadedSection !== activeSection ? (<div role="status" className="flex min-h-48 items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white text-sm text-slate-500">
               <Loader2 className="size-4 animate-spin"/>{t("common.loading")}
@@ -327,7 +329,7 @@ function AccountPageScoped({ loadedSection = "overview", initialAccountAccess, a
           </DialogContent>
         </Dialog>
 
-        <AccountProfileDialog open={profileDialogOpen} profile={editableProfile} userEmail={userEmail} onOpenChange={setProfileDialogOpen} onSaved={handleProfileSaved}/>
+        {!profileUnavailable ? <AccountProfileDialog open={profileDialogOpen} profile={editableProfile} userEmail={userEmail} onOpenChange={setProfileDialogOpen} onSaved={handleProfileSaved}/> : null}
 
       </div>
     </main>);
@@ -527,7 +529,7 @@ function AccountProfileNotice({ forceSetup, onOpen, profile, }: {
             {isPending
             ? c("补全后系统会启用零售价客户，可查看零售价并下单；批发价由后台升级。") : c("补全客户资料后可使用结账、单据和订单管理。")}
           </p>
-          {missingFields.length > 0 ? (<div className="mt-2 text-xs font-bold">{c("待补全：")}{missingFields.join(locale === "zh-CN" ? "、" : ", ")}
+          {missingFields.length > 0 ? (<div className="mt-2 text-xs font-bold">{c("待补全：")}{missingFields.join((locale.startsWith("en") ? ", " : locale === "zh-CN" ? "、" : ", "))}
             </div>) : null}
         </div>
         <Button type="button" variant="outline" className="shrink-0 border-amber-300 bg-white" onClick={onOpen}>{c("查看资料")}</Button>
@@ -550,6 +552,7 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
     const invalidFocusRef = React.useRef(false);
     const [error, setError] = React.useState<string | null>(null);
     const [saving, setSaving] = React.useState(false);
+    const [fieldIssue, setFieldIssue] = React.useState<ReturnType<typeof accountProfileIssue>>(null);
     const dirty = JSON.stringify(form) !== JSON.stringify(accountProfileToForm(profile, userEmail));
     useUnsavedChanges(open && (dirty || saving), c("资料尚未保存。确定离开并丢弃修改？"));
     function requestProfileOpenChange(next: boolean) {
@@ -595,9 +598,26 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
             billingAddress: checked ? current.shippingAddress : current.billingAddress,
         }));
     }
+    function showFieldIssue(issues: unknown) {
+        const issue = accountProfileIssue(issues);
+        if (!issue) return false;
+        setFieldIssue(issue);
+        setError(issue.key);
+        const address = issue.field === "shippingAddress" || issue.field === "billingAddress";
+        setProfileGroup(address ? "delivery" : "company");
+        window.requestAnimationFrame(() => document.getElementById(`account-profile-${issue.field}${address ? "-street" : ""}`)?.focus());
+        return true;
+    }
+    const fieldLabels: Record<AccountProfileIssueField, string> = {
+        companyName: c("客户名称"), contactName: c("微信号码 / WhatsApp 号码"), email: c("邮箱"),
+        phone: c("电话"), fiscalCode: c("税号"), pec: "PEC", shippingAddress: c("配送地址"),
+        billingAddress: c("账单地址"), sdi: "SDI", vatNumber: "Partita IVA",
+    };
     async function submitProfile(event: React.FormEvent<HTMLFormElement>) {
         event.preventDefault();
+        if (saving) return;
         setError(null);
+        setFieldIssue(null);
         if (!isAddressDraftComplete(form.shippingAddress) ||
             (!form.billingSameAsShipping && !isAddressDraftComplete(form.billingAddress))) {
             setProfileGroup("delivery");
@@ -618,6 +638,11 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
             phone: form.phone,
             shippingAddress,
         };
+        const validation = accountProfileSchema.safeParse(payload);
+        if (!validation.success) {
+            showFieldIssue(validation.error.issues);
+            return;
+        }
         setSaving(true);
         try {
             const response = await fetchJson<{
@@ -632,6 +657,8 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
             onOpenChange(false);
         }
         catch (error) {
+            if (!activeRef.current) return;
+            if (error instanceof AccountRequestError && error.code === "INVALID_ACCOUNT_PROFILE" && showFieldIssue(error.issues)) return;
             setError(accountRequestErrorKey(error, "profile"));
         }
         finally {
@@ -663,6 +690,7 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
               if (invalidFocusRef.current) return;
               invalidFocusRef.current = true;
               setProfileGroup(input.closest("#account-delivery-fields") ? "delivery" : "company");
+              setFieldIssue(null);
               setError("storefront.account.profile.invalidField");
               window.requestAnimationFrame(() => { input.focus(); invalidFocusRef.current = false; });
             }}>
@@ -672,12 +700,12 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
             </nav>
             <section hidden={profileGroup !== "company"} id="account-company-fields" className="pp-profile-editor-section"><h3><Building2 aria-hidden="true"/>{ui.companyInfo}</h3>
             <div className="grid gap-3 sm:grid-cols-2">
-              <ProfileInput field="companyName" label={c("客户名称")} required value={form.companyName} onChange={updateField}/>
-              <ProfileInput field="contactName" label={c("微信号码 / WhatsApp 号码")} value={form.contactName} onChange={updateField}/>
-              <ProfileInput field="email" label={c("邮箱")} disabled required type="email" value={form.email} onChange={updateField}/>
-              <ProfileInput field="phone" label={c("电话")} required value={form.phone} onChange={updateField}/>
-              <ProfileInput field="fiscalCode" label={c("税号")} required value={form.fiscalCode} onChange={updateField}/>
-              <ProfileInput field="pec" label="PEC" type="email" value={form.pec} onChange={updateField}/>
+              <ProfileInput field="companyName" maxLength={accountProfileLimits.companyName.max} minLength={accountProfileLimits.companyName.min} label={c("客户名称")} required value={form.companyName} onChange={updateField}/>
+              <ProfileInput field="contactName" maxLength={accountProfileLimits.contactName.max} minLength={accountProfileLimits.contactName.min} label={c("微信号码 / WhatsApp 号码")} value={form.contactName} onChange={updateField}/>
+              <ProfileInput field="email" maxLength={accountProfileLimits.email.max} minLength={accountProfileLimits.email.min} label={c("邮箱")} disabled required type="email" value={form.email} onChange={updateField}/>
+              <ProfileInput field="phone" maxLength={accountProfileLimits.phone.max} minLength={accountProfileLimits.phone.min} label={c("电话")} required value={form.phone} onChange={updateField}/>
+              <ProfileInput field="fiscalCode" maxLength={accountProfileLimits.fiscalCode.max} minLength={accountProfileLimits.fiscalCode.min} label={c("税号")} required value={form.fiscalCode} onChange={updateField}/>
+              <ProfileInput field="pec" maxLength={accountProfileLimits.pec.max} minLength={accountProfileLimits.pec.min} label="PEC" type="email" value={form.pec} onChange={updateField}/>
             </div>
             <p className="pp-account-rule-note">{ui.emailLocked}</p></section>
             <section hidden={profileGroup !== "delivery"} id="account-delivery-fields" className="pp-profile-editor-section space-y-3">
@@ -691,8 +719,8 @@ function AccountProfileDialog({ onOpenChange, onSaved, open, profile, userEmail,
 
             <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs font-semibold leading-5 text-blue-800">{c("税号、电话和详细地址用于订单与配送；微信或 WhatsApp 可留空。补全后系统会启用零售价客户；批发价由后台升级，资料异常时请联系客服。")}</div>
 
-            {error ? (<div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
-                {t(error)}
+            {error ? (<div role="alert" className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm font-semibold text-red-700">
+                {t(error, fieldIssue ? { field: fieldLabels[fieldIssue.field], limit: fieldIssue.limit } : undefined)}
               </div>) : null}
           </form>
         </DialogBody>
@@ -790,19 +818,20 @@ type ProfileInputProps<Field extends string> = {
     inputMode?: React.InputHTMLAttributes<HTMLInputElement>["inputMode"];
     label: string;
     maxLength?: number;
+    minLength?: number;
     onChange: (field: Field, value: string) => void;
     required?: boolean;
     type?: React.HTMLInputTypeAttribute;
     value: string;
 };
-function ProfileInput<Field extends string>({ autoComplete, field, id: idProp, disabled, inputMode, label, maxLength, onChange, required, type = "text", value, }: ProfileInputProps<Field>) {
+function ProfileInput<Field extends string>({ autoComplete, field, id: idProp, disabled, inputMode, label, maxLength, minLength, onChange, required, type = "text", value, }: ProfileInputProps<Field>) {
     const id = idProp ?? `account-profile-${field}`;
     return (<div className="space-y-1.5">
       <Label htmlFor={id} className="text-xs font-black text-slate-500">
         {label}
         {required ? " *" : null}
       </Label>
-      <Input autoComplete={autoComplete} disabled={disabled} id={id} inputMode={inputMode} maxLength={maxLength} required={required} type={type} value={value} onChange={(event) => onChange(field, event.currentTarget.value)}/>
+      <Input autoComplete={autoComplete} disabled={disabled} id={id} inputMode={inputMode} maxLength={maxLength} minLength={minLength} required={required} type={type} value={value} onChange={(event) => onChange(field, event.currentTarget.value)}/>
     </div>);
 }
 function createEmptyAccountProfile(userEmail: string | undefined, isEmployeeAccount: boolean): AccountCustomerProfile {
@@ -941,7 +970,7 @@ function accountDataWarningLabel(warning: string, isEmployeeAccount: boolean) {
     if (normalized.startsWith("supabase")) {
         return "部分账户数据暂时无法读取，请刷新或联系管理员。";
     }
-    return warning;
+    return "部分账户数据暂时无法读取，请刷新或联系管理员。";
 }
 function companyStatusLabel(status: CompanyProfile["status"]) {
     const labels: Record<CompanyProfile["status"], string> = {
@@ -1102,7 +1131,7 @@ async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
     const response = await fetch(url, init);
     const payload = (await response.json().catch(() => null)) as unknown;
     if (!response.ok) {
-        throw new AccountRequestError(readErrorCode(payload), response.status);
+        throw new AccountRequestError(readErrorCode(payload), response.status, readErrorIssues(payload));
     }
     return payload as T;
 }
@@ -1141,4 +1170,10 @@ function AccountHistoryControls({ section, hasMore, pending }: {
     {section === "orders" ? <form key={params.get("q")} className="flex min-w-0 flex-1 gap-2" onSubmit={(event) => { event.preventDefault(); navigate(0, String(new FormData(event.currentTarget).get("q") ?? "")); }}><Input name="q" defaultValue={params.get("q") ?? ""} aria-label={c("按订单号搜索")} placeholder={c("订单号")} maxLength={80}/><Button type="submit" disabled={pending}>{c("搜索")}</Button>{params.get("q") ? <Button variant="ghost" type="button" onClick={() => navigate(0, "")}>{c("清除")}</Button> : null}</form> : null}
     <span className="text-xs text-slate-500">{c(`第 ${page+1} 页 · 状态筛选限本页`)}</span><Button variant="outline" disabled={pending || page === 0} onClick={() => navigate(page - 1)}>{c("上一页")}</Button><Button variant="outline" disabled={pending || !hasMore} onClick={() => navigate(page + 1)}>{c("下一页")}</Button>
   </div>;
+}
+
+function readErrorIssues(payload: unknown): unknown {
+    if (!payload || typeof payload !== "object") return undefined;
+    const error = (payload as {error?: {details?: {issues?: unknown}}}).error;
+    return error?.details?.issues;
 }

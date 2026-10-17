@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { Check, Loader2, ShoppingBag } from "lucide-react";
@@ -51,9 +54,9 @@ export function OrderSummaryCard({
 
 export function CommerceProgress({ step }: { step: 1 | 2 | 3 }) {
   const { locale } = useI18n();
-  const labels = locale === "zh-CN" ? ["购物车", "核对订单", "订单已提交"] : ["Carrello", "Conferma ordine", "Ordine inviato"];
+  const labels = (locale.startsWith("en") ? englishUiCopy(["Carrello", "Conferma ordine", "Ordine inviato"]) : locale === "zh-CN" ? ["购物车", "核对订单", "订单已提交"] : ["Carrello", "Conferma ordine", "Ordine inviato"]);
   return (
-    <nav className="pp-commerce-progress" aria-label={locale === "zh-CN" ? "采购进度" : "Avanzamento acquisto"}>
+    <nav className="pp-commerce-progress" aria-label={(locale.startsWith("en") ? englishUiCopy("Avanzamento acquisto") : locale === "zh-CN" ? "采购进度" : "Avanzamento acquisto")}>
       <ol>{labels.map((label, index) => <li key={label} aria-current={index + 1 === step ? "step" : undefined} data-complete={index + 1 < step || undefined}><span className="pp-commerce-step-number">{index + 1 < step ? <Check aria-hidden="true" /> : index + 1}</span><span>{label}</span></li>)}</ol>
     </nav>
   );

@@ -1,4 +1,6 @@
+import { adminEnglish } from "./admin-en";
 export const adminDictionaries = {
+  en: { admin: adminEnglish },
   zh: {
     admin: {
       common: {
@@ -2638,13 +2640,11 @@ export type AdminText = AdminDictionary["admin"];
 export type AdminLocale = keyof typeof adminDictionaries;
 
 export function getAdminDictionary(locale?: string): AdminDictionary {
-  return normalizeAdminLocale(locale) === "it"
-    ? adminDictionaries.it
-    : adminDictionaries.zh;
+  return adminDictionaries[normalizeAdminLocale(locale)];
 }
 
 export function normalizeAdminLocale(locale?: string): AdminLocale {
-  return locale?.toLowerCase().startsWith("it") ? "it" : "zh";
+  return locale?.toLowerCase().startsWith("it") ? "it" : locale?.toLowerCase().startsWith("zh") ? "zh" : "en";
 }
 
 export function adminRoleTemplateLabel(

@@ -1,17 +1,13 @@
 import { cookies, headers } from "next/headers";
 import { cache } from "react";
 import {
-  defaultLocaleByScope,
-  isLocale,
+  deviceLocale,
   isLocaleScope,
   resolveLocaleScope,
   type Locale,
   type LocaleScope,
 } from "./config";
-import {
-  readCurrentAccountPreferredLocale,
-  readLocaleCookie,
-} from "./account-locale";
+import { readLocaleCookie } from "./account-locale";
 
 export type RequestI18n = {
   locale: Locale;
@@ -26,11 +22,8 @@ export const getRequestI18n = cache(async (): Promise<RequestI18n> => {
   const scope = isLocaleScope(headerScope)
     ? headerScope
     : resolveLocaleScope(pathname);
-  const accountLocale = await readCurrentAccountPreferredLocale(cookieStore);
   const cookieLocale = readLocaleCookie(cookieStore, scope);
-  const locale = isLocale(accountLocale)
-    ? accountLocale
-    : cookieLocale ?? defaultLocaleByScope[scope];
+  const locale = cookieLocale ?? deviceLocale(headerStore.get("accept-language"));
 
   return { locale, scope };
 });

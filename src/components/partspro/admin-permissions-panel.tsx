@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy, englishUiTemplate } from "@/i18n/english-ui-copy";
+
+
 import { AdminSearchField } from "./admin-ui-controls";
 
 import * as React from "react";
@@ -274,7 +277,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
   const hasChanges = Boolean(draftRole || Object.keys(draftOverrides).length);
   function chooseEmployee(userId: string) {
     if (pendingKey) return;
-    if (hasChanges && !window.confirm(locale.startsWith("zh") ? "放弃未保存权限调整并切换员工？" : "Scartare le modifiche e cambiare dipendente?")) return;
+    if (hasChanges && !window.confirm((locale.startsWith("en") ? englishUiCopy("Scartare le modifiche e cambiare dipendente?") : locale.startsWith("zh") ? "放弃未保存权限调整并切换员工？" : "Scartare le modifiche e cambiare dipendente?"))) return;
     setDraftTargetId(null); setDraftTargetName(""); setDraftRole(null); setDraftOverrides({}); setChangeReason(""); setUnknownSubmission(false); setSelectedUserId(userId);
   }
   function updateRoleTemplate(roleTemplate: string) {
@@ -292,7 +295,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
     if (!selectedEmployee || selectedEmployee.userId !== draftTargetId || pendingKey || !hasChanges || changeReason.trim().length < 3 || unknownSubmission) return;
     const target = selectedEmployee.userId;
     const changes = Object.entries(draftOverrides).map(([permissionId, effect]) => ({ permissionId, effect }));
-    const message = locale.startsWith("zh") ? `确认修改 ${selectedEmployeeName} 的角色/权限？这会立即影响该员工的访问。` : `Confermi le modifiche per ${selectedEmployeeName}? L'accesso del dipendente cambierà subito.`;
+    const message = (locale.startsWith("en") ? englishUiTemplate`Confermi le modifiche per ${selectedEmployeeName}? L'accesso del dipendente cambierà subito.` : locale.startsWith("zh") ? `确认修改 ${selectedEmployeeName} 的角色/权限？这会立即影响该员工的访问。` : `Confermi le modifiche per ${selectedEmployeeName}? L'accesso del dipendente cambierà subito.`);
     if (!window.confirm(message)) return;
     setPendingKey("save"); setNotice(null);
     try {
@@ -300,7 +303,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
       setOverrides(current => result.readError ? [...current.filter(item => !(item.userId === target && changes.some(change => change.permissionId === item.permissionId))), ...changes.filter((change): change is { permissionId: string; effect: "grant" | "deny" } => change.effect !== "inherit").map(change => ({ ...change, userId: target }))] : [...current.filter(item => item.userId !== target), ...result.overrides]);
       if (draftRole) setEmployees(current => current.map(item => item.userId === target ? { ...item, roleTemplate: draftRole } : item));
       setDraftTargetId(null); setDraftTargetName(""); setDraftRole(null); setDraftOverrides({}); setChangeReason("");
-      setNotice({ message: copy.updateSaved + (result.readError ? (locale.startsWith("zh") ? " 已保存；重读失败，请刷新核对。" : " Salvato; rilettura non riuscita, aggiorna per verificare.") : ""), tone: result.readError ? "warning" : "success" });
+      setNotice({ message: copy.updateSaved + (result.readError ? ((locale.startsWith("en") ? englishUiCopy(" Salvato; rilettura non riuscita, aggiorna per verificare.") : locale.startsWith("zh") ? " 已保存；重读失败，请刷新核对。" : " Salvato; rilettura non riuscita, aggiorna per verificare.")) : ""), tone: result.readError ? "warning" : "success" });
       window.dispatchEvent(new Event("partspro:admin-permissions-changed"));
     } catch (error) {
       setUnknownSubmission(error instanceof TypeError || error instanceof SyntaxError);
@@ -310,15 +313,15 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
 
   return (
     <section data-admin-mutating={pendingKey ? "true" : "false"} data-admin-dirty={hasChanges ? "true" : "false"} className="admin-ui-panel min-w-0 space-y-2 text-slate-950 sm:space-y-4">
-      {hasChanges && <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 sm:sticky sm:top-0 sm:z-10" role="region" aria-label={locale.startsWith("zh") ? "权限修改核对" : "Riepilogo modifiche"}>
-        {!selectedEmployee && <p role="alert" className="text-sm text-red-800">{locale.startsWith("zh") ? "草稿对应员工已不在当前列表，保存已锁定。请核对原对象或放弃草稿后选择新员工。" : "Il dipendente della bozza non è più disponibile. Il salvataggio è sospeso: verifica o scarta la bozza."}</p>}
-        <h3 className="font-bold">{selectedEmployeeName} · {locale.startsWith("zh") ? "待保存修改" : "Modifiche da salvare"}</h3>
+      {hasChanges && <div className="space-y-2 rounded-lg border border-amber-300 bg-amber-50 p-3 sm:sticky sm:top-0 sm:z-10" role="region" aria-label={(locale.startsWith("en") ? englishUiCopy("Riepilogo modifiche") : locale.startsWith("zh") ? "权限修改核对" : "Riepilogo modifiche")}>
+        {!selectedEmployee && <p role="alert" className="text-sm text-red-800">{(locale.startsWith("en") ? englishUiCopy("Il dipendente della bozza non è più disponibile. Il salvataggio è sospeso: verifica o scarta la bozza.") : locale.startsWith("zh") ? "草稿对应员工已不在当前列表，保存已锁定。请核对原对象或放弃草稿后选择新员工。" : "Il dipendente della bozza non è più disponibile. Il salvataggio è sospeso: verifica o scarta la bozza.")}</p>}
+        <h3 className="font-bold">{selectedEmployeeName} · {(locale.startsWith("en") ? englishUiCopy("Modifiche da salvare") : locale.startsWith("zh") ? "待保存修改" : "Modifiche da salvare")}</h3>
         {draftRole && <p className="text-sm">{adminRoleTemplateLabel(text, selectedEmployee?.roleTemplate)} → {adminRoleTemplateLabel(text, draftRole)}</p>}
         <ul className="max-h-40 list-disc space-y-1 overflow-y-auto pl-5 text-sm">{Object.entries(draftOverrides).map(([id, effect]) => <li key={id}>{adminPermissionLabel(text, id, id)}: {overrides.find(item => item.userId === selectedEmployee?.userId && item.permissionId === id)?.effect ?? "inherit"} → {effect}</li>)}</ul>
-        <Label htmlFor="permission-change-reason">{locale.startsWith("zh") ? "修改原因（必填）" : "Motivo della modifica (obbligatorio)"}</Label>
+        <Label htmlFor="permission-change-reason">{(locale.startsWith("en") ? englishUiCopy("Motivo della modifica (obbligatorio)") : locale.startsWith("zh") ? "修改原因（必填）" : "Motivo della modifica (obbligatorio)")}</Label>
         <Input id="permission-change-reason" value={changeReason} disabled={Boolean(pendingKey)} maxLength={1000} onChange={event => setChangeReason(event.target.value)} />
-        {unknownSubmission && <AdminNotice tone="warning" message={locale.startsWith("zh") ? "提交结果未知。请先刷新核对实际权限，再决定后续修改。" : "Esito non confermato. Aggiorna e verifica i permessi prima di riprovare."} />}
-        <div className="flex flex-wrap gap-2"><AdminActionButton pending={pendingKey === "save"} disabled={!selectedEmployee || selectedEmployee.userId !== draftTargetId || Boolean(pendingKey) || changeReason.trim().length < 3 || unknownSubmission} onClick={() => void saveChanges()}>{locale.startsWith("zh") ? "核对并保存修改" : "Conferma e salva"}</AdminActionButton><Button variant="outline" disabled={Boolean(pendingKey)} onClick={() => { setDraftRole(null); setDraftOverrides({}); setChangeReason(""); setUnknownSubmission(false); void refreshData(); }}>{locale.startsWith("zh") ? "放弃草稿并重读权限" : "Scarta e rileggi i permessi"}</Button></div>
+        {unknownSubmission && <AdminNotice tone="warning" message={(locale.startsWith("en") ? englishUiCopy("Esito non confermato. Aggiorna e verifica i permessi prima di riprovare.") : locale.startsWith("zh") ? "提交结果未知。请先刷新核对实际权限，再决定后续修改。" : "Esito non confermato. Aggiorna e verifica i permessi prima di riprovare.")} />}
+        <div className="flex flex-wrap gap-2"><AdminActionButton pending={pendingKey === "save"} disabled={!selectedEmployee || selectedEmployee.userId !== draftTargetId || Boolean(pendingKey) || changeReason.trim().length < 3 || unknownSubmission} onClick={() => void saveChanges()}>{(locale.startsWith("en") ? englishUiCopy("Conferma e salva") : locale.startsWith("zh") ? "核对并保存修改" : "Conferma e salva")}</AdminActionButton><Button variant="outline" disabled={Boolean(pendingKey)} onClick={() => { setDraftRole(null); setDraftOverrides({}); setChangeReason(""); setUnknownSubmission(false); void refreshData(); }}>{(locale.startsWith("en") ? englishUiCopy("Scarta e rileggi i permessi") : locale.startsWith("zh") ? "放弃草稿并重读权限" : "Scarta e rileggi i permessi")}</Button></div>
       </div>}
       <div
         className={cn(
@@ -398,7 +401,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
 
           <TabsContent value="employees" className="m-0 min-w-0">
             <div className="rounded-xl border border-slate-200 bg-white p-2">
-              <AdminSearchField value={query} onValueChange={setQuery} className="bg-white" placeholder={copy.employeeSearchPlaceholder} aria-label={copy.employeeSearchPlaceholder} clearLabel={locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca"} />
+              <AdminSearchField value={query} onValueChange={setQuery} className="bg-white" placeholder={copy.employeeSearchPlaceholder} aria-label={copy.employeeSearchPlaceholder} clearLabel={(locale.startsWith("en") ? englishUiCopy("Cancella ricerca") : locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca")} />
               <div className="mt-2 max-h-[calc(100svh-320px)] min-h-0 space-y-1.5 overflow-y-auto pr-0.5">
                 {isInitialLoading ? (
                   <EmployeeListSkeleton />
@@ -542,7 +545,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
             <div className="rounded-xl border border-slate-200 bg-white p-2">
               {selectedEmployee ? (
                 <>
-                  <AdminSearchField value={permissionQuery} onValueChange={setPermissionQuery} className="bg-white" placeholder={copy.matrixSearchPlaceholder} aria-label={copy.matrixSearchPlaceholder} clearLabel={locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca"} />
+                  <AdminSearchField value={permissionQuery} onValueChange={setPermissionQuery} className="bg-white" placeholder={copy.matrixSearchPlaceholder} aria-label={copy.matrixSearchPlaceholder} clearLabel={(locale.startsWith("en") ? englishUiCopy("Cancella ricerca") : locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca")} />
                   {filteredPermissionGroups.length > 0 ? (
                     <Select
                       value={activeMobilePermissionGroup}
@@ -658,7 +661,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
             <CardDescription>{copy.employeeListDescription}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <AdminSearchField value={query} onValueChange={setQuery} className="bg-white" placeholder={copy.employeeSearchPlaceholder} aria-label={copy.employeeSearchPlaceholder} clearLabel={locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca"} />
+            <AdminSearchField value={query} onValueChange={setQuery} className="bg-white" placeholder={copy.employeeSearchPlaceholder} aria-label={copy.employeeSearchPlaceholder} clearLabel={(locale.startsWith("en") ? englishUiCopy("Cancella ricerca") : locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca")} />
             <div className="grid max-h-[560px] gap-2 overflow-y-auto pr-1">
               {isInitialLoading ? (
                 <EmployeeListSkeleton />
@@ -816,7 +819,7 @@ export function AdminPermissionsPanel({ embedded = false }: { embedded?: boolean
                   </div>
                 )}
 
-                <AdminSearchField value={permissionQuery} onValueChange={setPermissionQuery} className="bg-white" placeholder={copy.matrixSearchPlaceholder} aria-label={copy.matrixSearchPlaceholder} clearLabel={locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca"} />
+                <AdminSearchField value={permissionQuery} onValueChange={setPermissionQuery} className="bg-white" placeholder={copy.matrixSearchPlaceholder} aria-label={copy.matrixSearchPlaceholder} clearLabel={(locale.startsWith("en") ? englishUiCopy("Cancella ricerca") : locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca")} />
 
                 {filteredPermissionGroups.length > 0 ? (
                   filteredPermissionGroups.map(([groupName, items]) => (

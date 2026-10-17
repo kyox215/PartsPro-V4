@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import { AdminExpandableText } from "./admin-summary-components";
 import { AdminSearchableSelect } from "./admin-ui-controls";
 
@@ -323,7 +326,7 @@ export function AdminRemaxCenter({
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <p className="text-xs text-slate-500 lg:hidden">{locale.startsWith("zh") ? "横向滑动查看价格与预检结果" : "Scorri per vedere prezzi ed esito dei controlli"}</p>
+                  <p className="text-xs text-slate-500 lg:hidden">{(locale.startsWith("en") ? englishUiCopy("Scorri per vedere prezzi ed esito dei controlli") : locale.startsWith("zh") ? "横向滑动查看价格与预检结果" : "Scorri per vedere prezzi ed esito dei controlli")}</p>
                   <div className="max-h-96 overflow-auto rounded-lg border border-slate-200">
                     <table className="w-full min-w-[760px] text-left text-xs">
                       <thead className="sticky top-0 bg-slate-100 text-slate-600">
@@ -439,7 +442,7 @@ function ArrivalCard(props: {
       <CardContent className="space-y-3">
         <p className="text-xs font-semibold leading-5 text-slate-600">{t("Usa questa sezione solo quando hai contato fisicamente la merce. Il sistema assegna prima i preordini più vecchi (FIFO).")}</p>
         <Field label={t("Lotto arrivato")}>
-          <AdminSearchableSelect value={props.selectedBatchCode} onValueChange={props.onSelectBatch} ariaLabel={t("Lotto arrivato")} placeholder={t("Seleziona lotto")} searchPlaceholder={locale.startsWith("zh") ? "搜索批次" : "Cerca lotto"} options={[{ value: "", label: t("Seleziona lotto") }, ...props.batches.map(batch => ({ value: batch.batchCode, label: `${batch.batchCode} ${t("· residuo")}${batch.remainingQty}` }))]} />
+          <AdminSearchableSelect value={props.selectedBatchCode} onValueChange={props.onSelectBatch} ariaLabel={t("Lotto arrivato")} placeholder={t("Seleziona lotto")} searchPlaceholder={(locale.startsWith("en") ? englishUiCopy("Cerca lotto") : locale.startsWith("zh") ? "搜索批次" : "Cerca lotto")} options={[{ value: "", label: t("Seleziona lotto") }, ...props.batches.map(batch => ({ value: batch.batchCode, label: `${batch.batchCode} ${t("· residuo")}${batch.remainingQty}` }))]} />
         </Field>
         {props.selectedBatch ? (
           <div className="max-h-72 space-y-2 overflow-auto">
@@ -488,7 +491,7 @@ function RowStatus({ status }: { status: "ready" | "draft" | "blocked" }) {
 function InlineState({ state }: { state: RequestState }) {
  const { locale } = useI18n();
   if (!state.message || state.status === "idle") return null;
-  return <AdminNotice tone={state.status === "loading" || state.status === "info" ? "info" : state.status} message={remaxText(state.message, locale, state.values)}>{state.status === "loading" ? <span className="flex items-center gap-2"><Loader2 className="size-3.5 animate-spin" aria-hidden="true" />{remaxText(state.message, locale, state.values)}</span> : state.status === "warning" ? <>{remaxText(state.message, locale, state.values)}<p className="mt-1">{locale.startsWith("zh") ? "记录已保存，但列表重读失败，请刷新核对。" : "Registrazione salvata; rilettura non riuscita. Aggiorna per verificare."}</p></> : undefined}</AdminNotice>;
+  return <AdminNotice tone={state.status === "loading" || state.status === "info" ? "info" : state.status} message={remaxText(state.message, locale, state.values)}>{state.status === "loading" ? <span className="flex items-center gap-2"><Loader2 className="size-3.5 animate-spin" aria-hidden="true" />{remaxText(state.message, locale, state.values)}</span> : state.status === "warning" ? <>{remaxText(state.message, locale, state.values)}<p className="mt-1">{(locale.startsWith("en") ? englishUiCopy("Registrazione salvata; rilettura non riuscita. Aggiorna per verificare.") : locale.startsWith("zh") ? "记录已保存，但列表重读失败，请刷新核对。" : "Registrazione salvata; rilettura non riuscita. Aggiorna per verificare.")}</p></> : undefined}</AdminNotice>;
 }
 
 function importFormData(file: File, settings: ImportSettingsForm) {

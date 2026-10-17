@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -88,9 +91,9 @@ export function ProductDetailPurchasePanel({
     stockAvailable,
   });
   const addFailedHint = mixedCartRejected
-    ? locale === "zh-CN"
+    ? (locale.startsWith("en") ? englishUiCopy("Articoli disponibili e preordini richiedono ordini separati. Completa prima il carrello attuale.") : locale === "zh-CN"
       ? "现货与预售需要分开下单。请先完成当前购物车，再采购另一类商品。"
-      : "Articoli disponibili e preordini richiedono ordini separati. Completa prima il carrello attuale."
+      : "Articoli disponibili e preordini richiedono ordini separati. Completa prima il carrello attuale.")
     : tx(
     t,
     "storefront.product.purchase.addFailedHint",
@@ -155,7 +158,7 @@ export function ProductDetailPurchasePanel({
       <div className="pp-product-purchase-actions grid grid-cols-1 gap-2 sm:grid-cols-2" data-support-offset="mobile-action-bar">
         {isInCart ? (
           <Button variant="outline" className="min-h-11 min-w-0 bg-white" asChild>
-            <Link href={checkoutHref.replace(/^\/checkout(?=\?|$)/, "/carrello")}><ShoppingCart className="size-4" /><span>{locale === "zh-CN" ? "查看购物车" : "Vedi il carrello"}</span></Link>
+            <Link href={checkoutHref.replace(/^\/checkout(?=\?|$)/, "/carrello")}><ShoppingCart className="size-4" /><span>{(locale.startsWith("en") ? englishUiCopy("Vedi il carrello") : locale === "zh-CN" ? "查看购物车" : "Vedi il carrello")}</span></Link>
           </Button>
         ) : canOrder ? (
           <Button
@@ -276,7 +279,7 @@ export function ProductDetailPurchasePanel({
         {addFeedbackState === "error" ? (
           <div className="flex items-start gap-2 rounded-md border border-red-100 bg-red-50 px-2.5 py-2 text-xs font-semibold leading-5 text-red-700" role="alert">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-            <div><span>{addFailedHint}</span>{mixedCartRejected ? <Link className="mt-1 block font-semibold underline underline-offset-4" href={checkoutHref.replace(/^\/checkout(?=\?|$)/, "/carrello")}>{locale === "zh-CN" ? "查看当前购物车" : "Vedi il carrello attuale"}</Link> : null}</div>
+            <div><span>{addFailedHint}</span>{mixedCartRejected ? <Link className="mt-1 block font-semibold underline underline-offset-4" href={checkoutHref.replace(/^\/checkout(?=\?|$)/, "/carrello")}>{(locale.startsWith("en") ? englishUiCopy("Vedi il carrello attuale") : locale === "zh-CN" ? "查看当前购物车" : "Vedi il carrello attuale")}</Link> : null}</div>
           </div>
         ) : null}
       </div>
@@ -428,7 +431,7 @@ export function ProductDetailPurchasePanel({
                 </div>
               </div>
               <div className="pp-product-quote-note mt-1.5 text-xs leading-5 text-slate-500">
-                {locale === "zh-CN" ? "当前商品估算金额，价格和库存会在结账时重新核对。" : "Stima per questo articolo. Prezzi e disponibilità vengono verificati al checkout."}
+                {(locale.startsWith("en") ? englishUiCopy("Stima per questo articolo. Prezzi e disponibilità vengono verificati al checkout.") : locale === "zh-CN" ? "当前商品估算金额，价格和库存会在结账时重新核对。" : "Stima per questo articolo. Prezzi e disponibilità vengono verificati al checkout.")}
               </div>
             </>
           ) : canRequestRestock ? (

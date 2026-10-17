@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import { catalogBrowseKey } from "@/lib/partspro-catalog-return.mjs";
 import { AsyncFeedback } from "./async-feedback";
 import { PricingSessionBoundary, QuoteExpiryRefresh } from "./pricing-session-boundary";
@@ -605,17 +608,17 @@ function CatalogPageContent({
             </div>
             <div className="pp-catalog-selects">
             <label htmlFor="catalog-sort" className="pp-catalog-sort">
-              <span>{locale.startsWith("zh") ? "排序" : "Ordina per"}</span>
+              <span>{(locale.startsWith("en") ? englishUiCopy("Ordina per") : locale.startsWith("zh") ? "排序" : "Ordina per")}</span>
               <select id="catalog-sort" value={sort} className="h-11 w-full min-w-0 rounded border bg-white px-2 sm:w-64" onChange={event => selectCatalog({ ...selectedCatalog, sort: normalizeCatalogSort(event.target.value) })}>
-                <option value="stock_desc">{locale.startsWith("zh") ? "现货优先（默认）" : "Disponibilità (predefinito)"}</option>
-                <option value="name">{locale.startsWith("zh") ? "商品名称" : "Nome prodotto"}</option>
-                <option value="updated_desc">{locale.startsWith("zh") ? "最近更新" : "Aggiornati di recente"}</option>
+                <option value="stock_desc">{(locale.startsWith("en") ? englishUiCopy("Disponibilità (predefinito)") : locale.startsWith("zh") ? "现货优先（默认）" : "Disponibilità (predefinito)")}</option>
+                <option value="name">{(locale.startsWith("en") ? englishUiCopy("Nome prodotto") : locale.startsWith("zh") ? "商品名称" : "Nome prodotto")}</option>
+                <option value="updated_desc">{(locale.startsWith("en") ? englishUiCopy("Aggiornati di recente") : locale.startsWith("zh") ? "最近更新" : "Aggiornati di recente")}</option>
               </select>
             </label>
           <label className="pp-catalog-category-filter">
-            <span>{locale.startsWith("zh") ? "商品分类" : "Categoria"}</span>
-            <select aria-label={locale.startsWith("zh") ? "商品分类" : "Categoria"} className="h-11 w-full min-w-0 rounded border bg-white px-2 sm:w-64" value={selectedCategory ?? ""} onChange={(e) => selectCatalog({ ...selectedCatalog, category: e.target.value || undefined })}>
-              <option value="">{locale.startsWith("zh") ? "全部分类" : "Tutte le categorie"}</option>
+            <span>{(locale.startsWith("en") ? englishUiCopy("Categoria") : locale.startsWith("zh") ? "商品分类" : "Categoria")}</span>
+            <select aria-label={(locale.startsWith("en") ? englishUiCopy("Categoria") : locale.startsWith("zh") ? "商品分类" : "Categoria")} className="h-11 w-full min-w-0 rounded border bg-white px-2 sm:w-64" value={selectedCategory ?? ""} onChange={(e) => selectCatalog({ ...selectedCatalog, category: e.target.value || undefined })}>
+              <option value="">{(locale.startsWith("en") ? englishUiCopy("Tutte le categorie") : locale.startsWith("zh") ? "全部分类" : "Tutte le categorie")}</option>
               {directory.nodes.filter((n) => n.kind === "category" && n.active && (!selectedDepartment || (n.countsByDepartment[selectedDepartment] ?? 0) > 0)).map((n) => <option key={n.id} value={n.value}>{locale.startsWith("zh") && /^[\x00-\x7F]+$/.test(n.nameZh) ? categoryLabel(t,n.nameIt) : catalogNodeLabel(n, locale)}</option>)}
               {selectedCategory && !directory.nodes.some((n) => n.kind === "category" && n.value === selectedCategory) && <option value={selectedCategory}>{selectedCategory}</option>}
             </select>

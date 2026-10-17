@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import * as React from "react";
 import { AdminEmptyState, AdminNotice } from "./admin-feedback";
 import Link from "next/link";
@@ -50,20 +53,20 @@ export function AdminGlobalSearch() {
     }, 250);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [open, query]);
-  const labels = zh ? { order: "订单", product: "商品", account: "账号" } : { order: "Ordine", product: "Prodotto", account: "Account" };
+  const labels = (locale.startsWith("en") ? englishUiCopy({ order: "Ordine", product: "Prodotto", account: "Account" }) : zh ? { order: "订单", product: "商品", account: "账号" } : { order: "Ordine", product: "Prodotto", account: "Account" });
   return <>
-    <Button variant="outline" type="button" aria-label={zh ? "搜索订单、商品和账号" : "Cerca ordini, prodotti e account"} title="Ctrl / ⌘ K" className="ml-auto min-h-11 min-w-11 shrink bg-white sm:min-h-10 md:max-w-[240px] lg:max-w-md lg:flex-1 md:justify-start md:text-slate-500" onClick={() => { if (!document.querySelector('[data-admin-mutating="true"]')) setOpen(true); }}>
-      <Search className="size-4" /><span className="hidden truncate md:inline">{zh ? "搜索订单、SKU、客户…" : "Cerca ordini, SKU, clienti…"}</span>
+    <Button variant="outline" type="button" aria-label={(locale.startsWith("en") ? englishUiCopy("Cerca ordini, prodotti e account") : zh ? "搜索订单、商品和账号" : "Cerca ordini, prodotti e account")} title="Ctrl / ⌘ K" className="ml-auto min-h-11 min-w-11 shrink bg-white sm:min-h-10 md:max-w-[240px] lg:max-w-md lg:flex-1 md:justify-start md:text-slate-500" onClick={() => { if (!document.querySelector('[data-admin-mutating="true"]')) setOpen(true); }}>
+      <Search className="size-4" /><span className="hidden truncate md:inline">{(locale.startsWith("en") ? englishUiCopy("Cerca ordini, SKU, clienti…") : zh ? "搜索订单、SKU、客户…" : "Cerca ordini, SKU, clienti…")}</span>
     </Button>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="admin-ui-panel sm:max-w-xl">
-        <DialogHeader><DialogTitle>{zh ? "后台搜索" : "Ricerca nel pannello"}</DialogTitle><DialogDescription>{zh ? "输入至少2个字符，搜索你有权访问的订单、商品和账号。" : "Inserisci almeno 2 caratteri. I risultati rispettano i tuoi permessi."}</DialogDescription></DialogHeader>
-        <AdminSearchField autoFocus aria-label={zh ? "搜索关键字" : "Termine di ricerca"} pending={state === "pending"} value={query} onValueChange={value => { setQuery(value); setState("idle"); setResults([]); setPartial(false); }} placeholder={zh ? "订单号、SKU、姓名或邮箱" : "Numero ordine, SKU, nome o email"} />
+        <DialogHeader><DialogTitle>{(locale.startsWith("en") ? englishUiCopy("Ricerca nel pannello") : zh ? "后台搜索" : "Ricerca nel pannello")}</DialogTitle><DialogDescription>{(locale.startsWith("en") ? englishUiCopy("Inserisci almeno 2 caratteri. I risultati rispettano i tuoi permessi.") : zh ? "输入至少2个字符，搜索你有权访问的订单、商品和账号。" : "Inserisci almeno 2 caratteri. I risultati rispettano i tuoi permessi.")}</DialogDescription></DialogHeader>
+        <AdminSearchField autoFocus aria-label={(locale.startsWith("en") ? englishUiCopy("Termine di ricerca") : zh ? "搜索关键字" : "Termine di ricerca")} pending={state === "pending"} value={query} onValueChange={value => { setQuery(value); setState("idle"); setResults([]); setPartial(false); }} placeholder={(locale.startsWith("en") ? englishUiCopy("Numero ordine, SKU, nome o email") : zh ? "订单号、SKU、姓名或邮箱" : "Numero ordine, SKU, nome o email")} />
         <div className="max-h-[55dvh] min-h-24 space-y-2 overflow-y-auto" aria-busy={state === "pending"}>
-          {state === "pending" && <p role="status" className="flex items-center gap-2 p-3 text-sm"><Loader2 className="size-4 animate-spin" />{zh ? "搜索中…" : "Ricerca…"}</p>}
-          {state === "error" && <AdminNotice tone="error" message={zh ? "搜索读取失败，请修改关键字重试。" : "Ricerca non disponibile. Riprova."} />}
-          {partial && <AdminNotice tone="warning" message={zh ? "部分模块读取失败，以下为已读取的结果。" : "Alcuni moduli non sono disponibili. Risultati parziali."} />}
-          {state === "ready" && results.length === 0 && <AdminEmptyState title={zh ? "没有匹配结果。" : "Nessun risultato."} />}
+          {state === "pending" && <p role="status" className="flex items-center gap-2 p-3 text-sm"><Loader2 className="size-4 animate-spin" />{(locale.startsWith("en") ? englishUiCopy("Ricerca…") : zh ? "搜索中…" : "Ricerca…")}</p>}
+          {state === "error" && <AdminNotice tone="error" message={(locale.startsWith("en") ? englishUiCopy("Ricerca non disponibile. Riprova.") : zh ? "搜索读取失败，请修改关键字重试。" : "Ricerca non disponibile. Riprova.")} />}
+          {partial && <AdminNotice tone="warning" message={(locale.startsWith("en") ? englishUiCopy("Alcuni moduli non sono disponibili. Risultati parziali.") : zh ? "部分模块读取失败，以下为已读取的结果。" : "Alcuni moduli non sono disponibili. Risultati parziali.")} />}
+          {state === "ready" && results.length === 0 && <AdminEmptyState title={(locale.startsWith("en") ? englishUiCopy("Nessun risultato.") : zh ? "没有匹配结果。" : "Nessun risultato.")} />}
           {results.map(result => <Link key={`${result.kind}:${result.id}`} href={result.href} onClick={() => setOpen(false)} className="block rounded-md border p-3 hover:bg-slate-50 focus-visible:outline-2 focus-visible:outline-primary">
             <span className="text-xs text-primary">{labels[result.kind]}</span><div className="break-words text-sm font-semibold">{result.title}</div><div className="break-all text-xs text-slate-500">{result.subtitle}</div>
           </Link>)}

@@ -17,6 +17,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuLabel,
+  DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
@@ -44,8 +45,8 @@ export function LanguageSwitcher({
   const [isPending, startTransition] = React.useTransition();
   const [failed, setFailed] = React.useState(false);
 
-  function handleLocaleChange(nextLocale: Locale) {
-    if (nextLocale === locale || isPending) {
+  function handleLocaleChange(nextLocale: Locale | null) {
+    if (isPending) {
       return;
     }
 
@@ -53,7 +54,8 @@ export function LanguageSwitcher({
     setFailed(false);
     startTransition(async () => {
       try {
-        await setLocale(nextLocale, activeScope);
+        const result = await setLocale(nextLocale, activeScope);
+        if (!result.ok) throw new Error("LOCALE_UPDATE_FAILED");
         router.refresh();
       } catch {
         setFailed(true);
@@ -64,7 +66,7 @@ export function LanguageSwitcher({
   }
 
   if (presentation === "menu") {
-    const fullLabels = { "it-IT": "Italiano", "zh-CN": "简体中文" };
+    const fullLabels = { "en-US": "English", "it-IT": "Italiano", "zh-CN": "简体中文" };
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -90,8 +92,10 @@ export function LanguageSwitcher({
               </DropdownMenuRadioItem>
             ))}
           </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem disabled={isPending} onSelect={() => handleLocaleChange(null)}>{t("language.auto")}</DropdownMenuItem>
         </DropdownMenuContent>
-        {failed ? <span className="sr-only" role="alert">{locale === "zh-CN" ? "语言切换失败，请重试。" : "Cambio lingua non riuscito. Riprova."}</span> : null}
+        {failed ? <span className="sr-only" role="alert">{t("language.failed")}</span> : null}
       </DropdownMenu>
     );
   }
@@ -134,6 +138,8 @@ export function LanguageSwitcher({
           </Button>
         );
       })}
+      <Button type="button" variant="ghost" size="sm" disabled={isPending} className="h-8 rounded-full px-2 text-xs" aria-label={t("language.auto")} title={t("language.auto")} onClick={() => handleLocaleChange(null)}><Globe2 className="size-4" /></Button>
+      {failed ? <span className="sr-only" role="alert">{t("language.failed")}</span> : null}
     </div>
   );
 }

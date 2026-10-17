@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import { StorefrontLoading } from "./storefront-loading";
 
 import * as React from "react";
@@ -240,7 +243,7 @@ function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,i
   const [lineSearch, setLineSearch] = React.useState("");
   const [recoveredUpload, setRecoveredUpload] = React.useState(false);
   const recoveryScope = `partspro:rma:${initialAccountAccess?.userId ?? "anonymous"}`;
-  useUnsavedChanges(images.length > 0 || Boolean(form.note) || submitState.status === "loading", locale === "zh-CN" ? "照片选择和未保存的资料可能丢失。确定离开？" : "Le foto selezionate e i dati non salvati potrebbero andare persi. Vuoi uscire?");
+  useUnsavedChanges(images.length > 0 || Boolean(form.note) || submitState.status === "loading", (locale.startsWith("en") ? englishUiCopy("Le foto selezionate e i dati non salvati potrebbero andare persi. Vuoi uscire?") : locale === "zh-CN" ? "照片选择和未保存的资料可能丢失。确定离开？" : "Le foto selezionate e i dati non salvati potrebbero andare persi. Vuoi uscire?"));
   React.useEffect(() => {
     let active=true;
     queueMicrotask(()=>{
@@ -413,9 +416,9 @@ function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,i
 
   function confirmSelectionChange() {
     if (!form.note.trim() && imagesRef.current.length === 0 && form.reasonCode === initialForm.reasonCode && form.requestedResolution === initialForm.requestedResolution) return true;
-    if (!window.confirm(locale === "zh-CN"
+    if (!window.confirm((locale.startsWith("en") ? englishUiCopy("Cambiare ordine o articolo rimuove nota e foto e reimposta motivo e soluzione, per non inviare dati del prodotto precedente. Continuare?") : locale === "zh-CN"
       ? "更换订单或商品会清除当前备注和照片，并重置原因及解决方式，避免把旧资料提交到另一商品。确定继续？"
-      : "Cambiare ordine o articolo rimuove nota e foto e reimposta motivo e soluzione, per non inviare dati del prodotto precedente. Continuare?")) return false;
+      : "Cambiare ordine o articolo rimuove nota e foto e reimposta motivo e soluzione, per non inviare dati del prodotto precedente. Continuare?"))) return false;
     for (const image of imagesRef.current) URL.revokeObjectURL(image.previewUrl);
     imagesRef.current = [];
     setImages([]);
@@ -799,7 +802,7 @@ function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,i
             </CardHeader>
             <CardContent className="space-y-4">
               {dataError ? (
-                <AsyncFeedback state="error" title={locale === "zh-CN" ? "无法读取售后资料" : "Dati resi non disponibili"} description={locale === "zh-CN" ? "请重试读取；已有申请不会受影响。" : "Riprova il caricamento. Le richieste esistenti restano salvate."} actions={<Button variant="outline" onClick={()=>setRmaDataRevision(value=>value+1)}>{locale === "zh-CN" ? "重新读取" : "Riprova"}</Button>} />
+                <AsyncFeedback state="error" title={(locale.startsWith("en") ? englishUiCopy("Dati resi non disponibili") : locale === "zh-CN" ? "无法读取售后资料" : "Dati resi non disponibili")} description={(locale.startsWith("en") ? englishUiCopy("Riprova il caricamento. Le richieste esistenti restano salvate.") : locale === "zh-CN" ? "请重试读取；已有申请不会受影响。" : "Riprova il caricamento. Le richieste esistenti restano salvate.")} actions={<Button variant="outline" onClick={()=>setRmaDataRevision(value=>value+1)}>{(locale.startsWith("en") ? englishUiCopy("Riprova") : locale === "zh-CN" ? "重新读取" : "Riprova")}</Button>} />
               ) : null}
 
               <RmaStep
@@ -808,7 +811,7 @@ function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,i
                 helper={tx(t, "storefront.rma.block.order.helper", "Partiamo da una riga ordine reale: niente numeri d'ordine o SKU da digitare.")}
               >
                 {hasFinalCheckpoint && recoveredUpload ? (
-                  <AsyncFeedback state="unknown" title={locale === "zh-CN" ? "核对原申请结果" : "Conferma l’esito della richiesta originale"} description={locale === "zh-CN" ? "原订单行和照片已保存在提交记录中。请使用下方确认按钮核对原申请；即使可退数量已变，也不要重新创建同一申请。" : "La riga ordine e le foto sono già nel record di invio. Usa il pulsante di conferma qui sotto per verificare la richiesta originale, anche se la quantità disponibile è cambiata."} />
+                  <AsyncFeedback state="unknown" title={(locale.startsWith("en") ? englishUiCopy("Conferma l’esito della richiesta originale") : locale === "zh-CN" ? "核对原申请结果" : "Conferma l’esito della richiesta originale")} description={(locale.startsWith("en") ? englishUiCopy("La riga ordine e le foto sono già nel record di invio. Usa il pulsante di conferma qui sotto per verificare la richiesta originale, anche se la quantità disponibile è cambiata.") : locale === "zh-CN" ? "原订单行和照片已保存在提交记录中。请使用下方确认按钮核对原申请；即使可退数量已变，也不要重新创建同一申请。" : "La riga ordine e le foto sono già nel record di invio. Usa il pulsante di conferma qui sotto per verificare la richiesta originale, anche se la quantità disponibile è cambiata.")} />
                 ) : dataLoading ? (
                   <LoadingBox text={tx(t, "storefront.rma.order.loading", "Caricamento ordini...")} />
                 ) : dataError ? null : selectedOrder ? (
@@ -823,7 +826,7 @@ function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,i
                           </span>
                         ) : null}
                       </div>
-                      <Input value={lineSearch} onChange={e=>setLineSearch(e.target.value)} aria-label={locale === "zh-CN" ? "搜索商品或SKU" : "Cerca articolo o SKU"} placeholder={locale === "zh-CN" ? "搜索商品或SKU" : "Cerca articolo o SKU"} disabled={controlsLocked} />
+                      <Input value={lineSearch} onChange={e=>setLineSearch(e.target.value)} aria-label={(locale.startsWith("en") ? englishUiCopy("Cerca articolo o SKU") : locale === "zh-CN" ? "搜索商品或SKU" : "Cerca articolo o SKU")} placeholder={(locale.startsWith("en") ? englishUiCopy("Cerca articolo o SKU") : locale === "zh-CN" ? "搜索商品或SKU" : "Cerca articolo o SKU")} disabled={controlsLocked} />
                       <div className="grid gap-2">
                         {selectedOrder.lines.filter(line=>`${line.productName} ${line.sku}`.toLowerCase().includes(lineSearch.trim().toLowerCase())).map((line) => (
                           <ProductOptionCard
@@ -880,7 +883,7 @@ function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,i
                 ) : orderOptions.length === 0 ? (
                   <EmptyBox text={tx(t, "storefront.rma.order.none", "Nessun ordine spedito o consegnato con quantità disponibile.")} />
                 ) : (
-                  <div className="space-y-2"><Input value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} aria-label={locale === "zh-CN" ? "搜索订单或商品" : "Cerca ordine o articolo"} placeholder={locale === "zh-CN" ? "搜索订单或商品" : "Cerca ordine o articolo"} disabled={controlsLocked} /><div className="grid gap-2 md:grid-cols-2">
+                  <div className="space-y-2"><Input value={orderSearch} onChange={e=>setOrderSearch(e.target.value)} aria-label={(locale.startsWith("en") ? englishUiCopy("Cerca ordine o articolo") : locale === "zh-CN" ? "搜索订单或商品" : "Cerca ordine o articolo")} placeholder={(locale.startsWith("en") ? englishUiCopy("Cerca ordine o articolo") : locale === "zh-CN" ? "搜索订单或商品" : "Cerca ordine o articolo")} disabled={controlsLocked} /><div className="grid gap-2 md:grid-cols-2">
                     {orderOptions.filter(order=>JSON.stringify([order.id,order.lines.map(line=>[line.productName,line.sku])]).toLowerCase().includes(orderSearch.trim().toLowerCase())).map((order) => (
                       <OrderOptionCard key={order.id} order={order} t={t} onSelect={() => updateOrder(order.id)} disabled={controlsLocked} />
                     ))}
@@ -1048,7 +1051,7 @@ function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,i
                 </div>
                 <div className="text-xs font-semibold text-slate-500" aria-live="polite">
                   {hasFinalCheckpoint && images.length === 0
-                    ? (locale === "zh-CN" ? "原申请照片已上传并核验，可直接确认原提交。" : "Le foto originali sono già caricate e verificate. Puoi confermare l’invio originale.")
+                    ? ((locale.startsWith("en") ? englishUiCopy("Le foto originali sono già caricate e verificate. Puoi confermare l’invio originale.") : locale === "zh-CN" ? "原申请照片已上传并核验，可直接确认原提交。" : "Le foto originali sono già caricate e verificate. Puoi confermare l’invio originale."))
                     : images.length > 0
                     ? txFormat(t, "storefront.rma.image.selected", "{count} foto pronte per il caricamento.", { count: images.length })
                     : tx(t, "storefront.rma.image.required", "Aggiungi almeno una foto per inviare la richiesta.")}
@@ -1064,7 +1067,7 @@ function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,i
                 </div>
               </RmaStep>
 
-              {recoveredUpload ? <AsyncFeedback state="unknown" title={locale === "zh-CN" ? "已恢复上次上传记录" : "Caricamento precedente recuperato"} description={locale === "zh-CN" ? "提交结果待确认时可继续确认原申请；照片文件不会在浏览器关闭后保留，未完成的上传须先清理再选照片。" : "Conferma la richiesta originale se l’esito è incerto. I file foto non restano dopo la chiusura: per un upload incompleto termina la pulizia e seleziona di nuovo le foto."} /> : null}
+              {recoveredUpload ? <AsyncFeedback state="unknown" title={(locale.startsWith("en") ? englishUiCopy("Caricamento precedente recuperato") : locale === "zh-CN" ? "已恢复上次上传记录" : "Caricamento precedente recuperato")} description={(locale.startsWith("en") ? englishUiCopy("Conferma la richiesta originale se l’esito è incerto. I file foto non restano dopo la chiusura: per un upload incompleto termina la pulizia e seleziona di nuovo le foto.") : locale === "zh-CN" ? "提交结果待确认时可继续确认原申请；照片文件不会在浏览器关闭后保留，未完成的上传须先清理再选照片。" : "Conferma la richiesta originale se l’esito è incerto. I file foto non restano dopo la chiusura: per un upload incompleto termina la pulizia e seleziona di nuovo le foto.")} /> : null}
               <Button
                 type="submit"
                 className="h-11 w-full"
@@ -1116,7 +1119,7 @@ function RmaPageScoped({initialAccountAccess,initialOrderId,initialOrderLineId,i
           </CardHeader>
           <CardContent className="space-y-3">
             {dataLoading ? <LoadingBox text={tx(t, "storefront.rma.recent.loading", "Caricamento richieste...")} /> : null}
-            {!dataLoading && dataError ? <AsyncFeedback state="error" title={locale === "zh-CN" ? "已有申请暂时无法读取" : "Richieste precedenti non disponibili"} description={locale === "zh-CN" ? "请使用上方重试读取；这不表示没有申请。" : "Riprova il caricamento con il pulsante sopra. Questo errore non indica l’assenza di richieste."} /> : null}
+            {!dataLoading && dataError ? <AsyncFeedback state="error" title={(locale.startsWith("en") ? englishUiCopy("Richieste precedenti non disponibili") : locale === "zh-CN" ? "已有申请暂时无法读取" : "Richieste precedenti non disponibili")} description={(locale.startsWith("en") ? englishUiCopy("Riprova il caricamento con il pulsante sopra. Questo errore non indica l’assenza di richieste.") : locale === "zh-CN" ? "请使用上方重试读取；这不表示没有申请。" : "Riprova il caricamento con il pulsante sopra. Questo errore non indica l’assenza di richieste.")} /> : null}
             {!dataLoading && !dataError && recentRequests.length === 0 ? (
               <EmptyBox text={tx(t, "storefront.rma.recent.empty", "Nessuna richiesta assistenza registrata.")} />
             ) : null}
@@ -1598,7 +1601,7 @@ function rmaUploadErrorMessage(
   const code = isRecord(error) && typeof error.code === "string" ? error.code : "";
   const status = isRecord(error) && typeof error.status === "number" ? error.status : null;
   const message = (key: string, chinese: string, italian: string) =>
-    tx(t, key, locale === "zh-CN" ? chinese : italian);
+    tx(t, key, (locale.startsWith("en") ? englishUiCopy(italian) : locale === "zh-CN" ? chinese : italian));
 
   if (code === "RMA_DRAFT_ALREADY_SUBMITTED") {
     return message("storefront.rma.upload.alreadySubmitted", "申请已提交，请查看最近申请，无需重新上传。", "La richiesta è già stata inviata. Controlla le richieste recenti: non occorre caricare di nuovo le foto.");

@@ -18,7 +18,7 @@ export function isSupplierBatchNonEurCurrency(value: unknown): boolean {
 export function formatSupplierBatchMoney(
   amount: number | null | undefined,
   currency: string | null | undefined = "EUR",
-  locale = "zh-CN",
+  locale = "en-US",
   options: Intl.NumberFormatOptions = {}
 ): string {
   if (amount === null || amount === undefined || !Number.isFinite(amount)) {
@@ -38,7 +38,7 @@ export function formatSupplierBatchMoney(
 export function formatSupplierBatchCents(
   cents: number | null | undefined,
   currency: string | null | undefined = "EUR",
-  locale = "zh-CN"
+  locale = "en-US"
 ): string {
   return cents === null || cents === undefined
     ? "—"
@@ -48,7 +48,7 @@ export function formatSupplierBatchCents(
 export function formatSupplierBatchUnitMoney(
   amount: number | null | undefined,
   currency: string | null | undefined = "EUR",
-  locale = "zh-CN"
+  locale = "en-US"
 ): string {
   return formatSupplierBatchMoney(amount, currency, locale, {
     minimumFractionDigits: 4,
@@ -60,7 +60,7 @@ export function formatSupplierBatchDualMoney(
   amount: number | null | undefined,
   currency: string | null | undefined,
   baseAmountEur: number | null | undefined,
-  locale = "zh-CN"
+  locale = "en-US"
 ): string {
   const primary = formatSupplierBatchMoney(amount, currency, locale);
   const normalizedCurrency = normalizeSupplierBatchCurrency(currency);
@@ -75,7 +75,7 @@ export function formatSupplierBatchDualCents(
   cents: number | null | undefined,
   currency: string | null | undefined,
   baseCentsEur: number | null | undefined,
-  locale = "zh-CN"
+  locale = "en-US"
 ): string {
   return formatSupplierBatchDualMoney(
     cents === null || cents === undefined ? null : cents / 100,
@@ -141,7 +141,7 @@ export function readSupplierBatchCurrency(
 
 export function formatSupplierBatchDateTime(
   value: string | null | undefined,
-  locale = "zh-CN",
+  locale = "en-US",
   timeZone = "Europe/Rome"
 ): string {
   if (!value) {

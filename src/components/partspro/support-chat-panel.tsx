@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import * as React from "react";
 import {
   Check,
@@ -90,7 +93,7 @@ const supportCopy = {
 
 export function SupportChatPanel({ onClose, draft, onDraftChange, onConversationChange }: SupportChatPanelProps) {
   const { locale } = useI18n();
-  const copy = locale === "zh-CN" ? supportCopy.zh : supportCopy.it;
+  const copy = (locale.startsWith("en") ? englishUiCopy(supportCopy.it) : locale === "zh-CN" ? supportCopy.zh : supportCopy.it);
   const [loaded, setLoaded] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [sending, setSending] = React.useState(false);

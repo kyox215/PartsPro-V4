@@ -1,5 +1,7 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
 import { AdminNotice, AdminActionButton } from "./admin-feedback";
 import { AdminExpandableText, AdminMetricSummary } from "./admin-summary-components";
 
@@ -97,7 +99,7 @@ export function AdminProductImportDialog({
   open,
 }: AdminProductImportDialogProps) {
   const italian = locale.toLowerCase().startsWith("it");
-  const copy = italian ? itCopy : zhCopy;
+  const copy = locale.startsWith("en") ? englishUiCopy(itCopy) : italian ? itCopy : zhCopy;
   const [mode, setMode] = React.useState<"file" | "paste">("file");
   const [file, setFile] = React.useState<File | null>(null);
   const [pasteText, setPasteText] = React.useState("");
@@ -111,7 +113,7 @@ export function AdminProductImportDialog({
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen) {
       if (pending) return;
-      if (!result && (file || pasteText.trim() || preview) && !window.confirm(italian ? "Scartare file, testo e anteprima non salvati?" : "放弃未保存的文件、粘贴资料和预览？")) return;
+      if (!result && (file || pasteText.trim() || preview) && !window.confirm(locale.startsWith("en") ? "Discard unsaved files, text and preview?" : italian ? "Scartare file, testo e anteprima non salvati?" : "放弃未保存的文件、粘贴资料和预览？")) return;
       setFile(null);
       setPasteText("");
       setPreview(null);
@@ -331,7 +333,7 @@ export function AdminProductImportDialog({
             </>
           ) : preview ? (
             <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              {preview.counts.blocked > 0 ? <p className="text-xs font-semibold text-red-700">{italian ? `${preview.counts.blocked} ${preview.counts.blocked === 1 ? "riga" : "righe"} da correggere. Correggi i dati e rigenera l’anteprima.` : `${preview.counts.blocked} 行需修正，请返回修正后重新预检。`}</p> :
+              {preview.counts.blocked > 0 ? <p className="text-xs font-semibold text-red-700">{locale.startsWith("en") ? `${preview.counts.blocked} rows need correction. Fix the data and generate the preview again.` : italian ? `${preview.counts.blocked} ${preview.counts.blocked === 1 ? "riga" : "righe"} da correggere. Correggi i dati e rigenera l’anteprima.` : `${preview.counts.blocked} 行需修正，请返回修正后重新预检。`}</p> :
               <label className={cn("flex items-start gap-2 text-sm", (preview.counts.blocked > 0 || !allCompatibilityReviewsConfirmed) && "text-slate-400")}>
                 <Checkbox checked={confirmed} onCheckedChange={(value) => setConfirmed(value === true)} disabled={preview.counts.blocked > 0 || pending !== null} />
                 <span>{copy.confirm}</span>
@@ -458,9 +460,10 @@ function PreviewMobileCard({
 }
 
 function ChangeDetails({ row, copy }: { row: PreviewRow; copy: typeof zhCopy }) {
+  const english = copy.title === englishUiCopy(itCopy.title);
   const italian = copy.title.startsWith("Import");
   if (!row.changes.length) return <span>—</span>;
-  return <details className="min-w-0 rounded border border-slate-200 p-2"><summary className="-m-2 min-h-11 cursor-pointer rounded p-2 font-semibold">{copy.changes} · {row.changes.length}</summary><dl className="mt-2 space-y-2">{row.changes.map(change => <div key={change.field} className="break-words rounded bg-slate-50 p-2"><dt className="font-semibold">{change.field}</dt><dd className="mt-1 whitespace-pre-wrap"><span className="text-slate-500">{italian ? "Prima" : "原值"}: </span>{change.currentValue || "—"}<br /><span className="text-emerald-700">{italian ? "Dopo" : "新值"}: </span>{change.nextValue || "—"}</dd></div>)}</dl></details>;
+  return <details className="min-w-0 rounded border border-slate-200 p-2"><summary className="-m-2 min-h-11 cursor-pointer rounded p-2 font-semibold">{copy.changes} · {row.changes.length}</summary><dl className="mt-2 space-y-2">{row.changes.map(change => <div key={change.field} className="break-words rounded bg-slate-50 p-2"><dt className="font-semibold">{change.field}</dt><dd className="mt-1 whitespace-pre-wrap"><span className="text-slate-500">{english ? "Before" : italian ? "Prima" : "原值"}: </span>{change.currentValue || "—"}<br /><span className="text-emerald-700">{english ? "After" : italian ? "Dopo" : "新值"}: </span>{change.nextValue || "—"}</dd></div>)}</dl></details>;
 }
 
 function IssueList({

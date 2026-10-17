@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy, englishUiTemplate } from "@/i18n/english-ui-copy";
+
+
 import { AdminSearchField } from "./admin-ui-controls";
 import { AdminMetricSummary, AdminExpandableText } from "./admin-summary-components";
 
@@ -454,7 +457,7 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
       const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
       const anchor = document.createElement("a"); anchor.href = url; anchor.download = `partspro-${kind}-filtered.csv`; anchor.click(); URL.revokeObjectURL(url);
     } catch (error) {
-      setError(locale.startsWith("zh") ? "完整导出未完成。请重试；超过5200条时先缩小筛选范围。" : "Esportazione completa non riuscita. Riprova o restringi i filtri oltre 5200 righe.");
+      setError((locale.startsWith("en") ? englishUiCopy("Esportazione completa non riuscita. Riprova o restringi i filtri oltre 5200 righe.") : locale.startsWith("zh") ? "完整导出未完成。请重试；超过5200条时先缩小筛选范围。" : "Esportazione completa non riuscita. Riprova o restringi i filtri oltre 5200 righe."));
       console.warn("Admin export", error instanceof Error ? error.message : "failed");
     } finally { setExporting(false); }
   }, [exporting, lowStockThreshold, sort, windowDays, queueStatus, query, queueSupplier, text, locale]);
@@ -526,7 +529,7 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
       patch: Partial<Pick<ReplenishmentItem, "note" | "plannedQty" | "status" | "supplier">>
     ) => {
       if (!canManage || bulkUnknown || bulkBusy || actionKey) return;
-      if (patch.status && patch.status !== item.status && !window.confirm(locale.startsWith("zh") ? `确认将 ${item.sku} 的补货计划从 ${item.status} 改为 ${patch.status}？此处只更新计划，不登记实物入库。` : `Cambiare il piano ${item.sku} da ${item.status} a ${patch.status}? Aggiorna il piano, non la giacenza reale.`)) return;
+      if (patch.status && patch.status !== item.status && !window.confirm((locale.startsWith("en") ? englishUiTemplate`Cambiare il piano ${item.sku} da ${item.status} a ${patch.status}? Aggiorna il piano, non la giacenza reale.` : locale.startsWith("zh") ? `确认将 ${item.sku} 的补货计划从 ${item.status} 改为 ${patch.status}？此处只更新计划，不登记实物入库。` : `Cambiare il piano ${item.sku} da ${item.status} a ${patch.status}? Aggiorna il piano, non la giacenza reale.`))) return;
       setActionKey(`${item.id}:update`);
 
       try {
@@ -576,20 +579,20 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
   function savePlan(item: ReplenishmentItem, draft: { note: string; plannedQty: string; supplier: string }) {
     if (!canManage || bulkUnknown || bulkBusy || actionKey) return;
     const value = draft.plannedQty.trim();
-    if (!/^\d+$/.test(value) || Number(value) > 99999) { setError(locale.startsWith("zh") ? "采购数量需为0–99999的整数，原输入已保留。" : "La quantità deve essere un intero da 0 a 99999. I dati sono conservati."); return; }
+    if (!/^\d+$/.test(value) || Number(value) > 99999) { setError((locale.startsWith("en") ? englishUiCopy("La quantità deve essere un intero da 0 a 99999. I dati sono conservati.") : locale.startsWith("zh") ? "采购数量需为0–99999的整数，原输入已保留。" : "La quantità deve essere un intero da 0 a 99999. I dati sono conservati.")); return; }
     void updateReplenishmentItem(item, { note: draft.note, plannedQty: Number(value), supplier: draft.supplier });
   }
 
   async function addSelectedToPlan() {
     const chosen = rows.filter(row => selectedSkus.includes(row.sku) && !row.activeReplenishmentItem);
     if (!canManage || bulkUnknown || actionKey || bulkBusy || !chosen.length) return;
-    if (!window.confirm(locale.startsWith("zh") ? `核对后将本页所选 ${chosen.length} 个商品加入采购计划？不会改变真实库存；失败即停止。` : `Aggiungere ${chosen.length} prodotti selezionati al piano acquisti? Lo stock non cambia. Un errore interrompe le restanti righe.`)) return;
+    if (!window.confirm((locale.startsWith("en") ? englishUiTemplate`Aggiungere ${chosen.length} prodotti selezionati al piano acquisti? Lo stock non cambia. Un errore interrompe le restanti righe.` : locale.startsWith("zh") ? `核对后将本页所选 ${chosen.length} 个商品加入采购计划？不会改变真实库存；失败即停止。` : `Aggiungere ${chosen.length} prodotti selezionati al piano acquisti? Lo stock non cambia. Un errore interrompe le restanti righe.`))) return;
     setBulkBusy(true); setBulkNotice(null); let saved = 0;
     for (const row of chosen) {
       const success = await createReplenishmentItem(row, false); if (!success) break;
       saved++; setSelectedSkus(current => current.filter(sku => sku !== row.sku));
     }
-    setBulkNotice(locale.startsWith("zh") ? `已确认加入 ${saved}/${chosen.length} 个商品。${saved < chosen.length ? "后续已停止，请刷新核对失败行后继续。" : ""}` : `Aggiunti ${saved}/${chosen.length} prodotti.${saved < chosen.length ? " Operazione interrotta: verifica la riga prima di continuare." : ""}`);
+    setBulkNotice((locale.startsWith("en") ? englishUiTemplate`Aggiunti ${saved}/${chosen.length} prodotti.${saved < chosen.length ? " Operazione interrotta: verifica la riga prima di continuare." : ""}` : locale.startsWith("zh") ? `已确认加入 ${saved}/${chosen.length} 个商品。${saved < chosen.length ? "后续已停止，请刷新核对失败行后继续。" : ""}` : `Aggiunti ${saved}/${chosen.length} prodotti.${saved < chosen.length ? " Operazione interrotta: verifica la riga prima di continuare." : ""}`));
     setBulkBusy(false); refresh();
   }
   function previewPlanBatch() {
@@ -597,9 +600,9 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
     try {
       const chosen = selectedPlanIds.filter(id => replenishmentItems.some(item => item.id === id));
       const plan = buildReplenishmentBatchPlan(replenishmentItems, drafts, chosen, commonPlan);
-      if (!plan.length) { setError(locale.startsWith("zh") ? "所选行没有待保存变化。" : "Nessuna modifica da salvare nelle righe selezionate."); return; }
+      if (!plan.length) { setError((locale.startsWith("en") ? englishUiCopy("Nessuna modifica da salvare nelle righe selezionate.") : locale.startsWith("zh") ? "所选行没有待保存变化。" : "Nessuna modifica da salvare nelle righe selezionate.")); return; }
       setBatchPlan(plan); setError(null);
-    } catch { setError(locale.startsWith("zh") ? "请核对所选行：数量需为0–99999整数，供应商最多100字，备注最多500字。原草稿已保留。" : "Verifica le righe: quantità intera 0–99999, fornitore massimo 100 caratteri, nota massimo 500. Bozza conservata."); }
+    } catch { setError((locale.startsWith("en") ? englishUiCopy("Verifica le righe: quantità intera 0–99999, fornitore massimo 100 caratteri, nota massimo 500. Bozza conservata.") : locale.startsWith("zh") ? "请核对所选行：数量需为0–99999整数，供应商最多100字，备注最多500字。原草稿已保留。" : "Verifica le righe: quantità intera 0–99999, fornitore massimo 100 caratteri, nota massimo 500. Bozza conservata.")); }
   }
   async function savePlanBatch() {
     if (!batchPlan || !canManage || bulkBusy || actionKey || bulkUnknown) return;
@@ -614,16 +617,16 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
         setSelectedPlanIds(current => current.filter(id => id !== row.id));
       } catch { setBulkUnknown(true); break; }
     }
-    setBulkNotice(locale.startsWith("zh") ? `已确认保存 ${saved}/${batchPlan.length} 行。${saved < batchPlan.length ? "后续已停止；剩余草稿保留，请先刷新核对实际结果。" : "只更新采购计划，不改变真实库存。"}` : `Salvate ${saved}/${batchPlan.length} righe.${saved < batchPlan.length ? " Interrotto: bozze rimanenti conservate. Aggiorna e verifica prima di continuare." : " Solo piano acquisti; giacenza reale invariata."}`);
+    setBulkNotice((locale.startsWith("en") ? englishUiTemplate`Salvate ${saved}/${batchPlan.length} righe.${saved < batchPlan.length ? " Interrotto: bozze rimanenti conservate. Aggiorna e verifica prima di continuare." : " Solo piano acquisti; giacenza reale invariata."}` : locale.startsWith("zh") ? `已确认保存 ${saved}/${batchPlan.length} 行。${saved < batchPlan.length ? "后续已停止；剩余草稿保留，请先刷新核对实际结果。" : "只更新采购计划，不改变真实库存。"}` : `Salvate ${saved}/${batchPlan.length} righe.${saved < batchPlan.length ? " Interrotto: bozze rimanenti conservate. Aggiorna e verifica prima di continuare." : " Solo piano acquisti; giacenza reale invariata."}`));
     setBatchPlan(null); setBulkBusy(false);
     if (saved === batchPlan.length) refresh();
   }
-  const planSelection = (item: ReplenishmentItem) => <label className="inline-flex items-center gap-2 text-xs"><input type="checkbox" checked={selectedPlanIds.includes(item.id)} disabled={bulkBusy || Boolean(actionKey) || bulkUnknown} onChange={event => setSelectedPlanIds(current => event.target.checked ? [...new Set([...current,item.id])] : current.filter(id => id !== item.id))}/>{locale.startsWith("zh") ? "选择计划" : "Seleziona piano"} {item.sku}</label>;
+  const planSelection = (item: ReplenishmentItem) => <label className="inline-flex items-center gap-2 text-xs"><input type="checkbox" checked={selectedPlanIds.includes(item.id)} disabled={bulkBusy || Boolean(actionKey) || bulkUnknown} onChange={event => setSelectedPlanIds(current => event.target.checked ? [...new Set([...current,item.id])] : current.filter(id => id !== item.id))}/>{(locale.startsWith("en") ? englishUiCopy("Seleziona piano") : locale.startsWith("zh") ? "选择计划" : "Seleziona piano")} {item.sku}</label>;
   const selection = (row: SoldStockShortageRow) => <label className="inline-flex items-center gap-2 text-xs font-medium"><input type="checkbox" checked={selectedSkus.includes(row.sku)} disabled={!canManage || bulkBusy || Boolean(actionKey) || Boolean(row.activeReplenishmentItem)} onChange={event => setSelectedSkus(current => event.target.checked ? [...new Set([...current,row.sku])] : current.filter(sku => sku !== row.sku))} /><span>{row.sku}</span></label>;
 
   return (
     <section data-admin-dirty={replenishmentItems.some(item => JSON.stringify(drafts[item.id] ?? replenishmentDraft(item)) !== JSON.stringify(replenishmentDraft(item))) || (selectedPlanIds.length > 0 && (commonPlan.applySupplier || commonPlan.applyQty || commonPlan.applyNote || Boolean(commonPlan.status))) ? "true" : "false"} data-admin-mutating={bulkBusy || Boolean(actionKey) ? "true" : "false"} className="admin-ui-panel min-w-0 space-y-3">
-      <Dialog open={batchPlan !== null} onOpenChange={open => { if (!open && !bulkBusy) setBatchPlan(null); }}><DialogContent scrollLayout="body" className="admin-ui-panel sm:max-w-2xl"><DialogHeader><DialogTitle>{locale.startsWith("zh") ? "核对采购计划批量修改" : "Verifica modifiche al piano acquisti"}</DialogTitle><DialogDescription>{locale.startsWith("zh") ? "按行显示旧值 → 新值。保存逐行执行，失败即停止；状态仅代表计划，不登记实物入库。" : "Valore precedente → nuovo. Salvataggio per riga; un errore interrompe le restanti righe. Gli stati riguardano il piano, non il magazzino."}</DialogDescription></DialogHeader><DialogBody className="space-y-3">{batchPlan?.map(row => <div key={row.id} className="rounded border p-3 text-sm"><strong>{row.sku}</strong>{Object.keys(row.patch).map(key => <p className="break-words" key={key}>{({supplier:text.supplier,plannedQty:text.plannedQty,note:text.note,status:text.status} as Record<string,string>)[key]}: {String(row.before[key as keyof typeof row.before]) || "—"} → {String(row.after[key as keyof typeof row.after]) || "—"}</p>)}</div>)}</DialogBody><DialogFooter><Button variant="outline" disabled={bulkBusy} onClick={() => setBatchPlan(null)}>{locale.startsWith("zh") ? "取消" : "Annulla"}</Button><AdminActionButton pending={bulkBusy} disabled={bulkBusy || bulkUnknown} onClick={() => void savePlanBatch()}>{locale.startsWith("zh") ? "确认并保存所选计划" : "Conferma e salva i piani"}</AdminActionButton></DialogFooter></DialogContent></Dialog>
+      <Dialog open={batchPlan !== null} onOpenChange={open => { if (!open && !bulkBusy) setBatchPlan(null); }}><DialogContent scrollLayout="body" className="admin-ui-panel sm:max-w-2xl"><DialogHeader><DialogTitle>{(locale.startsWith("en") ? englishUiCopy("Verifica modifiche al piano acquisti") : locale.startsWith("zh") ? "核对采购计划批量修改" : "Verifica modifiche al piano acquisti")}</DialogTitle><DialogDescription>{(locale.startsWith("en") ? englishUiCopy("Valore precedente → nuovo. Salvataggio per riga; un errore interrompe le restanti righe. Gli stati riguardano il piano, non il magazzino.") : locale.startsWith("zh") ? "按行显示旧值 → 新值。保存逐行执行，失败即停止；状态仅代表计划，不登记实物入库。" : "Valore precedente → nuovo. Salvataggio per riga; un errore interrompe le restanti righe. Gli stati riguardano il piano, non il magazzino.")}</DialogDescription></DialogHeader><DialogBody className="space-y-3">{batchPlan?.map(row => <div key={row.id} className="rounded border p-3 text-sm"><strong>{row.sku}</strong>{Object.keys(row.patch).map(key => <p className="break-words" key={key}>{({supplier:text.supplier,plannedQty:text.plannedQty,note:text.note,status:text.status} as Record<string,string>)[key]}: {String(row.before[key as keyof typeof row.before]) || "—"} → {String(row.after[key as keyof typeof row.after]) || "—"}</p>)}</div>)}</DialogBody><DialogFooter><Button variant="outline" disabled={bulkBusy} onClick={() => setBatchPlan(null)}>{(locale.startsWith("en") ? englishUiCopy("Annulla") : locale.startsWith("zh") ? "取消" : "Annulla")}</Button><AdminActionButton pending={bulkBusy} disabled={bulkBusy || bulkUnknown} onClick={() => void savePlanBatch()}>{(locale.startsWith("en") ? englishUiCopy("Conferma e salva i piani") : locale.startsWith("zh") ? "确认并保存所选计划" : "Conferma e salva i piani")}</AdminActionButton></DialogFooter></DialogContent></Dialog>
       <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-bold text-amber-800">
@@ -673,10 +676,10 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
         </div>
       </div>
 
-      <section className="space-y-1 sm:hidden" data-admin-summary="inventory" aria-label={locale.startsWith("zh") ? "缺货与采购计划统计" : "Riepilogo scorte e piani di acquisto"}>
+      <section className="space-y-1 sm:hidden" data-admin-summary="inventory" aria-label={(locale.startsWith("en") ? englishUiCopy("Riepilogo scorte e piani di acquisto") : locale.startsWith("zh") ? "缺货与采购计划统计" : "Riepilogo scorte e piani di acquisto")}>
         <div className="min-w-0">
-          <h3 className="text-xs font-semibold text-slate-600">{locale.startsWith("zh") ? "近期售出缺货" : "Scorte e vendite recenti"}</h3>
-          <AdminMetricSummary ariaLabel={locale.startsWith("zh") ? "缺货统计" : "Metriche scorte"} items={[
+          <h3 className="text-xs font-semibold text-slate-600">{(locale.startsWith("en") ? englishUiCopy("Scorte e vendite recenti") : locale.startsWith("zh") ? "近期售出缺货" : "Scorte e vendite recenti")}</h3>
+          <AdminMetricSummary ariaLabel={(locale.startsWith("en") ? englishUiCopy("Metriche scorte") : locale.startsWith("zh") ? "缺货统计" : "Metriche scorte")} items={[
             { key: "outOfStock", label: text.outOfStock, value: summary.outOfStock, tone: "red" },
             { key: "lowStock", label: text.lowStock, value: summary.lowStock, tone: "amber" },
             { key: "sold", label: text.recentSoldQty, value: summary.totalSoldQty, tone: "blue" },
@@ -684,8 +687,8 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
           ]} />
         </div>
         <div className="min-w-0">
-          <h3 className="text-xs font-semibold text-slate-600">{locale.startsWith("zh") ? "采购计划" : "Piani di acquisto"}</h3>
-          <AdminMetricSummary ariaLabel={locale.startsWith("zh") ? "采购计划统计" : "Metriche piani di acquisto"} items={[
+          <h3 className="text-xs font-semibold text-slate-600">{(locale.startsWith("en") ? englishUiCopy("Piani di acquisto") : locale.startsWith("zh") ? "采购计划" : "Piani di acquisto")}</h3>
+          <AdminMetricSummary ariaLabel={(locale.startsWith("en") ? englishUiCopy("Metriche piani di acquisto") : locale.startsWith("zh") ? "采购计划统计" : "Metriche piani di acquisto")} items={[
             { key: "active", label: text.queueActive, value: replenishmentSummary.active, tone: "blue" },
             { key: "ordered", label: text.queueOrdered, value: replenishmentSummary.ordered, tone: "amber" },
             { key: "supplierMissing", label: text.supplierMissing, value: replenishmentSummary.supplierMissing, tone: "red" },
@@ -761,7 +764,7 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
             </CardTitle>
             <div className="grid min-w-0 grid-cols-2 gap-1.5 md:grid-cols-[minmax(220px,1fr)_112px_112px_132px]">
               <form className="col-span-2 min-w-0 md:col-span-1" onSubmit={submitSearch}>
-                <AdminSearchField className="bg-white" value={queryInput} aria-label={text.searchPlaceholder} placeholder={text.searchPlaceholder} pending={pending} clearLabel={locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca"} onValueChange={setQueryInput} />
+                <AdminSearchField className="bg-white" value={queryInput} aria-label={text.searchPlaceholder} placeholder={text.searchPlaceholder} pending={pending} clearLabel={(locale.startsWith("en") ? englishUiCopy("Cancella ricerca") : locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca")} onValueChange={setQueryInput} />
               </form>
               <Select value={windowDays} onValueChange={value => { setWindowDays(value); setShortagePage(0); }}>
                 <SelectTrigger className="h-8 bg-white text-xs">
@@ -801,7 +804,7 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          {canManage && <div className="flex flex-wrap items-center gap-2 border-b p-3"><Button variant="outline" size="sm" disabled={pending || bulkUnknown || bulkBusy || Boolean(actionKey)} onClick={() => setSelectedSkus(rows.filter(row => !row.activeReplenishmentItem).map(row => row.sku))}>{locale.startsWith("zh") ? "选择本页可加入商品" : "Seleziona prodotti disponibili nella pagina"}</Button><AdminActionButton pending={bulkBusy} size="sm" disabled={pending || bulkUnknown || bulkBusy || Boolean(actionKey) || !rows.some(row => selectedSkus.includes(row.sku) && !row.activeReplenishmentItem)} onClick={() => void addSelectedToPlan()}>{locale.startsWith("zh") ? "核对并批量加入计划" : "Conferma e aggiungi al piano"}</AdminActionButton><Button variant="ghost" size="sm" disabled={bulkBusy || Boolean(actionKey)} onClick={() => setSelectedSkus([])}>{locale.startsWith("zh") ? "清除选择" : "Deseleziona"}</Button>{bulkNotice && <AdminNotice className="w-full" tone={bulkUnknown || error ? "warning" : "success"} message={bulkNotice} />}</div>}
+          {canManage && <div className="flex flex-wrap items-center gap-2 border-b p-3"><Button variant="outline" size="sm" disabled={pending || bulkUnknown || bulkBusy || Boolean(actionKey)} onClick={() => setSelectedSkus(rows.filter(row => !row.activeReplenishmentItem).map(row => row.sku))}>{(locale.startsWith("en") ? englishUiCopy("Seleziona prodotti disponibili nella pagina") : locale.startsWith("zh") ? "选择本页可加入商品" : "Seleziona prodotti disponibili nella pagina")}</Button><AdminActionButton pending={bulkBusy} size="sm" disabled={pending || bulkUnknown || bulkBusy || Boolean(actionKey) || !rows.some(row => selectedSkus.includes(row.sku) && !row.activeReplenishmentItem)} onClick={() => void addSelectedToPlan()}>{(locale.startsWith("en") ? englishUiCopy("Conferma e aggiungi al piano") : locale.startsWith("zh") ? "核对并批量加入计划" : "Conferma e aggiungi al piano")}</AdminActionButton><Button variant="ghost" size="sm" disabled={bulkBusy || Boolean(actionKey)} onClick={() => setSelectedSkus([])}>{(locale.startsWith("en") ? englishUiCopy("Deseleziona") : locale.startsWith("zh") ? "清除选择" : "Deseleziona")}</Button>{bulkNotice && <AdminNotice className="w-full" tone={bulkUnknown || error ? "warning" : "success"} message={bulkNotice} />}</div>}
           <AdminBusyRegion
             label={dictionary.common.refreshing}
             pending={pending}
@@ -973,7 +976,7 @@ export function AdminInventoryPanel({ permissions = [] }: { permissions?: readon
           </div>
         </CardHeader>
         <CardContent className="p-0">
-          {canManage && <div className="space-y-3 border-b p-3"><div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" disabled={pending || bulkBusy || Boolean(actionKey) || bulkUnknown} onClick={() => setSelectedPlanIds(replenishmentItems.map(item => item.id))}>{locale.startsWith("zh") ? "选择本页采购计划" : "Seleziona piani della pagina"}</Button><Button variant="ghost" size="sm" disabled={bulkBusy} onClick={() => setSelectedPlanIds([])}>{locale.startsWith("zh") ? "清除计划选择" : "Deseleziona piani"}</Button></div><fieldset disabled={bulkBusy || Boolean(actionKey) || bulkUnknown} className={cn("grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-4", selectedPlanIds.length === 0 && "hidden")}><label className="grid gap-1 text-xs"><span><input type="checkbox" checked={commonPlan.applySupplier} onChange={event => setCommonPlan(current => ({ ...current, applySupplier: event.target.checked }))}/> {locale.startsWith("zh") ? "统一供应商（勾选后应用）" : "Unifica fornitore (se selezionato)"}</span><Input aria-label={locale.startsWith("zh") ? "批量供应商" : "Fornitore comune"} value={commonPlan.supplier} maxLength={100} onChange={event => setCommonPlan(current => ({ ...current, supplier: event.target.value }))}/></label><label className="grid gap-1 text-xs"><span><input type="checkbox" checked={commonPlan.applyQty} onChange={event => setCommonPlan(current => ({ ...current, applyQty: event.target.checked }))}/> {locale.startsWith("zh") ? "统一采购数量" : "Unifica quantità"}</span><Input aria-label={locale.startsWith("zh") ? "批量采购数量" : "Quantità comune"} inputMode="numeric" value={commonPlan.plannedQty} onChange={event => setCommonPlan(current => ({ ...current, plannedQty: event.target.value }))}/></label><label className="grid gap-1 text-xs"><span><input type="checkbox" checked={commonPlan.applyNote} onChange={event => setCommonPlan(current => ({ ...current, applyNote: event.target.checked }))}/> {locale.startsWith("zh") ? "统一备注" : "Unifica nota"}</span><Input aria-label={locale.startsWith("zh") ? "批量计划备注" : "Nota comune"} value={commonPlan.note} maxLength={500} onChange={event => setCommonPlan(current => ({ ...current, note: event.target.value }))}/></label><label className="grid gap-1 text-xs">{locale.startsWith("zh") ? "推进所选计划状态" : "Stato dei piani selezionati"}<select className="h-10 rounded border bg-white px-2 text-sm" value={commonPlan.status} onChange={event => setCommonPlan(current => ({ ...current, status: event.target.value }))}><option value="">{locale.startsWith("zh") ? "保留原状态" : "Mantieni stato"}</option>{(["open","planned","ordered","received","ignored"] as const).map(status => <option key={status} value={status}>{({open:text.statusOpen,planned:text.statusPlanned,ordered:text.queueOrdered,received:locale.startsWith("zh")?"计划已收货":"Piano ricevuto",ignored:locale.startsWith("zh")?"忽略":"Ignorato"})[status]}</option>)}</select></label></fieldset><p className="text-xs text-slate-500">{locale.startsWith("zh") ? "只处理本页所选行；未勾选的统一字段保留每行草稿。状态变更不登记真实库存。" : "Solo righe selezionate nella pagina. I campi comuni non attivati conservano le bozze delle righe. Gli stati non modificano la giacenza reale."}</p><Button size="sm" disabled={pending || bulkBusy || Boolean(actionKey) || bulkUnknown || !selectedPlanIds.some(id => replenishmentItems.some(item => item.id===id))} onClick={previewPlanBatch}>{locale.startsWith("zh") ? "预览所选计划修改" : "Anteprima modifiche selezionate"}</Button>{bulkUnknown && <AdminNotice tone="warning" message={locale.startsWith("zh") ? "批量操作已停止，请先刷新核对实际结果，再继续。" : "Operazione interrotta. Aggiorna e verifica i risultati prima di continuare."} />}{bulkNotice && <p role="status" className="text-sm">{bulkNotice}</p>}</div>}
+          {canManage && <div className="space-y-3 border-b p-3"><div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" disabled={pending || bulkBusy || Boolean(actionKey) || bulkUnknown} onClick={() => setSelectedPlanIds(replenishmentItems.map(item => item.id))}>{(locale.startsWith("en") ? englishUiCopy("Seleziona piani della pagina") : locale.startsWith("zh") ? "选择本页采购计划" : "Seleziona piani della pagina")}</Button><Button variant="ghost" size="sm" disabled={bulkBusy} onClick={() => setSelectedPlanIds([])}>{(locale.startsWith("en") ? englishUiCopy("Deseleziona piani") : locale.startsWith("zh") ? "清除计划选择" : "Deseleziona piani")}</Button></div><fieldset disabled={bulkBusy || Boolean(actionKey) || bulkUnknown} className={cn("grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-4", selectedPlanIds.length === 0 && "hidden")}><label className="grid gap-1 text-xs"><span><input type="checkbox" checked={commonPlan.applySupplier} onChange={event => setCommonPlan(current => ({ ...current, applySupplier: event.target.checked }))}/> {(locale.startsWith("en") ? englishUiCopy("Unifica fornitore (se selezionato)") : locale.startsWith("zh") ? "统一供应商（勾选后应用）" : "Unifica fornitore (se selezionato)")}</span><Input aria-label={(locale.startsWith("en") ? englishUiCopy("Fornitore comune") : locale.startsWith("zh") ? "批量供应商" : "Fornitore comune")} value={commonPlan.supplier} maxLength={100} onChange={event => setCommonPlan(current => ({ ...current, supplier: event.target.value }))}/></label><label className="grid gap-1 text-xs"><span><input type="checkbox" checked={commonPlan.applyQty} onChange={event => setCommonPlan(current => ({ ...current, applyQty: event.target.checked }))}/> {(locale.startsWith("en") ? englishUiCopy("Unifica quantità") : locale.startsWith("zh") ? "统一采购数量" : "Unifica quantità")}</span><Input aria-label={(locale.startsWith("en") ? englishUiCopy("Quantità comune") : locale.startsWith("zh") ? "批量采购数量" : "Quantità comune")} inputMode="numeric" value={commonPlan.plannedQty} onChange={event => setCommonPlan(current => ({ ...current, plannedQty: event.target.value }))}/></label><label className="grid gap-1 text-xs"><span><input type="checkbox" checked={commonPlan.applyNote} onChange={event => setCommonPlan(current => ({ ...current, applyNote: event.target.checked }))}/> {(locale.startsWith("en") ? englishUiCopy("Unifica nota") : locale.startsWith("zh") ? "统一备注" : "Unifica nota")}</span><Input aria-label={(locale.startsWith("en") ? englishUiCopy("Nota comune") : locale.startsWith("zh") ? "批量计划备注" : "Nota comune")} value={commonPlan.note} maxLength={500} onChange={event => setCommonPlan(current => ({ ...current, note: event.target.value }))}/></label><label className="grid gap-1 text-xs">{(locale.startsWith("en") ? englishUiCopy("Stato dei piani selezionati") : locale.startsWith("zh") ? "推进所选计划状态" : "Stato dei piani selezionati")}<select className="h-10 rounded border bg-white px-2 text-sm" value={commonPlan.status} onChange={event => setCommonPlan(current => ({ ...current, status: event.target.value }))}><option value="">{(locale.startsWith("en") ? englishUiCopy("Mantieni stato") : locale.startsWith("zh") ? "保留原状态" : "Mantieni stato")}</option>{(["open","planned","ordered","received","ignored"] as const).map(status => <option key={status} value={status}>{({open:text.statusOpen,planned:text.statusPlanned,ordered:text.queueOrdered,received:(locale.startsWith("en") ? englishUiCopy("Piano ricevuto") : locale.startsWith("zh")?"计划已收货":"Piano ricevuto"),ignored:(locale.startsWith("en") ? englishUiCopy("Ignorato") : locale.startsWith("zh")?"忽略":"Ignorato")})[status]}</option>)}</select></label></fieldset><p className="text-xs text-slate-500">{(locale.startsWith("en") ? englishUiCopy("Solo righe selezionate nella pagina. I campi comuni non attivati conservano le bozze delle righe. Gli stati non modificano la giacenza reale.") : locale.startsWith("zh") ? "只处理本页所选行；未勾选的统一字段保留每行草稿。状态变更不登记真实库存。" : "Solo righe selezionate nella pagina. I campi comuni non attivati conservano le bozze delle righe. Gli stati non modificano la giacenza reale.")}</p><Button size="sm" disabled={pending || bulkBusy || Boolean(actionKey) || bulkUnknown || !selectedPlanIds.some(id => replenishmentItems.some(item => item.id===id))} onClick={previewPlanBatch}>{(locale.startsWith("en") ? englishUiCopy("Anteprima modifiche selezionate") : locale.startsWith("zh") ? "预览所选计划修改" : "Anteprima modifiche selezionate")}</Button>{bulkUnknown && <AdminNotice tone="warning" message={(locale.startsWith("en") ? englishUiCopy("Operazione interrotta. Aggiorna e verifica i risultati prima di continuare.") : locale.startsWith("zh") ? "批量操作已停止，请先刷新核对实际结果，再继续。" : "Operazione interrotta. Aggiorna e verifica i risultati prima di continuare.")} />}{bulkNotice && <p role="status" className="text-sm">{bulkNotice}</p>}</div>}
           {replenishmentItems.length === 0 ? (
             <InventoryEmptyState
               title={text.queueEmptyTitle}
@@ -1866,7 +1869,7 @@ function formatDate(value: string | null, locale: string) {
     return "-";
   }
 
-  return new Intl.DateTimeFormat(locale === "it" ? "it-IT" : "zh-CN", {
+  return new Intl.DateTimeFormat((locale.startsWith("en") ? "en-US" : locale === "it" ? "it-IT" : "zh-CN"), {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
@@ -1923,11 +1926,15 @@ function readInventoryHealthIssues(value: unknown) {
 }
 
 function inventoryHealthText(locale: string) {
+  const copy = inventoryHealthTextBilingual(locale.startsWith("en") ? "it-IT" : locale);
+  return locale.startsWith("en") ? { ...englishUiCopy(copy), scope: (windowDays: number) => `${windowDays} days of sales · reservation/order differences` } : copy;
+}
+function inventoryHealthTextBilingual(locale: string) {
   if (locale.toLowerCase().startsWith("it")) {
     return {
       title: "Controllo inventario",
       scope: (windowDays: number) =>
-        `${windowDays} giorni vendite · differenze lock/ordini`,
+        locale.startsWith("en") ? `${windowDays} days of sales · reservation/order differences` : `${windowDays} giorni vendite · differenze lock/ordini`,
       stockMismatch: "Stock diverso",
       reservedMismatch: "Lock/riserva",
       lockedOrphan: "Lock orfani",

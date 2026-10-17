@@ -59,7 +59,7 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     openGraph: {
       description,
-      locale: locale === "zh-CN" ? "zh_CN" : "it_IT",
+      locale: locale.replace("-", "_"),
       siteName: "PartsPro",
       title,
       type: "website",

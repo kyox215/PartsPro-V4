@@ -1,3 +1,4 @@
+import { englishUiCopy } from "@/i18n/english-ui-copy";
 const zh: Record<string,string> = {
  "Torna al pannello":"返回总览","REMAX esclusiva":"REMAX 专属预购","Centro preordini REMAX":"REMAX 预购中心","Quattro passaggi guidati. L&apos;importazione apre le prenotazioni ma non aumenta lo stock; solo “Registra arrivo” trasforma la merce in giacenza reale.":"按四步处理预购。导入会开启预订，不会增加库存；清点实物并登记到货后才增加真实库存。","1. Scarica modello":"1 · 下载模板","2. Compila lotto e carica file":"2 · 填写批次并上传文件","Codice lotto *":"批次编号 *","ETA inizio *":"预计到货起始 *","ETA fine *":"预计到货结束 *","Chiusura prenotazioni":"预订截止时间","Numero ordine fornitore":"供应商订单号","Deposito":"仓库","Condizioni mostrate al cliente *":"客户可见预购说明 *","File REMAX (.xlsx o .csv, massimo 5 MB / 500 righe)":"REMAX 文件（xlsx/csv，最多5MB/500行）","Selezionato:":"已选择：","3. Controlla prima di importare":"3 · 导入前检查","3. Anteprima file":"3 · 文件预览","Pronte":"可导入","Bozze":"草稿","Bloccate":"已阻塞","Riga":"行号","Stato":"状态","SKU / prodotto":"SKU / 商品","Q.tà":"数量","Prezzi C / B2B / retail":"成本 / 批发 / 零售价格","Controllo":"检查结果","- buffer":"- 预留量","Ho controllato quantità, costi, prezzi, immagini, ETA e righe da pubblicare. Confermo la creazione del lotto.":"我已核对数量、成本、价格、图片、预计到货和待发布行，确认创建此批次。","Conferma e apri preordini":"确认并开启预购","Il tuo ruolo non possiede tutti i permessi richiesti per creare, prezzare e pubblicare.":"当前角色未具备创建、定价和发布所需的全部权限。","Situazione REMAX":"REMAX 当前情况","Prodotti":"商品","Lotti aperti":"开放批次","Pezzi in attesa":"待到货件数","Preordini clienti":"客户预购订单","4. Registra arrivo":"4 · 登记到货","Usa questa sezione solo quando hai contato fisicamente la merce. Il sistema assegna prima i preordini più vecchi (FIFO).":"仅在实际清点商品后使用。系统优先分配给最早的预购订单。","Lotto arrivato":"到货批次","Seleziona lotto":"选择批次","· residuo":"· 剩余","Residuo":"剩余","· clienti in attesa":"· 等待客户","Anteprima arrivo":"到货预览","Totale ricevuto:":"到货总数：","ricevuti ·":"到货 ·","ai preordini ·":"分配预购 ·","liberi":"可售","Ho contato la merce fisica e confermo queste quantità. Questa operazione aumenta lo stock reale.":"我已清点实物并确认这些数量，此操作会增加真实库存。","Registra arrivo reale":"登记实物到货","Il tuo ruolo non può modificare lo stock.":"当前角色不能修改库存。","Pronta":"就绪","Bozza":"草稿","Bloccata":"阻塞",
  "Dati REMAX caricati.":"REMAX 数据已加载。","Aggiornamento dati REMAX...":"正在更新 REMAX 数据…","Dati aggiornati.":"数据已更新。","Dati modificati: esegui di nuovo il controllo.":"资料已修改，请重新检查。","Seleziona un file prima di continuare.":"请先选择文件。","Inserisci almeno una quantità ricevuta.":"请至少填写一项到货数量。","Calcolo assegnazioni ai preordini...":"正在计算预购分配…","Anteprima pronta. Controlla e conferma una sola volta.":"预览已就绪，核对后确认一次。","Registrazione arrivo e assegnazione FIFO...":"正在登记到货并按预购时间分配…",
@@ -41,7 +42,7 @@ export function remaxText(value: string, locale: string, values: Record<string, 
       .replace(/^(.+) duplicato \(già presente alla riga (\d+)\)$/, "$1 重复（已出现在第 $2 行）")
       .replace(/^(.+) deve essere un intero tra (\d+) e (\d+)$/, "$1 须为 $2 至 $3 的整数")
       .replace(/^(.+) deve essere un numero valido maggiore o uguale a (\d+)$/, "$1 须为不小于 $2 的有效数字");
-  } else {
+  } else if (!locale.startsWith("en")) {
     const italian: Record<string, string> = {
       "REMAX preorder dashboard could not be loaded.": "Lettura dati preordini REMAX non riuscita.",
       "REMAX preorder batch could not be imported.": "Importazione lotto REMAX non riuscita.",
@@ -50,5 +51,6 @@ export function remaxText(value: string, locale: string, values: Record<string, 
     };
     template = italian[value] ?? value;
   }
+  if (locale.startsWith("en")) template = englishUiCopy(template);
   return template.replace(/\{(\w+)\}/g, (token, key: string) => Object.hasOwn(values, key) ? String(values[key]) : token);
 }

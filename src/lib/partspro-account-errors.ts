@@ -1,5 +1,5 @@
 export class AccountRequestError extends Error {
-  constructor(readonly code: string | null, readonly status: number) {
+  constructor(readonly code: string | null, readonly status: number, readonly issues?: unknown) {
     super(code ?? String(status));
   }
 }

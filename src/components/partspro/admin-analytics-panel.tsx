@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import * as React from "react";
 import { AdminMetricSummary } from "./admin-summary-components";
 import { AdminEmptyState, AdminNotice } from "./admin-feedback";
@@ -55,7 +58,7 @@ const AdminTrafficTrendChart = dynamic(
 
 export function AdminAnalyticsPanel() {
   const { locale } = useI18n();
-  const copy = analyticsCopy[locale];
+  const copy = locale === "en-US" ? englishUiCopy(analyticsCopy["it-IT"]) : analyticsCopy[locale];
   const [range, setRange] = React.useState<AnalyticsRange>(7);
   const [reloadIndex, setReloadIndex] = React.useState(0);
   const [state, setState] = React.useState<AnalyticsState>({
@@ -196,7 +199,7 @@ export function AdminAnalyticsPanel() {
             { key: "country", label: copy.leadingCountry, value: state.isLoading ? "—" : leadingCountry ? <><span>{formatCountry(leadingCountry.country, locale)}</span><span className="block text-xs font-semibold text-slate-500">{formatCount(leadingCountry.visitors, locale)} {copy.visitors.toLowerCase()}</span></> : copy.noData, tone: "green" },
           ]} />
           <details className="text-xs text-slate-500 sm:hidden">
-            <summary className="min-h-11 cursor-pointer py-2 font-semibold">{locale.startsWith("zh") ? "指标说明" : "Dettagli metriche"}</summary>
+            <summary className="min-h-11 cursor-pointer py-2 font-semibold">{(locale.startsWith("en") ? englishUiCopy("Dettagli metriche") : locale.startsWith("zh") ? "指标说明" : "Dettagli metriche")}</summary>
             <p>{copy.selectedRange(range)} · {copy.privacyDetail}</p>
             <p>{copy.averageDetail}</p>
             {!leadingCountry && <p>{copy.countryDetail}</p>}
@@ -553,7 +556,7 @@ function formatDateTime(value: string | undefined, locale: string) {
 
 function formatCountry(country: string, locale: string) {
   if (country === "Others") {
-    return locale === "zh-CN" ? "其他" : "Altri";
+    return (locale.startsWith("en") ? englishUiCopy("Altri") : locale === "zh-CN" ? "其他" : "Altri");
   }
 
   try {

@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -156,7 +159,7 @@ export function NotificationCenter({
 }: NotificationCenterProps) {
   const router = useRouter();
   const { locale } = useI18n();
-  const text = locale === "zh-CN" ? copy.zh : copy.it;
+  const text = (locale.startsWith("en") ? englishUiCopy(copy.it) : locale === "zh-CN" ? copy.zh : copy.it);
   const [items, setItems] = React.useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [popoverOpen, setPopoverOpen] = React.useState(false);
@@ -635,7 +638,7 @@ export function NotificationCenter({
                   {unreadCount} {text.unread} · {statusLabel}
                 </p>
               </div>
-              {presentation === "compact" ? enableControl : <div className="pp-notification-header-actions">{markAllControl}<Button type="button" size="icon" variant="ghost" aria-label={locale === "zh-CN" ? "关闭通知" : "Chiudi notifiche"} onClick={() => setPopoverOpen(false)}><X aria-hidden="true"/></Button></div>}
+              {presentation === "compact" ? enableControl : <div className="pp-notification-header-actions">{markAllControl}<Button type="button" size="icon" variant="ghost" aria-label={(locale.startsWith("en") ? englishUiCopy("Chiudi notifiche") : locale === "zh-CN" ? "关闭通知" : "Chiudi notifiche")} onClick={() => setPopoverOpen(false)}><X aria-hidden="true"/></Button></div>}
             </div>
             {isIosStandaloneMissing ? (
               <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-semibold text-amber-900">
@@ -644,7 +647,7 @@ export function NotificationCenter({
             ) : null}
           </div>
 
-          {presentation === "account" ? <div className="pp-notification-permission"><Bell aria-hidden="true"/><div><strong>{locale === "zh-CN" ? "接收订单与售后更新" : "Aggiornamenti su ordini e assistenza"}</strong><p>{statusLabel}</p></div>{enableControl}</div> : null}
+          {presentation === "account" ? <div className="pp-notification-permission"><Bell aria-hidden="true"/><div><strong>{(locale.startsWith("en") ? englishUiCopy("Aggiornamenti su ordini e assistenza") : locale === "zh-CN" ? "接收订单与售后更新" : "Aggiornamenti su ordini e assistenza")}</strong><p>{statusLabel}</p></div>{enableControl}</div> : null}
           <div className="pp-notification-list min-h-0 max-h-[320px] flex-1 overflow-y-auto p-2">
             {notice ? <AdminNotice tone={notice.tone} message={notice.message} className="mb-2 text-xs" /> : null}
             {readError ? <AdminNotice tone="error" message={text.readError} action={<Button size="xs" variant="outline" disabled={loading} onClick={() => void loadNotifications({ verify: true })}>{text.refresh}</Button>} className="mb-2 text-xs" /> : null}
@@ -705,7 +708,7 @@ export function NotificationCenter({
           {hasMore ? <div className="shrink-0 border-t p-2"><Button className="w-full" size="sm" variant="outline" disabled={loading || Boolean(busyAction)} onClick={() => void loadNotifications({ append: true })}>{loading ? text.loading : text.more}</Button></div> : null}
 
           <div className="pp-notification-footer flex shrink-0 items-center justify-between gap-2 border-t border-slate-200 p-2">
-            {presentation === "account" ? <p>{locale === "zh-CN" ? "订单、售后及余额更新会显示在这里。" : "Qui trovi novità su ordini, assistenza e saldo."}</p> : null}
+            {presentation === "account" ? <p>{(locale.startsWith("en") ? englishUiCopy("Qui trovi novità su ordini, assistenza e saldo.") : locale === "zh-CN" ? "订单、售后及余额更新会显示在这里。" : "Qui trovi novità su ordini, assistenza e saldo.")}</p> : null}
             {presentation === "compact" ? markAllControl : null}
             <Button
               type="button"
@@ -991,7 +994,7 @@ function notificationContent(item: NotificationItem, locale: string) {
   }
 
   return {
-    title: item.eventType === "new_order" ? (locale === "zh-CN" ? "新订单" : "Nuovo ordine") : item.title,
+    title: item.eventType === "new_order" ? ((locale.startsWith("en") ? englishUiCopy("Nuovo ordine") : locale === "zh-CN" ? "新订单" : "Nuovo ordine")) : item.title,
     body: item.body,
     isRma: false,
   };
@@ -1010,10 +1013,10 @@ function rmaNotificationCopy(item: NotificationItem, locale: string) {
 
   if (item.eventType === "rma_submitted") {
     return {
-      title: isStaff ? (isZh ? "新的售后申请" : "Nuova richiesta di reso") : (isZh ? "售后申请已提交" : "Richiesta di reso inviata"),
+      title: isStaff ? ((locale.startsWith("en") ? englishUiCopy("Nuova richiesta di reso") : isZh ? "新的售后申请" : "Nuova richiesta di reso")) : ((locale.startsWith("en") ? englishUiCopy("Richiesta di reso inviata") : isZh ? "售后申请已提交" : "Richiesta di reso inviata")),
       body: withReference(isStaff
-        ? (isZh ? "客户提交了售后申请，请进入后台售后审核。" : "Il cliente ha inviato una richiesta di reso. Apri la sezione RMA in amministrazione per verificarla.")
-        : (isZh ? "售后申请已提交，正在等待审核。进入售后页面可查看进度。" : "La richiesta di reso è stata inviata ed è in attesa di verifica. Apri la pagina Resi per seguirne lo stato.")),
+        ? ((locale.startsWith("en") ? englishUiCopy("Il cliente ha inviato una richiesta di reso. Apri la sezione RMA in amministrazione per verificarla.") : isZh ? "客户提交了售后申请，请进入后台售后审核。" : "Il cliente ha inviato una richiesta di reso. Apri la sezione RMA in amministrazione per verificarla."))
+        : ((locale.startsWith("en") ? englishUiCopy("La richiesta di reso è stata inviata ed è in attesa di verifica. Apri la pagina Resi per seguirne lo stato.") : isZh ? "售后申请已提交，正在等待审核。进入售后页面可查看进度。" : "La richiesta di reso è stata inviata ed è in attesa di verifica. Apri la pagina Resi per seguirne lo stato."))),
     };
   }
 
@@ -1022,17 +1025,23 @@ function rmaNotificationCopy(item: NotificationItem, locale: string) {
       return null;
     }
     return {
-      title: isZh ? "客户已确认寄回商品" : "Il cliente ha confermato la spedizione del reso",
-      body: withReference(isZh
+      title: (locale.startsWith("en") ? englishUiCopy("Il cliente ha confermato la spedizione del reso") : isZh ? "客户已确认寄回商品" : "Il cliente ha confermato la spedizione del reso"),
+      body: withReference((locale.startsWith("en") ? englishUiCopy("Il cliente ha confermato di aver spedito il reso. Attendi l'arrivo della merce e registra la ricezione in amministrazione solo dopo aver ricevuto l'intera quantità.") : isZh
         ? "客户已确认寄出退回商品。请等待实物到达，收到完整商品后再进入后台登记收货。"
-        : "Il cliente ha confermato di aver spedito il reso. Attendi l'arrivo della merce e registra la ricezione in amministrazione solo dopo aver ricevuto l'intera quantità."),
+        : "Il cliente ha confermato di aver spedito il reso. Attendi l'arrivo della merce e registra la ricezione in amministrazione solo dopo aver ricevuto l'intera quantità.")),
     };
   }
 
   if (item.eventType !== "rma_status_updated") {
     return null;
   }
-  const actionBodies: Record<string, string> = isZh ? {
+  const actionBodies: Record<string, string> = (locale.startsWith("en") ? englishUiCopy({
+    start_negotiation: "La soluzione richiede il tuo accordo. Contatta l'assistenza; rimborso e disposizione della merce restano sospesi fino alla conferma.",
+    resolve_negotiation: "La soluzione concordata è stata registrata. Il rimborso resta soggetto ad approvazione; segui la pratica nella pagina Resi.",
+    split_request: "La richiesta è stata divisa per quantità, da gestire separatamente. Controlla le pratiche collegate e il loro stato.",
+    return_to_customer: "L'articolo originale è stato rispedito. Apri la pagina Resi per il codice di tracciamento.",
+    cancel_unreceived: "La richiesta relativa alla merce non ricevuta è stata annullata come concordato. Consulta lo storico del reso.",
+  }) : isZh ? {
     start_negotiation: "售后处理需要与您确认方案，请联系客服协商。确认前不会执行退款或商品处置。",
     resolve_negotiation: "已记录双方确认的处理方案。退款仍需审批，请进入售后页面查看进度。",
     split_request: "售后申请已按数量拆分，分别处理。请查看关联申请及各自进度。",
@@ -1044,20 +1053,36 @@ function rmaNotificationCopy(item: NotificationItem, locale: string) {
     split_request: "La richiesta è stata divisa per quantità, da gestire separatamente. Controlla le pratiche collegate e il loro stato.",
     return_to_customer: "L'articolo originale è stato rispedito. Apri la pagina Resi per il codice di tracciamento.",
     cancel_unreceived: "La richiesta relativa alla merce non ricevuta è stata annullata come concordato. Consulta lo storico del reso.",
-  };
+  });
   if (!isStaff && item.sourceAction && Object.hasOwn(actionBodies, item.sourceAction)) {
-    return { title: isZh ? "售后处理更新" : "Gestione del reso aggiornata", body: withReference(actionBodies[item.sourceAction]) };
+    return { title: (locale.startsWith("en") ? englishUiCopy("Gestione del reso aggiornata") : isZh ? "售后处理更新" : "Gestione del reso aggiornata"), body: withReference(actionBodies[item.sourceAction]) };
   }
   if (!isStaff && item.sourceAction === "request_wallet_refund") {
     return {
-      title: isZh ? "钱包退款等待审核" : "Rimborso wallet in attesa di approvazione",
-      body: withReference(isZh
+      title: (locale.startsWith("en") ? englishUiCopy("Rimborso wallet in attesa di approvazione") : isZh ? "钱包退款等待审核" : "Rimborso wallet in attesa di approvazione"),
+      body: withReference((locale.startsWith("en") ? englishUiCopy("La richiesta di rimborso è stata creata ed è in attesa di approvazione. Non inviare una seconda richiesta; puoi seguire l'esito nella pagina Resi.") : isZh
         ? "退款申请已创建，等待审核。请勿重复申请；审批结果可在售后页面查看。"
-        : "La richiesta di rimborso è stata creata ed è in attesa di approvazione. Non inviare una seconda richiesta; puoi seguire l'esito nella pagina Resi."),
+        : "La richiesta di rimborso è stata creata ed è in attesa di approvazione. Non inviare una seconda richiesta; puoi seguire l'esito nella pagina Resi.")),
     };
   }
   const status = typeof item.payload.status === "string" ? item.payload.status : "";
-  const bodies: Record<string, string> = isZh ? {
+  const bodies: Record<string, string> = (locale.startsWith("en") ? englishUiCopy({
+    submitted: "La richiesta di reso è stata inviata ed è in attesa di verifica.",
+    requested: "La richiesta di reso è stata inviata ed è in attesa di verifica.",
+    under_review: "La richiesta di reso è in verifica.",
+    approved: isStaff
+      ? "La richiesta di reso è approvata. Attendi che il cliente restituisca la merce o confermi la spedizione."
+      : "La richiesta di reso è approvata. Apri la pagina Resi (/rma). Se non hai ancora ricevuto modalità e indirizzo per il reso, contatta prima l'assistenza. Dopo aver spedito la merce, conferma “Ho spedito il reso”.",
+    rejected: "La richiesta di reso non è stata approvata. Apri la pagina Resi per il motivo e i dettagli.",
+    return_in_transit: isStaff
+      ? "Il cliente ha confermato la spedizione del reso. Registra la ricezione solo dopo l'arrivo della merce."
+      : "La conferma di spedizione del reso è registrata. Siamo in attesa della consegna in negozio o magazzino.",
+    received: "La merce restituita è stata ricevuta. Apri la pagina Resi per seguire i controlli e la gestione.",
+    refunded: "Il rimborso wallet per questo reso è stato approvato. Controlla i movimenti del wallet.",
+    replacement_sent: "La merce sostitutiva è stata spedita. Apri la pagina Resi per i dettagli.",
+    replaced: "La merce sostitutiva è stata spedita. Apri la pagina Resi per i dettagli.",
+    closed: "La pratica di reso è stata chiusa. Apri la pagina Resi per consultare lo storico.",
+  }) : isZh ? {
     submitted: "售后申请已提交，正在等待审核。",
     requested: "售后申请已提交，正在等待审核。",
     under_review: "售后申请正在审核中。",
@@ -1089,12 +1114,12 @@ function rmaNotificationCopy(item: NotificationItem, locale: string) {
     replacement_sent: "La merce sostitutiva è stata spedita. Apri la pagina Resi per i dettagli.",
     replaced: "La merce sostitutiva è stata spedita. Apri la pagina Resi per i dettagli.",
     closed: "La pratica di reso è stata chiusa. Apri la pagina Resi per consultare lo storico.",
-  };
+  });
   if (!Object.hasOwn(bodies, status)) {
     return null;
   }
   return {
-    title: isZh ? "售后状态更新" : "Stato del reso aggiornato",
+    title: (locale.startsWith("en") ? englishUiCopy("Stato del reso aggiornato") : isZh ? "售后状态更新" : "Stato del reso aggiornato"),
     body: withReference(bodies[status]),
   };
 }

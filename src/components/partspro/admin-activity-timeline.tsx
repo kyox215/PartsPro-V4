@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import { AdminSearchField } from "./admin-ui-controls";
 
 import * as React from "react";
@@ -200,12 +203,12 @@ export function AdminActivityTimeline({
       setLoading(true); setReadError(null);
       void fetch(`/api/admin/activity?limit=50&offset=${page * 50}`, { cache: "no-store", signal: controller.signal }).then(async response => {
         const payload = await response.json();
-        if (!response.ok || !Array.isArray(payload.data)) throw new Error(locale.startsWith("zh") ? "活动读取失败，请重试。" : "Lettura attività non riuscita.");
+        if (!response.ok || !Array.isArray(payload.data)) throw new Error((locale.startsWith("en") ? englishUiCopy("Lettura attività non riuscita.") : locale.startsWith("zh") ? "活动读取失败，请重试。" : "Lettura attività non riuscita."));
         if (controller.signal.aborted) return;
         const data: AdminActivity[] = payload.data.map((row: Record<string, unknown>) => {
           const entity = String(row.entity_type); const action = String(row.action);
           const type: AdminActivityType = entity === "customer" ? "customer-tier" : entity.startsWith("rma") ? "rma-created" : entity.startsWith("finance") || entity === "supplier_batch_payment" ? "payment-posted" : entity === "product" || entity === "supplier_batch" ? "inventory-update" : "order-status";
-          return { id: String(row.id), type, title: copy.typeOptions[type], description: `${action} · ${row.result === "success" ? (locale.startsWith("zh") ? "成功" : "Completato") : (locale.startsWith("zh") ? "失败" : "Non riuscito")}`, subject: String(row.sku_code ?? row.entity_id ?? "—"), entityType: entity, entityId: typeof row.entity_id === "string" ? row.entity_id : null, sku: typeof row.sku_code === "string" ? row.sku_code : null, actor: String(row.actor_role ?? "—"), createdAt: String(row.created_at) };
+          return { id: String(row.id), type, title: copy.typeOptions[type], description: `${action} · ${row.result === "success" ? ((locale.startsWith("en") ? englishUiCopy("Completato") : locale.startsWith("zh") ? "成功" : "Completato")) : ((locale.startsWith("en") ? englishUiCopy("Non riuscito") : locale.startsWith("zh") ? "失败" : "Non riuscito"))}`, subject: String(row.sku_code ?? row.entity_id ?? "—"), entityType: entity, entityId: typeof row.entity_id === "string" ? row.entity_id : null, sku: typeof row.sku_code === "string" ? row.sku_code : null, actor: String(row.actor_role ?? "—"), createdAt: String(row.created_at) };
         });
         setActivities(current => sortActivities([...current.filter(item => item.type === "note"), ...data])); setTotal(Number(payload.meta?.total) || 0);
       }).catch(error => { if (!controller.signal.aborted) setReadError(error instanceof Error ? error.message : "Error"); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
@@ -259,9 +262,9 @@ export function AdminActivityTimeline({
 
     const noteActivity = createNoteActivity(trimmedNote, noteImportant, copy);
     const notes = activities.filter(activity => activity.type === "note");
-    if (!userId || notes.length >= 500) { setNoteStorageError(locale.startsWith("zh") ? "当前账号不可用或便签已达500条，内容仍保留在输入框。" : "Account non disponibile o limite di 500 note raggiunto. Il testo è conservato."); return; }
+    if (!userId || notes.length >= 500) { setNoteStorageError((locale.startsWith("en") ? englishUiCopy("Account non disponibile o limite di 500 note raggiunto. Il testo è conservato.") : locale.startsWith("zh") ? "当前账号不可用或便签已达500条，内容仍保留在输入框。" : "Account non disponibile o limite di 500 note raggiunto. Il testo è conservato.")); return; }
     try { localStorage.setItem(`partspro:admin-notes:v1:${userId}`, JSON.stringify([noteActivity, ...notes])); setNoteStorageError(""); }
-    catch { setNoteStorageError(locale.startsWith("zh") ? "浏览器未能保存便签，内容仍保留，请先复制备份。" : "Il browser non ha salvato la nota. Il testo resta: copialo prima di continuare."); return; }
+    catch { setNoteStorageError((locale.startsWith("en") ? englishUiCopy("Il browser non ha salvato la nota. Il testo resta: copialo prima di continuare.") : locale.startsWith("zh") ? "浏览器未能保存便签，内容仍保留，请先复制备份。" : "Il browser non ha salvato la nota. Il testo resta: copialo prima di continuare.")); return; }
 
     setActivities((currentActivities) =>
       sortActivities([noteActivity, ...currentActivities])
@@ -285,7 +288,7 @@ export function AdminActivityTimeline({
         </div>
 
         <div className="grid w-full min-w-0 grid-cols-2 gap-2 sm:flex xl:w-auto xl:justify-end">
-          <AdminSearchField containerClassName="col-span-2 min-w-0 flex-1 xl:w-[260px] xl:flex-none" value={query} onValueChange={setQuery} className="bg-white" aria-label={copy.searchPlaceholder} placeholder={copy.searchPlaceholder} clearLabel={locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca"} />
+          <AdminSearchField containerClassName="col-span-2 min-w-0 flex-1 xl:w-[260px] xl:flex-none" value={query} onValueChange={setQuery} className="bg-white" aria-label={copy.searchPlaceholder} placeholder={copy.searchPlaceholder} clearLabel={(locale.startsWith("en") ? englishUiCopy("Cancella ricerca") : locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca")} />
           <Select
             value={typeFilter}
             onValueChange={(value) => setTypeFilter(value as ActivityFilterValue)}
@@ -314,7 +317,7 @@ export function AdminActivityTimeline({
       </CardHeader>
 
       <CardContent className="space-y-3 p-3 pt-0 sm:space-y-4 sm:p-6 sm:pt-0">
-        <p className="text-xs text-slate-500">{locale.startsWith("zh") ? "真实活动按当前权限分页读取。备注仅保存在当前账号的本机浏览器中，不是团队共享记录；设备或浏览器清理后会丢失。筛选作用于当前页。" : "Attività reali paginate secondo i permessi. Le note sono personali e salvate solo nel browser di questo account; non sono condivise. I filtri agiscono sulla pagina corrente."}</p>
+        <p className="text-xs text-slate-500">{(locale.startsWith("en") ? englishUiCopy("Attività reali paginate secondo i permessi. Le note sono personali e salvate solo nel browser di questo account; non sono condivise. I filtri agiscono sulla pagina corrente.") : locale.startsWith("zh") ? "真实活动按当前权限分页读取。备注仅保存在当前账号的本机浏览器中，不是团队共享记录；设备或浏览器清理后会丢失。筛选作用于当前页。" : "Attività reali paginate secondo i permessi. Le note sono personali e salvate solo nel browser di questo account; non sono condivise. I filtri agiscono sulla pagina corrente.")}</p>
         {noteStorageError && <AdminNotice tone="warning" message={noteStorageError} />}
         {readError && <AdminNotice tone="error" message={readError} />}
         <AdminListPager page={page} pageSize={50} total={total} returned={activities.filter(item => item.type !== "note").length} pending={loading} onPageChange={setPage} />
@@ -463,9 +466,9 @@ function ActivityItem({
   const Icon = config.icon;
   const metadataEntries = getActivityMetadataEntries(activity);
   const target = activityTarget(activity, permissions);
-  const linkLabels: Record<string, string> = locale.startsWith("zh")
+  const linkLabels: Record<string, string> = (locale.startsWith("en") ? englishUiCopy({ order: "Apri ordine", product: "Apri prodotto", customerOrders: "Ordini del cliente", batches: "Apri lotti fornitori", rma: "Apri gestione resi", finance: "Apri gestione finanze" }) : locale.startsWith("zh")
     ? { order: "查看此订单", product: "查看此商品", customerOrders: "查看此客户的订单", batches: "进入到货批次", rma: "进入售后工作台", finance: "进入财务工作台" }
-    : { order: "Apri ordine", product: "Apri prodotto", customerOrders: "Ordini del cliente", batches: "Apri lotti fornitori", rma: "Apri gestione resi", finance: "Apri gestione finanze" };
+    : { order: "Apri ordine", product: "Apri prodotto", customerOrders: "Ordini del cliente", batches: "Apri lotti fornitori", rma: "Apri gestione resi", finance: "Apri gestione finanze" });
 
   return (
     <article

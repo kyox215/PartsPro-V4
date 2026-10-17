@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import { AdminSearchField } from "./admin-ui-controls";
 
 import * as React from "react";
@@ -865,7 +868,7 @@ export function AdminOrdersPanel({
       upsertOrder({ ...refreshedOrder, walletRefunds });
     }, (result) => { if (result.order) upsertOrder(result.order); });
     if (!outcome.ok) setNotice({ tone: "error", message: outcome.error });
-    else setNotice({ tone: outcome.refreshError ? "warning" : "success", message: `${successMessage}${outcome.refreshError ? ` · ${locale.startsWith("it") ? "Salvato; aggiornamento dettagli non riuscito. Riprova solo la lettura." : "已保存；详情刷新失败。请仅重试读取。"}` : ""}` });
+    else setNotice({ tone: outcome.refreshError ? "warning" : "success", message: `${successMessage}${outcome.refreshError ? ` · ${(locale.startsWith("en") ? englishUiCopy("Salvato; aggiornamento dettagli non riuscito. Riprova solo la lettura.") : locale.startsWith("it") ? "Salvato; aggiornamento dettagli non riuscito. Riprova solo la lettura." : "已保存；详情刷新失败。请仅重试读取。")}` : ""}` });
     setPendingOrderAction(null); mutationInFlight.current = false;
     return outcome;
   }, [adminSession, locale, text, upsertOrder]);
@@ -877,7 +880,7 @@ export function AdminOrdersPanel({
     finishOrderMutation(order, `${order.id}:shipping`, () => patchOrderShippingInApi(order.id, patch, text), successMessage), [finishOrderMutation, text]);
   const patchOrderLineFulfillment = React.useCallback((order: AdminOrder, line: OrderLine, patch: OrderLineFulfillmentInput) =>
     finishOrderMutation(order, `${order.id}:line:${line.id}`, () => patchOrderLineFulfillmentInApi(order.id, line.id, patch, text),
-      locale.startsWith("it") ? "Quantità salvata. La richiesta di rimborso richiede approvazione prima dell’accredito." : "数量已保存。退款申请经审批后入账。", true), [finishOrderMutation, locale, text]);
+      (locale.startsWith("en") ? englishUiCopy("Quantità salvata. La richiesta di rimborso richiede approvazione prima dell’accredito.") : locale.startsWith("it") ? "Quantità salvata. La richiesta di rimborso richiede approvazione prima dell’accredito." : "数量已保存。退款申请经审批后入账。"), true), [finishOrderMutation, locale, text]);
 
   const handleTransition = React.useCallback(
     (order: AdminOrder, status: OrderDbStatus, successMessage: string) => {
@@ -1105,7 +1108,7 @@ export function AdminOrdersPanel({
     const ids = selectedForPrint.slice(0, 50);
     if (!ids.length || printing) return;
     const printWindow = window.open("", "_blank", "width=900,height=1200");
-    if (!printWindow) { setNotice({ tone: "error", message: locale.startsWith("it") ? "Consenti la finestra di anteprima stampa." : "请允许打开打印预览窗口。" }); return; }
+    if (!printWindow) { setNotice({ tone: "error", message: (locale.startsWith("en") ? englishUiCopy("Consenti la finestra di anteprima stampa.") : locale.startsWith("it") ? "Consenti la finestra di anteprima stampa." : "请允许打开打印预览窗口。") }); return; }
     printWindow.opener = null; printWindow.document.body.textContent = text.common.refreshing;
     setPrinting(true);
     try {
@@ -1125,13 +1128,13 @@ export function AdminOrdersPanel({
   );
 
   const handleOpenOrder = React.useCallback((orderId: string) => {
-    if (document.querySelector("[data-admin-dirty='true']") && !window.confirm(locale.startsWith("it") ? "Abbandonare le modifiche non salvate?" : "放弃未保存的修改？")) return;
+    if (document.querySelector("[data-admin-dirty='true']") && !window.confirm((locale.startsWith("en") ? englishUiCopy("Abbandonare le modifiche non salvate?") : locale.startsWith("it") ? "Abbandonare le modifiche non salvate?" : "放弃未保存的修改？"))) return;
     setSelectedOrderId(orderId);
     setMobileDetailsOpen(true);
   }, [locale, setSelectedOrderId]);
 
   const handleOpenMobileDetails = React.useCallback((orderId: string) => {
-    if (document.querySelector("[data-admin-dirty='true']") && !window.confirm(locale.startsWith("it") ? "Abbandonare le modifiche non salvate?" : "放弃未保存的修改？")) return;
+    if (document.querySelector("[data-admin-dirty='true']") && !window.confirm((locale.startsWith("en") ? englishUiCopy("Abbandonare le modifiche non salvate?") : locale.startsWith("it") ? "Abbandonare le modifiche non salvate?" : "放弃未保存的修改？"))) return;
     setSelectedOrderId(orderId);
     setMobileDetailsOpen(true);
   }, [locale, setSelectedOrderId]);
@@ -1157,10 +1160,10 @@ export function AdminOrdersPanel({
 
   const activeDetailFilterCount = Number(Boolean(searchFilters.dateFrom)) + Number(Boolean(searchFilters.dateTo)) + Number(searchFilters.sort !== "operations_queue");
   const renderDateSortFilters = () => <div className="grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-4">
-            <label className="grid gap-1 text-xs font-semibold">{locale.startsWith("it") ? "Dal" : "开始日期"}<Input type="date" value={searchFilters.dateFrom} onChange={(event) => { setPage(1); setSearchFilters(current => ({ ...current, dateFrom: event.target.value })); }} /></label>
-            <label className="grid gap-1 text-xs font-semibold">{locale.startsWith("it") ? "Al" : "结束日期"}<Input type="date" value={searchFilters.dateTo} onChange={(event) => { setPage(1); setSearchFilters(current => ({ ...current, dateTo: event.target.value })); }} /></label>
-            <Select value={searchFilters.sort} onValueChange={(sort) => { setPage(1); setSearchFilters(current => ({ ...current, sort })); }}><SelectTrigger aria-label={locale.startsWith("it") ? "Ordina" : "排序"}><SelectValue /></SelectTrigger><SelectContent>{[
-              ["operations_queue", locale.startsWith("it") ? "Coda operativa" : "工作队列"], ["date_desc", locale.startsWith("it") ? "Più recenti" : "日期从新到旧"], ["date_asc", locale.startsWith("it") ? "Meno recenti" : "日期从旧到新"], ["total_desc", locale.startsWith("it") ? "Totale decrescente" : "金额从高到低"], ["total_asc", locale.startsWith("it") ? "Totale crescente" : "金额从低到高"]].map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
+            <label className="grid gap-1 text-xs font-semibold">{(locale.startsWith("en") ? englishUiCopy("Dal") : locale.startsWith("it") ? "Dal" : "开始日期")}<Input type="date" value={searchFilters.dateFrom} onChange={(event) => { setPage(1); setSearchFilters(current => ({ ...current, dateFrom: event.target.value })); }} /></label>
+            <label className="grid gap-1 text-xs font-semibold">{(locale.startsWith("en") ? englishUiCopy("Al") : locale.startsWith("it") ? "Al" : "结束日期")}<Input type="date" value={searchFilters.dateTo} onChange={(event) => { setPage(1); setSearchFilters(current => ({ ...current, dateTo: event.target.value })); }} /></label>
+            <Select value={searchFilters.sort} onValueChange={(sort) => { setPage(1); setSearchFilters(current => ({ ...current, sort })); }}><SelectTrigger aria-label={(locale.startsWith("en") ? englishUiCopy("Ordina") : locale.startsWith("it") ? "Ordina" : "排序")}><SelectValue /></SelectTrigger><SelectContent>{[
+              ["operations_queue", (locale.startsWith("en") ? englishUiCopy("Coda operativa") : locale.startsWith("it") ? "Coda operativa" : "工作队列")], ["date_desc", (locale.startsWith("en") ? englishUiCopy("Più recenti") : locale.startsWith("it") ? "Più recenti" : "日期从新到旧")], ["date_asc", (locale.startsWith("en") ? englishUiCopy("Meno recenti") : locale.startsWith("it") ? "Meno recenti" : "日期从旧到新")], ["total_desc", (locale.startsWith("en") ? englishUiCopy("Totale decrescente") : locale.startsWith("it") ? "Totale decrescente" : "金额从高到低")], ["total_asc", (locale.startsWith("en") ? englishUiCopy("Totale crescente") : locale.startsWith("it") ? "Totale crescente" : "金额从低到高")]].map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>
             <Button type="button" size="xs" variant="outline" onClick={() => { setPage(1); setSearchFilters({ dateFrom: "", dateTo: "", sort: "operations_queue" }); setOrderQuery(""); setStatusFilter("all"); setPaymentFilter("all"); setStockRiskFilter("all"); setReservationFilter("all"); setViewMode("orders"); }}>{text.common.reset}</Button>
   </div>;
 
@@ -1198,9 +1201,9 @@ export function AdminOrdersPanel({
       </div>
 
       <p className="hidden text-xs text-slate-500 sm:block">
-        {locale.startsWith("it")
+        {(locale.startsWith("en") ? englishUiCopy("Indicatori e conteggi calcolati sugli ordini della pagina corrente.") : locale.startsWith("it")
           ? "Indicatori e conteggi calcolati sugli ordini della pagina corrente."
-          : "指标和流程数量基于当前页订单。"}
+          : "指标和流程数量基于当前页订单。")}
       </p>
 
       <Card className="gap-0 rounded-md border-slate-200 bg-white py-0 shadow-[0_10px_26px_rgba(15,23,42,0.045)]">
@@ -1218,7 +1221,7 @@ export function AdminOrdersPanel({
                   {text.catalog.sourceBadge.replace("{source}", dataSource.label)}
                 </Badge>
                 <span className="min-w-0 break-words">
-                  <span className="sm:hidden">{locale.startsWith("it") ? "Code pagina · " : "流程按本页 · "}</span>
+                  <span className="sm:hidden">{(locale.startsWith("en") ? englishUiCopy("Code pagina · ") : locale.startsWith("it") ? "Code pagina · " : "流程按本页 · ")}</span>
                   {dataSource.syncedAt
                     ? formatAdminMessage(text.orders.sourceStats, {
                         returned: dataSource.returned,
@@ -1266,7 +1269,7 @@ export function AdminOrdersPanel({
             </div>
           </div>
           <div className="grid min-w-0 gap-2">
-            <AdminSearchField value={orderQuery} placeholder={locale.startsWith("it") ? "Numero ordine, cliente (min. 2 caratteri)" : "订单号、客户（至少2字）"} aria-label={locale.startsWith("it") ? "Ordine / cliente" : "订单/客户搜索"} clearLabel={text.common.reset} pending={isLoadingOrders} onValueChange={(value) => { setPage(1); setOrderQuery(value); }} />
+            <AdminSearchField value={orderQuery} placeholder={(locale.startsWith("en") ? englishUiCopy("Numero ordine, cliente (min. 2 caratteri)") : locale.startsWith("it") ? "Numero ordine, cliente (min. 2 caratteri)" : "订单号、客户（至少2字）")} aria-label={(locale.startsWith("en") ? englishUiCopy("Ordine / cliente") : locale.startsWith("it") ? "Ordine / cliente" : "订单/客户搜索")} clearLabel={text.common.reset} pending={isLoadingOrders} onValueChange={(value) => { setPage(1); setOrderQuery(value); }} />
             <div className="hidden sm:block">{renderDateSortFilters()}</div>
             <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 sm:block">
           <OrderWorkflowStrip
@@ -1277,22 +1280,22 @@ export function AdminOrdersPanel({
             onSelect={handleWorkflowSelect}
           />
               <details className="min-w-0 self-start rounded-md border border-slate-200 bg-white open:col-span-2 sm:hidden">
-                <summary className="flex min-h-11 cursor-pointer items-center gap-1 px-3 text-xs font-semibold">{locale.startsWith("it") ? "Altri filtri" : "更多筛选"}{activeDetailFilterCount > 0 && <Badge variant="outline">{activeDetailFilterCount}</Badge>}</summary>
+                <summary className="flex min-h-11 cursor-pointer items-center gap-1 px-3 text-xs font-semibold">{(locale.startsWith("en") ? englishUiCopy("Altri filtri") : locale.startsWith("it") ? "Altri filtri" : "更多筛选")}{activeDetailFilterCount > 0 && <Badge variant="outline">{activeDetailFilterCount}</Badge>}</summary>
                 <div className="border-t p-2">{renderDateSortFilters()}</div>
               </details>
             </div>
             {(customerId || returnAccountId || activeDetailFilterCount > 0) && <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
-              {customerId ? <Badge variant="outline">{locale.startsWith("it") ? "Filtro cliente" : "客户筛选"}: {customerId}</Badge> : null}
-              {searchFilters.dateFrom && <Button type="button" size="sm" variant="outline" onClick={() => { setPage(1); setSearchFilters(current => ({ ...current, dateFrom: "" })); }}>{locale.startsWith("it") ? "Dal" : "开始"}: {searchFilters.dateFrom} ×</Button>}
-              {searchFilters.dateTo && <Button type="button" size="sm" variant="outline" onClick={() => { setPage(1); setSearchFilters(current => ({ ...current, dateTo: "" })); }}>{locale.startsWith("it") ? "Al" : "结束"}: {searchFilters.dateTo} ×</Button>}
-              {searchFilters.sort !== "operations_queue" && <Button type="button" size="sm" variant="outline" onClick={() => { setPage(1); setSearchFilters(current => ({ ...current, sort: "operations_queue" })); }}>{locale.startsWith("it") ? "Ordinamento personalizzato" : "自定义排序"} ×</Button>}
-              {returnAccountId ? <a className="text-primary underline" href={`/admin?panel=accounts&accountId=${encodeURIComponent(returnAccountId)}`}>{locale.startsWith("it") ? "Torna all’account" : "返回账号"}</a> : null}
+              {customerId ? <Badge variant="outline">{(locale.startsWith("en") ? englishUiCopy("Filtro cliente") : locale.startsWith("it") ? "Filtro cliente" : "客户筛选")}: {customerId}</Badge> : null}
+              {searchFilters.dateFrom && <Button type="button" size="sm" variant="outline" onClick={() => { setPage(1); setSearchFilters(current => ({ ...current, dateFrom: "" })); }}>{(locale.startsWith("en") ? englishUiCopy("Dal") : locale.startsWith("it") ? "Dal" : "开始")}: {searchFilters.dateFrom} ×</Button>}
+              {searchFilters.dateTo && <Button type="button" size="sm" variant="outline" onClick={() => { setPage(1); setSearchFilters(current => ({ ...current, dateTo: "" })); }}>{(locale.startsWith("en") ? englishUiCopy("Al") : locale.startsWith("it") ? "Al" : "结束")}: {searchFilters.dateTo} ×</Button>}
+              {searchFilters.sort !== "operations_queue" && <Button type="button" size="sm" variant="outline" onClick={() => { setPage(1); setSearchFilters(current => ({ ...current, sort: "operations_queue" })); }}>{(locale.startsWith("en") ? englishUiCopy("Ordinamento personalizzato") : locale.startsWith("it") ? "Ordinamento personalizzato" : "自定义排序")} ×</Button>}
+              {returnAccountId ? <a className="text-primary underline" href={`/admin?panel=accounts&accountId=${encodeURIComponent(returnAccountId)}`}>{(locale.startsWith("en") ? englishUiCopy("Torna all’account") : locale.startsWith("it") ? "Torna all’account" : "返回账号")}</a> : null}
             </div>}
           </div>
         </CardHeader>
         <CardContent className="min-w-0 space-y-1.5 px-3 py-2 sm:space-y-2 sm:py-2.5">
           {notice && (
-            <AdminNotice tone={notice.tone} message={notice.message} onDismiss={() => setNotice(null)} dismissLabel={text.common.ok} action={notice.tone === "warning" && selectedOrder ? <Button size="xs" variant="outline" onClick={() => void loadOrderDetails(selectedOrder.id)}>{locale.startsWith("it") ? "Rileggi dettagli" : "重读详情"}</Button> : undefined} />
+            <AdminNotice tone={notice.tone} message={notice.message} onDismiss={() => setNotice(null)} dismissLabel={text.common.ok} action={notice.tone === "warning" && selectedOrder ? <Button size="xs" variant="outline" onClick={() => void loadOrderDetails(selectedOrder.id)}>{(locale.startsWith("en") ? englishUiCopy("Rileggi dettagli") : locale.startsWith("it") ? "Rileggi dettagli" : "重读详情")}</Button> : undefined} />
           )}
           {dataSource.error && (
             <div className="flex min-w-0 flex-col gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold leading-6 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
@@ -1340,18 +1343,18 @@ export function AdminOrdersPanel({
               </AdminBusyRegion>
             )}
           </div>
-          <details className="rounded-lg border p-2"><summary className="cursor-pointer text-sm font-semibold">{locale.startsWith("it") ? "Seleziona ordini per la stampa" : "选择订单批量打印"} ({selectedForPrint.length}/50)</summary>
+          <details className="rounded-lg border p-2"><summary className="cursor-pointer text-sm font-semibold">{(locale.startsWith("en") ? englishUiCopy("Seleziona ordini per la stampa") : locale.startsWith("it") ? "Seleziona ordini per la stampa" : "选择订单批量打印")} ({selectedForPrint.length}/50)</summary>
             <div className="mt-2 flex flex-wrap gap-3">{visibleOrders.map(order => <label key={order.id} className="flex items-center gap-2 text-xs"><Checkbox checked={selectedForPrint.includes(order.id)} disabled={!selectedForPrint.includes(order.id) && selectedForPrint.length >= 50} onCheckedChange={(checked) => setSelectedForPrint(current => checked ? [...new Set([...current, order.id])] : current.filter(id => id !== order.id))} />{shortOrderId(order.id)}</label>)}</div>
-            <div className="mt-2 flex gap-2"><Button type="button" size="sm" disabled={!selectedForPrint.length || printing} onClick={() => void handlePrintSelected()}><Printer className="size-4" />{locale.startsWith("it") ? "Anteprima stampa selezionati" : "打印所选预览"}</Button><Button variant="outline" size="sm" onClick={() => setSelectedForPrint([])}>{text.common.deselect}</Button></div>
+            <div className="mt-2 flex gap-2"><Button type="button" size="sm" disabled={!selectedForPrint.length || printing} onClick={() => void handlePrintSelected()}><Printer className="size-4" />{(locale.startsWith("en") ? englishUiCopy("Anteprima stampa selezionati") : locale.startsWith("it") ? "Anteprima stampa selezionati" : "打印所选预览")}</Button><Button variant="outline" size="sm" onClick={() => setSelectedForPrint([])}>{text.common.deselect}</Button></div>
           </details>
           <Dialog
             open={mobileDetailsOpen && selectedOrder !== null}
-            onOpenChange={(open) => { if (pendingOrderAction) return; if (!open && document.querySelector("[data-admin-dirty='true']") && !window.confirm(locale.startsWith("it") ? "Abbandonare le modifiche non salvate?" : "放弃未保存的修改？")) return; setMobileDetailsOpen(open); }}
+            onOpenChange={(open) => { if (pendingOrderAction) return; if (!open && document.querySelector("[data-admin-dirty='true']") && !window.confirm((locale.startsWith("en") ? englishUiCopy("Abbandonare le modifiche non salvate?") : locale.startsWith("it") ? "Abbandonare le modifiche non salvate?" : "放弃未保存的修改？"))) return; setMobileDetailsOpen(open); }}
           >
             {selectedOrder && (
               <DialogContent className="admin-ui-panel grid h-[min(760px,calc(100dvh-0.5rem))] max-h-[calc(100dvh-0.5rem)] w-[calc(100vw-0.5rem)] max-w-[calc(100vw-0.5rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg bg-white p-0 pt-7 sm:h-[min(820px,calc(100dvh-1rem))] sm:max-h-[calc(100dvh-1rem)] sm:w-[calc(100vw-1rem)] sm:max-w-[calc(100vw-1rem)] sm:pt-10 xl:max-w-[1280px] 2xl:max-w-[1360px]">
                 <DialogHeader className="border-b border-slate-200 px-2.5 pb-1.5 pr-12 sm:px-4 sm:pb-2.5">
-                  <Button type="button" variant="outline" size="xs" className="w-fit" disabled={pendingOrderAction !== null || visibleOrders.findIndex(order => order.id === selectedOrder.id) >= visibleOrders.length - 1} onClick={() => { const index = visibleOrders.findIndex(order => order.id === selectedOrder.id); const next = visibleOrders[index + 1]; if (next) handleOpenOrder(next.id); }}>{locale.startsWith("it") ? "Ordine successivo" : "处理下一单"}</Button>
+                  <Button type="button" variant="outline" size="xs" className="w-fit" disabled={pendingOrderAction !== null || visibleOrders.findIndex(order => order.id === selectedOrder.id) >= visibleOrders.length - 1} onClick={() => { const index = visibleOrders.findIndex(order => order.id === selectedOrder.id); const next = visibleOrders[index + 1]; if (next) handleOpenOrder(next.id); }}>{(locale.startsWith("en") ? englishUiCopy("Ordine successivo") : locale.startsWith("it") ? "Ordine successivo" : "处理下一单")}</Button>
                   <DialogTitle className="break-words text-sm font-black leading-tight text-slate-950 sm:text-base">
                     {formatAdminMessage(text.orders.detailDialogTitle, {
                       id: shortOrderId(selectedOrder.id),
@@ -4440,8 +4443,8 @@ function OrderLines({
   ) => Promise<OrderMutationResult>;
 }) {
   const { locale } = useI18n();
-  const copy = locale.startsWith("it") ? { title: "Registra quantità mancanti", description: "Di norma tutti i pezzi sono disponibili. Registra solo una quantità consegnata inferiore, con il motivo.", actual: "Quantità effettivamente consegnata", ordered: "Quantità ordinata", noShortage: "Se consegni tutto, completa l’imballaggio senza registrare una mancanza.", preview: "Pezzi mancanti", impact: "Il salvataggio avvia la registrazione della mancanza e la richiesta di rimborso, da approvare prima dell’accredito.", complete: "Quantità completa: nessuna mancanza da registrare.", reason: "Motivo della mancanza", example: "Ad esempio: inventario fisico zero, articolo prenotato non trovato.", save: "Salva mancanza" }
-    : { title: "登记缺货数量", description: "默认全部有货并按订购数量打包。只有实际缺货或少给时，填写实际给货数量和原因。", actual: "实际给货数量", ordered: "订购数量", noShortage: "没有缺货时无需保存，直接打包完成即可。", preview: "少给数量", impact: "保存后登记缺货并生成退款申请，经审批后入账。", complete: "当前等于订购数量，系统默认全给，不需要登记。", reason: "缺货原因", example: "例如：仓库实盘为0，锁货商品不存在。", save: "保存缺货" };
+  const copy = (locale.startsWith("en") ? englishUiCopy({ title: "Registra quantità mancanti", description: "Di norma tutti i pezzi sono disponibili. Registra solo una quantità consegnata inferiore, con il motivo.", actual: "Quantità effettivamente consegnata", ordered: "Quantità ordinata", noShortage: "Se consegni tutto, completa l’imballaggio senza registrare una mancanza.", preview: "Pezzi mancanti", impact: "Il salvataggio avvia la registrazione della mancanza e la richiesta di rimborso, da approvare prima dell’accredito.", complete: "Quantità completa: nessuna mancanza da registrare.", reason: "Motivo della mancanza", example: "Ad esempio: inventario fisico zero, articolo prenotato non trovato.", save: "Salva mancanza" }) : locale.startsWith("it") ? { title: "Registra quantità mancanti", description: "Di norma tutti i pezzi sono disponibili. Registra solo una quantità consegnata inferiore, con il motivo.", actual: "Quantità effettivamente consegnata", ordered: "Quantità ordinata", noShortage: "Se consegni tutto, completa l’imballaggio senza registrare una mancanza.", preview: "Pezzi mancanti", impact: "Il salvataggio avvia la registrazione della mancanza e la richiesta di rimborso, da approvare prima dell’accredito.", complete: "Quantità completa: nessuna mancanza da registrare.", reason: "Motivo della mancanza", example: "Ad esempio: inventario fisico zero, articolo prenotato non trovato.", save: "Salva mancanza" }
+    : { title: "登记缺货数量", description: "默认全部有货并按订购数量打包。只有实际缺货或少给时，填写实际给货数量和原因。", actual: "实际给货数量", ordered: "订购数量", noShortage: "没有缺货时无需保存，直接打包完成即可。", preview: "少给数量", impact: "保存后登记缺货并生成退款申请，经审批后入账。", complete: "当前等于订购数量，系统默认全给，不需要登记。", reason: "缺货原因", example: "例如：仓库实盘为0，锁货商品不存在。", save: "保存缺货" });
   const [formError, setFormError] = React.useState("");
   const [editingLine, setEditingLine] = React.useState<OrderLine | null>(null);
   const [actualQuantity, setActualQuantity] = React.useState("0");
@@ -4515,9 +4518,9 @@ function OrderLines({
                 </div>
                 <div className="mt-1.5 grid grid-cols-4 gap-1 text-xs max-[360px]:grid-cols-2">
                   <MobileFact label={text.orders.lines.quantity} value={`${line.quantity}`} />
-                  <MobileFact label={locale.startsWith("it") ? "Consegnati" : "实给"} value={`${lineEffectivePickedQty(line)}`} />
+                  <MobileFact label={(locale.startsWith("en") ? englishUiCopy("Consegnati") : locale.startsWith("it") ? "Consegnati" : "实给")} value={`${lineEffectivePickedQty(line)}`} />
                   <MobileFact label={text.orders.lines.reserved} value={`${line.reservedQty}`} />
-                  <MobileFact label={locale.startsWith("it") ? "Mancanti" : "缺货"} value={`${line.cancelledQty}`} />
+                  <MobileFact label={(locale.startsWith("en") ? englishUiCopy("Mancanti") : locale.startsWith("it") ? "Mancanti" : "缺货")} value={`${line.cancelledQty}`} />
                 </div>
                 {refundSummary && lineShortageRefundAmount(line) > 0 ? (
                   <div className="mt-1 grid grid-cols-2 gap-1 text-xs">
@@ -4552,7 +4555,7 @@ function OrderLines({
                       disabled={isMutating}
                       onClick={() => openEditor(line)}
                     >
-                      {locale.startsWith("it") ? "Registra mancanza" : "登记缺货"}
+                      {(locale.startsWith("en") ? englishUiCopy("Registra mancanza") : locale.startsWith("it") ? "Registra mancanza" : "登记缺货")}
                     </Button>
                   ) : null}
                 </div>
@@ -4568,11 +4571,11 @@ function OrderLines({
               <TableHead className="w-[188px]">{text.common.sku}</TableHead>
               <TableHead className="min-w-[420px]">{text.common.product}</TableHead>
               <TableHead className="w-[48px] text-center">{text.orders.lines.quantity}</TableHead>
-              <TableHead className="w-[56px] text-center">{locale.startsWith("it") ? "Consegnati" : "实给"}</TableHead>
+              <TableHead className="w-[56px] text-center">{(locale.startsWith("en") ? englishUiCopy("Consegnati") : locale.startsWith("it") ? "Consegnati" : "实给")}</TableHead>
               <TableHead className="w-[64px] text-center">{text.orders.lines.reserved}</TableHead>
               <TableHead className="w-[64px] text-center">{text.orders.lines.fulfilled}</TableHead>
               <TableHead className="w-[82px] text-right">{text.common.price}</TableHead>
-              <TableHead className="w-[84px] text-right">{locale.startsWith("it") ? "Azioni" : "操作"}</TableHead>
+              <TableHead className="w-[84px] text-right">{(locale.startsWith("en") ? englishUiCopy("Azioni") : locale.startsWith("it") ? "Azioni" : "操作")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody className="[&_td]:px-1.5 [&_td]:py-1.5">
@@ -4627,7 +4630,7 @@ function OrderLines({
                       disabled={isMutating}
                       onClick={() => openEditor(line)}
                     >
-                      {locale.startsWith("it") ? "Mancanza" : "缺货"}
+                      {(locale.startsWith("en") ? englishUiCopy("Mancanza") : locale.startsWith("it") ? "Mancanza" : "缺货")}
                     </Button>
                   ) : (
                     <span className="text-[11px] font-semibold text-slate-400">
@@ -8039,16 +8042,16 @@ function orderLineOperationalBadgeClass(line: OrderLine) {
 
 function orderLineOperationalLabel(line: OrderLine, locale: string) {
   if (line.cancelledQty >= line.quantity) {
-    return locale.startsWith("it") ? "Annullato per mancanza" : "缺货核销";
+    return (locale.startsWith("en") ? englishUiCopy("Annullato per mancanza") : locale.startsWith("it") ? "Annullato per mancanza" : "缺货核销");
   }
 
   if (line.cancelledQty > 0) {
-    return locale.startsWith("it") ? "Mancanza parziale" : "部分缺货";
+    return (locale.startsWith("en") ? englishUiCopy("Mancanza parziale") : locale.startsWith("it") ? "Mancanza parziale" : "部分缺货");
   }
 
   if (line.pickedQty >= line.quantity) {
-    return locale.startsWith("it") ? "Confermato" : "已确认";
+    return (locale.startsWith("en") ? englishUiCopy("Confermato") : locale.startsWith("it") ? "Confermato" : "已确认");
   }
 
-  return locale.startsWith("it") ? "Consegna completa prevista" : "默认全给";
+  return (locale.startsWith("en") ? englishUiCopy("Consegna completa prevista") : locale.startsWith("it") ? "Consegna completa prevista" : "默认全给");
 }

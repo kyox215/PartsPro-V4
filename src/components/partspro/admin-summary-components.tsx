@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import * as React from "react";
 import { Expand, X } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -53,7 +56,7 @@ export function AdminExpandableText({ text, className, lines = 2 }: {
     observer.observe(node);
     return () => { cancelAnimationFrame(frame); observer.disconnect(); };
   }, [text, lines, truncated]);
-  const label = zh ? "显示完整名称" : "Mostra nome completo";
+  const label = (locale.startsWith("en") ? englishUiCopy("Mostra nome completo") : zh ? "显示完整名称" : "Mostra nome completo");
   const textNode = <span ref={content} className={cn("block min-w-0 whitespace-normal break-words [overflow-wrap:anywhere]", lines === 1 ? "line-clamp-1" : "line-clamp-2")}>{text}</span>;
   return <span data-admin-expandable={truncated ? "truncated" : "complete"} className={cn("block min-w-0", className)}>
     {truncated ? <Popover open={open} onOpenChange={setOpen}>
@@ -61,7 +64,7 @@ export function AdminExpandableText({ text, className, lines = 2 }: {
         <span className="min-w-0 flex-1">{textNode}</span><Expand aria-hidden="true" className="absolute right-0 top-1/2 size-3.5 -translate-y-1/2 text-slate-500" />
       </button></PopoverTrigger>
       <PopoverContent align="start" aria-label={label} onEscapeKeyDown={event => event.stopPropagation()} className="admin-ui-panel w-[min(420px,calc(100vw-24px))] max-w-[calc(100vw-24px)] p-3">
-        <div className="flex items-center justify-between gap-2"><strong className="text-xs text-slate-500">{zh ? "完整名称" : "Nome completo"}</strong><button type="button" aria-label={zh ? "关闭完整名称" : "Chiudi nome completo"} className="flex size-11 shrink-0 items-center justify-center rounded-md hover:bg-slate-100" onClick={() => setOpen(false)}><X aria-hidden="true" className="size-4" /></button></div>
+        <div className="flex items-center justify-between gap-2"><strong className="text-xs text-slate-500">{(locale.startsWith("en") ? englishUiCopy("Nome completo") : zh ? "完整名称" : "Nome completo")}</strong><button type="button" aria-label={(locale.startsWith("en") ? englishUiCopy("Chiudi nome completo") : zh ? "关闭完整名称" : "Chiudi nome completo")} className="flex size-11 shrink-0 items-center justify-center rounded-md hover:bg-slate-100" onClick={() => setOpen(false)}><X aria-hidden="true" className="size-4" /></button></div>
         <p className="max-h-[50dvh] overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-950 [overflow-wrap:anywhere]">{text}</p>
       </PopoverContent>
     </Popover> : textNode}

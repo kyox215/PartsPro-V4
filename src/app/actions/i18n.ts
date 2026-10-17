@@ -9,22 +9,19 @@ import {
   type Locale,
   type LocaleScope,
 } from "@/i18n/config";
-import { persistCurrentAccountPreferredLocale } from "@/i18n/account-locale";
 
-export async function setLocale(locale: Locale, scope: LocaleScope) {
-  if (!isLocale(locale) || !isLocaleScope(scope)) {
+export async function setLocale(locale: Locale | null, scope: LocaleScope) {
+  if ((locale !== null && !isLocale(locale)) || !isLocaleScope(scope)) {
     return { ok: false };
   }
 
   const cookieStore = await cookies();
-  cookieStore.set(localeCookieByScope[scope], locale, {
+  cookieStore.set(localeCookieByScope[scope], locale ?? "", {
     path: "/",
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
-    maxAge: 60 * 60 * 24 * 365,
+    maxAge: locale === null ? 0 : 60 * 60 * 24 * 365,
   });
-
-  const persistence = await persistCurrentAccountPreferredLocale(locale);
 
   revalidatePath("/", "layout");
 
@@ -32,6 +29,6 @@ export async function setLocale(locale: Locale, scope: LocaleScope) {
     ok: true,
     locale,
     scope,
-    persisted: persistence.persisted,
+    persisted: true,
   };
 }

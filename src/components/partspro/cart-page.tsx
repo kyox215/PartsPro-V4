@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import * as React from "react";
 import { CartBulkEntry } from "./cart-bulk-entry";
 import { AsyncFeedback } from "./async-feedback";
@@ -680,7 +683,7 @@ function CartPageContent({
           </div>
 
           <CartBulkEntry companyId={assistedCompanyId} disabled={isLoginRequired} />
-          {undoItems ? <AsyncFeedback state="info" title={locale === "zh-CN" ? "已移除，可在30秒内撤销。" : "Articoli rimossi. Puoi annullare entro 30 secondi."} actions={<Button variant="outline" onClick={()=>{if(Date.now()>undoItems.expiresAt){setUndoItems(null);return;}setItems(restoreRemovedCartItems(readClientStoredCartItems(),undoItems.items));setUndoItems(null);retryCatalogLoad();}}>{locale === "zh-CN" ? "撤销" : "Annulla"}</Button>} /> : null}
+          {undoItems ? <AsyncFeedback state="info" title={(locale.startsWith("en") ? englishUiCopy("Articoli rimossi. Puoi annullare entro 30 secondi.") : locale === "zh-CN" ? "已移除，可在30秒内撤销。" : "Articoli rimossi. Puoi annullare entro 30 secondi.")} actions={<Button variant="outline" onClick={()=>{if(Date.now()>undoItems.expiresAt){setUndoItems(null);return;}setItems(restoreRemovedCartItems(readClientStoredCartItems(),undoItems.items));setUndoItems(null);retryCatalogLoad();}}>{(locale.startsWith("en") ? englishUiCopy("Annulla") : locale === "zh-CN" ? "撤销" : "Annulla")}</Button>} /> : null}
           {readyForCheckout && (
             <Card className="pp-cart-ready-status hidden border-emerald-200 bg-emerald-50 lg:block">
               <CardContent className="flex gap-2 p-3 text-xs text-emerald-950 sm:gap-3 sm:p-4 sm:text-sm">

@@ -48,6 +48,13 @@ const italianBase = parseStringDictionary(
   fs.readFileSync(italianBaseDictionaryPath, "utf8")
 );
 
+
+// Supplemental closure keys are shared by all three request dictionaries.
+const closureSource = fs.readFileSync(path.join(repoRoot, "src/i18n/dictionaries/registration-closure.ts"), "utf8");
+for (const [locale, target] of [["it-IT", italianStorefront], ["zh-CN", chineseStorefront]]) {
+  const start = closureSource.indexOf(`"${locale}": {`);
+  Object.assign(target, parseStringDictionary(closureSource.slice(start, closureSource.indexOf("\n  },", start))));
+}
 test("storefront Italian and Chinese dictionaries expose the same keys", () => {
   const italianKeys = new Set(sortedKeys(italianStorefront));
   const chineseKeys = new Set(sortedKeys(chineseStorefront));

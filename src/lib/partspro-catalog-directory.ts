@@ -1,3 +1,4 @@
+import { englishUiCopy } from "@/i18n/english-ui-copy";
 import { z } from "zod";
 import { catalogDepartments, type CatalogDepartment, type DeviceModelGroup } from "./partspro-data";
 
@@ -36,7 +37,7 @@ export const catalogMoveSchema = z.object({
 }).strict().refine((value) => new Set(value.products.map((p) => p.sku)).size === value.products.length, "Duplicate SKU");
 export const emptyCatalogDirectory: CatalogDirectory = { revision: "", nodes: [] };
 export function catalogNodeLabel(node: CatalogNodeInput, locale: string) {
-  return locale.startsWith("zh") ? node.nameZh : node.nameIt;
+  return locale.startsWith("en") ? englishUiCopy(node.nameIt) : locale.startsWith("zh") ? node.nameZh : node.nameIt;
 }
 
 // Universal products may have no model rows; their brand still belongs in navigation.

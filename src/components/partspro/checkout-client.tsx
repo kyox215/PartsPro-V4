@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy, englishUiTemplate } from "@/i18n/english-ui-copy";
+
+
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -373,7 +376,7 @@ function CheckoutClientContent({
   const [submissionRestored, setSubmissionRestored] = React.useState(false);
   const [resolvingSubmission, setResolvingSubmission] = React.useState(false);
   const submissionLocked = submitState.status === "loading" || submitState.status === "unknown";
-  const unknownMessage = locale === "zh-CN" ? "请求已发送，尚无法确认订单结果。请先核对结果；再次发送会复用原请求编号。" : "Richiesta inviata: esito ancora da verificare. Controlla prima il risultato; un nuovo invio usa lo stesso riferimento.";
+  const unknownMessage = (locale.startsWith("en") ? englishUiCopy("Richiesta inviata: esito ancora da verificare. Controlla prima il risultato; un nuovo invio usa lo stesso riferimento.") : locale === "zh-CN" ? "请求已发送，尚无法确认订单结果。请先核对结果；再次发送会复用原请求编号。" : "Richiesta inviata: esito ancora da verificare. Controlla prima il risultato; un nuovo invio usa lo stesso riferimento.");
   useUnsavedChanges(submitState.status === "loading" || submitState.status === "unknown", unknownMessage);
   React.useEffect(() => {
     let active = true;
@@ -911,7 +914,7 @@ function CheckoutClientContent({
     if(!componentActiveRef.current)return;
     pendingSubmissionRef.current = null;
     try { sessionStorage.removeItem(submissionScope); sessionStorage.removeItem(`${submissionScope}:draft`); } catch {}
-    setSubmitState({ status: "success", message: locale === "zh-CN" ? `订单 ${order.orderNo ?? order.id} 已创建。` : `Ordine ${order.orderNo ?? order.id} creato.`, order });
+    setSubmitState({ status: "success", message: (locale.startsWith("en") ? englishUiTemplate`Ordine ${order.orderNo ?? order.id} creato.` : locale === "zh-CN" ? `订单 ${order.orderNo ?? order.id} 已创建。` : `Ordine ${order.orderNo ?? order.id} creato.`), order });
     setSuccessDialogOpen(true);
     // Another tab/user action may have changed the cart while the response was lost.
     clearStoredCartIfSignature(attempt.cartSignature, initialAccountAccess?.userId ?? null);
@@ -931,14 +934,14 @@ function CheckoutClientContent({
       if (!response.ok) throw new Error("Verification unavailable");
       if (result.state === "created" && result.data?.id) acceptSubmittedOrder(result.data, attempt);
       else if(result.state === "cancelled") { pendingSubmissionRef.current=null;try{sessionStorage.removeItem(submissionScope);}catch{} setSubmitState({status:"idle"}); setPreview(idlePreviewState);setPreviewRetryToken(value=>value+1); }
-      else setSubmitState({ status: "unknown", message: result.state === "pending" ? (locale === "zh-CN" ? "订单仍在处理，请稍后再次核对。" : "Ordine ancora in elaborazione. Verifica tra poco.") : unknownMessage });
+      else setSubmitState({ status: "unknown", message: result.state === "pending" ? ((locale.startsWith("en") ? englishUiCopy("Ordine ancora in elaborazione. Verifica tra poco.") : locale === "zh-CN" ? "订单仍在处理，请稍后再次核对。" : "Ordine ancora in elaborazione. Verifica tra poco.")) : unknownMessage });
     } catch { setSubmitState({ status: "unknown", message: unknownMessage }); }
     finally { window.clearTimeout(timer); setResolvingSubmission(false); }
   }
 
   async function stopSubmission() {
     const attempt=pendingSubmissionRef.current;
-    if(!attempt || resolvingSubmission || !window.confirm(locale==="zh-CN" ? "停止本次请求后可重新编辑。已创建的订单不会取消，将显示实际结果。确定继续？" : "Ferma questa richiesta per modificare i dati. Un ordine già creato resta valido e verrà mostrato. Continuare?"))return;
+    if(!attempt || resolvingSubmission || !window.confirm((locale.startsWith("en") ? englishUiCopy("Ferma questa richiesta per modificare i dati. Un ordine già creato resta valido e verrà mostrato. Continuare?") : locale==="zh-CN" ? "停止本次请求后可重新编辑。已创建的订单不会取消，将显示实际结果。确定继续？" : "Ferma questa richiesta per modificare i dati. Un ordine già creato resta valido e verrà mostrato. Continuare?")))return;
     setResolvingSubmission(true);
     const controller=new AbortController();const timer=window.setTimeout(()=>controller.abort(),20000);
     try {
@@ -947,7 +950,7 @@ function CheckoutClientContent({
       if(result.state==="created" && result.data?.id)acceptSubmittedOrder(result.data,attempt);
       else if(result.state==="cancelled") {
         pendingSubmissionRef.current=null;try{sessionStorage.removeItem(submissionScope);}catch{}
-        setSubmitState({status:"idle",message:locale==="zh-CN"?"已停止原请求，请重新核对后提交。":"Richiesta fermata. Verifica i dati prima di inviare di nuovo."});
+        setSubmitState({status:"idle",message:(locale.startsWith("en") ? englishUiCopy("Richiesta fermata. Verifica i dati prima di inviare di nuovo.") : locale==="zh-CN"?"已停止原请求，请重新核对后提交。":"Richiesta fermata. Verifica i dati prima di inviare di nuovo.")});
         setPreview(idlePreviewState);setPreviewRetryToken(value=>value+1);setCatalogLoadState("idle");
       } else throw new Error("Stop not confirmed");
     }catch{setSubmitState({status:"unknown",message:unknownMessage});}
@@ -967,7 +970,7 @@ function CheckoutClientContent({
   const canRetryCheckoutValidation =
     isRemoteCartError || previewForUi.status === "error" || catalogLoadState === "error" || Boolean(pricingSession.error) || catalogPricesExpired;
 
-  if (runtime.mode === "needs-login") return <><StoreHeader initialAccountAccess={initialAccountAccess} /><main className="mx-auto max-w-xl px-4 py-10"><AsyncFeedback state="info" title={locale === "zh-CN" ? "登录后继续结算" : "Accedi per continuare"} description={locale === "zh-CN" ? "购物车将保留，登录后继续核对地址和金额。" : "Il carrello resta disponibile. Dopo l'accesso verifica indirizzo e importi."} actions={<Button asChild><Link href={loginHref}>{locale === "zh-CN" ? "登录" : "Accedi"}</Link></Button>} /></main></>;
+  if (runtime.mode === "needs-login") return <><StoreHeader initialAccountAccess={initialAccountAccess} /><main className="mx-auto max-w-xl px-4 py-10"><AsyncFeedback state="info" title={(locale.startsWith("en") ? englishUiCopy("Accedi per continuare") : locale === "zh-CN" ? "登录后继续结算" : "Accedi per continuare")} description={(locale.startsWith("en") ? englishUiCopy("Il carrello resta disponibile. Dopo l'accesso verifica indirizzo e importi.") : locale === "zh-CN" ? "购物车将保留，登录后继续核对地址和金额。" : "Il carrello resta disponibile. Dopo l'accesso verifica indirizzo e importi.")} actions={<Button asChild><Link href={loginHref}>{(locale.startsWith("en") ? englishUiCopy("Accedi") : locale === "zh-CN" ? "登录" : "Accedi")}</Link></Button>} /></main></>;
 
   return (
     <>
@@ -999,7 +1002,7 @@ function CheckoutClientContent({
             />
           ) : null}
           </fieldset>
-          {submitState.status === "unknown" ? <AsyncFeedback state="unknown" title={locale === "zh-CN" ? "订单结果待确认" : "Esito ordine da verificare"} description={<>{submitState.message}<span className="mt-2 block break-all font-mono text-xs">{pendingSubmissionRef.current?.requestId}</span></>} actions={<div className="flex flex-wrap gap-2"><Button disabled={resolvingSubmission} onClick={resolveSubmission}>{locale === "zh-CN" ? "核对结果" : "Verifica risultato"}</Button><Button variant="outline" disabled={resolvingSubmission} onClick={() => void submitOrder(true)}>{locale === "zh-CN" ? "重发原请求" : "Reinvia richiesta originale"}</Button><Button variant="outline" disabled={resolvingSubmission} onClick={stopSubmission}>{locale === "zh-CN" ? "停止原请求并重新编辑" : "Ferma richiesta e modifica"}</Button><Button asChild variant="ghost"><Link href="/account?section=orders">{locale === "zh-CN" ? "订单记录" : "I miei ordini"}</Link></Button></div>} /> : <GlobalBlockers blockers={blockers} />}
+          {submitState.status === "unknown" ? <AsyncFeedback state="unknown" title={(locale.startsWith("en") ? englishUiCopy("Esito ordine da verificare") : locale === "zh-CN" ? "订单结果待确认" : "Esito ordine da verificare")} description={<>{submitState.message}<span className="mt-2 block break-all font-mono text-xs">{pendingSubmissionRef.current?.requestId}</span></>} actions={<div className="flex flex-wrap gap-2"><Button disabled={resolvingSubmission} onClick={resolveSubmission}>{(locale.startsWith("en") ? englishUiCopy("Verifica risultato") : locale === "zh-CN" ? "核对结果" : "Verifica risultato")}</Button><Button variant="outline" disabled={resolvingSubmission} onClick={() => void submitOrder(true)}>{(locale.startsWith("en") ? englishUiCopy("Reinvia richiesta originale") : locale === "zh-CN" ? "重发原请求" : "Reinvia richiesta originale")}</Button><Button variant="outline" disabled={resolvingSubmission} onClick={stopSubmission}>{(locale.startsWith("en") ? englishUiCopy("Ferma richiesta e modifica") : locale === "zh-CN" ? "停止原请求并重新编辑" : "Ferma richiesta e modifica")}</Button><Button asChild variant="ghost"><Link href="/account?section=orders">{(locale.startsWith("en") ? englishUiCopy("I miei ordini") : locale === "zh-CN" ? "订单记录" : "I miei ordini")}</Link></Button></div>} /> : <GlobalBlockers blockers={blockers} />}
           {canRetryCheckoutValidation && (
             <Button
               type="button"
@@ -1020,7 +1023,7 @@ function CheckoutClientContent({
             error={submitAttempted ? formErrors.deliveryAddress : undefined}
           />
           <Card className="pp-checkout-methods">
-            <CardHeader><CardTitle><span className="pp-checkout-number">2</span>{locale === "zh-CN" ? "配送与付款" : "Consegna e pagamento"}</CardTitle></CardHeader>
+            <CardHeader><CardTitle><span className="pp-checkout-number">2</span>{(locale.startsWith("en") ? englishUiCopy("Consegna e pagamento") : locale === "zh-CN" ? "配送与付款" : "Consegna e pagamento")}</CardTitle></CardHeader>
             <CardContent className="pp-checkout-method-grid">
               <DeliverySection form={form} onChange={setForm} />
               <PaymentSection amountStatus={checkoutAmountStatus} form={form} isPreorder={isPreorder} onChange={setForm} walletPreview={walletPreview} />
@@ -1659,10 +1662,10 @@ function BuyerDetailsSection({company, profile, shippingAddress, profileHref, er
   const zh = locale === "zh-CN";
   const companyName = profile?.companyName || company?.name;
   return <Card className="pp-checkout-buyer">
-    <CardHeader><CardTitle><span className="pp-checkout-number">1</span>{zh ? "采购与配送资料" : "Dati cliente e consegna"}</CardTitle><Link className="pp-checkout-profile-link" href={profileHref}>{zh ? "编辑资料" : "Modifica dati"}<ChevronDown aria-hidden="true"/></Link></CardHeader>
+    <CardHeader><CardTitle><span className="pp-checkout-number">1</span>{(locale.startsWith("en") ? englishUiCopy("Dati cliente e consegna") : zh ? "采购与配送资料" : "Dati cliente e consegna")}</CardTitle><Link className="pp-checkout-profile-link" href={profileHref}>{(locale.startsWith("en") ? englishUiCopy("Modifica dati") : zh ? "编辑资料" : "Modifica dati")}<ChevronDown aria-hidden="true"/></Link></CardHeader>
     <CardContent className="pp-checkout-buyer-grid">
-      <div className="pp-checkout-buyer-identity"><span className="pp-checkout-buyer-icon"><Building2 aria-hidden="true"/></span><div><strong>{companyName || (zh ? "待完善采购资料" : "Completa i dati cliente")}</strong>{profile?.email ? <p><Mail aria-hidden="true"/>{profile.email}</p> : null}{profile?.phone ? <p><Phone aria-hidden="true"/>{profile.phone}</p> : null}</div></div>
-      <div className="pp-checkout-buyer-address"><div><MapPin aria-hidden="true"/><div><strong>{zh ? "配送地址" : "Indirizzo di consegna"}</strong><p>{shippingAddress || (zh ? "请先在个人资料中补全配送地址。" : "Completa l’indirizzo nel profilo cliente.")}</p></div></div><div><ClipboardCheck aria-hidden="true"/><div><strong>Partita IVA</strong><p>{profile?.vatNumber || company?.partitaIva || "—"}</p></div></div>{error ? <p role="alert" className="text-sm text-red-600">{error}</p> : null}</div>
+      <div className="pp-checkout-buyer-identity"><span className="pp-checkout-buyer-icon"><Building2 aria-hidden="true"/></span><div><strong>{companyName || ((locale.startsWith("en") ? englishUiCopy("Completa i dati cliente") : zh ? "待完善采购资料" : "Completa i dati cliente"))}</strong>{profile?.email ? <p><Mail aria-hidden="true"/>{profile.email}</p> : null}{profile?.phone ? <p><Phone aria-hidden="true"/>{profile.phone}</p> : null}</div></div>
+      <div className="pp-checkout-buyer-address"><div><MapPin aria-hidden="true"/><div><strong>{(locale.startsWith("en") ? englishUiCopy("Indirizzo di consegna") : zh ? "配送地址" : "Indirizzo di consegna")}</strong><p>{shippingAddress || ((locale.startsWith("en") ? englishUiCopy("Completa l’indirizzo nel profilo cliente.") : zh ? "请先在个人资料中补全配送地址。" : "Completa l’indirizzo nel profilo cliente."))}</p></div></div><div><ClipboardCheck aria-hidden="true"/><div><strong>Partita IVA</strong><p>{profile?.vatNumber || company?.partitaIva || "—"}</p></div></div>{error ? <p role="alert" className="text-sm text-red-600">{error}</p> : null}</div>
     </CardContent>
   </Card>;
 }

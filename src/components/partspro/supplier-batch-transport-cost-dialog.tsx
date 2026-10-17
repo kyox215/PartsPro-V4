@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy, englishUiTemplate } from "@/i18n/english-ui-copy";
+
+
 import * as React from "react";
 import {
   AlertTriangle,
@@ -492,7 +495,7 @@ const copy = {
   },
 } as const;
 
-type CostCopy = (typeof copy)[SupplierBatchCostLanguage];
+type CostCopy = (typeof copy)[Exclude<SupplierBatchCostLanguage, "en">];
 type SupplierBatchCostLineLike = {
   id: string;
   lineNo: number;
@@ -519,9 +522,9 @@ export function formatSupplierBatchCostLineLabel(
   line: Pick<SupplierBatchCostLineLike, "lineNo" | "skuCode">,
   language: SupplierBatchCostLanguage
 ): string {
-  return language === "it"
+  return (language.startsWith("en") ? englishUiTemplate`Ripartizione manuale Riga ${line.lineNo} SKU ${line.skuCode ?? "—"}` : language === "it"
     ? `Ripartizione manuale Riga ${line.lineNo} SKU ${line.skuCode ?? "—"}`
-    : `手工分摊 行 ${line.lineNo} SKU ${line.skuCode ?? "—"}`;
+    : `手工分摊 行 ${line.lineNo} SKU ${line.skuCode ?? "—"}`);
 }
 
 export function isSupplierBatchChargeFormEditable(
@@ -1579,7 +1582,7 @@ export function mapSupplierBatchCostErrorCode(
       it: "La risposta del servizio costi non supera i controlli; nessun costo è stato scritto. Controlla e riprova l'anteprima.",
     },
   };
-  return messages[key]?.[language] ?? (language === "it" ? "Errore costi non riconosciuto; riprova." : "未知成本错误，请稍后重试。");
+  return (language === "en" ? englishUiCopy(messages[key]?.it) : messages[key]?.[language]) ?? ((language.startsWith("en") ? englishUiCopy("Errore costi non riconosciuto; riprova.") : language === "it" ? "Errore costi non riconosciuto; riprova." : "未知成本错误，请稍后重试。"));
 }
 
 export function mapSupplierBatchSchemaIssues(
@@ -1888,7 +1891,7 @@ function formatCents(
   currency: string | null | undefined = "EUR",
   language: SupplierBatchCostLanguage = "zh"
 ): string {
-  return formatSupplierBatchCents(cents, currency, language === "it" ? "it-IT" : "zh-CN");
+  return formatSupplierBatchCents(cents, currency, (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN"));
 }
 
 function previewCents(
@@ -1918,7 +1921,7 @@ function formatPreviewAmount(
     cents,
     currency,
     currency === "EUR" ? null : baseCents,
-    language === "it" ? "it-IT" : "zh-CN"
+    (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN")
   );
 }
 
@@ -1929,7 +1932,7 @@ function formatCorrectionPreviewEurCents(
   return formatSupplierBatchCents(
     cents,
     "EUR",
-    language === "it" ? "it-IT" : "zh-CN"
+    (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN")
   );
 }
 
@@ -1970,7 +1973,7 @@ function formatPreviewLineCents(
   // authoritative display in that case, including ordinary (non-correction)
   // previews.
   return line.originalCurrencyComparable === false
-    ? formatSupplierBatchCents(eurCents, "EUR", language === "it" ? "it-IT" : "zh-CN")
+    ? formatSupplierBatchCents(eurCents, "EUR", (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN"))
     : formatPreviewAmount(result, originalCents, null, language);
 }
 
@@ -2025,7 +2028,7 @@ export function SupplierBatchTransportCostDialog({
   onOpenChange: (open: boolean) => void;
   open: boolean;
 }) {
-  const text = copy[language];
+  const text = (language === "en" ? englishUiCopy(copy.it) : copy[language]);
   // Preserve the pre-V2 call contract: a supplied charge without an explicit
   // mode is still an editable estimate. Confirmed charges must opt into the
   // dedicated correction flow explicitly.
@@ -2096,7 +2099,7 @@ export function SupplierBatchTransportCostDialog({
     setDraftDirty(false);
     setAdvancedOpen(false);
     confirmGateRef.current = false;
-  }, [detail.batch, invalidatePreviewRequest]);
+  }, [detail.batch, invalidatePreviewRequest, setConfirmDialogOpen, setCloseGuardOpen]);
 
   React.useEffect(() => {
     if (!open) {

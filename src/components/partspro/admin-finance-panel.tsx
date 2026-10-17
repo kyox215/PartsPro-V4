@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import { AdminSearchField } from "./admin-ui-controls";
 import { AdminMetricSummary } from "./admin-summary-components";
 
@@ -489,7 +492,7 @@ function FinanceTable({
     <Card className="rounded-lg border-slate-200 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
       <CardContent className="p-0">
         <FinanceReadNotice copy={copy} error={error} stale={stale} loading={isLoading} onRetry={onRetry} />
-        <p className="px-3 py-2 text-xs text-slate-500 md:hidden">{locale.startsWith("zh") ? "横向滑动查看参考编号、金额与成本口径" : "Scorri per vedere riferimenti, importi e base dei costi"}</p>
+        <p className="px-3 py-2 text-xs text-slate-500 md:hidden">{(locale.startsWith("en") ? englishUiCopy("Scorri per vedere riferimenti, importi e base dei costi") : locale.startsWith("zh") ? "横向滑动查看参考编号、金额与成本口径" : "Scorri per vedere riferimenti, importi e base dei costi")}</p>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
@@ -766,7 +769,7 @@ function FinanceEntryDialog({ type, copy, onSaved, row }: {
   const close = (value: boolean) => {
     if (isSaving) return;
     if (!value && dirty) {
-      if (!window.confirm(locale.startsWith("zh") ? "放弃未保存记账内容？" : "Scartare i dati contabili non salvati?")) return;
+      if (!window.confirm((locale.startsWith("en") ? englishUiCopy("Scartare i dati contabili non salvati?") : locale.startsWith("zh") ? "放弃未保存记账内容？" : "Scartare i dati contabili non salvati?"))) return;
       const reset = emptyEntryForm(new Date()); setForm(reset); setLoadedForm(JSON.stringify(reset)); setUncertain(false); setError("");
     }
     setOpen(value);
@@ -780,8 +783,8 @@ function FinanceEntryDialog({ type, copy, onSaved, row }: {
       <form onSubmit={submit} noValidate className="contents">
         <DialogBody className="space-y-4">
           {error && !uncertain ? <AdminNotice tone="error" message={error} action={editing && !original ? <Button variant="outline" type="button" onClick={() => setDetailReload((value) => value + 1)}>{copy.retry}</Button> : undefined} /> : null}
-          {uncertain ? <AdminNotice tone="warning" title={locale.startsWith("it") ? "Esito da verificare" : "结果需要核对"} message={<>{copy.uncertain}{error && <p className="mt-1">{error}</p>}</>} action={<Button type="button" variant="outline" className="h-auto whitespace-normal" onClick={() => { setUncertain(false); setError(""); }}>{copy.allowRetryAfterReview}</Button>} /> : null}
-          <AdminErrorSummary focusKey={validationAttempt} title={locale.startsWith("it") ? "Controlla i campi indicati" : "请检查以下字段"} issues={Object.entries(summaryMessages).map(([key, messages]) => ({ id: `${id}-${key}`, message: messages.join(" · ") }))} />
+          {uncertain ? <AdminNotice tone="warning" title={(locale.startsWith("en") ? englishUiCopy("Esito da verificare") : locale.startsWith("it") ? "Esito da verificare" : "结果需要核对")} message={<>{copy.uncertain}{error && <p className="mt-1">{error}</p>}</>} action={<Button type="button" variant="outline" className="h-auto whitespace-normal" onClick={() => { setUncertain(false); setError(""); }}>{copy.allowRetryAfterReview}</Button>} /> : null}
+          <AdminErrorSummary focusKey={validationAttempt} title={(locale.startsWith("en") ? englishUiCopy("Controlla i campi indicati") : locale.startsWith("it") ? "Controlla i campi indicati" : "请检查以下字段")} issues={Object.entries(summaryMessages).map(([key, messages]) => ({ id: `${id}-${key}`, message: messages.join(" · ") }))} />
           {entryLoading ? <p role="status">{copy.loading}</p> : null}
           {original ? <div className="rounded-lg border bg-slate-50 p-3 text-xs text-slate-600">
             <strong>{copy.original} · {original.id}</strong><p>{original.description ?? original.batchCode ?? copy.addPayment} · {original.occurredAt ?? original.paidAt ?? "--"} · {formatFinanceMoney(original.amountNet, locale, original.currency)} + IVA {formatFinanceMoney(original.vatAmount, locale, original.currency)} = {formatFinanceMoney(original.amountGross, locale, original.currency)} · {original.status}</p>
@@ -876,7 +879,7 @@ function formatFinanceMoney(value: number, locale: string, currency: string) {
 }
 function expenseCategoryLabel(category: string, locale: string) {
   const labels: Record<string, [string, string]> = { rent: ["租金", "Affitto"], salary: ["工资", "Stipendi"], shipping: ["运输", "Spedizioni"], platform_fee: ["平台费", "Commissioni piattaforma"], utilities: ["水电", "Utenze"], tax: ["税费", "Imposte"], supplier_fee: ["供应商费用", "Costi fornitore"], bank_fee: ["银行费用", "Commissioni bancarie"], other: ["其他", "Altro"], purchase: ["采购", "Acquisti"], supplier_payment: ["供应商付款", "Pagamento fornitore"] };
-  return labels[category]?.[locale.startsWith("it") ? 1 : 0] ?? category;
+  return (locale.startsWith("en") ? englishUiCopy(labels[category]?.[1]) : labels[category]?.[locale.startsWith("zh") ? 0 : 1]) ?? category;
 }
 
 function ConfidenceBadge({ confidence }: { confidence: FinanceConfidence }) {

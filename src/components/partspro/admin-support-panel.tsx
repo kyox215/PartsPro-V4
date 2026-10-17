@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import { AdminSearchField, AdminSearchableSelect } from "./admin-ui-controls";
 
 import * as React from "react";
@@ -241,7 +244,7 @@ export function AdminSupportPanel({
   focusConversationId?: string;
 }) {
   const { locale } = useI18n();
-  const copy = locale === "zh-CN" ? supportCopy.zh : supportCopy.it;
+  const copy = (locale.startsWith("en") ? englishUiCopy(supportCopy.it) : locale === "zh-CN" ? supportCopy.zh : supportCopy.it);
   const [status, setStatus] = React.useState<SupportStatus>("open");
   const [scope, setScope] = React.useState<SupportScope>("all");
   const [conversations, setConversations] = React.useState<SupportConversation[]>([]);
@@ -332,7 +335,7 @@ export function AdminSupportPanel({
 
       const payload = await response.json();
       if (!response.ok) {
-        throw new Error(payload.error?.code === "SUPPORT_SEARCH_TOO_BROAD" ? (locale.startsWith("zh") ? "匹配客户过多，请输入更精确的客户姓名或邮箱。" : "Troppi clienti corrispondenti. Inserisci nome o email più precisi.") : payload.error?.message ?? copy.unavailable);
+        throw new Error(payload.error?.code === "SUPPORT_SEARCH_TOO_BROAD" ? ((locale.startsWith("en") ? englishUiCopy("Troppi clienti corrispondenti. Inserisci nome o email più precisi.") : locale.startsWith("zh") ? "匹配客户过多，请输入更精确的客户姓名或邮箱。" : "Troppi clienti corrispondenti. Inserisci nome o email più precisi.")) : payload.error?.message ?? copy.unavailable);
       }
       if (signal?.aborted) return;
       const nextConversations = readConversations(payload);
@@ -553,7 +556,7 @@ export function AdminSupportPanel({
       if (selectedIdRef.current === conversationId) {
         setDetail(nextDetail);
         if (nextDetail) setAssignee(nextDetail.conversation.assignedTo ?? unassignedValue);
-        setNotice({ message: nextDetail && !payload?.meta?.readError ? copy.actions.refresh : locale.startsWith("zh") ? "操作已保存，详情重读失败。请刷新核对，不要重复执行动作。" : "Operazione salvata, rilettura non riuscita. Aggiorna senza ripetere l’azione.", tone: nextDetail && !payload?.meta?.readError ? "success" : "warning" });
+        setNotice({ message: nextDetail && !payload?.meta?.readError ? copy.actions.refresh : (locale.startsWith("en") ? englishUiCopy("Operazione salvata, rilettura non riuscita. Aggiorna senza ripetere l’azione.") : locale.startsWith("zh") ? "操作已保存，详情重读失败。请刷新核对，不要重复执行动作。" : "Operazione salvata, rilettura non riuscita. Aggiorna senza ripetere l’azione."), tone: nextDetail && !payload?.meta?.readError ? "success" : "warning" });
       }
       void refreshList();
       void refreshInbox();
@@ -604,7 +607,7 @@ export function AdminSupportPanel({
       delete replyAttempts.current[conversationId];
       void refreshList(); void refreshInbox();
       if (!nextDetail || payload?.meta?.followupError) {
-        const savedNotice: Notice = { tone: "warning", message: locale.startsWith("zh") ? "消息已发送；后续状态或详情更新失败，请重读会话。不要再次发送同一内容。" : "Messaggio inviato; aggiornamento stato o dettaglio non riuscito. Rileggi la conversazione senza inviare di nuovo." };
+        const savedNotice: Notice = { tone: "warning", message: (locale.startsWith("en") ? englishUiCopy("Messaggio inviato; aggiornamento stato o dettaglio non riuscito. Rileggi la conversazione senza inviare di nuovo.") : locale.startsWith("zh") ? "消息已发送；后续状态或详情更新失败，请重读会话。不要再次发送同一内容。" : "Messaggio inviato; aggiornamento stato o dettaglio non riuscito. Rileggi la conversazione senza inviare di nuovo.") };
         setNotice(savedNotice);
         void refreshDetail(conversationId, undefined, savedNotice);
       }
@@ -683,8 +686,8 @@ export function AdminSupportPanel({
           </div>
         </div>
         <form className="mt-3 flex gap-2" onSubmit={e => { e.preventDefault(); setPage(0); setSearch(searchInput.trim()); }}>
-          <AdminSearchField containerClassName="min-w-0 flex-1" aria-label={locale.startsWith("zh") ? "搜索客户或会话" : "Cerca cliente o conversazione"} placeholder={locale.startsWith("zh") ? "客户、邮箱、会话标题或编号" : "Cliente, email, oggetto o ID"} value={searchInput} onValueChange={setSearchInput} pending={isLoadingList} clearLabel={locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca"} />
-          <Button type="submit" variant="outline">{locale.startsWith("zh") ? "搜索" : "Cerca"}</Button>
+          <AdminSearchField containerClassName="min-w-0 flex-1" aria-label={(locale.startsWith("en") ? englishUiCopy("Cerca cliente o conversazione") : locale.startsWith("zh") ? "搜索客户或会话" : "Cerca cliente o conversazione")} placeholder={(locale.startsWith("en") ? englishUiCopy("Cliente, email, oggetto o ID") : locale.startsWith("zh") ? "客户、邮箱、会话标题或编号" : "Cliente, email, oggetto o ID")} value={searchInput} onValueChange={setSearchInput} pending={isLoadingList} clearLabel={(locale.startsWith("en") ? englishUiCopy("Cancella ricerca") : locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca")} />
+          <Button type="submit" variant="outline">{(locale.startsWith("en") ? englishUiCopy("Cerca") : locale.startsWith("zh") ? "搜索" : "Cerca")}</Button>
         </form>
         <div className="mt-1.5 grid grid-cols-4 gap-1 sm:hidden">
           <MobileInboxModeButton
@@ -1385,7 +1388,7 @@ function formatSupportTime(value: string | null, locale: string) {
     return "--";
   }
 
-  return new Intl.DateTimeFormat(locale === "zh-CN" ? "zh-CN" : "it-IT", {
+  return new Intl.DateTimeFormat((locale.startsWith("en") ? "en-US" : locale === "zh-CN" ? "zh-CN" : "it-IT"), {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",

@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import * as React from "react";
 import { AlertTriangle, FileSpreadsheet, FileText, LockKeyhole, Pencil, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +31,7 @@ import {
   type SupplierBatchCurrency,
 } from "@/lib/partspro-supplier-batch-money";
 
-export type SupplierBatchCostLanguage = "zh" | "it";
+export type SupplierBatchCostLanguage = "en" | "zh" | "it";
 export type SupplierBatchCostExportFormat = "csv" | "xlsx";
 
 export type SupplierBatchChargeView = Omit<SupplierBatchCharge, "currency"> & {
@@ -357,7 +360,7 @@ type CostCopy = {
   line: string;
 };
 
-const COPY: Record<SupplierBatchCostLanguage, CostCopy> = {
+const COPY: Record<Exclude<SupplierBatchCostLanguage, "en">, CostCopy> = {
   zh: {
     status: {
       unrecorded: "未登记",
@@ -563,11 +566,11 @@ function formatCents(
   currency: string | null | undefined = "EUR",
   language: SupplierBatchCostLanguage = "zh"
 ): string {
-  return formatSupplierBatchCents(cents, currency, language === "it" ? "it-IT" : "zh-CN");
+  return formatSupplierBatchCents(cents, currency, (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN"));
 }
 
 function currencyLabel(currency: SupplierBatchCurrency, language: SupplierBatchCostLanguage): string {
-  return language === "it" ? currency : `${currency} 原币`;
+  return (language.startsWith("en") ? englishUiCopy(currency) : language === "it" ? currency : `${currency} 原币`);
 }
 
 function formatSummaryValue(
@@ -577,7 +580,7 @@ function formatSummaryValue(
   language: SupplierBatchCostLanguage,
   originalTotalsComparable = true
 ): string {
-  const locale = language === "it" ? "it-IT" : "zh-CN";
+  const locale = (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN");
   if (!originalTotalsComparable) {
     return baseAmountCents === null
       ? "—"
@@ -619,7 +622,7 @@ function formatChargeAmount(
     amountCents,
     currency,
     currency === "EUR" ? null : base,
-    language === "it" ? "it-IT" : "zh-CN"
+    (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN")
   );
 }
 
@@ -631,7 +634,7 @@ export function formatSupplierBatchUnitCost(
   if (value === null || !Number.isFinite(value)) {
     return "—";
   }
-  return formatSupplierBatchUnitMoney(value, currency, language === "it" ? "it-IT" : "zh-CN");
+  return formatSupplierBatchUnitMoney(value, currency, (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN"));
 }
 
 function statusClass(status: SupplierBatchCostStatus | "unavailable"): string {
@@ -664,7 +667,7 @@ function formatDate(value: string | null, language: SupplierBatchCostLanguage): 
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? "—"
-    : date.toLocaleDateString(language === "it" ? "it-IT" : "zh-CN");
+    : date.toLocaleDateString((language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN"));
 }
 
 export function SupplierBatchCostSummaryCompact({
@@ -676,7 +679,7 @@ export function SupplierBatchCostSummaryCompact({
   language: SupplierBatchCostLanguage;
   canReadCosts: boolean;
 }) {
-  const copy = COPY[language];
+  const copy = (language === "en" ? englishUiCopy(COPY.it) : COPY[language]);
   const display = getSupplierBatchCostSummaryDisplay(summary);
   const primaryLine = display.hasConfirmed
     ? `${copy.confirmedShort} ${copy.transportShort} ${formatSummaryValue(display.confirmedTransportCents, display.currency, display.confirmedTransportBaseCents, language, display.originalTotalsComparable)} · ${copy.landedShort} ${formatSummaryValue(display.confirmedLandedCents, display.currency, display.confirmedLandedBaseCents, language, display.originalTotalsComparable)}`
@@ -698,7 +701,7 @@ export function SupplierBatchCostSummaryCompact({
           <div className="text-[11px] text-slate-500">
             {display.originalTotalsComparable
               ? currencyLabel(display.currency, language)
-              : language === "it" ? "Base EUR (valute originali separate)" : "EUR 本位币（原币分组）"}
+              : (language.startsWith("en") ? englishUiCopy("Base EUR (valute originali separate)") : language === "it" ? "Base EUR (valute originali separate)" : "EUR 本位币（原币分组）")}
             {display.currency !== "EUR" && display.fxRateToEur !== null
               ? ` · 1 ${display.currency} = ${display.fxRateToEur} EUR`
               : ""}
@@ -729,7 +732,7 @@ export function SupplierBatchLineCostCompact({
   language: SupplierBatchCostLanguage;
   canReadCosts: boolean;
 }) {
-  const copy = COPY[language];
+  const copy = (language === "en" ? englishUiCopy(COPY.it) : COPY[language]);
   const display = getSupplierBatchCostSummaryDisplay(summary);
   const visible = canReadCosts && display.hasConfirmed && costs !== null;
   const originalComparable =
@@ -745,8 +748,8 @@ export function SupplierBatchLineCostCompact({
       <CostLine label={copy.inbound} value={visible ? money(costs.confirmedInboundCents, costs.confirmedInboundEurCents) : "—"} strong />
       <CostLine label={copy.landedUnit} value={visible
         ? originalComparable
-          ? formatSupplierBatchUnitMoney(costs.landedUnitCost, display.currency, language === "it" ? "it-IT" : "zh-CN")
-          : formatSupplierBatchUnitMoney(costs.landedUnitCostEur ?? null, "EUR", language === "it" ? "it-IT" : "zh-CN")
+          ? formatSupplierBatchUnitMoney(costs.landedUnitCost, display.currency, (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN"))
+          : formatSupplierBatchUnitMoney(costs.landedUnitCostEur ?? null, "EUR", (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN"))
         : "—"} strong />
       <CostLine label={copy.landedLine} value={visible ? money(costs.landedLineCostCents, costs.landedLineCostEurCents) : "—"} strong />
     </div>
@@ -793,7 +796,7 @@ export function SupplierBatchTransportCostCard({
   onCorrectCharge?: (charge: SupplierBatchChargeView) => void;
   onExportCharges?: (format: SupplierBatchCostExportFormat) => void;
 }) {
-  const copy = COPY[language];
+  const copy = (language === "en" ? englishUiCopy(COPY.it) : COPY[language]);
   // `canManageCosts` is a legacy estimate-only alias. Keep the render gates
   // on the explicit capability so confirmation/correction/export cannot be
   // accidentally unlocked by the legacy permission.
@@ -802,7 +805,7 @@ export function SupplierBatchTransportCostCard({
   const summary = detail.batch.costSummary;
   const display = getSupplierBatchCostSummaryDisplay(summary);
   const hasReviewCodes = summary !== null && summary.reviewCodes.length > 0;
-  const locale = language === "it" ? "it-IT" : "zh-CN";
+  const locale = (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN");
   const currency = normalizeSupplierBatchCurrency(detail.batch.currency ?? display.currency);
   const goodsFxRate = detail.batch.goodsValueFxRateToEur ?? display.fxRateToEur;
   const goodsFxDate = detail.batch.goodsValueFxDate ?? display.fxRateDate;
@@ -850,11 +853,11 @@ export function SupplierBatchTransportCostCard({
             <CostMetric label={copy.confirmedLanded} value={formatSummaryValue(display.confirmedLandedCents, display.currency, display.confirmedLandedBaseCents, language)} />
             <CostMetric
               label={copy.projectedLanded}
-              value={display.hasEstimate ? `${formatSummaryValue(display.projectedLandedCents, display.currency, display.projectedLandedBaseCents, language)} · ${language === "zh" ? "含预估" : "stimato"}` : formatSummaryValue(display.projectedLandedCents, display.currency, display.projectedLandedBaseCents, language)}
+              value={display.hasEstimate ? `${formatSummaryValue(display.projectedLandedCents, display.currency, display.projectedLandedBaseCents, language)} · ${(language.startsWith("en") ? englishUiCopy("stimato") : language === "zh" ? "含预估" : "stimato")}` : formatSummaryValue(display.projectedLandedCents, display.currency, display.projectedLandedBaseCents, language)}
             />
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-500">
-            <span>{copy.currencyHint}: {display.originalTotalsComparable ? currency : (language === "it" ? "base EUR (valute separate)" : "EUR 本位币（原币分组）")}</span>
+            <span>{copy.currencyHint}: {display.originalTotalsComparable ? currency : ((language.startsWith("en") ? englishUiCopy("base EUR (valute separate)") : language === "it" ? "base EUR (valute separate)" : "EUR 本位币（原币分组）"))}</span>
             {display.currency !== "EUR" ? (
               <span>
                 {copy.fxSnapshot}: {goodsFxRate === null
@@ -1047,7 +1050,7 @@ function ChargeAuditMeta({
   copy: CostCopy;
   language: SupplierBatchCostLanguage;
 }) {
-  const locale = language === "it" ? "it-IT" : "zh-CN";
+  const locale = (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN");
   const fingerprint = charge.payloadFingerprint?.trim() ?? "";
   const fingerprintLabel = fingerprint
     ? `${fingerprint.slice(0, 16)}${fingerprint.length > 16 ? "…" : ""}`
@@ -1109,16 +1112,16 @@ function supplierBatchHistoryStatusLabel(
 ) {
   const key = status?.trim().toLowerCase();
   if (key === "pending_finance_adjustment" || key === "finance_adjustment_required") {
-    return language === "it" ? "Adeguamento finanziario richiesto" : "需财务调整";
+    return (language.startsWith("en") ? englishUiCopy("Adeguamento finanziario richiesto") : language === "it" ? "Adeguamento finanziario richiesto" : "需财务调整");
   }
   if (key === "corrected" || key === "applied") {
-    return language === "it" ? "Rettificato" : "已纠正";
+    return (language.startsWith("en") ? englishUiCopy("Rettificato") : language === "it" ? "Rettificato" : "已纠正");
   }
   if (key === "confirmed") {
-    return language === "it" ? "Confermato" : "已确认";
+    return (language.startsWith("en") ? englishUiCopy("Confermato") : language === "it" ? "Confermato" : "已确认");
   }
   if (key === "estimated") {
-    return language === "it" ? "Stimato" : "预估";
+    return (language.startsWith("en") ? englishUiCopy("Stimato") : language === "it" ? "Stimato" : "预估");
   }
   return status ?? "—";
 }
@@ -1132,7 +1135,7 @@ function SupplierBatchAllocationsSection({
   copy: CostCopy;
   language: SupplierBatchCostLanguage;
 }) {
-  const locale = language === "it" ? "it-IT" : "zh-CN";
+  const locale = (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN");
   return (
     <section className="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3" aria-label={copy.allocations}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1149,7 +1152,7 @@ function SupplierBatchAllocationsSection({
                 <TableRow>
                   <TableHead>{copy.line}</TableHead>
                   <TableHead>SKU</TableHead>
-                  <TableHead>{copy.capitalized} ({language === "it" ? "valuta originale" : "原币金额（按币种）"})</TableHead>
+                  <TableHead>{copy.capitalized} ({(language.startsWith("en") ? englishUiCopy("valuta originale") : language === "it" ? "valuta originale" : "原币金额（按币种）")})</TableHead>
                   <TableHead>EUR</TableHead>
                   <TableHead>±</TableHead>
                   <TableHead>{copy.date}</TableHead>
@@ -1202,7 +1205,7 @@ function SupplierBatchHistorySection({
   copy: CostCopy;
   language: SupplierBatchCostLanguage;
 }) {
-  const locale = language === "it" ? "it-IT" : "zh-CN";
+  const locale = (language.startsWith("en") ? "en-US" : language === "it" ? "it-IT" : "zh-CN");
   return (
     <section className="mt-4 rounded-md border border-slate-200 bg-white p-3" aria-label={copy.history}>
       <h3 className="text-sm font-black text-slate-950">{copy.history}</h3>

@@ -93,3 +93,23 @@ function defaultProtocol(host: string) {
     ? "http"
     : "https";
 }
+
+/** Remove onboarding flags after save while preserving a safe requested destination. */
+export function postProfileSaveRedirect(returnTo: string | null, currentSearch: string) {
+  const cleaned = cleanAuthRedirect(returnTo, "");
+  if (cleaned) {
+    const destination = new URL(cleaned, "https://partspro.invalid");
+    const blocked = ["/login", "/auth", "/admin"].some(path => destination.pathname === path || destination.pathname.startsWith(`${path}/`));
+    if (!blocked) {
+      if (destination.pathname === "/account") {
+        destination.searchParams.delete("setup");
+        destination.searchParams.delete("returnTo");
+      }
+      return `${destination.pathname}${destination.search}${destination.hash}`;
+    }
+  }
+  const params = new URLSearchParams(currentSearch);
+  params.delete("setup");
+  params.delete("returnTo");
+  return `/account${params.size ? `?${params}` : ""}`;
+}

@@ -1,5 +1,8 @@
 "use client";
 
+import { englishUiCopy } from "@/i18n/english-ui-copy";
+
+
 import { usePriceFreshness } from "./storefront-refresh-provider";
 import { QuoteRegion } from "./storefront-refresh-status";
 import { ProductPriceExplanation } from "./product-price-explanation";
@@ -153,9 +156,9 @@ export const ProductCard = memo(function ProductCard({
   const dialogReason = canOpenAccountGate ? priceGateReason : blockedCartReason;
   const dialogMissingFields = cartAccess.allowed ? [] : cartAccess.missingFields;
   const addFailedHint = mixedCartRejected
-    ? locale === "zh-CN"
+    ? (locale.startsWith("en") ? englishUiCopy("Articoli disponibili e preordini richiedono ordini separati. Completa prima il carrello attuale.") : locale === "zh-CN"
       ? "现货与预售需要分开下单。请先完成当前购物车，再采购另一类商品。"
-      : "Articoli disponibili e preordini richiedono ordini separati. Completa prima il carrello attuale."
+      : "Articoli disponibili e preordini richiedono ordini separati. Completa prima il carrello attuale.")
     : tx(
     t,
     "storefront.product.card.addFailedHint",
@@ -369,7 +372,7 @@ export const ProductCard = memo(function ProductCard({
                   </>
                 )}
               </QuoteRegion></div>
-              {quotePending ? <Button type="button" disabled size="sm" className="pp-card-add" aria-label={locale === "zh-CN" ? "正在核对价格" : "Verifica prezzo"}><ShoppingCart className="size-4"/></Button> : canAddToCart && cartQuantity > 0 ? (
+              {quotePending ? <Button type="button" disabled size="sm" className="pp-card-add" aria-label={(locale.startsWith("en") ? englishUiCopy("Verifica prezzo") : locale === "zh-CN" ? "正在核对价格" : "Verifica prezzo")}><ShoppingCart className="size-4"/></Button> : canAddToCart && cartQuantity > 0 ? (
                 <ProductCartQuantityControl product={product} />
               ) : canAddToCart ? (
                 <Button
