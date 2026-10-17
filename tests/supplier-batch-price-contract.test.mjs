@@ -139,6 +139,17 @@ test("back glass fallback remains Back Cover", () => {
   assert.equal(normalizeCategory("Back Glass iPhone 15"), "Back Cover");
 });
 
+test("REMAX usage categories survive product mapping without changing phone batteries", () => {
+  const { normalizeCategory } = loadRepositoryCategoryHelpers();
+
+  for (const category of ["Cavi dati", "Batterie esterne", "Caricatori", "Audio", "Raffreddatori"]) {
+    assert.equal(normalizeCategory(category), category);
+  }
+  assert.equal(normalizeCategory("  BATTERIE ESTERNE  "), "Batterie esterne");
+  assert.equal(normalizeCategory("Batterie"), "Batterie");
+  assert.equal(normalizeCategory("Battery iPhone 15"), "Batterie");
+});
+
 test("inventory contract accepts later sales while enforcing current ledger identities", () => {
   const readInventoryContractIssues = loadVerifierInventoryHelper();
   const product = {

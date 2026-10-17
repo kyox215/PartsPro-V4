@@ -17164,6 +17164,10 @@ function normalizeCategory(value: string) {
     return "Schermi";
   }
 
+  if (normalized === "batterie esterne") {
+    return "Batterie esterne";
+  }
+
   if (normalized.includes("batter")) {
     return "Batterie";
   }
