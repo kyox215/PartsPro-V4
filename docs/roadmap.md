@@ -248,7 +248,8 @@ Last reviewed: 2026-10-12
 - 合入已上线UI06 e9e814d/8002518，保留紧凑页头和筛选草稿，主目录其它改动未混入。无真实邮箱注册或物理iPhone系统键盘验收。报告 `docs/audits/2026-10-17-registration-device-locale-release.md`，证据 `outputs/registration-device-locale/2026-10-17/release/`，任务转done。
 
 
-## 2026-10-17 UI07：移动端高密度预览还原（执行中）
+## 2026-10-17 UI07：移动端高密度预览还原（已上线）
 
-- TASK-20261017-UI07：已获老板明确实施及上线授权。基于正式 REG02 4096f92 / dpl_BTLh3gDWL3P8fF9gPVLmVoSsJZR1 建立隔离分支，落实7张批准预览，仅调整<768px前台。主目录其它未提交运行源码不纳入发布，无API/DB/env/后台/Logo变更或migration依赖。
-- 已完成移动布局、三语210几何检查与30桌面对照、筛选/数量/刷新/身份保护及草稿交互检查，24+60测试、lint/build通过；独立初步SOURCE_GO。候选与正式推广待完成，详见docs/audits/2026-10-17-storefront-mobile-density-release.md。
+- TASK-20261017-UI07已完成。运行提交 `c68206ccd977ba6c8770bc6753bd37f2fbc86a38` 已推送隔离分支 `codex/storefront-mobile-density-20261017`；独立SOURCE_GO/PROMOTE_GO后，同一构建 `dpl_B8UXo2AiVFfNyrqvDThCSAwNLJGw` 已推广至www/apex，apex307到www。回退保留BTL/4096f92。
+- 落实7张批准预览，仅调整<768px前台，所有商品区横向紧凑卡，正式预售卡191px、同卡降低45.8%；购物/结算/账户/详情/售后/申请/登录/帮助及局部状态统一压缩。主目录其它未提交运行源码不纳入发布，无API/DB/env/后台/Logo/交易协议改动或migration依赖。
+- 24+60测试、lint、本地/远端build、210手机几何及30桌面对照通过；473上传源hash一致。候选和正式各12+30 HTTP通过，实际三语及手机/桌面、账户/购物/结算只读布局已核对，短时error/fatal为空，独立RELEASE_VERIFIED。真实业务写及物理iPhone键盘未做E2E。报告 `docs/audits/2026-10-17-storefront-mobile-density-release.md`，证据 `outputs/storefront-mobile-density/2026-10-17/`，任务转done。

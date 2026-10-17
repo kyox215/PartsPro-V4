@@ -1,6 +1,6 @@
 # UI07 — 移动端高密度预览还原发布复核
 
-Task：TASK-20261017-UI07。状态：源码验证完成，候选发布前复核中；本记录不表示已推广生产。
+Task：TASK-20261017-UI07。状态：已上线，独立RELEASE_VERIFIED；候选验证后推广同一构建。
 
 ## 范围与授权
 
@@ -25,7 +25,7 @@ Task：TASK-20261017-UI07。状态：源码验证完成，候选发布前复核�
 - 筛选草稿/取消回焦/应用/保留q与sort重置、搜索清除、24→48分页、数量、慢刷新15秒错误出口与44px重试、兼容同hash及图片缩放已通过本地实际组件合成数据检查。过期报价禁用购买、同账户刷新保留草稿、身份变化立即清除旧公司/余额并保留公共骨架；不冒充真实业务写E2E。
 - 原生未保存确认框导致浏览器DOM操作超时；通过CUA原生Chrome仅切回本地测试tab并点击取消恢复，AX确认草稿保留。没有修改生产资料。第一次本地build因verification中的基线.tsx副本被TypeScript纳入而失败，已把副本改为.source；无运行源码修复或配置放宽。
 - 最终 storefront24 + 相关60（含新增预订日期语言行为）均通过；完整lint（排除本地fixture生成物）及Next16生产build通过。CSS解析/作用域均通过。
-- 独立守门已给初步SOURCE_GO：复核Next16 CSS/Server→Client边界、业务身份/报价、REG02及API/admin/DB/Logo保护。4个初审问题（帮助桌面编号/网格、结果footer匹配、同hash再开、关闭翻译）已修。冻结精确SHA后仍需复核最终delta和候选证据。
+- 独立守门已完成最终SOURCE_GO/STAGE_GO/PROMOTE_GO与发布后RELEASE_VERIFIED：复核Next16边界、业务身份/报价、REG02及API/admin/DB/Logo保护；4个初审问题（帮助桌面编号/网格、结果footer匹配、同hash再开、关闭翻译）已修，冻结源码及候选分别复核。
 
 ## 质量边界与发布门
 
@@ -33,4 +33,9 @@ Task：TASK-20261017-UI07。状态：源码验证完成，候选发布前复核�
 
 ## 发布结果
 
-待补精确提交、源码指纹、部署/推广、域名/日志和回退核对。
+- 运行提交 `c68206ccd977ba6c8770bc6753bd37f2fbc86a38`；tree `40e860fec70fe80a09db4d0cf7123427e542e877`；源码指纹 `7736ed5ba02171cd03966864edb1d8f572cf5c4287004d6353fc557e48b408f8`。分支已推送，1127 tracked文件一致、503保护文件未改。
+- 独立SOURCE_GO/STAGE_GO后创建生产配置且skip-domain候选 `dpl_B8UXo2AiVFfNyrqvDThCSAwNLJGw`（r5f5u9hzv）；远端48秒build成功。473上传源文件hash全匹配，唯一额外项为hash正确的生成next-env.d.ts。
+- 候选12页面HTTP +30设备语言/三语/匿名隔离检查通过；Chrome实际语言菜单ZH→IT→EN、320详情、390首页/目录及入口、768/1536目录、筛选取消回焦均通过。候选console error/warn为空，限定时段runtime error/fatal为空。
+- 独立PROMOTE_GO后于2026-10-17将同一构建推广；www/apex均READY且精确c68206c，apex直接307→www。正式12+30 HTTP通过；已登录账户手机首页/目录/账户/购物车/结算仅做只读布局检查，无横溢，不记录客户字段值。320英文、768/1536桌面与三语UI通过，语言还原中文；四张正式预售卡均191px。
+- 最终运行error/fatal检查窗口15:56:03–16:01:03 UTC为空；独立发布守门再次live确认B8UX正式一致及回退BTL仍READY，结论RELEASE_VERIFIED。没有真实交易、客户资料/售后/客服写入；不把只读视图或合成fixture当成业务写E2E。
+- 发布证据归档：`outputs/storefront-mobile-density/2026-10-17/release/`；正式手机截图：`actual/production-home-zh-390.jpg`、`actual/production-catalog-zh-390.jpg`、`actual/production-preorder-zh-390.jpg`。回退保留 `dpl_BTLh3gDWL3P8fF9gPVLmVoSsJZR1` /4096f92。记录以独立docs-only提交归档，不创建新部署。

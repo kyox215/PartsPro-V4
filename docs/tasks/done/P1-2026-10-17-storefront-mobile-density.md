@@ -1,7 +1,7 @@
 # UI07 — 移动端高密度预览还原与发布
 
-状态：review
-看板目录：now
+状态：done
+看板目录：done
 优先级：P1
 Task ID：TASK-20261017-UI07
 风险等级：R3
@@ -51,4 +51,4 @@ Responsible：当前执行代理；Approver：老板（当前明确实施及上�
 
 ## 验证证据与结果
 
-已完成24 storefront +60相关测试、全量lint/build、210手机几何及30桌面对照；独立初步SOURCE_GO。详见docs/audits/2026-10-17-storefront-mobile-density-release.md；候选/推广仍待完成。
+已完成24 storefront +60相关测试、全量lint/build、210手机几何及30桌面对照；独立SOURCE_GO/PROMOTE_GO后，同一B8UX/c68206c构建已推广正式www/apex。候选与正式各12+30 HTTP、真实三语及响应式只读浏览器验证通过；独立RELEASE_VERIFIED，回退BTL/4096保留。详见docs/audits/2026-10-17-storefront-mobile-density-release.md。真实业务写/物理iPhone键盘不在本次E2E验证内。
