@@ -216,6 +216,9 @@ Last reviewed: 2026-10-12
 - 自动审批拒绝资料保存校验点击，未执行或绕过；真实交易/资料/申请/通知写入未测。旧submitted待付款文案和计数口径差异仍待后续规范，分页统计边界已提醒。报告 `docs/audits/2026-10-17-storefront-component-fidelity.md`，任务已转done，全套 `outputs/storefront-fidelity-detail/2026-10-17/partspro-ui-full-kit-ui04.zip`。
 
 
-## 2026-10-17 UI05：前台局部加载与后台刷新（进行中）
+## 2026-10-17 UI05：前台局部加载与后台刷新（已上线）
 
-TASK-20261017-UI05，按老板已批准计划，从正式FU4/f89a515建立隔离候选，移除整页隐藏和刷新重建；保留身份/报价隔离与交易门禁。主目录已有改动不参与。完成后在本节记录实际验证与精确部署，API/DB/env/后台不变。
+- TASK-20261017-UI05 已完成。运行提交 `a1073b8767c16ba48eab90aa2f0d976032ab53d4` 已推送 `codex/storefront-local-refresh-20261017`；独立 SOURCE_GO、STAGE_GO2、PROMOTE_GO 后，将 `dpl_B8YduhG5zUjCYirDGSuc6xX8fBtV` 同构建推广。www/apex 均核对 READY/同SHA，apex307到www；回退保留 `dpl_FU4dTyHQ8MxxtxPsMKTztGYqR64N` / f89a515。
+- 取消按刷新版本隐藏/重建整页，增加公开安全骨架、共享刷新调度、120ms局部提示、15s终态和显式重试；保留同账户筛选、分页、草稿和弹层。身份/代客scope隔离与过期报价购买门禁保留；目录每批最多50、并发2且拒绝旧响应。目录/购物车原有空Suspense回退一并替换。
+- 6+51相关合同/行为测试、lint（排除本地verification生成bundle）、本地和远端build通过；1097源码blob一致/450保护文件无改/459上传文件核对，源码fp `a39383d337c4b219f28a21d80f7f3229e89ac49edaac690fa56e47e43b89b68a`。候选/正式各12HTTP、真实Next导航及语言切换、正式1536/390布局通过，短时error/fatal均0。真实组件合成夹具验证慢网/断网/超时、焦点风暴、分页/滚动/数量和订单备注、弹层焦点及身份变化；不冒充真实业务写E2E。
+- API、数据库、环境变量、后台、Logo和价格算法未变，无migration依赖。主目录现有未提交改动保留，运行源码在 `.company-tmp/storefront-local-refresh-20261017`，未合并main。详细报告 `docs/audits/2026-10-17-storefront-local-refresh-release.md`；任务 `docs/tasks/done/P1-2026-10-17-storefront-local-refresh.md`，预览证据 `outputs/storefront-local-refresh/2026-10-17/`。
