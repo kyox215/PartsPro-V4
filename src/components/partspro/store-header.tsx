@@ -10,6 +10,7 @@ import type { CatalogDepartmentGroup } from "@/lib/partspro-data";
 import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import type { CatalogSelection } from "./catalog-brand-tree";
+import { globalCatalogSearch } from "./catalog-filters.mjs";
 import { PartsProLogo } from "./logo";
 import { LanguageSwitcher } from "./language-switcher";
 import {
@@ -130,7 +131,7 @@ export function StoreHeader({
 
 
     if (onCatalogSelect) {
-      startSearchTransition(async () => { await onCatalogSelect({ searchQuery: query }); });
+      startSearchTransition(async () => { await onCatalogSelect(globalCatalogSearch(query)); });
       return;
     }
 
@@ -148,6 +149,15 @@ export function StoreHeader({
     <>
       <header data-account-page={accountPage || undefined} className="pp-store-header fixed inset-x-0 top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
         <div className="pp-store-header-row mx-auto flex h-14 w-full max-w-[1500px] items-center gap-2 px-3 sm:h-16 sm:gap-3 sm:px-4">
+          <div className="pp-header-menu">
+            <StoreDeferredMobileMenu
+              assistedCompanyId={assistedCompanyId}
+              departmentGroups={departmentGroups}
+              onCatalogSelect={onCatalogSelect}
+              prefetchCatalogLinks={prefetchCatalogLinks}
+              selectedCatalog={selectedCatalog}
+            />
+          </div>
           <Link
             href="/"
             aria-label={tx(t, "storefront.home.header.logoLabel", "Torna alla home PartsPro")}
@@ -211,15 +221,6 @@ export function StoreHeader({
             staffLabel={tx(t, "storefront.account.staffRole", "Accesso staff")}
           />
 
-          <div className="pp-header-menu">
-            <StoreDeferredMobileMenu
-              assistedCompanyId={assistedCompanyId}
-              departmentGroups={departmentGroups}
-              onCatalogSelect={onCatalogSelect}
-              prefetchCatalogLinks={prefetchCatalogLinks}
-              selectedCatalog={selectedCatalog}
-            />
-          </div>
         </div>
         <form onSubmit={handleSearchSubmit} className="pp-header-mobile-search relative mx-3 mb-2 xl:hidden" role="search">
           <label htmlFor="store-header-search" className="sr-only">{tx(t, "storefront.header.searchFull", "Cerca SKU, brand, modello...")}</label>

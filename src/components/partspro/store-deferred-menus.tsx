@@ -15,7 +15,8 @@ const accountMenu = createMenuLoader(() =>
 const mobileMenu = createMenuLoader(() =>
   import("./store-mobile-menu").then((module) => module.StoreMobileMenu)
 );
-const desktopQuery = "(min-width: 1024px)";
+// Match the header's CSS visibility: tablets already use desktop navigation.
+const desktopQuery = "(min-width: 768px)";
 
 function subscribeToMobile(callback: () => void) {
   const media = window.matchMedia(desktopQuery);

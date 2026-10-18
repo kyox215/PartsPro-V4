@@ -9,7 +9,7 @@ import { createLatestRequest } from "@/lib/latest-request.mjs";
 import { refreshVisibleCatalog } from "@/lib/storefront-refresh.mjs";
 import { useStorefrontRefresh } from "./storefront-refresh-provider";
 import { RefreshStatus } from "./storefront-refresh-status";
-import { countCatalogFilters, resetCatalogFilters, removeCatalogFilter } from "./catalog-filters.mjs";
+import { countCatalogFilters, resetCatalogFilters, removeCatalogFilter, globalCatalogSearch } from "./catalog-filters.mjs";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -49,8 +49,7 @@ import { StoreHeader } from "./store-header";
 import { useCatalogDirectory } from "./catalog-directory-provider";
 import { catalogNodeLabel } from "@/lib/partspro-catalog-directory";
 import { useI18n, useT } from "./i18n-provider";
-import {
-} from "./pending-feedback";
+import { useDelayedVisible } from "./pending-feedback";
 
 type CatalogSort = "name" | "stock_desc" | "updated_desc";
 type CatalogSelection = BaseCatalogSelection & { sort?: CatalogSort };
@@ -235,6 +234,7 @@ function CatalogPageContent({
         : null
   );
   const [filterOpen, setFilterOpen] = useState(false);
+  const [pendingControl, setPendingControl] = useState<"search" | "sort" | "filters" | "navigation">("navigation");
   const filterTriggerRef = useRef<HTMLButtonElement>(null);
   const [draftFilters, setDraftFilters] = useState<CatalogSelection>({});
   const [draftDepartment, setDraftDepartment] = useState<CatalogDepartment | null>("phone");
@@ -479,6 +479,7 @@ function CatalogPageContent({
       };
 
       if (buildCatalogSelectionPath(nextSelection, assistedCompanyId) === buildCatalogSelectionPath(browseSnapshot.current.selection, assistedCompanyId)) return;
+      setPendingControl("navigation");
       setSearchTerm(nextSelection.model ?? "");
       setSearchQuery(nextSelection.searchQuery ?? "");
       setModelSeries(nextSelection.modelSeries ?? "");
@@ -498,6 +499,8 @@ function CatalogPageContent({
 
   const hiddenProductCount = Math.max(filteredTotal - products.length, 0);
   const catalogReplacing = catalogLoadState === "loading";
+  const showSearchPending = useDelayedVisible(catalogReplacing && pendingControl === "search");
+  const showSortPending = useDelayedVisible(catalogReplacing && pendingControl === "sort");
   const accountGateCopy =
     !assistedCompanyId && isCustomerActionRequiredReason(priceGateReason)
       ? getAccountGateCopy(t, priceGateReason)
@@ -518,7 +521,8 @@ function CatalogPageContent({
     selectCatalog({ sort });
   }
 
-  async function selectCatalog(requestedSelection: CatalogSelection) {
+  async function selectCatalog(requestedSelection: CatalogSelection, control: typeof pendingControl = "navigation") {
+    setPendingControl(control);
     const selection = { ...requestedSelection, sort: normalizeCatalogSort(requestedSelection.sort ?? sort) };
     setSort(selection.sort);
     const nextFilters: CatalogFiltersState = {
@@ -570,11 +574,11 @@ function CatalogPageContent({
           <h1 className="sr-only">{searchQuery || searchTerm ? txFormat(t,"storefront.ux.searchResults","Risultati per “{query}”",{query:searchQuery || searchTerm}) : tx(t,"storefront.ux.browseCatalog","Sfoglia catalogo")}</h1>
           <form className="pp-catalog-compact-search" role="search" onSubmit={event => {
             event.preventDefault();
-            selectCatalog({ ...selectedCatalog, searchQuery: String(new FormData(event.currentTarget).get("q") ?? "") });
+            void selectCatalog(globalCatalogSearch(String(new FormData(event.currentTarget).get("q") ?? "")), "search");
           }}>
             <Search aria-hidden="true"/>
             <input name="q" key={searchQuery} defaultValue={searchQuery} aria-label={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")} placeholder={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")}/>
-            <button type="submit" aria-label={tx(t,"storefront.header.searchSubmit","Cerca")}><ChevronRight aria-hidden="true"/></button>
+            <button type="submit" aria-label={tx(t,"storefront.header.searchSubmit","Cerca")} aria-busy={catalogReplacing && pendingControl === "search" || undefined}>{showSearchPending ? <Loader2 aria-hidden="true" className="animate-spin motion-reduce:animate-none"/> : <ChevronRight aria-hidden="true"/>}</button>
           </form>
           <Dialog open={filterOpen} onOpenChange={setFilterOpen}>
             <DialogContent closeLabel={t("common.close")} className="pp-storefront-portal pp-catalog-filter-dialog" onCloseAutoFocus={event => {
@@ -604,7 +608,7 @@ function CatalogPageContent({
               </div>
               <div className="pp-filter-actions">
                 <Button type="button" variant="outline" onClick={() => {setDraftFilters(resetCatalogFilters(draftFilters));setDraftBrand(null);setDraftDepartment("phone");}}>{tx(t,"storefront.reference.reset","Ripristina")}</Button>
-                <Button type="button" disabled={catalogReplacing} onClick={async () => { if (await selectCatalog(draftFilters)) setFilterOpen(false); }}>{catalogReplacing ? <Loader2 aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none"/> : null}{tx(t,"storefront.reference.apply","Applica filtri")}</Button>
+                <Button type="button" disabled={catalogReplacing} onClick={async () => { if (await selectCatalog(draftFilters, "filters")) setFilterOpen(false); }}>{catalogReplacing && pendingControl === "filters" ? <Loader2 aria-hidden="true" className="size-4 animate-spin motion-reduce:animate-none"/> : null}{tx(t,"storefront.reference.apply","Applica filtri")}</Button>
               </div>
             </DialogContent>
           </Dialog>
@@ -625,14 +629,15 @@ function CatalogPageContent({
             />
           ) : null}
           <div className="pp-catalog-compact-toolbar">
-            <div className="pp-catalog-compact-feedback"><RefreshStatus reserveSpace={false} busy={backgroundRefresh || catalogReplacing} failed={backgroundError} retry={refresh.retry}/></div>
-            <label htmlFor="catalog-sort" className="pp-catalog-compact-sort">
+            <div className="pp-catalog-compact-feedback"><RefreshStatus reserveSpace={false} busy={backgroundRefresh} failed={backgroundError} retry={refresh.retry}/></div>
+            <label htmlFor="catalog-sort" className="pp-catalog-compact-sort relative" aria-busy={catalogReplacing && pendingControl === "sort" || undefined}>
               <span className="sr-only">{tx(t,"storefront.compact.sort","Ordina per")}</span>
-              <select id="catalog-sort" value={sort} onChange={event => selectCatalog({ ...selectedCatalog, sort: normalizeCatalogSort(event.target.value) })}>
+              <select id="catalog-sort" value={sort} onChange={event => void selectCatalog({ ...selectedCatalog, sort: normalizeCatalogSort(event.target.value) }, "sort")}>
                 <option value="stock_desc">{tx(t,"storefront.compact.stockFirst","Disponibilità")}</option>
                 <option value="name">{tx(t,"storefront.compact.nameSort","Nome prodotto")}</option>
                 <option value="updated_desc">{tx(t,"storefront.compact.newestSort","Più recenti")}</option>
               </select>
+              {showSortPending ? <Loader2 aria-hidden="true" className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 animate-spin bg-white motion-reduce:animate-none"/> : null}
             </label>
             <Button ref={filterTriggerRef} type="button" variant="outline" className="pp-catalog-filter-trigger" onClick={openFilters} aria-haspopup="dialog" aria-expanded={filterOpen}>
               <SlidersHorizontal aria-hidden="true"/>{tx(t,"storefront.reference.filters","Filtri")}

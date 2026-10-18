@@ -20,6 +20,7 @@ import type {
 import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
 import { tx } from "@/i18n/dictionaries/storefront";
 import { CatalogBrandTree, type CatalogSelection } from "./catalog-brand-tree";
+import { globalCatalogSearch } from "./catalog-filters.mjs";
 import { LanguageSwitcher } from "./language-switcher";
 import { PartsProLogo } from "./logo";
 import { DelayedPendingIndicator } from "./pending-feedback";
@@ -120,7 +121,7 @@ export function StoreMobileMenu({
     }
 
     if (onCatalogSelect) {
-      startSearchTransition(async () => { await handleCatalogSelect({ searchQuery: query }); });
+      startSearchTransition(async () => { await handleCatalogSelect(globalCatalogSearch(query)); });
       return;
     }
 
