@@ -9,7 +9,7 @@ import { createLatestRequest } from "@/lib/latest-request.mjs";
 import { refreshVisibleCatalog } from "@/lib/storefront-refresh.mjs";
 import { useStorefrontRefresh } from "./storefront-refresh-provider";
 import { RefreshStatus } from "./storefront-refresh-status";
-import { countCatalogFilters, resetCatalogFilters, removeCatalogFilter, globalCatalogSearch } from "./catalog-filters.mjs";
+import { countCatalogFilters, resetCatalogFilters, removeCatalogFilter, readGlobalCatalogSearch } from "./catalog-filters.mjs";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -574,10 +574,11 @@ function CatalogPageContent({
           <h1 className="sr-only">{searchQuery || searchTerm ? txFormat(t,"storefront.ux.searchResults","Risultati per “{query}”",{query:searchQuery || searchTerm}) : tx(t,"storefront.ux.browseCatalog","Sfoglia catalogo")}</h1>
           <form className="pp-catalog-compact-search" role="search" onSubmit={event => {
             event.preventDefault();
-            void selectCatalog(globalCatalogSearch(String(new FormData(event.currentTarget).get("q") ?? "")), "search");
+            const selection = readGlobalCatalogSearch(event.currentTarget, "q", t("storefront.header.searchLength"));
+            if (selection) void selectCatalog(selection, "search");
           }}>
             <Search aria-hidden="true"/>
-            <input name="q" key={searchQuery} defaultValue={searchQuery} aria-label={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")} placeholder={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")}/>
+            <input name="q" maxLength={80} onInput={event => event.currentTarget.setCustomValidity("")} key={searchQuery} defaultValue={searchQuery} aria-label={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")} placeholder={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")}/>
             <button type="submit" aria-label={tx(t,"storefront.header.searchSubmit","Cerca")} aria-busy={catalogReplacing && pendingControl === "search" || undefined}>{showSearchPending ? <Loader2 aria-hidden="true" className="animate-spin motion-reduce:animate-none"/> : <ChevronRight aria-hidden="true"/>}</button>
           </form>
           <Dialog open={filterOpen} onOpenChange={setFilterOpen}>

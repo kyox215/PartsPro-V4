@@ -6,6 +6,15 @@ export function globalCatalogSearch(query) {
   return { searchQuery: query.trim() };
 }
 
+export function readGlobalCatalogSearch(form, field, invalidMessage) {
+  const input = form.elements.namedItem(field);
+  if (!input) return null;
+  const selection = globalCatalogSearch(input.value);
+  const length = selection.searchQuery.length;
+  input.setCustomValidity(length === 0 || (length >= 2 && length <= 80) ? '' : invalidMessage);
+  return input.reportValidity() ? selection : null;
+}
+
 export function countCatalogFilters(selection) {
   return filterFields.filter(key => key === 'inStockOnly'
     ? selection[key] === true
