@@ -1,6 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { countCatalogFilters, resetCatalogFilters, removeCatalogFilter } from '../src/components/partspro/catalog-filters.mjs';
+import { countCatalogFilters, resetCatalogFilters, removeCatalogFilter, globalCatalogSearch } from '../src/components/partspro/catalog-filters.mjs';
+
+test('a new global search discards a previous device scope without changing query-preserving filter reset', () => {
+  const previous = {department:'phone',brand:'Samsung',model:'Galaxy A12',category:'Schermi',inStockOnly:true,sort:'name',searchQuery:'old'};
+  const next = {...globalCatalogSearch('  CX08  '),sort:previous.sort};
+  assert.deepEqual(next,{searchQuery:'CX08',sort:'name'});
+  assert.equal(countCatalogFilters(next),0);
+  assert.equal(previous.model,'Galaxy A12');
+  assert.deepEqual(resetCatalogFilters({...previous,searchQuery:'CX08'}),{searchQuery:'CX08',sort:'name'});
+});
+test('an empty global search clears both the keyword and any previous scope', () => {
+  assert.deepEqual(globalCatalogSearch('  '),{searchQuery:''});
+});
 
 test('filter badge excludes search, sort, blank strings and unchecked stock', () => {
   assert.equal(countCatalogFilters({searchQuery:'OLED',sort:'name',brand:' ',inStockOnly:false}),0);

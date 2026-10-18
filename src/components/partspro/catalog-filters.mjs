@@ -1,5 +1,11 @@
 const filterFields = ['department', 'brand', 'modelSeries', 'model', 'category', 'inStockOnly'];
 
+// A new top-level search starts across the whole catalog. Sorting and the
+// assisted customer identity are retained by the caller, outside filter scope.
+export function globalCatalogSearch(query) {
+  return { searchQuery: query.trim() };
+}
+
 export function countCatalogFilters(selection) {
   return filterFields.filter(key => key === 'inStockOnly'
     ? selection[key] === true

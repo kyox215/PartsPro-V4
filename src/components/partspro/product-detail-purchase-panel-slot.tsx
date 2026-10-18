@@ -12,7 +12,6 @@ const ProductDetailPurchasePanel = dynamic(
     loading: () => (
       <div className="mt-2 h-36 animate-pulse rounded-lg border border-primary/20 bg-primary/8" />
     ),
-    ssr: false,
   }
 );
 
