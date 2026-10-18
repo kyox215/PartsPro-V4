@@ -13,7 +13,7 @@ import { financeQuerySchema } from "../_shared";
 
 export const dynamic = "force-dynamic";
 
-const exportQuerySchema = financeQuerySchema.extend({
+const exportQuerySchema = financeQuerySchema.safeExtend({
   format: z.enum(["csv", "xlsx"]).default("csv"),
 });
 
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    return new NextResponse(buildFinanceCsv(result.data.rows), {
+    return new NextResponse(buildFinanceCsv(result.data.rows, result.data.summary), {
       headers: {
         "Content-Disposition": `attachment; filename="${fileBase}.csv"`,
         "Content-Type": "text/csv; charset=utf-8",
@@ -95,8 +95,11 @@ const exportHeaders = [
   "confidence",
 ] as const;
 
-function buildFinanceCsv(rows: AdminFinanceLedgerRow[]) {
+function buildFinanceCsv(rows: AdminFinanceLedgerRow[], summary: Awaited<ReturnType<typeof listAdminFinanceLedgerExport>>["data"]["summary"]) {
   const csvRows = [
+    ["# range", summary.range.dateFrom ?? "", summary.range.dateTo ?? "", summary.range.dateMode, "Europe/Rome"].map(escapeCsvCell).join(","),
+    ...Object.entries(summary).filter(([,value]) => typeof value === "number" || typeof value === "string").map(([key,value]) => ["# summary", key, String(value)].map(escapeCsvCell).join(",")),
+    ["# confidence", JSON.stringify(summary.confidence)].map(escapeCsvCell).join(","),
     exportHeaders.join(","),
     ...rows.map((row) =>
       [
@@ -162,6 +165,9 @@ async function buildFinanceWorkbook(
     }
   }
 
+  summarySheet.addRow({ metric: "range", value: JSON.stringify(summary.range) });
+  summarySheet.addRow({ metric: "confidence", value: JSON.stringify(summary.confidence) });
+  summarySheet.addRow({ metric: "timezone", value: "Europe/Rome" });
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer);
 }

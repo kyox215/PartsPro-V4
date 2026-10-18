@@ -1,0 +1,10 @@
+export function financeRound(value:number):number;
+export function parseFinanceMoney(value:unknown):number|null;
+export function validFinanceDate(value:unknown):boolean;
+export function financeDay(value?:string):string;
+export function shiftFinanceDay(value:string,days:number):string;
+export function financeRomeLocalToIso(value:string):string|null;
+export function financeLocalInput(value?:string):string;
+export type FinanceAnalysisPoint={date:string;salesNet:number;cogsNet:number;expenseNet:number;grossProfit:number;operatingProfit:number};
+export type FinanceAnalysis={trend:FinanceAnalysisPoint[];previous:FinanceAnalysisPoint;changes:Record<string,number|null>;expenses:{category:string;amountNet:number}[]};
+export function buildFinanceAnalysis(rows:{type:string;date:string;amountNet:number;status:string|null;category:string|null}[],previousRows:{type:string;date:string;amountNet:number;status:string|null;category:string|null}[],dateFrom:string,dateTo:string):FinanceAnalysis;

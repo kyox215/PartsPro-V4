@@ -1,128 +1,147 @@
 "use client";
 
-import { englishUiCopy } from "@/i18n/english-ui-copy";
-
-
-import { AdminSearchField } from "./admin-ui-controls";
-import { AdminMetricSummary } from "./admin-summary-components";
-
 import * as React from "react";
+import { financeText, translateFinanceStatic } from "./finance-ui-copy";
+import { englishUiCopy } from "@/i18n/english-ui-copy";
 import { AdminActionButton, AdminErrorSummary, AdminNotice } from "./admin-feedback";
-import { useAdminMemoryQuery, usePersistentAdminValue } from "./admin-workspace-state";
-import {
-  AlertTriangle,
-  Banknote,
-  Calculator,
-  Download,
-  FileSpreadsheet,
-  HandCoins,
-  Plus,
-  Pencil,
-  ReceiptText,
-  RefreshCw,
-  Scale,
-  TrendingUp,
-} from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip as ChartTooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import { Badge } from "@/components/ui/badge";
+import { financeEditableId, financeGross, parseFinanceMoney as parseLegacyFinanceMoney, isFinanceDate } from "@/lib/admin-finance-input.mjs";
+import Link from "next/link";
+import { ArrowDownLeft, ArrowUpRight, BarChart3, ChevronLeft, ChevronRight, Download, HandCoins, Plus, RefreshCw, Search, ShieldCheck, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogBody,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { formatMoney } from "@/i18n/format";
-import { cn } from "@/lib/utils";
-import { financeEditableId, financeGross, financeLocalDateTimeToIso, isFinanceDate, localFinanceDate, localFinanceDateTime, parseFinanceMoney } from "@/lib/admin-finance-input.mjs";
+import { financeDay, shiftFinanceDay, validFinanceDate, financeLocalInput, financeRomeLocalToIso as financeLocalDateTimeToIso, type FinanceAnalysis } from "@/lib/partspro-finance-core.mjs";
+import type { AdminFinanceSummary, AdminFinanceLedgerRow, AdminFinanceCostAllocation } from "@/lib/partspro-repository";
 import { useI18n } from "./i18n-provider";
+import { FinanceCharts, expenseLabel } from "./admin-finance-charts";
+import { cn } from "@/lib/utils";
 
-type FinanceConfidence = "exact" | "estimated" | "unmatched";
+type Filters = { dateFrom:string;dateTo:string;dateMode:string;q:string;supplier:string;confidence:string;category:string };
+type Analysis = FinanceAnalysis & { summary:AdminFinanceSummary;previousRange:{dateFrom:string;dateTo:string};payables:(AdminFinanceLedgerRow & {paidNet:number;outstandingNet:number})[];payablesTotal:number };
+type Page<T>={data:T[];meta:{total:number}};
+type Editor={kind:'expense'|'supplier-payment';row?:AdminFinanceLedgerRow};
+const categories=['rent','salary','shipping','platform_fee','utilities','tax','supplier_fee','bank_fee','other'];
+const pageSize=25;
+const initialFilters=():Filters=>({dateFrom:shiftFinanceDay(financeDay(),-29),dateTo:financeDay(),dateMode:'created',q:'',supplier:'',confidence:'all',category:'all'});
+function params(filters:Filters) { const query=new URLSearchParams(); for(const [key,value] of Object.entries(filters)) if(value && value!=='all') query.set(key,value); return query; }
 
-type FinanceSummary = {
-  accountsPayable: number;
-  cogsNet: number;
-  currency: string;
-  expenseNet: number;
-  grossMarginRate: number;
-  grossProfit: number;
-  inventoryCostValue: number;
-  operatingProfit: number;
-  pendingReceivables: number;
-  purchaseNet: number;
-  salesNet: number;
-  supplierPaymentsNet: number;
-  vatAmbiguousPurchaseNet: number;
-  walletAppliedNet: number;
-  confidence: Record<FinanceConfidence, number>;
-};
+function useFinanceRequest<T>(url:string|null,revision:number) {
+  const [result,setResult]=React.useState<{key:string;data?:T;error?:string}>({key:''});
+  const key=`${url}:${revision}`;
+  React.useEffect(()=>{
+    if(!url) return;
+    const controller=new AbortController();
+    void (async()=>{try {
+      const response=await fetch(url,{cache:'no-store',signal:controller.signal});
+      const body=await response.json();
+      if(!response.ok) throw new Error(body.error?.message ?? `HTTP ${response.status}`);
+      if(!controller.signal.aborted) setResult({key,data:body});
+    } catch(error) {if(!controller.signal.aborted) setResult({key,error:error instanceof Error?error.message:'Request failed'});} })();
+    return ()=>controller.abort();
+  },[url,key]);
+  return {data:result.key===key?result.data:undefined,error:result.key===key?result.error:undefined,loading:!!url && result.key!==key};
+}
 
-type FinanceLedgerRow = {
-  id: string;
-  type: "sale" | "receivable" | "purchase" | "cogs" | "expense" | "supplier_payment";
-  date: string;
-  title: string;
-  amountNet: number;
-  currency: string;
-  orderNo: string | null;
-  skuCode: string | null;
-  batchId: string | null;
-  batchCode: string | null;
-  supplierName: string | null;
-  category: string | null;
-  status: string | null;
-  confidence: FinanceConfidence | null;
-};
+export function AdminFinancePanel(props: {permissions:string[];currentUserId?:string}) { return <AdminFinancePanelContent key={props.currentUserId ?? "finance-user"} {...props}/>; }
+function AdminFinancePanelContent({permissions}:{permissions:string[];currentUserId?:string}) {
+  const {locale}=useI18n();
+  const it=!locale.startsWith('zh');
+  const t=(zh:string,italian:string)=>financeText(zh,italian,locale);
+  const money=(value:number)=>formatMoney(value,locale);
+  const [filters,setFilters]=React.useState<Filters>(initialFilters);
+  const [draft,setDraft]=React.useState<Filters>(initialFilters);
+  const [tab,setTab]=React.useState('overview');
+  const [salesType,setSalesType]=React.useState('sale');
+  const [paymentHistoryBatch,setPaymentHistoryBatch]=React.useState('');
+  const [page,setPage]=React.useState(0);
+  const [revision,setRevision]=React.useState(0);
+  const [editor,setEditor]=React.useState<Editor|null>(null);
+  const [notice,setNotice]=React.useState('');
+  const [filterError,setFilterError]=React.useState('');
+  const manage=permissions.includes('finance.manage');
+  const canExport=permissions.includes('finance.export');
+  const base=params(filters).toString();
+  const overview=useFinanceRequest<{data:Analysis}>(`/api/admin/finance/analysis?${base}&limit=${pageSize}&offset=${tab==='payables'?page*pageSize:0}`,revision);
+  const ledgerBase=tab==='payments'&&paymentHistoryBatch?params({...filters,dateFrom:'',dateTo:'',q:paymentHistoryBatch,supplier:'',confidence:'all',category:'all'}).toString():base;
+  const type=tab==='sales'?salesType:tab==='receivables'?'receivable':tab==='expenses'?'expense':'supplier_payment';
+  const ledger=useFinanceRequest<Page<AdminFinanceLedgerRow>>(['sales','receivables','expenses','payments'].includes(tab)&&salesType!=='allocations'?`/api/admin/finance/ledger?${ledgerBase}&type=${type}&limit=${pageSize}&offset=${page*pageSize}`:null,revision);
+  const cogs=useFinanceRequest<Page<AdminFinanceCostAllocation>>(tab==='sales'&&salesType==='allocations'?`/api/admin/finance/cogs?${base}&limit=${pageSize}&offset=${page*pageSize}`:null,revision);
+  const analysis=overview.data?.data;
+  const summary=analysis?.summary;
+  function changeTab(value:string){setTab(value);setSalesType('sale');setPage(0);setPaymentHistoryBatch('');}
+  function apply(next:Filters){
+    const length=(Date.parse(next.dateTo)-Date.parse(next.dateFrom))/86400000;
+    if(!validFinanceDate(next.dateFrom)||!validFinanceDate(next.dateTo)||length<0||length>365){setFilterError(t('请选择有效日期，范围为1至366天。','Scegli un intervallo valido da 1 a 366 giorni.'));return;}
+    setFilters(next);setDraft(next);setPage(0);setFilterError('');setPaymentHistoryBatch('');
+  }
+  function saved(){setEditor(null);setRevision(n=>n+1);setNotice(t('已保存。正在刷新统计；如刷新失败，请仅重试读取。','Salvato. Aggiornamento in corso; in caso di errore riprova solo la lettura.'));}
+  const tabs=[['overview',t('经营总览','Panoramica')],['sales',t('销售与成本','Vendite e costi')],['receivables',t('客户应收','Crediti clienti')],['payables',t('供应商应付','Debiti fornitori')],['payments',t('付款记录','Pagamenti')],['expenses',t('费用账本','Spese')],['export',t('导出 / 核对','Esporta / verifica')]];
+  const labels={trend:t('销售与毛利趋势','Andamento vendite e margine'),sales:t('销售净额','Vendite nette'),gross:t('毛利','Margine lordo'),composition:t('利润构成 · EUR','Composizione risultato · EUR'),expenses:t('经营费用','Spese operative'),operating:t('经营利润','Risultato operativo'),categories:t('费用分类','Spese per categoria'),empty:t('所选期间暂无费用','Nessuna spesa nel periodo')};
+  return <section className="min-w-0 space-y-4 pb-6" aria-label={t('财务管理','Gestione finanziaria')}>
+    <header className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4"><div><div className="mb-2 flex items-center gap-2 text-xs font-semibold tracking-wide text-blue-600"><BarChart3 className="size-4"/>PARTSPRO / {t('经营财务','FINANZA')}</div><h1 className="text-2xl font-bold tracking-tight text-slate-950">{t('财务管理','Gestione finanziaria')}</h1><p className="mt-1.5 text-sm text-slate-500">{t('看清经营表现，掌握每一笔收支。','Controlla risultati, crediti e spese della tua attività.')}</p></div>
+      <div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" aria-label={t('刷新数据','Aggiorna dati')} onClick={()=>{setNotice('');setRevision(n=>n+1);}}><RefreshCw className={cn('size-4',overview.loading&&'animate-spin')}/>{t('刷新','Aggiorna')}</Button>{manage&&<><Button variant="outline" size="sm" onClick={()=>setEditor({kind:'supplier-payment'})}><HandCoins className="size-4"/>{t('登记付款','Registra pagamento')}</Button><Button size="sm" onClick={()=>setEditor({kind:'expense'})}><Plus className="size-4"/>{t('新增费用','Nuova spesa')}</Button></>}</div></div>
+      <form className="mt-5 border-t border-slate-100 pt-4" onSubmit={event=>{event.preventDefault();apply(draft);}}>
+        <div className="flex flex-wrap items-center gap-2"><div className="mr-auto flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1">{[7,30,0].map(days=>{const to=financeDay();const from=days?shiftFinanceDay(to,-days+1):to.slice(0,7)+'-01';const selected=filters.dateFrom===from&&filters.dateTo===to;return <button key={days} type="button" aria-pressed={selected} onClick={()=>apply({...draft,dateFrom:from,dateTo:to})} className={cn('rounded-md px-3 py-1.5 text-xs font-semibold',selected?'bg-white text-blue-700 shadow-sm':'text-slate-500 hover:text-slate-900')}>{days?t(`近${days}天`,`${days} giorni`):t('本月','Questo mese')}</button>;})}</div><span className="text-xs text-slate-400">EUR · Europe/Rome</span></div>
+        <div className="mt-3 grid min-w-0 grid-cols-2 gap-2 xl:grid-cols-[1fr_1fr_1fr_1.3fr_auto]">
+          <div><Label htmlFor="finance-date-from" className="mb-1 block text-xs text-slate-500">{t('开始日期','Dal')}</Label><Input id="finance-date-from" type="date" value={draft.dateFrom} onChange={e=>setDraft({...draft,dateFrom:e.target.value})}/></div>
+          <div><Label htmlFor="finance-date-to" className="mb-1 block text-xs text-slate-500">{t('结束日期','Al')}</Label><Input id="finance-date-to" type="date" value={draft.dateTo} onChange={e=>setDraft({...draft,dateTo:e.target.value})}/></div>
+          <div><Label htmlFor="finance-date-mode" className="mb-1 block text-xs text-slate-500">{t('日期口径','Criterio data')}</Label><Select value={draft.dateMode} onValueChange={v=>setDraft({...draft,dateMode:v})}><SelectTrigger id="finance-date-mode" className="w-full"><SelectValue/></SelectTrigger><SelectContent>{[['created',t('创建日期','Creazione')],['paid',t('付款日期','Pagamento')],['received',t('到货日期','Ricezione')],['invoice',t('发票日期','Fattura')],['recognized',t('确认日期','Riconoscimento')],['occurred',t('发生日期','Competenza')]].map(([value,label])=><SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
+          <div><Label htmlFor="finance-search" className="mb-1 block text-xs text-slate-500">{t('搜索明细','Cerca movimenti')}</Label><div className="relative"><Search className="pointer-events-none absolute left-3 top-3 size-4 text-slate-400"/><Input id="finance-search" className="pl-9" placeholder={t('订单、SKU、批次…','Ordine, SKU, lotto…')} value={draft.q} maxLength={160} onChange={e=>setDraft({...draft,q:e.target.value})}/></div></div>
+          <Button type="submit" variant="outline" className="col-span-2 self-end xl:col-span-1">{t('应用筛选','Applica filtri')}</Button>
+        </div>
+        <details className="mt-3"><summary className="w-fit cursor-pointer text-xs font-medium text-slate-500">{t('更多筛选','Altri filtri')}</summary><div className="mt-3 grid gap-3 sm:grid-cols-3"><div><Label htmlFor="finance-supplier">{t('供应商','Fornitore')}</Label><Input id="finance-supplier" value={draft.supplier} maxLength={160} onChange={e=>setDraft({...draft,supplier:e.target.value})}/></div><div><Label htmlFor="finance-confidence">{t('成本可信度','Attendibilità costi')}</Label><Select value={draft.confidence} onValueChange={v=>setDraft({...draft,confidence:v})}><SelectTrigger id="finance-confidence" className="w-full"><SelectValue/></SelectTrigger><SelectContent>{['all','exact','estimated','unmatched'].map(v=><SelectItem key={v} value={v}>{confidenceLabel(v,it,locale)}</SelectItem>)}</SelectContent></Select></div><div><Label htmlFor="finance-category">{t('账目分类','Categoria')}</Label><Select value={draft.category} onValueChange={v=>setDraft({...draft,category:v})}><SelectTrigger id="finance-category" className="w-full"><SelectValue/></SelectTrigger><SelectContent><SelectItem value="all">{t('全部','Tutte')}</SelectItem>{['sales','receivable','purchase','cogs','supplier_payment',...categories].map(v=><SelectItem key={v} value={v}>{categories.includes(v)?expenseLabel(v,locale):typeLabel(v,it,locale)}</SelectItem>)}</SelectContent></Select></div></div></details>
+        {filterError&&<p role="alert" className="mt-2 text-sm text-red-600">{filterError}</p>}
+      </form>
+    </header>
+    {(filters.confidence!=='all'||filters.category!=='all'||!!filters.q||!!filters.supplier)&&<p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-800">{t('当前搜索、供应商、分类或可信度筛选作用于单条账目，汇总仅代表匹配账目，不代表完整订单利润；查看整体经营表现请清除此筛选。','I filtri ricerca, fornitore, categoria e attendibilità selezionano singoli movimenti: il risultato filtrato non rappresenta il margine completo degli ordini. Rimuovili per il totale operativo.')}</p>}
+    {notice&&<p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
+    {overview.error&&<ErrorPanel message={overview.error} retry={()=>setRevision(n=>n+1)} it={it}/>}
+    <Tabs value={tab} onValueChange={changeTab} className="min-w-0"><div className="min-w-0 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1"><TabsList className="h-auto w-max min-w-full justify-start gap-1 bg-transparent">{tabs.map(([value,label])=><TabsTrigger key={value} value={value} className="flex-none whitespace-nowrap rounded-lg px-4 py-2.5 text-xs font-semibold data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700 data-[state=active]:shadow-none sm:text-sm">{label}</TabsTrigger>)}</TabsList></div>
+      <TabsContent value="overview" className="mt-4 min-w-0 space-y-4">
+        {overview.loading?<Loading it={it}/>:summary&&analysis?<>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500"><span>{filters.dateFrom} — {filters.dateTo} · {t('经营期间','Periodo operativo')}</span><span>{t('环比','Confronto')}: {analysis.previousRange.dateFrom} — {analysis.previousRange.dateTo}</span></div>
+          <div className="grid min-w-0 grid-cols-2 gap-3 xl:grid-cols-5">{[{label:labels.sales,value:summary.salesNet,key:'salesNet',type:'sale',color:'blue'}, {label:'COGS',value:summary.cogsNet,key:'cogsNet',type:'cogs',color:'slate'}, {label:labels.gross,value:summary.grossProfit,key:'grossProfit',type:'sale',color:'green'}, {label:labels.expenses,value:summary.expenseNet,key:'expenseNet',type:'expense',color:'amber'}, {label:labels.operating,value:summary.operatingProfit,key:'operatingProfit',type:'sale',color:'green'}].map((metric,index)=><button type="button" key={metric.key} onClick={()=>{changeTab(metric.type==='expense'?'expenses':'sales');setSalesType(metric.type);}} className={cn('min-w-0 rounded-2xl border p-4 text-left transition hover:border-blue-300 focus-visible:outline-2 focus-visible:outline-blue-600',index===0?'border-blue-600 bg-blue-600 text-white':'border-slate-200 bg-white',index===4&&'col-span-2 xl:col-span-1')}><div className={cn('flex items-center justify-between gap-1 text-xs font-medium',index===0?'text-blue-100':'text-slate-500')}>{metric.label}<ArrowUpRight className="size-3.5 shrink-0"/></div><div className={cn('mt-3 break-all text-xl font-bold tracking-tight tabular-nums sm:text-2xl',index===0?'text-white':metric.color==='green'&&metric.value>=0?'text-emerald-700':'text-slate-950')}>{money(metric.value)}</div><div className={cn('mt-2 text-[11px]',index===0?'text-blue-100':'text-slate-500')}>{metric.key==='grossProfit'?`${summary.grossMarginRate.toFixed(1)}% ${t('毛利率','margine')} · `:''}{analysis.changes[metric.key]===null?t('无可比基期','Base non confrontabile'):`${analysis.changes[metric.key]!>0?'+':''}${analysis.changes[metric.key]}% ${t('较上期','vs precedente')}`}</div></button>)}</div>
+          <FinanceCharts analysis={analysis} locale={locale} labels={labels}/>
+          <div className="grid min-w-0 gap-3 sm:grid-cols-3">{[{title:t('客户待收款','Crediti da incassare'),value:summary.pendingReceivables,icon:ArrowDownLeft,color:'text-amber-700',target:'receivables',hint:t('期间内订单 · 含税及运费余额','Ordini nel periodo · IVA e spedizione incluse')},{title:t('供应商应付','Debiti fornitori'),value:summary.accountsPayable,icon:ArrowUpRight,color:'text-rose-700',target:'payables',hint:t('期间内批次 · 扣除历史已付款','Lotti nel periodo · al netto di tutti i pagamenti')},{title:t('库存成本价值','Valore scorte al costo'),value:summary.inventoryCostValue,icon:Wallet,color:'text-slate-950',target:'sales',hint:t('当前剩余成本层 · 不随日期筛选','Scorte attuali · indipendenti dalle date')}].map(item=><button disabled={item.icon===Wallet} key={item.target+item.title} onClick={()=>{changeTab(item.target);if(item.icon===Wallet)setSalesType('allocations');}} className="rounded-2xl border border-slate-200 bg-white p-4 text-left hover:border-blue-300"><div className="flex items-center justify-between text-xs text-slate-500">{item.title}<item.icon className="size-4"/></div><div className={cn('mt-2 text-2xl font-bold tabular-nums',item.color)}>{money(item.value)}</div><p className="mt-2 text-[11px] leading-5 text-slate-500">{item.hint}</p></button>)}</div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-4"><div className="flex items-center gap-2 text-sm font-bold"><ShieldCheck className="size-4 text-blue-600"/>{t('成本与数据核对','Verifica costi e dati')}</div><div className="mt-3 flex flex-wrap gap-2">{Object.entries(summary.confidence).map(([key,value])=><button key={key} onClick={()=>{apply({...filters,confidence:key});changeTab('sales');setSalesType('cogs');}} className="rounded-lg border border-slate-200 px-3 py-2 text-xs"><Confidence value={key} it={it}/> <strong className="ml-2 tabular-nums">{value}</strong></button>)}</div>{summary.vatAmbiguousPurchaseNet>0&&<p className="mt-3 text-xs text-amber-700">{t('采购税额待核对','IVA acquisti da verificare')}: {money(summary.vatAmbiguousPurchaseNet)}</p>}<p className="mt-3 text-xs leading-5 text-slate-500">{t('销售按已付款订单确认，费用含待付项目；成本仅计已消耗分配。售后退款尚未独立汇总，请结合售后记录核对利润。','Vendite riconosciute su ordini pagati; spese anche da pagare; COGS solo per allocazioni consumate. I rimborsi post-vendita non sono riepilogati separatamente: verifica anche le pratiche RMA.')}</p></div>
+        </>:null}
+      </TabsContent>
+      {['sales','receivables','expenses','payments'].map(name=><TabsContent key={name} value={name} className="mt-4 min-w-0 space-y-3">{name==='payments'&&paymentHistoryBatch&&<p className="rounded-xl bg-blue-50 p-3 text-sm text-blue-800">{t('全历史付款 · 不限当前日期筛选','Pagamenti storici · tutte le date')}: {paymentHistoryBatch} <button className="ml-3 underline" onClick={()=>{setPaymentHistoryBatch('');setPage(0);}}>{t('返回期间记录','Torna al periodo')}</button></p>}{name==='sales'&&<div className="flex flex-wrap gap-2">{[['sale',t('销售明细','Vendite')],['cogs',t('已确认成本','COGS riconosciuti')],['allocations',t('成本追溯','Tracciabilità costi')]].map(([value,label])=><Button key={value} size="sm" variant={salesType===value?'default':'outline'} onClick={()=>{setSalesType(value);setPage(0);}}>{label}</Button>)}</div>}
+        <p className="text-xs leading-5 text-slate-500">{name==='receivables'?t('所选期间订单的当前待收余额，包含税费与运费；收款请进入对应订单。','Saldo attuale degli ordini nel periodo, IVA e spedizione incluse. Registra gli incassi nell’ordine.'):name==='expenses'?t('待付与已付费用计入经营费用；取消项目保留记录，不计利润。','Spese da pagare e pagate incluse nel risultato; quelle annullate restano nello storico.'):t('所选日期口径适用于有对应日期的账目，其余沿用创建或发生日期；成本使用确认日期。','Il criterio usa la data disponibile; gli altri movimenti usano creazione o competenza. I costi usano il riconoscimento.')}</p>
+        {name==='sales'&&salesType==='allocations'?<>{cogs.error?<ErrorPanel message={cogs.error} retry={()=>setRevision(n=>n+1)} it={it}/>:<CostTable rows={cogs.data?.data??[]} loading={cogs.loading} it={it} money={money}/>}<Pager page={page} total={cogs.data?.meta.total??0} loading={cogs.loading} onChange={setPage} it={it}/></>:<>{ledger.error?<ErrorPanel message={ledger.error} retry={()=>setRevision(n=>n+1)} it={it}/>:<LedgerTable rows={ledger.data?.data??[]} loading={ledger.loading} it={it} money={money} onEdit={manage?setEditor:undefined}/>}<Pager page={page} total={ledger.data?.meta.total??0} loading={ledger.loading} onChange={setPage} it={it}/></>}
+      </TabsContent>)}
+      <TabsContent value="payables" className="mt-4 min-w-0 space-y-3"><p className="text-xs leading-5 text-slate-500">{t('应付为所选期间批次采购额减去关联批次全部历史已付款。超付不产生负应付；未关联批次付款不自动抵扣。','Debiti dei lotti nel periodo meno tutti i pagamenti collegati. Eccedenze e pagamenti senza lotto non riducono altri debiti.')}</p>{overview.loading?<Loading it={it}/>:analysis?<PayablesList rows={analysis.payables} it={it} money={money} onHistory={code=>{changeTab('payments');setPaymentHistoryBatch(code);}}/>:null}<Pager page={page} total={analysis?.payablesTotal??0} loading={overview.loading} onChange={setPage} it={it}/></TabsContent>
+      <TabsContent value="export" className="mt-4"><div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-8"><Download className="mb-4 size-8 text-blue-600"/><h2 className="text-lg font-bold">{t('导出与核对','Esportazione e verifica')}</h2><p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">{t('按当前筛选导出完整账本及汇总，包含日期口径与成本可信度。导出不受当前明细页码限制。','Esporta tutti i movimenti filtrati e il riepilogo, con criterio data e attendibilità dei costi. La pagina corrente non limita l’esportazione.')}</p><p className="my-4 text-xs text-slate-500">{filters.dateFrom} — {filters.dateTo} · EUR · Europe/Rome</p>{canExport?<div className="flex gap-2">{['csv','xlsx'].map(format=><Button asChild key={format} variant={format==='xlsx'?'default':'outline'}><a href={`/api/admin/finance/export?${base}&format=${format}`}><Download className="size-4"/>{format.toUpperCase()}</a></Button>)}</div>:<p className="text-sm text-amber-700">{t('此账号没有财务导出权限。','Questo account non dispone del permesso di esportazione.')}</p>}</div></TabsContent>
+    </Tabs>
+    {editor&&<FinanceEntryDialog key={`${editor.kind}:${editor.row?.id??'new'}`} type={editor.kind==='expense'?'expense':'supplier_payment'} row={editor.row} copy={financeCopy(locale)} onClose={()=>setEditor(null)} onSaved={saved}/>}
+  </section>;
+}
 
-type FinanceAllocation = {
-  id: string;
-  orderNo: string | null;
-  skuCode: string;
-  productName: string | null;
-  batchCode: string | null;
-  supplierName: string | null;
-  quantity: number;
-  unitCostNet: number;
-  totalCostNet: number;
-  currency: string;
-  status: string;
-  confidence: FinanceConfidence;
-  source: string;
-  recognizedAt: string | null;
-  createdAt: string;
-};
+function confidenceLabel(value:string,it:boolean,locale:string){return translateFinanceStatic(({all:['全部','Tutte'],exact:['精确','Esatto'],estimated:['估算','Stimato'],unmatched:['未匹配','Non abbinato']} as Record<string,string[]>)[value]?.[it?1:0]??value,locale);}
+function typeLabel(value:string,it:boolean,locale:string){return translateFinanceStatic(({sale:['销售','Vendita'],sales:['销售','Vendite'],receivable:['应收','Credito'],purchase:['采购','Acquisto'],cogs:['销售成本','COGS'],expense:['费用','Spesa'],supplier_payment:['供应商付款','Pagamento fornitore']} as Record<string,string[]>)[value]?.[it?1:0]??value,locale);}
+function Confidence({value,it}:{value:string;it:boolean}){const {locale}=useI18n();return <span className={cn('text-xs font-medium',value==='exact'?'text-emerald-700':value==='estimated'?'text-amber-700':'text-rose-700')}>{confidenceLabel(value,it,locale)}</span>;}
+function Loading({it}:{it:boolean}){const {locale:providerLocale}=useI18n();const locale=it?providerLocale:"zh-CN";return <div role="status" aria-busy="true" className="animate-pulse rounded-2xl border border-slate-200 bg-white p-8 text-sm text-slate-500">{financeText('正在加载财务数据…','Caricamento…',locale)}</div>;}
+function ErrorPanel({message,retry,it}:{message:string;retry:()=>void;it:boolean}){const {locale:providerLocale}=useI18n();const locale=it?providerLocale:"zh-CN";return <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"><p>{message}</p><Button variant="outline" size="sm" onClick={retry} className="mt-2">{financeText('重试读取','Riprova lettura',locale)}</Button></div>;}
+function Pager({page,total,loading,onChange,it}:{page:number;total:number;loading:boolean;onChange:(page:number)=>void;it:boolean}){const {locale:providerLocale}=useI18n();const locale=it?providerLocale:"zh-CN";return <div className="flex items-center justify-between gap-2 text-xs text-slate-500"><span>{total?`${page*pageSize+1}–${Math.min((page+1)*pageSize,total)} / ${total}`:financeText('0 条记录','0 movimenti',locale)}</span><div className="flex gap-2"><Button aria-label={financeText('上一页','Pagina precedente',locale)} size="sm" variant="outline" disabled={loading||page===0} onClick={()=>onChange(page-1)}><ChevronLeft className="size-4"/></Button><Button aria-label={financeText('下一页','Pagina successiva',locale)} size="sm" variant="outline" disabled={loading||(page+1)*pageSize>=total} onClick={()=>onChange(page+1)}><ChevronRight className="size-4"/></Button></div></div>;}
+function PayablesList({rows,it,money,onHistory}:{rows:Analysis['payables'];it:boolean;money:(n:number)=>string;onHistory:(code:string)=>void}) {const {locale}=useI18n();
+  const headings=it?['Costo acquisto','Pagato storico','Residuo netto']:['采购净成本','历史已付','待付净额'];
+  return <><div className="space-y-3 sm:hidden">{rows.length?rows.map(row=><article key={row.id} className="rounded-2xl border border-slate-200 bg-white p-4"><div className="flex items-center justify-between gap-2"><div><button type="button" onClick={()=>onHistory(row.batchCode??'')} className="text-sm font-semibold text-blue-700 underline underline-offset-4">{row.batchCode}</button><p className="mt-1 text-xs text-slate-500">{row.supplierName}</p></div><ArrowUpRight className="size-4 text-slate-400"/></div><div className="mt-4 grid grid-cols-3 gap-2 border-t border-slate-100 pt-3">{[row.amountNet,row.paidNet,row.outstandingNet].map((value,index)=><div key={index}><p className="text-[10px] text-slate-500">{translateFinanceStatic(headings[index],locale)}</p><p className={cn('mt-1 text-sm font-semibold tabular-nums',index===2?'text-rose-700':'text-slate-900')}>{money(value)}</p></div>)}</div></article>):<p className="rounded-xl border bg-white p-6 text-sm text-slate-500">{financeText('暂无记录','Nessun movimento',locale)}</p>}</div>
+  <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 bg-white sm:block"><Table><TableHeader><TableRow><TableHead>{financeText('批次 / 供应商','Lotto / fornitore',locale)}</TableHead>{headings.map(label=><TableHead key={label}>{translateFinanceStatic(label,locale)}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.length?rows.map(row=><TableRow key={row.id}><TableCell><button type="button" onClick={()=>onHistory(row.batchCode??'')} className="font-semibold text-blue-700 underline underline-offset-4">{row.batchCode}</button><p className="text-xs text-slate-500">{row.supplierName}</p></TableCell><TableCell className="tabular-nums">{money(row.amountNet)}</TableCell><TableCell className="tabular-nums">{money(row.paidNet)}</TableCell><TableCell className="font-bold tabular-nums text-rose-700">{money(row.outstandingNet)}</TableCell></TableRow>):<TableRow><TableCell colSpan={4} className="h-28 text-center text-slate-500">{financeText('暂无记录','Nessun movimento',locale)}</TableCell></TableRow>}</TableBody></Table></div></>;
+}
+
+function LedgerTable({rows,loading,it,money,onEdit}:{rows:AdminFinanceLedgerRow[];loading:boolean;it:boolean;money:(n:number)=>string;onEdit?: (editor:Editor)=>void}){const {locale}=useI18n();
+  if(loading)return <Loading it={it}/>;
+  return <><div className="space-y-3 sm:hidden">{rows.length?rows.map(row=><article key={row.id} className="rounded-2xl border border-slate-200 bg-white p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="text-xs text-slate-500">{typeLabel(row.type,it,locale)} · {financeDay(row.date)}</p><h3 className="mt-2 text-sm font-semibold">{row.type==='expense'?row.title:typeLabel(row.type,it,locale)}</h3></div><strong className="shrink-0 text-base tabular-nums">{money(row.amountNet)}</strong></div><p className="mt-2 text-xs text-slate-500">{[row.supplierName,row.batchCode,row.skuCode].filter(Boolean).join(' · ')}</p><div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 pt-3"><div className="text-xs text-slate-500">{row.orderNo??(row.status==='paid'?(financeText('已付','Pagato',locale)):row.status==='pending'?(financeText('待付','Da pagare',locale)):row.status==='cancelled'?(financeText('已取消','Annullato',locale)):row.status)} {row.confidence&&<Confidence value={row.confidence} it={it}/>}</div>{onEdit&&['expense','supplier_payment'].includes(row.type)?<Button size="sm" variant="outline" onClick={()=>onEdit({kind:row.type==='expense'?'expense':'supplier-payment',row})}>{financeText('修改','Modifica',locale)}</Button>:row.orderId?<Button size="sm" variant="outline" asChild><Link href={`/admin?panel=orders&orderId=${encodeURIComponent(row.orderId)}`}>{financeText('查看订单','Apri ordine',locale)}</Link></Button>:null}</div></article>):<div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-500">{financeText('当前筛选暂无记录。','Nessun movimento per questi filtri.',locale)}</div>}</div><div className="hidden min-w-0 overflow-x-auto sm:block rounded-2xl border border-slate-200 bg-white"><Table><TableHeader><TableRow>{(it?['Data','Tipo / stato','Descrizione','Riferimento','Importo · EUR','Costi','Azioni']:['日期','类型 / 状态','说明','关联单据','金额 · EUR','成本可信度','操作']).map(label=><TableHead key={label}>{translateFinanceStatic(label,locale)}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.length?rows.map(row=><TableRow key={row.id}><TableCell className="whitespace-nowrap text-xs tabular-nums">{financeDay(row.date)}</TableCell><TableCell className="whitespace-nowrap"><Badge variant="outline">{typeLabel(row.type,it,locale)}</Badge><p className="mt-1 text-xs text-slate-500">{row.status==='paid'?(financeText('已付','Pagato',locale)):row.status==='pending'?(financeText('待付','Da pagare',locale)):row.status==='cancelled'?(financeText('已取消','Annullato',locale)):row.status}</p></TableCell><TableCell className="min-w-44"><span className="font-medium">{['expense'].includes(row.type)?row.title:typeLabel(row.type,it,locale)}</span><p className="text-xs text-slate-500">{row.supplierName}</p></TableCell><TableCell className="text-xs">{row.orderId?<Link href={`/admin?panel=orders&orderId=${encodeURIComponent(row.orderId)}`} className="whitespace-nowrap text-blue-700 underline underline-offset-4">{row.orderNo}</Link>:row.batchCode??'—'}{row.skuCode&&<p className="mt-1 font-mono">{row.skuCode}</p>}</TableCell><TableCell className="whitespace-nowrap text-right font-semibold tabular-nums">{money(row.amountNet)}</TableCell><TableCell>{row.confidence?<Confidence value={row.confidence} it={it}/>: '—'}</TableCell><TableCell>{onEdit&&['expense','supplier_payment'].includes(row.type)?<Button size="sm" variant="outline" onClick={()=>onEdit({kind:row.type==='expense'?'expense':'supplier-payment',row})}>{financeText('修改','Modifica',locale)}</Button>:row.orderId?<Button size="sm" variant="ghost" asChild><Link href={`/admin?panel=orders&orderId=${encodeURIComponent(row.orderId)}`}>{financeText('查看订单','Apri ordine',locale)}</Link></Button>:'—'}</TableCell></TableRow>):<TableRow><TableCell colSpan={7} className="h-32 text-center text-slate-500">{financeText('当前筛选暂无记录。','Nessun movimento per questi filtri.',locale)}</TableCell></TableRow>}</TableBody></Table></div></>;
+}
+function CostTable({rows,loading,it,money}:{rows:AdminFinanceCostAllocation[];loading:boolean;it:boolean;money:(n:number)=>string}){const {locale}=useI18n();if(loading)return <Loading it={it}/>;return <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white"><Table><TableHeader><TableRow>{(it?['Ordine / SKU','Lotto','Quantità','Costo unitario','Costo totale','Stato','Attendibilità']:['订单 / SKU','批次','数量','单位成本','总成本','分配状态','可信度']).map(label=><TableHead key={label}>{translateFinanceStatic(label,locale)}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.length?rows.map(row=><TableRow key={row.id}><TableCell className="min-w-44"><p className="text-xs">{row.orderNo}</p><p className="font-mono text-xs">{row.skuCode}</p><p className="text-xs text-slate-500">{row.productName}</p></TableCell><TableCell>{row.batchCode??'—'}</TableCell><TableCell>{row.quantity}</TableCell><TableCell>{money(row.unitCostNet)}</TableCell><TableCell className="font-semibold">{money(row.totalCostNet)}</TableCell><TableCell>{row.status}</TableCell><TableCell><Confidence value={row.confidence} it={it}/></TableCell></TableRow>):<TableRow><TableCell colSpan={7} className="h-28 text-center text-slate-500">{financeText('暂无成本分配','Nessuna allocazione',locale)}</TableCell></TableRow>}</TableBody></Table></div>;}
 
 type ApiListResponse<T> = {
   data: T[];
@@ -131,22 +150,12 @@ type ApiListResponse<T> = {
     returned?: number;
     limit?: number;
     offset?: number;
-    summary?: FinanceSummary;
+    summary?: AdminFinanceSummary;
   };
 };
 
 type ApiItemResponse<T> = {
   data: T;
-};
-
-type FinanceFilters = {
-  category: string;
-  confidence: string;
-  dateFrom: string;
-  dateMode: string;
-  dateTo: string;
-  q: string;
-  supplier: string;
 };
 
 const expenseCategories = [
@@ -161,487 +170,33 @@ const expenseCategories = [
   "other",
 ] as const;
 
-const emptySummary: FinanceSummary = {
-  accountsPayable: 0,
-  cogsNet: 0,
-  confidence: { exact: 0, estimated: 0, unmatched: 0 },
-  currency: "EUR",
-  expenseNet: 0,
-  grossMarginRate: 0,
-  grossProfit: 0,
-  inventoryCostValue: 0,
-  operatingProfit: 0,
-  pendingReceivables: 0,
-  purchaseNet: 0,
-  salesNet: 0,
-  supplierPaymentsNet: 0,
-  vatAmbiguousPurchaseNet: 0,
-  walletAppliedNet: 0,
-};
-
-export function AdminFinancePanel(props: { permissions: string[]; currentUserId?: string }) {
-  return <AdminFinancePanelContent key={props.currentUserId ?? "finance-user"} {...props} />;
-}
-
-function AdminFinancePanelContent({ permissions, currentUserId }: { permissions: string[]; currentUserId?: string }) {
-  const { locale } = useI18n();
-  const copy = React.useMemo(() => financeCopy(locale), [locale]);
-  const canManage = permissions.includes("finance.manage");
-  const canExport = permissions.includes("finance.export") && (permissions.includes("finance.read") || canManage);
-  const [filters, setFilters] = useAdminMemoryQuery<FinanceFilters>("finance.filters", () => ({
-    category: "all", confidence: "all", dateFrom: dateDaysAgo(30), dateMode: "created", dateTo: todayDate(), q: "", supplier: "",
-  }));
-  const [tab, setTab] = usePersistentAdminValue("finance.tab", "overview");
-  const [ledgerPage, setLedgerPage] = usePersistentAdminValue("finance.ledgerPage", 0);
-  const [cogsPage, setCogsPage] = usePersistentAdminValue("finance.cogsPage", 0);
-  const [reloadKey, setReloadKey] = React.useState(0);
-  const [savedNotice, setSavedNotice] = React.useState("");
-  const updateFilters: React.Dispatch<React.SetStateAction<FinanceFilters>> = (update) => {
-    setFilters(update); setLedgerPage(0); setCogsPage(0);
-  };
-  const ledgerView = tab === "purchases" || tab === "expenses" ? tab : "margin";
-  const baseParams = buildFinanceParams(filters);
-  const ledgerParams = new URLSearchParams(baseParams);
-  ledgerParams.set("ledgerView", ledgerView); ledgerParams.set("limit", "50"); ledgerParams.set("offset", String(ledgerPage * 50));
-  const cogsParams = new URLSearchParams(baseParams);
-  cogsParams.set("limit", "50"); cogsParams.set("offset", String(cogsPage * 50));
-  const summaryResource = useFinanceResource<ApiItemResponse<FinanceSummary>>(`/api/admin/finance/summary?${baseParams}`, reloadKey, copy.loadError);
-  const ledgerResource = useFinanceResource<ApiListResponse<FinanceLedgerRow>>(`/api/admin/finance/ledger?${ledgerParams}`, reloadKey, copy.loadError);
-  const cogsResource = useFinanceResource<ApiListResponse<FinanceAllocation>>(`/api/admin/finance/cogs?${cogsParams}`, reloadKey, copy.loadError);
-  const summary = summaryResource.data?.data ?? emptySummary;
-  const wideMetricValues = [summary.salesNet, summary.cogsNet, summary.grossProfit, summary.operatingProfit, summary.purchaseNet, summary.inventoryCostValue, summary.pendingReceivables, summary.accountsPayable].some(value => formatMoney(value, locale).length > 12);
-  const ledgerRows = ledgerResource.data?.data ?? [];
-  const allocations = cogsResource.data?.data ?? [];
-  const loading = { summary: summaryResource.loading, ledger: ledgerResource.loading, cogs: cogsResource.loading };
-  const errors = { summary: summaryResource.error, ledger: ledgerResource.error, cogs: cogsResource.error };
-  const isLoading = loading.summary || loading.ledger || loading.cogs;
-  const onSaved = () => { setSavedNotice(copy.saved); setReloadKey((value) => value + 1); };
-  const retry = () => setReloadKey((value) => value + 1);
-  const exportCsvHref = `/api/admin/finance/export?${buildFinanceParams(filters, "csv")}`;
-  const exportXlsxHref = `/api/admin/finance/export?${buildFinanceParams(filters, "xlsx")}`;
-  const chartData = [
-    { label: copy.salesNet, value: summary.salesNet }, { label: "COGS", value: summary.cogsNet },
-    { label: copy.grossProfit, value: summary.grossProfit }, { label: copy.expenses, value: summary.expenseNet },
-    { label: copy.operatingProfit, value: summary.operatingProfit },
-  ];
-  const ledgerTableProps = { copy, isLoading: loading.ledger, error: errors.ledger, stale: ledgerResource.stale, onRetry: retry,
-    meta: ledgerResource.data?.meta, page: ledgerPage, setPage: setLedgerPage, canManage, onSaved, currentUserId };
-
-  return (
-    <section className="admin-ui-panel flex min-w-0 flex-col gap-3 sm:gap-4">
-      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
-        <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <h1 className="text-xl font-black text-slate-950">{copy.title}</h1>
-            <p className="mt-1 text-sm text-slate-500">{copy.subtitle}</p>
-          </div>
-          <div className="flex min-w-0 flex-wrap gap-2 max-sm:[&>button]:h-auto max-sm:[&>button]:max-w-full max-sm:[&>button]:whitespace-normal">
-            <Button
-              type="button"
-              variant="outline"
-              className="bg-white"
-              onClick={() => setReloadKey((value) => value + 1)}
-            >
-              <RefreshCw className={cn("size-4", isLoading && "animate-spin")} />
-              {copy.refresh}
-            </Button>
-            {canManage ? <React.Fragment key={currentUserId ?? "finance-user"}>
-              <FinanceEntryDialog type="expense" copy={copy} onSaved={onSaved} />
-              <FinanceEntryDialog type="supplier_payment" copy={copy} onSaved={onSaved} />
-            </React.Fragment> : <p className="self-center text-xs text-slate-500">{copy.readOnly}</p>}
-          </div>
-        </div>
-        <FinanceFiltersBar filters={filters} setFilters={updateFilters} copy={copy} />
-      </div>
-
-      {savedNotice ? <AdminNotice tone={errors.summary || errors.ledger || errors.cogs ? "warning" : "success"} message={savedNotice} /> : null}
-      <Tabs value={tab} onValueChange={(value) => { setTab(value); setLedgerPage(0); }} className="min-w-0">
-        <TabsList className="flex h-auto group-data-horizontal/tabs:h-auto w-full min-w-0 justify-start overflow-x-auto rounded-lg border border-slate-200 bg-white p-1 sm:grid sm:grid-cols-5 sm:justify-center">
-          {(["overview", "margin", "purchases", "expenses", "export"] as const).map((value) => <TabsTrigger key={value} value={value} className="h-auto min-h-11 min-w-20 shrink-0 flex-1 whitespace-normal break-words px-2 py-2 text-center leading-tight">{copy.tabs[value]}</TabsTrigger>)}
-        </TabsList>
-
-        <TabsContent value="overview" className="mt-3 min-w-0">
-          <FinanceReadNotice copy={copy} error={errors.summary} stale={summaryResource.stale} loading={loading.summary} onRetry={retry} />
-          {!summaryResource.data ? (
-            <div role="status" aria-busy={loading.summary} className="rounded-lg border border-slate-200 bg-white p-8 text-sm font-semibold text-slate-500">
-              {loading.summary ? copy.loading : errors.summary || copy.empty}
-            </div>
-          ) : <>
-          <AdminMetricSummary className={cn("sm:hidden", wideMetricValues && "grid-cols-1")} ariaLabel={copy.tabs.overview} items={[
-            { key: "sales", label: copy.salesNet, value: formatMoney(summary.salesNet, locale), tone: "blue" },
-            { key: "cogs", label: "COGS", value: formatMoney(summary.cogsNet, locale) },
-            { key: "grossProfit", label: copy.grossProfit, value: <><span>{formatMoney(summary.grossProfit, locale)}</span><span className="block text-xs font-semibold text-emerald-700">{summary.grossMarginRate.toFixed(1)}%</span></>, tone: "green" },
-            { key: "operatingProfit", label: copy.operatingProfit, value: formatMoney(summary.operatingProfit, locale), tone: "green" },
-            { key: "purchase", label: copy.purchaseNet, value: formatMoney(summary.purchaseNet, locale) },
-            { key: "inventory", label: copy.inventoryCost, value: formatMoney(summary.inventoryCostValue, locale) },
-            { key: "receivables", label: copy.receivables, value: formatMoney(summary.pendingReceivables, locale), tone: "amber" },
-            { key: "payables", label: copy.payables, value: formatMoney(summary.accountsPayable, locale), tone: "red" },
-          ]} />
-          <div className="hidden min-w-0 grid-cols-2 gap-2 sm:grid md:gap-3 xl:grid-cols-4">
-            <MetricCard icon={TrendingUp} label={copy.salesNet} value={formatMoney(summary.salesNet, locale)} />
-            <MetricCard icon={Scale} label="COGS" value={formatMoney(summary.cogsNet, locale)} />
-            <MetricCard icon={Calculator} label={copy.grossProfit} value={formatMoney(summary.grossProfit, locale)} hint={`${summary.grossMarginRate.toFixed(1)}%`} />
-            <MetricCard icon={Banknote} label={copy.operatingProfit} value={formatMoney(summary.operatingProfit, locale)} />
-            <MetricCard icon={ReceiptText} label={copy.purchaseNet} value={formatMoney(summary.purchaseNet, locale)} />
-            <MetricCard icon={HandCoins} label={copy.inventoryCost} value={formatMoney(summary.inventoryCostValue, locale)} />
-            <MetricCard icon={AlertTriangle} label={copy.receivables} value={formatMoney(summary.pendingReceivables, locale)} />
-            <MetricCard icon={FileSpreadsheet} label={copy.payables} value={formatMoney(summary.accountsPayable, locale)} />
-          </div>
-
-          <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1.4fr)_minmax(320px,0.6fr)]">
-            <Card className="rounded-lg border-slate-200 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-black">{copy.netChart}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="h-[280px] min-w-0">
-                  <ResponsiveContainer width="100%" height="100%" initialDimension={{ width: 320, height: 280 }}>
-                    <BarChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="label" tickLine={false} axisLine={false} />
-                      <YAxis tickLine={false} axisLine={false} width={56} />
-                      <ChartTooltip formatter={(value) => formatMoney(Number(value), locale)} />
-                      <Bar dataKey="value" fill="#2563eb" radius={[6, 6, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="rounded-lg border-slate-200 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-black">{copy.costConfidence}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {(["exact", "estimated", "unmatched"] as const).map((confidence) => (
-                  <div key={confidence} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 p-3">
-                    <ConfidenceBadge confidence={confidence} />
-                    <span className="font-mono text-lg font-black">{summary.confidence[confidence] ?? 0}</span>
-                  </div>
-                ))}
-                {summary.vatAmbiguousPurchaseNet > 0 ? (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
-                    {copy.vatReview}: {formatMoney(summary.vatAmbiguousPurchaseNet, locale)}
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
-          </div>
-          </>}
-        </TabsContent>
-
-        <TabsContent value="margin" className="mt-3 min-w-0">
-          <FinanceTable
-            {...ledgerTableProps}
-            rows={ledgerRows}
-          />
-          <CogsTable allocations={allocations} copy={copy} isLoading={loading.cogs} locale={locale} error={errors.cogs} stale={cogsResource.stale} onRetry={retry} meta={cogsResource.data?.meta} page={cogsPage} setPage={setCogsPage} />
-        </TabsContent>
-
-        <TabsContent value="purchases" className="mt-3 min-w-0">
-          <FinanceTable
-            {...ledgerTableProps}
-            rows={ledgerRows}
-          />
-        </TabsContent>
-
-        <TabsContent value="expenses" className="mt-3 min-w-0">
-          <FinanceTable
-            {...ledgerTableProps}
-            rows={ledgerRows}
-          />
-        </TabsContent>
-
-        <TabsContent value="export" className="mt-3 min-w-0">
-          <Card className="rounded-lg border-slate-200 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-black">{copy.exportTitle}</CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              {canExport ? <><Button asChild>
-                <a href={exportCsvHref}>
-                  <Download className="size-4" />
-                  CSV
-                </a>
-              </Button>
-              <Button asChild variant="outline">
-                <a href={exportXlsxHref}>
-                  <FileSpreadsheet className="size-4" />
-                  XLSX
-                </a>
-              </Button></> : <p className="text-sm text-slate-500">{copy.exportDenied}</p>}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </section>
-  );
-}
-
-function FinanceFiltersBar({
-  copy,
-  filters,
-  setFilters,
-}: {
-  copy: FinanceCopy;
-  filters: FinanceFilters;
-  setFilters: React.Dispatch<React.SetStateAction<FinanceFilters>>;
-}) {
-  const id = React.useId();
-  const renderOptions = (layout: string) => <>
-      <div className="grid min-w-0 gap-1"><Label htmlFor={`${id}-${layout}-dateMode`}>{copy.dateBasis}</Label><Select value={filters.dateMode} onValueChange={(value) => setFilters((current) => ({ ...current, dateMode: value }))}>
-        <SelectTrigger id={`${id}-${layout}-dateMode`} className="w-full min-w-0 bg-white">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="created">{copy.dateModes.created}</SelectItem>
-          <SelectItem value="paid">{copy.dateModes.paid}</SelectItem>
-          <SelectItem value="received">{copy.dateModes.received}</SelectItem>
-          <SelectItem value="invoice">{copy.dateModes.invoice}</SelectItem>
-          <SelectItem value="recognized">{copy.dateModes.recognized}</SelectItem>
-        </SelectContent>
-      </Select></div>
-      <div className="grid min-w-0 gap-1"><Label htmlFor={`${id}-${layout}-confidence`}>{copy.table.confidence}</Label><Select value={filters.confidence} onValueChange={(value) => setFilters((current) => ({ ...current, confidence: value }))}>
-        <SelectTrigger id={`${id}-${layout}-confidence`} className="w-full min-w-0 bg-white">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">{copy.allConfidence}</SelectItem>
-          <SelectItem value="exact">exact</SelectItem>
-          <SelectItem value="estimated">estimated</SelectItem>
-          <SelectItem value="unmatched">unmatched</SelectItem>
-        </SelectContent>
-      </Select></div>
-      <div className="grid min-w-0 gap-1"><Label htmlFor={`${id}-${layout}-from`}>{copy.dateFrom}</Label><Input id={`${id}-${layout}-from`} type="date" value={filters.dateFrom} onChange={(event) => setFilters((current) => ({ ...current, dateFrom: event.target.value }))} /></div>
-      <div className="grid min-w-0 gap-1"><Label htmlFor={`${id}-${layout}-to`}>{copy.dateTo}</Label><Input id={`${id}-${layout}-to`} type="date" value={filters.dateTo} onChange={(event) => setFilters((current) => ({ ...current, dateTo: event.target.value }))} /></div>
-
-      <div className="grid min-w-0 gap-1"><Label htmlFor={`${id}-${layout}-supplier`}>{copy.supplierPlaceholder}</Label><AdminSearchField id={`${id}-${layout}-supplier`} value={filters.supplier} placeholder={copy.supplierPlaceholder} onValueChange={supplier => setFilters((current) => ({ ...current, supplier }))} /></div>
-      <div className="grid min-w-0 gap-1"><Label htmlFor={`${id}-${layout}-category`}>{copy.expenseCategory}</Label><Select value={filters.category} onValueChange={(value) => setFilters((current) => ({ ...current, category: value }))}>
-        <SelectTrigger id={`${id}-${layout}-category`} className="w-full min-w-0 bg-white">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="all">{copy.allCategories}</SelectItem>
-          <SelectItem value="sales">{copy.salesNet}</SelectItem>
-          <SelectItem value="purchase">{copy.purchaseNet}</SelectItem>
-          <SelectItem value="cogs">cogs</SelectItem>
-          <SelectItem value="supplier_payment">{copy.addPayment}</SelectItem>
-          {expenseCategories.map((category) => (
-            <SelectItem key={category} value={category}>
-              {expenseCategoryLabel(category, copy.locale)}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select></div>
-  </>;
-  return (
-    <div className="mt-3 grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-3 2xl:grid-cols-[140px_140px_150px_150px_minmax(180px,1fr)_minmax(160px,1fr)_150px]">
-      <div className="order-first col-span-2 grid min-w-0 gap-1 lg:col-span-1 2xl:order-none"><Label htmlFor={`${id}-q`}>{copy.searchPlaceholder}</Label><AdminSearchField id={`${id}-q`} value={filters.q} placeholder={copy.searchPlaceholder} clearLabel={copy.locale.startsWith("zh") ? "清除搜索" : "Cancella ricerca"} onValueChange={(q) => setFilters((current) => ({ ...current, q }))} /></div>
-      <details className="col-span-2 min-w-0 rounded-lg border border-slate-200 bg-white sm:hidden">
-        <summary className="flex min-h-11 cursor-pointer flex-wrap items-center justify-between gap-2 px-3 text-xs font-semibold"><span>{copy.locale.startsWith("zh") ? "筛选与日期口径" : "Filtri e base della data"} · {copy.dateModes[filters.dateMode as keyof typeof copy.dateModes] ?? filters.dateMode}</span><span className="font-mono font-normal text-slate-500">{filters.dateFrom || "—"} → {filters.dateTo || "—"}</span></summary>
-        <div className="grid min-w-0 grid-cols-2 gap-2 border-t p-2">{renderOptions("mobile")}</div>
-      </details>
-      <div className="hidden sm:contents">{renderOptions("desktop")}</div>
-      {(filters.supplier || filters.category !== "all" || filters.confidence !== "all") && <div className="col-span-2 flex min-w-0 flex-wrap gap-2 2xl:col-span-7">
-        {filters.supplier && <Button type="button" variant="outline" size="sm" onClick={() => setFilters(current => ({ ...current, supplier: "" }))}>{copy.supplierPlaceholder}: {filters.supplier} ×</Button>}
-        {filters.category !== "all" && <Button type="button" variant="outline" size="sm" onClick={() => setFilters(current => ({ ...current, category: "all" }))}>{copy.expenseCategory}: {({ sales: copy.salesNet, purchase: copy.purchaseNet, cogs: "COGS", supplier_payment: copy.addPayment } as Record<string, string>)[filters.category] ?? expenseCategoryLabel(filters.category, copy.locale)} ×</Button>}
-        {filters.confidence !== "all" && <Button type="button" variant="outline" size="sm" onClick={() => setFilters(current => ({ ...current, confidence: "all" }))}>{copy.table.confidence}: {filters.confidence} ×</Button>}
-      </div>}
-    </div>
-  );
-}
-
-function MetricCard({
-  hint,
-  icon: Icon,
-  label,
-  value,
-}: {
-  hint?: string;
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-}) {
-  return (
-    <Card className="gap-0 rounded-lg border-slate-200 py-0 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
-      <CardContent className="flex min-h-[96px] min-w-0 items-start justify-between gap-2 p-3 md:min-h-[112px] md:gap-3 md:p-4">
-        <div className="min-w-0">
-          <div className="text-xs font-bold text-slate-500">{label}</div>
-          <div className="mt-2 break-all font-mono text-lg font-black text-slate-950 md:text-2xl">{value}</div>
-          {hint ? <div className="mt-1 text-xs font-semibold text-emerald-600">{hint}</div> : null}
-        </div>
-        <div className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary md:size-9">
-          <Icon className="size-4" />
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function FinanceTable({
-  copy,
-  isLoading,
-  rows, error, stale, onRetry, meta, page, setPage, canManage, onSaved, currentUserId,
-}: {
-  copy: FinanceCopy; isLoading: boolean; rows: FinanceLedgerRow[]; error: string; stale: boolean; onRetry: () => void;
-  meta?: ApiListResponse<FinanceLedgerRow>["meta"]; page: number; setPage: React.Dispatch<React.SetStateAction<number>>;
-  canManage: boolean; onSaved: () => void; currentUserId?: string;
-}) {
-  const { locale } = useI18n();
-
-  return (
-    <Card className="rounded-lg border-slate-200 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
-      <CardContent className="p-0">
-        <FinanceReadNotice copy={copy} error={error} stale={stale} loading={isLoading} onRetry={onRetry} />
-        <p className="px-3 py-2 text-xs text-slate-500 md:hidden">{(locale.startsWith("en") ? englishUiCopy("Scorri per vedere riferimenti, importi e base dei costi") : locale.startsWith("zh") ? "横向滑动查看参考编号、金额与成本口径" : "Scorri per vedere riferimenti, importi e base dei costi")}</p>
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{copy.table.date}</TableHead>
-                <TableHead>{copy.table.type}</TableHead>
-                <TableHead>{copy.table.title}</TableHead>
-                <TableHead>{copy.table.ref}</TableHead>
-                <TableHead>{copy.table.supplier}</TableHead>
-                <TableHead className="text-right">{copy.table.amount}</TableHead>
-                <TableHead>{copy.table.confidence}</TableHead>
-                {canManage ? <TableHead>{copy.edit}</TableHead> : null}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading && rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={canManage ? 8 : 7} className="h-28 text-center text-sm text-slate-500">
-                    {copy.loading}
-                  </TableCell>
-                </TableRow>
-              ) : rows.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={canManage ? 8 : 7} className="h-28 text-center text-sm text-slate-500">
-                    {error ? copy.loadError : copy.empty}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                rows.map((row) => (
-                  <TableRow key={row.id}>
-                    <TableCell className="whitespace-nowrap font-mono text-xs">{formatDate(row.date)}</TableCell>
-                    <TableCell><TypeBadge type={row.type} /></TableCell>
-                    <TableCell className="min-w-[220px]">
-                      <div className="font-semibold text-slate-900">{row.title}</div>
-                      <div className="text-xs text-slate-500">{row.category ? expenseCategoryLabel(row.category, locale) : row.status ?? ""}</div>
-                    </TableCell>
-                    <TableCell className="min-w-[160px] text-xs text-slate-600">
-                      {[row.orderNo, row.skuCode, row.batchCode].filter(Boolean).join(" / ")}
-                    </TableCell>
-                    <TableCell className="min-w-[150px] text-xs text-slate-600">{row.supplierName ?? "--"}</TableCell>
-                    <TableCell className="whitespace-nowrap text-right font-mono font-black">
-                      {formatFinanceMoney(row.amountNet, locale, row.currency)}
-                    </TableCell>
-                    <TableCell>{row.confidence ? <ConfidenceBadge confidence={row.confidence} /> : "--"}</TableCell>
-                    {canManage ? <TableCell>{financeEditableId(row.type, row.id) ? <FinanceEntryDialog key={`${currentUserId}:${row.id}`} type={row.type as "expense" | "supplier_payment"} row={row} copy={copy} onSaved={onSaved} /> : "--"}</TableCell> : null}
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-        <FinancePagination copy={copy} meta={meta} page={page} setPage={setPage} loading={isLoading || stale} />
-      </CardContent>
-    </Card>
-  );
-}
-
-function CogsTable({
-  allocations,
-  copy,
-  isLoading,
-  locale, error, stale, onRetry, meta, page, setPage,
-}: {
-  allocations: FinanceAllocation[]; copy: FinanceCopy; isLoading: boolean; locale: Parameters<typeof formatMoney>[1];
-  error: string; stale: boolean; onRetry: () => void; meta?: ApiListResponse<FinanceAllocation>["meta"];
-  page: number; setPage: React.Dispatch<React.SetStateAction<number>>;
-}) {
-  return (
-    <Card className="mt-3 rounded-lg border-slate-200 shadow-[0_12px_30px_rgba(15,23,42,0.045)]">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-black">{copy.cogsDetail}</CardTitle>
-      </CardHeader>
-      <CardContent className="p-0">
-        <FinanceReadNotice copy={copy} error={error} stale={stale} loading={isLoading} onRetry={onRetry} />
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>{copy.table.ref}</TableHead>
-                <TableHead>SKU</TableHead>
-                <TableHead>{copy.table.batch}</TableHead>
-                <TableHead>{copy.table.qty}</TableHead>
-                <TableHead className="text-right">{copy.table.unitCost}</TableHead>
-                <TableHead className="text-right">COGS</TableHead>
-                <TableHead>{copy.table.confidence}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading && allocations.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-sm text-slate-500">
-                    {copy.loading}
-                  </TableCell>
-                </TableRow>
-              ) : allocations.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="h-24 text-center text-sm text-slate-500">
-                    {error ? copy.loadError : copy.empty}
-                  </TableCell>
-                </TableRow>
-              ) : (
-                allocations.map((allocation) => (
-                  <TableRow key={allocation.id}>
-                    <TableCell className="whitespace-nowrap text-xs">{allocation.orderNo ?? "--"}</TableCell>
-                    <TableCell className="min-w-[220px]">
-                      <div className="font-mono text-xs font-bold">{allocation.skuCode}</div>
-                      <div className="truncate text-xs text-slate-500">{allocation.productName ?? ""}</div>
-                    </TableCell>
-                    <TableCell className="text-xs">{allocation.batchCode ?? "--"}</TableCell>
-                    <TableCell className="font-mono">{allocation.quantity}</TableCell>
-                    <TableCell className="text-right font-mono">{formatFinanceMoney(allocation.unitCostNet, locale, allocation.currency)}</TableCell>
-                    <TableCell className="text-right font-mono font-black">{formatFinanceMoney(allocation.totalCostNet, locale, allocation.currency)}</TableCell>
-                    <TableCell><ConfidenceBadge confidence={allocation.confidence} /></TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
-        <FinancePagination copy={copy} meta={meta} page={page} setPage={setPage} loading={isLoading || stale} />
-      </CardContent>
-    </Card>
-  );
-}
-
 type EditableFinanceEntry = {
   id: string; currency: string; amountNet: number; vatAmount: number; amountGross: number; status: "pending" | "paid" | "cancelled";
   category?: string; description?: string; occurredAt?: string; paidAt?: string | null; notes?: string | null; note?: string | null;
   batchId?: string | null; batchCode?: string | null; supplierName?: string | null; version: string;
 };
+
 type FinanceBatchOption = {
   id: string; batchCode: string; supplierName: string | null; currency: string; paidNet: number | null;
   outstandingNet: number | null; latestPaidAt: string | null; costBasis: "confirmed_net" | "estimated" | "unknown";
 };
+
 type FinanceEntryForm = {
   amountNet: string; vatAmount: string; category: string; description: string; occurredAt: string;
   paidAt: string; note: string; batchId: string; status: "pending" | "paid" | "cancelled"; correctionReason: string;
 };
+
 function emptyEntryForm(now = new Date()): FinanceEntryForm {
   return { amountNet: "", vatAmount: "0", category: "other", description: "", occurredAt: todayDate(),
     paidAt: localFinanceDateTime(now), note: "", batchId: "", status: "paid", correctionReason: "" };
 }
 
-function FinanceEntryDialog({ type, copy, onSaved, row }: {
-  type: "expense" | "supplier_payment"; copy: FinanceCopy; onSaved: () => void; row?: FinanceLedgerRow;
+function FinanceEntryDialog({ type, copy, onSaved, row, onClose }: {
+  type: "expense" | "supplier_payment"; copy: FinanceCopy; onSaved: () => void; row?: AdminFinanceLedgerRow; onClose: () => void;
 }) {
   const { locale } = useI18n();
   const id = React.useId();
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = React.useState(true);
   const [isSaving, setIsSaving] = React.useState(false);
   const [uncertain, setUncertain] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -663,8 +218,8 @@ function FinanceEntryDialog({ type, copy, onSaved, row }: {
   const editing = Boolean(row);
   const currency = original?.currency ?? "EUR";
   const recordId = row ? financeEditableId(type, row.id) : null;
-  const net = parseFinanceMoney(form.amountNet);
-  const vat = parseFinanceMoney(form.vatAmount);
+  const net = parseLegacyFinanceMoney(form.amountNet);
+  const vat = parseLegacyFinanceMoney(form.vatAmount);
   const previewGross = net.ok && vat.ok ? financeGross(net.value, vat.value) : null;
   const title = editing ? copy.edit : isExpense ? copy.addExpense : copy.addPayment;
   const updateField = <K extends keyof FinanceEntryForm>(key: K, value: FinanceEntryForm[K]) => {
@@ -772,12 +327,10 @@ function FinanceEntryDialog({ type, copy, onSaved, row }: {
       if (!window.confirm((locale.startsWith("en") ? englishUiCopy("Scartare i dati contabili non salvati?") : locale.startsWith("zh") ? "放弃未保存记账内容？" : "Scartare i dati contabili non salvati?"))) return;
       const reset = emptyEntryForm(new Date()); setForm(reset); setLoadedForm(JSON.stringify(reset)); setUncertain(false); setError("");
     }
-    setOpen(value);
+    setOpen(value); if (!value) onClose();
   };
   return <Dialog open={open} onOpenChange={close}>
-    <DialogTrigger asChild><Button type="button" variant="outline" className="bg-white" size={editing ? "sm" : "default"}>
-      {editing ? <Pencil className="size-4" /> : isExpense ? <Plus className="size-4" /> : <HandCoins className="size-4" />}{title}
-    </Button></DialogTrigger>
+
     <DialogContent data-admin-dirty={open && dirty ? "true" : "false"} data-admin-mutating={isSaving ? "true" : "false"} scrollLayout="body" className="admin-ui-panel sm:max-w-xl">
       <DialogHeader><DialogTitle>{title}</DialogTitle><DialogDescription>{editing ? copy.correctionDescription : copy.dialogDescription}</DialogDescription></DialogHeader>
       <form onSubmit={submit} noValidate className="contents">
@@ -834,13 +387,16 @@ function FinanceEntryDialog({ type, copy, onSaved, row }: {
 class FinanceApiError extends Error {
   constructor(message: string, readonly fields: Record<string, string> = {}) { super(message); }
 }
+
 function financeErrorMessage(failure: unknown, fallback: string) { return failure instanceof Error ? failure.message : fallback; }
+
 async function financeResponseError(response: Response, fallback: string) {
   const payload = await response.json().catch(() => null) as { error?: { message?: string; code?: string; details?: { issues?: { path: string; message: string }[] } } } | null;
   const fields: Record<string, string> = {};
   for (const issue of payload?.error?.details?.issues ?? []) fields[issue.path] = issue.message;
   return new FinanceApiError(payload?.error?.message || fallback, fields);
 }
+
 async function fetchFinanceJson<T>(url: string, fallback: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(url, { cache: "no-store", headers: { Accept: "application/json" }, signal });
   if (!response.ok) throw await financeResponseError(response, fallback);
@@ -848,66 +404,19 @@ async function fetchFinanceJson<T>(url: string, fallback: string, signal?: Abort
   if (!payload || typeof payload !== "object" || payload.data === undefined || payload.data === null || typeof payload.data !== "object") throw new FinanceApiError(fallback);
   return payload as T;
 }
-function useFinanceResource<T>(url: string, reloadKey: number, fallback: string) {
-  const [state, setState] = React.useState<{ data: T | null; loading: boolean; error: string; loadedUrl: string }>({ data: null, loading: true, error: "", loadedUrl: "" });
-  React.useEffect(() => {
-    const controller = new AbortController();
-    queueMicrotask(() => { if (!controller.signal.aborted) setState((current) => ({ ...current, loading: true, error: "" })); });
-    void fetchFinanceJson<T>(url, fallback, controller.signal)
-      .then((data) => { if (!controller.signal.aborted) setState({ data, loading: false, error: "", loadedUrl: url }); })
-      .catch((failure) => { if (!controller.signal.aborted) setState((current) => ({ ...current, loading: false, error: financeErrorMessage(failure, fallback) })); });
-    return () => controller.abort();
-  }, [fallback, reloadKey, url]);
-  return { ...state, stale: Boolean(state.data) && (state.loadedUrl !== url || Boolean(state.error) || state.loading) };
-}
-function FinanceReadNotice({ copy, error, stale, loading, onRetry }: { copy: FinanceCopy; error: string; stale: boolean; loading: boolean; onRetry: () => void }) {
-  if (!error && !stale) return null;
-  return <AdminNotice tone={error ? stale ? "warning" : "error" : "info"} className="m-3" message={<>{error || (loading ? copy.loading : "")} {stale ? copy.stale : ""}</>} action={error ? <Button type="button" size="sm" variant="outline" onClick={onRetry}>{copy.retry}</Button> : undefined} />;
-}
-function FinancePagination({ copy, meta, page, setPage, loading }: { copy: FinanceCopy; meta?: ApiListResponse<unknown>["meta"]; page: number; setPage: React.Dispatch<React.SetStateAction<number>>; loading: boolean }) {
-  if (!meta) return null;
-  const offset = meta.offset ?? 0; const returned = meta.returned ?? 0; const total = meta.total ?? returned; const limit = meta.limit ?? 50;
-  return <div className="flex flex-wrap items-center justify-between gap-2 border-t p-3 text-xs text-slate-600">
-    <span>{copy.showing} {returned ? offset + 1 : 0}–{offset + returned} / {total}</span><div className="flex gap-2">
-      <Button type="button" variant="outline" size="sm" disabled={loading || page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}>{copy.previous}</Button>
-      <Button type="button" variant="outline" size="sm" disabled={loading || offset + returned >= total || returned === 0 || offset + limit > 5000} onClick={() => setPage((value) => value + 1)}>{copy.next}</Button>
-    </div>{offset + limit > 5000 && offset + returned < total ? <span>{copy.narrowFilters}</span> : null}
-  </div>;
-}
+
 function formatFinanceMoney(value: number, locale: string, currency: string) {
   return new Intl.NumberFormat(locale, { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
 }
+
 function expenseCategoryLabel(category: string, locale: string) {
   const labels: Record<string, [string, string]> = { rent: ["租金", "Affitto"], salary: ["工资", "Stipendi"], shipping: ["运输", "Spedizioni"], platform_fee: ["平台费", "Commissioni piattaforma"], utilities: ["水电", "Utenze"], tax: ["税费", "Imposte"], supplier_fee: ["供应商费用", "Costi fornitore"], bank_fee: ["银行费用", "Commissioni bancarie"], other: ["其他", "Altro"], purchase: ["采购", "Acquisti"], supplier_payment: ["供应商付款", "Pagamento fornitore"] };
   return (locale.startsWith("en") ? englishUiCopy(labels[category]?.[1]) : labels[category]?.[locale.startsWith("zh") ? 0 : 1]) ?? category;
 }
 
-function ConfidenceBadge({ confidence }: { confidence: FinanceConfidence }) {
-  const className =
-    confidence === "exact"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-      : confidence === "estimated"
-        ? "border-amber-200 bg-amber-50 text-amber-700"
-        : "border-red-200 bg-red-50 text-red-700";
-
-  return (
-    <Badge variant="outline" className={className}>
-      {confidence}
-    </Badge>
-  );
-}
-
-function TypeBadge({ type }: { type: FinanceLedgerRow["type"] }) {
-  return (
-    <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-700">
-      {type}
-    </Badge>
-  );
-}
-
 type FinanceCopy = ReturnType<typeof financeCopy>;
 
-function financeCopy(locale: string) {
+function baseFinanceCopy(locale: string) {
   const isItalian = locale.startsWith("it");
 
   if (isItalian) {
@@ -1059,31 +568,20 @@ function financeCopy(locale: string) {
   };
 }
 
-function buildFinanceParams(filters: FinanceFilters, format?: "csv" | "xlsx") {
-  const params = new URLSearchParams();
-
-  params.set("dateMode", filters.dateMode);
-  if (filters.dateFrom) params.set("dateFrom", filters.dateFrom);
-  if (filters.dateTo) params.set("dateTo", filters.dateTo);
-  if (filters.q.trim()) params.set("q", filters.q.trim());
-  if (filters.supplier.trim()) params.set("supplier", filters.supplier.trim());
-  if (filters.category !== "all") params.set("category", filters.category);
-  if (filters.confidence !== "all") params.set("confidence", filters.confidence);
-  if (format) params.set("format", format);
-
-  return params.toString();
-}
-
 function todayDate() {
   return localFinanceDate();
 }
+function financeCopy(locale: string) { return locale.startsWith("en") ? englishUiCopy(baseFinanceCopy("it-IT")) : baseFinanceCopy(locale); }
+function localFinanceDateTime(date = new Date()) { return financeLocalInput(date.toISOString()); }
+function localFinanceDate() { return financeDay(); }
 
-function dateDaysAgo(days: number) {
-  const date = new Date();
-  date.setDate(date.getDate() - days);
-  return localFinanceDate(date);
-}
-
-function formatDate(value: string) {
-  return value ? value.slice(0, 10) : "--";
+function FinancePagination({ copy, meta, page, setPage, loading }: { copy: FinanceCopy; meta?: ApiListResponse<unknown>["meta"]; page: number; setPage: React.Dispatch<React.SetStateAction<number>>; loading: boolean }) {
+  if (!meta) return null;
+  const offset = meta.offset ?? 0; const returned = meta.returned ?? 0; const total = meta.total ?? returned; const limit = meta.limit ?? 50;
+  return <div className="flex flex-wrap items-center justify-between gap-2 border-t p-3 text-xs text-slate-600">
+    <span>{copy.showing} {returned ? offset + 1 : 0}–{offset + returned} / {total}</span><div className="flex gap-2">
+      <Button type="button" variant="outline" size="sm" disabled={loading || page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}>{copy.previous}</Button>
+      <Button type="button" variant="outline" size="sm" disabled={loading || offset + returned >= total || returned === 0 || offset + limit > 5000} onClick={() => setPage((value) => value + 1)}>{copy.next}</Button>
+    </div>{offset + limit > 5000 && offset + returned < total ? <span>{copy.narrowFilters}</span> : null}
+  </div>;
 }

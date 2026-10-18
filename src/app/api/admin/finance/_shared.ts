@@ -4,6 +4,7 @@ import { apiError, formatZodIssues, readJsonBody } from "@/lib/partspro-api";
 
 export const financeQuerySchema = z
   .object({
+    type: z.enum(["sale","receivable","purchase","cogs","expense","supplier_payment"]).optional(),
     category: z.string().trim().min(1).max(80).optional(),
     confidence: z.enum(["exact", "estimated", "unmatched"]).optional(),
     dateFrom: financeDateSchema.optional(),
@@ -13,11 +14,11 @@ export const financeQuerySchema = z
     dateTo: financeDateSchema.optional(),
     ledgerView: z.enum(["margin", "purchases", "expenses"]).optional(),
     limit: z.coerce.number().int().min(1).max(500).default(50),
-    offset: z.coerce.number().int().min(0).max(5000).default(0),
+    offset: z.coerce.number().int().min(0).max(50000).default(0),
     q: z.string().trim().min(1).max(160).optional(),
     supplier: z.string().trim().min(1).max(160).optional(),
   })
-  .strict();
+  .strict().refine(value => !value.dateFrom || !value.dateTo || value.dateFrom <= value.dateTo, { message: "Start date must not exceed end date.", path: ["dateTo"] });
 
 export { financeExpenseCreateSchema, financeExpensePatchSchema, supplierPaymentCreateSchema, supplierPaymentPatchSchema } from "@/lib/admin-finance-input.mjs";
 

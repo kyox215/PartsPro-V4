@@ -1,3 +1,4 @@
+import { buildFinanceAnalysis, financeDay, shiftFinanceDay } from "@/lib/partspro-finance-core.mjs";
 import { createCheckoutSubmission, type CheckoutAttempt, type CheckoutReceipt } from "@/lib/partspro-checkout-submission";
 import { collectAdminRows } from "@/lib/admin-paged-read.mjs";
 import { readCatalogRevision } from "@/lib/partspro-catalog-revision";
@@ -707,6 +708,7 @@ export type AdminFinanceLedgerType =
   | "supplier_payment";
 
 export type AdminFinanceQueryInput = {
+  type?: AdminFinanceLedgerType;
   ledgerView?: "margin" | "purchases" | "expenses";
   category?: string;
   confidence?: AdminFinanceConfidence;
@@ -8046,6 +8048,48 @@ type NormalizedFinanceQuery = Required<
 > &
   Omit<AdminFinanceQueryInput, "dateMode" | "limit" | "offset">;
 
+async function readFinanceRows(client: SupabaseServerClient, table: string, select: string, limit: number): Promise<DbRow[]> {
+  const rows: DbRow[] = [];
+  for (let offset = 0; offset <= limit; offset += 1000) {
+    const { data, error, count } = await client.from(table).select(select, { count: "exact" }).order("id").range(offset, Math.min(offset + 999, limit));
+    if (error) throw error;
+    if (!Array.isArray(data)) throw new Error(`Invalid finance data: ${table}`);
+    if ((count ?? 0) > limit || rows.length + data.length > limit) throw new RepositoryWriteError(413, "ADMIN_FINANCE_DATA_LIMIT", "Finance source exceeds the supported read limit. No partial totals were returned.");
+    rows.push(...(data as unknown[]).filter(isDbRow));
+    if (data.length < Math.min(1000, limit - offset + 1)) {
+      if (count !== null && rows.length !== count) throw new Error(`Finance read incomplete: ${table}`);
+      return rows;
+    }
+  }
+  return rows;
+}
+
+export async function getAdminFinanceAnalysis(query: AdminFinanceQueryInput = {}) {
+  const context = await requireSupabaseContext();
+  const dateTo = query.dateTo ?? financeDay();
+  const dateFrom = query.dateFrom ?? shiftFinanceDay(dateTo, -29);
+  const normalized = normalizeFinanceQuery({ ...query, type: undefined, dateFrom, dateTo });
+  const days = Math.round((Date.parse(dateTo) - Date.parse(dateFrom)) / 86400000) + 1;
+  if (days < 1 || days > 366) throw new RepositoryWriteError(400, "ADMIN_FINANCE_RANGE_INVALID", "Choose a date range of 1 to 366 days.");
+  const dataSet = await readAdminFinanceDataSet(context.client);
+  const previousTo = shiftFinanceDay(dateFrom, -1);
+  const previousFrom = shiftFinanceDay(dateFrom, -days);
+  const previousQuery = { ...normalized, dateFrom: previousFrom, dateTo: previousTo };
+  const rows = buildAdminFinanceLedgerRows(dataSet, normalized).filter(row => financeLedgerRowMatches(row, normalized));
+  const previousRows = buildAdminFinanceLedgerRows(dataSet, previousQuery).filter(row => financeLedgerRowMatches(row, previousQuery));
+  if (previousRows.some(row => row.currency.toUpperCase() !== "EUR")) {
+    throw new RepositoryWriteError(422, "ADMIN_FINANCE_CURRENCY_REVIEW", "Non-EUR entries in the comparison period require currency reconciliation.");
+  }
+  const paid = financePaidNetByBatch(dataSet.payments);
+  const payables = rows.filter(row => row.type === "purchase").map(row => ({ ...row, paidNet: paid.get(row.batchId ?? "") ?? 0, outstandingNet: roundMoney(Math.max(0, row.amountNet - (paid.get(row.batchId ?? "") ?? 0))) }));
+  return { data: { ...buildFinanceAnalysis(rows, previousRows, dateFrom, dateTo), summary: summarizeAdminFinance(dataSet, normalized), previousRange: { dateFrom: previousFrom, dateTo: previousTo }, payables: payables.sort((a,b) => b.outstandingNet-a.outstandingNet).slice(query.offset ?? 0, (query.offset ?? 0)+(query.limit ?? 50)), payablesTotal: payables.length }, source: "supabase" as const };
+}
+
+export async function listAdminFinanceBatchOptions(query: AdminFinanceQueryInput = {}) {
+  const result = await readAdminFinanceSupplierBatchOptions({ q: query.q, supplier: query.supplier, limit: Math.min(query.limit ?? 25, 50), offset: query.offset ?? 0 });
+  return { data: result.data.batches, total: result.data.total, source: result.source };
+}
+
 async function readAdminFinanceSummary(
   client: SupabaseServerClient,
   query: AdminFinanceQueryInput
@@ -8142,50 +8186,50 @@ async function readAdminFinanceDataSet(
       expenses,
       payments,
     ] = await Promise.all([
-      readRowsStrict(client, "orders", adminOrderListSelect, adminFinanceReadLimit),
-      readRowsStrict(
+      readFinanceRows(client, "orders", adminOrderListSelect, adminFinanceReadLimit),
+      readFinanceRows(
         client,
         "order_lines",
         "id, order_id, sku_code, product_name, quantity, unit_price, batch_code, reserved_qty, fulfilled_qty, cancelled_qty, stock_status, reservation_allocations",
         adminFinanceReadLimit
       ),
-      readRowsStrict(
+      readFinanceRows(
         client,
         "suppliers",
         "id, code, name, display_label, status, created_at, updated_at",
         adminFinanceReadLimit
       ),
-      readRowsStrict(
+      readFinanceRows(
         client,
         "supplier_batches",
         "id, batch_code, supplier_id, invoice_no, order_no, invoice_date, received_at, total_qty, total_cost, currency, goods_value_eur, goods_value_fx_rate_to_eur, goods_value_fx_date, goods_value_fx_source, goods_value_fx_evidence_url, vat_mode, tags, source_file_name, metadata, created_at, updated_at",
         adminFinanceReadLimit
       ),
-      readRowsStrict(
+      readFinanceRows(
         client,
         "supplier_batch_lines",
         "id, batch_id, sku_code, name, qty_received, unit_cost, line_total, created_at, updated_at",
         adminFinanceReadLimit
       ),
-      readRowsStrict(
+      readFinanceRows(
         client,
         "finance_cost_layers",
         "id, supplier_batch_line_id, supplier_batch_id, supplier_id, sku_code, batch_code, received_qty, allocated_qty, consumed_qty, unit_cost_net, total_cost_net, currency, vat_mode, vat_treatment, confidence, metadata, created_at, updated_at",
         adminFinanceReadLimit
       ),
-      readRowsStrict(
+      readFinanceRows(
         client,
         "finance_order_line_cost_allocations",
         "id, allocation_key, order_id, order_line_id, cost_layer_id, supplier_batch_line_id, inventory_item_id, sku_code, batch_code, quantity, unit_cost_net, total_cost_net, currency, status, confidence, source, recognized_at, metadata, created_at, updated_at",
         adminFinanceReadLimit
       ),
-      readRowsStrict(
+      readFinanceRows(
         client,
         "finance_expense_entries",
         "id, category, description, amount_net, vat_amount, amount_gross, currency, status, occurred_at, paid_at, counterparty_name, payment_method, reference, evidence_url, notes, metadata, created_at, updated_at",
         adminFinanceReadLimit
       ),
-      readRowsStrict(
+      readFinanceRows(
         client,
         "supplier_batch_payments",
         "id, batch_id, supplier_id, amount_net, vat_amount, amount_gross, currency, status, paid_at, due_at, payment_method, reference, note, metadata, created_at, updated_at",
@@ -8205,6 +8249,7 @@ async function readAdminFinanceDataSet(
       suppliers,
     };
   } catch (error) {
+    if (error instanceof RepositoryWriteError) throw error;
     throw new RepositoryWriteError(
       502,
       "ADMIN_FINANCE_READ_UNAVAILABLE",
@@ -8222,6 +8267,12 @@ function summarizeAdminFinance(
   const ledgerRows = buildAdminFinanceLedgerRows(dataSet, query).filter((row) =>
     financeLedgerRowMatches(row, query)
   );
+  if (
+    ledgerRows.some(row => row.currency.toUpperCase() !== "EUR") ||
+    dataSet.costLayers.some(row => financeCostLayerMatches(row, maps, query) && (pickString(row, ["currency"]) ?? "EUR").toUpperCase() !== "EUR")
+  ) {
+    throw new RepositoryWriteError(422, "ADMIN_FINANCE_CURRENCY_REVIEW", "Non-EUR entries require currency reconciliation before EUR totals can be shown.");
+  }
   const salesNet = sumFinanceLedgerRows(ledgerRows, "sale");
   const pendingReceivables = sumFinanceLedgerRows(ledgerRows, "receivable");
   const purchaseNet = sumFinanceLedgerRows(ledgerRows, "purchase");
@@ -8861,6 +8912,7 @@ function financeLedgerRowMatches(
   row: AdminFinanceLedgerRow,
   query: NormalizedFinanceQuery
 ) {
+  if (query.type && row.type !== query.type) return false;
   const views: Record<string, readonly AdminFinanceLedgerType[]> = {
     margin: ["sale", "cogs", "receivable"], purchases: ["purchase", "supplier_payment"], expenses: ["expense"],
   };
@@ -8965,7 +9017,7 @@ function financeAllocationMatches(
 }
 
 function financeWithinDate(value: string | null | undefined, query: NormalizedFinanceQuery) {
-  const date = value?.slice(0, 10) ?? null;
+  const date = value ? financeDay(value) : null;
 
   if (!date) {
     return !query.dateFrom && !query.dateTo;
@@ -9088,6 +9140,7 @@ function isFinanceOrderEligible(row: DbRow | undefined) {
 
   return (
     !pickString(row, ["soft_deleted_at"]) &&
+    pickString(row, ["payment_status"]) !== "refunded" &&
     normalizeAdminOrderDbStatus(pickString(row, ["status"])) !== "cancelled"
   );
 }
@@ -9115,6 +9168,9 @@ function financePaidNetByBatch(payments: DbRow[]) {
     }
 
     const batchId = pickString(payment, ["batch_id"]);
+    if (batchId && (pickString(payment, ["currency"]) ?? "EUR").toUpperCase() !== "EUR") {
+      throw new RepositoryWriteError(422, "ADMIN_FINANCE_CURRENCY_REVIEW", "Historical non-EUR batch payments require currency reconciliation.");
+    }
     if (!batchId) {
       continue;
     }
