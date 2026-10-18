@@ -4,7 +4,9 @@ const fs=require('fs'),http=require('http'),assert=require('assert/strict'),path
 const {pathToFileURL}=require('url');
 const dir=__HARNESS_DIR__,output=process.env.FINANCE_UI_OUTPUT_DIR;
 fs.mkdirSync(output,{recursive:true});
-const server=http.createServer((req,res)=>{
+let handleApi;
+const server=http.createServer(async(req,res)=>{
+ if(req.url.startsWith('/api/admin/finance/')){let body='';for await(const chunk of req)body+=chunk;const request={url:()=>`http://${req.headers.host}${req.url}`,method:()=>req.method,postDataJSON:()=>JSON.parse(body),scenario:()=>new URL(req.headers.referer||'http://localhost').searchParams.get('scenario')};await handleApi({request:()=>request,fulfill:async({status=200,json})=>{res.statusCode=status;res.setHeader('Content-Type','application/json');res.end(JSON.stringify(json));}});return;}
  if(req.url==='/bundle.js'){res.setHeader('Content-Type','application/javascript');res.end(fs.readFileSync(dir+'/bundle.js'));return;}
  if(req.url==='/style.css'){res.setHeader('Content-Type','text/css');res.end(fs.readFileSync(dir+'/style.css'));return;}
  res.setHeader('Content-Type','text/html');res.end('<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/style.css"></head><body><div id="root"></div><script>window.process={env:{NODE_ENV:"development"}}</script><script src="/bundle.js"></script></body></html>');
@@ -25,17 +27,14 @@ const server=http.createServer((req,res)=>{
  const paymentEntry={id:uuid,batchId:uuid,batchCode:'UT-2026-1018',amountNet:500,vatAmount:0,status:'paid',paidAt:core.shiftFinanceDay(today,-40)+'T12:00:00Z',createdAt:core.shiftFinanceDay(today,-40),supplierName:'UTOPYA',supplierId:uuid,currency:'EUR',note:'Acconto',reference:'TRX-100',paymentMethod:'bank_transfer'};
  rows.push({...baseRow,id:'supplier_payment:'+uuid,type:'supplier_payment',date:paymentEntry.createdAt,title:'Supplier payment',amountNet:500,batchId:uuid,batchCode:paymentEntry.batchCode,supplierName:'UTOPYA',status:'paid',metadata:{entry:paymentEntry}});
  for(let i=0;i<4;i++)rows.push({...baseRow,id:'receivable-'+i,type:'receivable',date:today,title:'Pending receivable',amountNet:120+i*63.2,orderId:uuid,orderNo:'PP-2026-'+(1300+i),status:'pending',category:'receivable'});
- const purchases=[{...baseRow,id:'purchase:1',type:'purchase',date:today,title:'Purchase batch',amountNet:2680,batchCode:'UT-2026-1018',batchId:uuid,supplierName:'UTOPYA',confidence:'exact',paidNet:500,outstandingNet:2180},{...baseRow,id:'purchase:2',type:'purchase',date:today,title:'Purchase batch',amountNet:1845.8,batchCode:'MBX-2026-1014',batchId:'22222222-2222-4222-8222-222222222222',supplierName:'Mobilax',confidence:'estimated',paidNet:1200,outstandingNet:645.8}];
+ const purchases=[{...baseRow,id:'purchase:1',type:'purchase',date:today,title:'Purchase batch',amountNet:2680,batchCode:'UT-2026-1018',batchId:uuid,supplierName:'UTOPYA',supplierId:uuid,confidence:'exact',paidNet:500,outstandingNet:2180},{...baseRow,id:'purchase:2',type:'purchase',date:today,title:'Purchase batch',amountNet:1845.8,batchCode:'MBX-2026-1014',batchId:'22222222-2222-4222-8222-222222222222',supplierName:'Mobilax',supplierId:'22222222-2222-4222-8222-222222222222',confidence:'estimated',paidNet:1200,outstandingNet:645.8}];
  rows.push(...purchases);
  const checks=[],requests=[],writes=[];let failSave=false,failAnalysis=false;
  const errors=[];let browser;
  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve)});
  const origin='http://127.0.0.1:'+server.address().port;
  try{
-  browser=await chromium.launch({headless:true,channel:'chrome'});
-  const page=await browser.newPage({viewport:{width:1440,height:1000},timezoneId:'America/New_York',reducedMotion:'reduce'});
-  page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));
-  await page.route('**/api/admin/finance/**',async route=>{
+  handleApi=async route=>{
    const req=route.request(),url=new URL(req.url()),p=url.searchParams,endpoint=url.pathname.split('/').at(-1);requests.push(url.pathname+'?'+url.searchParams);
    if(req.method()!=='GET'){
     const body=req.postDataJSON();if(req.method()==='PATCH'){assert.equal(body.expectedUpdatedAt,'2026-10-18T10:00:00.123456+00:00');assert.ok(body.correctionReason);}
@@ -44,7 +43,9 @@ const server=http.createServer((req,res)=>{
     await route.fulfill({status:failSave?500:200,json:failSave?{error:{message:'模拟保存失败 / Errore simulato'}}:{data:{id:uuid,...body}}});return;
    }
    const from=p.get('dateFrom'),to=p.get('dateTo');
-   const filtered=rows.filter(row=>(!from||core.financeDay(row.date)>=from)&&(!to||core.financeDay(row.date)<=to)&&(!p.get('type')||row.type===p.get('type'))&&(!p.get('q')||[row.title,row.batchCode,row.skuCode,row.orderNo].join(' ').toLowerCase().includes(p.get('q').toLowerCase())));
+   const scenario=req.scenario?.();
+   const scenarioRows=scenario==='empty'?[]:scenario==='loss'?rows.map(row=>row.type==='cogs'?{...row,amountNet:core.financeRound(row.amountNet*2)}:row):rows;
+   const filtered=scenarioRows.filter(row=>(!from||core.financeDay(row.date)>=from)&&(!to||core.financeDay(row.date)<=to)&&(!p.get('type')||row.type===p.get('type'))&&(!p.get('category')||row.category===p.get('category'))&&(!p.get('confidence')||row.confidence===p.get('confidence'))&&(!p.get('supplierKey')||core.financeSupplierKey(row)===p.get('supplierKey'))&&(!p.get('q')||[row.title,row.batchCode,row.skuCode,row.orderNo].join(' ').toLowerCase().includes(p.get('q').toLowerCase())));
    const offset=Number(p.get('offset')||0),limit=Number(p.get('limit')||25);
    if(url.pathname.includes('/entries/')){const isExpense=url.pathname.includes('/expense/');const entry=isExpense?expenseEntries.find(e=>e.id===endpoint):paymentEntry;await route.fulfill({json:{data:{...entry,amountGross:entry.amountNet+entry.vatAmount,version:'2026-10-18T10:00:00.123456+00:00'}}});return;}
    if(endpoint==='batch-options'||endpoint==='supplier-batch-options'){
@@ -55,18 +56,27 @@ const server=http.createServer((req,res)=>{
    if(endpoint==='analysis'){
     if(failAnalysis){await route.fulfill({status:503,json:{error:{message:'模拟统计读取失败'}}});return;}
     const days=Math.round((Date.parse(to)-Date.parse(from))/86400000)+1,prevTo=core.shiftFinanceDay(from,-1),prevFrom=core.shiftFinanceDay(from,-days);
-    const prev=rows.filter(row=>core.financeDay(row.date)>=prevFrom&&core.financeDay(row.date)<=prevTo);
+    const prev=scenarioRows.filter(row=>core.financeDay(row.date)>=prevFrom&&core.financeDay(row.date)<=prevTo);
+    const currentPurchases=filtered.filter(r=>r.type==='purchase');
+    const suppliers=core.buildFinanceSupplierAnalysis(currentPurchases);
     const analysis=core.buildFinanceAnalysis(filtered,prev,from,to),sum=key=>core.financeRound(analysis.trend.reduce((n,row)=>n+row[key],0));
-    const summary={salesNet:sum('salesNet'),cogsNet:sum('cogsNet'),expenseNet:sum('expenseNet'),grossProfit:sum('grossProfit'),operatingProfit:sum('operatingProfit'),grossMarginRate:core.financeRound(sum('grossProfit')/sum('salesNet')*100),pendingReceivables:core.financeRound(filtered.filter(r=>r.type==='receivable').reduce((n,r)=>n+r.amountNet,0)),accountsPayable:2825.8,purchaseNet:4525.8,inventoryCostValue:16869.32,confidence:{exact:26,estimated:4,unmatched:0},vatAmbiguousPurchaseNet:1845.8,currency:'EUR'};
-    await route.fulfill({json:{data:{...analysis,summary,previousRange:{dateFrom:prevFrom,dateTo:prevTo},payables:purchases.slice(offset,offset+limit),payablesTotal:2}}});return;
+    const summary={salesNet:sum('salesNet'),cogsNet:sum('cogsNet'),expenseNet:sum('expenseNet'),grossProfit:sum('grossProfit'),operatingProfit:sum('operatingProfit'),grossMarginRate:core.financeRound(sum('grossProfit')/sum('salesNet')*100),pendingReceivables:core.financeRound(filtered.filter(r=>r.type==='receivable').reduce((n,r)=>n+r.amountNet,0)),accountsPayable:core.financeRound(currentPurchases.reduce((n,r)=>n+r.outstandingNet,0)),purchaseNet:core.financeRound(currentPurchases.reduce((n,r)=>n+r.amountNet,0)),inventoryCostValue:16869.32,confidence:{exact:filtered.filter(r=>r.type==='cogs'&&r.confidence==='exact').length,estimated:filtered.filter(r=>r.type==='cogs'&&r.confidence==='estimated').length,unmatched:0},vatAmbiguousPurchaseNet:1845.8,currency:'EUR'};
+    await route.fulfill({json:{data:{...analysis,summary,previousRange:{dateFrom:prevFrom,dateTo:prevTo},suppliers,payables:currentPurchases.slice(offset,offset+limit),payablesTotal:currentPurchases.length}}});return;
    }
    if(endpoint==='cogs'){
     const allocations=filtered.filter(r=>r.type==='cogs').map(row=>({...row,quantity:3,unitCostNet:core.financeRound(row.amountNet/3),totalCostNet:row.amountNet,productName:'OLED iPhone 15',createdAt:row.date}));
     await route.fulfill({json:{data:allocations.slice(offset,offset+limit),meta:{total:allocations.length}}});return;
    }
    await route.fulfill({json:{data:filtered.slice(offset,offset+limit),meta:{total:filtered.length}}});
-  });
-  async function open(locale='zh',readonly=false){await page.goto(origin+'/admin?locale='+locale+(readonly?'&readonly':''),{waitUntil:'networkidle'});await page.getByRole('tab',{name:locale==='it'?'Panoramica':locale==='en'?'Overview':'经营总览',exact:true}).waitFor();await page.waitForTimeout(250);}
+  };
+  if(process.env.FINANCE_UI_SERVE==='1'){
+   console.log(JSON.stringify({preview:origin+'/admin?locale=zh',mode:'Real components, synthetic data, local memory only'}));
+   await new Promise(resolve=>{process.once('SIGTERM',resolve);process.once('SIGINT',resolve);});return;
+  }
+  browser=await chromium.launch({headless:true,channel:'chrome'});
+  const page=await browser.newPage({viewport:{width:1440,height:1000},timezoneId:'America/New_York',reducedMotion:'reduce'});
+  page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));
+  async function open(locale='zh',readonly=false,scenario=''){await page.goto(origin+'/admin?locale='+locale+(readonly?'&readonly':'')+(scenario?'&scenario='+scenario:''),{waitUntil:'networkidle'});await page.getByRole('tab',{name:locale==='it'?'Panoramica':locale==='en'?'Overview':'经营总览',exact:true}).waitFor();await page.waitForTimeout(250);}
   for(const locale of ['zh','it','en']){
    for(const width of [320,390,768,1440]){
     await page.setViewportSize({width,height:width<768?844:1000});await open(locale);
@@ -77,7 +87,28 @@ const server=http.createServer((req,res)=>{
     checks.push(`${locale}/${width}: overview charts, no document overflow`);
    }
   }
+  await page.setViewportSize({width:1440,height:1000});await open();
+  const trend=page.getByRole('region',{name:'经营趋势',exact:true});
+  const curve=trend.locator('.recharts-line-curve').last();await curve.scrollIntoViewIfNeeded();
+  const coordinate=await curve.evaluate(el=>{const p=el.getPointAtLength(el.getTotalLength()*0.37),matrix=el.getScreenCTM();return{x:p.x*matrix.a+p.y*matrix.c+matrix.e,y:p.x*matrix.b+p.y*matrix.d+matrix.f};});
+  await page.mouse.move(coordinate.x,coordinate.y);await page.mouse.click(coordinate.x,coordinate.y);await page.getByRole('dialog').waitFor();assert.ok(requests.at(-1).includes('dateTo='));await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();checks.push('clicking an actual chart point opens date-scoped entries');
+  await trend.getByRole('button',{name:'本期',exact:true}).click();
+  await curve.scrollIntoViewIfNeeded();const priorCoordinate=await trend.locator('.recharts-line-curve').first().evaluate(el=>{const p=el.getPointAtLength(el.getTotalLength()*0.45),m=el.getScreenCTM();return{x:p.x*m.a+p.y*m.c+m.e,y:p.x*m.b+p.y*m.d+m.f};});
+  await page.mouse.move(priorCoordinate.x,priorCoordinate.y);await page.mouse.click(priorCoordinate.x,priorCoordinate.y);await page.getByRole('dialog').waitFor();const priorQuery=new URL('http://localhost'+requests.findLast(r=>r.includes('/ledger?'))).searchParams;assert.ok(priorQuery.get('dateFrom')<core.shiftFinanceDay(today,-29));await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();await trend.getByRole('button',{name:'本期',exact:true}).click();checks.push('prior-only chart drills into prior dates rather than current period');
+  const kpi=page.getByRole('button',{name:/^经营利润 €.*较上期/});await kpi.focus();await kpi.press('Enter');await page.getByRole('dialog').waitFor();await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});assert.equal(await kpi.evaluate(el=>el===document.activeElement),true);checks.push('keyboard opens and dismisses drawer with focus returned to trigger');
+  await trend.getByRole('button',{name:'按周',exact:true}).click();await trend.getByRole('button',{name:'查看数据表',exact:true}).click();
+  assert.equal(await trend.locator('tbody tr').count(),5);checks.push('weekly buckets include final partial week and accessible data table');
+  await trend.getByRole('button',{name:'经营利润',exact:true}).click();await trend.locator('tbody button').first().click();
+  await page.getByRole('dialog').getByText('经营利润 = 销售净额 − 已确认成本 − 经营费用',{exact:false}).waitFor();
+  await page.getByRole('dialog').getByRole('button',{name:'COGS',exact:true}).click();await page.getByRole('dialog').locator('tbody tr').nth(1).waitFor();
+  const bucketRequest=requests.findLast(r=>r.includes('ledger?')&&r.includes('type=cogs'));assert.ok(bucketRequest.includes('dateTo='));
+  await page.screenshot({animations:'disabled',path:path.join(output,'finance-profit-drawer-1440-zh.png'),fullPage:false});
+  await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();assert.equal(await page.getByRole('tab',{name:'经营总览',exact:true}).getAttribute('aria-selected'),'true');checks.push('profit chart drill opens date-scoped composition drawer and retains overview');
+  await page.getByRole('region',{name:'费用结构',exact:true}).getByRole('button').filter({hasText:'房租'}).click();await page.getByRole('dialog').getByRole('table').getByText('仓储租金 / Affitto magazzino',{exact:true}).waitFor();assert.ok(requests.at(-1).includes('category=rent'));await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();checks.push('expense donut legend drills by category');
+  await page.getByRole('region',{name:'供应商应付分布',exact:true}).getByRole('button').filter({hasText:'UTOPYA'}).click();await page.getByRole('dialog').getByRole('button',{name:'UT-2026-1018',exact:true}).waitFor();assert.ok(requests.at(-1).includes('supplierKey=id%3A'));await page.getByRole('dialog').getByRole('button',{name:'进入完整账本',exact:true}).click();assert.equal(await page.getByRole('tab',{name:'供应商应付',exact:true}).getAttribute('aria-selected'),'true');checks.push('supplier chart drills by exact identity and transfers filters to full ledger');
   await page.setViewportSize({width:390,height:844});await open();
+  const profitKpi=page.getByRole('button',{name:/^经营利润 €.*较上期/});const profitAmount=await profitKpi.locator('div').nth(1).innerText();await profitKpi.click();assert.equal(await page.getByRole('dialog').getByText('经营利润 = 销售净额 − 已确认成本 − 经营费用',{exact:false}).locator('strong').innerText(),profitAmount);await page.getByRole('dialog').getByRole('button',{name:'COGS',exact:true}).click();await page.waitForTimeout(150);assert.ok((await page.getByRole('dialog').boundingBox()).width>=388);await page.screenshot({animations:'disabled',path:path.join(output,'finance-profit-drawer-390-zh.png'),fullPage:false});await page.getByRole('dialog').getByRole('button',{name:'Close',exact:true}).click();checks.push('mobile drawer fills width with reachable footer; KPI and drawer totals reconcile');
+
   await page.getByRole('tab',{name:'客户应收',exact:true}).click();await page.getByRole('link',{name:'查看订单'}).first().waitFor();assert.ok((await page.getByRole('link',{name:'查看订单'}).first().getAttribute('href')).includes('orderId='));await page.screenshot({animations:'disabled',path:path.join(output,'finance-receivables-390-zh.png'),fullPage:true});checks.push('receivables link to existing order');
   await page.getByRole('tab',{name:'供应商应付',exact:true}).click();await page.getByRole('button',{name:'UT-2026-1018',exact:true}).waitFor();await page.waitForTimeout(200);assert.equal(await page.getByRole('tab',{name:'供应商应付',exact:true}).getAttribute('aria-selected'),'true');await page.screenshot({animations:'disabled',path:path.join(output,'finance-payables-390-zh.png'),fullPage:true});await page.getByRole('button',{name:'UT-2026-1018',exact:true}).click();await page.getByText('全历史付款 · 不限当前日期筛选',{exact:false}).waitFor();await page.getByRole('button',{name:'修改',exact:true}).waitFor();const historic=requests.findLast(r=>r.startsWith('/api/admin/finance/ledger')&&r.includes('q=UT-2026-1018'));assert.ok(!historic.includes('dateFrom'));await page.screenshot({animations:'disabled',path:path.join(output,'finance-payment-history-390-zh.png'),fullPage:true});checks.push('payables drilldown includes historical payments outside current range');
   await page.getByRole('tab',{name:'销售与成本',exact:true}).click();await page.getByRole('button',{name:'下一页',exact:true}).click();await page.waitForTimeout(200);assert.ok(requests.some(r=>r.includes('ledger?')&&r.includes('offset=25')));await page.getByRole('button',{name:'成本追溯',exact:true}).click();await page.getByText('OLED iPhone 15').first().waitFor();checks.push('ledger and COGS pagination');
@@ -87,7 +118,10 @@ const server=http.createServer((req,res)=>{
   failSave=false;await dialog.getByLabel('净额',{exact:true}).fill('12,34');failAnalysis=true;await dialog.getByRole('button',{name:'保存',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});await page.getByRole('status').filter({hasText:'已保存'}).waitFor();await page.getByRole('alert').filter({hasText:'模拟统计读取失败'}).waitFor();checks.push('successful save followed by refresh failure does not report save failure');failAnalysis=false;await page.getByRole('button',{name:'重试读取',exact:true}).first().click();await page.waitForTimeout(200);
   await page.getByRole('button',{name:'登记付款',exact:true}).click();const payDialog=page.getByRole('dialog');await payDialog.getByLabel('供应商',{exact:true}).fill('UTOPYA');await page.waitForTimeout(400);await payDialog.getByLabel('批次',{exact:true}).click();await page.getByRole('option').filter({hasText:'UT-2026-1018'}).click();await payDialog.getByLabel('净额',{exact:true}).fill('18,50');await page.screenshot({animations:'disabled',path:path.join(output,'finance-supplier-payment-390-zh.png'),fullPage:false});await payDialog.getByRole('button',{name:'保存',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});assert.equal(writes.at(-1).body.batchId,uuid);assert.equal(writes.at(-1).body.amountNet,18.5);checks.push('finance-only RPC selector ignores current dates; payment uses selected batch');
   await page.getByRole('tab',{name:'费用账本',exact:true}).click();await page.getByRole('button',{name:'修改',exact:true}).first().click();await page.getByRole('dialog').getByLabel('净额',{exact:true}).fill('350,50');await page.getByRole('dialog').getByLabel('更正原因',{exact:true}).fill('Invoice reconciliation');await page.getByRole('dialog').getByRole('button',{name:'保存',exact:true}).click();await page.getByRole('dialog').waitFor({state:'hidden'});assert.equal(writes.at(-1).method,'PATCH');assert.equal(writes.at(-1).body.amountNet,350.5);assert.equal(writes.at(-1).body.expectedUpdatedAt,'2026-10-18T10:00:00.123456+00:00');assert.equal(writes.at(-1).body.correctionReason,'Invoice reconciliation');checks.push('expense edit uses PATCH with retained record fields');
+  await page.getByRole('button',{name:'筛选与日期',exact:true}).click();
   await page.getByLabel('开始日期',{exact:true}).fill('2026-10-20');await page.getByLabel('结束日期',{exact:true}).fill('2026-10-01');await page.getByRole('button',{name:'应用筛选',exact:true}).click();await page.getByRole('alert').filter({hasText:'请选择有效日期'}).waitFor();checks.push('reversed date range blocked');
+  await open('zh',false,'empty');await page.getByText('所选期间暂无费用',{exact:true}).waitFor();await page.getByText('期间内暂无采购批次',{exact:true}).waitFor();assert.ok(await page.getByText('无可比基期',{exact:true}).count()>0);await page.screenshot({animations:'disabled',path:path.join(output,'finance-empty-390-zh.png'),fullPage:true});checks.push('zero data shows honest chart empty states and no comparable baseline');
+  await open('zh',false,'loss');await page.getByRole('region',{name:'利润构成',exact:true}).locator('strong').waitFor();assert.ok((await page.getByRole('region',{name:'利润构成',exact:true}).locator('strong').innerText()).includes('-'));await page.screenshot({animations:'disabled',path:path.join(output,'finance-loss-390-zh.png'),fullPage:true});checks.push('negative profit renders below baseline and remains negative in labels');
   await open('it',true);assert.equal(await page.getByRole('button',{name:'Nuova spesa',exact:true}).count(),0);assert.equal(await page.getByRole('button',{name:'Registra pagamento',exact:true}).count(),0);await page.getByRole('tab',{name:'Esporta / verifica',exact:true}).click();assert.equal(await page.getByRole('link',{name:'CSV',exact:true}).count(),0);checks.push('read-only user has no mutation or export actions');
   assert.deepEqual(errors,[],'browser runtime errors');
   fs.writeFileSync(path.join(output,'verification.json'),JSON.stringify({mode:'isolated real components / mocked API, synthetic data; no production writes',checks,requests,writes: writes.map(w=>({method:w.method,url:w.url,amountNet:w.body.amountNet})),errors},null,2));

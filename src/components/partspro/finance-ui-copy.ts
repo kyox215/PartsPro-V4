@@ -28,3 +28,7 @@ export function translateFinanceStatic(text: string, locale: string) {
 export function financeText(zh: string, italian: string, locale: string) {
   return locale.startsWith('zh') ? zh : translateFinanceStatic(italian, locale);
 }
+
+export function financeVisualText(locale: string, zh: string, italian: string, english: string) {
+  return locale.startsWith('zh') ? zh : locale.startsWith('en') ? english : italian;
+}

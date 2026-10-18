@@ -104,3 +104,16 @@ test('historical foreign-currency payments and prior-period purchases cannot ent
  context.requireSupabaseContext=async()=>({client:{}});context.readAdminFinanceDataSet=async()=>previous;
  try{await assert.rejects(context.exports.api.getAdminFinanceAnalysis({dateFrom:'2026-10-18',dateTo:'2026-10-18'}),/comparison period/);}finally{context.requireSupabaseContext=originalContext;context.readAdminFinanceDataSet=originalRead;}
 });
+
+test('analysis supplier aggregation includes all filtered batches before paging and exact drill identity',async()=>{
+ const d=dataset();d.suppliers=[{id:'s1',name:'Supplier'},{id:'s2',name:'Supplier Extra'}];
+ d.supplierBatches=Array.from({length:30},(_,i)=>({id:'b'+i,batch_code:'B'+i,supplier_id:i===29?'s2':'s1',currency:'EUR',created_at:'2026-10-18'}));
+ d.supplierBatchLines=d.supplierBatches.map((b,i)=>({id:'l'+i,batch_id:b.id,line_total:10,qty_received:1}));
+ const originalContext=context.requireSupabaseContext,originalRead=context.readAdminFinanceDataSet;
+ context.requireSupabaseContext=async()=>({client:{}});context.readAdminFinanceDataSet=async()=>d;
+ try{
+  const all=await context.exports.api.getAdminFinanceAnalysis({...query,limit:1});assert.equal(all.data.payables.length,1);assert.equal(all.data.payablesTotal,30);assert.equal(all.data.suppliers.length,2);assert.equal(all.data.suppliers.reduce((n,p)=>n+p.outstandingNet,0),300);
+  const exact=await context.exports.api.getAdminFinanceAnalysis({...query,supplierKey:'id:s1',limit:1});assert.equal(exact.data.payablesTotal,29);assert.equal(exact.data.summary.accountsPayable,290);assert.equal(exact.data.suppliers.length,1);
+  assert.equal(financeQuerySchema.safeParse({supplierKey:'id:s1'}).success,true);
+ }finally{context.requireSupabaseContext=originalContext;context.readAdminFinanceDataSet=originalRead;}
+});

@@ -15,5 +15,6 @@ try{
  const {default:tailwind}=await import('@tailwindcss/postcss');
  const css=await postcss([tailwind({base:root,optimize:true})]).process(readFileSync(path.join(root,'src/app/globals.css'),'utf8'),{from:path.join(root,'src/app/globals.css')});
  writeFileSync(path.join(temporary,'style.css'),css.css);
- execFileSync(process.execPath,[path.join(temporary,'run.cjs')],{cwd:root,stdio:'inherit',timeout:180000,env:{...process.env,FINANCE_UI_OUTPUT_DIR:path.resolve(root,process.argv[2]||'outputs/finance-redesign/2026-10-18')}});
+ const serve=process.argv.includes('--serve');
+ execFileSync(process.execPath,[path.join(temporary,'run.cjs')],{cwd:root,stdio:'inherit',timeout:serve?0:180000,env:{...process.env,FINANCE_UI_SERVE:serve?'1':'0',FINANCE_UI_OUTPUT_DIR:path.resolve(root,process.argv.slice(2).find(arg=>arg!=='--serve')||'outputs/finance-redesign-v2/2026-10-18')}});
 }finally{rmSync(temporary,{recursive:true,force:true});}

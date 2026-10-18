@@ -26,3 +26,19 @@ test('negative profit and net corrections stay visible; all-zero baseline is not
  const result=buildFinanceAnalysis([row('sale',-20),row('cogs',40),row('expense',0.1),row('expense',0.2)],[],'2026-10-18','2026-10-18');
  assert.equal(result.trend[0].operatingProfit,-60.3);assert.equal(result.trend[0].expenseNet,0.3);assert.equal(result.changes.operatingProfit,null);
 });
+
+test('prior daily points use equal period and Rome boundaries, week buckets preserve cents and partial weeks',async()=>{
+ const {bucketFinanceTrend}=await import('../src/lib/partspro-finance-core.mjs');
+ const rows=[row('sale',0.1,{date:'2026-10-24T22:30:00Z'}),row('sale',0.2,{date:'2026-11-01T12:00:00Z'}),row('cogs',1,{date:'2026-11-01'})];
+ const prior=[row('sale',10,{date:'2026-10-16'}),row('sale',20,{date:'2026-10-24'})];
+ const result=buildFinanceAnalysis(rows,prior,'2026-10-25','2026-11-02');
+ assert.equal(result.previousTrend.length,9);assert.equal(result.previousTrend[0].date,'2026-10-16');assert.equal(result.previousTrend.at(-1).date,'2026-10-24');
+ const weeks=bucketFinanceTrend(result.trend,result.previousTrend,'week');assert.equal(weeks.length,2);assert.equal(weeks[0].dateTo,'2026-10-31');assert.equal(weeks[1].dateTo,'2026-11-02');
+ assert.equal(weeks[0].salesNet,0.1);assert.equal(weeks[1].salesNet,0.2);assert.equal(weeks[1].previousSalesNet,20);assert.equal(weeks[1].grossProfit,-0.8);
+ assert.equal(Math.round(weeks.reduce((n,p)=>n+p.salesNet,0)*100),30);
+});
+test('supplier groups reconcile all batches with overpayments without merging supplier IDs',async()=>{
+ const {buildFinanceSupplierAnalysis}=await import('../src/lib/partspro-finance-core.mjs');
+ const result=buildFinanceSupplierAnalysis([{supplierId:'a',supplierName:'Same name',amountNet:100,paidNet:120,outstandingNet:0},{supplierId:'a',supplierName:'Same name',amountNet:30,paidNet:5,outstandingNet:25},{supplierId:'b',supplierName:'Same name',amountNet:50,paidNet:10,outstandingNet:40},{supplierId:null,supplierName:null,amountNet:2,paidNet:0,outstandingNet:2}]);
+ assert.equal(result.length,3);assert.equal(result[0].key,'id:b');const a=result.find(p=>p.key==='id:a');assert.equal(a.batches,2);assert.equal(a.paidNet,125);assert.equal(a.appliedPaidNet,105);assert.equal(a.outstandingNet,25);assert.equal(result.reduce((n,p)=>n+p.outstandingNet,0),67);
+});

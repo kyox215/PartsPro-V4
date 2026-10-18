@@ -16,6 +16,7 @@ export const financeQuerySchema = z
     limit: z.coerce.number().int().min(1).max(500).default(50),
     offset: z.coerce.number().int().min(0).max(50000).default(0),
     q: z.string().trim().min(1).max(160).optional(),
+    supplierKey: z.string().trim().min(1).max(200).optional(),
     supplier: z.string().trim().min(1).max(160).optional(),
   })
   .strict().refine(value => !value.dateFrom || !value.dateTo || value.dateFrom <= value.dateTo, { message: "Start date must not exceed end date.", path: ["dateTo"] });

@@ -1,4 +1,4 @@
-import { buildFinanceAnalysis, financeDay, shiftFinanceDay } from "@/lib/partspro-finance-core.mjs";
+import { buildFinanceSupplierAnalysis, financeSupplierKey, buildFinanceAnalysis, financeDay, shiftFinanceDay } from "@/lib/partspro-finance-core.mjs";
 import { createCheckoutSubmission, type CheckoutAttempt, type CheckoutReceipt } from "@/lib/partspro-checkout-submission";
 import { collectAdminRows } from "@/lib/admin-paged-read.mjs";
 import { readCatalogRevision } from "@/lib/partspro-catalog-revision";
@@ -719,6 +719,7 @@ export type AdminFinanceQueryInput = {
   offset?: number;
   q?: string;
   supplier?: string;
+  supplierKey?: string;
 };
 
 export type AdminFinanceSummary = {
@@ -779,6 +780,7 @@ export type AdminFinanceCostAllocation = {
   productName: string | null;
   batchCode: string | null;
   supplierName: string | null;
+  supplierId: string | null;
   quantity: number;
   unitCostNet: number;
   totalCostNet: number;
@@ -8082,7 +8084,7 @@ export async function getAdminFinanceAnalysis(query: AdminFinanceQueryInput = {}
   }
   const paid = financePaidNetByBatch(dataSet.payments);
   const payables = rows.filter(row => row.type === "purchase").map(row => ({ ...row, paidNet: paid.get(row.batchId ?? "") ?? 0, outstandingNet: roundMoney(Math.max(0, row.amountNet - (paid.get(row.batchId ?? "") ?? 0))) }));
-  return { data: { ...buildFinanceAnalysis(rows, previousRows, dateFrom, dateTo), summary: summarizeAdminFinance(dataSet, normalized), previousRange: { dateFrom: previousFrom, dateTo: previousTo }, payables: payables.sort((a,b) => b.outstandingNet-a.outstandingNet).slice(query.offset ?? 0, (query.offset ?? 0)+(query.limit ?? 50)), payablesTotal: payables.length }, source: "supabase" as const };
+  return { data: { ...buildFinanceAnalysis(rows, previousRows, dateFrom, dateTo), summary: summarizeAdminFinance(dataSet, normalized), previousRange: { dateFrom: previousFrom, dateTo: previousTo }, suppliers: buildFinanceSupplierAnalysis(payables), payables: payables.sort((a,b) => b.outstandingNet-a.outstandingNet).slice(query.offset ?? 0, (query.offset ?? 0)+(query.limit ?? 50)), payablesTotal: payables.length }, source: "supabase" as const };
 }
 
 export async function listAdminFinanceBatchOptions(query: AdminFinanceQueryInput = {}) {
@@ -8388,6 +8390,7 @@ function financeCostLayerMatches(
   query: NormalizedFinanceQuery
 ) {
   const supplierId = pickString(row, ["supplier_id"]);
+  if(query.supplierKey && financeSupplierKey({supplierId,supplierName:supplierNameForId(supplierId,maps)})!==query.supplierKey)return false;
 
   if (!financeSupplierMatchesById(supplierId, maps, query.supplier)) {
     return false;
@@ -8830,6 +8833,7 @@ function mapAdminFinanceCostAllocation(
     skuCode: toPublicSku(skuCode),
     source: pickString(row, ["source"]) ?? "manual",
     status: normalizeFinanceAllocationStatus(pickString(row, ["status"])),
+    supplierId,
     supplierName: supplierNameForId(supplierId, maps),
     totalCostNet: roundMoney(pickNumber(row, ["total_cost_net"]) ?? 0),
     unitCostNet: roundMoney(pickNumber(row, ["unit_cost_net"]) ?? 0),
@@ -8913,6 +8917,7 @@ function financeLedgerRowMatches(
   query: NormalizedFinanceQuery
 ) {
   if (query.type && row.type !== query.type) return false;
+  if (query.supplierKey && financeSupplierKey(row) !== query.supplierKey) return false;
   const views: Record<string, readonly AdminFinanceLedgerType[]> = {
     margin: ["sale", "cogs", "receivable"], purchases: ["purchase", "supplier_payment"], expenses: ["expense"],
   };
@@ -8965,6 +8970,7 @@ function financeAllocationMatches(
   allocation: AdminFinanceCostAllocation,
   query: NormalizedFinanceQuery
 ) {
+  if(query.supplierKey && financeSupplierKey(allocation)!==query.supplierKey)return false;
   if (!financeWithinDate(allocation.recognizedAt ?? allocation.createdAt, query)) {
     return false;
   }

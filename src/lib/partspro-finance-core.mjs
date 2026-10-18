@@ -64,5 +64,49 @@ export function buildFinanceAnalysis(rows, previousRows, dateFrom, dateTo) {
   const current=totals(rows,true), previous=totals(previousRows);
   const changes=Object.fromEntries(['salesNet','cogsNet','expenseNet','grossProfit','operatingProfit'].map(key => [key,previous[key]===0?null:financeRound((current[key]-previous[key])/Math.abs(previous[key])*100)]));
   const trend=Array.from(days.values()).map(day=>({...day,grossProfit:financeRound(day.salesNet-day.cogsNet),operatingProfit:financeRound(day.salesNet-day.cogsNet-day.expenseNet)}));
-  return {trend,previous,changes,expenses:Array.from(categories,([category,amountNet])=>({category,amountNet})).sort((a,b)=>b.amountNet-a.amountNet)};
+  const previousTo=shiftFinanceDay(dateFrom,-1);
+  const previousFrom=shiftFinanceDay(dateFrom,-trend.length);
+  const previousTrend=buildFinanceDailyTrend(previousRows,previousFrom,previousTo);
+  return {trend,previousTrend,previous,changes,expenses:Array.from(categories,([category,amountNet])=>({category,amountNet})).sort((a,b)=>b.amountNet-a.amountNet)};
+}
+
+
+// Comparison buckets align by position in equally long periods, not weekday/date labels.
+export function buildFinanceDailyTrend(rows, from, to) {
+  const days=new Map();
+  for(let day=from;day<=to;day=shiftFinanceDay(day,1))days.set(day,{date:day,salesNet:0,cogsNet:0,expenseNet:0,grossProfit:0,operatingProfit:0});
+  for(const row of rows){
+    const day=days.get(financeDay(row.date));
+    const key=row.type==='sale'?'salesNet':row.type==='cogs'?'cogsNet':row.type==='expense'&&row.status!=='cancelled'?'expenseNet':null;
+    if(day&&key)day[key]=financeRound(day[key]+row.amountNet);
+  }
+  return [...days.values()].map(day=>({...day,grossProfit:financeRound(day.salesNet-day.cogsNet),operatingProfit:financeRound(day.salesNet-day.cogsNet-day.expenseNet)}));
+}
+export function bucketFinanceTrend(trend, previousTrend, unit='day') {
+  const step=unit==='week'?7:1, result=[];
+  for(let i=0;i<trend.length;i+=step){
+    const current=trend.slice(i,i+step),previous=previousTrend.slice(i,i+step);
+    const item={date:current[0].date,dateTo:current.at(-1).date,previousDate:previous[0]?.date??null,previousDateTo:previous.at(-1)?.date??null};
+    for(const key of ['salesNet','cogsNet','expenseNet','grossProfit','operatingProfit']){
+      item[key]=financeRound(current.reduce((n,p)=>n+p[key],0));
+      item['previous'+key[0].toUpperCase()+key.slice(1)]=financeRound(previous.reduce((n,p)=>n+p[key],0));
+    }
+    result.push(item);
+  }
+  return result;
+}
+export function financeSupplierKey(row){return row.supplierId?'id:'+row.supplierId:row.supplierName?'name:'+row.supplierName:'unknown';}
+export function buildFinanceSupplierAnalysis(payables){
+  const groups=new Map();
+  for(const row of payables){
+    const key=financeSupplierKey(row);
+    if(!groups.has(key))groups.set(key,{key,supplierName:row.supplierName??'',purchaseNet:0,paidNet:0,appliedPaidNet:0,outstandingNet:0,batches:0});
+    const group=groups.get(key);
+    group.purchaseNet=financeRound(group.purchaseNet+row.amountNet);
+    group.paidNet=financeRound(group.paidNet+row.paidNet);
+    group.outstandingNet=financeRound(group.outstandingNet+row.outstandingNet);
+    group.appliedPaidNet=financeRound(group.appliedPaidNet+Math.min(Math.max(0,row.paidNet),Math.max(0,row.amountNet)));
+    group.batches++;
+  }
+  return [...groups.values()].sort((a,b)=>b.outstandingNet-a.outstandingNet||a.key.localeCompare(b.key));
 }
