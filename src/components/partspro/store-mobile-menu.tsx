@@ -206,6 +206,7 @@ export function StoreMobileMenu({
             className="min-h-0 flex-1 overflow-y-auto px-3 py-3"
           >
             <CatalogBrandTree
+              expandBranchesOnClick
               assistedCompanyId={assistedCompanyId}
               departmentGroups={departmentGroups}
               departmentLabelOverrides={{

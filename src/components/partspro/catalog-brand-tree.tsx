@@ -41,6 +41,7 @@ type CatalogBrandTreeProps = {
   departmentGroups?: readonly CatalogDepartmentGroup[];
   departmentLabelOverrides?: Partial<Record<CatalogDepartment, string>>;
   showAllProducts?: boolean;
+  expandBranchesOnClick?: boolean;
   expandedBrandKey: string | null;
   expandedDepartment: CatalogDepartment | null;
   idPrefix: string;
@@ -59,6 +60,7 @@ export function CatalogBrandTree({
   departmentGroups,
   departmentLabelOverrides,
   showAllProducts = true,
+  expandBranchesOnClick = false,
   expandedBrandKey,
   expandedDepartment,
   idPrefix,
@@ -176,6 +178,7 @@ export function CatalogBrandTree({
     ariaLabel,
     children,
     className,
+    disclosure,
     elementId,
     itemKey,
     onClick,
@@ -186,6 +189,7 @@ export function CatalogBrandTree({
     ariaLabel?: string;
     children: ReactNode;
     className: string;
+    disclosure?: { expanded: boolean; panelId: string; onToggle: () => void };
     itemKey: string;
     onClick?: () => void;
     pressed?: boolean;
@@ -193,6 +197,24 @@ export function CatalogBrandTree({
     elementId?: string;
     title?: string;
   }) {
+    if (expandBranchesOnClick && disclosure) {
+      return (
+        <button
+          key={itemKey}
+          id={elementId}
+          type="button"
+          aria-label={ariaLabel}
+          aria-expanded={disclosure.expanded}
+          aria-controls={disclosure.panelId}
+          className={cn("pp-tree-selection", className)}
+          onClick={disclosure.onToggle}
+          title={title}
+        >
+          {children}
+        </button>
+      );
+    }
+
     return onSelectCatalog ? (
       <button
         key={itemKey}
@@ -345,6 +367,11 @@ export function CatalogBrandTree({
           const localizedDepartment = departmentLabelOverrides?.[department] ?? catalogDepartmentLabel(t, department);
           const DepartmentIcon = department === "phone" ? Smartphone : department === "tablet" ? Tablet : department === "computer" ? Laptop : Wrench;
           const hasBrands = departmentGroup.brands.length > 0;
+          const toggleDepartment = () => {
+            setExpandedSeriesKey(null);
+            onExpandedBrandKeyChange(null);
+            onExpandedDepartmentChange(departmentOpen ? null : department);
+          };
 
           return (
             <div
@@ -367,6 +394,7 @@ export function CatalogBrandTree({
                   itemKey: `department-${department}`,
                   pressed: departmentSelected,
                   selection: { department },
+                  disclosure: hasBrands ? { expanded: departmentOpen, panelId: departmentPanelId, onToggle: toggleDepartment } : undefined,
                   children: (
                     <>
                       <DepartmentIcon aria-hidden="true" className="pp-tree-department-icon" />
@@ -387,11 +415,7 @@ export function CatalogBrandTree({
                     aria-label={groupToggleLabel(t, localizedDepartment, departmentOpen)}
                     aria-expanded={departmentOpen}
                     aria-controls={departmentPanelId}
-                    onClick={() => {
-                      setExpandedSeriesKey(null);
-                      onExpandedBrandKeyChange(null);
-                      onExpandedDepartmentChange(departmentOpen ? null : department);
-                    }}
+                    onClick={toggleDepartment}
                   >
                     <ChevronDown
                       className={cn(
@@ -444,6 +468,10 @@ export function CatalogBrandTree({
                       );
                       const hasBrandChildren =
                         (isRemax && remaxCategories.length > 0) || seriesGroups.length > 0 || standaloneModels.length > 0;
+                      const toggleBrand = () => {
+                        setExpandedSeriesKey(null);
+                        onExpandedBrandKeyChange(brandOpen ? null : brandPanelKey);
+                      };
 
                       return (
                         <div
@@ -462,6 +490,7 @@ export function CatalogBrandTree({
                               itemKey: `brand-${brandPanelKey}`,
                               pressed: brandSelected,
                               selection: { brand: entry.brand, department },
+                              disclosure: hasBrandChildren ? { expanded: brandOpen, panelId: brandPanelId, onToggle: toggleBrand } : undefined,
                               title:
                                 localizedBrand === entry.brand ? undefined : entry.brand,
                               children: (
@@ -493,12 +522,7 @@ export function CatalogBrandTree({
                                 aria-label={groupToggleLabel(t, localizedBrand, brandOpen)}
                                 aria-expanded={brandOpen}
                                 aria-controls={brandPanelId}
-                                onClick={() => {
-                                  setExpandedSeriesKey(null);
-                                  onExpandedBrandKeyChange(
-                                    brandOpen ? null : brandPanelKey
-                                  );
-                                }}
+                                onClick={toggleBrand}
                               >
                                 <ChevronDown
                                   className={cn(
@@ -531,6 +555,7 @@ export function CatalogBrandTree({
                                     seriesGroup.series
                                   );
                                   const seriesOpen = activeSeriesPanelKey === panelKey;
+                                  const toggleSeries = () => setExpandedSeriesKey(seriesOpen ? closedSeriesPanelKey(panelKey) : panelKey);
                                   const seriesPanelId = `${brandPanelId}-series-${slugKey(
                                     seriesGroup.series
                                   )}`;
@@ -571,6 +596,7 @@ export function CatalogBrandTree({
                                             modelSeries: seriesGroup.series,
                                           },
                                           title: seriesGroup.series,
+                                          disclosure: seriesGroup.models.length > 0 ? { expanded: seriesOpen, panelId: seriesPanelId, onToggle: toggleSeries } : undefined,
                                           children: (
                                             <span className="min-w-0 flex-1 truncate">
                                               {seriesGroup.series}
@@ -590,13 +616,7 @@ export function CatalogBrandTree({
                                           )}
                                           aria-expanded={seriesOpen}
                                           aria-controls={seriesPanelId}
-                                          onClick={() =>
-                                            setExpandedSeriesKey(
-                                              seriesOpen
-                                                ? closedSeriesPanelKey(panelKey)
-                                                : panelKey
-                                            )
-                                          }
+                                          onClick={toggleSeries}
                                         >
                                           <ChevronDown
                                             className={cn(
