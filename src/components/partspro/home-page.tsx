@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState, type ReactNode } from "react";
+import { useRef, useState, useTransition, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import Image from "./optimized-image";
 import Link from "next/link";
 import {
@@ -42,7 +43,8 @@ import type {
   PriceVisibilityReason,
   StorefrontCartAccess,
 } from "@/lib/partspro-account-context";
-import { RoutePendingIndicator } from "./pending-feedback";
+import { DelayedPendingIndicator, RoutePendingIndicator } from "./pending-feedback";
+import { readGlobalCatalogSearch } from "./catalog-filters.mjs";
 import { PricingSessionBoundary, QuoteExpiryRefresh } from "./pricing-session-boundary";
 import { ProductCard } from "./product-card";
 
@@ -56,6 +58,8 @@ type HomePageProps = {
 
 export function HomePage({ departmentGroups, initialAccountAccess, banner, preorder, children }: HomePageProps) {
   const t = useT();
+  const router = useRouter();
+  const [searchPending, startSearchTransition] = useTransition();
   const { locale } = useI18n();
   const directory = useCatalogDirectory();
   const categoryPriority = ["Schermi", "Batterie", "Connettori"];
@@ -68,7 +72,14 @@ export function HomePage({ departmentGroups, initialAccountAccess, banner, preor
         <CategorySidebar departmentGroups={departmentGroups} />
         <div className="pp-home-content min-w-0">
           <h1 className="pp-home-mobile-title sr-only">{tx(t,"storefront.reference.mobileTitle","Trova il ricambio giusto")}</h1>
-          <form action="/catalogo" className="pp-home-search" role="search"><Search aria-hidden="true"/><input name="q" aria-label={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")} placeholder={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")} /><button type="submit" aria-label={tx(t,"storefront.header.searchSubmit","Cerca")}>{tx(t,"storefront.header.searchSubmit","Cerca")}</button></form>
+          <form action="/catalogo" className="pp-home-search" role="search" onSubmit={event => {
+            event.preventDefault();
+            const selection = readGlobalCatalogSearch(event.currentTarget, "q", t("storefront.header.searchLength"));
+            if (!selection) return;
+            const params = new URLSearchParams();
+            if (selection.searchQuery) params.set("q", selection.searchQuery);
+            startSearchTransition(() => router.push(`/catalogo${params.size ? `?${params}` : ""}`));
+          }}><Search aria-hidden="true"/><input name="q" maxLength={80} onInput={event => event.currentTarget.setCustomValidity("")} aria-label={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")} placeholder={tx(t,"storefront.header.searchFull","Cerca SKU, brand, modello...")} /><button type="submit" className="relative" aria-busy={searchPending || undefined} aria-label={tx(t,"storefront.header.searchSubmit","Cerca")}><span className={searchPending ? "invisible" : undefined}>{tx(t,"storefront.header.searchSubmit","Cerca")}</span><DelayedPendingIndicator className="absolute inset-0 m-auto" pending={searchPending}/></button></form>
           <div className="pp-reference-hero-row">
             <section className="pp-reference-hero"><div className="pp-reference-hero-copy"><h1>{tx(t,"storefront.ui.home.title","Trova il ricambio giusto.")}</h1><p>{tx(t,"storefront.ui.home.subtitle","Cerca per brand, modello o SKU e prepara il tuo ordine.")}</p><Button asChild><Link href="/catalogo">{tx(t,"storefront.ux.browseCatalog","Sfoglia catalogo")}<ArrowRight className="size-4"/></Link></Button></div><div className="pp-reference-hero-products" aria-hidden="true"><Image src="/home/reference-display.png" alt="" width={210} height={230}/><Image src="/home/reference-battery.jpg" alt="" width={150} height={170}/><Image src="/home/reference-connector.png" alt="" width={140} height={140}/></div></section>
             <nav className="pp-home-category-links" aria-label={tx(t,"storefront.ui.home.quickLinks","Acquista per categoria")}>

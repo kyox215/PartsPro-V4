@@ -1,5 +1,6 @@
 /** English storefront copy. Keep keys and placeholders aligned with storefrontItIT. */
 export const storefrontEnUS = {
+  "storefront.header.searchLength": "Enter between 2 and 80 characters to search.",
   "storefront.compact.sort": "Sort by",
   "storefront.compact.stockFirst": "Availability",
   "storefront.compact.nameSort": "Product name",

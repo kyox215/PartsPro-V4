@@ -20,7 +20,7 @@ import type {
 import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
 import { tx } from "@/i18n/dictionaries/storefront";
 import { CatalogBrandTree, type CatalogSelection } from "./catalog-brand-tree";
-import { globalCatalogSearch } from "./catalog-filters.mjs";
+import { readGlobalCatalogSearch } from "./catalog-filters.mjs";
 import { LanguageSwitcher } from "./language-switcher";
 import { PartsProLogo } from "./logo";
 import { DelayedPendingIndicator } from "./pending-feedback";
@@ -113,15 +113,12 @@ export function StoreMobileMenu({
   function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const formData = new FormData(event.currentTarget);
-    const query = String(formData.get("catalogSearch") ?? "").trim();
-
-    if (!query) {
-      return;
-    }
+    const selection = readGlobalCatalogSearch(event.currentTarget, "catalogSearch", t("storefront.header.searchLength"));
+    if (!selection) return;
+    const query = selection.searchQuery;
 
     if (onCatalogSelect) {
-      startSearchTransition(async () => { await handleCatalogSelect(globalCatalogSearch(query)); });
+      startSearchTransition(async () => { await handleCatalogSelect(selection); });
       return;
     }
 
@@ -176,6 +173,8 @@ export function StoreMobileMenu({
               <Search className="absolute left-3 top-1/2 size-3.5 -translate-y-1/2 text-slate-400" />
               <Input
                 key={catalogSearchValue}
+                maxLength={80}
+                onInput={event => event.currentTarget.setCustomValidity("")}
                 className="h-9 rounded-lg border-slate-200 bg-slate-50 pl-8 pr-10 text-sm shadow-none focus-visible:bg-white"
                 defaultValue={catalogSearchValue}
                 name="catalogSearch" aria-label={tx(t, "storefront.header.searchFull", "Cerca SKU, brand, modello...")}

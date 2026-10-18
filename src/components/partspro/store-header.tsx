@@ -10,7 +10,7 @@ import type { CatalogDepartmentGroup } from "@/lib/partspro-data";
 import { hrefWithAssistedCompanyId } from "@/lib/partspro-assisted-order";
 import type { StoreHeaderAccountAccess } from "@/lib/partspro-header-access";
 import type { CatalogSelection } from "./catalog-brand-tree";
-import { globalCatalogSearch } from "./catalog-filters.mjs";
+import { readGlobalCatalogSearch } from "./catalog-filters.mjs";
 import { PartsProLogo } from "./logo";
 import { LanguageSwitcher } from "./language-switcher";
 import {
@@ -125,13 +125,12 @@ export function StoreHeader({
   function handleSearchSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    const formData = new FormData(event.currentTarget);
-    const query = String(formData.get("catalogSearch") ?? "").trim();
-
-
+    const selection = readGlobalCatalogSearch(event.currentTarget, "catalogSearch", t("storefront.header.searchLength"));
+    if (!selection) return;
+    const query = selection.searchQuery;
 
     if (onCatalogSelect) {
-      startSearchTransition(async () => { await onCatalogSelect(globalCatalogSearch(query)); });
+      startSearchTransition(async () => { await onCatalogSelect(selection); });
       return;
     }
 
@@ -182,6 +181,8 @@ export function StoreHeader({
               className="h-10 rounded-full border-primary/25 bg-white pl-9 pr-12 shadow-[0_0_0_3px_rgba(59,91,255,0.03)]"
               defaultValue={catalogSearchValue}
               name="catalogSearch"
+              maxLength={80}
+              onInput={event => event.currentTarget.setCustomValidity("")}
               aria-label={tx(t, "storefront.header.searchFull", "Cerca SKU, brand, modello...")}
               placeholder={tx(t, "storefront.header.searchFull", "Cerca SKU, brand, modello...")}
             />
@@ -224,7 +225,7 @@ export function StoreHeader({
         </div>
         <form onSubmit={handleSearchSubmit} className="pp-header-mobile-search relative mx-3 mb-2 xl:hidden" role="search">
           <label htmlFor="store-header-search" className="sr-only">{tx(t, "storefront.header.searchFull", "Cerca SKU, brand, modello...")}</label>
-          <Input key={catalogSearchValue} id="store-header-search" name="catalogSearch" defaultValue={catalogSearchValue} placeholder={tx(t, "storefront.header.searchFull", "Cerca SKU, brand, modello...")} className="h-11 rounded-full bg-white pr-14" />
+          <Input key={catalogSearchValue} id="store-header-search" name="catalogSearch" maxLength={80} onInput={event => event.currentTarget.setCustomValidity("")} defaultValue={catalogSearchValue} placeholder={tx(t, "storefront.header.searchFull", "Cerca SKU, brand, modello...")} className="h-11 rounded-full bg-white pr-14" />
           <Button type="submit" size="icon-lg" className="absolute right-0 top-0 rounded-full" aria-label={tx(t, "storefront.header.searchSubmit", "Cerca")}><Search className="size-4" /></Button>
         </form>
         <nav className="pp-desktop-primary-nav" aria-label={tx(t, "nav.catalog", "Catalogo")}>
