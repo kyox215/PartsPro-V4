@@ -5,13 +5,14 @@ import vm from 'node:vm';
 import ts from 'typescript';
 import {z} from 'zod';
 import * as core from '../src/lib/partspro-finance-core.mjs';
+import * as reports from '../src/lib/partspro-finance-reports.mjs';
 import * as inputs from '../src/lib/admin-finance-input.mjs';
 const repository=readFileSync(new URL('../src/lib/partspro-repository.ts',import.meta.url),'utf8');
 const ast=ts.createSourceFile('repository.ts',repository,ts.ScriptTarget.Latest,true);
 const functions=ast.statements.filter(ts.isFunctionDeclaration).map(node=>node.getText(ast).replace(/^export\s+/,''));
 const errorClass=ast.statements.find(node=>ts.isClassDeclaration(node)&&node.name?.text==='RepositoryWriteError').getText(ast).replace(/^export\s+/,'');
-const code=ts.transpileModule(errorClass+'\n'+functions.join('\n')+'\nexports.api={summarizeAdminFinance, buildAdminFinanceLedgerRows, readFinanceRows, getAdminFinanceAnalysis};',{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
-const context={exports:{},...core,toPublicSku:value=>value,console};
+const code=ts.transpileModule(errorClass+'\n'+functions.join('\n')+'\nexports.api={summarizeAdminFinance, buildAdminFinanceLedgerRows, readFinanceRows, getAdminFinanceAnalysis, getAdminFinanceReports};',{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
+const context={exports:{},...core,...reports,toPublicSku:value=>value,console};
 vm.runInNewContext(code,context);
 const {summarizeAdminFinance,buildAdminFinanceLedgerRows,readFinanceRows}=context.exports.api;
 const schemaSource=readFileSync(new URL('../src/app/api/admin/finance/_shared.ts',import.meta.url),'utf8').replace(/^import .*;$/gm,'').replace(/^export \{ parseAdminJsonBody \}.*;$/gm,'').replace(/^export \{.*\} from .*;$/gm,'');
@@ -115,5 +116,19 @@ test('analysis supplier aggregation includes all filtered batches before paging 
   const all=await context.exports.api.getAdminFinanceAnalysis({...query,limit:1});assert.equal(all.data.payables.length,1);assert.equal(all.data.payablesTotal,30);assert.equal(all.data.suppliers.length,2);assert.equal(all.data.suppliers.reduce((n,p)=>n+p.outstandingNet,0),300);
   const exact=await context.exports.api.getAdminFinanceAnalysis({...query,supplierKey:'id:s1',limit:1});assert.equal(exact.data.payablesTotal,29);assert.equal(exact.data.summary.accountsPayable,290);assert.equal(exact.data.suppliers.length,1);
   assert.equal(financeQuerySchema.safeParse({supplierKey:'id:s1'}).success,true);
+ }finally{context.requireSupabaseContext=originalContext;context.readAdminFinanceDataSet=originalRead;}
+});
+
+
+test('comprehensive repository report matches summary, ignores pagination and preserves filters and historical supplier credits',async()=>{
+ const d=dataset();d.orders=[{id:'paid',order_no:'ORD-1',payment_status:'paid',status:'delivered',total_net:100,created_at:'2026-10-18'}];
+ d.suppliers=[{id:'s',name:'Same name'}];d.supplierBatches=[{id:'b',supplier_id:'s',batch_code:'B-1',vat_mode:'excluded',created_at:'2026-10-18'}];d.supplierBatchLines=[{id:'l',batch_id:'b',line_total:200}];
+ d.expenses=[{id:'e',category:'rent',description:'Rent',amount_net:10,status:'pending',occurred_at:'2026-10-18'}];d.payments=[{id:'p',batch_id:'b',amount_net:50,status:'paid',paid_at:'2026-09-01',created_at:'2026-09-01'}];
+ const originalContext=context.requireSupabaseContext,originalRead=context.readAdminFinanceDataSet;context.requireSupabaseContext=async()=>({client:{}});context.readAdminFinanceDataSet=async()=>d;
+ try {
+  const all=await context.exports.api.getAdminFinanceReports({...query,limit:1,offset:25});
+  assert.equal(all.ledgerRows.length,3);assert.equal(all.data.totals.salesNet,all.data.summary.salesNet);assert.equal(all.data.totals.operatingProfit,90);assert.equal(all.data.summary.accountsPayable,150);assert.equal(all.data.totals.supplierPaymentsNet,0);assert.equal(all.data.suppliers[0].paidNet,50);
+  const filtered=await context.exports.api.getAdminFinanceReports({...query,category:'rent'});assert.equal(filtered.ledgerRows.length,1);assert.equal(filtered.data.totals.salesNet,0);assert.equal(filtered.data.totals.expenseNet,10);
+  d.expenses.push({id:'usd',description:'Foreign',currency:'USD',amount_net:2,status:'paid',occurred_at:'2026-09-01'});await assert.rejects(context.exports.api.getAdminFinanceReports(query),/currency reconciliation/);
  }finally{context.requireSupabaseContext=originalContext;context.readAdminFinanceDataSet=originalRead;}
 });

@@ -1,4 +1,5 @@
 import { buildFinanceSupplierAnalysis, financeSupplierKey, buildFinanceAnalysis, financeDay, shiftFinanceDay } from "@/lib/partspro-finance-core.mjs";
+import { buildFinanceReports, type FinanceReports } from "@/lib/partspro-finance-reports.mjs";
 import { createCheckoutSubmission, type CheckoutAttempt, type CheckoutReceipt } from "@/lib/partspro-checkout-submission";
 import { collectAdminRows } from "@/lib/admin-paged-read.mjs";
 import { readCatalogRevision } from "@/lib/partspro-catalog-revision";
@@ -763,6 +764,13 @@ export type AdminFinanceLedgerRow = {
   status: string | null;
   confidence: AdminFinanceConfidence | null;
   metadata: Record<string, unknown>;
+};
+
+export type AdminFinanceReport = FinanceReports & {
+  summary: AdminFinanceSummary;
+  suppliers: ReturnType<typeof buildFinanceSupplierAnalysis>;
+  range: { dateFrom: string; dateTo: string; dateMode: AdminFinanceDateMode };
+  generatedAt: string;
 };
 
 export type AdminFinanceLedgerPage = {
@@ -8085,6 +8093,34 @@ export async function getAdminFinanceAnalysis(query: AdminFinanceQueryInput = {}
   const paid = financePaidNetByBatch(dataSet.payments);
   const payables = rows.filter(row => row.type === "purchase").map(row => ({ ...row, paidNet: paid.get(row.batchId ?? "") ?? 0, outstandingNet: roundMoney(Math.max(0, row.amountNet - (paid.get(row.batchId ?? "") ?? 0))) }));
   return { data: { ...buildFinanceAnalysis(rows, previousRows, dateFrom, dateTo), summary: summarizeAdminFinance(dataSet, normalized), previousRange: { dateFrom: previousFrom, dateTo: previousTo }, suppliers: buildFinanceSupplierAnalysis(payables), payables: payables.sort((a,b) => b.outstandingNet-a.outstandingNet).slice(query.offset ?? 0, (query.offset ?? 0)+(query.limit ?? 50)), payablesTotal: payables.length }, source: "supabase" as const };
+}
+
+export async function getAdminFinanceReports(query: AdminFinanceQueryInput = {}) {
+  const context = await requireSupabaseContext();
+  const dateTo = query.dateTo ?? financeDay();
+  const dateFrom = query.dateFrom ?? shiftFinanceDay(dateTo, -29);
+  const normalized = normalizeFinanceQuery({ ...query, type: undefined, dateFrom, dateTo });
+  const days = Math.round((Date.parse(dateTo) - Date.parse(dateFrom)) / 86400000) + 1;
+  if (days < 1 || days > 366) throw new RepositoryWriteError(400, "ADMIN_FINANCE_RANGE_INVALID", "Choose a date range of 1 to 366 days.");
+  const dataSet = await readAdminFinanceDataSet(context.client);
+  const previousQuery = { ...normalized, dateFrom: shiftFinanceDay(dateFrom, -days), dateTo: shiftFinanceDay(dateFrom, -1) };
+  const ledgerRows = buildAdminFinanceLedgerRows(dataSet, normalized).filter(row => financeLedgerRowMatches(row, normalized));
+  const previousRows = buildAdminFinanceLedgerRows(dataSet, previousQuery).filter(row => financeLedgerRowMatches(row, previousQuery));
+  if ([...ledgerRows, ...previousRows].some(row => row.currency.toUpperCase() !== "EUR")) {
+    throw new RepositoryWriteError(422, "ADMIN_FINANCE_CURRENCY_REVIEW", "Non-EUR report entries require currency reconciliation.");
+  }
+  const paid = financePaidNetByBatch(dataSet.payments);
+  const payables = ledgerRows.filter(row => row.type === "purchase").map(row => ({ ...row, paidNet: paid.get(row.batchId ?? "") ?? 0, outstandingNet: roundMoney(Math.max(0, row.amountNet - (paid.get(row.batchId ?? "") ?? 0))) }));
+  const data: AdminFinanceReport = {
+    ...buildFinanceReports(ledgerRows, previousRows, dateFrom, dateTo),
+    summary: summarizeAdminFinance(dataSet, normalized),
+    suppliers: buildFinanceSupplierAnalysis(payables),
+    range: { dateFrom, dateTo, dateMode: normalized.dateMode },
+    generatedAt: new Date().toISOString(),
+  };
+  // Full source rows are only consumed by the authenticated export route.
+  // The JSON report endpoint returns data alone, never this unpaged ledger.
+  return { data, ledgerRows: ledgerRows.sort((a,b) => b.date.localeCompare(a.date) || a.id.localeCompare(b.id)), source: "supabase" as const };
 }
 
 export async function listAdminFinanceBatchOptions(query: AdminFinanceQueryInput = {}) {

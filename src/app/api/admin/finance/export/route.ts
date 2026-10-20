@@ -4,8 +4,10 @@ import { z } from "zod";
 import {
   auditAdminFinanceExport,
   listAdminFinanceLedgerExport,
+  getAdminFinanceReports,
   type AdminFinanceLedgerRow,
 } from "@/lib/partspro-repository";
+import { buildFinanceReportCsv, buildFinanceReportWorkbook } from "@/lib/partspro-finance-report-export";
 import { apiError } from "@/lib/partspro-api";
 import { hasAdminPermission } from "@/lib/partspro-admin-auth";
 import { parseAdminQuery, repositoryErrorResponse, requireAdminApi } from "../../_shared";
@@ -15,6 +17,7 @@ export const dynamic = "force-dynamic";
 
 const exportQuerySchema = financeQuerySchema.safeExtend({
   format: z.enum(["csv", "xlsx"]).default("csv"),
+  report: z.enum(["ledger", "comprehensive"]).default("ledger"),
 });
 
 export async function GET(request: NextRequest) {
@@ -41,6 +44,18 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    if (query.data.report === "comprehensive") {
+      const result = await getAdminFinanceReports(query.data);
+      const fileBase = `partspro-report-${result.data.range.dateFrom}-${result.data.range.dateTo}`;
+      const xlsx = query.data.format === "xlsx";
+      const content = xlsx ? await buildFinanceReportWorkbook(result.data, result.ledgerRows) : buildFinanceReportCsv(result.data, result.ledgerRows);
+      await auditAdminFinanceExport({ ...result.data.range, format: query.data.format, report: "comprehensive", filters: { q: query.data.q ?? null, supplier: query.data.supplier ?? null, supplierKey: query.data.supplierKey ?? null, category: query.data.category ?? null, confidence: query.data.confidence ?? null, ledgerView: query.data.ledgerView ?? null }, returned: result.ledgerRows.length, total: result.ledgerRows.length });
+      return new NextResponse(content, { headers: {
+        "Content-Disposition": `attachment; filename="${fileBase}.${query.data.format}"`,
+        "Content-Type": xlsx ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" : "text/csv; charset=utf-8",
+        "Cache-Control": "private, no-store",
+      } });
+    }
     const result = await listAdminFinanceLedgerExport(query.data);
     const fileBase = `partspro-finance-${new Date().toISOString().slice(0, 10)}`;
 
