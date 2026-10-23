@@ -21,7 +21,7 @@ do $$ declare r uuid; x public.rma_requests%rowtype; before_balance numeric; bef
  perform pg_temp.expect_error(format('select public.admin_perform_rma_simple_action_v1(%L,''close'',''{}'',''premature-close'')',r),'cannot close while goods pending');
  x:=public.admin_perform_rma_simple_action_v1(r,'waive_return','{"reason":"Customer may keep the damaged display"}','waive-return-early');
  perform pg_temp.assert_true(x.return_waived_at is not null and x.received_at is null,'waiver does not fake receipt');
- x:=public.admin_perform_rma_simple_action_v1(r,'close','{}','close-waived-return');
+ -- Waiver now completes this paid case in its own transaction.
  perform pg_temp.assert_true(x.status='closed','waived return can close');
  r:=pg_temp.make_rma(1,'pending','replacement','approved');
  perform pg_temp.expect_error(format('select public.admin_perform_rma_simple_action_v1(%L,''execute_refund'',''{"refund_method":"cash","refund_amount":10,"cash_paid":true}'',''change-direction'')',r),'replacement change requires confirmation');
@@ -35,7 +35,7 @@ do $$ declare r uuid; x public.rma_requests%rowtype; before_balance numeric; bef
  perform pg_temp.assert_true(x.status='refunded' and x.received_quantity=1 and x.inventory_disposition='quarantine','receive after refund preserves financial outcome');
  perform public.admin_perform_rma_action_v4(r,'record_qc','{"qc_status":"failed","qc_note":"Defective panel"}','qc-after-cash');
  perform public.admin_perform_rma_action_v4(r,'mark_scrapped','{"quantity":1,"batch_code":"TEST-RETURN","location":"Milano"}','scrap-after-cash');
- x:=public.admin_perform_rma_simple_action_v1(r,'close','{}','close-after-cash');
+ select * into x from public.rma_requests where id=r;
  perform pg_temp.assert_true(x.status='closed' and x.refund_method='cash','cash return closes after real disposition');
  r:=pg_temp.make_rma(1,'failed');
  perform public.admin_perform_rma_action_v4(r,'request_wallet_refund','{"refund_amount":10}','old-wallet-request');

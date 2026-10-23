@@ -44,3 +44,15 @@ test('cash and wallet reverse sales once, only cash increases recorded cash paid
  assert.equal(buildFinanceAnalysis(rows,[],'2026-10-23','2026-10-23').trend[0].salesNet,70);
  assert.equal(buildFinanceDailyTrend(rows,'2026-10-23','2026-10-23')[0].salesNet,70);
 });
+
+test('approved no-return case can refund but cannot receive or cancel physical goods',()=>{
+ const result=projectRmaV4Workflow({...base,returnWaivedAt:'now'},caps);
+ assert.equal(result.recommendedAction,'execute_refund');
+ for(const action of ['mark_received','split_request','cancel_unreceived','waive_return'])assert.equal(result.availableActions.includes(action),false);
+ assert.equal(projectRmaV4Workflow({...base,customerShippedAt:'now'},caps).availableActions.includes('waive_return'),false);
+});
+test('verified legacy credit can be exempted without exposing a second refund',()=>{
+ const result=projectRmaV4Workflow({...base,status:'refunded',walletRefundStatus:'approved',walletCreditedAmount:10,resolutionAction:'refund_wallet'},caps);
+ assert.equal(result.availableActions.includes('waive_return'),true);
+ assert.equal(result.availableActions.includes('execute_refund'),false);
+});

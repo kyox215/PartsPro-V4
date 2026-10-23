@@ -50,9 +50,10 @@ const adminRmaQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).optional().default(50),
   offset: z.coerce.number().int().min(0).optional().default(0),
   q: z.string().trim().max(120).optional(),
+  view: z.enum(["review", "active", "archive"]).optional(),
   queue: adminRmaQueueSchema.optional(),
   status: adminRmaStatusSchema.optional(),
-});
+}).refine((value) => !value.view || !value.queue, { message: "Choose a view or a legacy queue." });
 
 export async function GET(request: NextRequest) {
   const admin = await requireAdminApi();

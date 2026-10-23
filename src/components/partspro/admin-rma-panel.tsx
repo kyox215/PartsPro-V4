@@ -7,20 +7,17 @@ import { AdminSearchField } from "./admin-ui-controls";
 import { AdminExpandableText } from "./admin-summary-components";
 
 import * as React from "react";
+import { AdminRmaFlow, ReturnModeFields, WaiverReasonFields, type ReturnMode, type WaiverReason } from "./admin-rma-flow";
 import { AdminRmaRefundCard } from "./admin-rma-refund-card";
 import { AdminListPager } from "./admin-list-pager";
 import { usePersistentAdminValue } from "./admin-workspace-state";
 import Image from "next/image";
 import {
   CheckCircle2,
-  Clock3,
-  ChevronRight,
   ExternalLink,
   FileImage,
   Loader2,
   RefreshCw,
-  RotateCcw,
-  ShieldAlert,
   XCircle,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -52,7 +49,7 @@ import type {
   RmaWorkflowAction,
   RmaWorkflowQueue,
   RmaWorkflowRecommendation,
-} from "@/lib/partspro-rma-workflow-rules";
+} from "@/lib/partspro-rma-admin-workflow";
 import { cn } from "@/lib/utils";
 import { AdminBusyRegion, AdminSkeletonRows, AdminNotice, AdminEmptyState, AdminActionButton } from "./admin-feedback";
 import { useI18n } from "./i18n-provider";
@@ -122,6 +119,8 @@ type Notice = {
 };
 
 type ActionFields = {
+  returnMode?: ReturnMode;
+  waiverReasonCode?: WaiverReason;
   refundMethod?: "cash" | "wallet_credit";
   cashPaid?: boolean;
   confirmResolutionChange?: boolean;
@@ -143,14 +142,7 @@ type ActionFields = {
   warehouse?: "Milano";
 };
 
-const ACTIVE_QUEUE_TABS: readonly QueueTab[] = [
-  "review",
-  "awaiting_return",
-  "receiving",
-  "qc",
-  "resolution",
-  "inventory_close",
-];
+
 
 const INVENTORY_ACTIONS: readonly InventoryAction[] = [
   "restock_return",
@@ -391,7 +383,11 @@ export function AdminRmaPanel() {
   const { locale } = useI18n();
   const isZh = locale === "zh-CN";
   const copy = (locale.startsWith("en") ? englishUiCopy(rmaCopy.it) : isZh ? rmaCopy.zh : rmaCopy.it);
-  const [queue, setQueue] = usePersistentAdminValue<QueueTab>("rma.queue", "review");
+  const [view, setView] = usePersistentAdminValue<"review" | "active" | "archive">("rma.view", "review");
+  const [mobileDetail, setMobileDetail] = React.useState(false);
+  const [returnMode, setReturnMode] = React.useState<ReturnMode | null>(null);
+  const [waiverCode, setWaiverCode] = React.useState<WaiverReason | "">("");
+  const [waiverNote, setWaiverNote] = React.useState("");
   const [searchInput, setSearchInput] = usePersistentAdminValue("rma.search", "");
   const [search, setSearch] = React.useState(searchInput);
   const [page, setPage] = usePersistentAdminValue("rma.page", 0);
@@ -400,8 +396,6 @@ export function AdminRmaPanel() {
   const [requests, setRequests] = React.useState<AdminRmaDto[]>([]);
   const [selectedId, setSelectedId] = React.useState("");
   const [selectedDetail, setSelectedDetail] = React.useState<AdminRmaDetailDto | null>(null);
-  const [queueCounts, setQueueCounts] = React.useState<QueueCounts>(emptyQueueCounts);
-  const [countsComplete, setCountsComplete] = React.useState(false);
   const [total, setTotal] = React.useState(0);
   const [isLoading, setIsLoading] = React.useState(false);
   const [isDetailLoading, setIsDetailLoading] = React.useState(false);
@@ -444,7 +438,7 @@ export function AdminRmaPanel() {
       setIsLoading(true);
 
       try {
-        const params = new URLSearchParams({ limit: "80", offset: String(page * 80), queue });
+        const params = new URLSearchParams({ limit: "80", offset: String(page * 80), view });
         if (search) {
           params.set("q", search);
         }
@@ -464,13 +458,7 @@ export function AdminRmaPanel() {
         setHasMore(payload?.meta?.hasMore ?? nextRequests.length === 80);
         setTotalIsExact(payload?.meta?.totalIsExact === true);
         setTotal(typeof payload?.meta?.total === "number" ? payload.meta.total : nextRequests.length);
-        setQueueCounts((current) => ({ ...current, ...payload?.meta?.queueCounts }));
-        setCountsComplete(payload?.meta?.countsComplete === true);
-        setSelectedId((current) =>
-          current && nextRequests.some((request) => request.id === current)
-            ? current
-            : nextRequests[0]?.id ?? ""
-        );
+        setSelectedId((current) => current || nextRequests[0]?.id || "");
         setNotice(null);
         return true;
       } catch (error) {
@@ -487,7 +475,7 @@ export function AdminRmaPanel() {
         }
       }
     },
-    [copy.updated, queue, search, page]
+    [copy.updated, view, search, page]
   );
 
   const loadDetail = React.useCallback(
@@ -523,7 +511,7 @@ export function AdminRmaPanel() {
   );
 
   React.useEffect(() => {
-    const timeoutId = window.setTimeout(() => { if (searchInput.trim() !== search) { setSearch(searchInput.trim()); setPage(0); } }, 260);
+    const timeoutId = window.setTimeout(() => { if (searchInput.trim() !== search) { setSearch(searchInput.trim()); setPage(0); setSelectedId(""); setSelectedDetail(null); setMobileDetail(false); } }, 260);
     return () => window.clearTimeout(timeoutId);
   }, [searchInput, search, setPage]);
 
@@ -549,6 +537,7 @@ export function AdminRmaPanel() {
   }, [loadDetail, selectedId]);
 
   function openActionDialog(nextDialog: Exclude<ActionDialog, null>) {
+    if (nextDialog === "approve") { setReturnMode(null); setWaiverCode(""); setWaiverNote(""); }
     if (!selectedRequest) {
       return;
     }
@@ -720,7 +709,7 @@ export function AdminRmaPanel() {
   const showDirectReceipt = canReceiveDirectly(selectedRequest);
   const availableSecondaryActions = selectedRequest
     ? selectedRequest.availableActions.filter(
-        (action) => action !== selectedRequest.recommendedAction && action !== "assign" &&
+        (action) => action !== selectedRequest.recommendedAction && action !== "assign" && action !== "reject" &&
           !(showDirectReceipt && action === "mark_received") && !["execute_refund", "waive_return", "prepare_wallet_refund", "request_wallet_refund"].includes(action)
       )
     : [];
@@ -736,80 +725,27 @@ export function AdminRmaPanel() {
   return (
     <>
       <section className="admin-ui-panel min-w-0 space-y-3 sm:space-y-4">
-        <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.045)] sm:p-5 md:flex-row md:items-center md:justify-between">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <RotateCcw className="size-5 text-primary" />
-              <h2 className="truncate text-xl font-black tracking-normal">{copy.title}</h2>
-            </div>
-            <p className="mt-1 text-sm text-slate-500">
-              {countsComplete ? total : `≥${total}`} {copy.selectedCount}
-            </p>
+        {notice ? <AdminNotice tone={notice.tone} message={notice.message} /> : null}
+        <div className={cn("rounded-xl border border-slate-200 bg-white p-3", mobileDetail && "hidden xl:block")}>
+          <div className="flex items-center gap-2">
+            <AdminSearchField id="admin-rma-search" className="min-w-0 flex-1 bg-white" placeholder={copy.searchPlaceholder} value={searchInput} onValueChange={setSearchInput} pending={isLoading} clearLabel={isZh ? "清除搜索" : locale.startsWith("en") ? "Clear search" : "Cancella ricerca"} />
+            <Button type="button" variant="outline" size="icon" aria-label={isZh ? "刷新" : locale.startsWith("en") ? "Refresh" : "Aggiorna"} disabled={isLoading} onClick={() => void refresh()}>{isLoading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}</Button>
           </div>
-          <Button type="button" variant="outline" className="bg-white" disabled={isLoading} onClick={() => void refresh()}>
-            {isLoading ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
-            {(locale.startsWith("en") ? englishUiCopy("Aggiorna") : isZh ? "刷新" : "Aggiorna")}
-          </Button>
-        </div>
-
-        {notice ? (
-          <AdminNotice tone={notice.tone} message={notice.message} />
-        ) : null}
-
-        <div className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4">
-          <div className="min-w-0">
-            <Label htmlFor="admin-rma-search" className="sr-only">{copy.search}</Label>
-            <AdminSearchField id="admin-rma-search" className="bg-white" placeholder={copy.searchPlaceholder} value={searchInput} onValueChange={setSearchInput} pending={isLoading} clearLabel={(locale.startsWith("en") ? englishUiCopy("Cancella ricerca") : isZh ? "清除搜索" : "Cancella ricerca")} />
-          </div>
-          <label className="mt-3 block text-sm font-semibold sm:hidden">{(locale.startsWith("en") ? englishUiCopy("Fase di gestione") : isZh ? "处理阶段" : "Fase di gestione")}
-            <select className="mt-1 min-h-11 w-full rounded-md border bg-white px-3" value={queue} disabled={Boolean(pendingAction)} onChange={event => { setQueue(event.target.value as QueueTab); setPage(0); }}>
-              {[...ACTIVE_QUEUE_TABS, "archive" as QueueTab].map(tab => <option key={tab} value={tab}>{queueLabel(tab, locale)} · {countsComplete ? queueCounts[tab] : `≥${queueCounts[tab]}`}</option>)}
-            </select>
-          </label>
-          <div className="mt-3 hidden gap-2 overflow-x-auto pb-1 sm:flex" role="tablist" aria-label={copy.title}>
-            {ACTIVE_QUEUE_TABS.map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                role="tab"
-                aria-selected={queue === tab}
-                className={cn(
-                  "flex min-h-11 shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-left text-xs font-black transition focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40",
-                  queue === tab
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-slate-200 bg-white text-slate-700 hover:border-primary/40 hover:bg-primary/5"
-                )}
-                onClick={() => { setQueue(tab); setPage(0); }}
-              >
-                <span>{queueLabel(tab, locale)}</span>
-                <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10px]">
-                  {countsComplete ? queueCounts[tab] : `≥${queueCounts[tab]}`}
-                </span>
-              </button>
-            ))}
-          </div>
-          <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs text-slate-500">
-              {countsComplete ? `${total} ${copy.selectedCount}` : copy.countsIncomplete}
-            </p>
-            <Button
-              type="button"
-              size="sm"
-              variant={queue === "archive" ? "default" : "outline"}
-              aria-pressed={queue === "archive"}
-              onClick={() => { setQueue("archive"); setPage(0); }}
-            >
-              {copy.archive} <ChevronRight className="size-3.5" />
-            </Button>
+          <div className="mt-3 grid grid-cols-3 gap-2" role="tablist" aria-label={copy.title}>
+            {(["review", "active", "archive"] as const).map(tab => <button key={tab} type="button" role="tab" aria-selected={view === tab} disabled={Boolean(pendingAction)}
+              className={cn("min-h-11 rounded-lg border px-2 text-sm font-semibold", view === tab ? "border-primary bg-primary text-white" : "border-slate-200 text-slate-600")}
+              onClick={() => { setView(tab); setPage(0); setSelectedId(""); setSelectedDetail(null); setMobileDetail(false); }}>
+              {tab === "review" ? (isZh ? "待审核" : locale.startsWith("en") ? "Review" : "Da approvare") : tab === "active" ? (isZh ? "处理中" : locale.startsWith("en") ? "In progress" : "In corso") : (isZh ? "已完成" : locale.startsWith("en") ? "Completed" : "Completati")}
+            </button>)}
           </div>
         </div>
 
         <div className="grid min-w-0 gap-4 xl:grid-cols-[390px_minmax(0,1fr)]">
           <AdminBusyRegion label={copy.loading} pending={isLoading}>
-            <div ref={listRef} className="scroll-mt-24 rounded-xl border border-slate-200 bg-white p-3">
+            <div ref={listRef} className={cn("scroll-mt-24 rounded-xl border border-slate-200 bg-white p-3", mobileDetail && "hidden xl:block")}>
               <div className="mb-3 flex items-center justify-between gap-2 text-xs font-black uppercase text-slate-400">
-                <span>{queueLabel(queue, locale)}</span>
-                <span>{countsComplete ? queueCounts[queue] : `≥${queueCounts[queue]}`}</span>
+                <span>{copy.title}</span>
+                <span>{totalIsExact ? total : `≥${total}`}</span>
               </div>
               <div className="space-y-2" role="list">
                 {isLoading && requests.length === 0 ? (
@@ -831,7 +767,7 @@ export function AdminRmaPanel() {
                             ? "border-primary/40 bg-primary/8"
                             : "border-slate-200 bg-white"
                         )}
-                        onClick={() => { setSelectedId(request.id); if (window.innerWidth < 1280) requestAnimationFrame(() => detailRef.current?.scrollIntoView({ block: "start" })); }}
+                        onClick={() => { setSelectedId(request.id); setMobileDetail(true); requestAnimationFrame(() => detailRef.current?.scrollIntoView({ block: "start" })); }}
                       >
                         <div className="flex min-w-0 items-center gap-2">
                           <span className="min-w-0 flex-1 truncate font-mono text-xs font-black">
@@ -850,12 +786,12 @@ export function AdminRmaPanel() {
                   ))
                 )}
               </div>
-              <AdminListPager page={page} pageSize={80} total={totalIsExact ? total : null} hasMore={hasMore} returned={requests.length} pending={isLoading || Boolean(pendingAction)} onPageChange={setPage} />
+              <AdminListPager page={page} pageSize={80} total={totalIsExact ? total : null} hasMore={hasMore} returned={requests.length} pending={isLoading || Boolean(pendingAction)} onPageChange={(nextPage) => { setPage(nextPage); setSelectedId(""); setSelectedDetail(null); setMobileDetail(false); }} />
             </div>
           </AdminBusyRegion>
 
-          <div ref={detailRef} className="min-w-0 scroll-mt-24 rounded-xl border border-slate-200 bg-white p-3 sm:p-5">
-            {selectedRequest && <div className="mb-3 flex min-w-0 items-center justify-between gap-2 xl:hidden"><span className="min-w-0 truncate text-xs font-semibold text-slate-500">{(locale.startsWith("en") ? englishUiCopy("Dettaglio selezionato") : isZh ? "当前售后详情" : "Dettaglio selezionato")} · {selectedRequest.rmaNo ?? copy.rma}</span><Button type="button" size="sm" variant="outline" disabled={Boolean(pendingAction) || Boolean(refundConfirmation)} onClick={() => listRef.current?.scrollIntoView({ block: "start" })}>{(locale.startsWith("en") ? englishUiCopy("Torna alla lista") : isZh ? "返回列表" : "Torna alla lista")}</Button></div>}
+          <div ref={detailRef} className={cn("min-w-0 scroll-mt-24 rounded-xl border border-slate-200 bg-white p-3 sm:p-5", !mobileDetail && "hidden xl:block")}>
+            {selectedRequest && <div className="mb-3 flex min-w-0 items-center justify-between gap-2 xl:hidden"><span className="min-w-0 truncate text-xs font-semibold text-slate-500">{(locale.startsWith("en") ? englishUiCopy("Dettaglio selezionato") : isZh ? "当前售后详情" : "Dettaglio selezionato")}</span><Button type="button" size="sm" variant="outline" disabled={Boolean(pendingAction) || Boolean(refundConfirmation)} onClick={() => { setMobileDetail(false); requestAnimationFrame(() => listRef.current?.scrollIntoView({ block: "start" })); }}>{(locale.startsWith("en") ? englishUiCopy("Torna alla lista") : isZh ? "返回列表" : "Torna alla lista")}</Button></div>}
             {!selectedRequest ? (
               <AdminEmptyState title={copy.emptyDetail} className="xl:min-h-[420px]" />
             ) : (
@@ -869,23 +805,16 @@ export function AdminRmaPanel() {
                     </div>
                     <h3 className="mt-1 text-base font-bold leading-5 tracking-normal sm:text-lg"><AdminExpandableText text={selectedRequest.productName} /></h3>
                     <div className="mt-1 break-words text-xs font-semibold text-slate-500 [overflow-wrap:anywhere]">
-                      {selectedRequest.orderNumber ?? "—"} · {selectedRequest.sku} · {copy.quantity}: {fullQuantity}
+                      {selectedRequest.orderNumber ?? "—"} · {selectedRequest.sku} · ×{fullQuantity}
                     </div>
                   </div>
-                  <div className="grid min-w-0 gap-1 text-sm font-semibold text-slate-600 lg:w-[280px] lg:shrink-0">
-                    <DetailPill label={copy.customer} value={selectedRequest.customerName ?? "—"} />
-                    <DetailPill
-                      label={(locale.startsWith("en") ? englishUiCopy("Responsabile") : isZh ? "负责人" : "Responsabile")}
-                      value={selectedRequest.assignedTo ? ((locale.startsWith("en") ? englishUiCopy("Assegnata") : isZh ? "已分配" : "Assegnata")) : ((locale.startsWith("en") ? englishUiCopy("Non assegnata") : isZh ? "未分配" : "Non assegnata"))}
-                    />
-                  </div>
+                  <p className="text-sm font-semibold text-slate-600">{selectedRequest.customerName}</p>
                 </div>
-
-                <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
-                  <h4 className="font-bold">{(locale.startsWith("en") ? englishUiCopy("Problema segnalato dal cliente") : isZh ? "客户原始问题" : "Problema segnalato dal cliente")}</h4>
-                  <p className="break-words"><span className="font-semibold">{(locale.startsWith("en") ? englishUiCopy("Motivo") : isZh ? "故障原因" : "Motivo")}: </span>{rmaOperationalLabel(selectedRequest.reason, locale)}</p>
-                  <p className="whitespace-pre-wrap break-words"><span className="font-semibold">{(locale.startsWith("en") ? englishUiCopy("Descrizione originale") : isZh ? "原始描述" : "Descrizione originale")}: </span>{selectedRequest.description || ((locale.startsWith("en") ? englishUiCopy("Non indicata") : isZh ? "未填写" : "Non indicata"))}</p>
+                <div className="space-y-2 text-sm">
+                  {selectedRequest.reason ? <p className="font-semibold">{rmaOperationalLabel(selectedRequest.reason, locale)}</p> : null}
+                  {selectedRequest.description ? <details><summary className="cursor-pointer text-slate-500">{isZh ? "客户描述" : locale.startsWith("en") ? "Customer description" : "Descrizione cliente"}</summary><p className="mt-2 whitespace-pre-wrap break-words">{selectedRequest.description}</p></details> : null}
                 </div>
+                <AdminRmaFlow request={selectedRequest} locale={locale} />
                 <AdminRmaRefundCard key={selectedRequest.id} request={selectedRequest} locale={locale}
                   preview={refundPreview} pending={Boolean(pendingAction) || isDetailLoading} onAction={runAction} />
                 {showDirectReceipt && selectedRequest.recommendedAction === "execute_refund" ? (
@@ -901,68 +830,21 @@ export function AdminRmaPanel() {
                 {selectedRequest.customerConfirmation ? (
                   <p className="rounded-lg border border-slate-200 p-3 text-sm">{(locale.startsWith("en") ? englishUiCopy("Accordo confermato: ") : isZh ? "客户确认记录：" : "Accordo confermato: ")}{selectedRequest.customerConfirmation}</p>
                 ) : null}
-                {["execute_refund", "waive_return", "prepare_wallet_refund", "request_wallet_refund"].includes(selectedRequest.recommendedAction ?? "") ? null : selectedRequest.recommendedAction ? (
-                  <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-                    <div className="flex items-start gap-2">
-                      <ShieldAlert className="mt-0.5 size-5 shrink-0 text-primary" />
-                      <div className="min-w-0 flex-1">
-                        <div className="text-xs font-black uppercase text-primary">{copy.workflow}</div>
-                        <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                          <div>
-                            <div className="font-black text-slate-900">
-                              {recommendationLabel(selectedRequest.recommendedAction, copy)}
-                            </div>
-                            <div className="mt-1 text-xs text-slate-600">
-                              {queueLabel(selectedRequest.workflowQueue, locale)}
-                            </div>
-                          </div>
-                          <Button
-                            type="button"
-                            className="h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto"
-                            disabled={Boolean(pendingAction)}
-                            onClick={() =>
-                              selectedRequest.recommendedAction === "choose_inventory_disposition"
-                                ? openActionDialog("inventory")
-                                : triggerAction(selectedRequest.recommendedAction as ActionCode)
-                            }
-                          >
-                            {pendingAction === selectedRequest.recommendedAction ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              <CheckCircle2 className="size-4" />
-                            )}
-                            {recommendationLabel(selectedRequest.recommendedAction, copy)}
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
+                {selectedRequest.recommendedAction && !["execute_refund", "waive_return", "prepare_wallet_refund", "request_wallet_refund"].includes(selectedRequest.recommendedAction) ? (
+                  <div className="flex flex-wrap gap-2">
+                    <AdminActionButton pending={pendingAction === selectedRequest.recommendedAction} disabled={Boolean(pendingAction) || isDetailLoading}
+                      onClick={() => selectedRequest.recommendedAction === "choose_inventory_disposition" ? openActionDialog("inventory") : triggerAction(selectedRequest.recommendedAction as ActionCode)}>
+                      <CheckCircle2 className="size-4" />{recommendationLabel(selectedRequest.recommendedAction, copy)}
+                    </AdminActionButton>
+                    {selectedRequest.availableActions.includes("reject") ? <Button type="button" variant="outline" disabled={Boolean(pendingAction) || isDetailLoading} onClick={() => triggerAction("reject")}>{copy.action.reject}</Button> : null}
                   </div>
-                ) : (
-                  <WorkflowNotice notice={workflowNoticeFor(selectedRequest, copy)}>
-                    {showDirectReceipt ? (
-                      <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
-                        <h4 className="text-sm font-black text-slate-900">{copy.directReceipt}</h4>
-                        <p id="rma-direct-receipt-hint" className="mt-1 text-sm leading-relaxed text-slate-600">
-                          {copy.directReceiptDescription}
-                        </p>
-                        <AdminActionButton pending={pendingAction === "mark_received"}
-                          type="button"
-                          variant="outline"
-                          className="mt-3 h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto"
-                          data-rma-action="mark_received"
-                          aria-describedby="rma-direct-receipt-hint"
-                          aria-haspopup="dialog"
-                          disabled={Boolean(pendingAction) || isDetailLoading}
-                          onClick={() => triggerAction("mark_received")}
-                        >
-                          {pendingAction !== "mark_received" && <CheckCircle2 className="size-4 shrink-0" aria-hidden="true" />}
-                          {copy.action.markReceivedFallback}
-                        </AdminActionButton>
-                      </div>
-                    ) : null}
-                  </WorkflowNotice>
-                )}
+                ) : !selectedRequest.recommendedAction && selectedRequest.blockedReason && selectedRequest.workflowQueue !== "archive" ? (
+                  <AdminNotice tone="warning" message={rmaReasonLabel(selectedRequest.blockedReason, copy)} />
+                ) : null}
 
+                <details className="rounded-lg border border-slate-200 p-3">
+                  <summary className="cursor-pointer text-sm font-semibold">{isZh ? "更多资料与记录" : locale.startsWith("en") ? "Details and history" : "Dettagli e cronologia"}</summary>
+                  <div className="mt-3 space-y-4">
                 <details className="rounded-lg border border-slate-200 p-3">
                   <summary className="cursor-pointer text-sm font-semibold">{locale === "zh-CN" ? "备注、检测与库存记录" : locale.startsWith("en") ? "Notes, inspection and stock records" : "Note, controllo e stock"}</summary>
                 <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -1001,7 +883,7 @@ export function AdminRmaPanel() {
 
                 {selectedRequest.availableActions.includes("assign") ? (
                   <details className="rounded-lg border border-slate-200 p-3">
-                    <summary className="cursor-pointer text-xs font-black uppercase text-slate-500">{copy.unassigned}</summary>
+                    <summary className="cursor-pointer text-xs font-black uppercase text-slate-500">{(isZh ? "分配负责人" : locale.startsWith("en") ? "Assign owner" : "Assegna responsabile")}</summary>
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                       <p className="text-xs text-slate-500">
                         {(locale.startsWith("en") ? englishUiCopy("L'assegnazione resta un aiuto manuale, mai una raccomandazione.") : isZh ? "分配仅是手动辅助动作，不会成为服务端推荐。" : "L'assegnazione resta un aiuto manuale, mai una raccomandazione.")}
@@ -1018,7 +900,7 @@ export function AdminRmaPanel() {
                 ) : null}
 
                 <div className="grid gap-4 lg:grid-cols-2">
-                  <DetailBlock title={copy.attachments}>
+                  {selectedRequest.attachments.length > 0 ? <DetailBlock title={copy.attachments}>
                     {(selectedRequest.attachments ?? []).length === 0 ? (
                       <div className="text-sm font-semibold text-slate-500">—</div>
                     ) : (
@@ -1053,8 +935,8 @@ export function AdminRmaPanel() {
                         )}
                       </div>
                     )}
-                  </DetailBlock>
-                  <DetailBlock title={copy.events}>
+                  </DetailBlock> : null}
+                  {selectedRequest.events.length > 0 ? <DetailBlock title={copy.events}>
                     {(selectedRequest.events ?? []).length === 0 ? (
                       <div className="text-sm font-semibold text-slate-500">{copy.timelineEmpty}</div>
                     ) : (
@@ -1067,8 +949,10 @@ export function AdminRmaPanel() {
                         ))}
                       </div>
                     )}
-                  </DetailBlock>
+                  </DetailBlock> : null}
                 </div>
+                  </div>
+                </details>
               </div>
             )}
           </div>
@@ -1136,7 +1020,7 @@ export function AdminRmaPanel() {
       <Dialog open={actionDialog === "approve"} onOpenChange={(open) => !open && !pendingAction && setActionDialog(null)}>
         <DialogContent className="admin-ui-panel" onOpenAutoFocus={(event) => {
           event.preventDefault();
-          approveButtonRef.current?.focus({ preventScroll: true });
+          document.querySelector<HTMLInputElement>('input[name="rma-return-mode"]')?.focus({ preventScroll: true });
         }}>
           <DialogHeader>
             <DialogTitle>{copy.action.approve}</DialogTitle>
@@ -1147,18 +1031,20 @@ export function AdminRmaPanel() {
             <p className="break-words">{selectedRequest?.productName}</p>
             <p>{copy.quantity}: {fullQuantity}</p>
           </div>
-          <details className="rounded-lg border border-slate-200 p-3">
+          <ReturnModeFields allowRefundOnly={selectedRequest?.canWaiveReturn === true} locale={locale} value={returnMode} onChange={setReturnMode} disabled={Boolean(pendingAction)} />
+          {returnMode === "refund_only" ? <WaiverReasonFields id="approve-waiver" locale={locale} code={waiverCode} note={waiverNote} onCode={setWaiverCode} onNote={setWaiverNote} disabled={Boolean(pendingAction)} /> : null}
+          {returnMode !== "refund_only" ? <details className="rounded-lg border border-slate-200 p-3">
             <summary className="cursor-pointer text-sm font-semibold">{isZh ? "客户退回指引（选填）" : locale.startsWith("en") ? "Return instructions (optional)" : "Istruzioni per il reso (facoltative)"}</summary>
             <div className="mt-3 space-y-2">
               <Label htmlFor="rma-return-instructions">{isZh ? "补充说明（选填）" : locale.startsWith("en") ? "Additional note (optional)" : "Nota aggiuntiva (facoltativa)"}</Label>
               <Textarea id="rma-return-instructions" maxLength={1000} value={actionReason} disabled={Boolean(pendingAction)} onChange={(event) => setActionReason(event.target.value)} />
             </div>
-          </details>
+          </details> : null}
           <DialogFooter>
             <Button type="button" variant="outline" disabled={Boolean(pendingAction)} onClick={() => setActionDialog(null)}>{copy.cancel}</Button>
             <AdminActionButton ref={approveButtonRef} type="button" pending={Boolean(pendingAction)}
-              disabled={isDetailLoading || !selectedRequest?.availableActions.includes("approve") || Boolean(pendingAction)}
-              onClick={() => void runAction("approve", actionReason.trim() ? { customerVisibleNote: actionReason.trim() } : {})}>
+              disabled={isDetailLoading || !selectedRequest?.availableActions.includes("approve") || Boolean(pendingAction) || !returnMode || returnMode === "refund_only" && (!waiverCode || waiverCode === "other" && !waiverNote.trim())}
+              onClick={() => returnMode && void runAction("approve", { returnMode, ...(actionReason.trim() ? { customerVisibleNote: actionReason.trim() } : {}), ...(returnMode === "refund_only" && waiverCode ? { waiverReasonCode: waiverCode, reason: waiverNote.trim() || undefined } : {}) })}>
               {copy.action.approve}
             </AdminActionButton>
           </DialogFooter>
@@ -1487,35 +1373,10 @@ export function AdminRmaPanel() {
 }
 
 type Copy = (typeof rmaCopy)["it"] | (typeof rmaCopy)["zh"];
-type QueueCounts = Record<QueueTab, number>;
-type WorkflowNoticeState = {
-  tone: "waiting" | "blocked" | "complete";
-  title: string;
-  message: string;
-};
-
 function rmaReasonLabel(reason: string | null | undefined, copy: Copy): string {
   return reason && Object.hasOwn(copy.reasons, reason)
     ? copy.reasons[reason as keyof Copy["reasons"]]
     : copy.unknownBlocker;
-}
-
-function workflowNoticeFor(
-  request: Pick<AdminRmaDto, "blockedReason" | "workflowQueue">,
-  copy: Copy
-): WorkflowNoticeState {
-  const reason = request.blockedReason;
-  if (reason === "waiting_customer_return" || reason === "waiting_wallet_approval" || reason === "waiting_qc") {
-    return {
-      tone: "waiting",
-      title: reason === "waiting_customer_return" ? copy.waitingCustomerReturn : copy.waiting,
-      message: rmaReasonLabel(reason, copy),
-    };
-  }
-  if (!reason && request.workflowQueue === "archive") {
-    return { tone: "complete", title: copy.workflowComplete, message: copy.workflowCompleteDescription };
-  }
-  return { tone: "blocked", title: copy.blocked, message: rmaReasonLabel(reason, copy) };
 }
 
 function canReceiveDirectly(request: AdminRmaDto | null): boolean {
@@ -1534,27 +1395,6 @@ function canConfirmDirectReceipt(request: AdminRmaDto | null, confirmation: Dire
     completeQuantity(request) === completeQuantity(confirmation) &&
     canReceiveDirectly(request)
   );
-}
-
-function WorkflowNotice({ notice, children }: { notice: WorkflowNoticeState; children?: React.ReactNode }) {
-  return (
-    <AdminNotice tone={notice.tone === "waiting" ? "info" : notice.tone === "complete" ? "success" : "warning"} icon={notice.tone === "waiting" ? Clock3 : notice.tone === "complete" ? CheckCircle2 : ShieldAlert} role={notice.tone === "blocked" ? "alert" : "status"} title={notice.title}>
-      <p>{notice.message}</p>
-      {children}
-    </AdminNotice>
-  );
-}
-
-function emptyQueueCounts(): QueueCounts {
-  return {
-    review: 0,
-    awaiting_return: 0,
-    receiving: 0,
-    qc: 0,
-    resolution: 0,
-    inventory_close: 0,
-    archive: 0,
-  };
 }
 
 function queueLabel(queue: QueueTab, locale: string) {
@@ -1680,15 +1520,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
-function DetailPill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="grid min-h-8 min-w-0 grid-cols-[72px_minmax(0,1fr)] items-center gap-2 rounded-md bg-slate-50 px-2 py-1">
-      <div className="break-words text-xs font-medium text-slate-500">{label}</div>
-      <AdminExpandableText lines={1} text={value} className="text-sm font-semibold text-slate-800" />
-    </div>
-  );
-}
-
 function DetailBlock({ children, title }: { children: React.ReactNode; title: string }) {
   return (
     <div className="min-w-0 rounded-lg border border-slate-200 p-3">
@@ -1699,6 +1530,7 @@ function DetailBlock({ children, title }: { children: React.ReactNode; title: st
 }
 
 function ReadOnlySummary({ label, value }: { label: string; value: string | null | undefined }) {
+  if (!value || value === "—") return null;
   return (
     <div className="border-b border-slate-100 py-2 last:border-b-0">
       <div className="text-[10px] font-black uppercase text-slate-400">{label}</div>
@@ -1731,7 +1563,7 @@ function ActionButton({
 function rmaOperationalLabel(value: string | null | undefined, locale: string): string {
   const labels: Record<string, [string, string, string]> = {
     submitted: ["待审核", "Da approvare", "Awaiting approval"], under_review: ["审核中", "In verifica", "Under review"],
-    approved: ["已批准退货", "Reso approvato", "Return approved"], rejected: ["已拒绝", "Rifiutato", "Rejected"],
+    approved: ["已批准", "Approvato", "Approved"], rejected: ["已拒绝", "Rifiutato", "Rejected"],
     received: ["已收货", "Ricevuto", "Received"], refunded: ["已退款", "Rimborsato", "Refunded"], closed: ["已完成", "Completato", "Completed"],
     replacement_sent: ["替换件已寄出", "Sostituzione spedita", "Replacement shipped"],
     replacement: ["换货", "Sostituzione", "Replacement"], wallet_credit: ["客户钱包", "Portafoglio cliente", "Customer wallet"],

@@ -984,6 +984,16 @@ function rmaPushCopy(event: DbRow) {
     return null;
   }
 
+  if (payload.return_mode === "refund_only" || sourceAction === "waive_return") {
+    return { title: "Reso non richiesto", body: status === "closed"
+      ? "Non devi restituire l’articolo. Il rimborso è completato."
+      : "Non devi restituire l’articolo. Il rimborso è in elaborazione." };
+  }
+  if (sourceAction === "execute_refund") {
+    return { title: "Rimborso completato", body: payload.refund_method === "cash"
+      ? "Il rimborso in contanti è stato pagato." : "Il rimborso è stato accreditato nel portafoglio PartsPro." };
+  }
+
   const actionBodies: Record<string, string> = {
     start_negotiation: "La soluzione richiede il tuo accordo. Contatta l'assistenza prima di proseguire.",
     resolve_negotiation: "La soluzione concordata è registrata. Il rimborso resta soggetto ad approvazione.",

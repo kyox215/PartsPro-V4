@@ -24,7 +24,7 @@ const authFns = functions("../src/lib/partspro-admin-auth.ts", ["hasAdminPermiss
 const auth = permissions => ({ allowed: true, userId: "employee", role: "sales", permissions });
 const dto = compile(readFileSync(new URL("../src/lib/partspro-rma-admin-dto.ts", import.meta.url), "utf8"), name => {
   if (name.endsWith("partspro-admin-auth")) return authFns;
-  if (name.endsWith("partspro-rma-workflow-rules")) return { projectAdminRmaWorkflow: projectRmaV4Workflow };
+  if (name.endsWith("partspro-rma-admin-workflow")) return { projectAdminRmaWorkflow: projectRmaV4Workflow };
   throw Error(name);
 });
 const received = { id: "11111111-1111-4111-8111-111111111111", orderId: "TEST-ORDER", quantity: 1, receivedQuantity: 1,
@@ -179,4 +179,50 @@ test('approval accepts omitted, blank and short instructions without weakening p
   const reader=actionRoute(['rma.read']);
   assert.equal((await reader.post({action:'approve',idempotencyKey:'read-only-approval'})).status,403);
   assert.equal(reader.writes.length,0);
+});
+
+test('refund-only approval requires a reason and exact exemption permission', async () => {
+ const payload={action:'approve',returnMode:'refund_only',waiverReasonCode:'no_recovery_value',idempotencyKey:'refund-only-approval'};
+ const manager=actionRoute(['rma.read','rma.manage']);
+ assert.equal((await manager.post(payload)).status,200);
+ assert.equal((await manager.post({...payload,returnMode:'return_required',idempotencyKey:undefined})).status,400);
+ assert.equal((await manager.post({...payload,action:'reject'})).status,400);
+ assert.equal((await manager.post({...payload,waiverReasonCode:'other'})).status,400);
+ assert.equal((await manager.post({...payload,waiverReasonCode:'other',reason:'损坏'})).status,200);
+ const aliasedManager=actionRoute(['orders.read','orders.manage']);
+ assert.equal((await aliasedManager.post(payload)).status,403);
+ assert.equal(aliasedManager.writes.length,0);
+});
+
+test('waiver before refund accepts preset or short other reason; a reader cannot change it', async () => {
+ const manager=actionRoute(['rma.read','rma.manage']);
+ assert.equal((await manager.post({action:'waive_return',waiverReasonCode:'return_cost_high',idempotencyKey:'waive-before-refund'})).status,200);
+ assert.equal((await manager.post({action:'waive_return',waiverReasonCode:'other',reason:'坏',idempotencyKey:'short-waiver-reason'})).status,200);
+ assert.equal((await manager.post({action:'waive_return',waiverReasonCode:'other',reason:' ',idempotencyKey:'blank-waiver-reason'})).status,400);
+ const reader=actionRoute(['rma.read']);
+ assert.equal((await reader.post({action:'waive_return',waiverReasonCode:'no_recovery_value',idempotencyKey:'reader-cannot-waive'})).status,403);
+});
+
+test('three server views paginate approved and refunded cases without losing unreceived goods', async () => {
+ const rows=['submitted','under_review','approved','received','refunded','closed','rejected'].map((status,index)=>({id:String(index),status}));
+ const client={from:()=>{
+  let filtered=[...rows];
+  const query={select(){return this;},order(){return this;},in(key,values){filtered=filtered.filter(row=>values.includes(row[key]));return this;},
+   eq(key,value){filtered=filtered.filter(row=>row[key]===value);return this;},not(key,operator,value){assert.equal(operator,'in');const values=value.slice(1,-1).split(',');filtered=filtered.filter(row=>!values.includes(row[key]));return this;},
+   async range(start,end){return {data:filtered.slice(start,end+1),count:filtered.length,error:null};}};
+  return query;
+ }};
+ const repository=functions('../src/lib/partspro-repository.ts',['readAdminRmaRequests'],{
+  requireRmaServiceClient:()=>client,isProjectionQueueFilter:()=>false,isDbRow:value=>Boolean(value&&typeof value==='object'),
+  hydrateAdminRmaRows:async(_context,_client,values)=>values,rmaReadUnavailable:message=>new Error(message),supabaseErrorDetails:()=>({}),
+ });
+ const review=await repository.readAdminRmaRequests({}, {view:'review'});
+ assert.deepEqual(Array.from(review.requests,row=>row.status),['submitted','under_review']);
+ const active=await repository.readAdminRmaRequests({}, {view:'active',limit:2,offset:0});
+ assert.deepEqual(Array.from(active.requests,row=>row.status),['approved','received']);
+ assert.equal(active.total,3);assert.equal(active.hasMore,true);
+ const next=await repository.readAdminRmaRequests({}, {view:'active',limit:2,offset:2});
+ assert.deepEqual(Array.from(next.requests,row=>row.status),['refunded']);assert.equal(next.hasMore,false);
+ const archive=await repository.readAdminRmaRequests({}, {view:'archive'});
+ assert.deepEqual(Array.from(archive.requests,row=>row.status),['closed','rejected']);
 });

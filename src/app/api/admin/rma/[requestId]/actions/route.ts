@@ -81,7 +81,7 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
   // same canonical permission, rather than accepting the broader RMA
   // inventory alias and letting the database reject the request later.
   const permissionGranted =
-    parsedBody.data.action === "waive_return"
+    (parsedBody.data.action === "waive_return" || parsedBody.data.action === "approve" && parsedBody.data.returnMode === "refund_only")
       ? hasExactAdminPermission(admin.authState, "rma.manage")
       : parsedBody.data.action === "execute_refund"
       ? hasExactAdminPermission(admin.authState, "wallet_refunds.approve")
@@ -146,9 +146,9 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
         source: result.source,
         workflow:
           isReviewAction(parsedBody.data.action)
-            ? "admin_perform_rma_review_action"
+            ? parsedBody.data.returnMode ? "admin_perform_rma_review_action_v2" : "admin_perform_rma_review_action"
             : ["execute_refund", "waive_return", "mark_received", "close"].includes(parsedBody.data.action)
-              ? "admin_perform_rma_simple_action_v1" : "admin_perform_rma_action_v4",
+              ? "admin_perform_rma_simple_action_v2" : "admin_perform_rma_action_v4",
       },
     });
   } catch (error) {

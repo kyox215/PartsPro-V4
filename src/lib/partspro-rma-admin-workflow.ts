@@ -83,6 +83,7 @@ export type RmaAdminCapabilities = {
 };
 
 export type RmaAdminWorkflowInput = {
+  walletCreditedAmount?: number | null;
   refundCompletedAt?: string | null;
   returnWaivedAt?: string | null;
   unitPriceSnapshot?: number | null;

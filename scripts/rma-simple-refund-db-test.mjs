@@ -40,7 +40,8 @@ try {
  assert.equal(Number((await client.query("select count(*) n from public.customer_wallet_transactions where customer_id::text like '90000000-%'")).rows[0].n),0,'backfill creates no fictitious funds');
  const setup=readFileSync('tests/rma-v4-database-integration.sql','utf8').split('do $$ declare r uuid;')[0];
  await client.query(setup+readFileSync('tests/rma-simple-refund-integration.sql','utf8'));
- console.log('Refund, receipt, waiver, permission, historical compatibility and rollback assertions passed');
+ await client.query(setup+readFileSync('tests/rma-refund-only-integration.sql','utf8'));
+ console.log('Refund-only approval, automatic completion, receipt gates, permission, historical compatibility and rollback assertions passed');
  await client.query(setup+'commit;');
  const actor='10000000-0000-4000-8000-000000000001';
  const connection = async () => {const c=pg.getPgClient('postgres','127.0.0.1');clients.push(c);await c.connect();return c;};
@@ -51,10 +52,11 @@ try {
   } catch(error) {await c.query('rollback');throw error;}
  };
  const make=async()=>{await client.query("select set_config('request.jwt.claim.sub',$1,false)",[actor]);return (await client.query("select pg_temp.make_rma(1,'pending','wallet_credit','approved') id")).rows[0].id;};
- const execute='select (public.admin_perform_rma_simple_action_v1($1,\'execute_refund\',$2::jsonb,$3)).id';
+ const execute='select (public.admin_perform_rma_simple_action_v2($1,\'execute_refund\',$2::jsonb,$3)).id';
  const wallet=JSON.stringify({refund_method:'wallet_credit',refund_amount:10});
  const cash=JSON.stringify({refund_method:'cash',refund_amount:10,cash_paid:true});
  let r=await make();
+ await authenticated(first,"select public.admin_perform_rma_simple_action_v2($1,'waive_return','{\"waiver_reason_code\":\"no_recovery_value\"}','concurrent-exemption')",[r]);
  await Promise.all([authenticated(first,execute,[r,wallet,'concurrent-same-key']),authenticated(second,execute,[r,wallet,'concurrent-same-key'])]);
  assert.equal(Number((await client.query("select count(*) n from public.customer_wallet_transactions where metadata->>'rma_request_id'=$1",[r])).rows[0].n),1,'same-key concurrent refund credits once');
  r=await make();
@@ -76,6 +78,15 @@ try {
  const outcome=(await client.query('select refund_method,refund_completed_at from public.rma_requests where id=$1',[r])).rows[0];
  const countCredits=Number((await client.query("select count(*) n from public.customer_wallet_transactions where order_line_id=(select order_line_id from public.rma_requests where id=$1) and direction='credit'",[r])).rows[0].n);
  assert.equal(countCredits,outcome.refund_method==='cash'?0:1,'legacy approval and unified cash cannot both pay');
+ r=await make();
+ const waiver=JSON.stringify({waiver_reason_code:'no_recovery_value'});
+ const physicalRace=await Promise.allSettled([
+  authenticated(first,"select public.admin_perform_rma_simple_action_v2($1,'waive_return',$2::jsonb,'waive-vs-receipt')",[r,waiver]),
+  authenticated(second,"select public.admin_perform_rma_simple_action_v2($1,'mark_received','{\"quantity\":1}','receipt-vs-waive')",[r]),
+ ]);
+ assert.equal(physicalRace.filter(x=>x.status==='fulfilled').length,1,'receipt and waiver cannot both win');
+ const physical=(await client.query('select received_at,return_waived_at from public.rma_requests where id=$1',[r])).rows[0];
+ assert.notEqual(Boolean(physical.received_at),Boolean(physical.return_waived_at));
  console.log('Two authenticated connections: same-key retry credits once; cash/wallet and legacy-approval races produce one settlement');
 } catch(error) { console.error(error.message); console.error(logs.slice(-6).join('\n')); process.exitCode=1;
 } finally { await Promise.allSettled(clients.map(c=>c.end())); await pg.stop(); }

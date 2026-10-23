@@ -75,7 +75,7 @@ import {
   RmaWorkflowNotReadyError,
 } from "@/lib/partspro-rma-workflow-readiness";
 import { rmaRequestConsumesReturnQuantity } from "@/lib/partspro-rma-rules.mjs";
-import { projectAdminRmaWorkflow } from "@/lib/partspro-rma-workflow-rules";
+import { projectAdminRmaWorkflow } from "@/lib/partspro-rma-admin-workflow";
 import {
   normalizeSupplierBatchCharge,
   normalizeSupplierBatchChargeAllocation,
@@ -1824,6 +1824,7 @@ export type AdminRmaQueueFilter =
   | "unassigned";
 
 export type AdminRmaQuery = {
+  view?: "review" | "active" | "archive";
   limit?: number;
   offset?: number;
   queue?: AdminRmaQueueFilter;
@@ -1906,6 +1907,8 @@ export type AdminRmaAction =
   | "close";
 
 export type PerformAdminRmaActionInput = {
+  returnMode?: "return_required" | "refund_only";
+  waiverReasonCode?: "no_recovery_value" | "return_cost_high" | "other";
   refundMethod?: "cash" | "wallet_credit";
   cashPaid?: boolean;
   confirmResolutionChange?: boolean;
@@ -12736,6 +12739,10 @@ async function readAdminRmaRequests(
     request = request.eq("status", query.status);
   }
 
+  if (query.view === "review") request = request.in("status", ["submitted", "requested", "under_review"]);
+  if (query.view === "active") request = request.not("status", "in", "(submitted,requested,under_review,closed,rejected)");
+  if (query.view === "archive") request = request.in("status", ["closed", "rejected"]);
+
   if (query.queue === "review") {
     request = request.in("status", ["submitted", "requested", "under_review", "rejected"]);
   } else if (query.queue === "awaiting_return") {
@@ -12750,16 +12757,10 @@ async function readAdminRmaRequests(
       .not("received_quantity", "is", null);
   } else if (query.queue === "resolution") {
     request = request
-      .eq("status", "received")
-      .in("qc_status", ["passed", "failed", "not_required"])
-      .not("received_at", "is", null)
-      .not("received_quantity", "is", null);
+      .in("status", ["approved", "received"]);
   } else if (query.queue === "inventory_close") {
     request = request
-      .in("status", ["refunded", "replacement_sent", "replaced"])
-      .in("qc_status", ["passed", "failed", "not_required"])
-      .not("received_at", "is", null)
-      .not("received_quantity", "is", null);
+      .in("status", ["refunded", "replacement_sent", "replaced"]);
   } else if (query.queue === "archive") {
     request = request.in("status", ["closed", "rejected"]);
   } else if (query.queue === "mine") {
@@ -12814,7 +12815,7 @@ async function readAdminRmaRequests(
   while (true) {
     const { data, error, count: batchCount } = await request.range(
       scanOffset,
-      scanOffset + scanBatchSize - 1
+      scanOffset + (queueScoped ? scanBatchSize : limit) - 1
     );
     const rawRows = Array.isArray(data) ? (data as unknown[]) : null;
     const rows = rawRows?.filter(isDbRow) ?? null;
@@ -13744,12 +13745,12 @@ async function performAdminRmaActionViaRpc(
   input: PerformAdminRmaActionInput
 ): Promise<RmaRequest | null> {
   if (["execute_refund", "waive_return", "mark_received", "close"].includes(input.action)) {
-    const { data, error } = await context.client.rpc("admin_perform_rma_simple_action_v1", {
+    const { data, error } = await context.client.rpc("admin_perform_rma_simple_action_v2", {
       p_request_id: input.requestId, p_action: input.action,
       p_idempotency_key: input.idempotencyKey,
       p_payload: { refund_method: input.refundMethod, refund_amount: input.refundAmount,
         cash_paid: input.cashPaid, confirm_resolution_change: input.confirmResolutionChange,
-        reason: input.reason, quantity: input.quantity, customer_visible_note: input.customerVisibleNote },
+        reason: input.reason, waiver_reason_code: input.waiverReasonCode, quantity: input.quantity, customer_visible_note: input.customerVisibleNote },
     });
     if (error) throw new RepositoryWriteError(supabaseRpcStatus(error), "RMA_REFUND_FAILED",
       "The return or refund could not be completed. Refresh the request before retrying.", supabaseErrorDetails(error));
@@ -13847,7 +13848,13 @@ async function performAdminRmaReviewActionViaRpc(
   context: SupabaseContext,
   input: PerformAdminRmaActionInput
 ): Promise<RmaRequest | null> {
-  const { data, error } = await context.client.rpc("admin_perform_rma_review_action", {
+  const { data, error } = input.returnMode ? await context.client.rpc("admin_perform_rma_review_action_v2", {
+    p_action: input.action,
+    p_idempotency_key: input.idempotencyKey ?? null,
+    p_request_id: input.requestId,
+    p_payload: { return_mode: input.returnMode, waiver_reason_code: input.waiverReasonCode,
+      reason: input.reason, customer_visible_note: input.customerVisibleNote, internal_note: input.internalNote },
+  }) : await context.client.rpc("admin_perform_rma_review_action", {
     p_action: input.action,
     p_customer_visible_note: input.customerVisibleNote ?? null,
     p_internal_note: input.internalNote ?? null,

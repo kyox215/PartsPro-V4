@@ -176,6 +176,8 @@ export const adminRmaActionSchema = z
     qcNote: z.string().trim().max(1000).optional(),
     qcStatus: z.enum(["passed", "failed", "not_required"]).optional(),
     reason: z.string().trim().max(1000).optional(),
+    returnMode: z.enum(["return_required", "refund_only"]).optional(),
+    waiverReasonCode: z.enum(["no_recovery_value", "return_cost_high", "other"]).optional(),
     refundMethod: z.enum(["cash", "wallet_credit"]).optional(),
     cashPaid: z.boolean().optional(),
     confirmResolutionChange: z.boolean().optional(),
@@ -186,11 +188,16 @@ export const adminRmaActionSchema = z
     warehouse: z.literal("Milano").optional(),
   })
   .strict().superRefine((value, ctx) => {
+    if (value.returnMode && (value.action !== "approve" || !value.idempotencyKey)) {
+      ctx.addIssue({ code: "custom", message: "Select a return mode only with approval and a stable key." });
+    }
     if (value.action === "execute_refund" && (!value.idempotencyKey || !value.refundMethod || value.refundAmount === undefined || (value.refundMethod === "cash" && value.cashPaid !== true))) {
       ctx.addIssue({ code: "custom", message: "Confirm the refund method, amount, stable key and actual cash payment." });
     }
-    if (value.action === "waive_return" && (!value.idempotencyKey || (value.reason?.length ?? 0) < 8)) {
-      ctx.addIssue({ code: "custom", message: "A stable key and reason for waiving the return are required." });
+    if (value.action === "waive_return" || value.action === "approve" && value.returnMode === "refund_only") {
+      if (!value.idempotencyKey || (!value.waiverReasonCode && !value.reason) || value.waiverReasonCode === "other" && !value.reason) {
+        ctx.addIssue({ code: "custom", message: "Select a reason for no return; other requires a note and a stable key." });
+      }
     }
   });
 

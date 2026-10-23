@@ -12,7 +12,7 @@ import {
   projectAdminRmaWorkflow,
   type RmaAdminCapabilities,
   type RmaAdminWorkflowResult,
-} from "@/lib/partspro-rma-workflow-rules";
+} from "@/lib/partspro-rma-admin-workflow";
 
 /**
  * Staff RMA responses are still an allowlist. In particular, attachment
@@ -36,6 +36,7 @@ export type AdminRmaDto = Omit<
   "attachments" | "events" | "ownerUserId"
 > & {
   canApproveWalletRefund: boolean;
+  canWaiveReturn: boolean;
   attachments: AdminRmaAttachmentDto[];
   events: AdminRmaEventDto[];
   workflowQueue: RmaAdminWorkflowResult["workflowQueue"];
@@ -107,6 +108,7 @@ export function toAdminRmaDto(
     availableActions: workflow.availableActions.filter((action) => action !== "record_qc" || capabilities.qc !== false),
     recommendedAction: qcDenied ? null : workflow.recommendedAction,
     blockedReason: qcDenied ? "permission_denied" : workflow.blockedReason,
+    canWaiveReturn: capabilities.waiveReturn === true,
     canApproveWalletRefund: capabilities.approveRefund === true && request.walletRefundStatus === "pending"
       && Boolean(request.walletRefundRequestId) && (request.walletRequestedAmount ?? 0) > 0,
   };

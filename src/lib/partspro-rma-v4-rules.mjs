@@ -6,13 +6,14 @@ export function projectRmaV4Workflow(input, capabilities) {
     workflowQueue: "review", availableActions: capabilities.manage ? ["approve", "reject", "assign"] : [],
     recommendedAction: capabilities.manage ? "approve" : null, blockedReason: capabilities.manage ? null : "permission_denied",
   };
-  if (input.refundCompletedAt && input.status !== "closed") {
+  const settled = input.refundCompletedAt || input.walletRefundStatus === "approved" && input.walletCreditedAmount > 0 && input.resolutionAction === "refund_wallet";
+  if (settled && input.status !== "closed") {
     const actions = [];
     const received = Boolean(input.receivedAt) && input.receivedQuantity === input.quantity;
     const disposed = ["restock", "scrap", "supplier_return"].includes(input.inventoryDisposition) && input.inventoryDispositionQuantity === input.quantity;
     if (!received && !input.returnWaivedAt) {
       if (capabilities.inventory) actions.push("mark_received");
-      if (capabilities.waiveReturn ?? capabilities.manage) actions.push("waive_return");
+      if (!input.customerShippedAt && (capabilities.waiveReturn ?? capabilities.manage)) actions.push("waive_return");
     } else if (input.returnWaivedAt || disposed) {
       if (capabilities.manage) actions.push("close");
     } else if (input.qcStatus === "pending") {
@@ -102,10 +103,16 @@ export function projectRmaV4Workflow(input, capabilities) {
   }
   if (simpleRefund) {
     for (const legacy of ["prepare_wallet_refund", "verify_refund_snapshot", "request_wallet_refund"]) actions.delete(legacy);
+    if (input.returnWaivedAt) {
+      for (const physical of ["mark_received", "split_request", "cancel_unreceived"]) actions.delete(physical);
+    } else if (!input.customerShippedAt && !input.receivedAt && !input.receivedQuantity &&
+      input.inventoryDisposition === "pending" && (capabilities.waiveReturn ?? capabilities.manage)) {
+      actions.add("waive_return");
+    }
     if (capabilities.approveRefund) actions.add("execute_refund");
     return { ...result, workflowQueue: "resolution", availableActions: [...actions],
-      recommendedAction: capabilities.approveRefund ? "execute_refund" : result.recommendedAction,
-      blockedReason: capabilities.approveRefund ? null : result.blockedReason };
+      recommendedAction: capabilities.approveRefund ? "execute_refund" : null,
+      blockedReason: capabilities.approveRefund ? null : "permission_denied" };
   }
   return { ...result, availableActions: [...actions] };
 }

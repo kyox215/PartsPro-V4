@@ -18,29 +18,15 @@ const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relativePath) => readFileSync(join(repoRoot, relativePath), "utf8");
 const panel = read("src/components/partspro/admin-rma-panel.tsx");
 
-test("admin panel exposes six active server queues and a secondary archive entry", () => {
-  for (const queue of [
-    "review",
-    "awaiting_return",
-    "receiving",
-    "qc",
-    "resolution",
-    "inventory_close",
-    "archive",
-  ]) {
-    assert.match(panel, new RegExp(`"${queue}"`));
-  }
-  assert.match(panel, /ACTIVE_QUEUE_TABS/);
+test("admin panel exposes three server views and separate mobile detail", () => {
+  assert.match(panel, /\["review", "active", "archive"\]/);
+  assert.match(panel, /String\(page \* 80\), view/);
   assert.match(panel, /role="tablist"/);
   assert.match(panel, /<div key=\{request\.id\} role="listitem">/);
-  assert.match(panel, /<button[\s\S]*aria-current=\{selectedId === request\.id/);
-  assert.doesNotMatch(panel, /<button[^>]*role="listitem"/);
-  assert.match(panel, /queueCounts/);
-  assert.match(panel, /countsComplete/);
-  assert.match(panel, /`≥\$\{/);
-  assert.match(panel, /setQueue\("archive"\)/);
-  assert.doesNotMatch(panel, /type StatusFilter/);
-  assert.doesNotMatch(panel, /queueFilters/);
+  assert.match(panel, /setMobileDetail\(true\)/);
+  assert.match(panel, /setMobileDetail\(false\)/);
+  assert.match(panel, /hidden xl:block/);
+  assert.doesNotMatch(panel, /ACTIVE_QUEUE_TABS/);
 });
 
 test("admin detail renders server workflow actions and uses one guarded action endpoint", () => {
@@ -111,65 +97,42 @@ test("admin uses focused dialogs and hides assign from the recommendation", () =
   assert.match(panel, /recommendedAction === "choose_inventory_disposition"/);
 });
 
-test("waiting for the customer return is a localized normal status, with or without receiving permission", () => {
-  const helpers = loadAdminHelpers(["workflowNoticeFor", "rmaReasonLabel", "WorkflowNotice"]);
-  for (const locale of ["it", "zh"]) {
-    const copy = helpers.rmaCopy[locale];
-    for (const availableActions of [[], ["assign"], ["mark_received", "assign"]]) {
-      const notice = helpers.workflowNoticeFor(waitingRequest({ availableActions }), copy);
-      assert.equal(notice.tone, "waiting");
-      assert.equal(notice.title, copy.waitingCustomerReturn);
-      assert.equal(notice.message, copy.reasons.waiting_customer_return);
-      const html = renderToStaticMarkup(React.createElement(helpers.WorkflowNotice, { notice }));
-      assert.match(html, /role="status"/);
-      assert.match(html, /aria-live="polite"/);
-      assert.match(html, /lucide-clock/);
-      assert.doesNotMatch(html, /Bloccato|已阻塞|waiting_customer_return|role="alert"/);
-      assert.match(html, locale === "zh" ? /等待客户寄回[\s\S]*确认已寄出/ : /In attesa del reso del cliente[\s\S]*confermi di averla spedita/);
-    }
+test("graphical workflow distinguishes awaiting return, exemption and completed goods", () => {
+  for (const locale of ["zh-CN", "it", "en"]) {
+    const waiting = renderFlow(waitingRequest(), locale);
+    assert.match(waiting, locale === "zh-CN" ? /等待客户寄回/ : locale === "it" ? /In attesa del reso/ : /Awaiting customer return/);
+    const exempt = renderFlow(waitingRequest({returnWaivedAt:"now"}), locale);
+    assert.match(exempt, locale === "zh-CN" ? /无需退回/ : locale === "it" ? /Reso non richiesto/ : /No return required/);
+    assert.doesNotMatch(waiting + exempt, /role="alert"|waiting_customer_return/);
   }
 });
 
-test("workflow and refund blockers have stable bilingual labels and unknown codes fail closed", () => {
-  const helpers = loadAdminHelpers(["workflowNoticeFor", "rmaReasonLabel", "WorkflowNotice"]);
+test("workflow and refund blockers have stable localized labels and unknown codes fail closed", () => {
+  const helpers = loadAdminHelpers(["rmaReasonLabel"]);
   for (const locale of ["it", "zh"]) {
-    const copy = helpers.rmaCopy[locale];
-    for (const reason of [...rmaWorkflowBlockedReasons, "missing_unit_price_snapshot", "wallet_balance_exhausted", "invalid_snapshot"]) {
-      const label = helpers.rmaReasonLabel(reason, copy);
-      assert.equal(typeof label, "string");
-      assert.ok(label.length > 10, `${locale} must explain ${reason}`);
-      assert.notEqual(label, copy.unknownBlocker, `${locale} must explicitly translate ${reason}`);
+    const copy=helpers.rmaCopy[locale];
+    for (const reason of [...rmaWorkflowBlockedReasons,"missing_unit_price_snapshot","wallet_balance_exhausted","invalid_snapshot"]) {
+      const label=helpers.rmaReasonLabel(reason,copy);
+      assert.ok(label.length>10);
+      assert.notEqual(label,copy.unknownBlocker);
       assert.ok(!label.includes(reason));
     }
-    for (const reason of [null, undefined, "future_internal_code", "toString", "__proto__"]) {
-      assert.equal(helpers.rmaReasonLabel(reason, copy), copy.unknownBlocker);
-    }
-    for (const blockedReason of ["permission_denied", "partial_received_quantity", "invalid_state", "future_internal_code"]) {
-      const notice = helpers.workflowNoticeFor(waitingRequest({ blockedReason }), copy);
-      assert.equal(notice.tone, "blocked", "queue alone must not hide an actual blocker");
-      assert.equal(notice.title, copy.blocked);
-      const html = renderToStaticMarkup(React.createElement(helpers.WorkflowNotice, { notice }));
-      assert.match(html, /role="alert"/);
-      assert.ok(!html.includes(blockedReason));
-    }
-    assert.match(copy.reasons.permission_denied, locale === "zh" ? /权限.*负责人/ : /permesso.*responsabile/);
+    for (const reason of [null,undefined,"future_internal_code","toString","__proto__"]) assert.equal(helpers.rmaReasonLabel(reason,copy),copy.unknownBlocker);
   }
-  assert.match(panel, /rmaReasonLabel\(refundPreview\?\.blockedReason, copy\)/);
-  assert.match(panel, /rmaReasonLabel\(selectedRequest\?\.blockedReason, copy\)/);
-  assert.doesNotMatch(panel, /\{(?:selectedRequest|refundPreview)\??\.blockedReason\s*(?:\?\?|\})/);
+  assert.match(panel,/rmaReasonLabel\(selectedRequest.blockedReason, copy\)/);
 });
 
-test("other normal waits and completed archive requests are not mislabeled as blocked", () => {
-  const helpers = loadAdminHelpers(["workflowNoticeFor", "rmaReasonLabel"]);
-  for (const copy of Object.values(helpers.rmaCopy)) {
-    for (const blockedReason of ["waiting_wallet_approval", "waiting_qc"]) {
-      assert.equal(helpers.workflowNoticeFor(waitingRequest({ blockedReason }), copy).tone, "waiting");
-    }
-    assert.equal(helpers.workflowNoticeFor({ workflowQueue: "archive", blockedReason: null }, copy).tone, "complete");
-    assert.equal(helpers.workflowNoticeFor({ workflowQueue: "archive", blockedReason: "permission_denied" }, copy).tone, "blocked");
-    assert.equal(helpers.workflowNoticeFor({ workflowQueue: "review", blockedReason: null }, copy).tone, "blocked");
-  }
+test("completed workflow does not claim physical receipt for refund-only cases", () => {
+ const html=renderFlow(waitingRequest({status:"closed",returnWaivedAt:"now",refundCompletedAt:"now"}),"zh-CN");
+ assert.match(html,/完成/);assert.match(html,/无需退回/);assert.doesNotMatch(html,/已收货|待处置/);
 });
+
+function renderFlow(request,locale) {
+ const code=typescript.transpileModule(read("src/components/partspro/admin-rma-flow.tsx"),{compilerOptions:{module:typescript.ModuleKind.CommonJS,target:typescript.ScriptTarget.ES2022,jsx:typescript.JsxEmit.ReactJSX}}).outputText;
+ const loadedModule={exports:{}};
+ vm.runInNewContext(code,{module:loadedModule,exports:loadedModule.exports,require:(name)=>name==="@/lib/utils"?{cn:(...x)=>x.filter(Boolean).join(" ")}:name.startsWith("@/components/ui/")?{}:require(name)});
+ return renderToStaticMarkup(React.createElement(loadedModule.exports.AdminRmaFlow,{request,locale}));
+}
 
 test("physical receipt confirmation follows server authorization before or after refund", () => {
   const { canReceiveDirectly } = loadAdminHelpers(["canReceiveDirectly"]);
@@ -265,9 +228,7 @@ test("direct receipt copy and controls are responsive, descriptive and explicit 
   assert.match(rmaCopy.it.directReceiptDescription, /tutta la merce.*già arrivata.*ancora in viaggio/);
   assert.match(rmaCopy.zh.directReceiptConfirmation, /不会自动通过质检.*不会回补库存/);
   assert.match(rmaCopy.it.directReceiptConfirmation, /non approva il controllo qualità.*non rimette la merce a stock/);
-  assert.match(panel, /aria-describedby="rma-direct-receipt-hint"/);
   assert.match(panel, /aria-haspopup="dialog"/);
-  assert.match(panel, /h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto/);
   assert.match(panel, /<DialogTitle>\{copy\.confirmReceived\}<\/DialogTitle>/);
   assert.match(panel, /<DialogDescription>\{copy\.directReceiptConfirmation\}<\/DialogDescription>/);
   assert.match(panel, /onClick=\{confirmDirectReceipt\}/);

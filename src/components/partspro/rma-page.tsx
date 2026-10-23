@@ -1423,6 +1423,9 @@ function RmaRequestCard({
           {tx(t, "storefront.rma.originalRequest", "Vedi richiesta originale e foto")}
         </Link>
       ) : null}
+      {request.returnWaivedAt ? <p className="rounded-lg bg-emerald-50 p-3 text-sm font-semibold text-emerald-900">{request.refundedAt
+        ? (locale === "zh-CN" ? "无需退回商品，退款已完成。" : locale.startsWith("en") ? "No return required. Your refund is complete." : "Non devi restituire l’articolo. Rimborso completato.")
+        : (locale === "zh-CN" ? "无需退回商品，等待退款。" : locale.startsWith("en") ? "No return required. Awaiting refund." : "Non devi restituire l’articolo. Rimborso in attesa.")}</p> : null}
       {typeof request.receivedQuantity === "number" ? (
         <p className="text-sm text-slate-600">{tx(t, "storefront.rma.receivedQuantity", "Quantità ricevuta")}: {request.receivedQuantity}</p>
       ) : null}

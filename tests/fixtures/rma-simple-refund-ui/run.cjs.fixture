@@ -8,8 +8,8 @@ let current={...base}, permitted=true, fail=false; const writes=[],errors=[],che
 (async()=>{
  fs.mkdirSync(output,{recursive:true});
  const {projectRmaV4Workflow}=await import(require('url').pathToFileURL(process.cwd()+'/src/lib/partspro-rma-v4-rules.mjs').href);
- const dto=()=>({...current,...projectRmaV4Workflow(current,{manage:permitted,inventory:permitted,refund:permitted,adjustStock:permitted,approveRefund:permitted,qc:permitted}),canApproveWalletRefund:false});
- const cssSource=fs.readFileSync(process.cwd()+'/src/app/globals.css','utf8').replace('@import "tailwindcss";','@import "tailwindcss" source(none);')+'\n@source "../components/partspro/admin-rma-panel.tsx";\n@source "../components/partspro/admin-rma-refund-card.tsx";\n@source "../components/ui";';
+ const dto=()=>({...current,...projectRmaV4Workflow(current,{manage:permitted,inventory:permitted,refund:permitted,adjustStock:permitted,approveRefund:permitted,qc:permitted}),canApproveWalletRefund:false,canWaiveReturn:permitted});
+ const cssSource=fs.readFileSync(process.cwd()+'/src/app/globals.css','utf8').replace('@import "tailwindcss";','@import "tailwindcss" source(none);')+'\n@source "../components/partspro/admin-rma-panel.tsx";\n@source "../components/partspro/admin-rma-refund-card.tsx";@source "../components/partspro/admin-rma-flow.tsx";\n@source "../components/ui";';
  const css=(await projectRequire('postcss')([projectRequire('@tailwindcss/postcss')()]).process(cssSource,{from:process.cwd()+'/src/app/globals.css'})).css;
  const server=http.createServer((req,res)=>{res.setHeader('Content-Type',req.url==='/bundle.js'?'application/javascript':'text/html');res.end(req.url==='/bundle.js'?fs.readFileSync(dir+'/bundle.js'):'<!doctype html><html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+css+'</style><body><div id="root"></div><script>window.process={env:{NODE_ENV:"development"}}</script><script src="/bundle.js"></script></body></html>');});
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));let browser;
@@ -26,7 +26,8 @@ let current={...base}, permitted=true, fail=false; const writes=[],errors=[],che
     if(fail){fail=false;return route.fulfill({status:503,json:{error:{message:'Synthetic retryable failure'}}});}
     if(payload.action==='execute_refund') current={...current,status:'refunded',refundMethod:payload.refundMethod,refundAmount:payload.refundAmount,refundGrossAmount:payload.refundAmount,refundCompletedAt:'2026-10-23T20:00:00Z',resolutionAction:payload.refundMethod==='cash'?'refund_cash':'refund_wallet'};
     if(payload.action==='waive_return') current={...current,returnWaivedAt:'2026-10-23T20:01:00Z'};
-    if(payload.action==='approve')current={...current,status:'approved'};
+    if(payload.action==='approve')current={...current,status:'approved',returnWaivedAt:payload.returnMode==='refund_only'?'2026-10-23':null};
+    if(current.refundCompletedAt&&current.returnWaivedAt) current={...current,status:'closed'};
     if(payload.action==='close')current={...current,status:'closed'};
     return route.fulfill({json:{data:dto()}});
    }
@@ -35,13 +36,14 @@ let current={...base}, permitted=true, fail=false; const writes=[],errors=[],che
    return route.fulfill({json:{data:[]}});
   });
   const url='http://127.0.0.1:'+server.address().port+'/?locale='+locale;
-  const load=async()=>{await page.goto(url);await page.getByRole('button').filter({hasText:'Honor X8 Black'}).click();await page.locator('#rma-wallet-flow').waitFor();};
+  const load=async()=>{await page.goto(url);await page.getByRole('button').filter({hasText:'Honor X8 Black'}).click();await page.locator('[data-rma-identity]').waitFor();};
   const label=(zh,it,en)=>locale==='zh-CN'?zh:locale==='it'?it:en;
   for (const state of ['submitted','under_review']) for (const note of [undefined,label('已联系客户','Cliente contattato','Contacted')]) {
    current={...base,status:state};await load();
    await page.getByRole('button',{name:label('批准','Approva','Approve'),exact:true}).click();
    const dialog=page.getByRole('dialog');
    const approve=dialog.getByRole('button',{name:label('批准','Approva','Approve'),exact:true});
+   await dialog.locator('input[value=return_required]').check();
    const instructions=page.locator('#rma-return-instructions');
    assert.equal(await approve.isEnabled(),true,'blank instructions must not disable approval');
    assert.equal(await instructions.isVisible(),false,'optional note starts collapsed');
@@ -83,11 +85,21 @@ let current={...base}, permitted=true, fail=false; const writes=[],errors=[],che
   await page.getByRole('button',{name:label('确认转入钱包','Conferma accredito','Confirm wallet credit'),exact:true}).click();
   await page.getByText(new RegExp(label('已退至钱包','Accreditato al portafoglio','Credited to wallet'))).waitFor();
   assert.equal(writes[before-1].idempotencyKey,writes[before].idempotencyKey);
-  await page.getByRole('button',{name:label('无需退回商品','Non richiedere il reso','Waive goods return'),exact:true}).click();
-  await page.getByLabel(label('原因（至少 8 个字符）','Motivo (almeno 8 caratteri)','Reason (at least 8 characters)'),{exact:true}).fill('Customer may keep the defective item');
+  await page.getByRole('button',{name:label('改为仅退款','Passa a solo rimborso','Change to refund only'),exact:true}).click();
+  await page.locator('#waive-return-reason').selectOption('no_recovery_value');
   await page.getByRole('button',{name:label('确认无需退回','Conferma','Confirm no return'),exact:true}).click();
   await page.getByText(new RegExp(label('无需退回','Reso non richiesto','No return required'))).first().waitFor();
-  current={...base};await load();
+  current={...base,status:'submitted'};await load();
+  await page.getByRole('button',{name:label('批准','Approva','Approve'),exact:true}).click();
+  await page.locator('input[value=refund_only]').check();
+  await page.locator('#approve-waiver-reason').selectOption('other');
+  const approveOnly=page.getByRole('dialog').getByRole('button',{name:label('批准','Approva','Approve'),exact:true});
+  assert.equal(await approveOnly.isDisabled(),true,'other requires a reason');
+  await page.locator('#approve-waiver-note').fill(label('损坏','Rotto','Broken'));
+  await page.screenshot({path:output+`/refund-only-approval-${locale}-${width}.png`,fullPage:true,animations:'disabled'});
+  await approveOnly.click();
+  await page.getByRole('button',{name:label('办理退款','Esegui rimborso','Issue refund'),exact:true}).waitFor();
+  assert.equal(writes.at(-1).returnMode,'refund_only');
   await page.getByRole('button',{name:label('办理退款','Esegui rimborso','Issue refund'),exact:true}).click();
   await page.getByLabel(label('现金','Contanti','Cash'),{exact:true}).check();
   const pay=page.getByRole('button',{name:label('确认现金已支付','Conferma contanti pagati','Confirm cash paid'),exact:true});assert.equal(await pay.isDisabled(),true);
@@ -97,7 +109,7 @@ let current={...base}, permitted=true, fail=false; const writes=[],errors=[],che
   await page.screenshot({path:output+`/cash-${locale}-${width}.png`,fullPage:true});
   await pay.click();await page.getByText(new RegExp(label('已退现金','Rimborsato in contanti','Cash refund paid'))).waitFor();
   permitted=false;current={...base};await load();assert.equal(await page.getByRole('button',{name:label('办理退款','Esegui rimborso','Issue refund'),exact:true}).count(),0);
-  checks.push({locale,width,directApproval:true,emptyApproval:true,shortNoteApproval:true,noInputAutoFocus:true,approvalRetry:true,walletRetry:true,cashConfirmation:true,waiver:true,readOnly:true,noOverflow:true});await page.close();
+  checks.push({locale,width,directApproval:true,emptyApproval:true,shortNoteApproval:true,noInputAutoFocus:true,approvalRetry:true,walletRetry:true,cashConfirmation:true,waiver:true,refundOnlyApproval:true,autoClose:true,readOnly:true,noOverflow:true});await page.close();
  }
  assert.deepEqual(errors,[]);fs.writeFileSync(output+'/browser-result.json',JSON.stringify({checks,writes,errors},null,2));console.log('PASS: 6 locale/viewport combinations, wallet retry key, cash confirmation, waiver, read-only and overflow');
  }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));}
