@@ -8,7 +8,7 @@ import vm from "node:vm";
 import ts from "typescript";
 
 const root = process.cwd();
-const dir = path.join(root, "outputs/checkout-wallet/2026-10-23/fixture");
+const dir = path.join(root, ".codex-tmp/checkout-wallet-fixture");
 mkdirSync(dir, { recursive: true });
 const builder = readFileSync("tests/fixtures/account-pricing-ui/build.cjs.fixture", "utf8").replaceAll("__HARNESS_DIR__", JSON.stringify(dir))
   .replace("errors:true", "errors:true,moduleTrace:true,errorDetails:true")
