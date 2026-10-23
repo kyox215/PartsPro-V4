@@ -1,5 +1,7 @@
 # 后台订单界面排版与层级调整
 
+已上线：[后台订单](https://www.partspro.app/admin?panel=orders)。
+
 ## 范围
 
 沿用前台个人中心的蓝白卡片、浅色图标及蓝色选中态。桌面和手机共用总览、付款、物流、商品、历史五个栏目；保留现有订单状态流、收款/物流/缺货/打印/撤销/作废的接口与权限。
@@ -42,5 +44,10 @@
 
 ## 发布
 
-合入并保留已上线E5后重新构建候选，待只读检查及同构建域名推广。回退目标为E5，无数据库回滚步骤。
+- 运行提交 `28f3f69b30de61078d537cede6f17e639182c598` 已推送上述独立分支。最终生产配置候选 `dpl_7ffvXcqGbsoPEuR3zi1HZ4FpqTdX` 构建通过，478上传源文件SHA1全部匹配，源码清单指纹 `b6019a5c87502963149b3b1ed7377b96cac4e9e9248785f9639961e925ad81d3`。CLI Git metadata为空，源码来源由上传指纹证明。
+- 候选12项只读HTTP通过后推广同一构建；www与apex的alias API均确认新部署，apex307到www。正式12项页面/匿名API核对通过，订单API与钱包API保持未登录401。
+- 正式既有管理员会话只读打开用户截图中的订单：两件商品、锁货2、总额EUR25.00与原数据一致；桌面1327×727、手机390×844各五栏目均无整页/弹层横溢，固定操作栏可见，console error均0。商品外部图片回退完成后重新保存最终手机截图。
+- 新部署5分钟error/fatal聚合没有分组，仅为短时观察。真实收款、库存、退款、订单状态和客户资料未写入；手机证据为Chrome视口，未冒充物理手机Safari。临时手机视口已恢复。
+- 已保留E5为回退版本，订单UI回退无数据库补偿步骤。并发售后退款代码和其已应用迁移继续保留；不回退到旧Fy7。
+- 完整发布证据为 `release-verification.json`、`final-candidate-fingerprint.json`、`final-candidate-http.json`、`production-http.json`、`production-browser-readonly.json`、`production-mobile-readonly.json`；正式双端截图在 `screenshots/live-*-products.jpg`。
 
