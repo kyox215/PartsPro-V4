@@ -285,3 +285,15 @@ Last reviewed: 2026-10-12
 - 54项相关定向测试、受影响路径lint、完整build及diff检查通过。实际React组件＋模拟API在中／意／英、390／1440共6组检查通过，覆盖submitted／under_review空备注批准、短备注、失败重试同key、只读权限，以及原现金确认／钱包重试／无需退回流程；手机和桌面最终截图已查看。API测试覆盖遗漏、空串、空白和短备注、超长拒绝、无权限拒绝；未做物理Safari或生产员工交易E2E。
 - 生产配置候选 `dpl_9dTrbGSrCp3dvUjSSKzyTf5AuJbJ` 远端build通过，478上传源文件SHA1逐项匹配，无env／测试／导入资料。候选13项只读HTTP通过，切换前确认当前正式仍为7ff，再promote同一READY构建；www.partspro.app与partspro.app均核对到9dTr，apex307到www，正式13项只读HTTP通过。新部署5分钟error／fatal聚合无分组，仅短时观察。
 - 未执行任何真实客户批准、退款、订单或库存写入。回退保留订单版 `dpl_7ffvXcqGbsoPEuR3zi1HZ4FpqTdX`；既有资金记录不会因代码回退撤销。证据见本工作树 `outputs/rma-approval/2026-10-23/`。已经打开的旧页面需要刷新后加载本次弹窗修复。
+
+
+## 2026-10-24 — 售后仅退款与图形流程重构（实现完成，生产预检待钥匙串授权）
+
+- 用户确认：批准时选择退货退款／仅退款；仅退款快捷原因＋其他必填说明；退款及必要实物处置完成后自动结案；少用换货／协商／拆分收进更多操作；已寄出保留退货流程，仍可先退款。
+- 工作树 `.codex-worktrees/rma-approval-20261023` 沿用本任务隔离目录，新分支 `codex/rma-refund-only-20261023`，运行提交 `36add67`。基于正式9dTr／906b04e，保留订单、钱包及其他更新。正式编译曾优先加载同名legacy MJS，导致TS新版流程未生效；现改唯一名称admin-workflow入口并更新全部运行调用方，真实Next编译产物DTO及真实HTTP登录门禁已验证。
+- 页面只保留待审核／处理中／已完成三组、商品客户摘要、图形进度和当前动作；手机列表与详情切换，空资料与重复说明移除，详细记录和少用功能折叠。批准时可确定无需退回，客户页面及通知同步；已批准未寄出可改仅退款；已退款只免退回并完成，绝不再次支付。服务端三组分页补充定向行为验证，修正小limit读取至少50条的旧边界。
+- 唯一迁移 `20261023214328_rma_refund_only_workflow_closure.sql`，SHA256 `128ade9c2310a16d539c04bcbde6aa2d976fd5a4d2980219ea22ad9b8924ec01`。新增v2审核／简化动作RPC，复用现有免退回字段、保留旧签名兼容；私有触发器在资金和实物义务均完成时事务内结案。固定search_path，anon禁止执行，精确业务权限不放宽。无历史数据回填、drop table、truncate、delete或RLS/policy重写；无生产业务写入。
+- 验证：148项售后相关测试、24项商城回归、全量lint、build、diff检查通过。隔离PostgreSQL17.10应用120条（遵循既有测试环境跳过4条环境专属迁移），仅退款批准／现金钱包／退款前后实物处置／失败回滚／权限及双连接同key、现金钱包、旧审批、免退回与收货竞争通过。真实React＋模拟API中意英390／1440六组交互与最终截图已查看；实际Next服务器列表与批准接口匿名请求均拒绝。非生产员工资金E2E、非物理Safari键盘验证。
+- 只读MCP核对目标PartsPro-V4／yiuxrjqexlfjtxxrkqvi，远端123／本地124，remote-only为0，仅本次migration pending；通知函数补丁前提匹配，新函数均尚未应用。CLI2.122可运行但link／migration list阻塞于macOS SecKeychainFindGenericPassword（本任务进程调用栈采样确认），官方API连通401正常。Homebrew及官方2.101命令被系统SIGKILL；未改系统工具。已询问用户手动处理钥匙串授权，未读取或输出凭据。已终止重复link进程，当前只读migration list仍等待授权；复用先前同目标project-ref及无密码pooler URL，无凭据复制。
+- 尚未完成CLI linked list／dry-run，因此不得真实db push或发布依赖新RPC的正式代码。授权后先完成CLI安全门，dry-run必须仅本条、无remote-only，再展示目标、清单、风险和回退并取得本次db push明确批准。CLI2.122提示push默认处理vault，后续dry-run及真实push使用已核实的`--skip-vault`避免本任务之外配置动作。
+- 回退：保留正式 `dpl_9dTrbGSrCp3dvUjSSKzyTf5AuJbJ`；先回退代码停止新入口，新字段与资金记录保留。若需停止新自动结案触发器，另行经批准的补偿migration处理，不删除已发生的退款或审计。后续独立创建生产配置候选、验证上传源码、应用后核对，再推广同构建，禁止用生产客户批准／退款试验。证据与截图在本工作树 `outputs/rma-refund-only/2026-10-23/`。
