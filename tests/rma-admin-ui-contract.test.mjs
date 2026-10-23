@@ -171,7 +171,7 @@ test("other normal waits and completed archive requests are not mislabeled as bl
   }
 });
 
-test("direct receiving is only offered for the server-authorized customer-return wait", () => {
+test("physical receipt confirmation follows server authorization before or after refund", () => {
   const { canReceiveDirectly } = loadAdminHelpers(["canReceiveDirectly"]);
   assert.equal(canReceiveDirectly(waitingRequest()), true);
   for (const request of [
@@ -180,7 +180,8 @@ test("direct receiving is only offered for the server-authorized customer-return
     waitingRequest({ availableActions: ["assign"] }),
     waitingRequest({ blockedReason: "permission_denied" }),
     waitingRequest({ blockedReason: "invalid_state" }),
-    waitingRequest({ workflowQueue: "receiving", recommendedAction: "mark_received", blockedReason: null }),
+    waitingRequest({ status: "closed" }),
+    waitingRequest({ returnWaivedAt: "now" }),
   ]) {
     assert.equal(canReceiveDirectly(request), false);
   }
@@ -215,7 +216,7 @@ test("direct receiving requires a second confirmation bound to the same request 
     [waitingRequest({ quantity: 3 }), request, false],
     [waitingRequest({ availableActions: [] }), request, false],
     [waitingRequest({ blockedReason: "permission_denied" }), request, false],
-    [waitingRequest({ workflowQueue: "receiving", recommendedAction: "mark_received", blockedReason: null }), request, false],
+    [waitingRequest({ status: "closed" }), request, false],
     [request, request, true],
   ]) {
     const calls = [];
@@ -276,7 +277,7 @@ test("direct receipt copy and controls are responsive, descriptive and explicit 
 
 function waitingRequest(overrides = {}) {
   return {
-    id: "request-1", rmaNo: "RMA-TEST-001", productName: "Test replacement screen", quantity: 2,
+    status: "approved", id: "request-1", rmaNo: "RMA-TEST-001", productName: "Test replacement screen", quantity: 2,
     workflowQueue: "awaiting_return", recommendedAction: null, blockedReason: "waiting_customer_return",
     availableActions: ["mark_received", "assign"], ...overrides,
   };

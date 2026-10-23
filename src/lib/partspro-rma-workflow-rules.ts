@@ -17,6 +17,8 @@ export const rmaWorkflowQueues = rmaWorkflowQueueCodes;
 export type RmaWorkflowQueue = (typeof rmaWorkflowQueueCodes)[number];
 
 export const rmaWorkflowActionCodes = [
+  "execute_refund",
+  "waive_return",
   "prepare_wallet_refund",
   "split_request",
   "cancel_unreceived",
@@ -69,6 +71,7 @@ export type RmaWorkflowBlockedReason =
   | "invalid_state";
 
 export type RmaAdminCapabilities = {
+  waiveReturn?: boolean;
   prepareRefund?: boolean;
   qc?: boolean;
   approveRefund?: boolean;
@@ -80,6 +83,8 @@ export type RmaAdminCapabilities = {
 };
 
 export type RmaAdminWorkflowInput = {
+  refundCompletedAt?: string | null;
+  returnWaivedAt?: string | null;
   unitPriceSnapshot?: number | null;
   refundPricingVerified?: boolean;
   replacementReservedOrderId?: string | null;

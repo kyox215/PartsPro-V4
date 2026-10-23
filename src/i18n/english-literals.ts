@@ -1,5 +1,11 @@
 /** Fixed Italian UI literals translated to English; never use for customer content. */
 export const englishLiteralCopy: Record<string, string> = {
+  "Rimborsi resi": "Return refunds",
+  "Rimborso reso": "Return refund",
+  "Rimborso contanti": "Cash refund",
+  "Rimborso portafoglio": "Wallet refund",
+  "Rimborso effettivo": "Actual refund",
+
   "Altri": "Other",
   "Paginazione": "Pagination",
   "pag.": "page",

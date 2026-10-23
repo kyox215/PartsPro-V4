@@ -11,12 +11,12 @@
 
 ## 源码边界
 
-- 正式基线：部署 `dpl_Fy7dz2cHvJeapsj3SRHFHYyKSCAv`；源码提交 `17a6b0c9e5b68191c866e9ebc0d166b369cac3b9`。
+- 初始基线为Fy7／17a6b0c。候选构建期间检测到售后退款版本E5已正式上线，已合入其发布提交 `aa9377ca5e93c2442337306a0033cbba5a3097f7`。最终基线为 `dpl_E5JaEeNAT8BRWLXtUaGRPKEQ3GsR`，旧候选8GKN未推广。
 - 分支：`codex/orders-current-style-20261023`。
 - 隔离工作树：`.codex-worktrees/orders-current-style-20261023`。主目录其他未提交内容未纳入发布。
-- 正式部署完整上传清单共476个源文件，475个与候选相同；唯一既有运行文件变化为 `admin-orders-panel.tsx`，另新增 `admin-order-presentation.ts`。
+- 最新正式部署完整上传清单共477个源文件，476个与合并后候选相同；唯一既有运行文件变化为 `admin-orders-panel.tsx`，另新增 `admin-order-presentation.ts`。新售后接口、财务、词典和退款卡片逐文件保留。
 - AST对比的209项命名函数/操作中，192项完全不变；变化集中在显示组件及栏目切换未保存保护，移除5个重复视觉辅助组件/函数。API、序列化、数量/金额归一化和状态推进处理函数不变。
-- 无API、依赖、schema、migration或环境变量变更；无生产业务写入。
+- 相对最新正式基线，无API、依赖、schema、migration或环境变量变更；无本任务生产业务写入。继承的 `20261023195133` 迁移已只读确认在PartsPro-V4／yiuxrjqexlfjtxxrkqvi中，123条本地/远端历史完全一致，无待应用或remote-only。本次未执行db push。
 
 ## 验证
 
@@ -25,15 +25,16 @@
 - `node --test tests/admin-orders-state.test.mjs tests/admin-order-pagination.test.mjs`：17项通过，其中3项覆盖栏目切换的未保存及提交中保护。
 - `npm run build`：通过；最后的税号展示补齐后已再次构建及定向lint，通过。
 - `git diff --check`：通过。
-- 浏览器使用实际订单组件、真实字典和构建CSS，接口及订单为明确标注的本地合成数据。中/意/英、320/390/768/1440px、五栏目，共60组几何检查无整页横溢、弹层越界或主操作栏遮挡。后续修复窄屏长栏目文字换行并补回税号显示。
+- 浏览器使用实际订单组件、真实字典和构建CSS，接口及订单为明确标注的本地合成数据。中/意/英、320/390/768/1440px、五栏目，初轮60组几何检查通过。长栏目换行及税号补齐后，最终三语320/390/1440px五栏目45组复验通过，无整页横溢、弹层越界或主操作栏遮挡。
 - 已实际验证缺货原因必填、缺货保存成功后更新数量、付款保存成功后更新状态、缺货及付款403失败保留草稿、无单号禁止发货。390×400缺货弹窗可滚动至取消/保存。
-- 未保存确认框触发后，浏览器工具被原生弹窗阻塞；该交互的自动验证未完成，不计为浏览器通过，三个定向回归覆盖其逻辑。物流保存、更多操作弹窗、只读权限的最终浏览器检查仍待补验。
+- 原生确认框早期阻塞浏览器工具，随后使用可见的Chrome原生“取消”完成核对：栏目未切换、物流草稿保留。物流保存后发货检查2/3→3/3，运费调整要求原因且保存后总额更新；取消订单弹窗返回恢复“更多操作”焦点；作废必须原因及完整订单号，错误编号禁用。只读账号商品、付款和物流均无可用写入控件，未提交作废或取消。
+- 合入E5后再次通过完整build、全量lint及24+17回归；订单组件及其专用文案与已验版本完全相同。售后／财务业务源码与已上线E5一致，复用该发布的专项验证，不冒充本次重新完成资金交易E2E。
 
 ## 证据及限制
 
 证据位于项目根目录 `outputs/order-current-style/2026-10-23/`：
 
-- `browser-layout-matrix.json` 与 `screenshots/`：组件布局检查和目视截图。
+- `browser-layout-matrix.json`、`browser-final-layout-matrix.json`、`browser-final-interactions.json` 与 `screenshots/`：组件布局检查和目视截图。
 - `baseline-source-tree.json`、`baseline-fingerprint-comparison.json`、`source-contract-comparison.json`：正式源文件及函数差异。
 - `fixture-metrics-phase1.json` 和 `local-runtime/metrics.json`：本地合成接口请求记录。
 
@@ -41,5 +42,5 @@
 
 ## 发布
 
-待候选部署构建、只读检查及同构建域名推广。回退目标为上述正式基线，无数据库回滚步骤。
+合入并保留已上线E5后重新构建候选，待只读检查及同构建域名推广。回退目标为E5，无数据库回滚步骤。
 

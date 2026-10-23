@@ -2,6 +2,32 @@ import { projectAdminRmaWorkflow } from './partspro-rma-workflow-rules.mjs';
 
 /** Negotiation and quantity partitions do not bypass receipt, money or stock gates. */
 export function projectRmaV4Workflow(input, capabilities) {
+  if (["submitted", "under_review"].includes(input.status)) return {
+    workflowQueue: "review", availableActions: capabilities.manage ? ["approve", "reject", "assign"] : [],
+    recommendedAction: capabilities.manage ? "approve" : null, blockedReason: capabilities.manage ? null : "permission_denied",
+  };
+  if (input.refundCompletedAt && input.status !== "closed") {
+    const actions = [];
+    const received = Boolean(input.receivedAt) && input.receivedQuantity === input.quantity;
+    const disposed = ["restock", "scrap", "supplier_return"].includes(input.inventoryDisposition) && input.inventoryDispositionQuantity === input.quantity;
+    if (!received && !input.returnWaivedAt) {
+      if (capabilities.inventory) actions.push("mark_received");
+      if (capabilities.waiveReturn ?? capabilities.manage) actions.push("waive_return");
+    } else if (input.returnWaivedAt || disposed) {
+      if (capabilities.manage) actions.push("close");
+    } else if (input.qcStatus === "pending") {
+      if (capabilities.qc) actions.push("record_qc");
+    } else {
+      if (capabilities.adjustStock && input.qcStatus === "passed") actions.push("restock_return");
+      if (capabilities.inventory) actions.push("mark_scrapped", "supplier_return");
+    }
+    return { workflowQueue: "inventory_close", availableActions: actions, recommendedAction: actions[0] ?? null, blockedReason: actions.length ? null : "permission_denied" };
+  }
+  const simpleRefund = ["approved", "received"].includes(input.status) && !input.refundCompletedAt &&
+    !input.replacementOrderId && !input.replacementReservedOrderId &&
+    (!input.resolutionAction || input.resolutionAction === "refund_wallet") &&
+    !["approved", "cancelled"].includes(input.walletRefundStatus) && input.negotiationStatus !== "pending" &&
+    (!(input.negotiationStatus === "agreed") || input.negotiationOutcome === "refund_wallet");
   const result = projectAdminRmaWorkflow(input, capabilities);
   const actions = new Set(result.availableActions);
   const noSettlement = !input.walletRefundRequestId && !input.walletRefundStatus &&
@@ -73,6 +99,13 @@ export function projectRmaV4Workflow(input, capabilities) {
       result.recommendedAction = actions.has('prepare_wallet_refund') ? 'prepare_wallet_refund' : null;
       result.blockedReason = actions.has('prepare_wallet_refund') ? null : 'missing_unit_price_snapshot';
     }
+  }
+  if (simpleRefund) {
+    for (const legacy of ["prepare_wallet_refund", "verify_refund_snapshot", "request_wallet_refund"]) actions.delete(legacy);
+    if (capabilities.approveRefund) actions.add("execute_refund");
+    return { ...result, workflowQueue: "resolution", availableActions: [...actions],
+      recommendedAction: capabilities.approveRefund ? "execute_refund" : result.recommendedAction,
+      blockedReason: capabilities.approveRefund ? null : result.blockedReason };
   }
   return { ...result, availableActions: [...actions] };
 }

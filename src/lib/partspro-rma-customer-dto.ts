@@ -39,10 +39,12 @@ export function toCustomerRmaDto(request: RmaRequest): CustomerRmaDto {
     parentRequestId: request.parentRequestId ?? null,
     negotiationStatus: request.negotiationStatus ?? null,
     negotiationOutcome: request.negotiationOutcome ?? null,
-    refundAmount: request.resolutionAction === "refund_wallet" && ["refunded", "closed"].includes(request.status)
+    refundMethod: request.refundMethod ?? (request.resolutionAction === "refund_wallet" ? "wallet_credit" : null),
+    returnWaivedAt: request.returnWaivedAt ?? null,
+    refundAmount: ["refund_wallet", "refund_cash"].includes(request.resolutionAction ?? "") && ["refunded", "closed"].includes(request.status)
       ? request.refundGrossAmount ?? request.refundAmount ?? null : null,
-    refundedAt: request.resolutionAction === "refund_wallet" && ["refunded", "closed"].includes(request.status)
-      ? request.resolvedAt ?? null : null,
+    refundedAt: ["refund_wallet", "refund_cash"].includes(request.resolutionAction ?? "") && ["refunded", "closed"].includes(request.status)
+      ? request.refundCompletedAt ?? request.resolvedAt ?? null : null,
     receivedQuantity: request.receivedQuantity ?? null,
     returnToCustomerTracking: request.returnToCustomerTracking ?? null,
     createdAt: request.createdAt,
@@ -78,7 +80,7 @@ export function toCustomerRmaDto(request: RmaRequest): CustomerRmaDto {
     sku: request.sku,
     status: request.status,
     updatedAt: request.updatedAt ?? null,
-    canMarkShipped: request.status === "approved" && !request.customerShippedAt,
+    canMarkShipped: (request.status === "approved" || (request.status === "refunded" && Boolean(request.refundCompletedAt))) && !request.customerShippedAt && !request.receivedAt && !request.returnWaivedAt,
     ...(request.returnCarrier ? { carrier: request.returnCarrier } : {}),
     ...(request.returnTrackingCode ? { tracking: request.returnTrackingCode } : {}),
     ...(privacySafeFields.customerVisibleNote

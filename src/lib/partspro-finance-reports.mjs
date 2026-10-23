@@ -1,14 +1,18 @@
 import { financeDay, financeRound, shiftFinanceDay, validFinanceDate } from './partspro-finance-core.mjs';
 
-const additive = ['salesNet', 'cogsNet', 'expenseNet', 'paidExpenseNet', 'pendingExpenseNet', 'cancelledExpenseNet', 'purchaseNet', 'supplierPaymentsNet', 'pendingSupplierPaymentsNet', 'receivablesGross', 'salesOrders', 'expenseCount'];
+const additive = ['salesNet', 'cogsNet', 'expenseNet', 'paidExpenseNet', 'pendingExpenseNet', 'cancelledExpenseNet', 'purchaseNet', 'supplierPaymentsNet', 'pendingSupplierPaymentsNet', 'receivablesGross', 'salesOrders', 'expenseCount', 'cashRefundsNet', 'cashRefundsGross', 'walletRefundsGross'];
 const empty = () => Object.fromEntries(additive.map(key => [key, 0]));
 const add = (target, key, value) => { target[key] = financeRound(target[key] + value); };
 function finish(total) {
-  return { ...total, grossProfit: financeRound(total.salesNet - total.cogsNet), operatingCostsNet: financeRound(total.cogsNet + total.expenseNet), operatingProfit: financeRound(total.salesNet - total.cogsNet - total.expenseNet), recordedPaymentsNet: financeRound(total.paidExpenseNet + total.supplierPaymentsNet), averageOrderNet: total.salesOrders ? financeRound(total.salesNet / total.salesOrders) : 0 };
+  return { ...total, grossProfit: financeRound(total.salesNet - total.cogsNet), operatingCostsNet: financeRound(total.cogsNet + total.expenseNet), operatingProfit: financeRound(total.salesNet - total.cogsNet - total.expenseNet), recordedPaymentsNet: financeRound(total.paidExpenseNet + total.supplierPaymentsNet + total.cashRefundsNet), averageOrderNet: total.salesOrders ? financeRound(total.salesNet / total.salesOrders) : 0 };
 }
 function increment(total, row) {
   const amount = row.amountNet;
-  if (row.type === 'expense') {
+  if (row.type === 'refund') {
+    add(total, 'salesNet', -amount);
+    if (row.metadata?.refundMethod === 'cash') add(total, 'cashRefundsNet', amount);
+    add(total, row.metadata?.refundMethod === 'cash' ? 'cashRefundsGross' : 'walletRefundsGross', row.metadata?.amountGross ?? amount);
+  } else if (row.type === 'expense') {
     if (row.status === 'cancelled') add(total, 'cancelledExpenseNet', amount);
     else { add(total, 'expenseNet', amount); add(total, row.status === 'paid' ? 'paidExpenseNet' : 'pendingExpenseNet', amount); total.expenseCount++; }
   } else if (row.type === 'supplier_payment') {

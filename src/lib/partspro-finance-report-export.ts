@@ -5,7 +5,7 @@ import type { AdminFinanceLedgerRow, AdminFinanceReport } from "./partspro-repos
 type Cell = string | number;
 type Section = { name: string; columns: string[]; rows: Cell[][] };
 const statementKeys = ["salesNet", "cogsNet", "grossProfit", "expenseNet", "operatingProfit"] as const;
-const periodKeys = ["salesNet", "cogsNet", "expenseNet", "operatingProfit", "purchaseNet", "supplierPaymentsNet", "paidExpenseNet", "pendingExpenseNet", "salesOrders"] as const;
+const periodKeys = ["salesNet", "cogsNet", "expenseNet", "operatingProfit", "purchaseNet", "supplierPaymentsNet", "cashRefundsGross", "walletRefundsGross", "paidExpenseNet", "pendingExpenseNet", "salesOrders"] as const;
 
 function sections(report: AdminFinanceReport, ledger: AdminFinanceLedgerRow[]): Section[] {
   const periodRows = (unit: "day" | "month") => bucketFinanceReport(report.daily, unit).map(row => [row.date, row.dateTo, ...periodKeys.map(key => row[key])]);
@@ -18,7 +18,7 @@ function sections(report: AdminFinanceReport, ledger: AdminFinanceLedgerRow[]): 
       ["vatAmbiguousPurchaseNet", report.summary.vatAmbiguousPurchaseNet],
       ["basis", "Net operating report; sales = paid eligible orders, expenses = paid + pending; cancelled excluded. Receivables include VAT and shipping."],
       ["payments", "Recorded payments are net of VAT, not bank cash flow. Supplier payments do not reduce operating profit again. No opening cash balance or complete customer receipt journal."],
-      ["limits", "RMA refunds not independently reconciled. Inventory and open balances are current snapshots, not historical balance sheets. Search/supplier/category/confidence filters apply to individual ledger entries."],
+      ["limits", "RMA refunds reverse sales; cash and wallet payouts are recorded separately. Inventory and open balances are current snapshots, not historical balance sheets. Search/supplier/category/confidence filters apply to individual ledger entries."],
     ] },
     { name: "ProfitLoss", columns: ["metric", "current_net_EUR", "previous_net_EUR", "change_net_EUR", "change_percent"], rows: statementKeys.map(key => [key, report.totals[key], report.previousTotals[key], Math.round((report.totals[key] - report.previousTotals[key]) * 100) / 100, report.changes[key] ?? ""]) },
     { name: "Monthly", columns: ["from", "to", ...periodKeys], rows: periodRows("month") },

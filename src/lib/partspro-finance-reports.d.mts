@@ -1,4 +1,5 @@
 export type FinanceReportTotals = {
+  cashRefundsNet:number;cashRefundsGross:number;walletRefundsGross:number;
   salesNet:number;cogsNet:number;expenseNet:number;grossProfit:number;operatingProfit:number;operatingCostsNet:number;
   paidExpenseNet:number;pendingExpenseNet:number;cancelledExpenseNet:number;expenseCount:number;
   purchaseNet:number;supplierPaymentsNet:number;pendingSupplierPaymentsNet:number;recordedPaymentsNet:number;

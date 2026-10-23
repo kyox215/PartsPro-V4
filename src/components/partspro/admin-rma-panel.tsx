@@ -7,6 +7,7 @@ import { AdminSearchField } from "./admin-ui-controls";
 import { AdminExpandableText } from "./admin-summary-components";
 
 import * as React from "react";
+import { AdminRmaRefundCard } from "./admin-rma-refund-card";
 import { AdminListPager } from "./admin-list-pager";
 import { usePersistentAdminValue } from "./admin-workspace-state";
 import Image from "next/image";
@@ -121,6 +122,9 @@ type Notice = {
 };
 
 type ActionFields = {
+  refundMethod?: "cash" | "wallet_credit";
+  cashPaid?: boolean;
+  confirmResolutionChange?: boolean;
   quantity?: number;
   negotiationOutcome?: "refund_wallet" | "replacement" | "return_to_customer" | "scrap_without_refund";
   customerConfirmation?: string;
@@ -716,7 +720,7 @@ export function AdminRmaPanel() {
   const availableSecondaryActions = selectedRequest
     ? selectedRequest.availableActions.filter(
         (action) => action !== selectedRequest.recommendedAction && action !== "assign" &&
-          !(showDirectReceipt && action === "mark_received") && !["prepare_wallet_refund", "request_wallet_refund"].includes(action)
+          !(showDirectReceipt && action === "mark_received") && !["execute_refund", "waive_return", "prepare_wallet_refund", "request_wallet_refund"].includes(action)
       )
     : [];
   const allowedInventoryActions = selectedRequest ? inventoryActionsFor(selectedRequest) : [];
@@ -859,7 +863,7 @@ export function AdminRmaPanel() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-sm font-black">{selectedRequest.rmaNo ?? copy.rma}</span>
-                      <Badge className="border border-slate-200 bg-slate-50 text-slate-700">{selectedRequest.status}</Badge>
+                      <Badge className="border border-slate-200 bg-slate-50 text-slate-700">{rmaOperationalLabel(selectedRequest.status, locale)}</Badge>
                       {isDetailLoading ? <Loader2 className="size-4 animate-spin text-primary" /> : null}
                     </div>
                     <h3 className="mt-1 text-base font-bold leading-5 tracking-normal sm:text-lg"><AdminExpandableText text={selectedRequest.productName} /></h3>
@@ -878,46 +882,15 @@ export function AdminRmaPanel() {
 
                 <div className="space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
                   <h4 className="font-bold">{(locale.startsWith("en") ? englishUiCopy("Problema segnalato dal cliente") : isZh ? "客户原始问题" : "Problema segnalato dal cliente")}</h4>
-                  <p className="break-words"><span className="font-semibold">{(locale.startsWith("en") ? englishUiCopy("Motivo") : isZh ? "故障原因" : "Motivo")}: </span>{selectedRequest.reason || "—"}</p>
+                  <p className="break-words"><span className="font-semibold">{(locale.startsWith("en") ? englishUiCopy("Motivo") : isZh ? "故障原因" : "Motivo")}: </span>{rmaOperationalLabel(selectedRequest.reason, locale)}</p>
                   <p className="whitespace-pre-wrap break-words"><span className="font-semibold">{(locale.startsWith("en") ? englishUiCopy("Descrizione originale") : isZh ? "原始描述" : "Descrizione originale")}: </span>{selectedRequest.description || ((locale.startsWith("en") ? englishUiCopy("Non indicata") : isZh ? "未填写" : "Non indicata"))}</p>
                 </div>
-                <div id="rma-wallet-flow" className="space-y-3 rounded-xl border border-primary/20 bg-primary/5 p-4">
-                  <h4 className="font-black">{(locale.startsWith("en") ? englishUiCopy("Rimborso al portafoglio cliente") : isZh ? "客户钱包退款" : "Rimborso al portafoglio cliente")}</h4>
-                  <ol className="grid grid-cols-3 gap-2 text-xs font-semibold">
-                    {((locale.startsWith("en") ? englishUiCopy(["1 · Verifica", "2 · Richiesta", "3 · Accredito"]) : isZh ? ["1 · 准备并核价", "2 · 创建申请", "3 · 批准入账"] : ["1 · Verifica", "2 · Richiesta", "3 · Accredito"])).map((label) =>
-                      <li key={label} className="rounded-md border border-primary/15 bg-white p-2">{label}</li>)}
-                  </ol>
-                  {(selectedRequest.walletCreditedAmount ?? 0) > 0 ? (
-                    <p className="text-sm font-bold text-emerald-700">{(locale.startsWith("en") ? englishUiCopy("Accreditato al cliente") : isZh ? "已入客户钱包" : "Accreditato al cliente")}: {formatMoney(selectedRequest.walletCreditedAmount!, "EUR")}</p>
-                  ) : selectedRequest.walletRefundStatus === "pending" ? (
-                    <>
-                      <p className="text-sm text-amber-800">{(locale.startsWith("en") ? englishUiCopy("Richiesta creata, in attesa di approvazione") : isZh ? "申请已创建，待批准" : "Richiesta creata, in attesa di approvazione")}: {selectedRequest.walletRequestedAmount == null ? "…" : formatMoney(selectedRequest.walletRequestedAmount, "EUR")}</p>
-                      {selectedRequest.canApproveWalletRefund ? (
-                        <Button type="button" className="h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto" disabled={Boolean(pendingAction) || isDetailLoading} onClick={() => setRefundConfirmation(selectedRequest)}>
-                          {pendingAction === "approve_wallet_refund" ? <Loader2 className="size-4 animate-spin" /> : null}
-                          {(locale.startsWith("en") ? englishUiCopy("Approva e accredita") : isZh ? "批准并入客户钱包" : "Approva e accredita")}
-                        </Button>
-                      ) : <p className="text-xs text-slate-600">{(locale.startsWith("en") ? englishUiCopy("Un dipendente autorizzato deve approvare l'accredito.") : isZh ? "需拥有“批准钱包退款”权限的员工批准后入账。" : "Un dipendente autorizzato deve approvare l'accredito.")}</p>}
-                    </>
-                  ) : selectedRequest.walletRefundRequestId ? (
-                    <p className="text-sm">{(locale.startsWith("en") ? englishUiCopy("Richiesta non accreditata: verifica lo stato.") : isZh ? "此退款申请未入账，请核对处理状态。" : "Richiesta non accreditata: verifica lo stato.")}</p>
-                  ) : (
-                    <>
-                      <p className="text-sm">{(locale.startsWith("en") ? englishUiCopy("Non esiste ancora una richiesta: il pulsante di approvazione appare dopo la creazione.") : isZh ? "尚未创建钱包退款申请，因此还没有批准按钮。" : "Non esiste ancora una richiesta: il pulsante di approvazione appare dopo la creazione.")}</p>
-                      {selectedRequest.requestedResolution === "replacement" ? <p className="text-sm font-semibold">{(locale.startsWith("en") ? englishUiCopy("La soluzione originale è una sostituzione: conferma prima il passaggio al rimborso wallet.") : isZh ? "原处理方式为换货；退款前先确认改为钱包退款。" : "La soluzione originale è una sostituzione: conferma prima il passaggio al rimborso wallet.")}</p> : null}
-                      {selectedRequest.refundPricingVerified === false ? <p className="text-xs">{(locale.startsWith("en") ? englishUiCopy("L'importo storico richiede verifica da un responsabile con permessi di gestione, richiesta e approvazione.") : isZh ? "历史记录的原成交金额尚未核验。需要有售后管理、退款申请和批准权限的负责人准备退款。" : "L'importo storico richiede verifica da un responsabile con permessi di gestione, richiesta e approvazione.")}</p> : null}
-                      {selectedRequest.availableActions.includes("prepare_wallet_refund") ? (
-                        <Button type="button" className="h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto" disabled={Boolean(pendingAction) || isDetailLoading} onClick={() => triggerAction("prepare_wallet_refund")}>
-                          {copy.action.prepareRefund}
-                        </Button>
-                      ) : selectedRequest.availableActions.includes("request_wallet_refund") ? (
-                        <Button type="button" className="h-auto min-h-11 w-full whitespace-normal py-2 sm:w-auto" disabled={Boolean(pendingAction) || isDetailLoading} onClick={() => openActionDialog("refund")}>
-                          {copy.action.requestRefund}
-                        </Button>
-                      ) : <p className="text-xs text-slate-600">{(locale.startsWith("en") ? englishUiCopy("Completa ricezione, controllo e soluzione; i permessi vengono verificati prima dell'azione.") : isZh ? "先完成收货、检测及处理方式核对；下一步还会验证当前账号的权限。" : "Completa ricezione, controllo e soluzione; i permessi vengono verificati prima dell'azione.")}</p>}
-                    </>
-                  )}
-                </div>
+                <AdminRmaRefundCard key={selectedRequest.id} request={selectedRequest} locale={locale}
+                  preview={refundPreview} pending={Boolean(pendingAction) || isDetailLoading} onAction={runAction} />
+                {showDirectReceipt && selectedRequest.recommendedAction === "execute_refund" ? (
+                  <Button type="button" variant="outline" disabled={Boolean(pendingAction) || isDetailLoading}
+                    aria-haspopup="dialog" onClick={() => triggerAction("mark_received")}>{copy.action.markReceivedFallback}</Button>
+                ) : null}
 
                 {selectedRequest.parentRequestId ? (
                   <Button variant="link" onClick={() => setSelectedId(selectedRequest.parentRequestId!)}>
@@ -927,7 +900,7 @@ export function AdminRmaPanel() {
                 {selectedRequest.customerConfirmation ? (
                   <p className="rounded-lg border border-slate-200 p-3 text-sm">{(locale.startsWith("en") ? englishUiCopy("Accordo confermato: ") : isZh ? "客户确认记录：" : "Accordo confermato: ")}{selectedRequest.customerConfirmation}</p>
                 ) : null}
-                {["prepare_wallet_refund", "request_wallet_refund"].includes(selectedRequest.recommendedAction ?? "") ? null : selectedRequest.recommendedAction ? (
+                {["execute_refund", "waive_return", "prepare_wallet_refund", "request_wallet_refund"].includes(selectedRequest.recommendedAction ?? "") ? null : selectedRequest.recommendedAction ? (
                   <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
                     <div className="flex items-start gap-2">
                       <ShieldAlert className="mt-0.5 size-5 shrink-0 text-primary" />
@@ -989,7 +962,9 @@ export function AdminRmaPanel() {
                   </WorkflowNotice>
                 )}
 
-                <div className="grid gap-3 sm:grid-cols-2">
+                <details className="rounded-lg border border-slate-200 p-3">
+                  <summary className="cursor-pointer text-sm font-semibold">{locale === "zh-CN" ? "备注、检测与库存记录" : locale.startsWith("en") ? "Notes, inspection and stock records" : "Note, controllo e stock"}</summary>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
                   <DetailBlock title={copy.noteSummary}>
                     <ReadOnlySummary label={copy.customerVisibleReason} value={selectedRequest.customerVisibleNote} />
                     <ReadOnlySummary label={(locale.startsWith("en") ? englishUiCopy("Sintesi interna") : isZh ? "内部摘要" : "Sintesi interna")} value={selectedRequest.internalNote} />
@@ -997,12 +972,13 @@ export function AdminRmaPanel() {
                     <ReadOnlySummary label={(locale.startsWith("en") ? englishUiCopy("Sintesi risoluzione") : isZh ? "处理结果摘要" : "Sintesi risoluzione")} value={selectedRequest.resolutionNote} />
                   </DetailBlock>
                   <DetailBlock title={copy.resolution}>
-                    <ReadOnlySummary label={copy.resolution} value={selectedRequest.requestedResolution ?? selectedRequest.resolution} />
+                    <ReadOnlySummary label={copy.resolution} value={rmaOperationalLabel(selectedRequest.requestedResolution ?? selectedRequest.resolution, locale)} />
                     <ReadOnlySummary label={copy.quantity} value={String(fullQuantity)} />
                     {selectedRequest.replacementReservedOrderId ? <a className="block text-sm font-bold text-blue-700 underline" href={`/admin?panel=orders&orderId=${encodeURIComponent(selectedRequest.replacementReservedOrderId)}`}>{(locale.startsWith("en") ? englishUiCopy("Apri l’ordine sostitutivo per preparazione e spedizione") : isZh ? "打开专属换货订单，完成拣货与发货" : "Apri l’ordine sostitutivo per preparazione e spedizione")}</a> : null}
-                    <ReadOnlySummary label={(locale.startsWith("en") ? englishUiCopy("Stato stock") : isZh ? "库存状态" : "Stato stock")} value={selectedRequest.inventoryDisposition} />
+                    <ReadOnlySummary label={(locale.startsWith("en") ? englishUiCopy("Stato stock") : isZh ? "库存状态" : "Stato stock")} value={rmaOperationalLabel(selectedRequest.inventoryDisposition, locale)} />
                   </DetailBlock>
                 </div>
+                </details>
 
                 {availableSecondaryActions.length > 0 ? (
                   <div className="space-y-2 rounded-lg border border-slate-200 p-3">
@@ -1525,9 +1501,8 @@ function workflowNoticeFor(
 function canReceiveDirectly(request: AdminRmaDto | null): boolean {
   return Boolean(
     request &&
-    request.workflowQueue === "awaiting_return" &&
-    request.blockedReason === "waiting_customer_return" &&
-    !request.recommendedAction &&
+    ["approved", "refunded"].includes(request.status) &&
+    !request.receivedAt && !request.returnWaivedAt && !["permission_denied", "invalid_state"].includes(request.blockedReason ?? "") &&
     request.availableActions.includes("mark_received")
   );
 }
@@ -1582,6 +1557,8 @@ function actionLabel(action: ActionCode, copy: Copy, queue?: QueueTab) {
   }
   switch (action) {
     case "cancel_unreceived": return copy.action.cancelUnreceived;
+    case "execute_refund": return copy.refund;
+    case "waive_return": return copy.resolution;
     case "prepare_wallet_refund": return copy.action.prepareRefund;
     case "verify_refund_snapshot": return copy.action.verifyRefund;
     case "release_cancelled_replacement": return copy.action.releaseReplacement;
@@ -1729,4 +1706,23 @@ function ActionButton({
       {label}
     </AdminActionButton>
   );
+}
+
+function rmaOperationalLabel(value: string | null | undefined, locale: string): string {
+  const labels: Record<string, [string, string, string]> = {
+    submitted: ["待审核", "Da approvare", "Awaiting approval"], under_review: ["审核中", "In verifica", "Under review"],
+    approved: ["已批准退货", "Reso approvato", "Return approved"], rejected: ["已拒绝", "Rifiutato", "Rejected"],
+    received: ["已收货", "Ricevuto", "Received"], refunded: ["已退款", "Rimborsato", "Refunded"], closed: ["已完成", "Completato", "Completed"],
+    replacement_sent: ["替换件已寄出", "Sostituzione spedita", "Replacement shipped"],
+    replacement: ["换货", "Sostituzione", "Replacement"], wallet_credit: ["客户钱包", "Portafoglio cliente", "Customer wallet"],
+    refund: ["退款", "Rimborso", "Refund"], credit_note: ["贷项记录", "Nota di credito", "Credit note"],
+    pending: ["待处理", "Da gestire", "Pending"], quarantine: ["待处置", "Da verificare", "Awaiting disposition"],
+    restock: ["已回库", "Rimesso a stock", "Restocked"], scrap: ["已报废", "Scartato", "Scrapped"], supplier_return: ["已退供应商", "Reso al fornitore", "Returned to supplier"],
+    quality_defect: ["质量故障", "Difetto di qualità", "Quality defect"], shipping_damage: ["运输损坏", "Danno da trasporto", "Shipping damage"],
+    not_as_described: ["与描述不符", "Non conforme alla descrizione", "Not as described"], wrong_item: ["商品错误", "Articolo errato", "Wrong item"],
+    missing_or_quantity_error: ["缺件或数量不符", "Articoli mancanti o quantità errata", "Missing item or quantity error"],
+    withdrawal_no_longer_needed: ["不再需要", "Non più necessario", "No longer needed"],
+  };
+  if (!value) return "—";
+  return labels[value]?.[locale === "zh-CN" ? 0 : locale.startsWith("en") ? 2 : 1] ?? value;
 }

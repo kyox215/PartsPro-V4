@@ -72,7 +72,10 @@ test('customer history translates canonical reasons and outcomes instead of expo
   const ts = createRequire(import.meta.url)('typescript');
   const source = readFileSync(new URL('../src/i18n/dictionaries/storefront.ts', import.meta.url), 'utf8');
   const compiled=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
-  const context={exports:{}};vm.runInNewContext(compiled,context);
+  const englishSource = readFileSync(new URL('../src/i18n/dictionaries/storefront-en.ts', import.meta.url), 'utf8');
+  const english = { exports: {} };
+  vm.runInNewContext(ts.transpileModule(englishSource, {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText, english);
+  const context={exports:{},require: name => { assert.equal(name, './storefront-en'); return english.exports; }};vm.runInNewContext(compiled,context);
   const {rmaReasonLabel,rmaResolutionLabel,storefrontItIT,storefrontZhCN}=context.exports;
   for (const dict of [storefrontItIT,storefrontZhCN]) {
     const t=key=>dict[key]??key;

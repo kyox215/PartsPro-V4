@@ -48,12 +48,12 @@ export function buildFinanceAnalysis(rows, previousRows, dateFrom, dateTo) {
   function totals(source, withDays=false) {
     const total = point('');
     for(const row of source) {
-      const key = row.type === 'sale' ? 'salesNet' : row.type === 'cogs' ? 'cogsNet' : row.type === 'expense' && row.status !== 'cancelled' ? 'expenseNet' : null;
+      const key = ['sale', 'refund'].includes(row.type) ? 'salesNet' : row.type === 'cogs' ? 'cogsNet' : row.type === 'expense' && row.status !== 'cancelled' ? 'expenseNet' : null;
       if (!key) continue;
-      total[key] = financeRound(total[key] + row.amountNet);
+      total[key] = financeRound(total[key] + (row.type === 'refund' ? -row.amountNet : row.amountNet));
       if(withDays) {
         const day=days.get(financeDay(row.date));
-        if(day) day[key]=financeRound(day[key]+row.amountNet);
+        if(day) day[key]=financeRound(day[key]+(row.type === 'refund' ? -row.amountNet : row.amountNet));
         if(key==='expenseNet') categories.set(row.category || 'other',financeRound((categories.get(row.category || 'other') || 0)+row.amountNet));
       }
     }
@@ -77,8 +77,8 @@ export function buildFinanceDailyTrend(rows, from, to) {
   for(let day=from;day<=to;day=shiftFinanceDay(day,1))days.set(day,{date:day,salesNet:0,cogsNet:0,expenseNet:0,grossProfit:0,operatingProfit:0});
   for(const row of rows){
     const day=days.get(financeDay(row.date));
-    const key=row.type==='sale'?'salesNet':row.type==='cogs'?'cogsNet':row.type==='expense'&&row.status!=='cancelled'?'expenseNet':null;
-    if(day&&key)day[key]=financeRound(day[key]+row.amountNet);
+    const key=['sale','refund'].includes(row.type)?'salesNet':row.type==='cogs'?'cogsNet':row.type==='expense'&&row.status!=='cancelled'?'expenseNet':null;
+    if(day&&key)day[key]=financeRound(day[key]+(row.type === 'refund' ? -row.amountNet : row.amountNet));
   }
   return [...days.values()].map(day=>({...day,grossProfit:financeRound(day.salesNet-day.cogsNet),operatingProfit:financeRound(day.salesNet-day.cogsNet-day.expenseNet)}));
 }
