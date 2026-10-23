@@ -1,0 +1,28 @@
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import {AdminOrdersPanel} from '@/components/partspro/admin-orders-panel';
+import {I18nProvider} from '@/components/partspro/i18n-provider';
+import {AdminWorkspaceStateProvider} from '@/components/partspro/admin-workspace-state';
+
+const query=new URLSearchParams(location.search);
+const locale=query.get('locale')||'zh-CN';
+const scenario=query.get('scenario')||'normal';
+const run=query.get('run')||'preview';
+const originalFetch=window.fetch.bind(window);
+window.fetch=(input,options={})=>{
+  const target=new URL(typeof input==='string'?input:input instanceof URL?input.href:input.url,location.href);
+  if(target.origin!==location.origin) throw Error('Fixture forbids external requests');
+  const headers=new Headers(options.headers);
+  headers.set('x-fixture-scenario',scenario);
+  headers.set('x-fixture-run',run);
+  return originalFetch(input,{...options,headers});
+};
+document.body.dataset.adminUi='true';
+createRoot(document.getElementById('root')).render(
+  <I18nProvider locale={locale} scope="admin" dictionary={{}}>
+    <AdminWorkspaceStateProvider userId={'fixture-'+run}>
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-4 py-3"><strong className="text-lg font-black text-primary">PartsPro</strong><span className="text-xs text-slate-500">本地实际组件 · 合成订单 · 不连接生产业务接口</span></header>
+      <main className="mx-auto max-w-[1480px] p-3 sm:p-5"><AdminOrdersPanel focusOrderId={query.get('order')||undefined} /></main>
+    </AdminWorkspaceStateProvider>
+  </I18nProvider>
+);

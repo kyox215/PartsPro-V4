@@ -253,3 +253,10 @@ Last reviewed: 2026-10-12
 - TASK-20261017-UI07已完成。运行提交 `c68206ccd977ba6c8770bc6753bd37f2fbc86a38` 已推送隔离分支 `codex/storefront-mobile-density-20261017`；独立SOURCE_GO/PROMOTE_GO后，同一构建 `dpl_B8UXo2AiVFfNyrqvDThCSAwNLJGw` 已推广至www/apex，apex307到www。回退保留BTL/4096f92。
 - 落实7张批准预览，仅调整<768px前台，所有商品区横向紧凑卡，正式预售卡191px、同卡降低45.8%；购物/结算/账户/详情/售后/申请/登录/帮助及局部状态统一压缩。主目录其它未提交运行源码不纳入发布，无API/DB/env/后台/Logo/交易协议改动或migration依赖。
 - 24+60测试、lint、本地/远端build、210手机几何及30桌面对照通过；473上传源hash一致。候选和正式各12+30 HTTP通过，实际三语及手机/桌面、账户/购物/结算只读布局已核对，短时error/fatal为空，独立RELEASE_VERIFIED。真实业务写及物理iPhone键盘未做E2E。报告 `docs/audits/2026-10-17-storefront-mobile-density-release.md`，证据 `outputs/storefront-mobile-density/2026-10-17/`，任务转done。
+
+
+## 2026-10-23 — 后台订单沿用个人中心风格（发布候选）
+
+- 在当前正式基线17a6b0c的隔离分支 codex/orders-current-style-20261023 实现订单五栏目、图标流程筛选、手机商品卡/桌面表格和固定主操作栏，保留原接口、状态流及权限。
+- 全量lint、完整build、24项商城与17项订单回归通过。三语四宽度五栏目60组布局检查通过；合成数据下已验证缺货/收款成功及失败保留输入。原生未保存确认框使浏览器工具阻塞，未完成的交互验证如实列入报告。
+- 无migration、数据库/环境变量或生产业务写入，主目录其他未提交工作未纳入。候选部署与推广待完成；报告 docs/audits/2026-10-23-admin-orders-current-style.md，证据 outputs/order-current-style/2026-10-23/。

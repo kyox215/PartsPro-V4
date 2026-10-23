@@ -112,3 +112,40 @@ test("explicit linked stage and customer override restored filters before the fi
   assert.equal(params.get("status"), "completed"); assert.equal(params.get("customerId"), "exact-customer"); assert.equal(params.get("sort"), "date_desc");
   for (const key of ["paymentStatus", "stockRisk", "reservation", "view", "q", "dateFrom", "dateTo"]) assert.equal(params.has(key), false, key);
 });
+
+test("shared detail tabs keep the active section while an order mutation is pending", () => {
+  let changes = 0;
+  const select = componentArrow("OrderDetailsPanel", "handleMobileSectionChange", {
+    orderId: "order", pendingActionKey: "order:payment", presentation: { unsaved: "Discard?" },
+    document: { querySelector: () => null }, window: { confirm: () => { throw Error("Must not prompt during a write"); } },
+    setMobileSectionState: () => { changes += 1; },
+  });
+  select("lines");
+  assert.equal(changes, 0);
+});
+
+test("shared detail tabs preserve unsaved form drafts unless the user discards them", () => {
+  for (const accepted of [false, true]) {
+    let section = null, prompts = 0;
+    const select = componentArrow("OrderDetailsPanel", "handleMobileSectionChange", {
+      orderId: "order", pendingActionKey: null, presentation: { unsaved: "Discard?" },
+      document: { querySelector: () => ({}) }, window: { confirm: () => { prompts += 1; return accepted; } },
+      setMobileSectionState: value => { section = value; },
+    });
+    select("history");
+    assert.equal(prompts, 1);
+    assert.equal(section?.section ?? null, accepted ? "history" : null);
+  }
+});
+
+test("shared detail tabs switch without prompting when there is no unsaved draft", () => {
+  let section;
+  const select = componentArrow("OrderDetailsPanel", "handleMobileSectionChange", {
+    orderId: "order", pendingActionKey: null, presentation: { unsaved: "Discard?" },
+    document: { querySelector: () => null }, window: { confirm: () => { throw Error("No draft"); } },
+    setMobileSectionState: value => { section = value; },
+  });
+  select("payment");
+  assert.equal(section.orderId, "order");
+  assert.equal(section.section, "payment");
+});

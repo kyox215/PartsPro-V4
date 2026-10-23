@@ -15,6 +15,10 @@ import {
   AlertTriangle,
   ArrowRight,
   BadgeCheck,
+  ChevronDown,
+  ChevronRight,
+  LockKeyhole,
+  MoreHorizontal,
   CheckCircle2,
   ClipboardList,
   Copy,
@@ -60,7 +64,6 @@ import {
   AlertDialogHeader,
   AlertDialogMedia,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import {
@@ -80,6 +83,8 @@ import {
 } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { orderPresentationCopy } from "./admin-order-presentation";
 import {
   formatEuro,
   type CompanyStatus,
@@ -1158,6 +1163,7 @@ export function AdminOrdersPanel({
     [canManageOrders, handleOpenOrder, handleTransition, text]
   );
 
+  const presentation = orderPresentationCopy(locale);
   const activeDetailFilterCount = Number(Boolean(searchFilters.dateFrom)) + Number(Boolean(searchFilters.dateTo)) + Number(searchFilters.sort !== "operations_queue");
   const renderDateSortFilters = () => <div className="grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-4">
             <label className="grid gap-1 text-xs font-semibold">{(locale.startsWith("en") ? englishUiCopy("Dal") : locale.startsWith("it") ? "Dal" : "开始日期")}<Input type="date" value={searchFilters.dateFrom} onChange={(event) => { setPage(1); setSearchFilters(current => ({ ...current, dateFrom: event.target.value })); }} /></label>
@@ -1168,44 +1174,7 @@ export function AdminOrdersPanel({
   </div>;
 
   return (
-    <section className="admin-ui-panel w-full min-w-0 space-y-3 text-slate-950">
-      <div className="hidden gap-2 md:grid md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          label={text.orders.metrics.totalOrders}
-          value={`${metrics.totalOrders}`}
-          detail={formatAdminMessage(text.orders.metrics.inView, {
-            count: filteredOrders.length,
-          })}
-          icon={ClipboardList}
-        />
-        <MetricCard
-          label={text.orders.metrics.pendingPayments}
-          value={`${metrics.pendingPayments}`}
-          detail={text.orders.metrics.pendingPaymentsDetail}
-          icon={CreditCard}
-        />
-        <MetricCard
-          label={text.orders.metrics.shippingQueue}
-          value={`${metrics.shippingQueue}`}
-          detail={formatAdminMessage(text.orders.metrics.urgentDetail, {
-            count: metrics.urgentOrders,
-          })}
-          icon={Truck}
-        />
-        <MetricCard
-          label={text.orders.metrics.revenue}
-          value={formatEuro(metrics.revenue)}
-          detail={text.orders.metrics.revenueDetail}
-          icon={BadgeCheck}
-        />
-      </div>
-
-      <p className="hidden text-xs text-slate-500 sm:block">
-        {(locale.startsWith("en") ? englishUiCopy("Indicatori e conteggi calcolati sugli ordini della pagina corrente.") : locale.startsWith("it")
-          ? "Indicatori e conteggi calcolati sugli ordini della pagina corrente."
-          : "指标和流程数量基于当前页订单。")}
-      </p>
-
+    <section data-order-layout="account-style" className="admin-ui-panel w-full min-w-0 space-y-3 text-slate-950">
       <Card className="gap-0 rounded-md border-slate-200 bg-white py-0 shadow-[0_10px_26px_rgba(15,23,42,0.045)]">
         <CardHeader className="gap-1.5 border-b border-slate-200/80 px-3 py-2 sm:gap-2 sm:py-2.5">
           <div className="flex min-w-0 flex-col gap-1 sm:gap-2 xl:flex-row xl:items-center xl:justify-between">
@@ -1270,19 +1239,23 @@ export function AdminOrdersPanel({
           </div>
           <div className="grid min-w-0 gap-2">
             <AdminSearchField value={orderQuery} placeholder={(locale.startsWith("en") ? englishUiCopy("Numero ordine, cliente (min. 2 caratteri)") : locale.startsWith("it") ? "Numero ordine, cliente (min. 2 caratteri)" : "订单号、客户（至少2字）")} aria-label={(locale.startsWith("en") ? englishUiCopy("Ordine / cliente") : locale.startsWith("it") ? "Ordine / cliente" : "订单/客户搜索")} clearLabel={text.common.reset} pending={isLoadingOrders} onValueChange={(value) => { setPage(1); setOrderQuery(value); }} />
-            <div className="hidden sm:block">{renderDateSortFilters()}</div>
-            <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2 sm:block">
-          <OrderWorkflowStrip
-            activeKey={activeWorkflowKey}
-            counts={workflowCounts}
-            labels={labels}
-            text={text}
-            onSelect={handleWorkflowSelect}
-          />
-              <details className="min-w-0 self-start rounded-md border border-slate-200 bg-white open:col-span-2 sm:hidden">
-                <summary className="flex min-h-11 cursor-pointer items-center gap-1 px-3 text-xs font-semibold">{(locale.startsWith("en") ? englishUiCopy("Altri filtri") : locale.startsWith("it") ? "Altri filtri" : "更多筛选")}{activeDetailFilterCount > 0 && <Badge variant="outline">{activeDetailFilterCount}</Badge>}</summary>
-                <div className="border-t p-2">{renderDateSortFilters()}</div>
-              </details>
+            <OrderWorkflowStrip
+              activeKey={activeWorkflowKey}
+              counts={workflowCounts}
+              labels={labels}
+              text={text}
+              onSelect={handleWorkflowSelect}
+            />
+            <details className="rounded-lg border border-slate-200 bg-slate-50/60">
+              <summary className="flex min-h-10 cursor-pointer items-center gap-2 px-3 text-xs font-semibold text-slate-600">
+                <ChevronDown className="size-3.5" />{presentation.filters}
+                {activeDetailFilterCount > 0 && <Badge variant="outline">{activeDetailFilterCount}</Badge>}
+              </summary>
+              <div className="border-t border-slate-200 p-3">{renderDateSortFilters()}</div>
+            </details>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+              <span>{presentation.currentPage}</span>
+              <span>{text.orders.metrics.revenue}: <strong className="font-bold text-primary">{formatEuro(metrics.revenue)}</strong></span>
             </div>
             {(customerId || returnAccountId || activeDetailFilterCount > 0) && <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
               {customerId ? <Badge variant="outline">{(locale.startsWith("en") ? englishUiCopy("Filtro cliente") : locale.startsWith("it") ? "Filtro cliente" : "客户筛选")}: {customerId}</Badge> : null}
@@ -1352,19 +1325,19 @@ export function AdminOrdersPanel({
             onOpenChange={(open) => { if (pendingOrderAction) return; if (!open && document.querySelector("[data-admin-dirty='true']") && !window.confirm((locale.startsWith("en") ? englishUiCopy("Abbandonare le modifiche non salvate?") : locale.startsWith("it") ? "Abbandonare le modifiche non salvate?" : "放弃未保存的修改？"))) return; setMobileDetailsOpen(open); }}
           >
             {selectedOrder && (
-              <DialogContent className="admin-ui-panel grid h-[min(760px,calc(100dvh-0.5rem))] max-h-[calc(100dvh-0.5rem)] w-[calc(100vw-0.5rem)] max-w-[calc(100vw-0.5rem)] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-lg bg-white p-0 pt-7 sm:h-[min(820px,calc(100dvh-1rem))] sm:max-h-[calc(100dvh-1rem)] sm:w-[calc(100vw-1rem)] sm:max-w-[calc(100vw-1rem)] sm:pt-10 xl:max-w-[1280px] 2xl:max-w-[1360px]">
-                <DialogHeader className="border-b border-slate-200 px-2.5 pb-1.5 pr-12 sm:px-4 sm:pb-2.5">
-                  <Button type="button" variant="outline" size="xs" className="w-fit" disabled={pendingOrderAction !== null || visibleOrders.findIndex(order => order.id === selectedOrder.id) >= visibleOrders.length - 1} onClick={() => { const index = visibleOrders.findIndex(order => order.id === selectedOrder.id); const next = visibleOrders[index + 1]; if (next) handleOpenOrder(next.id); }}>{(locale.startsWith("en") ? englishUiCopy("Ordine successivo") : locale.startsWith("it") ? "Ordine successivo" : "处理下一单")}</Button>
-                  <DialogTitle className="break-words text-sm font-black leading-tight text-slate-950 sm:text-base">
-                    {formatAdminMessage(text.orders.detailDialogTitle, {
-                      id: shortOrderId(selectedOrder.id),
-                    })}
-                  </DialogTitle>
-                  <DialogDescription className="hidden text-xs leading-snug text-slate-500 sm:block sm:text-sm">
-                    {text.orders.detailDialogDescription}
-                  </DialogDescription>
+              <DialogContent data-order-layout="account-style" className="admin-ui-panel grid h-[100dvh] max-h-[100dvh] w-screen max-w-[100vw] grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden rounded-none bg-white p-0 sm:h-[min(900px,calc(100dvh-2rem))] sm:max-h-[calc(100dvh-2rem)] sm:w-[calc(100vw-2rem)] sm:max-w-[1280px] sm:rounded-xl">
+                <DialogHeader className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 border-b border-slate-200 px-3 py-3 pr-12 text-left sm:px-5 sm:pr-14">
+                  <div className="min-w-0">
+                    <DialogTitle className="break-words text-sm font-black leading-snug text-slate-950 sm:text-base">
+                      {formatAdminMessage(text.orders.detailDialogTitle, { id: shortOrderId(selectedOrder.id) })}
+                    </DialogTitle>
+                    <DialogDescription className="sr-only">{text.orders.detailDialogDescription}</DialogDescription>
+                  </div>
+                  <Button type="button" variant="outline" size="xs" className="shrink-0 bg-white" disabled={pendingOrderAction !== null || visibleOrders.findIndex(order => order.id === selectedOrder.id) >= visibleOrders.length - 1} onClick={() => { const index = visibleOrders.findIndex(order => order.id === selectedOrder.id); const next = visibleOrders[index + 1]; if (next) handleOpenOrder(next.id); }}>
+                    {(locale.startsWith("en") ? "Next order" : locale.startsWith("it") ? "Ordine successivo" : "下一单")}<ChevronRight className="size-3.5" />
+                  </Button>
                 </DialogHeader>
-                <div className="min-h-0 overflow-y-auto overscroll-contain bg-slate-50/40">
+                <div className="flex min-h-0 min-w-0 overflow-hidden">
                   <OrderDetailsPanel key={selectedOrder?.id ?? "none"}
                     adminSession={adminSession}
                     labels={labels}
@@ -1449,102 +1422,30 @@ function OrderWorkflowStrip({
     },
   ];
 
+  const icons: Record<string, React.ComponentType<{ className?: string }>> = {
+    all: ClipboardList, submitted: ClipboardList, accepted: CheckCircle2,
+    picking: PackageCheck, packed: PackageCheck, shipped: Truck,
+    completed: CheckCircle2, cancelled: XCircle, openPayments: CreditCard,
+    stockRisk: AlertTriangle, agedReservations: Clock3,
+  };
+  const renderFilter = (item: { key: WorkflowKey; label: string; tone?: "archive" | "attention" }, tile = false) => {
+    const Icon = icons[item.key] ?? ClipboardList;
+    const selected = item.key === activeKey;
+    return <button key={item.key} type="button" aria-pressed={selected} onClick={() => onSelect(item.key)}
+      className={cn("flex min-w-0 items-center gap-2 rounded-lg border text-left text-xs font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary", tile ? "min-h-14 px-2 py-2 sm:min-h-12 sm:px-3" : "min-h-10 px-3 py-2", selected ? "border-primary bg-primary text-white" : "border-slate-200 bg-white text-slate-600 hover:border-primary/40", !selected && item.tone === "attention" && "border-amber-200 bg-amber-50/60 text-amber-800")}>
+      <span className={cn("grid size-7 shrink-0 place-items-center rounded-md", selected ? "bg-white/15 text-white" : item.tone === "attention" ? "bg-amber-100 text-amber-600" : "bg-blue-50 text-primary")}><Icon className="size-4" /></span>
+      <span className="min-w-0 flex-1 break-words leading-snug">{item.label}</span>
+      <span className={cn("shrink-0 text-sm font-black", !selected && "text-primary")}>{counts[item.key]}</span>
+    </button>;
+  };
   return (
-    <div
-      role="toolbar"
-      aria-label={text.orders.workflow.title}
-      className="grid min-w-0 gap-2 xl:grid-cols-[minmax(0,1fr)_auto]"
-    >
-      <div className="sm:hidden"><Select value={activeKey} onValueChange={(value) => onSelect(value as WorkflowKey)}><SelectTrigger className="w-full" aria-label={text.orders.workflow.title}><SelectValue /></SelectTrigger><SelectContent>{groups.flatMap(group => group.items).map(item => <SelectItem key={item.key} value={item.key}>{item.label} ({counts[item.key] ?? 0})</SelectItem>)}</SelectContent></Select></div>
-      {groups.map((group) => (
-        <div
-          key={group.key}
-          className={cn(
-            "hidden min-w-0 rounded-md border border-slate-200/80 bg-slate-50/60 px-2 py-1.5 sm:block",
-            group.key === "followUps" && "xl:col-span-2"
-          )}
-        >
-          <div className="mb-1 truncate text-[10px] font-black leading-tight text-slate-500">
-            {group.title}
-          </div>
-          <div
-            role="group"
-            aria-label={group.title}
-            className="flex min-w-0 gap-1.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          >
-            {group.items.map((item) => {
-              const isActive = item.key === activeKey;
-
-              return (
-                <Button
-                  key={item.key}
-                  type="button"
-                  variant={isActive ? "default" : "outline"}
-                  size="xs"
-                  className={cn(
-                    "h-8 min-w-fit gap-1.5 rounded-md px-2.5",
-                    !isActive && "bg-white text-slate-600",
-                    !isActive &&
-                      item.tone === "archive" &&
-                      "border-slate-200 bg-white text-slate-500",
-                    !isActive &&
-                      item.tone === "attention" &&
-                      "border-amber-200 bg-amber-50/70 text-amber-900 hover:bg-amber-100"
-                  )}
-                  onClick={() => onSelect(item.key)}
-                >
-                  <span>{item.label}</span>
-                  <span
-                    className={cn(
-                      "rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-black leading-none text-slate-600",
-                      item.tone === "attention" &&
-                        !isActive &&
-                        "bg-amber-100 text-amber-900",
-                      isActive && "bg-white/20 text-white"
-                    )}
-                  >
-                    {counts[item.key]}
-                  </span>
-                </Button>
-              );
-            })}
-          </div>
-        </div>
-      ))}
+    <div role="toolbar" aria-label={text.orders.workflow.title} className="min-w-0 space-y-2" data-order-workflow>
+      <div role="group" aria-label={groups[0].title} className="grid min-w-0 grid-cols-3 gap-1.5 sm:grid-cols-6 sm:gap-2">{groups[0].items.map(item => renderFilter(item, true))}</div>
+      <div className="flex min-w-0 flex-wrap gap-2">{groups.slice(1).map(group => <details key={group.key} className="min-w-0 flex-1 rounded-lg border border-slate-200 bg-white sm:flex-none">
+        <summary className="flex min-h-10 cursor-pointer items-center gap-2 px-3 py-2 text-xs font-semibold text-slate-500"><ChevronDown className="size-3.5 shrink-0" /><span>{group.title}</span>{group.items.some(item => item.key === activeKey) && <span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">{group.items.find(item => item.key === activeKey)?.label}</span>}</summary>
+        <div role="group" aria-label={group.title} className="grid gap-1.5 border-t border-slate-100 p-2 sm:grid-cols-2">{group.items.map(item => renderFilter(item))}</div>
+      </details>)}</div>
     </div>
-  );
-}
-
-function MetricCard({
-  label,
-  value,
-  detail,
-  icon: Icon,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  icon: React.ComponentType<{ className?: string }>;
-}) {
-  return (
-    <Card className="h-[68px] gap-0 rounded-md border-slate-200 bg-white py-0 shadow-[0_8px_22px_rgba(15,23,42,0.04)]">
-      <CardContent className="h-full px-3 py-2">
-        <div className="flex h-full min-w-0 items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="truncate text-xs font-semibold leading-tight text-slate-500">{label}</p>
-            <div className="mt-1 truncate text-xl font-black leading-none tracking-normal">
-              {value}
-            </div>
-            <p className="mt-1 truncate text-[11px] font-semibold leading-tight text-slate-500">
-              {detail}
-            </p>
-          </div>
-          <div className="hidden size-8 shrink-0 place-items-center rounded-full bg-primary/10 text-primary sm:grid">
-            <Icon className="size-4" />
-          </div>
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -1697,7 +1598,6 @@ function OrdersList({
                       </Badge>
                       <ReservationBadge order={order} text={text} />
                     </div>
-                    <OrderProgressInline labels={labels} status={order.status} />
                   </TableCell>
                   {viewMode === "shipping" ? (
                     <>
@@ -1764,7 +1664,7 @@ function OrdersList({
                       <Button
                         variant="outline"
                         size="xs"
-                        className="h-7 bg-white px-2"
+                        className="h-8 border-transparent bg-transparent px-2 text-primary shadow-none hover:bg-primary/5"
                         onClick={() => onSelectOrder(order.id)}
                       >
                         {text.common.details}
@@ -1854,113 +1754,22 @@ function MobileOrderCard({
   viewMode: ViewMode;
 }) {
   const summaryFacts = getMobileSummaryFacts(order, viewMode, labels, text);
-
   return (
-    <div className="min-w-0">
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] gap-2">
-        <div className="min-w-0">
-          <div
-            className="truncate text-[13px] font-black leading-4 text-slate-900"
-            title={order.company}
-          >
-            {order.company}
-          </div>
-        </div>
-        <div className="shrink-0 text-right">
-          <div className="text-sm font-black leading-4 text-slate-950">{formatEuro(order.total)}</div>
-          <div className="mt-0.5 text-[10px] font-semibold leading-3 text-slate-400">
-            {order.items} {text.common.product}
-          </div>
-        </div>
+    <div className="min-w-0 space-y-2.5">
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="min-w-0"><div className="break-all font-mono text-sm font-bold text-primary">{shortOrderId(order.id)}</div><div className="mt-1 text-[11px] text-slate-400">{order.date}</div></div>
+        <Badge className={cn(orderStatusBadgeClass(order.status), "shrink-0")}>{labels.status[order.status]}</Badge>
       </div>
-
-      <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-1">
-        <Badge
-          className={cn(
-            orderStatusBadgeClass(order.status),
-            "h-5 shrink-0 rounded px-1.5 text-[11px] leading-none"
-          )}
-        >
-          {labels.status[order.status]}
-        </Badge>
-        <Badge
-          className={cn(
-            paymentBadgeClass(order.paymentStatus),
-            "h-5 shrink-0 rounded px-1.5 text-[11px] leading-none"
-          )}
-        >
-          {labels.payment[order.paymentStatus]}
-        </Badge>
-        <span className="min-w-0 truncate rounded bg-slate-50 px-1.5 py-1 text-[11px] font-semibold leading-3 text-slate-500">
-          {labels.fulfillment[order.fulfillmentStatus]}
-        </span>
+      <div className="min-w-0"><div className="break-words text-sm font-bold text-slate-900">{order.company}</div><div className="mt-0.5 break-words text-xs text-slate-500">{orderCustomerLocationLabel(order, text)}</div></div>
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+        <Badge className={paymentBadgeClass(order.paymentStatus)}>{labels.payment[order.paymentStatus]}</Badge>
         <ReservationBadge compact order={order} text={text} />
+        {order.stockRisk !== "clear" && <Badge className={stockRiskBadgeClass(order.stockRisk)}>{labels.stockRisk[order.stockRisk]}</Badge>}
       </div>
-
-      {viewMode !== "orders" && <div className="mt-1.5 grid min-w-0 grid-cols-2 gap-1">
-        {summaryFacts.map((fact) => (
-          <div key={fact.label} className="min-w-0 rounded bg-slate-50 px-1.5 py-1">
-            <div className="truncate text-[10px] font-semibold leading-3 text-slate-400">
-              {fact.label}
-            </div>
-            <div className="mt-0.5 truncate text-[11px] font-bold leading-3 text-slate-700">
-              {fact.value}
-            </div>
-          </div>
-        ))}
-      </div>}
-
-      <MobileOrderProgress labels={labels} status={order.status} />
-    </div>
-  );
-}
-
-function MobileOrderProgress({
-  labels,
-  status,
-}: {
-  labels: OrderLabels;
-  status: OrderDbStatus;
-}) {
-  const steps = statusFlow.slice(1);
-  const currentIndex = statusFlow.indexOf(status);
-  const cancelled = status === "cancelled";
-  const progressValue = cancelled ? 0 : Math.max(0, Math.min(currentIndex, steps.length));
-
-  return (
-    <div className="mt-1.5 min-w-0" aria-label={`${labels.status[status]} ${progressValue}/5`}>
-      <div className="mb-1 flex min-w-0 items-center justify-between gap-2">
-        <span className="truncate text-[10px] font-semibold leading-3 text-slate-400">
-          {labels.status[status]}
-        </span>
-        <span
-          className={cn(
-            "shrink-0 font-mono text-[10px] font-black leading-3 text-slate-400",
-            !cancelled && "text-primary"
-          )}
-        >
-          {progressValue}/5
-        </span>
-      </div>
-      <div className="grid grid-cols-5 gap-1">
-        {steps.map((step, index) => {
-          const stepIndex = index + 1;
-          const done = !cancelled && currentIndex >= stepIndex;
-          const current = !cancelled && currentIndex === stepIndex;
-
-          return (
-            <span
-              key={step}
-              className={cn(
-                "h-1.5 rounded-full bg-slate-100",
-                done && "bg-primary",
-                current && "ring-2 ring-primary/15",
-                cancelled && "bg-red-100"
-              )}
-              title={labels.status[step]}
-            />
-          );
-        })}
+      {viewMode !== "orders" && <div className="grid min-w-0 grid-cols-2 gap-2">{summaryFacts.map(fact => <div key={fact.label} className="min-w-0 rounded-md bg-slate-50 px-2 py-1.5"><div className="text-[11px] text-slate-400">{fact.label}</div><div className="mt-1 break-words text-xs font-semibold text-slate-700">{fact.value}</div></div>)}</div>}
+      <div className="flex min-w-0 items-center justify-between gap-2 border-t border-slate-100 pt-2">
+        <span className="text-xs text-slate-500">{order.items} {text.common.product}</span>
+        <div className="flex items-center gap-3"><span className="text-base font-black text-primary">{formatEuro(order.total)}</span><span className="inline-flex items-center gap-1 text-xs font-semibold text-primary">{text.common.details}<ChevronRight className="size-3.5" /></span></div>
       </div>
     </div>
   );
@@ -1998,68 +1807,6 @@ function getMobileSummaryFacts(
       value: labels.fulfillment[order.fulfillmentStatus],
     },
   ];
-}
-
-function OrderProgressInline({
-  labels,
-  status,
-}: {
-  labels: OrderLabels;
-  status: OrderDbStatus;
-}) {
-  const steps = statusFlow.slice(1);
-  const currentIndex = statusFlow.indexOf(status);
-  const cancelled = status === "cancelled";
-
-  return (
-    <div
-      className="mt-1.5 w-[220px] min-w-0"
-      aria-label={`${labels.status[status]} ${cancelled ? "0" : Math.max(0, currentIndex)}/5`}
-    >
-      <div className="grid grid-cols-5 items-start gap-1">
-        {steps.map((step, index) => {
-          const stepIndex = index + 1;
-          const done = !cancelled && currentIndex >= stepIndex;
-          const current = !cancelled && currentIndex === stepIndex;
-
-          return (
-            <div key={step} className="relative min-w-0 text-center">
-              {index > 0 && (
-                <span
-                  className={cn(
-                    "absolute left-[-50%] top-2 h-0.5 w-full rounded-full bg-slate-200",
-                    done && "bg-primary"
-                  )}
-                />
-              )}
-              <span
-                className={cn(
-                  "relative z-10 mx-auto grid size-4 place-items-center rounded-full border text-[9px] font-black leading-none",
-                  done
-                    ? "border-primary bg-primary text-white"
-                    : "border-slate-200 bg-white text-slate-400",
-                  current && "ring-2 ring-primary/15",
-                  cancelled && "border-red-100 bg-red-50 text-red-300"
-                )}
-              >
-                {stepIndex}
-              </span>
-              <span
-                className={cn(
-                  "mt-0.5 block truncate text-[9px] font-semibold leading-tight text-slate-400",
-                  done && "text-primary",
-                  current && "text-slate-900",
-                  cancelled && "text-red-300"
-                )}
-              >
-                {labels.status[step]}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
 }
 
 function OrderDetailsPanel({
@@ -2107,6 +1854,8 @@ function OrderDetailsPanel({
   onUpdatePaymentMethod: (order: AdminOrder, paymentMethod: PaymentMethod) => Promise<OrderMutationResult>;
   onUpdateStaffNote: (order: AdminOrder, staffNote: string) => Promise<OrderMutationResult>;
 }) {
+  const { locale } = useI18n();
+  const presentation = orderPresentationCopy(locale);
   const [trackingDetailsState, setTrackingDetailsState] = React.useState(() => ({
     open: false,
     refreshedAt: new Date().toISOString(),
@@ -2133,9 +1882,11 @@ function OrderDetailsPanel({
     mobileSectionState.orderId === orderId ? mobileSectionState.section : "overview";
   const handleMobileSectionChange = React.useCallback(
     (section: MobileOrderDetailsSection) => {
+      if (pendingActionKey?.startsWith(`${orderId}:`)) return;
+      if (document.querySelector("[data-admin-dirty='true']") && !window.confirm(presentation.unsaved)) return;
       setMobileSectionState({ orderId, section });
     },
-    [orderId]
+    [orderId, pendingActionKey, presentation.unsaved]
   );
 
   const handleToggleTrackingDetails = React.useCallback(() => {
@@ -2210,56 +1961,54 @@ function OrderDetailsPanel({
 
   return (
     <AdminBusyRegion
-      className="min-h-full min-w-0"
-      contentClassName="min-h-full"
+      className="flex h-full min-h-0 min-w-0 flex-1 flex-col"
+      contentClassName="min-h-0 flex-1"
       label={text.orders.detailLoading}
       overlayClassName="rounded-lg"
       pending={loading}
       rows={3}
     >
-      <div className="min-h-full min-w-0 space-y-1.5 bg-slate-50/40 p-1.5 sm:space-y-2 sm:p-2">
-      <div className="flex min-w-0 flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-2">
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-            <h3
-              className="hidden break-words text-[15px] font-black leading-tight text-slate-950 sm:block"
-              title={order.id}
-            >
-              {shortOrderId(order.id)}
-            </h3>
-            <CopyValueButton
-              className="hidden sm:inline-flex"
-              label={text.orders.table.order}
-              text={text}
-              value={order.id}
-            />
-            <Badge className={orderStatusBadgeClass(order.status)}>
-              {labels.status[order.status]}
-            </Badge>
-            <Badge className={stockRiskBadgeClass(order.stockRisk)}>
-              {labels.stockRisk[order.stockRisk]}
-            </Badge>
+      <div className="flex h-full min-h-0 min-w-0 flex-col bg-slate-50/50">
+        <div className="shrink-0 px-3 pt-3 sm:px-5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge className={orderStatusBadgeClass(order.status)}>{labels.status[order.status]}</Badge>
+            <Badge className={stockRiskBadgeClass(order.stockRisk)}>{labels.stockRisk[order.stockRisk]}</Badge>
             <ReservationBadge order={order} text={text} />
-            {loading && (
-              <Badge className="border-cyan-200 bg-cyan-50 text-cyan-700">
-                <Loader2 className="size-3 animate-spin" />
-                {text.orders.detailLoading}
-              </Badge>
-            )}
-            {isMutating && (
-              <Badge className="border-cyan-200 bg-cyan-50 text-cyan-700">
-                <Loader2 className="size-3 animate-spin" />
-                {text.catalog.savingProduct}
-              </Badge>
-            )}
+            <CopyValueButton className="ml-auto" label={text.orders.table.order} text={text} value={order.id} />
           </div>
-          <p
-            className="mt-0.5 truncate text-xs leading-snug text-slate-500 sm:break-words sm:text-[13px]"
-            title={order.shippingAddress || order.customer.address}
-          >
-            {order.company} - {orderCustomerLocationLabel(order, text)}
-          </p>
+          <p className="mt-1.5 break-words text-xs text-slate-500 sm:text-sm">{order.company} · {orderCustomerLocationLabel(order, text)}</p>
+          {isReadOnly && <p className="mt-2 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-500"><CheckCircle2 className="size-4 shrink-0" />{text.orders.readOnly}</p>}
         </div>
+        <OrderMobileSectionTabs activeSection={mobileSection} historyCount={order.operationHistory.length || order.activity.length} lineCount={order.lines.length} text={text} disabled={isMutating} onChange={handleMobileSectionChange} />
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:px-5 sm:pb-5" data-order-detail-body>
+          <OrderMobileDetailsSection
+            activeSection={mobileSection}
+            canAdjustShipping={canAdjustShipping}
+            canEditLogistics={canEditLogistics}
+            canEditLines={canEditLines}
+            canEditPayment={canManageOrders && !isReadOnly}
+            canEditStaffNote={canEditStaffNote}
+            canApproveWalletRefunds={canApproveWalletRefunds}
+            canReconcilePayment={canReconcilePayment}
+            isMutating={isMutating}
+            labels={labels}
+            order={order}
+            pickedItems={pickedItems}
+            text={text}
+            trackingDetail={trackingDetail}
+            trackingDetailsOpen={trackingDetailsOpen}
+            onAdjustShipping={onAdjustShipping}
+            onApproveWalletRefund={onApproveWalletRefund}
+            onRefreshTrackingDetails={handleRefreshTrackingDetails}
+            onToggleTrackingDetails={handleToggleTrackingDetails}
+            onUpdateLogistics={onUpdateLogistics}
+            onUpdateLineFulfillment={onUpdateLineFulfillment}
+            onUpdatePayment={onUpdatePayment}
+            onUpdatePaymentMethod={onUpdatePaymentMethod}
+            onUpdateStaffNote={onUpdateStaffNote}
+          />
+        </div>
+        <div className="shrink-0 border-t border-slate-200 bg-white px-3 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-5" data-order-action-footer>
         <OrderActionBar
           labels={labels}
           order={order}
@@ -2275,157 +2024,7 @@ function OrderDetailsPanel({
           onRollback={onRollback}
           onTransition={onTransition}
         />
-      </div>
-
-      {isReadOnly && (
-        <div className="flex items-center gap-2 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs font-semibold text-slate-600 sm:px-3 sm:py-2 sm:text-sm">
-          <CheckCircle2 className="size-4 text-slate-400" />
-          {text.orders.readOnly}
         </div>
-      )}
-
-      <OrderMobileSectionTabs
-        activeSection={mobileSection}
-        historyCount={order.operationHistory.length || order.activity.length}
-        lineCount={order.lines.length}
-        text={text}
-        onChange={handleMobileSectionChange}
-      />
-
-      <div className="md:hidden">
-        <OrderMobileDetailsSection
-          activeSection={mobileSection}
-          canAdjustShipping={canAdjustShipping}
-          canEditLogistics={canEditLogistics}
-          canEditLines={canEditLines}
-          canEditPayment={canManageOrders && !isReadOnly}
-          canEditStaffNote={canEditStaffNote}
-          canApproveWalletRefunds={canApproveWalletRefunds}
-          canReconcilePayment={canReconcilePayment}
-          isMutating={isMutating}
-          labels={labels}
-          order={order}
-          pickedItems={pickedItems}
-          text={text}
-          trackingDetail={trackingDetail}
-          trackingDetailsOpen={trackingDetailsOpen}
-          onAdjustShipping={onAdjustShipping}
-          onApproveWalletRefund={onApproveWalletRefund}
-          onRefreshTrackingDetails={handleRefreshTrackingDetails}
-          onToggleTrackingDetails={handleToggleTrackingDetails}
-          onUpdateLogistics={onUpdateLogistics}
-          onUpdateLineFulfillment={onUpdateLineFulfillment}
-          onUpdatePayment={onUpdatePayment}
-          onUpdatePaymentMethod={onUpdatePaymentMethod}
-          onUpdateStaffNote={onUpdateStaffNote}
-        />
-      </div>
-
-      <div className="hidden min-w-0 gap-1 sm:gap-1.5 md:grid xl:grid-cols-[minmax(0,1fr)_minmax(330px,360px)] 2xl:grid-cols-[minmax(0,1fr)_minmax(350px,380px)]">
-        <div className="min-w-0 space-y-1.5">
-          <div className="hidden gap-1.5 md:grid md:grid-cols-2 xl:grid-cols-5">
-            <DetailFact
-              label={text.orders.details.orderTotal}
-              value={formatEuro(order.total)}
-              helper={formatAdminMessage(text.orders.details.piecesOrdered, {
-                count: order.items,
-              })}
-            />
-            <DetailFact
-              label={text.common.payment}
-              value={labels.payment[order.paymentStatus]}
-              helper={`${labels.paymentMethod[order.paymentMethod]} - ${paymentDueLabel(order, text)}`}
-            />
-            <DetailFact
-              label={text.orders.details.fulfillment}
-              value={labels.fulfillment[order.fulfillmentStatus]}
-              helper={formatAdminMessage(text.orders.details.piecesPicked, {
-                picked: pickedItems,
-                items: order.items,
-              })}
-            />
-            <DetailFact
-              label={text.orders.details.reservation}
-              value={reservationValue(order, text)}
-              helper={reservationHelper(order, text)}
-            />
-            <DetailFact
-              label={text.orders.details.customer}
-              value={order.customer.priceList}
-              helper={order.customer.partitaIva}
-            />
-          </div>
-
-          <div className="hidden md:block">
-            <StatusStepper labels={labels} status={order.status} />
-          </div>
-
-          <OrderPaymentMethodCard
-            key={`${order.id}:${order.paymentMethod}:${order.paymentStatus}:${order.paymentReconciliation.receivedAt ?? ""}`}
-            canApproveWalletRefunds={canApproveWalletRefunds}
-            canEditPayment={canManageOrders && !isReadOnly}
-            canReconcilePayment={canReconcilePayment}
-            isMutating={isMutating}
-            labels={labels}
-            order={order}
-            text={text}
-            onApproveWalletRefund={onApproveWalletRefund}
-            onUpdatePaymentMethod={onUpdatePaymentMethod}
-            onUpdatePayment={onUpdatePayment}
-          />
-
-          <OrderLogisticsCard
-            key={`${order.id}:${order.carrier}:${order.tracking}`}
-            canAdjustShipping={canAdjustShipping}
-            canEditLogistics={canEditLogistics}
-            isMutating={isMutating}
-            order={order}
-            text={text}
-            trackingDetail={trackingDetail}
-            trackingDetailsOpen={trackingDetailsOpen}
-            onRefreshTrackingDetails={handleRefreshTrackingDetails}
-            onToggleTrackingDetails={handleToggleTrackingDetails}
-            onAdjustShipping={onAdjustShipping}
-            onUpdateLogistics={onUpdateLogistics}
-          />
-
-          <OrderNotesBanner
-            canEditStaffNote={canEditStaffNote}
-            isMutating={isMutating}
-            order={order}
-            text={text}
-            onUpdateStaffNote={onUpdateStaffNote}
-          />
-
-          <div className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5">
-            <div className="mb-1 flex items-center gap-2 sm:mb-2">
-              <PackageCheck className="size-4 text-primary" />
-              <div className="text-sm font-bold text-slate-900">
-                {text.orders.details.orderLines}
-              </div>
-            </div>
-            <OrderLines
-              canEditLines={canEditLines}
-              isMutating={isMutating}
-              lines={order.lines}
-              order={order}
-              text={text}
-              onUpdateLineFulfillment={onUpdateLineFulfillment}
-            />
-          </div>
-        </div>
-
-        <div className="grid min-w-0 gap-1 sm:gap-1.5 xl:self-start">
-          <div className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5 sm:p-2">
-            <OrderOperationHistory
-              events={order.operationHistory}
-              fallbackActivity={order.activity}
-              labels={labels}
-              text={text}
-            />
-          </div>
-        </div>
-      </div>
       </div>
     </AdminBusyRegion>
   );
@@ -2433,12 +2032,14 @@ function OrderDetailsPanel({
 
 function OrderMobileSectionTabs({
   activeSection,
+  disabled = false,
   historyCount,
   lineCount,
   text,
   onChange,
 }: {
   activeSection: MobileOrderDetailsSection;
+  disabled?: boolean;
   historyCount: number;
   lineCount: number;
   text: AdminText;
@@ -2480,7 +2081,7 @@ function OrderMobileSectionTabs({
   ];
 
   return (
-    <div className="sticky top-0 z-20 -mx-1.5 bg-slate-50/95 px-1.5 py-1 backdrop-blur md:hidden">
+    <div className="shrink-0 px-3 pt-3 sm:px-5">
       <div className="grid grid-cols-5 gap-1 rounded-md border border-slate-200 bg-white p-1 shadow-[0_1px_0_rgba(15,23,42,0.04)]">
         {sections.map((section) => {
           const Icon = section.icon;
@@ -2490,8 +2091,9 @@ function OrderMobileSectionTabs({
             <button
               key={section.key}
               type="button"
+              disabled={disabled}
               className={cn(
-                "flex min-w-0 flex-col items-center justify-center gap-0.5 rounded px-1 py-1 text-[10px] font-black leading-tight transition",
+                "flex min-h-14 min-w-0 flex-col items-center justify-center gap-1 rounded-md px-1 py-2 text-[11px] font-bold leading-tight transition sm:min-h-12 sm:flex-row sm:gap-2 sm:text-sm",
                 selected
                   ? "bg-primary text-white shadow-sm"
                   : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-900"
@@ -2512,7 +2114,7 @@ function OrderMobileSectionTabs({
                   </span>
                 ) : null}
               </span>
-              <span className="w-full truncate">{section.label}</span>
+              <span className="w-full break-words text-center sm:text-left">{section.label}</span>
             </button>
           );
         })}
@@ -2579,7 +2181,6 @@ function OrderMobileDetailsSection({
   if (activeSection === "payment") {
     return (
       <OrderPaymentMethodCard
-        compact
         canApproveWalletRefunds={canApproveWalletRefunds}
         canEditPayment={canEditPayment}
         canReconcilePayment={canReconcilePayment}
@@ -2597,7 +2198,6 @@ function OrderMobileDetailsSection({
   if (activeSection === "logistics") {
     return (
       <OrderLogisticsCard
-        compact
         canAdjustShipping={canAdjustShipping}
         canEditLogistics={canEditLogistics}
         isMutating={isMutating}
@@ -2614,27 +2214,10 @@ function OrderMobileDetailsSection({
   }
 
   if (activeSection === "lines") {
-    return (
-      <div className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5">
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-1.5 text-sm font-black text-slate-900">
-            <PackageCheck className="size-4 shrink-0 text-primary" />
-            <span className="truncate">{text.orders.details.orderLines}</span>
-          </div>
-          <Badge variant="outline" className="h-5 bg-white px-1.5 text-[10px]">
-            {order.lines.length}
-          </Badge>
-        </div>
-        <OrderLines
-          canEditLines={canEditLines}
-          isMutating={isMutating}
-          lines={order.lines}
-          order={order}
-          text={text}
-          onUpdateLineFulfillment={onUpdateLineFulfillment}
-        />
-      </div>
-    );
+    return <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1fr)_260px]">
+      <OrderLines canEditLines={canEditLines} isMutating={isMutating} lines={order.lines} order={order} text={text} onUpdateLineFulfillment={onUpdateLineFulfillment} />
+      <aside className="min-w-0"><div className="hidden xl:block"><OrderCustomerSummary order={order} text={text} labels={labels} /></div><div className="xl:hidden"><OrderAmountSummary order={order} text={text} /></div></aside>
+    </div>;
   }
 
   if (activeSection === "history") {
@@ -2680,49 +2263,46 @@ function OrderMobileOverview({
   text: AdminText;
   onUpdateStaffNote: (order: AdminOrder, staffNote: string) => Promise<OrderMutationResult>;
 }) {
+  const { locale } = useI18n();
+  const presentation = orderPresentationCopy(locale);
   return (
-    <div className="min-w-0 space-y-1.5">
-      <section className="min-w-0 rounded-md border border-slate-200 bg-white p-1.5">
-        <div className="mb-1.5 flex min-w-0 items-center justify-between gap-2">
-          <div className="flex min-w-0 items-center gap-1.5 text-sm font-black text-slate-900">
-            <ClipboardList className="size-4 shrink-0 text-primary" />
-            <span className="truncate">{text.orders.mobileSections.overview}</span>
-          </div>
-          <Badge className={orderStatusBadgeClass(order.status)}>
-            {labels.status[order.status]}
-          </Badge>
+    <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="min-w-0 space-y-3">
+        <StatusStepper labels={labels} status={order.status} />
+        <div className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-3">
+          <DetailFact label={text.orders.details.orderTotal} value={formatEuro(order.total)} helper={`${text.orders.details.shipping}: ${formatEuro(order.shipping)}`} />
+          <DetailFact label={text.common.payment} value={labels.payment[order.paymentStatus]} helper={labels.paymentMethod[order.paymentMethod]} />
+          <DetailFact label={text.orders.details.reservation} value={reservationValue(order, text)} helper={reservationHelper(order, text)} />
         </div>
-        <div className="grid grid-cols-2 gap-1">
-          <MobileFact label={text.orders.details.orderTotal} value={formatEuro(order.total)} />
-          <MobileFact
-            label={text.common.payment}
-            value={`${labels.payment[order.paymentStatus]} · ${labels.paymentMethod[order.paymentMethod]}`}
-          />
-          <MobileFact
-            label={text.common.fulfillment}
-            value={`${labels.fulfillment[order.fulfillmentStatus]} · ${pickedItems}/${order.items}`}
-          />
-          <MobileFact
-            label={text.orders.details.reservation}
-            value={reservationValue(order, text)}
-          />
-          <MobileFact label={text.common.customer} value={order.company} />
-          <MobileFact
-            label={text.orders.details.shipping}
-            value={isPickupCarrier(order.carrier) ? text.orders.details.pickupFree : formatEuro(order.shipping)}
-          />
-        </div>
-        <MobileOrderProgress labels={labels} status={order.status} />
-      </section>
-      <OrderNotesBanner
-        canEditStaffNote={canEditStaffNote}
-        isMutating={isMutating}
-        order={order}
-        text={text}
-        onUpdateStaffNote={onUpdateStaffNote}
-      />
+        <section className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
+          <div className="mb-2 flex items-center gap-2 text-sm font-bold"><PackageCheck className="size-4 text-primary" />{presentation.productOverview}<span className="ml-auto text-xs font-normal text-slate-400">{pickedItems}/{order.items} · {labels.fulfillment[order.fulfillmentStatus]}</span></div>
+          <div className="divide-y divide-slate-100">{order.lines.map(line => <div key={line.id} className="flex min-w-0 items-center gap-2 py-2"><OrderLineImage line={line} className="size-11" /><div className="min-w-0 flex-1 break-words text-xs font-semibold leading-snug">{line.name}</div><span className="shrink-0 text-xs text-slate-500">× {line.quantity}</span></div>)}</div>
+        </section>
+        <OrderNotesBanner canEditStaffNote={canEditStaffNote} isMutating={isMutating} order={order} text={text} onUpdateStaffNote={onUpdateStaffNote} />
+      </div>
+      <OrderCustomerSummary order={order} text={text} labels={labels} showAmounts={false} />
     </div>
   );
+}
+
+function OrderAmountSummary({ order, text }: { order: AdminOrder; text: AdminText }) {
+  return <div className="space-y-2 rounded-lg border border-blue-100 bg-blue-50/50 p-3 text-xs">
+    <div className="flex items-center justify-between gap-3 text-slate-500"><span>{text.orders.details.shipping}</span><span>{isPickupCarrier(order.carrier) ? text.orders.details.pickupFree : formatEuro(order.shipping)}</span></div>
+    <div className="flex items-center justify-between gap-3 border-t border-blue-100 pt-2 font-bold text-primary"><span>{text.orders.details.orderTotal}</span><span className="text-lg font-black">{formatEuro(order.total)}</span></div>
+  </div>;
+}
+
+function OrderCustomerSummary({ order, text, labels, showAmounts = true }: { order: AdminOrder; text: AdminText; labels: OrderLabels; showAmounts?: boolean }) {
+  const { locale } = useI18n();
+  const presentation = orderPresentationCopy(locale);
+  return <section className="min-w-0 self-start space-y-3 rounded-lg border border-slate-200 bg-white p-3">
+    <h4 className="flex items-center gap-2 border-b border-slate-100 pb-2 text-sm font-bold"><ClipboardList className="size-4 text-primary" />{presentation.customerAndOrder}</h4>
+    <InfoRow label={text.common.customer} value={order.company} />
+    <InfoRow label={text.orders.details.deliveryAddress} value={order.shippingAddress || order.customer.address || text.common.none} />
+    <InfoRow label={presentation.customerLevel} value={order.customer.priceList} />
+    <InfoRow label={presentation.vatNumber} value={order.customer.partitaIva || text.common.none} />
+    {showAmounts && <><OrderAmountSummary order={order} text={text} /><InfoRow label={text.common.payment} value={labels.payment[order.paymentStatus]} /></>}
+  </section>;
 }
 
 function canShipOrder(order: AdminOrder) {
@@ -3028,59 +2608,49 @@ function OrderActionBar({
   onRollback: (order: AdminOrder) => void;
   onTransition: (order: AdminOrder, status: OrderDbStatus, successMessage: string) => void;
 }) {
+  const { locale } = useI18n();
+  const presentation = orderPresentationCopy(locale);
   const [dangerReason, setDangerReason] = React.useState("");
   const [dangerConfirmation, setDangerConfirmation] = React.useState("");
+  const [moreOpen, setMoreOpen] = React.useState(false);
+  const [cancelOpen, setCancelOpen] = React.useState(false);
+  const [dangerOpen, setDangerOpen] = React.useState(false);
+  const moreRef = React.useRef<HTMLButtonElement>(null);
   const canShip = canShipOrder(order);
   const transition = getOrderTransition(order, text);
   const rollback = getOrderRollback(order, text, labels);
-  const actionCount = [
-    true,
-    canManageOrders && cancellableStatuses.has(order.status),
-    canDangerVoidOrder,
-    canForceCancel,
-    canManageOrders && Boolean(rollback),
-    canManageOrders && Boolean(transition),
-  ].filter(Boolean).length;
-  const dangerActionReady =
-    dangerReason.trim().length > 0 && dangerConfirmation.trim() === order.id;
+  const canCancel = canManageOrders && cancellableStatuses.has(order.status);
+  const hasMoreActions = canCancel || canDangerVoidOrder || canForceCancel || (canManageOrders && Boolean(rollback));
+  const dangerActionReady = dangerReason.trim().length > 0 && dangerConfirmation.trim() === order.id;
+  const restoreMoreFocus = (event: Event) => { event.preventDefault(); moreRef.current?.focus(); };
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-1 sm:w-auto sm:items-end">
-      <div
-        className={cn(
-          "grid w-full min-w-0 gap-1 sm:flex sm:w-auto sm:flex-wrap sm:justify-end",
-          actionCount === 1
-            ? "grid-cols-1"
-            : actionCount === 2
-              ? "grid-cols-2"
-              : actionCount === 3
-                ? "grid-cols-3"
-                : "grid-cols-4"
-        )}
-      >
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-slate-700 hover:text-slate-900 sm:h-8 sm:px-2 sm:text-xs"
-          onClick={() => onPrintOrder(order)}
-        >
-          <Printer className="size-4" />
-          <span className="min-w-0 truncate">{text.orders.print.action}</span>
+    <div className="min-w-0 space-y-1.5">
+      <div className="flex min-w-0 items-center gap-2">
+        <Button type="button" variant="outline" size="sm" className="h-10 shrink-0 bg-white px-3 sm:h-11" aria-label={text.orders.print.action} title={text.orders.print.action} onClick={() => onPrintOrder(order)}>
+          <Printer className="size-4" /><span className="hidden sm:inline">{text.orders.print.action}</span>
         </Button>
-        {canManageOrders && cancellableStatuses.has(order.status) && (
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-red-600 hover:text-red-600 sm:h-8 sm:px-2 sm:text-xs"
-                disabled={isMutating}
-              >
-                <XCircle className="size-4" />
-                <span className="min-w-0 truncate">{text.orders.cancelOrder}</span>
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent className="max-w-[calc(100vw-1.5rem)] sm:max-w-sm">
+        {hasMoreActions && <Popover open={moreOpen} onOpenChange={setMoreOpen}>
+          <PopoverTrigger asChild>
+            <Button ref={moreRef} type="button" variant="outline" size="sm" className="h-10 shrink-0 bg-white px-3 sm:h-11" aria-label={presentation.more} disabled={isMutating}>
+              <MoreHorizontal className="size-4" /><span className="hidden sm:inline">{presentation.more}</span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent side="top" align="start" className="admin-ui-panel w-[min(280px,calc(100vw-2rem))] gap-1 border border-slate-200 bg-white p-1.5">
+            {canManageOrders && rollback && <Button type="button" variant="ghost" className="h-auto min-h-11 justify-start whitespace-normal text-left" disabled={isMutating} onClick={() => { setMoreOpen(false); onRollback(order); }}><RotateCcw className="size-4 shrink-0" />{rollback.label}</Button>}
+            {canCancel && <Button type="button" variant="ghost" className="h-auto min-h-11 justify-start whitespace-normal text-left text-red-600" disabled={isMutating} onClick={() => { setMoreOpen(false); setCancelOpen(true); }}><XCircle className="size-4 shrink-0" />{text.orders.cancelOrder}</Button>}
+            {canForceCancel && <Button type="button" variant="ghost" className="h-auto min-h-11 justify-start whitespace-normal text-left text-red-700" disabled={isMutating} onClick={() => { setMoreOpen(false); onForceCancelOrder(order); }}><XCircle className="size-4 shrink-0" />{text.orders.forceCancelOrder}</Button>}
+            {canDangerVoidOrder && <Button type="button" variant="ghost" className="h-auto min-h-11 justify-start whitespace-normal text-left text-red-700" disabled={isMutating} onClick={() => { setMoreOpen(false); setDangerOpen(true); }}><AlertTriangle className="size-4 shrink-0" />{text.orders.dangerAction}</Button>}
+          </PopoverContent>
+        </Popover>}
+        {canManageOrders && transition && <Button type="button" className="ml-auto h-auto min-h-11 min-w-0 flex-1 whitespace-normal px-3 py-2 text-sm leading-snug sm:max-w-xs sm:flex-none sm:px-6" onClick={() => onTransition(order, transition.status, transition.notice)} disabled={isMutating || (transition.status === "shipped" && !canShip)}>
+          {isMutating ? <Loader2 className="size-4 shrink-0 animate-spin" /> : <ArrowRight className="size-4 shrink-0" />}{transition.label}
+        </Button>}
+      </div>
+      {order.status === "packed" && !canShip && <p className="flex items-start gap-1.5 text-xs leading-snug text-amber-700"><Info className="mt-0.5 size-3.5 shrink-0" />{text.orders.logisticsRequired}</p>}
+      {canCancel && (
+          <AlertDialog open={cancelOpen} onOpenChange={setCancelOpen}>
+            <AlertDialogContent onCloseAutoFocus={restoreMoreFocus} className="max-w-[calc(100vw-1.5rem)] sm:max-w-sm">
               <AlertDialogHeader>
                 <AlertDialogMedia className="bg-red-50 text-red-600">
                   <AlertTriangle className="size-5" />
@@ -3134,40 +2704,18 @@ function OrderActionBar({
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-        )}
-        {canForceCancel && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-red-700 hover:text-red-700 sm:h-8 sm:px-2 sm:text-xs"
-            onClick={() => onForceCancelOrder(order)}
-            disabled={isMutating}
-          >
-            <XCircle className="size-4" />
-            <span className="min-w-0 truncate">{text.orders.forceCancelOrder}</span>
-          </Button>
-        )}
-        {canDangerVoidOrder && (
-          <AlertDialog
+      )}
+      {canDangerVoidOrder && (
+          <AlertDialog open={dangerOpen}
             onOpenChange={(open) => {
+              setDangerOpen(open);
               if (!open) {
                 setDangerReason("");
                 setDangerConfirmation("");
               }
             }}
           >
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-red-700 hover:text-red-700 sm:h-8 sm:px-2 sm:text-xs"
-                disabled={isMutating}
-              >
-                <AlertTriangle className="size-4" />
-                <span className="min-w-0 truncate">{text.orders.dangerAction}</span>
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent className="max-w-[calc(100vw-1.5rem)] sm:max-w-md">
+            <AlertDialogContent onCloseAutoFocus={restoreMoreFocus} className="max-w-[calc(100vw-1.5rem)] sm:max-w-md">
               <AlertDialogHeader>
                 <AlertDialogMedia className="bg-red-50 text-red-600">
                   <AlertTriangle className="size-5" />
@@ -3228,35 +2776,6 @@ function OrderActionBar({
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-        )}
-        {canManageOrders && rollback && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 min-w-0 rounded-md bg-white px-1.5 text-[11px] text-slate-700 hover:text-slate-900 sm:h-8 sm:px-2 sm:text-xs"
-            onClick={() => onRollback(order)}
-            disabled={isMutating}
-          >
-            <RotateCcw className="size-4" />
-            <span className="min-w-0 truncate">{rollback.label}</span>
-          </Button>
-        )}
-        {canManageOrders && transition && (
-          <Button
-            size="sm"
-            className="h-7 min-w-0 rounded-md px-1.5 text-[11px] sm:h-8 sm:px-2 sm:text-xs"
-            onClick={() => onTransition(order, transition.status, transition.notice)}
-            disabled={isMutating || (transition.status === "shipped" && !canShip)}
-          >
-            <ArrowRight className="size-4" />
-            <span className="min-w-0 truncate">{transition.label}</span>
-          </Button>
-        )}
-      </div>
-      {order.status === "packed" && !canShip && (
-        <div className="max-w-none text-[11px] font-semibold leading-4 text-amber-700 sm:max-w-[280px]">
-          {text.orders.logisticsRequired}
-        </div>
       )}
     </div>
   );
@@ -4443,6 +3962,7 @@ function OrderLines({
   ) => Promise<OrderMutationResult>;
 }) {
   const { locale } = useI18n();
+  const presentation = orderPresentationCopy(locale);
   const copy = (locale.startsWith("en") ? englishUiCopy({ title: "Registra quantità mancanti", description: "Di norma tutti i pezzi sono disponibili. Registra solo una quantità consegnata inferiore, con il motivo.", actual: "Quantità effettivamente consegnata", ordered: "Quantità ordinata", noShortage: "Se consegni tutto, completa l’imballaggio senza registrare una mancanza.", preview: "Pezzi mancanti", impact: "Il salvataggio avvia la registrazione della mancanza e la richiesta di rimborso, da approvare prima dell’accredito.", complete: "Quantità completa: nessuna mancanza da registrare.", reason: "Motivo della mancanza", example: "Ad esempio: inventario fisico zero, articolo prenotato non trovato.", save: "Salva mancanza" }) : locale.startsWith("it") ? { title: "Registra quantità mancanti", description: "Di norma tutti i pezzi sono disponibili. Registra solo una quantità consegnata inferiore, con il motivo.", actual: "Quantità effettivamente consegnata", ordered: "Quantità ordinata", noShortage: "Se consegni tutto, completa l’imballaggio senza registrare una mancanza.", preview: "Pezzi mancanti", impact: "Il salvataggio avvia la registrazione della mancanza e la richiesta di rimborso, da approvare prima dell’accredito.", complete: "Quantità completa: nessuna mancanza da registrare.", reason: "Motivo della mancanza", example: "Ad esempio: inventario fisico zero, articolo prenotato non trovato.", save: "Salva mancanza" }
     : { title: "登记缺货数量", description: "默认全部有货并按订购数量打包。只有实际缺货或少给时，填写实际给货数量和原因。", actual: "实际给货数量", ordered: "订购数量", noShortage: "没有缺货时无需保存，直接打包完成即可。", preview: "少给数量", impact: "保存后登记缺货并生成退款申请，经审批后入账。", complete: "当前等于订购数量，系统默认全给，不需要登记。", reason: "缺货原因", example: "例如：仓库实盘为0，锁货商品不存在。", save: "保存缺货" });
   const [formError, setFormError] = React.useState("");
@@ -4499,147 +4019,69 @@ function OrderLines({
     else setFormError(outcome.error);
   };
 
+  const renderRefundInfo = (line: OrderLine) => refundSummary && lineShortageRefundAmount(line) > 0 ? <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+    <MobileFact label={text.orders.walletRefundPending} value={refundSummary.pendingAmount > 0 ? formatEuro(lineShortageRefundAmount(line)) : text.common.none} />
+    <MobileFact label={text.orders.walletRefundCredited} value={refundSummary.creditedAmount > 0 ? formatEuro(lineShortageRefundAmount(line)) : text.common.none} />
+  </div> : null;
+
   return (
-    <div className="min-w-0">
-      <div className="space-y-1 md:hidden">
-        {lines.map((line) => (
-          <div key={line.id} className="rounded-md border border-slate-200 bg-white p-1.5">
-            <div className="grid min-w-0 grid-cols-[72px_minmax(0,1fr)] gap-2">
-              <OrderLineImage line={line} />
-              <div className="min-w-0">
-                <div className="break-words text-[13px] font-bold leading-tight text-slate-900 sm:text-sm">
-                  {line.name}
-                </div>
-                <div className="mt-0.5 truncate font-mono text-[11px] text-slate-500 sm:text-xs">
-                  {line.sku}
-                </div>
-                <div className="mt-1 truncate text-[11px] font-semibold text-slate-500">
-                  {orderValueLabel(text, line.category)} · {line.batchCode || text.common.none}
-                </div>
-                <div className="mt-1.5 grid grid-cols-4 gap-1 text-xs max-[360px]:grid-cols-2">
-                  <MobileFact label={text.orders.lines.quantity} value={`${line.quantity}`} />
-                  <MobileFact label={(locale.startsWith("en") ? englishUiCopy("Consegnati") : locale.startsWith("it") ? "Consegnati" : "实给")} value={`${lineEffectivePickedQty(line)}`} />
-                  <MobileFact label={text.orders.lines.reserved} value={`${line.reservedQty}`} />
-                  <MobileFact label={(locale.startsWith("en") ? englishUiCopy("Mancanti") : locale.startsWith("it") ? "Mancanti" : "缺货")} value={`${line.cancelledQty}`} />
-                </div>
-                {refundSummary && lineShortageRefundAmount(line) > 0 ? (
-                  <div className="mt-1 grid grid-cols-2 gap-1 text-xs">
-                    <MobileFact
-                      label={text.orders.walletRefundPending}
-                      value={
-                        refundSummary.pendingAmount > 0
-                          ? formatEuro(lineShortageRefundAmount(line))
-                          : text.common.none
-                      }
-                    />
-                    <MobileFact
-                      label={text.orders.walletRefundCredited}
-                      value={
-                        refundSummary.creditedAmount > 0
-                          ? formatEuro(lineShortageRefundAmount(line))
-                          : text.common.none
-                      }
-                    />
-                  </div>
-                ) : null}
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <Badge className={orderLineOperationalBadgeClass(line)}>
-                    {orderLineOperationalLabel(line, locale)}
-                  </Badge>
-                  {canEditLines && order && onUpdateLineFulfillment ? (
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="outline"
-                      className="h-7 bg-white px-2"
-                      disabled={isMutating}
-                      onClick={() => openEditor(line)}
-                    >
-                      {(locale.startsWith("en") ? englishUiCopy("Registra mancanza") : locale.startsWith("it") ? "Registra mancanza" : "登记缺货")}
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
+    <div className="min-w-0 space-y-3" data-order-lines>
+      {canEditLines && <p className="flex items-start gap-2 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2.5 text-xs leading-relaxed text-blue-700"><Info className="mt-0.5 size-4 shrink-0" />{presentation.defaultSupply}</p>}
+      <div className="space-y-3 md:hidden">
+        {lines.map(line => <article key={line.id} data-order-line={line.id} className="min-w-0 rounded-lg border border-slate-200 bg-white p-3">
+          <div className="grid min-w-0 grid-cols-[56px_minmax(0,1fr)] gap-2.5">
+            <OrderLineImage line={line} className="size-14" />
+            <div className="min-w-0">
+              <h4 className="break-words text-[13px] font-bold leading-snug text-slate-900">{line.name}</h4>
+              <p className="mt-1 break-all font-mono text-[11px] text-slate-500">{line.sku}</p>
+              <p className="mt-1 break-words text-[11px] text-slate-400">{orderValueLabel(text, line.category)} · {line.batchCode || text.common.none}</p>
+              <p className="mt-1 text-xs font-bold text-slate-700">{formatEuro(line.unitPrice)}</p>
             </div>
           </div>
-        ))}
+          <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 rounded-md bg-slate-50 px-2 py-1.5">
+            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600"><PackageCheck className="size-3.5 text-primary" />{presentation.actual}<strong className="text-primary">{lineEffectivePickedQty(line)}/{line.quantity}</strong></span>
+            <span className="inline-flex items-center gap-1.5 text-xs text-slate-500"><LockKeyhole className="size-3.5 text-primary" />{text.orders.lines.reserved} {line.reservedQty}</span>
+            {canEditLines && order && onUpdateLineFulfillment && <Button type="button" size="xs" variant="outline" className="ml-auto h-9 shrink-0 bg-white px-2 text-xs" disabled={isMutating} onClick={() => openEditor(line)}>{(locale.startsWith("en") ? "Record shortage" : locale.startsWith("it") ? "Registra mancanza" : "登记缺货")}</Button>}
+          </div>
+          {(line.cancelledQty > 0 || line.fulfilledQty > 0) && <div className="mt-2"><Badge className={orderLineOperationalBadgeClass(line)}>{orderLineOperationalLabel(line, locale)}</Badge></div>}
+          <details className="mt-2 text-xs text-slate-500">
+            <summary className="flex min-h-9 cursor-pointer items-center gap-1.5 font-semibold"><ChevronDown className="size-3.5" />{presentation.quantityDetails}</summary>
+            <div className="mt-1 grid grid-cols-2 gap-1.5">
+              <MobileFact label={text.orders.lines.quantity} value={`${line.quantity}`} />
+              <MobileFact label={presentation.actual} value={`${lineEffectivePickedQty(line)}`} />
+              <MobileFact label={text.orders.lines.reserved} value={`${line.reservedQty}`} />
+              <MobileFact label={text.orders.lines.fulfilled} value={`${line.fulfilledQty}`} />
+              <MobileFact label={presentation.shortage} value={`${line.cancelledQty}`} />
+            </div>
+          </details>
+          {renderRefundInfo(line)}
+        </article>)}
       </div>
-      <div className="hidden min-w-0 overflow-hidden rounded-md border border-slate-200 md:block">
-        <Table className="min-w-max table-auto text-xs">
-          <TableHeader className="bg-slate-50 [&_th]:h-8 [&_th]:px-1.5 [&_th]:text-xs">
+      <div className="hidden min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white md:block">
+        <Table className="w-full min-w-[760px] table-fixed text-xs">
+          <TableHeader className="bg-slate-50 [&_th]:h-10 [&_th]:px-2 [&_th]:text-[11px]">
             <TableRow>
-              <TableHead className="w-[188px]">{text.common.sku}</TableHead>
-              <TableHead className="min-w-[420px]">{text.common.product}</TableHead>
-              <TableHead className="w-[48px] text-center">{text.orders.lines.quantity}</TableHead>
-              <TableHead className="w-[56px] text-center">{(locale.startsWith("en") ? englishUiCopy("Consegnati") : locale.startsWith("it") ? "Consegnati" : "实给")}</TableHead>
-              <TableHead className="w-[64px] text-center">{text.orders.lines.reserved}</TableHead>
-              <TableHead className="w-[64px] text-center">{text.orders.lines.fulfilled}</TableHead>
-              <TableHead className="w-[82px] text-right">{text.common.price}</TableHead>
-              <TableHead className="w-[84px] text-right">{(locale.startsWith("en") ? englishUiCopy("Azioni") : locale.startsWith("it") ? "Azioni" : "操作")}</TableHead>
+              <TableHead className="w-[40%]">{text.common.product}</TableHead>
+              <TableHead className="w-12 text-center">{text.orders.lines.quantity}</TableHead>
+              <TableHead className="w-14 text-center">{presentation.actual}</TableHead>
+              <TableHead className="w-14 text-center">{text.orders.lines.reserved}</TableHead>
+              <TableHead className="w-14 text-center">{text.orders.lines.fulfilled}</TableHead>
+              <TableHead className="w-12 text-center">{presentation.shortage}</TableHead>
+              <TableHead className="w-20 text-right">{text.common.price}</TableHead>
+              <TableHead className="w-24 text-right">{(locale.startsWith("en") ? "Actions" : locale.startsWith("it") ? "Azioni" : "操作")}</TableHead>
             </TableRow>
           </TableHeader>
-          <TableBody className="[&_td]:px-1.5 [&_td]:py-1.5">
-            {lines.map((line) => (
-              <TableRow key={line.id}>
-                <TableCell className="align-top font-mono text-xs font-semibold text-slate-600">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <OrderLineImage line={line} className="size-14" />
-                    <span className="min-w-0 break-all leading-tight">{line.sku}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="align-top">
-                  <div
-                    className="whitespace-nowrap text-xs font-bold leading-tight text-slate-900"
-                    title={line.name}
-                  >
-                    {line.name}
-                  </div>
-                  <div
-                    className="mt-0.5 min-w-0 truncate text-[11px] leading-tight text-slate-500"
-                    title={`${orderValueLabel(text, line.category)} · ${line.batchCode || text.common.none}`}
-                  >
-                    {orderValueLabel(text, line.category)} · {line.batchCode || text.common.none}
-                  </div>
-                </TableCell>
-                <TableCell className="align-top text-center font-semibold">{line.quantity}</TableCell>
-                <TableCell className="align-top text-center">
-                  <Badge className={orderLineOperationalBadgeClass(line)}>
-                    {lineEffectivePickedQty(line)}/{line.quantity}
-                  </Badge>
-                </TableCell>
-                <TableCell className="align-top text-center">
-                  <Badge className={reservationBadgeClass(line)}>
-                    {line.reservedQty}/{line.quantity}
-                  </Badge>
-                </TableCell>
-                <TableCell className="align-top text-center">
-                  <Badge className={fulfilledBadgeClass(line)}>
-                    {line.fulfilledQty}/{line.quantity}
-                  </Badge>
-                </TableCell>
-                <TableCell className="whitespace-nowrap align-top text-right font-semibold">
-                  {formatEuro(line.unitPrice)}
-                </TableCell>
-                <TableCell className="align-top text-right">
-                  {canEditLines && order && onUpdateLineFulfillment ? (
-                    <Button
-                      type="button"
-                      size="xs"
-                      variant="outline"
-                      className="h-7 bg-white px-2"
-                      disabled={isMutating}
-                      onClick={() => openEditor(line)}
-                    >
-                      {(locale.startsWith("en") ? englishUiCopy("Mancanza") : locale.startsWith("it") ? "Mancanza" : "缺货")}
-                    </Button>
-                  ) : (
-                    <span className="text-[11px] font-semibold text-slate-400">
-                      {orderLineOperationalLabel(line, locale)}
-                    </span>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
+          <TableBody className="[&_td]:px-2 [&_td]:py-3">
+            {lines.map(line => <TableRow key={line.id}>
+              <TableCell className="whitespace-normal align-top"><div className="flex min-w-0 items-start gap-2"><OrderLineImage line={line} className="size-12" /><div className="min-w-0"><div className="break-words font-bold leading-snug text-slate-900">{line.name}</div><div className="mt-1 break-all font-mono text-[11px] text-slate-500">{line.sku}</div><div className="mt-1 break-words text-[11px] text-slate-400">{orderValueLabel(text, line.category)} · {line.batchCode || text.common.none}</div>{renderRefundInfo(line)}</div></div></TableCell>
+              <TableCell className="text-center align-top">{line.quantity}</TableCell>
+              <TableCell className="text-center align-top font-bold text-primary">{lineEffectivePickedQty(line)}/{line.quantity}</TableCell>
+              <TableCell className="text-center align-top">{line.reservedQty}</TableCell>
+              <TableCell className="text-center align-top text-slate-500">{line.fulfilledQty}</TableCell>
+              <TableCell className={cn("text-center align-top", line.cancelledQty > 0 ? "font-bold text-amber-700" : "text-slate-400")}>{line.cancelledQty}</TableCell>
+              <TableCell className="text-right align-top font-semibold">{formatEuro(line.unitPrice)}</TableCell>
+              <TableCell className="text-right align-top">{canEditLines && order && onUpdateLineFulfillment ? <Button type="button" size="xs" variant="outline" className="h-auto min-h-9 whitespace-normal bg-white px-2 text-xs" disabled={isMutating} onClick={() => openEditor(line)}>{(locale.startsWith("en") ? "Shortage" : locale.startsWith("it") ? "Mancanza" : "登记缺货")}</Button> : <span className="text-[11px] text-slate-400">{orderLineOperationalLabel(line, locale)}</span>}</TableCell>
+            </TableRow>)}
           </TableBody>
         </Table>
       </div>
@@ -4663,18 +4105,10 @@ function OrderLines({
                   {editingLine.sku}
                 </div>
               </div>
-              <div className="grid gap-1.5">
-                <label htmlFor="order-shortage-qty" className="text-xs font-black text-slate-500">{copy.actual}</label>
-                <Input
-                  id="order-shortage-qty" type="number" disabled={isMutating}
-                  min={0}
-                  max={editingLine.quantity}
-                  value={actualQuantity}
-                  onChange={(event) => setActualQuantity(event.target.value)}
-                />
-                <div className="text-[11px] font-semibold text-slate-500">
-                  {copy.ordered}: {editingLine.quantity}. {copy.noShortage}
-                </div>
+              <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_minmax(0,1fr)] items-end gap-2">
+                <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-2"><div className="text-[11px] text-slate-500">{copy.ordered}</div><div className="mt-2 text-xl font-black text-slate-800">{editingLine.quantity}</div></div>
+                <div className="grid min-w-0 gap-1.5"><label htmlFor="order-shortage-qty" className="text-xs font-bold text-slate-600">{copy.actual}</label><Input id="order-shortage-qty" type="number" disabled={isMutating} min={0} max={editingLine.quantity} value={actualQuantity} onChange={(event) => setActualQuantity(event.target.value)} className="text-center font-bold" /></div>
+                <div className={cn("rounded-lg border p-2", editingIsShortage ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-50 text-slate-500")}><div className="text-[11px]">{copy.preview}</div><div className="mt-2 text-xl font-black">{editingLine.quantity - editingActualQuantity}</div></div>
               </div>
               {editingIsShortage ? (
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs font-semibold text-amber-800">
@@ -4686,10 +4120,10 @@ function OrderLines({
                 </div>
               )}
               <div className="grid gap-1.5">
-                <label htmlFor="order-shortage-reason" className="text-xs font-black text-slate-500">{copy.reason}</label>
+                <label htmlFor="order-shortage-reason" className="text-xs font-black text-slate-500">{copy.reason}{editingIsShortage && <span className="ml-1 text-red-600">*</span>}</label>
                 <Textarea
                   value={reason}
-                  id="order-shortage-reason" placeholder={copy.example}
+                  id="order-shortage-reason" aria-required={editingIsShortage} placeholder={copy.example}
                   disabled={!editingIsShortage || isMutating}
                   onChange={(event) => setReason(event.target.value)}
                 />
@@ -5601,10 +5035,10 @@ function StatusStepper({
   labels: OrderLabels;
   status: OrderDbStatus;
 }) {
-  const steps = statusFlow.slice(1);
+  const steps = statusFlow;
   const currentIndex = statusFlow.indexOf(status);
   const cancelled = status === "cancelled";
-  const progressValue = cancelled ? 0 : Math.max(0, Math.min(currentIndex, steps.length));
+  const progressValue = cancelled ? 0 : Math.max(0, Math.min(currentIndex + 1, steps.length));
 
   return (
     <div
@@ -5612,7 +5046,7 @@ function StatusStepper({
         "rounded-md border bg-white px-2 py-1.5",
         cancelled ? "border-red-100 bg-red-50/40" : "border-slate-200"
       )}
-      aria-label={`${labels.status[status]} ${progressValue}/5`}
+      aria-label={`${labels.status[status]} ${progressValue}/6`}
     >
       <div className="mb-1 flex min-w-0 items-center justify-between gap-2">
         <Badge
@@ -5629,12 +5063,12 @@ function StatusStepper({
             !cancelled && "text-primary"
           )}
         >
-          {progressValue}/5
+          {progressValue}/6
         </span>
       </div>
-      <div className="grid grid-cols-5 items-start gap-1">
+      <div className="grid grid-cols-6 items-start gap-1">
         {steps.map((step, index) => {
-          const stepIndex = index + 1;
+          const stepIndex = index;
           const done = !cancelled && currentIndex >= stepIndex;
           const current = !cancelled && currentIndex === stepIndex;
 
@@ -5659,11 +5093,11 @@ function StatusStepper({
                   cancelled && "border-red-100 bg-white text-red-300"
                 )}
               >
-                {stepIndex}
+                {stepIndex + 1}
               </span>
               <span
                 className={cn(
-                  "mt-0.5 block truncate text-[10px] font-semibold leading-tight text-slate-400",
+                  "mt-1 block break-words text-[10px] font-semibold leading-tight text-slate-400",
                   done && "text-primary",
                   current && "text-slate-900",
                   cancelled && "text-red-300"
@@ -7975,30 +7409,6 @@ function stockRiskBadgeClass(risk: StockRisk) {
 
   if (risk === "clear") {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  }
-
-  return "border-slate-200 bg-slate-50 text-slate-700";
-}
-
-function reservationBadgeClass(line: OrderLine) {
-  if (line.reservedQty >= line.quantity) {
-    return "border-cyan-200 bg-cyan-50 text-cyan-700";
-  }
-
-  if (line.reservedQty > 0) {
-    return "border-amber-200 bg-amber-50 text-amber-700";
-  }
-
-  return "border-slate-200 bg-slate-50 text-slate-700";
-}
-
-function fulfilledBadgeClass(line: OrderLine) {
-  if (line.fulfilledQty >= line.quantity) {
-    return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  }
-
-  if (line.fulfilledQty > 0) {
-    return "border-cyan-200 bg-cyan-50 text-cyan-700";
   }
 
   return "border-slate-200 bg-slate-50 text-slate-700";
