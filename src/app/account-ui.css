@@ -217,6 +217,7 @@
 .pp-storefront .pp-service-steps b { font-size:13px; line-height:1.6; font-weight:550; }
 .pp-storefront .pp-service-steps > div > svg { margin-left:auto; width:15px; height:15px; color:#7990b8; }
 .pp-storefront .pp-service-master-detail { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.15fr); gap:18px; }
+.pp-storefront .pp-service-master-detail[data-empty] { grid-template-columns:minmax(0,1fr); }
 .pp-storefront .pp-service-request-list { padding:20px; }
 .pp-storefront .pp-service-request-list .pp-account-panel-header { align-items:flex-start; gap:12px; }
 .pp-storefront .pp-service-request-list .pp-account-panel-header input { min-height:39px; max-width:240px; border-color:#dfe8f8; background:#fafcff; border-radius:7px; font-size:12px; }
@@ -452,7 +453,9 @@
 }
 @media (max-width:1023px) {
   .pp-storefront .pp-account-content { padding:18px 20px 36px; }
-  .pp-storefront .pp-account-workspace { display:flex; flex-direction:column; gap:20px; }
+  /* Mobile flattens .pp-account-main with display:contents. Its children must
+     stretch too, including views whose intrinsic content is narrower. */
+  .pp-storefront .pp-account-workspace { display:flex; flex-direction:column; align-items:stretch; gap:20px; }
   .pp-storefront .pp-account-navigation { position:static; display:grid; grid-template-columns:minmax(0,1fr) 44px; align-items:stretch; gap:8px; min-height:0; width:100%; padding:0; border:0; border-radius:0; background:transparent; }
   .pp-storefront .pp-account-sidebar-title,
   .pp-storefront .pp-account-sidebar-company,
@@ -749,3 +752,14 @@
 .pp-storefront .pp-profile-summary-view .pp-profile-identity dt { color:#7e91af; }
 .pp-storefront .pp-profile-summary-view .pp-profile-identity dd { margin:0; font-weight:550; }
 .pp-storefront .pp-profile-summary-view .pp-profile-address-text { font-size:15px; line-height:1.9; color:#4a5f81; overflow-wrap:anywhere; white-space:pre-line; }
+
+/* Account data can contain unbroken email addresses, IDs and product codes. */
+.pp-storefront .pp-account-heading > div,
+.pp-storefront .pp-service-request-option > span:nth-child(2),
+.pp-storefront .pp-service-selected-product > div { min-width:0; }
+.pp-storefront .pp-account-info > div,
+.pp-storefront .pp-service-selected-heading,
+.pp-storefront .pp-service-selected-product,
+.pp-storefront .pp-service-facts dd { overflow-wrap:anywhere; }
+.pp-storefront .pp-profile-summary-view .pp-profile-identity dd { min-width:0; text-align:right; overflow-wrap:anywhere; }
+.pp-storefront .pp-profile-summary-view .pp-account-info > div { white-space:normal; overflow:visible; overflow-wrap:anywhere; }
