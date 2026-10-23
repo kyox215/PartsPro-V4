@@ -427,6 +427,7 @@ export function AdminRmaPanel() {
   const [location, setLocation] = React.useState("Milano");
   const [supplier, setSupplier] = React.useState("");
   const [photoAttachment, setPhotoAttachment] = React.useState<AdminRmaDto["attachments"][number] | null>(null);
+  const approveButtonRef = React.useRef<HTMLButtonElement>(null);
   const actionRetryKeysRef = React.useRef(new Map<string, string>());
   const pendingActionRef = React.useRef<ActionCode | "approve_wallet_refund" | null>(null);
 
@@ -1132,15 +1133,34 @@ export function AdminRmaPanel() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={actionDialog === "approve"} onOpenChange={(open) => !open && setActionDialog(null)}>
-        <DialogContent className="admin-ui-panel">
-          <DialogHeader><DialogTitle>{copy.action.approve}</DialogTitle>
-            <DialogDescription>{(locale.startsWith("en") ? englishUiCopy("Indica l’indirizzo verificato, il destinatario e le istruzioni di imballaggio. Chiedi di includere il numero RMA.") : isZh ? "请向客户提供经核验的退货地址、联系人、包装要求，并提醒附上售后编号。" : "Indica l’indirizzo verificato, il destinatario e le istruzioni di imballaggio. Chiedi di includere il numero RMA.")}</DialogDescription>
+      <Dialog open={actionDialog === "approve"} onOpenChange={(open) => !open && !pendingAction && setActionDialog(null)}>
+        <DialogContent className="admin-ui-panel" onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          approveButtonRef.current?.focus({ preventScroll: true });
+        }}>
+          <DialogHeader>
+            <DialogTitle>{copy.action.approve}</DialogTitle>
+            <DialogDescription>{isZh ? "确认批准此退货申请。批准后可选择现金或钱包办理退款。" : locale.startsWith("en") ? "Approve this return. You can then choose cash or wallet for the refund." : "Approva questo reso. Potrai poi scegliere contanti o portafoglio per il rimborso."}</DialogDescription>
           </DialogHeader>
-          <Label htmlFor="rma-return-instructions">{(locale.startsWith("en") ? englishUiCopy("Istruzioni per il reso") : isZh ? "客户退回指引" : "Istruzioni per il reso")}</Label>
-          <Textarea id="rma-return-instructions" value={actionReason} onChange={(event) => setActionReason(event.target.value)} />
-          <DialogFooter><Button variant="outline" onClick={() => setActionDialog(null)}>{copy.cancel}</Button>
-            <AdminActionButton pending={Boolean(pendingAction)} disabled={actionReason.trim().length < 20 || Boolean(pendingAction)} onClick={() => void runAction("approve", { customerVisibleNote: actionReason.trim() })}>{copy.action.approve}</AdminActionButton>
+          <div className="space-y-1 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm">
+            <p className="font-semibold">{selectedRequest?.rmaNo ?? copy.rma}</p>
+            <p className="break-words">{selectedRequest?.productName}</p>
+            <p>{copy.quantity}: {fullQuantity}</p>
+          </div>
+          <details className="rounded-lg border border-slate-200 p-3">
+            <summary className="cursor-pointer text-sm font-semibold">{isZh ? "客户退回指引（选填）" : locale.startsWith("en") ? "Return instructions (optional)" : "Istruzioni per il reso (facoltative)"}</summary>
+            <div className="mt-3 space-y-2">
+              <Label htmlFor="rma-return-instructions">{isZh ? "补充说明（选填）" : locale.startsWith("en") ? "Additional note (optional)" : "Nota aggiuntiva (facoltativa)"}</Label>
+              <Textarea id="rma-return-instructions" maxLength={1000} value={actionReason} disabled={Boolean(pendingAction)} onChange={(event) => setActionReason(event.target.value)} />
+            </div>
+          </details>
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={Boolean(pendingAction)} onClick={() => setActionDialog(null)}>{copy.cancel}</Button>
+            <AdminActionButton ref={approveButtonRef} type="button" pending={Boolean(pendingAction)}
+              disabled={isDetailLoading || !selectedRequest?.availableActions.includes("approve") || Boolean(pendingAction)}
+              onClick={() => void runAction("approve", actionReason.trim() ? { customerVisibleNote: actionReason.trim() } : {})}>
+              {copy.action.approve}
+            </AdminActionButton>
           </DialogFooter>
         </DialogContent>
       </Dialog>

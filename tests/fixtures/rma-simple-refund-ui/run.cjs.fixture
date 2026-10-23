@@ -37,13 +37,38 @@ let current={...base}, permitted=true, fail=false; const writes=[],errors=[],che
   const url='http://127.0.0.1:'+server.address().port+'/?locale='+locale;
   const load=async()=>{await page.goto(url);await page.getByRole('button').filter({hasText:'Honor X8 Black'}).click();await page.locator('#rma-wallet-flow').waitFor();};
   const label=(zh,it,en)=>locale==='zh-CN'?zh:locale==='it'?it:en;
-  for (const state of ['submitted','under_review']) {
+  for (const state of ['submitted','under_review']) for (const note of [undefined,label('已联系客户','Cliente contattato','Contacted')]) {
    current={...base,status:state};await load();
    await page.getByRole('button',{name:label('批准','Approva','Approve'),exact:true}).click();
-   await page.getByLabel(label('客户退回指引','Istruzioni per il reso','Return instructions'),{exact:true}).fill('Please return the goods to the shop with safe packaging.');
-   await page.getByRole('dialog').getByRole('button',{name:label('批准','Approva','Approve'),exact:true}).click();
+   const dialog=page.getByRole('dialog');
+   const approve=dialog.getByRole('button',{name:label('批准','Approva','Approve'),exact:true});
+   const instructions=page.locator('#rma-return-instructions');
+   assert.equal(await approve.isEnabled(),true,'blank instructions must not disable approval');
+   assert.equal(await instructions.isVisible(),false,'optional note starts collapsed');
+   assert.equal(await page.evaluate(()=>document.activeElement?.id==='rma-return-instructions'),false,'approval must not focus text input');
+   assert.equal(await dialog.getByText('Honor X8 Black — synthetic return',{exact:true}).count(),1);
+   if(note!==undefined) {
+    await dialog.locator('summary').click();
+    await instructions.fill(note);
+   } else if(state==='under_review') {
+    await page.screenshot({path:output+`/approval-empty-${locale}-${width}.png`,fullPage:true,animations:'disabled'});
+    fail=true;
+    const count=writes.length;
+    await approve.click();
+    await page.getByText('Synthetic retryable failure',{exact:true}).waitFor();
+    assert.equal(await dialog.isVisible(),true,'failed approval remains reviewable');
+    assert.equal(writes.length,count+1);
+    const retryKey=writes.at(-1).idempotencyKey;
+    await approve.click();
+    await page.getByRole('button',{name:label('办理退款','Esegui rimborso','Issue refund'),exact:true}).waitFor();
+    assert.equal(writes.at(-1).idempotencyKey,retryKey,'approval retry preserves operation key');
+    assert.equal(writes.at(-1).customerVisibleNote,undefined);
+    continue;
+   }
+   await approve.click();
    await page.getByRole('button',{name:label('办理退款','Esegui rimborso','Issue refund'),exact:true}).waitFor();
    assert.equal(writes.at(-1).action,'approve');
+   assert.equal(writes.at(-1).customerVisibleNote,note,'blank approval omits note; short note is retained');
   }
   current={...base};await load();
   await page.screenshot({path:output+`/actions-${locale}-${width}.png`,fullPage:true});
@@ -72,7 +97,7 @@ let current={...base}, permitted=true, fail=false; const writes=[],errors=[],che
   await page.screenshot({path:output+`/cash-${locale}-${width}.png`,fullPage:true});
   await pay.click();await page.getByText(new RegExp(label('已退现金','Rimborsato in contanti','Cash refund paid'))).waitFor();
   permitted=false;current={...base};await load();assert.equal(await page.getByRole('button',{name:label('办理退款','Esegui rimborso','Issue refund'),exact:true}).count(),0);
-  checks.push({locale,width,directApproval:true,walletRetry:true,cashConfirmation:true,waiver:true,readOnly:true,noOverflow:true});await page.close();
+  checks.push({locale,width,directApproval:true,emptyApproval:true,shortNoteApproval:true,noInputAutoFocus:true,approvalRetry:true,walletRetry:true,cashConfirmation:true,waiver:true,readOnly:true,noOverflow:true});await page.close();
  }
  assert.deepEqual(errors,[]);fs.writeFileSync(output+'/browser-result.json',JSON.stringify({checks,writes,errors},null,2));console.log('PASS: 6 locale/viewport combinations, wallet retry key, cash confirmation, waiver, read-only and overflow');
  }finally{await browser?.close();await new Promise(resolve=>server.close(resolve));}

@@ -52,9 +52,6 @@ export async function POST(request: NextRequest, { params }: AdminRmaActionParam
     });
   }
 
-  if (parsedBody.data.action === "approve" && (parsedBody.data.customerVisibleNote?.length ?? 0) < 20) {
-    return apiError(400, "RMA_RETURN_INSTRUCTIONS_REQUIRED", "Provide return address and packing instructions before approval.");
-  }
   if (parsedBody.data.action === "request_wallet_refund" && parsedBody.data.refundAmount === undefined) {
     return apiError(400, "RMA_REFUND_AMOUNT_REQUIRED", "Confirm the refund amount explicitly.");
   }

@@ -168,3 +168,15 @@ test('unified money action requires approval permission, explicit method, exact 
  const reader=actionRoute(['wallet_refunds.approve']);
  assert.equal((await reader.post(payload)).status,403);
 });
+
+test('approval accepts omitted, blank and short instructions without weakening permission or length checks', async () => {
+  const manager = actionRoute(['rma.read', 'rma.manage']);
+  for (const extra of [{}, {customerVisibleNote:''}, {customerVisibleNote:'   '}, {customerVisibleNote:'已联系客户'}]) {
+    assert.equal((await manager.post({action:'approve',idempotencyKey:'optional-note-approval',...extra})).status,200);
+  }
+  assert.equal(manager.writes.length,4);
+  assert.equal((await manager.post({action:'approve',customerVisibleNote:'x'.repeat(1001),idempotencyKey:'oversized-note-approval'})).status,400);
+  const reader=actionRoute(['rma.read']);
+  assert.equal((await reader.post({action:'approve',idempotencyKey:'read-only-approval'})).status,403);
+  assert.equal(reader.writes.length,0);
+});
