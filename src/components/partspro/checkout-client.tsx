@@ -1827,9 +1827,10 @@ function PaymentSection({
             className="mt-1 size-4 shrink-0 accent-primary"
             disabled={!canUseWallet}
             checked={!isPreorder && form.useWallet}
-            onChange={(event) =>
-              onChange((current) => ({ ...current, useWallet: event.currentTarget.checked }))
-            }
+            onChange={(event) => {
+              const useWallet = event.currentTarget.checked;
+              onChange((current) => ({ ...current, useWallet }));
+            }}
           />
           <WalletCards className="mt-0.5 size-4 shrink-0 text-primary" />
           <span className="min-w-0 flex-1">
