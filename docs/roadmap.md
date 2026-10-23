@@ -255,7 +255,7 @@ Last reviewed: 2026-10-12
 - 24+60测试、lint、本地/远端build、210手机几何及30桌面对照通过；473上传源hash一致。候选和正式各12+30 HTTP通过，实际三语及手机/桌面、账户/购物/结算只读布局已核对，短时error/fatal为空，独立RELEASE_VERIFIED。真实业务写及物理iPhone键盘未做E2E。报告 `docs/audits/2026-10-17-storefront-mobile-density-release.md`，证据 `outputs/storefront-mobile-density/2026-10-17/`，任务转done。
 
 
-## 2026-10-23：售后现金／钱包简化（本地验收完成，待生产迁移批准）
+## 2026-10-23：售后现金／钱包简化（已上线并核验）
 
 - 用户确认：直接批准退货后可先退款；现金和钱包二选一；有退款批准权限的员工可完成；默认原单可退全额、可少退，一条售后一次结清；支持有原因的“无需退回”。
 - 实现在项目内工作树 `.codex-worktrees/rma-simple-refund-20261023` / `codex/rma-simple-refund-20261023`，基于最近已上线钱包修复82043e8／17a6b0c；未覆盖主目录既有修改。主入口改为“办理退款”，后台事务核价／记账／审计，收货和库存独立；次要记录折叠，现金和钱包在客户记录与财务中明确区分。
@@ -263,3 +263,9 @@ Last reviewed: 2026-10-12
 - 验证：177项售后／钱包／财务合同、24项storefront，全量lint、build、diff检查通过；隔离PostgreSQL17应用119条migration，零余额补齐不改已有余额、税额尾差、权限、失败回滚、收货／免退回／关闭及真实双连接同key／现金钱包竞争／旧批准竞争通过。390／1440中意英真实React＋模拟API验证通过，查看截图确认布局；非物理Safari或生产员工交易E2E。证据位于该工作树 `outputs/rma-simple/2026-10-23/`。
 - 目标已核对PartsPro-V4／yiuxrjqexlfjtxxrkqvi；linked migration list无remote-only，dry-run仅本条。迁移含零余额回填，必须按AGENTS安全门取得**本次db push**明确批准；本轮未真实push、未发布、未执行截图售后退款。
 - 回退：先回退代码停止新入口，保留新增字段、零余额钱包和资金证据；已经完成的现金／钱包退款不能由代码回退撤销，只能另行审批补偿。后续先重新核对list／dry-run与文件hash，批准后应用、读回核验，再独立发布。
+
+- 生产应用已获用户明确“确认并继续上线”批准；重核迁移hash/list/dry-run后，唯一20261023195133已成功push。应用后38客户／38钱包／0缺失，新增35钱包均EUR0；原3钱包指纹、总余额EUR13.50、原8条流水指纹均保持，未执行客户退款。4个新函数body MD5与批准SQL相符，固定search_path／anon无执行权限，未登录preview返回42501；linked历史对齐，dry-run无待应用。
+- 源码提交4613ecdeea3094e26e822232b161c795e9da261e；与当前正式Fy7的476个源文件逐项比较，仅19个本任务文件变化、新增退款卡片1个，无源文件缺失；候选E5JaEeNAT8BRWLXtUaGRPKEQ3GsR已上传，477源文件SHA1全部匹配且无env／测试／导入资料，正式域名尚未切换。
+
+- 已上线并完成核验：Vercel生产候选E5JaEeNAT8BRWLXtUaGRPKEQ3GsR／READY／lhr1，477上传源文件SHA1一致；候选13项HTTP检查（账户／售后未登录307到/login，受限API401）通过后，promote同一构建。www与apex的alias API均确认同一E5部署，apex307到www；正式13项只读页面／API检查通过，新部署5分钟error/fatal聚合无分组（仅短时观察）。
+- 当前结果：售后“批准退货→办理退款→现金／钱包确认”及客户自动零余额钱包已正式可用。真实退款、生产下单／库存写入、员工端资金E2E与物理Safari未执行；生产迁移的余额／流水保持证明与隔离数据库／模拟接口证据分别记录。回退版本Fy7保留，已发生退款不能靠代码回退撤销。发布证明与SQL／HTTP结果见本工作树outputs/rma-simple/2026-10-23/release/。
